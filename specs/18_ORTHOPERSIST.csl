@@ -1,0 +1,143 @@
+# 18 : ORTHOGONAL PERSISTENCE — Pharo-class hot-reload
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  engine-state survives compiler-module-replacement
+  not file-based save/load — the running image IS the persistent form
+  schema-migration bridges version-changes automatically
+  ≡ R13 ≡ Smalltalk/Pharo live-programming for LoA
+
+§ LINEAGE
+  Smalltalk-80 image-based system (Xerox PARC 1980+)
+  Pharo 12+ live-programming environment
+  Self prototypes-as-objects
+  Common Lisp save-lisp-and-die + redumpable-image
+  Erlang hot-code-upgrade with gen_server-semantics
+  we adopt : Pharo-class orthogonal-persistence + Erlang-schema-migration
+
+§ IMAGE MODEL
+  Image = { heap-snapshot, gen-ref-tables, handler-stack-frames,
+            scheduled-fibers, GPU-resource-handles,
+            telemetry-rings, audit-chain-head }
+  serialized-form : S-expression or MessagePack (compile-time choice)
+  NOT stored-in-files-by-default — kept in-memory + optionally check-pointed
+  check-point : explicit Image::snapshot() → writes to .image/ directory
+
+§ PERSISTENT-BY-DEFAULT
+  ∀ val<T> and ref<T> and iso<T> at root-scope : persisted
+  ∀ iso<T> mid-computation : NOT persisted (ephemeral, would-break linearity)
+  compiler-inferred : anything reachable-from root-reference-set
+  opt-out : @transient attribute on struct-fields (e.g. temp-caches)
+  opt-in-explicit : @hot_reload_preserve attribute for opt-out-by-default contexts
+
+§ SCHEMA MIGRATION
+  every type T has auto-derived SchemaDescriptor
+  version-pair (old-T, new-T) compared structurally
+  compatible-changes : field-add, field-remove-with-default, field-type-widen
+  incompatible-changes : field-type-narrow, field-order-swap
+  user-defined migration :
+    @migrate(from_version = 3, to_version = 4)
+    fn migrate_player(old : Player_v3) -> Player_v4 {
+      Player_v4 { ...old, new_field: default_value() }
+    }
+  migration-chain applied automatically on image-reload
+
+§ HOT-RELOAD WORKFLOW
+  dev-mode startup :
+    libcssl-rt embeds CSSLv3 compiler
+    initial compilation + load
+    filesystem-watch on source/ + config/
+  source-change detected :
+    incremental-compile (§§ 02 query-based)
+    generate new LIR-blobs for affected modules
+    pause-fibers-at-next-yield-point
+    diff image-schema old vs new
+    apply schema-migrations
+    swap code (dlopen for host, VkShaderModule for GPU)
+    resume-fibers
+  @hot_reload_preserve structs survive
+  @transient structs cleared
+  GPU-resources : re-created if pipeline changed, preserved if only host-code changed
+
+§ CMDBUF + LINEAR RESOURCES × HOT RELOAD
+  challenge : iso CmdBuf mid-frame → hot-reload triggered
+  solution : hot-reload deferred to frame-end barrier
+  compiler-inserted check : between frames only, never mid-frame
+  if user explicitly forces mid-frame reload : iso-values rolled-back to frame-start
+
+§ IMAGE-CHECKPOINT (explicit save)
+  Image::snapshot(path : Path) -> Result<(), SnapshotErr> / {IO, Privilege<s>, Audit<"image-snapshot">}
+  writes serialized-form atomically (tmp + rename)
+  includes :
+    schema-descriptors for ∀ live-types
+    heap-contents (all persistent-tagged values)
+    handler-stack state (suspended-computations if-any)
+    fiber-schedules + pending-timers
+    GPU-resource-descriptors (for re-creation; actual GPU-memory NOT serialized)
+    telemetry-ring snapshot
+    audit-chain final-signature
+  size : typical game-image 100-500 MB serialized
+
+§ IMAGE-RESTORE (explicit load)
+  Image::restore(path : Path) -> Result<(), RestoreErr> / {IO, Privilege<Kernel>, Audit<"image-restore">}
+  reads snapshot
+  checks schema-compatibility with current-compiled-code
+  applies migrations if needed
+  recreates GPU-resources from descriptors
+  resumes fibers at their suspended points
+  validates audit-chain signature before-accepting
+
+§ INCREMENTAL COMPILE × PERSISTENCE
+  compile-cache keyed (source-hash, stage-args, target-profile)
+  cached artifacts : HIR + MIR + LIR per-module
+  module-reload preserves inter-module boundaries
+  ABI-compatibility checked at reload-time
+  ABI-incompatible change → re-link whole-program (longer pause)
+
+§ PERSISTENT FIBER STATE
+  fiber = one-shot-continuation (§§ 12)
+  suspended-fiber = continuation-closure + captured-env
+  captured-env serialized via image-mechanism
+  resume : de-serialize + reinstate registers + jump
+  works across compiler-version boundaries IF fiber-body ABI-stable
+
+§ TELEMETRY × PERSISTENCE
+  R18 TelemetryRing<N> persisted-by-default
+  on-reload : telemetry continues appending (no data-loss)
+  exporters reconnect automatically
+
+§ AUDIT × PERSISTENCE
+  audit-chain is a persistent-linked-list signed-per-entry
+  each Image::snapshot appends chain-head-entry signed
+  ≡ tamper-evident history of all-sessions
+
+§ ROLLBACK
+  Image::rollback_to(snapshot_path) -> Result<(), _> / {Privilege<Kernel>, Audit<"rollback">}
+  reverts to earlier snapshot
+  current-session ends, new-session starts from snapshot
+  use : debugging (replay from bug-point), undo-bad-state
+
+§ EXAMPLE : hot-reload session
+  # dev launches LoA in hot-reload mode
+  loa --hot-reload examples/vertical_slice.cssl
+
+  # Apocky edits shader source
+  # filesystem-watch triggers incremental-compile
+  # new shader SPIR-V generated
+  # mid-frame, engine scheduler marks hot-reload-pending
+  # at frame-end : pause, swap VkShaderModule, resume
+  # engine state (scene, entities, GPU-buffers) preserved
+
+  # schema change : added new field to Player struct
+  # compiler detects incompatible-change, reports migration-needed
+  # Apocky writes @migrate(v3 → v4) fn
+  # reload applies migration, engine continues with v4-Player
+
+§ INTEGRATION
+  §§ 04 EFFECTS : {Reversible} + checkpoint → replay-debugging
+  §§ 12 CAPABILITIES : linear-resources handled via frame-boundary-defer
+  §§ 13 MACROS : macro-expansion re-runs on-reload for affected modules
+  §§ 22 TELEMETRY : signed-ring persists
+  §§ 23 TESTING : hot-reload-invariance test (§§ 23.replay)
+
+∎ ORTHOPERSIST

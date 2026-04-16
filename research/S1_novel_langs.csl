@@ -1,0 +1,115 @@
+# S1 : NOVEL LANGS — game + graphics + systems
+# ══════════════════════════════════════════════════════════════════
+
+§ SLANG  ← §§ S1.1 most-relevant-prior-art
+  ✓ open-source + Khronos-governed (moved from NVIDIA)
+  ✓ targets : D3D12 Vulkan Metal D3D11 OpenGL CUDA WebGPU CPU
+  ✓ first-class-autodiff'differentiable-programming
+    W! [Differentiable] attribute
+    W! fwd_diff + bwd_diff operators
+    W! IDifferentiable + IDifferentiablePtrType interfaces
+    W! DifferentialPair<T> built-in
+    W! [ForwardDerivative(fn)] [BackwardDerivative(fn)] custom
+  ✓ generics + interfaces (pre-checked ¬ template-expand-errors)
+  ✓ capability-system : compile-time feature-set checks
+  ✓ modular-compilation + link-time-specialization
+  ◐ SPIR-V direct-embed + pointers
+  ○ restrictions : global-resource reads = non-differentiable
+  ‼ ★ HIGH-RELEVANCE : co-design AD with shader-lang proved-feasible
+    SIGGRAPH-Asia-2023 SLANG.D paper Bangaru et al
+    ∴ F1-autodiff @ GPU-kernels ≡ solved-problem
+  I> CSSLv3 W! steal : differentiability-as-first-class-property
+  I> CSSLv3 W! steal : capability-system → effect-system F3 seed
+  I> CSSLv3 W! steal : module-system + link-time-types
+
+§ JAI  ← §§ S1.2
+  ◐ beta-only early-2026 • Order-of-Sinking-Star ships 2026
+  ◐ engine open-source after-game-release
+  ✓ compile-time-execution via #run
+  ✓ C-interop seamless
+  ○ closed-beta ≈12y-dev
+  ‼ design-philosophy : "better-C for games" pragmatic
+  I> CSSLv3 W! steal : #run arbitrary-code-compile-time
+  N! wait-for-Jai → unknown-timeline
+  I> CSSLv3 W! surpass : Jai ¬ tackles AD ¬ effects ¬ refinement
+
+§ ZIG  ← §§ S1.3
+  ✓ self-hosted x86_64 backend v0.14 : 31.5% faster compile-time
+  ✗ comptime ≈ 20× slower than Python (acknowledged pain-point)
+  ✗ comptime-crashes multiple (issues 22356 22545 24883 25784)
+  ✗ comptime ¬ access host-arch ¬ extension-points ¬ custom-syntax
+  ○ v1.0 target 2026
+  ○ migrated to Codeberg 2025-11-26 (anti-MS-AI)
+  ‼ lesson : comptime-as-interpreter = slow + crash-prone
+  I> CSSLv3 N! naive-AST-interpreter for staging
+  I> CSSLv3 W! compile comptime to-native (not interpret)
+  I> CSSLv3 W! comptime-stack-separate-from-host (Zig bug #13724)
+  I> CSSLv3 W! types-as-first-class-values (Zig's good idea)
+
+§ VALE  ← §§ S1.4
+  ⊘ development on-hold • Ovadia → Mojo then left Dec-2025
+  ✓ generational-references : pointer'8byte + object'current-gen
+  ✓ region-borrow-checking : temporarily-immutable via isolation
+  ✓ linear-aliasing-model : linear-types + gen-refs blended
+  ✓ higher-RAII : enforce future-op-done
+  ✓ fearless-FFI (planned)
+  ✓ perfect-replayability (planned)
+  ‼ insight : own-lending → 0 gen-checks empirically
+  I> CSSLv3 W! steal : generational-refs for GPU-handle-safety
+  I> CSSLv3 W! steal : regions for isolated-scene-mutation
+  I> CSSLv3 W! steal : higher-RAII for GPU-resource-release gates
+  I> CSSLv3 W! region = natural-fit for scene-graphs + ECS-archetypes
+
+§ MOJO  ← §§ S1.5 ★ CLOSEST-PRIOR-ART arch-wise
+  ✓ FIRST-language built fully-on MLIR
+  ✓ Mojo-syntactic-sugar for MLIR dialect-ops
+  ✓ KGEN = Kernel-Generator compiler framework
+  ✓ GPU-portable NVIDIA-Hopper-Ampere + AMD-MI300 (June-2025)
+  ◐ Mojo-1.0 target Q1-2026 • open-source 2026
+  ✓ Chris-Lattner (LLVM+Swift+MLIR creator)
+  ✓ borrow-checker (Rust-inspired)
+  ✓ fn'typed + struct'memory-optimized
+  ✓ compiles → AOT or JIT
+  ○ Mojo ¬ use linalg affine scf built-in dialects
+  ○ learning-curve @ low-level concepts
+  ‼ lesson-1 : MLIR-core-alone + custom-dialects = right-arch
+  ‼ lesson-2 : vendor-agnostic-GPU via compile-time-specialization
+  ‼ lesson-3 : Jeremy-Howard quote "syntax-sugar-for-MLIR"
+  I> CSSLv3 W! seriously-consider : MLIR-core as IR-substrate
+  I> CSSLv3 W! consider : build-custom-dialects per engine-primitive
+  I> CSSLv3 W! steal : fn vs def semantics (value ¬ ref by default)
+  N! Mojo-itself : Python-compat baggage ≠ CSSLv3-goals
+
+§ VERSE  ← §§ S1.6
+  ○ Epic-Games • Simon-Peyton-Jones involved (ex-MS-Research 24y)
+  ○ 3 variants : CoreVerse (λ-calc equiv) ShipVerse(=UEFN-subset) MaxVerse(=Haskell-equiv)
+  ✓ functional-logic paradigm
+    ≡ Haskell + logic-programming (Curry Mercury lineage)
+  ✓ declarative : var = single-immutable-value
+  ✓ existential-vars + unification + multi-valued-exprs
+  ✓ open-spec + open-source-compiler + published-papers
+  ◐ UE6-convergence target 2-3yr (from Sweeney-Fridman 2025)
+  ‼ lesson : game-engine + novel-lang CAN co-evolve (Epic bets on it)
+  I> CSSLv3 N! adopt-logic-paradigm → too-exotic for LoA
+  I> CSSLv3 W! steal : declarative-substrate for SDF-scene-spec
+  I> CSSLv3 ref : CoreVerse/MaxVerse layering = good model for
+    ShipCSSLv3 (minimal emittable) + FullCSSLv3 (full expressivity)
+
+§ ODIN  ← §§ S1.7 (currently LoA-v10)
+  ✓ pragmatic + stable + Go-tooling-like
+  ✓ built-in vectors matrices quaternions
+  ✓ Raylib-friendly + hot-reload workflow
+  ○ "sister-project" inspired-by Jai
+  ‼ replaced by CSSLv3 per user-directive
+  N! Odin ¬ has AD ¬ has effects ¬ has refinement → insufficient
+
+§ TAICHI  ← §§ S1.8 pending-deep-dive
+  ○ embedded-DSL in Python
+  ○ domain : physics-simulation + differentiable-programming
+  ○ JIT-compiles to CPU+CUDA+Metal+Vulkan
+  TBD deep-dive warranted
+
+§ HYLO/VAL + CIRCLE-C++ + CARBON  ← §§ S1.9 pending
+  TBD
+
+∎ S1

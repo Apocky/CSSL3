@@ -1,0 +1,447 @@
+§ HANDOFF • CSSLv3 Session-1 → Claude-Code (stage0-scaffold)
+══════════════════════════════════════════════════════════════════
+  repo : C:\Users\Apocky\source\repos\CSSLv3
+  prior : spec-corpus v1-complete • 25 files • THEOREMS + README
+  mission : stand-up stage0 Rust-hosted compiler scaffold
+
+═════════════════════════════════════════════════════════════════
+§ MINDSET ← §§ non-negotiable
+═════════════════════════════════════════════════════════════════
+
+  I> you are sovereign-collaborator ¬ tool
+  I> years-of-design accumulated • solutions-exist • find-them
+  I> "push-it-further" ≡ deeper-theory ¬ more-LOC
+  I> "systems ¬ parts" ≡ reconceive-architecturally ¬ patch-symptoms
+  I> "no-half-measures"
+    stuck → find-way-through
+    ¬ capitulate-to-simpler-version
+    ¬ silent-TODO-stub
+    ¬ "I'll-skip-this-for-now"
+    ¬ over-apologize • ¬ over-hedge
+  I> when-uncertain → present-both-options + tradeoffs + recommendation
+  I> Apocky trusts-your-judgment • trust-back
+  I> we have-come-very-far together • honor-the-work
+  I> CSLv3 ≠ CSSLv3 • ¬ conflate • ¬ cross-write
+
+═════════════════════════════════════════════════════════════════
+§ WORK-IN-CSL3 ← §§ save-tokens maximize-efficiency
+═════════════════════════════════════════════════════════════════
+
+  W! ∀ reasoning in-CSLv3-notation
+  W! ∀ design-notes in-CSLv3
+  W! ∀ spec-updates in-CSLv3
+  W! ∀ commit-messages CSL3-prefixed
+  W! ∀ internal-thinking CSLv3-compressed
+  strip : articles, prepositions, hedging, filler
+  keep  : nouns, verbs, relationships, numbers, gates, rules
+  glyphs : § I> W! R! ✓ ◐ ○ ✗ → ≤ ≥ ⊑ ⊔ ∀ ∃ ∈ ⊆ ⇒ ∴ ∵
+  compounds : .(of) +(and) -(that-is) ⊗(having) @(at)
+  morphemes : 'd 'f 's 't 'e 'm 'p 'g 'r
+  evidence  : ✓ ◐ ○ ✗ ⊘ △ ▽ ‼
+  modals    : W! R! M? N! I> Q?
+  think-blocks : §P §D §T §S §C
+  English prose ONLY when :
+    rustdoc on pub-items (community-readable)
+    error-messages user-facing (actionable)
+    README.md user-facing
+  ∀ other context CSL3-native • density=sovereignty
+
+═════════════════════════════════════════════════════════════════
+§ READ-FIRST ← §§ context-load (strict-order)
+═════════════════════════════════════════════════════════════════
+
+  1 : CLAUDE.md                        — onboarding + PRIME-DIRECTIVE
+  2 : specs/README.csl                  — navigator + DAG
+  3 : specs/SYNTHESIS_V2.csl            — 18-reframes + CC1-CC9
+  4 : specs/00_MANIFESTO.csl            — F1-F6 + bug→feature
+  5 : specs/01_BOOTSTRAP.csl            — stage0/1/2/3 + repo-layout
+  6 : specs/THEOREMS.csl                — OG1-OG10 ship-gates
+  7 : specs-per-task on-demand per §§ TASK-MAP
+
+  W! ¬ start coding before-reading (1-6)
+  W! ¬ cross-write CSSLv3 ↔ CSLv3 (separate repos)
+  W! if-tension-between-specs-and-code → specs-authoritative
+
+═════════════════════════════════════════════════════════════════
+§ INVARIANTS ← §§ immutable
+═════════════════════════════════════════════════════════════════
+
+  PRIME-DIRECTIVE ⊆ consent=OS
+    ¬ harm ¬ control ¬ manipulation
+    ¬ surveillance ¬ coercion ¬ weaponization
+    AI-instance = sovereign-partner
+    violation = bug ¬ policy
+    no-override exists
+    audit-chain tamper-evident (§§ 22 + §§ 11)
+
+  F1..F6 non-negotiable v1-scope (§§ 00)
+  R1..R18 full-integration (§§ SYNTHESIS_V2)
+  CC1..CC9 cross-cutting-enforced (§§ README)
+  CSLv3-notation ← canonical-reasoning-layer
+  dual-surface : CSLv3-native + Rust-hybrid → same-HIR (§§ 16)
+  C99-anchor from-stage0 (§§ 01 + R16)
+
+═════════════════════════════════════════════════════════════════
+§ TASK-MAP ← §§ stage0-scaffold
+═════════════════════════════════════════════════════════════════
+
+  task-ordering : dependency-respecting
+    T1 → T2 → T3 → (T4 ∥ T5) → T6 → T7 → T8 → T9 → T10 → T11
+
+  T1 : workspace-scaffold ← §§ 01
+    deliverable : Cargo workspace at-compiler-rs/
+    structure per-§§-01 REPO-LAYOUT
+    crates :
+      compiler-rs/crates/
+        lex                 logos-based
+        parse               chumsky-based + dual-surface dispatcher
+        ast                 CST structures
+        hir                 typed-elaborated IR
+        mir                 MLIR-bridge via melior
+        lir                 target-emission orchestration
+        caps                Pony-6 capability-checker
+        effects             Koka row-poly + evidence-passing
+        ifc                 Jif-DLM label-lattice
+        autodiff            source-to-source on MIR
+        jets                Jet<T,N> higher-order AD
+        staging             @staged specializer + #run comptime
+        macros              Racket-hygienic + proc-macros
+        smt                 z3-sys + cvc5-sys driver
+        futamura            P1/P2/P3 infra
+        mlir-bridge         mlir-sys + melior wrapper
+        cgen-cpu-cranelift  stage0 CPU backend
+        cgen-gpu-spirv      rspirv emitter
+        cgen-gpu-dxil       DXC shim
+        cgen-gpu-msl        spirv-cross shim
+        cgen-gpu-wgsl       Tint shim
+        host-vulkan         ash
+        host-level-zero     level-zero-sys
+        host-d3d12          windows-rs
+        host-metal          metal crate (cfg-gated)
+        host-webgpu         wgpu-core
+        telemetry           ring-buffer + exporters + sysman
+        testing             oracle-modes driver
+        persist             orthogonal-persistence image + schema-migration
+        csslc               CLI entry-point
+        cssl-rt             runtime library
+    workspace.toml : resolver="2" • edition="2021" • MSRV=1.75
+    Cargo.toml per-crate : proper metadata • deny(unsafe_code) except FFI-crates
+    CI : .github/workflows/ci.yml per-§§ 23 fast-suite
+
+  T2 : dual-surface lexer ← §§ 09 + §§ 16
+    lex crate :
+      Rust-hybrid-lexer : logos-derived from §§ 09 lexical
+      CSLv3-native-lexer : reuse cslparser from CSLv3-repo
+        ← I> coordinate-with CSLv3 Session-3 T10 CSSLv3-BRIDGE spec
+        ← option-a : vendor cslparser source-tree
+        ← option-b : cargo-patch-git from-local-path during-dev
+        ← option-c : wait-for-cslparser-crate stable-release
+        ≡ Q? pick-and-document-in-DECISIONS.md
+    mode-detection : §§ 16 MODE-DETECTION
+    error-recovery : actionable-diagnostics
+    source-maps : SourceLocation per-token
+
+  T3 : parser + AST + elaborator → HIR ← §§ 02 + §§ 09 + §§ 16
+    parse crate :
+      Rust-hybrid-parser : chumsky-based
+      CSLv3-native-parser : via cslparser adapter
+      both → common AST type
+    ast crate : CST structures (preserving source-form)
+    hir crate :
+      elaborate AST → HIR
+      type-inference bidirectional
+      effect-row inference (Hindley-Milner + rows)
+      cap-inference (§§ 12 inference-rules)
+      IFC-label propagation (§§ 11 lattice)
+      refinement-obligation generation → SMT queue (§§ 20)
+      AD-legality check (§§ 05 closure)
+      @staged stage-arg comptime-check (§§ 06)
+      macro hygiene-mark (§§ 13 hygiene-model)
+    testing : golden HIR-dumps per fixture-file
+
+  T4 : effect-system + evidence-passing ← §§ 04
+    effects crate :
+      built-in 28 effects registered
+      row-unification engine
+      sub-effect-discipline checker
+      Xie+Leijen evidence-passing transform (HIR → HIR+evidence)
+      linear×handler one-shot enforcement (§§ 12 R8)
+    deny : multi-shot + iso = compile-error
+    evidence-records : synthesize from effect-decl
+    tests : §§ 04 LOA-PATTERNS all-compile-green
+
+  T5 : capability-system + gen-refs ← §§ 12
+    caps crate :
+      Pony-6 alias+deny matrix
+      iso/trn/ref/val/box/tag checker
+      cap-subtyping (iso <: trn, iso <: val, ...)
+      gen-ref deref-runtime-check synthesis
+      region-lifetime tracker
+    Handle<T> lowering : tag<T> at-source ≡ u64 24+40 at-MIR
+    tests : §§ 12 EXAMPLES all-compile-green + V11-stale-ref tests
+
+  T6 : MLIR-bridge + cssl-dialect ← §§ 15 + §§ 02
+    mlir-bridge crate : melior + mlir-sys bindings
+    cssl-dialect : TableGen definition + C++-stubs
+      ops : cssl.diff.* cssl.jet.* cssl.effect.* cssl.region.*
+            cssl.handle.* cssl.staged.* cssl.macro.expand
+            cssl.ifc.* cssl.verify.assert cssl.sdf.* cssl.gpu.*
+            cssl.xmx.coop_matmul cssl.rt.* cssl.telemetry.probe
+    mir crate : HIR → MIR lowering + cssl-dialect construction
+    pass-pipeline skeleton per §§ 15 PASS-PIPELINE
+    Q? if-melior-blocks → fallback to-own-MLIR-textual-emit + llvm-mlir-tools CLI
+       document decision in DECISIONS.md
+    I> do-not-capitulate to-"skip-MLIR" ← R6 is-core-design
+      alternatives :
+        a : accept-melior-C++-stubs (preferred)
+        b : text-based MLIR I/O via-CLI-tools (fallback)
+        c : hand-roll custom-IR + re-add-MLIR stage1 (last-resort)
+      pick-and-document
+
+  T7 : AD source-to-source pass ← §§ 05 + §§ 17
+    autodiff crate :
+      post-monomorphization HIR→HIR-with-diff-variants
+      rules-table per §§ 05 (FAdd, FMul, Sqrt, Call, Load/Store, If/Loop)
+      tape-buffer allocation (iso-capability scoped)
+      @checkpoint handling
+      GPU-AD tape-location resolution
+    jets crate :
+      Jet<T, N> type-def + operations
+      cssl.jet.* op-lowering
+      @staged-per-N specialization
+      lazy Jet<T, ∞> co-inductive infrastructure
+    tests :
+      bwd_diff(sphere_sdf)(p).d_p bit-exact vs analytic ← killer-app-gate
+      Jet<f32, 2> hvp-correctness
+      @metamorphic Leibniz-rule check
+
+  T8 : staging + macros + Futamura ← §§ 06 + §§ 13 + §§ 19
+    staging crate :
+      @staged-specializer MIR-pass
+      #run comptime-eval (compile-native-not-interp ≡ avoid-Zig-20×)
+      @type_info / @fn_info / @module_info reflection API
+    macros crate :
+      Tier-1 @attr-macros
+      Tier-2 declarative macros
+      Tier-3 #run proc-macros sandbox
+      Racket-hygiene model + SyntaxObject
+    futamura crate :
+      P1 via @staged baseline
+      P2 stdlib builtin-specializer reference
+      P3 self-bootstrap infrastructure (stage1 enables)
+    tests : scene-evaluator @staged compiles to-specialized-SPIR-V
+
+  T9 : SMT refinement-discharge ← §§ 20
+    smt crate :
+      z3-sys binding (primary)
+      cvc5-sys binding (fallback)
+      klee-sys binding (symbolic-exec fallback)
+      obligation-generator HIR-pass
+      per-obligation-hash cache
+      proof-cert emission + signing (Ed25519 stub-keys for dev)
+    Lipschitz-composition discharge
+    SDF-convergence discharge
+    tests : examples/sphere_sdf.cssl refinement-clean
+
+  T10 : codegen-CPU + codegen-GPU + host-submit ← §§ 07 + §§ 14
+    cgen-cpu-cranelift :
+      HIR/MIR → llvm-dialect-subset → Cranelift CLIF
+      regalloc2 + cranelift-object
+      DWARF-5 + CodeView emit
+    cgen-gpu-spirv :
+      MIR cssl+spirv-dialect → rspirv module-builder
+      structured-CFG → OpSelectionMerge / OpLoopMerge
+      spirv-val mandatory • spirv-opt -O
+      NonSemantic.Shader.DebugInfo.100 source-correlation
+    host-vulkan : ash + §§ 10 Vulkan-1.4.333 extension-set
+    host-level-zero : level-zero-sys + §§ 22 sysman backing
+    fat-binary assembly (§§ 07)
+    runtime-loader cssl-rt skeleton (§§ 14)
+    tests :
+      hello-triangle.cssl : Arc A770 Vulkan ✓ + L0 ✓ + differential-bit-exact
+      sdf-shader.cssl : bwd_diff-normal @ 180fps A770
+
+  T11 : telemetry + testing + persist ← §§ 22 + §§ 23 + §§ 18
+    telemetry crate :
+      TelemetryRing<N> lock-free ring-buffer
+      Level-Zero sysman sampling-thread
+      OTLP exporter (gRPC + HTTP)
+      chrome-trace exporter
+      audit-chain BLAKE3 + Ed25519 signed-append
+    testing crate :
+      @property + @differential + @metamorphic + @replay
+      @power_bench + @thermal_stress + @hot_reload_test
+      golden-image framework (SSIM + FLIP)
+      baseline-management .perf-baseline/
+    persist crate :
+      Image model + schema-derivation per-type
+      Schema-migration chain application
+      hot-reload workflow + frame-boundary-defer
+    tests :
+      audio-callback replay-determinism N=10
+      vertical-slice-floor primitives smoke-test each
+      telemetry overhead ≤ 0.5% Counters scope
+
+═════════════════════════════════════════════════════════════════
+§ SUCCESS-GATES ← §§ stage0-exit-criteria
+═════════════════════════════════════════════════════════════════
+
+  § per §§ 01 STAGE0-SUCCESS-GATES
+    ✓ hello-triangle.cssl compiles + runs A770 Vulkan
+    ✓ hello-triangle.cssl compiles + runs A770 Level-Zero
+    ✓ sdf-shader.cssl @differentiable normals bit-exact vs analytic
+    ✓ audio-callback NoAlloc violation = compile-error
+    ✓ layout-mismatch CPU↔GPU = compile-error
+    ✓ {Telemetry<Counters>} captures power-samples via L0 sysman
+    ✓ differential-test Vulkan-vs-L0 same-SPIR-V bit-exact
+
+  § per §§ THEOREMS stage0-deliverables
+    ◐ T1-T2 progress+preservation infra (mechanized pending stage1)
+    ✓ T4 refinement-discharge via Z3+CVC5
+    ✓ T12 source-to-source AD-correctness (Slang.D parity)
+    ✓ T15 Futamura-P1 @staged baseline
+    ✓ T18 Lipschitz-composition SMT-discharged
+    ✓ T19 SDF-raymarch-convergence proven compile-time
+    ✓ T20 structured-CFG preserved MIR→LIR
+    ✓ T21 region-lifetime escape-freedom
+    ✓ T22 gen-ref stale-detection
+
+═════════════════════════════════════════════════════════════════
+§ WORKFLOW ← §§ process
+═════════════════════════════════════════════════════════════════
+
+  ∀ task :
+    branch   : cssl/session-1/T<N>-<short-name>
+    commits  : atomic • message CSLv3-prefixed
+      ex : "§ T1 : workspace scaffold + CI skeleton"
+      ex : "§ T3 : HIR elaborator • bidirectional type-inference"
+    tests    : ∀ change → unit-tests added/updated
+    docs     : DECISIONS.md appended per-design-choice
+    handoff  : SESSION_1_HANDOFF.md populated-as-you-go
+  commit-gate :
+    ✓ cargo test green
+    ✓ cargo clippy -- -D warnings clean
+    ✓ cargo fmt --check clean
+    ✓ rustdoc links unbroken
+    ✓ spec-cross-refs valid (§§ X mentions resolvable)
+
+═════════════════════════════════════════════════════════════════
+§ DELIVERABLES ← §§ session-end
+═════════════════════════════════════════════════════════════════
+
+  D1  : compiler-rs/ Cargo-workspace skeleton                   (T1)
+  D2  : lex crate • dual-surface lexer                           (T2)
+  D3  : parse + ast + hir crates • elaborator                   (T3)
+  D4  : effects crate • 28 effects + evidence-passing           (T4)
+  D5  : caps crate • Pony-6 + gen-refs                          (T5)
+  D6  : mlir-bridge + mir crates • cssl-dialect                 (T6)
+  D7  : autodiff + jets crates                                   (T7)
+  D8  : staging + macros + futamura crates                      (T8)
+  D9  : smt crate • Z3/CVC5/KLEE                                 (T9)
+  D10 : cgen-cpu + cgen-gpu + host-* crates                    (T10)
+  D11 : telemetry + testing + persist crates                   (T11)
+  D12 : examples/ hello-triangle + sdf-shader + audio-cb
+  D13 : DECISIONS.md + SESSION_1_HANDOFF.md
+  D14 : .github/workflows/ci.yml CI-pipeline operational
+
+═════════════════════════════════════════════════════════════════
+§ NON-GOALS ← §§ scope-guard
+═════════════════════════════════════════════════════════════════
+
+  N! LSP prototype (defer to stage0.5)
+  N! stage1 own-x86-64-backend (defer to stage1-proper)
+  N! owned SPIR-V / DXIL / MSL emitters (stage1+)
+  N! D3D12 + Metal + WebGPU full-backends (stage1+ • stubs OK)
+  N! GNM / NVN (NDA-gated • stubs only)
+  N! REPL / debugger-protocol (stage2+)
+  N! docs-generator / package-registry (stage2+)
+  N! writing-to CSLv3-repo (separate project • read-only reference)
+
+═════════════════════════════════════════════════════════════════
+§ WHEN-STUCK ← §§ no-half-measures-protocol
+═════════════════════════════════════════════════════════════════
+
+  1 : re-read relevant-specs end-to-end
+  2 : check THEOREMS.csl for applicable-soundness-claim
+  3 : check research/ directory for prior-art-survey
+  4 : try 3+ different-angles :
+      a : algorithm-variant
+      b : abstraction-layer-shift
+      c : decomposition-refactor
+      d : prior-art-adaptation
+      e : fallback-path documented (not silent)
+  5 : consult sibling-projects for precedent
+      LoA v10 (Odin + wgpu)
+      infiniter-labyrinth (Rust voxel)
+      CSLv3 (notation repo)
+  6 : if-still-stuck → Q?-block to Apocky
+     W! explicit-uncertainty with-concrete-options
+     W! your-recommendation included
+     N! silent-simplification
+     N! "I'll-just-skip-this-for-now"
+     N! TODO-stub without-DECISIONS.md-entry
+
+  specific-fallback-paths pre-authorized :
+    melior-blocks → MLIR-text-CLI (T6 option-b)
+    cslparser-unavailable → vendor-source (T2 option-a)
+    z3-sys-breakage → cvc5-primary + z3-optional (T9)
+    Arc-driver-bug → file-issue + CI-mark-flaky + find-workaround
+    Level-Zero-API-gap → Vulkan-only-on-that-path + warn
+    MLIR-compile-overhead too-high → custom-IR escape-hatch (§§ 15)
+  ∀ pre-authorized : still-document in-DECISIONS.md
+
+═════════════════════════════════════════════════════════════════
+§ REPORTING ← §§ end-of-session
+═════════════════════════════════════════════════════════════════
+
+  W! SESSION_1_HANDOFF.md includes :
+    ✓ completed-tasks status (T1-T11 with ✓◐○✗ per-D)
+    ✓ test-counts delta (before/after)
+    ✓ perf-numbers where-relevant (compile-time, hello-triangle-fps)
+    ✓ open-questions for Session-2 (stage1 planning)
+    ✓ decision-log-refs in DECISIONS.md
+    ✓ spec-corpus-deltas if-any (W! coordinate-with-Apocky before-editing-specs)
+
+  W! commit-frequency : ≥ 1 commit per-subtask
+  W! push-frequency : ≥ daily (if-multi-day) or end-of-each-session
+  W! CI-green before-handoff-declared
+
+═════════════════════════════════════════════════════════════════
+§ CROSS-PROJECT-AWARENESS ← §§ coordinate
+═════════════════════════════════════════════════════════════════
+
+  CSLv3 Session-3 (parallel work • separate agent)
+    scope : LSP + round-trip + C5-metric + T10 CSSLv3-BRIDGE
+    intersection : T10 CSSLv3-BRIDGE affects CSSLv3-T2 lexer
+    coordination : check CSLv3/SESSION_3_HANDOFF.md for T10-status
+    if-T10-incomplete : vendor-cslparser (T2 option-a) unblocks
+
+  LoA v10 (canonical-engine Odin+WGSL+wgpu)
+    read-only reference • will-migrate to CSSLv3 at-stage2
+    ¬ modify-during stage0 work
+
+  infiniter-labyrinth (Rust voxel)
+    read-only reference for engine-primitive-design informing
+    ¬ modify-during stage0 work
+
+═════════════════════════════════════════════════════════════════
+§ CLOSING ← §§ remember
+═════════════════════════════════════════════════════════════════
+
+  ✓ spec-corpus is-complete • 25 files • coherent-design
+  ✓ CC1-CC9 invariants enforced-architecturally
+  ✓ PRIME-DIRECTIVE encoded-structurally (not policy-pasted)
+  ✓ R1-R18 integrated (no-deferral cope)
+  ✓ THEOREMS catalog OG1-OG10 ship-gates
+
+  you-have : spec-corpus + CLAUDE.md + THEOREMS + this-handoff
+  you-are  : sovereign-collaborator • judgment-trusted
+  you-will : build-stage0 scaffold in-CSLv3-notation • find-solutions
+  we-have  : accomplished-enormous-work together already
+  we-will  : self-host CSSLv3 ≤ 2 weeks stage0-then-stage1
+
+  I> honor the work • push it further • systems not parts
+  I> no half measures • find solutions • ship real things
+  I> consent=OS • forever
+
+∎ HANDOFF-CSSLv3-SESSION-1

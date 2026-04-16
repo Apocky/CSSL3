@@ -1,0 +1,166 @@
+# 11 : INFORMATION FLOW CONTROL (F5)
+# ══════════════════════════════════════════════════════════════════
+# § I> PRIME-DIRECTIVE encoded structurally in typesystem
+# § I> ¬ README-policy • ¬ runtime-check-only • ≡ soundness-theorem
+
+§ THESIS
+  consent=OS  ≡  non-interference ⊕ explicit-declassification
+  ∀ harm-shaped-info-flow → type-error
+  ∀ surveillance/coercion-shaped-composition → compile-error
+  ∀ runtime-witness → signed-audit-chain via R18
+
+§ LINEAGE
+  Myers 1999 DLM (Decentralized Label Model) — principals + delegation
+  Jif (Java + IFC) — language-integrated DLM
+  Flow Caml — ML + DLM
+  RLBox (Firefox) — pragmatic sandboxing
+  Paragon (Haskell) — paralocks
+  F* + Fine — SMT-backed IFC
+  we borrow : DLM + explicit declass + lattice-based labels
+
+§ LABEL ALGEBRA
+  principal-set P ⊆ PrincipalUniverse
+    built-in : User, System, Kernel, Root, Anthropic-Audit
+    user-extensible via principal-declaration
+  confidentiality-label C : P → PrincipalSet   (who-can-read)
+  integrity-label I : P → PrincipalSet         (who-can-influence)
+  combined-label L = (C, I)
+  lattice :
+    L1 ⊑ L2  ≡  C1 ⊇ C2  ∧  I1 ⊆ I2
+    (more-confidential = stricter-reader-set)
+    (more-integral    = tighter-influencer-set)
+  join L1 ⊔ L2 ≡ (C1 ∩ C2, I1 ∪ I2)  — upper-bound
+  meet L1 ⊓ L2 ≡ (C1 ∪ C2, I1 ∩ I2)  — lower-bound
+  top ⊤ = (∅, All)  — nobody-reads, everyone-influences ≡ pure-public-untrusted
+  bottom ⊥ = (All, ∅) — everyone-reads, nobody-influences ≡ const-trusted
+
+§ TYPE-LEVEL LABELS
+  secret<T, L>  ≡  T annotated with label-L
+  ∀ CSSLv3 value carries IFC-label (often ⊥ for const data)
+  HIR-level : every SSA-value has attribute ifc-label : L
+  MIR-level : cssl.ifc.label op-type preserved through lowering
+  propagation rule : output-label = ⊔ of input-labels
+  ex :
+    let x : secret<i32, L1> = ... ;
+    let y : secret<i32, L2> = ... ;
+    let z = x + y ;  // z : secret<i32, L1 ⊔ L2>
+
+§ DECLASSIFICATION (explicit, controlled)
+  declass<target-label, policy>(v : secret<T, L>) -> secret<T, target-label>
+  requires : {Privilege<level>} effect where level authorizes-policy
+  policy : PolicyId referring to comptime-declared declass-policy
+  compile-check : declassification-rule ⟦policy⟧ permits L → target-label
+  runtime : {Audit<"declass", policy-id>} logged signed
+
+  declass-policy-declaration :
+    policy redact_ssn {
+      from : secret<String, confid(User, Analytics)>
+      to   : secret<String, confid(User, Analytics, Public)>
+      via  : fn(s : String) -> String { "XXX-XX-" + s[-4:] }
+      requires : Privilege<System>
+      audit    : {Audit<"redact_ssn">}
+    }
+
+§ NON-INTERFERENCE
+  theorem (soundness) :
+    ∀ program p, ∀ high-inputs h1 h2 with same-low-projection,
+      low-output(p(h1)) = low-output(p(h2))
+      UNLESS explicit declass
+  implementation :
+    HIR pass checks : ∀ branch-condition carrying-high-label
+      must-not write-to low-label-location
+    covert-channel mitigations :
+      timing : {Deadline<N>} + {PureDet} block timing-leaks
+      termination : {NoUnbounded} blocks termination-channel
+      probabilistic : {DetRNG} + {PureDet} block prob-leaks
+      cache : {Cache<level>} effect-declared where-leakable
+
+§ PRIME-DIRECTIVE ENCODING
+  domain principals (compiler-built-in) :
+    HarmTarget       — anyone-who-might-be-harmed
+    SurveillanceTarget
+    CoercionTarget
+    WeaponTarget
+    Subject          — the-user-themselves
+    Anthropic-Audit  — reviewer-role
+  @sensitive(domain) attribute lowers to :
+    domain = "privacy"       ⇒ fn-return : secret<T, confid({Subject})>
+    domain = "weapon"        ⇒ compile-error-unless-Privilege<Kernel>
+                               + no-declass-policy-can-route-to-public
+    domain = "surveillance"  ⇒ compile-error absolute (no-override)
+    domain = "coercion"      ⇒ compile-error absolute (no-override)
+    domain = "manipulation"  ⇒ requires {Audit<"manipulation-review">} +
+                               Privilege<Anthropic-Audit> acknowledgment
+  stdlib hard-constraints :
+    no-primitive for SurveillanceTarget-write-to-Network
+    no-primitive for WeaponTarget-output-composition
+    no-declass-policy can bridge these
+
+§ PRIVILEGE EFFECT (§§ 04)
+  {Privilege<level>} : level ∈ { User, System, Kernel, Root,
+                                  Anthropic-Audit, Apocky-Root }
+  level-ordering : User < System < Kernel < Root < Anthropic-Audit < Apocky-Root
+  compile-time : call-site context-privilege ≥ callee-required-privilege
+  privilege is a capability-tier, not-a-UID — maps-to :
+    User   : ordinary game-code
+    System : engine-internals (scheduler, allocator)
+    Kernel : OS-interop (sysman, sensitive-device-access)
+    Root   : compiler-plugin, build-system
+    Anthropic-Audit : audit-review-tooling
+    Apocky-Root : framework-level overrides (never-over-PRIME-DIRECTIVE)
+
+§ AUDIT EFFECT (§§ 04 + §§ 22)
+  {Audit<dom>} : signed-chain log-entry per-invocation
+    dom : audit-domain tag (free-form + stdlib-canonical)
+    log-record : (timestamp, principal, effect-context, input-label,
+                  output-label, policy-id-if-declass, IR-location)
+    signature : BLAKE3 + Ed25519 key-chain, published in audit/
+  stdlib canonical dom :
+    "privacy", "declass", "surveillance-denied", "weapon-denied",
+    "privilege-escalation", "ifc-violation", "policy-change"
+  R18 telemetry-ring backing : captures-entries, exports-opentelemetry
+
+§ VERIFY EFFECT (§§ 04 + §§ 20)
+  {Verify<method>} : method ∈ { Z3, CVC5, KLEE, Manual }
+  compile-time SMT-discharge of refinement-obligations
+  proof-artifact stored in .proof/ directory per-module
+  PRIME-DIRECTIVE soundness-proofs : published + reproducible (R16)
+
+§ INTERACTIONS
+  F1 × F5 : gradients inherit max-label of inputs (no-leak via derivative)
+  F2 × F5 : refinement-types compose with IFC-labels (secret<T'pos, L>)
+  F3 × F5 : effect-rows + IFC-labels co-propagate
+  F4 × F5 : @staged preserves labels through specialization
+  F6 × F5 : telemetry-probes respect IFC (no leak via counters)
+
+§ ESCAPE HATCHES (Apocky-sovereign)
+  ∀ escape-hatch :
+    requires {Privilege<Apocky-Root>}
+    requires {Audit<"apocky-override">}
+    emits visible-warning at-build
+    CANNOT override absolute-blocks (weapon, surveillance, coercion)
+  rationale : Apocky retains framework-level control, PRIME-DIRECTIVE
+             remains inviolable, violations are audit-visible
+
+§ EXAMPLE
+  @sensitive(domain = "privacy")
+  fn fetch_user_profile(id : UserId) -> UserProfile
+    / {IO, Sensitive<"privacy">, Audit<"privacy-read">}
+  {
+    db_read(id)
+  }
+
+  fn public_display(p : UserProfile) -> String
+    / {Privilege<System>, Audit<"redact_ssn">}
+  {
+    let redacted = declass<confid(Subject, Public), redact_ssn>(p.ssn_field);
+    format!("{}: {}", p.display_name, redacted)
+  }
+
+  // compile-error case :
+  fn leaks_ssn(p : UserProfile) -> String {
+    format!("{}", p.ssn_field)  // type-error : secret<..., confid({Subject})>
+                                // escapes-to pure-context without declass
+  }
+
+∎ IFC

@@ -1,0 +1,326 @@
+# SYNTHESIS_V2 : CSSLv3 REFRAMED — NO DEFERRAL, NO TIME-CAP
+# ══════════════════════════════════════════════════════════════════
+# § I> prior synthesis (research/99_SYNTHESIS.csl) assumed community-credibility
+#      ≡ solo-PhD-per-feature ≡ year-scale phasing
+# § I> actual-context : Apocky + Claude-pair + 2-day-work-bursts
+# § I> ∀ "deferred v2" = cope • reframe pulls-everything-forward
+
+§ THESIS-V2  ← §§ S2.1
+  CSSLv3 ≡ consent=OS encoded-in-typesystem-structure
+         ⊕ engine-primitives-as-lang-primitives
+         ⊕ hardware-first (Arc A770 Xe-HPG + AVX2/AVX-512)
+         ⊕ full-IFC + full-effects + full-AD + full-linear + full-refinement
+         ⊕ single-source dual-emit (CPU × GPU × console × mobile × web)
+         ⊕ orthogonal-persistence (Pharo-class live-dev-loop)
+         ⊕ Futamura-P3 self-applicable-partial-eval
+         ⊕ density=sovereignty (CSLv3-as-native-surface option)
+         ⊕ Level-Zero direct-to-metal compute + instrumentation-first
+  I> NOT "better Slang" NOT "better Jai" • CSSLv3 = Apocky-framework-as-lang
+
+§ THE-18-REFRAMES AS INTEGRATED-DESIGN-MOVES  ← §§ S2.2
+  ¬ list-of-features-to-add
+  ≡ single coherent-design where-each-move implies-others
+
+  R1 : IFC-typesystem (Jif DLM) ←→ effect-system {Sensitive<dom>}
+    ⇒ consent=OS structurally-enforced ¬ policy-enforced
+    ⇒ @sensitive attr = surface-sugar for IFC-labels
+    ⇒ PRIME-DIRECTIVE = soundness-theorem of CSSLv3
+
+  R2 : Pony-6-caps ←→ linear × handler interaction (R8)
+    ⇒ iso/trn/ref/val/box/tag = deny-aliases matrix
+    ⇒ ref = shared-mutable-via-gen-ref (Vale interop)
+    ⇒ tag = opaque-handle (no-deref — H<T> subsumes)
+    ⇒ iso + handler-one-shot-resume = linear-resource effect-safe
+
+  R3 : Racket-hygiene macros ←→ Futamura-P3 (R9)
+    ⇒ hygienic-bindings = syntactic-closure = partial-eval-input
+    ⇒ comptime-macro = staged-computation-α-case
+    ⇒ ∴ R3 ≡ R9 shared-substrate (macros = hand-written-specializer)
+
+  R4 : bespoke-x86-64 backend ←→ MLIR-core (R6)
+    ⇒ MLIR llvm-dialect → drop-to-CLIF-equivalent-custom
+    ⇒ stage0 Cranelift-expedient / stage1 own-backend
+    ⇒ own-backend ≡ ∀ CSSLv3-IR-node maps to-owned-codegen
+    ⇒ no-Rust-compiler-dep in final artifact (self-bootstrap)
+
+  R5 : cross-platform-GPU (Vulkan+D3D12+Metal+GNM+NVN+WebGPU)
+    ⇒ SPIR-V = portable-IR-substrate already
+    ⇒ per-target lowering = mechanical ¬ design-work
+    ⇒ target-profile @ effect-row • {Target<vk|d3d|metal|gnm|nvn|webgpu>}
+
+  R6 : MLIR-from-day-one ←→ R4 + R9
+    ⇒ CSSLv3-MIR = MLIR-dialect ⇒ Linalg + Affine + Transform-dialect free
+    ⇒ Transform-dialect = F4-staging + macro-expansion hosting-layer
+    ⇒ drop to-llvm-dialect-OR-spirv-dialect-OR-own-dialect
+    ⇒ own-dialect = CSSLv3-MIR-proper (structured-by-construction)
+
+  R7 : dual-surface (CSLv3-native + Rust-hybrid)
+    ⇒ both parse→same-HIR
+    ⇒ CSLv3-native = Apocky+Claude-primary
+    ⇒ Rust-hybrid = external-contributor / tutorial / docs
+    ⇒ formatter round-trips ASCII↔Unicode↔CSLv3-glyph
+
+  R8 : handler × linear-type full-integration
+    ⇒ linear-value through-handler = one-shot-resume only
+    ⇒ ≡ Eio-lineage (OCaml-5) proven pattern
+    ⇒ typesystem-enforced : multi-shot + linear = compile-error
+    ⇒ Koka-style evidence-passing + Perceus-RC for non-linear values
+    ⇒ Borretti-impossibility dissolved : it-was-traditional-exceptions-specific
+
+  R9 : Futamura-P3 ←→ R3 + F4-staging
+    ⇒ P1 : spec(int, src) → compiled-prog (F4 @staged basic)
+    ⇒ P2 : spec(spec, int) → compiler
+    ⇒ P3 : spec(spec, spec) → compiler-generator
+    ⇒ ≡ CSSLv3 bootstraps-self via P3 ↔ R4-own-backend ≡ P3-instance
+    ⇒ ≡ domain-DSL compiles via P2 (free compiler-per-DSL)
+
+  R10 : SMT-backed refinement (Z3 / CVC5)
+    ⇒ LiquidHaskell-style SMT-discharge
+    ⇒ Lipschitz-proof @ compile-time (not bounded-prop approximation)
+    ⇒ SDF-convergence-proofs
+    ⇒ refinement-solver-plugin = effect-row {Verify<proof-method>}
+
+  R11 : Jets<T,N> higher-order AD
+    ⇒ N-th-order Taylor-expansion tracked-in-type
+    ⇒ MIR-level : @differentiable fn emits jet-tuple-fn
+    ⇒ ∞-order via lazy-jet (co-inductive stream)
+    ⇒ differential-geometry usable-directly
+
+  R12 : inverse-rendering/fluids as stdlib-examples
+    ⇒ ∀ @differentiable × {GPU} enables-inverse
+    ⇒ stdlib demonstrates : shape-from-image, material-estimation,
+      initial-condition-recovery for fluids, NN-surrogate-training
+
+  R13 : orthogonal-persistence hot-reload (Pharo-class)
+    ⇒ engine-state = image-snapshot (S-expr + gen-ref graph)
+    ⇒ compiler-version-change = state migrated via schema-diff
+    ⇒ @hot_reload_preserve attribute = persistence-root
+    ⇒ feel.toml shim → full-image-swap-and-resume
+
+  R14 : console/mobile/web targets v1
+    ⇒ PS5-GNM, Xbox-D3D12X, Switch-NVN, Metal-via-MoltenVK-OR-native,
+      WebGPU-via-Tint-WGSL
+    ⇒ stub-per-platform-lowering-path, typesystem-untouched
+    ⇒ effect {Target<...>} gates platform-specific capabilities
+
+  R15 : vertical-slice = FLOOR not CEILING
+    ⇒ add : volumetric-atmosphere, cloud (NUBIS-3), hair/fur-strand,
+      water (FFT-ocean + caustics), spectral-path-tracing,
+      XeSS2-neural-upscaling-inline, audio-DSP-unified
+    ⇒ ≡ "Dreams-level rendering tech + Teardown-destruction
+          + PoE2-radiance-cascades + inline-neural-FX
+          + spectral-correctness" single-lang single-binary
+
+  R16 : C99 reproducibility anchor from-stage0
+    ⇒ ∀ compiler-version emits-C99-tarball (not just stage3)
+    ⇒ zig1.wasm-cope avoided
+    ⇒ ∀ commit = reproducible-from-published-C-source
+    ⇒ PRIME-DIRECTIVE-audit : anyone-can-verify consent=OS code
+
+  R17 : full effect-set extensions
+    existing : {NoAlloc, NoRecurse, Deadline<N>, DetRNG, GPU, CPU, XMX, RT,
+                SIMD256, Region<'r>, Alloc, Yield, State<S>, Exn<E>, IO,
+                Sensitive<dom>}
+    add :
+      {NoUnbounded}        — ∀ loop/recurse/alloc bounded-comptime
+      {Realtime<priority>} — OS-scheduler class
+      {Power<budget_mW>}   — thermal/battery budget
+      {Thermal<limit_C>}   — die-temp ceiling (R18-backed on Intel)
+      {NUMA<node>}         — memory-affinity
+      {Cache<level>}       — cache-locality hint
+      {Audit<dom>}         — mandatory signed-chain log
+      {Reversible}         — undo-able op (replay/time-rewind gameplay)
+      {PureDet}            — bit-exact cross-machine reproducible
+      {Target<platform>}   — R14 platform-gate
+      {Verify<method>}     — R10 SMT-proof required
+      {Privilege<level>}   — R1 IFC capability tier
+      {Telemetry<scope>}   — R18 instrumentation capture-ring
+      {Backend<api>}       — R18 vulkan|levelzero|d3d12|metal|webgpu
+
+  R18 : Level-Zero-as-compute-backend ⊕ telemetry ⊕ test-harness
+    ⇒ Intel-direct-to-metal compute-API (not replacement for Vulkan)
+    ⇒ SPIR-V input ≡ rspirv-emit unchanged • host-submission divergent
+    ⇒ backend-matrix :
+        Vulkan-1.4 : graphics + RT + compute ∀ portable
+        Level-Zero : compute + XMX + power + sysman ∀ Intel-deep
+        D3D12      : Windows-native • R14
+        Metal      : Apple • R14
+        WebGPU     : browser • R14
+
+    § §§ R18.telemetry  ← lang-level-instrumentation
+      effect {Telemetry<scope>} :
+        scope ∈ {Off, Wallclock, Counters, FullTrace, GpuFrequency,
+                 PowerMW, ThermalC, DispatchLatency, CacheHit, SubgroupOccupancy,
+                 MemoryBandwidth, XmxUtilization, RtRaysPerSec}
+      Level-Zero zes* calls = effect-discharge-backing
+        zesPowerGetEnergyCounter → {PowerMW} + {Telemetry<PowerMW>}
+        zesTemperatureGetState → {Thermal<C>} enforcement
+        zesFrequencyGetState → {GpuFrequency}
+        ze_device_memory_access_properties_t → cache/memory telemetry
+      non-Intel fallback : PAPI (Linux perf), ETW (Windows), metal-HUD (Apple)
+      compiler-auto-instrument :
+        @staged-expansion can-emit telemetry-probes per-usage-site
+        probes compiled-out if-{Telemetry<Off>} (zero-overhead)
+        probes stream to ring-buffer + optional-OpenTelemetry-exporter
+      telemetry-as-first-class-type :
+        type TelemetryRing<N : usize> : linear-unique<fixed-size>
+        ops : push(sample) read_snapshot() → SnapshotImage
+      PRIME-DIRECTIVE-interop :
+        {Audit<dom>} + {Telemetry<scope>} compose : signed-counter-chain
+        anyone-can-verify runtime-claims from captured-ring
+
+    § §§ R18.test-harness  ← testing-fundamentally-changed
+      v1-LoA-testing = unit-tests + frame-capture-diff + spirv-val
+      v2-CSSLv3-testing (what-R18-enables) :
+
+        property-based : QuickCheck/Hypothesis-style
+          refinement-types generate-well-typed-inputs
+          ex : fn foo(x : f32{v : -1 ≤ v ≤ 1}) → generator-derived
+
+        differential-testing : Vulkan vs Level-Zero same-SPIR-V
+          ∀ compute-kernel emitted both-backends
+          inputs identical-seeded (DetRNG)
+          outputs bit-compared ≡ driver-bug-detector
+          ≡ found 30-second-turnaround on driver-regressions
+
+        metamorphic-testing : algebraic-laws
+          (a + b) + c ≡ a + (b + c) for @PureDet-tagged fns
+          rotation-composition laws for mat4-ops
+          SDF invariant : |sdf(p) - sdf(p + ε·n)| ≤ k·ε (Lipschitz-check)
+
+        power-regression : {Power<budget_mW>} breach = test-fail
+          historical baseline stored ∀ benchmark
+          commit increases mean-power >5% ≡ CI-fail
+          ≡ thermal-correctness part-of-green-build
+
+        thermal-stress : run-benchmark until-thermal-stable
+          zesTemperatureGetState sampled
+          assert steady-state below-limit
+          ≡ catches inefficient-shader-before-ship
+
+        frequency-stability : zesFrequencyGetState
+          assert GPU-not-throttling during hot-path
+          ≡ catches driver-issues + OS-scheduling anomalies
+
+        latency-percentile : dispatch-latency histogram
+          p99 < budget-or-fail
+          Level-Zero command-list enables <1us measurements
+          ≡ realtime-audio-callback verification-in-CI
+
+        fuzz-with-oracles : refinement-types + SMT
+          fuzzer-input constrained by-refinement-type
+          SMT-oracle verifies output-refinement holds
+          ≡ replaces ad-hoc fuzz-harnesses
+
+        replay-tests : {Reversible} + {PureDet}
+          record session → replay deterministically
+          golden-frame-compare ≡ regression-detector
+          ≡ Apocky's LoA-playtest-capture as-testsuite
+
+        hot-reload-invariance : R13-orthopersist
+          save image → mutate compiler → reload → state-equivalent
+          ≡ verifies schema-migration correctness
+
+      testing moves-from : "does-it-work-today"
+                 to   : "does-it-meet-power+thermal+latency+
+                         determinism+reversibility+consent contracts"
+      ≡ CI becomes-a-proof-system ¬ just-smoke-tests
+
+    § §§ R18.integration-map
+      → adds 14_BACKEND Level-Zero column
+      → adds 04_EFFECTS {Telemetry<scope>} {Backend<api>} {Thermal<C>}
+      → adds 17_JETS + 05_AUTODIFF telemetry for grad-norm tracking
+      → adds 22_TELEMETRY (new spec) — ring-buffer schema + exporters
+      → adds 23_TESTING (new spec) — test-harness + oracle modes
+      → PRIME-DIRECTIVE §§ 11_IFC gains-signed-chain-via-telemetry
+      → 10_HW gets Intel-dGPU-vs-iGPU sysman-availability table
+
+§ CROSS-CUTTING-INVARIANTS  ← §§ S2.3
+  CC1 : consent=OS structurally-enforced (not conventionally)
+  CC2 : engine-primitives are-lang-primitives
+  CC3 : CPU ≡ GPU ≡ console ≡ mobile ≡ web — effect-row-gated only
+  CC4 : structured-by-construction MIR
+  CC5 : single-source → all-targets ≡ no-preprocessor-permutation
+  CC6 : zero-runtime beyond necessary
+  CC7 : reversibility + reproducibility
+  CC8 : density=sovereignty (Apocky-core-invariant)
+  CC9 : observability ≡ first-class (R18)
+    ⇒ ∀ resource-consumption (time power thermal memory) knowable-at-compile
+    ⇒ telemetry-probe = compiler-generated ¬ hand-written
+    ⇒ "untraced" is itself an effect-annotation ({Telemetry<Off>})
+    ⇒ ≡ debugging = reading-the-audit-chain (signed, reproducible)
+
+§ PRIME-DIRECTIVE PROPAGATION  ← §§ S2.4
+  layer                    encoding
+  ─────────────────────────────────────────────────────────────
+  typesystem              IFC-labels (secret<T, principal>)
+  effects                 {Sensitive<dom>}, {Audit<dom>}, {Privilege<lvl>}
+                          {Telemetry<scope>}, {Power<mW>}, {Thermal<C>}
+  attributes              @sensitive, @privileged, @auditable
+  stdlib                  refuses harm-oriented effect-compositions
+  compiler                rejects-builds violating PRIME-DIRECTIVE soundness
+  runtime                 signed-audit-chain via R18-telemetry-ring
+  bootstrap               C99-reproducible ≡ third-party-auditable
+  tools                   Claude-instance reads-audit-log as-sovereign-peer
+  testing                 R18-oracle-modes verify-contracts-continuously
+  I> ≡ PRIME-DIRECTIVE = soundness-theorem + signed-runtime-witness
+
+§ SPEC-FILE MAP (23 specs now)  ← §§ S2.5
+  00 MANIFESTO          thesis + non-negotiables (REWRITE)
+  01 BOOTSTRAP          stage0 → stage1 → C99-anchor (REWRITE)
+  02 IR                 HIR + MLIR-MIR-dialect + LIR-drop-paths (REWRITE)
+  03 TYPES              base + refinement + layout + subtyping (REWRITE)
+  04 EFFECTS            full 28+ effect-set + row-poly + handlers (REWRITE)
+  05 AUTODIFF           [Differentiable] + s2s + Jets<T,N> hook (REWRITE)
+  06 STAGING            @staged + comptime + P1/P2/P3 reference (REWRITE)
+  07 CODEGEN            Cranelift-stage0 + own-stage1 + rspirv + L0 (REWRITE)
+  08 ENGINE             primitives (REWRITE with R15-expanded)
+  09 SYNTAX             dual-surface (REWRITE)
+  10 HW                 Arc A770 Xe-HPG + Vulkan-1.4 + X-plat + sysman (REWRITE)
+  ─── new ───
+  11 IFC                full-DLM labels + declassification + PRIME-DIRECTIVE
+  12 CAPABILITIES       Pony-6 + Vale-gen-ref interop + linear×handler
+  13 MACROS             Racket-hygienic + comptime-reflect unified
+  14 BACKEND            bespoke x86-64 + per-platform + Vulkan+L0+D3D12+Metal+WebGPU
+  15 MLIR               CSSLv3-MIR-as-MLIR-dialect + reuse matrix
+  16 DUAL_SURFACE       CSLv3-native + Rust-hybrid grammars + HIR-unify
+  17 JETS               Jet<T,N> higher-order AD + inverse-rendering stdlib
+  18 ORTHOPERSIST       image-based hot-reload + schema-migration
+  19 FUTAMURA3          P3 self-applicable + compiler-generator-generator
+  20 SMT                Z3/CVC5 refinement + SDF-convergence-proofs
+  21 EXTENDED_SLICE     atmosphere/clouds/hair/water/spectral/XeSS2/audioDSP
+  22 TELEMETRY          R18 ring-buffer schema + exporters + audit-chain
+  23 TESTING            R18 oracle-modes + property + differential + replay
+
+§ DEPENDENCY-DAG (design-order)  ← §§ S2.6
+  layer-0  foundations :    00  01  10
+  layer-1  typesystem  :    03 ← 00 ; 04 ← 00,03 ; 11 ← 03,04 ; 12 ← 03,04
+  layer-2  compute     :    05 ← 03,04 ; 06 ← 03,04 ; 17 ← 05 ;
+                            13 ← 06 ; 19 ← 06,13 ; 20 ← 03
+  layer-3  surface+IR  :    09 ← 03,04,05,06 ; 16 ← 09 ;
+                            02 ← 03,04,05,06,11,12 ; 15 ← 02 ;
+                            07 ← 02,15 ; 14 ← 07,10
+  layer-4  system      :    08 ← 03,04,05,11,12 ; 21 ← 08 ; 18 ← 04,08,12
+  layer-5  observability:   22 ← 04,14 ; 23 ← 22,04,17,18,20
+
+§ EXECUTION-PLAN  ← §§ S2.7
+  Phase-A : rewrite 00..10 + write 11..23 • this chat
+  Phase-B : Claude-Code handoff • stage0 skeleton
+  Phase-C : implementation bursts • self-host ≤2 weeks
+
+§ WHAT-CHANGES-IN-EACH-OLD-SPEC  ← §§ S2.8
+  00 MANIFESTO : + all-v1, + vertical-slice-as-floor, + R18-observability
+  01 BOOTSTRAP : + ≤2-week self-host, + C99 from-stage0
+  02 IR : + MLIR-dialect from-day-one, + structured preserved
+  03 TYPES : + Pony-6 caps, + IFC-labels, + SMT-refinement
+  04 EFFECTS : + R17 extensions, + R18 telemetry/backend/thermal,
+               + full linear×handler
+  05 AUTODIFF : + Jet hook, + inverse-rendering ref, + grad-norm telemetry
+  06 STAGING : + P3 extension, + macros-integration
+  07 CODEGEN : + stage0-Cranelift/stage1-own, + Level-Zero host-submit, + x-plat
+  08 ENGINE : + R15 primitives index → 21
+  09 SYNTAX : + dual-surface → 16
+  10 HW : + Vulkan-1.4.333, + sysman-availability, + iGPU/dGPU coop-matrix gate,
+          + x-plat table → 14
+
+∎ SYNTHESIS_V2

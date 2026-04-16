@@ -1,0 +1,56 @@
+# S7 : ENGINE-AS-LANGUAGE co-design
+# ══════════════════════════════════════════════════════════════════
+
+§ GOAL Naughty-Dog  ← §§ S7.1 ★ proof-of-concept
+  ✓ Andy-Gavin • Lisp-dialect @ Jak-Daxter-trilogy (98% of code)
+  ✓ compiled direct-to PS2 machine-code ¬ interpreted
+  ✓ 500+ game-object-types with unique behavior
+  ✓ classes + inheritance + virtual-fns (unusual-for-Lisp)
+  ✓ live-code-modification while running
+  ✓ predecessor GOOL @ Crash-Bandicoot (smaller-scope)
+  ✗ transition-away : primary-engineer left + Sony-tech-sharing pressure
+  ✓ OpenGOAL reviving for x86-64
+  ‼ lesson-1 : game-engine + custom-lang CAN ship AAA
+  ‼ lesson-2 : Lisp-flexibility + machine-code-compile viable
+  ‼ lesson-3 : bus-factor killed-it • CSSLv3 W! have specs ¬ tribal-knowledge
+  I> CSSLv3 emulate GOAL-philosophy :
+    ○ lang + engine co-evolved
+    ○ domain-specific-ops first-class (scene anim collision)
+    ○ live-code-modify = hot-reload F4-staging-enabled
+
+§ UNREAL-VERSE  ← §§ S7.2 co-designed-fresh
+  ✓ active-development • UE6 convergence 2-3y
+  ✓ SPJ-involved (Haskell-creator • ex-MSR 24y)
+  ✓ functional-logic paradigm
+  ◐ 3-variants : CoreVerse ShipVerse MaxVerse
+  ‼ lesson : logic-paradigm ≠ CSSLv3 (too-exotic for LoA)
+  I> CSSLv3 steal : declarative-scene-description-substrate
+  I> CSSLv3 steal : layered-variants pattern
+
+§ HOUDINI-VEX  ← §§ S7.3
+  ○ procedural-modeling + VFX DSL
+  ○ C-like + per-point/per-prim/per-vertex contexts
+  ○ compiled @ runtime
+  I> CSSLv3 ref : context-as-effect pattern
+    fn my_shader / {PerPoint}
+    fn material / {PerPixel}
+
+§ BLUEPRINTS  ← §§ S7.4 brief
+  ○ visual-scripting in UE
+  N! CSSLv3 • text-first philosophy
+
+§ ENGINE-PRIMITIVES AS LANG-PRIMITIVES  ← §§ S7.5 CSSLv3-core-thesis
+  W! CSSLv3 surfaces these as builtin :
+    type SDF'L<bound> = @differentiable fn(vec3) -> f32
+    type Scene = record-of-SDFs + ECS-archetypes
+    type ECS-archetype = packed-SoA tagged with components
+    type Command-Buffer = linear-ordered GPU-cmds
+    type Material-Layout = @layout(std140|std430|cpu) struct
+    type Grid<T, dim> = SoA spatial-grid + lattice-indexing
+    type Texture-Handle = gen-ref + layout-tag + effect-tag
+    type Fiber = lightweight-coroutine (effect-handler-driven)
+  W! these ¬ stdlib • actual-compiler-types
+    ∴ type-errors @ engine-semantics detected compile-time
+    ∴ codegen-specialized per-primitive
+
+∎ S7

@@ -1,0 +1,220 @@
+# 23 : TESTING — oracle-modes + differential-backends + power-regression
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  testing ≡ multi-oracle against-same-source
+  property-based via refinement-generators (§§ 20)
+  differential Vulkan↔Level-Zero bit-exact (R18)
+  metamorphic algebraic-law-preservation
+  power + thermal + frequency regression (R18 sysman)
+  hot-reload invariance (§§ 18)
+  deterministic replay via {PureDet} + {Reversible} (§§ 04)
+  ≡ R18-enabled + R16-anchored
+
+§ ORACLE MODES
+
+  § property-based (QuickCheck lineage)
+    @property fn add_commutative(a : i32, b : i32) { a + b == b + a }
+    generators derived from refinement-types (§§ 20) :
+      usize'idx<N> → bounded-integer-generator
+      f32'pos → positive-float-generator
+      vec3'unit → random-unit-vector-generator
+      Handle<T> from-pool → pool-indexed-generator
+    shrinking : auto-derived from refinement-constraints
+    seed : deterministic-per-test (replay-safe)
+    scale : 1000 cases default, 10k in CI-extended
+
+  § differential (cross-backend)
+    given @differential fn target(input) -> Output
+    CI runs target on (Vulkan, LevelZero, optionally-D3D12/Metal)
+    compares outputs bit-exact for {PureDet}-tagged fns
+    tolerance-allowed for non-PureDet (configurable float-ulp tolerance)
+    R18 central-test : Vulkan vs L0 on same-SPIR-V
+    failure → diagnostic : "backend-X diverges by Δ at input I"
+
+  § metamorphic (algebraic-law)
+    for operations with known-algebraic-properties :
+      union(a, b) ≡ union(b, a)           // commutativity
+      union(a, union(b, c)) ≡ union(union(a, b), c)  // associativity
+      @differentiable f : bwd_diff(f + g) == bwd_diff(f) + bwd_diff(g)
+      // Leibniz rule : bwd_diff(f * g) == bwd_diff(f)*g + f*bwd_diff(g)
+    @metamorphic macro generates equivalence-tests
+    stdlib-builtins :
+      SDF'L<k> : composition-laws
+      Jet<T, N> : Leibniz + Faà-di-Bruno
+      FluidGrid : conservation-laws (mass, momentum)
+
+  § power-regression (R18 new)
+    baseline stored per-benchmark in .perf-baseline/
+    CI runs benchmark with {Telemetry<Power>} enabled
+    measure : total-Joules + peak-Watts + avg-Watts
+    regression : if > 5% over-baseline → CI-fail
+    rolling-median : 3-of-5 runs to reduce variance
+    mitigation : sysman reports driver-clocks stable, if-not re-run
+
+  § thermal-stress
+    sustained-workload test, duration 5 min
+    sample thermal every 100ms via {Telemetry<Thermal>}
+    steady-state temp reached < 120s
+    max-temp < thermal-limit - 5°C (safety-margin)
+    throttling-detected → investigate (not auto-fail unless frequency-drops)
+
+  § frequency-stability
+    GPU-clock via zesFrequencyGetState sampled @ 100Hz during benchmark
+    stdev / mean < 0.05 (5% stability threshold)
+    minimum-freq > 90% of nominal-base-clock
+    failure → flags driver-throttle or thermal-issue
+
+  § latency-percentile
+    per-dispatch latency measured via {Telemetry<DispatchLatency>}
+    histogram : p50, p90, p99, p99.9
+    R18 target : p99 < 1µs for L0-immediate-command-lists
+    Vulkan p99 typically-higher (5-10µs), still measured + tracked
+    regression : any percentile > 10% over-baseline → CI-fail
+
+  § fuzz-with-oracle
+    coverage-guided fuzzing (AFL++/libFuzzer style)
+    oracle : SMT-derived invariant (§§ 20) — fuzz-input-must-satisfy-refinement
+    any input causing panic/UB → stored + minimized + shrunken
+    typically : 10 min fuzz-budget per-module in CI-extended
+
+  § replay-tests ({Reversible} + {PureDet})
+    record : inputs + initial-state + timing-seed
+    replay N-times → assert bit-exact-output-every-run
+    cross-machine replay (different CPU-models, same arch) → still bit-exact
+    R16 anchor : C99-build replays match CSSLv3-build
+    hot-reload-replay : reload-mid-session, then replay, must-match
+
+  § hot-reload-invariance (§§ 18)
+    record state S0, perform hot-reload R, record state S1
+    assertion : S0 ≡ S1 modulo-schema-migration
+    for-all-observable-state preserved
+    failure → migration-incorrect or @transient-misapplied
+
+§ TEST-RUNNER
+  stage0 : cargo-test for Rust-host + pytest for Python-aux
+  stage1+ : CSSLv3-native test-runner `csslc test`
+  test-discovery : @test attribute on fns
+  parallelism : per-module + per-test configurable
+  isolation : per-test fresh-process (for GPU-state cleanliness)
+  report : JUnit XML + HTML-dashboard + OTLP-export
+
+§ @test ATTRIBUTES
+  @test                 — standard unit-test
+  @property             — property-based
+  @differential         — runs on multiple backends
+  @metamorphic(law)     — algebraic-law-check
+  @bench                — performance-benchmark (baseline-tracked)
+  @power_bench          — power-regression
+  @thermal_stress       — long-duration thermal
+  @replay               — deterministic replay N-times
+  @hot_reload_test      — hot-reload invariance
+  @fuzz(budget_sec=N)   — fuzzing-target
+  @golden(path)         — golden-image/output comparison
+
+§ GOLDEN-IMAGE FRAMEWORK
+  per-rendering-example : reference-frame in tests/golden/
+  CI runs example → compares to golden
+  pixel-diff : tolerance configurable (per-percentile)
+  SSIM-threshold : > 0.99 structural-similarity
+  perceptual-diff : FLIP-metric (NVIDIA) for more-human-aligned
+  update : `csslc test --update-golden` after-verified-change
+
+§ CI MATRIX
+  platforms :
+    linux-x86_64-arc-a770 (primary)
+    linux-x86_64-intel-igpu (secondary Intel, cooperative-matrix unavailable)
+    windows-x86_64-arc-a770 (primary Win)
+    linux-x86_64-nvidia-rtx (Vulkan portability-check)
+    linux-x86_64-amd-rdna (Vulkan portability-check)
+    mac-arm64-apple-silicon (Metal path)
+    browser-chrome-webgpu (WebGPU path)
+  backend-variants per-platform :
+    linux-arc : Vulkan + L0 (differential primary)
+    windows-arc : Vulkan + L0 + optionally D3D12
+    mac-apple : Metal
+    browser : WebGPU
+  schedule :
+    per-commit : fast-suite (unit + differential-primary) ≤ 10 min
+    per-PR : full-suite (all-oracles) ≤ 45 min
+    nightly : extended (fuzz 10min × module + stress 5min × bench)
+    release-candidate : full + cross-platform + power-baseline-regen
+
+§ BASELINE MANAGEMENT
+  .perf-baseline/ directory per-repo
+  per-bench : median of 10 runs on reference-hw
+  updated explicitly via `csslc bench --update-baseline` (requires PR-approval)
+  stored in git (small-enough — JSON-per-bench)
+  drift-detection : weekly-autorun reports trends
+
+§ DETERMINISM ENFORCEMENT
+  {PureDet}-tagged fns : bit-exact-required
+  violations :
+    float-arithmetic order (compile-time-fixed via canonical-IR-order)
+    thread-non-determinism (fixed work-schedule required)
+    GPU-atomic-order (explicit-sort-before-compare required)
+    random-sources ({DetRNG} required, seed-parameterized)
+  harness :
+    replay N=10 runs, assert all-equal
+    cross-backend replay (Vulkan vs L0) when {PureDet}+{Portable}-tagged
+
+§ AUDIT-TESTS (§§ 11 + §§ 22)
+  @audit_test : verify {Audit<dom>} events emitted correctly
+  check : audit-chain signature-valid
+  check : all-declass-events recorded
+  check : prime-directive-violations trigger expected-compile-error
+  negative-tests : attempt-forbidden-operation, assert-compile-error-with-expected-message
+
+§ EXAMPLES
+
+  // differential + pure-det test
+  @differential
+  @replay(n = 10)
+  fn dispatch_matmul_correctness() / {GPU, PureDet, Telemetry<Counters>} {
+    let a = Buffer::<f32>::from_seeded(0x12345, 1024, 1024);
+    let b = Buffer::<f32>::from_seeded(0x67890, 1024, 1024);
+    let c_vk = matmul_vulkan(&a, &b);
+    let c_l0 = matmul_level_zero(&a, &b);
+    assert_bit_exact(&c_vk, &c_l0);
+  }
+
+  // power regression
+  @power_bench
+  fn cloud_render_power() / {GPU, Telemetry<Power>} {
+    let scene = CloudVolume::load("tests/fixtures/scene_cloud.cssl");
+    for _ in 0..1000 { render_clouds(&scene); }
+  }
+  // baseline stored : avg=187W, peak=215W, joules=31.2
+
+  // metamorphic SDF commutativity
+  @metamorphic(law = "union-commutative")
+  fn sdf_union_commutes(a : SDF'L<1.0>, b : SDF'L<1.0>, p : vec3) {
+    assert_eq!(union(a, b).eval(p), union(b, a).eval(p));
+  }
+
+  // hot-reload invariance
+  @hot_reload_test
+  fn entities_survive_reload() {
+    let mut world = World::new();
+    let h = world.spawn::<Enemy>(pos = vec3(0, 0, 0));
+    hot_reload("tests/fixtures/reload_enemy_v2.cssl");
+    assert!(world.exists(h));  // gen-ref + migration preserves
+  }
+
+§ INTEGRATION
+  §§ 04 EFFECTS : {Telemetry}, {PureDet}, {Reversible}, {DetRNG}, {Audit}
+  §§ 11 IFC : declass + audit-chain test-coverage
+  §§ 14 BACKEND : differential across-backends
+  §§ 18 ORTHOPERSIST : hot-reload-invariance
+  §§ 20 SMT : property-generators from refinements
+  §§ 22 TELEMETRY : all-oracle-data sourced from ring + sysman
+
+§ METRICS (what-success-looks-like)
+  coverage ≥ 85% line + 80% branch via LLVM-sanitizer (stage0) | owned-cov (stage1+)
+  mutation-score ≥ 70% via mutation-testing (stage1+)
+  fuzz-throughput ≥ 1000 exec/s per-target
+  CI-time : fast-suite ≤ 10 min, PR-suite ≤ 45 min, nightly ≤ 4 hours
+  regression-sensitivity : catch ≥ 95% of perf/power/correctness-regressions
+                            before-merge
+
+∎ TESTING

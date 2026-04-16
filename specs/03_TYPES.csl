@@ -1,0 +1,153 @@
+# 03 : TYPE SYSTEM (v2)
+# ══════════════════════════════════════════════════════════════════
+
+§ BASE-TYPES
+  scalar : bool  i8 i16 i32 i64  u8 u16 u32 u64  f16 f32 f64
+           usize isize (target-width)  c8 c16 c32  (UTF-8/16/32 code-unit)
+  vec    : vec2 vec3 vec4 (f32 default)
+           ivec2..4  uvec2..4  bvec2..4
+           explicit : vec<T, N>  N ∈ {2,3,4,8,16}
+  mat    : mat2 mat3 mat4 (f32 column-major)
+           mat<T, R, C>
+  aggregate : struct  enum (sum-types)  tuple  array[T;N]  slice[T]
+              handle<T> (gen-ref u64 24+40)
+              fn(T1..Tn) -> U / ε  with cap+IFC annotations
+              Jet<T, N>  (higher-order AD, §§ 17)
+
+§ GENERICS + INTERFACES
+  fn f<T : Interface>(x : T) -> U / ε where T : Constraint { body }
+  interface Differentiable {
+    associated type Tangent : Additive
+    fn zero_tangent() -> Tangent
+    fn add_tangents(a : Tangent, b : Tangent) -> Tangent
+    fn scale_tangent(a : Tangent, s : f32) -> Tangent
+  }
+  interface Additive { fn zero() -> Self ; fn add(a, b : Self) -> Self }
+  interface Linearly-Ordered { ... }  interface Ring { ... }
+  impl Differentiable for f32 { ... }
+  monomorphized @ HIR → MIR  ≡ zero-cost
+
+§ REFINEMENT-TYPES (F2 • SMT-backed, §§ 20)
+  tagged-suffix (surface sugar) :
+    i32'pos        ≡ { v : i32 | v > 0 }
+    i32'nonneg     ≡ { v : i32 | v ≥ 0 }
+    f32'unit       ≡ { v : f32 | 0 ≤ v ≤ 1 }
+    f32'nonneg     ≡ { v : f32 | v ≥ 0 }
+    usize'idx<N>   ≡ { v : usize | v < N }
+    vec3'unit      ≡ { v : vec3 | length(v) = 1 ± ε }
+  full-form :
+    { v : T | P(v) }            single-predicate
+    { v : T | P1(v) ∧ P2(v) }   conjunction
+    ∀ fresh refinement → SMT-obligation emitted to §§ 20
+  narrowing via control-flow :
+    if v > 0 { here v : i32'pos }
+  explicit cast :
+    let x : usize'idx<N> = assume_idx(raw_usize, N)  // emits runtime-check
+    let x : usize'idx<N> = verify_idx::<N>(raw_usize) ? // SMT-discharge-or-error
+
+§ LIPSCHITZ-TAGS (F2 • SDF-specific, §§ 08+20)
+  SDF'L<k : f32'pos>  ≡ fn(vec3)→f32 with |f(a)-f(b)| ≤ k·|a-b|
+  composition-rules (compile-time propagated) :
+    union           → max(k1, k2)
+    intersect       → max(k1, k2)
+    subtract        → max(k1, k2)
+    smooth_union    → max(k1, k2)
+    scale(s, f)     → k / f
+    translate       → k
+    transform(s, M) → k · ||M||_op
+    displace(s, d)  → k + j
+    round           → k
+  ray-march requires k ≤ 1.0  else compile-error
+
+§ LAYOUT-TAGS (F2 • GPU/CPU-boundary)
+  @layout(std140)   UBO Vulkan
+  @layout(std430)   SSBO Vulkan (+ push-constant 1.3+)
+  @layout(cpu)      native C-ABI for target
+  @layout(packed)   no-padding (transfer buffers only)
+  @layout(uniform)  UBO-compatible
+  @layout(scalar)   GL_EXT_scalar_block_layout (tight packing)
+  cross-boundary marshal :
+    host-buf : @layout(cpu) Foo
+    gpu-buf  : @layout(std430) Foo
+    W! compiler auto-emits marshal-fn if shape-compatible
+    ✗ shape-mismatch → compile-error
+
+§ CAPABILITY TYPES (Pony-6, §§ 12)
+  iso<T>     isolated, linear, one-owner, exchanged by-move
+  trn<T>     transition : iso-like mutable, can-freeze-to-val
+  ref<T>     shared-mutable via gen-ref (Vale interop)
+  val<T>     immutable-shared (frozen, deep-const)
+  box<T>     read-only view (covariant over iso/trn/val)
+  tag<T>     opaque-handle (no-deref — Handle<T> subsumes)
+  subtyping + aliasing rules §§ 12
+  integrate with linear × handler one-shot (§§ 12+04)
+  N! implicit-demotion iso → ref (must be explicit)
+
+§ EFFECT-ROW TYPES (§§ 04)
+  ε ::= ⟨⟩ | ⟨e | ε⟩ | μ
+  fn-type : (T₁,…,Tₙ) -> U / ε
+  sub-effect ε₁ ⊆ ε₂
+  pure-shorthand : fn(T) -> U  ≡  fn(T) -> U / ⟨⟩
+
+§ IFC LABELS (F5 • §§ 11)
+  secret<T, L>   where L = { confidentiality : C, integrity : I }
+    C : set of principals-allowed-to-read
+    I : set of principals-allowed-to-influence
+  declassification : explicit operator declass<policy>(v : secret<T, L>) -> secret<T, L'>
+  non-interference : low-outputs ⊥ high-inputs (except via declass)
+  ∀ expr inherits max-label of inputs (lattice-join)
+  ∀ @sensitive-annotated-fn sugar-lowers-to secret<>
+
+§ DIFFERENTIABILITY (F1 • part of type)
+  @differentiable fn f(...) -> T requires T : Differentiable
+  @NoDiff fn f(...) (escape hatch, grad=0 by construction)
+  [ForwardDerivative(g)] and [BackwardDerivative(h)] for custom deriv
+  Jet<T, N> = N-th-order Taylor-expansion tracked-in-type (§§ 17)
+
+§ STAGED (F4 • part of type via stage-index)
+  @staged fn f<S : StageArg>(...) / ε { ... }
+  stage-arg S must be comptime-known at call-site
+  Futamura P1/P2/P3 extension-points (§§ 06+19)
+
+§ HANDLE<T> (engine-primitive, §§ 08+12)
+  struct Handle<T> { packed : u64 }   // 24-bit gen | 40-bit idx
+  ops : new, deref(pool), null, is_null, deref_gpu(buf)
+  Copy + POD  • 8-byte  • GPU-compatible (u64 BDA)
+  cap : tag<Entity> ≡ Handle<Entity>
+
+§ REGION<'r>  (lifetime-param + effect Region<'r>)
+  syntax : region 'r { let arena : Arena<'r> = Arena::new(); let x : &'r T = ... }
+  ∀ 'r-values freed at end-of-block
+  effect-row auto-tagged {Region<'r>}
+  ¬ escape : region values cannot leak to outer-scope
+
+§ JET<T, N> (higher-order AD, §§ 17)
+  Jet<T, N>  ≡  (T, Tangent, Tangent², …, Tangent^N) Taylor-tuple
+  ops : jet_primal, jet_nth_deriv, jet_compose, jet_project
+  Jet<T, 0> ≡ T
+  Jet<T, 1> ≡ DifferentialPair<T>
+  Jet<T, ∞> ≡ lazy co-inductive stream (§§ 17)
+
+§ TELEMETRY-TYPES (R18 • §§ 22)
+  TelemetryRing<N : usize> : iso-linear fixed-ring
+  Sample<scope>            : carrier for counter-read
+  ScopeSet                 : comptime-bitset of active scopes
+  SnapshotImage            : serializable state of ring at instant
+
+§ BACKEND-TYPES (R18 • §§ 14)
+  Backend ∈ {Vulkan, LevelZero, D3D12, Metal, WebGPU, GNM, NVN}
+  CmdBuf<'frame, B : Backend>  : iso-linear, backend-parameterized
+  Queue<B>                     : ref-capability shared across fibers
+  Device<B>                    : val-capability after-init
+
+§ SUBTYPING + COERCION
+  refinement-forgetting : i32'pos <: i32  (unrestricted narrowing : compile-check)
+  widening numeric      : i32 <: i64 via explicit `as`
+  cap-hierarchy         : iso <: trn <: ref | iso <: val <: box | any <: tag
+  effect-row weakening  : ⟨⟩ <: ⟨e⟩ <: ⟨e, e'⟩
+  IFC-label             : L₁ ⊑ L₂ lattice  (assign-up, never-down without declass)
+  Jet-order             : Jet<T, N+1> <: Jet<T, N>  (projection)
+  auto-coerce numeric-promotion : f32 → f64, i32 → i64 at-call
+  no implicit cap-demotion or IFC-leak
+
+∎ TYPES

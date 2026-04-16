@@ -1,0 +1,141 @@
+# 01 : BOOTSTRAP (v2)
+# ══════════════════════════════════════════════════════════════════
+
+§ STAGES
+  stage0  : CSSLv3-compiler-in-Rust • throwaway • Cranelift-expedient
+  stage1  : CSSLv3-self-hosted • own-x86-64-backend (§§ 14_BACKEND)
+  stage2  : LoA-engine rewritten in CSSLv3 • Odin-LoA-v10 deprecated
+  stage3  : ∀ version emits C99-tarball • reproducibility-anchor (R16)
+
+§ STAGE-0 SCOPE
+  host-lang : Rust stable (MSRV 1.75+) — throwaway artifact
+  crates :
+    cranelift-codegen  cranelift-frontend  cranelift-module  cranelift-object
+    rspirv  rspirv-reflect  spirv-tools
+    mlir-sys  melior                      (for §§ 15_MLIR dialect)
+    z3-sys   cvc5-sys                     (for §§ 20_SMT)
+    logos    chumsky                      (lexer + parser)
+    level-zero-sys                        (L0 bindings for R18)
+    ash                                   (Vulkan bindings)
+    windows-rs                            (for D3D12 + sysman-Windows)
+    metal (Apple-crate)                   (for Metal, when built-on-Mac)
+  output : x86-64 obj (ELF + COFF) + SPIR-V blobs + fat-binary linker
+  feature-set : F1..F6 minimum-viable (full design, minimal polish)
+
+§ STAGE-1 SELF-HOST
+  stage0 compiles stage1 source → stage1 binary
+  stage1 compiles itself → stage1-prime (fixed-point check)
+  own-x86-64-backend replaces Cranelift (§§ 14_BACKEND)
+  all features F1..F6 + R1..R18 present
+
+§ STAGE-2 LoA MIGRATION
+  Odin-LoA-v10 (`C:\Users\Apocky\source\repos\LoA v10`) → CSSLv3-LoA-v11
+  engine-primitives native (no wrappers) • F6 observability everywhere
+  orthogonal-persistence R13 enables session-continuity across rebuild
+
+§ STAGE-3 C99 REPRODUCIBILITY (R16)
+  ∀ compiler-version emits self-compiling C99-tarball
+  any-C99-compiler rebuilds stage1 from-source
+  ≡ PRIME-DIRECTIVE audit : third-party can-verify consent-encoded
+  ≡ no zig1.wasm-style binary-blob cope
+
+§ EXECUTION (no time-cap)
+  Phase-A    : spec-corpus complete         (this chat)
+  Phase-B    : Claude-Code handoff          (next chat)
+  Phase-C    : implementation bursts        (solo Apocky + Claude-pair)
+  self-host  : ≤ 2 weeks elapsed  ( ¬ 24 months)
+  vertical-slice (§§ 21) : ≤ 4 weeks elapsed
+
+§ REPO LAYOUT
+  CSSLv3/
+    specs/               design in CSLv3 (00..23 + SYNTHESIS_V2)
+    research/            prior-art + Q-deep-dives
+    compiler-rs/         stage0 Rust-hosted
+      src/
+        lex/  parse/  ast/  hir/  mir/  lir/
+        caps/  effects/  ifc/  autodiff/  jets/  staging/  macros/
+        smt/  futamura/
+        mlir_bridge/  (§§ 15)
+        cgen/
+          cpu_cranelift/     (stage0)
+          cpu_owned/         (stage1 — §§ 14)
+          gpu_spirv/         (rspirv for Vulkan+L0+WebGPU)
+          gpu_dxil/          (D3D12 via DirectXShaderCompiler)
+          gpu_msl/           (Metal Shading Language)
+          gpu_wgsl/          (WebGPU)
+        host/
+          submit_vulkan/
+          submit_level_zero/   (R18)
+          submit_d3d12/
+          submit_metal/
+          submit_webgpu/
+          submit_gnm/  submit_nvn/  (console-stubs)
+        telemetry/          (§§ 22 ring-buffer + exporters)
+        testing/            (§§ 23 oracle-modes)
+        persist/            (§§ 18 orthogonal-persistence)
+      tests/
+      Cargo.toml
+    compiler-cssl/       stage1 self-hosted (populated @ self-host)
+    c99-anchor/          generated-per-version C99-tarballs (R16)
+    stdlib/              CSSLv3 stdlib
+    examples/
+      hello-triangle.cssl
+      sdf-shader.cssl
+      svdag-renderer.cssl
+      radiance-cascades.cssl
+      teardown-voxel.cssl
+      nubis3-cloud.cssl
+      hair-strand.cssl
+      fft-ocean.cssl
+      spectral-path-trace.cssl
+      audio-dsp-unified.cssl
+      inverse-fluid.cssl
+      differential-shape.cssl
+    audit/               signed-telemetry-rings + build-attestations
+
+§ DEPENDENCY POLICY
+  stage0 : Rust-ecosystem crates allowed (throwaway)
+  stage1+ : zero-runtime-deps (CSSLv3 self-sufficient)
+  banned ∀ stages : LLVM, clang, gcc-as-lib, closed-source-blobs
+  allowed external IRs/libs : MLIR (Apache-2-LLVM-exception),
+    SPIR-V-spec, Vulkan-spec, Z3/CVC5 (MIT/BSD)
+
+§ REPRODUCIBILITY COMMITMENT
+  W! never accept binary-only stage
+  stage0-Rust source = auditable
+  stage1-CSSLv3 source = auditable
+  stage3 C99-tarball = rebuildable anywhere
+  CI : build-from-scratch C99 → stage3-C → stage1 → stage1' reproducible
+  audit-signed by Apocky-key + CI-key chain
+
+§ SUCCESS GATES
+  stage0 :
+    examples/hello-triangle.cssl compiles + runs on Arc-A770 (Vulkan)
+    examples/hello-triangle.cssl compiles + runs on Arc-A770 (Level-Zero)
+    examples/sdf-shader.cssl : @differentiable normals bit-exact vs analytic
+    audio_cb-with-{NoAlloc} : alloc-in-callback = compile-error
+    layout-mismatch CPU↔GPU = compile-error
+    {Telemetry<Counters>} captures power-samples on Arc (R18)
+    differential-test Vulkan-vs-L0 same-SPIR-V bit-exact
+  stage1 :
+    self-compile fixed-point ≤ 2 min elapsed
+    own-x86-64-backend matches Cranelift perf ±10%
+    all F1..F6 + R1..R18 present
+  stage2 :
+    LoA running on CSSLv3 • 60fps Arc A770 vertical-slice-floor
+    Odin-v10 archived
+  stage3 :
+    CI reproducible-from-C99 green
+    signed attestation published per-version
+
+§ RISK → MITIGATION
+  no time-cap-trap : N/A (Phase-C pacing, not calendar-driven)
+  Cranelift-perf-gap : stage1 own-backend closes-it
+  SPIR-V-validation-bugs : spirv-val + differential-testing (§§ 23) mandatory
+  MLIR-ABI-drift : pinned to LLVM release + vendored MLIR-sys bindings
+  Z3/CVC5-solver-drift : pinned versions + CI matrix
+  Level-Zero-API-evolution : pinned L0-spec version + runtime-feature-check
+  driver-bugs (Arc BDA/bindless corner-cases) : differential-test catches
+  self-hosting-regression : stage0 maintained through stage1+stage2 transition
+
+∎ BOOTSTRAP

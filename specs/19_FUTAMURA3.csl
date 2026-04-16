@@ -1,0 +1,128 @@
+# 19 : FUTAMURA-P3 — self-applicable partial evaluation
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  CSSLv3 natively expresses Futamura projections P1, P2, P3
+  P3 = compiler-generator-generator ≡ CSSLv3 compiles itself
+  macros (§§ 13) are hand-written-specializers ≡ shared substrate with @staged
+  ≡ R9 ≡ DSL-compilers emerge for-free
+
+§ LINEAGE
+  Futamura 1971 "Partial Evaluation of Computation Process"
+  Jones + Gomard + Sestoft "Partial Evaluation and Automatic Program Generation" (1993)
+  Asai 1996 "Binding-Time Analysis for Both Static and Dynamic Expressions"
+  MetaOCaml : multi-stage programming (Taha + Sheard)
+  Terra : two-language staging (DeVito)
+  LMS (Lightweight Modular Staging, Rompf + Odersky)
+  we adopt : Jones-Gomard-Sestoft theory + MetaOCaml modal semantics
+
+§ THE THREE PROJECTIONS
+  given :
+    spec : (interpreter, program) → compiled-program           (partial-eval itself)
+    int  : interpreter for some language L
+    src  : program in L
+  P1 (specialization) :
+    spec(int, src) = target-prog            where target-prog is src "compiled"
+  P2 (compiler-from-interpreter) :
+    spec(spec, int) = compiler-for-L        takes L-source, emits target-prog
+  P3 (compiler-generator) :
+    spec(spec, spec) = compiler-generator   takes any-interpreter, emits its compiler
+
+§ ENCODING IN CSSLv3
+  @staged fn spec<Int, Src>(interpreter : Int, source : Src) -> Target {
+    // generic partial-eval driver
+    const-propagate + fold + DCE + inline guided by Int's abstract-semantics
+  }
+  spec is itself @staged → applying spec to (spec, int) gives specialized-spec-for-int
+  ≡ a compiler-for-int ≡ P2-instance
+  apply spec to (spec, spec) → compiler-generator ≡ P3-instance
+
+§ BINDING-TIME ANALYSIS
+  ∀ value : static (comptime-known) | dynamic (runtime-computed)
+  CSSLv3 types carry binding-time via @staged type-params + refinements
+  BTA pass @ HIR labels each SSA-value with binding-time
+  specializer inlines-and-folds static-values, preserves dynamic-values
+  produces residual-program with dynamic-values as free-variables
+
+§ TERMINATION (required for P1+ to terminate)
+  classical worry : partial-eval may loop on non-terminating interpreter
+  CSSLv3 mitigation :
+    {NoUnbounded} effect forbids unbounded-recursion in specialized-bodies
+    fuel-counter fallback : max-inline-depth parameter (default 100)
+    divergent @staged-call → compile-error with location pointed
+
+§ SHARED SUBSTRATE WITH MACROS (§§ 13)
+  macros = hand-written-specializers
+  vec![1,2,3] macro-expansion ≡ specialize(Vec::new + push-loop, [1,2,3])
+  DSL-macro-library ≡ P2-generated compiler for that DSL
+  stdlib builtin-specializer is P2-reference-implementation
+
+§ DSL EXAMPLES (stdlib v1)
+  stdlib/dsl/regex : regex-pattern → specialized-matcher @ compile-time
+    compile_regex<"a*b"> → specialized bytecode-free matcher
+  stdlib/dsl/query : SQL-like expression → specialized access-plan
+    compile_query<{ select: ["name"], from: users, where: age > 18 }>
+      → generated index-lookup code
+  stdlib/dsl/shader_recipe : scene-description → specialized SPIR-V
+    (generalizes §§ 08 Scene-evaluator pattern)
+
+§ SELF-BOOTSTRAP VIA P3
+  stage1 CSSLv3-compiler written in CSSLv3
+  stage1 re-compiles stage1 → stage1'
+  fixed-point check : stage1 == stage1' bit-exact (R16 + C99-anchor)
+  each intermediate-stage serves as specializer for next
+
+§ STAGE-LEVELS + CROSS-STAGE
+  stages numbered : 0 (current compile), 1 (current-run), 2 (next-run), ...
+  value at stage-N can be quoted-to-AST at stage-N+1
+  cross-stage persistence : immutable values survive stage-transitions
+  typesystem tracks stage-index on every term
+  MetaOCaml-modal-semantics : ⟨T⟩ᴺ = type at stage-N
+
+§ TRANSFORM-DIALECT INTEGRATION (§§ 15)
+  MLIR Transform-dialect hosts partial-eval schedules as-IR
+  @staged call-site → transform-schedule-op → rewrites target-IR
+  custom transform-passes emittable from CSSLv3-source
+  ≡ P1/P2/P3 realized as Transform-dialect programs
+
+§ DIAGNOSTIC
+  --show-specialization flag : dump per-call-site residual-program
+  --show-binding-times : annotate IR with static/dynamic labels
+  --show-projection=P1|P2|P3 : which projection active for-which-call
+
+§ LIMITATIONS + ESCAPE
+  ◐ P3 requires spec itself be written in CSSLv3 (stage1 has this)
+  ◐ non-terminating interpreter requires {NoUnbounded} discipline
+  ◐ effects in interpreter body : handled via evidence-passing (§§ 04)
+  escape : @no_stage disables @staged on specific call-site (runtime-dispatch)
+
+§ EXAMPLE : P2 for tiny lambda-calculus interpreter
+  interface LcInterpreter {
+    fn eval(env : &Env, e : LcExpr) -> LcValue
+  }
+  impl LcInterpreter {
+    @staged
+    fn eval<E : LcExpr>(env : &Env) -> LcValue {
+      match E {
+        LcExpr::Var(x) => env.lookup(x),
+        LcExpr::App(f, a) => {
+          let fv = Self::eval::<f>(env)
+          let av = Self::eval::<a>(env)
+          fv.apply(av)
+        }
+        LcExpr::Lam(x, body) => LcValue::Closure(x, @staged(body), env.clone()),
+        LcExpr::Const(c) => LcValue::Const(c),
+      }
+    }
+  }
+  // given const LC_PROG : LcExpr = ... ;
+  // eval::<LC_PROG>(&empty_env) specializes the interpreter for LC_PROG
+  // ≡ "compiled" LC_PROG
+
+§ INTEGRATION
+  §§ 06 STAGING : P1 baseline (user-level @staged)
+  §§ 13 MACROS : P2 hand-written specializers
+  §§ 01 BOOTSTRAP : P3 self-compilation
+  §§ 15 MLIR : Transform-dialect hosting mechanism
+
+∎ FUTAMURA3

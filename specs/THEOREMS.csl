@@ -1,0 +1,221 @@
+# THEOREMS — soundness-claims + proof-obligations catalog
+# ══════════════════════════════════════════════════════════════════
+# § I> this-file ≡ master-registry of-what-we-claim + what-must-be-proven
+# § I> ∀ theorem : status ∈ {✓ proven | ◐ partial | ○ informal-argued | ○ obligation-open}
+# § I> proof-artifacts live-in proofs/ directory (per-release, signed)
+
+§ STATUS-LEGEND
+  ✓ mechanized-proof-or-SMT-discharged
+  ◐ proof-sketch + SMT-partial
+  ○ informal-argument only
+  ‼ open-obligation • blocks-v1-ship
+
+§ TYPE-SYSTEM THEOREMS ← §§ 03 + §§ 12
+
+  T1 : progress (standard Wright-Felleisen)
+    ∀ well-typed-term t, either t=value OR ∃ t' . t → t'
+    status : ◐ (operational-semantics in §§ 03 • mechanized pending)
+    discharge : stage1-Coq-proof or Lean4 port
+
+  T2 : preservation
+    ∀ well-typed t : T, t → t' ⇒ t' : T
+    status : ◐
+    discharge : same-as-T1
+
+  T3 : capability-soundness (Pony-6-lineage)
+    ∀ well-typed program, no data-race reachable
+    ∀ iso-reference : consumed-exactly-once (linear)
+    status : ◐ (Pony-paper-soundness carries + region+gen-ref extensions argued)
+    discharge : stage2-Coq-extension beyond-Pony-baseline
+
+  T4 : refinement-discharge-completeness
+    ∀ well-formed refinement-obligation, SMT decides OR flags-Unknown
+    status : ✓ (Z3 + CVC5 completeness for supported-theories)
+    unknowns : higher-order + arbitrary-quantifier-alternation (documented)
+
+§ EFFECT-SYSTEM THEOREMS ← §§ 04
+
+  T5 : row-polymorphism-principal-typing (Koka-Leijen lineage)
+    ∀ fn, exists unique-most-general effect-row
+    status : ✓ (inherits Koka-proof)
+    extension : 28+ built-in-effects compose correctly ← ◐
+
+  T6 : evidence-passing-adequacy (Xie+Leijen)
+    ∀ handler-invocation, evidence-value uniquely-determined at-call-site
+    status : ✓ (inherits Xie+Leijen proof)
+
+  T7 : linear×handler one-shot-soundness (R8)
+    ∀ handler-body containing iso-value in resume-argument,
+      resume called-at-most-once dynamically
+    status : ○ (HIR-typecheck enforces syntactically)
+    obligation : ‼ prove typechecker decides-correctly for all-cases
+    discharge : stage1 Coq-mechanization of §§ 12 linear-handler fragment
+
+§ IFC THEOREMS ← §§ 11
+
+  T8 : non-interference (Jif-DLM lineage)
+    ∀ program P, ∀ high-inputs h1 h2 agreeing-on-low-projection,
+      low-output(P(h1)) = low-output(P(h2))
+      UNLESS explicit declassification
+    status : ◐ (standard DLM-proof carries • CSSLv3-extension informal)
+    discharge : stage1 mechanized-proof
+
+  T9 : declassification-adequacy
+    ∀ declass-policy, SMT discharges label-weakening-legality
+    status : ✓ (§§ 20 SMT-backed)
+
+  T10 : covert-channel-absence (the hardest-class)
+    status : ○ (informal-argument only)
+    channels addressed :
+      timing      : {Deadline<N>} + {PureDet} blocks  ← ◐
+      termination : {NoUnbounded} blocks               ← ✓
+      cache       : {Cache<l>} effect-declared         ← ○
+      power       : {Power<mW>} declared + audit       ← ○
+    obligation : ‼ at-least timing + termination formal for v1
+
+  T11 : PRIME-DIRECTIVE-encoding
+    ∀ program P, no-flow from SurveillanceTarget-label → external-network
+    ∀ program P, no-composition produces WeaponTarget-output
+    status : ○ (argued-structurally via stdlib-absent-primitives)
+    obligation : ‼ formalize absent-primitive argument
+    discharge : stage1 stdlib-signature-audit + Coq-check
+
+§ AUTODIFF THEOREMS ← §§ 05 + §§ 17
+
+  T12 : source-to-source-AD-correctness
+    ∀ @differentiable f : fwd_diff(f) computes JVP exact-per-rules-table
+    ∀ @differentiable f : bwd_diff(f) computes VJP exact-per-rules-table
+    status : ✓ (Slang.D proof carries + rules-table verified-per-op)
+
+  T13 : jet-composition-correctness (Faà di Bruno generalization)
+    ∀ f, g : jet<N>(f ∘ g) = jet<N>(f) ∘ jet<N>(g) componentwise-via-Leibniz
+    status : ◐ (paper-proof exists • SMT-discharge-pending per-N)
+    discharge : auto-generated-proofs per-@staged-N at-compile
+
+  T14 : differentiable-through-linear-handler (R8 × F1)
+    ∀ @differentiable f with one-shot handler, bwd_diff(f) well-defined
+    status : ○ (prohibits multi-shot • one-shot reasoning-via-continuation)
+    obligation : ‼ prove no-escape-of-linear-gradient via handler
+
+§ STAGING + FUTAMURA THEOREMS ← §§ 06 + §§ 19
+
+  T15 : Futamura-P1-correctness (standard Jones-Gomard-Sestoft)
+    ∀ @staged fn with comptime-known-args, specialized-output
+      semantically-equivalent to runtime-eval
+    status : ✓ (inherits JGS proof)
+
+  T16 : Futamura-P3 fixed-point-convergence
+    CSSLv3-compiler-written-in-CSSLv3 recompiled-by-itself reaches fixed-point
+    bit-exact after 2 generations
+    status : ○ (goal-obligation • verified in CI post-stage1)
+    obligation : ‼ v1-ship-gate : generation-N = generation-N+1 bit-exact
+    discharge : CI-job running stage1 → stage1' → stage1''
+    anchor : C99-compiled-generation matches CSSLv3-compiled (R16)
+
+  T17 : staging-terminates-under-NoUnbounded
+    ∀ @staged-call with {NoUnbounded}-effect-annotated body,
+      specialization-pass terminates
+    status : ◐ (fuel-counter runtime-check + termination-SMT per-case)
+
+§ ENGINE + LIPSCHITZ THEOREMS ← §§ 08 + §§ 20
+
+  T18 : Lipschitz-composition-soundness
+    rules-table in §§ 08 preserves Lipschitz-bound under-composition
+    ∀ (f : SDF'L<k1>) , (g : SDF'L<k2>), op(f,g) : SDF'L<k-op(k1,k2)>
+    status : ✓ (per-op SMT-discharge + analytical-proof)
+
+  T19 : SDF-raymarch-convergence
+    ∀ SDF'L<k ≤ 1>, ray-march-loop terminates in O(max_t / epsilon) iters
+    status : ✓ (SMT + analytical in §§ 20)
+    discharge : compile-time per-usage via SMT
+
+  T20 : structured-CFG preservation (CC1)
+    ∀ CSSLv3-MIR : no-unstructured-branch reachable post-lowering
+    status : ✓ (scf-dialect invariant + dialect-conversion audit)
+
+§ CAPABILITY × REGION THEOREMS ← §§ 12
+
+  T21 : region-lifetime-escape-freedom
+    ∀ value v : 'r, v does-not-escape region 'r
+    status : ✓ (borrow-check style + SMT on edge-cases)
+
+  T22 : gen-ref stale-detection
+    ∀ ref<T> dereference, stale-case produces Err(StaleRef) NOT UB
+    status : ✓ (runtime-invariant verified at-each-deref)
+
+§ ORTHOGONAL-PERSISTENCE THEOREMS ← §§ 18
+
+  T23 : schema-migration-compositionality
+    chain of migrations v1→v2→...→vn semantically-equivalent to single v1→vn
+    status : ○
+    obligation : ‼ test-coverage-driven in §§ 23
+    discharge : metamorphic-tests validate chain = composed
+
+  T24 : hot-reload-state-preservation
+    ∀ @hot_reload_preserve struct, reload preserves semantic-equivalence
+    status : ○
+    obligation : ‼ same as T23 via test-driven-proof
+
+§ TELEMETRY + AUDIT THEOREMS ← §§ 22
+
+  T25 : audit-chain-tamper-evidence
+    ∀ audit-entry : signature-chain detects any tampering
+    status : ✓ (BLAKE3 + Ed25519 cryptographic-soundness)
+
+  T26 : telemetry-bounded-overhead
+    scope ≤ Counters : runtime-overhead ≤ 0.5%
+    scope = Full : runtime-overhead ≤ 5%
+    status : ◐
+    obligation : empirical-bench-verified in §§ 23 CI
+    discharge : power-bench + latency-histogram regressions
+
+  T27 : {PureDet} × {Telemetry<Counters>} compatibility
+    telemetry-scope=Counters does-not-perturb deterministic-replay
+    status : ◐
+    obligation : ‼ differential-replay-test in §§ 23
+
+§ TESTING + DETERMINISM THEOREMS ← §§ 23
+
+  T28 : differential-backend-equivalence (R18)
+    ∀ {PureDet}-tagged fn, Vulkan-output = Level-Zero-output bit-exact
+    status : ◐ (known-identical-SPIR-V-path)
+    obligation : ‼ CI-gate • any-divergence reported + fixed
+    discharge : differential-test-suite §§ 23
+
+  T29 : replay-determinism
+    ∀ {PureDet}+{Reversible} fn, N replays produce bit-exact outputs
+    status : ◐
+    obligation : ‼ CI-gate N=10 default
+
+  T30 : cross-compiler-reproducibility (R16)
+    C99-compiled stage3 == CSSLv3-compiled stage1 bit-exact
+    status : ‼ OPEN • v1-ship-gate
+    discharge : stage3 + stage1 + CI-comparator
+
+§ CROSS-CUTTING OBLIGATIONS ← §§ ship-gate-blockers
+
+  ‼ OG1 : T7 linear×handler one-shot mechanized
+  ‼ OG2 : T10 covert-channel (timing + termination) formal
+  ‼ OG3 : T11 PRIME-DIRECTIVE absent-primitive audit
+  ‼ OG4 : T14 differentiable-through-linear-handler formal
+  ‼ OG5 : T16 Futamura-P3 fixed-point CI-verified
+  ‼ OG6 : T23 + T24 migration compositionality + reload-preservation
+  ‼ OG7 : T27 PureDet × Telemetry-Counters compatibility
+  ‼ OG8 : T28 Vulkan-vs-L0 bit-exact differential CI
+  ‼ OG9 : T29 replay-determinism N=10 CI
+  ‼ OG10 : T30 C99-vs-CSSLv3 reproducibility (R16 anchor)
+
+§ DISCHARGE-ROADMAP
+  stage0 Rust-compiler : establish-infrastructure + test-harness
+  stage1 self-hosted : Coq/Lean4 proof-integration begins
+  stage2 LoA-migration : empirical-discharge via CI evidence-accumulation
+  stage3 C99-anchor : OG10 closed
+  v1-ship-gate : ∀ ‼ OG1-OG10 closed or documented-known-limitation
+
+§ META-CLAIM
+  ∀ theorem T : status-transitions logged in CHANGELOG.csl per-release
+  ∀ ○→◐ : sketch-committed to proofs/sketches/
+  ∀ ◐→✓ : mechanized-cert to proofs/mechanized/ + signed
+  ≡ auditable progression toward v1-ship-gate
+
+∎ THEOREMS

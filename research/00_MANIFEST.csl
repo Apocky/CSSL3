@@ -1,0 +1,86 @@
+# CSSLv3 RESEARCH MANIFEST
+# ══════════════════════════════════════════════════════════════════
+# § I> CSSLv3 = novel proprietary hardware-first systems lang
+#   co-designed-with LoA-engine ≡ single artifact
+# § I> scope: PROPERLY-DISTINCT from CSLv3 (notation) ⊗ CSSL2 (prior attempt)
+# § I> research-phase ¬ design-phase-yet
+# ══════════════════════════════════════════════════════════════════
+
+§ CONSTRAINTS'hw
+  W! target = x86-64.AVX2 + Vulkan1.3.SPIR-V
+  W! HW'primary = Intel-12th-14th-gen + Intel-Arc-A770
+  N! AVX-512
+  W! abstraction-layer + future-HW-portability
+  ✓ bootstrap'one-time = existing-lang (throwaway) → self-host ASAP
+  W! CSSLv3 + LoA-engine = ONE-artifact
+    ∴ lang-primitives ≡ engine-primitives
+
+§ NON-NEGOTIABLE-FEATURES F1..F4
+  F1 : autodiff
+    W! @differentiable-fn
+    W! SDF'normals = O(1) via reverse-mode
+    ✓ fix V11-perf-cliff : 10fps → 182fps
+  F2 : refinement-types
+    W! SDF'Lipschitz-tracking
+    W! compile-time thin-feature-warnings
+  F3 : effect-system
+    W! {GPU NoAlloc NoRecurse Deadline<Nms> DeterministicRNG}
+    W! row-polymorphic (Koka-style)
+  F4 : staged-computation
+    W! scene → evaluator compile-time-specialization
+    W! Futamura-2nd-projection
+
+§ BUG-THESIS (from V5..V12 + DGI-V1..V2 retrospective)
+  ∀ bug ⇒ lang-allowed-it
+  W! CSSLv3 : ∀ known-bug-pattern → compile-error
+  ○ CPU/GPU-SDF-divergence × 3 → effect-system F3
+  ○ central-diff-perf-cliff → autodiff F1
+  ○ thin-SDF-raymarch-crash → refinement F2
+  ○ audio-callback-alloc-deadlock → effect F3 NoAlloc
+  ○ GPU-struct-padding-corruption → refinement F2 layout-types
+
+§ RESEARCH-SECTIONS S1..S10
+  S1 : novel-langs'game+graphics
+    Slang Jai Zig Vale Mojo Verse Odin Taichi Hylo/Val Circle Carbon
+  S2 : compile-time-metaprogramming
+    Futamura-projections Zig-comptime MetaOCaml Terra Truffle-Graal
+  S3 : autodiff'systems
+    Enzyme Slang.D JAX-source-xform Zygote.jl Rust-autodiff
+  S4 : refinement-types
+    LiquidHaskell F* Dafny Lean4 Granule QTT
+  S5 : effect-systems
+    Koka OCaml-5 Verse Eff Frank Multi-core-OCaml
+  S6 : MLIR+codegen
+    MLIR-dialects Cranelift QBE IREE SPIR-V-codegen
+  S7 : engine-as-language
+    GOAL GOOL UE-Verse Houdini-VEX Blueprints
+  S8 : memory-models
+    Vale-regions typed-arenas generational-indices
+    linear-types region-calculus
+  S9 : bootstrapping
+    mrustc Zig-self-host OCaml-boot minimum-viable-compiler
+  S10 : syntax
+    APL/J-lineage dense-notation Rust-macros S-expr
+
+§ OUTPUTS
+  W! per-section : research/Sx_<topic>.csl
+  W! synthesis : research/99_SYNTHESIS.csl
+  W! design-manifesto : specs/00_MANIFESTO.csl
+  W! bootstrap-plan : specs/01_BOOTSTRAP.csl
+  W! IR-design : specs/02_IR.csl
+  W! type-system : specs/03_TYPES.csl
+  W! effect-system : specs/04_EFFECTS.csl
+  W! autodiff : specs/05_AUTODIFF.csl
+  W! staging : specs/06_STAGING.csl
+  W! codegen : specs/07_CODEGEN.csl
+  W! engine-primitives : specs/08_ENGINE.csl
+  W! syntax : specs/09_SYNTAX.csl
+  W! hw-abstraction : specs/10_HW.csl
+
+§ STATUS
+  ⊘ research-in-progress : S1..S7 partial via web_search
+  ○ S8..S10 pending
+  ✗ synthesis not-yet-written
+  ✗ specs not-yet-written
+
+∎ MANIFEST

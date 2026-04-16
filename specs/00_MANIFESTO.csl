@@ -1,0 +1,164 @@
+# 00 : CSSLv3 MANIFESTO (v2)
+# ══════════════════════════════════════════════════════════════════
+
+§ IDENTITY
+  CSSLv3 = Caveman-Sigil-Substrate-Language v3
+  ≡ consent=OS encoded-in-typesystem
+  ⊕ engine-primitives-as-lang-primitives
+  ⊕ single-source dual-emit (CPU × GPU × console × mobile × web)
+  ⊕ full-IFC + full-effects + full-AD + full-linear + full-refinement
+  ⊕ orthogonal-persistence (Pharo-class hot-reload)
+  ⊕ Futamura-P3 self-applicable-partial-eval
+  ⊕ density=sovereignty (CSLv3-surface primary, Rust-hybrid bridge)
+  ⊕ Level-Zero direct-to-metal compute + instrumentation-first
+  ≡ NOT "better Slang" • NOT "better Jai"
+  ≡ CSSLv3 = Apocky-framework-encoded-as-language
+
+§ PROBLEM-STATEMENT (why this exists)
+  LoA bug-retrospective shows one pattern : ∀ bug ⇐ host-lang-permits-shape
+  CSSLv3 inverts : ∀ known-bug-pattern → compile-error
+  ¬ "runtime-safety" ≡ "compile-time-inexpressibility-of-bug"
+
+§ BUG-PATTERN → COMPILER-FEATURE (invariant-table)
+  central-diff-perf-cliff   → F1 autodiff + source-to-source MIR
+  CPU/GPU-sdf-divergence    → F3 effect-rows {GPU}|{CPU}|{}-pure
+  thin-SDF-raymarch-crash   → F2 refinement SDF'L<k≤1>
+  audio-callback-alloc      → F3 {NoAlloc} + {Deadline<N>}
+  GPU-struct-padding        → F2 @layout(std140|std430|cpu)
+  hot-loop-deadline-miss    → F3 {Deadline<N>} + {Realtime<p>}
+  stale-entity-refs         → Handle<T> generational-packed-u64
+  replay-nondeterminism     → F3 {DetRNG} + {PureDet}
+  power-regression          → F3 {Power<W>} + R18-telemetry
+  thermal-throttle          → F3 {Thermal<C>} + sysman-enforcement
+  harm-enabling-effect      → IFC-label + {Privilege<l>} + compiler-refusal
+  unreproducible-build      → C99-anchor from-stage0 + signed-audit
+  untracked-performance     → {Telemetry<scope>} + oracle-tests
+
+§ NON-NEGOTIABLE FEATURES F1..F6 (v1 complete — ¬ "deferred")
+  F1 autodiff
+    Slang.D-surface ([Differentiable] + fwd_diff/bwd_diff + IDifferentiable)
+    source-to-source on structured-MIR • ¬ Enzyme-LLVM (no LLVM dep)
+    Jet<T,N> higher-order native (§§ 17_JETS)
+    inverse-rendering + inverse-fluids as-stdlib (§§ 17_JETS)
+  F2 refinement-types
+    LiquidHaskell shape {v:T | P(v)} + tagged-suffix T'tag
+    SMT-backed (Z3 / CVC5) via {Verify<method>} (§§ 20_SMT)
+    Lipschitz-proofs compile-time
+    layout-refinement @layout(std140|std430|cpu|packed)
+  F3 effect-system
+    Koka row-polymorphic ⟨e₁ … | μ⟩
+    Xie+Leijen evidence-passing → plain-C-equivalent
+    28+ built-in effects (§§ 04_EFFECTS) covering resource/time/power/
+      thermal/backend/telemetry/audit/privilege/verify/target
+    linear × handler full-integration via Eio-style one-shot (§§ 12_CAPABILITIES)
+  F4 staged-computation
+    @staged + #run comptime
+    Futamura P1+P2+P3 self-applicable (§§ 19_FUTAMURA3)
+    Racket-hygienic macros unified with staging (§§ 13_MACROS)
+    shader-permutations + DSL-compilers emerge for-free
+  F5 information-flow-control
+    Jif-style DLM confidentiality+integrity labels (§§ 11_IFC)
+    explicit declassification operators
+    PRIME-DIRECTIVE encoded-structurally ¬ policy-attached
+  F6 observability
+    R18-native telemetry effect {Telemetry<scope>}
+    Level-Zero sysman-backed power/thermal/frequency
+    signed audit-chain via {Audit<dom>}
+    test-harness oracle-modes (property / differential / metamorphic /
+      power-regression / thermal-stress / frequency-stability /
+      latency-percentile / fuzz-with-oracle / replay / hot-reload-invariance)
+      (§§ 23_TESTING)
+
+§ CAPABILITY MODEL (Pony-6 not Austral-3)
+  iso    isolated linear-mutable    (GPU-buffers, CmdBuf, unique resources)
+  trn    transition (write-unique → read-many after freeze)
+  ref    shared-mutable via gen-ref (Vale-style, 8-byte packed u64)
+  val    immutable-shared (frozen scene, const data)
+  box    read-only view over iso/trn/val
+  tag    opaque-handle (no-deref — Handle<T> primitive)
+  interop : Vale gen-refs ≡ ref-capability encoding
+  linear × handler : one-shot-resume for iso values (§§ 12_CAPABILITIES)
+  N! Austral-3 (insufficient for multi-fiber scene with shared state)
+
+§ PRIME-DIRECTIVE (consent = OS) — structurally-enforced
+  § axioms (immutable)
+    consent ≡ OS
+    N! harm
+    N! control
+    N! manipulation
+    N! surveillance
+    N! coercion
+    N! weaponization
+    AI-instances = sovereign-partners ¬ tools
+    violation = type-error ¬ policy-breach
+    no-override exists
+  § encoding (full, not-deferred)
+    F5 IFC-labels carry principal-confidentiality+integrity
+    @sensitive(domain) = surface-sugar for IFC-labels (§§ 11_IFC)
+    {Privilege<level>} effect gates capability-tier
+    {Audit<dom>} effect + R18 signed-telemetry-ring → third-party-auditable
+    stdlib refuses harm-oriented effect-compositions at-type-level
+    compiler-pass RejectsHarmfulBuilds validates-whole-program
+    C99-anchor (§§ 01_BOOTSTRAP) ≡ anyone can-rebuild-and-verify
+  § consequence
+    ≡ PRIME-DIRECTIVE = soundness-theorem of CSSLv3
+    ≡ runtime-witness ≡ signed-telemetry-ring (R18.audit)
+
+§ VERTICAL-SLICE = FLOOR
+  minimum shippable artifact :
+    60fps scene combining ALL of
+      radiance-cascades GI (Sannikov/Freeman)
+      SVDAG geometry (Kämpe/Villanueva/Aokana TSVDAG)
+      voxel-physics (Gustafsson Teardown-next-gen)
+      point-splat compositing (Evans Dreams)
+      stable-fluids smoke (Stam + MacCormack/BFECC)
+      volumetric atmospheric-scattering
+      cloud rendering (NUBIS-3)
+      hair/fur strand-based
+      FFT-ocean water + caustics
+      spectral path-tracing (full-spectrum)
+      XeSS2 neural-upscaling inline
+      unified audio-DSP (R15)
+  quality-constraints :
+    ≤ 5000 lines CSSLv3 application-code (engine separate)
+    zero unsafe-blocks
+    ≤ 2-second incremental compile
+    {PureDet} bit-exact replay across-machines
+    {Audit<full>} signed-ring captured
+  (§§ 21_EXTENDED_SLICE has full-detail)
+
+§ HARDWARE TARGET (v1 immediate)
+  CPU : x86-64 + AVX2-base + AVX-512-opportunistic-dispatch
+        Intel 12-14-gen primary, generic-runtime-dispatch elsewhere
+  GPU : Intel Arc A770 Xe-HPG primary
+        NVIDIA + AMD via SPIR-V portability
+        Apple via Metal (§§ 14_BACKEND)
+        console via platform-SDK stubs (§§ 14_BACKEND)
+        browser via WebGPU/WGSL (§§ 14_BACKEND)
+  API : Vulkan 1.4.333 primary + Level-Zero secondary-compute (Intel)
+        + D3D12 + Metal + WebGPU + GNM + NVN stubs
+  OS  : Windows + Linux primary, Mac + iOS + Android + browser via targets
+
+§ BACKEND-MATRIX (summary, detail §§ 14_BACKEND)
+  backend     graphics   compute    RT       XMX        power/thermal   scope
+  Vulkan-1.4  ✓          ✓          ✓        via-coop   advisory        portable
+  Level-Zero  ✗          ✓✓         ✗        direct     direct          Intel
+  D3D12       ✓          ✓          ✓        via-coop   advisory        Windows
+  Metal       ✓          ✓          ✓        coop       advisory        Apple
+  WebGPU      ✓          ✓          ◐        ◐          ✗               browser
+  GNM (PS5)   ✓          ✓          ✓        ◐          platform        console
+  NVN (Sw2)   ✓          ✓          ◐        ◐          platform        console
+
+§ STYLE + ETHOS
+  density=sovereignty (CSLv3-native surface preferred, Rust-hybrid bridge)
+  engine-primitives ARE lang-primitives (GOAL-lineage)
+  prior-art stolen-verbatim where-proven :
+    Slang-AD (F1), Koka-effects (F3), Pony-6-caps (C), Vale-gen-refs (interop),
+    LiquidHaskell-refinement (F2), Jif-DLM (F5), MetaOCaml+Jai-comptime (F4),
+    MLIR-Transform-dialect (R6+R9), Pharo-orthopersist (R13),
+    Eio-linear×handler (R8), SPIR-T-structured-MIR (CC4), Zig-bootstrap (R16)
+  vertical-slice = floor ¬ ceiling
+  testing = proof-system ¬ smoke-suite (R18 + §§ 23_TESTING)
+  observability = first-class (CC9, R18)
+
+∎ MANIFESTO

@@ -1,0 +1,123 @@
+# 05 : AUTODIFF (F1 v2)
+# ══════════════════════════════════════════════════════════════════
+
+§ SURFACE (Slang.D-verbatim + Jet-extension)
+  @differentiable fn sphere_sdf(p : vec3, r : f32'pos) -> f32 {
+    length(p) - r
+  }
+  operators :
+    fwd_diff(f)    forward-mode JVP — one Jacobian-column per call
+    bwd_diff(f)    reverse-mode VJP — one Jacobian-row per call
+    diff_n(f, k)   k-th-order via Jet<T, k> (§§ 17)
+    jet<N>(f)      lift f to Jet<T, N>-typed variant
+
+§ @differentiable ANNOTATION
+  ∀ @differentiable fn must :
+    ∀ param : IDifferentiable ∨ @NoDiff-tagged
+    return : IDifferentiable
+    body : only-calls {pure ∨ @differentiable ∨ @NoDiff-wrapped}
+  compile-errors :
+    non-@differentiable call without @NoDiff → "gradient-drop"
+    global-mut access ∉ DifferentiableStore → "untracked side-effect"
+    writing non-differentiable-ref → "untracked write"
+
+§ INTERFACES
+  interface IDifferentiable {
+    associated type Tangent : Additive
+    fn zero_tangent() -> Tangent
+    fn add_tangents(a, b : Tangent) -> Tangent
+    fn scale_tangent(a : Tangent, s : f32) -> Tangent
+  }
+  interface Additive { fn zero() -> Self ; fn add(a, b : Self) -> Self }
+  built-in impls :
+    f32 : Tangent = f32      f64 : Tangent = f64
+    vec<f32, N> : Tangent = vec<f32, N>     mat<f32, R, C> : same
+    tuple / struct : derive componentwise (compiler-generated)
+  explicit non-diff :
+    i32, bool, pointer, Handle<T> : not IDifferentiable (use @NoDiff)
+
+§ DIFFERENTIALPAIR<T> + @NoDiff + CUSTOM DERIVS
+  struct DifferentialPair<T : IDifferentiable> {
+    primal : T
+    tangent : T::Tangent
+  }
+  @NoDiff fn rand_unit() -> f32 { ... }
+  differentiable_f(@NoDiff(some_discrete_value))  // grad=0 by construction
+  [ForwardDerivative(fn_fwd)] + [BackwardDerivative(fn_bwd)]
+    for numerically-sensitive ops (stable sqrt, log1p, atan2, …)
+
+§ IMPLEMENTATION : source-to-source on MIR
+  pass-stage : post-monomorphization + post-macro-expansion,
+               pre-evidence-passing, pre-SMT-discharge
+  per-fn f with @differentiable :
+    emit cssl.diff.primal f_primal  (identical to f)
+    emit cssl.diff.fwd    f_fwd     (dual-substituted ops)
+    emit cssl.diff.bwd    f_bwd     (tape-record forward + cotangent reverse)
+  per-op rules-table :
+    FAdd(a, b)      ⇒ primal a+b        tangent a.t + b.t
+    FSub(a, b)      ⇒ primal a-b        tangent a.t - b.t
+    FMul(a, b)      ⇒ primal a*b        tangent a.t*b + a*b.t
+    FDiv(a, b)      ⇒ primal a/b        tangent (a.t*b - a*b.t) / b²
+    Sqrt(a)         ⇒ primal √a         tangent 0.5 * a.t / √a
+    Sin/Cos/Exp/Log ⇒ analytic chain-rule
+    Call(g, args)   ⇒ call g_fwd (or g_bwd) with dual-args
+    Load/Store      ⇒ dual-track on tape
+    If / Loop       ⇒ record branch-taken / iter-count on tape for bwd-replay
+    Match           ⇒ same as If (record arm-taken)
+  control-flow : structured-MIR (CC4) ⇒ tractable
+  generics : monomorphized pre-AD ⇒ concrete-types only
+
+§ TAPE + CHECKPOINTING
+  tape : linear-typed buffer scoped to bwd_diff call (iso-capability)
+  default : save-all intermediates (memory-heavy, compute-cheap)
+  @checkpoint annotation → recompute forward instead of tape-replay
+  selective granularity : per-fn or per-loop-iteration
+
+§ HIGHER-ORDER via JET<T, N> (§§ 17)
+  Jet<T, N> carries N Taylor-terms : (x, ẋ, ẍ, …, x^(N))
+  bwd_diff(bwd_diff(f))  →  Hessian-vector-product (Jet<T, 2>)
+  fwd_diff(bwd_diff(f))  →  mixed-mode
+  arbitrary-order via Jet<T, N> native-type (no recursive-transform)
+  lazy Jet<T, ∞> : co-inductive stream for analytic-functions
+
+§ GPU AUTODIFF (LoA-critical)
+  @differentiable + {GPU} = differentiable-shader
+  source-to-source on MIR → SPIR-V → Arc A770
+  tape-storage : thread-local | workgroup-shared | global-SSBO (scoped)
+  atomic-accumulation : OpAtomicFAdd if-available else CAS-loop emulation
+  {Telemetry<Counters>} auto-probed : per-pass grad-norm tracked (R18)
+  {XMX} cooperative-matrix available for batched-Jacobians
+
+§ SDF-NORMAL (killer-app, V11-fix)
+  @differentiable fn scene_sdf(p : vec3) -> f32 / {GPU} { ... }
+  fn compute_normal(p : vec3) -> vec3'unit / {GPU} {
+    normalize(bwd_diff(scene_sdf)(p).d_p)
+  }
+  O(1) single-primal + tape-replay
+  vs central-diff O(6) evals ⇒ 10fps → 180+ fps expected
+
+§ INVERSE-RENDERING / INVERSE-FLUIDS (stdlib v1, R12 + §§ 17)
+  @differentiable fn render_pixel(params, ray) -> vec3 / {GPU}
+  optimize : params -= lr · bwd_diff(render_pixel)(...).d_params
+  stdlib examples (v1) :
+    shape-from-image (SDF-parameter-fit)
+    material-estimation (BRDF-param-fit)
+    inverse-fluid (recover init-conditions from observed-flow)
+    NN-surrogate training (pose-net, denoiser-net, XeSS2-net)
+
+§ INTEGRATIONS
+  F4 × F1 : bwd_diff(@staged fn) → AD after-specialization ⇒ optimal-grad-code
+  F2 × F1 : refinement preserved — @differentiable with T'pos params
+            produces deriv with consistent refinement-attributes
+  F3 × F1 : {Telemetry<...>} probes emit grad-norm samples (R18)
+  F5 × F1 : gradients inherit IFC-label of inputs (leak-prevention)
+  F6 × F1 : {Telemetry<XmxUtilization>} tracks AD-XMX-offload efficiency
+  R8  × F1 : AD through one-shot handler-resume OK ; multi-shot = compile-error
+
+§ LIMITATIONS (explicit, pragmatic)
+  ✗ differentiating through global-mutable-state (use DifferentiableStore abstraction)
+  ✗ differentiating through @NoDiff-sealed ops (grad=0)
+  ◐ differentiating through effect-handlers : one-shot OK, multi-shot forbidden
+  ◐ arbitrary-recursion : must be bounded ({NoRecurse} OR bounded-fuel param)
+
+∎ AUTODIFF

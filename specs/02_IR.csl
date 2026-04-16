@@ -1,0 +1,178 @@
+# 02 : IR ARCHITECTURE (v2) — HIR → MIR(MLIR) → LIR
+# ══════════════════════════════════════════════════════════════════
+
+§ THREE-LAYER PIPELINE
+  source.cssl  (dual-surface CSLv3-native | Rust-hybrid → same AST)
+    → AST (concrete syntax tree)
+    → HIR (typed + elaborated + IFC-labeled)
+    → MIR (MLIR-dialect, structured-by-construction, monomorphic)
+    → LIR (target-specific emission)
+      → CPU : Cranelift (stage0) | owned-x86-64 (stage1+)
+      → GPU : SPIR-V (rspirv) | DXIL | MSL | WGSL
+      → host-submit : Vulkan | Level-Zero | D3D12 | Metal | WebGPU | GNM | NVN
+      → fat-binary linker
+
+§ HIR : HIGH-LEVEL IR
+  shape : typed-AST-post-elaboration
+  contents :
+    fn-defs • type-defs • effect-defs • handler-defs • macro-defs
+    expressions typed-annotated
+    attribute-payloads (@differentiable @lipschitz @layout @staged
+                        @sensitive @privileged @auditable @hot_reload_preserve)
+    IFC-labels on every value (§§ 11_IFC)
+    capability-annotations iso|trn|ref|val|box|tag (§§ 12)
+  types :
+    base • struct • enum • fn-type(effect-row, cap, ifc-label)
+    refined (T'tag | {v:T|P(v)}) with SMT-obligations (§§ 20)
+    generic-param bounded-by-interface
+    Jet<T, N> (higher-order AD, §§ 17)
+  effect-rows : ⟨⟩ | ⟨e | ε⟩ | μ  (Koka row-poly)
+  checks-here :
+    linearity/cap (Pony-6 conformance)
+    refinement (SMT-discharge via solver-plugin)
+    effect-row unification (Hindley-Milner with rows)
+    IFC (non-interference + declassification-legality)
+    AD-legality ([Differentiable] closure)
+    @sensitive domain + @privileged-tier audit
+    @staged stage-arg comptime-known
+    macro-hygiene (Racket-lineage, §§ 13)
+  size-target : ≤ 25K LOC Rust stage0
+
+§ MIR : MID-LEVEL IR (MLIR-dialect)
+  substrate : MLIR (Multi-Level IR, Apache-2 LLVM-exception)
+  dialect : cssl.*  (custom dialect from-day-one, §§ 15_MLIR)
+  shape : SSA-within-structured-regions (MLIR-region model fits naturally)
+  structured-by-construction : no goto, only
+    if-else | while | for-range | match-dispatch |
+    break | continue | return | unreachable
+  rationale :
+    SPIR-V requires structured-CFG (OpSelectionMerge / OpLoopMerge)
+    DXIL structured via control-flow-recovery (always-works from structured)
+    MSL/WGSL structured natively
+    ∴ structured-MIR = syntax-directed emission ∀ targets
+    ∴ SPIR-V emitter ≤ 8K LOC vs 50K stackifier (Embark/SPIR-T lesson)
+  cssl.* dialect operations :
+    cssl.diff.primal / cssl.diff.fwd / cssl.diff.bwd    (F1)
+    cssl.jet.construct<N> / cssl.jet.project            (F1 higher-order)
+    cssl.effect.perform / cssl.effect.handle            (F3)
+    cssl.region.enter / cssl.region.exit                (F3 Region<'r>)
+    cssl.handle.pack / cssl.handle.unpack / cssl.handle.check (engine gen-ref)
+    cssl.staged.splice / cssl.staged.quote / cssl.staged.run  (F4)
+    cssl.macro.expand                                   (F4 hygiene)
+    cssl.ifc.label / cssl.ifc.declassify                (F5)
+    cssl.verify.assert<method>                          (F2 SMT-obligation)
+    cssl.sdf.march / cssl.sdf.normal                    (engine-primitive)
+    cssl.gpu.barrier / cssl.gpu.subgroup.*              (GPU portable)
+    cssl.xmx.cooperative_matmul                         (cooperative-matrix)
+    cssl.rt.trace_ray / cssl.rt.intersect               (RT)
+    cssl.telemetry.probe<scope>                         (R18)
+  reused MLIR dialects :
+    arith  scf  cf  func  memref  vector  tensor  linalg  affine
+    gpu  spirv  llvm  transform
+  passes (ordered) :
+    monomorphization
+    macro-expansion (hygienic, §§ 13)
+    @staged partial-eval (P1, §§ 06+19)
+    AD source-to-source on cssl.diff.* (F1)
+    Jet expansion (Taylor-order N, §§ 17)
+    IFC-check + declassification-validation (§§ 11)
+    evidence-passing transform (effects → plain values, Xie+Leijen)
+    linear × handler one-shot-enforcement (§§ 12)
+    SMT-discharge pass (§§ 20)
+    telemetry-probe insertion (R18, scope-gated)
+    structured-CFG validation
+    const-fold + DCE + inlining + loop-unroll
+    dialect-conversion to-target (LLVM-dialect | spirv-dialect | own-dialect)
+  size-target : ≤ 35K LOC Rust + TableGen
+
+§ LIR : LOW-LEVEL IR (target-specific)
+
+  LIR-CPU
+    stage0 : MLIR llvm-dialect → Cranelift CLIF (via custom bridge)
+             Cranelift → regalloc2 → x86-64 machine code
+             cranelift-object → ELF .o (Linux) | COFF .obj (Windows)
+    stage1+: MLIR cssl-dialect → owned-backend (§§ 14_BACKEND)
+             owned regalloc + instruction-select + machine-emit
+    ABI : SysV-AMD64 (Linux) + Windows-x64 + Darwin (Apple SysV)
+    SIMD : AVX2 base + AVX-512 opportunistic runtime-dispatch
+           multi-variant fat-kernels + CPUID startup-probe
+    debug-info : DWARF-5 (Linux/Mac) + CodeView/PDB (Windows)
+
+  LIR-GPU
+    SPIR-V  : cssl-dialect → spirv-dialect → rspirv module-builder
+              → spirv-val → spirv-opt → blob
+    DXIL    : cssl-dialect → DirectXShaderCompiler (offline) via -spirv mode
+              or owned-DXIL-emitter stage-2 (deferred concrete impl)
+    MSL     : cssl-dialect → spirv-dialect → spirv-cross MSL emit
+              or owned-MSL-emitter stage-2
+    WGSL    : cssl-dialect → spirv-dialect → Tint WGSL emit
+              or owned-WGSL-emitter stage-2
+    All GPU paths : structured-CFG-in → structured-CFG-out (no restructurize)
+
+  LIR-HOST-SUBMIT (R18)
+    Vulkan-1.4  : ash crate (stage0), owned FFI (stage1+)
+    Level-Zero  : level-zero-sys (stage0), owned FFI (stage1+)
+    D3D12       : windows-rs (stage0)
+    Metal       : metal crate on Apple
+    WebGPU      : wgpu-core via C-ABI (stage0), owned WebGPU impl (browser target)
+    GNM/NVN     : stubs — platform-SDK required (NDA)
+
+§ LOWERING INVARIANTS
+  HIR → MIR
+    ∀ generic monomorphized to concrete cssl-dialect ops
+    ∀ effect-handler → evidence-record threaded through callee-chain
+    ∀ [Differentiable]-fn → triple (primal, fwd, bwd) cssl.diff.*
+    ∀ @staged call-site → specializer-pass clone + const-propagate
+    ∀ macro-use → cssl.macro.expand with hygienic-closure attached
+    ∀ IFC-label preserved as MLIR-attribute on every SSA-value
+    ∀ unstructured-control-flow → rejected (compile-error)
+  MIR → LIR
+    ∀ structured-control-flow preserved to-target (MLIR structured-CFG)
+    ∀ handle<T> → u64-packed (SPIR-V BDA) | ptr+gen-check (CPU)
+    ∀ region-enter/exit → arena-alloc+reset (CPU) | no-op (GPU — lifetime-only)
+    ∀ telemetry-probe → target-specific counter-read (zes* / PAPI / ETW / Metal-HUD)
+    ∀ {Verify}-obligation discharged before-emit OR error
+    ∀ {Audit<dom>}-effect → signed-chain-write host-side
+
+§ DUAL EMISSION (single-source → many-targets)
+  ∀ CSSLv3-fn has target-set ⊆ {CPU, GPU-vendor-agnostic, platform-specific}
+  ∀ {Target<X>}-effect gates platform-specific code
+  ∀ {Backend<api>}-effect gates host-API choice
+  ∀ shared-{CPU,GPU}-fn : must be pure-effect-row ⟨⟩ | verified-identical-semantics
+  ∴ V11-CPU/GPU-divergence-bug class impossible-by-typing
+  fat-binary :
+    host-obj (x86-64 ELF/COFF/Mach-O)
+    gpu-blobs (SPIR-V + DXIL + MSL + WGSL chosen-at-runtime)
+    metadata : entry-names, layout-descriptors, telemetry-schema
+    runtime-loader (libcssl-rt): detects-backend, loads-blob, creates modules
+
+§ INTEROP (C-ABI + platform-native)
+  extern "C" fn-defs + #[repr(C)] structs match target-platform-ABI
+  CSSLv3 ↔ Vulkan-C-API : normal
+  CSSLv3 ↔ Level-Zero-C-API : normal (R18)
+  CSSLv3 ↔ D3D12/Metal/WebGPU : platform-native-bindings stage0 → owned stage1+
+  audio-boundary : PortAudio-style C-ABI or OS-native (WASAPI/Core-Audio/ALSA)
+
+§ REFLECTION + INTROSPECTION (F4 + F6)
+  comptime-API :
+    @type_info(T)    → { fields, methods, attrs, IFC-labels, cap }
+    @fn_info(f)      → { params, effect-row, IFC, attrs, return }
+    @module_info(M)  → { exports, imports, globals, telemetry-schema }
+    @telemetry_info  → { active-scopes, ring-size, exporter-config } (R18)
+  used by : derive-macros, @staged specialization, R18 probe-insertion
+
+§ STRUCTURED-CFG RULES (CC4)
+  source-level forbidden : goto, break-with-label-out-of-block,
+    computed-jumps, continue-to-outer-loop-without-marker
+  allowed : labeled-break only-to-enclosing-block of-same-fn
+  MLIR-scf dialect used for control-flow (scf.if, scf.for, scf.while)
+  SPIR-V emission = walk scf.* structured-tree directly
+
+§ INCREMENTAL COMPILATION (for <2s hot-reload, R13)
+  query-based compiler (salsa-style or rustc-query-lineage)
+  keys : (source-hash, stage-args, target-profile, IFC-policy-hash)
+  invalidation on source-change, stage-arg-change, policy-change
+  cached artifacts : HIR-module, MIR-module, LIR-blob per-fn-per-target
+  orthogonal-persistence (§§ 18) preserves-engine-state across recompile
+
+∎ IR

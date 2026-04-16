@@ -1,0 +1,248 @@
+# 22 : TELEMETRY — R18 observability-first-class
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  observability ≡ first-class-concern ¬ bolt-on
+  {Telemetry<scope>} effect (§§ 04) lowers to ring-buffer probe-emission
+  Level-Zero sysman primary-backing on Intel (direct power/thermal/freq/util)
+  Vulkan VK_EXT_calibrated_timestamps + NonSemantic.Shader.DebugInfo secondary
+  PAPI (Linux CPU) + ETW (Windows CPU) + Metal-HUD (Apple) tertiary
+  OpenTelemetry exporter for external-tooling
+  signed-audit-chain ties telemetry to R16 reproducibility
+
+§ CROSS-CUTTING INVARIANTS (ref SYNTHESIS_V2 CC9)
+  CC9 : observability-first-class
+    ∀ effect-tagged-fn has implicit-or-explicit telemetry-scope
+    ∀ ring-append non-blocking lock-free
+    ∀ exporter eventually-consistent never-causes-stall
+    ∀ audit-entry signed cryptographically chainable
+
+§ TELEMETRY-SCOPE TAXONOMY
+  enum TelemetryScope {
+    // CPU-domain
+    WallClock         // QueryPerformanceCounter | clock_gettime(MONOTONIC)
+    CpuCycles         // RDTSC (x86) | PAPI event
+    CpuInstRetired    // PAPI PAPI_TOT_INS
+    CacheMisses       // PAPI PAPI_L1_DCM, PAPI_L2_DCM, PAPI_L3_TCM
+    BranchMisses      // PAPI PAPI_BR_MSP
+    TLBMisses         // PAPI PAPI_TLB_DM
+    PageFaults        // getrusage | GetProcessMemoryInfo
+    CtxSwitches       // /proc/self/status | GetSystemTimes
+    // GPU-domain
+    DispatchLatency   // vkCmdWriteTimestamp pre/post, or ze_event_t delta
+    KernelOccupancy   // ze_kernel_properties | NV-style occupancy-calc
+    ShaderInvocations // VK_QUERY_TYPE_PIPELINE_STATISTICS (stage-counts)
+    RtRaysPerSec      // custom-counter via shader-atomic (RT-specific)
+    MemBandwidth      // zesMemoryGetBandwidth
+    XmxUtilization    // zesEngineGetActivity (XMX-engine-type)
+    // Power/thermal/freq (R18 primary)
+    Power             // zesPowerGetEnergyCounter (Joules cumulative)
+    Thermal           // zesTemperatureGetState (Celsius current)
+    Frequency         // zesFrequencyGetState (MHz current)
+    FanSpeed          // zesFanGetState (RPM) if-available
+    // RAS (reliability)
+    EccErrors         // zesRasGetState (corrected + uncorrected)
+    PcieReplay        // PCIe link-health counters
+    // App-semantic (custom)
+    Counters          // user-defined event-counters
+    Spans             // OpenTelemetry-style span start/end
+    Events            // structured-event records
+    Audit             // §§ 11 audit-chain entries
+    // Compound
+    Full              // all-of-above (maximum overhead)
+  }
+
+§ SCOPE IN EFFECT-ROW
+  fn-signature form :
+    fn foo() / {Telemetry<Counters>}
+    fn bar() / {Telemetry<Full>}
+    fn baz() / {Telemetry<Power | Thermal>}
+  multi-scope : Telemetry-row combined via type-level union
+  scope hierarchy : Full ⊇ all-others, combinable-via ⊔
+  inheritance : callee's scope ⊑ caller's scope (narrowing OK, widening error)
+
+§ COMPILE-TIME PROBE INSERTION
+  HIR pass : for-each fn with {Telemetry<S>} :
+    wrap body with scope-begin + scope-end probes
+    per-op if scope=Full : instrument hot-paths
+  MIR cssl.telemetry.probe<scope, kind> op
+  lowering :
+    CPU : emit RDTSC|PAPI|ETW calls bracketing region
+    GPU : emit vkCmdWriteTimestamp|ze event before+after dispatch
+    Power/Thermal : emit zes* sampling calls (sampling-thread-driven)
+  overhead-budget :
+    Counters scope : ≤ 0.5% runtime
+    Full scope : ≤ 5% runtime (dev/profiling only)
+    Audit scope : ≤ 0.1% (rare-event, signed)
+
+§ RING-BUFFER IMPLEMENTATION
+  struct TelemetryRing<SIZE : usize> : ref {
+    head : AtomicU64  // producer-index (wraps)
+    tail : AtomicU64  // consumer-index (lags head)
+    slots : [TelemetrySlot ; SIZE]
+    overflow_count : AtomicU64
+  }
+  struct TelemetrySlot : @layout(cpu) @layout(std430) {
+    timestamp_ns : u64
+    scope : u16
+    kind : u16
+    thread_id : u32
+    cpu_or_gpu_id : u32
+    payload : [u8 ; 40]     // inline small-payload
+    payload_extern_ptr : u64 // nullable, for large-payloads
+  }
+  producer : atomic-fetch-add head, write-slot, advance-visible-count
+  consumer : lock-free drain, exporter-thread consumes
+  overflow : count-only (never-block), telemetry prefers lossy-non-blocking
+  size default : SIZE = 2²⁰ slots (64 MB ring @ 64 B/slot)
+  tunable via @telemetry_ring_size<N> module-attribute
+
+§ LEVEL-ZERO SYSMAN (R18 primary backing on Intel)
+  subsystem : zes* API, separate from ze-compute but same-driver
+  init : zesInit(0) at startup
+  device-handles : zesDeviceGetProperties enumerated
+  sampling-thread :
+    dedicated-thread @ kernel-priority
+    100 Hz default sampling rate (10ms interval)
+    per-sample : zesPowerGetEnergyCounter, zesTemperatureGetState,
+                  zesFrequencyGetState, zesEngineGetActivity, zesMemoryGetBandwidth
+    append to TelemetryRing with scope=Power|Thermal|Frequency|etc
+  power-budgets : zesPowerSetLimits enforces {Power<budget>} runtime-bound
+  thermal-budgets : zesTemperatureGetThresholds consulted for {Thermal<limit>}
+  {Power<budget>} violation : logged as {Audit<"power-breach">} + optional
+    hard-limit via zesPowerSetLimits
+
+§ VULKAN FALLBACK (non-Intel or L0 unavailable)
+  VK_EXT_calibrated_timestamps : CPU-GPU timestamp correlation
+  VK_QUERY_TYPE_TIMESTAMP : per-command timing
+  VK_QUERY_TYPE_PIPELINE_STATISTICS : shader-stage counts
+  NonSemantic.Shader.DebugInfo.100 : per-instruction source-correlation
+  VK_EXT_debug_utils : structured spans (VkQueueBeginDebugUtilsLabel)
+  limitations : no direct-power/thermal (only indirect via GPU-usage%)
+
+§ CPU-BACKEND TELEMETRY
+  Linux : PAPI for hardware-counters + /proc/self/stat for sched-metrics
+  Windows : ETW (Event Tracing for Windows) + Performance Counters
+  Mac : Metal HUD (Apple-Silicon) + mach_absolute_time
+  fallbacks : RDTSC portable (x86), ARM-cycle-counter (AArch64)
+
+§ OPENTELEMETRY EXPORTER
+  implements OpenTelemetry protocol (OTLP) v1.2
+  exports :
+    metrics : counters, histograms, gauges (per-TelemetryScope kind)
+    traces : spans with parent-child (via Spans scope)
+    logs : structured events (Events scope)
+  transport : gRPC (primary), HTTP (fallback)
+  endpoint : configurable via @exporter_endpoint("grpc://collector:4317")
+  batching : 100ms aggregation window, non-blocking
+  compatibility :
+    Grafana / Tempo (traces)
+    Prometheus (metrics via OTLP-bridge)
+    Jaeger (traces, legacy)
+    DataDog / NewRelic (vendor OTLP endpoints)
+
+§ CHROME-TRACE EXPORTER
+  compatible with chrome://tracing + Perfetto viewer
+  format : chrome-trace JSON Object Format
+  useful-for : ad-hoc local-profiling without OTLP-collector setup
+  flag : --chrome-trace=path.json emits on-exit
+
+§ AUDIT-CHAIN (§§ 11 + R16)
+  purpose : tamper-evident record of-all {Audit<dom>} events
+  structure : append-only linked-list signed-per-entry
+  struct AuditEntry : @layout(cpu) {
+    prev_hash : [u8 ; 32]      // BLAKE3 of-previous-entry
+    timestamp_ns : u64
+    domain : String           // Audit<dom> tag
+    principal : PrincipalId
+    ifc_label : L
+    effect_context : EffectRow
+    ir_location : SourceLocation
+    signature : [u8 ; 64]     // Ed25519 signed by Apocky-key-chain
+  }
+  storage : append-to-ring (scope=Audit), periodic-flush-to-disk
+  chain-root : genesis-entry signed by Apocky-Root-key
+  verification : anyone with public-key can-reconstruct-and-verify
+  PRIME-DIRECTIVE : audit-chain CANNOT be disabled
+    audit-append-failure → process-abort (never-silently-skip)
+
+§ SnapshotImage TYPE (§§ 18 integration)
+  struct SnapshotImage : iso {
+    ring_snapshot : [TelemetrySlot ; SIZE]
+    audit_chain_tail : AuditEntry
+    timestamp_range : (u64, u64)
+    schema_version : u32
+    signature : [u8 ; 64]
+  }
+  Image::snapshot includes-telemetry snapshot automatically
+  Image::restore resumes-telemetry from saved-state
+
+§ COMPILE-TIME TELEMETRY-SCHEMA
+  @derive(TelemetrySchema) on struct produces :
+    fn register_telemetry_schema() -> TelemetrySchemaId
+    emits at startup, consumable by exporter
+    ≡ self-describing telemetry (consumers know payload-layout without-out-of-band)
+  @type_info × telemetry : comptime-reflection over schema-registry (§§ 13)
+
+§ RUNTIME CONFIG
+  env-var : CSSL_TELEMETRY_LEVEL = off | counters | full | audit-only
+  env-var : CSSL_TELEMETRY_EXPORTER = otlp-grpc | chrome-trace | none
+  env-var : CSSL_TELEMETRY_SAMPLING_HZ = 100 (default)
+  env-var : CSSL_TELEMETRY_RING_SIZE = 1048576 (default)
+  release-builds : default off (zero-overhead) unless-build-flag
+  dev-builds : default counters (low-overhead)
+  profile-builds : default full (instrumentation-heavy)
+
+§ R18 DRIVER-VERSION GATING
+  Level-Zero : probe via zeInit + zeDriverGetProperties
+    if-unavailable : fall-back-to Vulkan VK_EXT_calibrated_timestamps
+    log warning : "L0 unavailable, Power/Thermal telemetry degraded"
+  Intel Arc driver 32.0.101.8629+ : full zes* available
+  older-drivers : partial (warn + degrade)
+
+§ PRIME-DIRECTIVE ENFORCEMENT
+  telemetry-payloads INHERIT IFC-labels from sources (§§ 11)
+  secret<T, L> data in telemetry-record : requires declass-policy
+  exporter-endpoint external : emits {IO, Sensitive<"telemetry-export">}
+    requires audit-policy + Privilege<level>
+  ∀ telemetry-export outside-machine : {Audit<"telemetry-egress">} logged
+
+§ INTERACTION WITH OTHER EFFECTS
+  {PureDet} × {Telemetry<Full>} : telemetry-overhead affects bit-exact-timing
+    resolution : telemetry-scope=Counters (timestamp-only) ≡ still-pure-det
+    full-instrumentation disables {PureDet} by-construction
+  {Realtime<p>} × {Telemetry} : bounded-overhead-required
+    telemetry-scope=Counters ≡ OK (< 0.5% overhead)
+    telemetry-scope=Full ≡ requires Realtime<Best-Effort> not Realtime<Crit>
+  {NoAlloc} × {Telemetry} : ring-pre-allocated ∴ no-alloc-at-runtime ✓
+
+§ EXAMPLES
+
+  // Audio-callback with Counters-level telemetry
+  fn audio_callback(buf : &mut [f32])
+    / {CPU, NoAlloc, NoUnbounded, Deadline<1ms>, Realtime<Crit>,
+       Telemetry<Counters>}
+  {
+    // compiler-inserts scope-begin/scope-end probes
+    for s in buf { *s = next_sample(); }
+  }
+
+  // Frame-render with Full telemetry in dev, Counters in release
+  @telemetry_level(dev = Full, release = Counters)
+  fn render_frame(scene : &Scene)
+    / {GPU, Deadline<16ms>, Power<225W>, Thermal<85C>, Telemetry<auto>}
+  {
+    // auto = resolves to dev/release level at-build
+  }
+
+  // Custom counter
+  counter pixel_rejects : u64 scope=Counters
+  fn march_pixel(ray : Ray) -> Option<Hit> / {GPU, Telemetry<Counters>} {
+    if reject_early(ray) {
+      pixel_rejects += 1
+      return None
+    }
+    ...
+  }
+
+∎ TELEMETRY

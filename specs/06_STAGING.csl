@@ -1,0 +1,114 @@
+# 06 : STAGED COMPUTATION (F4 v2)
+# ══════════════════════════════════════════════════════════════════
+
+§ GOAL
+  Futamura projections P1, P2, P3 all natively-expressible
+  P1 : spec(int, src) → compiled-prog                   — specialization
+  P2 : spec(spec, int) → compiler                       — compiler-from-interpreter
+  P3 : spec(spec, spec) → compiler-generator            — compiler-of-compilers
+  ≡ shader-permutation hell, DSL-compiler-hand-rolling eliminated
+
+§ @staged ANNOTATION
+  @staged fn eval_scene<S : Scene>(p : vec3) -> f32 / {GPU} {
+    match S::shape {
+      Sphere(c, r) => length(p - c) - r
+      Union(a, b)  => min(eval_scene::<a>(p), eval_scene::<b>(p))
+      ...
+    }
+  }
+  usage :
+    const MY_SCENE : Scene = ... ;   // comptime-known
+    eval_scene::<MY_SCENE>(point)    // fully-specialized shader emitted
+
+§ STAGE-INDEX + COMPTIME-KNOWN
+  ∀ @staged type-param must be comptime-known at call-site
+  ∀ @staged value-param via const-generics
+  violation : "non-comptime value passed to @staged type-param"
+
+§ COMPTIME EVALUATION
+  #run expr  — Jai-style arbitrary-expr-eval at-compile
+  const-fn + const-block :
+    const LUT : [f32; 256] = #run generate_sine_table();
+    const CONFIG : Scene   = #run load_scene_file("level1.scene");
+  pure-only : comptime fns N! {IO, Alloc, DetRNG} unless-sandboxed-handler
+  execution-model : compiled-native-not-interpreted (avoid Zig-20×-slow)
+    ≡ same-backend compiles comptime-bodies → native-throwaway-obj
+    ≡ executed during compilation, results embedded in MIR
+
+§ COMPTIME REFLECTION (§§ 02 F6)
+  @type_info(T)   → { fields, methods, attrs, IFC-labels, cap }
+  @fn_info(f)     → { params, effect-row, IFC, attrs, return }
+  @module_info(M) → { exports, imports, globals, telemetry-schema }
+  @telemetry_info → { active-scopes, ring-size, exporter-config }
+
+§ @staged SEMANTICS (MIR-level partial-eval)
+  phase-order :
+    parse → ast
+    elaborate → hir (effects + IFC-labels + caps-checked)
+    macro-expand (hygienic, §§ 13)
+    monomorphize → mir cssl-dialect generic-instances
+    ★ @staged-specializer → per-(fn, stage-args) clone + const-prop + DCE
+    AD-pass (§§ 05)
+    Jet expansion (§§ 17)
+    IFC-check + declassification-validate
+    evidence-passing (effects → plain ops)
+    SMT-discharge (§§ 20)
+    telemetry-probe insertion (R18)
+    structured-CFG validate
+    dialect-conversion to-target
+
+§ SCENE-EVALUATOR PATTERN (LoA-killer)
+  const LEVEL_1 : Scene = Scene::Union {
+    a: Scene::Sphere { center: vec3(0, 0, 0), radius: 1.0 },
+    b: Scene::Box    { center: vec3(2, 0, 0), half: vec3(0.5) },
+  };
+  @staged fn render<S : Scene>(cam : Camera) -> Image
+       / {GPU, Deadline<16ms>, Telemetry<Counters>}
+  {
+    for-pixel (x, y) { march::<S>(cam.ray(x, y)) }
+  }
+  render::<LEVEL_1>(cam)   // compiler emits specialized SPIR-V blob
+                           // NO runtime union-dispatch
+                           // NO preprocessor permutation
+
+§ FUTAMURA P1 (specialization) — native
+  @staged already-implements P1 per call-site
+
+§ FUTAMURA P2 (compiler-from-interpreter) — §§ 19
+  given @staged fn interpret<Program : AST>(input) / ε
+  partial-eval with concrete Program + symbolic input
+  → specialized-prog ≡ "compiled" Program
+  stdlib pattern : `compile_dsl<DSL, Program>` generator
+
+§ FUTAMURA P3 (compiler-of-compilers) — §§ 19
+  given @staged interpret and @staged specializer
+  spec(spec, interpret) → compiler-generator
+  CSSLv3 compiler self-bootstraps via P3 (§§ 01+19)
+
+§ SHADER-PERMUTATIONS SOLVED
+  traditional : #ifdef USE_SHADOW ... × N-features → 2^N blobs
+  @staged : shader compiled-once per-used-feature-combo
+  unused-features DCE'd automatically
+  build-time cache keyed (stage-arg-hash, source-hash, target-profile)
+
+§ HOT-RELOAD INTEGRATION (§§ 13+18)
+  feel.toml / config-change → re-evaluate @staged inputs
+  → recompile affected-shaders only
+  → swap SPIR-V blobs on GPU (VkShaderModule create/destroy)
+  incremental cache + orthogonal-persistence (§§ 18) preserves engine state
+
+§ RELATIONSHIPS
+  F1 × F4 : bwd_diff(@staged fn) → AD post-specialization (§§ 05)
+  F2 × F4 : refinement-checks per-specialization → tighter-bounds
+  F3 × F4 : effect-row per-specialization → prove {Deadline<N>} per scene
+  F5 × F4 : IFC-labels propagated through specialization
+  F6 × F4 : telemetry-probes per-specialization (per-usage-site scopes)
+  R8 × F4 : handler-contexts preserved through staged-specialization
+
+§ LIMITATIONS
+  ◐ @staged bodies bounded-side-effects (comptime-sandboxed-only)
+  ◐ recursion-within-@staged bounded (partial-eval must-terminate)
+  ✗ @staged across DSO-boundaries — all @staged in same compilation-unit
+  ◐ stage-time alloc goes to compiler-arena (freed post-emission)
+
+∎ STAGING

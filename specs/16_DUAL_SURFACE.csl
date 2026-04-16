@@ -1,0 +1,137 @@
+# 16 : DUAL-SURFACE — CSLv3-native + Rust-hybrid, unified HIR
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  CSSLv3 accepts TWO surface syntaxes that parse to SAME HIR :
+    CSLv3-native  : density=sovereignty, Apocky+Claude primary
+    Rust-hybrid   : conventional-ergonomic, external-contributor bridge
+  both semantically-identical • formatter round-trips between them
+  cross-reference : CSLv3 parser (cslparser pkg) reused via §§ 14_CSSLv3_BRIDGE.csl
+
+§ MODE-DETECTION
+  file-extension signal : .cssl-csl | .cssl-rust | .cssl (auto-detect)
+  first-non-comment-line signal :
+    starts with § + glyph → CSLv3-native
+    starts with `module` | `use` | `fn` | `struct` → Rust-hybrid
+    ambiguous : default Rust-hybrid, warn + recommend explicit
+  per-file-pragma :
+    #![surface = "csl"]  or  #![surface = "rust"]
+  mixed-mode forbidden within single file (would-confuse tooling)
+
+§ RUST-HYBRID SURFACE
+  detailed in §§ 09_SYNTAX (primary specification)
+  conventional : keywords + braces + explicit-syntax
+  target audience : external contributors, docs, tutorials, onboarding
+
+§ CSLv3-NATIVE SURFACE
+  based on : CSLv3 repo C:\Users\Apocky\source\repos\CSLv3
+  tokenizer : 71-glyph table (§§ 12_TOKENIZER.csl of CSLv3 repo)
+  grammar : §§ 13_GRAMMAR_SELF.csl of CSLv3 repo
+  compound-operators : .(of) +(and) -(that-is) ⊗(having) @(at)
+  morpheme-stacking : 'd 'f 's 't 'e 'm 'p 'g 'r suffixes
+  evidence-markers : ✓ ◐ ○ ✗ ⊘ △ ▽ ‼
+  modals : W! R! M? N! I> Q?
+  think-blocks : §P (process) §D (design) §T (theorem) §S (specification) §C (code)
+
+§ DUAL-SURFACE EXAMPLE : same fn both-surfaces
+
+  # Rust-hybrid form
+  @differentiable
+  @lipschitz(k = 1.0)
+  fn sphere_sdf(p : vec3, r : f32'pos) -> f32 {
+    length(p) - r
+  }
+
+  # CSLv3-native form
+  § sphere_sdf ≡ @differentiable ⊗ @lipschitz<k=1.0>
+    I> length(p).(of).vec3 - r.(of).f32'pos
+    → f32
+    ✓ Lipschitz-1 by-construction
+    ✓ @differentiable ⇒ bwd_diff yields O(1) normal
+
+  both → same HIR node :
+    HirFn {
+      name: "sphere_sdf",
+      attrs: [@differentiable, @lipschitz(1.0)],
+      params: [(p, vec3), (r, f32{v : f32 | v > 0})],
+      return: f32,
+      body: Sub(Length(p), r),
+      effect_row: ⟨⟩,
+      ifc_label: ⊥,
+      cap: val,
+    }
+
+§ DUAL-SURFACE EXAMPLE : fn with effects
+
+  # Rust-hybrid
+  @staged
+  fn render_scene<S : Scene>(cam : Camera) -> Image
+    / {GPU, Deadline<16ms>, NoAlloc, Power<225mW>, Telemetry<Counters>}
+  {
+    for (x, y) in grid(cam.size) |> parallel {
+      let ray = cam.ray(x, y)
+      let hit = ray_march::<S>(ray) ?: return background()
+      emit pixel(x, y, shade(hit, bwd_diff(S::eval_sdf)(hit.pos)))
+    }
+  }
+
+  # CSLv3-native
+  § render_scene<S.(of).Scene> ≡ @staged
+    → Image.(of).cam.(of).Camera
+    / ⟨ GPU ⊗ Deadline<16ms> ⊗ NoAlloc ⊗ Power<225mW> ⊗ Telemetry<Counters> ⟩
+    §P §§ for-pixel
+      (x,y).∈ grid.(of).cam.size ▷ parallel
+      ray ≡ cam.ray(x,y)
+      hit ≡ ray_march<S>(ray) ? : return background()
+      emit pixel(x, y, shade(hit, bwd_diff(S::eval_sdf)(hit.pos)))
+    ✓ specialized per-Scene @ compile
+
+§ PARSER UNIFICATION (HIR)
+  each surface has its own lexer + parser → distinct CST
+  each CST → elaborator → unified HIR
+  downstream (MIR, LIR, codegen) : surface-agnostic
+  diagnostic : errors reference original surface (source-map preserved)
+
+§ FORMATTER (csslfmt --mode=X)
+  modes :
+    --mode=rust-hybrid        canonical Rust-hybrid form
+    --mode=csl-native         canonical CSLv3-native form
+    --mode=rust-compact       minimal-whitespace Rust-hybrid
+    --mode=csl-dense          maximal-compression CSLv3 (Apocky-preferred)
+    --mode=literate           markdown-with-code-blocks
+    --mode=ascii-only         no Unicode glyphs (for legacy tooling)
+  round-trip invariant : mode-X → mode-Y → mode-X reproduces original
+
+§ IDE + LSP INTEGRATION
+  both surfaces get : syntax-highlight, autocomplete, hover, goto-def,
+                      diagnostic-lenses, rename, formatting
+  LSP server (stage0) : single server, surface-detect-per-buffer
+  VS Code extension : one extension, both surfaces
+  tree-sitter grammars : one for each surface
+  reuse cslparser (from CSLv3 repo) for CSLv3-native surface
+
+§ CROSS-SURFACE CITATION
+  in Rust-hybrid : `§ I> ...` comments embed CSLv3-CoT
+  in CSLv3-native : `§C ... §C` blocks embed Rust-hybrid code-fragments
+  both pass through tooling transparently
+
+§ MIGRATION WORKFLOW
+  Apocky writes in CSLv3-native @ high velocity
+  csslfmt --mode=rust-hybrid → external-docs extracted
+  both forms checked-into repo (canonical = CSLv3-native for Apocky-repos)
+  CI verifies round-trip
+
+§ RATIONALE FOR DUAL
+  single-surface : forces tradeoff
+    CSLv3-native only : external onboarding blocked
+    Rust-hybrid only : Apocky loses density-sovereignty
+  dual-surface : no-tradeoff, one-time parser-doubling cost
+  HIR-unified : all downstream work shared
+
+§ DEPENDENCIES
+  CSLv3 parser/cslparser package (canonical, §§ 14_CSSLv3_BRIDGE of CSLv3 repo)
+  csslfmt (CSSLv3 formatter, new, lives in CSSLv3/compiler-rs/src/fmt/)
+  LSP server (§§ 23 testing ties in for diagnostics)
+  tree-sitter grammars (external, versioned with compiler)
+
+∎ DUAL_SURFACE

@@ -1,0 +1,197 @@
+# 13 : MACROS — Racket-hygienic + comptime-reflection unified
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  macro-system = hygienic + declarative + comptime-reflective
+  unified with @staged (§§ 06) and Futamura-P3 (§§ 19)
+  macros are hand-written-specializers ≡ partial-eval input
+  ≡ R3 ≡ R9 shared substrate
+
+§ LINEAGE
+  Scheme/Racket : syntax-rules + syntax-case + syntactic-closures (Dybvig)
+  Rust : macro_rules + proc-macros (hygienic-by-context)
+  Julia : @macro with quote/unquote
+  Terra : two-language staging (Terra-host + Lua-meta)
+  we adopt : Racket-grade hygiene + Rust-surface-ergonomics + Terra-two-lang
+
+§ THREE MACRO TIERS
+  Tier-1 : @attr-macros  — transform-annotated-item-in-place
+    @differentiable fn f(...) { ... }
+    @staged fn g<S>() { ... }
+    @derive(Debug, Clone, IDifferentiable) struct S { ... }
+    registered via attr-macro-declaration, invoked compiler-side
+  Tier-2 : fn-like macros  — transform-call-site-into-expanded-expr
+    vec![1, 2, 3]
+    println!("fmt {}", arg)
+    static_assert!(P)
+    registered via macro-declaration
+  Tier-3 : #run comptime  — arbitrary pure-comptime-eval
+    const T : [f32 ; 256] = #run sine_table();
+    includes full @type_info / @fn_info / @module_info reflection
+
+§ HYGIENE MODEL (Racket-lineage)
+  each macro-expansion carries a marks-set
+  identifiers carry lexical-context
+  binder-introduction : macro-bound ids get-fresh-marks
+  free-id comparison : marks + binding-context
+  rename-on-capture : automatic via mark-introduction
+  ≡ no unintended variable-capture possible
+  ≡ no scope-pollution
+
+§ SYNTAX-OBJECT TYPE
+  type SyntaxObject : iso {
+    node : AstNode
+    marks : MarksSet
+    lexical-ctx : Scope
+    srcloc : SourceLocation
+  }
+  operations :
+    quote(expr) : AST → SyntaxObject
+    unquote(sobj) : SyntaxObject → AST (inside quote)
+    quasiquote / unquote-splicing
+    datum->syntax / syntax->datum for codewalking
+  preserved through macro-expansion + @staged specialization
+
+§ DECLARATIVE MACROS (Tier-2 surface)
+  macro vec {
+    () => { Vec::new() }
+    (elem; count) => { Vec::from_elem($elem, $count) }
+    (e1, e2, ..., en) => { {
+      let mut v = Vec::with_capacity($count);
+      $( v.push($e); )*
+      v
+    } }
+  }
+  pattern-syntax :
+    $ident : capture-one-token / AST-node
+    $ident:ty : type-constrained capture
+    $( ... )* : zero-or-more repetition
+    $( ... ),+ : one-or-more with separator
+  expansion : procedural at macro-call-site, hygiene auto-applied
+
+§ PROCEDURAL MACROS (Tier-1 surface)
+  @proc-macro-attr
+  fn derive_serde(item : SyntaxObject) -> SyntaxObject / {Privilege<Root>, Audit<"proc-macro">} {
+    let info = @type_info(item);
+    quote! {
+      impl Serialize for #{item.name} {
+        fn serialize(&self) -> String {
+          #{ generate_ser_body(info) }
+        }
+      }
+    }
+  }
+  runs at-compile-time inside compiler-sandbox
+  pure-only : cannot perform {IO, Alloc, DetRNG} beyond comptime-arena
+  errors via compile_error!("message") or panic
+
+§ COMPTIME REFLECTION API (compiler-built-in)
+  @type_info(T) : TypeInfo {
+    kind : {Struct, Enum, Tuple, Fn, Array, Slice, ...}
+    fields : [FieldInfo]    // (name, type, cap, ifc-label, attrs)
+    methods : [MethodInfo]
+    attributes : [AttrInfo]
+    ifc_label : L
+    cap : Cap
+    size : usize
+    align : usize
+    layout : LayoutInfo
+  }
+  @fn_info(f) : FnInfo {
+    params : [ParamInfo]
+    return_type : TypeInfo
+    effect_row : EffectRow
+    attributes : [AttrInfo]
+    is_differentiable : bool
+    is_staged : bool
+    source : SourceLocation
+  }
+  @module_info(M) : ModuleInfo {
+    exports : [ItemInfo]
+    imports : [ImportInfo]
+    globals : [GlobalInfo]
+    telemetry_schema : TelemetrySchema
+  }
+  @telemetry_info : { active_scopes, ring_size, exporter_config, ... }
+
+§ HYGIENE × CAPS (§§ 12)
+  macro-introduced bindings respect capability-inference
+  macro expansion cannot silently-coerce iso → ref
+  explicit cap-change in macro-body : via cap-operator + Audit
+
+§ HYGIENE × IFC (§§ 11)
+  macro-introduced computations inherit macro-caller IFC-context
+  macro CANNOT declassify (declass requires {Privilege<s>}
+    which macro-body-context doesn't inherit)
+  macro CAN add {Audit<dom>} to expanded-fn (transparent to user)
+
+§ HYGIENE × EFFECTS (§§ 04)
+  macro-introduced effects added-to call-site's effect-row
+  compiler reports : "macro vec! adds {Alloc} to this fn's effects"
+  user can constrain : @deny_effect(Alloc) blocks macros that-would-add-Alloc
+
+§ HYGIENE × STAGING (§§ 06 + 19)
+  @staged macros can specialize per-stage-arg
+  macro-expansion happens BEFORE @staged-specialization
+  ⇒ macros see pre-specialization MIR
+  ⇒ expanded code participates in specialization passes downstream
+
+§ FUTAMURA CONNECTION (§§ 19)
+  any macro is a manually-written specializer
+  macro<args> → expanded-MIR-form ≡ hand-crafted partial-eval
+  Futamura-P2 : specializer writes macros automatically from interpreter
+  CSSLv3 ships builtin-specializer as P2-reference-impl
+
+§ DEBUGGING MACROS
+  --expand-macro=name flag : dump expanded source pre-elaborate
+  --trace-hygiene : show marks + lexical-ctx through expansion
+  source-map : expanded-fn source-lines point-back-to macro-call
+  error-messages : show both call-site and macro-definition-site
+
+§ STDLIB MACROS (v1)
+  vec!  format!  println!  eprintln!  assert!  debug_assert!
+  todo!  unreachable!  matches!
+  static_assert!  comptime-eval-assert
+  derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize,
+         IDifferentiable, CapInfer, IfcPropagate)
+  @proc-macros :
+    @layout(std140 | std430 | cpu | packed | uniform | scalar)
+    @requires(feature = "xmx" | "rt" | ...)
+    @test   @bench   @property-test
+
+§ EXAMPLES
+
+  // derive IDifferentiable componentwise
+  @derive(IDifferentiable)
+  struct Ray { origin : vec3, dir : vec3'unit, t_max : f32'pos }
+  // generates :
+  //   impl IDifferentiable for Ray {
+  //     associated type Tangent = Ray  // componentwise
+  //     fn zero_tangent() -> Ray { ... }
+  //   }
+
+  // comptime-generated lookup-table
+  const SINE_TABLE : [f32 ; 1024] = #run {
+    let mut t = [0.0_f32 ; 1024];
+    for i in 0..1024 {
+      t[i] = (i as f32 / 1024.0 * 2.0 * PI).sin();
+    }
+    t
+  };
+
+  // proc-macro : derive Telemetry-schema from struct
+  @derive(TelemetrySchema)
+  struct FrameStats {
+    wallclock_ms : f32
+    gpu_power_mw : f32
+    cache_hit_rate : f32
+  }
+  // generates registration for R18 ring-buffer auto-population
+
+§ SOUNDNESS
+  hygienic-scope theorem : no unintended capture (Scheme-proof lineage)
+  cap/IFC/effect soundness : macro-expansion preserves all typing
+  no-side-effects at comptime (pure-only sandbox)
+  reproducible : C99-anchor (R16) regenerates same expansions
+
+∎ MACROS

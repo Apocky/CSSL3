@@ -1,0 +1,39 @@
+# § I> Cargo.lock KEPT for R16 reproducibility (binary+library workspace)
+# § I> .perf-baseline/ + tests/golden/ committed → regression-ratchet
+
+# Rust build artifacts
+/compiler-rs/target/
+/target/
+**/*.rs.bk
+
+# IDE / editor ephemera
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage / profiling
+/coverage/
+*.profraw
+*.profdata
+flamegraph.svg
+perf.data*
+
+# Generated shader / codegen blobs (not committed — regenerated per-build)
+# (golden references stored under tests/golden/ by explicit extension)
+*.spv
+*.dxil
+*.msl.tmp
+
+# Caches
+.cache/
+/compiler-rs/target-doc/
+
+# Claude Code ephemera
+.claude/cache/

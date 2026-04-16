@@ -1,0 +1,165 @@
+# 12 : CAPABILITIES — Pony-6 + Vale-gen-ref + linear × handler
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  CSSLv3 adopts Pony-6-capability-matrix ¬ Austral-3-minimalist
+  ∵ multi-fiber + shared-scene-state requires fine-grained aliasing-control
+  Vale gen-refs interop via `ref` capability (packed u64)
+  linear-values × effect-handlers integrate via one-shot-resume (Eio pattern)
+
+§ LINEAGE
+  Pony : Clebsch et al. "Deny Capabilities for Safe, Fast Actors" (2015)
+  Vale : Verdagon et al. generational-references (2020+)
+  Eio  : OCaml-5 one-shot-continuations (2022)
+  we combine : Pony-6 + Vale-gen-refs-as-ref-cap + Eio-one-shot-linear
+
+§ THE SIX CAPABILITIES
+  cap     alias-local   alias-global   mut-local   mut-global    meaning
+  iso     ✗             ✗              ✓           ✓             isolated, linear
+  trn     ✓             ✗              ✓           ✗             writable, locally-aliased
+  ref     ✓             ✓              ✓           ✓             shared-mutable (gen-ref)
+  val     ✓             ✓              ✗           ✗             immutable-shared
+  box     ✓             ✓              ✗           ✗             read-only view
+  tag     ✓             ✓              ✗           ✗             opaque-handle (no deref)
+
+  iso ≡ deny-aliasing ∴ safe-to-send-across-threads
+  trn ≡ writable-unique-reference but can-freeze-to-val
+  ref ≡ shared-mutable needs runtime-check (Vale gen-ref)
+  val ≡ deep-immutable ∴ safe-to-share-freely
+  box ≡ accept-any-readable (iso/trn/val ⊆ box)
+  tag ≡ identity-only, no data-access (Handle<T> lowers to tag)
+
+§ CAPABILITY-DIRECTED SUBTYPING
+  iso <: trn   (relax unique → writable)    [explicit consume]
+  iso <: val   (freeze)                      [explicit freeze]
+  iso <: tag   (hide data)                   [explicit alias-as-tag]
+  trn <: box   (lose write access, keep read)
+  val <: box   (val is already immutable-readable)
+  iso <: box   (iso is transitively readable)
+  no auto-demotion iso → ref (aliasing must be explicit)
+
+§ ALIAS + DENY MATRIX (compile-time enforced)
+  operation-matrix checks :
+    passing iso to fn-expecting-iso : must move (consume origin)
+    passing iso to fn-expecting-box : aliasing blocked (no remaining use)
+    passing trn to fn-expecting-trn : borrow-tracks single-writer
+    passing ref to fn-expecting-ref : gen-check at call-site
+    passing val to any-readable : free
+    passing tag anywhere : no restriction, no read
+  rules enforced per-fn-parameter + per-struct-field
+
+§ VALE GEN-REFS AS ref<T>
+  struct GenRef<T> : @layout(cpu, std430) {
+    idx  : u40
+    gen  : u24
+  }  // packed u64
+  deref :
+    fn deref<T>(r : ref<T>, pool : &Pool<T>) -> Result<&T, StaleRef> {
+      if pool.generations[r.idx] == r.gen  { Ok(&pool[r.idx]) }
+      else { Err(StaleRef) }
+    }
+  invariant : pool.free(idx) → pool.generations[idx] += 1
+  ≡ V11-class stale-pointer bug : runtime-detected with context
+  compile-time : ref<T> cannot be-treated-as-raw-pointer
+  Handle<T> ≡ tag<T> at source-level, lowers to u64 gen-ref
+
+§ CAPABILITY × EFFECT-ROW
+  iso-params in fn-signature : caller must-consume
+  val-params : freely-aliasable
+  ref-params : effect-row includes {State<T>} automatically
+  trn-params : auto-freeze on scope-exit if-not-consumed
+
+§ LINEAR × HANDLER (R8 core mechanics)
+  rule : iso-value flowing through effect-handler → one-shot-resume only
+  rationale : multi-shot would duplicate-consume linear resource
+  enforcement : HIR-level type-check
+    handler { op(args) => body }
+      if body passes iso-values through resume :
+        resume must be single-call in dynamic-scope
+        OR typechecker rejects at handler-def-site
+  one-shot-resume syntax :
+    handler h for E {
+      fn op1(x : iso<T>) -> U {
+        // ... must resume once OR never ...
+        resume-once(result)      // explicit one-shot
+      }
+    }
+  multi-shot-resume syntax (non-linear values only) :
+    handler h for E {
+      fn op2(x : val<T>) -> U {
+        resume(a)
+        resume(b)                // multi-shot : explicit keyword
+      }
+    }
+  compile-error cases :
+    multi-shot resume with iso-argument → "linear value resumed twice"
+    forgetting resume with iso-argument → "linear leak in handler body"
+    escaping iso into handler-closure without consume → "aliasing in closure"
+
+§ CAPABILITY INFERENCE
+  compiler infers caps where-obvious :
+    local-let-binding : inferred from initializer + usage
+    struct-field : declared-required, never-inferred
+    fn-param : declared-required, never-inferred
+    return-type : declared-required, never-inferred
+  inference-rules :
+    single-use local → iso
+    read-only-after-init → val
+    written-multiple-times → trn
+    aliased-across-regions → ref
+
+§ CAPABILITY × REGION
+  region 'r { let x : iso<T> = ... }
+    x must be consumed-or-dropped before 'r exit
+  region 'r { let arena = Arena::<'r>::new(); let p : &'r val<T> = arena.alloc(...) }
+    p has lifetime 'r, cannot escape
+  {Region<'r>}-effect tracks region-scope in effect-row
+
+§ GENERICS + CAPABILITIES
+  fn-generic over capability :
+    fn transfer<T, C : Cap>(x : C<T>) -> C<T>
+  interface methods declare-capability :
+    interface Pool<T> {
+      fn alloc(self : ref<Self>) -> iso<T>
+      fn free(self : ref<Self>, v : iso<T>)
+    }
+
+§ INTEROP WITH EXISTING CODE
+  extern-C fn-params : default to-ref-capability
+  @layout(cpu) structs : Copy-POD mapped-to val-by-default
+  unsafe block (compiler-guarded, {Privilege<Kernel>} required) :
+    allows cap-coercion iso ↔ ref (escape hatch for FFI)
+    every unsafe-block emits {Audit<"unsafe-cap-coerce">}
+
+§ EXAMPLES
+
+  // iso buffer, linear
+  let buf : iso<Buffer<f32>> = Buffer::<f32>::new(1024);
+  consume_and_upload(buf);   // buf moved, no further use
+
+  // trn becomes val via freeze
+  let mut m : trn<Map<Key, Val>> = Map::new();
+  m.insert(k1, v1);
+  let frozen : val<Map<Key, Val>> = freeze(m);  // trn → val
+  spawn_reader_fibers(frozen);
+
+  // ref for shared mutable
+  let entities : ref<ArchetypePool<Entity>> = world.entities();
+  let h : Handle<Entity> = entities.spawn(...);   // shared-mut ok
+  match h.deref(entities) {
+    Ok(e) => render(e),
+    Err(Stale) => { /* handled gracefully */ }
+  }
+
+  // tag opaque
+  let opaque : tag<GpuTexture> = texture.as_tag();
+  queue_for_disposal(opaque);   // holder has id, cannot access pixels
+
+§ SOUNDNESS
+  Pony-paper soundness-theorem carries-over
+  extensions : gen-ref runtime-check, region-lifetime-effect,
+               handler-one-shot-enforcement
+  SMT-backed proofs per-module (§§ 20) discharge cap-obligations
+  proven-safe : no-use-after-free, no-data-race, no-linear-leak
+
+∎ CAPABILITIES

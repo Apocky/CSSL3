@@ -1,0 +1,65 @@
+# S9 : BOOTSTRAPPING STRATEGY
+# ══════════════════════════════════════════════════════════════════
+
+§ ZIG-BOOTSTRAP  ← §§ S9.1 ★ reference-model
+  § strategy :
+    stage0 = pre-built zig1.wasm (committed-to-repo)
+    + minimal-wasm2c (4K-LOC purpose-built)
+    + system-C-compiler
+    → stage1 = zig1 C-output
+    stage1 + self-hosted-source
+    → stage2 = zig-in-C (built by stage1 + system-cc)
+    stage2 + self-hosted-source
+    → stage3 = final-optimized-zig
+  ✓ chain-of-trust : everything is-auditable-source
+  ✓ no-LLVM needed for stage0 path (C-backend-only)
+  ✓ O(1) steps : no-per-release-binary-seed
+  I> CSSLv3 adopt SAME pattern :
+    stage0 : CSSLv3-core written-in-Rust (one-time throwaway)
+    stage0 outputs C OR LLVM-IR for platform-seed
+    stage1 : self-hosted CSSLv3-compiler built-by stage0
+    stage2 : self-optimizing CSSLv3 built-by stage1
+    @ stage1 throw-away-Rust-code ¬ maintain-dual-impl
+    ∵ avoid Zig-dual-impl maintenance-cost
+
+§ BOOTSTRAP-LANG-CHOICE  ← §§ S9.2
+  candidates : Rust • Zig • OCaml
+  Rust :
+    ✓ mature • MLIR-crate-bindings (mlir-sys)
+    ✓ Enzyme-autodiff integration via Rust-fork (autodiff-project-goal)
+    ✓ Apocky familiar + active LoA-Rust-repo
+    ✓ LLVM-bindings via inkwell
+    ✗ compile-time slower
+  Zig :
+    ✓ no-LLVM-dep @ stage0 possible
+    ✓ self-bootstrapping model-already-proven
+    ✗ comptime-20×-slow • stability-issues 2025
+  OCaml :
+    ✓ excellent-for-compiler (effect-handlers + PLT-ecosystem)
+    ✗ MLIR-bindings less-mature
+    ✗ learning-curve for Apocky (less-familiar)
+  ‼ DECISION : Rust for stage0
+    ∵ MLIR ecosystem + Enzyme + Apocky-familiarity
+    ∵ mlir-sys + melior crate mature-2024-2025
+    ∵ LLVM-support first-class
+
+§ MRUST-REFERENCE  ← §§ S9.3
+  ○ mrustc : Rust written-in-C++ minimal-Rust-compiler
+  ○ bootstrap Rust without prior Rust
+  I> CSSLv3 mirror : at-stage3 provide mrustc-style-seed
+    ≡ CSSLv3-written-in-C tarball OR C-backend-output-generator
+    ≡ bootstrap CSSLv3 without-prior-CSSLv3 tarball
+
+§ DEV-LOOP BOOTSTRAPPING  ← §§ S9.4 practical
+  phase-1 (weeks) : Rust-hosted CSSLv3 lexer+parser+AST
+  phase-2 (weeks) : type-checker minimal (no-refinement yet)
+  phase-3 : MLIR-codegen of cssl.sdf dialect → SPIR-V
+  phase-4 : run first LoA-demo-shader in CSSLv3
+  phase-5 : add effect-system (F3 minimal)
+  phase-6 : add autodiff via Enzyme-pass (F1)
+  phase-7 : add refinement-types (F2)
+  phase-8 : add staging (F4)
+  phase-9 : rewrite Rust-compiler → CSSLv3
+  phase-10 : drop Rust-impl
+
+∎ S9

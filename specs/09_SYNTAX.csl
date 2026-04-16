@@ -1,0 +1,232 @@
+# 09 : SYNTAX (v2) — dual-surface (CSLv3-native + Rust-hybrid)
+# ══════════════════════════════════════════════════════════════════
+# § I> detail of dual-surface design in §§ 16_DUAL_SURFACE
+# § I> this spec = surface-ergonomics reference
+
+§ DESIGN-PRINCIPLES
+  dual-surface : CSLv3-native (primary) + Rust-hybrid (bridge)
+  both parse → same-HIR (§§ 02+16)
+  formatter round-trips ASCII ↔ Unicode ↔ CSLv3-glyph
+  density=sovereignty (CC8) ∴ CSLv3-native preferred-where-possible
+  Rust-hybrid preserved for : external-contributors, docs, tutorials, onboarding
+
+§ FILE LAYOUT
+  .cssl      primary source (dual-surface auto-detected)
+  .cssl-csl  CSLv3-native explicit (parser skips mode-detection)
+  .cssl-rust Rust-hybrid explicit
+  encoding   UTF-8 + BOM-optional
+  module-decl : module com.apocky.loa.sdf  (first non-comment line)
+  imports    use std::math::vec3
+             use com.apocky.loa.engine::{Scene, Handle}
+
+§ RUST-HYBRID SURFACE (external-facing primary)
+
+  § lexical
+    ident       [_a-zA-Z][_a-zA-Z0-9']*
+    int-lit     [0-9][0-9_]* (suffix 'i32 'u64 'usize ...)
+    float-lit   [0-9]+.[0-9]+ (suffix 'f32 'f64 'f16)
+    char-lit    'c'
+    string-lit  "..."  raw-r#"..."#
+    operator    + - * / % << >> & | ^ ! ~ = == != <= >= < > && ||
+                -> → => ⇒ :: ∷ |> ▷ ?? ..
+    attr-start  @name(...)
+    comment-line  //
+    comment-block /* ... */
+    CoT-block   §{ ... §}  (parsed-optionally-by-tooling)
+    CoT-line    § I> | § W! | § N! until-EOL
+
+  § keywords
+    fn let const mut if else match while for in return break continue loop
+    struct enum interface impl type module use pub
+    effect handler perform with region
+    iso trn ref val box tag   (Pony-6 cap keywords)
+    comptime #run true false
+    @staged @differentiable @NoDiff @inline @sensitive @privileged @auditable
+    @layout @lipschitz @checkpoint @hot_reload_preserve
+    @Target @Backend @Telemetry @Power @Thermal @Verify
+
+  § expressions
+    literal   42  3.14  "hello"  'c'  true  false
+    ident     x  foo::bar::baz  self
+    call      f(arg1, arg2)   f::<T1, T2>(args)
+    field     obj.field  obj.method(args)
+    index     arr[i]   grid[vec3(x,y,z)]
+    cast      x as f32   x as T
+    pipeline  x |> f |> g    (▷ unicode)
+    lambda    |x : T| -> U { body }    \x. body  (short-form)
+    if-expr   if cond { a } else { b }       (value-producing)
+    match     match x { Some(v) => f(v), None => default }
+    block     { stmt1; stmt2; expr }          (final-expr = value)
+    range     0..N   0..=N   ..N   N..
+    spread    ..struct_instance
+
+  § statements
+    let : let x : T = expr | let mut x : T = expr
+    const : const FOO : T = comptime-expr
+    assign : x = expr | compound-ops (+= -= *= /= %= &= |= ^= <<= >>=)
+    if / while / for / loop / return / break / continue
+    perform : perform EffectName::op(args)
+    region-block : region 'name { ... }
+    with : with handler-expr { body }
+
+  § type-annotations
+    scalar : i32 f32 bool usize
+    refined : T'tag | {v : T | P(v)}
+    generic : Vec<T>  Handle<Entity>  fn(i32) -> i32
+    effect-row-in-fn-type :
+      fn(T) -> U / {E1, E2<N>}
+      fn(T) -> U / ε              (pure shorthand omits)
+    tuple : (T, U, V)
+    array : [T ; N]
+    slice : [T]
+    reference : &T  &mut T
+    cap : iso<T>  trn<T>  ref<T>  val<T>  box<T>  tag<T>
+
+  § item-level
+    fn-def :
+      fn f<T : Trait>(x : T, y : i32) -> U / ε
+        where T : Additive
+      {
+        body
+      }
+    struct-def :
+      struct Name<T> { field1 : T, field2 : i32 }
+    enum-def :
+      enum Option<T> { Some(T), None }
+    interface-def :
+      interface IDifferentiable {
+        associated type Tangent : Additive
+        fn zero_tangent() -> Tangent
+      }
+    impl-block :
+      impl<T : Additive> IDifferentiable for Vec<T> {
+        associated type Tangent = Vec<T>
+        fn zero_tangent() -> Tangent { ... }
+      }
+    effect-def :
+      effect State<S> {
+        fn get() -> S
+        fn set(v : S) -> ()
+      }
+    handler-def :
+      handler count_state(init : i32) for State<i32> -> i32 {
+        let mut s = init
+        fn get() -> i32 { s }
+        fn set(v : i32) -> () { s = v }
+        return s
+      }
+
+§ CSLv3-NATIVE SURFACE (Apocky+Claude primary)
+  (detail §§ 16_DUAL_SURFACE)
+  same-semantics-different-ergonomics :
+    § I> fn-def as prose-with-glyphs
+      § replaces keyword-heavy structure with compressed CSLv3 grammar
+      § morpheme-stacking for refinements
+      § §§ 12_TOKENIZER.csl from CSLv3-repo canonical glyph-set
+    example :
+      § sphere_sdf ≡ @differentiable @lipschitz<1.0>
+        I> length(p) - r
+        W! p ∈ vec3 • r ∈ f32'pos
+        → f32
+    → parser-uniformly → HIR (indistinguishable from Rust-hybrid at HIR)
+
+§ COMPILER-GLYPH OPS (dual-accept ASCII + Unicode)
+  -> and →             type-arrow / fn-return
+  => and ⇒             match-arm / implies
+  :: and ∷             path-sep / has-type
+  /= and ≠             not-equal
+  <= and ≤   >= and ≥  comparisons
+  forall and ∀
+  exists and ∃
+  |> and ▷             pipeline
+  and and ∧
+  or and ∨
+  not and ¬
+  elem-of and ∈
+  subset and ⊆
+  § and § (section-marker)
+  formatter auto-upgrades ASCII → Unicode on-save
+  both-forms round-trip-lossless
+  storage-form = Unicode UTF-8 (canonical)
+
+§ CoT-IN-COMMENTS (literate layer)
+  syntax :
+    §{ ...multi-line-CSL-block... §}      tooling-optionally-parsed
+    § I> single-line-insight until-EOL     lightweight, @ fn-level
+    § W! invariant-note
+    § N! negation-note
+  parser-default : skip-as-comment (compiler ignores body)
+  --lint-csl flag : parse + validate CSL-CoT consistency-with-code
+    (check attribute matches §{claims}, check refinements documented)
+  IDE-mode : syntax-highlight § I> W! N! etc
+  benefit : design-rationale preserved in-source, not lost-in-chat
+
+§ OPERATOR-PRECEDENCE (high → low)
+   1 : . field-access    :: path    () call    [] index
+   2 : unary -  !  ~  &  &mut  *  as
+   3 : * / %
+   4 : + -
+   5 : << >>
+   6 : &
+   7 : ^
+   8 : |
+   9 : == != < <= > >= ≤ ≥ ≠
+  10 : && ∧
+  11 : || ∨
+  12 : .. ..=
+  13 : |> ▷                       pipeline (left-assoc)
+  14 : = compound-assign          (right-assoc)
+  15 : ??                         null-coalesce / early-return-default
+
+§ ATTRIBUTE-BODY DSL
+  kv-list : @attr(key = value, key2 = value2)
+  positional : @attr(arg1, arg2)
+  comptime-expr-values : @lipschitz(k = 1.0)  @deadline(16ms)
+                         @power(budget_W = 225)  @thermal(limit_C = 85)
+
+§ FORMATTING RULES (csslfmt, rustfmt-lineage)
+  indent : 2-spaces (NOT tabs) — Apocky-pref
+  max-line : 100 chars
+  trailing-commas : always-in-multiline-collections
+  import-grouping : std / external / local (blank-line separated)
+  opening-brace : same-line (K&R)
+
+§ HYGIENE + MACROS (§§ 13)
+  @attribute-macros + #run comptime + hygienic classical-macros (Racket-lineage)
+  N! naive capture-the-scope macros (§§ 13 full formalism)
+
+§ EXAMPLE (99_SYNTHESIS canonical in Rust-hybrid)
+  §{
+    sphere_sdf = @differentiable O(1)-normal via bwd_diff (F1 × §§ engine)
+    Lipschitz-1 by construction ⇒ ray-march safe
+  §}
+  module com.apocky.loa.shapes.primitive
+
+  use com.apocky.loa.math::{vec3, length}
+
+  @differentiable
+  @lipschitz(k = 1.0)
+  fn sphere_sdf(p : vec3, r : f32'pos) -> f32 {
+    length(p) - r
+  }
+
+  § I> render_scene specialized per-scene via @staged (F4)
+  @staged
+  fn render_scene<S : Scene>(cam : Camera) -> Image
+    / {GPU, Deadline<16ms>, NoAlloc, Power<225W>, Thermal<85C>,
+       Telemetry<Counters>}
+  {
+    for (x, y) in grid(cam.size) |> parallel {
+      let ray = cam.ray(x, y)
+      let hit = ray_march::<S>(ray) ?: return background()
+      let n   = bwd_diff(S::eval_sdf)(hit.pos)   § ← F1 compiler-inserts
+      emit pixel(x, y, shade(hit, n))
+    }
+  }
+
+  effect Physics<World> {
+    fn step(dt : f32'pos) -> World
+    fn contact(a : Entity, b : Entity) -> Option<Hit>
+  }
+
+∎ SYNTAX

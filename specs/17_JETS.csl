@@ -1,0 +1,134 @@
+# 17 : JETS — higher-order AD + inverse-rendering stdlib
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  Jet<T, N> : arbitrary-order Taylor-expansion tracked-in-type
+  ≡ differential-geometry usable-directly
+  ≡ Hessian, third-order-opt, inverse-rendering, inverse-fluids native
+  extends §§ 05 AUTODIFF beyond first-order
+
+§ LINEAGE
+  Griewank + Walther "Evaluating Derivatives" (2008) — multi-order theory
+  Ceres-Solver Jet<T, N> (Google) — C++ jet-AD reference
+  Zygote.jl ForwardDiff.Dual — Julia nested-duals
+  Slang.D — first-order shader-AD (we extend)
+  Pearlmutter+Siskind 2007 — lambda-calculus forward-AD semantics
+  we extend : Jet<T, N> first-class-type, native MIR-op, GPU-compatible
+
+§ TYPE DEFINITION
+  Jet<T : IDifferentiable, N : usize> ≡
+    struct { terms : [T::Tangent ; N+1] }  // [primal, 1st, 2nd, ..., Nth]
+  Jet<T, 0> ≡ T
+  Jet<T, 1> ≡ DifferentialPair<T>
+  Jet<T, N> ⊆ Jet<T, M> where M ≥ N  (projection)
+
+§ OPERATIONS
+  jet_primal(j : Jet<T, N>) -> T                    — extract primal
+  jet_nth_deriv(j : Jet<T, N>, k : usize'idx<N+1>) -> T::Tangent
+  jet_compose(f : fn(Jet<A, N>) -> Jet<B, N>,
+              g : fn(Jet<C, N>) -> Jet<A, N>)
+              -> fn(Jet<C, N>) -> Jet<B, N>
+  jet_project<M : usize>(j : Jet<T, N>) -> Jet<T, M> where M ≤ N
+  jet<N>(f : fn(T) -> U) -> fn(Jet<T, N>) -> Jet<U, N>
+    // lift ordinary-fn to jet-transforming-fn
+
+§ ARITHMETIC RULES (chain-rule to Nth order)
+  Jet + Jet : componentwise-add Tangents
+  Jet · Jet : Leibniz-rule for products (convolution of coefficient arrays)
+    (f·g)^(n) = Σ_{k=0}^{n} C(n, k) · f^(k) · g^(n-k)
+  Jet / Jet : series-division (generate using reciprocal)
+  sin/cos/exp/log/sqrt : Faà di Bruno coefficients (compiler-built-in table)
+  composition : classical chain-rule generalized to multi-order
+
+§ LAZY Jet<T, ∞>  (co-inductive stream)
+  type LazyJet<T> : iso {
+    primal : T
+    tail : fn() -> LazyJet<T>  // thunk for next-order
+  }
+  operations compute-on-demand
+  use-cases : analytic-functions, series-solutions-of-ODEs
+  termination : user-enforces bounded-order-access via {NoUnbounded} effect
+
+§ MIR-LEVEL IMPLEMENTATION (§§ 02 + 15)
+  cssl.jet.construct<N>(primal, tangent_0, ..., tangent_N-1) -> Jet<T, N>
+  cssl.jet.project<M>(j : Jet<T, N>) -> Jet<T, M>
+  cssl.jet.primal(j) -> T
+  cssl.jet.nth_deriv(j, k) -> T::Tangent
+  AD-pass expansion :
+    jet<N>(f) : clone f, substitute ops with Jet-lifted-variants per rules-table
+    rules-table extends §§ 05 with multi-order-chain-rules
+    result : jet-transformed-fn that threads Jet<T, N> through computation
+  optimization :
+    @staged per-N : specialization-per-concrete-N eliminates variant-dispatch
+    dead-order-elim : if only primal+1st-deriv used, higher-orders DCE'd
+
+§ GPU JET (Arc A770)
+  Jet<f32, N> fits in register-file for small N (N ≤ 4 typical)
+  larger N : shared-memory or SSBO-spill
+  Jet<vec3, N> : (N+1) × 3 floats per-jet
+  XMX cooperative-matrix : Jet<mat<f32, K, K>, N> batched on matrix-engine
+  performance-model : N-th-order AD ~ N² × first-order-AD cost
+
+§ HESSIAN-VECTOR-PRODUCT
+  given @differentiable f : R^n -> R
+  hvp(f, x, v) = ∇²f(x) · v
+  implementation :
+    fn hvp<N : usize>(f : fn(vec<f32, N>) -> f32, x : vec<f32, N>, v : vec<f32, N>) -> vec<f32, N> {
+      let j : Jet<vec<f32, N>, 2> = Jet::construct(x, v, 0.0)
+      let r : Jet<f32, 2> = jet<2>(f)(j)
+      r.jet_nth_deriv(2)   // 2nd derivative = Hessian·v
+    }
+  fully-general Hessian : N² hvp-calls (or Jet<..., 2> on full-basis)
+
+§ INVERSE-RENDERING (stdlib v1, R12)
+  @differentiable fn render_pixel<Scene>(params : Params, ray : Ray) -> vec3
+       / {GPU}
+  optimizer-loop :
+    fn fit_shape(target_img : Image, lr : f32'pos, iters : u32) -> Params {
+      let mut params = initial_guess();
+      for _ in 0..iters {
+        let loss = image_loss(render_all_pixels(params), target_img);
+        let grad = bwd_diff(loss)(params).d_params;
+        params = params - lr * grad;
+      }
+      params
+    }
+  stdlib-canonical examples :
+    examples/differential_shape.cssl       SDF-parameter-fit
+    examples/material_estimation.cssl      BRDF-coefficient-recovery
+    examples/neural_denoiser_train.cssl    NN-training-via-CSSLv3
+    examples/pose_net_train.cssl           XeSS2 pose-estimation
+
+§ INVERSE-FLUIDS (stdlib v1)
+  @differentiable FluidGrid methods (from §§ 08 ENGINE)
+  simulate_n_steps<N : usize> @staged @differentiable :
+    given (init_state, boundary_forces) → final_state
+  inverse :
+    recover init_state from observed final_state
+    via : loss = ||simulated - observed||²,
+          minimize over init_state with bwd_diff
+  use-cases :
+    reconstructing cloud-formation from observed-silhouettes
+    tuning fluid-sim parameters to match reference footage
+    training NN-surrogate on inverse-simulation data
+
+§ HIGHER-ORDER SHADER OPTIMIZATION
+  ray-march convergence : 2nd-order Newton vs 1st-order gradient-descent
+  photon-mapping variance reduction : 3rd/4th-order importance-sampling
+  curvature-aware meshing : 2nd-order derivatives of SDF
+  all expressible via Jet<T, N> without hand-coding derivatives
+
+§ INTEGRATION WITH OTHER FEATURES
+  F1 × F4 : @staged jet<N> per-usage-specialized
+  F1 × F5 : Jet inherits IFC-label of input
+  F2 × F1 : refinement-types preserved through jet-lift
+  F3 × F1 : {Telemetry<Counters>} tracks per-order gradient-norms (R18)
+  F6 × F1 : XMX-utilization-counters when Jet<mat<>, N> batched
+
+§ LIMITATIONS
+  ◐ N must be comptime-known (use @staged for per-call-N)
+  ◐ lazy Jet<T, ∞> requires {NoUnbounded}-discipline
+  ✗ differentiating through {IO} — cannot be Jet-lifted
+  ◐ Jet + handler interaction : one-shot-resume only (§§ 12)
+
+∎ JETS

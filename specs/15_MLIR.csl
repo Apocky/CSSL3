@@ -1,0 +1,154 @@
+# 15 : MLIR — CSSLv3-MIR as MLIR-dialect
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  CSSLv3-MIR = MLIR-dialect from-day-one (R6)
+  reuse : Linalg + Affine + Transform + SCF + Vector + GPU + SPIR-V dialects
+  own : cssl-dialect for domain-specific ops
+  ≡ 10-years of MLIR passes usable-for-free
+
+§ LINEAGE
+  LLVM/MLIR project (Lattner et al. 2019+)
+  IREE : ML-compilation with MLIR (Google, Apache-2)
+  Mojo : Python-superset on MLIR (Modular)
+  Triton : GPU-kernels via MLIR (OpenAI)
+  CIRCT : hardware-design with MLIR
+  we adopt : dialect-pattern + Transform-dialect for staging
+
+§ CSSL-DIALECT OPS (custom)
+  cssl.diff.primal     @differentiable fn primal-variant
+  cssl.diff.fwd        forward-mode derivative
+  cssl.diff.bwd        reverse-mode derivative
+  cssl.jet.construct   build Jet<T, N>
+  cssl.jet.project     extract Nth Taylor-term
+  cssl.effect.perform  invoke operation of effect
+  cssl.effect.handle   install effect-handler
+  cssl.region.enter    start region-scope
+  cssl.region.exit     end region-scope (free arena)
+  cssl.handle.pack     construct Handle<T> from (idx, gen)
+  cssl.handle.unpack   extract (idx, gen)
+  cssl.handle.check    generation-validate
+  cssl.staged.splice   @staged expansion-site
+  cssl.staged.quote    AST-value in staged-context
+  cssl.staged.run      #run comptime-eval
+  cssl.macro.expand    tier-1/2 macro-expansion point
+  cssl.ifc.label       attach IFC-label to SSA-value
+  cssl.ifc.declassify  explicit declassification
+  cssl.verify.assert   SMT-obligation (§§ 20)
+  cssl.sdf.march       ray-march SDF'L<k≤1>
+  cssl.sdf.normal      bwd_diff-based normal
+  cssl.gpu.barrier     memory-barrier
+  cssl.gpu.subgroup.*  subgroup ops (shuffle, vote, arith)
+  cssl.xmx.coop_matmul cooperative-matrix multiply
+  cssl.rt.trace_ray    ray-tracing dispatch
+  cssl.rt.intersect    custom-intersection-shader
+  cssl.telemetry.probe<scope>  R18 probe-point
+
+§ REUSED MLIR DIALECTS
+  arith      integer + float arithmetic
+  scf        structured control-flow (scf.if, scf.for, scf.while)
+  cf         generic CFG (used rarely — we prefer scf)
+  func       function definitions + calls
+  memref     memory-reference (CPU-side buffers)
+  vector     fixed-width vector ops (SIMD)
+  tensor     multi-dim arrays
+  linalg     structured linear-algebra (matmul, conv, reduce)
+  affine     affine-loop-nests (polyhedral opt)
+  gpu        generic-GPU (thread-id, barrier, device-mem)
+  spirv      SPIR-V 1-to-1 ops
+  llvm       LLVM-dialect (we use subset for Cranelift bridge stage0)
+  transform  programmable pass-schedules (F4 × MLIR)
+
+§ TRANSFORM-DIALECT (F4 × R9 host-layer)
+  Transform-dialect from upstream MLIR expresses pass-schedules as-IR
+  CSSLv3 @staged specializer emits transform-ops :
+    transform.structured.tile   — loop-tiling with sizes
+    transform.structured.fuse   — loop-fusion
+    transform.gpu.map_parallel  — GPU-kernel-mapping
+    transform.interpreter       — runs transform-schedule on target-IR
+  @staged-call → transform-schedule → rewrites target-IR
+  ≡ staging becomes first-class IR-to-IR transformation
+  ≡ Futamura-P1 realized as Transform-dialect program
+
+§ STRUCTURED CFG PRESERVATION (CC4)
+  cssl + scf dialects used exclusively for control-flow
+  NO cf.br / cf.cond_br (unstructured) emitted from CSSLv3-source
+  compile-time rejection of unstructured-patterns
+  lowering to spirv-dialect preserves scf → OpSelectionMerge / OpLoopMerge
+  lowering to llvm-dialect (Cranelift stage0) decomposes scf → structured CLIF
+
+§ PASS-PIPELINE (MIR → LIR)
+  1 : cssl-to-cssl
+      monomorphization
+      macro-expansion (cssl.macro.expand → expanded ops)
+      @staged-specializer (transform-dialect driven)
+      AD source-transform (cssl.diff.* → expanded fwd/bwd ops)
+      Jet expansion (cssl.jet.* → tuple-of-tangent ops)
+      evidence-passing (cssl.effect.* → plain values + fn-calls)
+      IFC-propagation + declassification-validate
+      SMT-discharge (cssl.verify.assert → proof-obligations)
+      telemetry-probe insertion (cssl.telemetry.probe<scope>)
+      structured-CFG validate + region-lifetime check
+  2 : cssl-to-standard
+      cssl.region → memref.alloca + memref.dealloc
+      cssl.handle → arith + memref ops
+      cssl.sdf.march → scf.while + func.call
+      cssl.gpu.* → gpu.*
+      cssl.xmx.* → spirv cooperative-matrix ops
+      cssl.rt.* → spirv ray-tracing ops
+      remaining cssl.* → standard ops where-possible
+  3 : standard-optimization
+      canonicalization
+      cse (common-subexpression elimination)
+      loop-invariant-code-motion (LICM)
+      dead-code-elimination (DCE)
+      inliner (with effect-row-preserving inlining)
+      linalg-fusion (when linalg dialect used)
+      affine-opt (when affine dialect used)
+  4 : dialect-conversion to-target
+      spirv-dialect → rspirv builder (stage0) | owned emitter (stage1+)
+      llvm-dialect subset → Cranelift bridge (stage0)
+      cssl-owned-lowering → own-backend (stage1+)
+
+§ DIALECT DEFINITION (TableGen stage0)
+  include/cssl/Dialect/CSSL/IR/CSSLOps.td
+  each op :
+    name : "cssl.diff.primal"
+    operands : variadic<AnyType>
+    results  : variadic<AnyType>
+    attributes : ifc_label, cap, effect_row, source_loc
+    traits : Pure | HasEffects<...> | AlwaysSpeculatable | ...
+    verifiers : op-specific invariants
+    printer / parser : textual-MLIR format
+    canonicalization patterns : tblgen or C++ handwritten
+  stage1+ : same in CSSLv3-native attribute-definition
+
+§ INTEROP WITH EXTERNAL MLIR PROJECTS
+  IREE : possible-future-integration for ML-workload offload
+  Triton : not-integrated (we emit own GPU-kernels)
+  CIRCT : future FPGA-target via CIRCT dialects
+  Polygeist : not-used (C-to-MLIR bridge not-relevant)
+
+§ COMPILE-TIME OVERHEAD
+  stage0 with MLIR : ~200ms per-module fixed cost + per-op cost
+  acceptable for dev-loop (2s incremental target still met)
+  stage1+ : may strip MLIR-infrastructure if not-needed beyond staging
+  alternative stage1 path : emit custom-IR skipping MLIR (opt-in)
+    trade : lose Transform-dialect, gain ~50ms per-module
+
+§ DIAGNOSTIC + DEBUGGING
+  MLIR textual-format : human-readable IR dumps
+  --emit-mlir flag : dump IR at-each-pass
+  --dump-pass=<name> : isolate specific pass output
+  source-map preserved through all passes
+  error-messages reference CSSLv3 source-line via srcloc-attribute
+
+§ PROS vs CONS (addressed)
+  PRO : 10y of upstream passes reusable (linalg, affine, Transform, etc)
+  PRO : dialect-pattern is well-suited to CSSLv3's multi-abstraction layers
+  PRO : Transform-dialect ≡ F4-staging infrastructure
+  CON : C++ template-heavy (mitigated by Rust mlir-sys + melior bindings)
+  CON : docs-sparse (mitigated by stage1+ custom dialect in CSSLv3-native)
+  CON : compile-time-overhead (acceptable + has-escape-hatch)
+
+∎ MLIR

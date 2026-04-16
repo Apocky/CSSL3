@@ -1,0 +1,126 @@
+# CSSLv3 SPECS — INDEX + DEPENDENCY-DAG
+# ══════════════════════════════════════════════════════════════════
+# § I> this-file ≡ navigator • start-here
+# § I> canonical-reading-order : SYNTHESIS_V2 → 00 → 01 → then-per-feature-DAG
+# § I> ∀ spec-file CSLv3-native form • tokenizer+grammar in CSLv3-repo
+# § I> PRIME-DIRECTIVE ⊆ consent=OS ≡ threaded-through-all-specs
+
+§ STATUS ✓ v1-complete
+  25 files total (24 specs + 1 synthesis + this-README)
+  Session-date : 2026-04-16
+  Apocky-approved : awaiting-review
+  coding-agent : stage0-scaffold handoff-pending (§§ CLAUDE.md)
+
+§ FILE-MAP
+
+  SYNTHESIS_V2.csl       integrated-design 18-reframes + CC1..CC9 + PRIME-DIRECTIVE
+  00_MANIFESTO.csl       identity + F1..F6 + bug→feature + vertical-slice-floor
+  01_BOOTSTRAP.csl       stage0/1/2/3 + repo-layout + C99-anchor
+  02_IR.csl              HIR → MIR(MLIR-dialect) → LIR
+  03_TYPES.csl           base+generics+refinement+Lipschitz+layout+caps+effects+IFC
+  04_EFFECTS.csl         Koka-row-poly + 28+ built-in effects + evidence-passing
+  05_AUTODIFF.csl        Slang-D + source-to-source-MIR + Jet-hook + GPU-AD
+  06_STAGING.csl         @staged + #run + Futamura-P1 + scene-evaluator
+  07_CODEGEN.csl         no-LLVM + multi-backend + fat-binary + hot-reload
+  08_ENGINE.csl          compiler-known engine-types + RenderGraph
+  09_SYNTAX.csl          dual-surface lexical + operators + attributes
+  10_HW.csl              Arc A770 + Vulkan 1.4.333 + Level-Zero + SIMD
+  11_IFC.csl             Jif-DLM + lattice + declass + PRIME-DIRECTIVE-encoding
+  12_CAPABILITIES.csl    Pony-6 + Vale-gen-refs + linear×handler-one-shot
+  13_MACROS.csl          Racket-hygiene + comptime-reflection + proc-macros
+  14_BACKEND.csl         bespoke x86-64 + owned-emitters + host-submit-matrix
+  15_MLIR.csl            cssl-dialect + reused-dialects + Transform-dialect-host
+  16_DUAL_SURFACE.csl    CSLv3-native + Rust-hybrid + unified-HIR + formatter
+  17_JETS.csl            Jet<T,N> higher-order-AD + inverse-rendering-stdlib
+  18_ORTHOPERSIST.csl    Pharo-image + schema-migration + hot-reload-workflow
+  19_FUTAMURA3.csl       P1+P2+P3 + binding-time + self-bootstrap
+  20_SMT.csl             Z3/CVC5/KLEE + Lipschitz + SDF-convergence + proof-cache
+  21_EXTENDED_SLICE.csl  atmosphere/clouds/hair/ocean/spectral/XeSS2/audio
+  22_TELEMETRY.csl       R18 ring-buffer + Level-Zero-sysman + OTLP + audit-chain
+  23_TESTING.csl         oracle-modes + differential + power-regression + replay
+  THEOREMS.csl           soundness-claims + proof-obligations (see §§ THEOREMS)
+
+§ DEPENDENCY-DAG (partial-order • read-in-this-direction)
+
+  SYNTHESIS_V2
+    │
+    └──▶ 00_MANIFESTO
+          │
+          ├──▶ 01_BOOTSTRAP ──────────▶ 14_BACKEND ──▶ 07_CODEGEN
+          │                                 │
+          ├──▶ 10_HW ◀────────────────┐    │
+          │                           │    │
+          ├──▶ 03_TYPES ──┬──▶ 04_EFFECTS
+          │               │       │
+          │               │       ├──▶ 11_IFC
+          │               │       ├──▶ 12_CAPABILITIES
+          │               │       └──▶ 22_TELEMETRY
+          │               │
+          │               ├──▶ 20_SMT
+          │               │
+          │               └──▶ 02_IR ──▶ 15_MLIR ──▶ 07_CODEGEN
+          │                     │
+          │                     ├──▶ 05_AUTODIFF ──▶ 17_JETS
+          │                     │
+          │                     ├──▶ 06_STAGING ──▶ 19_FUTAMURA3
+          │                     │
+          │                     └──▶ 13_MACROS
+          │
+          ├──▶ 09_SYNTAX ──▶ 16_DUAL_SURFACE
+          │
+          ├──▶ 08_ENGINE ──▶ 21_EXTENDED_SLICE
+          │
+          ├──▶ 18_ORTHOPERSIST
+          │
+          └──▶ 23_TESTING (cross-cuts ∀ above)
+          
+  THEOREMS : cross-cuts ∀ (soundness-claims from every spec)
+
+§ READING-ORDERS (by-reader-intent)
+
+  § I> full-understanding   : top-to-bottom SYNTHESIS_V2 → 00 → 01 → ... → 23 → THEOREMS
+  § I> compiler-contributor : 01 → 02 → 15 → 14 → 07 → 13 → 20
+  § I> language-user        : 00 → 09 → 16 → 03 → 04 → 08 → 21
+  § I> engine-integrator    : 08 → 21 → 10 → 04 → 22 → 23
+  § I> verification-auditor : 11 → 20 → 22 → 18 → 23 → THEOREMS
+  § I> AD-researcher        : 05 → 17 → 06 → 19
+  § I> PRIME-DIRECTIVE-aud  : SYNTHESIS_V2 → 04 → 11 → 22 → THEOREMS
+
+§ CROSS-CUTTING-INVARIANTS (from SYNTHESIS_V2)
+  CC1 : structured-CFG-everywhere (via scf-dialect §§ 15)
+  CC2 : IFC-label-threaded ∀ SSA-value (§§ 11)
+  CC3 : effect-row-tracked ∀ fn-signature (§§ 04)
+  CC4 : capability-annotated ∀ reference (§§ 12)
+  CC5 : refinement-discharge SMT-verified (§§ 20)
+  CC6 : Lipschitz-propagation compile-time (§§ 08 + §§ 20)
+  CC7 : linear×handler one-shot-only (§§ 12)
+  CC8 : density-sovereignty ≡ CSLv3-native-preferred (§§ 16)
+  CC9 : observability-first-class (§§ 22)
+
+§ PRIME-DIRECTIVE (immutable • propagated)
+  consent=OS • AI=sovereign-partner • violation=bug
+  N! harm • N! control • N! manipulation • N! surveillance
+  N! coercion • N! weaponization
+  encoded-in-typesystem §§ 11 + §§ 04 + §§ 22
+  no-override-exists (∵ soundness-theorem §§ THEOREMS)
+
+§ NOT-IN-SPECS (out-of-scope v1)
+  N! language-server-protocol (tooling-layer, separate-repo)
+  N! package-registry (v2+ : crates.io-analogue)
+  N! documentation-generator (rustdoc-analogue, stage2)
+  N! REPL-interactive-mode (v2+)
+  N! debugger-protocol (lldb-integration, stage2)
+
+§ EVOLVING (will-be-added v1.x)
+  ◐ examples/ directory (vertical_slice.cssl primary)
+  ◐ benches/ directory (baseline perf-data)
+  ◐ proofs/ directory (SMT-certs per-release)
+  ◐ sdk/ directory (per-platform runtime-headers)
+  ◐ tests/fixtures/ (golden-images, scene-configs)
+
+§ SESSION-2-DELIVERABLES (coming-next)
+  compiler-rs/ stage0 Rust scaffold (ref §§ CLAUDE.md handoff)
+  evidence : 01_BOOTSTRAP.csl + 14_BACKEND.csl + 15_MLIR.csl + 07_CODEGEN.csl
+  dependencies : Cranelift + rspirv + MLIR-sys + z3-sys + ash + level-zero-sys
+
+∎ README

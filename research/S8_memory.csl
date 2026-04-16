@@ -1,0 +1,62 @@
+# S8 : MEMORY MODELS
+# ══════════════════════════════════════════════════════════════════
+
+§ REGION-BASED-MEMORY  ← §§ S8.1 canonical-background
+  ✓ history : Ross AED-1967 → PL/I AREA → Apache pools → PostgreSQL contexts
+  ✓ Hanson-1990 : explicit-C-arenas > fastest-heap
+  ✓ Tofte-Talpin region-inference @ ML
+  ✓ modern : Zig std.heap.ArenaAllocator • C++ std::pmr • Java21-Arena
+  ✓ ParaSail : all-region no-explicit-ptrs
+  ‼ trade-off : regions large-before-dealloc ≡ leak-style
+    fix : program-restructure introduce shorter-lifetime regions
+  I> CSSLv3 regions = first-class-lang-feature ¬ stdlib-only
+    ≡ effect-row tracks {Region<R>} access
+    ≡ compile-time guarantees ∀ ref-to-R lifetime ⊆ R
+
+§ VALE-LINEAR-ALIASING  ← §§ S8.2 ★ synthesis
+  ✓ single-ownership (linear) + generational-refs (aliased-safe)
+  ✓ owned-values : 1-stack-frame-struct-field-array-element
+  ✓ owning-pointers ^T : heap + owned-by-container
+  ✓ references &T : no-lifetime-effect • runtime-gen-check
+  ✓ regions : temporarily-immutable islands • 0 gen-check-overhead
+  ✓ own-lending : reduce-gen-checks-to-zero empirically
+  I> CSSLv3 W! adopt hybrid :
+    owned-T for single-ownership GPU-resources
+    &T gen-ref for graph-like Scene + ECS cross-references
+    regions for frame-local allocations + scene-isolated
+
+§ RUST-ARENA-PATTERNS  ← §§ S8.3 practical
+  ✓ typed-arena : uniform-type Arena<T>
+  ✓ bumpalo : heterogeneous bump-allocator
+  ✓ id-arena : Arena<T> + Index-to-access
+  ✓ generational-arena / slotmap :
+    handle = (index, generation)
+    generation-bump on free ≡ stale-handle-detection
+  ✓ game-frame-pattern : per-frame-arena reset each-frame
+  ✓ compiler-phase-pattern : per-phase-arena dealloc per-phase
+  I> CSSLv3 handle-types first-class :
+    type Handle<T> = gen-ref'packed'u64 (24bit-gen + 40bit-idx)
+    ≡ 8-byte POD • cheap-copy • stale-detectable
+  I> CSSLv3 Arena<T> + Bump + Generational = built-in-types
+    ∀ arena has @lifetime<'r> region-parameter
+    ∀ ref-from-arena tagged { Region<'r> } effect
+
+§ GENERATIONAL-INDICES @ LOA  ← §§ S8.4 LoA-specific
+  ○ LoA-scene = entities + components + relations
+  ○ entity-lifetimes non-trivial (spawn/despawn)
+  W! CSSLv3 Entity = Handle<Archetype>
+    ≡ gen-idx into archetype-SoA-pool
+    ≡ compile-time-safe vs stale-refs
+  W! Component-Storage = Arena<T>'per-component
+    ≡ reset-per-level-change  
+  W! Command-Buffer = linear'lifetime<'frame>
+    ≡ cannot-outlive frame-region
+
+§ FRAME-REGION-PATTERN  ← §§ S8.5
+  region frame'r { ... }
+  ∀ alloc-in-frame-region freed @ end-of-region
+  ∀ escape-check compile-time
+  ≡ NoAlloc effect + per-frame-arena ≡ 0-malloc hot-loops
+  I> CSSLv3 ★ this fixes audio-callback-alloc pattern generically
+
+∎ S8

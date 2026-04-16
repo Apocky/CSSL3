@@ -1,0 +1,197 @@
+# 04 : EFFECT SYSTEM (v2) — full 28+ effect-set
+# ══════════════════════════════════════════════════════════════════
+
+§ EFFECT-ROW TYPES (Koka row-polymorphic)
+  ε ::= ⟨⟩                  empty ≡ pure
+      | ⟨e | ε⟩             cons
+      | μ                   row-var (inferred)
+  duplicate labels allowed (Koka ordered-multiset)
+  unification over open-rows :
+    ⟨e₁ | μ⟩ ~ ⟨e₂, e₁⟩ ⇒ μ := ⟨e₂⟩
+
+§ BUILT-IN EFFECTS (full set — no "deferred v2")
+
+  § resource + timing
+    {NoAlloc}              heap-alloc forbidden
+    {NoRecurse}            recursion forbidden (stack-bound by type)
+    {NoUnbounded}          ∀ loop/recurse/alloc bounded-at-compile
+    {Deadline<N>}          wallclock-budget N (ns|us|ms|s)
+    {Realtime<p>}          OS-scheduler priority p ∈ {Low,Normal,High,Crit}
+    {Region<'r>}           alloc-into-region-'r (lifetime-scoped)
+    {Alloc}                heap-alloc allowed (default-implicit only in IO-contexts)
+    {Yield}                cooperative-yield point (fiber)
+    {State<S>}             mutable-state of type S
+    {Exn<E>}               exception-raise of type E (opt-in handler pattern)
+    {IO}                   OS-IO catch-all (file, net, clock)
+
+  § determinism + reversal
+    {DetRNG}               only deterministic-RNG sources permitted
+    {PureDet}              bit-exact cross-machine reproducible (stricter than DetRNG)
+    {Reversible}           undo-able op (replay/time-rewind gameplay)
+
+  § hardware / backend gating
+    {CPU}                  CPU-host execution
+    {GPU}                  GPU-kernel execution
+    {XMX}                  XMX matrix-engine (cooperative-matrix on Arc)
+    {RT}                   ray-tracing pipeline
+    {SIMD256}              AVX2 (base target)
+    {SIMD512}              AVX-512 (opportunistic runtime-dispatch)
+    {NUMA<node>}           memory-affinity to NUMA-node
+    {Cache<level>}         cache-locality hint (L1 | L2 | L3)
+    {Backend<api>}         api ∈ {Vulkan, LevelZero, D3D12, Metal, WebGPU, GNM, NVN}
+    {Target<platform>}     platform ∈ {Win, Linux, Mac, iOS, Android,
+                                       PS5, XboxSeries, Switch2, Browser}
+
+  § power + thermal (R18-backed)
+    {Power<budget_W>}      power-budget in watts (sysman-enforced on Intel via zesPowerSetLimits)
+                           — units : W for GPU-scale, mW for CPU-core-scale, user picks
+    {Thermal<limit_C>}     die-temp ceiling in °C (runtime-guard + test-oracle)
+
+  § prime-directive + audit (R1 + R18)
+    {Sensitive<dom>}       dom ∈ {privacy, weapon, surveillance, coercion, ...}
+    {Audit<dom>}           mandatory signed-chain log
+    {Privilege<level>}     level ∈ {User, System, Kernel, Root} — IFC capability-tier
+    {Verify<method>}       method ∈ {Z3, CVC5, KLEE, Manual} — §§ 20 discharge
+    {Telemetry<scope>}     scope ∈ TelemetryScope enum — canonical §§ 22
+
+  § total : 28 built-in + user-defined
+
+§ COMPILATION SEMANTICS (Xie+Leijen ICFP'21)
+  effect-defs → evidence-record types (compile-time-synthesized)
+  perform E::op(args) → indirect-call through evidence-slot
+  handler h { op → body } → push-evidence-frame + install-continuation
+  compiled to plain-C-equivalent (CLIF or SPIR-V)  ≡ zero-runtime-overhead
+  Perceus-RC reference-counting for non-linear values
+  linear values bypass RC (compile-time ownership tracking)
+
+§ LINEAR × HANDLER INTEGRATION (R8, §§ 12)
+  rule : linear-value flowing-through-handler permits one-shot resume only
+  multi-shot resume + linear = compile-error
+  rationale : ¬ double-consume iso-resource
+  Eio-OCaml5-lineage pattern (proven production)
+  one-shot = default for fiber/coroutine handlers
+  multi-shot only for non-linear effects (State<val>, Exn<val>, Yield<val>)
+
+§ HANDLER SYNTAX
+  effect State<S> {
+    fn get() -> S
+    fn set(s : S) -> ()
+  }
+  handler count_state(init : i32) for State<i32> -> i32 {
+    let mut s = init
+    fn get() -> i32 { s }
+    fn set(v : i32) -> () { s = v }
+    return s
+  }
+  fn example() -> i32 {
+    with count_state(0) {
+      perform State::set(42)
+      perform State::get()
+    }
+  }
+
+§ SUB-EFFECT DISCIPLINE
+  ∀ fn-sig declares effect-upper-bound
+  call-site unions callee-effects with caller-context ⊆ caller-declared
+  coercions :
+    ⟨⟩ ⊆ ⟨e⟩  (weakening-into-larger-row always-safe)
+    {Deadline<5ms>} ⊆ {Deadline<16ms>}  (tighter-budget-into-looser ok)
+    {Power<100W>} ⊆ {Power<225W>}
+    {Thermal<70C>} ⊆ {Thermal<85C>}
+    {Privilege<User>} ⊆ {Privilege<s>}  (more-privileged context can-do-less)
+
+§ DISCHARGE TIMING
+  compile-time only :
+    {NoAlloc} {NoRecurse} {NoUnbounded} {DetRNG} {PureDet} {Reversible}
+    {CPU} {GPU} {XMX} {RT} {SIMD256} {SIMD512}
+    {NUMA<n>} {Cache<l>} {Backend<a>} {Target<p>}
+    {Region<'r>} {Sensitive<d>} {Privilege<l>}
+  compile-time + runtime-assert :
+    {Deadline<N>}    compile-time cost-estimate + wallclock-guard
+    {Power<W>}       compile-time static-power-model + sysman-sample (R18)
+    {Thermal<C>}     compile-time reject-if-demonstrably-overbudget + sysman-sample
+    {Realtime<p>}    compile-time schedule-class + OS-priority-call
+    {Verify<m>}      compile-time SMT-discharge (§§ 20)
+    {Audit<d>}       compile-time schema + runtime signed-chain-write
+    {Telemetry<s>}   compile-time probe-insertion + runtime ring-push
+  runtime-only discharge :
+    user-handlers (State, Exn, Yield, custom)
+
+§ LOA-PATTERNS (canonical effect-compositions)
+  audio-callback :
+    fn audio_cb(buf : &mut [f32]) / {NoAlloc, NoUnbounded, Deadline<1ms>,
+                                     Realtime<Crit>, PureDet, DetRNG}
+  shared-SDF (CPU+GPU) :
+    @cross fn sphere_sdf(p : vec3, r : f32'pos) -> f32 / ⟨⟩   // pure
+  GPU-only-SDF :
+    @gpu fn voxel_march(scene : &Scene, ray : Ray) -> Hit
+         / {GPU, Deadline<4ms>, Power<50W>, Thermal<80C>, Telemetry<DispatchLatency>}
+  replay-deterministic :
+    fn sim_step(w : &mut World) / {DetRNG, PureDet, State<World>, Reversible}
+  frame-render :
+    fn render_frame(scene, cam) / {Region<'frame>, GPU, Backend<Vulkan>,
+                                   Deadline<16ms>, Power<225W>, Thermal<85C>,
+                                   Telemetry<Counters>}
+  neural-fx-training :
+    fn xess2_train_step() / {GPU, XMX, Backend<LevelZero>, Power<200W>,
+                             Telemetry<XmxUtilization>, PureDet}
+
+§ PRIME-DIRECTIVE EFFECTS (F5 encoding)
+  @sensitive(domain = "privacy")
+  fn user_data_fetch() -> UserProfile / {IO, Sensitive<"privacy">, Audit<"privacy">}
+
+  rules :
+    Sensitive propagates transitively through call-chain
+    effect-row containing Sensitive<*> requires :
+      comptime-audit-schema entry
+      explicit call-site ack : #[acknowledge_sensitive("privacy")]
+      {Audit<same-dom>} must-accompany
+    banned compositions (type-error) :
+      {Sensitive<"weapon">} ⊎ {IO, Net} = compile-error-unless-{Privilege<Kernel>}
+      {Sensitive<"surveillance">} ⊎ {IO, Net} = compile-error (no-override)
+      {Sensitive<"coercion">} in-any-form = compile-error (absolute)
+  stdlib refuses harm-oriented combinations at-type-level
+  ≡ PRIME-DIRECTIVE encoded structurally ¬ policy
+
+§ R18 TELEMETRY EFFECT DETAIL
+  effect {Telemetry<scope>} — canonical def in §§ 22
+    scope ∈ TelemetryScope enum (§§ 22 TELEMETRY-SCOPE TAXONOMY)
+      CPU       : WallClock, CpuCycles, CpuInstRetired, CacheMisses,
+                  BranchMisses, TLBMisses, PageFaults, CtxSwitches
+      GPU       : DispatchLatency, KernelOccupancy, ShaderInvocations,
+                  RtRaysPerSec, MemBandwidth, XmxUtilization
+      PowerThermalFreq : Power, Thermal, Frequency, FanSpeed
+      RAS       : EccErrors, PcieReplay
+      App       : Counters, Spans, Events, Audit
+      Compound  : Full
+    handler-pattern :
+      with telemetry_ring(size=2²⁰, scope=Counters|Power|Thermal) {
+        render_frame(scene, cam)
+      }  → returns SnapshotImage post-handler (§§ 22)
+    compiler-auto-instruments :
+      @staged expansion-sites emit cssl.telemetry.probe<scope> ops
+      if scope=nothing at-call-site → probes compile-out entirely (zero-overhead)
+    backend-mapping (canonical §§ 22) :
+      Level-Zero : zesPowerGetEnergyCounter + zesTemperatureGetState + zesFrequencyGetState
+                   + zesEngineGetActivity + zesMemoryGetBandwidth
+      Vulkan     : VK_EXT_calibrated_timestamps + VK_QUERY_TYPE_PIPELINE_STATISTICS
+                   + NonSemantic.Shader.DebugInfo.100
+      Linux CPU  : PAPI (hardware-counters) + /proc/self/stat
+      Windows CPU: ETW + Performance Counters
+      Mac        : Metal HUD + mach_absolute_time
+  composition with {Audit<d>} : signed-ring ≡ runtime-witness of contracts
+
+§ ERROR HANDLING
+  Result<T, E>  canonical (Rust-lineage)
+  ? operator    propagate Result::Err
+  panic!        unrecoverable + process-terminate (debug-only, {Privilege<Root>})
+  effect Exn<E> opt-in handler-based exceptions (per-module choice)
+
+§ FIBER + COROUTINE (no colored-functions)
+  effect Yield<T>   { fn yield(v : T) -> () }
+  effect Resume<T>  { fn resume() -> T }
+  fiber spawn<T>(body : fn() -> T / {Yield<T>, Resume<_>}) -> Fiber<T>
+  scheduler : OCaml-5 one-shot-continuations lineage
+  linear-resource rule : iso-values through fiber-handler = one-shot only
+
+∎ EFFECTS

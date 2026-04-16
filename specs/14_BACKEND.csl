@@ -1,0 +1,149 @@
+# 14 : BACKEND — bespoke x86-64 + per-platform dispatch
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  stage0 : Cranelift-CPU + rspirv-GPU (expedient, Rust-hosted)
+  stage1+ : owned x86-64 backend + owned SPIR-V emitter + all-platforms
+  ≡ R4 (bespoke) + R5 (cross-platform) + R18 (host-submit matrix)
+
+§ OWNED x86-64 BACKEND (stage1+)
+  input : MIR cssl-dialect (§§ 02+15)
+  phases :
+    1 : isel — instruction-selection tables (tree-matching + peephole)
+    2 : regalloc — graph-color + linear-scan hybrid (per-fn choice by-heuristic)
+    3 : schedule — list-scheduler with latency-model per-µarch
+    4 : emit — machine-code bytes + reloc + debug-info
+  µarchs supported :
+    intel-alder-lake-cove (12gen P-core)
+    intel-raptor-lake (13/14gen P-core)
+    intel-meteor-lake (Core-Ultra-1 P-core)
+    intel-arrow-lake (Core-Ultra-2)
+    AMD-zen4 + zen5 (via feature-detect)
+    generic-x86-64-v3 baseline
+  SIMD :
+    AVX2 base (guaranteed-v3)
+    AVX-512 opportunistic (runtime-CPU-dispatch)
+    multi-variant fat-kernels for hot paths
+  ABI :
+    SysV-AMD64 (Linux + Mac-Intel)
+    Windows-x64 (MSVC-compat)
+    Darwin (Mac-Intel + Rosetta-2 for ARM-Mac)
+  debug-info :
+    DWARF-5 emit (Linux + Mac)
+    CodeView + PDB (Windows, stage-1.5)
+  size-target : ≤ 15K LOC CSSLv3 self-hosted
+
+§ OWNED SPIR-V EMITTER (stage1+)
+  input : MIR cssl-dialect + spirv-dialect
+  replaces rspirv with hand-rolled typed-builder (3-5K LOC)
+  spec-conformance : validator-identical to spirv-val
+  structured-CFG direct-emission (CC4)
+  capability-tracking automatic from used-ops
+  deduplication : types, constants, decorations
+
+§ OWNED DXIL EMITTER (stage2)
+  input : MIR cssl-dialect
+  replaces DirectXShaderCompiler-offline-shim
+  D3D12 shader-model 6.6+ (mesh + RT + cooperative-matrix)
+  root-signature auto-generated from effect-row + layout-attrs
+  DXBC-compatibility : v1 skips (SM 6.6+ only)
+
+§ OWNED MSL EMITTER (stage2)
+  input : MIR cssl-dialect
+  replaces spirv-cross --msl
+  Metal-3 baseline (mesh + RT + cooperative-matrix on Apple-Silicon)
+  argument-buffers for bindless
+  fn-constant for specialization
+
+§ OWNED WGSL EMITTER (stage2)
+  input : MIR cssl-dialect
+  replaces Tint
+  WebGPU spec-current (naga-compatible)
+  no-BDA (emits struct-of-arrays binding pattern)
+  ray-query optional (when available)
+
+§ HOST-SUBMIT BACKENDS
+  Vulkan-1.4   : stage0 ash crate | stage1+ owned FFI (volk-like dispatch)
+  Level-Zero   : stage0 level-zero-sys | stage1+ owned FFI
+                 (R18 telemetry primary backing on Intel)
+  D3D12        : stage0 windows-rs | stage1+ owned FFI
+  Metal        : stage0 metal crate | stage1+ owned Objective-C-bridge
+  WebGPU       : stage0 wgpu-core | stage1+ direct browser-API (JS-interop)
+  GNM (PS5)    : platform-SDK, NDA-gated, stub in public-CI
+  NVN (Sw2)    : platform-SDK, NDA-gated, stub in public-CI
+  per-backend adapter-layer shared-interface :
+    create_device, create_queue, create_cmd_buffer,
+    bind_resources, dispatch/draw, submit, wait,
+    telemetry_capture, sysman_query
+
+§ BACKEND-MATRIX (ref §§ 00 + §§ 10)
+  backend     graphics  compute   RT      XMX        power      scope
+  Vulkan-1.4  ✓         ✓         ✓       via-coop   advisory   portable
+  Level-Zero  ✗         ✓✓        ✗       direct     direct     Intel
+  D3D12       ✓         ✓         ✓       via-coop   advisory   Windows
+  Metal       ✓         ✓         ✓       coop       advisory   Apple
+  WebGPU      ✓         ✓         ◐       ◐          ✗          browser
+  GNM         ✓         ✓         ✓       ◐          platform   console
+  NVN         ✓         ✓         ◐       ◐          platform   console
+
+§ EFFECT-DIRECTED BACKEND-SELECTION
+  {Backend<B>} effect in fn-sig forces B for-this-fn
+  {Target<P>} effect gates platform-specific code-paths
+  compiler-choice logic :
+    ∀ fn with {GPU} and no explicit Backend :
+      choose most-capable available on-target-platform
+    priority on Intel : Level-Zero > Vulkan (for pure-compute)
+                        Vulkan > Level-Zero (for graphics/RT)
+    on NVIDIA / AMD : Vulkan only (v1)
+    on Apple : Metal primary
+    on Windows : Vulkan primary, D3D12 opt-in
+    on Browser : WebGPU only
+  overrides explicit via {Backend<...>}
+
+§ FAT-BINARY ASSEMBLY
+  linker merges :
+    host-obj variants per-OS-target (ELF | COFF | Mach-O)
+    gpu-blobs per-API (SPIR-V | DXIL | MSL | WGSL)
+    telemetry-schema metadata
+    audit-manifest signed
+  single .cssl-bin contains all-needed blobs
+  runtime-loader selects per-platform at-launch
+
+§ RUNTIME LOADER (libcssl-rt)
+  startup-sequence :
+    1 : detect-OS + detect-CPU-features
+    2 : enumerate-GPU-devices via chosen-backend
+    3 : load-matching gpu-blobs from-fat-binary
+    4 : init-telemetry-ring (R18)
+    5 : verify-audit-manifest-signature (R16 + §§ 11)
+    6 : hand-over to-application-entry
+  dispatch-tables populated per-detected-hardware
+  L0 + Vulkan may-coexist on Intel (compute-pipeline on L0,
+    graphics-pipeline on Vulkan, shared SPIR-V modules)
+
+§ CROSS-BACKEND SPIR-V REUSE
+  one SPIR-V blob consumed-by : Vulkan, Level-Zero, WebGPU(via-translation)
+  ≡ test Vulkan-L0 differential-equivalence (§§ 23)
+  DXIL + MSL + WGSL : per-platform translations OR owned-emitters
+  compiler optimization : emit-shared-SPIR-V once, translate-on-demand
+
+§ CONSOLE STUBS
+  public-repo : stubbed-symbols + documentation-only
+  private-repo : platform-SDK integration + NDA-compliant code
+  CI-public : skip console-runs, emit "platform-sdk-not-available"
+  CI-internal : full platform testing behind access-gate
+
+§ SIZE + TIME BUDGETS
+  stage0 binary : ≤ 50 MB (cranelift + rspirv + deps)
+  stage1 binary : ≤ 20 MB (self-contained)
+  compile-time stage0 : 2s incremental, 30s clean (medium-project)
+  compile-time stage1 : 1s incremental, 15s clean (same project, own-backend)
+  runtime startup : ≤ 100ms initialization overhead
+
+§ TESTING BACKEND-INDEPENDENCE (§§ 23)
+  differential-tests : same source → multiple backends → compare outputs
+  golden-pixel-regression per-backend per-example
+  backend-feature-parity matrix CI-enforced
+  sysman-capture per-backend where-available
+
+∎ BACKEND

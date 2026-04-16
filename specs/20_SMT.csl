@@ -1,0 +1,171 @@
+# 20 : SMT — Z3/CVC5 refinement + SDF-convergence-proofs
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  refinement-types discharged by SMT-solver at-compile
+  Z3 primary, CVC5 fallback, KLEE symbolic-execution for complex cases
+  proof-artifacts stored + signed (R16 audit-chain)
+  ≡ F2 + R10 ≡ LiquidHaskell-lineage for systems-lang
+
+§ LINEAGE
+  de Moura + Bjørner "Z3 : An Efficient SMT Solver" (2008)
+  Barrett et al. CVC5 (2022)
+  LiquidHaskell — refinement-types-for-Haskell (Vazou et al. 2014+)
+  Dafny — Microsoft verified-language (Leino)
+  F* + Low* — dependently-typed + SMT (§§ research/S4)
+  Stainless — Scala verification
+  we adopt : LiquidHaskell-surface + Z3-backend + F*-style declass obligations
+
+§ WHAT SMT DISCHARGES
+  refinement-obligations :
+    function-arg refinement : f(x : T{P(x)}) called with x satisfying P
+    function-result refinement : fn returning T{P(v)} produces v satisfying P
+    array-bounds : arr[i] where i : usize'idx<N> ≡ i < N
+    division-by-zero : a / b where b : T{v ≠ 0}
+    overflow-freedom : arith ops stay-within-type-range
+  Lipschitz-obligations :
+    ∀ @lipschitz(k) fn : |f(a) - f(b)| ≤ k · |a - b|
+    composition-rules propagate k (§§ 08)
+  engine-invariants :
+    SDF-convergence : ray-march terminates given SDF'L<k≤1>
+    region-lifetime : no escape-from-region (§§ 12)
+    effect-sub-typing : ε₁ ⊆ ε₂ obligations (§§ 04)
+  PRIME-DIRECTIVE obligations :
+    ∀ declassification-policy : source-label → target-label permitted (§§ 11)
+    ∀ @sensitive composition : no-harm-shape derivable
+
+§ SURFACE
+  {v : T | P(v)} refinement-form parsed directly
+  tagged-suffix T'tag sugar for common patterns (§§ 03)
+  assume!(P) : runtime-assert with comptime SMT-check
+  verify!(P) : comptime SMT-check (obligation emitted)
+  {Verify<method>} effect in fn-sig declares discharge-method
+    method : Z3 | CVC5 | KLEE | Manual | Auto
+
+§ COMPILATION FLOW
+  1 : HIR contains refinement-annotations on types + verify!/assume! nodes
+  2 : obligation-generator pass walks HIR,
+      emits SMT-LIB2 formulas per-obligation
+  3 : solver-driver spawns Z3 (CVC5 on fallback)
+      per-module parallelism
+      cache per-obligation-hash (incremental)
+  4 : result :
+      Sat(counter-example) → compile-error with counter-example
+      Unsat(unsat-core) → obligation-discharged, proof-cert emitted
+      Unknown(timeout) → compile-warning (default) or error (strict-mode)
+  5 : proof-cert bundled into .proof/ directory, signed, audit-chained
+
+§ Z3 INTEGRATION
+  stage0 : z3-sys Rust crate
+  stage1+ : owned C-ABI binding
+  invocation : SMT-LIB2 textual-input via stdio or z3-API
+  tactics : qflia, qflra, qffpbv, arith, propositional
+  timeout : per-obligation 10s default, configurable
+  resource-limit : 1M formulas per-invocation
+
+§ CVC5 FALLBACK
+  when Z3 returns Unknown, retry with CVC5
+  CVC5 stronger on non-linear-arith + string-theory
+  same SMT-LIB2 format ≡ portable obligations
+
+§ KLEE (symbolic-execution)
+  for complex control-flow where pure-SMT insufficient
+  invoked when Z3/CVC5 both-Unknown and method = KLEE or Auto
+  typically : loop-invariant proofs, recursive data-structure invariants
+  stage0 : klee-sys binding
+  stage1+ : owned integration
+
+§ LIPSCHITZ DISCHARGE
+  given fn f : SDF'L<k>,
+  obligation : ∀ a, b ∈ vec3, |f(a) - f(b)| ≤ k · |a - b|
+  reduced-to :
+    ∃ Lipschitz-derivation via composition-rules (§§ 08)
+    OR Z3-verify with interval-arithmetic-approximation
+    OR user-provided-proof @proof("lipschitz") { ... }
+  compose-rule discharge : verify propagation pattern-matches
+  ray-march requires k ≤ 1.0 ∴ discharged comptime before-SPIR-V-emit
+
+§ SDF-CONVERGENCE PROOF
+  ray-march loop :
+    let mut t = 0.0
+    loop {
+      let d = sdf(ray.origin + t * ray.dir)
+      if d < epsilon { return Some(Hit { t }) }
+      if t > max_t { return None }
+      t += d
+    }
+  convergence-obligation :
+    SDF'L<k≤1> guarantees |d| ≥ true-distance / k ≥ true-distance
+    ∴ t += d makes progress ≥ true-distance
+    ∴ loop terminates in O(max_t / epsilon) iterations
+    ∴ {NoUnbounded} effect discharged for ray-march
+  proof-artifact : auto-generated, signed, cached
+
+§ REFINEMENT-TYPE INFERENCE
+  bidirectional-inference : check-mode + synthesize-mode
+  path-sensitive narrowing :
+    if x > 0 { here x : T'pos }
+    match y { Some(v) => here v has stronger-refinement }
+  for-loop iteration-variable : i : usize'idx<N> inferred from bounds
+  inferred-refinements become obligations at-usage-sites
+
+§ PROOF-CACHE
+  per-obligation-hash : (obligation-formula, solver-version) → Sat | Unsat | timeout
+  cache-location : .proof-cache/ per-module
+  incremental : only re-solve obligations whose-hash-changed
+  CI : cache-restored from previous-build for fast incremental
+
+§ AUDIT (§§ 11 + R16)
+  ∀ discharged-obligation : proof-cert emitted
+  cert-format : SMT-LIB2 proof-trace + solver-version + timestamp
+  cert signed via Apocky-key + CI-key chain
+  published in .proof/ directory per-release
+  ≡ anyone can-rebuild-and-verify all-refinement-discharges
+
+§ LIMITATIONS
+  ◐ undecidable-obligations : may timeout, degrade-to warning (configurable)
+  ◐ non-linear-arith : Z3 heuristic, may need CVC5 retry
+  ◐ quantifier-alternation : user provides @proof annotation
+  ✗ arbitrary-higher-order : not auto-discharged (manual-proof escape)
+
+§ STRICT-MODE
+  --strict-verify flag : ∀ obligation must-discharge-or-error
+  dev-mode : default warnings for unknown, errors for sat(counter-example)
+  release-mode : strict-verify required
+
+§ EXAMPLES
+
+  // refined array-index
+  fn get_at<T, N : usize>(arr : &[T ; N], i : usize'idx<N>) -> &T {
+    &arr[i]    // no bounds-check needed, refinement discharged
+  }
+
+  // safe-division
+  fn safe_div(a : f32, b : {v : f32 | v ≠ 0.0}) -> f32 {
+    a / b       // division-by-zero impossible
+  }
+
+  // Lipschitz propagation
+  fn sphere_smooth_box(p : vec3, c : vec3, r : f32'pos, h : vec3'pos, k : f32'pos) -> f32 {
+    smooth_union(sphere(p - c, r), box(p - c, h), k)
+    // compiler discharges : result is SDF'L<max(1.0, 1.0)> = SDF'L<1.0>
+  }
+
+  // declass-policy proof-obligation
+  policy redact_ssn {
+    from : secret<String, confid({Subject})>
+    to   : secret<String, confid({Subject, Public})>
+    via  : fn(s : String) -> String { "XXX-XX-" + s[len-4..] }
+    obligation : output-reveals-only-suffix ∴ confid-weakened permissible
+  }
+  // SMT discharges : fn output ≠ full-input ∴ declass safe
+
+§ INTEGRATION
+  §§ 03 TYPES : refinement syntax
+  §§ 04 EFFECTS : {Verify<method>} effect
+  §§ 08 ENGINE : Lipschitz + SDF-convergence
+  §§ 11 IFC : declass-policy obligations
+  §§ 12 CAPABILITIES : region-lifetime obligations
+  §§ 23 TESTING : property-based test-generation uses refinements
+
+∎ SMT

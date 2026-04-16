@@ -1,0 +1,176 @@
+# Q6 DEEP-DIVE : MLIR-core vs CUSTOM-IR vs LLVM-only
+# ══════════════════════════════════════════════════════════════════
+# § I> biggest architectural fork • determines entire compiler
+# § I> inputs : ~8 web-searches + S1 Mojo + S6 MLIR/IREE + S10 syntax
+
+§ THE-CHOICE  ← §§ Q6.1 three-options
+  A : LLVM-only (Cranelift optional for dev-build)
+  B : MLIR-core + custom cssl.* dialects + LLVM-backend
+  C : custom CSSLv3-IR + LLVM-backend + SPIRV-translator
+
+§ ASSESSMENT-DIMENSIONS  ← §§ Q6.2
+  D1 : time-to-first-pixel @ LoA
+  D2 : dual-codegen CPU+GPU cost
+  D3 : AD-integration cost (F1 Enzyme)
+  D4 : refinement-type integration cost (F2)
+  D5 : effect-system integration cost (F3)
+  D6 : staging integration cost (F4)
+  D7 : debuggability + error-quality
+  D8 : compile-speed (dev-loop)
+  D9 : ecosystem-leverage (passes + tools)
+  D10 : bus-factor / maintainability (solo-dev)
+  D11 : future-HW portability
+  D12 : learning-curve (Apocky-runway)
+
+§ OPTION-A : LLVM-only  ← §§ Q6.3
+  arch : CSSLv3-AST → CSSLv3-HIR(custom) → LLVM-IR → obj
+  GPU-path : LLVM-IR → LLVM-SPIRV-translator → SPIR-V
+  D1 : ✓ fastest-to-first-pixel (smallest-moving-parts)
+  D2 : ◐ works but SPIR-V-translator known-limited
+       ○ ¬ supports all-SPIR-V-ops cleanly
+       ○ GPU-specific-concepts (workgroup shared-mem) → awkward LLVM-IR
+  D3 : ✓ Enzyme = native-LLVM-pass ≡ drop-in
+  D4 : ◐ refinement = pure-frontend-check • no IR-support needed
+  D5 : ◐ effect-discharge = pure-frontend-check
+  D6 : ✗ staging hard • LLVM-IR too-low-level for scene-eval-specialization
+       ○ W! lift-back-up to AST ≡ awkward
+  D7 : ✗ debug : LLVM-IR strips-high-level-semantics
+  D8 : ✓ compile-speed OK (LLVM-only stack)
+  D9 : ◐ only-LLVM-passes available • miss Linalg affine
+  D10 : ✓ smallest-surface-area • fewest-deps • solo-dev-tractable
+  D11 : ◐ CPU+GPU only-via-LLVM • no TPU/NPU path
+  D12 : ✓ LLVM well-documented • Apocky has prior-Rust-LLVM-exposure
+  SCORE : best for time-to-pixel • worst for F4-staging + future-HW
+
+§ OPTION-B : MLIR-core + custom-dialects  ← §§ Q6.4
+  arch : CSSLv3-AST → cssl.* dialects → standard-dialects
+         → {LLVM-dialect → obj • SPIRV-dialect → SPIR-V-blob}
+  D1 : ✗ slow-first-pixel (large upfront infrastructure)
+  D2 : ✓ best-in-class : dual-lowering native to MLIR
+       ○ IREE proves-pattern production-grade
+  D3 : ◐ Enzyme-MLIR exists • less-mature than LLVM-Enzyme
+       ○ workaround : lower to LLVM-dialect → LLVM-Enzyme → back
+  D4 : ✓ refinement-types can-be IR-attributes on cssl.sdf ops
+       ○ propagation via pattern-rewrites (TableGen)
+  D5 : ✓ effect-system = cssl.effect dialect
+       ○ handlers lower via cssl.handle → scf + func dialects
+  D6 : ✓✓ staging native-fit : Transform-dialect programmable-schedules
+       ○ CGO'25 paper : Transform-dialect-expose-compiler-internals
+       ○ CSSLv3 @staged → Transform-schedule ≡ first-class
+  D7 : ✗✗ debug-hard : "multi-dialect lowering hard to step through"
+       ○ Ramalho-2024 : "steep learning curve hinders adoption"
+       ○ Mojo-team themselves cite productivity-challenge
+  D8 : ◐ MLIR-pass-overhead + dialect-conversion = slower-compile
+  D9 : ✓✓ reuse : arith scf cf func memref gpu llvm spirv linalg affine
+       ○ IREE patterns + Transform-dialect + upstream-optimizations
+  D10 : ✗✗ bus-factor risk : MLIR complex • solo-dev-challenging
+        ○ C++ templates + TableGen + sparse-docs
+        ○ Lei.Chat 2022 "5y to mature ecosystem" ≡ 2027-mature
+  D11 : ✓✓ TPU/NPU/FPGA all-addressable via dialect-bridging
+  D12 : ✗✗ steepest-curve • "sparse documentation" + C++ templates
+  SCORE : best for F4 + future-HW + ecosystem • worst for bus-factor + debug + learning
+
+§ OPTION-C : custom CSSLv3-IR + LLVM-backend  ← §§ Q6.5
+  arch : CSSLv3-AST → CSSLv3-HIR → CSSLv3-MIR → LLVM-IR → obj
+         GPU : CSSLv3-MIR → custom-SPIRV-emitter → SPIR-V
+  D1 : ◐ medium-first-pixel (IR + transforms + SPIRV-emitter all-custom)
+  D2 : ✓ total-control over CPU+GPU lowering
+       ○ cost : hand-written SPIRV-emitter = many-months
+  D3 : ✓ Enzyme @ LLVM-bottom ≡ clean drop-in
+  D4 : ✓ refinement-types first-class-in-IR
+  D5 : ✓ effect-system first-class-in-IR
+  D6 : ✓ staging native : IR can-have stage-markers
+  D7 : ✓✓ excellent : ∀ IR-node carries-CSSLv3-semantics
+        ○ error-messages map-directly to source
+  D8 : ✓ compile-speed : control-own-pipeline
+  D9 : ✗✗ rebuild-everything : no reuse-of-MLIR-passes
+        ○ polyhedral analysis • tiling • fusion all-from-scratch
+  D10 : ◐ bus-factor medium • docs-by-Apocky only
+         ○ but : simpler-than-MLIR overall (smaller-scope)
+  D11 : ✗ future-HW : rebuild-lowering per-target
+  D12 : ◐ medium-curve : need-to-design-IR + build-infrastructure
+  SCORE : best for D7 + F1..F4 cleanliness • worst for D9 ecosystem
+
+§ COMPARATIVE-TABLE  ← §§ Q6.6
+             A:LLVM   B:MLIR   C:custom-IR
+  D1 pixel    ✓✓       ✗        ◐
+  D2 dual     ◐        ✓✓       ✓
+  D3 F1-AD    ✓✓       ◐        ✓✓
+  D4 F2-ref   ◐        ✓        ✓
+  D5 F3-eff   ◐        ✓        ✓
+  D6 F4-stg   ✗        ✓✓       ✓
+  D7 debug    ✗        ✗✗       ✓✓
+  D8 speed    ✓        ◐        ✓
+  D9 reuse    ◐        ✓✓       ✗✗
+  D10 bus     ✓        ✗✗       ◐
+  D11 HW      ◐        ✓✓       ✗
+  D12 learn   ✓        ✗✗       ◐
+
+§ TIE-BREAKING CRITERIA  ← §§ Q6.7
+  I> Apocky = solo-dev • D10 bus-factor weight = 3×
+  I> LoA-ship-first • D1 time-to-pixel weight = 2×
+  I> bug-thesis-requires F4-staging working • D6 weight = 2×
+  I> future-HW ¬ 2026-priority • D11 weight = 0.5×
+  I> learn-curve W! be tractable-solo • D12 weight = 2×
+  
+  weighted-scores :
+    A : 3×✓✓ + 2×✓✓ + 2×✗ + 0.5×◐ + 2×✓ = solid for near-term
+    B : 3×✗✗ + 2×✗ + 2×✓✓ + 0.5×✓✓ + 2×✗✗ = blocked on bus-factor
+    C : 3×◐ + 2×◐ + 2×✓ + 0.5×✗ + 2×◐ = tractable + semantically-clean
+
+§ DECISION : HYBRID A→C EVOLUTION  ← §§ Q6.8 ★
+  
+  STAGE-0..3 (year-1) : OPTION-A (LLVM-only custom-HIR)
+    ○ CSSLv3-AST → CSSLv3-HIR → LLVM-IR → obj
+    ○ GPU via LLVM-SPIRV-translator (known-limited • acceptable)
+    ○ Enzyme = native LLVM-pass plugin
+    ○ get LoA-to-first-pixel fastest • prove F1..F3 work
+    ○ F4-staging minimal @ this-stage (AST-level-only)
+  
+  STAGE-4..6 (year-2) : TRANSITION-TO-CUSTOM-MIR
+    ○ insert CSSLv3-MIR between HIR and LLVM-IR
+    ○ MIR carries effect-rows + refinement-types first-class
+    ○ improves D7 debug quality
+    ○ enables real-F4-staging via MIR-level-transforms
+    ○ write custom-SPIRV-emitter from-MIR (replace LLVM-SPIRV-translator)
+  
+  STAGE-7+ (year-3+) : OPTIONAL MLIR-BRIDGE
+    ○ if community forms + ecosystem-leverage worthwhile
+    ○ wrap CSSLv3-MIR as MLIR-dialect (cssl)
+    ○ interop with IREE/Transform-dialect opportunistically
+    ○ ¬ commit before evidence demands it
+
+§ RATIONALE  ← §§ Q6.9
+  ✓ Option-A minimizes-risk year-1 : Rust→LLVM well-trodden
+  ✓ Enzyme-LLVM-pass drops-in without MLIR-complexity
+  ✓ Apocky-solo-dev-friendly : smaller-surface-area
+  ✓ Custom-MIR year-2 when F1..F3 proven + semantics-stable
+    ¬ pre-mature-IR-design before-knowing-what-LoA-actually-needs
+  ✓ MLIR-bridge year-3 reversible : cssl-dialect can-wrap custom-MIR
+  ✗ ¬ pure-MLIR now : bus-factor + learn-curve = project-death-risk-solo
+  ✗ ¬ pure-custom-all-at-once : throwing-away Enzyme + LLVM-SPIRV = waste
+
+§ IMPLICATIONS for SPECS  ← §§ Q6.10
+  specs/02_IR.csl W! describe :
+    year-1 : CSSLv3-HIR (SSA + effect-row + refinement-attr)
+             → LLVM-IR via standard-lowering
+             → GPU via LLVM-SPIRV-translator (commit-accepting-limits)
+    year-2 : add CSSLv3-MIR layer (HIR ↛ MIR ↛ LLVM)
+    year-3 : optional MLIR-bridge
+
+§ OTHER-OPEN-QUESTIONS-RESOLVED-BY-Q6  ← §§ Q6.11
+  Q2 region-lifetime : use effect-row {Region<'r>} @ HIR ← confirmed
+  Q3 AD-opt-in : [Differentiable] annotation @ HIR ← Slang-style confirmed
+  Q4 generics : interfaces + associated-types @ HIR-level ← confirmed
+  Q1 effect-discharge : HIR-level staged-check :
+     ○ {NoAlloc} {NoRecurse} {DetRNG} {GPU}{CPU} = compile-time
+     ○ {Deadline<N>} = compile-time-budget-tracking + runtime-assert
+     Q1 ← resolved
+
+§ REMAINING-OPEN  ← §§ Q6.12
+  Q5 stdlib-policy : bundled-and-vendored @ year-1 • pkg-mgr @ year-3
+  Q7 hot-reload : preserve via .so-reload + effect-frozen-fingerprint
+     ○ feel.toml pattern @ year-1
+
+∎ Q6-DEEP-DIVE
+  DECISION : LLVM-only year-1 • custom-MIR year-2 • MLIR-bridge optional year-3

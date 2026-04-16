@@ -1,0 +1,79 @@
+# S5 : EFFECT SYSTEMS
+# ══════════════════════════════════════════════════════════════════
+
+§ KOKA  ← §§ S5.1 ★ row-polymorphic-effect canonical
+  ✓ Leijen @ MSR • v3.1.3 2025-07
+  ✓ row-polymorphic effects via duplicate-labels
+    closed : ⟨exn,div⟩
+    open : ⟨exn,div | μ⟩   μ = effect-var
+  ✓ Hindley-Milner inference over rows
+  ✓ built-in effects hierarchy :
+    total ⊂ exn ⊂ div ⊂ pure ⊂ st⟨h⟩ ⊂ io
+  ✓ algebraic-effect-handlers user-library-defined
+    ≡ async/await exceptions generators probabilistic
+    = all expressible via handler
+  ✓ Perceus reference-counting @ C-codegen
+    ≡ compiles to C • no-GC no-runtime
+  ✓ lazy-constructors ICFP'25 distinguished-paper
+  ‼ lesson-1 : effects-as-row-types + ML-inference ≡ tractable
+  ‼ lesson-2 : user-effects via handler ≡ one-mechanism
+  ‼ lesson-3 : Perceus RC → no-GC systems-lang path
+  I> CSSLv3 W! steal row-polymorphism verbatim
+  I> CSSLv3 effect-hierarchy for LoA :
+    pure ⊂ alloc ⊂ gpu_buffer_access ⊂ gpu_dispatch ⊂ io
+    + {NoAlloc NoRecurse Deadline<N> DeterministicRNG}
+  I> CSSLv3 ¬ adopt Perceus-RC directly
+    ∵ LoA needs explicit memory-control
+    W! use regions (Vale-style) + linear-types
+    N! RC anywhere in hot-loops
+
+§ OCAML-5 + EIO  ← §§ S5.2 production-effect-handlers
+  ✓ first mainstream-lang with effect-handlers
+  ✓ OCaml 5.0 (2022-12) → 5.3 (2025-01)
+  ✓ fibers = heap-allocated stack-chunks grow/shrink on-demand
+  ✓ Eio 1.0 (2024-03) : async-IO via effects
+    ≡ "direct-style concurrent code no-function-color problem"
+  ✓ millions-req/s with effects ≡ Rust-class-perf
+  ✓ Jane-Street + Docker production-migration (ICFP'25)
+    ○ pain : GC-pacing + runtime-perf-regressions
+    ○ success : real-world-massive codebases migrated
+  ‼ lesson : effect-handlers PRODUCTION-VIABLE for systems-work
+  I> CSSLv3 W! reference OCaml-5 impl for runtime-design
+    ○ fiber-based continuations (lightweight)
+    ○ one-shot-continuations (default ≡ lightweight)
+    ○ deep vs shallow handlers
+  I> CSSLv3 for LoA : effects mostly-compile-time
+    ○ runtime-effects only for exception-like rare-paths
+    ○ hot-loop effects statically-discharged
+
+§ EFFECT-SYSTEM @ CSSLv3 : LOA-SPECIFIC  ← §§ S5.3
+  § bug-thesis applied :
+    audio-callback-alloc-deadlock  → {NoAlloc} effect
+      audio_callback : fn(buf) -> () / {NoAlloc}
+      ∀ call inside W! be NoAlloc → heap-alloc = compile-error
+    CPU/GPU-SDF-divergence × 3    → {GPU}+{CPU} effects
+      gpu_sdf : fn / {GPU}
+      cpu_sdf : fn / {CPU}
+      ∀ shared-impl W! be {}-pure (sum of both allowed)
+    hot-loop-latency-budget        → {Deadline<N>} effect
+      render_frame : fn / {Deadline<16ms>}
+      ∀ call inside W! complete within budget
+      checked statically-plus-runtime-assert
+    determinism for replay         → {DetRNG} effect
+      sim_step : fn / {DetRNG}
+      system-rng-calls = compile-error inside
+  W! user-extensible :
+    effect my_effect<T> { op_1 : T -> Int; op_2 : () -> Bool }
+    handler h for my_effect { op_1 x = ...; op_2 () = ... }
+    ≡ Koka-style user-effects
+
+§ SURFACE-SYNTAX (tentative)
+  fn render(scene) -> Image / {GPU, Deadline<16ms>, NoAlloc} {
+    ...
+  }
+  fn sim_step(state) -> State / {DetRNG} {
+    ...
+  }
+  ≡ effect-row after / after return-type
+
+∎ S5

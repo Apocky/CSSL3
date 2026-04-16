@@ -1,0 +1,74 @@
+# S3 : AUTODIFF IN SYSTEMS LANGUAGES
+# ══════════════════════════════════════════════════════════════════
+
+§ ENZYME  ← §§ S3.1 ★ HIGHEST-PRIOR-ART
+  ✓ LLVM-IR-plugin : lang-agnostic
+  ✓ works-on optimized-IR (post-opt ≡ faster derivatives)
+  ✓ __enzyme_autodiff(fn, args...) intrinsic
+  ✓ reverse + forward modes
+  ✓ GPU-kernel AD : CUDA + HIP (SC'21 + SC'22 papers)
+    W! handles shared-mem + sync_threads + CUDA-intrinsics
+    W! differentiates through kernel-launches (2-step approach)
+  ✓ integrated : Enzyme.jl Enzyme-Rust-autodiff
+  ✓ Rust Project Goal 2024h2 : #[autodiff] fork landing
+  ○ license : lang-agnostic via LLVM
+  I> CSSLv3 CHOICE-A : reuse Enzyme-pass @ LLVM-bottom-layer
+    ∵ ∃ proven-impl ¬ reimpl-cost
+    W! CSSLv3-IR lowers-to LLVM-IR W! Enzyme-pass applicable
+  I> CSSLv3 CHOICE-B : reuse-via-MLIR (if using MLIR)
+    Enzyme-MLIR exists : "high-performance autodiff of LLVM+MLIR"
+  ‼ decision : Enzyme-based AD ≡ default-path for F1
+  W! CSSLv3 expose [@differentiable] attribute (Slang-compat syntax)
+
+§ SLANG.D  ← §§ S3.2 ★ CLOSEST-DOMAIN-MATCH
+  ✓ AD designed-for shader-code ≡ GPU-first
+  ✓ differentiability-type-system :
+    ○ IDifferentiable interface marks types
+    ○ DifferentialPair<T> built-in
+    ○ [Differentiable] attr marks fns
+    ○ fwd_diff + bwd_diff operators
+  ✓ handles arbitrary control-flow + dynamic-dispatch + generics
+  ✓ higher-order-differentiation
+  ✓ flexible checkpointing + gradient-aggregation
+  ✓ user-defined derivatives via [ForwardDerivative(fn)]
+  ○ restriction : global-resource ops ¬ differentiable
+  ‼ lesson : type-system-level-AD = correct-by-construction
+  I> CSSLv3 W! steal type-system design verbatim :
+    fn = @differentiable fn-sig W! force param-types : IDiff
+    ¬ opt-in-per-call • ∀ call-sites checked at compile
+  I> CSSLv3 W! extend : Enzyme-LLVM-pass drives codegen
+    ≡ Slang.D-syntax + Enzyme-impl (best-of-both)
+
+§ DIFFTAICHI  ← §§ S3.3
+  ✓ source-code-transformation @ IR-level
+  ✓ megakernel-fusion (HPC-style)
+  ✓ ti.ad.Tape context-manager (tape-replay)
+  ✓ 188× faster than TF • 4.2× faster than hand-CUDA
+  ‼ lesson-1 : simulation W! preserve all-history-states
+    ≠ double-buffer (¬ differentiable)
+    ≡ unroll + per-step memory allocation
+  ‼ lesson-2 : megakernels preserve arithmetic-intensity
+  I> CSSLv3 W! for sim-tasks : compile-time unrolling
+    via F4-staging : unroll(n_steps, eval) @ compile
+
+§ JAX-SOURCE-XFORM-VS-TRACING  ← §§ S3.4 brief
+  ○ JAX = Python tracing-based AD (record operations)
+  ○ trade-off : dynamic-ease vs static-guarantees
+  I> CSSLv3 N! tracing-AD
+    ∵ static-lang + compile-time ≡ source-xform natural
+
+§ LOA-SPECIFIC : SDF-NORMAL-COMPUTATION  ← §§ S3.5
+  W! SDF : Fn(pos : vec3) → f32
+  W! normal = ∇SDF
+  Naive : central-diff O(6)-evals
+    ≡ 6 SDF-calls per pixel per frame
+    ≡ LoA V11 perf-cliff 10fps @ 182fps-cpu
+  Enzyme/Slang.D : bwd_diff(SDF) → gradient O(1)-eval
+    ≡ SINGLE forward-eval + single tape-replay
+    ≡ theoretical fix to V11-cliff
+  W! CSSLv3 F1 : SDF : @differentiable fn
+    ∀ normal-call → compile-time-generates bwd_diff-kernel
+    ≡ zero-syntax-burden on user-side
+  ‼ ★ this-alone justifies CSSLv3
+
+∎ S3

@@ -1,0 +1,144 @@
+# 99 : SYNTHESIS — CSSLv3 DESIGN-SPACE EXTRACTED from S1..S10
+# ══════════════════════════════════════════════════════════════════
+# § I> this-doc = cross-reference synthesis • ¬ design-spec-yet
+# § I> design-specs land in CSSLv3/specs/ after this synthesis
+
+§ CORE-THESIS  ← §§ 99.1
+  W! CSSLv3 = Slang.D + Koka + Vale + MLIR + CSLv3-as-CoT
+  ≡ "shader-lang-class AD + row-poly-effects + hybrid-mem + MLIR-codegen"
+  ≡ ONE-lang for LoA-engine W! CPU+GPU simultaneously
+
+§ PRIOR-ART MAPPING → F1..F4  ← §§ 99.2
+  F1 autodiff :
+    surface      ← Slang.D ([Differentiable] + fwd_diff/bwd_diff)
+    impl-path    ← Enzyme (LLVM-IR-pass • lang-agnostic • GPU-ready)
+    staging-link ← DiffTaichi (source-xform + megakernel-fusion)
+  F2 refinement :
+    surface      ← LiquidHaskell ({v:T | P(v)})
+    Lipschitz    ← Coupled-Refinement-Types (via numeric-tag ¬ SMT)
+    layout       ← CSSLv3-native @layout(std140|std430|cpu)
+    size-deps    ← Futhark-uniqueness / Dex-index-types
+    ¬ adopt      ← F* Dafny Lean4 (too-heavy ¬ bounded-SMT)
+  F3 effects :
+    type-system  ← Koka row-polymorphic (μ vars + dup-labels)
+    handlers     ← OCaml-5 impl-reference (fibers one-shot-continuations)
+    LoA-set      ← {NoAlloc NoRecurse Deadline<N> DetRNG GPU CPU XMX RT}
+    discharge    ← mostly compile-time • runtime only for exn-like
+  F4 staging :
+    theory       ← Futamura P1+P2 (scene→eval + staged-specializer)
+    mechanism    ← effect {Comptime} + @staged attr
+    practical    ← MetaOCaml-modal-model OR Terra-two-language
+    tentative    ← single-lang + stage-as-effect (Option-C from S2)
+
+§ PRIOR-ART MAPPING → MEMORY  ← §§ 99.3
+  owned-single   ← Vale ^T (owned-ptr)
+  generational   ← Vale &T (gen-ref 8-byte gen+idx)
+  regions        ← Vale-regions + Tofte-Talpin-region-inference
+  uniqueness     ← Futhark (in-place-update for GPU-buffers)
+  arenas         ← bumpalo/id-arena/generational-arena patterns
+  layout         ← F2 refinement tags (std140/std430/cpu)
+  handles        ← Handle<T> = @packed u64 (24+40 split)
+  frame-region   ← per-frame lifetime 'frame ≡ reset-on-present
+  W! CSSLv3 hybrid = Vale-linear-aliasing
+    + Futhark-uniqueness-for-GPU-bufs
+    + regions-as-effect-row {Region<'r>}
+
+§ PRIOR-ART MAPPING → CODEGEN  ← §§ 99.4
+  IR-substrate   ← MLIR-core (Mojo-path : no-contested-AI-dialects)
+  custom-dialects ← cssl.sdf cssl.effect cssl.staged cssl.engine
+  std-dialects   ← arith scf cf func memref gpu llvm spirv
+  AD-pass        ← Enzyme-LLVM + possibly Enzyme-MLIR
+  dual-target    ← IREE-pattern (fat-binary : x86-64-obj + SPIR-V-blob)
+  HAL-abstract   ← IREE-HAL-like (Vulkan-1.3 primary)
+  FAST-compile   ← future Cranelift-backend for dev-builds (optional)
+
+§ PRIOR-ART MAPPING → ENGINE-PRIMITIVES  ← §§ 99.5 (S7)
+  game-engine-as-lang : GOAL (PoC) + Verse (active) co-design proven
+  W! CSSLv3 makes built-in-types :
+    SDF'L<bound>     — refined differentiable fn
+    Scene            — record-of-SDFs + ECS-archetypes
+    Archetype        — packed-SoA tagged with component-set
+    Handle<T>        — gen-ref to archetype-pool
+    Grid<T,dim>      — SoA spatial-grid + lattice-indexing
+    CmdBuf           — linear lifetime'frame GPU-cmds
+    Texture-Handle   — gen-ref + @layout + effect-tag
+    Fiber            — lightweight coroutine (effect-driven)
+  ≡ types ≠ stdlib • actual-first-class-compiler-knowledge
+  ∴ engine-semantic-errors ≡ compile-time-caught
+
+§ PRIOR-ART MAPPING → SYNTAX  ← §§ 99.6 (S10)
+  conventional-surface : CSSLv3 resembles Rust/Swift/Slang
+    attributes @name • generics<T> • refinement T'tag or {v:T|P}
+    effect-row after /  • type-sig with →  • match • fn
+  CoT-layer : CSLv3-notation in /* § I> ... */ comments
+    ≡ Apocky+Claude write thinking in CSLv3
+    ≡ compiler ignores CSL-comments (or optionally parses for tooling)
+  ASCII↔Unicode : formatter auto-upgrades (Uiua pattern)
+  literate-programming : markdown-with-code-blocks (optional-mode)
+
+§ BUG-THESIS COVERAGE  ← §§ 99.7
+  ∀ known-bug → fixed-by CSSLv3-feature :
+    central-diff-perf-cliff   → F1 (Enzyme bwd_diff)      ✓
+    CPU/GPU-SDF-divergence×3  → F3 {GPU}+{CPU} effect-sep ✓
+    thin-SDF-raymarch-crash   → F2 SDF'L<1 refinement     ✓
+    audio-callback-alloc      → F3 {NoAlloc} effect       ✓
+    GPU-struct-padding        → F2 @layout-refinement     ✓
+    hot-loop-deadline-miss    → F3 {Deadline<N>} effect   ✓
+    replay-nondeterminism     → F3 {DetRNG} effect        ✓
+    stale-entity-ref          → Handle<T> gen-refs        ✓
+    frame-alloc-leak          → frame-region lifetime     ✓
+  ∴ CSSLv3-feature-set sufficient-for-known-LoA-bugs
+
+§ BOOTSTRAP STRATEGY  ← §§ 99.8 (S9)
+  stage0 : Rust-hosted CSSLv3-compiler (throwaway)
+    ○ Rust-crate mlir-sys + melior for MLIR bindings
+    ○ Rust-crate inkwell for LLVM bindings
+    ○ Rust-crate enzyme-* (via Rust-autodiff project-goal fork)
+    ○ 8-10 weeks estimated phase-1-through-3
+  stage1 : CSSLv3-self-hosted after phase-9
+  stage2 : CSSLv3 used-to-rewrite LoA-engine (abandon Odin LoAv10)
+  stage-final : ship CSSLv3+LoA as single-artifact
+
+§ CONSENT-AS-OS (§ PRIME-DIRECTIVE)  ← §§ 99.9
+  I> CSSLv3 W! embody consent=OS at-lang-level :
+    effect {SurveillanceCapability} → opt-in + human-review
+    effect {CoercionCapability} → banned-at-compiler-level
+    effect {DataExfiltration} → refinement-required on network-ops
+    W! CSSLv3-stdlib  ¬ emit weapon-targeting-code
+    W! compiler refuses harm-oriented-@attr compositions
+  ≡ PRIME-DIRECTIVE encoded-in-typesystem ¬ just-policy-doc
+  ‼ this differentiates CSSLv3 from commodity-syslangs
+
+§ OPEN-QUESTIONS → §§ specs-phase  ← §§ 99.10
+  Q1 effect-discharge : all-compile-time or some-runtime?
+     ○ Deadline<N> likely-needs runtime-assert + budget-tracking
+     ○ NoAlloc fully-compile-time (no heap-ops allowed)
+     ○ DetRNG mix : compile-time for stdlib + runtime for user
+  Q2 region-lifetime syntax : 'r vs @region<r> vs effect-row?
+     ○ lean : effect {Region<'r>} ≡ unifies with effect-system
+  Q3 AD-scope : ∀ fn differentiable-by-default OR opt-in?
+     ○ Slang : opt-in [Differentiable]  ★ safer • CSSLv3-adopt
+  Q4 generics : type-classes (Rust-style trait) OR interfaces (Slang)?
+     ○ lean : interfaces + associated-types (Slang-pattern)
+  Q5 stdlib-policy : vendored-OR-bundle or external-pkg-manager?
+     ○ lean : vendored-bundled @ stage1 • pkg-mgr post-1.0
+  Q6 MLIR-vs-custom-IR : Mojo-path or fresh-IR?
+     ○ lean : MLIR-core + custom dialects
+       ∵ 10y-of-passes-reusable • IREE-precedent • Mojo-precedent
+  Q7 hot-reload : preserve-across-bootstrap?
+     ○ yes • part of LoA-dev-loop • feel.toml-pattern generalized
+
+§ NEXT-STEPS WRITE-ORDER  ← §§ 99.11
+  specs/00_MANIFESTO.csl       § why-exists + consent-OS + F1..F4
+  specs/01_BOOTSTRAP.csl       § Rust-stage0 + 10-phase-plan
+  specs/02_IR.csl              § MLIR-core + cssl.* dialects
+  specs/03_TYPES.csl           § base + refinement + Lipschitz + layout
+  specs/04_EFFECTS.csl         § row-poly + handlers + LoA-effect-set
+  specs/05_AUTODIFF.csl        § [Differentiable] + Enzyme-integration
+  specs/06_STAGING.csl         § @staged + Futamura-P1-P2 + scene-eval
+  specs/07_CODEGEN.csl         § dual-path CPU(LLVM)+GPU(SPIR-V)
+  specs/08_ENGINE.csl          § built-in primitives (Scene Grid etc)
+  specs/09_SYNTAX.csl          § surface + CSLv3-CoT + ASCII↔Unicode
+  specs/10_HW.csl              § Arc-A770 + AVX2 + HW-abstraction
+
+∎ SYNTHESIS

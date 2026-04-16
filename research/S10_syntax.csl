@@ -1,0 +1,133 @@
+# S10 : SYNTAX — APL LINEAGE + DENSE-NOTATION + CSLv3-AS-SURFACE
+# ══════════════════════════════════════════════════════════════════
+
+§ APL-LINEAGE  ← §§ S10.1
+  ✓ Iverson-1962 "A Programming Language" book → APL
+  ✓ ⟨Notation-as-Tool-of-Thought⟩ Iverson Turing-Award-1979
+  ✓ primitives = dense-glyphs • nouns(arrays) + verbs + adverbs + conjunctions
+  ✓ rank-polymorphism : verb applies cell-wise to any-dim-array
+  ‼ thesis : glyph-density = signal-to-noise ratio + cognitive-chunk
+  ○ descendants :
+    J : ASCII digraphs (Iverson+Hui 1990)
+    K/Q : Whitney • finance-DB-optimized
+    Dyalog-APL : commercial modern-APL
+    BQN : Lochbaum 2020+ • self-hosted • array-based-compiler
+    Uiua : Schmidt 2023+ • stack-tacit + Unicode-formatted-from-ASCII
+    Futhark : ML-family-array-lang → GPU-codegen
+    Dex : Google-Research • dependent-types + Einstein-summation
+
+§ BQN/UIUA LESSONS  ← §§ S10.2 modern-array-syntax
+  ✓ BQN : based-array-model • context-free-grammar
+    data-types vs expression-roles distinguished ≡ first-class-functions
+    new-glyph-pairings • leading-axis-model
+  ✓ Uiua : ASCII-name-entered formatter-converts-to-glyph
+    ≡ solves APL keyboard-problem
+    ‼ PATTERN : type-ASCII → auto-format → glyph-rendering
+  I> CSSLv3 W! steal Uiua-pattern :
+    author-writes ASCII : `forall x, p(x) <= 1` etc
+    formatter-upgrades → ∀x. P(x) ≤ 1 for display/storage
+    ¬ force-user to-enter-glyphs
+    ≡ ASCII-in + Unicode-on-disk + glyph-display
+  I> CSSLv3 W! align with CSLv3-ASCII-aliases-policy (already set)
+
+§ DEX : DEPENDENT-TYPES + EINSTEIN-SUM  ← §§ S10.3 ★ relevant
+  ✓ Google-Research • Hinze + Maclaurin + others
+  ✓ index-as-type : `i:Range n => ...`
+  ✓ broadcasting via type-inference
+  ✓ first-class-AD (grad via type-class)
+  ✓ effect-system (mutation + random + IO)
+  ‼ lesson : dependent-types+AD+effects ALL-IN-ONE
+    ≡ exactly the combo CSSLv3 needs
+  I> CSSLv3 W! study Dex-semantics + Dex-effect-types
+    Dex-paper "Getting to the point" ICFP'21 reference
+
+§ FUTHARK : UNIQUENESS-TYPES-FOR-GPU  ← §§ S10.4
+  ✓ ML-family • purely-functional
+  ✓ uniqueness-types : ∀ in-place-update checked static
+    ≡ ref-transparency + imperative-performance
+  ✓ AOT-compile CUDA/OpenCL/multi-CPU
+  ✓ fusion-rules + flattening-transform
+  ✓ second-order-array-combinators :
+    map reduce scan filter stencil ≡ primitive-parallel-forms
+  ✓ AD via source-transform
+  ‼ lesson : uniqueness-types = practical-linear-typing
+    less-complex than Rust-lifetimes
+    sufficient for array-update-in-place
+  I> CSSLv3 W! consider uniqueness-types for GPU-buffers
+    ≡ alternative-or-supplement to Vale-gen-refs
+
+§ CSLv3-AS-SURFACE QUESTION  ← §§ S10.5 ★ core-decision
+  Q? W! CSSLv3-surface-syntax = CSLv3-notation ?
+    OR W! CSSLv3-surface = more-conventional ?
+  
+  § case-for CSLv3-as-surface :
+    ✓ already-designed • already-readable-by-Apocky-and-Claude
+    ✓ density = 5-6× English (if claims-hold)
+    ✓ trilingual : EN-bridge + compounds + ASCII-aliases
+    ✓ § think-blocks → useful-for-code-annotations (stage-markers)
+    ✓ self-consistent : spec-lang ≡ prog-lang (one-language)
+  § case-against :
+    ✗ too-novel : new-contributors face wall
+    ✗ tooling-starved : no-LSP no-editor-support
+    ✗ domain-overlap : spec-glyphs (I> W! ∎) don't map-to prog-concepts cleanly
+    ✗ CSLv3 lacks expressions rich-enough for full-lang
+      e.g. arithmetic-ops • control-flow-expr-form • pattern-match
+
+  § hybrid OPTION : CSLv3-as-CoT + CSSLv3-as-surface
+    CSLv3 → § think-blocks • CoT • comments • spec-docs
+    CSSLv3 → fn body + type-defs + expressions
+    ≡ "CSLv3 inside /* ... */ block + CSSLv3 outside"
+    ≡ literate-programming pattern
+    ‼ tentative-preferred
+
+  § CSSLv3-surface TENTATIVE (example)
+    ```
+    § CSL-thinking-allowed in comments
+    § ✓ CSSLv3-primary-syntax below
+
+    @differentiable
+    @lipschitz(1.0)
+    fn sphere_sdf(p : vec3, r : f32'pos) -> f32 =
+      length(p) - r
+
+    @staged
+    fn render_scene<scene : Scene>(
+      cam : Camera
+    ) -> Image / {GPU, Deadline<16ms>, NoAlloc} {
+      for (x, y) in grid(cam.size) |> parallel {
+        ray := cam.ray(x, y)
+        hit := ray_march(scene, ray) ?: return background
+        n   := bwd_diff(sdf)(hit.pos)      § ← F1 compiler-inserts
+        emit pixel(x, y, shade(hit, n))
+      }
+    }
+
+    effect Physics<World> {
+      step       : dt : f32 -> World
+      contact    : a : Entity, b : Entity -> Option<Hit>
+    }
+    ```
+
+  § SYNTAX-DECISIONS (tentative)
+    type-annotation : x : T
+    refinement : x : T'tag OR x : T{P(x)}
+    effect-row : / {E1, E2<N>, ...}
+    attribute : @name(args)
+    staging : @staged fn ...   § ← staged in F4
+    pattern-match : match x { Some(v) => ..., None => ... }
+    lambda : |x : T| -> U { body }  or  \x. body
+    arrow : → for type-sig • =>  for match-arm
+    generics : fn f<T : Trait>(...) ...
+
+§ COMPILER-GLYPH-OPS  ← §§ S10.6
+  W! compiler accept BOTH ASCII + Unicode tokens :
+    -> and →
+    /= and ≠
+    <= and ≤  >= and ≥
+    forall and ∀  exists and ∃
+    |> and ▷    (pipeline)
+    :: and ∷    (has-type-signature)
+  W! formatter auto-converts ASCII → Unicode @ save
+  W! code-storage = Unicode (UTF-8) primary
+
+∎ S10

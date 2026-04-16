@@ -1,0 +1,157 @@
+# 21 : EXTENDED-SLICE — atmosphere/clouds/hair/water/spectral/XeSS2/audio
+# ══════════════════════════════════════════════════════════════════
+# § I> vertical-slice = FLOOR (R15) ≡ add these for ship
+# § I> each primitive compiler-recognized ≡ engine-type first-class (§§ 08)
+
+§ VOLUMETRIC ATMOSPHERE
+  type Atmosphere : val {
+    transmittance_lut : Texture3D<vec3, LUT_DIM>
+    scattering_lut    : Texture3D<vec3, LUT_DIM>
+    sky_view_lut      : Texture2D<vec3, (192, 108)>
+    planet_radius     : f32'pos
+    atmos_thickness   : f32'pos
+    rayleigh_coeff    : vec3'nonneg
+    mie_coeff         : vec3'nonneg
+    ozone_coeff       : vec3'nonneg
+  }
+  @staged fn render_sky<A : Atmosphere>(ray : Ray) -> vec3
+       / {GPU, Deadline<0.5ms>, Telemetry<DispatchLatency>}
+  lineage : Hillaire 2020 "Production Ready Atmospheric Scattering"
+  LUT-precompute : @staged build-tables per-atmosphere-config
+  ray-marching : multiple-scattering approximation via LUT
+
+§ CLOUD VOLUMES (NUBIS-3)
+  type CloudVolume : val {
+    density_field : Grid3<f32'unit, CLOUD_DIM>
+    erosion_noise : Texture3D<f32, EROSION_DIM>
+    weather_map : Texture2D<vec4, WEATHER_DIM>
+    coverage : f32'unit
+    wind_vel : vec3
+  }
+  @staged @differentiable
+  fn render_clouds<C : CloudVolume>(ray : Ray, sun : vec3'unit) -> (vec3, f32)
+       / {GPU, Deadline<3ms>, Region<'frame>, Telemetry<Counters>}
+  lineage : Guerrilla NUBIS-3 SIGGRAPH 2023
+  temporal-upsample via XeSS2 (§§ this file XeSS2Pass)
+  optimization : adaptive-step + jittering + half-resolution compositing
+
+§ HAIR / FUR STRANDS
+  archetype HairStrandSet {
+    strands : iso<Buffer<HairStrand>>
+    skin_attach : iso<Buffer<SkinAttachment>>
+    physics_state : ref<HairPhysicsState>
+  }
+  struct HairStrand : @layout(std430) {
+    control_points : [vec3 ; 8]   // Bezier control-points
+    tangents : [vec3 ; 8]
+    root_uv : vec2'unit
+    radius_scale : f32'pos
+    material_id : u16
+  }
+  @differentiable fn hair_bezier(strand : &HairStrand, t : f32'unit) -> vec3
+  physics : mass-spring + XPBD constraints, SIMD256 parallel
+  rendering : strand-rasterization with MSAA or analytic-coverage
+  lineage : TressFX lineage + AMD RDNA hair-research
+
+§ FFT OCEAN
+  type OceanFFT<N : usize> : val {
+    spectrum : Grid2<complex64, N>      // Phillips or JONSWAP spectrum
+    heights : Grid2<f32, N>
+    displacement : Grid2<vec2, N>
+    normals : Grid2<vec3'unit, N>
+    foam : Grid2<f32'unit, N>
+  }
+  @staged fn step_fft<N : usize>(ocean : &mut OceanFFT<N>, t : f32'nonneg, dt : f32'pos)
+       / {GPU, XMX, Deadline<1ms>, Telemetry<XmxUtilization>}
+  caustics : photon-splatting or analytic-from-heightfield
+  lineage : Tessendorf 2001 + modern IFFT-on-GPU-via-XMX
+  @differentiable : inverse-ocean for art-direction-matching
+
+§ SPECTRAL PATH TRACING
+  type SpectralRender : val {
+    spectrum_samples : usize  // typically 4-8 per ray
+    wavelengths : Grid1<f32, MAX_SAMPLES>   // sampled per-ray
+    sensitivity_xyz : Grid1<vec3, WAVELENGTH_BUCKETS>
+    materials : Buffer<SpectralMaterial>
+  }
+  fn trace_spectral(ray : Ray, bounces : u32{v : u32 | v ≤ 8}) -> SpectrumSample
+       / {GPU, RT, Deadline<8ms>, Telemetry<RtRaysPerSec>}
+  advantages : correct dispersion, iridescence, accurate color
+  lineage : PBRT v4 + Hero-wavelength sampling
+  optimization : wavelength-bundling, Russian-roulette termination
+
+§ XeSS2 NEURAL UPSCALING (inline via XMX)
+  type XeSS2Pass : val {
+    network : NeuralNetwork<INPUT_DIM, OUTPUT_DIM>    // pretrained weights
+    feature_buffers : [Texture<vec4> ; FEATURE_COUNT] // color, depth, motion, etc
+  }
+  @staged fn xess2_upscale<M : UpscaleMode>(
+    low_res : &Texture<vec4>,
+    aux : &XeSS2Features
+  ) -> Texture<vec4>
+       / {GPU, XMX, Backend<LevelZero>, Deadline<2ms>,
+          Telemetry<XmxUtilization>, Power<50W>}
+  modes : Performance | Balanced | Quality | UltraQuality
+  integration : pre-composite-post-tone-map placement
+  @differentiable : network-fine-tuning on per-game-content
+    @differentiable fn xess2_train_loss(...) for @differentiable stdlib
+
+§ UNIFIED AUDIO-DSP
+  archetype AudioDSPGraph {
+    nodes : iso<Buffer<AudioNode>>
+    edges : iso<Buffer<(NodeId, NodeId)>>
+    ringbuf : ref<AudioRingBuffer>
+    sample_rate : u32{v : u32 | v ∈ {44100, 48000, 96000, 192000}}
+  }
+  struct AudioNode : @layout(cpu) @layout(std430) {
+    kind : AudioNodeKind     // Oscillator, Filter, Reverb, Convolution, ...
+    params : [f32 ; 16]
+    input_count : u8
+    output_count : u8
+  }
+  @staged fn audio_callback<G : AudioDSPGraph>(
+    buf : &mut [f32]
+  ) / {CPU, SIMD256, NoAlloc, NoUnbounded, Deadline<1ms>, Realtime<Crit>,
+       PureDet, DetRNG, Audit<"audio-callback">}
+  GPU-offload optional : @gpu fn convolution_reverb on XMX for HRTF + impulse-responses
+  unified-lang ≡ same CSSLv3 source handles CPU-DSP + GPU-FX + graphics
+  lineage : FAUST + SuperCollider + Web Audio API + Resonance Audio
+
+§ RENDER GRAPH (pull-in from §§ 08)
+  const FRAME_GRAPH : RenderGraph = render_graph! {
+    pass sky = Atmosphere::render(cam)
+    pass geometry = VoxelVolume::gbuffer(scene, cam)
+    pass svdag_render = SVDAG::march(scene, cam, sky)
+    pass clouds = CloudVolume::render(ray_from_depth(geometry))
+    pass radiance = RadianceCascade::compute(scene, geometry, sky, clouds)
+    pass points = SplatCloud::composite(scene, geometry, radiance)
+    pass ocean = OceanFFT::render(cam)
+    pass hair = HairStrandSet::render(cam, geometry)
+    pass spectral = SpectralRender::render(cam) if quality >= High
+    pass atmosphere_composite = composite(geometry, clouds, sky, ocean)
+    pass temporal = TAA::resolve(atmosphere_composite, motion_vectors)
+    pass upscale = XeSS2Pass::upscale(temporal, aux) if upscale_enabled
+    pass post = tone_map + color_grade + ui_overlay
+  }
+  @staged : graph compiled-to-flat-cmdbuf
+  compile-time : barrier-insertion + resource-aliasing + async-scheduling
+
+§ VERTICAL-SLICE ENTRY POINT
+  examples/vertical_slice.cssl :
+    main-fn combining ALL above primitives @ 60fps Arc A770
+    ≤ 5000 lines CSSLv3 application-code
+    zero unsafe-blocks
+    signed audit-chain via {Audit<full>} on ship-build
+    {PureDet} bit-exact replay across-machines verified in CI
+    power/thermal profiled via R18 Level-Zero sysman
+    differential-tested Vulkan-vs-L0 pixel-exact
+
+§ BEYOND-FLOOR (not-ceiling either, but not-required for v1-ship)
+  procedurally-generated worlds (LoA-extended)
+  NPC-AI via LLM-inference on-device (via ONNX + XMX)
+  real-time cloth physics
+  destructible-world full-physics
+  character-animation blending via LBS + neural-deformation
+  ... all expressible in CSSLv3 v1 given engine-primitives
+
+∎ EXTENDED_SLICE

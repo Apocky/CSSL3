@@ -1,0 +1,129 @@
+# 07 : CODEGEN (v2) — no-LLVM, multi-backend
+# ══════════════════════════════════════════════════════════════════
+
+§ NO-LLVM COMMITMENT
+  ∀ codegen-path avoids LLVM dependency
+  Slang (400K LOC C++) = existence-proof production no-LLVM
+  Zig-2022 LLVM-removal freed 200MB build-dep
+  Enzyme-LLVM avoided : AD via source-to-source on MIR (§§ 05)
+  MLIR used structurally (§§ 15) but dropping-to-LLVM-dialect NOT required
+    — we drop-to-own-dialect + own-emitters
+
+§ STAGE0 vs STAGE1+ BACKENDS
+  stage0 :
+    CPU : Cranelift (cranelift-codegen + regalloc2 + cranelift-object)
+    GPU : rspirv for Vulkan/Level-Zero/WebGPU SPIR-V path
+    GPU : DirectXShaderCompiler offline (stage0 shim) for DXIL
+    GPU : spirv-cross for SPIR-V → MSL + WGSL
+  stage1+ :
+    CPU : owned x86-64 backend (§§ 14)
+    GPU : owned SPIR-V emitter (direct from MIR, no rspirv)
+    GPU : owned DXIL emitter (stage-2 target)
+    GPU : owned MSL + WGSL emitters (stage-2 target)
+
+§ CPU BACKEND — stage0 (Cranelift)
+  flow : MIR cssl-dialect → llvm-dialect subset → CLIF (custom bridge)
+         CLIF → regalloc2 → machine-code
+         → cranelift-object → ELF .o (Linux) | COFF .obj (Windows) | Mach-O (Mac)
+  ABI : SysV-AMD64 (Linux) + Windows-x64 + Darwin-AMD64
+  SIMD : AVX2 base + AVX-512 opportunistic via runtime-CPU-dispatch
+  target-features : ["+avx2", "+fma", "+bmi2", "+popcnt"] minimum
+  debug-info : DWARF-5 (Linux/Mac) + CodeView (Windows)
+  compile-speed : ~10× faster than LLVM (2s incremental achievable)
+  runtime-perf : ~30% slower than LLVM -O2 (acceptable for stage0)
+
+§ CPU BACKEND — stage1+ (owned, §§ 14)
+  direct MIR cssl-dialect → own-MIR-passes → own x86-64 emitter
+  own regalloc (graph-color + linear-scan hybrid per-fn)
+  own instruction-selection tables
+  own DWARF/CodeView emission
+  closes 30% gap vs stage0-Cranelift
+
+§ GPU BACKEND — SPIR-V path (Vulkan + L0 + WebGPU-portable)
+  stage0 : rspirv module-builder
+  stage1+ : owned typed-builder (3-5K LOC)
+  capabilities declared per §§ 10_HW (Arc A770 baseline)
+  memory-model : PhysicalStorageBuffer64 + VulkanKHR
+  structured-CFG emission : MLIR scf.* → OpSelectionMerge / OpLoopMerge
+  validate : spirv-val --target-env vulkan1.4 MANDATORY in CI
+  optimize : spirv-opt -O (release) or -Os (size-constrained)
+  NonSemantic.Shader.DebugInfo.100 : CSSLv3-source-line correlation (RenderDoc)
+  VK_KHR_shader_non_semantic_info : debugPrintf inline any shader-stage
+
+§ GPU BACKEND — DXIL path (D3D12, Windows)
+  stage0 : emit SPIR-V → DirectXShaderCompiler -spirv mode → DXIL
+  stage1 target : owned DXIL emitter (direct from MIR)
+  signatures matched to D3D12 root-signature layout
+  shader-model 6.6+ for mesh-shaders, ray-tracing, cooperative-matrix
+
+§ GPU BACKEND — MSL path (Metal, Apple)
+  stage0 : SPIR-V → spirv-cross --msl
+  stage1 target : owned MSL emitter
+  Metal-3 baseline (mesh-shaders + ray-tracing + cooperative-matrix on Apple-Silicon)
+  argument-buffers for bindless
+
+§ GPU BACKEND — WGSL path (WebGPU, Browser)
+  stage0 : SPIR-V → Tint WGSL emitter (Google/Dawn)
+  stage1 target : owned WGSL emitter
+  WebGPU capability-subset : no-BDA (handle via binding-indices),
+                              no-RT-pipeline v1 (ray-query optional)
+
+§ GPU BACKEND — console stubs (NDA-gated)
+  GNM (PS5) : stub + CI-skip on public-CI • impl under NDA
+  NVN (Switch-2) : same pattern
+  both read SPIR-V compatible-subset for portable-shaders
+  platform-specific extensions via {Target<...>} effect + per-platform overlay
+
+§ HOST-SUBMIT BACKENDS (R18)
+  Vulkan-1.4   : ash crate (stage0) | owned FFI (stage1+)
+  Level-Zero   : level-zero-sys (stage0) | owned FFI (stage1+)
+  D3D12        : windows-rs (stage0) | owned FFI (stage1+)
+  Metal        : metal crate (stage0, Apple-platforms)
+  WebGPU       : wgpu-core (stage0) | owned impl (browser stage1)
+  GNM / NVN    : platform-SDK (NDA)
+
+§ SPIR-V EMISSION INVARIANTS (§§ 10 detail)
+  module-section-order rigid :
+    Capabilities → Extensions → ExtInstImports → MemoryModel →
+    EntryPoints → ExecutionModes → debug → annotations/decorations →
+    types/constants/global-vars → fn-declarations → fn-definitions
+  forward-refs : only OpTypeForwardPointer (self-referential structs)
+  PhysicalStorageBuffer64 loads/stores require Aligned operand
+  OpConvertUToPtr / OpConvertPtrToU : 64-bit integers only
+  NonUniform decoration on non-uniform-descriptor-indices
+  LocalSize execution-mode for compute
+  specialization-constants for workgroup-size tunables
+
+§ FAT-BINARY (IREE-pattern)
+  output .cssl-bin :
+    [header]              magic, version, TOC, target-profile-set
+    [host-obj]            ELF | COFF | Mach-O per-OS (may-multi-embed)
+    [gpu-blobs]           SPIR-V | DXIL | MSL | WGSL array-of(entry, bytes)
+    [symbol-table]        extern-C names + relocations
+    [telemetry-schema]    R18 probe-metadata (§§ 22)
+    [audit-manifest]      build-attestation signed (R16)
+  runtime-loader libcssl-rt.{a,so} :
+    detects-backend @ startup (Vulkan | L0 | D3D12 | Metal | WebGPU)
+    loads-matching-blob, creates VkShaderModule / ID3D12PipelineState / etc
+    initializes telemetry ring (R18)
+    verifies audit-manifest signature chain
+
+§ VALIDATION PIPELINE (CI)
+  unit-tests : cargo test (stage0) | CSSLv3-test-runner (stage1+)
+  spirv-val : every-SPIR-V-blob • MANDATORY
+  spirv-cross round-trip : SPIR-V → GLSL → SPIR-V regression-detect
+  differential-test : same-MIR → both SPIR-V + DXIL → compare-outputs
+                      (when supported by Windows-CI runner)
+  golden-frame-compare : render example, pixel-diff vs known-good
+  performance-regression : power-draw, wallclock, dispatch-latency (R18)
+
+§ HOT-RELOAD (§§ 13+18)
+  dev-build : CSSLv3-compiler as-library in host-binary
+  filesystem-watch → re-parse + re-type-check + re-compile affected
+  swap :
+    host-code : .so/.dll re-dlopen, function-pointer table re-seated
+    gpu-shaders : destroy + recreate VkShaderModule + pipeline
+    state : orthogonal-persistence (§§ 18) preserves engine-state
+  production-build : hot-reload stripped, all-statically-linked
+
+∎ CODEGEN

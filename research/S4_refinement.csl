@@ -1,0 +1,55 @@
+# S4 : REFINEMENT TYPES + F5 REFINEMENT-FOR-GRAPHICS
+# ══════════════════════════════════════════════════════════════════
+
+§ LIQUID-HASKELL  ← §§ S4.1 ★ canonical-prior-art
+  ✓ refinement = base-type + logical-predicate
+    ex : {v:Int | v > 0}
+  ✓ SMT-backed (Z3)
+  ✓ verified 10K+ lines : containers bytestring text vector-algs xmonad
+  ✓ refinement-reflection : theorem-as-type + proof-as-term
+  ✓ abstract-refinements : parametric over invariants
+  ✗ Usability-Barriers paper PLDI'25 (Gamboa et al)
+    ○ error-messages opaque • Z3-timeout-cascades
+    ○ termination-annotations burden ≈ 1.7 lines per 100
+  ‼ Coupled-Refinement-Types ICFP'22 :
+    Lipschitz-encoded-axiomatic W! can-be specified
+    ≠ native • requires axioms + ghost-proofs
+  I> CSSLv3 W! steal refinement-syntax : {x:T | P(x)}
+  I> CSSLv3 W! keep predicates decidable (no full-Coq)
+  I> CSSLv3 W! native-Lipschitz via numeric-tag
+    ∀ SDF-fn W! have lipschitz-bound : f32 attached
+    ≡ compile-time-propagation ¬ SMT-query
+
+§ F* DAFNY LEAN4  ← §§ S4.2 too-heavy
+  ○ full-dependent-types • interactive-proofs
+  N! CSSLv3 ¬ go-there • SMT-only-bounded-refinement
+
+§ LOA-SPECIFIC : SDF-LIPSCHITZ-TRACKING  ← §§ S4.3
+  § problem : raymarcher stepping-formula
+    pos := pos + dir * sdf(pos)   § assumes Lipschitz-1
+    ⊘ if sdf 1-Lipschitz : march-safe ¬ overshoot
+    ✗ if sdf > 1-Lipschitz : step too-far → skip-surface → crash
+  § V11-V12 bug : thin-features violate Lipschitz
+    ○ sdf_scaled(p,k) = sdf(p/k)*k : if k<1 → L > 1
+    ○ no-compile-warning • runtime-crash-or-visual-glitch
+  W! CSSLv3 F2-refinement :
+    ∀ sdf-fn : SDF'L<bound>  (bound : f32 @ compile-time)
+    compiler propagates bounds through composition :
+      intersect : L ← max(L₁, L₂)
+      union (smooth) : L ← max(L₁, L₂) + smoothness-penalty
+      scale(k) : L ← L / k
+      transform(M) : L ← L * ||M||_op
+    W! ray-march-fn W! require SDF'L≤1
+    ≡ compile-error if user passes unscaled-SDF
+  I> CSSLv3 ★ this fixes V11-V12 thin-SDF-crash
+
+§ LOA-SPECIFIC : GPU-STRUCT-PADDING  ← §§ S4.4
+  § problem : CPU-layout ≠ GPU-layout (std140 / std430)
+    ○ struct-field-offset mismatch → corruption
+  W! CSSLv3 F2 : layout-types
+    struct : @layout(std140) | @layout(std430) | @layout(cpu)
+    compile-error on mismatch @ cross-boundary
+    ≡ auto-emit CPU↔GPU marshal/pad-fn
+  I> CSSLv3 ★ this fixes GPU-struct-padding-corruption
+
+∎ S4

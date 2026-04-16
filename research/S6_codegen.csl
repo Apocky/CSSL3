@@ -1,0 +1,121 @@
+# S6 : MLIR + CODEGEN + BACKENDS
+# ══════════════════════════════════════════════════════════════════
+
+§ MLIR-CORE  ← §§ S6.1 ★ likely-substrate
+  ✓ dialects = namespaced op-sets • extensible
+  ✓ progressive-lowering arbitrary-many-IRs
+  ✓ SSA + regions + blocks + types + attrs
+  ✓ built-in dialects : arith affine scf cf func memref gpu llvm tosa
+    linalg (tiling + fusion) spirv (Vulkan-target)
+  ✓ Transform-dialect CGO'25 : expose hidden passes to user-programmable-schedules
+  ✓ TableGen + IRDL : declarative op + type + verifier def
+  ‼ Lattner 2026 "identity crisis" : general-framework vs AI-solution
+    built-in AI-dialects (linalg tosa) contested
+    Mojo ¬ uses built-in dialects • pure-MLIR-core
+  I> CSSLv3 W! follow Mojo-path :
+    MLIR-core + custom-CSSLv3-dialects
+    ¬ depend-on contested-AI-dialects
+    W! reuse : arith scf cf memref gpu llvm spirv
+  I> CSSLv3 custom-dialects :
+    cssl.sdf : sdf-specific ops (union intersect march)
+    cssl.effect : effect-row + handler-invocation
+    cssl.staged : stage markers + splice points
+    cssl.engine : scene-graph + ECS + command-buffer
+  W! each-dialect lowers-to standard-dialects → LLVM + SPIR-V
+
+§ IREE  ← §§ S6.2 ★ reference-arch
+  ✓ MLIR-based AOT-compile
+  ✓ dual-target : SPIR-V/Vulkan + LLVM/CPU from single-IR
+  ✓ HAL (Hardware-Abstraction-Layer) aligns-with Vulkan
+  ✓ scheduling + execution together-compiled
+    ≡ fat-binary = host-bytecode + device-SPIR-V-blobs
+  ✓ "almost zero-cost VM" for host-scheduling
+  ✓ supports : CUDA HIP SPIR-V/Vulkan SPIR-V/Metal
+  ✓ AMD SDXL in MLPerf 2025-04 : production-level
+  ‼ lesson-1 : fat-binary pattern for multi-target
+  ‼ lesson-2 : HAL-abstraction wraps Vulkan-SPIR-V ¬ GL ¬ DX
+  ‼ lesson-3 : dispatch-region = unit-of-codegen
+  I> CSSLv3 W! model codegen-flow on IREE :
+    CSSLv3-AST → CSSLv3-dialect → standard-dialects
+    → {LLVM-dialect → x86-64-obj • SPIR-V-dialect → SPIR-V-blob}
+    + host-dispatch-code linking both
+  I> CSSLv3 W! target IREE HAL-like abstraction
+    Vulkan-1.3 SPIR-V-1.5 primary
+    future : Metal + DX12 via SPIR-V-cross OR direct
+
+§ CRANELIFT  ← §§ S6.3 alt-backend alternative-to-LLVM
+  ✓ Rust-native • 200K LOC vs LLVM 20M
+  ✓ production @ Wasmtime
+  ✓ x86-64 aarch64 s390x riscv64 backends
+  ✓ 10× faster compile than LLVM-system
+  ✗ ≈14% slower output-code than LLVM (WAVM-comparison)
+  ✓ CLIF IR • ISLE DSL for instruction-selection
+  ✓ formal-verification ongoing (VeriWasm+Pardeshi+Fallin)
+  ✓ Wasmtime EH-proposal implemented 2025 (Fallin odyssey)
+  I> CSSLv3 CHOICE : LLVM-bottom vs Cranelift-bottom vs both
+    LLVM : slow-compile + fast-code + Enzyme + SPIR-V via LLVM-SPIRV-translator
+    Cranelift : fast-compile + slower-code + ¬ GPU-codegen yet
+  ‼ decision : LLVM primary-bottom
+    ∵ GPU-codegen + Enzyme-AD both need LLVM
+    future : Cranelift for dev-build (fast-iteration)
+
+§ QBE  ← §§ S6.4 brief
+  ○ tiny-LLVM ≈10K LOC • no-GPU-support
+  N! CSSLv3 • too-limited for dual-target
+
+§ LLVM-SPIRV-TRANSLATION  ← §§ S6.5
+  ✓ LLVM-SPIRV Translator : bidirectional
+    ≡ LLVM-IR → SPIR-V for Vulkan-compute
+  ✓ IREE path : MLIR-SPIR-V-dialect → SPIR-V-blob
+  W! CSSLv3 : use MLIR-SPIR-V-dialect (cleaner than raw-translator)
+
+§ INTEL-ARC-A770 SPECIFICS  ← §§ S6.6 target-HW-details
+  ✓ Xe-HPG "Alchemist" ACM-G10
+  ✓ 32 Xe-cores • 8 render-slices @ 4 Xe-cores each
+  ✓ per Xe-core : 16 XVE-vector-engines + 16 XMX-matrix-engines
+    + 1 load/store unit + shared L1/SLM + ray-tracing-unit
+  ✓ 16GB GDDR6 • 256-bit • 17.5Gbps → 560 GB/s
+  ✓ Max clock 2.1 GHz
+  ✓ 17.2 TFLOPs FP32 • 137.6 TOPs FP16 via XMX • 275.2 TOPs INT8
+  ✓ Vulkan 1.3 + DirectX 12 Ultimate + OpenCL 3.0
+  ✓ AV1 HW-encode + XeSS + DisplayPort 2.0
+  ✗ ¬ ASTC hardware (removed from Alchemist)
+  ✗ DX9-10 via D3D9On12-layer • OpenGL via compat-layer
+  ‼ lesson : Vulkan-1.3 + DX12 primary-native
+    ○ ¬ wasted-effort on legacy-APIs
+  I> CSSLv3 HW-abstraction F3-effect :
+    {XMX} effect → compiler-can use INT8/FP16-matrix-ops
+    {RT} effect → ray-tracing-unit accessible
+    {SIMD256} effect (XVE 256-bit) → 8×FP32 per lane
+    vendor-agnostic-surface • per-vendor-lowering
+
+§ DUAL-CODEGEN-PATTERN  ← §§ S6.7 CSSLv3-arch
+  
+                ┌─────────────────┐
+                │   CSSLv3-AST    │
+                └────────┬────────┘
+                         ↓
+                ┌─────────────────┐
+                │ CSSLv3-dialects │  cssl.sdf cssl.effect cssl.staged cssl.engine
+                └────────┬────────┘
+                         ↓ lower
+              ┌──────────┴──────────┐
+              ↓                     ↓
+     ┌────────────────┐    ┌────────────────┐
+     │ standard @ CPU │    │ standard @ GPU │
+     │ arith scf func │    │ arith scf gpu  │
+     │ memref llvm    │    │ memref spirv   │
+     └────────┬───────┘    └────────┬───────┘
+              ↓                     ↓
+     ┌────────────────┐    ┌────────────────┐
+     │    LLVM-IR     │    │ SPIR-V-dialect │
+     │ (+Enzyme-pass) │    │                │
+     └────────┬───────┘    └────────┬───────┘
+              ↓                     ↓
+         ELF/PE obj             SPIR-V blob
+              ↓                     ↓
+              └──────┬──────────────┘
+                     ↓
+              fat-binary + host-dispatch
+
+∎ S6

@@ -1,0 +1,72 @@
+# S2 : COMPILE-TIME METAPROGRAMMING + STAGED COMPUTATION
+# ══════════════════════════════════════════════════════════════════
+
+§ FUTAMURA-PROJECTIONS  ← §§ S2.1 theoretical-foundation
+  W! source = Futamura-1971 "Partial Evaluation of Computation Process"
+  W! projections'3 :
+    P1 : spec(interpreter, program) → executable     ≡ compile
+    P2 : spec(spec, interpreter)    → compiler       ≡ compile-compiler
+    P3 : spec(spec, spec)           → cogen          ≡ compiler-generator
+  ◐ P4 experimentally-validated (Glück-2009) via Unmix-offline-PE
+  ‼ practical-impl :
+    ○ GraalVM-Truffle : P1-runtime
+    ○ RPython/PyPy : P2-at-translation-time
+    ○ MetaOCaml : explicit-multi-stage
+    ○ Terra : Lua-driven LLVM-codegen
+  I> CSSLv3 W! target P1+P2 at compile-time (¬ JIT)
+    ∵ compile-time-specialization ≡ scene-evaluator-generation
+  I> CSSLv3 N! expose projections to end-user-syntax
+    ∵ too-abstract • surface = simple @staged / @specialize
+
+§ ZIG-COMPTIME-LESSONS  ← §§ S2.2 what-not-to-do
+  ✗ AST-interpreter-only : 20× slower than Python @ comptime
+  ✗ compiler-own-stack for comptime-fn-calls : stack-overflow bug
+  ✗ repeated crashes : compile-time-memset compile-time-addr-taking
+  ✓ comptime-host-agnostic (deliberate) : ¬ leak host-arch
+  ✓ @typeInfo → struct-field iteration
+  ✓ inline-for : body depends-on runtime but iterator-compile-time
+  ✓ comptime-strings as embedded-DSL (printf-style)
+  I> CSSLv3 LESSON-1 : compile-time-eval W! be compiled-not-interpreted
+    ∴ "comptime-code runs-through same-backend as runtime-code"
+  I> CSSLv3 LESSON-2 : comptime-stack = separate from compiler-stack
+  I> CSSLv3 LESSON-3 : ¬ leak host-arch @ comptime (cross-compile-safe)
+  I> CSSLv3 LESSON-4 : types-as-values @ comptime = good pattern
+
+§ METAOCAML + TERRA  ← §§ S2.3
+  ○ MetaOCaml : modal-type-system distinguishes stages
+    types : α ≡ present-stage, ⟨α⟩ ≡ future-stage
+    operations : .⟨ e ⟩ quote, .~ splice, .! run
+    ‼ sound staging via Kripke-semantics
+  ○ Terra : Lua @ compile-time + LLVM @ runtime-codegen
+    ≡ "Lua is the compiler, Terra is the target"
+    W! two-language-design : metalang + objectlang
+    ○ successful : used-for image-processing DSLs
+  I> CSSLv3 CHOICE :
+    Option-A : single-language multi-stage (MetaOCaml-model)
+    Option-B : two-language : CSSLv3-meta + CSSLv3-object (Terra-model)
+    Option-C : unified : stage-polymorphism via effect {Comptime}
+  ‼ tentative → Option-C (staging ≡ effect + F3-consistent)
+
+§ TRUFFLE-GRAAL  ← §§ S2.4 partial-eval-runtime
+  ○ JIT via P1 : interpreter+program → specialized-code
+  ○ "write interpreter correctly → get compiler free"
+  ◐ runtime-focused ≠ CSSLv3-needs (AOT-first)
+  I> CSSLv3 ref-only • ¬ adopt runtime-PE architecture
+
+§ SCENE-EVALUATOR-GENERATION  ← §§ S2.5 CSSLv3-specific-application
+  W! scene = static-structure known @ level-load-time
+  W! ∀ frame : eval(scene, pos) → sdf-value
+  ✓ P1-application : spec(eval, scene) → eval'scene(pos)
+    ≡ scene-specific-shader compiled once
+    ≡ bypass runtime-dispatch over scene-types
+  I> LoA-win : eliminate runtime-type-tests in hot-loops
+  I> ship-time : recompile-on-scene-change ≈ OK
+  W! CSSLv3 @staged attribute + scene-as-value-at-compile-time
+
+§ HOT-RELOAD ← §§ S2.6 dev-loop
+  W! Odin/Jai/Zig all show hot-reload ≡ dev-win for game-dev
+  W! CSSLv3 W! preserve hot-reload across self-host
+  W! feel.toml pattern (Apocky prior work) generalizes
+  I> hot-reload = incremental-P1 applied @ scene-boundary
+
+∎ S2

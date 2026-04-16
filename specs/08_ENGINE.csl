@@ -1,0 +1,227 @@
+# 08 : ENGINE-PRIMITIVES AS LANG-PRIMITIVES (v2)
+# ══════════════════════════════════════════════════════════════════
+# § I> compiler-knows-engine-semantics ∴ engine-bugs = compile-error
+# § I> detail of R15-expanded primitives moves to §§ 21_EXTENDED_SLICE
+
+§ PHILOSOPHY
+  W! LoA-engine primitives = first-class in CSSLv3 typesystem
+  ∵ Verse-UEFN-precedent : engine-sim-semantics lifted to lang
+  ∵ GOAL-Jak-precedent : lang + game co-designed
+  ∴ ∀ engine-semantic-violation → compile-time-caught
+  N! stdlib-wrapper-pattern (Rust-wgpu-approach) — typesystem-blind-to-GPU
+
+§ COMPILER-KNOWN TYPES
+  SDF'L<k>   Scene   Archetype   Handle<T>   Grid<T, DIM>
+  CmdBuf<'frame, B>  Texture   Buffer<T>   Fiber
+  RadianceCascade<N>  SVDAG   VoxelVolume   SplatCloud
+  FluidGrid<N>   Atmosphere   CloudVolume   HairStrandSet
+  OceanFFT   SpectralRender   XeSS2Pass   AudioDSPGraph
+
+§ SDF'L<bound> — Lipschitz-refined-differentiable-fn
+  SDF'L<k : f32'pos> ≡
+    @differentiable
+    fn(p : vec3) -> f32{ v : f32 | Lipschitz(self, k) }
+  builders (stdlib + compiler-recognized) :
+    sphere(c, r) cylinder(c, r, h) torus(c, R, r) plane(n, d) box(c, half)
+  combinators (propagate Lipschitz compile-time) :
+    union  intersect  subtract  smooth_union
+    scale(s, f)      → SDF'L<k/f>
+    translate        → SDF'L<k>
+    transform(M)     → SDF'L<k · ||M||_op>
+    displace         → SDF'L<k + j>
+    round            → SDF'L<k>
+  ray-march requires k ≤ 1.0 else compile-error
+  normal-derivation (F1 × engine) :
+    fn normal(s : SDF'L<k>, p : vec3) -> vec3'unit / ⟨⟩ {
+      normalize(bwd_diff(s)(p).d_p)
+    }
+
+§ Scene — record-of-SDFs ⊕ ECS-archetypes
+  struct Scene {
+    sdfs : Grid3<Handle<SDF'L<1.0>>, DIM>
+    entities : ArchetypePool
+    lights : [Light ; N_LIGHTS]
+    camera : Camera
+  }
+  @staged fn render<S : Scene>(...)  ⇒ per-scene specialization
+  const-scene-branches DCE'd ⇒ Futamura-P1 kills shader-permutations
+
+§ Archetype — packed-SoA tagged-by component-set
+  archetype Projectile {
+    pos : vec3   vel : vec3   ttl : f32'pos
+    owner : Handle<Entity>
+  }
+  compiler-synthesizes :
+    struct Projectile_SoA {
+      pos : [vec3 ; CAP]    vel : [vec3 ; CAP]    ttl : [f32 ; CAP]
+      owner : [Handle<Entity> ; CAP]
+      count : usize'idx<CAP>
+      generations : [u32 ; CAP]
+    }
+  ops :
+    ap.spawn(p) -> Handle<Projectile>
+    ap.despawn(h)
+    ap.for_each(|p : &mut Projectile| ...)   — auto-SIMD
+    ap.query<Q : ComponentSubset>()
+  guarantees : Copy-POD ⇒ GPU-readable via BDA ; gen-refs ⇒ V11-fix
+
+§ Handle<T> — gen-ref packed u64 (24+40)
+  struct Handle<T> { packed : u64 }
+  methods :
+    new(idx, gen) -> Handle<T>
+    h.deref_archetype(ap) -> Result<&T, StaleHandle>
+    h.deref_gpu(buf) -> Result<GpuRef<T>, StaleHandle>
+    h.null() / h.is_null()
+  @layout(cpu) + @layout(std430) both 8-bytes ⇒ zero-marshal CPU↔GPU
+  capability : tag<T>
+
+§ Grid<T, DIM> + Grid3<T, N>
+  Grid3<T, N> ≡ Grid<T, [usize ; 3]> with N³ capacity
+  backing : iso<[T ; N×N×N]>   SoA-contiguous
+  @layout(cpu) for CPU-access | @layout(std430) for GPU-SSBO
+  ops :
+    g[vec3_idx(i, j, k)] : &T    (bounds-checked @ debug)
+    g.sample_trilinear(p : vec3) -> T
+    g.morton_iter() -> iterator<T>
+    g.stencil<K>(fn : StencilFn<T, K>)
+  @differentiable Grid3<f32, N>.sample_trilinear ⇒ bwd_diff ok
+    ≡ enables radiance-cascades gradient-flow
+
+§ CmdBuf<'frame, B : Backend> — linear-lifetime GPU-cmds
+  struct CmdBuf<'frame, B> : iso {
+    underlying : iso<B::RawCmdBuf>
+    encoder_state : EncoderState
+  }
+  lifecycle :
+    CmdBuf::<B>::begin_frame() -> CmdBuf<'frame, B> / {Region<'frame>, Backend<B>}
+    cb.bind_pipeline(p : Handle<Pipeline<B>>)
+    cb.dispatch<S : Scene>(scene : &S, dims : uvec3)
+    cb.draw(...)
+    cb.end_frame() : consumes cb -> iso<SubmittedCmdBuf<B>>
+  guarantees :
+    ∀ cb.X-call inside 'frame-region
+    cb.end_frame consumes cb linearly (iso move)
+    cb-used-after-end = compile-error
+    cb-dropped-without-end = compile-error (linear-leak)
+  ≡ V7-V12 lost-submission bug impossible
+
+§ Texture + Buffer<T> — GPU-resource gen-refs
+  struct Texture<B : Backend> : iso-opaque {
+    handle : Handle<B::RawTex>
+    format : TextureFormat
+    dims : vec3<u32>
+    layout : @layout(gpu)
+    effect-tag : {GPU, Backend<B>}
+  }
+  struct Buffer<T, B : Backend> : iso-opaque {
+    handle : Handle<B::RawBuf>
+    element_type : T    ← @layout(std430)-compat required
+    count : usize
+    usage : BufferUsage    ← comptime-bitflags
+  }
+  Buffer::<T, B>::new(device, count, usage) -> iso<Buffer<T, B>>
+  buf.map_write<'r>(&mut CmdBuf<'frame, B>) -> &'r mut [T] / {Region<'r>}
+  buf.transfer_from_cpu(&mut CmdBuf, src : &[T])
+  drop-without-destroy = compile-error (iso-linear)
+
+§ Fiber — lightweight-coroutine effect-handler-driven
+  effect Yield<T>  { fn yield(v : T) -> () }
+  effect Resume<T> { fn resume() -> T }
+  spawn<T>(body : fn() -> T / {Yield<T>, Resume<_>}) -> Fiber<T>
+  scheduler : OCaml-5 one-shot-continuations lineage
+  stack : per-fiber 64KB default (tunable)
+  switch-cost : ~50ns reg-save-restore
+  linear-resource × handler : one-shot-resume only (§§ 12+04)
+
+§ RENDERING-STACK PRIMITIVES (floor — detail §§ 21)
+
+  § RadianceCascade<N>  (Sannikov 2023 + Freeman 2505.02041)
+    struct RadianceCascade<N : usize> {
+      probes : Grid3<ProbeRay, PROBES_PER_LEVEL>
+      level : u32 range<0, N>
+    }
+    @differentiable
+    fn cascade_merge<N>(fine, coarse : &RadianceCascade<N>)
+      -> RadianceCascade<N>
+      / {GPU, Deadline<4ms>, Region<'frame>, Telemetry<Counters>}
+    compile-recognized : angular × spatial = const invariant
+    probe-interval r_next = 4 · r_prev propagated comptime
+
+  § SVDAG  (Kämpe 2013 + Villanueva 2016 + Aokana TSVDAG 2025)
+    struct SVDAG { nodes : iso<Buffer<SVDAGNode>> ; root : Handle<SVDAGNode> ; max_depth : u32'pos }
+    struct SVDAGNode : @layout(std430) { child_mask : u8 ; child_ptrs : [u32 ; 8] }
+    svdag.ray_march(r : Ray) -> Option<Hit> / {GPU, RT}
+    svdag.build_from_grid(g) -> SVDAG / {CPU}
+    iso-linear ⇒ mutation-during-read = compile-error
+
+  § VoxelVolume  (Gustafsson Teardown-next-gen)
+    archetype VoxelVolume {
+      chunks : Grid3<VoxelChunk, CHUNK_DIM>    // 8³ palette-compressed
+      occupancy : Grid3<u64, CHUNK_DIM / 8>
+      transform : mat4    mass : f32'pos
+    }
+    struct VoxelChunk : @layout(cpu) @layout(std430) {
+      palette : [VoxelMaterial ; 256]
+      indices : [u8 ; 512]    // 8³ = 512 voxels/chunk
+    }
+    vv.collide_with(other) -> Option<Contact>
+       / {CPU, SIMD256, Deadline<500us>, Telemetry<DispatchLatency>}
+    vv.apply_impulse(c, j) / {State<Self>, Reversible}
+    vv.ray_trace(r, tlas) -> Option<Hit> / {GPU, RT}
+    intersection-shader per-voxel (no-triangles except water/wire)
+
+  § SplatCloud  (Evans Dreams SIGGRAPH 2015)
+    struct SplatCloud { points : iso<Buffer<Splat>> ; count : u32 ; lod_levels : [u32 ; MAX_LOD] }
+    struct Splat : @layout(std430) {
+      pos : vec3    normal_oct : u16    color_rgb565 : u16
+      radius : f16    flags : u16
+    }
+    pipeline (@staged-specialized) :
+      sdf_to_points<S : SDF'L<1.0>>(scene) -> SplatCloud
+      points_to_shadow_map(cloud) -> ImperfectSM
+      compositing_compute(cloud, sm, cam) -> Image
+
+  § FluidGrid<N>  (Stam 1999 + MacCormack/BFECC)
+    struct FluidGrid<N : usize> {
+      velocity : Grid3<vec3, N>
+      pressure : Grid3<f32, N>
+      density : Grid3<f32'nonneg, N>
+    }
+    @differentiable (inverse-fluid enabled §§ 17) :
+      fluid.advect_maccormack(dt)  / {GPU, Deadline<2ms>}
+      fluid.diffuse_implicit(visc, dt)
+      fluid.project_hodge()        / {GPU}
+    @staged Poisson-solver-variant per-grid-size (compile-time)
+
+§ R15-EXPANDED PRIMITIVES (detail §§ 21)
+  Atmosphere  CloudVolume (NUBIS-3)  HairStrandSet  OceanFFT
+  SpectralRender (full-spectrum path-tracer)
+  XeSS2Pass (neural-upscaling inline via XMX)
+  AudioDSPGraph (unified audio + GFX single-lang)
+
+§ RENDERGRAPH (v1, not-deferred)
+  type RenderGraph : compile-time-DAG {
+    nodes : [Pass ; N]
+    edges : [(Handle<Pass>, Handle<Pass>) ; M]
+  }
+  @staged-expansion : DAG → flat-cmdbuf-sequence
+  compile-time analysis :
+    barrier-insertion (RAW/WAR/WAW automatic)
+    resource-aliasing (transient-texture memory-reuse)
+    async-queue-scheduling (compute + graphics overlap)
+    telemetry-probe insertion per-pass (R18)
+  ≡ eliminates entire class of validation-layer-errors
+
+§ ENGINE-SEMANTIC-ERRORS → compile-time-caught
+  ✓ SDF without Lipschitz-bound → "cannot ray-march : no L-tag"
+  ✓ GPU-struct std140 vs std430 mismatch → "layout incompatible"
+  ✓ CmdBuf-leak (no end_frame) → "linear resource unconsumed"
+  ✓ Stale-Handle deref → runtime-panic with captured-context
+  ✓ audio-callback with Alloc-ancestor → "NoAlloc violation in callback"
+  ✓ shader runtime-if over scene-shape → warned "use @staged"
+  ✓ non-@differentiable call inside @differentiable → compile-error
+  ✓ RenderGraph cycle → compile-error pre-expansion
+  ✓ VoxelVolume simultaneous mut-ref + render → iso-violation
+  ✓ {Power<budget>} breach in profile → CI-fail (R18+§§ 23)
+
+∎ ENGINE
