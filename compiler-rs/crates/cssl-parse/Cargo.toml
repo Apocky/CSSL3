@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-parse"
+description            = "CSSLv3 stage0 — CSLv3-native + Rust-hybrid parser dispatch"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

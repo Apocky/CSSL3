@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-host-d3d12"
+description            = "CSSLv3 stage0 — D3D12 host submission via windows-rs (FFI)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

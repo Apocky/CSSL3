@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-host-vulkan"
+description            = "CSSLv3 stage0 — Vulkan 1.4.333 host submission via ash (FFI)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

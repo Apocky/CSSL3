@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-futamura"
+description            = "CSSLv3 stage0 — P1 / P2 / P3 partial-evaluation infrastructure"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

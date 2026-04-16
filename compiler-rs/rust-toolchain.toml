@@ -1,0 +1,8 @@
+# § I> R16 reproducibility-anchor : pinned-toolchain per-commit
+# § I> MSRV 1.75 per §§ 01_BOOTSTRAP + §§ HANDOFF_SESSION_1
+# § I> bump only-with DECISIONS.md entry documenting reason
+
+[toolchain]
+channel    = "1.75.0"
+components = ["rustfmt", "clippy"]
+profile    = "minimal"

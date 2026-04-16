@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-telemetry"
+description            = "CSSLv3 stage0 — R18 ring-buffer + Level-Zero sysman + OTLP + audit-chain"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

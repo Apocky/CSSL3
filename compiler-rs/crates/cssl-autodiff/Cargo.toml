@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-autodiff"
+description            = "CSSLv3 stage0 — source-to-source automatic differentiation on MIR"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

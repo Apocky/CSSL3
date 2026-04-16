@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-cgen-gpu-wgsl"
+description            = "CSSLv3 stage0 — WebGPU Shading Language emitter via Tint shim"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

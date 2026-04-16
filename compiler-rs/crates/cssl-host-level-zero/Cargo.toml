@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-host-level-zero"
+description            = "CSSLv3 stage0 — Intel Level-Zero host submission + sysman (R18) (FFI)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

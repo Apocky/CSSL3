@@ -1,0 +1,348 @@
+# § CSSLv3 CI pipeline • §§ 23-FAITHFUL from commit-1
+# § I> scaffolding-now = zero-rework @ T2..T11
+# § I> every matrix-cell declared • empty-harnesses wired (not commented)
+# § I> self-hosted runners (Arc A770 + iGPU + NVIDIA + AMD) gated via `if: false` until provisioned
+# § I> schedule : fast-suite per-commit • full-suite per-PR • extended nightly • release-cand manually
+# § SPEC : specs/23_TESTING.csl §§ CI-MATRIX
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * *'  # nightly @ 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Dispatch mode'
+        type: choice
+        default: 'full'
+        options:
+          - fast
+          - full
+          - release-candidate
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+# ══════════════════════════════════════════════════════════════════
+# § FAST-SUITE  (per-commit) — target ≤ 10 min
+# § I> runs unit + fmt + clippy + doc on all 3 GitHub-provided runners
+# § I> differential-backend-primary (Arc A770) happens in gpu-linux-arc-a770 job
+# ══════════════════════════════════════════════════════════════════
+jobs:
+  fast:
+    name: fast / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          components: rustfmt, clippy
+          cache-workspaces: compiler-rs -> target
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+      - name: cargo fmt --check
+        run: cargo fmt --check
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --workspace --no-fail-fast
+      - name: cargo doc
+        run: cargo doc --workspace --no-deps
+
+  # ══════════════════════════════════════════════════════════════════
+  # § SPEC-CROSSREF VALIDATOR — specs/*.csl + research/*.csl references
+  # ══════════════════════════════════════════════════════════════════
+  spec-xref:
+    name: spec cross-ref validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: validate § cross-refs
+        run: python3 scripts/validate_spec_crossrefs.py
+
+  # ══════════════════════════════════════════════════════════════════
+  # § PR-SUITE — full oracle-modes dispatch (target ≤ 45 min)
+  # § I> each job routes to cssl-testing crate oracle-submodule (wired empty @ T1)
+  # § I> bodies land progressively per §§ HANDOFF T<N>
+  # ══════════════════════════════════════════════════════════════════
+  oracle-property:
+    name: oracle / @property (QuickCheck-lineage)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - name: dispatch @property oracle
+        run: cargo test --workspace --features cssl-testing/oracle-property -- --ignored property
+        continue-on-error: true  # stage0 stub — fixtures arrive @ T11
+      - run: echo "§ T1 stub — oracle @property dispatch via cssl-testing @ T11"
+
+  oracle-metamorphic:
+    name: oracle / @metamorphic (algebraic-law)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - run: echo "§ T1 stub — oracle @metamorphic dispatch via cssl-testing @ T11"
+
+  oracle-replay:
+    name: oracle / @replay (N=10 determinism)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - run: echo "§ T1 stub — oracle @replay N=10 dispatch via cssl-testing @ T11 (T29 OG9)"
+
+  oracle-hot-reload:
+    name: oracle / @hot_reload_test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — hot-reload invariance via cssl-persist + cssl-testing @ T11"
+
+  oracle-audit:
+    name: oracle / @audit_test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — audit-chain verification via cssl-ifc + cssl-telemetry @ T11"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § GOLDEN-FIXTURE FRAMEWORK — pixel + SSIM + FLIP
+  # § I> reference frames under tests/golden/ per §§ 23
+  # § I> framework stubbed @ T1; populated @ T10+
+  # ══════════════════════════════════════════════════════════════════
+  golden-fixture:
+    name: golden-fixture (SSIM + FLIP)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - run: echo "§ T1 stub — golden loader + SSIM + FLIP harness @ T10+ (rendering examples)"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § DIFFERENTIAL-BACKEND  (primary : Vulkan × Level-Zero on Arc A770)
+  # § I> §§ 23 central-test + T28 OG8 ship-gate
+  # § I> self-hosted runner : [linux, arc-a770] — gated until provisioned
+  # ══════════════════════════════════════════════════════════════════
+  diff-linux-arc-a770:
+    name: differential / linux Arc A770 (Vulkan × L0)
+    runs-on: [self-hosted, linux, arc-a770]
+    if: false  # enable when self-hosted runner provisioned (T10 entry)
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - run: echo "§ T1 stub — Vulkan × Level-Zero bit-exact @ T10 (T28 OG8)"
+
+  diff-windows-arc-a770:
+    name: differential / windows Arc A770 (Vulkan × L0 × D3D12)
+    runs-on: [self-hosted, windows, arc-a770]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — Vulkan × L0 × D3D12 @ T10"
+
+  diff-linux-intel-igpu:
+    name: differential / linux Intel iGPU (coop-matrix absent)
+    runs-on: [self-hosted, linux, intel-igpu]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — iGPU path (no coop-matrix) @ T10"
+
+  diff-nvidia-rtx:
+    name: differential / linux NVIDIA RTX (Vulkan portability)
+    runs-on: [self-hosted, linux, nvidia-rtx]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — Vulkan portability check on NVIDIA @ T10"
+
+  diff-amd-rdna:
+    name: differential / linux AMD RDNA (Vulkan portability)
+    runs-on: [self-hosted, linux, amd-rdna]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — Vulkan portability check on AMD @ T10"
+
+  diff-metal-arm64:
+    name: differential / macOS arm64 (Metal)
+    runs-on: macos-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - run: echo "§ T1 stub — Metal backend differential @ T10"
+
+  diff-webgpu-chromium:
+    name: differential / WebGPU (chromium headless)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — WebGPU via wgpu + chromium headless @ T10"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § POWER / THERMAL / FREQUENCY / LATENCY  (R18 Level-Zero sysman)
+  # § I> self-hosted Arc A770 required for sysman-backed sampling
+  # ══════════════════════════════════════════════════════════════════
+  power-regression:
+    name: power regression (L0 sysman)
+    runs-on: [self-hosted, linux, arc-a770]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — @power_bench via cssl-host-level-zero sysman @ T11"
+
+  thermal-stress:
+    name: thermal stress (5 min sustained)
+    runs-on: [self-hosted, linux, arc-a770]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — @thermal_stress sampling @ T11"
+
+  frequency-stability:
+    name: frequency stability (zesFrequencyGetState @ 100Hz)
+    runs-on: [self-hosted, linux, arc-a770]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — GPU-clock histogram @ T11"
+
+  latency-percentile:
+    name: dispatch latency percentile (p99 target ≤ 1µs L0-immediate)
+    runs-on: [self-hosted, linux, arc-a770]
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — dispatch-latency histogram @ T11"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § NIGHTLY  (fuzz + stress + extended oracle budget)
+  # ══════════════════════════════════════════════════════════════════
+  nightly-fuzz:
+    name: nightly / @fuzz (10 min / module)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: compiler-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.75.0'
+          cache-workspaces: compiler-rs -> target
+      - run: echo "§ T1 stub — coverage-guided fuzz with SMT-oracle @ T9+T11"
+
+  nightly-mutation:
+    name: nightly / mutation testing (stage1+)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — mutation-testing framework @ stage1+"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § R16 REPRODUCIBILITY ATTESTATION  (OG10 ship-gate)
+  # § I> C99-tarball emit → stage3 rebuild → bit-compare vs stage1
+  # § I> Ed25519-signed attestation published per-version
+  # ══════════════════════════════════════════════════════════════════
+  r16-attestation:
+    name: R16 reproducibility attestation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — C99-tarball emit + stage3↔stage1 bit-compare + Ed25519 sign @ stage3 (T30 OG10)"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § FUTAMURA-P3 FIXED-POINT  (OG5 ship-gate)
+  # § I> generation-N ≡ generation-N+1 bit-exact  (enabled @ stage1)
+  # ══════════════════════════════════════════════════════════════════
+  futamura-fixedpoint:
+    name: Futamura P3 generation-fixed-point (stage1+)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "§ T1 stub — stage1 → stage1' → stage1'' bit-equal @ stage1 (T16 OG5)"
+
+  # ══════════════════════════════════════════════════════════════════
+  # § AGGREGATE — pass/fail rollup for branch protection
+  # ══════════════════════════════════════════════════════════════════
+  ci-success:
+    name: ci-success (aggregate)
+    needs:
+      - fast
+      - spec-xref
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: aggregate status
+        run: |
+          echo "fast : ${{ needs.fast.result }}"
+          echo "spec-xref : ${{ needs.spec-xref.result }}"
+          if [ "${{ needs.fast.result }}" != "success" ] || [ "${{ needs.spec-xref.result }}" != "success" ]; then
+            exit 1
+          fi

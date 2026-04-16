@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-cgen-cpu-cranelift"
+description            = "CSSLv3 stage0 — Cranelift-based CPU codegen (stage0 throwaway)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

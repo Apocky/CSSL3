@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-hir"
+description            = "CSSLv3 stage0 — typed-elaborated HIR + inference engine"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true

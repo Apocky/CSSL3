@@ -1,0 +1,112 @@
+# CSSLv3 stage0 compiler workspace
+# ══════════════════════════════════════════════════════════════════
+# § I> stage0 = Rust-hosted throwaway per §§ 01_BOOTSTRAP
+# § I> self-host stage1 pending per §§ 14_BACKEND + §§ 19_FUTAMURA3
+# § I> crate-split per §§ HANDOFF_SESSION_1 TASK-MAP T1
+# § I> PRIME-DIRECTIVE encoded-structurally ← §§ SYNTHESIS_V2 + §§ 11_IFC + §§ 04_EFFECTS + §§ 22_TELEMETRY
+# § I> deny(unsafe_code) via per-crate #![forbid(unsafe_code)] inner-attr (FFI-crates opt-allow)
+# § I> spec-authority : if code diverges from ../specs/, specs win • file code-bug
+
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0 OR MIT"
+authors = ["Apocky <apocky13@gmail.com>"]
+# repository = "TBD : set per-Apocky before first-push"
+# homepage   = "TBD"
+
+[workspace.lints.clippy]
+all      = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery  = { level = "warn", priority = -1 }
+# noisy-in-scaffold allowances (tighten post-T3 API stabilization ; see T1-D6) :
+module_name_repetitions = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+must_use_candidate      = "allow"
+missing_const_for_fn    = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"  # CSSLv3 / SPIR-V / MLIR / DXIL un-ticked in scaffold-docs
+cast_possible_truncation = "allow"
+cast_sign_loss          = "allow"
+cast_lossless           = "allow"
+default_trait_access    = "allow"
+unreadable_literal      = "allow"
+derive_partial_eq_without_eq = "allow"  # f32/f64-containing structs can't derive Eq (NaN)
+
+[workspace.lints.rust]
+rust_2018_idioms = "warn"
+unreachable_pub  = "warn"
+
+# ══════════════════════════════════════════════════════════════════
+# § WORKSPACE-DEPS : declared-once, inherited-via workspace.dependencies
+#   ∀ crate uses `foo.workspace = true` in [dependencies]
+#   versions pinned conservative to MSRV-1.75 compat
+#   T<N>-verified marks surface below @ build-resolution-time
+# ══════════════════════════════════════════════════════════════════
+[workspace.dependencies]
+# ─ frontend (T2/T3) ─
+logos    = "0.14"
+chumsky  = "0.10"
+# ─ shared data ─
+smallvec  = { version = "1", features = ["union", "const_generics"] }
+indexmap  = "2"
+bitflags  = { version = "2", features = ["serde"] }
+bytemuck  = { version = "1", features = ["derive"] }
+# ─ diagnostics ─
+miette              = { version = "7", features = ["fancy"] }
+thiserror           = "1"
+tracing             = "0.1"
+tracing-subscriber  = { version = "0.3", features = ["env-filter"] }
+# ─ SMT (T9) ─
+z3 = { version = "0.12", default-features = false }
+# cvc5-sys    = "..." # T9 : verify-registry
+# klee-sys    = "..." # T9 : verify-registry
+# ─ MLIR (T6) ─
+# melior     = "0.20"  # T6 : verify-melior-windows-compat + LLVM_SYS_*_PREFIX
+# mlir-sys   = "0.3"
+# ─ codegen CPU (T10) ─
+cranelift-codegen   = "0.115"
+cranelift-frontend  = "0.115"
+cranelift-module    = "0.115"
+cranelift-object    = "0.115"
+# ─ codegen GPU (T10) ─
+rspirv        = "0.12"
+spirv-tools   = "0.12"
+# ─ hw/host (T10) ─
+ash = "0.38"
+# level-zero-sys = "0.3"  # T10 : verify-registry-availability
+windows = { version = "0.58", features = ["Win32_Foundation"] }
+wgpu    = "23"
+# metal crate mac-only : added per-target-cfg @ T10
+# ─ crypto (R18 audit-chain, T11) ─
+blake3         = "1"
+ed25519-dalek  = { version = "2", features = ["rand_core"] }
+rand           = { version = "0.8", features = ["std"] }
+# ─ serde / config ─
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+toml        = "0.8"
+# ─ concurrency ─
+parking_lot = "0.12"
+crossbeam   = "0.8"
+# ─ testing / property (T11) ─
+proptest = "1"
+insta    = "1"
+# ─ bench (T11) ─
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[workspace.metadata.cssl]
+prime_directive  = "consent=OS • violation=bug • no-override-exists"
+spec_root        = "../specs"
+research_root    = "../research"
+stage            = "0"
+stage_note       = "Rust-hosted scaffold per §§ 01_BOOTSTRAP • stage1-self-host pending"
+msrv_rationale   = "1.75 = workspace-lints-stable + resolver-2 mature"
+ci_faithful_to   = "§§ 23_TESTING oracle-modes + differential-backends"
+decisions_log    = "../DECISIONS.md"

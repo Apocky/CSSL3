@@ -1,0 +1,11 @@
+[package]
+name                   = "cssl-host-metal"
+description            = "CSSLv3 stage0 — Metal host submission (cfg-gated macOS / iOS) (FFI)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
