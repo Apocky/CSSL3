@@ -12,13 +12,13 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
-edition = "2021"
+version      = "0.1.0"
+edition      = "2021"
 rust-version = "1.75"
-license = "Apache-2.0 OR MIT"
-authors = ["Apocky <apocky13@gmail.com>"]
-# repository = "TBD : set per-Apocky before first-push"
-# homepage   = "TBD"
+license      = "Apache-2.0 OR MIT"
+authors      = ["Apocky <apocky13@gmail.com>"]
+repository   = "https://cssl.dev"
+homepage     = "https://cssl.dev"
 
 [workspace.lints.clippy]
 all      = { level = "deny", priority = -1 }
