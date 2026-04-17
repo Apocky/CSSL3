@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ + T10-phase-1-codegen (5 codegen backends : cranelift-CPU + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit) ✓ ; T10-hosts (5 host adapters) + T11 (telemetry+testing+persist) next
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ + T10-phase-1-codegen (5 codegen backends : cranelift-CPU + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit) ✓ + T10-phase-1-hosts (5 host-adapter capability catalogs : vulkan + level-zero + d3d12 + metal + webgpu) ✓ ; T11 (telemetry+testing+persist) next
 
 ───────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@
 | D7  | autodiff + jets                                       | ◐ cssl-autodiff (rules / decls / variant-naming) + cssl-jets (JetOrder / JetOp / sig-validators) ✓ (T7-phase-1) ; rule-application + tape + GPU-loc pending T7-phase-2 |
 | D8  | staging + macros + futamura                           | ◐ cssl-staging + cssl-macros + cssl-futamura (data-model + registries + hygiene-primitives) ✓ (T8-phase-1) ; expansion + comptime-eval + P3-bootstrap pending T8-phase-2 |
 | D9  | smt — Z3 / CVC5 / KLEE                                | ◐ cssl-smt (Theory/Sort/Term/Literal + Query/FnDecl/Assertion + emit_smtlib + Z3/CVC5-CLI subprocess solvers + discharge stub) ✓ (T9-phase-1) ; FFI + KLEE + proof-certs pending T9-phase-2 |
-| D10 | cgen-cpu + cgen-gpu + host-*                          | ◐ 5 codegen backends (cranelift + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit + dxc/spirv-cross CLI adapters) ✓ (T10-phase-1-codegen) ; 5 host-adapters + FFI-integration pending T10-phase-1-hosts + T10-phase-2 |
+| D10 | cgen-cpu + cgen-gpu + host-*                          | ◐ 5 codegen backends ✓ (cranelift + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit + dxc/spirv-cross CLI adapters) + 5 host-adapters ✓ (vulkan + level-zero + d3d12 + metal + webgpu capability catalogs + stub probes + Arc A770 canonical profile) ; FFI-integration (ash/level-zero-sys/windows-rs/metal/wgpu) pending T10-phase-2 |
 | D11 | telemetry + testing + persist                         | ◐ cssl-testing oracle-dispatch stubs wired @ T1; full @ T11 |
 | D12 | examples/ hello-triangle + sdf-shader + audio-cb      | ○ pending T10+ |
 | D13 | DECISIONS.md + SESSION_1_HANDOFF.md                   | ✓ T1-D1..D7 recorded |
@@ -66,6 +66,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T3-D10** : T3.4-phase-2-refinement landed — `cssl-hir::refinement` obligation-generator walks HIR types + exprs for `{v : T | P}` / `T'tag` / `SDF'L<k>` sites ; produces `ObligationBag` ready for T9 discharge
 - **T9-D1** : SMT phased — phase-1 SMT-LIB 2.6 text-emit + Z3/CVC5-CLI subprocess solver adapters + stub obligation discharge ; FFI / KLEE / proof-certs / HIR→SMT-term translation deferred to T9-phase-2
 - **T10-D1** : Codegen phased — 5 backends (cranelift-CPU / SPIR-V / DXIL-HLSL / MSL / WGSL) text-emission now + `DxcCliInvoker` / `SpirvCrossInvoker` subprocess adapters ; real cranelift/rspirv/naga FFI + MIR-body lowering + spirv-val gate / dxc round-trip / fat-binary assembly deferred to T10-phase-2
+- **T10-D2** : Host-adapters phased — 5 adapters (Vulkan + Level-Zero + D3D12 + Metal + WebGPU) capability-catalogs + stub probes + canonical Arc A770 profile now ; ash / level-zero-sys / windows-rs / metal / wgpu FFI deferred to T10-phase-2
 
 ───────────────────────────────────────────────────────────────
 
@@ -124,15 +125,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         |
-|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|
-| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     |
-| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) |
-| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) |
-| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            |
-| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           |
-| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                |
-| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      |
+| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         | Commit-4 end (T10-phase-1-hosts)                          |
+|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------|
+| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     | 24 (+ 5 host-* : vulkan / level-zero / d3d12 / metal / webgpu) |
+| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) | ~36100 (+ ~1100 vulkan + ~750 level-zero + ~650 d3d12 + ~700 metal + ~800 webgpu) |
+| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) | 786 passed / 33 targets (+76 : vulkan+level-zero+d3d12+metal+webgpu) |
+| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            | 0                                                          |
+| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           | 19                                                         |
+| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                | 156 / 0 (135)                                              |
+| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      | ✓ 6 / 6                                                    |
 
 ───────────────────────────────────────────────────────────────
 
@@ -596,25 +597,99 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T10-phase-1-hosts (5 host-adapter crates) + T11 (telemetry+testing+persist)
+§ T10-phase-1-hosts ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T10 + §§ 14_BACKEND § HOST-SUBMIT BACKENDS :
-1. cssl-host-vulkan : ash runtime adapter + VK-1.4.333 feature-probe + device-enum
-2. cssl-host-level-zero : Intel Arc primary-compute path (R18) + L0 + sysman-query
-3. cssl-host-d3d12 : windows-rs D3D12 device + command-queue + DXGI adapter-enum
-4. cssl-host-metal : metal crate (Apple-only) + argument-buffer + fn-constants
-5. cssl-host-webgpu : wgpu runtime adapter + WebGPU feature-probe
+`crates/cssl-host-vulkan/src/` :
+- `device.rs`     : VulkanVersion (1.0..1.4 with packed-API-int) + GpuVendor (8 :
+                    Intel/NVIDIA/AMD/Apple/Qualcomm/ARM/Mesa/Other with PCI-ID-resolver) +
+                    DeviceType (5 : integrated/discrete/virtual/cpu/other) +
+                    DeviceFeatures (25 VK-features CSSLv3 cares about) +
+                    VulkanDevice + `stub` constructor + summary()
+- `extensions.rs` : VulkanExtension (30 : VK-1.4-core + RT + CoopMat + BDA + mesh +
+                    descriptor-indexing + mutable-descriptor-type + telemetry) +
+                    VulkanLayer (5 : validation / api-dump / monitor / profiles /
+                    synchronization2) + VulkanExtensionSet + is-core-in-vk-1.4 check
+- `arc_a770.rs`   : ArcA770Profile canonical ({32 Xe-cores, 512 XVE, 512 XMX, 32 RT,
+                    2.1 GHz, 16 GB GDDR6, 560 GB/s, 225 W}) + expected_extensions() +
+                    to_vulkan_device() + peak_fp32_tflops
+- `probe.rs`      : FeatureProbe trait (enumerate_devices / supported_extensions /
+                    has_extension) + StubProbe + ProbeError (LoaderMissing / FfiNotWired /
+                    DeviceNotFound)
 
-Per §§ HANDOFF T11 + §§ 22_TELEMETRY + §§ 23_TESTING + §§ 18_PERSIST :
-1. cssl-telemetry : R18 probe ring + sysman capture + backend telemetry-query
+`crates/cssl-host-level-zero/src/` :
+- `api.rs`        : L0ApiSurface (24 : ze-init / ze-driver / ze-device / ze-context /
+                    ze-cmd-list / ze-event / ze-module / ze-kernel / ze-USM + full
+                    zes-sysman) + is_sysman() + UsmAllocType (host/device/shared)
+- `driver.rs`     : L0Driver + L0Device + L0DeviceType (gpu/cpu/fpga/mca/vpu) +
+                    L0DeviceProperties + stub_arc_a770()
+- `sysman.rs`     : SysmanMetric (11 : power×2 / thermal×2 / frequency×3 / engine /
+                    ras / processes / perf-factor) + MetricCategory + SysmanMetricSet
+                    (full_r18 + advisory presets) + SysmanSample + SysmanCapture +
+                    TelemetryProbe trait + StubTelemetryProbe returning canonical
+                    Arc A770 values + TelemetryError
+
+`crates/cssl-host-d3d12/src/` :
+- `adapter.rs`    : FeatureLevel (12.0..12.2) + DxgiAdapter (w/ stub_arc_a770 +
+                    stub_warp) + is_software flag
+- `features.rs`   : D3d12FeatureOptions (10 bool flags : RT-1.1 / mesh-1 / sampler-
+                    feedback / VRS-2 / atomic-int64 / FP16 / Int16 / dynamic-resources
+                    / wave-size-spec) + WaveMatrixTier + arc_a770() preset
+- `heap.rs`       : CommandListType (7 : direct/compute/copy/bundle/video×3) +
+                    DescriptorHeapType (4 : cbv-srv-uav/sampler/rtv/dsv) + HeapType
+                    (4 : default/upload/readback/custom)
+
+`crates/cssl-host-metal/src/` :
+- `device.rs`     : GpuFamily (14 : Apple1..Apple9 + Mac1/2 + Common1/2/3) +
+                    MtlDevice (w/ stub_m3_max + stub_intel_mac)
+- `feature_set.rs`: MetalFeatureSet (7 : macOS-family1/2 + iOS-family6 + Metal-3 /
+                    3.1-apple8/9 / 3.2) + supports_raytracing / supports_mesh_shaders
+                    / supports_cooperative_matrix
+- `heap.rs`       : MetalHeapType (shared/private/managed/memoryless) +
+                    MetalResourceOptions
+
+`crates/cssl-host-webgpu/src/` :
+- `adapter.rs`    : WebGpuBackend (5 : browser/vulkan/metal/dx12/gl) +
+                    AdapterPowerPref (low-power / high-perf / no-pref) + WebGpuAdapter
+                    (w/ stub_arc_a770_vulkan + stub_browser_webgpu + stub_software)
+- `features.rs`   : WebGpuFeature (14 WebGPU spec features) + SupportedFeatureSet +
+                    WebGpuLimits (26-field snapshot of WebGPU canonical default limits)
+
+§ T10-phase-1-hosts COVERAGE
+- All 5 backends catalog their feature surfaces as first-class enums + structs
+- Arc A770 canonical profile embedded as ground-truth hardware spec per `specs/10`
+- Sysman R18 telemetry metric catalog with `TelemetryProbe` trait + stub returning
+  canonical Arc A770 sample values (225 W TDP, 55 °C idle, 1.8 GHz baseline)
+- `FeatureProbe` + `TelemetryProbe` trait boundaries ready for phase-2 swap to
+  ash / level-zero-sys / windows-rs / metal / wgpu bindings without public-API churn
+- Every crate `forbid(unsafe_code)` — FFI allowances deferred to phase-2 per T1-D5
+
+§ T10-phase-2-hosts DEFERRED
+- `ash` FFI for VK-1.4 instance + device + queue + command-buffer lifecycle
+- `level-zero-sys` FFI for ze* driver / device / context + zes* sysman property sampling
+- `windows-rs` FFI for D3D12 Device + CommandQueue + DescriptorHeaps + RootSignatures
+- `metal` crate FFI (cfg-gated Apple-only) for MTLDevice / argument-buffers / fn-constants
+- `wgpu` runtime integration for cross-platform WebGPU submission
+- Validation-layer diagnostic routing
+- Surface / swapchain presentation
+- Multi-device coexistence (L0 + Vulkan on Intel)
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T11 (telemetry + testing + persist)
+
+Per §§ HANDOFF T11 + §§ 22_TELEMETRY + §§ 23_TESTING + §§ 18_ORTHOPERSIST :
+1. cssl-telemetry : R18 probe ring + sysman capture aggregator + Ed25519 audit chain
 2. cssl-testing : flesh out every oracle-mode dispatch beyond stage-0 stub
 3. cssl-persist : orthogonal-persistence (LMDB or WAL-file backend)
 
-Open for T10-hosts-start :
-- FFI-avoidance : ash + level-zero-sys + windows-rs all need MSVC (T1-D7)
-  ⇒ phase-1 = capability-catalog + device-enum-enum only, phase-2 = real bindings
-- wgpu may work on gnu-ABI (pure-Rust core) but pulls heavy deps
-- metal crate Mac-only (skipped on Linux/Windows CI)
+Open for T11-start :
+- R18 audit-chain : how tightly to couple Ed25519 signing at stage-0 vs. signed-
+  certificates deferred to T22 production-hardening ?
+- cssl-testing oracle-modes : property / differential / metamorphic / bench / power /
+  thermal / replay / hot-reload / fuzz / golden / audit — all already have Config/Outcome/
+  Dispatcher stubs ; phase-1 fleshes stubs without requiring real backends.
+- orthogonal-persistence : WAL-file phase-1 is cleanest ; LMDB adds a C-dep we may
+  want to defer. Choose based on §§ 18_ORTHOPERSIST spec directives.
 
 ───────────────────────────────────────────────────────────────
 

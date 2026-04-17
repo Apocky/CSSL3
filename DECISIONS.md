@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,45 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T10-D2 : Host-adapters phased — capability catalogs + stub probes now ; ash / level-zero-sys / windows-rs / metal / wgpu FFI deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T10-hosts scope per `specs/14_BACKEND.csl` § HOST-SUBMIT BACKENDS enumerates 5 backend adapters : Vulkan (ash), Level-Zero (level-zero-sys), D3D12 (windows-rs), Metal (metal crate), WebGPU (wgpu). Vulkan/L0/D3D12 FFI need MSVC ABI per T1-D7 ; Metal is Apple-only ; WebGPU (wgpu) pulls heavy deps. Same FFI-avoidance pattern as T6-D1 / T9-D1 / T10-D1.
+- **Phase-1 landed (this commit)**
+  - `cssl-host-vulkan` : `VulkanVersion` (1.0..1.4) + `VulkanExtension` (30 variants : VK-1.4 core + RT + CoopMat + BDA + mesh + telemetry) + `VulkanLayer` (5 validation/dump/profiles) + `GpuVendor` (8 : Intel/NVIDIA/AMD/Apple/Qualcomm/ARM/Mesa/Other) + `DeviceType` (5 : integrated/discrete/virtual/cpu/other) + `DeviceFeatures` (25 VK-features CSSLv3 exercises) + `VulkanDevice` + `FeatureProbe` trait + `StubProbe` + `ArcA770Profile` (canonical hard-coded spec from `specs/10` ARC A770 DETAILED SPECS : 32 Xe-cores / 512 XVE / 512 XMX / 32 RT / 2.1 GHz / 16 GB GDDR6 / 560 GB/s / 225 W).
+  - `cssl-host-level-zero` : `L0ApiSurface` (24 : `ze*` driver/device/context/cmd-list/event/module/kernel/USM + `zes*` sysman) + `UsmAllocType` (host/device/shared) + `L0Driver` + `L0Device` + `L0DeviceType` + `L0DeviceProperties` + `SysmanMetric` (11 : power × 2 / thermal × 2 / frequency × 3 / engine / ras / processes / perf-factor per `specs/10` § SYSMAN AVAILABILITY) + `SysmanMetricSet` (full-R18 + advisory subsets) + `SysmanSample` + `SysmanCapture` + `TelemetryProbe` trait + `StubTelemetryProbe` returning canonical Arc A770 sample values.
+  - `cssl-host-d3d12` : `FeatureLevel` (12.0..12.2) + `DxgiAdapter` (with Arc A770 + WARP stubs) + `D3d12FeatureOptions` (10 fields : RT-1.1 / mesh / sampler-feedback / VRS-2 / atomic-int64 / FP16 / Int16 / dynamic-resources / wave-matrix / wave-size-spec) + `WaveMatrixTier` + `CommandListType` (7 : direct/compute/copy/bundle/video-decode/video-process/video-encode) + `DescriptorHeapType` (4 : cbv-srv-uav/sampler/rtv/dsv) + `HeapType` (4 : default/upload/readback/custom).
+  - `cssl-host-metal` : `MetalFeatureSet` (7 : macOS-GPU-family1/2 + iOS-GPU-family6 + Metal-3/3.1/3.2 per-Apple-family) + `GpuFamily` (14 : Apple1..Apple9 + Mac1/2 + Common1/2/3) + `MtlDevice` (with M3-Max + Intel-Mac stubs) + `MetalHeapType` (shared/private/managed/memoryless) + `MetalResourceOptions`.
+  - `cssl-host-webgpu` : `WebGpuBackend` (5 : browser/vulkan/metal/dx12/gl) + `AdapterPowerPref` (low-power/high-perf/no-pref) + `WebGpuAdapter` (with Arc-A770-vulkan + Browser-WebGPU + Software stubs) + `WebGpuFeature` (14 WebGPU spec features) + `SupportedFeatureSet` + `WebGpuLimits` (26-field snapshot of canonical WebGPU defaults).
+- **Phase-2 deferred**
+  - `ash` FFI (Vulkan) integration : VkInstance / VkPhysicalDevice / VkDevice creation + extension-request arbitration + descriptor-set-update + pipeline-creation + command-buffer-recording + queue-submit.
+  - `level-zero-sys` FFI : ze_driver_handle / ze_device_handle / ze_command_list / ze_module / ze_kernel + USM allocation + sysman-property-sampling (`zesPowerGetEnergyCounter` / etc.).
+  - `windows-rs` D3D12 FFI : `ID3D12Device` / `ID3D12CommandQueue` / `ID3D12GraphicsCommandList6` / descriptor-heaps / root-signatures.
+  - `metal` crate FFI (Apple-only cfg-gated) : `MTLDevice` / `MTLCommandQueue` / argument-buffers / fn-constants.
+  - `wgpu` integration : `wgpu::Instance` / `Adapter` / `Device` / `Queue` / `RenderPipeline` / `ComputePipeline`.
+  - Validation-layer diagnostic routing (Vulkan `VK_LAYER_KHRONOS_validation`).
+  - Multi-device + multi-context concurrency (L0 + Vulkan coexistence on Intel).
+  - Surface / swapchain presentation.
+- **Rationale**
+  - Capability catalogs + stub probes provide the downstream surface that `cssl-mir` + the 5 codegen crates can target without yet linking any FFI. The `FeatureProbe` / `TelemetryProbe` trait boundaries let phase-2 swap stubs for real bindings without public-API churn.
+  - Arc A770 hard-coded profile encodes `specs/10` canonical values (Xe-cores / XMX / RT / VRAM / bandwidth / TDP) as the single-source-of-truth for code that needs to pre-compute per-target layouts without probing.
+  - Sysman metric catalog + `TelemetryProbe` trait gives T11 telemetry the consumer-facing interface it needs for R18 discharge — the probe produces `SysmanCapture` records independent of whether real L0 is available.
+  - WebGPU phase-1 without `wgpu` keeps scaffold build-time tight ; wgpu adds ~50 crates of transitive deps and benefits from deferred-until-T12-examples adoption.
+- **Consequences**
+  - Public APIs :
+    - `cssl_host_vulkan::{VulkanVersion, VulkanExtension, VulkanExtensionSet, VulkanLayer, GpuVendor, DeviceType, DeviceFeatures, VulkanDevice, FeatureProbe, StubProbe, ProbeError, ArcA770Profile}`.
+    - `cssl_host_level_zero::{L0ApiSurface, UsmAllocType, L0Driver, L0Device, L0DeviceType, L0DeviceProperties, SysmanMetric, SysmanMetricSet, SysmanSample, SysmanCapture, TelemetryProbe, StubTelemetryProbe, TelemetryError}`.
+    - `cssl_host_d3d12::{FeatureLevel, DxgiAdapter, D3d12FeatureOptions, WaveMatrixTier, CommandListType, DescriptorHeapType, HeapType}`.
+    - `cssl_host_metal::{GpuFamily, MtlDevice, MetalFeatureSet, MetalHeapType, MetalResourceOptions}`.
+    - `cssl_host_webgpu::{WebGpuBackend, AdapterPowerPref, WebGpuAdapter, WebGpuFeature, SupportedFeatureSet, WebGpuLimits}`.
+  - Every crate carries only `thiserror` as a runtime dep — no FFI bindings pulled in.
+  - Crate-level clippy allowances : `match_same_arms`, `module_name_repetitions`, `struct_excessive_bools` where needed.
+  - +76 new lib-tests across 5 crates (23 vulkan + 15 level-zero + 13 d3d12 + 14 metal + 11 webgpu).
+  - `forbid(unsafe_code)` retained crate-wide in every host-adapter (previously allowed for FFI) ; phase-2 flips to `allow(unsafe_code)` only at the ash/windows-rs/level-zero-sys call-sites with `// SAFETY:` comments per T1-D5.
 
 ───────────────────────────────────────────────────────────────
 
