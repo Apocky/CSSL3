@@ -1,0 +1,58 @@
+# § CSSLv3 .gitattributes
+# § I> force LF line endings on all text files, cross-platform-safe
+# § I> reason : T7-phase-2d-R18 session surfaced Windows `core.autocrlf=true` ×
+#      `git worktree add` × `cargo fmt` = cross-worktree file-leakage through
+#      line-ending normalization. Pinning `eol=lf` on text files removes the
+#      normalization step that caused the leakage.
+# § I> binary types listed explicitly so line-ending normalization skips them
+
+# ─── default ────────────────────────────────────────────────────────────
+# Treat every non-matched path as text + use LF endings on checkout/checkin.
+* text=auto eol=lf
+
+# ─── source-code extensions ────────────────────────────────────────────
+*.rs         text eol=lf
+*.toml       text eol=lf
+*.md         text eol=lf
+*.csl        text eol=lf
+*.cssl       text eol=lf
+*.cssl-csl   text eol=lf
+*.cssl-rust  text eol=lf
+*.py         text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.lock       text eol=lf
+*.json       text eol=lf
+*.sh         text eol=lf
+*.bat        text eol=crlf
+
+# ─── documentation shapes ──────────────────────────────────────────────
+*.html  text eol=lf
+*.css   text eol=lf
+
+# ─── binary types (must skip normalization) ─────────────────────────────
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.pdf   binary
+*.zip   binary
+*.tar   binary
+*.gz    binary
+*.exe   binary
+*.dll   binary
+*.so    binary
+*.dylib binary
+*.wasm  binary
+*.bin   binary
+*.spv   binary
+*.dxil  binary
+
+# ─── shader / asset sources (force LF for reproducibility) ──────────────
+*.wgsl text eol=lf
+*.hlsl text eol=lf
+*.glsl text eol=lf
+*.msl  text eol=lf
+
+# § END .gitattributes
