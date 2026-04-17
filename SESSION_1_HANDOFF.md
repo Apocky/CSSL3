@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1 — workspace scaffold ✓ complete; T2 next
+- **Current task** T1 ✓ + T2 ✓ complete; T3 next (parse + ast + hir elaborator)
 
 ───────────────────────────────────────────────────────────────
 
@@ -13,8 +13,8 @@
 | ID  | Task                                                  | Status         |
 |-----|-------------------------------------------------------|----------------|
 | D1  | compiler-rs/ Cargo-workspace skeleton                 | ✓ complete     |
-| D2  | lex crate — dual-surface lexer                        | ○ pending T2   |
-| D3  | parse + ast + hir — elaborator                        | ○ pending T3   |
+| D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
+| D3  | parse + ast + hir — elaborator                        | ◐ ast primitives landed (Span/SourceFile/Diagnostic); parse + hir pending T3 |
 | D4  | effects — 28 effects + evidence-passing               | ○ pending T4   |
 | D5  | caps — Pony-6 + gen-refs                              | ○ pending T5   |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
@@ -38,6 +38,11 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T1-D5** : `#![forbid(unsafe_code)]` per-crate inner-attr policy; FFI-crates `#![allow]`
 - **T1-D6** : clippy pedantic scaffold-allowances (tighten post-T3 API-stabilization)
 - **T1-D7** : rust toolchain ABI gnu-vs-msvc deferred to T10 FFI-entry
+- **T2-D1** : Unified `TokenKind` enum with sub-enums (not nested per-surface hierarchy)
+- **T2-D2** : Rust-hybrid via `logos` with private `RawToken → TokenKind` promotion layer
+- **T2-D3** : CSLv3-native via hand-rolled byte-stream lexer with indent-stack
+- **T2-D4** : Surface auto-detection cascade — extension > pragma > first-line > default
+- **T2-D5** : `Apostrophe` token for non-morpheme `'…` attachments (`f32'pos`, `SDF'L`, lifetimes)
 
 ───────────────────────────────────────────────────────────────
 
@@ -96,37 +101,64 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T1-start | T1-end                         |
-|-------------------------------|----------|--------------------------------|
-| Crates in workspace           | 0        | 31                             |
-| Lines of scaffold Rust        | 0        | ~1500 (crate skeletons + cssl-testing harnesses) |
-| Test count                    | 0        | 48 unit + 13 doc-test (empty) = 61 suites |
-| Clippy warnings (`-D`)        | N/A      | 0                              |
-| CI jobs declared              | 0        | 19 (3 fast OS × + 1 spec-xref + 5 PR-oracle + 1 golden + 7 diff-backend + 4 perf + 2 nightly + 1 R16 + 1 futamura + 1 aggregate) |
-| Spec cross-refs validated     | manual   | 89 names + 25 nums + 42 prefix = 156 resolvable, 0 unresolved |
-| Commit-gate green             | N/A      | ✓ all-six pass                 |
+| Metric                        | T1-start | T1-end    | T2-end                          |
+|-------------------------------|----------|-----------|---------------------------------|
+| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) |
+| Lines of scaffold Rust        | 0        | ~1500     | ~3800 (+ cssl-ast primitives + cssl-lex token/rust_hybrid/csl_native/mode) |
+| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 |
+| Clippy warnings (`-D`)        | N/A      | 0         | 0                               |
+| CI jobs declared              | 0        | 19        | 19                              |
+| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0 (unchanged; spec corpus stable) |
+| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         |
+
+───────────────────────────────────────────────────────────────
+
+§ T2 ARTIFACTS
+
+`crates/cssl-ast/src/` :
+- `source.rs` : `SourceId`, `SourceFile` (with O(log n) line-offset index), `Surface`, `SourceLocation` (`NonZeroU32` line+col)
+- `span.rs` : byte-offset `Span` with `DUMMY` sentinel, `join`, `contains_offset`, same-source guard
+- `diagnostic.rs` : `Severity` (Error > Warning > Note > Help), `Diagnostic` (builder chain : `error`/`warning`/`with_span`/`with_note`/`with_help`/`with_labeled_note`), `Note`, `DiagnosticBag` (error-count tracking)
+
+`crates/cssl-lex/src/` :
+- `token.rs` : unified `Token { kind, span }`, `TokenKind` with sub-enums :
+  `Keyword` (41 variants), `BracketKind`×`BracketSide`, `EvidenceMark` (8), `ModalOp` (10 incl. TODO/FIXME), `CompoundOp` (5 : TP/DV/KD/BV/AV), `Determinative` (6 pairs), `TypeSuffix` (9), `StringFlavor`
+- `rust_hybrid.rs` : `logos`-derived `RawToken → TokenKind` promotion; ASCII + Unicode arrow/comparison aliases; CoT line + CoT block regex; 16 unit tests + integration fixture
+- `csl_native.rs` : hand-rolled byte-stream lexer with indent-stack + bracket-depth suppression; full 74-glyph + ASCII-alias coverage per §§ 12_TOKENIZER; 29 unit tests
+- `mode.rs` : 4-tier surface detection (extension > pragma > first-line > default); 17 detection tests
+- `lib.rs` : top-level `lex(source)` surface-dispatcher; 5 dispatch tests
+
+`crates/cssl-lex/tests/` :
+- `fixtures/rust_hybrid_basic.cssl-rust` : realistic Rust-hybrid fragment (module / fn / `@attr` / effect rows / struct / enum)
+- `fixtures/csl_native_basic.cssl-csl` : realistic CSLv3-native fragment (§, evidence, modals, dense-math, refinements, indent)
+- `integration.rs` : 7 tests exercising dispatch + fixture coverage + differential-oracle preflight
+
+`scripts/differential_lex_vs_odin.py` : CI driver skeleton for Rust-port vs `parser.exe` differential oracle (full impl deferred to T10 when `csslc tokens --json` lands).
 
 ───────────────────────────────────────────────────────────────
 
 § SPEC-CORPUS DELTAS  (for Apocky review before-editing-specs)
 
-Queued for review once T1 lands upstream :
-- `specs/01_BOOTSTRAP.csl` § REPO-LAYOUT section : single-crate → workspace (matches T1-D1).
+Queued for review :
+- `specs/01_BOOTSTRAP.csl` § REPO-LAYOUT : single-crate → workspace (matches T1-D1).
 - `specs/23_TESTING.csl` : add `OracleMode` registry as canonical enum (matches T1 scaffold).
+- `specs/09_SYNTAX.csl` § lexical : document `Apostrophe` as distinct from char-literal opener; acknowledge `T'tag` / `42'i32` / `SDF'L` / lifetime patterns (matches T2-D5).
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T2 (dual-surface lexer)
+§ NEXT — T3 (parse + ast + hir elaborator)
 
-Per §§ HANDOFF T2 + T1-D2 (Rust-native port) :
-1. `crates/cssl-lex` : Rust-hybrid lexer via `logos` from `specs/09_SYNTAX.csl` lexical.
-2. `crates/cssl-lex` (csl_native submodule) : hand-rolled CSLv3 lexer ported from `CSLv3/specs/12_TOKENIZER.csl` (74-glyph master alias table).
-3. Mode-detection dispatcher per `specs/16_DUAL_SURFACE.csl` : `.cssl-csl` / `.cssl-rust` / `.cssl-auto` file-extension signal + `#![surface = "X"]` pragma.
-4. `SourceLocation` + `Span` primitives in `crates/cssl-ast`.
-5. Differential-CI fixture : `parser.exe --tokens` vs Rust-native lexer output on `CSLv3/tests/*.csl` corpus.
-6. Golden-fixture loader wires first real fixtures under `compiler-rs/tests/golden/lex/`.
+Per §§ HANDOFF T3 :
+1. `cssl-parse` : Rust-hybrid parser via `chumsky` + CSLv3-native recursive-descent (both token streams → same CST).
+2. `cssl-ast` : CST node taxonomy (source-preserving) + elaboration markers; `Symbol` interning table.
+3. `cssl-hir` : bidirectional type-inference (Hindley-Milner + row poly for effects) + IFC-label propagation + cap-inference + refinement-obligation generation (routes to `cssl-smt`).
+4. Integration with existing `cssl-lex::lex` (input) and `cssl-ast::Diagnostic` bag.
+5. Golden HIR-dump fixtures under `compiler-rs/tests/golden/hir/`.
 
-Open for T2-start :
+Open for T3-start :
+- Parser library : `chumsky` vs `lalrpop` vs hand-rolled recursive-descent ? (T3-D1 pending)
+- Symbol / interner crate : `string-interner`, `lasso`, or hand-rolled ? (T3-D2 pending)
+- Morpheme-stacking representation : token-level collapsed vs AST-level tree ? (T3-D3 pending)
 - `cslparser` binding-unit : FFI? CLI-subprocess? (per T1-D2, Rust-port is primary; but `parser.exe` as CI-differential-oracle TBD — see T1-D2 consequences).
 - `logos` vs `chumsky` for lexer layer (T2-D1 pending).
 

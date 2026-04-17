@@ -1,0 +1,43 @@
+// Rust-hybrid fixture — covers keywords, attributes, arrows, effect rows.
+// See `specs/09_SYNTAX.csl` § RUST-HYBRID SURFACE for the spec surface.
+
+module com.apocky.demo
+
+use std::math::vec3
+use com.apocky.loa.engine::{Scene, Handle}
+
+// § I> sphere_sdf : O(1)-normal via bwd_diff (F1 × §§ engine)
+@differentiable
+@lipschitz(k = 1.0)
+fn sphere_sdf(p : vec3, r : f32) -> f32 {
+    length(p) - r
+}
+
+@staged
+fn render_scene<S : Scene>(cam : Camera) -> Image
+    / {GPU, Deadline<16ms>, NoAlloc, Power<225W>, Telemetry<Counters>}
+{
+    for (x, y) in grid(cam.size) |> parallel {
+        let ray = cam.ray(x, y)
+        let hit = ray_march::<S>(ray) ?: return background()
+        let n = bwd_diff(S::eval_sdf)(hit.pos)
+        emit pixel(x, y, shade(hit, n))
+    }
+}
+
+effect Physics<World> {
+    fn step(dt : f32) -> World
+    fn contact(a : Entity, b : Entity) -> Option<Hit>
+}
+
+struct Entity {
+    id : Handle<Entity>,
+    pos : vec3,
+    vel : vec3,
+}
+
+enum Shape {
+    Sphere(f32),
+    Box(vec3),
+    Plane(vec3, f32),
+}

@@ -226,11 +226,10 @@ impl<'a> Lexer<'a> {
             return;
         }
 
-        // type suffix `'x` (only meaningful after ident/number, but safe to emit here)
+        // apostrophe : single-letter morpheme-suffix, or fall through to standalone Apostrophe
         if first == b'\'' {
             if let Some(&letter) = self.bytes.get(self.pos + 1) {
                 if let Some(suffix) = TypeSuffix::from_letter(letter as char) {
-                    // ensure it's a real suffix, not start of char literal
                     let after = self.bytes.get(self.pos + 2).copied();
                     let is_ident_continuation =
                         matches!(after, Some(b) if b.is_ascii_alphanumeric() || b == b'_');
@@ -241,6 +240,10 @@ impl<'a> Lexer<'a> {
                     }
                 }
             }
+            // Multi-char tag (`'pos`, `'L`, `'i32`, …) — emit Apostrophe, let next iter lex the word.
+            self.pos += 1;
+            self.emit(TokenKind::Apostrophe, start as u32, self.pos as u32);
+            return;
         }
 
         // single-char ASCII ops / punctuation

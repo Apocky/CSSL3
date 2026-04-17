@@ -132,3 +132,86 @@ Each decision entry :
 - **Decision** defer to T10-start. Scaffold compiles green on gnu; FFI link tests happen at T10 entry. If FFI fails on gnu, switch to option (b) and document as T10-D<n>.
 - **Risk** : `level-zero-sys` and `windows` crate may have MSVC-specific build scripts; early-fail at T10-begin possible.
 - **Consequences** : none for T1-T9. Flagged for T10 entry.
+
+───────────────────────────────────────────────────────────────
+
+## § T2-D1 : Unified `TokenKind` with sub-enums, not nested per-surface hierarchy
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** Two lexer surfaces (Rust-hybrid + CSLv3-native) must feed downstream passes a single token type. Options :
+  - (a) separate `RustHybridToken` / `CslNativeToken` enums + conversion trait
+  - (b) nested `Token { Common(_), RustHybrid(_), CslNative(_) }`
+  - (c) single flat `TokenKind` with sub-enums for structured categories (`Keyword`, `EvidenceMark`, `ModalOp`, `CompoundOp`, `Determinative`, `TypeSuffix`, `BracketKind/Side`, `StringFlavor`)
+- **Decision** **(c)** — single `TokenKind`, structured where structure carries information.
+- **Rationale**
+  - Parser layer matches once on `TokenKind` regardless of surface. Surface-illegal variants emit `Diagnostic::error` — cross-surface ambiguity becomes a type-system error, not silent drift.
+  - Shared infra (span-carrying, span→location, diagnostic rendering) runs over one type — no trait-object or monomorphization tax.
+  - `HashMap<TokenKind, _>` / `match` exhaustiveness works uniformly.
+- **Consequences** : Turn-3 Rust-hybrid uses a private `RawToken` logos-enum that maps → public `TokenKind`. Turn-4 CSLv3-native constructs `TokenKind` directly. Both paths converge on the same public type.
+
+───────────────────────────────────────────────────────────────
+
+## § T2-D2 : Rust-hybrid logos with `RawToken → TokenKind` promotion layer
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** `logos` requires `#[derive(Logos)]` on a flat enum whose variants map 1:1 to regex / literal patterns. The structured `TokenKind` with `Bracket(BracketKind, BracketSide)` cannot be derived directly because logos can't fill compound variants from regex matches.
+- **Options**
+  - (a) flatten `TokenKind` into 150+ variants (`LParen`, `RParen`, `KwFn`, `KwLet`, …) so logos derives directly
+  - (b) keep structured `TokenKind`; use a private `RawToken` for logos; `promote(raw, text) -> TokenKind` at the lex boundary
+- **Decision** **(b)** — structured public type, private flat raw type, single `match` in `promote`.
+- **Consequences**
+  - Ident-to-Keyword promotion happens at promote-time via `Keyword::from_word` — avoids 41 `#[token(…)]` attributes for keywords and keeps them as an open data-table that can be extended without touching the lexer.
+  - ASCII + Unicode alias pairs (`->` / `→`, `==` / `≡`, `<=` / `≤`) share a single `RawToken` variant via multiple `#[token]` attributes — no post-processing needed.
+
+───────────────────────────────────────────────────────────────
+
+## § T2-D3 : CSLv3-native lexer — hand-rolled byte-stream with indent-stack
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** `CSLv3/specs/13_GRAMMAR_SELF.csl` mandates indent = scope-boundary (2-space default, Peircean cut linearized) and supports a grammar that logos's regex engine cannot drive cleanly (morpheme stacking, multi-tier glyph dispatch, slot-templates with silent defaults, bracket-suppressed newlines).
+- **Decision** Hand-rolled byte-stream lexer with explicit `indent_stack: Vec<u32>` + `bracket_depth: u32`. Unicode handled via `&str` slicing; ASCII via direct byte-dispatch. Full Rust-native port per T1-D2.
+- **Features implemented at T2**
+  - indent / dedent emission at every non-blank, non-bracketed line-start
+  - blank-line and comment-only-line indent preservation
+  - bracket-depth tracking across `()` `{}` `[]` + Unicode determinative pairs (`⟨⟩ ⟦⟧ ⌈⌉ ⌊⌋ «» ⟪⟫`)
+  - 8 Evidence marks (Unicode + ASCII bracket-aliases)
+  - 8 Modal ops (`W! R! M? N! I> Q? P> D>`) with word-boundary enforcement
+  - bareword modals `TODO` / `FIXME`
+  - dense math : `∀ ∃ ∈ ∉ ⊂ ⊃ ∴ ∵ ⊢ ∅ ∞ ⊗` + ASCII aliases `all / any / in / nil / inf / QED`
+  - Unicode comparison / logic / arrow aliases (≡ ≠ ≤ ≥ ∧ ∨ ¬ → ← ↔ ⇒ ▷)
+  - `# … EOL` line comment
+- **Deferred to later tasks** : morpheme stacking (parser-layer concern), full slot-template decoding, pipelines `<|` / `~>` beyond the basic 2-char ops.
+
+───────────────────────────────────────────────────────────────
+
+## § T2-D4 : Surface auto-detection — extension > pragma > first-line > default
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** `specs/16_DUAL_SURFACE.csl` § MODE-DETECTION enumerates extension + pragma + first-line heuristics with a warn-on-ambiguous default. The order matters : file extensions are authoritative over content, pragmas override file-content heuristics, and the default fallback should surface a diagnostic so authors add explicit markers.
+- **Decision** Four-tier cascade in `mode::detect(filename, contents) -> Detection { surface, reason }` :
+  1. Extension : `.cssl-csl` / `.cssl-rust` → authoritative.
+  2. Pragma : `#![surface = "csl"|"rust"|"csl-native"|"rust-hybrid"]` in first ~8 lines (accepting both short and long forms).
+  3. First-non-comment-line heuristic : leading `§` → CSLv3-native ; Rust item-keyword (`fn / struct / module / use / …`) → Rust-hybrid.
+  4. Default : `Surface::RustHybrid` with `Reason::Default` — caller emits a `Warning`-severity `Diagnostic` nudging explicit markup.
+- **Integration** : top-level `cssl_lex::lex(source)` dispatches on `source.surface`; `Surface::Auto` triggers `mode::detect`. All paths produce the same unified `Vec<Token>`.
+
+───────────────────────────────────────────────────────────────
+
+## § T2-D5 : Apostrophe token for non-morpheme `'…` attachments
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** CSLv3/specs/13_GRAMMAR_SELF enumerates 9 single-letter morpheme suffixes (`'d 'f 's 't 'e 'm 'p 'g 'r`). CSSLv3/specs/09_SYNTAX also uses `'` for multi-char attachments : `42'i32` integer-type suffix, `f32'pos` refinement tag, `SDF'L<k>` Lipschitz bound, lifetime-like identifiers. Lexing all three patterns as `TokenKind::Error` (the naive fallthrough) breaks realistic fixtures.
+- **Decision** Emit `TokenKind::Apostrophe` as a standalone one-character token whenever `'` is not immediately followed by a single recognized morpheme letter + non-identifier-continuation. The following word lexes normally as `Ident`. Parser layer disambiguates morpheme-suffix vs type-suffix vs refinement-tag vs lifetime at HIR elaboration.
+- **Examples**
+  - `base'd` (morpheme-rule) → `Ident("base") + Suffix(Rule)` (atomic, 2 tokens)
+  - `f32'pos` (refinement tag) → `Ident("f32") + Apostrophe + Ident("pos")` (3 tokens)
+  - `42'i32` (type suffix) → `IntLiteral("42'i32")` via the number lexer's trailing-suffix hook (1 token ; int-lexer consumes the whole `'i32` sequence)
+  - `SDF'L<k>` → `Ident("SDF") + Apostrophe + Ident("L") + Lt + Ident("k") + Gt` (6 tokens)
+- **Consequences**
+  - Rust-hybrid logos gains an `Apostrophe` `RawToken` with `priority = 0` so well-formed `'c'` char literals still win against standalone `'`.
+  - Fixture `f32'pos` + `SDF'L` now lex without error — integration tests verify.

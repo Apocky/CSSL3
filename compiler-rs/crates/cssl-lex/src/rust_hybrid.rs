@@ -72,6 +72,7 @@ fn promote(raw: RawToken, text: &str) -> TokenKind {
         RawToken::Dollar => TokenKind::Dollar,
         RawToken::QuestionQuestion => TokenKind::QuestionQuestion,
         RawToken::Question => TokenKind::Question,
+        RawToken::Apostrophe => TokenKind::Apostrophe,
         RawToken::Plus => TokenKind::Plus,
         RawToken::Minus => TokenKind::Minus,
         RawToken::Star => TokenKind::Star,
@@ -174,6 +175,11 @@ enum RawToken {
     QuestionQuestion,
     #[token("?")]
     Question,
+
+    /// Standalone `'` used for `T'tag` refinement / `42'i32` type-suffix / lifetime-like
+    /// annotations. Lower priority than `CharLiteral` so well-formed `'c'` still wins.
+    #[token("'", priority = 0)]
+    Apostrophe,
 
     // ─ arrows (must precede bare operators) ────────────────────────────────
     #[token("->")]

@@ -89,6 +89,12 @@ pub enum TokenKind {
     Hash,
     /// `$` — reserved for positional macro args (§§ 13).
     Dollar,
+    /// `'` — standalone apostrophe. Introduces refinement tags (`T'tag`), type-suffix
+    /// words (`42'i32`, `f32'pos`), Lipschitz-bound markers (`SDF'L<k>`), and lifetime-like
+    /// annotations. When followed by a single recognized morpheme letter at word-boundary
+    /// the lexer instead emits `Suffix(TypeSuffix)` atomically; any other attachment surfaces
+    /// as `Apostrophe` followed by the next token.
+    Apostrophe,
     /// `?` — question / try.
     Question,
     /// `??` — null-coalesce / early-return-default (§§ 09 operator table).

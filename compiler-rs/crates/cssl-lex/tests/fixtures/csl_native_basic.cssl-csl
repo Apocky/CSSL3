@@ -1,0 +1,30 @@
+# CSLv3-native fixture — covers §, modals, evidence marks, dense math, indent scopes.
+# See CSLv3/specs/12_TOKENIZER + 13_GRAMMAR_SELF for the authoritative grammar.
+
+§ sphere_sdf ≡ @differentiable ⊗ @lipschitz<1.0>
+  I> length(p) - r
+  W! p ∈ vec3
+  W! r ∈ f32'pos
+  → f32
+  ✓ O(1) normal via bwd_diff
+  ✓ Lipschitz-1 by construction
+
+§ render_scene ≡ @staged
+  W! target ∈ {GPU, NoAlloc, Deadline<16ms>}
+  I> grid(cam.size) ▷ parallel
+    x ∈ 0..cam.width
+    y ∈ 0..cam.height
+  → Image
+
+§ effect Physics<World>
+  W! step ∈ (f32 → World)
+  W! contact ∈ (Entity ⊗ Entity → Option<Hit>)
+  ‼ conservation : mass + momentum invariant
+
+§ invariants
+  W! ∀ SDF'L<k ≤ 1> ∃ bwd_diff(SDF) computing O(1) normal
+  W! ∀ ray_march loop terminating in O(max_t / eps) iterations
+  ◐ higher-order Jet<T, ∞> lazy stream TODO
+  ○ inverse-rendering stdlib FIXME
+
+∎
