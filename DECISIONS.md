@@ -1395,3 +1395,35 @@ Each decision entry :
   - Z3 / CVC5 subprocess dispatch for the SMT-LIB queries — CI binary gate.
   - R18 AuditChain signing of the killer-app-gate report (composes `cssl_telemetry::AuditChain` with the report hash).
   - Runtime bit-exact float comparison across the Arc A770 driver matrix (§§ 23 TESTING differential-backend).
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D6 : T7-phase-2d-R18 — R18 AuditChain signing of KillerAppGateReport
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D5 (phase-2c) closed the structural gradient-equivalence claim. This commit adds a cryptographic seal : the `KillerAppGateReport` can be signed with an Ed25519 key + BLAKE3 content-hash so a third-party auditor holding only the verifying-key can confirm (a) the report hasn't been tampered with and (b) the gate verdict was produced by a party in possession of the signing-key. Composes directly with `cssl_telemetry::AuditChain` primitives landed in T11-D2.
+- **Options**
+  - (a) Bundle the signature-text inline into `KillerAppGateReport::summary()`. Simple but mixes concerns — summary becomes opaque to non-verifying consumers.
+  - (b) Separate `SignedKillerAppGateReport` wrapper + deterministic canonical serializer + explicit `sign_gate_report` / `verify_signed_gate_report` fns. Clean separation ; verifier APIs are independent of the gate runner.
+  - (c) Rely on full `AuditChain::append` to enroll each case as a chain-entry. Over-structured for stage-0 — the chain isn't needed to certify a single gate-verdict.
+- **Decision** **(b) standalone signed-wrapper + deterministic serializer**
+- **Slice landed (this commit)**
+  - `cssl_telemetry::verify_detached(verifying_key, message, signature) -> Result<(), AuditError>` : detached-key verification helper. Re-exported from `cssl-telemetry/src/lib.rs` alongside `SigningKey` / `ContentHash` / `Signature` which were previously accessible only via `audit::`-qualified paths.
+  - `cssl-examples` picks up `cssl-telemetry` as a workspace dep (Cargo.toml).
+  - `cssl_examples::ad_gate::SignedKillerAppGateReport` : report + canonical bytes + BLAKE3 hash + Ed25519 signature + verifying-key + format tag.
+  - `ATTESTATION_FORMAT = "CSSLv3-R18-KILLER-APP-GATE-v1"` : stable format tag embedded in every signed payload.
+  - `canonical_report_bytes(&KillerAppGateReport) -> Vec<u8>` : line-oriented UTF-8 serializer with stable field-ordering. Third-party auditor reconstructs the exact byte-sequence from the plain-text report and re-hashes to detect payload tampering.
+  - `sign_gate_report(report, &SigningKey) -> SignedKillerAppGateReport` : produces the signed bundle.
+  - `verify_signed_gate_report(signed, expected_vk) -> AttestationVerdict` : 4-step verdict (format / payload_hash / signature / gate_is_green) ; caller chooses `is_fully_valid()` (all 4) or `cryptographically_valid()` (ignores gate-green) as the acceptance threshold.
+  - 11 new tests : format tag stability + canonical determinism + roundtrip / wrong-key / tampered-report / tampered-format / tampered-signature failure detection + summary shape + deterministic signing under fixed seed + gate-green-independent cryptographic validity.
+- **Consequences**
+  - The killer-app gate report is now third-party-auditable : publish the verifying-key, auditor runs `cargo test -p cssl-examples ad_gate`, observes the signed output, verifies the signature.
+  - Composes with R18 audit-chain : a future `AuditChain::append` of the signed-report hash lands the gate-verdict in the cryptographic chain-of-custody.
+  - Test count : 1027 → 1038 (+11).
+  - `AttestationVerdict` uses 4 bool fields + `#[allow(clippy::struct_excessive_bools)]` per the 4 independent verification dimensions.
+- **Deferred**
+  - Publish a reference verifying-key alongside the gate output (requires a deployment decision — which key acts as the "canonical gate-signer").
+  - CI job that signs each gate-run + stores the signed bundle alongside the test log.
+  - `AuditChain::append` of the signed-report as a first-class telemetry event (composes with the OTLP exporter work in T11-phase-2b).
+  - Cross-session parallel-agent execution : this commit was intended to land alongside T6-phase-2c (body-lower widening) and T3.4-phase-3-staged check via parallel worktree agents ; the worktree-isolation exhibited file-leakage across worktrees on Windows core.autocrlf=true, so the parallel work is re-scoped for a follow-up session with explicit `.gitattributes` normalization + sequential agent launch.

@@ -38,7 +38,9 @@ pub mod ring;
 pub mod schema;
 pub mod scope;
 
-pub use audit::{AuditChain, AuditEntry, AuditError};
+pub use audit::{
+    verify_detached, AuditChain, AuditEntry, AuditError, ContentHash, Signature, SigningKey,
+};
 pub use exporter::{ChromeTraceExporter, ExportError, Exporter, JsonExporter, OtlpExporter};
 pub use ring::{RingError, TelemetryRing, TelemetrySlot};
 pub use schema::{TelemetrySchema, TelemetryScopeSet};

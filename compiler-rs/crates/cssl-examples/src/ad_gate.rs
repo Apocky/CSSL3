@@ -1046,6 +1046,199 @@ pub fn run_killer_app_gate() -> KillerAppGateReport {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § R18 attestation : sign the killer-app gate report so any third party
+//   holding the public key can independently verify the gate verdict.
+// ─────────────────────────────────────────────────────────────────────────
+
+use cssl_telemetry::{verify_detached, ContentHash, Signature, SigningKey};
+
+/// Canonical-serialization version tag embedded in every attestation payload.
+/// Bump when the serializer format changes so verifiers can reject stale forms.
+pub const ATTESTATION_FORMAT: &str = "CSSLv3-R18-KILLER-APP-GATE-v1";
+
+/// An R18 signed attestation of a [`KillerAppGateReport`].
+///
+/// Produced by [`sign_gate_report`], verified by
+/// [`verify_signed_gate_report`]. The `canonical_payload` field is the exact
+/// byte-sequence that was hashed + signed — a third-party auditor
+/// reconstructs it from the plain-text report via
+/// [`canonical_report_bytes`] and re-hashes to confirm the hash hasn't been
+/// tampered with.
+#[derive(Debug, Clone)]
+pub struct SignedKillerAppGateReport {
+    /// The attested report.
+    pub report: KillerAppGateReport,
+    /// Deterministic byte-serialization of the report (what was hashed).
+    pub canonical_payload: Vec<u8>,
+    /// BLAKE3 hash of `canonical_payload`.
+    pub content_hash: ContentHash,
+    /// Ed25519 signature over `content_hash.0` (the raw 32 bytes).
+    pub signature: Signature,
+    /// 32-byte verifying-key (public half of the signing-key) corresponding
+    /// to this signature. Bundled so verifiers don't need out-of-band key
+    /// distribution — the verification step still has to validate the key
+    /// itself against a trusted key-list.
+    pub verifying_key: [u8; 32],
+    /// Attestation format tag (e.g. `"CSSLv3-R18-KILLER-APP-GATE-v1"`).
+    pub format: String,
+}
+
+impl SignedKillerAppGateReport {
+    /// Short one-line summary including the gate verdict + hash prefix.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let hash_prefix = &self.content_hash.hex()[..16];
+        format!(
+            "{} | hash={}… | {} | key={}…",
+            self.format,
+            hash_prefix,
+            self.report.summary(),
+            &hex_short(&self.verifying_key, 8)
+        )
+    }
+}
+
+fn hex_short(bytes: &[u8], n: usize) -> String {
+    let mut s = String::with_capacity(n * 2);
+    for b in bytes.iter().take(n) {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+/// Serialize a [`KillerAppGateReport`] into a deterministic byte-sequence
+/// suitable for hashing. The format is line-oriented UTF-8 :
+///
+/// ```text
+/// CSSLv3-R18-KILLER-APP-GATE-v1
+/// total=<N>
+/// passing=<N>
+/// case[<i>]: <name> | match=<true|false> | params=<csv>
+/// case[<i>].param[<j>]: <param-name> | match=<b> | analytic=<smt> | mir=<smt>
+/// ...
+/// end
+/// ```
+///
+/// Every field is in insertion order ; every string is UTF-8 ; every line is
+/// newline-terminated. A third-party auditor can reconstruct this exact byte-
+/// sequence from the plain-text report and verify the signature.
+#[must_use]
+pub fn canonical_report_bytes(report: &KillerAppGateReport) -> Vec<u8> {
+    let mut out = String::new();
+    out.push_str(ATTESTATION_FORMAT);
+    out.push('\n');
+    out.push_str(&format!("total={}\n", report.total));
+    out.push_str(&format!("passing={}\n", report.passing));
+    for (i, c) in report.cases.iter().enumerate() {
+        out.push_str(&format!(
+            "case[{i}]: {name} | match={m} | params={p}\n",
+            name = c.name,
+            m = c.all_match,
+            p = c.param_names.join(","),
+        ));
+        for (j, p) in c.params.iter().enumerate() {
+            out.push_str(&format!(
+                "case[{i}].param[{j}]: {name} | match={m} | analytic={ana} | mir={mir}\n",
+                name = p.name,
+                m = p.matches,
+                ana = p.analytic.to_smt(),
+                mir = p.mir_derived.to_smt(),
+            ));
+        }
+    }
+    out.push_str("end\n");
+    out.into_bytes()
+}
+
+/// Sign a [`KillerAppGateReport`] under the given key, producing an
+/// attestation that any holder of `key.verifying_key_bytes()` can verify.
+#[must_use]
+pub fn sign_gate_report(
+    report: KillerAppGateReport,
+    key: &SigningKey,
+) -> SignedKillerAppGateReport {
+    let canonical_payload = canonical_report_bytes(&report);
+    let content_hash = ContentHash::hash(&canonical_payload);
+    let signature = Signature::sign(key, &content_hash.0);
+    SignedKillerAppGateReport {
+        report,
+        canonical_payload,
+        content_hash,
+        signature,
+        verifying_key: key.verifying_key_bytes(),
+        format: ATTESTATION_FORMAT.to_string(),
+    }
+}
+
+/// Verification verdict : returned by [`verify_signed_gate_report`] with per-
+/// step status. A third-party auditor should require **all four** checks to
+/// pass before trusting the gate verdict inside `signed.report`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct AttestationVerdict {
+    /// `true` iff the format-tag matches the expected version.
+    pub format_matches: bool,
+    /// `true` iff recomputed BLAKE3 over `canonical_report_bytes(&report)`
+    /// matches the stored `content_hash`. Detects payload tampering.
+    pub payload_hash_matches: bool,
+    /// `true` iff the Ed25519 signature verifies under the expected
+    /// verifying-key. Detects signature forgery / wrong-key attempts.
+    pub signature_verifies: bool,
+    /// `true` iff the report self-reports full-gate-green (every case matched).
+    /// An auditor may require this as an additional acceptance criterion.
+    pub gate_is_green: bool,
+}
+
+impl AttestationVerdict {
+    /// `true` iff all four checks pass.
+    #[must_use]
+    pub fn is_fully_valid(&self) -> bool {
+        self.format_matches
+            && self.payload_hash_matches
+            && self.signature_verifies
+            && self.gate_is_green
+    }
+
+    /// `true` iff format + hash + signature pass (ignores gate-green ; useful
+    /// when the auditor wants to accept a signed failure-report too).
+    #[must_use]
+    pub fn cryptographically_valid(&self) -> bool {
+        self.format_matches && self.payload_hash_matches && self.signature_verifies
+    }
+}
+
+/// Verify a signed gate report against an `expected_verifying_key`. Returns a
+/// per-step [`AttestationVerdict`] ; the auditor decides whether
+/// [`AttestationVerdict::is_fully_valid`] or
+/// [`AttestationVerdict::cryptographically_valid`] is the right threshold for
+/// their use-case.
+#[must_use]
+pub fn verify_signed_gate_report(
+    signed: &SignedKillerAppGateReport,
+    expected_verifying_key: &[u8; 32],
+) -> AttestationVerdict {
+    let format_matches = signed.format == ATTESTATION_FORMAT;
+    let recomputed_payload = canonical_report_bytes(&signed.report);
+    let recomputed_hash = ContentHash::hash(&recomputed_payload);
+    let payload_hash_matches =
+        recomputed_hash == signed.content_hash && recomputed_payload == signed.canonical_payload;
+    let signature_verifies = signed.verifying_key == *expected_verifying_key
+        && verify_detached(
+            &signed.verifying_key,
+            &signed.content_hash.0,
+            &signed.signature,
+        )
+        .is_ok();
+    let gate_is_green = signed.report.is_green();
+    AttestationVerdict {
+        format_matches,
+        payload_hash_matches,
+        signature_verifies,
+        gate_is_green,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1385,5 +1578,173 @@ mod tests {
         let dr = c.params[1].mir_derived.evaluate(&env);
         assert!((dx - 4.0).abs() < 1e-9, "expected 4, got {dx}");
         assert!((dr - -4.0).abs() < 1e-9, "expected -4, got {dr}");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § R18 ATTESTATION : sign + verify the killer-app gate report.
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::{
+        canonical_report_bytes, sign_gate_report, verify_signed_gate_report, AttestationVerdict,
+        ATTESTATION_FORMAT,
+    };
+    use cssl_telemetry::SigningKey;
+
+    fn fixed_seed_key() -> SigningKey {
+        // Deterministic 32-byte seed — tests must be reproducible across runs.
+        let mut seed = [0u8; 32];
+        for (i, b) in seed.iter_mut().enumerate() {
+            *b = (i as u8).wrapping_mul(7).wrapping_add(13);
+        }
+        SigningKey::from_seed(seed)
+    }
+
+    #[test]
+    fn attestation_format_tag_is_stable() {
+        assert_eq!(ATTESTATION_FORMAT, "CSSLv3-R18-KILLER-APP-GATE-v1");
+    }
+
+    #[test]
+    fn canonical_bytes_is_deterministic_across_calls() {
+        let report = run_killer_app_gate();
+        let a = canonical_report_bytes(&report);
+        let b = canonical_report_bytes(&report);
+        assert_eq!(a, b);
+        // Format tag must be the first bytes.
+        assert!(a.starts_with(ATTESTATION_FORMAT.as_bytes()));
+        // `end` terminator must be the last meaningful line.
+        assert!(core::str::from_utf8(&a).unwrap().ends_with("end\n"));
+    }
+
+    #[test]
+    fn canonical_bytes_contains_every_case() {
+        let report = run_killer_app_gate();
+        let bytes = canonical_report_bytes(&report);
+        let text = core::str::from_utf8(&bytes).unwrap();
+        for c in &report.cases {
+            assert!(text.contains(&c.name), "missing case `{}`", c.name);
+        }
+        assert!(text.contains(&format!("total={}", report.total)));
+        assert!(text.contains(&format!("passing={}", report.passing)));
+    }
+
+    #[test]
+    fn sign_then_verify_roundtrip_fully_valid() {
+        let report = run_killer_app_gate();
+        let key = fixed_seed_key();
+        let vk = key.verifying_key_bytes();
+        let signed = sign_gate_report(report, &key);
+        let verdict = verify_signed_gate_report(&signed, &vk);
+        assert_eq!(
+            verdict,
+            AttestationVerdict {
+                format_matches: true,
+                payload_hash_matches: true,
+                signature_verifies: true,
+                gate_is_green: true,
+            }
+        );
+        assert!(verdict.is_fully_valid());
+        assert!(verdict.cryptographically_valid());
+    }
+
+    #[test]
+    fn verify_fails_under_wrong_key() {
+        let report = run_killer_app_gate();
+        let key = fixed_seed_key();
+        let signed = sign_gate_report(report, &key);
+        // A different key — should not verify.
+        let other_seed = [0x11u8; 32];
+        let other_vk = SigningKey::from_seed(other_seed).verifying_key_bytes();
+        let verdict = verify_signed_gate_report(&signed, &other_vk);
+        assert!(!verdict.signature_verifies);
+        assert!(!verdict.is_fully_valid());
+        // Format + payload hash still match — tamper detection is about the hash
+        // chain ; wrong-key only fails the signature step.
+        assert!(verdict.format_matches);
+        assert!(verdict.payload_hash_matches);
+    }
+
+    #[test]
+    fn tampered_report_fails_payload_hash_check() {
+        let report = run_killer_app_gate();
+        let key = fixed_seed_key();
+        let vk = key.verifying_key_bytes();
+        let mut signed = sign_gate_report(report, &key);
+        // Tamper with the report after signing — the signature is still over the
+        // OLD hash, so recomputing the payload hash now mismatches.
+        signed.report.total = 99;
+        let verdict = verify_signed_gate_report(&signed, &vk);
+        assert!(!verdict.payload_hash_matches);
+        assert!(!verdict.is_fully_valid());
+    }
+
+    #[test]
+    fn tampered_format_tag_fails_format_check() {
+        let report = run_killer_app_gate();
+        let key = fixed_seed_key();
+        let vk = key.verifying_key_bytes();
+        let mut signed = sign_gate_report(report, &key);
+        signed.format = "CSSLv3-OLD-FORMAT-v0".to_string();
+        let verdict = verify_signed_gate_report(&signed, &vk);
+        assert!(!verdict.format_matches);
+        assert!(!verdict.is_fully_valid());
+    }
+
+    #[test]
+    fn tampered_signature_fails_signature_check() {
+        let report = run_killer_app_gate();
+        let key = fixed_seed_key();
+        let vk = key.verifying_key_bytes();
+        let mut signed = sign_gate_report(report, &key);
+        // Flip one byte of the signature → must fail.
+        signed.signature.0[0] ^= 0x5a;
+        let verdict = verify_signed_gate_report(&signed, &vk);
+        assert!(!verdict.signature_verifies);
+        assert!(!verdict.is_fully_valid());
+    }
+
+    #[test]
+    fn signed_report_summary_contains_gate_verdict() {
+        let report = run_killer_app_gate();
+        let key = fixed_seed_key();
+        let signed = sign_gate_report(report, &key);
+        let s = signed.summary();
+        assert!(s.contains(ATTESTATION_FORMAT));
+        assert!(s.contains("hash="));
+        assert!(s.contains("KILLER-APP GATE"));
+        assert!(s.contains("key="));
+    }
+
+    #[test]
+    fn signing_is_deterministic_under_fixed_seed() {
+        let report = run_killer_app_gate();
+        let key_a = fixed_seed_key();
+        let key_b = fixed_seed_key();
+        let signed_a = sign_gate_report(report.clone(), &key_a);
+        let signed_b = sign_gate_report(report, &key_b);
+        assert_eq!(signed_a.content_hash, signed_b.content_hash);
+        assert_eq!(signed_a.verifying_key, signed_b.verifying_key);
+        // Ed25519 signatures are deterministic under RFC 8032 ; same key + same
+        // message → same signature.
+        assert_eq!(signed_a.signature.0, signed_b.signature.0);
+    }
+
+    #[test]
+    fn cryptographically_valid_accepts_failed_gate_when_hash_and_sig_ok() {
+        // Build a hand-rolled failing gate : construct a `KillerAppGateReport`
+        // with passing < total, sign it honestly, then verify.
+        let full = run_killer_app_gate();
+        let mut degraded = full.clone();
+        degraded.passing = degraded.total.saturating_sub(1); // pretend one case failed
+        let key = fixed_seed_key();
+        let vk = key.verifying_key_bytes();
+        let signed = sign_gate_report(degraded, &key);
+        let verdict = verify_signed_gate_report(&signed, &vk);
+        // The signature is valid → cryptographically-valid is true.
+        // But the gate isn't green → is_fully_valid is false.
+        assert!(verdict.cryptographically_valid());
+        assert!(!verdict.gate_is_green);
+        assert!(!verdict.is_fully_valid());
     }
 }

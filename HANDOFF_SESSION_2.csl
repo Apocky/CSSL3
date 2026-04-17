@@ -68,17 +68,18 @@
     0814ad8  T3.4-phase-2-refinement + T9-phase-1
     6691400  T7+T8-phase-1
 
-  metrics @ T7-phase-2c-pending-commit :
+  metrics @ T7-phase-2d-R18-pending-commit :
     crates-populated     : 30 of 31 workspace-members
-    LOC-Rust-scaffold    : ~47700 (+1100 ad_gate.rs + tweaks)
+    LOC-Rust-scaffold    : ~48100 (+400 R18 signing + tests)
     LOC-CSSLv3-examples  : ~180 (3 .cssl files)
-    tests-passing        : 1027 / 0 failed / 0 ignored (+24 new)
+    tests-passing        : 1038 / 0 failed / 0 ignored (+11 new R18 attestation)
     clippy-warnings      : 0 workspace-wide @ -D warnings
     commit-gate-green    : 6/6 per-commit (fmt clippy test doc spec-xref repro)
-    DECISIONS-entries    : 24 (+T7-D5)
+    DECISIONS-entries    : 25 (+T7-D6)
     spec-xref-unresolved : 0
-    killer-app-gate      : 11/11 cases pass ✓
+    killer-app-gate      : 11/11 cases pass ✓ ⊗ cryptographically-signed
       F1-correctness-proof .published .third-party-auditable
+      signed-attestation : BLAKE3 + Ed25519 .over canonical-serialized-report
 
   commit-gate-incantation :
     cargo fmt --all --check

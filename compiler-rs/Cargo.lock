@@ -194,6 +194,7 @@ dependencies = [
  "cssl-mir",
  "cssl-parse",
  "cssl-smt",
+ "cssl-telemetry",
 ]
 
 [[package]]

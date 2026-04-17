@@ -159,6 +159,27 @@ impl SigningKey {
     }
 }
 
+/// Detached-key verification : verify `signature` over `message` under the
+/// 32-byte `verifying_key`. Used by third-party auditors who hold only the
+/// public-key side (e.g., [`crate::AuditChain`] verifiers or downstream
+/// crates like `cssl_examples::ad_gate` signing killer-app gate reports).
+///
+/// # Errors
+/// Returns [`AuditError::SignatureInvalid`] on any of :
+/// - invalid `verifying_key` byte-pattern (not a point on the curve)
+/// - signature does not verify under the given key + message
+pub fn verify_detached(
+    verifying_key: &[u8; 32],
+    message: &[u8],
+    signature: &Signature,
+) -> Result<(), AuditError> {
+    let vk = ed25519_dalek::VerifyingKey::from_bytes(verifying_key)
+        .map_err(|_| AuditError::SignatureInvalid)?;
+    let sig = ed25519_dalek::Signature::from_bytes(&signature.0);
+    vk.verify(message, &sig)
+        .map_err(|_| AuditError::SignatureInvalid)
+}
+
 /// One audit-chain entry : content-hash + prev-hash + signature.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuditEntry {
