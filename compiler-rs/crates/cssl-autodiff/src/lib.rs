@@ -1,32 +1,43 @@
-//! CSSLv3 automatic differentiation — source-to-source on HIR (F1).
+//! CSSLv3 automatic differentiation — source-to-source on HIR + MIR (F1).
 //!
 //! § SPEC : `specs/05_AUTODIFF.csl`.
 //!
-//! § SCOPE (T7-phase-1 / this commit)
+//! § SCOPE (T7-phase-2b / this commit)
 //!   - [`DiffMode`] : Primal / Fwd / Bwd.
 //!   - [`DiffRule`] + [`DiffRuleTable`] : per-primitive rule table covering 15 primitives.
 //!   - [`DiffDecl`] + [`collect_differentiable_fns`] : `@differentiable` extraction.
-//!   - [`DiffTransform`] + [`DiffVariants`] : skeleton HIR → HIR-with-diff-variants.
+//!   - [`DiffTransform`] + [`DiffVariants`] : HIR-level name-table.
+//!   - [`AdWalker`] : MIR-module driver that emits fwd + bwd variants per
+//!     `@differentiable` primal.
+//!   - [`apply_fwd`] / [`apply_bwd`] : real dual-substitution emitting tangent-
+//!     carrying and adjoint-accumulation MIR ops for 10 differentiable primitives
+//!     (FAdd / FSub / FMul / FDiv / FNeg + Sqrt / Sin / Cos / Exp / Log).
+//!   - [`TangentMap`] + [`SubstitutionReport`] : per-variant diagnostic surface.
 //!
-//! § T7-phase-2 DEFERRED
-//!   - Full rule-application : walking `HirExpr` + applying per-primitive rules.
-//!   - Tape-buffer allocation (iso-capability scoped).
+//! § T7-phase-2c DEFERRED
+//!   - Tape-buffer allocation (iso-capability scoped) for control-flow.
 //!   - `@checkpoint` attribute recognition.
 //!   - GPU-AD tape-location resolution.
+//!   - Multi-result tangent-tuple emission.
 //!   - Killer-app gate : `bwd_diff(sphere_sdf)(p).d_p` bit-exact vs analytic.
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 #![allow(clippy::similar_names)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::module_name_repetitions)]
 
 pub mod decl;
 pub mod rules;
+pub mod substitute;
 pub mod transform;
 pub mod walker;
 
 pub use decl::{collect_differentiable_fns, DiffDecl};
 pub use rules::{DiffMode, DiffRule, DiffRuleTable, Primitive};
+pub use substitute::{apply_bwd, apply_fwd, SubstitutionReport, TangentMap};
 pub use transform::{DiffTransform, DiffVariants};
 pub use walker::{
     op_to_primitive, specialize_transcendental, AdWalker, AdWalkerPass, AdWalkerReport,

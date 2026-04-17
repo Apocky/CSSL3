@@ -2,18 +2,17 @@
 //!
 //! § SPEC : `specs/05_AUTODIFF.csl` § IMPLEMENTATION § source-to-source on MIR.
 //!
-//! § SCOPE (T7-phase-2a / this commit)
+//! § SCOPE (T7-phase-2b / this commit)
 //!   For every `@differentiable` fn in a `MirModule`, emit two NEW `MirFunc`s :
-//!   `<name>_fwd` + `<name>_bwd`. Each variant is built by walking the primal's
-//!   body + annotating every recognized primitive-op with a `diff_recipe`
-//!   attribute derived from [`crate::rules::DiffRuleTable`]. The recipe is
-//!   currently a textual symbolic rule (e.g., `"dy = dx_0 + dx_1"`) — **real
-//!   op-substitution into dual-valued MIR** is T7-phase-2b.
+//!   `<name>_fwd` + `<name>_bwd`. Each variant is built by calling
+//!   [`crate::substitute::apply_fwd`] / [`crate::substitute::apply_bwd`] — these
+//!   walk the primal body and emit **real tangent-carrying / adjoint-accumulation
+//!   MIR ops** (phase-2b) rather than recipe-attributes alone (phase-2a). See
+//!   [`crate::substitute`] for the per-primitive emission rules.
 //!
-//!   § OP-NAME → [`Primitive`] MAPPING
+//!   § OP-NAME → [`Primitive`] MAPPING (unchanged from phase-2a)
 //!     arith.addf → FAdd      arith.mulf → FMul    arith.negf → FNeg
 //!     arith.subf → FSub      arith.divf → FDiv    arith.remf → Mod (no rule ; skip)
-//!     arith.addi / subi / muli / divsi : NOT recognized (integer, not diff)
 //!     func.call              → Primitive::Call (+ callee-name attr used for
 //!                              transcendental detection : sqrt / sin / cos /
 //!                              exp / log → Sqrt/Sin/Cos/Exp/Log variants)
@@ -23,26 +22,24 @@
 //!     memref.load            → Primitive::Load
 //!     memref.store           → Primitive::Store
 //!
-//! § T7-phase-2b DEFERRED
-//!   - **Real dual-substitution** : replace each primitive with its (primal,
-//!     tangent) tuple computed via the rules. Current phase emits the recipe-
-//!     as-attribute ; phase-2b expands it into actual `arith.addf d_x_0 d_x_1`
-//!     ops that propagate tangent values.
-//!   - **Tape-record** (reverse-mode) : for `bwd` variants, record forward
-//!     intermediates on an iso-capability-scoped tape buffer + replay reversed.
+//! § T7-phase-2c DEFERRED
+//!   - **Tape-record** (reverse-mode) for control-flow ops : iso-capability-scoped
+//!     buffer + replay reversed.
 //!   - **`@checkpoint` selective re-computation** (trade memory for FLOPs).
 //!   - **GPU-AD tape-location resolution** (device / shared / unified memory).
 //!   - **Killer-app gate verification** : `bwd_diff(sphere_sdf)(p).d_p` bit-
 //!     exact vs analytic (composes w/ T9-phase-2 SMT).
 //!   - Higher-order AD via `Jet<T, N>` (§§ 17).
+//!   - Multi-result tangent-tuple emission.
 
 use std::collections::HashSet;
 
 use cssl_hir::{HirModule, Interner};
-use cssl_mir::{MirFunc, MirModule, MirOp, MirRegion};
+use cssl_mir::MirModule;
 
 use crate::decl::collect_differentiable_fns;
-use crate::rules::{DiffMode, DiffRuleTable, Primitive};
+use crate::rules::{DiffRuleTable, Primitive};
+use crate::substitute::{apply_bwd, apply_fwd, SubstitutionReport};
 
 /// Map a MIR op-name to the corresponding AD primitive, if any.
 ///
@@ -94,12 +91,16 @@ pub struct AdWalkerReport {
     pub fns_transformed: u32,
     /// Number of variant fns emitted (should == 2 × fns_transformed).
     pub variants_emitted: u32,
-    /// Number of MirOps recognized as differentiable primitives.
+    /// Number of MirOps recognized as differentiable primitives (across all variants).
     pub ops_matched: u32,
-    /// Number of rules successfully applied (should == 2 × ops_matched per matched fn).
+    /// Number of rules successfully applied (counted via [`SubstitutionReport`]).
     pub rules_applied: u32,
     /// Number of MirOps that looked like primitives but had no rule — deferred.
     pub unsupported_ops: u32,
+    /// Number of tangent / adjoint ops emitted across all variants.
+    pub tangent_ops_emitted: u32,
+    /// Number of tangent / adjoint params synthesized on variant signatures.
+    pub tangent_params_added: u32,
 }
 
 impl AdWalkerReport {
@@ -107,13 +108,35 @@ impl AdWalkerReport {
     #[must_use]
     pub fn summary(&self) -> String {
         format!(
-            "AD-walker : {} fns → {} variants / {} ops matched / {} rules applied / {} unsupported",
+            "AD-walker : {} fns → {} variants / {} ops matched / {} rules applied \
+             / {} unsupported / {} tangent-ops emitted / {} tangent-params",
             self.fns_transformed,
             self.variants_emitted,
             self.ops_matched,
             self.rules_applied,
             self.unsupported_ops,
+            self.tangent_ops_emitted,
+            self.tangent_params_added,
         )
+    }
+
+    /// Accumulate a per-variant [`SubstitutionReport`] into this summary.
+    fn accumulate(&mut self, sub: &SubstitutionReport) {
+        self.ops_matched = self
+            .ops_matched
+            .saturating_add(sub.primitives_substituted + sub.unsupported_primitives);
+        self.rules_applied = self
+            .rules_applied
+            .saturating_add(sub.primitives_substituted);
+        self.unsupported_ops = self
+            .unsupported_ops
+            .saturating_add(sub.unsupported_primitives);
+        self.tangent_ops_emitted = self
+            .tangent_ops_emitted
+            .saturating_add(sub.tangent_ops_emitted);
+        self.tangent_params_added = self
+            .tangent_params_added
+            .saturating_add(sub.tangent_params_added);
     }
 }
 
@@ -153,6 +176,10 @@ impl AdWalker {
 
     /// Transform a MIR module : for every fn whose name is in `diff_fn_names`,
     /// emit `<name>_fwd` + `<name>_bwd` variants appended to `module.funcs`.
+    ///
+    /// The variants are built by [`crate::substitute::apply_fwd`] and
+    /// [`crate::substitute::apply_bwd`] respectively — they carry real tangent
+    /// / adjoint MIR ops in addition to the preserved primal ops.
     pub fn transform_module(&self, module: &mut MirModule) -> AdWalkerReport {
         let mut report = AdWalkerReport::default();
         // Collect primal-fn indices upfront so we don't walk our freshly-appended variants.
@@ -166,81 +193,16 @@ impl AdWalker {
 
         for idx in primal_indices {
             let primal = module.funcs[idx].clone();
-            let fwd = self.clone_with_annotations(&primal, DiffMode::Fwd, &mut report);
-            let bwd = self.clone_with_annotations(&primal, DiffMode::Bwd, &mut report);
+            let (fwd, _, fwd_sub) = apply_fwd(&primal, &self.rules);
+            let (bwd, _, bwd_sub) = apply_bwd(&primal, &self.rules);
+            report.accumulate(&fwd_sub);
+            report.accumulate(&bwd_sub);
             module.funcs.push(fwd);
             module.funcs.push(bwd);
             report.fns_transformed = report.fns_transformed.saturating_add(1);
             report.variants_emitted = report.variants_emitted.saturating_add(2);
         }
         report
-    }
-
-    /// Clone a primal fn, rename it to `<name>_{mode.suffix()}`, and annotate every
-    /// recognized primitive-op in the body with a `diff_recipe` attribute.
-    fn clone_with_annotations(
-        &self,
-        primal: &MirFunc,
-        mode: DiffMode,
-        report: &mut AdWalkerReport,
-    ) -> MirFunc {
-        let mut variant = primal.clone();
-        variant.name = format!("{}{}", primal.name, mode.suffix());
-        variant.attributes.push((
-            "diff_variant".to_string(),
-            mode_attr_value(mode).to_string(),
-        ));
-        variant
-            .attributes
-            .push(("diff_primal_name".to_string(), primal.name.clone()));
-        self.annotate_region(&mut variant.body, mode, report);
-        variant
-    }
-
-    fn annotate_region(&self, region: &mut MirRegion, mode: DiffMode, report: &mut AdWalkerReport) {
-        for block in &mut region.blocks {
-            for op in &mut block.ops {
-                self.annotate_op(op, mode, report);
-            }
-        }
-    }
-
-    fn annotate_op(&self, op: &mut MirOp, mode: DiffMode, report: &mut AdWalkerReport) {
-        if let Some(mut prim) = op_to_primitive(&op.name) {
-            // Specialize transcendentals via callee attribute if this is a func.call.
-            if prim == Primitive::Call {
-                let callee = op
-                    .attributes
-                    .iter()
-                    .find(|(k, _)| k == "callee")
-                    .map(|(_, v)| v.as_str());
-                prim = specialize_transcendental(prim, callee);
-            }
-            report.ops_matched = report.ops_matched.saturating_add(1);
-            if let Some(rule) = self.rules.lookup(prim, mode) {
-                op.attributes.push((
-                    format!("diff_recipe_{}", mode_attr_value(mode)),
-                    rule.recipe.to_string(),
-                ));
-                op.attributes
-                    .push(("diff_primitive".to_string(), prim.name().to_string()));
-                report.rules_applied = report.rules_applied.saturating_add(1);
-            } else {
-                report.unsupported_ops = report.unsupported_ops.saturating_add(1);
-            }
-        }
-        // Recurse into nested regions (e.g., scf.if branches).
-        for nested in &mut op.regions {
-            self.annotate_region(nested, mode, report);
-        }
-    }
-}
-
-const fn mode_attr_value(mode: DiffMode) -> &'static str {
-    match mode {
-        DiffMode::Primal => "primal",
-        DiffMode::Fwd => "fwd",
-        DiffMode::Bwd => "bwd",
     }
 }
 
@@ -396,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn walker_annotates_float_arith_with_recipe() {
+    fn walker_emits_real_tangent_ops_for_float_arith() {
         // @differentiable fn that uses fadd (float-arith → FAdd primitive).
         let src = "@differentiable fn add(a : f32, b : f32) -> f32 { a + b }";
         let (mut module, hir, interner) = build_mir(src);
@@ -404,27 +366,24 @@ mod tests {
         let r = walker.transform_module(&mut module);
         assert_eq!(r.fns_transformed, 1);
         assert_eq!(r.variants_emitted, 2);
-        // arith.addf + func.return visited per variant body.
-        // At least 1 addf op matched per variant ; 2 variants emitted.
-        assert!(r.ops_matched >= 2, "{}", r.summary());
         assert!(r.rules_applied >= 2, "{}", r.summary());
-        // Inspect the fwd variant's body : arith.addf should carry diff_recipe_fwd attr.
+        assert!(
+            r.tangent_ops_emitted >= 2,
+            "expected real tangent-op emission : {}",
+            r.summary()
+        );
+        // Inspect the fwd variant : real `arith.addf` tangent-op must exist.
         let fwd = module.funcs.iter().find(|f| f.name == "add_fwd").unwrap();
-        let addf_op = fwd
-            .body
-            .entry()
-            .unwrap()
-            .ops
-            .iter()
-            .find(|o| o.name == "arith.addf")
-            .unwrap();
-        let recipe = addf_op
-            .attributes
-            .iter()
-            .find(|(k, _)| k == "diff_recipe_fwd")
-            .map(|(_, v)| v.as_str());
-        assert!(recipe.is_some(), "expected diff_recipe_fwd on arith.addf");
-        assert!(recipe.unwrap().contains("dx_0"));
+        let has_tangent_addf = fwd.body.entry().unwrap().ops.iter().any(|o| {
+            o.name == "arith.addf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+        });
+        assert!(
+            has_tangent_addf,
+            "expected tangent arith.addf in fwd variant"
+        );
     }
 
     #[test]
@@ -472,11 +431,15 @@ mod tests {
             ops_matched: 3,
             rules_applied: 3,
             unsupported_ops: 0,
+            tangent_ops_emitted: 4,
+            tangent_params_added: 2,
         };
         let s = r.summary();
         assert!(s.contains("1 fns"));
         assert!(s.contains("2 variants"));
         assert!(s.contains("3 ops matched"));
+        assert!(s.contains("4 tangent-ops emitted"));
+        assert!(s.contains("2 tangent-params"));
     }
 
     #[test]
@@ -521,8 +484,8 @@ mod tests {
     }
 
     #[test]
-    fn sphere_sdf_integration_emits_variants() {
-        // The canonical killer-app shape : length(p) - r.
+    fn sphere_sdf_integration_emits_real_tangent_and_adjoint_ops() {
+        // The canonical killer-app shape : p - r.
         let src = r"@differentiable fn sphere_sdf(p : f32, r : f32) -> f32 { p - r }";
         let (mut module, hir, interner) = build_mir(src);
         let walker = AdWalker::from_hir(&hir, &interner);
@@ -531,15 +494,44 @@ mod tests {
         let names: Vec<_> = module.funcs.iter().map(|f| f.name.as_str()).collect();
         assert!(names.contains(&"sphere_sdf_fwd"));
         assert!(names.contains(&"sphere_sdf_bwd"));
-        // arith.subf (from `p - r`) should have gotten a diff_recipe_bwd attr in the bwd variant.
+        // Fwd variant : tangent arith.subf emitted inline.
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf_fwd")
+            .unwrap();
+        let has_tangent_subf = fwd.body.entry().unwrap().ops.iter().any(|o| {
+            o.name == "arith.subf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+        });
+        assert!(has_tangent_subf, "{}", r.summary());
+        // Bwd variant : cssl.diff.bwd_return terminator.
         let bwd = module
             .funcs
             .iter()
             .find(|f| f.name == "sphere_sdf_bwd")
             .unwrap();
-        let has_subf_with_recipe = bwd.body.entry().unwrap().ops.iter().any(|o| {
-            o.name == "arith.subf" && o.attributes.iter().any(|(k, _)| k == "diff_recipe_bwd")
-        });
-        assert!(has_subf_with_recipe, "{}", r.summary());
+        let last = bwd.body.entry().unwrap().ops.last().unwrap();
+        assert_eq!(last.name, "cssl.diff.bwd_return");
+    }
+
+    #[test]
+    fn transcendental_callee_resolution_matches_rules() {
+        // Composes op_to_primitive + specialize_transcendental — the two helpers
+        // the substitution walker uses internally to classify `func.call` ops.
+        assert_eq!(
+            specialize_transcendental(op_to_primitive("func.call").unwrap(), Some("sqrt")),
+            Primitive::Sqrt
+        );
+        assert_eq!(
+            specialize_transcendental(op_to_primitive("func.call").unwrap(), Some("exp")),
+            Primitive::Exp
+        );
+        assert_eq!(
+            specialize_transcendental(op_to_primitive("arith.addf").unwrap(), Some("sqrt")),
+            Primitive::FAdd
+        );
     }
 }

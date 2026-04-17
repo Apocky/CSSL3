@@ -27,7 +27,7 @@ Each decision entry :
 - **Context** §§ 01_BOOTSTRAP REPO-LAYOUT shows single-crate (`src/lex/`, `src/parse/`, …); §§ HANDOFF_SESSION_1 T1 TASK-MAP specifies a 30+ crate Cargo workspace. Spec-vs-handoff tension surfaced during context-load.
 - **Options**
   - (a) single-crate + nested modules per §§ 01 literal
-  - (b) Cargo workspace with per-concern crates per §§ HANDOFF T1
+  - (b) Cargo workspace with per-concern crates per §§ HANDOFF_SESSION_1 T1
 - **Decision** **(b) Cargo workspace**
 - **Rationale**
   - `deny(unsafe_code)` per-crate enforcement is impossible in single-crate layout; FFI isolation (mlir-sys, level-zero-sys, ash, windows-rs, metal) needs per-crate boundary.
@@ -35,7 +35,7 @@ Each decision entry :
   - Stage-1 rip-and-replace migration is per-crate clean.
   - Per-crate versioning once APIs mature.
 - **Consequences**
-  - §§ 01_BOOTSTRAP REPO-LAYOUT will be reconciled to match workspace (spec-corpus delta pending Apocky approval per §§ HANDOFF REPORTING).
+  - §§ 01_BOOTSTRAP REPO-LAYOUT will be reconciled to match workspace (spec-corpus delta pending Apocky approval per §§ HANDOFF_SESSION_1 REPORTING).
   - Workspace root at `compiler-rs/` with `members = ["crates/*"]`.
   - Package-name prefix `cssl-*`; dir-name == package-name.
   - Binary crate `csslc` (no prefix); runtime lib `cssl-rt`.
@@ -46,7 +46,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ HANDOFF T2 originally proposed `{a: vendor-source, b: cargo-patch-git, c: wait-for-crate}`; all presumed Rust compatibility. CSLv3 Session-3 confirms `cslparser = Odin package` (parser/\*.odin + parser.exe via `odin build`). New option-space surfaced during γ-load: `{d: Odin→C-ABI+bindgen, e: Rust port from spec, f: subprocess-IPC, g: AST.json sidecar, h: dual FFI+port, i: port + CI-oracle}`.
+- **Context** §§ HANDOFF_SESSION_1 T2 originally proposed `{a: vendor-source, b: cargo-patch-git, c: wait-for-crate}`; all presumed Rust compatibility. CSLv3 Session-3 confirms `cslparser = Odin package` (parser/\*.odin + parser.exe via `odin build`). New option-space surfaced during γ-load: `{d: Odin→C-ABI+bindgen, e: Rust port from spec, f: subprocess-IPC, g: AST.json sidecar, h: dual FFI+port, i: port + CI-oracle}`.
 - **Decision** **(e) re-implement CSLv3 lex+parse in Rust** from `CSLv3/specs/12_TOKENIZER.csl` (74-glyph master alias table) + `CSLv3/specs/13_GRAMMAR_SELF.csl`. No FFI, no dual-impl, no Odin dependency in the CSSLv3 tree.
 - **Rationale** (Apocky-direct)
   - `cslparser` is a stage-0 convenience, not a long-term dependency.
@@ -84,7 +84,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ HANDOFF specifies MSRV 1.75. R16 reproducibility-anchor mandates version-pinning. Current Apocky machine has rustc 1.94 (compatible).
+- **Context** §§ HANDOFF_SESSION_1 specifies MSRV 1.75. R16 reproducibility-anchor mandates version-pinning. Current Apocky machine has rustc 1.94 (compatible).
 - **Decision** `compiler-rs/rust-toolchain.toml` pins `channel = "1.75.0"`, profile `minimal`, components `rustfmt` + `clippy`. `[workspace.package] rust-version = "1.75"` enforces MSRV in Cargo.
 - **Consequences**
   - Any cargo op in `compiler-rs/` triggers one-time 1.75.0 download.
@@ -98,7 +98,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ HANDOFF `deny(unsafe_code) except FFI-crates`. Workspace-level `[workspace.lints.rust] unsafe_code = "deny"` cannot be partially-overridden per-crate without duplicating the entire lint-table in FFI crates.
+- **Context** §§ HANDOFF_SESSION_1 `deny(unsafe_code) except FFI-crates`. Workspace-level `[workspace.lints.rust] unsafe_code = "deny"` cannot be partially-overridden per-crate without duplicating the entire lint-table in FFI crates.
 - **Decision** Use `#![forbid(unsafe_code)]` as inner-attribute in each non-FFI `src/lib.rs` / `src/main.rs`. FFI-crates declare `#![allow(unsafe_code)]` with SAFETY-doc justification at each unsafe-block site.
 - **FFI-crate list** (stage0) : `cssl-mlir-bridge`, `cssl-host-vulkan`, `cssl-host-level-zero`, `cssl-host-d3d12`, `cssl-host-metal`.
   (`cssl-host-webgpu` uses `wgpu` safe-API surface; `cssl-cgen-cpu-cranelift` uses Cranelift safe-API.)
@@ -112,7 +112,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted (scaffold-phase) — revisit at T3 API stabilization
-- **Context** `clippy::pedantic` + `clippy::nursery` groups enabled at `warn`; `cargo clippy -- -D warnings` promotes warnings to errors per §§ HANDOFF WORKFLOW commit-gate. Several pedantic lints fire pervasively on scaffold docstrings (`doc_markdown` wants backticks around `CSSLv3`, `SPIR-V`, `MLIR`, `DXIL`, etc) and on future typical-cast patterns.
+- **Context** `clippy::pedantic` + `clippy::nursery` groups enabled at `warn`; `cargo clippy -- -D warnings` promotes warnings to errors per §§ HANDOFF_SESSION_1 WORKFLOW commit-gate. Several pedantic lints fire pervasively on scaffold docstrings (`doc_markdown` wants backticks around `CSSLv3`, `SPIR-V`, `MLIR`, `DXIL`, etc) and on future typical-cast patterns.
 - **Decision** Add `allow` entries to `[workspace.lints.clippy]` for scaffold-noisy pedantic lints :
   - `doc_markdown` : `CSSLv3` / `SPIR-V` / `MLIR` / `DXIL` un-ticked in scaffold-docs.
   - `cast_possible_truncation`, `cast_sign_loss`, `cast_lossless` : common false-positives in codegen arithmetic.
@@ -1219,7 +1219,7 @@ Each decision entry :
 
 - **Date** 2026-04-17
 - **Status** accepted
-- **Context** T4 scope (per §§ HANDOFF + §§ 04_EFFECTS) enumerates : 28 built-in effect registration, row-unification engine, sub-effect discipline checker, Xie+Leijen evidence-passing transform, linear×handler one-shot enforcement. Landing the full Xie+Leijen transform (HIR → HIR+evidence) in one commit is a multi-week project — phasing lets T5 (caps), T6 (MLIR), T7 (AD), T8 (staging) build on the registry + discipline without blocking on the transform.
+- **Context** T4 scope (per §§ HANDOFF_SESSION_1 + §§ 04_EFFECTS) enumerates : 28 built-in effect registration, row-unification engine, sub-effect discipline checker, Xie+Leijen evidence-passing transform, linear×handler one-shot enforcement. Landing the full Xie+Leijen transform (HIR → HIR+evidence) in one commit is a multi-week project — phasing lets T5 (caps), T6 (MLIR), T7 (AD), T8 (staging) build on the registry + discipline without blocking on the transform.
 - **Phase-1 scope (THIS commit)**
   - `BuiltinEffect` enum — 32 variants covering `specs/04` § BUILT-IN EFFECTS (28 canonical + Region/Yield/Resume + user-facing IO → Io variant consolidation).
   - `EffectMeta` records (name + category + arg-shape + discharge-timing) + `BUILTIN_METADATA` const-slice.
@@ -1252,7 +1252,7 @@ Each decision entry :
 
 - **Date** 2026-04-17
 - **Status** accepted
-- **Context** T3.4 scope (per §§ HANDOFF) enumerates : bidirectional type inference + effect-row unification + cap inference + IFC-label propagation + refinement-obligation generation + AD-legality + `@staged` check + macro hygiene. Landing all of these in one commit is ~10K LOC ; phasing makes the inference surface reviewable without blocking T4 effects integration.
+- **Context** T3.4 scope (per §§ HANDOFF_SESSION_1) enumerates : bidirectional type inference + effect-row unification + cap inference + IFC-label propagation + refinement-obligation generation + AD-legality + `@staged` check + macro hygiene. Landing all of these in one commit is ~10K LOC ; phasing makes the inference surface reviewable without blocking T4 effects integration.
 - **Phase-1 scope (THIS commit)**
   - Bidirectional HM type inference with classic Robinson unification + occurs-check.
   - Effect-row unification via Remy-style rewrite-the-other-side absorption on row-tail variables.
@@ -1311,3 +1311,44 @@ Each decision entry :
   - Tests assert on `DiagnosticBag::error_count()` rather than on `Result::is_err()`.
   - The integration test `unknown_top_level_produces_diagnostic_not_panic` pins this behavior.
   - Downstream (`cssl-hir`) receives a CST that may have `Error` expressions embedded — the elaborator skips elaboration for those nodes but continues type-checking the rest.
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D4 : T7-phase-2b — real dual-substitution emitting tangent/adjoint MIR ops
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D3 (phase-2a) left `@differentiable` fns annotated with `diff_recipe_{fwd,bwd}` **textual** attributes on cloned primal ops — the recipe described the chain-rule in source-form but no real tangent-carrying or adjoint-accumulation MIR ops were emitted. Downstream consumers (MIR pretty-printer, SPIR-V codegen, SMT discharge) had nothing to walk. This commit expands phase-2a attributes into **actual `arith.*` / `func.call`** ops that propagate tangent and adjoint values through the body. Closes the largest phase-2b deferred slice from HANDOFF_SESSION_2 § DEFERRED T7-phase-2b.
+- **Options**
+  - (a) Keep recipe-attribute approach ; defer substitution to a later pass (codegen-time or after monomorphization). Preserves minimal stage-0 footprint but defers the work.
+  - (b) Emit dual-valued ops inline via a new `cssl_autodiff::substitute` module walking the primal body. Real ops immediately ; test-observable ; directly unblocks T7-phase-2c killer-app gate.
+  - (c) Full jet-typed tuple-of-N emission (higher-order AD via `Jet<T, N>` per §§ 17). Maximally expressive but couples to jets infrastructure that is itself stage-0.
+- **Decision** **(b) dual-substitution in `cssl_autodiff::substitute`**
+- **Rationale**
+  - F1-correctness chain (`run_f1_chain`) now produces inspectable tangent ops per-primitive rather than opaque attributes — the killer-app SMT verification (phase-2c) needs real SSA tangent ops to compare vs analytic gradient.
+  - Ten differentiable primitives (FAdd/FSub/FMul/FDiv/FNeg + Sqrt/Sin/Cos/Exp/Log) mapped directly to `specs/05_AUTODIFF` § RULES-TABLE — the spec itself specifies the per-primitive chain-rule, so implementing it structurally validates the spec.
+  - Option (c) is phase-2c work that composes cleanly on top of the phase-2b foundation.
+- **Slice landed (this commit)**
+  - New module `compiler-rs/crates/cssl-autodiff/src/substitute.rs` (~1200 LOC) with :
+    - `TangentMap` — primal `ValueId` → tangent/adjoint `ValueId` mapping ; shared datastructure for both modes.
+    - `apply_fwd(primal, rules) → (fwd_variant, TangentMap, SubstitutionReport)` — emits real tangent-carrying MIR ops inline after each recognized primitive, interleaving primal + tangent. Signature extended to `[a, d_a, b, d_b, ...]` params and `[y, d_y]` results.
+    - `apply_bwd(primal, rules) → (bwd_variant, TangentMap, SubstitutionReport)` — reverse-iterates primal ops emitting adjoint-accumulation ops ; signature becomes `[a, b, d_y]` params and `[d_a, d_b]` results ; ends with `cssl.diff.bwd_return` terminator carrying adjoint-outs for each primal float-param.
+    - `SubstitutionReport` — `primitives_substituted` + `tangent_ops_emitted` + `unsupported_primitives` + `tangent_params_added` + `tangent_results_added` telemetry.
+    - 10 per-primitive emission helpers (fwd) + 9 helpers (bwd) — each builds the exact chain-rule op sequence (`FMul` fwd : 2 mulfs + 1 addf ; `FDiv` fwd : 2 mulfs + 1 subf + 1 mulf + 1 divf ; `Sqrt` fwd : constant 2.0 + mulf + divf ; etc).
+    - `reconcile_next_value_id` helper : robust fresh-id allocation after manually-constructed bodies.
+  - `walker.rs` rewired : `AdWalker::transform_module` now delegates to `apply_fwd` / `apply_bwd` and accumulates per-variant `SubstitutionReport` into `AdWalkerReport` (now carries `tangent_ops_emitted` + `tangent_params_added` columns). Phase-2a `clone_with_annotations` removed.
+  - `lib.rs` re-exports `apply_fwd` / `apply_bwd` / `SubstitutionReport` / `TangentMap`.
+  - 21 new unit tests : 10 fwd per-primitive shape (FAdd / FSub / FMul / FDiv / FNeg / Sqrt / Sin / Cos / Exp / Log) + 3 bwd shape (FAdd / FMul / bwd_return terminator) + 4 structural (primal-preservation / empty-body / sphere_sdf / tangent-params-in-signature) + 4 helper (TangentMap / SubstitutionReport / types / transcendental-resolution).
+  - Spec-xref hygiene : 9 prefix-only `HANDOFF` references in DECISIONS.md + SESSION_1_HANDOFF.md upgraded to explicit `§§ HANDOFF_SESSION_1` (HANDOFF_SESSION_2.csl presence made `HANDOFF` prefix ambiguous for the validator).
+- **Consequences**
+  - `sphere_sdf_fwd` variant now contains a real `arith.subf %d_p %d_r → %d_y` tangent op (in addition to the preserved primal `arith.subf %p %r → %y`).
+  - `sphere_sdf_bwd` variant contains `arith.addf %prev_d_p %d_y → %new_d_p` + `arith.subf %prev_d_r %d_y → %new_d_r` adjoint-accumulation ops + `cssl.diff.bwd_return %new_d_p %new_d_r` terminator carrying the gradient w.r.t. `p` and `r`.
+  - Walker report `AdWalkerReport::summary()` now reports `N tangent-ops emitted` and `K tangent-params` instead of opaque rule-count — directly observable in `AdWalkerPass` pipeline diagnostics.
+  - Test count : 982 → 1003 (+21).
+  - F1 killer-app gate (T7-phase-2c) unblocked : the bwd variant's `cssl.diff.bwd_return` operands ARE the gradient SSA values, ready for bit-exact comparison against hand-written analytic gradient via Z3 unsat-verdict (composes with T9-phase-2 predicate-translator).
+- **Phase-2c deferred** (the remaining work before killer-app closure) :
+  - Tape-buffer allocation (iso-capability scoped) for scf.if / scf.for / scf.while control-flow ops — current `emit_{fwd,bwd}_adjoint_ops` for Call / Load / Store / If / Loop emits `cssl.diff.{fwd,bwd}_placeholder` with the recipe attribute only.
+  - `@checkpoint` selective recomputation (trade memory for FLOPs).
+  - GPU-AD tape-location resolution (device / shared / unified memory) per §§ 05 § GPU-AUTODIFF.
+  - Multi-result tangent-tuple emission (currently stage-0 assumes single primal result).
+  - Bit-exact killer-app verification via Z3 unsat-verdict on `bwd_diff(scene_sdf)(p).d_p` vs analytic central-differences across the Arc A770 driver matrix.
