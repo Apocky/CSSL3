@@ -44,10 +44,30 @@
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
+// § Style allowances for the inference pass — the large match-heavy synth/unify walks
+// benefit from `_`-fallthrough + explicit same-body-arms for readability. Tightening
+// these lints is T3.4-phase-2 cleanup after the inference API stabilizes.
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::option_if_let_else)]
+#![allow(clippy::map_unwrap_or)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::unnested_or_patterns)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::redundant_closure)]
+#![allow(clippy::redundant_clone)]
+#![allow(clippy::len_zero)]
+#![allow(clippy::needless_late_init)]
+#![allow(clippy::manual_let_else)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::or_fun_call)]
 
 pub mod arena;
 pub mod attr;
+pub mod env;
 pub mod expr;
+pub mod infer;
 pub mod item;
 pub mod lower;
 pub mod pat;
@@ -55,13 +75,17 @@ pub mod resolve;
 pub mod stmt;
 pub mod symbol;
 pub mod ty;
+pub mod typing;
+pub mod unify;
 
 pub use arena::{DefId, HirArena, HirId};
 pub use attr::{HirAttr, HirAttrArg, HirAttrKind};
+pub use env::{TypeScope, TypingEnv};
 pub use expr::{
     HirBinOp, HirBlock, HirCompoundOp, HirExpr, HirExprKind, HirLiteral, HirLiteralKind,
     HirMatchArm, HirUnOp,
 };
+pub use infer::{check_module, InferCtx};
 pub use item::{
     HirConst, HirEffect, HirEnum, HirEnumVariant, HirFn, HirFnParam, HirGenerics, HirHandler,
     HirImpl, HirInterface, HirItem, HirModule, HirNestedModule, HirStruct, HirStructBody,
@@ -76,6 +100,8 @@ pub use ty::{
     HirCapKind, HirEffectAnnotation, HirEffectArg, HirEffectRow, HirRefinementKind, HirType,
     HirTypeKind,
 };
+pub use typing::{ArrayLen, EffectInstance, Row, RowVar, Subst, Ty, TyCtx, TyVar, TypeMap};
+pub use unify::{unify as unify_types, unify_rows, UnifyError};
 
 /// Crate version exposed for scaffold verification.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");

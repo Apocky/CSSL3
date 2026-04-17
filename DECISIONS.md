@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,39 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D9 : T3.4 phased — HM type inference + effect-row now ; cap/IFC/refinement deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3.4 scope (per §§ HANDOFF) enumerates : bidirectional type inference + effect-row unification + cap inference + IFC-label propagation + refinement-obligation generation + AD-legality + `@staged` check + macro hygiene. Landing all of these in one commit is ~10K LOC ; phasing makes the inference surface reviewable without blocking T4 effects integration.
+- **Phase-1 scope (THIS commit)**
+  - Bidirectional HM type inference with classic Robinson unification + occurs-check.
+  - Effect-row unification via Remy-style rewrite-the-other-side absorption on row-tail variables.
+  - Primitive-type recognition (`i*`, `u*`, `f*`, `bool`, `str`, `()`, `!`) at HIR→Ty lowering.
+  - Nominal-type resolution via `DefId` (items registered in `TypingEnv`).
+  - Basic generics : skolem `Ty::Param(Symbol)` for fn-type-parameters (re-instantiation at call-site is stage-1 work ; stage-0 is conservative).
+  - `TypeMap<HirId, Ty>` side-table persisted after `Subst`-finalization.
+  - Diagnostic emission for type-mismatches, arity-mismatches, occurs-check failures, row-mismatches, and unresolved identifiers.
+- **Phase-2 deferred (T3.4-phase-2)**
+  - Capability inference (Pony-6 per §§ 12).
+  - IFC-label propagation (Jif-DLM per §§ 11).
+  - Refinement-obligation generation → SMT queue (§§ 20).
+  - AD-legality check (§§ 05 closure).
+  - `@staged` stage-arg comptime-check (§§ 06).
+  - Macro hygiene-mark (§§ 13).
+  - Let-generalization + higher-rank polymorphism.
+- **Rationale**
+  - Phase-1 unblocks T4 (effects system) which needs typed fn-bodies with known effect rows to build evidence-passing.
+  - Phase-2 work is gated on T9 (SMT integration) for refinement + T11 (telemetry) for audit-effect typing — better to land phases in dependency order than block T4 on the full surface.
+  - Deferred items are tracked with explicit `TODO(T3.4-phase-2)` markers in code-comments and this DECISIONS entry.
+- **Consequences**
+  - `cssl-hir` public API : `check_module(&HirModule, &Interner) -> (TypeMap, Vec<Diagnostic>)`.
+  - `TypeMap` uses `HirId.0 : u32` as keys (BTreeMap backed).
+  - `Ty::Error` is a universal-unifier recovery-variant ; inference diagnostics don't halt the walk.
+  - 12 crate-level clippy allowances added (see `lib.rs` top) for large-match-heavy walks ; revisit at T3.4-phase-2 stabilization.
 
 ───────────────────────────────────────────────────────────────
 

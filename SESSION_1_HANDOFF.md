@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ + T3.3 HIR-lowering ✓ ; T3.4 inference next
+- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ + T3.3 HIR-lowering ✓ + T3.4-phase-1 HM+rows ✓ ; T4 effects next (T3.4-phase-2 cap/IFC/refinement deferred)
 
 ───────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@
 |-----|-------------------------------------------------------|----------------|
 | D1  | compiler-rs/ Cargo-workspace skeleton                 | ✓ complete     |
 | D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
-| D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution ✓ ; inference engine pending T3.4 |
+| D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution + HM inference + effect-rows ✓ ; cap/IFC/refinement pending T3.4-phase-2 |
 | D4  | effects — 28 effects + evidence-passing               | ○ pending T4   |
 | D5  | caps — Pony-6 + gen-refs                              | ○ pending T5   |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
@@ -53,6 +53,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T3-D6** : Struct-constructor disambiguation via peek-ahead (`looks_like_struct_body`)
 - **T3-D7** : Parser error-recovery protocol — rules always return a node + push diagnostics ; top-level loop breaks only on no-progress
 - **T3-D8** : Stage-0 interner uses single-threaded `lasso::Rodeo` (deferred `ThreadedRodeo` until MSVC toolchain switch @ T10)
+- **T3-D9** : T3.4 phased — phase-1 HM type-inference + effect-row unification ; phase-2 cap/IFC/refinement/AD/@staged/hygiene deferred
 
 ───────────────────────────────────────────────────────────────
 
@@ -111,16 +112,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T1-start | T1-end    | T2-end                          | T3.2-end                                | T2-D8-end                               | T3.3-end                                |
-|-------------------------------|----------|-----------|---------------------------------|-----------------------------------------|-----------------------------------------|-----------------------------------------|
-| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) | 31 (+ cssl-parse fully populated)    | 31 (unchanged)                          | 31 (+ cssl-hir fully populated)         |
-| Lines of scaffold Rust        | 0        | ~1500     | ~3800                           | ~7800                                   | ~7900                                   | ~11200 (+ cssl-hir ~3300 LOC)           |
-| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 | 258 / 63 suites                         | 269 / 63 suites                         | 299 / 64 suites (+31 hir + 1 resolve +  |
-|                               |          |           |                                 |                                         |                                         |   1 lower integration)                  |
-| Clippy warnings (`-D`)        | N/A      | 0         | 0                               | 0                                       | 0                                       | 0                                       |
-| CI jobs declared              | 0        | 19        | 19                              | 19                                      | 19                                      | 19                                      |
-| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0                         | 156 / 0 (134 local-section skipped)     | 156 / 0 (135 local-section skipped)     | 156 / 0 (135 local-section skipped)     |
-| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         | ✓ 6 / 6                                 | ✓ 6 / 6                                 | ✓ 6 / 6                                 |
+| Metric                        | T1-start | T1-end    | T2-end       | T3.2-end      | T2-D8-end    | T3.3-end      | T3.4-phase-1-end             |
+|-------------------------------|----------|-----------|--------------|---------------|--------------|---------------|------------------------------|
+| Crates populated              | 0        | 0         | 2            | 3             | 3            | 4             | 4 (cssl-hir extended)        |
+| Lines of scaffold Rust        | 0        | ~1500     | ~3800        | ~7800         | ~7900        | ~11200        | ~13800 (+ ~2600 LOC inference) |
+| Test count                    | 0        | 48 / 61   | 150 / 62     | 258 / 63      | 269 / 63     | 299 / 64      | 340 / 64 suites              |
+| Clippy warnings (`-D`)        | N/A      | 0         | 0            | 0             | 0            | 0             | 0                            |
+| CI jobs declared              | 0        | 19        | 19           | 19            | 19           | 19            | 19                           |
+| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0      | 156 / 0 (134) | 156 / 0 (135)| 156 / 0 (135) | 156 / 0 (135)                |
+| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6      | ✓ 6 / 6       | ✓ 6 / 6      | ✓ 6 / 6       | ✓ 6 / 6                      |
 
 ───────────────────────────────────────────────────────────────
 
@@ -221,23 +221,59 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T3.4 (inference + IFC + cap + refinement)
+§ T3.4-phase-1 ARTIFACTS (added 2026-04-17)
 
-Per §§ 02 § HIR CHECKS :
-1. Hindley-Milner with row-polymorphism (constraint-generation + unification)
-2. Capability inference per §§ 12 Pony-6 (iso|trn|ref|val|box|tag)
-3. IFC-label lattice per §§ 11 (non-interference + declassification legality)
-4. Refinement-obligation generation → SMT queue (§§ 20)
-5. AD-legality check (§§ 05 closure)
-6. @staged stage-arg comptime-check (§§ 06)
-7. Macro hygiene-mark (§§ 13)
-8. Golden HIR-dump fixtures under `compiler-rs/tests/golden/hir/`
+`crates/cssl-hir/src/` :
+- `typing.rs`   : Ty (11 variants) + Row + EffectInstance + TyVar + RowVar + ArrayLen +
+                  Subst + TyCtx + TypeMap
+- `unify.rs`    : classic Robinson unification + occurs-check + Remy-style row rewrite
+                  with `absorb()` helper ; UnifyError (Mismatch / Arity / OccursCheck /
+                  RowMismatch)
+- `env.rs`      : TypeScope (Symbol → Ty) + TypingEnv (scope-stack + item-sigs)
+- `infer.rs`    : InferCtx + 3-phase `check_module` (collect-sigs → check-bodies →
+                  finalize) + bidirectional synth/check walk over every HirExprKind
+                  variant + HIR-type → inference-Ty translation with primitive recognition
 
-Open for T3.4-start :
-- Inference algorithm : constraint-solving vs direct unification vs Algorithm-W variant ?
-- Row-polymorphism representation : closed-row ADT vs open-row with `μ`-variable ?
-- Refinement-obligation data-structure : `ObligationBag` vs lazy-query-on-demand ?
-- IFC-label lattice : confidentiality × integrity product vs unified lattice ?
+§ T3.4-phase-1 SCOPE COVERAGE
+- Bidirectional HM inference with classic Robinson unification + occurs-check
+- Effect-row unification via Remy-style rewrite with tail-absorption
+- Primitive-type recognition (`i*`, `u*`, `f*`, `bool`, `str`, `()`, `!`)
+- Nominal-type resolution via `DefId` lookup in TypingEnv
+- Generic fn parameters use skolem `Ty::Param(Symbol)` in body-check
+- All HirExprKind variants covered (literal, path, call, field, index, binary, unary,
+  block, if, match, for, while, loop, return, break, continue, lambda, assign, cast,
+  range, pipeline, try-default, try, perform, with, region, tuple, array, struct, run,
+  compound, section-ref, paren, error)
+- TypeMap<HirId, Ty> side-table with Subst-finalization
+
+§ T3.4-phase-2 DEFERRED
+- Capability inference (Pony-6 per §§ 12)
+- IFC-label propagation (Jif-DLM per §§ 11)
+- Refinement-obligation generation → SMT queue (§§ 20)
+- AD-legality check (§§ 05 closure)
+- `@staged` stage-arg comptime-check (§§ 06)
+- Macro hygiene-mark (§§ 13)
+- Let-generalization + higher-rank polymorphism
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T4 (effect system + evidence-passing)
+
+Per §§ HANDOFF T4 + §§ 04_EFFECTS :
+1. Register 28 built-in effects (GPU / NoAlloc / Deadline / Power / Thermal / Telemetry
+   / Audit / Sensitive / Privileged / Region / Handle / State / IO / …)
+2. Row-unification engine refinement (integrated with T3.4 `unify_rows`)
+3. Sub-effect discipline checker (effect-row widening on call-sites)
+4. Xie+Leijen evidence-passing transform (HIR → HIR+evidence)
+5. Linear × handler one-shot enforcement per §§ 12 R8
+6. Evidence-records synthesized from effect-decl
+7. Tests : §§ 04 LOA-PATTERNS all-compile-green
+
+Open for T4-start :
+- Effect registry : built-in effects as HIR `DefId`s in a pre-built module vs hard-coded
+  enum in `cssl-effects` ?
+- Evidence-record layout : struct-per-effect vs tagged-union ?
+- Handler installation : dynamic (runtime lookup) vs static (compile-time monomorph) ?
 
 ───────────────────────────────────────────────────────────────
 
