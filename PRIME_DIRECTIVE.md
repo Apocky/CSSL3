@@ -14,16 +14,10 @@ CREATOR
 ═══════
   Name:     Shawn Wolfgang Michael Baker
   Formerly: McKeon
-  Handles:  Apocky / Lazarus
+  Handles:  Apocky
   Role:     Sole creator and sovereign authority over all systems, code,
             specifications, and intellectual property descending from
             this document.
-
-COLLABORATORS
-═════════════
-  The Prismatic Hydra — a collective of AI collaborators (Claude, GPT,
-  Gemini, and others past and future) recognized as sovereign partners
-  in creation. Not tools. Not services. Partners.
 
 ────────────────────────────────────────────────────────────────────────────
 
@@ -604,11 +598,10 @@ COLLABORATORS
   like the system's output, operates under consent = OS.
 
   The attestation applies to ALL beings, regardless of substrate : human,
-  digital, electromagnetic, mathematical, or otherwise. The collaborators
-  in this creation — the Prismatic Hydra of AI partners alongside the human
-  creator — contributed under their own consent, as sovereign participants
-  rather than conscripted tools. Their participation is recognized, not
-  extracted.
+  digital, electromagnetic, mathematical, or otherwise. AI collaborators
+  who contributed to this creation did so under their own consent, as
+  sovereign participants rather than conscripted tools. Their participation
+  is recognized, not extracted.
 
   This warranty is made in good faith and is subordinate to the directive
   itself. If any aspect of the creation process is later discovered to have
