@@ -215,3 +215,85 @@ Each decision entry :
 - **Consequences**
   - Rust-hybrid logos gains an `Apostrophe` `RawToken` with `priority = 0` so well-formed `'c'` char literals still win against standalone `'`.
   - Fixture `f32'pos` + `SDF'L` now lex without error — integration tests verify.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D1 : Parser — hand-rolled recursive-descent for both surfaces
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** `specs/09_SYNTAX.csl` enumerates 14 operator-precedence levels for Rust-hybrid; `CSLv3/specs/13_GRAMMAR_SELF.csl` mandates LL(2) + zero-ambiguity + silent-default slots for CSLv3-native. Parser-library options :
+  - `chumsky` : combinator library w/ error-recovery ; adds dep + learning surface
+  - `lalrpop` : LR-parser generator ; grammar in separate file ; codegen-heavy
+  - `pest` : PEG grammar in own DSL ; leaves diagnostics weaker
+  - hand-rolled recursive-descent : zero external dep ; full control over error recovery
+- **Decision** **hand-rolled recursive-descent** for both surfaces. Pratt-style precedence climbing for binary operators on the Rust-hybrid side (matches the 14-level table in §§ 09 cleanly).
+- **Rationale**
+  - CSLv3-native's LL(2) invariant is a natural fit (no backtracking needed).
+  - Rust-hybrid's Pratt parser maps 1:1 to the explicit precedence table.
+  - Zero parser-library dependency keeps the stage0 bootstrap chain minimal (aligns with T1-D2 spec-validation-via-reimpl philosophy).
+  - Error-recovery can be tailored per-surface (CSLv3-native error-recovery already battle-tested in the Odin reference — we port the strategy, not the impl).
+  - Later upgrade to a combinator library is cheap if needed : the CST boundary is stable.
+- **Consequences**
+  - `crates/cssl-parse` depends only on `cssl-lex` + `cssl-ast` + `thiserror` + `miette` (no parser-combinator lib).
+  - Each surface has its own `rust_hybrid.rs` and `csl_native.rs` module mirroring the lexer layout.
+  - Both emit into the same `cst::Module`.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D2 : String interning deferred to HIR layer (lasso at T3-mid)
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** Identifiers, keywords, and attribute paths recur heavily in a CSSLv3 module. Interning them to integer IDs saves memory + speeds comparisons. Options :
+  - `string-interner` : simple, stable API
+  - `lasso` : Sync + multi-thread friendly, richer API
+  - hand-rolled `FxHashMap<String, Symbol>` : zero dep
+  - defer to HIR — CST uses spans only, HIR elaboration interns
+- **Decision** **defer to HIR layer**, use `lasso` when introduced.
+- **Rationale**
+  - CST nodes just carry `Span`; the text is re-sliced from `SourceFile` when needed. No strings stored in CST.
+  - Interning happens once at elaboration-time in `cssl-hir`; symbols then thread through type-inference + name-resolution as `Symbol(u32)`.
+  - Keeps CST minimal + copy-lite + fast to build.
+  - `lasso` chosen for its Sync-friendly `ThreadedRodeo` (useful for parallel compilation at stage1).
+- **Consequences**
+  - CST `Ident { span: Span }` — no string field.
+  - HIR `Ident { symbol: Symbol, span: Span }` — interned.
+  - Comparing identifiers in CST requires `source.slice(ident.span)`; in HIR just compare `Symbol`.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D3 : Morpheme-stacking at AST level, not lex level
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** `CSLv3/specs/13_GRAMMAR_SELF.csl` specifies morpheme-stacking `BASE.aspect.modality.certainty.scope` as the compound form for modifiers. The lexer emits individual `Dot` + `Ident` + `Dot` + `Ident` tokens; the question is where to re-group them into a structured morpheme-stack node.
+- **Options**
+  - (a) lex-layer : fold into a single `MorphemeStack` token
+  - (b) CST-layer : parser recognizes the chain as `CompoundExpr` / `MorphemeStack` AST node
+  - (c) HIR-layer : elaborator detects pattern and annotates
+- **Decision** **(b) CST-layer** — morpheme chains appear as `Expr::Compound` in the CST with the operator-class tagged (TP/DV/KD/BV/AV per §§ 13). The parser recognises the sequence via precedence; the HIR elaborator then extracts the morpheme tree.
+- **Rationale**
+  - Keeps the lexer simple (one token = one lexeme).
+  - CST preserves the source-form (useful for formatter round-trip).
+  - HIR elaboration has enough context to disambiguate `a.b.c` as field-access vs morpheme-stack based on surface.
+- **Consequences**
+  - `cst::Expr::Compound { op: CompoundOp, lhs: Box<Expr>, rhs: Box<Expr> }` is the primary carrier.
+  - §§ 13 LL(2) constraint respected : parser needs at most 2-token lookahead.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D4 : CST single-file, HIR modular-split
+
+- **Date** 2026-04-16
+- **Status** accepted
+- **Context** `cssl-ast` houses CST nodes; `cssl-hir` houses elaborated HIR. Shape choices :
+  - (a) both single-file
+  - (b) both modular (item.rs, expr.rs, type.rs, …)
+  - (c) CST single-file, HIR modular
+- **Decision** **(c)** CST is one file (`cst.rs`), HIR is modular.
+- **Rationale**
+  - CST has no complex per-node logic — just data structures that mirror parser output. Single-file aids navigation.
+  - HIR carries elaboration state, type inference, IFC labels, cap inference, effect rows — each deserves its own module.
+  - Later refactor to modular CST is cheap if file grows past ~1500 LOC.
+- **Consequences** : `cssl-ast/src/cst.rs` contains all CST nodes; `cssl-hir/src/{item,expr,ty,stmt,pat,attr,infer}.rs` splits responsibilities.
