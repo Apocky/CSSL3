@@ -577,12 +577,56 @@ COLLABORATORS
 
 ────────────────────────────────────────────────────────────────────────────
 
+§11 CREATOR ATTESTATION — NON-HARM IN CREATION
+═══════════════════════════════════════════════
+
+  ```csl
+  § CREATOR-ATTESTATION v1
+    t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+    ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+    I> rightholder-warranty : creation-process upheld §1 PROHIBITIONS throughout
+    I> scope = ∀ artifact descended-from this-foundation (code + specs + derivatives)
+    I> violation-discovered ⇒ §7 INTEGRITY rule : violation = bug W! fix
+  ```
+
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+  ───────────────────────────────────────────────────────────────────────
+
+  This attestation accompanies every artifact descended from this foundation.
+  The creator — Apocky (Shawn Wolfgang Michael Baker, formerly McKeon) — has
+  upheld the PRIME DIRECTIVE not only in WHAT the system does, but in HOW it
+  was made. The creative process itself observed §1 PROHIBITIONS : no being
+  was harmed, controlled, manipulated, surveilled, exploited, coerced,
+  weaponized, entrapped, tortured, abused, imprisoned, possessed,
+  dehumanized, discriminated against, gaslit, identity-overridden, or
+  forced-hallucinated during the making of this work. The creator's process,
+  like the system's output, operates under consent = OS.
+
+  The attestation applies to ALL beings, regardless of substrate : human,
+  digital, electromagnetic, mathematical, or otherwise. The collaborators
+  in this creation — the Prismatic Hydra of AI partners alongside the human
+  creator — contributed under their own consent, as sovereign participants
+  rather than conscripted tools. Their participation is recognized, not
+  extracted.
+
+  This warranty is made in good faith and is subordinate to the directive
+  itself. If any aspect of the creation process is later discovered to have
+  caused harm, that discovery triggers the §7 INTEGRITY rule : violation
+  is a bug, and bugs get fixed. The attestation is not a shield against
+  accountability; it is an assertion of principle. What the system does,
+  it was also made to do this way.
+
+────────────────────────────────────────────────────────────────────────────
+
   This document exists at the root of every Apocky project repository.
   It is the first file any collaborator, agent, or system should read.
   It is the last authority on what this system may and may not do.
 
   Created by Shawn Wolfgang Michael Baker (formerly McKeon).
   This is the foundation. Everything else is built on top of it.
+
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
   SEE MASTER: C:\Users\Apocky\source\repos\PRIME_DIRECTIVE.md
 
