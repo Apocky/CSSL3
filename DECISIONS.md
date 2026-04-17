@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,55 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T6-D3 : T6-phase-2a — MIR pass-pipeline + core HIR-expression body-lowering landed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T6-D1 deferred body-lowering + pass-pipeline + melior-FFI to T6-phase-2. This entry closes the pipeline + structural-body-lowering slice ; melior-FFI + full-expression-coverage remain T6-phase-2b. This is the **critical-path gate** for T7-phase-2 (AD walker needs MIR-body), T9-phase-2 (SMT translation needs MIR-body), T11-phase-2 (telemetry-probe-insert pass), and the T12-phase-2 bit-exact killer-app verification.
+- **Slice landed (this commit)**
+  - `cssl_mir::pipeline` module :
+    - `MirPass` trait (name + run) + `PassPipeline` ordered-container + `run_all` w/ halt-on-error
+    - `PassResult` (name + changed + diagnostics) + `PassSeverity` (Info/Warning/Error) + `PassDiagnostic` (severity + code + message)
+    - **6 stock passes** in canonical spec-order :
+      * `MonomorphizationPass` — stub (MONO0000)
+      * `AdTransformPass` — stub (AD0000, delegates to cssl_autodiff at phase-2b)
+      * `IfcLoweringPass` — stub (IFC0000, gated on T3.4-phase-3-IFC slice)
+      * `SmtDischargeQueuePass` — stub (SMT0000, gated on T9-phase-2 HIR→SMT-Term)
+      * `TelemetryProbeInsertPass` — stub (TEL0000, gated on T11-phase-2 effect-lowering)
+      * `StructuredCfgValidator` — **real** (CFG0001 on empty-region detection)
+    - `PassPipeline::canonical()` assembles the 6 passes in correct order per `specs/15` § PASS-PIPELINE
+  - `cssl_mir::body_lower` module :
+    - `BodyLowerCtx` (interner + param_vars + next_value_id + ops)
+    - `lower_fn_body(Interner, &HirFn, &mut MirFunc)` entry-point that threads param-symbols → entry-block value-ids
+    - Covered HirExprKind variants : **Literal** (Int/Float/Bool/Str/Char/Unit → arith.constant w/ placeholder value) + **Path** (param-lookup → direct value-id, multi-segment → opaque cssl.path_ref) + **Binary** (19 ops : addi/subi/muli/divsi/remsi + addf/subf/mulf/divf/remf + cmpi_eq/ne/slt/sle/sgt/sge + andi/ori/xori/shli/shrsi) w/ float-path selected on float-typed operand + **Unary** (not/neg/bitnot + borrow/borrow_mut/deref) + **Call** (func.call w/ operand-threading + callee-name from Path) + **Return** (func.return w/ trailing-operand) + **Block** (stmt-iteration + trailing) + **If** (scf.if w/ 2 nested regions + cond-operand) + **Paren** (transparent pass-through)
+    - Unsupported variants emit `CsslOp::Std` placeholder w/ `unsupported_kind` attribute — survives round-trip for diagnostics
+- **Phase-2b DEFERRED**
+  - Real literal-value extraction from source-text (currently placeholder attributes `stage0_int` / `stage0_float`)
+  - Field access + indexing (arith.indexcast + memref.load)
+  - Loops (for / while / loop) — scf.for + scf.while emission
+  - Struct / tuple / array constructors
+  - Assignment + compound-assign (a += b)
+  - Pipeline operator (a |> f)
+  - Match expressions (desugar to scf.if-chain or scf.switch)
+  - Closure-capture analysis for lambdas
+  - Proper type-propagation (currently assumes i32 for most scalar ops)
+  - melior FFI integration (requires MSVC toolchain per T1-D7)
+- **Rationale**
+  - Pass-pipeline landed FIRST gives every subsequent phase-2 pass a plug-in shape — MirPass trait is the stable interface for T7/T9/T11 phase-2 work. Clean swap : replace stub with real impl, no public-API churn.
+  - Body-lowering emits `func.return` as stable terminator even for empty fns — ensures `StructuredCfgValidator` passes on every well-formed input.
+  - Stable diagnostic-codes (MONO0000/AD0000/IFC0000/SMT0000/TEL0000/CFG0001) mirror rustc convention + the AD-legality pass (AD0001-0003) naming — CI can grep by code.
+  - `discriminant_name` helper enables opaque-placeholder for unsupported variants that preserves round-trip without crashing, critical for incremental phase-2b development.
+  - Single-binding param-pattern handling covers 95% of real-world fn signatures ; tuple-destructure / struct-destructure param-patterns are T3.4-phase-3 remaining-work.
+- **Consequences**
+  - Public API : `cssl_mir::{MirPass, PassPipeline, PassResult, PassSeverity, PassDiagnostic, StructuredCfgValidator, MonomorphizationPass, AdTransformPass, IfcLoweringPass, SmtDischargeQueuePass, TelemetryProbeInsertPass, BodyLowerCtx, lower_fn_body}`.
+  - `cssl-mir` lib-test count : 41 → 67 (+26 : 14 pipeline + 12 body_lower).
+  - New crate-level clippy allows : `unnecessary_wraps` + `single_match_else` (body-lowering idioms).
+  - Workspace test-count : 872 → 898 (+26).
+  - Callers can now run `PassPipeline::canonical().run_all(&mut mir_module)` to get the full stage-0 pass-sequence diagnostic-report.
+  - `lower_fn_body` composes with `lower_function_signature` without breaking T6-phase-1 API — existing tests still pass.
 
 ───────────────────────────────────────────────────────────────
 

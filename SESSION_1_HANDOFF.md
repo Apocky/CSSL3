@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 ✓ + T10-phase-1-codegen ✓ + T10-phase-1-hosts ✓ + T11-phase-1-telemetry-persist ✓ + T12-phase-1-examples ✓ + T3.4-phase-3-AD-legality ✓ ; Next remaining T3.4-phase-3 slices : IFC-propagation + @staged-check + macro-hygiene ; OR T11-phase-2 (real crypto) / T6-phase-2 (MIR body-lowering) / T7-phase-2 (AD rule-walker) / T13+ (self-host)
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 ✓ + T10-phase-1-codegen ✓ + T10-phase-1-hosts ✓ + T11-phase-1-telemetry-persist ✓ + T12-phase-1-examples ✓ + T3.4-phase-3-AD-legality ✓ + **T6-phase-2a-pipeline-body-lowering ✓** (critical-path gate unlocked for T7+T9+T11 phase-2) ; Next : T6-phase-2b (full-expr-coverage + real literal-values) OR T7-phase-2 (AD rule-walker, can now consume MIR-body) OR T3.4-phase-3-IFC (unlocks IfcLoweringPass real impl)
 
 ───────────────────────────────────────────────────────────────
 
@@ -70,6 +70,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T11-D1** : Telemetry + persistence phased — cssl-telemetry (25-scope taxonomy + TelemetryRing SPSC + AuditChain BLAKE3+Ed25519 stub + Chrome/JSON/OTLP exporters) + cssl-persist (SchemaVersion + MigrationChain + PersistenceImage + InMemoryBackend) now ; real BLAKE3/Ed25519 + OTLP gRPC + WAL/LMDB backends + @hot_reload_preserve HIR pass deferred to T11-phase-2 ; cssl-testing oracle-body fleshing also T11-phase-2
 - **T12-D1** : Examples trilogy at repo-root — 3 canonical CSSLv3 source files (hello-triangle VK-1.4 pipeline + sdf-shader `bwd_diff(scene_sdf)` killer-app gate + audio-callback full-real-time-effect-row) + cssl-examples integration-tests crate pipelining lex → parse → HIR → lower ; bit-exact-vs-analytic verification gate + MIR-emission + spirv-val gated on T6+T7+T9-phase-2 slices
 - **T3-D11** : T3.4-phase-3-AD-legality — `cssl_hir::ad_legality` compile-time check emitting AD0001 (gradient-drop) / AD0002 (unresolved-callee) / AD0003 (missing-return-tangent) diagnostics for every `@differentiable` fn body. Closes the AD-legality slice from T3-D9 deferred-list ; remaining T3.4-phase-3 slices (IFC-propagation + @staged-check + macro-hygiene + let-generalization) still deferred
+- **T6-D3** : T6-phase-2a MIR pass-pipeline + HIR-body lowering — `cssl_mir::pipeline` (MirPass trait + PassPipeline + 6 stock passes : 5 stubs + StructuredCfgValidator real) + `cssl_mir::body_lower` (BodyLowerCtx + lower_fn_body covering Literal/Path/Binary(19 ops)/Unary/Call/Return/Block/If/Paren, unsupported variants emit opaque placeholder). Critical-path gate unlocked for T7-phase-2 (AD walker) + T9-phase-2 (SMT translation) + T11-phase-2 (telemetry-probe-insert). Phase-2b remaining : full-expr-coverage (field/index/loops/match/struct/array/assign) + real literal-value extraction + type-propagation + melior FFI
 
 ───────────────────────────────────────────────────────────────
 

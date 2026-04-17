@@ -36,18 +36,28 @@
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::if_not_else)]
 #![allow(clippy::unused_self)]
+#![allow(clippy::unnecessary_wraps)]
+#![allow(clippy::single_match_else)]
 
 pub mod block;
+pub mod body_lower;
 pub mod func;
 pub mod lower;
 pub mod op;
+pub mod pipeline;
 pub mod print;
 pub mod value;
 
 pub use block::{MirBlock, MirOp, MirRegion};
+pub use body_lower::{lower_fn_body, BodyLowerCtx};
 pub use func::{MirFunc, MirModule};
 pub use lower::{lower_function_signature, lower_module_signatures, LowerCtx};
 pub use op::{CsslOp, OpCategory, OpSignature};
+pub use pipeline::{
+    AdTransformPass, IfcLoweringPass, MirPass, MonomorphizationPass, PassDiagnostic, PassPipeline,
+    PassResult, PassSeverity, SmtDischargeQueuePass, StructuredCfgValidator,
+    TelemetryProbeInsertPass,
+};
 pub use print::{print_module, MlirPrinter};
 pub use value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
 
