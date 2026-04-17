@@ -35,6 +35,9 @@
 #![deny(rustdoc::private_intra_doc_links)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::module_name_repetitions)]
+#![allow(clippy::too_many_lines)]
+
+pub mod ad_gate;
 
 use cssl_ast::{Module, SourceFile, SourceId, Surface};
 use cssl_hir::HirModule;

@@ -805,6 +805,31 @@ fn substitute_bwd(
     let mut next_id = variant.next_value_id;
     let mut bwd_ops: Vec<MirOp> = Vec::with_capacity(original_ops.len() * 3);
 
+    // Zero-init the adjoint of every primal float-param. This disambiguates
+    // "primal-value used in adjoint op" from "initial adjoint of primal-param"
+    // for downstream interpreters (e.g., `cssl_examples::ad_gate`). Without
+    // this step, `tangent_or_zero` would alias the primal param's own ValueId
+    // as the initial adjoint, forcing consumers to special-case the overlap.
+    let zero_init_ty = entry
+        .args
+        .first()
+        .map_or_else(default_tangent_ty, |a| tangent_type_of(&a.ty));
+    for arg in entry.args.iter().take(original_param_count) {
+        if is_float(&arg.ty) {
+            let zero_id = ValueId(next_id);
+            next_id = next_id.saturating_add(1);
+            bwd_ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(zero_id, zero_init_ty.clone())
+                    .with_attribute("value", "0.0")
+                    .with_attribute("diff_role", "adjoint")
+                    .with_attribute("diff_primitive", "adjoint_init"),
+            );
+            tangent_map.insert(arg.id, zero_id);
+            report.tangent_ops_emitted = report.tangent_ops_emitted.saturating_add(1);
+        }
+    }
+
     // Seed : locate `func.return` op + connect adjoint-in to its primal-result operand.
     let seed_adjoint = tangent_map.get(ValueId(u32::MAX));
     let mut primal_ops = original_ops.clone();
@@ -854,6 +879,11 @@ fn substitute_bwd(
 }
 
 /// Emit the adjoint-accumulation ops for one primal op under reverse-mode.
+///
+/// Prepends inline `arith.constant 0.0 → %zero_adjoint` ops for any operand
+/// whose adjoint hasn't been initialized yet — this covers intermediate MIR
+/// values (like `%2 = x - r` in a chain-rule exercise). Primal params are
+/// already zero-initialized at bwd-start by [`substitute_bwd`].
 fn emit_bwd_adjoint_ops(
     op: &MirOp,
     prim: Primitive,
@@ -869,7 +899,26 @@ fn emit_bwd_adjoint_ops(
         .results
         .first()
         .map_or_else(default_tangent_ty, |r| r.ty.clone());
-    match prim {
+
+    // Zero-init any operand that hasn't received an adjoint yet. Handles the
+    // "intermediate value whose adjoint starts at 0" case (distinct from the
+    // bwd-start param zero-init performed in [`substitute_bwd`]).
+    let mut init_ops: Vec<MirOp> = Vec::new();
+    for &operand in &op.operands {
+        if tangent_map.get(operand).is_none() {
+            let zero_id = fresh_id(next_id);
+            init_ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(zero_id, result_ty.clone())
+                    .with_attribute("value", "0.0")
+                    .with_attribute("diff_role", "adjoint")
+                    .with_attribute("diff_primitive", "adjoint_init"),
+            );
+            tangent_map.insert(operand, zero_id);
+        }
+    }
+
+    let body_ops = match prim {
         // y = a + b  ⇒  d_a += d_y ; d_b += d_y
         Primitive::FAdd => emit_bwd_additive(op, &result_ty, d_y, tangent_map, next_id, false),
         // y = a - b  ⇒  d_a += d_y ; d_b -= d_y
@@ -899,7 +948,12 @@ fn emit_bwd_adjoint_ops(
                 .with_attribute("primitive", prim.name())
                 .with_attribute("diff_role", "adjoint")]
         }
-    }
+    };
+
+    // Prepend the init-ops so the adjoint-body ops see fresh zero-adjoints.
+    let mut combined = init_ops;
+    combined.extend(body_ops);
+    combined
 }
 
 // ─── FAdd / FSub bwd ──────────────────────────────────────────────────────
@@ -916,11 +970,14 @@ fn emit_bwd_additive(
     let (Some(&a), Some(&b)) = (op.operands.first(), op.operands.get(1)) else {
         return Vec::new();
     };
+    // § Self-reference safety : read `prev_d_b` AFTER the a-update has been
+    // recorded in `tangent_map`. When `a == b` (e.g., `x + x`), the b-step
+    // correctly accumulates on top of the just-updated a-adjoint.
     let prev_d_a = tangent_or_zero(tangent_map, a);
-    let prev_d_b = tangent_or_zero(tangent_map, b);
     let new_d_a = fresh_id(next_id);
-    let new_d_b = fresh_id(next_id);
     tangent_map.insert(a, new_d_a);
+    let prev_d_b = tangent_or_zero(tangent_map, b);
+    let new_d_b = fresh_id(next_id);
     tangent_map.insert(b, new_d_b);
     let b_op_name = if sub { "arith.subf" } else { "arith.addf" };
     vec![
@@ -950,13 +1007,16 @@ fn emit_bwd_multiplicative(
     let (Some(&a), Some(&b)) = (op.operands.first(), op.operands.get(1)) else {
         return Vec::new();
     };
+    // § Self-reference safety : do a's update before reading b's current
+    // adjoint. For `a*a` this gives `d_a += d_y*a` then `d_a += d_y*a` again
+    // (correct 2·d_y·a accumulation).
     let prev_d_a = tangent_or_zero(tangent_map, a);
-    let prev_d_b = tangent_or_zero(tangent_map, b);
     let contrib_a = fresh_id(next_id);
-    let contrib_b = fresh_id(next_id);
     let new_d_a = fresh_id(next_id);
-    let new_d_b = fresh_id(next_id);
     tangent_map.insert(a, new_d_a);
+    let prev_d_b = tangent_or_zero(tangent_map, b);
+    let contrib_b = fresh_id(next_id);
+    let new_d_b = fresh_id(next_id);
     tangent_map.insert(b, new_d_b);
     vec![
         MirOp::std("arith.mulf")
@@ -998,15 +1058,16 @@ fn emit_bwd_div(
     let (Some(&a), Some(&b)) = (op.operands.first(), op.operands.get(1)) else {
         return Vec::new();
     };
+    // § Self-reference safety : serialize the a-update before reading b's.
     let prev_d_a = tangent_or_zero(tangent_map, a);
-    let prev_d_b = tangent_or_zero(tangent_map, b);
     let ca = fresh_id(next_id); // d_y / b
     let new_d_a = fresh_id(next_id);
+    tangent_map.insert(a, new_d_a);
+    let prev_d_b = tangent_or_zero(tangent_map, b);
     let cb_num = fresh_id(next_id); // d_y * a
     let cb_den = fresh_id(next_id); // b * b
     let cb = fresh_id(next_id); // cb_num / cb_den
     let new_d_b = fresh_id(next_id);
-    tangent_map.insert(a, new_d_a);
     tangent_map.insert(b, new_d_b);
     vec![
         MirOp::std("arith.divf")

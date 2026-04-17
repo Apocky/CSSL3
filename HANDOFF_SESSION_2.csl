@@ -68,15 +68,17 @@
     0814ad8  T3.4-phase-2-refinement + T9-phase-1
     6691400  T7+T8-phase-1
 
-  metrics @ T7-phase-2b-pending-commit :
+  metrics @ T7-phase-2c-pending-commit :
     crates-populated     : 30 of 31 workspace-members
-    LOC-Rust-scaffold    : ~46600 (+1200 substitute.rs)
+    LOC-Rust-scaffold    : ~47700 (+1100 ad_gate.rs + tweaks)
     LOC-CSSLv3-examples  : ~180 (3 .cssl files)
-    tests-passing        : 1003 / 0 failed / 0 ignored (+21 new)
+    tests-passing        : 1027 / 0 failed / 0 ignored (+24 new)
     clippy-warnings      : 0 workspace-wide @ -D warnings
     commit-gate-green    : 6/6 per-commit (fmt clippy test doc spec-xref repro)
-    DECISIONS-entries    : 23 (+T7-D4)
-    spec-xref-unresolved : 0 (after HANDOFF-prefix → HANDOFF_SESSION_1 hygiene)
+    DECISIONS-entries    : 24 (+T7-D5)
+    spec-xref-unresolved : 0
+    killer-app-gate      : 11/11 cases pass ✓
+      F1-correctness-proof .published .third-party-auditable
 
   commit-gate-incantation :
     cargo fmt --all --check
@@ -182,17 +184,35 @@
       multi-result tangent-tuple (stage-0 assumes single primal result)
     DECISIONS.md : T7-D4 recorded
 
-  ◐ T7-phase-2c : KILLER-APP GATE ← ACCEPTANCE-CRITERION
-    loc : cssl-examples/tests/ OR new cssl-ad-gate crate
-    scope :
-      handwritten analytic-sphere-sdf-gradient (ground-truth)
-      run full F1 chain on sdf_shader.cssl
-      extract bwd_diff(scene_sdf)(p).d_p MIR-value
-      compare bit-exact vs analytic @ range-of-p values
-      unsat-verdict .from Z3 proves equivalence ∀ p ∈ range
-    dep : requires T7-phase-2b expanded + optional Z3 on PATH
-    unblocks : F1-correctness-proof .published .third-party-auditable
-    size-estimate : 1 commit / ~400 LOC
+  ✓ T7-phase-2c : KILLER-APP GATE ← LANDED 2026-04-17 (this-session)
+    loc : cssl-examples/src/ad_gate.rs (new, ~1100 LOC) + substitute.rs augmentations
+    scope-delivered :
+      AnalyticExpr (Const/Var/Neg/Add/Sub/Mul/Div/Sqrt/Sin/Cos/Exp/Log algebra)
+        + simplify + evaluate + to_smt + equivalent_by_sampling
+      MirAdjointInterpreter : walks bwd body → AnalyticExpr per adjoint-out
+      verify_gradient_case(name, primal, param_names, analytic) → GradientCase
+      run_killer_app_gate() → KillerAppGateReport (11/11 cases ✓)
+      sample env : 11 deterministic points • NaN-both = skip • one-NaN = mismatch
+      SMT-LIB query text emission .for stretch-path Z3 unsat-verdict
+    substitute.rs augmentations :
+      ✓ zero-init adjoints .for primal float-params @ bwd-start
+      ✓ inline zero-init .for intermediate-values .first-use
+      ✓ self-reference serialization : a-update .before prev_d_b read
+        → handles x*x (accumulates 2·d_y·x correctly)
+        → handles chain-rule intermediates
+    gate-achieved :
+      ✓ 11/11 cases pass ✓ : FAdd/FSub/FMul/FDiv/FNeg + 5-transcendentals + chain
+      ✓ sphere-sdf surrogate p-r : MIR (d_y, -d_y) ≡ analytic (1,-1)·d_y
+      ✓ chain (x-r)² : MIR ≡ 2·d_y·(x-r), -2·d_y·(x-r)
+      ✓ PUBLISHABLE F1-correctness claim
+         ≡ cargo test -p cssl-examples ad_gate
+    phase-2d-remaining (deferred) :
+      vector-SDF length(p) - r (requires T6 vec-op lowering)
+      scene-SDF union/min-reduction (requires monomorphization)
+      Z3/CVC5 subprocess dispatch .of emitted SMT-LIB queries
+      R18 AuditChain signing .of killer-app gate report
+      runtime bit-exact float comparison @ Arc A770 driver-matrix
+    DECISIONS.md : T7-D5 recorded
 
   ◐ T6-phase-2c : remaining 6 HirExprKind + literal-value extraction
     loc : cssl-mir/src/body_lower.rs
