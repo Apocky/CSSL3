@@ -1,0 +1,76 @@
+// examples/audio_callback.cssl
+// ══════════════════════════════════════════════════════════════════
+// § GOAL : real-time audio callback with the full CSSLv3-deadline effect-row :
+//         {CPU, SIMD256, NoAlloc, NoUnbounded, Deadline<1ms>, Realtime<Crit>,
+//          PureDet, DetRNG, Audit<"audio-callback">}
+//         Demonstrates :
+//           - hard-deadline-scoped fn with multiple effect-tags
+//           - SIMD256 vectorizable DSP loop (AVX2 baseline)
+//           - refinement-typed sample_rate restricted to known values
+//           - lock-free ring-buffer reads (no heap allocation)
+//           - audit-tagged entry point (lands in cssl_telemetry::AuditChain)
+//         § SPEC refs : specs/21_EXTENDED_SLICE.csl § UNIFIED AUDIO-DSP
+//                       specs/04_EFFECTS.csl § real-time-effect-tags
+//                       specs/22_TELEMETRY.csl § Audit-scope
+
+module com.apocky.examples.audio_callback
+
+use std::audio::AudioRingBuffer
+use std::audio::SampleRate
+use std::simd::mul_adds_f32x8
+use std::simd::load_f32x8
+use std::simd::store_f32x8
+
+// § Fixed-size DSP graph with an iso-owned ring-buffer.
+struct AudioDSPGraph {
+    sample_rate : u32{v : u32 | v ∈ {44100, 48000, 96000, 192000}},
+    gain        : f32'unit,
+    ring_head   : u32,
+    buffer      : [f32; 8192],
+}
+
+// § Stateless oscillator — pure-deterministic, SIMD-friendly.
+@differentiable
+fn sine_osc(phase : f32, freq : f32'pos, t : f32'nonneg) -> f32 {
+    sin(2.0 * 3.14159265 * freq * t + phase)
+}
+
+// § Per-block processing : apply gain envelope, mix with ring-buffer,
+//   SIMD-accelerated tight-loop. Vectorized over 8-sample lanes (AVX2).
+fn process_block(graph : &mut AudioDSPGraph, out : &mut [f32]) / {CPU, SIMD256, NoAlloc} {
+    let n = out.len()
+    let mut i = 0
+    while i < n {
+        let chunk_out   = load_f32x8(&out[i..i+8])
+        let chunk_ring  = load_f32x8(&graph.buffer[(graph.ring_head as usize)..(graph.ring_head as usize)+8])
+        let gain_vec    = f32x8::splat(graph.gain)
+        let mixed       = mul_adds_f32x8(chunk_ring, gain_vec, chunk_out)
+        store_f32x8(&mut out[i..i+8], mixed)
+        i = i + 8
+    }
+    graph.ring_head = (graph.ring_head + n as u32) % 8192
+}
+
+// § Real-time audio callback. THIS IS THE GATE for {Realtime<Crit>} :
+//   the compiler proves 0.5ms upper-bound via Lipschitz + SMT @ T9-phase-2.
+//   The {Audit<"audio-callback">} tag emits an entry into the R18 audit-chain
+//   per §§ 22 on every invocation for deadline-violation forensics.
+@staged
+fn audio_callback<G : AudioDSPGraph>(buf : &mut [f32])
+    / {CPU, SIMD256, NoAlloc, NoUnbounded,
+       Deadline<1ms>, Realtime<Crit>,
+       PureDet, DetRNG,
+       Audit<"audio-callback">}
+{
+    let mut graph = G::default()
+    process_block(&mut graph, buf)
+}
+
+// § Handler : route the Realtime-effect to the platform-specific callback.
+handler AudioEngine {
+    fn invoke(callback : &mut [f32])
+        / {CPU, SIMD256, NoAlloc, Deadline<1ms>}
+    {
+        audio_callback(callback)
+    }
+}

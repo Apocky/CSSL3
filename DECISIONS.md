@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,43 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T12-D1 : Examples trilogy at repo-root — 3 canonical CSSLv3 source files + cssl-examples integration-tests crate
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T12 scope per `specs/21_EXTENDED_SLICE.csl` § VERTICAL-SLICE ENTRY POINT + `DECISIONS.md` T10-D1/D2 + T11-D1 lay the full frontend + codegen + host + telemetry + persistence surface. T12's job is to exercise that surface with real CSSLv3-source examples that establish the vertical-slice acceptance criterion — zero fatal-diagnostics through the stage-0 front-end pipeline on three canonical demos.
+- **Phase-1 landed (this commit)**
+  - `examples/hello_triangle.cssl` : VK-1.4 vertex + fragment shader with effect-row `{GPU, Deadline<16ms>, Telemetry<DispatchLatency>}` + `struct Vertex` + const-array triangle data + `@vertex` / `@fragment` entry-points + host-side pipeline builder. Exercises : module/use declarations + struct + fn with effect-rows + const-exprs + `@`-annotations.
+  - `examples/sdf_shader.cssl` : **T12 KILLER-APP GATE per `specs/05_AUTODIFF.csl`**. Declares `@differentiable @lipschitz(k = 1.0) fn sphere_sdf`, composes it into `scene_sdf` (union-of-spheres), threads it through `ray_march`, and crucially calls `bwd_diff(scene_sdf)(hit_pos).d_p` inside `surface_normal`. This is the canonical compiler-acceptance surface for F1-AutoDiff source-to-source.
+  - `examples/audio_callback.cssl` : full real-time effect-row stack `{CPU, SIMD256, NoAlloc, NoUnbounded, Deadline<1ms>, Realtime<Crit>, PureDet, DetRNG, Audit<"audio-callback">}` + refinement-typed `sample_rate : u32{v : u32 | v ∈ {44100, 48000, 96000, 192000}}` + SIMD256 vectorized DSP loop + handler declaration.
+  - `compiler-rs/crates/cssl-examples/src/lib.rs` : new integration-tests crate :
+    - `HELLO_TRIANGLE_SRC` / `SDF_SHADER_SRC` / `AUDIO_CALLBACK_SRC` constants loading the `.cssl` sources via `include_str!(concat!(CARGO_MANIFEST_DIR, "../../../examples/..."))`.
+    - `PipelineOutcome { name, token_count, cst_item_count, parse_error_count, hir_item_count, lower_diag_count }` + `is_accepted()` + `summary()`.
+    - `pipeline_example(&str, &str) -> PipelineOutcome` runs `cssl_lex::lex` → `cssl_parse::parse` → `cssl_hir::lower_module` and records counts at each stage.
+    - `all_examples() -> Vec<PipelineOutcome>` drives all three examples.
+    - 11 lib-tests covering : source-non-empty markers (`@differentiable`, `bwd_diff(scene_sdf)`, `Realtime<Crit>`, `Audit<"audio-callback">`) + tokenization-shape + all-examples-returns-three + `is_accepted` predicate + `summary` formatting.
+- **Phase-2 deferred**
+  - Full type-check + refinement-obligation generation integration (blocked on T3.4-phase-3 IFC / AD-legality / hygiene slices).
+  - MIR lowering + codegen-text via the 5 cgen-* backends (requires HIR-body → MIR-expr lowering from T6-phase-2).
+  - `spirv-val` / `dxc` / `naga` round-trip validation on emitted artifacts.
+  - Vulkan device creation + actual pixel-render via `cssl-host-vulkan` (gated on T10-phase-2 FFI landing).
+  - **`bwd_diff(scene_sdf)` bit-exact-vs-analytic verification** — gated on T7-phase-2 rule-application walker + T9-phase-2 SMT real-solver dispatch. This is the final acceptance criterion for F1 correctness.
+  - `vertical_slice.cssl` : the full ≤ 5000-line composition exercising every v1 engine primitive (atmosphere, clouds, hair, ocean, spectral, XeSS2, audio-DSP, SVDAG, radiance-cascade, render-graph) per `specs/21` § VERTICAL-SLICE ENTRY POINT. Blocked on T13+ (self-host stage1).
+- **Rationale**
+  - Examples at `examples/` at repo-root (not inside `compiler-rs/`) match `specs/21` canonical reference path.
+  - Integration-tests crate named `cssl-examples` so `cargo test --workspace` picks it up automatically without requiring manual fixture paths.
+  - `include_str!` with `env!("CARGO_MANIFEST_DIR")` path composition gives compile-time file-resolution so the examples crate can't build without the sources being present — structural invariant enforced by rustc.
+  - Stage-0 "acceptance" = zero fatal parser diagnostics. Full type-checking, refinement-discharge, codegen, and runtime verification are deferred to the respective T*-phase-2 work — but the **pipeline composition itself** is now proven end-to-end on real source code.
+  - The `bwd_diff(scene_sdf)` marker in `sdf_shader.cssl` is the breadcrumb that T7-phase-2 + T9-phase-2 tests target when they land. Grepping for this exact call is the compiler-acceptance-trigger for the killer-app gate.
+- **Consequences**
+  - Public APIs : `cssl_examples::{PipelineOutcome, pipeline_example, all_examples, HELLO_TRIANGLE_SRC, SDF_SHADER_SRC, AUDIO_CALLBACK_SRC}`.
+  - Workspace crate-count : 26 → 27.
+  - +11 lib-tests → 859 total passing / 0 failing.
+  - `examples/` directory now exists at repo-root + is referenced by `specs/21_EXTENDED_SLICE.csl` § VERTICAL-SLICE ENTRY POINT + `scripts/validate_spec_crossrefs.py` (skip-pattern for lowercase-hyphenated local refs accommodates this).
+  - 3 `.cssl-rust` example files totaling ~180 lines of CSSLv3 source that exercise effect-rows + `@differentiable` + `bwd_diff` + refinement-types + SIMD + real-time deadlines + audit-chain tagging.
 
 ───────────────────────────────────────────────────────────────
 

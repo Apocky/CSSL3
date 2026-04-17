@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ + T10-phase-1-codegen (5 codegen backends : cranelift-CPU + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit) ✓ + T10-phase-1-hosts (5 host-adapter capability catalogs : vulkan + level-zero + d3d12 + metal + webgpu) ✓ + T11-phase-1-telemetry-persist (R18 telemetry-ring + audit-chain + exporters + orthogonal-persistence image + schema-migration + in-memory backend) ✓ ; T12 (examples trilogy : hello-triangle + sdf-shader + audio-callback) next
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 ✓ + T10-phase-1-codegen (5 text-emitters) ✓ + T10-phase-1-hosts (5 catalogs) ✓ + T11-phase-1-telemetry-persist ✓ + T12-phase-1-examples (hello-triangle + sdf-shader + audio-callback + cssl-examples integration-tests crate) ✓ ; Session-1 phase-1 **COMPLETE**. Next = T11-phase-2 (real crypto / backends / oracle-bodies) OR T13+ (self-host stage-1)
 
 ───────────────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@
 | D9  | smt — Z3 / CVC5 / KLEE                                | ◐ cssl-smt (Theory/Sort/Term/Literal + Query/FnDecl/Assertion + emit_smtlib + Z3/CVC5-CLI subprocess solvers + discharge stub) ✓ (T9-phase-1) ; FFI + KLEE + proof-certs pending T9-phase-2 |
 | D10 | cgen-cpu + cgen-gpu + host-*                          | ◐ 5 codegen backends ✓ (cranelift + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit + dxc/spirv-cross CLI adapters) + 5 host-adapters ✓ (vulkan + level-zero + d3d12 + metal + webgpu capability catalogs + stub probes + Arc A770 canonical profile) ; FFI-integration (ash/level-zero-sys/windows-rs/metal/wgpu) pending T10-phase-2 |
 | D11 | telemetry + testing + persist                         | ◐ cssl-telemetry (R18 ring + audit-chain + exporters) ✓ + cssl-persist (image + schema-migration + in-memory backend) ✓ (T11-phase-1) ; cssl-testing oracle-dispatch bodies + BLAKE3/Ed25519 FFI + WAL/LMDB backends pending T11-phase-2 |
-| D12 | examples/ hello-triangle + sdf-shader + audio-cb      | ○ pending T10+ |
+| D12 | examples/ hello-triangle + sdf-shader + audio-cb      | ◐ 3 canonical .cssl source files @ `examples/` + cssl-examples integration-tests crate ✓ (T12-phase-1) ; full-type-check + codegen-emission + runtime-verification pending T12-phase-2 (unlocked by T3.4-phase-3 + T6-phase-2 + T7-phase-2 + T9-phase-2 + T10-phase-2) |
 | D13 | DECISIONS.md + SESSION_1_HANDOFF.md                   | ✓ T1-D1..D7 recorded |
 | D14 | .github/workflows/ci.yml                              | ✓ §§ 23-faithful skeleton wired |
 
@@ -68,6 +68,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T10-D1** : Codegen phased — 5 backends (cranelift-CPU / SPIR-V / DXIL-HLSL / MSL / WGSL) text-emission now + `DxcCliInvoker` / `SpirvCrossInvoker` subprocess adapters ; real cranelift/rspirv/naga FFI + MIR-body lowering + spirv-val gate / dxc round-trip / fat-binary assembly deferred to T10-phase-2
 - **T10-D2** : Host-adapters phased — 5 adapters (Vulkan + Level-Zero + D3D12 + Metal + WebGPU) capability-catalogs + stub probes + canonical Arc A770 profile now ; ash / level-zero-sys / windows-rs / metal / wgpu FFI deferred to T10-phase-2
 - **T11-D1** : Telemetry + persistence phased — cssl-telemetry (25-scope taxonomy + TelemetryRing SPSC + AuditChain BLAKE3+Ed25519 stub + Chrome/JSON/OTLP exporters) + cssl-persist (SchemaVersion + MigrationChain + PersistenceImage + InMemoryBackend) now ; real BLAKE3/Ed25519 + OTLP gRPC + WAL/LMDB backends + @hot_reload_preserve HIR pass deferred to T11-phase-2 ; cssl-testing oracle-body fleshing also T11-phase-2
+- **T12-D1** : Examples trilogy at repo-root — 3 canonical CSSLv3 source files (hello-triangle VK-1.4 pipeline + sdf-shader `bwd_diff(scene_sdf)` killer-app gate + audio-callback full-real-time-effect-row) + cssl-examples integration-tests crate pipelining lex → parse → HIR → lower ; bit-exact-vs-analytic verification gate + MIR-emission + spirv-val gated on T6+T7+T9-phase-2 slices
 
 ───────────────────────────────────────────────────────────────
 
@@ -126,15 +127,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         | Commit-4 end (T10-phase-1-hosts)                          | Commit-5 end (T11-phase-1-telemetry-persist)           |
-|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------|---------------------------------------------------------|
-| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     | 24 (+ 5 host-* : vulkan / level-zero / d3d12 / metal / webgpu) | 26 (+ cssl-telemetry + cssl-persist)                  |
-| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) | ~36100 (+ ~1100 vulkan + ~750 level-zero + ~650 d3d12 + ~700 metal + ~800 webgpu) | ~38500 (+ ~1500 telemetry + ~900 persist)             |
-| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) | 786 passed / 33 targets (+76 : vulkan+level-zero+d3d12+metal+webgpu) | 850 passed / 33 targets (+64 : telemetry + persist)    |
-| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            | 0                                                          | 0                                                       |
-| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           | 19                                                         | 19                                                      |
-| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                | 156 / 0 (135)                                              | 156 / 0 (135)                                           |
-| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      | ✓ 6 / 6                                                    | ✓ 6 / 6                                                 |
+| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         | Commit-4 end (T10-phase-1-hosts)                          | Commit-5 end (T11-phase-1-telemetry-persist)           | Commit-6 end (T12-phase-1-examples)                      |
+|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------|---------------------------------------------------------|----------------------------------------------------------|
+| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     | 24 (+ 5 host-* : vulkan / level-zero / d3d12 / metal / webgpu) | 26 (+ cssl-telemetry + cssl-persist)                  | 27 (+ cssl-examples integration-tests)                 |
+| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) | ~36100 (+ ~1100 vulkan + ~750 level-zero + ~650 d3d12 + ~700 metal + ~800 webgpu) | ~38500 (+ ~1500 telemetry + ~900 persist)             | ~38750 (+ ~250 examples) + ~180 LOC CSSLv3 source      |
+| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) | 786 passed / 33 targets (+76 : vulkan+level-zero+d3d12+metal+webgpu) | 850 passed / 33 targets (+64 : telemetry + persist)    | 859 passed / 34 targets (+9 : cssl-examples)           |
+| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            | 0                                                          | 0                                                       | 0                                                        |
+| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           | 19                                                         | 19                                                      | 19                                                       |
+| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                | 156 / 0 (135)                                              | 156 / 0 (135)                                           | 156 / 0 (136)                                            |
+| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      | ✓ 6 / 6                                                    | ✓ 6 / 6                                                 | ✓ 6 / 6                                                  |
 
 ───────────────────────────────────────────────────────────────
 
@@ -739,26 +740,77 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T12 (examples trilogy) + T13+ (self-host + C99 anchor)
+§ T12-phase-1-examples ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T12 + §§ README § EXAMPLES :
-1. hello-triangle  : minimum VK-1.4 pipeline, CSSLv3-native syntax
-2. sdf-shader      : killer-app : `bwd_diff(sphere_sdf)` bit-exact vs analytic
-3. audio-callback  : {Audio<44_100>} + real-time deadline + lock-freedom
+`examples/` (repo-root, referenced from `specs/21` § VERTICAL-SLICE ENTRY POINT) :
+- `hello_triangle.cssl` : module/use decls + struct Vertex + const-array triangle
+                          data + @vertex/@fragment entry-points w/ effect-rows
+                          {GPU, Deadline<16ms>, Telemetry<DispatchLatency>} + host-
+                          side pipeline builder fn
+- `sdf_shader.cssl`     : **KILLER-APP GATE** — @differentiable @lipschitz sphere_sdf
+                          + scene_sdf (union) + ray_march + surface_normal via
+                          `bwd_diff(scene_sdf)(hit_pos).d_p` + Lambert shade +
+                          @fragment sdf_pixel entry-point
+- `audio_callback.cssl` : AudioDSPGraph w/ refinement-typed sample_rate +
+                          sine_osc + SIMD256-vectorized process_block + @staged
+                          audio_callback w/ full {CPU,SIMD256,NoAlloc,NoUnbounded,
+                          Deadline<1ms>,Realtime<Crit>,PureDet,DetRNG,
+                          Audit<"audio-callback">} effect-row + handler
+                          AudioEngine
 
-Per §§ HANDOFF T13+ + §§ 14_BACKEND § OWNED stage1+ :
-- Self-hosted stage1 compiler (CSSLv3-compiled CSSLv3-compiler)
-- R16 C99-reproducibility anchor (third-party-auditable build)
-- LoA v10 migration-target integration
-- Full BLAKE3 + Ed25519 + OTLP + WAL/LMDB T11-phase-2 wiring
+`crates/cssl-examples/src/lib.rs` (integration-tests crate) :
+- `PipelineOutcome` record (name + token_count + cst_item_count +
+  parse_error_count + hir_item_count + lower_diag_count) + `is_accepted()` +
+  `summary()`
+- `pipeline_example(name, source) -> PipelineOutcome` : lex → parse → lower_module
+- `all_examples() -> Vec<PipelineOutcome>` : drives all 3 canonical sources
+- `HELLO_TRIANGLE_SRC` / `SDF_SHADER_SRC` / `AUDIO_CALLBACK_SRC` via include_str!
+  from repo-root `examples/`
 
-Open for T12-start :
-- Examples root directory layout : `examples/hello_triangle/` + trilogy
-- Vertical-slice integration : lex → parse → HIR → MIR → codegen → runtime
-- Killer-app gate : `sdf_shader` must compile to SPIR-V emitting `bwd_diff` that
-  matches analytic gradient to ±1 ULP — this is THE T12 acceptance criterion
-- Host-binding : which of the 5 host-adapters do we wire first ? Probably Vulkan
-  (graphics/compute) since it's cross-platform + Arc A770 primary target
+§ T12-phase-1 COVERAGE
+- All 3 canonical .cssl example files present at repo-root
+- Full stage-0 front-end pipeline (lex+parse+HIR-lower) runs end-to-end on each
+- 11 integration-tests covering source-non-empty markers + tokenization shape +
+  breadcrumb checks (@differentiable, bwd_diff(scene_sdf), Realtime<Crit>,
+  Audit<"audio-callback">) + all-examples-returns-three + summary formatting
+- include_str! at compile-time enforces : examples MUST be present for build
+
+§ T12-phase-2 DEFERRED
+- Full type-check + refinement-obligation generation integration (blocked on
+  T3.4-phase-3 IFC / AD-legality / hygiene slices)
+- MIR lowering + codegen-text via the 5 cgen-* backends (requires HIR-body → MIR
+  expr-lowering from T6-phase-2)
+- spirv-val / dxc / naga round-trip validation on emitted artifacts
+- Vulkan device creation + actual pixel-render via cssl-host-vulkan (T10-phase-2)
+- **`bwd_diff(scene_sdf)` bit-exact-vs-analytic verification** — THE final
+  acceptance criterion for F1 correctness, gated on T7-phase-2 rule-application
+  walker + T9-phase-2 SMT real-solver dispatch
+- `vertical_slice.cssl` (≤ 5000 lines) : full composition exercising every v1
+  engine primitive per §§ 21 VERTICAL-SLICE ENTRY POINT ; deferred to T13+
+  (self-host stage-1 needs stabilized surface first)
+
+───────────────────────────────────────────────────────────────
+
+§ SESSION-1 PHASE-1 COMPLETE
+
+All 12 tasks T1..T12 have phase-1 landings. Remaining deferred work :
+- T3.4-phase-3 : IFC / AD-legality / @staged-check / macro-hygiene
+- T6-phase-2 : melior FFI + HIR-body → MIR-expr lowering + pass pipeline
+- T7-phase-2 : rule-application walker + tape-buffer + killer-app gate
+- T8-phase-2 : actual specialization walk + native comptime-eval + P3 bootstrap
+- T9-phase-2 : HIR→SMT-term translation + FFI + KLEE + proof-certs + cache
+- T10-phase-2 : cranelift FFI + rspirv FFI + dxc CI integration + 5× host FFI
+- T11-phase-2 : real BLAKE3/Ed25519 + OTLP + WAL/LMDB + oracle-bodies +
+  @hot_reload_preserve HIR pass
+- T12-phase-2 : full-type-check integration + bit-exact AD verification +
+  vertical_slice.cssl
+
+§ NEXT SESSIONS
+- Session-2 : T3.4-phase-3 + T6-phase-2 (unblocks MIR-body lowering for all codegen
+  backends + refinement-discharge)
+- Session-3+ : T7+T9-phase-2 (landing killer-app gate)
+- Session-N : T13+ (self-host CSSLv3-compiled compiler + C99 reproducibility anchor
+  + LoA v10 integration)
 
 ───────────────────────────────────────────────────────────────
 

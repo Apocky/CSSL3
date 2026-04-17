@@ -102,6 +102,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-examples"
+version = "0.1.0"
+dependencies = [
+ "cssl-ast",
+ "cssl-hir",
+ "cssl-lex",
+ "cssl-parse",
+]
+
+[[package]]
 name = "cssl-futamura"
 version = "0.1.0"
 dependencies = [

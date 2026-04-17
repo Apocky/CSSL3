@@ -1,0 +1,66 @@
+// examples/hello_triangle.cssl
+// ══════════════════════════════════════════════════════════════════
+// § GOAL : minimum Vulkan-1.4 pipeline declaring a vertex + fragment shader
+//         that render a gradient triangle. Exercises :
+//           - module + use declarations
+//           - struct with field-types
+//           - fn with effect-row + typed signature
+//           - basic expression-body
+//         § SPEC refs : specs/10_HW.csl § VULKAN 1.4 BASELINE
+//                       specs/07_CODEGEN.csl § GPU BACKEND — SPIR-V path
+//                       specs/14_BACKEND.csl § HOST-SUBMIT BACKENDS
+
+module com.apocky.examples.hello_triangle
+
+use std::gpu::vec2
+use std::gpu::vec3
+use std::gpu::vec4
+use std::gpu::SurfaceFormat
+use std::gpu::ShaderStage
+
+// § Vertex data layout — std430-compatible.
+struct Vertex {
+    position : vec2,
+    color    : vec3,
+}
+
+// § Triangle-constant array of 3 vertices.
+const TRIANGLE_VERTICES : [Vertex; 3] = [
+    Vertex { position: vec2(-0.5, -0.5), color: vec3(1.0, 0.0, 0.0) },
+    Vertex { position: vec2(0.5, -0.5),  color: vec3(0.0, 1.0, 0.0) },
+    Vertex { position: vec2(0.0, 0.5),   color: vec3(0.0, 0.0, 1.0) },
+]
+
+// § Vertex shader — indexed from TRIANGLE_VERTICES by SV_VertexID.
+@vertex
+fn vs_main(vid : u32) -> vec4 / {GPU, Deadline<16ms>, Telemetry<DispatchLatency>} {
+    let v = TRIANGLE_VERTICES[vid]
+    vec4(v.position.x, v.position.y, 0.0, 1.0)
+}
+
+// § Fragment shader — pass-through interpolated vertex color.
+@fragment
+fn fs_main(bary : vec3) -> vec4 / {GPU, Deadline<16ms>, Telemetry<DispatchLatency>} {
+    let r = bary.x
+    let g = bary.y
+    let b = bary.z
+    vec4(r, g, b, 1.0)
+}
+
+// § Pipeline-descriptor value — declarative resource layout.
+struct HelloTrianglePipeline {
+    vertex_stage   : ShaderStage,
+    fragment_stage : ShaderStage,
+    surface_format : SurfaceFormat,
+    vertex_count   : u32,
+}
+
+// § Pipeline builder : pure-constructor (no effect-row) — runs at host-side.
+fn build_pipeline() -> HelloTrianglePipeline {
+    HelloTrianglePipeline {
+        vertex_stage:   ShaderStage::Vertex,
+        fragment_stage: ShaderStage::Fragment,
+        surface_format: SurfaceFormat::Bgra8UnormSrgb,
+        vertex_count:   3,
+    }
+}

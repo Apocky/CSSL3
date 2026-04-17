@@ -1,0 +1,82 @@
+// examples/sdf_shader.cssl
+// ══════════════════════════════════════════════════════════════════
+// § GOAL : T12 KILLER-APP GATE — `bwd_diff(sphere_sdf)` bit-exact vs analytic.
+//         Exercises the full F1-AutoDiff pipeline :
+//           - @differentiable annotation + param + return types
+//           - primitive ops (FSub, Sqrt-via-length) in a body
+//           - bwd_diff operator at call-site
+//           - shade-function consumer of the computed normal
+//         § SPEC refs : specs/05_AUTODIFF.csl § SURFACE
+//                       specs/08_ENGINE.csl § SDF + ray-marching
+//                       specs/17_JETS.csl (higher-order via Jet<T, N>)
+
+module com.apocky.examples.sdf_shader
+
+use std::math::vec3
+use std::math::length
+use std::math::normalize
+use std::math::dot
+use std::math::max
+use std::gpu::vec4
+
+// § Analytic sphere SDF.
+// § R! @differentiable ← F1-AD-enabled fn.
+// § R! @lipschitz(k = 1.0) ← bounds gradient-magnitude for ray-march safety.
+@differentiable
+@lipschitz(k = 1.0)
+fn sphere_sdf(p : vec3, r : f32'pos) -> f32 {
+    length(p) - r
+}
+
+// § Scene-SDF : union of two translated spheres. Differentiable-pure.
+@differentiable
+fn scene_sdf(p : vec3) -> f32 {
+    let d1 = sphere_sdf(p, 0.5)
+    let d2 = sphere_sdf(p - vec3(1.0, 0.0, 0.0), 0.3)
+    min(d1, d2)
+}
+
+// § Ray-march until hit or max-steps. Iso-capability-managed tape for bwd_diff.
+@differentiable
+fn ray_march(origin : vec3, dir : vec3, max_steps : u32'pos) -> f32 {
+    let mut t = 0.0
+    let mut i = 0
+    while i < max_steps {
+        let p = origin + dir * t
+        let d = scene_sdf(p)
+        if d < 0.001 {
+            break
+        }
+        t = t + d
+        i = i + 1
+    }
+    t
+}
+
+// § Normal-at-point : reverse-mode AD gradient of the scene-SDF w.r.t position.
+// § R! THIS IS THE KILLER-APP GATE :
+//        `bwd_diff(scene_sdf)(p).d_p` must be bit-exact vs analytic central-differences
+//        across the full Arc A770 driver-matrix per §§ 23 TESTING differential-backend.
+fn surface_normal(hit_pos : vec3) -> vec3 {
+    let g = bwd_diff(scene_sdf)(hit_pos).d_p
+    normalize(g)
+}
+
+// § Lambert-shade : cos(normal · light) clamped to [0, 1].
+fn shade(normal : vec3, light_dir : vec3) -> f32 {
+    max(dot(normal, light_dir), 0.0)
+}
+
+// § Full SDF pixel-shader.
+@fragment
+fn sdf_pixel(uv : vec3) -> vec4
+    / {GPU, Deadline<16ms>, Telemetry<DispatchLatency>}
+{
+    let cam_origin = vec3(0.0, 0.0, -3.0)
+    let dir        = normalize(uv - cam_origin)
+    let t          = ray_march(cam_origin, dir, 64)
+    let hit        = cam_origin + dir * t
+    let n          = surface_normal(hit)
+    let lit        = shade(n, normalize(vec3(1.0, 1.0, -1.0)))
+    vec4(lit, lit, lit, 1.0)
+}

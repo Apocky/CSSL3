@@ -1,0 +1,17 @@
+[package]
+name                   = "cssl-examples"
+description            = "CSSLv3 stage0 — vertical-slice integration tests (hello_triangle + sdf_shader + audio_callback)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+cssl-ast   = { path = "../cssl-ast" }
+cssl-lex   = { path = "../cssl-lex" }
+cssl-parse = { path = "../cssl-parse" }
+cssl-hir   = { path = "../cssl-hir" }
+
+[lints]
+workspace = true
