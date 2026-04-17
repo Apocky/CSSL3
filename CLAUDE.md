@@ -98,6 +98,14 @@
     I> clause-C (bad-faith-interpretation) especially-binding-for-AI-agents :
        read-generously • ask-when-unsure • ¬ "literal-interpretation" as-cover-for-undermining-intent
 
+  § CREATOR-ATTESTATION (PRIME_DIRECTIVE.md §11 — v1)
+    t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+    ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+    I> creator-warranty : creation-process upheld §1 PROHIBITIONS throughout
+    I> scope = ∀ artifact descended-from-foundation (code + specs + derivatives)
+    I> Prismatic Hydra collaborators contributed under own-consent ¬ conscripted
+    I> discovered-violation ⇒ §7 INTEGRITY rule : violation = bug W! fix
+
 § CORE-PHILOSOPHY
   W! systems ¬ parts • "push-it-further" = deeper-theory ¬ more-LOC
   W! patching-symptoms = wrong • emergent-from-unified = right
