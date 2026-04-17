@@ -22,13 +22,13 @@ pub mod source;
 pub mod span;
 
 pub use cst::{
-    Attr, AttrArg, AttrKind, BinOp, Block, CallArg, CapKind, CompoundOp, ConstItem, EffectItem,
-    EffectRow, EnumItem, EnumVariant, Expr, ExprKind, FieldDecl, FnItem, GenericParam,
-    GenericParamKind, Generics, HandlerItem, Ident, ImplAssocItem, ImplItem, InterfaceAssocItem,
-    InterfaceItem, Item, Literal, LiteralKind, MatchArm, Module, ModuleItem, ModulePath, Param,
-    Pattern, PatternField, PatternKind, RefinementKind, Stmt, StmtKind, StructBody,
-    StructFieldInit, StructItem, Type, TypeAliasItem, TypeKind, UnOp, UseItem, UseTree, Visibility,
-    VisibilityKind, WhereClause,
+    ArrayExpr, AssocTypeDecl, AssocTypeDef, Attr, AttrArg, AttrKind, BinOp, Block, CallArg,
+    CapKind, CompoundOp, ConstItem, EffectAnnotation, EffectArg, EffectItem, EffectRow, EnumItem,
+    EnumVariant, Expr, ExprKind, FieldDecl, FnItem, GenericParam, GenericParamKind, Generics,
+    HandlerItem, Ident, ImplAssocItem, ImplItem, InterfaceAssocItem, InterfaceItem, Item, Literal,
+    LiteralKind, MatchArm, Module, ModuleItem, ModulePath, Param, Pattern, PatternField,
+    PatternKind, RefinementKind, Stmt, StmtKind, StructBody, StructFieldInit, StructItem, Type,
+    TypeAliasItem, TypeKind, UnOp, UseItem, UseTree, Visibility, VisibilityKind, WhereClause,
 };
 pub use diagnostic::{Diagnostic, DiagnosticBag, Severity};
 pub use source::{SourceFile, SourceId, SourceLocation, Surface};

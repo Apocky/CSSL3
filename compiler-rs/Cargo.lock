@@ -108,6 +108,11 @@ version = "0.1.0"
 [[package]]
 name = "cssl-parse"
 version = "0.1.0"
+dependencies = [
+ "cssl-ast",
+ "cssl-lex",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-persist"

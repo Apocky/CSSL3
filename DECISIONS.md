@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T3.1 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T3.1 ✓ • T3.2 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -289,6 +289,27 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T2-D6 : Apostrophe decomposition deferred — parser compensates via dormant code-path
+
+- **Date** 2026-04-17
+- **Status** accepted (short-term)
+- **Context** T2-D5 specifies the Rust-hybrid lexer should emit `Apostrophe` as a standalone token whenever `'` is not followed by a single recognized morpheme letter at word-boundary. The canonical examples :
+  - `base'd` (morpheme-rule) → `Ident("base") + Suffix(Rule)` (2 tokens)
+  - `f32'pos` (refinement tag) → `Ident("f32") + Apostrophe + Ident("pos")` (3 tokens)
+
+  The current `rust_hybrid.rs` ident regex is `[A-Za-z_][A-Za-z0-9_']*` — this absorbs `'` as ident-continuation and emits `f32'pos` as ONE `Ident` token. So T2-D5's 3-token decomposition is not realized by the lexer yet.
+- **Options**
+  - (a) fix the lexer regex now : split ident at `'` + reconstitute morpheme suffixes in a post-pass
+  - (b) parser-side decomposition : re-scan ident-with-apostrophe in `cssl-parse` when a type expression expects a refinement tag
+  - (c) defer lexer fix — keep parser `RefinementKind::Tag`/`Lipschitz` code-path in place (dormant) until lexer catches up
+- **Decision** **(c)** defer lexer fix. The parser's refinement-tag handling remains in place and will activate automatically once the lexer emits `Apostrophe` correctly. The test `rust_hybrid::ty::tests::refinement_predicate_form` exercises the predicate-form refinement path (`{v : T | P}`) which is lexer-independent and validates the `TypeKind::Refined` CST shape uniformly.
+- **Consequences**
+  - No refinement-tag-sugar test until T2-D8 lands.
+  - Refinement-predicate form (the explicit, more-powerful variant) is fully covered.
+  - Morpheme-stacking test cases (`x.aspect.mod.cert.scope`) reach the parser as an un-decomposed identifier string ; CST `Compound` chain-formation fires only on token-level CompoundOp separators.
+
+───────────────────────────────────────────────────────────────
+
 ## § T3-D4 : CST single-file, HIR modular-split
 
 - **Date** 2026-04-16
@@ -303,3 +324,48 @@ Each decision entry :
   - HIR carries elaboration state, type inference, IFC labels, cap inference, effect rows — each deserves its own module.
   - Later refactor to modular CST is cheap if file grows past ~1500 LOC.
 - **Consequences** : `cssl-ast/src/cst.rs` contains all CST nodes; `cssl-hir/src/{item,expr,ty,stmt,pat,attr,infer}.rs` splits responsibilities.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D5 : Path-parser splits by context — colon-only in expr/pat, dot-accepting in types/module-decls
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** In Rust-hybrid, `foo::bar` is a path-continuation, but `obj.field` is a field-access. In types + module-declarations (`module com.apocky.loa`), `.` IS a path-separator per §§ 09. A single `parse_module_path` that accepts both separators mis-parses expressions : `obj.field` becomes a 2-segment path instead of a `Field` post-op on `obj`.
+- **Decision** Split into two surface helpers :
+  - `parse_module_path` : dual-accepting (`::` + `.`) — used in types + module-decl + attribute-names.
+  - `parse_colon_path` : `::`-only — used in expr / pattern contexts.
+- **Consequences** : `obj.field` now parses as `ExprKind::Field`. `foo::bar::baz` still yields a 3-segment path. `com.apocky.loa` module-decl still yields a 3-segment path.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D6 : Struct-constructor disambiguation via peek-ahead
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** `Point { x : 1, y : 2 }` is a struct constructor expression. `if x { ... }`, `match x { ... }`, `while x { ... }` all place a path followed by `{` in a position where `{` begins a block, **not** a struct body. A naive `path + { → struct-constructor` rule mis-parses these.
+- **Options**
+  - (a) Context flag on the cursor (disable struct-brace in `if`/`while`/`for`/`match` scrutinee positions).
+  - (b) Peek-ahead after the `{` : accept struct-constructor only when the following 1-2 tokens match a struct-body shape (`ident :` / `ident ,` / `ident }` / `..` / `}`).
+  - (c) Require explicit parens around struct-constructors in control-flow heads.
+- **Decision** **(b) peek-ahead**, implemented by `looks_like_struct_body(&cursor)`.
+- **Rationale** : zero false-negatives on real struct-constructors ; zero false-positives on match-scrutinee bodies in practice (match-arm patterns start with literals / `|` / `_` / `ident(` — none of which are struct-field shapes).
+- **Consequences**
+  - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
+  - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D7 : Parser error-recovery protocol
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** Parser rules must never return `Option<Node>` to callers — LSP + formatter paths need a walkable CST even after parse errors. The convention established in T3.2 :
+  - Rules return an unconditional `Node` (possibly an `Error` variant or a synthetic placeholder).
+  - Rules `push` a `Diagnostic` into the shared `DiagnosticBag` for each recoverable parse error.
+  - Rules that might be absent (optional `@attr` / `<generics>` / `where` / effect-row) may return `None` ; callers handle the absence branch.
+  - The top-level item-loop tracks `cursor.effective_pos()` before each `parse_item` call and only breaks on **no-progress** (not on `None` returned) — this lets the parser recover past a bad token and continue finding items.
+- **Consequences**
+  - Tests assert on `DiagnosticBag::error_count()` rather than on `Result::is_err()`.
+  - The integration test `unknown_top_level_produces_diagnostic_not_panic` pins this behavior.
+  - Downstream (`cssl-hir`) receives a CST that may have `Error` expressions embedded — the elaborator skips elaboration for those nodes but continues type-checking the rest.

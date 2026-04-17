@@ -1,10 +1,10 @@
 # SESSION 1 HANDOFF — CSSLv3 stage0 scaffold
 
 § META
-- **Session date** 2026-04-16
+- **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1 ✓ + T2 ✓ complete; T3 next (parse + ast + hir elaborator)
+- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ ; T3.3 HIR-lowering next
 
 ───────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@
 |-----|-------------------------------------------------------|----------------|
 | D1  | compiler-rs/ Cargo-workspace skeleton                 | ✓ complete     |
 | D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
-| D3  | parse + ast + hir — elaborator                        | ◐ ast primitives landed (Span/SourceFile/Diagnostic); parse + hir pending T3 |
+| D3  | parse + ast + hir — elaborator                        | ◐ ast primitives + CST nodes + dual-surface parsers ✓ ; hir elaborator pending T3.3/T3.4 |
 | D4  | effects — 28 effects + evidence-passing               | ○ pending T4   |
 | D5  | caps — Pony-6 + gen-refs                              | ○ pending T5   |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
@@ -43,6 +43,14 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T2-D3** : CSLv3-native via hand-rolled byte-stream lexer with indent-stack
 - **T2-D4** : Surface auto-detection cascade — extension > pragma > first-line > default
 - **T2-D5** : `Apostrophe` token for non-morpheme `'…` attachments (`f32'pos`, `SDF'L`, lifetimes)
+- **T2-D6** : Apostrophe decomposition deferred ; parser refinement-tag path kept dormant until lexer catches up
+- **T3-D1** : Parser — hand-rolled recursive-descent + Pratt (no combinator-lib dep) for both surfaces
+- **T3-D2** : String interning deferred to HIR layer (lasso at T3-mid)
+- **T3-D3** : Morpheme-stacking + compound-formation at CST layer as `Expr::Compound { op, lhs, rhs }`
+- **T3-D4** : CST single-file, HIR modular-split
+- **T3-D5** : Path-parser splits by context — colon-only in expr/pat, dot-accepting in types/module-decls
+- **T3-D6** : Struct-constructor disambiguation via peek-ahead (`looks_like_struct_body`)
+- **T3-D7** : Parser error-recovery protocol — rules always return a node + push diagnostics ; top-level loop breaks only on no-progress
 
 ───────────────────────────────────────────────────────────────
 
@@ -101,15 +109,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T1-start | T1-end    | T2-end                          |
-|-------------------------------|----------|-----------|---------------------------------|
-| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) |
-| Lines of scaffold Rust        | 0        | ~1500     | ~3800 (+ cssl-ast primitives + cssl-lex token/rust_hybrid/csl_native/mode) |
-| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 |
-| Clippy warnings (`-D`)        | N/A      | 0         | 0                               |
-| CI jobs declared              | 0        | 19        | 19                              |
-| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0 (unchanged; spec corpus stable) |
-| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         |
+| Metric                        | T1-start | T1-end    | T2-end                          | T3.2-end                                |
+|-------------------------------|----------|-----------|---------------------------------|-----------------------------------------|
+| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) | 31 (+ cssl-parse fully populated)    |
+| Lines of scaffold Rust        | 0        | ~1500     | ~3800                           | ~7800 (+ cssl-parse ~3900 LOC)          |
+| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 | 258 / 63 suites                         |
+| Clippy warnings (`-D`)        | N/A      | 0         | 0                               | 0                                       |
+| CI jobs declared              | 0        | 19        | 19                              | 19                                      |
+| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0                         | 156 / 0 (134 local-section skipped)     |
+| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         | ✓ 6 / 6                                 |
 
 ───────────────────────────────────────────────────────────────
 
@@ -150,21 +158,45 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T3 (parse + ast + hir elaborator)
+§ T3.2 ARTIFACTS  (added 2026-04-17)
+
+`crates/cssl-parse/src/` :
+- `lib.rs` : top-level `parse(source, tokens) -> (Module, DiagnosticBag)` surface-dispatcher
+- `cursor.rs` : `TokenCursor<'a>` with 2-token lookahead + newline-aware mode toggle + trivia-skip
+- `error.rs` : `ParseError` enum + `to_diagnostic()` + helper constructors (`expected_one`, `expected_any`, `custom`, `nyi`)
+- `common.rs` : shared `parse_ident`, `parse_module_path` (dot+colon), `parse_colon_path` (colon-only), `expect`, `expect_any`
+- `rust_hybrid/` 8 modules (attr, expr, generics, item, mod, pat, stmt, ty)
+- `csl_native/` 4 modules (compound, mod, section, slot)
+- `tests/integration.rs` : 13 end-to-end Lex+Parse tests covering realistic multi-item fragments
+
+§ T3.2 SCOPE COVERAGE
+- Rust-hybrid : fn / struct / enum / interface / impl / effect / handler / type / use / const / module
+- Pratt expression parser with 14 precedence levels + all control-flow (if / match / for / while / loop / return / break / continue / region / perform / with / lambda / #run)
+- Types : Path, Tuple, Array, Slice, Reference, Capability, Function, Refined (predicate + tag sugar), Infer
+- Patterns : Wildcard, Literal, Binding, Tuple, Struct, Variant, Or, Range, Ref
+- Effect-rows + generics + where-clauses
+- CSLv3-native : § section structure (→ ModuleItem) + compound-formation helper + slot-template prefix recognizer
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T3.3 (HIR-lowering) and T3.4 (bidirectional elaboration)
 
 Per §§ HANDOFF T3 :
-1. `cssl-parse` : Rust-hybrid parser via `chumsky` + CSLv3-native recursive-descent (both token streams → same CST).
-2. `cssl-ast` : CST node taxonomy (source-preserving) + elaboration markers; `Symbol` interning table.
-3. `cssl-hir` : bidirectional type-inference (Hindley-Milner + row poly for effects) + IFC-label propagation + cap-inference + refinement-obligation generation (routes to `cssl-smt`).
-4. Integration with existing `cssl-lex::lex` (input) and `cssl-ast::Diagnostic` bag.
-5. Golden HIR-dump fixtures under `compiler-rs/tests/golden/hir/`.
+1. `cssl-hir` : elaborate CST → HIR with string interning via `lasso` (T3-D2)
+2. Bidirectional type-inference (Hindley-Milner + row-polymorphism for effect rows)
+3. Capability inference (Pony-6 per §§ 12)
+4. IFC-label propagation (Jif-DLM per §§ 11)
+5. Refinement-obligation generation → SMT queue (§§ 20)
+6. AD-legality check (§§ 05 closure)
+7. @staged stage-arg comptime-check (§§ 06)
+8. Macro hygiene-mark (§§ 13)
+9. Golden HIR-dump fixtures under `compiler-rs/tests/golden/hir/`
 
-Open for T3-start :
-- Parser library : `chumsky` vs `lalrpop` vs hand-rolled recursive-descent ? (T3-D1 pending)
-- Symbol / interner crate : `string-interner`, `lasso`, or hand-rolled ? (T3-D2 pending)
-- Morpheme-stacking representation : token-level collapsed vs AST-level tree ? (T3-D3 pending)
-- `cslparser` binding-unit : FFI? CLI-subprocess? (per T1-D2, Rust-port is primary; but `parser.exe` as CI-differential-oracle TBD — see T1-D2 consequences).
-- `logos` vs `chumsky` for lexer layer (T2-D1 pending).
+Open for T3.3-start :
+- Interner integration-point : crate-wide `HirArena<'a>` vs per-module `Interner` ?
+- Row-polymorphism representation : closed-row ADT vs open-row with `μ`-variable ?
+- Name-resolution scoping : pass-at-elaboration vs dedicated resolver pass ?
+- Refinement-obligation data-structure : `ObligationBag` vs lazy-query-on-demand ?
 
 ───────────────────────────────────────────────────────────────
 
