@@ -69,6 +69,7 @@ pub mod attr;
 pub mod cap_check;
 pub mod env;
 pub mod expr;
+pub mod ifc;
 pub mod infer;
 pub mod item;
 pub mod lower;
@@ -93,6 +94,10 @@ pub use env::{TypeScope, TypingEnv};
 pub use expr::{
     HirArrayExpr, HirBinOp, HirBlock, HirCallArg, HirCompoundOp, HirExpr, HirExprKind,
     HirLambdaParam, HirLiteral, HirLiteralKind, HirMatchArm, HirStructFieldInit, HirUnOp,
+};
+pub use ifc::{
+    builtin_principals, check_ifc, label_for_secret, resolve_builtin_principal, IfcDiagnostic,
+    IfcLabel, IfcLabelRegistry, IfcReport,
 };
 pub use infer::{check_module, InferCtx};
 pub use item::{

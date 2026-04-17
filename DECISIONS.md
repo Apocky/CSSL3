@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • T11-phase-2a-real-crypto ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • T11-phase-2a-real-crypto ✓ • T3.4-phase-3-IFC ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,60 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D12 : T3.4-phase-3-IFC — Jif-DLM label-lattice + structural walker landed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D9 deferred IFC-label-propagation to T3.4-phase-2 ; T3-D11 closed AD-legality. This entry closes another T3.4-phase-3 slice : Information Flow Control per `specs/11_IFC.csl`. Stage-0 implementation is a **catalog + structural walker** — full type-level label-propagation through the HIR is IFC-b (future slice).
+- **Slice landed (this commit)**
+  - `cssl_hir::ifc` module :
+    - `IfcLabel { confidentiality: BTreeSet<Symbol>, integrity: BTreeSet<Symbol> }` — DLM label pair.
+    - Lattice algebra : `is_sub_of` (⊑), `join` (⊔ = intersection-of-confid ∪ union-of-integrity), `meet` (⊓ = union-of-confid ∩ intersection-of-integrity), `is_labeled`.
+    - `builtin_principals(&Interner) -> Vec<Symbol>` — 9 PRIME_DIRECTIVE principals : HarmTarget / Surveiller / Coercer / Weaponizer / System / Kernel / User / Public / Anthropic-Audit.
+    - `resolve_builtin_principal(name, &Interner) -> Option<Symbol>` + `label_for_secret(principals, &Interner) -> IfcLabel`.
+    - `IfcDiagnostic` with 3 stable codes :
+      * `IFC0001` MissingLabel : sensitive-tagged param on unlabeled fn
+      * `IFC0002` MissingDeclassPolicy : `@declass` without `@requires`
+      * `IFC0003` UnauthorizedDowngrade : confid widening without policy (detected at attribute level only at stage-0)
+    - `IfcReport { diagnostics, fns_checked, fns_with_labels, declass_attempts } + is_clean() + count(code) + summary()`.
+    - `check_ifc(&HirModule, &Interner) -> IfcReport` : walks every fn, inspects attrs `@sensitive` / `@confidentiality` / `@integrity` / `@ifc_label` / `@declass` / `@requires`, emits diagnostics.
+    - `IfcLabelRegistry` : `DefId → IfcLabel` map ; populated by T3.4-phase-3-IFC-b from HIR-type annotations.
+- **17 new lib-tests** covering :
+  - Empty label shapes + new-with-principals
+  - Lattice join (intersect-confid + union-integrity) + meet (union-confid + intersect-integrity)
+  - is_sub_of lattice ordering verification
+  - Builtin principals include all 9 PRIME_DIRECTIVE canonical names
+  - label_for_secret convenience-constructor
+  - Empty module clean
+  - Unlabeled fn without sensitive params clean
+  - @ifc_label attr marks fn as labeled
+  - @declass without @requires emits IFC0002
+  - @declass with @requires clean
+  - @sensitive param without fn-label emits IFC0001
+  - @confidentiality fn with @sensitive param clean
+  - Diagnostic codes + messages stable
+  - Report summary format stable
+  - IfcLabelRegistry get/insert/len/is_empty roundtrip
+- **Phase-3-IFC-b DEFERRED**
+  - Full type-level `secret<T, L>` parsing in HIR types + label-propagation through expressions
+  - Branch-condition IFC (high-label cond affects low-label write detection)
+  - Real declass-policy resolution (resolves `@declass(policy)` against a compile-time policy dictionary)
+  - Covert-channel mitigations : timing (Deadline<N> + PureDet) / termination (NoUnbounded) / prob (DetRNG) / cache
+  - Integration with `cssl_effects::banned_composition` to detect `Sensitive<>` + low-label interactions
+  - `IfcLoweringPass` : emits `cssl.ifc.label` + `cssl.ifc.declassify` MIR ops from HIR label-annotations (closes T6-phase-2a stub `IfcLoweringPass`)
+- **Rationale**
+  - Structural-only detection at stage-0 = 17 tests + full lattice algebra + 3 diagnostic codes, all without requiring parser extensions for `secret<T, L>` / `@declass(policy)` arg-parsing.
+  - Matches the walker-pattern established by `cssl_hir::ad_legality` (T3-D11) + `cssl_hir::refinement` (T3-D10) — same shape, consistent codebase.
+  - PRIME_DIRECTIVE 9 principals hardcoded : HarmTarget / Surveiller / Coercer / Weaponizer give direct F5 harm-vector encoding ; System / Kernel / User / Public / Anthropic-Audit mirror `specs/11` built-in principal set.
+  - Registry + Label split : `IfcLabelRegistry` is the `DefId → Label` map that phase-3-IFC-b will populate from `secret<T, L>` annotations in HIR types.
+- **Consequences**
+  - Public API : `cssl_hir::{IfcLabel, IfcDiagnostic, IfcReport, IfcLabelRegistry, check_ifc, builtin_principals, resolve_builtin_principal, label_for_secret}`.
+  - `cssl-hir` lib-test count : 99 → 116 (+17).
+  - Workspace test-count : 948 → 965 (+17).
+  - **Remaining T3.4-phase-3 slices** : @staged-stage-arg-check + macro-hygiene + let-generalization + higher-rank-polymorphism. AD-legality + IFC are the two "structural" slices ; the remaining 4 need parser / type-inference extensions.
 
 ───────────────────────────────────────────────────────────────
 
