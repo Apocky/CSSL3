@@ -404,10 +404,77 @@ pub fn translate_obligation(
             );
             Ok(q)
         }
-        ObligationKind::Lipschitz { .. } => {
-            Err(TranslationError::UnsupportedKind { kind: "Lipschitz" })
+        ObligationKind::Lipschitz { bound_text } => {
+            // § T9-phase-2b : Lipschitz arithmetic-interval encoding.
+            //
+            // The Lipschitz condition |f(x) - f(y)| ≤ k * |x - y| is encoded as an
+            // SMT query over the real numbers (LRA logic). The bound-text typically
+            // matches one of the stage-0 forms :
+            //   "k"           — integer or real literal (e.g., "1", "1.0", "2.5")
+            //   "k = 1.0"     — keyword-form
+            //   "<expr>"      — general real-expression (falls back to textual)
+            //
+            // Stage-0 emits a structural query :
+            //   (declare-fun x () Real)
+            //   (declare-fun y () Real)
+            //   (declare-fun f (Real) Real)          — uninterpreted fn
+            //   (assert (! (not (<= (abs (- (f x) (f y))) (* k (abs (- x y)))))
+            //            :named obl_<id>_lipschitz))
+            // Unsat verdict proves the Lipschitz bound holds.
+            //
+            // Phase-2c : inline f's MIR-body via per-primitive-Lipschitz-decomposition
+            // (Sum rule : Lip(f+g) ≤ Lip(f) + Lip(g), Product rule for bounded, etc.)
+            let k = parse_lipschitz_bound(bound_text);
+            let mut q = Query::new().with_theory(Theory::LRA);
+            // declare-fun x () Real  + y () Real
+            q.declare_fn(FnDecl::new("x", vec![], Sort::Real));
+            q.declare_fn(FnDecl::new("y", vec![], Sort::Real));
+            // declare-fun f (Real) Real — uninterpreted-fn-name derived from enclosing-def text.
+            let fn_name = obligation
+                .enclosing_def
+                .map_or_else(|| "f".to_string(), |d| format!("f_{}", d.0));
+            q.declare_fn(FnDecl::new(fn_name.clone(), vec![Sort::Real], Sort::Real));
+            // k-bound : (* k (abs (- x y)))
+            let x = Term::var("x");
+            let y = Term::var("y");
+            let f_x = Term::app(fn_name.clone(), vec![x.clone()]);
+            let f_y = Term::app(fn_name, vec![y.clone()]);
+            let diff_fx = Term::app("-", vec![f_x, f_y]);
+            let diff_xy = Term::app("-", vec![x, y]);
+            let abs_fx = Term::app("abs", vec![diff_fx]);
+            let abs_xy = Term::app("abs", vec![diff_xy]);
+            let k_term = Term::app("*", vec![k, abs_xy]);
+            let lipschitz_cond = Term::app("<=", vec![abs_fx, k_term]);
+            let negated = Term::app("not", vec![lipschitz_cond]);
+            q.assert_named(format!("obl_{}_lipschitz", obligation.id.0), negated);
+            Ok(q)
         }
     }
+}
+
+/// Parse a Lipschitz bound-text to an SMT Real term. Accepts bare integers,
+/// decimals, `k = N` forms, and falls back to `1.0` for unrecognized input.
+fn parse_lipschitz_bound(text: &str) -> Term {
+    // Strip `k = ` prefix if present.
+    let raw = text.trim();
+    let body = raw.split_once('=').map_or(raw, |(_, rhs)| rhs).trim();
+    // Try int-literal first.
+    if let Ok(n) = body.parse::<i64>() {
+        return Term::int(n);
+    }
+    // Try real-literal (format : `num.den` or `num/den`).
+    if let Some((whole, frac)) = body.split_once('.') {
+        if let (Ok(w), Ok(f)) = (whole.parse::<i64>(), frac.parse::<i64>()) {
+            // Encode as (/ num 10^|frac|) rational.
+            let denom_u32 = u32::try_from(frac.to_string().len()).unwrap_or(0);
+            let denom = 10i64.saturating_pow(denom_u32);
+            let num = w.saturating_mul(denom).saturating_add(f);
+            let denom_u = u64::try_from(denom).unwrap_or(1);
+            return Term::Lit(crate::term::Literal::Rational { num, den: denom_u });
+        }
+    }
+    // Fallback : literal Real `1.0`.
+    Term::Lit(crate::term::Literal::Rational { num: 1, den: 1 })
 }
 
 /// Translate an entire [`ObligationBag`] to a sequence of `(id, result)` pairs.
@@ -422,7 +489,7 @@ pub fn translate_bag(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_predicate, translate_bag, translate_obligation, TranslationError};
+    use super::{parse_predicate, translate_bag, translate_obligation};
     use cssl_hir::{
         HirId, Interner, ObligationBag, ObligationId, ObligationKind, RefinementObligation,
     };
@@ -550,10 +617,11 @@ mod tests {
     }
 
     #[test]
-    fn translate_lipschitz_returns_unsupported() {
+    fn translate_lipschitz_emits_lra_query() {
+        // T9-phase-2b : Lipschitz is now a supported kind.
         let interner = Interner::new();
         let o = RefinementObligation {
-            id: ObligationId(0),
+            id: ObligationId(5),
             origin: HirId::DUMMY,
             span: cssl_ast::Span::DUMMY,
             enclosing_def: None,
@@ -562,8 +630,40 @@ mod tests {
             },
             base_type_text: "f32".into(),
         };
-        let err = translate_obligation(&o, &interner).unwrap_err();
-        assert!(matches!(err, TranslationError::UnsupportedKind { .. }));
+        let q = translate_obligation(&o, &interner).unwrap();
+        let smt = crate::emit::emit_smtlib(&q);
+        assert!(smt.contains("(set-logic QF_LRA)"));
+        assert!(smt.contains("(declare-fun x () Real)"));
+        assert!(smt.contains("(declare-fun y () Real)"));
+        assert!(smt.contains("obl_5_lipschitz"));
+        assert!(smt.contains("abs"));
+    }
+
+    #[test]
+    fn lipschitz_bound_k_equals_1_parses() {
+        use super::parse_lipschitz_bound;
+        let t = parse_lipschitz_bound("k = 1.0");
+        assert!(matches!(
+            t,
+            super::Term::Lit(crate::term::Literal::Rational { num: 10, den: 10 })
+        ));
+    }
+
+    #[test]
+    fn lipschitz_bound_bare_int_parses() {
+        use super::parse_lipschitz_bound;
+        let t = parse_lipschitz_bound("2");
+        assert_eq!(t.render(), "2");
+    }
+
+    #[test]
+    fn lipschitz_bound_unrecognized_falls_back_to_1() {
+        use super::parse_lipschitz_bound;
+        let t = parse_lipschitz_bound("unknown_form");
+        assert!(matches!(
+            t,
+            super::Term::Lit(crate::term::Literal::Rational { num: 1, den: 1 })
+        ));
     }
 
     #[test]

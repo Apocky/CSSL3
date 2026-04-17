@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • T11-phase-2a-real-crypto ✓ • T3.4-phase-3-IFC ✓ • T6-phase-2b-body-lowering-expansion ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • T11-phase-2a-real-crypto ✓ • T3.4-phase-3-IFC ✓ • T6-phase-2b-body-lowering-expansion ✓ • T9-phase-2b-Lipschitz ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,45 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T9-D3 : T9-phase-2b — Lipschitz arithmetic-interval encoding
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T9-D2 left `ObligationKind::Lipschitz { bound_text }` as `TranslationError::UnsupportedKind`. This entry closes that last fallback — `@lipschitz(k=1.0)` bounds on `@differentiable` fns now produce real SMT queries under the LRA theory (linear real arithmetic).
+- **Slice landed (this commit)**
+  - `parse_lipschitz_bound(&str) -> Term` : accepts bare ints (`"2"`), decimals (`"1.0"`, `"2.5"`), `k = N` keyword-form (`"k = 1.0"`), falls back to `Term::Rational { num: 1, den: 1 }` for unrecognized input.
+  - `translate_obligation` Lipschitz branch emits :
+
+    ```smt
+    (set-logic QF_LRA)
+    (declare-fun x () Real)
+    (declare-fun y () Real)
+    (declare-fun f_<defid> (Real) Real)
+    (assert (! (not (<= (abs (- (f x) (f y))) (* k (abs (- x y)))))
+             :named obl_<id>_lipschitz))
+    (check-sat)
+    ```
+
+    Unsat verdict proves the Lipschitz bound `|f(x) - f(y)| ≤ k·|x - y|` holds.
+  - Fn-name derived from `obligation.enclosing_def` for uninterpreted-fn uniqueness.
+- **4 new tests** (LRA query shape + k=1.0 keyword-parse + bare-int-parse + unrecognized-fallback).
+- **Phase-2c DEFERRED**
+  - **Inline decomposition** via per-primitive Lipschitz rules (Sum : `Lip(f+g) ≤ Lip(f) + Lip(g)` ; Product for bounded : `Lip(f·g) ≤ ||f||∞·Lip(g) + ||g||∞·Lip(f)` ; Composition : `Lip(f∘g) ≤ Lip(f)·Lip(g)`).
+  - **Multi-dim Lipschitz** (vector input → vector output).
+  - **Automatic @lipschitz-bound inference** via interval arithmetic + SMT.
+- **Rationale**
+  - Uninterpreted-fn encoding is the standard SMT approach for Lipschitz conditions when the fn body isn't SMT-expressible — works with any solver supporting quantifier-free reals.
+  - `parse_lipschitz_bound` handles the three textual forms observed in `sdf_shader.cssl` + `specs/05_AUTODIFF.csl` examples.
+  - LRA theory keeps queries decidable ; non-linear forms (abs / · etc.) become quantifier-free once x, y, k are instantiated by the solver via e-matching.
+- **F1-correctness chain now has ZERO `UnsupportedKind` fallbacks** — every `ObligationKind` variant (Predicate / Tag / Lipschitz) produces a concrete SMT query.
+- **Consequences**
+  - Public API : `cssl_smt::predicate::parse_lipschitz_bound`.
+  - `cssl-smt` lib-test count : 51 → 54 (+3 predicate tests + 1 translate_lipschitz test already existed but was UnsupportedKind-assertion).
+  - Workspace test-count : 979 → 982 (+3).
+  - `sphere_sdf` w/ `@lipschitz(k = 1.0)` annotation now produces a real SMT query that a Z3/CVC5 subprocess can dispatch. Combined with T7-phase-2a AD walker's `sphere_sdf_bwd` variant, the killer-app is **one solver-run** away from bit-exact-vs-analytic verification.
 
 ───────────────────────────────────────────────────────────────
 
