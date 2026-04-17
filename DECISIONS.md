@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T3.1 ✓ • T3.2 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -292,7 +292,7 @@ Each decision entry :
 ## § T2-D6 : Apostrophe decomposition deferred — parser compensates via dormant code-path
 
 - **Date** 2026-04-17
-- **Status** accepted (short-term)
+- **Status** superseded by T2-D8 (2026-04-17)
 - **Context** T2-D5 specifies the Rust-hybrid lexer should emit `Apostrophe` as a standalone token whenever `'` is not followed by a single recognized morpheme letter at word-boundary. The canonical examples :
   - `base'd` (morpheme-rule) → `Ident("base") + Suffix(Rule)` (2 tokens)
   - `f32'pos` (refinement tag) → `Ident("f32") + Apostrophe + Ident("pos")` (3 tokens)
@@ -307,6 +307,32 @@ Each decision entry :
   - No refinement-tag-sugar test until T2-D8 lands.
   - Refinement-predicate form (the explicit, more-powerful variant) is fully covered.
   - Morpheme-stacking test cases (`x.aspect.mod.cert.scope`) reach the parser as an un-decomposed identifier string ; CST `Compound` chain-formation fires only on token-level CompoundOp separators.
+
+───────────────────────────────────────────────────────────────
+
+## § T2-D8 : Apostrophe decomposition landed — morpheme-fold via post-pass
+
+- **Date** 2026-04-17
+- **Status** accepted (supersedes T2-D6)
+- **Context** T2-D6 had deferred the T2-D5 apostrophe-decomposition work. Now landing it to unblock the parser's refinement-tag sugar path (`f32'pos`) and bring Rust-hybrid to parity with CSLv3-native (which already implements T2-D5 per `crate::csl_native`).
+- **Options**
+  - (a) Change the logos ident regex to exclude `'` → emit `Ident + Apostrophe + Ident` uniformly ; decide morpheme-vs-tag semantics at parser/elaborator level.
+  - (b) Emit `Suffix` atomically only when `'<letter>` is followed by a non-ident-continuation byte — requires logos look-ahead support (not available) OR a dedicated tokenizer.
+  - (c) Change the regex (per a) and add a lexer post-pass that folds `Ident + Apostrophe + Ident(single-letter-morpheme)` back into `Ident + Suffix(_)` when the 3-token sequence is adjacent.
+- **Decision** **(c) post-pass fold**. The logos regex is now `[A-Za-z_][A-Za-z0-9_]*` (no `'`), and `lex()` calls `fold_morpheme_suffixes(&mut tokens)` before returning. The fold is conservative :
+  - requires `tokens[i] == Ident`, `tokens[i+1] == Apostrophe`, `tokens[i+2] == Ident`
+  - requires span-adjacency on both sides (no whitespace gaps)
+  - requires the third token's span-length to be exactly 1 byte
+  - requires the single byte to be one of the 9 morpheme letters (`d f s t e m p g r`)
+- **Rationale**
+  - Preserves T2-D5 examples verbatim : `base'd` → `Ident + Suffix(Data)`, `f32'pos` → `Ident + Apostrophe + Ident`, `42'i32` → single IntLiteral (unchanged — int-lexer owns its own suffix rule).
+  - Zero false-positives on lifetime-like forms (`<'r>`) because `<` precedes the Apostrophe, not an Ident — the fold predicate rejects the sequence.
+  - Zero false-positives on `foo 'd` (whitespace gap) — adjacency check fails.
+  - csl_native already implements the equivalent rule inline in its hand-rolled byte-stream lexer ; the post-pass approach is the cleanest way to match semantics without rewriting the Rust-hybrid lexer as a hand-rolled scanner.
+- **Consequences**
+  - Parser's `rust_hybrid::ty::parse_type` refinement-sugar path (already in place since T3.2) now fires on `f32'pos` — the `refinement_tag_sugar_multi_letter` test is restored.
+  - `fold_morpheme_suffixes` adds a single linear pass over the token list — O(N) overhead, no regression on cached lex throughput.
+  - 10 new lexer tests cover morpheme-fold + multi-letter + non-morpheme-letter + lifetime-like + whitespace-break + char-literal precedence + span-correctness.
 
 ───────────────────────────────────────────────────────────────
 

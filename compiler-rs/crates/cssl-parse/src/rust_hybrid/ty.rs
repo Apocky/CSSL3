@@ -502,12 +502,19 @@ mod tests {
 
     #[test]
     fn refinement_predicate_form() {
-        // § NOTE : `T'tag` sugar form is lexer-dependent (T2-D5 intends 3 tokens but the
-        //   current ident regex absorbs `'` as continuation). The predicate form
-        //   `{v : T | P}` is fully lexer-independent and exercises the refinement-type
-        //   CST path uniformly. Once T2-D8 (Apostrophe decomposition for multi-letter
-        //   attachments) lands, a `T'tag` test is restored.
+        // Predicate form `{v : T | P}` — lexer-independent canonical refinement shape.
         let (_f, toks) = prep("{v : f32 | v > 0}");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert!(matches!(t.kind, TypeKind::Refined { .. }));
+    }
+
+    #[test]
+    fn refinement_tag_sugar_multi_letter() {
+        // `f32'pos` post T2-D8 lexer fix : emits Ident + Apostrophe + Ident ; parser
+        // attaches the tag as `RefinementKind::Tag`.
+        let (_f, toks) = prep("f32'pos");
         let mut c = TokenCursor::new(&toks);
         let mut bag = DiagnosticBag::new();
         let t = parse_type(&mut c, &mut bag);

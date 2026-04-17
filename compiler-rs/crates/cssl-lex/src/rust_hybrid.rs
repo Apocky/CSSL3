@@ -16,7 +16,7 @@
 use cssl_ast::{SourceFile, Span};
 use logos::Logos;
 
-use crate::token::{BracketKind, BracketSide, Keyword, StringFlavor, Token, TokenKind};
+use crate::token::{BracketKind, BracketSide, Keyword, StringFlavor, Token, TokenKind, TypeSuffix};
 
 /// Lex a Rust-hybrid source file into a vector of tokens, terminating with `TokenKind::Eof`.
 ///
@@ -42,7 +42,52 @@ pub fn lex(source: &SourceFile) -> Vec<Token> {
         TokenKind::Eof,
         Span::new(source.id, eof_offset, eof_offset),
     ));
+    // Fold `Ident + Apostrophe + Ident(single-letter-morpheme)` into `Ident + Suffix(_)`
+    // per T2-D5 — this turns `base'd` (2 tokens) into atomic morpheme emission while
+    // preserving `f32'pos` as a 3-token `Ident + Apostrophe + Ident` (refinement-tag
+    // shape). The fold is conservative : adjacency required on both sides, and the
+    // third token must be exactly one byte long and a recognized morpheme letter.
+    fold_morpheme_suffixes(source, &mut out);
     out
+}
+
+/// Post-pass : fold `Ident + Apostrophe + Ident(single-morpheme-letter)` (adjacent) into
+/// `Ident + Suffix(_)`. Non-fold cases (multi-letter attachment, non-morpheme letter,
+/// whitespace between tokens, preceding token not Ident) pass through unchanged.
+fn fold_morpheme_suffixes(source: &SourceFile, tokens: &mut Vec<Token>) {
+    let mut folded: Vec<Token> = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        let fold_match = i + 2 < tokens.len()
+            && tokens[i].kind == TokenKind::Ident
+            && tokens[i + 1].kind == TokenKind::Apostrophe
+            && tokens[i + 2].kind == TokenKind::Ident
+            && tokens[i].span.end == tokens[i + 1].span.start
+            && tokens[i + 1].span.end == tokens[i + 2].span.start
+            && tokens[i + 2].span.len() == 1;
+        if fold_match {
+            let suffix_span = tokens[i + 2].span;
+            if let Some(letter_str) = source.slice(suffix_span.start, suffix_span.end) {
+                if let Some(letter) = letter_str.chars().next() {
+                    if let Some(suffix) = TypeSuffix::from_letter(letter) {
+                        // Emit base Ident unchanged, then combined Suffix.
+                        folded.push(tokens[i]);
+                        let combined = Span::new(
+                            tokens[i + 1].span.source,
+                            tokens[i + 1].span.start,
+                            tokens[i + 2].span.end,
+                        );
+                        folded.push(Token::new(TokenKind::Suffix(suffix), combined));
+                        i += 3;
+                        continue;
+                    }
+                }
+            }
+        }
+        folded.push(tokens[i]);
+        i += 1;
+    }
+    *tokens = folded;
 }
 
 /// Map a `RawToken` + source-text-slice into a public `TokenKind`.
@@ -117,7 +162,7 @@ fn promote(raw: RawToken, text: &str) -> TokenKind {
 #[logos(skip r"[ \t\r]+")]
 enum RawToken {
     // ─ literals ────────────────────────────────────────────────────────────
-    #[regex(r"[A-Za-z_][A-Za-z0-9_']*", priority = 2)]
+    #[regex(r"[A-Za-z_][A-Za-z0-9_]*", priority = 2)]
     Ident,
 
     // float first so `3.14` doesn't tokenize as `3` then `.14`
@@ -277,7 +322,7 @@ enum RawToken {
 #[cfg(test)]
 mod tests {
     use super::lex;
-    use crate::token::{BracketKind, BracketSide, Keyword, StringFlavor, TokenKind};
+    use crate::token::{BracketKind, BracketSide, Keyword, StringFlavor, TokenKind, TypeSuffix};
     use cssl_ast::{SourceFile, SourceId, Surface};
 
     fn mk(src: &str) -> SourceFile {
@@ -486,5 +531,129 @@ mod tests {
         assert_eq!(kinds("foo").last(), Some(&TokenKind::Eof));
         assert_eq!(kinds("").last(), Some(&TokenKind::Eof));
         assert_eq!(kinds("fn foo() {}").last(), Some(&TokenKind::Eof));
+    }
+
+    // ─── T2-D8 apostrophe decomposition + morpheme-suffix fold ───────────────
+
+    #[test]
+    fn morpheme_fold_single_letter() {
+        // `base'd` — `d` is a morpheme letter, adjacent to apostrophe → Suffix.
+        assert_eq!(
+            kinds("base'd"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Suffix(TypeSuffix::Data),
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn morpheme_fold_rule_letter() {
+        assert_eq!(
+            kinds("entity'r"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Suffix(TypeSuffix::Rule),
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn multi_letter_refinement_tag_emits_three_tokens() {
+        // `f32'pos` — `pos` is multi-letter, NOT folded ; emits Ident + Apostrophe + Ident.
+        assert_eq!(
+            kinds("f32'pos"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Apostrophe,
+                TokenKind::Ident,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn non_morpheme_single_letter_emits_three_tokens() {
+        // `T'L` — `L` is a single letter but NOT a morpheme (the 9 are : d f s t e m p g r).
+        assert_eq!(
+            kinds("T'L"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Apostrophe,
+                TokenKind::Ident,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn whitespace_between_ident_and_apostrophe_does_not_fold() {
+        // `foo 'd` — whitespace breaks adjacency ; no fold.
+        assert_eq!(
+            kinds("foo 'd"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Apostrophe,
+                TokenKind::Ident,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn lifetime_like_not_folded() {
+        // `<'r>` — preceding token is `<`, not an Ident ; no fold.
+        assert_eq!(
+            kinds("<'r>"),
+            vec![
+                TokenKind::Lt,
+                TokenKind::Apostrophe,
+                TokenKind::Ident,
+                TokenKind::Gt,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn integer_type_suffix_intact() {
+        // `42'i32` — handled by int-lexer's own suffix regex, emits one IntLiteral.
+        assert_eq!(kinds("42'i32"), vec![TokenKind::IntLiteral, TokenKind::Eof],);
+    }
+
+    #[test]
+    fn char_literal_still_wins_over_apostrophe() {
+        // `'c'` — CharLiteral (longer match) ; no Apostrophe tokens.
+        assert_eq!(kinds("'c'"), vec![TokenKind::CharLiteral, TokenKind::Eof],);
+    }
+
+    #[test]
+    fn ident_after_longer_attachment_not_folded() {
+        // `x'do` — `do` is 2 chars, not single-letter ; no fold.
+        assert_eq!(
+            kinds("x'do"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Apostrophe,
+                TokenKind::Ident,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn morpheme_span_covers_apostrophe_plus_letter() {
+        // Suffix token's span should start at the apostrophe and end after the letter.
+        let file = mk("x'd");
+        let toks = lex(&file);
+        // Expect : Ident(0..1) + Suffix(1..3) + Eof
+        assert_eq!(toks.len(), 3);
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, 1);
+        assert_eq!(toks[1].span.start, 1);
+        assert_eq!(toks[1].span.end, 3);
+        assert_eq!(toks[1].kind, TokenKind::Suffix(TypeSuffix::Data));
     }
 }

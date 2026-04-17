@@ -43,7 +43,8 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T2-D3** : CSLv3-native via hand-rolled byte-stream lexer with indent-stack
 - **T2-D4** : Surface auto-detection cascade — extension > pragma > first-line > default
 - **T2-D5** : `Apostrophe` token for non-morpheme `'…` attachments (`f32'pos`, `SDF'L`, lifetimes)
-- **T2-D6** : Apostrophe decomposition deferred ; parser refinement-tag path kept dormant until lexer catches up
+- **T2-D6** : Apostrophe decomposition deferred ; parser refinement-tag path kept dormant until lexer catches up (SUPERSEDED by T2-D8)
+- **T2-D8** : Apostrophe decomposition landed — logos regex `'`-exclusion + post-pass morpheme-fold
 - **T3-D1** : Parser — hand-rolled recursive-descent + Pratt (no combinator-lib dep) for both surfaces
 - **T3-D2** : String interning deferred to HIR layer (lasso at T3-mid)
 - **T3-D3** : Morpheme-stacking + compound-formation at CST layer as `Expr::Compound { op, lhs, rhs }`
@@ -109,15 +110,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T1-start | T1-end    | T2-end                          | T3.2-end                                |
-|-------------------------------|----------|-----------|---------------------------------|-----------------------------------------|
-| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) | 31 (+ cssl-parse fully populated)    |
-| Lines of scaffold Rust        | 0        | ~1500     | ~3800                           | ~7800 (+ cssl-parse ~3900 LOC)          |
-| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 | 258 / 63 suites                         |
-| Clippy warnings (`-D`)        | N/A      | 0         | 0                               | 0                                       |
-| CI jobs declared              | 0        | 19        | 19                              | 19                                      |
-| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0                         | 156 / 0 (134 local-section skipped)     |
-| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         | ✓ 6 / 6                                 |
+| Metric                        | T1-start | T1-end    | T2-end                          | T3.2-end                                | T2-D8-end                               |
+|-------------------------------|----------|-----------|---------------------------------|-----------------------------------------|-----------------------------------------|
+| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) | 31 (+ cssl-parse fully populated)    | 31 (unchanged)                          |
+| Lines of scaffold Rust        | 0        | ~1500     | ~3800                           | ~7800                                   | ~7900 (+ fold_morpheme_suffixes pass)   |
+| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 | 258 / 63 suites                         | 269 / 63 suites (+10 lexer + 1 parser)  |
+| Clippy warnings (`-D`)        | N/A      | 0         | 0                               | 0                                       | 0                                       |
+| CI jobs declared              | 0        | 19        | 19                              | 19                                      | 19                                      |
+| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0                         | 156 / 0 (134 local-section skipped)     | 156 / 0 (135 local-section skipped)     |
+| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         | ✓ 6 / 6                                 | ✓ 6 / 6                                 |
 
 ───────────────────────────────────────────────────────────────
 
