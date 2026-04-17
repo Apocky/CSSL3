@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • T4-phase-1 ✓ • T5 + T3.4-phase-2-cap ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • T4-phase-1 ✓ • T5 + T3.4-phase-2-cap ✓ • T6-phase-1 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,52 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T6-D1 : MLIR-text-CLI fallback landed as phase-1 ; melior FFI deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T6 HANDOFF enumerated three options for MLIR integration : (a) melior C++-stubs, (b) MLIR-text-CLI fallback, (c) hand-roll custom-IR. Option (a) requires `mlir-sys` + `melior` + LLVM ~18+ build — on the current `x86_64-pc-windows-gnu` toolchain, `parking_lot_core` already fails (T3-D8) because `dlltool.exe` isn't bundled with MinGW. melior pulls in similar GNU-hostile dependencies plus LLVM C++ bindings.
+- **Decision** **(b) MLIR-text-CLI**, landed as T6-phase-1. The compiler produces textual MLIR via pure-Rust `cssl-mir` data types + `print_module()` pretty-printer. External `mlir-opt` / `mlir-translate` CLI tools handle any validation / lowering that would otherwise require melior. This matches the HANDOFF pre-authorized fallback verbatim.
+- **Phase-1 scope (THIS commit)**
+  - `cssl-mir` crate with `CsslOp` (26-variant enum covering all `cssl.*` dialect ops), `MirValue`, `MirType`, `MirBlock`, `MirRegion`, `MirFunc`, `MirModule`, `MlirPrinter`, `LowerCtx`.
+  - Skeleton HIR → MIR lowering : `lower_function_signature` + `lower_module_signatures` produce fn-level MIR shells with name + params + results + effect-row + cap attributes.
+  - `cssl-mlir-bridge` crate with `emit_module_to_string` + `emit_module_to_writer` wrappers.
+- **Phase-2 deferred (T6-phase-2)**
+  - melior / mlir-sys FFI integration (requires MSVC toolchain per T1-D7 ; revisit @ T10 when FFI link-time forces the MSVC switch).
+  - TableGen `CSSLOps.td` authoring for dialect registration.
+  - Full HIR body → MIR expression lowering.
+  - Pass pipeline infrastructure (monomorphization / macro-expansion / AD / `@staged` / evidence-passing / IFC / SMT-discharge / telemetry-probe insertion).
+  - Structured-CFG validation pass.
+  - Dialect-conversion to `spirv` / `llvm` / `gpu`.
+- **Consequences**
+  - `csslc --emit-mlir` works now with the textual path — no FFI / no C++ / no LLVM dependency.
+  - External CI can pipe output through `mlir-opt --verify-each` to catch malformed output.
+  - Phase-2 upgrade is additive — `cssl-mir` public API stays stable ; `cssl-mlir-bridge` gains FFI variants that live alongside the text variants.
+
+───────────────────────────────────────────────────────────────
+
+## § T6-D2 : CsslOp enum with 26 dialect variants + Std catch-all
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** `specs/15 § CSSL-DIALECT OPS` enumerates ~25 custom `cssl.*` ops plus free-form standard dialect ops (`arith.*` / `scf.*` / `func.*` / `memref.*` / `vector.*` / `linalg.*` / `affine.*` / `gpu.*` / `spirv.*` / `llvm.*` / `transform.*`). The `CsslOp` enum needs to cover both.
+- **Decision**
+  - 26 enum variants for the custom dialect ops (exact 1-to-1 with `specs/15` § CSSL-DIALECT OPS, with `TelemetryProbe` as the probe-scope variant and `EffectPerform`/`EffectHandle` as the effect family).
+  - One `Std` variant carrying a free-form `name: String` in the enclosing `MirOp` for all non-custom ops. No schema validation on `Std` at stage-0 — downstream passes / external `mlir-opt` flag any issues.
+- **Metadata per-op**
+  - `name()` : canonical source-form (`"cssl.diff.primal"` etc.).
+  - `category()` : `OpCategory` enum (14 categories covering AD / Jet / Effect / Region / Handle / Staged / Macro / Ifc / Verify / Sdf / Gpu / Xmx / Rt / Telemetry / Std).
+  - `signature()` : `OpSignature { operands: Option<usize>, results: Option<usize> }` where `None` = variadic.
+- **Rationale**
+  - Separation between custom ops (known shape) and `Std` (pass-through) lets the pretty-printer take two paths without per-op branches.
+  - Categories support future T8 optimization passes that need to group-dispatch (e.g., "elide all `cssl.telemetry.probe` when scope=Nothing").
+  - Arity metadata gives the printer enough context to validate operand / result counts at emit-time.
+- **Consequences**
+  - Adding a new op requires : (1) add enum variant, (2) entry in `BUILTIN_METADATA`... wait, that's effects. For CsslOp : (1) add enum variant, (2) `ALL_CSSL` const-slice, (3) name/category/signature match arms.
+  - `ALL_CSSL.len() == 26` tracked by a test.
 
 ───────────────────────────────────────────────────────────────
 

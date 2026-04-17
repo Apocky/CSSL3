@@ -138,10 +138,20 @@ version = "0.1.0"
 [[package]]
 name = "cssl-mir"
 version = "0.1.0"
+dependencies = [
+ "cssl-ast",
+ "cssl-hir",
+ "cssl-lex",
+ "cssl-parse",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-mlir-bridge"
 version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+]
 
 [[package]]
 name = "cssl-parse"

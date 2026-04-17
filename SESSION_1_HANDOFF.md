@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T3.4-phase-1 ✓ + T4-phase-1 ✓ + T5 + T3.4-phase-2-cap (cssl-caps + cap_check) ✓ ; T6 MLIR next (T3.4-phase-2.5 body-walk + T4-phase-2 Xie+Leijen + T5-phase-2 body-cap-walk deferred)
+- **Current task** T1..T5 ✓ + T6-phase-1 (cssl-mir + cssl-mlir-bridge text-emission) ✓ ; T7 autodiff next (T3.4-phase-2.5 / T4-phase-2 / T5-phase-2 / T6-phase-2 melior-FFI deferred)
 
 ───────────────────────────────────────────────────────────────
 
@@ -58,6 +58,8 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T5-D1** : cap_check delegated to cssl-caps via `AliasMatrix::can_pass_through = is_subtype` (subtype is canonical)
 - **T5-D2** : GenRef layout = low u40 index + high u24 generation ; `bump_gen()` wraps at 2^24
 - **T5-D3** : Cap-check stage-0 is signature-level only ; body-walk deferred to T5-phase-2
+- **T6-D1** : MLIR-text-CLI fallback landed as phase-1 (option-b pre-authorized) ; melior FFI deferred to T6-phase-2 pending MSVC toolchain switch @ T10
+- **T6-D2** : CsslOp enum with 26 dialect variants + Std catch-all + per-op metadata (category, signature)
 
 ───────────────────────────────────────────────────────────────
 
@@ -116,15 +118,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T3.3-end      | T3.4-phase-1-end             | T4-phase-1-end                      | T5-end                                |
-|-------------------------------|---------------|------------------------------|-------------------------------------|---------------------------------------|
-| Crates populated              | 4             | 4 (cssl-hir extended)        | 5 (+ cssl-effects)                  | 6 (+ cssl-caps ; cssl-hir extended)   |
-| Lines of scaffold Rust        | ~11200        | ~13800                       | ~15300                              | ~17500 (+ ~1500 caps + ~700 cap_check)|
-| Test count                    | 299 / 64      | 340 / 64 suites              | 368 / 65                            | 423 / 66 suites (+49 caps + 6 cap_check) |
-| Clippy warnings (`-D`)        | 0             | 0                            | 0                                   | 0                                     |
-| CI jobs declared              | 19            | 19                           | 19                                  | 19                                    |
-| Spec cross-refs validated     | 156 / 0 (135) | 156 / 0 (135)                | 156 / 0 (135)                       | 156 / 0 (135)                         |
-| Commit-gate green             | ✓ 6 / 6       | ✓ 6 / 6                      | ✓ 6 / 6                             | ✓ 6 / 6                               |
+| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         |
+|-------------------------------|----------------|-----------------|----------------------------------------|
+| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      |
+| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     |
+| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   |
+| Clippy warnings (`-D`)        | 0              | 0               | 0                                      |
+| CI jobs declared              | 19             | 19              | 19                                     |
+| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          |
+| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                |
 
 ───────────────────────────────────────────────────────────────
 
@@ -328,24 +330,58 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T6 (MLIR bridge + cssl-dialect)
+§ T6-phase-1 ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T6 + §§ 15_MLIR + §§ 02_IR :
-1. mlir-bridge crate : melior + mlir-sys bindings
-2. cssl-dialect : TableGen definition + C++-stubs
-   ops : cssl.diff.* cssl.jet.* cssl.effect.* cssl.region.*
-         cssl.handle.* cssl.staged.* cssl.macro.expand
-         cssl.ifc.* cssl.verify.assert cssl.sdf.* cssl.gpu.*
-         cssl.xmx.coop_matmul cssl.rt.* cssl.telemetry.probe
-3. mir crate : HIR → MIR lowering + cssl-dialect construction
-4. pass-pipeline skeleton per §§ 15 PASS-PIPELINE
-5. Q? if-melior-blocks → fallback to-own-MLIR-textual-emit + llvm-mlir-tools CLI
+`crates/cssl-mir/src/` :
+- `op.rs`     : CsslOp enum (26 dialect variants + Std) + OpCategory (14 categories) +
+                OpSignature (operand/result arity) + BUILTIN_METADATA + ALL_CSSL
+- `value.rs`  : ValueId (SSA id newtype) + MirValue + MirType (Int/Float/Bool/None/
+                Handle/Tuple/Function/Memref/Opaque) + IntWidth + FloatWidth
+- `block.rs`  : MirBlock + MirRegion + MirOp (+ builder chain : with_operand /
+                with_result / with_attribute / with_region)
+- `func.rs`   : MirFunc (name + params + results + effect_row + cap + ifc_label +
+                attributes + body + next_value_id) + MirModule
+- `print.rs`  : MlirPrinter + print_module ; valid MLIR textual-format output for
+                every supported op / type / attribute shape
+- `lower.rs`  : LowerCtx + lower_function_signature + lower_module_signatures ;
+                HIR type translation (primitive recognition + nominal + tuple + ref +
+                cap + array + slice + refined)
 
-Open for T6-start :
-- melior / mlir-sys Windows compatibility verification (Q3 deferred at T1 still open)
-- cssl-dialect TableGen authoring vs hand-rolled-in-Rust ?
-- Phase split : (a) text-emit skeleton + op-catalog ; (b) real melior integration ; (c) full lowering passes
-- Fallback path : MLIR-textual-format via CLI (T6 option-b pre-authorized at T1)
+`crates/cssl-mlir-bridge/src/` :
+- `emit.rs`   : emit_module_to_string + emit_module_to_writer (io::Write target)
+
+§ T6-phase-1 COVERAGE
+- 26 custom cssl.* dialect ops catalogued with full per-op metadata
+- MLIR textual-format pretty-printing for modules / funcs / blocks / regions / ops /
+  attributes / types
+- HIR → MIR skeleton lowering (fn signatures + effect-row attribute + cap attribute)
+- Stable text-emission API regardless of melior FFI availability
+
+§ T6-phase-2 DEFERRED
+- melior / mlir-sys FFI integration (requires MSVC toolchain per T1-D7)
+- TableGen CSSLOps.td authoring
+- Full HIR body → MIR expression lowering
+- Pass pipeline (monomorphization / macro-expansion / AD / @staged / evidence-passing /
+  IFC / SMT-discharge / telemetry-probe insertion / structured-CFG validation)
+- Dialect-conversion to spirv / llvm / gpu
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T7 (AutoDiff source-to-source + Jets)
+
+Per §§ HANDOFF T7 + §§ 05_AUTODIFF + §§ 17_JETS :
+1. autodiff crate : post-monomorphization HIR→HIR-with-diff-variants
+2. Rules-table per §§ 05 (FAdd, FMul, Sqrt, Call, Load/Store, If/Loop)
+3. tape-buffer allocation (iso-capability scoped)
+4. @checkpoint handling
+5. GPU-AD tape-location resolution
+6. jets crate : Jet<T, N> + cssl.jet.* op-lowering + @staged-per-N specialization
+7. Tests : bwd_diff(sphere_sdf)(p).d_p bit-exact vs analytic (killer-app gate)
+
+Open for T7-start :
+- AD transform: HIR-to-HIR vs MIR-to-MIR ?
+- Tape representation : per-fn heap-array vs region-scoped arena ?
+- Jet<T,∞> co-inductive infrastructure : lazy-stream vs generative-stream ?
 
 ───────────────────────────────────────────────────────────────
 

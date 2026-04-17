@@ -28,9 +28,9 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 // § Style allowances — tighten @ T5-phase-2 stabilization.
-#![allow(clippy::match_same_arms)]           // mirror-of-spec tables benefit from explicit arms
-#![allow(clippy::struct_excessive_bools)]    // AliasRights carries exactly 4 bools per §§ 12
-#![allow(clippy::should_implement_trait)]    // CapKind::from_str is intentionally an inherent fn
+#![allow(clippy::match_same_arms)] // mirror-of-spec tables benefit from explicit arms
+#![allow(clippy::struct_excessive_bools)] // AliasRights carries exactly 4 bools per §§ 12
+#![allow(clippy::should_implement_trait)] // CapKind::from_str is intentionally an inherent fn
 
 pub mod cap;
 pub mod genref;

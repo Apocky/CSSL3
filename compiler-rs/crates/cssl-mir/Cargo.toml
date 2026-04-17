@@ -9,3 +9,12 @@ authors.workspace      = true
 
 [lints]
 workspace = true
+
+[dependencies]
+cssl-ast  = { path = "../cssl-ast" }
+cssl-hir  = { path = "../cssl-hir" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+cssl-lex   = { path = "../cssl-lex" }
+cssl-parse = { path = "../cssl-parse" }
