@@ -53,6 +53,7 @@ unreachable_pub  = "warn"
 # ─ frontend (T2/T3) ─
 logos    = "0.14"
 chumsky  = "0.10"
+lasso    = "0.7"
 # ─ shared data ─
 smallvec  = { version = "1", features = ["union", "const_generics"] }
 indexmap  = "2"

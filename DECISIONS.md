@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,23 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D8 : Stage-0 interner = single-threaded `lasso::Rodeo` (not `ThreadedRodeo`)
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D2 picked `lasso` for string interning. Initial plan was `ThreadedRodeo` (`Send + Sync`) for future parallel-compilation support. However, `ThreadedRodeo` pulls in `parking_lot_core`, which on the `x86_64-pc-windows-gnu` toolchain (our current pin per T1-D4 + T1-D7) requires `dlltool.exe` — not bundled with the default MinGW installation.
+- **Options**
+  - (a) Install `dlltool.exe` globally via MSYS2 / MinGW package manager — adds an out-of-tree dependency.
+  - (b) Switch the toolchain pin to `x86_64-pc-windows-msvc` — deferred per T1-D7 until T10 FFI link-time.
+  - (c) Use single-threaded `lasso::Rodeo` for stage-0 and upgrade when stage-1 parallel-compile lands.
+- **Decision** **(c)** — stage-0 uses `Rodeo` behind a `RefCell<Rodeo>` so `Interner::intern` stays `&self`. Migration path to `ThreadedRodeo` is a three-line change (swap `RefCell<Rodeo>` → `ThreadedRodeo`, drop `.borrow()` wrappers, return `&str` instead of `String` from `resolve`). Public `Symbol` type is backend-agnostic.
+- **Consequences**
+  - `Interner::resolve` returns an owned `String` (copied through `RefCell`) — stage-0 hot-paths resolve a handful of symbols per diagnostic, allocation cost is negligible.
+  - Parallel stage-1 compilation blocked on this decision — revisit when T10 FFI entry forces the MSVC toolchain switch (T1-D7 consequence).
+  - Apostrophe decomposition (T2-D8) already runs single-threaded through `cssl_lex::lex` — no concurrency loss.
 
 ───────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ ; T3.3 HIR-lowering next
+- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ + T3.3 HIR-lowering ✓ ; T3.4 inference next
 
 ───────────────────────────────────────────────────────────────
 
@@ -14,7 +14,7 @@
 |-----|-------------------------------------------------------|----------------|
 | D1  | compiler-rs/ Cargo-workspace skeleton                 | ✓ complete     |
 | D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
-| D3  | parse + ast + hir — elaborator                        | ◐ ast primitives + CST nodes + dual-surface parsers ✓ ; hir elaborator pending T3.3/T3.4 |
+| D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution ✓ ; inference engine pending T3.4 |
 | D4  | effects — 28 effects + evidence-passing               | ○ pending T4   |
 | D5  | caps — Pony-6 + gen-refs                              | ○ pending T5   |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
@@ -52,6 +52,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T3-D5** : Path-parser splits by context — colon-only in expr/pat, dot-accepting in types/module-decls
 - **T3-D6** : Struct-constructor disambiguation via peek-ahead (`looks_like_struct_body`)
 - **T3-D7** : Parser error-recovery protocol — rules always return a node + push diagnostics ; top-level loop breaks only on no-progress
+- **T3-D8** : Stage-0 interner uses single-threaded `lasso::Rodeo` (deferred `ThreadedRodeo` until MSVC toolchain switch @ T10)
 
 ───────────────────────────────────────────────────────────────
 
@@ -110,15 +111,16 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T1-start | T1-end    | T2-end                          | T3.2-end                                | T2-D8-end                               |
-|-------------------------------|----------|-----------|---------------------------------|-----------------------------------------|-----------------------------------------|
-| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) | 31 (+ cssl-parse fully populated)    | 31 (unchanged)                          |
-| Lines of scaffold Rust        | 0        | ~1500     | ~3800                           | ~7800                                   | ~7900 (+ fold_morpheme_suffixes pass)   |
-| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 | 258 / 63 suites                         | 269 / 63 suites (+10 lexer + 1 parser)  |
-| Clippy warnings (`-D`)        | N/A      | 0         | 0                               | 0                                       | 0                                       |
-| CI jobs declared              | 0        | 19        | 19                              | 19                                      | 19                                      |
-| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0                         | 156 / 0 (134 local-section skipped)     | 156 / 0 (135 local-section skipped)     |
-| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         | ✓ 6 / 6                                 | ✓ 6 / 6                                 |
+| Metric                        | T1-start | T1-end    | T2-end                          | T3.2-end                                | T2-D8-end                               | T3.3-end                                |
+|-------------------------------|----------|-----------|---------------------------------|-----------------------------------------|-----------------------------------------|-----------------------------------------|
+| Crates in workspace           | 0        | 31        | 31 (cssl-ast + cssl-lex populated) | 31 (+ cssl-parse fully populated)    | 31 (unchanged)                          | 31 (+ cssl-hir fully populated)         |
+| Lines of scaffold Rust        | 0        | ~1500     | ~3800                           | ~7800                                   | ~7900                                   | ~11200 (+ cssl-hir ~3300 LOC)           |
+| Test count                    | 0        | 48 / 61   | 150 / 62 suites                 | 258 / 63 suites                         | 269 / 63 suites                         | 299 / 64 suites (+31 hir + 1 resolve +  |
+|                               |          |           |                                 |                                         |                                         |   1 lower integration)                  |
+| Clippy warnings (`-D`)        | N/A      | 0         | 0                               | 0                                       | 0                                       | 0                                       |
+| CI jobs declared              | 0        | 19        | 19                              | 19                                      | 19                                      | 19                                      |
+| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0                         | 156 / 0 (134 local-section skipped)     | 156 / 0 (135 local-section skipped)     | 156 / 0 (135 local-section skipped)     |
+| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6                         | ✓ 6 / 6                                 | ✓ 6 / 6                                 | ✓ 6 / 6                                 |
 
 ───────────────────────────────────────────────────────────────
 
@@ -180,24 +182,62 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T3.3 (HIR-lowering) and T3.4 (bidirectional elaboration)
+§ T3.3 ARTIFACTS  (added 2026-04-17)
 
-Per §§ HANDOFF T3 :
-1. `cssl-hir` : elaborate CST → HIR with string interning via `lasso` (T3-D2)
-2. Bidirectional type-inference (Hindley-Milner + row-polymorphism for effect rows)
-3. Capability inference (Pony-6 per §§ 12)
-4. IFC-label propagation (Jif-DLM per §§ 11)
-5. Refinement-obligation generation → SMT queue (§§ 20)
-6. AD-legality check (§§ 05 closure)
-7. @staged stage-arg comptime-check (§§ 06)
-8. Macro hygiene-mark (§§ 13)
-9. Golden HIR-dump fixtures under `compiler-rs/tests/golden/hir/`
+`crates/cssl-hir/src/` :
+- `symbol.rs` : `Symbol` newtype + `Interner` (RefCell<Rodeo> wrapper, T3-D8)
+- `arena.rs` : `HirId` + `DefId` newtypes + `HirArena` monotonic allocator
+- `attr.rs` : HirAttr + HirAttrArg + HirAttrKind mirror of CST
+- `ty.rs` : HirType + HirTypeKind + HirCapKind + HirRefinementKind + HirEffectRow
+- `pat.rs` : HirPattern + HirPatternKind + HirPatternField
+- `expr.rs` : HirExpr + HirExprKind (30+ variants) + HirBinOp + HirUnOp + HirCompoundOp +
+              HirBlock + HirLiteral + HirMatchArm + HirArrayExpr + HirStructFieldInit
+- `stmt.rs` : HirStmt + HirStmtKind
+- `item.rs` : HirModule + HirItem + HirFn + HirStruct + HirEnum + HirInterface + HirImpl +
+              HirEffect + HirHandler + HirTypeAlias + HirUse + HirConst + HirNestedModule
+              (all def-bearing items carry `DefId` for cross-reference)
+- `resolve.rs` : Scope + ScopeMap with nested-scope stack + module-level persistence
+- `lower.rs` : `LowerCtx` + `lower_module(source, cst_module) -> (HirModule, Interner, DiagnosticBag)`
+              + `resolve_module(hir_module)` fills `def: Option<DefId>` slots for single-
+              segment paths that match top-level items.
 
-Open for T3.3-start :
-- Interner integration-point : crate-wide `HirArena<'a>` vs per-module `Interner` ?
+§ T3.3 SCOPE COVERAGE
+- Pure structural CST → HIR transform with identifiers interned via lasso
+- Every HIR node tagged with a fresh HirId (counter via HirArena)
+- Items additionally carry DefId for cross-reference
+- use-tree flattening into linear `Vec<HirUseBinding>` for resolver consumption
+- Enum-variant constructors registered in module scope alongside enums themselves
+- Module-scope-only name-resolution walks expressions + types and fills `def` slots
+
+§ T3.3 NOT-YET (deferred to T3.4)
+- Bidirectional type inference (Hindley-Milner + row-polymorphism)
+- Effect-row unification + evidence-passing transform
+- Capability inference (Pony-6 per §§ 12)
+- IFC-label propagation (Jif-DLM per §§ 11)
+- Refinement-obligation generation + SMT routing (§§ 20)
+- AD-legality check (§§ 05)
+- @staged comptime-check + macro hygiene (§§ 13)
+- Cross-module + nested-block + let-local name-resolution
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T3.4 (inference + IFC + cap + refinement)
+
+Per §§ 02 § HIR CHECKS :
+1. Hindley-Milner with row-polymorphism (constraint-generation + unification)
+2. Capability inference per §§ 12 Pony-6 (iso|trn|ref|val|box|tag)
+3. IFC-label lattice per §§ 11 (non-interference + declassification legality)
+4. Refinement-obligation generation → SMT queue (§§ 20)
+5. AD-legality check (§§ 05 closure)
+6. @staged stage-arg comptime-check (§§ 06)
+7. Macro hygiene-mark (§§ 13)
+8. Golden HIR-dump fixtures under `compiler-rs/tests/golden/hir/`
+
+Open for T3.4-start :
+- Inference algorithm : constraint-solving vs direct unification vs Algorithm-W variant ?
 - Row-polymorphism representation : closed-row ADT vs open-row with `μ`-variable ?
-- Name-resolution scoping : pass-at-elaboration vs dedicated resolver pass ?
 - Refinement-obligation data-structure : `ObligationBag` vs lazy-query-on-demand ?
+- IFC-label lattice : confidentiality × integrity product vs unified lattice ?
 
 ───────────────────────────────────────────────────────────────
 
