@@ -67,6 +67,9 @@ version = "0.1.0"
 [[package]]
 name = "cssl-effects"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-futamura"

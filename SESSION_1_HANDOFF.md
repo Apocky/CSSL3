@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ + T3.3 HIR-lowering ✓ + T3.4-phase-1 HM+rows ✓ ; T4 effects next (T3.4-phase-2 cap/IFC/refinement deferred)
+- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ + T3.3 HIR-lowering ✓ + T3.4-phase-1 HM+rows ✓ + T4-phase-1 registry+discipline+banned ✓ ; T5 caps next (T3.4-phase-2 + T4-phase-2 Xie+Leijen deferred)
 
 ───────────────────────────────────────────────────────────────
 
@@ -15,7 +15,7 @@
 | D1  | compiler-rs/ Cargo-workspace skeleton                 | ✓ complete     |
 | D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
 | D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution + HM inference + effect-rows ✓ ; cap/IFC/refinement pending T3.4-phase-2 |
-| D4  | effects — 28 effects + evidence-passing               | ○ pending T4   |
+| D4  | effects — 28 effects + evidence-passing               | ◐ registry + discipline + banned-composition ✓ (T4-phase-1) ; Xie+Leijen transform pending T4-phase-2 |
 | D5  | caps — Pony-6 + gen-refs                              | ○ pending T5   |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
 | D7  | autodiff + jets                                       | ○ pending T7   |
@@ -54,6 +54,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T3-D7** : Parser error-recovery protocol — rules always return a node + push diagnostics ; top-level loop breaks only on no-progress
 - **T3-D8** : Stage-0 interner uses single-threaded `lasso::Rodeo` (deferred `ThreadedRodeo` until MSVC toolchain switch @ T10)
 - **T3-D9** : T3.4 phased — phase-1 HM type-inference + effect-row unification ; phase-2 cap/IFC/refinement/AD/@staged/hygiene deferred
+- **T4-D1** : T4 phased — phase-1 registry + sub-effect discipline + banned-composition (Prime-Directive F5) ; phase-2 Xie+Leijen transform + linear-handler enforcement deferred
 
 ───────────────────────────────────────────────────────────────
 
@@ -112,15 +113,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T1-start | T1-end    | T2-end       | T3.2-end      | T2-D8-end    | T3.3-end      | T3.4-phase-1-end             |
-|-------------------------------|----------|-----------|--------------|---------------|--------------|---------------|------------------------------|
-| Crates populated              | 0        | 0         | 2            | 3             | 3            | 4             | 4 (cssl-hir extended)        |
-| Lines of scaffold Rust        | 0        | ~1500     | ~3800        | ~7800         | ~7900        | ~11200        | ~13800 (+ ~2600 LOC inference) |
-| Test count                    | 0        | 48 / 61   | 150 / 62     | 258 / 63      | 269 / 63     | 299 / 64      | 340 / 64 suites              |
-| Clippy warnings (`-D`)        | N/A      | 0         | 0            | 0             | 0            | 0             | 0                            |
-| CI jobs declared              | 0        | 19        | 19           | 19            | 19           | 19            | 19                           |
-| Spec cross-refs validated     | manual   | 156 / 0   | 156 / 0      | 156 / 0 (134) | 156 / 0 (135)| 156 / 0 (135) | 156 / 0 (135)                |
-| Commit-gate green             | N/A      | ✓ 6 / 6   | ✓ 6 / 6      | ✓ 6 / 6       | ✓ 6 / 6      | ✓ 6 / 6       | ✓ 6 / 6                      |
+| Metric                        | T3.3-end      | T3.4-phase-1-end             | T4-phase-1-end                      |
+|-------------------------------|---------------|------------------------------|-------------------------------------|
+| Crates populated              | 4             | 4 (cssl-hir extended)        | 5 (+ cssl-effects fully populated)  |
+| Lines of scaffold Rust        | ~11200        | ~13800                       | ~15300 (+ ~1500 LOC effects)        |
+| Test count                    | 299 / 64      | 340 / 64 suites              | 368 / 65 suites (+28 effects)       |
+| Clippy warnings (`-D`)        | 0             | 0                            | 0                                   |
+| CI jobs declared              | 19            | 19                           | 19                                  |
+| Spec cross-refs validated     | 156 / 0 (135) | 156 / 0 (135)                | 156 / 0 (135)                       |
+| Commit-gate green             | ✓ 6 / 6       | ✓ 6 / 6                      | ✓ 6 / 6                             |
 
 ───────────────────────────────────────────────────────────────
 
@@ -257,23 +258,50 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T4 (effect system + evidence-passing)
+§ T4-phase-1 ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T4 + §§ 04_EFFECTS :
-1. Register 28 built-in effects (GPU / NoAlloc / Deadline / Power / Thermal / Telemetry
-   / Audit / Sensitive / Privileged / Region / Handle / State / IO / …)
-2. Row-unification engine refinement (integrated with T3.4 `unify_rows`)
-3. Sub-effect discipline checker (effect-row widening on call-sites)
-4. Xie+Leijen evidence-passing transform (HIR → HIR+evidence)
-5. Linear × handler one-shot enforcement per §§ 12 R8
-6. Evidence-records synthesized from effect-decl
-7. Tests : §§ 04 LOA-PATTERNS all-compile-green
+`crates/cssl-effects/src/` :
+- `registry.rs`   : BuiltinEffect (32 variants) + EffectCategory + EffectArgShape +
+                    DischargeTiming + EffectMeta + EffectRegistry + BUILTIN_METADATA
+                    const-slice covering every effect in `specs/04 § BUILT-IN EFFECTS`
+- `discipline.rs` : EffectRef + CoercionRule + SubEffectError + sub_effect_check +
+                    classify_coercion ; caller-row ⊇ callee-row validation with
+                    name+arity match (numeric-ordering deferred to T8 const-eval)
+- `banned.rs`     : SensitiveDomain + BannedReason + banned_composition +
+                    banned_composition_with_domains ; Prime-Directive F5 structural
+                    encoding of `Sensitive<"coercion">` (absolute ban) +
+                    `Sensitive<"surveillance">` + IO (no override) +
+                    `Sensitive<"weapon">` + IO (needs Privilege<Kernel>)
 
-Open for T4-start :
-- Effect registry : built-in effects as HIR `DefId`s in a pre-built module vs hard-coded
-  enum in `cssl-effects` ?
-- Evidence-record layout : struct-per-effect vs tagged-union ?
-- Handler installation : dynamic (runtime lookup) vs static (compile-time monomorph) ?
+§ T4-phase-1 COVERAGE
+- 32 built-in effects registered with category + arg-shape + discharge metadata
+- Sub-effect discipline checker with CoercionRule classification (Exact | Widening | None)
+- Prime-Directive banned-composition checker (structural, not policy)
+- SensitiveDomain enum with 4 canonical domains + Other(&str) variant
+
+§ T4-phase-2 DEFERRED
+- Xie+Leijen ICFP'21 evidence-passing transform (HIR → HIR+evidence)
+- Linear × handler one-shot enforcement (§§ 12 R8 ; multi-shot + iso = compile-error)
+- Handler-installation analysis (`perform X` requires handler for X in scope)
+- Numeric-ordering coercion on `Deadline<N>` / `Power<N>` / `Thermal<N>` (needs T8 const-eval)
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T5 (capability system + gen-refs)
+
+Per §§ HANDOFF T5 + §§ 12_CAPS :
+1. caps crate : Pony-6 alias+deny matrix
+2. iso / trn / ref / val / box / tag checker
+3. cap-subtyping (iso <: trn, iso <: val, …)
+4. gen-ref deref-runtime-check synthesis
+5. region-lifetime tracker
+6. Handle<T> lowering : tag<T> at-source ≡ u64 24+40 at-MIR
+7. Tests : §§ 12 EXAMPLES all-compile-green + V11-stale-ref tests
+
+Open for T5-start :
+- Alias+deny matrix : static table vs runtime lookup ?
+- gen-ref generation counter : per-handle vs per-region ?
+- Region-lifetime encoding in HIR : lifetime-parameter vs implicit-scope ?
 
 ───────────────────────────────────────────────────────────────
 

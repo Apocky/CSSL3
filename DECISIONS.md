@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • T4-phase-1 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,39 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T4-D1 : T4 phased — effect registry + discipline + banned-composition now ; Xie+Leijen transform deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T4 scope (per §§ HANDOFF + §§ 04_EFFECTS) enumerates : 28 built-in effect registration, row-unification engine, sub-effect discipline checker, Xie+Leijen evidence-passing transform, linear×handler one-shot enforcement. Landing the full Xie+Leijen transform (HIR → HIR+evidence) in one commit is a multi-week project — phasing lets T5 (caps), T6 (MLIR), T7 (AD), T8 (staging) build on the registry + discipline without blocking on the transform.
+- **Phase-1 scope (THIS commit)**
+  - `BuiltinEffect` enum — 32 variants covering `specs/04` § BUILT-IN EFFECTS (28 canonical + Region/Yield/Resume + user-facing IO → Io variant consolidation).
+  - `EffectMeta` records (name + category + arg-shape + discharge-timing) + `BUILTIN_METADATA` const-slice.
+  - `EffectRegistry` with name-lookup + variant-lookup + len/iter.
+  - `sub_effect_check(caller, callee, registry)` — basic coercion validation (pure ⊆ any row, exact-name match, arg-arity match).
+  - `classify_coercion(a, b)` — tags matched effects as `Exact` / `Widening` / `None`.
+  - `banned_composition` + `banned_composition_with_domains` — Prime-Directive F5 encoding :
+    - `Sensitive<"coercion">` absolutely banned
+    - `Sensitive<"surveillance"> + IO` banned, no override
+    - `Sensitive<"weapon"> + IO` requires `Privilege<Kernel>`
+  - `SensitiveDomain` enum with classifier predicates (`is_absolute_ban` etc).
+- **Phase-2 deferred (T4-phase-2)**
+  - Xie+Leijen ICFP'21 evidence-passing transform (HIR → HIR+evidence).
+  - Linear × handler one-shot enforcement (§§ 12 R8).
+  - Handler-installation analysis (`perform X` requires handler for `X` in scope).
+  - Multi-shot vs iso rejection.
+  - Numeric-ordering coercion on `Deadline<N>` / `Power<N>` / `Thermal<N>` — requires T8 const-evaluation.
+- **Rationale**
+  - Registry + discipline lets the inference pass (T3.4) recognize effect-row names as built-in vs user-defined today.
+  - Prime-Directive banned-composition is **F5 structural encoding** — landing it early means every subsequent stage inherits the ban automatically.
+  - Evidence-passing transform is fundamentally tied to MLIR lowering (T6) ; better to land both together than duplicate work.
+- **Consequences**
+  - Public API : `cssl_effects::{EffectRegistry::with_builtins, sub_effect_check, banned_composition_with_domains}`.
+  - Stage-0 `Deadline<N>` coercion is accepted as Widening without numeric check — tracked as a T8 TODO in `discipline.rs`.
+  - `classify_coercion` returns `CoercionRule::Widening` for known-widening effects (Deadline / Power / Thermal) ; full SMT discharge happens at T9.
 
 ───────────────────────────────────────────────────────────────
 

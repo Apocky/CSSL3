@@ -1,22 +1,60 @@
-//! CSSLv3 stage0 — Koka row-polymorphic effects + Xie-Leijen evidence passing.
+//! CSSLv3 effect system — 28 built-in effects + sub-effect discipline + Prime-Directive
+//! banned-composition checker.
 //!
-//! Authoritative design : `specs/04_EFFECTS.csl`.
+//! § SPEC : `specs/04_EFFECTS.csl` (full 28-effect set) + `specs/11_IFC.csl` (Sensitive
+//!   domain labels) + PRIME_DIRECTIVE.md (F5 structural encoding).
 //!
-//! § STATUS : T4 scaffold — 28 built-in effects + row-unification pending.
-//! § DISCIPLINE : linear × handler one-shot (R8) — multi-shot + iso ≡ compile-error.
-//! § EVIDENCE : HIR-transform synthesizes evidence records per `specs/04_EFFECTS.csl` decl.
+//! § SCOPE (T4-phase-1)
+//!   This crate is the effect **registry + discipline checker** — no compilation of
+//!   effects into evidence-records, no Xie+Leijen transform, no runtime handler
+//!   installation. Those live in T4-phase-2.
+//!
+//!   What it provides :
+//!     - [`BuiltinEffect`] — a dense enum covering every effect in `specs/04`.
+//!     - [`EffectRegistry`] — name-keyed lookup with arg-shape validation.
+//!     - [`sub_effect_check`] — caller-row must cover every effect of a callee-row
+//!       (tighter budgets flow into looser ones per §§ 04 coercion rules).
+//!     - [`banned_composition`] — rejects Prime-Directive-banned combinations
+//!       (e.g., `{Sensitive<"weapon">} ⊎ {IO, Net}` without `Privilege<Kernel>`).
+//!
+//! § NEXT (T4-phase-2)
+//!   - Evidence-record data-types synthesized from effect-decls.
+//!   - `HIR → HIR+evidence` Xie+Leijen transform.
+//!   - Linear × handler one-shot enforcement (§§ 12 R8).
+//!   - Handler-installation analysis (perform X → requires handler for X in scope).
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
+// `caller` / `callee` are too similar for clippy's default taste but are semantically
+// the correct domain-pair names for effect-row discipline ; rejecting them would
+// force less-readable alternatives.
+#![allow(clippy::similar_names)]
+
+pub mod banned;
+pub mod discipline;
+pub mod registry;
+
+pub use banned::{
+    banned_composition, banned_composition_with_domains, BannedReason, SensitiveDomain,
+};
+pub use discipline::{
+    classify_coercion, sub_effect_check, CoercionRule, EffectRef, SubEffectError,
+};
+pub use registry::{
+    BuiltinEffect, DischargeTiming, EffectArgShape, EffectCategory, EffectMeta, EffectRegistry,
+    BUILTIN_METADATA,
+};
 
 /// Crate version, exposes `CARGO_PKG_VERSION`.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(test)]
 mod scaffold_tests {
+    use super::STAGE0_SCAFFOLD;
+
     #[test]
     fn scaffold_version_present() {
-        assert!(!super::STAGE0_SCAFFOLD.is_empty());
+        assert!(!STAGE0_SCAFFOLD.is_empty());
     }
 }
