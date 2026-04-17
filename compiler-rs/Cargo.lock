@@ -39,6 +39,13 @@ version = "0.1.0"
 [[package]]
 name = "cssl-autodiff"
 version = "0.1.0"
+dependencies = [
+ "cssl-ast",
+ "cssl-hir",
+ "cssl-lex",
+ "cssl-parse",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-caps"
@@ -77,6 +84,9 @@ dependencies = [
 [[package]]
 name = "cssl-futamura"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-hir"
@@ -117,6 +127,9 @@ version = "0.1.0"
 [[package]]
 name = "cssl-jets"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-lex"
@@ -134,6 +147,9 @@ version = "0.1.0"
 [[package]]
 name = "cssl-macros"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-mir"
@@ -177,6 +193,13 @@ version = "0.1.0"
 [[package]]
 name = "cssl-staging"
 version = "0.1.0"
+dependencies = [
+ "cssl-ast",
+ "cssl-hir",
+ "cssl-lex",
+ "cssl-parse",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-telemetry"

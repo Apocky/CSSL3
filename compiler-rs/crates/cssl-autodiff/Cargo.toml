@@ -1,6 +1,6 @@
 [package]
 name                   = "cssl-autodiff"
-description            = "CSSLv3 stage0 — source-to-source automatic differentiation on MIR"
+description            = "CSSLv3 stage0 — source-to-source automatic differentiation (F1)"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -9,3 +9,12 @@ authors.workspace      = true
 
 [lints]
 workspace = true
+
+[dependencies]
+cssl-ast  = { path = "../cssl-ast" }
+cssl-hir  = { path = "../cssl-hir" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+cssl-lex   = { path = "../cssl-lex" }
+cssl-parse = { path = "../cssl-parse" }

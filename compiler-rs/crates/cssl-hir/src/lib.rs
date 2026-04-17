@@ -86,8 +86,8 @@ pub use cap_check::{
 };
 pub use env::{TypeScope, TypingEnv};
 pub use expr::{
-    HirBinOp, HirBlock, HirCompoundOp, HirExpr, HirExprKind, HirLiteral, HirLiteralKind,
-    HirMatchArm, HirUnOp,
+    HirArrayExpr, HirBinOp, HirBlock, HirCallArg, HirCompoundOp, HirExpr, HirExprKind,
+    HirLambdaParam, HirLiteral, HirLiteralKind, HirMatchArm, HirStructFieldInit, HirUnOp,
 };
 pub use infer::{check_module, InferCtx};
 pub use item::{

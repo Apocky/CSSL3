@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • T4-phase-1 ✓ • T5 + T3.4-phase-2-cap ✓ • T6-phase-1 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,58 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D1 : AD phased — rules table + decl collection + variant-naming now ; rule-application deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7 (AutoDiff) scope includes : per-primitive rules table, `@differentiable` collection, HIR-to-HIR transform producing primal/fwd/bwd variants. Full rule-application (walking `HirExpr` + applying rules at each primitive site) is a multi-commit effort that needs close integration with T6 MIR + runtime tape allocation.
+- **Phase-1 landed**
+  - `DiffMode` (Primal/Fwd/Bwd) + `Primitive` (15 variants : FAdd/FSub/FMul/FDiv/FNeg/Sqrt/Sin/Cos/Exp/Log/Call/Load/Store/If/Loop).
+  - `DiffRule` + `DiffRuleTable::canonical()` with 30 rules (15 primitives × 2 modes).
+  - `DiffDecl` + `collect_differentiable_fns` : walks HIR, returns `@differentiable` fn metadata (name + def + param-count + `no_diff` / `lipschitz_bound` / `checkpoint` flags).
+  - `DiffTransform` + `DiffVariants` : registers each `@differentiable` fn and generates canonical `<name>_fwd` / `<name>_bwd` variant names.
+- **Phase-2 deferred**
+  - Walking `HirExpr` and applying rules at each primitive site.
+  - Tape-buffer allocation (iso-capability scoped).
+  - `@checkpoint` attribute-arg extraction.
+  - GPU-AD tape-location resolution.
+  - Killer-app gate : `bwd_diff(sphere_sdf)(p).d_p` bit-exact vs analytic.
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D2 : Jet<T,N> = structural data-type ; order-dependent ops validated at T6 MIR
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** Jet<T,N> is a higher-order AD construct (value + N tangent coefficients). Rust can't express `Jet<T, N>` generically-over-const-N at stage-0 without const-generic-infra ; the actual runtime representation is target-dependent (tuple / array / struct-of-arrays).
+- **Decision** `cssl-jets` crate exposes `JetOrder(u32)`, `JetOp` (5 variants : Construct/Project/Add/Mul/Apply), `JetSignature` (operand/result arity + order-dependence), + validator fns (`validate_construct` / `validate_project` / `validate_binary_order`). Runtime representation is decided at T6 MIR lowering per-target ; `cssl-jets` stays representation-agnostic.
+- **Consequences**
+  - Jet<T,∞> lazy-stream variant is T7-phase-2 / T17 scope.
+  - `cssl.jet.*` MIR ops (already catalogued in cssl-mir `CsslOp::Jet{Construct,Project}` — needs Add/Mul/Apply additions at T6-phase-2).
+  - SMT-discharge of Jet composition invariants lives in T9.
+
+───────────────────────────────────────────────────────────────
+
+## § T8-D1 : Staging + Macros + Futamura = three parallel crates ; data model now, expansion deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T8 bundles three related but independent concerns : `@staged` specialization (F4), Racket-hygienic macros (R3+R9), Futamura projections (R12). Each has its own data model + operations ; landing them as three crates keeps the concerns cleanly separated.
+- **Decision**
+  - `cssl-staging` : `StageArg` + `StageArgKind` (CompTime/Runtime/Polymorphic) + `StagedDecl` + `collect_staged_fns` + `Specializer` skeleton + `SpecializationSite`.
+  - `cssl-macros` : `MacroTier` (3 variants) + `ScopeId` + `HygieneMark` (Racket set-of-scopes with flip/union) + `SyntaxObject` + `ScopeAllocator` + `MacroRegistry` + `MacroDecl` + `MacroError`.
+  - `cssl-futamura` : `FutamuraLevel` (P1/P2/P3) + `Projection` + `FixedPointRecord` (converged iff hash-N == hash-N+1) + `Orchestrator` + `FutamuraError`.
+- **Phase-2 deferred**
+  - Actual specialization walk (clone fn + const-propagate).
+  - Native comptime-eval (compile-native ; R14 avoid-Zig-20x).
+  - `@type_info` / `@fn_info` / `@module_info` reflection API.
+  - Transform-dialect pass-schedule emission.
+  - Tier-2 pattern-match expansion.
+  - Tier-3 `#run` proc-macro sandbox.
+  - P3 self-bootstrap fixed-point verification (needs running stage-1 compiler).
 
 ───────────────────────────────────────────────────────────────
 

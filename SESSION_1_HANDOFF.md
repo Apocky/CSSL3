@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T5 ✓ + T6-phase-1 (cssl-mir + cssl-mlir-bridge text-emission) ✓ ; T7 autodiff next (T3.4-phase-2.5 / T4-phase-2 / T5-phase-2 / T6-phase-2 melior-FFI deferred)
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ ; T3.4-phase-2 refinement + T9 SMT next
 
 ───────────────────────────────────────────────────────────────
 
@@ -60,6 +60,9 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T5-D3** : Cap-check stage-0 is signature-level only ; body-walk deferred to T5-phase-2
 - **T6-D1** : MLIR-text-CLI fallback landed as phase-1 (option-b pre-authorized) ; melior FFI deferred to T6-phase-2 pending MSVC toolchain switch @ T10
 - **T6-D2** : CsslOp enum with 26 dialect variants + Std catch-all + per-op metadata (category, signature)
+- **T7-D1** : AD phased — rules table + decl collection + variant-naming (phase-1) ; rule-application deferred to T7-phase-2
+- **T7-D2** : Jet<T,N> = structural data-type ; order-dependent ops validated at T6 MIR ; runtime representation deferred
+- **T8-D1** : Staging + Macros + Futamura = three parallel crates (staging/macros/futamura) ; phase-1 data model + registries, expansion deferred to T8-phase-2
 
 ───────────────────────────────────────────────────────────────
 
