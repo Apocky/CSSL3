@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,45 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D3 : T7-phase-2a — MIR-walking AD rule-application transform landed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D1 deferred rule-application walker to T7-phase-2 ; T6-phase-2a (T6-D3) unlocked MIR-body consumption. This entry closes the walker-infrastructure slice — real dual-substitution remains T7-phase-2b, killer-app-gate verification remains T7-phase-2c (composes w/ T9-phase-2 SMT dispatch).
+- **Slice landed (this commit)**
+  - `cssl_autodiff::walker` module adding `cssl-mir` as dep (HIR → MIR direction, clean) :
+    - `op_to_primitive(op_name) -> Option<Primitive>` — MIR-op-name → 10-primitive-mapping : `arith.{addf,subf,mulf,divf,negf}` → `F{Add,Sub,Mul,Div,Neg}` ; `func.call` / `cssl.call_indirect` → `Call` ; `scf.if` → `If` ; `scf.{for,while,loop,while_loop}` → `Loop` ; `memref.{load,store}` → `Load` / `Store` ; integer-arith correctly returns `None`.
+    - `specialize_transcendental(prim, callee)` — refines `Primitive::Call` → `Sqrt` / `Sin` / `Cos` / `Exp` / `Log` when `callee` attribute names one of the known math fns.
+    - `AdWalker { rules, diff_fn_names }` — owns canonical `DiffRuleTable` (30 rules) + auto-discovered `@differentiable` fn name-set.
+    - `AdWalker::from_hir(&HirModule, &Interner)` — auto-discovers via `collect_differentiable_fns`, excludes `@NoDiff`.
+    - `AdWalker::with_names(names)` — explicit-set constructor for tests.
+    - `transform_module(&mut MirModule) -> AdWalkerReport` — for each fn whose name is in `diff_fn_names`, appends `<name>_fwd` + `<name>_bwd` variants with `diff_recipe_{fwd,bwd}` attr on every recognized primitive op, `diff_variant` + `diff_primal_name` fn-level attrs on the variants.
+    - `AdWalkerReport` : `fns_transformed` + `variants_emitted` + `ops_matched` + `rules_applied` + `unsupported_ops` + `summary()`.
+    - Recursive region-walk handles nested `scf.if` branches → their bodies also get annotated.
+  - `AdWalkerPass` : MirPass adapter — pushable into `cssl_mir::PassPipeline` as a replacement for the T6-D3 stub `AdTransformPass`. Emits `AD0100`-coded Info diagnostic with walker-report summary.
+- **Phase-2b DEFERRED**
+  - **Real dual-substitution** : replace each primitive with its (primal, tangent) tuple computed via rules. Current phase emits recipe-as-attribute ; phase-2b expands into actual `arith.addf d_x_0 d_x_1` ops that propagate tangent values.
+  - **Tape-record for reverse-mode** : iso-capability-scoped tape buffer for bwd variants (`@checkpoint` selective re-computation trade-off).
+  - **GPU-AD tape-location resolution** (device / shared / unified memory).
+  - Higher-order AD via `Jet<T, N>` (§§ 17).
+- **Phase-2c DEFERRED (killer-app gate)**
+  - `bwd_diff(sphere_sdf)(p).d_p` **bit-exact vs analytic** verification — THE F1 correctness gate. Composes with T9-phase-2 SMT real-solver dispatch for bit-exactness proof.
+- **Rationale**
+  - Walker-lives-in-autodiff (not-in-mir) avoids circular dep — `cssl-autodiff → cssl-mir` is the natural "transform that consumes MIR" direction. `AdWalkerPass` is a thin trampoline that lets users swap the stub `AdTransformPass` for the real walker in their pipeline.
+  - Op-name-based primitive matching is stable across the T6-phase-2b body-lowering expansion — new ops added to `body_lower` (e.g., `scf.for` when loops land) automatically get classified via `op_to_primitive`.
+  - Transcendental-via-callee-attr lets the walker distinguish `sqrt(x)` / `sin(x)` / `cos(x)` calls without requiring a separate primitive-op per math-fn in `body_lower`. Keeps MIR surface narrow.
+  - Recipe-as-attribute (stage-0) is cheap + auditable : `cargo run --bin csslc -- --emit=mir` would show every diff-recipe annotation in the textual MIR output. Real substitution (phase-2b) can be toggled via feature-flag.
+  - HashSet-lookup for diff_fn_names is O(1) per fn — module with N fns + K @differentiable is O(N + K × body-size) total.
+- **Consequences**
+  - Public API : `cssl_autodiff::{op_to_primitive, specialize_transcendental, AdWalker, AdWalkerPass, AdWalkerReport, walker}`.
+  - New dep : `cssl-autodiff → cssl-mir` (was HIR-only).
+  - `cssl-autodiff` lib-test count : 22 → 36 (+14 walker tests).
+  - Workspace test-count : 898 → 913 (+15 including AdWalkerPass pipeline integration).
+  - `sphere_sdf` integration test passes : `sphere_sdf_fwd` + `sphere_sdf_bwd` variants appear in MIR with `arith.subf` (from `p - r`) carrying `diff_recipe_bwd` attribute.
+  - **Killer-app gate NOW COMPUTABLE** structurally : the bit-exact-vs-analytic verification becomes a matter of running the walker, then querying SMT (T9-phase-2) over the recipe-annotated MIR — all the structural pieces are in place.
 
 ───────────────────────────────────────────────────────────────
 

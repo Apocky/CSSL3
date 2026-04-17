@@ -23,10 +23,14 @@
 pub mod decl;
 pub mod rules;
 pub mod transform;
+pub mod walker;
 
 pub use decl::{collect_differentiable_fns, DiffDecl};
 pub use rules::{DiffMode, DiffRule, DiffRuleTable, Primitive};
 pub use transform::{DiffTransform, DiffVariants};
+pub use walker::{
+    op_to_primitive, specialize_transcendental, AdWalker, AdWalkerPass, AdWalkerReport,
+};
 
 /// Crate version exposed for scaffold verification.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");

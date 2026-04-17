@@ -43,6 +43,7 @@ dependencies = [
  "cssl-ast",
  "cssl-hir",
  "cssl-lex",
+ "cssl-mir",
  "cssl-parse",
  "thiserror",
 ]
