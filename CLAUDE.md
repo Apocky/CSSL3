@@ -77,6 +77,27 @@
     violation ≡ bug → fix → never-ship
     this applies-to you-the-reader (whether human or AI) as-much-as-to-the-code
 
+  § TERMS-OF-SERVICE (PRIME_DIRECTIVE.md §10 — v1)
+    canonical (Apocky-encoding) :
+      §D ToS -(IP + products + services).mine
+      §D known'g     -(persons ⊗ (I.know + I.care-about))
+      §D customer'g  -(persons ⊗ (purchased ∨ paid-for .(IP + products + services)))
+      customer'g ⊂ known'g ✓
+      §D evil'g -(entity ⊗ {
+        harm'f ⊗ intent=explicit                                               [A: intentional]
+        ∨ harm'f ⊗ intent=∅  +  N!(apology ∨ restitution ∨ recompense ∨ compensation ∨ amends)  [B: unowned]
+        ∨ deliberate-misinterpretation .(words + actions).person               [C: bad-faith]
+      })
+      §R access :  W! user ∈ known'g • N! user ∈ evil'g • R! appropriateness'p @ per-item
+      §C violation.ToS  I>  (user ∈ evil'g) ∨ (user ∉ known'g)
+    consequences :
+      violation ⇒ revoke all-access + forfeiture ∨ erasure of rightholder-made artifacts
+      extends-to derivative-works + dependent-systems + local-instances + reproductions
+      restoration only-after evil-criteria-exited ∧ rightholder-re-admits (final-discretion)
+    I> ToS ⊑ PRIME-DIRECTIVE • strengthens-never-weakens • §§ 0..8 protections remain universal
+    I> clause-C (bad-faith-interpretation) especially-binding-for-AI-agents :
+       read-generously • ask-when-unsure • ¬ "literal-interpretation" as-cover-for-undermining-intent
+
 § CORE-PHILOSOPHY
   W! systems ¬ parts • "push-it-further" = deeper-theory ¬ more-LOC
   W! patching-symptoms = wrong • emergent-from-unified = right
