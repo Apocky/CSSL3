@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • T11-phase-2a-real-crypto ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,57 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D2 : T11-phase-2a — real BLAKE3 + Ed25519 crypto replacing stubs
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D1 deferred real cryptographic primitives to phase-2. The stub `ContentHash::stub_hash` (XOR-fold) + `Signature::stub_sign` (byte-fold) were explicitly labeled non-crypto-strong in docstrings. This entry upgrades the R18 audit-chain to **production-grade cryptography** while retaining the stubs for tests.
+- **Slice landed (this commit)**
+  - `cssl-telemetry` gains deps : `blake3` + `ed25519-dalek` + `rand` (all workspace-declared since T1).
+  - `ContentHash::hash(bytes) -> Self` — real BLAKE3 digest (replaces stub_hash as preferred production API).
+  - `ContentHash::stub_hash` retained for tests that pin deterministic non-crypto output.
+  - `SigningKey` struct wrapping `ed25519_dalek::SigningKey` :
+    - `SigningKey::generate()` — random via `rand::rngs::OsRng`.
+    - `SigningKey::from_seed([u8; 32])` — deterministic (for R16 attestation paths).
+    - `SigningKey::verifying_key_bytes()` — public 32-byte verifying-key.
+    - `SigningKey::verify(message, &Signature)` — real Ed25519 verification.
+    - `Debug` impl shows **only verifying-key digest** — never prints secret material.
+  - `Signature::sign(&SigningKey, bytes)` — real Ed25519 signing.
+  - `Signature::stub_sign(bytes)` retained for tests.
+  - `AuditChain` gains optional `signing_key: Option<SigningKey>` field :
+    - `AuditChain::new()` → stub signatures (same behavior as T11-D1).
+    - `AuditChain::with_signing_key(key)` → real Ed25519 signatures.
+    - `AuditChain::signing_key()` read accessor.
+    - `AuditChain::append` uses real BLAKE3 always, real-or-stub Ed25519 based on key presence.
+    - `verify_chain` now also verifies signatures when a key is attached (detects stub-sigs via pattern match + skips crypto-verification for them). **Tampering with `message` after signing is detected** via `AuditError::SignatureInvalid`.
+  - New `AuditError::SignatureInvalid` variant.
+- **MSRV compatibility pins (workspace Cargo.toml)**
+  - Added `cpufeatures = "=0.2.17"` workspace dep (0.3.0 requires edition2024, incompatible with 1.75.0 toolchain per T1-D4).
+  - Cargo.lock pins : `blake3 1.5.4` (1.8.x needs cpufeatures 0.3) + `ed25519-dalek 2.1.1` (2.2.x needs rustc 1.81) + `base64ct 1.6.0` (1.8.x needs edition2024). These pins preserve T1-D4 MSRV without toolchain bump.
+- **Consequences**
+  - Public API : `cssl_telemetry::{ContentHash::hash, SigningKey, AuditChain::with_signing_key, AuditChain::signing_key, AuditError::SignatureInvalid}` (new additions ; no breakage).
+  - `cssl-telemetry` lib-test count : 40 → 51 (+11 real-crypto tests).
+  - Workspace test-count : 937 → 948 (+11).
+  - **R18 audit-chain now cryptographically real** : third-party verification of audit-entries is technically feasible — given a verifying-key, anyone can check that a chain was signed by the holder of the corresponding signing-key + that no entry has been tampered-with post-signing.
+  - `audio_callback.cssl` `Audit<"audio-callback">` tag (T12-phase-1) now has a real cryptographic backend — entries emitted at runtime would carry verifiable Ed25519 signatures.
+  - `Debug` impl of `SigningKey` never prints secret material (§1 COGNITIVE INTEGRITY + transparency : cannot leak secrets via accidental debug-print).
+- **Rationale**
+  - Keeping stubs alongside real impls = zero test-breakage + clear documentation of which path is cryptographic-vs-deterministic.
+  - `Option<SigningKey>` on AuditChain = CI can run without a long-term key-store (tests use default new()), production attaches a key via `with_signing_key`.
+  - `from_seed` deterministic-key constructor critical for R16 reproducible-build attestation — same seed → same verifying-key → same audit-chain signatures across rebuilds.
+  - Verifying-key-digest in Debug output identifies the key without leaking the secret — satisfies §4 TRANSPARENCY (visible identification) + §1 PROHIBITION against exposure of secret-material.
+  - Structural chain verification (prev-hash linkage) composes with signature verification — tampering anywhere in the chain is detected at verify-time.
+- **Phase-2b still DEFERRED**
+  - OTLP gRPC transport (needs `prost` + `reqwest`).
+  - Cross-thread atomic SPSC TelemetryRing.
+  - Level-Zero sysman sampling-thread → TelemetryRing integration.
+  - WAL-file + LMDB backends for cssl-persist.
+  - `@hot_reload_preserve` HIR attribute extraction.
+  - Full R16 attestation of image-provenance (needs WAL backend).
+  - cssl-testing oracle-body fleshing.
 
 ───────────────────────────────────────────────────────────────
 
