@@ -46,39 +46,62 @@
   self-host  : ≤ 2 weeks elapsed  ( ¬ 24 months)
   vertical-slice (§§ 21) : ≤ 4 weeks elapsed
 
-§ REPO LAYOUT
+§ REPO LAYOUT  (reconciled @ T1-D1 : Cargo workspace with per-concern crates)
+  I> supersedes the earlier single-crate / src-subdirectory draft.
+  I> per-crate `#![forbid(unsafe_code)]` + FFI-crate `#![allow(unsafe_code)]` policy (T1-D5).
+
   CSSLv3/
-    specs/               design in CSLv3 (00..23 + SYNTHESIS_V2)
-    research/            prior-art + Q-deep-dives
-    compiler-rs/         stage0 Rust-hosted
-      src/
-        lex/  parse/  ast/  hir/  mir/  lir/
-        caps/  effects/  ifc/  autodiff/  jets/  staging/  macros/
-        smt/  futamura/
-        mlir_bridge/  (§§ 15)
-        cgen/
-          cpu_cranelift/     (stage0)
-          cpu_owned/         (stage1 — §§ 14)
-          gpu_spirv/         (rspirv for Vulkan+L0+WebGPU)
-          gpu_dxil/          (D3D12 via DirectXShaderCompiler)
-          gpu_msl/           (Metal Shading Language)
-          gpu_wgsl/          (WebGPU)
-        host/
-          submit_vulkan/
-          submit_level_zero/   (R18)
-          submit_d3d12/
-          submit_metal/
-          submit_webgpu/
-          submit_gnm/  submit_nvn/  (console-stubs)
-        telemetry/          (§§ 22 ring-buffer + exporters)
-        testing/            (§§ 23 oracle-modes)
-        persist/            (§§ 18 orthogonal-persistence)
-      tests/
-      Cargo.toml
+    specs/               design in CSLv3 (00..23 + SYNTHESIS_V2 + THEOREMS + README)
+    research/            prior-art + Q-deep-dives (S1..S10 + Q6 + 99_SYNTHESIS + 00_MANIFEST)
+    DECISIONS.md         cross-crate architectural-choice log (T1-D1..T1-D7 + T2-D1..T2-D5 + T3-D1..T3-D4)
+    SESSION_1_HANDOFF.md live session-state tracker
+    .github/workflows/   §§ 23-faithful CI pipeline (ci.yml : fast + PR + nightly + hw-matrix)
+    scripts/             helper-scripts
+      validate_spec_crossrefs.py   §§ X-reference validator (skips local-section refs)
+      differential_lex_vs_odin.py  Rust-port ↔ parser.exe --tokens oracle driver (T10)
+    compiler-rs/         stage0 Rust-hosted Cargo workspace
+      Cargo.toml              workspace : members + [workspace.dependencies] + [workspace.lints]
+      Cargo.lock              R16-reproducibility : committed
+      rust-toolchain.toml     pinned 1.75.0 minimal-profile + rustfmt + clippy
+      rustfmt.toml            stable-rustfmt options (edition=2021 / max_width=100)
+      .perf-baseline/         §§ 23 regression-baseline corpus (populated @ T11)
+      tests/golden/           §§ 23 golden-fixture corpus (populated @ T10+)
+      crates/                 31 per-concern crates :
+        cssl-lex              dual-surface lexer (logos + hand-rolled)          [T2 ✓]
+        cssl-parse            dual-surface parser (hand-rolled recursive-descent) [T3]
+        cssl-ast              CST + source-preservation primitives + Diagnostic [T2 + T3]
+        cssl-hir              typed-elaborated HIR + inference                   [T3]
+        cssl-mir              MLIR-dialect bridge + structured-MIR               (§§ 02 + 15)
+        cssl-lir              low-level IR target-emission orchestration         (§§ 02 + 14)
+        cssl-caps             Pony-6 capability checker + Vale gen-refs          (§§ 12)
+        cssl-effects          Koka row-polymorphic effects + evidence-passing    (§§ 04)
+        cssl-ifc              Jif-DLM label lattice + PRIME-DIRECTIVE encoding   (§§ 11)
+        cssl-autodiff         source-to-source automatic differentiation         (§§ 05)
+        cssl-jets             Jet<T,N> higher-order AD                           (§§ 17)
+        cssl-staging          @staged specializer + #run comptime                (§§ 06)
+        cssl-macros           Racket-hygienic macros + proc-macros               (§§ 13)
+        cssl-smt              Z3 / CVC5 / KLEE drivers + proof-cache             (§§ 20)
+        cssl-futamura         P1 / P2 / P3 partial-evaluation infra              (§§ 19)
+        cssl-mlir-bridge      mlir-sys + melior FFI wrapper                      (§§ 15)    [FFI]
+        cssl-cgen-cpu-cranelift  Cranelift CPU codegen                            (stage0 throwaway)
+        cssl-cgen-gpu-spirv   rspirv SPIR-V module emitter                        (§§ 07 + 14)
+        cssl-cgen-gpu-dxil    DXIL emitter via DirectXShaderCompiler shim         (§§ 14)
+        cssl-cgen-gpu-msl     MSL emitter via spirv-cross shim                    (§§ 14)
+        cssl-cgen-gpu-wgsl    WGSL emitter via Tint shim                          (§§ 14)
+        cssl-host-vulkan      Vulkan 1.4.333 host-submission via ash               [FFI]
+        cssl-host-level-zero  Intel L0 host-submission + sysman (R18)              [FFI]
+        cssl-host-d3d12       D3D12 host-submission via windows-rs                 [FFI]
+        cssl-host-metal       Metal host-submission (cfg-gated)                    [FFI]
+        cssl-host-webgpu      WebGPU host-submission via wgpu (safe-API)
+        cssl-telemetry        R18 ring-buffer + sysman + OTLP + audit-chain       (§§ 22)
+        cssl-testing          §§ 23 oracle-modes dispatcher + metrics + R16 hook   [T1 ✓]
+        cssl-persist          orthogonal-persistence image + schema-migration     (§§ 18)
+        csslc                 CLI binary entry-point
+        cssl-rt               runtime library (linked into every CSSLv3 artifact)
     compiler-cssl/       stage1 self-hosted (populated @ self-host)
     c99-anchor/          generated-per-version C99-tarballs (R16)
-    stdlib/              CSSLv3 stdlib
-    examples/
+    stdlib/              CSSLv3 stdlib (stage1+)
+    examples/            (populated @ T10+)
       hello-triangle.cssl
       sdf-shader.cssl
       svdag-renderer.cssl

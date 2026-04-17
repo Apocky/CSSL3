@@ -111,6 +111,34 @@
   @hot_reload_test      — hot-reload invariance
   @fuzz(budget_sec=N)   — fuzzing-target
   @golden(path)         — golden-image/output comparison
+  @audit_test           — audit-chain verification (§§ 11 + §§ 22)
+
+§ ORACLE-MODE CANONICAL REGISTRY  (T1 scaffold, code-side)
+  I> enum `OracleMode` in compiler-rs/crates/cssl-testing/src/oracle.rs
+     maintains 1:1 correspondence with the attributes above.
+  I> scaffold-test `oracle_mode_count_matches_registry` asserts `ALL.len() == 12`.
+
+  ∀ attribute → Dispatcher trait in the matching submodule :
+    @test              → OracleMode::Unit            (handled by std `#[test]`)
+    @property          → OracleMode::Property        property.rs
+    @differential      → OracleMode::Differential    differential.rs
+    @metamorphic       → OracleMode::Metamorphic     metamorphic.rs
+    @bench             → OracleMode::Bench           bench.rs
+    @power_bench       → OracleMode::PowerBench      power.rs
+    @thermal_stress    → OracleMode::ThermalStress   thermal.rs
+    @replay            → OracleMode::Replay          replay.rs
+    @hot_reload_test   → OracleMode::HotReload       hot_reload.rs
+    @fuzz              → OracleMode::Fuzz            fuzz.rs
+    @golden            → OracleMode::Golden          golden.rs
+    @audit_test        → OracleMode::Audit           audit.rs
+
+  adjunct modules (not oracle-enum variants, but part of the harness) :
+    metrics.rs           FrequencySample + LatencyPercentiles + MetricsSnapshot
+    r16_attestation.rs   Attestation + Attester trait + Stage0Stub (T30 OG10 hook)
+
+  ∀ dispatcher submodule exposes : `Config` struct + `Outcome` enum + `Dispatcher` trait
+    + `Stage0Stub` unit-struct returning `Outcome::Stage0Unimplemented` at T1 scaffold.
+  T11 replaces `Stage0Stub` with the concrete runner for each mode.
 
 § GOLDEN-IMAGE FRAMEWORK
   per-rendering-example : reference-frame in tests/golden/

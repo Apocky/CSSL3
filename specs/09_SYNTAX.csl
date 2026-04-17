@@ -23,9 +23,17 @@
 
   § lexical
     ident       [_a-zA-Z][_a-zA-Z0-9']*
+      I> `'` is ident-continuation in Rust-hybrid : `f32'pos` = 1 token (§§ 16 surface-differs)
+      I> CSLv3-native surface excludes `'` from ident-continuation per §§ 13 morpheme rules
     int-lit     [0-9][0-9_]* (suffix 'i32 'u64 'usize ...)
     float-lit   [0-9]+.[0-9]+ (suffix 'f32 'f64 'f16)
     char-lit    'c'
+    apostrophe  '   standalone Apostrophe token (T2-D5) — emitted when `'` appears outside
+                    ident / char-literal / numeric-suffix contexts. Covers :
+                    - `T'tag` refinement suffix (§§ 03 refinement-types)
+                    - `SDF'L<k>` Lipschitz bound
+                    - lifetime-like annotations in CSLv3-native surface
+                    logos regex for `'` has `priority = 0` so well-formed `'c'` still wins.
     string-lit  "..."  raw-r#"..."#
     operator    + - * / % << >> & | ^ ! ~ = == != <= >= < > && ||
                 -> → => ⇒ :: ∷ |> ▷ ?? ..

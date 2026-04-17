@@ -124,7 +124,7 @@ Other artifacts :
 - `token.rs` : unified `Token { kind, span }`, `TokenKind` with sub-enums :
   `Keyword` (41 variants), `BracketKind`×`BracketSide`, `EvidenceMark` (8), `ModalOp` (10 incl. TODO/FIXME), `CompoundOp` (5 : TP/DV/KD/BV/AV), `Determinative` (6 pairs), `TypeSuffix` (9), `StringFlavor`
 - `rust_hybrid.rs` : `logos`-derived `RawToken → TokenKind` promotion; ASCII + Unicode arrow/comparison aliases; CoT line + CoT block regex; 16 unit tests + integration fixture
-- `csl_native.rs` : hand-rolled byte-stream lexer with indent-stack + bracket-depth suppression; full 74-glyph + ASCII-alias coverage per §§ 12_TOKENIZER; 29 unit tests
+- `csl_native.rs` : hand-rolled byte-stream lexer with indent-stack + bracket-depth suppression; full 74-glyph + ASCII-alias coverage per `CSLv3/specs/12_TOKENIZER`; 29 unit tests
 - `mode.rs` : 4-tier surface detection (extension > pragma > first-line > default); 17 detection tests
 - `lib.rs` : top-level `lex(source)` surface-dispatcher; 5 dispatch tests
 
@@ -137,12 +137,16 @@ Other artifacts :
 
 ───────────────────────────────────────────────────────────────
 
-§ SPEC-CORPUS DELTAS  (for Apocky review before-editing-specs)
+§ SPEC-CORPUS DELTAS  (applied 2026-04-16 post-T3.1)
 
-Queued for review :
-- `specs/01_BOOTSTRAP.csl` § REPO-LAYOUT : single-crate → workspace (matches T1-D1).
-- `specs/23_TESTING.csl` : add `OracleMode` registry as canonical enum (matches T1 scaffold).
-- `specs/09_SYNTAX.csl` § lexical : document `Apostrophe` as distinct from char-literal opener; acknowledge `T'tag` / `42'i32` / `SDF'L` / lifetime patterns (matches T2-D5).
+Applied :
+- ✓ `specs/01_BOOTSTRAP.csl` § REPO-LAYOUT : single-crate → Cargo workspace + 31 enumerated crates (T1-D1).
+- ✓ `specs/23_TESTING.csl` § @test ATTRIBUTES : added `@audit_test` + canonical `OracleMode` registry cross-reference with 12-variant 1:1 attribute mapping + adjunct-module listing (T1 cssl-testing scaffold).
+- ✓ `specs/09_SYNTAX.csl` § lexical : added `apostrophe` entry documenting `Apostrophe` token for non-morpheme `'…` attachments (`T'tag` / `SDF'L<k>` / lifetime-like) with surface-differing rules noted (T2-D5).
+
+Queued for future tasks :
+- `specs/02_IR.csl` § HIR contents : expand with CST → HIR elaboration-pass enumeration once T3-Turn-D lands.
+- `specs/16_DUAL_SURFACE.csl` § MODE-DETECTION : inline the 4-tier cascade with `Reason` enum once T3 parser surfaces dispatch behaviour beyond the current tests.
 
 ───────────────────────────────────────────────────────────────
 
