@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,48 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T10-D1 : Codegen phased — 5 backends text-emit now ; real FFI (cranelift + rspirv + dxc + metal + wgpu) deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T10 (codegen) scope per `specs/07_CODEGEN.csl` + `specs/14_BACKEND.csl` enumerates 5 backends : CPU-cranelift, GPU-SPIR-V, GPU-DXIL, GPU-MSL, GPU-WGSL. All 5 can be wired directly via pure-Rust deps (cranelift-codegen + rspirv + optional naga) or via CLI-subprocess for compiled outputs (dxc for DXIL, spirv-cross for MSL), but each of those deps has a non-trivial build-time + toolchain cost. Mirrors T6-D1 (MLIR-text-CLI) + T9-D1 (Z3/CVC5-CLI) FFI-avoidance pattern.
+- **Phase-1 landed (this commit)**
+  - `cssl-cgen-cpu-cranelift` : `CpuTarget` (7 µarchs : alder/raptor/meteor/arrow lake + zen4/zen5 + generic-v3) + `SimdTier` (scalar/sse2/avx2/avx512) + `CpuFeature` (17 flags : fma/bmi1/bmi2/popcnt/lzcnt/movbe/avx512f/dq/bw/vl/vnni/bf16/vaes/pclmulqdq/sha/rdrand/rdseed) + `Abi` (sysv/win64/darwin) + `ObjectFormat` (elf/coff/macho) + `CpuTargetProfile` + `ClifType` + `clif_type_for(MirType)` + `emit_module(MirModule, Profile) -> EmittedArtifact` (text-CLIF).
+  - `cssl-cgen-gpu-spirv` : `SpirvCapability` (32 variants covering Shader/Kernel/BDA/VK-memory-model/bindless/subgroup/CoopMatKHR/RayTracingKHR/atomic-float/Float16/64/mesh/debug-info) + `SpirvExtension` (24 KHR+EXT+INTEL+NV+ext-inst-set) + `SpirvTargetEnv` (9 : Vulkan-1.0..1.4 / universal-1.5/1.6 / OpenCL-kernel / WebGPU) + `MemoryModel` + `AddressingModel` + `ExecutionModel` (15 stages incl. ray-tracing) + `SpirvModule` + `SpirvSection` (11 rigid-ordered) + `emit_module(SpirvModule) -> String` (disasm-format, spirv-as-compatible).
+  - `cssl-cgen-gpu-dxil` : `ShaderModel` (SM 6.0..6.8) + `ShaderStage` (15 stages incl. ray-tracing) + `HlslProfile` + `RootSignatureVersion` (v1.0..v1.2) + `DxilTargetProfile` + `HlslModule`/`HlslStatement` builder + `emit_hlsl(MirModule, Profile, entry) -> HlslModule` + `DxcCliInvoker` subprocess adapter (stage-0 HLSL text + optional `dxc.exe -T <profile>` invocation).
+  - `cssl-cgen-gpu-msl` : `MslVersion` (2.0..3.2) + `MetalStage` (7 : vertex/fragment/kernel/object/mesh/tile/visible) + `MetalPlatform` (macos/ios/tvos/visionos) + `ArgumentBufferTier` + `MslTargetProfile` + `MslModule`/`MslStatement` + `emit_msl(MirModule, Profile, entry)` + `SpirvCrossInvoker` subprocess adapter.
+  - `cssl-cgen-gpu-wgsl` : `WebGpuStage` (vertex/fragment/compute) + `WebGpuFeature` (7 : shader-f16/timestamp-query/subgroups/float32-filterable/dual-source-blending/bgra8unorm-storage/clip-distances) + `WgslLimits` (webgpu-default + compat presets) + `WgslTargetProfile` + `WgslModule`/`WgslStatement` + `emit_wgsl(MirModule, Profile, entry)`.
+  - Every crate emits a MIR → target-text artifact end-to-end with a canonical entry-point skeleton that matches the stage's calling-convention / attribute-set.
+- **Phase-2 deferred**
+  - Cranelift FFI integration : `cranelift-codegen` + `-frontend` + `-module` + `-object` for real CLIF → machine-code → object-file (ELF / COFF / Mach-O). Pure-Rust so no MSVC block, but heavy build-time ⇒ reviewed for size-vs-benefit vs. text-CLIF-at-stage-0 pattern.
+  - rspirv module-builder → real SPIR-V binary emission + `spirv-val` subprocess gate mandatory-per-CI.
+  - `dxc.exe` actually wired to CI Windows runner (skipped gracefully when binary absent).
+  - `spirv-cross --msl` validation round-trip.
+  - `metal-shaderconverter` Apple-only binary integration (CI-mac-only).
+  - `naga` WGSL round-trip validator (pure-Rust but pulls many deps).
+  - Full MIR body → target-IR lowering (stage-0 emits signature skeletons only).
+  - Structured-CFG preservation (scf.* → OpSelectionMerge / OpLoopMerge for SPIR-V).
+  - Debug-info emission (DWARF-5 / CodeView for CPU ; NonSemantic.Shader.DebugInfo.100 for SPIR-V).
+  - Fat-binary assembly (§§ 07_CODEGEN § FAT-BINARY + §§ 14 § FAT-BINARY-ASSEMBLY).
+- **Rationale**
+  - Same FFI-avoidance pattern as T6-D1 + T9-D1 : text-emission pipeline validates end-to-end composition before pulling in heavy backend-specific deps. Keeps stage-0 on gnu-ABI per T1-D7.
+  - All 5 targets share the same `MirModule → target-text → EmittedArtifact` shape — downstream consumers can treat them uniformly through a `CodegenBackend` trait (phase-2).
+  - Entry-point skeletons with correct calling-convention attributes (`[numthreads(...)]` for HLSL compute, `[[kernel]]` + `[[thread_position_in_grid]]` for MSL, `@compute @workgroup_size(...)` for WGSL, `OpEntryPoint ... GLCompute %fn "fn"` for SPIR-V) exercise the per-target signature semantics without needing a full body-lowering pass.
+  - CI subprocess adapters (dxc / spirv-cross) gracefully degrade when the binary is absent — CSSLv3 CI installs them where needed, other environments get HLSL/MSL text + documented `BinaryMissing` outcome.
+- **Consequences**
+  - Public APIs :
+    - `cssl_cgen_cpu_cranelift::{CpuTarget, CpuTargetProfile, SimdTier, CpuFeature, CpuFeatureSet, Abi, ObjectFormat, DebugFormat, ClifType, clif_type_for, emit_module, EmittedArtifact, CpuCodegenError}`.
+    - `cssl_cgen_gpu_spirv::{SpirvCapability, SpirvCapabilitySet, SpirvExtension, SpirvExtensionSet, SpirvTargetEnv, MemoryModel, AddressingModel, ExecutionModel, SpirvModule, SpirvSection, emit_module, SpirvEmitError}`.
+    - `cssl_cgen_gpu_dxil::{ShaderModel, ShaderStage, HlslProfile, RootSignatureVersion, DxilTargetProfile, HlslModule, HlslStatement, emit_hlsl, DxilError, DxcCliInvoker, DxcInvocation, DxcOutcome}`.
+    - `cssl_cgen_gpu_msl::{MslVersion, MetalStage, MetalPlatform, ArgumentBufferTier, MslTargetProfile, MslModule, MslStatement, emit_msl, MslError, SpirvCrossInvoker, SpirvCrossInvocation, SpirvCrossOutcome}`.
+    - `cssl_cgen_gpu_wgsl::{WebGpuStage, WebGpuFeature, WgslLimits, WgslTargetProfile, WgslModule, WgslStatement, emit_wgsl, WgslError}`.
+  - Each crate carries `cssl-mir` as a path-dep + `thiserror` for error enums.
+  - Each crate has scaffold-level clippy allowances (`match_same_arms`, `module_name_repetitions`) pending T10-phase-2 stabilization.
+  - +151 new lib-tests across 5 crates (36 cranelift + 32 spirv + 30 dxil + 29 msl + 24 wgsl).
+  - CLI-subprocess adapters (DxcCliInvoker + SpirvCrossInvoker) are tested with an impossible-path binary to assert the `BinaryMissing` / `IoError` graceful-failure path.
 
 ───────────────────────────────────────────────────────────────
 

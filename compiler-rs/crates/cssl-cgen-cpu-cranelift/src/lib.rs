@@ -1,22 +1,57 @@
 //! CSSLv3 stage0 — Cranelift-based CPU codegen (stage0 throwaway).
 //!
-//! Authoritative design : `specs/07_CODEGEN.csl` + `specs/14_BACKEND.csl`.
+//! § SPEC : `specs/07_CODEGEN.csl` § CPU BACKEND + `specs/14_BACKEND.csl`.
 //!
-//! § STATUS : T10 scaffold — `llvm` subset → CLIF lowering pending.
-//! § STAGE  : stage0-only — stage1+ replaces with `cssl-cgen-cpu-owned` per §§ 14_BACKEND.
-//! § DEBUG  : DWARF-5 (ELF) + CodeView (COFF) emission per §§ 07_CODEGEN.
+//! § SCOPE (T10-phase-1 / this commit)
+//!   - [`CpuTarget`]         — µarch enum (Alder/Raptor/Meteor/Arrow Lake + Zen4/5 + generic-v3).
+//!   - [`SimdTier`]           — SIMD ISA tier (ScalarOnly / Sse2 / Avx2 / Avx512).
+//!   - [`CpuFeature`]         — individual feature flags (FMA / BMI1/2 / POPCNT / LZCNT / MOVBE / AVX512F / AVX512DQ / …).
+//!   - [`Abi`]                — SysV-AMD64 / Windows-x64 / Darwin-AMD64.
+//!   - [`ObjectFormat`]       — ELF / COFF / `MachO`.
+//!   - [`CpuTargetProfile`]   — bundle of { target, simd-tier, feature-set, abi, object-format, debug-format }.
+//!   - [`emit_module`]        — MIR [`MirModule`] → stage-0 text-CLIF artifact with per-fn skeleton.
+//!   - [`CpuCodegenError`]    — emission error enum.
+//!
+//! § T10-phase-2 DEFERRED
+//!   - `cranelift-codegen` + `cranelift-frontend` + `cranelift-module` + `cranelift-object` FFI
+//!     integration (pure-Rust so no MSVC block, but heavy build-time ⇒ deferred until validated-
+//!     reproducible on Apocky's machine).
+//!   - Per-op lowering tables (MIR [`CsslOp`] → CLIF opcodes).
+//!   - regalloc2 dispatch + linear-scan fallback.
+//!   - Machine-code emission + `cranelift-object` object-file writing (ELF / COFF / `MachO`).
+//!   - DWARF-5 + CodeView debug-info emission.
+//!   - Runtime CPU-dispatch (AVX2 + AVX-512 multi-variant fat-kernels).
+//!
+//! [`MirModule`]: cssl_mir::MirModule
+//! [`CsslOp`]: cssl_mir::CsslOp
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::module_name_repetitions)]
 
-/// Crate version, exposes `CARGO_PKG_VERSION`.
+pub mod abi;
+pub mod emit;
+pub mod feature;
+pub mod target;
+pub mod types;
+
+pub use abi::{Abi, ObjectFormat};
+pub use emit::{emit_module, CpuCodegenError, EmittedArtifact};
+pub use feature::{CpuFeature, CpuFeatureSet, SimdTier};
+pub use target::{CpuTarget, CpuTargetProfile, DebugFormat};
+pub use types::{clif_type_for, ClifType};
+
+/// Crate version exposed for scaffold verification.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(test)]
 mod scaffold_tests {
+    use super::STAGE0_SCAFFOLD;
+
     #[test]
     fn scaffold_version_present() {
-        assert!(!super::STAGE0_SCAFFOLD.is_empty());
+        assert!(!STAGE0_SCAFFOLD.is_empty());
     }
 }

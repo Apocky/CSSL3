@@ -57,22 +57,42 @@ dependencies = [
 [[package]]
 name = "cssl-cgen-cpu-cranelift"
 version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-cgen-gpu-dxil"
 version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-cgen-gpu-msl"
 version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-cgen-gpu-spirv"
 version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-cgen-gpu-wgsl"
 version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-effects"

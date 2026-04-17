@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ ; T10 (cgen-cpu + cgen-gpu + host-*) next
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ + T10-phase-1-codegen (5 codegen backends : cranelift-CPU + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit) ✓ ; T10-hosts (5 host adapters) + T11 (telemetry+testing+persist) next
 
 ───────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@
 | D7  | autodiff + jets                                       | ◐ cssl-autodiff (rules / decls / variant-naming) + cssl-jets (JetOrder / JetOp / sig-validators) ✓ (T7-phase-1) ; rule-application + tape + GPU-loc pending T7-phase-2 |
 | D8  | staging + macros + futamura                           | ◐ cssl-staging + cssl-macros + cssl-futamura (data-model + registries + hygiene-primitives) ✓ (T8-phase-1) ; expansion + comptime-eval + P3-bootstrap pending T8-phase-2 |
 | D9  | smt — Z3 / CVC5 / KLEE                                | ◐ cssl-smt (Theory/Sort/Term/Literal + Query/FnDecl/Assertion + emit_smtlib + Z3/CVC5-CLI subprocess solvers + discharge stub) ✓ (T9-phase-1) ; FFI + KLEE + proof-certs pending T9-phase-2 |
-| D10 | cgen-cpu + cgen-gpu + host-*                          | ○ pending T10  |
+| D10 | cgen-cpu + cgen-gpu + host-*                          | ◐ 5 codegen backends (cranelift + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit + dxc/spirv-cross CLI adapters) ✓ (T10-phase-1-codegen) ; 5 host-adapters + FFI-integration pending T10-phase-1-hosts + T10-phase-2 |
 | D11 | telemetry + testing + persist                         | ◐ cssl-testing oracle-dispatch stubs wired @ T1; full @ T11 |
 | D12 | examples/ hello-triangle + sdf-shader + audio-cb      | ○ pending T10+ |
 | D13 | DECISIONS.md + SESSION_1_HANDOFF.md                   | ✓ T1-D1..D7 recorded |
@@ -65,6 +65,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T8-D1** : Staging + Macros + Futamura = three parallel crates (staging/macros/futamura) ; phase-1 data model + registries, expansion deferred to T8-phase-2
 - **T3-D10** : T3.4-phase-2-refinement landed — `cssl-hir::refinement` obligation-generator walks HIR types + exprs for `{v : T | P}` / `T'tag` / `SDF'L<k>` sites ; produces `ObligationBag` ready for T9 discharge
 - **T9-D1** : SMT phased — phase-1 SMT-LIB 2.6 text-emit + Z3/CVC5-CLI subprocess solver adapters + stub obligation discharge ; FFI / KLEE / proof-certs / HIR→SMT-term translation deferred to T9-phase-2
+- **T10-D1** : Codegen phased — 5 backends (cranelift-CPU / SPIR-V / DXIL-HLSL / MSL / WGSL) text-emission now + `DxcCliInvoker` / `SpirvCrossInvoker` subprocess adapters ; real cranelift/rspirv/naga FFI + MIR-body lowering + spirv-val gate / dxc round-trip / fat-binary assembly deferred to T10-phase-2
 
 ───────────────────────────────────────────────────────────────
 
@@ -123,15 +124,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         |
-|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|
-| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              |
-| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     |
-| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            |
-| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            |
-| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           |
-| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                |
-| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      |
+| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         |
+|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|
+| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     |
+| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) |
+| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) |
+| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            |
+| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           |
+| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                |
+| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      |
 
 ───────────────────────────────────────────────────────────────
 
@@ -512,23 +513,108 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T10 (Codegen + Host layers)
+§ T10-phase-1-codegen ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T10 + §§ 14_BACKEND + §§ 10_HW :
-1. cssl-cgen-cpu-cranelift : MIR → Cranelift IR → JIT/AOT native code
-2. cssl-cgen-gpu-spirv : MIR → SPIR-V via rspirv (Vulkan + Vulkan-compute path)
-3. cssl-cgen-gpu-dxil : MIR → DXIL (D3D12 path)
-4. cssl-cgen-gpu-msl : MIR → MSL (Metal path)
-5. cssl-cgen-gpu-wgsl : MIR → WGSL (WebGPU + WGSL-as-source path)
-6. cssl-host-vulkan : ash runtime adapter + VK-1.4.333 feature-probe
-7. cssl-host-level-zero : Intel Arc primary-compute path (R18)
-8. cssl-host-d3d12 / -metal / -webgpu : other-target adapters
+`crates/cssl-cgen-cpu-cranelift/src/` :
+- `target.rs`   : CpuTarget (7 µarchs : Alder/Raptor/Meteor/Arrow Lake + Zen4/5 + generic-v3) +
+                  `default_simd_tier` + `triple` + CpuTargetProfile (windows/linux/darwin defaults) +
+                  DebugFormat (dwarf5 / codeview / none)
+- `feature.rs`  : SimdTier (scalar/sse2/avx2/avx512) monotonic-lattice + CpuFeature (17 flags) +
+                  CpuFeatureSet (ordered append + render-target-features)
+- `abi.rs`      : Abi (SysV / Win64 / Darwin) + ObjectFormat (Elf / Coff / MachO) +
+                  extension + typical-pairing
+- `types.rs`    : ClifType (9 : i8/16/32/64 + b1 + f16/32/64 + r64) + `clif_type_for(MirType)`
+- `emit.rs`     : `emit_module(&MirModule, &CpuTargetProfile) -> EmittedArtifact` with
+                  CLIF-like text + per-fn skeleton + CpuCodegenError (3 variants)
 
-Open for T10-start :
-- MSVC-toolchain switch gate : ash + level-zero-sys + mlir-sys + z3-sys all likely need MSVC ABI (T1-D7)
-- Backend-differential harness on : Arc A770 (Vulkan + L0) vs CPU-fallback
-- Per-target capability matrix : which cssl.* ops lower to which ISA subset
-- Example trilogy : hello-triangle / sdf-shader / audio-callback (T12 gate)
+`crates/cssl-cgen-gpu-spirv/src/` :
+- `capability.rs` : SpirvCapability (32 variants) + `requires_extension` + SpirvCapabilitySet
+                    + SpirvExtension (24 KHR/EXT/INTEL/NV + ext-inst-set) + SpirvExtensionSet
+                    (plain vs ext-inst-set split)
+- `target.rs`     : SpirvTargetEnv (9 profiles incl. Vulkan-1.0..1.4 / universal-1.5/1.6 /
+                    OpenCL-kernel / WebGPU) + MemoryModel (Simple/GLSL450/OpenCL/Vulkan) +
+                    AddressingModel (Logical/Physical32/64/PhysicalStorageBuffer64) +
+                    ExecutionModel (15 stages incl. full RT)
+- `module.rs`     : SpirvSection (11 rigid-ordered sections per `specs/07` § SPIR-V EMISSION
+                    INVARIANTS) + SpirvModule + SpirvEntryPoint + `seed_vulkan_1_4_defaults` +
+                    `seed_opencl_kernel_defaults`
+- `emit.rs`       : `emit_module(&SpirvModule) -> String` producing `spirv-as`-compatible
+                    disasm + SpirvEmitError + `minimal_vulkan_compute_module` helper
+
+`crates/cssl-cgen-gpu-dxil/src/` :
+- `target.rs`   : ShaderModel (SM 6.0..6.8) + ShaderStage (15 stages incl. RT/mesh/callable) +
+                  HlslProfile (stage + model with compat-check) + RootSignatureVersion
+                  (v1.0/1.1/1.2) + DxilTargetProfile (compute_default / vertex_default / pixel_default)
+- `hlsl.rs`     : HlslModule + HlslStatement (CBuffer / Struct / RwBuffer / Function / Raw)
+- `emit.rs`     : `emit_hlsl(&MirModule, &DxilTargetProfile, entry) -> HlslModule` +
+                  stage-aware semantic emission + DxilError
+- `dxc.rs`      : DxcCliInvoker subprocess wrapper (`dxc.exe -T ... -E ...`) + DxcInvocation
+                  + DxcOutcome (Success / DiagnosticFailure / BinaryMissing / IoError)
+
+`crates/cssl-cgen-gpu-msl/src/` :
+- `target.rs`    : MslVersion (2.0..3.2) + MetalStage (7 : vertex/fragment/kernel/object/mesh/
+                   tile/visible-fn) + `min_msl_version` check + MetalPlatform (macos/ios/tvos/
+                   visionos) + ArgumentBufferTier + MslTargetProfile
+- `msl.rs`       : MslModule + MslStatement (Include / UsingNamespace / Struct / Typedef /
+                   Function / Raw) + `seed_prelude` (`#include <metal_stdlib>` + `using namespace metal;`)
+- `emit.rs`      : `emit_msl(&MirModule, &MslTargetProfile, entry) -> MslModule` with
+                   per-stage MSL-attribute-form skeleton + MslError
+- `spirv_cross.rs` : SpirvCrossInvoker subprocess wrapper (`spirv-cross --msl --stage ...`)
+
+`crates/cssl-cgen-gpu-wgsl/src/` :
+- `target.rs`  : WebGpuStage (3 : vertex/fragment/compute) + WebGpuFeature (7 WebGPU feature flags) +
+                 WgslLimits (webgpu_default + compat presets with workgroup-size / bind-groups /
+                 storage-buffers) + WgslTargetProfile
+- `wgsl.rs`    : WgslModule + WgslStatement (Enable / Struct / Binding / EntryFunction /
+                 HelperFunction / Raw)
+- `emit.rs`    : `emit_wgsl(&MirModule, &WgslTargetProfile, entry) -> WgslModule` with
+                 `@compute @workgroup_size(...)` / `@vertex` / `@fragment` skeletons +
+                 auto-derived `enable f16` / `enable subgroups` directives + WgslError
+
+§ T10-phase-1-codegen COVERAGE
+- Every backend emits MIR → target-specific source text with canonical entry-point
+  skeletons matching the stage's calling-convention + attribute set
+- Rigid SPIR-V section ordering enforced (Capabilities → Extensions → ExtInstImports →
+  MemoryModel → EntryPoints → ExecutionModes → Debug → Annotations → Types → FnDecl → FnDef)
+- HLSL / MSL / WGSL output is textual + diff-stable for snapshot-testing (T11-phase-1)
+- Calling-convention bridges : HLSL `SV_DispatchThreadID`, MSL `thread_position_in_grid`,
+  WGSL `@builtin(global_invocation_id)` all emitted per-stage
+- CLI-subprocess adapters (DxcCliInvoker + SpirvCrossInvoker) gracefully degrade when
+  the binary is absent (BinaryMissing outcome tested without panic)
+
+§ T10-phase-2-codegen DEFERRED
+- Cranelift FFI integration : `cranelift-codegen` + `-frontend` + `-module` + `-object`
+  for real CLIF → machine-code → object-file (ELF / COFF / Mach-O)
+- rspirv module-builder → real SPIR-V binary emission
+- `spirv-val` / `dxc` / `spirv-cross` / `naga` wired into CI validation pipeline
+- Full MIR body → target-IR op lowering tables
+- Structured-CFG preservation (scf.* → OpSelectionMerge / OpLoopMerge)
+- Debug-info emission (DWARF-5 / CodeView / NonSemantic.Shader.DebugInfo.100)
+- Fat-binary assembly (header + host-obj + gpu-blobs + telemetry-schema + audit-manifest)
+- Runtime CPU-dispatch multi-variant fat-kernels (AVX2 + AVX-512)
+- `metal-shaderconverter` Apple-only toolchain integration
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T10-phase-1-hosts (5 host-adapter crates) + T11 (telemetry+testing+persist)
+
+Per §§ HANDOFF T10 + §§ 14_BACKEND § HOST-SUBMIT BACKENDS :
+1. cssl-host-vulkan : ash runtime adapter + VK-1.4.333 feature-probe + device-enum
+2. cssl-host-level-zero : Intel Arc primary-compute path (R18) + L0 + sysman-query
+3. cssl-host-d3d12 : windows-rs D3D12 device + command-queue + DXGI adapter-enum
+4. cssl-host-metal : metal crate (Apple-only) + argument-buffer + fn-constants
+5. cssl-host-webgpu : wgpu runtime adapter + WebGPU feature-probe
+
+Per §§ HANDOFF T11 + §§ 22_TELEMETRY + §§ 23_TESTING + §§ 18_PERSIST :
+1. cssl-telemetry : R18 probe ring + sysman capture + backend telemetry-query
+2. cssl-testing : flesh out every oracle-mode dispatch beyond stage-0 stub
+3. cssl-persist : orthogonal-persistence (LMDB or WAL-file backend)
+
+Open for T10-hosts-start :
+- FFI-avoidance : ash + level-zero-sys + windows-rs all need MSVC (T1-D7)
+  ⇒ phase-1 = capability-catalog + device-enum-enum only, phase-2 = real bindings
+- wgpu may work on gnu-ABI (pure-Rust core) but pulls heavy deps
+- metal crate Mac-only (skipped on Linux/Windows CI)
 
 ───────────────────────────────────────────────────────────────
 
