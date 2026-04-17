@@ -1,6 +1,6 @@
 [package]
 name                   = "cssl-smt"
-description            = "CSSLv3 stage0 — Z3 + CVC5 + KLEE SMT solver drivers with proof-cache"
+description            = "CSSLv3 stage0 — SMT-LIB emission + solver dispatch (Z3/CVC5 CLI)"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -9,3 +9,8 @@ authors.workspace      = true
 
 [lints]
 workspace = true
+
+[dependencies]
+cssl-ast  = { path = "../cssl-ast" }
+cssl-hir  = { path = "../cssl-hir" }
+thiserror = { workspace = true }

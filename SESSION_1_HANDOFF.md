@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ ; T3.4-phase-2 refinement + T9 SMT next
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ ; T10 (cgen-cpu + cgen-gpu + host-*) next
 
 ───────────────────────────────────────────────────────────────
 
@@ -14,13 +14,13 @@
 |-----|-------------------------------------------------------|----------------|
 | D1  | compiler-rs/ Cargo-workspace skeleton                 | ✓ complete     |
 | D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
-| D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution + HM inference + effect-rows ✓ ; cap/IFC/refinement pending T3.4-phase-2 |
+| D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution + HM inference + effect-rows + cap + refinement-obligation-gen ✓ ; IFC/AD-legality/@staged/hygiene pending T3.4-phase-2 (rest) |
 | D4  | effects — 28 effects + evidence-passing               | ◐ registry + discipline + banned-composition ✓ (T4-phase-1) ; Xie+Leijen transform pending T4-phase-2 |
 | D5  | caps — Pony-6 + gen-refs                              | ◐ cssl-caps (CapKind + AliasMatrix + subtype + LinearTracker + GenRef) + cssl-hir cap_check sig-level pass ✓ ; body-walk pending T5-phase-2 |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
-| D7  | autodiff + jets                                       | ○ pending T7   |
-| D8  | staging + macros + futamura                           | ○ pending T8   |
-| D9  | smt — Z3 / CVC5 / KLEE                                | ○ pending T9   |
+| D7  | autodiff + jets                                       | ◐ cssl-autodiff (rules / decls / variant-naming) + cssl-jets (JetOrder / JetOp / sig-validators) ✓ (T7-phase-1) ; rule-application + tape + GPU-loc pending T7-phase-2 |
+| D8  | staging + macros + futamura                           | ◐ cssl-staging + cssl-macros + cssl-futamura (data-model + registries + hygiene-primitives) ✓ (T8-phase-1) ; expansion + comptime-eval + P3-bootstrap pending T8-phase-2 |
+| D9  | smt — Z3 / CVC5 / KLEE                                | ◐ cssl-smt (Theory/Sort/Term/Literal + Query/FnDecl/Assertion + emit_smtlib + Z3/CVC5-CLI subprocess solvers + discharge stub) ✓ (T9-phase-1) ; FFI + KLEE + proof-certs pending T9-phase-2 |
 | D10 | cgen-cpu + cgen-gpu + host-*                          | ○ pending T10  |
 | D11 | telemetry + testing + persist                         | ◐ cssl-testing oracle-dispatch stubs wired @ T1; full @ T11 |
 | D12 | examples/ hello-triangle + sdf-shader + audio-cb      | ○ pending T10+ |
@@ -63,6 +63,8 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T7-D1** : AD phased — rules table + decl collection + variant-naming (phase-1) ; rule-application deferred to T7-phase-2
 - **T7-D2** : Jet<T,N> = structural data-type ; order-dependent ops validated at T6 MIR ; runtime representation deferred
 - **T8-D1** : Staging + Macros + Futamura = three parallel crates (staging/macros/futamura) ; phase-1 data model + registries, expansion deferred to T8-phase-2
+- **T3-D10** : T3.4-phase-2-refinement landed — `cssl-hir::refinement` obligation-generator walks HIR types + exprs for `{v : T | P}` / `T'tag` / `SDF'L<k>` sites ; produces `ObligationBag` ready for T9 discharge
+- **T9-D1** : SMT phased — phase-1 SMT-LIB 2.6 text-emit + Z3/CVC5-CLI subprocess solver adapters + stub obligation discharge ; FFI / KLEE / proof-certs / HIR→SMT-term translation deferred to T9-phase-2
 
 ───────────────────────────────────────────────────────────────
 
@@ -121,15 +123,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         |
-|-------------------------------|----------------|-----------------|----------------------------------------|
-| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      |
-| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     |
-| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   |
-| Clippy warnings (`-D`)        | 0              | 0               | 0                                      |
-| CI jobs declared              | 19             | 19              | 19                                     |
-| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          |
-| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                |
+| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         |
+|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|
+| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              |
+| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     |
+| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            |
+| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            |
+| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           |
+| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                |
+| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      |
 
 ───────────────────────────────────────────────────────────────
 
@@ -370,21 +372,163 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T7 (AutoDiff source-to-source + Jets)
+§ T7-phase-1 ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T7 + §§ 05_AUTODIFF + §§ 17_JETS :
-1. autodiff crate : post-monomorphization HIR→HIR-with-diff-variants
-2. Rules-table per §§ 05 (FAdd, FMul, Sqrt, Call, Load/Store, If/Loop)
-3. tape-buffer allocation (iso-capability scoped)
-4. @checkpoint handling
-5. GPU-AD tape-location resolution
-6. jets crate : Jet<T, N> + cssl.jet.* op-lowering + @staged-per-N specialization
-7. Tests : bwd_diff(sphere_sdf)(p).d_p bit-exact vs analytic (killer-app gate)
+`crates/cssl-autodiff/src/` :
+- `rules.rs`     : DiffMode (Primal/Fwd/Bwd) + Primitive (15 : FAdd/FSub/FMul/FDiv/FNeg/
+                   Sqrt/Sin/Cos/Exp/Log/Call/Load/Store/If/Loop) + DiffRule +
+                   DiffRuleTable::canonical() → 30 rules (15 primitives × 2 non-primal modes)
+- `decl.rs`      : DiffDecl (name + def + params + `no_diff` / `lipschitz_bound` / `checkpoint`
+                   flags) + `from_fn` + `attr_matches` (interned-name resolver) +
+                   `collect_differentiable_fns(&HirModule, &Interner) -> Vec<DiffDecl>`
+- `transform.rs` : DiffTransform + DiffVariants (primal_name / fwd_name / bwd_name) +
+                   `register_all` walker
 
-Open for T7-start :
-- AD transform: HIR-to-HIR vs MIR-to-MIR ?
-- Tape representation : per-fn heap-array vs region-scoped arena ?
-- Jet<T,∞> co-inductive infrastructure : lazy-stream vs generative-stream ?
+`crates/cssl-jets/src/` :
+- `lib.rs`       : JetOrder (FIRST = 1, SECOND = 2) + JetOp (Construct/Project/Add/Mul/
+                   Apply) + JetSignature (operand-arity / result-arity / order-dependence) +
+                   JetError + validate_construct / validate_project / validate_binary_order
+
+§ T7-phase-1 COVERAGE
+- Canonical rules-table with 30 entries ready for T7-phase-2 rule-application walker
+- `@differentiable` discovery + `@no_diff` / `@lipschitz_bound` / `@checkpoint` flag extraction
+- Variant-name generation (`foo` → `foo_fwd` / `foo_bwd`) at fn granularity
+- Jet<T, N> structural signatures + order-preservation validators (ready for T6 MIR lowering)
+
+§ T7-phase-2 DEFERRED
+- Walking HirExpr + applying rules at each primitive site
+- Tape-buffer allocation (iso-capability scoped)
+- `@checkpoint` attribute-arg extraction
+- GPU-AD tape-location resolution (device vs shared vs unified)
+- Killer-app gate : `bwd_diff(sphere_sdf)(p).d_p` bit-exact vs analytic
+- Jet<T, ∞> lazy-stream variant (T17 scope)
+
+───────────────────────────────────────────────────────────────
+
+§ T8-phase-1 ARTIFACTS (added 2026-04-17)
+
+`crates/cssl-staging/src/` :
+- `lib.rs`       : StageArg + StageArgKind (CompTime/Runtime/Polymorphic) + StagedDecl +
+                   `collect_staged_fns(&HirModule, &Interner) -> Vec<StagedDecl>` with full
+                   HirExpr walker (count_expr + count_block) counting `#run` sites +
+                   Specializer + SpecializationSite + StagingError
+
+`crates/cssl-macros/src/` :
+- `lib.rs`       : MacroTier (3 variants : Tier0ImportOnly / Tier1AttrAnnotation /
+                   Tier2PatternMatch) + ScopeId + HygieneMark (Racket set-of-scopes with
+                   add / remove / contains / flip / union) + SyntaxObject (equality respects
+                   mark) + ScopeAllocator + MacroDecl + MacroRegistry + MacroError
+
+`crates/cssl-futamura/src/` :
+- `lib.rs`       : FutamuraLevel (P1/P2/P3 with monotonic `order()`) + Projection +
+                   FixedPointRecord (converged iff hash-N == hash-N+1) + Orchestrator +
+                   FutamuraError
+
+§ T8-phase-1 COVERAGE
+- `@staged` discovery + per-stage-arg `CompTime|Runtime|Polymorphic` classification
+- `#run` site discovery via full HIR expression-tree walker
+- Racket hygienic-macro primitives : set-of-scopes + mark flip/union + scope allocator
+- Three-tier macro registry with collision detection + tier ordering
+- P1/P2/P3 Futamura projection tracker + hash-based fixed-point convergence detection
+
+§ T8-phase-2 DEFERRED
+- Actual specialization walk (clone fn + const-propagate)
+- Native comptime-eval (compile-native ; R14 avoid-Zig-20x)
+- `@type_info` / `@fn_info` / `@module_info` reflection API
+- Transform-dialect pass-schedule emission
+- Tier-2 pattern-match expansion (quasi-quotation + syntax-case)
+- Tier-3 `#run` proc-macro sandbox
+- P3 self-bootstrap fixed-point verification (needs running stage-1 compiler)
+
+───────────────────────────────────────────────────────────────
+
+§ T3.4-phase-2-refinement ARTIFACTS (added 2026-04-17)
+
+`crates/cssl-hir/src/` :
+- `refinement.rs` : ObligationKind (Predicate { text } / Tag { name } / Lipschitz { bound }) +
+                    RefinementObligation (id / origin / span / enclosing_def / kind /
+                    base_type_text) + ObligationId (u32 newtype) + ObligationBag
+                    (monotonic-append + push / get / iter / len) +
+                    `collect_refinement_obligations(&HirModule, &Interner) -> ObligationBag`
+                    + ObligationCtx (walk_item / walk_fn / walk_type / walk_expr) +
+                    pretty_type / pretty_expr helpers
+
+§ T3.4-phase-2-refinement COVERAGE
+- `{v : T | P(v)}` predicate refinements → ObligationKind::Predicate
+- `T'tag` refinement-sugar → ObligationKind::Tag { name : Symbol }
+- `SDF'L<k>` Lipschitz-bound refinements → ObligationKind::Lipschitz { bound : u32 }
+- Types walked recursively through Tuple / Array / Slice / Reference / Capability /
+  Function / Path shapes (refinements nested in `Vec<{v : i32 | v > 0}>` caught)
+- Each obligation captures origin HirId + Span + enclosing DefId for diagnostics
+- Stable ObligationId handout (monotonic u32) suitable for downstream caching
+
+§ T3.4-phase-3 DEFERRED (remaining T3.4-phase-2 slices)
+- Capability inference (already landed T5-phase-1 sig-level ; body-walk pending)
+- IFC-label propagation (Jif-DLM per §§ 11)
+- AD-legality check (§§ 05 closure)
+- `@staged` stage-arg comptime-check (§§ 06)
+- Macro hygiene-mark propagation through expansion (§§ 13)
+- HIR-expression → SMT-Term translation (T9-phase-2 counterpart)
+
+───────────────────────────────────────────────────────────────
+
+§ T9-phase-1 ARTIFACTS (added 2026-04-17)
+
+`crates/cssl-smt/src/` :
+- `term.rs`   : Theory (7 variants : LIA / LRA / NRA / BV / UF / UFLIA / ALL with QF_
+                prefixes) + Sort (Bool / Int / Real / BitVec(u32) / Uninterp(String)) +
+                Literal (Bool / Int / Rational / BitVec) + Term (Var / Lit / App / Forall /
+                Exists / Let) with full recursive `render()` → SMT-LIB text
+- `query.rs`  : FnDecl (name + params + return) + Assertion (term + optional `:named` label)
+                + Query (theory + sort_decls + fn_decls + assertions + get_model +
+                get_unsat_core flags) + Verdict (Sat / Unsat / Unknown)
+- `emit.rs`   : `emit_smtlib(&Query) -> String` producing valid SMT-LIB 2.6 :
+                `(set-logic)(declare-sort)(declare-fun)(assert)(check-sat)(get-model)
+                (get-unsat-core)`
+- `solver.rs` : SolverKind (Z3 / Cvc5) + Solver trait + SolverError (BinaryMissing /
+                NonZeroExit / UnparseableOutput / Io) + Z3CliSolver (`z3 -in -smt2`) +
+                Cvc5CliSolver (`cvc5 --lang=smt2 -`) + `run_cli` (spawn subprocess + pipe
+                SMT-LIB through stdin + parse first-line verdict) +
+                `discharge(&ObligationBag, &Solver) -> Vec<(ObligationId, Result<Verdict,
+                SolverError>)>` with stub trivial-query per-obligation
+
+§ T9-phase-1 COVERAGE
+- Complete SMT-LIB 2.6 textual emission for theory declaration + sort declaration +
+  fn declaration + assertion + check-sat + model/unsat-core extraction
+- Term tree with quantifier (forall / exists) + let-binding rendering
+- Z3 + CVC5 CLI subprocess adapters mirroring T6-D1 MLIR-text-CLI fallback pattern —
+  no `z3-sys` / `cvc5-sys` FFI required (keeps stage-0 on gnu-ABI per T1-D7)
+- Obligation-bag → stub-query → subprocess → verdict pipeline composes end-to-end
+- 28 lib-tests covering every rendering path + emission shape + solver-error display +
+  stub-discharge shape
+
+§ T9-phase-2 DEFERRED
+- Direct `z3-sys` / `cvc5-sys` FFI (blocked on MSVC toolchain per T1-D7)
+- KLEE symbolic-exec fallback for coverage-guided paths
+- Proof-certificate emission + Ed25519-signed certs (R18 audit-chain per §§ 22)
+- Per-obligation-hash disk cache
+- Full HIR-expression → SMT-Term translation (stage-0 uses trivial `(assert true)` stubs)
+- Incremental solving (`push` / `pop` / `assert-soft` / weighted optimization)
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T10 (Codegen + Host layers)
+
+Per §§ HANDOFF T10 + §§ 14_BACKEND + §§ 10_HW :
+1. cssl-cgen-cpu-cranelift : MIR → Cranelift IR → JIT/AOT native code
+2. cssl-cgen-gpu-spirv : MIR → SPIR-V via rspirv (Vulkan + Vulkan-compute path)
+3. cssl-cgen-gpu-dxil : MIR → DXIL (D3D12 path)
+4. cssl-cgen-gpu-msl : MIR → MSL (Metal path)
+5. cssl-cgen-gpu-wgsl : MIR → WGSL (WebGPU + WGSL-as-source path)
+6. cssl-host-vulkan : ash runtime adapter + VK-1.4.333 feature-probe
+7. cssl-host-level-zero : Intel Arc primary-compute path (R18)
+8. cssl-host-d3d12 / -metal / -webgpu : other-target adapters
+
+Open for T10-start :
+- MSVC-toolchain switch gate : ash + level-zero-sys + mlir-sys + z3-sys all likely need MSVC ABI (T1-D7)
+- Backend-differential harness on : Arc A770 (Vulkan + L0) vs CPU-fallback
+- Per-target capability matrix : which cssl.* ops lower to which ISA subset
+- Example trilogy : hello-triangle / sdf-shader / audio-callback (T12 gate)
 
 ───────────────────────────────────────────────────────────────
 

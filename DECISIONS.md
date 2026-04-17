@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,69 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T9-D1 : SMT phased — text-emit + CLI-subprocess Z3/CVC5 adapters now ; FFI + KLEE + proof-certs deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T9 (SMT integration) scope per §§ 20_SMT enumerates : SMT-LIB emission, Z3 + CVC5 + KLEE backends, per-obligation discharge, caching, Ed25519-signed proof-certificates for R18 audit-chain. Landing the full surface in one commit is ~8K LOC and requires `z3-sys` / `cvc5-sys` FFI which needs MSVC toolchain per T1-D7 (not yet selected). Mirrors the same FFI-avoidance pattern as T6-D1 (MLIR-text-CLI fallback).
+- **Phase-1 landed**
+  - `Theory` enum (7 variants : LIA/LRA/NRA/BV/UF/UFLIA/ALL with `QF_` prefixes).
+  - `Sort` enum (Bool/Int/Real/BitVec(N)/Uninterp(name)) with `render()` → SMT-LIB text.
+  - `Literal` (Bool/Int/Rational/BitVec) + `Term` tree (Var/Lit/App/Forall/Exists/Let) with full recursive rendering.
+  - `Query` (logic + sort-decls + fn-decls + assertions + get-model/unsat-core flags) + `FnDecl` + `Assertion` (labeled/unlabeled).
+  - `Verdict` enum (Sat/Unsat/Unknown) + `SolverError` (BinaryMissing/NonZeroExit/UnparseableOutput/Io).
+  - `emit_smtlib(&Query) -> String` producing valid SMT-LIB 2.6 text : `(set-logic)(declare-sort)(declare-fun)(assert)(check-sat)(get-model)(get-unsat-core)`.
+  - `Solver` trait + `Z3CliSolver` / `Cvc5CliSolver` subprocess wrappers : spawn `z3 -in -smt2` or `cvc5 --lang=smt2 -`, pipe SMT-LIB through stdin, parse first stdout line for `sat` / `unsat` / `unknown`.
+  - `discharge(&ObligationBag, &Solver) -> Vec<(ObligationId, Result<Verdict, SolverError>)>` : stage-0 stub produces trivially-true `(assert true)(check-sat)` queries per obligation — exercises the pipeline without yet encoding predicate semantics.
+- **Phase-2 deferred**
+  - Direct `z3-sys` / `cvc5-sys` FFI (blocked on MSVC toolchain per T1-D7).
+  - KLEE symbolic-exec fallback for coverage-guided paths.
+  - Proof-certificate emission + Ed25519-signed certs (R18 audit-chain).
+  - Per-obligation-hash disk cache.
+  - Full HIR-expression → SMT-Term translation (stage-0 uses text proxies).
+  - Incremental solving (`push` / `pop`).
+- **Rationale**
+  - Same FFI-avoidance pattern as T6 MLIR : CLI-subprocess gives a working verdict pipeline without any C++ link-time dependency, keeping stage-0 on `x86_64-pc-windows-gnu` per T1-D7.
+  - Trivially-true stub discharge validates that `ObligationBag → Query → SMT-LIB text → subprocess → parsed verdict` composes end-to-end ; semantics follow in T9-phase-2 when HIR-to-SMT translation lands.
+  - Solver-binary absence is a recoverable error (`BinaryMissing`) ; CI installs Z3 via apt/brew/choco at bootstrap.
+- **Consequences**
+  - Public API : `cssl_smt::{Theory, Sort, Term, Literal, Query, FnDecl, Assertion, Verdict, emit_smtlib, discharge, Solver, SolverKind, SolverError, Z3CliSolver, Cvc5CliSolver}`.
+  - Crate-level clippy allowances : `match_same_arms, no_effect_underscore_binding, struct_excessive_bools, missing_errors_doc, use_self` (scaffold-stage ergonomics).
+  - 28 lib-tests covering Theory naming + Sort/Literal/Term rendering + Query construction + emission + solver-error display + stub-discharge shape.
+  - Unit tests intentionally do NOT invoke actual solver binaries — CI has a separate job that installs solvers ; unit tests exercise only dispatch + emit.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D10 : T3.4-phase-2 refinement — obligation-generator landed ; SMT-discharge at T9-phase-2
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D9 deferred refinement-obligation generation to T3.4-phase-2, gated on T9 SMT availability. With T9-phase-1 landing the SMT-LIB emit + solver-dispatch pipeline in the same commit, the obligation-generator is now viable as a consumer-facing API surface even before the full HIR-expression-to-SMT-term translation lands.
+- **Phase-2-refinement landed**
+  - `cssl_hir::refinement` module : new module split out of `cssl-hir`.
+  - `ObligationKind` enum (3 variants) : `Predicate { text }` for `{v : T | P(v)}` sugar, `Tag { name }` for `T'tag` shorthand, `Lipschitz { bound }` for `SDF'L<k>` bounds.
+  - `RefinementObligation` record : `id : ObligationId` (u32 newtype) + `origin : HirId` + `span : Span` + `enclosing_def : Option<DefId>` + `kind : ObligationKind` + `base_type_text : String` (pretty-printed base type for diagnostics).
+  - `ObligationBag` : monotonic-append container with `push` / `get` / `iter` / `len` + stable `ObligationId` handout.
+  - `collect_refinement_obligations(&HirModule, &Interner) -> ObligationBag` : walks every `HirItem::Fn`, enters `walk_type(param.ty)` + `walk_type(return_ty)` + `walk_expr(body)`, recurses through `Tuple / Array / Slice / Reference / Capability / Function / Path` type-shapes.
+  - Each `HirRefinementKind::{Predicate, Tag, Lipschitz}` site generates exactly one `RefinementObligation` with its originating `HirId` + span captured.
+  - `pretty_type` + `pretty_expr` helpers render compact diagnostic-facing text for obligation `base_type_text` + predicate-text fields.
+- **Rationale**
+  - The obligation-bag is T9's input surface — landing it now means `cssl-smt::discharge(&ObligationBag, &Solver)` has a real consumer from commit-1 onward, even if `build_stub_query` is trivially-true until T9-phase-2 translates HIR predicates to SMT-LIB terms.
+  - Walking types recursively catches refinements nested in `fn(x : Vec<{v : i32 | v > 0}>) -> ...` style signatures.
+  - Obligation-ID stability (u32 newtype, monotonic-append) gives downstream diagnostics + caching a persistent handle.
+- **Phase-3 deferred**
+  - HIR-expression → SMT-Term translation (T9-phase-2).
+  - Obligation-context accumulation (function-entry preconditions + loop-invariants).
+  - Lipschitz-bound arithmetic-interval discharge (may route through a different solver backend).
+  - Per-obligation discharge-outcome cache keyed on obligation-hash.
+- **Consequences**
+  - Public API : `cssl_hir::{collect_refinement_obligations, ObligationBag, ObligationId, ObligationKind, RefinementObligation}`.
+  - `cssl-hir` lib-test count 79 → 86 (+7 for refinement.rs).
+  - `pretty_expr` annotated `#[allow(clippy::unused_self)]` pending T3.4-phase-3 where the method body will grow a real walker.
+  - Remaining T3.4-phase-2 items (capability inference, IFC-label propagation, AD-legality, `@staged` check, macro hygiene) still deferred per T3-D9 — this decision closes only the refinement-obligation slice.
 
 ───────────────────────────────────────────────────────────────
 
