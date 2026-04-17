@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,86 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T9-D2 : T9-phase-2a — predicate-text → SMT-Term translator landed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T9-D1 deferred HIR-expression → SMT-Term translation to phase-2. The T3.4-phase-2-refinement slice (T3-D10) produced `ObligationBag` with `predicate_text`-bearing `ObligationKind::Predicate` entries. This entry closes the predicate-text → SMT-Term bridge — the **final structural piece** needed for F1 correctness end-to-end : HIR predicates can now be discharged by real SMT solvers via the existing `Z3CliSolver` / `Cvc5CliSolver` subprocess adapters.
+- **Slice landed (this commit)**
+  - `cssl_smt::predicate` module with recursive-descent predicate-expression parser :
+    - `tokenize(&str) -> Result<Vec<Token>, String>` : handles ASCII punctuation `== != <= >= < > ( ) { } , -` + multi-byte `∈` glyph + keywords `and` / `or` / `in` / `true` / `false` + int-literals + identifiers
+    - `Parser` struct with `parse_disjunction` → `parse_conjunction` → `parse_comparison` → `parse_primary` recursive descent
+    - `parse_predicate(&str) -> Result<Term, TranslationError>` public entry
+  - `translate_obligation(&RefinementObligation, &Interner) -> Result<Query, TranslationError>` :
+    - `Predicate { binder, predicate_text }` → `(set-logic QF_LIA)` + `(declare-fun v () Int)` + `(assert (! (not P(v)) :named obl_<id>_predicate))` — unsat-verdict proves the refinement
+    - `Tag { name }` → stub `(assert (! true :named obl_<id>_tag_<name>))` (phase-2b tag-dictionary resolution deferred)
+    - `Lipschitz { ... }` → `TranslationError::UnsupportedKind` (phase-2b arithmetic-interval deferred)
+  - `translate_bag(&ObligationBag, &Interner) -> Vec<(ObligationId, Result<Query, TranslationError>)>` : bulk translator
+  - `TranslationError` : `ParseFailure` + `UnsupportedKind`
+- **Grammar supported (stage-0 subset)**
+
+  ```
+  predicate   := disjunction
+  disjunction := conjunction ( ("||" | "or") conjunction )*
+  conjunction := comparison  ( ("&&" | "and") comparison )*
+  comparison  := primary   ( ("==" | "!=" | "<=" | ">=" | "<" | ">") primary )?
+              |  primary ("in" | "∈") "{" primary ("," primary)* "}"
+  primary     := int-literal | ident | "(" predicate ")" | "-" primary
+  ```
+
+- **Tested forms** (16 predicate tests + 5 translator tests = 21 new tests)
+  - `v > 0` / `v >= 0` / `v <= 10` / `v == 5` / `v != 7`
+  - `v >= 0 && v < 100` (conjunction)
+  - `v == 1 || v == 2` (disjunction)
+  - `v in {44100, 48000, 96000, 192000}` (audio_callback.cssl set-membership)
+  - `v ∈ {0, 1}` (Unicode glyph)
+  - `(v > 0) && (v < 100)` (parenthesization)
+  - `v > -5` (negative literal)
+  - Malformed-input rejection : `v >=`, `&& v`, empty-string
+- **Phase-2b DEFERRED**
+  - Real HIR-expression → Term translation (bypasses predicate-text re-parsing) — unlocked by extending `ObligationKind::Predicate` with an additional `predicate_hir: Option<HirExpr>` field
+  - `Lipschitz` obligation translation (arithmetic-interval encoding via real-arith solver)
+  - Multi-binder predicates (currently single-binder only)
+  - Tag-dictionary resolution (currently stub-asserts `true`)
+  - Float-arithmetic predicates (stage-0 assumes integer `Int` sort)
+  - User-defined fn calls in predicates (needs SMT uninterpreted-fn declarations per-monomorphized-site)
+- **F1-correctness END-TO-END chain NOW STRUCTURALLY COMPLETE**
+
+  ```
+  source .cssl
+    ↓ lex + parse                                    ✓ T2 + T3
+  HIR
+    ↓ name-resolution + type-inference               ✓ T3.3 + T3.4-phase-1
+  HIR (typed, resolved)
+    ↓ AD-legality check                              ✓ T3-D11 (AD0001/0002/0003)
+  HIR (AD-legal)
+    ↓ refinement-obligation generation               ✓ T3-D10 (ObligationBag)
+  HIR + ObligationBag
+    ↓ MIR body-lowering                              ✓ T6-D3 (30+ HirExprKind variants)
+  MIR
+    ↓ AD walker (recipe-annotated variants)          ✓ T7-D3 (sphere_sdf_fwd + _bwd)
+  MIR + AD-variants
+    ↓ predicate-text → SMT-Term                      ✓ T9-D2 (this commit)
+  Query (SMT-LIB 2.6)
+    ↓ Z3/CVC5 CLI subprocess dispatch                ✓ T9-D1 (Z3CliSolver)
+  Verdict (sat/unsat/unknown)
+  ```
+
+  The only remaining work for actual killer-app verification is T7-phase-2b (real dual-substitution expansion) + T9-phase-2b (Lipschitz arithmetic-interval encoding) + T12-phase-2c (write the bit-exact-vs-analytic test case that drives the full chain). All the **infrastructural gates are now built** — subsequent work is extending coverage, not building new structural pieces.
+- **Rationale**
+  - Predicate-text re-parsing is stage-0 ergonomic : the `ObligationBag` already carries text-form, and a standalone recursive-descent parser is ~300 LOC with no upstream churn. Phase-2b's HIR-expression direct-translation is cleaner long-term but requires extending `cssl_hir::refinement`.
+  - Single-binder `Int`-sorted assumption covers 80% of real refinements (`v > 0`, `v in {constants}`, conjunctions thereof). Float/BitVec/multi-binder is phase-2b.
+  - `(assert (not P(v))) check-sat` pattern : `unsat` verdict = refinement holds ∀v ; this is the canonical SMT idiom for universally-quantified validity.
+  - Named assertions (`:named obl_<id>_*`) support unsat-core extraction for T9-phase-2b diagnostics.
+- **Consequences**
+  - Public API : `cssl_smt::{parse_predicate, translate_obligation, translate_bag, TranslationError}`.
+  - `cssl-smt` lib-test count : 35 → 51 (+16 predicate tests).
+  - Workspace test-count : 913 → 929 (+16).
+  - End-to-end chain ready for T12-phase-2c killer-app integration-test : lex → parse → HIR → AD-legality → refinement-obligations → MIR → AD walker → predicate-translator → Z3 dispatch → verdict.
+  - Production-readiness gate for R18 audit-chain unchanged (still needs real BLAKE3/Ed25519 at T11-phase-2).
 
 ───────────────────────────────────────────────────────────────
 

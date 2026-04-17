@@ -32,11 +32,13 @@
 #![allow(clippy::use_self)]
 
 pub mod emit;
+pub mod predicate;
 pub mod query;
 pub mod solver;
 pub mod term;
 
 pub use emit::emit_smtlib;
+pub use predicate::{parse_predicate, translate_bag, translate_obligation, TranslationError};
 pub use query::{Assertion, FnDecl, Query, Verdict};
 pub use solver::{discharge, Cvc5CliSolver, Solver, SolverError, SolverKind, Z3CliSolver};
 pub use term::{Literal, Sort, Term, Theory};
