@@ -40,7 +40,10 @@ pub mod term;
 pub use emit::emit_smtlib;
 pub use predicate::{parse_predicate, translate_bag, translate_obligation, TranslationError};
 pub use query::{Assertion, FnDecl, Query, Verdict};
-pub use solver::{discharge, Cvc5CliSolver, Solver, SolverError, SolverKind, Z3CliSolver};
+pub use solver::{
+    default_args_for, discharge, run_cli_text, Cvc5CliSolver, Solver, SolverError, SolverKind,
+    Z3CliSolver,
+};
 pub use term::{Literal, Sort, Term, Theory};
 
 /// Crate version exposed for scaffold verification.

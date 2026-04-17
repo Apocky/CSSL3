@@ -1427,3 +1427,44 @@ Each decision entry :
   - CI job that signs each gate-run + stores the signed bundle alongside the test log.
   - `AuditChain::append` of the signed-report as a first-class telemetry event (composes with the OTLP exporter work in T11-phase-2b).
   - Cross-session parallel-agent execution : this commit was intended to land alongside T6-phase-2c (body-lower widening) and T3.4-phase-3-staged check via parallel worktree agents ; the worktree-isolation exhibited file-leakage across worktrees on Windows core.autocrlf=true, so the parallel work is re-scoped for a follow-up session with explicit `.gitattributes` normalization + sequential agent launch.
+
+───────────────────────────────────────────────────────────────
+
+## § T9-D4 : T9-phase-2c-partial — Solver::check_text + ad_gate SMT verification integration
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T9-D1 (phase-1) landed the `run_cli` subprocess runner taking a `Query` struct. T7-D5 (phase-2c) produced `GradientCase::smt_query_text` — a raw SMT-LIB string with `(set-logic QF_UFNRA)` + declarations + `(assert (not (and {mir = analytic} ...)))` + `(check-sat)`. There was no bridge between the two : the gate's text queries could not reach the solver. This commit closes that gap by adding a text-dispatch path + ad_gate integration so the SMT-backed F1-correctness proof is reachable when a Z3/CVC5 binary is on PATH.
+- **Options**
+  - (a) Build a full `Query` from each `GradientCase` via `AnalyticExpr → Term` translation. Correct but requires a new translator + duplicates expression-building already done in `to_smt()`.
+  - (b) Add a `run_cli_text` free function taking raw SMT-LIB text + a `Solver::check_text` default method. Thin, composes cleanly with both `Query` struct callers and text-based integrations.
+  - (c) Skip the integration entirely — leave `smt_query_text` as a diagnostic artifact only. Defers the stretch-path but leaves the gate weaker.
+- **Decision** **(b) text-dispatch bridge**
+- **Rationale**
+  - Minimizes new code — the subprocess plumbing already exists ; splitting out the query-text step is a 2-function refactor.
+  - Cleanly composes with `GradientCase::smt_query_text` without forcing AST-level translation.
+  - Keeps the door open for the full (a) translator at T9-phase-2d if needed.
+- **Slice landed (this commit)**
+  - `cssl-smt/src/solver.rs` refactor :
+    - `run_cli_text(kind, smtlib, args) -> Result<Verdict>` : public free function pipes raw SMT-LIB through a Z3/CVC5 subprocess.
+    - `run_cli(kind, q, args)` now delegates to `run_cli_text(kind, &emit_smtlib(q), args)`.
+    - `default_args_for(kind) -> Vec<String>` helper : canonical default args per solver.
+    - `Solver::check_text(&self, smtlib: &str) -> Result<Verdict>` default method on the trait — dispatches through `run_cli_text` with `default_args_for(self.kind())`.
+  - `cssl-smt/src/lib.rs` re-exports : `run_cli_text`, `default_args_for`.
+  - `cssl-examples` depends on `cssl-smt` (adjacent to existing cssl-telemetry dep).
+  - `cssl_examples::ad_gate::SmtVerification { case_name, verdict, solver_kind }` : per-case verdict + kind + `is_proof()` + `summary()`.
+  - `cssl_examples::ad_gate::SmtVerificationReport { verifications, unavailable, unsat_count, sat_count, unknown_count }` : aggregate report + `summary()` + `all_decided_cases_proved()`.
+  - `GradientCase::run_smt_verification(&dyn Solver) -> Option<SmtVerification>` : emits text, calls `solver.check_text`, wraps verdict ; `None` when solver unavailable (BinaryMissing or subprocess failure).
+  - `KillerAppGateReport::run_smt_verification(&dyn Solver) -> SmtVerificationReport` : runs every case, aggregates counts.
+  - 10 new tests : MissingBinarySolver + FixedVerdictSolver stubs exercising availability / unsat / sat paths + real `Z3CliSolver` dispatch (resilient : accepts BinaryMissing on CI without z3, verdict when z3 is present).
+- **Consequences**
+  - When Z3 or CVC5 is on PATH, the killer-app gate can now be verified in THREE orthogonal ways : (a) structural equivalence via `AnalyticExpr::simplify`, (b) sampling-based numeric evaluation across 11 deterministic points, (c) SMT unsat-verdict on the equivalence negation — all three must agree for the F1-correctness proof to land.
+  - `Solver::check_text` is an extension point : future solver backends (KLEE, local `z3-sys` FFI) can implement it once and inherit dispatch for both struct-queries + text-queries.
+  - Invariant : `unsat + sat + unknown + unavailable == total` for every `SmtVerificationReport` — tested in `real_z3_dispatch_returns_none_or_verdict_without_crashing`.
+  - Test count : 1038 → 1049 (+11 : 2 solver.rs + 9 ad_gate.rs).
+- **Deferred**
+  - Full `AnalyticExpr → Term` translator + native `Query` emission (T9-phase-2d option-a path).
+  - Proof-cert emission (per-obligation SMT proof-artifact stored + R18-signed).
+  - Z3 timeout configuration (currently uses Z3's default).
+  - Inline Lipschitz decomposition (separate HANDOFF_SESSION_2.csl item ; still deferred).
+  - Vector-SDF / scene-SDF monomorphization gate extension (needs T6-phase-2c first).

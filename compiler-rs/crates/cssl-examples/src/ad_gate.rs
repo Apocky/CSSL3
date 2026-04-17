@@ -1051,6 +1051,7 @@ pub fn run_killer_app_gate() -> KillerAppGateReport {
 //   holding the public key can independently verify the gate verdict.
 // ─────────────────────────────────────────────────────────────────────────
 
+use cssl_smt::{Solver, SolverKind, Verdict};
 use cssl_telemetry::{verify_detached, ContentHash, Signature, SigningKey};
 
 /// Canonical-serialization version tag embedded in every attestation payload.
@@ -1236,6 +1237,132 @@ pub fn verify_signed_gate_report(
         payload_hash_matches,
         signature_verifies,
         gate_is_green,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SMT verification : dispatch the canonical SMT-LIB equivalence query to a
+//   real Z3 / CVC5 solver when available. Unsat ⇒ gradient is equivalent.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Result of running SMT verification on a single gradient case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmtVerification {
+    /// Name of the gradient case verified.
+    pub case_name: String,
+    /// Solver verdict ( `Unsat` proves gradient equivalence ; `Sat` proves
+    /// the equivalence negation — a gradient bug ; `Unknown` means the solver
+    /// gave up within its time budget).
+    pub verdict: Verdict,
+    /// Which solver produced the verdict.
+    pub solver_kind: SolverKind,
+}
+
+impl SmtVerification {
+    /// `true` iff the verdict is `Unsat` (equivalence proved).
+    #[must_use]
+    pub fn is_proof(&self) -> bool {
+        matches!(self.verdict, Verdict::Unsat)
+    }
+
+    /// Summary line.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        format!(
+            "{} : {:?} via {:?}",
+            self.case_name, self.verdict, self.solver_kind
+        )
+    }
+}
+
+/// Aggregate SMT-verification outcome across every gradient case in a report.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SmtVerificationReport {
+    /// Per-case verification outcomes (one entry per case that the solver
+    /// actually produced a verdict for).
+    pub verifications: Vec<SmtVerification>,
+    /// Number of cases where the solver was unavailable (BinaryMissing or
+    /// subprocess failure). These contribute neither sat nor unsat counts.
+    pub unavailable: u32,
+    /// Cases whose equivalence was proved (`Unsat` on the negation query).
+    pub unsat_count: u32,
+    /// Cases whose equivalence was refuted (`Sat`) — **this is a gradient bug**.
+    pub sat_count: u32,
+    /// Cases the solver couldn't decide within its time budget (`Unknown`).
+    pub unknown_count: u32,
+}
+
+impl SmtVerificationReport {
+    /// Summary line.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        format!(
+            "SMT verification : {} proved / {} refuted / {} unknown / {} unavailable",
+            self.unsat_count, self.sat_count, self.unknown_count, self.unavailable,
+        )
+    }
+
+    /// `true` iff every case that the solver could decide returned `Unsat`.
+    /// When the solver is unavailable for all cases, this returns `true`
+    /// vacuously — callers that require a non-empty proof-set should check
+    /// `unsat_count > 0` themselves.
+    #[must_use]
+    pub fn all_decided_cases_proved(&self) -> bool {
+        self.sat_count == 0 && self.unknown_count == 0
+    }
+}
+
+impl GradientCase {
+    /// Run the SMT equivalence query against `solver`. Returns `None` when
+    /// the solver binary is unavailable (BinaryMissing or subprocess spawn
+    /// failure) — callers can distinguish "proved" from "couldn't check".
+    ///
+    /// Semantics : the query is `(assert (not (and {mir = analytic} ...)))` ,
+    /// so `Unsat` proves equivalence across every free variable in the
+    /// gradient expressions.
+    #[must_use]
+    pub fn run_smt_verification(&self, solver: &dyn Solver) -> Option<SmtVerification> {
+        let text = self.smt_query_text();
+        // BinaryMissing (solver not on PATH) + any other subprocess failure
+        // (NonZeroExit, UnparseableOutput, IO) collapse into `None` — the
+        // auditor should check the solver binary separately if they need to
+        // disambiguate.
+        solver
+            .check_text(&text)
+            .ok()
+            .map(|verdict| SmtVerification {
+                case_name: self.name.clone(),
+                verdict,
+                solver_kind: solver.kind(),
+            })
+    }
+}
+
+impl KillerAppGateReport {
+    /// Run SMT verification on every case in the report. Returns a full
+    /// [`SmtVerificationReport`] ; when the solver is unavailable every case
+    /// contributes to `unavailable` and no verdict lands.
+    #[must_use]
+    pub fn run_smt_verification(&self, solver: &dyn Solver) -> SmtVerificationReport {
+        let mut report = SmtVerificationReport::default();
+        for case in &self.cases {
+            match case.run_smt_verification(solver) {
+                Some(v) => {
+                    match v.verdict {
+                        Verdict::Unsat => report.unsat_count = report.unsat_count.saturating_add(1),
+                        Verdict::Sat => report.sat_count = report.sat_count.saturating_add(1),
+                        // Unknown + Error both represent "solver didn't return a decisive
+                        // verdict" — collapsed into the same bucket per stage-0 gate design.
+                        _ => {
+                            report.unknown_count = report.unknown_count.saturating_add(1);
+                        }
+                    }
+                    report.verifications.push(v);
+                }
+                None => report.unavailable = report.unavailable.saturating_add(1),
+            }
+        }
+        report
     }
 }
 
@@ -1746,5 +1873,148 @@ mod tests {
         assert!(verdict.cryptographically_valid());
         assert!(!verdict.gate_is_green);
         assert!(!verdict.is_fully_valid());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § SMT-verification path (Z3/CVC5 subprocess integration)
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::SmtVerificationReport;
+    use cssl_smt::{Solver, SolverError, SolverKind, Verdict, Z3CliSolver};
+
+    /// Stub solver that always reports `BinaryMissing` — lets us exercise the
+    /// "solver unavailable" path deterministically on CI runners regardless of
+    /// whether z3 is installed.
+    #[derive(Debug, Default)]
+    struct MissingBinarySolver;
+
+    impl Solver for MissingBinarySolver {
+        fn kind(&self) -> SolverKind {
+            SolverKind::Z3
+        }
+        fn check(&self, _q: &cssl_smt::Query) -> Result<Verdict, SolverError> {
+            Err(SolverError::BinaryMissing { binary: "z3" })
+        }
+        fn check_text(&self, _smtlib: &str) -> Result<Verdict, SolverError> {
+            Err(SolverError::BinaryMissing { binary: "z3" })
+        }
+    }
+
+    /// Stub solver that always returns a fixed verdict — lets us exercise the
+    /// unsat / sat / unknown code-paths without a real solver binary.
+    #[derive(Debug)]
+    struct FixedVerdictSolver(Verdict);
+
+    impl Solver for FixedVerdictSolver {
+        fn kind(&self) -> SolverKind {
+            SolverKind::Z3
+        }
+        fn check(&self, _q: &cssl_smt::Query) -> Result<Verdict, SolverError> {
+            Ok(self.0)
+        }
+        fn check_text(&self, _smtlib: &str) -> Result<Verdict, SolverError> {
+            Ok(self.0)
+        }
+    }
+
+    #[test]
+    fn gradient_case_run_smt_returns_none_when_solver_missing() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = MissingBinarySolver;
+        assert_eq!(case.run_smt_verification(&solver), None);
+    }
+
+    #[test]
+    fn gradient_case_run_smt_wraps_unsat_verdict() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let v = case.run_smt_verification(&solver).expect("verdict");
+        assert_eq!(v.verdict, Verdict::Unsat);
+        assert_eq!(v.solver_kind, SolverKind::Z3);
+        assert!(v.is_proof());
+        assert!(v.summary().contains("Unsat"));
+    }
+
+    #[test]
+    fn gradient_case_run_smt_wraps_sat_verdict() {
+        let case = verify_gradient_case(
+            "f(x,r) = x * r",
+            &build_binary_primal("mul", "arith.mulf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![
+                AnalyticExpr::mul(AnalyticExpr::v("d_y"), AnalyticExpr::v("r")),
+                AnalyticExpr::mul(AnalyticExpr::v("d_y"), AnalyticExpr::v("x")),
+            ],
+        );
+        let solver = FixedVerdictSolver(Verdict::Sat);
+        let v = case.run_smt_verification(&solver).expect("verdict");
+        assert_eq!(v.verdict, Verdict::Sat);
+        assert!(!v.is_proof());
+    }
+
+    #[test]
+    fn killer_app_gate_smt_verification_counts_unavailable_when_solver_missing() {
+        let report = run_killer_app_gate();
+        let solver = MissingBinarySolver;
+        let smt = report.run_smt_verification(&solver);
+        assert_eq!(smt.unavailable, report.total as u32);
+        assert_eq!(smt.unsat_count, 0);
+        assert_eq!(smt.sat_count, 0);
+        assert_eq!(smt.unknown_count, 0);
+        assert!(smt.verifications.is_empty());
+    }
+
+    #[test]
+    fn killer_app_gate_smt_verification_all_proved_under_fixed_unsat() {
+        let report = run_killer_app_gate();
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let smt = report.run_smt_verification(&solver);
+        assert_eq!(smt.unsat_count, report.total as u32);
+        assert_eq!(smt.sat_count, 0);
+        assert_eq!(smt.unknown_count, 0);
+        assert_eq!(smt.unavailable, 0);
+        assert!(smt.all_decided_cases_proved());
+    }
+
+    #[test]
+    fn killer_app_gate_smt_verification_summary_shape() {
+        let report = run_killer_app_gate();
+        let solver = MissingBinarySolver;
+        let smt = report.run_smt_verification(&solver);
+        let s = smt.summary();
+        assert!(s.contains("proved"));
+        assert!(s.contains("unavailable"));
+    }
+
+    #[test]
+    fn real_z3_dispatch_returns_none_or_verdict_without_crashing() {
+        // This test exercises the real Z3 subprocess path. On CI runners
+        // without z3, we get BinaryMissing → None. On dev machines with z3,
+        // we get an actual verdict (typically Unsat for our gate queries).
+        // Either way, we should NEVER crash.
+        let report = run_killer_app_gate();
+        let solver = Z3CliSolver::default();
+        let smt = report.run_smt_verification(&solver);
+        // Total = unsat + sat + unknown + unavailable — invariant always holds.
+        let accounted = smt.unsat_count + smt.sat_count + smt.unknown_count + smt.unavailable;
+        assert_eq!(accounted, report.total as u32);
+    }
+
+    #[test]
+    fn smt_verification_report_default_is_empty() {
+        let r = SmtVerificationReport::default();
+        assert_eq!(r.unsat_count, 0);
+        assert!(r.verifications.is_empty());
+        assert!(r.all_decided_cases_proved()); // vacuously
     }
 }
