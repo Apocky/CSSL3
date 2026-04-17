@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1 ✓ + T2 ✓ + T3.1 CST ✓ + T3.2 Parser ✓ + T3.3 HIR-lowering ✓ + T3.4-phase-1 HM+rows ✓ + T4-phase-1 registry+discipline+banned ✓ ; T5 caps next (T3.4-phase-2 + T4-phase-2 Xie+Leijen deferred)
+- **Current task** T1..T3.4-phase-1 ✓ + T4-phase-1 ✓ + T5 + T3.4-phase-2-cap (cssl-caps + cap_check) ✓ ; T6 MLIR next (T3.4-phase-2.5 body-walk + T4-phase-2 Xie+Leijen + T5-phase-2 body-cap-walk deferred)
 
 ───────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@
 | D2  | lex crate — dual-surface lexer                        | ✓ complete (T2) |
 | D3  | parse + ast + hir — elaborator                        | ◐ ast + CST + parsers + HIR-lowering + name-resolution + HM inference + effect-rows ✓ ; cap/IFC/refinement pending T3.4-phase-2 |
 | D4  | effects — 28 effects + evidence-passing               | ◐ registry + discipline + banned-composition ✓ (T4-phase-1) ; Xie+Leijen transform pending T4-phase-2 |
-| D5  | caps — Pony-6 + gen-refs                              | ○ pending T5   |
+| D5  | caps — Pony-6 + gen-refs                              | ◐ cssl-caps (CapKind + AliasMatrix + subtype + LinearTracker + GenRef) + cssl-hir cap_check sig-level pass ✓ ; body-walk pending T5-phase-2 |
 | D6  | mlir-bridge + mir — cssl-dialect                      | ○ pending T6   |
 | D7  | autodiff + jets                                       | ○ pending T7   |
 | D8  | staging + macros + futamura                           | ○ pending T8   |
@@ -55,6 +55,9 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T3-D8** : Stage-0 interner uses single-threaded `lasso::Rodeo` (deferred `ThreadedRodeo` until MSVC toolchain switch @ T10)
 - **T3-D9** : T3.4 phased — phase-1 HM type-inference + effect-row unification ; phase-2 cap/IFC/refinement/AD/@staged/hygiene deferred
 - **T4-D1** : T4 phased — phase-1 registry + sub-effect discipline + banned-composition (Prime-Directive F5) ; phase-2 Xie+Leijen transform + linear-handler enforcement deferred
+- **T5-D1** : cap_check delegated to cssl-caps via `AliasMatrix::can_pass_through = is_subtype` (subtype is canonical)
+- **T5-D2** : GenRef layout = low u40 index + high u24 generation ; `bump_gen()` wraps at 2^24
+- **T5-D3** : Cap-check stage-0 is signature-level only ; body-walk deferred to T5-phase-2
 
 ───────────────────────────────────────────────────────────────
 
@@ -113,15 +116,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T3.3-end      | T3.4-phase-1-end             | T4-phase-1-end                      |
-|-------------------------------|---------------|------------------------------|-------------------------------------|
-| Crates populated              | 4             | 4 (cssl-hir extended)        | 5 (+ cssl-effects fully populated)  |
-| Lines of scaffold Rust        | ~11200        | ~13800                       | ~15300 (+ ~1500 LOC effects)        |
-| Test count                    | 299 / 64      | 340 / 64 suites              | 368 / 65 suites (+28 effects)       |
-| Clippy warnings (`-D`)        | 0             | 0                            | 0                                   |
-| CI jobs declared              | 19            | 19                           | 19                                  |
-| Spec cross-refs validated     | 156 / 0 (135) | 156 / 0 (135)                | 156 / 0 (135)                       |
-| Commit-gate green             | ✓ 6 / 6       | ✓ 6 / 6                      | ✓ 6 / 6                             |
+| Metric                        | T3.3-end      | T3.4-phase-1-end             | T4-phase-1-end                      | T5-end                                |
+|-------------------------------|---------------|------------------------------|-------------------------------------|---------------------------------------|
+| Crates populated              | 4             | 4 (cssl-hir extended)        | 5 (+ cssl-effects)                  | 6 (+ cssl-caps ; cssl-hir extended)   |
+| Lines of scaffold Rust        | ~11200        | ~13800                       | ~15300                              | ~17500 (+ ~1500 caps + ~700 cap_check)|
+| Test count                    | 299 / 64      | 340 / 64 suites              | 368 / 65                            | 423 / 66 suites (+49 caps + 6 cap_check) |
+| Clippy warnings (`-D`)        | 0             | 0                            | 0                                   | 0                                     |
+| CI jobs declared              | 19            | 19                           | 19                                  | 19                                    |
+| Spec cross-refs validated     | 156 / 0 (135) | 156 / 0 (135)                | 156 / 0 (135)                       | 156 / 0 (135)                         |
+| Commit-gate green             | ✓ 6 / 6       | ✓ 6 / 6                      | ✓ 6 / 6                             | ✓ 6 / 6                               |
 
 ───────────────────────────────────────────────────────────────
 
@@ -287,21 +290,62 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T5 (capability system + gen-refs)
+§ T5 ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T5 + §§ 12_CAPS :
-1. caps crate : Pony-6 alias+deny matrix
-2. iso / trn / ref / val / box / tag checker
-3. cap-subtyping (iso <: trn, iso <: val, …)
-4. gen-ref deref-runtime-check synthesis
-5. region-lifetime tracker
-6. Handle<T> lowering : tag<T> at-source ≡ u64 24+40 at-MIR
-7. Tests : §§ 12 EXAMPLES all-compile-green + V11-stale-ref tests
+`crates/cssl-caps/src/` :
+- `cap.rs`        : CapKind (6 variants) + CapSet (bitset) + predicates (is_linear,
+                    is_mutable, is_send_safe, requires_gen_check, can_read)
+- `matrix.rs`     : AliasRights (4 bool bits) + AliasMatrix::pony6() with the canonical
+                    per-cap rights table ; `can_pass_through` delegates to subtype
+- `subtype.rs`    : Subtype witness (7 variants : Reflexive + 6 cap-coercions) +
+                    `coerce` + `is_subtype` + SubtypeError
+- `linearity.rs`  : BindingId + UseKind (5 variants) + LinearUse + LinearViolation
+                    (5 variants) + LinearTracker ; per-scope iso use-count tracker
+- `genref.rs`     : GEN_BITS=24 + IDX_BITS=40 + GEN_MASK + IDX_MASK + GenRef(pub u64)
+                    + pack/idx/gen/bump_gen/NULL
 
-Open for T5-start :
-- Alias+deny matrix : static table vs runtime lookup ?
-- gen-ref generation counter : per-handle vs per-region ?
-- Region-lifetime encoding in HIR : lifetime-parameter vs implicit-scope ?
+`crates/cssl-hir/src/cap_check.rs` :
+- CapMap<HirId, CapKind> side-table
+- check_capabilities(&HirModule) -> (CapMap, Vec<Diagnostic>)
+- hir_cap_to_semantic + top_cap + param_subtype_check utilities
+- Per-fn LinearTracker scope-opened at entry, closed at exit
+
+§ T5 + T3.4-phase-2-cap COVERAGE
+- 6 Pony capabilities with full rights table (alias-local/global, mut-local/global)
+- Full subtype lattice : Reflexive + IsoTo{Trn/Val/Box/Tag} + TrnToBox + ValToBox
+- Linear-value tracker with 5 violation kinds (Leak / DuplicateConsume / MultiShotResume /
+  ReadWithoutConsume / UseAfterScope)
+- Vale gen-ref packed u64 layout (u40+u24) + bump_gen wrap-at-2^24
+- Sig-level cap validation for all fn items (including impl / interface / effect / handler methods)
+- LinearTracker initialization per-fn for iso parameters
+
+§ T5 + T3.4-phase-2-cap NOT-YET
+- Full expression-walk consume tracking (T5-phase-2 / T3.4-phase-2.5)
+- Handler one-shot-resume enforcement at `resume` call-sites
+- `freeze(x)` / `consume x` sugar parsing + lowering
+- Field-level cap validation through field-access chains
+- gen-ref deref-check synthesis (MIR lowering @ T6)
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T6 (MLIR bridge + cssl-dialect)
+
+Per §§ HANDOFF T6 + §§ 15_MLIR + §§ 02_IR :
+1. mlir-bridge crate : melior + mlir-sys bindings
+2. cssl-dialect : TableGen definition + C++-stubs
+   ops : cssl.diff.* cssl.jet.* cssl.effect.* cssl.region.*
+         cssl.handle.* cssl.staged.* cssl.macro.expand
+         cssl.ifc.* cssl.verify.assert cssl.sdf.* cssl.gpu.*
+         cssl.xmx.coop_matmul cssl.rt.* cssl.telemetry.probe
+3. mir crate : HIR → MIR lowering + cssl-dialect construction
+4. pass-pipeline skeleton per §§ 15 PASS-PIPELINE
+5. Q? if-melior-blocks → fallback to-own-MLIR-textual-emit + llvm-mlir-tools CLI
+
+Open for T6-start :
+- melior / mlir-sys Windows compatibility verification (Q3 deferred at T1 still open)
+- cssl-dialect TableGen authoring vs hand-rolled-in-Rust ?
+- Phase split : (a) text-emit skeleton + op-catalog ; (b) real melior integration ; (c) full lowering passes
+- Fallback path : MLIR-textual-format via CLI (T6 option-b pre-authorized at T1)
 
 ───────────────────────────────────────────────────────────────
 

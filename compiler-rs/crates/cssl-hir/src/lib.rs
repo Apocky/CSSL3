@@ -65,6 +65,7 @@
 
 pub mod arena;
 pub mod attr;
+pub mod cap_check;
 pub mod env;
 pub mod expr;
 pub mod infer;
@@ -80,6 +81,9 @@ pub mod unify;
 
 pub use arena::{DefId, HirArena, HirId};
 pub use attr::{HirAttr, HirAttrArg, HirAttrKind};
+pub use cap_check::{
+    check_capabilities, hir_cap_to_semantic, param_subtype_check, top_cap, CapMap,
+};
 pub use env::{TypeScope, TypingEnv};
 pub use expr::{
     HirBinOp, HirBlock, HirCompoundOp, HirExpr, HirExprKind, HirLiteral, HirLiteralKind,

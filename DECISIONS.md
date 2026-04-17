@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • T4-phase-1 ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T2-D8 ✓ • T3.1 ✓ • T3.2 ✓ • T3.3 ✓ • T3.4-phase-1 ✓ • T4-phase-1 ✓ • T5 + T3.4-phase-2-cap ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,74 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T5-D1 : cap_check delegated to cssl-caps via `AliasMatrix::can_pass_through = is_subtype`
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** The alias+deny matrix (`specs/12` § THE SIX CAPABILITIES) is usually presented as a pairwise transfer table : can a value of cap `X` be passed to a parameter declared as cap `Y` ? The matrix's alias-local / alias-global / mut-local / mut-global bits describe what the *holder* of the cap can do ; the transfer question is a subtype question.
+- **Options**
+  - (a) Encode the transfer matrix as a separate 6×6 table ; check `can_pass_through` by lookup.
+  - (b) Define `can_pass_through(caller, callee_param) = is_subtype(caller, callee_param)` ; reuse the subtype relation as the single source of truth.
+  - (c) Per-caller per-callee custom rules mixing subtype + alias-matrix bits.
+- **Decision** **(b)** — `AliasMatrix::can_pass_through` delegates to `is_subtype`. Subtype is the canonical relation per `specs/12` § CAPABILITY-DIRECTED SUBTYPING. The AliasMatrix holds the alias-local / mut-local / send-safe bits for *use-site* queries (what can the holder do?) ; cross-site transfer is subtyping.
+- **Rationale**
+  - Single source of truth for transferability — no drift between table and relation.
+  - Matches Pony-paper presentation : subtype relation is axiomatic, alias matrix is a derived view.
+  - The test `passing_iso_to_val_allowed_via_freeze` drives this : `iso <: val` via freeze is a subtype relation, the `alias_local`-bit check would reject it.
+- **Consequences**
+  - `AliasMatrix` remains useful for holder-centric queries (`AliasRights::can_alias`, `can_mutate`, `is_send_safe`).
+  - `can_pass_through` is now an opinionated wrapper over `is_subtype`.
+  - Spec-§§ 12 ALIAS+DENY MATRIX table stays canonical for per-cap rights documentation but is not used for transfer decisions.
+
+───────────────────────────────────────────────────────────────
+
+## § T5-D2 : GenRef layout — u40 index + u24 generation, little-endian packed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** `specs/12` § VALE GEN-REFS AS `ref<T>` specifies a packed `u64` with `idx : u40` + `gen : u24`. The spec doesn't dictate endianness or field-order.
+- **Decision**
+  - Low `IDX_BITS` (40) hold the index, high `GEN_BITS` (24) hold the generation.
+  - Packed value : `(gen << 40) | (idx & IDX_MASK)`.
+  - `bump_gen()` wraps at `2^24` (generation monotonically increments mod 2^24).
+  - `NULL` sentinel = `GenRef(0)` (idx=0, gen=0).
+- **Rationale**
+  - Low-bits-idx is the Vale convention and lets tools printing the raw u64 show the idx in the less-significant half.
+  - Low-bits-idx plays well with SIMD gather/scatter where the idx is the hot field.
+- **Consequences**
+  - `GenRef::pack(idx, gen)`, `GenRef::idx()`, `GenRef::gen()`, `GenRef::bump_gen()` form the canonical API.
+  - MIR lowering @ T6 produces `cssl.handle.pack` / `cssl.handle.unpack` / `cssl.handle.check` ops that mirror this layout directly.
+  - Runtime `Pool<T>` at T10 uses the same packing.
+
+───────────────────────────────────────────────────────────────
+
+## § T5-D3 : Cap-check pass sig-level only for stage-0 ; full expr walk deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** A complete cap-check pass walks every expression to track iso-consumption / drop / resume sites. That's a substantial sub-project (similar in scope to the HM inference walk at T3.4). The stage-0 minimum-viable check validates signature-level cap annotations and registers iso-parameters with the linear tracker, but doesn't walk bodies.
+- **Scope landed (this commit)**
+  - `CapMap<HirId, CapKind>` side-table.
+  - `check_capabilities(module)` : walks fn-items, records param/return caps, opens a per-fn `LinearTracker` scope for iso params, closes cleanly at fn-exit.
+  - `param_subtype_check(caller, callee_param)` : helper for call-site cap coercion (ready for use when T3.4-phase-2.5 walks call-args).
+  - `top_cap(&HirType)` + `hir_cap_to_semantic(HirCapKind)` utilities.
+- **Deferred (T3.4-phase-2.5)**
+  - Full linear-use tracking through every expression.
+  - Handler-one-shot enforcement (`resume-once` vs multi-shot `resume`).
+  - Field-level cap validation (struct-field caps flow through field-access).
+  - Freeze / consume sugar (`freeze(x)`, `consume x`).
+  - gen-ref deref-check synthesis (part of MIR lowering @ T6).
+- **Rationale**
+  - Cap-checking at signature level unblocks downstream crates (T6 MLIR needs to know the cap of every fn-signature for cssl-dialect op synthesis).
+  - The linear-tracker API is mature — body-walk can be added later without re-architecting.
+  - Deferring the walk keeps T5 bounded to the capability algebra + gen-ref layout ; spans fewer cross-cutting invariants.
+- **Consequences**
+  - `cssl-hir::cap_check::emit` marked `#[allow(dead_code)]` — will activate when body-walk lands.
+  - `CapCtx::matrix` field similarly reserved.
+  - `_idx : usize` parameter in `check_fn_param` reserved for later use-site indexing.
 
 ───────────────────────────────────────────────────────────────
 

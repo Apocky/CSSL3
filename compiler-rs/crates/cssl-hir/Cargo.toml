@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 cssl-ast  = { path = "../cssl-ast" }
+cssl-caps = { path = "../cssl-caps" }
 lasso     = { workspace = true }
 thiserror = { workspace = true }
 

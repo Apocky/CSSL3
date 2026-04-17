@@ -43,6 +43,9 @@ version = "0.1.0"
 [[package]]
 name = "cssl-caps"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-cgen-cpu-cranelift"
@@ -80,6 +83,7 @@ name = "cssl-hir"
 version = "0.1.0"
 dependencies = [
  "cssl-ast",
+ "cssl-caps",
  "cssl-lex",
  "cssl-parse",
  "lasso",
