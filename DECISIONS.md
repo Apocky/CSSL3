@@ -1,6 +1,12 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 T1 in-progress
+§ STATUS : Session-1 • T1 ✓ • T2 ✓ • T3.1 ✓ • spec-corpus deltas applied • foundation audited
+
+§ ROOT-OF-TRUST
+All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
+root (identical to `C:\Users\Apocky\source\repos\PRIME_DIRECTIVE.md` master). The directive
+is IMMUTABLE : no decision here can weaken, override, or circumvent it. A decision that
+appears to conflict with the directive is retracted on discovery (violation = bug W! fix).
 
 § FORMAT
 Each decision entry :
