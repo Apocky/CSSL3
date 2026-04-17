@@ -216,6 +216,9 @@ dependencies = [
 [[package]]
 name = "cssl-persist"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-rt"
@@ -244,6 +247,9 @@ dependencies = [
 [[package]]
 name = "cssl-telemetry"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-testing"

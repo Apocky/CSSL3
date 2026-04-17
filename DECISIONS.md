@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,77 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D1 : Telemetry + persistence phased — ring + audit-chain stub + in-memory persistence now ; BLAKE3/Ed25519 FFI + WAL/LMDB backends deferred
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11 scope per `specs/22_TELEMETRY.csl` + `specs/18_ORTHOPERSIST.csl` enumerates telemetry-ring + audit-chain + exporters + persistence-image + schema-migrations + WAL/LMDB backends. Crypto primitives (BLAKE3 hash + Ed25519 signing) are heavy FFI adds ; WAL + LMDB backends require file-I/O that clouds the crate-core shape. Same phased approach as T6/T9/T10 : data model + trait-boundary + stub landing now, real crypto + backend integration at phase-2.
+- **Phase-1 landed (this commit)**
+  - `cssl-telemetry` : `TelemetryScope` (25 variants across 6 domains : CPU / GPU /
+    Power-Thermal / RAS / App-Semantic / Compound with `as_u16` stable encoding) +
+    `TelemetryKind` (Sample / SpanBegin / SpanEnd / Counter / Audit) +
+    `TelemetrySlot` (64-byte fixed ring record per `specs/22`) + `TelemetryRing`
+    (single-thread SPSC with overflow-counting + total-pushed + peek) +
+    `AuditEntry` + `AuditChain` (BLAKE3-stub hash-chain + Ed25519-stub signatures,
+    full `verify_chain` detecting `GenesisPrevNonZero` / `ChainBreak` /
+    `InvalidSequence`) + `Exporter` trait + `ChromeTraceExporter` (JSON output
+    compatible with Chrome DevTools tracing format) + `JsonExporter`
+    (newline-delimited JSON) + `OtlpExporter` (returns `NotWired` at stage-0) +
+    `TelemetrySchema` + `TelemetryScopeSet` (subset-of check for scope-narrowing
+    invariant per `specs/22` § callee's-scope-⊑-caller's-scope).
+  - `cssl-persist` : `SchemaVersion` (major.minor + 32-byte digest) +
+    `SchemaMigration` (before/after/id/description) + `MigrationChain`
+    (panicking-assert on broken-chain + start/end version accessors) +
+    `ImageHeader` (canonical `"CSSLPRS1"` magic + format-version + record-count +
+    stub content-digest) + `ImageRecord` + `PersistenceImage` (appends +
+    find-by-key + total-payload-size + auto-digest-refresh) +
+    `PersistenceBackend` trait + `InMemoryBackend` (reference impl w/
+    insertion-order preservation + schema-snapshot) + `PersistError` (NotFound /
+    SchemaMismatch / BackendNotWired).
+- **Phase-2 deferred**
+  - `blake3` integration (stage-0 stub-hash is deterministic but not cryptographically strong).
+  - `ed25519-dalek` signing + verification (stage-0 stub-sign is a deterministic byte-fold).
+  - OTLP gRPC + HTTP exporter (needs `prost` / `reqwest`).
+  - WAL-file backend (append-only log + periodic snapshot checkpoints).
+  - LMDB backend (mmap + B+tree for large working-sets).
+  - Level-Zero sysman sampling-thread integration via `cssl_host_level_zero::TelemetryProbe`.
+  - Cross-thread atomic SPSC ring (stage-0 uses single-thread `RefCell`-backed).
+  - `@hot_reload_preserve` HIR attribute extraction + root-set discovery.
+  - Live-object migration application.
+  - R16 attestation of image-provenance (BLAKE3 chain + Ed25519 signatures).
+  - `{Telemetry<S>}` effect-row HIR lowering pass (inserts probe ops per `specs/22`
+    § COMPILE-TIME PROBE INSERTION).
+  - Overhead-budget enforcement (≤ 0.5% for Counters scope, ≤ 5% for Full scope).
+- **Rationale**
+  - The 25 telemetry scopes + TelemetrySlot + TelemetryRing give downstream MIR
+    probe-lowering + host-adapter sampling a concrete surface to target before
+    crypto primitives are wired. Ring overflow-counting semantics (producer-never-
+    blocks, drop-+-count) match `specs/22` § invariants exactly.
+  - AuditChain verify-chain invariant is independent of the hash strength —
+    switching from stub-hash → BLAKE3 is a `ContentHash::stub_hash` → `blake3::hash`
+    replacement with no public-API churn (unit tests pin the chain-link structural
+    invariant, not hash bytes).
+  - `InMemoryBackend` reference-impl lets downstream code exercise the full
+    `PersistenceBackend` trait surface (put / get / snapshot / iter) without a
+    WAL-file dep pulled in.
+  - Canonical `"CSSLPRS1"` image magic + `SchemaVersion(major, minor, digest)` give
+    persistence-image files a stable identity + versioning story that fat-binary
+    [audit-manifest] section can reference.
+- **Consequences**
+  - Public APIs :
+    - `cssl_telemetry::{TelemetryScope, TelemetryKind, TelemetrySlot, TelemetryRing, RingError, AuditChain, AuditEntry, AuditError, Exporter, ChromeTraceExporter, JsonExporter, OtlpExporter, ExportError, TelemetrySchema, TelemetryScopeSet}`.
+    - `cssl_persist::{SchemaVersion, SchemaMigration, MigrationChain, ImageHeader, ImageRecord, PersistenceImage, PersistenceBackend, InMemoryBackend, PersistError}`.
+  - Both crates carry only `thiserror` as a runtime dep ; no cryptographic deps
+    pulled in yet. Phase-2 adds `blake3` + `ed25519-dalek` (already declared in
+    workspace deps from T1, blocked on real integration).
+  - +64 new lib-tests : 40 telemetry + 24 persist.
+  - Crate-level clippy allowances : `match_same_arms`, `module_name_repetitions`.
+  - `cssl-testing` remains at T1-scaffold stage-0 stubs (all 12 oracle-modes have
+    `Stage0Stub` returning `Unimplemented`) — beefing up the oracle bodies is
+    T11-phase-2 work per `DECISIONS.md` T1-D3 §§ 23-FAITHFUL policy.
 
 ───────────────────────────────────────────────────────────────
 

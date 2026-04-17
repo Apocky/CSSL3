@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ + T10-phase-1-codegen (5 codegen backends : cranelift-CPU + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit) ✓ + T10-phase-1-hosts (5 host-adapter capability catalogs : vulkan + level-zero + d3d12 + metal + webgpu) ✓ ; T11 (telemetry+testing+persist) next
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 (autodiff + jets + staging + macros + futamura phase-1 scaffolds) ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 (SMT-LIB emit + Z3/CVC5-CLI subprocess solvers) ✓ + T10-phase-1-codegen (5 codegen backends : cranelift-CPU + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit) ✓ + T10-phase-1-hosts (5 host-adapter capability catalogs : vulkan + level-zero + d3d12 + metal + webgpu) ✓ + T11-phase-1-telemetry-persist (R18 telemetry-ring + audit-chain + exporters + orthogonal-persistence image + schema-migration + in-memory backend) ✓ ; T12 (examples trilogy : hello-triangle + sdf-shader + audio-callback) next
 
 ───────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@
 | D8  | staging + macros + futamura                           | ◐ cssl-staging + cssl-macros + cssl-futamura (data-model + registries + hygiene-primitives) ✓ (T8-phase-1) ; expansion + comptime-eval + P3-bootstrap pending T8-phase-2 |
 | D9  | smt — Z3 / CVC5 / KLEE                                | ◐ cssl-smt (Theory/Sort/Term/Literal + Query/FnDecl/Assertion + emit_smtlib + Z3/CVC5-CLI subprocess solvers + discharge stub) ✓ (T9-phase-1) ; FFI + KLEE + proof-certs pending T9-phase-2 |
 | D10 | cgen-cpu + cgen-gpu + host-*                          | ◐ 5 codegen backends ✓ (cranelift + SPIR-V + DXIL/HLSL + MSL + WGSL text-emit + dxc/spirv-cross CLI adapters) + 5 host-adapters ✓ (vulkan + level-zero + d3d12 + metal + webgpu capability catalogs + stub probes + Arc A770 canonical profile) ; FFI-integration (ash/level-zero-sys/windows-rs/metal/wgpu) pending T10-phase-2 |
-| D11 | telemetry + testing + persist                         | ◐ cssl-testing oracle-dispatch stubs wired @ T1; full @ T11 |
+| D11 | telemetry + testing + persist                         | ◐ cssl-telemetry (R18 ring + audit-chain + exporters) ✓ + cssl-persist (image + schema-migration + in-memory backend) ✓ (T11-phase-1) ; cssl-testing oracle-dispatch bodies + BLAKE3/Ed25519 FFI + WAL/LMDB backends pending T11-phase-2 |
 | D12 | examples/ hello-triangle + sdf-shader + audio-cb      | ○ pending T10+ |
 | D13 | DECISIONS.md + SESSION_1_HANDOFF.md                   | ✓ T1-D1..D7 recorded |
 | D14 | .github/workflows/ci.yml                              | ✓ §§ 23-faithful skeleton wired |
@@ -67,6 +67,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T9-D1** : SMT phased — phase-1 SMT-LIB 2.6 text-emit + Z3/CVC5-CLI subprocess solver adapters + stub obligation discharge ; FFI / KLEE / proof-certs / HIR→SMT-term translation deferred to T9-phase-2
 - **T10-D1** : Codegen phased — 5 backends (cranelift-CPU / SPIR-V / DXIL-HLSL / MSL / WGSL) text-emission now + `DxcCliInvoker` / `SpirvCrossInvoker` subprocess adapters ; real cranelift/rspirv/naga FFI + MIR-body lowering + spirv-val gate / dxc round-trip / fat-binary assembly deferred to T10-phase-2
 - **T10-D2** : Host-adapters phased — 5 adapters (Vulkan + Level-Zero + D3D12 + Metal + WebGPU) capability-catalogs + stub probes + canonical Arc A770 profile now ; ash / level-zero-sys / windows-rs / metal / wgpu FFI deferred to T10-phase-2
+- **T11-D1** : Telemetry + persistence phased — cssl-telemetry (25-scope taxonomy + TelemetryRing SPSC + AuditChain BLAKE3+Ed25519 stub + Chrome/JSON/OTLP exporters) + cssl-persist (SchemaVersion + MigrationChain + PersistenceImage + InMemoryBackend) now ; real BLAKE3/Ed25519 + OTLP gRPC + WAL/LMDB backends + @hot_reload_preserve HIR pass deferred to T11-phase-2 ; cssl-testing oracle-body fleshing also T11-phase-2
 
 ───────────────────────────────────────────────────────────────
 
@@ -125,15 +126,15 @@ Other artifacts :
 
 § METRICS
 
-| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         | Commit-4 end (T10-phase-1-hosts)                          |
-|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------|
-| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     | 24 (+ 5 host-* : vulkan / level-zero / d3d12 / metal / webgpu) |
-| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) | ~36100 (+ ~1100 vulkan + ~750 level-zero + ~650 d3d12 + ~700 metal + ~800 webgpu) |
-| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) | 786 passed / 33 targets (+76 : vulkan+level-zero+d3d12+metal+webgpu) |
-| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            | 0                                                          |
-| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           | 19                                                         |
-| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                | 156 / 0 (135)                                              |
-| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      | ✓ 6 / 6                                                    |
+| Metric                        | T4-phase-1-end | T5-end          | T6-phase-1-end                         | T7+T8-phase-1-end                                           | Commit-2 end (T3.4-phase-2-refinement + T9-phase-1)         | Commit-3 end (T10-phase-1-codegen)                         | Commit-4 end (T10-phase-1-hosts)                          | Commit-5 end (T11-phase-1-telemetry-persist)           |
+|-------------------------------|----------------|-----------------|----------------------------------------|-------------------------------------------------------------|-------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------|---------------------------------------------------------|
+| Crates populated              | 5              | 6               | 8 (+ cssl-mir + cssl-mlir-bridge)      | 13 (+ autodiff + jets + staging + macros + futamura)        | 14 (+ cssl-smt)                                              | 19 (+ 5 cgen-* : cranelift / spirv / dxil / msl / wgsl)     | 24 (+ 5 host-* : vulkan / level-zero / d3d12 / metal / webgpu) | 26 (+ cssl-telemetry + cssl-persist)                  |
+| Lines of scaffold Rust        | ~15300         | ~17500          | ~19900 (+ ~2000 mir + ~200 bridge)     | ~24300 (+ ~1500 autodiff + ~400 jets + ~850 staging + ~900 macros + ~750 futamura)  | ~26500 (+ ~400 hir/refinement + ~1800 smt)     | ~32100 (+ ~1150 cranelift + ~1400 spirv + ~1050 dxil + ~1050 msl + ~950 wgsl) | ~36100 (+ ~1100 vulkan + ~750 level-zero + ~650 d3d12 + ~700 metal + ~800 webgpu) | ~38500 (+ ~1500 telemetry + ~900 persist)             |
+| Test count                    | 368 / 65       | 423 / 66        | 466 / 67 suites (+41 mir + 4 bridge)   | 528 passed / 33 targets (+61 : autodiff/jets/staging/macros/futamura)  | 569 passed / 33 targets (+41 : refinement + smt)            | 715 passed / 33 targets (+151 : cranelift+spirv+dxil+msl+wgsl) | 786 passed / 33 targets (+76 : vulkan+level-zero+d3d12+metal+webgpu) | 850 passed / 33 targets (+64 : telemetry + persist)    |
+| Clippy warnings (`-D`)        | 0              | 0               | 0                                      | 0                                                           | 0                                                            | 0                                                            | 0                                                          | 0                                                       |
+| CI jobs declared              | 19             | 19              | 19                                     | 19                                                          | 19                                                           | 19                                                           | 19                                                         | 19                                                      |
+| Spec cross-refs validated     | 156 / 0 (135)  | 156 / 0 (135)   | 156 / 0 (135)                          | 156 / 0 (135)                                               | 156 / 0 (135)                                                | 156 / 0 (135)                                                | 156 / 0 (135)                                              | 156 / 0 (135)                                           |
+| Commit-gate green             | ✓ 6 / 6        | ✓ 6 / 6         | ✓ 6 / 6                                | ✓ 6 / 6                                                     | ✓ 6 / 6                                                      | ✓ 6 / 6                                                      | ✓ 6 / 6                                                    | ✓ 6 / 6                                                 |
 
 ───────────────────────────────────────────────────────────────
 
@@ -675,21 +676,89 @@ Queued for future tasks :
 
 ───────────────────────────────────────────────────────────────
 
-§ NEXT — T11 (telemetry + testing + persist)
+§ T11-phase-1 ARTIFACTS (added 2026-04-17)
 
-Per §§ HANDOFF T11 + §§ 22_TELEMETRY + §§ 23_TESTING + §§ 18_ORTHOPERSIST :
-1. cssl-telemetry : R18 probe ring + sysman capture aggregator + Ed25519 audit chain
-2. cssl-testing : flesh out every oracle-mode dispatch beyond stage-0 stub
-3. cssl-persist : orthogonal-persistence (LMDB or WAL-file backend)
+`crates/cssl-telemetry/src/` :
+- `scope.rs`    : TelemetryScope (25 variants across 6 ScopeDomain categories :
+                  Cpu/Gpu/PowerThermal/Ras/AppSemantic/Compound per `specs/22`
+                  TAXONOMY) with `as_u16` stable encoding + TelemetryKind (Sample/
+                  SpanBegin/SpanEnd/Counter/Audit)
+- `ring.rs`     : TelemetrySlot (64-byte record w/ timestamp+scope+kind+tid+pid+
+                  inline-payload) + TelemetryRing (single-thread SPSC stand-in
+                  matching final atomic-ring invariants : producer-never-blocks,
+                  overflow-counter-increments, FIFO-drain) + RingError
+- `audit.rs`    : ContentHash (BLAKE3-stub, phase-2 swaps real `blake3`) +
+                  Signature (Ed25519-stub, phase-2 swaps `ed25519-dalek`) +
+                  AuditEntry + AuditChain (append-only + verify_chain detecting
+                  GenesisPrevNonZero / ChainBreak / InvalidSequence)
+- `exporter.rs` : Exporter trait + ChromeTraceExporter (Chrome DevTools JSON) +
+                  JsonExporter (newline-delimited) + OtlpExporter (stage-0
+                  NotWired outcome) + ExportError
+- `schema.rs`   : TelemetryScopeSet (subset-of check for scope-narrowing invariant
+                  per `specs/22` callee-⊑-caller rule) + TelemetrySchema
+                  (version + module + scopes + ring_size + sampling_hz, with
+                  defaults_for + summary)
 
-Open for T11-start :
-- R18 audit-chain : how tightly to couple Ed25519 signing at stage-0 vs. signed-
-  certificates deferred to T22 production-hardening ?
-- cssl-testing oracle-modes : property / differential / metamorphic / bench / power /
-  thermal / replay / hot-reload / fuzz / golden / audit — all already have Config/Outcome/
-  Dispatcher stubs ; phase-1 fleshes stubs without requiring real backends.
-- orthogonal-persistence : WAL-file phase-1 is cleanest ; LMDB adds a C-dep we may
-  want to defer. Choose based on §§ 18_ORTHOPERSIST spec directives.
+`crates/cssl-persist/src/` :
+- `schema.rs`    : SchemaVersion (major.minor + 32-byte digest ; with_digest_from
+                   + is_minor_upgrade_of)
+- `migration.rs` : SchemaMigration + MigrationChain (panicking-assert on broken
+                   linkage + start_version/end_version + stable iteration order)
+- `image.rs`     : ImageHeader (canonical "CSSLPRS1" magic + format_version +
+                   record_count + content_digest) + ImageRecord (key + schema +
+                   payload) + PersistenceImage (auto-digest-refresh on append +
+                   find-by-key + total_payload_size)
+- `backend.rs`   : PersistenceBackend trait (put / get / snapshot / len) +
+                   InMemoryBackend (HashMap-backed with insertion-order preserved)
+                   + PersistError (NotFound / SchemaMismatch / BackendNotWired)
+
+§ T11-phase-1 COVERAGE
+- Ring invariants pinned : producer-never-blocks, overflow-counter-advances, FIFO-
+  drain, total-pushed counts all attempts (ok + overflow)
+- Audit-chain verify detects genesis-violation + linkage-break + bad-sequence
+- 25 telemetry scopes across 6 domains with stable u16 encoding ready for MIR
+  probe-op lowering (stage-0 MIR already has `cssl.telemetry.probe` op)
+- Chrome DevTools trace output syntactically valid (JSON array + ph-field = B/E/C/i)
+- Persistence-image canonical "CSSLPRS1" magic + schema-version digest stable
+- MigrationChain panics on broken linkage — matches `specs/18` "migrations must
+  form a connected chain" invariant at construct-time
+
+§ T11-phase-2 DEFERRED
+- Real `blake3` hash (stub-hash is deterministic but not cryptographically strong)
+- Real `ed25519-dalek` signing (stub-sign is a deterministic byte-fold)
+- OTLP gRPC + HTTP transport (needs `prost` / `reqwest`)
+- Cross-thread atomic SPSC ring (stage-0 is single-thread)
+- Level-Zero sysman sampling-thread → TelemetryRing integration
+- WAL-file + LMDB backends (append-only log + mmap B+tree)
+- `@hot_reload_preserve` HIR attribute extraction + root-set discovery
+- Live-object migration application
+- `{Telemetry<S>}` effect-row HIR lowering pass (compile-time probe insertion)
+- Overhead-budget enforcement (0.5% Counters / 5% Full / 0.1% Audit)
+- cssl-testing oracle-body fleshing (all 12 modes still at T1 Stage0Stub)
+- R16 attestation of image-provenance (BLAKE3 chain + Ed25519 signatures)
+
+───────────────────────────────────────────────────────────────
+
+§ NEXT — T12 (examples trilogy) + T13+ (self-host + C99 anchor)
+
+Per §§ HANDOFF T12 + §§ README § EXAMPLES :
+1. hello-triangle  : minimum VK-1.4 pipeline, CSSLv3-native syntax
+2. sdf-shader      : killer-app : `bwd_diff(sphere_sdf)` bit-exact vs analytic
+3. audio-callback  : {Audio<44_100>} + real-time deadline + lock-freedom
+
+Per §§ HANDOFF T13+ + §§ 14_BACKEND § OWNED stage1+ :
+- Self-hosted stage1 compiler (CSSLv3-compiled CSSLv3-compiler)
+- R16 C99-reproducibility anchor (third-party-auditable build)
+- LoA v10 migration-target integration
+- Full BLAKE3 + Ed25519 + OTLP + WAL/LMDB T11-phase-2 wiring
+
+Open for T12-start :
+- Examples root directory layout : `examples/hello_triangle/` + trilogy
+- Vertical-slice integration : lex → parse → HIR → MIR → codegen → runtime
+- Killer-app gate : `sdf_shader` must compile to SPIR-V emitting `bwd_diff` that
+  matches analytic gradient to ±1 ULP — this is THE T12 acceptance criterion
+- Host-binding : which of the 5 host-adapters do we wire first ? Probably Vulkan
+  (graphics/compute) since it's cross-platform + Arc A770 primary target
 
 ───────────────────────────────────────────────────────────────
 
