@@ -17,7 +17,7 @@ edition      = "2021"
 rust-version = "1.75"
 license      = "Apache-2.0 OR MIT"
 authors      = ["Apocky <apocky13@gmail.com>"]
-repository   = "https://cssl.dev"
+repository   = "https://github.com/Apocky/CSSL3"
 homepage     = "https://cssl.dev"
 
 [workspace.lints.clippy]
