@@ -63,6 +63,7 @@
 #![allow(clippy::struct_excessive_bools)]
 #![allow(clippy::or_fun_call)]
 
+pub mod ad_legality;
 pub mod arena;
 pub mod attr;
 pub mod cap_check;
@@ -80,6 +81,9 @@ pub mod ty;
 pub mod typing;
 pub mod unify;
 
+pub use ad_legality::{
+    check_ad_legality, is_pure_diff_primitive, AdLegalityDiagnostic, AdLegalityReport,
+};
 pub use arena::{DefId, HirArena, HirId};
 pub use attr::{HirAttr, HirAttrArg, HirAttrKind};
 pub use cap_check::{

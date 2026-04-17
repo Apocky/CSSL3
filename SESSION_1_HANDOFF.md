@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 ✓ + T10-phase-1-codegen (5 text-emitters) ✓ + T10-phase-1-hosts (5 catalogs) ✓ + T11-phase-1-telemetry-persist ✓ + T12-phase-1-examples (hello-triangle + sdf-shader + audio-callback + cssl-examples integration-tests crate) ✓ ; Session-1 phase-1 **COMPLETE**. Next = T11-phase-2 (real crypto / backends / oracle-bodies) OR T13+ (self-host stage-1)
+- **Current task** T1..T6-phase-1 ✓ + T7-phase-1 + T8-phase-1 ✓ + T3.4-phase-2-refinement ✓ + T9-phase-1 ✓ + T10-phase-1-codegen ✓ + T10-phase-1-hosts ✓ + T11-phase-1-telemetry-persist ✓ + T12-phase-1-examples ✓ + T3.4-phase-3-AD-legality ✓ ; Next remaining T3.4-phase-3 slices : IFC-propagation + @staged-check + macro-hygiene ; OR T11-phase-2 (real crypto) / T6-phase-2 (MIR body-lowering) / T7-phase-2 (AD rule-walker) / T13+ (self-host)
 
 ───────────────────────────────────────────────────────────────
 
@@ -69,6 +69,7 @@ See [DECISIONS.md](DECISIONS.md). Recorded so far :
 - **T10-D2** : Host-adapters phased — 5 adapters (Vulkan + Level-Zero + D3D12 + Metal + WebGPU) capability-catalogs + stub probes + canonical Arc A770 profile now ; ash / level-zero-sys / windows-rs / metal / wgpu FFI deferred to T10-phase-2
 - **T11-D1** : Telemetry + persistence phased — cssl-telemetry (25-scope taxonomy + TelemetryRing SPSC + AuditChain BLAKE3+Ed25519 stub + Chrome/JSON/OTLP exporters) + cssl-persist (SchemaVersion + MigrationChain + PersistenceImage + InMemoryBackend) now ; real BLAKE3/Ed25519 + OTLP gRPC + WAL/LMDB backends + @hot_reload_preserve HIR pass deferred to T11-phase-2 ; cssl-testing oracle-body fleshing also T11-phase-2
 - **T12-D1** : Examples trilogy at repo-root — 3 canonical CSSLv3 source files (hello-triangle VK-1.4 pipeline + sdf-shader `bwd_diff(scene_sdf)` killer-app gate + audio-callback full-real-time-effect-row) + cssl-examples integration-tests crate pipelining lex → parse → HIR → lower ; bit-exact-vs-analytic verification gate + MIR-emission + spirv-val gated on T6+T7+T9-phase-2 slices
+- **T3-D11** : T3.4-phase-3-AD-legality — `cssl_hir::ad_legality` compile-time check emitting AD0001 (gradient-drop) / AD0002 (unresolved-callee) / AD0003 (missing-return-tangent) diagnostics for every `@differentiable` fn body. Closes the AD-legality slice from T3-D9 deferred-list ; remaining T3.4-phase-3 slices (IFC-propagation + @staged-check + macro-hygiene + let-generalization) still deferred
 
 ───────────────────────────────────────────────────────────────
 

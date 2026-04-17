@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,34 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D11 : T3.4-phase-3-AD-legality — compile-time gradient-drop check landed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D9 deferred `AD-legality check (§§ 05 closure)` to T3.4-phase-2 ; T3-D10 closed the refinement-obligation slice ; this entry closes the AD-legality slice. The AD-legality check is a structural prerequisite for the T7-phase-2 rule-application walker — it verifies that every `@differentiable` fn body closes over legal callees before the transform actually runs source-to-source.
+- **Slice landed (this commit)**
+  - `cssl_hir::ad_legality` module : `AdLegalityDiagnostic` (3 variants : `GradientDrop` / `UnresolvedCallee` / `MissingReturnTangent`) + stable diagnostic-codes (AD0001..AD0003) + human-readable `message()` + `AdLegalityReport` (diagnostics + checked_fn_count + call_site_count + legal_call_count + `count(code)` + `summary()`).
+  - `check_ad_legality(&HirModule, &Interner) -> AdLegalityReport` : walks every `@differentiable`-annotated fn, builds a `DefId → Vec<HirAttr>` map once, then walks each fn-body looking for `Call { callee: Path }` expressions and verifying the target is `@differentiable` / `@NoDiff` / known-pure-primitive / non-fn-def. Full expression-tree walker covering 30+ `HirExprKind` variants.
+  - `is_pure_diff_primitive(name)` catalog : 38 known-pure-diff math primitives (`length` / `sqrt` / `sin` / `cos` / `tan` / `asin` / `acos` / `atan` / `atan2` / `exp` / `exp2` / `log` / `log2` / `log10` / `pow` / `max` / `min` / `abs` / `floor` / `ceil` / `round` / `fract` / `normalize` / `dot` / `cross` / `clamp` / `mix` / `smoothstep` / `step` / `reflect` / `refract` / `distance` / vec/mat constructors / `sin_cos`).
+  - 13 lib-tests covering : primitive-catalog accept/reject + empty-module cleanliness + non-@differentiable-fn ignored + @differentiable-calling-pure-primitive legal + @differentiable-calling-@differentiable legal + @differentiable-calling-@NoDiff legal + @differentiable-calling-plain-fn emits AD0001 + diagnostic-code stability + message-contains-caller + report-summary-shape + multi-illegal-call-count + MissingReturnTangent AD0003.
+- **T3.4-phase-3 REMAINING SLICES (still deferred)**
+  - IFC-label propagation (Jif-DLM per `specs/11`).
+  - `@staged` stage-arg comptime-check (per `specs/06`).
+  - Macro hygiene-mark propagation (per `specs/13`).
+  - Let-generalization + higher-rank polymorphism in `cssl_hir::infer`.
+- **Rationale**
+  - AD-legality is a purely structural walker — it needs name-resolution (already landed at T3.3) and the attr-set carried on every `HirFn`. No type-checking / SMT / MIR lowering required. Can land independently of the other T3.4-phase-3 slices.
+  - Stable diagnostic-codes (AD0001 / AD0002 / AD0003) mirror the rustc diagnostic-code convention + make CI log-parsing deterministic.
+  - Pure-primitive catalog is intentionally hardcoded at the HIR level rather than derived from stdlib-trait bounds — stage-0 does not yet have trait-dispatch resolution, but the primitive list is stable across compiler evolution.
+  - Walker-based on the same pattern as `cssl_hir::refinement` (T3.4-phase-2-refinement) — consistent walker style across the T3.4-phase-*-* slices.
+- **Consequences**
+  - Public API : `cssl_hir::{check_ad_legality, is_pure_diff_primitive, AdLegalityDiagnostic, AdLegalityReport}`.
+  - `cssl-hir` lib-test count 86 → 99 (+13 AD-legality tests).
+  - `sdf_shader.cssl` (T12-phase-1 killer-app example) is now **structurally verifiable** by running `check_ad_legality` on its HIR — any non-pure-primitive / non-@differentiable call inside `sphere_sdf` / `scene_sdf` / `ray_march` / `surface_normal` would be caught at compile-time.
+  - T7-phase-2 rule-application walker can now assume its input `@differentiable` bodies are AD-legal — no silent-gradient-drop in the transform.
 
 ───────────────────────────────────────────────────────────────
 
