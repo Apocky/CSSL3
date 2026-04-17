@@ -107,9 +107,12 @@ name = "cssl-examples"
 version = "0.1.0"
 dependencies = [
  "cssl-ast",
+ "cssl-autodiff",
  "cssl-hir",
  "cssl-lex",
+ "cssl-mir",
  "cssl-parse",
+ "cssl-smt",
 ]
 
 [[package]]

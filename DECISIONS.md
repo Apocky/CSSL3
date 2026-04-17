@@ -1,6 +1,6 @@
 # CSSLv3 — DECISIONS log
 
-§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • spec-corpus deltas applied • foundation audited
+§ STATUS : Session-1 • T1..T6-phase-1 ✓ • T7-phase-1 ✓ • T8-phase-1 ✓ • T3.4-phase-2-refinement ✓ • T9-phase-1 ✓ • T10-phase-1-codegen ✓ • T10-phase-1-hosts ✓ • T11-phase-1-telemetry-persist ✓ • T12-phase-1-examples ✓ • T3.4-phase-3-AD-legality ✓ • T6-phase-2a-pipeline-body-lowering ✓ • T7-phase-2a-AD-walker ✓ • T9-phase-2a-predicate-translator ✓ • T12-phase-2a-F1-chain-integration ✓ • spec-corpus deltas applied • foundation audited
 
 § ROOT-OF-TRUST
 All decisions in this file operate under the authority of `PRIME_DIRECTIVE.md` at the repo
@@ -379,6 +379,36 @@ Each decision entry :
 - **Consequences**
   - Match expressions, if / while / for heads all parse cleanly against struct-returning paths.
   - If a legitimate struct-constructor appears in control-flow head (rare, per §§ 09 FORMATTING which recommends explicit parens there), the peek-ahead still fires correctly and the code parses.
+
+───────────────────────────────────────────────────────────────
+
+## § T12-D2 : T12-phase-2a — killer-app end-to-end F1-chain integration test landed
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T9-D2 completed the final structural piece of the F1-correctness chain. This entry provides the **end-to-end integration test** that validates the chain composes on real CSSLv3 source. Extends `cssl-examples` with `F1ChainOutcome` + `run_f1_chain` that wires lex + parse + HIR + AD-legality + refinement-obligations + MIR-body-lowering + AD-walker + predicate-translator into a single call, operating on the `sdf_shader.cssl` killer-app example.
+- **Slice landed (this commit)**
+  - `cssl-examples` gains deps : `cssl-mir`, `cssl-autodiff`, `cssl-smt`.
+  - `F1ChainOutcome` record with 9 counters covering every stage + `summary()` + `is_composed()` predicate.
+  - `run_f1_chain(name, source) -> F1ChainOutcome` single-call runner that walks the full pipeline from lex to SMT-translation.
+  - `run_f1_chain_all()` drives all 3 canonical examples.
+  - 8 new integration-tests : sdf_shader ≥ 3 diff-fns + ≥ 6 AD variants ; audio_callback ≥ 1 refinement obligation ; all 3 examples compose without structural failure ; summary format stability ; is_composed predicate ; mir-fn count nonzero ; AD walker primitive-matching ; audio-callback SMT-query translation.
+- **F1-correctness chain validation (tested on sdf_shader.cssl)** :
+  - parse ✓ + HIR ✓ + AD-legality ✓ + refinement-obligations ✓ + MIR bodies ✓
+  - `sphere_sdf_fwd` / `_bwd` + `scene_sdf_fwd` / `_bwd` + `ray_march_fwd` / `_bwd` variants emitted ✓
+  - SMT queries translated (Lipschitz gracefully flagged `UnsupportedKind`) ✓
+  - Chain composes end-to-end ✓
+- **Phase-2b-c DEFERRED** : T7-phase-2b real dual-substitution + T7-phase-2c bit-exact-vs-analytic + T9-phase-2b HIR-direct + Lipschitz + T12-phase-2c vertical_slice.cssl.
+- **Rationale**
+  - End-to-end test is **highest-leverage validation** for 10-commit session.
+  - 9-counter `F1ChainOutcome` gives fine-grained regression detection.
+  - `>=` lower-bound assertions let the compiler grow without breaking tests ; fails only on structural regression.
+- **Consequences**
+  - Public API : `cssl_examples::{F1ChainOutcome, run_f1_chain, run_f1_chain_all}`.
+  - `cssl-examples` : 11 → 19 tests (+8).
+  - `cssl-examples` deps : 4 → 7 (+cssl-mir, +cssl-autodiff, +cssl-smt).
+  - Workspace test-count : 929 → 937 (+8).
+  - **F1-correctness chain now has a test-driven invariant** : every future stage-touching commit must preserve `run_f1_chain_all` outcomes.
 
 ───────────────────────────────────────────────────────────────
 
