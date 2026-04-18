@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** Session-3 T3-D15 landed : **let-generalization integration** into live inference. `TypeScope` now stores `HashMap<Symbol, Scheme>` internally (legacy `insert`/`lookup` API preserved via monomorphic-wrap). `TypingEnv` gains `insert_local_scheme` / `lookup_local_scheme` / `free_ty_vars` / `free_row_vars`. `infer.rs::check_stmt::Let` now calls new `bind_pattern_let` helper which generalizes type before inserting. `synth_expr_kind::Path` instantiates with fresh vars per use-site. Classic `let id = |x : i32| x ; id(42)` type-checks ; monomorphic lets round-trip unchanged ; nested-scope shadowing preserved ; staged_check.rs rustdoc ASCII-table wrapped in `text` fence. 1127 tests / 0 failed / 0 clippy. Remaining : macro-hygiene + vector-SDF + proof-cert + T11-phase-2b + Arc A770.
+- **Current task** Session-3 T3-D16 landed : **macro-hygiene structural walker** — 4th and final phase-3 walker. Closes T3.4-phase-3. `check_macro_hygiene(&HirModule, &Interner) → MacroHygieneReport` validates attribute-level invariants : MAC0001 `@hygienic` without tier-companion, MAC0002 conflicting-tiers, MAC0003 tier-declaring-without-hygienic. Mirrors ad_legality + ifc + staged_check API shape. 13 new tests (empty / clean / single-attr-variants / combination-variants / multi-segment-path / summary). All 4 phase-3 walkers now landed via unified `check_<concern>(&HirModule, &Interner) → <Concern>Report` API. 1140 tests / 0 failed / 0 clippy. Remaining : vector-SDF + proof-cert + T11-phase-2b + Arc A770.
 
 ───────────────────────────────────────────────────────────────
 

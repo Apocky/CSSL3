@@ -73,6 +73,7 @@ pub mod ifc;
 pub mod infer;
 pub mod item;
 pub mod lower;
+pub mod macro_hygiene;
 pub mod pat;
 pub mod refinement;
 pub mod resolve;
@@ -107,6 +108,9 @@ pub use item::{
     HirTypeAlias, HirUse, HirVisibility, HirWhereClause,
 };
 pub use lower::{lower_module, LowerCtx};
+pub use macro_hygiene::{
+    check_macro_hygiene, MacroHygieneCode, MacroHygieneDiagnostic, MacroHygieneReport,
+};
 pub use pat::{HirPattern, HirPatternField, HirPatternKind};
 pub use refinement::{
     collect_refinement_obligations, ObligationBag, ObligationId, ObligationKind,

@@ -1730,3 +1730,45 @@ Each decision entry :
   - Constraint-based inference (type-classes `T: Differentiable`).
   - Retirement of `Ty::Param(Symbol)` skolem — currently fn-params inside generic fns still use the conservative skolem approach.
   - Per-element generalization for tuple / struct / variant destructuring patterns.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D16 : T3.4-phase-3-macro-hygiene — structural walker
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** Closes the last slice of T3.4-phase-3 : all 4 HIR structural walkers now landed (AD-legality + IFC + @staged + macro-hygiene), each following the shared `check_<concern>(&HirModule, &Interner) -> <Concern>Report` API pattern. Full Racket-lineage set-of-scopes algorithm is phase-2e work (requires HIR to thread `HygieneMark` through every identifier) ; this commit validates the attribute-level invariants stage-0 CAN check.
+- **Slice landed (this commit)**
+  - `cssl-hir/src/macro_hygiene.rs` (~330 LOC) :
+    - `MacroHygieneCode` enum (3 variants, each with stable code string).
+    - `MacroHygieneDiagnostic { code, span, message }`.
+    - `MacroHygieneReport { diagnostics, checked_item_count }` with `is_clean()` + `summary()`.
+    - `check_macro_hygiene(&HirModule, &Interner) -> MacroHygieneReport` — walks every fn (including impl-methods + nested modules), classifies attrs, emits diagnostics.
+    - `AttrClassification` internal helper + `TierNames` pre-interned symbol-struct.
+  - Re-exports from `cssl-hir/src/lib.rs`.
+  - 13 new tests covering :
+    - Empty module is clean
+    - Plain fn (no macro attrs) skipped
+    - `@hygienic` alone → MAC0001
+    - `@declarative` alone → MAC0003
+    - `@declarative @hygienic` → clean
+    - `@attr_macro @hygienic` → clean
+    - `@proc_macro @hygienic` → clean
+    - `@declarative @attr_macro @hygienic` → MAC0002
+    - `@declarative @attr_macro` → MAC0002 + MAC0003
+    - Multi-segment path (`@cssl.macros.declarative`) ignored
+    - Multiple clean macros counted correctly
+    - Diagnostic-rendering + summary-formatting shape
+- **Diagnostic codes**
+  - `MAC0001 HygienicOnNonMacroDefinition` : `@hygienic` without any tier-declaring companion.
+  - `MAC0002 ConflictingMacroTiers` : multiple tier-declaring attrs on the same item.
+  - `MAC0003 MacroWithoutHygienic` : tier-declaring attr without `@hygienic` — identifier capture possible.
+- **Consequences**
+  - 4 of 4 T3.4-phase-3 walkers now landed : AD-legality + IFC + @staged + macro-hygiene.
+  - All four expose unified `check_<concern>(&HirModule, &Interner) -> <Concern>Report` API.
+  - Test count : 1127 → 1140 (+13).
+- **Deferred** (phase-2e scope)
+  - Full Racket set-of-scopes algorithm : thread `HygieneMark` through `HirExpr::Path` + `HirPattern::Binding` + apply scope-flips on expansion.
+  - Expansion phase : tier-2 declarative pattern-rewrite + tier-3 `#run` proc-macro sandbox.
+  - Cross-module macro exports (currently validation is per-item, not per-namespace).
+  - Shadowing-detection : a macro-introduced binding that shadows a user-binding in the call-site's scope.
