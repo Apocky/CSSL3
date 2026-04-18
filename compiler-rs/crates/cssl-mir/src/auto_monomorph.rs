@@ -57,14 +57,15 @@ use std::collections::{HashMap, HashSet};
 use cssl_ast::SourceFile;
 use cssl_hir::{
     HirArrayExpr, HirBlock, HirCallArg, HirEnum, HirExpr, HirExprKind, HirFieldDecl, HirFn, HirId,
-    HirItem, HirMatchArm, HirModule, HirStmtKind, HirStruct, HirStructBody, HirType, HirTypeKind,
-    Interner, Symbol,
+    HirImpl, HirItem, HirMatchArm, HirModule, HirStmtKind, HirStruct, HirStructBody, HirType,
+    HirTypeKind, Interner, Symbol,
 };
 
 use crate::func::{MirFunc, MirModule};
 use crate::monomorph::{
     mangle_enum_specialization_name, mangle_specialization_name, mangle_struct_specialization_name,
-    specialize_generic_enum, specialize_generic_fn, specialize_generic_struct, TypeSubst,
+    specialize_generic_enum, specialize_generic_fn, specialize_generic_impl,
+    specialize_generic_struct, TypeSubst,
 };
 
 /// Report returned by the auto-monomorphization walker.
@@ -826,6 +827,208 @@ fn walk_struct_fields_for_enum_refs(
     }
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D50 — IMPL AUTO-DISCOVERY WALKER
+//
+// Rounds out the auto-discovery quartet alongside fn/struct/enum. For each
+// generic impl block in the module whose `self_ty` matches a type-annotation
+// reference elsewhere in the module, invokes `specialize_generic_impl` with
+// the corresponding subst. Emits one `MirFunc` per method per unique subst.
+//
+// § ALGORITHM
+//   1. Index generic impls by their self_ty name (extracted from Path-form
+//      self_ty.path.last()).
+//   2. Scan every fn signature + struct field + enum-variant field for
+//      `HirTypeKind::Path` refs matching an indexed self_ty name.
+//   3. For each unique (impl, type-args) tuple, build TypeSubst from the
+//      impl's generics.params zipped with the ref's type_args.
+//   4. Invoke `specialize_generic_impl` → one MirFunc per method.
+//
+// § SCOPE (this slice)
+//   - Inherent impls only (trait impls deferred — need trait-dispatch).
+//   - Single-segment Path self-types (`Box<T>`, not `crate::Box<T>`).
+//   - Arity-mismatch refs skipped.
+//
+// § DIFFERENCE vs D46 (struct auto-discovery)
+//   D46 produces specialized HirStruct *decls* ; D50 produces specialized
+//   MirFunc *method-impls*. A source with both `struct Box<T>` + `impl<T>
+//   Box<T> { fn get(…) }` + `fn use(b: Box<i32>) { … }` runs D46 to emit
+//   Box_i32 struct-decl AND D50 to emit Box_i32__get MirFunc.
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Report returned by the impl auto-discovery walker.
+#[derive(Debug, Clone, Default)]
+pub struct AutoImplReport {
+    /// One `MirFunc` per method per unique (impl, type-arg-tuple) tuple.
+    pub specializations: Vec<MirFunc>,
+    /// Count of generic impl-blocks indexed.
+    pub generic_impl_count: u32,
+    /// Count of type-annotation references to a known generic self-type.
+    pub ref_count: u32,
+    /// Count of unique (impl, subst) tuples that produced specializations.
+    pub unique_spec_count: u32,
+}
+
+impl AutoImplReport {
+    /// Short diagnostic summary.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        format!(
+            "auto-impl : {} generic impls / {} type-refs / {} unique specializations / {} total method-specs",
+            self.generic_impl_count,
+            self.ref_count,
+            self.unique_spec_count,
+            self.specializations.len()
+        )
+    }
+
+    /// `true` iff no impl-block method needed specialization.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.specializations.is_empty()
+    }
+}
+
+/// Walk `module` and produce `MirFunc`s for every generic-impl method
+/// whose self-type appears in a type-annotation with concrete type-args.
+#[must_use]
+pub fn auto_monomorphize_impls(
+    module: &HirModule,
+    interner: &Interner,
+    source: Option<&SourceFile>,
+) -> AutoImplReport {
+    let mut report = AutoImplReport::default();
+
+    // § Index generic impls by their self-type name (single-segment Path).
+    let mut impl_index: HashMap<Symbol, &HirImpl> = HashMap::new();
+    for item in &module.items {
+        if let HirItem::Impl(i) = item {
+            if i.generics.params.is_empty() {
+                continue;
+            }
+            if let HirTypeKind::Path { path, .. } = &i.self_ty.kind {
+                if path.len() == 1 {
+                    impl_index.insert(path[0], i);
+                }
+            }
+        }
+    }
+    report.generic_impl_count = u32::try_from(impl_index.len()).unwrap_or(u32::MAX);
+
+    // § Collect type-annotation refs that match an indexed self-type name.
+    let mut refs: Vec<(Symbol, Vec<HirType>)> = Vec::new();
+    for item in &module.items {
+        match item {
+            HirItem::Fn(f) => {
+                for p in &f.params {
+                    collect_impl_self_ty_refs(&p.ty, &impl_index, &mut refs);
+                }
+                if let Some(rt) = &f.return_ty {
+                    collect_impl_self_ty_refs(rt, &impl_index, &mut refs);
+                }
+            }
+            HirItem::Struct(s) => {
+                walk_body_for_impl_refs(&s.body, &impl_index, &mut refs);
+            }
+            HirItem::Enum(e) => {
+                for v in &e.variants {
+                    walk_body_for_impl_refs(&v.body, &impl_index, &mut refs);
+                }
+            }
+            _ => {}
+        }
+    }
+    report.ref_count = u32::try_from(refs.len()).unwrap_or(u32::MAX);
+
+    // § Deduplicate (impl, type-args) tuples ; invoke specialize_generic_impl
+    //   per unique combination.
+    let mut seen: HashSet<String> = HashSet::new();
+    for (self_sym, type_args) in refs {
+        let impl_block = match impl_index.get(&self_sym) {
+            Some(i) => *i,
+            None => continue,
+        };
+
+        if impl_block.generics.params.len() != type_args.len() {
+            continue;
+        }
+        let mut subst = TypeSubst::new();
+        for (param, ty) in impl_block.generics.params.iter().zip(type_args.iter()) {
+            subst.bind(param.name, ty.clone());
+        }
+
+        // Dedup key : self_sym + mangle_key of subst.
+        let base = interner.resolve(self_sym);
+        let dedup_key = format!("{base}_{}", mangle_key(&subst, interner));
+        if !seen.insert(dedup_key) {
+            continue;
+        }
+
+        report.unique_spec_count = report.unique_spec_count.saturating_add(1);
+        let specs = specialize_generic_impl(interner, source, impl_block, &subst);
+        report.specializations.extend(specs);
+    }
+
+    report
+}
+
+/// Recursively walk a `HirType` collecting refs matching a known impl self-type name.
+fn collect_impl_self_ty_refs(
+    t: &HirType,
+    impl_index: &HashMap<Symbol, &HirImpl>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    match &t.kind {
+        HirTypeKind::Path {
+            path, type_args, ..
+        } => {
+            if path.len() == 1 && !type_args.is_empty() && impl_index.contains_key(&path[0]) {
+                out.push((path[0], type_args.clone()));
+            }
+            for ta in type_args {
+                collect_impl_self_ty_refs(ta, impl_index, out);
+            }
+        }
+        HirTypeKind::Tuple { elems } => {
+            for e in elems {
+                collect_impl_self_ty_refs(e, impl_index, out);
+            }
+        }
+        HirTypeKind::Array { elem, .. } | HirTypeKind::Slice { elem } => {
+            collect_impl_self_ty_refs(elem, impl_index, out);
+        }
+        HirTypeKind::Reference { inner, .. } | HirTypeKind::Capability { inner, .. } => {
+            collect_impl_self_ty_refs(inner, impl_index, out);
+        }
+        HirTypeKind::Function {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                collect_impl_self_ty_refs(p, impl_index, out);
+            }
+            collect_impl_self_ty_refs(return_ty, impl_index, out);
+        }
+        HirTypeKind::Refined { base, .. } => {
+            collect_impl_self_ty_refs(base, impl_index, out);
+        }
+        HirTypeKind::Infer | HirTypeKind::Error => {}
+    }
+}
+
+fn walk_body_for_impl_refs(
+    body: &HirStructBody,
+    impl_index: &HashMap<Symbol, &HirImpl>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    let fields: &[HirFieldDecl] = match body {
+        HirStructBody::Named(fs) | HirStructBody::Tuple(fs) => fs,
+        HirStructBody::Unit => return,
+    };
+    for f in fields {
+        collect_impl_self_ty_refs(&f.ty, impl_index, out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::auto_monomorphize;
@@ -1536,5 +1739,119 @@ mod tests {
         let s = r.summary();
         assert!(s.contains("generic enums"));
         assert!(s.contains("type-refs"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D50 — impl auto-discovery walker tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn walk_impls(src: &str) -> super::AutoImplReport {
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _) = lower_module(&f, &cst);
+        super::auto_monomorphize_impls(&hir, &interner, Some(&f))
+    }
+
+    #[test]
+    fn impl_walker_empty_module_is_empty() {
+        let r = walk_impls("");
+        assert!(r.is_empty());
+        assert_eq!(r.generic_impl_count, 0);
+    }
+
+    #[test]
+    fn impl_walker_ignores_non_generic_impl() {
+        let r = walk_impls(
+            r"
+            struct Point { x : f32, y : f32 }
+            impl Point { fn mag(p : Point) -> f32 { 0.0 } }
+            fn use_it(p : Point) -> f32 { 0.0 }
+        ",
+        );
+        assert_eq!(r.generic_impl_count, 0);
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn impl_walker_single_ref_specializes_all_methods() {
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> {
+                fn get(b : Box<T>) -> i32 { 0 }
+                fn set(b : Box<T>, v : T) -> i32 { 0 }
+            }
+            fn use_it(b : Box<i32>) -> i32 { 0 }
+        ";
+        let r = walk_impls(src);
+        assert_eq!(r.generic_impl_count, 1);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.unique_spec_count, 1);
+        // Two methods in the impl ⇒ 2 MirFuncs in the report.
+        assert_eq!(r.specializations.len(), 2);
+        let names: Vec<&str> = r.specializations.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.iter().any(|n| n == &"Box_i32__get"));
+        assert!(names.iter().any(|n| n == &"Box_i32__set"));
+    }
+
+    #[test]
+    fn impl_walker_two_distinct_type_args_produce_two_spec_tuples() {
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> { fn get(b : Box<T>) -> i32 { 0 } }
+            fn use_i32(b : Box<i32>) -> i32 { 0 }
+            fn use_f32(b : Box<f32>) -> i32 { 0 }
+        ";
+        let r = walk_impls(src);
+        assert_eq!(r.unique_spec_count, 2);
+        assert_eq!(r.specializations.len(), 2);
+        let names: Vec<&str> = r.specializations.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.iter().any(|n| n == &"Box_i32__get"));
+        assert!(names.iter().any(|n| n == &"Box_f32__get"));
+    }
+
+    #[test]
+    fn impl_walker_same_refs_dedup() {
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> { fn get(b : Box<T>) -> i32 { 0 } }
+            fn a(b : Box<i32>) -> i32 { 0 }
+            fn b(b : Box<i32>) -> i32 { 0 }
+            fn c() -> Box<i32> { Box { value : 0 } }
+        ";
+        let r = walk_impls(src);
+        assert_eq!(r.ref_count, 3);
+        assert_eq!(r.unique_spec_count, 1);
+        assert_eq!(r.specializations.len(), 1);
+    }
+
+    #[test]
+    fn impl_walker_arity_mismatch_skipped() {
+        let src = r"
+            struct Pair<T, U> { first : T, second : U }
+            impl<T, U> Pair<T, U> { fn swap(p : Pair<T, U>) -> i32 { 0 } }
+            fn bad(x : Pair<i32>) -> i32 { 0 }
+        ";
+        let r = walk_impls(src);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(
+            r.unique_spec_count, 0,
+            "arity-mismatch blocks specialization"
+        );
+    }
+
+    #[test]
+    fn impl_walker_summary_shape() {
+        let r = walk_impls(
+            r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> { fn get(b : Box<T>) -> i32 { 0 } }
+            fn use_it(b : Box<i32>) -> i32 { 0 }
+        ",
+        );
+        let s = r.summary();
+        assert!(s.contains("generic impls"));
+        assert!(s.contains("type-refs"));
+        assert!(s.contains("method-specs"));
     }
 }

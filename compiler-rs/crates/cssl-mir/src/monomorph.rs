@@ -577,9 +577,10 @@ fn mangle_self_ty(self_ty: &HirType, interner: &Interner, subst: &TypeSubst) -> 
 
 fn self_ty_fragment(t: &HirType, interner: &Interner) -> String {
     match &t.kind {
-        HirTypeKind::Path { path, .. } => path
-            .last()
-            .map_or_else(|| "unknown".to_string(), |s| interner.resolve(*s).to_lowercase()),
+        HirTypeKind::Path { path, .. } => path.last().map_or_else(
+            || "unknown".to_string(),
+            |s| interner.resolve(*s).to_lowercase(),
+        ),
         _ => "opaque".to_string(),
     }
 }
