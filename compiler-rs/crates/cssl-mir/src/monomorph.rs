@@ -57,7 +57,9 @@
 use std::collections::HashMap;
 
 use cssl_ast::SourceFile;
-use cssl_hir::{HirFn, HirType, HirTypeKind, Interner, Symbol};
+use cssl_hir::{
+    HirFieldDecl, HirFn, HirStruct, HirStructBody, HirType, HirTypeKind, Interner, Symbol,
+};
 
 use crate::body_lower::lower_fn_body;
 use crate::func::MirFunc;
@@ -301,6 +303,112 @@ pub fn specialize_generic_fn(
     lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
 
     mir_fn
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D45 — GENERIC STRUCT SPECIALIZATION
+//
+// Parallel API to `specialize_generic_fn` for `HirStruct` items. Given a
+// generic struct decl + `TypeSubst`, produce a specialized struct with :
+//   - mangled name (`Pair<T, U>` + T↦i32, U↦f32 → `Pair_i32_f32`)
+//   - substituted field types
+//   - emptied `generics` (so downstream passes treat it as concrete)
+//
+// § SCOPE (this slice — T11-D45 MVP option-(a) per recon)
+//   - Named + Tuple + Unit struct bodies supported.
+//   - Field type substitution via the existing `substitute_hir_type` walker
+//     (handles nested `Box<T>` / `Vec<T>` / references / tuples / etc.).
+//   - Returns the specialized `HirStruct` value ; the caller decides whether
+//     to register it in some symbol table / MirModule.struct_registry.
+//
+// § DEFERRED
+//   - Value-level struct construction in MIR (current body_lower emits
+//     `Opaque("!cssl.struct.<name>")` — needs plumbing for specialized names).
+//   - impl<T> Vec<T> monomorphization (parallel to this for HirImpl items).
+//   - Generic enums.
+//   - Type-arg auto-discovery from struct-expr field types (requires inference).
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Specialize a generic [`HirStruct`] to a concrete struct decl.
+///
+/// § PIPELINE
+///   1. Clone the input struct.
+///   2. Substitute every field's `ty` using `substitute_hir_type`.
+///   3. Empty the `generics` field (specialized struct is concrete).
+///   4. Mangle the name via [`mangle_specialization_name`] so the specialized
+///      struct has a fresh, deterministic identifier.
+///
+/// The original `name: Symbol` is preserved (points to the same interned
+/// symbol as the generic) for traceability ; callers that need the mangled
+/// string use the returned value's computed mangle via
+/// [`mangle_specialization_name`] or look at the caller-chosen storage key.
+///
+/// # Example
+/// ```ignore
+/// // Source : struct Pair<T, U> { first: T, second: U }
+/// let mut subst = TypeSubst::new();
+/// subst.bind(t_sym, hir_primitive_type("i32", &interner));
+/// subst.bind(u_sym, hir_primitive_type("f32", &interner));
+/// let specialized = specialize_generic_struct(&interner, &hir_pair, &subst);
+/// // specialized.body : Named([{first: i32}, {second: f32}])
+/// // specialized.generics.params : empty
+/// ```
+#[must_use]
+pub fn specialize_generic_struct(
+    interner: &Interner,
+    hir_struct: &HirStruct,
+    subst: &TypeSubst,
+) -> HirStruct {
+    let mut out = hir_struct.clone();
+    out.generics = cssl_hir::HirGenerics { params: Vec::new() };
+    out.body = substitute_struct_body(&out.body, interner, subst);
+    out
+}
+
+/// Substitute generic-param references in every field of a struct body.
+fn substitute_struct_body(
+    body: &HirStructBody,
+    interner: &Interner,
+    subst: &TypeSubst,
+) -> HirStructBody {
+    match body {
+        HirStructBody::Unit => HirStructBody::Unit,
+        HirStructBody::Tuple(fields) => HirStructBody::Tuple(
+            fields
+                .iter()
+                .map(|f| substitute_field_decl(f, interner, subst))
+                .collect(),
+        ),
+        HirStructBody::Named(fields) => HirStructBody::Named(
+            fields
+                .iter()
+                .map(|f| substitute_field_decl(f, interner, subst))
+                .collect(),
+        ),
+    }
+}
+
+fn substitute_field_decl(f: &HirFieldDecl, interner: &Interner, subst: &TypeSubst) -> HirFieldDecl {
+    HirFieldDecl {
+        span: f.span,
+        id: f.id,
+        attrs: f.attrs.clone(),
+        visibility: f.visibility,
+        name: f.name,
+        ty: substitute_hir_type(&f.ty, interner, subst),
+    }
+}
+
+/// Compute a mangled struct name for a specialization. Thin wrapper over
+/// [`mangle_specialization_name`] with the base pulled from `hir_struct.name`.
+#[must_use]
+pub fn mangle_struct_specialization_name(
+    hir_struct: &HirStruct,
+    interner: &Interner,
+    subst: &TypeSubst,
+) -> String {
+    let base = interner.resolve(hir_struct.name);
+    mangle_specialization_name(&base, interner, subst)
 }
 
 /// Clone `hir_fn` but substitute generic-param references in param types +
@@ -628,5 +736,182 @@ mod tests {
         let generic_t = hir_primitive_type("T", &interner);
         // `T` looks like a primitive-shape path but isn't in the catalog ⇒ None.
         assert_eq!(primitive_hir_to_mir(&generic_t, &interner), None);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D45 — generic struct specialization tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::{mangle_struct_specialization_name, specialize_generic_struct};
+    use cssl_hir::HirStructBody;
+
+    /// Helper : parse source, lower to HIR, return (interner, file, HirStruct).
+    fn parse_struct(src: &str, name: &str) -> (cssl_hir::Interner, cssl_hir::HirStruct) {
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+        let s = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                HirItem::Struct(s) if interner.resolve(s.name) == name => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("struct `{name}` not found"));
+        (interner, s)
+    }
+
+    #[test]
+    fn specialize_named_struct_substitutes_field_types() {
+        // struct Pair<T, U> { first: T, second: U } + T↦i32, U↦f32
+        //   ⇒ Pair { first: i32, second: f32 } + empty generics
+        let src = r"struct Pair<T, U> { first : T, second : U }";
+        let (interner, s) = parse_struct(src, "Pair");
+        let t = interner.intern("T");
+        let u = interner.intern("U");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+        subst.bind(u, hir_primitive_type("f32", &interner));
+
+        let specialized = specialize_generic_struct(&interner, &s, &subst);
+        assert!(specialized.generics.params.is_empty());
+
+        let fields = match &specialized.body {
+            HirStructBody::Named(fs) => fs,
+            other => panic!("expected Named body, got {other:?}"),
+        };
+        assert_eq!(fields.len(), 2);
+        assert_eq!(
+            primitive_hir_to_mir(&fields[0].ty, &interner),
+            Some(MirType::Int(IntWidth::I32))
+        );
+        assert_eq!(
+            primitive_hir_to_mir(&fields[1].ty, &interner),
+            Some(MirType::Float(FloatWidth::F32))
+        );
+    }
+
+    #[test]
+    fn specialize_tuple_struct_substitutes_field_types() {
+        // struct Wrap<T>(T, i32) — tuple struct
+        let src = r"struct Wrap<T>(T, i32);";
+        let (interner, s) = parse_struct(src, "Wrap");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("f64", &interner));
+
+        let specialized = specialize_generic_struct(&interner, &s, &subst);
+        let fields = match &specialized.body {
+            HirStructBody::Tuple(fs) => fs,
+            other => panic!("expected Tuple body, got {other:?}"),
+        };
+        assert_eq!(fields.len(), 2);
+        assert_eq!(
+            primitive_hir_to_mir(&fields[0].ty, &interner),
+            Some(MirType::Float(FloatWidth::F64))
+        );
+        // Second field is i32 — not substituted (not generic).
+        assert_eq!(
+            primitive_hir_to_mir(&fields[1].ty, &interner),
+            Some(MirType::Int(IntWidth::I32))
+        );
+    }
+
+    #[test]
+    fn specialize_unit_struct_passes_through() {
+        let src = r"struct Marker<T>;";
+        let (interner, s) = parse_struct(src, "Marker");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specialized = specialize_generic_struct(&interner, &s, &subst);
+        assert!(matches!(specialized.body, HirStructBody::Unit));
+        assert!(specialized.generics.params.is_empty());
+    }
+
+    #[test]
+    fn specialize_struct_empties_generics() {
+        // Regression : after specialization, generics must be empty so downstream
+        // passes treat the struct as concrete.
+        let src = r"struct Box<T> { value : T }";
+        let (interner, s) = parse_struct(src, "Box");
+        assert_eq!(s.generics.params.len(), 1, "baseline");
+
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specialized = specialize_generic_struct(&interner, &s, &subst);
+        assert!(specialized.generics.params.is_empty());
+        // Original untouched (we clone).
+        assert_eq!(s.generics.params.len(), 1);
+    }
+
+    #[test]
+    fn mangle_struct_specialization_name_matches_fn_convention() {
+        let src = r"struct Pair<T, U> { first : T, second : U }";
+        let (interner, s) = parse_struct(src, "Pair");
+        let t = interner.intern("T");
+        let u = interner.intern("U");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+        subst.bind(u, hir_primitive_type("f32", &interner));
+
+        let mangled = mangle_struct_specialization_name(&s, &interner, &subst);
+        assert_eq!(mangled, "Pair_i32_f32");
+    }
+
+    #[test]
+    fn specialize_non_generic_struct_is_identity_body() {
+        // A non-generic struct with empty subst specializes to its own shape.
+        let src = r"struct Point { x : f32, y : f32 }";
+        let (interner, s) = parse_struct(src, "Point");
+        let subst = TypeSubst::new();
+
+        let specialized = specialize_generic_struct(&interner, &s, &subst);
+        let fields = match &specialized.body {
+            HirStructBody::Named(fs) => fs,
+            other => panic!("expected Named : {other:?}"),
+        };
+        assert_eq!(fields.len(), 2);
+        assert_eq!(
+            primitive_hir_to_mir(&fields[0].ty, &interner),
+            Some(MirType::Float(FloatWidth::F32))
+        );
+    }
+
+    #[test]
+    fn specialize_struct_with_nested_type_arg() {
+        // `struct Outer<T> { inner : Box<T> }` — the generic param appears in a
+        // nested path's type_args. substitute_hir_type recurses through nested
+        // type_args, so Box<T> becomes Box<i32> in the specialized body.
+        let src = r"struct Outer<T> { inner : Box<T> }";
+        let (interner, s) = parse_struct(src, "Outer");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specialized = specialize_generic_struct(&interner, &s, &subst);
+        let fields = match &specialized.body {
+            HirStructBody::Named(fs) => fs,
+            other => panic!("expected Named : {other:?}"),
+        };
+        assert_eq!(fields.len(), 1);
+        // inner's type is still a Path("Box") but with type_args = [i32] now.
+        let cssl_hir::HirTypeKind::Path {
+            path, type_args, ..
+        } = &fields[0].ty.kind
+        else {
+            panic!("expected Path, got {:?}", fields[0].ty.kind);
+        };
+        assert_eq!(path.len(), 1);
+        assert_eq!(interner.resolve(path[0]), "Box");
+        assert_eq!(type_args.len(), 1);
+        assert_eq!(
+            primitive_hir_to_mir(&type_args[0], &interner),
+            Some(MirType::Int(IntWidth::I32))
+        );
     }
 }

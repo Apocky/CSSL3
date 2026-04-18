@@ -103,9 +103,9 @@ pub use ifc::{
 };
 pub use infer::{check_module, InferCtx};
 pub use item::{
-    HirConst, HirEffect, HirEnum, HirEnumVariant, HirFn, HirFnParam, HirGenerics, HirHandler,
-    HirImpl, HirInterface, HirItem, HirModule, HirNestedModule, HirStruct, HirStructBody,
-    HirTypeAlias, HirUse, HirVisibility, HirWhereClause,
+    HirConst, HirEffect, HirEnum, HirEnumVariant, HirFieldDecl, HirFn, HirFnParam, HirGenerics,
+    HirHandler, HirImpl, HirInterface, HirItem, HirModule, HirNestedModule, HirStruct,
+    HirStructBody, HirTypeAlias, HirUse, HirVisibility, HirWhereClause,
 };
 pub use lower::{lower_module, LowerCtx};
 pub use macro_hygiene::{
