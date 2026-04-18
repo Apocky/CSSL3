@@ -82,6 +82,10 @@ pub fn clif_type_for(mir: &MirType) -> Option<ClifType> {
         MirType::None | MirType::Tuple(_) | MirType::Function { .. } | MirType::Memref { .. } => {
             None
         }
+        // T11-D31 : vec3/vec4 not yet mappable to a single CLIF scalar type.
+        // Cranelift has vector types (e.g., f32x4) but stage-0.5 JIT lowers
+        // scalar-only ; vec3 ops are scalarized at a later stage.
+        MirType::Vec(_, _) => None,
         MirType::Opaque(_) => None,
     }
 }

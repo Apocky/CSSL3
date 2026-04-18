@@ -58,6 +58,11 @@ pub enum MirType {
         shape: Vec<Option<u64>>, // None = dynamic
         elem: Box<MirType>,
     },
+    /// T11-D31 : fixed-size float vector (`vector<Nxf32>`). Unlocks real
+    /// `length(p) - r` sphere-SDF + other vector-valued ops. Lane count is
+    /// the u32 (typically 2/3/4/8/16) ; element type is the FloatWidth.
+    /// Rendered as MLIR `vector<NxfM>` (e.g., `vector<3xf32>`).
+    Vec(u32, FloatWidth),
     /// Opaque / uncategorized — name passed through verbatim.
     Opaque(String),
 }
@@ -161,6 +166,7 @@ impl fmt::Display for MirType {
                 }
                 write!(f, "{elem}>")
             }
+            Self::Vec(lanes, w) => write!(f, "vector<{lanes}x{}>", w.as_str()),
             Self::Opaque(s) => f.write_str(s),
         }
     }
@@ -246,5 +252,45 @@ mod tests {
         let v = MirValue::new(ValueId(3), MirType::Int(IntWidth::I32));
         assert_eq!(v.id, ValueId(3));
         assert_eq!(v.ty, MirType::Int(IntWidth::I32));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D31 : MirType::Vec vector types.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn mir_type_display_vec3_f32() {
+        let t = MirType::Vec(3, FloatWidth::F32);
+        assert_eq!(format!("{t}"), "vector<3xf32>");
+    }
+
+    #[test]
+    fn mir_type_display_vec4_f32() {
+        let t = MirType::Vec(4, FloatWidth::F32);
+        assert_eq!(format!("{t}"), "vector<4xf32>");
+    }
+
+    #[test]
+    fn mir_type_display_vec2_f64() {
+        let t = MirType::Vec(2, FloatWidth::F64);
+        assert_eq!(format!("{t}"), "vector<2xf64>");
+    }
+
+    #[test]
+    fn mir_type_display_vec_equality() {
+        let a = MirType::Vec(3, FloatWidth::F32);
+        let b = MirType::Vec(3, FloatWidth::F32);
+        let c = MirType::Vec(4, FloatWidth::F32);
+        let d = MirType::Vec(3, FloatWidth::F64);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(a, d);
+    }
+
+    #[test]
+    fn mir_type_vec_as_fn_param() {
+        // Confirm MirType::Vec can be used as a MirValue type without panicking.
+        let v = MirValue::new(ValueId(7), MirType::Vec(3, FloatWidth::F32));
+        assert_eq!(v.ty, MirType::Vec(3, FloatWidth::F32));
     }
 }

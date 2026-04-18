@@ -2827,3 +2827,26 @@ Each decision entry :
   - 3+-adjoint bwd : add `call_bwd_3_*`, `call_bwd_4_*` helpers (or a generic N-adjoint helper taking `&mut [f32]`).
   - Multi-result primitives (non-bwd) : any CSSLv3 fn with `-> (T1, T2, ...)` declared at source-level. Walker doesn't currently emit these but the JIT supports them now.
   - Removing `extract_bwd_single_adjoint` — keep it for test-compat, no longer strictly needed for functional correctness.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D31 : MirType::Vec — vector-type scaffold for real sphere-SDF
+
+- **Date** 2026-04-17
+- **Status** accepted (scaffold) — deferred (wiring)
+- **Context** The real sphere-SDF `length(p) - r` requires `p : vec3<f32>` as a first-class type. T11-D31 adds the `MirType::Vec(u32, FloatWidth)` variant as scaffolding + necessary updates to keep the workspace compiling + tested. Wiring it through body_lower (HIR vec3 → MIR emission), walker (AD rules for vec ops), and JIT (cranelift vector types f32x4 etc.) is multi-commit work deferred to a future session.
+- **Slice landed (this commit)**
+  - `cssl-mir/src/value.rs::MirType` gains `Vec(u32, FloatWidth)` variant.
+  - `MirType::Display` renders as `vector<Nxf32>` matching MLIR syntax.
+  - `cssl-cgen-cpu-cranelift/src/types.rs::clif_type_for` returns `None` for `MirType::Vec` (stage-0.5 JIT scalarizes vec ops at a later stage).
+  - 5 new tests in `cssl-mir` : display for vec3-f32, vec4-f32, vec2-f64 ; equality with same/different lane-count ; use as MirValue param.
+- **Consequences**
+  - Test count : 1374 → 1379 (+5 in cssl-mir).
+  - **The MIR type system now recognizes vector types.** Vec3 can be stored as a fn param, a result, an op-result — downstream phases (body_lower, walker, JIT) can extend to emit + consume Vec without another MirType variant addition.
+  - Zero regression : the exhaustive-match in `cssl-cgen-cpu-cranelift/src/types.rs` is the only consumer that required update.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred (multi-session)**
+  - **body_lower** : recognize HIR `Vec3(x, y, z)` literals + `vec<N x f32>` type annotations → emit `MirType::Vec` + `arith.vector_literal` or similar ops.
+  - **AD walker** : add per-lane rules for `Primitive::Vec3Add` / `Vec3Mul` / `Vec3Length` / `Vec3Normalize`. Or scalarize post-walk.
+  - **JIT lowering** : map `MirType::Vec(3, F32)` to cranelift's `f32x4` (with lane 3 padded) or scalarize into 3 f32 ops. First approach preserves type-ID, second simplifies JIT but loses semantic fidelity.
+  - **cssl-examples real sphere-SDF** : `@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 { length(p) - r }` compiling + executing + verifying gradient `∂/∂p = normalize(p)` against central-differences.
