@@ -2054,3 +2054,29 @@ Each decision entry :
   - Hypothesis-style integrated shrinking : retain the PRNG draw-history with each sample so shrinking operates on seed-prefixes not output-values (better convergence for structured types).
   - Faà di Bruno higher-order rule : `check_faa_di_bruno` for `(f∘g)^(n)` — currently deferred until jet-machinery lands in cssl-jets.
   - Vec3 versions of Leibniz / chain-rule / Lipschitz when vector-valued AD is in stage-1.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D8 : T11-phase-2b — RefinedGen<G, P> rejection-sampling generator
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D7 added FloatGen + TripleGen + VecGen + the calculus-rule metamorphic checks, leaving one gap in the property-framework : refinement-type-guided generation per `specs/20_REFINEMENT.csl`. This slice adds `RefinedGen<G, P>` which wraps any inner generator with a predicate ; inputs are rejection-sampled up to `max_attempts` before the inner value is returned as-is. Shrinking similarly filters candidates through the predicate, guaranteeing refinement-valid shrink-results. This is the stage-0 bridge : a refinement `{x : i64 | x > 0}` in the source becomes `RefinedGen::new(IntGen { min: 0, max: _ }, |x| *x > 0)` at the test-harness layer.
+- **Slice landed (this commit)**
+  - `property.rs` :
+    - `RefinedGen<G, P> { inner: G, predicate: P, max_attempts: u32 }` — generic over `G: Generator<T>` + `P: Fn(&T) -> bool`.
+    - `RefinedGen::new(inner, predicate)` sets `max_attempts = 100` ; direct struct-literal for custom caps.
+    - `Generator<T> for RefinedGen<G, P>` :
+      - `generate()` : loops up to `max_attempts` drawing from `inner` until `predicate` is satisfied. Returns the first passing value ; if all fail, returns the last drawn (caller caveat : persistent failure signals mismatched inner+predicate).
+      - `shrink()` : calls `inner.shrink(v)`, filters through `predicate` — all shrink-results are refinement-valid.
+    - 6 new tests : respects-predicate-on-draw, shrinks-to-predicate-valid-only, returns-last-when-unsatisfiable, custom-max-attempts override, refined-float-positive-only (FloatGen + `x > 0`), run-property end-to-end refined-integer-property.
+- **Consequences**
+  - Test count : 1252 → 1258 (+6 RefinedGen).
+  - Refinement-typed inputs now expressible at the test-harness layer — downstream crates can write `{x : i64 | x > 0}`-shaped property tests today. The predicate is Rust-syntax ; once cssl-macros lands `@property(x: i64 where x > 0) fn …` expansion, this generator becomes the natural target.
+  - Every canonical test-framework generator now lives in cssl-testing : scalar (IntGen / BoolGen / FloatGen) + structural (TripleGen / VecGen) + refinement (RefinedGen). The only remaining gap is Hypothesis-style integrated shrinking (seed-prefix shrinking instead of output-value shrinking).
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Hypothesis-style integrated shrinking : retains LCG draw-history per-sample so shrinking reduces the seed-prefix rather than the output — converges better for deeply-structured inputs.
+  - Smart refinement-compilation : once `specs/20` predicates are compiled to generator-guided-construction (not rejection), RefinedGen's rejection-sampler becomes a fallback rather than the primary path.
+  - `WeightedGen<G>` / `OneOfGen<Gs>` — sum-type generators for tagged-union refinement-types.
+  - Stateful generators (Markov-chain style) for sequence-fuzzing.

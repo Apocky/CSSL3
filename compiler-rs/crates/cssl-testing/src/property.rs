@@ -295,6 +295,70 @@ where
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// § Refinement-guided generator : rejection-sampling against a predicate.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Refinement-guided generator : draws from `inner` until `predicate` is
+/// satisfied, capped at `max_attempts` per draw. This is the stage-0 bridge
+/// to §§ 20 refinement-types — `{x : i64 | x > 0}` becomes
+/// `RefinedGen { inner: IntGen { min: 1, max: _ }, predicate: |x| *x > 0, … }`.
+///
+/// § SEMANTICS :
+/// - `generate()` calls `inner.generate()` up to `max_attempts` times ;
+///   returns the first value that satisfies `predicate`.
+/// - If all attempts fail, returns the **last** generated value (which
+///   violates the predicate). Callers should treat a persistent failure as
+///   a signal that the inner generator + predicate are mismatched and
+///   refine the inner range rather than rely on rejection-sampling.
+/// - `shrink()` shrinks via the inner generator, then filters candidates
+///   through the predicate — guaranteeing all shrink-results are refinement-valid.
+#[derive(Debug, Clone, Copy)]
+pub struct RefinedGen<G, P> {
+    pub inner: G,
+    pub predicate: P,
+    pub max_attempts: u32,
+}
+
+impl<G, P> RefinedGen<G, P> {
+    /// Construct with a default `max_attempts = 100`.
+    pub const fn new(inner: G, predicate: P) -> Self {
+        Self {
+            inner,
+            predicate,
+            max_attempts: 100,
+        }
+    }
+}
+
+impl<T, G, P> Generator<T> for RefinedGen<G, P>
+where
+    T: core::fmt::Debug + Clone,
+    G: Generator<T>,
+    P: Fn(&T) -> bool,
+{
+    fn generate(&self, rng: &mut Lcg) -> T {
+        let mut last = self.inner.generate(rng);
+        if (self.predicate)(&last) {
+            return last;
+        }
+        for _ in 1..self.max_attempts {
+            last = self.inner.generate(rng);
+            if (self.predicate)(&last) {
+                return last;
+            }
+        }
+        last
+    }
+    fn shrink(&self, v: &T) -> Vec<T> {
+        self.inner
+            .shrink(v)
+            .into_iter()
+            .filter(|c| (self.predicate)(c))
+            .collect()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // § Property runner : orchestrates generator + check-fn + shrinker.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -362,7 +426,7 @@ where
 mod tests {
     use super::{
         run_property, BoolGen, Config, Dispatcher, FloatGen, Generator, IntGen, Lcg, Outcome,
-        Stage0Stub, TripleGen, VecGen,
+        RefinedGen, Stage0Stub, TripleGen, VecGen,
     };
 
     #[test]
@@ -684,5 +748,103 @@ mod tests {
             }
             Outcome::Stage0Unimplemented => panic!("runner should not return stub"),
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § RefinedGen : rejection-sampling against a refinement predicate.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn refined_gen_respects_predicate_on_draw() {
+        // {x : i64 | x is even}
+        let inner = IntGen {
+            min: -100,
+            max: 100,
+        };
+        let g = RefinedGen::new(inner, |x: &i64| x % 2 == 0);
+        let mut rng = Lcg::new(42);
+        for _ in 0..100 {
+            let v = g.generate(&mut rng);
+            assert_eq!(v % 2, 0, "expected even, got {v}");
+        }
+    }
+
+    #[test]
+    fn refined_gen_shrinks_to_predicate_valid_only() {
+        // {x : i64 | x is even}
+        let inner = IntGen {
+            min: -100,
+            max: 100,
+        };
+        let g = RefinedGen::new(inner, |x: &i64| x % 2 == 0);
+        let shrunk = g.shrink(&10);
+        for c in &shrunk {
+            assert_eq!(c % 2, 0, "shrunk candidate {c} must satisfy predicate");
+        }
+        // 0 should be present (inner produces it + 0 is even).
+        assert!(shrunk.contains(&0));
+    }
+
+    #[test]
+    fn refined_gen_returns_last_when_predicate_unsatisfiable() {
+        // {x : i64 | x = 1_000_000} — impossible in [-10, 10].
+        let inner = IntGen { min: -10, max: 10 };
+        let g = RefinedGen::new(inner, |x: &i64| *x == 1_000_000);
+        let mut rng = Lcg::new(7);
+        let v = g.generate(&mut rng);
+        // After max_attempts, returns the last generated (which is in [-10, 10]).
+        assert!((-10..=10).contains(&v));
+    }
+
+    #[test]
+    fn refined_gen_custom_max_attempts() {
+        let inner = IntGen { min: 0, max: 100 };
+        let g = RefinedGen {
+            inner,
+            predicate: |x: &i64| *x > 50,
+            max_attempts: 1000,
+        };
+        let mut rng = Lcg::new(13);
+        for _ in 0..50 {
+            let v = g.generate(&mut rng);
+            assert!(v > 50, "expected > 50, got {v}");
+        }
+    }
+
+    #[test]
+    fn refined_float_positive_only() {
+        // {x : f64 | x > 0} — use FloatGen over [-10, 10] + reject ≤ 0.
+        let inner = FloatGen {
+            min: -10.0,
+            max: 10.0,
+        };
+        let g = RefinedGen::new(inner, |x: &f64| *x > 0.0);
+        let mut rng = Lcg::new(99);
+        for _ in 0..100 {
+            let v = g.generate(&mut rng);
+            assert!(v > 0.0, "expected > 0.0, got {v}");
+        }
+    }
+
+    #[test]
+    fn refined_gen_run_property_end_to_end() {
+        // Refined property : for x ∈ {x : i64 | x > 0}, x + 1 > 1.
+        let inner = IntGen {
+            min: 0,
+            max: 10_000,
+        };
+        let g = RefinedGen::new(inner, |x: &i64| *x > 0);
+        let config = Config {
+            cases: 300,
+            seed: 55,
+            shrink_rounds: 16,
+        };
+        let outcome = run_property(
+            &config,
+            &g,
+            |x: &i64| x + 1 > 1,
+            "positive-plus-one-exceeds-one",
+        );
+        assert!(matches!(outcome, Outcome::Ok { .. }));
     }
 }
