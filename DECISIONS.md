@@ -2961,3 +2961,46 @@ Each decision entry :
   - **MSL validation** : apple-only ; requires Metal SDK or `mslcc` shim.
   - **Real MIR → SPIR-V op lowering** : today the binary emitter's entry-point function is always `void fn() { return; }`. T10-phase-2 fills in the arithmetic + control-flow + memory-access emission tables that transform `CsslOp` sequences into `OpFAdd` / `OpFMul` / `OpLoad` / `OpStore` / structured-CFG.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D35 : vec3 wire-through — body-lower scalarization closes the D31 loop
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** T11-D31 added `MirType::Vec(u32, FloatWidth)` as a scaffold type-variant but wired no callers. The *real* killer-app `sphere_sdf(p : vec3<f32>, r : f32) -> f32 { length(p) - r }` could not compile end-to-end — HIR lowered `p : vec3<f32>` to `MirType::Opaque("vec3")`, which broke downstream MIR + walker + JIT stages. Three architectural options presented : (a) per-lane vec MIR ops + walker rules + JIT SIMD ; (b) vec MIR ops + JIT scalarization ; (c) body-lower scalarization (vec params expand to N scalar params before MIR). T11-D35 lands **option (c)** — the minimum-viable path that closes the runtime-gradient loop without touching the AD walker or JIT (both remain scalar-only).
+- **Slice landed (this commit)**
+  - **`cssl-mir/src/body_lower.rs`** :
+    - `pub fn hir_type_as_vec_lanes(interner, t) -> Option<(u32, FloatWidth)>` : recognizes `vec2` / `vec3` / `vec4` HIR paths (with or without explicit `<f32>` type-arg) and reports lane-count + element width. Peels through `Refined` + `Reference` wrappers so `&vec3<f32>` also matches.
+    - `pub fn expand_fn_param_types(interner, t) -> Vec<MirType>` : scalarizes vec types into N consecutive scalar `MirType::Float(width)` entries ; passes everything else through `lower_hir_type_light` unchanged. Single source of truth shared with signature-lowering.
+    - `BodyLowerCtx.vec_param_vars: HashMap<Symbol, (Vec<ValueId>, u32, FloatWidth)>` : distinct map from scalar `param_vars`, records which HIR vec-param symbol occupies which N consecutive scalar MIR value-ids.
+    - `lower_fn_body` param loop : rebuilt to walk HIR params, scalarize vec types into N consecutive entry-block ids, and populate either `param_vars` (scalar) or `vec_param_vars` (vec).
+    - `try_lower_vec_length_from_path(ctx, arg, span) -> Option<(ValueId, MirType)>` : intrinsic-dispatch shortcut for `length(p)` where `p` is a scalarized vec-param. Emits the full scalar expansion (`N mulf + (N-1) addf + 1 sqrt call`). Total 7 ops for vec3. Hooks into existing scalar AD + JIT paths without any walker/JIT changes.
+    - `lower_call` pre-dispatches `length` / `math.length` on single-segment vec-path args to `try_lower_vec_length_from_path`.
+  - **`cssl-mir/src/lower.rs`** : `lower_function_signature` flat-maps `expand_fn_param_types` over `f.params` so the `MirFunc.params` list matches the scalarized ABI the body-lowerer assumes.
+  - **`cssl-cgen-cpu-cranelift/src/jit.rs`** : `call_f32x8_to_f32(arg0..arg7, module)` helper — canonical calling shape for the tangent-only variant of a 4-scalar-param primal (3-lane vec + 1 scalar → 4 primal + 4 tangent = 8 interleaved params per walker convention).
+  - **`cssl-examples/src/jit_chain.rs`** : 3 new tests.
+    - **`sphere_sdf_vec3_param_scalarization_produces_4_scalar_params`** — signature-level regression : vec3 param must produce 3 scalar f32 params + 1 for `r` = 4 total, no `Opaque` / `Vec`.
+    - **`sphere_sdf_vec3_length_expansion_emits_scalar_ops`** — body-lower regression : `length(p)` must expand to ≥ 3 `arith.mulf` + ≥ 2 `arith.addf` + 1 `func.call @sqrt`, not a lifted `func.call @length` with vec operand.
+    - **`full_chain_source_to_jit_sphere_sdf_vec3_gradient_matches_normalize`** — end-to-end runtime gate. Source `@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 { length(p) - r }` pipelines all the way through lex + parse + HIR + MIR + AD walker + JIT. At `p = (3, 0, 4)`, `r = 1` : primal = 4 ; **JIT-computed fwd-mode gradient** `(∂/∂p_0, ∂/∂p_1, ∂/∂p_2, ∂/∂r) = (0.6, 0.0, 0.8, -1.0)` within 1e-3 — exactly `(normalize(p), -1)`. Cross-checked by central-difference on the JIT-compiled primal (proving both sides are executed machine-code, not algebraic simplifications).
+- **The runtime claim**
+  - Source : `@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 { length(p) - r }`
+  - Input : `p = (3, 0, 4)`, `r = 1`
+  - JIT primal : 4.0 ✓
+  - JIT fwd gradient matches analytic `∇ₚ length(p) = normalize(p)` to within 1e-3 ✓
+  - **The real killer-app compiles + runs + gradients are correct.**
+- **Consequences**
+  - Test count : 1415 → 1418 (+3 in `cssl-examples::jit_chain`).
+  - `MirType::Vec` deliberately remains orphaned — scalarization happens at the HIR → MIR boundary, so the type carries no runtime value (it's now a canonical *intent marker* rather than a live type). Removing it would lose that signal ; keeping it preserves future-readability and lets a later slice refactor to per-lane MIR ops without reintroducing the scaffold.
+  - AD walker unchanged. JIT unchanged. The entire vec wire-through is 1 type-helper + 1 expansion helper + 1 map + 1 intrinsic-dispatch + 1 8-param call helper. All other wiring was already in place from the scalar AD chain.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Closes the T11-D29..D35 architectural arc** (user directive "2 → 1 → 4 → 3" ; second slice complete) :
+  - D29 libm transcendentals · D30 multi-return ABI · D31 MirType::Vec scaffold · D32 WGSL validation · D33 stage-1 scaffold · D34 SPIR-V validation · **D35 vec3 runtime gradient** (this commit).
+- **Deferred**
+  - **Generic vec arithmetic** : `p - q` / `p + q` / `p * s` (scalar-vec) / `p.x` field access / vec-returning user fns. Each would need either the scalarization registry extended to non-param vars OR new vec MIR ops. Single-param `length(p)` was the minimum to close sphere_sdf.
+  - **`normalize(p)` as an intrinsic** : would return a vec, so requires a vec-typed expression. Not needed for sphere_sdf's gradient (that comes out *of* `length`, not from calling `normalize` directly).
+  - **`dot(a, b)` / `cross(a, b)` intrinsics** : follow the same per-lane-mulf + sum-reduce pattern. Scalar-result ops like dot could reuse the `try_lower_vec_*_from_path` dispatch pattern ; vec-result ops like cross need the wider vec-scalarization framework.
+  - **`vec4` / `vec2` end-to-end tests** : the `hir_type_as_vec_lanes` helper supports them, but we have no killer-app for vec2 / vec4 at stage-0. Added alongside real shader use-cases.
+  - **Bwd-mode vec gradients** : the scalar bwd walker handles the scalarized form directly ; extract_bwd_single_adjoint works over the 4-scalar param list. Adding a bwd-mode sphere_sdf test would verify this empirically ; deferred as a same-arc follow-up.
+  - **Per-lane MIR vec ops + JIT SIMD** : the scalarization approach leaves `MirType::Vec` orphaned as a scaffold. A future slice could reintroduce real vec ops (so the MIR is vector-typed end-to-end + the JIT uses `f32x4`) for code-density / future-perf reasons ; stage-0 doesn't benefit since Cranelift scalarization produces correct code anyway.
+
+

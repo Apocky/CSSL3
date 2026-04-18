@@ -64,6 +64,12 @@ pub struct BodyLowerCtx<'a> {
     pub source: Option<&'a SourceFile>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
+    /// T11-D35 : mapping from HIR vec-param-symbol → N consecutive scalar value-ids
+    /// + lane-count + element width. A `vec3<f32>` param `p` maps to `(vec![v0, v1, v2], 3, F32)`.
+    /// Kept distinct from [`Self::param_vars`] so stage-0 can dispatch per-op
+    /// (length(p) expands via these scalars ; normalize / dot / field access are
+    /// deferred to future slices).
+    pub vec_param_vars: HashMap<Symbol, (Vec<ValueId>, u32, FloatWidth)>,
     /// Next free value-id (wired to `MirFunc.fresh_value_id`).
     pub next_value_id: u32,
     /// Accumulated ops (consumed at end into the entry-block).
@@ -79,6 +85,7 @@ impl<'a> BodyLowerCtx<'a> {
             interner,
             source: None,
             param_vars: HashMap::new(),
+            vec_param_vars: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
@@ -92,6 +99,7 @@ impl<'a> BodyLowerCtx<'a> {
             interner,
             source: Some(source),
             param_vars: HashMap::new(),
+            vec_param_vars: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
@@ -112,6 +120,7 @@ impl<'a> BodyLowerCtx<'a> {
             interner: self.interner,
             source: self.source,
             param_vars: HashMap::new(),
+            vec_param_vars: HashMap::new(),
             next_value_id: self.next_value_id,
             ops: Vec::new(),
         }
@@ -141,16 +150,31 @@ pub fn lower_fn_body(
         Some(src) => BodyLowerCtx::with_source(interner, src),
         None => BodyLowerCtx::new(interner),
     };
-    // Entry-block args = fn params. Seed `param_vars` + advance `next_value_id`.
-    for (i, p) in hir_fn.params.iter().enumerate() {
-        let id = ValueId(u32::try_from(i).unwrap_or(0));
-        let ty = lower_hir_type_light(interner, &p.ty);
-        // Match param-pattern to symbol (single-name binding only at stage-0).
-        if let Some(sym) = extract_pattern_symbol(&p.pat) {
-            ctx.param_vars.insert(sym, (id, ty));
+    // Entry-block args = flat-scalarized fn params. Each vec2/vec3/vec4 param
+    // occupies N consecutive entry-block ids (matches the flat signature emitted
+    // by `lower_function_signature`) ; everything else occupies one id. The
+    // per-symbol mapping lands in either `param_vars` (scalar) or `vec_param_vars`
+    // (vec) so downstream lowering (notably `lower_call` for `length`) can
+    // dispatch correctly.
+    let mut next_id: u32 = 0;
+    for p in &hir_fn.params {
+        let sym = extract_pattern_symbol(&p.pat);
+        if let Some((lanes, width)) = hir_type_as_vec_lanes(interner, &p.ty) {
+            let lane_ids: Vec<ValueId> = (0..lanes).map(|i| ValueId(next_id + i)).collect();
+            next_id = next_id.saturating_add(lanes);
+            if let Some(sym) = sym {
+                ctx.vec_param_vars.insert(sym, (lane_ids, lanes, width));
+            }
+        } else {
+            let id = ValueId(next_id);
+            next_id = next_id.saturating_add(1);
+            let ty = lower_hir_type_light(interner, &p.ty);
+            if let Some(sym) = sym {
+                ctx.param_vars.insert(sym, (id, ty));
+            }
         }
     }
-    ctx.next_value_id = u32::try_from(hir_fn.params.len()).unwrap_or(0);
+    ctx.next_value_id = next_id;
 
     // Lower the body. If a trailing value exists, emit `func.return`.
     let trailing = lower_block(&mut ctx, body);
@@ -194,6 +218,61 @@ fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
         HirTypeKind::Infer => MirType::None,
         _ => MirType::None,
     }
+}
+
+/// T11-D35 : recognize `vec2` / `vec3` / `vec4` HIR types and report lane-count
+/// + element float-width for scalarization.
+///
+/// A parameter declared `p : vec3` or `p : vec3<f32>` is recognized as `Some((3, F32))` ;
+/// callers scalarize the param into N separate scalar MIR parameters so the walker
+/// + JIT can treat the function as a standard N-scalar-input routine.
+///
+/// Returns `None` for any non-vec type (normal scalar or opaque).
+#[must_use]
+pub fn hir_type_as_vec_lanes(interner: &Interner, t: &HirType) -> Option<(u32, FloatWidth)> {
+    // Peel through refined + reference wrappers so `&vec3<f32>` / `vec3<f32> { ... }` also match.
+    match &t.kind {
+        HirTypeKind::Refined { base, .. } => hir_type_as_vec_lanes(interner, base),
+        HirTypeKind::Reference { inner, .. } => hir_type_as_vec_lanes(interner, inner),
+        HirTypeKind::Path {
+            path, type_args, ..
+        } if path.len() == 1 => {
+            let name = interner.resolve(path[0]);
+            let lanes: u32 = match name.as_str() {
+                "vec2" => 2,
+                "vec3" => 3,
+                "vec4" => 4,
+                _ => return None,
+            };
+            // Default to F32 when no type-arg is given (canonical shape in stage-0 tests).
+            let width = if type_args.is_empty() {
+                FloatWidth::F32
+            } else {
+                match lower_hir_type_light(interner, &type_args[0]) {
+                    MirType::Float(w) => w,
+                    _ => return None, // non-float element : stage-0 doesn't scalarize these.
+                }
+            };
+            Some((lanes, width))
+        }
+        _ => None,
+    }
+}
+
+/// T11-D35 : expand an HIR param type into its MIR representation. Vec types
+/// are scalarized into N consecutive scalar entries so the flat `MirFunc` param
+/// list matches the JIT-callable ABI. Everything else round-trips through the
+/// crate-internal `lower_hir_type_light` helper unchanged.
+///
+/// This is the single source of truth used by both signature-lowering
+/// (`crate::lower::lower_function_signature`) and body-lowering (`lower_fn_body`)
+/// so the two stay in lockstep.
+#[must_use]
+pub fn expand_fn_param_types(interner: &Interner, t: &HirType) -> Vec<MirType> {
+    if let Some((lanes, width)) = hir_type_as_vec_lanes(interner, t) {
+        return (0..lanes).map(|_| MirType::Float(width)).collect();
+    }
+    vec![lower_hir_type_light(interner, t)]
 }
 
 /// Lower a block. Returns `Some((ValueId, MirType))` if the block has a
@@ -1125,6 +1204,18 @@ fn lower_call(
             "cssl.call_indirect".to_string()
         }
     };
+
+    // § T11-D35 : vec-length fast path — `length(p)` where `p` is a scalarized
+    //   vec-param. Emit `sqrt(p0*p0 + p1*p1 + ... + pN*pN)` as scalar MIR ops so
+    //   the walker + JIT consume the fn as a pure-scalar routine. See spec
+    //   `specs/05_AUTODIFF.csl` § VEC-AD-RULES — `∂/∂p_i length(p) = p_i/length(p)` ⇒
+    //   `∇_p length(p) = normalize(p)`, exactly what the AD walker's scalar rule-
+    //   set derives for this expanded form.
+    if matches!(target.as_str(), "length" | "math.length") && args.len() == 1 {
+        if let Some(result) = try_lower_vec_length_from_path(ctx, &args[0], span) {
+            return Some(result);
+        }
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -1156,6 +1247,79 @@ fn lower_call(
     ctx.ops.push(mir_op);
     let _ = span;
     Some((id, result_ty))
+}
+
+/// T11-D35 : if `arg` is a single-segment path naming a scalarized vec-param,
+/// emit the `sqrt(Σ xᵢ²)` expansion over the N lane ids and return the scalar
+/// result. Returns `None` if `arg` is not a vec-param reference (caller falls
+/// back to the normal [`lower_call`] path).
+///
+/// § EMITTED-SHAPE (vec3 case, for reference) :
+/// ```text
+///   %sq0 = arith.mulf %p_0, %p_0
+///   %sq1 = arith.mulf %p_1, %p_1
+///   %sq2 = arith.mulf %p_2, %p_2
+///   %s01 = arith.addf %sq0, %sq1
+///   %s   = arith.addf %s01, %sq2
+///   %len = func.call @sqrt (%s)
+/// ```
+/// Total ops : `N mul + (N-1) add + 1 sqrt = 2N` for N-lane vec. For vec3 : 7 ops.
+fn try_lower_vec_length_from_path(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let segments = match &expr.kind {
+        HirExprKind::Path { segments, .. } if segments.len() == 1 => segments,
+        _ => return None,
+    };
+    let sym = segments[0];
+    let (lane_ids, _lanes, width) = ctx.vec_param_vars.get(&sym).cloned()?;
+    let scalar_ty = MirType::Float(width);
+
+    // § mulf per lane : sqᵢ = pᵢ · pᵢ
+    let mut square_ids: Vec<ValueId> = Vec::with_capacity(lane_ids.len());
+    for pid in &lane_ids {
+        let id = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("arith.mulf")
+                .with_operand(*pid)
+                .with_operand(*pid)
+                .with_result(id, scalar_ty.clone())
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+        square_ids.push(id);
+    }
+
+    // § addf accumulator : sum = ((sq0 + sq1) + sq2) + ...
+    let mut acc = square_ids[0];
+    for sq in square_ids.iter().skip(1) {
+        let id = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("arith.addf")
+                .with_operand(acc)
+                .with_operand(*sq)
+                .with_result(id, scalar_ty.clone())
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+        acc = id;
+    }
+
+    // § func.call @sqrt : len = sqrt(sum). Matches the existing scalar intrinsic
+    //   dispatch (`math.sqrt` is part of `infer_intrinsic_result_type`) so the
+    //   JIT's libm extern-declaration path picks it up via the callee attribute.
+    let len_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("func.call")
+            .with_attribute("callee", "sqrt".to_string())
+            .with_attribute("source_loc", format!("{span:?}"))
+            .with_operand(acc)
+            .with_result(len_id, scalar_ty.clone()),
+    );
+    Some((len_id, scalar_ty))
 }
 
 /// Known math-intrinsic callees whose result-type equals the first operand's

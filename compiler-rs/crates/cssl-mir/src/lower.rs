@@ -128,9 +128,18 @@ impl<'a> LowerCtx<'a> {
 }
 
 /// Lower a single `HirFn` to a `MirFunc` with signature + empty body.
+///
+/// § T11-D35 vec scalarization : vec2/vec3/vec4 parameters expand to N
+/// consecutive scalar entries in the flat `params` list ; see
+/// [`crate::body_lower::expand_fn_param_types`] for the single source of truth
+/// shared between signature- and body-lowering.
 #[must_use]
 pub fn lower_function_signature(ctx: &LowerCtx<'_>, f: &HirFn) -> MirFunc {
-    let params: Vec<MirType> = f.params.iter().map(|p| ctx.lower_type(&p.ty)).collect();
+    let params: Vec<MirType> = f
+        .params
+        .iter()
+        .flat_map(|p| crate::body_lower::expand_fn_param_types(ctx.interner, &p.ty))
+        .collect();
     let results: Vec<MirType> = match &f.return_ty {
         Some(rt) => vec![ctx.lower_type(rt)],
         None => Vec::new(),

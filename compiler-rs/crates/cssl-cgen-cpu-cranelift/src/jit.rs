@@ -243,6 +243,54 @@ impl JitFn {
         Ok(f(a, b, d_a, d_b))
     }
 
+    /// Call as `fn(f32, f32, f32, f32, f32, f32, f32, f32) -> f32`. T11-D35
+    /// canonical shape for the fwd-tangent-only variant of a 4-scalar-param
+    /// primal (produced by scalarizing `fn f(p : vec3<f32>, r : f32)` — the
+    /// 3 lanes of `p` plus `r` give 4 primals, and the walker **interleaves**
+    /// `[p0, d_p0, p1, d_p1, p2, d_p2, r, d_r]` per the fwd-mode convention in
+    /// `cssl-autodiff/src/substitute.rs::synthesize_tangent_params`).
+    ///
+    /// Used by the `sphere_sdf(p : vec3<f32>, r : f32) -> f32 { length(p) - r }`
+    /// end-to-end runtime-gradient test : seeding `d_p0 = 1, d_p1 = d_p2 = d_r = 0`
+    /// extracts `∂/∂p_0 sphere_sdf`, expected to equal `normalize(p).x` at the
+    /// evaluation point.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    #[allow(clippy::too_many_arguments)] // 8 scalars mirror the MIR param list 1:1
+    pub fn call_f32x8_to_f32(
+        &self,
+        arg0: f32,
+        arg1: f32,
+        arg2: f32,
+        arg3: f32,
+        arg4: f32,
+        arg5: f32,
+        arg6: f32,
+        arg7: f32,
+        module: &JitModule,
+    ) -> Result<f32, JitError> {
+        let f32m = || MirType::Float(FloatWidth::F32);
+        self.check_sig(
+            &[
+                f32m(),
+                f32m(),
+                f32m(),
+                f32m(),
+                f32m(),
+                f32m(),
+                f32m(),
+                f32m(),
+            ],
+            f32m(),
+        )?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let fn_ptr: extern "C" fn(f32, f32, f32, f32, f32, f32, f32, f32) -> f32 =
+            unsafe { std::mem::transmute(addr) };
+        Ok(fn_ptr(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7))
+    }
+
     /// Call a 2-param bwd variant compiled with out-param ABI : native
     /// cranelift signature `(a: f32, b: f32, d_y: f32, *mut f32, *mut f32) -> ()`.
     /// Returns the pair `(d_a, d_b)` by allocating stack slots for the two

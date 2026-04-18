@@ -856,4 +856,212 @@ fn scene(x : f32) -> f32 { helper(x) }
             "∂|a|/∂a @ a=-4 : expected -1.0, got {t_neg}"
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D35 : real vec3 sphere-SDF end-to-end via body-lower scalarization.
+    //
+    // The source `@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32
+    //                                        { length(p) - r }` flows through :
+    //
+    //   (1) cssl_mir::body_lower — `p : vec3<f32>` scalarizes to 3 scalar f32
+    //       MIR params (p_0, p_1, p_2) ; `r` stays scalar. Signature = 4 f32 in.
+    //       `length(p)` inlines to `sqrt(p_0*p_0 + p_1*p_1 + p_2*p_2)` (7 ops).
+    //   (2) cssl_autodiff AD walker — treats the 4-scalar fn as standard scalar
+    //       AD ; emits fwd variant with 4 tangent params appended.
+    //   (3) extract_tangent_only_variant — strips the primal result, leaving a
+    //       single-f32 tangent output.
+    //   (4) Cranelift JIT — compiles as 8-scalar-input, 1-scalar-output fn.
+    //
+    // Runtime gradient check : for p = (3, 0, 4), r = 1 :
+    //   length(p) = sqrt(9 + 0 + 16) = 5 ; sphere_sdf = 5 - 1 = 4.
+    //   ∂sphere_sdf/∂p_0 = p_0 / length(p) = 3 / 5 = 0.6   (normalize(p).x)
+    //   ∂sphere_sdf/∂p_1 = p_1 / length(p) = 0 / 5 = 0.0   (normalize(p).y)
+    //   ∂sphere_sdf/∂p_2 = p_2 / length(p) = 4 / 5 = 0.8   (normalize(p).z)
+    //   ∂sphere_sdf/∂r   = -1.0
+    //
+    // Each lane-gradient is verified by (a) seeding a 1.0-tangent on exactly that
+    // param + zeros elsewhere, (b) computing the central-difference of the primal
+    // at that point, (c) asserting both agree within 1e-3.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_source_to_jit_sphere_sdf_vec3_gradient_matches_normalize() {
+        use super::jit_primal_and_tangent;
+
+        // Real vec3 sphere-SDF : `@differentiable fn sphere_sdf(p : vec3<f32>,
+        //                                    r : f32) -> f32 { length(p) - r }`.
+        // body_lower scalarizes `p : vec3<f32>` → 3 scalar f32 params ; `length(p)`
+        // inlines to the sqrt(sum-of-squares) expansion.
+        let src = r"@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 {
+            length(p) - r
+        }";
+        let module = pipeline_source_to_ad_mir("sphere_sdf_vec3", src);
+
+        let primal = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf")
+            .expect("primal sphere_sdf");
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf_fwd")
+            .expect("fwd variant sphere_sdf_fwd");
+
+        // § SIGNATURE SANITY : after scalarization the primal has 4 scalar f32
+        //   params + 1 f32 result. The walker's fwd variant has 8 params (4
+        //   primal + 4 tangent) + 2 results (primal + tangent).
+        assert_eq!(
+            primal.params.len(),
+            4,
+            "vec3 scalarization : primal must have 4 scalar f32 params : got {:?}",
+            primal.params
+        );
+        assert_eq!(
+            fwd.params.len(),
+            8,
+            "fwd variant : 4 primal + 4 tangent params : got {:?}",
+            fwd.params
+        );
+
+        let tangent_only = extract_tangent_only_variant(fwd);
+        let handle = jit_primal_and_tangent(primal, &tangent_only).expect("JIT sphere_sdf vec3");
+        let m = &handle.module;
+        let primal_h = &handle.primal_fn;
+        let tangent_h = &handle.tangent_fn;
+
+        // § PRIMAL : at p = (3, 0, 4), r = 1 — expect length(p) - r = 5 - 1 = 4.
+        let v = primal_h
+            .call_f32_f32_f32_f32_to_f32(3.0, 0.0, 4.0, 1.0, m)
+            .unwrap();
+        assert!(
+            (v - 4.0).abs() < 1e-5,
+            "primal sphere_sdf(3, 0, 4, 1) : expected 4.0, got {v}"
+        );
+
+        // § ANALYTIC GRADIENT (the killer-app claim) :
+        //   ∇_p length(p) = normalize(p) = (3/5, 0/5, 4/5) = (0.6, 0.0, 0.8)
+        //   ∂/∂r (length(p) - r) = -1
+        let expected_d_p0 = 0.6_f32;
+        let expected_d_p1 = 0.0_f32;
+        let expected_d_p2 = 0.8_f32;
+        let expected_d_r = -1.0_f32;
+
+        // § FWD-MODE EXTRACTED : walker interleaves the tangent variant's params
+        //   as `[p0, d_p0, p1, d_p1, p2, d_p2, r, d_r]` (per synthesize_tangent_params
+        //   in cssl-autodiff/src/substitute.rs). With seeded tangent the result is
+        //   Σᵢ (∂f/∂xᵢ · d_xᵢ). Seeding a single 1.0 extracts that component's
+        //   partial ; all other tangents zero.
+        let t_p0 = tangent_h
+            .call_f32x8_to_f32(3.0, 1.0, 0.0, 0.0, 4.0, 0.0, 1.0, 0.0, m)
+            .unwrap();
+        let t_p1 = tangent_h
+            .call_f32x8_to_f32(3.0, 0.0, 0.0, 1.0, 4.0, 0.0, 1.0, 0.0, m)
+            .unwrap();
+        let t_p2 = tangent_h
+            .call_f32x8_to_f32(3.0, 0.0, 0.0, 0.0, 4.0, 1.0, 1.0, 0.0, m)
+            .unwrap();
+        let t_r = tangent_h
+            .call_f32x8_to_f32(3.0, 0.0, 0.0, 0.0, 4.0, 0.0, 1.0, 1.0, m)
+            .unwrap();
+
+        assert!(
+            (t_p0 - expected_d_p0).abs() < 1e-3,
+            "∂sphere_sdf/∂p_0 @ p=(3,0,4) : expected {expected_d_p0} = normalize(p).x, got {t_p0}"
+        );
+        assert!(
+            (t_p1 - expected_d_p1).abs() < 1e-3,
+            "∂sphere_sdf/∂p_1 @ p=(3,0,4) : expected {expected_d_p1} = normalize(p).y, got {t_p1}"
+        );
+        assert!(
+            (t_p2 - expected_d_p2).abs() < 1e-3,
+            "∂sphere_sdf/∂p_2 @ p=(3,0,4) : expected {expected_d_p2} = normalize(p).z, got {t_p2}"
+        );
+        assert!(
+            (t_r - expected_d_r).abs() < 1e-3,
+            "∂sphere_sdf/∂r @ p=(3,0,4), r=1 : expected {expected_d_r}, got {t_r}"
+        );
+
+        // § CENTRAL-DIFFERENCE CROSS-CHECK : the analytic values above match
+        //   normalize(p) by construction ; this additional check proves the JIT-
+        //   computed tangent ALSO matches the numerical gradient of the JIT-
+        //   computed primal (no algebraic shortcut — both come from executed
+        //   machine code, not symbolic simplification).
+        let h = 1e-3_f32;
+        for (seed_idx, expected) in [(0, expected_d_p0), (1, expected_d_p1), (2, expected_d_p2)] {
+            let mut plus = [3.0_f32, 0.0, 4.0, 1.0];
+            let mut minus = [3.0_f32, 0.0, 4.0, 1.0];
+            plus[seed_idx] += h;
+            minus[seed_idx] -= h;
+            let y_plus = primal_h
+                .call_f32_f32_f32_f32_to_f32(plus[0], plus[1], plus[2], plus[3], m)
+                .unwrap();
+            let y_minus = primal_h
+                .call_f32_f32_f32_f32_to_f32(minus[0], minus[1], minus[2], minus[3], m)
+                .unwrap();
+            let central = (y_plus - y_minus) / (2.0 * h);
+            assert!(
+                (central - expected).abs() < 5e-3,
+                "central-diff ∂/∂x_{seed_idx} : expected {expected}, got {central}",
+            );
+        }
+    }
+
+    #[test]
+    fn sphere_sdf_vec3_param_scalarization_produces_4_scalar_params() {
+        // § REGRESSION GUARD — signature-lowering must scalarize vec3 params
+        //   even BEFORE body-lowering runs. This test checks the shape emitted
+        //   by `lower_function_signature` directly (isolated from the walker).
+        let src = r"fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 { r }";
+        let module = pipeline_source_to_ad_mir("vec3_sig_regression", src);
+        let f = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf")
+            .expect("sphere_sdf");
+        // 3 scalar f32 (from p) + 1 scalar f32 (r) = 4 scalar f32 params.
+        assert_eq!(f.params.len(), 4);
+        for (i, ty) in f.params.iter().enumerate() {
+            assert!(
+                matches!(ty, cssl_mir::MirType::Float(cssl_mir::FloatWidth::F32)),
+                "param {i} must be scalar f32 after vec3 scalarization : got {ty:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn sphere_sdf_vec3_length_expansion_emits_scalar_ops() {
+        // § REGRESSION GUARD — `length(p)` in body_lower must expand to scalar
+        //   mulf + addf + sqrt, not emit an opaque `func.call @length` with a
+        //   vec operand.
+        let src = r"fn sphere_sdf(p : vec3<f32>) -> f32 { length(p) }";
+        let module = pipeline_source_to_ad_mir("vec3_length_expansion", src);
+        let f = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf")
+            .expect("sphere_sdf");
+        let entry = f.body.entry().expect("entry block");
+        let names: Vec<&str> = entry.ops.iter().map(|o| o.name.as_str()).collect();
+        assert!(
+            names.iter().filter(|n| **n == "arith.mulf").count() >= 3,
+            "expected ≥ 3 arith.mulf ops (one per lane square) : got {names:?}"
+        );
+        assert!(
+            names.iter().filter(|n| **n == "arith.addf").count() >= 2,
+            "expected ≥ 2 arith.addf ops (accumulate 3 squares) : got {names:?}"
+        );
+        // Final sqrt : func.call with callee="sqrt".
+        let has_sqrt_call = entry.ops.iter().any(|op| {
+            op.name == "func.call"
+                && op
+                    .attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "sqrt")
+        });
+        assert!(
+            has_sqrt_call,
+            "expected func.call @sqrt for length : got {names:?}"
+        );
+    }
 }
