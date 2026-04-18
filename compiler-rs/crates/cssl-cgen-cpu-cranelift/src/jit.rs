@@ -185,6 +185,19 @@ impl JitFn {
         Ok(f())
     }
 
+    /// Call as `fn(i32) -> i32`. T11-D38 : canonical shape for single-arg
+    /// monomorphized identity / unary-integer fns like `id_i32(x : i32)`.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_i32_to_i32(&self, a: i32, module: &JitModule) -> Result<i32, JitError> {
+        self.check_sig(&[MirType::Int(IntWidth::I32)], MirType::Int(IntWidth::I32))?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let f: extern "C" fn(i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        Ok(f(a))
+    }
+
     /// Call as `fn(f32) -> f32`. Used for single-arg differentiable fns like sqrt/sin/cos.
     ///
     /// # Errors

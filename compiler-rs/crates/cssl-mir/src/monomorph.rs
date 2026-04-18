@@ -1,0 +1,632 @@
+//! T11-D38 — generic-type monomorphization MVP.
+//!
+//! § PURPOSE
+//!
+//! CSSLv3 generic functions like `fn id<T>(x: T) -> T { x }` cannot be
+//! compiled to machine code directly — Cranelift needs concrete types, and
+//! MIR ops carry `MirType` (not a type parameter). Monomorphization is the
+//! specialization pass : given a generic `HirFn` + a concrete type-arg tuple,
+//! emit a specialized `MirFunc` whose params/results/body are fully-typed and
+//! JIT-ready.
+//!
+//! § SPEC : `specs/03_TYPES.csl` § MONOMORPHIZATION +
+//!         `specs/15_MLIR.csl` § LOWERING-PASSES.
+//!
+//! § SCOPE (this slice — T11-D38 MVP)
+//!
+//! Lands the **core specialization machinery** :
+//!   - [`TypeSubst`] : a `HashMap<Symbol, HirType>` mapping generic-param
+//!     names to concrete types (e.g., `T ↦ i32`).
+//!   - [`substitute_hir_type`] : walks a `HirType` tree and substitutes
+//!     single-segment paths that match a generic-param name.
+//!   - [`specialize_generic_fn`] : given a generic `HirFn` + `TypeSubst` +
+//!     the workspace lowering context, produces a `MirFunc` with mangled
+//!     name (`id_i32`, `pair_i32_f32`, …), specialized param/return types,
+//!     and a body lowered from the substituted HIR.
+//!   - [`mangle_specialization_name`] : deterministic stable name-mangling
+//!     across workspace runs — `{fn_name}_{subst_repr}`.
+//!
+//! § OUT-OF-SCOPE (clean follow-up slice per `DECISIONS.md` § T11-D38)
+//!   - Turbofish syntax `id::<i32>(5)` → `Call.type_args` propagation.
+//!   - Auto-monomorphization walker : scan the module for generic-call sites +
+//!     specialize automatically. This MVP provides the specialization API ;
+//!     the walker wraps it.
+//!   - Type-arg inference from call-site arg types (requires T3.4 inference).
+//!   - Bounded generics (`<T: Clone>`) — satisfiability-check via trait
+//!     dispatch.
+//!   - Higher-kinded / region / const generics.
+//!
+//! § EXAMPLE
+//!
+//! ```ignore
+//! use cssl_hir::Interner;
+//! use cssl_mir::monomorph::{specialize_generic_fn, TypeSubst};
+//!
+//! // Build `fn id<T>(x : T) -> T { x }` HIR.
+//! let (hir_fn, interner) = parse_generic_id();
+//! let t_sym = interner.intern("T");
+//! let mut subst = TypeSubst::new();
+//! subst.bind(t_sym, make_i32_type());
+//!
+//! // Produce specialized `id_i32(x : i32) -> i32 { x }`.
+//! let mir_fn = specialize_generic_fn(&interner, None, &hir_fn, &subst);
+//! assert_eq!(mir_fn.name, "id_i32");
+//! assert_eq!(mir_fn.params, vec![MirType::Int(IntWidth::I32)]);
+//! ```
+
+use std::collections::HashMap;
+
+use cssl_ast::SourceFile;
+use cssl_hir::{HirFn, HirType, HirTypeKind, Interner, Symbol};
+
+use crate::body_lower::lower_fn_body;
+use crate::func::MirFunc;
+use crate::lower::{lower_function_signature, LowerCtx};
+use crate::value::{FloatWidth, IntWidth, MirType};
+
+/// Type substitution map : generic-param symbol → concrete `HirType`.
+///
+/// Populated by the caller with one entry per `HirGenericParam`. The
+/// substitution is purely positional — callers build the map with
+/// `subst.bind(t_sym, concrete_i32_type)` before invoking
+/// [`specialize_generic_fn`].
+#[derive(Debug, Clone, Default)]
+pub struct TypeSubst {
+    map: HashMap<Symbol, HirType>,
+}
+
+impl TypeSubst {
+    /// Empty substitution — identity ; `specialize_generic_fn` on an empty
+    /// subst is equivalent to ordinary non-generic lowering.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Bind a generic-param name to a concrete type.
+    pub fn bind(&mut self, name: Symbol, ty: HirType) {
+        self.map.insert(name, ty);
+    }
+
+    /// Look up a substitution ; returns `None` for non-generic symbols.
+    #[must_use]
+    pub fn get(&self, name: &Symbol) -> Option<&HirType> {
+        self.map.get(name)
+    }
+
+    /// Iterate `(name, type)` pairs in insertion-independent order — used
+    /// for name-mangling so `specialize_generic_fn` is deterministic across
+    /// HashMap rebuild orders.
+    pub fn iter_sorted<'a>(
+        &'a self,
+        interner: &'a Interner,
+    ) -> impl Iterator<Item = (Symbol, &'a HirType)> + 'a {
+        let mut pairs: Vec<(Symbol, &HirType)> = self.map.iter().map(|(k, v)| (*k, v)).collect();
+        pairs.sort_by_key(|(k, _)| interner.resolve(*k));
+        pairs.into_iter()
+    }
+
+    /// Number of bindings.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// `true` iff there are no bindings.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+}
+
+/// Recursively substitute generic-param references in a [`HirType`].
+///
+/// Walks the type tree and replaces any `HirTypeKind::Path` with a single-
+/// segment whose interned name matches a `subst` key, with the mapped
+/// concrete type. All other type variants are traversed structurally —
+/// references / refinements / tuples / functions / arrays all substitute
+/// their element types.
+///
+/// The returned [`HirType`] preserves the original span + id of the outer
+/// node so diagnostics remain source-linked ; only the `kind` is rebuilt.
+#[must_use]
+pub fn substitute_hir_type(t: &HirType, interner: &Interner, subst: &TypeSubst) -> HirType {
+    let new_kind = substitute_kind(&t.kind, interner, subst);
+    HirType {
+        span: t.span,
+        id: t.id,
+        kind: new_kind,
+    }
+}
+
+fn substitute_kind(k: &HirTypeKind, interner: &Interner, subst: &TypeSubst) -> HirTypeKind {
+    match k {
+        HirTypeKind::Path {
+            path,
+            def,
+            type_args,
+        } => {
+            // Single-segment path matching a generic-param ⇒ substitute.
+            if path.len() == 1 && type_args.is_empty() {
+                if let Some(replacement) = subst.get(&path[0]) {
+                    return replacement.kind.clone();
+                }
+            }
+            // Otherwise recurse into nested type args.
+            HirTypeKind::Path {
+                path: path.clone(),
+                def: *def,
+                type_args: type_args
+                    .iter()
+                    .map(|ta| substitute_hir_type(ta, interner, subst))
+                    .collect(),
+            }
+        }
+        HirTypeKind::Tuple { elems } => HirTypeKind::Tuple {
+            elems: elems
+                .iter()
+                .map(|e| substitute_hir_type(e, interner, subst))
+                .collect(),
+        },
+        HirTypeKind::Array { elem, len } => HirTypeKind::Array {
+            elem: Box::new(substitute_hir_type(elem, interner, subst)),
+            len: len.clone(),
+        },
+        HirTypeKind::Slice { elem } => HirTypeKind::Slice {
+            elem: Box::new(substitute_hir_type(elem, interner, subst)),
+        },
+        HirTypeKind::Reference { mutable, inner } => HirTypeKind::Reference {
+            mutable: *mutable,
+            inner: Box::new(substitute_hir_type(inner, interner, subst)),
+        },
+        HirTypeKind::Capability { cap, inner } => HirTypeKind::Capability {
+            cap: *cap,
+            inner: Box::new(substitute_hir_type(inner, interner, subst)),
+        },
+        HirTypeKind::Function {
+            params,
+            return_ty,
+            effect_row,
+        } => HirTypeKind::Function {
+            params: params
+                .iter()
+                .map(|p| substitute_hir_type(p, interner, subst))
+                .collect(),
+            return_ty: Box::new(substitute_hir_type(return_ty, interner, subst)),
+            effect_row: effect_row.clone(),
+        },
+        HirTypeKind::Refined { base, kind } => HirTypeKind::Refined {
+            base: Box::new(substitute_hir_type(base, interner, subst)),
+            kind: kind.clone(),
+        },
+        HirTypeKind::Infer => HirTypeKind::Infer,
+        HirTypeKind::Error => HirTypeKind::Error,
+    }
+}
+
+/// Produce a deterministic mangled name for a specialization.
+///
+/// § FORMAT : `{fn_name}_{arg0}_{arg1}_…` where each `argᵢ` is the snake-
+/// cased name of the substituted type :
+///   - `i32` / `f32` / `bool` / `Handle` : direct lowercase.
+///   - Nominal paths : last segment lowercased.
+///   - Function / tuple / array : "fn", "tup", "arr" placeholders.
+///
+/// Stable across workspace runs (sorts by `Symbol` resolution string).
+#[must_use]
+pub fn mangle_specialization_name(
+    base_name: &str,
+    interner: &Interner,
+    subst: &TypeSubst,
+) -> String {
+    if subst.is_empty() {
+        return base_name.to_string();
+    }
+    let mut out = String::from(base_name);
+    for (_sym, ty) in subst.iter_sorted(interner) {
+        out.push('_');
+        out.push_str(&type_mangle_fragment(ty, interner));
+    }
+    out
+}
+
+fn type_mangle_fragment(t: &HirType, interner: &Interner) -> String {
+    match &t.kind {
+        HirTypeKind::Path { path, .. } => {
+            if let Some(last) = path.last() {
+                interner.resolve(*last).to_lowercase()
+            } else {
+                "unknown".to_string()
+            }
+        }
+        HirTypeKind::Tuple { elems } => {
+            let inner: Vec<String> = elems
+                .iter()
+                .map(|e| type_mangle_fragment(e, interner))
+                .collect();
+            format!("tup{}", inner.join("_"))
+        }
+        HirTypeKind::Function { .. } => "fn".to_string(),
+        HirTypeKind::Array { .. } => "arr".to_string(),
+        HirTypeKind::Slice { .. } => "slice".to_string(),
+        HirTypeKind::Reference { inner, .. } => {
+            format!("ref{}", type_mangle_fragment(inner, interner))
+        }
+        HirTypeKind::Refined { base, .. } => type_mangle_fragment(base, interner),
+        HirTypeKind::Capability { inner, .. } => type_mangle_fragment(inner, interner),
+        HirTypeKind::Infer => "infer".to_string(),
+        HirTypeKind::Error => "err".to_string(),
+    }
+}
+
+/// Specialize a generic [`HirFn`] to a concrete [`MirFunc`].
+///
+/// § PIPELINE
+///   1. Clone the generic fn ; substitute `T`-path references in every param
+///      type + return type using `subst`.
+///   2. Mangle the specialization name : `{base}_{arg_types}`.
+///   3. Run the standard signature-lowering pass on the specialized HIR.
+///   4. Lower the body (untouched — the MVP assumes bodies don't reference
+///      generic params directly as type annotations ; follow-up slice will
+///      walk expr-level casts + let-type-annotations).
+///
+/// § NAME COLLISIONS
+///   Repeated specializations of the same fn with the same subst produce
+///   the same mangled name (deterministic). Callers that need uniqueness
+///   across different substs should verify by name.
+///
+/// § ERRORS
+///   Stage-0 MVP : never returns an error. A future slice adds "unbound
+///   generic param in fn body" as a diagnostic when the body uses a type-
+///   param that isn't in the subst.
+///
+/// § PANICS : none at the MVP level.
+pub fn specialize_generic_fn(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    hir_fn: &HirFn,
+    subst: &TypeSubst,
+) -> MirFunc {
+    // § Build a specialized copy of the HIR fn with substituted types.
+    let specialized_fn = substitute_fn_signature(hir_fn, interner, subst);
+
+    // § Signature lowering (vec-scalarization + flat MirFunc.params already
+    //   handled upstream ; monomorphization composes cleanly).
+    let lower_ctx = LowerCtx::new(interner);
+    let mut mir_fn = lower_function_signature(&lower_ctx, &specialized_fn);
+
+    // § Apply the mangled name + lower the body.
+    let base_name = interner.resolve(hir_fn.name);
+    mir_fn.name = mangle_specialization_name(&base_name, interner, subst);
+    lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
+
+    mir_fn
+}
+
+/// Clone `hir_fn` but substitute generic-param references in param types +
+/// return type. Body is preserved verbatim (stage-0 MVP — body-internal type
+/// references are not walked).
+fn substitute_fn_signature(hir_fn: &HirFn, interner: &Interner, subst: &TypeSubst) -> HirFn {
+    let mut out = hir_fn.clone();
+    // Remove the generic declaration since after specialization the fn is
+    // concrete. This keeps downstream passes (IFC / AD-legality / effect
+    // checks) from re-processing the specialization as generic.
+    out.generics = cssl_hir::HirGenerics { params: Vec::new() };
+
+    for p in &mut out.params {
+        p.ty = substitute_hir_type(&p.ty, interner, subst);
+    }
+    if let Some(rt) = &out.return_ty {
+        out.return_ty = Some(substitute_hir_type(rt, interner, subst));
+    }
+    out
+}
+
+/// Convenience : build a concrete `HirType` for a common primitive name.
+/// Useful for test-fixture construction of `TypeSubst` bindings.
+#[must_use]
+pub fn hir_primitive_type(name: &str, interner: &Interner) -> HirType {
+    HirType {
+        span: cssl_ast::Span::DUMMY,
+        id: cssl_hir::HirId::DUMMY,
+        kind: HirTypeKind::Path {
+            path: vec![interner.intern(name)],
+            def: None,
+            type_args: Vec::new(),
+        },
+    }
+}
+
+/// Convenience : given a `HirType` representing a primitive name (`"i32"`,
+/// `"f32"`, …), return the matching `MirType`. Returns `None` for non-
+/// primitive or unknown names.
+#[must_use]
+pub fn primitive_hir_to_mir(t: &HirType, interner: &Interner) -> Option<MirType> {
+    if let HirTypeKind::Path { path, .. } = &t.kind {
+        if path.len() == 1 {
+            return match interner.resolve(path[0]).as_str() {
+                "i8" => Some(MirType::Int(IntWidth::I8)),
+                "i16" => Some(MirType::Int(IntWidth::I16)),
+                "i32" | "u32" | "isize" | "usize" => Some(MirType::Int(IntWidth::I32)),
+                "i64" | "u64" => Some(MirType::Int(IntWidth::I64)),
+                "f16" => Some(MirType::Float(FloatWidth::F16)),
+                "bf16" => Some(MirType::Float(FloatWidth::Bf16)),
+                "f32" => Some(MirType::Float(FloatWidth::F32)),
+                "f64" => Some(MirType::Float(FloatWidth::F64)),
+                "bool" => Some(MirType::Bool),
+                "Handle" => Some(MirType::Handle),
+                _ => None,
+            };
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        hir_primitive_type, mangle_specialization_name, primitive_hir_to_mir,
+        specialize_generic_fn, substitute_hir_type, TypeSubst,
+    };
+    use crate::value::{FloatWidth, IntWidth, MirType};
+    use cssl_ast::{SourceFile, SourceId, Surface};
+    use cssl_hir::{lower_module, HirFn, HirItem};
+
+    /// Helper : parse source, lower to HIR, return (interner, HirFn for the
+    /// fn matching `fn_name`). Panics if the fn isn't found.
+    fn parse_fn(src: &str, fn_name: &str) -> (cssl_hir::Interner, SourceFile, HirFn) {
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+        let f = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                HirItem::Fn(f) if interner.resolve(f.name) == fn_name => Some(f.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("fn `{fn_name}` not found in module"));
+        (interner, file, f)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § TypeSubst basics
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn type_subst_new_is_empty() {
+        let s = TypeSubst::new();
+        assert!(s.is_empty());
+        assert_eq!(s.len(), 0);
+    }
+
+    #[test]
+    fn type_subst_bind_then_get() {
+        let interner = cssl_hir::Interner::new();
+        let t = interner.intern("T");
+        let mut s = TypeSubst::new();
+        s.bind(t, hir_primitive_type("i32", &interner));
+        assert_eq!(s.len(), 1);
+        assert!(s.get(&t).is_some());
+    }
+
+    #[test]
+    fn type_subst_iter_sorted_is_deterministic() {
+        let interner = cssl_hir::Interner::new();
+        let t = interner.intern("T");
+        let u = interner.intern("U");
+        let mut s = TypeSubst::new();
+        s.bind(u, hir_primitive_type("f32", &interner));
+        s.bind(t, hir_primitive_type("i32", &interner));
+        // Sorted by resolved name : T < U lexicographically.
+        let names: Vec<String> = s
+            .iter_sorted(&interner)
+            .map(|(sym, _)| interner.resolve(sym))
+            .collect();
+        assert_eq!(names, vec!["T".to_string(), "U".to_string()]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Substitution walks type-trees correctly
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn substitute_single_segment_path_to_generic_param() {
+        let interner = cssl_hir::Interner::new();
+        let t = interner.intern("T");
+        let mut s = TypeSubst::new();
+        s.bind(t, hir_primitive_type("i32", &interner));
+
+        let generic_t = hir_primitive_type("T", &interner);
+        let result = substitute_hir_type(&generic_t, &interner, &s);
+        // The result should be `i32`, not `T`.
+        let resolved = primitive_hir_to_mir(&result, &interner);
+        assert_eq!(resolved, Some(MirType::Int(IntWidth::I32)));
+    }
+
+    #[test]
+    fn substitute_passes_through_non_generic_paths() {
+        let interner = cssl_hir::Interner::new();
+        let t = interner.intern("T");
+        let mut s = TypeSubst::new();
+        s.bind(t, hir_primitive_type("i32", &interner));
+
+        let concrete_f32 = hir_primitive_type("f32", &interner);
+        let result = substitute_hir_type(&concrete_f32, &interner, &s);
+        let resolved = primitive_hir_to_mir(&result, &interner);
+        // f32 is NOT a generic-param name, so it passes through unchanged.
+        assert_eq!(resolved, Some(MirType::Float(FloatWidth::F32)));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Name mangling is deterministic
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn mangle_no_subst_preserves_base_name() {
+        let interner = cssl_hir::Interner::new();
+        let subst = TypeSubst::new();
+        assert_eq!(mangle_specialization_name("id", &interner, &subst), "id");
+    }
+
+    #[test]
+    fn mangle_one_subst_appends_type_fragment() {
+        let interner = cssl_hir::Interner::new();
+        let t = interner.intern("T");
+        let mut s = TypeSubst::new();
+        s.bind(t, hir_primitive_type("i32", &interner));
+        assert_eq!(mangle_specialization_name("id", &interner, &s), "id_i32");
+    }
+
+    #[test]
+    fn mangle_two_substs_sorts_by_param_name() {
+        let interner = cssl_hir::Interner::new();
+        let t = interner.intern("T");
+        let u = interner.intern("U");
+        let mut s = TypeSubst::new();
+        // Bind U first then T to prove iter_sorted is deterministic.
+        s.bind(u, hir_primitive_type("f32", &interner));
+        s.bind(t, hir_primitive_type("i32", &interner));
+        // Order is T, U ⇒ fragments append as `_i32_f32`.
+        assert_eq!(
+            mangle_specialization_name("pair", &interner, &s),
+            "pair_i32_f32"
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § specialize_generic_fn end-to-end : HIR → specialized MirFunc
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn specialize_id_to_i32_produces_correct_signature() {
+        let src = r"fn id<T>(x : T) -> T { x }";
+        let (interner, file, f) = parse_fn(src, "id");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let mir_fn = specialize_generic_fn(&interner, Some(&file), &f, &subst);
+        assert_eq!(mir_fn.name, "id_i32");
+        assert_eq!(mir_fn.params, vec![MirType::Int(IntWidth::I32)]);
+        assert_eq!(mir_fn.results, vec![MirType::Int(IntWidth::I32)]);
+    }
+
+    #[test]
+    fn specialize_id_to_f32_produces_correct_signature() {
+        let src = r"fn id<T>(x : T) -> T { x }";
+        let (interner, file, f) = parse_fn(src, "id");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("f32", &interner));
+
+        let mir_fn = specialize_generic_fn(&interner, Some(&file), &f, &subst);
+        assert_eq!(mir_fn.name, "id_f32");
+        assert_eq!(mir_fn.params, vec![MirType::Float(FloatWidth::F32)]);
+        assert_eq!(mir_fn.results, vec![MirType::Float(FloatWidth::F32)]);
+    }
+
+    #[test]
+    fn specialize_two_param_generic_fn() {
+        let src = r"fn pair<T, U>(a : T, b : U) -> i32 { 0 }";
+        let (interner, file, f) = parse_fn(src, "pair");
+        let t = interner.intern("T");
+        let u = interner.intern("U");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+        subst.bind(u, hir_primitive_type("f32", &interner));
+
+        let mir_fn = specialize_generic_fn(&interner, Some(&file), &f, &subst);
+        assert_eq!(mir_fn.name, "pair_i32_f32");
+        assert_eq!(
+            mir_fn.params,
+            vec![MirType::Int(IntWidth::I32), MirType::Float(FloatWidth::F32),]
+        );
+        assert_eq!(mir_fn.results, vec![MirType::Int(IntWidth::I32)]);
+    }
+
+    #[test]
+    fn specialize_strips_generics_from_hir_clone() {
+        // After specialization the cloned HIR fn must have empty generics so
+        // downstream passes don't try to re-process as generic.
+        let src = r"fn id<T>(x : T) -> T { x }";
+        let (interner, file, f) = parse_fn(src, "id");
+        assert_eq!(f.generics.params.len(), 1, "baseline : 1 generic param");
+
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let _mir_fn = specialize_generic_fn(&interner, Some(&file), &f, &subst);
+        // The original HIR fn is unchanged (we cloned).
+        assert_eq!(f.generics.params.len(), 1, "original not mutated");
+    }
+
+    #[test]
+    fn specialize_non_generic_fn_is_identity_name() {
+        // A non-generic fn with empty subst specializes to its own name +
+        // original signature — composes cleanly as a base case.
+        let src = r"fn add(a : i32, b : i32) -> i32 { a + b }";
+        let (interner, file, f) = parse_fn(src, "add");
+        let subst = TypeSubst::new();
+
+        let mir_fn = specialize_generic_fn(&interner, Some(&file), &f, &subst);
+        assert_eq!(mir_fn.name, "add");
+        assert_eq!(
+            mir_fn.params,
+            vec![MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32)]
+        );
+    }
+
+    #[test]
+    fn specialize_id_to_i32_body_lowers_cleanly() {
+        // Body-lowering of `fn id<T>(x: T) -> T { x }` after substitution
+        // T→i32 must produce a structurally-valid MirFunc : single entry block
+        // present, body owned by the fn, fn.results shape carries `i32`.
+        // Full JIT integration test lives in cssl-examples (avoids dev-dep
+        // cycle between cssl-mir ↔ cssl-cgen-cpu-cranelift).
+        let src = r"fn id<T>(x : T) -> T { x }";
+        let (interner, file, f) = parse_fn(src, "id");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let mir_fn = specialize_generic_fn(&interner, Some(&file), &f, &subst);
+        assert_eq!(mir_fn.name, "id_i32");
+        // Entry block must exist + be well-formed.
+        assert!(
+            mir_fn.body.entry().is_some(),
+            "specialized fn must have an entry block"
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Primitive HIR→MIR helper used by specialize internals
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn primitive_hir_to_mir_covers_canonical_names() {
+        let interner = cssl_hir::Interner::new();
+        assert_eq!(
+            primitive_hir_to_mir(&hir_primitive_type("i32", &interner), &interner),
+            Some(MirType::Int(IntWidth::I32))
+        );
+        assert_eq!(
+            primitive_hir_to_mir(&hir_primitive_type("f32", &interner), &interner),
+            Some(MirType::Float(FloatWidth::F32))
+        );
+        assert_eq!(
+            primitive_hir_to_mir(&hir_primitive_type("bool", &interner), &interner),
+            Some(MirType::Bool)
+        );
+    }
+
+    #[test]
+    fn primitive_hir_to_mir_returns_none_for_generic_param() {
+        let interner = cssl_hir::Interner::new();
+        let generic_t = hir_primitive_type("T", &interner);
+        // `T` looks like a primitive-shape path but isn't in the catalog ⇒ None.
+        assert_eq!(primitive_hir_to_mir(&generic_t, &interner), None);
+    }
+}

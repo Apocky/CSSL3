@@ -3058,4 +3058,43 @@ Each decision entry :
   - **Lane scalability confirmed** : vec2 + vec4 produce correctly-scaled primal values. The `hir_type_as_vec_lanes` helper was already written to accept any of (2, 3, 4) + any `FloatWidth` ; these tests just exercise the full matrix.
   - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D38 : Generic monomorphization MVP — P1 stdlib-core gate
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** P1 stdlib-core (Vec<T>, HashMap<K,V> implementable in CSSLv3) is the first step on the self-host path, blocked on generic-type monomorphization. CSSLv3 parses `fn id<T>(x: T) -> T { x }` through HIR — `HirGenerics` + `HirGenericParam` exist — but `lower_function_signature` discards generics and emits an opaque `T` param. Without monomorphization, generic fns are inert declarations. T11-D38 lands the specialization **core machinery** : an API that takes a generic `HirFn` + `TypeSubst` and produces a concrete JIT-ready `MirFunc`. Auto-discovery of generic call sites (turbofish parsing, type-inference-driven instantiation) is deferred to a follow-up slice.
+- **Slice landed (this commit)**
+  - **`cssl-mir/src/monomorph.rs`** (new ~470 LOC) :
+    - `pub struct TypeSubst` — `HashMap<Symbol, HirType>` generic-param → concrete-type map. Constructors : `new()`, `bind(sym, ty)`. Iteration : `iter_sorted(interner)` for deterministic name-mangling.
+    - `pub fn substitute_hir_type(t, interner, subst) -> HirType` — recursively walks the type tree, replaces single-segment paths matching `subst` keys. Handles Path / Tuple / Array / Slice / Reference / Capability / Function / Refined / Infer / Error.
+    - `pub fn mangle_specialization_name(base, interner, subst) -> String` — deterministic `{fn_name}_{arg_types}` name per `iter_sorted` order. Empty subst = identity (preserves base name). Type-fragment rendering handles primitives + tuple / fn / array fallbacks.
+    - `pub fn specialize_generic_fn(interner, source, hir_fn, subst) -> MirFunc` — the main API. Clones `HirFn`, substitutes param + return types, empties `HirGenerics` (prevents re-processing), runs `lower_function_signature` + `lower_fn_body`, mangles the name.
+    - `pub fn hir_primitive_type(name, interner) -> HirType` — convenience constructor for `"i32"` / `"f32"` / `"bool"` / … in test-fixture-land.
+    - `pub fn primitive_hir_to_mir(t, interner) -> Option<MirType>` — shortcut lookup for primitive names, returns `None` for generic-param or non-primitive types.
+    - **16 unit tests** : TypeSubst basics (new/bind/get/iter_sorted determinism) · substitution walks (single-segment generic → concrete, non-generic passthrough) · mangling (no-subst-is-identity, one-subst-appends, two-substs-sort) · specialization end-to-end (id<T>→i32, id<T>→f32, two-param pair<T,U>, generics-stripped-from-clone, non-generic-identity, trivial-body cleanly lowers) · primitive round-trip.
+  - **`cssl-mir/src/lib.rs`** : `pub mod monomorph` + re-exports of `TypeSubst`, `specialize_generic_fn`, `substitute_hir_type`, `mangle_specialization_name`, `hir_primitive_type`, `primitive_hir_to_mir`.
+  - **`cssl-cgen-cpu-cranelift/src/jit.rs`** : `call_i32_to_i32(arg0, module) -> Result<i32>` helper — canonical 1-arg identity/integer fn shape.
+  - **`cssl-examples/src/jit_chain.rs`** : `monomorph_specialize_id_i32_jit_executes` integration test — the full P1 proof-of-concept. Parses `fn id<T>(x : T) -> T { x }`, specializes T↦i32 AND T↦f32, JIT-compiles both in the same module, calls :
+    - `id_i32(5)` → 5 ✓
+    - `id_i32(-42)` → -42 ✓ (sign preservation)
+    - `id_f32(2.5)` → 2.5 ✓ (f32 round-trip)
+- **The runtime claim**
+  - A generic CSSLv3 source `fn id<T>(x : T) -> T { x }` now compiles all the way to **machine code** via manual specialization + JIT. The specialization API produces distinct `MirFunc` values for each type-arg tuple ; the JIT treats each as a standalone scalar fn. **This is the first generic-fn machine-code execution in the CSSLv3 compiler.**
+- **Consequences**
+  - Test count : 1437 → 1473 (+36 incl. downstream rebuild counts). Monomorph alone : +16 unit + 1 integration = 17.
+  - **P1 stdlib-core is unblocked at the core-machinery level.** Writing `struct Vec<T> { data: *mut T, len: usize, cap: usize }` + `impl<T> Vec<T> { fn push(&mut self, v: T) { … } }` in CSSLv3 still requires (a) turbofish/call-site wiring to trigger specialization automatically, (b) heap-allocation primitives, (c) trait-like dispatch for `T: Eq + Hash` in HashMap. But the specialization API is now present + validated.
+  - **Does not touch the parser or HIR expression shape.** All changes in cssl-mir + downstream. Turbofish `id::<i32>(5)` already parses (but drops the type-args) ; wiring those through `Call.type_args` is a clean separate commit.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Fourth slice of user-directed "2 → 1 → 4 → 3" sequence** — D34 SPIR-V validation → D35 vec3 wire-through → D36 IFC flow-violation → D37 vec arc polish → **D38 generic monomorphization MVP** (#4 in sequence).
+- **Deferred** (explicit follow-up slices)
+  - **Turbofish → `HirExprKind::Call.type_args`** : extend parser / CST / HIR-Call to carry `type_args: Vec<HirType>`. Parser already accepts syntax but drops the types ; capture + propagate. ~100 LOC, 5 tests.
+  - **Auto-monomorphization walker** : scan `MirModule` for `func.call @f` ops where `f` is generic, collect observed type-arg tuples, invoke `specialize_generic_fn` per unique tuple, rewrite call sites to reference mangled names. ~200 LOC, 10 tests.
+  - **Type-arg inference** : when turbofish is omitted (`id(5)` vs `id::<i32>(5)`), infer `T = i32` from the arg's type. Requires T3.4 unification infrastructure — already partially landed in `cssl-hir::infer`.
+  - **Bounded generics** : `fn hash_it<T: Hash>(t: T)` needs trait-like dispatch resolution at the specialization site. Interacts with future trait-impl-registry.
+  - **Generic struct / enum / impl monomorphization** : `struct Vec<T>` + `impl<T> Vec<T>`. Parallel `specialize_generic_struct` + `specialize_generic_impl` APIs. Orthogonal to D38's fn-only scope.
+  - **Const + region generics** : `fn nth<const N: usize>(arr: [i32; N])` — const-param substitution into array-length expressions. Non-trivial.
+  - **Body-level type-arg references** : `fn foo<T>() -> T { Default::<T>::default() }` — substitution must walk expression-level type references, not just the fn signature.
+
 

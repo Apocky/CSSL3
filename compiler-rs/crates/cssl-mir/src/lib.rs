@@ -43,6 +43,7 @@ pub mod block;
 pub mod body_lower;
 pub mod func;
 pub mod lower;
+pub mod monomorph;
 pub mod op;
 pub mod pipeline;
 pub mod print;
@@ -52,6 +53,10 @@ pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{lower_fn_body, BodyLowerCtx};
 pub use func::{MirFunc, MirModule};
 pub use lower::{lower_function_signature, lower_module_signatures, LowerCtx};
+pub use monomorph::{
+    hir_primitive_type, mangle_specialization_name, primitive_hir_to_mir, specialize_generic_fn,
+    substitute_hir_type, TypeSubst,
+};
 pub use op::{CsslOp, OpCategory, OpSignature};
 pub use pipeline::{
     AdTransformPass, IfcLoweringPass, MirPass, MonomorphizationPass, PassDiagnostic, PassPipeline,

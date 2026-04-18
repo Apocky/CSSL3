@@ -168,6 +168,7 @@ mod tests {
     use super::{
         extract_bwd_single_adjoint, extract_tangent_only_variant, pipeline_source_to_ad_mir,
     };
+    use cssl_ast::{SourceFile, SourceId, Surface};
     use cssl_cgen_cpu_cranelift::JitModule;
 
     #[test]
@@ -1188,6 +1189,89 @@ fn scene(x : f32) -> f32 { helper(x) }
         assert!(
             (v - 7.0).abs() < 1e-5,
             "len4((2, 3, 6, 0)) : expected 7.0, got {v}"
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D38 : generic-monomorphization end-to-end JIT integration.
+    //
+    // cssl-mir::monomorph::specialize_generic_fn produces a MirFunc from a
+    // generic HirFn + TypeSubst. This test exercises the full pipeline :
+    //   source `fn id<T>(x : T) -> T { x }` → HIR → specialize(T ↦ i32)
+    //   → MirFunc `id_i32 : i32 → i32` → JIT → call id_i32(5) → assert 5.
+    //
+    // Proves the T11-D38 API produces machine-code-ready output, not just
+    // a structurally-correct MirFunc.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn monomorph_specialize_id_i32_jit_executes() {
+        use cssl_hir::{lower_module, HirItem};
+        use cssl_mir::monomorph::{hir_primitive_type, specialize_generic_fn, TypeSubst};
+        use cssl_mir::{FloatWidth, IntWidth, MirType};
+
+        let src = r"fn id<T>(x : T) -> T { x }";
+        let file = SourceFile::new(
+            SourceId::first(),
+            "<monomorph_id_i32>",
+            src,
+            Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+
+        let id_fn = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                HirItem::Fn(f) if interner.resolve(f.name) == "id" => Some(f.clone()),
+                _ => None,
+            })
+            .expect("id fn");
+
+        // § Specialize T ↦ i32.
+        let t = interner.intern("T");
+        let mut subst_i32 = TypeSubst::new();
+        subst_i32.bind(t, hir_primitive_type("i32", &interner));
+        let mir_id_i32 = specialize_generic_fn(&interner, Some(&file), &id_fn, &subst_i32);
+
+        assert_eq!(mir_id_i32.name, "id_i32");
+        assert_eq!(mir_id_i32.params, vec![MirType::Int(IntWidth::I32)]);
+        assert_eq!(mir_id_i32.results, vec![MirType::Int(IntWidth::I32)]);
+
+        // § Specialize T ↦ f32 — prove we can get a DIFFERENT specialization
+        //   from the same generic source.
+        let mut subst_f32 = TypeSubst::new();
+        subst_f32.bind(t, hir_primitive_type("f32", &interner));
+        let mir_id_f32 = specialize_generic_fn(&interner, Some(&file), &id_fn, &subst_f32);
+        assert_eq!(mir_id_f32.name, "id_f32");
+        assert_eq!(mir_id_f32.params, vec![MirType::Float(FloatWidth::F32)]);
+
+        // § JIT-compile BOTH specializations in the same module + call each.
+        let mut m = JitModule::new();
+        let handle_i32 = m.compile(&mir_id_i32).expect("JIT compile id_i32");
+        let handle_f32 = m.compile(&mir_id_f32).expect("JIT compile id_f32");
+        m.finalize().expect("finalize");
+
+        // § id_i32(5) → 5.
+        let out_i32 = handle_i32.call_i32_to_i32(5, &m).expect("call id_i32(5)");
+        assert_eq!(out_i32, 5, "id_i32(5) must return 5");
+
+        // § id_i32(-42) → -42 (sign-preservation through i32).
+        let out_neg = handle_i32
+            .call_i32_to_i32(-42, &m)
+            .expect("call id_i32(-42)");
+        assert_eq!(out_neg, -42);
+
+        // § id_f32(2.5) → 2.5 (within f32 round-trip tolerance ; avoid
+        //   approx-PI values that clippy's `approx_constant` lint catches).
+        let out_f32 = handle_f32
+            .call_f32_to_f32(2.5, &m)
+            .expect("call id_f32(2.5)");
+        assert!(
+            (out_f32 - 2.5_f32).abs() < 1e-5,
+            "id_f32(2.5) ≈ 2.5 : got {out_f32}"
         );
     }
 
