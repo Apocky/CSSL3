@@ -58,17 +58,51 @@ pub fn pipeline_source_to_ad_mir(name: &str, source: &str) -> MirModule {
     mir_mod
 }
 
-/// Post-process a walker-emitted `<name>_fwd` variant : strip the primal result
-/// + its corresponding func.return operand, producing a tangent-only fn that
-/// the JIT can directly execute.
+/// Post-process a walker-emitted `<name>_bwd` variant : for multi-float-param
+/// primals, the bwd variant returns one adjoint per primal float-param. The
+/// stage-0.5 JIT supports single-result fns ; this utility extracts a single
+/// adjoint (by index) so we can JIT-compile + call each per-param adjoint
+/// independently.
 ///
-/// The walker emits fwd variants with signature :
+/// Signature transform :
+///   `(primal_params ++ [d_y]) -> (d_0, d_1, ..., d_n)`
+///                     ↓
+///   `(primal_params ++ [d_y]) -> d_<adjoint_index>`
+///
+/// The body keeps all adjoint-accumulation ops (they're all needed for the
+/// chain-rule), and the `cssl.diff.bwd_return` terminator is rewritten to
+/// return only operand-at-index.
+///
+/// # Panics
+/// Panics if `adjoint_index` is out of bounds of `bwd_variant.results`.
+#[must_use]
+pub fn extract_bwd_single_adjoint(bwd_variant: &MirFunc, adjoint_index: usize) -> MirFunc {
+    assert!(
+        adjoint_index < bwd_variant.results.len(),
+        "adjoint_index {adjoint_index} out of bounds for bwd variant with {} results",
+        bwd_variant.results.len()
+    );
+    let mut out = bwd_variant.clone();
+    let wanted_ty = out.results[adjoint_index].clone();
+    out.results = vec![wanted_ty];
+    out.name = format!("{}_d{adjoint_index}", bwd_variant.name);
+    if let Some(entry) = out.body.entry_mut() {
+        for op in &mut entry.ops {
+            if op.name == "cssl.diff.bwd_return" && op.operands.len() > 1 {
+                let wanted = op.operands[adjoint_index];
+                op.operands = vec![wanted];
+            }
+        }
+    }
+    out
+}
+
+/// Post-process a walker-emitted `<name>_fwd` variant : strip the primal
+/// result + its corresponding func.return operand, producing a tangent-only
+/// fn that the JIT can directly execute. Signature transform :
 ///   `(primal_params ++ tangent_params) -> (primal_result, tangent_result)`
-///
-/// This utility converts that to :
+///                                ↓
 ///   `(primal_params ++ tangent_params) -> tangent_result`
-///
-/// by keeping only the last result type + the last func.return operand.
 #[must_use]
 pub fn extract_tangent_only_variant(fwd_variant: &MirFunc) -> MirFunc {
     let mut out = fwd_variant.clone();
@@ -131,7 +165,9 @@ impl core::fmt::Debug for JitChainHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_tangent_only_variant, pipeline_source_to_ad_mir};
+    use super::{
+        extract_bwd_single_adjoint, extract_tangent_only_variant, pipeline_source_to_ad_mir,
+    };
     use cssl_cgen_cpu_cranelift::JitModule;
 
     #[test]
@@ -458,6 +494,123 @@ fn scene(x : f32) -> f32 { helper(x) }
         // scene(-4) = 16.
         let r2 = scene_h.call_f32_to_f32(-4.0, &m).unwrap();
         assert!((r2 - 16.0).abs() < 1e-5);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D27 : Multi-param bwd via single-adjoint extraction.
+    //   `@differentiable fn f(a, b)` has Bwd signature `(a, b, d_y) -> (d_a, d_b)`.
+    //   Extract d_a + d_b separately → JIT each → verify per-param gradients.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_source_bwd_mul_per_param_adjoints() {
+        // fn mul(a, b) = a * b.
+        //   ∂/∂a = b ; ∂/∂b = a.
+        let src = r"@differentiable fn mul(a : f32, b : f32) -> f32 { a * b }";
+        let module = pipeline_source_to_ad_mir("mul_bwd", src);
+        let bwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "mul_bwd")
+            .expect("mul_bwd");
+        assert_eq!(
+            bwd.results.len(),
+            2,
+            "mul has 2 params → bwd has 2 adjoints"
+        );
+
+        // Extract d_a (index 0) + d_b (index 1) separately.
+        let bwd_da = extract_bwd_single_adjoint(bwd, 0);
+        let bwd_db = extract_bwd_single_adjoint(bwd, 1);
+        assert_eq!(bwd_da.results.len(), 1);
+        assert_eq!(bwd_db.results.len(), 1);
+        assert_eq!(bwd_da.name, "mul_bwd_d0");
+        assert_eq!(bwd_db.name, "mul_bwd_d1");
+
+        let mut m = JitModule::new();
+        let h_da = m.compile(&bwd_da).expect("JIT bwd_da");
+        let h_db = m.compile(&bwd_db).expect("JIT bwd_db");
+        m.finalize().unwrap();
+
+        // Signature : (a, b, d_y) → d_a. At (a=3, b=5, d_y=1) : d_a = b·d_y = 5.
+        // JIT call helpers : 3-arg f32 → f32 needs a new helper OR use call_f32_f32_f32_f32.
+        // mul has 2 primal params, so bwd is (a, b, d_y) 3-arg. We don't have a
+        // 3-arg helper yet — use the 4-arg helper with a dummy last arg? No,
+        // the signature is 3-arg. Add a call_f32_f32_f32_to_f32 helper below.
+
+        let d_a_val = h_da.call_f32_f32_f32_to_f32(3.0, 5.0, 1.0, &m).unwrap();
+        assert!(
+            (d_a_val - 5.0).abs() < 1e-5,
+            "∂(a*b)/∂a @ (3, 5) : expected 5, got {d_a_val}"
+        );
+
+        let d_b_val = h_db.call_f32_f32_f32_to_f32(3.0, 5.0, 1.0, &m).unwrap();
+        assert!(
+            (d_b_val - 3.0).abs() < 1e-5,
+            "∂(a*b)/∂b @ (3, 5) : expected 3, got {d_b_val}"
+        );
+
+        // Chain rule check : scale d_y.
+        let d_a_scaled = h_da.call_f32_f32_f32_to_f32(2.0, 7.0, 0.5, &m).unwrap();
+        assert!((d_a_scaled - 3.5).abs() < 1e-5); // 7·0.5
+        let d_b_scaled = h_db.call_f32_f32_f32_to_f32(2.0, 7.0, 0.5, &m).unwrap();
+        assert!((d_b_scaled - 1.0).abs() < 1e-5); // 2·0.5
+
+        // Central-differences cross-check.
+        let h_step = 1e-3_f32;
+        let samples: &[(f32, f32)] = &[(1.0, 2.0), (-3.0, 4.5), (0.5, 0.7)];
+        for &(a, b) in samples {
+            let d_a = h_da.call_f32_f32_f32_to_f32(a, b, 1.0, &m).unwrap();
+            let d_b = h_db.call_f32_f32_f32_to_f32(a, b, 1.0, &m).unwrap();
+
+            // Central-diff on a*b :
+            let primal = |aa: f32, bb: f32| aa * bb;
+            let num_a = (primal(a + h_step, b) - primal(a - h_step, b)) / (2.0 * h_step);
+            let num_b = (primal(a, b + h_step) - primal(a, b - h_step)) / (2.0 * h_step);
+
+            assert!(
+                (d_a - num_a).abs() < 1e-3,
+                "∂/∂a @ ({a}, {b}) : JIT={d_a} vs central={num_a}"
+            );
+            assert!(
+                (d_b - num_b).abs() < 1e-3,
+                "∂/∂b @ ({a}, {b}) : JIT={d_b} vs central={num_b}"
+            );
+        }
+    }
+
+    #[test]
+    fn full_chain_source_bwd_two_params_affine() {
+        // fn lin2(a, b) = 2*a + b — hand-written via a+a+b.
+        //   ∂/∂a = 2, ∂/∂b = 1.
+        let src = r"@differentiable fn lin2(a : f32, b : f32) -> f32 { a + a + b }";
+        let module = pipeline_source_to_ad_mir("lin2_bwd", src);
+        let bwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "lin2_bwd")
+            .expect("lin2_bwd");
+        let bwd_da = extract_bwd_single_adjoint(bwd, 0);
+        let bwd_db = extract_bwd_single_adjoint(bwd, 1);
+
+        let mut m = JitModule::new();
+        let h_da = m.compile(&bwd_da).unwrap();
+        let h_db = m.compile(&bwd_db).unwrap();
+        m.finalize().unwrap();
+
+        // ∂(2a+b)/∂a = 2, regardless of (a, b).
+        for (a, b) in [(1.0_f32, 2.0), (-3.0, 7.0), (10.0, -5.0)] {
+            let d_a = h_da.call_f32_f32_f32_to_f32(a, b, 1.0, &m).unwrap();
+            assert!(
+                (d_a - 2.0).abs() < 1e-5,
+                "∂/∂a @ ({a}, {b}) : expected 2, got {d_a}"
+            );
+            let d_b = h_db.call_f32_f32_f32_to_f32(a, b, 1.0, &m).unwrap();
+            assert!(
+                (d_b - 1.0).abs() < 1e-5,
+                "∂/∂b @ ({a}, {b}) : expected 1, got {d_b}"
+            );
+        }
     }
 
     #[test]

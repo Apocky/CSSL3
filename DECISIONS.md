@@ -2703,3 +2703,28 @@ Each decision entry :
   - Multi-fn scene SDFs : `@differentiable fn scene(p, r0, r1) { min(sphere_sdf(p, r0), sphere_sdf(p, r1)) }` — requires inter-fn JIT calls.
   - Multi-result bwd : current JIT supports single-result fns, so multi-adjoint-returning bwd variants (primals with multiple float params) need JIT multi-return support.
   - Scene-SDF gradient via Bwd : `bwd_diff(scene_sdf)(p, r).d_p` path — complements T11-D22's Fwd-verified min gradient with the reverse-mode form.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D27 : Multi-param bwd via single-adjoint extraction
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D25 verified Bwd-mode for single-float-param primals (`fn sq(x) { x*x }` → `(x, d_y) -> d_x`). For multi-float-param primals (`fn mul(a, b) { a*b }`), the walker emits `(a, b, d_y) -> (d_a, d_b)` — multi-result. The stage-0.5 JIT supports single-result fns only. Rather than wire full multi-return ABI support (which requires out-param pointers + a body rewrite), this slice post-processes the multi-result bwd variant into N single-result variants (one per adjoint) that the existing JIT executes.
+- **Slice landed (this commit)**
+  - `cssl-examples/src/jit_chain.rs::extract_bwd_single_adjoint(bwd, adjoint_index)` : clones the bwd variant, keeps only `results[adjoint_index]`, rewrites `cssl.diff.bwd_return` to return only `operands[adjoint_index]`, names the output `<bwd>_d{index}`. The body keeps all adjoint-accumulation ops (needed for chain-rule ; Rust dead-code eliminator handles redundant chain-rule branches if any).
+  - New `JitFn::call_f32_f32_f32_to_f32(a, b, c, &m)` call helper : 3-arg f32 → f32 signature, canonical shape for bwd `(param_a, param_b, d_y) → d_x` per-param extraction.
+  - 2 new tests in `cssl-examples` :
+    - `full_chain_source_bwd_mul_per_param_adjoints` : CSSLv3 source `@differentiable fn mul(a, b) { a * b }` → extract `mul_bwd_d0` (for ∂/∂a) + `mul_bwd_d1` (for ∂/∂b) → compile both in shared JIT module → verify exact values (`∂(a*b)/∂a @ (3, 5) = 5`, `∂/∂b = 3`, chain-rule at (2, 7, 0.5) gives 3.5 and 1.0) + central-difference cross-check at 3 sample points.
+    - `full_chain_source_bwd_two_params_affine` : `@differentiable fn lin2(a, b) { a + a + b }` → ∂/∂a = 2 (constant), ∂/∂b = 1 (constant) verified across 3 sample points.
+- **Consequences**
+  - Test count : 1366 → 1368 (+2 in cssl-examples).
+  - **Multi-param reverse-mode AD now runs source-to-runtime** via the extract-per-param approach. This is semantically equivalent to a native multi-return at call-site — callers pay N extract-compile operations but avoid the ABI complexity.
+  - The full F1 AD correctness chain is now verified end-to-end for the most common primal shape (2-float-param scalar functions) via both Fwd-mode (tangent-only) and Bwd-mode (per-param-adjoint).
+  - Native multi-return remains architecturally open — a future slice could add a proper out-param ABI + `call_bwd_tuple_*` helpers that return `(f32, f32)` via stack pointers.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Native JIT multi-return (out-param ABI).
+  - Mutual recursion via two-phase compile (declare-all-then-define-all).
+  - Scene-SDF composition gate : `@differentiable fn scene(p, r0, r1) { min(sphere_sdf(p, r0), sphere_sdf(p, r1)) }` full-chain.
+  - libm-backed transcendentals (sin/cos/exp/log).

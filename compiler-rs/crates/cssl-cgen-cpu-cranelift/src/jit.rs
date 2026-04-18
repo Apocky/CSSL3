@@ -193,6 +193,27 @@ impl JitFn {
         Ok(f(a))
     }
 
+    /// Call as `fn(f32, f32, f32) -> f32`. Canonical AD reverse-mode shape
+    /// for 2-param primals : `fn f_bwd(a, b, d_y) -> d_x` (single-adjoint
+    /// extracted from the multi-result bwd variant).
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_f32_f32_f32_to_f32(
+        &self,
+        a: f32,
+        b: f32,
+        c: f32,
+        module: &JitModule,
+    ) -> Result<f32, JitError> {
+        let f32m = || MirType::Float(FloatWidth::F32);
+        self.check_sig(&[f32m(), f32m(), f32m()], f32m())?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let f: extern "C" fn(f32, f32, f32) -> f32 = unsafe { std::mem::transmute(addr) };
+        Ok(f(a, b, c))
+    }
+
     /// Call as `fn(f32, f32, f32, f32) -> f32`. The canonical shape of an
     /// AD forward-mode tangent body for a 2-argument scalar primal :
     /// `fn f_fwd(a, b, d_a, d_b) -> d_y`.
