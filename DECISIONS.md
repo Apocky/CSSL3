@@ -1829,3 +1829,41 @@ Each decision entry :
   - Multi-solver cross-witness inside the bundle (currently single-solver per run).
   - OTLP streaming of bundle entries as they're produced.
   - CLI entry-point (`csslc attest`) that prints the bundle summary.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D17 : T3.4-phase-3-retire-skolem — Scheme-based item-sigs + generic-fn fresh-var
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D15 integrated let-gen for locals but left item-sigs stored as raw `Ty` and generic-fn params resolved via the brittle "single-cap ident" skolem heuristic. This commit migrates item-sig storage to `Scheme` and replaces skolem detection with a proper per-fn generics-map.
+- **Slice landed (this commit)**
+  - `cssl-hir/src/env.rs` :
+    - `TypingEnv::item_sigs` now stores `HashMap<DefId, Scheme>` (previously `Ty`).
+    - `register_item(name, def, ty)` wraps monomorphically via `Scheme::monomorphic` — backward-compat for non-fn items.
+    - `register_item_scheme(name, def, scheme)` : polymorphic-aware API for generic fns.
+    - `item_sig(def) -> Option<&Ty>` : reads `.body` for backward-compat.
+    - `item_scheme(def) -> Option<&Scheme>` : new polymorphic-aware lookup.
+    - `item_sigs()` / `item_schemes()` iterators.
+    - `free_ty_vars()` / `free_row_vars()` : walk item-sigs respecting per-scheme bound-vars.
+  - `cssl-hir/src/infer.rs` :
+    - `InferCtx` gains `generics_map: HashMap<Symbol, TyVar>` state — active only while lowering a fn signature.
+    - New `fn_signature_scheme(f) -> Scheme` method : builds a per-fn generics-map from `f.generics.params`, allocates fresh `TyVar` per generic type-param, lowers body types with the map in scope, wraps as rank-N scheme.
+    - `lower_hir_type` for `HirTypeKind::Path { .. }` : if single-segment path matches a generics-map entry, returns `Ty::Var(fresh-var)` instead of falling into the skolem heuristic. Legacy `Ty::Param(Symbol)` path only fires when the map is empty (preserves existing handwritten-test behavior).
+    - `collect_item` : `HirItem::Fn` now calls `fn_signature_scheme` + `register_item_scheme`.
+    - `synth_expr_kind::Path` : when `def` resolves an item, looks up via `item_scheme(def)` + `Scheme::instantiate(&mut tcx)` so each call-site gets independent fresh vars.
+    - `env_for_tests()` accessor (test-only) for inspecting item-sig schemes.
+  - 3 new tests :
+    - `generic_fn_sig_lands_as_polymorphic_scheme` : `fn id<T>(x: T) -> T { x }` → rank-1 scheme with param = return sharing one quantified var.
+    - `generic_fn_call_sites_instantiate_to_distinct_ty_vars` : `id(42)` + `id(true)` both type-check (fresh-var independence demonstrated indirectly).
+    - `non_generic_fn_sig_is_monomorphic_scheme` : `fn f() -> i32 { 42 }` → rank-0 scheme.
+- **Consequences**
+  - Generic fns now use proper HM polymorphism at call-sites — each call instantiates the scheme with fresh vars, so `id(42)` + `id(true)` no longer conflict.
+  - `Ty::Param(Symbol)` skolem is no longer emitted during fn-sig lowering when generics are declared. Legacy skolem detection preserved for handwritten tests that construct `Ty::Param` directly.
+  - Test count : 1156 → 1159 (+3).
+  - Completes the HM let-generalization arc T3-D14 → T3-D15 → T3-D17.
+- **Deferred**
+  - Retire `Ty::Param(Symbol)` variant entirely — requires removing the skolem heuristic at lower_hir_type + updating hand-written tests that rely on it.
+  - Higher-rank polymorphism : nested `Scheme` inside `Ty`, allowing `fn foo(f: forall<T>. T -> T) -> i32`.
+  - Constraint-based inference : `T: Differentiable` bounds tracked + dispatched at instantiation.
+  - Unification over mixed-scheme types (HM-style unification currently works on `Ty`, not `Scheme`).

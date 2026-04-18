@@ -90,10 +90,17 @@ impl TypeScope {
 }
 
 /// Typing environment : a stack of `TypeScope`s + a flat item-signature table.
+///
+/// § ITEM-SIG STORAGE (post-T3-D17)
+///   Item signatures are stored as [`Scheme`], not raw [`Ty`]. Monomorphic
+///   items (e.g., structs without generics) auto-wrap via
+///   [`Scheme::monomorphic`]. Generic fn items carry real rank-1 schemes
+///   with quantified ty-vars ; each call-site instantiates with fresh vars
+///   via [`Scheme::instantiate`] to avoid var-sharing across calls.
 #[derive(Debug, Default)]
 pub struct TypingEnv {
     stack: Vec<TypeScope>,
-    item_sigs: HashMap<DefId, Ty>,
+    item_sigs: HashMap<DefId, Scheme>,
     item_names: HashMap<Symbol, DefId>,
 }
 
@@ -186,9 +193,12 @@ impl TypingEnv {
                 }
             }
         }
-        for ty in self.item_sigs.values() {
-            for v in crate::typing::free_ty_vars(ty) {
-                out.insert(v);
+        for scheme in self.item_sigs.values() {
+            let bound: HashSet<_> = scheme.ty_vars.iter().copied().collect();
+            for v in crate::typing::free_ty_vars(&scheme.body) {
+                if !bound.contains(&v) {
+                    out.insert(v);
+                }
             }
         }
         out
@@ -209,23 +219,43 @@ impl TypingEnv {
                 }
             }
         }
-        for ty in self.item_sigs.values() {
-            for v in crate::typing::free_row_vars(ty) {
-                out.insert(v);
+        for scheme in self.item_sigs.values() {
+            let bound: HashSet<_> = scheme.row_vars.iter().copied().collect();
+            for v in crate::typing::free_row_vars(&scheme.body) {
+                if !bound.contains(&v) {
+                    out.insert(v);
+                }
             }
         }
         out
     }
 
-    /// Register an item signature.
+    /// Register an item signature with a monomorphic wrap.
     pub fn register_item(&mut self, name: Symbol, def: DefId, t: Ty) {
-        self.item_sigs.insert(def, t);
+        self.item_sigs.insert(def, Scheme::monomorphic(t));
         self.item_names.insert(name, def);
     }
 
-    /// Lookup an item signature by `DefId`.
+    /// Register an item with a full polymorphic scheme (e.g., generic fn with
+    /// quantified ty-vars).
+    pub fn register_item_scheme(&mut self, name: Symbol, def: DefId, scheme: Scheme) {
+        self.item_sigs.insert(def, scheme);
+        self.item_names.insert(name, def);
+    }
+
+    /// Lookup the `Ty` body of an item signature by `DefId`. Equivalent to
+    /// `item_scheme(def).map(|s| &s.body)`. Semantically correct for
+    /// monomorphic items ; polymorphic callers should use
+    /// [`Self::item_scheme`] + [`Scheme::instantiate`] for fresh-var
+    /// independence per use-site.
     #[must_use]
     pub fn item_sig(&self, def: DefId) -> Option<&Ty> {
+        self.item_sigs.get(&def).map(|s| &s.body)
+    }
+
+    /// Lookup the full polymorphic scheme for an item.
+    #[must_use]
+    pub fn item_scheme(&self, def: DefId) -> Option<&Scheme> {
         self.item_sigs.get(&def)
     }
 
@@ -236,17 +266,26 @@ impl TypingEnv {
     }
 
     /// Resolve a name — prefer local binding, fall back to item signature.
+    /// Returns the `Ty` body ; polymorphic callers should use
+    /// [`Self::item_scheme`] on the resolved `DefId` + instantiate.
     #[must_use]
     pub fn lookup(&self, name: Symbol) -> Option<&Ty> {
         if let Some(t) = self.lookup_local(name) {
             return Some(t);
         }
         let def = self.item_names.get(&name)?;
-        self.item_sigs.get(def)
+        self.item_sigs.get(def).map(|s| &s.body)
     }
 
     /// Iterate over all registered item signatures (stable order not guaranteed).
+    /// Returns `(DefId, &Ty)` pairs reading the scheme body — polymorphic
+    /// callers should use [`Self::item_schemes`] instead.
     pub fn item_sigs(&self) -> impl Iterator<Item = (&DefId, &Ty)> {
+        self.item_sigs.iter().map(|(d, s)| (d, &s.body))
+    }
+
+    /// Iterate over registered item schemes (full polymorphic form).
+    pub fn item_schemes(&self) -> impl Iterator<Item = (&DefId, &Scheme)> {
         self.item_sigs.iter()
     }
 }

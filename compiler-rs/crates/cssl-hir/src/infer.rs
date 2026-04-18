@@ -40,9 +40,9 @@ use crate::expr::{
 use crate::item::{HirFn, HirItem, HirModule, HirStructBody};
 use crate::pat::{HirPattern, HirPatternKind};
 use crate::stmt::{HirStmt, HirStmtKind};
-use crate::symbol::Interner;
+use crate::symbol::{Interner, Symbol};
 use crate::ty::{HirEffectArg, HirEffectRow, HirType, HirTypeKind};
-use crate::typing::{ArrayLen, EffectInstance, Row, Subst, Ty, TyCtx, TypeMap};
+use crate::typing::{ArrayLen, EffectInstance, Row, Scheme, Subst, Ty, TyCtx, TyVar, TypeMap};
 use crate::unify::{unify, unify_rows, UnifyError};
 
 /// Inference context — threaded through every `synth_*` / `check_*` method.
@@ -58,9 +58,21 @@ pub struct InferCtx<'a> {
     current_row: Option<Row>,
     /// The current function's return type — `return` / trailing-expr unify with this.
     current_return: Option<Ty>,
+    /// Active generic-param map while lowering a fn signature : maps each
+    /// generic-param symbol to the fresh [`TyVar`] allocated for it. Outside
+    /// a fn-sig lowering this is empty. T3-D17 : replaces the brittle
+    /// "single-cap identifier" skolem heuristic with a real fresh-var scheme.
+    generics_map: std::collections::HashMap<Symbol, TyVar>,
 }
 
 impl<'a> InferCtx<'a> {
+    /// Read-only accessor for the inner typing-env — used by test helpers
+    /// that need to inspect item-sig schemes after `collect_item_signatures`.
+    #[cfg(test)]
+    pub fn env_for_tests(&self) -> &crate::env::TypingEnv {
+        &self.env
+    }
+
     /// Build a fresh inference context.
     #[must_use]
     pub fn new(interner: &'a Interner) -> Self {
@@ -73,6 +85,7 @@ impl<'a> InferCtx<'a> {
             diagnostics: Vec::new(),
             current_row: None,
             current_return: None,
+            generics_map: std::collections::HashMap::new(),
         }
     }
 
@@ -152,7 +165,16 @@ impl<'a> InferCtx<'a> {
                         "Never" | "!" => return Ty::Never,
                         _ => {}
                     }
-                    // Could be a generic parameter in scope — treat single-cap ident as skolem.
+                    // T3-D17 : consult the active generics-map — a path that
+                    // matches a registered generic-param symbol resolves to
+                    // the fresh ty-var allocated for that param at fn-sig
+                    // entry. Falls back to `Ty::Param` for the legacy skolem
+                    // path only when the generics-map is empty (no active
+                    // fn-sig lowering) — this keeps existing tests that hand-
+                    // construct types via fresh-var reuse working.
+                    if let Some(var) = self.generics_map.get(&path[0]).copied() {
+                        return Ty::Var(var);
+                    }
                     if name.chars().next().is_some_and(char::is_uppercase) && name.len() <= 2 {
                         return Ty::Param(path[0]);
                     }
@@ -260,8 +282,8 @@ impl<'a> InferCtx<'a> {
     fn collect_item(&mut self, item: &HirItem) {
         match item {
             HirItem::Fn(f) => {
-                let sig = self.fn_signature(f);
-                self.env.register_item(f.name, f.def, sig);
+                let scheme = self.fn_signature_scheme(f);
+                self.env.register_item_scheme(f.name, f.def, scheme);
             }
             HirItem::Const(c) => {
                 let t = self.lower_hir_type(&c.ty);
@@ -364,6 +386,37 @@ impl<'a> InferCtx<'a> {
             HirItem::Impl(_) | HirItem::Use(_) => {
                 // No definition-level name to register.
             }
+        }
+    }
+
+    /// Lower a fn signature into a polymorphic [`Scheme`]. Each generic type-
+    /// parameter of the fn gets a **fresh** [`TyVar`] ; the param + return +
+    /// effect-row types are lowered with the `generics_map` pointing to those
+    /// fresh vars ; the resulting `Ty::Fn` is wrapped as a `Scheme`
+    /// quantifying over those vars.
+    ///
+    /// § T3-D17 : retires `Ty::Param(Symbol)` skolem for fn-generics.
+    fn fn_signature_scheme(&mut self, f: &HirFn) -> Scheme {
+        // Save the outer map (empty at module-top ; non-empty for nested fns
+        // if they ever appear). Build the per-fn generics-map ; restore after.
+        let saved_map = core::mem::take(&mut self.generics_map);
+        let mut bound_ty_vars: Vec<TyVar> = Vec::new();
+        for gp in &f.generics.params {
+            if matches!(gp.kind, crate::item::HirGenericParamKind::Type) {
+                let fresh = self.tcx.fresh_ty();
+                if let Ty::Var(v) = fresh {
+                    self.generics_map.insert(gp.name, v);
+                    bound_ty_vars.push(v);
+                }
+            }
+        }
+        let body_ty = self.fn_signature(f);
+        // Restore outer map. Fresh vars we allocated persist in `bound_ty_vars`.
+        self.generics_map = saved_map;
+        Scheme {
+            ty_vars: bound_ty_vars,
+            row_vars: Vec::new(),
+            body: body_ty,
         }
     }
 
@@ -592,8 +645,11 @@ impl<'a> InferCtx<'a> {
             },
             HirExprKind::Path { segments, def } => {
                 if let Some(d) = def {
-                    if let Some(t) = self.env.item_sig(*d).cloned() {
-                        return t;
+                    // T3-D17 : item-sigs are now stored as Scheme ;
+                    // instantiate with fresh vars per call-site so generic
+                    // fns get independent ty-vars at each use-site.
+                    if let Some(scheme) = self.env.item_scheme(*d).cloned() {
+                        return scheme.instantiate(&mut self.tcx);
                     }
                 }
                 if let Some(&first) = segments.first() {
@@ -603,6 +659,14 @@ impl<'a> InferCtx<'a> {
                     // a no-op when `rank == 0`).
                     if let Some(scheme) = self.env.lookup_local_scheme(first).cloned() {
                         return scheme.instantiate(&mut self.tcx);
+                    }
+                    // Fall back to item-scheme by-name for paths that didn't
+                    // resolve during name-resolution but match a module-level
+                    // item (stage-0 name-resolution doesn't cover every case).
+                    if let Some(def) = self.env.item_def(first) {
+                        if let Some(scheme) = self.env.item_scheme(def).cloned() {
+                            return scheme.instantiate(&mut self.tcx);
+                        }
                     }
                     if let Some(t) = self.env.lookup(first).cloned() {
                         return t;
@@ -1270,5 +1334,91 @@ mod tests {
         let env = TypingEnv::new();
         assert!(env.free_ty_vars().is_empty());
         assert!(env.free_row_vars().is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T3-D17 : item-sig Scheme storage + generic-fn fresh-var
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn generic_fn_sig_lands_as_polymorphic_scheme() {
+        // `fn id<T>(x : T) -> T { x }` should lower to a rank-1 scheme with
+        // ONE quantified ty-var bound by the body's Fn { params: [τ],
+        // return_ty: τ, .. } shape (same τ in both positions).
+        use super::InferCtx;
+        use crate::env::TypingEnv;
+        use crate::{lower_module, Scheme};
+        let src = "fn id<T>(x : T) -> T { x }";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _lower_bag) = lower_module(&f, &cst);
+        let mut ctx = InferCtx::new(&interner);
+        ctx.collect_item_signatures(&hir);
+        // Look up id's scheme.
+        let id_sym = interner.intern("id");
+        let env_ref: &TypingEnv = ctx.env_for_tests();
+        let def = env_ref.item_def(id_sym).expect("id not registered");
+        let scheme: &Scheme = env_ref.item_scheme(def).expect("id has no scheme");
+        // Generic param T → rank-1 scheme.
+        assert_eq!(
+            scheme.ty_vars.len(),
+            1,
+            "expected 1 quantified var, got {}",
+            scheme.ty_vars.len()
+        );
+        // Body shape : Fn { params: [τ], return_ty: τ, .. } ; param and
+        // return must be the same τ (unification-ready).
+        if let Ty::Fn {
+            params, return_ty, ..
+        } = &scheme.body
+        {
+            assert_eq!(params.len(), 1);
+            assert_eq!(&params[0], &**return_ty, "param and return should share τ");
+        } else {
+            panic!("expected Fn type body, got {:?}", scheme.body);
+        }
+        let _ = env_ref; // silence unused-mut warning in case
+    }
+
+    #[test]
+    fn generic_fn_call_sites_instantiate_to_distinct_ty_vars() {
+        // Two call-sites `id(1)` + `id(true)` should each pick up FRESH
+        // ty-vars (not share the same τ from the scheme body). Verified
+        // indirectly : both call-sites type-check with DIFFERENT concrete
+        // types (Int vs Bool) which require independent instantiation.
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn use1() -> i32 { id(42) }
+            fn use2() -> bool { id(true) }
+        ";
+        let (_, diags) = infer(src);
+        assert_eq!(
+            diags, 0,
+            "expected no diagnostics with generic-fn let-poly call-site instantiation"
+        );
+    }
+
+    #[test]
+    fn non_generic_fn_sig_is_monomorphic_scheme() {
+        // `fn f() -> i32 { 42 }` has no generics → rank-0 scheme → pure `Ty`.
+        use super::InferCtx;
+        use crate::lower_module;
+        let src = "fn f() -> i32 { 42 }";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _lower_bag) = lower_module(&f, &cst);
+        let mut ctx = InferCtx::new(&interner);
+        ctx.collect_item_signatures(&hir);
+        let f_sym = interner.intern("f");
+        let env_ref = ctx.env_for_tests();
+        let def = env_ref.item_def(f_sym).unwrap();
+        let scheme = env_ref.item_scheme(def).unwrap();
+        assert!(
+            scheme.is_monomorphic(),
+            "expected rank-0, got rank-{}",
+            scheme.rank()
+        );
     }
 }
