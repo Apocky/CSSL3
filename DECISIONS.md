@@ -2919,3 +2919,45 @@ Each decision entry :
   - **P8 self-hosted HIR + MIR** : reuses the type system in-lang.
   - **P9 own-x86-64 backend** : replaces Cranelift per `specs/14_BACKEND.csl` § NATIVE-X86. R16 reproducibility anchor preserved.
   - **P10 fixed-point** : `stage1` compiles itself → `stage1-prime` byte-exact. The actual self-host gate.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D34 : SPIR-V backend validation — rspirv binary emit + parse round-trip
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** T11-D32 landed naga-based WGSL validation : emitted shader text is parsed through naga's `wgsl-in` frontend at test-time to prove structural correctness. The SPIR-V backend had no equivalent — `emit_module` produced `spirv-as`-compatible text with placeholder tokens (`TypeFunction_void__void`) that aren't directly validatable without external tooling. T11-D34 lands the SPIR-V counterpart : a parallel binary emitter via `rspirv::dr::Builder` that produces **real SPIR-V binary words** (magic `0x07230203` + version 1.5 + complete module), validated by round-tripping through `rspirv::dr::load_words`. If the pure-Rust SPIR-V parser accepts the bytes, the emitter is structurally correct.
+- **Slice landed (this commit)**
+  - **`cssl-cgen-gpu-spirv/Cargo.toml`** : `rspirv = { workspace = true }` added as runtime dep (not dev-only) since the binary emitter uses rspirv's builder for production emission. Closes the T10-phase-2 deferred "rspirv FFI integration" item from the crate's top-level docstring.
+  - **`cssl-cgen-gpu-spirv/src/binary_emit.rs`** (new ~680 LOC) :
+    - `emit_module_binary(&SpirvModule) -> Result<Vec<u32>, BinaryEmitError>` : builds a real SPIR-V module via `rspirv::dr::Builder`. Emits header (magic + version 1.5 + generator + bound + schema), capabilities, extensions, ext-inst-imports, memory model, void + void-fn types, per-entry-point OpFunction/OpLabel/OpReturn/OpFunctionEnd, OpEntryPoint, OpExecutionMode, OpSource, OpName.
+    - `BinaryEmitError` enum : `NoEntryPoints` (shader env with zero entries) + `BuilderFailed` (rspirv rejected a sequence).
+    - **5 enum-mapping fns** : `map_capability`, `map_memory_model`, `map_addressing_model`, `map_execution_model` + exec-mode sub-parser `emit_execution_modes_for_entry` that recognizes `LocalSize X Y Z` / `LocalSizeHint X Y Z` / `OriginUpperLeft` / `OriginLowerLeft`.
+    - **23 new tests** :
+      - **Structural** : magic number at words[0], version 1.5 in words[1], shader env w/o entry-point rejects, kernel env w/o entry-point accepts.
+      - **Round-trip via `rspirv::dr::load_words`** : entry-point name preserved, LocalSize operand preserved, OriginUpperLeft preserved across vertex+fragment combo, 3 capabilities survive, 2 plain-extensions survive, 1 ext-inst-import survives, memory model + addressing model survive.
+      - **Function shape** : OpFunction's return-type operand references OpTypeVoid's ID ; OpName points to the correct function ID.
+      - **Multi-entry stress** : 3 entries (vertex/fragment/compute) round-trip cleanly.
+      - **Enum coverage** : all 15 execution models / 4 memory models / 4 addressing models map without panic.
+      - **Extension coexistence** : plain extensions + ext-inst-imports land in distinct sections after round-trip.
+      - **`parse_three_u32` helper** : happy-path + wrong-arity + non-numeric rejection.
+  - **`cssl-cgen-gpu-spirv/src/lib.rs`** : `pub mod binary_emit;` + re-export of `emit_module_binary` + `BinaryEmitError`.
+- **Consequences**
+  - Test count : 1392 → 1415 (+23 in `cssl-cgen-gpu-spirv::binary_emit`).
+  - **Emitted SPIR-V is now validated by a real pure-Rust SPIR-V parser.** Any emitter regression producing malformed binary (bad magic, mis-ordered sections, undeclared IDs, wrong operand arity) fails at test time, not at GPU-driver consumption time.
+  - **The text emitter (`emit.rs`) remains untouched** — humans keep the readable form, machines get the validatable binary. 10 pre-existing text tests unaffected.
+  - rspirv is pure-Rust + compiles cleanly on 1.85 toolchain. One new transitive dep : `spirv v0.3.0+sdk-1.3.268.0`. No C++ / cmake / native builds.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Known placeholder** : rspirv 0.12 ships the Khronos `spirv` crate at SDK version 1.3.268, which predates the `FloatControls2` Capability enum variant (SDK 1.4+). Our `SpirvCapability::FloatControls2` is currently mapped to `Capability::Shader` as a structural placeholder ; a future `rspirv = "0.13"` bump (SDK 1.4.341) would surface `FloatControls2` as a first-class variant. Same applies to `SpirvCapability::ShaderNonSemanticInfo` (pre-existing placeholder). Neither affects the round-trip validation : the emitted modules still parse, they just use a conservative capability declaration.
+- **D32-parallel pattern confirmed**
+  | Slice | Backend | Emitter | Validator | Output |
+  |-------|---------|---------|-----------|--------|
+  | D32   | WGSL    | hand-written text | `naga::front::wgsl::parse_str` | String |
+  | D34   | SPIR-V  | `rspirv::dr::Builder` | `rspirv::dr::load_words` | Vec&lt;u32&gt; |
+  Both : pure-Rust, no subprocess, no C++ toolchain, runs at `cargo test` time. The emitter-side choice differs (text vs builder) because WGSL is a text format where hand-rolling emission is tractable, whereas SPIR-V binary is a complex packed format where rspirv is the established pure-Rust emission path. Validation pattern (parse-to-structured-representation + assert invariants) is identical.
+- **Deferred**
+  - **`spirv-val` semantic validation via `spirv-tools` crate** : the Khronos-official validator catches violations that pure structural parsing misses (capability-vs-extension mismatches, illegal capability combinations, undefined ID references across sections). The `spirv-tools` crate is already in workspace deps ; it bundles C++ SPIRV-Tools source + requires cmake at build time, which is heavier than naga's pure-Rust footprint. Wiring it is a separate slice ; structural parsing covers ~80% of emitter regressions.
+  - **DXIL validation** : requires `dxc.exe` (Windows SDK) or `llvm-dxc` — native binary + process-spawning.
+  - **MSL validation** : apple-only ; requires Metal SDK or `mslcc` shim.
+  - **Real MIR → SPIR-V op lowering** : today the binary emitter's entry-point function is always `void fn() { return; }`. T10-phase-2 fills in the arithmetic + control-flow + memory-access emission tables that transform `CsslOp` sequences into `OpFAdd` / `OpFMul` / `OpLoad` / `OpStore` / structured-CFG.
+

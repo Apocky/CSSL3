@@ -34,11 +34,13 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod binary_emit;
 pub mod capability;
 pub mod emit;
 pub mod module;
 pub mod target;
 
+pub use binary_emit::{emit_module_binary, BinaryEmitError};
 pub use capability::{SpirvCapability, SpirvCapabilitySet, SpirvExtension, SpirvExtensionSet};
 pub use emit::{emit_module, SpirvEmitError};
 pub use module::{SpirvModule, SpirvSection};

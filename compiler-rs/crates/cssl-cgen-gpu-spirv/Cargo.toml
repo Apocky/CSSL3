@@ -10,6 +10,14 @@ authors.workspace      = true
 [dependencies]
 cssl-mir  = { path = "../cssl-mir" }
 thiserror = { workspace = true }
+# T11-D34 : pure-Rust SPIR-V binary emission + validation-via-round-trip.
+# Closes the T10-phase-2 deferred "rspirv FFI integration" note. The binary
+# emitter lives in `binary_emit.rs` (parallel to the text emitter in `emit.rs`) ;
+# tests load the emitted binary back through `rspirv::dr::load_words` to prove
+# the byte-exact output is structurally valid SPIR-V. This is the D32-parallel
+# pattern (naga-validates-WGSL → rspirv-validates-SPIR-V) specialized to the
+# binary format where pure-Rust round-trip IS the validation.
+rspirv = { workspace = true }
 
 [lints]
 workspace = true
