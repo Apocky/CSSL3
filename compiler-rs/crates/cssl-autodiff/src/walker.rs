@@ -673,4 +673,139 @@ mod tests {
             "expected adjoint arith.select in scene_bwd"
         );
     }
+
+    #[test]
+    fn nested_min_emits_two_branchful_tangents() {
+        // Multi-level scene : min(min(a, b), c) — two nested primitives,
+        // each should dispatch independently to branchful emission.
+        let src =
+            r"@differentiable fn nested(a : f32, b : f32, c : f32) -> f32 { min(min(a, b), c) }";
+        let (mut module, hir, interner) = build_mir(src);
+        let walker = AdWalker::from_hir(&hir, &interner);
+        let r = walker.transform_module(&mut module);
+        assert_eq!(r.fns_transformed, 1, "{}", r.summary());
+
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "nested_fwd")
+            .unwrap();
+        let fwd_ops = &fwd.body.entry().unwrap().ops;
+
+        // Should have TWO tangent-role cmpf ops (one per inner min, one per outer).
+        let cmpf_min_count = fwd_ops
+            .iter()
+            .filter(|o| {
+                o.name == "arith.cmpf"
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_role" && v == "tangent")
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_primitive" && v == "min")
+            })
+            .count();
+        assert!(
+            cmpf_min_count >= 2,
+            "expected ≥ 2 tangent cmpf for nested min : got {cmpf_min_count} ; {}",
+            r.summary()
+        );
+    }
+
+    #[test]
+    fn abs_integration_emits_branchful_tangent() {
+        // abs(a - b) — the AD chain must go through FSub then Abs.
+        let src = r"@differentiable fn distance(a : f32, b : f32) -> f32 { abs(a - b) }";
+        let (mut module, hir, interner) = build_mir(src);
+        let walker = AdWalker::from_hir(&hir, &interner);
+        let r = walker.transform_module(&mut module);
+        assert_eq!(r.fns_transformed, 1, "{}", r.summary());
+
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "distance_fwd")
+            .unwrap();
+        let fwd_ops = &fwd.body.entry().unwrap().ops;
+
+        // Must contain tangent arith.subf (from FSub rule) AND tangent arith.select (from Abs rule).
+        let has_tangent_subf = fwd_ops.iter().any(|o| {
+            o.name == "arith.subf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+        });
+        let has_tangent_select_abs = fwd_ops.iter().any(|o| {
+            o.name == "arith.select"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "abs")
+        });
+        assert!(has_tangent_subf, "expected tangent arith.subf for a-b");
+        assert!(
+            has_tangent_select_abs,
+            "expected tangent arith.select with diff_primitive=abs"
+        );
+    }
+
+    #[test]
+    fn max_integration_emits_branchful_tangent() {
+        // max(a, b) — companion gate to min-integration.
+        let src = r"@differentiable fn scene(a : f32, b : f32) -> f32 { max(a, b) }";
+        let (mut module, hir, interner) = build_mir(src);
+        let walker = AdWalker::from_hir(&hir, &interner);
+        let r = walker.transform_module(&mut module);
+        assert_eq!(r.fns_transformed, 1, "{}", r.summary());
+
+        let fwd = module.funcs.iter().find(|f| f.name == "scene_fwd").unwrap();
+        let fwd_ops = &fwd.body.entry().unwrap().ops;
+
+        let has_cmpf_oge = fwd_ops.iter().any(|o| {
+            o.name == "arith.cmpf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "predicate" && v == "oge")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "max")
+        });
+        assert!(
+            has_cmpf_oge,
+            "expected tangent arith.cmpf predicate=oge for max : {}",
+            r.summary()
+        );
+    }
+
+    #[test]
+    fn union_intersect_subtract_chain_emits_three_primitives() {
+        // subtract(intersect(a, b), c) = max(max(a, b), -c)
+        // At the HIR level, expressed as max(max(a, b), c) for simplicity.
+        // Two max primitives should chain.
+        let src =
+            r"@differentiable fn three(a : f32, b : f32, c : f32) -> f32 { max(max(a, b), c) }";
+        let (mut module, hir, interner) = build_mir(src);
+        let walker = AdWalker::from_hir(&hir, &interner);
+        let r = walker.transform_module(&mut module);
+        assert_eq!(r.fns_transformed, 1, "{}", r.summary());
+
+        let fwd = module.funcs.iter().find(|f| f.name == "three_fwd").unwrap();
+        let cmpf_max_count = fwd
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .filter(|o| {
+                o.name == "arith.cmpf"
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_primitive" && v == "max")
+            })
+            .count();
+        assert!(
+            cmpf_max_count >= 2,
+            "expected ≥ 2 tangent cmpf for nested max : {}",
+            r.summary()
+        );
+    }
 }

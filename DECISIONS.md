@@ -2359,3 +2359,26 @@ Each decision entry :
   - Verify the emitted branchful body produces numerically correct gradients via runtime execution (Cranelift JIT + random sample + central-difference comparison). Today we verify emission *shape* ; runtime verification composes on top.
   - Multi-level scene SDFs : `min(min(a, b), c)` — already works by chain-rule composition but untested end-to-end.
   - Real backend emission : verify SPIR-V / WGSL / DXIL emit correct `OpSelect` / `select` for the tangent body.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D17 : Multi-level scene-SDF + abs + max integration tests
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D16 closed the end-to-end chain for a single `min(a, b)` primitive. This slice extends coverage to nested compositions + the three sibling primitives so scene-SDF chain-rule is proven across the whole scene-SDF operator family.
+- **Slice landed (this commit)**
+  - 4 new walker-level integration tests :
+    - `nested_min_emits_two_branchful_tangents` : `min(min(a, b), c)` → asserts ≥ 2 tangent-role `arith.cmpf` ops with `diff_primitive="min"` (one per nested primitive).
+    - `abs_integration_emits_branchful_tangent` : `abs(a - b)` → asserts tangent `arith.subf` from FSub + tangent `arith.select` from Abs both present (chain-rule through FSub then Abs).
+    - `max_integration_emits_branchful_tangent` : `max(a, b)` → asserts tangent cmpf with predicate `"oge"` + `diff_primitive="max"`.
+    - `union_intersect_subtract_chain_emits_three_primitives` : `max(max(a, b), c)` → asserts ≥ 2 tangent cmpf ops with `diff_primitive="max"`.
+- **Consequences**
+  - Test count : 1324 → 1328 (+4 in cssl-autodiff walker tests).
+  - Scene-SDF chain-rule composition through min/max/abs verified : nested primitives compose correctly, abs composes downstream of FSub, max is symmetric to min.
+  - This closes the multi-level scene-SDF follow-on flagged in T11-D16's deferred list.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Runtime numerical gradient verification (Cranelift JIT + central-differences) — verifies the emitted branchful body produces correct gradients at runtime, not just correct shape.
+  - Scene-SDF with heterogeneous operators : `min(abs(a), b)` or `smooth_min(a, b)` chain-rule through Exp+Log composition.
+  - Backend emission : SPIR-V / WGSL / DXIL text-emit + validation of the scene-SDF variants.
