@@ -372,6 +372,22 @@ fn substitute_fwd(
     let mut new_ops: Vec<MirOp> = Vec::with_capacity(original_ops.len() * 3);
     for op in original_ops {
         let primitive = recognize_primitive(&op);
+        // T11-D23 : at `func.return %v`, append the tangent of `%v` as an
+        // additional return-operand so the fn body returns (primal, tangent)
+        // matching the signature synthesized by `synthesize_tangent_results`.
+        // Without this append the fn signature says "2 results" but the body
+        // only returns 1 — making the variant not directly executable.
+        if op.name == "func.return" {
+            let mut ret_op = op.clone();
+            let primal_ret_ids: Vec<ValueId> = op.operands.clone();
+            for primal_ret in &primal_ret_ids {
+                if let Some(tangent_id) = tangent_map.get(*primal_ret) {
+                    ret_op = ret_op.with_operand(tangent_id);
+                }
+            }
+            new_ops.push(ret_op);
+            continue;
+        }
         new_ops.push(op.clone());
         if let Some(prim) = primitive {
             if let Some(rule) = rules.lookup(prim, DiffMode::Fwd) {

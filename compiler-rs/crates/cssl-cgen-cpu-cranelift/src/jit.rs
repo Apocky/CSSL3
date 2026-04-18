@@ -356,18 +356,27 @@ impl JitModule {
 
             // MIR ValueId → cranelift Value map.
             let mut value_map: HashMap<ValueId, cranelift_codegen::ir::Value> = HashMap::new();
-            // Wire block-args to MIR param ValueIds (ValueId(0) → block_param[0], etc.).
-            let block_params: Vec<_> = builder.block_params(entry).to_vec();
-            for (idx, &bp) in block_params.iter().enumerate() {
-                value_map.insert(ValueId(idx as u32), bp);
-            }
-
             let Some(entry_block) = primal.body.blocks.first() else {
                 return Err(JitError::UnsupportedFeature {
                     fn_name: primal.name.clone(),
                     reason: "empty body (no blocks)".to_string(),
                 });
             };
+            // Wire block-args to the **actual** MIR ValueIds listed in
+            // `entry_block.args` — walker-emitted fns use non-sequential IDs
+            // after `synthesize_tangent_params` interleaves primals + tangents.
+            let block_params: Vec<_> = builder.block_params(entry).to_vec();
+            let arg_value_ids: Vec<ValueId> = entry_block.args.iter().map(|a| a.id).collect();
+            if arg_value_ids.len() == block_params.len() {
+                for (arg_id, &bp) in arg_value_ids.iter().zip(block_params.iter()) {
+                    value_map.insert(*arg_id, bp);
+                }
+            } else {
+                // Fallback for primal fns with empty `entry.args` : map by index.
+                for (idx, &bp) in block_params.iter().enumerate() {
+                    value_map.insert(ValueId(idx as u32), bp);
+                }
+            }
 
             let mut saw_return = false;
             for op in &entry_block.ops {

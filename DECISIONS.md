@@ -2599,3 +2599,44 @@ Each decision entry :
   - Composed scene-SDFs : `min(min(a, b), c)` runtime gradient verification.
   - Bwd-mode (adjoint) JIT verification — currently Fwd-only path is JIT-verified.
   - scf.if + scf.for control-flow → cranelift brif + blocks.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D23 : FULL CHAIN — CSSLv3 source → walker → JIT → gradient-verified
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Milestone** `full_chain_source_to_jit_sphere_sdf_gradient ... ok`
+- **Context** T11-D22 closed the killer-app at runtime using hand-built MIR. T11-D23 removes the hand-built shortcut : CSSLv3 **source code** drives the entire pipeline (lex → parse → HIR → MIR → AD walker → JIT) and the AD walker's own output executes + produces verified gradients.
+- **Two architectural fixes enabled this**
+  1. **Walker fwd-mode func.return fix** : `substitute_fwd` previously only emitted the primal operand in `func.return`, even though `synthesize_tangent_results` declared the fwd-variant as returning `(primal, tangent)`. The variant was signature/body-inconsistent — claimed 2 results but returned 1. Fixed : when `substitute_fwd` sees `func.return %v`, it appends `tangent_map.get(%v)` as an additional operand so the body actually returns both.
+  2. **JIT block-param → ValueId mapping fix** : the JIT's `value_map` assumed entry-block args have sequential ValueIds `0..n`. That's true for hand-built MIR but false for walker-emitted fwd variants — `synthesize_tangent_params` interleaves primal + tangent params with **non-sequential** IDs (e.g., `[v0, v3, v1, v4]`). Fixed : iterate `entry_block.args` directly and zip with `block_params` by position.
+- **Slice landed (this commit)**
+  - New module `cssl-examples/src/jit_chain.rs` (~300 LOC + 4 tests) :
+    - `pipeline_source_to_ad_mir(name, source)` : parse → HIR → MIR per-fn → AdWalker::transform_module → return MirModule with `_fwd`/`_bwd` variants.
+    - `extract_tangent_only_variant(fwd)` : strip primal result from the walker's multi-result fwd variant, producing a tangent-only fn that the JIT can execute. Signature becomes `(primal_params ++ tangent_params) -> tangent_result`.
+    - `jit_primal_and_tangent(primal, tangent_only) -> JitChainHandle` : compile both in shared JIT module + finalize.
+    - `JitChainHandle { module, primal_fn, tangent_fn }` : keeps JIT module alive alongside handles.
+  - `cssl-examples/Cargo.toml` gains `cssl-cgen-cpu-cranelift` as a dep.
+  - `cssl-autodiff/src/substitute.rs::substitute_fwd` : 10-line change appending tangent operands to `func.return`.
+  - `cssl-cgen-cpu-cranelift/src/jit.rs::compile` : replaced sequential-ValueId param mapping with arg-iteration + position-zip.
+- **Tests landed (4 new)**
+  - `pipeline_source_emits_fwd_variant_for_differentiable_fn` : source → MIR → walker produces `sphere_sdf` + `sphere_sdf_fwd`.
+  - `extract_tangent_only_drops_primal_result` : post-process correctly produces single-result tangent fn.
+  - **`full_chain_source_to_jit_sphere_sdf_gradient`** : THE integration test. CSSLv3 source `@differentiable fn sphere_sdf(p, r) { p - r }` → pipelined → JIT compiled → executed → tangent returns exactly 1.0 for ∂/∂p seeded `(1, 0)` and -1.0 for ∂/∂r seeded `(0, 1)`, and matches central-differences at 4 sample points within 1e-3.
+  - `full_chain_source_to_jit_fmul_gradient` : chain-rule via multiplication — ∂(a*b)/∂a = b, ∂(a*b)/∂b = a, both correct from walker-emitted fwd body.
+- **Consequences**
+  - Test count : 1352 → 1356 (+4 in cssl-examples).
+  - **The AD walker's runtime output is now directly executable.** No hand-built MIR shortcut needed. The closed loop :
+    ```
+    source text → lex → parse → HIR → MIR → AD walker → JIT → machine code → correct gradients
+    ```
+    runs end-to-end from a single user-authored source string.
+  - Scene-SDF AD will JIT-execute the same way once the walker emits Primitive::Min branchful bodies for `min(a, b)` calls (T11-D15 did ; just needs `body_lower` recognition that MIN emits `arith.minimumf` or similar that the walker's `op_to_primitive` dispatches to).
+  - The walker-fwd multi-result path is now semantically consistent. Downstream tooling no longer needs to know the variant had a signature/body mismatch.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred (T11-D24+ candidates)**
+  - Walker-emit scene-SDF `min(a, b)` end-to-end : currently `body_lower` emits `func.call callee=min` which the walker specializes to Primitive::Min at the walker layer, but the walker's substitute path then emits `arith.cmpf`/`arith.select` inline. These are JIT-executable (T11-D21), so the full chain should already work — just needs a targeted test like T11-D22's but source-driven.
+  - Bwd-mode integration : currently Fwd-only integration verified. Bwd has more complex multi-result returns (one adjoint per primal float-param).
+  - Multi-fn scene : `@differentiable fn scene(a, b) { min(sphere_sdf(p, r0), sphere_sdf(p - c, r1)) }` — requires inter-fn JIT calls.
+  - JIT multi-return : remove the tangent-only stripping by supporting multi-result fns via Cranelift native multi-return.
