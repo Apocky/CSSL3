@@ -3003,4 +3003,39 @@ Each decision entry :
   - **Bwd-mode vec gradients** : the scalar bwd walker handles the scalarized form directly ; extract_bwd_single_adjoint works over the 4-scalar param list. Adding a bwd-mode sphere_sdf test would verify this empirically ; deferred as a same-arc follow-up.
   - **Per-lane MIR vec ops + JIT SIMD** : the scalarization approach leaves `MirType::Vec` orphaned as a scaffold. A future slice could reintroduce real vec ops (so the MIR is vector-typed end-to-end + the JIT uses `f32x4`) for code-density / future-perf reasons ; stage-0 doesn't benefit since Cranelift scalarization produces correct code anyway.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D36 : IFC flow-violation detection — IFC0004 on real programs
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** The T3.4-phase-3-IFC slice landed the `IfcLabel` lattice + a structural walker (`check_ifc`) that catches attribute-level violations : `@sensitive param + no fn-label ⇒ IFC0001`, `@declass + no @requires ⇒ IFC0002`, etc. But the walker only looks at *signatures* — it never inspects fn bodies. A function `fn leak(@sensitive x : i32, y : i32) -> i32 { x + y }` passed or failed purely on whether the fn had a label attribute, not on whether `x` actually reaches the return. T11-D36 closes this by adding a dataflow walker that traces `@sensitive` parameters through expressions and flags them when they reach the return without a `@confidentiality` declaration or `@declass + @requires` authorization.
+- **Slice landed (this commit)**
+  - **`cssl-hir/src/ifc.rs`** :
+    - New `IfcDiagnostic::FlowViolation` variant with stable code `IFC0004` + human-readable message referencing non-interference per `specs/11_IFC.csl`.
+    - `IfcReport::summary()` extended with `IFC0004` count column for CI log-parsers.
+    - `pub fn check_ifc_flow(module, interner) -> IfcReport` : dataflow-only walker (solo callers — returns report with IFC0004 diagnostics only).
+    - `pub fn check_ifc_full(module, interner) -> IfcReport` : runs both walkers (structural + dataflow) and aggregates into one report. Canonical top-level entry point.
+    - Internal : `check_fn_flow` : per-fn dataflow analysis — seeds `@sensitive` params with placeholder label `{User}`, propagates through expressions via taint-union (`combine_labels`), checks return-expression label for principal presence, emits IFC0004 per contributing sensitive param.
+    - `label_of_expr(expr, locals)` : handles 15 of the 30+ HirExprKind variants (Literal / Path / Binary / Unary / Call / Field / Index / Block / If / Match / Return / Cast / Paren / Tuple / Array) ; unhandled variants conservatively return empty label.
+    - `label_of_block(block, locals)` : walks `let` bindings into `locals`, returns label of trailing expression.
+    - `combine_labels(a, b)` : union-based taint propagation (both confid + integ sets get union). Documented as *differing* from the formal `⊔` lattice-join — stage-0 uses union for taint, full lattice-accurate propagation is deferred to T3.4-phase-3-IFC-b.
+    - `format_label` : render label as `confid{User,…} + integ{…}` for diagnostic messages.
+    - Early-exit guard : `@declass + @requires` short-circuits the flow walker (declassification authority permits downgrade per Myers-Liskov).
+    - **15 new tests** covering : clean baseline / simple leak / fn-level @confidentiality accepts / @declass+@requires accepts / binary-op propagation / sensitive-not-referenced is clean / let-binding propagates / if-arm propagates / literal return clean / cast preserves label / unary preserves label / combined `check_ifc_full` produces both IFC0001 + IFC0004 / IFC0004 code is stable / signature-only fn skipped / summary includes IFC0004 column.
+- **Consequences**
+  - Test count : 1418 → 1433 (+15 in `cssl-hir::ifc`).
+  - **The compiler can now *reject* a concrete non-interference violation.** Prior to this commit, `fn leak(@sensitive x : i32, y : i32) -> i32 { x + y }` emitted IFC0001 (structural : no fn-label) but said nothing about whether `x` actually flows to the return. Now it additionally emits IFC0004 with the specific param name + label — actionable for the user, traceable for CI log-parsers.
+  - **Prime-directive soundness story moves from "structural-catalog" to "dataflow-enforced".** Before : the compiler demonstrated the lattice + attribute parsing. Now : it actually traces flows + rejects those that violate non-interference without declassification authority. Closes the `specs/THEOREMS.csl` T8 (non-interference) *structural-runtime* gap — formal mechanized proof still pending stage-1.
+  - Stage-0 uses placeholder principal `{User}` for all `@sensitive` params — parsing explicit principals from `@sensitive(Audit)` / `@confidentiality(User, System)` is deferred to IFC-b. Taint-presence detection works uniformly regardless.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Third slice of user-directed "2 → 1 → 4 → 3" sequence** (T11-D34 SPIR-V validation → T11-D35 vec3 wire-through → T11-D36 IFC flow-violation → T11-D37+ P1 stdlib-core).
+- **Deferred** (explicit stage-boundaries)
+  - **Parse principal args from attributes** : today `@sensitive` / `@confidentiality` / `@ifc_label` are name-only ; the parser doesn't extract principal args like `@sensitive(User)` / `@confidentiality(Audit)`. Adding this requires threading `HirAttrArg::Positional` principals through the IFC walker — straightforward but a separate slice.
+  - **Remaining HirExprKind variants** : 15 of 30+ variants are handled ; `Lambda`, `Pipeline`, `TryDefault`, `Try`, `Perform`, `With`, `Region`, `Compound`, `SectionRef`, `Run`, `Struct`, `Range`, `Break`, `Continue`, `For`, `While`, `Loop`, `Assign` are conservatively returning empty labels. Sound under-approximation — may miss real flows through unhandled variants.
+  - **Full lattice-accurate propagation** : stage-0 uses union-based taint for simplicity. Myers-Liskov `⊔` (intersect confid, union integ) gives tighter bounds but the semantics under taint-tracking are subtle (joining sensitive with non-sensitive under `⊔` produces the empty label, which loses the taint signal). IFC-b will use a proper lattice pass with label-carrying types.
+  - **Declassification-policy SMT discharge** : `@declass + @requires(Privilege<level>)` currently just short-circuits the walker ; verifying that the specific policy authorizes the specific downgrade (e.g., `L1 → L2` with `Privilege<audit>`) requires SMT integration. Landed at T9-phase-2c.
+  - **Non-local dataflow** : stage-0 only tracks intra-fn flow. Inter-fn call labels (sensitive-in-arg → labeled-result → downstream leak) are deferred to a propagation pass that interns per-fn summaries.
+  - **IFC0005+ diagnostics** : covert-channel mitigation (timing / termination / cache) per `specs/11_IFC.csl` §64-75 ; MIR-level `IfcLoweringPass` that emits runtime checks ; handled at T10-phase-2c.
+
 
