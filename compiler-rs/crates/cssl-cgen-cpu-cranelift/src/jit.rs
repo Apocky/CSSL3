@@ -291,6 +291,33 @@ impl JitFn {
         Ok(fn_ptr(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7))
     }
 
+    /// Call as `fn(f32, f32, f32, f32, f32) -> f32`. T11-D37 canonical shape
+    /// for a bwd variant of a 4-scalar-param primal *after* single-adjoint
+    /// extraction (`extract_bwd_single_adjoint`) : inputs are
+    /// `(p_0, p_1, p_2, r, d_y) -> d_<index>`. Used by the bwd-mode verification
+    /// of `sphere_sdf(p : vec3<f32>, r : f32)` — each extracted adjoint
+    /// corresponds to one lane of `normalize(p)` (or `-1` for the `r` adjoint).
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_f32x5_to_f32(
+        &self,
+        arg0: f32,
+        arg1: f32,
+        arg2: f32,
+        arg3: f32,
+        arg4: f32,
+        module: &JitModule,
+    ) -> Result<f32, JitError> {
+        let f32m = || MirType::Float(FloatWidth::F32);
+        self.check_sig(&[f32m(), f32m(), f32m(), f32m(), f32m()], f32m())?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let fn_ptr: extern "C" fn(f32, f32, f32, f32, f32) -> f32 =
+            unsafe { std::mem::transmute(addr) };
+        Ok(fn_ptr(arg0, arg1, arg2, arg3, arg4))
+    }
+
     /// Call a 2-param bwd variant compiled with out-param ABI : native
     /// cranelift signature `(a: f32, b: f32, d_y: f32, *mut f32, *mut f32) -> ()`.
     /// Returns the pair `(d_a, d_b)` by allocating stack slots for the two

@@ -1064,4 +1064,146 @@ fn scene(x : f32) -> f32 { helper(x) }
             "expected func.call @sqrt for length : got {names:?}"
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D37 : vec arc consolidation — bwd-mode sphere_sdf gradient +
+    //   vec2 / vec4 length coverage (lane-count scalability regression guard).
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_sphere_sdf_vec3_bwd_mode_gradient() {
+        // § T11-D37 : bwd-mode counterpart of the T11-D35 fwd-mode test. The
+        //   bwd variant has shape `(p_0, p_1, p_2, r, d_y) -> (d_0, d_1, d_2, d_3)` ;
+        //   we use `extract_bwd_single_adjoint` to pull one scalar adjoint at a
+        //   time (4 separate JIT-compiled fns, each with 5 in → 1 out).
+        //
+        //   With `d_y = 1.0` at `p = (3, 0, 4), r = 1`, the expected adjoints are :
+        //     d_0 = p_0 / length(p) = 3/5 = 0.6     (normalize(p).x)
+        //     d_1 = p_1 / length(p) = 0/5 = 0.0     (normalize(p).y)
+        //     d_2 = p_2 / length(p) = 4/5 = 0.8     (normalize(p).z)
+        //     d_3 = -1.0                            (∂(-r)/∂r)
+        let src = r"@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 {
+            length(p) - r
+        }";
+        let module = pipeline_source_to_ad_mir("sphere_sdf_vec3_bwd", src);
+        let bwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf_bwd")
+            .expect("bwd variant sphere_sdf_bwd");
+
+        // Check bwd signature shape BEFORE single-adjoint extraction.
+        assert_eq!(
+            bwd.params.len(),
+            5,
+            "bwd signature : 4 primal + 1 d_y : got {:?}",
+            bwd.params
+        );
+        assert_eq!(
+            bwd.results.len(),
+            4,
+            "bwd results : 1 per primal param : got {:?}",
+            bwd.results
+        );
+
+        let expected = [0.6_f32, 0.0, 0.8, -1.0];
+
+        for (idx, exp) in expected.iter().enumerate() {
+            let single_adjoint = extract_bwd_single_adjoint(bwd, idx);
+            // Compile this single-adjoint variant in its own JIT module so each
+            // extraction gets a fresh single-result cranelift signature.
+            let mut m = JitModule::new();
+            let h = m
+                .compile(&single_adjoint)
+                .unwrap_or_else(|e| panic!("JIT bwd d_{idx} : {e:?}"));
+            m.finalize().unwrap();
+
+            // inputs : (p_0, p_1, p_2, r, d_y) = (3, 0, 4, 1, 1)
+            let got = h.call_f32x5_to_f32(3.0, 0.0, 4.0, 1.0, 1.0, &m).unwrap();
+            assert!(
+                (got - exp).abs() < 1e-3,
+                "bwd adjoint d_{idx} @ p=(3,0,4), r=1 : expected {exp}, got {got}"
+            );
+        }
+    }
+
+    #[test]
+    fn full_chain_vec2_length_runtime() {
+        // § T11-D37 : vec2 length scalarizes to 2 f32 params + `sqrt(p_0² + p_1²)`.
+        //   At p = (3, 4) : length = 5.0.
+        let src = r"fn len2(p : vec2<f32>) -> f32 { length(p) }";
+        let module = pipeline_source_to_ad_mir("vec2_len", src);
+        let primal = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "len2")
+            .expect("len2 primal");
+
+        // Signature sanity : 2 scalar f32 (p_0, p_1) → 1 f32.
+        assert_eq!(
+            primal.params.len(),
+            2,
+            "vec2 scalarization : 2 scalar params : got {:?}",
+            primal.params
+        );
+
+        let mut m = JitModule::new();
+        let h = m.compile(primal).expect("JIT vec2 len2");
+        m.finalize().unwrap();
+
+        let v = h.call_f32_f32_to_f32(3.0, 4.0, &m).unwrap();
+        assert!(
+            (v - 5.0).abs() < 1e-5,
+            "len2((3, 4)) : expected 5.0, got {v}"
+        );
+    }
+
+    #[test]
+    fn full_chain_vec4_length_runtime() {
+        // § T11-D37 : vec4 length scalarizes to 4 f32 params + `sqrt(Σ pᵢ²)`.
+        //   At p = (2, 3, 6, 0) : length = sqrt(4 + 9 + 36 + 0) = sqrt(49) = 7.0.
+        let src = r"fn len4(p : vec4<f32>) -> f32 { length(p) }";
+        let module = pipeline_source_to_ad_mir("vec4_len", src);
+        let primal = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "len4")
+            .expect("len4 primal");
+
+        // Signature sanity : 4 scalar f32 → 1 f32.
+        assert_eq!(
+            primal.params.len(),
+            4,
+            "vec4 scalarization : 4 scalar params : got {:?}",
+            primal.params
+        );
+
+        let mut m = JitModule::new();
+        let h = m.compile(primal).expect("JIT vec4 len4");
+        m.finalize().unwrap();
+
+        let v = h
+            .call_f32_f32_f32_f32_to_f32(2.0, 3.0, 6.0, 0.0, &m)
+            .unwrap();
+        assert!(
+            (v - 7.0).abs() < 1e-5,
+            "len4((2, 3, 6, 0)) : expected 7.0, got {v}"
+        );
+    }
+
+    #[test]
+    fn vec_scalarization_preserves_scalar_params_untouched() {
+        // § T11-D37 : regression guard — scalar params are NOT incorrectly
+        //   expanded. A mixed fn `fn mix(p : vec3<f32>, r : f32, s : f32)` must
+        //   produce exactly 3 + 1 + 1 = 5 scalar params.
+        let src = r"fn mix(p : vec3<f32>, r : f32, s : f32) -> f32 { r + s }";
+        let module = pipeline_source_to_ad_mir("mix_scalar", src);
+        let f = module.funcs.iter().find(|f| f.name == "mix").expect("mix");
+        assert_eq!(
+            f.params.len(),
+            5,
+            "vec3 + scalar + scalar : 5 params : got {:?}",
+            f.params
+        );
+    }
 }

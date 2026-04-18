@@ -3038,4 +3038,24 @@ Each decision entry :
   - **Non-local dataflow** : stage-0 only tracks intra-fn flow. Inter-fn call labels (sensitive-in-arg → labeled-result → downstream leak) are deferred to a propagation pass that interns per-fn summaries.
   - **IFC0005+ diagnostics** : covert-channel mitigation (timing / termination / cache) per `specs/11_IFC.csl` §64-75 ; MIR-level `IfcLoweringPass` that emits runtime checks ; handled at T10-phase-2c.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D37 : vec arc consolidation — bwd-mode sphere_sdf + vec2/vec4 length tests
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** T11-D35 landed the fwd-mode runtime gradient for `sphere_sdf(p : vec3<f32>, r : f32)` but left two natural follow-ons : bwd-mode gradient verification and lane-scalability tests (vec2 / vec4). T11-D37 closes both in a compact slice — the machinery (scalarization, `length` expansion, extract_bwd_single_adjoint) already exists ; the slice just exercises it.
+- **Slice landed (this commit)**
+  - **`cssl-cgen-cpu-cranelift/src/jit.rs`** : `call_f32x5_to_f32(arg0..arg4, module)` helper — canonical shape for a 4-primal + 1-d_y bwd variant after single-adjoint extraction (5 f32 in → 1 f32 out).
+  - **`cssl-examples/src/jit_chain.rs`** : 4 new tests.
+    - `full_chain_sphere_sdf_vec3_bwd_mode_gradient` — compiles the *same* `@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) { length(p) - r }` source, extracts each of 4 adjoints, JIT-executes with `d_y = 1.0` at `p = (3, 0, 4), r = 1`, asserts `d_0 = 0.6, d_1 = 0.0, d_2 = 0.8, d_3 = -1.0` (exactly `normalize(p) ⊕ [-1]`). Proves bwd-mode produces correct gradients on the real killer-app.
+    - `full_chain_vec2_length_runtime` — `fn len2(p : vec2<f32>) -> f32 { length(p) }` at `p = (3, 4)` = 5.0. Verifies 2-lane scalarization + expansion works.
+    - `full_chain_vec4_length_runtime` — `fn len4(p : vec4<f32>) -> f32 { length(p) }` at `p = (2, 3, 6, 0)` = 7.0. Verifies 4-lane scalarization + expansion works.
+    - `vec_scalarization_preserves_scalar_params_untouched` — regression guard : `fn mix(p : vec3<f32>, r : f32, s : f32)` produces 5 scalar params (3 + 1 + 1), not accidentally-expanded scalars.
+- **Consequences**
+  - Test count : 1433 → 1437 (+4 in `cssl-examples::jit_chain`).
+  - **Both fwd-mode AND bwd-mode vec3 gradients are now runtime-verified.** The bwd-mode test uses exactly the same CSSLv3 source as D35 — proves the body-lower scalarization produces code that the AD walker's bwd variant handles correctly (no extra wiring needed for bwd).
+  - **Lane scalability confirmed** : vec2 + vec4 produce correctly-scaled primal values. The `hir_type_as_vec_lanes` helper was already written to accept any of (2, 3, 4) + any `FloatWidth` ; these tests just exercise the full matrix.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+
 
