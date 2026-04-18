@@ -1889,3 +1889,37 @@ Each decision entry :
   - MIR vec3 lowering + tensor-shape tracking — required for non-expanded `length(p : vec3) - r` directly.
   - Scene-SDF union / min : `min(sphere_sdf(p, r₀), sphere_sdf(p - c, r₁))` — requires monomorphization + piecewise-differentiable min-gradient dispatch (per `specs/05` § CONTROL-FLOW).
   - Arc A770 driver-matrix bit-exact float comparison (T10-phase-2 FFI blocked on MSVC decision).
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D3 : T11-phase-2b — live property + metamorphic oracle bodies (no external deps)
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D1 landed the oracle scaffold with `Stage0Unimplemented` returns on every dispatcher. T11-D2 hardened the R18 cryptography surface (BLAKE3 + Ed25519). This slice activates the two oracle modes that require zero external dependencies : `@property` (QuickCheck/Hypothesis lineage) + `@metamorphic` (algebraic-law preservation). Both live inside `cssl-testing` as pure-Rust generic runners so any downstream crate can compose them against its own data-structures without pulling in a generator framework.
+- **Slice landed (this commit)**
+  - `property.rs` now defines :
+    - `Lcg` — deterministic linear-congruential PRNG with Knuth multiplier `6364136223846793005` + constant `1442695040888963407` + wrapping arithmetic. Seeded by `Config::seed` (default `0xc551_a770_c551_a770`). Raw `next_u64` + convenience `gen_i64` / `gen_bool` / `gen_unit_f64` / `gen_f64`.
+    - `Generator<T>` trait : `generate(&mut Lcg) -> T` + `shrink(&T) -> Vec<T>` with default `Vec::new()` (no-shrink fallback).
+    - `IntGen { min, max }` + `BoolGen` concrete impls with shrink-toward-origin semantics (ints shrink to `0` then to halved + `±1` adjacency ; bools shrink `true → false`).
+    - `run_property<T, G, F>(&Config, &G, check: F, label: &str) -> Outcome` — runs `config.cases` generated inputs, returns `Ok { cases_run }` on universal pass or `Counterexample { shrunk_input, message }` on first failure. On failure, `shrink_counterexample` iterates greedy shrink rounds until no further-shrunk failing input is found or `config.shrink_rounds` is exhausted.
+    - 12 new tests : LCG same-seed-determinism + different-seeds-diverge, gen_i64 range-constraints, gen_unit_f64 ∈ [0,1), IntGen/BoolGen shrink semantics, property-passes-for-universal-truth, finds-counterexample, shrinks-int-toward-small-odd, bool-all-true finds `false`, same-seed reproduces same counterexample.
+  - `metamorphic.rs` now defines four generic algebraic-law runners :
+    - `check_commutative<T, Op, Eq>(samples: &[(T, T)], op, eq) -> Outcome` — every pair (a, b) must satisfy `op(a, b) = op(b, a)`.
+    - `check_associative<T, Op, Eq>(samples: &[(T, T, T)], op, eq) -> Outcome` — every triple (a, b, c) must satisfy `op(op(a, b), c) = op(a, op(b, c))`.
+    - `check_distributive<T, Mul, Add, Eq>(samples: &[(T, T, T)], mul, add, eq) -> Outcome` — every triple must satisfy `a * (b + c) = a*b + a*c`.
+    - `check_idempotent<T, Op, Eq>(samples: &[T], op, eq) -> Outcome` — `op(op(x)) = op(x)`.
+    - All four return `Outcome::Ok { samples_tested }` or `Outcome::Violation { sample, message }` with debug-formatted counter-sample + human-readable law-name.
+    - 9 new tests : i64 addition commutative + associative, subtraction violates commutativity, i64 mul-over-add distributive, bool-and commutative, identity-op idempotent, violation-message-shape, empty-samples returns Ok with zero.
+  - Pass-by-value replaced with `&G` borrow on `run_property` (clippy::needless_pass_by_value) ; PRNG casts scoped-allow `cast_possible_wrap` + `cast_sign_loss` + `cast_precision_loss` (intentional at bit-level — 53-bit mantissa slice is exact).
+- **Consequences**
+  - Test count : 1159 → 1180 (+21, all in cssl-testing). Property + metamorphic modules now have 12 + 9 = 21 self-tests covering their runners + edge cases.
+  - `@property` + `@metamorphic` oracles are now wire-up-ready for macro-generated invocation : `@property(cases = 10000, seed = 42) fn my_test() { ... }` can dispatch to `run_property` with the generated generator + check-closure.
+  - Replay-safety established : same seed + same generator + same check-fn → identical input stream, so captured counterexamples from CI can be replayed locally by pinning the seed.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - `FloatGen` / `Vec3Gen` / `RefinedGen<R>` — refinement-type-guided generators that respect `{x : f32 | x ≥ 0.0}` bounds from `specs/20_REFINEMENT.csl`.
+  - Hypothesis-style integrated shrinking (retains the history of draws from the PRNG so shrinking operates on the seed-sequence not the output). Greedy shrink is simpler + suffices for monomorphic types.
+  - `@metamorphic` Leibniz-rule + Faà-di-Bruno higher-order variants — require AD-closure from cssl-autodiff.
+  - `@metamorphic` Lipschitz + conservation-law specializations — require `cssl_jets` closure.
+  - `PropertyOracle` / `MetamorphicOracle` dispatcher impls that consume `Config` + route to the runners — currently `Stage0Stub` still serves as the dispatcher ; wiring requires `@property` macro-expansion plumbing from cssl-macros + body-capture.
