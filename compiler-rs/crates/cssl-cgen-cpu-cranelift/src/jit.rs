@@ -38,17 +38,19 @@
 //!   - `arith.constant` (i32, i64, f32, f64)
 //!   - `arith.addi` / `arith.subi` / `arith.muli`
 //!   - `arith.addf` / `arith.subf` / `arith.mulf` / `arith.divf` / `arith.negf`
+//!   - `arith.cmpf` / `arith.cmpi` with predicate attributes (T11-D21)
+//!   - `arith.select` (T11-D21) — enables scene-SDF min/max/abs gradient bodies
 //!   - `func.return`
 //!   Other ops return [`JitError::UnsupportedMirOp`] at compile-time.
 //!
-//! § T11-D21+ DEFERRED
+//! § T11-D22+ DEFERRED
 //!   - Control flow : `scf.if` / `scf.for` → CLIF blocks + brif.
-//!   - Comparisons + select : `arith.cmpf` / `arith.select` (already lowered to
-//!     CLIF text in T11-D18 ; JIT activation needs same path).
+//!   - Inter-fn calls : `func.call` to other fns in the same JIT module.
 //!   - Memref load/store.
 //!   - Multi-return tuple fns.
-//!   - Min/Max/Abs/Sign direct JIT (currently only their FAdd/FSub/FMul/FDiv/
-//!     FNeg primitive-chain paths are JIT-executable).
+//!   - Scene-SDF runtime-gradient verification : JIT-compile AD walker's fwd
+//!     variant of `@differentiable fn scene(a, b) { min(a, b) }` + execute +
+//!     compare against central-differences — **closes killer-app at runtime**.
 
 use std::collections::HashMap;
 
@@ -174,6 +176,21 @@ impl JitFn {
         // SAFETY: see `call_i64_i64_to_i64`.
         let f: extern "C" fn() -> i32 = unsafe { std::mem::transmute(addr) };
         Ok(f())
+    }
+
+    /// Call as `fn(f32) -> f32`. Used for single-arg differentiable fns like sqrt/sin/cos.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_f32_to_f32(&self, a: f32, module: &JitModule) -> Result<f32, JitError> {
+        self.check_sig(
+            &[MirType::Float(FloatWidth::F32)],
+            MirType::Float(FloatWidth::F32),
+        )?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let f: extern "C" fn(f32) -> f32 = unsafe { std::mem::transmute(addr) };
+        Ok(f(a))
     }
 
     fn check_sig(
@@ -537,6 +554,9 @@ fn lower_op_to_cl(
             b.ins().fdiv(a, c)
         }),
         "arith.negf" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
+        "arith.cmpf" => lower_cmpf(op, builder, value_map, fn_name),
+        "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
+        "arith.select" => lower_select(op, builder, value_map, fn_name),
         "func.return" => {
             let args: Result<Vec<_>, _> = op
                 .operands
@@ -634,6 +654,131 @@ where
     let v = emit(builder, a);
     value_map.insert(r.id, v);
     Ok(false)
+}
+
+/// Lower `arith.cmpf %a, %b {predicate = "ole"}` → cranelift `fcmp <cc> a, b`.
+fn lower_cmpf(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let pred_str = predicate_attr(op)?;
+    let cc = parse_float_cc(pred_str).ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!("unknown arith.cmpf predicate `{pred_str}`"),
+    })?;
+    emit_binary(op, builder, value_map, fn_name, |b, a, c| {
+        b.ins().fcmp(cc, a, c)
+    })
+}
+
+/// Lower `arith.cmpi %a, %b {predicate = "slt"}` → cranelift `icmp <cc> a, b`.
+fn lower_cmpi(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let pred_str = predicate_attr(op)?;
+    let cc = parse_int_cc(pred_str).ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!("unknown arith.cmpi predicate `{pred_str}`"),
+    })?;
+    emit_binary(op, builder, value_map, fn_name, |b, a, c| {
+        b.ins().icmp(cc, a, c)
+    })
+}
+
+/// Lower `arith.select %cond, %t, %f` → cranelift `select cond, t, f`.
+fn lower_select(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let (Some(&c_id), Some(&t_id), Some(&f_id)) =
+        (op.operands.first(), op.operands.get(1), op.operands.get(2))
+    else {
+        return Err(JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "arith.select expected 3 operands (cond, t, f)".to_string(),
+        });
+    };
+    let r = op.results.first().ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: "arith.select has no result".to_string(),
+    })?;
+    let cond = *value_map
+        .get(&c_id)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("unknown select-cond ValueId({})", c_id.0),
+        })?;
+    let t = *value_map
+        .get(&t_id)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("unknown select-true ValueId({})", t_id.0),
+        })?;
+    let f = *value_map
+        .get(&f_id)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("unknown select-false ValueId({})", f_id.0),
+        })?;
+    let v = builder.ins().select(cond, t, f);
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
+fn predicate_attr(op: &MirOp) -> Result<&str, JitError> {
+    op.attributes
+        .iter()
+        .find(|(k, _)| k == "predicate")
+        .map(|(_, v)| v.as_str())
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: String::new(),
+            detail: format!("{} missing `predicate` attribute", op.name),
+        })
+}
+
+/// Map MLIR-style float-cmp predicate strings to cranelift's `FloatCC`.
+fn parse_float_cc(s: &str) -> Option<cranelift_codegen::ir::condcodes::FloatCC> {
+    use cranelift_codegen::ir::condcodes::FloatCC as F;
+    Some(match s {
+        "eq" | "oeq" => F::Equal,
+        "ne" | "one" => F::NotEqual,
+        "olt" | "lt" => F::LessThan,
+        "ole" | "le" => F::LessThanOrEqual,
+        "ogt" | "gt" => F::GreaterThan,
+        "oge" | "ge" => F::GreaterThanOrEqual,
+        "ult" => F::UnorderedOrLessThan,
+        "ule" => F::UnorderedOrLessThanOrEqual,
+        "ugt" => F::UnorderedOrGreaterThan,
+        "uge" => F::UnorderedOrGreaterThanOrEqual,
+        "ord" => F::Ordered,
+        "uno" => F::Unordered,
+        _ => return None,
+    })
+}
+
+/// Map MLIR-style int-cmp predicate strings to cranelift's `IntCC`.
+fn parse_int_cc(s: &str) -> Option<cranelift_codegen::ir::condcodes::IntCC> {
+    use cranelift_codegen::ir::condcodes::IntCC as I;
+    Some(match s {
+        "eq" => I::Equal,
+        "ne" => I::NotEqual,
+        "slt" => I::SignedLessThan,
+        "sle" => I::SignedLessThanOrEqual,
+        "sgt" => I::SignedGreaterThan,
+        "sge" => I::SignedGreaterThanOrEqual,
+        "ult" => I::UnsignedLessThan,
+        "ule" => I::UnsignedLessThanOrEqual,
+        "ugt" => I::UnsignedGreaterThan,
+        "uge" => I::UnsignedGreaterThanOrEqual,
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -887,5 +1032,239 @@ mod tests {
         // Second finalize should be a no-op.
         m.finalize().unwrap();
         assert!(m.is_finalized());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D21 : JIT-exec arith.cmpf + arith.select for scene-SDF min(a, b).
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Build MIR for `fn fmin(a: f32, b: f32) -> f32 { if a <= b then a else b }` :
+    ///   v2 = cmpf "ole" v0, v1
+    ///   v3 = select v2, v0, v1
+    ///   return v3
+    fn hand_built_fmin_f32() -> MirFunc {
+        let mut f = MirFunc::new("fmin", vec![f32_ty(), f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().expect("entry");
+            entry.args = vec![
+                MirValue::new(ValueId(0), f32_ty()),
+                MirValue::new(ValueId(1), f32_ty()),
+            ];
+            entry.ops.push(
+                MirOp::std("arith.cmpf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Bool)
+                    .with_attribute("predicate", "ole"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.select")
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(3), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    #[test]
+    fn scene_sdf_min_a_b_jit_roundtrip() {
+        // ═══════════════════════════════════════════════════════════════════
+        // § SCENE-SDF MILESTONE : piecewise-linear min(a, b) executes via JIT
+        //   using the branchful tangent body shape (cmpf + select) that the
+        //   AD walker emits for @differentiable scene fns.
+        // ═══════════════════════════════════════════════════════════════════
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_fmin_f32()).unwrap();
+        m.finalize().unwrap();
+
+        // min(3.0, 5.0) == 3.0  (first branch wins)
+        let r1 = h.call_f32_f32_to_f32(3.0, 5.0, &m).unwrap();
+        assert!((r1 - 3.0).abs() < 1e-6, "expected 3.0, got {r1}");
+
+        // min(7.0, 2.0) == 2.0  (second branch wins)
+        let r2 = h.call_f32_f32_to_f32(7.0, 2.0, &m).unwrap();
+        assert!((r2 - 2.0).abs() < 1e-6, "expected 2.0, got {r2}");
+
+        // min(-1.0, 1.0) == -1.0  (negative handling)
+        let r3 = h.call_f32_f32_to_f32(-1.0, 1.0, &m).unwrap();
+        assert!((r3 - (-1.0)).abs() < 1e-6, "expected -1.0, got {r3}");
+
+        // min(4.2, 4.2) == 4.2  (cusp case — "ole" picks a, which equals b)
+        let r4 = h.call_f32_f32_to_f32(4.2, 4.2, &m).unwrap();
+        assert!((r4 - 4.2).abs() < 1e-6, "expected 4.2, got {r4}");
+    }
+
+    #[test]
+    fn scene_sdf_max_a_b_jit_roundtrip() {
+        // Symmetric to min : fn fmax(a, b) = if a >= b then a else b
+        let mut f = MirFunc::new("fmax", vec![f32_ty(), f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), f32_ty()),
+                MirValue::new(ValueId(1), f32_ty()),
+            ];
+            entry.ops.push(
+                MirOp::std("arith.cmpf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Bool)
+                    .with_attribute("predicate", "oge"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.select")
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(3), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        let mut m = JitModule::new();
+        let h = m.compile(&f).unwrap();
+        m.finalize().unwrap();
+
+        assert!((h.call_f32_f32_to_f32(3.0, 5.0, &m).unwrap() - 5.0).abs() < 1e-6);
+        assert!((h.call_f32_f32_to_f32(7.0, 2.0, &m).unwrap() - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cmpi_slt_plus_select_jit_roundtrip() {
+        // fn imin(a: i32, b: i32) -> i32 { if a < b then a else b }
+        let mut f = MirFunc::new("imin", vec![i32_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), i32_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            entry.ops.push(
+                MirOp::std("arith.cmpi")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Bool)
+                    .with_attribute("predicate", "slt"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.select")
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(3), i32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        let mut m = JitModule::new();
+        let h = m.compile(&f).unwrap();
+        m.finalize().unwrap();
+
+        assert_eq!(h.call_i32_i32_to_i32(3, 5, &m).unwrap(), 3);
+        assert_eq!(h.call_i32_i32_to_i32(10, -7, &m).unwrap(), -7);
+    }
+
+    #[test]
+    fn compose_arith_and_select_jit_roundtrip() {
+        // fn abs_diff_min(a: f32, b: f32) -> f32 {
+        //     // t = a - b ; return if t >= 0 then t else -t
+        //     let t = a - b;
+        //     let cmp = t >= 0.0;
+        //     let neg_t = -t;
+        //     if cmp then t else neg_t
+        // }
+        let mut f = MirFunc::new("fabs_diff", vec![f32_ty(), f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), f32_ty()),
+                MirValue::new(ValueId(1), f32_ty()),
+            ];
+            // v2 = a - b
+            entry.ops.push(
+                MirOp::std("arith.subf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), f32_ty()),
+            );
+            // v3 = 0.0
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(3), f32_ty())
+                    .with_attribute("value", "0.0"),
+            );
+            // v4 = cmpf oge v2, v3
+            entry.ops.push(
+                MirOp::std("arith.cmpf")
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(3))
+                    .with_result(ValueId(4), MirType::Bool)
+                    .with_attribute("predicate", "oge"),
+            );
+            // v5 = -v2
+            entry.ops.push(
+                MirOp::std("arith.negf")
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(5), f32_ty()),
+            );
+            // v6 = select v4, v2, v5
+            entry.ops.push(
+                MirOp::std("arith.select")
+                    .with_operand(ValueId(4))
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(5))
+                    .with_result(ValueId(6), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(6)));
+        }
+        let mut m = JitModule::new();
+        let h = m.compile(&f).unwrap();
+        m.finalize().unwrap();
+
+        // |3.0 - 5.0| == 2.0
+        assert!((h.call_f32_f32_to_f32(3.0, 5.0, &m).unwrap() - 2.0).abs() < 1e-6);
+        // |10.0 - 3.0| == 7.0
+        assert!((h.call_f32_f32_to_f32(10.0, 3.0, &m).unwrap() - 7.0).abs() < 1e-6);
+        // |a - a| == 0.0
+        assert!(h.call_f32_f32_to_f32(42.0, 42.0, &m).unwrap().abs() < 1e-6);
+    }
+
+    #[test]
+    fn cmpf_unknown_predicate_errors() {
+        let mut f = MirFunc::new("bad", vec![f32_ty(), f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), f32_ty()),
+                MirValue::new(ValueId(1), f32_ty()),
+            ];
+            entry.ops.push(
+                MirOp::std("arith.cmpf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Bool)
+                    .with_attribute("predicate", "xyzzy"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        }
+        let mut m = JitModule::new();
+        let err = m.compile(&f).unwrap_err();
+        assert!(matches!(err, JitError::LoweringFailed { .. }));
     }
 }

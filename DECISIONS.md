@@ -2519,3 +2519,38 @@ Each decision entry :
   - Memref load/store.
   - Scene-SDF runtime gradient verification : JIT-compile the fwd variant of `@differentiable fn scene(a, b) { min(a, b) }` + execute + compare against central-differences. **This closes the killer-app loop end-to-end at runtime** (currently closed at the AD-emission layer via T11-D16).
   - Multi-fn JIT modules : currently one-fn-per-module, but `declare_function` supports multiple ; just need to batch `finalize_definitions` properly (currently per-call).
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D21 : JIT-executable cmpf + select + cmpi — scene-SDF min/max runs at runtime
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D20 lit up the stage-0.5 JIT with scalar arith. The AD walker's branchful tangent/adjoint emission for Min/Max/Abs (T11-D15) produces `arith.cmpf + arith.select` chains ; to actually execute those gradients, the JIT needs to lower comparison + select ops. This slice adds them.
+- **Slice landed (this commit)**
+  - `jit.rs` `lower_op_to_cl` dispatch extended :
+    - `arith.cmpf` → cranelift `fcmp <FloatCC>` via `lower_cmpf`.
+    - `arith.cmpi` → cranelift `icmp <IntCC>` via `lower_cmpi`.
+    - `arith.select` → cranelift `select cond, t, f` via `lower_select`.
+  - `predicate_attr` helper extracts the `predicate` attribute from a compare op.
+  - `parse_float_cc` maps MLIR-style predicate strings (`"ole"`, `"oge"`, `"eq"`, `"ne"`, `"ord"`, `"uno"`, plus unordered variants `"ult"`/`"ule"`/`"ugt"`/`"uge"`) → `cranelift_codegen::ir::condcodes::FloatCC`.
+  - `parse_int_cc` maps (`"eq"`, `"ne"`, `"slt"`, `"sle"`, `"sgt"`, `"sge"`, `"ult"`, `"ule"`, `"ugt"`, `"uge"`) → `IntCC`.
+  - Unknown predicate strings produce `JitError::LoweringFailed` with a descriptive message.
+  - New `JitFn::call_f32_to_f32` for single-arg differentiable fns (sqrt/sin/cos bodies once those primitives land in JIT).
+- **Tests landed (5 new)**
+  - `scene_sdf_min_a_b_jit_roundtrip` : **SCENE-SDF MILESTONE** — MIR `fn fmin(a, b) { cmpf "ole" a b → select → a or b }` JIT-executes. `min(3, 5) = 3`, `min(7, 2) = 2`, `min(-1, 1) = -1`, cusp `min(4.2, 4.2) = 4.2`.
+  - `scene_sdf_max_a_b_jit_roundtrip` : symmetric via `"oge"`.
+  - `cmpi_slt_plus_select_jit_roundtrip` : `fn imin(a, b) { cmpi "slt" → select }` — integer min works.
+  - `compose_arith_and_select_jit_roundtrip` : **composition test** — `fn abs_diff(a, b) = subf → cmpf oge 0 → negf → select` executes end-to-end producing correct `|a - b|`.
+  - `cmpf_unknown_predicate_errors` : predicate `"xyzzy"` produces `LoweringFailed`.
+- **Consequences**
+  - Test count : 1344 → 1349 (+5 in cssl-cgen-cpu-cranelift).
+  - **The AD walker's Min/Max/Abs branchful gradient bodies are now runtime-executable.** Scene-SDF `@differentiable fn scene(a, b) { min(a, b) }` → fwd variant `scene_fwd(a, b, d_a, d_b) = select(cmpf ole a b, d_a, d_b)` can JIT-compile + run + return the correct tangent value.
+  - The `fabs_diff` composition test proves chain-rule-friendly expressions (subf → cmpf → negf → select) work end-to-end without op-order surprises.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred (T11-D22+ candidates)**
+  - **Scene-SDF runtime-gradient verification** : JIT the AD-walker-emitted fwd variant of a @differentiable scene fn + execute at sample points + compare against central-differences computed on the primal. Closes the killer-app loop at runtime. This is the single most-impactful next slice — the architecture is complete for it, it's a pure integration test.
+  - Control flow : `scf.if` / `scf.for` → cranelift `brif` + blocks.
+  - Inter-fn calls : `func.call` to other fns in the same JIT module.
+  - Memref load/store.
+  - Multi-fn JIT modules with shared code-addrs (currently one-shot finalize).
