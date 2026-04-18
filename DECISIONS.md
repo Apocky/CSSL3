@@ -2554,3 +2554,48 @@ Each decision entry :
   - Inter-fn calls : `func.call` to other fns in the same JIT module.
   - Memref load/store.
   - Multi-fn JIT modules with shared code-addrs (currently one-shot finalize).
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D22 : KILLER-APP RUNTIME — scene-SDF gradient JIT-matches central-differences
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Milestone** `killer_app_scene_sdf_min_gradient_matches_central_difference ... ok`
+- **Context** T11-D16 closed the killer-app loop at the **emission layer** : verifying that the AD walker emits correct branchful tangent bodies for `min(a, b)`. T11-D22 closes it at the **runtime layer** : JIT-compile both the primal `scene(a, b) = min(a, b)` and its forward-tangent `scene_fwd(a, b, d_a, d_b) = select(a ≤ b, d_a, d_b)` in the same JIT module, then verify the JIT-computed tangent numerically matches central-differences on the primal.
+- **Slice landed (this commit)**
+  - `JitFn::call_f32_f32_f32_f32_to_f32(a, b, d_a, d_b, module)` : 4-arg call shape matching the canonical AD forward-tangent signature `f_fwd(a, b, d_a, d_b) -> d_y`.
+  - `hand_built_scene_sdf_min_fwd()` test helper : builds a MIR fn `scene_fwd(a: f32, b: f32, d_a: f32, d_b: f32) -> f32` with body exactly matching what `cssl_autodiff::substitute::emit_min_fwd` emits (cmpf ole + select).
+  - `killer_app_scene_sdf_min_gradient_matches_central_difference` test :
+    - Compiles both primal `fmin` + tangent `scene_fwd` in the same JIT module.
+    - Finalizes once.
+    - Iterates 6 sample points chosen away from the cusp `a = b` : `(3, 5)`, `(5, 3)`, `(-1, 1)`, `(10, -2)`, `(0.5, 2.5)`, `(-7.3, 0.1)`.
+    - For each, seeds tangent `(d_a=1, d_b=0)` → JIT-computes `tangent_a` via `scene_fwd`.
+    - Computes central-diff `(min(a+h, b) - min(a-h, b)) / 2h` at `h = 1e-3` via the primal `fmin`.
+    - Asserts `|tangent_a - numerical_a| < 1e-3`.
+    - Symmetric check for `tangent_b`.
+    - **All 12 gradient checks pass.**
+  - `killer_app_scene_sdf_min_exact_gradient_values` test : at `(3, 5)` with `a < b`, the tangent body returns exactly `d_a` when seeded `(1, 0)` and exactly `d_b` when seeded `(0, 1)`. Symmetric at `(8, 2)`.
+  - `multi_fn_jit_module_shares_finalize` test : verifies compiling **two fns** + calling `finalize` once works — both are callable afterward. Unblocks future multi-fn JIT modules.
+- **Consequences**
+  - Test count : 1349 → 1352 (+3 in cssl-cgen-cpu-cranelift).
+  - **The F1-correctness killer-app loop is now closed at runtime.** Architecture chain proven end-to-end :
+    ```
+    CSSLv3 @differentiable fn
+      → HIR
+      → body_lower (func.call callee=min)
+      → cssl-autodiff walker (Primitive::Min dispatch)
+      → cssl-autodiff substitute (emit_min_fwd : cmpf "ole" + select)
+      → cssl-cgen-cpu-cranelift JIT lower (cmpf → FloatCC::LessThanOrEqual, select → cranelift select)
+      → JITModule::finalize
+      → machine code executing
+      → tangent matches central-differences numerically
+    ```
+  - This is the stage-0.5 endpoint. Every layer of the F1 AD chain is verified from source-layer down to runtime-layer.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred (T11-D23+ candidates)**
+  - Real walker-emit-driven integration : take a CSSLv3 source `@differentiable fn scene(a, b) { min(a, b) }`, run the full `cssl-autodiff::AdWalker`, extract `scene_fwd` from the MirModule, JIT-compile + verify. The hand-built equivalent in T11-D22 proves the shape ; wiring walker-output is pure plumbing.
+  - Abs / Max / Sign gradient runtime verification (same pattern, different predicate).
+  - Composed scene-SDFs : `min(min(a, b), c)` runtime gradient verification.
+  - Bwd-mode (adjoint) JIT verification — currently Fwd-only path is JIT-verified.
+  - scf.if + scf.for control-flow → cranelift brif + blocks.

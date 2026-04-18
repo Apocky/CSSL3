@@ -193,6 +193,28 @@ impl JitFn {
         Ok(f(a))
     }
 
+    /// Call as `fn(f32, f32, f32, f32) -> f32`. The canonical shape of an
+    /// AD forward-mode tangent body for a 2-argument scalar primal :
+    /// `fn f_fwd(a, b, d_a, d_b) -> d_y`.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_f32_f32_f32_f32_to_f32(
+        &self,
+        a: f32,
+        b: f32,
+        d_a: f32,
+        d_b: f32,
+        module: &JitModule,
+    ) -> Result<f32, JitError> {
+        let f32m = || MirType::Float(FloatWidth::F32);
+        self.check_sig(&[f32m(), f32m(), f32m(), f32m()], f32m())?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let f: extern "C" fn(f32, f32, f32, f32) -> f32 = unsafe { std::mem::transmute(addr) };
+        Ok(f(a, b, d_a, d_b))
+    }
+
     fn check_sig(
         &self,
         expected_params: &[MirType],
@@ -1240,6 +1262,161 @@ mod tests {
         assert!((h.call_f32_f32_to_f32(10.0, 3.0, &m).unwrap() - 7.0).abs() < 1e-6);
         // |a - a| == 0.0
         assert!(h.call_f32_f32_to_f32(42.0, 42.0, &m).unwrap().abs() < 1e-6);
+    }
+
+    /// Hand-built MIR for the forward-mode tangent of `scene(a, b) = min(a, b)`.
+    ///   fn scene_fwd(a: f32, b: f32, d_a: f32, d_b: f32) -> f32 {
+    ///     let cmp = a <= b;
+    ///     select(cmp, d_a, d_b)
+    ///   }
+    ///
+    /// This is *exactly* the shape T11-D15's [`crate::emit_min_fwd`][^n]
+    /// emits — it's the AD walker's forward-tangent body for `Primitive::Min`.
+    ///
+    /// [^n]: See `cssl_autodiff::substitute::emit_min_fwd`.
+    fn hand_built_scene_sdf_min_fwd() -> MirFunc {
+        let mut f = MirFunc::new(
+            "scene_fwd",
+            vec![f32_ty(), f32_ty(), f32_ty(), f32_ty()],
+            vec![f32_ty()],
+        );
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().expect("entry");
+            entry.args = vec![
+                MirValue::new(ValueId(0), f32_ty()), // a
+                MirValue::new(ValueId(1), f32_ty()), // b
+                MirValue::new(ValueId(2), f32_ty()), // d_a
+                MirValue::new(ValueId(3), f32_ty()), // d_b
+            ];
+            entry.ops.push(
+                MirOp::std("arith.cmpf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(4), MirType::Bool)
+                    .with_attribute("predicate", "ole"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.select")
+                    .with_operand(ValueId(4))
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(3))
+                    .with_result(ValueId(5), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(5)));
+        }
+        f
+    }
+
+    #[test]
+    fn killer_app_scene_sdf_min_gradient_matches_central_difference() {
+        // ═══════════════════════════════════════════════════════════════════
+        // § KILLER-APP RUNTIME VERIFICATION (T11-D22) :
+        //   AD walker emits a forward-tangent body for `min(a, b)` as
+        //   `cmpf ole + select`. We JIT compile the primal AND the tangent
+        //   in the same module, then numerically verify :
+        //
+        //     tangent_wrt_a(a, b) = (min(a+h, b) - min(a-h, b)) / 2h
+        //     tangent_wrt_b(a, b) = (min(a, b+h) - min(a, b-h)) / 2h
+        //
+        //   for sample points away from the cusp `a = b`.
+        //   At cusp, sharp-min is sub-gradient-valued — test avoids those.
+        //
+        //   This closes the killer-app loop at runtime : structural
+        //   verification (T11-D16) + runtime numerical agreement (here).
+        // ═══════════════════════════════════════════════════════════════════
+
+        let mut m = JitModule::new();
+        let scene = m.compile(&hand_built_fmin_f32()).unwrap();
+        let scene_fwd = m.compile(&hand_built_scene_sdf_min_fwd()).unwrap();
+        m.finalize().unwrap();
+        assert!(m.is_finalized());
+
+        // Samples chosen away from the cusp `a = b` (subgradient region).
+        let samples: &[(f32, f32)] = &[
+            (3.0, 5.0),   // a < b : grad wrt a = 1.0, wrt b = 0.0
+            (5.0, 3.0),   // a > b : grad wrt a = 0.0, wrt b = 1.0
+            (-1.0, 1.0),  // a < b w/ negative
+            (10.0, -2.0), // a > b w/ negative b
+            (0.5, 2.5),
+            (-7.3, 0.1),
+        ];
+
+        let h = 1e-3_f32;
+        for &(a, b) in samples {
+            // ────────────────────────────────────────
+            // § Gradient w.r.t. a : seed (d_a = 1, d_b = 0).
+            // ────────────────────────────────────────
+            let tangent_a = scene_fwd
+                .call_f32_f32_f32_f32_to_f32(a, b, 1.0, 0.0, &m)
+                .unwrap();
+            let scene_plus = scene.call_f32_f32_to_f32(a + h, b, &m).unwrap();
+            let scene_minus = scene.call_f32_f32_to_f32(a - h, b, &m).unwrap();
+            let numerical_a = (scene_plus - scene_minus) / (2.0 * h);
+            assert!(
+                (tangent_a - numerical_a).abs() < 1e-3,
+                "gradient wrt a mismatch @ (a={a}, b={b}) : JIT-tangent={tangent_a} vs central-diff={numerical_a}"
+            );
+
+            // ────────────────────────────────────────
+            // § Gradient w.r.t. b : seed (d_a = 0, d_b = 1).
+            // ────────────────────────────────────────
+            let tangent_b = scene_fwd
+                .call_f32_f32_f32_f32_to_f32(a, b, 0.0, 1.0, &m)
+                .unwrap();
+            let scene_plus_b = scene.call_f32_f32_to_f32(a, b + h, &m).unwrap();
+            let scene_minus_b = scene.call_f32_f32_to_f32(a, b - h, &m).unwrap();
+            let numerical_b = (scene_plus_b - scene_minus_b) / (2.0 * h);
+            assert!(
+                (tangent_b - numerical_b).abs() < 1e-3,
+                "gradient wrt b mismatch @ (a={a}, b={b}) : JIT-tangent={tangent_b} vs central-diff={numerical_b}"
+            );
+        }
+    }
+
+    #[test]
+    #[allow(clippy::similar_names)] // t_a_at_* + t_b_at_* are paired by design
+    fn killer_app_scene_sdf_min_exact_gradient_values() {
+        // More specific : at (a=3, b=5) with a < b, the tangent body should
+        // produce d_a when seeded (1, 0) and d_b when seeded (0, 1). Verifies
+        // the branchful select picks the correct branch.
+        let mut m = JitModule::new();
+        m.compile(&hand_built_fmin_f32()).unwrap();
+        let scene_fwd = m.compile(&hand_built_scene_sdf_min_fwd()).unwrap();
+        m.finalize().unwrap();
+
+        // a < b : min = a, so grad wrt a = 1, grad wrt b = 0.
+        let t_a_at_3_5 = scene_fwd
+            .call_f32_f32_f32_f32_to_f32(3.0, 5.0, 1.0, 0.0, &m)
+            .unwrap();
+        let t_b_at_3_5 = scene_fwd
+            .call_f32_f32_f32_f32_to_f32(3.0, 5.0, 0.0, 1.0, &m)
+            .unwrap();
+        assert!((t_a_at_3_5 - 1.0).abs() < 1e-6);
+        assert!(t_b_at_3_5.abs() < 1e-6);
+
+        // a > b : min = b, so grad wrt a = 0, grad wrt b = 1.
+        let t_a_at_8_2 = scene_fwd
+            .call_f32_f32_f32_f32_to_f32(8.0, 2.0, 1.0, 0.0, &m)
+            .unwrap();
+        let t_b_at_8_2 = scene_fwd
+            .call_f32_f32_f32_f32_to_f32(8.0, 2.0, 0.0, 1.0, &m)
+            .unwrap();
+        assert!(t_a_at_8_2.abs() < 1e-6);
+        assert!((t_b_at_8_2 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn multi_fn_jit_module_shares_finalize() {
+        // Two fns, one finalize — verify both are callable after.
+        let mut m = JitModule::new();
+        let f1 = m.compile(&hand_built_add_i32()).unwrap();
+        let f2 = m.compile(&hand_built_fmin_f32()).unwrap();
+        m.finalize().unwrap();
+        assert_eq!(f1.call_i32_i32_to_i32(10, 20, &m).unwrap(), 30);
+        assert!((f2.call_f32_f32_to_f32(2.5, 3.5, &m).unwrap() - 2.5).abs() < 1e-6);
     }
 
     #[test]
