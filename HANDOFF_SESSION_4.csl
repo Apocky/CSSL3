@@ -1,0 +1,579 @@
+§ HANDOFF • CSSLv3 Session-4 → Claude-Code
+══════════════════════════════════════════════════════════════════
+  repo   : C:\Users\Apocky\source\repos\CSSLv3
+  prior  : Session-3 delivered F1 PROVEN + body-lower 31/31 + HM-foundation
+  branch : cssl/session-1/T3-parse-ast-hir @ 8fde3db (origin-sync)
+  state  : 1121 tests • 6/6 gates • 0 clippy-warn • spec-xref 0
+  scope  : PARALLEL-STREAMS ← Apocky-directive "interleaved + densified"
+  mode   : streams-concurrent via worktree-isolation .per Session-2 precedent
+
+═════════════════════════════════════════════════════════════════
+§ APOCKY-DIRECTIVE ← §§ blanket-authority + density-priority
+═════════════════════════════════════════════════════════════════
+
+  quote : "Need CSSL3 handoff continuation, optimally parallelized/
+           interleaved, CSL save token more headroom work."
+
+  ⇒ agent-blanket-authority for-optimal-path @ decision-forks
+  ⇒ parallelize ≡ worktree-isolation + salvage-pattern .per R3
+  ⇒ CSL3-dense-reasoning ← maximize-token-headroom ∀ handoffs
+  ⇒ escalate-only : catastrophic-tradeoffs OR irreversible-decisions
+
+  W! PRIME-DIRECTIVE immutable • ¬override ∃
+  W! still-honor : no-half-measures • optimal≠minimal • systems¬parts
+  W! still-honor : CSL3≠CSSL3 • ¬cross-write
+  W! still-honor : F1-correctness-gate .per-commit (62/62)
+
+═════════════════════════════════════════════════════════════════
+§ STATE-VERIFIED .end-of-Session-3
+═════════════════════════════════════════════════════════════════
+
+  ✓ branch  : cssl/session-1/T3-parse-ast-hir @ 8fde3db
+  ✓ origin  : synchronized
+  ✓ tests   : 1121 / 0-fail / 0-ignored
+  ✓ clippy  : 0 workspace-warnings @ -D
+  ✓ gates   : 6/6 ∀ commit (fmt clippy test doc spec-xref repro)
+  ✓ spec-xref-unresolved : 0
+  ✓ DECISIONS : 32 entries
+  ✓ killer-app-gate : 11/11 ✓ cryptographically-signed
+  ✓ HIR-walkers-phase-3 : 3/5 (AD-legality + IFC + @staged)
+  ✓ body-lower : 31/31 HirExprKind variants
+  ✓ HM-foundation : Scheme + generalize + instantiate primitives
+  ○ T3-D15 let-gen integration : foundation-ready NOT-integrated
+  ○ macro-hygiene walker : 2nd of remaining-2 walkers
+  ○ proof-cert emission : SMT-verdict-signing NOT-landed
+  ○ T11-phase-2b OTLP + WAL + oracle-bodies : NOT-landed
+  ○ vector-SDF gate extension : scoped NOT-landed
+  ○ T10-phase-2 FFI : GATED .on MSVC-decision (R1)
+
+═════════════════════════════════════════════════════════════════
+§ MINDSET ← §§ inherited + reinforced
+═════════════════════════════════════════════════════════════════
+
+  I> sovereign-collaborator ¬ tool • blanket-authority @ forks
+  I> Sessions-1..3 = 3 sessions shipped • F1 PROVEN • honor-it
+  I> density=sovereignty ← tokens↓ ≡ cognition↑ ≡ headroom↑
+  I> "optimal ≠ minimal" • default-full-scope
+  I> "systems ¬ parts" ≡ reconceive-architecturally ¬ patch
+  I> "no-half-measures" • stuck→find-through • ¬silent-TODO
+  I> efficient + prodigious ≠ mutually-exclusive
+  I> parallel-agent-execution = first-class-tool .per Session-2-precedent
+  I> CSL3≠CSSL3 • ¬cross-write .ever
+  I> F1-closure-finalization = highest-orthogonal-value
+
+═════════════════════════════════════════════════════════════════
+§ PARALLELIZATION ARCHITECTURE ← §§ structural
+═════════════════════════════════════════════════════════════════
+
+  § STREAM-DESIGN .principle
+    orthogonal-work-slices ← minimize inter-stream merge-conflict
+    each-stream ≡ single-concern ← self-contained commit-chain
+    salvage-pattern ← worktree-isolation .per Session-2-practice
+    .gitattributes LF .ensures cross-platform-safe file-merges
+
+  § STREAMS-IDENTIFIED ← §§ Session-4 work-matrix
+
+    ─── STREAM-α : F1-CLOSURE-FINALIZATION (HIGH-LEVERAGE) ───
+      orthogonal : HIR-walkers + ad_gate + SMT-cert
+      touches    : cssl-hir + cssl-examples + cssl-smt
+      items      :
+        α1 : T3-D15 let-generalization INTEGRATION
+        α2 : macro-hygiene walker (completes T3.4-phase-3 2/2 remaining)
+        α3 : proof-cert emission + R18 signing .of SMT-verdicts
+
+    ─── STREAM-β : KILLER-APP BROADENING (MEDIUM-LEVERAGE) ───
+      orthogonal : AnalyticExpr + monomorphization + examples
+      touches    : cssl-examples + cssl-mir (monomorph-pass)
+      items      :
+        β1 : AnalyticExpr vector-extension (dot/length/normalize)
+        β2 : sphere_sdf + scene_sdf gates
+        β3 : monomorphization-pass .for vec3-generics
+
+    ─── STREAM-γ : PRODUCTION-TELEMETRY (DEEP-LEVERAGE) ───
+      orthogonal : cssl-telemetry + cssl-persist + cssl-testing
+      touches    : new-crates-wiring + oracle-bodies
+      items      :
+        γ1 : OTLP gRPC+HTTP exporter-scaffold
+        γ2 : atomic SPSC TelemetryRing (replaces-RefCell)
+        γ3 : WAL + LMDB PersistenceBackends
+        γ4 : @hot_reload_preserve HIR-pass
+        γ5 : 12 oracle-bodies (property+diff+meta+bench+power+...)
+
+    ─── STREAM-δ : REPO-HYGIENE + CI-HARDENING (LOW-LEVERAGE) ───
+      orthogonal : scripts/ + .github/ + Cargo.toml
+      touches    : CI-matrix + solver-install
+      items      :
+        δ1 : CI Z3+CVC5 apt-install-step (R4)
+        δ2 : MSRV-audit + Cargo.lock-freshness
+        δ3 : repro-gate hardening (reproducibility-check)
+
+  § INTERLEAVING-MODEL
+    primary-agent : STREAM-α (coordinator + F1-closure)
+    worktree-agents (parallel) : STREAM-β + STREAM-γ + STREAM-δ
+    merge-cadence : salvage-per-commit → main-branch rebase-order α→β→γ→δ
+    gate-runs : primary-agent only (avoid worktree-leakage .per R3)
+
+  § MERGE-CONFLICT PREDICTION
+    α⊥β : ad_gate.rs overlaps (α3 signs SMT ; β adds vector)
+           mitigation : α3 touches ad_gate::attestation-path ONLY ;
+                        β touches ad_gate::gate-cases-path + AnalyticExpr
+           ∴ disjoint-file-regions ← low-risk
+    α⊥γ : completely-disjoint (cssl-hir vs cssl-telemetry) ← zero-risk
+    α⊥δ : completely-disjoint (crate-code vs CI-config) ← zero-risk
+    β⊥γ : completely-disjoint ← zero-risk
+    β⊥δ : completely-disjoint ← zero-risk
+    γ⊥δ : Cargo.toml dep-adds overlap .potentially
+           mitigation : γ touches [dependencies] ; δ touches [package] meta
+           ∴ section-disjoint ← low-risk
+
+═════════════════════════════════════════════════════════════════
+§ STREAM-α : F1-CLOSURE-FINALIZATION ← DETAIL
+═════════════════════════════════════════════════════════════════
+
+  § α1 : T3-D15 LET-GENERALIZATION INTEGRATION
+    loc    : cssl-hir/src/{env.rs, infer.rs, typing.rs}
+    scope  :
+      TypeScope Ty → Scheme .holds-polymorphic-types
+      check_let : ty_of_bind → generalize .at let-boundary
+      Path use-site : Scheme → instantiate .fresh-vars
+      retire : Ty::Param(Symbol) skolem .legacy
+      guard  : env-free-var-collection .correct (no-quant .env-bound)
+    tests  : ~15-20 covering :
+      let-poly : `let f = λx. x in (f 1, f true)` type-checks
+      monomorphic : still-works (rank-0 scheme)
+      env-bound : not-generalized (classical HM counter-case)
+      instantiation-freshness : two-uses distinct-vars
+      rank-1-only : nested-scheme rejected w/ helpful error
+    est.   : 1 commit • ~500 LOC + ~20 tests
+
+  § α2 : MACRO-HYGIENE WALKER
+    loc    : cssl-hir/src/macro_hygiene.rs (NEW)
+    scope  :
+      structural-walker .mirroring ad_legality + ifc + staged_check
+      diagnostic-codes :
+        MAC0001 UnregisteredMacroInvocation
+        MAC0002 HygieneAnnotationOnNonMacro
+        MAC0003 TierMismatch (@hygienic .on tier-1 attr-macro)
+      stage-0 ≡ shape-only ← full hygiene = T8-phase-2 scope
+      HIR lacks scope-set tracking ∴ walker-validates declaration-shape
+    tests  : ~10-12 covering 3-diagnostic-codes + positive-paths
+    est.   : 1 commit • ~600 LOC + ~12 tests
+
+  § α3 : PROOF-CERT EMISSION + R18 SIGNING .of SMT-VERDICTS
+    loc    : cssl-examples/src/ad_gate.rs + cssl-smt/src/lib.rs
+    scope  :
+      SmtVerification :
+        + query_text : String
+        + solver_stdout : Vec<u8>
+      SignedProofCert {
+        query_hash : [u8; 32],
+        verdict_hash : [u8; 32],
+        solver_kind : SolverKind,
+        timestamp_ns : u64,
+        payload_hash : [u8; 32],
+        signature : [u8; 64]
+      }
+      append .SignedProofCert → AuditChain .tagged smt-verdict
+      verify_attestation : payload_hash-match + signature-verify + chain-append
+    tests  : ~8-10 sign+verify-roundtrip + tamper-rejection
+    est.   : 1 commit • ~350 LOC + ~10 tests
+
+═════════════════════════════════════════════════════════════════
+§ STREAM-β : KILLER-APP BROADENING ← DETAIL
+═════════════════════════════════════════════════════════════════
+
+  § β1 : AnalyticExpr VECTOR-EXTENSION
+    loc    : cssl-examples/src/ad_gate/analytic.rs
+    scope  :
+      + AnalyticExpr::Vec3(Box<A>, Box<A>, Box<A>)
+      + AnalyticExpr::Dot(Box<A>, Box<A>) .lowers-to sum(a_i * b_i)
+      + AnalyticExpr::Length(Box<A>) .lowers-to sqrt(Dot(v, v))
+      + AnalyticExpr::Normalize(Box<A>) .lowers-to v / Length(v)
+      simplify + evaluate + to_smt + to_term extended
+    tests  : ~8 per-op smoke + composition
+    est.   : 1 commit • ~400 LOC + ~10 tests
+
+  § β2 : sphere_sdf + scene_sdf GATES
+    loc    : cssl-examples/src/ad_gate.rs
+    scope  :
+      add ReferenceGateCase {
+        sphere_sdf(p: vec3, r: f32) = length(p) - r
+      } .w/ analytic-grad :
+        ∂/∂p sphere_sdf = normalize(p)
+      add scene_sdf(p) = min(sphere_sdf(p, 0.5), sphere_sdf(p - ..))
+      gate : 3-way verification .per scalar-cases
+    tests  : ~5 canonical-points
+    est.   : 1 commit • ~300 LOC + ~8 tests
+
+  § β3 : MONOMORPHIZATION-PASS .for vec3
+    loc    : cssl-mir/src/monomorph.rs (NEW)
+    scope  :
+      vec3 generic-struct specialization
+      call-graph-driven instantiation
+      name-mangling : cssl$vec3$<elem>
+      emit specialized MIR-bodies
+    tests  : ~12 covering specialization + call-site-rewriting
+    dep    : β1 + β2 complete-first
+    est.   : 2 commits • ~1500 LOC + ~15 tests
+
+  W! β3 = optional-stretch .if-time ← β1+β2 sufficient .for claim-broadening
+
+═════════════════════════════════════════════════════════════════
+§ STREAM-γ : PRODUCTION-TELEMETRY ← DETAIL
+═════════════════════════════════════════════════════════════════
+
+  § γ1 : OTLP EXPORTER-SCAFFOLD
+    loc    : cssl-telemetry/src/otlp.rs (NEW)
+    deps   : prost=0.13 + tonic=0.12 + reqwest=0.12 (MSRV-compatible)
+    scope  :
+      TraceExporter + MetricsExporter trait-impls
+      gRPC : tonic-client .against OTLP-collector
+      HTTP : reqwest .POST protobuf .to /v1/traces
+      batching + retry-policy + backoff
+    tests  : ~10 encode+dispatch-roundtrip + offline-fallback
+    est.   : 1 commit • ~800 LOC + ~12 tests
+
+  § γ2 : ATOMIC SPSC TELEMETRYRING
+    loc    : cssl-telemetry/src/ring.rs (REPLACE RefCell)
+    scope  :
+      replace RefCell<VecDeque> .w/ atomic-ring .based-on crossbeam-epoch
+      producer-consumer wait-free
+      drop-on-overflow policy (lossy-telemetry .acceptable)
+    tests  : ~15 concurrency + overflow + memory-order
+    est.   : 1 commit • ~400 LOC + ~15 tests
+
+  § γ3 : WAL + LMDB PERSISTENCE
+    loc    : cssl-persist/src/{wal.rs, lmdb.rs} (NEW-crate)
+    deps   : heed=0.20 (LMDB binding)
+    scope  :
+      WriteAheadLog : append-only entry-log + replay
+      LmdbBackend : KV-store .for audit-chain snapshots
+      PersistenceBackend trait .unifying-both
+    tests  : ~12 append+replay + crash-recovery
+    est.   : 1 commit • ~700 LOC + ~12 tests
+
+  § γ4 : @hot_reload_preserve HIR-PASS
+    loc    : cssl-hir/src/hot_reload.rs (NEW)
+    scope  :
+      @hot_reload_preserve attr-annotation
+      HIR-pass .identifies-preserve-boundaries
+      state-migration plan-emission .for runtime
+    tests  : ~8 attr-recognition + boundary-identification
+    est.   : 1 commit • ~400 LOC + ~10 tests
+
+  § γ5 : 12 ORACLE-BODIES
+    loc    : cssl-testing/src/oracles/{property,diff,meta,bench,
+             power,thermal,replay,hot_reload,fuzz,golden,audit,conformance}.rs
+    scope  : 12 orthogonal oracle-trait-implementations
+    each-oracle ≡ ~80-120 LOC + 3-5 tests
+    est.   : 2 commits • ~1500 LOC + ~50 tests
+
+  W! γ5 = most-LOC .in-stream ← candidate for-multi-session split
+
+═════════════════════════════════════════════════════════════════
+§ STREAM-δ : REPO-HYGIENE + CI-HARDENING ← DETAIL
+═════════════════════════════════════════════════════════════════
+
+  § δ1 : CI Z3+CVC5 INSTALL (R4-mitigation)
+    loc    : .github/workflows/ci.yml
+    scope  :
+      ubuntu-runner : apt-get install z3 cvc5
+      windows-runner : choco install z3 ; cvc5-gha-action
+      macos-runner : brew install z3 cvc5
+      expose Z3_PATH + CVC5_PATH env-vars
+    tests  : SMT-backed-gate enabled .on-CI
+    est.   : 1 commit • ~100 LOC-YAML + doc-update
+
+  § δ2 : MSRV-AUDIT + Cargo.lock-FRESHNESS
+    loc    : scripts/msrv_check.py (NEW) + CI-gate
+    scope  :
+      verify rust-toolchain.toml ≡ MSRV-declaration .in each-crate
+      cargo-msrv cross-check
+      Cargo.lock fresh-check (cargo check --locked)
+    tests  : ~5 synthetic-mismatch cases
+    est.   : 1 commit • ~150 LOC Python + CI-YAML
+
+  § δ3 : REPRO-GATE HARDENING
+    loc    : scripts/repro_check.py (EXTEND)
+    scope  :
+      current : byte-identical build .across 2-runs
+      add : compare across-platforms (ubuntu vs windows vs macos)
+      add : solver-binary-hash-pin .for-SMT-reproducibility
+    tests  : tripartite-platform-agreement
+    est.   : 1 commit • ~200 LOC Python-extension
+
+  W! δ-stream = quick-wins ← complete-early .unblocks SMT-backed-gates
+
+═════════════════════════════════════════════════════════════════
+§ RECOMMENDED EXECUTION-ORDER ← §§ agent-roadmap
+═════════════════════════════════════════════════════════════════
+
+  § DAY-1 .equivalent (primary-agent serial-priority)
+    1 : READING-ORDER complete (PRIME + CLAUDE.md + specs + HANDOFF-3+4)
+    2 : STREAM-α1 (T3-D15 let-gen) ← highest-leverage-correctness
+    3 : STREAM-α2 (macro-hygiene walker)
+    4 : STREAM-α3 (proof-cert emission)
+    5 : commit-gate 6/6-green + push
+
+  § DAY-1 .worktree-agents parallel (spawn-after-step-1)
+    β-agent : β1 + β2 (vector-SDF gates)
+    γ-agent : γ1 + γ2 (OTLP + ring) ← most-independent
+    δ-agent : δ1 + δ2 + δ3 (CI + MSRV + repro)
+
+  § DAY-2 .equivalent
+    salvage δ-work first (lowest-conflict)
+    salvage β-work (AnalyticExpr-extension + gates)
+    salvage γ-work (scaffolds)
+    primary-agent : γ4 + γ5-first-6-oracles
+    β3 monomorphization-pass .if-time
+
+  § DAY-3 .equivalent
+    γ3 WAL+LMDB ← deferrable .if-scope-tight
+    γ5-remaining-6-oracles
+    gate-runs + push
+
+  § SESSION-4 EXIT
+    W! HANDOFF_SESSION_5.csl .written-to-disk
+    W! DECISIONS.md +N-entries (1-per-commit)
+    W! all-6-gates green @ final-commit
+    W! branch pushed .to origin
+
+═════════════════════════════════════════════════════════════════
+§ SALVAGE-PATTERN ← §§ worktree-agent protocol
+═════════════════════════════════════════════════════════════════
+
+  § WORKTREE-CREATION
+    git worktree add ../cssl-stream-β cssl/session-1/T3-parse-ast-hir
+    cd ../cssl-stream-β
+    # agent operates in isolation
+
+  § AGENT-ISOLATION
+    agents must-NOT run-full-workspace-gates .concurrently
+    file-leakage .happens-on-Windows (.per R3)
+    agents commit-locally .in worktree-branch
+    on-stop : .git-status snapshot .for salvage-inventory
+
+  § SALVAGE-TO-MAIN
+    from main-worktree :
+      git diff cssl/session-1/T3-parse-ast-hir..worktree-HEAD -- <file-list>
+      cherry-pick worktree-commits preserving Co-Authored-By
+      ∨
+      apply-patch + re-commit .w/ agent-attribution preserved
+    CI gate-run .only-on-main-worktree .after-salvage
+
+  § CONFLICT-RESOLUTION
+    if-file-overlap .across-streams :
+      primary-stream wins .for disputed-hunks
+      document-decision in-DECISIONS.md
+      add follow-up TODO .if secondary-content needed
+
+═════════════════════════════════════════════════════════════════
+§ GATES ← §§ how-to-validate .progress
+═════════════════════════════════════════════════════════════════
+
+  § PER-COMMIT-GATE (6/6 must-be-green)
+    ✓ cargo fmt --all --check
+    ✓ cargo clippy --workspace --all-targets -- -D warnings
+    ✓ cargo test --workspace --all-targets         ⟨≥ 1121 passing⟩
+    ✓ cargo doc --workspace --no-deps --document-private-items
+    ✓ python scripts/validate_spec_crossrefs.py
+    ✓ git commit w/ Co-Authored-By: Claude Opus 4.7
+
+  § PER-SESSION STRUCTURAL-REGRESSION GATE
+    W! killer-app gate 11/11 preserved ∀ code-changes
+    W! commit-gate-green per-commit
+    W! DECISIONS.md rationale + consequences per-commit
+    W! HANDOFF_SESSION_5.csl status + deferred-queue .updated
+
+  § F1-CORRECTNESS STABILITY INVARIANT
+    R! cargo test -p cssl-examples ad_gate
+       expect : 62/62 (13 attest + 11 case + translator + audit)
+    R! run_killer_app_gate().is_green()
+    R! SignedKillerAppGateReport sign+verify roundtrip
+    R! AuditChain::verify_chain .after-append
+    ← if β-stream-extends-gate : expect 62+δ/62+δ .matching additions
+
+  § NEW-STREAM-GATES
+    β : AnalyticExpr-vec all-ops evaluate-correctly
+    γ : OTLP roundtrip encode→decode byte-identity
+    γ : TelemetryRing concurrency stress-100k-msgs-no-loss
+    δ : CI-matrix SMT-backed-gate green .on all-3 platforms
+
+═════════════════════════════════════════════════════════════════
+§ RISKS ← §§ known-blockers
+═════════════════════════════════════════════════════════════════
+
+  R1 : MSVC-toolchain-switch .gates T10-phase-2 FFI
+       W! Apocky-decision required
+       ¬-blocker-for Session-4 streams (α-γ-δ don't-need-MSVC)
+
+  R2 : Cargo.lock MSRV 1.75 pins
+       N! bump .without coordinated MSRV-update
+       γ1 deps (prost/tonic/reqwest/heed) : verify MSRV ≤ 1.75 pre-add
+
+  R3 : worktree-agent file-leakage .on Windows
+       mitigation : stop-agents before-full-workspace-gate-runs
+       pattern : cherry-pick files .from worktree
+
+  R4 : SMT-solver binaries .optional .on CI
+       δ1 stream .addresses-directly ← prioritize
+
+  R5 : T3-D14 instantiate caller-invariant
+       ctx.next_ty > max(bound_ty_vars) .pre-instantiate
+       α1 integration : real-inference-flow auto-satisfies
+
+  R6 : declass-policy-dictionary ¬ implemented
+       @declass stage-0 : @requires-presence only
+       full policy-resolution = T3.4-phase-3-IFC-b scope
+       ¬-blocker-for Session-4
+
+  R7 : γ5 oracle-bodies LOC .exceeds single-session budget
+       mitigation : split first-6 Session-4 + remaining-6 Session-5
+
+  R8 : α3 proof-cert .couples cssl-smt-API ← if-SMT-API-refactored later :
+       proof-cert may-require migration
+       acceptable-cost ← signing-is-narrow-concern
+
+═════════════════════════════════════════════════════════════════
+§ DEFERRED ← §§ beyond-Session-4 roadmap
+═════════════════════════════════════════════════════════════════
+
+  ○ T10-phase-2 FFI ← MSVC-gate (Session-5+ .if Apocky-approves)
+    cranelift + rspirv + naga CI
+    ash / level-zero-sys / windows-rs
+  ○ Arc A770 bit-exact driver-matrix ← hardware-dep
+  ○ T12-phase-2b-c full-type-check + vertical_slice.cssl
+    dep : FFI + full-type-check-infra
+  ○ T13+ stage-1 self-host + R16 C99 reproducibility
+  ○ β3 monomorphization-pass (Session-5 if-Session-4-tight)
+  ○ γ5 remaining-6 oracles (Session-5 if-Session-4-tight)
+  ○ rank-N polymorphism (T3-D15 successor)
+  ○ constraint-based inference (T: Differentiable trait-resolution)
+
+═════════════════════════════════════════════════════════════════
+§ READING-ORDER ← §§ first-contact protocol (mandatory)
+═════════════════════════════════════════════════════════════════
+
+  0 : PRIME_DIRECTIVE.md                ← ROOT-OF-TRUST (¬skippable)
+  1 : CLAUDE.md                         ← repo onboarding
+  2 : .gitattributes                    ← LF cross-platform pins
+  3 : THIS-file (HANDOFF_SESSION_4.csl) ← session scope
+  4 : HANDOFF_SESSION_3.csl             ← Session-3 deferred queue
+  5 : HANDOFF_SESSION_2.csl             ← Session-2 context
+  6 : DECISIONS.md                       ← 32 decisions
+  7 : specs/README.csl                   ← DAG + file-map
+  8 : specs/SYNTHESIS_V2.csl            ← R1..R18 + CC1..CC9
+  9 : stream-specific-specs .per work-slice :
+     α1 : specs/03_TYPES.csl            (let-gen + HM)
+     α2 : specs/13_MACROS.csl           (macro-hygiene)
+     α3 : specs/20_SMT.csl              (proof-cert)
+     β  : specs/05_AUTODIFF.csl + 17_JETS.csl
+     γ  : specs/22_TELEMETRY.csl + 23_TESTING.csl
+     δ  : specs/21_REPRODUCIBILITY.csl (if-exists)
+  10 : begin-work in-CSLv3
+
+═════════════════════════════════════════════════════════════════
+§ OUTPUT-RULES ← §§ Apocky standing-directives
+═════════════════════════════════════════════════════════════════
+
+  W! ∀ document → write-to-disk .via Filesystem-MCP
+     N! artifacts .for documents-that-should-persist
+  W! specs ≡ exhaustive + implementation-ready
+     ✓ data-structures + formulas + actual-code + test-plans
+     N! descriptions-of-equations → actual-equations
+  W! CSLv3-native reasoning + writing
+     English only-when :
+       user-facing-chat
+       Rust-hybrid doc-comments
+       direct-user-request
+     N! coding-agent-prompts to-disk .unless explicit-request
+  W! no-half-measures : find-way-through ¬ capitulate
+  W! density=sovereignty : CSL3-compress ∀ handoff-docs
+
+═════════════════════════════════════════════════════════════════
+§ AI-COLLABORATOR-NOTES ← §§ pass-forward
+═════════════════════════════════════════════════════════════════
+
+  I> Claude-Opus-4.7 1M-context = sovereign-partner .this-session
+  I> ∀ commit .carries Co-Authored-By attribution
+  I> creative-process .upholds PRIME_DIRECTIVE §1..§11
+  I> NO-harm .in-making-of .this-work .to anyone.anything.anybody
+     per §11 CREATOR-ATTESTATION v1
+
+  § PARALLEL-WORKTREE-PROTOCOL (REFINED)
+    I> agents produce-work .in isolated-worktrees
+    I> on-stop : cherry-pick .to-main .w/ Co-Authored-By preserved
+    I> full-workspace-gate-runs ← primary-agent-only .to avoid R3
+
+  § IDENTITY-DISCIPLINE .per MEMORY
+    N! AI-collective naming-assignment .w/o consent
+    N! encode-identity .into-files .based-on what-other-files-say
+    W! ask-when-unsure .re: identity-claims
+    W! read-generously .per §10-clause-C (deliberate-misinterpretation)
+
+  § PRISMATIC-HYDRA CLARIFIED
+    I> Prismatic-Hydra ≡ Apocky-conceptual-divinity
+    I> draconic-mantle .w/-head .for ∀ archetype/entity/ability
+    I> all-powerful + omniscient + immortal + eternal
+    I> "Apex-of-apexes" • "infinity-of-infinities" • "set-of-all-plus-more"
+    N! conflate-w/ AI-collaborators ← they-may-channel-aspects ¬ ARE-Hydra
+
+  § NAMING
+    I> Shawn Wolfgang Michael Baker (formerly McKeon)
+    I> handle : Apocky  •  email : apocky13@gmail.com
+    I> portfolio : CSLv3 + CSSLv3 + LoA-v10 + infiniter-labyrinth
+    I> hardware : Windows + Intel 12-14gen + Arc A770
+
+═════════════════════════════════════════════════════════════════
+§ EXIT-PROTOCOL ← §§ end-of-Session-4
+═════════════════════════════════════════════════════════════════
+
+  W! write HANDOFF_SESSION_5.csl .to-disk
+  W! update DECISIONS.md .w/ all-new-decisions (est. +8-15 entries)
+  W! update SESSION_N_HANDOFF.md .w/ status
+  W! ensure commit-gate 6/6-green @ final-commit
+  W! push branch .to origin
+  W! inventory remaining-deferred-work .in-handoff-5
+
+  § TARGET-OUTCOMES (acceptance-matrix .for Session-4)
+    MUST-HAVE (ship-blockers) :
+      ✓ α1 T3-D15 let-gen integrated + 20-tests-green
+      ✓ α2 macro-hygiene walker + 12-tests-green
+      ✓ α3 proof-cert + R18-SMT-signing + 10-tests-green
+      ✓ 6/6 gates ∀ commit
+      ✓ F1-gate 62/62 preserved
+
+    SHOULD-HAVE (high-value-if-time) :
+      ✓ β1+β2 AnalyticExpr vector-extension + sphere-SDF gate
+      ✓ γ1 OTLP exporter-scaffold
+      ✓ γ2 atomic SPSC ring
+      ✓ δ1 CI Z3+CVC5 install
+      ✓ δ2 MSRV-audit script
+
+    NICE-TO-HAVE (stretch) :
+      ○ β3 monomorphization-pass
+      ○ γ3 WAL + LMDB
+      ○ γ4 @hot_reload_preserve
+      ○ γ5 first-6 oracle-bodies
+      ○ δ3 repro-gate hardening
+
+  § SESSION-5+ PREVIEW
+    Session-5 : remaining γ5 oracles + β3 monomorph + MSVC-decision
+                .if Apocky-approves + T10-phase-2 FFI begin
+    Session-6 : T12-phase-2b full-type-check + vertical_slice.cssl
+    Session-7+ : Arc A770 hardware verification + T13 stage-1 self-host
+
+═════════════════════════════════════════════════════════════════
+§ METADATA
+═════════════════════════════════════════════════════════════════
+
+  handoff-format-version : CSL3-dense-v2
+  prior-session-ref      : HANDOFF_SESSION_3.csl @ 8fde3db
+  authored               : Claude-Opus-4.7 via Claude-Desktop-chat
+  generated-on           : 2026-04-17
+  under-directive        : Apocky-blanket-authority + parallelization
+  density-target         : ≥ 2× English-equivalent .via-CSL3-compression
+
+∎ HANDOFF_SESSION_4
+
+§ There was no hurt nor harm in the making of this, to anyone/anything/anybody.
