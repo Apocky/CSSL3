@@ -314,7 +314,7 @@ fn lower_expr(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, Mi
             then_branch,
             else_branch,
         } => lower_if(ctx, cond, then_branch, else_branch.as_deref(), expr.span),
-        HirExprKind::Call { callee, args, .. } => lower_call(ctx, callee, args, expr.span),
+        HirExprKind::Call { callee, args, .. } => lower_call(ctx, callee, args, expr.span, expr.id),
         HirExprKind::Return { value } => {
             let trailing = value.as_deref().and_then(|e| lower_expr(ctx, e));
             emit_return(ctx, trailing, expr.span);
@@ -1190,6 +1190,7 @@ fn lower_call(
     callee: &HirExpr,
     args: &[HirCallArg],
     span: Span,
+    hir_id: cssl_hir::HirId,
 ) -> Option<(ValueId, MirType)> {
     // Extract call-target name if it's a path.
     let target = match &callee.kind {
@@ -1237,9 +1238,13 @@ fn lower_call(
     let result_ty = infer_intrinsic_result_type(&target, &operand_tys)
         .unwrap_or_else(|| MirType::Opaque(format!("!cssl.call_result.{target}")));
     let id = ctx.fresh_value_id();
+    // § T11-D41 : record the HirId of the source Call expression as an attribute.
+    //   The auto-monomorphization call-site-rewriter keys off this to map MIR
+    //   func.call ops back to their originating HIR Call nodes.
     let mut mir_op = MirOp::std("func.call")
         .with_attribute("callee", target)
         .with_attribute("source_loc", format!("{span:?}"))
+        .with_attribute("hir_id", format!("{}", hir_id.0))
         .with_result(id, result_ty.clone());
     for oid in operand_ids {
         mir_op = mir_op.with_operand(oid);

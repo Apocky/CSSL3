@@ -60,7 +60,7 @@ use cssl_hir::{
     HirModule, HirStmtKind, HirType, Interner, Symbol,
 };
 
-use crate::func::MirFunc;
+use crate::func::{MirFunc, MirModule};
 use crate::monomorph::{mangle_specialization_name, specialize_generic_fn, TypeSubst};
 
 /// Report returned by the auto-monomorphization walker.
@@ -258,9 +258,7 @@ fn collect_in_expr(
         }
         HirExprKind::Return { value: Some(v) } => collect_in_expr(v, interner, fn_index, out),
         HirExprKind::Return { value: None } => {}
-        HirExprKind::Break {
-            value: Some(v), ..
-        } => collect_in_expr(v, interner, fn_index, out),
+        HirExprKind::Break { value: Some(v), .. } => collect_in_expr(v, interner, fn_index, out),
         HirExprKind::Break { value: None, .. } => {}
         HirExprKind::Cast { expr: inner, .. } => collect_in_expr(inner, interner, fn_index, out),
         HirExprKind::Paren(inner) => collect_in_expr(inner, interner, fn_index, out),
@@ -319,6 +317,75 @@ fn collect_in_expr(
         // SectionRef / Struct — stage-0 doesn't need them for generic call discovery.
         _ => {}
     }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D41 — CALL-SITE REWRITER
+//
+// After `auto_monomorphize` produces specialized MirFuncs, the *existing* MIR
+// bodies (e.g., `main { func.call @id (5) }`) still reference the generic
+// callee names. This rewriter walks the MirModule and updates each
+// `func.call` op's `callee` attribute from the generic name (`id`) to the
+// mangled specialization name (`id_i32`) when the call's `hir_id` attribute
+// matches a key in `call_site_names`.
+//
+// Body-lower (T11-D41) stamps every `func.call` op with an `hir_id` attribute
+// carrying the u32 representation of `HirExpr.id` — the call-site's stable
+// identifier — so this rewriter can key off it without risking false matches
+// on callee-name alone.
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Rewrite call-site callee names in every MirFunc body of `module` based on
+/// `call_site_names` (produced by [`auto_monomorphize`]).
+///
+/// Walks every block in every MirFunc, finds ops named `func.call` that carry
+/// an `hir_id` attribute, and — if that `hir_id` is a key in the map — updates
+/// the op's `callee` attribute to the mangled specialization name.
+///
+/// Returns the number of call-site rewrites performed (useful for test
+/// assertions + observability).
+#[allow(clippy::implicit_hasher)] // internal API keyed off AutoMonomorphReport's own map
+pub fn rewrite_generic_call_sites(
+    module: &mut MirModule,
+    call_site_names: &HashMap<HirId, String>,
+) -> u32 {
+    let mut rewrites: u32 = 0;
+    for func in &mut module.funcs {
+        for block in &mut func.body.blocks {
+            for op in &mut block.ops {
+                if op.name != "func.call" {
+                    continue;
+                }
+                // Extract the op's hir_id attr as u32 + look up in the map.
+                let hir_id_str = op.attributes.iter().find_map(|(k, v)| {
+                    if k == "hir_id" {
+                        Some(v.clone())
+                    } else {
+                        None
+                    }
+                });
+                let Some(hir_id_str) = hir_id_str else {
+                    continue;
+                };
+                let Ok(hir_id_raw) = hir_id_str.parse::<u32>() else {
+                    continue;
+                };
+                let hir_id = HirId(hir_id_raw);
+                let Some(mangled) = call_site_names.get(&hir_id) else {
+                    continue;
+                };
+                // Rewrite the callee attr.
+                for (k, v) in &mut op.attributes {
+                    if k == "callee" {
+                        *v = mangled.clone();
+                        rewrites = rewrites.saturating_add(1);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    rewrites
 }
 
 #[cfg(test)]
@@ -492,6 +559,161 @@ mod tests {
                 "call_site_names referenced unknown spec `{name}`"
             );
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D41 — call-site rewriter tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn build_module_with_main_calling_generic(
+        src: &str,
+    ) -> (crate::MirModule, super::AutoMonomorphReport) {
+        use crate::{lower_fn_body, lower_function_signature, LowerCtx, MirModule};
+
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _) = lower_module(&f, &cst);
+
+        // Build MirModule via the standard lowering path.
+        let lower_ctx = LowerCtx::new(&interner);
+        let mut mir_mod = MirModule::new();
+        for item in &hir.items {
+            if let cssl_hir::HirItem::Fn(fn_decl) = item {
+                let mut mf = lower_function_signature(&lower_ctx, fn_decl);
+                lower_fn_body(&interner, Some(&f), fn_decl, &mut mf);
+                mir_mod.push_func(mf);
+            }
+        }
+
+        let report = auto_monomorphize(&hir, &interner, Some(&f));
+        for spec in &report.specializations {
+            mir_mod.push_func(spec.clone());
+        }
+        (mir_mod, report)
+    }
+
+    #[test]
+    fn rewrite_updates_callee_attr_to_mangled_name() {
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn main() -> i32 { id::<i32>(5) }
+        ";
+        let (mut mir, report) = build_module_with_main_calling_generic(src);
+
+        // Pre-rewrite : main's body has a func.call @id (generic name).
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main").unwrap();
+        let pre = main_fn
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|op| op.name == "func.call")
+            .unwrap();
+        let pre_callee = pre
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "callee")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(pre_callee, "id", "pre-rewrite callee must be `id`");
+
+        // Rewrite.
+        let rewrites = super::rewrite_generic_call_sites(&mut mir, &report.call_site_names);
+        assert_eq!(rewrites, 1);
+
+        // Post-rewrite : callee updated to `id_i32`.
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main").unwrap();
+        let post = main_fn
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|op| op.name == "func.call")
+            .unwrap();
+        let post_callee = post
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "callee")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(post_callee, "id_i32", "post-rewrite callee must be mangled");
+    }
+
+    #[test]
+    fn rewrite_leaves_non_generic_calls_untouched() {
+        // Regression guard : a plain `f(5)` call without turbofish must not
+        // get rewritten even if `f` happens to share a name with a generic.
+        let src = r"
+            fn plain(x : i32) -> i32 { x }
+            fn main() -> i32 { plain(5) }
+        ";
+        let (mut mir, report) = build_module_with_main_calling_generic(src);
+        assert!(
+            report.call_site_names.is_empty(),
+            "no turbofish ⇒ empty map"
+        );
+
+        let rewrites = super::rewrite_generic_call_sites(&mut mir, &report.call_site_names);
+        assert_eq!(rewrites, 0, "no rewrites when map empty");
+
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main").unwrap();
+        let callee = main_fn
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|op| op.name == "func.call")
+            .unwrap()
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "callee")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(callee, "plain", "plain call unchanged");
+    }
+
+    #[test]
+    fn rewrite_handles_multiple_call_sites_in_one_fn() {
+        // Two turbofish calls in the same main should produce two rewrites.
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn main() -> i32 { id::<i32>(5) + id::<i32>(7) }
+        ";
+        let (mut mir, report) = build_module_with_main_calling_generic(src);
+        assert_eq!(report.call_site_count, 2);
+        // Both calls use the same type_args ⇒ only 1 specialization, but 2 call-site entries.
+        assert_eq!(report.specialization_count, 1);
+        assert_eq!(report.call_site_names.len(), 2);
+
+        let rewrites = super::rewrite_generic_call_sites(&mut mir, &report.call_site_names);
+        assert_eq!(rewrites, 2, "expected 2 rewrites for 2 call sites");
+
+        // All func.call callees in main should now be `id_i32`.
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main").unwrap();
+        for op in &main_fn.body.entry().unwrap().ops {
+            if op.name == "func.call" {
+                let callee = op
+                    .attributes
+                    .iter()
+                    .find(|(k, _)| k == "callee")
+                    .map(|(_, v)| v.as_str())
+                    .unwrap();
+                assert_eq!(callee, "id_i32");
+            }
+        }
+    }
+
+    #[test]
+    fn rewrite_returns_zero_for_empty_map() {
+        use crate::MirModule;
+        let mut mir = MirModule::new();
+        let map = std::collections::HashMap::new();
+        let rewrites = super::rewrite_generic_call_sites(&mut mir, &map);
+        assert_eq!(rewrites, 0);
     }
 
     #[test]

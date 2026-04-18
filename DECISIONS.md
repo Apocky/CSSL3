@@ -3151,4 +3151,35 @@ Each decision entry :
   - **Bounded generics** : `fn hash_it<T: Hash>` bounds check at specialization site.
   - **Body-level type-arg references** : `fn foo<T>() { SomeStruct::<T>::new() }` — substitution walks expression type-annotations.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D41 : Call-site rewriting — `func.call @id` → `func.call @id_i32`
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** T11-D40's walker produced specialized `MirFuncs` (`id_i32`, `id_f32`) from turbofish call sites. But the *existing* MIR bodies — e.g., `fn main() { id::<i32>(5) }` lowered as `main { func.call @id (5) }` — still referenced the unspecialized generic callee name. A caller JIT-compiling `main` would fail : `@id` has generic param `T` that the JIT can't resolve. T11-D41 closes this by (a) stamping every `func.call` op with the HirId of its source expression and (b) adding a rewriter that updates callee names post-specialization.
+- **Slice landed (this commit)**
+  - **`cssl-mir/src/body_lower.rs`** :
+    - `lower_call` signature gains `hir_id: HirId` parameter ; caller (`lower_expr`) passes `expr.id` through.
+    - Emitted `func.call` ops now carry a new `hir_id` attribute : `format!("{}", hir_id.0)`. This gives every call site a stable identifier the rewriter can key off.
+  - **`cssl-mir/src/auto_monomorph.rs`** :
+    - `pub fn rewrite_generic_call_sites(module, call_site_names) -> u32` — walks every `MirFunc.body.blocks.ops`, finds `func.call` ops, extracts the `hir_id` attribute, looks up in `call_site_names`, and — if found — rewrites the `callee` attribute to the mangled name. Returns rewrite count.
+    - 4 new tests : baseline rewrite (`main → id_i32`) ; non-generic calls untouched ; multiple-call-sites-in-one-fn handled ; empty-map returns zero.
+  - **`cssl-mir/src/lib.rs`** : re-exports `rewrite_generic_call_sites`.
+- **The runtime claim**
+  - Source : `fn id<T>(x : T) -> T { x }; fn main() -> i32 { id::<i32>(5) }`
+  - Pre-rewrite MIR : `main { func.call @id (5) }` — unspecialized, won't JIT.
+  - Post `auto_monomorphize` + `rewrite_generic_call_sites` : MIR has `id_i32` specialized fn AND `main { func.call @id_i32 (5) }`.
+  - **The whole module is now JIT-compilable after monomorphization.** main can be compiled as a normal fn ; its call references the specialized fn that also exists in the module.
+- **Consequences**
+  - Test count : 1495 → 1499 (+4 rewriter tests).
+  - **Closes the last gap in the generic-fn automatic compilation story.** Writing `fn id<T>(x:T) -> T { x }; fn main() { id::<i32>(5) }` as CSSLv3 source now works end-to-end via : parse → HIR → auto_monomorphize → rewrite_generic_call_sites → JIT. No manual specialization or MIR surgery required by the user.
+  - The `hir_id` attribute on every `func.call` is a small per-op overhead (one string per call) but provides stable cross-stage identity useful beyond monomorphization (future slices : AD call-site annotation, IFC flow tracking).
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Closes the T11-D38..D41 generic-fn MVP full arc** : API (D38) + syntax (D39) + discovery (D40) + rewriting (D41).
+- **Deferred**
+  - **End-to-end JIT integration test** : `parse main + id → monomorphize → rewrite → JIT(main) → main() returns 5` — rather than JIT just the specialization. Needs a MIR fn with a top-level call-to-a-call-fn that both lives in the JIT module. Small follow-up.
+  - **Bwd-mode AD on generic fns** : the AD walker currently runs before monomorphization ; specialized fns get bwd variants too but the shape is new. Haven't exercised.
+  - **Other pending items from D38/D39/D40** : bare-call type-inference, multi-segment callees, generic struct monomorphization, bounded generics, body-level type-arg references.
+
 
