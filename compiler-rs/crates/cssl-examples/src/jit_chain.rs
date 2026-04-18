@@ -1275,6 +1275,106 @@ fn scene(x : f32) -> f32 { helper(x) }
         );
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D40 : auto-monomorphization end-to-end flow.
+    //
+    // Previously (T11-D38) callers had to invoke specialize_generic_fn
+    // manually with a hand-built TypeSubst. T11-D40's walker discovers
+    // turbofish call sites automatically and produces the specializations.
+    // This test exercises the full chain :
+    //
+    //   source `fn id<T> + id::<i32>(5) + id::<f32>(2.5)`
+    //     → HIR (turbofish carried through per T11-D39)
+    //     → auto_monomorphize (walker produces 2 MirFuncs)
+    //     → JIT-compile BOTH specializations in one module
+    //     → call id_i32(5) = 5 + id_f32(2.5) = 2.5
+    //
+    // Proves the walker closes the "generic-fn → machine-code" loop without
+    // any manual specialize_generic_fn invocation by the caller.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn auto_monomorphize_discovers_specializations_from_turbofish_calls() {
+        use cssl_hir::lower_module;
+        use cssl_mir::{auto_monomorphize, FloatWidth, IntWidth, MirType};
+
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn use_i32() -> i32 { id::<i32>(5) }
+            fn use_f32() -> f32 { id::<f32>(2.5) }
+        ";
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+
+        // § Walker runs — NO manual specialize_generic_fn call by this test.
+        let report = auto_monomorphize(&hir, &interner, Some(&file));
+        assert_eq!(report.generic_fn_count, 1);
+        assert_eq!(report.call_site_count, 2);
+        assert_eq!(report.specialization_count, 2);
+
+        // § The 2 specializations must be id_i32 + id_f32.
+        let names: Vec<&str> = report
+            .specializations
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
+        assert!(names.contains(&"id_i32"), "id_i32 missing : {names:?}");
+        assert!(names.contains(&"id_f32"), "id_f32 missing : {names:?}");
+
+        // § JIT-compile BOTH specializations in a single module + call each.
+        let id_i32_fn = report
+            .specializations
+            .iter()
+            .find(|f| f.name == "id_i32")
+            .unwrap();
+        let id_f32_fn = report
+            .specializations
+            .iter()
+            .find(|f| f.name == "id_f32")
+            .unwrap();
+        assert_eq!(id_i32_fn.params, vec![MirType::Int(IntWidth::I32)]);
+        assert_eq!(id_f32_fn.params, vec![MirType::Float(FloatWidth::F32)]);
+
+        let mut m = JitModule::new();
+        let h_i32 = m.compile(id_i32_fn).expect("JIT id_i32");
+        let h_f32 = m.compile(id_f32_fn).expect("JIT id_f32");
+        m.finalize().expect("finalize");
+
+        // § id_i32(5) = 5 ; id_f32(2.5) = 2.5 — both round-trip through the JIT.
+        assert_eq!(h_i32.call_i32_to_i32(5, &m).unwrap(), 5);
+        assert_eq!(h_i32.call_i32_to_i32(-42, &m).unwrap(), -42);
+        assert!((h_f32.call_f32_to_f32(2.5, &m).unwrap() - 2.5).abs() < 1e-5);
+        assert!((h_f32.call_f32_to_f32(-1.25, &m).unwrap() - (-1.25)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn auto_monomorphize_deduplicates_same_type_args() {
+        // Walker must collapse two call sites with identical type_args into ONE
+        // specialization (not duplicate work).
+        use cssl_hir::lower_module;
+        use cssl_mir::auto_monomorphize;
+
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn a() -> i32 { id::<i32>(5) }
+            fn b() -> i32 { id::<i32>(7) }
+            fn c() -> i32 { id::<i32>(11) }
+        ";
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+
+        let report = auto_monomorphize(&hir, &interner, Some(&file));
+        assert_eq!(report.call_site_count, 3);
+        assert_eq!(report.specialization_count, 1);
+        // All 3 call sites map to the same mangled name.
+        let mapped: std::collections::HashSet<&String> = report.call_site_names.values().collect();
+        assert_eq!(mapped.len(), 1);
+    }
+
     #[test]
     fn vec_scalarization_preserves_scalar_params_untouched() {
         // § T11-D37 : regression guard — scalar params are NOT incorrectly

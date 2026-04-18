@@ -3097,4 +3097,58 @@ Each decision entry :
   - **Const + region generics** : `fn nth<const N: usize>(arr: [i32; N])` — const-param substitution into array-length expressions. Non-trivial.
   - **Body-level type-arg references** : `fn foo<T>() -> T { Default::<T>::default() }` — substitution must walk expression-level type references, not just the fn signature.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D39 : Turbofish propagation — CST + HIR Call.type_args
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** The parser accepted `id::<i32>(5)` turbofish syntax but DROPPED the type-args (explicit comment at `cssl-parse/src/rust_hybrid/expr.rs` : "for simplicity we consume the type-list and drop"). T11-D38's monomorphization machinery could specialize generic fns, but no call-site metadata reached MIR to trigger auto-monomorphization. T11-D39 captures turbofish types through CST → HIR so T11-D40's walker can consume them.
+- **Slice landed (this commit)**
+  - **`cssl-ast/src/cst.rs`** : `ExprKind::Call` gains `type_args: Vec<Type>` field (empty when no turbofish).
+  - **`cssl-parse/src/rust_hybrid/expr.rs`** : turbofish handler rewritten. When `::<T, U>` is parsed, if the next token is `(`, the handler *immediately* consumes the call args and constructs an `ExprKind::Call` with `type_args` populated. Otherwise (non-call usage like `Vec::<i32>` as a type) types are dropped — future slice addresses. Plain `Call` (no turbofish) populates `type_args: Vec::new()`.
+  - **`cssl-hir/src/expr.rs`** : `HirExprKind::Call` gains `type_args: Vec<HirType>` mirror.
+  - **`cssl-hir/src/lower.rs`** : Call lowering populates `type_args` from CST via the standard `lower_type` walker.
+  - **6 destructure sites** in downstream crates (ad_legality, ifc, infer, staged_check, body_lower, cssl-staging) updated with `..` ellipsis since they don't consume the new field.
+  - **4 parser tests + 3 HIR-lowering tests** verify turbofish survives each stage.
+- **Consequences**
+  - **Call-site type-args are now queryable at HIR.** T11-D40's monomorphization walker reads directly from `HirExprKind::Call.type_args` without re-parsing or approximating from arg-type inference.
+  - **No semantic change to existing non-turbofish code.** Every existing `Call` now carries an empty `type_args` vec — downstream consumers that destructured via `{ callee, args }` now use `{ callee, args, .. }`.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D40 : Auto-monomorphization walker — generic call sites → specialized MIR fns
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** T11-D38 provided `specialize_generic_fn` (explicit-subst API). T11-D39 carried turbofish types into HIR. T11-D40 is the **discovery pass** that joins them : walk the HIR module, find every turbofish call site, dedupe by (callee, type-arg-signature), emit one specialized `MirFunc` per unique tuple. Callers now get a working generic-fn → machine-code pipeline **without any manual specialization invocation**.
+- **Slice landed (this commit)**
+  - **`cssl-mir/src/auto_monomorph.rs`** (new ~470 LOC) :
+    - `pub fn auto_monomorphize(module, interner, source) -> AutoMonomorphReport` — the main entry. Indexes generic fn-decls by name, walks all fn-body HIR expressions, collects turbofish Calls, dedupes by mangled-name, invokes `specialize_generic_fn` per unique tuple.
+    - `pub struct AutoMonomorphReport` — carries : `specializations: Vec<MirFunc>` · `call_site_names: HashMap<HirId, String>` (per-call-site mangled-name mapping for future MIR rewriting) · `generic_fn_count` / `call_site_count` / `specialization_count` for observability.
+    - `collect_turbofish_calls(block, …)` + `collect_in_expr(expr, …)` — recursive walker covering 20+ HirExprKind variants (Binary / Unary / Call / Field / Index / Block / If / Match / Return / Break / Cast / Paren / Tuple / Array / Assign / For / While / Loop / Range / Pipeline / Try / TryDefault / Run). Unhandled variants (Lambda body / Perform / With / Region / Compound / SectionRef / Struct) conservatively ignored at stage-0.
+  - **`cssl-mir/src/lib.rs`** : `pub mod auto_monomorph` + re-exports of `auto_monomorphize` + `AutoMonomorphReport`.
+  - **13 unit tests** in `auto_monomorph` : empty module clean · non-generic with call is no-op · generic-no-call is indexed · turbofish triggers specialization · distinct type-args produce distinct specializations · same type-args dedup · multiple generic fns each specialize · multi-type-arg generic · nested-in-binary-op discovery · bare-call-without-turbofish not captured · summary shape · call-site-names map · signature correctness.
+  - **2 end-to-end integration tests** in `cssl-examples::jit_chain` :
+    - `auto_monomorphize_discovers_specializations_from_turbofish_calls` — parses `fn id<T>(x : T) -> T { x } + id::<i32>(5) + id::<f32>(2.5)`, runs walker, JIT-compiles BOTH specializations in one module, calls each : `id_i32(5) = 5 ✓` / `id_i32(-42) = -42 ✓` / `id_f32(2.5) ≈ 2.5 ✓` / `id_f32(-1.25) ≈ -1.25 ✓`. **First fully automatic generic-fn machine-code execution in CSSLv3** — no manual `specialize_generic_fn` call by the test.
+    - `auto_monomorphize_deduplicates_same_type_args` — 3 call sites all `id::<i32>(…)` produce exactly 1 specialization ; all 3 call-site-name entries map to `id_i32`.
+- **The runtime claim**
+  - Source : `fn id<T>(x : T) -> T { x }; fn a() -> i32 { id::<i32>(5) }; fn b() -> f32 { id::<f32>(2.5) }`
+  - Pipeline : lex → parse → HIR (turbofish carried) → **auto_monomorphize** → 2 MirFuncs (`id_i32`, `id_f32`) → JIT → machine code
+  - Runtime : `id_i32(5) = 5`, `id_f32(2.5) = 2.5`. Both specializations coexist in one JIT module.
+  - **The generic-fn → machine-code loop is now closed end-to-end without manual intervention.**
+- **Consequences**
+  - Test count : 1480 → 1495 (+15). Auto-monomorph : +13 unit + 2 integration.
+  - **P1 stdlib-core pipeline is now demonstrably functional for generic fns.** Writing `struct Vec<T> { … }` + `impl<T> Vec<T>` in CSSLv3 still needs : (a) generic-struct monomorphization (parallel API for struct types), (b) heap-allocation primitives, (c) call-site rewriting in existing MIR bodies, (d) trait-dispatch for bounded generics. The generic-FN half of the story is fully landed.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Completes the generic-fn-MVP arc** — D38 (API) + D39 (call-site syntax) + D40 (auto-discovery).
+- **Deferred** (explicit follow-ups)
+  - **Call-site rewriting in MIR bodies** : today the walker discovers `main → id::<i32>(5)` and produces `id_i32` as a specialization, but the `func.call @id` op emitted by `lower_fn_body` for `main` still references the ORIGINAL generic fn name, not `id_i32`. Rewriting requires either (a) threading `call_site_names` through `BodyLowerCtx` so body-lower emits the mangled name directly, or (b) a post-MIR rewrite pass. Both are clean single-slice follow-ups.
+  - **Type-arg inference for bare calls** : today `id(5)` (no turbofish) is not captured. Future slice uses T3.4 inference to deduce `T = i32` from the arg, add it to `type_args` pre-walker.
+  - **Non-single-segment callees** : `mod::id::<i32>(…)` ignored by the index-by-last-segment heuristic. Needs resolve-based lookup.
+  - **Generic struct / enum / impl monomorphization** : parallel API for non-fn generic items.
+  - **Bounded generics** : `fn hash_it<T: Hash>` bounds check at specialization site.
+  - **Body-level type-arg references** : `fn foo<T>() { SomeStruct::<T>::new() }` — substitution walks expression type-annotations.
+
 

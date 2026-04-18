@@ -39,6 +39,7 @@
 #![allow(clippy::unnecessary_wraps)]
 #![allow(clippy::single_match_else)]
 
+pub mod auto_monomorph;
 pub mod block;
 pub mod body_lower;
 pub mod func;
@@ -49,6 +50,7 @@ pub mod pipeline;
 pub mod print;
 pub mod value;
 
+pub use auto_monomorph::{auto_monomorphize, AutoMonomorphReport};
 pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{lower_fn_body, BodyLowerCtx};
 pub use func::{MirFunc, MirModule};
