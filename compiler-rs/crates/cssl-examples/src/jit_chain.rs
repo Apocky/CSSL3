@@ -1393,9 +1393,12 @@ fn scene(x : f32) -> f32 { helper(x) }
         let rewrites = rewrite_generic_call_sites(&mut mir, &report.call_site_names);
         assert_eq!(rewrites, 1, "expected 1 call-site rewrite in main");
 
-        // § JIT-compile main + id_i32 (skip unspecialized generic id). Order
-        //   matters : id_i32 must be compiled before main so main's call-site
-        //   can resolve @id_i32 in the JIT's symbol table.
+        // § T11-D43 : drop the unspecialized generic `id` so the module now
+        //   contains only concrete fns. No manual skip required downstream.
+        let dropped = cssl_mir::drop_unspecialized_generic_fns(&mut mir);
+        assert_eq!(dropped, 1, "expected to drop unspecialized `id`");
+
+        // § JIT-compile id_i32 before main so main's call resolves the symbol.
         let id_i32_fn = mir
             .funcs
             .iter()

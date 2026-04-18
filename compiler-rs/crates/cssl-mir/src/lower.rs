@@ -146,6 +146,9 @@ pub fn lower_function_signature(ctx: &LowerCtx<'_>, f: &HirFn) -> MirFunc {
     };
     let name = ctx.interner.resolve(f.name);
     let mut mf = MirFunc::new(name, params, results);
+    // T11-D43 : mark fns with unbound generic params so the cleanup pass can
+    // drop them post-monomorphization.
+    mf.is_generic = !f.generics.params.is_empty();
     if let Some(row) = &f.effect_row {
         mf.effect_row = Some(ctx.format_effect_row(row));
     }

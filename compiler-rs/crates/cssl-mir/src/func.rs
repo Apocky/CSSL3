@@ -29,6 +29,13 @@ pub struct MirFunc {
     pub ifc_label: Option<String>,
     /// Attribute dictionary for additional flags (e.g., `"@differentiable"`).
     pub attributes: Vec<(String, String)>,
+    /// T11-D43 : `true` iff the source HIR fn declared generic parameters
+    /// (`fn f<T>(…)`). Generic fns carry type-param placeholder `Opaque`
+    /// types in their params/body and cannot be JIT-compiled directly —
+    /// they must be specialized first via `specialize_generic_fn`. The
+    /// `drop_unspecialized_generic_fns` cleanup pass removes them after
+    /// monomorphization so downstream passes see only concrete fns.
+    pub is_generic: bool,
     /// The fn body — a single region with at-least an entry block.
     pub body: MirRegion,
     /// Monotonic counter used for fresh-value-id allocation within the body.
@@ -55,6 +62,7 @@ impl MirFunc {
             cap: None,
             ifc_label: None,
             attributes: Vec::new(),
+            is_generic: false,
             body,
             next_value_id,
         }

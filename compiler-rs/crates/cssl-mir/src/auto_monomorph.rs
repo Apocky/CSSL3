@@ -320,6 +320,33 @@ fn collect_in_expr(
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+// § T11-D43 — MODULE CLEANUP : drop unspecialized generic fns
+//
+// After auto-monomorphization produces concrete specializations, the original
+// generic fns (e.g., `fn id<T>(x:T) -> T { x }`) remain in the MirModule with
+// Opaque("T") param types — they cannot be JIT-compiled directly. This pass
+// removes them so downstream passes (JIT, codegen) see only concrete fns.
+//
+// A fn is "unspecialized generic" iff its `is_generic` flag is true (set by
+// `lower_function_signature` when the HIR declaration had non-empty generics ;
+// specialize_generic_fn clones with empty generics so specialized fns have
+// is_generic = false).
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Remove every `MirFunc` with `is_generic = true` from `module.funcs`, in
+/// place. Returns the number of functions dropped.
+///
+/// § TYPICAL USAGE
+/// Run *after* `auto_monomorphize` + `rewrite_generic_call_sites` so all
+/// concrete call sites have been rewired to specialized callees. Running it
+/// before will strand any call-site still referencing the generic name.
+pub fn drop_unspecialized_generic_fns(module: &mut MirModule) -> u32 {
+    let before = module.funcs.len();
+    module.funcs.retain(|f| !f.is_generic);
+    u32::try_from(before.saturating_sub(module.funcs.len())).unwrap_or(u32::MAX)
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 // § T11-D41 — CALL-SITE REWRITER
 //
 // After `auto_monomorphize` produces specialized MirFuncs, the *existing* MIR
@@ -714,6 +741,81 @@ mod tests {
         let map = std::collections::HashMap::new();
         let rewrites = super::rewrite_generic_call_sites(&mut mir, &map);
         assert_eq!(rewrites, 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D43 — drop_unspecialized_generic_fns tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn drop_removes_generic_fns_but_keeps_concrete() {
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn add(a : i32, b : i32) -> i32 { a + b }
+            fn main() -> i32 { id::<i32>(5) }
+        ";
+        let (mut mir, _report) = build_module_with_main_calling_generic(src);
+
+        let before_names: Vec<&str> = mir.funcs.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            before_names.contains(&"id"),
+            "generic `id` must be present pre-cleanup"
+        );
+        assert!(before_names.contains(&"id_i32"), "specialization present");
+        assert!(before_names.contains(&"add"), "non-generic `add` present");
+        assert!(before_names.contains(&"main"), "main present");
+
+        let dropped = super::drop_unspecialized_generic_fns(&mut mir);
+        assert_eq!(dropped, 1, "expected to drop 1 generic fn (id)");
+
+        let after_names: std::collections::HashSet<&str> =
+            mir.funcs.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            !after_names.contains("id"),
+            "generic `id` must be GONE post-cleanup"
+        );
+        assert!(after_names.contains("id_i32"), "spec survives");
+        assert!(after_names.contains("add"), "non-generic survives");
+        assert!(after_names.contains("main"), "main survives");
+    }
+
+    #[test]
+    fn drop_returns_zero_when_no_generics_present() {
+        use crate::MirModule;
+        let mut mir = MirModule::new();
+        let dropped = super::drop_unspecialized_generic_fns(&mut mir);
+        assert_eq!(dropped, 0, "empty module drops nothing");
+    }
+
+    #[test]
+    fn is_generic_flag_set_correctly_on_lower() {
+        // Regression : lower_function_signature sets is_generic iff HirFn has
+        // non-empty generics.params.
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn add(a : i32, b : i32) -> i32 { a + b }
+        ";
+        let (mir, _report) = build_module_with_main_calling_generic(src);
+        let id = mir.funcs.iter().find(|f| f.name == "id").unwrap();
+        let add = mir.funcs.iter().find(|f| f.name == "add").unwrap();
+        assert!(id.is_generic, "id<T> must be flagged generic");
+        assert!(!add.is_generic, "add is concrete");
+    }
+
+    #[test]
+    fn specialized_fn_has_is_generic_false() {
+        // Regression : specialize_generic_fn produces MirFuncs with
+        // is_generic = false (they're concrete).
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn main() -> i32 { id::<i32>(5) }
+        ";
+        let (mir, _report) = build_module_with_main_calling_generic(src);
+        let id_i32 = mir.funcs.iter().find(|f| f.name == "id_i32").unwrap();
+        assert!(
+            !id_i32.is_generic,
+            "specialized id_i32 must NOT be flagged generic"
+        );
     }
 
     #[test]
