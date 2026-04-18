@@ -1772,3 +1772,32 @@ Each decision entry :
   - Expansion phase : tier-2 declarative pattern-rewrite + tier-3 `#run` proc-macro sandbox.
   - Cross-module macro exports (currently validation is per-item, not per-namespace).
   - Shadowing-detection : a macro-introduced binding that shadows a user-binding in the call-site's scope.
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D8 : T7-phase-2e-proof-cert — signed SMT-verdict certs + AuditChain composability
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D6 cryptographically sealed the gate-report itself ; T9-D4 + T9-D5 wired SMT dispatch via text + structured-query paths. This commit closes the R18 attestation stack : a `(query-text, verdict, solver-kind)` triple from any SMT run can be packaged as a `SignedProofCert`, independently verified via BLAKE3 hash + Ed25519 signature check, and appended to `AuditChain` as a tagged `smt-proof-cert` entry. Multi-solver / multi-run trajectories become third-party-auditable.
+- **Slice landed (this commit)**
+  - `PROOF_CERT_FORMAT = "CSSLv3-R18-SMT-PROOF-CERT-v1"` stable tag.
+  - `SignedProofCert { case_name, query_text, verdict, solver_kind, canonical_payload, content_hash, signature, verifying_key, format }` : full signed-triple struct.
+  - `canonical_proof_cert_bytes(case_name, query_text, verdict, solver_kind) -> Vec<u8>` : deterministic line-oriented UTF-8 serializer. Embeds `query-len=<N>` for tamper-resistant payload parsing.
+  - `GradientCase::sign_proof_cert(&self, &dyn Solver, &SigningKey) -> Option<SignedProofCert>` : end-to-end dispatch + hash + sign ; returns `None` on solver unavailability.
+  - `verify_signed_proof_cert(&SignedProofCert, &[u8; 32]) -> ProofCertVerdict { format / payload_hash / signature / is_unsat_proof }` : 4-step verifier.
+  - `ProofCertVerdict::is_fully_valid` (all-4) + `cryptographically_valid` (first-3, accepts Sat / Unknown when auditor cares only about signer-attribution).
+  - `SignedProofCert::audit_tag()` / `audit_message()` / `append_to_audit_chain(&mut AuditChain, timestamp_s)` for R18 chain-of-custody integration.
+  - 10 new tests : format-stability + canonical-determinism + missing-solver-None + under-fixed-unsat-valid + tampered-query-fails-hash + wrong-key-fails-sig + sat-still-cryptographically-valid + append-to-chain-verifies + summary-shape + proof-verdict-shape.
+- **Consequences**
+  - Full R18 killer-app attestation stack now complete :
+    - Structural : `run_killer_app_gate()` with `SignedKillerAppGateReport` seal (T7-D6).
+    - Per-case SMT : `SignedProofCert` (THIS commit, T7-D8).
+    - Chain-of-custody : both `SignedKillerAppGateReport` + `SignedProofCert` append to `AuditChain` as distinct tagged entries (`killer-app-gate` / `smt-proof-cert`).
+  - Any third-party auditor holding the verifying-key can now independently reproduce + verify every step : gate-verdict, per-case SMT verdict, chain-sequence.
+  - Test count : 1140 → 1150 (+10).
+- **Deferred**
+  - Multi-solver cross-witness : one cert from Z3 + one from CVC5 for each case — strengthens the unsat-proof claim.
+  - Proof-cert bundle : pack all per-case certs into a single signed document.
+  - OTLP exporter for proof-certs (T11-phase-2b scope).
+  - Cross-session cert aggregation : build a long-term signed log of every gate-run across sessions.

@@ -1539,6 +1539,241 @@ impl GradientCase {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § Proof-cert emission : BLAKE3 + Ed25519 signed triple of
+//   (smt-query, verdict, solver-kind) so an auditor can independently verify
+//   that a specific solver, given the gate's canonical query, produced the
+//   claimed verdict. Composes with the cryptographic-seal of
+//   SignedKillerAppGateReport + R18 AuditChain chain-of-custody.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Canonical version tag for proof-certs. Bump when the embedded-payload
+/// format changes so verifiers can reject stale forms.
+pub const PROOF_CERT_FORMAT: &str = "CSSLv3-R18-SMT-PROOF-CERT-v1";
+
+/// A cryptographically-sealed proof-cert for an SMT-verified gradient case.
+///
+/// Captures :
+///   - `case_name` + `query_text` (the SMT-LIB text that was run)
+///   - `verdict` + `solver_kind` (what came back)
+///   - `content_hash` : BLAKE3 over the canonical payload
+///   - `signature` : Ed25519 over `content_hash.0`
+///   - `verifying_key` : the 32-byte public-key half of the signer
+///
+/// An auditor reconstructs the canonical payload from `case_name` +
+/// `query_text` + `verdict` + `solver_kind` + `format`, re-hashes, and
+/// verifies the signature under `verifying_key`. Any tamper invalidates the
+/// hash-or-signature check.
+#[derive(Debug, Clone)]
+pub struct SignedProofCert {
+    /// Name of the gradient case this cert attests.
+    pub case_name: String,
+    /// Raw SMT-LIB text submitted to the solver.
+    pub query_text: String,
+    /// Verdict returned by the solver (expected `Unsat` for equivalence proofs).
+    pub verdict: Verdict,
+    /// Which solver produced the verdict.
+    pub solver_kind: SolverKind,
+    /// Deterministic byte-serialization of the cert payload (what got hashed).
+    pub canonical_payload: Vec<u8>,
+    /// BLAKE3 hash of `canonical_payload`.
+    pub content_hash: ContentHash,
+    /// Ed25519 signature over `content_hash.0`.
+    pub signature: Signature,
+    /// Public-key half of the signer.
+    pub verifying_key: [u8; 32],
+    /// Format-version tag (= [`PROOF_CERT_FORMAT`]).
+    pub format: String,
+}
+
+impl SignedProofCert {
+    /// Verdict-is-unsat predicate — `true` iff the signer proved equivalence.
+    #[must_use]
+    pub fn is_proof(&self) -> bool {
+        matches!(self.verdict, Verdict::Unsat)
+    }
+
+    /// Short summary line for CI log / audit output.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let hash_prefix = &self.content_hash.hex()[..16];
+        format!(
+            "{} | case={} | verdict={:?} via {:?} | hash={}…",
+            self.format, self.case_name, self.verdict, self.solver_kind, hash_prefix
+        )
+    }
+
+    /// Canonical audit-chain tag for proof-cert entries.
+    #[must_use]
+    pub const fn audit_tag() -> &'static str {
+        "smt-proof-cert"
+    }
+
+    /// Compact audit-chain message — references the cert's hash + verdict.
+    #[must_use]
+    pub fn audit_message(&self) -> String {
+        format!(
+            "{} hash={} case={} verdict={:?} solver={:?} vk={}",
+            self.format,
+            self.content_hash.hex(),
+            self.case_name,
+            self.verdict,
+            self.solver_kind,
+            hex_short(&self.verifying_key, 32),
+        )
+    }
+
+    /// Append this cert to an [`AuditChain`] as a tagged entry
+    /// (`"smt-proof-cert"`). Enables multi-solver proof-trajectory auditing.
+    pub fn append_to_audit_chain(&self, chain: &mut AuditChain, timestamp_s: u64) {
+        chain.append(Self::audit_tag(), self.audit_message(), timestamp_s);
+    }
+}
+
+/// Serialize an [`SmtVerification`] + its `query_text` into the canonical
+/// byte-sequence used for hashing. Format :
+///
+/// ```text
+/// CSSLv3-R18-SMT-PROOF-CERT-v1
+/// case=<name>
+/// verdict=<debug-form>
+/// solver=<debug-form>
+/// query-len=<N>
+/// query:
+/// <N bytes of query_text>
+/// end
+/// ```
+///
+/// Every field is newline-terminated ; `query:`-line is followed by exactly
+/// `N` bytes of the query payload (may contain newlines). Terminator `end\n`
+/// is the last line.
+#[must_use]
+pub fn canonical_proof_cert_bytes(
+    case_name: &str,
+    query_text: &str,
+    verdict: Verdict,
+    solver_kind: SolverKind,
+) -> Vec<u8> {
+    use core::fmt::Write;
+    let mut out = String::new();
+    out.push_str(PROOF_CERT_FORMAT);
+    out.push('\n');
+    let _ = writeln!(out, "case={case_name}");
+    let _ = writeln!(out, "verdict={verdict:?}");
+    let _ = writeln!(out, "solver={solver_kind:?}");
+    let _ = writeln!(out, "query-len={}", query_text.len());
+    out.push_str("query:\n");
+    out.push_str(query_text);
+    if !query_text.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str("end\n");
+    out.into_bytes()
+}
+
+/// Per-case verification verdict used during [`SignedProofCert`] verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct ProofCertVerdict {
+    /// `true` iff format-tag matches [`PROOF_CERT_FORMAT`].
+    pub format_matches: bool,
+    /// `true` iff recomputed BLAKE3 over the canonical payload matches.
+    pub payload_hash_matches: bool,
+    /// `true` iff the Ed25519 signature verifies under `expected_verifying_key`.
+    pub signature_verifies: bool,
+    /// `true` iff the embedded verdict is `Unsat` (equivalence proved).
+    pub is_unsat_proof: bool,
+}
+
+impl ProofCertVerdict {
+    /// All-four checks pass.
+    #[must_use]
+    pub fn is_fully_valid(&self) -> bool {
+        self.format_matches
+            && self.payload_hash_matches
+            && self.signature_verifies
+            && self.is_unsat_proof
+    }
+
+    /// Format + hash + signature pass (ignores `is_unsat_proof` — useful when
+    /// the auditor wants to accept a signed `Sat` / `Unknown` cert too).
+    #[must_use]
+    pub fn cryptographically_valid(&self) -> bool {
+        self.format_matches && self.payload_hash_matches && self.signature_verifies
+    }
+}
+
+/// Verify a [`SignedProofCert`] against `expected_verifying_key`. Returns a
+/// [`ProofCertVerdict`] ; callers choose `is_fully_valid()` (all 4 checks) or
+/// `cryptographically_valid()` (ignores unsat-ness) as the threshold.
+#[must_use]
+pub fn verify_signed_proof_cert(
+    cert: &SignedProofCert,
+    expected_verifying_key: &[u8; 32],
+) -> ProofCertVerdict {
+    let format_matches = cert.format == PROOF_CERT_FORMAT;
+    let recomputed_payload = canonical_proof_cert_bytes(
+        &cert.case_name,
+        &cert.query_text,
+        cert.verdict,
+        cert.solver_kind,
+    );
+    let recomputed_hash = ContentHash::hash(&recomputed_payload);
+    let payload_hash_matches =
+        recomputed_hash == cert.content_hash && recomputed_payload == cert.canonical_payload;
+    let signature_verifies = cert.verifying_key == *expected_verifying_key
+        && verify_detached(
+            &cert.verifying_key,
+            &cert.content_hash.0,
+            &cert.signature,
+        )
+        .is_ok();
+    let is_unsat_proof = matches!(cert.verdict, Verdict::Unsat);
+    ProofCertVerdict {
+        format_matches,
+        payload_hash_matches,
+        signature_verifies,
+        is_unsat_proof,
+    }
+}
+
+impl GradientCase {
+    /// Produce a [`SignedProofCert`] for this case : re-emit the SMT query,
+    /// dispatch through `solver`, wrap the `(query, verdict, solver-kind)`
+    /// triple in a canonical byte-sequence, BLAKE3-hash, Ed25519-sign, and
+    /// package. Returns `None` when the solver is unavailable (binary-missing
+    /// or any subprocess failure ; see `cssl_smt::SolverError`).
+    ///
+    /// The resulting cert is independently verifiable via
+    /// [`verify_signed_proof_cert`] and can be appended to an [`AuditChain`]
+    /// via [`SignedProofCert::append_to_audit_chain`].
+    #[must_use]
+    pub fn sign_proof_cert(
+        &self,
+        solver: &dyn Solver,
+        key: &SigningKey,
+    ) -> Option<SignedProofCert> {
+        let query_text = self.smt_query_text();
+        let verdict = solver.check_text(&query_text).ok()?;
+        let solver_kind = solver.kind();
+        let canonical_payload =
+            canonical_proof_cert_bytes(&self.name, &query_text, verdict, solver_kind);
+        let content_hash = ContentHash::hash(&canonical_payload);
+        let signature = Signature::sign(key, &content_hash.0);
+        Some(SignedProofCert {
+            case_name: self.name.clone(),
+            query_text,
+            verdict,
+            solver_kind,
+            canonical_payload,
+            content_hash,
+            signature,
+            verifying_key: key.verifying_key_bytes(),
+            format: PROOF_CERT_FORMAT.to_string(),
+        })
+    }
+}
+
 impl KillerAppGateReport {
     /// Run SMT verification on every case in the report. Returns a full
     /// [`SmtVerificationReport`] ; when the solver is unavailable every case
@@ -2498,5 +2733,181 @@ mod tests {
             // At least one var decl (primal params + d_y).
             assert!(q.fn_decls.len() >= 2);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § R18 proof-cert emission + signing
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::{
+        canonical_proof_cert_bytes, verify_signed_proof_cert, ProofCertVerdict, SignedProofCert,
+        PROOF_CERT_FORMAT,
+    };
+
+    #[test]
+    fn proof_cert_format_tag_is_stable() {
+        assert_eq!(PROOF_CERT_FORMAT, "CSSLv3-R18-SMT-PROOF-CERT-v1");
+    }
+
+    #[test]
+    fn canonical_proof_cert_bytes_is_deterministic() {
+        let a = canonical_proof_cert_bytes("c1", "(check-sat)", Verdict::Unsat, SolverKind::Z3);
+        let b = canonical_proof_cert_bytes("c1", "(check-sat)", Verdict::Unsat, SolverKind::Z3);
+        assert_eq!(a, b);
+        let text = core::str::from_utf8(&a).unwrap();
+        assert!(text.starts_with(PROOF_CERT_FORMAT));
+        assert!(text.contains("case=c1"));
+        assert!(text.contains("verdict=Unsat"));
+        assert!(text.contains("solver=Z3"));
+        assert!(text.contains("query:"));
+        assert!(text.ends_with("end\n"));
+    }
+
+    #[test]
+    fn sign_proof_cert_returns_none_when_solver_missing() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = MissingBinarySolver;
+        let key = fixed_seed_key();
+        assert!(case.sign_proof_cert(&solver, &key).is_none());
+    }
+
+    #[test]
+    fn sign_proof_cert_under_fixed_unsat_produces_valid_cert() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let key = fixed_seed_key();
+        let cert = case.sign_proof_cert(&solver, &key).expect("cert");
+        assert!(cert.is_proof());
+        assert_eq!(cert.verdict, Verdict::Unsat);
+        assert_eq!(cert.solver_kind, SolverKind::Z3);
+        assert_eq!(cert.verifying_key, key.verifying_key_bytes());
+        // Roundtrip through verify_signed_proof_cert.
+        let verdict = verify_signed_proof_cert(&cert, &key.verifying_key_bytes());
+        assert!(verdict.is_fully_valid(), "{verdict:?}");
+    }
+
+    #[test]
+    fn signed_proof_cert_detects_tampered_query_text() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let key = fixed_seed_key();
+        let mut cert = case.sign_proof_cert(&solver, &key).expect("cert");
+        // Tamper with the query-text — payload hash no longer matches.
+        cert.query_text = "(check-sat-forged)".to_string();
+        let verdict = verify_signed_proof_cert(&cert, &key.verifying_key_bytes());
+        assert!(!verdict.payload_hash_matches);
+        assert!(!verdict.is_fully_valid());
+    }
+
+    #[test]
+    fn signed_proof_cert_fails_under_wrong_key() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let key = fixed_seed_key();
+        let cert = case.sign_proof_cert(&solver, &key).expect("cert");
+        let other_vk = SigningKey::from_seed([0x42u8; 32]).verifying_key_bytes();
+        let verdict = verify_signed_proof_cert(&cert, &other_vk);
+        assert!(!verdict.signature_verifies);
+    }
+
+    #[test]
+    fn sat_verdict_still_emits_cryptographically_valid_cert() {
+        // A Sat verdict (gradient bug detected!) still produces a
+        // cryptographically-valid cert — the auditor trusts that this SPECIFIC
+        // solver-on-PATH + this SPECIFIC query returned Sat. The
+        // `is_unsat_proof` flag distinguishes the "proves equivalence" subset.
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Sat);
+        let key = fixed_seed_key();
+        let cert = case.sign_proof_cert(&solver, &key).expect("cert");
+        let verdict = verify_signed_proof_cert(&cert, &key.verifying_key_bytes());
+        assert!(verdict.cryptographically_valid());
+        assert!(!verdict.is_unsat_proof);
+        assert!(!verdict.is_fully_valid());
+    }
+
+    #[test]
+    fn signed_proof_cert_appends_to_audit_chain() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let key = fixed_seed_key();
+        let cert = case.sign_proof_cert(&solver, &key).expect("cert");
+        let mut chain = AuditChain::new();
+        cert.append_to_audit_chain(&mut chain, 17_000_000);
+        assert_eq!(chain.len(), 1);
+        let entry = chain.iter().next().unwrap();
+        assert_eq!(entry.tag, SignedProofCert::audit_tag());
+        assert!(entry.message.contains(&cert.content_hash.hex()));
+        chain.verify_chain().expect("chain must verify");
+    }
+
+    #[test]
+    fn proof_cert_summary_contains_verdict_and_hash_prefix() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let key = fixed_seed_key();
+        let cert = case.sign_proof_cert(&solver, &key).expect("cert");
+        let s = cert.summary();
+        assert!(s.contains(PROOF_CERT_FORMAT));
+        assert!(s.contains("Unsat"));
+        assert!(s.contains("Z3"));
+        assert!(s.contains("hash="));
+    }
+
+    #[test]
+    fn proof_cert_verdict_is_fully_valid_requires_all_four_checks() {
+        // Default (all-false) is not fully-valid.
+        let v = ProofCertVerdict {
+            format_matches: false,
+            payload_hash_matches: false,
+            signature_verifies: false,
+            is_unsat_proof: false,
+        };
+        assert!(!v.is_fully_valid());
+        assert!(!v.cryptographically_valid());
+        // All-true is fully-valid.
+        let v = ProofCertVerdict {
+            format_matches: true,
+            payload_hash_matches: true,
+            signature_verifies: true,
+            is_unsat_proof: true,
+        };
+        assert!(v.is_fully_valid());
+        assert!(v.cryptographically_valid());
     }
 }
