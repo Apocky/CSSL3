@@ -345,6 +345,38 @@ impl JitModule {
         self.codegen_ctx.func.signature = sig.clone();
         self.codegen_ctx.func.name = UserFuncName::user(0, func_id.as_u32());
 
+        // T11-D26 : pre-scan body ops for `func.call` with user-defined
+        // callees — for each one found in `self.fn_table` (meaning it was
+        // previously `compile`d), declare it as an external fn visible to
+        // this fn via `declare_func_in_func`. The resulting FuncRef map is
+        // passed to the body lowering so inter-fn calls emit real
+        // cranelift `call` instructions.
+        let callee_refs = {
+            let mut refs: HashMap<String, cranelift_codegen::ir::FuncRef> = HashMap::new();
+            if let Some(entry_block) = primal.body.blocks.first() {
+                for op in &entry_block.ops {
+                    if op.name == "func.call" {
+                        if let Some((_, callee)) = op.attributes.iter().find(|(k, _)| k == "callee")
+                        {
+                            let callee_name = callee.clone();
+                            if is_intrinsic_callee(&callee_name) {
+                                continue;
+                            }
+                            if let Some((callee_id, _)) = self.fn_table.get(&callee_name) {
+                                if refs.contains_key(&callee_name) {
+                                    continue;
+                                }
+                                let fref = module
+                                    .declare_func_in_func(*callee_id, &mut self.codegen_ctx.func);
+                                refs.insert(callee_name, fref);
+                            }
+                        }
+                    }
+                }
+            }
+            refs
+        };
+
         // Build the function body from MIR ops.
         {
             let mut builder =
@@ -380,7 +412,7 @@ impl JitModule {
 
             let mut saw_return = false;
             for op in &entry_block.ops {
-                if lower_op_to_cl(op, &mut builder, &mut value_map, &primal.name)? {
+                if lower_op_to_cl(op, &mut builder, &mut value_map, &primal.name, &callee_refs)? {
                     saw_return = true;
                 }
             }
@@ -528,12 +560,16 @@ fn mir_to_cl_type(mir: &MirType) -> Option<cranelift_codegen::ir::Type> {
 
 /// Lower a single MIR op into the cranelift function being built. Returns
 /// `Ok(true)` if the op was a terminator (`func.return`), else `Ok(false)`.
+///
+/// `callee_refs` : pre-declared cranelift FuncRefs for user-defined callees
+/// that this fn references. Populated by the compile-pass pre-scan.
 #[allow(clippy::too_many_lines)]
 fn lower_op_to_cl(
     op: &MirOp,
     builder: &mut FunctionBuilder<'_>,
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
 ) -> Result<bool, JitError> {
     match op.name.as_str() {
         "arith.constant" => {
@@ -588,7 +624,7 @@ fn lower_op_to_cl(
         "arith.cmpf" => lower_cmpf(op, builder, value_map, fn_name),
         "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
         "arith.select" => lower_select(op, builder, value_map, fn_name),
-        "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name),
+        "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name, callee_refs),
         // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
         // it carries one-operand-per-primal-float-param holding that param's
         // accumulated adjoint. Lower identically to `func.return` since the
@@ -741,6 +777,7 @@ fn lower_intrinsic_call(
     builder: &mut FunctionBuilder<'_>,
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
 ) -> Result<bool, JitError> {
     let (_, callee) = op
         .attributes
@@ -772,11 +809,74 @@ fn lower_intrinsic_call(
             fn_name: fn_name.to_string(),
             op_name: format!("func.call callee=`{callee_str}` (transcendental ; needs libm)"),
         }),
-        _ => Err(JitError::UnsupportedMirOp {
-            fn_name: fn_name.to_string(),
-            op_name: format!("func.call callee=`{callee_str}` (inter-fn calls T11-D26+)"),
-        }),
+        _ => {
+            // T11-D26 : user-defined callee — look up the pre-declared FuncRef
+            // and emit a cranelift `call` to it.
+            if let Some(&func_ref) = callee_refs.get(callee_str) {
+                let mut args: Vec<cranelift_codegen::ir::Value> =
+                    Vec::with_capacity(op.operands.len());
+                for vid in &op.operands {
+                    let v = *value_map.get(vid).ok_or_else(|| JitError::LoweringFailed {
+                        fn_name: fn_name.to_string(),
+                        detail: format!(
+                            "func.call to `{callee_str}` : unknown operand ValueId({})",
+                            vid.0
+                        ),
+                    })?;
+                    args.push(v);
+                }
+                let inst = builder.ins().call(func_ref, &args);
+                let results = builder.inst_results(inst);
+                if let Some(r) = op.results.first() {
+                    if let Some(&first_res) = results.first() {
+                        value_map.insert(r.id, first_res);
+                    }
+                }
+                Ok(false)
+            } else {
+                Err(JitError::UnsupportedMirOp {
+                    fn_name: fn_name.to_string(),
+                    op_name: format!(
+                        "func.call callee=`{callee_str}` (callee not compiled in this JIT module)"
+                    ),
+                })
+            }
+        }
     }
+}
+
+/// Return `true` if the callee name is a recognized math intrinsic handled
+/// directly by `lower_intrinsic_call`. Used by the compile pre-scan to skip
+/// `declare_func_in_func` for intrinsics.
+fn is_intrinsic_callee(name: &str) -> bool {
+    matches!(
+        name,
+        "min"
+            | "math.min"
+            | "fmin"
+            | "max"
+            | "math.max"
+            | "fmax"
+            | "abs"
+            | "math.abs"
+            | "fabs"
+            | "math.absf"
+            | "sqrt"
+            | "math.sqrt"
+            | "sqrtf"
+            | "math.sqrtf"
+            | "neg"
+            | "fneg"
+            | "sin"
+            | "cos"
+            | "exp"
+            | "log"
+            | "ln"
+            | "math.sin"
+            | "math.cos"
+            | "math.exp"
+            | "math.log"
+    )
 }
 
 /// Lower `arith.select %cond, %t, %f` → cranelift `select cond, t, f`.
@@ -1473,6 +1573,89 @@ mod tests {
             .unwrap();
         assert!(t_a_at_8_2.abs() < 1e-6);
         assert!((t_b_at_8_2 - 1.0).abs() < 1e-6);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D26 : inter-fn JIT calls — fn body contains `call %other_fn`.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Hand-build `fn double(x: f32) -> f32 { x + x }`.
+    fn hand_built_double_f32() -> MirFunc {
+        let mut f = MirFunc::new("double", vec![f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), f32_ty())];
+            entry.ops.push(
+                MirOp::std("arith.addf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    /// Hand-build `fn caller(x: f32) -> f32 { double(x) + 1.0 }`.
+    fn hand_built_caller_f32() -> MirFunc {
+        let mut f = MirFunc::new("caller", vec![f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), f32_ty())];
+            // v1 = call double(v0)
+            entry.ops.push(
+                MirOp::std("func.call")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), f32_ty())
+                    .with_attribute("callee", "double"),
+            );
+            // v2 = 1.0
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), f32_ty())
+                    .with_attribute("value", "1.0"),
+            );
+            // v3 = v1 + v2
+            entry.ops.push(
+                MirOp::std("arith.addf")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    #[test]
+    fn inter_fn_call_jit_roundtrip() {
+        // Compile callee FIRST, then caller.
+        let mut m = JitModule::new();
+        m.compile(&hand_built_double_f32()).unwrap();
+        let caller_h = m.compile(&hand_built_caller_f32()).unwrap();
+        m.finalize().unwrap();
+
+        // caller(5.0) = double(5) + 1 = 10 + 1 = 11.
+        let r = caller_h.call_f32_to_f32(5.0, &m).unwrap();
+        assert!((r - 11.0).abs() < 1e-5, "expected 11.0, got {r}");
+
+        // caller(-3.0) = double(-3) + 1 = -6 + 1 = -5.
+        let r2 = caller_h.call_f32_to_f32(-3.0, &m).unwrap();
+        assert!((r2 - (-5.0)).abs() < 1e-5, "expected -5.0, got {r2}");
+    }
+
+    #[test]
+    fn inter_fn_call_unknown_callee_errors() {
+        // Caller references a callee that was never compiled.
+        let mut m = JitModule::new();
+        let err = m.compile(&hand_built_caller_f32()).unwrap_err();
+        assert!(matches!(err, JitError::UnsupportedMirOp { .. }));
     }
 
     #[test]

@@ -420,6 +420,46 @@ mod tests {
     //   adjoint-result ; JIT-compile + verify against analytic formulas.
     // ─────────────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D26 : source-driven inter-fn JIT — helper fn called from scene.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_source_inter_fn_call_runtime() {
+        // Multi-fn module : helper(x) = x * x ; scene(x) = helper(x) + 1.0.
+        // Both fns land in the same MirModule after lex + parse + HIR + MIR.
+        // The JIT must declare both, let scene reference helper, and both
+        // execute correctly.
+        let src = r"
+fn helper(x : f32) -> f32 { x * x }
+fn scene(x : f32) -> f32 { helper(x) }
+";
+        let module = pipeline_source_to_ad_mir("multi_fn", src);
+        let helper = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "helper")
+            .expect("helper");
+        let scene = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene")
+            .expect("scene");
+
+        let mut m = JitModule::new();
+        m.compile(helper).expect("JIT helper");
+        let scene_h = m.compile(scene).expect("JIT scene");
+        m.finalize().expect("finalize");
+
+        // scene(3) = helper(3) = 3² = 9.
+        let r = scene_h.call_f32_to_f32(3.0, &m).unwrap();
+        assert!((r - 9.0).abs() < 1e-5, "expected 9.0, got {r}");
+
+        // scene(-4) = 16.
+        let r2 = scene_h.call_f32_to_f32(-4.0, &m).unwrap();
+        assert!((r2 - 16.0).abs() < 1e-5);
+    }
+
     #[test]
     fn full_chain_source_bwd_sq_adjoint() {
         // fn sq(x : f32) -> f32 { x * x }
