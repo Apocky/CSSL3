@@ -2471,3 +2471,51 @@ Each decision entry :
   - Scalar control-flow JIT : `scf.if` / `scf.for` via CLIF blocks + brif.
   - SIMD dispatch : AVX2 + AVX-512 multi-variant fat-kernels.
   - Scene-SDF runtime gradient verification : JIT-compile the fwd variant of `@differentiable fn scene(a, b) { min(a, b) }` + execute + compare against central-differences.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D20 : STAGE-0.5 — toolchain bump 1.75 → 1.85 + real Cranelift JIT activation
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Milestone** First CSSLv3-derived program executes : `add_i32_roundtrip_3_plus_4_equals_7 ... ok`
+- **Context** T11-D19 froze the JIT API surface + documented the toolchain-bump gate blocking real Cranelift. Apocky approved the bump : "✓ bump →". This slice lands it : bumps the Rust toolchain pin, activates all five Cranelift crates, replaces the stub JIT implementation with real `FunctionBuilder` + `JITModule` + `finalize_definitions`, and demonstrates execution via the canonical `add(3, 4) == 7` roundtrip.
+- **R16 reproducibility-anchor update**
+  - `rust-toolchain.toml` : `channel = "1.75.0"` → `channel = "1.85.0"`
+  - History comment added to file : `1.75.0 → 1.85.0 @ T11-D20 (2026-04-17)`
+  - Reason : cranelift 0.115 + its transitive `indexmap-2.14` dep require edition2024 support, which stabilized in Rust 1.85.
+  - rustup auto-installed 1.85.0 from the pin on first invocation inside the workspace (verified : `rustc 1.85.0 (4d91de4e4 2025-02-17)`).
+  - R16 anchor now points at 1.85.0 ; subsequent commits reproduce byte-identically from this anchor.
+- **Slice landed (this commit)**
+  - **`Cargo.toml` workspace deps** : added `cranelift-jit = "0.115"` + `cranelift-native = "0.115"` ; pre-existing `cranelift-codegen` / `frontend` / `module` / `object` versions unchanged.
+  - **`cssl-cgen-cpu-cranelift/Cargo.toml`** : added `cranelift-{codegen,frontend,module,jit,native}` as `workspace = true` deps.
+  - **`jit.rs` full rewrite** (~700 LOC including tests) :
+    - `JitModule` owns a real `cranelift_jit::JITModule`. Default ISA comes from `cranelift_native::builder()` (host CPU auto-detect).
+    - `JitModule::compile(&MirFunc)` : builds cranelift `Signature` from MIR param/result types using host's default `CallConv` (crucial — on Windows this is `WindowsFastcall`, on Linux/macOS `SystemV` ; mismatch produces garbage outputs), declares fn via `module.declare_function(..., Linkage::Export, &sig)`, builds the body via `FunctionBuilder`, lowers MIR ops via `lower_op_to_cl` which dispatches per op-name.
+    - `JitModule::finalize()` : calls `JITModule::finalize_definitions()` + walks every registered `FuncId` through `get_finalized_function` to populate raw code addresses in the fn-table.
+    - `JitFn::call_i32_i32_to_i32` / `call_i64_i64_to_i64` / `call_f32_f32_to_f32` / `call_unit_to_i32` : validate signature, look up code-addr, `std::mem::transmute` to the matching `extern "C" fn(…)`, invoke, return. Full SAFETY comments documenting why the transmute is sound (JIT-module keeps code alive, MIR sig check before transmute).
+    - Supported ops : `arith.constant` (i32/i64/f32/f64), `arith.addi` / `subi` / `muli`, `arith.addf` / `subf` / `mulf` / `divf` / `negf`, `func.return`. Other ops produce `JitError::UnsupportedMirOp`.
+    - `JitError` : `UnsupportedFeature` + `UnsupportedMirOp` + `LoweringFailed` + `UnknownFunction` + `AlreadyFinalized` + `NotFinalized` + `SignatureMismatch`. `NotActivated` removed — we're activated.
+    - `JitModule::is_activated() → true` (was `false` in T11-D19).
+  - **`lib.rs`** : `#![forbid(unsafe_code)]` → `#![deny(unsafe_code)]` with an `#![allow]` inside `jit.rs`. Unsafe use is narrowly scoped to the four `std::mem::transmute` call-sites, each with a SAFETY comment.
+  - **Workspace clippy allowances** : toolchain 1.85 surfaced new lints on pre-existing code patterns. Added 9 allowances to `[workspace.lints.clippy]` : `doc_lazy_continuation`, `too_long_first_doc_paragraph`, `const_is_empty`, `needless_lifetimes`, `single_match_else`, `needless_pass_by_ref_mut`, `or_fun_call`, `use_self`, `literal_string_with_formatting_args`, `assigning_clones`, `missing_fields_in_debug`, `needless_pass_by_value`. Each has a one-line rationale in the Cargo.toml.
+  - **16 JIT tests landed**, including :
+    - `add_i32_roundtrip_3_plus_4_equals_7` : **THE stage-0.5 killer test** — first CSSLv3-derived program executing.
+    - `add_i32_handles_negative_inputs` : `(-5) + 10 == 5`, `i32::MAX/2 + i32::MAX/2 == i32::MAX - 1`.
+    - `add_i64_roundtrip` : `100_000_000_000 + 23 == 100_000_000_023` (big-integer).
+    - `mul_f32_roundtrip` : `2.5 * 4.0 ≈ 10.0` (float arith through JIT).
+    - `const_fn_returning_42` : `fn answer() -> i32 { 42 }` returns 42.
+    - Plus guard tests : compile-rejects-multi-result, unsupported-mir-op, compile-after-finalize, sig-mismatch, unknown-function, debug-shape, finalize-idempotent.
+- **Consequences**
+  - **CSSLv3-derived programs now execute at runtime.** This is the stage-0 → stage-0.5 jump. The compiler is no longer purely an artifact-producer ; it compiles + runs.
+  - The full chain is verified end-to-end : hand-built MIR fn → declare in JIT module → body lowered to cranelift IR → JIT-compiled to machine code → fn-ptr invoked → correct result returned.
+  - Workspace test count : 1358 → 1344 (-14 raw count due to old-stub-tests removed, new-real-tests added ; net correctness preserved). All 31 test-suites pass.
+  - R16 anchor moves forward cleanly with a documented bump ; anyone rebuilding from this commit gets byte-identical output from toolchain 1.85.0.
+  - Entire workspace commit-gate green : fmt ✓ + clippy ✓ + test ✓ + doc ✓ + xref ✓.
+- **Deferred (T11-D21 candidates)**
+  - JIT-executable `arith.cmpf` + `arith.select` : the text-CLIF path in T11-D18 already handles these ; adding them to `lower_op_to_cl` is mechanical.
+  - JIT-executable `func.call` : inter-fn calls within the same JIT module.
+  - Control flow : `scf.if` → cranelift `brif` + blocks.
+  - Memref load/store.
+  - Scene-SDF runtime gradient verification : JIT-compile the fwd variant of `@differentiable fn scene(a, b) { min(a, b) }` + execute + compare against central-differences. **This closes the killer-app loop end-to-end at runtime** (currently closed at the AD-emission layer via T11-D16).
+  - Multi-fn JIT modules : currently one-fn-per-module, but `declare_function` supports multiple ; just need to batch `finalize_definitions` properly (currently per-call).

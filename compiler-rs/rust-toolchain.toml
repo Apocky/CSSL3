@@ -1,8 +1,11 @@
 # § I> R16 reproducibility-anchor : pinned-toolchain per-commit
-# § I> MSRV 1.75 per §§ 01_BOOTSTRAP + §§ HANDOFF_SESSION_1
+# § I> MSRV 1.85.0 per §§ DECISIONS T11-D20 (edition2024 for cranelift-jit)
 # § I> bump only-with DECISIONS.md entry documenting reason
+# § HISTORY
+#   1.75.0 → 1.85.0 @ T11-D20 (2026-04-17) : unblock cranelift-jit activation
+#                                            for stage-0.5 runtime execution.
 
 [toolchain]
-channel    = "1.75.0"
+channel    = "1.85.0"
 components = ["rustfmt", "clippy"]
 profile    = "minimal"

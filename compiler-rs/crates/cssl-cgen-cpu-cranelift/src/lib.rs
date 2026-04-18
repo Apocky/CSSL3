@@ -25,7 +25,10 @@
 //! [`MirModule`]: cssl_mir::MirModule
 //! [`CsslOp`]: cssl_mir::CsslOp
 
-#![forbid(unsafe_code)]
+// T11-D20 : `unsafe_code` downgraded from `forbid` to `deny` — JIT execution
+// requires casting machine-code addresses to fn-pointers (see `jit.rs`).
+// The unsafe use is scoped narrowly + documented with SAFETY comments.
+#![deny(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 #![allow(clippy::match_same_arms)]
