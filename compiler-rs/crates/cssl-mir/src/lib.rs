@@ -51,8 +51,9 @@ pub mod print;
 pub mod value;
 
 pub use auto_monomorph::{
-    auto_monomorphize, auto_monomorphize_structs, drop_unspecialized_generic_fns,
-    rewrite_generic_call_sites, AutoMonomorphReport, AutoStructReport,
+    auto_monomorphize, auto_monomorphize_enums, auto_monomorphize_structs,
+    drop_unspecialized_generic_fns, rewrite_generic_call_sites, AutoEnumReport,
+    AutoMonomorphReport, AutoStructReport,
 };
 pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{lower_fn_body, BodyLowerCtx};

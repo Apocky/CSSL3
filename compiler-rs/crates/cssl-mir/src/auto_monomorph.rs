@@ -56,15 +56,15 @@ use std::collections::{HashMap, HashSet};
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
-    HirArrayExpr, HirBlock, HirCallArg, HirExpr, HirExprKind, HirFieldDecl, HirFn, HirId, HirItem,
-    HirMatchArm, HirModule, HirStmtKind, HirStruct, HirStructBody, HirType, HirTypeKind, Interner,
-    Symbol,
+    HirArrayExpr, HirBlock, HirCallArg, HirEnum, HirExpr, HirExprKind, HirFieldDecl, HirFn, HirId,
+    HirItem, HirMatchArm, HirModule, HirStmtKind, HirStruct, HirStructBody, HirType, HirTypeKind,
+    Interner, Symbol,
 };
 
 use crate::func::{MirFunc, MirModule};
 use crate::monomorph::{
-    mangle_specialization_name, mangle_struct_specialization_name, specialize_generic_fn,
-    specialize_generic_struct, TypeSubst,
+    mangle_enum_specialization_name, mangle_specialization_name, mangle_struct_specialization_name,
+    specialize_generic_enum, specialize_generic_fn, specialize_generic_struct, TypeSubst,
 };
 
 /// Report returned by the auto-monomorphization walker.
@@ -642,6 +642,187 @@ fn walk_struct_fields(
     };
     for f in fields {
         collect_generic_struct_refs(&f.ty, struct_index, out);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D48 — ENUM AUTO-DISCOVERY WALKER
+//
+// Parallel of `auto_monomorphize_structs` for generic enums. Scans fn
+// signatures + struct fields + enum-variant fields for path references to
+// known generic enums with populated type_args, invokes
+// `specialize_generic_enum` per unique tuple.
+//
+// § SCOPE (this slice)
+//   - Same walker shape as struct discovery (fn params + return-types +
+//     struct-field types + enum-variant-field types).
+//   - Handles nested refs : `Option<Result<T, E>>` specializes BOTH enums.
+//   - Arity-mismatch refs skipped (would be diagnosed by real compiler).
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Report returned by the enum auto-discovery walker.
+#[derive(Debug, Clone, Default)]
+pub struct AutoEnumReport {
+    /// One `HirEnum` per unique (generic-enum, type-arg-tuple) tuple found.
+    pub specializations: Vec<HirEnum>,
+    /// Map : stringified generic-ref-key → mangled name. Used downstream by
+    /// enum-expr lowering to rewrite references.
+    pub ref_to_mangled: HashMap<String, String>,
+    /// Count of generic enum-decls indexed.
+    pub generic_enum_count: u32,
+    /// Count of type-annotation references to generic enums.
+    pub ref_count: u32,
+    /// Count of unique specializations emitted.
+    pub specialization_count: u32,
+}
+
+impl AutoEnumReport {
+    /// Short diagnostic summary.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        format!(
+            "auto-enum : {} generic enums / {} type-refs / {} unique specializations",
+            self.generic_enum_count, self.ref_count, self.specialization_count
+        )
+    }
+
+    /// `true` iff no enum references needed specialization.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.specializations.is_empty()
+    }
+}
+
+/// Walk `module` and produce one `HirEnum` per unique generic-enum reference.
+#[must_use]
+pub fn auto_monomorphize_enums(module: &HirModule, interner: &Interner) -> AutoEnumReport {
+    let mut report = AutoEnumReport::default();
+
+    // § Index generic enum-decls by name.
+    let mut enum_index: HashMap<Symbol, &HirEnum> = HashMap::new();
+    for item in &module.items {
+        if let HirItem::Enum(e) = item {
+            if !e.generics.params.is_empty() {
+                enum_index.insert(e.name, e);
+            }
+        }
+    }
+    report.generic_enum_count = u32::try_from(enum_index.len()).unwrap_or(u32::MAX);
+
+    // § Walk fn signatures + struct fields + enum-variant fields for refs.
+    let mut refs: Vec<(Symbol, Vec<HirType>)> = Vec::new();
+    for item in &module.items {
+        match item {
+            HirItem::Fn(f) => {
+                for p in &f.params {
+                    collect_generic_enum_refs(&p.ty, &enum_index, &mut refs);
+                }
+                if let Some(rt) = &f.return_ty {
+                    collect_generic_enum_refs(rt, &enum_index, &mut refs);
+                }
+            }
+            HirItem::Struct(s) => {
+                walk_struct_fields_for_enum_refs(&s.body, &enum_index, &mut refs);
+            }
+            HirItem::Enum(e) => {
+                for v in &e.variants {
+                    walk_struct_fields_for_enum_refs(&v.body, &enum_index, &mut refs);
+                }
+            }
+            _ => {}
+        }
+    }
+    report.ref_count = u32::try_from(refs.len()).unwrap_or(u32::MAX);
+
+    // § Deduplicate by mangled name ; one specialization per unique tuple.
+    let mut seen: HashSet<String> = HashSet::new();
+    for (enum_sym, type_args) in refs {
+        let enum_decl = match enum_index.get(&enum_sym) {
+            Some(e) => *e,
+            None => continue,
+        };
+
+        if enum_decl.generics.params.len() != type_args.len() {
+            continue;
+        }
+        let mut subst = TypeSubst::new();
+        for (param, ty) in enum_decl.generics.params.iter().zip(type_args.iter()) {
+            subst.bind(param.name, ty.clone());
+        }
+
+        let mangled = mangle_enum_specialization_name(enum_decl, interner, &subst);
+        let base = interner.resolve(enum_decl.name);
+        report.ref_to_mangled.insert(
+            format!("{base}_{}", mangle_key(&subst, interner)),
+            mangled.clone(),
+        );
+
+        if seen.insert(mangled.clone()) {
+            let specialized = specialize_generic_enum(interner, enum_decl, &subst);
+            report.specializations.push(specialized);
+        }
+    }
+    report.specialization_count = u32::try_from(report.specializations.len()).unwrap_or(u32::MAX);
+
+    report
+}
+
+/// Recursively walk a `HirType` collecting generic-enum refs.
+fn collect_generic_enum_refs(
+    t: &HirType,
+    enum_index: &HashMap<Symbol, &HirEnum>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    match &t.kind {
+        HirTypeKind::Path {
+            path, type_args, ..
+        } => {
+            if path.len() == 1 && !type_args.is_empty() && enum_index.contains_key(&path[0]) {
+                out.push((path[0], type_args.clone()));
+            }
+            for ta in type_args {
+                collect_generic_enum_refs(ta, enum_index, out);
+            }
+        }
+        HirTypeKind::Tuple { elems } => {
+            for e in elems {
+                collect_generic_enum_refs(e, enum_index, out);
+            }
+        }
+        HirTypeKind::Array { elem, .. } | HirTypeKind::Slice { elem } => {
+            collect_generic_enum_refs(elem, enum_index, out);
+        }
+        HirTypeKind::Reference { inner, .. } | HirTypeKind::Capability { inner, .. } => {
+            collect_generic_enum_refs(inner, enum_index, out);
+        }
+        HirTypeKind::Function {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                collect_generic_enum_refs(p, enum_index, out);
+            }
+            collect_generic_enum_refs(return_ty, enum_index, out);
+        }
+        HirTypeKind::Refined { base, .. } => {
+            collect_generic_enum_refs(base, enum_index, out);
+        }
+        HirTypeKind::Infer | HirTypeKind::Error => {}
+    }
+}
+
+/// Walk a HirStructBody (used for both struct fields and enum variant fields)
+/// collecting generic-enum refs via `collect_generic_enum_refs`.
+fn walk_struct_fields_for_enum_refs(
+    body: &HirStructBody,
+    enum_index: &HashMap<Symbol, &HirEnum>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    let fields: &[HirFieldDecl] = match body {
+        HirStructBody::Named(fs) | HirStructBody::Tuple(fs) => fs,
+        HirStructBody::Unit => return,
+    };
+    for f in fields {
+        collect_generic_enum_refs(&f.ty, enum_index, out);
     }
 }
 
@@ -1235,5 +1416,125 @@ mod tests {
         assert!(s.contains("generic structs"));
         assert!(s.contains("type-refs"));
         assert!(s.contains("specializations"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D48 — enum auto-discovery walker tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn walk_enums(src: &str) -> super::AutoEnumReport {
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _) = lower_module(&f, &cst);
+        super::auto_monomorphize_enums(&hir, &interner)
+    }
+
+    #[test]
+    fn enum_walker_empty_module_is_empty() {
+        let r = walk_enums("");
+        assert!(r.is_empty());
+        assert_eq!(r.generic_enum_count, 0);
+    }
+
+    #[test]
+    fn enum_walker_ignores_non_generic() {
+        let r = walk_enums(r"enum Color { Red, Green, Blue }");
+        assert_eq!(r.generic_enum_count, 0);
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn enum_walker_fn_param_type_triggers() {
+        let src = r"
+            enum Opt<T> { Some(T), None }
+            fn foo(o : Opt<i32>) -> i32 { 0 }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.generic_enum_count, 1);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn enum_walker_fn_return_type_triggers() {
+        let src = r"
+            enum Opt<T> { Some(T), None }
+            fn make() -> Opt<f32> { Opt.None }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn enum_walker_struct_field_triggers() {
+        let src = r"
+            enum Opt<T> { Some(T), None }
+            struct Holder { slot : Opt<i32> }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn enum_walker_enum_variant_field_triggers() {
+        let src = r"
+            enum Opt<T> { Some(T), None }
+            enum Wrap { Inner(Opt<i32>), Empty }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn enum_walker_dedup_same_refs() {
+        let src = r"
+            enum Opt<T> { Some(T), None }
+            fn a() -> Opt<i32> { Opt.None }
+            fn b() -> Opt<i32> { Opt.None }
+            fn c(x : Opt<i32>) -> i32 { 0 }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.ref_count, 3);
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn enum_walker_distinct_type_args_produce_distinct_specs() {
+        let src = r"
+            enum Opt<T> { Some(T), None }
+            fn foo() -> Opt<i32> { Opt.None }
+            fn bar() -> Opt<f32> { Opt.None }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.ref_count, 2);
+        assert_eq!(r.specialization_count, 2);
+    }
+
+    #[test]
+    fn enum_walker_arity_mismatch_skipped() {
+        let src = r"
+            enum Either<L, R> { Left(L), Right(R) }
+            fn foo(x : Either<i32>) -> i32 { 0 }
+        ";
+        let r = walk_enums(src);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 0);
+    }
+
+    #[test]
+    fn enum_walker_summary_shape() {
+        let r = walk_enums(
+            r"
+            enum Opt<T> { Some(T), None }
+            fn foo() -> Opt<i32> { Opt.None }
+        ",
+        );
+        let s = r.summary();
+        assert!(s.contains("generic enums"));
+        assert!(s.contains("type-refs"));
     }
 }
