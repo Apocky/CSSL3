@@ -123,7 +123,10 @@ pub use ty::{
     HirCapKind, HirEffectAnnotation, HirEffectArg, HirEffectRow, HirRefinementKind, HirType,
     HirTypeKind,
 };
-pub use typing::{ArrayLen, EffectInstance, Row, RowVar, Subst, Ty, TyCtx, TyVar, TypeMap};
+pub use typing::{
+    free_row_vars, free_ty_vars, generalize, ArrayLen, EffectInstance, Row, RowVar, Scheme, Subst,
+    Ty, TyCtx, TyVar, TypeMap,
+};
 pub use unify::{unify as unify_types, unify_rows, UnifyError};
 
 /// Crate version exposed for scaffold verification.

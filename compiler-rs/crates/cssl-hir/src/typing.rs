@@ -336,6 +336,242 @@ impl TypeMap {
     }
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// § Type schemes — foundation for let-generalization + rank-N polymorphism
+//   (T3.4-phase-3-let-gen ; T3-D14 when integrated into infer).
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A type scheme : the body type plus the list of type/row variables it
+/// universally quantifies over. At a `let`-binding in Hindley-Milner, the
+/// inferred type's free type variables (those not fixed by the surrounding
+/// environment) are **generalized** into a scheme ; at each use-site the
+/// scheme is **instantiated** with fresh variables, yielding a fresh
+/// monomorphic type for that call.
+///
+/// Monomorphic types (no quantified vars) round-trip unchanged through
+/// [`Scheme::monomorphic`] + [`Scheme::instantiate`].
+///
+/// § STAGE-0 SCOPE
+/// - Rank-1 polymorphism only (quantified vars live at the outermost layer).
+/// - Rank-N via nested `Scheme` inside `Ty` is phase-2e+ work.
+/// - Constraints (e.g., `T: Differentiable`) are not yet tracked — quantified
+///   vars are unconstrained.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scheme {
+    /// Type variables quantified by this scheme.
+    pub ty_vars: Vec<TyVar>,
+    /// Row variables quantified by this scheme.
+    pub row_vars: Vec<RowVar>,
+    /// Body type (may reference any of `ty_vars` / `row_vars` ; may also
+    /// reference free vars fixed by the surrounding environment).
+    pub body: Ty,
+}
+
+impl Scheme {
+    /// Build a monomorphic scheme (no quantified vars) wrapping `ty`.
+    #[must_use]
+    pub const fn monomorphic(ty: Ty) -> Self {
+        Self {
+            ty_vars: Vec::new(),
+            row_vars: Vec::new(),
+            body: ty,
+        }
+    }
+
+    /// `true` iff the scheme quantifies over no variables.
+    #[must_use]
+    pub fn is_monomorphic(&self) -> bool {
+        self.ty_vars.is_empty() && self.row_vars.is_empty()
+    }
+
+    /// Number of universally-quantified type variables.
+    #[must_use]
+    pub fn rank(&self) -> usize {
+        self.ty_vars.len() + self.row_vars.len()
+    }
+
+    /// Instantiate the scheme at a use-site : replace each quantified var with
+    /// a **fresh** inference variable, yielding a monomorphic `Ty` ready for
+    /// unification. Each call produces independent fresh vars — multiple
+    /// instantiations of the same scheme do not share state.
+    ///
+    /// § INVARIANT
+    /// The caller must pass a [`TyCtx`] whose `next_ty` counter is strictly
+    /// greater than the highest [`TyVar`] in `self.ty_vars` (and similarly for
+    /// `row_vars`). In real inference this is automatic — generalization
+    /// happens after the scheme's bound vars have been allocated by the same
+    /// ctx. Hand-built test fixtures should advance the counter explicitly
+    /// via `let _ = ctx.fresh_ty();`.
+    ///
+    /// # Example
+    /// ```text
+    /// let id : ∀a. a → a = |x| x
+    /// id(1)       // instantiate { a ↦ τ₀ }  → τ₀ → τ₀ , unify τ₀ = Int
+    /// id(true)    // instantiate { a ↦ τ₁ }  → τ₁ → τ₁ , unify τ₁ = Bool
+    /// ```
+    pub fn instantiate(&self, ctx: &mut TyCtx) -> Ty {
+        if self.is_monomorphic() {
+            return self.body.clone();
+        }
+        let mut subst = Subst::new();
+        for v in &self.ty_vars {
+            let fresh = ctx.fresh_ty();
+            subst.ty_vars.insert(*v, fresh);
+        }
+        for rv in &self.row_vars {
+            let fresh_rv = ctx.fresh_row();
+            subst.row_vars.insert(
+                *rv,
+                Row {
+                    effects: Vec::new(),
+                    tail: Some(fresh_rv),
+                },
+            );
+        }
+        subst.apply(&self.body)
+    }
+
+    /// Collect the type variables bound by this scheme (ty_vars field).
+    /// Useful when verifying schemes at API boundaries.
+    #[must_use]
+    pub fn bound_ty_vars(&self) -> &[TyVar] {
+        &self.ty_vars
+    }
+
+    /// Collect the row variables bound by this scheme (row_vars field).
+    #[must_use]
+    pub fn bound_row_vars(&self) -> &[RowVar] {
+        &self.row_vars
+    }
+}
+
+/// Collect every free `TyVar` reachable from `ty`. Used by
+/// [`generalize`] to find the candidates for quantification.
+#[must_use]
+pub fn free_ty_vars(ty: &Ty) -> Vec<TyVar> {
+    let mut out = Vec::new();
+    collect_ty_vars(ty, &mut out);
+    out.sort_by_key(|v| v.0);
+    out.dedup();
+    out
+}
+
+fn collect_ty_vars(ty: &Ty, out: &mut Vec<TyVar>) {
+    match ty {
+        Ty::Int
+        | Ty::Float
+        | Ty::Bool
+        | Ty::Str
+        | Ty::Unit
+        | Ty::Never
+        | Ty::Param(_)
+        | Ty::Error => {}
+        Ty::Var(v) => out.push(*v),
+        Ty::Named { args, .. } => {
+            for a in args {
+                collect_ty_vars(a, out);
+            }
+        }
+        Ty::Tuple(elems) => {
+            for e in elems {
+                collect_ty_vars(e, out);
+            }
+        }
+        Ty::Ref { inner, .. } | Ty::Slice { elem: inner } => collect_ty_vars(inner, out),
+        Ty::Fn {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                collect_ty_vars(p, out);
+            }
+            collect_ty_vars(return_ty, out);
+        }
+        Ty::Array { elem, .. } => collect_ty_vars(elem, out),
+    }
+}
+
+/// Collect every free `RowVar` reachable from `ty`. Walks through
+/// `Ty::Fn { effect_row, .. }` + nested type arguments.
+#[must_use]
+pub fn free_row_vars(ty: &Ty) -> Vec<RowVar> {
+    let mut out = Vec::new();
+    collect_row_vars(ty, &mut out);
+    out.sort_by_key(|v| v.0);
+    out.dedup();
+    out
+}
+
+fn collect_row_vars(ty: &Ty, out: &mut Vec<RowVar>) {
+    match ty {
+        Ty::Int
+        | Ty::Float
+        | Ty::Bool
+        | Ty::Str
+        | Ty::Unit
+        | Ty::Never
+        | Ty::Param(_)
+        | Ty::Var(_)
+        | Ty::Error => {}
+        Ty::Named { args, .. } => {
+            for a in args {
+                collect_row_vars(a, out);
+            }
+        }
+        Ty::Tuple(elems) => {
+            for e in elems {
+                collect_row_vars(e, out);
+            }
+        }
+        Ty::Ref { inner, .. } | Ty::Slice { elem: inner } => collect_row_vars(inner, out),
+        Ty::Fn {
+            params,
+            return_ty,
+            effect_row,
+        } => {
+            for p in params {
+                collect_row_vars(p, out);
+            }
+            collect_row_vars(return_ty, out);
+            if let Some(tail) = effect_row.tail {
+                out.push(tail);
+            }
+        }
+        Ty::Array { elem, .. } => collect_row_vars(elem, out),
+    }
+}
+
+/// Generalize `ty` with respect to the set of free vars fixed by the
+/// surrounding environment. Any free `TyVar` in `ty` not present in
+/// `env_free_ty` becomes a quantified scheme-variable ; same for row-vars.
+///
+/// This is the "gen" half of Hindley-Milner's `let`-binding rule :
+///   `Γ ⊢ e : τ       α̅ = ftv(τ) − ftv(Γ)
+///     ───────────────────────────────────
+///     Γ ⊢ let x = e in ... : [x ↦ ∀α̅. τ]`
+///
+/// Callers typically build `env_free_ty` by walking the current `TypingEnv`
+/// and collecting every `TyVar` referenced by any binding in scope.
+#[must_use]
+pub fn generalize<S: std::hash::BuildHasher, T: std::hash::BuildHasher>(
+    env_free_ty: &std::collections::HashSet<TyVar, S>,
+    env_free_row: &std::collections::HashSet<RowVar, T>,
+    ty: Ty,
+) -> Scheme {
+    let ty_vars: Vec<TyVar> = free_ty_vars(&ty)
+        .into_iter()
+        .filter(|v| !env_free_ty.contains(v))
+        .collect();
+    let row_vars: Vec<RowVar> = free_row_vars(&ty)
+        .into_iter()
+        .filter(|v| !env_free_row.contains(v))
+        .collect();
+    Scheme {
+        ty_vars,
+        row_vars,
+        body: ty,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ArrayLen, EffectInstance, Row, RowVar, Subst, Ty, TyCtx, TyVar, TypeMap};
@@ -487,5 +723,192 @@ mod tests {
         let l3 = ArrayLen::Var(3);
         assert_ne!(l1, l2);
         assert_ne!(l2, l3);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Scheme + generalize + instantiate — foundation for let-gen
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::{free_row_vars, free_ty_vars, generalize, Scheme};
+    use std::collections::HashSet;
+
+    #[test]
+    fn free_ty_vars_of_primitives_is_empty() {
+        assert!(free_ty_vars(&Ty::Int).is_empty());
+        assert!(free_ty_vars(&Ty::Bool).is_empty());
+        assert!(free_ty_vars(&Ty::Unit).is_empty());
+    }
+
+    #[test]
+    fn free_ty_vars_of_var_is_self() {
+        let v = Ty::Var(TyVar(3));
+        let free = free_ty_vars(&v);
+        assert_eq!(free, vec![TyVar(3)]);
+    }
+
+    #[test]
+    fn free_ty_vars_of_tuple_collects_all() {
+        let t = Ty::Tuple(vec![Ty::Var(TyVar(1)), Ty::Var(TyVar(2)), Ty::Int]);
+        let free = free_ty_vars(&t);
+        assert_eq!(free, vec![TyVar(1), TyVar(2)]);
+    }
+
+    #[test]
+    fn free_ty_vars_of_fn_collects_params_return_and_dedupes() {
+        let t = Ty::Fn {
+            params: vec![Ty::Var(TyVar(0)), Ty::Var(TyVar(1))],
+            return_ty: Box::new(Ty::Var(TyVar(0))),
+            effect_row: Row::pure(),
+        };
+        let free = free_ty_vars(&t);
+        // Dedupe : TyVar(0) appears twice but only once in free-set.
+        assert_eq!(free, vec![TyVar(0), TyVar(1)]);
+    }
+
+    #[test]
+    fn free_row_vars_of_fn_collects_tail() {
+        let t = Ty::Fn {
+            params: vec![Ty::Int],
+            return_ty: Box::new(Ty::Int),
+            effect_row: Row {
+                effects: Vec::new(),
+                tail: Some(RowVar(5)),
+            },
+        };
+        let free = free_row_vars(&t);
+        assert_eq!(free, vec![RowVar(5)]);
+    }
+
+    #[test]
+    fn free_row_vars_of_pure_row_is_empty() {
+        let t = Ty::Fn {
+            params: vec![Ty::Int],
+            return_ty: Box::new(Ty::Int),
+            effect_row: Row::pure(),
+        };
+        assert!(free_row_vars(&t).is_empty());
+    }
+
+    #[test]
+    fn monomorphic_scheme_has_no_quantified_vars() {
+        let s = Scheme::monomorphic(Ty::Int);
+        assert!(s.is_monomorphic());
+        assert_eq!(s.rank(), 0);
+    }
+
+    #[test]
+    fn monomorphic_scheme_instantiates_to_identical_body() {
+        let mut ctx = TyCtx::new();
+        let s = Scheme::monomorphic(Ty::Tuple(vec![Ty::Int, Ty::Bool]));
+        let inst = s.instantiate(&mut ctx);
+        // Monomorphic → unchanged + no fresh-var allocation.
+        assert_eq!(inst, Ty::Tuple(vec![Ty::Int, Ty::Bool]));
+        assert_eq!(ctx.ty_count(), 0);
+    }
+
+    #[test]
+    fn generalize_identity_fn_binds_single_var() {
+        // f : τ₀ → τ₀ (the untyped identity fn)
+        let ty = Ty::Fn {
+            params: vec![Ty::Var(TyVar(0))],
+            return_ty: Box::new(Ty::Var(TyVar(0))),
+            effect_row: Row::pure(),
+        };
+        let env_ty: HashSet<TyVar> = HashSet::new();
+        let env_row: HashSet<RowVar> = HashSet::new();
+        let s = generalize(&env_ty, &env_row, ty);
+        // TyVar(0) is free in ty + not in env → generalized.
+        assert_eq!(s.ty_vars, vec![TyVar(0)]);
+        assert_eq!(s.rank(), 1);
+    }
+
+    #[test]
+    fn generalize_env_fixed_vars_are_not_quantified() {
+        // f : τ₀ → τ₁ where τ₀ is environment-fixed (e.g., bound by an outer
+        // scope) and τ₁ is free. Only τ₁ should be generalized.
+        let ty = Ty::Fn {
+            params: vec![Ty::Var(TyVar(0))],
+            return_ty: Box::new(Ty::Var(TyVar(1))),
+            effect_row: Row::pure(),
+        };
+        let mut env_ty: HashSet<TyVar> = HashSet::new();
+        env_ty.insert(TyVar(0));
+        let env_row: HashSet<RowVar> = HashSet::new();
+        let s = generalize(&env_ty, &env_row, ty);
+        assert_eq!(s.ty_vars, vec![TyVar(1)]);
+    }
+
+    #[test]
+    fn instantiate_uses_fresh_variables() {
+        // Production invariant : the TyCtx counter must be ≥ max(bound_vars)+1
+        // so freshly-allocated vars don't collide with the scheme's quantified
+        // vars. In real inference this is automatic (quantified vars are
+        // already-allocated by the time generalize runs) ; tests manually
+        // advance the counter.
+        let mut ctx = TyCtx::new();
+        let _ = ctx.fresh_ty(); // allocate TyVar(0) so next fresh is TyVar(1)
+        let s = Scheme {
+            ty_vars: vec![TyVar(0)],
+            row_vars: Vec::new(),
+            body: Ty::Fn {
+                params: vec![Ty::Var(TyVar(0))],
+                return_ty: Box::new(Ty::Var(TyVar(0))),
+                effect_row: Row::pure(),
+            },
+        };
+        let inst = s.instantiate(&mut ctx);
+        // Fresh ty-var allocated ; body rewritten with the fresh.
+        if let Ty::Fn {
+            params, return_ty, ..
+        } = inst
+        {
+            // Both param + return must reference the same fresh var.
+            assert_eq!(params.len(), 1);
+            assert_eq!(&params[0], &*return_ty);
+            // The fresh var is NOT the original TyVar(0).
+            assert_ne!(&params[0], &Ty::Var(TyVar(0)));
+        } else {
+            panic!("expected Fn after instantiate");
+        }
+    }
+
+    #[test]
+    fn two_instantiations_produce_distinct_fresh_vars() {
+        let mut ctx = TyCtx::new();
+        let _ = ctx.fresh_ty(); // advance past the scheme's bound TyVar(0)
+        let s = Scheme {
+            ty_vars: vec![TyVar(0)],
+            row_vars: Vec::new(),
+            body: Ty::Var(TyVar(0)),
+        };
+        let a = s.instantiate(&mut ctx);
+        let b = s.instantiate(&mut ctx);
+        // Each instantiation gets its own fresh var.
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn generalize_then_instantiate_roundtrips_monomorphic_values() {
+        // A monomorphic type (no free vars) round-trips : generalize yields
+        // rank-0 scheme, instantiate returns the same concrete type.
+        let ty = Ty::Int;
+        let env_ty: HashSet<TyVar> = HashSet::new();
+        let env_row: HashSet<RowVar> = HashSet::new();
+        let s = generalize(&env_ty, &env_row, ty.clone());
+        assert!(s.is_monomorphic());
+        let mut ctx = TyCtx::new();
+        let inst = s.instantiate(&mut ctx);
+        assert_eq!(inst, ty);
+    }
+
+    #[test]
+    fn scheme_bound_accessors_return_ref_to_fields() {
+        let s = Scheme {
+            ty_vars: vec![TyVar(0), TyVar(1)],
+            row_vars: vec![RowVar(7)],
+            body: Ty::Unit,
+        };
+        assert_eq!(s.bound_ty_vars(), &[TyVar(0), TyVar(1)]);
+        assert_eq!(s.bound_row_vars(), &[RowVar(7)]);
     }
 }

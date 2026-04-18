@@ -1644,3 +1644,52 @@ Each decision entry :
   - CSLv3-native surface tests for `HirExprKind::Compound` + `SectionRef` (requires csl-native lexing + parsing path which is stable but not exercised by Rust-hybrid test helpers).
   - Closure-env capture tests (currently Lambda has no captured-operands — phase-2d+).
   - Handler-install state-tracking for `With` (stage-0 handler-count = 1 always).
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D14 : T3.4-phase-3-let-gen-foundation — Scheme + generalize / instantiate primitives
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D9 deferred let-generalization + higher-rank polymorphism pending Hindley-Milner "gen" / "inst" helpers. This commit adds the foundation : `Scheme` data-type + `generalize` + `Scheme::instantiate` + free-var collectors. The helpers are standalone — no integration into `infer.rs` yet (that's T3-D15 scope) — but provide the typing primitives any future let-gen refactor will need.
+- **Options**
+  - (a) Full integration : modify `TypeScope` to hold `Scheme` not `Ty` + rewrite `check_let` + every use-site. ~400-600 LOC + ~30 tests. Substantial single-commit.
+  - (b) Foundation-only : add `Scheme`/`generalize`/`instantiate` as pure helpers + `free_ty_vars`/`free_row_vars` walkers. ~250 LOC + 14 tests. Sets up T3-D15 without touching inference flow.
+  - (c) Skip entirely. Leaves HM stuck with the conservative `Ty::Param(Symbol)` skolem approach for fn-generics.
+- **Decision** **(b) foundation-only, integration deferred to T3-D15**
+- **Slice landed (this commit)**
+  - `cssl-hir/src/typing.rs` (~250 LOC added) :
+    - `Scheme { ty_vars: Vec<TyVar>, row_vars: Vec<RowVar>, body: Ty }` — rank-1 polymorphic type wrapper.
+    - `Scheme::monomorphic(body)` — no-quantification wrapper (no-op through instantiate).
+    - `Scheme::is_monomorphic` / `Scheme::rank` / `Scheme::bound_ty_vars` / `Scheme::bound_row_vars` inspectors.
+    - `Scheme::instantiate(&mut TyCtx) -> Ty` — HM "inst" : replace each quantified var with a fresh inference var produced by the supplied context. Documented invariant : caller must pass a ctx with `next_ty > max(bound_ty_vars)` + similarly for rows.
+    - `free_ty_vars(ty) -> Vec<TyVar>` + `free_row_vars(ty) -> Vec<RowVar>` — recursive walkers, dedup + sort.
+    - `generalize(env_free_ty, env_free_row, ty) -> Scheme` — HM "gen" : quantify every free var not in the environment-fixed set.
+    - Re-exports from `cssl-hir/src/lib.rs`.
+  - 14 new tests (in `typing::tests` sub-mod) :
+    - Primitive type has no free ty-vars
+    - `Ty::Var(n)` free-vars = `{n}`
+    - Tuple collects all + dedupes
+    - `Ty::Fn` collects params + return, dedupes
+    - Row-vars collected from effect-row tail
+    - Pure row has no row-vars
+    - Monomorphic scheme has rank 0
+    - Monomorphic instantiate is identity + allocates no fresh vars
+    - Identity-fn `(τ₀ → τ₀)` generalizes to rank-1 scheme
+    - Env-fixed vars are NOT quantified by generalize
+    - Instantiate produces fresh vars + rewrites body
+    - Two instantiations produce distinct fresh vars
+    - Roundtrip : monomorphic → generalize → instantiate = input
+    - `bound_ty_vars` + `bound_row_vars` accessors return field refs
+- **Consequences**
+  - Foundation for HM let-generalization landed as independent primitives. Any future T3-D15 refactor of `infer.rs` can build on these helpers without reinventing the wheel.
+  - Test count : 1107 → 1121 (+14).
+  - No behavioral change to `cssl_hir::check_module` inference — the helpers are unused in the live inference path.
+  - Clippy pedantic lint satisfied : `generalize` takes generic `HashSet<_, S: BuildHasher>` to avoid hasher-hardcoding.
+- **Deferred** (T3-D15+ scope)
+  - `TypeScope` holding `Scheme` instead of `Ty` (requires env-type rework).
+  - `check_let` generalization at let-bindings.
+  - Use-site instantiation at `HirExprKind::Path` resolution.
+  - Rank-N polymorphism : nested `Scheme` inside `Ty` (e.g., `Scheme` as a Ty-variant for higher-rank function types).
+  - Constraint-based inference (e.g., `T: Differentiable`).
+  - Retirement of the conservative `Ty::Param(Symbol)` skolem once let-gen is in place.
