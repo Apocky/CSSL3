@@ -1997,3 +1997,31 @@ Each decision entry :
   - Tamper-detection tests for `@audit_test` that require mutable access to `AuditChain` internals — needs either a test-only constructor or refactoring for injected entries.
   - Full stage3 rebuild-pipeline for `@r16_attestation` : emit C99 tarball → compile with `cc` → compare BLAKE3 of produced stage1 binary to CSSLv3-emitted stage1. Blocked on stage3 entry per `specs/01_BOOTSTRAP.csl`.
   - Dispatcher wire-up (Stage0Stub still serves as the formal dispatcher ; runners are reached directly today).
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D6 : T11-phase-2b — live @fuzz oracle body (dumb-mode LCG-driven byte-fuzzer)
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D3..T11-D5 activated eight oracle modes. `@fuzz` is the last of the tractable (no-external-deps) modes — coverage-guided fuzzing requires sancov hooks + LLVM integration, but dumb-mode byte-fuzzing is entirely doable with the existing `Lcg` PRNG + `std::panic::catch_unwind`. This commit lands the simpler substrate ; coverage-guidance + SMT-oracle hookup deferred to T11-phase-2c.
+- **Slice landed (this commit)**
+  - `fuzz.rs` — `run_fuzz_dumb<F>(&Config, F) -> Outcome` :
+    - Generates LCG-driven byte-slices of length ≤ `config.max_input_len`.
+    - Wraps `check(&[u8]) -> bool` in `catch_unwind(AssertUnwindSafe(...))` so panics in the check-fn don't tear down the fuzzer.
+    - Returns `Ok { total_execs }` if the budget is exhausted without a failure ; `Counterexample { shrunk_input, message }` on first `check == false` OR panic (both collapse to "failed" path).
+    - Greedy shrinker : `shrink_candidates` produces half-truncation + drop-first-byte + drop-last-byte candidates ; iterates up to `config.shrink_rounds` until no further improvement.
+    - Deadline check every 256 execs (amortizes `Instant::now()` cost).
+  - Config gains `seed` + `max_input_len` + `shrink_rounds` fields (default seed `0xc551_a770_c551_a770`, max-len 1024, shrink-rounds 32).
+  - 6 new tests : always-ok never finds counterexample, return-false counts as failure, panic is caught + counted, zero-max-len only produces empty, shrink reduces counterexample size, zero-budget still runs at least once.
+- **Consequences**
+  - Test count : 1226 → 1232 (+6 fuzz).
+  - Nine of ten oracle modes now live : `@property` + `@metamorphic` + `@replay` + `@differential` + `@golden` + `@audit_test` + `@r16_attestation` + `@bench` + `@fuzz`. Remaining stub : `@power` + `@thermal` + `@hot_reload` — all require OS/hw-specific facilities (RAPL / thermal-sensor / inotify) that don't belong in stage0.
+  - Dumb-mode fuzzing catches a broad class of panics + refinement-violations already — pure-byte-input check-fns can be handed off to this oracle today for CI smoke-testing.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Coverage-guided fuzzing : requires sancov-like instrumentation ; blocked on cssl-macros + cssl-mir coverage-instrumentation pass.
+  - SMT-oracle hookup in `@fuzz` : refinement verification on every fuzz-input via cssl-smt.
+  - Corpus-based fuzzing : seed the LCG with captured corpora (libFuzzer-style) rather than always pure-random.
+  - Grammar-based fuzzing : type-directed input-generation for structured inputs (e.g., CSSLv3 source fuzzing for the parser).
+  - `@power` + `@thermal` + `@hot_reload` — require hw/OS-specific dependencies that stage0 intentionally defers.
