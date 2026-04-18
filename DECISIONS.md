@@ -2164,3 +2164,37 @@ Each decision entry :
   - `AnalyticExpr::Abs` + `AnalyticExpr::Sign` — for SDF absolute-value + sign-reasoning.
   - Full smooth-min `smoothmin(a, b, k) = -log(exp(-ka) + exp(-kb))/k` — differentiable everywhere (scene-SDF with rounded edges per `specs/05` § APPENDIX-SMOOTH).
   - Cusp-detection in gradient samplers : skip samples where `|a - b| < ε` to avoid subgradient-ambiguity.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D11 : AnalyticExpr::Abs + Sign + smooth_min + cusp-detection
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D10 landed `Min` + `Max` scene-SDF primitives with piecewise-linear gradients. The natural completion is : `Abs` + `Sign` (required for signed-distance arithmetic + gradient-sign tracking), `smooth_min(a, b, k)` (differentiable everywhere, rounded-edge scene-SDF per `specs/05 § APPENDIX-SMOOTH`), and `is_near_cusp` (sampler-guard to skip sub-gradient-valued points).
+- **Slice landed (this commit)**
+  - `AnalyticExpr` gains two unary variants :
+    - `Abs(Box<AnalyticExpr>)` — `|a|`. Piecewise-linear ; subgradient at 0.
+    - `Sign(Box<AnalyticExpr>)` — `sign(a) ∈ {-1, 0, +1}`. Discontinuous at 0.
+  - Wired through `simplify` (constant-folds `|Const|` / `sign(Const)` directly), `evaluate` (`a.abs()` / explicit sign dispatch with NaN handling), `to_term` (`abs_uf` / `sign_uf` uninterpreted-fn), `to_smt` (SMT-LIB text form), `collect_vars` (unified with other unary branches).
+  - `analytic_vec3.rs` gains :
+    - `smooth_min(a, b, k) -> AnalyticExpr` = `-log(exp(-k·a) + exp(-k·b))/k`. Differentiable everywhere ; as `k → ∞` approaches `min(a, b)`. Useful for rounded-edge scene-SDFs where cusp-free gradients matter.
+    - `is_near_cusp(a, b, env, epsilon) -> bool` — detects `|a(env) - b(env)| < epsilon`. Returns `true` for non-finite values (conservative). Samplers should skip cusp-near samples when verifying piecewise-linear gradients to avoid sub-gradient ambiguity.
+  - 11 new tests :
+    - Abs evaluates to magnitude + constant-folds + abs_uf in SMT.
+    - Sign returns -1/0/+1 + constant-folds + sign_uf in SMT.
+    - smooth_min approaches min as k grows (k=1 vs k=100 convergence test).
+    - smooth_min is symmetric in its args.
+    - smooth_min central-difference at cusp x=0 equals 0.5 (midpoint of [0, 1] subgradient).
+    - is_near_cusp detects close values + treats NaN as cusp-adjacent.
+- **Consequences**
+  - Test count : 1287 → 1298 (+11 in cssl-examples).
+  - AnalyticExpr now has the full arithmetic + transcendental + Min/Max + Abs/Sign primitive-set needed to express every scene-SDF operator per `specs/05 § SDF-NORMAL + § APPENDIX-SMOOTH`.
+  - `smooth_min` verifies the mathematical property that at the cusp `a = b`, the gradient is exactly the midpoint of the sharp-min sub-gradient (0.5 for a binary-union case) — test confirms this numerically via central-differences.
+  - `is_near_cusp` closes the "what samples should I avoid" gap for piecewise-linear gradient tests — callers can now filter their sample sets deterministically.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - `smooth_max(a, b, k)` — symmetric companion via `-smooth_min(-a, -b, k)` ; easy follow-on.
+  - Tri-min / tri-max (n-ary) — useful for scenes with >2 primitives without nested binary calls.
+  - Real MIR `Min`/`Max`/`Abs`/`Sign` primitives + AD rule-table entries with subgradient handling.
+  - Smooth-blend : k parameterized as an AnalyticExpr for fully-differentiable parameter-sweeps.

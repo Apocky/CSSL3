@@ -408,12 +408,63 @@ pub fn scene_sdf_intersect_grad(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § Smooth-min : rounded-edge scene-SDF union. Differentiable everywhere.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// `smooth_min(a, b, k) = -log(exp(-k·a) + exp(-k·b)) / k`.
+///
+/// § PROPERTIES
+///   - Differentiable everywhere (no cusp at `a = b`).
+///   - As `k → ∞`, smooth_min(a, b, k) → min(a, b).
+///   - For finite `k`, the result is slightly smaller than `min(a, b)` near
+///     the cusp — this produces the rounded-edge aesthetic common in
+///     ray-marched scene-SDF rendering.
+///   - `k = 32` is a reasonable default for most scene-SDF uses ; larger
+///     values approach the sharp-min limit, smaller values round more.
+///
+/// § SPEC : `specs/05_AUTODIFF.csl § APPENDIX-SMOOTH`.
+#[must_use]
+pub fn smooth_min(a: AnalyticExpr, b: AnalyticExpr, k: f64) -> AnalyticExpr {
+    let kc = AnalyticExpr::c(k);
+    // -k·a
+    let neg_ka = AnalyticExpr::neg(AnalyticExpr::mul(kc.clone(), a));
+    // -k·b
+    let neg_kb = AnalyticExpr::neg(AnalyticExpr::mul(kc.clone(), b));
+    // exp(-k·a) + exp(-k·b)
+    let sum_exp = AnalyticExpr::add(
+        AnalyticExpr::Exp(Box::new(neg_ka)),
+        AnalyticExpr::Exp(Box::new(neg_kb)),
+    );
+    // -log(sum) / k
+    let neg_log = AnalyticExpr::neg(AnalyticExpr::Log(Box::new(sum_exp)));
+    AnalyticExpr::div(neg_log, kc)
+}
+
+/// Detect if a sample environment lies near the cusp surface `a == b`.
+/// Returns `true` iff `|a(env) - b(env)| < epsilon`. Samplers should skip
+/// cusp-near samples when verifying subgradient-valued gradients.
+#[must_use]
+pub fn is_near_cusp(
+    a: &AnalyticExpr,
+    b: &AnalyticExpr,
+    env: &HashMap<String, f64>,
+    epsilon: f64,
+) -> bool {
+    let av = a.evaluate(env);
+    let bv = b.evaluate(env);
+    if !av.is_finite() || !bv.is_finite() {
+        return true; // treat non-finite as "cusp-adjacent"
+    }
+    (av - bv).abs() < epsilon
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        dot, length, scene_sdf_intersect, scene_sdf_intersect_grad, scene_sdf_subtract,
-        scene_sdf_union, scene_sdf_union_grad, sphere_sdf_grad_p, sphere_sdf_grad_r,
-        sphere_sdf_vec3, vec3_proj, AnalyticVec3Expr, VecComp,
+        dot, is_near_cusp, length, scene_sdf_intersect, scene_sdf_intersect_grad,
+        scene_sdf_subtract, scene_sdf_union, scene_sdf_union_grad, smooth_min, sphere_sdf_grad_p,
+        sphere_sdf_grad_r, sphere_sdf_vec3, vec3_proj, AnalyticVec3Expr, VecComp,
     };
     use crate::ad_gate::AnalyticExpr;
     use std::collections::HashMap;
@@ -761,5 +812,138 @@ mod tests {
         assert!(e.to_smt().contains("min_uf"));
         let e2 = AnalyticExpr::max(AnalyticExpr::v("x"), AnalyticExpr::c(0.0));
         assert!(e2.to_smt().contains("max_uf"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Abs / Sign + smooth_min + cusp-detection.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn abs_evaluates_to_magnitude() {
+        let env = HashMap::new();
+        let e = AnalyticExpr::Abs(Box::new(AnalyticExpr::c(-5.0)));
+        assert!((e.evaluate(&env) - 5.0).abs() < 1e-12);
+        let e2 = AnalyticExpr::Abs(Box::new(AnalyticExpr::c(3.0)));
+        assert!((e2.evaluate(&env) - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn abs_constant_folds() {
+        let e = AnalyticExpr::Abs(Box::new(AnalyticExpr::c(-7.0)));
+        assert_eq!(e.simplify(), AnalyticExpr::c(7.0));
+    }
+
+    #[test]
+    fn abs_smt_uses_abs_uf() {
+        let e = AnalyticExpr::Abs(Box::new(AnalyticExpr::v("x")));
+        assert!(e.to_smt().contains("abs_uf"));
+    }
+
+    #[test]
+    fn sign_returns_minus_zero_plus() {
+        let env = HashMap::new();
+        assert!(
+            (AnalyticExpr::Sign(Box::new(AnalyticExpr::c(5.0))).evaluate(&env) - 1.0).abs() < 1e-12
+        );
+        assert!(
+            (AnalyticExpr::Sign(Box::new(AnalyticExpr::c(-3.0))).evaluate(&env) - (-1.0)).abs()
+                < 1e-12
+        );
+        assert!(
+            AnalyticExpr::Sign(Box::new(AnalyticExpr::c(0.0)))
+                .evaluate(&env)
+                .abs()
+                < 1e-12
+        );
+    }
+
+    #[test]
+    fn sign_constant_folds() {
+        assert_eq!(
+            AnalyticExpr::Sign(Box::new(AnalyticExpr::c(42.0))).simplify(),
+            AnalyticExpr::c(1.0)
+        );
+        assert_eq!(
+            AnalyticExpr::Sign(Box::new(AnalyticExpr::c(-17.5))).simplify(),
+            AnalyticExpr::c(-1.0)
+        );
+        assert_eq!(
+            AnalyticExpr::Sign(Box::new(AnalyticExpr::c(0.0))).simplify(),
+            AnalyticExpr::c(0.0)
+        );
+    }
+
+    #[test]
+    fn sign_smt_uses_sign_uf() {
+        let e = AnalyticExpr::Sign(Box::new(AnalyticExpr::v("x")));
+        assert!(e.to_smt().contains("sign_uf"));
+    }
+
+    #[test]
+    fn smooth_min_approaches_min_as_k_grows() {
+        let env = HashMap::new();
+        // At k=1 : smooth_min(3, 5, 1) ≈ somewhere between 3 and 5 (but closer to 3).
+        // At k=100 : smooth_min(3, 5, 100) ≈ 3.0 to high precision.
+        let sm_k1 = smooth_min(AnalyticExpr::c(3.0), AnalyticExpr::c(5.0), 1.0).evaluate(&env);
+        let sm_k100 = smooth_min(AnalyticExpr::c(3.0), AnalyticExpr::c(5.0), 100.0).evaluate(&env);
+        // Both should be ≤ min(3, 5) = 3 (smooth_min is lower bound).
+        assert!(sm_k1 <= 3.0);
+        assert!(sm_k100 <= 3.0);
+        // Higher k should be closer to 3 than lower k.
+        assert!((sm_k100 - 3.0).abs() < (sm_k1 - 3.0).abs());
+        // k=100 should be very close to 3.
+        assert!((sm_k100 - 3.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn smooth_min_is_symmetric() {
+        let env = HashMap::new();
+        let sm_ab = smooth_min(AnalyticExpr::c(2.0), AnalyticExpr::c(7.0), 5.0).evaluate(&env);
+        let sm_ba = smooth_min(AnalyticExpr::c(7.0), AnalyticExpr::c(2.0), 5.0).evaluate(&env);
+        assert!((sm_ab - sm_ba).abs() < 1e-12);
+    }
+
+    #[test]
+    fn smooth_min_central_diff_is_continuous_at_cusp() {
+        // At a = b = 0, sharp min has a cusp but smooth_min is differentiable.
+        // Verify via central-difference : ∂(smooth_min(x, 0, k))/∂x at x=0 should be finite.
+        let sm = smooth_min(AnalyticExpr::v("x"), AnalyticExpr::c(0.0), 10.0);
+        let mut env = HashMap::new();
+        let h = 1e-6;
+        env.insert("x".into(), h);
+        let fp = sm.evaluate(&env);
+        env.insert("x".into(), -h);
+        let fm = sm.evaluate(&env);
+        let numerical_dx = (fp - fm) / (2.0 * h);
+        // At the cusp, the sharp-min subgradient is [0, 1] ; smooth_min picks 0.5
+        // (symmetric contribution from both branches).
+        assert!((numerical_dx - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn is_near_cusp_detects_close_values() {
+        let env = HashMap::new();
+        assert!(is_near_cusp(
+            &AnalyticExpr::c(1.0),
+            &AnalyticExpr::c(1.0001),
+            &env,
+            0.01
+        ));
+        assert!(!is_near_cusp(
+            &AnalyticExpr::c(1.0),
+            &AnalyticExpr::c(2.0),
+            &env,
+            0.01
+        ));
+    }
+
+    #[test]
+    fn is_near_cusp_treats_nan_as_near() {
+        let env = HashMap::new();
+        let nan = AnalyticExpr::Div(
+            Box::new(AnalyticExpr::c(0.0)),
+            Box::new(AnalyticExpr::c(0.0)),
+        );
+        assert!(is_near_cusp(&nan, &AnalyticExpr::c(1.0), &env, 0.01));
     }
 }

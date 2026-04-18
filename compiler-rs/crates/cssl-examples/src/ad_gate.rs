@@ -111,6 +111,10 @@ pub enum AnalyticExpr {
     /// Binary maximum : `max(a, b)`.
     /// Companion to Min for scene-SDF intersection / subtraction.
     Max(Box<AnalyticExpr>, Box<AnalyticExpr>),
+    /// Absolute value : `|a|`. Piecewise-linear ; subgradient at 0.
+    Abs(Box<AnalyticExpr>),
+    /// Sign : `sign(a) ∈ {-1, 0, +1}`. Discontinuous at 0.
+    Sign(Box<AnalyticExpr>),
     /// Uninterpreted function-call (for unrecognized ops). Carries the callee
     /// name and arg list. Evaluation falls back to NaN — these branches don't
     /// pass gradient-equivalence checks.
@@ -293,6 +297,27 @@ impl AnalyticExpr {
                 }
                 Self::Max(Box::new(sa), Box::new(sb))
             }
+            Self::Abs(a) => {
+                let sa = a.simplify();
+                if let Self::Const(x) = sa {
+                    return Self::Const(x.abs());
+                }
+                Self::Abs(Box::new(sa))
+            }
+            Self::Sign(a) => {
+                let sa = a.simplify();
+                if let Self::Const(x) = sa {
+                    let s = if x > 0.0 {
+                        1.0
+                    } else if x < 0.0 {
+                        -1.0
+                    } else {
+                        0.0
+                    };
+                    return Self::Const(s);
+                }
+                Self::Sign(Box::new(sa))
+            }
             Self::Uninterpreted(name, args) => {
                 Self::Uninterpreted(name.clone(), args.iter().map(Self::simplify).collect())
             }
@@ -320,6 +345,19 @@ impl AnalyticExpr {
             Self::Log(a) => a.evaluate(env).ln(),
             Self::Min(a, b) => a.evaluate(env).min(b.evaluate(env)),
             Self::Max(a, b) => a.evaluate(env).max(b.evaluate(env)),
+            Self::Abs(a) => a.evaluate(env).abs(),
+            Self::Sign(a) => {
+                let v = a.evaluate(env);
+                if v > 0.0 {
+                    1.0
+                } else if v < 0.0 {
+                    -1.0
+                } else if v.is_nan() {
+                    f64::NAN
+                } else {
+                    0.0
+                }
+            }
             Self::Uninterpreted(_, _) => f64::NAN,
         }
     }
@@ -411,6 +449,8 @@ impl AnalyticExpr {
             Self::Log(a) => Term::app("log_uf", vec![a.to_term()]),
             Self::Min(a, b) => Term::app("min_uf", vec![a.to_term(), b.to_term()]),
             Self::Max(a, b) => Term::app("max_uf", vec![a.to_term(), b.to_term()]),
+            Self::Abs(a) => Term::app("abs_uf", vec![a.to_term()]),
+            Self::Sign(a) => Term::app("sign_uf", vec![a.to_term()]),
             Self::Uninterpreted(name, args) => {
                 let args_t: Vec<Term> = args.iter().map(Self::to_term).collect();
                 if args_t.is_empty() {
@@ -442,6 +482,8 @@ impl AnalyticExpr {
             Self::Log(a) => format!("(log_uf {})", a.to_smt()),
             Self::Min(a, b) => format!("(min_uf {} {})", a.to_smt(), b.to_smt()),
             Self::Max(a, b) => format!("(max_uf {} {})", a.to_smt(), b.to_smt()),
+            Self::Abs(a) => format!("(abs_uf {})", a.to_smt()),
+            Self::Sign(a) => format!("(sign_uf {})", a.to_smt()),
             Self::Uninterpreted(name, args) => {
                 if args.is_empty() {
                     name.clone()
@@ -477,7 +519,9 @@ impl AnalyticExpr {
             | Self::Sin(a)
             | Self::Cos(a)
             | Self::Exp(a)
-            | Self::Log(a) => a.collect_vars(out),
+            | Self::Log(a)
+            | Self::Abs(a)
+            | Self::Sign(a) => a.collect_vars(out),
             Self::Add(a, b)
             | Self::Sub(a, b)
             | Self::Mul(a, b)
