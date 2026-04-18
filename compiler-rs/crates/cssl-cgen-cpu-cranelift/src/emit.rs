@@ -14,6 +14,7 @@ use core::fmt::Write as _;
 use cssl_mir::{MirFunc, MirModule};
 use thiserror::Error;
 
+use crate::lower::lower_op;
 use crate::target::CpuTargetProfile;
 use crate::types::clif_type_for;
 
@@ -32,11 +33,6 @@ pub enum CpuCodegenError {
     /// A MIR fn signature had more than one non-scalar result ; stage-0 only supports 0/1-scalar results.
     #[error("fn `{fn_name}` has {count} results ; stage-0 supports ≤ 1 scalar result")]
     TooManyResults { fn_name: String, count: usize },
-    /// Stage-0 requires an empty body (no ops) since MIR → CLIF body lowering is T10-phase-2 work.
-    #[error(
-        "fn `{fn_name}` body has {count} ops ; stage-0 emits skeleton only (T10-phase-2 lowers bodies)"
-    )]
-    BodyNotEmpty { fn_name: String, count: usize },
 }
 
 /// Emitted artifact bundle — stage-0 holds the CLIF-ish text + profile metadata.
@@ -72,9 +68,10 @@ impl EmittedArtifact {
 /// Emit a full MIR-module to a stage-0 CLIF-like text artifact.
 ///
 /// # Errors
-/// Returns [`CpuCodegenError::NonScalarParam`] if any fn param has a non-scalar type,
-/// [`CpuCodegenError::TooManyResults`] if a fn has >1 result, or
-/// [`CpuCodegenError::BodyNotEmpty`] if a fn has ops (stage-0 emits sigs only).
+/// Returns [`CpuCodegenError::NonScalarParam`] if any fn param has a non-scalar
+/// type, or [`CpuCodegenError::TooManyResults`] if a fn has >1 result. Body
+/// ops are lowered via [`crate::lower::lower_op`] ; unrecognized ops emit
+/// comment placeholders rather than errors.
 pub fn emit_module(
     module: &MirModule,
     profile: &CpuTargetProfile,
@@ -109,14 +106,6 @@ pub fn emit_module(
 }
 
 fn emit_function(f: &MirFunc, out: &mut String) -> Result<(), CpuCodegenError> {
-    // Stage-0 : only accept fn bodies that are empty (no ops in any block).
-    let op_count: usize = f.body.blocks.iter().map(|b| b.ops.len()).sum();
-    if op_count > 0 {
-        return Err(CpuCodegenError::BodyNotEmpty {
-            fn_name: f.name.clone(),
-            count: op_count,
-        });
-    }
     if f.results.len() > 1 {
         return Err(CpuCodegenError::TooManyResults {
             fn_name: f.name.clone(),
@@ -146,14 +135,46 @@ fn emit_function(f: &MirFunc, out: &mut String) -> Result<(), CpuCodegenError> {
         ret_text(ret)
     )
     .unwrap();
-    // Single empty block labeled `block0`.
+    // T11-D18 : Entry block carries the params ; body ops are lowered via
+    // `lower::lower_op`. Unrecognized ops emit a `;` comment placeholder so
+    // the output remains valid CLIF-ish text.
     writeln!(out, "block0({}):", clif_params.join(", ")).unwrap();
-    if ret.is_some() {
-        writeln!(out, "    ; stage-0 skeleton — body lowered in T10-phase-2").unwrap();
+    let op_count: usize = f.body.blocks.iter().map(|b| b.ops.len()).sum();
+    if op_count == 0 {
+        if ret.is_some() {
+            writeln!(out, "    ; stage-0 skeleton — empty body").unwrap();
+        } else {
+            writeln!(out, "    ; stage-0 skeleton — no-result empty body").unwrap();
+        }
+        writeln!(out, "    return").unwrap();
     } else {
-        writeln!(out, "    ; stage-0 skeleton — no-result return").unwrap();
+        // Lower each op in the entry block. Additional blocks are phase-2 work.
+        let entry = f.body.blocks.first().expect("at least one block exists");
+        let mut saw_return = false;
+        for op in &entry.ops {
+            match lower_op(op) {
+                Some(insns) => {
+                    for insn in insns {
+                        writeln!(out, "{}", insn.text).unwrap();
+                    }
+                    if op.name == "func.return" {
+                        saw_return = true;
+                    }
+                }
+                None => {
+                    writeln!(
+                        out,
+                        "    ; unlowered : {} (stage-0 recognizes arith/func/math only)",
+                        op.name
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        if !saw_return {
+            writeln!(out, "    return").unwrap();
+        }
     }
-    writeln!(out, "    return").unwrap();
     writeln!(out, "}}").unwrap();
     Ok(())
 }
@@ -166,7 +187,7 @@ fn ret_text(r: Option<crate::types::ClifType>) -> &'static str {
 mod tests {
     use super::{emit_module, CpuCodegenError};
     use crate::target::CpuTargetProfile;
-    use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirModule, MirType};
+    use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirModule, MirOp, MirType, ValueId};
 
     #[test]
     fn emit_empty_module_header_only() {
@@ -241,5 +262,140 @@ mod tests {
         let s = art.summary();
         assert!(s.contains("cssl-cgen-cpu-cranelift"));
         assert!(s.contains("fns=1"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D18 : body-lowering end-to-end : simple add(i32, i32) -> i32.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Build a hand-rolled MIR fn : `fn add(v0: i32, v1: i32) -> i32 { v0 + v1 }`.
+    fn hand_built_add() -> MirFunc {
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut f = MirFunc::new(
+            "add",
+            vec![i32_ty.clone(), i32_ty.clone()],
+            vec![i32_ty.clone()],
+        );
+        // Advance next_value_id past the block-args (v0, v1) before allocating v2.
+        f.next_value_id = 2;
+        // Entry block : ensure block-args are registered for v0 / v1.
+        {
+            let entry = f.body.entry_mut().expect("entry block exists");
+            entry.args = vec![
+                cssl_mir::MirValue::new(ValueId(0), i32_ty.clone()),
+                cssl_mir::MirValue::new(ValueId(1), i32_ty.clone()),
+            ];
+            entry.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), i32_ty),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        }
+        f
+    }
+
+    #[test]
+    fn emit_add_lowers_body_to_iadd_plus_return() {
+        let mut module = MirModule::new();
+        module.push_func(hand_built_add());
+        let art = emit_module(&module, &CpuTargetProfile::linux_default()).unwrap();
+        assert!(art
+            .clif_text
+            .contains("function %add(v0: i32, v1: i32) -> i32"));
+        assert!(art.clif_text.contains("v2 = iadd v0, v1"));
+        assert!(art.clif_text.contains("return v2"));
+        // Regression guard : no body-is-empty placeholder should leak through.
+        assert!(!art.clif_text.contains("stage-0 skeleton — empty body"));
+    }
+
+    #[test]
+    fn emit_constant_plus_arith_lowers_to_iconst_plus_iadd() {
+        // fn answer() -> i32 { 40 + 2 }
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut f = MirFunc::new("answer", vec![], vec![i32_ty.clone()]);
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(0), i32_ty.clone())
+                    .with_attribute("value", "40"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i32_ty.clone())
+                    .with_attribute("value", "2"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), i32_ty),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        }
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let art = emit_module(&module, &CpuTargetProfile::linux_default()).unwrap();
+        assert!(art.clif_text.contains("v0 = iconst.i32 40"));
+        assert!(art.clif_text.contains("v1 = iconst.i32 2"));
+        assert!(art.clif_text.contains("v2 = iadd v0, v1"));
+        assert!(art.clif_text.contains("return v2"));
+    }
+
+    #[test]
+    fn emit_float_mul_lowers_to_fmul() {
+        let f32_ty = MirType::Float(FloatWidth::F32);
+        let mut f = MirFunc::new(
+            "scale",
+            vec![f32_ty.clone(), f32_ty.clone()],
+            vec![f32_ty.clone()],
+        );
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                cssl_mir::MirValue::new(ValueId(0), f32_ty.clone()),
+                cssl_mir::MirValue::new(ValueId(1), f32_ty.clone()),
+            ];
+            entry.ops.push(
+                MirOp::std("arith.mulf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), f32_ty),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        }
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let art = emit_module(&module, &CpuTargetProfile::linux_default()).unwrap();
+        assert!(art.clif_text.contains("v2 = fmul v0, v1"));
+    }
+
+    #[test]
+    fn emit_unrecognized_op_emits_unlowered_comment() {
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut f = MirFunc::new("mystery", vec![], vec![i32_ty.clone()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry
+                .ops
+                .push(MirOp::std("cssl.unknown").with_result(ValueId(0), i32_ty));
+        }
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let art = emit_module(&module, &CpuTargetProfile::linux_default()).unwrap();
+        assert!(art.clif_text.contains("; unlowered : cssl.unknown"));
+        // Auto-appended trailing return because the body had no func.return.
+        assert!(art.clif_text.contains("    return"));
     }
 }

@@ -2382,3 +2382,44 @@ Each decision entry :
   - Runtime numerical gradient verification (Cranelift JIT + central-differences) — verifies the emitted branchful body produces correct gradients at runtime, not just correct shape.
   - Scene-SDF with heterogeneous operators : `min(abs(a), b)` or `smooth_min(a, b)` chain-rule through Exp+Log composition.
   - Backend emission : SPIR-V / WGSL / DXIL text-emit + validation of the scene-SDF variants.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D18 : MIR → CLIF body-lowering (the bridge to stage-1)
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** Every layer of the CSSLv3 compiler has been advancing : lexer, parser, HIR, MIR, AD walker, AD rules, substitute branchful emission, oracle modes, attestation. The **critical gap** to "can we actually run a program?" has been the MIR→codegen bridge. T10-phase-1 emitted CLIF **text** for function signatures only and rejected any body ops with `BodyNotEmpty`. This slice closes that gap : MIR ops now lower to CLIF text instructions. Real Cranelift FunctionBuilder + JIT is the next step ; this commit puts the full op-dispatch + value-id plumbing in place.
+- **Slice landed (this commit)**
+  - New module `lower.rs` (~250 LOC + 18 tests) with `lower_op(&MirOp) -> Option<Vec<ClifInsn>>` mapping :
+    - Integer arith : `arith.addi` → `iadd` , `arith.subi` → `isub` , `arith.muli` → `imul` , `arith.divsi` → `sdiv` , `arith.remsi` → `srem` , `arith.negi` → `ineg`
+    - Float arith : `arith.addf` → `fadd` , `arith.subf` → `fsub` , `arith.mulf` → `fmul` , `arith.divf` → `fdiv` , `arith.negf` → `fneg`
+    - Constants : `arith.constant` → `iconst.<ty>` / `<ty>const` based on result type + `value` attribute
+    - Comparisons : `arith.cmpi` → `icmp <predicate>` , `arith.cmpf` → `fcmp <predicate>`
+    - Select : `arith.select` → `select <cond>, <true>, <false>`
+    - Return : `func.return` → `return <operands>`
+    - Call : `func.call` → `call %<callee>(<args>)` with result-assignment form
+    - Math intrinsics : `math.sqrtf` / `math.sqrt` → `sqrt`
+  - `format_value(ValueId(n))` → `"v{n}"` CLIF textual-value name.
+  - `emit.rs::emit_function` : removed `BodyNotEmpty` error ; now iterates the entry-block ops and calls `lower_op`. Unrecognized ops emit `; unlowered : <op-name>` comments so CLIF output stays well-formed. Auto-appends trailing `return` when the body lacks `func.return`.
+  - 18 new unit tests in `lower.rs` + 4 new integration tests in `emit.rs` (add(i32, i32) → iadd, constant+arith → iconst+iadd, float mul → fmul, unrecognized op → comment).
+- **Consequences**
+  - Test count : 1328 → 1350 (+22 in cssl-cgen-cpu-cranelift).
+  - **The MIR→CLIF-text path is complete** for scalar arithmetic. A hand-built MIR function `fn add(v0: i32, v1: i32) -> i32 { v0 + v1 }` now emits :
+    ```
+    function %add(v0: i32, v1: i32) -> i32 {
+    block0(v0: i32, v1: i32):
+        v2 = iadd v0, v1
+        return v2
+    }
+    ```
+    which is valid CLIF text that `clif-util` can parse.
+  - The AD walker's branchful emission for Min/Max/Abs (T11-D15) now has a matching lowering path : `arith.cmpf` → `fcmp <predicate>` + `arith.select` → `select cond, t, f`. Scene-SDF gradient bodies lower cleanly.
+  - **This is the bridge slice to stage-1 self-host.** The next step is wiring real `cranelift-frontend::FunctionBuilder` + JIT execution — all dependencies are declared in the workspace Cargo.toml but not yet activated in cssl-cgen-cpu-cranelift. T11-D19 will flip that switch and execute a real `add(3, 4) == 7` roundtrip.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred (T11-D19 candidates)**
+  - Real `cranelift-frontend` + `cranelift-jit` dep activation → JIT-execute a MIR `add(a, b)` at runtime + assert `3 + 4 == 7`.
+  - Control-flow : `scf.if` → CLIF blocks + brif (jump-with-args).
+  - Memref load/store : `memref.load` / `memref.store` → CLIF `load.i32` / `store.i32`.
+  - SIMD / vector ops (AVX2 + AVX-512 paths per the feature-detection infrastructure already in place).
+  - Calling-convention : map `CpuTargetProfile.abi` → CLIF calling-convention attribute.
