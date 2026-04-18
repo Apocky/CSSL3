@@ -1350,6 +1350,73 @@ fn scene(x : f32) -> f32 { helper(x) }
     }
 
     #[test]
+    fn end_to_end_main_calls_generic_id_via_full_flow() {
+        // § T11-D42 : the generic-fn MVP capstone. Source has both a generic
+        //   fn AND a caller that invokes it with turbofish. After the full
+        //   pipeline (parse → HIR → lower → auto_monomorphize → rewrite →
+        //   JIT), calling `main()` with no args must return 5 — proving the
+        //   whole D38..D41 arc composes at runtime.
+        use cssl_hir::lower_module;
+        use cssl_mir::{
+            auto_monomorphize, lower_fn_body, lower_function_signature, rewrite_generic_call_sites,
+            LowerCtx, MirModule,
+        };
+
+        let src = r"
+            fn id<T>(x : T) -> T { x }
+            fn main() -> i32 { id::<i32>(5) }
+        ";
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+
+        // § Lower HIR → MIR (signature + body for every fn item). Produces
+        //   main + unspecialized id.
+        let lower_ctx = LowerCtx::new(&interner);
+        let mut mir = MirModule::new();
+        for item in &hir.items {
+            if let cssl_hir::HirItem::Fn(f) = item {
+                let mut mf = lower_function_signature(&lower_ctx, f);
+                lower_fn_body(&interner, Some(&file), f, &mut mf);
+                mir.push_func(mf);
+            }
+        }
+
+        // § Auto-monomorphize : produces id_i32 specialization + call-site map.
+        let report = auto_monomorphize(&hir, &interner, Some(&file));
+        for spec in &report.specializations {
+            mir.push_func(spec.clone());
+        }
+
+        // § Rewrite main's func.call from @id → @id_i32.
+        let rewrites = rewrite_generic_call_sites(&mut mir, &report.call_site_names);
+        assert_eq!(rewrites, 1, "expected 1 call-site rewrite in main");
+
+        // § JIT-compile main + id_i32 (skip unspecialized generic id). Order
+        //   matters : id_i32 must be compiled before main so main's call-site
+        //   can resolve @id_i32 in the JIT's symbol table.
+        let id_i32_fn = mir
+            .funcs
+            .iter()
+            .find(|f| f.name == "id_i32")
+            .expect("id_i32 spec");
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main").expect("main");
+
+        let mut m = JitModule::new();
+        let _id_handle = m.compile(id_i32_fn).expect("JIT id_i32");
+        let main_handle = m.compile(main_fn).expect("JIT main");
+        m.finalize().expect("finalize");
+
+        // § main() — no args, returns i32. Must equal 5.
+        let result = main_handle.call_unit_to_i32(&m).expect("call main()");
+        assert_eq!(
+            result, 5,
+            "main() must return 5 after full generic-fn compilation flow"
+        );
+    }
+
+    #[test]
     fn auto_monomorphize_deduplicates_same_type_args() {
         // Walker must collapse two call sites with identical type_args into ONE
         // specialization (not duplicate work).
