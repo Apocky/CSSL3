@@ -2878,3 +2878,44 @@ Each decision entry :
   - **DXIL validation** : requires `dxc.exe` (Windows SDK tool) or `llvm-dxc` — native binary + process-spawning. More complex than pure-Rust naga.
   - **MSL validation** : apple-only ; requires Metal SDK or `mslcc` shim. Skipped on non-Apple hosts.
   - **Runtime GPU execution** : compile → upload to device → dispatch → read back. Requires real driver, only reachable on hw-matrix CI.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D33 : Stage-1 self-host scaffold — placeholder source + accepting-test canary
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** The roadmap per `specs/01_BOOTSTRAP.csl` § STAGE-1 ends with the self-hosted CSSLv3-in-CSSLv3 compiler + the byte-exact `stage1 ≡ stage1-prime` fixed-point. Prior to T11-D33 the repo had *zero* physical files for stage-1 — the goal was real, but there was no directory or scaffold to point a future session at. T11-D33 lands the minimum scaffolding : a `stage1/` directory with placeholder CSSLv3 sources + a README + a stage-0 verification test that keeps those placeholders lex/parse-valid as the grammar evolves. No attempt is made to *write* the self-hosted compiler — that is multi-session work requiring P1..P10 stdlib + trait + IO + string + iterator + sum-type + parser + HIR/MIR + native-x86 capabilities to land first (see § PATH below).
+- **Slice landed (this commit)**
+  - **`stage1/README.csl`** : full CSLv3-native scaffold documentation.
+    - § STATUS : scaffold ✓ / gating ○ / bootstrap ○.
+    - § CURRENT-CAPABILITY-GATE-VS-NEEDS : catalogs what stage-0 has (lex+parse+HIR+MIR+AD+JIT+GPU-text-emit+telemetry) vs what stage-1 needs (monomorphization + stdlib + trait-dispatch + strings + IO + iterators + sum-type matching + own-x86 backend).
+    - § PATH (phased) : P1 stdlib-core → P2 trait-dispatch → P3 IO-effect → P4 strings → P5 iterators → P6 sum-types → P7 self-hosted parser → P8 self-hosted HIR+MIR → P9 x86-64 backend → P10 fixed-point stage1 ≡ stage1-prime byte-exact.
+    - § DO-NOT-START-YET : explicit guidance that premature self-host attempts produce a stage-1 missing primitives that can only be added by going back to stage0.
+  - **`stage1/hello.cssl`** : minimal `fn hello() -> i32 { 42 }` placeholder — the smallest stage-1 source the stage-0 parser accepts.
+  - **`stage1/compiler.cssl`** : `fn main() -> i32 { 0 }` placeholder for the future compiler top-level ; doc-comment cross-references the P1..P10 path.
+  - **`cssl-examples/src/stage1_scaffold.rs`** (new module) : compile-time `include_str!` of both scaffold files + 8 tests driving each through the full stage-0 pipeline (`pipeline_example` → lex + parse + HIR-lower). Asserts : non-empty source, non-trivial token count, zero fatal parse errors, ≥ 1 CST item per file. The `all_stage1_scaffold_files_accepted` test is the canary — if a future grammar-slice breaks either placeholder, THAT test fails first.
+  - **`cssl-examples/src/lib.rs`** : `pub mod stage1_scaffold;` added alongside `ad_gate` / `analytic_vec3` / `jit_chain`.
+- **Consequences**
+  - Test count : 1384 → 1392 (+8 in cssl-examples::stage1_scaffold).
+  - **The self-host target now has a physical directory + README that any future session can load as context.** The P1..P10 roadmap is spec-grade + capability-based (no calendar deadlines per `specs/01_BOOTSTRAP.csl` § STAGE-GATES).
+  - **Grammar evolution canary landed.** If a future change to `cssl-lex` / `cssl-parse` silently breaks the minimal stage-1 placeholder, `all_stage1_scaffold_files_accepted` fails at-test-time — not at self-host-time-zero when detection would be expensive.
+  - **Deliberately scoped ≠ deliberately minimal.** The scaffold files are *minimal CSSLv3 source*, but the README + test + decision entry collectively encode substantial design work : a 10-phase path, a capability gate, a separation argument between self-host scaffold vs vertical-slice integration tests, and an explicit `DO-NOT-START-YET` gate.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Closes the T11-D29..D33 arc** (response to "Go Remaining architectural work") :
+  - **D29** libm transcendentals via cranelift extern declarations.
+  - **D30** Native JIT multi-return via out-param ABI.
+  - **D31** `MirType::Vec` scaffold for real sphere-SDF.
+  - **D32** Backend emission validation — naga-parses emitted WGSL.
+  - **D33** Stage-1 self-host scaffold (this commit).
+- **Deferred** (explicitly multi-session)
+  - **P1 stdlib-core** : `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>` implementable in CSSLv3. Requires generic-type monomorphization pass landed in stage-0 first.
+  - **P2 trait-dispatch** : pattern-matched pass-registry + backend-abstraction. Current stage-0 has function-pointer `Box<dyn Pass>` only.
+  - **P3 IO-effect concrete** : `read_file` / `write_file` lowered to OS syscalls. Today the `IO` effect-row is tracked at type-level but has no lowering.
+  - **P4 string-handling** : UTF-8 slicing + formatting (`format!` analogue).
+  - **P5 iterator-combinators** : for-each / map / filter / collect.
+  - **P6 sum-type matching** : exhaustive pattern-match on all enum variants (current match support covers simple cases only).
+  - **P7 self-hosted parser** : CSSLv3-written parser that handles the full surface grammar that stage-0 handles today.
+  - **P8 self-hosted HIR + MIR** : reuses the type system in-lang.
+  - **P9 own-x86-64 backend** : replaces Cranelift per `specs/14_BACKEND.csl` § NATIVE-X86. R16 reproducibility anchor preserved.
+  - **P10 fixed-point** : `stage1` compiles itself → `stage1-prime` byte-exact. The actual self-host gate.

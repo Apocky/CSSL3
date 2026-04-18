@@ -1,0 +1,7 @@
+// stage1 placeholder : minimum-viable CSSLv3 source that the stage-0
+// compiler accepts. Verifies the scaffold files remain surface-valid as
+// the grammar evolves.
+
+fn hello() -> i32 {
+    42
+}

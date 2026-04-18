@@ -1,0 +1,18 @@
+// stage1/compiler.cssl : PLACEHOLDER stub for the future self-hosted
+// CSSLv3-in-CSSLv3 compiler top-level. Currently an empty `main` —
+// will grow organically as P1..P10 capabilities land in stage-0.
+//
+// § PATH (see stage1/README.csl) :
+//   P1 stdlib-core → P2 trait-dispatch → P3 IO-effect → P4 strings →
+//   P5 iterators → P6 sum-types → P7 self-hosted parser → P8 HIR/MIR →
+//   P9 x86-64 backend → P10 stage1 ≡ stage1-prime fixed-point
+//
+// This file exists *today* so that :
+//   (a) stage-0 parser verifies it round-trips through lex+parse cleanly
+//   (b) the scaffold occupies its intended directory slot
+//   (c) future session can `git diff HEAD~N stage1/compiler.cssl` to
+//       track self-host progress incrementally.
+
+fn main() -> i32 {
+    0
+}

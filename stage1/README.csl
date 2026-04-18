@@ -1,0 +1,63 @@
+# stage1/ : SELF-HOSTED CSSLv3 COMPILER SCAFFOLD
+
+§ STATUS (T11-D33 @ 2026-04-18)
+  scaffold  ✓ (this directory + placeholders)
+  gating    ○ pending capabilities — see § GATING below
+  bootstrap ○ multi-session work — see § PATH below
+
+§ GOAL (§§ 01_BOOTSTRAP § STAGE-1)
+  stage0 (CSSLv3-in-Rust) compiles stage1 source → stage1 binary
+  stage1 compiles itself → stage1-prime
+  fixed-point check : stage1 ≡ stage1-prime (byte-exact)
+  own-x86-64-backend replaces Cranelift (R16 anchor preserved)
+
+§ CURRENT-CAPABILITY-GATE-VS-NEEDS
+  what stage-0 has (2026-04-18) :
+    ✓ lex + parse (dual-surface : CSLv3-native + Rust-hybrid)
+    ✓ HIR lowering + HM inference + effect rows + refinement obligations
+    ✓ MIR body lowering for arith + intrinsics + inter-fn calls
+    ✓ AD walker (fwd + bwd) with 19 primitives including piecewise-linear min/max/abs
+    ✓ Cranelift JIT executing scalar programs + multi-return + libm transcendentals
+    ✓ 5 codegen backends text-emit (SPIR-V / DXIL / MSL / WGSL / Cranelift)
+    ✓ R18 telemetry (BLAKE3 + Ed25519) + persistence + 9/10 oracle modes
+
+  what stage-1 needs (not yet) :
+    ○ generic-type monomorphization (for compiler data-structures)
+    ○ rich stdlib (collections — Vec / HashMap / BTreeMap analogues)
+    ○ trait-like dispatch (for pass-registry + backend-abstraction)
+    ○ string-handling + UTF-8 slicing
+    ○ file I/O (§§ 04_EFFECTS IO-effect fully wired)
+    ○ iterator-combinators (map/filter/fold ergonomics)
+    ○ pattern-matching on sum-types (beyond current match support)
+    ○ own-x86-64-backend (§§ 14_BACKEND) replacing Cranelift
+
+§ PATH (phased — not a timeline)
+  P1 | stdlib-core : Vec<T> + HashMap<K,V> implementable in CSSLv3
+  P2 | trait-dispatch : pattern-matched pass-registry + backend-abstraction
+  P3 | IO-effect concrete : read_file + write_file lowered to OS syscalls
+  P4 | string-handling : UTF-8 slicing + formatting (format! analogue)
+  P5 | iterator-combinators : for-each / map / filter / collect
+  P6 | sum-type matching : exhaustive pattern-match on all enum variants
+  P7 | self-hosted parser : CSSLv3-written parser that handles the whole
+       surface-grammar the stage-0 parser handles
+  P8 | self-hosted HIR + MIR : similarly ; reuses the type system in-lang
+  P9 | self-hosted Cranelift-equivalent backend : emits x86-64 directly
+  P10 | fixed-point : stage1 compiles itself → stage1-prime byte-exact
+
+§ WHAT'S IN THIS DIRECTORY (2026-04-18)
+  README.csl     : this file (requirements + path)
+  hello.cssl     : minimal placeholder — verifies stage-0 accepts
+                   surface-form stage1 source files
+  compiler.cssl  : PLACEHOLDER stub of future compiler-in-CSSLv3 top-level
+                   (currently `fn main() { }` — will grow organically)
+
+§ DO-NOT-START-YET
+  don't begin stage1 proper until P1..P6 capabilities are landed in stage0
+  premature self-host attempts produce a stage-1 missing primitives that
+  can only be added by going back to stage0 — which defeats the bootstrap
+
+§ VERIFICATION-HOOK
+  cssl-examples/src/stage1_scaffold.rs (new T11-D33) :
+    proves hello.cssl + compiler.cssl parse cleanly through the stage-0
+    front-end — a test-time guarantee that the scaffold files remain
+    lex/parse-valid as the grammar evolves
