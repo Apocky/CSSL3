@@ -58,8 +58,8 @@ use std::collections::HashMap;
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
-    HirEnum, HirEnumVariant, HirFieldDecl, HirFn, HirStruct, HirStructBody, HirType, HirTypeKind,
-    Interner, Symbol,
+    HirEnum, HirEnumVariant, HirFieldDecl, HirFn, HirImpl, HirStruct, HirStructBody, HirType,
+    HirTypeKind, Interner, Symbol,
 };
 
 use crate::body_lower::lower_fn_body;
@@ -482,6 +482,106 @@ pub fn mangle_enum_specialization_name(
 ) -> String {
     let base = interner.resolve(hir_enum.name);
     mangle_specialization_name(&base, interner, subst)
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D49 — GENERIC impl<T> MONOMORPHIZATION
+//
+// Specializes every `fn` inside a generic `impl<…> SelfTy<…> { … }` block by
+// applying the outer impl's type-param substitution to each method. Produces
+// one `MirFunc` per method with a self-type-qualified mangled name :
+//   `impl<T> Box<T> { fn value(...) -> T { ... } }` + T↦i32
+//     ⇒ MirFunc "Box_i32__value"
+//
+// § SCOPE (this slice — T11-D49 MVP)
+//   - Inherent impls only (no trait_: Some(…) dispatch — that's trait-impl
+//     specialization, a follow-up slice).
+//   - Methods inherit the OUTER impl's generic-param substitution only ;
+//     per-method generics (`impl<T> Box<T> { fn map<U>(...) }`) are cloned
+//     through but NOT substituted by the outer subst (they get their own
+//     substitution at call-site time via existing specialize_generic_fn).
+//   - Self-type derivation : the first type-arg of the outer generics
+//     becomes the first bound in `subst`. Callers build TypeSubst explicitly
+//     matching `hir_impl.generics.params`.
+//   - Mangled name shape : `{self_ty_mangle}__{fn_name}` where
+//     self_ty_mangle derives from the Path-form self_ty + type-args after
+//     substitution.
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Specialize every method in an inherent-impl block using the supplied
+/// outer-impl substitution. Returns one `MirFunc` per method.
+///
+/// § EXAMPLE
+/// ```ignore
+/// // impl<T> Box<T> { fn value(b: &Box<T>) -> &T { ... } }
+/// let mut subst = TypeSubst::new();
+/// subst.bind(t_sym, hir_primitive_type("i32", &interner));
+/// let specs = specialize_generic_impl(&interner, None, &hir_impl, &subst);
+/// assert_eq!(specs[0].name, "Box_i32__value");
+/// ```
+pub fn specialize_generic_impl(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    hir_impl: &HirImpl,
+    subst: &TypeSubst,
+) -> Vec<MirFunc> {
+    // Mangle component for the self-type post-substitution.
+    let self_mangle = mangle_self_ty(&hir_impl.self_ty, interner, subst);
+    let mut out = Vec::with_capacity(hir_impl.fns.len());
+    for f in &hir_impl.fns {
+        // Clone the fn + apply the outer-impl's subst to signature.
+        let mut specialized_fn = f.clone();
+        for p in &mut specialized_fn.params {
+            p.ty = substitute_hir_type(&p.ty, interner, subst);
+        }
+        if let Some(rt) = &specialized_fn.return_ty {
+            specialized_fn.return_ty = Some(substitute_hir_type(rt, interner, subst));
+        }
+        // Run standard fn lowering on the pre-substituted HIR.
+        let lower_ctx = LowerCtx::new(interner);
+        let mut mir_fn = lower_function_signature(&lower_ctx, &specialized_fn);
+        let fn_name = interner.resolve(f.name);
+        mir_fn.name = format!("{self_mangle}__{fn_name}");
+        lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
+        out.push(mir_fn);
+    }
+    out
+}
+
+/// Mangle a HirType serving as an impl's `self_ty` into its specialization
+/// prefix. Handles `Path<A, B>` (the common case — substitutes nested type_args
+/// per subst + concatenates) and falls back to "self" for non-path self types.
+fn mangle_self_ty(self_ty: &HirType, interner: &Interner, subst: &TypeSubst) -> String {
+    match &self_ty.kind {
+        HirTypeKind::Path {
+            path, type_args, ..
+        } => {
+            let base = path
+                .last()
+                .map_or_else(|| "unknown".to_string(), |s| interner.resolve(*s));
+            if type_args.is_empty() {
+                return base;
+            }
+            let mut out = base;
+            for ta in type_args {
+                // Substitute the type-arg (e.g., T → i32) then render its fragment.
+                let concrete = substitute_hir_type(ta, interner, subst);
+                out.push('_');
+                out.push_str(&self_ty_fragment(&concrete, interner));
+            }
+            out
+        }
+        _ => "self".to_string(),
+    }
+}
+
+fn self_ty_fragment(t: &HirType, interner: &Interner) -> String {
+    match &t.kind {
+        HirTypeKind::Path { path, .. } => path
+            .last()
+            .map_or_else(|| "unknown".to_string(), |s| interner.resolve(*s).to_lowercase()),
+        _ => "opaque".to_string(),
+    }
 }
 
 /// Clone `hir_fn` but substitute generic-param references in param types +
@@ -1070,6 +1170,152 @@ mod tests {
             mangle_enum_specialization_name(&e, &interner, &subst),
             "Opt_f32"
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D49 — impl<T> monomorphization tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::specialize_generic_impl;
+
+    /// Helper : parse source, lower to HIR, return (interner, first HirImpl).
+    fn parse_impl(src: &str) -> (cssl_hir::Interner, cssl_hir::HirImpl) {
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+        let i = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                cssl_hir::HirItem::Impl(i) => Some(i.clone()),
+                _ => None,
+            })
+            .expect("impl block not found");
+        (interner, i)
+    }
+
+    #[test]
+    fn specialize_impl_produces_one_fn_per_method() {
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> {
+                fn first(b : Box<T>) -> i32 { 0 }
+                fn second(b : Box<T>) -> i32 { 0 }
+            }
+        ";
+        let (interner, i) = parse_impl(src);
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specs = specialize_generic_impl(&interner, None, &i, &subst);
+        assert_eq!(specs.len(), 2);
+        let names: Vec<&str> = specs.iter().map(|m| m.name.as_str()).collect();
+        assert!(names.iter().any(|n| n.ends_with("__first")));
+        assert!(names.iter().any(|n| n.ends_with("__second")));
+    }
+
+    #[test]
+    fn specialize_impl_method_name_prepended_by_self_mangle() {
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> {
+                fn get(b : Box<T>) -> i32 { 0 }
+            }
+        ";
+        let (interner, i) = parse_impl(src);
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specs = specialize_generic_impl(&interner, None, &i, &subst);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "Box_i32__get");
+    }
+
+    #[test]
+    fn specialize_impl_two_type_params() {
+        let src = r"
+            struct Pair<T, U> { first : T, second : U }
+            impl<T, U> Pair<T, U> {
+                fn swap(p : Pair<T, U>) -> i32 { 0 }
+            }
+        ";
+        let (interner, i) = parse_impl(src);
+        let t = interner.intern("T");
+        let u = interner.intern("U");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+        subst.bind(u, hir_primitive_type("f32", &interner));
+
+        let specs = specialize_generic_impl(&interner, None, &i, &subst);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "Pair_i32_f32__swap");
+    }
+
+    #[test]
+    fn specialize_impl_fn_param_types_substituted() {
+        // Method param `b : Box<T>` substitutes to `Box<i32>` — the outer
+        // impl's subst reaches into the method's param types.
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> {
+                fn take(b : Box<T>, extra : T) -> i32 { 0 }
+            }
+        ";
+        let (interner, i) = parse_impl(src);
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("f64", &interner));
+
+        let specs = specialize_generic_impl(&interner, None, &i, &subst);
+        assert_eq!(specs.len(), 1);
+        // Second param `extra : T` should have been substituted to f64.
+        // MirFunc.params is the flat lowered signature — params[1] = f64 (the
+        // `extra` param). `b : Box<T>` lowers to Opaque("Box") at stage-0,
+        // we only check the T-substituted param survives.
+        let has_f64 = specs[0]
+            .params
+            .iter()
+            .any(|t| matches!(t, MirType::Float(FloatWidth::F64)));
+        assert!(
+            has_f64,
+            "outer subst must substitute T → f64 in method params : got {:?}",
+            specs[0].params
+        );
+    }
+
+    #[test]
+    fn specialize_impl_empty_block_returns_empty_vec() {
+        let src = r"
+            struct Box<T> { value : T }
+            impl<T> Box<T> { }
+        ";
+        let (interner, i) = parse_impl(src);
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+        let specs = specialize_generic_impl(&interner, None, &i, &subst);
+        assert!(specs.is_empty());
+    }
+
+    #[test]
+    fn specialize_impl_no_generics_produces_unsuffixed_names() {
+        // Non-generic impl : `impl Point { fn mag(p : Point) -> f32 }` — subst
+        // is empty ; mangled name is `Point__mag` (no type-arg suffix).
+        let src = r"
+            struct Point { x : f32, y : f32 }
+            impl Point {
+                fn mag(p : Point) -> f32 { 0.0 }
+            }
+        ";
+        let (interner, i) = parse_impl(src);
+        let subst = TypeSubst::new();
+
+        let specs = specialize_generic_impl(&interner, None, &i, &subst);
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].name, "Point__mag");
     }
 
     #[test]

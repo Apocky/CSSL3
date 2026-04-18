@@ -62,7 +62,8 @@ pub use lower::{lower_function_signature, lower_module_signatures, LowerCtx};
 pub use monomorph::{
     hir_primitive_type, mangle_enum_specialization_name, mangle_specialization_name,
     mangle_struct_specialization_name, primitive_hir_to_mir, specialize_generic_enum,
-    specialize_generic_fn, specialize_generic_struct, substitute_hir_type, TypeSubst,
+    specialize_generic_fn, specialize_generic_impl, specialize_generic_struct, substitute_hir_type,
+    TypeSubst,
 };
 pub use op::{CsslOp, OpCategory, OpSignature};
 pub use pipeline::{
