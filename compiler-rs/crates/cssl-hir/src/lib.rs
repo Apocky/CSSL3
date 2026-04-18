@@ -76,6 +76,7 @@ pub mod lower;
 pub mod pat;
 pub mod refinement;
 pub mod resolve;
+pub mod staged_check;
 pub mod stmt;
 pub mod symbol;
 pub mod ty;
@@ -112,6 +113,10 @@ pub use refinement::{
     RefinementObligation,
 };
 pub use resolve::{Scope, ScopeMap};
+pub use staged_check::{
+    check_staged_consistency, StageClass, StageEntry, StageRegistry, StagedCode, StagedDiagnostic,
+    StagedReport,
+};
 pub use stmt::{HirStmt, HirStmtKind};
 pub use symbol::{Interner, Symbol};
 pub use ty::{

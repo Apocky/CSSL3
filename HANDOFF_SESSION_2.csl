@@ -68,19 +68,20 @@
     0814ad8  T3.4-phase-2-refinement + T9-phase-1
     6691400  T7+T8-phase-1
 
-  metrics @ T9-phase-2c-partial-pending-commit :
+  metrics @ T3-D13-pending-commit :
     crates-populated     : 30 of 31 workspace-members
-    LOC-Rust-scaffold    : ~48500 (+400 R18 signing + .gitattributes + SMT bridge)
+    LOC-Rust-scaffold    : ~49700 (+1200 staged_check.rs agent-authored)
     LOC-CSSLv3-examples  : ~180 (3 .cssl files)
-    tests-passing        : 1049 / 0 failed / 0 ignored (+11 SMT-bridge)
+    tests-passing        : 1074 / 0 failed / 0 ignored (+25 staged_check)
     clippy-warnings      : 0 workspace-wide @ -D warnings
     commit-gate-green    : 6/6 per-commit (fmt clippy test doc spec-xref repro)
-    DECISIONS-entries    : 26 (+T9-D4)
+    DECISIONS-entries    : 27 (+T3-D13)
     spec-xref-unresolved : 0
     killer-app-gate      : 11/11 cases pass ✓ ⊗ cryptographically-signed
       F1-correctness-proof .published .third-party-auditable
       signed-attestation : BLAKE3 + Ed25519 .over canonical-serialized-report
       SMT-verification    : Z3/CVC5-ready via Solver::check_text (when on PATH)
+    HIR-walkers (phase-3) : 3 of 5 landed (AD-legality + IFC + @staged)
 
   commit-gate-incantation :
     cargo fmt --all --check
@@ -248,16 +249,18 @@
     unblocks : automatic-bound-synthesis for unannotated fns
     size-estimate : ~2 commits / ~1000 LOC
 
-  ◐ T3.4-phase-3-remaining : @staged + macro-hygiene + let-gen
+  ◐ T3.4-phase-3-remaining : @staged ✓ LANDED + macro-hygiene + let-gen
     loc : cssl-hir + cssl-staging + cssl-macros
     scope :
-      @staged stage-arg comptime-check
-        CompTime/Runtime/Polymorphic classification consistency
-      macro hygiene-mark propagation
-        set-of-scopes invariant at expansion sites
-      let-generalization + higher-rank polymorphism
-        removes current conservative Ty::Param(Symbol) skolem
-    size-estimate : ~3 commits / ~1500 LOC
+      ✓ @staged stage-arg comptime-check (T3-D13, 2026-04-17)
+          CompTime/Runtime/Polymorphic classification consistency
+          STG0001/2/3 diagnostics + 4-pass walker (collect → validate → call-site
+          → cycle-detect DFS) + 25 new tests
+      ○ macro hygiene-mark propagation
+          set-of-scopes invariant at expansion sites
+      ○ let-generalization + higher-rank polymorphism
+          removes current conservative Ty::Param(Symbol) skolem
+    size-estimate-remaining : ~2 commits / ~1000 LOC
 
   ◐ T10-phase-2 : real FFI ← MSVC-TOOLCHAIN-GATED per T1-D7
     W! Apocky-decision-required : switch rust-toolchain.toml

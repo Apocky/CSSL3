@@ -1468,3 +1468,42 @@ Each decision entry :
   - Z3 timeout configuration (currently uses Z3's default).
   - Inline Lipschitz decomposition (separate HANDOFF_SESSION_2.csl item ; still deferred).
   - Vector-SDF / scene-SDF monomorphization gate extension (needs T6-phase-2c first).
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D13 : T3.4-phase-3-staged — @staged comptime-check structural walker
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D11 landed AD-legality as a structural walker ; T3-D12 landed IFC. T3-D9 deferred the remaining T3.4-phase-3 slices (`@staged` + macro-hygiene + let-generalization). This commit closes the `@staged` slice : a structural walker validates stage-class annotations + detects cyclic dependencies, following the same walker-pattern established by the prior two. Written by a parallel coding-agent in an isolated worktree ; the code lands here via cherry-pick with Co-Authored-By attribution to the agent's run.
+- **Options**
+  - (a) Add a dedicated `cssl-staging` depend-on-HIR check pass. Couples staging infrastructure to HIR walking ; creates crate circular-dep risk.
+  - (b) HIR-self-contained walker in `cssl_hir::staged_check`, mirroring AD-legality + IFC. Zero new deps ; aligns with the established walker API shape ; re-uses the `Report { diagnostics, checked_fn_count, ... }` convention.
+  - (c) Defer entirely to stage-1 self-host. Leaves `@staged` annotations invisible to the stage-0 compiler ; blocks Futamura-P1 experiments.
+- **Decision** **(b) HIR-self-contained walker**
+- **Slice landed (this commit)**
+  - `cssl-hir/src/staged_check.rs` (~1200 LOC) with :
+    - `StageClass` enum : `CompTime` / `Runtime` / `Polymorphic`
+    - `StageEntry { def, class, param_count, span }` : per-fn registry entry
+    - `StageRegistry` : `DefId → StageEntry` lookup, HIR-self-contained (no `cssl-staging` dep to avoid circular-crate)
+    - `StagedDiagnostic { code: StagedCode, span: Span, message: String }`
+    - `StagedCode` with 3 codes :
+      - `STG0001 StagedFnMissingStageClass` — `@staged` fn without `(comptime)` / `(runtime)` / `(polymorphic)` arg
+      - `STG0002 StageClassMismatch` — call-site passes a Runtime value where CompTime is required (or vice-versa)
+      - `STG0003 CyclicStagedDependency` — `@staged` fn dependency-graph cycle (forbidden per §§ 06)
+    - `StagedReport { diagnostics, checked_fn_count, cyclic_edges }` + `summary()`
+    - `check_staged_consistency(&HirModule, &Interner) -> StagedReport` : 4-pass walker (collect → class-validate → call-site-validate → cycle-detect via DFS)
+  - Re-export from `cssl-hir/src/lib.rs` of the walker + types.
+  - 25 new tests covering : empty module / missing-class / 3 accepted classes / mismatched call-site / acyclic / self-recursion / 3-fn cycle / non-staged-callee skip / registry semantics / report-shape.
+- **Consequences**
+  - F1 chain (when wired through `run_f1_chain` in `cssl_examples`) can now report staged-compile-time-check diagnostics alongside AD-legality + IFC + refinement-obligations.
+  - Unblocks Futamura-P1 experiments : a staged-fn with `(comptime)` can have every call-arg bound-at-compile-time (via `#run`) + monomorphized.
+  - Test count : 1049 → 1074 (+25).
+  - Pattern-continuity : three walkers (AD-legality + IFC + @staged) now share the same `check_<concern>(&HirModule, &Interner) -> <Concern>Report` API — future T3.4 slices (macro-hygiene + let-gen) will follow.
+- **Attribution**
+  - Agent-authored in isolated worktree (`.claude/worktrees/agent-a8c6c73f`, branch `worktree-agent-a8c6c73f`, stopped mid-integration) ; code cherry-picked to main branch via `cp` then manually re-added the `pub mod staged_check;` + re-exports in `lib.rs`.
+  - Agent encountered the same Windows worktree-leakage as session-2 main-track ; stopping the agent mid-run preserved the usable state.
+- **Deferred**
+  - Macro hygiene-mark propagation (last T3.4-phase-3 slice).
+  - Let-generalization + higher-rank polymorphism (removes conservative `Ty::Param(Symbol)` skolem).
+  - Full integration with `cssl-staging` data-model (stage-0 re-derives from HIR attrs ; stage-1 can unify).
