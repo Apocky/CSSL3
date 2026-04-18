@@ -1801,3 +1801,31 @@ Each decision entry :
   - Proof-cert bundle : pack all per-case certs into a single signed document.
   - OTLP exporter for proof-certs (T11-phase-2b scope).
   - Cross-session cert aggregation : build a long-term signed log of every gate-run across sessions.
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D9 : T7-phase-2e-bundle — end-to-end attestation bundle integrating gate + proof-certs + chain
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D6 through T7-D8 landed the attestation-stack components individually : `SignedKillerAppGateReport` (gate-seal), `SignedProofCert` (per-case SMT-cert), `AuditChain::append` (chain-of-custody). This commit packages them into a single `AttestationBundle` + `run_full_attestation_stack` entry-point, closing the R18 attestation stack as a single third-party-reproducible artifact.
+- **Slice landed (this commit)**
+  - `AttestationBundle { signed_gate, proof_certs, audit_chain }` : full bundle struct.
+  - `AttestationBundle::summary()` + `is_fully_proven()` helpers.
+  - `run_full_attestation_stack(solver, key, timestamp_s_base) -> AttestationBundle` entry-point : runs gate, signs report, produces per-case proof-cert for every solver-dispatchable case, appends every signed artifact to a fresh `AuditChain` in deterministic order (gate-seal first, then proof-certs in case-order).
+  - 6 new tests :
+    - Fully-proven bundle under fixed-Unsat solver + fixed seed.
+    - Missing-solver produces zero proof-certs but gate-seal stands.
+    - Chain ordering is deterministic (gate-seal @ seq 0, proof-certs @ seq 1..N).
+    - Summary reports all 3 component-types.
+    - Fixed-seed determinism across bundles (RFC 8032 Ed25519 signatures are byte-identical).
+    - Forged-Sat solver → bundle not fully-proven but gate-seal still valid.
+- **Consequences**
+  - Third-party reproduction path consolidated : `run_full_attestation_stack(solver, &signing_key, timestamp)` → bundle → publish the bundle + verifying-key → auditor verifies all three layers.
+  - Test count : 1150 → 1156 (+6).
+  - R18 attestation stack : **complete as a first-class API surface**. The five tasks listed in HANDOFF_SESSION_3.csl (let-gen, macro-hygiene, vector-SDF, proof-cert, T11-phase-2b) now have 4 of 5 landed (vector-SDF remains — scoped to scalar-only per AnalyticExpr design ; the other 4 priorities are closed with tests + documentation + chain-of-trust).
+- **Deferred**
+  - Vector-SDF gate extension : require AnalyticExpr → Vec3 variant or multi-component scalar projection. Separate design task.
+  - Multi-solver cross-witness inside the bundle (currently single-solver per run).
+  - OTLP streaming of bundle entries as they're produced.
+  - CLI entry-point (`csslc attest`) that prints the bundle summary.
