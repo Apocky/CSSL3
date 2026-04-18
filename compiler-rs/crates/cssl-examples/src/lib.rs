@@ -38,6 +38,7 @@
 #![allow(clippy::too_many_lines)]
 
 pub mod ad_gate;
+pub mod analytic_vec3;
 
 use cssl_ast::{Module, SourceFile, SourceId, Surface};
 use cssl_hir::HirModule;

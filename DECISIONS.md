@@ -2080,3 +2080,44 @@ Each decision entry :
   - Smart refinement-compilation : once `specs/20` predicates are compiled to generator-guided-construction (not rejection), RefinedGen's rejection-sampler becomes a fallback rather than the primary path.
   - `WeightedGen<G>` / `OneOfGen<Gs>` — sum-type generators for tagged-union refinement-types.
   - Stateful generators (Markov-chain style) for sequence-fuzzing.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D9 : Vec3 AnalyticExpr algebra — real `length(p) - r` as symbolic expression
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D10 (vector-SDF scalar-expanded gate case) verified the killer-app gradient `∂(length(p) - r)/∂p = normalize(p)` by manually expanding the vec3 operations to scalar components in the MIR body + writing the analytic gradients in expanded form. This works, but every new vec3 case requires replicating the expansion by hand. This slice adds a **first-class vec3 algebra** (`AnalyticVec3Expr`) with operations that compose into scalar [`AnalyticExpr`] via `length` / `dot` / `vec3_proj` / `to_scalar_components` — so `length(p) - r` can be written directly as a symbolic expression without manual scaffolding. The scalar-expansion is now **inside the algebra**, not the test.
+- **Slice landed (this commit)**
+  - New module `compiler-rs/crates/cssl-examples/src/analytic_vec3.rs` (~400 LOC + 20 tests) :
+    - `VecComp { X, Y, Z }` : component projector enum.
+    - `AnalyticVec3Expr` : `Const(f64, f64, f64)` + `Var(String)` + `Neg` + `Add` + `Sub` + `ScalarMul(Box<AnalyticExpr>, Box<Self>)` + `ScalarDiv(Box<Self>, Box<AnalyticExpr>)` + `Normalize`. All with constructor helpers `c / v / neg / add / sub / scalar_mul / scalar_div / normalize`.
+    - `simplify()` : componentwise-lifted from `AnalyticExpr::simplify`.
+    - `evaluate(&HashMap<String, f64>) -> [f64; 3]` : var lookups via `"<name>.x"` / `.y` / `.z` keys ; scalar vars (for ScalarMul/Div) use bare-name keys.
+    - `to_scalar_components() -> (AnalyticExpr, AnalyticExpr, AnalyticExpr)` : the bridge that lets every vec3 op reduce to three scalar AnalyticExpr trees. This is the mechanism that avoids adding any new AD primitive.
+    - Free functions :
+      - `length(v) : &AnalyticVec3Expr -> AnalyticExpr` = `sqrt(x² + y² + z²)` as real `Sqrt(Add(...))` tree.
+      - `dot(a, b)` = `a.x·b.x + a.y·b.y + a.z·b.z`.
+      - `vec3_proj(v, comp)` = scalar component extraction.
+      - `sphere_sdf_vec3(p, r)` = `length(p) - r` as scalar expr.
+      - `sphere_sdf_grad_p(p, d_y)` = `normalize(p) · d_y` as vec3 expr.
+      - `sphere_sdf_grad_r(d_y)` = `-d_y` as scalar expr.
+    - 20 tests covering : VecComp suffix map, const/var/neg/add/sub/scalar_mul/scalar_div/normalize evaluation, normalize zero-vector NaN handling, `length(3,4,0) == 5`, dot product against known sum, proj extraction, sphere-SDF primal at `p=(3,4,0) r=2 → 3`, sphere-SDF grad_p equals `(0.6, 0.8, 0.0)·d_y`, grad_r = `-d_y`, central-difference numerical agreement with `normalize(p).x = 0.6`, simplify preserves eval-semantics, to_scalar_components roundtrip matches evaluate.
+  - `lib.rs` : `pub mod analytic_vec3;` added alongside existing `pub mod ad_gate;`.
+- **Consequences**
+  - Test count : 1258 → 1278 (+20 in cssl-examples).
+  - `length(p) - r` + its gradient `normalize(p)·d_y` are now expressible as **first-class symbolic expressions**. Any future scene-SDF test can compose these directly without replicating the scalar-expansion :
+    ```rust
+    let p = AnalyticVec3Expr::v("p");
+    let r = AnalyticExpr::v("r");
+    let primal = sphere_sdf_vec3(&p, &r);  // length(p) - r
+    let grad_p = sphere_sdf_grad_p(&p, &AnalyticExpr::v("d_y"));
+    ```
+  - The scalar-expansion is now **test-algebra internal** via `to_scalar_components()`. The T7-D10 gate case still uses manual MirFunc construction ; the next slice (T11-D10) will lower AnalyticVec3Expr-driven test cases directly into MIR vec3 primitives once those land.
+  - No new AD primitive added — existing `cssl_autodiff::apply_bwd` handles the scalar-component tree unchanged. The algebra layer is pure-symbolic.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - T11-D10 : Real MIR vec3 lowering — `MirType::Vec3F32` + `MirOp::Vec3{Add,Sub,Neg,ScalarMul,Dot,Length,Normalize}`. Replaces scalar-expansion in T7-D10's `build_sphere_sdf_vec3_primal` with native vec3 primitives.
+  - `SceneSDFExpr` : monomorphized `min(sphere_sdf(p, r₀), sphere_sdf(p - c, r₁))` with piecewise-differentiable min-gradient dispatch (which-branch-dominates tracker).
+  - Full constant-folding in `AnalyticVec3Expr::simplify` (componentwise zero/identity elimination) — today simplify just recurses structurally.
+  - `to_smt` / `to_term` impls for `AnalyticVec3Expr` — route via `to_scalar_components` + 3 separate SMT queries per gradient (componentwise unsat).
