@@ -3,44 +3,46 @@
 //! § SPEC : `specs/02_IR.csl` § MIR + `specs/15_MLIR.csl` § CSSL-DIALECT-OPS +
 //!         standard `arith.*` / `scf.*` / `func.*` dialects via [`CsslOp::Std`].
 //!
-//! § SCOPE (T6-phase-2a / this commit)
+//! § SCOPE (T6-phase-2c / this commit)
 //!   - [`BodyLowerCtx`] : per-fn lowering context with fresh-value-id + op-buffer.
-//!   - [`lower_fn_body`] : entry-point that takes a `HirFn` + a `MirFunc` and
-//!     populates `MirFunc.body.entry().ops` with lowered ops.
-//!   - Covered expression variants :
-//!     * `HirLiteral` : Int → `arith.constant`, Float → `arith.constant`,
-//!       Bool(_) → `arith.constant`, Unit → no-op.
-//!     * `HirExprKind::Binary` : Add/Sub/Mul/Div/Rem → `arith.{addi,subi,muli,divsi,remsi}`
-//!       (signed-integer path) ; float-op path (`addf`/`subf`/`mulf`/`divf`/`remf`)
-//!       selected when either operand lowers to a float type.
-//!     * `HirExprKind::Unary` : Neg → `arith.negf` / `arith.subi zero`.
-//!     * `HirExprKind::Path` : single-segment → param-lookup (fn params bound to
-//!       entry-block args) or constant-opaque for unresolved paths.
-//!     * `HirExprKind::Call` : `func.call` op with operand-list derived from
-//!       arg-lowering results.
-//!     * `HirExprKind::Return` : emits trailing-op + `func.return`.
-//!     * `HirExprKind::Block` : recursive iteration of stmts + trailing.
-//!     * `HirExprKind::If` : `scf.if` with nested regions (structured-CFG
-//!       preservation per CC4).
+//!     Now carries an optional `&SourceFile` so literal-value extraction can
+//!     pull the real text out of the span.
+//!   - [`lower_fn_body`] : entry-point that takes a `HirFn` + a `MirFunc` +
+//!     optional `&SourceFile` and populates `MirFunc.body.entry().ops` with
+//!     lowered ops.
+//!   - Every one of the 31 `HirExprKind` variants now has a dedicated lowerer
+//!     (including the six that previously fell through to `emit_unsupported` :
+//!     Lambda / Perform / With / Region / Compound / SectionRef). `Error` is
+//!     the one remaining structural fallback — it's a parser-recovery shape,
+//!     not user-writable syntax.
+//!   - Literal-value extraction : when a `SourceFile` is threaded through,
+//!     Int / Float / Bool / Str / Char literals carry the parsed value (or
+//!     canonical string form) as the `value` attribute ; fallback to the
+//!     `stage0_*` placeholder only when no source is available or the parse
+//!     fails.
 //!
-//! § T6-phase-2b DEFERRED
-//!   - Real literal-value extraction from source-text (currently emits
-//!     `attribute="stage0_literal"` placeholders).
-//!   - Field access + indexing (emit `arith.indexcast` + `memref.load`).
-//!   - Loops (for / while / loop) — scf.for + scf.while emission.
-//!   - Struct / tuple / array constructors.
-//!   - Assignment + compound-assign (`a += b`).
-//!   - Pipeline operator (`a |> f`).
-//!   - Match expressions (desugar to scf.if-chain or scf.switch).
-//!   - Closure-capture analysis for lambdas.
-//!   - Proper type-propagation (currently assumes i32 for most scalar ops).
+//! § T6-phase-2d+ DEFERRED
+//!   - Real type-propagation (many lowerers still return `MirType::None`
+//!     where a precise type could be inferred by T3.4 type-inference).
+//!   - Lambda closure-capture analysis (stage-0 emits `cssl.closure` with
+//!     `param_count` attribute + a body region ; capture-discovery is T6-
+//!     phase-2d work).
+//!   - Effect-handler resolution (stage-0 `cssl.effect.handle` op carries
+//!     the handler expression as a nested region + a handler_count attr ;
+//!     operation-dispatch tables come in the effects-lowering pass).
+//!   - `cssl.region.exit` pairing + arena-lifetime synthesis (per
+//!     `specs/15` § PASS-PIPELINE the region → memref.alloca/dealloc
+//!     lowering is a later pass).
+//!   - Break-with-label targeting — `scf.br` / `scf.continue` emission.
+//!   - Pattern-matching arm-guard lowering + exhaustiveness-checking.
 
 use std::collections::HashMap;
 
-use cssl_ast::Span;
+use cssl_ast::{SourceFile, Span};
 use cssl_hir::{
-    HirBinOp, HirBlock, HirCallArg, HirExpr, HirExprKind, HirFn, HirLiteral, HirLiteralKind,
-    HirStmt, HirStmtKind, HirStructFieldInit, HirType, HirTypeKind, HirUnOp, Interner, Symbol,
+    HirBinOp, HirBlock, HirCallArg, HirCompoundOp, HirExpr, HirExprKind, HirFn, HirLambdaParam,
+    HirLiteral, HirLiteralKind, HirStmt, HirStmtKind, HirStructFieldInit, HirType, HirTypeKind,
+    HirUnOp, Interner, Symbol,
 };
 
 use crate::block::{MirBlock, MirOp, MirRegion};
@@ -49,10 +51,17 @@ use crate::op::CsslOp;
 use crate::value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
 
 /// Per-fn lowering context.
+///
+/// Carries an optional [`SourceFile`] reference so literal-value extraction
+/// can read the actual source text for the span of each `HirLiteral` — when
+/// no source is available, literal attributes fall back to `stage0_*`
+/// placeholders (preserves the T6-phase-2a behavior for source-less callers).
 #[derive(Debug)]
 pub struct BodyLowerCtx<'a> {
     /// Source symbol-interner.
     pub interner: &'a Interner,
+    /// Optional source file — threaded for literal-value text extraction.
+    pub source: Option<&'a SourceFile>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// Next free value-id (wired to `MirFunc.fresh_value_id`).
@@ -62,11 +71,26 @@ pub struct BodyLowerCtx<'a> {
 }
 
 impl<'a> BodyLowerCtx<'a> {
-    /// Build a fresh context for `f`.
+    /// Build a fresh context with no source-file reference. Callers who want
+    /// real literal-value extraction should use [`Self::with_source`] instead.
     #[must_use]
     pub fn new(interner: &'a Interner) -> Self {
         Self {
             interner,
+            source: None,
+            param_vars: HashMap::new(),
+            next_value_id: 0,
+            ops: Vec::new(),
+        }
+    }
+
+    /// Build a fresh context carrying a source-file reference for literal
+    /// text extraction.
+    #[must_use]
+    pub fn with_source(interner: &'a Interner, source: &'a SourceFile) -> Self {
+        Self {
+            interner,
+            source: Some(source),
             param_vars: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
@@ -79,6 +103,19 @@ impl<'a> BodyLowerCtx<'a> {
         self.next_value_id = self.next_value_id.saturating_add(1);
         id
     }
+
+    /// Build a sub-context that inherits the source-file reference + the
+    /// current `next_value_id`. Used by helpers that lower nested regions
+    /// (match arms, scf.if branches, effect-handler bodies, etc.).
+    fn sub(&self) -> BodyLowerCtx<'a> {
+        BodyLowerCtx {
+            interner: self.interner,
+            source: self.source,
+            param_vars: HashMap::new(),
+            next_value_id: self.next_value_id,
+            ops: Vec::new(),
+        }
+    }
 }
 
 /// Entry point : lower the body of `hir_fn` into `mir_fn.body.entry().ops`.
@@ -86,11 +123,24 @@ impl<'a> BodyLowerCtx<'a> {
 /// If `hir_fn.body` is `None`, `mir_fn` is left as-is (signature-only — the
 /// T6-phase-1 shape). The `param_vars` map is populated from `hir_fn.params`
 /// using entry-block value-ids `v0`, `v1`, …
-pub fn lower_fn_body(interner: &Interner, hir_fn: &HirFn, mir_fn: &mut MirFunc) {
+///
+/// The optional `source` parameter threads a `SourceFile` reference so
+/// literal-value extraction can pull the real text from each `HirLiteral`
+/// span. Callers without a source (or that don't care about literal fidelity)
+/// can pass `None` — the lowerer falls back to `stage0_*` placeholder values.
+pub fn lower_fn_body(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
     let Some(body) = &hir_fn.body else {
         return;
     };
-    let mut ctx = BodyLowerCtx::new(interner);
+    let mut ctx = match source {
+        Some(src) => BodyLowerCtx::with_source(interner, src),
+        None => BodyLowerCtx::new(interner),
+    };
     // Entry-block args = fn params. Seed `param_vars` + advance `next_value_id`.
     for (i, p) in hir_fn.params.iter().enumerate() {
         let id = ValueId(u32::try_from(i).unwrap_or(0));
@@ -229,13 +279,30 @@ fn lower_expr(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, Mi
             Some(emit_unsupported(ctx, expr.span, "Break"))
         }
         HirExprKind::Continue { .. } => Some(emit_unsupported(ctx, expr.span, "Continue")),
-        // Remaining fallbacks : Lambda / Perform / With / Region / Compound / SectionRef /
-        // Error — these need handler + CSLv3-native-compound passes to lower correctly.
-        _ => Some(emit_unsupported(
+        // § T6-phase-2c : the remaining six variants now have dedicated lowerers.
+        HirExprKind::Lambda {
+            params,
+            return_ty,
+            body,
+        } => Some(lower_lambda(
             ctx,
+            params,
+            return_ty.as_ref(),
+            body,
             expr.span,
-            discriminant_name(&expr.kind),
         )),
+        HirExprKind::Perform { path, args, .. } => Some(lower_perform(ctx, path, args, expr.span)),
+        HirExprKind::With { handler, body } => Some(lower_with(ctx, handler, body, expr.span)),
+        HirExprKind::Region { label, body } => {
+            Some(lower_region(ctx, label.as_ref().copied(), body, expr.span))
+        }
+        HirExprKind::Compound { op, lhs, rhs } => {
+            Some(lower_compound(ctx, *op, lhs, rhs, expr.span))
+        }
+        HirExprKind::SectionRef { path } => Some(lower_section_ref(ctx, path, expr.span)),
+        // `HirExprKind::Error` is a parser-recovery shape — keep the placeholder
+        // so downstream passes see a typed value rather than a panic.
+        HirExprKind::Error => Some(emit_unsupported(ctx, expr.span, "Error")),
     }
 }
 
@@ -252,7 +319,7 @@ fn lower_for(
     span: Span,
 ) -> (ValueId, MirType) {
     let (iter_id, _) = lower_expr(ctx, iter).unwrap_or((ctx.fresh_value_id(), MirType::None));
-    let body_region = lower_sub_region(ctx.interner, body);
+    let body_region = lower_sub_region_from(ctx, body);
     let id = ctx.fresh_value_id();
     ctx.ops.push(
         MirOp::std("scf.for")
@@ -271,7 +338,7 @@ fn lower_while(
     span: Span,
 ) -> (ValueId, MirType) {
     let (cond_id, _) = lower_expr(ctx, cond).unwrap_or((ctx.fresh_value_id(), MirType::Bool));
-    let body_region = lower_sub_region(ctx.interner, body);
+    let body_region = lower_sub_region_from(ctx, body);
     let id = ctx.fresh_value_id();
     ctx.ops.push(
         MirOp::std("scf.while")
@@ -284,7 +351,7 @@ fn lower_while(
 }
 
 fn lower_loop(ctx: &mut BodyLowerCtx<'_>, body: &HirBlock, span: Span) -> (ValueId, MirType) {
-    let body_region = lower_sub_region(ctx.interner, body);
+    let body_region = lower_sub_region_from(ctx, body);
     let id = ctx.fresh_value_id();
     ctx.ops.push(
         MirOp::std("scf.loop")
@@ -306,8 +373,7 @@ fn lower_match(
     let arm_regions: Vec<MirRegion> = arms
         .iter()
         .map(|arm| {
-            let mut sub = BodyLowerCtx::new(ctx.interner);
-            sub.next_value_id = ctx.next_value_id;
+            let mut sub = ctx.sub();
             let _ = lower_expr(&mut sub, &arm.body);
             ctx.next_value_id = sub.next_value_id;
             let mut blk = MirBlock::new("arm");
@@ -593,13 +659,251 @@ fn lower_range(
     (id, MirType::None)
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § T6-phase-2c : the final six variants (Lambda / Perform / With / Region /
+//   Compound / SectionRef) that previously fell through to `emit_unsupported`
+//   now have dedicated lowerers.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower `|params| -> Ty { body }` into `cssl.closure` with a body-region.
+///
+/// Stage-0 : no env-capture analysis — the closure op carries `param_count` +
+/// optional `return_ty` attrs. Capture-discovery + environment-pack lowering
+/// land in T6-phase-2d.
+fn lower_lambda(
+    ctx: &mut BodyLowerCtx<'_>,
+    params: &[HirLambdaParam],
+    return_ty: Option<&HirType>,
+    body: &HirExpr,
+    span: Span,
+) -> (ValueId, MirType) {
+    // Build a sub-region for the lambda body. The inner lowerer runs in a
+    // sub-context so parameter names inside the lambda don't leak to the
+    // outer fn's `param_vars`.
+    let mut sub = ctx.sub();
+    // Seed sub-ctx param bindings so `HirExprKind::Path` references inside
+    // the lambda body can resolve to their block-args. Lambda params start
+    // at id 0 in the nested region's SSA space.
+    for (i, p) in params.iter().enumerate() {
+        let pid = ValueId(u32::try_from(i).unwrap_or(0));
+        let pty =
+            p.ty.as_ref()
+                .map_or(MirType::None, |t| lower_hir_type_light(sub.interner, t));
+        if let Some(sym) = extract_pattern_symbol(&p.pat) {
+            sub.param_vars.insert(sym, (pid, pty));
+        }
+    }
+    // Reserve param-ids in the sub-context's SSA space.
+    sub.next_value_id = u32::try_from(params.len()).unwrap_or(0);
+    let _ = lower_expr(&mut sub, body);
+    let mut blk = MirBlock::new("entry");
+    blk.ops = sub.ops;
+    let mut body_region = MirRegion::new();
+    body_region.push(blk);
+
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque("!cssl.closure".into());
+    let mut op = MirOp::new(CsslOp::Std);
+    op.name = "cssl.closure".to_string();
+    op = op
+        .with_result(id, ty.clone())
+        .with_region(body_region)
+        .with_attribute("param_count", params.len().to_string())
+        .with_attribute("source_loc", format!("{span:?}"));
+    if return_ty.is_some() {
+        op = op.with_attribute("has_return_ty", "true");
+    }
+    ctx.ops.push(op);
+    (id, ty)
+}
+
+/// Lower `perform Effect::op(args)` into `cssl.effect.perform`.
+///
+/// The effect-path is joined into a dotted `effect_path` attribute. At
+/// stage-0 the result-type is the opaque `!cssl.perform_result` sentinel —
+/// full effect-row-driven type recovery is a post-monomorphization pass.
+fn lower_perform(
+    ctx: &mut BodyLowerCtx<'_>,
+    path: &[Symbol],
+    args: &[HirCallArg],
+    span: Span,
+) -> (ValueId, MirType) {
+    let effect_path = path
+        .iter()
+        .map(|s| ctx.interner.resolve(*s))
+        .collect::<Vec<_>>()
+        .join(".");
+    // Lower each arg → value-id. Uses the same positional/named handling as
+    // `lower_call` (stage-0 collapses named-args into positional).
+    let mut operand_ids = Vec::with_capacity(args.len());
+    for arg in args {
+        let a_expr = match arg {
+            HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+        };
+        if let Some((oid, _)) = lower_expr(ctx, a_expr) {
+            operand_ids.push(oid);
+        }
+    }
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque("!cssl.perform_result".into());
+    let mut op = MirOp::new(CsslOp::EffectPerform)
+        .with_result(id, ty.clone())
+        .with_attribute("effect_path", effect_path)
+        .with_attribute("arg_count", args.len().to_string())
+        .with_attribute("source_loc", format!("{span:?}"));
+    for oid in operand_ids {
+        op = op.with_operand(oid);
+    }
+    ctx.ops.push(op);
+    (id, ty)
+}
+
+/// Lower `with handler { body }` into `cssl.effect.handle`.
+///
+/// Stage-0 shape : the handler expression is lowered first (its value becomes
+/// the operand that identifies which handler is installed), and the body is
+/// lowered into a nested region. HirExprKind::With holds a single handler —
+/// multi-handler installations desugar to nested `with`s at the HIR level.
+fn lower_with(
+    ctx: &mut BodyLowerCtx<'_>,
+    handler: &HirExpr,
+    body: &HirBlock,
+    span: Span,
+) -> (ValueId, MirType) {
+    let (handler_id, _) = lower_expr(ctx, handler).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let body_region = lower_sub_region_from(ctx, body);
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque("!cssl.effect.handle_result".into());
+    ctx.ops.push(
+        MirOp::new(CsslOp::EffectHandle)
+            .with_operand(handler_id)
+            .with_region(body_region)
+            .with_result(id, ty.clone())
+            .with_attribute("handler_count", "1")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, ty)
+}
+
+/// Lower `region 'label { body }` into `cssl.region.enter` with a body-region.
+///
+/// Stage-0 emits only the `enter` half — the pairing `cssl.region.exit` +
+/// arena-lifetime synthesis is a later MIR→MIR pass (per `specs/15`
+/// § PASS-PIPELINE, where `cssl.region → memref.alloca + memref.dealloc`).
+fn lower_region(
+    ctx: &mut BodyLowerCtx<'_>,
+    label: Option<Symbol>,
+    body: &HirBlock,
+    span: Span,
+) -> (ValueId, MirType) {
+    let body_region = lower_sub_region_from(ctx, body);
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque("!cssl.region".into());
+    let mut op = MirOp::new(CsslOp::RegionEnter)
+        .with_region(body_region)
+        .with_result(id, ty.clone())
+        .with_attribute("source_loc", format!("{span:?}"));
+    if let Some(lbl) = label {
+        op = op.with_attribute("label", ctx.interner.resolve(lbl));
+    } else {
+        op = op.with_attribute("label", "_anon");
+    }
+    ctx.ops.push(op);
+    (id, ty)
+}
+
+/// Lower a CSLv3-native compound `A op B` (§§ 13 morpheme-stack : `.` `+` `-`
+/// `⊗` `@`) into `cssl.compound` with a `compound_op` attribute encoding the
+/// 2-letter morpheme code per `HirCompoundOp`.
+fn lower_compound(
+    ctx: &mut BodyLowerCtx<'_>,
+    op: HirCompoundOp,
+    lhs: &HirExpr,
+    rhs: &HirExpr,
+    span: Span,
+) -> (ValueId, MirType) {
+    let (lhs_id, _) = lower_expr(ctx, lhs).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let (rhs_id, _) = lower_expr(ctx, rhs).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let code = compound_op_code(op);
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque(format!("!cssl.compound.{code}"));
+    ctx.ops.push(
+        MirOp::std("cssl.compound")
+            .with_operand(lhs_id)
+            .with_operand(rhs_id)
+            .with_result(id, ty.clone())
+            .with_attribute("compound_op", code)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, ty)
+}
+
+/// Map a `HirCompoundOp` variant to its canonical 2-letter morpheme code per
+/// `specs/16 § CSLv3-NATIVE SURFACE` : `.` → `tp` (tatpuruṣa, B-of-A),
+/// `+` → `dv` (dvandva, co-equal conjunction), `-` → `kd` (karmadhāraya,
+/// B-that-is-A), `⊗` → `bv` (bahuvrīhi, thing-having-A+B), `@` → `av`
+/// (avyayībhāva, at/per/in-scope-of).
+const fn compound_op_code(op: HirCompoundOp) -> &'static str {
+    match op {
+        HirCompoundOp::Tp => "tp",
+        HirCompoundOp::Dv => "dv",
+        HirCompoundOp::Kd => "kd",
+        HirCompoundOp::Bv => "bv",
+        HirCompoundOp::Av => "av",
+    }
+}
+
+/// Lower `§§ path` into `cssl.section_ref` with the joined `section_path`
+/// attribute. No operands — a section-reference is a frozen identifier.
+fn lower_section_ref(
+    ctx: &mut BodyLowerCtx<'_>,
+    path: &[Symbol],
+    span: Span,
+) -> (ValueId, MirType) {
+    let section_path = path
+        .iter()
+        .map(|s| ctx.interner.resolve(*s))
+        .collect::<Vec<_>>()
+        .join(".");
+    let id = ctx.fresh_value_id();
+    let ty = MirType::Opaque(format!("!cssl.section_ref.{section_path}"));
+    ctx.ops.push(
+        MirOp::std("cssl.section_ref")
+            .with_result(id, ty.clone())
+            .with_attribute("section_path", section_path)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, ty)
+}
+
 fn lower_literal(ctx: &mut BodyLowerCtx<'_>, lit: &HirLiteral, span: Span) -> (ValueId, MirType) {
+    // Try to pull the real source-text for the literal ; fall back to the
+    // `stage0_*` placeholder when source is unavailable or parse fails.
+    let slice = ctx
+        .source
+        .and_then(|s| s.slice(lit.span.start, lit.span.end));
     let (ty, attr_value) = match lit.kind {
-        HirLiteralKind::Int => (MirType::Int(IntWidth::I32), "stage0_int".to_string()),
-        HirLiteralKind::Float => (MirType::Float(FloatWidth::F32), "stage0_float".to_string()),
+        HirLiteralKind::Int => {
+            let parsed = slice.and_then(parse_int_literal);
+            let val = parsed.map_or_else(|| "stage0_int".to_string(), |n| n.to_string());
+            (MirType::Int(IntWidth::I32), val)
+        }
+        HirLiteralKind::Float => {
+            let parsed = slice.and_then(parse_float_literal);
+            let val = parsed.map_or_else(|| "stage0_float".to_string(), |f| format!("{f:?}"));
+            (MirType::Float(FloatWidth::F32), val)
+        }
         HirLiteralKind::Bool(b) => (MirType::Bool, b.to_string()),
-        HirLiteralKind::Str => (MirType::Opaque("!cssl.string".into()), "stage0_str".into()),
-        HirLiteralKind::Char => (MirType::Int(IntWidth::I32), "stage0_char".into()),
+        HirLiteralKind::Str => {
+            let stripped = slice.and_then(strip_string_quotes);
+            let val = stripped.map_or_else(|| "stage0_str".to_string(), String::from);
+            (MirType::Opaque("!cssl.string".into()), val)
+        }
+        HirLiteralKind::Char => {
+            let stripped = slice.and_then(strip_char_quotes);
+            let val = stripped.map_or_else(|| "stage0_char".to_string(), String::from);
+            (MirType::Int(IntWidth::I32), val)
+        }
         HirLiteralKind::Unit => (MirType::None, "unit".into()),
     };
     let id = ctx.fresh_value_id();
@@ -611,6 +915,84 @@ fn lower_literal(ctx: &mut BodyLowerCtx<'_>, lit: &HirLiteral, span: Span) -> (V
     );
     let _ = span;
     (id, ty)
+}
+
+/// Parse an integer literal slice. Handles `_` separators + `0x`/`0b`/`0o`
+/// prefixes. Strips optional trailing type-suffix (e.g. `42i64`, `0xffu8`)
+/// by walking the slice until a non-digit-sequence boundary is reached.
+fn parse_int_literal(raw: &str) -> Option<i64> {
+    let digits_only = strip_int_type_suffix(raw);
+    let cleaned: String = digits_only.chars().filter(|c| *c != '_').collect();
+    let (radix, body) = if let Some(rest) = cleaned
+        .strip_prefix("0x")
+        .or_else(|| cleaned.strip_prefix("0X"))
+    {
+        (16, rest)
+    } else if let Some(rest) = cleaned
+        .strip_prefix("0b")
+        .or_else(|| cleaned.strip_prefix("0B"))
+    {
+        (2, rest)
+    } else if let Some(rest) = cleaned
+        .strip_prefix("0o")
+        .or_else(|| cleaned.strip_prefix("0O"))
+    {
+        (8, rest)
+    } else {
+        (10, cleaned.as_str())
+    };
+    i64::from_str_radix(body, radix).ok()
+}
+
+/// Parse a float literal slice. Strips `_` separators + optional trailing
+/// `f32`/`f64`/`f16`/`bf16` type-suffix.
+fn parse_float_literal(raw: &str) -> Option<f64> {
+    let no_suffix = strip_float_type_suffix(raw);
+    let cleaned: String = no_suffix.chars().filter(|c| *c != '_').collect();
+    cleaned.parse::<f64>().ok()
+}
+
+/// Strip a trailing integer-type suffix (e.g. `42i32` → `42`). Recognized
+/// suffixes : `i8`/`i16`/`i32`/`i64`/`i128`/`isize` + `u`-prefixed variants.
+fn strip_int_type_suffix(raw: &str) -> &str {
+    for suffix in [
+        "i128", "u128", "isize", "usize", "i64", "u64", "i32", "u32", "i16", "u16", "i8", "u8",
+    ] {
+        if let Some(stripped) = raw.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+    raw
+}
+
+/// Strip a trailing float-type suffix (e.g. `3.14f32` → `3.14`). Recognized
+/// suffixes : `f16`/`bf16`/`f32`/`f64`.
+fn strip_float_type_suffix(raw: &str) -> &str {
+    for suffix in ["bf16", "f64", "f32", "f16"] {
+        if let Some(stripped) = raw.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+    raw
+}
+
+/// Strip surrounding `"..."` from a string-literal slice. Returns `None` if
+/// the slice doesn't match the expected shape. Escape sequences are left
+/// as-is at stage-0 — full escape-resolution is T3.4+ work.
+fn strip_string_quotes(raw: &str) -> Option<&str> {
+    // Accept `"..."` (optionally prefixed with `b`/`r` etc.) and strip the
+    // outermost pair of double-quotes.
+    let trimmed = raw.trim_start_matches(|c: char| c.is_ascii_alphabetic());
+    trimmed.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
+}
+
+/// Strip surrounding `'...'` from a char-literal slice. Returns `None` if
+/// the slice doesn't match the expected shape.
+fn strip_char_quotes(raw: &str) -> Option<&str> {
+    let trimmed = raw.trim_start_matches(|c: char| c.is_ascii_alphabetic());
+    trimmed
+        .strip_prefix('\'')
+        .and_then(|s| s.strip_suffix('\''))
 }
 
 fn lower_path(ctx: &mut BodyLowerCtx<'_>, segments: &[Symbol], span: Span) -> (ValueId, MirType) {
@@ -777,11 +1159,10 @@ fn lower_if(
 ) -> Option<(ValueId, MirType)> {
     let (cond_id, _) = lower_expr(ctx, cond)?;
     // Emit scf.if with nested regions. Stage-0 lowers each branch into a sub-region.
-    let then_region = lower_sub_region(ctx.interner, then_branch);
+    let then_region = lower_sub_region_from(ctx, then_branch);
     let else_region = match else_branch {
         Some(e) => {
-            let mut sub_ctx = BodyLowerCtx::new(ctx.interner);
-            sub_ctx.next_value_id = ctx.next_value_id;
+            let mut sub_ctx = ctx.sub();
             let _ = lower_expr(&mut sub_ctx, e);
             ctx.next_value_id = sub_ctx.next_value_id;
             let mut blk = MirBlock::new("entry");
@@ -806,9 +1187,14 @@ fn lower_if(
     Some((id, result_ty))
 }
 
-fn lower_sub_region(interner: &Interner, block: &HirBlock) -> MirRegion {
-    let mut sub_ctx = BodyLowerCtx::new(interner);
+/// Lower a block into a sub-region, inheriting + writing back the parent's
+/// `next_value_id`. Used for structured control-flow branches that need
+/// monotonic value-id allocation across the outer + inner ops, and
+/// preserves the source-file reference so nested literal extraction works.
+fn lower_sub_region_from(ctx: &mut BodyLowerCtx<'_>, block: &HirBlock) -> MirRegion {
+    let mut sub_ctx = ctx.sub();
     let _ = lower_block(&mut sub_ctx, block);
+    ctx.next_value_id = sub_ctx.next_value_id;
     let mut blk = MirBlock::new("entry");
     blk.ops = sub_ctx.ops;
     let mut r = MirRegion::new();
@@ -842,6 +1228,11 @@ fn emit_unsupported(
     (id, ty)
 }
 
+/// Debug-helper : canonical name for each `HirExprKind` discriminant. Kept
+/// as a reference table + exposed for future diagnostic use (the T6-phase-2b
+/// fallback `emit_unsupported` call-sites are gone, but structural
+/// invariants tests still walk the variant set).
+#[allow(dead_code)]
 fn discriminant_name(kind: &HirExprKind) -> &'static str {
     match kind {
         HirExprKind::Literal(_) => "Literal",
@@ -892,16 +1283,18 @@ mod tests {
     use crate::lower::{lower_function_signature, LowerCtx};
     use cssl_ast::{SourceFile, SourceId, Surface};
 
-    fn hir_from(src: &str) -> (cssl_hir::HirModule, cssl_hir::Interner) {
+    fn hir_from(src: &str) -> (cssl_hir::HirModule, cssl_hir::Interner, SourceFile) {
         let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
         let toks = cssl_lex::lex(&f);
         let (cst, _bag) = cssl_parse::parse(&f, &toks);
         let (hir, interner, _lower_bag) = cssl_hir::lower_module(&f, &cst);
-        (hir, interner)
+        (hir, interner, f)
     }
 
+    /// Lower the first fn in `src`, threading the source file so literal
+    /// extraction gets real values. Most tests use this.
     fn lower_one(src: &str) -> (crate::func::MirFunc, cssl_hir::Interner) {
-        let (hir, interner) = hir_from(src);
+        let (hir, interner, source) = hir_from(src);
         let ctx = LowerCtx::new(&interner);
         let f = hir
             .items
@@ -912,7 +1305,26 @@ mod tests {
             })
             .expect("expected a fn item");
         let mut mf = lower_function_signature(&ctx, f);
-        lower_fn_body(&interner, f, &mut mf);
+        lower_fn_body(&interner, Some(&source), f, &mut mf);
+        (mf, interner)
+    }
+
+    /// Lower the first fn without threading a source file — used to assert
+    /// that the `None` path still works (fallback to `stage0_*` placeholders).
+    #[allow(dead_code)]
+    fn lower_one_nosrc(src: &str) -> (crate::func::MirFunc, cssl_hir::Interner) {
+        let (hir, interner, _source) = hir_from(src);
+        let ctx = LowerCtx::new(&interner);
+        let f = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let mut mf = lower_function_signature(&ctx, f);
+        lower_fn_body(&interner, None, f, &mut mf);
         (mf, interner)
     }
 

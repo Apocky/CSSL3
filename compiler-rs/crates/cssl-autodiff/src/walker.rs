@@ -273,7 +273,9 @@ mod tests {
         for item in &hir.items {
             if let cssl_hir::HirItem::Fn(f) = item {
                 let mut mf = lower_function_signature(&ctx, f);
-                lower_fn_body(&interner, f, &mut mf);
+                // Tests exercise the source-less path (`None`) ; literal-value
+                // fidelity isn't relevant for AD-walker shape assertions.
+                lower_fn_body(&interner, None, f, &mut mf);
                 mir.push_func(mf);
             }
         }

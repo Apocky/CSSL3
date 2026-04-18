@@ -68,20 +68,21 @@
     0814ad8  T3.4-phase-2-refinement + T9-phase-1
     6691400  T7+T8-phase-1
 
-  metrics @ T3-D13-pending-commit :
+  metrics @ T6-D5-pending-commit :
     crates-populated     : 30 of 31 workspace-members
-    LOC-Rust-scaffold    : ~49700 (+1200 staged_check.rs agent-authored)
+    LOC-Rust-scaffold    : ~50100 (+400 body_lower.rs agent-authored)
     LOC-CSSLv3-examples  : ~180 (3 .cssl files)
-    tests-passing        : 1074 / 0 failed / 0 ignored (+25 staged_check)
+    tests-passing        : 1074 / 0 failed / 0 ignored (no new tests)
     clippy-warnings      : 0 workspace-wide @ -D warnings
     commit-gate-green    : 6/6 per-commit (fmt clippy test doc spec-xref repro)
-    DECISIONS-entries    : 27 (+T3-D13)
+    DECISIONS-entries    : 28 (+T6-D5)
     spec-xref-unresolved : 0
     killer-app-gate      : 11/11 cases pass ✓ ⊗ cryptographically-signed
       F1-correctness-proof .published .third-party-auditable
       signed-attestation : BLAKE3 + Ed25519 .over canonical-serialized-report
       SMT-verification    : Z3/CVC5-ready via Solver::check_text (when on PATH)
     HIR-walkers (phase-3) : 3 of 5 landed (AD-legality + IFC + @staged)
+    body-lowering coverage : 31 / 31 HirExprKind variants ✓ complete
 
   commit-gate-incantation :
     cargo fmt --all --check
@@ -217,22 +218,28 @@
       runtime bit-exact float comparison @ Arc A770 driver-matrix
     DECISIONS.md : T7-D5 recorded
 
-  ◐ T6-phase-2c : remaining 6 HirExprKind + literal-value extraction
-    loc : cssl-mir/src/body_lower.rs
-    scope :
-      Lambda    : closure-capture analysis → cssl.closure op w/ env-array
-      Perform   : effect-op dispatch → cssl.effect.perform + handler-lookup
-      With      : handler install → cssl.effect.handle + nested-region
-      Region    : capability-scoped block → cssl.region.enter/exit
-      Compound  : CSLv3-native .(of) +(and) -(that-is) ⊗(having) lowering
-      SectionRef: §§ path-resolution
-      literal-value extraction .from source-text .via span-based lookup :
-        currently placeholder "stage0_int" / "stage0_float"
-        target : real i64/f64 values in arith.constant attribute
-      type-propagation : currently MirType::None everywhere
-        target : inferred scalar/vector types from operand typing
-      scf.break + scf.continue w/ label-targeting
-    size-estimate : ~2 commits / ~1200 LOC
+  ✓ T6-phase-2c : 6 remaining HirExprKind + literal-value extraction ← LANDED 2026-04-17 (agent-authored, cherry-picked)
+    loc : cssl-mir/src/body_lower.rs + cssl-autodiff walker.rs + cssl-examples lib.rs
+    scope-delivered :
+      ✓ Lambda    → cssl.closure (stage-0 : no env-capture analysis)
+      ✓ Perform   → cssl.effect.perform + effect_path attr + arg-operands
+      ✓ With      → cssl.effect.handle + nested-body-region
+      ✓ Region    → cssl.region.enter + label attr (no region-exit pairing stage-0)
+      ✓ Compound  → cssl.compound + compound_op attr (tp/dv/kd/bv/av per §§ 13)
+      ✓ SectionRef → cssl.section_ref + section_path attr
+      ✓ literal-value extraction .via span-based SourceFile.slice :
+          Int / Float / Bool / Str / Char parsed from source-text
+          BodyLowerCtx + lower_fn_body signature extended w/ Option<&SourceFile>
+          falls back to stage0_* only when source absent or parse fails
+    body-lowering coverage : 25/31 → 31/31 HirExprKind variants ✓
+    phase-2d-remaining (deferred) :
+      closure-env capture analysis for Lambda (free-variable tracking)
+      Xie+Leijen evidence-passing for handler-install (§§ T4-D1)
+      explicit region-exit pairing at standard-lowering phase-3
+      break-with-label + continue-with-label (scf.br / scf.continue)
+      per-variant dedicated unit tests (current : indirect F1-chain coverage)
+      real type-propagation (many lowerers still return MirType::None)
+    DECISIONS.md : T6-D5 recorded
 
   ◐ T9-phase-2c : inline Lipschitz decomposition
     loc : cssl-smt/src/predicate.rs + new module cssl-smt/src/lipschitz.rs

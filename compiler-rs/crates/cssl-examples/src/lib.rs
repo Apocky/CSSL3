@@ -239,13 +239,14 @@ pub fn run_f1_chain(name: &str, source: &str) -> F1ChainOutcome {
     let obligation_bag = cssl_hir::collect_refinement_obligations(&hir_mod, &interner);
     let obligation_count = obligation_bag.len();
 
-    // § MIR lowering (signatures + bodies)
+    // § MIR lowering (signatures + bodies — source threaded for T6-phase-2c
+    //   real literal-value extraction).
     let lower_ctx = cssl_mir::LowerCtx::new(&interner);
     let mut mir_mod = cssl_mir::MirModule::new();
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
-            cssl_mir::lower_fn_body(&interner, f, &mut mf);
+            cssl_mir::lower_fn_body(&interner, Some(&file), f, &mut mf);
             mir_mod.push_func(mf);
         }
     }

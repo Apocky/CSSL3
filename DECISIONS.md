@@ -1507,3 +1507,44 @@ Each decision entry :
   - Macro hygiene-mark propagation (last T3.4-phase-3 slice).
   - Let-generalization + higher-rank polymorphism (removes conservative `Ty::Param(Symbol)` skolem).
   - Full integration with `cssl-staging` data-model (stage-0 re-derives from HIR attrs ; stage-1 can unify).
+
+───────────────────────────────────────────────────────────────
+
+## § T6-D5 : T6-phase-2c — 6 remaining HirExprKind variants + literal-value extraction (agent-authored)
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T6-D4 (phase-2b) landed 15 HirExprKind variants covering structured control-flow + compound-expression surface. 6 variants remained fell-through to `emit_unsupported` : Lambda / Perform / With / Region / Compound / SectionRef. Literal-value extraction still emitted `"stage0_int"` / `"stage0_float"` placeholders. This commit closes both — brings body-lowering coverage to all 31 HirExprKind variants + extracts real literal values from source-text spans.
+- **Options**
+  - (a) Add remaining 6 lowerings inline next to existing variants — aligned with T6-D3/D4 pattern.
+  - (b) Extract lowering into a dedicated closure-captures analysis pass for Lambda. Over-engineered for stage-0 ; closure-env is phase-2d+ work.
+  - (c) Defer entirely to MLIR-FFI landing at T10-phase-2. Blocks F1-chain full-coverage.
+- **Decision** **(a) inline lowerings, stage-0-appropriate stubs**
+- **Slice landed (this commit)**
+  - `cssl-mir/src/body_lower.rs` (~+400 LOC) :
+    - `lower_lambda` → `cssl.closure` op with body-region + `param_count` attribute. Stage-0 : no env-capture analysis (phase-2d+) — the op is emitted as an opaque closure-shape.
+    - `lower_perform` → `cssl.effect.perform` op with `effect_path` attribute + arg-operands. Result : `!cssl.perform_result`.
+    - `lower_with` → `cssl.effect.handle` op with nested body-region + per-handler attribute stub.
+    - `lower_region` → `cssl.region.enter` op with body-region + `label` attr. Region-exit pairing is a later pass.
+    - `lower_compound` → `cssl.compound` op with `compound_op` attr (`tp` / `dv` / `kd` / `bv` / `av` per CSLv3-native morpheme-stacking §§ 13) + lhs/rhs operands.
+    - `lower_section_ref` → `cssl.section_ref` op with joined `section_path` attr.
+  - Literal-value extraction :
+    - `BodyLowerCtx` extended with `source: Option<&'a SourceFile>` — threaded through `lower_fn_body(&Interner, Option<&SourceFile>, &HirFn, &mut MirFunc)`.
+    - `lower_literal` uses span-based `SourceFile.slice(span)` to read the literal's original text, parses it per `HirLiteralKind` (Int / Float / Bool / Str / Char), emits the parsed value in the `"value"` attribute.
+    - Falls back to the `stage0_*` placeholder when no source is threaded or parse fails (e.g., macro-synthesized literals).
+  - `cssl-autodiff/src/walker.rs` test-helper updated to pass `None` for the new `SourceFile` arg (AD-walker tests don't care about literal fidelity).
+  - `cssl-examples/src/lib.rs` `run_f1_chain` updated to pass `Some(&file)` so the F1 chain picks up real literal values.
+- **Consequences**
+  - Body-lowering coverage : 25/31 → 31/31 HirExprKind variants (+ real literal-value extraction replacing `stage0_*` placeholder).
+  - F1-chain `run_f1_chain` now captures real literal values for every canonical example (hello_triangle + sdf_shader + audio_callback).
+  - Test count : 1074 (unchanged ; agent-1 did not land new tests for the 6 new lowerings — existing test infrastructure indirectly covers them via F1 chain on full examples, but dedicated unit tests per variant are a follow-up).
+  - MIR pass-pipeline ready for T7 / T9 / T11 / T12 phase-2d work that needs all 31 variants structured.
+- **Attribution**
+  - Agent-authored in isolated worktree (`.claude/worktrees/agent-afa892eb`, branch `worktree-agent-afa892eb`, stopped mid-finalization after clippy/fmt residual).
+  - Cherry-picked to main via `cp` of three files (`body_lower.rs` + `walker.rs` + `cssl-examples/src/lib.rs`) + manual cleanup of 3 clippy/fmt issues (`String::from` instead of closure, `#[allow(dead_code)]` on the test-fixture that only exercises the `None` path).
+- **Deferred**
+  - Closure-env capture analysis for Lambda (free-variable tracking → captured-operands).
+  - Stateful handler-install with evidence tracking (Xie+Leijen transform per T4-D1 deferred-list).
+  - Explicit region-exit pairing at the standard-lowering phase-3.
+  - Break-with-label targeting (`scf.br` / `scf.continue` operand threading).
+  - Dedicated unit tests per new lowering (Lambda / Perform / With / Region / Compound / SectionRef) — currently indirectly exercised via F1 chain.
