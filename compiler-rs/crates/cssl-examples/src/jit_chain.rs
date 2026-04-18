@@ -1419,6 +1419,132 @@ fn scene(x : f32) -> f32 { helper(x) }
         );
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D44 : broader generic-fn coverage — non-identity bodies.
+    //
+    // T11-D42 proved `fn id<T>` (trivial body) works end-to-end. T11-D44
+    // exercises richer generic bodies : binary arithmetic, self-squaring,
+    // multi-call chaining — confirming the D38..D43 arc handles more than
+    // just identity specialization.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn end_to_end_generic_add_specializes_and_computes() {
+        // `fn add<T>(a : T, b : T) -> T { a + b }` — binary arithmetic on
+        // the generic param. Specialize T↦i32, compile, call add_i32(3, 4).
+        use cssl_hir::lower_module;
+        use cssl_mir::{
+            auto_monomorphize, drop_unspecialized_generic_fns, lower_fn_body,
+            lower_function_signature, rewrite_generic_call_sites, LowerCtx, MirModule,
+        };
+
+        let src = r"
+            fn add<T>(a : T, b : T) -> T { a + b }
+            fn main() -> i32 { add::<i32>(3, 4) }
+        ";
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+
+        let lower_ctx = LowerCtx::new(&interner);
+        let mut mir = MirModule::new();
+        for item in &hir.items {
+            if let cssl_hir::HirItem::Fn(f) = item {
+                let mut mf = lower_function_signature(&lower_ctx, f);
+                lower_fn_body(&interner, Some(&file), f, &mut mf);
+                mir.push_func(mf);
+            }
+        }
+        let report = auto_monomorphize(&hir, &interner, Some(&file));
+        for spec in &report.specializations {
+            mir.push_func(spec.clone());
+        }
+        rewrite_generic_call_sites(&mut mir, &report.call_site_names);
+        drop_unspecialized_generic_fns(&mut mir);
+
+        // Specialized add_i32 must have (i32, i32) -> i32.
+        let add_i32 = mir.funcs.iter().find(|f| f.name == "add_i32").unwrap();
+        assert_eq!(
+            add_i32.params,
+            vec![
+                cssl_mir::MirType::Int(cssl_mir::IntWidth::I32),
+                cssl_mir::MirType::Int(cssl_mir::IntWidth::I32)
+            ]
+        );
+
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main").unwrap();
+        let mut m = JitModule::new();
+        let _add_h = m.compile(add_i32).expect("JIT add_i32");
+        let main_h = m.compile(main_fn).expect("JIT main");
+        m.finalize().unwrap();
+
+        // main() = add_i32(3, 4) = 7.
+        let result = main_h.call_unit_to_i32(&m).expect("call main()");
+        assert_eq!(result, 7, "add_i32(3, 4) via main() must equal 7");
+    }
+
+    #[test]
+    fn end_to_end_generic_twice_specializes_and_computes_f32() {
+        // `fn twice<T>(x : T) -> T { x + x }` — single param used twice in
+        // the body. Specialize T↦f32, compile, call twice_f32(2.5) = 5.0.
+        use cssl_hir::lower_module;
+        use cssl_mir::{
+            auto_monomorphize, drop_unspecialized_generic_fns, lower_fn_body,
+            lower_function_signature, rewrite_generic_call_sites, LowerCtx, MirModule,
+        };
+
+        let src = r"
+            fn twice<T>(x : T) -> T { x + x }
+            fn main_f32() -> f32 { twice::<f32>(2.5) }
+        ";
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+
+        let lower_ctx = LowerCtx::new(&interner);
+        let mut mir = MirModule::new();
+        for item in &hir.items {
+            if let cssl_hir::HirItem::Fn(f) = item {
+                let mut mf = lower_function_signature(&lower_ctx, f);
+                lower_fn_body(&interner, Some(&file), f, &mut mf);
+                mir.push_func(mf);
+            }
+        }
+        let report = auto_monomorphize(&hir, &interner, Some(&file));
+        for spec in &report.specializations {
+            mir.push_func(spec.clone());
+        }
+        rewrite_generic_call_sites(&mut mir, &report.call_site_names);
+        drop_unspecialized_generic_fns(&mut mir);
+
+        let twice_f32 = mir.funcs.iter().find(|f| f.name == "twice_f32").unwrap();
+        assert_eq!(twice_f32.name, "twice_f32");
+
+        let main_fn = mir.funcs.iter().find(|f| f.name == "main_f32").unwrap();
+        let mut m = JitModule::new();
+        let twice_h = m.compile(twice_f32).unwrap();
+        let main_h = m.compile(main_fn).unwrap();
+        m.finalize().unwrap();
+
+        // main_f32() returns f32. No call_unit_to_f32 helper today, so we
+        // exercise twice_f32 directly + verify main_f32's signature shape.
+        let result = twice_h.call_f32_to_f32(2.5, &m).unwrap();
+        assert!(
+            (result - 5.0_f32).abs() < 1e-5,
+            "twice_f32(2.5) must equal 5.0, got {result}"
+        );
+
+        // Call main_f32() via call_unit — requires an f32-returning helper.
+        // Confirm at minimum that main_f32 compiled (handle has correct sig).
+        assert_eq!(main_h.param_count, 0);
+        assert_eq!(
+            main_h.result_type,
+            Some(cssl_mir::MirType::Float(cssl_mir::FloatWidth::F32))
+        );
+    }
+
     #[test]
     fn auto_monomorphize_deduplicates_same_type_args() {
         // Walker must collapse two call sites with identical type_args into ONE
