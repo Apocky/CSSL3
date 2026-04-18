@@ -2290,3 +2290,37 @@ Each decision entry :
   - Real branchful adjoint bodies via `arith.cmpf` + `arith.select` instead of placeholder.
   - `math.sign` MirOp recognition (vs current `math.copysign` proxy).
   - Scene-SDF-shaped end-to-end gate that walks a MIR function using `arith.minimumf` + confirms walker reports Primitive::Min matches.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D15 : Real branchful adjoint emission for Min/Max/Abs/Sign
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D13 added the AD rule-table entries for Min/Max/Abs/Sign but `substitute.rs` still emitted `cssl.diff.{fwd,bwd}_placeholder` ops instead of real tangent/adjoint bodies. This slice replaces the placeholder emission with real `arith.cmpf` + `arith.select` + `arith.constant` + `arith.negf` chains so the Fwd/Bwd variants produce executable MIR for these primitives.
+- **Slice landed (this commit)**
+  - `substitute.rs` Fwd match extracts Min/Max/Abs/Sign from the placeholder-catchall and routes them to real emitters :
+    - `emit_min_fwd` / `emit_max_fwd` → shared `emit_piecewise_binary_fwd` with predicate `"ole"` / `"oge"` : emits `cmpf + select` producing `d_y = select(cmp(a, b), d_a, d_b)`.
+    - `emit_abs_fwd` → const 0.0 + `cmpf "oge" x 0` + `negf d_x` + `select` producing `d_y = select(x ≥ 0, d_x, -d_x)`.
+    - `emit_sign_fwd` → const 0.0 (derivative is 0 a.e.).
+  - Bwd match mirror : `emit_bwd_min` / `emit_bwd_max` → shared `emit_bwd_piecewise_binary` with `cmpf` + two `select`s + two `addf`s routing `d_y` to whichever branch wins. `emit_bwd_abs` similarly emits `cmpf + negf + select + addf`. `emit_bwd_sign` is a no-op (zero gradient).
+  - 8 new tests covering the emission-shape :
+    - `fwd_min_emits_cmpf_ole_plus_select` : predicate + select both present with `diff_role="tangent"`.
+    - `fwd_max_emits_cmpf_oge_plus_select` : symmetric with predicate `oge`.
+    - `fwd_abs_emits_constant_cmpf_negf_select` : full 4-op chain present.
+    - `fwd_sign_emits_constant_zero` : zero-tangent constant.
+    - `bwd_min_emits_select_plus_accumulate` : ≥ 1 adjoint-cmpf + ≥ 2 adjoint-selects.
+    - `bwd_abs_emits_select_plus_accumulate` : ≥ 1 adjoint-select for abs.
+    - `bwd_sign_is_noop` : zero `diff_primitive=sign` ops emitted.
+    - `min_and_max_no_longer_emit_fwd_placeholder` : guard against regression to placeholder path.
+- **Consequences**
+  - Test count : 1315 → 1323 (+8 in cssl-autodiff).
+  - Min/Max/Abs gradients are now **executable MIR** : a backend (Cranelift / SPIR-V / DXIL / MSL / WGSL) can lower the emitted `arith.cmpf` + `arith.select` sequence directly to target-arch branchless-select ops (SSE CMPPS/BLENDPS, SPIR-V OpSelect, HLSL select intrinsic).
+  - Sign's zero-gradient is still structurally represented (const 0.0 in Fwd ; no-op in Bwd) so the walker's `ops_matched` counter still ticks for sign ops — downstream consumers know the primitive was recognized.
+  - Scene-SDF union/intersection gradients via `min(a, b)` / `max(a, b)` can now be emitted end-to-end : HIR `min(a, b)` call → body_lower `func.call(callee="min")` → walker recognizes Primitive::Min → substitute emits real branchful tangent + adjoint body.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Higher-order (n-ary) min/max AD : currently reduced via smooth_min_n / max_n folds at the AnalyticExpr level ; MIR-level N-ary op would avoid the binary-tree depth.
+  - Abs's subgradient at `x = 0` : currently the `oge` predicate picks `dx` (i.e., gradient = +1 at 0) ; convention matches `sign(0) = 0` is not enforced yet.
+  - Smooth-min MirOp variant — today smooth_min is built out of Exp/Log/Add/Neg/Div primitives that each have rules, so it already differentiates correctly via chain-rule composition. A dedicated primitive would be marginally more efficient but not semantically necessary.
+  - Walker-level integration test (cssl-autodiff::walker) exercising the full @differentiable fn with `min` call → confirm emit ops flow through to fwd/bwd variants.

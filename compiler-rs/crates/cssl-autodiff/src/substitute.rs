@@ -465,18 +465,15 @@ fn emit_fwd_tangent_ops(
         Primitive::Cos => emit_cos_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
         Primitive::Exp => emit_exp_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
         Primitive::Log => emit_log_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
+        // T11-D15 : real branchful Fwd emission for piecewise-linear primitives.
+        Primitive::Min => emit_min_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
+        Primitive::Max => emit_max_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
+        Primitive::Abs => emit_abs_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
+        Primitive::Sign => emit_sign_fwd(op, primal_result_id, &result_ty, tangent_map, next_id),
         // Call / Load / Store / If / Loop — stage-0 emits a structural placeholder
         // that carries the recipe attribute. Full expansion is phase-2c (requires
         // tape / callee-variant resolution / region traversal).
-        Primitive::Call
-        | Primitive::Load
-        | Primitive::Store
-        | Primitive::If
-        | Primitive::Loop
-        | Primitive::Min
-        | Primitive::Max
-        | Primitive::Abs
-        | Primitive::Sign => {
+        Primitive::Call | Primitive::Load | Primitive::Store | Primitive::If | Primitive::Loop => {
             let d_y = fresh_id(next_id);
             tangent_map.insert(primal_result_id, d_y);
             vec![MirOp::std("cssl.diff.fwd_placeholder")
@@ -795,6 +792,143 @@ fn emit_log_fwd(
         .with_attribute("diff_primitive", "log")]
 }
 
+// ─── Min : y = min(a, b)  ⇒  d_y = select(a ≤ b, d_a, d_b) ───────────────
+fn emit_min_fwd(
+    op: &MirOp,
+    primal_result: ValueId,
+    result_ty: &MirType,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    emit_piecewise_binary_fwd(
+        op,
+        primal_result,
+        result_ty,
+        tangent_map,
+        next_id,
+        "ole", // ordered-less-equal : a ≤ b picks a's tangent
+        "min",
+    )
+}
+
+// ─── Max : y = max(a, b)  ⇒  d_y = select(a ≥ b, d_a, d_b) ───────────────
+fn emit_max_fwd(
+    op: &MirOp,
+    primal_result: ValueId,
+    result_ty: &MirType,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    emit_piecewise_binary_fwd(
+        op,
+        primal_result,
+        result_ty,
+        tangent_map,
+        next_id,
+        "oge", // ordered-greater-equal : a ≥ b picks a's tangent
+        "max",
+    )
+}
+
+/// Shared `min`/`max` Fwd emitter : `d_y = select(cmp(a, b), d_a, d_b)`.
+/// `predicate` selects between `"ole"` (min) and `"oge"` (max).
+fn emit_piecewise_binary_fwd(
+    op: &MirOp,
+    primal_result: ValueId,
+    result_ty: &MirType,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+    predicate: &'static str,
+    prim_name: &'static str,
+) -> Vec<MirOp> {
+    let (Some(&a), Some(&b)) = (op.operands.first(), op.operands.get(1)) else {
+        return Vec::new();
+    };
+    let d_a = tangent_or_zero(tangent_map, a);
+    let d_b = tangent_or_zero(tangent_map, b);
+    let cmp_id = fresh_id(next_id);
+    let d_y = fresh_id(next_id);
+    tangent_map.insert(primal_result, d_y);
+    vec![
+        MirOp::std("arith.cmpf")
+            .with_operand(a)
+            .with_operand(b)
+            .with_result(cmp_id, MirType::Bool)
+            .with_attribute("predicate", predicate)
+            .with_attribute("diff_role", "tangent")
+            .with_attribute("diff_primitive", prim_name),
+        MirOp::std("arith.select")
+            .with_operand(cmp_id)
+            .with_operand(d_a)
+            .with_operand(d_b)
+            .with_result(d_y, result_ty.clone())
+            .with_attribute("diff_role", "tangent")
+            .with_attribute("diff_primitive", prim_name),
+    ]
+}
+
+// ─── Abs : y = |x|  ⇒  d_y = select(x ≥ 0, d_x, -d_x) ────────────────────
+fn emit_abs_fwd(
+    op: &MirOp,
+    primal_result: ValueId,
+    result_ty: &MirType,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    let Some(&x) = op.operands.first() else {
+        return Vec::new();
+    };
+    let d_x = tangent_or_zero(tangent_map, x);
+    let zero_id = fresh_id(next_id);
+    let cmp_id = fresh_id(next_id);
+    let neg_d_x = fresh_id(next_id);
+    let d_y = fresh_id(next_id);
+    tangent_map.insert(primal_result, d_y);
+    vec![
+        MirOp::std("arith.constant")
+            .with_result(zero_id, result_ty.clone())
+            .with_attribute("value", "0.0")
+            .with_attribute("diff_role", "tangent")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.cmpf")
+            .with_operand(x)
+            .with_operand(zero_id)
+            .with_result(cmp_id, MirType::Bool)
+            .with_attribute("predicate", "oge")
+            .with_attribute("diff_role", "tangent")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.negf")
+            .with_operand(d_x)
+            .with_result(neg_d_x, result_ty.clone())
+            .with_attribute("diff_role", "tangent")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.select")
+            .with_operand(cmp_id)
+            .with_operand(d_x)
+            .with_operand(neg_d_x)
+            .with_result(d_y, result_ty.clone())
+            .with_attribute("diff_role", "tangent")
+            .with_attribute("diff_primitive", "abs"),
+    ]
+}
+
+// ─── Sign : y = sign(x)  ⇒  d_y = 0 ──────────────────────────────────────
+fn emit_sign_fwd(
+    _op: &MirOp,
+    primal_result: ValueId,
+    result_ty: &MirType,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    let d_y = fresh_id(next_id);
+    tangent_map.insert(primal_result, d_y);
+    vec![MirOp::std("arith.constant")
+        .with_result(d_y, result_ty.clone())
+        .with_attribute("value", "0.0")
+        .with_attribute("diff_role", "tangent")
+        .with_attribute("diff_primitive", "sign")]
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // § Reverse-mode substitution : walk ops in REVERSE, emit adjoint-ops.
 // ─────────────────────────────────────────────────────────────────────────
@@ -949,20 +1083,13 @@ fn emit_bwd_adjoint_ops(
         Primitive::Exp => emit_bwd_exp(op, primal_result_id, &result_ty, d_y, tangent_map, next_id),
         // y = log(a)  ⇒  d_a += d_y / a
         Primitive::Log => emit_bwd_log(op, &result_ty, d_y, tangent_map, next_id),
-        // Control / call / memory / piecewise : stage-0 placeholder + recipe.
-        // Min/Max/Abs : piecewise-linear ; full subgradient emission is phase-2d
-        //   (requires runtime pick-the-winner or sign(x) lookup in adjoint body).
-        // Sign : derivative = 0 everywhere except 0 ; stage-0 emits placeholder
-        //   so the AD walker tracks it as a matched primitive with zero-gradient recipe.
-        Primitive::Call
-        | Primitive::Load
-        | Primitive::Store
-        | Primitive::If
-        | Primitive::Loop
-        | Primitive::Min
-        | Primitive::Max
-        | Primitive::Abs
-        | Primitive::Sign => {
+        // T11-D15 : real branchful Bwd emission for piecewise-linear primitives.
+        Primitive::Min => emit_bwd_min(op, &result_ty, d_y, tangent_map, next_id),
+        Primitive::Max => emit_bwd_max(op, &result_ty, d_y, tangent_map, next_id),
+        Primitive::Abs => emit_bwd_abs(op, &result_ty, d_y, tangent_map, next_id),
+        Primitive::Sign => emit_bwd_sign(op, tangent_map, next_id),
+        // Control / call / memory : stage-0 placeholder + recipe.
+        Primitive::Call | Primitive::Load | Primitive::Store | Primitive::If | Primitive::Loop => {
             vec![MirOp::std("cssl.diff.bwd_placeholder")
                 .with_operand(d_y)
                 .with_attribute("primitive", prim.name())
@@ -1302,6 +1429,159 @@ fn emit_bwd_exp(
             .with_attribute("diff_role", "adjoint")
             .with_attribute("diff_primitive", "exp"),
     ]
+}
+
+// ─── Min bwd :  d_a += select(a ≤ b, d_y, 0) ; d_b += select(a ≤ b, 0, d_y) ─
+fn emit_bwd_min(
+    op: &MirOp,
+    result_ty: &MirType,
+    d_y: ValueId,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    emit_bwd_piecewise_binary(op, result_ty, d_y, tangent_map, next_id, "ole", "min")
+}
+
+// ─── Max bwd :  d_a += select(a ≥ b, d_y, 0) ; d_b += select(a ≥ b, 0, d_y) ─
+fn emit_bwd_max(
+    op: &MirOp,
+    result_ty: &MirType,
+    d_y: ValueId,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    emit_bwd_piecewise_binary(op, result_ty, d_y, tangent_map, next_id, "oge", "max")
+}
+
+/// Shared `min`/`max` Bwd emitter : routes the incoming adjoint `d_y` to
+/// whichever branch wins under the comparison `predicate`.
+fn emit_bwd_piecewise_binary(
+    op: &MirOp,
+    result_ty: &MirType,
+    d_y: ValueId,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+    predicate: &'static str,
+    prim_name: &'static str,
+) -> Vec<MirOp> {
+    let (Some(&a), Some(&b)) = (op.operands.first(), op.operands.get(1)) else {
+        return Vec::new();
+    };
+    let prev_d_a = tangent_or_zero(tangent_map, a);
+    let new_d_a = fresh_id(next_id);
+    tangent_map.insert(a, new_d_a);
+    let prev_d_b = tangent_or_zero(tangent_map, b);
+    let new_d_b = fresh_id(next_id);
+    tangent_map.insert(b, new_d_b);
+
+    let zero_id = fresh_id(next_id);
+    let cmp_id = fresh_id(next_id);
+    let contrib_a = fresh_id(next_id);
+    let contrib_b = fresh_id(next_id);
+    vec![
+        MirOp::std("arith.constant")
+            .with_result(zero_id, result_ty.clone())
+            .with_attribute("value", "0.0")
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", prim_name),
+        MirOp::std("arith.cmpf")
+            .with_operand(a)
+            .with_operand(b)
+            .with_result(cmp_id, MirType::Bool)
+            .with_attribute("predicate", predicate)
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", prim_name),
+        MirOp::std("arith.select")
+            .with_operand(cmp_id)
+            .with_operand(d_y)
+            .with_operand(zero_id)
+            .with_result(contrib_a, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", prim_name),
+        MirOp::std("arith.addf")
+            .with_operand(prev_d_a)
+            .with_operand(contrib_a)
+            .with_result(new_d_a, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", prim_name),
+        MirOp::std("arith.select")
+            .with_operand(cmp_id)
+            .with_operand(zero_id)
+            .with_operand(d_y)
+            .with_result(contrib_b, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", prim_name),
+        MirOp::std("arith.addf")
+            .with_operand(prev_d_b)
+            .with_operand(contrib_b)
+            .with_result(new_d_b, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", prim_name),
+    ]
+}
+
+// ─── Abs bwd :  d_x += select(x ≥ 0, d_y, -d_y) ──────────────────────────
+fn emit_bwd_abs(
+    op: &MirOp,
+    result_ty: &MirType,
+    d_y: ValueId,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    let Some(&x) = op.operands.first() else {
+        return Vec::new();
+    };
+    let prev_d_x = tangent_or_zero(tangent_map, x);
+    let new_d_x = fresh_id(next_id);
+    tangent_map.insert(x, new_d_x);
+
+    let zero_id = fresh_id(next_id);
+    let cmp_id = fresh_id(next_id);
+    let neg_d_y = fresh_id(next_id);
+    let contrib = fresh_id(next_id);
+    vec![
+        MirOp::std("arith.constant")
+            .with_result(zero_id, result_ty.clone())
+            .with_attribute("value", "0.0")
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.cmpf")
+            .with_operand(x)
+            .with_operand(zero_id)
+            .with_result(cmp_id, MirType::Bool)
+            .with_attribute("predicate", "oge")
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.negf")
+            .with_operand(d_y)
+            .with_result(neg_d_y, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.select")
+            .with_operand(cmp_id)
+            .with_operand(d_y)
+            .with_operand(neg_d_y)
+            .with_result(contrib, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", "abs"),
+        MirOp::std("arith.addf")
+            .with_operand(prev_d_x)
+            .with_operand(contrib)
+            .with_result(new_d_x, result_ty.clone())
+            .with_attribute("diff_role", "adjoint")
+            .with_attribute("diff_primitive", "abs"),
+    ]
+}
+
+// ─── Sign bwd : d_x += 0 (no-op — sign has zero gradient a.e.) ────────────
+fn emit_bwd_sign(op: &MirOp, tangent_map: &TangentMap, _next_id: &mut u32) -> Vec<MirOp> {
+    let Some(&x) = op.operands.first() else {
+        return Vec::new();
+    };
+    // No-op : sign(x) derivative is 0 a.e. ; we preserve the existing adjoint
+    // without emitting a zero-contrib chain to keep the body compact.
+    let _ = tangent_map.get(x);
+    Vec::new()
 }
 
 // ─── Log bwd :  d_a += d_y / a ────────────────────────────────────────────
@@ -1874,5 +2154,251 @@ mod tests {
         let _ = MirRegion::new();
         let _ = MirModule::new();
         let _ = MirValue::new(ValueId(0), f32_ty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D15 : branchful Min/Max/Abs/Sign Fwd + Bwd emission.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn fwd_min_emits_cmpf_ole_plus_select() {
+        let ops = vec![
+            MirOp::std("arith.minimumf")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(2)),
+        ];
+        let primal = mk_primal("min_fn", vec![f32_ty(), f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, report) = apply_fwd(&primal, &DiffRuleTable::canonical());
+        assert_eq!(report.primitives_substituted, 1);
+        let entry = variant.body.entry().unwrap();
+        // Must contain arith.cmpf with predicate="ole" + arith.select, both tangent-role.
+        let has_cmpf_ole = entry.ops.iter().any(|o| {
+            o.name == "arith.cmpf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "predicate" && v == "ole")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+        });
+        let has_select = entry.ops.iter().any(|o| {
+            o.name == "arith.select"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "min")
+        });
+        assert!(has_cmpf_ole, "expected tangent arith.cmpf predicate=ole");
+        assert!(
+            has_select,
+            "expected tangent arith.select diff_primitive=min"
+        );
+    }
+
+    #[test]
+    fn fwd_max_emits_cmpf_oge_plus_select() {
+        let ops = vec![
+            MirOp::std("arith.maximumf")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(2)),
+        ];
+        let primal = mk_primal("max_fn", vec![f32_ty(), f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, _) = apply_fwd(&primal, &DiffRuleTable::canonical());
+        let entry = variant.body.entry().unwrap();
+        let has_cmpf_oge = entry.ops.iter().any(|o| {
+            o.name == "arith.cmpf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "predicate" && v == "oge")
+        });
+        assert!(has_cmpf_oge, "expected tangent arith.cmpf predicate=oge");
+    }
+
+    #[test]
+    fn fwd_abs_emits_constant_cmpf_negf_select() {
+        let ops = vec![
+            MirOp::std("math.absf")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(1)),
+        ];
+        let primal = mk_primal("abs_fn", vec![f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, report) = apply_fwd(&primal, &DiffRuleTable::canonical());
+        assert_eq!(report.primitives_substituted, 1);
+        let entry = variant.body.entry().unwrap();
+        // Fwd body must emit : const 0 + cmpf oge + negf d_x + select.
+        let has_const = entry.ops.iter().any(|o| {
+            o.name == "arith.constant"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "abs")
+        });
+        let has_cmpf = entry.ops.iter().any(|o| {
+            o.name == "arith.cmpf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "abs")
+        });
+        let has_negf = entry.ops.iter().any(|o| {
+            o.name == "arith.negf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "abs")
+        });
+        let has_select = entry.ops.iter().any(|o| {
+            o.name == "arith.select"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "abs")
+        });
+        assert!(has_const, "expected const 0.0 for abs fwd");
+        assert!(has_cmpf, "expected cmpf for abs fwd");
+        assert!(has_negf, "expected negf for abs fwd");
+        assert!(has_select, "expected select for abs fwd");
+    }
+
+    #[test]
+    fn fwd_sign_emits_constant_zero() {
+        let ops = vec![
+            MirOp::std("math.copysign")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(1)),
+        ];
+        let primal = mk_primal("sign_fn", vec![f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, report) = apply_fwd(&primal, &DiffRuleTable::canonical());
+        assert_eq!(report.primitives_substituted, 1);
+        let entry = variant.body.entry().unwrap();
+        let has_zero_const = entry.ops.iter().any(|o| {
+            o.name == "arith.constant"
+                && o.attributes.iter().any(|(k, v)| k == "value" && v == "0.0")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "sign")
+        });
+        assert!(has_zero_const, "expected zero-tangent for sign");
+    }
+
+    #[test]
+    fn bwd_min_emits_select_plus_accumulate() {
+        let ops = vec![
+            MirOp::std("arith.minimumf")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(2)),
+        ];
+        let primal = mk_primal("min_fn", vec![f32_ty(), f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, report) = apply_bwd(&primal, &DiffRuleTable::canonical());
+        assert_eq!(report.primitives_substituted, 1);
+        let entry = variant.body.entry().unwrap();
+        // Bwd should have at least : 1 cmpf + 2 selects + 2 addf (accumulation), all adjoint-role + diff_primitive=min.
+        let cmpf_count = entry
+            .ops
+            .iter()
+            .filter(|o| {
+                o.name == "arith.cmpf"
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_role" && v == "adjoint")
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_primitive" && v == "min")
+            })
+            .count();
+        let select_count = entry
+            .ops
+            .iter()
+            .filter(|o| {
+                o.name == "arith.select"
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_role" && v == "adjoint")
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_primitive" && v == "min")
+            })
+            .count();
+        assert!(cmpf_count >= 1, "expected ≥ 1 adjoint cmpf for min bwd");
+        assert!(
+            select_count >= 2,
+            "expected ≥ 2 adjoint selects for min bwd (one per branch)"
+        );
+    }
+
+    #[test]
+    fn bwd_abs_emits_select_plus_accumulate() {
+        let ops = vec![
+            MirOp::std("math.absf")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(1)),
+        ];
+        let primal = mk_primal("abs_fn", vec![f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, _) = apply_bwd(&primal, &DiffRuleTable::canonical());
+        let entry = variant.body.entry().unwrap();
+        let select_count = entry
+            .ops
+            .iter()
+            .filter(|o| {
+                o.name == "arith.select"
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "diff_primitive" && v == "abs")
+            })
+            .count();
+        assert!(select_count >= 1, "expected ≥ 1 adjoint select for abs bwd");
+    }
+
+    #[test]
+    fn bwd_sign_is_noop() {
+        let ops = vec![
+            MirOp::std("math.copysign")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(1)),
+        ];
+        let primal = mk_primal("sign_fn", vec![f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, _) = apply_bwd(&primal, &DiffRuleTable::canonical());
+        let entry = variant.body.entry().unwrap();
+        // Sign bwd emits no ops : count only the bwd_return terminator + any preexisting primal.
+        let sign_primitive_ops = entry
+            .ops
+            .iter()
+            .filter(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "sign")
+            })
+            .count();
+        assert_eq!(sign_primitive_ops, 0, "sign bwd should emit zero body-ops");
+    }
+
+    #[test]
+    fn min_and_max_no_longer_emit_fwd_placeholder() {
+        let ops = vec![
+            MirOp::std("arith.minimumf")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), f32_ty()),
+            MirOp::std("func.return").with_operand(ValueId(2)),
+        ];
+        let primal = mk_primal("min_fn", vec![f32_ty(), f32_ty()], vec![f32_ty()], ops);
+        let (variant, _, _) = apply_fwd(&primal, &DiffRuleTable::canonical());
+        let entry = variant.body.entry().unwrap();
+        let has_placeholder = entry
+            .ops
+            .iter()
+            .any(|o| o.name == "cssl.diff.fwd_placeholder");
+        assert!(
+            !has_placeholder,
+            "fwd_placeholder should no longer appear for min after T11-D15"
+        );
     }
 }
