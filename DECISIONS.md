@@ -1923,3 +1923,36 @@ Each decision entry :
   - `@metamorphic` Leibniz-rule + Faà-di-Bruno higher-order variants — require AD-closure from cssl-autodiff.
   - `@metamorphic` Lipschitz + conservation-law specializations — require `cssl_jets` closure.
   - `PropertyOracle` / `MetamorphicOracle` dispatcher impls that consume `Config` + route to the runners — currently `Stage0Stub` still serves as the dispatcher ; wiring requires `@property` macro-expansion plumbing from cssl-macros + body-capture.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D4 : T11-phase-2b — live @replay + @differential + @golden oracle bodies (no external deps)
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D3 activated the two oracle modes with the simplest generic runners (`@property` + `@metamorphic`). This slice extends to three more : `@replay` (determinism gate T29/OG9), `@differential` (backend-cross-check gate T28/OG8), and `@golden` (pixel-regression). All three land with pure-stdlib implementations that work today and defer the hardware-specific paths (real Vulkan×LevelZero dispatch, SSIM/FLIP perceptual metrics) to later phases.
+- **Slice landed (this commit)**
+  - `replay.rs` — `run_replay_deterministic<T, F>(&Config, F) -> Outcome` where `F: FnMut(&mut Lcg) -> T + PartialEq`. Runs `config.n` replays with the same seed ; every replay must produce output equal to replay-0, else `Divergence { replay_index, diff_bytes }` at the first mismatch. `diff_bytes = size_of::<T>()` proxies divergence-magnitude. Config gains a `seed: u64` field (default `0xc551_a770_c551_a770`).
+    - 6 new tests : deterministic-prng-reader replays bit-exact, hidden-state breaks determinism, zero-replays is Ok(0), single-replay always-Ok (trivial), divergence reports size-of-type, different-seeds still replay deterministically.
+  - `differential.rs` — `check_two_impls<T, U, A, B, Eq>(inputs, backend_a, a, backend_b, b, eq) -> Outcome` abstracts over two implementations ; returns `Ok` if `eq(a(x), b(x))` holds for every input, else `Divergence { backend: backend_b, delta, message }` with debug-formatted input + both outputs + backend labels. Added `Backend::CpuRef` for use as the reference-oracle. Added ULP-distance helpers :
+    - `ulp_diff_f32(a: f32, b: f32) -> u32` — total-ordered bit-distance via `sortable_u32` (positive → sign-bit-toggle, negative → bit-invert). NaN inputs produce `u32::MAX`. `ulp_diff_f32(+0.0, -0.0) == 1` (adjacent in total-order).
+    - `ulp_tolerant_eq_f32(tolerance: u32) -> impl Fn(&f32, &f32) -> bool` — returns a closure usable as the `eq` argument of `check_two_impls`.
+    - 8 new tests : matching impls Ok, divergence pinpoints failing backend, ulp-diff zero for identical, ulp-diff one for adjacent, ulp-diff NaN is MAX, ulp-tolerant accepts-close + rejects-far, check-two-impls with ULP tolerance, empty-inputs Ok.
+  - `golden.rs` — pure-byte-exact mode :
+    - `compare_bytes_to_golden(&Config, &[u8]) -> Outcome` reads the reference at `config.path` ; returns `NoReference { path }` if missing, else delegates.
+    - `compare_bytes_against(&Config, actual, expected) -> Outcome` pure-data helper for tests.
+    - `compute_byte_metrics(actual, expected) -> Metrics` : diff-count / max-len with length-mismatch counted toward diff. `Metrics::ssim` + `Metrics::flip` zero-filled (real SSIM/FLIP deferred pending image-decode deps).
+    - `update_golden(path, bytes) -> io::Result<()>` — creates parent dirs + writes, used by `csslc test --update-golden`.
+    - 9 new tests : empty-buffers identical, identical-buffers zero-diff, one-byte-diff is 10%, length-mismatch counts toward diff, within-tolerance Ok, above-tolerance breach, missing-reference NoReference, update+read roundtrip, Metrics::default all-zero.
+- **Consequences**
+  - Test count : 1180 → 1203 (+23 : 6 replay + 8 differential + 9 golden).
+  - Five of the ten oracle modes now have live bodies : `@property` + `@metamorphic` (T11-D3) + `@replay` + `@differential` + `@golden` (this). Remaining stubs : `@audit` + `@r16_attestation` (wire-ups to existing crates) + `@bench` (timing-harness) + `@power` + `@thermal` + `@hot_reload` + `@fuzz` (hw / OS / fuzzer-specific).
+  - `ulp_diff_f32` doubles as a general-purpose float-distance helper for other crates (cssl-mir, cssl-autodiff) needing ULP tolerance in their test suites.
+  - `update_golden` + `compare_bytes_to_golden` now provide byte-exact fixture infrastructure for shader-bytecode / IR-dump / log-file regression tests — not just images.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Real Vulkan × Level-Zero dispatch in `@differential` — blocked on T10-phase-2 FFI (MSVC-gated).
+  - SSIM + FLIP perceptual metrics in `@golden` — require PNG/HDR image-decode (pure-Rust `image` crate or DIY). Byte-exact mode handles shader-bytecode and fixture-files today.
+  - Cross-machine replay (different CPU models, same arch) in `@replay` — requires harness serialization of initial-state + capture-format on-disk.
+  - ULP-distance for `f64` — mirror `ulp_diff_f32` pattern with `u64` sortable-representation when a use-case arises.
+  - Real dispatcher wire-up for all five oracle modes — `Stage0Stub` still serves ; needs `@property`/`@metamorphic`/`@replay`/`@differential`/`@golden` macro-expansion plumbing from cssl-macros to capture body + route to runner.
