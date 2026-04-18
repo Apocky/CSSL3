@@ -100,14 +100,21 @@ pub enum JitError {
 pub struct JitFn {
     /// Primal fn name (from MIR).
     pub name: String,
-    /// Number of params.
+    /// Number of params (original MIR param count — does NOT include the
+    /// synthetic out-param pointers added for multi-result fns).
     pub param_count: usize,
     /// Whether the fn has a single scalar result.
     pub has_result: bool,
     /// The MIR param types — used to validate `call_*` method signatures.
     pub param_types: Vec<MirType>,
-    /// The MIR result type, if any.
+    /// The first MIR result type, if any (legacy single-result API).
     pub result_type: Option<MirType>,
+    /// T11-D30 : all MIR result types (for multi-result fns).
+    pub all_result_types: Vec<MirType>,
+    /// T11-D30 : `true` if the cranelift signature uses out-param pointers
+    /// instead of a direct return value. Multi-result fns (2+ results) are
+    /// compiled this way.
+    pub uses_out_params: bool,
 }
 
 impl JitFn {
@@ -236,6 +243,50 @@ impl JitFn {
         Ok(f(a, b, d_a, d_b))
     }
 
+    /// Call a 2-param bwd variant compiled with out-param ABI : native
+    /// cranelift signature `(a: f32, b: f32, d_y: f32, *mut f32, *mut f32) -> ()`.
+    /// Returns the pair `(d_a, d_b)` by allocating stack slots for the two
+    /// adjoints, passing their addresses as out-params, and reading back.
+    ///
+    /// # Errors
+    /// Returns [`JitError::SignatureMismatch`] if the fn's MIR signature isn't
+    /// 3 f32 params + 2 f32 results using out-param ABI.
+    #[allow(clippy::similar_names)] // out_da / out_db : paired bwd-adjoint outputs
+    pub fn call_bwd_2_f32_f32_f32_to_f32f32(
+        &self,
+        a: f32,
+        b: f32,
+        d_y: f32,
+        module: &JitModule,
+    ) -> Result<(f32, f32), JitError> {
+        let f32m = || MirType::Float(FloatWidth::F32);
+        if !self.uses_out_params
+            || self.param_types != [f32m(), f32m(), f32m()]
+            || self.all_result_types != [f32m(), f32m()]
+        {
+            return Err(JitError::SignatureMismatch {
+                name: self.name.clone(),
+                expected: "(f32, f32, f32) -> (f32, f32) via out-param ABI".to_string(),
+                actual: format!(
+                    "{:?} -> {:?} (out_params={})",
+                    self.param_types, self.all_result_types, self.uses_out_params
+                ),
+            });
+        }
+        let addr = module.code_addr_for(&self.name)?;
+        let mut out_da: f32 = 0.0;
+        let mut out_db: f32 = 0.0;
+        // SAFETY: see `call_i64_i64_to_i64`. Out-param pointers are to
+        // locals on this function's stack ; the JIT fn dereferences them
+        // only during the call (no escape). Types match: both `*mut f32`
+        // on the Rust side and pointer-to-f32 on the cranelift side.
+        let f: extern "C" fn(f32, f32, f32, *mut f32, *mut f32) = unsafe {
+            std::mem::transmute::<*const u8, extern "C" fn(f32, f32, f32, *mut f32, *mut f32)>(addr)
+        };
+        f(a, b, d_y, &mut out_da, &mut out_db);
+        Ok((out_da, out_db))
+    }
+
     fn check_sig(
         &self,
         expected_params: &[MirType],
@@ -319,15 +370,13 @@ impl JitModule {
         if self.finalized {
             return Err(JitError::AlreadyFinalized);
         }
-        if primal.results.len() > 1 {
-            return Err(JitError::UnsupportedFeature {
-                fn_name: primal.name.clone(),
-                reason: format!(
-                    "{} results ; stage-0 JIT supports ≤ 1",
-                    primal.results.len()
-                ),
-            });
-        }
+
+        // T11-D30 : multi-result fns are lowered via out-params. The cranelift
+        // signature appends one pointer-param per excess result ; the body's
+        // terminator (func.return / cssl.diff.bwd_return) is rewritten to
+        // store each operand through its corresponding out-param pointer and
+        // then emit `return ()`.
+        let use_out_params = primal.results.len() > 1;
 
         let Some(module) = self.inner.as_mut() else {
             return Err(JitError::AlreadyFinalized);
@@ -346,12 +395,30 @@ impl JitModule {
             })?;
             sig.params.push(AbiParam::new(cl_ty));
         }
-        for (idx, r_ty) in primal.results.iter().enumerate() {
-            let cl_ty = mir_to_cl_type(r_ty).ok_or_else(|| JitError::UnsupportedFeature {
-                fn_name: primal.name.clone(),
-                reason: format!("result #{idx} type `{r_ty}` not scalar-JIT-able"),
-            })?;
-            sig.returns.push(AbiParam::new(cl_ty));
+        if use_out_params {
+            // Validate result types are all scalar-JIT-able.
+            for (idx, r_ty) in primal.results.iter().enumerate() {
+                if mir_to_cl_type(r_ty).is_none() {
+                    return Err(JitError::UnsupportedFeature {
+                        fn_name: primal.name.clone(),
+                        reason: format!("result #{idx} type `{r_ty}` not scalar-JIT-able"),
+                    });
+                }
+            }
+            // Append one pointer param per result (native-word-sized).
+            let ptr_ty = module.isa().pointer_type();
+            for _ in 0..primal.results.len() {
+                sig.params.push(AbiParam::new(ptr_ty));
+            }
+            // Return type is void.
+        } else {
+            for (idx, r_ty) in primal.results.iter().enumerate() {
+                let cl_ty = mir_to_cl_type(r_ty).ok_or_else(|| JitError::UnsupportedFeature {
+                    fn_name: primal.name.clone(),
+                    reason: format!("result #{idx} type `{r_ty}` not scalar-JIT-able"),
+                })?;
+                sig.returns.push(AbiParam::new(cl_ty));
+            }
         }
 
         // Declare + define the fn in the cranelift JIT module.
@@ -440,8 +507,21 @@ impl JitModule {
             // after `synthesize_tangent_params` interleaves primals + tangents.
             let block_params: Vec<_> = builder.block_params(entry).to_vec();
             let arg_value_ids: Vec<ValueId> = entry_block.args.iter().map(|a| a.id).collect();
-            if arg_value_ids.len() == block_params.len() {
+            let primal_param_count = arg_value_ids.len();
+            if primal_param_count == block_params.len() {
+                // Simple case : param-count matches block-param-count (no out-params).
                 for (arg_id, &bp) in arg_value_ids.iter().zip(block_params.iter()) {
+                    value_map.insert(*arg_id, bp);
+                }
+            } else if use_out_params
+                && primal_param_count + primal.results.len() == block_params.len()
+            {
+                // Multi-result via out-params : first N block-params are the
+                // original args ; last M are the out-ptrs.
+                for (arg_id, &bp) in arg_value_ids
+                    .iter()
+                    .zip(block_params.iter().take(primal_param_count))
+                {
                     value_map.insert(*arg_id, bp);
                 }
             } else {
@@ -451,8 +531,49 @@ impl JitModule {
                 }
             }
 
+            // Collect out-param cranelift Values for use at return-terminator.
+            let out_param_values: Vec<cranelift_codegen::ir::Value> = if use_out_params {
+                block_params
+                    .iter()
+                    .skip(primal_param_count)
+                    .copied()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
             let mut saw_return = false;
             for op in &entry_block.ops {
+                if use_out_params && (op.name == "func.return" || op.name == "cssl.diff.bwd_return")
+                {
+                    // T11-D30 : multi-result return — store each operand
+                    // through its out-param pointer + emit `return ()`.
+                    if op.operands.len() != out_param_values.len() {
+                        return Err(JitError::LoweringFailed {
+                            fn_name: primal.name.clone(),
+                            detail: format!(
+                                "multi-result return has {} operands but {} out-params",
+                                op.operands.len(),
+                                out_param_values.len()
+                            ),
+                        });
+                    }
+                    for (vid, &out_ptr) in op.operands.iter().zip(out_param_values.iter()) {
+                        let v = *value_map.get(vid).ok_or_else(|| JitError::LoweringFailed {
+                            fn_name: primal.name.clone(),
+                            detail: format!("multi-return references unknown ValueId({})", vid.0),
+                        })?;
+                        builder.ins().store(
+                            cranelift_codegen::ir::MemFlags::trusted(),
+                            v,
+                            out_ptr,
+                            0,
+                        );
+                    }
+                    builder.ins().return_(&[]);
+                    saw_return = true;
+                    break;
+                }
                 if lower_op_to_cl(op, &mut builder, &mut value_map, &primal.name, &callee_refs)? {
                     saw_return = true;
                 }
@@ -487,6 +608,8 @@ impl JitModule {
             has_result: !primal.results.is_empty(),
             param_types: primal.params.clone(),
             result_type: primal.results.first().cloned(),
+            all_result_types: primal.results.clone(),
+            uses_out_params: use_out_params,
         };
         self.fn_table.insert(primal.name.clone(), (func_id, None));
         self.handles.push(handle.clone());
@@ -1222,7 +1345,11 @@ mod tests {
     }
 
     #[test]
-    fn compile_rejects_multi_result_fn() {
+    fn compile_multi_result_empty_body_errors() {
+        // T11-D30 : multi-result fns now compile via out-params, BUT an empty
+        // body can't emit a valid return (the fallback branch only auto-emits
+        // `return ()` for zero-result fns). So an empty-bodied multi-result
+        // fn errors with "no func.return" rather than being accepted.
         let primal = MirFunc::new("multi", vec![], vec![i32_ty(), i32_ty()]);
         let mut m = JitModule::new();
         let err = m.compile(&primal).unwrap_err();
@@ -1275,6 +1402,8 @@ mod tests {
             has_result: true,
             param_types: vec![i32_ty(), i32_ty()],
             result_type: Some(i32_ty()),
+            all_result_types: vec![i32_ty()],
+            uses_out_params: false,
         };
         let err = fake_handle.call_i32_i32_to_i32(1, 2, &m).unwrap_err();
         // Module is not finalized — that's the earlier gate.
@@ -1829,6 +1958,93 @@ mod tests {
         assert!((log_e - 1.0).abs() < 1e-4, "log(e) = 1, got {log_e}");
         let log_1 = h_log.call_f32_to_f32(1.0, &m).unwrap();
         assert!(log_1.abs() < 1e-5, "log(1) = 0, got {log_1}");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D30 : multi-result native via out-param ABI.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Hand-build a synthetic bwd-like fn `(a, b, d_y) -> (d_a, d_b)` where
+    /// `d_a = b * d_y` and `d_b = a * d_y`. This mimics what the AD walker
+    /// emits for `fn mul(a, b) { a * b }` in bwd mode (minus chain-rule
+    /// composition), with a terminator `cssl.diff.bwd_return d_a, d_b`.
+    fn hand_built_multi_result_bwd() -> MirFunc {
+        let mut f = MirFunc::new(
+            "multi_bwd",
+            vec![f32_ty(), f32_ty(), f32_ty()],
+            vec![f32_ty(), f32_ty()],
+        );
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), f32_ty()), // a
+                MirValue::new(ValueId(1), f32_ty()), // b
+                MirValue::new(ValueId(2), f32_ty()), // d_y
+            ];
+            // d_a = b * d_y
+            entry.ops.push(
+                MirOp::std("arith.mulf")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), f32_ty()),
+            );
+            // d_b = a * d_y
+            entry.ops.push(
+                MirOp::std("arith.mulf")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(4), f32_ty()),
+            );
+            entry.ops.push(
+                MirOp::std("cssl.diff.bwd_return")
+                    .with_operand(ValueId(3))
+                    .with_operand(ValueId(4)),
+            );
+        }
+        f
+    }
+
+    #[test]
+    #[allow(clippy::similar_names)] // d_a / d_b : paired bwd-adjoint outputs
+    fn multi_result_native_via_out_params() {
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_multi_result_bwd()).expect("compile");
+        assert!(h.uses_out_params);
+        assert_eq!(h.all_result_types.len(), 2);
+        m.finalize().unwrap();
+
+        // At (a=3, b=5, d_y=1) : d_a = b*d_y = 5, d_b = a*d_y = 3.
+        let (d_a, d_b) = h
+            .call_bwd_2_f32_f32_f32_to_f32f32(3.0, 5.0, 1.0, &m)
+            .unwrap();
+        assert!(
+            (d_a - 5.0).abs() < 1e-6,
+            "d_a @ (3, 5) : expected 5, got {d_a}"
+        );
+        assert!(
+            (d_b - 3.0).abs() < 1e-6,
+            "d_b @ (3, 5) : expected 3, got {d_b}"
+        );
+
+        // Chain-rule via d_y scaling.
+        let (d_a2, d_b2) = h
+            .call_bwd_2_f32_f32_f32_to_f32f32(2.0, 4.0, 0.5, &m)
+            .unwrap();
+        assert!((d_a2 - 2.0).abs() < 1e-6); // 4 * 0.5
+        assert!((d_b2 - 1.0).abs() < 1e-6); // 2 * 0.5
+    }
+
+    #[test]
+    fn multi_result_sig_mismatch_rejects_wrong_call_shape() {
+        // Single-result fn rejected by the out-param call helper.
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_add_i32()).unwrap();
+        m.finalize().unwrap();
+        let err = h
+            .call_bwd_2_f32_f32_f32_to_f32f32(1.0, 2.0, 3.0, &m)
+            .unwrap_err();
+        assert!(matches!(err, JitError::SignatureMismatch { .. }));
     }
 
     #[test]

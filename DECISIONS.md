@@ -2800,3 +2800,30 @@ Each decision entry :
   - f64 transcendentals : add `sin`/`cos`/`exp`/`log` (double-precision) mappings when f64 AD primals show up.
   - `tan` / `atan2` / `pow` / other math fns : trivially extensible via `transcendental_extern_name`.
   - libm-fn AD : the walker's rule-table already has Sin/Cos/Exp/Log rules (T11-D13) ; source-driven runtime-gradient verification like T11-D22 for these.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D30 : Native JIT multi-return via out-param ABI
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D27 handled multi-result bwd variants by extracting one adjoint per separate fn (N compile-invocations for N adjoints). Functionally complete but inefficient + architecturally hacky. T11-D30 adds native multi-return support via the standard C-ABI out-param technique : the cranelift fn takes pointer params at the tail and stores adjoints through them before returning void.
+- **Slice landed (this commit)**
+  - **`JitModule::compile` multi-result path** : when `primal.results.len() > 1`, the cranelift signature appends one pointer param per result (native-word-sized) and makes the return void. Example : MIR `(a, b, d_y) -> (d_a, d_b)` becomes cranelift `(a, b, d_y, *mut d_a_slot, *mut d_b_slot) -> ()`.
+  - **Body-lowering terminator rewrite** : when a `func.return` or `cssl.diff.bwd_return` op with N operands is encountered in a multi-result fn, emit N cranelift `store` ops (one per out-param) then `return_(&[])`.
+  - **`JitFn` struct** gains two fields : `all_result_types: Vec<MirType>` (all results, not just first) and `uses_out_params: bool` (true if compiled via out-param ABI).
+  - **`JitFn::call_bwd_2_f32_f32_f32_to_f32f32(a, b, d_y, &module) -> (f32, f32)`** : new call helper for the canonical 2-param bwd shape. Allocates stack slots for both adjoints via `let mut out_da : f32 = 0.0 ; let mut out_db : f32 = 0.0`, transmutes the code-addr to `extern "C" fn(f32, f32, f32, *mut f32, *mut f32)`, invokes with `&mut out_da, &mut out_db`, reads back as tuple.
+  - 2 new tests :
+    - `multi_result_native_via_out_params` : hand-built `multi_bwd(a, b, d_y) -> (d_a=b*d_y, d_b=a*d_y)` via out-params. At `(3, 5, 1)` returns `(5, 3)` ; at `(2, 4, 0.5)` returns `(2, 1)`.
+    - `multi_result_sig_mismatch_rejects_wrong_call_shape` : calling `call_bwd_2_f32_f32_f32_to_f32f32` on a single-result fn (add_i32) errors with `SignatureMismatch`.
+  - Existing `compile_rejects_multi_result_fn` test renamed `compile_multi_result_empty_body_errors` + rationale updated : multi-result fns compile if their body has a proper terminator ; empty bodies still can't emit a valid return for N>0 results.
+- **Consequences**
+  - Test count : 1372 → 1374 (+2 in cssl-cgen-cpu-cranelift).
+  - **Multi-param bwd variants now JIT-compile natively** — no longer need `extract_bwd_single_adjoint` per-adjoint (though that API remains available for tests / compatibility).
+  - The out-param ABI is portable : on Windows x64 fastcall, pointer params are passed in RCX/RDX/R8/R9 + stack, on Linux/macOS SysV in RDI/RSI/RDX/RCX + stack. Cranelift's `module.isa().default_call_conv()` produces the matching convention + `extern "C"` on the Rust side matches, so `std::mem::transmute` to the expected fn-pointer type is sound.
+  - Rust safety : the `*mut f32` out-params are local stack-slots held by the caller for the duration of the call ; no aliasing, no escape, no UB. SAFETY comment on the transmute documents the invariant.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - 3+-adjoint bwd : add `call_bwd_3_*`, `call_bwd_4_*` helpers (or a generic N-adjoint helper taking `&mut [f32]`).
+  - Multi-result primitives (non-bwd) : any CSSLv3 fn with `-> (T1, T2, ...)` declared at source-level. Walker doesn't currently emit these but the JIT supports them now.
+  - Removing `extract_bwd_single_adjoint` — keep it for test-compat, no longer strictly needed for functional correctness.
