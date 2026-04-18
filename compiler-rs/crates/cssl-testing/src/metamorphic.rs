@@ -192,11 +192,133 @@ where
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § Calculus-rule numeric validators : verify f'/g'/combined hold at samples.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Verify the Leibniz product rule numerically : `(f*g)'(x) = f'(x)·g(x) + f(x)·g'(x)`.
+///
+/// Given :
+/// - `f(x) -> f64` + `df(x) -> f64` (its derivative)
+/// - `g(x) -> f64` + `dg(x) -> f64` (its derivative)
+/// - `samples: &[f64]` — input points to check
+/// - `tolerance: f64` — absolute difference tolerated (e.g., `1e-9` for hand-coded derivs)
+///
+/// Returns `Ok { samples_tested }` if every sample satisfies the rule within
+/// `tolerance`, else `Violation` at the first failing sample.
+#[allow(clippy::similar_names)] // dfx / dgx mirror standard calculus-notation df/dg
+pub fn check_leibniz<F, DF, G, DG>(
+    samples: &[f64],
+    f: F,
+    df: DF,
+    g: G,
+    dg: DG,
+    tolerance: f64,
+) -> Outcome
+where
+    F: Fn(f64) -> f64,
+    DF: Fn(f64) -> f64,
+    G: Fn(f64) -> f64,
+    DG: Fn(f64) -> f64,
+{
+    for (i, &x) in samples.iter().enumerate() {
+        let fx = f(x);
+        let dfx = df(x);
+        let gx = g(x);
+        let dgx = dg(x);
+        // Product-rule RHS : f'·g + f·g'
+        let rhs = dfx.mul_add(gx, fx * dgx);
+        // LHS via central-differences at step h. Use h scaled to x but floored.
+        let h = 1e-5_f64.max(x.abs() * 1e-6);
+        let lhs = f(x + h).mul_add(g(x + h), -(f(x - h) * g(x - h))) / (2.0 * h);
+        if (lhs - rhs).abs() > tolerance {
+            return Outcome::Violation {
+                sample: format!("x={x}"),
+                message: format!(
+                    "Leibniz rule failed at sample {i} : (f·g)'(x) = {lhs} ≠ {rhs} = f'·g + f·g' (|Δ|={})",
+                    (lhs - rhs).abs()
+                ),
+            };
+        }
+    }
+    Outcome::Ok {
+        samples_tested: samples.len() as u32,
+    }
+}
+
+/// Verify the chain rule numerically : `(f∘g)'(x) = f'(g(x)) · g'(x)`.
+///
+/// Returns `Ok { samples_tested }` if every sample passes within `tolerance`,
+/// else `Violation` at the first failing sample.
+pub fn check_chain_rule<F, DF, G, DG>(
+    samples: &[f64],
+    f: F,
+    df: DF,
+    g: G,
+    dg: DG,
+    tolerance: f64,
+) -> Outcome
+where
+    F: Fn(f64) -> f64,
+    DF: Fn(f64) -> f64,
+    G: Fn(f64) -> f64,
+    DG: Fn(f64) -> f64,
+{
+    for (i, &x) in samples.iter().enumerate() {
+        let gx = g(x);
+        let dgx = dg(x);
+        let df_gx = df(gx);
+        let rhs = df_gx * dgx;
+        // LHS via central-differences on f∘g.
+        let h = 1e-5_f64.max(x.abs() * 1e-6);
+        let lhs = (f(g(x + h)) - f(g(x - h))) / (2.0 * h);
+        if (lhs - rhs).abs() > tolerance {
+            return Outcome::Violation {
+                sample: format!("x={x}"),
+                message: format!(
+                    "chain rule failed at sample {i} : (f∘g)'(x) = {lhs} ≠ {rhs} = f'(g(x))·g'(x) (|Δ|={})",
+                    (lhs - rhs).abs()
+                ),
+            };
+        }
+    }
+    Outcome::Ok {
+        samples_tested: samples.len() as u32,
+    }
+}
+
+/// Verify Lipschitz continuity numerically : `|f(x) - f(y)| ≤ K · |x - y|` for
+/// every `(x, y)` sample pair, where `K` is the Lipschitz constant.
+///
+/// Used to verify SDFs are 1-Lipschitz (per `specs/05_AUTODIFF.csl` § SDF-NORMAL).
+pub fn check_lipschitz<F>(samples: &[(f64, f64)], f: F, k: f64) -> Outcome
+where
+    F: Fn(f64) -> f64,
+{
+    for (i, &(x, y)) in samples.iter().enumerate() {
+        let fx = f(x);
+        let fy = f(y);
+        let lhs = (fx - fy).abs();
+        let rhs = k * (x - y).abs();
+        if lhs > rhs {
+            return Outcome::Violation {
+                sample: format!("(x={x}, y={y})"),
+                message: format!(
+                    "Lipschitz-{k} failed at sample {i} : |f(x) - f(y)| = {lhs} > {rhs} = K·|x-y|"
+                ),
+            };
+        }
+    }
+    Outcome::Ok {
+        samples_tested: samples.len() as u32,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        check_associative, check_commutative, check_distributive, check_idempotent, Config,
-        Dispatcher, Outcome, Stage0Stub,
+        check_associative, check_chain_rule, check_commutative, check_distributive,
+        check_idempotent, check_leibniz, check_lipschitz, Config, Dispatcher, Outcome, Stage0Stub,
     };
 
     #[test]
@@ -279,6 +401,112 @@ mod tests {
     fn empty_samples_returns_ok_with_zero() {
         let samples: [(i64, i64); 0] = [];
         let outcome = check_commutative(&samples, |a, b| a + b, |x, y| x == y);
+        match outcome {
+            Outcome::Ok { samples_tested } => assert_eq!(samples_tested, 0),
+            other => panic!("expected Ok, got {other:?}"),
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Calculus-rule numeric-validators : Leibniz + chain-rule + Lipschitz.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn leibniz_holds_for_polynomial_product() {
+        // f(x) = x², g(x) = x+1 ; f'(x) = 2x, g'(x) = 1.
+        // Product: (x²(x+1))' = 3x² + 2x. Check central-diff matches 2x·(x+1) + x²·1 = 3x²+2x.
+        let samples = [0.5, 1.0, 2.0, 5.0, -1.5, -3.0];
+        let outcome = check_leibniz(
+            &samples,
+            |x| x * x,
+            |x| 2.0 * x,
+            |x| x + 1.0,
+            |_x| 1.0,
+            1e-4,
+        );
+        assert!(matches!(outcome, Outcome::Ok { .. }));
+    }
+
+    #[test]
+    fn leibniz_fails_when_derivative_wrong() {
+        // Wrong derivative : df = |x| 3.0 (claims (x²)' = 3 which is false).
+        let samples = [1.0, 2.0, 5.0];
+        let outcome = check_leibniz(
+            &samples,
+            |x| x * x,
+            |_x| 3.0, // WRONG
+            |x| x + 1.0,
+            |_x| 1.0,
+            1e-4,
+        );
+        match outcome {
+            Outcome::Violation { message, .. } => {
+                assert!(message.contains("Leibniz"));
+            }
+            other => panic!("expected Violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn chain_rule_holds_for_sin_of_squared() {
+        // f = sin, g = x²  →  (f∘g)' = cos(x²)·2x.
+        let samples = [0.3, 1.0, 1.5, 2.0, -1.0];
+        let outcome = check_chain_rule(&samples, f64::sin, f64::cos, |x| x * x, |x| 2.0 * x, 1e-4);
+        assert!(matches!(outcome, Outcome::Ok { .. }));
+    }
+
+    #[test]
+    fn chain_rule_fails_when_inner_derivative_wrong() {
+        let samples = [1.0, 2.0];
+        let outcome = check_chain_rule(
+            &samples,
+            f64::sin,
+            f64::cos,
+            |x| x * x,
+            |_x| 1.0, // WRONG : should be 2x
+            1e-4,
+        );
+        match outcome {
+            Outcome::Violation { message, .. } => {
+                assert!(message.contains("chain rule"));
+            }
+            other => panic!("expected Violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lipschitz_holds_for_linear_function() {
+        // f(x) = 3x is 3-Lipschitz (exactly).
+        let samples = [(1.0, 2.0), (0.0, 5.0), (-3.0, 4.0), (-10.0, 10.0)];
+        let outcome = check_lipschitz(&samples, |x| 3.0 * x, 3.0);
+        assert!(matches!(outcome, Outcome::Ok { .. }));
+    }
+
+    #[test]
+    fn lipschitz_holds_with_slack_constant() {
+        // f(x) = sin(x) is 1-Lipschitz (sup |f'| = 1).
+        let samples = [(0.0, 1.0), (1.0, 2.0), (-2.0, 3.0), (0.5, 2.5)];
+        let outcome = check_lipschitz(&samples, f64::sin, 1.0);
+        assert!(matches!(outcome, Outcome::Ok { .. }));
+    }
+
+    #[test]
+    fn lipschitz_fails_for_steep_function_with_small_constant() {
+        // f(x) = 100x would need K=100 ; claim K=1.
+        let samples = [(0.0, 1.0), (1.0, 2.0)];
+        let outcome = check_lipschitz(&samples, |x| 100.0 * x, 1.0);
+        match outcome {
+            Outcome::Violation { message, .. } => {
+                assert!(message.contains("Lipschitz"));
+            }
+            other => panic!("expected Violation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lipschitz_empty_samples_is_ok_with_zero() {
+        let samples: [(f64, f64); 0] = [];
+        let outcome = check_lipschitz(&samples, |x: f64| x, 1.0);
         match outcome {
             Outcome::Ok { samples_tested } => assert_eq!(samples_tested, 0),
             other => panic!("expected Ok, got {other:?}"),

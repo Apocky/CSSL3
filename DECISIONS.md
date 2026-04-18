@@ -2025,3 +2025,32 @@ Each decision entry :
   - Corpus-based fuzzing : seed the LCG with captured corpora (libFuzzer-style) rather than always pure-random.
   - Grammar-based fuzzing : type-directed input-generation for structured inputs (e.g., CSSLv3 source fuzzing for the parser).
   - `@power` + `@thermal` + `@hot_reload` — require hw/OS-specific dependencies that stage0 intentionally defers.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D7 : T11-phase-2b — refinement-guided generators + calculus-rule metamorphic checks
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D3 gave `@property` an Lcg PRNG + `IntGen` + `BoolGen`. T11-D3 also gave `@metamorphic` four algebraic-law runners (commutative / associative / distributive / idempotent). This slice extends both modules with the logical next tier : richer generators (float + 3-tuple + variable-length vec) for the property-framework, and three calculus-rule validators (Leibniz product rule + chain rule + Lipschitz continuity) for the metamorphic-framework. Together they unlock AD gradient-verification tests that live within cssl-testing itself — no cssl-autodiff dep required, since the rules are checked numerically via central-differences.
+- **Slice landed (this commit)**
+  - `property.rs` new generators :
+    - `FloatGen { min, max }` : implements `Generator<f64>` via `Lcg::gen_f64`. Shrinks toward `0.0` (if in range) + halved-magnitude.
+    - `TripleGen<G>` : implements `Generator<(T, T, T)>` by calling the inner generator three times. Shrinks one component at a time (keeping others fixed) to preserve failing-dimension information.
+    - `VecGen<G> { inner, max_len }` : implements `Generator<Vec<T>>`. Length drawn uniformly from `[0, max_len]` ; shrinks by half-truncation + drop-last + shrink-last-element.
+    - 12 new tests : FloatGen range + shrink-toward-zero + shrink-empty-at-zero + positive-range-shrink ; TripleGen produces 3-sample + component-at-a-time shrink ; VecGen respects-max-len + zero-max + truncation-first + empty-shrink ; run_property with FloatGen + TripleGen integration tests.
+  - `metamorphic.rs` new validators :
+    - `check_leibniz<F, DF, G, DG>(samples, f, df, g, dg, tolerance)` : verifies `(f*g)'(x) ≈ f'·g + f·g'` at each sample, with LHS computed via central-differences at step `h = max(1e-5, |x|·1e-6)`.
+    - `check_chain_rule<F, DF, G, DG>(samples, f, df, g, dg, tolerance)` : verifies `(f∘g)'(x) ≈ f'(g(x))·g'(x)` numerically.
+    - `check_lipschitz<F>(samples, f, k)` : verifies `|f(x) - f(y)| ≤ k·|x - y|` for every `(x, y)` sample pair — used for SDF 1-Lipschitz invariant.
+    - 8 new tests : Leibniz holds for polynomial-product + fails when derivative wrong ; chain rule holds for `sin(x²)` + fails with wrong inner ; Lipschitz holds for 3x (3-Lipschitz) + holds for sin (1-Lipschitz with slack) + fails for 100x-with-K=1 + empty-samples Ok(0).
+- **Consequences**
+  - Test count : 1232 → 1252 (+20 : 12 property + 8 metamorphic).
+  - AD gradient-verification tests can now be written end-to-end within any downstream crate using cssl-testing as its only dep. Pattern : generate `FloatGen`-driven inputs → pass primal + hand-coded derivative closures to `check_leibniz` → assert `Ok`. This is how stage-1 self-host tests will verify AD-rules once cssl-macros can emit them via `@metamorphic(leibniz) fn my_rule() { ... }`.
+  - `check_lipschitz` provides the 1-Lipschitz SDF validator that `specs/05_AUTODIFF.csl § SDF-NORMAL` requires — now stage-0 accessible.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - `RefinedGen<R>` : generator parameterized over a refinement predicate that rejects samples failing the predicate (rejection-sampling fallback before guided-generation is implemented).
+  - Hypothesis-style integrated shrinking : retain the PRNG draw-history with each sample so shrinking operates on seed-prefixes not output-values (better convergence for structured types).
+  - Faà di Bruno higher-order rule : `check_faa_di_bruno` for `(f∘g)^(n)` — currently deferred until jet-machinery lands in cssl-jets.
+  - Vec3 versions of Leibniz / chain-rule / Lipschitz when vector-valued AD is in stage-1.

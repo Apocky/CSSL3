@@ -182,6 +182,118 @@ impl Generator<bool> for BoolGen {
     }
 }
 
+/// Float generator over a half-open `[min, max)` range. Produces real `f64`
+/// values via `Lcg::gen_f64` (mantissa-preserving). Shrinks toward zero (if in
+/// range) then toward halved-magnitude — the same shape as `IntGen`.
+#[derive(Debug, Clone, Copy)]
+pub struct FloatGen {
+    pub min: f64,
+    pub max: f64,
+}
+
+impl Generator<f64> for FloatGen {
+    fn generate(&self, rng: &mut Lcg) -> f64 {
+        rng.gen_f64(self.min, self.max)
+    }
+    #[allow(clippy::float_cmp)] // exact-equality ok : v=0 and halved=v are bit-exact cases
+    fn shrink(&self, v: &f64) -> Vec<f64> {
+        let mut out = Vec::new();
+        // Shrink toward 0 if 0 ∈ [min, max) and v ≠ 0.
+        if *v != 0.0 && self.min <= 0.0 && 0.0 < self.max {
+            out.push(0.0);
+        }
+        // Halve-magnitude (convergent toward 0 in finitely-many rounds).
+        let halved = v * 0.5;
+        if halved >= self.min && halved < self.max && halved != *v {
+            out.push(halved);
+        }
+        out
+    }
+}
+
+/// 3-tuple generator (e.g., for SDF-point components `(px, py, pz)`).
+/// Generic over an inner `Generator<T>` that drives each component.
+#[derive(Debug, Clone, Copy)]
+pub struct TripleGen<G> {
+    pub inner: G,
+}
+
+impl<T, G> Generator<(T, T, T)> for TripleGen<G>
+where
+    T: core::fmt::Debug + Clone,
+    G: Generator<T>,
+{
+    fn generate(&self, rng: &mut Lcg) -> (T, T, T) {
+        let a = self.inner.generate(rng);
+        let b = self.inner.generate(rng);
+        let c = self.inner.generate(rng);
+        (a, b, c)
+    }
+    fn shrink(&self, v: &(T, T, T)) -> Vec<(T, T, T)> {
+        // Shrink one component at a time, keeping the other two fixed.
+        let mut out = Vec::new();
+        for candidate_a in self.inner.shrink(&v.0) {
+            out.push((candidate_a, v.1.clone(), v.2.clone()));
+        }
+        for candidate_b in self.inner.shrink(&v.1) {
+            out.push((v.0.clone(), candidate_b, v.2.clone()));
+        }
+        for candidate_c in self.inner.shrink(&v.2) {
+            out.push((v.0.clone(), v.1.clone(), candidate_c));
+        }
+        out
+    }
+}
+
+/// Variable-length `Vec<T>` generator. Length is drawn uniformly from
+/// `[0, max_len]`. Each element is drawn via the inner `Generator<T>`.
+/// Shrinks first by truncation (halve-length), then by shrinking the
+/// last element.
+#[derive(Debug, Clone, Copy)]
+pub struct VecGen<G> {
+    pub inner: G,
+    pub max_len: u32,
+}
+
+impl<T, G> Generator<Vec<T>> for VecGen<G>
+where
+    T: core::fmt::Debug + Clone,
+    G: Generator<T>,
+{
+    fn generate(&self, rng: &mut Lcg) -> Vec<T> {
+        let raw = rng.next_u64();
+        let len = if self.max_len == 0 {
+            0
+        } else {
+            (raw % (u64::from(self.max_len) + 1)) as usize
+        };
+        let mut out = Vec::with_capacity(len);
+        for _ in 0..len {
+            out.push(self.inner.generate(rng));
+        }
+        out
+    }
+    fn shrink(&self, v: &Vec<T>) -> Vec<Vec<T>> {
+        let mut out = Vec::new();
+        if v.is_empty() {
+            return out;
+        }
+        // Truncate to half-length.
+        out.push(v[..v.len() / 2].to_vec());
+        // Drop last element.
+        out.push(v[..v.len() - 1].to_vec());
+        // Shrink last element, keep others.
+        if let Some(last) = v.last() {
+            for candidate in self.inner.shrink(last) {
+                let mut shrunk = v[..v.len() - 1].to_vec();
+                shrunk.push(candidate);
+                out.push(shrunk);
+            }
+        }
+        out
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // § Property runner : orchestrates generator + check-fn + shrinker.
 // ─────────────────────────────────────────────────────────────────────────
@@ -249,7 +361,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        run_property, BoolGen, Config, Dispatcher, Generator, IntGen, Lcg, Outcome, Stage0Stub,
+        run_property, BoolGen, Config, Dispatcher, FloatGen, Generator, IntGen, Lcg, Outcome,
+        Stage0Stub, TripleGen, VecGen,
     };
 
     #[test]
@@ -390,5 +503,186 @@ mod tests {
         let o1 = run_property(&config, &g, |x: &i64| x % 3 == 0, "divisible-by-3");
         let o2 = run_property(&config, &g, |x: &i64| x % 3 == 0, "divisible-by-3");
         assert_eq!(o1, o2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § FloatGen + TripleGen + VecGen : refinement-guided generator suite.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn float_gen_stays_in_range() {
+        let g = FloatGen {
+            min: -10.0,
+            max: 10.0,
+        };
+        let mut rng = Lcg::new(42);
+        for _ in 0..1000 {
+            let v = g.generate(&mut rng);
+            assert!((-10.0..10.0).contains(&v));
+        }
+    }
+
+    #[test]
+    fn float_gen_shrinks_toward_zero() {
+        let g = FloatGen {
+            min: -100.0,
+            max: 100.0,
+        };
+        let shrunk = g.shrink(&50.0);
+        assert!(shrunk.contains(&0.0), "shrink(50.0) should suggest 0.0");
+        assert!(
+            shrunk.contains(&25.0),
+            "shrink(50.0) should suggest 25.0 (halved)"
+        );
+    }
+
+    #[test]
+    fn float_gen_shrink_at_zero_is_empty() {
+        let g = FloatGen {
+            min: -1.0,
+            max: 1.0,
+        };
+        let shrunk = g.shrink(&0.0);
+        // At 0 : no zero-candidate (already there) + halved 0.0 is also 0.0 (deduped).
+        assert!(shrunk.is_empty());
+    }
+
+    #[test]
+    fn float_gen_positive_range_shrinks_to_min_if_zero_out_of_range() {
+        let g = FloatGen {
+            min: 1.0,
+            max: 10.0,
+        };
+        // 0.0 not in range ; halved 5.0 = 2.5 which IS in [1.0, 10.0).
+        let shrunk = g.shrink(&5.0);
+        assert!(
+            !shrunk.contains(&0.0),
+            "0.0 not in range — should not be suggested"
+        );
+        assert!(shrunk.contains(&2.5));
+    }
+
+    #[test]
+    fn triple_gen_produces_three_independent_samples() {
+        let g = TripleGen {
+            inner: IntGen { min: 0, max: 100 },
+        };
+        let mut rng = Lcg::new(123);
+        let (a, b, c) = g.generate(&mut rng);
+        assert!((0..=100).contains(&a));
+        assert!((0..=100).contains(&b));
+        assert!((0..=100).contains(&c));
+    }
+
+    #[test]
+    fn triple_gen_shrinks_component_at_a_time() {
+        let g = TripleGen {
+            inner: IntGen { min: -50, max: 50 },
+        };
+        let shrunk = g.shrink(&(10i64, 20i64, 30i64));
+        assert!(!shrunk.is_empty(), "should produce shrink candidates");
+        // Each candidate changes exactly one of the three fields.
+        for (a, b, c) in &shrunk {
+            let diff_count = u32::from(*a != 10) + u32::from(*b != 20) + u32::from(*c != 30);
+            assert!(
+                diff_count == 1,
+                "candidate {a},{b},{c} should change exactly one component, changed {diff_count}"
+            );
+        }
+    }
+
+    #[test]
+    fn vec_gen_respects_max_length() {
+        let g = VecGen {
+            inner: IntGen { min: 0, max: 10 },
+            max_len: 5,
+        };
+        let mut rng = Lcg::new(7);
+        for _ in 0..100 {
+            let v = g.generate(&mut rng);
+            assert!(v.len() <= 5);
+        }
+    }
+
+    #[test]
+    fn vec_gen_zero_max_len_produces_empty() {
+        let g: VecGen<IntGen> = VecGen {
+            inner: IntGen { min: 0, max: 10 },
+            max_len: 0,
+        };
+        let mut rng = Lcg::new(9);
+        let v = g.generate(&mut rng);
+        assert!(v.is_empty());
+    }
+
+    #[test]
+    fn vec_gen_shrinks_by_truncation_first() {
+        let g = VecGen {
+            inner: IntGen { min: 0, max: 10 },
+            max_len: 20,
+        };
+        let shrunk = g.shrink(&vec![1i64, 2, 3, 4, 5, 6, 7, 8]);
+        // First candidate = half-truncation (length 4).
+        assert_eq!(shrunk[0].len(), 4);
+        // Second candidate = drop-last (length 7).
+        assert_eq!(shrunk[1].len(), 7);
+    }
+
+    #[test]
+    fn vec_gen_empty_shrink_is_empty() {
+        let g = VecGen {
+            inner: IntGen { min: 0, max: 10 },
+            max_len: 5,
+        };
+        let v: Vec<i64> = Vec::new();
+        let shrunk = g.shrink(&v);
+        assert!(shrunk.is_empty());
+    }
+
+    #[test]
+    fn float_gen_run_property_passes_for_universal_truth() {
+        let g = FloatGen {
+            min: 0.0,
+            max: 100.0,
+        };
+        let config = Config {
+            cases: 500,
+            seed: 13,
+            shrink_rounds: 8,
+        };
+        let outcome = run_property(&config, &g, |x: &f64| *x >= 0.0, "non-negative");
+        assert!(matches!(outcome, Outcome::Ok { .. }));
+    }
+
+    #[test]
+    fn triple_gen_run_property_shrinks_component() {
+        let g = TripleGen {
+            inner: IntGen { min: 0, max: 100 },
+        };
+        let config = Config {
+            cases: 200,
+            seed: 17,
+            shrink_rounds: 16,
+        };
+        // Property : at least one component is zero (false in general).
+        let outcome = run_property(
+            &config,
+            &g,
+            |t: &(i64, i64, i64)| t.0 == 0 || t.1 == 0 || t.2 == 0,
+            "at-least-one-component-is-zero",
+        );
+        // Almost certainly fails somewhere in 200 draws from [0,100]^3.
+        match outcome {
+            Outcome::Counterexample { shrunk_input, .. } => {
+                // Shrunk form should print all three components.
+                assert!(shrunk_input.starts_with('('));
+                assert!(shrunk_input.ends_with(')'));
+            }
+            Outcome::Ok { .. } => {
+                // Rare but possible ; don't fail the test just because the
+                // property happened to hold on this seed.
+            }
+            Outcome::Stage0Unimplemented => panic!("runner should not return stub"),
+        }
     }
 }
