@@ -2676,3 +2676,30 @@ Each decision entry :
   - Multi-fn scene SDFs : `@differentiable fn scene(p, r0, r1) { min(sphere_sdf(p, r0), sphere_sdf(p, r1)) }` — inter-fn JIT calls.
   - JIT native multi-return : remove the tangent-only stripping in `extract_tangent_only_variant`.
   - libm-backed transcendentals : cranelift extern decl + dynamic link.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D25 : Bwd-mode full-chain integration — adjoint runtime verification
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D23 verified Fwd-mode end-to-end ; T11-D25 closes Bwd-mode. The walker's reverse-mode emission (`substitute_bwd`) produces an adjoint-accumulation variant with terminator `cssl.diff.bwd_return`. Two fixes needed for JIT execution.
+- **Two fixes**
+  1. **Walker : strip primal `func.return` from bwd body** — the existing walker pre-pended primal ops to the bwd body for "recomputation" (primal values needed in adjoint chain-rule). But it also kept the primal `func.return` which became a mid-stream terminator, triggering cranelift's "cannot add instruction to a block already filled" panic. Fixed : filter primal `func.return` from the op list ; only `cssl.diff.bwd_return` terminates.
+  2. **JIT : recognize `cssl.diff.bwd_return` as terminator** — the dispatch-site match now includes `cssl.diff.bwd_return` alongside `func.return`, with identical lowering semantics (emit cranelift `return_(&operands)`).
+- **Slice landed (this commit)**
+  - `cssl-autodiff/src/substitute.rs::substitute_bwd` : primal-func.return filter before bwd-ops append.
+  - `cssl-cgen-cpu-cranelift/src/jit.rs::lower_op_to_cl` : `cssl.diff.bwd_return` dispatch alongside `func.return`.
+  - 3 new tests in `cssl-examples/src/jit_chain.rs` :
+    - `full_chain_source_bwd_sq_adjoint` : `@differentiable fn sq(x) { x * x }` → `sq_bwd(x, d_y) -> d_x`. Verifies `d_x = 2·x·d_y` at x ∈ {-4.5, -1, 0.5, 3.7, 10} analytically + against central-differences.
+    - `full_chain_source_bwd_cube_adjoint` : `fn cube(x) { x * x * x }` → `d_x = 3·x²·d_y`. At x=2 yields 12 ; at x=-3 yields 27.
+    - `full_chain_source_bwd_affine_adjoint` : `fn affine(x) { x + x + x }` → `d_x = 3·d_y` regardless of x.
+- **Consequences**
+  - Test count : 1359 → 1362 (+3 in cssl-examples).
+  - **Reverse-mode AD now runs source-to-runtime.** For single-float-param primals, the bwd variant has signature `(x, d_y) -> d_x` which the existing JIT call helpers handle directly (no post-processing needed beyond the walker-side primal-return strip).
+  - The walker's Fwd + Bwd modes now both produce JIT-executable bodies from any well-formed `@differentiable` source. Multi-param primals (where Bwd returns multiple adjoints) remain deferred — that's T11-D27's multi-return path.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred (T11-D26+)**
+  - Multi-fn scene SDFs : `@differentiable fn scene(p, r0, r1) { min(sphere_sdf(p, r0), sphere_sdf(p, r1)) }` — requires inter-fn JIT calls.
+  - Multi-result bwd : current JIT supports single-result fns, so multi-adjoint-returning bwd variants (primals with multiple float params) need JIT multi-return support.
+  - Scene-SDF gradient via Bwd : `bwd_diff(scene_sdf)(p, r).d_p` path — complements T11-D22's Fwd-verified min gradient with the reverse-mode form.

@@ -589,7 +589,11 @@ fn lower_op_to_cl(
         "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
         "arith.select" => lower_select(op, builder, value_map, fn_name),
         "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name),
-        "func.return" => {
+        // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
+        // it carries one-operand-per-primal-float-param holding that param's
+        // accumulated adjoint. Lower identically to `func.return` since the
+        // operands + result-shape match exactly.
+        "func.return" | "cssl.diff.bwd_return" => {
             let args: Result<Vec<_>, _> = op
                 .operands
                 .iter()

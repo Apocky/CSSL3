@@ -1030,7 +1030,14 @@ fn substitute_bwd(
     bwd_ops.push(return_op);
 
     // Install : primal ops preserved (for recomputation) + bwd adjoint ops appended.
-    let mut combined = original_ops;
+    // T11-D25 : strip primal `func.return` — it's semantically replaced by the
+    // `cssl.diff.bwd_return` terminator we just pushed, and leaving it in the
+    // middle of the ops list creates a block-terminator mid-stream which
+    // breaks JIT execution (cranelift refuses to add insts to a filled block).
+    let mut combined: Vec<MirOp> = original_ops
+        .into_iter()
+        .filter(|o| o.name != "func.return")
+        .collect();
     combined.extend(bwd_ops);
     entry.ops = combined;
     variant.next_value_id = next_id;

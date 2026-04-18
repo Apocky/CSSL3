@@ -414,6 +414,116 @@ mod tests {
         assert!((t_b - 1.0).abs() < 1e-6);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D25 : Bwd-mode (reverse) full-chain JIT integration.
+    //   For single-float-param primals, the bwd variant has a single
+    //   adjoint-result ; JIT-compile + verify against analytic formulas.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_source_bwd_sq_adjoint() {
+        // fn sq(x : f32) -> f32 { x * x }
+        //   ∂(x²)/∂x = 2x
+        //   bwd signature: (x, d_y) -> d_x  where d_x = 2·x·d_y.
+        let src = r"@differentiable fn sq(x : f32) -> f32 { x * x }";
+        let module = pipeline_source_to_ad_mir("sq_bwd", src);
+        let bwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sq_bwd")
+            .expect("bwd variant");
+        // For single-param primal, bwd already has signature (x, d_y) -> d_x.
+        // No post-processing needed.
+        let mut m = JitModule::new();
+        let h = m.compile(bwd).expect("JIT compile bwd");
+        m.finalize().unwrap();
+
+        // d_x = 2·x·d_y at x=3, d_y=1 → 6.
+        let d_x = h.call_f32_f32_to_f32(3.0, 1.0, &m).unwrap();
+        assert!(
+            (d_x - 6.0).abs() < 1e-5,
+            "expected ∂(x²)/∂x·d_y @ x=3, d_y=1 = 6, got {d_x}"
+        );
+        // d_x = 2·x·d_y at x=2, d_y=0.5 → 2·2·0.5 = 2.
+        let d_x2 = h.call_f32_f32_to_f32(2.0, 0.5, &m).unwrap();
+        assert!((d_x2 - 2.0).abs() < 1e-5);
+
+        // Cross-check against central-differences on the primal.
+        // Primal is `x * x`. Central-diff : ((x+h)² - (x-h)²) / 2h = 2x.
+        let h_step = 1e-3_f32;
+        let xs = [-4.5_f32, -1.0, 0.5, 3.7, 10.0];
+        for &x in &xs {
+            let analytic = 2.0 * x;
+            let bwd_dx = h.call_f32_f32_to_f32(x, 1.0, &m).unwrap();
+            assert!(
+                (bwd_dx - analytic).abs() < 1e-4,
+                "bwd ∂/∂x @ x={x} : JIT={bwd_dx} vs analytic={analytic}"
+            );
+            // Central-diff on the primal x²:
+            let primal_plus = (x + h_step).powi(2);
+            let primal_minus = (x - h_step).powi(2);
+            let num = (primal_plus - primal_minus) / (2.0 * h_step);
+            assert!(
+                (bwd_dx - num).abs() < 1e-2,
+                "bwd ∂/∂x @ x={x} : JIT={bwd_dx} vs central-diff={num}"
+            );
+        }
+    }
+
+    #[test]
+    fn full_chain_source_bwd_cube_adjoint() {
+        // fn cube(x) = x * x * x.
+        // ∂(x³)/∂x = 3x²
+        let src = r"@differentiable fn cube(x : f32) -> f32 { x * x * x }";
+        let module = pipeline_source_to_ad_mir("cube_bwd", src);
+        let bwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "cube_bwd")
+            .expect("cube_bwd");
+        let mut m = JitModule::new();
+        let h = m.compile(bwd).expect("JIT");
+        m.finalize().unwrap();
+
+        // At x=2, d_y=1 : d_x = 3·4·1 = 12.
+        let d_x = h.call_f32_f32_to_f32(2.0, 1.0, &m).unwrap();
+        assert!(
+            (d_x - 12.0).abs() < 1e-4,
+            "∂(x³)/∂x @ x=2 : expected 12, got {d_x}"
+        );
+        // At x=-3, d_y=1 : d_x = 3·9·1 = 27.
+        let d_x2 = h.call_f32_f32_to_f32(-3.0, 1.0, &m).unwrap();
+        assert!(
+            (d_x2 - 27.0).abs() < 1e-4,
+            "∂(x³)/∂x @ x=-3 : expected 27, got {d_x2}"
+        );
+    }
+
+    #[test]
+    fn full_chain_source_bwd_affine_adjoint() {
+        // fn affine(x) = x + x + x   (d = 3)
+        // Chain : v = add(add(x, x), x) → ∂v/∂x = 3.
+        let src = r"@differentiable fn affine(x : f32) -> f32 { x + x + x }";
+        let module = pipeline_source_to_ad_mir("affine_bwd", src);
+        let bwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "affine_bwd")
+            .expect("bwd");
+        let mut m = JitModule::new();
+        let h = m.compile(bwd).expect("JIT");
+        m.finalize().unwrap();
+
+        // d_x = 3·d_y. At any x, d_y=1 : d_x = 3.
+        for x in [0.0_f32, 5.0, -2.5, 100.0] {
+            let d_x = h.call_f32_f32_to_f32(x, 1.0, &m).unwrap();
+            assert!(
+                (d_x - 3.0).abs() < 1e-5,
+                "∂(3x)/∂x @ x={x} : expected 3, got {d_x}"
+            );
+        }
+    }
+
     #[test]
     fn full_chain_source_scene_sdf_abs_runtime_gradient() {
         let src = r"@differentiable fn scene(a : f32) -> f32 { abs(a) }";
