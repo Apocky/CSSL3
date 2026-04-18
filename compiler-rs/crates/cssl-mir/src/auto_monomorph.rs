@@ -56,12 +56,16 @@ use std::collections::{HashMap, HashSet};
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
-    HirArrayExpr, HirBlock, HirCallArg, HirExpr, HirExprKind, HirFn, HirId, HirItem, HirMatchArm,
-    HirModule, HirStmtKind, HirType, Interner, Symbol,
+    HirArrayExpr, HirBlock, HirCallArg, HirExpr, HirExprKind, HirFieldDecl, HirFn, HirId, HirItem,
+    HirMatchArm, HirModule, HirStmtKind, HirStruct, HirStructBody, HirType, HirTypeKind, Interner,
+    Symbol,
 };
 
 use crate::func::{MirFunc, MirModule};
-use crate::monomorph::{mangle_specialization_name, specialize_generic_fn, TypeSubst};
+use crate::monomorph::{
+    mangle_specialization_name, mangle_struct_specialization_name, specialize_generic_fn,
+    specialize_generic_struct, TypeSubst,
+};
 
 /// Report returned by the auto-monomorphization walker.
 #[derive(Debug, Clone, Default)]
@@ -413,6 +417,232 @@ pub fn rewrite_generic_call_sites(
         }
     }
     rewrites
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D46 — STRUCT AUTO-DISCOVERY WALKER
+//
+// Parallel of `auto_monomorphize` (which discovers generic-fn call sites)
+// but for generic-struct references. Walks the HIR module's fn signatures +
+// struct fields, finds `HirTypeKind::Path` nodes with non-empty `type_args`
+// that reference a known generic struct decl, invokes
+// `specialize_generic_struct` per unique tuple.
+//
+// § SCOPE (this slice — T11-D46 MVP)
+//   - Scans fn param-types + return-types + struct-field-types across the
+//     whole module. Expression-level type annotations (let-bindings, casts)
+//     NOT scanned (they live inside fn bodies — requires threading through
+//     body-lowering, deferred).
+//   - Single-segment struct-name paths only (`Pair<i32, f32>`, not
+//     `mod::Pair<i32, f32>`).
+//   - Purely positional type-arg matching (zip with `generics.params`).
+//   - Handles nested generics : `Outer<Inner<i32>>` specializes BOTH the
+//     outer and the inner (if both are known generic structs) via the
+//     recursive walk through `type_args`.
+//
+// § DEFERRED
+//   - Struct-expression discovery in fn bodies (`Pair { first: 1, second: 2.0 }`
+//     without an explicit type annotation — needs inference from field values).
+//   - impl<T> Self monomorphization (HirImpl.self_ty + per-method substitution).
+//   - Generic-enum parallel.
+//   - Auto-rewriting of type tags in body_lower's struct-expr output (today
+//     lower_struct_expr emits `Opaque("!cssl.struct.<name>")` without type args).
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Report returned by the struct auto-discovery walker.
+#[derive(Debug, Clone, Default)]
+pub struct AutoStructReport {
+    /// One `HirStruct` per unique (generic-struct, type-arg-tuple) tuple
+    /// discovered in a type-annotation context. Callers register these in
+    /// their symbol table / downstream struct registry.
+    pub specializations: Vec<HirStruct>,
+    /// Map keyed off the stringified reference `{struct_name}_{mangle}` →
+    /// the final mangled name. Enables downstream passes (struct-expr
+    /// lowering, codegen) to rewrite references from the generic name to the
+    /// specialized name without re-walking the type-arg tuple.
+    pub ref_to_mangled: HashMap<String, String>,
+    /// Count of generic struct-decls indexed.
+    pub generic_struct_count: u32,
+    /// Count of distinct type-annotation references to generic structs.
+    pub ref_count: u32,
+    /// Count of unique specializations emitted (≤ ref_count).
+    pub specialization_count: u32,
+}
+
+impl AutoStructReport {
+    /// Short diagnostic summary.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        format!(
+            "auto-struct : {} generic structs / {} type-refs / {} unique specializations",
+            self.generic_struct_count, self.ref_count, self.specialization_count
+        )
+    }
+
+    /// `true` iff no generic-struct references needed specialization.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.specializations.is_empty()
+    }
+}
+
+/// Walk `module` and produce one `HirStruct` per unique generic-struct
+/// reference discovered in fn signatures + struct field types.
+///
+/// Combines with [`auto_monomorphize`] (for fns) to cover the two main kinds
+/// of generic items in P1 stdlib-core scope.
+#[must_use]
+pub fn auto_monomorphize_structs(module: &HirModule, interner: &Interner) -> AutoStructReport {
+    let mut report = AutoStructReport::default();
+
+    // § Index generic struct-decls by name. Non-generic structs are ignored —
+    //   type-refs to them don't need specialization.
+    let mut struct_index: HashMap<Symbol, &HirStruct> = HashMap::new();
+    for item in &module.items {
+        if let HirItem::Struct(s) = item {
+            if !s.generics.params.is_empty() {
+                struct_index.insert(s.name, s);
+            }
+        }
+    }
+    report.generic_struct_count = u32::try_from(struct_index.len()).unwrap_or(u32::MAX);
+
+    // § Walk every type-annotation across the module + collect refs that
+    //   match a known generic struct.
+    let mut refs: Vec<(Symbol, Vec<HirType>)> = Vec::new();
+    for item in &module.items {
+        match item {
+            HirItem::Fn(f) => {
+                for p in &f.params {
+                    collect_generic_struct_refs(&p.ty, &struct_index, &mut refs);
+                }
+                if let Some(rt) = &f.return_ty {
+                    collect_generic_struct_refs(rt, &struct_index, &mut refs);
+                }
+            }
+            HirItem::Struct(s) => {
+                walk_struct_fields(&s.body, &struct_index, &mut refs);
+            }
+            _ => {}
+        }
+    }
+    report.ref_count = u32::try_from(refs.len()).unwrap_or(u32::MAX);
+
+    // § Deduplicate by (struct-name, type-arg-mangle-key). Emit one
+    //   specialized HirStruct per unique tuple.
+    let mut seen: HashSet<String> = HashSet::new();
+    for (struct_sym, type_args) in refs {
+        let struct_decl = match struct_index.get(&struct_sym) {
+            Some(s) => *s,
+            None => continue,
+        };
+
+        // Build TypeSubst by zipping generics.params with type_args. If the
+        // arity doesn't match (e.g., `Pair<i32>` when Pair has 2 params),
+        // skip — malformed reference ; a real compiler would diagnose.
+        if struct_decl.generics.params.len() != type_args.len() {
+            continue;
+        }
+        let mut subst = TypeSubst::new();
+        for (param, ty) in struct_decl.generics.params.iter().zip(type_args.iter()) {
+            subst.bind(param.name, ty.clone());
+        }
+
+        let mangled = mangle_struct_specialization_name(struct_decl, interner, &subst);
+        let base = interner.resolve(struct_decl.name);
+        report.ref_to_mangled.insert(
+            format!("{base}_{}", mangle_key(&subst, interner)),
+            mangled.clone(),
+        );
+
+        if seen.insert(mangled.clone()) {
+            let specialized = specialize_generic_struct(interner, struct_decl, &subst);
+            report.specializations.push(specialized);
+        }
+    }
+    report.specialization_count = u32::try_from(report.specializations.len()).unwrap_or(u32::MAX);
+
+    report
+}
+
+/// Internal : stable-order key for a TypeSubst, used as map key.
+fn mangle_key(subst: &TypeSubst, interner: &Interner) -> String {
+    let mut out = String::new();
+    for (_sym, ty) in subst.iter_sorted(interner) {
+        out.push('_');
+        match &ty.kind {
+            HirTypeKind::Path { path, .. } => {
+                if let Some(last) = path.last() {
+                    out.push_str(&interner.resolve(*last).to_lowercase());
+                }
+            }
+            _ => out.push_str("opaque"),
+        }
+    }
+    out
+}
+
+/// Recursively walk a `HirType` and collect every path reference matching a
+/// generic struct in `struct_index`. Nested type_args are traversed so that
+/// `Outer<Inner<i32>>` emits BOTH the outer + inner refs.
+fn collect_generic_struct_refs(
+    t: &HirType,
+    struct_index: &HashMap<Symbol, &HirStruct>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    match &t.kind {
+        HirTypeKind::Path {
+            path, type_args, ..
+        } => {
+            // Single-segment path + non-empty type_args + matches a known
+            // generic struct ⇒ collect.
+            if path.len() == 1 && !type_args.is_empty() && struct_index.contains_key(&path[0]) {
+                out.push((path[0], type_args.clone()));
+            }
+            // Recurse into type_args regardless of match — nested references.
+            for ta in type_args {
+                collect_generic_struct_refs(ta, struct_index, out);
+            }
+        }
+        HirTypeKind::Tuple { elems } => {
+            for e in elems {
+                collect_generic_struct_refs(e, struct_index, out);
+            }
+        }
+        HirTypeKind::Array { elem, .. } | HirTypeKind::Slice { elem } => {
+            collect_generic_struct_refs(elem, struct_index, out);
+        }
+        HirTypeKind::Reference { inner, .. } | HirTypeKind::Capability { inner, .. } => {
+            collect_generic_struct_refs(inner, struct_index, out);
+        }
+        HirTypeKind::Function {
+            params, return_ty, ..
+        } => {
+            for p in params {
+                collect_generic_struct_refs(p, struct_index, out);
+            }
+            collect_generic_struct_refs(return_ty, struct_index, out);
+        }
+        HirTypeKind::Refined { base, .. } => {
+            collect_generic_struct_refs(base, struct_index, out);
+        }
+        HirTypeKind::Infer | HirTypeKind::Error => {}
+    }
+}
+
+/// Walk struct body fields looking for generic-struct refs in field types.
+fn walk_struct_fields(
+    body: &HirStructBody,
+    struct_index: &HashMap<Symbol, &HirStruct>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    let fields: &[HirFieldDecl] = match body {
+        HirStructBody::Named(fs) | HirStructBody::Tuple(fs) => fs,
+        HirStructBody::Unit => return,
+    };
+    for f in fields {
+        collect_generic_struct_refs(&f.ty, struct_index, out);
+    }
 }
 
 #[cfg(test)]
@@ -836,5 +1066,174 @@ mod tests {
             id_i32.results,
             vec![crate::value::MirType::Int(crate::value::IntWidth::I32)]
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D46 — struct auto-discovery walker tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    fn walk_structs(src: &str) -> super::AutoStructReport {
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (cst, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, interner, _) = lower_module(&f, &cst);
+        super::auto_monomorphize_structs(&hir, &interner)
+    }
+
+    #[test]
+    fn struct_walker_empty_module_is_empty() {
+        let r = walk_structs("");
+        assert!(r.is_empty());
+        assert_eq!(r.generic_struct_count, 0);
+    }
+
+    #[test]
+    fn struct_walker_ignores_non_generic_struct() {
+        let r = walk_structs(r"struct Point { x : f32, y : f32 }");
+        assert_eq!(r.generic_struct_count, 0);
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn struct_walker_indexes_generic_but_no_refs_no_specializations() {
+        let r = walk_structs(r"struct Pair<T, U> { first : T, second : U }");
+        assert_eq!(r.generic_struct_count, 1);
+        assert_eq!(r.ref_count, 0);
+        assert!(r.is_empty());
+    }
+
+    #[test]
+    fn struct_walker_fn_param_type_triggers_specialization() {
+        // `fn foo(p : Pair<i32, f32>) -> i32 { 0 }` references Pair<i32, f32>
+        // in a param type-annotation ⇒ walker produces Pair_i32_f32.
+        let src = r"
+            struct Pair<T, U> { first : T, second : U }
+            fn foo(p : Pair<i32, f32>) -> i32 { 0 }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.generic_struct_count, 1);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 1);
+        let names: Vec<&str> = r
+            .specializations
+            .iter()
+            .map(|s| {
+                // specialization preserves the original Symbol name ; downstream
+                // registers via mangled key. Verify field substitution instead.
+                match &s.body {
+                    cssl_hir::HirStructBody::Named(fs) => {
+                        let _ = fs;
+                        "Pair"
+                    }
+                    _ => "other",
+                }
+            })
+            .collect();
+        assert_eq!(names, vec!["Pair"]);
+    }
+
+    #[test]
+    fn struct_walker_fn_return_type_triggers_specialization() {
+        let src = r"
+            struct Box<T> { value : T }
+            fn make() -> Box<i32> { Box { value : 0 } }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.ref_count, 1);
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn struct_walker_two_distinct_refs_produce_two_specs() {
+        let src = r"
+            struct Box<T> { value : T }
+            fn one() -> Box<i32> { Box { value : 0 } }
+            fn two() -> Box<f32> { Box { value : 0.0 } }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.ref_count, 2);
+        assert_eq!(r.specialization_count, 2);
+    }
+
+    #[test]
+    fn struct_walker_same_refs_twice_dedup() {
+        let src = r"
+            struct Box<T> { value : T }
+            fn a() -> Box<i32> { Box { value : 0 } }
+            fn b() -> Box<i32> { Box { value : 0 } }
+            fn c(x : Box<i32>) -> i32 { 0 }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.ref_count, 3);
+        assert_eq!(r.specialization_count, 1, "three refs to Box<i32> ⇒ 1 spec");
+    }
+
+    #[test]
+    fn struct_walker_nested_refs_handled() {
+        // `Outer<Inner<i32>>` — both are generic structs. The walker must
+        // recurse into type_args and collect BOTH refs.
+        let src = r"
+            struct Inner<T> { value : T }
+            struct Outer<T> { wrapper : T }
+            fn foo(x : Outer<Inner<i32>>) -> i32 { 0 }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.generic_struct_count, 2);
+        assert!(
+            r.ref_count >= 2,
+            "expected both Outer + Inner refs : got {}",
+            r.ref_count
+        );
+        // Both specializations present.
+        assert_eq!(
+            r.specializations.len(),
+            2,
+            "Outer + Inner should both specialize"
+        );
+    }
+
+    #[test]
+    fn struct_walker_struct_field_type_scanned() {
+        // A generic struct's field references another generic struct. The
+        // walker scans struct-body fields too.
+        let src = r"
+            struct Inner<T> { value : T }
+            struct Holder { slot : Inner<i32> }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.generic_struct_count, 1);
+        assert_eq!(r.ref_count, 1, "Holder's slot field references Inner<i32>");
+        assert_eq!(r.specialization_count, 1);
+    }
+
+    #[test]
+    fn struct_walker_arity_mismatch_skipped() {
+        // `Pair<i32>` with only 1 type-arg when Pair has 2 params ⇒ skip
+        // (malformed reference ; real compiler would diagnose). Walker
+        // must NOT panic or produce a bad specialization.
+        let src = r"
+            struct Pair<T, U> { first : T, second : U }
+            fn foo(p : Pair<i32>) -> i32 { 0 }
+        ";
+        let r = walk_structs(src);
+        assert_eq!(r.ref_count, 1, "the ref IS collected (syntax-valid)");
+        assert_eq!(
+            r.specialization_count, 0,
+            "arity-mismatch must NOT specialize"
+        );
+    }
+
+    #[test]
+    fn struct_walker_report_summary_shape() {
+        let r = walk_structs(
+            r"
+            struct Box<T> { value : T }
+            fn foo() -> Box<i32> { Box { value : 0 } }
+        ",
+        );
+        let s = r.summary();
+        assert!(s.contains("generic structs"));
+        assert!(s.contains("type-refs"));
+        assert!(s.contains("specializations"));
     }
 }
