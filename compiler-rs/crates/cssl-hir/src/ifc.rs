@@ -613,7 +613,7 @@ fn label_of_expr(expr: &HirExpr, locals: &mut HashMap<Symbol, IfcLabel>) -> IfcL
             combine_labels(&l, &r)
         }
         HirExprKind::Unary { operand, .. } => label_of_expr(operand, locals),
-        HirExprKind::Call { callee, args } => {
+        HirExprKind::Call { callee, args, .. } => {
             let mut acc = label_of_expr(callee, locals);
             for a in args {
                 let a_expr = match a {

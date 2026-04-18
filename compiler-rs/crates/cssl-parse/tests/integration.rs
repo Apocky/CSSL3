@@ -172,6 +172,96 @@ fn auto_dispatches_rust_from_fn_keyword() {
     assert_eq!(bag.error_count(), 0);
 }
 
+// ─ T11-D39 : turbofish propagation ─────────────────────────────────────────
+
+fn find_fn_body_trailing(src: &str) -> cssl_ast::Expr {
+    let (m, bag) = lex_parse(src, Surface::RustHybrid);
+    assert_eq!(bag.error_count(), 0, "expected clean parse : {src}");
+    let f = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            Item::Fn(f) => Some(f),
+            _ => None,
+        })
+        .expect("fn item");
+    let body = f.body.as_ref().expect("fn body");
+    body.trailing
+        .as_ref()
+        .expect("trailing expression")
+        .as_ref()
+        .clone()
+}
+
+#[test]
+fn turbofish_call_captures_type_args() {
+    // `id::<i32>(5)` → Call { type_args: [i32], args: [5] }.
+    let src = "fn wrapper() -> i32 { id::<i32>(5) }";
+    let trailing = find_fn_body_trailing(src);
+    match &trailing.kind {
+        ExprKind::Call {
+            type_args, args, ..
+        } => {
+            assert_eq!(
+                type_args.len(),
+                1,
+                "turbofish must carry 1 type-arg : got {}",
+                type_args.len()
+            );
+            assert_eq!(args.len(), 1);
+        }
+        other => panic!("expected Call, got {other:?}"),
+    }
+}
+
+#[test]
+fn turbofish_call_with_two_type_args() {
+    // `pair::<i32, f32>(1, 2.0)` → Call { type_args: [i32, f32], args: [1, 2.0] }.
+    let src = "fn wrapper() -> i32 { pair::<i32, f32>(1, 2.0) }";
+    let trailing = find_fn_body_trailing(src);
+    match &trailing.kind {
+        ExprKind::Call {
+            type_args, args, ..
+        } => {
+            assert_eq!(type_args.len(), 2, "expected 2 type-args");
+            assert_eq!(args.len(), 2, "expected 2 args");
+        }
+        other => panic!("expected Call, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_turbofish_call_has_empty_type_args() {
+    // Regression guard : `f(5)` — no turbofish ⇒ empty type_args.
+    let src = "fn wrapper() -> i32 { f(5) }";
+    let trailing = find_fn_body_trailing(src);
+    match &trailing.kind {
+        ExprKind::Call {
+            type_args, args, ..
+        } => {
+            assert!(type_args.is_empty(), "plain call must have empty type_args");
+            assert_eq!(args.len(), 1);
+        }
+        other => panic!("expected Call, got {other:?}"),
+    }
+}
+
+#[test]
+fn turbofish_call_with_no_args() {
+    // `make::<i32>()` — 1 type-arg, 0 regular args.
+    let src = "fn wrapper() -> i32 { make::<i32>() }";
+    let trailing = find_fn_body_trailing(src);
+    match &trailing.kind {
+        ExprKind::Call {
+            type_args, args, ..
+        } => {
+            assert_eq!(type_args.len(), 1);
+            assert!(args.is_empty());
+        }
+        other => panic!("expected Call, got {other:?}"),
+    }
+}
+
 // ─ Error recovery ───────────────────────────────────────────────────────────
 
 #[test]

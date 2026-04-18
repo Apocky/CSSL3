@@ -611,10 +611,14 @@ pub enum ExprKind {
     Literal(Literal),
     /// `x` / `foo::bar` — path reference (any length ≥ 1).
     Path(ModulePath),
-    /// `f(arg1, arg2)`  or  `f::<T>(arg1)` — application.
+    /// `f(arg1, arg2)`  or  `f::<T, U>(arg1)` — application. `type_args` carries
+    /// the turbofish explicit type-arguments (empty `Vec` when no turbofish was
+    /// written) ; populated by the parser at the call-site and propagated through
+    /// HIR-lowering to the monomorphization pass per T11-D39.
     Call {
         callee: Box<Expr>,
         args: Vec<CallArg>,
+        type_args: Vec<Type>,
     },
     /// `obj.field` / `obj.method(args)`
     Field { obj: Box<Expr>, name: Ident },

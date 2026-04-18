@@ -39,6 +39,9 @@ pub enum HirExprKind {
     Call {
         callee: Box<HirExpr>,
         args: Vec<HirCallArg>,
+        /// T11-D39 : turbofish explicit type-arguments (empty when `::<…>` is
+        /// omitted). Carries through from the parser to the monomorphization pass.
+        type_args: Vec<crate::ty::HirType>,
     },
     /// Field / method access : `obj.field`.
     Field { obj: Box<HirExpr>, name: Symbol },

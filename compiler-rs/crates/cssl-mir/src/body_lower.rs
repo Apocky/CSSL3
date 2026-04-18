@@ -314,7 +314,7 @@ fn lower_expr(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, Mi
             then_branch,
             else_branch,
         } => lower_if(ctx, cond, then_branch, else_branch.as_deref(), expr.span),
-        HirExprKind::Call { callee, args } => lower_call(ctx, callee, args, expr.span),
+        HirExprKind::Call { callee, args, .. } => lower_call(ctx, callee, args, expr.span),
         HirExprKind::Return { value } => {
             let trailing = value.as_deref().and_then(|e| lower_expr(ctx, e));
             emit_return(ctx, trailing, expr.span);

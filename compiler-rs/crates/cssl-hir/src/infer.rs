@@ -684,7 +684,7 @@ impl<'a> InferCtx<'a> {
                 );
                 Ty::Error
             }
-            HirExprKind::Call { callee, args } => {
+            HirExprKind::Call { callee, args, .. } => {
                 let callee_ty = self.synth_expr(callee);
                 let callee_ty = self.subst.apply(&callee_ty);
                 let arg_tys: Vec<Ty> = args.iter().map(|a| self.synth_call_arg(a)).collect();

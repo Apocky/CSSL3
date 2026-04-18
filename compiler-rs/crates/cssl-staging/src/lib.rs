@@ -166,7 +166,7 @@ fn count_expr(e: &cssl_hir::HirExpr, n: &mut u32) {
                 count_expr(&a.body, n);
             }
         }
-        HirExprKind::Call { callee, args } => {
+        HirExprKind::Call { callee, args, .. } => {
             count_expr(callee, n);
             for a in args {
                 match a {

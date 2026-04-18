@@ -349,9 +349,14 @@ impl<'a> LowerCtx<'a> {
                 segments: self.intern_path(path),
                 def: None,
             },
-            cst::ExprKind::Call { callee, args } => HirExprKind::Call {
+            cst::ExprKind::Call {
+                callee,
+                args,
+                type_args,
+            } => HirExprKind::Call {
                 callee: Box::new(self.lower_expr(callee)),
                 args: args.iter().map(|a| self.lower_call_arg(a)).collect(),
+                type_args: type_args.iter().map(|t| self.lower_type(t)).collect(),
             },
             cst::ExprKind::Field { obj, name } => HirExprKind::Field {
                 obj: Box::new(self.lower_expr(obj)),
@@ -1063,7 +1068,7 @@ fn resolve_expr(e: &mut HirExpr, scope: &ScopeMap) {
                 }
             }
         }
-        HirExprKind::Call { callee, args } => {
+        HirExprKind::Call { callee, args, .. } => {
             resolve_expr(callee, scope);
             for a in args {
                 match a {
@@ -1309,5 +1314,79 @@ mod tests {
             }
             ",
         );
+    }
+
+    // § T11-D39 : turbofish type_args survive through HIR lowering.
+
+    /// Run lex → parse → lower and return the HIR module.
+    fn lex_parse_lower_get_hir(src: &str) -> crate::item::HirModule {
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let (m, _bag) = cssl_parse::parse(&f, &toks);
+        let (hir, _interner, _diag) = lower_module(&f, &m);
+        hir
+    }
+
+    /// Walk the HIR module and return the type_args of the first Call
+    /// expression found inside any fn body (depth-first).
+    fn first_call_type_args(hir: &crate::item::HirModule) -> Option<Vec<crate::ty::HirType>> {
+        fn walk_expr(e: &crate::expr::HirExpr) -> Option<Vec<crate::ty::HirType>> {
+            use crate::expr::HirExprKind;
+            match &e.kind {
+                HirExprKind::Call { type_args, .. } => Some(type_args.clone()),
+                HirExprKind::Binary { lhs, rhs, .. } => walk_expr(lhs).or_else(|| walk_expr(rhs)),
+                HirExprKind::Block(b) => {
+                    for s in &b.stmts {
+                        if let crate::stmt::HirStmtKind::Expr(e) = &s.kind {
+                            if let Some(v) = walk_expr(e) {
+                                return Some(v);
+                            }
+                        }
+                    }
+                    b.trailing.as_ref().and_then(|t| walk_expr(t))
+                }
+                _ => None,
+            }
+        }
+        for item in &hir.items {
+            if let crate::item::HirItem::Fn(f) = item {
+                if let Some(body) = &f.body {
+                    for s in &body.stmts {
+                        if let crate::stmt::HirStmtKind::Expr(e) = &s.kind {
+                            if let Some(v) = walk_expr(e) {
+                                return Some(v);
+                            }
+                        }
+                    }
+                    if let Some(t) = &body.trailing {
+                        if let Some(v) = walk_expr(t) {
+                            return Some(v);
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn hir_call_type_args_empty_when_no_turbofish() {
+        let hir = lex_parse_lower_get_hir("fn wrapper() -> i32 { f(5) }");
+        let ta = first_call_type_args(&hir).expect("call found");
+        assert!(ta.is_empty(), "plain call must have empty type_args in HIR");
+    }
+
+    #[test]
+    fn hir_call_type_args_populated_from_turbofish() {
+        let hir = lex_parse_lower_get_hir("fn wrapper() -> i32 { id::<i32>(5) }");
+        let ta = first_call_type_args(&hir).expect("call found");
+        assert_eq!(ta.len(), 1, "turbofish produces 1 HIR type-arg");
+    }
+
+    #[test]
+    fn hir_call_type_args_multi_turbofish() {
+        let hir = lex_parse_lower_get_hir("fn wrapper() -> i32 { pair::<i32, f32>(1, 2.0) }");
+        let ta = first_call_type_args(&hir).expect("call found");
+        assert_eq!(ta.len(), 2, "two turbofish args produce two HIR type-args");
     }
 }

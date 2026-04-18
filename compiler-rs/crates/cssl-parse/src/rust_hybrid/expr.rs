@@ -732,11 +732,11 @@ fn apply_postfix(
             // method-path continuation via a Field-like form.
             cursor.bump(); // ::
             if cursor.eat(TokenKind::Lt).is_some() {
-                // Turbofish : `::<T, U>` — attach to existing path as type-args on the
-                // outermost Path; for simplicity we consume the type-list and drop
-                // (elaborator re-parses from source if needed).
+                // Turbofish : `::<T, U>` — T11-D39 now captures the type-args and
+                // attaches them to the immediately-following Call (if any).
+                let mut type_args: Vec<Type> = Vec::new();
                 while !cursor.check(TokenKind::Gt) && !cursor.is_eof() {
-                    let _t = ty::parse_type(cursor, bag);
+                    type_args.push(ty::parse_type(cursor, bag));
                     if cursor.eat(TokenKind::Comma).is_none() {
                         break;
                     }
@@ -746,6 +746,22 @@ fn apply_postfix(
                         "expected `>` to close turbofish",
                         cursor.peek().span,
                     ));
+                }
+                // If immediately followed by `(` — consume as a Call with type_args.
+                // Otherwise return the lhs untouched ; type-args are dropped for non-
+                // call uses (e.g., `Vec::<i32>` as a type reference) — stage-0 scope.
+                if cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Open)) {
+                    let args = parse_call_args(cursor, bag);
+                    let end = cursor.peek().span.start.max(lhs.span.end);
+                    return Expr {
+                        span: Span::new(lhs.span.source, lhs.span.start, end),
+                        attrs: Vec::new(),
+                        kind: ExprKind::Call {
+                            callee: Box::new(lhs),
+                            args,
+                            type_args,
+                        },
+                    };
                 }
                 return lhs;
             }
@@ -781,6 +797,7 @@ fn apply_postfix(
                 kind: ExprKind::Call {
                     callee: Box::new(lhs),
                     args,
+                    type_args: Vec::new(),
                 },
             }
         }

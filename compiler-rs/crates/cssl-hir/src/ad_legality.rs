@@ -256,7 +256,7 @@ impl<'a> WalkCtx<'a> {
 
     fn walk_expr(&mut self, expr: &HirExpr) {
         match &expr.kind {
-            HirExprKind::Call { callee, args } => {
+            HirExprKind::Call { callee, args, .. } => {
                 self.handle_call(callee, expr.span);
                 self.walk_expr(callee);
                 for arg in args {
