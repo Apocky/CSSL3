@@ -1956,3 +1956,44 @@ Each decision entry :
   - Cross-machine replay (different CPU models, same arch) in `@replay` — requires harness serialization of initial-state + capture-format on-disk.
   - ULP-distance for `f64` — mirror `ulp_diff_f32` pattern with `u64` sortable-representation when a use-case arises.
   - Real dispatcher wire-up for all five oracle modes — `Stage0Stub` still serves ; needs `@property`/`@metamorphic`/`@replay`/`@differential`/`@golden` macro-expansion plumbing from cssl-macros to capture body + route to runner.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D5 : T11-phase-2b — live @audit_test + @r16_attestation + @bench oracle bodies
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D3 + T11-D4 activated five oracle modes with no-external-deps runners. This slice extends to three more, with `cssl-telemetry` now a dep of `cssl-testing` for real cryptographic primitives : `@audit_test` wraps `AuditChain::verify_chain()` + optional-required-event-lookup, `@r16_attestation` adds the canonical-serialization + BLAKE3/Ed25519 sign-and-verify primitives (full stage3 rebuild still pending stage3 entry), and `@bench` lands a timing-harness + baseline-file comparison without any external benchmark framework (criterion / divan not pulled in).
+- **Slice landed (this commit)**
+  - `cssl-testing/Cargo.toml` gains `cssl-telemetry` path-dep (new, first inter-crate dep for cssl-testing).
+  - `audit.rs` — `run_audit_verify(&Config, &AuditChain, required_events: &[(domain_prefix, kind_substring)]) -> Outcome` :
+    - Calls `chain.verify_chain()` ; errors map to `ChainTampered { first_broken_index }` — `GenesisPrevNonZero` + `SignatureInvalid` land at 0, `ChainBreak { seq }` + `InvalidSequence { actual, .. }` preserve the seq.
+    - After invariant check, filters entries by `config.domain_filter` (empty = all), then verifies each `(domain_prefix, kind_substring)` pair appears in the filtered chain ; missing pair produces `EventMissing`.
+    - 6 new tests : valid-chain-verifies, required-events-found Ok, missing-event-is-missing, domain-filter restricts, empty-chain Ok(0), chain-with-real-signing-key verifies.
+  - `r16_attestation.rs` — `Attestation` gains :
+    - `canonical_bytes()` : `compiler_version|source_commit|c99_tarball_blake3|stage1_blake3` (pipe-separated UTF-8).
+    - `build_signed(…, &SigningKey)` : real Ed25519 signature over canonical-bytes via `Signature::sign`.
+    - `verify(&SigningKey) -> bool` : validates signature against key's verifying-half.
+    - `content_hash() -> ContentHash` : BLAKE3 of canonical-bytes, for compact identifier printing.
+    - `decide_attestation(expected_blake3, actual_blake3, compiler_version, source_commit, signing_key) -> Outcome` : hash-match + key-present → `Attested { record }` (signed) ; hash-mismatch → `Diverged` ; missing-key → `NoSigningKey`.
+    - 7 new tests : canonical-bytes-shape, sign-verify-roundtrip, tampered-sig fails, deterministic-hash, decide-matching Attested, decide-divergent Diverged, decide-no-key NoSigningKey, cross-key sig fails.
+  - `bench.rs` — `run_bench_vs_baseline<F>(&Config, &Path, F)` :
+    - Runs `F` `config.runs` times, measuring each via `Instant::now()` / `elapsed().as_nanos()`.
+    - Median computation via sort + index (no floats ; even-length returns upper-midpoint).
+    - Baseline file at `<root>/<bench_id>/latest.txt` (plain integer ; full JSON schema deferred).
+    - `classify(median_ns, baseline_ns, threshold) -> Outcome` : pure-data helper for CI regression checks without a workload.
+    - `update_baseline(root, bench_id, median_ns) -> io::Result<()>` : writes new baseline, creates parent dirs.
+    - 9 new tests : median-odd + median-even + median-empty, classify within/above/below tolerance + zero-baseline, no-baseline-file + update-then-roundtrip.
+- **Consequences**
+  - Test count : 1203 → 1226 (+23 : 6 audit + 8 r16_attestation + 9 bench).
+  - Eight of ten oracle modes now live : `@property` + `@metamorphic` (T11-D3) + `@replay` + `@differential` + `@golden` (T11-D4) + `@audit_test` + `@r16_attestation` + `@bench` (this). Remaining stubs : `@power` + `@thermal` + `@hot_reload` + `@fuzz` (all require OS/hw/fuzzer-specific facilities).
+  - `Attestation` now provides the cryptographic primitives that a real stage3 rebuild-pipeline will wrap — the sign/verify + canonical-bytes layer is stage-agnostic.
+  - `@audit_test` can now run against any `AuditChain` — existing tests in `cssl_telemetry::audit` + `cssl_examples::ad_gate` become amenable to this oracle's structural checks.
+  - `@bench` has a working timing-harness ; CI can opt in to regression-detection today (though the baselines need to be captured first — the oracle handles the NoBaseline first-run case cleanly).
+  - Workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Baseline format upgrade to full JSON schema with `p50` + `p95` + `p99` statistics (currently just median).
+  - Warmup-phase + coefficient-of-variation diagnostics (bench-stability signal before regression-check).
+  - Tamper-detection tests for `@audit_test` that require mutable access to `AuditChain` internals — needs either a test-only constructor or refactoring for injected entries.
+  - Full stage3 rebuild-pipeline for `@r16_attestation` : emit C99 tarball → compile with `cc` → compare BLAKE3 of produced stage1 binary to CSSLv3-emitted stage1. Blocked on stage3 entry per `specs/01_BOOTSTRAP.csl`.
+  - Dispatcher wire-up (Stage0Stub still serves as the formal dispatcher ; runners are reached directly today).

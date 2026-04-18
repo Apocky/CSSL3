@@ -353,6 +353,9 @@ dependencies = [
 [[package]]
 name = "cssl-testing"
 version = "0.1.0"
+dependencies = [
+ "cssl-telemetry",
+]
 
 [[package]]
 name = "csslc"
