@@ -2198,3 +2198,32 @@ Each decision entry :
   - Tri-min / tri-max (n-ary) — useful for scenes with >2 primitives without nested binary calls.
   - Real MIR `Min`/`Max`/`Abs`/`Sign` primitives + AD rule-table entries with subgradient handling.
   - Smooth-blend : k parameterized as an AnalyticExpr for fully-differentiable parameter-sweeps.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D12 : smooth_max + n-ary min/max/smooth_min_n/smooth_max_n folds
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D11 added `smooth_min` for rounded-edge scene-SDF union. This slice completes the sharp + smooth min/max quartet with `smooth_max` + the n-ary fold helpers `min_n` / `max_n` / `smooth_min_n` / `smooth_max_n` for scenes with >2 primitives.
+- **Slice landed (this commit)**
+  - `smooth_max(a, b, k) = -smooth_min(-a, -b, k)` — differentiable everywhere ; approaches `max(a, b)` as `k → ∞`.
+  - `min_n(items: &[AnalyticExpr]) -> Option<AnalyticExpr>` — left-associative fold over `Min`. `None` for empty slice.
+  - `max_n(items)` — fold over `Max`.
+  - `smooth_min_n(items, k)` — fold over `smooth_min`.
+  - `smooth_max_n(items, k)` — fold over `smooth_max`.
+  - 9 new tests : smooth_max converges to max at high k ; smooth_max is negation of smooth_min of negations (identity check) ; min_n empty → None ; min_n single item → self ; min_n three items picks 2.0 ; max_n three items picks 8.0 ; smooth_min_n 4-item converges to 1.5 at k=50 ; smooth_max_n 4-item converges to 7.0 at k=50 ; smooth_min_n single-item returns self.
+- **Consequences**
+  - Test count : 1298 → 1307 (+9 in cssl-examples).
+  - Scene-SDF composition with N primitives now clean :
+    ```rust
+    let sphere_sdfs = vec![/* k distinct sphere-SDFs */];
+    let scene = smooth_min_n(&sphere_sdfs, 32.0).unwrap();
+    ```
+  - The full sharp + smooth min/max + n-ary quartet is now wired end-to-end : `AnalyticExpr::Min/Max` variants + `smooth_min/smooth_max` free functions + `min_n/max_n/smooth_min_n/smooth_max_n` folds. This closes the scene-SDF operator arc at the analytic level.
+  - `reduce(AnalyticExpr::min)` / `reduce(AnalyticExpr::max)` use fn-pointer form (not closures) per clippy ; marginally cleaner.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - N-ary sharp vs smooth selection based on runtime `k` — e.g., `AnalyticExpr::smooth_or_sharp(k_expr, …)` that chooses smooth for finite k and sharp for ∞.
+  - Commutativity-exploiting reduction tree — current `reduce` is left-associative ; a balanced tree would have better SMT-query depth characteristics.
+  - Real MIR `MinN` / `MaxN` primitives — today's N-ary fold lowers to binary-Min/Max ops in MIR once those land.

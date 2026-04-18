@@ -459,12 +459,52 @@ pub fn is_near_cusp(
     (av - bv).abs() < epsilon
 }
 
+/// `smooth_max(a, b, k) = -smooth_min(-a, -b, k) = log(exp(k·a) + exp(k·b))/k`.
+///
+/// Companion to [`smooth_min`] ; differentiable everywhere + as `k → ∞`
+/// approaches `max(a, b)`. Used for rounded-edge scene-SDF intersection.
+#[must_use]
+pub fn smooth_max(a: AnalyticExpr, b: AnalyticExpr, k: f64) -> AnalyticExpr {
+    AnalyticExpr::neg(smooth_min(AnalyticExpr::neg(a), AnalyticExpr::neg(b), k))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § N-ary folds : min_n / max_n / smooth_min_n / smooth_max_n.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Fold `min(a_1, a_2, …, a_n)` left-associatively. Returns `None` for empty slice.
+#[must_use]
+pub fn min_n(items: &[AnalyticExpr]) -> Option<AnalyticExpr> {
+    items.iter().cloned().reduce(AnalyticExpr::min)
+}
+
+/// Fold `max(a_1, a_2, …, a_n)` left-associatively. Returns `None` for empty slice.
+#[must_use]
+pub fn max_n(items: &[AnalyticExpr]) -> Option<AnalyticExpr> {
+    items.iter().cloned().reduce(AnalyticExpr::max)
+}
+
+/// Fold `smooth_min(a_1, a_2, …, a_n, k)` left-associatively. Returns `None`
+/// for empty slice. For `n = 1`, returns the single item unchanged.
+#[must_use]
+pub fn smooth_min_n(items: &[AnalyticExpr], k: f64) -> Option<AnalyticExpr> {
+    items.iter().cloned().reduce(|acc, x| smooth_min(acc, x, k))
+}
+
+/// Fold `smooth_max(a_1, a_2, …, a_n, k)` left-associatively. Returns `None`
+/// for empty slice.
+#[must_use]
+pub fn smooth_max_n(items: &[AnalyticExpr], k: f64) -> Option<AnalyticExpr> {
+    items.iter().cloned().reduce(|acc, x| smooth_max(acc, x, k))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        dot, is_near_cusp, length, scene_sdf_intersect, scene_sdf_intersect_grad,
-        scene_sdf_subtract, scene_sdf_union, scene_sdf_union_grad, smooth_min, sphere_sdf_grad_p,
-        sphere_sdf_grad_r, sphere_sdf_vec3, vec3_proj, AnalyticVec3Expr, VecComp,
+        dot, is_near_cusp, length, max_n, min_n, scene_sdf_intersect, scene_sdf_intersect_grad,
+        scene_sdf_subtract, scene_sdf_union, scene_sdf_union_grad, smooth_max, smooth_max_n,
+        smooth_min, smooth_min_n, sphere_sdf_grad_p, sphere_sdf_grad_r, sphere_sdf_vec3, vec3_proj,
+        AnalyticVec3Expr, VecComp,
     };
     use crate::ad_gate::AnalyticExpr;
     use std::collections::HashMap;
@@ -945,5 +985,106 @@ mod tests {
             Box::new(AnalyticExpr::c(0.0)),
         );
         assert!(is_near_cusp(&nan, &AnalyticExpr::c(1.0), &env, 0.01));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § smooth_max + n-ary folds.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn smooth_max_approaches_max_as_k_grows() {
+        let env = HashMap::new();
+        let sm_k1 = smooth_max(AnalyticExpr::c(3.0), AnalyticExpr::c(5.0), 1.0).evaluate(&env);
+        let sm_k100 = smooth_max(AnalyticExpr::c(3.0), AnalyticExpr::c(5.0), 100.0).evaluate(&env);
+        // smooth_max is upper bound on max.
+        assert!(sm_k1 >= 5.0);
+        assert!(sm_k100 >= 5.0);
+        // Higher k is closer to 5.
+        assert!((sm_k100 - 5.0).abs() < (sm_k1 - 5.0).abs());
+        assert!((sm_k100 - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn smooth_max_is_negation_of_smooth_min_of_negations() {
+        let env = HashMap::new();
+        let a = AnalyticExpr::c(2.0);
+        let b = AnalyticExpr::c(7.0);
+        let k = 10.0;
+        let sm_max = smooth_max(a.clone(), b.clone(), k).evaluate(&env);
+        let neg_smin_neg =
+            -smooth_min(AnalyticExpr::neg(a), AnalyticExpr::neg(b), k).evaluate(&env);
+        assert!((sm_max - neg_smin_neg).abs() < 1e-12);
+    }
+
+    #[test]
+    fn min_n_empty_returns_none() {
+        let items: Vec<AnalyticExpr> = Vec::new();
+        assert!(min_n(&items).is_none());
+    }
+
+    #[test]
+    fn min_n_single_item_returns_self() {
+        let items = vec![AnalyticExpr::c(42.0)];
+        let folded = min_n(&items).unwrap();
+        let env = HashMap::new();
+        assert!((folded.evaluate(&env) - 42.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn min_n_three_items_picks_smallest() {
+        let items = vec![
+            AnalyticExpr::c(5.0),
+            AnalyticExpr::c(2.0),
+            AnalyticExpr::c(8.0),
+        ];
+        let folded = min_n(&items).unwrap();
+        let env = HashMap::new();
+        assert!((folded.evaluate(&env) - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn max_n_three_items_picks_largest() {
+        let items = vec![
+            AnalyticExpr::c(5.0),
+            AnalyticExpr::c(2.0),
+            AnalyticExpr::c(8.0),
+        ];
+        let folded = max_n(&items).unwrap();
+        let env = HashMap::new();
+        assert!((folded.evaluate(&env) - 8.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn smooth_min_n_four_items_converges_to_min_at_high_k() {
+        let items = vec![
+            AnalyticExpr::c(3.0),
+            AnalyticExpr::c(7.0),
+            AnalyticExpr::c(1.5),
+            AnalyticExpr::c(5.0),
+        ];
+        let folded = smooth_min_n(&items, 50.0).unwrap();
+        let env = HashMap::new();
+        assert!((folded.evaluate(&env) - 1.5).abs() < 1e-2);
+    }
+
+    #[test]
+    fn smooth_max_n_four_items_converges_to_max_at_high_k() {
+        let items = vec![
+            AnalyticExpr::c(3.0),
+            AnalyticExpr::c(7.0),
+            AnalyticExpr::c(1.5),
+            AnalyticExpr::c(5.0),
+        ];
+        let folded = smooth_max_n(&items, 50.0).unwrap();
+        let env = HashMap::new();
+        assert!((folded.evaluate(&env) - 7.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn smooth_min_n_single_is_item_itself() {
+        let items = vec![AnalyticExpr::c(42.0)];
+        let folded = smooth_min_n(&items, 10.0).unwrap();
+        let env = HashMap::new();
+        assert!((folded.evaluate(&env) - 42.0).abs() < 1e-12);
     }
 }
