@@ -1548,3 +1548,49 @@ Each decision entry :
   - Explicit region-exit pairing at the standard-lowering phase-3.
   - Break-with-label targeting (`scf.br` / `scf.continue` operand threading).
   - Dedicated unit tests per new lowering (Lambda / Perform / With / Region / Compound / SectionRef) — currently indirectly exercised via F1 chain.
+
+───────────────────────────────────────────────────────────────
+
+## § T9-D5 : T9-phase-2d — AnalyticExpr → cssl_smt::Term structured translator
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T9-D4 (phase-2c-partial) added `Solver::check_text` so the killer-app gate could dispatch its raw-text SMT queries through the subprocess runner. The text-only path works, but downstream SMT infrastructure (unsat-core extraction, incremental solving, proof-cert emission) expects structured `cssl_smt::Query` inputs. This commit bridges the last gap : `AnalyticExpr → Term` + `GradientCase → Query` so both paths become interchangeable.
+- **Options**
+  - (a) Keep text-only. Defers structured-query benefits (unsat-core, labeled assertions) indefinitely.
+  - (b) `AnalyticExpr::to_term(&self) -> Term` + `GradientCase::to_smt_query(&self) -> Query` mirrors the existing `to_smt` + `smt_query_text` text-path. Both paths compose with Z3/CVC5 subprocess ; caller picks.
+  - (c) Full HIR-Expr → Term translator for every refinement obligation (T9-phase-2d proper scope). Substantial work ; this commit handles the narrower AD-gradient case.
+- **Decision** **(b) narrow translator mirroring existing text-path**
+- **Slice landed (this commit)**
+  - `AnalyticExpr::to_term(&self) -> cssl_smt::Term` : recursive structural translator.
+    - `Const(f64)` → rational (integer-valued → `(/ n 1)` ; fractional → `(/ round(v·10⁶) 10⁶)` lossy approximation).
+    - `Var(name)` → `Term::var(name)`.
+    - `Neg` / `Add` / `Sub` / `Mul` / `Div` → `Term::app("op", ..)` with standard operators.
+    - `Sqrt` / `Sin` / `Cos` / `Exp` / `Log` → `Term::app("<fn>_uf", ..)` uninterpreted-fn applications matching the declarations emitted by `smt_query_text`.
+    - `Uninterpreted(name, args)` → `Term::app(name, args)` (or `Term::var(name)` for zero-arity).
+    - NaN / ±∞ → sentinel variables so Z3 treats them as symbolic (rather than propagating).
+  - `f64_to_term(v: f64) -> Term` helper handles rational approximation cleanly.
+  - `GradientCase::to_smt_query(&self) -> cssl_smt::Query` : builds a proper `Query` struct.
+    - Theory `ALL` (UF + non-linear real — fits gradient + transcendentals).
+    - Declares every free var + `d_y` + 5 uninterpreted transcendentals.
+    - Single named assertion `"gradient_equivalence_<sanitized-name>"` carrying the negated-equivalence term ; `sanitize_label` replaces non-alphanumeric chars.
+  - `GradientCase::run_smt_verification_via_query(&self, &dyn Solver) -> Option<SmtVerification>` : parallel path to the existing `run_smt_verification`, dispatches via `Solver::check` instead of `Solver::check_text`.
+  - 13 new tests :
+    - `to_term` shape per variant (Const integer, Const fractional, Var, Add, Sub, Neg, Div, transcendentals × 5).
+    - `to_smt_query` shape assertions (var-decl count, UF-decl count, single assertion, label format).
+    - Label sanitization (only alphanumeric + `_`).
+    - Missing-solver path returns `None` for both text + query paths.
+    - `FixedVerdictSolver` wraps verdict for both text + query paths.
+    - Every case in `run_killer_app_gate` round-trips through the query-path without panics.
+    - Text + query paths declare the same free vars + emit structurally matching negated-equivalence patterns.
+- **Consequences**
+  - Killer-app gate can now use structured queries for downstream composition :
+    - `cssl_smt::Query::assert_named` → enables unsat-core extraction from solvers that support it.
+    - Rendered query-text is stable across invocations (the text-path uses `to_smt` string concat ; the query-path uses `Query::render` — both produce equivalent SMT-LIB).
+  - Clean foundation for proof-cert emission : capture the `Query` + solver verdict + sign the triple via R18 AuditChain (phase-2e work).
+  - Test count : 1074 → 1087 (+13).
+- **Deferred**
+  - Full interpreted-transcendental axioms (currently UFs only ; Z3 without axioms cannot prove `sqrt(x) * sqrt(x) = x` etc.).
+  - Decimal literal encoding in `cssl_smt::Literal` (currently stage-0 approximates fractions via fixed-scale rationals ; sufficient for gradient constants but limited for general case).
+  - Proof-cert emission + R18 signing of `(query, verdict)` triple.
+  - HIR-Expr → Term for general refinement-obligation discharge (T9-phase-2d proper scope remaining).

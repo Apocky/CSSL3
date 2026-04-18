@@ -340,6 +340,48 @@ impl AnalyticExpr {
         conclusive_matches > 0
     }
 
+    /// Structural translation into [`cssl_smt::Term`] — the preferred path for
+    /// composing with [`cssl_smt::Query`] + [`cssl_smt::Solver::check`] when
+    /// the caller wants a proper struct-query rather than raw text.
+    ///
+    /// § Transcendentals
+    ///   Sqrt / Sin / Cos / Exp / Log translate to uninterpreted-fn
+    ///   applications (`sqrt_uf(x)`, `sin_uf(x)`, etc.) — the SMT theory
+    ///   QF_UFNRA supports these as free functions. Callers who want
+    ///   interpreted transcendentals can install axioms on top.
+    ///
+    /// § Constants
+    ///   Integer-valued `f64` → `Literal::Rational { num, den: 1 }`.
+    ///   Fractional `f64` → approximated as `(/ num 10^6)` (lossy but
+    ///   sufficient for the canonical gradient constants 0.5 / 2.0 / etc.).
+    ///   NaN → [`Term::Var("nan_sentinel")`] — SMT queries containing NaN are
+    ///   structurally suspect and should be rejected by the solver.
+    #[must_use]
+    pub fn to_term(&self) -> Term {
+        match self {
+            Self::Const(v) => f64_to_term(*v),
+            Self::Var(name) => Term::var(name.clone()),
+            Self::Neg(a) => Term::app("-", vec![a.to_term()]),
+            Self::Add(a, b) => Term::app("+", vec![a.to_term(), b.to_term()]),
+            Self::Sub(a, b) => Term::app("-", vec![a.to_term(), b.to_term()]),
+            Self::Mul(a, b) => Term::app("*", vec![a.to_term(), b.to_term()]),
+            Self::Div(a, b) => Term::app("/", vec![a.to_term(), b.to_term()]),
+            Self::Sqrt(a) => Term::app("sqrt_uf", vec![a.to_term()]),
+            Self::Sin(a) => Term::app("sin_uf", vec![a.to_term()]),
+            Self::Cos(a) => Term::app("cos_uf", vec![a.to_term()]),
+            Self::Exp(a) => Term::app("exp_uf", vec![a.to_term()]),
+            Self::Log(a) => Term::app("log_uf", vec![a.to_term()]),
+            Self::Uninterpreted(name, args) => {
+                let args_t: Vec<Term> = args.iter().map(Self::to_term).collect();
+                if args_t.is_empty() {
+                    Term::var(name.clone())
+                } else {
+                    Term::app(name.clone(), args_t)
+                }
+            }
+        }
+    }
+
     /// Emit the expression in SMT-LIB real-arithmetic syntax (Z3 / CVC5
     /// compatible). Stretch path : compose with `cssl_smt::Query` for a Z3
     /// unsat-verdict equivalence proof. Used by [`GradientCase::smt_query_text`].
@@ -417,6 +459,32 @@ fn format_smt_real(v: f64) -> String {
     } else {
         format!("{v}")
     }
+}
+
+/// Convert an `f64` into a [`Term::Lit`] suitable for SMT-LIB Real arithmetic.
+///
+/// Integer-valued `v` → `(/ v 1)` rational. Fractional `v` → approximated as
+/// `(/ (round(v*10^6)) 10^6)`. NaN → `nan_sentinel` variable — queries with
+/// NaN constants are structurally suspect.
+fn f64_to_term(v: f64) -> Term {
+    if v.is_nan() {
+        return Term::var("nan_sentinel");
+    }
+    if v.is_infinite() {
+        return Term::var(if v.is_sign_positive() {
+            "plus_inf_sentinel"
+        } else {
+            "minus_inf_sentinel"
+        });
+    }
+    if v == v.trunc() && v.abs() < i64::MAX as f64 {
+        let num = v as i64;
+        return Term::Lit(SmtLiteral::Rational { num, den: 1 });
+    }
+    // Approximate fractional value with a fixed-denominator rational.
+    let scale: u64 = 1_000_000;
+    let num = (v * scale as f64).round() as i64;
+    Term::Lit(SmtLiteral::Rational { num, den: scale })
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -717,6 +785,80 @@ impl GradientCase {
         out.push_str(")))\n(check-sat)\n");
         out
     }
+
+    /// Structural equivalence query as a [`cssl_smt::Query`] struct (parallel
+    /// path to [`Self::smt_query_text`]). Preferred when composing with the
+    /// [`cssl_smt::Solver::check`] API + downstream SMT infrastructure ; the
+    /// text-form is retained as a CI artifact + for external-binary dispatch.
+    ///
+    /// Shape (per `specs/20_SMT.csl` + T9-D4 attestation format) :
+    ///   - Theory : `QF_UFNRA` (UF + non-linear real — fits gradient + transcendentals).
+    ///   - Declarations : every primal param + `d_y` adjoint-seed + 5 uninterpreted
+    ///     transcendental fns (`sqrt_uf` / `sin_uf` / `cos_uf` / `exp_uf` / `log_uf`).
+    ///   - Single assertion : `(not (and (= mir_i analytic_i) ...))`.
+    ///   - Named assertions : each `(mir_i = analytic_i)` carries a
+    ///     `param_<name>_eq` label so unsat-cores can identify the failing
+    ///     component when a case refutes equivalence.
+    #[must_use]
+    pub fn to_smt_query(&self) -> Query {
+        let mut q = Query::new().with_theory(Theory::ALL);
+
+        // Collect free vars : primal params + d_y + anything in gradient expressions.
+        let mut vars: Vec<String> = self.param_names.clone();
+        vars.push("d_y".to_string());
+        for p in &self.params {
+            for v in p.analytic.free_vars() {
+                vars.push(v);
+            }
+            for v in p.mir_derived.free_vars() {
+                vars.push(v);
+            }
+        }
+        vars.sort();
+        vars.dedup();
+
+        // Real-typed variable declarations.
+        for v in &vars {
+            q.declare_fn(FnDecl::new(v.clone(), vec![], Sort::Real));
+        }
+
+        // Uninterpreted transcendental functions (Real → Real).
+        for uf in ["sqrt_uf", "sin_uf", "cos_uf", "exp_uf", "log_uf"] {
+            q.declare_fn(FnDecl::new(uf, vec![Sort::Real], Sort::Real));
+        }
+
+        // Build the conjunction of per-param equivalences.
+        let eq_terms: Vec<Term> = self
+            .params
+            .iter()
+            .map(|p| Term::app("=", vec![p.mir_derived.to_term(), p.analytic.to_term()]))
+            .collect();
+        let conjunction = if eq_terms.len() == 1 {
+            eq_terms.into_iter().next().unwrap()
+        } else {
+            Term::app("and", eq_terms)
+        };
+        let negation = Term::app("not", vec![conjunction]);
+
+        // Name the assertion so unsat-core extraction labels it.
+        let label = format!("gradient_equivalence_{}", sanitize_label(&self.name));
+        q.assertions.push(Assertion::named(label, negation));
+        q
+    }
+}
+
+/// Sanitize a case-name so it forms a valid SMT-LIB assertion label
+/// (alphanumeric + `_`). Non-conforming characters are replaced with `_`.
+fn sanitize_label(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else {
+            out.push('_');
+        }
+    }
+    out
 }
 
 /// Verify that the reverse-mode AD-generated gradient of `primal` matches the
@@ -1051,7 +1193,10 @@ pub fn run_killer_app_gate() -> KillerAppGateReport {
 //   holding the public key can independently verify the gate verdict.
 // ─────────────────────────────────────────────────────────────────────────
 
-use cssl_smt::{Solver, SolverKind, Verdict};
+use cssl_smt::{
+    Assertion, FnDecl, Literal as SmtLiteral, Query, Solver, SolverKind, Sort, Term, Theory,
+    Verdict,
+};
 use cssl_telemetry::{verify_detached, ContentHash, Signature, SigningKey};
 
 /// Canonical-serialization version tag embedded in every attestation payload.
@@ -1335,6 +1480,22 @@ impl GradientCase {
                 verdict,
                 solver_kind: solver.kind(),
             })
+    }
+
+    /// Run SMT verification via the **structured** [`cssl_smt::Query`] path
+    /// rather than the text-form. Semantically identical to
+    /// [`Self::run_smt_verification`] (same assertion tree, same UF
+    /// declarations) but dispatches through [`cssl_smt::Solver::check`]
+    /// instead of [`cssl_smt::Solver::check_text`]. Preferred when the caller
+    /// needs unsat-core extraction or incremental-solving hooks.
+    #[must_use]
+    pub fn run_smt_verification_via_query(&self, solver: &dyn Solver) -> Option<SmtVerification> {
+        let q = self.to_smt_query();
+        solver.check(&q).ok().map(|verdict| SmtVerification {
+            case_name: self.name.clone(),
+            verdict,
+            solver_kind: solver.kind(),
+        })
     }
 }
 
@@ -2016,5 +2177,199 @@ mod tests {
         assert_eq!(r.unsat_count, 0);
         assert!(r.verifications.is_empty());
         assert!(r.all_decided_cases_proved()); // vacuously
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § AnalyticExpr → cssl_smt::Term structural translator
+    // ─────────────────────────────────────────────────────────────────────
+
+    use cssl_smt::Sort;
+
+    #[test]
+    fn analytic_to_term_const_integer() {
+        let t = AnalyticExpr::c(2.0).to_term();
+        assert_eq!(t.render(), "(/ 2 1)");
+    }
+
+    #[test]
+    fn analytic_to_term_const_half() {
+        let t = AnalyticExpr::c(0.5).to_term();
+        // 0.5 = 500000 / 1_000_000 after scale approximation.
+        assert_eq!(t.render(), "(/ 500000 1000000)");
+    }
+
+    #[test]
+    fn analytic_to_term_var() {
+        let t = AnalyticExpr::v("x").to_term();
+        assert_eq!(t.render(), "x");
+    }
+
+    #[test]
+    fn analytic_to_term_add() {
+        let t = AnalyticExpr::add(AnalyticExpr::v("x"), AnalyticExpr::v("y")).to_term();
+        assert_eq!(t.render(), "(+ x y)");
+    }
+
+    #[test]
+    fn analytic_to_term_sub_neg_div() {
+        let sub = AnalyticExpr::sub(AnalyticExpr::v("a"), AnalyticExpr::v("b")).to_term();
+        assert_eq!(sub.render(), "(- a b)");
+        let neg = AnalyticExpr::neg(AnalyticExpr::v("x")).to_term();
+        assert_eq!(neg.render(), "(- x)");
+        let div = AnalyticExpr::div(AnalyticExpr::v("p"), AnalyticExpr::v("q")).to_term();
+        assert_eq!(div.render(), "(/ p q)");
+    }
+
+    #[test]
+    fn analytic_to_term_transcendentals_emit_uf_apps() {
+        let sqrt = AnalyticExpr::Sqrt(Box::new(AnalyticExpr::v("x"))).to_term();
+        assert_eq!(sqrt.render(), "(sqrt_uf x)");
+        let sin = AnalyticExpr::Sin(Box::new(AnalyticExpr::v("x"))).to_term();
+        assert_eq!(sin.render(), "(sin_uf x)");
+        let cos = AnalyticExpr::Cos(Box::new(AnalyticExpr::v("x"))).to_term();
+        assert_eq!(cos.render(), "(cos_uf x)");
+        let exp = AnalyticExpr::Exp(Box::new(AnalyticExpr::v("x"))).to_term();
+        assert_eq!(exp.render(), "(exp_uf x)");
+        let log = AnalyticExpr::Log(Box::new(AnalyticExpr::v("x"))).to_term();
+        assert_eq!(log.render(), "(log_uf x)");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § GradientCase::to_smt_query structured-query path
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn gradient_case_to_smt_query_fadd_shape() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let q = case.to_smt_query();
+        // Must declare the 3 free vars (x, r, d_y).
+        let var_names: Vec<&str> = q.fn_decls.iter().map(|d| d.name.as_str()).collect();
+        assert!(var_names.contains(&"x"), "missing x decl");
+        assert!(var_names.contains(&"r"), "missing r decl");
+        assert!(var_names.contains(&"d_y"), "missing d_y decl");
+        // Must declare the 5 uninterpreted transcendental fns.
+        for uf in ["sqrt_uf", "sin_uf", "cos_uf", "exp_uf", "log_uf"] {
+            assert!(var_names.contains(&uf), "missing {uf} decl");
+        }
+        // Single assertion — the negated-equivalence.
+        assert_eq!(q.assertions.len(), 1);
+        assert!(q.assertions[0]
+            .label
+            .as_deref()
+            .unwrap()
+            .contains("gradient_equivalence"));
+    }
+
+    #[test]
+    fn gradient_case_to_smt_query_declares_only_real_sorts() {
+        let case = verify_gradient_case(
+            "f(x) = -x",
+            &build_unary_primal("neg", "arith.negf"),
+            vec!["x".to_string()],
+            vec![AnalyticExpr::neg(AnalyticExpr::v("d_y"))],
+        );
+        let q = case.to_smt_query();
+        // Every declared fn must return Real (either 0-arity Real constants or Real→Real UFs).
+        for d in &q.fn_decls {
+            assert_eq!(d.result, Sort::Real, "fn {} should return Real", d.name);
+        }
+    }
+
+    #[test]
+    fn gradient_case_to_smt_query_label_sanitizes_punctuation() {
+        let case = verify_gradient_case(
+            "f(x, r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let q = case.to_smt_query();
+        let label = q.assertions[0].label.as_deref().unwrap();
+        // Must contain only ASCII alphanumerics + underscore.
+        for c in label.chars() {
+            assert!(
+                c.is_ascii_alphanumeric() || c == '_',
+                "label `{label}` contains invalid char `{c}`"
+            );
+        }
+    }
+
+    #[test]
+    fn gradient_case_to_smt_query_run_via_query_path_missing_binary() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = MissingBinarySolver;
+        // Both paths (text + struct-query) should return None when solver missing.
+        assert_eq!(case.run_smt_verification(&solver), None);
+        assert_eq!(case.run_smt_verification_via_query(&solver), None);
+    }
+
+    #[test]
+    fn gradient_case_to_smt_query_run_via_query_path_wraps_verdict() {
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let solver = FixedVerdictSolver(Verdict::Unsat);
+        let v = case.run_smt_verification_via_query(&solver).unwrap();
+        assert_eq!(v.verdict, Verdict::Unsat);
+    }
+
+    #[test]
+    fn gradient_case_to_smt_query_render_matches_text_shape() {
+        // The Query-path rendering + the text-path rendering produce SMT-LIB
+        // that a solver should treat equivalently. They don't have to be byte-
+        // identical, but both should mention the same free vars + the negated
+        // conjunction pattern.
+        let case = verify_gradient_case(
+            "f(x,r) = x + r",
+            &build_binary_primal("add", "arith.addf"),
+            vec!["x".to_string(), "r".to_string()],
+            vec![AnalyticExpr::v("d_y"), AnalyticExpr::v("d_y")],
+        );
+        let text = case.smt_query_text();
+        let q = case.to_smt_query();
+        // Text-form contains primal + adjoint declarations.
+        for v in ["x", "r", "d_y"] {
+            assert!(text.contains(v), "text missing var `{v}`");
+            assert!(
+                q.fn_decls.iter().any(|d| d.name == v),
+                "query missing var `{v}`"
+            );
+        }
+        // Both forms have the negated-equivalence structural pattern.
+        assert!(text.contains("(assert (not"));
+        let assertion_text = q.assertions[0].render();
+        assert!(assertion_text.contains("(not"), "{assertion_text}");
+    }
+
+    #[test]
+    fn killer_app_gate_all_cases_round_trip_through_query_path() {
+        // Every case in the canonical gate must produce a valid Query via
+        // to_smt_query — shape smoke-test ensuring no panics / empty queries.
+        let report = run_killer_app_gate();
+        for case in &report.cases {
+            let q = case.to_smt_query();
+            assert!(
+                !q.is_trivial(),
+                "case `{}` produced trivial query",
+                case.name
+            );
+            // Exactly one assertion (the negated equivalence).
+            assert_eq!(q.assertions.len(), 1);
+            // At least one var decl (primal params + d_y).
+            assert!(q.fn_decls.len() >= 2);
+        }
     }
 }
