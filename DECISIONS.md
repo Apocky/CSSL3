@@ -2261,3 +2261,32 @@ Each decision entry :
   - Real `sign(x) * dx` emission for Abs — needs MIR `math.sign` op + chained Mul.
   - Smooth-min Primitive variant or lowered-form-recognition so `smooth_min(a, b, k)` differentiates via `Exp` + `Log` chain-rule rather than needing dedicated primitive.
   - body_lower.rs mapping `math.min` HIR call-expr → `Primitive::Min` MIR op recognition — currently relies on `Call` primitive with `callee="min"` attribute.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D14 : AD walker dispatch for min/max/abs/sign
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D13 added `Primitive::Min/Max/Abs/Sign` + AD rule-table entries but the walker's `op_to_primitive` + `specialize_transcendental` dispatch was still returning `None` / `Primitive::Call` for these ops. This slice wires the dispatch so when body-lowering emits `arith.minimumf` / `func.call` with `callee="min"`, the walker recognizes the primitive.
+- **Slice landed (this commit)**
+  - `walker.rs::op_to_primitive` gains mappings :
+    - `arith.minimumf` / `arith.minf` → `Primitive::Min`
+    - `arith.maximumf` / `arith.maxf` → `Primitive::Max`
+    - `math.absf` / `math.abs` → `Primitive::Abs`
+    - `math.copysign` → `Primitive::Sign` (closest MLIR analog for sign extraction)
+  - `walker.rs::specialize_transcendental` gains callee-name matches :
+    - `min` / `math.min` / `fmin` → `Primitive::Min`
+    - `max` / `math.max` / `fmax` → `Primitive::Max`
+    - `abs` / `math.abs` / `fabs` → `Primitive::Abs`
+    - `sign` / `math.sign` / `signum` → `Primitive::Sign`
+  - 2 new tests : `specialize_transcendental_piecewise_primitives` (8 callee-name assertions) + `op_to_primitive_maps_arith_min_max_abs` (7 op-name assertions).
+- **Consequences**
+  - Test count : 1313 → 1315 (+2 test-functions in cssl-autodiff ; +15 individual assertions inside them).
+  - AD pipeline is now end-to-end consistent for min/max/abs/sign : HIR call-expr → body_lower emits `func.call` with `callee="min"` → MIR op recognized as Primitive::Min → rule-table dispatches Fwd/Bwd → substitute emits placeholder w/ recipe. The only remaining gap is **real branchful adjoint emission** (replace placeholder with `arith.select`-based tangent body) which requires MIR to expose `arith.select` as an emittable op from cssl-autodiff.
+  - Walker-report `ops_matched` counter now correctly ticks for min/max/abs/sign in differentiated fns.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Real branchful adjoint bodies via `arith.cmpf` + `arith.select` instead of placeholder.
+  - `math.sign` MirOp recognition (vs current `math.copysign` proxy).
+  - Scene-SDF-shaped end-to-end gate that walks a MIR function using `arith.minimumf` + confirms walker reports Primitive::Min matches.

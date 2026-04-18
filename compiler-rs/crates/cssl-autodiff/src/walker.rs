@@ -58,6 +58,10 @@ pub fn op_to_primitive(op_name: &str) -> Option<Primitive> {
         "arith.mulf" => Some(Primitive::FMul),
         "arith.divf" => Some(Primitive::FDiv),
         "arith.negf" => Some(Primitive::FNeg),
+        "arith.minimumf" | "arith.minf" => Some(Primitive::Min),
+        "arith.maximumf" | "arith.maxf" => Some(Primitive::Max),
+        "math.absf" | "math.abs" => Some(Primitive::Abs),
+        "math.copysign" => Some(Primitive::Sign), // closest MLIR analog
         "func.call" | "cssl.call_indirect" => Some(Primitive::Call),
         "scf.if" => Some(Primitive::If),
         "scf.for" | "scf.while" | "scf.loop" | "scf.while_loop" => Some(Primitive::Loop),
@@ -80,6 +84,10 @@ pub fn specialize_transcendental(prim: Primitive, callee: Option<&str>) -> Primi
         "cos" => Primitive::Cos,
         "exp" => Primitive::Exp,
         "log" | "ln" => Primitive::Log,
+        "min" | "math.min" | "fmin" => Primitive::Min,
+        "max" | "math.max" | "fmax" => Primitive::Max,
+        "abs" | "math.abs" | "fabs" => Primitive::Abs,
+        "sign" | "math.sign" | "signum" => Primitive::Sign,
         _ => Primitive::Call,
     }
 }
@@ -332,6 +340,54 @@ mod tests {
             specialize_transcendental(Primitive::FAdd, Some("sqrt")),
             Primitive::FAdd
         );
+    }
+
+    #[test]
+    fn specialize_transcendental_piecewise_primitives() {
+        // Min / Max / Abs / Sign call-recognition (T11-D13 + D14).
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("min")),
+            Primitive::Min
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("math.min")),
+            Primitive::Min
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("fmin")),
+            Primitive::Min
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("max")),
+            Primitive::Max
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("abs")),
+            Primitive::Abs
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("fabs")),
+            Primitive::Abs
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("sign")),
+            Primitive::Sign
+        );
+        assert_eq!(
+            specialize_transcendental(Primitive::Call, Some("signum")),
+            Primitive::Sign
+        );
+    }
+
+    #[test]
+    fn op_to_primitive_maps_arith_min_max_abs() {
+        assert_eq!(op_to_primitive("arith.minimumf"), Some(Primitive::Min));
+        assert_eq!(op_to_primitive("arith.minf"), Some(Primitive::Min));
+        assert_eq!(op_to_primitive("arith.maximumf"), Some(Primitive::Max));
+        assert_eq!(op_to_primitive("arith.maxf"), Some(Primitive::Max));
+        assert_eq!(op_to_primitive("math.absf"), Some(Primitive::Abs));
+        assert_eq!(op_to_primitive("math.abs"), Some(Primitive::Abs));
+        assert_eq!(op_to_primitive("math.copysign"), Some(Primitive::Sign));
     }
 
     #[test]
