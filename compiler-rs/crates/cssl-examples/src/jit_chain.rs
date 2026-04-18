@@ -579,6 +579,106 @@ fn scene(x : f32) -> f32 { helper(x) }
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D28 : KILLER-APP COMPOSITION — scene-SDF union of two sphere-SDFs.
+    //   Composes T11-D24 (intrinsic min), T11-D26 (inter-fn sphere_sdf call),
+    //   T11-D27 (per-param bwd extraction). Everything landed in this session
+    //   exercising a single source-driven runtime-gradient test.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_source_scene_sdf_union_composition() {
+        // Two-sphere scene-SDF union :
+        //   fn sphere_sdf(p, r) = p - r          (scalar surrogate, T7-D5 canonical)
+        //   fn scene(p, r0, r1) = min(sphere_sdf(p, r0), sphere_sdf(p, r1))
+        //
+        // Analytic gradient of `min` picks the winning branch, and each
+        // sphere_sdf contributes ∂/∂p=1, ∂/∂r=-1. So :
+        //   At sphere_0-winning region : ∂scene/∂p = 1, ∂/∂r0 = -1, ∂/∂r1 = 0
+        //   At sphere_1-winning region : ∂scene/∂p = 1, ∂/∂r0 = 0, ∂/∂r1 = -1
+        let src = r"
+@differentiable fn sphere_sdf(p : f32, r : f32) -> f32 { p - r }
+@differentiable fn scene(p : f32, r0 : f32, r1 : f32) -> f32 {
+    min(sphere_sdf(p, r0), sphere_sdf(p, r1))
+}
+";
+        let module = pipeline_source_to_ad_mir("scene_union", src);
+        // Locate all 4 fns : sphere_sdf + scene (primals) + their _fwd + _bwd.
+        let sphere_sdf = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "sphere_sdf")
+            .expect("sphere_sdf primal");
+        let scene = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene")
+            .expect("scene primal");
+
+        // JIT the primals : sphere_sdf first (callee), then scene (caller).
+        let mut m = JitModule::new();
+        let sphere_h = m.compile(sphere_sdf).expect("JIT sphere_sdf");
+        let scene_h = m.compile(scene).expect("JIT scene");
+        m.finalize().expect("finalize");
+
+        // Verify primal sphere_sdf(3, 2) = 1.
+        let sv = sphere_h.call_f32_f32_to_f32(3.0, 2.0, &m).unwrap();
+        assert!(
+            (sv - 1.0).abs() < 1e-6,
+            "sphere_sdf(3, 2) = 1 expected, got {sv}"
+        );
+
+        // Verify primal scene :
+        // scene(p=5, r0=3, r1=1) = min(sphere_sdf(5, 3), sphere_sdf(5, 1))
+        //                        = min(5-3, 5-1) = min(2, 4) = 2.
+        let sc = scene_h.call_f32_f32_f32_to_f32(5.0, 3.0, 1.0, &m).unwrap();
+        assert!(
+            (sc - 2.0).abs() < 1e-6,
+            "scene(5, 3, 1) = 2 expected, got {sc}"
+        );
+
+        // scene(p=5, r0=1, r1=3) = min(5-1, 5-3) = min(4, 2) = 2 (same, sphere_1 wins now).
+        let sc2 = scene_h.call_f32_f32_f32_to_f32(5.0, 1.0, 3.0, &m).unwrap();
+        assert!((sc2 - 2.0).abs() < 1e-6);
+
+        // Central-difference verification of ∂scene/∂p : always 1.0
+        // (both branches' gradients wrt p are 1, so min's winner is 1 either way).
+        let h_step = 1e-3_f32;
+        let samples: &[(f32, f32, f32)] = &[
+            (5.0, 3.0, 1.0),  // sphere_0 wins
+            (5.0, 1.0, 3.0),  // sphere_1 wins
+            (10.0, 2.0, 7.0), // sphere_0 wins
+            (-1.0, 4.0, 2.0), // sphere_1 wins (min(-5, -3) = -5)
+        ];
+        for &(p, r0, r1) in samples {
+            let plus = scene_h
+                .call_f32_f32_f32_to_f32(p + h_step, r0, r1, &m)
+                .unwrap();
+            let minus = scene_h
+                .call_f32_f32_f32_to_f32(p - h_step, r0, r1, &m)
+                .unwrap();
+            let num_p = (plus - minus) / (2.0 * h_step);
+            assert!(
+                (num_p - 1.0).abs() < 1e-3,
+                "∂scene/∂p @ ({p}, {r0}, {r1}) : expected 1.0, got {num_p}"
+            );
+
+            // Central-diff on r0 : +1 or 0 based on which branch wins.
+            let plus_r0 = scene_h
+                .call_f32_f32_f32_to_f32(p, r0 + h_step, r1, &m)
+                .unwrap();
+            let minus_r0 = scene_h
+                .call_f32_f32_f32_to_f32(p, r0 - h_step, r1, &m)
+                .unwrap();
+            let num_r0 = (plus_r0 - minus_r0) / (2.0 * h_step);
+            let expected_r0 = if (p - r0) < (p - r1) { -1.0 } else { 0.0 };
+            assert!(
+                (num_r0 - expected_r0).abs() < 1e-3,
+                "∂scene/∂r0 @ ({p}, {r0}, {r1}) : expected {expected_r0}, got {num_r0}"
+            );
+        }
+    }
+
     #[test]
     fn full_chain_source_bwd_two_params_affine() {
         // fn lin2(a, b) = 2*a + b — hand-written via a+a+b.

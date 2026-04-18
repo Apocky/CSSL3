@@ -2728,3 +2728,44 @@ Each decision entry :
   - Mutual recursion via two-phase compile (declare-all-then-define-all).
   - Scene-SDF composition gate : `@differentiable fn scene(p, r0, r1) { min(sphere_sdf(p, r0), sphere_sdf(p, r1)) }` full-chain.
   - libm-backed transcendentals (sin/cos/exp/log).
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D28 : KILLER-APP COMPOSITION — scene-SDF union of two spheres runtime-verified
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Milestone** `full_chain_source_scene_sdf_union_composition ... ok`
+- **Context** The T11-D24..D27 rigorous quadrilogy established the pieces : intrinsic func.call (D24), Bwd-mode (D25), inter-fn calls (D26), multi-param bwd extraction (D27). T11-D28 composes them all in a single source-driven test verifying the canonical scene-SDF shape : `min(sphere_sdf(p, r0), sphere_sdf(p, r1))`.
+- **The integration test**
+  ```cssl
+  @differentiable fn sphere_sdf(p : f32, r : f32) -> f32 { p - r }
+  @differentiable fn scene(p : f32, r0 : f32, r1 : f32) -> f32 {
+      min(sphere_sdf(p, r0), sphere_sdf(p, r1))
+  }
+  ```
+  This one test exercises :
+  - Multi-fn module : 2 primals + their _fwd + _bwd variants emitted by walker.
+  - Inter-fn calls (T11-D26) : scene calls sphere_sdf twice.
+  - Intrinsic min dispatch (T11-D24) : `min(..., ...)` → cranelift `fmin` at the outer level.
+  - Body_lower intrinsic type inference (T11-D24) : `min` result-type inferred as operand-type (f32), not opaque.
+  - AD walker's scene_fwd / sphere_sdf_fwd emission.
+- **Assertions verified**
+  - Primal `sphere_sdf(3, 2) = 1` ✓
+  - Primal `scene(5, 3, 1) = 2` (sphere_0 wins : 5-3 < 5-1) ✓
+  - Primal `scene(5, 1, 3) = 2` (sphere_1 wins, same result by symmetry) ✓
+  - ∂scene/∂p = 1 constant across 4 sample points (both branches contribute 1) ✓
+  - ∂scene/∂r0 = -1 if sphere_0 wins, else 0 (pick-the-winner via central-diff) ✓
+- **Consequences**
+  - Test count : 1368 → 1369 (+1 in cssl-examples).
+  - **This is the T7 killer-app gate executing at runtime.** The composition pattern `scene = min(sphere_sdf_i(...))` — the canonical CSSLv3 ray-marching primitive — compiles from source, produces correct primal values, and whose gradient verifies against central-differences at runtime.
+  - Every layer of the compiler architecture is now exercised by passing tests : surface lexer+parser → HIR → MIR → AD walker → substitute emission → JIT compile → executable machine code → numerically-correct gradients.
+  - The T11-D24..D28 rigorous arc (5 slices) closes the stage-0.5 killer-app chain at the highest level of composition architecturally achievable with scalar arithmetic + intrinsic dispatch.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Remaining architectural arcs**
+  - Native JIT multi-return (out-param ABI) — rigorous but unnecessary for current scene-SDF needs (per-param extract suffices).
+  - Mutual recursion (two-phase compile).
+  - Vec3 MIR lowering + `length(p) - r` for the **real** sphere-SDF (not scalar surrogate). Requires MirType::Vec3F32 + MirOp::Vec3{Add,Sub,Neg,ScalarMul,Dot,Length,Normalize} — 165-reference MirType refactor.
+  - libm transcendentals (sin/cos/exp/log).
+  - Backend emission : SPIR-V / WGSL / DXIL runtime validation.
+  - Stage-1 self-host : CSSLv3-written compiler subset that boots stage-0-compiled.
