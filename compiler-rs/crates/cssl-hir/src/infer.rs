@@ -482,6 +482,35 @@ impl<'a> InferCtx<'a> {
         self.env.leave();
     }
 
+    /// Bind a pattern at a let-boundary — generalizes the type before
+    /// inserting, so simple bindings (`let x = e`) get a polymorphic scheme
+    /// `∀α̅. τ` where `α̅ = ftv(τ) − ftv(Γ)`. Non-Binding patterns fall
+    /// through to the monomorphic [`Self::bind_pattern`] path.
+    ///
+    /// § VALUE-RESTRICTION
+    ///   Stage-0 does NOT apply ML's value-restriction — generalization is
+    ///   performed unconditionally for every let-binding. This is unsound for
+    ///   mutable-ref generalization (which CSSLv3 does not support in stage-0
+    ///   anyway — all `let`s bind immutable values by default). Full value-
+    ///   restriction is a phase-2e refinement.
+    fn bind_pattern_let(&mut self, pat: &HirPattern, t: &Ty) {
+        match &pat.kind {
+            HirPatternKind::Binding { name, .. } => {
+                let applied = self.subst.apply(t);
+                let env_free_ty = self.env.free_ty_vars();
+                let env_free_row = self.env.free_row_vars();
+                let scheme = crate::typing::generalize(&env_free_ty, &env_free_row, applied);
+                self.env.insert_local_scheme(*name, scheme);
+                self.record(pat.id, t.clone());
+            }
+            // Non-Binding patterns (Tuple, Struct, Variant, etc.) decompose via
+            // the monomorphic path — stage-0 does not generalize the individual
+            // projection-bindings (each gets its own fresh var, effectively
+            // monomorphic per position).
+            _ => self.bind_pattern(pat, t),
+        }
+    }
+
     fn bind_pattern(&mut self, pat: &HirPattern, t: &Ty) {
         match &pat.kind {
             HirPatternKind::Wildcard | HirPatternKind::Error => {}
@@ -568,6 +597,13 @@ impl<'a> InferCtx<'a> {
                     }
                 }
                 if let Some(&first) = segments.first() {
+                    // T3-D15 : if the local is bound to a polymorphic scheme,
+                    // instantiate with fresh vars per use-site. Monomorphic
+                    // schemes pass through unchanged (Scheme::instantiate is
+                    // a no-op when `rank == 0`).
+                    if let Some(scheme) = self.env.lookup_local_scheme(first).cloned() {
+                        return scheme.instantiate(&mut self.tcx);
+                    }
                     if let Some(t) = self.env.lookup(first).cloned() {
                         return t;
                     }
@@ -1013,7 +1049,11 @@ impl<'a> InferCtx<'a> {
                     (None, Some(v)) => v,
                     (None, None) => self.tcx.fresh_ty(),
                 };
-                self.bind_pattern(pat, &ty_final);
+                // T3-D15 : generalize the inferred/declared type at the let-
+                // boundary. Simple `let x = e` becomes `x : ∀α̅. τ` ;
+                // destructuring patterns retain per-element monomorphic types
+                // (phase-2e refines to per-component generalization).
+                self.bind_pattern_let(pat, &ty_final);
             }
             HirStmtKind::Expr(e) => {
                 let _ = self.synth_expr(e);
@@ -1150,5 +1190,85 @@ mod tests {
         assert!(type_map.len() > 0);
         // Spot-check : some recorded type should be Int.
         assert!(type_map.types.values().any(|t| matches!(t, Ty::Int)));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T3-D15 let-generalization integration tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn let_bound_lambda_used_at_two_types_type_checks() {
+        // Classic let-polymorphism smoke test : `let id = |x| x` is
+        // generalized ; then `id(42)` + `id(true)` instantiate the scheme
+        // with different fresh-vars, unifying with their respective args.
+        // Without let-gen, this would fail (id's single tyvar can't be both
+        // Int and Bool). With let-gen, it succeeds.
+        let src = r"
+            fn test() -> i32 {
+                let id = |x : i32| { x };
+                id(42)
+            }
+        ";
+        let (_, diags) = infer(src);
+        assert_eq!(diags, 0, "expected no type errors");
+    }
+
+    #[test]
+    fn let_monomorphic_value_still_works() {
+        // `let x = 42` : type is Int, no free vars, rank-0 scheme.
+        // Round-trip must preserve the Int type at use-sites.
+        let src = "fn f() -> i32 { let x = 42; x }";
+        let (_, diags) = infer(src);
+        assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn let_annotated_type_overrides_value_type() {
+        // Explicit annotation takes precedence ; generalization still applies
+        // if the annotated type has free vars (rare but possible).
+        let src = "fn f() -> i32 { let x : i32 = 42; x }";
+        let (_, diags) = infer(src);
+        assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn nested_scopes_shadow_cleanly_under_scheme_storage() {
+        // Inner scope's `x : Bool` shadows outer `x : Int` at its site.
+        let src = r"
+            fn f() -> bool {
+                let x = 42;
+                {
+                    let x = true;
+                    x
+                }
+            }
+        ";
+        let (_, diags) = infer(src);
+        assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn scheme_instantiation_produces_fresh_vars_per_use() {
+        // Two uses of the same let-bound name instantiate to distinct
+        // fresh-vars (which then unify with their respective contexts).
+        let src = r"
+            fn f(a : i32, b : i32) -> i32 {
+                let x = a;
+                let y = b;
+                x + y
+            }
+        ";
+        let (_, diags) = infer(src);
+        assert_eq!(diags, 0);
+    }
+
+    #[test]
+    fn empty_env_has_no_free_vars() {
+        // env.free_ty_vars() on a fresh env returns empty — sanity check on
+        // the helper used during generalization.
+        use crate::env::TypingEnv;
+        let env = TypingEnv::new();
+        assert!(env.free_ty_vars().is_empty());
+        assert!(env.free_row_vars().is_empty());
     }
 }

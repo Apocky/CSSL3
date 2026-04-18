@@ -19,10 +19,12 @@
 //!     resolves to a `@staged` fn, the caller's stage-class must be compatible
 //!     with the callee's per the contract :
 //!
-//!        caller   \   callee   CompTime   Runtime   Polymorphic
-//!        CompTime                 ✓         STG0002      ✓
-//!        Runtime                  STG0002   ✓           ✓
-//!        Polymorphic              ✓         ✓           ✓
+//! ```text
+//!   caller \ callee   CompTime   Runtime   Polymorphic
+//!   CompTime              ok        STG0002      ok
+//!   Runtime               STG0002   ok           ok
+//!   Polymorphic           ok        ok           ok
+//! ```
 //!
 //! (3) The `@staged` dependency graph — vertex = `DefId` of a `@staged` fn,
 //!     edge = `caller → callee` via a call-site in caller's body whose callee

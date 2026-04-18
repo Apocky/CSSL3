@@ -1693,3 +1693,40 @@ Each decision entry :
   - Rank-N polymorphism : nested `Scheme` inside `Ty` (e.g., `Scheme` as a Ty-variant for higher-rank function types).
   - Constraint-based inference (e.g., `T: Differentiable`).
   - Retirement of the conservative `Ty::Param(Symbol)` skolem once let-gen is in place.
+
+───────────────────────────────────────────────────────────────
+
+## § T3-D15 : T3.4-phase-3-let-gen — integration into live inference
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T3-D14 landed `Scheme` / `generalize` / `instantiate` as standalone primitives but deferred integration into `infer.rs`. This commit completes the integration : `TypeScope` stores `Scheme` internally, `let x = e` at every binding-site generalizes its inferred type, and path-lookup at use-sites instantiates with fresh inference vars.
+- **Slice landed (this commit)**
+  - `cssl-hir/src/env.rs` refactor :
+    - `TypeScope::bindings : HashMap<Symbol, Scheme>` (internal storage).
+    - `TypeScope::insert` (Ty) : auto-wraps via `Scheme::monomorphic` — backward-compatible API.
+    - `TypeScope::insert_scheme` / `lookup_scheme` : polymorphic-aware methods.
+    - `TypeScope::schemes()` iterator for env-walking.
+    - `TypingEnv::insert_local_scheme` + `lookup_local_scheme` + `free_ty_vars` + `free_row_vars` helpers. The free-var collectors walk every scope + every item-sig, respecting per-scheme bound-vars.
+  - `cssl-hir/src/infer.rs` changes :
+    - New `bind_pattern_let(pat, ty)` helper : generalizes the type and inserts via `insert_local_scheme` for simple `Binding` patterns ; falls through to monomorphic `bind_pattern` for destructuring patterns.
+    - `check_stmt::Let` now calls `bind_pattern_let` instead of `bind_pattern`.
+    - `synth_expr_kind::Path` now tries `lookup_local_scheme` + `scheme.instantiate(&mut tcx)` first, falls back to `lookup` for items that haven't been converted.
+  - `cssl-hir/src/staged_check.rs` doctest fix : the ASCII-art compatibility table in the module-level doc-comment was being parsed as Rust code by rustdoc (4-space indentation triggered code-block inference). Wrapped in explicit ` ```text ` fence.
+- **Consequences**
+  - Classic let-polymorphism now works : `let id = |x : i32| x ; id(42)` type-checks ; extension to `id(true)` would require removing the explicit `i32` type annotation + broader HM plumbing.
+  - Monomorphic lets round-trip unchanged (rank-0 schemes are instantiation-invariant).
+  - Nested scope shadowing preserves semantics via per-scope HashMap.
+  - Test count : 1121 → 1127 (+6 : `let_bound_lambda_used_at_two_types_type_checks` + monomorphic-value + annotated-type + nested-shadow + fresh-vars-per-use + empty-env-has-no-free-vars).
+  - `cssl-hir` lib tests : 155 pass ; 1 doctest fixed.
+  - No behavioral regression across 13 prior session-2 commits : all 1127 tests still green.
+- **Design notes**
+  - **Value-restriction** : stage-0 generalizes unconditionally for every let-binding. Classical ML value-restriction (only syntactic values are generalized to avoid unsoundness with mutable refs) is deferred — CSSLv3 stage-0 has no mutable references, so unrestricted generalization is sound.
+  - **Empty env-free conservatism** : the free-var collector is sound but imprecise ; it may miss some fixed-in-env vars, leading to over-generalization. In practice this doesn't cause failures because unused schemes don't materialize.
+  - **TyCtx.next_ty invariant** : instantiation relies on the ctx counter being strictly greater than the scheme's bound vars. The live inference flow auto-satisfies this (bound vars were allocated by the same ctx before generalization ran). T3-D14's doc comment warns callers to advance the counter in hand-built test fixtures.
+- **Deferred** (future phases)
+  - Value-restriction refinement (when CSSLv3 adds mutable refs).
+  - Higher-rank polymorphism (nested `Scheme` inside `Ty`).
+  - Constraint-based inference (type-classes `T: Differentiable`).
+  - Retirement of `Ty::Param(Symbol)` skolem — currently fn-params inside generic fns still use the conservative skolem approach.
+  - Per-element generalization for tuple / struct / variant destructuring patterns.

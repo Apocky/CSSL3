@@ -1,4 +1,4 @@
-//! Typing environment — a scope-stack mapping `Symbol` to `Ty`, plus item
+//! Typing environment — a scope-stack mapping `Symbol` to [`Scheme`], plus item
 //! signatures indexed by `DefId`.
 //!
 //! § SCOPE-STACK (expression-level bindings)
@@ -10,17 +10,29 @@
 //!   (see `infer::collect_item_signatures`). Item types can reference other items
 //!   freely — cross-referencing is OK because all item-types are registered before
 //!   any body is type-checked.
+//!
+//! § LET-GENERALIZATION (T3-D15)
+//!   Scope-storage uses [`Scheme`] so `let x = e` can generalize `e`'s inferred
+//!   type into a rank-1 polymorphic scheme. Use-sites (in path-resolution)
+//!   instantiate the scheme with fresh inference-vars. Monomorphic insertions
+//!   auto-wrap via [`Scheme::monomorphic`] — the legacy `insert(name, ty)` API
+//!   continues to work for callers that don't care about generalization.
 
 use std::collections::HashMap;
 
 use crate::arena::DefId;
 use crate::symbol::Symbol;
-use crate::typing::Ty;
+use crate::typing::{Scheme, Ty};
 
-/// A single lexical scope — `Symbol → Ty` map.
+/// A single lexical scope — `Symbol → Scheme` map.
+///
+/// Monomorphic callers can continue using [`Self::insert`] + [`Self::lookup`]
+/// — these auto-wrap/unwrap through [`Scheme::monomorphic`] + reading `.body`.
+/// Polymorphic callers (let-generalization) use [`Self::insert_scheme`] +
+/// [`Self::lookup_scheme`].
 #[derive(Debug, Default, Clone)]
 pub struct TypeScope {
-    bindings: HashMap<Symbol, Ty>,
+    bindings: HashMap<Symbol, Scheme>,
 }
 
 impl TypeScope {
@@ -30,15 +42,38 @@ impl TypeScope {
         Self::default()
     }
 
-    /// Insert a binding ; returns the previous type if the name was already in scope.
+    /// Insert a monomorphic binding (auto-wraps the `Ty` in a rank-0 scheme).
+    /// Returns the previous `Ty` (read from the previous scheme's body) if the
+    /// name was already in scope.
     pub fn insert(&mut self, name: Symbol, t: Ty) -> Option<Ty> {
-        self.bindings.insert(name, t)
+        self.bindings
+            .insert(name, Scheme::monomorphic(t))
+            .map(|s| s.body)
     }
 
-    /// Lookup a name in this scope only.
+    /// Insert a full polymorphic scheme. Returns the previous scheme if any.
+    pub fn insert_scheme(&mut self, name: Symbol, scheme: Scheme) -> Option<Scheme> {
+        self.bindings.insert(name, scheme)
+    }
+
+    /// Lookup a name in this scope only — returns the `Ty` body of the stored
+    /// scheme. Equivalent to `lookup_scheme(name).map(|s| &s.body)` and
+    /// semantically correct for monomorphic schemes ; polymorphic callers
+    /// should use [`Self::lookup_scheme`] + [`Scheme::instantiate`].
     #[must_use]
     pub fn lookup(&self, name: Symbol) -> Option<&Ty> {
+        self.bindings.get(&name).map(|s| &s.body)
+    }
+
+    /// Lookup the full scheme (preserves quantified vars).
+    #[must_use]
+    pub fn lookup_scheme(&self, name: Symbol) -> Option<&Scheme> {
         self.bindings.get(&name)
+    }
+
+    /// Iterate over all schemes in this scope (stable order not guaranteed).
+    pub fn schemes(&self) -> impl Iterator<Item = (&Symbol, &Scheme)> {
+        self.bindings.iter()
     }
 
     /// Number of bindings.
@@ -85,13 +120,25 @@ impl TypingEnv {
         self.stack.len()
     }
 
-    /// Insert a binding into the innermost scope. No-op if no scope is active (callers
-    /// are expected to `enter()` before binding locals).
+    /// Insert a monomorphic binding into the innermost scope. No-op if no
+    /// scope is active (callers are expected to `enter()` before binding
+    /// locals).
     pub fn insert_local(&mut self, name: Symbol, t: Ty) -> Option<Ty> {
         self.stack.last_mut().and_then(|s| s.insert(name, t))
     }
 
-    /// Lookup a local binding (innermost-to-outermost scope).
+    /// Insert a polymorphic scheme into the innermost scope. Used by
+    /// let-generalization at let-boundaries (`let x = e` where `e : τ` is
+    /// generalized to `∀α̅. τ` where α̅ = ftv(τ) − ftv(Γ)).
+    pub fn insert_local_scheme(&mut self, name: Symbol, scheme: Scheme) -> Option<Scheme> {
+        self.stack
+            .last_mut()
+            .and_then(|s| s.insert_scheme(name, scheme))
+    }
+
+    /// Lookup a local binding (innermost-to-outermost scope). Returns the
+    /// stored scheme's body `Ty` — use [`Self::lookup_local_scheme`] for the
+    /// full quantified form.
     #[must_use]
     pub fn lookup_local(&self, name: Symbol) -> Option<&Ty> {
         for scope in self.stack.iter().rev() {
@@ -100,6 +147,74 @@ impl TypingEnv {
             }
         }
         None
+    }
+
+    /// Lookup a local scheme — returns the full quantified form so callers
+    /// can instantiate with fresh vars.
+    #[must_use]
+    pub fn lookup_local_scheme(&self, name: Symbol) -> Option<&Scheme> {
+        for scope in self.stack.iter().rev() {
+            if let Some(s) = scope.lookup_scheme(name) {
+                return Some(s);
+            }
+        }
+        None
+    }
+
+    /// Collect the set of free type-variables across every binding in every
+    /// active scope + every item-signature. Used by let-generalization to
+    /// determine which type-vars are "fixed by the environment" and therefore
+    /// must NOT be generalized at the let-boundary.
+    ///
+    /// § COMPUTATION
+    ///   free_env = ⋃ scope ∈ stack : ⋃ (n, σ) ∈ scope : ftv(σ.body) − σ.ty_vars
+    ///            + ⋃ (d, τ) ∈ item_sigs : ftv(τ)
+    ///
+    /// Vars that are already-quantified inside a scheme don't count as
+    /// environment-fixed — they're already bound.
+    #[must_use]
+    pub fn free_ty_vars(&self) -> std::collections::HashSet<crate::typing::TyVar> {
+        use std::collections::HashSet;
+        let mut out: HashSet<crate::typing::TyVar> = HashSet::new();
+        for scope in &self.stack {
+            for (_, scheme) in scope.schemes() {
+                let bound: HashSet<_> = scheme.ty_vars.iter().copied().collect();
+                for v in crate::typing::free_ty_vars(&scheme.body) {
+                    if !bound.contains(&v) {
+                        out.insert(v);
+                    }
+                }
+            }
+        }
+        for ty in self.item_sigs.values() {
+            for v in crate::typing::free_ty_vars(ty) {
+                out.insert(v);
+            }
+        }
+        out
+    }
+
+    /// Parallel collector for free row-variables. Mirrors [`Self::free_ty_vars`].
+    #[must_use]
+    pub fn free_row_vars(&self) -> std::collections::HashSet<crate::typing::RowVar> {
+        use std::collections::HashSet;
+        let mut out: HashSet<crate::typing::RowVar> = HashSet::new();
+        for scope in &self.stack {
+            for (_, scheme) in scope.schemes() {
+                let bound: HashSet<_> = scheme.row_vars.iter().copied().collect();
+                for v in crate::typing::free_row_vars(&scheme.body) {
+                    if !bound.contains(&v) {
+                        out.insert(v);
+                    }
+                }
+            }
+        }
+        for ty in self.item_sigs.values() {
+            for v in crate::typing::free_row_vars(ty) {
+                out.insert(v);
+            }
+        }
+        out
     }
 
     /// Register an item signature.

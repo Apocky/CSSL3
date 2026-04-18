@@ -146,15 +146,20 @@
 
   priority-ranked .by leverage × self-containment
 
-  ◐ T3-D15 : let-generalization INTEGRATION ← HIGH-LEVERAGE
-    loc : cssl-hir/src/{env.rs, infer.rs, typing.rs}
-    scope :
-      TypeScope : Ty → Scheme
-      check_let : generalize at let-boundary
-      Path-use : instantiate at use-site
-      Retire Ty::Param(Symbol) skolem
-    foundation already landed (T3-D14) ; this is the integration
-    estimated : ~1 commit / ~400-600 LOC + 15-20 tests
+  ✓ T3-D15 : let-generalization INTEGRATION ← LANDED 2026-04-17 (session-3)
+    loc : cssl-hir/src/{env.rs, infer.rs, staged_check.rs (doctest fix)}
+    scope-delivered :
+      ✓ TypeScope : Ty → Scheme (internal storage, legacy API preserved)
+      ✓ TypingEnv : insert_local_scheme + lookup_local_scheme + free_{ty,row}_vars
+      ✓ bind_pattern_let : generalize-then-insert at let-boundary
+      ✓ synth_expr_kind::Path : lookup_local_scheme + Scheme::instantiate per use
+    deferred (phase-3+) :
+      ○ Value-restriction (when mutable-refs land)
+      ○ Higher-rank polymorphism (nested Scheme inside Ty)
+      ○ Constraint-based inference (T: Differentiable)
+      ○ Retire Ty::Param(Symbol) skolem
+      ○ Per-element scheme for tuple/struct/variant destructuring
+    DECISIONS.md : T3-D15 recorded
 
   ◐ macro-hygiene-check walker ← completes T3.4-phase-3
     loc : cssl-hir/src/macro_hygiene.rs (new)
