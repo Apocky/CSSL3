@@ -2324,3 +2324,38 @@ Each decision entry :
   - Abs's subgradient at `x = 0` : currently the `oge` predicate picks `dx` (i.e., gradient = +1 at 0) ; convention matches `sign(0) = 0` is not enforced yet.
   - Smooth-min MirOp variant — today smooth_min is built out of Exp/Log/Add/Neg/Div primitives that each have rules, so it already differentiates correctly via chain-rule composition. A dedicated primitive would be marginally more efficient but not semantically necessary.
   - Walker-level integration test (cssl-autodiff::walker) exercising the full @differentiable fn with `min` call → confirm emit ops flow through to fwd/bwd variants.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D16 : End-to-end scene-SDF min(a, b) AD integration gate
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D13 through T11-D15 wired each layer of the AD chain for `min` / `max` / `abs` / `sign` : Primitive enum, rule-table entries, walker dispatch, substitute real-emission. This slice closes the loop with an **end-to-end integration test** that takes HIR source `@differentiable fn scene(a : f32, b : f32) -> f32 { min(a, b) }` and verifies that the full chain produces branchful tangent + adjoint emission.
+- **Slice landed (this commit)**
+  - `walker.rs` new test `scene_union_min_integration_emits_branchful_tangent_and_adjoint` :
+    - Parses CSSLv3 source containing `min(a, b)` call inside an `@differentiable` fn.
+    - Lowers HIR → MIR via `build_mir` helper (same as existing sphere_sdf integration test).
+    - Runs `AdWalker::from_hir` to pick up the differentiable declaration.
+    - Transforms the module → emits `scene_fwd` + `scene_bwd` variants.
+    - Asserts `scene_fwd` contains tangent-role `arith.cmpf` AND tangent-role `arith.select`, both with `diff_primitive="min"`.
+    - Asserts `scene_fwd` contains NO `cssl.diff.fwd_placeholder` (regression-guard for T11-D15 upgrade).
+    - Asserts `scene_bwd` terminates with `cssl.diff.bwd_return` and contains adjoint-role `arith.select` with `diff_primitive="min"`.
+- **Consequences**
+  - Test count : 1323 → 1324 (+1 in cssl-autodiff).
+  - The **complete AD chain** for piecewise-linear primitives is now covered by a single integration test :
+    ```
+    CSSLv3 source (min call)
+      → lexer → parser → HIR
+      → body_lower emits func.call with callee="min"
+      → walker::op_to_primitive + specialize_transcendental → Primitive::Min
+      → substitute emits arith.cmpf "ole" + arith.select (real branchful tangent)
+      → apply_bwd emits cmpf + 2 selects + 2 addf (adjoint routing)
+      → scene_fwd + scene_bwd variants appear in module
+    ```
+  - This is the **scene-SDF-shaped end-to-end gate** flagged in T11-D15's deferred list. Scene-SDF composition via `min(a, b)` / `max(a, b)` / `abs(x)` is now a verified first-class AD primitive at every layer of the stack.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Verify the emitted branchful body produces numerically correct gradients via runtime execution (Cranelift JIT + random sample + central-difference comparison). Today we verify emission *shape* ; runtime verification composes on top.
+  - Multi-level scene SDFs : `min(min(a, b), c)` — already works by chain-rule composition but untested end-to-end.
+  - Real backend emission : verify SPIR-V / WGSL / DXIL emit correct `OpSelect` / `select` for the tangent body.

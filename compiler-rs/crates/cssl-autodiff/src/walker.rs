@@ -592,4 +592,85 @@ mod tests {
             Primitive::FAdd
         );
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D16 : end-to-end integration for scene-SDF min(a, b) AD chain.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn scene_union_min_integration_emits_branchful_tangent_and_adjoint() {
+        // Scene-SDF primitive : union via min(a, b). Stage-0 source uses
+        // path-resolved call `min(a, b)` so body_lower emits func.call w/
+        // callee="min" ; walker specialize_transcendental → Primitive::Min ;
+        // substitute emits cmpf "ole" + select (real branchful tangent body).
+        let src = r"@differentiable fn scene(a : f32, b : f32) -> f32 { min(a, b) }";
+        let (mut module, hir, interner) = build_mir(src);
+        let walker = AdWalker::from_hir(&hir, &interner);
+        let r = walker.transform_module(&mut module);
+        assert_eq!(r.fns_transformed, 1, "{}", r.summary());
+        let names: Vec<_> = module.funcs.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"scene_fwd"));
+        assert!(names.contains(&"scene_bwd"));
+
+        // Fwd variant must contain branchful emission (cmpf + select with
+        // diff_primitive="min"), NOT the legacy placeholder.
+        let fwd = module.funcs.iter().find(|f| f.name == "scene_fwd").unwrap();
+        let fwd_ops = &fwd.body.entry().unwrap().ops;
+
+        let has_cmpf_tangent = fwd_ops.iter().any(|o| {
+            o.name == "arith.cmpf"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "min")
+        });
+        let has_select_tangent = fwd_ops.iter().any(|o| {
+            o.name == "arith.select"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "tangent")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "min")
+        });
+        let has_no_placeholder = !fwd_ops
+            .iter()
+            .any(|o| o.name == "cssl.diff.fwd_placeholder");
+        assert!(
+            has_cmpf_tangent,
+            "expected tangent arith.cmpf in scene_fwd : {}",
+            r.summary()
+        );
+        assert!(
+            has_select_tangent,
+            "expected tangent arith.select in scene_fwd"
+        );
+        assert!(
+            has_no_placeholder,
+            "expected NO fwd_placeholder in scene_fwd (T11-D15 upgrade)"
+        );
+
+        // Bwd variant terminates with cssl.diff.bwd_return.
+        let bwd = module.funcs.iter().find(|f| f.name == "scene_bwd").unwrap();
+        let bwd_ops = &bwd.body.entry().unwrap().ops;
+        let last = bwd_ops.last().unwrap();
+        assert_eq!(last.name, "cssl.diff.bwd_return");
+
+        // Bwd must also contain adjoint cmpf + select for min.
+        let has_adjoint_select = bwd_ops.iter().any(|o| {
+            o.name == "arith.select"
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_role" && v == "adjoint")
+                && o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "diff_primitive" && v == "min")
+        });
+        assert!(
+            has_adjoint_select,
+            "expected adjoint arith.select in scene_bwd"
+        );
+    }
 }
