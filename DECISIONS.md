@@ -3218,4 +3218,66 @@ Each decision entry :
   - **Heap-allocation primitives** — any nontrivial `Vec<T>` needs alloc/dealloc. Infrastructure work.
   - **Trait-like dispatch** — `T: Hash` bound needed for `HashMap<K, V>`.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D43 : Module cleanup pass — drop unspecialized generic fns
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** After D42's capstone test, the MirModule contained the unspecialized `id<T>` (params carry `Opaque("T")`) alongside the specialized `id_i32`. Pushing both into the JIT would fail — opaque types aren't compilable. The capstone worked around this by hand-picking which funcs to JIT. T11-D43 makes the cleanup automatic.
+- **Slice landed (this commit)**
+  - `cssl-mir/src/func.rs` : `MirFunc.is_generic: bool` field.
+  - `cssl-mir/src/lower.rs` : `lower_function_signature` sets the flag from `!f.generics.params.is_empty()`. Specializations naturally get `is_generic = false` because `specialize_generic_fn` clones with empty generics before lowering.
+  - `cssl-mir/src/auto_monomorph.rs` : `pub fn drop_unspecialized_generic_fns(module) -> u32` — retains only `!is_generic` funcs, returns drop count.
+  - 4 new tests + capstone updated to drop the generic before JIT.
+- **Consequences**
+  - Test count : 1500 → 1504. The capstone no longer needs the manual skip.
+  - **Pipeline is now uniform** : parse → HIR → lower → auto_monomorphize → rewrite_generic_call_sites → drop_unspecialized_generic_fns → JIT. No manual scaffolding.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D44 : Broader generic-fn coverage — non-identity bodies end-to-end
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** D42's capstone proved `fn id<T>` (trivial body) works. D44 verifies the specialization machinery handles non-trivial bodies (binary arithmetic, repeated type-param references) to preempt future regressions.
+- **Slice landed (this commit)**
+  - `cssl-examples/src/jit_chain.rs` : 2 new end-to-end tests.
+    - `end_to_end_generic_add_specializes_and_computes` : `fn add<T>(a:T, b:T) -> T { a + b }` + `main() -> i32 { add::<i32>(3, 4) }` → `main() = 7` ✓
+    - `end_to_end_generic_twice_specializes_and_computes_f32` : `fn twice<T>(x:T) -> T { x + x }` → `twice_f32(2.5) = 5.0` ✓ + signature checks for `main_f32 : () -> f32`.
+- **Consequences**
+  - Test count : 1504 → 1506.
+  - **Confirms D38..D43 is robust beyond identity fns.** Any generic fn with scalar arithmetic body specializes + executes correctly.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D45 : Generic struct monomorphization MVP — struct-decl-only
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** Generic structs (`struct Vec<T>`, `struct Pair<T, U>`) are the next blocker for P1 stdlib-core. A background recon agent investigated scope + recommended **option (a) : declaration-only specialization** — parallel API to `specialize_generic_fn` for `HirStruct` items, no runtime construction (needs heap-alloc + MIR struct-value representation, both deferred).
+- **Slice landed (this commit)**
+  - `cssl-hir/src/lib.rs` : `HirFieldDecl` exposed in public re-exports.
+  - `cssl-mir/src/monomorph.rs` (~120 LOC additions) :
+    - `pub fn specialize_generic_struct(interner, hir_struct, subst) -> HirStruct` : clones the struct, substitutes every field's `ty` via existing `substitute_hir_type`, empties `generics`, returns.
+    - `pub fn mangle_struct_specialization_name(…)` : thin wrapper over `mangle_specialization_name` keyed off `struct.name`.
+    - Internal helpers : `substitute_struct_body` (Unit / Tuple / Named) + `substitute_field_decl`.
+  - `cssl-mir/src/lib.rs` : re-exports the two new fns.
+  - 7 new tests in `monomorph::tests` : named / tuple / unit / empties-generics / mangle-convention / non-generic-identity / **nested type-args** (`Box<T>` → `Box<i32>` via recursion through `type_args`).
+- **The capability landed**
+  - Source : `struct Pair<T, U> { first: T, second: U }` + `TypeSubst { T↦i32, U↦f32 }`
+  - Output : `HirStruct { name: Pair, generics: empty, body: Named([first: i32, second: f32]) }`
+  - Mangled name : `Pair_i32_f32` (matches fn-specialization convention — predictable for auto-walker integration).
+- **Consequences**
+  - Test count : 1506 → 1513 (+7 monomorph tests).
+  - **First generic-struct decl specialization in the compiler.** Complements D38's fn specialization ; together they cover the two main kinds of generic items.
+  - The fn arc (D38..D44) is *callable end-to-end from source via auto-monomorphize*. The struct arc is currently at the manual-API stage — equivalent to D38 before D40 wired auto-discovery.
+- **Deferred** (follow-up slices for real `struct Vec<T>`)
+  - **Struct-expression lowering in body_lower** must emit specialized type tags. Currently `lower_struct_expr` emits `Opaque("!cssl.struct.Pair")` with no type-arg info — needs to correlate with specialized struct's mangled name.
+  - **`impl<T>` monomorphization** — specializes every fn in an impl block using the self_ty's type-args. Parallel API to `specialize_generic_fn` but walks `HirImpl.fns` + substitutes `self_ty` before each.
+  - **Value-level MIR struct representation** — `MirType::Struct(DefId, Vec<MirType>)` or similar. Stage-0 uses `Opaque` placeholders ; real layout computation + field-access lowering needs this.
+  - **Heap-allocation primitives** — hard blocker for `Vec<T>` backing storage. No `alloc` / `dealloc` ops exist in stage-0 today.
+  - **Auto-discovery of struct-specialization targets** — walker that finds struct-expr contexts with type-args (or inference-derived args) and invokes `specialize_generic_struct` automatically (parallel to `auto_monomorphize` for fns).
+  - **Generic enums** — same recipe applied to `HirEnum`.
+
 
