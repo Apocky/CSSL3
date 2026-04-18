@@ -58,7 +58,8 @@ use std::collections::HashMap;
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
-    HirFieldDecl, HirFn, HirStruct, HirStructBody, HirType, HirTypeKind, Interner, Symbol,
+    HirEnum, HirEnumVariant, HirFieldDecl, HirFn, HirStruct, HirStructBody, HirType, HirTypeKind,
+    Interner, Symbol,
 };
 
 use crate::body_lower::lower_fn_body;
@@ -408,6 +409,78 @@ pub fn mangle_struct_specialization_name(
     subst: &TypeSubst,
 ) -> String {
     let base = interner.resolve(hir_struct.name);
+    mangle_specialization_name(&base, interner, subst)
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D47 — GENERIC ENUM SPECIALIZATION
+//
+// Enums (`enum Option<T> { Some(T), None }`) carry generics + variants ;
+// each variant has a `HirStructBody` (same shape as struct bodies) so we
+// can reuse `substitute_struct_body` per-variant. Parallel API to
+// `specialize_generic_struct` — produces a concrete HirEnum with :
+//   - mangled name
+//   - substituted variant field types
+//   - emptied `generics`
+// ═════════════════════════════════════════════════════════════════════════
+
+/// Specialize a generic [`HirEnum`] to a concrete enum decl.
+///
+/// § PIPELINE
+///   1. Clone the enum.
+///   2. Empty the `generics` field.
+///   3. For each variant, substitute field types in its `body` via the
+///      shared [`substitute_struct_body`] helper.
+///
+/// § EXAMPLE
+/// ```ignore
+/// // enum Option<T> { Some(T), None }
+/// let mut subst = TypeSubst::new();
+/// subst.bind(t_sym, hir_primitive_type("i32", &interner));
+/// let specialized = specialize_generic_enum(&interner, &opt_hir, &subst);
+/// // specialized.variants[0] has Tuple body with i32 type (was T)
+/// // specialized.variants[1] is Unit (None is Unit variant)
+/// // specialized.generics is empty
+/// ```
+#[must_use]
+pub fn specialize_generic_enum(
+    interner: &Interner,
+    hir_enum: &HirEnum,
+    subst: &TypeSubst,
+) -> HirEnum {
+    let mut out = hir_enum.clone();
+    out.generics = cssl_hir::HirGenerics { params: Vec::new() };
+    out.variants = out
+        .variants
+        .iter()
+        .map(|v| substitute_enum_variant(v, interner, subst))
+        .collect();
+    out
+}
+
+fn substitute_enum_variant(
+    v: &HirEnumVariant,
+    interner: &Interner,
+    subst: &TypeSubst,
+) -> HirEnumVariant {
+    HirEnumVariant {
+        span: v.span,
+        def: v.def,
+        attrs: v.attrs.clone(),
+        name: v.name,
+        body: substitute_struct_body(&v.body, interner, subst),
+    }
+}
+
+/// Compute a mangled enum name for a specialization. Thin wrapper over
+/// [`mangle_specialization_name`] keyed off `hir_enum.name`.
+#[must_use]
+pub fn mangle_enum_specialization_name(
+    hir_enum: &HirEnum,
+    interner: &Interner,
+    subst: &TypeSubst,
+) -> String {
+    let base = interner.resolve(hir_enum.name);
     mangle_specialization_name(&base, interner, subst)
 }
 
@@ -880,6 +953,167 @@ mod tests {
             primitive_hir_to_mir(&fields[0].ty, &interner),
             Some(MirType::Float(FloatWidth::F32))
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D47 — generic enum specialization tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    use super::{mangle_enum_specialization_name, specialize_generic_enum};
+
+    fn parse_enum(src: &str, name: &str) -> (cssl_hir::Interner, cssl_hir::HirEnum) {
+        let file = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _) = lower_module(&file, &cst);
+        let e = hir
+            .items
+            .iter()
+            .find_map(|item| match item {
+                cssl_hir::HirItem::Enum(e) if interner.resolve(e.name) == name => Some(e.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("enum `{name}` not found"));
+        (interner, e)
+    }
+
+    #[test]
+    fn specialize_option_like_enum_substitutes_variant_field_types() {
+        // enum Option<T> { Some(T), None }
+        //   + T ↦ i32 ⇒ variants : Some(i32), None
+        let src = r"enum Opt<T> { Some(T), None }";
+        let (interner, e) = parse_enum(src, "Opt");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specialized = specialize_generic_enum(&interner, &e, &subst);
+        assert!(specialized.generics.params.is_empty());
+        assert_eq!(specialized.variants.len(), 2);
+
+        // First variant — Some(T) : tuple body with one i32 field after subst.
+        match &specialized.variants[0].body {
+            HirStructBody::Tuple(fs) => {
+                assert_eq!(fs.len(), 1);
+                assert_eq!(
+                    primitive_hir_to_mir(&fs[0].ty, &interner),
+                    Some(MirType::Int(IntWidth::I32))
+                );
+            }
+            other => panic!("expected Tuple, got {other:?}"),
+        }
+        // Second variant — None : Unit.
+        assert!(matches!(&specialized.variants[1].body, HirStructBody::Unit));
+    }
+
+    #[test]
+    fn specialize_enum_named_variant_substitutes() {
+        // enum Either<L, R> { Left { v: L }, Right { v: R } }
+        let src = r"enum Either<L, R> { Left { v : L }, Right { v : R } }";
+        let (interner, e) = parse_enum(src, "Either");
+        let l = interner.intern("L");
+        let r = interner.intern("R");
+        let mut subst = TypeSubst::new();
+        subst.bind(l, hir_primitive_type("i32", &interner));
+        subst.bind(r, hir_primitive_type("f64", &interner));
+
+        let specialized = specialize_generic_enum(&interner, &e, &subst);
+        assert_eq!(specialized.variants.len(), 2);
+
+        let check_field = |v: &cssl_hir::HirEnumVariant, expected: MirType| match &v.body {
+            HirStructBody::Named(fs) => {
+                assert_eq!(fs.len(), 1);
+                assert_eq!(primitive_hir_to_mir(&fs[0].ty, &interner), Some(expected));
+            }
+            other => panic!("expected Named : {other:?}"),
+        };
+        check_field(&specialized.variants[0], MirType::Int(IntWidth::I32));
+        check_field(&specialized.variants[1], MirType::Float(FloatWidth::F64));
+    }
+
+    #[test]
+    fn specialize_non_generic_enum_passes_through() {
+        let src = r"enum Color { Red, Green, Blue }";
+        let (interner, e) = parse_enum(src, "Color");
+        let subst = TypeSubst::new();
+        let specialized = specialize_generic_enum(&interner, &e, &subst);
+        assert_eq!(specialized.variants.len(), 3);
+        assert!(specialized.generics.params.is_empty());
+        for v in &specialized.variants {
+            assert!(matches!(v.body, HirStructBody::Unit));
+        }
+    }
+
+    #[test]
+    fn specialize_enum_empties_generics() {
+        let src = r"enum Opt<T> { Some(T), None }";
+        let (interner, e) = parse_enum(src, "Opt");
+        assert_eq!(e.generics.params.len(), 1);
+
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+        let specialized = specialize_generic_enum(&interner, &e, &subst);
+        assert!(specialized.generics.params.is_empty());
+        // Original unchanged.
+        assert_eq!(e.generics.params.len(), 1);
+    }
+
+    #[test]
+    fn mangle_enum_specialization_name_follows_convention() {
+        let src = r"enum Opt<T> { Some(T), None }";
+        let (interner, e) = parse_enum(src, "Opt");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("f32", &interner));
+        assert_eq!(
+            mangle_enum_specialization_name(&e, &interner, &subst),
+            "Opt_f32"
+        );
+    }
+
+    #[test]
+    fn specialize_enum_with_nested_type_arg() {
+        // enum Tree<T> { Leaf(T), Node(Box<T>) }
+        // T ↦ i32 ⇒ Leaf(i32), Node(Box<i32>)
+        let src = r"enum Tree<T> { Leaf(T), Node(Box<T>) }";
+        let (interner, e) = parse_enum(src, "Tree");
+        let t = interner.intern("T");
+        let mut subst = TypeSubst::new();
+        subst.bind(t, hir_primitive_type("i32", &interner));
+
+        let specialized = specialize_generic_enum(&interner, &e, &subst);
+        assert_eq!(specialized.variants.len(), 2);
+
+        // Leaf(i32) : Tuple([i32])
+        match &specialized.variants[0].body {
+            HirStructBody::Tuple(fs) => {
+                assert_eq!(
+                    primitive_hir_to_mir(&fs[0].ty, &interner),
+                    Some(MirType::Int(IntWidth::I32))
+                );
+            }
+            other => panic!("expected Tuple for Leaf : {other:?}"),
+        }
+
+        // Node(Box<i32>) : Tuple([Path{Box, type_args:[i32]}])
+        match &specialized.variants[1].body {
+            HirStructBody::Tuple(fs) => {
+                let cssl_hir::HirTypeKind::Path {
+                    path, type_args, ..
+                } = &fs[0].ty.kind
+                else {
+                    panic!("expected Path, got {:?}", fs[0].ty.kind);
+                };
+                assert_eq!(interner.resolve(path[0]), "Box");
+                assert_eq!(type_args.len(), 1);
+                assert_eq!(
+                    primitive_hir_to_mir(&type_args[0], &interner),
+                    Some(MirType::Int(IntWidth::I32))
+                );
+            }
+            other => panic!("expected Tuple for Node : {other:?}"),
+        }
     }
 
     #[test]
