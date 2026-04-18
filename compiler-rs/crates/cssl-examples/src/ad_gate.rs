@@ -1010,6 +1010,74 @@ fn build_chain_primal() -> MirFunc {
     f
 }
 
+/// Build the scalar-expanded sphere-SDF primal fn:
+///   `sphere_sdf_vec3(px, py, pz, r) = sqrt(px*px + py*py + pz*pz) - r`.
+///
+/// This represents the real `length(p) - r` signed-distance field for a
+/// sphere, expanded into scalar ops so the stage-0 MIR dual-substitution
+/// machinery (which doesn't yet know vec3) can differentiate it.
+///
+/// § Gradient (analytic)
+/// - ∂f/∂pᵢ = pᵢ / sqrt(px² + py² + pz²)  for each i ∈ {x, y, z}
+/// - ∂f/∂r = -1
+fn build_sphere_sdf_vec3_primal() -> MirFunc {
+    let f32 = MirType::Float(FloatWidth::F32);
+    let params = vec![f32.clone(), f32.clone(), f32.clone(), f32.clone()];
+    let mut f = MirFunc::new("sphere_sdf_vec3", params, vec![f32.clone()]);
+    // %0 = px, %1 = py, %2 = pz, %3 = r
+    let t1 = f.fresh_value_id(); // px * px
+    let t2 = f.fresh_value_id(); // py * py
+    let t3 = f.fresh_value_id(); // pz * pz
+    let s12 = f.fresh_value_id(); // t1 + t2
+    let s = f.fresh_value_id(); // s12 + t3
+    let len = f.fresh_value_id(); // sqrt(s)
+    let result = f.fresh_value_id(); // len - r
+    f.push_op(
+        MirOp::std("arith.mulf")
+            .with_operand(ValueId(0))
+            .with_operand(ValueId(0))
+            .with_result(t1, f32.clone()),
+    );
+    f.push_op(
+        MirOp::std("arith.mulf")
+            .with_operand(ValueId(1))
+            .with_operand(ValueId(1))
+            .with_result(t2, f32.clone()),
+    );
+    f.push_op(
+        MirOp::std("arith.mulf")
+            .with_operand(ValueId(2))
+            .with_operand(ValueId(2))
+            .with_result(t3, f32.clone()),
+    );
+    f.push_op(
+        MirOp::std("arith.addf")
+            .with_operand(t1)
+            .with_operand(t2)
+            .with_result(s12, f32.clone()),
+    );
+    f.push_op(
+        MirOp::std("arith.addf")
+            .with_operand(s12)
+            .with_operand(t3)
+            .with_result(s, f32.clone()),
+    );
+    f.push_op(
+        MirOp::std("func.call")
+            .with_operand(s)
+            .with_result(len, f32.clone())
+            .with_attribute("callee", "sqrt"),
+    );
+    f.push_op(
+        MirOp::std("arith.subf")
+            .with_operand(len)
+            .with_operand(ValueId(3))
+            .with_result(result, f32.clone()),
+    );
+    f.push_op(MirOp::std("func.return").with_operand(result));
+    f
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // § Killer-app gate entry-point + report.
 // ─────────────────────────────────────────────────────────────────────────
@@ -1177,6 +1245,44 @@ pub fn run_killer_app_gate() -> KillerAppGateReport {
                     ),
                 )),
             ],
+        ),
+        // § Vector-SDF (scalar-expanded) : f(px, py, pz, r) = sqrt(sum_sq) - r
+        //   ∂f/∂pᵢ = pᵢ / length(p) · d_y   ∂f/∂r = -d_y
+        verify_gradient_case(
+            "f(px, py, pz, r) = sqrt(px² + py² + pz²) - r  [vector-SDF scalar expansion]",
+            &build_sphere_sdf_vec3_primal(),
+            vec![
+                "px".to_string(),
+                "py".to_string(),
+                "pz".to_string(),
+                "r".to_string(),
+            ],
+            {
+                let len_sq = AnalyticExpr::add(
+                    AnalyticExpr::add(
+                        AnalyticExpr::mul(AnalyticExpr::v("px"), AnalyticExpr::v("px")),
+                        AnalyticExpr::mul(AnalyticExpr::v("py"), AnalyticExpr::v("py")),
+                    ),
+                    AnalyticExpr::mul(AnalyticExpr::v("pz"), AnalyticExpr::v("pz")),
+                );
+                let length = AnalyticExpr::Sqrt(Box::new(len_sq));
+                // ∂f/∂pᵢ = (pᵢ / length) · d_y  for i ∈ {x, y, z} ; ∂f/∂r = -d_y.
+                vec![
+                    AnalyticExpr::mul(
+                        AnalyticExpr::div(AnalyticExpr::v("px"), length.clone()),
+                        AnalyticExpr::v("d_y"),
+                    ),
+                    AnalyticExpr::mul(
+                        AnalyticExpr::div(AnalyticExpr::v("py"), length.clone()),
+                        AnalyticExpr::v("d_y"),
+                    ),
+                    AnalyticExpr::mul(
+                        AnalyticExpr::div(AnalyticExpr::v("pz"), length),
+                        AnalyticExpr::v("d_y"),
+                    ),
+                    AnalyticExpr::neg(AnalyticExpr::v("d_y")),
+                ]
+            },
         ),
     ];
     let total = cases.len();
@@ -2161,8 +2267,9 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         // The canonical gate covers 11 cases (5 arith + 5 transcendental + 1 chain).
-        assert_eq!(report.total, 11);
-        assert_eq!(report.passing, 11);
+        // 11 canonical + 1 vector-SDF scalar-expansion = 12.
+        assert_eq!(report.total, 12);
+        assert_eq!(report.passing, 12);
     }
 
     #[test]
@@ -2731,7 +2838,7 @@ mod tests {
         assert!(msg.starts_with(ATTESTATION_FORMAT));
         assert!(msg.contains("hash="));
         assert!(msg.contains(&signed.content_hash.hex()));
-        assert!(msg.contains("verdict=11/11/green"));
+        assert!(msg.contains("verdict=12/12/green"));
         assert!(msg.contains("vk="));
     }
 

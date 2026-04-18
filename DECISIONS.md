@@ -1867,3 +1867,25 @@ Each decision entry :
   - Higher-rank polymorphism : nested `Scheme` inside `Ty`, allowing `fn foo(f: forall<T>. T -> T) -> i32`.
   - Constraint-based inference : `T: Differentiable` bounds tracked + dispatched at instantiation.
   - Unification over mixed-scheme types (HM-style unification currently works on `Ty`, not `Scheme`).
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D10 : T7-phase-2f-vector-sdf — scalar-expanded vector-SDF gate case
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** The killer-app gate T7-D5 canonical cases covered 11 scalar primitives + chain-rule. The original F1 target (per `specs/05_AUTODIFF.csl` § SDF-NORMAL) is `length(p) - r` over `p : vec3` — the scalar surrogate `p - r` was a stand-in because MIR stage-0 doesn't yet have real vec3 lowering. This commit expands the vector-SDF to its scalar-components `(px, py, pz, r) → sqrt(px² + py² + pz²) - r` and verifies the real gradient `(px/|p|, py/|p|, pz/|p|, -1)` via the existing dual-substitution infrastructure. No new AnalyticExpr variants needed — the expansion composes existing Mul / Add / Sqrt / Sub / Div primitives.
+- **Slice landed (this commit)**
+  - `build_sphere_sdf_vec3_primal() -> MirFunc` : constructs a 4-param MirFunc `(px, py, pz, r) -> f32` with body `t1=px*px; t2=py*py; t3=pz*pz; s12=t1+t2; s=s12+t3; len=sqrt(s); result=len-r; return result`.
+  - `run_killer_app_gate` gains a 12th case : `f(px, py, pz, r) = sqrt(px² + py² + pz²) - r` with analytic gradients `∂f/∂pᵢ = (pᵢ / length) · d_y` for each i + `∂f/∂r = -d_y`.
+  - Updated `killer_app_gate_all_cases_pass` : expects `total == 12` + `passing == 12`.
+  - Updated `audit_message_contains_hash_and_verdict` : expects `"verdict=12/12/green"`.
+- **Consequences**
+  - Killer-app gate now covers the **real sphere-SDF gradient** in its scalar-expanded form (not just the `p - r` surrogate). This is the first case where MIR dual-substitution handles a composite expression with 7 primitive ops chained + Sqrt transcendental.
+  - R18 attestation bundle (T7-D9) now attests 12 cases, with the vector-SDF case being the most structurally complex.
+  - All 78 `ad_gate` tests still pass + workspace test count unchanged at 1159 (the new case doesn't add tests ; it adds a new entry to the gate).
+- **Deferred**
+  - Real vec3 AnalyticExpr variant (Vec3(px, py, pz) with per-component projection primitives) — enables `length` / `dot` / `normalize` as dedicated ops rather than scalar expansions.
+  - MIR vec3 lowering + tensor-shape tracking — required for non-expanded `length(p : vec3) - r` directly.
+  - Scene-SDF union / min : `min(sphere_sdf(p, r₀), sphere_sdf(p - c, r₁))` — requires monomorphization + piecewise-differentiable min-gradient dispatch (per `specs/05` § CONTROL-FLOW).
+  - Arc A770 driver-matrix bit-exact float comparison (T10-phase-2 FFI blocked on MSVC decision).

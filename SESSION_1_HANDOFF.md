@@ -4,7 +4,7 @@
 - **Session date** 2026-04-16 → 2026-04-17
 - **Coding agent** Claude.Opus.4.7-1M
 - **Prior handoff** `HANDOFF_SESSION_1.csl` (authoritative scope)
-- **Current task** Session-4 T3-D17 landed : **Scheme-based item-sigs + generic-fn fresh-var**. Retires the brittle single-cap-ident skolem heuristic for fn-generics. `TypingEnv::item_sigs` storage migrates `Ty → Scheme` ; new `register_item_scheme` + `item_scheme` polymorphic-aware APIs. `InferCtx::generics_map` tracks per-fn generic-param symbols → fresh `TyVar`s during signature lowering ; `fn_signature_scheme` builds rank-N schemes. `synth_expr_kind::Path` instantiates item-schemes at each call-site. 3 new tests (generic-fn-is-rank-1 / call-sites-get-fresh-vars / non-generic-is-monomorphic). Completes the HM let-gen arc T3-D14 → T3-D15 → T3-D17. 1159 tests / 0 failed / 0 clippy. Remaining : vector-SDF + T11-phase-2b + Arc A770.
+- **Current task** Session-4 T7-D10 landed : **vector-SDF scalar-expanded gate case**. Killer-app gate now covers the real sphere-SDF gradient `∂(length(p) - r)/∂p = normalize(p)` in its scalar-components form `(px, py, pz, r) → sqrt(px² + py² + pz²) - r`. No new AnalyticExpr variants needed — composition of existing Mul / Add / Sqrt / Sub / Div primitives verifies the full gradient `(px/|p|, py/|p|, pz/|p|, -1)·d_y` via MIR dual-substitution. `run_killer_app_gate` now has 12/12 cases ; R18 attestation bundle attests 12 cases. 1159 tests / 0 failed / 0 clippy. Remaining : T11-phase-2b oracle-bodies + real vec3 variant + scene-SDF monomorphization + Arc A770.
 
 ───────────────────────────────────────────────────────────────
 
