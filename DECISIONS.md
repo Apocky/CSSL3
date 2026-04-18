@@ -2640,3 +2640,39 @@ Each decision entry :
   - Bwd-mode integration : currently Fwd-only integration verified. Bwd has more complex multi-result returns (one adjoint per primal float-param).
   - Multi-fn scene : `@differentiable fn scene(a, b) { min(sphere_sdf(p, r0), sphere_sdf(p - c, r1)) }` — requires inter-fn JIT calls.
   - JIT multi-return : remove the tangent-only stripping by supporting multi-result fns via Cranelift native multi-return.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D24 : JIT intrinsic func.call + source-driven scene-SDF min/max/abs gradients
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D23 closed the full chain for `p - r` and `a * b` — arithmetic-only AD gradients via source-driven pipeline + JIT. Scene-SDF primitives (`min` / `max` / `abs`) are emitted by `body_lower` as `func.call callee=<intrinsic>` which the JIT rejected. This slice adds intrinsic dispatch to the JIT and fixes a type-propagation bug in `body_lower` so walker-emitted successor ops get correctly-typed.
+- **Two changes**
+  1. **JIT intrinsic dispatch** : `lower_op_to_cl` now handles `func.call` for a fixed set of math intrinsics, mapping them to cranelift native instructions :
+     - `min` / `math.min` / `fmin` → cranelift `fmin`
+     - `max` / `math.max` / `fmax` → cranelift `fmax`
+     - `abs` / `math.abs` / `fabs` / `math.absf` → cranelift `fabs`
+     - `sqrt` / `math.sqrt` / `sqrtf` / `math.sqrtf` → cranelift `sqrt`
+     - `neg` / `fneg` → cranelift `fneg`
+     - `sin` / `cos` / `exp` / `log` → explicit `UnsupportedMirOp` (need libm externs)
+     - user-defined callees → explicit `UnsupportedMirOp` (T11-D26 candidate)
+  2. **body_lower type inference for intrinsic calls** : `lower_call` previously emitted `MirType::Opaque("!cssl.call_result.<callee>")` for all func.calls regardless of callee. For known-intrinsic unary/binary math fns, the result-type equals operand[0]'s type. New helper `infer_intrinsic_result_type(callee, &operand_tys)` returns `Some(operand_tys[0].clone())` for the known-intrinsic set, falling back to opaque for user-defined fns. This fixes walker-emitted `arith.constant` ops in e.g. `emit_abs_fwd` which otherwise inherit the opaque type and fail JIT lowering.
+- **Slice landed (this commit)**
+  - `cssl-cgen-cpu-cranelift/src/jit.rs` : `lower_intrinsic_call` helper + dispatch at `func.call` site.
+  - `cssl-mir/src/body_lower.rs::lower_call` : collects operand types ; new `infer_intrinsic_result_type` helper.
+  - 3 new tests in `cssl-examples/src/jit_chain.rs` :
+    - `full_chain_source_scene_sdf_min_runtime_gradient` : CSSLv3 `@differentiable fn scene(a, b) { min(a, b) }` → full pipeline → JIT primal + tangent. Verifies exact gradients at `(3, 5)` and `(8, 2)` (pick-the-winner semantics), plus central-difference agreement at 5 sample points.
+    - `full_chain_source_scene_sdf_max_runtime_gradient` : symmetric max test.
+    - `full_chain_source_scene_sdf_abs_runtime_gradient` : `abs(a)` unary scene-SDF, verifies ∂|a|/∂a = sign(a) for positive + negative inputs.
+- **Consequences**
+  - Test count : 1356 → 1359 (+3 in cssl-examples).
+  - **Piecewise-linear scene-SDF primitives** now complete the source → JIT chain : `min`, `max`, `abs` user-authored in CSSLv3 source compile and JIT-execute with verified gradients.
+  - The intrinsic dispatch is **extensible** — adding libm-backed transcendentals (sin/cos/exp/log) is a future slice where we declare Cranelift extern decls + link against libm.
+  - body_lower's type inference now carries operand types through intrinsic-call emission — this is a general-purpose improvement that benefits other compiler phases, not just AD.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred (T11-D25+)**
+  - **Bwd-mode full-chain integration** : T11-D23 verifies Fwd-mode only. Bwd (reverse-mode adjoint) has signature `(primal_params ++ [d_y]) -> (adjoint_1, ..., adjoint_n)` — one adjoint per primal float-param. More complex multi-result handling.
+  - Multi-fn scene SDFs : `@differentiable fn scene(p, r0, r1) { min(sphere_sdf(p, r0), sphere_sdf(p, r1)) }` — inter-fn JIT calls.
+  - JIT native multi-return : remove the tangent-only stripping in `extract_tangent_only_variant`.
+  - libm-backed transcendentals : cranelift extern decl + dynamic link.

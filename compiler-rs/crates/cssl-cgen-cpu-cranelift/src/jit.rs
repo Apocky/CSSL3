@@ -588,6 +588,7 @@ fn lower_op_to_cl(
         "arith.cmpf" => lower_cmpf(op, builder, value_map, fn_name),
         "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
         "arith.select" => lower_select(op, builder, value_map, fn_name),
+        "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name),
         "func.return" => {
             let args: Result<Vec<_>, _> = op
                 .operands
@@ -719,6 +720,59 @@ fn lower_cmpi(
     emit_binary(op, builder, value_map, fn_name, |b, a, c| {
         b.ins().icmp(cc, a, c)
     })
+}
+
+/// Lower `func.call` whose callee is a recognized intrinsic — map to a
+/// cranelift intrinsic instruction. Covers the math fns the AD walker
+/// specializes via `specialize_transcendental` :
+///   `min` / `math.min` / `fmin` → `fmin`
+///   `max` / `math.max` / `fmax` → `fmax`
+///   `abs` / `math.abs` / `fabs` → `fabs`
+///   `sqrt` / `math.sqrt` / `sqrtf` → `sqrt`
+///   `neg` → `fneg`
+/// User-defined inter-fn calls are not yet JIT-able ; they return
+/// [`JitError::UnsupportedMirOp`].
+fn lower_intrinsic_call(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let (_, callee) = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "callee")
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "func.call missing `callee` attribute".to_string(),
+        })?;
+    let callee_str = callee.as_str();
+    match callee_str {
+        "min" | "math.min" | "fmin" => emit_binary(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().fmin(a, c)
+        }),
+        "max" | "math.max" | "fmax" => emit_binary(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().fmax(a, c)
+        }),
+        "abs" | "math.abs" | "fabs" | "math.absf" => {
+            emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fabs(a))
+        }
+        "sqrt" | "math.sqrt" | "sqrtf" | "math.sqrtf" => {
+            emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().sqrt(a))
+        }
+        "neg" | "fneg" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
+        // Transcendentals : no direct cranelift instruction. Would need an
+        // extern libm call — stage-0 defers this.
+        "sin" | "cos" | "exp" | "log" | "ln" | "math.sin" | "math.cos" | "math.exp"
+        | "math.log" => Err(JitError::UnsupportedMirOp {
+            fn_name: fn_name.to_string(),
+            op_name: format!("func.call callee=`{callee_str}` (transcendental ; needs libm)"),
+        }),
+        _ => Err(JitError::UnsupportedMirOp {
+            fn_name: fn_name.to_string(),
+            op_name: format!("func.call callee=`{callee_str}` (inter-fn calls T11-D26+)"),
+        }),
+    }
 }
 
 /// Lower `arith.select %cond, %t, %f` → cranelift `select cond, t, f`.

@@ -275,4 +275,182 @@ mod tests {
             .unwrap();
         assert!((t_b - 3.0).abs() < 1e-5, "∂/∂b : expected 3.0 got {t_b}");
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D24 : source-driven scene-SDF via func.call intrinsics
+    //   (min / max / abs / sqrt) — the AD-walker-emitted fwd variant runs
+    //   end-to-end against central-differences on real piecewise-linear ops.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_chain_source_scene_sdf_min_runtime_gradient() {
+        // ═══════════════════════════════════════════════════════════════════
+        // § T11-D24 KILLER TEST : CSSLv3 source w/ `min` intrinsic → full
+        //   pipeline → JIT-compiled primal + tangent → gradient verified
+        //   against central-differences at sample points.
+        //
+        //   The tangent body contains cmpf + select (T11-D15 emission).
+        //   The primal body contains func.call callee=min (JIT intrinsic).
+        //   Both are runtime-executable.
+        // ═══════════════════════════════════════════════════════════════════
+        let src = r"@differentiable fn scene(a : f32, b : f32) -> f32 { min(a, b) }";
+        let module = pipeline_source_to_ad_mir("scene_min", src);
+        let primal = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene")
+            .expect("primal scene");
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene_fwd")
+            .expect("scene_fwd");
+        let tangent_only = extract_tangent_only_variant(fwd);
+
+        let mut m = JitModule::new();
+        let primal_h = m.compile(primal).expect("JIT primal min");
+        let tangent_h = m.compile(&tangent_only).expect("JIT tangent");
+        m.finalize().expect("finalize");
+
+        // Sanity : primal min(3, 5) = 3.
+        let v = primal_h.call_f32_f32_to_f32(3.0, 5.0, &m).unwrap();
+        assert!((v - 3.0).abs() < 1e-6, "primal: expected 3.0, got {v}");
+        let v2 = primal_h.call_f32_f32_to_f32(7.0, 2.0, &m).unwrap();
+        assert!((v2 - 2.0).abs() < 1e-6, "primal: expected 2.0, got {v2}");
+
+        // Tangent sanity : min's gradient is pick-the-winner.
+        // (a=3, b=5) : a < b, so min = a. ∂min/∂a = 1, ∂min/∂b = 0.
+        let t_a = tangent_h
+            .call_f32_f32_f32_f32_to_f32(3.0, 1.0, 5.0, 0.0, &m)
+            .unwrap();
+        let t_b = tangent_h
+            .call_f32_f32_f32_f32_to_f32(3.0, 0.0, 5.0, 1.0, &m)
+            .unwrap();
+        assert!(
+            (t_a - 1.0).abs() < 1e-6,
+            "∂/∂a @ (3, 5) : expected 1.0, got {t_a}"
+        );
+        assert!(t_b.abs() < 1e-6, "∂/∂b @ (3, 5) : expected 0.0, got {t_b}");
+
+        // (a=8, b=2) : a > b, so min = b. ∂min/∂a = 0, ∂min/∂b = 1.
+        let t_a2 = tangent_h
+            .call_f32_f32_f32_f32_to_f32(8.0, 1.0, 2.0, 0.0, &m)
+            .unwrap();
+        let t_b2 = tangent_h
+            .call_f32_f32_f32_f32_to_f32(8.0, 0.0, 2.0, 1.0, &m)
+            .unwrap();
+        assert!(
+            t_a2.abs() < 1e-6,
+            "∂/∂a @ (8, 2) : expected 0.0, got {t_a2}"
+        );
+        assert!(
+            (t_b2 - 1.0).abs() < 1e-6,
+            "∂/∂b @ (8, 2) : expected 1.0, got {t_b2}"
+        );
+
+        // Central-differences cross-check across 5 sample points (cusp-avoided).
+        let h = 1e-3_f32;
+        let samples: &[(f32, f32)] = &[
+            (3.0, 5.0),
+            (5.0, 3.0),
+            (-1.0, 4.0),
+            (2.5, -0.5),
+            (10.0, -3.7),
+        ];
+        for &(a, b) in samples {
+            let t_a = tangent_h
+                .call_f32_f32_f32_f32_to_f32(a, 1.0, b, 0.0, &m)
+                .unwrap();
+            let plus = primal_h.call_f32_f32_to_f32(a + h, b, &m).unwrap();
+            let minus = primal_h.call_f32_f32_to_f32(a - h, b, &m).unwrap();
+            let num_a = (plus - minus) / (2.0 * h);
+            assert!(
+                (t_a - num_a).abs() < 1e-3,
+                "∂/∂a mismatch @ ({a}, {b}) : JIT={t_a} vs central={num_a}"
+            );
+
+            let t_b = tangent_h
+                .call_f32_f32_f32_f32_to_f32(a, 0.0, b, 1.0, &m)
+                .unwrap();
+            let plus_b = primal_h.call_f32_f32_to_f32(a, b + h, &m).unwrap();
+            let minus_b = primal_h.call_f32_f32_to_f32(a, b - h, &m).unwrap();
+            let num_b = (plus_b - minus_b) / (2.0 * h);
+            assert!(
+                (t_b - num_b).abs() < 1e-3,
+                "∂/∂b mismatch @ ({a}, {b}) : JIT={t_b} vs central={num_b}"
+            );
+        }
+    }
+
+    #[test]
+    fn full_chain_source_scene_sdf_max_runtime_gradient() {
+        let src = r"@differentiable fn scene(a : f32, b : f32) -> f32 { max(a, b) }";
+        let module = pipeline_source_to_ad_mir("scene_max", src);
+        let primal = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene")
+            .expect("primal");
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene_fwd")
+            .expect("fwd");
+        let tangent_only = extract_tangent_only_variant(fwd);
+        let mut m = JitModule::new();
+        let primal_h = m.compile(primal).unwrap();
+        let tangent_h = m.compile(&tangent_only).unwrap();
+        m.finalize().unwrap();
+
+        assert!((primal_h.call_f32_f32_to_f32(3.0, 5.0, &m).unwrap() - 5.0).abs() < 1e-6);
+        // max(3, 5) = 5 ⇒ ∂/∂a = 0, ∂/∂b = 1.
+        let t_a = tangent_h
+            .call_f32_f32_f32_f32_to_f32(3.0, 1.0, 5.0, 0.0, &m)
+            .unwrap();
+        let t_b = tangent_h
+            .call_f32_f32_f32_f32_to_f32(3.0, 0.0, 5.0, 1.0, &m)
+            .unwrap();
+        assert!(t_a.abs() < 1e-6);
+        assert!((t_b - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn full_chain_source_scene_sdf_abs_runtime_gradient() {
+        let src = r"@differentiable fn scene(a : f32) -> f32 { abs(a) }";
+        let module = pipeline_source_to_ad_mir("scene_abs", src);
+        let primal = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene")
+            .expect("primal");
+        let fwd = module
+            .funcs
+            .iter()
+            .find(|f| f.name == "scene_fwd")
+            .expect("fwd");
+        let tangent_only = extract_tangent_only_variant(fwd);
+        let mut m = JitModule::new();
+        let primal_h = m.compile(primal).unwrap();
+        let tangent_h = m.compile(&tangent_only).unwrap();
+        m.finalize().unwrap();
+
+        // Primal : |3| = 3, |-4| = 4.
+        assert!((primal_h.call_f32_to_f32(3.0, &m).unwrap() - 3.0).abs() < 1e-6);
+        assert!((primal_h.call_f32_to_f32(-4.0, &m).unwrap() - 4.0).abs() < 1e-6);
+
+        // Tangent : sig is (a: f32, d_a: f32) -> f32. ∂|a|/∂a = sign(a) (except at 0).
+        // JitFn::call_f32_f32_to_f32 works for 2-arg fn.
+        // For a > 0 : d_|a|/d_a · d_a = 1 · d_a = d_a.
+        let t_pos = tangent_h.call_f32_f32_to_f32(3.0, 1.0, &m).unwrap();
+        assert!(
+            (t_pos - 1.0).abs() < 1e-6,
+            "∂|a|/∂a @ a=3 : expected 1.0, got {t_pos}"
+        );
+        // For a < 0 : d_|a|/d_a = -1, so tangent = -1 · d_a = -1.
+        let t_neg = tangent_h.call_f32_f32_to_f32(-4.0, 1.0, &m).unwrap();
+        assert!(
+            (t_neg - (-1.0)).abs() < 1e-6,
+            "∂|a|/∂a @ a=-4 : expected -1.0, got {t_neg}"
+        );
+    }
 }

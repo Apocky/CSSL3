@@ -1125,18 +1125,26 @@ fn lower_call(
             "cssl.call_indirect".to_string()
         }
     };
-    // Lower each arg ; collect operand value-ids.
+    // Lower each arg ; collect operand value-ids + types (arg-type needed
+    // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
+    let mut operand_tys: Vec<MirType> = Vec::with_capacity(args.len());
     for arg in args {
         let a_expr = match arg {
             HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
         };
-        if let Some((id, _)) = lower_expr(ctx, a_expr) {
+        if let Some((id, ty)) = lower_expr(ctx, a_expr) {
             operand_ids.push(id);
+            operand_tys.push(ty);
         }
     }
-    // Emit `func.call @target` op. Stage-0 assumes single opaque result-type.
-    let result_ty = MirType::Opaque(format!("!cssl.call_result.{target}"));
+    // Emit `func.call @target` op. For known-intrinsic math callees
+    // (min/max/abs/sqrt/sin/cos/exp/log), infer the result type from the
+    // first operand's type — same type as input. This lets downstream JIT /
+    // AD walker emit correctly-typed successor ops (e.g., `arith.constant
+    // 0.0 : f32` for abs-fwd instead of an opaque-typed constant).
+    let result_ty = infer_intrinsic_result_type(&target, &operand_tys)
+        .unwrap_or_else(|| MirType::Opaque(format!("!cssl.call_result.{target}")));
     let id = ctx.fresh_value_id();
     let mut mir_op = MirOp::std("func.call")
         .with_attribute("callee", target)
@@ -1148,6 +1156,23 @@ fn lower_call(
     ctx.ops.push(mir_op);
     let _ = span;
     Some((id, result_ty))
+}
+
+/// Known math-intrinsic callees whose result-type equals the first operand's
+/// type (scalar-unary + scalar-binary math). Returns `None` for user-defined
+/// or unknown callees — caller falls back to the opaque-result-type stub.
+fn infer_intrinsic_result_type(callee: &str, operand_tys: &[MirType]) -> Option<MirType> {
+    if operand_tys.is_empty() {
+        return None;
+    }
+    let first = operand_tys[0].clone();
+    match callee {
+        "min" | "max" | "abs" | "sign" | "sqrt" | "sin" | "cos" | "exp" | "log" | "ln" | "fmin"
+        | "fmax" | "fabs" | "signum" | "sqrtf" | "math.min" | "math.max" | "math.abs"
+        | "math.sign" | "math.sqrt" | "math.sin" | "math.cos" | "math.exp" | "math.log"
+        | "math.absf" | "math.sqrtf" => Some(first),
+        _ => None,
+    }
 }
 
 fn lower_if(
