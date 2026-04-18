@@ -64,6 +64,14 @@ pub enum Primitive {
     If,
     /// `for`/`while`/`loop` — differentiable if body is differentiable + bounded.
     Loop,
+    /// `min(a, b)` — piecewise-linear ; subgradient at cusp `a == b`.
+    Min,
+    /// `max(a, b)` — piecewise-linear ; subgradient at cusp `a == b`.
+    Max,
+    /// `|a|` absolute value — piecewise-linear ; subgradient at 0.
+    Abs,
+    /// `sign(a) ∈ {-1, 0, +1}` — discontinuous at 0 ; gradient = 0 elsewhere.
+    Sign,
 }
 
 impl Primitive {
@@ -86,11 +94,15 @@ impl Primitive {
             Self::Store => "store",
             Self::If => "if",
             Self::Loop => "loop",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::Abs => "abs",
+            Self::Sign => "sign",
         }
     }
 
-    /// All 15 primitives in canonical order.
-    pub const ALL: [Self; 15] = [
+    /// All 19 primitives in canonical order.
+    pub const ALL: [Self; 19] = [
         Self::FAdd,
         Self::FSub,
         Self::FMul,
@@ -106,6 +118,10 @@ impl Primitive {
         Self::Store,
         Self::If,
         Self::Loop,
+        Self::Min,
+        Self::Max,
+        Self::Abs,
+        Self::Sign,
     ];
 }
 
@@ -206,6 +222,35 @@ impl DiffRuleTable {
             DiffMode::Bwd,
             "reverse iteration over saved tape",
         );
+        // Piecewise-linear min/max : gradient is pick-the-winner ; at cusp a==b
+        // the subgradient is [0, 1] ; stage-0 picks `a` by convention.
+        t.insert(
+            Primitive::Min,
+            DiffMode::Fwd,
+            "dy = if x_0 <= x_1 { dx_0 } else { dx_1 }",
+        );
+        t.insert(
+            Primitive::Min,
+            DiffMode::Bwd,
+            "if x_0 <= x_1 { d_x0 += dy } else { d_x1 += dy }",
+        );
+        t.insert(
+            Primitive::Max,
+            DiffMode::Fwd,
+            "dy = if x_0 >= x_1 { dx_0 } else { dx_1 }",
+        );
+        t.insert(
+            Primitive::Max,
+            DiffMode::Bwd,
+            "if x_0 >= x_1 { d_x0 += dy } else { d_x1 += dy }",
+        );
+        // Abs : derivative = sign(x) ; subgradient [-1, 1] at x=0, stage-0 picks 0.
+        t.insert(Primitive::Abs, DiffMode::Fwd, "dy = sign(x) * dx");
+        t.insert(Primitive::Abs, DiffMode::Bwd, "d_x += sign(x) * dy");
+        // Sign : derivative = 0 everywhere except 0, where it's undefined ;
+        // stage-0 treats the entire function as zero-gradient for AD purposes.
+        t.insert(Primitive::Sign, DiffMode::Fwd, "dy = 0");
+        t.insert(Primitive::Sign, DiffMode::Bwd, "d_x += 0");
         t
     }
 
@@ -262,15 +307,15 @@ mod tests {
     }
 
     #[test]
-    fn all_fifteen_primitives() {
-        assert_eq!(Primitive::ALL.len(), 15);
+    fn all_nineteen_primitives() {
+        assert_eq!(Primitive::ALL.len(), 19);
     }
 
     #[test]
-    fn canonical_table_covers_arith_and_transcendentals() {
+    fn canonical_table_covers_arith_transcendentals_and_piecewise() {
         let t = DiffRuleTable::canonical();
-        // Fwd + Bwd for each of the 15 primitives = 30 rules.
-        assert_eq!(t.len(), 30);
+        // Fwd + Bwd for each of the 19 primitives = 38 rules.
+        assert_eq!(t.len(), 38);
     }
 
     #[test]
@@ -325,5 +370,68 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), before);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Min / Max / Abs / Sign piecewise AD rules (T11-D13).
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn min_fwd_rule_picks_winning_branch() {
+        let t = DiffRuleTable::canonical();
+        let r = t.lookup(Primitive::Min, DiffMode::Fwd).unwrap();
+        assert!(r.recipe.contains("x_0 <= x_1"));
+        assert!(r.recipe.contains("dx_0"));
+        assert!(r.recipe.contains("dx_1"));
+    }
+
+    #[test]
+    fn min_bwd_rule_routes_adjoint_to_winner() {
+        let t = DiffRuleTable::canonical();
+        let r = t.lookup(Primitive::Min, DiffMode::Bwd).unwrap();
+        assert!(r.recipe.contains("d_x0 += dy"));
+        assert!(r.recipe.contains("d_x1 += dy"));
+    }
+
+    #[test]
+    fn max_fwd_rule_picks_max_branch() {
+        let t = DiffRuleTable::canonical();
+        let r = t.lookup(Primitive::Max, DiffMode::Fwd).unwrap();
+        assert!(r.recipe.contains("x_0 >= x_1"));
+    }
+
+    #[test]
+    fn abs_fwd_rule_uses_sign() {
+        let t = DiffRuleTable::canonical();
+        let r = t.lookup(Primitive::Abs, DiffMode::Fwd).unwrap();
+        assert!(r.recipe.contains("sign(x)"));
+        assert!(r.recipe.contains("dx"));
+    }
+
+    #[test]
+    fn sign_fwd_rule_is_zero_gradient() {
+        let t = DiffRuleTable::canonical();
+        let r = t.lookup(Primitive::Sign, DiffMode::Fwd).unwrap();
+        assert!(r.recipe.contains("dy = 0"));
+    }
+
+    #[test]
+    fn piecewise_primitives_have_both_modes() {
+        let t = DiffRuleTable::canonical();
+        for prim in [
+            Primitive::Min,
+            Primitive::Max,
+            Primitive::Abs,
+            Primitive::Sign,
+        ] {
+            assert!(
+                t.lookup(prim, DiffMode::Fwd).is_some(),
+                "missing Fwd for {prim:?}"
+            );
+            assert!(
+                t.lookup(prim, DiffMode::Bwd).is_some(),
+                "missing Bwd for {prim:?}"
+            );
+        }
     }
 }

@@ -2227,3 +2227,37 @@ Each decision entry :
   - N-ary sharp vs smooth selection based on runtime `k` — e.g., `AnalyticExpr::smooth_or_sharp(k_expr, …)` that chooses smooth for finite k and sharp for ∞.
   - Commutativity-exploiting reduction tree — current `reduce` is left-associative ; a balanced tree would have better SMT-query depth characteristics.
   - Real MIR `MinN` / `MaxN` primitives — today's N-ary fold lowers to binary-Min/Max ops in MIR once those land.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D13 : Primitive Min/Max/Abs/Sign + piecewise-AD rule entries
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D10 + T11-D11 landed `Min` / `Max` / `Abs` / `Sign` variants at the `AnalyticExpr` test-algebra layer. This slice propagates them into `cssl_autodiff::Primitive` + the canonical `DiffRuleTable` so the AD walker recognizes them as first-class primitives at the MIR level. MIR substitution emits stage-0 `cssl.diff.{fwd,bwd}_placeholder` ops carrying the recipe ; full subgradient emission (runtime pick-the-winner + sign(x) chain) is deferred to phase-2d once MIR has conditional-branch ops usable in adjoint bodies.
+- **Slice landed (this commit)**
+  - `cssl_autodiff::Primitive` enum gains four variants : `Min`, `Max`, `Abs`, `Sign`. `ALL` array bumped to 19 entries.
+  - `Primitive::name()` returns `"min"` / `"max"` / `"abs"` / `"sign"`.
+  - `DiffRuleTable::canonical()` gains 8 new entries (Fwd + Bwd per primitive) :
+    - `Min Fwd` : `dy = if x_0 <= x_1 { dx_0 } else { dx_1 }`
+    - `Min Bwd` : `if x_0 <= x_1 { d_x0 += dy } else { d_x1 += dy }`
+    - `Max Fwd/Bwd` : symmetric with `>=`.
+    - `Abs Fwd` : `dy = sign(x) * dx`
+    - `Abs Bwd` : `d_x += sign(x) * dy`
+    - `Sign Fwd/Bwd` : `dy = 0` / `d_x += 0` (zero-gradient by convention ; derivative is undefined at 0 and zero elsewhere).
+  - `substitute.rs` : extended the Fwd + Bwd placeholder-emitter fallback to cover the new primitives. They emit `cssl.diff.fwd_placeholder` / `cssl.diff.bwd_placeholder` ops with `primitive` + `recipe` attributes — the same stage-0 placeholder path already used for `Call` / `Load` / `Store` / `If` / `Loop`. Full substitution to runtime-branching adjoint bodies is phase-2d.
+  - Tests updated :
+    - `all_fifteen_primitives` → `all_nineteen_primitives`.
+    - `canonical_table_covers_arith_and_transcendentals` → `..._and_piecewise` (expects 38 rules).
+    - `transform::rules_table_pre_populated` — expects 38 rules.
+  - 6 new tests : Min/Max Fwd recipes contain the conditional form ; Abs Fwd uses `sign(x)` ; Sign Fwd is `dy = 0` ; every piecewise primitive has both Fwd + Bwd modes registered.
+- **Consequences**
+  - Test count : 1307 → 1313 (+6 in cssl-autodiff).
+  - The AD walker now recognizes `min` / `max` / `abs` / `sign` MIR ops (emitted as `std("cssl.math.min")` etc. when body-lowering lands them). At the walker level, they count as matched primitives with recipes — downstream consumers can introspect `diff_role="adjoint"` attrs.
+  - Scene-SDF AD verification at the MIR level is now partially unblocked : the rule-table has the entries, the placeholders emit. Remaining : body-lower recognizes `math.min` / `math.max` / `math.abs` calls + the placeholders upgrade to real branchful adjoint bodies.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref (cssl-autodiff 63 tests pass).
+- **Deferred**
+  - Full subgradient emission for Min/Max : replace `fwd_placeholder` with `arith.cmpf` + `arith.select` ops so the Fwd rule produces a real branchful tangent. Requires that cssl-autodiff be able to emit `scf.if` / `arith.select` ops (presently only emits std placeholders for control-flow-involving primitives).
+  - Real `sign(x) * dx` emission for Abs — needs MIR `math.sign` op + chained Mul.
+  - Smooth-min Primitive variant or lowered-form-recognition so `smooth_min(a, b, k)` differentiates via `Exp` + `Log` chain-rule rather than needing dedicated primitive.
+  - body_lower.rs mapping `math.min` HIR call-expr → `Primitive::Min` MIR op recognition — currently relies on `Call` primitive with `callee="min"` attribute.

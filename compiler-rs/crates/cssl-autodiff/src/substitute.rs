@@ -468,7 +468,15 @@ fn emit_fwd_tangent_ops(
         // Call / Load / Store / If / Loop — stage-0 emits a structural placeholder
         // that carries the recipe attribute. Full expansion is phase-2c (requires
         // tape / callee-variant resolution / region traversal).
-        Primitive::Call | Primitive::Load | Primitive::Store | Primitive::If | Primitive::Loop => {
+        Primitive::Call
+        | Primitive::Load
+        | Primitive::Store
+        | Primitive::If
+        | Primitive::Loop
+        | Primitive::Min
+        | Primitive::Max
+        | Primitive::Abs
+        | Primitive::Sign => {
             let d_y = fresh_id(next_id);
             tangent_map.insert(primal_result_id, d_y);
             vec![MirOp::std("cssl.diff.fwd_placeholder")
@@ -941,8 +949,20 @@ fn emit_bwd_adjoint_ops(
         Primitive::Exp => emit_bwd_exp(op, primal_result_id, &result_ty, d_y, tangent_map, next_id),
         // y = log(a)  ⇒  d_a += d_y / a
         Primitive::Log => emit_bwd_log(op, &result_ty, d_y, tangent_map, next_id),
-        // Control / call / memory : stage-0 placeholder + recipe.
-        Primitive::Call | Primitive::Load | Primitive::Store | Primitive::If | Primitive::Loop => {
+        // Control / call / memory / piecewise : stage-0 placeholder + recipe.
+        // Min/Max/Abs : piecewise-linear ; full subgradient emission is phase-2d
+        //   (requires runtime pick-the-winner or sign(x) lookup in adjoint body).
+        // Sign : derivative = 0 everywhere except 0 ; stage-0 emits placeholder
+        //   so the AD walker tracks it as a matched primitive with zero-gradient recipe.
+        Primitive::Call
+        | Primitive::Load
+        | Primitive::Store
+        | Primitive::If
+        | Primitive::Loop
+        | Primitive::Min
+        | Primitive::Max
+        | Primitive::Abs
+        | Primitive::Sign => {
             vec![MirOp::std("cssl.diff.bwd_placeholder")
                 .with_operand(d_y)
                 .with_attribute("primitive", prim.name())

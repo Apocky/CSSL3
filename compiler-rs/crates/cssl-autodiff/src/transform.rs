@@ -152,7 +152,8 @@ mod tests {
     fn rules_table_pre_populated() {
         let interner = cssl_hir::Interner::new();
         let tx = DiffTransform::new(&interner);
-        assert_eq!(tx.rules.len(), 30);
+        // 19 primitives × 2 modes (Fwd + Bwd) = 38 rules.
+        assert_eq!(tx.rules.len(), 38);
     }
 
     #[test]
