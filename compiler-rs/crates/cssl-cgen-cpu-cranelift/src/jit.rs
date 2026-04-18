@@ -366,12 +366,13 @@ impl JitModule {
         self.codegen_ctx.func.signature = sig.clone();
         self.codegen_ctx.func.name = UserFuncName::user(0, func_id.as_u32());
 
-        // T11-D26 : pre-scan body ops for `func.call` with user-defined
-        // callees — for each one found in `self.fn_table` (meaning it was
-        // previously `compile`d), declare it as an external fn visible to
-        // this fn via `declare_func_in_func`. The resulting FuncRef map is
-        // passed to the body lowering so inter-fn calls emit real
-        // cranelift `call` instructions.
+        // T11-D26 / T11-D29 : pre-scan body ops for `func.call` with callees :
+        //   - User-defined callees found in `self.fn_table` → declare_func_in_func
+        //     to make the previously-compiled fn visible to this caller.
+        //   - Transcendental callees (sin/cos/exp/log) → declare as external
+        //     `Linkage::Import` fns (sinf/cosf/expf/logf from libm) + ref-in-func.
+        //   - Other intrinsics (min/max/abs/sqrt/fneg) are inlined as cranelift
+        //     instructions directly — no FuncRef needed.
         let callee_refs = {
             let mut refs: HashMap<String, cranelift_codegen::ir::FuncRef> = HashMap::new();
             if let Some(entry_block) = primal.body.blocks.first() {
@@ -380,13 +381,32 @@ impl JitModule {
                         if let Some((_, callee)) = op.attributes.iter().find(|(k, _)| k == "callee")
                         {
                             let callee_name = callee.clone();
-                            if is_intrinsic_callee(&callee_name) {
+                            if refs.contains_key(&callee_name) {
                                 continue;
                             }
+                            // Transcendental : declare libm extern.
+                            if let Some(libm_sym) = transcendental_extern_name(&callee_name) {
+                                let mut transc_sig = Signature::new(call_conv);
+                                transc_sig.params.push(AbiParam::new(cl_types::F32));
+                                transc_sig.returns.push(AbiParam::new(cl_types::F32));
+                                let extern_id = module
+                                    .declare_function(libm_sym, Linkage::Import, &transc_sig)
+                                    .map_err(|e| JitError::LoweringFailed {
+                                        fn_name: primal.name.clone(),
+                                        detail: format!("declare libm `{libm_sym}` : {e}"),
+                                    })?;
+                                let fref = module
+                                    .declare_func_in_func(extern_id, &mut self.codegen_ctx.func);
+                                refs.insert(callee_name, fref);
+                                continue;
+                            }
+                            // Other intrinsic (min/max/abs/sqrt/fneg) : inlined
+                            // as cranelift-native insts — skip.
+                            if is_inline_intrinsic_callee(&callee_name) {
+                                continue;
+                            }
+                            // User-defined : look up in fn_table.
                             if let Some((callee_id, _)) = self.fn_table.get(&callee_name) {
-                                if refs.contains_key(&callee_name) {
-                                    continue;
-                                }
                                 let fref = module
                                     .declare_func_in_func(*callee_id, &mut self.codegen_ctx.func);
                                 refs.insert(callee_name, fref);
@@ -823,13 +843,39 @@ fn lower_intrinsic_call(
             emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().sqrt(a))
         }
         "neg" | "fneg" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
-        // Transcendentals : no direct cranelift instruction. Would need an
-        // extern libm call — stage-0 defers this.
+        // Transcendentals : emit call to libm extern declared in the pre-scan
+        // (sinf/cosf/expf/logf). Sig is `(f32) -> f32`.
         "sin" | "cos" | "exp" | "log" | "ln" | "math.sin" | "math.cos" | "math.exp"
-        | "math.log" => Err(JitError::UnsupportedMirOp {
-            fn_name: fn_name.to_string(),
-            op_name: format!("func.call callee=`{callee_str}` (transcendental ; needs libm)"),
-        }),
+        | "math.log" => {
+            if let Some(&func_ref) = callee_refs.get(callee_str) {
+                let a = op
+                    .operands
+                    .first()
+                    .ok_or_else(|| JitError::LoweringFailed {
+                        fn_name: fn_name.to_string(),
+                        detail: format!("{callee_str} : no operand"),
+                    })?;
+                let v = *value_map.get(a).ok_or_else(|| JitError::LoweringFailed {
+                    fn_name: fn_name.to_string(),
+                    detail: format!("{callee_str} : unknown operand ValueId({})", a.0),
+                })?;
+                let inst = builder.ins().call(func_ref, &[v]);
+                let results = builder.inst_results(inst);
+                if let Some(r) = op.results.first() {
+                    if let Some(&first_res) = results.first() {
+                        value_map.insert(r.id, first_res);
+                    }
+                }
+                Ok(false)
+            } else {
+                Err(JitError::LoweringFailed {
+                    fn_name: fn_name.to_string(),
+                    detail: format!(
+                        "transcendental `{callee_str}` : libm extern not declared (pre-scan bug)"
+                    ),
+                })
+            }
+        }
         _ => {
             // T11-D26 : user-defined callee — look up the pre-declared FuncRef
             // and emit a cranelift `call` to it.
@@ -867,9 +913,15 @@ fn lower_intrinsic_call(
 }
 
 /// Return `true` if the callee name is a recognized math intrinsic handled
-/// directly by `lower_intrinsic_call`. Used by the compile pre-scan to skip
-/// `declare_func_in_func` for intrinsics.
-fn is_intrinsic_callee(name: &str) -> bool {
+/// directly by `lower_intrinsic_call`. Public for test introspection.
+#[must_use]
+pub fn is_intrinsic_callee(name: &str) -> bool {
+    is_inline_intrinsic_callee(name) || transcendental_extern_name(name).is_some()
+}
+
+/// Intrinsics that `lower_intrinsic_call` emits as direct cranelift insts
+/// (no extern needed). Covers ops with a native CLIF instruction.
+fn is_inline_intrinsic_callee(name: &str) -> bool {
     matches!(
         name,
         "min"
@@ -888,16 +940,20 @@ fn is_intrinsic_callee(name: &str) -> bool {
             | "math.sqrtf"
             | "neg"
             | "fneg"
-            | "sin"
-            | "cos"
-            | "exp"
-            | "log"
-            | "ln"
-            | "math.sin"
-            | "math.cos"
-            | "math.exp"
-            | "math.log"
     )
+}
+
+/// Map a MIR-level transcendental callee name to the libm symbol that
+/// cranelift should link against. Returns `None` for non-transcendentals.
+/// Stage-0.5 f32-only — single-precision libm symbols.
+fn transcendental_extern_name(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "sin" | "math.sin" => "sinf",
+        "cos" | "math.cos" => "cosf",
+        "exp" | "math.exp" => "expf",
+        "log" | "ln" | "math.log" => "logf",
+        _ => return None,
+    })
 }
 
 /// Lower `arith.select %cond, %t, %f` → cranelift `select cond, t, f`.
@@ -1652,6 +1708,127 @@ mod tests {
                 .push(MirOp::std("func.return").with_operand(ValueId(3)));
         }
         f
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D29 : libm transcendentals via extern declaration.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Hand-build `fn sinf_wrap(x: f32) -> f32 { sin(x) }`.
+    fn hand_built_sin_wrap() -> MirFunc {
+        let mut f = MirFunc::new("sinf_wrap", vec![f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), f32_ty())];
+            entry.ops.push(
+                MirOp::std("func.call")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), f32_ty())
+                    .with_attribute("callee", "sin"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn libm_sin_jit_roundtrip() {
+        use core::f32::consts::PI;
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_sin_wrap()).expect("compile sin_wrap");
+        m.finalize().unwrap();
+
+        // sin(0) = 0, sin(π/2) = 1, sin(π) ≈ 0.
+        let sin_0 = h.call_f32_to_f32(0.0, &m).unwrap();
+        assert!(sin_0.abs() < 1e-5, "sin(0) ≈ 0, got {sin_0}");
+        let sin_half_pi = h.call_f32_to_f32(PI / 2.0, &m).unwrap();
+        assert!(
+            (sin_half_pi - 1.0).abs() < 1e-5,
+            "sin(π/2) ≈ 1, got {sin_half_pi}"
+        );
+        let sin_pi = h.call_f32_to_f32(PI, &m).unwrap();
+        assert!(sin_pi.abs() < 1e-5, "sin(π) ≈ 0, got {sin_pi}");
+    }
+
+    #[test]
+    fn libm_cos_jit_roundtrip() {
+        use core::f32::consts::PI;
+        let mut f = MirFunc::new("cosf_wrap", vec![f32_ty()], vec![f32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), f32_ty())];
+            entry.ops.push(
+                MirOp::std("func.call")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), f32_ty())
+                    .with_attribute("callee", "cos"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut m = JitModule::new();
+        let h = m.compile(&f).expect("compile cos_wrap");
+        m.finalize().unwrap();
+
+        let cos_0 = h.call_f32_to_f32(0.0, &m).unwrap();
+        assert!((cos_0 - 1.0).abs() < 1e-5, "cos(0) = 1, got {cos_0}");
+        let cos_pi = h.call_f32_to_f32(PI, &m).unwrap();
+        assert!((cos_pi - (-1.0)).abs() < 1e-5, "cos(π) = -1, got {cos_pi}");
+    }
+
+    #[test]
+    fn libm_exp_log_roundtrip() {
+        use core::f32::consts::E;
+        // fn expf_wrap(x) = exp(x) ; fn logf_wrap(x) = log(x).
+        let mut exp_f = MirFunc::new("expf_wrap", vec![f32_ty()], vec![f32_ty()]);
+        exp_f.next_value_id = 1;
+        {
+            let entry = exp_f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), f32_ty())];
+            entry.ops.push(
+                MirOp::std("func.call")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), f32_ty())
+                    .with_attribute("callee", "exp"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut log_f = MirFunc::new("logf_wrap", vec![f32_ty()], vec![f32_ty()]);
+        log_f.next_value_id = 1;
+        {
+            let entry = log_f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), f32_ty())];
+            entry.ops.push(
+                MirOp::std("func.call")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), f32_ty())
+                    .with_attribute("callee", "log"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut m = JitModule::new();
+        let h_exp = m.compile(&exp_f).expect("compile exp_wrap");
+        let h_log = m.compile(&log_f).expect("compile log_wrap");
+        m.finalize().unwrap();
+
+        let exp_0 = h_exp.call_f32_to_f32(0.0, &m).unwrap();
+        assert!((exp_0 - 1.0).abs() < 1e-5, "exp(0) = 1, got {exp_0}");
+        let exp_1 = h_exp.call_f32_to_f32(1.0, &m).unwrap();
+        assert!((exp_1 - E).abs() < 1e-4, "exp(1) = e, got {exp_1}");
+
+        let log_e = h_log.call_f32_to_f32(E, &m).unwrap();
+        assert!((log_e - 1.0).abs() < 1e-4, "log(e) = 1, got {log_e}");
+        let log_1 = h_log.call_f32_to_f32(1.0, &m).unwrap();
+        assert!(log_1.abs() < 1e-5, "log(1) = 0, got {log_1}");
     }
 
     #[test]

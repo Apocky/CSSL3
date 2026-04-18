@@ -2769,3 +2769,34 @@ Each decision entry :
   - libm transcendentals (sin/cos/exp/log).
   - Backend emission : SPIR-V / WGSL / DXIL runtime validation.
   - Stage-1 self-host : CSSLv3-written compiler subset that boots stage-0-compiled.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D29 : libm transcendentals via cranelift extern declarations
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D24 added intrinsic dispatch for `min/max/abs/sqrt/fneg` via native cranelift instructions. Transcendentals (sin/cos/exp/log) couldn't be lowered directly since CLIF has no native instruction for them. T11-D29 links them as external libm symbols via cranelift's `Linkage::Import` + `declare_func_in_func` path.
+- **Slice landed (this commit)**
+  - `transcendental_extern_name(callee) -> Option<&'static str>` helper maps MIR callee names to libm symbols :
+    - `sin` / `math.sin` → `sinf`
+    - `cos` / `math.cos` → `cosf`
+    - `exp` / `math.exp` → `expf`
+    - `log` / `ln` / `math.log` → `logf`
+  - `is_inline_intrinsic_callee(name)` : narrows the intrinsic set to those with native CLIF instructions (min/max/abs/sqrt/fneg).
+  - `is_intrinsic_callee(name)` refactored : `inline || transcendental`.
+  - JIT `compile` pre-scan extended : when a callee maps to a transcendental, declare an `Import`-linked cranelift function with `(f32) -> f32` signature, get its FuncId via `module.declare_function(libm_sym, Linkage::Import, &sig)`, then `declare_func_in_func` into the caller's scope. Store the FuncRef in `callee_refs` keyed by MIR callee name.
+  - `lower_intrinsic_call` transcendental branch changed from error to emit : `builder.ins().call(func_ref, &[x])` → register result in `value_map`.
+  - 3 new tests :
+    - `libm_sin_jit_roundtrip` : `sin(0) = 0`, `sin(π/2) = 1`, `sin(π) ≈ 0`.
+    - `libm_cos_jit_roundtrip` : `cos(0) = 1`, `cos(π) = -1`.
+    - `libm_exp_log_roundtrip` : `exp(0) = 1`, `exp(1) = e`, `log(e) = 1`, `log(1) = 0`.
+- **Consequences**
+  - Test count : 1369 → 1372 (+3 in cssl-cgen-cpu-cranelift).
+  - **All major scalar-math fns are now JIT-executable.** The F1 AD correctness chain can now handle `@differentiable fn foo(x) { sin(x) }`, `exp(x)`, `log(x)`, etc. at runtime once the walker's rule-table entries (already present per T11-D13) are exercised through a source-driven test (future slice).
+  - Cranelift-jit's default symbol resolver uses `libloading::Library::this()` which resolves process-local symbols including sinf/cosf/expf/logf from the CRT (msvcrt on Windows, libc+libm on Linux). This worked out-of-box on the Windows 1.85 toolchain — no explicit libm linking needed in `Cargo.toml`.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - f64 transcendentals : add `sin`/`cos`/`exp`/`log` (double-precision) mappings when f64 AD primals show up.
+  - `tan` / `atan2` / `pow` / other math fns : trivially extensible via `transcendental_extern_name`.
+  - libm-fn AD : the walker's rule-table already has Sin/Cos/Exp/Log rules (T11-D13) ; source-driven runtime-gradient verification like T11-D22 for these.
