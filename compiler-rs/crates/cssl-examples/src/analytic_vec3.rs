@@ -1,8 +1,11 @@
 // § Allowances :
 //   float_cmp             ← constant-fold symmetry with AnalyticExpr
 //   should_implement_trait ← neg/add/sub are constructor-helpers, not std::ops::{Neg,Add,Sub} impls
+//   implicit_hasher       ← HashMap<String, f64> mirror of AnalyticExpr env-shape; generalizing
+//                           over hasher would ripple through every caller for no practical gain
 #![allow(clippy::float_cmp)]
 #![allow(clippy::should_implement_trait)]
+#![allow(clippy::implicit_hasher)]
 
 //! T11-D9 VECTOR AnalyticExpr : real `vec3` symbolic algebra.
 //!
@@ -336,11 +339,81 @@ pub fn sphere_sdf_grad_r(d_y: &AnalyticExpr) -> AnalyticExpr {
     AnalyticExpr::neg(d_y.clone())
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § Scene-SDF analytic primitives : union / intersection / subtraction.
+//   All route via AnalyticExpr::Min / Max at the scalar level ; gradients
+//   are piecewise-linear (pick-the-winner) + valid everywhere except the
+//   cusp surface (a == b) where the subgradient is multi-valued.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Scene-SDF union : `union(a, b) = min(a, b)`. Returns the nearer of two
+/// signed-distances — the composed-scene surface is the union of both
+/// primitives.
+#[must_use]
+pub fn scene_sdf_union(a: AnalyticExpr, b: AnalyticExpr) -> AnalyticExpr {
+    AnalyticExpr::min(a, b)
+}
+
+/// Scene-SDF intersection : `intersect(a, b) = max(a, b)`. Returns the
+/// farther-inside of two signed-distances — the composed-scene surface is
+/// the intersection.
+#[must_use]
+pub fn scene_sdf_intersect(a: AnalyticExpr, b: AnalyticExpr) -> AnalyticExpr {
+    AnalyticExpr::max(a, b)
+}
+
+/// Scene-SDF subtraction : `subtract(a, b) = max(a, -b)`. Returns the region
+/// of `a` with `b` carved out.
+#[must_use]
+pub fn scene_sdf_subtract(a: AnalyticExpr, b: AnalyticExpr) -> AnalyticExpr {
+    AnalyticExpr::max(a, AnalyticExpr::neg(b))
+}
+
+/// Analytic gradient of `union(a, b) = min(a, b)` at a point where `a ≠ b`.
+/// Returns the gradient of whichever branch wins at the sample-environment.
+/// At the cusp `a == b`, the subgradient is multi-valued ; this function
+/// picks `da` by convention (caller should avoid such points in sampling).
+#[must_use]
+pub fn scene_sdf_union_grad(
+    a: &AnalyticExpr,
+    b: &AnalyticExpr,
+    da: &AnalyticExpr,
+    db: &AnalyticExpr,
+    env: &HashMap<String, f64>,
+) -> AnalyticExpr {
+    let av = a.evaluate(env);
+    let bv = b.evaluate(env);
+    if av.is_finite() && bv.is_finite() && av <= bv {
+        da.clone()
+    } else {
+        db.clone()
+    }
+}
+
+/// Analytic gradient of `intersect(a, b) = max(a, b)` at a point where `a ≠ b`.
+#[must_use]
+pub fn scene_sdf_intersect_grad(
+    a: &AnalyticExpr,
+    b: &AnalyticExpr,
+    da: &AnalyticExpr,
+    db: &AnalyticExpr,
+    env: &HashMap<String, f64>,
+) -> AnalyticExpr {
+    let av = a.evaluate(env);
+    let bv = b.evaluate(env);
+    if av.is_finite() && bv.is_finite() && av >= bv {
+        da.clone()
+    } else {
+        db.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        dot, length, sphere_sdf_grad_p, sphere_sdf_grad_r, sphere_sdf_vec3, vec3_proj,
-        AnalyticVec3Expr, VecComp,
+        dot, length, scene_sdf_intersect, scene_sdf_intersect_grad, scene_sdf_subtract,
+        scene_sdf_union, scene_sdf_union_grad, sphere_sdf_grad_p, sphere_sdf_grad_r,
+        sphere_sdf_vec3, vec3_proj, AnalyticVec3Expr, VecComp,
     };
     use crate::ad_gate::AnalyticExpr;
     use std::collections::HashMap;
@@ -550,5 +623,143 @@ mod tests {
         assert!((ex.evaluate(&env) - x).abs() < 1e-12);
         assert!((ey.evaluate(&env) - y).abs() < 1e-12);
         assert!((ez.evaluate(&env) - z).abs() < 1e-12);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Scene-SDF union / intersect / subtract + piecewise gradient.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn scene_union_picks_nearer_distance() {
+        let a = AnalyticExpr::c(3.0);
+        let b = AnalyticExpr::c(5.0);
+        let u = scene_sdf_union(a, b);
+        let env = HashMap::new();
+        assert!((u.evaluate(&env) - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn scene_intersect_picks_farther_distance() {
+        let a = AnalyticExpr::c(3.0);
+        let b = AnalyticExpr::c(5.0);
+        let i = scene_sdf_intersect(a, b);
+        let env = HashMap::new();
+        assert!((i.evaluate(&env) - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn scene_subtract_carves_via_max_neg_b() {
+        // subtract(10, 3) = max(10, -3) = 10.
+        let a = AnalyticExpr::c(10.0);
+        let b = AnalyticExpr::c(3.0);
+        let s = scene_sdf_subtract(a, b);
+        let env = HashMap::new();
+        assert!((s.evaluate(&env) - 10.0).abs() < 1e-12);
+
+        // subtract(-5, 10) = max(-5, -10) = -5.
+        let s2 = scene_sdf_subtract(AnalyticExpr::c(-5.0), AnalyticExpr::c(10.0));
+        assert!((s2.evaluate(&env) - (-5.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn union_grad_picks_winning_branch() {
+        // Two primals, both functions of x.
+        let a = AnalyticExpr::mul(AnalyticExpr::v("x"), AnalyticExpr::c(2.0)); // 2x
+        let b = AnalyticExpr::add(AnalyticExpr::v("x"), AnalyticExpr::c(10.0)); // x+10
+        let da = AnalyticExpr::c(2.0); // d(2x)/dx
+        let db = AnalyticExpr::c(1.0); // d(x+10)/dx
+
+        // At x=3 : a=6, b=13 → a < b → gradient = da = 2.0.
+        let mut env = HashMap::new();
+        env.insert("x".into(), 3.0);
+        let g = scene_sdf_union_grad(&a, &b, &da, &db, &env);
+        assert!((g.evaluate(&env) - 2.0).abs() < 1e-12);
+
+        // At x=20 : a=40, b=30 → b < a → gradient = db = 1.0.
+        env.insert("x".into(), 20.0);
+        let g2 = scene_sdf_union_grad(&a, &b, &da, &db, &env);
+        assert!((g2.evaluate(&env) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn intersect_grad_picks_max_branch() {
+        let a = AnalyticExpr::mul(AnalyticExpr::v("x"), AnalyticExpr::c(2.0));
+        let b = AnalyticExpr::add(AnalyticExpr::v("x"), AnalyticExpr::c(10.0));
+        let da = AnalyticExpr::c(2.0);
+        let db = AnalyticExpr::c(1.0);
+
+        // At x=3 : a=6, b=13 → b > a → gradient = db = 1.0.
+        let mut env = HashMap::new();
+        env.insert("x".into(), 3.0);
+        let g = scene_sdf_intersect_grad(&a, &b, &da, &db, &env);
+        assert!((g.evaluate(&env) - 1.0).abs() < 1e-12);
+
+        // At x=20 : a=40, b=30 → a > b → gradient = da = 2.0.
+        env.insert("x".into(), 20.0);
+        let g2 = scene_sdf_intersect_grad(&a, &b, &da, &db, &env);
+        assert!((g2.evaluate(&env) - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn scene_union_two_spheres_numerical_gradient_matches_winner() {
+        // Scene = union(sphere(p - c_1, r_1), sphere(p - c_2, r_2))
+        //   where c_1 = (0,0,0) r_1 = 2 ; c_2 = (10,0,0) r_2 = 3.
+        // At sample p = (1, 0, 0) : sphere_1 = |p-c_1| - r_1 = 1 - 2 = -1 (inside).
+        //                           sphere_2 = |p-c_2| - r_2 = 9 - 3 =  6 (outside).
+        // union = min(-1, 6) = -1 → winner is sphere_1.
+        // Analytic grad wrt p = normalize(p - c_1) = (1, 0, 0) (since p-c_1 = (1,0,0)).
+        let p = AnalyticVec3Expr::v("p");
+        let c1 = AnalyticVec3Expr::c(0.0, 0.0, 0.0);
+        let c2 = AnalyticVec3Expr::c(10.0, 0.0, 0.0);
+        let r1 = AnalyticExpr::c(2.0);
+        let r2 = AnalyticExpr::c(3.0);
+
+        let d1 = sphere_sdf_vec3(&AnalyticVec3Expr::sub(p.clone(), c1), &r1);
+        let d2 = sphere_sdf_vec3(&AnalyticVec3Expr::sub(p, c2), &r2);
+
+        let union = scene_sdf_union(d1.clone(), d2.clone());
+        let env = env_with_p(1.0, 0.0, 0.0);
+
+        // Primal : union should equal -1.
+        assert!((union.evaluate(&env) - (-1.0)).abs() < 1e-10);
+
+        // Gradient via scalar-wise approach : d(union)/d(p.x) picks sphere_1's.
+        // At p=(1,0,0), sphere_1 grad wrt p.x = p.x / |p - c_1| = 1/1 = 1.0.
+        // sphere_2 grad wrt p.x = (p.x - 10)/|p - c_2| = -9/9 = -1.0.
+        let da_px = AnalyticExpr::c(1.0);
+        let db_px = AnalyticExpr::c(-1.0);
+        let g = scene_sdf_union_grad(&d1, &d2, &da_px, &db_px, &env);
+        assert!((g.evaluate(&env) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn min_max_variants_evaluate_symmetrically() {
+        let two = AnalyticExpr::c(2.0);
+        let three = AnalyticExpr::c(3.0);
+        let env = HashMap::new();
+        let min_ab = AnalyticExpr::min(two.clone(), three.clone());
+        let min_ba = AnalyticExpr::min(three.clone(), two.clone());
+        assert!((min_ab.evaluate(&env) - 2.0).abs() < 1e-12);
+        assert!((min_ba.evaluate(&env) - 2.0).abs() < 1e-12);
+        let max_ab = AnalyticExpr::max(two.clone(), three.clone());
+        let max_ba = AnalyticExpr::max(three, two);
+        assert!((max_ab.evaluate(&env) - 3.0).abs() < 1e-12);
+        assert!((max_ba.evaluate(&env) - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn min_max_constant_folds_in_simplify() {
+        // simplify should collapse `min(const, const)` into `const`.
+        let e = AnalyticExpr::min(AnalyticExpr::c(5.0), AnalyticExpr::c(3.0));
+        let s = e.simplify();
+        assert_eq!(s, AnalyticExpr::c(3.0));
+    }
+
+    #[test]
+    fn min_max_smt_emits_uninterpreted_form() {
+        let e = AnalyticExpr::min(AnalyticExpr::v("x"), AnalyticExpr::c(0.0));
+        assert!(e.to_smt().contains("min_uf"));
+        let e2 = AnalyticExpr::max(AnalyticExpr::v("x"), AnalyticExpr::c(0.0));
+        assert!(e2.to_smt().contains("max_uf"));
     }
 }

@@ -103,6 +103,14 @@ pub enum AnalyticExpr {
     Exp(Box<AnalyticExpr>),
     /// Natural log : `log(a)`.
     Log(Box<AnalyticExpr>),
+    /// Binary minimum : `min(a, b)`.
+    /// Scene-SDF primitive. Piecewise-linear ; differentiable everywhere except
+    /// the cusp `a = b` (subgradient-valued there). Evaluation + to-SMT route
+    /// through standard `min` ; Term translation uses `min_uf` uninterpreted-fn.
+    Min(Box<AnalyticExpr>, Box<AnalyticExpr>),
+    /// Binary maximum : `max(a, b)`.
+    /// Companion to Min for scene-SDF intersection / subtraction.
+    Max(Box<AnalyticExpr>, Box<AnalyticExpr>),
     /// Uninterpreted function-call (for unrecognized ops). Carries the callee
     /// name and arg list. Evaluation falls back to NaN — these branches don't
     /// pass gradient-equivalence checks.
@@ -150,6 +158,18 @@ impl AnalyticExpr {
     #[must_use]
     pub fn div(a: Self, b: Self) -> Self {
         Self::Div(Box::new(a), Box::new(b))
+    }
+
+    /// `min(a, b)`
+    #[must_use]
+    pub fn min(a: Self, b: Self) -> Self {
+        Self::Min(Box::new(a), Box::new(b))
+    }
+
+    /// `max(a, b)`
+    #[must_use]
+    pub fn max(a: Self, b: Self) -> Self {
+        Self::Max(Box::new(a), Box::new(b))
     }
 
     /// Recursively apply algebraic simplifications :
@@ -257,6 +277,22 @@ impl AnalyticExpr {
             Self::Cos(x) => Self::Cos(Box::new(x.simplify())),
             Self::Exp(x) => Self::Exp(Box::new(x.simplify())),
             Self::Log(x) => Self::Log(Box::new(x.simplify())),
+            Self::Min(a, b) => {
+                let sa = a.simplify();
+                let sb = b.simplify();
+                if let (Self::Const(x), Self::Const(y)) = (&sa, &sb) {
+                    return Self::Const(x.min(*y));
+                }
+                Self::Min(Box::new(sa), Box::new(sb))
+            }
+            Self::Max(a, b) => {
+                let sa = a.simplify();
+                let sb = b.simplify();
+                if let (Self::Const(x), Self::Const(y)) = (&sa, &sb) {
+                    return Self::Const(x.max(*y));
+                }
+                Self::Max(Box::new(sa), Box::new(sb))
+            }
             Self::Uninterpreted(name, args) => {
                 Self::Uninterpreted(name.clone(), args.iter().map(Self::simplify).collect())
             }
@@ -282,6 +318,8 @@ impl AnalyticExpr {
             Self::Cos(a) => a.evaluate(env).cos(),
             Self::Exp(a) => a.evaluate(env).exp(),
             Self::Log(a) => a.evaluate(env).ln(),
+            Self::Min(a, b) => a.evaluate(env).min(b.evaluate(env)),
+            Self::Max(a, b) => a.evaluate(env).max(b.evaluate(env)),
             Self::Uninterpreted(_, _) => f64::NAN,
         }
     }
@@ -371,6 +409,8 @@ impl AnalyticExpr {
             Self::Cos(a) => Term::app("cos_uf", vec![a.to_term()]),
             Self::Exp(a) => Term::app("exp_uf", vec![a.to_term()]),
             Self::Log(a) => Term::app("log_uf", vec![a.to_term()]),
+            Self::Min(a, b) => Term::app("min_uf", vec![a.to_term(), b.to_term()]),
+            Self::Max(a, b) => Term::app("max_uf", vec![a.to_term(), b.to_term()]),
             Self::Uninterpreted(name, args) => {
                 let args_t: Vec<Term> = args.iter().map(Self::to_term).collect();
                 if args_t.is_empty() {
@@ -400,6 +440,8 @@ impl AnalyticExpr {
             Self::Cos(a) => format!("(cos_uf {})", a.to_smt()),
             Self::Exp(a) => format!("(exp_uf {})", a.to_smt()),
             Self::Log(a) => format!("(log_uf {})", a.to_smt()),
+            Self::Min(a, b) => format!("(min_uf {} {})", a.to_smt(), b.to_smt()),
+            Self::Max(a, b) => format!("(max_uf {} {})", a.to_smt(), b.to_smt()),
             Self::Uninterpreted(name, args) => {
                 if args.is_empty() {
                     name.clone()
@@ -436,7 +478,12 @@ impl AnalyticExpr {
             | Self::Cos(a)
             | Self::Exp(a)
             | Self::Log(a) => a.collect_vars(out),
-            Self::Add(a, b) | Self::Sub(a, b) | Self::Mul(a, b) | Self::Div(a, b) => {
+            Self::Add(a, b)
+            | Self::Sub(a, b)
+            | Self::Mul(a, b)
+            | Self::Div(a, b)
+            | Self::Min(a, b)
+            | Self::Max(a, b) => {
                 a.collect_vars(out);
                 b.collect_vars(out);
             }

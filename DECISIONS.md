@@ -2121,3 +2121,46 @@ Each decision entry :
   - `SceneSDFExpr` : monomorphized `min(sphere_sdf(p, r₀), sphere_sdf(p - c, r₁))` with piecewise-differentiable min-gradient dispatch (which-branch-dominates tracker).
   - Full constant-folding in `AnalyticVec3Expr::simplify` (componentwise zero/identity elimination) — today simplify just recurses structurally.
   - `to_smt` / `to_term` impls for `AnalyticVec3Expr` — route via `to_scalar_components` + 3 separate SMT queries per gradient (componentwise unsat).
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D10 : AnalyticExpr Min/Max + scene-SDF analytic union/intersect/subtract
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T11-D9 landed the `AnalyticVec3Expr` algebra so `length(p) - r` is now a first-class symbolic expression. The canonical killer-app next-level test is the scene-SDF composition : `union(sphere_sdf(p - c₀, r₀), sphere_sdf(p - c₁, r₁))`. This requires `min`-at-the-scalar-level + piecewise-linear gradient dispatch (pick-the-winner). This slice extends `AnalyticExpr` with `Min` + `Max` variants and adds `scene_sdf_union` / `scene_sdf_intersect` / `scene_sdf_subtract` + their gradient helpers to `analytic_vec3.rs`.
+- **Slice landed (this commit)**
+  - `AnalyticExpr` enum gains two variants :
+    - `Min(Box<AnalyticExpr>, Box<AnalyticExpr>)` — `min(a, b)` primitive for scene-SDF union.
+    - `Max(Box<AnalyticExpr>, Box<AnalyticExpr>)` — `max(a, b)` for intersection + subtraction.
+  - Both route through existing `AnalyticExpr` machinery :
+    - `simplify` : constant-folds `min(Const, Const)` / `max(Const, Const)` into a single `Const`.
+    - `evaluate` : `a.min(b)` / `a.max(b)` via `f64::min` / `f64::max`.
+    - `to_term` : emits `min_uf` / `max_uf` uninterpreted-fn apps (SMT-compatible).
+    - `to_smt` : same, in SMT-LIB text form.
+    - `collect_vars` : recurses both branches (unified with Add/Sub/Mul/Div).
+  - Constructor helpers : `AnalyticExpr::min(a, b)` + `AnalyticExpr::max(a, b)`.
+  - `analytic_vec3.rs` new free functions :
+    - `scene_sdf_union(a, b) = min(a, b)` — nearer-distance of two SDFs.
+    - `scene_sdf_intersect(a, b) = max(a, b)` — farther-distance.
+    - `scene_sdf_subtract(a, b) = max(a, -b)` — carve-out.
+    - `scene_sdf_union_grad(a, b, da, db, env)` — piecewise gradient : picks `da` at `env` iff `a(env) ≤ b(env)`, else `db`.
+    - `scene_sdf_intersect_grad(a, b, da, db, env)` — symmetric (picks `da` iff `a ≥ b`).
+  - 9 new tests : union picks-nearer, intersect picks-farther, subtract carves via max(-b), union_grad picks-winning-branch, intersect_grad picks-max, two-spheres numerical gradient agreement at p=(1,0,0) (sphere-1 dominates → grad = `(1,0,0)`), min/max symmetry, constant-fold in simplify, min_uf/max_uf in SMT output.
+- **Consequences**
+  - Test count : 1278 → 1287 (+9 in cssl-examples).
+  - Scene-SDF compositions now expressible symbolically without scalar expansion :
+    ```rust
+    let scene = scene_sdf_union(
+        sphere_sdf_vec3(&(p - c0), &r0),
+        sphere_sdf_vec3(&(p - c1), &r1),
+    );
+    ```
+  - Piecewise gradient handled correctly at sampled points ; cusp `a == b` picks `da` by convention (caller should sample away from cusp).
+  - `Min` + `Max` compose through SMT-LIB via `min_uf` / `max_uf` uninterpreted-fns — the solver can install axioms like `∀ a, b : min(a, b) = (if a ≤ b then a else b)` to reason symbolically.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - Real MIR `MirOp::Min` / `MirOp::Max` primitives + AD rule-table entries for piecewise-differentiable min/max. Today `apply_bwd` relies on the existing primitive-set ; scene-SDF gradient tests verify at the `AnalyticExpr` level only.
+  - `AnalyticExpr::Abs` + `AnalyticExpr::Sign` — for SDF absolute-value + sign-reasoning.
+  - Full smooth-min `smoothmin(a, b, k) = -log(exp(-ka) + exp(-kb))/k` — differentiable everywhere (scene-SDF with rounded edges per `specs/05` § APPENDIX-SMOOTH).
+  - Cusp-detection in gradient samplers : skip samples where `|a - b| < ε` to avoid subgradient-ambiguity.
