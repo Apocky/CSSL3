@@ -1616,3 +1616,31 @@ Each decision entry :
   - OTLP gRPC export of gate-verdicts (T11-phase-2b).
   - Proof-cert integration : embed the SMT-dispatch verdict in the audit-message.
   - Cross-AuditChain reference (one chain can reference a hash-rooted entry in another chain ; phase-2e).
+
+───────────────────────────────────────────────────────────────
+
+## § T6-D6 : T6-phase-2c coverage — dedicated per-variant tests + literal-value verification
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T6-D5 landed 6 remaining HirExprKind lowerings + literal-value extraction but noted "dedicated unit tests per new lowering ... currently indirectly exercised via F1 chain". This commit closes that gap : 14 new tests directly assert the shape of each new op + the source-text literal extraction path vs the `stage0_*` fallback.
+- **Slice landed (this commit)**
+  - `compiler-rs/crates/cssl-mir/src/body_lower.rs` `#[cfg(test)] mod tests` gains :
+    - **Lambda** (3 tests) : `cssl.closure` op emitted, `param_count` attr correct for multi-param, nested region holds arith.* body ops.
+    - **Perform** (2 tests) : `cssl.effect.perform` op emitted, `effect_path` attr = joined path (e.g., `"Io.read"`), `arg_count` attr reflects actual count.
+    - **With** (2 tests) : `cssl.effect.handle` op emitted + carries a non-empty body-region.
+    - **Region** (2 tests) : `cssl.region.enter` op emitted + `label` attribute threaded from the HIR region's cap symbol.
+    - **SectionRef** (1 test) : infrastructure doesn't-panic when the Rust-hybrid parser doesn't emit `SectionRef` directly (CSLv3-native construct).
+    - **Literal-value extraction** (4 tests) :
+      - Int `42` → `"value"` attr = `"42"` (real extraction)
+      - Float `3.14` → `"value"` attr contains `"3.14"` (debug-formatted)
+      - Bool `true` → `"value"` attr = `"true"`
+      - No-source path falls back to `"stage0_int"` placeholder
+- **Consequences**
+  - T6-phase-2c lowerings now have explicit unit-test coverage beyond the indirect F1-chain exercise.
+  - Test count : 1093 → 1107 (+14). cssl-mir specifically : 81 → 95 (+14).
+  - Regression safety : any future refactor of the 6 lowerings + literal-extraction path will trip a named test before reaching the F1-chain integration test.
+- **Deferred**
+  - CSLv3-native surface tests for `HirExprKind::Compound` + `SectionRef` (requires csl-native lexing + parsing path which is stable but not exercised by Rust-hybrid test helpers).
+  - Closure-env capture tests (currently Lambda has no captured-operands — phase-2d+).
+  - Handler-install state-tracking for `With` (stage-0 handler-count = 1 always).

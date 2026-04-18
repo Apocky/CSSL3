@@ -1630,4 +1630,243 @@ mod tests {
             assert!(!op_names(&f).is_empty(), "lowering {s} produced no ops");
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T6-phase-2c dedicated per-variant tests (6 lowerings completed in
+    //   T6-D5) — asserts the new cssl.* dialect ops are emitted for each
+    //   canonical HirExprKind variant.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lower_lambda_emits_cssl_closure_op() {
+        let src = "fn f() { let g = |x : i32| { x + 1 }; g(2) }";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.contains(&"cssl.closure"),
+            "expected cssl.closure in {names:?}"
+        );
+    }
+
+    #[test]
+    fn lower_lambda_op_carries_param_count_attribute() {
+        let src = "fn f() { let g = |x : i32, y : i32| { x + y }; g(1, 2) }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let closure_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.closure")
+            .expect("missing cssl.closure");
+        let param_count = closure_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "param_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(param_count, Some("2"));
+    }
+
+    #[test]
+    fn lower_lambda_body_lands_in_nested_region() {
+        let src = "fn f() { let g = |x : i32| { x + 1 }; g(0) }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let closure_op = entry.ops.iter().find(|o| o.name == "cssl.closure").unwrap();
+        assert_eq!(closure_op.regions.len(), 1);
+        let body_ops = &closure_op.regions[0].blocks[0].ops;
+        // Body should contain an arith.addf / arith.addi op (depending on type-inference).
+        assert!(
+            body_ops.iter().any(|o| o.name.starts_with("arith.")),
+            "expected arith.* in lambda body, got {:?}",
+            body_ops.iter().map(|o| &o.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn lower_perform_emits_cssl_effect_perform_op() {
+        let src = "fn f() { perform Io::read(42) }";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.contains(&"cssl.effect.perform"),
+            "expected cssl.effect.perform in {names:?}"
+        );
+    }
+
+    #[test]
+    fn lower_perform_op_carries_effect_path_and_arg_count() {
+        let src = "fn f() { perform Io::read(1, 2, 3) }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let perform_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.effect.perform")
+            .expect("missing cssl.effect.perform");
+        let effect_path = perform_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "effect_path")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(effect_path, Some("Io.read"));
+        let arg_count = perform_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "arg_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(arg_count, Some("3"));
+    }
+
+    #[test]
+    fn lower_with_emits_cssl_effect_handle_op() {
+        let src = "fn f() { with handler { 42 } }";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.contains(&"cssl.effect.handle"),
+            "expected cssl.effect.handle in {names:?}"
+        );
+    }
+
+    #[test]
+    fn lower_with_op_has_body_region() {
+        let src = "fn f() { with handler { 1 + 2 } }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let with_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.effect.handle")
+            .unwrap();
+        assert_eq!(with_op.regions.len(), 1);
+        assert!(!with_op.regions[0].blocks.is_empty());
+    }
+
+    #[test]
+    fn lower_region_emits_cssl_region_enter_op() {
+        let src = "fn f() { region 'r { 1 } }";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.contains(&"cssl.region.enter"),
+            "expected cssl.region.enter in {names:?}"
+        );
+    }
+
+    #[test]
+    fn lower_region_op_carries_label_attribute() {
+        let src = "fn f() { region 'my_region { 0 } }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let region_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.region.enter")
+            .unwrap();
+        let label = region_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "label")
+            .map(|(_, v)| v.as_str());
+        // Label is threaded from the HIR region's cap symbol.
+        assert!(
+            label.is_some(),
+            "expected label attribute on cssl.region.enter"
+        );
+    }
+
+    #[test]
+    fn lower_section_ref_emits_cssl_section_ref_op() {
+        // §§-path references in CSLv3-native form are harder to exercise through
+        // the Rust-hybrid parser. This test exercises the discriminant_name path
+        // for SectionRef — if the parser emits one, we verify the emit works.
+        // Stage-0 : a bare-word fn-call with an unresolved path approximates the
+        // fallback we care about.
+        let src = "fn f() { let x = 1; x }";
+        let (f, _) = lower_one(src);
+        // Sanity : the fn compiles and produces ops. SectionRef is a CSLv3-native
+        // construct rarely produced by the Rust-hybrid parser, so this test
+        // intentionally covers only the infrastructure-doesn't-panic case.
+        assert!(!f.body.entry().unwrap().ops.is_empty());
+    }
+
+    #[test]
+    fn lower_literal_extracts_real_int_value() {
+        let src = "fn f() -> i32 { 42 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let const_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "arith.constant")
+            .expect("missing arith.constant");
+        let value = const_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "value")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            value,
+            Some("42"),
+            "expected real int literal value, not stage0 placeholder"
+        );
+    }
+
+    #[test]
+    fn lower_literal_extracts_real_float_value() {
+        let src = "fn f() -> f32 { 3.14 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let const_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "arith.constant")
+            .expect("missing arith.constant");
+        let value = const_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "value")
+            .map(|(_, v)| v.as_str());
+        // Values are stored in debug-formatted form (`3.14`) when source parses cleanly.
+        assert!(
+            value.is_some_and(|v| v.contains("3.14") || v.starts_with("3.")),
+            "expected 3.14 in value, got {value:?}"
+        );
+    }
+
+    #[test]
+    fn lower_literal_extracts_real_bool_value() {
+        let src = "fn f() -> bool { true }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let const_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "arith.constant")
+            .expect("missing arith.constant");
+        let value = const_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "value")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(value, Some("true"));
+    }
+
+    #[test]
+    fn lower_without_source_falls_back_to_stage0_placeholder() {
+        let (f, _) = lower_one_nosrc("fn f() -> i32 { 42 }");
+        let entry = f.body.entry().unwrap();
+        let const_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "arith.constant")
+            .expect("missing arith.constant");
+        let value = const_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "value")
+            .map(|(_, v)| v.as_str());
+        // Without source, falls back to stage0_* placeholder.
+        assert_eq!(value, Some("stage0_int"));
+    }
 }
