@@ -100,6 +100,9 @@ ash = "0.38"
 # level-zero-sys = "0.3"  # T10 : verify-registry-availability
 windows = { version = "0.58", features = ["Win32_Foundation"] }
 wgpu    = "23"
+# T11-D32 : shader validator — WGSL parse + validate. naga version pinned to
+# match wgpu 23's internal naga for API compatibility.
+naga    = { version = "23", features = ["wgsl-in"] }
 # metal crate mac-only : added per-target-cfg @ T10
 # ─ crypto (R18 audit-chain, T11) ─
 blake3         = "1"

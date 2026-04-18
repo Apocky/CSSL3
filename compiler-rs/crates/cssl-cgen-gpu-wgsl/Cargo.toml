@@ -11,5 +11,9 @@ authors.workspace      = true
 cssl-mir  = { path = "../cssl-mir" }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+# T11-D32 : validate emitted WGSL via naga's wgsl-in frontend.
+naga = { workspace = true }
+
 [lints]
 workspace = true

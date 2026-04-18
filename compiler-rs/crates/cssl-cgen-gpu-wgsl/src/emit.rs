@@ -138,7 +138,7 @@ fn synthesize_helper(f: &MirFunc) -> WgslStatement {
 #[cfg(test)]
 mod tests {
     use super::{emit_wgsl, WgslError};
-    use crate::target::WgslTargetProfile;
+    use crate::target::{WebGpuStage, WgslTargetProfile};
     use cssl_mir::{MirFunc, MirModule};
 
     #[test]
@@ -207,5 +207,115 @@ mod tests {
         assert!(text.contains("cssl-cgen-gpu-wgsl stage-0 emission"));
         assert!(text.contains("timestamp-query"));
         assert!(text.contains("entry = main_cs"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D32 : naga-based WGSL validation.
+    //   Parse each emitted shader through naga's `wgsl-in` frontend to prove
+    //   the output is syntactically + structurally valid WGSL. Catches
+    //   emitter bugs that produce compilable-looking text but invalid shaders.
+    //
+    //   We use feature-minimal profiles for validation because naga 23
+    //   doesn't yet support `enable f16;` (see gfx-rs/wgpu#4384). Our emitter
+    //   *does* correctly render that directive ; naga's validator just hasn't
+    //   caught up. Tests for f16-gated emission remain at the text-assertion
+    //   level (e.g., `shader_f16_feature_emits_enable_directive`).
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Build a minimal compute profile without f16 (naga 23 can't parse it yet).
+    fn naga_compatible_compute_profile() -> WgslTargetProfile {
+        use std::collections::BTreeSet;
+        WgslTargetProfile {
+            stage: WebGpuStage::Compute,
+            limits: crate::target::WgslLimits::webgpu_default(),
+            features: BTreeSet::new(),
+        }
+    }
+
+    /// Build a minimal fragment profile without f16.
+    fn naga_compatible_fragment_profile() -> WgslTargetProfile {
+        use std::collections::BTreeSet;
+        WgslTargetProfile {
+            stage: WebGpuStage::Fragment,
+            limits: crate::target::WgslLimits::webgpu_default(),
+            features: BTreeSet::new(),
+        }
+    }
+
+    #[test]
+    fn naga_validates_compute_skeleton() {
+        let mut module = MirModule::new();
+        module.push_func(MirFunc::new("main_cs", vec![], vec![]));
+        let wgsl = emit_wgsl(&module, &naga_compatible_compute_profile(), "main_cs").unwrap();
+        let text = wgsl.render();
+        let parsed = naga::front::wgsl::parse_str(&text);
+        assert!(
+            parsed.is_ok(),
+            "naga failed to parse compute shader : {:?}\n\nSource:\n{text}",
+            parsed.err()
+        );
+    }
+
+    #[test]
+    fn naga_validates_vertex_skeleton() {
+        let mut module = MirModule::new();
+        module.push_func(MirFunc::new("main_vs", vec![], vec![]));
+        let wgsl = emit_wgsl(&module, &WgslTargetProfile::vertex_default(), "main_vs").unwrap();
+        let text = wgsl.render();
+        let parsed = naga::front::wgsl::parse_str(&text);
+        assert!(
+            parsed.is_ok(),
+            "naga failed to parse vertex shader : {:?}\n\nSource:\n{text}",
+            parsed.err()
+        );
+    }
+
+    #[test]
+    fn naga_validates_fragment_skeleton() {
+        let mut module = MirModule::new();
+        module.push_func(MirFunc::new("main_fs", vec![], vec![]));
+        let wgsl = emit_wgsl(&module, &naga_compatible_fragment_profile(), "main_fs").unwrap();
+        let text = wgsl.render();
+        let parsed = naga::front::wgsl::parse_str(&text);
+        assert!(
+            parsed.is_ok(),
+            "naga failed to parse fragment shader : {:?}\n\nSource:\n{text}",
+            parsed.err()
+        );
+    }
+
+    #[test]
+    fn naga_validates_shader_with_helpers() {
+        let mut module = MirModule::new();
+        module.push_func(MirFunc::new("main_cs", vec![], vec![]));
+        module.push_func(MirFunc::new("helper_one", vec![], vec![]));
+        module.push_func(MirFunc::new("helper_two", vec![], vec![]));
+        let wgsl = emit_wgsl(&module, &naga_compatible_compute_profile(), "main_cs").unwrap();
+        let text = wgsl.render();
+        let parsed = naga::front::wgsl::parse_str(&text);
+        assert!(
+            parsed.is_ok(),
+            "naga failed to parse shader w/ helpers : {:?}\n\nSource:\n{text}",
+            parsed.err()
+        );
+    }
+
+    #[test]
+    fn naga_validated_module_has_entry_point() {
+        let mut module = MirModule::new();
+        module.push_func(MirFunc::new("main_cs", vec![], vec![]));
+        let wgsl = emit_wgsl(&module, &naga_compatible_compute_profile(), "main_cs").unwrap();
+        let text = wgsl.render();
+        let parsed = naga::front::wgsl::parse_str(&text).expect("parse");
+        // Verify naga recognized the entry-point by looking at its entry-points list.
+        assert!(
+            !parsed.entry_points.is_empty(),
+            "expected ≥ 1 entry-point in parsed module"
+        );
+        let has_cs = parsed
+            .entry_points
+            .iter()
+            .any(|ep| ep.name == "main_cs" && ep.stage == naga::ShaderStage::Compute);
+        assert!(has_cs, "expected @compute fn main_cs in parsed module");
     }
 }

@@ -2850,3 +2850,31 @@ Each decision entry :
   - **AD walker** : add per-lane rules for `Primitive::Vec3Add` / `Vec3Mul` / `Vec3Length` / `Vec3Normalize`. Or scalarize post-walk.
   - **JIT lowering** : map `MirType::Vec(3, F32)` to cranelift's `f32x4` (with lane 3 padded) or scalarize into 3 f32 ops. First approach preserves type-ID, second simplifies JIT but loses semantic fidelity.
   - **cssl-examples real sphere-SDF** : `@differentiable fn sphere_sdf(p : vec3<f32>, r : f32) -> f32 { length(p) - r }` compiling + executing + verifying gradient `∂/∂p = normalize(p)` against central-differences.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D32 : Backend emission validation — naga-parses emitted WGSL
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** The workspace has 5 GPU backends (SPIR-V, DXIL, MSL, WGSL, plus CPU Cranelift) emitting text artifacts. Until T11-D32, nothing verified the emitted text was actually syntactically + structurally valid shader code — only that specific substrings appeared. T11-D32 adds naga-based validation for the WGSL backend : emitted text is parsed through naga's `wgsl-in` frontend, catching any malformed output.
+- **Slice landed (this commit)**
+  - **Workspace Cargo.toml** : `naga = { version = "23", features = ["wgsl-in"] }` pinned to match wgpu 23's internal naga.
+  - **`cssl-cgen-gpu-wgsl/Cargo.toml`** : `naga` added as `[dev-dependencies]` — validator only used in tests, not in the emitter itself (keeps production deps minimal).
+  - **5 new tests in `cssl-cgen-gpu-wgsl/src/emit.rs`** :
+    - `naga_validates_compute_skeleton` : compute-stage emission parses.
+    - `naga_validates_vertex_skeleton` : vertex-stage emission parses.
+    - `naga_validates_fragment_skeleton` : fragment-stage emission parses.
+    - `naga_validates_shader_with_helpers` : multi-fn shader (entry + helpers) parses.
+    - `naga_validated_module_has_entry_point` : naga's parse result contains the expected entry-point name + stage.
+  - Helper fns `naga_compatible_compute_profile` / `naga_compatible_fragment_profile` : build feature-minimal profiles (without f16) because naga 23 doesn't yet support the `enable f16;` directive (gfx-rs/wgpu#4384). Our emitter correctly renders f16 ; naga's validator just hasn't caught up. The existing `shader_f16_feature_emits_enable_directive` text-assertion test covers that path.
+- **Consequences**
+  - Test count : 1379 → 1384 (+5 in cssl-cgen-gpu-wgsl).
+  - **Emitted WGSL is now validated by a real parser.** Any emitter regression producing malformed syntax is caught at test-time, not at runtime when the shader fails to compile on the GPU.
+  - naga is pure-Rust + compiles cleanly on the 1.85 toolchain. No native deps, no build-system changes.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Deferred**
+  - **SPIR-V validation** : `spirv-tools` crate (already in workspace deps) provides `spirv-val` bindings. Same pattern : emit SPIR-V → run spirv-val → assert no errors. Deferred since SPIR-V backend has fewer integration tests than WGSL currently.
+  - **DXIL validation** : requires `dxc.exe` (Windows SDK tool) or `llvm-dxc` — native binary + process-spawning. More complex than pure-Rust naga.
+  - **MSL validation** : apple-only ; requires Metal SDK or `mslcc` shim. Skipped on non-Apple hosts.
+  - **Runtime GPU execution** : compile → upload to device → dispatch → read back. Requires real driver, only reachable on hw-matrix CI.
