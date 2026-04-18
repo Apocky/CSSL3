@@ -3280,4 +3280,57 @@ Each decision entry :
   - **Auto-discovery of struct-specialization targets** — walker that finds struct-expr contexts with type-args (or inference-derived args) and invokes `specialize_generic_struct` automatically (parallel to `auto_monomorphize` for fns).
   - **Generic enums** — same recipe applied to `HirEnum`.
 
+───────────────────────────────────────────────────────────────
+
+## § T11-D46..D50 : Monomorphization quartet complete — auto-discovery trilogy → quartet
+
+- **Date** 2026-04-18
+- **Status** accepted
+- **Context** After the D38..D45 generic-fn MVP arc + D45 struct-decl MVP, the discovery + impl-specialization layers were pending. D46..D50 land them as 5 cleanly-separated slices :
+
+| # | Slice | Scope |
+|---|-------|-------|
+| D46 | struct auto-discovery | Walker scans fn signatures + struct-field types for `Path{type_args}` refs matching indexed generic structs ; emits `HirStruct` specializations per unique tuple |
+| D47 | enum decl-level specialization | `specialize_generic_enum` + `mangle_enum_specialization_name` — parallel of D45 for `HirEnum` (variants reuse `substitute_struct_body`) |
+| D48 | enum auto-discovery | Walker parallel of D46 — scans the same contexts + enum-variant fields for generic-enum refs |
+| D49 | impl<T> monomorphization | `specialize_generic_impl` — walks `HirImpl.fns`, applies outer-impl subst to each method's param + return types, emits MirFunc per method with mangled name `{self_ty}_{args}__{fn_name}` |
+| D50 | impl auto-discovery | Walker indexes generic impl blocks by self-type name ; scans fn sigs + struct/enum fields for refs matching an indexed self-type ; invokes `specialize_generic_impl` per unique (impl, type-args) tuple |
+- **State of the monomorphization surface**
+  - **Decl-level APIs** (callable with manual `TypeSubst`) :
+    - `specialize_generic_fn` (D38) — `HirFn` → `MirFunc`
+    - `specialize_generic_struct` (D45) — `HirStruct` → `HirStruct` (specialized)
+    - `specialize_generic_enum` (D47) — `HirEnum` → `HirEnum` (specialized)
+    - `specialize_generic_impl` (D49) — `HirImpl` → `Vec<MirFunc>` (one per method)
+  - **Auto-discovery walkers** (scan module + dedup per tuple) :
+    - `auto_monomorphize` (D40) — turbofish call sites → `MirFunc` specializations
+    - `auto_monomorphize_structs` (D46) — type-annotations → `HirStruct` specializations
+    - `auto_monomorphize_enums` (D48) — type-annotations → `HirEnum` specializations
+    - `auto_monomorphize_impls` (D50) — type-annotations → `MirFunc` method specializations
+  - **Support infrastructure** :
+    - `rewrite_generic_call_sites` (D41) — rewrite `func.call @id → @id_i32` post-discovery
+    - `drop_unspecialized_generic_fns` (D43) — module cleanup after specialization
+    - `HirExprKind::Call.type_args` (D39) — turbofish survives CST → HIR
+- **Consequences**
+  - Test count : 1506 → 1553 (+47 across D46..D50).
+  - **Architectural unlock** : writing generic items in CSSLv3 source — fns, structs, enums, impl blocks — and having them auto-specialize based on type-annotation usage is now a single-function-call away. `struct Vec<T> + impl<T> Vec<T> { fn push … } + fn use(v : Vec<i32>)` would produce specialized `Vec_i32` struct + `Vec_i32__push` MirFunc automatically.
+  - **What's still missing for real `struct Vec<T>`** :
+    - **Struct-expr / enum-constructor body_lower** : today `lower_struct_expr` emits `Opaque("!cssl.struct.<name>")` — needs to correlate with specialized struct's mangled name (requires threading discovery reports through body_lower).
+    - **`MirType::Struct(def_id, Vec<MirType>)`** : value-level struct representation. Today structs are Opaque at the MIR level ; real field-access lowering + layout computation needs this.
+    - **Heap-allocation primitives** : `alloc`/`dealloc` MIR ops + cranelift intrinsic lowering + runtime wiring. Hard blocker for any `Vec<T>` backing storage.
+    - **Trait-dispatch for bounded generics** : `T: Hash` / `T: Clone` resolution — interacts with a future trait-impl registry. Needed for `HashMap<K, V>`.
+  - Entire workspace commit-gate green : fmt + clippy + test + doc + xref.
+- **Session-4 trajectory summary**
+  - 21 commits from D33 (stage-1 scaffold) through D50 (impl auto-discovery).
+  - Key runtime milestones landed this session :
+    - T11-D35 : sphere_sdf(p : vec3<f32>) gradient matches normalize(p) at JIT runtime.
+    - T11-D36 : IFC0004 rejects concrete non-interference violations.
+    - T11-D42 : `fn id<T>(x:T) -> T { x }; fn main() { id::<i32>(5) }` — first CSSLv3 source with a generic-fn call compiling + executing correctly, main() returns 5.
+    - T11-D50 : monomorphization quartet complete — all 4 generic-item kinds (fn/struct/enum/impl) have both decl-level API + auto-discovery walker.
+- **Next natural slices** (priority order for P1 stdlib-core)
+  1. Struct-expr body_lower mangled-tag emission — threads discovery reports to body_lower so `Pair { first: 1, second: 2.0 }` emits `Pair_i32_f32` tag instead of `Opaque("!cssl.struct.Pair")`.
+  2. `MirType::Struct(DefId, Vec<MirType>)` — value-level representation + layout computation. Touches JIT + AD walker.
+  3. Heap-allocation primitives — `alloc(size, align)` / `dealloc(ptr)` MIR ops + cranelift lowering.
+  4. Trait-dispatch infrastructure — per-trait impl-registry + resolution at specialization site.
+  5. First real stdlib type : `struct Vec<T> { data: *mut T, len: usize, cap: usize } + impl<T> Vec<T> { fn push … fn pop … }` in CSSLv3. Requires 1..4.
+
 
