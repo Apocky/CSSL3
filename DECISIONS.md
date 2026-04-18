@@ -2423,3 +2423,51 @@ Each decision entry :
   - Memref load/store : `memref.load` / `memref.store` → CLIF `load.i32` / `store.i32`.
   - SIMD / vector ops (AVX2 + AVX-512 paths per the feature-detection infrastructure already in place).
   - Calling-convention : map `CpuTargetProfile.abi` → CLIF calling-convention attribute.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D19 : JIT API surface + toolchain-bump gate (real activation deferred)
+
+- **Date** 2026-04-17
+- **Status** accepted (API) • blocked (activation)
+- **Context** T11-D18 closed the MIR → CLIF-text lowering gap. The next step is real JIT execution : MIR `fn add(a, b) { a + b }` → compiled machine code → `add(3, 4) == 7` at runtime. This is **THE bridge to stage-1 self-host** : once programs execute, the compiler can describe itself in CSSLv3 and bootstrap.
+- **Blocker discovered (toolchain pin)**
+  - Current pin : `rust-toolchain.toml` = `1.75.0` (per R16 reproducibility anchor).
+  - Cranelift 0.115 (latest) + its transitive `indexmap-2.14` require `edition2024` feature support, which stabilized in Rust 1.85+.
+  - Attempted downgrade to `cranelift-0.103` : `indexmap-2.14` still present in registry, blocked on same edition2024 requirement (transitive dep resolution picks the latest compatible indexmap even for older cranelift releases unless explicitly pinned via `[patch]`).
+  - Decision : **do not unilaterally bump the toolchain pin.** R16 reproducibility requires an explicit DECISIONS.md entry for the bump, and Apocky should make the call. Attempted bump logs preserved in this entry.
+- **Slice landed (this commit)**
+  - New module `jit.rs` (~200 LOC + 8 tests) with the **exact API surface** the real JIT will expose :
+    - `JitModule` : holds compiled fns. `new()` / `compile(&MirFunc) -> Result<JitFn, JitError>` / `get(name)` / `len` / `is_empty` / `is_activated()` (returns `false` today).
+    - `JitFn { name, param_count, has_result }` : handle to a compiled fn.
+    - `JitFn::call_i64_i64_to_i64(a, b) -> Result<i64, JitError>` : call path for the canonical `add(i64, i64) -> i64` roundtrip.
+    - `JitFn::call_f32_f32_to_f32(a, b) -> Result<f32, JitError>` : float companion.
+    - `JitError` : `NotActivated` (current path — mentions toolchain bump in the message) + `UnsupportedFeature` + `LoweringFailed` + `UnknownFunction`.
+  - `compile()` **already validates** the MIR fn shape (rejects multi-result fns) and records the handle. The only missing piece is the `cranelift_jit::JITModule` call in place of the stub-handle-record.
+  - 8 new tests :
+    - `jit_module_is_not_activated_in_stage_0` — verifies the guard-rail.
+    - `compile_records_primal_shape` — hand-built MIR add-fn, asserts handle fields.
+    - `compile_rejects_multi_result_fn` — multi-result validation.
+    - `call_returns_not_activated_until_toolchain_bumped` — proves the error path.
+    - `call_f32_also_returns_not_activated` — float companion.
+    - `module_get_finds_registered_fns` — lookup.
+    - `empty_module_is_empty` — baseline.
+    - `jit_error_not_activated_message_mentions_toolchain` — error message contract.
+- **Consequences**
+  - Test count : 1350 → 1358 (+8 in cssl-cgen-cpu-cranelift).
+  - **The JIT interface is frozen.** When the toolchain bump lands, T11-D19-full is a pure internal swap : replace the stub body of `JitModule::compile` with `FunctionBuilder` + `JITBuilder` + `JITModule::finalize_definitions()` calls. No public API churn. Every caller today can write code against `JitModule` + `JitFn` and it will execute once activated.
+  - The `NotActivated` error is the **single, well-typed, documented gate** between stage-0 and runtime execution. When Apocky decides the toolchain bump, the commit will be small + reviewable.
+  - Entire workspace commit-gate still green : fmt + clippy + test + doc + xref.
+- **Gating decision required from Apocky**
+  - **Bump `rust-toolchain.toml` from 1.75.0 to 1.85.0 (or latest stable)** — R16 anchor documented via new DECISIONS entry.
+  - Once bumped, T11-D19-full follow-on commit:
+    1. Add `cranelift-jit = "0.115"` to workspace Cargo.toml
+    2. Add `cranelift-{codegen,frontend,module,jit}` to cssl-cgen-cpu-cranelift Cargo.toml
+    3. Implement `JitModule::compile` via real Cranelift FunctionBuilder
+    4. Add the `add(3, 4) == 7` roundtrip test that actually calls + asserts
+    5. Flip `is_activated()` → `true`
+- **Deferred**
+  - Full Cranelift integration (blocked above).
+  - Scalar control-flow JIT : `scf.if` / `scf.for` via CLIF blocks + brif.
+  - SIMD dispatch : AVX2 + AVX-512 multi-variant fat-kernels.
+  - Scene-SDF runtime gradient verification : JIT-compile the fwd variant of `@differentiable fn scene(a, b) { min(a, b) }` + execute + compare against central-differences.

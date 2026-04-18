@@ -34,6 +34,7 @@
 pub mod abi;
 pub mod emit;
 pub mod feature;
+pub mod jit;
 pub mod lower;
 pub mod target;
 pub mod types;
@@ -41,6 +42,7 @@ pub mod types;
 pub use abi::{Abi, ObjectFormat};
 pub use emit::{emit_module, CpuCodegenError, EmittedArtifact};
 pub use feature::{CpuFeature, CpuFeatureSet, SimdTier};
+pub use jit::{JitError, JitFn, JitModule};
 pub use lower::{format_operands, format_value, lower_op, ClifInsn};
 pub use target::{CpuTarget, CpuTargetProfile, DebugFormat};
 pub use types::{clif_type_for, ClifType};
