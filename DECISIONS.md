@@ -1594,3 +1594,25 @@ Each decision entry :
   - Decimal literal encoding in `cssl_smt::Literal` (currently stage-0 approximates fractions via fixed-scale rationals ; sufficient for gradient constants but limited for general case).
   - Proof-cert emission + R18 signing of `(query, verdict)` triple.
   - HIR-Expr → Term for general refinement-obligation discharge (T9-phase-2d proper scope remaining).
+
+───────────────────────────────────────────────────────────────
+
+## § T7-D7 : T7-phase-2d-audit — AuditChain composability for killer-app gate
+
+- **Date** 2026-04-17
+- **Status** accepted
+- **Context** T7-D6 landed `SignedKillerAppGateReport` with BLAKE3 + Ed25519 seal. Standalone signed-reports are useful but the R18 vision (per `specs/22_TELEMETRY.csl`) is a chain-of-custody where every gate-verdict + telemetry-event lands in an append-only signed chain. This commit adds the final composability step : a gate-report can be appended to `cssl_telemetry::AuditChain` as a tagged entry.
+- **Slice landed (this commit)**
+  - `SignedKillerAppGateReport::audit_tag() -> &'static str` → `"killer-app-gate"` stable tag.
+  - `SignedKillerAppGateReport::audit_message() -> String` : compact record of the form `"CSSLv3-R18-KILLER-APP-GATE-v1 hash=<64-hex> verdict=N/M/{green|red} vk=<64-hex>"`. Third-party auditors can re-derive the canonical payload + re-hash to verify against the embedded `hash=` field.
+  - `SignedKillerAppGateReport::append_to_audit_chain(&self, chain: &mut AuditChain, timestamp_s: u64)` : single-call integration that tags + messages + appends.
+  - 6 new tests covering tag stability + message format + failing-gate reflects `red` + single-append chain-invariant + multi-run sequential chain-verification + signed-chain (with `SigningKey`-backed chain) verification.
+- **Consequences**
+  - Every killer-app gate-run can now be logged in R18 AuditChain alongside other audit-worthy events (power-breaches, declassifications, signed-telemetry emissions).
+  - Multi-run chains show the gate-verdict trajectory — auditors see the full sequence of pass/fail outcomes.
+  - Composable with the existing `AuditChain::with_signing_key` path for real Ed25519 signing of each chain-entry.
+  - Test count : 1087 → 1093 (+6).
+- **Deferred**
+  - OTLP gRPC export of gate-verdicts (T11-phase-2b).
+  - Proof-cert integration : embed the SMT-dispatch verdict in the audit-message.
+  - Cross-AuditChain reference (one chain can reference a hash-rooted entry in another chain ; phase-2e).

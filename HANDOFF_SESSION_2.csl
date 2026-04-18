@@ -68,22 +68,24 @@
     0814ad8  T3.4-phase-2-refinement + T9-phase-1
     6691400  T7+T8-phase-1
 
-  metrics @ T9-D5-pending-commit :
+  metrics @ T7-D7-pending-commit :
     crates-populated     : 30 of 31 workspace-members
-    LOC-Rust-scaffold    : ~50600 (+500 structured SMT translator)
+    LOC-Rust-scaffold    : ~50800 (+200 AuditChain gate integration)
     LOC-CSSLv3-examples  : ~180 (3 .cssl files)
-    tests-passing        : 1087 / 0 failed / 0 ignored (+13 translator tests)
+    tests-passing        : 1093 / 0 failed / 0 ignored (+6 audit-chain tests)
     clippy-warnings      : 0 workspace-wide @ -D warnings
     commit-gate-green    : 6/6 per-commit (fmt clippy test doc spec-xref repro)
-    DECISIONS-entries    : 29 (+T9-D5)
+    DECISIONS-entries    : 30 (+T7-D7)
     spec-xref-unresolved : 0
-    killer-app-gate      : 11/11 cases pass ✓ ⊗ cryptographically-signed
+    killer-app-gate      : 11/11 cases pass ✓ ⊗ cryptographically-signed ⊗ chain-of-custody-ready
       F1-correctness-proof .published .third-party-auditable
       signed-attestation : BLAKE3 + Ed25519 .over canonical-serialized-report
       SMT-verification    : Z3/CVC5-ready via Solver::check_text + Solver::check
         text-path          : GradientCase::run_smt_verification
         struct-path        : GradientCase::run_smt_verification_via_query
       labeled-assertions  : unsat-core extraction-ready
+      audit-chain-entry   : SignedKillerAppGateReport::append_to_audit_chain
+        tag = "killer-app-gate" • trajectory-auditable across runs
     HIR-walkers (phase-3) : 3 of 5 landed (AD-legality + IFC + @staged)
     body-lowering coverage : 31 / 31 HirExprKind variants ✓ complete
 
