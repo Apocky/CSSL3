@@ -35,5 +35,8 @@ perf.data*
 .cache/
 /compiler-rs/target-doc/
 
-# Claude Code ephemera
-.claude/cache/
+# Claude Code ephemera + internal agent files
+.claude/
+CLAUDE.md
+HANDOFF_SESSION_*.csl
+SESSION_*_HANDOFF.md
