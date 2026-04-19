@@ -18,7 +18,7 @@
 //!     `HirExprKind::Compound` with the operator-class preserved.
 
 use cssl_ast::cst;
-use cssl_ast::{DiagnosticBag, Ident, Module as CstModule, SourceFile, Span};
+use cssl_ast::{DiagnosticBag, Ident, Module as CstModule, SourceFile};
 
 use crate::arena::{DefId, HirArena, HirId};
 use crate::attr::{HirAttr, HirAttrArg, HirAttrKind};
@@ -1267,9 +1267,6 @@ fn resolve_struct_body(b: &mut HirStructBody, scope: &ScopeMap) {
     }
 }
 
-/// Hide the empty Span+SourceFile re-export so the `Span` import doesn't show as unused.
-#[allow(dead_code)]
-const fn _span_referenced(_: Span) {}
 
 #[cfg(test)]
 mod tests {
