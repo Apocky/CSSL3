@@ -134,7 +134,14 @@ impl CapCtx {
         }
     }
 
-    #[allow(dead_code)] // reserved for T3.4-phase-2.5 expression walk
+    // Reserved for the deferred T3.4-phase-2.5 body-walk slice of cap_check.
+    // The signature-level minimum-viable check landed in DECISIONS.md § T5-D3
+    // (Cap-check pass sig-level only for stage-0 ; full expr walk deferred),
+    // which explicitly defers "full linear-use tracking through every
+    // expression" + "handler-one-shot enforcement" to T3.4-phase-2.5. This
+    // helper will be wired in when that slice lands; until then, cargo
+    // -D warnings needs the allow.
+    #[allow(dead_code)] // T5-D3: wired in at T3.4-phase-2.5
     fn emit(&mut self, message: impl Into<String>, span: Span) {
         self.diagnostics
             .push(Diagnostic::error(message).with_span(span));
@@ -228,7 +235,10 @@ impl CapCtx {
         }
     }
 
-    #[allow(dead_code)] // reserved for T3.4-phase-2.5 expression walk
+    // See `emit` above for the DECISIONS.md § T5-D3 tracking note -- matrix() is
+    // the AliasMatrix accessor the deferred T3.4-phase-2.5 body-walk needs to
+    // run `AliasMatrix::can_pass_through`/`param_subtype_check` at call sites.
+    #[allow(dead_code)] // T5-D3: wired in at T3.4-phase-2.5
     fn matrix(&self) -> &AliasMatrix {
         &self.matrix
     }
