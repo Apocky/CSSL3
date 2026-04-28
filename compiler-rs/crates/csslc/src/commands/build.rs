@@ -90,43 +90,79 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     cssl_mir::rewrite_generic_call_sites(&mut mir_mod, &mono_report.call_site_names);
     cssl_mir::drop_unspecialized_generic_fns(&mut mir_mod);
 
-    // ── emission (placeholder per slice spec : real .o emit is S6-A3) ─
+    // ── emission ─────────────────────────────────────────────────────
+    // S6-A3 : --emit=object | --emit=exe routes through cranelift-object.
+    // (--emit=exe still produces a .obj/.o here ; S6-A4 invokes the linker
+    // to turn it into a runnable executable.)
+    // Other --emit modes (mlir/spirv/wgsl/dxil/msl) keep the stage-0
+    // placeholder since their backends land in later phases.
     let output_path = resolve_output_path(args, path);
     let mode_label = emit_mode_label(args.emit);
     let mir_fn_count = mir_mod.funcs.len();
-    let placeholder = format!(
-        "// CSSLv3 stage-0 build artifact (placeholder — S6-A2).\n\
-         // The pipeline lex → parse → HIR → walkers → MIR → monomorphize ran clean.\n\
-         //\n\
-         // input         : {}\n\
-         // emit-mode     : {}\n\
-         // mir-fn-count  : {}\n\
-         // opt-level     : {}\n\
-         // target        : {}\n\
-         //\n\
-         // Real cranelift-object emission lands in S6-A3 ; linker invocation in S6-A4.\n\
-         // Until then, this placeholder confirms the upstream pipeline composed without error.\n",
-        path.display(),
-        mode_label,
-        mir_fn_count,
-        args.opt_level,
-        args.target.as_deref().unwrap_or("(host-default)"),
-    );
-    if let Err(e) = std::fs::write(&output_path, placeholder) {
-        eprintln!(
-            "csslc: error: cannot write output '{}' ({})",
-            output_path.display(),
-            e
-        );
-        return ExitCode::from(exit_code::USER_ERROR);
+
+    match args.emit {
+        EmitMode::Object | EmitMode::Exe => {
+            let bytes = match cssl_cgen_cpu_cranelift::emit_object_module(&mir_mod) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("csslc: object-emit error : {e}");
+                    return ExitCode::from(exit_code::USER_ERROR);
+                }
+            };
+            if let Err(e) = std::fs::write(&output_path, &bytes) {
+                eprintln!(
+                    "csslc: error: cannot write output '{}' ({})",
+                    output_path.display(),
+                    e
+                );
+                return ExitCode::from(exit_code::USER_ERROR);
+            }
+            eprintln!(
+                "csslc: build {} → {} : {} MIR fn(s) → {} bytes ({})",
+                path.display(),
+                output_path.display(),
+                mir_fn_count,
+                bytes.len(),
+                mode_label,
+            );
+        }
+        _ => {
+            let placeholder = format!(
+                "// CSSLv3 stage-0 build artifact (placeholder — non-object emit mode).\n\
+                 // The pipeline lex → parse → HIR → walkers → MIR → monomorphize ran clean.\n\
+                 //\n\
+                 // input         : {}\n\
+                 // emit-mode     : {}\n\
+                 // mir-fn-count  : {}\n\
+                 // opt-level     : {}\n\
+                 // target        : {}\n\
+                 //\n\
+                 // Real backend emission for {} lands in a later phase\n\
+                 // (SPIR-V → S6-D1 ; DXIL → S6-D2 ; MSL → S6-D3 ; WGSL → S6-D4).\n",
+                path.display(),
+                mode_label,
+                mir_fn_count,
+                args.opt_level,
+                args.target.as_deref().unwrap_or("(host-default)"),
+                mode_label,
+            );
+            if let Err(e) = std::fs::write(&output_path, placeholder) {
+                eprintln!(
+                    "csslc: error: cannot write output '{}' ({})",
+                    output_path.display(),
+                    e
+                );
+                return ExitCode::from(exit_code::USER_ERROR);
+            }
+            eprintln!(
+                "csslc: build {} → {} : {} MIR fn(s) ({} placeholder)",
+                path.display(),
+                output_path.display(),
+                mir_fn_count,
+                mode_label,
+            );
+        }
     }
-    eprintln!(
-        "csslc: build {} → {} : {} MIR fn(s) ({})",
-        path.display(),
-        output_path.display(),
-        mir_fn_count,
-        mode_label,
-    );
     ExitCode::from(exit_code::SUCCESS)
 }
 
@@ -190,7 +226,9 @@ mod tests {
     }
 
     #[test]
-    fn build_minimal_module_writes_placeholder() {
+    fn build_minimal_module_writes_object_bytes() {
+        // S6-A3 : --emit=Exe now produces real cranelift-object bytes.
+        // Verify output is non-empty and starts with the host-platform magic.
         let src = "module com.apocky.examples.hello\n\
                    fn main() -> i32 { 42 }\n";
         let tmp_out =
@@ -200,7 +238,38 @@ mod tests {
 
         let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
         assert_eq!(format!("{code:?}"), format!("{ok:?}"));
-        assert!(tmp_out.exists(), "placeholder output should exist");
+        assert!(tmp_out.exists(), "object output should exist");
+        let written = std::fs::read(&tmp_out).unwrap();
+        assert!(!written.is_empty(), "object bytes should be non-empty");
+        // Verify host-platform magic prefix.
+        let host_magic =
+            cssl_cgen_cpu_cranelift::magic_prefix(cssl_cgen_cpu_cranelift::host_default_format());
+        assert!(
+            written.starts_with(host_magic),
+            "expected magic {:02X?} ; got first 8 bytes {:02X?}",
+            host_magic,
+            &written[..written.len().min(8)],
+        );
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn build_with_emit_mlir_writes_placeholder() {
+        // Non-object emit modes still write the explanatory placeholder.
+        let src = "module com.apocky.examples.hello\n\
+                   fn main() -> i32 { 42 }\n";
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_emit_mlir_{}.mlir", std::process::id()));
+        let args = BuildArgs {
+            input: PathBuf::from("hello.cssl"),
+            output: Some(tmp_out.clone()),
+            target: None,
+            emit: EmitMode::Mlir,
+            opt_level: 0,
+        };
+        let code = run_with_source(Path::new("hello.cssl"), src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(format!("{code:?}"), format!("{ok:?}"));
         let written = std::fs::read_to_string(&tmp_out).unwrap();
         assert!(written.contains("CSSLv3 stage-0 build artifact"));
         assert!(written.contains("hello.cssl"));
