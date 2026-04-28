@@ -144,15 +144,13 @@ pub fn parse(args: &[String]) -> Result<Command, String> {
     // Top-level help-flag detection works before subcommand dispatch.
     if rest
         .first()
-        .map(|s| matches!(s.as_str(), "-h" | "--help" | "help"))
-        .unwrap_or(false)
+        .is_some_and(|s| matches!(s.as_str(), "-h" | "--help" | "help"))
     {
         return Ok(Command::Help);
     }
     if rest
         .first()
-        .map(|s| matches!(s.as_str(), "version" | "--version" | "-V"))
-        .unwrap_or(false)
+        .is_some_and(|s| matches!(s.as_str(), "version" | "--version" | "-V"))
     {
         return Ok(Command::Version);
     }

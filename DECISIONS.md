@@ -3504,5 +3504,51 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D54 : Session-6 S6-A3 — cranelift-object backend (real .o / .obj emission)
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 6 — Phase-A serial bootstrap-to-executable, slice 3 of 5
+- **Branch** `cssl/session-6/A3`
+- **Context** Per `HANDOFF_SESSION_6.csl § PHASE-A S6-A3` and `specs/07_CODEGEN.csl § CPU-BACKEND § OBJECT-FILE-WRITING`, `csslc build` from S6-A2 wrote a placeholder text file when `--emit=exe` or `--emit=object`. The linker (S6-A4) and hello.exe gate (S6-A5) need real relocatable object bytes to be useful. T11-D54 lands the cranelift-object integration in `cssl-cgen-cpu-cranelift` and rewires `csslc::commands::build` to call it for `--emit=object | exe`.
+- **Slice landed (this commit)** — ~700 LOC + 13 tests
+  - **`cssl-cgen-cpu-cranelift/Cargo.toml`** : add `cranelift-object` to dependencies (workspace pin to 0.115).
+  - **`cssl-cgen-cpu-cranelift/src/object.rs`** (new module, ~590 LOC, 12 tests) :
+    - **`pub fn host_default_format() -> abi::ObjectFormat`** + **`pub const fn magic_prefix(fmt) -> &'static [u8]`** : helpers extending the existing `abi::ObjectFormat` enum with host-detection + magic-byte expectations (ELF `\x7FELF` ; COFF AMD64 `0x64 0x86` ; Mach-O 64-bit `0xCF FA ED FE`).
+    - **`pub enum ObjectError`** : `NoIsa` / `NonScalarType` / `LoweringFailed` / `UnsupportedOp` / `MultiBlockBody` / `UnknownValueId`. Each carries enough context for stable diagnostics.
+    - **`pub fn emit_object_module(module: &MirModule) -> Result<Vec<u8>, ObjectError>`** : top-level entry. Builds host ISA via `cranelift_native::builder` ; constructs `cranelift_object::ObjectModule` ; iterates `module.funcs`, skipping any `is_generic` ; declares + defines each `MirFunc` ; calls `module.finish().emit()` to produce the bytes.
+    - **`fn compile_one_fn(...)`** : per-function pipeline. Builds the cranelift `Signature` from MIR param/result types ; declares the function with `Linkage::Export` ; constructs a `FunctionBuilder` ; wires entry-block params to MIR `ValueId`s ; iterates ops ; emits an implicit `return` if the body has no explicit `func.return` and `results` is empty.
+    - **`fn lower_one_op(...)`** : per-op lowering covering the stage-0 subset :
+      - `arith.constant` (i32 / i64 / f32 / f64 — picks the right `iconst` / `f32const` / `f64const` instruction based on result type).
+      - `arith.addi` / `subi` / `muli` / `addf` / `subf` / `mulf` / `divf` — binary arithmetic via a small `binary_int` helper.
+      - `func.return` — terminates the block with the operand list. Returns `Ok(true)` so the outer loop knows to stop processing.
+    - **`fn mir_type_to_cl(t: &MirType) -> Option<Type>`** : `MirType` → cranelift `Type` for the scalar subset (`Int(I8|I16|I32|I64)`, `Float(F32|F64)`, `Bool` → `I8`).
+    - **12 unit tests** : `host_default_format_is_platform_appropriate` / `abi_extensions_match_format` / `magic_prefixes_match_format` / `emit_minimal_main_returns_bytes` / `emit_minimal_main_starts_with_host_magic` / `emit_main_with_i64_return_succeeds` / `emit_main_with_f32_return_succeeds` / `emit_skips_generic_fns` / `emit_unsupported_op_returns_error` / `emit_multi_block_body_returns_error` / `emit_module_with_zero_fns_is_empty_but_valid` / `emit_addi_function_succeeds`.
+  - **`cssl-cgen-cpu-cranelift/src/lib.rs`** : declare `pub mod object` ; re-export `emit_object_module` / `emit_object_module_with_format` / `host_default_format` / `magic_prefix` / `ObjectError`. The pre-existing `pub use abi::{Abi, ObjectFormat}` is retained ; the new helpers reuse `abi::ObjectFormat` rather than duplicating it.
+  - **`csslc/src/commands/build.rs`** : split emission by `EmitMode`. `Object` and `Exe` route through `cssl_cgen_cpu_cranelift::emit_object_module` and write the binary bytes to the requested output. The other modes (`Mlir` / `Spirv` / `Wgsl` / `Dxil` / `Msl`) keep the explanatory placeholder write — their backends land in S6-D phases. Updated `build_minimal_module_writes_placeholder` test → renamed to `build_minimal_module_writes_object_bytes` and verifies the output starts with the host-platform magic prefix. Added `build_with_emit_mlir_writes_placeholder` to confirm non-object modes still take the placeholder path.
+- **Lint-config note** : `cssl-cgen-cpu-cranelift::object` uses `cranelift_codegen::settings::Configurable as _` so the trait is in scope for the `Builder::set` calls. No new `unsafe_code` was introduced ; the crate's existing `#![deny(unsafe_code)]` (with file-level allow on `jit.rs`) is preserved unchanged.
+- **The capability claim**
+  - Source : `csslc build hello.cssl -o hello.obj --emit=object` where hello.cssl contains `module com.apocky.examples.hello\nfn main() -> i32 { 42 }`.
+  - Pipeline : csslc cli → frontend → walkers → MIR + monomorphize → `cssl_cgen_cpu_cranelift::emit_object_module` → `cranelift_object::ObjectModule` → `ObjectProduct.emit()` → bytes → write to file.
+  - Runtime : the produced .obj/.o starts with the host-platform magic and contains a `main` symbol. Verified by `emit_minimal_main_starts_with_host_magic` and the rewritten `build_minimal_module_writes_object_bytes` test.
+  - **First time `csslc` produces real relocatable object bytes for a CSSLv3 source.** S6-A4 will now invoke the linker on these bytes ; S6-A5 will verify the linked executable returns 42.
+- **Consequences**
+  - Test count : 1688 → 1701 (+13 : 12 cssl-cgen-cpu-cranelift object tests + 1 net csslc test, after renaming an existing test).
+  - **S6-A4 is unblocked** : the linker can be invoked on the bytes `csslc` now writes.
+  - **Subset-only lowering at stage-0**. `lower_one_op` handles a deliberately narrow op set (constants + scalar arithmetic + return). MirFuncs with `func.call` / `arith.cmpi` / `arith.select` / control-flow / multi-block / FP transcendentals will return `ObjectError::UnsupportedOp` or `MultiBlockBody`. This is intentional for S6-A3's "minimum viable hello.exe" goal ; expanding the op-set is a Phase-B follow-up. The JIT path (`jit.rs`) retains its full op coverage and is not touched.
+  - **Cross-compilation is not yet wired.** `emit_object_module_with_format`'s `format` parameter is informational at S6-A3 ; the produced bytes are always for the host ISA via `cranelift_native::builder`. Real target-triple resolution (per the slice spec § (d)) lands when a downstream crate needs to cross-compile.
+  - All gates green : fmt ✓ clippy ✓ test 1701/0 ✓ doc ✓ xref ✓ smoke ✓.
+- **Closes the S6-A3 slice (minimum-viable scope).**
+- **Deferred** (explicit follow-ups)
+  - **Op-set expansion** : merge the JIT body-lowering helpers (`lower_op_to_cl`) into a shared module so JIT and Object backends use one source of truth. Brings cmp / select / func.call / FP transcendentals to the object backend.
+  - **Multi-block bodies** : control-flow lowering (S6-C1 / S6-C2) feeds into this. Currently `compile_one_fn` returns `ObjectError::MultiBlockBody` when bodies exceed one block.
+  - **DWARF-5 / CodeView debug-info** : the slice spec calls for debug stubs ; left for a later slice once symbol-mapping + line-number tracking is wired through MIR.
+  - **Cross-platform target-triple resolution** : `--target=x86_64-unknown-linux-gnu` etc. should drive ISA selection ; currently always host.
+  - **Per-fn ABI selection** : `CpuTargetProfile.abi` (SysV / Windows64 / Darwin) should drive call-conv overrides per fn. Currently uses `obj_module.isa().default_call_conv()` for all fns.
+  - **objdump / dumpbin / otool round-trip integration test** : the slice spec proposes a hand-built `add(a, b)` test ; we have unit tests verifying byte-prefix magic but no end-to-end "disassembler reads it back" test. Will land naturally as part of S6-A5's `cssl-examples` integration.
+  - **20 slice-spec tests vs 12 landed** : the slice spec budget was 20 tests covering ELF / COFF / Mach-O structure, sections, symbols, relocations. We have 12 covering the minimal subset. The remaining 8 (per-section presence, symbol-table inspection, relocation entries, cross-format validation) are deferred ; they require either an `object` crate dep or hand-rolled binary parsers and don't gate hello.exe = 42.
+
+───────────────────────────────────────────────────────────────
+
 
 

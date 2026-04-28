@@ -60,10 +60,7 @@ pub fn run_with_source(path: &Path, source: &str) -> ExitCode {
         ad_report.checked_fn_count,
     );
     eprintln!("  refinement obligations   : {}", obligations.len());
-    eprintln!(
-        "  SMT predicate translations : {} ok / {} failed",
-        smt_translated, smt_failed,
-    );
+    eprintln!("  SMT predicate translations : {smt_translated} ok / {smt_failed} failed");
 
     if !ad_report.diagnostics.is_empty() {
         for d in &ad_report.diagnostics {
