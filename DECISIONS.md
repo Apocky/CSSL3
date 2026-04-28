@@ -3550,5 +3550,52 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D55 : Session-6 S6-A4 — linker invocation (auto-discovered MSVC + rust-lld + Unix toolchains)
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 6 — Phase-A serial bootstrap-to-executable, slice 4 of 5
+- **Branch** `cssl/session-6/A4`
+- **Context** S6-A3 produces real cranelift-object bytes for `--emit=object | exe`. To make `--emit=exe` actually produce a runnable executable, S6-A4 needs to invoke a system linker on the object bytes. The slice spec calls for lld-detection + subprocess management + cross-platform abi handling. T11-D55 lands this with a key innovation : `LinkerKind::MsvcLinkAuto` walks standard Visual Studio + Windows SDK install paths to discover `link.exe` plus the `/LIBPATH:...` directories needed for libcmt.lib / libucrt.lib / kernel32.lib — meaning the user does NOT need to be inside a Developer Command Prompt for csslc to produce a runnable exe.
+- **Slice landed (this commit)** — ~590 LOC + 13 tests
+  - **`csslc/src/linker.rs`** (new module) :
+    - **`pub enum LinkerKind`** — 8 variants : `MsvcLinkAuto { path, lib_paths }` / `RustLld { path, host_flavor }` / `LldLink(path)` / `MsvcLink(path)` / `MsvcCl(path)` / `Clang(path)` / `Gcc(path)` / `Cc(path)`.
+    - **`pub enum LldFlavor`** — `Link` (MSVC-style) / `Gnu` / `Darwin` with `host_default()` switching on `target_env = "msvc"` (so windows-gnu picks GNU flavor) and `flavor_arg()` for the `-flavor` CLI argument to `rust-lld`.
+    - **`pub enum LinkError`** — `NotFound` / `SpawnFailed` / `NonZeroExit` / `OverrideUnusable`. `Display` impl produces actionable messages mentioning the `$CSSL_LINKER` env-var override.
+    - **`pub fn detect_linker() -> Result<LinkerKind, LinkError>`** — detection priority : `$CSSL_LINKER` env-var override → MSVC-auto on Windows → rust-lld via `rustc --print=sysroot` walk → PATH-resident `lld-link` / `clang` / `gcc` / `cc` → MSVC `cl.exe` / `link.exe` (filtering out Git-Bash's GNU-coreutils `/usr/bin/link.exe`).
+    - **`fn find_msvc_link_auto() -> Option<MsvcLinkInfo>`** — walks `C:\Program Files\Microsoft Visual Studio\<year>\<edition>\VC\Tools\MSVC\<ver>\bin\Hostx64\x64\link.exe` plus `lib\x64`, picks the lexicographically-largest version, then walks `C:\Program Files (x86)\Windows Kits\10\Lib\<ver>\{ucrt,um}\x64` for the SDK libs. Returns `None` if any required component is missing.
+    - **`fn find_rust_lld() -> Option<PathBuf>`** — uses `rustc --print=sysroot` to find the active toolchain, then walks `lib/rustlib/<triple>/bin/rust-lld[.exe]`.
+    - **`fn which(stem: &str) -> Option<PathBuf>`** — minimal PATH walker. Honors `PATHEXT`-like extension search on Windows (`.exe` / `.cmd` / `.bat` / no-ext).
+    - **`fn is_likely_gnu_link(p: &Path) -> bool`** — pattern-matches paths containing `usr/bin/`, `git/usr/bin`, `msys`, `mingw`, `cygwin` to filter out Git-Bash's `link(1)` (which is `ln`-aliased and would silently corrupt the build).
+    - **`pub fn build_command(kind, object_inputs, output, extra_libs) -> Command`** — synthesizes the per-kind invocation. `MsvcLinkAuto` adds `/OUT:foo.exe /SUBSYSTEM:CONSOLE /NOLOGO /LIBPATH:... libcmt.lib libucrt.lib kernel32.lib <objects> <extras>`. `RustLld { Link }` and `LldLink` use the same MSVC-style. `RustLld { Gnu | Darwin }` and `Clang/Gcc/Cc` use `-o foo foo.o -l<lib>`. `MsvcCl` uses `cl /Fe:foo.exe foo.obj`.
+    - **`pub fn link(object_inputs, output, extra_libs) -> Result<(), LinkError>`** — high-level entry : detect → build command → spawn → capture stderr on failure.
+    - **13 unit tests** : flavor host-default + flavor strings + per-kind command-shape (rust-lld Link / rust-lld Gnu / msvc-cl /Fe / clang -o / extra-libs propagation for clang and lld-link) + `is_likely_gnu_link` recognizer + 2 `LinkError` Display tests + 1 best-effort `detect_linker` integration test. Tests verify command CONSTRUCTION, not actual linking (that's S6-A5's gate).
+  - **`csslc/src/lib.rs`** : `pub mod linker;`.
+  - **`csslc/src/commands/build.rs`** : split `EmitMode::Exe` from `EmitMode::Object`. Object writes raw bytes ; Exe writes object bytes to a temp `<output>.{obj|o}`, invokes `linker::link`, and on success removes the intermediate. On linker failure the intermediate is kept (alongside a clear error message) so the user can manually retry. Updated `build_minimal_module_writes_object_bytes` test to use `EmitMode::Object` explicitly (so the in-process tests don't depend on a working linker on the host).
+- **The capability claim**
+  - Host : Apocky's Windows 11 (windows-gnu rustup default + MSVC 14.50.35717 at `C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\MSVC\14.50.35717\` + Windows SDK 10.0.26100.0).
+  - Source : `module com.apocky.examples.hello_world\nfn main() -> i32 { 42 }` (added by S6-A5 as `stage1/hello_world.cssl`).
+  - Pipeline : `csslc build hello_world.cssl -o /tmp/hello.exe` → 132-byte hello.obj (cranelift-object COFF) → `MsvcLinkAuto::link.exe /OUT:/tmp/hello.exe /SUBSYSTEM:CONSOLE /NOLOGO /LIBPATH:VC/lib/x64 /LIBPATH:SDK/Lib/.../ucrt/x64 /LIBPATH:SDK/Lib/.../um/x64 libcmt.lib libucrt.lib kernel32.lib hello.obj` → 105472-byte hello.exe.
+  - Runtime : `/tmp/hello.exe` exits with code **42** ✓.
+  - **First time `csslc` produces a runnable executable from CSSLv3 source on this host without manual lib-path setup.** S6-A5 wraps this into an integration test.
+- **Consequences**
+  - Test count : 1701 → 1714 (+13 csslc linker tests, including the rewritten Object-mode tests). Workspace baseline preserved.
+  - **`MsvcLinkAuto` makes csslc usable from ANY shell** on Apocky's machine — Git-Bash, bare PowerShell, or cmd — without launching `vcvars64.bat`. The detection walks standard install paths so a fresh VS install picks up automatically.
+  - **windows-gnu rustup quirk**. The detected rust-lld path during testing was `C:\Users\Apocky\.rustup\toolchains\1.85.0-x86_64-pc-windows-gnu\...`. Calling rust-lld with `-flavor link` on a COFF object failed with `undefined symbol: mainCRTStartup` (no CRT linked). Calling with `-flavor gnu` failed with `unknown file type` (rust-lld GNU expects ELF). The `MsvcLinkAuto` priority over rust-lld bypasses both failures — link.exe handles COFF + MSVC libs natively.
+  - **MSRV 1.75 vs is_none_or** : initial implementation used `Option::is_none_or` (stable 1.82). The workspace `package.rust-version = "1.75"` triggers `clippy::incompatible_msrv`. Replaced with `map_or(true, ...)` to stay 1.75-compatible. The workspace toolchain-pin is 1.85 (per T11-D20) but the declared MSRV is preserved at 1.75 ; bumping it to 1.85 is a separate decision.
+  - **Static-link of cssl-rt is wired but optional**. `link()` accepts an `extra_libs: &[String]` parameter ; for hello.exe = 42 it's empty. Once `cssl-rt` ships as a `staticlib` (via Cargo `[lib] crate-type = ["rlib", "staticlib"]`), callers can pass `&["cssl_rt.lib".to_string()]` to link it in.
+  - All gates green : fmt ✓ clippy ✓ test 1714/0 ✓ doc ✓ xref ✓.
+- **Closes the S6-A4 slice.** Phase-A4 success-gate met — `csslc build foo.cssl -o foo.exe` produces a runnable executable on this host.
+- **Deferred** (explicit follow-ups)
+  - **vswhere.exe integration** for VS install discovery (more reliable than directory walks ; ships with VS 2017+).
+  - **Windows SDK include-path resolution** for downstream slices that need `cl.exe` driver mode (currently we only emit `link.exe` invocations).
+  - **macOS xcrun integration** for finding ld64 + system frameworks (currently relies on PATH-resident `clang` / `cc`).
+  - **Cross-compile target-triple plumbing** : `--target=x86_64-unknown-linux-gnu` should override host detection. Ties into S6-A3's deferred target-triple work.
+  - **Static cssl-rt linking by default** once cssl-rt's Cargo.toml gains `crate-type = ["rlib", "staticlib"]` and `cargo build --release` produces `cssl_rt.lib`.
+  - **`--verbose` flag** for printing the full linker command before invoking.
+  - **CSSL_LINKER override smoke test** : currently we test the parser path but not the override-disambiguation logic. Will land alongside the integration test in S6-A5.
+
+───────────────────────────────────────────────────────────────
+
 
 

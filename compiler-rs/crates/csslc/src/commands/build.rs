@@ -101,7 +101,7 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     let mir_fn_count = mir_mod.funcs.len();
 
     match args.emit {
-        EmitMode::Object | EmitMode::Exe => {
+        EmitMode::Object => {
             let bytes = match cssl_cgen_cpu_cranelift::emit_object_module(&mir_mod) {
                 Ok(b) => b,
                 Err(e) => {
@@ -125,6 +125,51 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                 bytes.len(),
                 mode_label,
             );
+        }
+        EmitMode::Exe => {
+            let bytes = match cssl_cgen_cpu_cranelift::emit_object_module(&mir_mod) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("csslc: object-emit error : {e}");
+                    return ExitCode::from(exit_code::USER_ERROR);
+                }
+            };
+            // Write object bytes to a temp file alongside the requested
+            // output path (so the linker can read it).
+            let mut obj_path = output_path.clone();
+            let obj_ext = if cfg!(target_os = "windows") {
+                "obj"
+            } else {
+                "o"
+            };
+            obj_path.set_extension(obj_ext);
+            if let Err(e) = std::fs::write(&obj_path, &bytes) {
+                eprintln!(
+                    "csslc: error: cannot write intermediate object '{}' ({})",
+                    obj_path.display(),
+                    e
+                );
+                return ExitCode::from(exit_code::USER_ERROR);
+            }
+            // Invoke linker.
+            match crate::linker::link(&[obj_path.clone()], &output_path, &[]) {
+                Ok(()) => {
+                    eprintln!(
+                        "csslc: build {} → {} : {} MIR fn(s) → {} bytes (object) → linked exe",
+                        path.display(),
+                        output_path.display(),
+                        mir_fn_count,
+                        bytes.len(),
+                    );
+                }
+                Err(e) => {
+                    eprintln!("csslc: linker error : {e}");
+                    eprintln!("  intermediate object kept at : {}", obj_path.display());
+                    return ExitCode::from(exit_code::USER_ERROR);
+                }
+            }
+            // Best-effort cleanup of the intermediate object on success.
+            let _ = std::fs::remove_file(&obj_path);
         }
         _ => {
             let placeholder = format!(
@@ -215,24 +260,28 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    /// Default test BuildArgs uses `EmitMode::Object` so the in-process
+    /// pipeline produces raw object bytes (no linker invocation). Tests that
+    /// specifically want the Exe-path can build their own args.
     fn build_args(input: &str, output: &str) -> BuildArgs {
         BuildArgs {
             input: PathBuf::from(input),
             output: Some(PathBuf::from(output)),
             target: None,
-            emit: EmitMode::Exe,
+            emit: EmitMode::Object,
             opt_level: 0,
         }
     }
 
     #[test]
     fn build_minimal_module_writes_object_bytes() {
-        // S6-A3 : --emit=Exe now produces real cranelift-object bytes.
-        // Verify output is non-empty and starts with the host-platform magic.
+        // S6-A3 : --emit=Object writes raw cranelift-object bytes ; the
+        // bytes start with the host-platform magic. (--emit=Exe goes
+        // through the linker which is exercised by S6-A5's gate test.)
         let src = "module com.apocky.examples.hello\n\
                    fn main() -> i32 { 42 }\n";
         let tmp_out =
-            std::env::temp_dir().join(format!("csslc_build_test_{}.exe", std::process::id()));
+            std::env::temp_dir().join(format!("csslc_build_test_{}.obj", std::process::id()));
         let args = build_args("hello.cssl", tmp_out.to_str().unwrap());
         let code = run_with_source(Path::new("hello.cssl"), src, &args);
 
