@@ -10,6 +10,21 @@ authors.workspace      = true
 [lints]
 workspace = true
 
+[lib]
+name = "csslc"
+path = "src/lib.rs"
+
 [[bin]]
 name = "csslc"
 path = "src/main.rs"
+
+[dependencies]
+cssl-ast                = { path = "../cssl-ast" }
+cssl-autodiff           = { path = "../cssl-autodiff" }
+cssl-cgen-cpu-cranelift = { path = "../cssl-cgen-cpu-cranelift" }
+cssl-hir                = { path = "../cssl-hir" }
+cssl-lex                = { path = "../cssl-lex" }
+cssl-mir                = { path = "../cssl-mir" }
+cssl-parse              = { path = "../cssl-parse" }
+cssl-rt                 = { path = "../cssl-rt" }
+cssl-smt                = { path = "../cssl-smt" }
