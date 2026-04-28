@@ -4,6 +4,9 @@
 #      `git worktree add` × `cargo fmt` = cross-worktree file-leakage through
 #      line-ending normalization. Pinning `eol=lf` on text files removes the
 #      normalization step that caused the leakage.
+# § I> S6-A0 (T11-D51) gate-zero : .gitattributes alone is INSUFFICIENT —
+#      paired with repo-local `git config core.autocrlf=false core.eol=lf` ;
+#      verified by scripts/worktree_isolation_smoke.sh
 # § I> binary types listed explicitly so line-ending normalization skips them
 
 # ─── default ────────────────────────────────────────────────────────────
@@ -54,5 +57,19 @@
 *.hlsl text eol=lf
 *.glsl text eol=lf
 *.msl  text eol=lf
+
+# ─── extra binary blobs (object files / archives produced by csslc) ────
+*.o      binary
+*.obj    binary
+*.a      binary
+*.lib    binary
+*.tar.gz binary
+*.7z     binary
+*.ico    binary
+*.icns   binary
+
+# ─── Cargo.lock + workspace lock files (committed, line-locked LF) ─────
+Cargo.lock           text eol=lf
+**/Cargo.lock        text eol=lf
 
 # § END .gitattributes

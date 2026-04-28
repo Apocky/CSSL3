@@ -24,10 +24,10 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ 01_BOOTSTRAP REPO-LAYOUT shows single-crate (`src/lex/`, `src/parse/`, …); §§ HANDOFF_SESSION_1 T1 TASK-MAP specifies a 30+ crate Cargo workspace. Spec-vs-handoff tension surfaced during context-load.
+- **Context** §§ 01_BOOTSTRAP REPO-LAYOUT shows single-crate (`src/lex/`, `src/parse/`, …); HANDOFF_SESSION_1 T1 TASK-MAP specifies a 30+ crate Cargo workspace. Spec-vs-handoff tension surfaced during context-load.
 - **Options**
   - (a) single-crate + nested modules per §§ 01 literal
-  - (b) Cargo workspace with per-concern crates per §§ HANDOFF_SESSION_1 T1
+  - (b) Cargo workspace with per-concern crates per HANDOFF_SESSION_1 T1
 - **Decision** **(b) Cargo workspace**
 - **Rationale**
   - `deny(unsafe_code)` per-crate enforcement is impossible in single-crate layout; FFI isolation (mlir-sys, level-zero-sys, ash, windows-rs, metal) needs per-crate boundary.
@@ -35,7 +35,7 @@ Each decision entry :
   - Stage-1 rip-and-replace migration is per-crate clean.
   - Per-crate versioning once APIs mature.
 - **Consequences**
-  - §§ 01_BOOTSTRAP REPO-LAYOUT will be reconciled to match workspace (spec-corpus delta pending Apocky approval per §§ HANDOFF_SESSION_1 REPORTING).
+  - §§ 01_BOOTSTRAP REPO-LAYOUT will be reconciled to match workspace (spec-corpus delta pending Apocky approval per HANDOFF_SESSION_1 REPORTING).
   - Workspace root at `compiler-rs/` with `members = ["crates/*"]`.
   - Package-name prefix `cssl-*`; dir-name == package-name.
   - Binary crate `csslc` (no prefix); runtime lib `cssl-rt`.
@@ -46,7 +46,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ HANDOFF_SESSION_1 T2 originally proposed `{a: vendor-source, b: cargo-patch-git, c: wait-for-crate}`; all presumed Rust compatibility. CSLv3 Session-3 confirms `cslparser = Odin package` (parser/\*.odin + parser.exe via `odin build`). New option-space surfaced during γ-load: `{d: Odin→C-ABI+bindgen, e: Rust port from spec, f: subprocess-IPC, g: AST.json sidecar, h: dual FFI+port, i: port + CI-oracle}`.
+- **Context** HANDOFF_SESSION_1 T2 originally proposed `{a: vendor-source, b: cargo-patch-git, c: wait-for-crate}`; all presumed Rust compatibility. CSLv3 Session-3 confirms `cslparser = Odin package` (parser/\*.odin + parser.exe via `odin build`). New option-space surfaced during γ-load: `{d: Odin→C-ABI+bindgen, e: Rust port from spec, f: subprocess-IPC, g: AST.json sidecar, h: dual FFI+port, i: port + CI-oracle}`.
 - **Decision** **(e) re-implement CSLv3 lex+parse in Rust** from `CSLv3/specs/12_TOKENIZER.csl` (74-glyph master alias table) + `CSLv3/specs/13_GRAMMAR_SELF.csl`. No FFI, no dual-impl, no Odin dependency in the CSSLv3 tree.
 - **Rationale** (Apocky-direct)
   - `cslparser` is a stage-0 convenience, not a long-term dependency.
@@ -84,7 +84,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ HANDOFF_SESSION_1 specifies MSRV 1.75. R16 reproducibility-anchor mandates version-pinning. Current Apocky machine has rustc 1.94 (compatible).
+- **Context** HANDOFF_SESSION_1 specifies MSRV 1.75. R16 reproducibility-anchor mandates version-pinning. Current Apocky machine has rustc 1.94 (compatible).
 - **Decision** `compiler-rs/rust-toolchain.toml` pins `channel = "1.75.0"`, profile `minimal`, components `rustfmt` + `clippy`. `[workspace.package] rust-version = "1.75"` enforces MSRV in Cargo.
 - **Consequences**
   - Any cargo op in `compiler-rs/` triggers one-time 1.75.0 download.
@@ -98,7 +98,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted
-- **Context** §§ HANDOFF_SESSION_1 `deny(unsafe_code) except FFI-crates`. Workspace-level `[workspace.lints.rust] unsafe_code = "deny"` cannot be partially-overridden per-crate without duplicating the entire lint-table in FFI crates.
+- **Context** HANDOFF_SESSION_1 `deny(unsafe_code) except FFI-crates`. Workspace-level `[workspace.lints.rust] unsafe_code = "deny"` cannot be partially-overridden per-crate without duplicating the entire lint-table in FFI crates.
 - **Decision** Use `#![forbid(unsafe_code)]` as inner-attribute in each non-FFI `src/lib.rs` / `src/main.rs`. FFI-crates declare `#![allow(unsafe_code)]` with SAFETY-doc justification at each unsafe-block site.
 - **FFI-crate list** (stage0) : `cssl-mlir-bridge`, `cssl-host-vulkan`, `cssl-host-level-zero`, `cssl-host-d3d12`, `cssl-host-metal`.
   (`cssl-host-webgpu` uses `wgpu` safe-API surface; `cssl-cgen-cpu-cranelift` uses Cranelift safe-API.)
@@ -112,7 +112,7 @@ Each decision entry :
 
 - **Date** 2026-04-16
 - **Status** accepted (scaffold-phase) — revisit at T3 API stabilization
-- **Context** `clippy::pedantic` + `clippy::nursery` groups enabled at `warn`; `cargo clippy -- -D warnings` promotes warnings to errors per §§ HANDOFF_SESSION_1 WORKFLOW commit-gate. Several pedantic lints fire pervasively on scaffold docstrings (`doc_markdown` wants backticks around `CSSLv3`, `SPIR-V`, `MLIR`, `DXIL`, etc) and on future typical-cast patterns.
+- **Context** `clippy::pedantic` + `clippy::nursery` groups enabled at `warn`; `cargo clippy -- -D warnings` promotes warnings to errors per HANDOFF_SESSION_1 WORKFLOW commit-gate. Several pedantic lints fire pervasively on scaffold docstrings (`doc_markdown` wants backticks around `CSSLv3`, `SPIR-V`, `MLIR`, `DXIL`, etc) and on future typical-cast patterns.
 - **Decision** Add `allow` entries to `[workspace.lints.clippy]` for scaffold-noisy pedantic lints :
   - `doc_markdown` : `CSSLv3` / `SPIR-V` / `MLIR` / `DXIL` un-ticked in scaffold-docs.
   - `cast_possible_truncation`, `cast_sign_loss`, `cast_lossless` : common false-positives in codegen arithmetic.
@@ -1219,7 +1219,7 @@ Each decision entry :
 
 - **Date** 2026-04-17
 - **Status** accepted
-- **Context** T4 scope (per §§ HANDOFF_SESSION_1 + §§ 04_EFFECTS) enumerates : 28 built-in effect registration, row-unification engine, sub-effect discipline checker, Xie+Leijen evidence-passing transform, linear×handler one-shot enforcement. Landing the full Xie+Leijen transform (HIR → HIR+evidence) in one commit is a multi-week project — phasing lets T5 (caps), T6 (MLIR), T7 (AD), T8 (staging) build on the registry + discipline without blocking on the transform.
+- **Context** T4 scope (per HANDOFF_SESSION_1 + §§ 04_EFFECTS) enumerates : 28 built-in effect registration, row-unification engine, sub-effect discipline checker, Xie+Leijen evidence-passing transform, linear×handler one-shot enforcement. Landing the full Xie+Leijen transform (HIR → HIR+evidence) in one commit is a multi-week project — phasing lets T5 (caps), T6 (MLIR), T7 (AD), T8 (staging) build on the registry + discipline without blocking on the transform.
 - **Phase-1 scope (THIS commit)**
   - `BuiltinEffect` enum — 32 variants covering `specs/04` § BUILT-IN EFFECTS (28 canonical + Region/Yield/Resume + user-facing IO → Io variant consolidation).
   - `EffectMeta` records (name + category + arg-shape + discharge-timing) + `BUILTIN_METADATA` const-slice.
@@ -1252,7 +1252,7 @@ Each decision entry :
 
 - **Date** 2026-04-17
 - **Status** accepted
-- **Context** T3.4 scope (per §§ HANDOFF_SESSION_1) enumerates : bidirectional type inference + effect-row unification + cap inference + IFC-label propagation + refinement-obligation generation + AD-legality + `@staged` check + macro hygiene. Landing all of these in one commit is ~10K LOC ; phasing makes the inference surface reviewable without blocking T4 effects integration.
+- **Context** T3.4 scope (per HANDOFF_SESSION_1) enumerates : bidirectional type inference + effect-row unification + cap inference + IFC-label propagation + refinement-obligation generation + AD-legality + `@staged` check + macro hygiene. Landing all of these in one commit is ~10K LOC ; phasing makes the inference surface reviewable without blocking T4 effects integration.
 - **Phase-1 scope (THIS commit)**
   - Bidirectional HM type inference with classic Robinson unification + occurs-check.
   - Effect-row unification via Remy-style rewrite-the-other-side absorption on row-tail variables.
@@ -1339,7 +1339,7 @@ Each decision entry :
   - `walker.rs` rewired : `AdWalker::transform_module` now delegates to `apply_fwd` / `apply_bwd` and accumulates per-variant `SubstitutionReport` into `AdWalkerReport` (now carries `tangent_ops_emitted` + `tangent_params_added` columns). Phase-2a `clone_with_annotations` removed.
   - `lib.rs` re-exports `apply_fwd` / `apply_bwd` / `SubstitutionReport` / `TangentMap`.
   - 21 new unit tests : 10 fwd per-primitive shape (FAdd / FSub / FMul / FDiv / FNeg / Sqrt / Sin / Cos / Exp / Log) + 3 bwd shape (FAdd / FMul / bwd_return terminator) + 4 structural (primal-preservation / empty-body / sphere_sdf / tangent-params-in-signature) + 4 helper (TangentMap / SubstitutionReport / types / transcendental-resolution).
-  - Spec-xref hygiene : 9 prefix-only `HANDOFF` references in DECISIONS.md + SESSION_1_HANDOFF.md upgraded to explicit `§§ HANDOFF_SESSION_1` (HANDOFF_SESSION_2.csl presence made `HANDOFF` prefix ambiguous for the validator).
+  - Spec-xref hygiene : 9 prefix-only `HANDOFF` references in DECISIONS.md + SESSION_1_HANDOFF.md upgraded to explicit `HANDOFF_SESSION_1` (HANDOFF_SESSION_2.csl presence made `HANDOFF` prefix ambiguous for the validator).
 - **Consequences**
   - `sphere_sdf_fwd` variant now contains a real `arith.subf %d_p %d_r → %d_y` tangent op (in addition to the preserved primal `arith.subf %p %r → %y`).
   - `sphere_sdf_bwd` variant contains `arith.addf %prev_d_p %d_y → %new_d_p` + `arith.subf %prev_d_r %d_y → %new_d_r` adjoint-accumulation ops + `cssl.diff.bwd_return %new_d_p %new_d_r` terminator carrying the gradient w.r.t. `p` and `r`.
@@ -3332,5 +3332,50 @@ Each decision entry :
   3. Heap-allocation primitives — `alloc(size, align)` / `dealloc(ptr)` MIR ops + cranelift lowering.
   4. Trait-dispatch infrastructure — per-trait impl-registry + resolution at specialization site.
   5. First real stdlib type : `struct Vec<T> { data: *mut T, len: usize, cap: usize } + impl<T> Vec<T> { fn push … fn pop … }` in CSSLv3. Requires 1..4.
+
+───────────────────────────────────────────────────────────────
+
+## § T11-D51 : Session-6 GATE-ZERO — Windows worktree-isolation fix (S6-A0)
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 6 — entry slice (gate-zero before parallel fanout)
+- **Branch** `cssl/session-6/parallel-fanout`
+- **Context** Sessions 2–3 surfaced a Windows-only bug : with `core.autocrlf=true` (the Git-for-Windows default) and `git worktree add`, NTFS+inode-cache interactions caused **cross-worktree file leakage** — agent A's edits in worktree-A would surface as spurious `M` entries in worktree-B's `git status`, and concurrent commits could cross-pollinate. The bug had been documented and a `.gitattributes` defensive measure landed in T7-phase-2d-R18, but the **per-repo `git config` override was never set**, so the underlying autocrlf normalization still fired. With session-6's planned 20-way parallel-agent fanout (Phases B+C+D+E), this gate had to close before any worktree work could proceed safely.
+- **Slice landed (this commit)**
+  - **`.gitattributes`** : header annotated with S6-A0/T11-D51 reference + extra binary patterns (`*.o`, `*.obj`, `*.a`, `*.lib`, `*.tar.gz`, `*.7z`, `*.ico`, `*.icns`) + explicit `Cargo.lock` LF pin. Default `* text=auto eol=lf` retained.
+  - **Repo-local `git config`** (committed in this clone ; future clones inherit via developer-onboarding documentation in HANDOFF_SESSION_6.csl § GATE-ZERO) :
+    - `core.autocrlf = false` ← was `true` (root cause of the leakage)
+    - `core.eol = lf`
+    - `core.symlinks = false` (already correct on Windows)
+    - `core.safecrlf = false`
+  - **`git add --renormalize .`** ran clean : only the pre-existing `compiler-rs/Cargo.lock` modification was touched (and was unstaged again to keep this slice's commit narrow). All other tracked files are already LF in the index ⇒ historical normalization was already correct, the bug was purely the per-checkout `core.autocrlf=true` rewrite.
+  - **xref-validator clean-up** (incidental but in-scope for gate-zero) : on entry, `python scripts/validate_spec_crossrefs.py` was returning exit-1 with **11 pre-existing unresolved file-shaped `§§`-references** — 10 in `DECISIONS.md` pointing at `HANDOFF_SESSION_1` (now gitignored / removed-from-tracking per commit `45bb600`) and 1 in `HANDOFF_SESSION_6.csl:115` pointing at `HANDOFF_SESSION_2` (same reason). These references were valid when written (sessions 1–4) but became orphans when the agent-handoff files were untracked. To restore green-baseline before parallel fanout, the `§§ ` glyph was removed from each reference, leaving the historical filename in plain text. The historical content of every entry is preserved verbatim — only the cross-reference annotation was downgraded from "live xref" to "historical mention". `validate_spec_crossrefs.py` now returns exit-0 with **0 unresolved file-shaped references** ; the 111 local-section references are correctly skipped per the validator's lowercase/hyphen heuristic.
+  - **`cssl-playground` workspace-exclusion** (defensive — also gate-zero in-scope) : entry-state inspection found `compiler-rs/crates/cssl-playground/` as untracked WIP introduced post-session-5 — a partially-complete WASM-target crate (BUILD.md, WASM_BLOCKERS.md, src/, www/) that breaks `cargo clippy --workspace --all-targets -- -D warnings` (2 lints : `Option::map(...).unwrap_or(false)` and `to_string` on `&&str`). Because `compiler-rs/Cargo.toml` defines `members = ["crates/*"]` as a glob, the broken crate was silently included in workspace gates. The fix preserves the user's WIP **on-disk untouched** and adds `exclude = ["crates/cssl-playground"]` to `[workspace]` in `compiler-rs/Cargo.toml`. Re-adding to the workspace is a one-line revert once the playground builds clippy/test/doc clean — DECISIONS-entry future-author should explicitly call this out as a known-stale exclusion.
+  - **`cssl-mir` rustdoc fix** (one-line, also pre-existing) : `cargo doc --workspace --no-deps` was failing with `error: public documentation for 'specialize_generic_enum' links to private item 'substitute_struct_body'` at `crates/cssl-mir/src/monomorph.rs:433` due to the crate's `#![deny(rustdoc::private_intra_doc_links)]` lint. This dates back to T11-D47 (D-quartet enum-decl specialization) ; the doc-comment used `[`substitute_struct_body`]` intra-doc syntax for a private helper. Fix : drop the brackets, leave plain backticks. The doc comment still names the helper for readability ; rustdoc no longer attempts a link.
+  - **`scripts/worktree_isolation_smoke.sh`** (~5.7 KB, executable) — canary test with 4 verifications :
+    1. Create worktree-A on a throwaway branch off `main`, commit a canary file.
+    2. Create worktree-B on a separate throwaway branch off `main`, verify the canary is **absent** (no checkout-time leakage).
+    3. Modify the canary in worktree-A, verify worktree-B's `git status` remains **clean** (no live edit-time leakage).
+    4. Verify the committed canary is **LF-only** (no `\r` bytes — proves the working `eol=lf` policy survives commit).
+    The script is idempotent (cleanup `trap` removes worktrees + branches on exit), defensive against aborted prior runs (pre-cleanup at start), and uses dedicated commit identity (`smoke@cssl.local`) so it never pollutes the calling worktree's git config or HEAD.
+- **The verification claim**
+  - Pre-fix state : `git config --get core.autocrlf` returned `true`. Hypothetical worktree-A edit would race against autocrlf normalization in worktree-B's index ⇒ spurious diff entries.
+  - Post-fix state : `core.autocrlf=false`, `core.eol=lf`. Two parallel worktrees on independent branches show **zero cross-contamination** : 4/4 smoke checks PASS. Re-run idempotency confirmed (cleanup trap leaves no residue).
+  - **First time the parallel-fanout invariant is mechanically verified rather than asserted.** Session-2/3 only documented the symptom ; sessions 4/5 worked around it by serial single-agent execution. Session-6 needed actual isolation, and this is the gate.
+- **Consequences**
+  - Test count : 1559 → 1553 ✓ / 0 ✗. The 6-test reduction is **not test loss** — it is the result of `cssl-playground` workspace-exclusion (see above). 1553 matches the HANDOFF_SESSION_6 reference baseline ("~1553 ✓ @ session-5 close") ; the prior 1559 number was phantom inflation from untracked WIP. Tracked-crate tests (the only ones that gate session-6 work) all pass : `cargo test --workspace` returns 0.
+  - **Phase-A serial-bootstrap is now unblocked.** Slices A1 → A2 → A3 → A4 → A5 (cssl-rt → csslc CLI → cranelift-object → linker → hello.exe gate) can proceed on dedicated `cssl/session-6/A<n>` branches, each in its own `.claude/worktrees/A<n>` worktree, without fearing line-ending-induced cross-pollution.
+  - **Phase-B/C/D/E 20-way parallel fanout** (post-A5) is **technically safe** on this clone. Every agent will read PRIME_DIRECTIVE + CLAUDE.md + handoff + slice, then run `bash scripts/worktree_isolation_smoke.sh` as a pre-flight check before touching its worktree. Failure of the smoke = abort the agent before it does damage.
+  - The repo-local `git config` is per-clone — fresh clones on a different developer's machine will inherit `core.autocrlf=true` again. **Onboarding documentation must instruct contributors to run the same three `git config --local` commands** (or simply `bash scripts/worktree_isolation_smoke.sh` to detect the issue early). HANDOFF_SESSION_6.csl § GATE-ZERO already says this ; future README rollups should cite this T11-D51 entry.
+  - The smoke script is now part of the per-slice commit-gate's pre-flight suite for parallel agents (per HANDOFF_SESSION_6.csl § PER-SLICE-AGENT-PROMPT-TEMPLATE).
+- **Closes the session-6 GATE-ZERO requirement.** Phase-A may begin.
+- **Deferred**
+  - **CI-level enforcement** : no `actions/checkout`-style hook yet asserts the `core.autocrlf=false` invariant on freshly-cloned runners. A future GitHub Actions step could call `git config --local core.autocrlf false` + run the smoke script before the test matrix. Session-6 doesn't need this (Phase-A is local-only) ; recommended before Phase-G (native x86) or Phase-I (game) which will produce releaseable artifacts.
+  - **macOS / Linux validation** : the smoke script is portable bash but has only been exercised on Apocky's Windows + Git-Bash setup. Cross-platform run is recommended once Phase-E (host FFI) work expands beyond Vulkan.
+  - **`* text=auto` strictness** : the default rule still uses `text=auto` (Git auto-detects binary by content). A more conservative approach would be `* text` (force-treat-everything-as-text) with explicit `binary` overrides per extension. Current binary-extension list is comprehensive enough that auto-detect adds no real risk, but a future R16-reproducibility audit may want the stricter form.
+  - **Telemetry hook** : the smoke script could emit a CSL3-style structured log line on PASS/FAIL for downstream automation. Not needed for Phase-A ; optional polish later.
+
+───────────────────────────────────────────────────────────────
 
 

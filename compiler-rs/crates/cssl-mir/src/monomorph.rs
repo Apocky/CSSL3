@@ -430,7 +430,7 @@ pub fn mangle_struct_specialization_name(
 ///   1. Clone the enum.
 ///   2. Empty the `generics` field.
 ///   3. For each variant, substitute field types in its `body` via the
-///      shared [`substitute_struct_body`] helper.
+///      shared `substitute_struct_body` helper.
 ///
 /// § EXAMPLE
 /// ```ignore
