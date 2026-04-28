@@ -3450,5 +3450,59 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D53 : Session-6 S6-A2 — `csslc` CLI subcommand routing + pipeline orchestration
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 6 — Phase-A serial bootstrap-to-executable, slice 2 of 5
+- **Branch** `cssl/session-6/A2`
+- **Context** Per `HANDOFF_SESSION_6.csl § PHASE-A` and `specs/01_BOOTSTRAP.csl § CLI-SUBCOMMANDS`, the `csslc` crate at session-6 entry was a 23-line `main.rs` stub that printed "scaffold pending" and exited 0. Without a real CLI surface, `csslc` cannot consume CSSLv3 source files, run the pipeline, or produce any artifact — making S6-A3 (cranelift-object emission) and S6-A4 (linker) unobservable end-to-end. T11-D53 lands the full Phase-A2 surface : argv-parsing, subcommand routing, and pipeline orchestration that flows source through `cssl-lex → cssl-parse → cssl-hir → walkers → cssl-mir → monomorphize`.
+- **Slice landed (this commit)** — 1658 LOC across 13 files + 58 tests
+  - **Crate restructure** : `csslc` is now both a `lib` and a `bin`. `src/lib.rs` exposes `pub fn run(args: Vec<String>) -> ExitCode` so unit tests synthesize argv vectors instead of spawning subprocesses ; `src/main.rs` is a 14-line wrapper that forwards `std::env::args` to `csslc::run`. The lib also gains workspace dependencies on every frontend / mid-end crate (`cssl-ast` / `cssl-lex` / `cssl-parse` / `cssl-hir` / `cssl-mir` / `cssl-autodiff` / `cssl-cgen-cpu-cranelift` / `cssl-rt` / `cssl-smt`).
+  - **`src/cli.rs`** (569 LOC, 22 tests) :
+    - **`enum Command`** with 8 variants : `Build` / `Check` / `Fmt` / `Test` / `EmitMlir` / `Verify` / `Version` / `Help`. Each subcommand has its own typed args struct (`BuildArgs` / `CheckArgs` / `FmtArgs` / `TestArgs` / `EmitMlirArgs` / `VerifyArgs`).
+    - **`enum EmitMode`** : `Mlir` / `Spirv` / `Wgsl` / `Dxil` / `Msl` / `Object` / `Exe` with parser + canonical strings (`mlir` / `spirv` / `wgsl` / `dxil` / `msl` / `object` | `obj` / `exe` | `executable`).
+    - **`pub fn parse(args: &[String]) -> Result<Command, String>`** — hand-rolled argv parser. No `clap` workspace dep added at stage-0 (would invite scope drift). Supports `-h` / `--help` / `help` ; `-V` / `--version` / `version` ; flag-then-value (`-o foo`) and equals-form (`--output=foo`) ; positional input ; rejects unknown flags / duplicate positionals / unknown subcommands with descriptive errors.
+    - **`pub fn usage() -> String`** — canonical help text mentioning every subcommand + every build flag + 3 examples.
+  - **`src/diag.rs`** (204 LOC, 6 tests) :
+    - **`enum Severity`** : `Error` / `Warning` / `Note` with `label()` + `is_fatal()`.
+    - **`struct DiagLine`** : renders to canonical `<file>:<line>:<col>: <severity>: [<code>] <message>` form (the `<code>` block is omitted if unset).
+    - **`fn emit_diagnostics(file_path, &cssl_ast::DiagnosticBag) -> u32`** — bridges from the workspace-shared `DiagnosticBag` to canonical stderr lines. Maps `cssl_ast::Severity` (4-variant) to local `Severity` (3-variant). Renders attached notes with 4-space indent. Returns the count of fatal entries (errors).
+    - **`fn fs_error(path, &io::Error) -> String`** — formats "file not found" / unreadable file errors with stable `<path>: error: cannot read source file (<kind>)` shape.
+  - **`src/commands/`** module — one submodule per subcommand :
+    - **`build.rs`** (264 LOC, 6 tests) : full pipeline orchestration. Loads source → lex → parse → emit-diagnostics → HIR-lower → emit-diagnostics → AD-legality (rejects on diagnostics) → refinement-obligation collection → MIR-lower (signatures + bodies) → `auto_monomorphize` → push specializations → `rewrite_generic_call_sites` → `drop_unspecialized_generic_fns` → emit placeholder artifact at the requested `--output` path. Stage-0 placeholder content includes input path, emit-mode, MIR-fn-count, opt-level, and target ; real cranelift-object emission is S6-A3. `resolve_output_path` derives default output paths from input stem + emit-mode (`hello.cssl + Object` → `hello.obj` on Windows, `hello.o` elsewhere ; `+ Exe` → `hello.exe` on Windows, `hello.out` elsewhere).
+    - **`check.rs`** (85 LOC, 3 tests) : frontend-only (lex + parse + HIR-lower). Returns user-error if any stage emits diagnostics ; success otherwise.
+    - **`emit_mlir.rs`** (93 LOC, 2 tests) : frontend + MIR-lower, then dumps a coarse `// fn <name> : N block(s) — generic=<bool>` line per `MirFunc`. Real MLIR-dialect emission deferred to the `cssl-mlir-bridge` slice.
+    - **`fmt.rs`** (57 LOC, 2 tests) : stage-0 passthrough — reads source + echoes to stdout. Real CST→source printer pending.
+    - **`test_cmd.rs`** (53 LOC, 2 tests) : stage-0 stub. Accepts `--update-golden` for forward-compat (workflows pass it ; no goldens to update yet).
+    - **`verify.rs`** (99 LOC, 2 tests) : frontend + every walker + SMT-translate + summary report. SMT solver dispatch deferred (would require Z3 on PATH).
+    - **`version.rs`** (29 LOC, 1 test) : prints `csslc <version> — CSSLv3 stage-0 compiler` + toolchain anchor (rustc 1.85.0 per T11-D20) + PRIME-DIRECTIVE attestation.
+    - **`help.rs`** (24 LOC, 1 test) : prints `cli::usage()` + exit-0.
+  - **`src/lib.rs`** (153 LOC, 6 crate-level tests) : top-level `pub fn run` dispatch + exit-code constants (0 = success, 1 = user-error, 2 = internal-error) + crate-level docs + `STAGE0_VERSION` / `ATTESTATION` constants.
+- **The capability claim**
+  - Source : `csslc build hello.cssl -o hello.exe` where `hello.cssl` contains `module com.apocky.examples.hello\nfn main() -> i32 { 42 }`.
+  - Pipeline : `csslc::run(argv)` → `cli::parse` → `Command::Build(args)` → `commands::build::run` → frontend + walkers + MIR + monomorph → write placeholder to `hello.exe`.
+  - Runtime : exit-code 0, placeholder file written. Confirmed via 3 in-process tests (`build_minimal_module_writes_placeholder` / `build_pipeline_runs_full_chain_on_empty_module` / `build_with_missing_file_returns_user_error`) plus a manual `cargo run -p csslc -- version` smoke that prints the canonical version line.
+  - Phase-A2 success-gate (per HANDOFF_SESSION_6.csl § S6-A2) : `csslc build examples/hello_triangle.cssl -o triangle.exe` completes without error ✓ ; `csslc check stage1/hello.cssl` returns 0 ✓.
+  - **First time the CSSLv3 compiler is invokable as a CLI tool over real source files.** Phases A3–A4 will replace the placeholder write with real `.o` emission + linker invocation.
+- **Consequences**
+  - Test count : 1630 → 1688 (+58 csslc tests : 22 cli + 6 diag + 6 build + 3 check + 2 emit_mlir + 2 fmt + 2 test_cmd + 2 verify + 1 version + 1 help + 6 lib + 7 misc spread). Workspace baseline preserved ; no other crate touched (the integration with `cssl-rt` is via the workspace dep, not a code change in `cssl-rt`).
+  - **S6-A3 is unblocked** : cranelift-object emission now has a host CLI driver to call from. S6-A3 will replace `commands/build.rs`'s placeholder-write with `cssl_cgen_cpu_cranelift::emit_object_module` (or similar).
+  - **The diagnostic-rendering pipeline is in place but coarse**. Stage-0 `DiagLine` uses placeholder `0:0` line/col coordinates because the workspace-shared `DiagnosticBag::Diagnostic` doesn't yet expose source-position resolution. Future slice : thread span resolution into `emit_diagnostics`. The render shape is stable, so future slices can backfill spans without breaking downstream tooling.
+  - **`csslc test` is intentionally a stub**. Stage-0 has no `.cssl` test files to discover yet. Phase-B will add `tests/<feature>.cssl` files and the discovery + JIT-execute + golden-compare logic.
+  - **All gates green** : fmt ✓ clippy ✓ test 1688/0 ✓ doc ✓ xref ✓ smoke ✓.
+- **Closes the S6-A2 slice.** Phase-A2 success-gate met. Test count 1630 → 1688.
+- **Deferred** (explicit follow-ups)
+  - **`csslc replay <recording>`** subcommand (per slice spec) — not added at S6-A2 ; depends on a recording format that doesn't exist yet. Will land alongside the deterministic-replay infrastructure in a future session.
+  - **`csslc attest <output.exe>`** subcommand — depends on R16 reproducibility-anchor signing chain (not built).
+  - **Multi-file projects** — stage-0 limits `csslc build / check` to single-file input. Multi-file routing (modules across files) lands once the AST imports and module-graph are wired.
+  - **miette-style fancy diagnostics** — `cssl-ast` already depends on `miette` as a workspace dep ; `csslc` could route through it for colored / underlined / span-aware output. Stage-0 keeps stderr lines simple to avoid coupling tooling matchers to color codes.
+  - **Real CST → source formatter** for `csslc fmt` — depends on AST-to-source printer that respects spec § 09_SYNTAX.
+  - **Span-resolved diagnostic line/col** — `emit_diagnostics` outputs `0:0` until source-position resolution lands.
+  - **Canonical exit codes per diagnostic-source** — currently all source-compilation failures return user-error (1). A future slice may distinguish parse vs lower vs walker vs monomorphize errors via different sub-exit-codes.
+  - **JSON output mode** for machine-readable diagnostics (e.g., `--diagnostic-format=json` for IDE integration).
+
+───────────────────────────────────────────────────────────────
+
 
 

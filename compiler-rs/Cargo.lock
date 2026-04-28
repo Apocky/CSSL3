@@ -564,6 +564,17 @@ dependencies = [
 [[package]]
 name = "csslc"
 version = "0.1.0"
+dependencies = [
+ "cssl-ast",
+ "cssl-autodiff",
+ "cssl-cgen-cpu-cranelift",
+ "cssl-hir",
+ "cssl-lex",
+ "cssl-mir",
+ "cssl-parse",
+ "cssl-rt",
+ "cssl-smt",
+]
 
 [[package]]
 name = "curve25519-dalek"
