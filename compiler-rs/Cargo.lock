@@ -424,6 +424,7 @@ dependencies = [
  "cssl-parse",
  "cssl-smt",
  "cssl-telemetry",
+ "csslc",
 ]
 
 [[package]]

@@ -634,10 +634,7 @@ mod tests {
     fn build_command_for_clang_uses_dash_o() {
         let kind = LinkerKind::Clang(PathBuf::from("clang"));
         let cmd = build_command(&kind, &[PathBuf::from("hello.o")], Path::new("hello"), &[]);
-        assert!(
-            cmd.get_args()
-                .any(|s| s.to_string_lossy() == "-o")
-        );
+        assert!(cmd.get_args().any(|s| s.to_string_lossy() == "-o"));
     }
 
     #[test]

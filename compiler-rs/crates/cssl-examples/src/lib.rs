@@ -39,6 +39,7 @@
 
 pub mod ad_gate;
 pub mod analytic_vec3;
+pub mod hello_world_gate;
 pub mod jit_chain;
 pub mod stage1_scaffold;
 

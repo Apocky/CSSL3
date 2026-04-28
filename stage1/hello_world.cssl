@@ -1,0 +1,3 @@
+module com.apocky.examples.hello_world
+
+fn main() -> i32 { 42 }
