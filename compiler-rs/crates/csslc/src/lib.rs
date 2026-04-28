@@ -53,6 +53,7 @@ use std::process::ExitCode;
 pub mod cli;
 pub mod commands;
 pub mod diag;
+pub mod linker;
 
 /// Exit-code constants. Keep aligned with the documented user-error /
 /// internal-error split in the module-level docs.
