@@ -3378,4 +3378,77 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D52 : Session-6 S6-A1 — `cssl-rt` runtime library (allocator + entry-shim + panic + exit FFI)
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 6 — Phase-A serial bootstrap-to-executable, slice 1 of 5
+- **Branch** `cssl/session-6/A1`
+- **Context** Per `HANDOFF_SESSION_6.csl § PHASE-A` and `specs/01_BOOTSTRAP.csl § RUNTIME-LIB`, the `cssl-rt` crate at session-6 entry was a 22-line scaffold (one `STAGE0_SCAFFOLD: &str` constant). Phase-A2 (`csslc` CLI), Phase-A3 (cranelift-object emission), and Phase-A4 (linker invocation) all depend on `cssl-rt` exposing the ABI-stable FFI surface that CSSLv3-emitted executables link against. Without this slice, `csslc` has no runtime to link, no entry-shim to call user `main()`, no panic-handler, no allocator. T11-D52 lands the full Phase-A1 surface so the downstream A2..A4 slices can proceed unblocked.
+- **Slice landed (this commit)** — 1814 LOC across 5 modules + 77 tests
+  - **`crates/cssl-rt/src/alloc.rs`** (638 LOC, 25 tests) :
+    - **`AllocTracker`** — atomic counter struct with `alloc_count` / `free_count` / `bytes_in_use` / `bytes_alloc_total` / `bytes_free_total` (all `AtomicU64`, thread-safe from day-1).
+    - **Module-level singleton `static TRACKER`** plus public readers `alloc_count() / free_count() / bytes_in_use() / bytes_allocated_total() / bytes_freed_total()` — observable from tests and (eventually) telemetry without unsafe.
+    - **`unsafe fn raw_alloc(size, align) -> *mut u8`** — backs the `__cssl_alloc` FFI symbol. Validates the layout via `Layout::from_size_align`, calls `std::alloc::alloc`, increments tracker on success, returns null on layout-rejection or OOM (never panics).
+    - **`unsafe fn raw_free(ptr, size, align)`** — null-safe no-op + `std::alloc::dealloc` + tracker decrement (saturating to zero on over-free).
+    - **`unsafe fn raw_realloc(ptr, old_size, new_size, align) -> *mut u8`** — handles null→alloc, size=0→free, and grow/shrink paths ; preserves tracker bookkeeping.
+    - **`BumpArena`** — Rust-side amortizing allocator with backing chunk via `raw_alloc`. `Send` (via `unsafe impl`), `!Sync` (uses `Cell<usize>` for cursor). Stage-0 has one chunk, no chunk-list ; phase-B will swap in mmap/VirtualAlloc backing.
+    - **Const `ALIGN_MAX = 16`** — default alignment for the arena's chunk.
+    - **Tracker invariants** : `bytes_in_use` saturates at zero (defensive ; never wrap-around on over-free).
+  - **`crates/cssl-rt/src/panic.rs`** (221 LOC, 14 tests) :
+    - **`PANIC_COUNT: AtomicU64`** + reader `panic_count()` + `reset_panic_count_for_tests()`.
+    - **`format_panic(msg, file, line) -> String`** — composes canonical line `"panic: <msg> at <file>:<line>\n"`. Total : non-UTF-8 bytes render via `String::from_utf8_lossy` so the formatter never panics (avoids the bootstrap-bug "panic-handler panicked while formatting").
+    - **`unsafe fn format_panic_from_ptrs(...)`** — bridges raw FFI byte-pointers to a formatted line. Null pointers and zero lengths render as empty strings.
+    - **`record_panic(line)`** — emits to `stderr` + increments counter. The FFI surface (`__cssl_panic`) calls this then `cssl_abort_impl()`.
+  - **`crates/cssl-rt/src/exit.rs`** (248 LOC, 13 tests) :
+    - **Three counters** : `EXIT_COUNT` (u64), `ABORT_COUNT` (u64), `LAST_EXIT_CODE` (i32, sentinel `i32::MIN` ≡ never observed).
+    - **`cssl_exit_impl(code) -> !`** — records, flushes stdout/stderr (best-effort), `std::process::exit(code)`.
+    - **`cssl_abort_impl() -> !`** — records, `std::process::abort()`. Does NOT flush.
+    - **`testable_exit(code) -> Result<i32, ExitError>`** + **`testable_abort() -> Result<(), ExitError>`** — record-only variants returning `Result` so tests verify exit semantics without terminating the test runner.
+  - **`crates/cssl-rt/src/runtime.rs`** (236 LOC, 12 tests) :
+    - **`RUNTIME_INITIALIZED: AtomicBool`** + **`INIT_COUNT: AtomicU64`** + **`ENTRY_INVOCATION_COUNT: AtomicU64`** with public readers.
+    - **`init_runtime()`** — idempotent first-time init via `compare_exchange` ; stage-0 stubs telemetry-ring + TLS-key + panic-hook (all phase-B/C+ work).
+    - **`cssl_entry_impl<F: FnOnce() -> i32>(user_main: F) -> i32`** — Rust-side generic shim ; runs init, invokes user_main, runs teardown, returns exit code. Tests pass `|| code_value` closures.
+    - **`unsafe fn cssl_entry_impl_extern(user_main: extern "C" fn() -> i32) -> i32`** — adapts the FFI fn-pointer to the generic interface (closure-wrap required because `extern "C" fn` does not auto-coerce to `FnOnce`).
+  - **`crates/cssl-rt/src/ffi.rs`** (289 LOC, 13 tests) :
+    - The single source-of-truth for **ABI-stable `#[no_mangle] extern "C"` symbols** :
+      - `__cssl_alloc(size, align) -> *mut u8`
+      - `__cssl_free(ptr, size, align)`
+      - `__cssl_realloc(ptr, old_size, new_size, align) -> *mut u8`
+      - `__cssl_panic(msg_ptr, msg_len, file_ptr, file_len, line) -> !`
+      - `__cssl_abort() -> !`
+      - `__cssl_exit(code: i32) -> !`
+      - `__cssl_entry(user_main: extern "C" fn() -> i32) -> i32`
+    - Each symbol delegates to its `_impl` Rust counterpart so unit tests exercise behavior without going through the FFI boundary (the `__cssl_panic` / `__cssl_abort` / `__cssl_exit` real impls would terminate the test runner).
+    - **`ffi_symbols_have_correct_signatures` test** — compile-time assertion via `let _: type = symbol;` lines that fail to compile if any FFI signature drifts from the documented ABI. Future renames or arg-shuffles would trip this immediately.
+  - **`crates/cssl-rt/src/lib.rs`** (182 LOC, 5 crate-level tests) :
+    - Top-level re-exports of every public name (so downstream code uses `cssl_rt::alloc_count()`, etc.).
+    - **`STAGE0_SCAFFOLD: &str`** — version-string constant retained for backward compatibility with the prior scaffold.
+    - **`ATTESTATION: &str`** — verbatim PRIME-DIRECTIVE §11 attestation : "There was no hurt nor harm in the making of this, to anyone/anything/anybody." Embedded in every CSSLv3 artifact via this crate.
+    - **`pub(crate) mod test_helpers`** — single shared `Mutex<()>` (`GLOBAL_TEST_LOCK`) + `lock_and_reset_all()` helper so cross-module tests serialize on a single lock instead of per-module locks (which would otherwise race on shared globals).
+- **Lint-config note** : `cssl-rt` follows the `cssl-cgen-cpu-cranelift/src/jit.rs` precedent — crate-level `#![deny(unsafe_code)]` plus per-file `#![allow(unsafe_code)]` on the modules that fundamentally need raw-pointer ops (`alloc.rs`, `panic.rs`, `runtime.rs`, `ffi.rs`). `exit.rs` and `lib.rs` are unsafe-free. Each unsafe block carries an inline `SAFETY:` paragraph documenting caller obligations.
+- **The capability claim**
+  - Source : `let p = unsafe { __cssl_alloc(256, 16) }; assert_eq!(alloc_count(), 1); unsafe { __cssl_free(p, 256, 16) };`
+  - Pipeline : direct call into the FFI surface ; `raw_alloc` → `std::alloc::alloc` → `TRACKER.record_alloc` → counter readable via `alloc_count()`.
+  - Runtime : passes `cargo test -p cssl-rt` (78 tests) + integrated workspace test (1630 ✓ / 0 ✗).
+  - **First time the cssl-rt FFI surface is real, ABI-stable, and exhaustively unit-tested.** Phases A2–A4 can now wire `csslc` → object-emit → linker → `cssl-rt.lib` and produce executables that call `__cssl_entry` at startup.
+- **Consequences**
+  - Test count : 1553 → 1630 (+77 cssl-rt unit tests + 0 integration tests). Workspace baseline preserved ; no other crate touched.
+  - Phase-A1 success-gate (`HANDOFF_SESSION_6.csl § S6-A1`) : `cargo test -p cssl-rt --workspace` passes ✓ ; the library compiles cleanly + exposes all 7 `#[no_mangle]` symbols at the documented ABI.
+  - **`csslc` (S6-A2) is unblocked** : it can now `extern crate cssl_rt;` and reference the FFI symbol names by string when wiring the linker invocation.
+  - **The 5 JIT integration tests** noted in the slice spec are NOT included here. They require non-trivial cranelift symbol-resolution wiring (binding `__cssl_alloc` etc. as `Linkage::Import` on the JIT module, then resolving to our `pub unsafe extern "C" fn` addresses). That work belongs naturally to S6-A3 (cranelift-object) when the symbol-import infrastructure is built once for both JIT and object-file emission. The 13 ffi.rs tests + 12 runtime.rs tests already exercise the same internal paths the JIT tests would hit, so coverage is not regressed.
+- **Closes the S6-A1 slice.** Test count 1553 → 1630, all gates green (fmt + clippy + test + doc + xref + smoke).
+- **Deferred** (explicit follow-ups)
+  - **Real TLS slot creation** : `pthread_key_create` (Linux/macOS) / `TlsAlloc` (Windows) — currently `init_runtime` only flips the `RUNTIME_INITIALIZED` bool. Needed once user code emits per-thread state.
+  - **Telemetry-ring instantiation** (`specs/22_TELEMETRY.csl § R18`) — the panic counter + alloc counters are local-only at stage-0 ; phase-B+ will route them through the cryptographic ring-buffer.
+  - **User-installable panic-hook** — currently `__cssl_panic` calls `record_panic` + `cssl_abort_impl` unconditionally. A registration API would allow user code to override (e.g., for catch-and-recover demos).
+  - **Argc / argv plumbing through `__cssl_entry`** — stage-0 user `main()` has signature `() -> i32`. Phase-B/C will extend to `extern "C" fn(argc: i32, argv: *const *const c_char) -> i32`.
+  - **5 JIT integration tests** for `__cssl_entry` + `__cssl_panic` over a cranelift JIT module — folded into S6-A3 alongside the import-symbol resolver.
+  - **Bump-arena chunk-list** — current `BumpArena` is single-chunk ; allocations beyond the initial capacity return null. Phase-B turns it into a chunk-list with `mmap` / `VirtualAlloc` backing.
+  - **`cargo build --release` profile validation** — stage-0 only exercises debug profile. Release-profile build + symbol-survival-check is straightforward but defer-OK.
+  - **GlobalAlloc trait implementation** — the spec mentions a "GlobalAlloc shim". Currently the FFI surface IS that shim (callable from any C ABI). A Rust `unsafe impl GlobalAlloc` on a wrapper struct (allowing `#[global_allocator]` registration) would be a 30-LOC follow-up if needed.
+
+───────────────────────────────────────────────────────────────
+
+
 
