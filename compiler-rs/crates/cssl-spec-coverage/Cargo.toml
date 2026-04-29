@@ -1,0 +1,22 @@
+[package]
+name                   = "cssl-spec-coverage"
+description            = "CSSLv3 stage0 — Spec-coverage tracker : SpecAnchor / SpecCoverageRegistry / impl + test status / CoverageMatrix / extraction (T11-D160 / Wave-Jζ-4)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-spec-coverage-macros = { path = "../cssl-spec-coverage-macros", optional = true }
+thiserror                 = { workspace = true }
+
+[features]
+default      = []
+proc-macro   = ["dep:cssl-spec-coverage-macros"]
+
+[dev-dependencies]
+cssl-spec-coverage-macros = { path = "../cssl-spec-coverage-macros" }

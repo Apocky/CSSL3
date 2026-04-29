@@ -920,6 +920,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-spec-coverage"
+version = "0.1.0"
+dependencies = [
+ "cssl-spec-coverage-macros",
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-spec-coverage-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "cssl-spectral-render"
 version = "0.1.0"
 dependencies = [
