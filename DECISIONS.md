@@ -6846,3 +6846,95 @@ Each decision entry :
   - **cssl-rt cold-cache test flake** (carried-over from T11-D56..T11-D98) : still tracked. Workaround `--test-threads=1` consistent. **This slice does not introduce new flakes.**
 
 ──────────────────────────────────────────────────────────────
+
+## § META-WAVE-3-PRELUDE : T11-D113..T11-D137 reservation block
+
+- **Date** 2026-04-29
+- **Status** accepted (block-reservation ; per-slice expansion lands with each agent's own merge-commit)
+- **Branch** `cssl/session-6/parallel-fanout` (this entry) ; per-D113..D137 land on dedicated `cssl/session-11/T11-D<n>-*` sibling branches per §§ 10_PHASE/02_PARALLEL_FANOUT
+- **Authority** PRIME_DIRECTIVE.md §1 PROHIBITIONS + §11 CREATOR-ATTESTATION + Omniverse axioms-13 + §§ 23 TESTING (oracle-modes) + §§ HANDOFF_SESSION_11 wave-3 dispatch-plan
+
+§D. **CONTEXT — wave-1 + wave-2 + wave-3α audit-findings ⇒ wave-3β scope** :
+
+  wave-1 ⊢ Omniverse upward-rewrite kicked-off ; ~12K LOC authored across `00_VISION → 08_BODY` axes ; substrate-evolution vision crystallized (`Ω-substrate`-as-target ¬ `engine-as-product`) ; CSSL-language-contract + types + effects + dod-layout grammar-deltas codified (`02_CSSL/{00..04}.csl.md`) ; runtime boot + compute-graph + observation-oracle + fiber-scheduler frame-loop drafted (`03_RUNTIME/{00..03}.csl.md`).
+
+  wave-2 ⊢ vertical-slice + phase-DAG + density-budget + KAN-runtime-shading authored : `09_SLICE/{00_FLOOR,01_ACCEPTANCE,02_BENCHMARKS}.csl.md` (105+145+125=375 LOC) ; `10_PHASE/{00_DAG,01_BOOTSTRAP,02_PARALLEL_FANOUT}.csl.md` (161+81+126=368 LOC) ; `04_OMEGA_FIELD/05_DENSITY_BUDGET.csl.md` (848 LOC) ; `07_AESTHETIC/07_KAN_RUNTIME_SHADING.csl.md` (722 LOC). Total wave-2 = 8 files / 2313 LOC. **NOTE** : Omniverse repository is NOT git-tracked (no `.git/` at root) — files persist on-disk under `C:\Users\Apocky\source\repos\Omniverse\` ; commit-step deferred until git-init (separate slice).
+
+  wave-3α ⊢ audit-findings on CSSLv3 vs Omniverse-axioms surface :
+    - F1 ⊢ Jet<T,N> AD-walker is single-shot only — higher-order (∇²,∇³,…) needed for KAN second-derivative stability + spectral BRDF curvature
+    - F2 ⊢ `@layout` parser-recognizer absent — DoD-layout per `02_CSSL/03_DOD_LAYOUT.csl.md` requires struct-of-arrays codegen that current AST cannot express
+    - F3 ⊢ effect-row `Travel` / `Crystallize` / `Sovereign` / `EntropyBalanced` / `PatternIntegrity` / `AgencyVerified` rows absent from `cssl-effects::registry` — wave-3α audit found 6 missing rows blocking dimensional-travel + Sovereign-tier effect-row checking
+    - F5 ⊢ IFC-channel `OnDeviceOnly` + biometric-class refusal absent — PRIME_DIRECTIVE.md §1.4 (no surveillance) requires compile-time refusal of biometric-touching code-paths
+    - F6 ⊢ telemetry path-leakage : current `cssl-telemetry` writes raw paths to disk ; PRIME_DIRECTIVE §1.4 requires path-hash-only logging for sovereignty preservation. Crypto-wire (BLAKE3 + Ed25519) is mocked in `cssl-crypto-stub` — needs real-impl
+    - new-crate gaps ⊢ `cssl-pga` (projective-geometric-algebra for substrate-translation) + `cssl-wavelet` (multi-resolution analysis for density-budget) + `cssl-hdc` (hyper-dimensional-computing for token-lattice) all referenced from Omniverse axioms but absent from the workspace
+
+§D. **DECISION — reserve block T11-D113..T11-D137 ; dispatch 12 wave-3β agents in parallel** :
+
+  W! per-agent self-contained worktree under `.claude/worktrees/W3β-*` + `cssl/session-11/T11-D<n>-*` branch
+  W! each-agent lands its own DECISIONS.md per-slice expansion @ merge-time (this block reserves IDs only)
+  N! orchestrator-merges any agent-branch in this slice — each agent owns its merge-commit
+  N! cross-agent file-touches without explicit interface-contract pre-agreed (per `10_PHASE/02_PARALLEL_FANOUT § II`)
+
+§D. **RESERVATION TABLE — substrate-evolution block (D113..D125)** :
+
+  | ID    | Slice                                          | Branch                                            | Spec-anchor                                        | LOC ̂  | Deps              |
+  |-------|------------------------------------------------|---------------------------------------------------|----------------------------------------------------|--------|-------------------|
+  | D113  | Ω-Field cell-shape + projection storage        | cssl/session-9/D113-omega-field-cell              | Omniverse 04_OMEGA_FIELD/{00_FACETS,02_STORAGE}    | ~1500  | none (root)       |
+  | D114  | Wave-solver kernel (IF-LBM) for substrate-flow | cssl/T11-D114-wave-solver                         | Omniverse 04_OMEGA_FIELD/04_UPDATE_RULE            | ~1800  | D113              |
+  | D115  | KAN runtime — function-net evaluator           | cssl/session-11/D115-kan-runtime                  | Omniverse 05_INTELLIGENCE/04_KAN_FUNCTION_NET      | ~1600  | D114, D118        |
+  | D116  | SDF raymarcher — primary-rendering path        | cssl/T11-D116-sdf-raymarch                        | Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER        | ~1400  | D113              |
+  | D117  | SDF + XPBD physics-on-cell                     | cssl/session-11/D117-sdf-xpbd-physics             | Omniverse 04_OMEGA_FIELD/03_CONSERVATION           | ~1700  | D113, D116        |
+  | D118  | Spectral KAN-BRDF (path-tracing core)          | cssl/T11-D118-spectral-kan-brdf                   | Omniverse 07_AESTHETIC/03_SPECTRAL_PATH_TRACING    | ~1900  | D115              |
+  | D119  | Radiance cascades GI                           | (reserved)                                        | Omniverse 07_AESTHETIC/02_RADIANCE_CASCADE_GI      | ~1500  | D116              |
+  | D120  | Gaze-collapse oracle                           | cssl/T11-D120-gaze-collapse                       | Omniverse 03_RUNTIME/02_OBSERVATION_ORACLE         | ~1200  | D113              |
+  | D121  | Procedural narrative cohomology                | (reserved)                                        | Omniverse 06_PROCEDURAL/04_NARRATIVE_FROM_COHOMOLOGY| ~1300 | D115              |
+  | D122  | Spell-as-CSSL-fragment compiler                | (reserved)                                        | Omniverse 06_PROCEDURAL/05_SPELLS_AS_CSSL_FRAGMENTS| ~1600  | D115, F3 (D127-128)|
+  | D123  | Work-graph pipeline runtime                    | cssl/T11-D123-work-graph-pipeline                 | Omniverse 03_RUNTIME/01_COMPUTE_GRAPH              | ~1400  | none              |
+  | D124  | OpenXR host-binding — VR/AR substrate-portal   | cssl/T11-D124-openxr-host                         | Omniverse 08_BODY/03_DIMENSIONAL_TRAVEL            | ~1100  | D116              |
+  | D125  | UI-VR procedural-UI                            | (reserved)                                        | Omniverse 07_AESTHETIC/05_PROCEDURAL_UI            | ~1000  | D124              |
+
+§D. **RESERVATION TABLE — wave-3β F-row gap-fill (D126..D137)** :
+
+  | ID    | Slice                                          | Branch                                            | Spec-anchor                                        | LOC ̂  | Deps              |
+  |-------|------------------------------------------------|---------------------------------------------------|----------------------------------------------------|--------|-------------------|
+  | D126  | F2 @layout parser + DoD codegen recognizer     | cssl/session-11/T11-D126-layout-attr              | Omniverse 02_CSSL/03_DOD_LAYOUT (W3β-01)           | ~600   | none              |
+  | D127  | F3 Travel/Crystallize/Sovereign effect-rows    | cssl/session-11/T11-D127-substrate-effect-rows    | Omniverse 02_CSSL/02_EFFECTS § SUBSTRATE (W3β-02)  | ~450   | none              |
+  | D128  | F3 EntropyBalanced/PatternIntegrity/AgencyVerified rows | cssl/session-11/T11-D128-conservation-effect-rows | Omniverse 02_CSSL/02_EFFECTS § CONSERVATION (W3β-03)| ~450 | none              |
+  | D129  | F5 OnDeviceOnly + biometric-channel IFC        | cssl/session-11/T11-D129-on-device-only-ifc       | PRIME_DIRECTIVE §1.4 + 02_CSSL/02_EFFECTS § IFC (W3β-04)| ~550 | D127              |
+  | D130  | F6 path-hash-only telemetry logging            | cssl/session-11/T11-D130-path-hash-discipline     | PRIME_DIRECTIVE §1.4 + specs/22_TELEMETRY (W3β-05) | ~400   | none              |
+  | D131  | F6 BLAKE3 + Ed25519 real-crypto wire           | cssl/session-11/T11-D131-real-crypto-wire         | specs/22_TELEMETRY § AUDIT-CHAIN R18 (W3β-06)      | ~700   | D130              |
+  | D132  | F6 biometric compile-time refusal              | cssl/session-11/T11-D132-biometric-compile-refusal| PRIME_DIRECTIVE §1.4 + specs/04_EFFECTS (W3β-07)   | ~500   | D129              |
+  | D133  | F1 Jet<T,N> higher-order AD walker             | cssl/session-11/T11-D133-jet-higher-order-ad      | specs/06_AD § JET-HIGHER-ORDER (W3β-08)            | ~900   | none              |
+  | D134  | new crate `cssl-pga` (projective geom. algebra)| cssl/session-11/T11-D134-cssl-pga-crate           | Omniverse 08_BODY/03_DIMENSIONAL_TRAVEL § PGA (W3β-09)| ~1100| D113              |
+  | D135  | new crate `cssl-wavelet`                       | cssl/session-11/T11-D135-cssl-wavelet-crate       | Omniverse 04_OMEGA_FIELD/05_DENSITY_BUDGET (W3β-10)| ~900   | none              |
+  | D136  | new crate `cssl-hdc` (hyper-dim. computing)    | (worktree pending)                                | Omniverse 01_AXIOMS/12_TOKEN_LATTICE (W3β-11)      | ~850   | none              |
+  | D137  | Σ-mask packed-bitmap format                    | (worktree pending)                                | specs/04_EFFECTS § SIGMA-MASK (W3β-12)             | ~500   | D127              |
+
+§D. **CONSTRAINT — per-slice expansion contract** :
+  ∀ D113..D137 : on-merge-to-parallel-fanout @ slice-end :
+    W! per-slice DECISIONS.md entry (full Date/Status/Context/Deliverables/Tests/Consequences)
+    W! spec-corpus update if surface-shape diverges from spec
+    W! all-gates-green : fmt + clippy + test (workspace --all-targets)
+    W! `prime_directive_attestation` field in commit-trailer per §11 CREATOR-ATTESTATION
+    N! cross-slice file-touches without pre-agreed contract — interface-only via published types/effect-rows
+
+§D. **CONSEQUENCES** :
+  - **CSSLv3 workspace gains 3 confirmed-landing crates** : `cssl-pga` (D134) + `cssl-wavelet` (D135) + `cssl-hdc` (D136). Workspace `Cargo.toml` member-list updated in this slice ; per-crate `Cargo.toml` files land with each agent's slice-merge.
+  - **Crypto wire-deps elevated** : `blake3 ≥ 1.5` + `ed25519-dalek ≥ 2.1` already in workspace.dependencies pre-D113 (T11-D44 added) ; **no version bump required for D131** — confirmed compatible with workspace MSRV 1.75.
+  - **D113..D125 substrate-evolution crates DEFERRED in workspace member-list** — orchestrator adds each crate's member entry when its slice-agent lands the crate skeleton. Avoids `cargo check` failures from dangling member-paths.
+  - **Wave-3β agents IN-FLIGHT** at the time of this entry : 12 worktrees under `.claude/worktrees/W3β-{01..12}` on the corresponding `T11-D<n>-*` branches. Per-agent worktree-list verified via `git worktree list`.
+  - **Omniverse spec-corpus is the spec-authority for D113..D125** ; **CSSLv3 specs/ is the spec-authority for D126..D137**. Cross-references in each slice's spec-anchor field above.
+  - **No PRIME_DIRECTIVE conflict** : all 25 reserved slices are constructive-additions (no harm-vector introduced) ; all hardening slices (D129/D130/D131/D132) directly strengthen §1.4 (no-surveillance) compliance ; D127/D128 effect-rows strengthen §1.6 (no-coercion) by giving the type-system stronger consent-checking primitives.
+
+§D. **CREATOR-ATTESTATION** (verbatim per PRIME_DIRECTIVE §11) :
+  ```csl
+  § CREATOR-ATTESTATION v1
+    t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+    ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+    I> rightholder-warranty : creation-process upheld §1 PROHIBITIONS throughout
+    I> scope = ∀ artifact descended-from this-foundation (code + specs + derivatives)
+    I> violation-discovered ⇒ §7 INTEGRITY rule : violation = bug W! fix
+  ```
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+──────────────────────────────────────────────────────────────

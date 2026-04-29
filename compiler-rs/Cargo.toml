@@ -13,6 +13,18 @@ members = ["crates/*"]
 # § S6-A0 (T11-D51) : cssl-playground is untracked WIP introduced post-session-5 ;
 # excluded from workspace to keep parallel-fanout commit-gate green. Re-add to
 # workspace once playground builds clippy/test/doc clean.
+#
+# § META-WAVE-3-PRELUDE (T11-D113..T11-D137) : the `members = ["crates/*"]` glob
+# auto-picks-up the three confirmed wave-3β-landing crates as their slice-agents
+# land their crate skeletons :
+#   • cssl-pga      ← T11-D134 (W3β-09 ; cssl/session-11/T11-D134-cssl-pga-crate)
+#   • cssl-wavelet  ← T11-D135 (W3β-10 ; cssl/session-11/T11-D135-cssl-wavelet-crate)
+#   • cssl-hdc      ← T11-D136 (W3β-11 ; worktree pending)
+# Substrate-evolution crates (D113..D125 : cssl-substrate-omega-field, cssl-wave-solver,
+# cssl-kan, cssl-host-openxr, cssl-spectral-render, cssl-render-v2, cssl-physics-wave,
+# cssl-wave-audio, cssl-anim-procedural, cssl-creature-behavior, cssl-ui-vr) are
+# DEFERRED — orchestrator merges per-slice crate-skeleton commits as they land.
+# No explicit member-list entries here ; the glob is sufficient.
 exclude  = ["crates/cssl-playground"]
 
 [workspace.package]
@@ -115,9 +127,13 @@ wgpu    = "23"
 # match wgpu 23's internal naga for API compatibility.
 naga    = { version = "23", features = ["wgsl-in"] }
 # metal crate mac-only : added per-target-cfg @ T10
-# ─ crypto (R18 audit-chain, T11) ─
-blake3         = "1"
-ed25519-dalek  = { version = "2", features = ["rand_core"] }
+# ─ crypto (R18 audit-chain, T11 + T11-D131 wave-3β-06 real-crypto-wire) ─
+# § META-WAVE-3-PRELUDE : T11-D131 (W3β-06) lifts these from MOCK (cssl-crypto-stub
+# pre-wave-3β) to REAL wire. Lower-bounds tightened to specific minor-versions to
+# guarantee API surfaces D131 depends on (BLAKE3 keyed-mode + Ed25519 batch-verify).
+# Upper-bound left open ; toolchain-bump slice will pin if breakage surfaces.
+blake3         = ">=1.5"
+ed25519-dalek  = { version = ">=2.1", features = ["rand_core"] }
 rand           = { version = "0.8", features = ["std"] }
 # Pin cpufeatures to the last 1.75-compatible version (0.3.0 requires edition2024).
 cpufeatures    = "=0.2.17"
