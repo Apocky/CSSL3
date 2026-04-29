@@ -1,0 +1,14 @@
+[package]
+name                   = "cssl-hot-reload"
+description            = "CSSLv3 stage0 — hot-reload surface (Asset / Shader / Config / KAN-weight swap) with mock event-pump + replay-log integration. Real OS-pump (Win32 / inotify / FSEvents) deferred to follow-up Wave-Jη slice."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
