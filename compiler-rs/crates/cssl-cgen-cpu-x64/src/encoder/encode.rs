@@ -76,6 +76,7 @@ pub fn encode_into(buf: &mut Vec<u8>, inst: &X64Inst) {
         X64Inst::UComisdRR { dst, src } => emit_ucomisd_rr(buf, dst, src),
         X64Inst::CvtSi2sdRR { size, dst, src } => emit_cvtsi2sd(buf, size, dst, src),
         X64Inst::CvtSd2siRR { size, dst, src } => emit_cvtsd2si(buf, size, dst, src),
+        X64Inst::XorpsRR { dst, src } => emit_xorps_rr(buf, dst, src),
     }
 }
 
@@ -390,6 +391,18 @@ fn emit_cvtsd2si(buf: &mut Vec<u8>, size: OperandSize, dst: Gpr, src: Xmm) {
     }
     buf.push(0x0F);
     buf.push(0x2D);
+    buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+fn emit_xorps_rr(buf: &mut Vec<u8>, dst: Xmm, src: Xmm) {
+    // 0F 57 /r — XORPS xmm, xmm. No prefix byte (unlike scalar SSE2 ops
+    // which use F2/F3) ; the SSE1 packed-single XOR has bare 0F 57.
+    let rex = make_rex_optional(false, dst.rex_bit(), false, src.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(0x57);
     buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
 }
 

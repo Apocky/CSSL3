@@ -76,14 +76,16 @@ use crate::encoder::{encode_into, MemOperand};
 use crate::isel::func::X64Func as IselFunc;
 use crate::isel::inst::{X64Imm, X64Inst as IselInst, X64Term as IselTerm};
 use crate::isel::select::{select_function as isel_select_function, SelectError};
-use crate::isel::vreg::X64Width;
+use crate::isel::vreg::{X64VReg, X64Width};
 use crate::lower::{
     lower_epilogue_for, lower_prologue, AbstractInsn, FunctionLayout, LoweredEpilogue,
     LoweredPrologue,
 };
-use crate::objemit::func::X64Func as ObjFunc;
+use crate::objemit::func::{X64Func as ObjFunc, X64Reloc, X64RelocKind, X64Symbol};
 use crate::objemit::object::{emit_object_file, ObjectError, ObjectTarget};
 use crate::{host_default_format, NativeX64Error, ObjectFormat};
+
+use std::collections::HashMap;
 
 // ═══════════════════════════════════════════════════════════════════════
 // § Scalar-leaf result of selection : the milestone-subset shape.
@@ -311,6 +313,642 @@ fn xmm_to_encoder_xmm(x: crate::abi::XmmReg) -> Xmm {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// § G10 (T11-D112) : cross-fn calls — module plan + per-fn body lowering
+// ═══════════════════════════════════════════════════════════════════════
+//
+// G10 wires the "call" path through G1 → G3 → G4 → G5 end-to-end :
+//
+//   1. `ModulePlan::build` walks every selected `IselFunc` and gathers :
+//        (a) the set of intra-module fn names (= the funcs slice),
+//        (b) the set of CALLED-but-not-defined names (= extern_imports),
+//        (c) a `name → symbol_index` table (1-based ; funcs first, externs
+//           after) that the per-fn lowering uses to populate
+//           `X64Reloc.target_index`.
+//   2. `isel_to_encoder_with_calls` lowers a single fn's body, accepting :
+//        - `IselInst::MovImm` (i32/i64/f32/f64-zero immediates),
+//        - `IselInst::Mov`    (vreg-to-vreg moves ; result-pickup post-call),
+//        - `IselInst::Call`   (cross-fn call with ABI-correct arg-passing,
+//                              caller-saved-spill-free at G10 since vregs
+//                              flow through canonical pinning),
+//      and produces the `Vec<EncInst>` body + a `Vec<RelocSiteRel>` of
+//      "the byte-offset within THIS body where a CallRel needs a reloc".
+//      The byte-offset is local to the body ; `build_func_bytes` adjusts
+//      it by the prologue length so the reloc points at the correct
+//      offset within the final per-fn encoded bytes.
+//   3. `build_func_bytes` (rewired) consumes the plan + emits the
+//      `ObjFunc` with its `relocs` field populated.
+//   4. `emit_object_module_native_with_format` collects all extern
+//      imports from the plan + passes them to `emit_object_file` so
+//      the per-format writer (ELF / COFF / Mach-O) emits the
+//      relocation entries + UNDEF symbols correctly.
+//
+// § ABI ARG-PASSING DISCIPLINE  (per T11-D85)
+//   Args are classified by `X64VReg.width.is_sse()` → ArgClass::Float
+//   else ArgClass::Int. The classified args feed into `lower_call`
+//   for layout (which already handles SysV vs MS-x64 + shadow-space +
+//   alignment + overflow). The pre-call EncInst sequence emits the
+//   moves into the ABI-mandated registers : MovRI for i32/i64
+//   immediates ; XorpsRR for f64-zero (the ONLY float-imm shape G10
+//   accepts without a const-pool) ; MovRR / MovsdRR for vreg-to-arg-
+//   reg moves. Stack-overflow args are NOT supported at G10 (rejected
+//   loudly with `UnsupportedOp`).
+//
+// § CALLER-SAVED SPILL  (deferred to G2-LSRA)
+//   Per the dispatch landmines, "G8 + G9 may not have landed ; if so,
+//   define minimal LSRA + multi-block-CFG stubs to validate cross-fn
+//   flow alone." G10 follows that route : a real LSRA caller-saved-
+//   spill pass is reserved for the G2-integration slice. At G10
+//   every call-call-pair is independent (no persistent vregs across
+//   calls in the leaf-call subset), so the no-spill simplification is
+//   sound for the test surface.
+
+/// Module-level plan : intra-module fns + extern imports + name → symbol-
+/// index table, computed by [`ModulePlan::build`] from the selected
+/// functions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModulePlan {
+    /// External symbols referenced by call sites that aren't defined in
+    /// this module. Order is deterministic : first-seen insertion order.
+    pub extern_imports: Vec<X64Symbol>,
+    /// Map from callable-name → symbol-table index (1-based per the
+    /// objemit::object convention : index 0 = null symbol ; index 1 =
+    /// first func ; index funcs.len()+1 = first extern).
+    pub name_to_target_index: HashMap<String, u32>,
+}
+
+impl ModulePlan {
+    /// Build the plan from the selected functions.
+    ///
+    /// # Errors
+    /// Returns [`NativeX64Error::UnsupportedOp`] when a callee name fails
+    /// the ASCII / NUL discipline imposed by [`X64Symbol::new_function`].
+    pub fn build(funcs: &[IselFunc]) -> Result<Self, NativeX64Error> {
+        let mut name_to_target_index: HashMap<String, u32> = HashMap::new();
+        // § Phase A : intra-module fns get indices 1..=funcs.len().
+        for (i, f) in funcs.iter().enumerate() {
+            let idx = u32::try_from(i + 1).map_err(|_| NativeX64Error::ObjectWriteFailed {
+                detail: format!("module fn count overflowed u32 at index {i}"),
+            })?;
+            name_to_target_index.insert(f.name.clone(), idx);
+        }
+        // § Phase B : walk every Call inst ; for each callee not in the
+        //             intra-module set, record an extern import in
+        //             insertion order (preserves determinism for golden-
+        //             reloc tests).
+        let mut extern_imports: Vec<X64Symbol> = Vec::new();
+        let mut extern_seen: HashMap<String, u32> = HashMap::new();
+        for f in funcs {
+            for block in &f.blocks {
+                for inst in &block.insts {
+                    if let IselInst::Call { callee, .. } = inst {
+                        if name_to_target_index.contains_key(callee) {
+                            continue;
+                        }
+                        if extern_seen.contains_key(callee) {
+                            continue;
+                        }
+                        let idx_in_externs = extern_imports.len();
+                        let final_idx =
+                            u32::try_from(funcs.len() + 1 + idx_in_externs).map_err(|_| {
+                                NativeX64Error::ObjectWriteFailed {
+                                    detail: format!(
+                                        "extern symbol count overflowed u32 at `{callee}`"
+                                    ),
+                                }
+                            })?;
+                        let sym = X64Symbol::new_function(callee.clone()).map_err(|e| {
+                            NativeX64Error::ObjectWriteFailed {
+                                detail: format!(
+                                    "extern `{callee}` rejected by linker discipline : {e}"
+                                ),
+                            }
+                        })?;
+                        extern_imports.push(sym);
+                        extern_seen.insert(callee.clone(), final_idx);
+                        name_to_target_index.insert(callee.clone(), final_idx);
+                    }
+                }
+            }
+        }
+        Ok(Self {
+            extern_imports,
+            name_to_target_index,
+        })
+    }
+
+    /// Look up a callable's symbol-table index. Returns None if the name
+    /// wasn't registered during [`Self::build`] (defensive — should never
+    /// happen for valid IselFuncs).
+    #[must_use]
+    pub fn target_index(&self, name: &str) -> Option<u32> {
+        self.name_to_target_index.get(name).copied()
+    }
+}
+
+/// Per-fn relocation site : "at byte offset N within the body, emit a
+/// NearCall reloc against `target_index` with addend = -4". The body-
+/// local offset is adjusted by the prologue length when the per-fn bytes
+/// are assembled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BodyRelocSite {
+    /// Byte offset within the body's encoded bytes where the 4-byte
+    /// disp32 field of the CallRel begins (= 1 + start-of-instruction).
+    body_byte_offset: u32,
+    /// Symbol-table target index (from [`ModulePlan::name_to_target_index`]).
+    target_index: u32,
+}
+
+/// Lower an [`IselFunc`]'s body into a sequence of [`EncInst`]s, also
+/// collecting per-fn relocation sites for any CallRel emitted. Supports
+/// the G10 cross-fn subset :
+///
+///   - `IselInst::MovImm { dst, imm: I32(_) | I64(_) | F32(0) | F64(0) }`
+///   - `IselInst::Mov    { dst, src }` (vreg-to-vreg copy)
+///   - `IselInst::Call   { callee, args, results }` (with full ABI
+///                         arg-passing into rcx/rdx/r8/r9 + xmm0..xmm3
+///                         on MS-x64 ; rdi/rsi/rdx/rcx/r8/r9 +
+///                         xmm0..xmm7 on SysV)
+///
+/// The terminator is read separately (handled by the caller for return-
+/// value placement).
+///
+/// # Errors
+/// Returns [`NativeX64Error::UnsupportedOp`] for ops outside the G10
+/// subset (multi-block bodies, non-zero float immediates that would
+/// need a const-pool, stack-overflow args, etc).
+/// Output of [`isel_to_encoder_with_calls`] : the encoded body inst stream,
+/// the per-call reloc sites (body-local byte offsets), and the final per-
+/// vreg state map (consumed by the caller's return-value placement).
+type CrossFnLoweringOutput = (Vec<EncInst>, Vec<BodyRelocSite>, HashMap<u32, VregState>);
+
+fn isel_to_encoder_with_calls(
+    func: &IselFunc,
+    abi: X64Abi,
+    plan: &ModulePlan,
+) -> Result<CrossFnLoweringOutput, NativeX64Error> {
+    if func.blocks.len() != 1 {
+        return Err(NativeX64Error::UnsupportedOp {
+            fn_name: func.name.clone(),
+            op_name: format!(
+                "multi-block-body ({n} blocks ; G10 cross-fn subset = 1)",
+                n = func.blocks.len()
+            ),
+        });
+    }
+    let block = &func.blocks[0];
+
+    // § Vreg-state map : tracks the canonical "where does this vreg's
+    //   value currently live" for the call-pinning. At G10 we model two
+    //   shapes : `ImmI32(n) / ImmI64(n)` (a MovImm-defined integer
+    //   constant we can re-materialize at the arg-reg with MovRI) and
+    //   `ZeroFloat` (the only float-imm shape we accept ; XorpsRR at the
+    //   arg-xmm) and `Pinned(preg)` (a vreg whose canonical home is a
+    //   physical register, e.g. the result of a prior call lives in
+    //   rax/xmm0). Anything else ⇒ reject.
+    let mut vreg_state: HashMap<u32, VregState> = HashMap::new();
+    let mut body: Vec<EncInst> = Vec::new();
+    let mut relocs: Vec<BodyRelocSite> = Vec::new();
+
+    for inst in &block.insts {
+        match inst {
+            IselInst::MovImm { dst, imm } => match imm {
+                X64Imm::I32(n) => {
+                    vreg_state.insert(dst.id, VregState::ImmI32(*n));
+                }
+                X64Imm::I64(n) => {
+                    vreg_state.insert(dst.id, VregState::ImmI64(*n));
+                }
+                X64Imm::F32(bits) => {
+                    if *bits != 0 {
+                        return Err(NativeX64Error::UnsupportedOp {
+                            fn_name: func.name.clone(),
+                            op_name: format!(
+                                "non-zero f32 immediate (bits=0x{bits:08x}) requires \
+                                     const-pool / rip-relative load (deferred to post-G10 slice)"
+                            ),
+                        });
+                    }
+                    vreg_state.insert(dst.id, VregState::ZeroFloat);
+                }
+                X64Imm::F64(bits) => {
+                    if *bits != 0 {
+                        return Err(NativeX64Error::UnsupportedOp {
+                            fn_name: func.name.clone(),
+                            op_name: format!(
+                                "non-zero f64 immediate (bits=0x{bits:016x}) requires \
+                                     const-pool / rip-relative load (deferred to post-G10 slice)"
+                            ),
+                        });
+                    }
+                    vreg_state.insert(dst.id, VregState::ZeroFloat);
+                }
+                X64Imm::Bool(b) => {
+                    vreg_state.insert(dst.id, VregState::ImmI32(i32::from(*b)));
+                }
+            },
+            IselInst::Mov { dst, src } => {
+                // Vreg-to-vreg copy : carry the source's state forward.
+                let src_state = vreg_state.get(&src.id).copied().ok_or_else(|| {
+                    NativeX64Error::UnsupportedOp {
+                        fn_name: func.name.clone(),
+                        op_name: format!(
+                            "Mov v{} ← v{} : src vreg has no recorded state",
+                            dst.id, src.id
+                        ),
+                    }
+                })?;
+                vreg_state.insert(dst.id, src_state);
+            }
+            IselInst::Call {
+                callee,
+                args,
+                results,
+            } => {
+                // § A. Classify args by width → ArgClass.
+                let arg_classes: Vec<ArgClass> = args
+                    .iter()
+                    .map(|v| {
+                        if v.width.is_sse() {
+                            ArgClass::Float
+                        } else {
+                            ArgClass::Int
+                        }
+                    })
+                    .collect();
+                // § B. Use lower_call for layout (handles ABI shadow-space +
+                //      alignment + overflow). At G10 we reject overflow.
+                let layout = crate::lower::classify_call_args(&arg_classes, abi);
+                if !layout.stack_slots.is_empty() {
+                    return Err(NativeX64Error::UnsupportedOp {
+                        fn_name: func.name.clone(),
+                        op_name: format!(
+                            "Call({callee}) has {n} stack-overflow args ; G10 supports register-only \
+                             arg-passing (stack-overflow + spill reserved for G2-LSRA integration)",
+                            n = layout.stack_slots.len(),
+                        ),
+                    });
+                }
+
+                // § C. Emit shadow-space + alignment-padding sub rsp.
+                if layout.total_stack_alloc_bytes > 0 {
+                    body.push(EncInst::SubRI {
+                        size: OperandSize::B64,
+                        dst: Gpr::Rsp,
+                        imm: i32::try_from(layout.total_stack_alloc_bytes).map_err(|_| {
+                            NativeX64Error::UnsupportedOp {
+                                fn_name: func.name.clone(),
+                                op_name: format!(
+                                    "Call({callee}) stack alloc {} > i32 max",
+                                    layout.total_stack_alloc_bytes
+                                ),
+                            }
+                        })?,
+                    });
+                }
+
+                // § D. Emit per-arg pre-call moves. For each (arg-idx,
+                //      target-reg) emit the right materialization based on
+                //      the source vreg's state.
+                for &(arg_idx, gp_reg) in &layout.int_reg_assignments {
+                    let v = args[arg_idx];
+                    let target_gpr = gp_to_encoder_gpr(gp_reg);
+                    materialize_int_arg(&mut body, &vreg_state, v, target_gpr, &func.name, callee)?;
+                }
+                for &(arg_idx, xmm_reg) in &layout.float_reg_assignments {
+                    let v = args[arg_idx];
+                    let target_xmm = xmm_to_encoder_xmm(xmm_reg);
+                    materialize_float_arg(
+                        &mut body,
+                        &vreg_state,
+                        v,
+                        target_xmm,
+                        &func.name,
+                        callee,
+                    )?;
+                }
+
+                // § E. Emit the CallRel + record the reloc site.
+                let call_inst_offset = current_byte_offset(&body);
+                body.push(EncInst::CallRel {
+                    target: BranchTarget::Rel32(0), // patched by linker via reloc
+                });
+                let target_index =
+                    plan.target_index(callee)
+                        .ok_or_else(|| NativeX64Error::ObjectWriteFailed {
+                            detail: format!(
+                                "internal : Call({callee}) callee not in module plan symbol table"
+                            ),
+                        })?;
+                // The CALL rel32 instruction is 5 bytes : 1-byte 0xE8
+                // opcode + 4-byte disp32. The reloc target offset within
+                // the body is `call_inst_offset + 1` (skip the 0xE8).
+                relocs.push(BodyRelocSite {
+                    body_byte_offset: call_inst_offset + 1,
+                    target_index,
+                });
+
+                // § F. Emit reclaim of shadow-space + stack-args.
+                if layout.total_stack_alloc_bytes > 0 {
+                    body.push(EncInst::AddRI {
+                        size: OperandSize::B64,
+                        dst: Gpr::Rsp,
+                        imm: i32::try_from(layout.total_stack_alloc_bytes).map_err(|_| {
+                            NativeX64Error::UnsupportedOp {
+                                fn_name: func.name.clone(),
+                                op_name: format!(
+                                    "Call({callee}) stack reclaim {} > i32 max",
+                                    layout.total_stack_alloc_bytes
+                                ),
+                            }
+                        })?,
+                    });
+                }
+
+                // § G. Pin each result vreg to its canonical return-reg
+                //      (rax for the first int result ; xmm0 for the first
+                //      float result). At G10 we support a single result.
+                if results.len() > 1 {
+                    return Err(NativeX64Error::UnsupportedOp {
+                        fn_name: func.name.clone(),
+                        op_name: format!(
+                            "Call({callee}) has {n} results ; G10 supports ≤ 1",
+                            n = results.len()
+                        ),
+                    });
+                }
+                if let Some(r) = results.first() {
+                    if r.width.is_sse() {
+                        vreg_state.insert(r.id, VregState::PinnedXmm(Xmm::Xmm0));
+                    } else {
+                        vreg_state.insert(r.id, VregState::PinnedGpr(Gpr::Rax));
+                    }
+                }
+            }
+            other => {
+                return Err(NativeX64Error::UnsupportedOp {
+                    fn_name: func.name.clone(),
+                    op_name: format!("inst `{other:?}` outside G10 cross-fn subset"),
+                });
+            }
+        }
+    }
+
+    // § Terminator : already handled by caller (return-value placement).
+    //   The final vreg-state map is returned so the caller's
+    //   `place_return_value_with_calls` can consume it.
+
+    Ok((body, relocs, vreg_state))
+}
+
+/// Per-vreg state tracked by [`isel_to_encoder_with_calls`] :
+/// either an integer immediate, the canonical zero-float, or pinned to
+/// a specific physical register. Used to drive arg-materialization +
+/// return-value placement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VregState {
+    /// 32-bit integer immediate.
+    ImmI32(i32),
+    /// 64-bit integer immediate.
+    ImmI64(i64),
+    /// IEEE 754 zero (f32 or f64 ; xorps idiom).
+    ZeroFloat,
+    /// Pinned to a specific GP register (e.g. rax post-call).
+    PinnedGpr(Gpr),
+    /// Pinned to a specific XMM register (e.g. xmm0 post-call).
+    PinnedXmm(Xmm),
+}
+
+/// Current byte offset within an [`EncInst`] body — used to locate where
+/// the next instruction will land. Re-encodes each prior instruction
+/// because the encoder's offset isn't exposed directly ; cheap at G10
+/// scale (≤ 16 insts per leaf-call body).
+fn current_byte_offset(body: &[EncInst]) -> u32 {
+    let mut buf: Vec<u8> = Vec::with_capacity(body.len() * 8);
+    for ei in body {
+        encode_into(&mut buf, ei);
+    }
+    u32::try_from(buf.len()).unwrap_or(u32::MAX)
+}
+
+/// Materialize a single integer arg from vreg `v` into the ABI-mandated
+/// `target_gpr`. Uses the vreg's recorded state to pick the right
+/// instruction (MovRI for an immediate, MovRR for a pinned-to-reg
+/// source). The `caller_name` + `callee_name` are for diagnostics.
+fn materialize_int_arg(
+    body: &mut Vec<EncInst>,
+    vreg_state: &HashMap<u32, VregState>,
+    v: X64VReg,
+    target_gpr: Gpr,
+    caller_name: &str,
+    callee_name: &str,
+) -> Result<(), NativeX64Error> {
+    let state = vreg_state
+        .get(&v.id)
+        .copied()
+        .ok_or_else(|| NativeX64Error::UnsupportedOp {
+            fn_name: caller_name.to_string(),
+            op_name: format!(
+                "Call({callee_name}) int arg v{} has no recorded state — \
+                 G10 requires args to be MovImm-defined or pinned to a preg",
+                v.id
+            ),
+        })?;
+    match state {
+        VregState::ImmI32(n) => {
+            body.push(EncInst::MovRI {
+                size: OperandSize::B32,
+                dst: target_gpr,
+                imm: i64::from(n),
+            });
+        }
+        VregState::ImmI64(n) => {
+            body.push(EncInst::MovRI {
+                size: OperandSize::B64,
+                dst: target_gpr,
+                imm: n,
+            });
+        }
+        VregState::PinnedGpr(src) if src == target_gpr => {
+            // No-op : already in the right register.
+        }
+        VregState::PinnedGpr(src) => {
+            body.push(EncInst::MovRR {
+                size: OperandSize::B64,
+                dst: target_gpr,
+                src,
+            });
+        }
+        VregState::ZeroFloat | VregState::PinnedXmm(_) => {
+            return Err(NativeX64Error::UnsupportedOp {
+                fn_name: caller_name.to_string(),
+                op_name: format!(
+                    "Call({callee_name}) int arg v{} has float-state {state:?} — \
+                     width-tag mismatch",
+                    v.id
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Materialize a single float arg from vreg `v` into the ABI-mandated
+/// `target_xmm`. Uses XorpsRR for the zero-float idiom + MovsdRR for a
+/// vreg already pinned to a different XMM.
+fn materialize_float_arg(
+    body: &mut Vec<EncInst>,
+    vreg_state: &HashMap<u32, VregState>,
+    v: X64VReg,
+    target_xmm: Xmm,
+    caller_name: &str,
+    callee_name: &str,
+) -> Result<(), NativeX64Error> {
+    let state = vreg_state
+        .get(&v.id)
+        .copied()
+        .ok_or_else(|| NativeX64Error::UnsupportedOp {
+            fn_name: caller_name.to_string(),
+            op_name: format!(
+                "Call({callee_name}) float arg v{} has no recorded state — \
+                 G10 requires args to be MovImm-defined or pinned to a preg",
+                v.id
+            ),
+        })?;
+    match state {
+        VregState::ZeroFloat => {
+            // xorps target, target — clears all bits to IEEE 754 zero.
+            body.push(EncInst::XorpsRR {
+                dst: target_xmm,
+                src: target_xmm,
+            });
+        }
+        VregState::PinnedXmm(src) if src == target_xmm => {
+            // No-op : already in the right register.
+        }
+        VregState::PinnedXmm(src) => {
+            body.push(EncInst::MovsdRR {
+                dst: target_xmm,
+                src,
+            });
+        }
+        VregState::ImmI32(_) | VregState::ImmI64(_) | VregState::PinnedGpr(_) => {
+            return Err(NativeX64Error::UnsupportedOp {
+                fn_name: caller_name.to_string(),
+                op_name: format!(
+                    "Call({callee_name}) float arg v{} has int-state {state:?} — \
+                     width-tag mismatch",
+                    v.id
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Identify the return-value placement for a function in cross-fn-aware
+/// form. Returns the EncInst sequence that places the return value into
+/// `rax` (int) or `xmm0` (float), to be spliced AFTER the body and
+/// BEFORE the epilogue. Returns an empty vec for void returns.
+///
+/// # Errors
+/// Returns [`NativeX64Error::UnsupportedOp`] when the terminator's
+/// return-value vreg has no recorded state.
+fn place_return_value_with_calls(
+    func: &IselFunc,
+    block_body_state: &HashMap<u32, VregState>,
+) -> Result<Vec<EncInst>, NativeX64Error> {
+    let block = &func.blocks[0];
+    let operands = match &block.terminator {
+        IselTerm::Ret { operands } => operands,
+        IselTerm::Fallthrough { .. } => return Ok(Vec::new()),
+        other => {
+            return Err(NativeX64Error::UnsupportedOp {
+                fn_name: func.name.clone(),
+                op_name: format!("non-Ret terminator `{other:?}` in G10 cross-fn subset"),
+            });
+        }
+    };
+    if operands.is_empty() {
+        return Ok(Vec::new());
+    }
+    if operands.len() > 1 {
+        return Err(NativeX64Error::UnsupportedOp {
+            fn_name: func.name.clone(),
+            op_name: format!(
+                "multi-result return ({n} results ; G10 cross-fn = 0 or 1)",
+                n = operands.len()
+            ),
+        });
+    }
+    let v = operands[0];
+    let state =
+        block_body_state
+            .get(&v.id)
+            .copied()
+            .ok_or_else(|| NativeX64Error::UnsupportedOp {
+                fn_name: func.name.clone(),
+                op_name: format!(
+                    "return vreg v{} has no recorded state at function exit",
+                    v.id
+                ),
+            })?;
+    let mut out = Vec::new();
+    if v.width.is_sse() {
+        // Float return → xmm0.
+        match state {
+            VregState::ZeroFloat => out.push(EncInst::XorpsRR {
+                dst: Xmm::Xmm0,
+                src: Xmm::Xmm0,
+            }),
+            VregState::PinnedXmm(Xmm::Xmm0) => {} // already in xmm0
+            VregState::PinnedXmm(src) => out.push(EncInst::MovsdRR {
+                dst: Xmm::Xmm0,
+                src,
+            }),
+            VregState::ImmI32(_) | VregState::ImmI64(_) | VregState::PinnedGpr(_) => {
+                return Err(NativeX64Error::UnsupportedOp {
+                    fn_name: func.name.clone(),
+                    op_name: format!(
+                        "float-typed return v{} has int-state {state:?} — width mismatch",
+                        v.id
+                    ),
+                });
+            }
+        }
+    } else {
+        // Int return → rax (32-bit forms write eax which zero-extends to rax).
+        match state {
+            VregState::ImmI32(n) => out.push(EncInst::MovRI {
+                size: OperandSize::B32,
+                dst: Gpr::Rax,
+                imm: i64::from(n),
+            }),
+            VregState::ImmI64(n) => out.push(EncInst::MovRI {
+                size: OperandSize::B64,
+                dst: Gpr::Rax,
+                imm: n,
+            }),
+            VregState::PinnedGpr(Gpr::Rax) => {} // already in rax
+            VregState::PinnedGpr(src) => out.push(EncInst::MovRR {
+                size: OperandSize::B64,
+                dst: Gpr::Rax,
+                src,
+            }),
+            VregState::ZeroFloat | VregState::PinnedXmm(_) => {
+                return Err(NativeX64Error::UnsupportedOp {
+                    fn_name: func.name.clone(),
+                    op_name: format!(
+                        "int-typed return v{} has float-state {state:?} — width mismatch",
+                        v.id
+                    ),
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // § Adapter : Selection driver wrapping G1's `select_module` + D5 marker
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -343,15 +981,30 @@ pub fn select_module_with_marker(module: &MirModule) -> Result<Vec<IselFunc>, Se
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Build the encoded byte sequence for a single isel-form function under
-/// the given ABI. Splices :
+/// the given ABI, given the module-level plan (intra-module fns + extern
+/// imports + symbol-table indices).
+///
+/// Splices :
 ///   1. G3 prologue (`push rbp ; mov rbp, rsp ; sub rsp, frame ;
 ///      <callee-saved-pushes>`),
-///   2. G1→G4 lowered body (placement of the return-value into rax/xmm0),
-///   3. G3 epilogue (`<callee-saved-pops> ; add rsp, frame ; pop rbp ; ret`).
+///   2. G10 cross-fn body lowering : MovImm + Mov + Call shapes, including
+///      ABI-correct arg-passing into rcx/rdx/r8/r9 + xmm0..xmm3 (MS-x64)
+///      or rdi/rsi/rdx/rcx/r8/r9 + xmm0..xmm7 (SysV), with caller-side
+///      shadow-space + 16-byte-alignment fixup,
+///   3. Return-value placement (mov eax, imm OR mov rax, src OR xorps xmm0,
+///      xmm0 for the IEEE 754 zero-float idiom — the only float-imm shape
+///      G10 accepts without a const-pool),
+///   4. G3 epilogue (`<callee-saved-pops> ; add rsp, frame ; pop rbp ;
+///      ret`).
 ///
 /// The `is_export` flag is wired through to the [`ObjFunc`] builder so the
 /// linker surfaces a STB_GLOBAL / EXTERNAL / N_EXT symbol when the fn is
 /// the module's main (or other public entry).
+///
+/// Per-fn relocations (one per CallRel emitted in the body) are produced
+/// with `target_index` set from the `plan` and `offset` adjusted to the
+/// final byte offset within the per-fn encoded bytes (= prologue length
+/// + body-local offset).
 ///
 /// # Errors
 /// Returns [`NativeX64Error`] for any per-stage adapter failure.
@@ -359,11 +1012,10 @@ pub fn build_func_bytes(
     func: &IselFunc,
     abi: X64Abi,
     is_export: bool,
+    plan: &ModulePlan,
 ) -> Result<ObjFunc, NativeX64Error> {
-    // § 1. Lower body.
-    let body_insts = isel_to_encoder_simple(func)?;
-
-    // § 2. Lower prologue + epilogue from G3.
+    // § 1. Lower prologue + epilogue from G3 (compute lengths up-front so
+    //      we know the body-byte-offset to base relocs against).
     let layout = FunctionLayout {
         abi,
         local_frame_bytes: 0,
@@ -373,28 +1025,62 @@ pub fn build_func_bytes(
     let prologue: LoweredPrologue = lower_prologue(&layout);
     let epilogue: LoweredEpilogue = lower_epilogue_for(&layout, &prologue);
 
-    // § 3. Walk prologue + body + epilogue in order, encoding bytes.
-    let mut bytes = Vec::new();
+    // § 2. Encode the prologue into bytes.
+    let mut bytes: Vec<u8> = Vec::new();
     for ai in &prologue.insns {
         for ei in abi_lower_to_encoder(ai)? {
             encode_into(&mut bytes, &ei);
         }
     }
+    let prologue_byte_len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+
+    // § 3. G10 cross-fn body lowering : produces body insts + body-relative
+    //      reloc sites + the final vreg-state map (used for return-value
+    //      placement).
+    let (body_insts, body_relocs, body_state) = isel_to_encoder_with_calls(func, abi, plan)?;
+
+    // § 4. Encode the body into the bytes, recording the prologue offset
+    //      so we can adjust each reloc.
+    let body_start_offset = bytes.len();
     for ei in &body_insts {
         encode_into(&mut bytes, ei);
     }
+    let _ = body_start_offset;
+
+    // § 5. Splice the return-value placement (mov eax, imm / mov rax, src /
+    //      xorps xmm0, xmm0).
+    let return_insts = place_return_value_with_calls(func, &body_state)?;
+    for ei in &return_insts {
+        encode_into(&mut bytes, ei);
+    }
+
+    // § 6. Encode the epilogue.
     for ai in &epilogue.insns {
         for ei in abi_lower_to_encoder(ai)? {
             encode_into(&mut bytes, &ei);
         }
     }
 
-    // § 4. Pack into the objemit boundary type.
-    let obj_func =
-        crate::objemit::func::X64Func::new(func.name.clone(), bytes, Vec::new(), is_export)
-            .map_err(|e| NativeX64Error::ObjectWriteFailed {
-                detail: format!("X64Func::new for `{}` failed : {e}", func.name),
-            })?;
+    // § 7. Translate body-local reloc sites → final per-fn reloc records.
+    let mut relocs: Vec<X64Reloc> = Vec::with_capacity(body_relocs.len());
+    for site in body_relocs {
+        relocs.push(X64Reloc {
+            offset: prologue_byte_len + site.body_byte_offset,
+            target_index: site.target_index,
+            kind: X64RelocKind::NearCall,
+            // x86-64 CALL rel32 : the disp32 is computed as
+            // (target_va - end_of_call_va) ; equivalently
+            // (target_sym - reloc_offset - 4) since the disp32 lives 4
+            // bytes BEFORE end-of-instruction. Hence addend = -4.
+            addend: -4,
+        });
+    }
+
+    // § 8. Pack into the objemit boundary type.
+    let obj_func = crate::objemit::func::X64Func::new(func.name.clone(), bytes, relocs, is_export)
+        .map_err(|e| NativeX64Error::ObjectWriteFailed {
+            detail: format!("X64Func::new for `{}` failed : {e}", func.name),
+        })?;
     Ok(obj_func)
 }
 
@@ -463,18 +1149,25 @@ pub fn emit_object_module_native_with_format(
     // § Stage 1 : G1 instruction-selection.
     let isel_funcs = select_module_with_marker(module).map_err(translate_select_error)?;
 
-    // § Stages 2..4 : per-fn body assembly.
+    // § Stage 2 : G10 module plan (intra-module fns + extern imports +
+    //              name → symbol-table index map).
+    let plan = ModulePlan::build(&isel_funcs)?;
+
+    // § Stages 3..5 : per-fn body assembly with cross-fn relocs.
     let mut obj_funcs: Vec<ObjFunc> = Vec::with_capacity(isel_funcs.len());
     for f in &isel_funcs {
         // Convention : a function named "main" is exported so the linker
         // resolves it to the program entry-point ; all others are local.
         let is_export = f.name == "main";
-        let obj_func = build_func_bytes(f, abi, is_export)?;
+        let obj_func = build_func_bytes(f, abi, is_export, &plan)?;
         obj_funcs.push(obj_func);
     }
 
-    // § Stage 5 : G5 object-file emission.
-    emit_object_file(&obj_funcs, &[], target).map_err(translate_object_error)
+    // § Stage 6 : G5 object-file emission with the plan's extern imports
+    //              so the per-format writer (ELF / COFF / Mach-O) emits
+    //              UNDEF symbol-table entries for libm + cssl-rt + other
+    //              cross-module callees.
+    emit_object_file(&obj_funcs, &plan.extern_imports, target).map_err(translate_object_error)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -857,8 +1550,9 @@ mod tests {
     fn build_func_bytes_for_main_42_includes_prologue_body_epilogue_ret() {
         let m = build_main_42(42);
         let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
         let abi = X64Abi::host_default();
-        let obj_func = build_func_bytes(&funcs[0], abi, /*is_export=*/ true).unwrap();
+        let obj_func = build_func_bytes(&funcs[0], abi, /*is_export=*/ true, &plan).unwrap();
         assert_eq!(obj_func.name, "main");
         assert!(obj_func.is_export);
         // Bytes must be non-empty + end with `0xC3` (ret).
@@ -876,8 +1570,9 @@ mod tests {
         // `mov eax, imm32` = `B8 2A 00 00 00`.
         let m = build_main_42(42);
         let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
         let abi = X64Abi::host_default();
-        let obj_func = build_func_bytes(&funcs[0], abi, true).unwrap();
+        let obj_func = build_func_bytes(&funcs[0], abi, true, &plan).unwrap();
         let needle = [0xB8, 0x2A, 0x00, 0x00, 0x00];
         let found = obj_func.bytes.windows(needle.len()).any(|w| w == needle);
         assert!(
@@ -893,8 +1588,9 @@ mod tests {
         // first. (No 0x66 prefix or REX needed for `push rbp` 64-bit form.)
         let m = build_main_42(42);
         let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
         let abi = X64Abi::host_default();
-        let obj_func = build_func_bytes(&funcs[0], abi, true).unwrap();
+        let obj_func = build_func_bytes(&funcs[0], abi, true, &plan).unwrap();
         assert_eq!(
             obj_func.bytes[0], 0x55,
             "expected `push rbp` (0x55) at byte 0 ; got {:02X}",
@@ -909,8 +1605,9 @@ mod tests {
         let m = build_main_42(42);
         let mut funcs = select_module_with_marker(&m).unwrap();
         let _b1 = funcs[0].fresh_block();
+        let plan = ModulePlan::build(&funcs).unwrap();
         let abi = X64Abi::host_default();
-        let err = build_func_bytes(&funcs[0], abi, true).unwrap_err();
+        let err = build_func_bytes(&funcs[0], abi, true, &plan).unwrap_err();
         match err {
             NativeX64Error::UnsupportedOp { op_name, .. } => {
                 assert!(op_name.contains("multi-block"));
@@ -1076,8 +1773,9 @@ mod tests {
     fn milestone_main_42_byte_pattern_matches_expected_mov_eax_ret() {
         let m = build_main_42(42);
         let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
         let abi = X64Abi::host_default();
-        let obj_func = build_func_bytes(&funcs[0], abi, true).unwrap();
+        let obj_func = build_func_bytes(&funcs[0], abi, true, &plan).unwrap();
         // Body should contain : push rbp ; mov rbp,rsp ; mov eax,42 ; pop rbp ; ret
         // = 0x55 ; 0x48 0x89 0xE5 ; 0xB8 0x2A 0x00 0x00 0x00 ; 0x5D ; 0xC3
         // (No SubRsp/AddRsp because frame_bytes = 0 ; no callee-saved pushes either.)
@@ -1093,5 +1791,515 @@ mod tests {
             "milestone bytes mismatch — got {:02X?}",
             obj_func.bytes
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // § G10 (T11-D112) : cross-fn calls — module plan + relocs + extern FFI
+    // ═══════════════════════════════════════════════════════════════════
+
+    use cssl_mir::FloatWidth;
+
+    /// Build a 2-fn module : `fn callee_seven() -> i32 { 7 }` (the leaf
+    /// callee) + `fn caller() -> i32 { callee_seven() }` (calls into it).
+    /// Used by the intra-module-call golden tests below.
+    fn build_intra_module_call_pair() -> MirModule {
+        let mut module = MirModule::with_name("test.intra_module_calls");
+        // Callee.
+        let mut callee =
+            cssl_mir::MirFunc::new("callee_seven", vec![], vec![MirType::Int(IntWidth::I32)]);
+        let cv = callee.fresh_value_id();
+        callee.push_op(
+            MirOp::std("arith.constant")
+                .with_result(cv, MirType::Int(IntWidth::I32))
+                .with_attribute("value", "7"),
+        );
+        callee.push_op(MirOp::std("func.return").with_operand(cv));
+        module.push_func(callee);
+        // Caller.
+        let mut caller =
+            cssl_mir::MirFunc::new("caller", vec![], vec![MirType::Int(IntWidth::I32)]);
+        let rv = caller.fresh_value_id();
+        caller.push_op(
+            MirOp::std("func.call")
+                .with_result(rv, MirType::Int(IntWidth::I32))
+                .with_attribute("callee", "callee_seven"),
+        );
+        caller.push_op(MirOp::std("func.return").with_operand(rv));
+        module.push_func(caller);
+        module
+    }
+
+    /// Build `fn use_alloc() -> i64 { __cssl_alloc(0, 0) }` — a fn that
+    /// invokes the cssl-rt FFI `__cssl_alloc` with two i64 args. Used to
+    /// drive extern-import + reloc emission tests against a callee that
+    /// is NOT defined in the same module.
+    fn build_extern_call_to_alloc() -> MirModule {
+        let mut module = MirModule::with_name("test.extern_alloc_call");
+        let mut f = cssl_mir::MirFunc::new("use_alloc", vec![], vec![MirType::Int(IntWidth::I64)]);
+        let v0 = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(v0, MirType::Int(IntWidth::I64))
+                .with_attribute("value", "0"),
+        );
+        let v1 = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(v1, MirType::Int(IntWidth::I64))
+                .with_attribute("value", "0"),
+        );
+        let result = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("func.call")
+                .with_operand(v0)
+                .with_operand(v1)
+                .with_result(result, MirType::Int(IntWidth::I64))
+                .with_attribute("callee", "__cssl_alloc"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(result));
+        module.push_func(f);
+        module
+    }
+
+    /// Build `fn use_sin() -> f64 { sin(0.0) }` — the canonical libm-FFI
+    /// demo. The xorps idiom materializes 0.0 in xmm0 ; sin returns 0.0
+    /// in xmm0 ; the function returns whatever's in xmm0 — so the path
+    /// is xorps + call + (no-op : already in xmm0) + ret.
+    fn build_use_sin() -> MirModule {
+        let mut module = MirModule::with_name("test.libm_sin_call");
+        let mut f =
+            cssl_mir::MirFunc::new("use_sin", vec![], vec![MirType::Float(FloatWidth::F64)]);
+        let v0 = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(v0, MirType::Float(FloatWidth::F64))
+                .with_attribute("value", "0.0"),
+        );
+        let result = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("func.call")
+                .with_operand(v0)
+                .with_result(result, MirType::Float(FloatWidth::F64))
+                .with_attribute("callee", "sin"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(result));
+        module.push_func(f);
+        module
+    }
+
+    // ─── ModulePlan::build ─────────────────────────────────────────────
+
+    #[test]
+    fn module_plan_intra_module_calls_have_no_externs() {
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        // Both fns are intra-module ; no externs needed.
+        assert!(plan.extern_imports.is_empty());
+        // Symbol indices : callee_seven=1, caller=2.
+        assert_eq!(plan.target_index("callee_seven"), Some(1));
+        assert_eq!(plan.target_index("caller"), Some(2));
+    }
+
+    #[test]
+    fn module_plan_extern_call_collects_one_import() {
+        let m = build_extern_call_to_alloc();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        // 1 fn + 1 extern.
+        assert_eq!(plan.extern_imports.len(), 1);
+        assert_eq!(plan.extern_imports[0].name, "__cssl_alloc");
+        // Symbol indices : use_alloc=1, __cssl_alloc=2.
+        assert_eq!(plan.target_index("use_alloc"), Some(1));
+        assert_eq!(plan.target_index("__cssl_alloc"), Some(2));
+    }
+
+    #[test]
+    fn module_plan_libm_sin_collects_extern() {
+        let m = build_use_sin();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        assert_eq!(plan.extern_imports.len(), 1);
+        assert_eq!(plan.extern_imports[0].name, "sin");
+    }
+
+    #[test]
+    fn module_plan_dedups_repeated_extern_calls() {
+        // Build a fn that calls __cssl_alloc TWICE ; the plan should
+        // only register one extern import.
+        let mut module = MirModule::with_name("test.dedup_extern");
+        let mut f = cssl_mir::MirFunc::new("twice", vec![], vec![]);
+        let z = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(z, MirType::Int(IntWidth::I64))
+                .with_attribute("value", "0"),
+        );
+        let p1 = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("func.call")
+                .with_operand(z)
+                .with_operand(z)
+                .with_result(p1, MirType::Int(IntWidth::I64))
+                .with_attribute("callee", "__cssl_alloc"),
+        );
+        let p2 = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("func.call")
+                .with_operand(z)
+                .with_operand(z)
+                .with_result(p2, MirType::Int(IntWidth::I64))
+                .with_attribute("callee", "__cssl_alloc"),
+        );
+        f.push_op(MirOp::std("func.return"));
+        module.push_func(f);
+        let funcs = select_module_with_marker(&module).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        // Only one extern despite two call sites.
+        assert_eq!(plan.extern_imports.len(), 1);
+        assert_eq!(plan.target_index("__cssl_alloc"), Some(2));
+    }
+
+    // ─── isel_to_encoder_with_calls — body lowering ───────────────────
+
+    #[test]
+    fn cross_fn_lowering_intra_module_call_emits_call_rel32_with_zero_disp() {
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let caller_fn = funcs.iter().find(|f| f.name == "caller").unwrap();
+        let (body, relocs, _state) = isel_to_encoder_with_calls(caller_fn, abi, &plan).unwrap();
+        // Body shape (SysV : no shadow space ; MS-x64 : 32-byte sub/add) :
+        //   [optional sub rsp,32]  call rel32  [optional add rsp,32]
+        // We always have at-least-one CallRel + exactly-one reloc.
+        let n_calls = body
+            .iter()
+            .filter(|i| matches!(i, EncInst::CallRel { .. }))
+            .count();
+        assert_eq!(n_calls, 1);
+        assert_eq!(relocs.len(), 1);
+        // The reloc target index must be the callee's slot.
+        assert_eq!(
+            relocs[0].target_index,
+            plan.target_index("callee_seven").unwrap()
+        );
+    }
+
+    #[test]
+    fn cross_fn_lowering_extern_libm_sin_emits_xorps_xmm0_xmm0_then_call() {
+        let m = build_use_sin();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let (body, relocs, _state) = isel_to_encoder_with_calls(&funcs[0], abi, &plan).unwrap();
+        // Look for XorpsRR { Xmm0, Xmm0 } before the CallRel — the
+        // canonical zero-float idiom for materializing 0.0 in the
+        // float-arg-0 register.
+        let xorps_pos = body.iter().position(|i| {
+            matches!(
+                i,
+                EncInst::XorpsRR {
+                    dst: Xmm::Xmm0,
+                    src: Xmm::Xmm0
+                }
+            )
+        });
+        let call_pos = body
+            .iter()
+            .position(|i| matches!(i, EncInst::CallRel { .. }));
+        assert!(xorps_pos.is_some(), "expected XorpsRR before CallRel");
+        assert!(call_pos.is_some());
+        assert!(xorps_pos.unwrap() < call_pos.unwrap());
+        assert_eq!(relocs.len(), 1);
+        assert_eq!(relocs[0].target_index, plan.target_index("sin").unwrap());
+    }
+
+    #[test]
+    fn cross_fn_lowering_alloc_emits_two_int_arg_movs_into_rcx_rdx_or_rdi_rsi() {
+        let m = build_extern_call_to_alloc();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let (body, relocs, _state) = isel_to_encoder_with_calls(&funcs[0], abi, &plan).unwrap();
+        // Two 64-bit immediate-to-arg-reg moves before the CallRel.
+        // SysV : (rdi, rsi).  MS-x64 : (rcx, rdx).
+        let (a0, a1) = match abi {
+            X64Abi::SystemV => (Gpr::Rdi, Gpr::Rsi),
+            X64Abi::MicrosoftX64 => (Gpr::Rcx, Gpr::Rdx),
+        };
+        let movs_to_args: Vec<&EncInst> = body
+            .iter()
+            .filter(|i| {
+                matches!(
+                    i,
+                    EncInst::MovRI {
+                        size: OperandSize::B64,
+                        dst,
+                        ..
+                    } if *dst == a0 || *dst == a1
+                )
+            })
+            .collect();
+        assert_eq!(
+            movs_to_args.len(),
+            2,
+            "expected 2 movs into ABI int-arg regs ; got {} movs in body {:?}",
+            movs_to_args.len(),
+            body
+        );
+        assert_eq!(relocs.len(), 1);
+        assert_eq!(
+            relocs[0].target_index,
+            plan.target_index("__cssl_alloc").unwrap()
+        );
+    }
+
+    #[test]
+    fn cross_fn_lowering_msx64_call_includes_shadow_space_sub_and_add() {
+        // Force the MS-x64 ABI to verify shadow-space allocation around
+        // the call. (host-default ABI may be SysV or MS-x64 depending on
+        // the test machine.)
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let caller_fn = funcs.iter().find(|f| f.name == "caller").unwrap();
+        let (body, _relocs, _state) =
+            isel_to_encoder_with_calls(caller_fn, X64Abi::MicrosoftX64, &plan).unwrap();
+        // MS-x64 : sub rsp, 32 ; call ; add rsp, 32.
+        let sub_pos = body.iter().position(|i| {
+            matches!(
+                i,
+                EncInst::SubRI {
+                    size: OperandSize::B64,
+                    dst: Gpr::Rsp,
+                    imm: 32,
+                }
+            )
+        });
+        let call_pos = body
+            .iter()
+            .position(|i| matches!(i, EncInst::CallRel { .. }));
+        let add_pos = body.iter().position(|i| {
+            matches!(
+                i,
+                EncInst::AddRI {
+                    size: OperandSize::B64,
+                    dst: Gpr::Rsp,
+                    imm: 32,
+                }
+            )
+        });
+        assert!(sub_pos.is_some(), "MS-x64 call must allocate shadow space");
+        assert!(call_pos.is_some());
+        assert!(add_pos.is_some(), "MS-x64 call must reclaim shadow space");
+        assert!(sub_pos.unwrap() < call_pos.unwrap());
+        assert!(call_pos.unwrap() < add_pos.unwrap());
+    }
+
+    #[test]
+    fn cross_fn_lowering_sysv_call_no_shadow_space() {
+        // SysV : no shadow space ; the only stack alloc would be from
+        // overflow args, but our intra-module callee has zero args.
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let caller_fn = funcs.iter().find(|f| f.name == "caller").unwrap();
+        let (body, _relocs, _state) =
+            isel_to_encoder_with_calls(caller_fn, X64Abi::SystemV, &plan).unwrap();
+        // No `sub rsp, *` or `add rsp, *` in the body for SysV-zero-arg-call.
+        let any_sub_rsp = body
+            .iter()
+            .any(|i| matches!(i, EncInst::SubRI { dst: Gpr::Rsp, .. }));
+        let any_add_rsp = body
+            .iter()
+            .any(|i| matches!(i, EncInst::AddRI { dst: Gpr::Rsp, .. }));
+        assert!(
+            !any_sub_rsp,
+            "SysV zero-arg call should have no rsp adjustments ; got {body:?}"
+        );
+        assert!(!any_add_rsp);
+    }
+
+    // ─── build_func_bytes — full per-fn assembly with relocs ──────────
+
+    #[test]
+    fn build_func_bytes_caller_records_one_reloc_at_call_site_offset() {
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let caller_fn = funcs.iter().find(|f| f.name == "caller").unwrap();
+        let obj_func = build_func_bytes(caller_fn, abi, false, &plan).unwrap();
+        assert_eq!(obj_func.relocs.len(), 1);
+        let r = obj_func.relocs[0];
+        assert_eq!(r.kind, X64RelocKind::NearCall);
+        assert_eq!(r.addend, -4);
+        // The byte at offset r.offset - 1 must be the 0xE8 CALL opcode.
+        let opcode_pos = (r.offset as usize).saturating_sub(1);
+        assert_eq!(
+            obj_func.bytes[opcode_pos], 0xE8,
+            "expected E8 CALL opcode at byte offset r.offset-1 ; got {:02X}",
+            obj_func.bytes[opcode_pos]
+        );
+        // The 4 bytes at offset r.offset..r.offset+4 must be the disp32
+        // placeholder (zeros — patched by the linker).
+        let disp_start = r.offset as usize;
+        assert_eq!(&obj_func.bytes[disp_start..disp_start + 4], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn build_func_bytes_caller_ends_with_ret_after_return_value_pickup() {
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let caller_fn = funcs.iter().find(|f| f.name == "caller").unwrap();
+        let obj_func = build_func_bytes(caller_fn, abi, false, &plan).unwrap();
+        // Last byte must be the 0xC3 ret.
+        assert_eq!(*obj_func.bytes.last().unwrap(), 0xC3);
+    }
+
+    // ─── emit_object_module_native — full pipeline ────────────────────
+
+    #[test]
+    fn emit_object_module_native_intra_module_calls_succeeds() {
+        let m = build_intra_module_call_pair();
+        let bytes = emit_object_module_native(&m).unwrap();
+        assert!(!bytes.is_empty());
+        let host_magic = crate::magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
+    }
+
+    #[test]
+    fn emit_object_module_native_extern_call_emits_object_with_extern_undef() {
+        let m = build_extern_call_to_alloc();
+        let bytes = emit_object_module_native(&m).unwrap();
+        assert!(!bytes.is_empty());
+        // The object byte stream must contain the extern symbol name as
+        // a literal substring (regardless of format ; ELF strtab, COFF
+        // string table, Mach-O strtab all carry the bare ASCII name).
+        let needle = b"__cssl_alloc";
+        let found = bytes.windows(needle.len()).any(|w| w == needle);
+        assert!(
+            found,
+            "expected `__cssl_alloc` symbol name to appear in object bytes"
+        );
+    }
+
+    #[test]
+    fn emit_object_module_native_libm_sin_emits_object_with_sin_undef() {
+        let m = build_use_sin();
+        let bytes = emit_object_module_native(&m).unwrap();
+        assert!(!bytes.is_empty());
+        let needle = b"sin";
+        let found = bytes.windows(needle.len()).any(|w| w == needle);
+        assert!(
+            found,
+            "expected `sin` symbol name to appear in object bytes"
+        );
+    }
+
+    #[test]
+    fn emit_object_module_native_libm_sin_each_format() {
+        let m = build_use_sin();
+        for fmt in [ObjectFormat::Elf, ObjectFormat::Coff, ObjectFormat::MachO] {
+            let bytes = emit_object_module_native_with_format(&m, fmt).unwrap();
+            assert!(!bytes.is_empty(), "fmt {fmt:?}");
+            assert!(
+                bytes.starts_with(crate::magic_prefix(fmt)),
+                "fmt {fmt:?} : magic mismatch"
+            );
+            // The literal callee-name `sin` must be present in the
+            // string table (it's an extern symbol, so all 3 writers
+            // include it in their string-tables).
+            assert!(
+                bytes.windows(3).any(|w| w == b"sin"),
+                "fmt {fmt:?} : expected `sin` symbol name in object bytes"
+            );
+        }
+    }
+
+    // ─── G10 milestone : the canonical cross-fn end-to-end shapes ─────
+
+    /// G10 milestone : `fn caller() -> i32 { callee_seven() }` produces
+    /// a per-fn body that contains the CALL rel32 placeholder (`E8 00 00
+    /// 00 00`). The disp32 zero-fill is the linker-patch placeholder ;
+    /// the relocation entry tells the linker where to write the real
+    /// PC-relative offset.
+    #[test]
+    fn milestone_intra_module_call_byte_pattern_contains_e8_zero_fill() {
+        let m = build_intra_module_call_pair();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let caller_fn = funcs.iter().find(|f| f.name == "caller").unwrap();
+        let obj_func = build_func_bytes(caller_fn, abi, false, &plan).unwrap();
+        // Find the canonical `E8 00 00 00 00` byte sequence somewhere
+        // in the bytes.
+        let needle = [0xE8, 0x00, 0x00, 0x00, 0x00];
+        let found = obj_func.bytes.windows(needle.len()).any(|w| w == needle);
+        assert!(
+            found,
+            "expected canonical `E8 00 00 00 00` (CALL rel32 placeholder) in caller bytes ; got {:02X?}",
+            obj_func.bytes
+        );
+    }
+
+    /// G10 milestone : `fn use_sin() -> f64 { sin(0.0) }` produces a per-
+    /// fn body that contains `0F 57 C0` (xorps xmm0, xmm0) followed by
+    /// the canonical CALL rel32 placeholder. The post-call return value
+    /// is already in xmm0 (by libm's contract) so no further pickup is
+    /// needed.
+    #[test]
+    fn milestone_libm_sin_byte_pattern_contains_xorps_xmm0_then_e8() {
+        let m = build_use_sin();
+        let funcs = select_module_with_marker(&m).unwrap();
+        let plan = ModulePlan::build(&funcs).unwrap();
+        let abi = X64Abi::host_default();
+        let obj_func = build_func_bytes(&funcs[0], abi, true, &plan).unwrap();
+        let xorps_needle = [0x0F, 0x57, 0xC0];
+        let call_needle = [0xE8, 0x00, 0x00, 0x00, 0x00];
+        let xorps_pos = obj_func
+            .bytes
+            .windows(xorps_needle.len())
+            .position(|w| w == xorps_needle);
+        let call_pos = obj_func
+            .bytes
+            .windows(call_needle.len())
+            .position(|w| w == call_needle);
+        assert!(
+            xorps_pos.is_some(),
+            "expected `0F 57 C0` (xorps xmm0, xmm0) in use_sin bytes : {:02X?}",
+            obj_func.bytes
+        );
+        assert!(call_pos.is_some(), "expected `E8 00 00 00 00` placeholder");
+        assert!(xorps_pos.unwrap() < call_pos.unwrap());
+    }
+
+    // ─── reject paths : G10 surface boundaries ───────────────────────
+
+    #[test]
+    fn cross_fn_lowering_rejects_nonzero_f64_immediate() {
+        // Build a fn that constructs a non-zero f64 — must be rejected
+        // (G10 doesn't have a const-pool yet).
+        let mut module = MirModule::with_name("test.nonzero_f64");
+        let mut f =
+            cssl_mir::MirFunc::new("nonzero", vec![], vec![MirType::Float(FloatWidth::F64)]);
+        let v = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(v, MirType::Float(FloatWidth::F64))
+                .with_attribute("value", "1.0"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(v));
+        module.push_func(f);
+        let err = emit_object_module_native(&module).unwrap_err();
+        match err {
+            NativeX64Error::UnsupportedOp { op_name, .. } => {
+                assert!(op_name.contains("non-zero f64"), "got `{op_name}`");
+            }
+            other => panic!("expected UnsupportedOp, got {other:?}"),
+        }
     }
 }

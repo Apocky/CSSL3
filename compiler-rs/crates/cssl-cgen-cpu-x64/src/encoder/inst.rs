@@ -218,4 +218,13 @@ pub enum X64Inst {
         dst: Gpr,
         src: Xmm,
     },
+    /// `xorps xmm, xmm` — packed-single bitwise-XOR (0F 57 /r).
+    ///
+    /// § INVARIANT  (T11-D112 / S7-G10) : `xorps r, r` is the canonical
+    /// idiom for materializing the IEEE 754 zero bit-pattern in an XMM
+    /// register WITHOUT a rip-relative load from a constant pool. This
+    /// is the only float-imm path G10 supports ; non-zero float
+    /// constants require a rodata section + rip-relative load that is
+    /// reserved for a follow-up slice.
+    XorpsRR { dst: Xmm, src: Xmm },
 }
