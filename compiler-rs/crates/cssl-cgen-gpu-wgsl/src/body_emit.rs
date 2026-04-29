@@ -361,7 +361,13 @@ fn walk_op(ctx: &mut Ctx, op: &MirOp) -> Result<(), BodyEmitError> {
         }
 
         // § Closures (REJECT) ───────────────────────────────────────────
-        "cssl.closure" | "cssl.closure.invoke" | "cssl.closure.env" => {
+        // T11-D100 (J2) : `cssl.closure.call` + `cssl.closure.call.error`
+        // join the rejected-set ; closures remain CPU-only at stage-0.
+        "cssl.closure"
+        | "cssl.closure.invoke"
+        | "cssl.closure.env"
+        | "cssl.closure.call"
+        | "cssl.closure.call.error" => {
             return Err(BodyEmitError::ClosureOpRejected {
                 fn_name: ctx.name(),
                 op: op.name.clone(),

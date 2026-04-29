@@ -1043,6 +1043,30 @@ fn lower_op_to_cl(
         //   here because the typed-zero binding is sufficient for
         //   subsequent ops to reference the closure value.
         "cssl.closure" => jit_lower_closure(op, builder, value_map, fn_name),
+        // § T11-D100 (J2 — closures callable) — `cssl.closure.call` is the
+        //   call-site marker emitted by `body_lower::lower_closure_call` after
+        //   the inlined body's ops have already been emitted into the same
+        //   block. Backends therefore see :
+        //     - the env-pack (alloc + stores) emitted at construct-time ;
+        //     - the per-capture memref.load reload sequence emitted at the
+        //       call site ;
+        //     - the inlined body's ops (arith / scf / nested calls / …) ;
+        //     - finally, this `cssl.closure.call` marker carrying a
+        //       `yield_value_id` attribute pointing at the body's trailing
+        //       SSA-value.
+        //   The marker's only job is to bind its result-id (when present) to
+        //   the yielded value so consumers can reference the call's result by
+        //   the marker's result-id. No cranelift instruction is emitted —
+        //   pure value-map plumbing.
+        //   See spec § CLOSURE-ENV "invocation (T11-D100 / J2 …)" + the
+        //   parallel `obj_lower_closure_call` in `object.rs`.
+        "cssl.closure.call" => jit_lower_closure_call(op, value_map, fn_name),
+        // § T11-D100 (J2) — call-site arity / lowering errors are surfaced as
+        //   a typed-zero ptr binder. The error detail is recorded in attributes
+        //   for diagnostic tooling ; the JIT path doesn't surface it as a
+        //   runtime trap (no panicking ABI yet at stage-0). When the diagnostic
+        //   surface lands (T11-D## TBD) this arm reroutes to a real error op.
+        "cssl.closure.call.error" => Ok(jit_lower_closure_call_error(op, builder, value_map)),
         // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
         // it carries one-operand-per-primal-float-param holding that param's
         // accumulated adjoint. Lower identically to `func.return` since the
@@ -1825,6 +1849,68 @@ fn jit_lower_closure(
     };
     value_map.insert(r.id, env_value);
     Ok(false)
+}
+
+/// § T11-D100 (J2 — closures callable) — JIT-side `cssl.closure.call` marker.
+///
+/// The body has already been inlined upstream (in `body_lower::lower_closure_call`)
+/// — captures reloaded via memref.load, lambda params bound to call-site args,
+/// body ops emitted into the same block. This op is a pure value-map binder :
+/// look up `yield_value_id` (the body's trailing SSA-id) and re-bind the marker's
+/// result-id to it so downstream ops can reference the call's result.
+///
+/// When the marker has no result (unit-returning closure) or no
+/// `yield_value_id` attribute (body didn't yield), this is a no-op.
+fn jit_lower_closure_call(
+    op: &MirOp,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let Some(r) = op.results.first() else {
+        return Ok(false);
+    };
+    let yield_str = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "yield_value_id")
+        .map(|(_, v)| v.as_str());
+    let Some(yield_str) = yield_str else {
+        return Ok(false);
+    };
+    let yield_raw: u32 = yield_str.parse().map_err(|e| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!("cssl.closure.call : malformed yield_value_id `{yield_str}` ({e})"),
+    })?;
+    let yield_target = ValueId(yield_raw);
+    let v = *value_map
+        .get(&yield_target)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "cssl.closure.call : yield_value_id={yield_raw} unbound — body lowering didn't reach the trailing op"
+            ),
+        })?;
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
+/// § T11-D100 (J2 — closures callable) — JIT-side `cssl.closure.call.error`
+/// arity-mismatch / arg-lowering-failure marker. Stage-0 binds the result-id
+/// to a typed-zero i64 sentinel ; the error detail rides as an attribute so
+/// future diagnostic tooling can surface it. Always returns `false` (op is not
+/// a terminator) — the error doesn't trap at runtime at stage-0 (no panicking
+/// ABI yet) so the surrounding fn lowering continues.
+fn jit_lower_closure_call_error(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+) -> bool {
+    let Some(r) = op.results.first() else {
+        return false;
+    };
+    let v = builder.ins().iconst(cl_types::I64, 0);
+    value_map.insert(r.id, v);
+    false
 }
 
 #[cfg(test)]
@@ -4177,6 +4263,318 @@ mod tests {
         // SAFETY: `addr` points into the JIT module's executable memory ;
         // the module is borrowed by `m` for the call duration. Signature
         // matches `extern "C" fn() -> i64` per the MIR + JIT default ABI.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(), 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D100 (J2 — closures callable) — JIT-side `cssl.closure.call` +
+    // `cssl.closure.call.error` dispatch tests.
+    //
+    // Stage-0 JIT only handles zero-capture closures (heap.alloc isn't JIT-
+    // able yet) ; capturing closures route through the Object backend per
+    // the slice handoff landmines. The full end-to-end source-level tests
+    // (CSSLv3 source → MIR → JIT → execute, `g(7) == 14`) live in cssl-mir
+    // and the integration suite where source-lowering deps are available.
+    // Here we build the post-body-lower MIR shape by hand to verify the
+    // backend dispatch surface in isolation.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Hand-build the MIR shape that `body_lower::lower_closure_call` produces
+    /// for a zero-capture closure call : the inlined body's ops + the marker
+    /// pointing at the body's yield value-id. End-to-end fn :
+    ///
+    /// ```text
+    /// fn g_times_two() -> i32 {
+    ///   ; § closure construct (zero capture)
+    ///   %clos = cssl.closure() : !cssl.closure       ; capture_count=0
+    ///   ; § call site : g(7), inlined as `7 * 2`
+    ///   %arg  = arith.constant 7 : i32
+    ///   %k    = arith.constant 2 : i32
+    ///   %prod = arith.muli %arg, %k : i32            ; the inlined body
+    ///   %res  = cssl.closure.call(%clos, %arg) yield_value_id=%prod : i32
+    ///   func.return %res
+    /// }
+    /// ```
+    /// The fn returns 14 (= 7 * 2) when JIT-executed.
+    fn hand_built_zero_capture_closure_call_g_times_two() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let i32_ty = i32_ty();
+        let mut f = MirFunc::new("g_times_two", vec![], vec![i32_ty.clone()]);
+        f.next_value_id = 5;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            // %0 = cssl.closure() : !cssl.closure (capture_count=0).
+            let mut body_region = MirRegion::new();
+            body_region.push(MirBlock::new("entry"));
+            entry.ops.push(
+                MirOp::std("cssl.closure")
+                    .with_result(ValueId(0), MirType::Opaque("!cssl.closure".into()))
+                    .with_region(body_region)
+                    .with_attribute("param_count", "1")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("cap_value", "val"),
+            );
+            // %1 = arith.constant 7 : i32
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i32_ty.clone())
+                    .with_attribute("value", "7"),
+            );
+            // %2 = arith.constant 2 : i32
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), i32_ty.clone())
+                    .with_attribute("value", "2"),
+            );
+            // %3 = arith.muli %1, %2
+            entry.ops.push(
+                MirOp::std("arith.muli")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), i32_ty.clone()),
+            );
+            // %4 = cssl.closure.call(%0, %1) yield_value_id=3
+            entry.ops.push(
+                MirOp::std("cssl.closure.call")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(4), i32_ty)
+                    .with_attribute("param_count", "1")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("yield_value_id", "3"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(4)));
+        }
+        f
+    }
+
+    #[test]
+    fn closure_call_zero_capture_g_returns_14() {
+        // ‼ J2 SLICE MILESTONE ‼
+        // Hand-built MIR shape mimics the body_lower output for
+        // `fn g_times_two() -> i32 { let g = |x : i32| x * 2 ; g(7) }`.
+        // The JIT compiles, finalizes, and the fn returns 14.
+        let mut m = JitModule::new();
+        m.compile(&hand_built_zero_capture_closure_call_g_times_two())
+            .expect("compile should succeed");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("g_times_two").unwrap();
+        // SAFETY: `addr` is JIT-finalized executable memory for fn whose
+        // signature is `extern "C" fn() -> i32` per the MIR + JIT default ABI.
+        #[allow(unsafe_code)]
+        let entry: extern "C" fn() -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(entry(), 14, "g(7) where g = |x| x*2 must return 14");
+    }
+
+    #[test]
+    fn closure_call_zero_capture_identity_returns_arg() {
+        // Hand-build : identity closure called with 99 ⇒ returns 99.
+        // fn id_call() -> i32 {
+        //   %clos = cssl.closure() : !cssl.closure
+        //   %arg  = arith.constant 99 : i32
+        //   %res  = cssl.closure.call(%clos, %arg) yield_value_id=%arg : i32
+        //   func.return %res
+        // }
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("id_call", vec![], vec![i32_ty()]);
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            let mut body_region = MirRegion::new();
+            body_region.push(MirBlock::new("entry"));
+            entry.ops.push(
+                MirOp::std("cssl.closure")
+                    .with_result(ValueId(0), MirType::Opaque("!cssl.closure".into()))
+                    .with_region(body_region)
+                    .with_attribute("param_count", "1")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("cap_value", "val"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i32_ty())
+                    .with_attribute("value", "99"),
+            );
+            entry.ops.push(
+                MirOp::std("cssl.closure.call")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), i32_ty())
+                    .with_attribute("param_count", "1")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("yield_value_id", "1"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        }
+        let mut m = JitModule::new();
+        m.compile(&f).expect("compile should succeed");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("id_call").unwrap();
+        // SAFETY: JIT-finalized fn pointer, `extern "C" fn() -> i32` ABI.
+        #[allow(unsafe_code)]
+        let entry: extern "C" fn() -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(entry(), 99);
+    }
+
+    #[test]
+    fn closure_call_zero_capture_addition_works() {
+        // Hand-build : add closure called with (3, 4) ⇒ returns 7.
+        // The body's `a + b` lowers to arith.addi.
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("add_call", vec![], vec![i32_ty()]);
+        f.next_value_id = 5;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            let mut body_region = MirRegion::new();
+            body_region.push(MirBlock::new("entry"));
+            entry.ops.push(
+                MirOp::std("cssl.closure")
+                    .with_result(ValueId(0), MirType::Opaque("!cssl.closure".into()))
+                    .with_region(body_region)
+                    .with_attribute("param_count", "2")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("cap_value", "val"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i32_ty())
+                    .with_attribute("value", "3"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), i32_ty())
+                    .with_attribute("value", "4"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), i32_ty()),
+            );
+            entry.ops.push(
+                MirOp::std("cssl.closure.call")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(4), i32_ty())
+                    .with_attribute("param_count", "2")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("yield_value_id", "3"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(4)));
+        }
+        let mut m = JitModule::new();
+        m.compile(&f).expect("compile should succeed");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("add_call").unwrap();
+        // SAFETY: JIT-finalized fn pointer, `extern "C" fn() -> i32` ABI.
+        #[allow(unsafe_code)]
+        let entry: extern "C" fn() -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(entry(), 7);
+    }
+
+    /// Hand-build a marker `cssl.closure.call` op that points at a yield
+    /// value-id which is bound by an arith.constant. Verifies the JIT marker
+    /// re-binds its result-id to the yielded constant.
+    fn hand_built_marker_passthrough() -> MirFunc {
+        let mut f = MirFunc::new("marker_passthrough", vec![], vec![i64_ty()]);
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            // %0 = arith.constant 42 : i64
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(0), i64_ty())
+                    .with_attribute("value", "42"),
+            );
+            // %1 = cssl.closure.call (operand: dummy %0) yield_value_id=0
+            //   The marker's result id should be re-bound to %0.
+            entry.ops.push(
+                MirOp::std("cssl.closure.call")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), i64_ty())
+                    .with_attribute("param_count", "0")
+                    .with_attribute("capture_count", "0")
+                    .with_attribute("env_size", "0")
+                    .with_attribute("env_align", "8")
+                    .with_attribute("yield_value_id", "0"),
+            );
+            // func.return %1
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn cssl_closure_call_marker_rebinds_result_to_yield() {
+        // The JIT marker handler reads `yield_value_id` and binds the marker's
+        // result-id to that value. Returning the marker's result should yield
+        // the same value as the constant.
+        let mut m = JitModule::new();
+        m.compile(&hand_built_marker_passthrough())
+            .expect("marker compile must succeed");
+        m.finalize().expect("finalize must succeed");
+        let addr = m.code_addr_for("marker_passthrough").unwrap();
+        // SAFETY: JIT-finalized fn pointer with `extern "C" fn() -> i64` ABI.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(), 42);
+    }
+
+    /// Hand-build a `cssl.closure.call.error` op binding ValueId(0). The
+    /// fn returns it. The JIT lowers the error op to a typed-zero i64 sentinel ;
+    /// the fn should return 0 cleanly without trapping.
+    fn hand_built_closure_call_error() -> MirFunc {
+        let mut f = MirFunc::new("call_err", vec![], vec![i64_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.ops.push(
+                MirOp::std("cssl.closure.call.error")
+                    .with_result(ValueId(0), i64_ty())
+                    .with_attribute("detail", "arity mismatch (test)")
+                    .with_attribute("expected_arity", "1")
+                    .with_attribute("actual_arity", "0"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        }
+        f
+    }
+
+    #[test]
+    fn cssl_closure_call_error_compiles_to_zero_sentinel() {
+        // Stage-0 contract : the error op produces a typed-zero sentinel ;
+        // the surrounding fn compiles + finalizes + executes cleanly.
+        let mut m = JitModule::new();
+        m.compile(&hand_built_closure_call_error())
+            .expect("error op should compile");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("call_err").unwrap();
+        // SAFETY: JIT-finalized fn pointer with `extern "C" fn() -> i64` ABI.
         #[allow(unsafe_code)]
         let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
         assert_eq!(f(), 0);

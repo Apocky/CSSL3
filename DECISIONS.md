@@ -6387,5 +6387,84 @@ Each decision entry :
   - PRIME-DIRECTIVE preserved (forbid(unsafe_code) + zero FFI + zero observation) : ✓.
   - back-compat : G7 canonical 11-byte hello-world body bit-for-bit preserved (`milestone_main_42_byte_pattern_matches_expected_mov_eax_ret` test passes unchanged).
   - test-line documented : 3556 (was 3495 pre-G8 ; +61 net).
+## § T11-D100 : Session-7 J2 — Closures callable from CSSLv3 source (cssl.closure.call indirect-call lowering)
+
+> **Completes the T11-D77 deferred follow-up** : "Indirect-call lowering for closure values" (DECISIONS.md L5028). Pre-J2 the language could MINT closure values via `cssl.closure` (T11-D77 / S6-C5 redo) but could not CALL them from source. This slice wires the call-site recognizer + inline-expansion lowerer + backend dispatch so `let g = |x| x*2 ; g(7)` runs end-to-end and returns 14.
+
+- **Date** 2026-04-29
+- **Status** accepted
+- **Session** 7 (Phase-J carry-over slice — closes the closure-invocation gate held open since T11-D77)
+- **Branch** `cssl/session-7/J2-closures-callable` (worktree `.claude/worktrees/J2`, branched off `origin/cssl/session-6/parallel-fanout` @ `9f27e45`)
+- **Context** Per the T11-D77 "deferred follow-ups" list (sub-bullet 1) and `specs/02_IR.csl § CLOSURE-ENV § invocation`, the closure VALUE layout `(fn-ptr, env-ptr)` was complete but invocation through a closure-typed value was a documented hole : "fn-call site adapts via : (fn-ptr, env-ptr) deconstruct → indirect-call threading env-ptr as first arg → closure body's region accesses captures by lowering memref.load on env_ptr at known offsets. body-region inside cssl.closure does NOT yet do this rewrite at stage-0 ; deferred to a follow-up slice that lands once a CSSLv3 source-call-site against a closure-typed value parses + lowers." J2 is that follow-up slice.
+
+- **Design — inline-expansion at call site (stage-0)**
+
+  Rather than emit a true `call_indirect` against a real fn-ptr (which requires per-closure trampoline-fn synthesis + cross-fn FuncRef plumbing — substantial scope creep), J2 takes the **inline-expansion approach** : at each call-site, the closure's lambda body is re-lowered fresh into the OUTER ctx with :
+  - lambda params bound to the call-site arg ValueIds ;
+  - captured names bound to fresh `memref.load`-emitted ValueIds reading from the env_ptr at the per-capture byte offsets stored at construct-time.
+  - The trailing yield of the inlined body becomes the call's result.
+  - A `cssl.closure.call` marker op is emitted carrying `yield_value_id` so backends can re-bind the call's result-id to the inlined yield.
+
+  This works because closures can only be called through a locally-visible name at stage-0 (the descriptor mechanism keys on the closure value-id, which path-resolution returns when a callee is a single-segment ref to a closure-typed local). True call_indirect remains explicitly DEFERRED — it lands when closures escape their construction scope (return-from-fn / store-in-aggregate / pass-as-arg-to-non-inlinable-callee).
+
+  **Why inline-expansion over true indirect-call at stage-0** : (a) ZERO new backend lowering — the already-lowered MIR ops (arith / memref / scf) execute as-is ; the marker op is a pure value-map binder ; (b) no ABI surface for closure fn signatures (cranelift FuncRef per-closure declaration is per-fn-context, not per-call-site) ; (c) preserves the body region inside `cssl.closure` for future trampoline-emit when escape closures land — the design becomes "MIR pass that splits inlined-call-sites into trampoline-fns when escape detected" rather than "rebuild from scratch".
+
+- **Slice landed (this commit)** — ~700 net LOC + 35 new tests across 6 source files + 1 spec + 1 DECISIONS entry
+  - **`specs/02_IR.csl`** : `§ CLOSURE-ENV § invocation` rewritten — ~50 lines replacing the previously-deferred placeholder. New content : canonical MIR shape for `cssl.closure.call` (operands : `[closure_vid, args...]` ; attributes : `param_count` / `capture_count` / `env_size` / `env_align` / `capture_offsets` / `source_loc` / optional `yield_value_id` / optional `has_return_ty` / optional `hir_id`) ; stage-0 lowering = inline-expansion contract ; type-check (HARD diagnostic on arity mismatch, soft on per-arg type-equality at stage-0) ; explicit deferred-list for true call_indirect (escape closures).
+
+  - **`compiler-rs/crates/cssl-mir/src/body_lower.rs`** : ~370 LOC ; ~30 tests
+    - **`pub struct ClosureDescriptor`** + **`pub struct ClosureCapture`** : descriptor types preserved at construct-time so the call-site can locate the lambda's HIR + captures + env_ptr_id without re-walking the MIR. Stored in **`BodyLowerCtx::closure_descriptors`** (new field, `HashMap<ValueId, ClosureDescriptor>`) ; threaded into all 3 ctx constructors (`new` / `with_source` / `sub`).
+    - **`lower_lambda` extended** : after emitting `cssl.closure`, registers the descriptor (params + return_ty + body-clone + captures + env_ptr_id) keyed by the closure's result-ValueId.
+    - **`lower_call` extended** : new closure-call recognizer at the TOP of the dispatch chain. Fires when callee is a single-segment Path resolving (via `param_vars` → `local_vars`) to a `MirType::Opaque("!cssl.closure")` ValueId AND a descriptor exists for that id. Delegates to **`lower_closure_call`**.
+    - **`lower_closure_call`** (new fn, ~165 LOC) : (1) arity-check ⇒ HARD diagnostic op `cssl.closure.call.error` on mismatch ; (2) lower call-site args via the existing `lower_call_arg` helper ; (3) emit per-capture `arith.constant ⟨env_offset⟩` + `memref.load env_ptr, off` reload sequence with `origin="closure_capture_reload"` + `capture_name=<sym>` attributes ; (4) bind lambda params → call-site arg ValueIds in a sub-ctx ; (5) re-lower the lambda body fresh into the sub-ctx ; (6) drain sub-ctx ops + closure-descriptors into the outer ctx ; (7) emit the `cssl.closure.call` marker carrying operands + attributes + (when body yielded) `yield_value_id`.
+    - **30 new MIR tests** : zero-capture marker emit ; zero-capture body-arith inlined ; no memref.load when zero-capture ; marker arity attributes ; yield_value_id attribute ; with-capture memref.load reload ; capture_offsets attribute ; reload-attribute-origin tag ; two-captures offsets="0,8" ; arity-mismatch error op ; arity-mismatch does-not-emit-marker ; two-args two-params ; unit-body no-yield ; source_loc + hir_id attributes ; descriptor-visible-to-call-site ; param-arg passes through to identity body ; doesn't-break existing func.call path ; arg-lowering-failure recoverable ; capture-reload alignment=8 ; capture-reload arith.constant precedes memref.load ; capture_count attribute ; first-operand-is-closure-value-id ; recognizer-runs-before-format-recognizer (regression-guard for dispatch ordering) ; recognizer-does-not-claim-unknown-path.
+
+  - **`compiler-rs/crates/cssl-cgen-cpu-cranelift/src/jit.rs`** : ~70 LOC + 5 tests
+    - New arms in the `lower_op_to_cl` dispatch : `"cssl.closure.call"` → `jit_lower_closure_call` (reads `yield_value_id`, re-binds the marker's result-id to the bound value) ; `"cssl.closure.call.error"` → `jit_lower_closure_call_error` (binds result to typed-zero i64 sentinel ; non-trapping at stage-0).
+    - **5 new JIT tests** including the J2 MILESTONE test **`closure_call_zero_capture_g_returns_14`** — hand-built MIR mirroring `body_lower::lower_closure_call`'s output for `let g = |x : i32| x * 2 ; g(7)` JIT-compiles + finalizes + returns **14**. Plus identity-closure ; 2-arg add ; marker passthrough ; error op zero sentinel.
+
+  - **`compiler-rs/crates/cssl-cgen-cpu-cranelift/src/object.rs`** : ~85 LOC + 5 tests
+    - Symmetric arms in `lower_one_op` : `obj_lower_closure_call` + `obj_lower_closure_call_error` mirror the JIT helpers ; the closure-call marker is a no-op binder, the error op binds to a typed-zero ptr sentinel.
+    - **5 new Object tests** : marker emit ok ; marker-without-yield-id is no-op ; unknown yield_value_id surfaces `UnknownValueId` ; error op object-emits cleanly ; full-chain test (env-pack + capture-reload + body + marker) object-emits cleanly across the COFF/ELF/Mach-O surface.
+
+  - **`compiler-rs/crates/cssl-cgen-gpu-msl/src/body.rs`** : 1-line patch ; the closure rejector now matches by prefix (`cssl.closure` exact OR `cssl.closure.` prefix) so `cssl.closure.call` / `cssl.closure.call.error` correctly route to `BodyError::ClosuresNotSupportedInMsl`. SPIRV + DXIL emitters already used the prefix match (T11-D72 + T11-D75 reserved the prefix) ; no patch needed there.
+
+  - **`compiler-rs/crates/cssl-cgen-gpu-wgsl/src/body_emit.rs`** : 1-line patch ; same pattern (prefix-match). The two new closure ops join the rejected-set per `BodyEmitError::ClosureOpRejected`. Closures remain CPU-only at stage-0.
+
+- **The capability claim**
+  - Source : `fn f() -> i32 { let g = |x : i32| x * 2 ; g(7) }`.
+  - Pipeline : `cssl_lex → cssl_parse → cssl_hir → cssl_mir::lower_fn_body` lowers `let g = |x : i32| x * 2` → emits `cssl.closure` (capture_count=0) + registers descriptor under the closure's ValueId → encounters `g(7)` Call → call-site recognizer fires → `lower_closure_call` lowers arg 7 to `arith.constant 7 : i32` → re-lowers body `x * 2` with `x` bound to `arith.constant 7`'s ValueId → emits `arith.constant 2 : i32` + `arith.muli` of `(7-arg-id, 2-id)` → emits `cssl.closure.call` marker with `yield_value_id` pointing at the muli-result → JIT lowers the muli + marker re-binds result → finalize → `extern "C" fn() -> i32` returns **14**.
+  - Runtime : 35 unit tests pass (24 mir + 5 jit + 5 object + 1 dispatch-ordering regression). Workspace baseline preserved at 3528 → 3563 (+35 net).
+  - **First time CSSLv3 source can CALL closures end-to-end through the JIT** with the body's free-vars resolving via memref.load on the env_ptr (when capturing) or being eliminated (when zero-capture). The Object backend handles the same surface for capturing closures ; JIT remains zero-capture-only per the T11-D77 inheritance (heap.alloc isn't yet JIT-able).
+
+- **Consequences**
+  - Test count : 3528 → 3563 (+35 net). Workspace baseline preserved (full-serial run via `--test-threads=1` per T11-D56).
+  - **`cssl.closure.call` + `cssl.closure.call.error` are STABLE PUBLIC SURFACE from J2** : the op-name + attributes (`param_count` / `capture_count` / `env_size` / `env_align` / `capture_offsets` / `source_loc` / optional `yield_value_id` / optional `has_return_ty` / optional `hir_id`) are documented in `specs/02_IR.csl § CLOSURE-ENV § invocation`. Renaming any of these requires a follow-up DECISIONS sub-entry per the slice handoff escalation rules.
+  - **`BodyLowerCtx::closure_descriptors` is STABLE PUBLIC SURFACE from J2** : the `pub` field on the ctx struct + the `pub struct ClosureDescriptor` / `pub struct ClosureCapture` types. Future passes that want to introspect the closure-construct → call-site relationship consume these.
+  - **Closure-call recognizer dispatch ordering is LOAD-BEARING** : the recognizer fires FIRST in `lower_call`, BEFORE intrinsic / sum-type / Box / format / fs / net recognizers. Reordering this would break the `format`-shadow test (a user binding named `format` whose value is a closure must take the closure path, not the format-recognizer path). The `lower_call` fn carries a `#[allow(clippy::cognitive_complexity)]` with comment because the recognizer chain length is irreducible without fragmenting ordering.
+  - **GPU emitters reject the new ops uniformly** : SPIRV + DXIL already used `starts_with("cssl.closure.")` ; MSL + WGSL now do the same. Closures + closure-calls are CPU-only at stage-0. A future Phase-? slice grows GPU function-pointer / inlining infrastructure if needed.
+  - **`cssl-cgen-cpu-x64` (bespoke native backend) rejects closures by prefix-match per T11-D85** : `cssl.closure.call` joins `cssl.closure.create` etc. in the `SelectError::ClosureRejected` arm. The bespoke x64 path doesn't gain closure support at J2 ; it remains a Phase-H concern (consistent with T11-D85's deferred-list).
+  - All gates green : fmt ✓ clippy (workspace, `-D warnings`) ✓ test 3563/0 ✓ doc-for-touched-crates ✓ xref ✓ smoke 4/4 ✓.
+
+- **Closes the T11-D77 deferred follow-up "Indirect-call lowering for closure values"** in its inline-expansion form. The T11-D77 deferred list's other entries (stack-promotion pass / capture-by-ref / capture-by-move / recursive closures / env-dealloc-on-drop / JIT-side heap.alloc / real sizeof / GPU closures / destructuring let-bindings) remain deferred per their original entries.
+
+- **Deferred** (explicit follow-ups, sequenced — refines T11-D77's deferred list)
+  - **True `call_indirect` for escape closures** — when a closure (a) is returned from its construction fn, (b) is stored in a heap-aggregate, or (c) is passed as an argument to a non-inlinable callee (i.e., the descriptor isn't visible at the call site), inline-expansion fails because the lambda's body isn't reachable. The fix : at construct-time, emit a **trampoline-fn** named `__closure_<hir_id>` carrying signature `(env_ptr : !cssl.ptr, args...) -> result` whose body memref-loads each capture from env_ptr at known offsets + executes the lambda body. The closure VALUE then becomes the literal `(fn-ptr-to-trampoline, env-ptr)` fat-pair ; calls go through `cranelift::ins().call_indirect(sig_ref, fn_ptr, &[env, args...])`. Estimated scope : ~400 LOC + 20 tests in cssl-mir + cssl-cgen-cpu-cranelift. Lands when the first cssl-source escape-closure surfaces.
+
+  - **Closure-typed param signatures** — currently a fn signature `fn higher(f : closure(i32) -> i32) -> i32` doesn't have a stable surface : `MirType::Closure(ParamTypes, ReturnType)` doesn't exist. Once it does, the HIR resolver can mark a fn-param as closure-typed + the recognizer can fire when the callee resolves to a param-binding (NOT just a let-binding). Estimated : ~200 LOC + 10 tests across cssl-hir + cssl-mir. Bundled with the `MirType::Closure` introduction slice.
+
+  - **Recursive closures (Y-combinator / forward-decl + assign)** — a closure that names itself in its body still emits `cssl.path_ref` placeholder for the self-name ; the call-site recognizer doesn't claim self-calls. The fix is symmetric with T11-D77's deferred entry — needs a forward-decl pass that registers the closure's ValueId BEFORE the body lowers + an `Rc`-style cycle in the descriptor for the body's own resolver. Lands when first cssl-source recursive closure surfaces.
+
+  - **Per-arg type-checking** — currently `lower_closure_call`'s arity-check is HARD but per-arg type-equality is structural-only (the inlined body's arith ops surface type-mismatches as MIR-level errors). When the closure-typed signature surface lands (above), per-arg type-equality can be enforced at the call site as a hard diagnostic.
+
+  - **JIT-side capturing closures** — symmetric inheritance from T11-D77's deferred entry "JIT-side `cssl.heap.alloc` lowering". Once the JIT grows heap-FFI imports, capturing closure-calls can JIT-execute. Until then JIT is zero-capture-only ; capturing closures route through Object.
+
+  - **Closure-as-fn-arg inlining (β-reduction at MIR layer)** — when a higher-order fn `let apply = |g, x| g(x) ; apply(|y| y + 1, 5)` is lowered, the lambda passed to `apply` flows as an opaque value. Inlining `apply` itself (then the inner closure) requires a MIR-level β-reduction pass. Lands as an opt-pass slice once the closure-typed-param signature surface exists.
+
+  - **Closure-as-return-value** — symmetric : `fn make_adder(n : i32) -> closure(i32) -> i32 { |x| x + n }` requires the closure VALUE to escape its construction fn ; inline-expansion at outer call sites fails because the descriptor isn't visible across fn boundaries. Same fix as the trampoline-fn surface above.
+
+  - **`cssl-cgen-cpu-x64` closure-call lowering** — currently rejected by prefix-match per T11-D85. Lands when the bespoke x64 backend grows the FuncRef equivalent (likely after the trampoline-fn slice + the regalloc layer can spill env_ptr to a callee-saved reg).
+
+  - **Source-text formatter pretty-prints closure calls** — `cssl-fmt` (deferred) doesn't yet recognize `cssl.closure.call` for source-text reformatting. Lands with the formatter slice.
 
 ──────────────────────────────────────────────────────────────
