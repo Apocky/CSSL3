@@ -703,6 +703,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-physics"
+version = "0.1.0"
+dependencies = [
+ "cssl-caps",
+ "cssl-effects",
+ "cssl-substrate-omega-step",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-render"
 version = "0.1.0"
 dependencies = [
