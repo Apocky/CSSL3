@@ -333,6 +333,96 @@ Both slices are short DECISIONS entries that record measurements, not implementa
 
 ---
 
+## § 11.5. WAVE-Jε..Jθ — Diagnostic-Infrastructure (6-layer L0..L5)
+
+**Intent:** build the diagnostic-infrastructure that turns the engine into its-own-spec-coverage-witness, observable enough that an LLM can iterate against a live engine via the MCP protocol — without crossing PRIME-DIRECTIVE §1, §10, or §11.
+
+**Master plan:** `DIAGNOSTIC_INFRA_PLAN.md` (concise-index ; references 4 drafts at `_drafts/phase_j/`).
+
+**Total scope:** ~38K LOC + ~1330 tests across 4 implementation waves.
+
+### § 11.5.1. Wave breakdown
+
+| Wave | Layers          | Crates                                               | LOC    | Tests | Depends-on                       |
+| ---- | --------------- | ---------------------------------------------------- | ------ | ----- | -------------------------------- |
+| Jε   | L0 + L1         | cssl-error + cssl-log + cssl-panic                   | ~6K    | ~250  | (substrate-evolution complete)   |
+| Jζ   | L2              | cssl-metrics + cssl-spec-coverage + cssl-health      | ~9K    | ~290  | Wave-Jε                          |
+| Jη   | L3 + L4         | cssl-inspect + cssl-hot-reload + cssl-tweak          | ~10K   | ~400  | Wave-Jζ                          |
+| Jθ   | L5 (CROWN)      | cssl-mcp-server (41 tools × 5 capability gates)      | ~13K   | ~390  | Wave-Jε + Wave-Jζ + Wave-Jη      |
+
+### § 11.5.2. Wave-Jε slices (L0 + L1 ; ~6K LOC ; ~250 tests)
+
+| Slice  | Crate / Scope                            | LOC   | Tests | DECISIONS-pin |
+| ------ | ---------------------------------------- | ----- | ----- | ------------- |
+| Jε-1   | `cssl-error` — EngineError + Severity + ErrorContext + dedup | 2K | 80 | T11-D170 |
+| Jε-2   | `cssl-log` — macros + ring-buffer + sinks + sampling | 2.5K | 100 | T11-D171 |
+| Jε-3   | Cross-crate clippy lint — deny `unwrap`/`expect` on user-data | 0.5K | 30 | T11-D172 |
+| Jε-4   | `cssl-panic` — panic-hook + frame-boundary + replay-record | 1K | 40 | T11-D173 |
+
+**Acceptance:** L0 + L1 invariants per draft 05 § 9 (path-hash discipline preserved ; PD-trip ALWAYS-WINS aggregation ; replay-determinism).
+
+### § 11.5.3. Wave-Jζ slices (L2 ; ~9K LOC ; ~290 tests)
+
+| Slice  | Crate / Scope                                    | LOC   | Tests | DECISIONS-pin |
+| ------ | ------------------------------------------------ | ----- | ----- | ------------- |
+| Jζ-1   | `cssl-metrics` primitives (Counter/Gauge/Histogram/Timer) + REGISTRY | 2.5K | 100 | T11-D174 |
+| Jζ-2   | Per-subsystem metrics (≈75 metrics × 12 subsystems) | 3.0K | 80 | T11-D175 |
+| Jζ-3   | `cssl-spec-coverage` — SpecAnchor + ImplStatus + TestStatus | 1.5K | 50 | T11-D176 |
+| Jζ-4   | `cssl-health` — per-subsystem probes + aggregate roll-up | 1.5K | 60 | T11-D177 |
+| Jζ-5   | MCP-preview surface (read-only stubs for Wave-Jθ) | 0.5K | 10 | T11-D178 |
+
+**Acceptance:** ≥75 metrics registered (build-fail on missing per CATALOG self-check) ; spec-coverage tracker queryable at runtime ; health-registry probes <100µs each.
+
+### § 11.5.4. Wave-Jη slices (L3 + L4 ; ~10K LOC ; ~400 tests)
+
+| Slice  | Crate / Scope                                    | LOC   | Tests | DECISIONS-pin |
+| ------ | ------------------------------------------------ | ----- | ----- | ------------- |
+| Jη-1   | `cssl-inspect` — cell/entity/region snapshots + Σ-mask threading (D138) | 3.5K | 150 | T11-D179 |
+| Jη-2   | `cssl-hot-reload` — OS-pump + atomic shader/asset/config/KAN-weight swap | 3.0K | 120 | T11-D180 |
+| Jη-3   | `cssl-tweak` — typed tunable-registry (30 tunables) + range-check + audit | 2.5K | 100 | T11-D181 |
+| Jη-4   | Replay-determinism integration across L3 + L4    | 1K   | 30  | T11-D182 |
+
+**Acceptance:** every cell-touch through `EnforcesΣAtCellTouches` pass ; 30 tunables registered (build-fail on collision) ; hot-swap atomic-frame-fence verified ; replay reproduces every perturbation.
+
+### § 11.5.5. Wave-Jθ slices (L5 CROWN ; ~13K LOC ; ~390 tests)
+
+| Slice  | Scope                                                                  | LOC   | Tests | DECISIONS-pin |
+| ------ | ---------------------------------------------------------------------- | ----- | ----- | ------------- |
+| Jθ-1   | `cssl-mcp-server` skeleton + JSON-RPC 2.0 + cap-gate                   | 2K    | 60    | T11-D183 |
+| Jθ-2   | State-inspection tools (5)                                             | 1.5K  | 40    | T11-D184 |
+| Jθ-3   | Telemetry + log tools (5)                                              | 1.5K  | 50    | T11-D185 |
+| Jθ-4   | Health + invariants + spec-coverage tools (9)                          | 2K    | 70    | T11-D186 |
+| Jθ-5   | Time-control + frame-capture + replay tools (7)                        | 2K    | 60    | T11-D187 |
+| Jθ-6   | Hot-reload + tweak tools (7)                                           | 2K    | 40    | T11-D188 |
+| Jθ-7   | Test-status tools (3)                                                  | 1K    | 30    | T11-D189 |
+| Jθ-8   | Privacy + capability + audit + IFC integration (heavy negative-tests)  | 1K    | 40    | T11-D190 |
+
+**Acceptance:** 41 tools registered (build-fail on biometric-egress via `register_tool!()` static_assert) ; 5 capability gates default-DENY ; release-build compile-out verified ; chain-replay verifies every tool-invocation ; the never-tick canary `gaze.privacy_egress_attempts_refused` = 0 in all replay-traces.
+
+### § 11.5.6. Critical-path + dispatch discipline
+
+- Wave-Jε MUST complete before Wave-Jζ-2 (per-subsystem metrics depend on `cssl-error`)
+- Wave-Jζ-3 (spec-coverage) MUST complete before Wave-Jθ-4
+- Wave-Jη-3 (tunables) MUST complete before Wave-Jθ-6
+- Wave-Jθ-8 is the FINAL gate ← all privacy + audit + IFC integration tests must pass before Phase-J close
+- Per-wave fanout: dispatch all slices in a wave in parallel worktrees ; integrate at wave-close ; dependent-wave dispatches at integration-merge
+- Per-slice DECISIONS-pin allocated from T11-D170..T11-D190 (within Phase-J reservation T11-D150..T11-D201)
+
+### § 11.5.7. PRIME-DIRECTIVE bindings (diagnostic-infrastructure)
+
+| Layer / Concern               | Directive binding                                              | Enforcement mechanism                          |
+| ----------------------------- | -------------------------------------------------------------- | ---------------------------------------------- |
+| Biometric data egress         | §1 anti-surveillance ; D129 + D132                             | COMPILE-TIME-REFUSED via `register_tool!()` static_assert ; renderer-Σ-marker check ; `cssl-ifc::TelemetryEgress` compile-refuse |
+| Path-hash discipline          | §1 + D130                                                      | proc-macro check ; audit-bus `record_path_op` raw-path validation |
+| Σ-mask threading              | §10 consent-OS ; D138                                          | `EnforcesΣAtCellTouches` pass per cell-touch  |
+| Audit-chain integrity         | §11 substrate-truth ; D131                                     | `EnforcementAuditBus` append-only ; chain-replay verifies ; phantom-invocation = §7 violation |
+| Replay-determinism            | H5 contract                                                    | every perturbing MCP cmd appended to replay-log w/ frame_n + audit_chain_seq |
+| Capability gating             | §5 revocability ; default-DENY                                 | non-Copy non-Clone CapToken move-only ; per-process / per-session scope |
+| Kill-switch on PD-trip        | §11 ALWAYS-WINS aggregation                                    | `substrate_halt(KillSwitch::new(HaltReason::HarmDetected))` |
+| The never-tick canary         | §1 anti-surveillance attestation                               | `gaze.privacy_egress_attempts_refused` Counter ; non-zero = audit-priority high |
+
+---
+
 ## § 12. PRIME-DIRECTIVE register for Phase-J
 
 Phase-J is the closest the codebase comes to authored content — items, mechanics, narrative, accessibility, ConsentZone taxonomy, Apockalypse-phase emotional register. Every Q-* slice has at least one PRIME_DIRECTIVE binding.

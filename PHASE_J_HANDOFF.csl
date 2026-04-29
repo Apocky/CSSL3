@@ -453,4 +453,78 @@
        + D189 (Q-DD) + D191 (Q-FF) + D192 (Q-GG)
        = HIGHEST-CARE-TIER ; Apocky-review mandatory
 
+§ DIAGNOSTIC-INFRASTRUCTURE  R! 6-layer L0..L5 stack ‼ T11-D151 (W-Jβ-synthesis)
+  master-doc : DIAGNOSTIC_INFRA_PLAN.md          (concise-index ; references drafts)
+  drafts     : _drafts/phase_j/05_l0_l1_error_log_spec.md         (973 LOC)
+               _drafts/phase_j/06_l2_telemetry_spec.md            (1238 LOC)
+               _drafts/phase_j/07_l3_l4_inspect_hotreload_spec.md (1330 LOC)
+               _drafts/phase_j/08_l5_mcp_llm_spec.md              (1524 LOC)
+
+  six-layer-stack :
+    L0 errors    ⊗ cssl-error + cssl-panic ⊗ EngineError + Severity + ErrorContext
+    L1 log       ⊗ cssl-log ⊗ macro-family + ring-buffer + sinks (path-hash D130)
+    L2 telemetry ⊗ cssl-metrics + cssl-spec-coverage + cssl-health
+                 ⊗ ≈75 metrics × 12 subsystems × ABI-stable
+    L3 inspect   ⊗ cssl-inspect ⊗ cell/entity/region (Σ-mask threading D138)
+    L4 hot-reload⊗ cssl-hot-reload + cssl-tweak ⊗ 4-class swap + 30 tunables
+                 ⊗ replay-determinism preserved
+    L5 MCP CROWN ⊗ cssl-mcp-server ⊗ 41 tools × 9 categories × 5 cap-gates
+                 ⊗ JSON-RPC 2.0 / stdio / unix-sock / ws-loopback
+                 ⊗ embedded-IN-running-engine ⊗ on-device-only
+
+  load-bearing-tables-in-master :
+    metric-inventory  : ≈75 metrics ; subsystem-grouped ; ABI-stable
+    tunable-registry  : 30 tunables ; range-budget ; type-checked
+    MCP-tool-catalog  : 41 tools ; cap-gated ; replay-aware
+    capability-matrix : 5 caps × 41 tools ; default-DENY everywhere
+
+  five-cap-gates :
+    Cap<DevMode>          ‼ MCP-server-cannot-start without it
+                           default OFF ; release-build = compile-out + runtime-deny
+    Cap<BiometricInspect> default-DENIED even-WITH DevMode
+                           Apocky-PM signed-token only ; rate-limit 1/sec
+                           ABSOLUTE-BAN egress (D129)
+    Cap<SovereignInspect> per-cell-set ; cell-owner interactive-grant
+                           revocability ≤ Session ; PERMANENT-grants REFUSED
+    Cap<RemoteDev>        non-loopback bind ; default-DENY (loopback-only)
+    Cap<TelemetryEgress>  disk-write tools ; refuses biometric domains @ compile
+
+  invariants R!
+    on-device-only          (PD §1 + D129 + D132)  W! preserve
+    path-hash discipline    (D130)                  W! every-tool-input/output
+    Σ-mask threading        (D138)                  W! every-cell-touch
+    audit-chain on-every    (D131)                  W! grant + tool-invocation
+    replay-determinism      (H5)                    W! perturbing-cmd → replay-log
+    PD-trip ALWAYS-WINS     (PD §11)                W! aggregation-monoid hard-coded
+
+  compile-time-guards (the-strong-line) :
+    biometric MCP-tool-result-Label  ⊗ static_assert PD0099 build-fail
+    biometric metric-Label           ⊗ cssl-ifc::TelemetryEgress compile-refuse
+    raw-path log-field               ⊗ proc-macro check ; build-fail
+    capture-frame biometric-pixel    ⊗ renderer-Σ-marker static check
+    release-build MCP without dev-mode feature ⊗ panic-stub
+
+  the-never-tick-canary :
+    `gaze.privacy_egress_attempts_refused` Counter      MUST always = 0
+    non-zero ⊗ §1-violation-attempt ⊗ audit-priority high ⊗ first @ read_errors
+
+  wave-roadmap (Phase-J Wave-Jε..Jθ) :
+    Wave-Jε  L0+L1   ~6K LOC    ~250 tests    (substrate-evolution depends-on)
+    Wave-Jζ  L2      ~9K LOC    ~290 tests    Wave-Jε
+    Wave-Jη  L3+L4   ~10K LOC   ~400 tests    Wave-Jζ
+    Wave-Jθ  L5 CROWN ~13K LOC  ~390 tests    Wave-Jε + Wave-Jζ + Wave-Jη
+    ───────────────────────────────────────
+    TOTAL    ~38K LOC ~1330 tests             (Phase-J close)
+
+  iteration-loop (the-M9/M10-acceleration) :
+    attach → state → focus → identify → patch → hot-swap → verify → record
+    LLM observes-live-engine ; proposes-fix ; hot-swaps ; verifies ; records
+    ¬ recompile-restart-reproduce ⊗ microsecond-turnaround on inspect
+
+  cross-references-drafts :
+    L0+L1 detail → draft 05  (panic-hook + path-hash + effect-row)
+    L2 detail    → draft 06  (3-pillar : metrics + spec-coverage + health)
+    L3+L4 detail → draft 07  (inspect Σ-discipline + hot-swap atomic-flow)
+    L5 detail    → draft 08  (390-test inventory + 14 anti-patterns + 10 landmines)
+
 ∎ HANDOFF v1.1 → Phase-J
