@@ -415,6 +415,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-ai-behav"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-omega-step",
+ "cssl-substrate-prime-directive",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-anim"
 version = "0.1.0"
 dependencies = [

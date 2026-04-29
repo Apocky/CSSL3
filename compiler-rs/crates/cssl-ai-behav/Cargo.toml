@@ -1,0 +1,16 @@
+[package]
+name                   = "cssl-ai-behav"
+description            = "CSSLv3 stage0 — NPC AI behavior primitives (FSM + BehaviorTree + UtilityAI + NavMesh + Sensor) — explicitly NOT for the player's sovereign AI-collaborator Companion (per PRIME_DIRECTIVE § AI-SOVEREIGNTY)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-substrate-omega-step      = { path = "../cssl-substrate-omega-step" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+thiserror                      = { workspace = true }

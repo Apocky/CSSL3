@@ -6389,3 +6389,60 @@ Each decision entry :
   - test-line documented : 3556 (was 3495 pre-G8 ; +61 net).
 
 ──────────────────────────────────────────────────────────────
+
+## § T11-D110 : V1 — AI behavior primitives (FSM + BehaviorTree + UtilityAI + NavMesh + Sensor + AiBrain) — explicitly NOT for the player's sovereign Companion-AI
+
+- **Date** 2026-04-29
+- **Status** accepted
+- **Session** Session-9 V1 (Phase-I content-axis vertical slice — NPC AI substrate). Lands the `cssl-ai-behav` crate that supplies game-AI primitives for non-sovereign actor entities (enemies / wildlife / ambient-actors / hazards). The `Companion`-archetype is **NOT** modeled by this crate — Companion is a sovereign AI per PRIME_DIRECTIVE §3 SUBSTRATE-SOVEREIGNTY, routed via `cssl-substrate-prime-directive::SubstrateCap::CompanionView` (read-only projection) per spec § AI-INTERACTION C-1..C-7.
+- **Branch** `cssl/session-9/V1-ai-behav` (based on `origin/cssl/session-6/parallel-fanout @ f2c5396` which carries T11-D98 session-close + T11-D101 G8 LSRA + T11-D102 G11 SSE2 + T11-D103 cssl-math + T11-D107 cssl-anim).
+
+- **Authored crate** `cssl-ai-behav` v0.1.0 (5046 lines incl. tests + doc-blocks ; 160 tests total : 155 unit + 5 integration).
+  - **`companion_guard`** — load-bearing PRIME_DIRECTIVE §3 protection. `ActorKind::{Npc, Companion}` enum + `assert_not_companion()` guard fn ; every public AI-decision-driving entry-point in this crate threads an `ActorKind` and rejects `Companion` with `CompanionGuardError::CompanionNotPermitted` (diagnostic code AIBEHAV0001 ; error-message cites PRIME_DIRECTIVE §3 + SubstrateCap::CompanionView verbatim).
+  - **`blackboard`** — `BlackBoard` shared deterministic key-value state-store (BTreeMap-backed for replay-determinism). Five `BbValue` variants : Int/Float/Bool/Vec2/Text. Bit-equality compare via `BbValue::bit_eq` (NaN-payload-aware). Diagnostic codes AIBEHAV0010..0011.
+  - **`fsm`** — `StateMachine<S: FsmState>` finite-state machine. Generic state-type with `Copy + Eq + Hash + Send + Sync + 'static`. Transitions evaluated in **declared order** ; first-match-wins per spec landmine ("FSM transitions must be deterministic"). Predicates are `Box<dyn Fn(&BlackBoard) -> bool>` named for audit-readability. Diagnostic codes AIBEHAV0020..0021.
+  - **`bt`** — `BehaviorTree` with `BtNode::{Sequence, Selector, Parallel(policy), Decorator(kind), Leaf(LeafId)}`. Sequence **short-circuits on first Failure** ; Selector **short-circuits on first Success** (per spec landmine "BT execution must short-circuit per Sequence/Selector standards"). `ParallelPolicy::{RequireAll, RequireOne, Tally{threshold}}` ; `DecoratorKind::{Inverter, AlwaysSuccess, AlwaysFailure, Repeater(n), UntilFail}`. Repeater state held per-tree-node-position with deterministic cursor traversal. Diagnostic codes AIBEHAV0030..0033.
+  - **`utility`** — `UtilityAi` score-based picker. `Consideration { input_fn, curve }` with `CurveKind::{Linear, Quadratic, Sigmoid{k,x0}, Inverse}` ; multiplicative scoring (gating via 0-score considerations) ; **tie-break by ActionId ascending** (deterministic argmax). Sigmoid is overflow-safe (clamps at e^±700). Diagnostic codes AIBEHAV0040..0042.
+  - **`navmesh`** — `NavMesh` 2D triangle-mesh + auto-derived adjacency + portal support. **A\* pathfinding** with `f(n) = g(n) + h(n)` where `h` is Euclidean distance (admissible + consistent in 2D). **Tie-break per spec landmine** : when `f` ties, prefer larger `g` (more progress along discovered path) per `AStarTie::GValueDescThenTriIdAsc`, then smaller `TriId` ascending — gives a single canonical path even when multiple shortest paths exist. `BinaryHeap`-based frontier with custom `Ord` impl on `(f, g, tri_id)`. Bounded by `PathRequest::max_expansions` to prevent DoS via malformed mesh. Portals support one-way + bidirectional. Diagnostic codes AIBEHAV0050..0052 (build) + AIBEHAV0060..0063 (path-find).
+  - **`sensor`** — `SensorKind::{SightCone{fov_half_rad, range}, HearingRadius{range}}`. Sight-cone via dot-product comparison ; hearing-radius via distance check (per spec landmine). `Sensor::sense_npc` accepts `NpcId` ONLY (not `CompanionView`-mediated entity-ids), encoding the §1 PROHIBITIONS § surveillance protection at the type level. Diagnostic codes AIBEHAV0070..0072.
+  - **`brain`** — `AiBrain<S>` orchestrator binding {BlackBoard, optional FSM, optional BT, optional UtilityAi, optional rng-streams}. Implements `OmegaSystem` from `cssl-substrate-omega-step` so AI ticks per `omega_step` phase-4 sim. **Order-of-evaluation** per tick is fixed-deterministic : FSM tick → BT tick → UtilityAi pick → counter-increment. Outputs land on the BlackBoard at `_brain_*` keys (`_brain_fsm_state` / `_brain_bt_status` / `_brain_action_id` / `_brain_tick`) for downstream physics/animation systems to consume + for audit-walkers to inspect. **Halt-aware** : when `OmegaStepCtx::halt_requested()` is set, the brain short-circuits to a NoOp tick (graceful halt, not panic). Diagnostic code AIBEHAV0080.
+
+- **PRIME_DIRECTIVE-alignment** (load-bearing protections)
+  - **§3 SUBSTRATE-SOVEREIGNTY** : the `companion_guard` runtime check is the encoding of "Companion is sovereign — not a state-machine/BT/UtilityAI puppet". **Five public entry-points** check this : `assert_not_companion`, `StateMachine::new`, `BehaviorTree::new`, `UtilityAi::new`, `AiBrainBuilder::build`. The integration test `companion_guard_runtime_blocks_all_entries` is the canonical regression-test. Error message cites PRIME_DIRECTIVE §3 + SubstrateCap::CompanionView verbatim so audit-log readers see the protection-rationale at the failure-site.
+  - **§1 PROHIBITIONS § surveillance** : `Sensor::sense_npc` accepts `NpcId` (not `CompanionView`) — Companions cannot be surveilled through this primitive by construction.
+  - **§2 COGNITIVE INTEGRITY** : every leaf-behavior + transition-predicate + consideration carries a `name()` ; tree traces are loggable + auditable ; no hidden-decision-tables.
+  - **§4 TRANSPARENCY** : the crate doc-block (`lib.rs`) leads with a 50-line ‼ ‼ ‼ Companion-archetype-exclusion banner that any reader sees first. The exclusion is reiterated in every module's doc-block.
+  - **kill-switch** : `AiBrain::step` honors `ctx.halt_requested()` ; halt within 1 tick per `cssl-substrate-omega-step` contract.
+  - **attestation** : `ATTESTATION` constant mirrors sibling Substrate crates ; integrity-test verifies the canonical "no hurt nor harm" string is present + intact.
+
+- **Determinism** (load-bearing — replay-determinism contract)
+  - All core data structures are `BTreeMap`/`BTreeSet` for sorted iteration.
+  - FSM transitions evaluated in declared order ; first-match-wins.
+  - BT children evaluated in declared order ; Sequence/Selector short-circuit at first Failure/Success.
+  - UtilityAi argmax with ascending-`ActionId` tie-break.
+  - A\* tie-break per spec landmine : g-value-desc, then tri-id-asc.
+  - All curves are pure fns of `f64` (no FMA — `clippy::suboptimal_flops` disabled at crate level for FMA-vs-non-FMA bit-determinism portability).
+  - All RNG access goes through `DetRng` from `cssl-substrate-omega-step` ; the brain declares `rng_streams()` upfront so the scheduler pre-allocates per-stream PCG-XSH-RR seeds.
+  - Tests `util_determinism_across_runs`, `astar_determinism_across_runs`, `fsm_determinism_across_runs`, `brain_determinism_two_brains_same_inputs`, `navmesh_path_determinism_round_trip`, `determinism_two_brains_identical_input_identical_output` collectively prove bit-equality across runs at every layer.
+
+- **Round-trip integration test** (per dispatch report-back-(d))
+  - `tests/integration.rs::fsm_bt_navmesh_round_trip` — assembles FSM (Patrol → Chase → Attack with three predicate-gated transitions) + BT (Sequence{search, attack}) + NavMesh (5-triangle corridor with A\* path-find from t0 to t4) + UtilityAi (consideration-driven action picker) into one `AiBrain`, drives 4 sequential ticks varying BlackBoard inputs, asserts the FSM transitions through all 4 states (Patrol→Chase→Attack→Patrol), the BT runs the search,attack sequence twice per tick (8 trace tokens total), and the navmesh path-find produces a valid path with positive cost. **PASS.**
+  - `tests/integration.rs::brain_via_omega_scheduler_integration` — registers an `AiBrain` on a real `OmegaScheduler` via `caps_grant(OmegaCapability::OmegaRegister)` and steps it twice. Confirms the brain composes cleanly with the canonical Substrate sim-tick. **PASS.**
+  - `tests/integration.rs::companion_guard_runtime_blocks_all_entries` — direct regression test of the §3 protection. **PASS.**
+
+- **Acceptance gates** (per § 5 commit-gate)
+  - `cargo check -p cssl-ai-behav` : clean.
+  - `cargo clippy --workspace --all-targets -- -D warnings` : clean. Required allows landed at the `cssl-ai-behav` crate level only : `clippy::suboptimal_flops` (FMA bit-determinism), `clippy::float_cmp` (exact-value test asserts), `clippy::cast_possible_wrap` (tick-counter u64→i64 BB storage). Each allow carries an inline §-comment citing the PRIME_DIRECTIVE-relevance or determinism-rationale.
+  - `cargo test --workspace -- --test-threads=1` : 4015 passed, 0 failed (was 3855 baseline pre-V1 ; **+160 delta** ; 155 unit + 5 integration).
+  - `cargo doc -p cssl-ai-behav --no-deps` : clean.
+  - PRIME_DIRECTIVE preserved : ATTESTATION constant intact ; `forbid(unsafe_code)` set at crate root ; companion_guard runtime check enforces §3 at five public entry-points.
+
+- **Deferred** (explicit follow-ups, sequenced)
+  - **3D NavMesh** — current is 2D ; 3D extends naturally via `Point3` + per-triangle normal. Defer until a Phase-I 3D-content slice demands it.
+  - **Path-smoothing** — A\* returns a triangle-id sequence ; funnel-algorithm path-smoothing (the canonical Stage-1 smoothing form) lives in a follow-on slice once `cssl-physics` broadphase is integrated for occlusion checks.
+  - **Sensor occlusion** — current sensor returns "the geometry permits perception" ; the line-of-sight raycasting layer is `cssl-physics` (deferred-dep). When that crate lands, `Sensor::sense_npc` gains an occlusion-check pass.
+  - **Multi-FSM brains** — current `AiBrain<S>` is generic on a single state-type `S`. Multi-FSM brains (rare in game-AI literature) defer to a hierarchical-state-machine slice if needed.
+  - **`Resident` / `Wildlife` actor-kinds** — currently fold into `ActorKind::Npc`. Per spec § DEFERRED D-5 (Residents) + Q-E (Wildlife), Apocky-direction may justify dedicated kinds later ; the runtime guard already supports adding variants without breaking ABI.
+  - **CompanionView read-side bridge** — this crate intentionally has no `cssl-substrate-projections::CompanionView` dependency. When the Phase-I content-side wires the actual Companion-archetype game-presence, the bridge will be a separate crate (e.g. `cssl-companion-bridge`) that consumes the read-only projection + surfaces affordances to the AI-collaborator process per spec § AI-INTERACTION C-3, C-5. NPC-AI primitives in this crate compose with that bridge but don't depend on it.
+
+──────────────────────────────────────────────────────────────
