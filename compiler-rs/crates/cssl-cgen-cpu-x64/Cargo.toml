@@ -1,0 +1,15 @@
+[package]
+name                   = "cssl-cgen-cpu-x64"
+description            = "CSSLv3 stage1+ — Native x86-64 CPU codegen (zero cranelift dep ; foundation slice S7-G1)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+cssl-mir  = { path = "../cssl-mir" }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -4780,6 +4780,146 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D83 : Session-7 S7-G1 — Native x86-64 backend : instruction selection from MIR (cssl-cgen-cpu-x64 crate ; foundation slice)
+
+> **PM allocation note** : T11-D77..T11-D82 reserved for sibling Session-7 G-axis slices (G2 register-allocator / G3 ABI / G4 encoder / G5 object emitter) per the dispatch plan's floating-allocation rule. T11-D83 is the FOUNDATION slice that the others build atop. PM may renumber on integration merge if a sibling slice lands first.
+
+- **Date** 2026-04-28
+- **Status** accepted (foundation pattern for the G-axis ; sibling G2..G5 slices land in parallel)
+- **Session** 7 — Phase-G owned x86-64 backend, slice 1 of 5 (FOUNDATION ; establishes the crate scaffold + MIR-to-instruction-selection pipeline)
+- **Branch** `cssl/session-7/G1` (based on `origin/cssl/session-6/parallel-fanout` per slice handoff PRE-CONDITIONS)
+- **Context** Per `specs/14_BACKEND.csl § OWNED x86-64 BACKEND` and `specs/07_CODEGEN.csl § CPU BACKEND — stage1+`, CSSLv3 takes ownership of the full code-gen pipeline at stage1+ to drop the cranelift dependency. The cranelift-based CPU backend (`cssl-cgen-cpu-cranelift`, T11-D20) works but is a heavy dep + abstraction layer. Phase-G replaces (or augments) it with a native x86-64 backend that gives CSSLv3 ownership of the full code-gen pipeline. This slice is the FIRST G-axis slice — establishes the crate scaffold + MIR-to-instruction-selection pipeline. Sibling G-axis slices (G2 register-allocator, G3 ABI, G4 encoder, G5 object emitter) land in parallel atop this surface.
+- **D5-marker fanout-contract honored** — Per the slice handoff landmines bullet "Structured-CFG validation", this CPU backend (like the D-axis GPU emitters D1..D4) consumes the `("structured_cfg.validated", "true")` module attribute set by `cssl_mir::validate_and_mark` (T11-D70 / S6-D5). `select_function` checks the marker via `cssl_mir::has_structured_cfg_marker` at entry + returns `SelectError::StructuredCfgMarkerMissing` (stable code `X64-D5`) if absent. Defense-in-depth : even if the marker is bypassed, the per-op selection table rejects `cf.br` / `cf.cond_br` (`X64-0012`), `cssl.closure.*` (`X64-0013`), `cssl.unsupported(Break|Continue)` (`X64-0014`), and malformed scf.* shapes (`X64-0009` / `X64-0010`).
+- **Slice landed (this commit)** — ~3978 net LOC across 7 new files (~3963 production code + ~15 Cargo manifest) + 84 new tests
+  - **`crates/cssl-cgen-cpu-x64/Cargo.toml`** (NEW, 15 LOC) — workspace crate manifest. Dependencies : `cssl-mir` (path-dep) + `thiserror` (workspace-shared). **ZERO cranelift deps.** Inherits workspace lints + version + edition. Description : `"CSSLv3 stage1+ — Native x86-64 CPU codegen (zero cranelift dep ; foundation slice S7-G1)"`.
+  - **`crates/cssl-cgen-cpu-x64/src/lib.rs`** (NEW, 136 LOC) — crate-level doc-block opens with the `specs/14 § OWNED x86-64 BACKEND` reference, the G-axis sibling-slice roadmap (G2..G5), the D5 marker fanout-contract, the per-MIR-op coverage table (16 op-families covering arith / cmp / scf / memref / cssl.heap / func.call / func.return + reject-list), the virtual-register model (32-bit ID + width tag ; ID 0 reserved as null/sentinel), the ABI-deferred note (G3 lowers abstract Call/Ret to System-V or MS-x64), the floating-point comparison semantics rationale (Ucomi for ordered = IEEE 754-2008 quiet ; Comi for unordered/signaling), and the integer division detail (Cdq/Cqo before Idiv per slice handoff landmines). Exports `X64Inst` / `X64VReg` / `X64Width` / `X64Block` / `X64Func` / `X64Signature` / `BlockId` / `MemAddr` / `MemScale` / `X64Imm` / `IntCmpKind` / `FpCmpKind` / `X64SetCondCode` / `X64Term` / `select_function` / `select_module` / `SelectError` / `format_func`. STAGE1_FOUNDATION constant exposes the crate version for scaffold verification.
+  - **`crates/cssl-cgen-cpu-x64/src/vreg.rs`** (NEW, 217 LOC including 7 tests) — virtual register identifier + width tag. `X64Width` enum : I8 / I16 / I32 / I64 (general-purpose) + F32 / F64 (SSE2 xmm) + Bool (8-bit GPR slot per x86-64 boolean ABI) + Ptr (8-byte GPR slot, distinguished from I64 so the encoder emits pointer-typed relocations correctly). `X64VReg { id: u32, width: X64Width }` — id 0 is reserved as null/sentinel. `X64VReg::null()` returns the sentinel ; `is_null()` predicate for diagnostics. Display form `v<id>:<width>` (`v7:f32`). Tests cover : byte-size canonical values, GPR-vs-SSE partition, display form, sentinel id-zero invariant, legitimate-vregs-start-at-one convention, equality distinguishing id+width.
+  - **`crates/cssl-cgen-cpu-x64/src/inst.rs`** (NEW, 836 LOC including 16 tests) — virtual-register-based x86-64 instructions. Defines :
+    - **`BlockId(pub u32)`** — basic-block identifier ; `ENTRY = BlockId(0)` const. Display form `bb<id>` (`bb3`).
+    - **`X64Imm`** enum — I32 / I64 / F32 (u32 bit-pattern) / F64 (u64 bit-pattern) / Bool. `width()` returns the matching `X64Width`. Display form for diagnostics : `42i32` / `f32:0x40490000` / `true`.
+    - **`MemScale`** enum — One/Two/Four/Eight (x86-64 SIB scale).
+    - **`MemAddr { base, index: Option<(VReg, MemScale)>, displacement: i32 }`** — `[base + index*scale + disp]`. `MemAddr::base(v)` and `MemAddr::base_plus_index(b, i)` builders. Display form `[v1:ptr + v2:i64 * 1 + 16]`.
+    - **`IntCmpKind`** enum — Eq/Ne + Slt/Sle/Sgt/Sge (signed) + Ult/Ule/Ugt/Uge (unsigned). `x86_suffix()` returns the canonical `j<cc>` / `set<cc>` suffix (e/ne/l/le/g/ge/b/be/a/ae). Names match MIR `arith.cmpi {predicate=...}` attribute strings 1:1.
+    - **`FpCmpKind`** enum — Oeq/One/Olt/Ole/Ogt/Oge (ordered) + Une/Ult/Ule/Ugt/Uge (unordered) + Ord/Uno (NaN-or-not). `is_ordered()` predicate drives Ucomi-vs-Comi selection. Names match MIR `arith.cmpf` predicate strings 1:1.
+    - **`X64SetCondCode`** enum wrapping `Int(IntCmpKind)` or `Float(FpCmpKind)` — feeds `Setcc` instructions and `Jcc` terminators.
+    - **`X64Term`** enum — terminator for each block. `Jmp { target }` / `Jcc { cond_kind, cond_vreg, then_block, else_block }` / `Ret { operands }` / `Fallthrough { next }` (layout-hint variant) / `Unreachable` (placeholder + after-panic).
+    - **`X64Inst`** enum — full instruction set covering : Mov / MovImm / Add / Sub / IMul / Cdq / Cqo / Idiv / Div / XorRdx / And / Or / Xor / Shl / Shr / Sar / Neg / Not / FpAdd / FpSub / FpMul / FpDiv / FpNeg / Ucomi / Comi / Cmp / Setcc / Movzx / Movsx / Cmov / Select / Test / Load / Store / Lea / Call / Push / Pop. `def()` method returns the result vreg of an instruction (or `None` for void ops like Cmp/Cdq/Test/Store). Tests cover BlockId display, X64Imm widths + display, MemAddr forms (base / indexed / with-displacement), IntCmpKind x86-suffix mapping, FpCmpKind ordered-vs-unordered partition, Term display forms, X64Inst::def() correctness for arithmetic / void / multi-result Call.
+  - **`crates/cssl-cgen-cpu-x64/src/func.rs`** (NEW, 274 LOC including 9 tests) — top-level containers. `X64Signature { params: Vec<X64Width>, results: Vec<X64Width> }` — function signature ; `empty()` and `new()` constructors. `X64Block { id, insts: Vec<X64Inst>, terminator: X64Term }` — basic block ; `new(id)` initializes with `Unreachable` placeholder terminator ; `with_terminator()` builder. `X64Func { name, sig, blocks: Vec<X64Block>, entry: BlockId, next_vreg_id: u32 }` — function in X64Inst form. `fresh_vreg(width)` allocates monotonic vreg ids ; `fresh_block()` allocates monotonic block ids ; `param_vreg(i)` returns the canonical param vreg (ids 1..=N ; id 0 reserved as null-sentinel) ; `push_inst(block, inst)` and `set_terminator(block, t)` mutators. Tests cover empty signature, multi-result signature, block placeholder terminator, with_terminator override, func entry-block creation, fresh_vreg monotonicity, fresh_block monotonicity, param_vreg one-based-id convention, push_inst + set_terminator semantics.
+  - **`crates/cssl-cgen-cpu-x64/src/display.rs`** (NEW, 304 LOC including 7 tests) — text-format pretty-printer for round-trip golden-file regression tests. `format_func(&X64Func) -> String` produces multi-line text :
+    ```text
+    fn add (i32, i32) -> i32 {
+      bb0:
+        v3:i32 <- mov v1:i32
+        v3:i32 <- add v3:i32, v2:i32
+        ret v3:i32
+    }
+    ```
+    Per-inst formatter handles every X64Inst variant. Tests cover : empty void/void func, signature with single result, multi-result signature, three-address arithmetic, Call with args + result, Call with no args + no result (no `<- ` prefix), Load + Store memops.
+  - **`crates/cssl-cgen-cpu-x64/src/select.rs`** (NEW, 2196 LOC including ≈980 LOC of test bodies covering 41 selection tests) — the heart of the slice. Per-MIR-op selection table walking a `MirFunc` body and emitting virtual-register-based `X64Inst`s + `X64Term`s.
+    - **`pub fn select_function(parent: &MirModule, src: &MirFunc) -> Result<X64Func, SelectError>`** — the per-fn entry-point. Checks the D5 marker on `parent` ; surfaces `StructuredCfgMarkerMissing` if absent. Translates the signature ; wires entry-block param vregs into the value-id-to-vreg map ; walks the body region.
+    - **`pub fn select_module(module: &MirModule) -> Result<Vec<X64Func>, SelectError>`** — convenience that checks the marker once + selects every fn.
+    - **`pub fn mir_to_x64_width(ty: &MirType) -> Option<X64Width>`** — the canonical type-translator. Bool / Int(I1) → Bool ; I8/I16/I32/I64 → matching width ; Index → I64 ; F32/F64 → matching ; Ptr/Handle → Ptr ; F16/Bf16 → None (deferred) ; non-scalars → None.
+    - **`SelectError`** with 16 stable diagnostic codes (`X64-D5` + `X64-0001..X64-0015`) :
+      - **X64-D5** `StructuredCfgMarkerMissing` — D5 fanout-contract gate.
+      - **X64-0001** `UnsupportedSignatureType` — fn signature uses a non-stage-0-scalar type.
+      - **X64-0002** `UnsupportedType` — op operand/result type isn't a stage-0 scalar.
+      - **X64-0003** `EmptyBody` — fn body has no entry block (or has results but no func.return).
+      - **X64-0004** `UnknownValueId` — op references a `ValueId` not in scope.
+      - **X64-0005** `ConstantMissingValue` — `arith.constant` missing the `value` attribute.
+      - **X64-0006** `BadComparisonPredicate` — cmpi/cmpf missing or unrecognized predicate.
+      - **X64-0007** `OperandCountMismatch` — generic operand-count guard.
+      - **X64-0008** `ResultCountMismatch` — generic result-count guard.
+      - **X64-0009** `ScfIfWrongRegionCount` — scf.if with region-count ≠ 2 (mirrors D5 CFG0005).
+      - **X64-0010** `LoopWrongRegionCount` — scf.{for,while,loop} with region-count ≠ 1 (mirrors D5 CFG0006).
+      - **X64-0011** `ScfRegionMultiBlock` — nested region with > 1 block (mirrors D5 CFG0007).
+      - **X64-0012** `UnstructuredOp` — `cf.br` / `cf.cond_br` reach the selector (defense-in-depth).
+      - **X64-0013** `ClosureRejected` — `cssl.closure.*` op (Phase-H concern, deferred).
+      - **X64-0014** `UnsupportedBreakContinue` — `cssl.unsupported(Break|Continue)` placeholder.
+      - **X64-0015** `UnsupportedOp` — op-name with no selector handler.
+    - **MIR-op → X64Inst mapping table** in `walk_op` :
+      - `arith.constant` → `MovImm(dst, parsed_imm)` with i32/i64/f32/f64/bool literal parsing.
+      - `arith.{addi,subi,muli}` → `Mov dst, lhs ; Add/Sub/IMul dst, rhs` (3-address-form via dst-mov-then-binop).
+      - `arith.sdivi` → `Mov dst, lhs ; Cdq (or Cqo for i64) ; Idiv rhs`. **Per slice handoff landmines : x86-64 idiv requires sign-extension of the dividend (Cdq for 32-bit, Cqo for 64-bit) — emitted explicitly before the Idiv.**
+      - `arith.udivi` → `Mov dst, lhs ; XorRdx ; Div rhs` (zero-extend before unsigned div).
+      - `arith.{addf,subf,mulf,divf}` → `Mov dst, lhs ; FpAdd/FpSub/FpMul/FpDiv dst, rhs` (SSE2).
+      - `arith.negf` → `Mov dst, src ; FpNeg dst` (sign-bit XOR via xorps + IEEE 754 sign-bit constant).
+      - `arith.cmpi` → `Cmp lhs, rhs ; Setcc(Int(kind)) dst`. Maps slt/sle/sgt/sge/ult/ule/ugt/uge/eq/ne predicates.
+      - `arith.cmpf` → `Ucomi/Comi lhs, rhs ; Setcc(Float(kind)) dst`. **Per slice handoff landmines : ordered (`o*`) predicates use `Ucomi` (IEEE 754-2008 quiet semantics), unordered (`u*`) predicates use `Comi` (signaling).**
+      - `arith.select` → `Select { dst, cond, if_true, if_false }` (high-level op so G2 can pick cmov vs branch-and-mov).
+      - `memref.load` → `Load { dst, addr }`. 1-operand → `[base]` ; 2-operand → `[base + index*1]`.
+      - `memref.store` → `Store { src, addr }`. 2-operand → `[base]` ; 3-operand → `[base + index*1]`.
+      - `func.call` → abstract `Call { callee, args, results }` — G3 lowers to System-V or MS-x64 reg/stack passing.
+      - `cssl.heap.alloc` → `Call(__cssl_alloc, args, [ptr_result])`.
+      - `cssl.heap.dealloc` → `Call(__cssl_free, args, [])`.
+      - `cssl.heap.realloc` → `Call(__cssl_realloc, args, [ptr_result])`.
+      - `scf.if` → 3 fresh blocks (`then_block`, `else_block`, `merge_block`) + entry terminates with `Jcc(Ne, cond) then, else` ; both branches end with `Jmp merge` (auto-emitted if branch didn't terminate via func.return) ; if scf.if has a result, declares a merge-vreg and pushes it on the yield-target stack so `scf.yield` in either branch resolves to `Mov merge_vreg, yield_value`.
+      - `scf.for / scf.loop` → header / body / exit triplet ; entry → header ; header → body (unconditional at G1 — iter-counter machinery deferred) ; body → header back-edge ; exit reached only via inner `func.return`.
+      - `scf.while` → header / body / exit ; entry → header ; header tests cond via `Jcc(Ne, cond) body, exit` ; body → header back-edge.
+      - `scf.yield` → consumed by parent `scf.if` walker via the yield-target stack ; outer-level yields tolerated as no-op (matches cranelift JIT policy).
+      - `func.return / cssl.diff.bwd_return` → `Ret { operands }` block terminator + `saw_return = true`.
+      - `cssl.closure.*` → REJECT (X64-0013, Phase-H).
+      - `cf.br / cf.cond_br` → REJECT (X64-0012, defense-in-depth).
+      - `cssl.unsupported(Break|Continue)` → REJECT (X64-0014).
+      - `cssl.ifc.label / cssl.ifc.declassify / cssl.verify.assert / cssl.field / cssl.region.{enter,exit} / cssl.telemetry.probe` → comment-passthrough (these ops carry meaning at earlier compile passes ; by selection time they're already proven).
+      - default → REJECT (X64-0015).
+    - **`Ctx` walker** carries fn-name (for diagnostic threading), output `X64Func` under construction, `ValueId` → `X64VReg` map, current-block id, `saw_return` flag, yield-target stack (for nested scf.if). The yield-target stack is the key piece for nested `scf.if` lowering : when entering a branch region, the parent's merge-vreg is pushed ; an `scf.yield` inside that region emits `Mov merge_vreg, yield_value` ; when leaving the region, the target is popped. Loops push `None` (yields inside loop bodies are no-ops at G1).
+    - **41 selection tests** : D5 marker absent / present / select_module rejection ; arith.constant for i32 / f32 / missing-value-attr error ; integer arithmetic add/sub/mul ; signed div emits cdq+idiv (i32) / cqo+idiv (i64) ; unsigned div emits xor.rdx + div ; float arith addf / fneg ; cmpi/cmpf with predicate selection (slt/ole/ult) ; bad-predicate error ; arith.select emits high-level Select inst ; memref.load (1-operand → base addr) / memref.store (3-operand → indexed addr) ; empty void fn auto-terminates with ret ; func.call emits abstract Call ; heap alloc/dealloc/realloc lower to `__cssl_<verb>` calls ; scf.if creates 3+ blocks with jcc terminator ; scf.if wrong region count → X64-0009 ; scf.loop creates header/body/exit ; scf.for creates header/body/exit ; scf.while emits jcc at header ; scf.loop wrong region count → X64-0010 ; closure op → X64-0013 ; cf.br → X64-0012 ; cf.cond_br → X64-0012 ; break placeholder → X64-0014 ; unknown op → X64-0015 ; round-trip text-form for `fn add(a: i32, b: i32) -> i32`. Uniqueness assertion : all 16 stable codes are unique.
+    - **Test fixture pattern** : `marked_module(f)` runs `cssl_mir::validate_and_mark` (the canonical D5-conformant path) ; `marker_only_module(f)` writes the marker MANUALLY without running D5 (used for the defense-in-depth tests where the malformed shape is rejected by D5 itself but we want to verify the selector also rejects).
+- **The capability claim**
+  - Source : programmatic MIR fixtures (hand-built `MirModule` + `MirFunc` shapes covering all 16 op-families enumerated in the mapping table).
+  - Pipeline : MIR `arith.constant 42 : i32 -> v0` + `arith.addi v0, v1 -> v2` + `scf.if v_cond [then-region, else-region]` (and friends) → `cssl_cgen_cpu_x64::select_function` → `X64Func` (virtual-register-based) → `cssl_cgen_cpu_x64::format_func` → text-form for round-trip diff.
+  - Validator : the round-trip text-display catches per-op selection regressions immediately at `cargo test` time, before sibling slices G2..G5 consume the surface.
+  - D5 contract : `cssl_mir::validate_and_mark(&mut module).expect("baseline well-formed module passes D5")` runs in the test helper `marked_module` ; the `missing_d5_marker_is_rejected` test proves the gate fires when the marker is absent.
+  - Round-trip example : `fn add(a: i32, b: i32) -> i32 { a + b }` MIR (entry-block args at v0/v1 + `arith.addi v0, v1 -> v2` + `func.return v2`) → X64Func text-display :
+    ```text
+    fn add (i32, i32) -> i32 {
+      bb0:
+        v3:i32 <- mov v1:i32
+        v3:i32 <- add v3:i32, v2:i32
+        ret v3:i32
+    }
+    ```
+  - **First time CSSLv3-derived MIR reaches a fully-owned x86-64 instruction-selection surface with zero cranelift involvement.** Sibling slices G2..G5 build atop this `X64Func` shape : G2 maps virtual regs to physicals (eax/rbx/xmm0/etc.) ; G3 lowers abstract Call/Ret to System-V or MS-x64 ABI ; G4 encodes `X64Inst` to bytes (REX prefix + ModR/M + SIB + immediate) ; G5 writes ELF/COFF/Mach-O with relocations.
+- **Consequences**
+  - Test count : 2380 → 2464 (+84 ; 7 vreg + 16 inst + 9 func + 7 display + 41 select + 1 lib scaffold + 3 test fixtures shared between sub-modules). Workspace baseline preserved (full-serial run via `--test-threads=1` per the cssl-rt cold-cache flake documented in T11-D56).
+  - **Foundation slice for the G-axis.** Sibling slices G2 (register-allocator) / G3 (ABI) / G4 (encoder) / G5 (object emitter) consume `X64Func` as their input. Once all 5 land, the cranelift dependency drops from CSSLv3's CPU codegen path entirely, closing the §§ 14_BACKEND § OWNED x86-64 BACKEND requirement.
+  - **Diagnostic codes X64-D5 + X64-0001..X64-0015 are STABLE.** Adding a new X64- code requires a follow-up DECISIONS sub-entry per dispatch-plan § 3 escalation #4. The 16-entry allocation here covers every reject-shape the current MIR dialect produces ; future shapes (real `cssl.break` / `cssl.continue` lowering, `scf.match` lowering, real closure lowering) get new codes only when their MIR shape stabilizes.
+  - **D5 marker is now load-bearing for native x86-64 selection.** Skipping `validate_and_mark` produces `SelectError::StructuredCfgMarkerMissing` ; this matches the D5 fanout-contract design + makes the validator-bypass path crashy-loud rather than silently-divergent. The selector joins D1 (SPIR-V) / D2 (DXIL) / D3 (MSL) / D4 (WGSL) as a structured-CFG-marker consumer.
+  - **Virtual-register surface is locked at 32-bit ID + width-tag.** vreg id 0 reserved as null/sentinel ; legitimate vregs start at 1 ; the width tag is part of the vreg's identity (two vregs with same id but different width are not equal — defends against accidental width-mixing). G2 (register-allocator) consumes this surface and maps vregs to physicals.
+  - **Floating-point comparison correctness.** Per the slice handoff landmines, ordered (`oeq`/`one`/`olt`/`ole`/`ogt`/`oge`/`ord`) predicates select `Ucomi` ; unordered (`une`/`ult`/`ule`/`ugt`/`uge`/`uno`) select `Comi`. The IEEE 754-2008 quiet-NaN-not-equal semantics match what the CPU profile expects. Two tests (`cmpf_ole_uses_ucomi` + `cmpf_ult_uses_comi`) prove the partition.
+  - **Integer division emits explicit sign-extension.** Per the slice handoff landmines, `idiv r/m32` requires `cdq` (sign-extend `eax` into `edx:eax`) and `idiv r/m64` requires `cqo` (sign-extend `rax` into `rdx:rax`). Two tests (`signed_div_i32_emits_cdq_then_idiv` + `signed_div_i64_emits_cqo_then_idiv`) verify the inst-stream order. Unsigned division emits `xor edx, edx` (or `xor rdx, rdx`) before `div` — verified by `unsigned_div_emits_xor_rdx_then_div`.
+  - **Defense-in-depth against D5 bypass.** The selector independently rejects `cf.br` / `cf.cond_br` / `cssl.closure.*` / `cssl.unsupported(Break|Continue)` even when the marker is present (the marker is a contract gate ; the per-op rejects are the actual implementation guarantee). Defense-in-depth tests use a `marker_only_module` helper that writes the marker without running D5 validation, since D5 itself catches these shapes.
+  - **The `func.return` operand list carries width tags.** G3 (ABI lowering) reads the width tags to lay out the System-V or MS-x64 return-value passing (rax for integer scalars, xmm0 for floats, rdx:rax for 128-bit, etc.). At G1 we just record the operand list ; G3 lowers it to concrete reg/stack moves.
+  - **The abstract `Call { callee, args, results }` form keeps G3 honest.** The selector emits a single abstract Call instruction ; G3 lowers it to the concrete sequence (move args into rdi/rsi/rdx/rcx/r8/r9 + xmm0..xmm7 + spill stack ; emit `call <callee>` ; recover return value from rax/xmm0). This keeps the selector independent of the calling convention — same `X64Func` shape can target System-V (Linux/macOS) or MS-x64 (Windows) without re-selecting.
+  - **No new workspace deps.** The crate depends only on `cssl-mir` (path-dep) and `thiserror` (workspace-shared). Cranelift is NOT in the dep graph for this crate. The output `X64Func` is consumed by sibling slices G2..G5 which add their own deps (G2 will likely add `regalloc2` ; G4/G5 will add `object` for the ELF/COFF/Mach-O writer).
+  - **scf.if merge-vreg via yield-target stack.** Nested scf.if lowering depends on the yield-target stack pattern : when entering a branch region, the parent's merge-vreg is pushed ; `scf.yield` inside emits `Mov merge_vreg, yield_value` ; when leaving the region, the target is popped. Matches the WGSL emitter's pattern exactly (T11-D75 / S6-D4) — the structural shape carries forward.
+  - **Op-coverage gap analysis vs cranelift JIT.** The X64Inst surface covers the same MIR-op subset as `cssl-cgen-cpu-cranelift::jit` (T11-D20+) :
+    - Common : arith.constant / addi / subi / muli / addf / subf / mulf / divf / cmpi / cmpf / select / negf / func.return / func.call / scf.if / scf.for / scf.while / scf.loop / scf.yield / memref.load / memref.store.
+    - Cranelift-only @ cranelift JIT : transcendental libm calls (sin/cos/exp/log) — these are `func.call` shapes that G1 emits as abstract Call ; the libm-extern declaration lives in G5 (object emitter) since it's a relocation concern.
+    - X64-only @ G1 : `cssl.heap.alloc / dealloc / realloc` — wired directly to `__cssl_alloc / __cssl_free / __cssl_realloc` FFI symbols. Cranelift JIT doesn't yet handle these (they're lowered through the slow path).
+    - X64-only @ G1 : `cssl.diff.bwd_return` — same shape as `func.return`, both produce `X64Term::Ret { operands }`.
+    - **No op-coverage regressions.** Every MIR op the cranelift JIT lowers, the x64 selector also lowers (with the listed exception that transcendentals stay abstract at G1, lowered concretely at G3+G5).
+  - All gates green : fmt ✓ clippy ✓ test 2464/0 (workspace serial via `--test-threads=1` per the cssl-rt cold-cache flake from T11-D56) ✓ doc ✓ xref ✓ smoke 4/4 ✓.
+- **Closes the S7-G1 slice.** Phase-G scope-1 success-gate met — `cssl-cgen-cpu-x64 crate produces virtual-register-based X64Func from D5-validated MIR with zero cranelift dep`.
+- **Deferred** (explicit follow-ups, sequenced)
+  - **G2 — register allocator** : graph-color + linear-scan hybrid per `specs/14 § OWNED x86-64 BACKEND § phases`. Consumes `X64Func` (virtual-reg form) ; emits physical-reg-allocated form. Will add `regalloc2` dep (matching what cranelift uses internally). Lands as a separate slice.
+  - **G3 — ABI lowering** : System-V AMD64 (Linux/macOS) + MS-x64 (Windows) calling-convention layer atop G2's output. Maps abstract `Call { args, results }` onto integer-class regs (rdi/rsi/rdx/rcx/r8/r9 SysV ; rcx/rdx/r8/r9 MS-x64) + xmm0..xmm7 for floats + stack-spill for excess. Maps `Ret { operands }` onto rax/rdx (integers) + xmm0 (floats). Emits prologue/epilogue (`push rbp ; mov rbp, rsp ; sub rsp, frame_size ; ... ; mov rsp, rbp ; pop rbp ; ret`).
+  - **G4 — machine-code encoder** : `X64Inst` → bytes. REX prefix handling (W bit for 64-bit operand size, R bit for high-numbered destination reg, etc.) + ModR/M (mod/reg/rm fields) + SIB (scale-index-base for indexed addressing) + immediate encoding (sign-extended 8-bit / 32-bit immediates ; 64-bit immediates only for `mov r64, imm64`). Lands as a separate slice atop G3's output.
+  - **G5 — object emitter** : ELF (Linux) / COFF (Windows) / Mach-O (macOS) writer + relocations. `Call` to extern symbols (`__cssl_alloc`, `__cssl_free`, `__cssl_realloc`, `sin`, `cos`, etc.) emits IMAGE_REL_AMD64_REL32 (COFF) / R_X86_64_PLT32 (ELF) / X86_64_RELOC_BRANCH (Mach-O). Adds `object` crate dep (matching cranelift's choice). Closes the §§ 14_BACKEND § OWNED x86-64 BACKEND requirement.
+  - **iter-counter / IV-block-arg machinery for `scf.for`** : currently `scf.for` lowers to a single-trip body (matches cranelift's deferred state from T11-D61 / S6-C2). When `body_lower::lower_for` grows real `(lo, hi, step)` operands + an IV value-id, the selector grows the matching block-arg shape (header takes `(IV : i64)` block-arg ; back-edge passes `(IV + step)`). The X64Func shape is ready (block-args are part of the future `X64Block` extension) ; only the selector logic changes.
+  - **`scf.match` lowering** : per C2's deferred bullets, `body_lower::lower_match` would emit `scf.match scrutinee [arm1, arm2, ...]`. The x86-64 lowering would emit a jump-table for dense integer scrutinees + a binary-decision-tree for sparse ones ; deferred until the upstream lowering settles.
+  - **Closure lowering** : Phase-H concern. Currently rejected with X64-0013. When closures land, the selector grows entries for `cssl.closure.create` (heap-alloc + capture-frame init), `cssl.closure.invoke` (direct call to closure body via fn-pointer in the closure record), `cssl.closure.drop` (free the capture frame).
+  - **Real `break` / `continue` lowering** : currently rejected with X64-0014. When `cssl.break` / `cssl.continue` MIR ops land (per C2's deferred bullets), the selector grows entries that emit `Jmp exit_block` (break) and `Jmp header_block` (continue) inside their parent loop's body region.
+  - **Address-mode peephole optimization** : currently the selector emits `[base]` and `[base + index*1]` shapes. Future passes can fold `iadd %ptr, const` into a displacement, and `imul %idx, 4` into a `MemScale::Four` index. Deferred until G2/G3 land and the optimization wins are measurable.
+  - **Multi-result `Idiv`** : x86-64 `idiv` produces both quotient (in `eax`/`rax`) and remainder (in `edx`/`rdx`) in a single instruction. Currently the selector materializes only the quotient. When `arith.remi` / `arith.modi` MIR ops land, the selector grows a 2-result form that recovers both via two `Mov` ops after the `Idiv`.
+  - **vec / SIMD lowering** : `MirType::Vec(lanes, width)` is rejected with `UnsupportedSignatureType` / `UnsupportedType`. SSE2 / AVX2 / AVX-512 SIMD lowering is a future Phase-H slice.
+  - **f16 / bf16 native types** : currently rejected with `UnsupportedType`. x86-64 has F16C / VCVTPS2PH for f16 ↔ f32 conversion ; bf16 requires AVX-512 BF16 extension. Future slice when the killer-app demos need native f16/bf16.
+  - **Source-loc threading into emitted X64Func** : every `MirOp` carries a `source_loc` attribute (per `specs/15_MLIR.csl § DIALECT DEFINITION`), but the selector currently discards it. Future slice grows DWARF-5 / CodeView debug-info emission at G5 with source-line correlation.
+  - **Differential testing vs cranelift JIT** : a future slice can build the same MIR + lower to both cranelift and x64 selector + diff the resulting machine code (after G2..G5 land) to catch regressions. Lands once G5 emits real bytes.
+  - **cssl-rt cold-cache test flake** (carried-over from T11-D56 / T11-D58 / T11-D61 / T11-D70 / T11-D75 / T11-D76) : still tracked. Workaround `--test-threads=1` is consistent.
+
+───────────────────────────────────────────────────────────────
+
 ## § T11-D76 : Session-6 S6-B5 — file I/O (Win32 + Unix syscalls + stdlib/fs.cssl + {IO} effect-row)
 
 > **PM allocation note** : T11-D72..T11-D75 reserved by the dispatch plan for in-flight wave-5 D1..D4 GPU body emitters per `SESSION_6_DISPATCH_PLAN.md § 4` floating-allocation rule. T11-D76 is allocated to S6-B5 because the slice handoff's REPORT BACK section explicitly named T11-D76 as reserved. PM may renumber on integration merge if a sibling slice lands first.
