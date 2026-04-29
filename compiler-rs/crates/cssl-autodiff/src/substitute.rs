@@ -39,6 +39,9 @@ use std::collections::HashMap;
 
 use cssl_mir::{FloatWidth, MirFunc, MirOp, MirRegion, MirType, MirValue, ValueId};
 
+use crate::call_dispatch::{
+    marshal_bwd_call_operands, marshal_fwd_call_operands, CalleeVariantTable,
+};
 use crate::rules::{DiffMode, DiffRuleTable, Primitive};
 use crate::walker::{op_to_primitive, specialize_transcendental};
 
@@ -131,7 +134,19 @@ pub fn apply_fwd(
     primal: &MirFunc,
     rules: &DiffRuleTable,
 ) -> (MirFunc, TangentMap, SubstitutionReport) {
-    apply_mode(primal, rules, DiffMode::Fwd)
+    apply_mode(primal, rules, DiffMode::Fwd, None)
+}
+
+/// T11-D140 : forward-mode variant with auto-dispatch of `func.call` to the
+/// callee's `_fwd` variant when present in `callees`. Falls back to the
+/// stage-0 placeholder for non-differentiable callees.
+#[must_use]
+pub fn apply_fwd_with_callees(
+    primal: &MirFunc,
+    rules: &DiffRuleTable,
+    callees: &CalleeVariantTable,
+) -> (MirFunc, TangentMap, SubstitutionReport) {
+    apply_mode(primal, rules, DiffMode::Fwd, Some(callees))
 }
 
 /// Build the reverse-mode variant of `primal`.
@@ -149,7 +164,18 @@ pub fn apply_bwd(
     primal: &MirFunc,
     rules: &DiffRuleTable,
 ) -> (MirFunc, TangentMap, SubstitutionReport) {
-    apply_mode(primal, rules, DiffMode::Bwd)
+    apply_mode(primal, rules, DiffMode::Bwd, None)
+}
+
+/// T11-D140 : reverse-mode variant with auto-dispatch of `func.call` to the
+/// callee's `_bwd` variant.
+#[must_use]
+pub fn apply_bwd_with_callees(
+    primal: &MirFunc,
+    rules: &DiffRuleTable,
+    callees: &CalleeVariantTable,
+) -> (MirFunc, TangentMap, SubstitutionReport) {
+    apply_mode(primal, rules, DiffMode::Bwd, Some(callees))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -160,6 +186,7 @@ fn apply_mode(
     primal: &MirFunc,
     rules: &DiffRuleTable,
     mode: DiffMode,
+    callees: Option<&CalleeVariantTable>,
 ) -> (MirFunc, TangentMap, SubstitutionReport) {
     let mut variant = primal.clone();
     variant.name = format!("{}{}", primal.name, mode.suffix());
@@ -184,11 +211,12 @@ fn apply_mode(
 
     // Apply per-mode substitution to the entry-block ops.
     if mode == DiffMode::Fwd {
-        substitute_fwd(&mut variant, rules, &mut tangent_map, &mut report);
+        substitute_fwd(&mut variant, rules, callees, &mut tangent_map, &mut report);
     } else {
         substitute_bwd(
             &mut variant,
             rules,
+            callees,
             original_param_count,
             &mut tangent_map,
             &mut report,
@@ -361,6 +389,7 @@ fn synthesize_tangent_results(
 fn substitute_fwd(
     variant: &mut MirFunc,
     rules: &DiffRuleTable,
+    callees: Option<&CalleeVariantTable>,
     tangent_map: &mut TangentMap,
     report: &mut SubstitutionReport,
 ) {
@@ -371,12 +400,9 @@ fn substitute_fwd(
     let mut next_id = variant.next_value_id;
     let mut new_ops: Vec<MirOp> = Vec::with_capacity(original_ops.len() * 3);
     for op in original_ops {
-        let primitive = recognize_primitive(&op);
         // T11-D23 : at `func.return %v`, append the tangent of `%v` as an
         // additional return-operand so the fn body returns (primal, tangent)
         // matching the signature synthesized by `synthesize_tangent_results`.
-        // Without this append the fn signature says "2 results" but the body
-        // only returns 1 — making the variant not directly executable.
         if op.name == "func.return" {
             let mut ret_op = op.clone();
             let primal_ret_ids: Vec<ValueId> = op.operands.clone();
@@ -388,49 +414,95 @@ fn substitute_fwd(
             new_ops.push(ret_op);
             continue;
         }
-        new_ops.push(op.clone());
-        if let Some(prim) = primitive {
-            if let Some(rule) = rules.lookup(prim, DiffMode::Fwd) {
-                let emitted =
-                    emit_fwd_tangent_ops(&op, prim, rule.recipe, tangent_map, &mut next_id);
-                report.tangent_ops_emitted = report
-                    .tangent_ops_emitted
-                    .saturating_add(emitted.len() as u32);
-                report.primitives_substituted = report.primitives_substituted.saturating_add(1);
-                new_ops.extend(emitted);
-            } else {
-                report.unsupported_primitives = report.unsupported_primitives.saturating_add(1);
-            }
-        }
-        // Recurse into nested regions (scf.if / scf.for bodies).
-        if let Some(last) = new_ops.last_mut() {
-            for nested in &mut last.regions {
-                substitute_fwd_region(nested, rules, tangent_map, report, &mut next_id);
-            }
-        }
+        emit_fwd_op(
+            &op,
+            rules,
+            callees,
+            tangent_map,
+            report,
+            &mut next_id,
+            &mut new_ops,
+        );
     }
     entry.ops = new_ops;
     variant.next_value_id = next_id;
 }
 
-/// Recurse fwd-substitution into a nested region.
-fn substitute_fwd_region(
-    region: &mut MirRegion,
+/// Forward-mode substitution for a single primal op : appends the cloned
+/// primal op to `new_ops`, then dispatches based on op-shape :
+///   * `func.call` to a `@differentiable` callee  →  rewrite to `<callee>_fwd`
+///     with marshalled dual-args.
+///   * `scf.if`                                    →  recurse into both regions
+///     + stamp a tape-record attribute.
+///   * `scf.for / scf.while / scf.loop`            →  recurse into the body
+///     region + stamp a tape-record attribute.
+///   * any other recognized primitive              →  emit per-rule tangent ops.
+fn emit_fwd_op(
+    op: &MirOp,
     rules: &DiffRuleTable,
+    callees: Option<&CalleeVariantTable>,
     tangent_map: &mut TangentMap,
     report: &mut SubstitutionReport,
     next_id: &mut u32,
+    new_ops: &mut Vec<MirOp>,
 ) {
-    for block in &mut region.blocks {
-        let ops = core::mem::take(&mut block.ops);
-        let mut new_ops: Vec<MirOp> = Vec::with_capacity(ops.len() * 3);
-        for op in ops {
-            let primitive = recognize_primitive(&op);
+    let primitive = recognize_primitive(op);
+    match op.name.as_str() {
+        // ── scf.if : record arm + recurse into both region branches ─────────
+        "scf.if" => {
+            let mut wrapped = op.clone();
+            // Record-mode tape attribute : the bwd-variant pops this to know
+            // which arm was taken on the fwd pass. The arm-index payload is
+            // resolved at runtime ; the AD pass only carries the structural
+            // marker.
+            wrapped = wrapped
+                .with_attribute("diff_role", "tape_record")
+                .with_attribute("diff_branch_kind", "if");
+            for nested in &mut wrapped.regions {
+                substitute_fwd_region(nested, rules, callees, tangent_map, report, next_id);
+            }
+            new_ops.push(wrapped);
+            // The scf.if op is recognized as Primitive::If — count it as
+            // primitive-substituted with 0 emitted ops (the work happened
+            // inside the regions).
+            if let Some(prim) = primitive {
+                if rules.lookup(prim, DiffMode::Fwd).is_some() {
+                    report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+                }
+            }
+        }
+        // ── scf.for / scf.while / scf.loop : record iter-count + recurse ────
+        "scf.for" | "scf.while" | "scf.loop" | "scf.while_loop" => {
+            let mut wrapped = op.clone();
+            wrapped = wrapped
+                .with_attribute("diff_role", "tape_record")
+                .with_attribute("diff_branch_kind", loop_kind_str(&op.name));
+            for nested in &mut wrapped.regions {
+                substitute_fwd_region(nested, rules, callees, tangent_map, report, next_id);
+            }
+            new_ops.push(wrapped);
+            if let Some(prim) = primitive {
+                if rules.lookup(prim, DiffMode::Fwd).is_some() {
+                    report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+                }
+            }
+        }
+        // ── func.call : auto-dispatch to <callee>_fwd if @differentiable ────
+        "func.call" | "cssl.call_indirect" if is_diff_call(op, callees, primitive) => {
+            new_ops.push(op.clone());
+            let emitted = emit_fwd_call_dispatch(op, callees, tangent_map, next_id);
+            report.tangent_ops_emitted = report
+                .tangent_ops_emitted
+                .saturating_add(emitted.len() as u32);
+            report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+            new_ops.extend(emitted);
+        }
+        // ── default : the existing per-primitive emitter ────────────────────
+        _ => {
             new_ops.push(op.clone());
             if let Some(prim) = primitive {
                 if let Some(rule) = rules.lookup(prim, DiffMode::Fwd) {
-                    let emitted =
-                        emit_fwd_tangent_ops(&op, prim, rule.recipe, tangent_map, next_id);
+                    let emitted = emit_fwd_tangent_ops(op, prim, rule.recipe, tangent_map, next_id);
                     report.tangent_ops_emitted = report
                         .tangent_ops_emitted
                         .saturating_add(emitted.len() as u32);
@@ -440,13 +512,158 @@ fn substitute_fwd_region(
                     report.unsupported_primitives = report.unsupported_primitives.saturating_add(1);
                 }
             }
+            // Recurse into any other op-with-region (defensive for nested
+            // structured-CFG that wasn't explicitly named above).
             if let Some(last) = new_ops.last_mut() {
                 for nested in &mut last.regions {
-                    substitute_fwd_region(nested, rules, tangent_map, report, next_id);
+                    substitute_fwd_region(nested, rules, callees, tangent_map, report, next_id);
                 }
             }
         }
+    }
+}
+
+/// Recurse fwd-substitution into a nested region.
+fn substitute_fwd_region(
+    region: &mut MirRegion,
+    rules: &DiffRuleTable,
+    callees: Option<&CalleeVariantTable>,
+    tangent_map: &mut TangentMap,
+    report: &mut SubstitutionReport,
+    next_id: &mut u32,
+) {
+    for block in &mut region.blocks {
+        let ops = core::mem::take(&mut block.ops);
+        let mut new_ops: Vec<MirOp> = Vec::with_capacity(ops.len() * 3);
+        for op in ops {
+            // scf.yield is the structured-CFG terminator — pass through but
+            // append the tangent for any yielded primal value (mirrors the
+            // entry-block func.return treatment in `substitute_fwd`).
+            if op.name == "scf.yield" {
+                let mut yld = op.clone();
+                let primal_ret_ids: Vec<ValueId> = op.operands.clone();
+                for primal_ret in &primal_ret_ids {
+                    if let Some(tangent_id) = tangent_map.get(*primal_ret) {
+                        yld = yld.with_operand(tangent_id);
+                    }
+                }
+                new_ops.push(yld);
+                continue;
+            }
+            emit_fwd_op(
+                &op,
+                rules,
+                callees,
+                tangent_map,
+                report,
+                next_id,
+                &mut new_ops,
+            );
+        }
         block.ops = new_ops;
+    }
+}
+
+/// `true` iff this `func.call` op points at a callee that's in the AD-aware
+/// callee table — i.e., has registered fwd/bwd variants. The transcendentals
+/// (sqrt / sin / cos / exp / log / abs / min / max / sign) are NOT in this
+/// table — they get specialized by [`emit_fwd_tangent_ops`] / [`emit_bwd_adjoint_ops`].
+fn is_diff_call(
+    op: &MirOp,
+    callees: Option<&CalleeVariantTable>,
+    primitive: Option<Primitive>,
+) -> bool {
+    // Only true `Call` (not the transcendental specializations) reaches here.
+    if !matches!(primitive, Some(Primitive::Call)) {
+        return false;
+    }
+    let Some(table) = callees else {
+        return false;
+    };
+    let Some(callee) = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "callee")
+        .map(|(_, v)| v.as_str())
+    else {
+        return false;
+    };
+    table.contains(callee)
+}
+
+/// Emit a `func.call` to `<callee>_fwd` with marshalled `[a, d_a, b, d_b, ...]`
+/// operand interleaving. Returns the emitted ops (just the call op at stage-0).
+/// The primal-result is left in-place (the original cloned `func.call` already
+/// produces it) ; this op produces a fresh `(y, d_y)` tuple — the tangent
+/// value-id is registered in the `tangent_map`.
+fn emit_fwd_call_dispatch(
+    op: &MirOp,
+    callees: Option<&CalleeVariantTable>,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    let Some(table) = callees else {
+        return Vec::new();
+    };
+    let Some(callee) = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "callee")
+        .map(|(_, v)| v.as_str())
+    else {
+        return Vec::new();
+    };
+    let Some(variants) = table.lookup(callee) else {
+        return Vec::new();
+    };
+    let primal_args: Vec<u32> = op.operands.iter().map(|v| v.0).collect();
+    let primal_result_id = match op.results.first() {
+        Some(r) => r.id,
+        None => return Vec::new(),
+    };
+    let result_ty = op
+        .results
+        .first()
+        .map_or_else(default_tangent_ty, |r| r.ty.clone());
+    // Marshal the dual-arg operand list ; the `next_id` bumps reserve fresh
+    // ids for the (y, d_y) results of the fwd-call.
+    let marshal = marshal_fwd_call_operands(
+        &primal_args,
+        |v| tangent_map.get(ValueId(v)).map(|x| x.0),
+        next_id,
+    );
+    // We don't actually need the `marshal.results[0]` (we re-use the existing
+    // primal-result id from the cloned op for downstream chaining) but we
+    // DO need the second slot for the tangent id.
+    let tangent_id = ValueId(marshal.results[1]);
+    tangent_map.insert(primal_result_id, tangent_id);
+    // Build the fwd-call op : carries the ORIGINAL primal-result id alongside
+    // the tangent id (matches the synthesized `(y, d_y)` result tuple).
+    let mut call_op = MirOp::std("func.call")
+        .with_attribute("callee", &variants.fwd)
+        .with_attribute("diff_role", "tangent")
+        .with_attribute("diff_primitive", "call")
+        .with_attribute("primal_callee", callee);
+    for &operand in &marshal.operands {
+        call_op = call_op.with_operand(ValueId(operand));
+    }
+    // First result is the primal y (re-use the existing primal-result id so
+    // downstream ops that reference the primal value still find it) ; second
+    // is the freshly-allocated tangent.
+    call_op = call_op.with_result(primal_result_id, result_ty.clone());
+    call_op = call_op.with_result(tangent_id, result_ty);
+    vec![call_op]
+}
+
+/// Map an scf-loop op-name to its tape-record kind string. Unrecognized
+/// names default to `"for"` (the most-common loop shape) — the tape-replay
+/// walker treats unknown kinds as for-style iter-counts.
+fn loop_kind_str(op_name: &str) -> &'static str {
+    match op_name {
+        "scf.while" | "scf.while_loop" => "while",
+        "scf.loop" => "loop",
+        // "scf.for" + everything else.
+        _ => "for",
     }
 }
 
@@ -952,6 +1169,7 @@ fn emit_sign_fwd(
 fn substitute_bwd(
     variant: &mut MirFunc,
     rules: &DiffRuleTable,
+    callees: Option<&CalleeVariantTable>,
     original_param_count: usize,
     tangent_map: &mut TangentMap,
     report: &mut SubstitutionReport,
@@ -1002,18 +1220,15 @@ fn substitute_bwd(
     // Walk primal ops in REVERSE order. For each recognized primitive, emit
     // adjoint-accumulation ops using the current adjoint-of-result.
     for op in primal_ops.iter_mut().rev() {
-        if let Some(prim) = recognize_primitive(op) {
-            if rules.lookup(prim, DiffMode::Bwd).is_some() {
-                let emitted = emit_bwd_adjoint_ops(op, prim, tangent_map, &mut next_id);
-                report.tangent_ops_emitted = report
-                    .tangent_ops_emitted
-                    .saturating_add(emitted.len() as u32);
-                report.primitives_substituted = report.primitives_substituted.saturating_add(1);
-                bwd_ops.extend(emitted);
-            } else {
-                report.unsupported_primitives = report.unsupported_primitives.saturating_add(1);
-            }
-        }
+        emit_bwd_op(
+            op,
+            rules,
+            callees,
+            tangent_map,
+            report,
+            &mut next_id,
+            &mut bwd_ops,
+        );
     }
 
     // Append a cssl.diff.bwd_return marker summarizing adjoint-outs for the
@@ -1034,13 +1249,221 @@ fn substitute_bwd(
     // `cssl.diff.bwd_return` terminator we just pushed, and leaving it in the
     // middle of the ops list creates a block-terminator mid-stream which
     // breaks JIT execution (cranelift refuses to add insts to a filled block).
+    //
+    // T11-D140 : strip primal scf.if / scf.for / scf.while / scf.loop ops
+    // from the preserved-primal section — `emit_bwd_op` already moves these
+    // into `bwd_ops` with `diff_role=tape_replay` attributes (the bwd-pass
+    // version walks the regions in reverse). Leaving the un-tagged primal
+    // copy ahead of the tagged one would produce a duplicate scf.* op, and
+    // downstream tooling that searches for the tape_replay marker would
+    // find the wrong copy.
     let mut combined: Vec<MirOp> = original_ops
         .into_iter()
-        .filter(|o| o.name != "func.return")
+        .filter(|o| {
+            o.name != "func.return"
+                && o.name != "scf.if"
+                && o.name != "scf.for"
+                && o.name != "scf.while"
+                && o.name != "scf.loop"
+                && o.name != "scf.while_loop"
+        })
         .collect();
     combined.extend(bwd_ops);
     entry.ops = combined;
     variant.next_value_id = next_id;
+}
+
+/// Reverse-mode dispatch for one primal op. Mirrors [`emit_fwd_op`] in shape :
+/// scf.if / scf.for / scf.while / scf.loop recurse into nested regions and
+/// stamp `tape_replay` attributes ; `func.call` to a `@differentiable` callee
+/// is rewritten to `<callee>_bwd` ; everything else falls through to the
+/// existing per-primitive emitter via [`emit_bwd_adjoint_ops`].
+fn emit_bwd_op(
+    op: &mut MirOp,
+    rules: &DiffRuleTable,
+    callees: Option<&CalleeVariantTable>,
+    tangent_map: &mut TangentMap,
+    report: &mut SubstitutionReport,
+    next_id: &mut u32,
+    bwd_ops: &mut Vec<MirOp>,
+) {
+    let primitive = recognize_primitive(op);
+    match op.name.as_str() {
+        // ── scf.if : recurse into both branches in reverse + stamp replay ──
+        "scf.if" => {
+            // The structural cssl.diff.bwd_if marker carries the replay-mode
+            // attribute the tape-replay walker pops to dispatch into the
+            // recorded arm. We walk both regions in reverse to emit per-arm
+            // adjoint accumulation — at runtime only the recorded arm fires,
+            // but compile-time both are present so dispatch can be 1-instr.
+            let mut wrapped = op.clone();
+            wrapped = wrapped
+                .with_attribute("diff_role", "tape_replay")
+                .with_attribute("diff_branch_kind", "if");
+            for nested in &mut wrapped.regions {
+                substitute_bwd_region(nested, rules, callees, tangent_map, report, next_id);
+            }
+            bwd_ops.push(wrapped);
+            if let Some(prim) = primitive {
+                if rules.lookup(prim, DiffMode::Bwd).is_some() {
+                    report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+                }
+            }
+        }
+        // ── scf.for / scf.while / scf.loop : reverse the body ───────────────
+        "scf.for" | "scf.while" | "scf.loop" | "scf.while_loop" => {
+            let mut wrapped = op.clone();
+            wrapped = wrapped
+                .with_attribute("diff_role", "tape_replay")
+                .with_attribute("diff_branch_kind", loop_kind_str(&op.name));
+            for nested in &mut wrapped.regions {
+                substitute_bwd_region(nested, rules, callees, tangent_map, report, next_id);
+            }
+            bwd_ops.push(wrapped);
+            if let Some(prim) = primitive {
+                if rules.lookup(prim, DiffMode::Bwd).is_some() {
+                    report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+                }
+            }
+        }
+        // ── func.call : auto-dispatch to <callee>_bwd if @differentiable ────
+        "func.call" | "cssl.call_indirect" if is_diff_call(op, callees, primitive) => {
+            let emitted = emit_bwd_call_dispatch(op, callees, tangent_map, next_id);
+            report.tangent_ops_emitted = report
+                .tangent_ops_emitted
+                .saturating_add(emitted.len() as u32);
+            report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+            bwd_ops.extend(emitted);
+        }
+        _ => {
+            if let Some(prim) = primitive {
+                if rules.lookup(prim, DiffMode::Bwd).is_some() {
+                    let emitted = emit_bwd_adjoint_ops(op, prim, tangent_map, next_id);
+                    report.tangent_ops_emitted = report
+                        .tangent_ops_emitted
+                        .saturating_add(emitted.len() as u32);
+                    report.primitives_substituted = report.primitives_substituted.saturating_add(1);
+                    bwd_ops.extend(emitted);
+                } else {
+                    report.unsupported_primitives = report.unsupported_primitives.saturating_add(1);
+                }
+            }
+        }
+    }
+}
+
+/// Recurse bwd-substitution into a nested region (scf.if branch / scf.for
+/// body / scf.while body). Walks ops in reverse iteration order and dispatches
+/// through [`emit_bwd_op`].
+fn substitute_bwd_region(
+    region: &mut MirRegion,
+    rules: &DiffRuleTable,
+    callees: Option<&CalleeVariantTable>,
+    tangent_map: &mut TangentMap,
+    report: &mut SubstitutionReport,
+    next_id: &mut u32,
+) {
+    for block in &mut region.blocks {
+        let mut ops = core::mem::take(&mut block.ops);
+        let mut new_ops: Vec<MirOp> = Vec::with_capacity(ops.len() * 2);
+        // Preserve scf.yield ops at the end (they're the structured-CFG
+        // terminators ; we don't strip or duplicate them in bwd).
+        let yield_ops: Vec<MirOp> = ops
+            .iter()
+            .filter(|o| o.name == "scf.yield")
+            .cloned()
+            .collect();
+        // Walk non-yield ops in reverse to emit bwd adjoint accumulation.
+        for op in ops.iter_mut().rev() {
+            if op.name == "scf.yield" {
+                continue;
+            }
+            emit_bwd_op(
+                op,
+                rules,
+                callees,
+                tangent_map,
+                report,
+                next_id,
+                &mut new_ops,
+            );
+        }
+        // Re-append the yield ops at the tail so the structured-CFG
+        // terminator invariant survives the walk.
+        new_ops.extend(yield_ops);
+        block.ops = new_ops;
+    }
+}
+
+/// Emit a `func.call` to `<callee>_bwd` with marshalled `[a, b, ..., d_y]`
+/// operand list. The bwd-callee returns one adjoint per primal float-param ;
+/// each result accumulates into the outer-fn `tangent_map` for the matching
+/// primal arg-id (so chained gradient flow continues seamlessly).
+fn emit_bwd_call_dispatch(
+    op: &MirOp,
+    callees: Option<&CalleeVariantTable>,
+    tangent_map: &mut TangentMap,
+    next_id: &mut u32,
+) -> Vec<MirOp> {
+    let Some(table) = callees else {
+        return Vec::new();
+    };
+    let Some(callee) = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "callee")
+        .map(|(_, v)| v.as_str())
+    else {
+        return Vec::new();
+    };
+    let Some(variants) = table.lookup(callee) else {
+        return Vec::new();
+    };
+    let primal_args: Vec<u32> = op.operands.iter().map(|v| v.0).collect();
+    let primal_result_id = match op.results.first() {
+        Some(r) => r.id,
+        None => return Vec::new(),
+    };
+    let result_ty = op
+        .results
+        .first()
+        .map_or_else(default_tangent_ty, |r| r.ty.clone());
+    let d_y = tangent_or_zero(tangent_map, primal_result_id).0;
+    let n_float_args = primal_args.len();
+    let marshal = marshal_bwd_call_operands(&primal_args, d_y, n_float_args, next_id);
+    // Build the bwd-call op : produces N adjoints (one per primal float param).
+    let mut call_op = MirOp::std("func.call")
+        .with_attribute("callee", &variants.bwd)
+        .with_attribute("diff_role", "adjoint")
+        .with_attribute("diff_primitive", "call")
+        .with_attribute("primal_callee", callee);
+    for &operand in &marshal.operands {
+        call_op = call_op.with_operand(ValueId(operand));
+    }
+    // For each marshalled result, accumulate it into the outer-fn TangentMap
+    // for the matching primal arg-id.
+    let mut emitted: Vec<MirOp> = Vec::new();
+    for (i, &result) in marshal.results.iter().enumerate() {
+        call_op = call_op.with_result(ValueId(result), result_ty.clone());
+        if let Some(&primal_arg) = op.operands.get(i) {
+            // Accumulate : new_d_x = prev_d_x + result
+            let prev = tangent_or_zero(tangent_map, primal_arg);
+            let new_id = fresh_id(next_id);
+            tangent_map.insert(primal_arg, new_id);
+            emitted.push(
+                MirOp::std("arith.addf")
+                    .with_operand(prev)
+                    .with_operand(ValueId(result))
+                    .with_result(new_id, result_ty.clone())
+                    .with_attribute("diff_role", "adjoint")
+                    .with_attribute("diff_primitive", "call")
+                    .with_attribute("primal_callee", callee),
+            );
+        }
+    }
+    let mut out = vec![call_op];
+    out.extend(emitted);
+    out
 }
 
 /// Emit the adjoint-accumulation ops for one primal op under reverse-mode.
