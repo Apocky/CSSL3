@@ -73,7 +73,7 @@
     ⇒ full-coverage cross-review without single-pod-saturation
 
   5-of-5 quality-gate (slice-cannot-merge until-all-true) :
-    G1 : Implementer-self-test green (cargo fmt + clippy + test --test-threads=1)
+    G1 : Implementer-self-test green (cargo fmt + clippy + test)   ← § T11-D153 : default parallelism
     G2 : Reviewer-sign-off (spec-anchor-conformance + API-coherence + invariants)
     G3 : Critic-veto-cleared (veto-flag = FALSE ; failure-fixtures pass)
     G4 : Test-Author-tests-passing (spec-§-coverage = 100% ; cross-pod confirmed)
@@ -505,7 +505,7 @@
   peer-not-servant ; ¬ flattery ; ¬ option-dumping ; ¬ hedging
   PRIME_DIRECTIVE preserved @ every-step
   attestation : "no hurt nor harm" @ every-slice
-  --test-threads=1 @ every-test-run (cssl-rt cold-cache flake)
+  default-parallelism @ every-test-run    ← § T11-D153 : cssl-rt cold-cache flake CLOSED
   per-slice DECISIONS expansion @ merge-time
   §11 CREATOR-ATTESTATION trailer @ every-commit-message
   Q-* = Apocky-resolves ; AI-author-implements-scaffolding
@@ -514,7 +514,7 @@
 § COMMIT-GATE  Phase-J-content (content-heavy + spec-resolution)
   cargo fmt --check
   cargo clippy --workspace --all-targets -- -D warnings
-  cargo test --workspace -- --test-threads=1   # baseline 8330+ → grow
+  cargo test --workspace                       # baseline 8330+ → grow ; § T11-D153 default parallelism
   python scripts/validate_spec_crossrefs.py
   bash scripts/worktree_isolation_smoke.sh
   spec-hole resolution : ∀ Q-marker resolved-by-Apocky-direction

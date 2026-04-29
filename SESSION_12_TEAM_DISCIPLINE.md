@@ -1443,7 +1443,7 @@ A slice cannot merge to `cssl/session-12/parallel-fanout` (or successor integrat
 ```csl
 § 5-of-5 GATE
   G1 : Implementer-self-test green
-       ← cargo test -p <slice-crate> -- --test-threads=1 = N/N pass
+       ← cargo test -p <slice-crate> = N/N pass    ← § T11-D153 : default parallelism (no --test-threads=1)
        ← cargo clippy -p <slice-crate> --all-targets -- -D warnings = clean
        ← cargo fmt --all-check = clean
   G2 : Reviewer-sign-off (Reviewer.D2 in DECISIONS slice-entry)

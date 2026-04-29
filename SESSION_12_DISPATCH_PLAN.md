@@ -24,7 +24,7 @@
 - Peer not servant — no flattery, no option-dumping, no hedging.
 - PRIME_DIRECTIVE preserved at every step ("no hurt nor harm").
 - Failing tests block the commit-gate; iterate until green.
-- `--test-threads=1` is mandatory (cssl-rt cold-cache flake carry-forward from T11-D56).
+- ~~`--test-threads=1` is mandatory (cssl-rt cold-cache flake carry-forward from T11-D56).~~  **RETIRED by T11-D153** (2026-04-29) : the cold-cache flake is FIXED via per-test lock-discipline + poison-tolerant lock acquisition.  Default parallelism (`cargo test --workspace`) is now the supported, well-tested mode.  `--test-threads=1` remains a valid debug-flag for any contributor who wants determinism, but it is no longer mandatory.
 - Per-slice DECISIONS.md expansion is mandatory at merge time.
 - §11 CREATOR-ATTESTATION trailer required in every commit message.
 - **Q-* SPEC-HOLE resolution = Apocky-only**. AI authors implement scaffolding; Apocky decides the content shape.
@@ -43,7 +43,7 @@
 
 **5-of-5 quality gate** (slice cannot merge until ALL true):
 
-1. G1 Implementer self-test green (cargo fmt + clippy + test --test-threads=1)
+1. G1 Implementer self-test green (cargo fmt + clippy + test ; default parallelism per T11-D153)
 2. G2 Reviewer-sign-off (spec-anchor-conformance + API-coherence + invariants ; all-HIGH resolved)
 3. G3 Critic-veto-cleared (veto-flag = FALSE ; failure-fixtures pass)
 4. G4 Test-Author-tests-passing (spec-§-coverage = 100% ; cross-pod-confirmed)
@@ -260,8 +260,9 @@ Mechanical merge conflicts (lib.rs re-export sections, Cargo.toml workspace memb
 cd compiler-rs
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -5
-cargo test --workspace -- --test-threads=1 2>&1 | grep "test result:" | tail -3
-cargo test --workspace -- --test-threads=1 2>&1 | grep "FAILED" | head -3   # must be empty
+# T11-D153 : default parallelism (the cold-cache flake from T11-D56 is FIXED).
+cargo test --workspace 2>&1 | grep "test result:" | tail -3
+cargo test --workspace 2>&1 | grep "FAILED" | head -3   # must be empty
 cargo doc --workspace --no-deps 2>&1 | tail -3
 cd .. && python scripts/validate_spec_crossrefs.py 2>&1 | tail -3
 bash scripts/worktree_isolation_smoke.sh
@@ -275,7 +276,7 @@ git status -> stage intended files -> commit w/ HEREDOC
 git push origin cssl/session-12/<slice-id>
 ```
 
-The `--test-threads=1` requirement and the worktree-isolation smoke gate carry forward from sessions 6 / 7 / 11.
+The worktree-isolation smoke gate carries forward from sessions 6 / 7 / 11.  The `--test-threads=1` requirement was RETIRED by T11-D153 (2026-04-29) ; default-parallelism is now the supported, well-tested mode.
 
 ---
 
@@ -370,7 +371,7 @@ Slice: T11-D<n> — Q-<X> <name>
 Pre-conditions:
   1. M8 acceptance landed AND Apocky-verified (T11-D174).
   2. <slice-specific upstream Q-* deps from PHASE_J_HANDOFF.csl § Q-DAG>
-  3. cd compiler-rs && cargo test --workspace -- --test-threads=1 — ALL PASS.
+  3. cd compiler-rs && cargo test --workspace — ALL PASS.    ← § T11-D153 : default parallelism
 
 Goal: replace `Stub` enum-variant for Q-<X> with the variants
 specified by Apocky's direction document. Preserve scaffold's
@@ -389,7 +390,7 @@ Companion-AI Q-* (Q-D, Q-DD, Q-EE, Q-FF, Q-GG) extra-careful :
 Standing-directives: CSLv3 dense / disk-first / peer-not-servant /
 PRIME_DIRECTIVE preserved.
 
-Commit-gate § 5 — full 9-step list including --test-threads=1.
+Commit-gate § 5 — full 9-step list (default parallelism per T11-D153 ; --test-threads=1 retired).
 
 Commit-message: § T11-D<n> : Q-<X> <name>
 DECISIONS.md entry: T11-D<n> with explicit Q-* cite.
@@ -559,7 +560,7 @@ Every Q-* commit message MUST include a one-line confirmation that this binding 
 4. Load DECISIONS.md tail (any T11-D150..D225 entries committed) ; § META T11-D-RESERVATIONS-V2 = canonical allocation
 5. git branch -a → identify which cssl/session-12/* branches exist + last-commits
 6. git status → identify integration-branch state
-7. cd compiler-rs && cargo test --workspace -- --test-threads=1 2>&1 | tail -5
+7. cd compiler-rs && cargo test --workspace 2>&1 | tail -5    # T11-D153 : default parallelism
 8. Decide: (a) resume in-flight slice / (b) start next in DAG-order /
            (c) integrate completed branches to cssl/session-6/parallel-fanout
 9. PM reports to Apocky: state + proposed-action

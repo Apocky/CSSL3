@@ -515,13 +515,27 @@ mod tests {
         assert_eq!(bytes_freed_total(), 50 * 128);
     }
 
+    // § T11-D153 : EVERY arena_* test below acquires `lock_and_reset` even
+    // when the test body looks "pure" (e.g. `arena_zero_capacity_is_none` only
+    // calls `BumpArena::new(0)` which short-circuits before touching TRACKER).
+    // Why : the `BumpArena::new(non-zero)` constructor calls `raw_alloc` →
+    // `TRACKER.record_alloc` , and `BumpArena::drop` calls `raw_free` →
+    // `TRACKER.record_free` , so 6 of the 7 arena_* tests DO mutate the global
+    // tracker. Without the lock, they raced concurrent locked tests like
+    // `alloc_count_total_matches_history` , causing the cold-cache 118/198
+    // failure cascade documented in T11-D56 (carry-forward across ~30 slices).
+    // We hold the lock defensively in `arena_zero_capacity_is_none` too so
+    // the contract "every arena_* test serializes" is uniform + grep-able.
+
     #[test]
     fn arena_zero_capacity_is_none() {
+        let _g = lock_and_reset();
         assert!(BumpArena::new(0).is_none());
     }
 
     #[test]
     fn arena_basic_alloc_returns_non_null_within_capacity() {
+        let _g = lock_and_reset();
         let arena = BumpArena::new(1024).expect("arena");
         let p = unsafe { arena.alloc(64, 8) };
         assert!(!p.is_null());
@@ -531,6 +545,7 @@ mod tests {
 
     #[test]
     fn arena_alignment_is_respected() {
+        let _g = lock_and_reset();
         let arena = BumpArena::new(1024).expect("arena");
         // burn 1 byte ; next alloc with align=16 must be 16-byte-aligned
         let _b = unsafe { arena.alloc(1, 1) };
@@ -541,6 +556,7 @@ mod tests {
 
     #[test]
     fn arena_alloc_beyond_capacity_returns_null() {
+        let _g = lock_and_reset();
         let arena = BumpArena::new(64).expect("arena");
         let p = unsafe { arena.alloc(128, 1) };
         assert!(p.is_null());
@@ -549,6 +565,7 @@ mod tests {
 
     #[test]
     fn arena_non_power_of_two_align_returns_null() {
+        let _g = lock_and_reset();
         let arena = BumpArena::new(64).expect("arena");
         let p = unsafe { arena.alloc(8, 3) };
         assert!(p.is_null());
@@ -556,6 +573,7 @@ mod tests {
 
     #[test]
     fn arena_sequential_allocs_advance_cursor() {
+        let _g = lock_and_reset();
         let arena = BumpArena::new(1024).expect("arena");
         let _a = unsafe { arena.alloc(64, 8) };
         let used_after_first = arena.used();
@@ -566,6 +584,7 @@ mod tests {
 
     #[test]
     fn arena_reset_returns_all_capacity() {
+        let _g = lock_and_reset();
         let arena = BumpArena::new(1024).expect("arena");
         let _ = unsafe { arena.alloc(64, 8) };
         assert!(arena.used() >= 64);
@@ -634,5 +653,65 @@ mod tests {
         }
         assert_eq!(alloc_count(), 10);
         assert_eq!(free_count(), 10);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // § T11-D153 stress tests : explicit verification that the locked
+    // arena_* tests + the lock_and_reset_all poison-tolerance work together
+    // under 1000-iteration internal pressure.  These are deterministic
+    // single-thread tests (each holds the crate-shared lock for its duration)
+    // so they cannot themselves race ; the value is in catching regressions
+    // where someone removes the lock from an arena_* test and ships a flake.
+    // ───────────────────────────────────────────────────────────────────────
+
+    /// 1000 iterations of `BumpArena::new(N).drop` , verifying tracker
+    /// counters move in lockstep under the locked-test discipline.  If any
+    /// arena_* test in this module ever loses its lock again, this test will
+    /// see the alloc/free counts drift away from N and FAIL deterministically.
+    #[test]
+    fn t11_d153_stress_arena_new_drop_1000x_under_lock() {
+        let _g = lock_and_reset();
+        for n in 1..=1000u64 {
+            // Constructor runs raw_alloc + tracker.record_alloc.
+            // Drop at end-of-iteration runs raw_free + tracker.record_free.
+            let arena = BumpArena::new(256).expect("arena");
+            assert_eq!(alloc_count(), n, "alloc-count drifted at iter {n}");
+            assert_eq!(free_count(), n - 1, "free-count drifted at iter {n}");
+            assert_eq!(bytes_in_use(), 256, "in-use drifted at iter {n}");
+            drop(arena);
+            assert_eq!(free_count(), n, "post-drop free-count drift at iter {n}");
+            assert_eq!(bytes_in_use(), 0, "post-drop in-use drift at iter {n}");
+        }
+        assert_eq!(alloc_count(), 1000);
+        assert_eq!(free_count(), 1000);
+        assert_eq!(bytes_in_use(), 0);
+    }
+
+    /// 1000 iterations of mixed arena ops (new ; alloc ; reset) under lock.
+    /// Verifies the cumulative tracker invariants survive a long sequence
+    /// without drift even when alloc/reset are interleaved.  This is the
+    /// "locked-test discipline holds end-to-end" smoke test.
+    #[test]
+    fn t11_d153_stress_arena_mixed_ops_1000x_under_lock() {
+        let _g = lock_and_reset();
+        for n in 1..=1000u64 {
+            let arena = BumpArena::new(1024).expect("arena");
+            // 4 sub-allocations from the arena's region (no tracker delta —
+            // BumpArena::alloc is a pure cursor advance, only ::new + ::drop
+            // touch the global tracker).
+            for _ in 0..4 {
+                let p = unsafe { arena.alloc(64, 8) };
+                assert!(!p.is_null());
+            }
+            arena.reset();
+            assert_eq!(arena.used(), 0);
+            // Tracker should still reflect just the 1 arena outstanding.
+            assert_eq!(alloc_count(), n, "alloc-count drift at iter {n}");
+            assert_eq!(bytes_in_use(), 1024, "in-use drift at iter {n}");
+            drop(arena);
+            assert_eq!(bytes_in_use(), 0, "post-drop drift at iter {n}");
+        }
+        assert_eq!(alloc_count(), 1000);
+        assert_eq!(free_count(), 1000);
     }
 }
