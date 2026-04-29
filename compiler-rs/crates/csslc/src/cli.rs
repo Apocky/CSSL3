@@ -39,6 +39,10 @@ pub struct BuildArgs {
     pub target: Option<String>,
     pub emit: EmitMode,
     pub opt_level: u8,
+    /// Selected CPU codegen backend. Defaults to [`Backend::Cranelift`]
+    /// (preserves S6-A5 behavior). [`Backend::NativeX64`] dispatches to
+    /// `cssl-cgen-cpu-x64` (S7-G axis).
+    pub backend: Backend,
 }
 
 /// `check` subcommand args.
@@ -120,6 +124,78 @@ impl EmitMode {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § Backend — CPU codegen backend selector (S7-G6, T11-D88)
+// ───────────────────────────────────────────────────────────────────────
+
+/// Which CPU codegen backend `csslc build` should use for object emission.
+///
+/// At S7-G6 dispatch time both backends are always present in the binary
+/// (no feature flag gate). The user picks at invocation time via
+/// `--backend=cranelift` (default) or `--backend=native-x64`. The
+/// trade-off : slightly larger csslc binary vs explicit opt-in. We
+/// preferred runtime-selectable per the dispatch §LANDMINES rule.
+///
+/// § DEFAULT
+///   When `--backend=...` is absent, [`Backend::default_for_build`] returns
+///   [`Backend::Cranelift`], preserving S6-A5 behavior bit-for-bit.
+///
+/// § GPU EMIT MODES
+///   The backend selector applies only to CPU object/exe emission. GPU
+///   emit modes (`--emit=spirv|wgsl|dxil|msl`) are unaffected — they
+///   route through their own per-target codegen crates regardless of
+///   `--backend`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// Cranelift-based CPU codegen via `cssl-cgen-cpu-cranelift` (the
+    /// S6-A3 path). This is the default ; `--backend=cranelift` is
+    /// equivalent to omitting the flag.
+    Cranelift,
+    /// Hand-rolled native x86-64 codegen via `cssl-cgen-cpu-x64`
+    /// (S7-G axis). At G6 dispatch time G1..G5 sibling slices are in
+    /// flight ; the surface is canonical but the body returns
+    /// [`cssl_cgen_cpu_x64::NativeX64Error::BackendNotYetLanded`] until
+    /// G1..G5 land. Once they land, this path produces a runnable
+    /// hello.exe via the hand-rolled pipeline (the second hello.exe = 42
+    /// milestone, complementing the S6-A5 cranelift first).
+    NativeX64,
+}
+
+impl Backend {
+    /// Default backend for `build` when `--backend=...` is absent.
+    /// Preserves S6-A5 behavior.
+    #[must_use]
+    pub const fn default_for_build() -> Self {
+        Self::Cranelift
+    }
+
+    /// Parse the `--backend=<name>` argument value. Accepts canonical
+    /// names plus a hyphen-vs-underscore tolerance for `native-x64` /
+    /// `native_x64` so users don't get tripped up.
+    ///
+    /// # Errors
+    /// Returns an error description if `s` doesn't match a known backend.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "cranelift" | "clift" => Ok(Self::Cranelift),
+            "native-x64" | "native_x64" | "nativex64" | "x64" => Ok(Self::NativeX64),
+            other => Err(format!(
+                "unknown --backend value '{other}' \
+                 (expected one of : cranelift | native-x64)"
+            )),
+        }
+    }
+
+    /// Stable label for this backend, used in build-log output.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cranelift => "cranelift",
+            Self::NativeX64 => "native-x64",
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § parse — main entry-point
 // ───────────────────────────────────────────────────────────────────────
 
@@ -181,6 +257,7 @@ fn parse_build(args: &[String]) -> Result<BuildArgs, String> {
     let mut target: Option<String> = None;
     let mut emit: Option<EmitMode> = None;
     let mut opt_level: u8 = 0;
+    let mut backend: Option<Backend> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -212,6 +289,10 @@ fn parse_build(args: &[String]) -> Result<BuildArgs, String> {
                     return Err(format!("--opt-level must be 0..=3 (got {opt_level})"));
                 }
             }
+            s if s.starts_with("--backend=") => {
+                let v = s.trim_start_matches("--backend=");
+                backend = Some(Backend::parse(v)?);
+            }
             s if s.starts_with('-') => {
                 return Err(format!("unknown flag '{s}' for 'build' subcommand"));
             }
@@ -237,6 +318,7 @@ fn parse_build(args: &[String]) -> Result<BuildArgs, String> {
         target,
         emit: emit.unwrap_or_else(EmitMode::default_for_build),
         opt_level,
+        backend: backend.unwrap_or_else(Backend::default_for_build),
     })
 }
 
@@ -321,9 +403,11 @@ pub fn usage() -> String {
        --target=<triple>        Rust-style target triple (e.g., x86_64-pc-windows-msvc)\n\
        --emit=<mode>            mlir | spirv | wgsl | dxil | msl | object | exe\n\
        --opt-level=N            optimization level 0..=3 (default 0)\n\
+       --backend=<name>         CPU codegen backend : cranelift (default) | native-x64\n\
      \n\
      EXAMPLES\n\
        csslc build hello.cssl -o hello.exe\n\
+       csslc build hello.cssl -o hello.exe --backend=native-x64\n\
        csslc check stage1/hello_world.cssl\n\
        csslc emit-mlir scene.cssl > scene.mlir\n\
      "
@@ -386,6 +470,8 @@ mod tests {
                 assert_eq!(args.output, None);
                 assert_eq!(args.emit, EmitMode::Exe);
                 assert_eq!(args.opt_level, 0);
+                // S7-G6 : default backend preserves S6-A5 behavior.
+                assert_eq!(args.backend, Backend::Cranelift);
             }
             other => panic!("expected Build, got {other:?}"),
         }
@@ -548,6 +634,91 @@ mod tests {
         assert_eq!(EmitMode::parse("executable").unwrap(), EmitMode::Exe);
     }
 
+    // ───────────────────────────────────────────────────────────────────
+    // § S7-G6 — Backend selector tests
+    // ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn backend_default_is_cranelift() {
+        // S7-G6 contract : absence of --backend preserves S6-A5 behavior.
+        assert_eq!(Backend::default_for_build(), Backend::Cranelift);
+    }
+
+    #[test]
+    fn backend_parses_canonical_strings() {
+        assert_eq!(Backend::parse("cranelift").unwrap(), Backend::Cranelift);
+        assert_eq!(Backend::parse("clift").unwrap(), Backend::Cranelift);
+        assert_eq!(Backend::parse("native-x64").unwrap(), Backend::NativeX64);
+        assert_eq!(Backend::parse("native_x64").unwrap(), Backend::NativeX64);
+        assert_eq!(Backend::parse("nativex64").unwrap(), Backend::NativeX64);
+        assert_eq!(Backend::parse("x64").unwrap(), Backend::NativeX64);
+    }
+
+    #[test]
+    fn backend_parses_unknown_returns_error() {
+        let e = Backend::parse("llvm").unwrap_err();
+        assert!(e.contains("unknown --backend"));
+        assert!(e.contains("cranelift"));
+        assert!(e.contains("native-x64"));
+    }
+
+    #[test]
+    fn backend_label_canonical() {
+        assert_eq!(Backend::Cranelift.label(), "cranelift");
+        assert_eq!(Backend::NativeX64.label(), "native-x64");
+    }
+
+    #[test]
+    fn build_with_backend_cranelift_explicit() {
+        let cmd = parse(&argv(&["build", "hello.cssl", "--backend=cranelift"])).unwrap();
+        match cmd {
+            Command::Build(args) => assert_eq!(args.backend, Backend::Cranelift),
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_with_backend_native_x64() {
+        let cmd = parse(&argv(&["build", "hello.cssl", "--backend=native-x64"])).unwrap();
+        match cmd {
+            Command::Build(args) => assert_eq!(args.backend, Backend::NativeX64),
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_with_unknown_backend_returns_error() {
+        let r = parse(&argv(&["build", "hello.cssl", "--backend=llvm"]));
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("unknown --backend"));
+    }
+
+    #[test]
+    fn build_backend_combines_with_other_flags() {
+        // Verify --backend composes cleanly with -o + --emit + --opt-level
+        // (the S7-G6 happy path users will type).
+        let cmd = parse(&argv(&[
+            "build",
+            "hello.cssl",
+            "-o",
+            "hello.exe",
+            "--emit=exe",
+            "--opt-level=2",
+            "--backend=native-x64",
+        ]))
+        .unwrap();
+        match cmd {
+            Command::Build(args) => {
+                assert_eq!(args.input, PathBuf::from("hello.cssl"));
+                assert_eq!(args.output, Some(PathBuf::from("hello.exe")));
+                assert_eq!(args.emit, EmitMode::Exe);
+                assert_eq!(args.opt_level, 2);
+                assert_eq!(args.backend, Backend::NativeX64);
+            }
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
     #[test]
     fn usage_text_mentions_all_subcommands() {
         let u = usage();
@@ -563,5 +734,15 @@ mod tests {
         ] {
             assert!(u.contains(s), "usage missing subcommand '{s}'");
         }
+        // S7-G6 : usage advertises the new --backend flag + both backends.
+        assert!(u.contains("--backend"), "usage missing --backend flag");
+        assert!(
+            u.contains("cranelift"),
+            "usage missing cranelift backend name"
+        );
+        assert!(
+            u.contains("native-x64"),
+            "usage missing native-x64 backend name"
+        );
     }
 }

@@ -17,6 +17,7 @@ cssl-autodiff           = { path = "../cssl-autodiff" }
 cssl-smt                = { path = "../cssl-smt" }
 cssl-telemetry          = { path = "../cssl-telemetry" }
 cssl-cgen-cpu-cranelift = { path = "../cssl-cgen-cpu-cranelift" }
+cssl-cgen-cpu-x64       = { path = "../cssl-cgen-cpu-x64" }
 csslc                   = { path = "../csslc" }
 
 [lints]
