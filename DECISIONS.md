@@ -5036,3 +5036,110 @@ Each decision entry :
   - **Destructuring let-bindings in `local_vars`** : `let (a, b) = pair` only binds `Binding`-kind patterns at stage-0. Tuple / struct / variant destructuring needs MIR-side deconstruction lowering first.
 
 ───────────────────────────────────────────────────────────────
+
+## § T11-D85 : Session-7 S7-G3 — Native x86-64 backend (ABI / calling-convention lowering layer)
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 7 — Phase-G owned-x86-64 backend, slice 3 (ABI lowering, foundational for G4+ instruction-selection / regalloc / emit slices)
+- **Branch** `cssl/session-7/G3` (based on `cssl/session-7/G1` which is currently `parallel-fanout` tip = `df1daf5`. G2 was reserved by the dispatch plan but not shipped before G3 ; G3 lands as the FIRST native x86-64 contribution per the slice handoff fall-back rule.)
+- **Context** Per `specs/14_BACKEND.csl § OWNED x86-64 BACKEND § ABI` and `specs/07_CODEGEN.csl § CPU BACKEND — stage1+ § ABI`, the bespoke x86-64 backend replaces the stage-0 Cranelift path. This slice is the FIRST piece — the ABI / calling-convention lowering tables. Two ABIs are supported : System V AMD64 (Linux + macOS-Intel + BSD) and Microsoft x64 (Windows-MSVC + Windows-GNU). Apocky's host is Windows so MS-x64 is the integration-tested path ; System V is structurally tested on the same Windows host (the tables are platform-independent data — only the host-default helper consults `cfg!(target_os)`).
+
+- **Authoritative ABI tables (CANONICAL — REPRODUCED HERE FOR PERMANENT REFERENCE)**
+
+  ```text
+  ┌──────────────────────┬─────────────────────────────┬─────────────────────────────┐
+  │ aspect               │ System V AMD64              │ Microsoft x64 (MS-x64)      │
+  ├──────────────────────┼─────────────────────────────┼─────────────────────────────┤
+  │ targets              │ Linux + macOS-Intel + BSD   │ Windows-MSVC + Windows-GNU  │
+  │ int  arg-regs        │ rdi rsi rdx rcx r8 r9       │ rcx rdx r8 r9               │
+  │ float arg-regs       │ xmm0..xmm7                  │ xmm0..xmm3                  │
+  │ alias int↔float pos? │ NO  (independent counters)  │ YES (positional alias)      │
+  │ stack overflow dir   │ right-to-left, pushed       │ right-to-left, stored       │
+  │ return int           │ rax                         │ rax                         │
+  │ return float         │ xmm0                        │ xmm0                        │
+  │ caller-saved (int)   │ rax rcx rdx rsi rdi r8..r11 │ rax rcx rdx r8..r11         │
+  │ caller-saved (xmm)   │ xmm0..xmm15                 │ xmm0..xmm5                  │
+  │ callee-saved (int)   │ rbx rbp r12..r15            │ rbx rbp rdi rsi r12..r15    │
+  │ callee-saved (xmm)   │ NONE                        │ xmm6..xmm15                 │
+  │ shadow space         │ NONE                        │ 32 bytes (caller alloc)     │
+  │ stack align @ call   │ 16 bytes                    │ 16 bytes                    │
+  │ red-zone             │ 128 bytes below rsp         │ NONE                        │
+  │ stack-cleanup        │ caller cleans               │ caller cleans               │
+  │ struct return ≤ 16B  │ rax+rdx (deferred at G3)    │ rax    (deferred at G3)     │
+  │ struct return > 16B  │ hidden ptr arg (deferred)   │ hidden ptr arg (deferred)   │
+  │ variadic             │ al = #vector-regs used      │ first 4 reg + rest stack    │
+  │                      │   (REJECTED at G3)          │   (REJECTED at G3)          │
+  └──────────────────────┴─────────────────────────────┴─────────────────────────────┘
+  ```
+
+  References :
+  - System V AMD64 ABI v1.0 (<https://gitlab.com/x86-psABIs/x86-64-ABI>)
+  - Microsoft x64 calling convention (<https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention>)
+
+- **The MS-x64 positional-alias landmine (CRITICAL)**
+
+  On MS-x64 a 3-arg fn `(i64, f64, i64)` places arg 0 in `rcx`, arg 1 in `xmm1` (NOT `xmm0` !), and arg 2 in `r8`. The xmm number tracks the *positional* slot — int + float arg counters share a single positional counter. On System V the same fn places arg 0 in `rdi`, arg 1 in `xmm0` (independent counter), arg 2 in `rsi`. The `X64Abi::shares_positional_arg_counter()` predicate disambiguates, and the `lower_call_int_float_int_ms_x64_uses_rcx_xmm1_r8` regression test guards against accidental int-counter-only fall-back. Renaming this rule or the predicate is a major-version-bump event — downstream regalloc relies on the positional indexing.
+
+- **Slice landed (this commit)** — ~1290 net LOC across 3 new files (1 Cargo.toml + 2 Rust source) + 1 DECISIONS entry + 67 new tests
+  - **`crates/cssl-cgen-cpu-x64/Cargo.toml`** (new) — registers the new workspace member. ZERO-RUNTIME-DEPS surface ; only `thiserror` (workspace dep, already present at the top-level Cargo.toml). The crate's stage-1+ trajectory per `specs/14_BACKEND.csl § OWNED x86-64 BACKEND` is captured in the doc-block.
+  - **`crates/cssl-cgen-cpu-x64/src/lib.rs`** (new, ~75 LOC including doc-block + 1 scaffold-version test) — top-level module exporting `abi` + `lower` modules with `pub use` re-exports for the canonical surface. Module doc-block reproduces the ABI table and the deferred-feature list. Standard `#![forbid(unsafe_code)]` + lint-attrs match sibling cgen crates.
+  - **`crates/cssl-cgen-cpu-x64/src/abi.rs`** (new, ~700 LOC including doc-block + 39 tests) — ABI tables + register classes. Defines :
+    - **`pub enum X64Abi { SystemV, MicrosoftX64 }`** — top-level discriminant. Methods : `as_str()` / `int_arg_reg_count()` / `float_arg_reg_count()` / `shares_positional_arg_counter()` / `shadow_space_bytes()` / `call_boundary_alignment()` / `allows_red_zone()` / `int_arg_regs()` / `float_arg_regs()` / `caller_saved_gp()` / `caller_saved_xmm()` / `callee_saved_gp()` / `callee_saved_xmm()` / `host_default()`.
+    - **`pub enum GpReg`** — 64-bit GP registers (Rax..R15) with canonical Intel encoding 0..15.
+    - **`pub enum XmmReg`** — 128-bit XMM registers (Xmm0..Xmm15) with encoding 0..15.
+    - **`pub enum ArgClass { Int, Float }`** — abstract arg classification (G3 scalar-only ; aggregate classes deferred).
+    - **`pub struct IntArgRegs(pub &'static [GpReg])` / `pub struct FloatArgRegs(pub &'static [XmmReg])`** — newtype wrappers with `len()` / `is_empty()` / `get(idx)` accessors.
+    - **`pub enum ReturnReg { Int(GpReg), Float(XmmReg), Void }`** — return-value classification with `for_class(abi, class)` resolver.
+    - **`pub enum AbiError { VariadicNotSupported, StructReturnNotSupported, StackAlignmentViolation }`** — diagnostic error variants for deferred features + invariant violations.
+    - **`pub const CALL_BOUNDARY_ALIGNMENT: u32 = 16`** — STABLE invariant from G3.
+    - **`pub const MS_X64_SHADOW_SPACE: u32 = 32`** — STABLE invariant from G3.
+    - Internal const tables : `SYSV_INT_ARG_REGS` / `SYSV_FLOAT_ARG_REGS` / `SYSV_CALLER_SAVED_GP` / `SYSV_CALLER_SAVED_XMM` / `SYSV_CALLEE_SAVED_GP` / `SYSV_CALLEE_SAVED_XMM` + the MS-x64 quintet.
+  - **`crates/cssl-cgen-cpu-x64/src/lower.rs`** (new, ~620 LOC including doc-block + 27 tests) — the lowering passes. Defines :
+    - **`pub enum AbstractInsn`** — high-level instruction-shape (`MovGpGp` / `MovXmmXmm` / `Push` / `Pop` / `SubRsp` / `AddRsp` / `StoreGpToStackArg` / `StoreXmmToStackArg` / `Call { target: String }` / `Ret`). Each variant maps to exactly one x86-64 machine instruction at emit-time ; ModR/M encoding is a separate emit.rs concern.
+    - **`pub struct StackSlot { class, offset }`** — overflow argument stack location.
+    - **`pub struct CallSiteLayout { abi, int_reg_assignments, float_reg_assignments, stack_slots, stack_args_bytes, shadow_space_bytes, total_stack_alloc_bytes }`** — pre-emit summary of how each arg of a call site is dispatched.
+    - **`pub struct FunctionLayout { abi, local_frame_bytes, callee_saved_gp_used, callee_saved_xmm_used }`** — input to prologue / epilogue lowering.
+    - **`pub enum CalleeSavedSlot { Pushed { gp }, XmmSpilled { xmm, offset } }`** — descriptor for a callee-saved spill slot.
+    - **`pub struct LoweredCall { abi, layout, insns, return_reg, final_rsp_delta }`** / **`pub struct LoweredReturn`** / **`pub struct LoweredPrologue`** / **`pub struct LoweredEpilogue`** — output structs carrying the abstract-insn sequence.
+    - **`pub fn lower_call(target, args, ret_class, abi) -> Result<LoweredCall, AbiError>`** — main call-lowering entry point.
+    - **`pub fn lower_return(ret_class, abi) -> LoweredReturn`** — return-value placement + ret.
+    - **`pub fn lower_prologue(layout) -> LoweredPrologue`** — `push rbp ; mov rbp, rsp ; sub rsp, frame ; push <callee-saved-used>` with 16-byte alignment fixup.
+    - **`pub fn lower_epilogue(layout) -> LoweredEpilogue`** + **`pub fn lower_epilogue_for(layout, prologue)`** — reverse of prologue.
+    - **`pub fn classify_call_args(args, abi) -> CallSiteLayout`** — internal helper that maps positional args → regs/stack with shadow-space + 16-byte alignment fixup baked in. **The MS-x64 positional-counter alias rule + System-V independent-counter rule live here.**
+
+- **The capability claim**
+  - Source-shape : a C-style call `foo(a : i64, b : f64, c : i64) -> i64` lowers via `lower_call("foo", &[Int, Float, Int], Some(Int), abi)` to a sequence of abstract-insns parameterized by ABI.
+  - Pipeline : `lower_call` → `classify_call_args` (the heart of the ABI dispatch) → emit `SubRsp` + `Store{Gp,Xmm}ToStackArg` + `Call { target }` + `AddRsp` → return `LoweredCall { return_reg, final_rsp_delta, ... }`. The 16-byte stack alignment invariant holds at every emitted call boundary (verified by `call_boundary_alignment_holds_after_classify` for arities 0..12 across both ABIs).
+  - Runtime : 67 cssl-cgen-cpu-x64 tests pass on Apocky's Windows host : 39 ABI-table tests covering reg-counts + canonical-order + shadow-space + alignment + red-zone + caller/callee-saved disjointness + the MS-x64 callee-saved-rdi/rsi landmine + return-reg consistency + GpReg/XmmReg encodings ; 27 lower.rs tests covering register-only assignment + overflow-to-stack + mixed int/float dispatch (the SysV independent-counter rule + the MS-x64 positional-alias rule) + return-value placement + prologue/epilogue alignment + the MS-x64 32-byte-shadow-space-always invariant ; 1 scaffold-version test.
+  - **First time a CSSLv3 native x86-64 ABI table exists in source.** The bespoke trajectory per `specs/14_BACKEND.csl` now has its first piece — the ABI surface that subsequent G4+ slices (instruction selection, register allocation, machine-code emission, object-file writing) build atop.
+
+- **Consequences**
+  - Test count : 2380 → 2447 (+67 new tests in the cssl-cgen-cpu-x64 crate). Workspace baseline preserved (full-serial run via `--test-threads=1` per the cssl-rt cold-cache flake convention from T11-D56).
+  - **The cssl-cgen-cpu-cranelift `Abi` / `ObjectFormat` enums are now SIBLING types to cssl-cgen-cpu-x64's `X64Abi`**, NOT replacements. Cranelift continues to be the stage-0 path ; cssl-cgen-cpu-x64 is the stage-1+ path. They will coexist until stage-1 self-host lands.
+  - **`X64Abi`, `GpReg`, `XmmReg`, `ArgClass`, `ReturnReg`, `AbiError`, `CALL_BOUNDARY_ALIGNMENT`, `MS_X64_SHADOW_SPACE` are STABLE PUBLIC SURFACE from G3.** Renaming any of these requires a follow-up DECISIONS sub-entry per dispatch-plan § 3 escalation #4. The `AbstractInsn` enum is also stable but expected to GROW (new variants for arithmetic / memory / branch as G4+ slices land) ; new variants are non-breaking for existing call-sites.
+  - **The 16-byte stack-alignment invariant is enforced unconditionally at the layout level.** `classify_call_args` always rounds the total stack alloc up to a multiple of 16 ; `lower_prologue` does the same for the local-frame computation accounting for callee-saved-GP push pressure. The `is_call_boundary_aligned()` predicate on `CallSiteLayout` is the canonical post-condition check.
+  - **The MS-x64 32-byte shadow space is enforced unconditionally** even for zero-arg calls (`ms_x64_zero_arg_call_still_allocates_thirty_two_byte_shadow` regression test). This is the most-cited ABI landmine and accidentally omitting it produces silent stack-corruption on Windows ; the unconditional alloc is the safest stage-1 default.
+  - **`AbiError::VariadicNotSupported` + `AbiError::StructReturnNotSupported` are STABLE diagnostic codes from G3.** They fire when call sites attempt deferred ABI features ; the lowering layer rejects + the upstream caller decides whether to fall back to the Cranelift path or surface a typecheck error.
+  - **No new workspace deps.** `thiserror` was already a workspace dep. The cssl-cgen-cpu-x64 crate adds zero new third-party crates to the dep graph.
+  - All gates green : fmt ✓ clippy (workspace) ✓ test 2447/0 ✓ doc ✓ xref ✓ smoke 4/4 ✓.
+
+- **Closes the S7-G3 slice.** The ABI lowering layer is the foundation atop which subsequent G-axis slices build : G4 (instruction selection from MIR ops to AbstractInsn sequences), G5 (register allocation that consumes IntArgRegs / FloatArgRegs / caller-saved / callee-saved tables), G6 (machine-code emission from AbstractInsn → bytes via ModR/M encoder), G7 (object-file writing via cranelift-object or owned writer for ELF + COFF + Mach-O).
+
+- **Deferred** (explicit follow-ups, sequenced)
+  - **Variadic call lowering** — currently `AbiError::VariadicNotSupported` is the rejection path. SysV requires `al = #vector-regs-used` — the va_arg-walking code lives in cssl-rt + the ABI layer needs a `lower_call_variadic` entry point that emits the `mov al, <count>` immediate before the `Call { target }`. MS-x64 requires float args to be DUAL-allocated to int regs (e.g., `(i32, f64)` puts the f64 in BOTH `xmm1` AND `rdx`). Estimated scope : ~200 LOC + 15 tests. Lands when a variadic-aware MIR op surfaces.
+  - **Large-struct return via hidden first-arg pointer** — currently `AbiError::StructReturnNotSupported` is the rejection path. SysV classifies struct-return ≤ 16 bytes via the SysV classification algorithm (`MEMORY` / `INTEGER` / `SSE` per-eightbyte) and packs into rax+rdx ; > 16 bytes uses a hidden first-arg pointer. MS-x64 returns ≤ 8 bytes in rax ; > 8 bytes via hidden first-arg pointer. Both shapes require the regalloc layer to thread the hidden pointer through the call site. Lands when struct-types in MIR signatures are stable + a downstream consumer needs them.
+  - **Aggregate ArgClass variants** — currently `ArgClass::{Int, Float}` ; SysV's `MEMORY` / `INTEGER` / `SSE` / `SSEUP` / `X87` / `X87UP` / `COMPLEX_X87` / `NO_CLASS` per-eightbyte classification algorithm (per § 3.2.3 of the SysV AMD64 ABI v1.0) requires expansion to `ArgClass::Memory` + `ArgClass::Sse` + `ArgClass::SseUp` etc. for 16+ byte struct lowering. Forward-compat work ; the MS-x64 path mostly uses memory-by-value for structs (simpler). Lands alongside the struct-return slice.
+  - **Red-zone optimization** — System V allows 128-byte red-zone below `rsp` for leaf functions (no-call + frame ≤ 128 bytes). G3 conservatively reserves stack always ; a future opt slice can flip the leaf-fn flag to skip prologue/epilogue when no calls + no stack-frame alloc are present. The `X64Abi::allows_red_zone()` predicate is already in place ; the consumer is the prologue/epilogue lowering. Estimated : ~50 LOC + 5 tests. Lands as a G7 perf-opt slice once the call-graph knowledge is plumbed (leaf-fn detection).
+  - **Frame-pointer omit** — G3 always emits `push rbp ; mov rbp, rsp`. A future opt slice can omit when `frame_size == 0 ∧ no_calls ∧ no_alloca`. Same constraint as red-zone (requires call-graph knowledge). Lands as a G7 perf-opt slice. The DWARF-5 + CodeView debug-info impact is documented at `specs/07_CODEGEN.csl § CPU BACKEND § debug-info` ; FP-omit reduces frame-pointer-walking on stack traces, so the opt is gated behind a `--fno-omit-frame-pointer` style knob for debug builds.
+  - **XMM callee-saved RESTORE in epilogue** — currently `lower_epilogue` emits the GP `pop`s in reverse order but does NOT emit the XMM restores from `[rsp + offset]` slots. The load opcode would be `MovXmmFromStackArg` (parallel to the existing `StoreXmmToStackArg`). Lands with the full memref-load lowering slice in G4 since the same emit path is needed for general XMM stack-loads.
+  - **Real cssl-mir `Call` / `Ret` op recognizer** — currently `lower_call` takes raw `(target, &[ArgClass], Option<ArgClass>, X64Abi)` ; the upstream slice that consumes this surface translates `cssl.func.call` / `cssl.func.return` MIR ops into the right shape. Estimated : ~150 LOC in cssl-mir + ~30 tests. Lands as G4-slice-A (MIR-op-to-AbstractInsn lowering).
+  - **`X64Abi::DarwinAmd64` variant** — at G3 the `X64Abi` enum has only `SystemV` + `MicrosoftX64`. Darwin-AMD64 uses SysV + Apple-extensions (different `__attribute__((preserve_all))` defaults, different exception-handling personality routines, different TLS encoding). Lands when macOS-Intel CI runner becomes available + the host-fanout slice catches a Darwin-specific divergence.
+  - **`X64Abi::WindowsGnu` variant** — at G3 we treat MS-x64 as a single ABI for both MSVC and GNU Windows targets (mingw-w64 follows MS-x64 with minor LDP / unwind-info differences). If the unwind-info divergence becomes load-bearing — likely once SEH `.pdata` / `.xdata` emission lands in G7 — split the discriminant. Until then the single discriminant stays.
+  - **AVX2 / AVX-512 register classes** — currently `XmmReg` is the only SIMD register class. AVX2 introduces 256-bit `YmmReg` (alias of XMM lower-half) ; AVX-512 introduces 512-bit `ZmmReg` (alias of YMM lower-half) + 8 mask registers `K0..K7`. Per `specs/07_CODEGEN.csl § CPU BACKEND § SIMD` these are stage-1+ runtime-CPU-dispatched. Lands when SIMD body lowering lands (S7-H slice, deferred at G3).
+  - **Stack-alignment runtime check** — currently `AbiError::StackAlignmentViolation` is defined but unused in production paths (only the `is_call_boundary_aligned()` predicate is consumed at test-time). A debug-build runtime stack-alignment check via `test rsp, 0xF ; jnz alignment_trap` instructions is cheap insurance for early G4..G7 development. Lands as a debug-build-only hook in G6 (machine-code emission).
+  - **Per-platform stack probe (Windows MS-x64)** — for stack frames > 4 KB Windows requires a stack probe (`__chkstk` call to walk pages and avoid guard-page misses). G3 emits no probes ; the `lower_prologue` impl rejects nothing but produces incorrect code on Windows for large local frames. The fix is to emit a `Call { target: "__chkstk" }` before the `SubRsp` when `total_frame_bytes > 4096`. Lands as a Windows-targeting follow-up slice.
+  - **Source-loc threading** — every `MirOp` carries a `source_loc` attribute (per `specs/15_MLIR.csl § DIALECT DEFINITION`), but the AbstractInsn variants currently discard it. Future slice grows source-loc fields on each AbstractInsn variant so DWARF-5 / CodeView line-table emission (G7) can correlate emitted bytes back to CSSLv3 source.
+  - **cssl-rt cold-cache test flake** (carried-over from T11-D56) : `cargo test --workspace` still occasionally trips the cssl-rt tracker statics under high-parallelism cold-cache. `--test-threads=1` is consistent. Workaround documented ; root-cause fix deferred to a Phase-B follow-up. **This slice does not introduce new flakes** — the cssl-cgen-cpu-x64 tests are pure-data with no global statics.
+
+───────────────────────────────────────────────────────────────
