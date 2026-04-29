@@ -570,6 +570,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-gaze-collapse"
+version = "0.1.0"
+dependencies = [
+ "cssl-ifc",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-hdc"
 version = "0.1.0"
 

@@ -1,0 +1,36 @@
+[package]
+name                   = "cssl-gaze-collapse"
+description            = "CSSLv3 stage0 — Gaze-reactive observation-collapse pass (Stage-2 of canonical render-pipeline ; biometric IFC + saccadic prediction ; on-device only)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D120 (W4-06) — Stage-2 of the canonical render-pipeline declared in
+# Omniverse/07_AESTHETIC/06_RENDERING_PIPELINE.csl § STAGE 2.
+#
+# Eye-tracking → fovea-mask + KAN-detail-budget + collapse-bias-vector. The
+# crate is the implementation of novelty-path V.4 (Gaze-Reactive Observation
+# Collapse) from 07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.4.
+#
+# § PRIME-DIRECTIVE §1 anti-surveillance compile-time enforcement
+#   The `GazeInput` struct + the entire crate's per-eye gaze-data path is
+#   wrapped in `cssl_ifc::LabeledValue<_>` carrying `SensitiveDomain::Gaze`
+#   throughout. Any attempt to flow a gaze-bearing value to telemetry is a
+#   compile-error per cssl-ifc's structural egress-gate (T11-D132). No
+#   `Privilege<*>` capability can override this. See `attestation.rs` for
+#   the §1-anti-surveillance attestation block.
+#
+# § Saccadic-prediction
+#   The `SaccadePredictor` is an EKF + Conv-LSTM hybrid that predicts
+#   gaze-target N ms ahead so the renderer can hide saccadic-suppression
+#   flicker during blinks. All state is thread-local + per-frame-purged
+#   (no cross-session retention).
+[dependencies]
+cssl-ifc                            = { path = "../cssl-ifc" }
+thiserror                           = { workspace = true }
+smallvec                            = { workspace = true }
+
+[lints]
+workspace = true
