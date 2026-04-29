@@ -793,6 +793,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-kan"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-hdc",
+ "cssl-pga",
+ "smallvec",
+]
+
+[[package]]
 name = "cssl-substrate-omega-step"
 version = "0.1.0"
 dependencies = [

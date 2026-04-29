@@ -1,0 +1,28 @@
+[package]
+name                   = "cssl-substrate-kan"
+description            = "CSSLv3 — KAN substrate runtime : KanNetwork + KanGenomeWeights + KanMaterial (multi-variant) + Pattern + AppendOnlyPool<Pattern> + Handle<Phi>. Φ-pattern-pool + 256-bit-blake3 fingerprint. Foundation for FieldCell.pattern_handle (Φ-facet) + Pattern-preservation invariant across substrate-translation (Axiom-2)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-substrate-kan is the wiring crate that bridges :
+#   - cssl-pga    : Motor + sandwich product → Pattern-preservation across rigid motions
+#   - cssl-hdc    : Genome (10000-D HDC + ancestry) → Pattern.genome reference
+#   - blake3      : 256-bit fingerprint for Pattern identity
+# Heavy compute lives in the consumer crates (cssl-substrate-omega-field, cssl-creature-genome) ;
+# this crate is intentionally narrow : Pattern type + Φ-table pool + KanMaterial variants.
+cssl-pga    = { path = "../cssl-pga", default-features = false }
+cssl-hdc    = { path = "../cssl-hdc" }
+blake3      = { workspace = true }
+smallvec    = { workspace = true }
+
+[dev-dependencies]
+# § integration tests use cssl-pga's full surface (sandwich-product invariance) ;
+# default-features-on here pulls the cssl-math-bridge for round-trip Quat ↔ Motor.
+cssl-pga    = { path = "../cssl-pga" }
