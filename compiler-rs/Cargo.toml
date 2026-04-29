@@ -17,14 +17,25 @@ members = ["crates/*"]
 # § META-WAVE-3-PRELUDE (T11-D113..T11-D137) : the `members = ["crates/*"]` glob
 # auto-picks-up the three confirmed wave-3β-landing crates as their slice-agents
 # land their crate skeletons :
-#   • cssl-pga      ← T11-D134 (W3β-09 ; cssl/session-11/T11-D134-cssl-pga-crate)
-#   • cssl-wavelet  ← T11-D135 (W3β-10 ; cssl/session-11/T11-D135-cssl-wavelet-crate)
-#   • cssl-hdc      ← T11-D136 (W3β-11 ; worktree pending)
+#   • cssl-pga      ← T11-D134 (W3β-09 ; cssl/session-11/T11-D134-cssl-pga-crate) ✓ landed
+#   • cssl-wavelet  ← T11-D135 (W3β-10 ; cssl/session-11/T11-D135-cssl-wavelet-crate) ✓ landed
+#   • cssl-hdc      ← T11-D136 (W3β-11 ; cssl/session-11/T11-D136-cssl-hdc-crate) ✓ landed
 # Substrate-evolution crates (D113..D125 : cssl-substrate-omega-field, cssl-wave-solver,
 # cssl-kan, cssl-host-openxr, cssl-spectral-render, cssl-render-v2, cssl-physics-wave,
 # cssl-wave-audio, cssl-anim-procedural, cssl-creature-behavior, cssl-ui-vr) are
 # DEFERRED — orchestrator merges per-slice crate-skeleton commits as they land.
 # No explicit member-list entries here ; the glob is sufficient.
+#
+# § META-WAVE-3γ (T11-D138..T11-D144) : dependent gap-fill block. The glob
+# auto-picks-up :
+#   • cssl-substrate-omega-field ← T11-D144 (W3γ-07 ; NEW crate ; lifts D113 deferral)
+# D138..D142 are pure compiler-internals (sigma-enforce / GPU-AD / call+CFG-AD /
+# comptime-eval / specialization) and modify EXISTING crates (cssl-effects /
+# cssl-cgen-gpu-spirv / cssl-mir / cssl-hir / cssl-mir respectively) — no new
+# member required. D143 extends cssl-substrate-kan (D115-deferred ; D143 may
+# create the skeleton if D115 has not landed by then). No explicit member-list
+# edits required for wave-3γ ; the glob discovers cssl-substrate-omega-field
+# automatically once its skeleton lands.
 exclude  = ["crates/cssl-playground"]
 
 [workspace.package]

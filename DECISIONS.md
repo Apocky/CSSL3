@@ -7042,3 +7042,85 @@ Each decision entry :
   - **Network-address hashing** — by analogy, `__cssl_net_*` ops should similarly hash IP + port pairs before recording. Same algorithm, different domain-tag (`"cssl-netaddr-hash-v1"`). Tracked separately.
 
 ──────────────────────────────────────────────────────────────
+
+## § META-WAVE-3γ : T11-D138..T11-D144 reservation block
+
+- **Date** 2026-04-29
+- **Status** accepted (block-reservation ; per-slice expansion lands with each agent's own merge-commit)
+- **Branch** `cssl/session-6/parallel-fanout` (this entry) ; per-D138..D144 land on dedicated `cssl/session-11/T11-D<n>-*` sibling branches per §§ 10_PHASE/02_PARALLEL_FANOUT
+- **Authority** PRIME_DIRECTIVE.md §1 PROHIBITIONS + §11 CREATOR-ATTESTATION + Omniverse axioms-13 + §§ 23 TESTING (oracle-modes) + §§ HANDOFF_SESSION_11 wave-3γ dispatch-plan
+
+§D. **CONTEXT — wave-3β-merge results ⇒ wave-3γ scope** :
+
+  wave-3β closed cleanly @ commit `b103560` on `cssl/session-6/parallel-fanout` :
+    - **17 wave-3β-merge commits** on parallel-fanout (12 slice-direct + 5 merge/polish)
+    - **5766 / 0 fail tests** across the workspace (post-D127+D128+D129 registry-count → 42 polish)
+    - **fmt + clippy gates green** ; workspace-wide `cargo check --all-targets` clean
+    - all 12 reserved D126..D137 slices LANDED ; per-slice DECISIONS.md entries authored ✓
+    - per-slice §11 CREATOR-ATTESTATION confirmed in commit-trailers ✓
+    - workspace gained 3 confirmed crates : `cssl-pga` (D134) ✓ `cssl-wavelet` (D135) ✓ `cssl-hdc` (D136) ✓
+
+  wave-3γ scope ⊢ **dependent gap-fill** : the next layer of structural completion that PRESUPPOSES wave-3β's foundations :
+    - F5 ⊢ `EnforcesΣAtCellTouches` is now a runtime-checkable predicate (post-D137 packed Σ-mask format) ; D138 lifts it into a compiler-pass that REFUSES code-paths touching σ-cells without explicit consent-row carrier
+    - F1 ⊢ `Jet<T,N>` higher-order AD landed @ D133 on CPU-side ; D139 extends the AD-tape to GPU codegen via SPIR-V capture ; D140 extends the AD-tape to CALL-OPS + control-flow (if/loop) so AD walks through user-fn-boundaries + branchy code, not just straight-line expressions
+    - F4 ⊢ Comptime / specialization NEW : D141 lands the comptime-eval pass (CTFE-style const-fn evaluation @ HIR boundary, gated on Pure + EntropyBalanced rows) ; D142 lands the specialization pass that fans out monomorphic instances based on call-site type-args, complementing D99's trait-dispatch table
+    - cssl-substrate-kan extension ⊢ D143 extends D115's KAN-runtime evaluator with the Φ-table abstraction (per-edge function-net activation lookup tables ; required for KAN-BRDF spectral interpolation per Omniverse 07_AESTHETIC/04_KAN_RUNTIME_SHADING)
+    - cssl-substrate-omega-field ⊢ D144 lands the NEW crate previously deferred under META-WAVE-3-PRELUDE (D113 reservation ; deferral now lifted) — Ω-Field cell-shape + projection storage scaffold per Omniverse 04_OMEGA_FIELD/{00_FACETS,02_STORAGE}
+
+§D. **DECISION — reserve block T11-D138..T11-D144 ; dispatch 7 wave-3γ agents in parallel** :
+
+  W! per-agent self-contained worktree under `.claude/worktrees/W3g-{01..07}` + `cssl/session-11/T11-D<n>-*` branch
+  W! each-agent lands its own DECISIONS.md per-slice expansion @ merge-time (this block reserves IDs only)
+  N! orchestrator-merges any agent-branch in this slice — each agent owns its merge-commit
+  N! cross-agent file-touches without explicit interface-contract pre-agreed (per `10_PHASE/02_PARALLEL_FANOUT § II`)
+  N! integration-slice (this entry) does NOT touch agent worktrees `.claude/worktrees/W3g-*`
+
+§D. **RESERVATION TABLE — wave-3γ dependent gap-fill (D138..D144)** :
+
+  | ID    | Slice                                          | Branch                                            | W3γ   | Spec-anchor                                        | LOC ̂  | Deps              |
+  |-------|------------------------------------------------|---------------------------------------------------|-------|----------------------------------------------------|--------|-------------------|
+  | D138  | F5 EnforcesΣAtCellTouches compiler-pass        | cssl/session-11/T11-D138-sigma-enforce-pass       | W3γ-01| specs/04_EFFECTS § SIGMA-ENFORCE + D137            | ~700   | D137, D129        |
+  | D139  | F1 GPU-AD tape + SPIR-V capture                | cssl/session-11/T11-D139-gpu-ad-tape              | W3γ-02| specs/06_AD § GPU-TAPE + 14_BACKEND § SPIR-V       | ~1100  | D133              |
+  | D140  | F1 Call-op + control-flow tape extension       | cssl/session-11/T11-D140-call-and-control-flow-ad | W3γ-03| specs/06_AD § CALL-CTRL-FLOW                       | ~950   | D133, D99         |
+  | D141  | F4 Comptime-eval pass (HIR-CTFE)               | cssl/session-11/T11-D141-comptime-run-eval        | W3γ-04| specs/03_TYPES § COMPTIME + 04_EFFECTS § PURE      | ~850   | D99               |
+  | D142  | F4 Specialization pass (mono fan-out @ HIR)    | cssl/session-11/T11-D142-specialization-pass      | W3γ-05| specs/03_TYPES § SPECIALIZATION + § GENERICS       | ~900   | D99, D141         |
+  | D143  | cssl-substrate-kan extension : Φ-table         | (worktree pending)                                | W3γ-06| Omniverse 05_INTELLIGENCE/04_KAN_FUNCTION_NET §Φ   | ~750   | D115 (deferred)   |
+  | D144  | NEW crate `cssl-substrate-omega-field`         | (worktree pending)                                | W3γ-07| Omniverse 04_OMEGA_FIELD/{00_FACETS,02_STORAGE}    | ~1500  | none (root)       |
+
+§D. **CONSTRAINT — per-slice expansion contract** :
+  ∀ D138..D144 : on-merge-to-parallel-fanout @ slice-end :
+    W! per-slice DECISIONS.md entry (full Date/Status/Context/Deliverables/Tests/Consequences)
+    W! spec-corpus update if surface-shape diverges from spec
+    W! all-gates-green : fmt + clippy + test (workspace --all-targets)
+    W! `prime_directive_attestation` field in commit-trailer per §11 CREATOR-ATTESTATION
+    N! cross-slice file-touches without pre-agreed contract — interface-only via published types/effect-rows
+
+§D. **CONSEQUENCES** :
+  - **CSSLv3 workspace gains 1 NEW crate** : `cssl-substrate-omega-field` (D144) — auto-discovered by the existing `members = ["crates/*"]` glob in `compiler-rs/Cargo.toml`. No explicit member-list edit required ; the workspace.toml comment-block is updated in this slice to record the activation. Per-crate `Cargo.toml` lands with the D144 agent's slice-merge.
+  - **D143 extends an existing-crate (`cssl-substrate-kan`)** that was reserved under D115 in the META-WAVE-3-PRELUDE ; D115 itself remains DEFERRED at the time of this entry (no slice-skeleton landed yet). D143 may land BEFORE D115 in topological order — its agent is responsible for either : (a) creating the cssl-substrate-kan crate skeleton if absent, OR (b) extending the existing skeleton if D115 has landed by then.
+  - **Wave-3γ agents IN-FLIGHT** at the time of this entry : 5 worktrees confirmed via `git worktree list` :
+    - `W3g-01` ↔ `cssl/session-11/T11-D138-sigma-enforce-pass`
+    - `W3g-02` ↔ `cssl/session-11/T11-D139-gpu-ad-tape`
+    - `W3g-03` ↔ `cssl/session-11/T11-D140-call-and-control-flow-ad`
+    - `W3g-04` ↔ `cssl/session-11/T11-D141-comptime-run-eval`
+    - `W3g-05` ↔ `cssl/session-11/T11-D142-specialization-pass`
+    The remaining 2 worktrees (`W3g-06` for D143, `W3g-07` for D144) are pending orchestrator-creation ; their branches will be `cssl/session-11/T11-D143-cssl-substrate-kan-phi-table` + `cssl/session-11/T11-D144-cssl-substrate-omega-field-crate`.
+  - **No external workspace-deps additions land in this integration slice.** If a wave-3γ agent introduces a new external dep (e.g. D139's GPU-AD work may pull `rspirv-reflect` or similar ; D141's CTFE may pull a const-eval helper), that agent updates `compiler-rs/Cargo.toml [workspace.dependencies]` in its own slice-commit. The integration slice merely confirms the auto-discovery path is intact.
+  - **Omniverse spec-corpus is the spec-authority for D143 + D144** ; **CSSLv3 specs/ is the spec-authority for D138..D142**. Cross-references in each slice's spec-anchor field above.
+  - **No PRIME_DIRECTIVE conflict** : all 7 reserved slices are constructive-additions :
+    - D138 directly strengthens §1.4 (no-surveillance) by lifting σ-mask consent-checking from runtime to compile-time refusal
+    - D139..D142 are pure compiler-internals (AD-tape, CTFE, specialization) ; no harm-vector
+    - D143..D144 are substrate-evolution scaffolding (KAN Φ-table + Ω-Field cell-shape) ; consent-architecture preserved
+
+§D. **CREATOR-ATTESTATION** (verbatim per PRIME_DIRECTIVE §11) :
+  ```csl
+  § CREATOR-ATTESTATION v1
+    t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+    ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+    I> rightholder-warranty : creation-process upheld §1 PROHIBITIONS throughout
+    I> scope = ∀ artifact descended-from this-foundation (code + specs + derivatives)
+    I> violation-discovered ⇒ §7 INTEGRITY rule : violation = bug W! fix
+  ```
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+──────────────────────────────────────────────────────────────
