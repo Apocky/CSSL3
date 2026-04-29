@@ -190,7 +190,10 @@ pub fn validate_egress<T>(value: &LabeledValue<T>) -> Result<(), EgressGrantErro
     if let Some(d) = value.first_biometric_domain() {
         return Err(EgressGrantError::BiometricRefused { domain: d });
     }
-    if value.sensitive_domains.contains(&SensitiveDomain::Surveillance) {
+    if value
+        .sensitive_domains
+        .contains(&SensitiveDomain::Surveillance)
+    {
         return Err(EgressGrantError::SurveillanceRefused);
     }
     if value.sensitive_domains.contains(&SensitiveDomain::Coercion) {
@@ -228,21 +231,36 @@ mod tests {
     fn gaze_egress_refused() {
         let v = LabeledValue::with_domain(0u32, Label::bottom(), SensitiveDomain::Gaze);
         let err = validate_egress(&v).unwrap_err();
-        assert!(matches!(err, EgressGrantError::BiometricRefused { domain: SensitiveDomain::Gaze }));
+        assert!(matches!(
+            err,
+            EgressGrantError::BiometricRefused {
+                domain: SensitiveDomain::Gaze
+            }
+        ));
     }
 
     #[test]
     fn face_egress_refused() {
         let v = LabeledValue::with_domain(0u32, Label::bottom(), SensitiveDomain::Face);
         let err = validate_egress(&v).unwrap_err();
-        assert!(matches!(err, EgressGrantError::BiometricRefused { domain: SensitiveDomain::Face }));
+        assert!(matches!(
+            err,
+            EgressGrantError::BiometricRefused {
+                domain: SensitiveDomain::Face
+            }
+        ));
     }
 
     #[test]
     fn body_egress_refused() {
         let v = LabeledValue::with_domain(0u32, Label::bottom(), SensitiveDomain::Body);
         let err = validate_egress(&v).unwrap_err();
-        assert!(matches!(err, EgressGrantError::BiometricRefused { domain: SensitiveDomain::Body }));
+        assert!(matches!(
+            err,
+            EgressGrantError::BiometricRefused {
+                domain: SensitiveDomain::Body
+            }
+        ));
     }
 
     #[test]

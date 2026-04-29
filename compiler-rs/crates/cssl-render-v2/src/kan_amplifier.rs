@@ -157,10 +157,7 @@ impl MockAmplifier {
 }
 
 impl KanAmplifierHook for MockAmplifier {
-    fn amplify(
-        &self,
-        _input: &KanAmplifierInput,
-    ) -> Result<KanAmplifierOutput, KanAmplifierError> {
+    fn amplify(&self, _input: &KanAmplifierInput) -> Result<KanAmplifierOutput, KanAmplifierError> {
         if self.fixed_detail > 0.0 {
             Ok(KanAmplifierOutput::new(
                 self.fixed_detail,

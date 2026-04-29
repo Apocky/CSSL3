@@ -6,6 +6,7 @@
 //! `Err(BiometricEgressRefused { ... })` ; if any test passes by some
 //! other path (Ok), the crate is non-compliant + must be refused at CI.
 
+use cssl_host_openxr::SensitiveDomain;
 use cssl_host_openxr::{
     body::{BodySkeleton, BodyTrackingProvider},
     eye_gaze::{try_egress, GazeSample, GazeSamplePair},
@@ -14,7 +15,6 @@ use cssl_host_openxr::{
     hand::{HandSide, HandSkeleton},
     XRFailure,
 };
-use cssl_host_openxr::SensitiveDomain;
 
 #[test]
 fn gaze_sample_egress_refused() {
@@ -23,7 +23,9 @@ fn gaze_sample_egress_refused() {
     assert!(err.is_biometric_refusal());
     assert!(matches!(
         err,
-        XRFailure::BiometricEgressRefused { domain: SensitiveDomain::Gaze }
+        XRFailure::BiometricEgressRefused {
+            domain: SensitiveDomain::Gaze
+        }
     ));
 }
 
@@ -42,7 +44,9 @@ fn hand_skeleton_egress_refused_left_and_right() {
         assert!(err.is_biometric_refusal());
         assert!(matches!(
             err,
-            XRFailure::BiometricEgressRefused { domain: SensitiveDomain::Body }
+            XRFailure::BiometricEgressRefused {
+                domain: SensitiveDomain::Body
+            }
         ));
     }
 }
@@ -73,7 +77,9 @@ fn face_weights_egress_refused_all_providers() {
         assert!(err.is_biometric_refusal(), "{:?}", prov);
         assert!(matches!(
             err,
-            XRFailure::BiometricEgressRefused { domain: SensitiveDomain::Face }
+            XRFailure::BiometricEgressRefused {
+                domain: SensitiveDomain::Face
+            }
         ));
     }
 }
@@ -128,7 +134,9 @@ fn cssl_ifc_validate_egress_returns_biometric_refused() {
     let res = validate_egress(&g);
     assert!(matches!(
         res,
-        Err(EgressGrantError::BiometricRefused { domain: SensitiveDomain::Gaze })
+        Err(EgressGrantError::BiometricRefused {
+            domain: SensitiveDomain::Gaze
+        })
     ));
 }
 

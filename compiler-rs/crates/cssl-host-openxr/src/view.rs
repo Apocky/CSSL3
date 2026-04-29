@@ -118,8 +118,7 @@ impl Fov {
     /// `true` iff this FOV is the symmetric case (left == -right, up == -down).
     #[must_use]
     pub fn is_symmetric(self) -> bool {
-        (self.left + self.right).abs() < f32::EPSILON
-            && (self.up + self.down).abs() < f32::EPSILON
+        (self.left + self.right).abs() < f32::EPSILON && (self.up + self.down).abs() < f32::EPSILON
     }
 
     /// Build the canonical Quest-3 per-eye FOV (canted-display, asymmetric).
@@ -419,11 +418,26 @@ mod tests {
 
     #[test]
     fn topology_from_view_count() {
-        assert!(matches!(ViewTopology::from_view_count(1), ViewTopology::Flat));
-        assert!(matches!(ViewTopology::from_view_count(2), ViewTopology::StereoPair));
-        assert!(matches!(ViewTopology::from_view_count(4), ViewTopology::QuadViewFoveated));
-        assert!(matches!(ViewTopology::from_view_count(8), ViewTopology::LightFieldN));
-        assert!(matches!(ViewTopology::from_view_count(16), ViewTopology::LightFieldN));
+        assert!(matches!(
+            ViewTopology::from_view_count(1),
+            ViewTopology::Flat
+        ));
+        assert!(matches!(
+            ViewTopology::from_view_count(2),
+            ViewTopology::StereoPair
+        ));
+        assert!(matches!(
+            ViewTopology::from_view_count(4),
+            ViewTopology::QuadViewFoveated
+        ));
+        assert!(matches!(
+            ViewTopology::from_view_count(8),
+            ViewTopology::LightFieldN
+        ));
+        assert!(matches!(
+            ViewTopology::from_view_count(16),
+            ViewTopology::LightFieldN
+        ));
     }
 
     #[test]

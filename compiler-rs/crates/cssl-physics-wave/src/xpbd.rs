@@ -165,7 +165,11 @@ impl Constraint {
         bodies.push(lo);
         bodies.push(hi);
         Constraint {
-            kind: ConstraintKind::Contact { normal, penetration, restitution },
+            kind: ConstraintKind::Contact {
+                normal,
+                penetration,
+                restitution,
+            },
             bodies,
             color: ColorId::UNCOLORED,
         }
@@ -306,7 +310,11 @@ impl JacobiBlock {
     #[must_use]
     pub fn new(positions: Vec<[f32; 3]>, inv_mass: Vec<f32>) -> Self {
         let n = positions.len();
-        assert_eq!(inv_mass.len(), n, "JacobiBlock : inv_mass length must match positions");
+        assert_eq!(
+            inv_mass.len(),
+            n,
+            "JacobiBlock : inv_mass length must match positions"
+        );
         JacobiBlock {
             positions,
             inv_mass,
@@ -331,14 +339,7 @@ impl JacobiBlock {
     }
 
     /// § Project a single distance-constraint.
-    pub fn project_distance(
-        &mut self,
-        a: usize,
-        b: usize,
-        rest: f32,
-        compliance: f32,
-        dt: f32,
-    ) {
+    pub fn project_distance(&mut self, a: usize, b: usize, rest: f32, compliance: f32, dt: f32) {
         let pa = self.positions[a];
         let pb = self.positions[b];
         let dx = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
@@ -357,8 +358,16 @@ impl JacobiBlock {
         let alpha_tilde = compliance / (dt * dt);
         let lambda = -c_val / (w_total + alpha_tilde);
         // accumulate corrections
-        let dpa = [-n[0] * w_a * lambda, -n[1] * w_a * lambda, -n[2] * w_a * lambda];
-        let dpb = [n[0] * w_b * lambda, n[1] * w_b * lambda, n[2] * w_b * lambda];
+        let dpa = [
+            -n[0] * w_a * lambda,
+            -n[1] * w_a * lambda,
+            -n[2] * w_a * lambda,
+        ];
+        let dpb = [
+            n[0] * w_b * lambda,
+            n[1] * w_b * lambda,
+            n[2] * w_b * lambda,
+        ];
         self.corrections[a][0] += dpa[0];
         self.corrections[a][1] += dpa[1];
         self.corrections[a][2] += dpa[2];
@@ -369,13 +378,7 @@ impl JacobiBlock {
 
     /// § Project a contact constraint : push bodies apart along the contact
     ///   normal until penetration is 0.
-    pub fn project_contact(
-        &mut self,
-        a: usize,
-        b: usize,
-        normal: [f32; 3],
-        penetration: f32,
-    ) {
+    pub fn project_contact(&mut self, a: usize, b: usize, normal: [f32; 3], penetration: f32) {
         if penetration <= 0.0 {
             return;
         }
@@ -386,8 +389,16 @@ impl JacobiBlock {
             return;
         }
         let lambda = penetration / w_total;
-        let dpa = [-normal[0] * w_a * lambda, -normal[1] * w_a * lambda, -normal[2] * w_a * lambda];
-        let dpb = [normal[0] * w_b * lambda, normal[1] * w_b * lambda, normal[2] * w_b * lambda];
+        let dpa = [
+            -normal[0] * w_a * lambda,
+            -normal[1] * w_a * lambda,
+            -normal[2] * w_a * lambda,
+        ];
+        let dpb = [
+            normal[0] * w_b * lambda,
+            normal[1] * w_b * lambda,
+            normal[2] * w_b * lambda,
+        ];
         self.corrections[a][0] += dpa[0];
         self.corrections[a][1] += dpa[1];
         self.corrections[a][2] += dpa[2];
@@ -397,12 +408,7 @@ impl JacobiBlock {
     }
 
     /// § Project a ground-plane constraint : push body above the plane.
-    pub fn project_ground_plane(
-        &mut self,
-        body: usize,
-        normal: [f32; 3],
-        offset: f32,
-    ) {
+    pub fn project_ground_plane(&mut self, body: usize, normal: [f32; 3], offset: f32) {
         let w = self.inv_mass[body];
         if w < 1e-12 {
             return;
@@ -482,7 +488,9 @@ impl XpbdConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum ConstraintFailure {
     /// Body-id referenced by a constraint is out-of-range for the block.
-    #[error("PHYSWAVE0020 — constraint references body-id {id} but block has only {block_size} bodies")]
+    #[error(
+        "PHYSWAVE0020 — constraint references body-id {id} but block has only {block_size} bodies"
+    )]
     BodyOutOfRange {
         /// The offending id.
         id: u64,
@@ -578,7 +586,11 @@ impl XpbdSolver {
                 })?;
                 block.project_distance(a, b, rest, compliance, dt);
             }
-            ConstraintKind::Contact { normal, penetration, restitution: _ } => {
+            ConstraintKind::Contact {
+                normal,
+                penetration,
+                restitution: _,
+            } => {
                 let a_id = c.bodies[0];
                 let b_id = c.bodies[1];
                 let a = body_id_to_index(a_id).ok_or(ConstraintFailure::BodyOutOfRange {
@@ -593,11 +605,10 @@ impl XpbdSolver {
             }
             ConstraintKind::GroundPlane { normal, offset } => {
                 let body_id = c.bodies[0];
-                let body =
-                    body_id_to_index(body_id).ok_or(ConstraintFailure::BodyOutOfRange {
-                        id: body_id,
-                        block_size: block.positions.len(),
-                    })?;
+                let body = body_id_to_index(body_id).ok_or(ConstraintFailure::BodyOutOfRange {
+                    id: body_id,
+                    block_size: block.positions.len(),
+                })?;
                 block.project_ground_plane(body, normal, offset);
             }
             ConstraintKind::Hinge { .. } => {
@@ -801,7 +812,13 @@ mod tests {
         let mut block = JacobiBlock::new(positions, inv_mass);
         let solver = XpbdSolver::default();
         let map = |id: u64| -> Option<usize> {
-            if id == 0 { Some(0) } else if id == 1 { Some(1) } else { None }
+            if id == 0 {
+                Some(0)
+            } else if id == 1 {
+                Some(1)
+            } else {
+                None
+            }
         };
         let total = solver.solve(&cs, &g, &mut block, &map, 1.0).unwrap();
         // 4 iterations × 1 constraint = 4 projections.
@@ -822,7 +839,13 @@ mod tests {
         let inv_mass = vec![1.0];
         let mut block = JacobiBlock::new(positions, inv_mass);
         let solver = XpbdSolver::default();
-        let map = |id: u64| -> Option<usize> { if id == 0 { Some(0) } else { None } };
+        let map = |id: u64| -> Option<usize> {
+            if id == 0 {
+                Some(0)
+            } else {
+                None
+            }
+        };
         let r = solver.solve(&cs, &g, &mut block, &map, 1.0);
         assert!(matches!(r, Err(ConstraintFailure::BodyOutOfRange { .. })));
     }
@@ -842,7 +865,15 @@ mod tests {
         let inv_mass = vec![1.0, 1.0];
         let mut block = JacobiBlock::new(positions, inv_mass);
         let solver = XpbdSolver::new(XpbdConfig::high_fidelity());
-        let map = |id: u64| -> Option<usize> { if id == 0 { Some(0) } else if id == 1 { Some(1) } else { None } };
+        let map = |id: u64| -> Option<usize> {
+            if id == 0 {
+                Some(0)
+            } else if id == 1 {
+                Some(1)
+            } else {
+                None
+            }
+        };
         let total = solver.solve(&cs, &g, &mut block, &map, 1.0).unwrap();
         // 16 iterations × 1 constraint = 16.
         assert_eq!(total, 16);
@@ -856,7 +887,15 @@ mod tests {
         let inv_mass = vec![1.0, 1.0];
         let mut block = JacobiBlock::new(positions, inv_mass);
         let solver = XpbdSolver::default();
-        let map = |id: u64| -> Option<usize> { if id == 0 { Some(0) } else if id == 1 { Some(1) } else { None } };
+        let map = |id: u64| -> Option<usize> {
+            if id == 0 {
+                Some(0)
+            } else if id == 1 {
+                Some(1)
+            } else {
+                None
+            }
+        };
         let _ = solver.solve(&cs, &g, &mut block, &map, 1.0).unwrap();
         let dist = ((block.positions[1][0] - block.positions[0][0]).powi(2)).sqrt();
         // Soft compliance won't fully reach rest in 4 iter ; should be > 1.0.

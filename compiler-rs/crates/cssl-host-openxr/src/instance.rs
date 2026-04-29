@@ -164,7 +164,8 @@ impl XrInstanceBuilder {
                 enabled.insert(ext);
             }
         }
-        if self.enable_debug_utils && advertised.contains(crate::extensions::XrExtension::ExtDebugUtils)
+        if self.enable_debug_utils
+            && advertised.contains(crate::extensions::XrExtension::ExtDebugUtils)
         {
             enabled.insert(crate::extensions::XrExtension::ExtDebugUtils);
         }
@@ -361,21 +362,29 @@ mod tests {
         assert!(inst.enabled_extensions.contains(XrExtension::FbSpaceWarp));
         assert!(inst.enabled_extensions.contains(XrExtension::FbFoveation));
         assert!(inst.enabled_extensions.contains(XrExtension::FbPassthrough));
-        assert!(inst.enabled_extensions.contains(XrExtension::ExtHandTracking));
+        assert!(inst
+            .enabled_extensions
+            .contains(XrExtension::ExtHandTracking));
     }
 
     #[test]
     fn vision_pro_default_instance_builds() {
         let inst = MockInstance::vision_pro_default().unwrap();
-        assert!(inst.enabled_extensions.contains(XrExtension::ExtHandTracking));
+        assert!(inst
+            .enabled_extensions
+            .contains(XrExtension::ExtHandTracking));
         assert!(inst.runtime.is_compositor_services_bridge());
     }
 
     #[test]
     fn pimax_default_instance_builds() {
         let inst = MockInstance::pimax_crystal_super_default().unwrap();
-        assert!(inst.enabled_extensions.contains(XrExtension::VarjoQuadViews));
-        assert!(inst.enabled_extensions.contains(XrExtension::KhrD3D12Enable));
+        assert!(inst
+            .enabled_extensions
+            .contains(XrExtension::VarjoQuadViews));
+        assert!(inst
+            .enabled_extensions
+            .contains(XrExtension::KhrD3D12Enable));
     }
 
     #[test]

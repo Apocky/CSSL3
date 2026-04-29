@@ -53,9 +53,7 @@ impl MultiviewMode {
     pub const fn is_single_draw(self) -> bool {
         matches!(
             self,
-            Self::VulkanMultiview
-                | Self::D3D12ViewInstancing
-                | Self::MetalVertexAmplification
+            Self::VulkanMultiview | Self::D3D12ViewInstancing | Self::MetalVertexAmplification
         )
     }
 
@@ -267,8 +265,8 @@ mod tests {
     #[test]
     fn recommended_for_metal_visionos_stereo() {
         let vs = ViewSet::stereo_identity(64.0);
-        let cfg = MultiviewConfig::recommended(MultiviewMode::MetalVertexAmplification, &vs)
-            .unwrap();
+        let cfg =
+            MultiviewConfig::recommended(MultiviewMode::MetalVertexAmplification, &vs).unwrap();
         assert_eq!(cfg.metal_amplification_count, 2);
     }
 

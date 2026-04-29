@@ -77,10 +77,7 @@ impl Default for LipschitzBound {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AnalyticSdfKind {
     /// Sphere : center + radius.
-    Sphere {
-        center: [f32; 3],
-        radius: f32,
-    },
+    Sphere { center: [f32; 3], radius: f32 },
     /// Axis-aligned box : center + half-extent per-axis.
     Box {
         center: [f32; 3],
@@ -203,10 +200,8 @@ impl AnalyticSdf {
                 let qx = (p[0] - center[0]).abs() - half_extents[0];
                 let qy = (p[1] - center[1]).abs() - half_extents[1];
                 let qz = (p[2] - center[2]).abs() - half_extents[2];
-                let q_outside = ((qx.max(0.0)).powi(2)
-                    + (qy.max(0.0)).powi(2)
-                    + (qz.max(0.0)).powi(2))
-                .sqrt();
+                let q_outside =
+                    ((qx.max(0.0)).powi(2) + (qy.max(0.0)).powi(2) + (qz.max(0.0)).powi(2)).sqrt();
                 let q_inside = qx.max(qy).max(qz).min(0.0);
                 q_outside + q_inside
             }
@@ -238,8 +233,7 @@ impl AnalyticSdf {
                 let dz = p[2] - center[2];
                 let xy = (dx * dx + dz * dz).sqrt() - radius;
                 let z_off = dy.abs() - half_height;
-                let q_outside =
-                    ((xy.max(0.0)).powi(2) + (z_off.max(0.0)).powi(2)).sqrt();
+                let q_outside = ((xy.max(0.0)).powi(2) + (z_off.max(0.0)).powi(2)).sqrt();
                 let q_inside = xy.max(z_off).min(0.0);
                 q_outside + q_inside
             }
@@ -278,9 +272,7 @@ pub enum CompositionOp {
     /// `min(a, b)` — sharp union.
     HardUnion,
     /// `-(1/k) ln(e^{-k a} + e^{-k b})` — smooth union with parameter `k > 0`.
-    SmoothUnion {
-        k: f32,
-    },
+    SmoothUnion { k: f32 },
     /// `max(a, b)` — sharp intersection.
     HardIntersection,
     /// `max(a, -b)` — subtraction (a − b).

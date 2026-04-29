@@ -175,8 +175,7 @@ impl Stage5Driver {
         let cfg = MultiViewConfig::mono(cam);
         let fov = FoveatedMultiViewRender::from_masks(
             vec![crate::foveation::FoveaMask::center_bias_fallback(
-                cam.width,
-                cam.height,
+                cam.width, cam.height,
             )],
             crate::foveation::FoveationMethod::CpuMock,
         );

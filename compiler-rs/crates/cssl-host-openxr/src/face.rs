@@ -96,10 +96,7 @@ impl FaceWeights {
     #[must_use]
     pub fn max_weight(&self) -> f32 {
         let n = self.weight_count as usize;
-        self.weights[..n]
-            .iter()
-            .copied()
-            .fold(0.0_f32, f32::max)
+        self.weights[..n].iter().copied().fold(0.0_f32, f32::max)
     }
 
     /// `true` iff any blendshape weight > `threshold`.

@@ -52,9 +52,9 @@ use cssl_substrate_omega_field::MortonKey;
 #[must_use]
 pub fn default_absorption(class: BandClass) -> f32 {
     match class {
-        BandClass::FastDirect => 0.001,    // audio : 0.1 % per substep
-        BandClass::FastEnvelope => 0.01,   // light envelope : 1 % per substep
-        BandClass::SlowEnvelope => 0.05,   // heat/scent/mana
+        BandClass::FastDirect => 0.001,  // audio : 0.1 % per substep
+        BandClass::FastEnvelope => 0.01, // light envelope : 1 % per substep
+        BandClass::SlowEnvelope => 0.05, // heat/scent/mana
     }
 }
 
@@ -164,7 +164,13 @@ mod tests {
         let k = key(0, 0, 0);
         prev.set_band(Band::AudioSubKHz, k, C32::new(0.5, 0.0));
         let mut next = WaveField::<5>::with_default_bands();
-        let force = |kq: MortonKey| if kq == k { C32::new(0.5, 0.0) } else { C32::ZERO };
+        let force = |kq: MortonKey| {
+            if kq == k {
+                C32::new(0.5, 0.0)
+            } else {
+                C32::ZERO
+            }
+        };
         imex_implicit_step_with_forcing(&prev, &mut next, 0, 1.0, 0.0, force);
         // ψ_new = (0.5 + 1·0.5) / (1 + 0) = 1.
         let v = next.at_band(Band::AudioSubKHz, k);

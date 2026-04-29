@@ -231,12 +231,17 @@ mod tests {
 
     #[test]
     fn missing_optional_is_graceful() {
-        assert!(XRFailure::MissingOptionalExtension("XR_FB_foveation_eye_tracked").is_graceful_degrade());
+        assert!(
+            XRFailure::MissingOptionalExtension("XR_FB_foveation_eye_tracked")
+                .is_graceful_degrade()
+        );
     }
 
     #[test]
     fn missing_required_is_fatal() {
-        assert!(!XRFailure::MissingRequiredExtension("XR_KHR_vulkan_enable2").is_graceful_degrade());
+        assert!(
+            !XRFailure::MissingRequiredExtension("XR_KHR_vulkan_enable2").is_graceful_degrade()
+        );
     }
 
     #[test]
@@ -258,28 +263,42 @@ mod tests {
         // sanity : every variant Displays without panic
         let cases = [
             XRFailure::RuntimeNotPresent,
-            XRFailure::UnsupportedApiVersion { advertised: 1, required: 2 },
+            XRFailure::UnsupportedApiVersion {
+                advertised: 1,
+                required: 2,
+            },
             XRFailure::MissingRequiredExtension("XR_FOO"),
             XRFailure::MissingOptionalExtension("XR_BAR"),
             XRFailure::InstanceCreate { code: -1 },
             XRFailure::SessionCreate { code: -1 },
             XRFailure::SessionBegin { code: -1 },
-            XRFailure::SwapchainCreate { code: -1, format: 0 },
+            XRFailure::SwapchainCreate {
+                code: -1,
+                format: 0,
+            },
             XRFailure::SwapchainImageCycle { code: -1 },
             XRFailure::FrameWait { code: -1 },
             XRFailure::FrameBoundary { code: -1 },
             XRFailure::LocateViews { code: -1 },
-            XRFailure::LocateTrackingSpace { code: -1, domain: SensitiveDomain::Gaze },
+            XRFailure::LocateTrackingSpace {
+                code: -1,
+                domain: SensitiveDomain::Gaze,
+            },
             XRFailure::CompositionLayerRejected { index: 0, code: -1 },
             XRFailure::FoveationConfigRejected { code: -1 },
             XRFailure::SpaceWarpSubmissionRejected { code: -1 },
             XRFailure::PassthroughCreate { code: -1 },
             XRFailure::ActionSetInstall { code: -1 },
-            XRFailure::BiometricEgressRefused { domain: SensitiveDomain::Face },
+            XRFailure::BiometricEgressRefused {
+                domain: SensitiveDomain::Face,
+            },
             XRFailure::CompositorServicesUnavailable,
             XRFailure::ViewCountOutOfRange { got: 999 },
             XRFailure::IpdOutOfRange { got: 999.0 },
-            XRFailure::ComfortFloorViolated { ns: 20_000_000, budget_ns: 11_111_111 },
+            XRFailure::ComfortFloorViolated {
+                ns: 20_000_000,
+                budget_ns: 11_111_111,
+            },
             XRFailure::NotYetImplemented("foo"),
         ];
         for f in &cases {

@@ -148,10 +148,7 @@ impl<const C: usize> WaveField<C> {
         if band_idx >= C {
             return C32::ZERO;
         }
-        self.bands[band_idx]
-            .get(&key)
-            .copied()
-            .unwrap_or(C32::ZERO)
+        self.bands[band_idx].get(&key).copied().unwrap_or(C32::ZERO)
     }
 
     /// § Set amplitude at `(band_idx, key)`. Returns previous value.

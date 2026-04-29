@@ -228,15 +228,9 @@ mod tests {
         prev.set_band(Band::AudioSubKHz, key(1, 0, 0), C32::new(0.5, 0.0));
         prev.set_band(Band::AudioSubKHz, key(2, 0, 0), C32::new(1.0, 0.0));
         let mut next = WaveField::<5>::with_default_bands();
-        let n = helmholtz_steady_iterate(
-            &prev,
-            &mut next,
-            0,
-            0.5,
-            C32::new(0.1, 0.0),
-            0.5,
-            |_| C32::ZERO,
-        );
+        let n = helmholtz_steady_iterate(&prev, &mut next, 0, 0.5, C32::new(0.1, 0.0), 0.5, |_| {
+            C32::ZERO
+        });
         assert_eq!(n, 3);
     }
 
@@ -245,15 +239,9 @@ mod tests {
         let mut prev = WaveField::<5>::with_default_bands();
         prev.set_band(Band::AudioSubKHz, key(0, 0, 0), C32::new(2.0, 0.5));
         let mut next = WaveField::<5>::with_default_bands();
-        helmholtz_steady_iterate(
-            &prev,
-            &mut next,
-            0,
-            0.5,
-            C32::new(0.1, 0.0),
-            0.0,
-            |_| C32::ZERO,
-        );
+        helmholtz_steady_iterate(&prev, &mut next, 0, 0.5, C32::new(0.1, 0.0), 0.0, |_| {
+            C32::ZERO
+        });
         let v = next.at_band(Band::AudioSubKHz, key(0, 0, 0));
         // omega = 0 ⇒ no change.
         assert!((v.re - 2.0).abs() < 1e-6);
@@ -296,15 +284,10 @@ mod tests {
     fn jacobi_oob_band_returns_zero_touched() {
         let prev = WaveField::<5>::with_default_bands();
         let mut next = WaveField::<5>::with_default_bands();
-        let n = helmholtz_steady_iterate(
-            &prev,
-            &mut next,
-            99,
-            0.5,
-            C32::new(1.0, 0.0),
-            0.5,
-            |_| C32::ZERO,
-        );
+        let n =
+            helmholtz_steady_iterate(&prev, &mut next, 99, 0.5, C32::new(1.0, 0.0), 0.5, |_| {
+                C32::ZERO
+            });
         assert_eq!(n, 0);
     }
 }

@@ -409,7 +409,12 @@ mod tests {
     #[test]
     fn step_with_gravity_falls_body() {
         let mut w = WavePhysicsWorld::new(WorldConfig::default()).unwrap();
-        w.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.0, 10.0, 0.0], 1.0, [0.5; 3]));
+        w.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.0, 10.0, 0.0],
+            1.0,
+            [0.5; 3],
+        ));
         physics_step(&mut w, 1.0 / 60.0, None).unwrap();
         let b = w.body(crate::world::BodyId(0)).unwrap();
         // After 1 step at 60Hz with gravity = -9.81, y should drop slightly.
@@ -419,7 +424,11 @@ mod tests {
     #[test]
     fn step_no_gravity_static_body_does_not_move() {
         let mut w = WavePhysicsWorld::new(WorldConfig::no_gravity()).unwrap();
-        w.add_body(RigidBody::r#static(crate::world::BodyId::NONE, [0.0; 3], [0.5; 3]));
+        w.add_body(RigidBody::r#static(
+            crate::world::BodyId::NONE,
+            [0.0; 3],
+            [0.5; 3],
+        ));
         physics_step(&mut w, 1.0 / 60.0, None).unwrap();
         let b = w.body(crate::world::BodyId(0)).unwrap();
         assert_eq!(b.position, [0.0; 3]);
@@ -428,8 +437,18 @@ mod tests {
     #[test]
     fn step_broadphase_pair_two_close_bodies() {
         let mut w = WavePhysicsWorld::new(WorldConfig::no_gravity()).unwrap();
-        w.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.0; 3], 1.0, [0.1; 3]));
-        w.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.05; 3], 1.0, [0.1; 3]));
+        w.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.0; 3],
+            1.0,
+            [0.1; 3],
+        ));
+        w.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.05; 3],
+            1.0,
+            [0.1; 3],
+        ));
         let r = physics_step(&mut w, 1.0 / 60.0, None).unwrap();
         assert!(r.broadphase_pairs >= 1);
     }
@@ -437,7 +456,12 @@ mod tests {
     #[test]
     fn step_world_contact_pushes_body() {
         let mut w = WavePhysicsWorld::new(WorldConfig::no_gravity()).unwrap();
-        w.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.0, 0.5, 0.0], 1.0, [0.6; 3]));
+        w.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.0, 0.5, 0.0],
+            1.0,
+            [0.6; 3],
+        ));
         let collider = SdfCollider::new(SdfShape::Primitive(SdfPrimitive::Plane {
             normal: [0.0, 1.0, 0.0],
             offset: 0.0,
@@ -449,7 +473,12 @@ mod tests {
     #[test]
     fn step_emits_wave_excitations_on_contact() {
         let mut w = WavePhysicsWorld::new(WorldConfig::default()).unwrap();
-        let body_id = w.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.0, 0.0, 0.0], 1.0, [0.5; 3]));
+        let body_id = w.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.0, 0.0, 0.0],
+            1.0,
+            [0.5; 3],
+        ));
         // Set up a downward velocity so the impact-energy is non-trivial.
         let b = w.body_mut(body_id.id).unwrap();
         b.linear_velocity = [0.0, -5.0, 0.0];
@@ -477,8 +506,18 @@ mod tests {
     fn step_determinism_two_runs_same_outcome() {
         let mut w1 = WavePhysicsWorld::new(WorldConfig::default()).unwrap();
         let mut w2 = WavePhysicsWorld::new(WorldConfig::default()).unwrap();
-        w1.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.0, 5.0, 0.0], 1.0, [0.5; 3]));
-        w2.add_body(RigidBody::dynamic(crate::world::BodyId::NONE, [0.0, 5.0, 0.0], 1.0, [0.5; 3]));
+        w1.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.0, 5.0, 0.0],
+            1.0,
+            [0.5; 3],
+        ));
+        w2.add_body(RigidBody::dynamic(
+            crate::world::BodyId::NONE,
+            [0.0, 5.0, 0.0],
+            1.0,
+            [0.5; 3],
+        ));
         for _ in 0..10 {
             physics_step(&mut w1, 1.0 / 60.0, None).unwrap();
             physics_step(&mut w2, 1.0 / 60.0, None).unwrap();
@@ -498,7 +537,8 @@ mod tests {
     #[test]
     fn step_error_from_propagates() {
         // Synthetic test : ensure From impls are exhaustive.
-        let e1: StepError = crate::morton_hash::BroadphaseError::Saturation { count: 0, cap: 0 }.into();
+        let e1: StepError =
+            crate::morton_hash::BroadphaseError::Saturation { count: 0, cap: 0 }.into();
         let _: StepError = e1;
         let e2: StepError = crate::xpbd::ConstraintFailure::UnsupportedKind.into();
         let _: StepError = e2;

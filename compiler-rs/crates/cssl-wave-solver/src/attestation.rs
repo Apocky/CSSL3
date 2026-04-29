@@ -94,9 +94,6 @@ mod tests {
         // Cross-crate parity : if the prime-directive crate is in the
         // workspace, its ATTESTATION literal must match this one byte-
         // for-byte.
-        assert_eq!(
-            cssl_substrate_prime_directive::ATTESTATION,
-            ATTESTATION
-        );
+        assert_eq!(cssl_substrate_prime_directive::ATTESTATION, ATTESTATION);
     }
 }

@@ -152,8 +152,9 @@ impl EyeCamera {
         let y = self.projection.tan_u - v * (self.projection.tan_u + self.projection.tan_d);
         // View-space forward is -Z.
         let dir_view = [x, y, -1.0];
-        let len = (dir_view[0] * dir_view[0] + dir_view[1] * dir_view[1] + dir_view[2] * dir_view[2])
-            .sqrt();
+        let len =
+            (dir_view[0] * dir_view[0] + dir_view[1] * dir_view[1] + dir_view[2] * dir_view[2])
+                .sqrt();
         let inv = if len > 1e-12 { 1.0 / len } else { 0.0 };
         let dir_view_unit = [dir_view[0] * inv, dir_view[1] * inv, dir_view[2] * inv];
         // Rotate via the pose-motor sandwich. For Stage-0 we use the rotor

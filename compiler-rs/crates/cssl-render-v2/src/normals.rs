@@ -110,8 +110,7 @@ impl CentralDiffForbidden {
         "central-differences for normals are FORBIDDEN per 01_SDF_NATIVE_RENDER § IV : \
          use BackwardDiffNormals::estimate (F1 autodiff backward-mode).";
     /// Spec anchor.
-    pub const SPEC_ANCHOR: &'static str =
-        "Omniverse/07_AESTHETIC/01_SDF_NATIVE_RENDER.csl.md § IV";
+    pub const SPEC_ANCHOR: &'static str = "Omniverse/07_AESTHETIC/01_SDF_NATIVE_RENDER.csl.md § IV";
 }
 
 /// Backward-mode AD normal estimator. Implements the F1 backward-diff via
@@ -339,11 +338,7 @@ fn analytic_derivative(prim: &AnalyticSdf, p: [f32; 3], axis: u8) -> f32 {
                 0.0
             }
         }
-        AnalyticSdfKind::Torus {
-            center,
-            major,
-            ..
-        } => {
+        AnalyticSdfKind::Torus { center, major, .. } => {
             let dx = p[0] - center[0];
             let dy = p[1] - center[1];
             let dz = p[2] - center[2];
@@ -369,8 +364,9 @@ fn analytic_derivative(prim: &AnalyticSdf, p: [f32; 3], axis: u8) -> f32 {
             let xy_dist = (dx * dx + dz * dz).sqrt().max(1e-9);
             let xy = xy_dist - radius;
             let z_off = dy.abs() - half_height;
-            let q_outside_len =
-                (xy.max(0.0).powi(2) + z_off.max(0.0).powi(2)).sqrt().max(1e-9);
+            let q_outside_len = (xy.max(0.0).powi(2) + z_off.max(0.0).powi(2))
+                .sqrt()
+                .max(1e-9);
             match i {
                 0 => xy.max(0.0) * (dx / xy_dist) / q_outside_len,
                 1 => z_off.max(0.0) * dy.signum() / q_outside_len,

@@ -244,9 +244,7 @@ impl MockSwapchain {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        MockSwapchain, SwapchainCreateInfo, SwapchainFormat, SwapchainPurpose,
-    };
+    use super::{MockSwapchain, SwapchainCreateInfo, SwapchainFormat, SwapchainPurpose};
     use crate::per_eye::{ColorFormat, DepthFormat, MotionVectorFormat};
 
     #[test]
@@ -266,7 +264,10 @@ mod tests {
 
     #[test]
     fn from_color_mapping() {
-        assert_eq!(SwapchainFormat::from_color(ColorFormat::Srgb8), SwapchainFormat::ColorSrgb8);
+        assert_eq!(
+            SwapchainFormat::from_color(ColorFormat::Srgb8),
+            SwapchainFormat::ColorSrgb8
+        );
         assert_eq!(
             SwapchainFormat::from_color(ColorFormat::Rgb10A2WideP3),
             SwapchainFormat::ColorRgb10A2WideP3

@@ -343,7 +343,11 @@ mod tests {
 
     #[test]
     fn boundary_kind_variants_are_distinct() {
-        let kinds = [BoundaryKind::Dirichlet, BoundaryKind::Neumann, BoundaryKind::Robin];
+        let kinds = [
+            BoundaryKind::Dirichlet,
+            BoundaryKind::Neumann,
+            BoundaryKind::Robin,
+        ];
         for i in 0..kinds.len() {
             for j in (i + 1)..kinds.len() {
                 assert_ne!(kinds[i], kinds[j]);

@@ -45,7 +45,10 @@ impl ColorSpace {
     /// `true` iff this color-space is wide-gamut (vs. sRGB-equivalent).
     #[must_use]
     pub const fn is_wide_gamut(self) -> bool {
-        matches!(self, Self::DciP3 | Self::WideP3 | Self::Rec2020 | Self::AdobeRgb)
+        matches!(
+            self,
+            Self::DciP3 | Self::WideP3 | Self::Rec2020 | Self::AdobeRgb
+        )
     }
 }
 

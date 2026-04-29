@@ -202,7 +202,11 @@ pub fn sdf_sphere(p: [f32; 3], center: [f32; 3], radius: f32) -> f32 {
 #[must_use]
 pub fn sdf_box(p: [f32; 3], center: [f32; 3], half: [f32; 3]) -> f32 {
     let d = sub3(p, center);
-    let q = [d[0].abs() - half[0], d[1].abs() - half[1], d[2].abs() - half[2]];
+    let q = [
+        d[0].abs() - half[0],
+        d[1].abs() - half[1],
+        d[2].abs() - half[2],
+    ];
     let outside = [q[0].max(0.0), q[1].max(0.0), q[2].max(0.0)];
     let outside_dist = length3(outside);
     let inside_dist = q[0].max(q[1]).max(q[2]).min(0.0);
@@ -284,13 +288,17 @@ impl SdfShape {
             SdfShape::Primitive(prim) => match *prim {
                 SdfPrimitive::Sphere { center, radius } => sdf_sphere(p, center, radius),
                 SdfPrimitive::Box { center, half } => sdf_box(p, center, half),
-                SdfPrimitive::Cylinder { center, radius, half_height } => {
-                    sdf_cylinder(p, center, radius, half_height)
-                }
+                SdfPrimitive::Cylinder {
+                    center,
+                    radius,
+                    half_height,
+                } => sdf_cylinder(p, center, radius, half_height),
                 SdfPrimitive::Capsule { a, b, radius } => sdf_capsule(p, a, b, radius),
-                SdfPrimitive::Torus { center, major_radius, tube_radius } => {
-                    sdf_torus(p, center, major_radius, tube_radius)
-                }
+                SdfPrimitive::Torus {
+                    center,
+                    major_radius,
+                    tube_radius,
+                } => sdf_torus(p, center, major_radius, tube_radius),
                 SdfPrimitive::Plane { normal, offset } => sdf_plane(p, normal, offset),
             },
             SdfShape::Union(a, b) => a.evaluate(p).min(b.evaluate(p)),
@@ -301,9 +309,7 @@ impl SdfShape {
                 let db = b.evaluate(p);
                 smooth_min(da, db, *k)
             }
-            SdfShape::Translated(child, offset) => {
-                child.evaluate(sub3(p, *offset))
-            }
+            SdfShape::Translated(child, offset) => child.evaluate(sub3(p, *offset)),
         }
     }
 
@@ -380,7 +386,9 @@ impl SdfHit {
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum SdfQueryError {
     /// CCD ray-march exceeded `MAX_CCD_STEPS` without converging.
-    #[error("PHYSWAVE0001 — SDF CCD ray-march did not converge in {steps} steps (residual {residual})")]
+    #[error(
+        "PHYSWAVE0001 — SDF CCD ray-march did not converge in {steps} steps (residual {residual})"
+    )]
     CcdNoConvergence {
         /// Number of steps consumed.
         steps: u32,
@@ -425,7 +433,10 @@ impl SdfCollider {
     /// § Construct a collider from an SDF shape.
     #[must_use]
     pub fn new(shape: SdfShape) -> Self {
-        SdfCollider { shape, inflation: 0.0 }
+        SdfCollider {
+            shape,
+            inflation: 0.0,
+        }
     }
 
     /// § Construct a collider with a positive inflation — the collider's
@@ -434,7 +445,10 @@ impl SdfCollider {
     ///   "swept-radius" narrow-phase trick for collision-with-thickness.
     #[must_use]
     pub fn with_inflation(shape: SdfShape, inflation: f32) -> Self {
-        SdfCollider { shape, inflation: inflation.max(0.0) }
+        SdfCollider {
+            shape,
+            inflation: inflation.max(0.0),
+        }
     }
 
     /// § Read the inflation distance.
@@ -487,11 +501,7 @@ impl SdfCollider {
     ///   Algorithm : sphere-tracing with backtrack to bisection on
     ///   convergence-stall. Lipschitz ≤ 1 is assumed ; a violation
     ///   returns `CcdNoConvergence` rather than looping forever.
-    pub fn ccd_segment(
-        &self,
-        p0: [f32; 3],
-        p1: [f32; 3],
-    ) -> Result<Option<SdfHit>, SdfQueryError> {
+    pub fn ccd_segment(&self, p0: [f32; 3], p1: [f32; 3]) -> Result<Option<SdfHit>, SdfQueryError> {
         let dir_full = sub3(p1, p0);
         let dist = length3(dir_full);
         if dist < CCD_MIN_STEP {
@@ -789,12 +799,7 @@ mod tests {
 
     #[test]
     fn capsule_endpoint_is_zero_at_distance_radius() {
-        let d = sdf_capsule(
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            1.0,
-        );
+        let d = sdf_capsule([0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 1.0);
         assert!(approx(d, 0.0, 1e-5));
     }
 

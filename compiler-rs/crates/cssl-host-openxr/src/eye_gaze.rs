@@ -203,9 +203,7 @@ pub const ACTION_VISIONOS_LOOK_TO_TARGET: &str = "/user/eyes_ext/input/visionos_
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        try_egress, GazeSample, GazeSamplePair, GazeTrackingFlags, ACTION_GAZE_POSE,
-    };
+    use super::{try_egress, GazeSample, GazeSamplePair, GazeTrackingFlags, ACTION_GAZE_POSE};
     use crate::error::XRFailure;
     use crate::ifc_shim::SensitiveDomain;
 
@@ -250,7 +248,9 @@ mod tests {
         assert!(err.is_biometric_refusal());
         assert!(matches!(
             err,
-            XRFailure::BiometricEgressRefused { domain: SensitiveDomain::Gaze }
+            XRFailure::BiometricEgressRefused {
+                domain: SensitiveDomain::Gaze
+            }
         ));
     }
 

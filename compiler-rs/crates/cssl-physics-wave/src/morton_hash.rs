@@ -383,7 +383,8 @@ impl GridIndex {
 
     fn rehash_grow(&mut self) {
         let new_cap = self.cap() * 2;
-        let old_keys = std::mem::replace(&mut self.keys, vec![MortonKey::SENTINEL.to_u64(); new_cap]);
+        let old_keys =
+            std::mem::replace(&mut self.keys, vec![MortonKey::SENTINEL.to_u64(); new_cap]);
         let old_cells = std::mem::replace(&mut self.cell_idx, vec![u32::MAX; new_cap]);
         self.count = 0;
         self.stats.rehashes += 1;
@@ -398,13 +399,16 @@ impl GridIndex {
     }
 
     fn iter_slots(&self) -> impl Iterator<Item = (MortonKey, u32)> + '_ {
-        self.keys.iter().zip(self.cell_idx.iter()).filter_map(|(k, c)| {
-            if *k != MortonKey::SENTINEL.to_u64() {
-                Some((MortonKey::from_u64_raw(*k), *c))
-            } else {
-                None
-            }
-        })
+        self.keys
+            .iter()
+            .zip(self.cell_idx.iter())
+            .filter_map(|(k, c)| {
+                if *k != MortonKey::SENTINEL.to_u64() {
+                    Some((MortonKey::from_u64_raw(*k), *c))
+                } else {
+                    None
+                }
+            })
     }
 
     fn clear(&mut self) {
@@ -482,13 +486,22 @@ impl MortonSpatialHash {
         let cy = iy + bias;
         let cz = iz + bias;
         if cx < 0 || cx > (1 << 21) - 1 {
-            return Err(BroadphaseError::AxisOutOfRange { axis: 'x', value: ix });
+            return Err(BroadphaseError::AxisOutOfRange {
+                axis: 'x',
+                value: ix,
+            });
         }
         if cy < 0 || cy > (1 << 21) - 1 {
-            return Err(BroadphaseError::AxisOutOfRange { axis: 'y', value: iy });
+            return Err(BroadphaseError::AxisOutOfRange {
+                axis: 'y',
+                value: iy,
+            });
         }
         if cz < 0 || cz > (1 << 21) - 1 {
-            return Err(BroadphaseError::AxisOutOfRange { axis: 'z', value: iz });
+            return Err(BroadphaseError::AxisOutOfRange {
+                axis: 'z',
+                value: iz,
+            });
         }
         Ok(MortonKey::encode(cx as u64, cy as u64, cz as u64)?)
     }

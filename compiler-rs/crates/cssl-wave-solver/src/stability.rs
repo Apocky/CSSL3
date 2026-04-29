@@ -133,10 +133,7 @@ impl KanStability for MockStabilityKan {
 /// § Predict the stable Δt for the current field state via the supplied
 ///   KAN-stability impl. Returns a positive Δt in seconds.
 #[must_use]
-pub fn predict_stable_dt<K: KanStability, const C: usize>(
-    kan: &K,
-    field: &WaveField<C>,
-) -> f64 {
+pub fn predict_stable_dt<K: KanStability, const C: usize>(kan: &K, field: &WaveField<C>) -> f64 {
     let summary = FieldSummary::from_field(field);
     kan.predict_stable_dt(&summary)
 }

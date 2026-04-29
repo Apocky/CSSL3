@@ -293,8 +293,16 @@ impl SdfRaymarchPass {
     ) -> Option<f32> {
         let mut a = t_near;
         let mut b = t_far;
-        let pa = [origin[0] + a * dir[0], origin[1] + a * dir[1], origin[2] + a * dir[2]];
-        let pb = [origin[0] + b * dir[0], origin[1] + b * dir[1], origin[2] + b * dir[2]];
+        let pa = [
+            origin[0] + a * dir[0],
+            origin[1] + a * dir[1],
+            origin[2] + a * dir[2],
+        ];
+        let pb = [
+            origin[0] + b * dir[0],
+            origin[1] + b * dir[1],
+            origin[2] + b * dir[2],
+        ];
         let mut fa = sdf.eval_f32(pa);
         let mut fb = sdf.eval_f32(pb);
         if fa * fb > 0.0 {
@@ -447,7 +455,9 @@ mod tests {
     fn march_hits_sphere_at_one_meter() {
         let pass = SdfRaymarchPass::default();
         let s = SdfComposition::from_primitive(AnalyticSdf::sphere(0.0, 0.0, 5.0, 1.0));
-        let hit = pass.march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 64).unwrap();
+        let hit = pass
+            .march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 64)
+            .unwrap();
         let h = hit.expect("ray should hit");
         // Sphere at (0,0,5) radius 1 ⇒ near surface t=4.
         assert!((h.t - 4.0).abs() < 0.01);
@@ -458,7 +468,9 @@ mod tests {
         let pass = SdfRaymarchPass::default();
         let s = SdfComposition::from_primitive(AnalyticSdf::sphere(0.0, 5.0, 0.0, 0.5));
         // Ray straight along +X, sphere is up at y=5 — miss.
-        let hit = pass.march(&s, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 256).unwrap();
+        let hit = pass
+            .march(&s, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 256)
+            .unwrap();
         assert!(hit.is_none());
     }
 
@@ -466,7 +478,10 @@ mod tests {
     fn march_returns_normal_at_hit() {
         let pass = SdfRaymarchPass::default();
         let s = SdfComposition::from_primitive(AnalyticSdf::sphere(0.0, 0.0, 5.0, 1.0));
-        let h = pass.march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 64).unwrap().unwrap();
+        let h = pass
+            .march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 64)
+            .unwrap()
+            .unwrap();
         // Normal should point back toward the camera — i.e., -Z.
         assert!(h.normal.0[2] < -0.5);
     }
@@ -477,12 +492,16 @@ mod tests {
         config.cone_aperture = 0.05;
         let pass = SdfRaymarchPass::new(config);
         let s = SdfComposition::from_primitive(AnalyticSdf::sphere(0.0, 0.0, 200.0, 1.0));
-        let h = pass.march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 256).unwrap();
+        let h = pass
+            .march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 256)
+            .unwrap();
         // Should still hit the distant sphere.
         assert!(h.is_some());
         // Now compare step counts to non-cone-marching.
         let plain = SdfRaymarchPass::default();
-        let h_plain = plain.march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 256).unwrap();
+        let h_plain = plain
+            .march(&s, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 256)
+            .unwrap();
         if let (Some(hc), Some(hp)) = (h, h_plain) {
             assert!(hc.steps_used <= hp.steps_used);
         }

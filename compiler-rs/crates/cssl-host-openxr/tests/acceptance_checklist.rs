@@ -28,7 +28,9 @@ fn acceptance_quest3_day_one_ship() {
     assert!(XrTarget::Quest3.is_day_one_tier_1());
     assert!(XrTarget::Quest3.requires_app_sw());
     let inst = MockInstance::quest3_default().unwrap();
-    assert!(inst.enabled_extensions.contains(cssl_host_openxr::XrExtension::FbSpaceWarp));
+    assert!(inst
+        .enabled_extensions
+        .contains(cssl_host_openxr::XrExtension::FbSpaceWarp));
 }
 
 #[test]
@@ -44,7 +46,9 @@ fn acceptance_pimax_day_one_ship() {
     // ✓ Pimax Crystal Super day-one ship
     assert!(XrTarget::PimaxCrystalSuper.is_day_one_tier_1());
     let inst = MockInstance::pimax_crystal_super_default().unwrap();
-    assert!(inst.enabled_extensions.contains(cssl_host_openxr::XrExtension::VarjoQuadViews));
+    assert!(inst
+        .enabled_extensions
+        .contains(cssl_host_openxr::XrExtension::VarjoQuadViews));
 }
 
 #[test]
@@ -129,14 +133,18 @@ fn acceptance_quad_view_view_count_4_path_verified_varjo_pimax() {
     assert_eq!(v.view_count, 4);
     assert!(v.is_quad_view());
     let pimax_inst = MockInstance::pimax_crystal_super_default().unwrap();
-    assert!(pimax_inst.enabled_extensions.contains(cssl_host_openxr::XrExtension::VarjoQuadViews));
+    assert!(pimax_inst
+        .enabled_extensions
+        .contains(cssl_host_openxr::XrExtension::VarjoQuadViews));
 }
 
 #[test]
 fn acceptance_app_sw_half_rate_render_path_ships_on_quest3() {
     // ✓ AppSW (XR_FB_space_warp) ½-rate render path ships-on-Quest3
     let inst = MockInstance::quest3_default().unwrap();
-    assert!(inst.enabled_extensions.contains(cssl_host_openxr::XrExtension::FbSpaceWarp));
+    assert!(inst
+        .enabled_extensions
+        .contains(cssl_host_openxr::XrExtension::FbSpaceWarp));
     assert!(XrTarget::Quest3.requires_app_sw());
     let _: AppSwScheduler = AppSwScheduler::quest3_default();
 }
@@ -226,9 +234,7 @@ fn acceptance_hdr_10_bit_swapchain_vision_pro() {
 fn acceptance_forward_compat_hooks_compile_no_op() {
     // ✓ Forward-compat hooks compile + link no-op day-one : accommodationDepth
     //   + viewCount=N + Foveator-trait + periphery-Gaussian-splat-branch
-    use cssl_host_openxr::{
-        foveation::MLFoveator, per_eye::PerEyeOutput, view::MAX_VIEWS,
-    };
+    use cssl_host_openxr::{foveation::MLFoveator, per_eye::PerEyeOutput, view::MAX_VIEWS};
     // accommodationDepth Option<>
     let mut out = PerEyeOutput::placeholder(0, 1, 1);
     assert!(!out.has_accommodation());
@@ -266,7 +272,9 @@ fn acceptance_5yr_forward_compat_targets_listed() {
     let blob = FUTURE_5_YEAR_LIST.join(" | ");
     assert!(blob.to_lowercase().contains("varifocal"));
     assert!(blob.to_lowercase().contains("light-field"));
-    assert!(blob.to_lowercase().contains("ml-foveated") || blob.to_lowercase().contains("mirror-lake"));
+    assert!(
+        blob.to_lowercase().contains("ml-foveated") || blob.to_lowercase().contains("mirror-lake")
+    );
 }
 
 #[test]

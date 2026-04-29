@@ -229,29 +229,24 @@ pub use budget::{
     BudgetError, BudgetValidator, Stage5Budget, Stage5BudgetTelemetry, Stage5DegradeLever,
 };
 pub use camera::{EyeCamera, EyeOffsetMillimeters, ProjectionParams};
-pub use cost_model::{
-    CostModel, MsCost, QuestThreeCostModel, ShadingRateZone, VisionProCostModel,
-};
+pub use cost_model::{CostModel, MsCost, QuestThreeCostModel, ShadingRateZone, VisionProCostModel};
 pub use foveation::{
     FoveaMask, FoveatedMultiViewRender, FoveationMethod, FoveationZones, ShadingRate,
 };
 pub use fractal_hook::{FractalAmplifierHandle, FractalDetailRequest, NoFractalAmplifier};
 pub use gbuffer::{GBuffer, GBufferLayout, GBufferRow, MultiViewGBuffer};
-pub use kan_amplifier::{
-    KanAmplifierHook, KanAmplifierInput, KanAmplifierOutput, MockAmplifier,
-};
+pub use kan_amplifier::{KanAmplifierHook, KanAmplifierInput, KanAmplifierOutput, MockAmplifier};
 pub use mera_skip::{MeraSkipDispatcher, MeraSkipResult, SummaryBound};
 pub use meshlet::{MeshletDescriptor, MeshletHybridFallback, MeshletKind};
 pub use mise_en_abyme::{
-    BANDS_PER_EYE, CompanionEyeWitness, EYES_PER_FRAME, KanConfidence, MIN_CONFIDENCE,
-    MirrorRaymarchProbe, MirrorSurface, MiseEnAbymeCostModel, MiseEnAbymePass, MiseEnAbymeRadiance,
-    RECURSION_DEPTH_HARD_CAP, RecursionDepthBudget, RegionBoundary, STAGE9_BUDGET_QUEST3_US,
-    STAGE9_BUDGET_VISION_PRO_US, Stage9Error, Stage9Event, WitnessCompositor,
+    CompanionEyeWitness, KanConfidence, MirrorRaymarchProbe, MirrorSurface, MiseEnAbymeCostModel,
+    MiseEnAbymePass, MiseEnAbymeRadiance, RecursionDepthBudget, RegionBoundary, Stage9Error,
+    Stage9Event, WitnessCompositor, BANDS_PER_EYE, EYES_PER_FRAME, MIN_CONFIDENCE,
+    RECURSION_DEPTH_HARD_CAP, STAGE9_BUDGET_QUEST3_US, STAGE9_BUDGET_VISION_PRO_US,
 };
 pub use multiview::{MultiViewConfig, ViewCount, ViewInstance};
 pub use normals::{
-    BackwardDiffNormals, CentralDiffForbidden, NormalEstimate, SdfFunction,
-    SurfaceNormal,
+    BackwardDiffNormals, CentralDiffForbidden, NormalEstimate, SdfFunction, SurfaceNormal,
 };
 pub use pipeline::{
     RenderGraphNode, RenderGraphNodeError, Stage5Node, StageRole, TwelveStagePipelineSlot,

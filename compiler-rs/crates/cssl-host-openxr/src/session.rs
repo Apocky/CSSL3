@@ -143,7 +143,10 @@ impl MockSession {
         }
         // visionOS demands the bridge.
         if instance.runtime.is_compositor_services_bridge()
-            && !matches!(binding, GraphicsBinding::CompositorServices | GraphicsBinding::Headless)
+            && !matches!(
+                binding,
+                GraphicsBinding::CompositorServices | GraphicsBinding::Headless
+            )
         {
             return Err(XRFailure::SessionCreate { code: -2 });
         }
@@ -294,7 +297,10 @@ mod tests {
     #[test]
     fn graphics_binding_as_str() {
         assert_eq!(GraphicsBinding::Vulkan.as_str(), "vulkan");
-        assert_eq!(GraphicsBinding::CompositorServices.as_str(), "compositor-services");
+        assert_eq!(
+            GraphicsBinding::CompositorServices.as_str(),
+            "compositor-services"
+        );
         assert!(GraphicsBinding::CompositorServices.is_bridge());
         assert!(!GraphicsBinding::Vulkan.is_bridge());
     }

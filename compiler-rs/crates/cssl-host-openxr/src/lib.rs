@@ -146,30 +146,24 @@ pub use eye_gaze::{
 };
 pub use face::{FaceTrackerCaps, FaceTrackingProvider, FaceWeights, MAX_BLENDSHAPES};
 pub use foveation::{
-    DFRFoveator, FFRFoveator, FFRProfile, FoveationConfig, Foveator, GazePrediction,
-    MLFoveator, SaccadeEKF,
+    DFRFoveator, FFRFoveator, FFRProfile, FoveationConfig, Foveator, GazePrediction, MLFoveator,
+    SaccadeEKF,
 };
 // IFC shim re-exports : these mirror the post-T11-D132 `cssl-ifc` API
 // so callers can `use cssl_host_openxr::SensitiveDomain` without
 // independently depending on `cssl-ifc` (which at this worktree's
 // snapshot does not yet expose the post-D132 types).
-pub use ifc_shim::{
-    validate_egress, EgressGrantError, Label, LabeledValue, SensitiveDomain,
-};
 pub use frame_loop::{FrameLoop, FrameResult};
 pub use hand::{
     BonePose, BothHands, HandSide, HandSkeleton, HandTrackerCaps, PinchAim, HAND_BONE_COUNT,
 };
 pub use hdr::{ColorSpace, HdrConfig, ToneMapCurve};
+pub use ifc_shim::{validate_egress, EgressGrantError, Label, LabeledValue, SensitiveDomain};
 pub use instance::{AppInfo, MockInstance, XrApiVersion, XrInstanceBuilder};
 pub use ipd::{EyeSide, Ipd, DEFAULT_IPD_MM, IPD_MAX_MM, IPD_MIN_MM};
 pub use multiview::{MultiviewConfig, MultiviewMode};
-pub use passthrough::{
-    AlphaMode, PassthroughConfig, PassthroughLayer, PassthroughProvider,
-};
-pub use per_eye::{
-    ColorFormat, DepthFormat, MotionVectorFormat, PerEyeOutput, PerEyeOutputArray,
-};
+pub use passthrough::{AlphaMode, PassthroughConfig, PassthroughLayer, PassthroughProvider};
+pub use per_eye::{ColorFormat, DepthFormat, MotionVectorFormat, PerEyeOutput, PerEyeOutputArray};
 pub use reference_space::{ReferenceSpaceConfig, XrReferenceSpaceType};
 pub use runtime_select::{XrRuntime, XrTarget};
 pub use session::{GraphicsBinding, MockSession, XrSessionState};

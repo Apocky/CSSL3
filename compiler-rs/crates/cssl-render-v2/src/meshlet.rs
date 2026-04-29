@@ -155,8 +155,7 @@ impl MeshletHybridFallback {
     /// Sort descriptors by layer-priority (ascending) — stage-5 emits in this
     /// order.
     pub fn sort_by_priority(&mut self) {
-        self.descriptors
-            .sort_by_key(|d| d.layer_priority);
+        self.descriptors.sort_by_key(|d| d.layer_priority);
     }
 }
 

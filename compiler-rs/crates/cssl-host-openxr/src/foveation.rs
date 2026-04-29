@@ -432,7 +432,9 @@ mod tests {
         assert!(FFRProfile::Off.center_zone_radius() > FFRProfile::Low.center_zone_radius());
         assert!(FFRProfile::Low.center_zone_radius() > FFRProfile::Medium.center_zone_radius());
         assert!(FFRProfile::Medium.center_zone_radius() > FFRProfile::High.center_zone_radius());
-        assert!(FFRProfile::High.center_zone_radius() > FFRProfile::Aggressive.center_zone_radius());
+        assert!(
+            FFRProfile::High.center_zone_radius() > FFRProfile::Aggressive.center_zone_radius()
+        );
     }
 
     #[test]
@@ -548,7 +550,7 @@ mod tests {
         // velocity-computation branch engages).
         ekf.update(0.0, 0.0, 1_000_000).unwrap();
         ekf.update(0.1, 0.0, 17_666_666).unwrap(); // 16.67ms later
-        // Now velocity is set ; predict 16ms ahead.
+                                                   // Now velocity is set ; predict 16ms ahead.
         let p = ekf.predict(33_333_333);
         // We've extrapolated forward in x ; pos_x should be > 0.1.
         assert!(p.center_ndc[0] > 0.1, "got {}", p.center_ndc[0]);

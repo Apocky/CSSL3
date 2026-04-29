@@ -116,7 +116,12 @@ fn body_plan_to_skeleton_to_constraints_pipeline() {
 #[test]
 fn end_to_end_physics_step_with_world_collider() {
     let mut world = WavePhysicsWorld::new(WorldConfig::default()).unwrap();
-    world.add_body(RigidBody::dynamic(BodyId::NONE, [0.0, 5.0, 0.0], 1.0, [0.4; 3]));
+    world.add_body(RigidBody::dynamic(
+        BodyId::NONE,
+        [0.0, 5.0, 0.0],
+        1.0,
+        [0.4; 3],
+    ));
     let collider = SdfCollider::new(SdfShape::Primitive(SdfPrimitive::Plane {
         normal: [0.0, 1.0, 0.0],
         offset: 0.0,
@@ -135,7 +140,10 @@ fn end_to_end_physics_step_with_world_collider() {
         }
         last_y = y;
     }
-    assert!(hit_ground, "body should have landed within 2 seconds at 60Hz");
+    assert!(
+        hit_ground,
+        "body should have landed within 2 seconds at 60Hz"
+    );
 }
 
 #[test]
@@ -192,7 +200,12 @@ fn determinism_two_worlds_same_inputs_same_outputs() {
 #[test]
 fn wave_excitations_drained_after_step() {
     let mut world = WavePhysicsWorld::new(WorldConfig::default()).unwrap();
-    world.add_body(RigidBody::dynamic(BodyId::NONE, [0.0, 0.0, 0.0], 1.0, [0.5; 3]));
+    world.add_body(RigidBody::dynamic(
+        BodyId::NONE,
+        [0.0, 0.0, 0.0],
+        1.0,
+        [0.5; 3],
+    ));
     let body_id = BodyId(0);
     {
         let b = world.body_mut(body_id).unwrap();

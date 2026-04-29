@@ -214,9 +214,13 @@ impl ActionSet {
         let mut s = Self::new("omniverse", "Omniverse", 1);
         // Locomotion
         s.push(
-            Action::new("locomotion-stick", "Locomotion (thumbstick)", ActionType::Vector2fInput)
-                .with_sub_action_path("/user/hand/left")
-                .with_sub_action_path("/user/hand/right"),
+            Action::new(
+                "locomotion-stick",
+                "Locomotion (thumbstick)",
+                ActionType::Vector2fInput,
+            )
+            .with_sub_action_path("/user/hand/left")
+            .with_sub_action_path("/user/hand/right"),
         );
         s.push(
             Action::new("snap-turn", "Snap turn", ActionType::BooleanInput)

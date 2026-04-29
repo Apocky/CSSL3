@@ -219,7 +219,6 @@ pub fn lbm_explicit_step<const C: usize>(
     touched
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

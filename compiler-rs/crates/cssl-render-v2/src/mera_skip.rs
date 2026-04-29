@@ -381,7 +381,9 @@ mod tests {
     fn world_to_morton_negative_is_none() {
         let p = MeraPyramid::new();
         let d = MeraSkipDispatcher::new(&p);
-        assert!(d.world_to_morton_key([-1.0, 0.0, 0.0], CellTier::T0Fovea).is_none());
+        assert!(d
+            .world_to_morton_key([-1.0, 0.0, 0.0], CellTier::T0Fovea)
+            .is_none());
     }
 
     #[test]

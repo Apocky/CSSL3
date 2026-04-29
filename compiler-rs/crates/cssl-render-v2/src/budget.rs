@@ -151,10 +151,7 @@ pub struct BudgetValidator;
 
 impl BudgetValidator {
     /// Check that `total_cells` × `foveation_factor` fits the Quest-3 budget.
-    pub fn check_quest3(
-        total_cells: u64,
-        foveation_factor: f32,
-    ) -> Result<MsCost, BudgetError> {
+    pub fn check_quest3(total_cells: u64, foveation_factor: f32) -> Result<MsCost, BudgetError> {
         if total_cells > crate::M7_VISIBLE_CELLS_BUDGET {
             return Err(BudgetError::CellBudgetExceeded {
                 cells: total_cells,
@@ -371,7 +368,10 @@ mod tests {
 
     #[test]
     fn pulldown_raymarch_steps_is_last_resort() {
-        let last = Stage5DegradeLever::pulldown_order().last().copied().unwrap();
+        let last = Stage5DegradeLever::pulldown_order()
+            .last()
+            .copied()
+            .unwrap();
         assert_eq!(last, Stage5DegradeLever::RaymarchSteps);
     }
 }

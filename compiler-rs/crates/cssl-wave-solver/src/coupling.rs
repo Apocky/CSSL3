@@ -48,9 +48,9 @@
 use thiserror::Error;
 
 use crate::band::Band;
-use crate::psi_field::WaveField;
 #[cfg(test)]
 use crate::complex::C32;
+use crate::psi_field::WaveField;
 
 /// § A directional coupling pair (from-band, to-band).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -273,11 +273,7 @@ pub enum CouplingError {
     #[error(
         "WS0040 — AGENCY-laundering refused : pair {from:?} → {to:?} is forbidden (strength={strength})"
     )]
-    ForbiddenMapping {
-        from: Band,
-        to: Band,
-        strength: f32,
-    },
+    ForbiddenMapping { from: Band, to: Band, strength: f32 },
 }
 
 #[cfg(test)]

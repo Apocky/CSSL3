@@ -28,7 +28,9 @@ pub use legacy_impl::*;
 
 #[cfg(feature = "cssl-physics-legacy")]
 mod legacy_impl {
-    use crate::world::{BodyId, BodyKind, RigidBody as WaveRigidBody, WavePhysicsWorld, WorldConfig};
+    use crate::world::{
+        BodyId, BodyKind, RigidBody as WaveRigidBody, WavePhysicsWorld, WorldConfig,
+    };
 
     /// § Legacy alias for [`crate::world::BodyId`].
     #[deprecated(

@@ -34,8 +34,10 @@
 //!   which is bit-deterministic per the omega-step DETERMINISM CONTRACT.
 
 use cssl_substrate_omega_step::{
-    effect_row::EffectRow, rng::RngStreamId, system::{OmegaSystem, SystemId}, OmegaError,
-    OmegaStepCtx,
+    effect_row::EffectRow,
+    rng::RngStreamId,
+    system::{OmegaSystem, SystemId},
+    OmegaError, OmegaStepCtx,
 };
 
 #[cfg(test)]
@@ -173,9 +175,7 @@ fn map_solver_error(err: WaveSolverError) -> OmegaError {
             system: SystemId(0),
             name: WAVE_UNITY_SYSTEM_NAME.to_string(),
             frame: 0,
-            msg: format!(
-                "wave-solver substep clamp exceeded : requested={requested}, max={max}"
-            ),
+            msg: format!("wave-solver substep clamp exceeded : requested={requested}, max={max}"),
         },
         WaveSolverError::NormBlewUp { before, after } => OmegaError::SystemPanicked {
             system: SystemId(0),

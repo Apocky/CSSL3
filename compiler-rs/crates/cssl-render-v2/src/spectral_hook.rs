@@ -77,10 +77,7 @@ impl SpectralRadianceTransport {
 /// 16-band spectral radiance.
 pub trait SpectralRadianceHook {
     /// Compute the spectral radiance for one pixel in one view.
-    fn evaluate(
-        &self,
-        gbuffer_row: &crate::gbuffer::GBufferRow,
-    ) -> SpectralRadianceTransport;
+    fn evaluate(&self, gbuffer_row: &crate::gbuffer::GBufferRow) -> SpectralRadianceTransport;
 
     /// Number of bands (16 for the canonical hyperspectral path ; some
     /// fallback paths drop to 8 or 4).
@@ -98,10 +95,7 @@ pub struct MockSpectralHook {
 }
 
 impl SpectralRadianceHook for MockSpectralHook {
-    fn evaluate(
-        &self,
-        gbuffer_row: &crate::gbuffer::GBufferRow,
-    ) -> SpectralRadianceTransport {
+    fn evaluate(&self, gbuffer_row: &crate::gbuffer::GBufferRow) -> SpectralRadianceTransport {
         let depth = gbuffer_row.depth_meters;
         let intensity = if depth.is_finite() {
             self.scale * (1.0 / (1.0 + depth))

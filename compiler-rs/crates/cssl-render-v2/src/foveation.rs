@@ -211,12 +211,7 @@ pub enum FoveationError {
     MethodUnsupported { method: FoveationMethod },
     /// Mask dimensions mismatch view dimensions.
     #[error("mask {mw}x{mh} mismatches view {vw}x{vh}")]
-    DimensionMismatch {
-        mw: u32,
-        mh: u32,
-        vw: u32,
-        vh: u32,
-    },
+    DimensionMismatch { mw: u32, mh: u32, vw: u32, vh: u32 },
 }
 
 /// Foveated multi-view render driver. Holds the per-view masks + the
@@ -278,7 +273,11 @@ impl FoveatedMultiViewRender {
             return 1.0;
         }
         let n = self.masks.len() as f32;
-        self.masks.iter().map(FoveaMask::weighted_cost_fraction).sum::<f32>() / n
+        self.masks
+            .iter()
+            .map(FoveaMask::weighted_cost_fraction)
+            .sum::<f32>()
+            / n
     }
 }
 

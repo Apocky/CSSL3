@@ -201,7 +201,11 @@ impl XrCompositionLayer {
             });
         }
         let mut color = [0u64; crate::view::MAX_VIEWS];
-        for (i, c) in color_textures.iter().enumerate().take(crate::view::MAX_VIEWS) {
+        for (i, c) in color_textures
+            .iter()
+            .enumerate()
+            .take(crate::view::MAX_VIEWS)
+        {
             color[i] = *c;
         }
         let mut depth = [0u64; crate::view::MAX_VIEWS];
@@ -314,7 +318,10 @@ impl CompositionLayerStack {
     /// must be present (per OpenXR spec, otherwise the runtime rejects).
     pub fn validate(&self) -> Result<(), XRFailure> {
         if self.layers.is_empty() {
-            return Err(XRFailure::CompositionLayerRejected { index: 0, code: -100 });
+            return Err(XRFailure::CompositionLayerRejected {
+                index: 0,
+                code: -100,
+            });
         }
         let has_primary = self.layers.iter().any(|l| {
             matches!(
@@ -323,7 +330,10 @@ impl CompositionLayerStack {
             )
         });
         if !has_primary {
-            return Err(XRFailure::CompositionLayerRejected { index: 0, code: -101 });
+            return Err(XRFailure::CompositionLayerRejected {
+                index: 0,
+                code: -101,
+            });
         }
         Ok(())
     }

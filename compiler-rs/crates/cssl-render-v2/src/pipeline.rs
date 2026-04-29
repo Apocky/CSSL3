@@ -226,7 +226,10 @@ mod tests {
     #[test]
     fn wire_wrong_slot_errors() {
         let r = Stage5Node::wire(TwelveStagePipelineSlot::Slot6KanBrdf);
-        assert!(matches!(r, Err(RenderGraphNodeError::SlotRoleMismatch { .. })));
+        assert!(matches!(
+            r,
+            Err(RenderGraphNodeError::SlotRoleMismatch { .. })
+        ));
     }
 
     #[test]
@@ -269,8 +272,7 @@ mod tests {
 
     #[test]
     fn validate_wire_mismatch_returns_slot_in_error() {
-        let r =
-            TwelveStagePipelineSlot::Slot4WaveSolver.validate_wire(StageRole::SdfRaymarch);
+        let r = TwelveStagePipelineSlot::Slot4WaveSolver.validate_wire(StageRole::SdfRaymarch);
         if let Err(RenderGraphNodeError::SlotRoleMismatch { slot, .. }) = r {
             assert_eq!(slot, TwelveStagePipelineSlot::Slot4WaveSolver);
         } else {

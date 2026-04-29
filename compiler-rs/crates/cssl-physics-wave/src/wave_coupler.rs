@@ -253,11 +253,7 @@ impl WaveImpactCoupler {
 
     /// § Synthesize a contact-spectrum from the impact energy.
     #[must_use]
-    pub fn synthesize_spectrum(
-        &self,
-        impact_energy: f32,
-        impact_velocity: f32,
-    ) -> ContactSpectrum {
+    pub fn synthesize_spectrum(&self, impact_energy: f32, impact_velocity: f32) -> ContactSpectrum {
         let mut bands = [0.0_f32; WAVE_UNITY_BANDS];
         for i in 0..WAVE_UNITY_BANDS {
             bands[i] = self.coupling[i] * impact_energy;
@@ -269,10 +265,7 @@ impl WaveImpactCoupler {
             let v_norm = (impact_velocity.abs() / 5.0).clamp(0.0, 1.0); // 5 m/s = "fast"
             (1.0 + v_norm * self.freq_velocity_sensitivity).clamp(0.5, 4.0)
         };
-        ContactSpectrum {
-            bands,
-            freq_shift,
-        }
+        ContactSpectrum { bands, freq_shift }
     }
 
     /// § Emit a `WaveExcitation` event from a contact.

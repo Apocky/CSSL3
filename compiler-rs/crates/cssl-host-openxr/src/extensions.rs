@@ -266,9 +266,7 @@ impl XrExtension {
     pub const fn is_required_vision_pro(self) -> bool {
         matches!(
             self,
-            Self::KhrCompositionLayerDepth
-                | Self::ExtHandTracking
-                | Self::FbColorSpace
+            Self::KhrCompositionLayerDepth | Self::ExtHandTracking | Self::FbColorSpace
         )
     }
 
@@ -515,11 +513,20 @@ mod tests {
 
     #[test]
     fn extension_names_are_canonical() {
-        assert_eq!(XrExtension::KhrVulkanEnable2.name(), "XR_KHR_vulkan_enable2");
+        assert_eq!(
+            XrExtension::KhrVulkanEnable2.name(),
+            "XR_KHR_vulkan_enable2"
+        );
         assert_eq!(XrExtension::FbSpaceWarp.name(), "XR_FB_space_warp");
-        assert_eq!(XrExtension::MetaFoveationEyeTracked.name(), "XR_META_foveation_eye_tracked");
+        assert_eq!(
+            XrExtension::MetaFoveationEyeTracked.name(),
+            "XR_META_foveation_eye_tracked"
+        );
         assert_eq!(XrExtension::VarjoQuadViews.name(), "XR_VARJO_quad_views");
-        assert_eq!(XrExtension::ExtEyeGazeInteraction.name(), "XR_EXT_eye_gaze_interaction");
+        assert_eq!(
+            XrExtension::ExtEyeGazeInteraction.name(),
+            "XR_EXT_eye_gaze_interaction"
+        );
         assert_eq!(XrExtension::FbBodyTracking.name(), "XR_FB_body_tracking");
         assert_eq!(XrExtension::FbFaceTracking2.name(), "XR_FB_face_tracking2");
     }

@@ -20,7 +20,11 @@ fn day_one_tier_1_is_three_targets_quest3_visionpro_pimax() {
 
 #[test]
 fn day_one_tier_1_targets_each_build_a_session() {
-    for t in [XrTarget::Quest3, XrTarget::VisionPro, XrTarget::PimaxCrystalSuper] {
+    for t in [
+        XrTarget::Quest3,
+        XrTarget::VisionPro,
+        XrTarget::PimaxCrystalSuper,
+    ] {
         let inst = XrInstanceBuilder::new(t).build_mock();
         assert!(inst.is_ok(), "{:?} instance build failed", t);
     }
@@ -98,7 +102,10 @@ fn flat_monitor_degenerate_runs_same_render_graph() {
             .enabled_extensions
             .iter()
             .any(|e| e != XrExtension::ExtDebugUtils);
-        assert!(!has_xr_runtime_ext, "flat-monitor must not pull XR-runtime extensions");
+        assert!(
+            !has_xr_runtime_ext,
+            "flat-monitor must not pull XR-runtime extensions"
+        );
     } else {
         assert!(inst.enabled_extensions.is_empty());
     }
@@ -128,14 +135,20 @@ fn future_5yr_list_includes_canonical_extensions() {
     let blob = FUTURE_5_YEAR_LIST.join(" | ");
     assert!(blob.to_lowercase().contains("varifocal"));
     assert!(blob.to_lowercase().contains("light-field"));
-    assert!(blob.to_lowercase().contains("ml-foveated") || blob.to_lowercase().contains("mirror-lake"));
+    assert!(
+        blob.to_lowercase().contains("ml-foveated") || blob.to_lowercase().contains("mirror-lake")
+    );
     assert!(blob.to_lowercase().contains("rec.2020") || blob.to_lowercase().contains("12-bit"));
     assert!(blob.to_lowercase().contains("kan") || blob.to_lowercase().contains("haptic"));
 }
 
 #[test]
 fn refresh_rate_floors_at_least_90_for_tier_1() {
-    for t in [XrTarget::Quest3, XrTarget::VisionPro, XrTarget::PimaxCrystalSuper] {
+    for t in [
+        XrTarget::Quest3,
+        XrTarget::VisionPro,
+        XrTarget::PimaxCrystalSuper,
+    ] {
         assert!(t.refresh_rate_floor_hz() >= 90.0, "{:?}", t);
     }
 }

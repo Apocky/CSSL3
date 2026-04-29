@@ -124,11 +124,11 @@ impl Band {
     #[must_use]
     pub fn centre_wavelength_m(self) -> f32 {
         match self {
-            Self::AudioSubKHz => 0.343,           // 343 m/s ÷ 1 kHz.
-            Self::LightRed => 700e-9,             // 700 nm.
-            Self::LightGreen => 540e-9,           // 540 nm.
-            Self::LightBlue => 430e-9,            // 430 nm.
-            Self::LightNearIr => 1100e-9,         // 1.1 µm.
+            Self::AudioSubKHz => 0.343,   // 343 m/s ÷ 1 kHz.
+            Self::LightRed => 700e-9,     // 700 nm.
+            Self::LightGreen => 540e-9,   // 540 nm.
+            Self::LightBlue => 430e-9,    // 430 nm.
+            Self::LightNearIr => 1100e-9, // 1.1 µm.
         }
     }
 
@@ -287,14 +287,24 @@ mod tests {
 
     #[test]
     fn light_classes_are_fast_envelope() {
-        for b in [Band::LightRed, Band::LightGreen, Band::LightBlue, Band::LightNearIr] {
+        for b in [
+            Band::LightRed,
+            Band::LightGreen,
+            Band::LightBlue,
+            Band::LightNearIr,
+        ] {
             assert_eq!(b.class(), BandClass::FastEnvelope);
         }
     }
 
     #[test]
     fn cell_size_for_light_is_small() {
-        for b in [Band::LightRed, Band::LightGreen, Band::LightBlue, Band::LightNearIr] {
+        for b in [
+            Band::LightRed,
+            Band::LightGreen,
+            Band::LightBlue,
+            Band::LightNearIr,
+        ] {
             assert!(b.recommended_cell_size_m() < 0.05);
         }
     }
@@ -343,7 +353,12 @@ mod tests {
 
     #[test]
     fn light_predicate_for_all_light() {
-        for b in [Band::LightRed, Band::LightGreen, Band::LightBlue, Band::LightNearIr] {
+        for b in [
+            Band::LightRed,
+            Band::LightGreen,
+            Band::LightBlue,
+            Band::LightNearIr,
+        ] {
             assert!(b.is_light());
         }
         assert!(!Band::AudioSubKHz.is_light());

@@ -178,7 +178,7 @@ pub mod xpbd;
 
 // § Public re-exports (stage-0 stable surface).
 pub use attestation::ATTESTATION;
-pub use body_plan::{BodyPlanError, BodyPlanPhysics, Bone, BoneId, BodyJoint, JointKind, Skeleton};
+pub use body_plan::{BodyJoint, BodyPlanError, BodyPlanPhysics, Bone, BoneId, JointKind, Skeleton};
 pub use determinism::{
     flush_denormals_to_zero, fmadd_disabled, DeterminismConfig, DET_RNG_SEED_DEFAULT,
 };
@@ -187,8 +187,8 @@ pub use morton_hash::{
 };
 pub use omega_step::{physics_step, PhysicsStepReport, StepError};
 pub use sdf::{
-    sdf_box, sdf_capsule, sdf_cylinder, sdf_plane, sdf_sphere, sdf_torus, SdfCollider, SdfHit,
-    SdfPrimitive, SdfQueryError, SdfShape, IsoSurfaceCcd,
+    sdf_box, sdf_capsule, sdf_cylinder, sdf_plane, sdf_sphere, sdf_torus, IsoSurfaceCcd,
+    SdfCollider, SdfHit, SdfPrimitive, SdfQueryError, SdfShape,
 };
 pub use wave_coupler::{
     ContactSpectrum, WaveCouplingError, WaveExcitation, WaveImpactCoupler, IMPACT_ENERGY_FLOOR,

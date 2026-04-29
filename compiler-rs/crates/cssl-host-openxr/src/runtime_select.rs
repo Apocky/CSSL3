@@ -152,7 +152,10 @@ impl XrTarget {
     /// § II.A.
     #[must_use]
     pub const fn is_day_one_tier_1(self) -> bool {
-        matches!(self, Self::Quest3 | Self::VisionPro | Self::PimaxCrystalSuper)
+        matches!(
+            self,
+            Self::Quest3 | Self::VisionPro | Self::PimaxCrystalSuper
+        )
     }
 
     /// `true` iff this target is on the secondary-day-one list. § II.B.
@@ -191,9 +194,7 @@ impl XrTarget {
             Self::PimaxCrystalSuper => XrRuntime::PimaxXR,
             Self::Pico4Ultra => XrRuntime::PicoXR,
             Self::HtcViveXrElite | Self::HtcViveFocusVision => XrRuntime::Htc,
-            Self::ValveIndex | Self::BigscreenBeyond | Self::BigscreenBeyond2 => {
-                XrRuntime::SteamVR
-            }
+            Self::ValveIndex | Self::BigscreenBeyond | Self::BigscreenBeyond2 => XrRuntime::SteamVR,
             Self::VarjoXr3 | Self::VarjoXr4 => XrRuntime::Varjo,
             Self::FlatMonitor => XrRuntime::MockTestRuntime,
             Self::FutureMirrorLake => XrRuntime::Monado,
@@ -342,8 +343,7 @@ impl XrTarget {
     ];
 
     /// All targets on the day-one tier-1 ship-list.
-    pub const DAY_ONE_TIER_1: [Self; 3] =
-        [Self::Quest3, Self::VisionPro, Self::PimaxCrystalSuper];
+    pub const DAY_ONE_TIER_1: [Self; 3] = [Self::Quest3, Self::VisionPro, Self::PimaxCrystalSuper];
 }
 
 #[cfg(test)]
@@ -380,7 +380,9 @@ mod tests {
     #[test]
     fn vision_pro_uses_compositor_services_bridge() {
         assert_eq!(XrTarget::VisionPro.runtime(), XrRuntime::AppleVisionPro);
-        assert!(XrTarget::VisionPro.runtime().is_compositor_services_bridge());
+        assert!(XrTarget::VisionPro
+            .runtime()
+            .is_compositor_services_bridge());
     }
 
     #[test]

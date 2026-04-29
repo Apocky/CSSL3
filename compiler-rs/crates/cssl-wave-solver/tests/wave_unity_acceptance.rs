@@ -27,10 +27,10 @@
 
 use cssl_substrate_omega_field::MortonKey;
 use cssl_wave_solver::{
-    apply_cross_coupling, apply_robin_bc, coupling_strength, estimate_gpu_cost,
-    helmholtz_residual, helmholtz_steady_iterate, imex_implicit_step, lbm_explicit_step,
-    wave_solver_step, AnalyticPlanarSdf, Band, BandPair, MockStabilityKan, NoSdf, WaveField,
-    WaveUnityPhase2, C32, CROSS_BAND_TABLE, GF_TARGET_PER_FRAME,
+    apply_cross_coupling, apply_robin_bc, coupling_strength, estimate_gpu_cost, helmholtz_residual,
+    helmholtz_steady_iterate, imex_implicit_step, lbm_explicit_step, wave_solver_step,
+    AnalyticPlanarSdf, Band, BandPair, MockStabilityKan, NoSdf, WaveField, WaveUnityPhase2, C32,
+    CROSS_BAND_TABLE, GF_TARGET_PER_FRAME,
 };
 
 fn key(x: u64, y: u64, z: u64) -> MortonKey {
@@ -90,11 +90,7 @@ fn standing_wave_detected_via_helmholtz_iteration() {
     let mut f = WaveField::<5>::with_default_bands();
     for x in 1..=8_u64 {
         let phase = std::f32::consts::PI * (x as f32) / 9.0;
-        f.set_band(
-            Band::AudioSubKHz,
-            key(x, 5, 5),
-            C32::new(phase.sin(), 0.0),
-        );
+        f.set_band(Band::AudioSubKHz, key(x, 5, 5), C32::new(phase.sin(), 0.0));
     }
     // After one Helmholtz Jacobi iterate at small omega, the field
     // should remain coherent (high phase-coherence).
@@ -109,7 +105,10 @@ fn standing_wave_detected_via_helmholtz_iteration() {
         |_| C32::ZERO,
     );
     let coherence = next.phase_coherence(Band::AudioSubKHz.index());
-    assert!(coherence > 0.5, "standing wave should have high phase coherence");
+    assert!(
+        coherence > 0.5,
+        "standing wave should have high phase coherence"
+    );
 }
 
 #[test]
@@ -118,11 +117,7 @@ fn standing_wave_residual_decreases_under_iteration() {
     let mut f = WaveField::<5>::with_default_bands();
     for x in 1..=10_u64 {
         let phase = std::f32::consts::PI * (x as f32) / 11.0;
-        f.set_band(
-            Band::AudioSubKHz,
-            key(x, 5, 5),
-            C32::new(phase.sin(), 0.0),
-        );
+        f.set_band(Band::AudioSubKHz, key(x, 5, 5), C32::new(phase.sin(), 0.0));
     }
     let r0 = helmholtz_residual(
         &f,
@@ -191,7 +186,10 @@ fn sound_caustic_robin_bc_decays_at_planar_boundary() {
     let n_before = f.band_norm_sqr_band(Band::AudioSubKHz);
     apply_robin_bc(&mut f, Band::AudioSubKHz, &sdf, 0.5);
     let n_after = f.band_norm_sqr_band(Band::AudioSubKHz);
-    assert!(n_after < n_before, "Robin BC should remove energy at boundary");
+    assert!(
+        n_after < n_before,
+        "Robin BC should remove energy at boundary"
+    );
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -264,7 +262,10 @@ fn replay_deterministic_audio_lbm_substep() {
     lbm_explicit_step(&p2, &mut n2, 0, 1.0e-3, 1.0);
     for i in 0..10_u64 {
         let k = key(i, 0, 0);
-        assert_eq!(n1.at_band(Band::AudioSubKHz, k), n2.at_band(Band::AudioSubKHz, k));
+        assert_eq!(
+            n1.at_band(Band::AudioSubKHz, k),
+            n2.at_band(Band::AudioSubKHz, k)
+        );
     }
 }
 
@@ -379,11 +380,8 @@ fn phase2_hook_default_construction() {
 #[test]
 fn phase2_hook_field_mutation_persists() {
     let mut h = WaveUnityPhase2::new();
-    h.field_mut().set_band(
-        Band::AudioSubKHz,
-        key(0, 0, 0),
-        C32::new(1.0, 0.0),
-    );
+    h.field_mut()
+        .set_band(Band::AudioSubKHz, key(0, 0, 0), C32::new(1.0, 0.0));
     assert_eq!(h.field().total_cell_count(), 1);
 }
 
@@ -447,10 +445,7 @@ fn determinism_holds_with_explicit_kan_choice() {
     let _ = wave_solver_step(&mut f1, 1.0e-3, 0).unwrap();
     let _ = wave_solver_step(&mut f2, 1.0e-3, 0).unwrap();
     for b in [Band::AudioSubKHz, Band::LightRed, Band::LightBlue] {
-        assert_eq!(
-            f1.at_band(b, key(0, 0, 0)),
-            f2.at_band(b, key(0, 0, 0)),
-        );
+        assert_eq!(f1.at_band(b, key(0, 0, 0)), f2.at_band(b, key(0, 0, 0)),);
     }
 }
 

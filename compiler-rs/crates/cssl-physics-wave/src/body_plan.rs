@@ -321,16 +321,14 @@ impl BodyPlanPhysics {
             });
         }
         let bone_count = derive_bone_count(morphology[MORPHOLOGY_INDEX_BONE_COUNT])?;
-        let length_scale = (morphology[MORPHOLOGY_INDEX_BONE_LENGTH_SCALE].clamp(0.0, 1.0)
-            * 0.9
-            + 0.1)
-            * 1.0;
+        let length_scale =
+            (morphology[MORPHOLOGY_INDEX_BONE_LENGTH_SCALE].clamp(0.0, 1.0) * 0.9 + 0.1) * 1.0;
         let branchiness = morphology[MORPHOLOGY_INDEX_BRANCHINESS].clamp(0.0, 1.0);
         let _symmetry = morphology[MORPHOLOGY_INDEX_SYMMETRY].clamp(0.0, 1.0);
         let hinge_ratio = morphology[MORPHOLOGY_INDEX_JOINT_HINGE_RATIO].clamp(0.0, 1.0);
         let compliance = morphology[MORPHOLOGY_INDEX_JOINT_COMPLIANCE].clamp(0.0, 1.0) * 0.1;
-        let mass_density = morphology[MORPHOLOGY_INDEX_MASS_DENSITY].clamp(0.0, 1.0) * 990.0
-            + 100.0;
+        let mass_density =
+            morphology[MORPHOLOGY_INDEX_MASS_DENSITY].clamp(0.0, 1.0) * 990.0 + 100.0;
         // ^ 100..1090 kg/m³
         let spine_extension = morphology[MORPHOLOGY_INDEX_SPINE_SEGMENTS].clamp(0.0, 1.0);
 
@@ -359,8 +357,8 @@ impl BodyPlanPhysics {
                 let seed = pattern.fingerprint.0[i % 32] as usize;
                 seed % i.max(1)
             };
-            let length = (0.3 + 0.4 * branchiness * (i as f32 / total_bone_count as f32))
-                * length_scale;
+            let length =
+                (0.3 + 0.4 * branchiness * (i as f32 / total_bone_count as f32)) * length_scale;
             let attach_offset = [length, 0.0, 0.0];
             let mass = bone_volume(length) * mass_density;
             bones.push(Bone {
@@ -400,9 +398,7 @@ impl BodyPlanPhysics {
     /// § Inspect the kan-material-kind discriminator + verify it is the
     ///   creature-morphology variant. Used as a guard at integration
     ///   sites that want to refuse non-morphology patterns.
-    pub fn require_creature_morphology_kind(
-        kind: KanMaterialKind,
-    ) -> Result<(), BodyPlanError> {
+    pub fn require_creature_morphology_kind(kind: KanMaterialKind) -> Result<(), BodyPlanError> {
         match kind {
             KanMaterialKind::CreatureMorphology => Ok(()),
             other => Err(BodyPlanError::WrongMaterialKind { kind: other }),
@@ -584,17 +580,14 @@ mod tests {
 
     #[test]
     fn require_creature_morphology_kind_accepts_morphology() {
-        let r = BodyPlanPhysics::require_creature_morphology_kind(
-            KanMaterialKind::CreatureMorphology,
-        );
+        let r =
+            BodyPlanPhysics::require_creature_morphology_kind(KanMaterialKind::CreatureMorphology);
         assert!(r.is_ok());
     }
 
     #[test]
     fn require_creature_morphology_kind_rejects_brdf() {
-        let r = BodyPlanPhysics::require_creature_morphology_kind(
-            KanMaterialKind::SingleBandBrdf,
-        );
+        let r = BodyPlanPhysics::require_creature_morphology_kind(KanMaterialKind::SingleBandBrdf);
         assert!(matches!(r, Err(BodyPlanError::WrongMaterialKind { .. })));
     }
 
@@ -631,7 +624,11 @@ mod tests {
         let mut m = morph_default();
         m[MORPHOLOGY_INDEX_JOINT_HINGE_RATIO] = 1.0;
         let s = bp.derive_skeleton(&p, &m).unwrap();
-        let n_hinge = s.joints.iter().filter(|j| j.kind == JointKind::Hinge).count();
+        let n_hinge = s
+            .joints
+            .iter()
+            .filter(|j| j.kind == JointKind::Hinge)
+            .count();
         // With ratio = 1.0 every joint should be hinge.
         assert!(n_hinge == s.joints.len() || n_hinge >= s.joints.len() / 2);
     }
@@ -643,7 +640,11 @@ mod tests {
         let mut m = morph_default();
         m[MORPHOLOGY_INDEX_JOINT_HINGE_RATIO] = 0.0;
         let s = bp.derive_skeleton(&p, &m).unwrap();
-        let n_dist = s.joints.iter().filter(|j| j.kind == JointKind::Distance).count();
+        let n_dist = s
+            .joints
+            .iter()
+            .filter(|j| j.kind == JointKind::Distance)
+            .count();
         assert!(n_dist == s.joints.len());
     }
 

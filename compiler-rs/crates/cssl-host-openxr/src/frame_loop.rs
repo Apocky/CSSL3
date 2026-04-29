@@ -29,10 +29,10 @@ use crate::comfort::{JudderDetector, QualityLevel};
 use crate::composition::CompositionLayerStack;
 use crate::error::XRFailure;
 use crate::foveation::{FoveationConfig, Foveator, GazePrediction};
+use crate::ifc_shim::LabeledValue;
 use crate::per_eye::PerEyeOutputArray;
 use crate::session::{MockSession, XrSessionState};
 use crate::space_warp::{AppSwMode, AppSwScheduler};
-use crate::ifc_shim::LabeledValue;
 use crate::view::ViewSet;
 
 /// Frame-loop state. Tracks one frame-cycle.
@@ -114,8 +114,9 @@ impl<'a> FrameLoop<'a> {
             return Err(XRFailure::FrameWait { code: -200 });
         }
         // Predict 1 frame ahead.
-        self.predicted_display_time_ns =
-            self.predicted_display_time_ns.saturating_add(self.appsw.budget_ns);
+        self.predicted_display_time_ns = self
+            .predicted_display_time_ns
+            .saturating_add(self.appsw.budget_ns);
         Ok(self.predicted_display_time_ns)
     }
 

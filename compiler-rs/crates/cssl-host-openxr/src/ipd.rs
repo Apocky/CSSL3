@@ -30,9 +30,7 @@ impl Ipd {
     /// Default 64mm.
     #[must_use]
     pub const fn default_64() -> Self {
-        Self {
-            mm: DEFAULT_IPD_MM,
-        }
+        Self { mm: DEFAULT_IPD_MM }
     }
 
     /// Saturating constructor : clamps to bounds.

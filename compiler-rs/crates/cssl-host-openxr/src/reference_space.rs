@@ -45,7 +45,10 @@ impl XrReferenceSpaceType {
     /// `true` iff this space is "world-locked" (vs. head-locked).
     #[must_use]
     pub const fn is_world_locked(self) -> bool {
-        matches!(self, Self::Local | Self::Stage | Self::LocalFloor | Self::Unbounded)
+        matches!(
+            self,
+            Self::Local | Self::Stage | Self::LocalFloor | Self::Unbounded
+        )
     }
 
     /// `true` iff this space requires a guardian / boundary setup.
@@ -110,9 +113,7 @@ impl ReferenceSpaceConfig {
 
     /// Validate.
     pub fn validate(&self) -> Result<(), XRFailure> {
-        if self.space_type == XrReferenceSpaceType::Stage
-            && self.boundary_radius_m.is_none()
-        {
+        if self.space_type == XrReferenceSpaceType::Stage && self.boundary_radius_m.is_none() {
             return Err(XRFailure::SessionCreate { code: -60 });
         }
         Ok(())

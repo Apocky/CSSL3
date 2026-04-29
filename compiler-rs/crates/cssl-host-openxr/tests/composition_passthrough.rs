@@ -92,7 +92,7 @@ fn vision_pro_passthrough_compositor_managed() {
     let cfg = PassthroughConfig::vision_pro_default();
     assert_eq!(cfg.provider, PassthroughProvider::AppleCompositorServices);
     assert!(cfg.environment_depth); // Apple uses scene-mesh
-    assert!(!cfg.hand_cutout);      // Apple handles internally
+    assert!(!cfg.hand_cutout); // Apple handles internally
     let layer = PassthroughLayer::from_config(cfg).unwrap();
     let mut s = CompositionLayerStack::empty();
     s.push(XrCompositionLayer::Passthrough(layer));

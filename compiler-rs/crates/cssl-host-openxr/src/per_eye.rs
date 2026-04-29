@@ -249,9 +249,7 @@ impl PerEyeOutputArray {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ColorFormat, DepthFormat, MotionVectorFormat, PerEyeOutput, PerEyeOutputArray,
-    };
+    use super::{ColorFormat, DepthFormat, MotionVectorFormat, PerEyeOutput, PerEyeOutputArray};
     use crate::view::ViewSet;
 
     #[test]
@@ -341,7 +339,10 @@ mod tests {
         assert!(!arr.all_have_appsw_companions());
         arr.outputs[0].motion_vector = 1;
         arr.outputs[0].linear_depth = 1;
-        assert!(!arr.all_have_appsw_companions(), "left eye filled but not right");
+        assert!(
+            !arr.all_have_appsw_companions(),
+            "left eye filled but not right"
+        );
         arr.outputs[1].motion_vector = 1;
         arr.outputs[1].linear_depth = 1;
         assert!(arr.all_have_appsw_companions(), "both eyes filled");

@@ -109,7 +109,10 @@ impl QualityLevel {
     #[must_use]
     pub const fn explicit_bounces(self) -> u32 {
         match self {
-            Self::Full | Self::DegradeFoveation | Self::DegradeUpscale | Self::DegradeCascadeBands => 4,
+            Self::Full
+            | Self::DegradeFoveation
+            | Self::DegradeUpscale
+            | Self::DegradeCascadeBands => 4,
             Self::DegradeBounces => 2,
             Self::DegradeAppSw => 1,
             Self::DegradeMax => 0,
@@ -188,7 +191,8 @@ impl JudderDetector {
         } else {
             // Stable.
             self.stable_frames = self.stable_frames.saturating_add(1);
-            if self.stable_frames >= STABLE_FRAMES_TO_RECOVER && self.quality != QualityLevel::Full {
+            if self.stable_frames >= STABLE_FRAMES_TO_RECOVER && self.quality != QualityLevel::Full
+            {
                 self.quality = self.quality.prev_degrade();
                 self.stable_frames = 0;
             }
@@ -268,7 +272,10 @@ mod tests {
 
     #[test]
     fn quality_level_ffr_tightens_at_first_degrade() {
-        assert_eq!(QualityLevel::Full.ffr_profile(), crate::foveation::FFRProfile::High);
+        assert_eq!(
+            QualityLevel::Full.ffr_profile(),
+            crate::foveation::FFRProfile::High
+        );
         assert_eq!(
             QualityLevel::DegradeFoveation.ffr_profile(),
             crate::foveation::FFRProfile::Aggressive

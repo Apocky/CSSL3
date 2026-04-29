@@ -156,12 +156,9 @@ pub mod step;
 
 pub use attestation::ATTESTATION;
 pub use band::{
-    Band, BandClass, BAND_COUNT_DEFAULT, BANDS_FAST_DEFAULT, BANDS_SLOW_DEFAULT,
-    DEFAULT_BANDS,
+    Band, BandClass, BANDS_FAST_DEFAULT, BANDS_SLOW_DEFAULT, BAND_COUNT_DEFAULT, DEFAULT_BANDS,
 };
-pub use bc::{
-    apply_robin_bc, AnalyticPlanarSdf, BoundaryKind, NoSdf, RobinBcConfig, SdfQuery,
-};
+pub use bc::{apply_robin_bc, AnalyticPlanarSdf, BoundaryKind, NoSdf, RobinBcConfig, SdfQuery};
 pub use complex::{C32, C64};
 pub use cost_model::{
     estimate_gpu_cost, GpuCostEstimate, FLOP_BC_PER_CELL, FLOP_COUPLING_PER_WRITE,

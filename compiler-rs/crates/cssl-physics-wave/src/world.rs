@@ -405,7 +405,11 @@ impl WavePhysicsWorld {
         let inv_masses = skeleton.inverse_masses();
         for (i, bone) in skeleton.bones.iter().enumerate() {
             let inv_m = inv_masses[i];
-            let mass = if inv_m > 0.0 { 1.0_f32 / inv_m } else { f32::INFINITY };
+            let mass = if inv_m > 0.0 {
+                1.0_f32 / inv_m
+            } else {
+                f32::INFINITY
+            };
             let pos = [
                 positions[i][0] + base_position[0],
                 positions[i][1] + base_position[1],
