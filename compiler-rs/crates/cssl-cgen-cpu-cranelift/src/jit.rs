@@ -213,6 +213,41 @@ impl JitFn {
         Ok(f(a))
     }
 
+    /// Call as `fn(f64) -> f64`. T11-D63 / S6-C4 — invokes the f64
+    /// transcendental and inline-intrinsic surface (sin / cos / exp / log /
+    /// sqrt / abs / neg).
+    ///
+    /// On x86_64 SSE2 the f64 ABI passes a single argument in `xmm0` and
+    /// returns it in `xmm0`, matching what cranelift emits for an
+    /// `(F64) -> F64` signature with `default_call_conv()`.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_f64_to_f64(&self, a: f64, module: &JitModule) -> Result<f64, JitError> {
+        self.check_sig(
+            &[MirType::Float(FloatWidth::F64)],
+            MirType::Float(FloatWidth::F64),
+        )?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let f: extern "C" fn(f64) -> f64 = unsafe { std::mem::transmute(addr) };
+        Ok(f(a))
+    }
+
+    /// Call as `fn(f64, f64) -> f64`. T11-D63 / S6-C4 — invokes a binary
+    /// f64 intrinsic (`min` / `max`) hand-built fixture.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_f64_f64_to_f64(&self, a: f64, b: f64, module: &JitModule) -> Result<f64, JitError> {
+        let f64m = || MirType::Float(FloatWidth::F64);
+        self.check_sig(&[f64m(), f64m()], f64m())?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`.
+        let f: extern "C" fn(f64, f64) -> f64 = unsafe { std::mem::transmute(addr) };
+        Ok(f(a, b))
+    }
+
     /// Call as `fn(f32, f32, f32) -> f32`. Canonical AD reverse-mode shape
     /// for 2-param primals : `fn f_bwd(a, b, d_y) -> d_x` (single-adjoint
     /// extracted from the multi-result bwd variant).
@@ -594,13 +629,19 @@ impl JitModule {
         self.codegen_ctx.func.signature = sig.clone();
         self.codegen_ctx.func.name = UserFuncName::user(0, func_id.as_u32());
 
-        // T11-D26 / T11-D29 : pre-scan body ops for `func.call` with callees :
+        // T11-D26 / T11-D29 / T11-D63 : pre-scan body ops for `func.call` :
         //   - User-defined callees found in `self.fn_table` → declare_func_in_func
         //     to make the previously-compiled fn visible to this caller.
-        //   - Transcendental callees (sin/cos/exp/log) → declare as external
-        //     `Linkage::Import` fns (sinf/cosf/expf/logf from libm) + ref-in-func.
+        //   - Transcendental callees (sin/cos/exp/log) → declare libm extern :
+        //       f32 operand → `sinf / cosf / expf / logf`  (T11-D29)
+        //       f64 operand → `sin  / cos  / exp  / log`   (T11-D63 / S6-C4)
+        //     Each (callee-name, operand-width) pair declares its own FuncRef ;
+        //     the same body may legally call both `sin(f32)` and `sin(f64)`.
         //   - Other intrinsics (min/max/abs/sqrt/fneg) are inlined as cranelift
-        //     instructions directly — no FuncRef needed.
+        //     instructions directly — type-polymorphic across F32+F64 — no
+        //     FuncRef needed.
+        //   Result-type-driven dispatch : transcendentals are T → T, so the
+        //   op's first result type uniquely determines operand width.
         let callee_refs = {
             let mut refs: HashMap<String, cranelift_codegen::ir::FuncRef> = HashMap::new();
             if let Some(entry_block) = primal.body.blocks.first() {
@@ -609,14 +650,28 @@ impl JitModule {
                         if let Some((_, callee)) = op.attributes.iter().find(|(k, _)| k == "callee")
                         {
                             let callee_name = callee.clone();
-                            if refs.contains_key(&callee_name) {
+                            // Determine the operand-width from the call's
+                            // result type (transcendentals are T → T).
+                            let result_ty = op
+                                .results
+                                .first()
+                                .map_or(MirType::None, |r| r.ty.clone());
+                            let key = transcendental_callee_key(&callee_name, &result_ty);
+                            if refs.contains_key(&key) {
                                 continue;
                             }
-                            // Transcendental : declare libm extern.
-                            if let Some(libm_sym) = transcendental_extern_name(&callee_name) {
+                            // Transcendental : declare libm extern with the
+                            // signature shape matching the operand width.
+                            if let Some(libm_sym) =
+                                transcendental_extern_for(&callee_name, &result_ty)
+                            {
+                                let abi_ty = match result_ty {
+                                    MirType::Float(FloatWidth::F64) => cl_types::F64,
+                                    _ => cl_types::F32,
+                                };
                                 let mut transc_sig = Signature::new(call_conv);
-                                transc_sig.params.push(AbiParam::new(cl_types::F32));
-                                transc_sig.returns.push(AbiParam::new(cl_types::F32));
+                                transc_sig.params.push(AbiParam::new(abi_ty));
+                                transc_sig.returns.push(AbiParam::new(abi_ty));
                                 let extern_id = module
                                     .declare_function(libm_sym, Linkage::Import, &transc_sig)
                                     .map_err(|e| JitError::LoweringFailed {
@@ -625,11 +680,14 @@ impl JitModule {
                                     })?;
                                 let fref = module
                                     .declare_func_in_func(extern_id, &mut self.codegen_ctx.func);
-                                refs.insert(callee_name, fref);
+                                refs.insert(key, fref);
                                 continue;
                             }
                             // Other intrinsic (min/max/abs/sqrt/fneg) : inlined
-                            // as cranelift-native insts — skip.
+                            // as cranelift-native insts — skip. (User-defined
+                            // callees with a single name use the bare name as
+                            // their key — never collides with the typed
+                            // transcendental keys which carry a `#`-suffix.)
                             if is_inline_intrinsic_callee(&callee_name) {
                                 continue;
                             }
@@ -1153,11 +1211,18 @@ fn lower_intrinsic_call(
             emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().sqrt(a))
         }
         "neg" | "fneg" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
-        // Transcendentals : emit call to libm extern declared in the pre-scan
-        // (sinf/cosf/expf/logf). Sig is `(f32) -> f32`.
+        // Transcendentals : emit call to libm extern declared in the pre-scan.
+        //   T11-D29 (f32) : `sinf / cosf / expf / logf` — sig `(f32) -> f32`.
+        //   T11-D63 (f64) : `sin  / cos  / exp  / log`  — sig `(f64) -> f64`.
+        //   Width-keyed FuncRef lookup matches what the pre-scan registered.
         "sin" | "cos" | "exp" | "log" | "ln" | "math.sin" | "math.cos" | "math.exp"
         | "math.log" => {
-            if let Some(&func_ref) = callee_refs.get(callee_str) {
+            let result_ty = op
+                .results
+                .first()
+                .map_or(MirType::None, |r| r.ty.clone());
+            let key = transcendental_callee_key(callee_str, &result_ty);
+            if let Some(&func_ref) = callee_refs.get(&key) {
                 let a = op
                     .operands
                     .first()
@@ -1181,7 +1246,7 @@ fn lower_intrinsic_call(
                 Err(JitError::LoweringFailed {
                     fn_name: fn_name.to_string(),
                     detail: format!(
-                        "transcendental `{callee_str}` : libm extern not declared (pre-scan bug)"
+                        "transcendental `{callee_str}` (result-ty {result_ty}) : libm extern not declared (pre-scan bug)"
                     ),
                 })
             }
@@ -1226,7 +1291,7 @@ fn lower_intrinsic_call(
 /// directly by `lower_intrinsic_call`. Public for test introspection.
 #[must_use]
 pub fn is_intrinsic_callee(name: &str) -> bool {
-    is_inline_intrinsic_callee(name) || transcendental_extern_name(name).is_some()
+    is_inline_intrinsic_callee(name) || is_transcendental_callee(name)
 }
 
 /// Intrinsics that `lower_intrinsic_call` emits as direct cranelift insts
@@ -1254,16 +1319,64 @@ fn is_inline_intrinsic_callee(name: &str) -> bool {
 }
 
 /// Map a MIR-level transcendental callee name to the libm symbol that
-/// cranelift should link against. Returns `None` for non-transcendentals.
-/// Stage-0.5 f32-only — single-precision libm symbols.
-fn transcendental_extern_name(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "sin" | "math.sin" => "sinf",
-        "cos" | "math.cos" => "cosf",
-        "exp" | "math.exp" => "expf",
-        "log" | "ln" | "math.log" => "logf",
+/// cranelift should link against, given the operand width.
+/// Returns `None` for non-transcendentals.
+///
+/// § T11-D29 (initial) : f32-only — `sinf` / `cosf` / `expf` / `logf`.
+/// § T11-D63 / S6-C4 : f64 entries — `sin` / `cos` / `exp` / `log`.
+///   Verified-canonical libm symbols on glibc + musl + Apple libSystem +
+///   Microsoft UCRT (`libucrt.lib`, already linked by S6-A4 linker for
+///   MSVC builds). On all four runtimes the f64 symbols are declared
+///   `extern double sin(double)` etc. — direct match to cranelift's
+///   F64 ABI for x86_64 SSE2 register passing.
+///
+/// § f64 SCOPE
+///   `sin / cos / exp / log` : libm extern path (handled here).
+///   `sqrt / abs / min / max / neg` : NOT routed through libm at f64 ; the
+///     cranelift `fsqrt / fabs / fmin / fmax / fneg` instructions are
+///     type-polymorphic across F32 + F64 and produce the right machine
+///     instruction directly (e.g. `vsqrtsd` on x86_64 SSE2 for f64). They
+///     stay in `is_inline_intrinsic_callee` and are dispatched inline.
+///     Documenting per `HANDOFF_SESSION_6 § LANDMINES` — `fmin/fmax` follow
+///     IEEE 754-2008 NaN-quieting semantics on cranelift, matching libm
+///     `fmin/fmax` behavior.
+fn transcendental_extern_for(name: &str, ty: &MirType) -> Option<&'static str> {
+    let is_f64 = matches!(ty, MirType::Float(FloatWidth::F64));
+    Some(match (name, is_f64) {
+        // f32 single-precision libm — preserves T11-D29 surface.
+        ("sin" | "math.sin", false) => "sinf",
+        ("cos" | "math.cos", false) => "cosf",
+        ("exp" | "math.exp", false) => "expf",
+        ("log" | "ln" | "math.log", false) => "logf",
+        // f64 double-precision libm — T11-D63.
+        ("sin" | "math.sin", true) => "sin",
+        ("cos" | "math.cos", true) => "cos",
+        ("exp" | "math.exp", true) => "exp",
+        ("log" | "ln" | "math.log", true) => "log",
         _ => return None,
     })
+}
+
+/// Back-compat wrapper used by the public `is_intrinsic_callee` predicate.
+/// Returns whether `name` is a transcendental in either f32 or f64 form.
+/// Caller does not have a type context here ; we return `true` if either
+/// width has a libm mapping. Stage-0.5 surface : `sin / cos / exp / log`.
+fn is_transcendental_callee(name: &str) -> bool {
+    transcendental_extern_for(name, &MirType::Float(FloatWidth::F32)).is_some()
+        || transcendental_extern_for(name, &MirType::Float(FloatWidth::F64)).is_some()
+}
+
+/// Compose the per-fn `callee_refs` key for a transcendental call site.
+/// Encoding shape : `"<callee>#<width-tag>"` with `width-tag ∈ {"f32","f64"}`.
+/// The `#` separator never appears in CSSLv3 source-level callee names
+/// (which are restricted to `[a-zA-Z0-9_.]`), so collisions with bare
+/// user-defined callee names are impossible.
+fn transcendental_callee_key(callee: &str, ty: &MirType) -> String {
+    let tag = match ty {
+        MirType::Float(FloatWidth::F64) => "f64",
+        _ => "f32",
+    };
+    format!("{callee}#{tag}")
 }
 
 /// Lower `arith.select %cond, %t, %f` → cranelift `select cond, t, f`.
@@ -1661,7 +1774,7 @@ fn lower_scf_for_in_jit(
 
 #[cfg(test)]
 mod tests {
-    use super::{JitError, JitModule};
+    use super::{transcendental_callee_key, JitError, JitModule};
     use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirOp, MirType, MirValue, ValueId};
 
     fn i32_ty() -> MirType {
@@ -1674,6 +1787,12 @@ mod tests {
 
     fn f32_ty() -> MirType {
         MirType::Float(FloatWidth::F32)
+    }
+
+    /// MIR `f64` shorthand. Used by the T11-D63 (S6-C4) f64-transcendental
+    /// hand-built fixtures.
+    fn f64_ty() -> MirType {
+        MirType::Float(FloatWidth::F64)
     }
 
     /// Hand-build MIR `fn add(v0: i32, v1: i32) -> i32 { v0 + v1 }`.
@@ -2447,6 +2566,271 @@ mod tests {
         assert!((log_e - 1.0).abs() < 1e-4, "log(e) = 1, got {log_e}");
         let log_1 = h_log.call_f32_to_f32(1.0, &m).unwrap();
         assert!(log_1.abs() < 1e-5, "log(1) = 0, got {log_1}");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D63 / S6-C4 : f64 transcendentals + inline-intrinsics.
+    //
+    //   Mirrors the f32 surface above with f64-typed hand-built fixtures :
+    //     - libm extern path : `sin / cos / exp / log` declared with
+    //       `(f64) -> f64` and resolved by the linker against libm/UCRT.
+    //     - Inline cranelift insts : `sqrt / abs / min / max / neg` use the
+    //       type-polymorphic fsqrt/fabs/fmin/fmax/fneg directly, producing
+    //       native f64 SSE2 instructions on x86_64.
+    //
+    //   Tests exercise standard transcendental corner cases : sin(0)=0,
+    //   sin(π)≈0, cos(0)=1, cos(π)=-1, exp(0)=1, exp(1)=e, log(1)=0,
+    //   log(e)=1, sqrt(0)=0, sqrt(4)=2, abs(-x)=x, min(a,b)=lesser,
+    //   max(a,b)=greater. Tolerances mirror the f32 path's epsilons
+    //   tightened for f64 precision (1e-9 for arith/sqrt/abs ; 1e-12 for
+    //   exact-equal corner cases).
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Hand-build `fn <name>_wrap(x : f64) -> f64 { <name>(x) }` where
+    /// `<name>` is one of the f64 transcendental callee names.
+    fn hand_built_unary_f64(fn_name: &str, callee: &str) -> MirFunc {
+        let mut f = MirFunc::new(fn_name, vec![f64_ty()], vec![f64_ty()]);
+        f.next_value_id = 1;
+        let entry = f.body.entry_mut().unwrap();
+        entry.args = vec![MirValue::new(ValueId(0), f64_ty())];
+        entry.ops.push(
+            MirOp::std("func.call")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), f64_ty())
+                .with_attribute("callee", callee),
+        );
+        entry
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        f
+    }
+
+    /// Hand-build `fn <name>_wrap(a : f64, b : f64) -> f64 { <name>(a, b) }`
+    /// for the binary inline intrinsics (`min` / `max`).
+    fn hand_built_binary_f64(fn_name: &str, callee: &str) -> MirFunc {
+        let mut f = MirFunc::new(fn_name, vec![f64_ty(), f64_ty()], vec![f64_ty()]);
+        f.next_value_id = 2;
+        let entry = f.body.entry_mut().unwrap();
+        entry.args = vec![
+            MirValue::new(ValueId(0), f64_ty()),
+            MirValue::new(ValueId(1), f64_ty()),
+        ];
+        entry.ops.push(
+            MirOp::std("func.call")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), f64_ty())
+                .with_attribute("callee", callee),
+        );
+        entry
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        f
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // IEEE 754 corner-cases : sin(0) is exact 0.
+    fn libm_sin_f64_jit_roundtrip() {
+        use core::f64::consts::PI;
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_unary_f64("sin_f64_wrap", "sin"))
+            .expect("compile sin_f64_wrap");
+        m.finalize().unwrap();
+
+        // sin(0) is exact zero in IEEE 754.
+        let sin_0 = h.call_f64_to_f64(0.0, &m).unwrap();
+        assert_eq!(sin_0, 0.0, "sin(0) is exactly 0, got {sin_0}");
+        // sin(π/2) — tightest realistic f64 epsilon for libm sin.
+        let sin_half_pi = h.call_f64_to_f64(PI / 2.0, &m).unwrap();
+        assert!(
+            (sin_half_pi - 1.0).abs() < 1e-15,
+            "sin(π/2) ≈ 1, got {sin_half_pi}"
+        );
+        // sin(π) ≈ 0 ; the residual reflects π's f64 truncation, not libm error.
+        let sin_pi = h.call_f64_to_f64(PI, &m).unwrap();
+        assert!(sin_pi.abs() < 1e-15, "sin(π) ≈ 0, got {sin_pi}");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // IEEE 754 corner-cases : cos(0) is exact 1.
+    fn libm_cos_f64_jit_roundtrip() {
+        use core::f64::consts::PI;
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_unary_f64("cos_f64_wrap", "cos"))
+            .expect("compile cos_f64_wrap");
+        m.finalize().unwrap();
+
+        // cos(0) is exactly 1 in IEEE 754.
+        let cos_0 = h.call_f64_to_f64(0.0, &m).unwrap();
+        assert_eq!(cos_0, 1.0, "cos(0) is exactly 1, got {cos_0}");
+        // cos(π) ≈ -1 — residual from π truncation.
+        let cos_pi = h.call_f64_to_f64(PI, &m).unwrap();
+        assert!((cos_pi - (-1.0)).abs() < 1e-15, "cos(π) ≈ -1, got {cos_pi}");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // IEEE 754 corner-cases : exp(0) is exact 1.
+    fn libm_exp_f64_jit_roundtrip() {
+        use core::f64::consts::E;
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_unary_f64("exp_f64_wrap", "exp"))
+            .expect("compile exp_f64_wrap");
+        m.finalize().unwrap();
+
+        // exp(0) is exactly 1 in IEEE 754.
+        let exp_0 = h.call_f64_to_f64(0.0, &m).unwrap();
+        assert_eq!(exp_0, 1.0, "exp(0) is exactly 1, got {exp_0}");
+        // exp(1) ≈ e ; tighter than f32 by ~3 orders of magnitude.
+        let exp_1 = h.call_f64_to_f64(1.0, &m).unwrap();
+        assert!((exp_1 - E).abs() < 1e-15, "exp(1) ≈ e, got {exp_1}");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // IEEE 754 corner-cases : log(1) is exact 0.
+    fn libm_log_f64_jit_roundtrip() {
+        use core::f64::consts::E;
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_unary_f64("log_f64_wrap", "log"))
+            .expect("compile log_f64_wrap");
+        m.finalize().unwrap();
+
+        // log(1) is exactly 0 in IEEE 754.
+        let log_1 = h.call_f64_to_f64(1.0, &m).unwrap();
+        assert_eq!(log_1, 0.0, "log(1) is exactly 0, got {log_1}");
+        // log(e) ≈ 1 — residual from e's f64 truncation.
+        let log_e = h.call_f64_to_f64(E, &m).unwrap();
+        assert!((log_e - 1.0).abs() < 1e-15, "log(e) ≈ 1, got {log_e}");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // sqrt of perfect squares + 0 is exact.
+    fn intrinsic_sqrt_f64_inline() {
+        // `sqrt` is in `is_inline_intrinsic_callee` ; cranelift's `fsqrt`
+        // is type-polymorphic and emits `vsqrtsd` for F64 on x86_64.
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_unary_f64("sqrt_f64_wrap", "sqrt"))
+            .expect("compile sqrt_f64_wrap");
+        m.finalize().unwrap();
+
+        // sqrt(0) and sqrt(1) are exact in IEEE 754.
+        let sqrt_0 = h.call_f64_to_f64(0.0, &m).unwrap();
+        assert_eq!(sqrt_0, 0.0, "sqrt(0) is exactly 0, got {sqrt_0}");
+        let sqrt_1 = h.call_f64_to_f64(1.0, &m).unwrap();
+        assert_eq!(sqrt_1, 1.0, "sqrt(1) is exactly 1, got {sqrt_1}");
+        // sqrt(4) = 2 exactly (perfect square).
+        let sqrt_4 = h.call_f64_to_f64(4.0, &m).unwrap();
+        assert_eq!(sqrt_4, 2.0, "sqrt(4) is exactly 2, got {sqrt_4}");
+        // sqrt(2) — tight f64 epsilon for the canonical irrational.
+        let sqrt_2 = h.call_f64_to_f64(2.0, &m).unwrap();
+        assert!(
+            (sqrt_2 - core::f64::consts::SQRT_2).abs() < 1e-15,
+            "sqrt(2) ≈ √2, got {sqrt_2}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // fabs is bit-exact (just sign-bit clear).
+    fn intrinsic_abs_f64_inline() {
+        // `abs / fabs` is inline via cranelift `fabs`. The IEEE 754 spec
+        // says fabs only flips the sign-bit, so output is bit-exact across
+        // ±0 / normal / subnormal inputs.
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_unary_f64("abs_f64_wrap", "abs"))
+            .expect("compile abs_f64_wrap");
+        m.finalize().unwrap();
+
+        let abs_neg = h.call_f64_to_f64(-3.5, &m).unwrap();
+        assert_eq!(abs_neg, 3.5, "abs(-3.5) = 3.5, got {abs_neg}");
+        let abs_pos = h.call_f64_to_f64(7.25, &m).unwrap();
+        assert_eq!(abs_pos, 7.25, "abs(7.25) = 7.25, got {abs_pos}");
+        // abs(-0.0) = +0.0 — exact bit-flip.
+        let abs_neg_zero = h.call_f64_to_f64(-0.0, &m).unwrap();
+        assert_eq!(abs_neg_zero, 0.0, "abs(-0.0) = 0.0, got {abs_neg_zero}");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // fmin returns one of two exact-equal operands.
+    fn intrinsic_min_f64_inline() {
+        // `min / fmin` is inline via cranelift `fmin`, which on cranelift
+        // 0.115 implements IEEE 754-2008 `minimumNumber` semantics : NaN
+        // operands quiet to the non-NaN operand, matching libm `fmin`.
+        // (See HANDOFF_SESSION_6 § LANDMINES — `intrinsic.min/.max` should
+        // match libm IEEE 754-2008. f32 path was already this — verify the
+        // f64 path is consistent.)
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_binary_f64("min_f64_wrap", "min"))
+            .expect("compile min_f64_wrap");
+        m.finalize().unwrap();
+
+        let mn = h.call_f64_f64_to_f64(2.5, 5.0, &m).unwrap();
+        assert_eq!(mn, 2.5, "min(2.5, 5.0) = 2.5, got {mn}");
+        let mn_swap = h.call_f64_f64_to_f64(5.0, 2.5, &m).unwrap();
+        assert_eq!(mn_swap, 2.5, "min(5.0, 2.5) = 2.5, got {mn_swap}");
+        let mn_neg = h.call_f64_f64_to_f64(-1.0, -2.0, &m).unwrap();
+        assert_eq!(mn_neg, -2.0, "min(-1.0, -2.0) = -2.0, got {mn_neg}");
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // fmax returns one of two exact-equal operands.
+    fn intrinsic_max_f64_inline() {
+        let mut m = JitModule::new();
+        let h = m
+            .compile(&hand_built_binary_f64("max_f64_wrap", "max"))
+            .expect("compile max_f64_wrap");
+        m.finalize().unwrap();
+
+        let mx = h.call_f64_f64_to_f64(2.5, 5.0, &m).unwrap();
+        assert_eq!(mx, 5.0, "max(2.5, 5.0) = 5.0, got {mx}");
+        let mx_swap = h.call_f64_f64_to_f64(5.0, 2.5, &m).unwrap();
+        assert_eq!(mx_swap, 5.0, "max(5.0, 2.5) = 5.0, got {mx_swap}");
+        let mx_neg = h.call_f64_f64_to_f64(-1.0, -2.0, &m).unwrap();
+        assert_eq!(mx_neg, -1.0, "max(-1.0, -2.0) = -1.0, got {mx_neg}");
+    }
+
+    #[test]
+    fn libm_sin_f32_and_f64_can_coexist_in_same_jit_module() {
+        // Mixed-width transcendentals in the same JIT module : both `sinf`
+        // (f32 path) and `sin` (f64 path) declared via the per-fn pre-scan,
+        // each keyed by `transcendental_callee_key`. Confirms the
+        // (callee-name, width) keying scheme avoids cross-contamination.
+        use core::f32::consts::PI as PI32;
+        use core::f64::consts::PI as PI64;
+        let mut m = JitModule::new();
+        let h32 = m
+            .compile(&hand_built_sin_wrap())
+            .expect("compile sin_f32_wrap");
+        let h64 = m
+            .compile(&hand_built_unary_f64("sin_f64_wrap", "sin"))
+            .expect("compile sin_f64_wrap");
+        m.finalize().unwrap();
+
+        let s32 = h32.call_f32_to_f32(PI32 / 2.0, &m).unwrap();
+        let s64 = h64.call_f64_to_f64(PI64 / 2.0, &m).unwrap();
+        assert!((s32 - 1.0).abs() < 1e-5, "sin(π/2) f32-path ≈ 1, got {s32}");
+        assert!(
+            (s64 - 1.0).abs() < 1e-15,
+            "sin(π/2) f64-path ≈ 1, got {s64}"
+        );
+    }
+
+    #[test]
+    fn transcendental_callee_key_disambiguates_widths() {
+        // Pure unit-test on the keying helper : same callee-name but
+        // different MIR widths must produce distinct keys.
+        let k32 = transcendental_callee_key("sin", &MirType::Float(FloatWidth::F32));
+        let k64 = transcendental_callee_key("sin", &MirType::Float(FloatWidth::F64));
+        assert_ne!(k32, k64, "f32 and f64 keys must differ : {k32} vs {k64}");
+        // Default (non-float) ty falls into the f32 bucket — back-compat
+        // for hand-built fixtures that omit a result-ty.
+        let k_unit = transcendental_callee_key("sin", &MirType::None);
+        assert_eq!(k_unit, k32, "non-float falls back to f32 keying");
     }
 
     // ─────────────────────────────────────────────────────────────────────
