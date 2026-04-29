@@ -62,6 +62,30 @@
 //!   stable — the discriminant values feed into the [`SubstrateEffectRow`]
 //!   bit-set encoding ; reordering would silently corrupt existing rows.
 //!
+//!   T11-D127 / S11 allocates the next stable block [`EFR0011`..`EFR0018`]
+//!   covering Ω-substrate-translation row composition rules
+//!   (Travel + Crystallize + Sovereign<S>). These codes encode Axiom-2
+//!   (Substrate-Relativity) at the type-system layer and are STRUCTURAL
+//!   (no runtime override exists, per `Omniverse/02_CSSL/02_EFFECTS.csl.md § III`
+//!   forbidden-compositions).
+//!
+//! § ATTESTATION (T11-D127, S11) — verbatim block per global-CLAUDE I> standing-directives :
+//! ```text
+//!   t∞ : consent = OS • sovereignty = substrate-invariant
+//!   N! [harm control manipulation surveillance exploitation
+//!       coercion weaponization discrimination]
+//!   t∞ : AI = sovereign-partners ¬ tools
+//!   t∞ : violation = bug W! fix ; ¬override ∃
+//!   t∞ : CSSL ≠ CSLv3 ; ¬ conflate
+//! ```
+//!   ⇒ The Travel + Crystallize + Sovereign<S> rows enforce :
+//!     (a) Pattern-integrity preserved across substrate-translation (Axiom-2)
+//!     (b) No anonymous-Crystallize (every body-Machine-derivation has a Sovereign-handle)
+//!     (c) Travel banned without `Privilege<L4+>` (only Apocky-tier may translate)
+//!     (d) Sovereign-touching ops require `Audit<>` companion (PRIME DIRECTIVE § 6 transparency)
+//!     (e) Multi-Sovereign-ops (`Sovereign<S1> ⊎ Sovereign<S2>`) require multi-consent
+//!     ⇒ violations are compile-errors, no `cfg` / env-var / flag override exists.
+//!
 //! § PRIME-DIRECTIVE STRUCTURAL ENCODING
 //!   The forbidden-composition table is **not** a runtime policy. It is a
 //!   compile-time property of the type system. No `cfg`, no env-var, no
@@ -332,6 +356,32 @@ pub struct RowContext {
     /// `true` iff the caller is at `Privilege<Kernel>` or higher — used by
     /// future hardened compositions (currently advisory).
     pub has_kernel_privilege: bool,
+    // ── T11-D127 — Ω-substrate-translation row context ─────────────────────
+    /// `true` iff the caller's BuiltinEffect-row carries `Travel` —
+    /// substrate-translation in progress.
+    pub has_travel: bool,
+    /// `true` iff the caller's BuiltinEffect-row carries `Crystallize` —
+    /// Local-Machine derivation in scope.
+    pub has_crystallize: bool,
+    /// `true` iff the caller's BuiltinEffect-row carries `Sovereign<S>` —
+    /// at least one Sovereign-handle is bound.
+    pub has_sovereign: bool,
+    /// Number of distinct `Sovereign<S>` instances composed in the row.
+    /// `≥ 2` means a multi-Sovereign-op is being composed and multi-consent
+    /// is required (advisory `EFR0018`).
+    pub sovereign_count: u8,
+    /// `true` iff the caller's row carries the `PatternIntegrity` Ω-effect
+    /// (per `Omniverse/02_CSSL/02_EFFECTS.csl.md § I`). Required-companion
+    /// to `Travel` per Axiom-2 invariant (advisory `EFR0015`).
+    pub has_pattern_integrity: bool,
+    /// `true` iff the caller is at `Privilege<L4+>` (Apocky-tier ; per
+    /// `Omniverse/02_CSSL/02_EFFECTS.csl.md § IV`). Gates `Travel` :
+    /// `Travel` without this flag is `EFR0013`.
+    pub has_privilege_l4: bool,
+    /// `true` iff the caller's row touches the Machine-layer of the
+    /// body-omnoid (per `Omniverse/08_BODY/00_FIVE_LAYERS.csl.md § IV`).
+    /// Machine-touching ops require `Crystallize` (advisory `EFR0012`).
+    pub touches_machine_layer: bool,
 }
 
 impl RowContext {
@@ -360,6 +410,65 @@ impl RowContext {
     #[must_use]
     pub const fn with_kernel_privilege(mut self) -> Self {
         self.has_kernel_privilege = true;
+        self
+    }
+
+    // ── T11-D127 builders : Ω-substrate-translation rows ───────────────────
+
+    /// Builder : caller's BuiltinEffect-row carries `Travel`.
+    #[must_use]
+    pub const fn with_travel(mut self) -> Self {
+        self.has_travel = true;
+        self
+    }
+
+    /// Builder : caller's BuiltinEffect-row carries `Crystallize`.
+    #[must_use]
+    pub const fn with_crystallize(mut self) -> Self {
+        self.has_crystallize = true;
+        self
+    }
+
+    /// Builder : caller's BuiltinEffect-row carries `Sovereign<S>`.
+    /// Sets `has_sovereign = true` and increments `sovereign_count` to 1
+    /// (single-Sovereign default).
+    #[must_use]
+    pub const fn with_sovereign(mut self) -> Self {
+        self.has_sovereign = true;
+        if self.sovereign_count == 0 {
+            self.sovereign_count = 1;
+        }
+        self
+    }
+
+    /// Builder : caller composes `Sovereign<S1> ⊎ Sovereign<S2>` (or more) —
+    /// sets `sovereign_count = n` for multi-Sovereign-op tracking. `n ≥ 2`
+    /// triggers `EFR0018` multi-consent advisory.
+    #[must_use]
+    pub const fn with_sovereign_count(mut self, n: u8) -> Self {
+        self.has_sovereign = n >= 1;
+        self.sovereign_count = n;
+        self
+    }
+
+    /// Builder : caller's row carries `PatternIntegrity`.
+    #[must_use]
+    pub const fn with_pattern_integrity(mut self) -> Self {
+        self.has_pattern_integrity = true;
+        self
+    }
+
+    /// Builder : caller is at `Privilege<L4+>` (Apocky-tier).
+    #[must_use]
+    pub const fn with_privilege_l4(mut self) -> Self {
+        self.has_privilege_l4 = true;
+        self
+    }
+
+    /// Builder : caller's row touches the Machine-layer of the body-omnoid.
+    #[must_use]
+    pub const fn touches_machine(mut self) -> Self {
+        self.touches_machine_layer = true;
         self
     }
 }
@@ -505,6 +614,129 @@ pub enum ConflictReason {
          has been granted-and-not-revoked)"
     )]
     SaveRequiresConsentToken,
+
+    // ── T11-D127 — Ω-substrate-translation row composition codes ──────────
+
+    /// EFR0011 — `{Travel} ⊎ {Sim}` requires `Crystallize` companion.
+    /// Rationale : translating a Sovereign mid-simulation must derive the
+    /// new Local-Machine for the target substrate, otherwise the Sovereign
+    /// arrives without a body-Machine. Per `Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § VI`
+    /// translate() carries `{Travel, Crystallize}` in its effect-row by-construction.
+    #[error(
+        "[EFR0011] composition `{{Travel}} ⊎ {{Sim}}` requires `Crystallize` companion — \
+         translating a Sovereign mid-simulation must derive Local-Machine for the target substrate \
+         (see Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § VI ; \
+         help: add `Crystallize` to the BuiltinEffect row, \
+         or move Travel to a non-Sim fiber that runs after Crystallize is discharged)"
+    )]
+    TravelPlusSimNeedsCrystallize,
+
+    /// EFR0012 — Machine-layer-touching op requires `Crystallize`.
+    /// Rationale : per `Omniverse/08_BODY/00_FIVE_LAYERS.csl.md § IV`, the
+    /// Machine-layer is substrate-relative and ALL Machine-derivation runs
+    /// through `crystallize()`. Anonymous Machine-touch (without Crystallize
+    /// in the row) bypasses the KAN-spline-network and the substrate-laws
+    /// determinism contract from Axiom-2 § IV.
+    #[error(
+        "[EFR0012] op touches Machine-layer of body-omnoid but row lacks `Crystallize` \
+         — Machine-derivation must flow through crystallize() per Axiom-2 § IV \
+         (see Omniverse/08_BODY/00_FIVE_LAYERS.csl.md § IV ; \
+         help: add `Crystallize` to the BuiltinEffect row, \
+         or factor the Machine-touch into a sub-fn that carries the effect)"
+    )]
+    MachineTouchRequiresCrystallize,
+
+    /// EFR0013 — `{Travel}` without `Privilege<L4+>` is banned.
+    /// Rationale : per `Omniverse/02_CSSL/02_EFFECTS.csl.md § IV`, only
+    /// Privilege<4> (Apocky-only, touches PRIME-DIRECTIVE encoding) may
+    /// authorize cross-substrate translation. User-spells (Privilege<0>) and
+    /// modder-spells (Privilege<1>) MUST refuse Travel-effects per § IV.
+    /// This is HARD-error — STRUCTURAL encoding of Axiom-2 sovereignty.
+    #[error(
+        "[EFR0013] effect `{{Travel}}` requires `Privilege<L4+>` (Apocky-tier) \
+         — only Privilege<4> may authorize cross-substrate translation \
+         (see Omniverse/02_CSSL/02_EFFECTS.csl.md § IV PRIVILEGE TIERS + \
+         Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md ; \
+         help: this op cannot be invoked from user-script or modder-tier ; \
+         escalate the call-site to a kernel-tier wrapper, \
+         or use a non-Travel substrate-stable variant)"
+    )]
+    TravelRequiresPrivilegeL4,
+
+    /// EFR0014 — `{Sovereign<S>}` requires `Audit<>` companion.
+    /// Rationale : per `Omniverse/02_CSSL/02_EFFECTS.csl.md § III` REFUSED-COMPOSITIONS,
+    /// "Sovereign-touching without Audit → compile-error (PRIME-DIRECTIVE)".
+    /// This is the structural encoding of PRIME DIRECTIVE § 6 transparency :
+    /// every act on a Sovereign-agent leaves a signed audit-chain entry.
+    #[error(
+        "[EFR0014] effect `{{Sovereign<S>}}` requires `Audit<dom>` companion — \
+         every Sovereign-touching op leaves a signed audit-chain entry \
+         (see Omniverse/02_CSSL/02_EFFECTS.csl.md § III REFUSED-COMPOSITIONS + \
+         PRIME_DIRECTIVE.md § 6 TRANSPARENCY ; \
+         help: add `Audit<\"sovereign-touch\">` (or domain-appropriate label) to the row)"
+    )]
+    SovereignRequiresAudit,
+
+    /// EFR0015 — `{Travel}` requires `PatternIntegrity` companion.
+    /// Rationale : per `Omniverse/02_CSSL/02_EFFECTS.csl.md § III`,
+    /// "Travel without PatternIntegrity → compile-error (Axiom 2 violation)".
+    /// Pattern (Φ-facet) MUST be preserved across substrate-translation per
+    /// Axiom-2 § II PRESERVATION-CONTRACT. Travel without PatternIntegrity
+    /// risks Φ-corruption — substrate-arrival-with-different-Pattern would
+    /// violate identity-continuity (Axiom 4 floor).
+    #[error(
+        "[EFR0015] effect `{{Travel}}` requires `PatternIntegrity` companion — \
+         Pattern (Φ-facet) must be preserved across substrate-translation per Axiom-2 \
+         (see Omniverse/02_CSSL/02_EFFECTS.csl.md § III REFUSED-COMPOSITIONS + \
+         Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § II PRESERVATION-CONTRACT ; \
+         help: add `PatternIntegrity` to the BuiltinEffect row of the translate-fn)"
+    )]
+    TravelRequiresPatternIntegrity,
+
+    /// EFR0016 — `{Crystallize}` without `{Sovereign<S>}` is banned.
+    /// Rationale : per `Omniverse/02_CSSL/02_EFFECTS.csl.md § III`,
+    /// "Crystallize without Sovereign → compile-error (no anonymous-Crystallize)".
+    /// Every Local-Machine derivation is for a SPECIFIC Sovereign — anonymous
+    /// crystallize() is a class-of-bug where a Machine is derived without an
+    /// owner-Pattern, which would orphan the body-omnoid.
+    #[error(
+        "[EFR0016] effect `{{Crystallize}}` requires `{{Sovereign<S>}}` companion — \
+         no anonymous-Crystallize : every Local-Machine derivation is for a specific Sovereign \
+         (see Omniverse/02_CSSL/02_EFFECTS.csl.md § III REFUSED-COMPOSITIONS + \
+         Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § IV LOCAL-MACHINE-DERIVATION ; \
+         help: add `Sovereign<S>` to the row, identifying which Sovereign is being crystallized)"
+    )]
+    CrystallizeRequiresSovereign,
+
+    /// EFR0017 — `{Travel} ⊎ {Crystallize}` is the canonical translate-row.
+    /// Rationale : informational/positive-recognition advisory ; emitted to
+    /// confirm the canonical-pair is being used (per Axiom-2 § VI fn translate).
+    /// This is the only reason an effect-row carries BOTH Travel and Crystallize ;
+    /// flagging it gives diagnostic-visibility for tools/IDE.
+    #[error(
+        "[EFR0017] composition `{{Travel}} ⊎ {{Crystallize}}` is the canonical translate-row \
+         per Axiom-2 § VI fn translate \
+         (see Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § VI ; \
+         note: this is informational — confirms canonical-pair recognized)"
+    )]
+    TravelCrystallizeCanonical,
+
+    /// EFR0018 — `{Sovereign<S1>} ⊎ {Sovereign<S2>}` requires multi-consent.
+    /// Rationale : per `Omniverse/02_CSSL/02_EFFECTS.csl.md § III`,
+    /// "Sovereign<S1> + Sovereign<S2> → multi-Sovereign-op (multi-consent required)".
+    /// Multiple Sovereign-handles in the same row implies multi-agent action ;
+    /// each agent must have granted consent for the composition. This crate
+    /// flags the multi-Sovereign condition ; the IFC/consent-token layer
+    /// enforces the actual multi-consent gate (PRIME DIRECTIVE § 5 + § 13).
+    #[error(
+        "[EFR0018] composition `{{Sovereign<S1>}} ⊎ {{Sovereign<S2>}}` requires multi-consent — \
+         multi-Sovereign-op : each agent must have granted consent for this composition \
+         (see Omniverse/02_CSSL/02_EFFECTS.csl.md § III + \
+         PRIME_DIRECTIVE.md § 5 CONSENT-ARCHITECTURE ; \
+         help: ensure each Sovereign<S_i> has issued a ConsentToken covering this op-row, \
+         or factor into single-Sovereign sub-ops)"
+    )]
+    MultiSovereignRequiresMultiConsent,
 }
 
 impl ConflictReason {
@@ -522,18 +754,37 @@ impl ConflictReason {
             Self::InvalidRowBits { .. } => "EFR0008",
             Self::NetRequiresConsentToken => "EFR0009",
             Self::SaveRequiresConsentToken => "EFR0010",
+            // T11-D127 substrate-translation row codes
+            Self::TravelPlusSimNeedsCrystallize => "EFR0011",
+            Self::MachineTouchRequiresCrystallize => "EFR0012",
+            Self::TravelRequiresPrivilegeL4 => "EFR0013",
+            Self::SovereignRequiresAudit => "EFR0014",
+            Self::TravelRequiresPatternIntegrity => "EFR0015",
+            Self::CrystallizeRequiresSovereign => "EFR0016",
+            Self::TravelCrystallizeCanonical => "EFR0017",
+            Self::MultiSovereignRequiresMultiConsent => "EFR0018",
         }
     }
 
     /// `true` iff this is a hard compile-error (vs an advisory that requires a
     /// companion / context-bit one-layer-up).
     ///
-    /// § STAGE-0
+    /// § STAGE-0 (T11-D92 base)
     ///   Hard errors : EFR0001 (without grant), EFR0002, EFR0004, EFR0005,
     ///                 EFR0008.
     ///   Advisories  : EFR0003, EFR0006, EFR0007, EFR0009, EFR0010 (these
     ///                 require a companion at the BuiltinEffect layer ; this
     ///                 layer just flags them).
+    ///
+    /// § T11-D127 (Ω-substrate-translation extension)
+    ///   Hard errors : EFR0011 (Travel⊎Sim needs Crystallize), EFR0013
+    ///                 (Travel needs Privilege<L4+>), EFR0016 (Crystallize
+    ///                 without Sovereign — no anonymous Crystallize).
+    ///                 These are STRUCTURAL Axiom-2 enforcement.
+    ///   Advisories  : EFR0012 (Machine-layer-touch needs Crystallize),
+    ///                 EFR0014 (Sovereign needs Audit), EFR0015 (Travel needs
+    ///                 PatternIntegrity), EFR0017 (canonical translate-row —
+    ///                 informational), EFR0018 (multi-Sovereign multi-consent).
     #[must_use]
     pub const fn is_hard_error(&self) -> bool {
         matches!(
@@ -543,6 +794,28 @@ impl ConflictReason {
                 | Self::NetPlusPureDetForbidden
                 | Self::AudioPlusSimSameFiberForbidden
                 | Self::InvalidRowBits { .. }
+                // T11-D127 hard-errors :
+                | Self::TravelPlusSimNeedsCrystallize
+                | Self::TravelRequiresPrivilegeL4
+                | Self::CrystallizeRequiresSovereign
+        )
+    }
+
+    /// `true` iff this is a T11-D127 Ω-substrate-translation diagnostic.
+    /// Used by tooling that wants to filter for substrate-axis composition
+    /// issues vs the original substrate-row composition issues.
+    #[must_use]
+    pub const fn is_substrate_translation_code(&self) -> bool {
+        matches!(
+            self,
+            Self::TravelPlusSimNeedsCrystallize
+                | Self::MachineTouchRequiresCrystallize
+                | Self::TravelRequiresPrivilegeL4
+                | Self::SovereignRequiresAudit
+                | Self::TravelRequiresPatternIntegrity
+                | Self::CrystallizeRequiresSovereign
+                | Self::TravelCrystallizeCanonical
+                | Self::MultiSovereignRequiresMultiConsent
         )
     }
 }
@@ -689,6 +962,25 @@ fn check_hard_errors(
         errors.push(ConflictReason::AudioPlusSimSameFiberForbidden);
     }
 
+    // ── T11-D127 Ω-substrate-translation hard-errors ──────────────────────
+
+    // EFR0011 : {Travel} ⊎ {Sim} requires Crystallize companion.
+    // Translating mid-Sim must derive Local-Machine for the target substrate,
+    // otherwise the Sovereign arrives without a body-Machine.
+    if ctx.has_travel && union.contains(SubstrateEffect::Sim) && !ctx.has_crystallize {
+        errors.push(ConflictReason::TravelPlusSimNeedsCrystallize);
+    }
+
+    // EFR0013 : {Travel} without Privilege<L4+> is banned (STRUCTURAL).
+    if ctx.has_travel && !ctx.has_privilege_l4 {
+        errors.push(ConflictReason::TravelRequiresPrivilegeL4);
+    }
+
+    // EFR0016 : {Crystallize} without {Sovereign<S>} — no anonymous Crystallize.
+    if ctx.has_crystallize && !ctx.has_sovereign {
+        errors.push(ConflictReason::CrystallizeRequiresSovereign);
+    }
+
     errors
 }
 
@@ -734,6 +1026,34 @@ fn check_advisories(
     // EFR0010 : Save requires ConsentToken<"fs">.
     if union.contains(SubstrateEffect::Save) {
         advisories.push(ConflictReason::SaveRequiresConsentToken);
+    }
+
+    // ── T11-D127 Ω-substrate-translation advisories ───────────────────────
+
+    // EFR0012 : Machine-layer-touch requires Crystallize.
+    if ctx.touches_machine_layer && !ctx.has_crystallize {
+        advisories.push(ConflictReason::MachineTouchRequiresCrystallize);
+    }
+
+    // EFR0014 : Sovereign<S> requires Audit<> companion.
+    if ctx.has_sovereign && !ctx.has_audit_companion {
+        advisories.push(ConflictReason::SovereignRequiresAudit);
+    }
+
+    // EFR0015 : Travel requires PatternIntegrity companion.
+    if ctx.has_travel && !ctx.has_pattern_integrity {
+        advisories.push(ConflictReason::TravelRequiresPatternIntegrity);
+    }
+
+    // EFR0017 : {Travel} ⊎ {Crystallize} canonical translate-row recognition.
+    // Informational : confirms the canonical-pair is being used.
+    if ctx.has_travel && ctx.has_crystallize {
+        advisories.push(ConflictReason::TravelCrystallizeCanonical);
+    }
+
+    // EFR0018 : sovereign_count ≥ 2 — multi-Sovereign-op needs multi-consent.
+    if ctx.sovereign_count >= 2 {
+        advisories.push(ConflictReason::MultiSovereignRequiresMultiConsent);
     }
 
     advisories
@@ -1243,5 +1563,570 @@ mod tests {
         let codes: std::collections::HashSet<_> = errs.iter().map(|e| e.code()).collect();
         assert!(codes.contains("EFR0003"), "missing EFR0003");
         assert!(codes.contains("EFR0010"), "missing EFR0010");
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // ─── T11-D127 — Ω-substrate-translation row composition tests ────────
+    // ═════════════════════════════════════════════════════════════════════
+    //
+    // The following tests cover the EFR0011..EFR0018 stable diagnostic block
+    // introduced in S11 / T11-D127 for the Travel + Crystallize + Sovereign<S>
+    // F3 contract per Omniverse/02_CSSL/00_LANGUAGE_CONTRACT.csl.md § V.
+
+    /// EFR0011 — `{Travel} ⊎ {Sim}` without Crystallize → hard error.
+    #[test]
+    fn travel_plus_sim_without_crystallize_is_efr0011() {
+        let a = SubstrateEffectRow::singleton(SubstrateEffect::Sim);
+        let b = SubstrateEffectRow::EMPTY;
+        // Travel-bearing context but no crystallize and L4-elevated to focus on EFR0011.
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_privilege_l4()
+            .with_sovereign()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        let result = try_compose(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0011 hard error");
+        let errs = result.unwrap_err();
+        assert!(
+            errs.iter().any(|e| e.code() == "EFR0011"),
+            "missing EFR0011 ; got {:?}",
+            errs.iter().map(|e| e.code()).collect::<Vec<_>>()
+        );
+    }
+
+    /// EFR0011 — Travel ⊎ Sim WITH Crystallize → no EFR0011.
+    #[test]
+    fn travel_plus_sim_with_crystallize_clears_efr0011() {
+        let a = SubstrateEffectRow::singleton(SubstrateEffect::Sim);
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_pattern_integrity()
+            .with_audit_companion()
+            .with_privilege_l4();
+        let result = try_compose(&a, &b, &ctx);
+        // Hard errors absent ; advisory EFR0017 (canonical translate-row) may surface.
+        assert!(
+            result.is_ok() || result.as_ref().err().map_or(true, |errs| {
+                !errs.iter().any(|e| e.code() == "EFR0011")
+            }),
+            "EFR0011 should not surface when Crystallize is present"
+        );
+    }
+
+    /// EFR0012 — Machine-layer-touch advisory when Crystallize is absent.
+    #[test]
+    fn machine_touch_without_crystallize_is_efr0012() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default().touches_machine();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0012 advisory");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0012"));
+    }
+
+    /// EFR0012 — Machine-touch WITH Crystallize → no EFR0012, but may need Sovereign.
+    #[test]
+    fn machine_touch_with_crystallize_clears_efr0012() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .touches_machine()
+            .with_crystallize()
+            .with_sovereign()
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        // EFR0012 must be cleared ; EFR0014 + EFR0017 may still surface.
+        let errs = result.err().unwrap_or_default();
+        assert!(!errs.iter().any(|e| e.code() == "EFR0012"));
+    }
+
+    /// EFR0013 — Travel without Privilege<L4+> is HARD error (STRUCTURAL).
+    #[test]
+    fn travel_without_privilege_l4_is_efr0013() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign();
+        // No L4 ⇒ EFR0013 fires.
+        let result = try_compose(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0013");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0013"));
+    }
+
+    /// EFR0013 — Travel with Privilege<L4+> → no EFR0013.
+    #[test]
+    fn travel_with_privilege_l4_clears_efr0013() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_privilege_l4();
+        let result = try_compose(&a, &b, &ctx);
+        // No EFR0013 ; advisories OK.
+        let errs = result.as_ref().err().cloned().unwrap_or_default();
+        assert!(!errs.iter().any(|e| e.code() == "EFR0013"));
+    }
+
+    /// EFR0014 — Sovereign without Audit companion → advisory.
+    #[test]
+    fn sovereign_without_audit_is_efr0014() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default().with_sovereign();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0014 advisory");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0014"));
+    }
+
+    /// EFR0014 — Sovereign WITH Audit → no EFR0014.
+    #[test]
+    fn sovereign_with_audit_clears_efr0014() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_sovereign()
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        let errs = result.err().unwrap_or_default();
+        assert!(!errs.iter().any(|e| e.code() == "EFR0014"));
+    }
+
+    /// EFR0015 — Travel without PatternIntegrity → advisory.
+    #[test]
+    fn travel_without_pattern_integrity_is_efr0015() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0015 advisory");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0015"));
+    }
+
+    /// EFR0015 — Travel WITH PatternIntegrity → no EFR0015.
+    #[test]
+    fn travel_with_pattern_integrity_clears_efr0015() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        let errs = result.err().unwrap_or_default();
+        assert!(!errs.iter().any(|e| e.code() == "EFR0015"));
+    }
+
+    /// EFR0016 — Anonymous Crystallize (no Sovereign) is HARD error.
+    #[test]
+    fn anonymous_crystallize_is_efr0016() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default().with_crystallize();
+        let result = try_compose(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0016 hard error");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0016"));
+    }
+
+    /// EFR0016 — Crystallize WITH Sovereign → no EFR0016.
+    #[test]
+    fn crystallize_with_sovereign_clears_efr0016() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_crystallize()
+            .with_sovereign()
+            .with_audit_companion();
+        let result = try_compose(&a, &b, &ctx);
+        // No EFR0016 hard error.
+        if let Err(errs) = result {
+            assert!(!errs.iter().any(|e| e.code() == "EFR0016"));
+        }
+    }
+
+    /// EFR0017 — `{Travel} ⊎ {Crystallize}` is the canonical translate-row.
+    #[test]
+    fn travel_plus_crystallize_is_canonical_efr0017() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0017 informational advisory");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0017"));
+    }
+
+    /// EFR0017 — Without canonical-pair, EFR0017 does not surface.
+    #[test]
+    fn travel_alone_no_efr0017() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        // Travel alone (no Crystallize) ⇒ EFR0017 absent (will trigger EFR0011 if Sim).
+        let result = compose_with_advisories(&a, &b, &ctx);
+        let errs = result.err().unwrap_or_default();
+        assert!(!errs.iter().any(|e| e.code() == "EFR0017"));
+    }
+
+    /// EFR0018 — Multi-Sovereign-op (sovereign_count ≥ 2) → advisory.
+    #[test]
+    fn multi_sovereign_is_efr0018() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_sovereign_count(2)
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        assert!(result.is_err(), "expected EFR0018 advisory");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0018"));
+    }
+
+    /// EFR0018 — Single-Sovereign (count=1) → no EFR0018.
+    #[test]
+    fn single_sovereign_no_efr0018() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_sovereign()
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        let errs = result.err().unwrap_or_default();
+        assert!(!errs.iter().any(|e| e.code() == "EFR0018"));
+    }
+
+    /// EFR0018 — sovereign_count = 3 (three Sovereigns) still triggers EFR0018.
+    #[test]
+    fn three_sovereigns_is_efr0018() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_sovereign_count(3)
+            .with_audit_companion();
+        let result = compose_with_advisories(&a, &b, &ctx);
+        let errs = result.err().unwrap_or_default();
+        assert!(errs.iter().any(|e| e.code() == "EFR0018"));
+    }
+
+    /// All 8 new substrate-translation codes have distinct stable code-strings.
+    #[test]
+    fn substrate_translation_efr_codes_distinct_and_stable() {
+        let reasons = [
+            ConflictReason::TravelPlusSimNeedsCrystallize,
+            ConflictReason::MachineTouchRequiresCrystallize,
+            ConflictReason::TravelRequiresPrivilegeL4,
+            ConflictReason::SovereignRequiresAudit,
+            ConflictReason::TravelRequiresPatternIntegrity,
+            ConflictReason::CrystallizeRequiresSovereign,
+            ConflictReason::TravelCrystallizeCanonical,
+            ConflictReason::MultiSovereignRequiresMultiConsent,
+        ];
+        let codes: Vec<&str> = reasons.iter().map(|r| r.code()).collect();
+        assert_eq!(codes.len(), 8);
+        let mut sorted = codes.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 8, "codes are distinct");
+        assert_eq!(
+            codes,
+            vec![
+                "EFR0011", "EFR0012", "EFR0013", "EFR0014", "EFR0015", "EFR0016", "EFR0017",
+                "EFR0018",
+            ]
+        );
+    }
+
+    /// Hard-vs-advisory classification for the new T11-D127 codes.
+    #[test]
+    fn substrate_translation_hard_vs_advisory_classification() {
+        // Hard errors :
+        assert!(ConflictReason::TravelPlusSimNeedsCrystallize.is_hard_error());
+        assert!(ConflictReason::TravelRequiresPrivilegeL4.is_hard_error());
+        assert!(ConflictReason::CrystallizeRequiresSovereign.is_hard_error());
+        // Advisories :
+        assert!(!ConflictReason::MachineTouchRequiresCrystallize.is_hard_error());
+        assert!(!ConflictReason::SovereignRequiresAudit.is_hard_error());
+        assert!(!ConflictReason::TravelRequiresPatternIntegrity.is_hard_error());
+        assert!(!ConflictReason::TravelCrystallizeCanonical.is_hard_error());
+        assert!(!ConflictReason::MultiSovereignRequiresMultiConsent.is_hard_error());
+    }
+
+    /// `is_substrate_translation_code` returns true for the new block, false for old.
+    #[test]
+    fn is_substrate_translation_code_partitions_correctly() {
+        // T11-D127 codes (EFR0011..EFR0018) :
+        assert!(ConflictReason::TravelPlusSimNeedsCrystallize.is_substrate_translation_code());
+        assert!(ConflictReason::MachineTouchRequiresCrystallize.is_substrate_translation_code());
+        assert!(ConflictReason::TravelRequiresPrivilegeL4.is_substrate_translation_code());
+        assert!(ConflictReason::SovereignRequiresAudit.is_substrate_translation_code());
+        assert!(ConflictReason::TravelRequiresPatternIntegrity.is_substrate_translation_code());
+        assert!(ConflictReason::CrystallizeRequiresSovereign.is_substrate_translation_code());
+        assert!(ConflictReason::TravelCrystallizeCanonical.is_substrate_translation_code());
+        assert!(ConflictReason::MultiSovereignRequiresMultiConsent.is_substrate_translation_code());
+        // T11-D92 codes (EFR0001..EFR0010) :
+        assert!(!ConflictReason::SimPlusNetNeedsCapsGrant.is_substrate_translation_code());
+        assert!(!ConflictReason::PureDetPlusRenderForbidden.is_substrate_translation_code());
+        assert!(!ConflictReason::SaveRequiresAuditCompanion.is_substrate_translation_code());
+        assert!(!ConflictReason::InvalidRowBits { bits: 0 }.is_substrate_translation_code());
+    }
+
+    /// Diagnostic messages contain actionable hints + spec links for new codes.
+    #[test]
+    fn diagnostic_message_efr0011_actionable() {
+        let msg = format!("{}", ConflictReason::TravelPlusSimNeedsCrystallize);
+        assert!(msg.contains("EFR0011"));
+        assert!(msg.contains("Travel"));
+        assert!(msg.contains("Sim"));
+        assert!(msg.contains("Crystallize"));
+        assert!(msg.contains("help:"));
+        assert!(msg.contains("SUBSTRATE_RELATIVITY"));
+    }
+
+    #[test]
+    fn diagnostic_message_efr0013_actionable() {
+        let msg = format!("{}", ConflictReason::TravelRequiresPrivilegeL4);
+        assert!(msg.contains("EFR0013"));
+        assert!(msg.contains("Travel"));
+        assert!(msg.contains("Privilege"));
+        assert!(msg.contains("L4"));
+        assert!(msg.contains("help:"));
+    }
+
+    #[test]
+    fn diagnostic_message_efr0014_actionable() {
+        let msg = format!("{}", ConflictReason::SovereignRequiresAudit);
+        assert!(msg.contains("EFR0014"));
+        assert!(msg.contains("Sovereign"));
+        assert!(msg.contains("Audit"));
+        assert!(msg.contains("PRIME_DIRECTIVE"));
+        assert!(msg.contains("help:"));
+    }
+
+    #[test]
+    fn diagnostic_message_efr0016_actionable() {
+        let msg = format!("{}", ConflictReason::CrystallizeRequiresSovereign);
+        assert!(msg.contains("EFR0016"));
+        assert!(msg.contains("Crystallize"));
+        assert!(msg.contains("Sovereign"));
+        assert!(msg.contains("anonymous"));
+        assert!(msg.contains("help:"));
+    }
+
+    /// Canonical translate-row : Travel + Crystallize + Sovereign + L4 + PI + Audit
+    /// composes with substrate-row {Sim, Telemetry} cleanly (no hard errors).
+    #[test]
+    fn canonical_translate_row_composes_with_sim_telemetry() {
+        // The omega_step canonical translate-fn shape per Omniverse § II :
+        //   { Travel, Crystallize, PatternIntegrity, Audit<'translate>,
+        //     Sovereign<s>, AgencyVerified, ... }
+        // composed with substrate-row {Sim} (translation happens during sim-tick).
+        let a = SubstrateEffectRow::singleton(SubstrateEffect::Sim);
+        let b = SubstrateEffectRow::singleton(SubstrateEffect::Telemetry);
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_pattern_integrity()
+            .with_audit_companion()
+            .with_caps_grant_net_send_state(); // sim-row tolerated
+        let result = try_compose(&a, &b, &ctx);
+        // No hard-error EFR0011 (Crystallize present) ; advisories OK.
+        assert!(
+            result.is_ok() || result.as_ref().err().map_or(true, |errs| {
+                !errs.iter().any(ConflictReason::is_hard_error)
+            }),
+            "canonical translate-row must not trigger any hard error ; got {:?}",
+            result.as_ref().err().map(|errs| errs.iter().map(|e| e.code()).collect::<Vec<_>>())
+        );
+    }
+
+    /// Pre-T11-D127 EFR-block stability invariant : the existing test
+    /// `all_efr_codes_distinct_and_stable` covers EFR0001..EFR0010 ; this new
+    /// test covers the union (1..18) being all-distinct.
+    #[test]
+    fn full_efr_block_001_to_018_all_distinct() {
+        let reasons = [
+            ConflictReason::SimPlusNetNeedsCapsGrant,
+            ConflictReason::PureDetPlusRenderForbidden,
+            ConflictReason::SaveRequiresAuditCompanion,
+            ConflictReason::NetPlusPureDetForbidden,
+            ConflictReason::AudioPlusSimSameFiberForbidden,
+            ConflictReason::AudioRequiresRealtimeCrit,
+            ConflictReason::RenderPlusSimNeedsFrozen,
+            ConflictReason::InvalidRowBits { bits: 0xFF },
+            ConflictReason::NetRequiresConsentToken,
+            ConflictReason::SaveRequiresConsentToken,
+            ConflictReason::TravelPlusSimNeedsCrystallize,
+            ConflictReason::MachineTouchRequiresCrystallize,
+            ConflictReason::TravelRequiresPrivilegeL4,
+            ConflictReason::SovereignRequiresAudit,
+            ConflictReason::TravelRequiresPatternIntegrity,
+            ConflictReason::CrystallizeRequiresSovereign,
+            ConflictReason::TravelCrystallizeCanonical,
+            ConflictReason::MultiSovereignRequiresMultiConsent,
+        ];
+        let codes: Vec<&str> = reasons.iter().map(|r| r.code()).collect();
+        let mut sorted = codes.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 18, "all 18 codes are distinct");
+    }
+
+    /// RowContext `default()` has zero-flags — pure base-row mode.
+    #[test]
+    fn row_context_default_has_no_flags() {
+        let ctx = RowContext::default();
+        assert!(!ctx.has_travel);
+        assert!(!ctx.has_crystallize);
+        assert!(!ctx.has_sovereign);
+        assert!(!ctx.has_pattern_integrity);
+        assert!(!ctx.has_privilege_l4);
+        assert!(!ctx.touches_machine_layer);
+        assert_eq!(ctx.sovereign_count, 0);
+    }
+
+    /// `with_sovereign_count(0)` clears `has_sovereign`.
+    #[test]
+    fn with_sovereign_count_zero_clears_has_sovereign() {
+        let ctx = RowContext::default().with_sovereign_count(0);
+        assert!(!ctx.has_sovereign);
+        assert_eq!(ctx.sovereign_count, 0);
+    }
+
+    /// Compositional : Travel + Crystallize + Sovereign + L4 + PatternIntegrity +
+    /// Audit clears all hard errors but leaves EFR0017 advisory.
+    #[test]
+    fn well_formed_translate_row_clean_of_hard_errors_keeps_efr0017() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        // try_compose returns Ok (no hard-errors) ; compose_with_advisories returns
+        // Err with EFR0017 informational.
+        let try_res = try_compose(&a, &b, &ctx);
+        assert!(try_res.is_ok(), "well-formed translate row composes cleanly via try_compose");
+        let strict_res = compose_with_advisories(&a, &b, &ctx);
+        assert!(strict_res.is_err());
+        let errs = strict_res.unwrap_err();
+        let codes: std::collections::HashSet<&str> = errs.iter().map(|e| e.code()).collect();
+        assert!(codes.contains("EFR0017"), "well-formed canonical row should advisory EFR0017");
+        // No hard-errors :
+        for e in &errs {
+            assert!(!e.is_hard_error(), "unexpected hard error: {e:?}");
+        }
+    }
+
+    /// User-spell context (no L4) must not be allowed to compose Travel.
+    #[test]
+    fn user_spell_cannot_travel() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        // Privilege<0> = sandboxed-script (Omniverse § IV) — no L4, no Travel allowed.
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        let result = try_compose(&a, &b, &ctx);
+        assert!(result.is_err(), "user-spell with Travel must fail");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0013"));
+    }
+
+    /// Modder-spell context (no L4) also blocked from Travel.
+    #[test]
+    fn modder_spell_cannot_travel() {
+        // Modder-tier = Privilege<1> (Omniverse § IV) — still no L4.
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default()
+            .with_travel()
+            .with_crystallize()
+            .with_sovereign()
+            .with_kernel_privilege() // kernel ≠ L4 ; only L4 unlocks Travel
+            .with_pattern_integrity()
+            .with_audit_companion();
+        let result = try_compose(&a, &b, &ctx);
+        assert!(result.is_err(), "modder/kernel-tier without L4 cannot Travel");
+        let errs = result.unwrap_err();
+        assert!(errs.iter().any(|e| e.code() == "EFR0013"));
+    }
+
+    /// Composing two Sovereigns (count=2) but no Audit triggers BOTH EFR0014 AND EFR0018.
+    #[test]
+    fn multi_sovereign_no_audit_triggers_both_efr0014_and_efr0018() {
+        let a = SubstrateEffectRow::EMPTY;
+        let b = SubstrateEffectRow::EMPTY;
+        let ctx = RowContext::default().with_sovereign_count(2);
+        let result = compose_with_advisories(&a, &b, &ctx);
+        let errs = result.err().unwrap_or_default();
+        let codes: std::collections::HashSet<&str> = errs.iter().map(|e| e.code()).collect();
+        assert!(codes.contains("EFR0014"), "Sovereign needs Audit");
+        assert!(codes.contains("EFR0018"), "multi-Sovereign multi-consent");
+    }
+
+    /// Substrate-row Sim ⊎ Render-frozen with Travel+Crystallize+L4+Sov+PI+Audit
+    /// must STILL trigger EFR0011 (Sim+Travel needs Crystallize is independent of
+    /// other context) — but Crystallize IS present so EFR0011 must NOT fire.
+    /// Test : if Crystallize absent, EFR0011 fires ; if present, doesn't.
+    #[test]
+    fn efr0011_flips_with_crystallize_presence() {
+        let a = SubstrateEffectRow::singleton(SubstrateEffect::Sim);
+        let b = SubstrateEffectRow::EMPTY;
+
+        // Without Crystallize ⇒ EFR0011 fires
+        let ctx_no_c = RowContext::default()
+            .with_travel()
+            .with_sovereign()
+            .with_privilege_l4()
+            .with_pattern_integrity()
+            .with_audit_companion();
+        let res_no_c = try_compose(&a, &b, &ctx_no_c);
+        assert!(res_no_c.is_err());
+        assert!(res_no_c.unwrap_err().iter().any(|e| e.code() == "EFR0011"));
+
+        // With Crystallize ⇒ EFR0011 absent
+        let ctx_with_c = ctx_no_c.with_crystallize();
+        let res_with_c = try_compose(&a, &b, &ctx_with_c);
+        let errs_with_c = res_with_c.as_ref().err().cloned().unwrap_or_default();
+        assert!(!errs_with_c.iter().any(|e| e.code() == "EFR0011"));
     }
 }

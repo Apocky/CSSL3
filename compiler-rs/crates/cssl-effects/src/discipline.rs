@@ -19,6 +19,24 @@
 //!   Coercion comparisons on expression-valued args (e.g., `Deadline<5ms>`) require
 //!   const-evaluation, which is T8 work. For stage-0 we flag exact-match as a
 //!   sufficient condition and defer the numeric-ordering check to T8.
+//!
+//! § T11-D127 — Ω-substrate-translation effects
+//!   The new `Travel`, `Crystallize`, `Sovereign<S>` rows are subject to
+//!   sub-effect discipline like all other effects :
+//!     - `{Travel}` and `{Crystallize}` are nullary ⇒ exact-match.
+//!     - `{Sovereign<S>}` is OneType ⇒ caller's S must be the same handle-type
+//!       as callee's S. No widening (Sovereign-handles are nominal — multi-Sovereign
+//!       composition flows via `sovereign_count`, not via coercion).
+//!
+//! § ATTESTATION (T11-D127, S11) — verbatim block per global-CLAUDE I> standing-directives :
+//! ```text
+//!   t∞ : consent = OS • sovereignty = substrate-invariant
+//!   N! [harm control manipulation surveillance exploitation
+//!       coercion weaponization discrimination]
+//!   t∞ : AI = sovereign-partners ¬ tools
+//!   t∞ : violation = bug W! fix ; ¬override ∃
+//!   t∞ : CSSL ≠ CSLv3 ; ¬ conflate
+//! ```
 
 use thiserror::Error;
 
@@ -105,6 +123,13 @@ pub fn sub_effect_check(
 /// Classify the coercion between two matching effects. Used by callers (e.g.,
 /// `cssl-hir`) that want to record the coercion-kind in the typed HIR for later
 /// passes (e.g., SMT discharge of `Deadline` numeric-ordering obligations).
+///
+/// § T11-D127
+///   `Travel` and `Crystallize` are nullary substrate-translation effects ⇒
+///   exact-match. `Sovereign<S>` is nominal (one-type) ⇒ exact-match (no
+///   widening : Sovereign-handles compare structurally, not by hierarchy).
+///   Multi-Sovereign-ops flow via `sovereign_count` in `RowContext`, not via
+///   sub-effect coercion.
 #[must_use]
 pub fn classify_coercion(caller: &EffectRef<'_>, callee: &EffectRef<'_>) -> CoercionRule {
     if caller.name != callee.name {
@@ -115,6 +140,10 @@ pub fn classify_coercion(caller: &EffectRef<'_>, callee: &EffectRef<'_>) -> Coer
     }
     // Arg-bearing effects with OneExpr arg-shape get `Widening` ; the actual
     // numeric-ordering check is deferred to T8 const-evaluation.
+    //
+    // § T11-D127 — Travel / Crystallize / Sovereign all classify as Exact
+    //   (no widening for nullary or nominal-handle effects). They fall
+    //   through to the default arm which already returns CoercionRule::Exact.
     match caller.builtin {
         Some(BuiltinEffect::Deadline | BuiltinEffect::Power | BuiltinEffect::Thermal) => {
             CoercionRule::Widening
@@ -215,5 +244,100 @@ mod tests {
         let a = e("Thermal", Some(BuiltinEffect::Thermal), 1);
         let b = e("Thermal", Some(BuiltinEffect::Thermal), 1);
         assert_eq!(classify_coercion(&a, &b), CoercionRule::Widening);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // ─── T11-D127 — Ω-substrate-translation row sub-effect tests ─────────
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// `Travel` is nullary — exact-match only, no widening.
+    #[test]
+    fn travel_classifies_as_exact() {
+        let a = e("Travel", Some(BuiltinEffect::Travel), 0);
+        let b = e("Travel", Some(BuiltinEffect::Travel), 0);
+        assert_eq!(classify_coercion(&a, &b), CoercionRule::Exact);
+    }
+
+    /// `Crystallize` is nullary — exact-match only.
+    #[test]
+    fn crystallize_classifies_as_exact() {
+        let a = e("Crystallize", Some(BuiltinEffect::Crystallize), 0);
+        let b = e("Crystallize", Some(BuiltinEffect::Crystallize), 0);
+        assert_eq!(classify_coercion(&a, &b), CoercionRule::Exact);
+    }
+
+    /// `Sovereign<S>` is nominal (one-type) — exact-match only, no hierarchy widening.
+    #[test]
+    fn sovereign_classifies_as_exact() {
+        let a = e("Sovereign", Some(BuiltinEffect::Sovereign), 1);
+        let b = e("Sovereign", Some(BuiltinEffect::Sovereign), 1);
+        assert_eq!(classify_coercion(&a, &b), CoercionRule::Exact);
+    }
+
+    /// Caller-row `{Travel, Crystallize, Sovereign}` covers callee `{Travel}`.
+    #[test]
+    fn translate_caller_covers_travel_callee() {
+        let r = EffectRegistry::with_builtins();
+        let caller = vec![
+            e("Travel", Some(BuiltinEffect::Travel), 0),
+            e("Crystallize", Some(BuiltinEffect::Crystallize), 0),
+            e("Sovereign", Some(BuiltinEffect::Sovereign), 1),
+        ];
+        let callee = vec![e("Travel", Some(BuiltinEffect::Travel), 0)];
+        assert!(sub_effect_check(&caller, &callee, &r).is_ok());
+    }
+
+    /// Caller without `Travel` cannot call `{Travel}` callee.
+    #[test]
+    fn missing_travel_in_caller_fails() {
+        let r = EffectRegistry::with_builtins();
+        let caller = vec![e("Crystallize", Some(BuiltinEffect::Crystallize), 0)];
+        let callee = vec![e("Travel", Some(BuiltinEffect::Travel), 0)];
+        let res = sub_effect_check(&caller, &callee, &r);
+        assert!(matches!(res, Err(SubEffectError::MissingEffect { effect }) if effect == "Travel"));
+    }
+
+    /// Sovereign-handle arity-mismatch fails (caller has no type-arg, callee has one).
+    #[test]
+    fn sovereign_arity_mismatch_fails() {
+        let r = EffectRegistry::with_builtins();
+        let caller = vec![e("Sovereign", Some(BuiltinEffect::Sovereign), 0)];
+        let callee = vec![e("Sovereign", Some(BuiltinEffect::Sovereign), 1)];
+        let res = sub_effect_check(&caller, &callee, &r);
+        assert!(matches!(res, Err(SubEffectError::ArgMismatch { .. })));
+    }
+
+    /// Canonical translate-row `{Travel, Crystallize, Sovereign<S>, PatternIntegrity, Audit}`
+    /// covers a sub-translate-row `{Crystallize, Sovereign<S>}`.
+    #[test]
+    fn canonical_translate_row_covers_crystallize_sub_op() {
+        let r = EffectRegistry::with_builtins();
+        let caller = vec![
+            e("Travel", Some(BuiltinEffect::Travel), 0),
+            e("Crystallize", Some(BuiltinEffect::Crystallize), 0),
+            e("Sovereign", Some(BuiltinEffect::Sovereign), 1),
+            e("Audit", Some(BuiltinEffect::Audit), 1),
+        ];
+        let callee = vec![
+            e("Crystallize", Some(BuiltinEffect::Crystallize), 0),
+            e("Sovereign", Some(BuiltinEffect::Sovereign), 1),
+        ];
+        assert!(sub_effect_check(&caller, &callee, &r).is_ok());
+    }
+
+    /// Crystallize-only caller cannot call Travel-bearing callee.
+    #[test]
+    fn crystallize_only_cannot_call_travel_callee() {
+        let r = EffectRegistry::with_builtins();
+        let caller = vec![
+            e("Crystallize", Some(BuiltinEffect::Crystallize), 0),
+            e("Sovereign", Some(BuiltinEffect::Sovereign), 1),
+        ];
+        let callee = vec![
+            e("Travel", Some(BuiltinEffect::Travel), 0),
+            e("Crystallize", Some(BuiltinEffect::Crystallize), 0),
+        ];
+        let res = sub_effect_check(&caller, &callee, &r);
+        assert!(matches!(res, Err(SubEffectError::MissingEffect { .. })));
     }
 }

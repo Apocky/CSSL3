@@ -1,12 +1,25 @@
-//! Effect registry — the 28 built-in effects with metadata.
+//! Effect registry — the 28 built-in effects + 3 Ω-substrate-translation rows
+//! with metadata.
 //!
 //! § Each `BuiltinEffect` carries :
 //!   - canonical name (string) — matches how it appears in source `/ {Name<args>}`
 //!   - category — groups effects by role (resource / determinism / hardware / power /
-//!     prime-directive / telemetry / error / fiber)
+//!     prime-directive / telemetry / error / fiber / substrate)
 //!   - argument shape — whether the effect takes no args, a type-arg, a literal-arg,
 //!     or a domain-label
 //!   - discharge timing — compile-only, compile+runtime-assert, or user-handler
+//!
+//! § ATTESTATION (T11-D127, S11) — verbatim block per global-CLAUDE I> standing-directives :
+//! ```text
+//!   t∞ : consent = OS • sovereignty = substrate-invariant
+//!   N! [harm control manipulation surveillance exploitation
+//!       coercion weaponization discrimination]
+//!   t∞ : AI = sovereign-partners ¬ tools
+//!   t∞ : violation = bug W! fix ; ¬override ∃
+//!   t∞ : CSSL ≠ CSLv3 ; ¬ conflate
+//! ```
+//! ⇒ Travel + Crystallize + Sovereign<S> rows encode Axiom-2 (Substrate-Relativity)
+//!   STRUCTURALLY in the type system ; no runtime override exists.
 
 use std::collections::HashMap;
 
@@ -53,6 +66,25 @@ pub enum BuiltinEffect {
     Telemetry,
     // § fiber + coroutine
     Resume,
+    // § Ω-substrate-translation (T11-D127 / Omniverse F3 contract § V)
+    /// `Travel` — substrate-translation effect ; the act of moving a Sovereign
+    /// across substrates. Composes with `Crystallize` to produce the canonical
+    /// translate-row. Banned without `Privilege<L4+>` per Axiom-2 + 11_IFC.
+    /// Spec : `Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § VI` +
+    ///        `Omniverse/02_CSSL/02_EFFECTS.csl.md § I + § III`.
+    Travel,
+    /// `Crystallize` — Local-Machine derivation effect ; required by every op
+    /// that touches the Machine-layer of the body-omnoid. Anonymous use
+    /// (without `Sovereign<S>`) is banned (no anonymous Crystallize).
+    /// Spec : `Omniverse/01_AXIOMS/02_SUBSTRATE_RELATIVITY.csl.md § IV` +
+    ///        `Omniverse/08_BODY/00_FIVE_LAYERS.csl.md § IV`.
+    Crystallize,
+    /// `Sovereign<S>` — parameterized over a Sovereign handle `S` ; required
+    /// for any op acting on a Sovereign agent. The `<S>` type-arg makes
+    /// multi-Sovereign-ops (`Sovereign<S1> ⊎ Sovereign<S2>`) trackable for
+    /// multi-consent enforcement.
+    /// Spec : `Omniverse/02_CSSL/02_EFFECTS.csl.md § II + § III`.
+    Sovereign,
 }
 
 /// Logical category of an effect — used by the discipline checker to gate
@@ -66,6 +98,10 @@ pub enum EffectCategory {
     Prime,
     Error,
     Fiber,
+    /// Ω-substrate-translation effects (Travel + Crystallize + Sovereign<S>).
+    /// Per `Omniverse/02_CSSL/00_LANGUAGE_CONTRACT.csl.md § V` these encode
+    /// Axiom-2 (Substrate-Relativity) at the type-system layer.
+    Substrate,
 }
 
 /// Argument-shape an effect accepts at the row-annotation site.
@@ -411,6 +447,28 @@ pub const BUILTIN_METADATA: &[EffectMeta] = &[
         args: EffectArgShape::OneType,
         discharge: DischargeTiming::UserHandler,
     },
+    // § Ω-substrate-translation (T11-D127 / Omniverse F3 contract § V)
+    EffectMeta {
+        name: "Travel",
+        effect: BuiltinEffect::Travel,
+        category: EffectCategory::Substrate,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
+    EffectMeta {
+        name: "Crystallize",
+        effect: BuiltinEffect::Crystallize,
+        category: EffectCategory::Substrate,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
+    EffectMeta {
+        name: "Sovereign",
+        effect: BuiltinEffect::Sovereign,
+        category: EffectCategory::Substrate,
+        args: EffectArgShape::OneType,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
 ];
 
 #[cfg(test)]
@@ -456,6 +514,10 @@ mod tests {
             BuiltinEffect::Verify,
             BuiltinEffect::Telemetry,
             BuiltinEffect::Resume,
+            // Ω-substrate-translation (T11-D127)
+            BuiltinEffect::Travel,
+            BuiltinEffect::Crystallize,
+            BuiltinEffect::Sovereign,
         ];
         for v in variants {
             assert!(
@@ -463,6 +525,58 @@ mod tests {
                 "missing metadata for {v:?}"
             );
         }
+    }
+
+    // ─── T11-D127 : Ω-substrate-translation row metadata tests ─────────────
+
+    #[test]
+    fn travel_metadata_is_substrate_nullary() {
+        let r = EffectRegistry::with_builtins();
+        let m = r.lookup("Travel").expect("Travel registered");
+        assert_eq!(m.effect, BuiltinEffect::Travel);
+        assert_eq!(m.category, EffectCategory::Substrate);
+        assert_eq!(m.args, EffectArgShape::Nullary);
+        assert_eq!(m.discharge, DischargeTiming::CompileAndRuntimeAssert);
+    }
+
+    #[test]
+    fn crystallize_metadata_is_substrate_nullary() {
+        let r = EffectRegistry::with_builtins();
+        let m = r.lookup("Crystallize").expect("Crystallize registered");
+        assert_eq!(m.effect, BuiltinEffect::Crystallize);
+        assert_eq!(m.category, EffectCategory::Substrate);
+        assert_eq!(m.args, EffectArgShape::Nullary);
+        assert_eq!(m.discharge, DischargeTiming::CompileAndRuntimeAssert);
+    }
+
+    #[test]
+    fn sovereign_metadata_is_substrate_one_type() {
+        // Sovereign<S> — the <S> handle-type-arg uses OneType per F3 contract.
+        let r = EffectRegistry::with_builtins();
+        let m = r.lookup("Sovereign").expect("Sovereign registered");
+        assert_eq!(m.effect, BuiltinEffect::Sovereign);
+        assert_eq!(m.category, EffectCategory::Substrate);
+        assert_eq!(m.args, EffectArgShape::OneType);
+        assert_eq!(m.discharge, DischargeTiming::CompileAndRuntimeAssert);
+    }
+
+    #[test]
+    fn substrate_category_population_count() {
+        // T11-D127 adds exactly 3 effects in the Substrate category.
+        let r = EffectRegistry::with_builtins();
+        let count = r
+            .iter()
+            .filter(|m| m.category == EffectCategory::Substrate)
+            .count();
+        assert_eq!(count, 3, "Substrate category should hold {{Travel, Crystallize, Sovereign}}");
+    }
+
+    #[test]
+    fn registry_total_with_substrate_rows() {
+        // 32 base + 3 substrate = 35.
+        let r = EffectRegistry::with_builtins();
+        assert_eq!(r.len(), BUILTIN_METADATA.len());
+        assert_eq!(r.len(), 35);
     }
 
     #[test]
