@@ -1,0 +1,89 @@
+[package]
+name                   = "cssl-host-openxr"
+description            = "CSSLv3 stage0 — OpenXR runtime + Compositor-Services bridge for VR/XR day-one shipping (Quest 3 / Vision Pro / Pimax Crystal Super)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D124 (Wave-3-prelude, W4-10) : NEW crate. Authored from
+# `07_AESTHETIC/05_VR_RENDERING.csl` + `08_BODY/02_VR_EMBODIMENT.csl`.
+#
+# § STRATEGY
+#   - Stage-0 ships the engine-side abstraction layer + extension catalog +
+#     ViewSet primitive + Foveator trait + AppSW scheduler + composition-
+#     layer enum + privacy-disciplined eye/hand/body/face tracking surface.
+#   - The actual `openxr-rs` / Compositor-Services FFI is gated behind
+#     opt-in cargo features (`vulkan-binding`, `d3d12-binding`,
+#     `metal-binding`, `compositor-services-bridge`). At stage-0 the
+#     default build is **headless** : no XR runtime is dlopened, no
+#     swapchain is created, no compositor is contacted. This keeps the
+#     workspace `cargo check --workspace` green on every host (Apocky's
+#     primary host is Windows ; CI runs on Linux + macOS too).
+#   - Real FFI lands in subsequent slices : T11-D124-FOLLOWUP-1
+#     (openxr-rs + Vulkan binding on Quest 3 + Pimax via Linux-WSL2
+#     + Windows MSVC), T11-D124-FOLLOWUP-2 (Compositor-Services bridge
+#     on visionOS — requires Apple-toolchain-host).
+#   - § PRIME-DIRECTIVE §1 (anti-surveillance) is **structurally
+#     enforced** today via `cssl-ifc::SensitiveDomain::{Gaze, Face, Body,
+#     Biometric}` carried on every tracking-API output. The
+#     `validate_egress` gate refuses telemetry-egress AT COMPILE-TIME.
+#     This is non-overridable : no `Privilege<*>` capability changes the
+#     return-value. See `src/eye_gaze.rs` + `src/hand.rs` + `src/body.rs`
+#     + `src/face.rs` + `tests/eye_gaze_privacy.rs`.
+[dependencies]
+thiserror = { workspace = true }
+smallvec  = { workspace = true }
+bitflags  = { workspace = true }
+# § PRIME-DIRECTIVE §1 (anti-surveillance) : compile-time gate via the
+# local `ifc_shim` module (faithful structural mirror of `cssl-ifc`'s
+# post-T11-D132 API). When the full `cssl-ifc` IFC machinery merges
+# into this worktree, the shim is replaced with `pub use cssl_ifc::*;`
+# re-exports — the consumer-side API contract is identical.
+# `cssl-ifc = { path = "../cssl-ifc" }` (re-add after merge of D132 into worktree)
+# `cssl-telemetry = { path = "../cssl-telemetry" }` (re-add when audit-ring real-impl lands)
+
+# § T11-D124 : optional vulkan-binding feature for OpenXR-Vulkan path.
+# Gated behind `vulkan-binding` cargo-feature ; default build does not
+# pull `ash` to keep stage-0 headless-compile green on every host.
+ash = { workspace = true, optional = true }
+
+# § T11-D124 : optional d3d12-binding feature for OpenXR-D3D12 path
+# (Pimax-Crystal-Super + Windows-Mixed-Reality legacy). Gated behind
+# `d3d12-binding` cargo-feature ; only compiles on Windows targets via
+# the `target.'cfg(target_os = "windows")'` block below.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+], optional = true }
+
+# § T11-D124 : optional metal-binding feature for visionOS Compositor-
+# Services bridge. Gated behind `metal-binding` cargo-feature ; only
+# compiles on Apple targets.
+[target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos"))'.dependencies]
+metal = { version = "0.33", optional = true }
+
+[features]
+default = []
+# Real OpenXR FFI : Vulkan binding (XR_KHR_vulkan_enable2). Pulls `ash`
+# transitively. Lands in T11-D124-FOLLOWUP-1.
+vulkan-binding = ["dep:ash"]
+# Real OpenXR FFI : D3D12 binding (XR_KHR_D3D12_enable). Pulls `windows`
+# transitively. Lands in T11-D124-FOLLOWUP-1.
+d3d12-binding = ["dep:windows"]
+# Real Compositor-Services bridge for visionOS. Pulls `metal` transitively.
+# Lands in T11-D124-FOLLOWUP-2.
+metal-binding = ["dep:metal"]
+# Compositor-Services bridge (visionOS) : same as metal-binding ;
+# alias for spec-discoverability.
+compositor-services-bridge = ["metal-binding"]
+# Convenience meta-feature : enable everything available on this host.
+full = ["vulkan-binding", "d3d12-binding", "metal-binding"]
+
+[lints]
+workspace = true

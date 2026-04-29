@@ -656,6 +656,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-openxr"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "bitflags 2.11.1",
+ "metal 0.33.0",
+ "smallvec",
+ "thiserror",
+ "windows",
+]
+
+[[package]]
 name = "cssl-host-vulkan"
 version = "0.1.0"
 dependencies = [
