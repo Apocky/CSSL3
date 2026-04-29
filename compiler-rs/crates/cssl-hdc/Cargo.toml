@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-hdc"
+description            = "CSSLv3 — Hyperdimensional Computing primitives (hypervectors + bind/bundle/permute + Sparse Distributed Memory). Foundation for Genome 10000-D + creature-encoding + episodic-memory. Cite : Kanerva HDC ; VSA survey arXiv:2111.06077 ; spec 02_CSSL/06_SUBSTRATE_EVOLUTION.csl § 7 Genome."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-hdc is intentionally dependency-free at the foundation slice. It is
+# the floor that creature-genome / cssl-substrate-omega-field / episodic-memory
+# build on, so a deep dep-tree here would propagate transitively into every
+# consumer. The bipolar/binary u64-packed representation keeps the arithmetic
+# self-contained ; SIMD acceleration is wired through std::is_x86_feature_detected!
+# at runtime so MSRV compatibility is maintained without a target_feature gate.
