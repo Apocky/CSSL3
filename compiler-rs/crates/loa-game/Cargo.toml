@@ -1,0 +1,66 @@
+[package]
+name                   = "loa-game"
+description            = "Labyrinth-of-Apockalypse — Phase-I game scaffold (consumes the integrated CSSLv3 Substrate ; structural-only ; spec-holes deferred to Apocky-fill per specs/31_LOA_DESIGN.csl)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § T11-D96 (S9-I0) : LoA scaffold consumes the entire Phase-H Substrate +
+# the Phase-F host backends. The crate exposes BOTH a library target (so the
+# scaffold-smoke integration test imports the public scaffold types) AND a
+# binary target (so `cargo run -p loa-game` opens a window + ticks the
+# canonical 13-phase omega_step + saves state + replays it bit-equally).
+#
+# § FEATURE FLAGS
+#   `test-bypass` propagates the cssl-substrate-prime-directive `test-bypass`
+#   feature so tests + the binary entry-point can issue real CapTokens via
+#   `caps_grant_for_test`. Production builds (without this feature) compile
+#   but the scaffold's Substrate-touching paths refuse to grant caps — the
+#   scaffold then exits via `LoaError::ConsentRefused`, which is the
+#   PRIME-DIRECTIVE-canonical "stage-0 has no interactive UI" surface.
+#   When the real consent-UI lands (post-S9-I0 ; Apocky-direction-needed)
+#   the binary's `main()` will route through it and `test-bypass` will
+#   shrink back to test-only.
+[features]
+default     = []
+test-bypass = ["cssl-substrate-prime-directive/test-bypass"]
+
+[dependencies]
+# § Phase-H Substrate crates (all five, integrated).
+cssl-substrate-omega-tensor    = { path = "../cssl-substrate-omega-tensor" }
+cssl-substrate-omega-step      = { path = "../cssl-substrate-omega-step" }
+cssl-substrate-projections     = { path = "../cssl-substrate-projections" }
+cssl-substrate-save            = { path = "../cssl-substrate-save" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+
+# § Phase-F host crates (window + input + audio + net).
+cssl-host-window = { path = "../cssl-host-window" }
+cssl-host-input  = { path = "../cssl-host-input" }
+cssl-host-audio  = { path = "../cssl-host-audio" }
+cssl-host-net    = { path = "../cssl-host-net" }
+
+# § Workspace deps.
+thiserror = { workspace = true }
+
+[[bin]]
+name = "loa-game"
+path = "src/main.rs"
+
+[lib]
+name = "loa_game"
+path = "src/lib.rs"
+
+# § Integration test : the scaffold-smoke test exercises the canonical
+# 13-phase omega_step end-to-end. It imports the library target's public
+# API + drives one tick + saves+loads+replays. Required-features = test-bypass
+# so the test issues real CapTokens via caps_grant_for_test ; production
+# builds skip the test target.
+[[test]]
+name              = "scaffold_smoke"
+path              = "tests/scaffold_smoke.rs"
+required-features = ["test-bypass"]
