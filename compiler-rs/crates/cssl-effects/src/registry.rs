@@ -64,6 +64,17 @@ pub enum BuiltinEffect {
     Privilege,
     Verify,
     Telemetry,
+    /// `OnDeviceOnly` (T11-D129, F5) — non-egress mark. Functions tagged with
+    /// `{OnDeviceOnly}` are forbidden by `banned_composition` from composing
+    /// with `{Net}` (or any network-bearing effect) regardless of `Privilege<L>`.
+    /// Used to model raw-gaze / biometric handlers per `PRIME_DIRECTIVE.md` §1
+    /// N! surveillance + P18 BiometricEgress.
+    OnDeviceOnly,
+    /// `Net` (T11-D129) — explicit network-egress effect. Distinct from `IO`
+    /// because not every IO is network. Required for the `{OnDeviceOnly} ⊎ {Net}`
+    /// + `{Sensitive<gaze>} ⊎ {Net}` + `{Sensitive<biometric>} ⊎ {Telemetry<*>}`
+    /// absolute-ban gates.
+    Net,
     // § fiber + coroutine
     Resume,
     // § Ω-substrate-translation (T11-D127 / Omniverse F3 contract § V)
@@ -468,6 +479,20 @@ pub const BUILTIN_METADATA: &[EffectMeta] = &[
         args: EffectArgShape::OneEnum,
         discharge: DischargeTiming::CompileAndRuntimeAssert,
     },
+    EffectMeta {
+        name: "OnDeviceOnly",
+        effect: BuiltinEffect::OnDeviceOnly,
+        category: EffectCategory::Prime,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileOnly,
+    },
+    EffectMeta {
+        name: "Net",
+        effect: BuiltinEffect::Net,
+        category: EffectCategory::Resource,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::UserHandler,
+    },
     // § fiber + coroutine
     EffectMeta {
         name: "Resume",
@@ -579,6 +604,8 @@ mod tests {
             BuiltinEffect::Privilege,
             BuiltinEffect::Verify,
             BuiltinEffect::Telemetry,
+            BuiltinEffect::OnDeviceOnly,
+            BuiltinEffect::Net,
             BuiltinEffect::Resume,
             // Ω-substrate-translation (T11-D127)
             BuiltinEffect::Travel,
@@ -710,5 +737,26 @@ mod tests {
         let r = EffectRegistry::with_builtins();
         let count = r.iter().count();
         assert_eq!(count, r.len());
+    }
+
+    #[test]
+    fn on_device_only_is_prime_compile_only() {
+        // T11-D129 : structural non-egress mark
+        let r = EffectRegistry::with_builtins();
+        let m = r.lookup("OnDeviceOnly").expect("OnDeviceOnly present");
+        assert_eq!(m.effect, BuiltinEffect::OnDeviceOnly);
+        assert_eq!(m.category, EffectCategory::Prime);
+        assert_eq!(m.args, EffectArgShape::Nullary);
+        assert_eq!(m.discharge, DischargeTiming::CompileOnly);
+    }
+
+    #[test]
+    fn net_is_distinct_from_io() {
+        // T11-D129 : Net is its own first-class effect ; cannot be conflated
+        // with IO when checking `{OnDeviceOnly} ⊎ {Net}` bans.
+        let r = EffectRegistry::with_builtins();
+        let net = r.lookup("Net").expect("Net present");
+        let io = r.lookup("IO").expect("IO present");
+        assert_ne!(net.effect, io.effect);
     }
 }

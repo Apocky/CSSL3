@@ -127,26 +127,28 @@ fn canonical_attestation_round_trip_passes() {
 }
 
 #[test]
-fn pd_table_reproduces_seventeen_named_codes_in_order() {
-    // Skip PD0000 (the spirit sentinel) and check the named 17.
+fn pd_table_reproduces_named_codes_in_order() {
+    // T11-D129 : 17 §1 + 3 derived = 20 named codes (PD0001..PD0020).
+    // Skip PD0000 (the spirit sentinel).
     let named: Vec<_> = PD_TABLE
         .iter()
         .filter(|r| r.code != DiagnosticCode::PD0000)
         .collect();
-    assert_eq!(named.len(), 17);
+    assert_eq!(named.len(), 20);
     for (i, row) in named.iter().enumerate() {
-        let expected = (i + 1) as u16; // PD0001..PD0017
+        let expected = (i + 1) as u16; // PD0001..PD0020
         assert_eq!(row.code.number(), expected);
-        // Every named row maps to a Prohibition::all_named() entry.
-        let prohibition_named = Prohibition::all_named();
+        // Every named row maps to a Prohibition::all_named_extended() entry.
+        let prohibition_named = Prohibition::all_named_extended();
         assert!(prohibition_named.contains(&row.prohibition));
     }
 }
 
 #[test]
 fn every_prohibition_has_a_pd_table_row() {
-    // Prohibition::all() includes Spirit (18 total). Every prohibition
-    // must be addressed by exactly one PD_TABLE row.
+    // T11-D129 : Prohibition::all() includes 17 §1 + 3 derived + Spirit
+    // = 21 total. Every prohibition must be addressed by exactly one
+    // PD_TABLE row.
     for p in Prohibition::all() {
         let count = PD_TABLE.iter().filter(|r| r.prohibition == p).count();
         assert_eq!(

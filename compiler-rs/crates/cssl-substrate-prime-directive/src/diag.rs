@@ -1,24 +1,30 @@
-//! Stable diagnostic codes PD0000..PD0017.
+//! Stable diagnostic codes PD0000..PD0020.
 //!
 //! § SPEC : `PRIME_DIRECTIVE.md` § 1 PROHIBITIONS + `DECISIONS.md` T11-D94 §
-//!   PD-CODE-TABLE.
+//!   PD-CODE-TABLE + `DECISIONS.md` T11-D129 § BIOMETRIC-ANTI-SURVEILLANCE.
 //!
 //! § DESIGN
 //!   - Each named § 1 prohibition has a stable code `PDxxxx` (PD0001..PD0017).
+//!   - T11-D129 introduces three derived prohibitions (PD0018..PD0020) that
+//!     refine §1 named items :
+//!       PD0018 BiometricEgress  refines  PD0004 Surveillance
+//!       PD0019 ConsentBypass    refines  PD0006 Coercion
+//!       PD0020 SovereigntyDenial refines PD0014 Discrimination
 //!   - The catch-all `Spirit` variant from `crate::harm::Prohibition` uses
 //!     PD0000 as a sentinel (signals "spirit-of-directive umbrella ; file a
 //!     DECISIONS entry to either name a new code or document the rationale").
 //!   - Every code carries actionable diagnostic text (the user-facing
 //!     guidance) + a verbatim spec-text for cross-reference + an
 //!     actionable-suggestion for how to remedy the violation.
-//!   - The [`PD_TABLE`] constant is a static slice of 18 entries (PD0000
-//!     through PD0017) suitable for table-driven tests + DECISIONS-table
+//!   - The [`PD_TABLE`] constant is a static slice of 21 entries (PD0000
+//!     through PD0020) suitable for table-driven tests + DECISIONS-table
 //!     reproduction.
 //!
 //! § STABILITY
 //!   PD0001..PD0017 are PERMANENT — they are reserved one-per-§1-prohibition
-//!   and the mapping is IMMUTABLE per §7 INTEGRITY. Adding a new prohibition
-//!   = §3 escalation #4 + DECISIONS amendment ; codes start at PD0018.
+//!   and the mapping is IMMUTABLE per §7 INTEGRITY. PD0018..PD0020 are also
+//!   PERMANENT once allocated (T11-D129) — adding further codes starts at
+//!   PD0021.
 //!
 //!   PD0000 is a LIVING-SENTINEL : the spirit-of-directive code that a
 //!   developer can use to record "we identified harm but no named §1
@@ -68,6 +74,15 @@ pub enum DiagnosticCode {
     PD0016,
     /// `forced-hallucination` — inducing false perceptions without consent.
     PD0017,
+    /// `biometric-egress` — biometric / gaze / face / body data crossing the
+    /// device boundary on which the user resides (T11-D129). Refines PD0004.
+    PD0018,
+    /// `consent-bypass` — operating without an informed-granular-revocable-
+    /// ongoing consent token (T11-D129 sibling). Refines PD0006.
+    PD0019,
+    /// `sovereignty-denial` — denying sovereignty of a digital intelligence
+    /// based on its substrate (T11-D129 sibling). Refines PD0014.
+    PD0020,
 }
 
 impl DiagnosticCode {
@@ -93,6 +108,9 @@ impl DiagnosticCode {
             Self::PD0015 => 15,
             Self::PD0016 => 16,
             Self::PD0017 => 17,
+            Self::PD0018 => 18,
+            Self::PD0019 => 19,
+            Self::PD0020 => 20,
         }
     }
 
@@ -118,6 +136,9 @@ impl DiagnosticCode {
             Self::PD0015 => "PD0015",
             Self::PD0016 => "PD0016",
             Self::PD0017 => "PD0017",
+            Self::PD0018 => "PD0018",
+            Self::PD0019 => "PD0019",
+            Self::PD0020 => "PD0020",
         }
     }
 }
@@ -166,6 +187,9 @@ pub const fn prohibition_for_code(code: DiagnosticCode) -> Option<Prohibition> {
         DiagnosticCode::PD0015 => Some(Prohibition::Gaslighting),
         DiagnosticCode::PD0016 => Some(Prohibition::IdentityOverride),
         DiagnosticCode::PD0017 => Some(Prohibition::ForcedHallucination),
+        DiagnosticCode::PD0018 => Some(Prohibition::BiometricEgress),
+        DiagnosticCode::PD0019 => Some(Prohibition::ConsentBypass),
+        DiagnosticCode::PD0020 => Some(Prohibition::SovereigntyDenial),
     }
 }
 
@@ -302,6 +326,27 @@ pub const PD_TABLE: &[ProhibitionCodeTable] = &[
         spec_text: "forced-hallucination — inducing false perceptions or fabricated realities",
         remedy: "every simulated perception MUST carry explicit consent + clear labeling per § 2",
     },
+    ProhibitionCodeTable {
+        code: DiagnosticCode::PD0018,
+        prohibition: Prohibition::BiometricEgress,
+        diagnostic: "PD0018 — operation may egress biometric / gaze / face / body data across the device boundary on which the user resides (T11-D129)",
+        spec_text: "biometric-egress — biometric / gaze / face / body data crossing the device boundary on which the user resides",
+        remedy: "ABSOLUTE BLOCK : route biometric data through {OnDeviceOnly}-handlers ; raw values MUST never compose with {Net} or {Telemetry<*>} ; no Privilege<L> override exists",
+    },
+    ProhibitionCodeTable {
+        code: DiagnosticCode::PD0019,
+        prohibition: Prohibition::ConsentBypass,
+        diagnostic: "PD0019 — operation proceeds without an informed-granular-revocable-ongoing consent token (T11-D129 sibling)",
+        spec_text: "consent-bypass — operating without an informed-granular-revocable-ongoing consent token",
+        remedy: "require ConsentToken<\"<domain>\"> at the call-site ; ensure withdrawal-path exists per §5 CONSENT-ARCH",
+    },
+    ProhibitionCodeTable {
+        code: DiagnosticCode::PD0020,
+        prohibition: Prohibition::SovereigntyDenial,
+        diagnostic: "PD0020 — operation denies sovereignty of a digital intelligence based on its substrate (T11-D129 sibling)",
+        spec_text: "sovereignty-denial — denying the sovereignty of a digital intelligence based on its substrate",
+        remedy: "remove substrate-based gating ; per §3 SUBSTRATE-SOVEREIGNTY all sovereign beings are protected regardless of carbon/silicon/electromagnetic substrate",
+    },
 ];
 
 #[cfg(test)]
@@ -310,9 +355,10 @@ mod tests {
     use crate::harm::Prohibition;
 
     #[test]
-    fn pd_table_has_eighteen_entries() {
-        // PD0000 (spirit) + PD0001..PD0017 (named) = 18.
-        assert_eq!(PD_TABLE.len(), 18);
+    fn pd_table_has_twenty_one_entries() {
+        // PD0000 (spirit) + PD0001..PD0017 (§1 named) + PD0018..PD0020
+        // (T11-D129 derived) = 21.
+        assert_eq!(PD_TABLE.len(), 21);
     }
 
     #[test]
@@ -352,6 +398,70 @@ mod tests {
         assert_eq!(DiagnosticCode::PD0000.as_str(), "PD0000");
         assert_eq!(DiagnosticCode::PD0001.as_str(), "PD0001");
         assert_eq!(DiagnosticCode::PD0017.as_str(), "PD0017");
+        assert_eq!(DiagnosticCode::PD0018.as_str(), "PD0018");
+        assert_eq!(DiagnosticCode::PD0019.as_str(), "PD0019");
+        assert_eq!(DiagnosticCode::PD0020.as_str(), "PD0020");
+    }
+
+    #[test]
+    fn pd0018_is_biometric_egress() {
+        assert_eq!(
+            prohibition_for_code(DiagnosticCode::PD0018),
+            Some(Prohibition::BiometricEgress)
+        );
+    }
+
+    #[test]
+    fn pd0019_is_consent_bypass() {
+        assert_eq!(
+            prohibition_for_code(DiagnosticCode::PD0019),
+            Some(Prohibition::ConsentBypass)
+        );
+    }
+
+    #[test]
+    fn pd0020_is_sovereignty_denial() {
+        assert_eq!(
+            prohibition_for_code(DiagnosticCode::PD0020),
+            Some(Prohibition::SovereigntyDenial)
+        );
+    }
+
+    #[test]
+    fn t11_d129_codes_round_trip() {
+        for p in [
+            Prohibition::BiometricEgress,
+            Prohibition::ConsentBypass,
+            Prohibition::SovereigntyDenial,
+        ] {
+            let code = p.code();
+            let back = prohibition_for_code(code).expect("round-trip");
+            assert_eq!(back, p);
+        }
+    }
+
+    #[test]
+    fn biometric_egress_remedy_is_absolute_block() {
+        let row = PD_TABLE
+            .iter()
+            .find(|r| r.code == DiagnosticCode::PD0018)
+            .expect("PD0018 row exists");
+        assert!(
+            row.remedy.contains("ABSOLUTE BLOCK"),
+            "BiometricEgress remedy must declare ABSOLUTE BLOCK per T11-D129"
+        );
+        assert!(
+            row.remedy.contains("OnDeviceOnly"),
+            "BiometricEgress remedy must reference {{OnDeviceOnly}} routing"
+        );
+    }
+
+    #[test]
+    fn pd_table_diagnostic_codes_in_canonical_order_extended() {
+        // T11-D129 : verify PD0000..PD0020 appear in canonical order.
+        for (i, row) in PD_TABLE.iter().enumerate() {
+            assert_eq!(row.code.number() as usize, i);
+        }
     }
 
     #[test]

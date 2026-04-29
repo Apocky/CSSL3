@@ -663,6 +663,9 @@ dependencies = [
 [[package]]
 name = "cssl-ifc"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "cssl-jets"
