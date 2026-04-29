@@ -3829,3 +3829,59 @@ Each decision entry :
   - **Volatile via effect-row** ; **GPU-target lowering** (D-phase SPIR-V `OpLoad` / `OpStore` with `Aligned` decoration) ; **Object-emit ABI bridges** ; **Atomicity** as a separate op family.
 
 ───────────────────────────────────────────────────────────────
+
+## § T11-D63 : Session-6 S6-C4 — f64 transcendentals (sin / cos / exp / log) + inline-intrinsic surface (sqrt / abs / min / max) at f64 width
+
+> **PM allocation note** : T11-D63 reserved per `SESSION_6_DISPATCH_PLAN.md § 4` for S6-C4. PM may renumber on merge.
+
+- **Date** 2026-04-29
+- **Status** accepted
+- **Session** 6 — Phase-C control-flow + JIT enrichment, slice 4 of 5 (parallel with C1 / C2 / C3 ; C5 closures remain)
+- **Branch** `cssl/session-6/C4`
+- **Context** Per `HANDOFF_SESSION_6.csl § PHASE-C § S6-C4` and the dispatch-plan note that S6-C4 *"adds f64 entries to the existing libm-extern path established by T11-D29"*, the JIT backend at session-6 entry hard-coded the `(F32) -> F32` signature for every transcendental extern declaration. Source-level `sin(f64_x)` / `cos(f64_x)` / `exp(f64_x)` / `log(f64_x)` would either declare the wrong libm symbol (`sinf` instead of `sin`) or pass the wrong-width operand to a correctly-named symbol — both produce a link-time error or a corrupt f64 result. T11-D63 closes this hole : the per-fn pre-scan now derives operand width from the call-op's result type and emits separate FuncRefs for `<callee>#f32` vs `<callee>#f64`, mapped to libm `sinf / cosf / expf / logf` (T11-D29 surface preserved) and `sin / cos / exp / log` (new, T11-D63). The inline-intrinsic surface (`sqrt / abs / min / max / neg`) needed no changes — cranelift's `fsqrt / fabs / fmin / fmax / fneg` are type-polymorphic across F32 + F64 and emit native `vsqrtsd / vsqrtss` / `vminsd / vminss` / etc. directly per operand width on x86_64 SSE2.
+- **Slice landed (this commit)** — ~165 net LOC + 10 new tests across 1 file
+  - **`compiler-rs/crates/cssl-cgen-cpu-cranelift/src/jit.rs`** :
+    - **New helper `transcendental_extern_for(name, &MirType) -> Option<&'static str>`** : replaces the prior `transcendental_extern_name(name)` that returned a single (f32-only) symbol. Width-tagged dispatch : `(name, F32) → sinf/cosf/expf/logf` ; `(name, F64) → sin/cos/exp/log`. Default (non-float / `MirType::None`) falls through to f32 symbols for back-compat with hand-built fixtures that omit a result-ty.
+    - **New helper `transcendental_callee_key(callee, &MirType) -> String`** : composes the per-fn `callee_refs` HashMap key as `"<callee>#<width-tag>"` with `width-tag ∈ {f32, f64}`. The `#` separator never appears in CSSLv3 source-level callee names (which are restricted to `[a-zA-Z0-9_.]`), so collisions with bare user-defined callee names are impossible. This lets a single fn body legally call both `sin(f32_val)` and `sin(f64_val)` — each declaration gets its own `FuncRef` keyed by width.
+    - **Renamed back-compat predicate `is_transcendental_callee(name) -> bool`** : `is_intrinsic_callee` (the public test-introspection predicate) now consults this. Returns true if `name` has a libm mapping at *either* f32 or f64 width.
+    - **Pre-scan refactor** (`compile()` body @ ~`jit.rs:604`) : computes `result_ty` from `op.results.first().map_or(MirType::None, |r| r.ty.clone())`, derives the width-tagged key, and registers the FuncRef under that key. The signature uses `cl_types::F64` when the result type is `MirType::Float(FloatWidth::F64)`, else `cl_types::F32`. Same `Linkage::Import` discipline.
+    - **`lower_intrinsic_call` dispatch refactor** (@ ~`jit.rs:1208`) : same key-derivation logic on the consumption side. Diagnostic strings now include the result-ty for actionable error reports when the pre-scan and the lowering disagree.
+    - **`call_f64_to_f64` + `call_f64_f64_to_f64` runners on `JitFn`** : new fn-pointer helpers analogous to the f32 versions, used by hand-built test fixtures. SAFETY-comment block mirrors the existing `call_i64_i64_to_i64` template ; sig-check is `(F64, F64) → F64` etc.
+    - **`f64_ty()` helper in test mod** : MIR shorthand for the new fixtures.
+    - **`hand_built_unary_f64(fn_name, callee)` + `hand_built_binary_f64(fn_name, callee)` test helpers** : factory fns that produce MirFuncs of shape `fn <fn_name>(x : f64) -> f64 { <callee>(x) }` or `fn <fn_name>(a : f64, b : f64) -> f64 { <callee>(a, b) }`. Used by every f64 test below.
+    - **+10 new tests** :
+      1. `libm_sin_f64_jit_roundtrip` — sin(0)=0 (exact), sin(π/2)≈1, sin(π)≈0 (1e-15 ε)
+      2. `libm_cos_f64_jit_roundtrip` — cos(0)=1 (exact), cos(π)≈-1
+      3. `libm_exp_f64_jit_roundtrip` — exp(0)=1 (exact), exp(1)≈e
+      4. `libm_log_f64_jit_roundtrip` — log(1)=0 (exact), log(e)≈1
+      5. `intrinsic_sqrt_f64_inline` — sqrt(0)=0, sqrt(1)=1, sqrt(4)=2 (all exact perfect squares), sqrt(2)≈√2
+      6. `intrinsic_abs_f64_inline` — abs(±x), abs(-0.0)=+0.0 (bit-exact sign-flip)
+      7. `intrinsic_min_f64_inline` — fmin both operand orders + negatives
+      8. `intrinsic_max_f64_inline` — fmax both operand orders + negatives
+      9. `libm_sin_f32_and_f64_can_coexist_in_same_jit_module` — mixed-width sins in the same module ; verifies width-keyed FuncRef discipline
+      10. `transcendental_callee_key_disambiguates_widths` — pure unit test on the keying helper ; confirms f32 vs f64 keys differ + non-float falls back to f32
+    - Each f64-test that uses `assert_eq!` on f64 values carries an explicit `#[allow(clippy::float_cmp)]` with a comment naming the IEEE 754 corner-case justifying exact equality (sin(0), cos(0), exp(0), log(1), sqrt of perfect squares + 0, fabs as bit-exact sign-flip, fmin/fmax returning one of two equal-sign-and-magnitude operands). Non-corner-case comparisons use strict 1e-15 epsilon bounds (~10× tighter than the f32 path's 1e-5).
+- **The capability claim**
+  - Source-shape : a hand-built `MirFunc` `fn sin_f64_wrap(x : f64) -> f64 { sin(x) }`.
+  - Pipeline : MIR `func.call callee=sin, result-ty=f64` → pre-scan computes key `sin#f64` → `module.declare_function("sin", Linkage::Import, sig=(F64) -> F64)` → per-fn `FuncRef` registered → `lower_intrinsic_call` derives the same key from the op's result-ty → emits cranelift `call sin#f64, [x]` → cranelift codegen → x86-64 SSE2 → JIT-finalize → fn-pointer `extern "C" fn(f64) -> f64`. Linker resolves the `sin` symbol against the platform libm — Microsoft UCRT (`libucrt.lib`, already linked by S6-A4) on Windows-MSVC, glibc/musl on Linux, libSystem on macOS.
+  - Runtime : 9 of 10 new tests JIT-compile + execute on Apocky's host (the 10th is a pure-Rust unit test on the keying helper). Mixed-width body `(sin_f32 + sin_f64) coexist` confirms a single JIT module can resolve both `sinf` and `sin` simultaneously without aliasing.
+  - **First time CSSLv3-emitted MIR with f64 transcendentals JIT-compiles + runs.** The killer-app SDF demos on f64 fields (e.g., `min(d_a, d_b)` over double-precision distance fields) become viable.
+- **Consequences**
+  - Test count : 1778 → 1788 (+10 net). Workspace baseline preserved with `cargo test --workspace -- --test-threads=1`.
+  - **f64 transcendental surface is no longer a JIT-blocking class**. CSSLv3 source containing `sin(x : f64)` / `cos / exp / log` (and the inline `sqrt / abs / min / max` at f64) now compiles + executes end-to-end through the cranelift JIT.
+  - **`transcendental_callee_key` discipline is the canonical pattern** for any future *(name × type)*-discriminated extern declaration. Phase-D body emitters (D1..D4) and Phase-E hosts (E1..E5) that emit per-target-platform symbols can adopt the same `<callee>#<tag>` convention without overlap risk.
+  - **Cranelift inline-intrinsic polymorphism is documented**. The fact that `fmin / fmax / fabs / sqrt / fneg` work for both F32 and F64 was previously implicit ; T11-D63's tests pin it down for f64 explicitly. A future cranelift bump that breaks this assumption would fail all 4 inline-intrinsic f64 tests simultaneously rather than diverging silently.
+  - **`fmin / fmax` IEEE 754-2008 NaN-quieting semantics confirmed**. Per HANDOFF § LANDMINES, `intrinsic.min / .max` should match libm `fmin / fmax`. Cranelift 0.115 documents `fmin` / `fmax` as IEEE 754-2008 `minimumNumber` / `maximumNumber` — same semantics as libm — so no divergence between the inline path and what user code would expect from `fmin(NaN, x) = x`. Inline tests cover finite operands ; NaN-edge tests are deferred to a Phase-D cross-target consistency pass once SPIR-V/DXIL/MSL/WGSL `min/max` decorations land (their NaN behavior varies by GPU API).
+  - **Object backend NOT updated in this slice**. `func.call` is not yet a recognized op-name in `cssl-cgen-cpu-cranelift::object::lower_one_op` — the object backend currently rejects every call site (`UnsupportedOp { op_name: "func.call" }`). The S6-A3 / S6-C4 split is intentional : the object backend's `func.call` lowering (including the libm-extern declarations) is queued as a separate slice once the JIT body-lowering helpers are extracted into a shared module per the T11-D54 deferred items. This means programs containing transcendentals can JIT but cannot yet AOT-compile to `.exe`. AOT executables remain limited to the scalar-arith subset (matching the S6-A5 hello.exe baseline).
+  - **f32 path preserved bit-exact**. The existing `libm_sin_jit_roundtrip` / `libm_cos_jit_roundtrip` / `libm_exp_log_roundtrip` tests still pass with the `f32` epsilon bounds unchanged (1e-5 / 1e-4) — confirming the refactor is f32-additive. The default-fallthrough in `transcendental_callee_key` (non-float ty → f32 keying) preserves back-compat for the original hand-built fixtures that omitted result-ty plumbing.
+  - All gates green : fmt ✓ clippy ✓ test 1788/0 ✓ doc ✓ xref ✓ smoke 4/4 ✓ (full 9-step commit-gate per `SESSION_6_DISPATCH_PLAN.md § 5`).
+- **Closes the S6-C4 slice.** Phase-C scope-4 success-gate met.
+- **Deferred** (explicit follow-ups, sequenced)
+  - **Object-backend `func.call` + libm-extern declarations** : extract the JIT pre-scan + dispatch into a shared helper module (`cssl-cgen-cpu-cranelift::shared`) so the object backend can adopt the same width-keyed FuncRef pattern. Lands as a separate slice (carries the T11-D54 deferred extraction work).
+  - **HIR/MIR-level intrinsic-name canonicalization** : the dispatch currently accepts `sin / math.sin` synonyms ; once trait-resolve lands, `core::math::sin` should be the canonical path and the bare-name path becomes a deprecated alias. Until then, both forms work.
+  - **NaN-edge consistency tests** for `fmin / fmax` across all 4 GPU targets (SPIR-V / DXIL / MSL / WGSL) : their `min / max` decorations have target-specific NaN-handling that may diverge from cranelift's IEEE 754-2008 behavior. Lands with the Phase-D cross-target validation slice.
+  - **f64 `pow / atan2 / hypot` and friends** : the `sin / cos / exp / log` quartet is the minimum viable transcendental surface. Adding `pow(f64, f64) → f64` and the `atan2(y, x)` variant requires the same width-keyed FuncRef pattern but with 2-operand sigs. Lands when stdlib `f64::pow / atan2` becomes a downstream consumer (likely Phase-B B4 String-format or B5 file-IO error-codes that call `f64::abs` heavily).
+  - **`signum(f64)` lowering** : currently `walker.rs` op_to_primitive recognizes `math.sign` as a primitive, but no JIT lowering exists. Lands with the `signum` follow-up at any phase.
+  - **GPU-target f64 transcendentals** : SPIR-V `OpExtInst <set, Sin>` requires `Capability::Float64` ; DXIL and MSL have similar capability gates. Once Phase-D body emitters land (D1..D4), each will need its own `<callee>#f64` mapping table. Documentation precedent established by this slice.
+
+───────────────────────────────────────────────────────────────
