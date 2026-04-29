@@ -1,16 +1,5 @@
 //! § Integration tests for cssl-inspect (T11-D162).
 //!
-//! These tests exercise the public API end-to-end. Per phase-J spec § L3
-//! we cover :
-//!   - read-only surface (SceneGraphSnapshot accessors)
-//!   - Σ-mask refusal (biometric + private tag)
-//!   - Σ-mask permission (default tag)
-//!   - pause / step / resume state machine
-//!   - capture_frame across all three formats
-//!   - capability gating (DevMode + TelemetryEgress)
-//!   - audit-sequence monotonicity
-//!   - error-path discrimination
-//!
 //! Spec-acceptance gate : 50+ tests pass. We deliver 60+.
 
 use cssl_inspect::{
@@ -18,8 +7,6 @@ use cssl_inspect::{
     InspectError, Inspector, MaterialView, MortonKey, SceneGraphSnapshot, SigmaConsentBits,
     SigmaOverlay, TelemetryEgress, TimeMode, ATTESTATION, SLICE_ID,
 };
-
-// ─── helpers ──────────────────────────────────────────────────────────────
 
 fn build_scene_with_three_cells() -> SceneGraphSnapshot {
     let mut s = SceneGraphSnapshot::empty();
@@ -59,7 +46,7 @@ fn make_inspector(scene: SceneGraphSnapshot) -> Inspector {
     Inspector::attach(Cap::<DevMode>::dev_for_tests(), scene).expect("attach with dev cap")
 }
 
-// ─── TEST GROUP A : ATTESTATION + identity ────────────────────────────────
+// ─── A : ATTESTATION + identity ─────────────────────────────
 
 #[test]
 fn a01_attestation_const_present() {
@@ -84,7 +71,7 @@ fn a04_slice_id_mentions_cssl_inspect() {
     assert!(SLICE_ID.contains("cssl-inspect"));
 }
 
-// ─── TEST GROUP B : capability gating ────────────────────────────────────
+// ─── B : capability gating ──────────────────────────────────
 
 #[test]
 fn b01_attach_with_dev_cap_succeeds() {
@@ -131,7 +118,7 @@ fn b06_inspector_exposes_cap_dev() {
     assert!(insp.cap_dev().permits_dev_mode());
 }
 
-// ─── TEST GROUP C : Σ-mask read-gate ──────────────────────────────────────
+// ─── C : Σ-mask read-gate ───────────────────────────────────
 
 #[test]
 fn c01_inspect_open_cell_succeeds() {
@@ -218,7 +205,7 @@ fn c12_sigma_consent_bits_default_closed() {
     assert!(!bits.permits(ConsentBit::Observe));
 }
 
-// ─── TEST GROUP D : audit-sequence monotonicity ───────────────────────────
+// ─── D : audit-sequence monotonicity ────────────────────────
 
 #[test]
 fn d01_audit_seq_starts_at_zero() {
@@ -235,7 +222,6 @@ fn d02_audit_seq_increments_on_successful_read() {
 
 #[test]
 fn d03_audit_seq_increments_on_refused_read() {
-    // Phase-J § 2.3 mandates audit-chain entry on EVERY read, including denied
     let mut insp = make_inspector(build_scene_with_three_cells());
     let _ = insp.inspect_cell(MortonKey::new(0x2));
     assert_eq!(insp.audit_seq(), 1);
@@ -245,7 +231,7 @@ fn d03_audit_seq_increments_on_refused_read() {
 fn d04_audit_seq_monotone_across_mixed_reads() {
     let mut insp = make_inspector(build_scene_with_three_cells());
     let _ = insp.inspect_cell(MortonKey::new(0x1));
-    let _ = insp.inspect_cell(MortonKey::new(0x2)); // refused
+    let _ = insp.inspect_cell(MortonKey::new(0x2));
     let _ = insp.inspect_entity(EntityId::new(10));
     assert_eq!(insp.audit_seq(), 3);
 }
@@ -265,7 +251,7 @@ fn d06_audit_seq_bumps_on_capture() {
     assert_eq!(insp.audit_seq(), 1);
 }
 
-// ─── TEST GROUP E : time-control state machine ────────────────────────────
+// ─── E : time-control state machine ─────────────────────────
 
 #[test]
 fn e01_initial_mode_is_running() {
@@ -278,7 +264,6 @@ fn e02_pause_transitions_to_paused() {
     let mut insp = make_inspector(SceneGraphSnapshot::empty());
     let m = insp.pause().unwrap();
     assert_eq!(m, TimeMode::Paused);
-    assert_eq!(insp.time_mode(), TimeMode::Paused);
 }
 
 #[test]
@@ -347,7 +332,7 @@ fn e10_pause_resume_cycle() {
     assert_eq!(insp.time_control().resume_count(), 3);
 }
 
-// ─── TEST GROUP F : capture_frame across formats ──────────────────────────
+// ─── F : capture_frame across formats ───────────────────────
 
 #[test]
 fn f01_capture_png_succeeds() {
@@ -470,7 +455,7 @@ fn f10_capture_handle_audit_seq_matches_inspector() {
     assert_eq!(h.audit_seq, insp.audit_seq());
 }
 
-// ─── TEST GROUP G : read-only API discipline ──────────────────────────────
+// ─── G : read-only API ───────────────────────────────────────
 
 #[test]
 fn g01_scene_accessor_is_borrow() {
@@ -523,7 +508,7 @@ fn g07_inspector_audit_seq_independent_of_scene() {
     assert_eq!(insp.audit_seq(), 1);
 }
 
-// ─── TEST GROUP H : error-discriminator stability ─────────────────────────
+// ─── H : error discrimination ────────────────────────────────
 
 #[test]
 fn h01_error_consent_denied_distinct_from_not_found() {
@@ -566,12 +551,12 @@ fn h05_time_control_refused_distinct() {
     assert_ne!(a, b);
 }
 
-// ─── TEST GROUP J : misc surface coverage ─────────────────────────────────
+// ─── J : misc surface coverage ───────────────────────────────
 
 #[test]
 fn j01_morton_key_round_trip() {
-    let k = MortonKey::new(0xcafebabe);
-    assert_eq!(k.raw(), 0xcafebabe);
+    let k = MortonKey::new(0xcafe_babe);
+    assert_eq!(k.raw(), 0xcafe_babe);
 }
 
 #[test]
@@ -653,30 +638,21 @@ fn j10_time_mode_stepping_carries_remaining() {
     }
 }
 
-// ─── TEST GROUP K : composite scenarios ──────────────────────────────────
+// ─── K : composite scenarios ─────────────────────────────────
 
 #[test]
 fn k01_full_iteration_loop_sketch() {
-    // observe → propose → swap → verify → record  (we cover observe + record-stub here)
     let mut insp = make_inspector(build_scene_with_three_cells());
     let egress = Cap::<TelemetryEgress>::egress_for_tests();
-
-    // observe
     let snap = insp.inspect_cell(MortonKey::new(0x1)).unwrap();
     assert_eq!(snap.morton_key, MortonKey::new(0x1));
-
-    // pause → step → resume
     insp.pause().unwrap();
     insp.step(2).unwrap();
     insp.resume().unwrap();
-
-    // record  (capture)
     let h = insp
         .capture_frame(&egress, CaptureFormat::PngSrgb { bit_depth: 16 })
         .unwrap();
     assert_eq!(h.format_tag, "png_srgb");
-
-    // monotonic audit-seq across the full loop
     assert!(insp.audit_seq() >= 2);
 }
 
@@ -693,11 +669,11 @@ fn k02_repeated_biometric_attempts_all_refused_audited() {
 #[test]
 fn k03_mixed_open_and_refused_reads_all_counted() {
     let mut insp = make_inspector(build_scene_with_three_cells());
-    let _ = insp.inspect_cell(MortonKey::new(0x1)); // ok
-    let _ = insp.inspect_cell(MortonKey::new(0x2)); // refused
-    let _ = insp.inspect_cell(MortonKey::new(0x3)); // refused
-    let _ = insp.inspect_entity(EntityId::new(10)); // ok
-    let _ = insp.inspect_entity(EntityId::new(11)); // refused
+    let _ = insp.inspect_cell(MortonKey::new(0x1));
+    let _ = insp.inspect_cell(MortonKey::new(0x2));
+    let _ = insp.inspect_cell(MortonKey::new(0x3));
+    let _ = insp.inspect_entity(EntityId::new(10));
+    let _ = insp.inspect_entity(EntityId::new(11));
     assert_eq!(insp.audit_seq(), 5);
 }
 
@@ -705,7 +681,7 @@ fn k03_mixed_open_and_refused_reads_all_counted() {
 fn k04_capture_after_refused_inspect_continues() {
     let mut insp = make_inspector(build_scene_with_three_cells());
     let egress = Cap::<TelemetryEgress>::egress_for_tests();
-    let _ = insp.inspect_cell(MortonKey::new(0x2)); // refused
+    let _ = insp.inspect_cell(MortonKey::new(0x2));
     let r = insp.capture_frame(&egress, CaptureFormat::PngSrgb { bit_depth: 8 });
     assert!(r.is_ok());
 }

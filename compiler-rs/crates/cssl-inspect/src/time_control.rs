@@ -1,25 +1,8 @@
 //! § Time-control state machine.
 //!
 //! Phase-J § 2.6 mandates that `pause` / `step` / `resume` operate at the
-//! frame boundary and are deterministic-replay-aware. The MVP slice
-//! implements a state machine that records mode transitions ; later slices
-//! wire it to the real engine's frame fence.
-//!
-//! § State machine
-//!
-//! ```text
-//!     ┌──── pause() ───┐
-//!     │                ▼
-//!  Running ◄─ resume() ─ Paused
-//!     │                ▲ │
-//!     │                │ └─ step(n) → SteppingN frames → returns to Paused
-//!     │                │
-//!     └─── step(n) ────┘  (from Running, step is REFUSED ; engine must be paused first)
-//! ```
-//!
-//! `pause()` and `resume()` are idempotent.
-//! `step(0)` is REFUSED — a no-op step is a usage error.
-//! `step(n)` from Running is REFUSED — pause first.
+//! frame boundary. The MVP implements a state machine that records mode
+//! transitions ; later slices wire it to the real engine's frame fence.
 
 use crate::InspectError;
 
@@ -41,11 +24,8 @@ pub enum TimeMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeControl {
     mode: TimeMode,
-    /// Total frames stepped since attach.
     frames_stepped: u64,
-    /// Number of pause transitions performed.
     pause_count: u64,
-    /// Number of resume transitions performed.
     resume_count: u64,
 }
 
@@ -94,9 +74,7 @@ impl TimeControl {
     /// Pause the engine. Idempotent.
     ///
     /// # Errors
-    /// Currently never errors ; the signature returns `Result` for forward
-    /// compatibility with the real-impl which can refuse if a mid-frame
-    /// transition is requested.
+    /// Currently never errors.
     pub fn pause(&mut self) -> Result<TimeMode, InspectError> {
         if !matches!(self.mode, TimeMode::Paused) {
             self.pause_count = self.pause_count.saturating_add(1);
@@ -117,11 +95,10 @@ impl TimeControl {
         Ok(self.mode)
     }
 
-    /// Step `n_frames` then return to Paused. Engine must be paused first.
+    /// Step `n_frames` then return to Paused.
     ///
     /// # Errors
-    /// `TimeControlRefused` if `n_frames == 0` (no-op step is a usage error)
-    /// or if the engine is not currently paused.
+    /// `TimeControlRefused` if `n_frames == 0` or engine not Paused.
     pub fn step(&mut self, n_frames: u32) -> Result<TimeMode, InspectError> {
         if n_frames == 0 {
             return Err(InspectError::TimeControlRefused {
@@ -136,9 +113,6 @@ impl TimeControl {
         self.mode = TimeMode::Stepping {
             remaining: n_frames,
         };
-        // Mock-impl : record the stepped frames immediately and return to
-        // Paused. The real-impl will defer the return-to-Paused until the
-        // engine has finished the n frames.
         self.frames_stepped = self.frames_stepped.saturating_add(u64::from(n_frames));
         self.mode = TimeMode::Paused;
         Ok(self.mode)
@@ -178,10 +152,8 @@ mod tests {
     #[test]
     fn resume_idempotent_no_double_count() {
         let mut tc = TimeControl::new();
-        // already Running → resume is a no-op
         tc.resume().unwrap();
         assert_eq!(tc.resume_count(), 0);
-        // pause then resume
         tc.pause().unwrap();
         tc.resume().unwrap();
         assert_eq!(tc.resume_count(), 1);

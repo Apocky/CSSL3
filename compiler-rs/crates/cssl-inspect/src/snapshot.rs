@@ -5,20 +5,10 @@
 //!     overlay is PRIVATE to the substrate and never inlined into a snapshot.
 //!   - EntitySnapshot's `reproductive_state` field is DELIBERATELY ABSENT.
 //!   - Audit-sequence is monotone across all reads.
-//!
-//! In this MVP we omit biometric-class fields entirely (the type-system gate
-//! is enforced by D132 in the real-impl ; for the MVP we simply do not put
-//! such fields in the schemas and the Σ-mask gate refuses any tag flagged
-//! with the `"biometric"` substring).
-//!
-//! The snapshot types are `Clone + Debug + PartialEq` — they are pure data
-//! and intentionally cheap to copy, because MCP-tool consumers will round-
-//! trip them via JSON.
 
 use crate::mock_substrate::{MortonKey, SigmaConsentBits, SigmaOverlay};
 
-/// Stable entity identifier. Production-impl is `cssl_substrate::EntityId`
-/// (a `u64` newtype) ; this mock is a `u64` newtype.
+/// Stable entity identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityId(u64);
 
@@ -36,11 +26,10 @@ impl EntityId {
     }
 }
 
-/// Material-view facet of a field cell. Phase-J § 2.5 carries a 1-bit-tag +
-/// 63-bit-payload + decoded class ; the MVP uses a class-name string.
+/// Material-view facet of a field cell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaterialView {
-    /// Class name (e.g. "wood", "metal", "skin").
+    /// Class name.
     pub class: String,
     /// Material ID payload.
     pub payload: u64,
@@ -57,7 +46,7 @@ impl MaterialView {
     }
 }
 
-/// A read-only snapshot of one field-cell. Phase-J § 2.5.
+/// A read-only snapshot of one field-cell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldCellSnapshot {
     /// The morton-key of the cell.
@@ -66,7 +55,7 @@ pub struct FieldCellSnapshot {
     pub tag: String,
     /// Material facet view.
     pub facet_m: MaterialView,
-    /// Density (facet-S simplified).
+    /// Density.
     pub density: f32,
     /// Velocity vector.
     pub velocity: [f32; 3],
@@ -74,13 +63,12 @@ pub struct FieldCellSnapshot {
     pub facet_sigma_low_only: SigmaConsentBits,
     /// Capture epoch (mock).
     pub capture_epoch: u64,
-    /// Audit sequence — monotone across all reads.
+    /// Audit sequence.
     pub audit_seq: u64,
 }
 
 impl FieldCellSnapshot {
-    /// Construct a cell snapshot from raw inputs. The Σ-cached-bits are
-    /// looked up from the mock overlay using `tag`.
+    /// Construct a cell snapshot from raw inputs.
     #[must_use]
     pub fn new(
         morton_key: MortonKey,
@@ -104,8 +92,7 @@ impl FieldCellSnapshot {
         }
     }
 
-    /// Return a clone with `audit_seq` set to `seq`. The inspector calls
-    /// this on the way out so the snapshot records the read-time sequence.
+    /// Return a clone with `audit_seq` set to `seq`.
     #[must_use]
     pub fn with_audit_seq(mut self, seq: u64) -> Self {
         self.audit_seq = seq;
@@ -113,29 +100,27 @@ impl FieldCellSnapshot {
     }
 }
 
-/// A read-only snapshot of one entity. Phase-J § 2.5 mandates the
-/// `reproductive_state` field is DELIBERATELY ABSENT — and it is. The
-/// body-omnoid layer summaries are simple counters in the MVP ; later
-/// slices replace them with the real summaries.
+/// A read-only snapshot of one entity.
+/// `reproductive_state` is DELIBERATELY ABSENT per phase-J § 2.5.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntitySnapshot {
     /// Entity id.
     pub entity_id: EntityId,
     /// Tag string for Σ-mask gate.
     pub tag: String,
-    /// Aura summary (mock — wave-field amplitude+phase summary).
+    /// Aura summary (mock).
     pub aura_amp: f32,
-    /// Flesh summary (mock — SDF param).
+    /// Flesh summary (mock).
     pub flesh_sdf_param: f32,
-    /// Bone summary (mock — joint count).
+    /// Bone summary (mock).
     pub bone_joint_count: u32,
-    /// Machine summary (mock — mechanism-state code).
+    /// Machine summary (mock).
     pub machine_state_code: u32,
-    /// Soul summary (mock — pattern-handle ; 0 = unclaimed).
+    /// Soul summary (mock ; pattern-handle).
     pub soul_pattern_handle: u32,
     /// Audit sequence.
     pub audit_seq: u64,
-    // § DELIBERATELY ABSENT : reproductive_state. Phase-J § 2.5 invariant.
+    // § DELIBERATELY ABSENT : reproductive_state.
 }
 
 impl EntitySnapshot {
@@ -176,9 +161,7 @@ impl EntitySnapshot {
     }
 }
 
-/// A read-only snapshot of an entire scene graph. The MVP stores cells +
-/// entities in flat `Vec`s ; production-impl will hand back a proxy that
-/// dereferences into the real sparse-morton + ECS storage.
+/// A read-only snapshot of an entire scene graph.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SceneGraphSnapshot {
     cells: Vec<FieldCellSnapshot>,
@@ -232,15 +215,12 @@ impl SceneGraphSnapshot {
         self.entities.iter().find(|e| e.entity_id == id)
     }
 
-    /// Push a cell. Read-only API note : this is a build-time mutator on
-    /// the *snapshot scaffold*, not on the live world. Tests use it to
-    /// fixture a scene ; production-impl will hand back a snapshot
-    /// constructed by the substrate, never mutated by inspector users.
+    /// Push a cell.
     pub fn push_cell(&mut self, cell: FieldCellSnapshot) {
         self.cells.push(cell);
     }
 
-    /// Push an entity (see note on `push_cell`).
+    /// Push an entity.
     pub fn push_entity(&mut self, entity: EntitySnapshot) {
         self.entities.push(entity);
     }

@@ -46,12 +46,8 @@ pub struct Cap<K> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CapKind {
-    /// A real dev-mode cap as if granted by the build configuration.
     DevMode,
-    /// A real telemetry-egress cap as if granted by the host.
     TelemetryEgress,
-    /// A degenerate token used only in tests to simulate the
-    /// "wrong-class-of-cap-presented" error path.
     NondevSynthetic,
 }
 
@@ -65,9 +61,7 @@ impl Cap<DevMode> {
         }
     }
 
-    /// Construct a degenerate non-dev cap — used by tests to verify the
-    /// constructor refuses it. Production-impl will not expose this
-    /// constructor at all.
+    /// Construct a degenerate non-dev cap for tests.
     #[must_use]
     pub fn synthetic_nondev_for_tests() -> Self {
         Self {
@@ -93,8 +87,7 @@ impl Cap<TelemetryEgress> {
         }
     }
 
-    /// Construct a degenerate non-egress cap — used by tests to simulate
-    /// the wrong-cap-class refusal.
+    /// Construct a degenerate non-egress cap for tests.
     #[must_use]
     pub fn synthetic_nonegress_for_tests() -> Self {
         Self {
@@ -110,9 +103,7 @@ impl Cap<TelemetryEgress> {
     }
 }
 
-/// A morton key — index into the sparse field-cell grid. Production-impl
-/// is `cssl_substrate_omega_field::MortonKey` (a `u64` newtype with cube
-/// arithmetic) ; this mock is a u64 newtype.
+/// A morton key — index into the sparse field-cell grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MortonKey(u64);
 
@@ -130,23 +121,18 @@ impl MortonKey {
     }
 }
 
-/// The 32-bit cached low half of the Σ-overlay (per phase-J § 2.5
-/// `FieldCellSnapshot::facet_sigma_low_only`). The full 16-byte overlay is
-/// PRIVATE to the substrate ; only the low cache is exposed.
-///
-/// In this MVP the value is simply a bitset of `ConsentBit` flags.
+/// The 32-bit cached low half of the Σ-overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SigmaConsentBits(u32);
 
 impl SigmaConsentBits {
-    /// All-permissive — Observe + Sample granted. Used when the tag does not
-    /// imply restriction.
+    /// All-permissive — Observe + Sample granted.
     #[must_use]
     pub fn open() -> Self {
         Self((1 << ConsentBit::Observe as u32) | (1 << ConsentBit::Sample as u32))
     }
 
-    /// All-refused. Used for biometric tags.
+    /// All-refused.
     #[must_use]
     pub fn closed() -> Self {
         Self(0)
@@ -165,32 +151,22 @@ impl SigmaConsentBits {
     }
 }
 
-/// Consent-bit kinds. Phase-J spec § 2.3 enumerates Observe + Sample +
-/// CompanionInspect ; this MVP carries the first two.
+/// Consent-bit kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ConsentBit {
     /// Single-cell read consent.
     Observe = 0,
-    /// Bulk-region read consent (additive over Observe).
+    /// Bulk-region read consent.
     Sample = 1,
 }
 
-/// Σ-overlay surface. Production-impl is `cssl_substrate_omega_field::SigmaOverlay`
-/// stored in a sparse-morton structure ; this mock derives the answer from a
-/// string tag.
+/// Σ-overlay surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SigmaOverlay(SigmaConsentBits);
 
 impl SigmaOverlay {
-    /// Look up the overlay for a given tag string. Phase-J spec §
-    /// 2.3 makes this `SigmaOverlay::at(key)` — here `key` is the cell tag.
-    ///
-    /// The MVP rule :
-    /// - tag contains "biometric" → CLOSED (refuse all)
-    /// - tag contains "private"   → CLOSED (refuse all ; tests explicitly
-    ///   want the refusal path exercised on non-biometric data too)
-    /// - otherwise                → OPEN (Observe + Sample)
+    /// Look up the overlay for a given tag string.
     #[must_use]
     pub fn at(tag: &str) -> Self {
         if tag.contains("biometric") || tag.contains("private") {
@@ -298,18 +274,14 @@ mod tests {
 
     #[test]
     fn overlay_substring_match_biometric() {
-        // ensure the "biometric" detection is substring not whole-word
         let sigma = SigmaOverlay::at("metadata.biometric.disabled");
         assert!(!sigma.permits(ConsentBit::Observe));
     }
 
     #[test]
     fn cap_kind_clone_and_debug() {
-        // exercise the derived Clone + Debug for coverage
         let c = Cap::<DevMode>::dev_for_tests();
-        // explicit clone via Clone trait (not the auto-deref short-form)
         let c2: Cap<DevMode> = Clone::clone(&c);
-        // use the clone non-trivially
         assert!(c2.permits_dev_mode());
         assert!(c.permits_dev_mode());
         let s = format!("{c:?}");

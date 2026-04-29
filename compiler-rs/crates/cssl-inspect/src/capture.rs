@@ -4,15 +4,6 @@
 //!   - Three formats supported : PNG_sRGB / EXR_HDR / SpectralBin.
 //!   - The output path is recorded as a 32-byte hash ; the raw path is
 //!     NEVER logged (privacy-audit invariant per landmine L8).
-//!   - CaptureHandle carries `format`, `output_path_hash`, `size_bytes`,
-//!     `audit_seq`. `region` is `Option<AABB>` ; the MVP does not implement
-//!     AABB so it is omitted from the surface and is implicit "whole frame".
-//!   - Callsite must hold `Cap<TelemetryEgress>`.
-//!
-//! § This MVP slice produces a fake hash + format-tag + a synthesised
-//! size. The real-impl will engage the render-graph fence + invoke the
-//! per-format encoder. The path-hash is BLAKE3 in production ; this MVP
-//! uses a deterministic fold of the format-tag so tests can assert on it.
 
 use crate::{
     mock_substrate::{Cap, TelemetryEgress},
@@ -24,24 +15,23 @@ use crate::{
 pub enum CaptureFormat {
     /// 8 or 16-bit PNG, sRGB color-space.
     PngSrgb {
-        /// Bit depth (8 or 16 ; mock validates).
+        /// Bit depth (8 or 16).
         bit_depth: u8,
     },
-    /// EXR HDR. half- or full-precision float.
+    /// EXR HDR.
     ExrHdr {
         /// Whether the encoded floats are half-precision.
         half_precision: bool,
     },
-    /// Raw spectral binary ; n_bands typically 16.
+    /// Raw spectral binary.
     SpectralBin {
-        /// Number of spectral bands (e.g. 16).
+        /// Number of spectral bands.
         n_bands: u8,
     },
 }
 
 impl CaptureFormat {
-    /// Stable string tag for the format. Used by the MVP path-hasher and
-    /// by the audit-log entry. Stable across versions of this crate.
+    /// Stable string tag for the format.
     #[must_use]
     pub fn tag(self) -> &'static str {
         match self {
@@ -52,13 +42,9 @@ impl CaptureFormat {
     }
 
     /// Whether this format variant carries a valid parameter set.
-    /// PNG bit_depth must be 8 or 16 ; spectral n_bands must be > 0 and
-    /// ≤ 64.
     ///
     /// # Errors
-    /// Returns `CaptureFormatUnsupported` if the variant carries an
-    /// invalid parameter (PNG bit-depth other than 8/16, spectral n-bands
-    /// outside 1..=64).
+    /// Returns `CaptureFormatUnsupported` for invalid parameters.
     pub fn validate(self) -> Result<(), InspectError> {
         match self {
             CaptureFormat::PngSrgb { bit_depth } if bit_depth == 8 || bit_depth == 16 => Ok(()),
@@ -74,23 +60,18 @@ impl CaptureFormat {
     }
 }
 
-/// A 32-byte path-hash. Phase-J § 2.5 mandates BLAKE3 ; this MVP uses a
-/// deterministic synthesised hash so tests can assert on it.
+/// A 32-byte path-hash. Phase-J § 2.5 mandates BLAKE3 ; this MVP synthesises.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PathHash(pub [u8; 32]);
 
 impl PathHash {
-    /// Construct a synthesised hash from a format-tag + audit-seq. The
-    /// real-impl will hash the actual output path.
+    /// Construct a synthesised hash from a format-tag + audit-seq.
     #[must_use]
     pub fn synth(tag: &str, audit_seq: u64) -> Self {
         let mut buf = [0u8; 32];
-        // Fold the tag bytes
         for (i, byte) in tag.bytes().enumerate() {
             buf[i % 32] ^= byte;
         }
-        // Fold the audit_seq across the back half so different captures
-        // get different hashes.
         let seq_bytes = audit_seq.to_le_bytes();
         for (i, byte) in seq_bytes.iter().enumerate() {
             buf[16 + (i % 16)] ^= byte;
@@ -110,18 +91,16 @@ impl PathHash {
 pub struct CaptureHandle {
     /// Format of the captured frame.
     pub format: CaptureFormat,
-    /// Format tag string (for convenient inspection).
+    /// Format tag string.
     pub format_tag: &'static str,
-    /// Hash of the output path. Raw path is NEVER exposed.
+    /// Hash of the output path.
     pub output_path_hash: PathHash,
-    /// Synthesised size in bytes (mock).
+    /// Synthesised size in bytes.
     pub size_bytes: u64,
     /// Audit sequence at capture time.
     pub audit_seq: u64,
 }
 
-/// Mock size-estimator. Returns a per-format synthesised value so tests can
-/// assert different formats produce different sizes.
 fn synth_size(format: CaptureFormat) -> u64 {
     match format {
         CaptureFormat::PngSrgb { bit_depth } => 1024 * u64::from(bit_depth),
@@ -136,13 +115,11 @@ fn synth_size(format: CaptureFormat) -> u64 {
     }
 }
 
-/// Capture a frame. The MVP returns a CaptureHandle containing a fake
-/// path-hash with the format tag folded in. Real-impl engages the
-/// render-graph fence + per-format encoder.
+/// Capture a frame.
 ///
 /// # Errors
-/// - `CapabilityMissing` if `egress` does not actually grant telemetry-egress
-/// - `CaptureFormatUnsupported` if `format` carries invalid parameters
+/// `CapabilityMissing` if `egress` does not grant telemetry-egress ;
+/// `CaptureFormatUnsupported` if `format` carries invalid parameters.
 pub fn capture_frame(
     egress: &Cap<TelemetryEgress>,
     format: CaptureFormat,
