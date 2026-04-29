@@ -1,0 +1,16 @@
+[package]
+name                   = "cssl-anim"
+description            = "CSSLv3 stage0 — Animation runtime : skeletal rigs + blend trees + IK + keyframe interpolation"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-substrate-omega-step  = { path = "../cssl-substrate-omega-step" }
+cssl-substrate-projections = { path = "../cssl-substrate-projections" }
+thiserror                  = { workspace = true }
