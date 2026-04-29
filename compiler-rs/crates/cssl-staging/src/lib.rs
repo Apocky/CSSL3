@@ -2,21 +2,40 @@
 //!
 //! § SPEC : `specs/06_STAGING.csl` + `specs/19_FUTAMURA3.csl`.
 //!
-//! § SCOPE (T8-phase-1 / this commit)
-//!   - [`StageArg`] + [`StageArgKind`] : classification of which fn-arguments are
-//!     known at compile-time vs runtime.
+//! § SCOPE (T11-D142 / this commit)
+//!   - [`StageArg`] + [`StageArgKind`] : classification of which fn-arguments
+//!     are known at compile-time vs runtime.
 //!   - [`StagedDecl`] : extracted metadata for every `@staged` fn in a HirModule.
 //!   - [`collect_staged_fns`] : walk HIR + return all `@staged` fns.
-//!   - [`RunMarker`] : `#run expr` site identification (maps `HirExprKind::Run` →
-//!     a comptime-eval queue).
-//!   - [`Specializer`] skeleton : per-call-site specialization manifest.
+//!   - [`RunMarker`] : `#run expr` site identification (maps
+//!     `HirExprKind::Run` → a comptime-eval queue).
+//!   - [`Specializer`] skeleton : per-call-site specialization manifest
+//!     (T8-phase-1 schema ; the active implementation has migrated to
+//!     [`specialize_pass::SpecializerPass`]).
+//!   - [`value::Value`] : comptime-known value carrier (Int / Float / Bool /
+//!     Str / Sym / Unit / Tuple) with stable mangle-fragment + hash.
+//!   - [`const_prop`] module : load-fold + arith-fold + cmp-fold + select-fold.
+//!   - [`dce`] module : block-level DCE — branch-folded scf.if collapse +
+//!     dead arith.constant removal + dead pure-op removal.
+//!   - [`specialize_pass::SpecializerPass`] : the actual MIR-pass running
+//!     AFTER monomorphization + BEFORE AD/IFC/SMT (per
+//!     `specs/06_STAGING.csl § STAGED-SEMANTICS`). Per call-site : clone +
+//!     pre-bind + const-prop + branch-fold + DCE + mangled-name emit.
+//!   - [`mock_evaluator`] : T11-D141 test-double — evaluates a small subset
+//!     of HIR literal expressions to a [`Value`] until D141's native
+//!     evaluator merges. Real evaluator swap-in is one method on the
+//!     `Specializer` builder.
+//!   - [`kan_demo`] : end-to-end specialization demo proving the
+//!     KAN-weight-specialization milestone (specialized fn produces a
+//!     constant where the generic fn carries the operand-bound runtime
+//!     compute graph).
 //!
-//! § T8-phase-2 DEFERRED
-//!   - Actual specialization walk (clone fn + const-propagate stage-args).
-//!   - Native comptime-eval (compile-native ; avoid Zig 20× interpreter cost per R14).
+//! § T11-D143+ DEFERRED
+//!   - Native compile-time-fn evaluation (D141 will land it).
 //!   - `@type_info` / `@fn_info` / `@module_info` reflection API.
 //!   - Transform-dialect pass-schedule emission (`specs/15` § TRANSFORM-DIALECT).
-//!   - Futamura-P1 baseline + P2 specializer-reference + P3 self-bootstrap (separate crate `cssl-futamura`).
+//!   - Futamura-P1 baseline + P2 specializer-reference + P3 self-bootstrap
+//!     (separate crate `cssl-futamura`).
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -24,6 +43,53 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![allow(clippy::redundant_clone)]
+#![allow(clippy::needless_pass_by_value)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::module_name_repetitions)]
+// § Style allowances — const-prop / DCE walks are short-name + many-arg-heavy ;
+// float-cmp is intentional (we mean bit-equality on Value::Float).
+#![allow(clippy::similar_names)]
+#![allow(clippy::many_single_char_names)]
+#![allow(clippy::redundant_closure)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::float_cmp)]
+#![allow(clippy::manual_let_else)]
+#![allow(clippy::bool_to_int_with_if)]
+#![allow(clippy::suboptimal_flops)]
+#![allow(clippy::option_if_let_else)]
+#![allow(clippy::trivially_copy_pass_by_ref)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::single_match_else)]
+#![allow(clippy::if_not_else)]
+#![allow(clippy::unnecessary_wraps)]
+
+pub mod const_prop;
+pub mod dce;
+pub mod kan_demo;
+pub mod mock_evaluator;
+pub mod specialize_pass;
+pub mod value;
+
+pub use const_prop::{
+    collect_branch_folds, fold_arith, run_const_prop_pass, BranchFold, ConstEnv, ConstPropReport,
+};
+pub use dce::{
+    eliminate_branches, eliminate_dead_arith_consts, eliminate_dead_ops, run_dce_pass, DceReport,
+};
+pub use mock_evaluator::{
+    evaluate_comptime_block_mock, evaluate_comptime_expr_mock, MockEvalError,
+};
+pub use specialize_pass::{
+    collect_all_referenced_value_ids, CompTimeArgs, SpecializationError, SpecializationManifest,
+    SpecializationRollup, SpecializerPass, MAX_SPECIALIZATION_DEPTH,
+};
+pub use value::{CompIntWidth, Value};
 
 use thiserror::Error;
 
