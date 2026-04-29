@@ -523,6 +523,7 @@ dependencies = [
 name = "cssl-cgen-gpu-spirv"
 version = "0.1.0"
 dependencies = [
+ "cssl-autodiff",
  "cssl-mir",
  "rspirv",
  "thiserror",
