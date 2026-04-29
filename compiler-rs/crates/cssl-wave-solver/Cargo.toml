@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-wave-solver"
+description            = "CSSLv3 — Wave-Unity multi-rate complex-Helmholtz + LBM-Boltzmann solver : light + audio + heat + scent + mana = ONE psi-field at different bands. Cite : Omniverse 04_OMEGA_FIELD/04_WAVE_UNITY.csl ; T11-D114."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+# § Disable doctests : the module-doc blocks contain spec-shape pseudo-
+# code (PDE formulas with Greek letters + math operators) that rustdoc
+# would otherwise try to compile. The unit-test suite + integration
+# tests cover all public surface ; doctests would duplicate coverage at
+# the cost of escaping every formula.
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# § Wave-Unity bridges the Ω-field substrate (D144) + KAN material impedance
+# (D115/D143) + omega-step phase-2 hook discipline (H2). All three are
+# crate-local path-deps in the workspace.
+cssl-substrate-omega-field     = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-omega-step      = { path = "../cssl-substrate-omega-step" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+cssl-substrate-kan             = { path = "../cssl-substrate-kan" }
+
+# § thiserror — error-typing for Σ-mask refusal + cross-band table breaches.
+thiserror = { workspace = true }
+# § smallvec — coupling-pair scratch buffers fit on stack with N <= 16 pairs.
+smallvec  = { workspace = true }
