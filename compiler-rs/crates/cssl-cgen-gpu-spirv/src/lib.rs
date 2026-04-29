@@ -18,13 +18,30 @@
 //!     `spirv-as` or diffed directly in tests).
 //!   - [`SpirvEmitError`]       — emission error enum.
 //!
-//! § T10-phase-2 DEFERRED
-//!   - `rspirv` FFI integration (pure-Rust but heavy-build ⇒ reviewed for size-vs-benefit).
-//!   - Full MIR [`CsslOp`] → SPIR-V OpCode lowering tables (only signatures + entry points at stage-0).
-//!   - `spirv-val` subprocess gate (installed per-CI per `specs/07` § VALIDATION PIPELINE).
+//! § T10-phase-2 DEFERRED (closed @ T11-D72 / S6-D1)
+//!   - `rspirv` FFI integration ✓ (T11-D34) — `binary_emit::emit_module_binary`
+//!   - Full MIR [`CsslOp`] → SPIR-V OpCode lowering tables ✓ (T11-D72) —
+//!     [`emit_kernel_module`] handles arith, scf, memref, return.
+//!   - Structured-CFG emission from `scf.*` ops ✓ (T11-D72) — selection-merge
+//!     for `scf.if`, loop-merge for `scf.for/while/loop`.
+//!
+//! § STILL DEFERRED
+//!   - `spirv-val` subprocess gate (installed per-CI per `specs/07` § VALIDATION
+//!     PIPELINE). The workspace pins `spirv-tools = "0.12"` but the crate links
+//!     a heavy C++ toolchain ; T11-D72 keeps the rspirv `dr::load_words`
+//!     round-trip as the structural validator and defers the native gate to a
+//!     future CI-test slice.
 //!   - `spirv-opt -O` / `-Os` optimizer subprocess.
 //!   - `NonSemantic.Shader.DebugInfo.100` debug-info emission.
-//!   - Structured-CFG emission from `scf.*` / `cssl.region.*` ops.
+//!   - `cssl.region.*` op emission (region ops are CPU-CPS scaffolding ; not
+//!     currently flowed through compute kernels).
+//!   - Real fn-parameter passing through Vulkan descriptors / push-constants
+//!     (Phase-E host work).
+//!   - Heap (`cssl.heap.*`) lowering via USM / BDA ; currently rejected per
+//!     [`BodyEmitError::HeapNotSupportedOnGpu`].
+//!   - Closure (`cssl.closure*`) lowering via function pointers + indirect
+//!     call ; currently rejected per
+//!     [`BodyEmitError::ClosuresNotSupportedOnGpu`].
 //!
 //! [`CsslOp`]: cssl_mir::CsslOp
 
@@ -35,12 +52,14 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod binary_emit;
+pub mod body_emit;
 pub mod capability;
 pub mod emit;
 pub mod module;
 pub mod target;
 
 pub use binary_emit::{emit_module_binary, BinaryEmitError};
+pub use body_emit::{emit_kernel_module, BodyEmitError};
 pub use capability::{SpirvCapability, SpirvCapabilitySet, SpirvExtension, SpirvExtensionSet};
 pub use emit::{emit_module, SpirvEmitError};
 pub use module::{SpirvModule, SpirvSection};
