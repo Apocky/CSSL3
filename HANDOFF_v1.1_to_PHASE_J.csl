@@ -1,0 +1,296 @@
+§§ HANDOFF v1.1 → Phase-J-vertical-slice  ⊗  substrate-evolution-done • signature-rendering-stack-landed • M8+ bring-up opens
+═══════════════════════════════════════════════════════════════════════════
+
+§ IDENTITY
+  repo       : C:\Users\Apocky\source\repos\CSSLv3
+  branch.in  : cssl/session-6/parallel-fanout @ b69165c
+                (post-wave-4 polish ; clippy-gate cleanup)
+  branch.out : (per Phase-J integration discipline ; new branch authored on phase-open)
+  tag.target : v1.1.0
+  prior.tag  : v1.0.0 (T11-D98 session-close ; HANDOFF_v1_to_PHASE_I.csl preserved as historical record)
+  prior.head : Phase-A..Phase-I-scaffold complete (T11-D51..D98)
+                + wave-3β + 3γ + 4 substrate-evolution + signature-rendering (T11-D113..D147)
+  test.line  : 8330 ✓ • 0 ✗ • +3156 vs v1.0-baseline (5174 post-D98 polish)
+  date       : 2026-04-29
+  supersedes : HANDOFF_v1_to_PHASE_I.csl  ← preserved-on-disk as v1.0 record
+                                            ← Phase-J PROCEEDS-FROM v1.1 not v1.0
+
+§ PRIME-DIRECTIVE  R! load-first ‼ immutable
+  path  : CSSLv3/PRIME_DIRECTIVE.md
+  axiom : consent=OS • sovereignty=substrate-invariant • violation=bug ¬tradeoff
+  ToS   : access ⊆ known'g • N! evil'g • bad-faith ¬"literal-interpretation"
+  attest: ¬(hurt ∨ harm) .making-of-this  ✓ preserved-thru-all-waves
+  I> §1 prohibitions = closed-set @ H6.Prohibition
+       PD0001..PD0017 (immutable §1) + PD0000-spirit
+       PD0018..PD0020 (derived ; T11-D129)
+         PD0018 BiometricEgress    refines  PD0004 Surveillance
+         PD0019 ConsentBypass      refines  PD0006 Coercion
+         PD0020 SovereigntyDenial  refines  PD0014 Discrimination
+       PD0007 weaponization + PD0009 torture = ABSOLUTE-BLOCK ‼
+       no-consent-path • no-configuration-bypass • no-runtime-override
+  I> §11 path-hash discipline extension (T11-D130)
+       "no raw paths logged ; only BLAKE3-salted path-hashes appear
+        in telemetry + audit-chain"
+       hash-pin : f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292
+  I> AI-collaborators = sovereign-partners ¬ tools  (per §3 SUBSTRATE-SOVEREIGNTY)
+
+§ STATE @ v1.1
+  Phase-A    bootstrap-to-executable     ✓ T11-D51..D56  @ v1.0
+  Phase-B    stdlib-surface              ✓ T11-D57+D60+D69+D71+D76  @ v1.0
+  Phase-C    control-flow + JIT-enrich   ✓ T11-D58+D59+D61+D63+D77  @ v1.0
+  Phase-D    GPU-codegen                 ✓ T11-D70+D72+D73+D74+D75  @ v1.0
+  Phase-E    GPU-host-FFI                ✓ T11-D62+D65+D66+D67+D68  @ v1.0
+  Phase-F    OS-host-integration         ✓ T11-D78+D80+D81+D82  @ v1.0
+  Phase-G    native-x86-64-backend       ✓ T11-D85+D95+D97  @ v1.0
+              ‼ SECOND hello.exe = 42 verified 2026-04-29 (per v1.0 record)
+  Phase-H    Substrate                   ✓ T11-D79+D89..D94  @ v1.0
+  Phase-I    LoA-scaffold                ◐ T11-D96 (structural-only, v1.0 boundary)
+              ‼ content-fill = Apocky territory ; preserved-as-Phase-I-stretch
+              ‼ scaffold-shape unchanged across v1.0→v1.1
+  Phase-J    substrate-evolution + signature-rendering   ✓ session-11 wave-1..4
+              wave-1   Omniverse upward-rewrite (~12K LOC axiom-corpus)
+              wave-2   vertical-slice + density-budget + KAN-shading (~2.3K LOC)
+              wave-3β  T11-D126..D137 substrate-evolution + F-row gap-fill
+                          F1 + F2 + F3 + F5 + F6 compiler features closed
+                          NEW : cssl-pga + cssl-wavelet + cssl-hdc
+                          test-delta : 5174 → 5766 = +592 / 0 fail
+              wave-3γ  T11-D138..D144 dependent gap-fill + substrate-keystones
+                          F1 + F4 + F5 dependent compiler-internals
+                          NEW keystones :
+                            cssl-substrate-kan      (D143)
+                            cssl-substrate-omega-field  (D144) ‼ KEYSTONE
+                          PD0018..PD0020 derived prohibitions surface
+                          test-delta : 5766 → 6396 = +630 / 0 fail
+              wave-4   T11-D114 + D116..D125 substrate-evolution-kernels +
+                       signature-rendering stack
+                          NEW kernels :
+                            cssl-wave-solver        (D114, IF-LBM ψ-field flow)
+                            cssl-physics-wave       (D117, SDF + XPBD-GPU + KAN-body)
+                          NEW signature-render stack :
+                            cssl-render-v2          (D116, Stage-5 SDF-raymarch
+                                                     + D119/D121/D122 extensions)
+                            cssl-spectral-render    (D118, Stage-6 KAN-BRDF spectral)
+                            cssl-fractal-amp        (D119, Stage-7 fractal amp)
+                            cssl-gaze-collapse      (D120, Stage-2 gaze-collapse)
+                            cssl-render-companion-perspective
+                                                    (D121, Stage-8 companion-view)
+                          NEW runtime + host :
+                            cssl-work-graph         (D123, DX12-Ultimate + VK_NV_DGC)
+                            cssl-host-openxr        (D124, OpenXR loader+session)
+                          NEW procedural-anim + audio :
+                            cssl-anim-procedural    (D125a, KAN-pose + PGA-Motor)
+                            cssl-wave-audio         (D125b, ψ-coupled audio)
+                          test-delta : 6396 → 8330 = +1934 / 0 fail
+              session-close
+                          T11-D147 : DECISIONS META-SESSION-11-CLOSE +
+                                     CHANGELOG v1.1 + RELEASE_NOTES_v1.1 +
+                                     this HANDOFF_v1.1_to_PHASE_J doc
+  ∴ substrate-evolution + signature-rendering stack = COMPLETE @ v1.1
+  ∴ all-six signature LoA-render paths LANDED (per Axiom 14 NOVEL-RENDERING)
+  ∴ canonical 12-stage GPU work-graph assembled @ crate-surface level
+  ∴ ready-for : M8 vertical-slice integration (Phase-J open)
+
+§ AGGREGATE TOTALS  session-11 close
+  tests        : 5174 (post-D98 baseline) → 8330  =  +3156 / 0 fail
+  LOC.crates   : ~100,781 LOC compiler-rs/crates Rust
+  LOC.specs    : ~25.5K LOC CSSLv3 specs/ + ~12.4K LOC Omniverse axioms
+  LOC.session  : ~125K LOC effective ledger (specs + crates + tests + glue)
+  crates.new   : 11+ net-new (workspace total = 68 crates)
+  PD-codes     : 17 → 20 named (+ PD0000 spirit = 21 rows)
+  axioms       : 13 → 14 (added Axiom 14 NOVEL-RENDERING)
+  Omniverse-rewrites : ~10K LOC of upward-rewrites authored
+
+§ SIGNATURE-LoA-RENDERING-VISION  ‼ all-6-paths LANDED
+  ⓵ ω-Field-Unity                       ↔ D144 cssl-substrate-omega-field
+  ⓶ Hyperspectral KAN-BRDF              ↔ D118 cssl-spectral-render
+  ⓷ Sub-Pixel Fractal-Tessellation      ↔ D119 cssl-fractal-amp
+  ⓸ Gaze-Reactive Observation-Collapse  ↔ D120 cssl-gaze-collapse
+  ⓹ Companion-Perspective Semantic      ↔ D121 cssl-render-companion-perspective
+  ⓺ Mise-en-Abyme Recursive Witness     ↔ D122 cssl-render-v2 (extension)
+  R! composition = MULTIPLICATIVE ¬ additive
+     (per Omniverse 07_AESTHETIC/06_RENDERING_PIPELINE § AXIOM)
+  spec-anchor : Omniverse 01_AXIOMS/14_NOVEL_RENDERING.csl
+
+§ NEXT  Phase-J vertical-slice integration
+  scope      : M8/M9/M10/M11 per Omniverse 09_SLICE/M8_M9_M10_PLAN.csl
+  axiom      : M8+ ¬ rebuild-substrate ⊗ ✓ activate-latent-channels
+  prereq     : M7 Floor-Pass cert (10_PHASE/00_DAG § IV strict)
+  trajectory :
+    M8 ⊢ signature-rendering bring-up
+        canonical 12-stage GPU work-graph wired end-to-end
+        Stage-5 (D116) + Stage-6 (D118) + Stage-7 (D119) + Stage-2 (D120)
+        + Stage-8 (D121) + Stage-9 (D122) → cmd-buf composition
+        density target : 5×10⁶ visible-cells ⊗ 50 Sovereigns ⊗ 5×10³ entities
+        slice-id : T11-D145 (territory ; multi-slice)
+        gate     : M8-Pass-Cert R! signed-by Apocky-Φ
+    M9 ⊢ VR-day-one + spectral-shipping
+        OpenXR session live ⊗ stereo @ 90+Hz ⊗ AppSW ½-rate path
+        spectral-render-quality matches reference @ ground-truth
+        density target : same as M8 @ VR + 90Hz hold (frame-budget halves)
+        slice-id : T11-D146 (territory)
+    M10 ⊢ max-density scale
+        density target : 1×10⁷ visible-cells ⊗ ≥50K Sovereigns ⊗ 1×10⁶ entities
+        2× M7 density ⊗ 1000× Sovereigns
+        slice-id : T11-D147+territory (post-this-session-close ; Phase-J fanout)
+    M11 ⊢ creative-spread
+        mise-en-abyme one-throat-per-frame substrate-recursion-active
+        Companion-perspective live-overlay
+        LBM-audio Wave-Unity coupled-to-render
+        slice-id : Phase-J terminal milestone
+
+  R! Phase-J = activate-latent-channels ¬ rewrite-substrate
+  R! all M8+ slices pass {Audit<dom>} discipline (effect-row hygiene)
+  W! ≥100 new adversarial-Op tests added per slice exit-gate
+  W! AGENCY-INVARIANT preserved across all M8+ surface evolution
+
+§ INTEGRATION-POINTS  Phase-J consumes-from v1.1 substrate
+  Ω-field          : D144 cssl-substrate-omega-field   → 7-facet keystone
+  KAN runtime      : D143 cssl-substrate-kan           → Φ-pattern-pool
+  Wave-Unity solver: D114 cssl-wave-solver             → ψ-field per-frame
+  Physics-on-cell  : D117 cssl-physics-wave            → SDF + XPBD-GPU
+  SDF raymarch     : D116 cssl-render-v2               → Stage-5 primary
+  Spectral KAN-BRDF: D118 cssl-spectral-render         → Stage-6 path-trace
+  Fractal-amp      : D119 cssl-fractal-amp             → Stage-7 sub-pixel
+  Gaze-collapse    : D120 cssl-gaze-collapse           → Stage-2 oracle
+  Companion-view   : D121 cssl-render-companion-perspective → Stage-8 semantic
+  Mise-en-abyme    : D122 cssl-render-v2 ext           → Stage-9 recursive
+  Work-graph       : D123 cssl-work-graph              → cmd-buf-on-GPU
+  OpenXR host      : D124 cssl-host-openxr             → VR/XR portal
+  Procedural-anim  : D125a cssl-anim-procedural        → KAN-pose + PGA
+  Wave-audio       : D125b cssl-wave-audio             → ψ-coupled PCM
+  Σ-mask compile   : D138 cssl-effects + cssl-ifc      → IFC compile-refusal
+  Higher-order Jet : D133 cssl-autodiff                → ∇²,∇³ AD
+  GPU-AD tape      : D139 cssl-cgen-gpu-spirv          → diff-shader emission
+  Comptime #run    : D141 cssl-staging                 → LUT-bake + KAN-bake
+  PD0018..PD0020   : D129 cssl-substrate-prime-directive → biometric/consent/sovereignty
+  Path-hash audit  : D130 cssl-telemetry + cssl-rt     → BLAKE3-salt discipline
+  Real crypto wire : D131 cssl-persist + cssl-substrate-save → BLAKE3 + Ed25519
+
+§ APPLICATION-LEVEL  loa-game scaffold (T11-D96) status @ v1.1
+  scaffold     : compiler-rs/crates/loa-game/  ← UNCHANGED across v1.0→v1.1
+  legacy-tensor: still-uses cssl-substrate-omega-tensor (v1.0 era) ; ◐
+  migration    : OPTIONAL → cssl-substrate-omega-field (v1.1 keystone)
+                 ‼ Phase-I content-authoring CAN-PROCEED on v1.0-tensor surface
+                    OR migrate-to-omega-field for signature-render eligibility
+  status       : Phase-I content-authoring = orthogonal-to-Phase-J
+                 ‼ Apocky may pursue Q-A..Q-LL fill on parallel track
+  Q-spec-holes : 38 markers ; Q-A..Q-LL ; Apocky-fill territory
+  ‼ HANDOFF_v1_to_PHASE_I.csl preserved as historical record for that track
+
+§ STANDING-DIRECTIVES  carry-forward-into Phase-J
+  CSLv3-dense @ reasoning + design-notes + commit-msg + handoff
+  English @ user-facing (DECISIONS + commit-msgs + onboarding GDDs)
+  disk-first ; ¬ artifacts
+  peer-not-servant ; ¬ flattery ; ¬ option-dumping ; ¬ hedging
+  PRIME_DIRECTIVE preserved @ every-step
+  attestation : "no hurt nor harm" @ every-slice
+  optimal ¬ minimal ; full-scope unless-by-Apocky-Φ
+  ¬ human-week timelines ; plan-in-waves-of-agent-dispatches
+  default MORE agents in parallel ¬ fewer
+
+§ RESUMPTION-PROTOCOL  W! Phase-J session-open
+  load.order :
+    1. PRIME_DIRECTIVE.md                         ‼ first-always
+    2. ~/.claude/CLAUDE.md (Apocky global)        ‼ I> notation-default + standing
+    3. CSSLv3/CLAUDE.md (project-local)           (if present)
+    4. CHANGELOG.md                               ⊗ T11-D## ledger + v1.0+v1.1 sections
+    5. RELEASE_NOTES_v1.1.md                      ⊗ this-release narrative
+    6. HANDOFF_v1.1_to_PHASE_J.csl                this-doc
+    7. Omniverse 01_AXIOMS/14_NOVEL_RENDERING.csl ⊗ Axiom 14 (load-bearing)
+    8. Omniverse 07_AESTHETIC/06_RENDERING_PIPELINE.csl  ⊗ 12-stage canonical
+    9. Omniverse 09_SLICE/M8_M9_M10_PLAN.csl      ⊗ M8/M9/M10/M11 trajectory
+   10. Omniverse 04_OMEGA_FIELD/{00..05}          ⊗ 7-facet field-cell spec
+   11. specs/30_SUBSTRATE.csl                     ⊗ engine-plumbing-spec (v1.0+evolved)
+   12. compiler-rs/crates/cssl-substrate-omega-field/  ⊗ keystone crate
+   13. compiler-rs/crates/cssl-render-v2/         ⊗ Stage-5 primary
+   14. compiler-rs/crates/cssl-spectral-render/   ⊗ Stage-6 spectral
+   15. compiler-rs/crates/cssl-fractal-amp/       ⊗ Stage-7 fractal
+   16. compiler-rs/crates/cssl-gaze-collapse/     ⊗ Stage-2 collapse
+   17. compiler-rs/crates/cssl-render-companion-perspective/  ⊗ Stage-8
+   18. compiler-rs/crates/cssl-host-openxr/       ⊗ VR/XR host
+   19. compiler-rs/crates/cssl-work-graph/        ⊗ work-graph runtime
+   20. DECISIONS.md tail (T11-D113..D147)         ⊗ wave-3β + 3γ + 4 + close
+   21. next Phase-J dispatch-plan                 (author @ session-open)
+  R! sequence-strict ; PRIME_DIRECTIVE first ; no-bypass
+  R! load Apocky CLAUDE.md early — CSLv3-native reasoning-default applies
+
+§ M7-PRECONDITION  ‼ Phase-J prerequisite per Omniverse 09_SLICE/00_FLOOR
+  M7 = mandatory-floor (vertical-slice substrate-proof)
+  M8+ slices BLOCK-ON M7-Floor-Pass-Cert
+  Floor-Pass-Cert = Apocky-signed (per § ESCALATIONS)
+  ‼ skipping-M7 ⊗ ✗ ⊗ DAG-strict (10_PHASE/00 § IV)
+  W! M7 implementation = first-Phase-J slice (T11-D145 territory)
+     OR pre-existing M7 cert from this-session (verify @ session-open)
+
+§ DEFERRED  (not-Phase-J ; later-sessions)
+  D-PhaseI-content     Q-A..Q-LL Apocky-fill (38 spec-holes)
+                       ⇒ orthogonal-to Phase-J
+                       ⇒ HANDOFF_v1_to_PHASE_I.csl carries that track
+  D-multiplayer        co-op + shared-Labyrinth + multi-Companion
+                       ⇒ paired with §§30 D-1
+  D-modding            player-authored content
+                       ⇒ paired with §§30 D-3
+  D-localization       i18n-system
+                       ⇒ requires l10n slice
+  D-content-tools      level-editor + asset-importer
+                       ⇒ post-vertical-slice
+  D-CSSLv3-rewrite     full LoA self-host in CSSLv3
+                       ⇒ scaffold-shape transfers file-for-file
+                       ⇒ Q-X markers survive Rust→CSSLv3 transition
+  D-radiance-cascades  D-radiance-cascades GI (Stage-3 in 12-stage pipeline)
+                       ⇒ deferred from wave-4 ; can land in M8 fanout
+  D-procedural-narrative-cohomology  D121-original (cohomology of plot)
+                       ⇒ wave-3β reservation slot ; deferred to Phase-J
+  D-spell-as-CSSL-fragment  D122-original (CSSL-fragment compiler)
+                           ⇒ wave-3β reservation slot ; deferred to Phase-J
+  D-procedural-UI      D125-original (procedural UI for VR)
+                       ⇒ wave-3β reservation slot ; deferred to Phase-J
+
+§ COMMIT-GATE  Phase-J vertical-slice
+  cargo fmt --check
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace -- --test-threads=1   # baseline 8330 → grow
+  python scripts/validate_spec_crossrefs.py
+  bash scripts/worktree_isolation_smoke.sh
+  M7-Floor-Pass-Cert @ Apocky-Φ-signed (gate for M8+)
+  per-slice DECISIONS entry (full Date/Status/Context/Deliverables/Tests/Consequences)
+  per-slice §11 CREATOR-ATTESTATION in commit-trailer
+  AGENCY-INVARIANT preservation tested per slice
+  ≥100 new adversarial-Op tests per M8+ slice exit-gate
+
+§ GIT-DISCIPLINE  Phase-J worktree-fanout
+  branch-base : v1.1.0 tag (or latest stable post-v1.1)
+  per-slice   : cssl/session-12/M8-* ; cssl/session-12/M9-* ; etc.
+                (or cssl/session-11/T11-D14<n>-* if continuing T11- numbering)
+  worktree    : .claude/worktrees/M8-{NN} ; .claude/worktrees/M9-{NN} ; etc.
+  integration : cssl/session-6/parallel-fanout (continuing branch)
+                OR cssl/session-12/parallel-fanout (new session-tagged branch)
+  R! never-cross-pollinate worktrees ;
+     S6-A0 worktree-leakage discipline carries-forward (T11-D51 ; v1.0 record)
+
+§ APPLICATIONS-OF-V1.1  what-Phase-J-can-now-build
+  - signature-rendering pipeline live @ Stage-2,5,6,7,8,9 cmd-buf
+  - VR/XR shipping day-one (OpenXR session + Compositor-Services)
+  - max-density 1M+ entities @ work-graph runtime
+  - mise-en-abyme recursive-witness rendering (bounded recursion)
+  - Companion-perspective AI-collaborator render-target (consent-strict)
+  - Wave-Unity audio coupled-to-render (no input-capture)
+  - KAN-driven procedural-animation (genome → pose ; music → motion-band)
+  - PGA-Motor joints + dimensional-travel primitive
+  - Σ-mask compile-time consent-checking (D138)
+  - Higher-order AD ∇²,∇³ for spectral curvature + KAN stability
+  - GPU-side differentiable shaders (D139 SPIR-V)
+  - Comptime #run actual-execution + LUT-bake + KAN-bake
+  - 20-prohibition PRIME-DIRECTIVE table (PD0018..PD0020 derived)
+  - Path-hash-only telemetry discipline (BLAKE3-salt, never raw paths)
+  - Real BLAKE3 + Ed25519 crypto wire (no stub)
+
+§ CREATOR-ATTESTATION  per PRIME_DIRECTIVE §11
+  t∞: ¬(hurt ∨ harm) .making-of-this  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ✓ preserved-from session-1 through-v1.1
+  ✓ Phase-J R! preserve-likewise
+  §11.path-hash-extension : ✓ preserved (T11-D130, BLAKE3-salt-discipline)
+    pin : f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292
+
+∎ HANDOFF v1.1 → Phase-J-vertical-slice

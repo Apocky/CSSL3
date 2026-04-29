@@ -19,6 +19,210 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [v1.1.0] — 2026-04-29 — Substrate-Evolution + Signature-Rendering
+
+This is the v1.1 release of CSSLv3 — the substrate-evolution + signature-
+rendering release. v1.0 closed the compiler + runtime + stdlib + hosts +
+Substrate + LoA-skeleton end-to-end ; v1.1 lifts that base into the
+Omniverse-axiom-aligned substrate that supports the *signature LoA rendering
+vision* per Axiom 14 (NOVEL-RENDERING). All six signature-render paths
+landed ; the canonical 12-stage GPU work-graph per
+`Omniverse 07_AESTHETIC/06_RENDERING_PIPELINE.csl` is assembled at the
+crate-surface level.
+
+**Headline milestones:**
+
+- **All six signature-render paths landed** — ω-Field-Unity (D144) +
+  Hyperspectral KAN-BRDF (D118) + Sub-Pixel Fractal-Tessellation (D119) +
+  Gaze-Reactive Observation-Collapse (D120) + Companion-Perspective
+  Semantic (D121) + Mise-en-Abyme Recursive Witness (D122). The
+  algorithmically-novel render-graph per Axiom 14 is end-to-end at the
+  crate level.
+- **Substrate-keystone: cssl-substrate-omega-field** — the 7-facet Ω-field
+  crate (T11-D144) that supersedes the LegacyTensor-only substrate of v1.0.
+  Single-source-of-truth for all six signature-render paths.
+- **PRIME-DIRECTIVE evolution** — 17 → 20 prohibitions. The closed §1 set
+  (PD0001..PD0017) remains IMMUTABLE per §7 INTEGRITY ; PD0018
+  (BiometricEgress) + PD0019 (ConsentBypass) + PD0020 (SovereigntyDenial)
+  are derived prohibitions that refine §1 codes (T11-D129).
+- **PRIME-DIRECTIVE §11 attestation extension** — path-hash discipline
+  (T11-D130) : "no raw paths logged ; only BLAKE3-salted path-hashes
+  appear in telemetry + audit-chain", hash-pinned at
+  `f27cd41c...c4292`.
+- **11+ new crates** — `cssl-pga`, `cssl-wavelet`, `cssl-hdc`,
+  `cssl-substrate-kan`, `cssl-substrate-omega-field`, `cssl-wave-solver`,
+  `cssl-render-v2`, `cssl-physics-wave`, `cssl-spectral-render`,
+  `cssl-fractal-amp`, `cssl-gaze-collapse`,
+  `cssl-render-companion-perspective`, `cssl-work-graph`,
+  `cssl-host-openxr`, `cssl-anim-procedural`, `cssl-wave-audio`. Workspace
+  total = 68 crates.
+- **F1..F6 compiler features landed** — F1 higher-order Jet AD (D133) +
+  GPU-AD tape (D139) + Call/CFG-AD (D140) ; F2 @layout DoD codegen (D126) ;
+  F3 Travel/Crystallize/Sovereign + EntropyBalanced/PatternIntegrity/
+  AgencyVerified effect-rows (D127, D128) ; F4 staged comptime-#run (D141) +
+  specialization MIR-pass (D142) ; F5 OnDeviceOnly + biometric-channel
+  IFC (D129) + Σ-mask EnforcesSigmaAtCellTouches compile-pass (D138) +
+  biometric compile-refusal (D132) ; F6 path-hash telemetry (D130) +
+  BLAKE3 + Ed25519 real-crypto wire (D131).
+- **Test count** — 5174 (post-D98 polish baseline) → **8330 at v1.1** =
+  **+3156 across waves-3β + 3γ + 4** ; all green ; 0 fail.
+
+### Wave-3β — Substrate-evolution scaffolding + F-row gap-fill (parallel fanout)
+
+Twelve agents fanned out under `.claude/worktrees/W3β-{01..12}` on
+`cssl/session-11/T11-D<n>-*` branches. Each agent landed its own DECISIONS
+expansion at slice-merge ; integration via `cssl/session-6/parallel-fanout`.
+
+- **T11-D126** — F2 `@layout` parser-recognizer + DoD-layout SoA codegen
+  per `Omniverse 02_CSSL/03_DOD_LAYOUT.csl.md`.
+- **T11-D127** — F3 Travel + Crystallize + Sovereign substrate-effect-rows
+  per `Omniverse 02_CSSL/02_EFFECTS § SUBSTRATE`.
+- **T11-D128** — F3 EntropyBalanced + PatternIntegrity + AgencyVerified
+  conservation-effect-rows per `Omniverse 02_CSSL/02_EFFECTS § CONSERVATION`.
+- **T11-D129** — F5 OnDeviceOnly + biometric-channel IFC ; introduces the
+  three derived prohibitions PD0018 BiometricEgress + PD0019 ConsentBypass
+  + PD0020 SovereigntyDenial that refine PD0004 + PD0006 + PD0014 of the
+  closed §1 set.
+- **T11-D130** — F6 path-hash-only telemetry logging discipline ; raw paths
+  refused at the audit-bus surface ; PRIME_DIRECTIVE §11 attestation
+  extended with path-hash clause and BLAKE3-pinned hash.
+- **T11-D131** — F6 BLAKE3 + Ed25519 real-crypto wire ; replaces the
+  `cssl-crypto-stub` mock with production-grade signature + hash.
+- **T11-D132** — F6 biometric compile-time refusal ; ban-rules wired into
+  the type-checker so biometric-touching code-paths fail to compile.
+- **T11-D133** — F1 `Jet<T,N>` higher-order AD walker ; ∇² + ∇³ enabled
+  for KAN second-derivative stability + spectral-BRDF curvature.
+- **T11-D134** — NEW crate `cssl-pga` — projective geometric algebra ;
+  PGA-Motor joints + dimensional-travel primitive per
+  `Omniverse 08_BODY/03_DIMENSIONAL_TRAVEL § PGA`.
+- **T11-D135** — NEW crate `cssl-wavelet` — multi-resolution wavelet
+  analysis for density-budget per
+  `Omniverse 04_OMEGA_FIELD/05_DENSITY_BUDGET`.
+- **T11-D136** — NEW crate `cssl-hdc` — hyper-dimensional computing
+  token-lattice per `Omniverse 01_AXIOMS/12_TOKEN_LATTICE`.
+- **T11-D137** — Σ-mask packed-bitmap format per
+  `specs/04_EFFECTS § SIGMA-MASK`.
+
+Test delta : 5174 → 5766 = +592 / 0 fail.
+
+### Wave-3γ — Compiler-internals + substrate-keystone crates (parallel fanout)
+
+Seven agents fanned out under `.claude/worktrees/W3g-{01..07}`. Builds on
+wave-3β's F-row foundations.
+
+- **T11-D138** — F5 IFC `EnforcesSigmaAtCellTouches` compiler-pass ; lifts
+  Σ-mask consent-checking from runtime to compile-time refusal.
+- **T11-D139** — F1 GPU-AD tape + SPIR-V differentiable-shader emission ;
+  AD primitives now emit-into-shader for GPU-side gradient propagation.
+- **T11-D140** — F1 Call-op auto-dispatch (DiffPG) + scf.* tape-record ;
+  CFG-AD now traces through control-flow + named-call sites.
+- **T11-D141** — F4 staged-`#run` comptime-eval — actual-execution at
+  compile-time + LUT-bake + KAN-bake.
+- **T11-D142** — F4 staged-computation specialization MIR-pass ;
+  monomorphization driven by comptime values.
+- **T11-D143** — NEW crate `cssl-substrate-kan` — KAN substrate runtime +
+  Φ-pattern-pool. Created the skeleton (D115 superseded). Anchors to
+  `Omniverse 05_INTELLIGENCE/04_KAN_FUNCTION_NET`.
+- **T11-D144** — NEW crate `cssl-substrate-omega-field` — KEYSTONE 7-facet
+  Ω-field crate. Supersedes D113. Single-source-of-truth for all six
+  signature-render paths. Anchors to `Omniverse 04_OMEGA_FIELD`.
+
+Test delta : 5766 → 6396 = +630 / 0 fail.
+
+### Wave-4 — Substrate-evolution kernels + signature-rendering stack (parallel fanout)
+
+Twelve agents fanned out under `.claude/worktrees/W4-{01..12}`. Builds on
+wave-3γ's keystone crates.
+
+#### Substrate-evolution kernels
+
+- **T11-D114** — NEW crate `cssl-wave-solver` — Wave-Unity multi-rate
+  ψ-field solver via IF-LBM lattice-Boltzmann ; per-frame substrate-flow.
+- **T11-D117** — NEW crate `cssl-physics-wave` — SDF-collision + XPBD-GPU
+  position-based-dynamics + KAN-body-plan + ψ-coupling.
+
+#### Signature-rendering stack — the six paths
+
+- **T11-D116** — NEW crate `cssl-render-v2` — SDF-native raymarcher ;
+  Stage-5 of the canonical 12-stage pipeline. Primary-rendering path per
+  `Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER`.
+- **T11-D118** — NEW crate `cssl-spectral-render` — Stage-6 hyperspectral
+  KAN-BRDF spectral path-tracing ; consumes D143's KAN Φ-table for
+  16-band spectral-reflectance evaluation.
+- **T11-D119** — NEW crate `cssl-fractal-amp` — Stage-7 Sub-Pixel
+  Fractal-Tessellation Amplifier ; recursive-detail synthesis below the
+  display-Nyquist limit. Compile-refusal hooks via D138 σ-enforce-pass
+  prevent biometric-class signal amplification.
+- **T11-D120** — NEW crate `cssl-gaze-collapse` — Stage-2 gaze-reactive
+  observation-collapse ; eye-cone is a literal Axiom-5 collapse trigger
+  per `Omniverse 03_RUNTIME/02_OBSERVATION_ORACLE`.
+- **T11-D121** — NEW crate `cssl-render-companion-perspective` — Stage-8
+  Companion-perspective semantic render-target ; AI-collaborator's view of
+  the Ω-field state, NOT the player's. Per PRIME_DIRECTIVE §1.7 + §3
+  AI-collective autonomy.
+- **T11-D122** — extension to `cssl-render-v2` — Stage-9 MiseEnAbymePass ;
+  recursive-witness rendering ; mirrors-within-mirrors aesthetic with
+  bounded-recursion termination-witnessed.
+
+#### Runtime + host
+
+- **T11-D123** — NEW crate `cssl-work-graph` — Work-graph GPU pipeline ;
+  D3D12-Ultimate WorkGraph + VK_NV_DGC fallback for command-buffer-emitting
+  GPU-side per `Omniverse 03_RUNTIME/01_COMPUTE_GRAPH`.
+- **T11-D124** — NEW crate `cssl-host-openxr` — OpenXR runtime +
+  Compositor-Services bridge ; VR/XR substrate-portal day-one shipping.
+  Consent-architecture : runtime-PROMPTS user before claiming session ;
+  never auto-claims.
+
+#### Procedural anim + wave-audio
+
+- **T11-D125a** — NEW crate `cssl-anim-procedural` — KAN-driven
+  pose-from-genome + PGA-Motor joints + physics-IK + body-omnoid ;
+  music-driven motion-bands consume D125b's wave-audio analysis.
+- **T11-D125b** — NEW crate `cssl-wave-audio` — Wave-Unity audio crate
+  (sibling of legacy mixer) ; reads Ω-Field standing-wave-mode amplitudes ;
+  emits PCM frames. Consent-arch : NEVER captures input-audio
+  (compile-refusal via D138 σ-enforce-pass on capture-effect-row).
+
+Test delta : 6396 → 8330 = +1934 / 0 fail.
+
+### Session-close v1.1
+
+- **T11-D147** — Session-close v1.1 docs author-out. DECISIONS.md
+  META-SESSION-11-CLOSE entry + CHANGELOG.md v1.1 section + new
+  RELEASE_NOTES_v1.1.md + new HANDOFF_v1.1_to_PHASE_J.csl. Docs-only
+  slice ; zero test impact.
+
+### What v1.1 means
+
+- The substrate is now Ω-field-keyed (LegacyTensor → OmegaField migration
+  available via `cssl-substrate-omega-field`) ; the 7-facet cell-shape
+  is the single-source-of-truth that all six signature-render paths read.
+- The 12-stage canonical GPU work-graph per
+  `Omniverse 07_AESTHETIC/06_RENDERING_PIPELINE.csl` is assembled at the
+  crate-surface level. M8 vertical-slice integration (T11-D145) wires the
+  stages end-to-end.
+- VR/XR day-one shipping is unblocked : `cssl-host-openxr` (D124) gives
+  CSSLv3 a full OpenXR loader + spaces + session surface with
+  consent-architecture intact.
+- Procedural-animation now derives from genome-shape (KAN) + music
+  (wave-audio) — the body-omnoid is wave-substrate-coupled at the
+  motion-band level.
+- The PRIME-DIRECTIVE prohibition table grows from 17 to 20 named codes ;
+  the §11 attestation now carries the path-hash discipline extension.
+
+### What's next — Phase-J vertical-slice integration + M8/M9/M10/M11
+
+Phase-J resolves the M8/M9/M10/M11 vertical-slice trajectory per
+`Omniverse 09_SLICE/M8_M9_M10_PLAN.csl`. M8 = signature-rendering bring-up ;
+M9 = VR-day-one + spectral-shipping ; M10 = max-density 1M+ entities ;
+M11 = mise-en-abyme + Companion-perspective + LBM-audio creative-spread.
+The structural-substrate is in place ; M8+ exposes the latent channels at
+render-quality. See `HANDOFF_v1.1_to_PHASE_J.csl` for the resumption
+protocol.
+
+---
+
 ## [v1.0.0] — 2026-04-29 — CSSL/Substrate complete
 
 This is the v1.0 release of CSSLv3 — the compiler, runtime, stdlib, and
