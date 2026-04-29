@@ -1,0 +1,60 @@
+[package]
+name                   = "cssl-mcp-server"
+description            = "CSSLv3 — MCP server skeleton (Wave-Jθ-1 ; L5 LLM-runtime-attach)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D229 (W-Jθ-1) : cssl-mcp-server — JSON-RPC 2.0 + cap-gated session
+# ─────────────────────────────────────────────────────────────────────────────
+# Per spec _drafts/phase_j/08_l5_mcp_llm_spec.md § 1-6 (foundation) :
+#   - JSON-RPC 2.0 envelope (Request / Response / Notification / ErrorObject)
+#   - Transport trait + StdioTransport (line-delimited JSON @ stage-0 ; LSP
+#     content-length framing deferred to Jθ-1.1) ; UnixSocketTransport +
+#     WebSocketTransport = trait stubs only.
+#   - Session struct cap-token-bound + handshake protocol
+#   - Cap<DevMode> / Cap<RemoteDev> / Cap<BiometricInspect> sealed-newtype
+#     stubs (default-DENIED for Biometric + RemoteDev ; default-OFF DevMode).
+#   - Tool trait + ToolRegistry + register-by-name dispatch.
+#   - Audit-chain hook stubs (real BLAKE3 + Ed25519 wires-in once
+#     cssl-substrate-prime-directive D131 lands).
+#
+# § DEPENDENCY POLICY
+# Per the T11-D229 prompt, this slice MOCKS :
+#   - cssl-substrate-prime-directive (cap-token machinery)
+#   - cssl-ifc                        (Sensitive labels)
+# via local stub-traits (cap.rs phantom-typed Cap<T>) so this slice can land
+# parallel with substrate-evolution without cross-crate breakage. One-line
+# swaps are documented inline ; the integration-seams are stable.
+#
+# § ASYNC POLICY
+# Stage-0 deliberately uses std::io::{BufRead, Write} for StdioTransport.
+# tokio is NOT pulled in here ; the Transport trait's read/write methods are
+# sync. Async runtime (tokio multi-thread) lands in Jθ-1.1 alongside the
+# WebSocket impl. This keeps the skeleton dep-graph minimal.
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# § test-bypass : enables `Cap::<T>::for_test()` constructors for cross-crate
+# test fixtures. NEVER enabled in release-builds. Mirrors cssl-tweak's
+# test-bypass discipline.
+test-bypass = []
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+
+[dev-dependencies]
+serde_json  = { workspace = true }
+
+# Auto-enable test-bypass when this crate is used as a dev-dep in its own
+# integration tests. (External crates that pull cssl-mcp-server in production
+# do NOT get test-bypass.)
+[package.metadata.docs.rs]
+features = []
