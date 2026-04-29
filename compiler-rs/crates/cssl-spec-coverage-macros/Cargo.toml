@@ -12,6 +12,12 @@ workspace = true
 
 [lib]
 proc-macro = true
+# § Disable lib-test linkage for this proc-macro crate. Default `test = true`
+# attempts to link an empty test-binary that on the gnu-toolchain invokes
+# `dlltool.exe` (absent in this environment) ; the crate has no inline tests.
+# Test coverage for the proc-macro lives in the consumer crate
+# `cssl-spec-coverage` (tests/proc_macro_smoke.rs).
+test = false
 
 [dependencies]
 proc-macro2 = "1"

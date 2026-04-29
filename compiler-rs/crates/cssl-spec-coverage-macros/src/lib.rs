@@ -2,16 +2,16 @@
 //! ════════════════════════════════════════════════════════════════════════
 //!
 //! § ROLE
-//!   Companion crate to [`cssl-spec-coverage`]. Provides the
-//!   `#[spec_anchor(...)]` attribute used to bind a Rust item (struct,
-//!   fn, impl, mod) to one or more entries in the CSSLv3 / Omniverse
-//!   spec catalog. The attribute supports the three anchor paradigms
-//!   identified in the Wave-Jζ-4 spec-anchor audit:
 //!
-//!     1. **Centralized citations** : `#[spec_anchor(citations = ["..."])]`
-//!     2. **Inline section markers** : `#[spec_anchor(section = "...")]`
-//!     3. **Multi-axis** : `#[spec_anchor(omniverse = "...", spec = "...",
-//!        decision = "...")]`
+//! Companion crate to [`cssl-spec-coverage`]. Provides the
+//! `#[spec_anchor(...)]` attribute used to bind a Rust item (struct,
+//! fn, impl, mod) to one or more entries in the CSSLv3 / Omniverse
+//! spec catalog. The attribute supports the three anchor paradigms
+//! identified in the Wave-Jζ-4 spec-anchor audit:
+//!
+//! 1. Centralized citations : `[spec_anchor(citations = [...])]`
+//! 2. Inline section markers : `[spec_anchor(section = "...")]`
+//! 3. Multi-axis : `[spec_anchor(omniverse = "...", spec = "...", decision = "...")]`
 //!
 //! § SEMANTICS
 //!   The attribute is **non-modifying** : it leaves the annotated item's
