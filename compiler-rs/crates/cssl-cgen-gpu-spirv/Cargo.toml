@@ -8,8 +8,9 @@ license.workspace      = true
 authors.workspace      = true
 
 [dependencies]
-cssl-mir  = { path = "../cssl-mir" }
-thiserror = { workspace = true }
+cssl-mir      = { path = "../cssl-mir" }
+cssl-autodiff = { path = "../cssl-autodiff" }
+thiserror     = { workspace = true }
 # T11-D34 : pure-Rust SPIR-V binary emission + validation-via-round-trip.
 # Closes the T10-phase-2 deferred "rspirv FFI integration" note. The binary
 # emitter lives in `binary_emit.rs` (parallel to the text emitter in `emit.rs`) ;

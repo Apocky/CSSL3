@@ -25,6 +25,21 @@
 //!   - Structured-CFG emission from `scf.*` ops ✓ (T11-D72) — selection-merge
 //!     for `scf.if`, loop-merge for `scf.for/while/loop`.
 //!
+//! § DIFFERENTIABLE-SHADER EMISSION (T11-D139, this commit)
+//!   - [`diff_shader::emit_forward_diff_shader`] : registers a compute
+//!     entry-point + declares the GPU-AD capabilities (Float-controls v2,
+//!     `AtomicFloat32AddEXT` if native-FAdd, `CooperativeMatrixKHR` if a
+//!     coop-matrix path is requested).
+//!   - [`diff_shader::emit_reverse_diff_shader`] : mirrors the forward
+//!     emission for the reverse-pass (tape-replay walk + atomic adjoint
+//!     accumulation).
+//!   - [`diff_shader::DiffShaderConfig`] : tape-storage + atomic-mode +
+//!     coop-matrix configuration.
+//!   - [`diff_shader::reverse_partial_rule`] : per-`OpRecordKind` adjoint-
+//!     partial table the reverse-pass body emits.
+//!   - [`diff_shader::recognize_gpu_ad_op_name`] : recognizes the
+//!     `cssl.diff.gpu_tape_*` op-names emitted via `CsslOp::Std`.
+//!
 //! § STILL DEFERRED
 //!   - `spirv-val` subprocess gate (installed per-CI per `specs/07` § VALIDATION
 //!     PIPELINE). The workspace pins `spirv-tools = "0.12"` but the crate links
@@ -54,6 +69,7 @@
 pub mod binary_emit;
 pub mod body_emit;
 pub mod capability;
+pub mod diff_shader;
 pub mod emit;
 pub mod module;
 pub mod target;
@@ -61,6 +77,11 @@ pub mod target;
 pub use binary_emit::{emit_module_binary, BinaryEmitError};
 pub use body_emit::{emit_kernel_module, BodyEmitError};
 pub use capability::{SpirvCapability, SpirvCapabilitySet, SpirvExtension, SpirvExtensionSet};
+pub use diff_shader::{
+    declare_diff_shader_caps, emit_forward_diff_shader, emit_reverse_diff_shader,
+    recognize_gpu_ad_op_name, reverse_partial_rule, supports_diff_shader, DiffShaderConfig,
+    DiffShaderError, ForwardEmitReport, PartialFactor, PartialRule, ReverseEmitReport,
+};
 pub use emit::{emit_module, SpirvEmitError};
 pub use module::{SpirvModule, SpirvSection};
 pub use target::{AddressingModel, ExecutionModel, MemoryModel, SpirvTargetEnv};
