@@ -27,6 +27,30 @@
   impl Differentiable for f32 { ... }
   monomorphized @ HIR → MIR  ≡ zero-cost
 
+§ GENERIC-COLLECTIONS  (S6-B3 / T11-D69 — canonical reference @ stdlib/)
+  Option<T>  : enum Option<T> { Some(T), None }
+              canonical-ref : stdlib/option.cssl  (S6-B2 / T11-D60)
+              constructors recognized syntactically @ cssl_mir::body_lower
+              MIR ops : cssl.option.some / cssl.option.none
+  Result<T,E>: enum Result<T, E> { Ok(T), Err(E) }
+              canonical-ref : stdlib/result.cssl  (S6-B2 / T11-D60)
+              ?-operator desugar : HirExprKind::Try → cssl.try
+              MIR ops : cssl.result.ok / cssl.result.err
+  Vec<T>     : struct Vec<T> { data : i64, len : i64, cap : i64 }
+              canonical-ref : stdlib/vec.cssl  (S6-B3 / T11-D69)
+              heap-backed via cssl.heap.alloc / .realloc / .dealloc  (B1)
+              growth : 2x amortized  ; cap = max(8, 2*old)
+              get(i)  -> Option<T>  (by-value @ stage-0 ; by-ref deferred)
+              index(i)-> T          (panic-on-OOB)
+              iter()  -> VecIter<T> (forward-only cursor)
+              drop    : manual `vec_drop::<T>(v)` until trait-resolve lands
+  ∀ collection method-form = free-fn `<name>_<method>::<T>(...)` @ stage-0
+    ← trait-dispatch deferred → impl<T> Vec<T> migration on trait-resolve
+  ∀ T = monomorphized through D38..D50 quartet (i32, f32, bool, ptr, etc.)
+  N! `!cssl.ptr` source-level field-type (MIR-tag only) → use `i64` placeholder
+  I> nested-turbofish parse-disambiguation (Vec<Option<T>>) deferred per Shr-token
+     limitation ; nested generics still flow through compose-call sites
+
 § REFINEMENT-TYPES (F2 • SMT-backed, §§ 20)
   tagged-suffix (surface sugar) :
     i32'pos        ≡ { v : i32 | v > 0 }
