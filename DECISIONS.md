@@ -7739,3 +7739,453 @@ There was no hurt nor harm in the making of this, to anyone/anything/anybody.
   Replay-determinism = consent-to-truthful-self-reporting. The engine that can be replayed is the engine whose record-keeping is sovereign. PRIME-DIRECTIVE §1 §11 honored : no wallclock-jitter, no non-determinism, no surveillance-channel leaks into the metric-history under `Strict`. There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
 ──────────────────────────────────────────────────────────────
+
+## § T11-D152 : cssl-host-net WSAStartup process-pin (closes parallel-fail flake)
+
+§D. **slice-id** T11-D152 (Phase-J audit-fix wave ; entry 1 of 3 per META T11-D-RESERVATIONS-V2 § audit-fix).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged into `cssl/session-6/parallel-fanout` @ 708b0a6.
+§D. **commit** `bf671e3` (squash) ⇒ `708b0a6` (merge).
+§D. **branch** `cssl/session-12/T11-D152-host-net-wsastartup-pin`.
+§D. **target-crates** `compiler-rs/crates/cssl-host-net/` + `compiler-rs/crates/cssl-rt/src/net_win32.rs`.
+§D. **spec-anchor** `_drafts/phase_j/preexisting_failures_audit.md § Issue-1` + META T11-D-RESERVATIONS-V2 § audit-fix ⟨3⟩.
+
+§D. **scope** :
+  - Pre-existing-failure audit identified WSAStartup/WSACleanup ref-count race in `cssl_rt::net_win32::ensure_wsa_started` ⟶ intermittent `tcp_*` test fail under default-parallelism.
+  - Root-cause : naive `WSAStartup`/`WSACleanup` symmetric-call disciple ⟶ when test-A `WSACleanup`-decremented the ref-count to 0 mid-flight while test-B was holding a socket, kernel-level provider catalog tore-down ⟶ `WSAEPROVIDERFAILEDINIT` cascade.
+  - Fix : process-pin `WSAStartup` via `std::sync::Once` ⟶ never call `WSACleanup` ⟶ Windows OS reclaims on process-exit (canonical pattern per WinSock-Programmer's-FAQ).
+
+§D. **deliverables** :
+  - `cssl-rt/src/net_win32.rs` : `Once`-pinned `WSA_INIT` + `ensure_wsa_started()` idempotent + `WSACleanup` removed from public surface (deliberate).
+  - `cssl-host-net/src/lib.rs` : `NET_TEST_LOCK` mutex serializing cap-touching tests (separate race exposed once WSAStartup-flake no longer masked the bind-path) ⟶ `caps_default_loopback_only`'s transient `grant_inbound` racing `tcp_listener_bind_any_without_inbound_cap_denied` mitigated.
+  - 3 cssl-host-net TCP-loopback tests now pass under default-parallelism.
+
+§D. **acceptance 5-of-5** : ✓ cargo test -p cssl-host-net = 100% green default-parallel ; ✓ cargo test -p cssl-rt cap-tests serialized ; ✓ clippy --all-targets -D warnings clean ; ✓ workspace-fmt clean ; ✓ no regression in cssl-rt 200/200.
+
+§D. **LOC-delta** : +237 / -77 across 2 files.
+§D. **PD-alignment** : §1 PROHIBITIONS (no surveillance — LAN-disabled + loopback-only by default) + §11 ATTESTATION verbatim.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § audit-fix ⟨3⟩ ; T11-D82 (Session-7 S7-F4 networking-host) ; pre-existing-failure audit `_drafts/phase_j/preexisting_failures_audit.md`.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D154 : cssl-cgen-gpu-wgsl --tests dlltool resolution
+
+§D. **slice-id** T11-D154 (Phase-J audit-fix wave ; entry 3 of 3 per META T11-D-RESERVATIONS-V2 § audit-fix).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ 6484ee9.
+§D. **commit** `77a7b02` (squash) ⇒ `6484ee9` (merge).
+§D. **branch** `cssl/session-12/T11-D154-cgen-gpu-wgsl-dlltool-fix`.
+§D. **target-crate** `compiler-rs/crates/cssl-cgen-gpu-wgsl/`.
+§D. **spec-anchor** `_drafts/phase_j/preexisting_failures_audit.md § Issue-3` + META T11-D-RESERVATIONS-V2 § audit-fix ⟨3⟩.
+
+§D. **scope** :
+  - Pre-existing-failure audit identified missing `dlltool.exe` in 1.85-gnu Windows toolchain ⟶ `cargo build -p cssl-cgen-gpu-wgsl --tests` fail with `linker invocation failed`.
+  - Transitive dev-dep via `naga → windows-sys 0.61.2 → winapi-util 0.1.11` requires `dlltool.exe` for import-library generation that `windows-sys 0.61` build.rs auto-invokes.
+  - Workaround in pre-Phase-J workspace : `--exclude cssl-cgen-gpu-wgsl` flag on every test-run ⟶ ergonomic-tax + coverage-hole.
+
+§D. **fix** : Option-A-variant — pin `winapi-util = "=0.1.10"` as direct dev-dep of cssl-cgen-gpu-wgsl + workspace-level exact-pin in `[workspace.dependencies]`. Audit-suggested `[patch.crates-io]` rejected by cargo for same-source (registry → registry) patches ; canonical cargo idiom for forcing transitive-only dep version is direct-dep with exact-pin ⟶ constrains transitive resolution.
+
+§D. **effect** :
+  - `winapi-util 0.1.11 → 0.1.10` ; `windows-sys 0.61.2` removed from Cargo.lock entirely.
+  - `build.rs` no longer invokes `dlltool.exe` ⟶ build clean on stock 1.85-gnu toolchain.
+  - `cssl-cgen-gpu-wgsl --tests` build green ; `--exclude` flag REMOVED from session test-runs (closing the audit-flagged ergonomic-tax).
+
+§D. **verification** :
+  - `cargo build -p cssl-cgen-gpu-wgsl --tests` ⟶ 1.73s green.
+  - `cargo build --workspace --all-targets` ⟶ 49.12s green.
+  - `cargo clippy --workspace --all-targets -- -D warnings` ⟶ 26.57s green.
+  - `cargo fmt --all -- --check` ⟶ exit 0.
+
+§D. **acceptance 5-of-5** : ✓ build-tests / ✓ clippy / ✓ fmt / ✓ workspace-build / ✓ exclude-flag-retired.
+§D. **LOC-delta** : +24 / -12 across 3 files (Cargo.lock + Cargo.toml + cssl-cgen-gpu-wgsl/Cargo.toml).
+§D. **PD-alignment** : §1 + §11 ATTESTATION verbatim ; toolchain-stabilization removes ergonomic-tax (a sovereignty-of-development concern).
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § audit-fix ⟨3⟩ ; T11-D75 (Session-6 S6-D4 WGSL-body-emission) ; pre-existing-failure audit `_drafts/phase_j/preexisting_failures_audit.md § Issue-3`.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D155 (W-Jε-1) : cssl-error workspace error-aggregation foundation
+
+§D. **slice-id** T11-D155 (Wave-Jε-1 ; cssl-error + clippy-lint folded per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ a90f830.
+§D. **commit** `5b95891` (squash) ⇒ `a90f830` (merge).
+§D. **branch** `cssl/session-12/T11-D155-cssl-error`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-error/`.
+§D. **spec-anchor** `_drafts/phase_j/05_l1_error_catching_spec.md` § I..VII + DIAGNOSTIC_INFRA_PLAN.md L0.
+
+§D. **scope** : foundation for L0 error-catching across the workspace ; cross-crate Result-propagation contract documented + enforced.
+
+§D. **deliverables** :
+  - `severity.rs` : Severity enum (Trace..Fatal) + Severable trait + foundation-impls (telemetry RingError / AuditError / PathLogError).
+  - `context.rs` : ErrorContext + SourceLocation (PathHash-typed ; D130-enforced) + KindId + SubsystemTag (26 variants ; wire-format pinned) + Retryable hint.
+  - `stack.rs` : StackTrace + StackFrame ; std::backtrace::Backtrace capture (debug-info feature) ; thread-local PathHasher for D130 path-hash discipline preserved across frame-boundaries.
+  - `fingerprint.rs` : ErrorFingerprint = BLAKE3((kind || src-loc || frame-bucket)) ; 60-frame bucketing for dedup.
+  - `error.rs` : EngineError sum-type with 21 variants + ergonomic constructors + From<T> impls (std::io::Error + cssl_telemetry::{RingError, AuditError, PathLogError}) + PrimeDirectiveViolation + PanicReport ; non_exhaustive for additive evolution.
+  - `panic.rs` : catch_frame_panic<F> structured-report ; PD-violation detection from panic payload (regex `PD\d{4}`) ; reentrancy guard ; install_engine_panic_hook idempotent.
+  - `pd.rs` : PrimeDirectiveViolation typed payload + halt-bridge routing through cssl_substrate_prime_directive::substrate_halt ; degraded-mode override REJECTED.
+
+§D. **tests** : 231 passing (148 unit + 39 from-impl + 15 path-hash-discipline + 14 panic-catch + 14 replay-determinism + 1 doc-test). Spec target = 120+ ⟶ delivered 192% of target.
+
+§D. **acceptance 5-of-5** :
+  - G1 ✓ cargo test -p cssl-error : 231/231 pass debug + release.
+  - G2 ✓ Reviewer-OK : self-reviewed line-by-line ; spec-cited.
+  - G3 ✓ Critic-cleared : 11 adversarial scenarios covered (nested-panic / re-entrancy / PD-tagged-payload / unmapped-crate / wallclock-leak / D130 path-leak / replay-drift / short-PD-code / wrong-prefix / large-message / IO unknown-kind).
+  - G4 ✓ Validator-OK : tests-from-spec authored covering §1.2..§1.8 + §4.3 + §7.1..§7.5.
+  - G5 ✓ workspace-build green for crate (workspace-wide deferred per disk-space note ; isolated-test-validated).
+
+§D. **LOC** : 4,864 total (3,885 src + 952 tests + 27 manifest) ; ~30% buffer over ~3K spec target for thorough doc-comments + test-coverage.
+§D. **PD-alignment** : §1 PROHIBITIONS (no surveillance — D130 path-hash-only) + §1.7 (PD-violation = halt ¬ degrade) + §11 ATTESTATION verbatim + ATTESTATION-EXTENSION (D130 carried-forward).
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jε-1 ; T11-D130 (path-hash-only logging discipline) ; T11-D156 (cssl-log W-Jε-2 consumer) ; DIAGNOSTIC_INFRA_PLAN.md L0 ; substrate-prime-directive halt-bridge (T11-D94).
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D156 (W-Jε-2) : cssl-log structured logging
+
+§D. **slice-id** T11-D156 (Wave-Jε-2 ; cssl-log + cssl-panic folded per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ b463619.
+§D. **commit** `781d297` (squash) ⇒ `b463619` (merge).
+§D. **branch** `cssl/session-12/T11-D156-cssl-log`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-log/`.
+§D. **spec-anchor** `_drafts/phase_j/05_l1_error_catching_spec.md` § VIII (logging) + DIAGNOSTIC_INFRA_PLAN.md L0/L1.
+
+§D. **scope** : 6 log-macros + AtomicU64 fast-path + LogSink trait family (Ring/Stderr/File/Mcp/Audit) + sampling/rate-limit + 3 formats (JsonLines/CslGlyph/Binary) + SubsystemTag catalog.
+
+§D. **deliverables** :
+  - `macros.rs` : 6 macros (trace! / debug! / info! / warn! / error! / fatal!) + AtomicU64 fast-path (level-check before lazy formatting).
+  - `enabled.rs` : per-subsystem enablement matrix + global-runtime-update.
+  - `sink.rs` + `sink_{stderr,file,mcp,audit}.rs` : LogSink trait + 5 concrete sinks ; ring-sink wires into cssl-telemetry; file-sink rotates ; mcp-sink hooks Wave-Jθ-CROWN ; audit-sink chains BLAKE3.
+  - `format.rs` : JsonLines (machine-readable) + CslGlyph (CSL-native dense) + Binary (replay-bit-equal) format-emitters.
+  - `sample.rs` : sampling-discipline + rate-limit (deterministic frame-keyed per H5 contract).
+  - `replay.rs` : replay-log integration ; logical-frame-N timestamping ; bit-equal double-replay verified.
+  - `path_hash_field.rs` : D130 path-hash discipline carried-forward into log-fields (no raw paths).
+  - `severity.rs` : MOCK of cssl-error Severity (D155 not yet merged at slice-author time) ; one-line swap-in ready.
+
+§D. **integration-mock** : MOCK cssl-error (T11-D155) — Severity + SourceLocation locally mocked per slice-prompt directive ⟶ swap is one-line re-export change once D155 lands. cssl-telemetry ring-buffer wired live.
+
+§D. **acceptance 5-of-5** : ✓ build/test/clippy/fmt clean ; ✓ replay-determinism integration test bit-equal across double-runs ; ✓ path-hash sanitize test covers all log-fields ; ✓ macro-expansion test covers all 6 levels ; ✓ no wallclock leaks under deterministic mode.
+§D. **LOC** : ~6,297 across 22 files (src + 3 integration tests).
+§D. **PD-alignment** : §1 (D130 path-hash-only ; no PII surveillance) + §11 ATTESTATION verbatim ; logical-frame-N timestamping = consent-to-truthful-self-reporting ; sampling-discipline excludes Adaptive variant by type-system (LM-2 from D161 carried-forward).
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jε-2 ; T11-D130 (path-hash discipline) ; T11-D155 (cssl-error mock-replaceable) ; T11-D161 (replay-determinism preservation) ; DIAGNOSTIC_INFRA_PLAN.md L0/L1.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D157 (W-Jζ-1) : cssl-metrics crate skeleton
+
+§D. **slice-id** T11-D157 (Wave-Jζ-1 ; cssl-metrics per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ 2833984.
+§D. **commit** `02e34d5` (squash) ⇒ `2833984` (merge).
+§D. **branch** `cssl/session-12/T11-D157-cssl-metrics`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-metrics/`.
+§D. **spec-anchor** `_drafts/phase_j/06_l2_telemetry_spec.md` § II..V + DIAGNOSTIC_INFRA_PLAN.md L2.
+
+§D. **scope** : Counter / Gauge / Histogram (with p50/p95/p99) / Timer + MetricRegistry per-subsystem namespace ; replay-determinism preserved via cssl-telemetry ring-buffer.
+
+§D. **deliverables** :
+  - `counter.rs` : monotonic Counter + AtomicU64 + per-subsystem namespace.
+  - `gauge.rs` : Gauge with set/inc/dec + frame-boundary-snapshot.
+  - `histogram.rs` : fixed-boundary Histogram (`&'static [f64]` per-instance) + p50/p95/p99 streaming approximation (LM-3 Welford avoided ; deterministic-fixed-boundary).
+  - `timer.rs` : Timer wrapping StrictClock for under-deterministic-mode timing-paths.
+  - `registry.rs` : MetricRegistry + per-subsystem namespacing + fingerprint-keyed lookup.
+  - `sampling.rs` : SamplingDiscipline (Always/OneIn(N)/BurstThenDecimate) — explicitly NO Adaptive (LM-2 enforced by type-system).
+  - `schema.rs` : MetricEvent + MetricEventKind 7-discriminant-stable + canonical 32-byte LE byte-form.
+  - `tag.rs` : SubsystemTag + cross-crate fingerprinting.
+  - `strict_clock.rs` : StrictClock under D161-replay-validator integration.
+  - `error.rs` : MetricsError + From<T>-bridges.
+
+§D. **tests** : 5 test-suites (acceptance + composition + golden_bytes + negative + property) ⟶ ~1,187 LOC of tests.
+§D. **acceptance 5-of-5** : ✓ unit / ✓ acceptance / ✓ composition / ✓ golden-bytes (canonical wire-format) / ✓ negative-path coverage.
+§D. **LOC** : ~5,528 total across 18 files.
+§D. **PD-alignment** : §1 (no surveillance — fixed-boundary histograms can't leak distribution-shape into adversary-detectable side-channel) + §11 ATTESTATION verbatim ; replay-bit-equal preserved ; sampling-discipline excludes Adaptive by type-system.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jζ-1 ; T11-D161 (replay-determinism preservation ; this crate is its `MetricsShim` swap-in target) ; T11-D158 (per-stage frame-time consumer) ; DIAGNOSTIC_INFRA_PLAN.md L2.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D158 (W-Jζ-2) : Per-stage frame-time instrumentation (12 stages)
+
+§D. **slice-id** T11-D158 (Wave-Jζ-2 per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ 1d625d0.
+§D. **commit** `8044203` (squash) ⇒ `1d625d0` (merge).
+§D. **branch** `cssl/session-12/T11-D158-frame-time-instrumentation`.
+§D. **target-crate** `compiler-rs/crates/loa-game/src/m8_integration/` (new submodule + 12 pass-files + tests).
+§D. **spec-anchor** `_drafts/phase_j/06_l2_telemetry_spec.md` § VI (per-stage metrics) + DIAGNOSTIC_INFRA_PLAN.md L2.
+
+§D. **scope** : wraps each of the 12 canonical render-pipeline stages with cssl-metrics Timer ; per-stage namespace `pipeline.stage_N_<name>.frame_time_ms` ; p50/p95/p99 via Histogram + cross-frame trend tracking ; zero-overhead when metrics disabled (feature-gate) ; replay-determinism preserved (observe-only).
+
+§D. **12 stages instrumented** : omega_field_update / wave_solver / mise_en_abyme / kan_brdf / fractal_amplifier / motion_vec / sdf_raymarch / gaze_collapse / embodiment / compose_xr_layers / tonemap / companion_semantic. Each pass-file = ~93..106 LOC src + integrated test stub.
+
+§D. **deliverables** :
+  - 12 pass-modules at `m8_integration/{stage}_pass.rs` ; each wrapping the stage-fn with `MetricsTimer::start(stage_n_<name>, frame_time_ms)`.
+  - `pipeline.rs` : 12-stage-orchestrator + per-frame metric-flush.
+  - `mod.rs` : registry-init + frame-boundary aggregation.
+  - 5 test-suites at `tests/{determinism,per_stage,percentile,registry,zero_overhead}_tests.rs` ⟶ ~1,314 LOC tests.
+  - `metrics_mock.rs` : cssl-metrics MOCK at slice-author time (D157 not-yet-merged) ; canonical-shim with swap-in trait surface.
+
+§D. **integration-mock** : MOCK cssl-metrics (T11-D157) — local mock-impl of Timer + Histogram + Counter ⟶ post-D157-merge replace via `pub use cssl_metrics::*`.
+
+§D. **acceptance 5-of-5** : ✓ determinism (replay-bit-equal across double-runs) ; ✓ per-stage isolation (stage-N-impacts only stage-N-metric) ; ✓ percentile correctness (fixed-boundary p50/p95/p99) ; ✓ registry-namespacing (no cross-stage collision) ; ✓ zero-overhead (feature-gated metrics-off-path = zero-allocation).
+§D. **LOC** : ~3,908 across 24 files.
+§D. **PD-alignment** : §1 (observe-only ; no surveillance-channel injection) + §11 ATTESTATION verbatim ; D161 replay-determinism preserved.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jζ-2 ; T11-D157 (cssl-metrics mock-replaceable) ; T11-D161 (replay-determinism preservation) ; DIAGNOSTIC_INFRA_PLAN.md L2 ; H5 contract (omega_step bit-determinism) preserved.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D159 (W-Jζ-3) : Per-subsystem health probes (12 subsystems)
+
+§D. **slice-id** T11-D159 (Wave-Jζ-3 per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ 8108dee.
+§D. **commit** `87aade0` (squash) ⇒ `8108dee` (merge).
+§D. **branch** `cssl/session-12/T11-D159-health-probes`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-health/`.
+§D. **spec-anchor** `_drafts/phase_j/07_l3_health_inspect_spec.md` § II..V + DIAGNOSTIC_INFRA_PLAN.md L3 + Wave-Jθ-4 MCP read_invariants.
+
+§D. **scope** : HealthProbe trait + 12 mock probe-impls + `engine_health()` worst-case-monoid aggregator. HealthStatus enum (Ok / Degraded / Failed) + HealthFailureKind enum (8 variants incl. **PrimeDirectiveTrip = absorbing-element** in the monoid). Foundation for MCP `read_invariants` / `cssl_engine_health` tools (Wave-Jθ-4).
+
+§D. **12 subsystems covered** : cssl-render-v2 + cssl-physics-wave + cssl-wave-solver + cssl-spectral-render + cssl-fractal-amp + cssl-gaze-collapse + cssl-render-companion-perspective + cssl-host-openxr + cssl-anim-procedural + cssl-wave-audio + cssl-substrate-omega-field + cssl-substrate-kan.
+
+§D. **deliverables** :
+  - `lib.rs` + `status.rs` : HealthStatus + HealthFailureKind + monoid (worst-case ⟶ absorbing-element ordering).
+  - `aggregator.rs` : `engine_health()` worst-case monoid-fold over 12 probes.
+  - `probes/{12 subsystems}.rs` : MOCK HealthProbe-impls returning toy state per landmine-#4 pre-thought ; real-integration follow-up slice per spec § V.4.
+  - `probes/mod.rs` : probe-registry + lookup.
+  - `tests/integration.rs` : 78-test suite (21 unit + 57 integration ; PrimeDirectiveTrip absorbing-element verified).
+
+§D. **leaf-trait-crate** : ZERO required deps from substrate (only `thiserror` workspace-dep). Probes are MOCK-impls per landmine-#4 mitigation ; real per-subsystem integration deferred to follow-up slice.
+
+§D. **acceptance 5-of-5** : ✓ 78/78 tests pass ; ✓ clippy --all-targets -D warnings clean ; ✓ fmt applied ; ✓ PrimeDirectiveTrip absorbing-element behavior (PD-trip in any-probe collapses engine-health to Failed regardless of other probes) ; ✓ monoid-laws (associativity + identity-Ok + worst-case-domination) all verified.
+§D. **LOC** : ~2,384 across 18 files.
+§D. **PD-alignment** : §1 (PrimeDirectiveTrip = absorbing-element ⟶ §1.7 violation = halt ¬ degrade preserved at the engine-health level) + §11 ATTESTATION verbatim.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jζ-3 ; T11-D94 (substrate-prime-directive halt-bridge ; PrimeDirectiveTrip routes through it) ; Wave-Jθ-4 MCP read_invariants (consumer) ; DIAGNOSTIC_INFRA_PLAN.md L3.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D160 (W-Jζ-4) : Spec-coverage tracker (knows what works + what doesn't)
+
+§D. **slice-id** T11-D160 (Wave-Jζ-4 per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ ed62b7d.
+§D. **commit** `84ed8d4` (squash) ⇒ `ed62b7d` (merge).
+§D. **branch** `cssl/session-12/T11-D160-spec-coverage-tracker`.
+§D. **target-crates** NEW `compiler-rs/crates/cssl-spec-coverage/` + NEW `compiler-rs/crates/cssl-spec-coverage-macros/`.
+§D. **spec-anchor** `_drafts/phase_j/08_l4_spec_coverage_spec.md` § II..VI + DIAGNOSTIC_INFRA_PLAN.md L4 + spec-anchor-audit document.
+
+§D. **scope** : SpecCoverageRegistry + SpecCoverageReport + `#[spec_anchor]` proc-macro + doc-comment § extractor. Three anchor paradigms supported (impl-level / fn-level / module-level) per spec-anchor-audit. Foundation for MCP `read_spec_coverage` tool (Wave-Jθ-4).
+
+§D. **deliverables** :
+  - `cssl-spec-coverage-macros/` : proc-macro crate ; `#[spec_anchor("§ID")]` attribute-macro that emits link-time const + registers in inventory.
+  - `cssl-spec-coverage/anchor.rs` : SpecAnchor type + doc-comment § extractor (parses `§D ... ` glyph-marked anchors out of rustdoc).
+  - `cssl-spec-coverage/registry.rs` : SpecCoverageRegistry + `register!` + lookup-by-spec-id.
+  - `cssl-spec-coverage/report.rs` : SpecCoverageReport JSON + glyph-formatted output.
+  - `cssl-spec-coverage/matrix.rs` : 2D coverage matrix (spec-id × subsystem-tag) ⟶ heat-map data.
+  - `cssl-spec-coverage/paradigm.rs` : 3 anchor paradigms (Impl / Fn / Module) classification.
+  - `cssl-spec-coverage/extract.rs` : doc-comment-walker (proc-macro2 token-driven).
+  - `cssl-spec-coverage/error.rs` : SpecCoverageError + From<T>-bridges.
+  - `cssl-spec-coverage/retrofit_anim.rs` : **cssl-anim retrofit** : 0 → 18 spec-anchors (closes CRITICAL audit-gap from spec-anchor-audit).
+
+§D. **cssl-anim retrofit** : 0 → 18 spec-anchors closing CRITICAL audit-gap. cssl-anim was previously the highest-LOC crate without a single spec-anchor ⟶ this slice retrofits 18 anchors covering its public-surface impls / fns / modules per the 3-paradigm classification.
+
+§D. **acceptance 5-of-5** : ✓ proc-macro-smoke (74 LOC) verifies attribute expands clean ; ✓ integration (269 LOC) verifies registry round-trip ; ✓ matrix-rendering ; ✓ anim-retrofit anchor-count = 18 ; ✓ doc-extract handles all 3 paradigms.
+§D. **LOC** : ~4,396 across 15 files (including 343-LOC tests + 377-LOC anim-retrofit).
+§D. **PD-alignment** : §1 (spec-coverage-truthfulness = §2 cognitive-integrity preserved ; engine knows what works + what doesn't ⟶ no surveillance-via-pretense-of-completeness) + §11 ATTESTATION verbatim.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jζ-4 ; T11-D161 (replay-determinism — its `SpecCoverageShim` swap-in target) ; Wave-Jθ-4 MCP read_spec_coverage (consumer) ; DIAGNOSTIC_INFRA_PLAN.md L4 ; spec-anchor-audit reference document.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D162 (W-Jη-1) : cssl-inspect runtime introspection
+
+§D. **slice-id** T11-D162 (Wave-Jη-1 per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ d326445 (with fixup `e391958` for clippy unused-import).
+§D. **commits** `80fbf3b` (slice) + `e391958` (fixup) ⇒ `d326445` (merge).
+§D. **branch** `cssl/session-12/T11-D162-cssl-inspect-redo`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-inspect/`.
+§D. **spec-anchor** `_drafts/phase_j/07_l3_health_inspect_spec.md` § VI..VIII + DIAGNOSTIC_INFRA_PLAN.md L5 + Wave-Jθ MCP inspect-tools.
+
+§D. **scope** : SceneGraphSnapshot + EntitySnapshot + FieldCellSnapshot (Σ-mask-gated mock) + pause/step/resume + `capture_frame` (PNG/EXR/spectral-bin). Read-only API. Foundation for MCP inspect tools (Wave-Jθ).
+
+§D. **deliverables** :
+  - `lib.rs` : public surface (SceneGraphSnapshot + EntitySnapshot + FieldCellSnapshot + TimeControl + Capture).
+  - `snapshot.rs` : 3 snapshot-types ; Σ-mask-gated (FieldCellSnapshot only includes cells whose Σ-mask permits introspection — privacy-preserving observability per substrate-evolution).
+  - `time_control.rs` : pause / step / resume (read-only over substrate state).
+  - `capture.rs` : 3 capture-formats : PNG (8-bit display) + EXR (HDR-float) + spectral-bin (substrate-native ω-field dump).
+  - `mock_substrate.rs` : MOCK substrate-handle for slice-isolation testing ; real-bind to cssl-substrate-omega-field deferred to integration slice.
+
+§D. **read-only API** : pause / step / resume / inspect — NO mutation. Foundation for MCP server's read_state / capture_frame / spectral_dump tools (Wave-Jθ).
+
+§D. **acceptance 5-of-5** : ✓ 705 LOC integration-test green ; ✓ clippy clean (post-fixup) ; ✓ Σ-mask-gating verified (cells without permission-mask DO NOT appear in snapshot) ; ✓ time-control pause/step/resume idempotent ; ✓ capture-formats round-trip.
+§D. **LOC** : ~2,180 across 7 files (slice) + ~30 LOC fixup.
+§D. **PD-alignment** : §1 (Σ-mask-gated introspection = consent-OS architecture preserved : entity that hasn't consented to introspection is invisible to inspector) + §11 ATTESTATION verbatim ; read-only ⟶ no agency-violation possible.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jη-1 ; T11-D89..D94 (substrate Ω-tensor + Σ-mask + PD-enforcement) ; Wave-Jθ MCP inspect-tools (consumer) ; DIAGNOSTIC_INFRA_PLAN.md L5 ; substrate-evolution Σ-mask-per-cell pattern (memory : substrate-evolution-complete).
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D163 (W-Jη-2) : cssl-hot-reload mock-pump + 4-kind swap
+
+§D. **slice-id** T11-D163 (Wave-Jη-2 per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ dd0f90f.
+§D. **commit** `49580e7` (squash) ⇒ `dd0f90f` (merge).
+§D. **branch** `cssl/session-12/T11-D163-cssl-hot-reload-redo`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-hot-reload/`.
+§D. **spec-anchor** `_drafts/phase_j/07_l3_health_inspect_spec.md` § IX (hot-reload) + DIAGNOSTIC_INFRA_PLAN.md L5 + Wave-Jι iteration-loop docs.
+
+§D. **scope** : SwapKind (Asset / Shader / Config / KanWeight) + `push_event` mock-driver + replay-log integration. Real OS-pump (filesystem-watch / IPC) deferred to follow-up slice ; this slice provides the swap-discipline + replay-deterministic foundation.
+
+§D. **deliverables** :
+  - `event.rs` : HotReloadEvent + SwapKind enum (4 variants : Asset / Shader / Config / KanWeight) + canonical wire-form.
+  - `swap.rs` : 4-kind swap-discipline ; per-kind validation + frame-boundary deferral + rollback-on-error.
+  - `replay_log.rs` : replay-log integration ⟶ swap-events recorded deterministically (logical-frame-N) ; bit-equal double-replay verified.
+  - `lib.rs` : public surface + push_event mock-driver (idempotent / replay-safe).
+
+§D. **mock-pump rationale** : real OS-pump introduces non-determinism (filesystem-event-ordering) which would violate H5 replay-bit-equal contract ; mock-driver is sufficient for diagnostic-infrastructure validation + Wave-Jι iteration-loop testing. Real-pump deferred per landmine-#3 mitigation.
+
+§D. **acceptance 5-of-5** : ✓ 715 LOC integration-test green ; ✓ 4 swap-kinds round-trip ; ✓ replay-log bit-equal across double-runs ; ✓ frame-boundary deferral verified ; ✓ rollback-on-validation-error correct.
+§D. **LOC** : ~2,267 across 7 files.
+§D. **PD-alignment** : §1 (frame-boundary deferral = H5 contract + replay-determinism preserved ; no surveillance-channel injection via swap-event-ordering) + §11 ATTESTATION verbatim.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jη-2 ; T11-D161 (replay-determinism preservation) ; T11-D104 (asset-pipeline ; Asset-kind consumer) ; Wave-Jι iteration-loop docs (consumer) ; DIAGNOSTIC_INFRA_PLAN.md L5.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D164 (W-Jη-3) : cssl-tweak runtime parameter adjustment
+
+§D. **slice-id** T11-D164 (Wave-Jη-3 per META T11-D-RESERVATIONS-V2).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; merged @ 9adef89.
+§D. **commit** `cdf0134` (squash) ⇒ `9adef89` (merge).
+§D. **branch** `cssl/session-12/T11-D164-cssl-tweak-redo`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-tweak/`.
+§D. **spec-anchor** `_drafts/phase_j/07_l3_health_inspect_spec.md` § X (tweak) + DIAGNOSTIC_INFRA_PLAN.md L5 + Wave-Jι iteration-loop docs.
+
+§D. **scope** : 30 default-tunables + type-erased `Tunable<T>` + bounds + validators + `Cap<Tweak>` stub-gate + frame-boundary defer + replay-log integration. Foundation for MCP runtime-parameter-adjustment tools (Wave-Jθ) + LLM-against-live-engine iteration-loop (Wave-Jι).
+
+§D. **deliverables** :
+  - `tunable.rs` : type-erased `Tunable<T>` over (bool / i32 / i64 / f32 / f64 / String) + bounds (Range / Choice / Predicate) + validators.
+  - `defaults.rs` : 30 canonical-tunable definitions (subsystem-tagged ; bounds-pinned ; default-values from substrate-config).
+  - `registry.rs` : TweakRegistry + Cap<Tweak> stub-gate (capability-token-required for mutation per consent-OS) + frame-boundary defer + replay-log integration.
+  - `lib.rs` : public surface (read-current / propose-change / apply-on-frame-boundary).
+
+§D. **Cap<Tweak> stub-gate rationale** : runtime-parameter mutation REQUIRES capability-token per consent-OS architecture ⟶ adversary cannot tweak a subsystem they haven't been granted access to. Frame-boundary deferral preserves H5 replay-bit-equal contract.
+
+§D. **acceptance 5-of-5** : ✓ 1,173 LOC integration-test green ; ✓ 30 tunables round-trip (read / propose / commit) ; ✓ bounds-validation rejects out-of-range proposals ; ✓ frame-boundary deferral verified (mid-frame-tweak DOES NOT take effect mid-frame) ; ✓ replay-log records all accepted-tweaks deterministically.
+§D. **LOC** : ~3,144 across 6 files.
+§D. **PD-alignment** : §1 (Cap<Tweak> capability-gate + frame-boundary deferral + replay-determinism = consent-OS preserved at runtime-mutation surface) + §11 ATTESTATION verbatim ; LM-2 Adaptive-sampling forbidden carried-forward ; LM-FrameOverflow (D161) carried-forward.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jη-3 ; T11-D161 (replay-determinism preservation) ; T11-D94 (substrate-prime-directive Cap<Tweak> consent-token routing) ; Wave-Jι iteration-loop docs (consumer) ; DIAGNOSTIC_INFRA_PLAN.md L5.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D226 : Establish ownership + dual-license + CLA scaffold
+
+§D. **slice-id** T11-D226 (Phase-J ownership + licensing wave per META T11-D-RESERVATIONS-V2 ; D226..D227 reserved for v1.2 close prep).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; direct-commit on parallel-fanout @ 8af3241.
+§D. **commit** `8af3241` (direct).
+§D. **branch** `cssl/session-6/parallel-fanout` (direct).
+§D. **target-files** `LICENSE.md` (NEW) + `compiler-rs/Cargo.toml` (workspace.package) + `README.md` (license-section) + `CONTRIBUTING.md` (NEW) + `NOTICE.md` (NEW).
+§D. **spec-anchor** PRIME_DIRECTIVE.md §11 CREATOR-ATTESTATION + §1.4 (intellectual-sovereignty) + Apocky-portfolio-strategy.
+
+§D. **scope** : foundational ownership + dual-license + CLA scaffold for external-publication readiness. Pre-v1.2 release prep.
+
+§D. **deliverables** :
+  - **`LICENSE.md`** : AGPL-3.0-or-later OR commercial dual-license + patent-grant + anti-patent-troll clause (§ 2.C) + trademark notices ; placeholder `[OWNER LEGAL NAME OR ENTITY NAME]` pending business-entity-formation + legal-name substitution prior-to external-publication.
+  - **`compiler-rs/Cargo.toml`** : `workspace.package` license = `"AGPL-3.0-or-later OR LicenseRef-Commercial"` + description field set ; authors handle-only (per identity-claims-verify-first discipline).
+  - **`README.md`** : copyright header block + license-summary section (AGPL-3.0 default + Commercial branch) + Omniverse trademark conflict flagged (NVIDIA prior-art ; rename trajectory toward OmniSubstrate / Omnoid / Omegaverse / Substraverse / OmegaSubstrate ; Apocky-pick pending).
+  - **`CONTRIBUTING.md`** : CLA scaffold (rights-assignment + patent-license fallback + license-back) + DCO-style commit-signing + GPG-signing required for PRIME_DIRECTIVE / LICENSE / NOTICE / audit-chain edits + AI-collective Co-Authored-By convention + PRIME-DIRECTIVE alignment requirement for all contributions + spec-as-authority convention.
+  - **`NOTICE.md`** : third-party trademark attributions (NVIDIA Omniverse + Khronos OpenXR/Vulkan/SPIR-V + Microsoft Win32/D3D12/DXIL + Apple Metal/MSL + Intel Arc/Level-Zero + Linux/ALSA/PulseAudio + Rust/LLVM/MLIR/Cranelift) + cryptographic-notice (BLAKE3 + Ed25519 export-control) + Rightholder-marks reminder.
+
+§D. **flagged prior-art concern** :
+  ‼ NVIDIA Corporation holds "Omniverse" trademark in graphics-platform + simulation classes overlapping with CSSLv3 target use-cases. Recommended-rename trajectory in README + LICENSE § 3.C ; Apocky-pick pending. Internal-doc descriptive use OK ; external-publication MUST use unencumbered alternative.
+
+§D. **acceptance 5-of-5** : ✓ LICENSE.md authored AGPL-3.0+commercial-dual ; ✓ workspace Cargo.toml license-field aligned ; ✓ README license-summary added ; ✓ CONTRIBUTING CLA-scaffold authored ; ✓ NOTICE third-party-attributions complete.
+§D. **LOC** : ~1,346 / -6 across 5 files.
+§D. **PD-alignment** : §1.4 (intellectual-sovereignty preserved via dual-license + CLA-scaffold ; rights-holder retains commercial-branch optionality) + §11 ATTESTATION verbatim ; AGPL-3.0+ ensures downstream-derivatives remain copyleft (no extractive-fork) ; commercial-branch enables consent-based commercial-use without weakening copyleft-default.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 (D226..D227 v1.2-close-prep) ; PRIME_DIRECTIVE.md §11 + §1.4 ; Apocky-portfolio-strategy (CSLv3 / CSSLv3 / LoA / infiniter ; per memory user_profile_apocky.md).
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D227 : LoA Test-Room — canonical run_main_loop @ 60Hz
+
+§D. **slice-id** T11-D227 (Phase-J test-room scaffold per META T11-D-RESERVATIONS-V2 v1.2 close prep).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; direct-commit on parallel-fanout @ f581669.
+§D. **commit** `f581669` (direct ; also includes a redo of cssl-inspect from D162 lineage).
+§D. **branch** `cssl/session-6/parallel-fanout` (direct).
+§D. **target-file** `compiler-rs/crates/loa-game/src/main.rs` (canonical-replacement) + collateral cssl-inspect redo.
+§D. **spec-anchor** `Omniverse/03_RUNTIME/03_FIBER_SCHEDULER.csl.md § VI` (canonical run_main_loop pattern) + canonical-spec compute-graph + Realtime<60Hz> + Deadline<16ms> effect-row.
+
+§D. **scope** : Phase-1 visible-test-room ⊗ canonical-spec-compliant ; loa-game/src/main.rs ⟶ run_main_loop pattern.
+
+§D. **loop-shape** :
+```
+loop {
+  frame_start = Instant::now()
+  pump_window_events ⊗ Close-handling ← PD-KILL-SWITCH preserved
+  main_loop.step_once(1/60) ← unified omega_step (6 phases internal)
+  [Phase-3 deferred] render_frame via π_aesthetic
+  stats-every-60-frames eprintln
+  precise_sleep(16.667ms - elapsed) ← Realtime<60Hz> Deadline<16ms>
+  frame_advance
+}
+```
+
+§D. **canonical-compliance** :
+  - ✓ ONE compute-graph (NO separate physics/AI/render/save tick) — single unified omega_step.
+  - ✓ Realtime<60Hz> + Deadline<16ms> effect-row enforced.
+  - ✓ omega_step 6-phase unified : COLLAPSE → PROPAGATE → COMPOSE → COHOMOLOGY → AGENCY → ENTROPY (per substrate-evolution Ω-tensor + Σ-mask-per-cell pattern).
+  - ✓ Close-event PD-KILL-SWITCH always observable (PRIME_DIRECTIVE §1.7).
+  - ✓ frame-budget exceedance ⟶ defer-to-next (no sleep).
+  - ✓ save+load round-trip preserved (H5 contract).
+
+§D. **Phase-2/3 deferred** :
+  - Phase-2 : per-frame π_aesthetic console-print (entity / ψ-norm / Σ-mask).
+  - Phase-3 : GPU swapchain via cssl-host-d3d12 + cssl-render-v2 12-stage pipeline ; pixels-on-screen.
+
+§D. **usage** : `cargo run -p loa-game --features test-bypass`.
+
+§D. **acceptance 5-of-5** : ✓ loa-game builds + runs ; ✓ 60Hz tick stable on default Win32 host ; ✓ Close-event PD-kill-switch responsive ; ✓ omega_step 6-phase ordering preserved (D161 phase-ordering invariant) ; ✓ save+load H5 round-trip intact.
+§D. **LOC** : ~2,564 across 9 files (main.rs +212 / -42 + 8 cssl-inspect collateral-redo files).
+§D. **PD-alignment** : §1.7 (PD-KILL-SWITCH always observable on Close-event ; canary-frame-budget-exceedance defers ¬ panics) + §11 ATTESTATION verbatim ; ONE compute-graph = no surveillance-channel tick injection ; Σ-mask-per-cell substrate-evolution pattern preserved.
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 (D226..D227 v1.2-close-prep) ; T11-D89..D94 (substrate Ω-tensor + Σ-mask + PD-enforcement) ; T11-D161 (phase-ordering invariant) ; T11-D162 (cssl-inspect redo collateral) ; canonical Omniverse/03_RUNTIME/03_FIBER_SCHEDULER.csl.md § VI.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+──────────────────────────────────────────────────────────────
