@@ -443,6 +443,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-anim-procedural"
+version = "0.1.0"
+dependencies = [
+ "cssl-anim",
+ "cssl-pga",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-omega-step",
+ "cssl-substrate-projections",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-asset"
 version = "0.1.0"
 dependencies = [
