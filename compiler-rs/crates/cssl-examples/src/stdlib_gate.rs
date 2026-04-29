@@ -22,6 +22,16 @@
 //!                              syntactic-recognizer-emitted `cssl.fs.*` ops
 //!                              with the `(io_effect, "true")` marker for
 //!                              {IO} effect-row threading.
+//!   - `stdlib/omega.cssl`   — `OmegaTensorR1` / `OmegaTensorR2` /
+//!                              `OmegaTensorR3` + free-fn method surface +
+//!                              `omega_mutate_marker` (S8-H1 / T11-D89). The
+//!                              authoritative engine lives in the Rust-host
+//!                              crate `cssl-substrate-omega-tensor` ; this
+//!                              source file is the surface form. The
+//!                              `(omega_mutate, "true")` marker is the
+//!                              effect-row attribute attached by the (deferred)
+//!                              `cssl_mir::body_lower` recognizer for mutating
+//!                              `cssl.omega.*` ops.
 //!
 //! § ACCEPTANCE
 //!   - lexer produces a non-trivial token stream
@@ -81,6 +91,15 @@ pub const STDLIB_FS_SRC: &str = include_str!(concat!(
     "/../../../stdlib/fs.cssl"
 ));
 
+/// `stdlib/omega.cssl` source, embedded at compile-time. Added at S8-H1
+/// (T11-D89) ; tracks the OmegaTensor (multi-dimensional state container)
+/// source-level surface. The authoritative engine lives in the Rust-host
+/// crate `cssl-substrate-omega-tensor`.
+pub const STDLIB_OMEGA_SRC: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../stdlib/omega.cssl"
+));
+
 /// Run the stage-0 front-end (lex + parse + HIR-lower) against every
 /// stdlib file and return the per-file outcome vector.
 #[must_use]
@@ -91,14 +110,15 @@ pub fn all_stdlib_outcomes() -> Vec<crate::PipelineOutcome> {
         pipeline_example("stdlib/vec", STDLIB_VEC_SRC),
         pipeline_example("stdlib/string", STDLIB_STRING_SRC),
         pipeline_example("stdlib/fs", STDLIB_FS_SRC),
+        pipeline_example("stdlib/omega", STDLIB_OMEGA_SRC),
     ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        all_stdlib_outcomes, pipeline_example, STDLIB_FS_SRC, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC,
-        STDLIB_STRING_SRC, STDLIB_VEC_SRC,
+        all_stdlib_outcomes, pipeline_example, STDLIB_FS_SRC, STDLIB_OMEGA_SRC, STDLIB_OPTION_SRC,
+        STDLIB_RESULT_SRC, STDLIB_STRING_SRC, STDLIB_VEC_SRC,
     };
 
     #[test]
@@ -224,15 +244,82 @@ mod tests {
     }
 
     #[test]
-    fn all_stdlib_outcomes_returns_five() {
+    fn all_stdlib_outcomes_returns_six() {
         let outs = all_stdlib_outcomes();
-        assert_eq!(outs.len(), 5);
+        assert_eq!(outs.len(), 6);
         let names: Vec<_> = outs.iter().map(|o| o.name.as_str()).collect();
         assert!(names.contains(&"stdlib/option"));
         assert!(names.contains(&"stdlib/result"));
         assert!(names.contains(&"stdlib/vec"));
         assert!(names.contains(&"stdlib/string"));
         assert!(names.contains(&"stdlib/fs"));
+        assert!(names.contains(&"stdlib/omega"));
+    }
+
+    // ── S8-H1 (T11-D89) OmegaTensor stdlib coverage ─────────────────────
+
+    #[test]
+    fn stdlib_omega_src_non_empty() {
+        assert!(!STDLIB_OMEGA_SRC.is_empty());
+        // Markers : the per-rank type-defs.
+        assert!(STDLIB_OMEGA_SRC.contains("struct OmegaTensorR1<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("struct OmegaTensorR2<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("struct OmegaTensorR3<T>"));
+        // Markers : per-rank constructors.
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_new_r1<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_new_r2<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_new_r3<T>"));
+        // Markers : inspector + accessor surface.
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_rank_r1<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_numel_r1<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_is_empty_r1<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_get_r1<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_get_r2<T>"));
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_get_r3<T>"));
+        // Markers : drop surface (deferred body).
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_drop_r1<T>"));
+        // Marker : the canonical effect-row marker fn.
+        assert!(STDLIB_OMEGA_SRC.contains("fn omega_mutate_marker"));
+    }
+
+    #[test]
+    fn stdlib_omega_tokenizes() {
+        let out = pipeline_example("stdlib/omega", STDLIB_OMEGA_SRC);
+        assert!(
+            out.token_count > 0,
+            "stdlib/omega.cssl must tokenize : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_omega_parses_without_errors() {
+        let out = pipeline_example("stdlib/omega", STDLIB_OMEGA_SRC);
+        assert_eq!(
+            out.parse_error_count,
+            0,
+            "stdlib/omega.cssl must parse cleanly through stage-0 : {}",
+            out.summary()
+        );
+        // Three OmegaTensor structs (R1/R2/R3) + three OmegaIter structs +
+        // many fns + worked examples ⇒ at least 5 top-level CST items.
+        assert!(
+            out.cst_item_count >= 5,
+            "stdlib/omega.cssl must yield ≥ 5 CST items (structs + fns) : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_omega_hir_has_struct_and_fns() {
+        let out = pipeline_example("stdlib/omega", STDLIB_OMEGA_SRC);
+        // Three R1/R2/R3 type-defs + three OmegaIter type-defs +
+        // numerous fns ⇒ at least 12 HIR items.
+        assert!(
+            out.hir_item_count >= 12,
+            "stdlib/omega.cssl must yield ≥ 12 HIR items : {}",
+            out.summary()
+        );
     }
 
     #[test]

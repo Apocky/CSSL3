@@ -657,6 +657,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-omega-tensor"
+version = "0.1.0"
+dependencies = [
+ "cssl-rt",
+]
+
+[[package]]
 name = "cssl-telemetry"
 version = "0.1.0"
 dependencies = [

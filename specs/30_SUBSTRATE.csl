@@ -1,0 +1,203 @@
+# 30 : SUBSTRATE — LoA Substrate engine plumbing
+# ══════════════════════════════════════════════════════════════════
+#
+# § AUTHORSHIP
+#   Started : Session-8 H1 / T11-D89 (S8-H1)
+#   Co-author : H0 design-agent (cssl/session-8/H0-design) — when that
+#               branch lands, integrate any divergent canonical design
+#               choices via DECISIONS sub-entry.
+#
+# § ROLE
+#   The Substrate is the foundational state-substrate of the LoA Omniverse.
+#   Phase H lands one engine slice at a time :
+#     H1  Ω-tensor type + canonical ops              (this slice)
+#     H2  non-contiguous views + arbitrary strides   (deferred)
+#     H3  broadcasting elementwise                   (deferred)
+#     H4  rank-2 matmul + dot product (rank-reducing) (deferred)
+#     H5  serialization + IO + explicit consent gate (deferred)
+#     H6  SIMD-vector element types                  (deferred)
+#
+# § PRIME-DIRECTIVE attestation
+#   Substrate components must preserve consent, opacity, and substrate-
+#   sovereignty per `PRIME_DIRECTIVE.md` :
+#     - tensor data is OPAQUE TO THE RUNTIME by default (no introspection
+#       logging, no payload bytes leave the process)
+#     - serialization requires explicit consent (deferred to H5 ; gate
+#       declared but not yet wired)
+#     - mutating ops carry effect-row markers `(omega_mutate, "true")`
+#       so capability + audit walkers can find them without bulk
+#       readback
+#     - element-type set is substrate-sovereign : f32 / f64 / i32 / i64
+#       at H1 ; SIMD-vector element-types deferred ; no element-type is
+#       privileged over another
+
+§ OMEGA-TENSOR (S8-H1 / T11-D89 — canonical multi-dimensional state container)
+
+  § SURFACE
+    Rust-host engine crate : `cssl-substrate-omega-tensor`
+    Source-level surface   : `stdlib/omega.cssl`
+
+    types :
+      OmegaTensor<T : OmegaScalar, const R : usize>     // owned, iso
+      OmegaTensorIso<'a, T, R>                          // phantom borrow
+      OmegaView<'a, T, R>                               // non-owning view
+      OmegaIter<'a, T, R>                               // forward iterator
+
+    trait :
+      OmegaScalar : Copy + Default + PartialEq + Debug + 'static
+        impl-set @ H1 : f32, f64, i32, i64
+
+    canonical ops :
+      new(shape : [u64 ; R]) -> OmegaTensor<T, R>
+      from_iter(shape, iter) -> OmegaTensor<T, R>
+      get(indices : [u64 ; R]) -> Option<T>
+      set(indices, value) -> bool
+      shape() -> [u64 ; R]
+      rank() -> usize    (== R)
+      numel() -> u64
+      iter() -> OmegaIter<T, R>
+      slice_along(axis, range) -> Option<OmegaView<T, R>>
+      reshape::<R2>(new_shape : [u64 ; R2]) -> Option<OmegaTensor<T, R2>>
+      add / sub / mul / div                             // out-of-place
+      add_assign / sub_assign / mul_assign / div_assign // in-place
+      take() -> (*mut u8, [u64 ; R], u64)               // detach storage
+      share_iso(&mut self) -> OmegaTensorIso<'_, T, R>
+
+  § INVARIANTS
+    rank() == R                                        // compile-time
+    numel() == shape.iter().product()                  // cached
+    numel() == 0 ⟺ data.is_null()
+    numel() > 0 ⇒ data points to numel × sizeof T bytes of properly-
+                     aligned heap storage
+    strides[R-1] == 1
+    strides[i] == shape[i+1] * strides[i+1]            // row-major
+
+  § HEAP DISCIPLINE
+    every owned OmegaTensor allocates through cssl_rt::raw_alloc
+      (T11-D52 baseline + T11-D57 heap-op surface) with :
+        size  = numel × sizeof T
+        align = max(8, alignof T)
+    empty tensor reserves no storage (data == null)
+    Drop pairs every successful alloc with cssl_rt::raw_free
+    reshape preserves the underlying allocation byte-for-byte
+      (only strides are recomputed)
+
+  § CAPABILITY (specs/12_CAPABILITIES.csl § ISO-OWNERSHIP)
+    OmegaTensor<T, R> is iso-owned :
+      no Clone impl                          // ¬ aliasing on storage
+      no Copy impl                           // exclusive owner
+      Send : OK                              // exclusive transfer
+      ¬ Sync                                 // shared concurrent access
+                                              // belongs to box/val caps
+
+    OmegaTensorIso<'a, T, R> :
+      ¬ Clone, ¬ Copy                        // mirror GpuBufferIso pattern
+      borrows &mut OmegaTensor for 'a        // borrow-checker enforces
+                                              // single-writer discipline
+
+    OmegaView<'a, T, R> :
+      Copy : OK (it's just metadata + a *const ptr borrowed for 'a)
+      records ONE-axis sub-range at H1 ; full stride permutations @ H2
+
+  § AUTODIFF (specs/05_AUTODIFF.csl § INTERFACES integration)
+    OmegaTensor<f32, R> + OmegaTensor<f64, R> : AD-compatible
+      Tangent type = OmegaTensor<f32, R> / OmegaTensor<f64, R>
+
+    elementwise op decomposition :
+      add(a, b)      ⇒ ∀ i : arith.addf a[i], b[i] -> out[i]
+      sub(a, b)      ⇒ ∀ i : arith.subf a[i], b[i] -> out[i]
+      mul(a, b)      ⇒ ∀ i : arith.mulf a[i], b[i] -> out[i]
+      div(a, b)      ⇒ ∀ i : arith.divf a[i], b[i] -> out[i]
+
+    AD walker integration (cssl_autodiff::walker::op_to_primitive) :
+      arith.addf ⇒ Primitive::FAdd  ✓ existing rule
+      arith.subf ⇒ Primitive::FSub  ✓
+      arith.mulf ⇒ Primitive::FMul  ✓
+      arith.divf ⇒ Primitive::FDiv  ✓
+
+    ∴ no tensor-aware AD rule required at H1 ; per-element AD via
+      existing rule-table is correct + complete for elementwise ops.
+
+    rank-reducing ops (dot, matmul) : H4-deferred ; will require new
+      tensor-aware AD primitives (DotProduct / MatMul) when they land.
+
+  § PRIME-DIRECTIVE THREADING
+    OPAQUE-BY-DEFAULT :
+      Debug impl emits metadata only (rank / shape / numel / data_present)
+      no bulk payload readback API at H1
+      element-cell readback via .get() is per-cell-explicit only
+
+    CONSENT GATE (deferred to H5) :
+      serialization (`omega_serialize` / `omega_deserialize`) requires
+        explicit consent token + audit-policy accept
+      no bulk readback API exists at H1 ; H5 will add it under explicit
+        consent
+
+    EFFECT-ROW MARKER :
+      mutating ops emit (omega_mutate, "true") attribute
+        on the cssl.omega.<verb> MIR op
+      OMEGA_MUTATE_ATTR const = "omega_mutate" (Rust-host crate)
+      mirrors T11-D76 (io_effect, "true") pattern
+
+    NO TELEMETRY-WITHOUT-CONSENT :
+      OmegaTensor does NOT emit any telemetry events at H1
+      cssl-rt allocator counters track bytes (existing T11-D52 surface)
+        but do not reveal payload content
+      future H5 telemetry integration will be opt-in per explicit-consent
+        gate
+
+  § STAGE-0 SCOPE (H1)
+    element-types  : f32, f64, i32, i64                  ✓
+    rank-set       : R = 0..N (Rust const-generic)        ✓
+    shape          : runtime [u64 ; R]                    ✓
+    strides        : runtime row-major (C-order)          ✓
+    empty tensor   : numel == 0 valid edge case          ✓
+    reshape        : numel-preserving                    ✓
+    elementwise    : add, sub, mul, div + assign-variants ✓
+    iter           : row-major forward iterator           ✓
+    slice_along    : ONE-axis sub-range view              ✓
+    iso-borrow     : OmegaTensorIso<'a> phantom borrow    ✓
+
+    DEFERRED (H2..H6) :
+      arbitrary stride permutations / non-contiguous views    H2
+      broadcasting elementwise (shape-extension)              H3
+      dot product (rank-reducing)                             H4
+      matmul (rank-2 × rank-2)                                H4
+      serialization + IO + explicit consent gate              H5
+      SIMD-vector element types (vec3, vec4, mat)             H6
+      source-level recognizer in cssl_mir::body_lower         H1+
+      typed memref.load/store for tensor data                 post-S6-C3
+      Drop integration via trait-dispatch                     post-trait
+      GPU-target lowering for cssl.omega.* ops                Phase-D
+
+  § DIAGNOSTIC CODES (reserved for future emit slices)
+    OMG0001  ShapeMismatch              { fn_name, lhs : Vec<u64>, rhs : Vec<u64> }
+    OMG0002  IndexOutOfBounds           { fn_name, axis : usize, index : u64, bound : u64 }
+    OMG0003  ReshapeNumelMismatch       { fn_name, old_numel : u64, new_numel : u64 }
+    OMG0004  ConsentRequired            { fn_name, surface : &'static str }
+       (H5 — serialization-without-consent rejection)
+    OMG0005  RankMismatch               { fn_name, expected : usize, actual : usize }
+       (H4 — rank-reducing op invariant)
+
+    H1 emits NONE of these at runtime ; they are the canonical names
+    reserved for the source-level recognizer slice + the runtime
+    diagnostic surface that lands once the source-level surface flows
+    end-to-end. Renaming requires lock-step changes across cssl-mir +
+    cssl-substrate-omega-tensor + cssl-cgen + the diagnostic catalog.
+
+§ INTEGRATION POINTS
+  - cssl-rt T11-D52 baseline (raw_alloc / raw_free) — used directly
+    by every owned OmegaTensor at allocation + drop time
+  - cssl-rt T11-D57 cssl.heap.alloc MIR op surface — the source-level
+    omega.cssl recognizer (deferred) lowers omega_new_r{R} through this
+  - cssl-mir T11-D69 / T11-D71 / T11-D76 generic-collection surface
+    pattern — omega.cssl mirrors this style
+  - specs/12_CAPABILITIES.csl § ISO-OWNERSHIP — iso-cap is the default
+    capability for OmegaTensor data
+  - specs/05_AUTODIFF.csl § INTERFACES — IDifferentiable for f32/f64
+    tensor types via per-element decomposition (existing AD rule
+    table covers all H1 ops)
+  - specs/22_TELEMETRY.csl — H1 does NOT emit telemetry events ; H5
+    integration is gated on explicit consent
+
+∎ SUBSTRATE
