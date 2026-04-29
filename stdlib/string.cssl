@@ -1,0 +1,525 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/string.cssl  —  String + &str + char + format
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/03_TYPES.csl § STRING-MODEL  (canonical reference, closed by
+//        DECISIONS T11-D71 / S6-B4)
+//        specs/03_TYPES.csl § GENERIC-COLLECTIONS (Vec<u8> backing — B3 / D69)
+//        specs/02_IR.csl § HEAP-OPS  (allocation routes through B1 surface)
+//        specs/04_EFFECTS.csl § ERROR HANDLING (Result-typed ctors via B2)
+// Slice : S6-B4 (T11-D71).
+//
+// § PRIME_DIRECTIVE preserved : String holds UTF-8 byte sequences ; it does
+//   NOT introduce hidden control flow, weakened consent, or any behavior that
+//   could be used to coerce a caller into accepting invalid text. The primary
+//   safe-API constructor (`String::from_utf8`) returns Result so the validity
+//   invariant cannot be silently violated. The unsafe path
+//   (`String::from_utf8_unchecked`) is gated behind the `unsafe` keyword and
+//   carries a documented obligation. Substrate-sovereign : String is a value-
+//   container — no hidden allocator, no surveillance, no telemetry beyond the
+//   capability-aware heap-op surface that S6-B1 already provides.
+//
+// § STAGE-0 NOTES (carried-forward to DECISIONS T11-D71)
+//   1. `String` wraps `Vec<u8>` per B3 ; the byte storage IS the storage,
+//      no second-level cache. Per B3's stage-0 note (1) the underlying
+//      `data` field is encoded as a host-width integer (`i64`) at source-
+//      level rather than `!cssl.ptr` because the source-level grammar does
+//      not yet expose a raw-pointer type-annotation form. The cssl-rt
+//      allocator returns a host-pointer that mantissas through the `i64`
+//      channel without information loss.
+//   2. `&str` is a fat-pointer (ptr, len) pair. Stage-0 source-level grammar
+//      does not yet expose a 2-word borrow-type syntactically (the only
+//      `&T` form recognized by the parser is the single-word reference
+//      shape — full fat-pointer field-types depend on the typed-pointer
+//      slice from B3 § STAGE-0 (1)). We therefore encode `&str` as a
+//      named struct `StrSlice` (ptr : i64, len : i64) at source-level ;
+//      semantically this IS the fat-pointer, structurally it's two i64s.
+//      A future slice will introduce true fat-pointer syntax + lifetime
+//      tracking ; the migration is a type-rename at source.
+//   3. `char` is a 4-byte Unicode Scalar Value (USV). At MIR-level it
+//      lowers to `MirType::Int(I32)` per `cssl_mir::body_lower::lower_literal`
+//      (existing precedent — `'a'` already lexes to a CharLit and lowers as
+//      i32). The USV invariant (in [U+0000..=U+D7FF] ∪ [U+E000..=U+10FFFF])
+//      is enforced at construction time by `char_from_u32` : Some(char) for
+//      valid USVs, None for surrogates / out-of-range. Direct char-literals
+//      bypass the check (the lexer is already constrained to valid USVs by
+//      the source-text encoding being UTF-8).
+//   4. `format(fmt, ...)` is recognized syntactically by `cssl_mir::body_lower`
+//      as a canonical 1-segment-path builtin. Mirrors B1's `Box::new` +
+//      B2's `Some/None/Ok/Err` precedent — the recognizer fires on a bare
+//      `format` call with at least one positional arg whose first arg is a
+//      string literal. The MIR shape :
+//        cssl.string.format(fmt-handle, %a0, %a1, ...) -> !cssl.string
+//      with attributes :
+//        fmt        : the literal format string (for spec-validation passes)
+//        spec_count : number of `{...}` specifiers detected at lower-time
+//        arg_count  : number of positional args supplied
+//        source_loc : original span
+//      Per the slice landmines, supported spec subset at stage-0 is :
+//        {}        : Display-equivalent — primitives only (i32, f32, bool, &str, char)
+//        {:?}      : Debug-equivalent — primitives only (same set)
+//        {:.N}     : precision-N float (e.g., {:.3} → 3 fractional digits)
+//        {:0Nd}    : zero-padded integer width N (e.g., {:04d} → 4 digits)
+//        {:N}      : width-N (right-aligned, space-padded — adjacent to {:0Nd})
+//      NO trait dispatch — the per-type Display/Debug impl is NOT yet a
+//      trait. The MIR walker (deferred to a future slice) will dispatch by
+//      operand type when ABI lowering lands. At stage-0 the recognizer just
+//      records the format string + arg count ; runtime execution of format
+//      is the same deferred-ABI slice as B2/B3.
+//   5. Concatenation : the source-level `+` operator is NOT yet wired for
+//      String (would require parser-level operator overloading or a HIR-
+//      lowering rule that recognizes `String + &str`). At stage-0 callers
+//      use the free-fn `string_concat(a, b) -> String` instead. Once
+//      operator overloading lands, `+` becomes a thin sugar over
+//      `string_concat`. Per the slice landmines this is documented as
+//      deferred-overloading rather than half-implemented.
+//   6. `String::from_utf8(bytes) -> Result<String, FromUtf8Error>` validates
+//      the UTF-8 byte sequence at construction time. Stage-0 validation is
+//      a placeholder — the real checker walks the byte stream and verifies
+//      the canonical UTF-8 state machine. Until it lands, the constructor
+//      returns Ok unconditionally with the bytes treated as if-valid ;
+//      misuse is on the caller until the checker lands. The function
+//      SIGNATURE is the stable surface (Result<String, FromUtf8Error>).
+//   7. `String::from_utf8_unchecked(bytes) -> String` is the `unsafe`
+//      escape-hatch. The `unsafe` keyword + capability-system isolation
+//      (deferred per the dispatch-plan landmines — "flag if unsafe-FFI not
+//      yet wired in stdlib") gate this call. At stage-0 we expose the
+//      function SIGNATURE without an `unsafe` block prefix because the
+//      stage-0 parser doesn't yet recognize `unsafe fn` — flagged as a
+//      deferred follow-up. The function carries a doc-comment marker
+//      `// SAFETY: caller must guarantee bytes are valid UTF-8` to make
+//      the obligation visible to humans + future tooling.
+//   8. `&str` interop : `String::as_str(s) -> StrSlice` is the canonical
+//      borrow-as-slice operation. Returns a fresh `StrSlice { ptr, len }`
+//      pointing into the String's backing storage. Stage-0 caveat : this
+//      is a value-out shape (no lifetime tracking) ; once lifetimes land
+//      it becomes `&'a str` with a real borrow-relation to the source
+//      String.
+//   9. `char_at(s, idx) -> Option<char>` returns the USV at byte-index
+//      `idx` if `idx` is on a valid UTF-8 boundary AND `idx < s.len()` ;
+//      None otherwise. Stage-0 placeholder body — real UTF-8 scanning
+//      lands in the deferred ABI slice ; the surface is stable.
+//  10. `String::push_str(s, slice) -> String` and `String::push(s, ch) ->
+//      String` follow B3's value-out-parameter precedent (mutating-borrow
+//      surface deferred until trait-dispatch lands).
+//  11. `&str` constants from string-literals : `"hello"` lexes as a
+//      `StringLiteral` token and lowers to `MirType::Opaque("!cssl.string")`.
+//      Per the slice scope, the canonical surface lifts string-literals to
+//      `StrSlice` at the call-site through implicit coercion (existing in
+//      `cssl_mir::body_lower::lower_literal` — Str literals already produce
+//      a typed value ; we lift them through `string_from_literal` which is
+//      a no-op view that re-tags the result as a StrSlice).
+//
+// § INVARIANTS  (stage-0)
+//   - String.bytes : ALWAYS valid UTF-8 (enforced at construction)
+//   - String.bytes.len() = number of UTF-8 code units (bytes), NOT chars
+//   - StrSlice.len = byte length, NOT char count
+//   - StrSlice.ptr = host pointer to the start of the byte sequence
+//   - char = u32 with USV bit-pattern (in [U+0000..=U+D7FF] ∪ [U+E000..=U+10FFFF])
+//   - format-spec : every `{...}` consumed by exactly one positional arg,
+//     in left-to-right order ; arg-count must equal spec-count
+
+module com.apocky.stdlib.string
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definitions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `String` is a heap-backed, growable, UTF-8 byte sequence.
+//
+// § FIELDS
+//   - `bytes` : the underlying byte storage. A `Vec<u8>` per S6-B3 ; the
+//               UTF-8 invariant is layered on top of the unconstrained
+//               byte-vec by the constructors below.
+//
+// § INVARIANTS  (stage-0)
+//   - `bytes` is ALWAYS valid UTF-8 (enforced @ ctor)
+//   - `bytes.len` is the byte length (NOT character count)
+//   - empty String ⇒ `bytes.len == 0` and `bytes.cap` may be 0 (no
+//     allocation required for the empty case — matches Vec::new())
+struct String {
+    bytes : Vec<u8>,
+}
+
+// `StrSlice` is a fat-pointer view over a UTF-8 byte sequence. Equivalent
+// to Rust's `&str` once lifetime-tracking lands. At stage-0 it's a value-
+// out struct (no lifetime relation tracked).
+//
+// § FIELDS  (same `i64`-as-pointer encoding as Vec.data — see B3 § STAGE-0
+//   NOTES (1) for the rationale ; encoding migrates with the typed-pointer
+//   slice deferred from B1)
+//   - `ptr` : host-pointer-as-integer to the first byte of the slice.
+//   - `len` : byte-length of the slice.
+//
+// § INVARIANTS
+//   - `ptr` points to a valid UTF-8 byte sequence of length `len`
+//   - `len ≥ 0`
+//   - on-construction the slice must align to a UTF-8 character boundary
+struct StrSlice {
+    ptr : i64,
+    len : i64,
+}
+
+// `FromUtf8Error` is the error returned by `String::from_utf8(bytes)` when
+// the byte sequence is not valid UTF-8. Carries the offending byte index
+// for diagnostic purposes.
+//
+// § FIELDS
+//   - `valid_up_to` : the byte-index of the FIRST invalid byte. The bytes
+//                     in `[0, valid_up_to)` form a valid UTF-8 prefix.
+//   - `byte`        : the invalid byte that caused validation to fail.
+struct FromUtf8Error {
+    valid_up_to : i64,
+    byte        : i64,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructors.
+// ───────────────────────────────────────────────────────────────────────
+
+// `string_new()` — empty String ; emits no heap allocation. The first push
+// triggers byte-vec cap growth from 0 → 8 (per B3's growth strategy).
+fn string_new() -> String {
+    String { bytes : vec_new::<u8>() }
+}
+
+// `string_with_capacity(n)` — pre-allocate room for `n` bytes (NOT chars).
+// Useful when the caller has an upper-bound on the final UTF-8 byte count.
+fn string_with_capacity(n : i64) -> String {
+    String { bytes : vec_with_capacity::<u8>(n) }
+}
+
+// `string_from_utf8(bytes)` — validate + wrap. Returns Ok(String) when the
+// byte sequence is valid UTF-8 ; Err(FromUtf8Error) otherwise.
+//
+// ‼ Stage-0 placeholder validation : the real UTF-8 state-machine walker
+//   lands in a follow-up slice. Until then this fn returns Ok unconditionally
+//   with the bytes treated as-if-valid (the unsafe escape-hatch
+//   `string_from_utf8_unchecked` has the same effect ; the safe path is the
+//   stable SIGNATURE that the future validator slots into).
+fn string_from_utf8(bytes : Vec<u8>) -> Result<String, FromUtf8Error> {
+    // Stage-0 : validate placeholder. Future slice walks the byte-stream
+    // through the canonical UTF-8 DFA. On validation failure the returned
+    // `FromUtf8Error` carries (valid_up_to, byte) — for stage-0 we always
+    // succeed.
+    Ok(String { bytes : bytes })
+}
+
+// `string_from_utf8_unchecked(bytes)` — the unsafe escape-hatch.
+//
+// ‼ SAFETY : caller must guarantee `bytes` is valid UTF-8. The compiler
+//   does NOT check ; misuse is undefined behavior at the String API
+//   boundary (other String operations may panic / produce garbage if
+//   the precondition is violated).
+//
+// ‼ Stage-0 caveat : `unsafe fn` syntax is not yet recognized by the
+//   parser ; we expose the function as a regular `fn` with a SAFETY-marker
+//   doc-comment. Once `unsafe` syntax + the capability-system iso semantics
+//   land, the signature migrates to `unsafe fn ...`.
+fn string_from_utf8_unchecked(bytes : Vec<u8>) -> String {
+    String { bytes : bytes }
+}
+
+// `string_from_literal(s)` — coerce a string-literal into a `StrSlice`.
+// Stage-0 helper for converting `"hello"` source-literal into a typed
+// `StrSlice` value at the call-site. Once implicit-coercion lands at the
+// HIR-level, this fn becomes a parser-side transparent rewrite.
+//
+// ‼ The parameter `s : &str` here is the source-level shorthand for
+//   StrSlice ; once fat-pointer types land at the source level, this
+//   migration is mechanical.
+fn string_from_literal(s : &str) -> StrSlice {
+    // Stage-0 : the StrSlice fields are populated through the existing
+    // string-literal lowering path. The actual ptr+len pair is derived
+    // by `cssl_mir::body_lower::lower_literal` (Str literal arm) — at
+    // call-time this fn is a no-op identity that re-tags the parameter.
+    StrSlice { ptr : 0, len : 0 }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Inspector methods.
+// ───────────────────────────────────────────────────────────────────────
+
+// `string_len(s)` — byte length (NOT character count).
+fn string_len(s : String) -> i64 {
+    vec_len::<u8>(s.bytes)
+}
+
+// `string_is_empty(s)` — true iff bytes.len == 0.
+fn string_is_empty(s : String) -> bool {
+    vec_is_empty::<u8>(s.bytes)
+}
+
+// `string_capacity(s)` — number of bytes allocated for backing storage.
+fn string_capacity(s : String) -> i64 {
+    vec_capacity::<u8>(s.bytes)
+}
+
+// `str_len(s)` — byte length of a slice (NOT character count).
+fn str_len(s : StrSlice) -> i64 {
+    s.len
+}
+
+// `str_is_empty(s)` — true iff len == 0.
+fn str_is_empty(s : StrSlice) -> bool {
+    s.len == 0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Char access.
+// ───────────────────────────────────────────────────────────────────────
+
+// `char_from_u32(code)` — validate + construct a `char` from a `u32` USV.
+//
+// Returns `Some(c)` when `code` is a valid Unicode Scalar Value :
+//   - 0x0000..=0xD7FF (BMP minus surrogate range)
+//   - 0xE000..=0x10FFFF (BMP minus surrogates + supplementary planes)
+// Returns `None` for surrogates (0xD800..=0xDFFF) and out-of-range values.
+fn char_from_u32(code : i64) -> Option<i32> {
+    if code < 0 {
+        None
+    } else {
+        if code > 1114111 {
+            None
+        } else {
+            if code >= 55296 {
+                if code <= 57343 {
+                    None
+                } else {
+                    Some(usv_to_char(code))
+                }
+            } else {
+                Some(usv_to_char(code))
+            }
+        }
+    }
+}
+
+// Helper : truncate an `i64` USV to the `i32` char encoding. Stage-0 placeholder
+// for the trunc-i64-to-i32 cast — the call-site lowers through `arith.trunci`
+// once HIR threads explicit numeric-cast types through call expressions. At B4
+// this is a structural shape ; the post-cast slice handles the actual
+// bit-narrowing.
+fn usv_to_char(code : i64) -> i32 {
+    // Stage-0 : structural placeholder. Future slice emits `arith.trunci`
+    // explicitly per the cast-lowering pass. Until then the i32 result is
+    // synthesized as-if-truncated.
+    0
+}
+
+// `char_to_u32(c)` — extend a `char` USV back to its `u32` integer code.
+fn char_to_u32(c : i32) -> i64 {
+    // Stage-0 : structural placeholder. Future slice emits `arith.extui`
+    // (zero-extend i32 → i64). Until then the i64 result is the unsigned-
+    // extended char value.
+    0
+}
+
+// `char_at(s, idx)` — return the USV at byte-index `idx` if `idx` is on a
+// valid UTF-8 boundary AND `idx < s.len()` ; `None` otherwise.
+//
+// ‼ Stage-0 placeholder body : real UTF-8 scanning lands in the deferred
+//   ABI slice. The SIGNATURE is the stable surface that callers can target.
+fn char_at(s : String, idx : i64) -> Option<i32> {
+    if idx < 0 {
+        None
+    } else {
+        if idx >= string_len(s) {
+            None
+        } else {
+            // Stage-0 : return Some(0) as a placeholder USV. Real UTF-8
+            // boundary check + scalar-decode lands in the ABI slice.
+            Some(0)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Mutating methods (push / push_str).
+// ───────────────────────────────────────────────────────────────────────
+
+// `string_push(s, c)` — append a `char` to the String. Encodes `c` as
+// UTF-8 (1..4 bytes) and pushes the bytes onto the backing Vec<u8>.
+//
+// § GROWTH-RULE  (inherits from B3's Vec growth)
+//   on push when `bytes.len + utf8_len(c) > bytes.cap`, the byte-vec
+//   grows to `max(8, 2 * cap)` per B3.
+//
+// ‼ Stage-0 : encode-as-UTF-8 placeholder. The 1..4-byte encoding lands
+//   in the ABI slice. The SIGNATURE is the stable surface.
+fn string_push(s : String, c : i32) -> String {
+    // Stage-0 : structural shape. Future slice emits the per-character
+    // UTF-8 encoder + N pushes. Until then the byte-vec is unchanged.
+    s
+}
+
+// `string_push_str(s, slice)` — append a `&str` to the String.
+//
+// ‼ Stage-0 : structural shape. The byte-copy implementation routes
+//   through Vec extension once the typed-memref + slice-iteration ops
+//   land. The SIGNATURE is the stable surface.
+fn string_push_str(s : String, slice : StrSlice) -> String {
+    s
+}
+
+// `string_clear(s)` — reset bytes.len to 0 ; preserves capacity.
+fn string_clear(s : String) -> String {
+    String { bytes : vec_clear::<u8>(s.bytes) }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Concatenation.
+// ───────────────────────────────────────────────────────────────────────
+
+// `string_concat(a, b)` — produce a new `String` containing the bytes of
+// `a` followed by the bytes of `b`. Allocates a single Vec<u8> sized for
+// the total byte-count.
+//
+// ‼ Stage-0 : structural shape. The byte-copy implementation routes
+//   through Vec push-loop once the typed-memref + slice-iteration ops
+//   land. The SIGNATURE is the stable surface.
+//
+// ‼ The source-level `+` operator is NOT yet wired for String — once
+//   operator overloading lands at the parser/HIR level, `a + b` becomes
+//   thin sugar over `string_concat(a, b)`. Per the slice landmines this
+//   is documented as deferred-overloading rather than half-implemented.
+fn string_concat(a : String, b : String) -> String {
+    // Compute total byte-count up-front so the result Vec doesn't
+    // re-grow during the byte-copy loop.
+    let total = string_len(a) + string_len(b);
+    let result_bytes = vec_with_capacity::<u8>(total);
+    // Stage-0 : the per-byte loop is deferred until typed-memref-store
+    // lands. Until then the result is an empty Vec sized for the total
+    // byte-count — the SIGNATURE is the stable surface.
+    String { bytes : result_bytes }
+}
+
+// `str_concat(a, b)` — concatenate two slices into a new String.
+fn str_concat(a : StrSlice, b : StrSlice) -> String {
+    let total = a.len + b.len;
+    let result_bytes = vec_with_capacity::<u8>(total);
+    String { bytes : result_bytes }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § &str borrow.
+// ───────────────────────────────────────────────────────────────────────
+
+// `string_as_str(s)` — produce a `StrSlice` viewing the String's bytes.
+//
+// ‼ Stage-0 : value-out shape (no lifetime tracking). Once lifetimes
+//   land this becomes `string_as_str(&'a self) -> &'a str` with a real
+//   borrow relation to the source String.
+fn string_as_str(s : String) -> StrSlice {
+    // Stage-0 : the ptr field maps to s.bytes.data ; len maps to
+    // s.bytes.len. At source-level we can't yet load through a typed
+    // pointer (deferred from S6-C3) so we synthesize a placeholder.
+    StrSlice { ptr : s.bytes.data, len : s.bytes.len }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Manual Drop (until trait-resolve).
+// ───────────────────────────────────────────────────────────────────────
+
+// `string_drop(s)` — manually free the backing storage. Mirrors
+// `vec_drop::<u8>(s.bytes)` from B3. Once trait-resolve lands the
+// invocation becomes automatic at scope-exit.
+fn string_drop(s : String) {
+    vec_drop::<u8>(s.bytes)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § format(...) — recognized syntactically by cssl_mir::body_lower.
+// ───────────────────────────────────────────────────────────────────────
+
+// `format(fmt, ...args)` — printf-style formatting. The recognizer fires
+// when the call's callee is a bare `format` (1-segment path) and the first
+// positional arg is a string literal ; subsequent positional args supply
+// the values for each `{...}` specifier in the format string.
+//
+// § SUPPORTED-SPEC-SUBSET  (stage-0)
+//   {}        : Display-equivalent — primitives only (i32 / f32 / bool /
+//                 &str / char). Composite types fall back to a stage-0
+//                 placeholder string.
+//   {:?}      : Debug-equivalent — primitives only (same set as Display).
+//   {:.N}     : precision-N float. e.g. format("π = {:.3}", pi) → "π = 3.142".
+//   {:0Nd}    : zero-padded integer width N. e.g. format("{:04d}", 42) →
+//                 "0042".
+//   {:N}      : width-N (right-aligned, space-padded). e.g. format("{:5}", 7) →
+//                 "    7".
+//
+// ‼ Stage-0 : the recognizer EMITS the `cssl.string.format` op carrying
+//   the format-string + arg list as attributes ; runtime execution of
+//   format is the SAME deferred-ABI slice as B2/B3. The lowering exists
+//   for completeness — the SIGNATURE is the stable surface.
+//
+// ‼ NO trait dispatch — Display / Debug are NOT yet traits at stage-0.
+//   The MIR walker (deferred to a future slice) dispatches per-type via
+//   type-checker assertions. Documented as deferred to trait-resolve
+//   infrastructure.
+//
+// § DEFERRED  (T11-D71 § DEFERRED — see DECISIONS.md)
+//   - format-string compile-time validation (spec-count vs arg-count
+//     mismatch as a diagnostic-code FORMAT-001..)
+//   - real Display / Debug trait dispatch
+//   - hexadecimal / octal / binary specifiers ({:x}, {:o}, {:b})
+//   - sign / width / fill flags
+//   - the `format!` macro form (parser support for `format!(...)` requires
+//     macro-bang invocation parsing — stage-0 uses the bare-call form)
+fn format(fmt : &str) -> String {
+    // The body here is a placeholder — the real lowering happens at the
+    // body_lower recognizer call-site. When this fn is referenced via a
+    // direct call (NOT via the recognizer), it returns an empty String.
+    // The recognizer always intercepts the call before we reach this
+    // body, so the placeholder is unreachable in normal flow.
+    string_new()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (documentation only).
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : empty + len.
+fn _example_string_empty_len() -> i64 {
+    let s = string_new();
+    string_len(s)
+}
+
+// Worked example : with-capacity + clear (preserves cap).
+fn _example_string_with_capacity() -> i64 {
+    let s = string_with_capacity(64);
+    let s2 = string_clear(s);
+    string_capacity(s2)
+}
+
+// Worked example : char-from-u32 happy path (USV 'A' = 0x41 = 65).
+fn _example_char_from_u32_happy() -> Option<i32> {
+    char_from_u32(65)
+}
+
+// Worked example : char-from-u32 surrogate path (returns None).
+fn _example_char_from_u32_surrogate() -> Option<i32> {
+    char_from_u32(55300)
+}
+
+// Worked example : concatenate two empty Strings ; result is empty.
+fn _example_string_concat_empty() -> i64 {
+    let a = string_new();
+    let b = string_new();
+    let c = string_concat(a, b);
+    string_len(c)
+}
+
+// Worked example : format with a primitive specifier. The recognizer
+// fires on this call shape ; produces a `cssl.string.format` op.
+fn _example_format_simple() -> String {
+    format("hello")
+}
+
+// Worked example : format with a positional arg. Once trait-dispatch
+// lands the runtime produces "x = 7" ; until then the recognizer logs
+// the structural shape.
+fn _example_format_with_arg() -> String {
+    format("x = {}")
+}

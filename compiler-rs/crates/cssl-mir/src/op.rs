@@ -74,6 +74,19 @@ pub enum CsslOp {
     OptionNone,
     ResultOk,
     ResultErr,
+    // § String surface (S6-B4, T11-D71) — printf-style format builtin. Per
+    // `specs/03_TYPES.csl § STRING-MODEL`. The op is emitted by the
+    // syntactic intrinsic recognizer in `cssl_mir::body_lower` (mirrors B2
+    // sum-type + B1 Box::new pattern). The format-string + spec-count +
+    // arg-count are recorded as op-attributes so the (deferred) ABI lowering
+    // pass can dispatch per-type without re-parsing the format string.
+    //
+    // ‼ NO trait dispatch at stage-0. Display / Debug are not yet traits —
+    //   the per-type handler is dispatched by type-checker assertions in
+    //   the ABI lowering pass. Until that lands the op is structural-only :
+    //   parses, walks, monomorphizes ; runtime execution is the same
+    //   deferred-ABI slice as B2/B3.
+    StringFormat,
     /// Standard-dialect op — name stored separately. Used for `arith.*`, `scf.*`,
     /// `func.*`, `memref.*`, etc. that pass through without schema validation.
     Std,
@@ -118,6 +131,7 @@ impl CsslOp {
             Self::OptionNone => "cssl.option.none",
             Self::ResultOk => "cssl.result.ok",
             Self::ResultErr => "cssl.result.err",
+            Self::StringFormat => "cssl.string.format",
             Self::Std => "cssl.std",
         }
     }
@@ -144,6 +158,7 @@ impl CsslOp {
             Self::OptionSome | Self::OptionNone | Self::ResultOk | Self::ResultErr => {
                 OpCategory::SumType
             }
+            Self::StringFormat => OpCategory::String,
             Self::Std => OpCategory::Std,
         }
     }
@@ -275,6 +290,17 @@ impl CsslOp {
                 operands: Some(0),
                 results: Some(1),
             },
+            // String (S6-B4) — see `specs/03_TYPES.csl § STRING-MODEL`.
+            //   format : (fmt-handle, *args : variadic) -> String
+            //     The format-string is lowered into the first operand as a
+            //     value of type `!cssl.string` ; subsequent operands carry
+            //     the positional arguments. The op result is `!cssl.string`.
+            //     Arity is variadic in the operand slot because the number of
+            //     positional arguments depends on the source-level call.
+            Self::StringFormat => OpSignature {
+                operands: None,
+                results: Some(1),
+            },
             // Std : free-form.
             Self::Std => OpSignature {
                 operands: None,
@@ -284,7 +310,7 @@ impl CsslOp {
     }
 
     /// All `cssl.*` dialect ops (excluding `Std`).
-    pub const ALL_CSSL: [Self; 33] = [
+    pub const ALL_CSSL: [Self; 34] = [
         Self::DiffPrimal,
         Self::DiffFwd,
         Self::DiffBwd,
@@ -318,6 +344,7 @@ impl CsslOp {
         Self::OptionNone,
         Self::ResultOk,
         Self::ResultErr,
+        Self::StringFormat,
     ];
 }
 
@@ -350,6 +377,9 @@ pub enum OpCategory {
     /// See `specs/03_TYPES.csl § BASE-TYPES` (sum-types) +
     /// `specs/04_EFFECTS.csl § ERROR HANDLING` (Result + ?-op).
     SumType,
+    /// String surface ops (S6-B4) — printf-style format. See
+    /// `specs/03_TYPES.csl § STRING-MODEL`.
+    String,
     Std,
 }
 
@@ -381,11 +411,12 @@ mod tests {
     }
 
     #[test]
-    fn all_33_cssl_ops_tracked() {
+    fn all_34_cssl_ops_tracked() {
         // S6-B1 (T11-D57) brought the count to 29 (HeapAlloc/Dealloc/Realloc).
         // S6-B2 (T11-D60) adds 4 sum-type constructors :
         //   OptionSome, OptionNone, ResultOk, ResultErr  →  total 33.
-        assert_eq!(CsslOp::ALL_CSSL.len(), 33);
+        // S6-B4 (T11-D71) adds StringFormat → total 34.
+        assert_eq!(CsslOp::ALL_CSSL.len(), 34);
     }
 
     #[test]
@@ -522,5 +553,35 @@ mod tests {
         assert_eq!(CsslOp::OptionNone.category(), OpCategory::SumType);
         assert_eq!(CsslOp::ResultOk.category(), OpCategory::SumType);
         assert_eq!(CsslOp::ResultErr.category(), OpCategory::SumType);
+    }
+
+    // ── S6-B4 (T11-D71) string-format op coverage ───────────────────────
+
+    #[test]
+    fn string_format_signature_is_variadic_to_1() {
+        // (fmt-handle, *args...) → !cssl.string
+        // The operand count is variadic because the number of positional
+        // args depends on the source-level call. The result is always one
+        // String value.
+        let sig = CsslOp::StringFormat.signature();
+        assert!(
+            sig.operands.is_none(),
+            "StringFormat operand count is variadic"
+        );
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn string_format_op_name_is_canonical() {
+        // ‼ The `cssl.string.format` name is part of the MIR public surface :
+        // downstream tooling (cssl-staging, body_lower recognizers, future
+        // trait-dispatch glue, ABI lowering) keys off this literal. Renaming
+        // requires a lock-step update across all consumers.
+        assert_eq!(CsslOp::StringFormat.name(), "cssl.string.format");
+    }
+
+    #[test]
+    fn string_format_op_in_string_category() {
+        assert_eq!(CsslOp::StringFormat.category(), OpCategory::String);
     }
 }

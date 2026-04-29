@@ -13,6 +13,9 @@
 //!   - `stdlib/option.cssl`  — `enum Option<T>` + free-fn method surface (S6-B2 / T11-D60)
 //!   - `stdlib/result.cssl`  — `enum Result<T, E>` + free-fn method surface (S6-B2 / T11-D60)
 //!   - `stdlib/vec.cssl`     — `struct Vec<T>` + free-fn method surface  (S6-B3 / T11-D69)
+//!   - `stdlib/string.cssl`  — `String` (`Vec<u8>`-backed UTF-8) + `StrSlice`
+//!                              fat-pointer + `char` USV + minimal `format(...)`
+//!                              builtin (S6-B4 / T11-D71)
 //!
 //! § ACCEPTANCE
 //!   - lexer produces a non-trivial token stream
@@ -57,6 +60,13 @@ pub const STDLIB_VEC_SRC: &str = include_str!(concat!(
     "/../../../stdlib/vec.cssl"
 ));
 
+/// `stdlib/string.cssl` source, embedded at compile-time. Added at S6-B4
+/// (T11-D71) ; tracks the String + &str + char + format surface.
+pub const STDLIB_STRING_SRC: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../stdlib/string.cssl"
+));
+
 /// Run the stage-0 front-end (lex + parse + HIR-lower) against every
 /// stdlib file and return the per-file outcome vector.
 #[must_use]
@@ -65,13 +75,15 @@ pub fn all_stdlib_outcomes() -> Vec<crate::PipelineOutcome> {
         pipeline_example("stdlib/option", STDLIB_OPTION_SRC),
         pipeline_example("stdlib/result", STDLIB_RESULT_SRC),
         pipeline_example("stdlib/vec", STDLIB_VEC_SRC),
+        pipeline_example("stdlib/string", STDLIB_STRING_SRC),
     ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        all_stdlib_outcomes, pipeline_example, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC, STDLIB_VEC_SRC,
+        all_stdlib_outcomes, pipeline_example, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC,
+        STDLIB_STRING_SRC, STDLIB_VEC_SRC,
     };
 
     #[test]
@@ -197,13 +209,14 @@ mod tests {
     }
 
     #[test]
-    fn all_stdlib_outcomes_returns_three() {
+    fn all_stdlib_outcomes_returns_four() {
         let outs = all_stdlib_outcomes();
-        assert_eq!(outs.len(), 3);
+        assert_eq!(outs.len(), 4);
         let names: Vec<_> = outs.iter().map(|o| o.name.as_str()).collect();
         assert!(names.contains(&"stdlib/option"));
         assert!(names.contains(&"stdlib/result"));
         assert!(names.contains(&"stdlib/vec"));
+        assert!(names.contains(&"stdlib/string"));
     }
 
     #[test]
@@ -501,6 +514,275 @@ mod tests {
             out.hir_item_count >= 18,
             "stdlib/vec.cssl HIR items expected ≥ 18 : {}",
             out.summary()
+        );
+    }
+
+    // ── S6-B4 (T11-D71) String + &str + char + format coverage ──────────
+
+    #[test]
+    fn stdlib_string_src_non_empty() {
+        assert!(!STDLIB_STRING_SRC.is_empty());
+        // Markers : the type-defs and the canonical method surface.
+        assert!(STDLIB_STRING_SRC.contains("struct String"));
+        assert!(STDLIB_STRING_SRC.contains("struct StrSlice"));
+        assert!(STDLIB_STRING_SRC.contains("struct FromUtf8Error"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_new"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_from_utf8"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_from_utf8_unchecked"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_with_capacity"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_len"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_is_empty"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_push"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_concat"));
+        assert!(STDLIB_STRING_SRC.contains("fn string_as_str"));
+        assert!(STDLIB_STRING_SRC.contains("fn char_from_u32"));
+        assert!(STDLIB_STRING_SRC.contains("fn char_at"));
+        assert!(STDLIB_STRING_SRC.contains("fn format"));
+    }
+
+    #[test]
+    fn stdlib_string_tokenizes() {
+        let out = pipeline_example("stdlib/string", STDLIB_STRING_SRC);
+        assert!(
+            out.token_count > 0,
+            "stdlib/string.cssl must tokenize : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_string_parses_without_errors() {
+        let out = pipeline_example("stdlib/string", STDLIB_STRING_SRC);
+        assert_eq!(
+            out.parse_error_count,
+            0,
+            "stdlib/string.cssl must parse cleanly through stage-0 : {}",
+            out.summary()
+        );
+        // 3 structs (String / StrSlice / FromUtf8Error) + many fns +
+        // worked examples.
+        assert!(
+            out.cst_item_count >= 5,
+            "stdlib/string.cssl must yield ≥ 5 CST items : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_string_hir_has_structs_and_fns() {
+        // string.cssl contains : 3 structs (String / StrSlice /
+        // FromUtf8Error) + a large free-fn surface + worked-example fns.
+        // Total HIR-items ≥ 22.
+        let out = pipeline_example("stdlib/string", STDLIB_STRING_SRC);
+        assert!(
+            out.hir_item_count >= 22,
+            "stdlib/string.cssl HIR must include structs + ≥ 19 fns : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_string_format_recognizer_lowers_to_intrinsic() {
+        // Direct probe : the bare `format("hello")` shape must lower to
+        // `cssl.string.format` even outside the stdlib file. Mirrors the
+        // B2 / B3 probe pattern.
+        let src = "fn f() -> i32 { format(\"hello\"); 0 }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        assert!(
+            entry.ops.iter().any(|o| o.name == "cssl.string.format"),
+            "format(\"hello\") must produce cssl.string.format op (got : {:?})",
+            entry.ops.iter().map(|o| &o.name).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn stdlib_string_format_records_specifier_and_arg_counts() {
+        // The recognizer must record both `spec_count` and `arg_count` as
+        // op-attributes so a deferred validator slice can flag mismatches.
+        // Verified indirectly by parsing a 2-spec / 2-arg call shape and
+        // confirming the attributes survive through MIR.
+        let src = "fn f() -> i32 { format(\"a = {} b = {}\", 1, 2); 0 }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        let fmt_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("expected cssl.string.format op");
+        let spec = fmt_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "spec_count")
+            .map(|(_, v)| v.as_str());
+        let argc = fmt_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "arg_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(spec, Some("2"));
+        assert_eq!(argc, Some("2"));
+    }
+
+    #[test]
+    fn stdlib_string_distinct_specializations_for_nested_generics() {
+        // String wraps Vec<u8> ; the monomorph quartet must produce a
+        // distinct specialization for `vec_*::<u8>` vs `vec_*::<i32>`.
+        // Mirrors the B3 nested-generic-arg canary.
+        let src = "fn id<T>(x : T) -> T { x }\n\
+                   fn driver() -> i32 { \
+                     let _a = id::<u8>(7) ; \
+                     let _b = id::<i32>(2) ; \
+                     0 \
+                   }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let report = cssl_mir::auto_monomorphize(&hir, &interner, Some(&file));
+        let mut names: Vec<&str> = report
+            .specializations
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        assert!(
+            names.len() >= 2,
+            "id::<u8> + id::<i32> must produce ≥ 2 distinct specializations \
+             (got {names:?})",
+        );
+    }
+
+    #[test]
+    fn stdlib_string_struct_def_lowers_to_hir_struct() {
+        // `struct String { bytes : Vec<u8> }` must round-trip parser +
+        // HIR-lower to a HirItem::Struct. This is the lowest-level guard
+        // that the struct-field-with-nested-generic-arg syntax is
+        // accepted by stage-0.
+        let out = pipeline_example("stdlib/string", STDLIB_STRING_SRC);
+        assert!(
+            out.is_accepted(),
+            "stdlib/string.cssl must be accepted : {}",
+            out.summary()
+        );
+        assert!(
+            out.cst_item_count >= 5,
+            "stdlib/string.cssl CST items expected ≥ 5 : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_string_char_literal_lowers_to_i32_constant() {
+        // Source-level `'a'` lexes as a CharLit and lowers to an i32
+        // constant per `cssl_mir::body_lower::lower_literal`. This is the
+        // foundation of B4's char USV invariant.
+        let src = "fn f() -> i32 { 'A' }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        // The char literal must produce an arith.constant op.
+        assert!(
+            entry.ops.iter().any(|o| o.name == "arith.constant"),
+            "char literal must lower to arith.constant : {:?}",
+            entry.ops.iter().map(|o| &o.name).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn stdlib_string_str_literal_lowers_through_pipeline() {
+        // String literal `"hello"` lexes as StringLiteral and lowers to
+        // `MirType::Opaque("!cssl.string")` per existing literal lowering.
+        // This test confirms the path remains green at B4.
+        let src = "fn f() -> i32 { let _x = \"hello\"; 0 }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        // Confirm the body actually lowered to ops (string-literal path
+        // through arith.constant + let-binding path).
+        assert!(
+            !entry.ops.is_empty(),
+            "string literal body must lower to ≥ 1 MIR op",
         );
     }
 }

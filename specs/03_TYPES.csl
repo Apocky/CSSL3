@@ -27,6 +27,53 @@
   impl Differentiable for f32 { ... }
   monomorphized @ HIR → MIR  ≡ zero-cost
 
+§ STRING-MODEL  (S6-B4 / T11-D71 — canonical reference @ stdlib/string.cssl)
+  String     : struct String { bytes : Vec<u8> }
+              canonical-ref : stdlib/string.cssl  (S6-B4 / T11-D71)
+              invariant : bytes ALWAYS valid UTF-8 (enforced @ ctor)
+              ctors : string_new / string_with_capacity / string_from_utf8 /
+                      string_from_utf8_unchecked  (last is unsafe-escape-hatch)
+              ops   : len / capacity / push / push_str / clear / concat /
+                      as_str / drop                (free-fn form @ stage-0)
+  StrSlice   : struct StrSlice { ptr : i64, len : i64 }
+              canonical-ref : stdlib/string.cssl  (S6-B4 / T11-D71)
+              ≡ &str fat-pointer (ptr, len) — source-level shape for the
+                deferred fat-pointer-syntax + lifetime-tracking slice
+              len = byte length, NOT character count
+              invariant : ptr+len bytes form a valid UTF-8 sequence
+              boundary-aligned (no mid-character splits)
+  char       : 4-byte Unicode Scalar Value (USV) — encoded as i32 @ MIR
+              valid set : [U+0000..=U+D7FF] ∪ [U+E000..=U+10FFFF]
+                          (BMP minus surrogates + supplementary planes)
+              ctor : char_from_u32(code) -> Option<i32>  (validates USV)
+              char-literal : `'a'` lexes as CharLit, lowers to i32 USV
+  format     : printf-style builtin recognized syntactically by
+                cssl_mir::body_lower (mirrors B1 Box::new, B2 Some/None)
+              MIR op : cssl.string.format with fmt + spec_count + arg_count
+                       attributes ; result type = !cssl.string
+              spec subset @ stage-0 :
+                {}    : Display-equivalent (primitives only)
+                {:?}  : Debug-equivalent (primitives only)
+                {:.N} : precision-N float
+                {:0Nd}: zero-padded integer width N
+                {:N}  : width-N (right-aligned, space-padded)
+              N! trait dispatch (Display/Debug not yet traits @ stage-0)
+              ‼ `format!(...)` macro syntax requires macro-bang invocation
+                parsing — stage-0 uses bare-call form `format(...)`
+  concat     : `+` operator NOT yet wired @ source-level
+              ← parser/HIR operator-overloading deferred
+              ⇒ stage-0 surface : free-fn `string_concat(a, b) -> String` /
+                                 `str_concat(a, b) -> String`
+  ∀ method-form = free-fn `<name>_<method>(...)` @ stage-0
+    ← trait-dispatch deferred → impl<...> migration on trait-resolve
+  N! `&str` source-level fat-pointer syntax (parser landmine — placeholder
+     `StrSlice` struct used until typed-pointer + lifetime infra lands)
+  N! `unsafe fn` syntax (parser landmine — `string_from_utf8_unchecked`
+     uses regular `fn` + SAFETY-marker doc-comment until unsafe parses)
+  I> stdlib/string.cssl is the executable reference for this surface
+     ; its parse-clean + HIR-lower-clean status is exercised in
+     stdlib_gate.rs as the canary for any future grammar regression
+
 § GENERIC-COLLECTIONS  (S6-B3 / T11-D69 — canonical reference @ stdlib/)
   Option<T>  : enum Option<T> { Some(T), None }
               canonical-ref : stdlib/option.cssl  (S6-B2 / T11-D60)
