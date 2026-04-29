@@ -1,0 +1,38 @@
+[package]
+name                   = "loa-game"
+description            = "LoA game integration — M8 12-stage render pipeline + per-stage frame-time instrumentation (T11-D158 W-Jζ-2)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D158 (W-Jζ-2) : Per-stage frame-time instrumentation
+# ──────────────────────────────────────────────────────────────────
+# § I> 12 canonical render-pipeline stages instrumented w/ Timer-wrap
+# § I> namespace : pipeline.stage_N_<name>.frame_time_ms (N=1..=12)
+# § I> p50/p95/p99 via Histogram aggregation, cross-frame trend N=1024
+# § I> feature-gate "metrics" : zero-overhead-when-off via no-op shim
+# § I> replay-determinism : timing observe-only, ¬affects state
+# § I> dependency : cssl-metrics (T11-D157) mocked via trait-bound when
+#       not-yet-merged ; trait `MetricsRegistry` allows swap-in.
+
+[features]
+# Default = metrics-on ; downstream binaries opt-out via no-default-features
+default = ["metrics"]
+# Toggle to disable all instrumentation : Timer-wrap compiles to no-op,
+# Histogram-aggregation compiles to empty-stub, no per-stage allocations.
+metrics = []
+
+[dependencies]
+# § no external deps : Histogram uses std::sync::Mutex for observe-only
+#   sample-buffer lock ; parking_lot avoided due to gnu-toolchain dlltool
+#   build-issue (and contention is irrelevant — single-thread render-loop).
+
+[dev-dependencies]
+# § no dev-deps : tests use std + own surface only.
+# § property/criterion deferred ; getrandom-pull blocked by gnu-dlltool issue
+#   on this toolchain ; deterministic fixtures suffice for percentile-tests.
+
+[lints]
+workspace = true
