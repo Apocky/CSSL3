@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-pga"
+description            = "CSSLv3 — Projective Geometric Algebra G(3,0,1) (Klein-style plane-based PGA). Multivectors + Motors + Rotors + Translators + exp/log Lie-bridge + sandwich-product. Foundation for Axiom-10 OPUS-math + bivector dynamics + manifold-aware rigid motions."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-pga is intentionally dependency-free at the foundation slice — same
+# discipline as cssl-math. The PGA primitives are pure compute and consumed by
+# physics/render/cognition/network layers, so a deep dep-tree here would
+# propagate transitively into every consumer. The cssl-math bridges (Quat ↔
+# Motor, Vec3 ↔ Trivector, Plane ↔ Bivector) are wired through the
+# `cssl-math-bridge` feature so consumers can depend on pure-PGA without
+# pulling in the legacy Vec/Quat surface (e.g. when downstream is itself
+# PGA-native).
+cssl-math = { path = "../cssl-math", optional = true }
+
+[features]
+# § default-on : cssl-math is the foundation crate of the workspace and most
+# real consumers want the bridges. Pure-PGA consumers (e.g. a future PGA-native
+# physics solver that has no Vec3 surface to bridge to) flip this off via
+# `default-features = false`.
+default = ["cssl-math-bridge"]
+
+# Quat → Motor, Vec3 → Trivector (point), Plane → Bivector (3-vector plane in
+# Klein PGA convention) conversion impls. Ungated when the feature is on.
+cssl-math-bridge = ["dep:cssl-math"]
