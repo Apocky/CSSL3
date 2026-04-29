@@ -7,8 +7,79 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 
+# § T11-D68 (S6-E4) : real wgpu dep wired in.
+#
+# § Architecture
+#   This crate has two layers :
+#
+#     Phase-1 (default) : the catalog modules (`adapter`, `features`) carry
+#       the WebGPU adapter / feature / limits surface description WITHOUT
+#       pulling `wgpu` itself. Pure-Rust, builds on every host, useful for
+#       target-spec consumers like cssl-cgen-gpu-wgsl that need the type
+#       names but not the runtime.
+#
+#     Phase-2 (`wgpu-runtime` feature) : wires real `wgpu::Instance` /
+#       `Device` / `Queue` / `Buffer` / `Texture` / `ComputePipeline` /
+#       `RenderPipeline` / `CommandEncoder` paths against the wgpu crate.
+#       Compiles to native (DX12 / Vulkan / Metal) AND wasm32 (real
+#       browser-WebGPU).
+#
+# § Why feature-gated ?
+#   wgpu 23 transitively pulls `parking_lot_core` + `libloading`. On the
+#   workspace's pinned 1.85.0-x86_64-pc-windows-gnu toolchain (T11-D20
+#   R16-anchor), these need MinGW's `dlltool.exe` + `as` to build their
+#   import-libs against kernel32 / user32. Apocky's host has no MinGW
+#   install ; per T1-D7 the MSVC ABI switch is pre-authorized to land at
+#   T10-FFI work but not yet executed. Until MSVC switches OR MinGW lands,
+#   the runtime feature is opt-in so the workspace commit-gate stays
+#   green on every host.
+#
+#   Building the runtime layer locally :
+#     cargo check  -p cssl-host-webgpu --features wgpu-runtime
+#     cargo build  -p cssl-host-webgpu --features wgpu-runtime
+#     cargo test   -p cssl-host-webgpu --features wgpu-runtime
+#
+#   On a MSVC-toolchain host (or with MinGW dlltool on PATH), all three
+#   succeed. On the default Apocky host today, the catalog-only build
+#   succeeds and the wgpu-runtime build is held until the toolchain switch.
+#
+# § wgpu version pinning
+#   wgpu = "23" matches naga 23.1.0 (cssl-cgen-gpu-wgsl validator @
+#   T11-D32). wgpu 29 requires rust 1.87 ; workspace MSRV is 1.85.0
+#   per T11-D20 R16-anchor, so a wgpu bump is gated on a toolchain bump.
+#   Document in T11-D## if upgrading.
+
+[features]
+default      = []
+# Opt-in real wgpu runtime (see header comment for toolchain prerequisites).
+wgpu-runtime = ["dep:wgpu", "dep:pollster"]
+
 [dependencies]
 thiserror = { workspace = true }
+pollster  = { version = "0.3", optional = true }
+
+# Native target : feature-selection per platform (wgpu-runtime feature only).
+#   wgpu 23 feature names :
+#     - dx12                = Windows D3D12 backend
+#     - metal               = Apple Metal backend
+#     - vulkan-portability  = Vulkan backend on Windows + Linux
+#     - wgsl                = WGSL parser path (required for create_shader_module)
+#
+#   On MSVC : DX12 + Vulkan + WGSL.
+#   On non-MSVC non-macOS : Vulkan-portability + WGSL.
+#   On macOS : Metal + WGSL.
+#   On wasm32 : real browser-WebGPU + WGSL.
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "macos"), not(target_env = "msvc")))'.dependencies]
+wgpu = { workspace = true, features = ["wgsl", "vulkan-portability"], optional = true }
+
+[target.'cfg(all(not(target_arch = "wasm32"), target_env = "msvc"))'.dependencies]
+wgpu = { workspace = true, features = ["wgsl", "dx12", "vulkan-portability"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+wgpu = { workspace = true, features = ["wgsl", "metal"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { workspace = true, features = ["wgsl", "webgpu"], optional = true }
 
 [lints]
 workspace = true
