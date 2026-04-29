@@ -57,6 +57,7 @@ pub mod consent;
 pub mod diag;
 pub mod halt;
 pub mod harm;
+pub mod sigma;
 
 pub use attestation::{
     attestation_check, attestation_constant_text, AttestationError, ATTESTATION, ATTESTATION_HASH,
@@ -75,6 +76,16 @@ pub use halt::{
 };
 pub use harm::{
     HarmCheckError, HarmPrevention, Prohibition, ProhibitionCheck, ProhibitionViolation,
+};
+pub use sigma::{
+    AgencyState, ConsentBit, ReversibilityScope, SigmaMaskError, SigmaMaskPacked, SigmaPolicy,
+    SIGMA_BIT_AGENCY_STATE_LO, SIGMA_BIT_AGENCY_STATE_WIDTH, SIGMA_BIT_AUDIT_SEQ_LO,
+    SIGMA_BIT_AUDIT_SEQ_WIDTH, SIGMA_BIT_CAPACITY_LO, SIGMA_BIT_CAPACITY_WIDTH,
+    SIGMA_BIT_CONSENT_LO, SIGMA_BIT_CONSENT_WIDTH, SIGMA_BIT_RESERVED_LO, SIGMA_BIT_RESERVED_WIDTH,
+    SIGMA_BIT_REVERSIBILITY_LO, SIGMA_BIT_REVERSIBILITY_WIDTH, SIGMA_BIT_SOVEREIGN_LO,
+    SIGMA_BIT_SOVEREIGN_WIDTH, SIGMA_REGION_AURA, SIGMA_REGION_FACE, SIGMA_REGION_FEET,
+    SIGMA_REGION_GAZE, SIGMA_REGION_HANDS, SIGMA_REGION_HEAD, SIGMA_REGION_TRUNK,
+    SIGMA_SOVEREIGN_NULL,
 };
 
 #[cfg(any(test, feature = "test-bypass"))]

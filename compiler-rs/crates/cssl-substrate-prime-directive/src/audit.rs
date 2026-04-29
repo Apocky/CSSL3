@@ -31,6 +31,7 @@ use crate::cap::{CapTokenId, SubstrateCap};
 use crate::consent::ConsentScope;
 use crate::halt::HaltReason;
 use crate::harm::Prohibition;
+use crate::sigma::SigmaMaskPacked;
 
 /// Kinds of enforcement events that can land on the audit-chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +75,16 @@ pub enum AuditEvent {
     /// Attestation drift was detected (the per-fn ATTESTATION constant
     /// did not match the canonical hash).
     AttestationDrift { site: String },
+    /// A per-cell Σ-mask was mutated. The before/after packed-u128 forms are
+    /// recorded so the chain can be replayed cell-by-cell.
+    /// Per `Omniverse/01_AXIOMS/04_AGENCY_INVARIANT` § II + § VII.
+    SigmaMaskMutated {
+        site: String,
+        before_packed: u128,
+        after_packed: u128,
+        audit_seq_before: u16,
+        audit_seq_after: u16,
+    },
 }
 
 impl AuditEvent {
@@ -88,6 +99,7 @@ impl AuditEvent {
             Self::HarmCheckFailed { .. } => "h6.harm.failed",
             Self::Halted { .. } => "h6.halt",
             Self::AttestationDrift { .. } => "h6.attestation.drift",
+            Self::SigmaMaskMutated { .. } => "h6.sigma.mutated",
         }
     }
 
@@ -127,6 +139,15 @@ impl AuditEvent {
                 reason.canonical_name()
             ),
             Self::AttestationDrift { site } => format!("attestation-drift site={site}"),
+            Self::SigmaMaskMutated {
+                site,
+                before_packed,
+                after_packed,
+                audit_seq_before,
+                audit_seq_after,
+            } => format!(
+                "sigma-mask-mutated site={site} before={before_packed:#034x} after={after_packed:#034x} seq={audit_seq_before}->{audit_seq_after}"
+            ),
         }
     }
 }
@@ -250,6 +271,24 @@ impl EnforcementAuditBus {
 
     pub fn record_attestation_drift(&mut self, site: impl Into<String>) {
         let event = AuditEvent::AttestationDrift { site: site.into() };
+        self.append(&event);
+    }
+
+    /// Record a Σ-mask mutation : before / after packed-u128 + audit-seq
+    /// transition. Called from [`crate::sigma::SigmaMaskPacked::mutate`].
+    pub fn record_sigma_mask_mutated(
+        &mut self,
+        before: SigmaMaskPacked,
+        after: SigmaMaskPacked,
+        site: impl Into<String>,
+    ) {
+        let event = AuditEvent::SigmaMaskMutated {
+            site: site.into(),
+            before_packed: before.to_u128(),
+            after_packed: after.to_u128(),
+            audit_seq_before: before.audit_seq(),
+            audit_seq_after: after.audit_seq(),
+        };
         self.append(&event);
     }
 }
