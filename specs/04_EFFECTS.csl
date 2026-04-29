@@ -224,6 +224,153 @@
     {IO} ⊎ {PureDet} : compile-error (fs ops are inherently
                        non-deterministic between runs)
 
+§ SUBSTRATE-EFFECT-ROWS (S8-H4 / T11-D92 — Substrate axis + composition + EFR codes)
+  thesis : the Substrate (engine-plumbing layer per the S8-H0 design slice
+           — see DECISIONS T11-D79 for the canonical Substrate+LoA design
+           track ; the dedicated `specs/30_SUBSTRATE.csl` lands when the
+           H0 design-track integrates back to the parallel-fanout tip)
+           introduces a small fixed-vocabulary of effect-row labels
+           covering its six concerns. these compose with the built-in
+           effects above (which remain authoritative for resource +
+           timing + hardware + power + prime-directive + telemetry) but
+           live on a separate orthogonal axis : the substrate-axis
+           identifies WHICH PHASE of omega_step the fn participates in,
+           while the built-in axis identifies WHICH RESOURCES +
+           GUARANTEES it touches.
+
+  surface :
+    SubstrateEffect ::= Render | Sim | Audio | Net | Save | Telemetry
+                        ¬ open ; new-effects = explicit-spec-amendment
+    SubstrateEffectRow = bit-set over SubstrateEffect (compact ; 6 bits)
+    Render          GPU-render-graph context (omega_step phase-7..8)
+    Sim             simulation-tick context (phase-4)
+    Audio           audio-DSP callback (phase-6)
+    Net             network IO (phase-2 + phase-11)
+    Save            save-journal-append (phase-12)
+    Telemetry       observability ring (phase-9 ; universal-additive)
+
+  empty-row : {} ≡ pure at this layer (matches §§ 04 § EFFECT-ROW TYPES
+              ⟨⟩ ≡ pure invariant). a fn without a substrate-effect-row
+              annotation defaults to {} ⇒ backwards-compat preserved.
+
+  composition (canonical 6×6 table — encoded as compile-time check) :
+
+                  Render   Sim      Audio    Net      Save     Telemetry
+    Render        ✓ id     ✓ R7?    ✓        ✓ +grant ✓        ✓
+    Sim           ✓ R7?    ✓ id     ✗ EFR05  ✓ EFR01  ✓        ✓
+    Audio         ✓        ✗ EFR05  ✓ id     ✓ +grant ✓        ✓
+    Net           ✓ +grant ✓ EFR01  ✓ +grant ✓ id     ✓        ✓
+    Save          ✓        ✓        ✓        ✓        ✓ id     ✓
+    Telemetry     ✓        ✓        ✓        ✓        ✓        ✓ id
+
+    PureDet × Render  : ✗ EFR0002    rendering touches output devices
+    PureDet × Net     : ✗ EFR0004    live network is non-deterministic
+    PureDet × Audio   : ✓            audio-callback IS PureDet by-design
+
+  legend :
+    id              composition with self ≡ identity (no-op union)
+    EFR0X           hard compile-error code
+    R7?             advisory EFR0007 (requires frozen-sim marker)
+    +grant          legal iff caller holds caps_grant(net_send_state)
+    PureDet         BuiltinEffect bit ; gated via RowContext.has_pure_det
+
+  diagnostic-codes (W! stable-block ; T11-D92 reserves EFR0001..EFR0010) :
+    EFR0001  Sim ⊎ Net W! caps_grant(net_send_state)         hard-error
+    EFR0002  PureDet ⊎ Render = forbidden                     hard-error
+    EFR0003  Save W! Audit<> companion at BuiltinEffect-row   advisory
+    EFR0004  Net ⊎ PureDet = forbidden (replay-mode-only)     hard-error
+    EFR0005  Audio ⊎ Sim same-fiber = forbidden               hard-error
+    EFR0006  Audio W! Realtime<Crit> + Deadline<1ms>          advisory
+    EFR0007  Render ⊎ Sim W! frozen-sim marker                advisory
+    EFR0008  internal: SubstrateEffectRow has invalid bits    hard-error
+    EFR0009  Net W! ConsentToken<"net">                       advisory
+    EFR0010  Save W! ConsentToken<"fs">                       advisory
+
+  rationale (per-code) :
+    EFR0001 : un-gated Sim → Net composition could exfiltrate game-state
+              (consent-violation per PRIME_DIRECTIVE § 5 + §§ 11_IFC §
+               PRIME-DIRECTIVE ENCODING). caps_grant(net_send_state) is
+              the explicit-acknowledgment a caller must wrap the call in.
+    EFR0002 : Render touches output devices ⇒ not-bit-exact-reproducible.
+              the Substrate design (T11-D79 § OMEGA-STEP §
+              DETERMINISTIC-REPLAY-INVARIANTS) keeps Render outside the
+              PureDet contract by-design.
+    EFR0003 : Save composes with {IO, Audit<"save-journal">} at the
+              BuiltinEffect layer (per the Substrate effect-rows section
+              of T11-D79 § EFFECT-ROWS § SUBSTRATE-EFFECTS). this code
+              surfaces when the audit-companion is absent ; the
+              BuiltinEffect layer enforces the actual presence.
+    EFR0004 : live network IO is non-deterministic between runs. replay-
+              mode (recorded-trace) is the only PureDet-Net composition,
+              gated separately.
+    EFR0005 : audio runs on a dedicated RT-thread reading frozen-sim-val
+              (per T11-D79 § EFFECT-ROWS § COMPOSITION-RULES). same-fiber
+              composition would either starve the RT-thread or tear
+              sim-state mid-step.
+    EFR0006 : audio-callback canonical shape is per §§ 04 § LOA-PATTERNS
+              (audio-callback row : NoAlloc, NoUnbounded, Deadline<1ms>,
+              Realtime<Crit>, PureDet, DetRNG). flagged when Audio is
+              present without these companions at BuiltinEffect-row level.
+    EFR0007 : per T11-D79 § OMEGA-STEP § PHASES, render reads
+              frozen-sim-val at phase-7. Render+Sim composition without a
+              frozen-marker risks tearing.
+    EFR0008 : defense-in-depth — if a future SubstrateEffect variant is
+              added without updating the bit-encoding (or callers
+              construct a malformed row by-bits), this code surfaces the
+              bug.
+    EFR0009 : Net is gated by ConsentToken<"net"> per PRIME_DIRECTIVE § 5
+              + T11-D79 § Ω-TENSOR § OmegaConsent. surfaced as advisory
+              at this layer ; runtime + HIR layer enforces the actual
+              token-check.
+    EFR0010 : Save is gated by ConsentToken<"fs">. same pattern as EFR0009.
+
+  hard-vs-advisory :
+    hard-errors  : EFR0001 EFR0002 EFR0004 EFR0005 EFR0008
+                   ≡ try_compose returns Err ; compilation halts.
+    advisories   : EFR0003 EFR0006 EFR0007 EFR0009 EFR0010
+                   ≡ require companion at BuiltinEffect layer ;
+                     try_compose returns Ok at this layer ;
+                     compose_with_advisories returns Err for strict-mode.
+
+  PRIME-DIRECTIVE-encoding :
+    the composition table is a STRUCTURAL property of the type system.
+    no cfg, no env-var, no CLI flag, no runtime condition can disable it.
+    mirrors the existing § PRIME-DIRECTIVE EFFECTS pattern (which encodes
+    Sensitive<dom> × IO combinations) ; try_compose is the same pattern
+    applied to the substrate-axis. (per PRIME_DIRECTIVE § 6 SCOPE :
+    N! flag | config | … can disable | weaken | circumvent.)
+
+  Telemetry universal-additivity :
+    Telemetry composes with anything at this layer (per T11-D79 §
+    EFFECT-ROWS § COMPOSITION-RULES — "Telemetry participates here ;
+    no-changes"). observation never violates consent provided
+    ConsentToken<"telemetry-egress"> is held when egress is triggered ;
+    the egress-gate is enforced one-layer-up.
+
+  fn-level effect-row attribute :
+    `(effect_row, "{Sim, Render}")` per-fn structural attribute (matches
+    the IO-pattern from §§ 04 § IO-EFFECT § MIR threading ; the substrate-
+    row attribute is per-fn, the io_effect attribute is per-op). full
+    HIR + MIR threading is deferred per § DEFERRED below.
+
+  registry + enforcement :
+    crates/cssl-effects/src/substrate.rs (T11-D92 / S8-H4) is the canonical
+    Rust-side encoding. the bit-set, the composition rules, the EFR0001..
+    EFR0010 codes, and the diagnostic messages all live there. the spec
+    above is the authoritative contract ; the impl reimpls-from-spec
+    (per `feedback_spec_validation_via_reimpl.md` discipline).
+
+  DEFERRED (S8-H4 stage-0 scope) :
+    HIR + MIR threading of `(effect_row, "{Sim, Render}")` per-fn attribute
+      ⇒ T11-D9X follow-up
+    const-evaluation of caps_grant tokens (currently RowContext.has_caps_
+      grant_net_send_state taken at face value)
+      ⇒ T11-D9X follow-up alongside §§ 12_CAPABILITIES const-eval
+    user-defined Substrate effects beyond the six (e.g. {Mod} for modding-
+      sandbox per T11-D79 § DEFERRED D-3 ; {VR} for VR-projections per
+      T11-D79 § DEFERRED D-4)
+      ⇒ explicit spec-amendments per T11-D79 R-5
+
 § ERROR HANDLING
   Result<T, E>  canonical (Rust-lineage)
   ? operator    propagate Result::Err

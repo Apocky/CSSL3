@@ -16,6 +16,10 @@
 //!       (tighter budgets flow into looser ones per §§ 04 coercion rules).
 //!     - [`banned_composition`] — rejects Prime-Directive-banned combinations
 //!       (e.g., `{Sensitive<"weapon">} ⊎ {IO, Net}` without `Privilege<Kernel>`).
+//!     - [`SubstrateEffect`] / [`SubstrateEffectRow`] / [`try_compose`] — the
+//!       Substrate-axis effect labels and their composition-table (S8-H4 / T11-D92).
+//!       Stable diagnostic codes [`ConflictReason`] (`EFR0001`..`EFR0010`) cover
+//!       the canonical conflict shapes (see `specs/30_SUBSTRATE.csl § EFFECT-ROWS`).
 //!
 //! § NEXT (T4-phase-2)
 //!   - Evidence-record data-types synthesized from effect-decls.
@@ -34,6 +38,7 @@
 pub mod banned;
 pub mod discipline;
 pub mod registry;
+pub mod substrate;
 
 pub use banned::{
     banned_composition, banned_composition_with_domains, BannedReason, SensitiveDomain,
@@ -44,6 +49,10 @@ pub use discipline::{
 pub use registry::{
     BuiltinEffect, DischargeTiming, EffectArgShape, EffectCategory, EffectMeta, EffectRegistry,
     BUILTIN_METADATA,
+};
+pub use substrate::{
+    compose_with_advisories, try_compose, ConflictReason, RowContext, SubstrateEffect,
+    SubstrateEffectRow,
 };
 
 /// Crate version, exposes `CARGO_PKG_VERSION`.
