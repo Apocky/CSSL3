@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-substrate-save"
+description            = "CSSLv3 stage0 — Substrate save / load + replay-determinism (S8-H5 / T11-D93)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+cssl-telemetry = { path = "../cssl-telemetry" }
+thiserror      = { workspace = true }
+
+[dev-dependencies]
+# tempfile not in workspace deps — we hand-roll a tmp-dir helper inside tests
+# rather than pull a new dep through Cargo.lock. See `tests/save_load.rs`.
+
+[lints]
+workspace = true
