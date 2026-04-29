@@ -10,6 +10,20 @@ authors.workspace      = true
 [lints]
 workspace = true
 
+# § FEATURES (T11-D116 wave-9-reaudit verdict) :
+#   The triangle-rasterizer pipeline this crate provides is LEGACY. The
+#   canonical Stage-5 path is `cssl-render-v2` (SDF-native raymarcher). This
+#   crate is preserved behind the `cssl-render-legacy` feature-flag for
+#   cold-tier export use-cases (debug-tools that need to inspect raw triangles,
+#   asset-pipeline export to external mesh-formats). NEW WORLD-GEOMETRY
+#   MUST USE cssl-render-v2.
+[features]
+default = ["cssl-render-legacy"]
+# When set, the legacy SceneGraph + PBR Material + RenderGraph triangle
+# pipeline is compiled in. Only consumers with explicit cold-tier-export needs
+# should depend on this. Disable for SDF-native-only builds.
+cssl-render-legacy = []
+
 [dependencies]
 # § cssl-render is intentionally upstream-thin at the foundation slice. The
 # renderer crate is the floor that game-logic + scene-authoring + asset-
