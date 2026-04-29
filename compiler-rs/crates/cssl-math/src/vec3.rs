@@ -200,7 +200,13 @@ impl Vec3 {
     /// (totality on degenerate input).
     #[must_use]
     pub fn recip(self) -> Self {
-        let safe = |v: f32| if v.abs() > EPSILON_F32 { v.recip() } else { 0.0 };
+        let safe = |v: f32| {
+            if v.abs() > EPSILON_F32 {
+                v.recip()
+            } else {
+                0.0
+            }
+        };
         Self::new(safe(self.x), safe(self.y), safe(self.z))
     }
 

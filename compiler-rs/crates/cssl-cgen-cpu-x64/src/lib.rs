@@ -170,6 +170,22 @@ pub mod objemit;
 pub mod pipeline;
 
 // ═══════════════════════════════════════════════════════════════════════
+// § G9 (T11-D111) : multi-block walker — scf.if / scf.for / scf.while /
+//                    scf.loop end-to-end through the bespoke pipeline.
+// ═══════════════════════════════════════════════════════════════════════
+//
+// G7 (T11-D97) handled the single-block scalar-leaf return shape. G9 extends
+// the pipeline to multi-block IselFuncs : the structured-CFG ops (`scf.if`,
+// `scf.for`, `scf.while`, `scf.loop`) that G1's selector lowers as block-
+// graphs with `Jcc` / `Jmp` / `Fallthrough` terminators. The walker provides
+// a minimal greedy register allocation pass (G2 substitute, awaiting full
+// LSRA in G8) + iterative branch-displacement optimization (short rel8 vs
+// long rel32 form) + per-block byte emission that splices into G3's
+// prologue + epilogue.
+
+pub mod mb_walker;
+
+// ═══════════════════════════════════════════════════════════════════════
 // § G6 (T11-D88) : top-level façade for csslc `--backend=native-x64`
 // ═══════════════════════════════════════════════════════════════════════
 //

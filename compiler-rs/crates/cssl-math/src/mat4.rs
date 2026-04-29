@@ -137,9 +137,24 @@ impl Mat4 {
         let m = Mat3::from_quat(r);
         Self {
             cols: [
-                [m.cols[0][0] * s.x, m.cols[0][1] * s.x, m.cols[0][2] * s.x, 0.0],
-                [m.cols[1][0] * s.y, m.cols[1][1] * s.y, m.cols[1][2] * s.y, 0.0],
-                [m.cols[2][0] * s.z, m.cols[2][1] * s.z, m.cols[2][2] * s.z, 0.0],
+                [
+                    m.cols[0][0] * s.x,
+                    m.cols[0][1] * s.x,
+                    m.cols[0][2] * s.x,
+                    0.0,
+                ],
+                [
+                    m.cols[1][0] * s.y,
+                    m.cols[1][1] * s.y,
+                    m.cols[1][2] * s.y,
+                    0.0,
+                ],
+                [
+                    m.cols[2][0] * s.z,
+                    m.cols[2][1] * s.z,
+                    m.cols[2][2] * s.z,
+                    0.0,
+                ],
                 [t.x, t.y, t.z, 1.0],
             ],
         }
@@ -157,9 +172,9 @@ impl Mat4 {
         let f = (target - eye).normalize(); // world-space forward.
         let r = f.cross(up).normalize(); // world-space right.
         let u = r.cross(f); // re-orthogonalized up.
-        // View basis : view-space x = r, view-space y = u, view-space z = -f.
-        // The view matrix's rows are these basis vectors ; the translation
-        // is `-(R^T * eye)` to land the eye at the origin.
+                            // View basis : view-space x = r, view-space y = u, view-space z = -f.
+                            // The view matrix's rows are these basis vectors ; the translation
+                            // is `-(R^T * eye)` to land the eye at the origin.
         Self {
             cols: [
                 [r.x, u.x, -f.x, 0.0],
@@ -283,7 +298,8 @@ impl Mat4 {
         };
 
         // Determinant : Laplace expansion along row 0.
-        let det = m(0, 0) * cof(0, 0) + m(1, 0) * cof(0, 1) + m(2, 0) * cof(0, 2) + m(3, 0) * cof(0, 3);
+        let det =
+            m(0, 0) * cof(0, 0) + m(1, 0) * cof(0, 1) + m(2, 0) * cof(0, 2) + m(3, 0) * cof(0, 3);
         if det.abs() < SMALL_EPSILON_F32 {
             return None;
         }
@@ -515,11 +531,7 @@ mod tests {
     #[test]
     fn mat4_look_at_rh_eye_at_origin() {
         // eye at +Z, looking at origin, up = Y. Forward in world = -Z.
-        let view = Mat4::look_at_rh(
-            Vec3::new(0.0, 0.0, 5.0),
-            Vec3::ZERO,
-            Vec3::Y,
-        );
+        let view = Mat4::look_at_rh(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
         // The eye should land at view-space origin.
         let eye_view = view.transform_point3(Vec3::new(0.0, 0.0, 5.0));
         assert!(vec3_approx(eye_view, Vec3::ZERO, 1e-5));
