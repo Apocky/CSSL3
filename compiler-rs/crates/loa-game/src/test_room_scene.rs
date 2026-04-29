@@ -392,6 +392,47 @@ pub fn raymarch_pixel(cam: &Camera, u: f32, v: f32, aspect: f32, frame_n: u64) -
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// § RENDER — fill a pixel-buffer with the labyrinth scene
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Render-target dimensions (matches `test_room_render::sdf_scene::RENDER_W/H`).
+pub const LABYRINTH_RENDER_W: u32 = 320;
+pub const LABYRINTH_RENDER_H: u32 = 180;
+
+/// Convert a [0,1] RGB triple to a Win32 GDI BGRA u32 pixel.
+#[inline]
+fn rgb_to_bgra(c: V3) -> u32 {
+    let r = (c.0.clamp(0.0, 1.0) * 255.0) as u32;
+    let g = (c.1.clamp(0.0, 1.0) * 255.0) as u32;
+    let b = (c.2.clamp(0.0, 1.0) * 255.0) as u32;
+    (255 << 24) | (r << 16) | (g << 8) | b
+}
+
+/// Render the labyrinth scene into the given pixel buffer for `frame_n`.
+///
+/// `pixels` must be a slice of `LABYRINTH_RENDER_W * LABYRINTH_RENDER_H`
+/// BGRA u32 pixels. Compatible with the
+/// `test_room_render::win32_gdi::GdiRenderer::paint_buffer` surface.
+pub fn render_labyrinth_into(pixels: &mut [u32], frame_n: u64) {
+    let w = LABYRINTH_RENDER_W;
+    let h = LABYRINTH_RENDER_H;
+    debug_assert_eq!(pixels.len(), (w * h) as usize);
+
+    let cam = Camera::at_frame(frame_n);
+    let aspect = w as f32 / h as f32;
+
+    for py in 0..h {
+        for px in 0..w {
+            // Screen-coords ∈ [-1, +1] (top-left = (-1, +1), bottom-right = (+1, -1))
+            let u = (px as f32 + 0.5) / (w as f32) * 2.0 - 1.0;
+            let v = 1.0 - (py as f32 + 0.5) / (h as f32) * 2.0;
+            let color = raymarch_pixel(&cam, u, v, aspect, frame_n);
+            pixels[(py * w + px) as usize] = rgb_to_bgra(color);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // § TESTS — math-only, deterministic, no I/O
 // ═══════════════════════════════════════════════════════════════════════════
 

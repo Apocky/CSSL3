@@ -309,17 +309,20 @@ fn run() -> Result<(), LoaError> {
             if frame_count % STATS_EVERY_N_FRAMES == 0 {
                 let _ = r.refresh_dimensions();
             }
-            // Render the SDF math-buffer for this tick + present.
+            // § T11-D236 : render the LABYRINTH scene (walls + creature +
+            // companion) instead of the simple sphere. Per Apocky's "world is
+            // math" maxim, every visible-pixel = math-evaluation.
+            // See `loa_game::test_room_scene` for canonical scene definition.
             sdf_scratch.resize(
-                (test_room_render::sdf_scene::RENDER_W as usize)
-                    * (test_room_render::sdf_scene::RENDER_H as usize),
+                (loa_game::test_room_scene::LABYRINTH_RENDER_W as usize)
+                    * (loa_game::test_room_scene::LABYRINTH_RENDER_H as usize),
                 0,
             );
-            test_room_render::sdf_scene::render_into(&mut sdf_scratch, frame_count);
+            loa_game::test_room_scene::render_labyrinth_into(&mut sdf_scratch, frame_count);
             let _outcome = r.paint_buffer(
                 &sdf_scratch,
-                test_room_render::sdf_scene::RENDER_W,
-                test_room_render::sdf_scene::RENDER_H,
+                loa_game::test_room_scene::LABYRINTH_RENDER_W,
+                loa_game::test_room_scene::LABYRINTH_RENDER_H,
             );
         }
 
