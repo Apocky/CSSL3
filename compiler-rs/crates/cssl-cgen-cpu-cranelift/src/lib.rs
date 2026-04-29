@@ -53,7 +53,7 @@ pub use object::{
     emit_object_module, emit_object_module_with_format, host_default_format, magic_prefix,
     ObjectError,
 };
-pub use scf::{lower_scf_if, ScfError};
+pub use scf::{lower_scf_for, lower_scf_if, lower_scf_loop, lower_scf_while, ScfError};
 pub use target::{CpuTarget, CpuTargetProfile, DebugFormat};
 pub use types::{clif_type_for, ClifType};
 
