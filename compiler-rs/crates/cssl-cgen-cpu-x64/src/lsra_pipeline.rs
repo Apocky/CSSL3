@@ -1877,7 +1877,13 @@ mod tests {
 
         let funcs = crate::pipeline::select_module_with_marker(&module).unwrap();
         let abi = X64Abi::host_default();
-        let obj = crate::pipeline::build_func_bytes(&funcs[0], abi, true).unwrap();
+        let obj = crate::pipeline::build_func_bytes(
+            &funcs[0],
+            abi,
+            true,
+            &crate::pipeline::ModulePlan::empty(),
+        )
+        .unwrap();
         let expected = [
             0x55, // push rbp
             0x48, 0x89, 0xE5, // mov rbp, rsp

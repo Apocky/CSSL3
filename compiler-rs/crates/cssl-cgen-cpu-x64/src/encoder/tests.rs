@@ -623,6 +623,37 @@ fn cvtsd2si_rax_xmm0_64bit() {
     assert_eq!(bytes, vec![0xF2, 0x48, 0x0F, 0x2D, 0xC0]);
 }
 
+#[test]
+fn xorps_xmm0_xmm0_zeroes_xmm0() {
+    // xorps xmm0, xmm0  ⇒  0F 57 C0
+    // (canonical zero-materialization for f32/f64 ; T11-D112 / S7-G10).
+    let bytes = enc(X64Inst::XorpsRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0x0F, 0x57, 0xC0]);
+}
+
+#[test]
+fn xorps_xmm1_xmm1_zeroes_xmm1() {
+    // xorps xmm1, xmm1  ⇒  0F 57 C9
+    let bytes = enc(X64Inst::XorpsRR {
+        dst: Xmm::Xmm1,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0x0F, 0x57, 0xC9]);
+}
+
+#[test]
+fn xorps_xmm8_xmm8_uses_rex() {
+    // xorps xmm8, xmm8  ⇒  45 0F 57 C0  (REX.R + REX.B for both extended xmm regs).
+    let bytes = enc(X64Inst::XorpsRR {
+        dst: Xmm::Xmm8,
+        src: Xmm::Xmm8,
+    });
+    assert_eq!(bytes, vec![0x45, 0x0F, 0x57, 0xC0]);
+}
+
 // ─── extended-reg SSE2 ───────────────────────────────────────────────
 
 #[test]

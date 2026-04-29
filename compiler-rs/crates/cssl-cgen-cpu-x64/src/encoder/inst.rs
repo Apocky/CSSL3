@@ -249,9 +249,18 @@ pub enum X64Inst {
         dst: Gpr,
         src: Xmm,
     },
-    /// `xorps xmm, xmm` (0F 57 /r) — bitwise XOR for f32 sign-bit flip
-    /// (used by FpNeg for f32). NOTE : the opcode is shared between f32
-    /// and f64 sign-flip ; emitter picks the same opcode either way.
+    /// `xorps xmm, xmm` — packed-single bitwise-XOR (0F 57 /r).
+    ///
+    /// Used by G11 (T11-D102) for f32 sign-bit flip (FpNeg) — the opcode is
+    /// shared between f32 and f64 sign-flip ; emitter picks the same opcode
+    /// either way.
+    ///
+    /// § INVARIANT  (T11-D112 / S7-G10) : `xorps r, r` is also the canonical
+    /// idiom for materializing the IEEE 754 zero bit-pattern in an XMM
+    /// register WITHOUT a rip-relative load from a constant pool. This
+    /// is the only float-imm path G10 supports ; non-zero float
+    /// constants require a rodata section + rip-relative load that is
+    /// reserved for a follow-up slice.
     XorpsRR { dst: Xmm, src: Xmm },
     /// `xorpd xmm, xmm` (66 0F 57 /r) — bitwise XOR for f64 sign-bit flip.
     XorpdRR { dst: Xmm, src: Xmm },

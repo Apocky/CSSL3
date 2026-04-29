@@ -76,7 +76,7 @@ pub fn encode_into(buf: &mut Vec<u8>, inst: &X64Inst) {
         X64Inst::UComisdRR { dst, src } => emit_ucomisd_rr(buf, dst, src),
         X64Inst::CvtSi2sdRR { size, dst, src } => emit_cvtsi2sd(buf, size, dst, src),
         X64Inst::CvtSd2siRR { size, dst, src } => emit_cvtsd2si(buf, size, dst, src),
-        // ─── SSE2 G11 (T11-D102) extension ───────────────────────────
+        // ─── SSE2 G11 (T11-D102) extension + G10 (T11-D112) zero-float idiom ───
         X64Inst::UComissRR { dst, src } => emit_sse_no_prefix_rr(buf, 0x2E, dst, src),
         X64Inst::ComissRR { dst, src } => emit_sse_no_prefix_rr(buf, 0x2F, dst, src),
         X64Inst::ComisdRR { dst, src } => emit_sse_66_rr(buf, 0x2F, dst, src),
@@ -415,6 +415,11 @@ fn emit_cvtsd2si(buf: &mut Vec<u8>, size: OperandSize, dst: Gpr, src: Xmm) {
 
 /// `[REX] 0F <opcode> /r ModR/M(11 dst src)` — SSE op WITHOUT scalar prefix
 /// (used by `ucomiss`, `comiss`, `xorps`, etc).
+///
+/// § INVARIANT (T11-D112 / S7-G10) : when called with `opcode=0x57`, this
+/// is the canonical XORPS — the zero-float idiom `xorps r, r` clears all
+/// 128 bits of the destination XMM, materializing IEEE 754 zero without
+/// a constant-pool / rip-relative load.
 fn emit_sse_no_prefix_rr(buf: &mut Vec<u8>, opcode: u8, dst: Xmm, src: Xmm) {
     let rex = make_rex_optional(false, dst.rex_bit(), false, src.rex_bit());
     if let Some(r) = rex {
