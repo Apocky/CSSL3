@@ -157,15 +157,30 @@ pub mod encoder;
 pub mod objemit;
 
 // ═══════════════════════════════════════════════════════════════════════
+// § G7 (T11-D97) : cross-slice walker / native-x64 pipeline driver
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The G7-pipeline slice (T11-D97) wires G1 (isel) → G2-substitute (simple
+// scalar-leaf lowering at S7-G7 ; full LSRA at G8+) → G3 (ABI prologue +
+// epilogue) → G4 (encoder bytes) → G5 (object-file emit) end-to-end. This
+// is the SECOND hello.exe = 42 milestone : the first via cranelift in
+// S6-A5 ; this one via the bespoke G-axis chain with zero `cranelift-*`
+// dependencies in the emission path.
+
+pub mod pipeline;
+
+// ═══════════════════════════════════════════════════════════════════════
 // § G6 (T11-D88) : top-level façade for csslc `--backend=native-x64`
 // ═══════════════════════════════════════════════════════════════════════
 //
 // The façade preserves the surface shape mandated by T11-D88 so csslc's
 // build pipeline dispatches between cranelift + native-x64 with a single
-// match arm. The actual end-to-end walker (G1 → G2 → G4 → G5) is wired
-// by a future G7-pipeline slice ; until then this façade returns
-// `BackendNotYetLanded` and the native-hello-world gate test SKIPs
-// gracefully per the dispatch §LANDMINES rule.
+// match arm. At T11-D97 (G7-pipeline) the façade body delegates to
+// `pipeline::emit_object_module_native` for the actual cross-slice walk ;
+// callers that previously matched against `BackendNotYetLanded` must
+// switch to either accepting the success-path or matching against the
+// new per-stage error variants (`UnsupportedOp` / `NonScalarType` /
+// `ObjectWriteFailed`).
 
 /// Object-file container format. At stage-0 the format follows the host
 /// platform : COFF on Windows, Mach-O on macOS, ELF elsewhere.
@@ -211,16 +226,22 @@ pub const fn magic_prefix(fmt: ObjectFormat) -> &'static [u8] {
 /// shape that csslc consumes.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum NativeX64Error {
-    /// **NX64-0001** : G7-pipeline cross-slice walker not yet wired. The
-    /// public surface is canonical but the body of [`emit_object_module`]
-    /// is a skeleton ; csslc reports this and the native-hello-world gate
-    /// SKIPs gracefully until G7-pipeline lands.
+    /// **NX64-0001** : retained for backward-compat with the T11-D88 →
+    /// T11-D95 dispatch contract. Pre-T11-D97 (S7-G7) the public façade
+    /// body returned this variant unconditionally so the
+    /// `csslc::commands::build::is_native_x64_backend_not_yet_landed`
+    /// helper + the `cssl-examples::native_hello_world_gate` SKIP path
+    /// could detect the in-flight state. Post-T11-D97 the cross-slice
+    /// walker is wired and this variant is never produced by
+    /// [`emit_object_module`] — the per-stage variants ([`UnsupportedOp`]
+    /// / [`NonScalarType`] / [`ObjectWriteFailed`]) carry real failures
+    /// instead. The variant is kept so existing pattern-matches don't
+    /// become non-exhaustive ; downstream callers can match against it
+    /// (the match arm becomes dead code at runtime but the syntax holds).
     ///
-    /// The error message preserves the canonical prefix
-    /// `native-x64 backend not yet landed` mandated by G6 (T11-D88) so
-    /// downstream callers — notably `csslc::commands::build::is_native_x64_backend_not_yet_landed`
-    /// and the `cssl-examples::native_hello_world_gate` SKIP path — keep
-    /// matching after T11-D95 integration.
+    /// [`UnsupportedOp`]: NativeX64Error::UnsupportedOp
+    /// [`NonScalarType`]: NativeX64Error::NonScalarType
+    /// [`ObjectWriteFailed`]: NativeX64Error::ObjectWriteFailed
     #[error(
         "native-x64 backend not yet landed : G-axis sibling slices \
          (G1=isel, G2=regalloc, G3=abi, G4=encoder, G5=objemit) are integrated \
@@ -269,35 +290,34 @@ pub enum NativeX64Error {
 /// Translate `MirModule` → object bytes for the host platform. Mirrors
 /// `cssl_cgen_cpu_cranelift::emit_object_module` precisely.
 ///
-/// At T11-D95 (G-axis integration) the body returns
-/// [`NativeX64Error::BackendNotYetLanded`] until the G7-pipeline cross-slice
-/// walker lands. The signature is stable.
+/// At T11-D97 (S7-G7 cross-slice walker) the body delegates to
+/// [`pipeline::emit_object_module_native`] which runs the full G-axis
+/// chain : G1 (isel) → simple-lowering → G3 (ABI prologue+epilogue) →
+/// G4 (encoder bytes) → G5 (objemit object-file). The function shape +
+/// stable error contract are preserved for csslc's dispatcher.
 ///
 /// # Errors
-/// Returns [`NativeX64Error`] for any backend-internal failure.
+/// Returns [`NativeX64Error`] for any backend-internal failure :
+///   - [`NativeX64Error::UnsupportedOp`] : op outside the S7-G7
+///     scalar-leaf subset (anything beyond `arith.constant` + `func.return`
+///     for `fn () -> i32` shape ; full ALU + control-flow path lands in G8+).
+///   - [`NativeX64Error::NonScalarType`] : non-scalar param/result type.
+///   - [`NativeX64Error::ObjectWriteFailed`] : G5 object-emit error.
 pub fn emit_object_module(module: &MirModule) -> Result<Vec<u8>, NativeX64Error> {
     emit_object_module_with_format(module, host_default_format())
 }
 
 /// Translate `MirModule` → object bytes, requesting the given format.
-/// At stage-0 the format parameter is informational ; the produced bytes
-/// are always for the host platform.
+/// Delegates to [`pipeline::emit_object_module_native_with_format`].
 ///
 /// # Errors
-/// Returns [`NativeX64Error`] for any backend-internal failure.
+/// Returns [`NativeX64Error`] for any backend-internal failure (see
+/// [`emit_object_module`] for the per-variant breakdown).
 pub fn emit_object_module_with_format(
-    _module: &MirModule,
-    _format: ObjectFormat,
+    module: &MirModule,
+    format: ObjectFormat,
 ) -> Result<Vec<u8>, NativeX64Error> {
-    // G7-pipeline cross-slice walker pending ; canonical surface preserved.
-    // The walker shape will be roughly :
-    //   let isel_funcs    = isel::select_module(module)?;             // G1
-    //   let regalloc_out  = regalloc::allocate_module(isel_funcs)?;   // G2
-    //   let lowered       = lower::lower_module(regalloc_out, abi)?;  // G3
-    //   let encoded_funcs = encoder::encode_module(lowered)?;         // G4
-    //   let object_bytes  = objemit::emit_object_file(encoded_funcs)?;// G5
-    //   Ok(object_bytes)                                               // G6
-    Err(NativeX64Error::BackendNotYetLanded)
+    pipeline::emit_object_module_native_with_format(module, format)
 }
 
 /// Crate-version constant exposed for scaffold-verification tests.
@@ -354,22 +374,44 @@ mod scaffold_tests {
     }
 
     #[test]
-    fn emit_object_module_returns_backend_not_yet_landed() {
+    fn emit_object_module_succeeds_on_empty_module_post_g7() {
+        // Post-T11-D97 the cross-slice walker emits a real (mostly-empty)
+        // object file for an empty module. The pre-G7 placeholder path
+        // (that returned `BackendNotYetLanded`) is gone.
         let m = MirModule::new();
         let r = emit_object_module(&m);
-        assert!(matches!(r, Err(NativeX64Error::BackendNotYetLanded)));
+        assert!(
+            r.is_ok(),
+            "post-G7 empty-module emit must succeed ; got {r:?}"
+        );
+        let bytes = r.unwrap();
+        assert!(!bytes.is_empty());
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
     }
 
     #[test]
-    fn emit_object_module_with_format_returns_backend_not_yet_landed_for_each_format() {
+    fn emit_object_module_with_format_succeeds_for_each_format_post_g7() {
         let m = MirModule::new();
         for fmt in [ObjectFormat::Elf, ObjectFormat::Coff, ObjectFormat::MachO] {
             let r = emit_object_module_with_format(&m, fmt);
             assert!(
-                matches!(r, Err(NativeX64Error::BackendNotYetLanded)),
-                "expected BackendNotYetLanded for {fmt:?}"
+                r.is_ok(),
+                "post-G7 emit must succeed for {fmt:?} ; got {r:?}"
             );
+            let bytes = r.unwrap();
+            assert!(bytes.starts_with(magic_prefix(fmt)));
         }
+    }
+
+    #[test]
+    fn backend_not_yet_landed_variant_still_constructible_for_back_compat() {
+        // The variant is preserved so existing pattern-matches in
+        // downstream callers (csslc::commands::build +
+        // cssl-examples::native_hello_world_gate) keep compiling. It is
+        // never produced by the canonical pipeline path post-G7.
+        let e = NativeX64Error::BackendNotYetLanded;
+        let s = format!("{e}");
+        assert!(s.starts_with("native-x64 backend not yet landed"));
     }
 
     #[test]
