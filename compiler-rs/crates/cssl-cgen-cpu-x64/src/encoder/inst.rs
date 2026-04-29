@@ -13,7 +13,10 @@
 //!   integer  : Mov / Add / Sub / Mul / IMul / IDiv / Cmp / Lea / Push / Pop / Load / Store
 //!   control  : Jmp / Jcc / Call / Ret
 //!   SSE2     : Movss / Movsd / Addss / Addsd / Subss / Subsd / Mulss / Mulsd / Divss / Divsd /
-//!              `UCOMIsd` / `CVTSI2sd` / `CVTSD2si`
+//!              `UComiss` / `UComisd` / `Comiss` / `Comisd` / `Sqrtss` / `Sqrtsd` /
+//!              `Cvtsi2ss` / `Cvtsi2sd` / `Cvtss2si` / `Cvtsd2si` / `Xorps` /
+//!              `MovssMem` (load/store) / `MovsdMem` (load/store) /
+//!              `MovqXmmFromGp` / `MovqGpFromXmm` (G11 / T11-D102 SSE2 float path)
 //!
 //! § INVARIANTS
 //!   - Source/dest are physical regs (post-regalloc) ; G4 does not allocate.
@@ -218,4 +221,58 @@ pub enum X64Inst {
         dst: Gpr,
         src: Xmm,
     },
+    // ─── SSE2 G11 (T11-D102) extension : single-precision compares /
+    //    sqrt / single-precision conversions / xorps for FpNeg /
+    //    movss/movsd memory forms / movd/movq XMM↔GPR transfer ──────────
+    /// `ucomiss xmm, xmm` — unordered ordered-compare scalar single (0F 2E /r).
+    UComissRR { dst: Xmm, src: Xmm },
+    /// `comiss xmm, xmm` — signaling ordered-compare scalar single (0F 2F /r).
+    /// Sets ZF/PF/CF (signaling on QNaN).
+    ComissRR { dst: Xmm, src: Xmm },
+    /// `comisd xmm, xmm` — signaling ordered-compare scalar double (66 0F 2F /r).
+    ComisdRR { dst: Xmm, src: Xmm },
+    /// `sqrtss xmm, xmm` (F3 0F 51 /r) — scalar-single square root.
+    SqrtssRR { dst: Xmm, src: Xmm },
+    /// `sqrtsd xmm, xmm` (F2 0F 51 /r) — scalar-double square root.
+    SqrtsdRR { dst: Xmm, src: Xmm },
+    /// `cvtsi2ss xmm, gpr` — convert signed-int to scalar-single.
+    /// 32-bit src : F3 0F 2A /r ; 64-bit src : F3 REX.W 0F 2A /r.
+    CvtSi2ssRR {
+        size: OperandSize,
+        dst: Xmm,
+        src: Gpr,
+    },
+    /// `cvtss2si gpr, xmm` — convert scalar-single to signed-int.
+    /// 32-bit dst : F3 0F 2D /r ; 64-bit dst : F3 REX.W 0F 2D /r.
+    CvtSs2siRR {
+        size: OperandSize,
+        dst: Gpr,
+        src: Xmm,
+    },
+    /// `xorps xmm, xmm` (0F 57 /r) — bitwise XOR for f32 sign-bit flip
+    /// (used by FpNeg for f32). NOTE : the opcode is shared between f32
+    /// and f64 sign-flip ; emitter picks the same opcode either way.
+    XorpsRR { dst: Xmm, src: Xmm },
+    /// `xorpd xmm, xmm` (66 0F 57 /r) — bitwise XOR for f64 sign-bit flip.
+    XorpdRR { dst: Xmm, src: Xmm },
+    /// `movss xmm, [mem]` (F3 0F 10 /r) — load scalar-single from memory.
+    MovssLoad { dst: Xmm, src: MemOperand },
+    /// `movss [mem], xmm` (F3 0F 11 /r) — store scalar-single to memory.
+    MovssStore { dst: MemOperand, src: Xmm },
+    /// `movsd xmm, [mem]` (F2 0F 10 /r) — load scalar-double from memory.
+    MovsdLoad { dst: Xmm, src: MemOperand },
+    /// `movsd [mem], xmm` (F2 0F 11 /r) — store scalar-double to memory.
+    MovsdStore { dst: MemOperand, src: Xmm },
+    /// `movd xmm, gpr32` (66 0F 6E /r) — bit-pattern transfer 32-bit GPR → XMM.
+    /// Used to materialize an f32 constant via the integer-pattern path.
+    MovdXmmFromGp { dst: Xmm, src: Gpr },
+    /// `movd gpr32, xmm` (66 0F 7E /r) — bit-pattern transfer XMM → 32-bit GPR.
+    MovdGpFromXmm { dst: Gpr, src: Xmm },
+    /// `movq xmm, gpr64` (66 REX.W 0F 6E /r) — bit-pattern transfer 64-bit
+    /// GPR → XMM. Used to materialize an f64 constant via the integer-
+    /// pattern path : `mov rax, <f64 bits as i64> ; movq xmm0, rax`.
+    MovqXmmFromGp { dst: Xmm, src: Gpr },
+    /// `movq gpr64, xmm` (66 REX.W 0F 7E /r) — bit-pattern transfer XMM →
+    /// 64-bit GPR.
+    MovqGpFromXmm { dst: Gpr, src: Xmm },
 }

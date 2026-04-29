@@ -692,6 +692,223 @@ fn encode_into_appends_to_existing_buffer() {
     assert_eq!(buf, vec![0xDE, 0xAD, 0xC3]);
 }
 
+// ─── G11 (T11-D102) — SSE2 scalar float path extensions ──────────────
+
+#[test]
+fn ucomiss_xmm0_xmm1() {
+    // ucomiss xmm0, xmm1  ⇒  0F 2E C1  (no scalar prefix ; one of the
+    // few SSE-1 era ops that share the legacy zero-prefix encoding).
+    let bytes = enc(X64Inst::UComissRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0x0F, 0x2E, 0xC1]);
+}
+
+#[test]
+fn comiss_xmm0_xmm1() {
+    // comiss xmm0, xmm1  ⇒  0F 2F C1
+    let bytes = enc(X64Inst::ComissRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0x0F, 0x2F, 0xC1]);
+}
+
+#[test]
+fn comisd_xmm0_xmm1() {
+    // comisd xmm0, xmm1  ⇒  66 0F 2F C1
+    let bytes = enc(X64Inst::ComisdRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0x66, 0x0F, 0x2F, 0xC1]);
+}
+
+#[test]
+fn sqrtss_xmm0_xmm1() {
+    // sqrtss xmm0, xmm1  ⇒  F3 0F 51 C1
+    let bytes = enc(X64Inst::SqrtssRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0xF3, 0x0F, 0x51, 0xC1]);
+}
+
+#[test]
+fn sqrtsd_xmm0_xmm1() {
+    // sqrtsd xmm0, xmm1  ⇒  F2 0F 51 C1
+    let bytes = enc(X64Inst::SqrtsdRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0xF2, 0x0F, 0x51, 0xC1]);
+}
+
+#[test]
+fn cvtsi2ss_xmm0_eax() {
+    // cvtsi2ss xmm0, eax  ⇒  F3 0F 2A C0
+    let bytes = enc(X64Inst::CvtSi2ssRR {
+        size: OperandSize::B32,
+        dst: Xmm::Xmm0,
+        src: Gpr::Rax,
+    });
+    assert_eq!(bytes, vec![0xF3, 0x0F, 0x2A, 0xC0]);
+}
+
+#[test]
+fn cvtsi2ss_xmm0_rax_64bit() {
+    // cvtsi2ss xmm0, rax  ⇒  F3 48 0F 2A C0
+    let bytes = enc(X64Inst::CvtSi2ssRR {
+        size: OperandSize::B64,
+        dst: Xmm::Xmm0,
+        src: Gpr::Rax,
+    });
+    assert_eq!(bytes, vec![0xF3, 0x48, 0x0F, 0x2A, 0xC0]);
+}
+
+#[test]
+fn cvtss2si_eax_xmm0() {
+    // cvtss2si eax, xmm0  ⇒  F3 0F 2D C0
+    let bytes = enc(X64Inst::CvtSs2siRR {
+        size: OperandSize::B32,
+        dst: Gpr::Rax,
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0xF3, 0x0F, 0x2D, 0xC0]);
+}
+
+#[test]
+fn cvtss2si_rax_xmm0_64bit() {
+    // cvtss2si rax, xmm0  ⇒  F3 48 0F 2D C0
+    let bytes = enc(X64Inst::CvtSs2siRR {
+        size: OperandSize::B64,
+        dst: Gpr::Rax,
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0xF3, 0x48, 0x0F, 0x2D, 0xC0]);
+}
+
+#[test]
+fn xorps_xmm0_xmm1() {
+    // xorps xmm0, xmm1  ⇒  0F 57 C1
+    let bytes = enc(X64Inst::XorpsRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0x0F, 0x57, 0xC1]);
+}
+
+#[test]
+fn xorpd_xmm0_xmm1() {
+    // xorpd xmm0, xmm1  ⇒  66 0F 57 C1
+    let bytes = enc(X64Inst::XorpdRR {
+        dst: Xmm::Xmm0,
+        src: Xmm::Xmm1,
+    });
+    assert_eq!(bytes, vec![0x66, 0x0F, 0x57, 0xC1]);
+}
+
+#[test]
+fn movsd_load_xmm0_from_rcx() {
+    // movsd xmm0, [rcx]  ⇒  F2 0F 10 01
+    let bytes = enc(X64Inst::MovsdLoad {
+        dst: Xmm::Xmm0,
+        src: MemOperand::base(Gpr::Rcx),
+    });
+    assert_eq!(bytes, vec![0xF2, 0x0F, 0x10, 0x01]);
+}
+
+#[test]
+fn movsd_store_xmm0_to_rcx() {
+    // movsd [rcx], xmm0  ⇒  F2 0F 11 01
+    let bytes = enc(X64Inst::MovsdStore {
+        dst: MemOperand::base(Gpr::Rcx),
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0xF2, 0x0F, 0x11, 0x01]);
+}
+
+#[test]
+fn movss_load_xmm0_from_rcx() {
+    // movss xmm0, [rcx]  ⇒  F3 0F 10 01
+    let bytes = enc(X64Inst::MovssLoad {
+        dst: Xmm::Xmm0,
+        src: MemOperand::base(Gpr::Rcx),
+    });
+    assert_eq!(bytes, vec![0xF3, 0x0F, 0x10, 0x01]);
+}
+
+#[test]
+fn movss_store_xmm0_to_rcx() {
+    // movss [rcx], xmm0  ⇒  F3 0F 11 01
+    let bytes = enc(X64Inst::MovssStore {
+        dst: MemOperand::base(Gpr::Rcx),
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0xF3, 0x0F, 0x11, 0x01]);
+}
+
+#[test]
+fn movd_xmm_from_eax() {
+    // movd xmm0, eax  ⇒  66 0F 6E C0
+    let bytes = enc(X64Inst::MovdXmmFromGp {
+        dst: Xmm::Xmm0,
+        src: Gpr::Rax,
+    });
+    assert_eq!(bytes, vec![0x66, 0x0F, 0x6E, 0xC0]);
+}
+
+#[test]
+fn movd_eax_from_xmm() {
+    // movd eax, xmm0  ⇒  66 0F 7E C0
+    let bytes = enc(X64Inst::MovdGpFromXmm {
+        dst: Gpr::Rax,
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0x66, 0x0F, 0x7E, 0xC0]);
+}
+
+#[test]
+fn movq_xmm_from_rax() {
+    // movq xmm0, rax  ⇒  66 48 0F 6E C0
+    let bytes = enc(X64Inst::MovqXmmFromGp {
+        dst: Xmm::Xmm0,
+        src: Gpr::Rax,
+    });
+    assert_eq!(bytes, vec![0x66, 0x48, 0x0F, 0x6E, 0xC0]);
+}
+
+#[test]
+fn movq_rax_from_xmm() {
+    // movq rax, xmm0  ⇒  66 48 0F 7E C0
+    let bytes = enc(X64Inst::MovqGpFromXmm {
+        dst: Gpr::Rax,
+        src: Xmm::Xmm0,
+    });
+    assert_eq!(bytes, vec![0x66, 0x48, 0x0F, 0x7E, 0xC0]);
+}
+
+#[test]
+fn sqrtsd_extended_xmm() {
+    // sqrtsd xmm8, xmm9  ⇒  F2 45 0F 51 C1  (REX.R + REX.B)
+    let bytes = enc(X64Inst::SqrtsdRR {
+        dst: Xmm::Xmm8,
+        src: Xmm::Xmm9,
+    });
+    assert_eq!(bytes, vec![0xF2, 0x45, 0x0F, 0x51, 0xC1]);
+}
+
+#[test]
+fn movq_extended_xmm_from_extended_gpr() {
+    // movq xmm8, r9  ⇒  66 4D 0F 6E C1
+    let bytes = enc(X64Inst::MovqXmmFromGp {
+        dst: Xmm::Xmm8,
+        src: Gpr::R9,
+    });
+    assert_eq!(bytes, vec![0x66, 0x4D, 0x0F, 0x6E, 0xC1]);
+}
+
 // ─── version sentinel ────────────────────────────────────────────────
 
 #[test]

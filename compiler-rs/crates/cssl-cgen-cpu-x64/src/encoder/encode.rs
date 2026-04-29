@@ -76,6 +76,24 @@ pub fn encode_into(buf: &mut Vec<u8>, inst: &X64Inst) {
         X64Inst::UComisdRR { dst, src } => emit_ucomisd_rr(buf, dst, src),
         X64Inst::CvtSi2sdRR { size, dst, src } => emit_cvtsi2sd(buf, size, dst, src),
         X64Inst::CvtSd2siRR { size, dst, src } => emit_cvtsd2si(buf, size, dst, src),
+        // ─── SSE2 G11 (T11-D102) extension ───────────────────────────
+        X64Inst::UComissRR { dst, src } => emit_sse_no_prefix_rr(buf, 0x2E, dst, src),
+        X64Inst::ComissRR { dst, src } => emit_sse_no_prefix_rr(buf, 0x2F, dst, src),
+        X64Inst::ComisdRR { dst, src } => emit_sse_66_rr(buf, 0x2F, dst, src),
+        X64Inst::SqrtssRR { dst, src } => emit_sse_rr(buf, 0xF3, 0x51, dst, src),
+        X64Inst::SqrtsdRR { dst, src } => emit_sse_rr(buf, 0xF2, 0x51, dst, src),
+        X64Inst::CvtSi2ssRR { size, dst, src } => emit_cvtsi2ss(buf, size, dst, src),
+        X64Inst::CvtSs2siRR { size, dst, src } => emit_cvtss2si(buf, size, dst, src),
+        X64Inst::XorpsRR { dst, src } => emit_sse_no_prefix_rr(buf, 0x57, dst, src),
+        X64Inst::XorpdRR { dst, src } => emit_sse_66_rr(buf, 0x57, dst, src),
+        X64Inst::MovssLoad { dst, src } => emit_sse_load(buf, 0xF3, 0x10, dst, src),
+        X64Inst::MovssStore { dst, src } => emit_sse_store(buf, 0xF3, 0x11, dst, src),
+        X64Inst::MovsdLoad { dst, src } => emit_sse_load(buf, 0xF2, 0x10, dst, src),
+        X64Inst::MovsdStore { dst, src } => emit_sse_store(buf, 0xF2, 0x11, dst, src),
+        X64Inst::MovdXmmFromGp { dst, src } => emit_movd_xmm_from_gp(buf, dst, src, false),
+        X64Inst::MovdGpFromXmm { dst, src } => emit_movd_gp_from_xmm(buf, dst, src, false),
+        X64Inst::MovqXmmFromGp { dst, src } => emit_movd_xmm_from_gp(buf, dst, src, true),
+        X64Inst::MovqGpFromXmm { dst, src } => emit_movd_gp_from_xmm(buf, dst, src, true),
     }
 }
 
@@ -391,6 +409,123 @@ fn emit_cvtsd2si(buf: &mut Vec<u8>, size: OperandSize, dst: Gpr, src: Xmm) {
     buf.push(0x0F);
     buf.push(0x2D);
     buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+// ─── SSE2 G11 (T11-D102) helper emitters ───────────────────────────────
+
+/// `[REX] 0F <opcode> /r ModR/M(11 dst src)` — SSE op WITHOUT scalar prefix
+/// (used by `ucomiss`, `comiss`, `xorps`, etc).
+fn emit_sse_no_prefix_rr(buf: &mut Vec<u8>, opcode: u8, dst: Xmm, src: Xmm) {
+    let rex = make_rex_optional(false, dst.rex_bit(), false, src.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(opcode);
+    buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+/// `66 [REX] 0F <opcode> /r ModR/M(11 dst src)` — SSE op with the 0x66
+/// operand-size override prefix (used by `comisd`, `xorpd`).
+fn emit_sse_66_rr(buf: &mut Vec<u8>, opcode: u8, dst: Xmm, src: Xmm) {
+    buf.push(0x66);
+    let rex = make_rex_optional(false, dst.rex_bit(), false, src.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(opcode);
+    buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+fn emit_cvtsi2ss(buf: &mut Vec<u8>, size: OperandSize, dst: Xmm, src: Gpr) {
+    // F3 [REX.W?] 0F 2A /r
+    debug_assert!(
+        matches!(size, OperandSize::B32 | OperandSize::B64),
+        "cvtsi2ss only takes 32/64-bit GPR src"
+    );
+    buf.push(0xF3);
+    let rex = make_rex_optional(size.rex_w(), dst.rex_bit(), false, src.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(0x2A);
+    buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+fn emit_cvtss2si(buf: &mut Vec<u8>, size: OperandSize, dst: Gpr, src: Xmm) {
+    // F3 [REX.W?] 0F 2D /r
+    debug_assert!(
+        matches!(size, OperandSize::B32 | OperandSize::B64),
+        "cvtss2si only takes 32/64-bit GPR dst"
+    );
+    buf.push(0xF3);
+    let rex = make_rex_optional(size.rex_w(), dst.rex_bit(), false, src.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(0x2D);
+    buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+/// `<scalar-prefix> [REX] 0F <opcode> /r [ModR/M+SIB+disp]` — SSE load form
+/// (used by `movss xmm, [mem]` and `movsd xmm, [mem]`). `reg` field carries
+/// the destination XMM ; `r/m` field carries the memory operand.
+fn emit_sse_load(buf: &mut Vec<u8>, scalar_prefix: u8, opcode: u8, dst: Xmm, src: MemOperand) {
+    buf.push(scalar_prefix);
+    let mem = lower_mem_operand(src);
+    emit_rex_for_reg_mem(buf, /*W=*/ false, dst.rex_bit(), &mem);
+    buf.push(0x0F);
+    buf.push(opcode);
+    emit_modrm_sib_disp(buf, dst.rm_bits(), &mem);
+}
+
+/// `<scalar-prefix> [REX] 0F <opcode> /r [ModR/M+SIB+disp]` — SSE store form.
+/// `reg` field carries the source XMM ; `r/m` field carries the memory
+/// operand. Used by `movss [mem], xmm` and `movsd [mem], xmm`.
+fn emit_sse_store(buf: &mut Vec<u8>, scalar_prefix: u8, opcode: u8, dst: MemOperand, src: Xmm) {
+    buf.push(scalar_prefix);
+    let mem = lower_mem_operand(dst);
+    emit_rex_for_reg_mem(buf, /*W=*/ false, src.rex_bit(), &mem);
+    buf.push(0x0F);
+    buf.push(opcode);
+    emit_modrm_sib_disp(buf, src.rm_bits(), &mem);
+}
+
+/// `66 [REX.W?] 0F 6E /r` — `movd/movq xmm, gpr` bit-pattern transfer
+/// from a general-purpose register to an XMM register. `wide=true` emits
+/// REX.W for the 64-bit (`movq`) form ; `wide=false` emits the 32-bit
+/// (`movd`) form.
+fn emit_movd_xmm_from_gp(buf: &mut Vec<u8>, dst: Xmm, src: Gpr, wide: bool) {
+    buf.push(0x66);
+    let rex = make_rex_optional(/*W=*/ wide, dst.rex_bit(), false, src.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(0x6E);
+    buf.push(make_modrm(0b11, dst.rm_bits(), src.rm_bits()));
+}
+
+/// `66 [REX.W?] 0F 7E /r` — `movd/movq gpr, xmm` bit-pattern transfer from
+/// an XMM register to a general-purpose register. The encoding swaps the
+/// `reg`/`r/m` roles vs the from-gp form : here `reg` is the SOURCE XMM
+/// and `r/m` is the DEST GPR. We follow the standard Intel SDM mapping
+/// `(reg=src, r/m=dst)` for this opcode.
+fn emit_movd_gp_from_xmm(buf: &mut Vec<u8>, dst: Gpr, src: Xmm, wide: bool) {
+    buf.push(0x66);
+    // For 7E /r the modrm.reg field is the XMM operand and modrm.rm is the
+    // GPR operand. REX.R extends modrm.reg (so XMM>=8) ; REX.B extends
+    // modrm.rm (GPR>=8) ; REX.W toggles 32-vs-64-bit.
+    let rex = make_rex_optional(/*W=*/ wide, src.rex_bit(), false, dst.rex_bit());
+    if let Some(r) = rex {
+        buf.push(r);
+    }
+    buf.push(0x0F);
+    buf.push(0x7E);
+    buf.push(make_modrm(0b11, src.rm_bits(), dst.rm_bits()));
 }
 
 // ─── shared mem-operand emission helpers ─────────────────────────────
