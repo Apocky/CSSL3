@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-metrics"
+description            = "CSSLv3 stage0 — L2 telemetry foundation : Counter/Gauge/Histogram/Timer + MetricRegistry per-subsystem namespace ; wires cssl-telemetry ring-buffer ; replay-determinism preserved (sampled-deterministically OR no-op)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+cssl-telemetry = { path = "../cssl-telemetry" }
+smallvec       = { workspace = true }
+thiserror      = { workspace = true }
+
+[features]
+default = []
+# § replay-strict : forces `monotonic_ns` indirection through `strict_clock`
+#                   so all timer recordings become deterministic-functions of
+#                   (frame_n, sub_phase). Adaptive sampling REFUSED in this mode.
+replay-strict = []
+# § metrics-disabled : compiles every record-site to a no-op so production
+#                      builds pay zero observable overhead. Surface remains
+#                      callable so #[cfg]-cluttered call-sites are unnecessary.
+metrics-disabled = []
+
+[lints]
+workspace = true
