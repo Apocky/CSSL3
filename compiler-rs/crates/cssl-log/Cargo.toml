@@ -1,0 +1,21 @@
+[package]
+name                   = "cssl-log"
+description            = "CSSLv3 stage0 — L1 structured logging (Phase-J / T11-D156)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § Foundation : path-hash discipline (D130) + ring-buffer + audit-chain.
+cssl-telemetry = { path = "../cssl-telemetry" }
+# § thiserror : structured error types for sink failures.
+thiserror      = { workspace = true }
+# § blake3 : fingerprint computation for rate-limit dedup.
+blake3         = { workspace = true }
+# § serde_json : JsonLines wire-format encoder.
+serde_json     = { workspace = true }
