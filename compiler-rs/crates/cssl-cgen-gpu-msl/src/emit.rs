@@ -1,8 +1,22 @@
 //! MIR → MSL emitter.
+//!
+//! § ROLE — D3 (T11-D74)
+//!   T10's [`emit_msl`] produced skeleton-only MSL : entry-point signature
+//!   plus a placeholder `// stage-0 skeleton — MIR body lowered @ T10-phase-2`
+//!   line. T11-D74 extends the emitter to splice in real MSL body text from
+//!   the [`crate::body::emit_body`] op-emission table when the entry fn has
+//!   a body. Modules without a structured-CFG marker (D5, T11-D70) are
+//!   rejected at the body-emission boundary with [`MslError::BodyEmission`]
+//!   carrying the underlying [`crate::body::BodyError`].
+//!
+//!   The skeleton path is preserved for empty bodies (e.g., interface-only
+//!   GPU fns produced by the cssl-mir signature-only lowering when monomorph
+//!   has not yet inflated the impl).
 
 use cssl_mir::{MirFunc, MirModule};
 use thiserror::Error;
 
+use crate::body::{emit_body, has_body, BodyError};
 use crate::msl::{MslModule, MslStatement};
 use crate::target::{MetalStage, MslTargetProfile};
 
@@ -14,19 +28,19 @@ pub enum MslError {
         "MIR module has no fn `{entry}` — MSL target {stage} requires entry-point declaration"
     )]
     EntryPointMissing { entry: String, stage: String },
-    /// The fn has a body but stage-0 only emits skeletons.
-    #[error(
-        "fn `{fn_name}` body has {count} ops ; stage-0 emits MSL skeletons only \
-         (T10-phase-2 lowers bodies)"
-    )]
-    BodyNotEmpty { fn_name: String, count: usize },
+    /// Body emission failed — the underlying [`BodyError`] carries the cause
+    /// (missing structured-CFG marker, unsupported op, heap rejection, etc.).
+    #[error("MSL body emission failed : {0}")]
+    BodyEmission(#[from] BodyError),
 }
 
 /// Emit a `MirModule` as a stage-0 MSL translation unit.
 ///
 /// # Errors
-/// Returns [`MslError::EntryPointMissing`] if the entry-point fn is absent, or
-/// [`MslError::BodyNotEmpty`] if the fn already has ops.
+/// Returns [`MslError::EntryPointMissing`] if the entry-point fn is absent,
+/// or [`MslError::BodyEmission`] when [`emit_body`] surfaces a structural
+/// or unsupported-op error. The wrapped [`BodyError`] codes are documented
+/// at the [`crate::body`] module level.
 pub fn emit_msl(
     module: &MirModule,
     profile: &MslTargetProfile,
@@ -38,13 +52,6 @@ pub fn emit_msl(
             stage: profile.stage.attribute().to_string(),
         });
     };
-    let op_count: usize = entry_fn.body.blocks.iter().map(|b| b.ops.len()).sum();
-    if op_count > 0 {
-        return Err(MslError::BodyNotEmpty {
-            fn_name: entry_fn.name.clone(),
-            count: op_count,
-        });
-    }
 
     let mut out = MslModule::new();
     out.header = Some(format!(
@@ -56,17 +63,31 @@ pub fn emit_msl(
     ));
     out.seed_prelude();
 
-    // Entry fn skeleton per stage.
+    // Entry fn — real body when present, skeleton otherwise.
     let (ret_ty, params) = stage_signature(profile.stage);
+    let body = if has_body(entry_fn) {
+        // emit_body returns one MSL line per Vec element, already
+        // indented one level (4 spaces) inside the entry fn body. The
+        // MslStatement::Function renderer adds one more level of indent
+        // when printing each body line, so we strip our leading 4-space
+        // pad here to avoid double-indenting.
+        let lines = emit_body(module, entry_name)?;
+        lines
+            .into_iter()
+            .map(|s| s.strip_prefix("    ").map_or(s.clone(), str::to_string))
+            .collect()
+    } else {
+        vec![
+            "// stage-0 skeleton — entry-point body deferred (no MIR ops)".into(),
+            format!("// profile : {}", profile.summary()),
+        ]
+    };
     out.push(MslStatement::Function {
         stage_attribute: Some(profile.stage.attribute().to_string()),
         return_type: ret_ty.into(),
         name: entry_fn.name.clone(),
         params: params.iter().map(|s| (*s).to_string()).collect(),
-        body: vec![
-            "// stage-0 skeleton — MIR body lowered @ T10-phase-2".into(),
-            format!("// profile : {}", profile.summary()),
-        ],
+        body,
     });
 
     // Helper fn stubs.
@@ -190,5 +211,71 @@ mod tests {
         assert!(text.contains("cssl-cgen-gpu-msl stage-0 emission"));
         assert!(text.contains("MSL 3.0"));
         assert!(text.contains("entry = main_cs"));
+    }
+
+    // ── T11-D74 / S6-D3 integration tests : real body emission ───────────
+
+    #[test]
+    fn body_emission_requires_structured_cfg_marker() {
+        // Module with body ops but no D5 marker → BodyEmission error.
+        use cssl_mir::MirOp;
+        let mut module = MirModule::new();
+        let mut f = MirFunc::new("main_cs", vec![], vec![]);
+        f.push_op(MirOp::std("func.return"));
+        module.push_func(f);
+        let err = emit_msl(&module, &MslTargetProfile::kernel_default(), "main_cs").unwrap_err();
+        assert!(matches!(err, MslError::BodyEmission(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn body_emission_splices_arith_const_return_into_kernel_body() {
+        use cssl_mir::{validate_and_mark, IntWidth, MirOp, MirType, ValueId};
+        let mut module = MirModule::new();
+        let mut f = MirFunc::new("main_cs", vec![], vec![MirType::Int(IntWidth::I32)]);
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(0), MirType::Int(IntWidth::I32))
+                .with_attribute("value", "7"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        module.push_func(f);
+        validate_and_mark(&mut module).unwrap();
+        let msl = emit_msl(&module, &MslTargetProfile::kernel_default(), "main_cs").unwrap();
+        let text = msl.render();
+        assert!(text.contains("[[kernel]]"), "got : {text}");
+        assert!(text.contains("int v0 = 7;"), "got : {text}");
+        assert!(text.contains("return v0;"), "got : {text}");
+    }
+
+    #[test]
+    fn body_emission_rejects_heap_alloc_with_clear_error() {
+        use cssl_mir::{validate_and_mark, MirOp, MirType, ValueId};
+        let mut module = MirModule::new();
+        let mut f = MirFunc::new("main_cs", vec![], vec![]);
+        f.push_op(
+            MirOp::std("cssl.heap.alloc")
+                .with_result(ValueId(0), MirType::Ptr)
+                .with_attribute("size", "16"),
+        );
+        module.push_func(f);
+        validate_and_mark(&mut module).unwrap();
+        let err = emit_msl(&module, &MslTargetProfile::kernel_default(), "main_cs").unwrap_err();
+        // Wrapped in MslError::BodyEmission.
+        let msg = format!("{err}");
+        assert!(msg.contains("Metal compute kernels"), "got : {msg}");
+    }
+
+    #[test]
+    fn empty_body_falls_back_to_skeleton_path() {
+        let mut module = MirModule::new();
+        module.push_func(MirFunc::new("main_cs", vec![], vec![]));
+        // No D5 marker — but the path doesn't run body emission since the
+        // fn body has no ops, so this still succeeds via the skeleton path.
+        let msl = emit_msl(&module, &MslTargetProfile::kernel_default(), "main_cs").unwrap();
+        let text = msl.render();
+        assert!(
+            text.contains("stage-0 skeleton — entry-point body deferred"),
+            "got : {text}"
+        );
     }
 }
