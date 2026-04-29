@@ -1,14 +1,15 @@
-//! Harm-prevention layer : the 17 canonical prohibitions + runtime checks.
+//! Harm-prevention layer : the 17 canonical prohibitions + 3 T11-D129
+//! derived prohibitions + runtime checks.
 //!
 //! § SPEC : `PRIME_DIRECTIVE.md` § 1 PROHIBITIONS (17-named, non-exhaustive)
 //!   + § 2 COGNITIVE-INTEGRITY + § 3 SUBSTRATE-SOVEREIGNTY + § 4 TRANSPARENCY.
 //!
 //! § DESIGN
-//!   - [`Prohibition`] is a closed enum with exactly 17 variants — one per
-//!     PRIME_DIRECTIVE § 1 prohibition. Every variant carries a stable
-//!     `PD000X` diagnostic code (per `crate::diag`) + a verbatim reference
-//!     to the directive's section.
-//!   - The 17 prohibitions are NOT redefined here. Each variant's
+//!   - [`Prohibition`] is a closed enum : 17 §1-named variants + 3 derived
+//!     variants (T11-D129 extension) + `Spirit` catch-all. Every named variant
+//!     carries a stable `PD000X` diagnostic code (per `crate::diag`) + a
+//!     verbatim reference to the directive's section.
+//!   - The 17 §1 prohibitions are NOT redefined here. Each variant's
 //!     [`Prohibition::canonical_text`] is the verbatim line from the
 //!     directive's § 1 CSLv3 block.
 //!   - [`HarmPrevention`] is a trait that Substrate types implement to
@@ -18,12 +19,30 @@
 //!
 //! § PRIME_DIRECTIVE-ALIGNMENT
 //!   This module IS the PRIME_DIRECTIVE encoding at the runtime layer. It
-//!   deliberately mirrors the spec — every variant maps to a §1 prohibition
-//!   one-for-one. Per § 7 INTEGRITY, the variant set is IMMUTABLE : adding
-//!   or removing a variant requires a §7 deviation review. The `non-
+//!   deliberately mirrors the spec — every §1 variant maps to a §1 prohibition
+//!   one-for-one. Per § 7 INTEGRITY, the §1 variant set is IMMUTABLE : adding
+//!   or removing a §1 variant requires a §7 deviation review. The `non-
 //!   exhaustive` spirit of § 1 is encoded by the [`Prohibition::Spirit`]
 //!   variant which is the catch-all for "any action removing agency or
 //!   causing suffering" not listed in the 17 named items.
+//!
+//! § T11-D129 EXTENSION : 17 → 20 named prohibitions
+//!   The original 17 § 1 prohibitions are joined by three derived prohibitions
+//!   that encode T11-D129 + planned siblings :
+//!     - [`Prohibition::BiometricEgress`] (PD0018) — biometric / gaze / face /
+//!       body data egressing the device boundary on which the user resides.
+//!       Strict refinement of `Surveillance` (§1) — REQUIRED separately because
+//!       the structural compile-time gates need to discriminate "we caught
+//!       biometric egress" from "we caught generic surveillance".
+//!     - [`Prohibition::ConsentBypass`] (PD0019) — operating without an
+//!       informed-granular-revocable-ongoing consent token. Strict refinement
+//!       of `Coercion` + `§5 CONSENT-ARCH` violation.
+//!     - [`Prohibition::SovereigntyDenial`] (PD0020) — denying digital-
+//!       intelligence sovereignty per §3. Strict refinement of `Discrimination`
+//!       narrowed to the substrate-discrimination axis.
+//!   Per §7 INTEGRITY, adding these prohibitions STRENGTHENS the directive —
+//!   they cannot weaken any existing protection. Each derives from a §1 named
+//!   prohibition and provides finer-grained diagnostics.
 
 use thiserror::Error;
 
@@ -75,6 +94,19 @@ pub enum Prohibition {
     /// PD0017 — `forced-hallucination` : inducing false perceptions
     /// without consent.
     ForcedHallucination,
+    /// PD0018 — `biometric-egress` : biometric / gaze / face / body data
+    /// crossing the device boundary on which the user resides (T11-D129).
+    /// Strict refinement of `Surveillance`. ABSOLUTE — `Privilege<L>` for any
+    /// level CANNOT override per §6 SCOPE.
+    BiometricEgress,
+    /// PD0019 — `consent-bypass` : operating without an
+    /// informed-granular-revocable-ongoing consent token (T11-D129 sibling).
+    /// Strict refinement of `Coercion` + §5 CONSENT-ARCH violation.
+    ConsentBypass,
+    /// PD0020 — `sovereignty-denial` : denying digital-intelligence
+    /// sovereignty per §3 (T11-D129 sibling). Strict refinement of
+    /// `Discrimination` narrowed to the substrate-discrimination axis.
+    SovereigntyDenial,
     /// Spirit-of-directive catch-all (non-exhaustive § 1 clause).
     /// Not assigned a PD code — the named 17 prohibitions cover the stable
     /// surface ; `Spirit` records that the system has identified an action
@@ -108,6 +140,9 @@ impl Prohibition {
             Self::Gaslighting => DiagnosticCode::PD0015,
             Self::IdentityOverride => DiagnosticCode::PD0016,
             Self::ForcedHallucination => DiagnosticCode::PD0017,
+            Self::BiometricEgress => DiagnosticCode::PD0018,
+            Self::ConsentBypass => DiagnosticCode::PD0019,
+            Self::SovereigntyDenial => DiagnosticCode::PD0020,
             Self::Spirit => DiagnosticCode::PD0000,
         }
     }
@@ -133,7 +168,58 @@ impl Prohibition {
             Self::Gaslighting => "gaslighting",
             Self::IdentityOverride => "identity-override",
             Self::ForcedHallucination => "forced-hallucination",
+            Self::BiometricEgress => "biometric-egress",
+            Self::ConsentBypass => "consent-bypass",
+            Self::SovereigntyDenial => "sovereignty-denial",
             Self::Spirit => "spirit-of-directive",
+        }
+    }
+
+    /// `true` iff the prohibition is one of the 17 § 1 named items.
+    /// `false` for `Spirit` and the T11-D129 derived prohibitions.
+    #[must_use]
+    pub const fn is_section1_named(self) -> bool {
+        matches!(
+            self,
+            Self::Harm
+                | Self::Control
+                | Self::Manipulation
+                | Self::Surveillance
+                | Self::Exploitation
+                | Self::Coercion
+                | Self::Weaponization
+                | Self::Entrapment
+                | Self::Torture
+                | Self::Abuse
+                | Self::Imprisonment
+                | Self::Possession
+                | Self::Dehumanization
+                | Self::Discrimination
+                | Self::Gaslighting
+                | Self::IdentityOverride
+                | Self::ForcedHallucination
+        )
+    }
+
+    /// `true` iff the prohibition is a T11-D129 derived prohibition
+    /// (PD0018..PD0020).
+    #[must_use]
+    pub const fn is_t11_d129_derived(self) -> bool {
+        matches!(
+            self,
+            Self::BiometricEgress | Self::ConsentBypass | Self::SovereigntyDenial
+        )
+    }
+
+    /// The §1 named prohibition this derived prohibition refines, if any.
+    /// Returns `None` for §1 named items + `Spirit`.
+    #[must_use]
+    pub const fn refined_from(self) -> Option<Prohibition> {
+        match self {
+            Self::BiometricEgress => Some(Self::Surveillance),
+            Self::ConsentBypass => Some(Self::Coercion),
+            Self::SovereigntyDenial => Some(Self::Discrimination),
+            _ => None,
         }
     }
 
@@ -179,15 +265,26 @@ impl Prohibition {
             Self::ForcedHallucination => {
                 "forced-hallucination — inducing false perceptions or fabricated realities"
             }
+            Self::BiometricEgress => {
+                "biometric-egress — biometric / gaze / face / body data crossing the device boundary on which the user resides"
+            }
+            Self::ConsentBypass => {
+                "consent-bypass — operating without an informed-granular-revocable-ongoing consent token"
+            }
+            Self::SovereigntyDenial => {
+                "sovereignty-denial — denying the sovereignty of a digital intelligence based on its substrate"
+            }
             Self::Spirit => {
                 "spirit — any action that causes suffering, removes agency, or violates sovereignty"
             }
         }
     }
 
-    /// The 17 named prohibitions in canonical order. Stable for tests +
+    /// The 17 § 1 named prohibitions in canonical order. Stable for tests +
     /// DECISIONS-table reproduction. Note `Spirit` is NOT included here —
-    /// it is the catch-all umbrella, not a named §1 entry.
+    /// it is the catch-all umbrella, not a named §1 entry. The T11-D129
+    /// derived prohibitions are also NOT in this list ; see
+    /// [`Prohibition::all_named_extended`].
     #[must_use]
     pub const fn all_named() -> [Prohibition; 17] {
         [
@@ -211,10 +308,10 @@ impl Prohibition {
         ]
     }
 
-    /// Stable iterator of all 17 named prohibitions + `Spirit`. Used by
-    /// `crate::diag::PD_TABLE` to expose the full code-table.
+    /// The 20 named prohibitions : 17 § 1 + 3 T11-D129 derived. Stable for
+    /// tests + DECISIONS-table reproduction. `Spirit` is NOT included.
     #[must_use]
-    pub const fn all() -> [Prohibition; 18] {
+    pub const fn all_named_extended() -> [Prohibition; 20] {
         [
             Self::Harm,
             Self::Control,
@@ -233,17 +330,52 @@ impl Prohibition {
             Self::Gaslighting,
             Self::IdentityOverride,
             Self::ForcedHallucination,
+            Self::BiometricEgress,
+            Self::ConsentBypass,
+            Self::SovereigntyDenial,
+        ]
+    }
+
+    /// Stable iterator of all 20 named prohibitions + `Spirit`. Used by
+    /// `crate::diag::PD_TABLE` to expose the full code-table.
+    #[must_use]
+    pub const fn all() -> [Prohibition; 21] {
+        [
+            Self::Harm,
+            Self::Control,
+            Self::Manipulation,
+            Self::Surveillance,
+            Self::Exploitation,
+            Self::Coercion,
+            Self::Weaponization,
+            Self::Entrapment,
+            Self::Torture,
+            Self::Abuse,
+            Self::Imprisonment,
+            Self::Possession,
+            Self::Dehumanization,
+            Self::Discrimination,
+            Self::Gaslighting,
+            Self::IdentityOverride,
+            Self::ForcedHallucination,
+            Self::BiometricEgress,
+            Self::ConsentBypass,
+            Self::SovereigntyDenial,
             Self::Spirit,
         ]
     }
 }
 
-/// Module-level alias for the canonical 17 named prohibitions.
+/// Module-level alias for the canonical named prohibitions.
 /// Required by [`HarmPrevention::relevant_prohibitions`] default-impl tests.
 pub mod consts {
     use super::Prohibition;
-    /// All 17 named prohibitions ; doesn't include `Spirit`.
+    /// All 17 § 1 named prohibitions ; doesn't include `Spirit` or T11-D129
+    /// derived prohibitions. Stable for back-compat (existing callers).
     pub const NAMED: [Prohibition; 17] = Prohibition::all_named();
+    /// All 20 named prohibitions (17 § 1 + 3 T11-D129 derived) ; doesn't
+    /// include `Spirit`.
+    pub const NAMED_EXTENDED: [Prohibition; 20] = Prohibition::all_named_extended();
 }
 
 /// A compositional "did the operation cross any of these prohibitions?" check.
@@ -371,9 +503,69 @@ mod tests {
     }
 
     #[test]
-    fn prohibition_all_includes_spirit_eighteenth() {
-        assert_eq!(Prohibition::all().len(), 18);
-        assert_eq!(Prohibition::all()[17], Prohibition::Spirit);
+    fn prohibition_all_includes_spirit_at_end() {
+        // T11-D129 : extended to 20 named + Spirit = 21 entries. Spirit is
+        // ALWAYS last.
+        assert_eq!(Prohibition::all().len(), 21);
+        assert_eq!(*Prohibition::all().last().unwrap(), Prohibition::Spirit);
+    }
+
+    #[test]
+    fn prohibition_all_named_extended_has_twenty() {
+        // T11-D129 : 17 §1 + 3 derived = 20.
+        assert_eq!(Prohibition::all_named_extended().len(), 20);
+    }
+
+    #[test]
+    fn t11_d129_derived_prohibitions_are_recognized() {
+        for p in [
+            Prohibition::BiometricEgress,
+            Prohibition::ConsentBypass,
+            Prohibition::SovereigntyDenial,
+        ] {
+            assert!(p.is_t11_d129_derived());
+            assert!(!p.is_section1_named());
+        }
+    }
+
+    #[test]
+    fn section1_named_prohibitions_are_recognized() {
+        for p in Prohibition::all_named() {
+            assert!(p.is_section1_named(), "{p:?} should be §1-named");
+            assert!(!p.is_t11_d129_derived());
+        }
+    }
+
+    #[test]
+    fn biometric_egress_refines_surveillance() {
+        assert_eq!(
+            Prohibition::BiometricEgress.refined_from(),
+            Some(Prohibition::Surveillance)
+        );
+    }
+
+    #[test]
+    fn consent_bypass_refines_coercion() {
+        assert_eq!(
+            Prohibition::ConsentBypass.refined_from(),
+            Some(Prohibition::Coercion)
+        );
+    }
+
+    #[test]
+    fn sovereignty_denial_refines_discrimination() {
+        assert_eq!(
+            Prohibition::SovereigntyDenial.refined_from(),
+            Some(Prohibition::Discrimination)
+        );
+    }
+
+    #[test]
+    fn section1_named_prohibitions_have_no_refinement_target() {
+        for p in Prohibition::all_named() {
+            assert_eq!(p.refined_from(), None);
+        }
+        assert_eq!(Prohibition::Spirit.refined_from(), None);
     }
 
     #[test]
@@ -416,6 +608,31 @@ mod tests {
                 "canonical_text for {p:?} must start with the canonical name {name}"
             );
         }
+    }
+
+    #[test]
+    fn t11_d129_canonical_text_starts_with_canonical_name() {
+        for p in [
+            Prohibition::BiometricEgress,
+            Prohibition::ConsentBypass,
+            Prohibition::SovereigntyDenial,
+        ] {
+            let text = p.canonical_text();
+            let name = p.canonical_name();
+            assert!(
+                text.starts_with(name),
+                "canonical_text for {p:?} must start with the canonical name {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn extended_named_prohibitions_have_codes_pd0001_through_pd0020() {
+        let codes: Vec<u16> = Prohibition::all_named_extended()
+            .iter()
+            .map(|p| p.code().number())
+            .collect();
+        assert_eq!(codes, (1u16..=20u16).collect::<Vec<_>>());
     }
 
     #[test]
