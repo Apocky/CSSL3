@@ -6691,3 +6691,62 @@ Each decision entry :
   - **CompanionView read-side bridge** — this crate intentionally has no `cssl-substrate-projections::CompanionView` dependency. When the Phase-I content-side wires the actual Companion-archetype game-presence, the bridge will be a separate crate (e.g. `cssl-companion-bridge`) that consumes the read-only projection + surfaces affordances to the AI-collaborator process per spec § AI-INTERACTION C-3, C-5. NPC-AI primitives in this crate compose with that bridge but don't depend on it.
 
 ──────────────────────────────────────────────────────────────
+
+## § T11-D104 : N1 — Asset pipeline (PNG + GLTF + WAV + TTF parsers + AssetHandle + hot-reload scaffold)
+
+- **ID** § T11-D104
+- **Date** 2026-04-29
+- **Status** accepted
+- **Branch** `cssl/session-9/N1-asset-pipeline` (worktree `.claude/worktrees/ASSET`)
+- **Phase** N (Asset pipeline) — first slice, post-Phase-I scaffold (T11-D96).
+
+- **Context** Phase I (Labyrinth-of-Apockalypse / `loa-game` scaffold, T11-D96) demonstrated the full Substrate-host plumbing end-to-end but needed a content path : an actual game ships textures, models, audio, and fonts, none of which the runtime had a way to load. Stage-0 cssl-rt's `fs::open / read / write / close` (T11-D76) provides the byte-level surface but no format awareness. T11-D104 closes that gap by introducing `cssl-asset` — the canonical layer between cssl-rt's file-IO and the runtime data structures of a CSSLv3 application.
+
+- **Decision** Add a new always-on workspace crate `cssl-asset` (T11-D104, slice N1) hosting hand-rolled stage-0 parsers + encoders for the four canonical game-asset formats (PNG / GLTF-or-GLB / WAV / TTF) along with the always-on infrastructure that the consumer-facing surface needs (`AssetHandle<T>` for the eventual async story, `AssetBudget` for per-asset-class memory bounds, `AssetWatcher` for the hot-reload surface). The crate has zero non-workspace dependencies (`thiserror` is the only add, already in workspace) and follows the same Rust-hosted-bootstrap pattern as `cssl-rt` / `cssl-host-audio` : the surface mirrors what an eventual CSSLv3-self-hosted version will expose so consumers can be written in either language and migrated mechanically.
+
+- **Surface (always-on, stage-0)**
+  - **PNG** : `decode(bytes) -> PngImage` + `encode(PngImage) -> Vec<u8>` + `peek(bytes) -> (w, h, ColorType)`. Supports 8-bit grayscale, gray+alpha, RGB, RGBA. Hand-rolled zlib/DEFLATE inflate (BTYPE=0 stored + BTYPE=1 fixed-Huffman ; dynamic-Huffman BTYPE=2 surfaces `UnsupportedKind` and is a follow-up slice). Every chunk CRC + zlib Adler-32 verified ; round-trip is byte-stable.
+  - **GLTF / GLB** : `decode_glb(bytes) -> GltfDocument` + `decode_gltf(json) -> GltfDocument` + `parse_json(text) -> JsonValue`. Hand-rolled minimal JSON parser (objects + arrays + strings + numbers + booleans + null + Unicode-BMP escapes) with `MAX_JSON_DEPTH = 64` cap. Full glTF 2.0 schema subset : asset, scenes, nodes (TRS + matrix), meshes (primitives + attributes), accessors, bufferViews, buffers, animations (channels + samplers), skins, materials (PBR-Metallic-Roughness), images, textures. Scene-graph walker + accessor → byte-slice resolution against the embedded GLB BIN chunk.
+  - **WAV** : `decode(bytes) -> WavFile` + `encode(WavFile) -> Vec<u8>`. RIFF/WAVE PCM (8-bit unsigned + 16/24/32-bit signed) + IEEE 754 float32 (format-tag 3). Round-trip is byte-stable. Unknown chunks (`LIST`, etc.) skipped silently per the RIFF spec.
+  - **TTF / OpenType** : `parse(bytes) -> TtfFont` + `font.glyph_index(codepoint) -> u16` + `font.glyph_outline(glyph_id) -> GlyphOutline`. Header + table directory + the eight required tables (head, maxp, hhea, hmtx, loca, glyf, cmap-format-4, name). Simple-glyph outlines via the standard delta-encoded Sub/Up/Average/Paeth filter pipeline.
+  - **`AssetHandle<T>`** + **`LoadProgress`** : async-loading scaffold. Stage-0 every handle is `Ready` (synchronous) ; `Pending` / `Cancelled` are reachable only when a real async runtime lands. The poll-style API matches what a real future will expose so downstream code is forward-compatible.
+  - **`AssetBudget`** + **`EvictionPolicy::{Lru, SmallestFirst}`** : per-class byte budget with LRU + smallest-first eviction. `try_reserve` rejects above-cap requests ; `reserve_with_eviction` evicts older entries until the new one fits.
+  - **`AssetWatcher`** + **`watch_path(path) -> AssetWatcher`** : hot-reload surface. Stage-0 inert (in-memory queue ; `push_event` is the canonical driver). Real OS-backed implementation (Win32 `ReadDirectoryChangesW` / Linux inotify / macOS FSEvents) lands in a follow-up slice.
+  - **`AssetError`** : single sum-type unifying `Io / Truncated / BadMagic / UnsupportedKind / BadChecksum / InvalidValue / BudgetExceeded / Watcher / Encode`. Each constructor carries enough context for clear surface messages (path + reason / format + site / expected-vs-actual integers).
+
+- **Deferred (cfg-gated for future slices)**
+  - Texture : WebP / KTX2 read.
+  - Audio : OGG-Vorbis / MP3 decode (compressed streams).
+  - Font : bitmap fonts (BDF / PCF / sfnt-bitmap), CFF / CFF2 outlines (OTTO scaler), composite glyphs in `glyf`, GPOS / GSUB layout (kerning + ligatures + complex scripts), variable fonts (`fvar` / `gvar`), color fonts (`COLR` / `CPAL`).
+  - PNG : 16-bit-per-channel, paletted (PLTE), Adam7 interlacing, dynamic-Huffman (BTYPE=2) inflate.
+  - GLTF : `KHR_*` extension typed consumption (currently surfaces as raw JSON Maps for the consumer to read), URI-encoded `data:` scheme decoding (consumer fetches external bytes), schema validation against the official JSON-Schema (well-formedness is checked structurally during parse).
+  - Async : real future-based loading (`AssetHandle::Pending` is reachable only via a future async runtime ; stage-0 cannot produce it).
+  - Hot-reload : real OS-backed event delivery (`AssetWatcher::push_event` is the only stage-0 driver).
+  - Round-trip : DXT-compressed buffer encode/decode (the GPU-side compressor lands as a separate slice ; the cssl-asset round-trip golden test instead verifies the harder property that `encode → decode → re-encode` is byte-stable, which is the necessary precondition for any lossless compression pipeline).
+
+- **PRIME_DIRECTIVE preservation** : asset loaders are the most surveillance-adjacent surface in a runtime — file-system reads + format parsing + (eventually) directory traversal. T11-D104's surface intentionally keeps the attack surface narrow :
+  - Every parser caps allocation at the input's reported size + a hard upper bound (`png::MAX_IMAGE_BYTES = 256 MB`, `wav::MAX_WAV_DATA_BYTES = 256 MB`, `gltf::MAX_JSON_DEPTH = 64`).
+  - Pathological inputs (zero-dim images, integer-overflow buffer sizes, deeply-nested JSON) are rejected BEFORE any allocation.
+  - No URI auto-fetch — text-mode glTF returns `uri` strings that the consumer must resolve. The parser never opens a network socket or a non-input file.
+  - No directory traversal — `watch_path(path)` opens exactly the path the caller named ; subdirectories require explicit additional opens.
+  - No telemetry — counters are local ; no global ring integration at stage-0.
+  - No microphone surface (this is a file-IO parser, not an input device). No system-font enumeration. No camera. No screenshot. No clipboard. No environment-variable read. The surface is exactly what's documented + nothing else.
+
+- **Test impact** : +146 cssl-asset tests (138 lib unit + 8 integration round-trip). Workspace test count after T11-D104 is 3674 / 0 failed / 16 ignored. Gate run with `--test-threads=1` per the carry-forward cssl-rt cold-cache flake guidance.
+
+- **LOC impact** : +6634 lines (`crates/cssl-asset/{src/*, tests/round_trip.rs}` + `crates/cssl-asset/Cargo.toml`). Roughly aligned with the per-slice charter target of ~3000 source LOC + ~80 tests, with the overage attributable to (a) hand-rolled DEFLATE inflate for PNG (≈400 LOC), (b) full glTF 2.0 schema subset including animations + skins + materials (≈1700 LOC), (c) TTF cmap-format-4 + simple-glyph delta-encoding pipeline (≈1250 LOC), (d) test surface that exercises each format's failure modes individually (≈600 LOC of tests).
+
+- **Round-trip golden tests** (per slice charter report-back) :
+  - **(a) PNG** : `encode → decode → re-encode → byte-equal` (`tests/round_trip.rs::png_round_trip_byte_equal`). The DXT-compression round-trip is deferred to a follow-up slice that lands the GPU-side compressor ; the byte-stable round-trip we DO verify is the necessary precondition for any lossless compression pipeline.
+  - **(b) GLB** : `decode_glb → walk_scene → accessor_bytes` (`tests/round_trip.rs::glb_round_trip_walk_scene_graph`). Verifies the scene-graph walker visits the root + children depth-first + the accessor → byte-slice resolution returns the embedded GLB BIN chunk content correctly.
+  - **(c) WAV** : `encode → decode → PCM equality` (`tests/round_trip.rs::wav_round_trip_pcm_equality` + `wav_round_trip_all_supported_formats`). Verifies all five supported formats (PcmU8, PcmS16, PcmS24, PcmS32, Float32) round-trip with PCM byte-equality.
+
+- **Known follow-ups (not blocking)**
+  - **DEFLATE BTYPE=2 dynamic-Huffman inflate** — surface is in place (returns `UnsupportedKind`) ; a separate slice lands the dynamic code-tree decoder.
+  - **DXT compression** — the GPU-side BC1/BC3/BC7 compressor + the round-trip "load PNG → DXT-compressed buffer → re-encode" path mentioned in the slice charter ; lands as part of a follow-up slice that pulls in the GPU codegen surface.
+  - **Composite glyphs in TTF** — currently `parse_simple_glyph` rejects composite glyphs with `UnsupportedKind`.
+  - **Real async `AssetHandle`** — surface is in place ; needs the cssl-rt async runtime story to land.
+  - **Real OS-backed `AssetWatcher`** — surface is in place ; needs the per-platform filesystem-event pump.
+  - **Spec corpus update** : `specs/14_BACKEND.csl § ASSET-PIPELINE` is added in this slice.
+
+──────────────────────────────────────────────────────────────

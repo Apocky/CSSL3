@@ -223,4 +223,97 @@
   backend-feature-parity matrix CI-enforced
   sysman-capture per-backend where-available
 
+§ ASSET-PIPELINE  (N1 / T11-D104 — game-asset parsers + loaders)
+  thesis : layer between cssl-rt's fs-IO surface (T11-D76) + runtime data
+           structures . CSSLv3-app . parsers Rust-hosted-stage0 ;
+           surface mirrors eventual self-hosted-CSSLv3 form
+           ⇒ consumers migrate-mechanically.
+  surface = always-on (formats stage-0)
+    PNG  : decode + encode + peek
+           8-bit (gray / gray+alpha / RGB / RGBA)
+           hand-rolled zlib/DEFLATE inflate (BTYPE=0 stored + BTYPE=1
+             fixed-Huffman ; BTYPE=2 dynamic-Huffman → UnsupportedKind +
+             follow-up slice)
+           CRC + Adler-32 verified
+           round-trip byte-stable (re-encode equality)
+    GLTF : decode_glb (binary container) + decode_gltf (text JSON)
+           hand-rolled minimal JSON parser (objects + arrays + strings +
+             numbers + booleans + null + Unicode-BMP escapes)
+             cap : MAX_JSON_DEPTH = 64
+           full glTF-2.0 schema subset :
+             asset + scenes + nodes (TRS + matrix) + meshes + accessors +
+             bufferViews + buffers + animations + skins + materials
+             (PBR-Metallic-Roughness) + images + textures
+           scene-graph walker (depth-first) + accessor → byte-slice
+             resolution against embedded GLB BIN chunk
+    WAV  : decode + encode
+           RIFF/WAVE PCM (PcmU8 / PcmS16 / PcmS24 / PcmS32) +
+             IEEE 754 float32 (format-tag 3)
+           round-trip byte-stable
+           unknown chunks (LIST etc.) skipped silently per RIFF
+    TTF  : parse + glyph_index + glyph_outline + glyph_metric
+           header + table-directory + 8 required tables :
+             head + maxp + hhea + hmtx + loca + glyf + cmap-format-4 + name
+           simple-glyph outlines : delta-encoded Sub/Up/Average/Paeth
+             filter pipeline
+  surface = always-on (infrastructure stage-0)
+    AssetHandle<T>   : async-loading scaffold
+                       state ∈ {Pending, Ready(T), Failed(AssetError),
+                                Cancelled}
+                       stage-0 every handle = Ready (synchronous)
+                       Pending reachable only when async-runtime lands
+                       LoadProgress reports bytes_done / bytes_total
+    AssetBudget      : per-class memory cap + eviction
+                       AssetClass ∈ {Texture, Model, Audio, Font, Blob,
+                                     Other(name)}
+                       EvictionPolicy ∈ {Lru, SmallestFirst}
+                       try_reserve refuses above-cap requests
+                       reserve_with_eviction evicts older entries
+    AssetWatcher     : hot-reload surface
+                       watch_path(path) → AssetWatcher
+                       WatchEvent ∈ {Created, Modified, Deleted, Renamed,
+                                     Overflow}
+                       stage-0 inert (in-memory queue ; push_event drives)
+                       OS-backed (Win32 ReadDirectoryChangesW / Linux
+                         inotify / macOS FSEvents) follow-up slice
+    AssetError       : single sum-type unifying all parser failures
+                       Io / Truncated / BadMagic / UnsupportedKind /
+                       BadChecksum / InvalidValue / BudgetExceeded /
+                       Watcher / Encode
+                       each constructor carries enough context for clear
+                         surface messages (path + reason / format + site /
+                         expected-vs-actual integers)
+  invariants (PRIME-DIRECTIVE preservation)
+    every parser caps allocation at input-reported-size + hard upper bound
+      png::MAX_IMAGE_BYTES     = 256 MB
+      wav::MAX_WAV_DATA_BYTES  = 256 MB
+      gltf::MAX_JSON_DEPTH     = 64
+    pathological inputs rejected BEFORE allocation
+      zero-dim images / integer-overflow buffer sizes / deeply-nested JSON
+    no URI auto-fetch — text-mode glTF returns uri strings ;
+      consumer resolves
+    no directory traversal — watch_path opens exactly the named path
+    no telemetry — counters local ; no global-ring at stage-0
+    no microphone / camera / system-font enumeration / clipboard /
+      env-var read / screenshot
+    file-IO parser ¬ input-device
+  deferred (follow-up slices)
+    texture : WebP / KTX2 read (cfg-gated)
+    audio   : OGG-Vorbis / MP3 decode (compressed streams cfg-gated)
+    font    : bitmap (BDF / PCF / sfnt-bitmap) + CFF / CFF2 outlines
+              (OTTO scaler) + composite glyphs in glyf + GPOS / GSUB
+              (kerning + ligatures + complex scripts) + variable
+              fonts (fvar / gvar) + color fonts (COLR / CPAL)
+    PNG     : 16-bit-per-channel + paletted (PLTE) + Adam7 interlacing
+              + DEFLATE BTYPE=2 dynamic-Huffman inflate
+    GLTF    : KHR_* extension typed consumption + URI data: scheme decode
+              + JSON-Schema validation
+    async   : real future-based loading
+    watcher : real OS-backed event delivery + debouncer + dispatcher
+    DXT     : GPU-side BC1/BC3/BC7 compressor (separate slice)
+  spec-corpus
+    this section authored at T11-D104 ; future N-axis slices append
+    sub-sections (texture-compression, audio-decode, font-layout) as
+    they land.
+
 ∎ BACKEND

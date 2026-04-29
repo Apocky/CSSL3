@@ -433,6 +433,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-asset"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-ast"
 version = "0.1.0"
 
