@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-error"
+description            = "CSSLv3 stage0 — L0 unified error-aggregation : EngineError + ErrorContext + Severity + StackTrace + ErrorFingerprint + panic-catch + PD-violation halt-bridge."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[features]
+default     = ["debug-info"]
+# § FEATURE-FLAG : `debug-info` enables std::backtrace stack-trace capture.
+# Always-on in dev/test ; release builds may opt-out for zero-overhead.
+debug-info  = []
+# § FEATURE-FLAG : `pd-bridge` toggles the optional halt-bridge integration
+# with cssl-substrate-prime-directive. Default-ON. Disable for crates that
+# depend on cssl-error but cannot tolerate the PD crate (none today).
+pd-bridge   = []
+
+[dependencies]
+blake3                          = { workspace = true }
+cssl-substrate-prime-directive  = { path = "../cssl-substrate-prime-directive" }
+cssl-telemetry                  = { path = "../cssl-telemetry" }
+thiserror                       = { workspace = true }
