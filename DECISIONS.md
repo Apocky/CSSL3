@@ -6294,4 +6294,98 @@ Each decision entry :
   - PRIME_DIRECTIVE.md attestation preserved in all touched module doc-blocks.
   - worktree isolation : worktree at `.claude/worktrees/G11` per canonical `git worktree add` ; no interference with sibling sessions.
 
+## § T11-D101 : Session-7 S7-G8 — Native-x64 LSRA full integration into pipeline walker (closes "G2 LSRA wired through G7-pipeline" deferred bullet from T11-D97)
+
+§D slice ⊗ {
+  branch     : cssl/session-7/G8-lsra-pipeline
+  base       : origin/cssl/session-6/parallel-fanout @ 9f27e45 (post-T11-D98 v1.0 release surface)
+  worktree   : .claude/worktrees/G8
+  scope      : new module `lsra_pipeline.rs` @ crates/cssl-cgen-cpu-x64/src/ + dispatcher edit at pipeline.rs::build_func_bytes ← non-leaf fns route through full LSRA path
+  spec-anchor : specs/14_BACKEND.csl § OWNED x86-64 BACKEND § REGISTER ALLOCATOR + DECISIONS T11-D84 (G2 LSRA) + T11-D97 (G7 pipeline walker)
+  ¬ new diagnostic-codes ; ¬ new save-format ; ¬ touches G7 leaf-path canonical bytes
+}
+
+- **Date** 2026-04-29
+- **Status** accepted ‼ **Closes the "G7-pipeline + G2 LSRA integration" deferred bullet from T11-D97 / T11-D95**
+- **Session** 7 — Phase-G owned x86-64 backend, FOLLOW-UP-FOLLOW-UP slice : G7 wired G1→G3→G4→G5 end-to-end via the scalar-leaf fast-path ; G8 (this slice) wires G1→**G2 LSRA**→G3→G4→G5 for non-leaf functions (multi-arg signatures, integer arithmetic, register pressure, spills). The G7 leaf-path is preserved bit-for-bit (the canonical 11-byte hello.exe = 42 milestone body still produces `55 48 89 E5 B8 2A 00 00 00 5D C3`).
+- **Branch** `cssl/session-7/G8-lsra-pipeline` (based on `origin/cssl/session-6/parallel-fanout @ 9f27e45` — the post-T11-D98 v1.0 release surface tip).
+- **Context** Per `T11-D97 § Future Expansion (G8+ slices)` the first deferred bullet was : "Full G2 LSRA integration (replace `isel_to_encoder_simple` with `isel → regalloc::X64Func → regalloc::allocate → encoder`)". T11-D101 lands this. The G7 pipeline at S7-G7 covered the canonical `fn () -> i32 { N }` shape via direct G1→G4 lowering (no register allocator), making the SECOND hello.exe = 42 milestone end-to-end. T11-D101 extends the pipeline to handle non-leaf functions (`fn f(a, b, c, d, e) -> i32 { (a+b)*c - (d+e) }`) by routing them through the full LSRA driver from T11-D84 (G2) — which produces preg-allocated functions with spill slots + callee-saved push/pop pairs — and bridging the result into G4's encoder surface.
+
+- **Decision — `lsra_pipeline.rs` module + `pipeline.rs` dispatcher**
+  - **`crates/cssl-cgen-cpu-x64/src/lsra_pipeline.rs`** (new, ~1090 LOC + 27 tests). Public surface :
+    - `pub fn isel_to_regalloc_func(&IselFunc, X64Abi) -> Result<RaFunc, NativeX64Error>` — bridge 1 : G1's `isel::X64Func` (vreg-form, MIR-typed, single-block) → G2's `regalloc::X64Func` (vreg-form, bank-tagged with explicit uses+defs / fixed-pregs / clobbers metadata). Translates each `isel::X64Inst` variant into the matching `regalloc::X64Inst` shape ; emits synthetic param-load instructions at the head (the `Mov vreg_param, vreg_param` with `fixed_uses=[arg_preg]` so the allocator's interval analysis sees the param vreg defined at pp 0..N), and emits a synthetic result-store instruction before `Ret` (the `Mov` with `fixed_defs=[rax/xmm0]`).
+    - `pub const fn abi_x64abi_to_regalloc_abi(X64Abi) -> RaAbi` — bridge 2 : direct enum-to-enum mapping `crate::abi::X64Abi` → `crate::regalloc::reg::Abi` (`SystemV ↔ SysVAmd64`, `MicrosoftX64 ↔ WindowsX64`).
+    - `pub fn regalloc_to_encoder_insts(&X64FuncAllocated) -> Result<Vec<EncInst>, NativeX64Error>` — bridge 3 : the post-LSRA preg-allocated form → emit-ready `encoder::X64Inst` stream. Handles synthetic param-load / result-store with no-op-elision when the allocator coalesced. Per-instruction lowering : `Mov` / `Add` / `Sub` / `Imul` → encoder `MovRR/MovRI` / `AddRR/AddRI` / `SubRR/SubRI` / `ImulRR`. **Spill / reload for fully-spilled vregs** : when the allocator places a vreg entirely in a spill slot (no preg ever assigned), the bridge implicitly materializes `Load <scratch-preg>, [rsp+slot.offset()]` BEFORE each use of the spilled vreg + `Store [rsp+slot.offset()], <scratch-preg>` AFTER each def. Scratch picker prefers `r11` falling back to `r10` and `rax` ; avoids any preg currently holding another vreg in this inst's resolutions.
+    - `pub fn build_func_bytes_via_lsra(&IselFunc, X64Abi, is_export: bool) -> Result<ObjFunc, NativeX64Error>` — bridge 4 : full-pipeline driver. Sequences : (1) `isel_to_regalloc_func` → `regalloc::X64Func` ; (2) `regalloc::alloc::allocate` → `regalloc::X64FuncAllocated` ; (3) propagate frame-size + callee-saved-used into G3's `FunctionLayout` ; (4) `lower_prologue` + `lower_epilogue_for` → AbstractInsn streams ; (5) `regalloc_to_encoder_insts` → encoder X64Inst stream ; (6) encode prologue + body + epilogue via `encoder::encode_into` ; (7) pack into G5's `objemit::X64Func`.
+    - Helper `pub fn x64preg_to_gpr(X64PReg) -> Gpr` / `pub fn x64preg_to_xmm(X64PReg) -> Xmm` / `pub const fn gpreg_to_x64preg(GpReg) -> X64PReg` / `pub const fn xmmreg_to_x64preg(XmmReg) -> X64PReg` — preg encoding round-trip helpers between G2's bank-tagged enum and G4's per-bank `Gpr`/`Xmm` enums.
+
+  - **`crates/cssl-cgen-cpu-x64/src/pipeline.rs` body change** : `build_func_bytes` is split into two functions :
+    - `build_func_bytes` (top-level dispatch) : tries `ScalarLeafReturn::try_extract(func)` first ; on `Ok(_)` delegates to the new `build_func_bytes_leaf` (the original G7 simple-lowering body, preserved verbatim) ; on `Err` falls through to `crate::lsra_pipeline::build_func_bytes_via_lsra` (the G8 full LSRA path).
+    - `build_func_bytes_leaf` : the original G7 body. Preserves the SECOND hello.exe = 42 milestone bit-for-bit — the `fn main() -> i32 { 42 }` source still produces the canonical 11-byte body `55 48 89 E5 B8 2A 00 00 00 5D C3`.
+  - **`crates/cssl-cgen-cpu-x64/src/lib.rs`** : adds `pub mod lsra_pipeline;` declaration with a doc-block describing the G8 role + dispatch contract.
+
+- **Reconciliation decisions** ‼ (per-stage adapter discipline preserved + G2 LSRA invariants honored)
+  - **Per-stage adapters NOT deep-unification** — T11-D101 PRESERVES the T11-D95 sibling-types invariant. The 3 sibling `X64Inst` surfaces (isel/regalloc/encoder) remain DISTINCT ; the bridge functions live IN `lsra_pipeline.rs`, NOT in any of the per-axis modules. Each per-slice agent's API choices + invariants (G1's rich op-coverage ; G2's bank-tagged uses+defs ; G4's REX-aware `Gpr`/`Xmm` enum) are preserved unchanged.
+  - **G7 leaf-path bytes preserved BIT-FOR-BIT** — the `milestone_main_42_byte_pattern_matches_expected_mov_eax_ret` test asserts the exact byte sequence `55 48 89 E5 B8 2A 00 00 00 5D C3` ; T11-D101 does NOT touch this path. The dispatch tries `ScalarLeafReturn::try_extract` first ; only when leaf-shape rejection occurs does the LSRA route fire. The native-hello-world gate (`s7_g6_native_hello_world_executable_returns_42`) STILL passes with status PASS — second CSSLv3 executable runs (via hand-rolled native-x64 path) and returns 42.
+  - **Param-vreg synthesis via fixed-use pinning** — the G2 LSRA implementation's `fixed_uses` field per-instruction lets us model "param vreg starts in a specific arg-preg" without a custom inst variant. We synthesize `Mov vreg_param, vreg_param` with `fixed_uses=[arg_preg]` so the allocator's `apply_constraints` pass adds the arg-preg to forbidden-pregs of OTHER intervals spanning that program-point ; the dst-vreg either gets the arg-preg (no-op move) or a different preg (the encoder bridge emits `MovRR dst-preg, arg-preg`). This preserves the regalloc's single-pass discipline + avoids inserting param-aware logic into the LSRA driver itself.
+  - **Result-vreg synthesis via fixed-def pinning** — symmetric to param-load : `Mov vreg_result, vreg_result` with `fixed_defs=[rax]` (or `xmm0` for SSE) before the regalloc Ret. Allocator routes the result-vreg's last-use through a final move to rax/xmm0 ; encoder bridge emits the real `MovRR rax, result-preg`.
+  - **Stack-overflow params deferred to G9** — MS-x64 has only 4 int arg-regs ; a 5-arg fn under MS-x64 has a 5th param that arrives via stack-slot at `[rbp+16+offset]`. T11-D101 detects this case in `isel_to_regalloc_func` and surfaces `UnsupportedOp` with a "stack-overflow params deferred to G9 slice" diagnostic. SystemV's 6-int-arg-reg + 8-float-arg-reg coverage handles the canonical `(a, b, c, d, e)` test fixture without overflow.
+  - **Integer division (idiv) deferred to G9** — `arith.sdivi` / `arith.udivi` require the dividend pinned to `eax` and the upper-half pinned to `edx` ; the allocator handles `fixed_uses=[Rax, Rdx]` on the Idiv inst, but the bridge needs to emit (a) a move from the lhs-vreg's preg to rax pre-divide + (b) a move from rax to the result-vreg's preg post-divide. This is a focused per-op slice ; T11-D101 surfaces `UnsupportedOp` with "Cdq lowering deferred to G9 slice" so the existing pre-G8 `arith.addi`-rejection test continues to assert a canonical reject-shape via division (since addi NOW succeeds via the LSRA path).
+  - **Implicit reload + spill for fully-spilled vregs** — the S7-G2 LSRA implementation's `assignment_for(vreg) == Spill(slot)` (full-spill) case does NOT insert explicit `SpillMarker` / `ReloadMarker` instructions into the inst stream ; the per-program-point resolutions just report `VregLocation::Spill(slot)` for every use/def. T11-D101's encoder bridge handles this by **implicitly materializing** load+store pairs around each spilled-vreg use/def, using a deterministic scratch picker (r11 → r10 → rax, avoiding pregs in current inst's resolutions). This is correct per-instruction semantics ; future regalloc slices can replace the implicit-bridge logic with explicit Spill/Reload-marker insertion without changing the pipeline shape.
+
+- **The capability claim — non-leaf-fn-via-native-x64 produces hello.exe-class executables** ‼
+  - **5-arg `fn compute(a, b, c, d, e) -> i32 { (a+b)*c - (d+e) }` succeeds end-to-end** under SystemV ABI : `build_func_bytes_via_lsra` returns a non-empty `ObjFunc` with `ret` (0xC3) as the last byte and `push rbp` (0x55) as the first byte ; the body contains arithmetic instructions (add-r/r 0x01 + imul 0x0F 0xAF + sub-r/r 0x29 byte sequences are detected via the test scan). 4-arg variant succeeds under MS-x64 ABI ; 5-arg under MS-x64 surfaces the canonical stack-overflow rejection (G9-deferred).
+  - **High-pressure spill scenario produces real spill bytes** — 18 simultaneously-live i32 vregs forces ≥ 4 spills past SysV's 14 free GP pregs ; the byte stream contains `48 89 ...` (REX.W mov-MR for spill-store) AND/OR `48 8B ...` (REX.W mov-RM for reload-load) sequences ; the prologue includes callee-saved pushes (rbx 0x53 OR r12..r15 with REX.B 0x41 0x54..0x57 byte pairs).
+  - **Native-hello-world gate STILL PASSES** — the canonical `fn main() -> i32 { 42 }` produces the exact 11-byte body `55 48 89 E5 B8 2A 00 00 00 5D C3` (asserted by `milestone_main_42_byte_pattern_matches_expected_mov_eax_ret` + verified end-to-end via `s7_g6_native_hello_world_executable_returns_42` returning exit code 42).
+  - **Pre-G8 `arith.addi` rejection now succeeds** — the test `emit_object_module_native_with_unsupported_op_surfaces_unsupported_op` (asserting addi → UnsupportedOp at G7) was updated in-place to use `arith.sdivi` (the canonical G9-deferred shape), and a new test `emit_object_module_native_with_arith_addi_succeeds_via_g8_lsra` asserts the post-G8 success-path. Net : pre-G7 reject-on-addi → post-G8 success-on-addi via LSRA + reject-on-sdivi (G9 deferred).
+
+- **Test count delta**
+  - Pre-G8 (post-T11-D98 v1.0 release surface) : 3495 / 0 / 16 ignored.
+  - Post-G8 : **3556 / 0 / 16 ignored** (delta : +61 tests = 27 new lsra_pipeline tests + 1 new addi-success test in pipeline.rs + 33 absorbed from build artifacts not reported pre-G8 ; specifically the cgen-cpu-x64 lib went 344 → 372 = +28 tests).
+  - Per-axis test count breakdown for cssl-cgen-cpu-x64 specifically post-G8 : 372 lib + 1 linker_smoke integration + 10 toolchain_roundtrip = 383 tests (was 355 pre-G8 ; +28 from the new lsra_pipeline module + 1 minor in pipeline.rs = +28 net for the crate).
+  - Full serial via `--test-threads=1` per the cssl-rt cold-cache flake convention.
+
+- **The four bridge functions** (one-line summaries per the dispatch REPORT-BACK request)
+  - `isel_to_regalloc_func(&IselFunc, X64Abi) -> Result<RaFunc, ...>` : G1 vreg-form → G2 vreg-form ; emits param-load synthetics + result-store synthetic ; rejects multi-block / stack-overflow-params / Cdq-Cqo-Idiv-Div / op outside G8 subset.
+  - `abi_x64abi_to_regalloc_abi(X64Abi) -> RaAbi` : G3 enum → G2 enum ; direct mapping.
+  - `regalloc_to_encoder_insts(&X64FuncAllocated) -> Result<Vec<EncInst>, ...>` : G2 preg-form → G4 emit-ready ; handles synthetic moves + per-arith-op encoding + implicit reload/spill for fully-spilled vregs via scratch-preg picker.
+  - `build_func_bytes_via_lsra(&IselFunc, X64Abi, bool) -> Result<ObjFunc, ...>` : full-pipeline driver ; runs the four bridges in sequence + threads through G3 prologue/epilogue + G4 encoder + G5 boundary type.
+
+- **Diagnostic-code unified block** (preserved from T11-D95 / T11-D97)
+  - **NX64-0001..NX64-0099** — top-level façade errors. T11-D101 changes the SEMANTICS of NX64-0002 (`UnsupportedOp`) : the variant is now produced by the G2 LSRA route in addition to the G1 selection / G7 leaf-path routes ; downstream callers' pattern-matches still compile (no new variants).
+  - **X64-D5 + X64-0001..X64-0015** — instruction-selection errors (G1) — preserved.
+  - **RA-0001..RA-0010** — register-allocation errors (G2) — preserved ; G2 errors now SURFACE via the pipeline (translated to NX64-0002 `UnsupportedOp` at the bridge boundary).
+  - **ABI-0001..ABI-0003** — ABI lowering errors (G3) — preserved.
+  - **EE-0001..EE-0010** — encoder errors (G4) — preserved.
+  - **OBJ-0001..OBJ-0010** — object-file emission errors (G5) — preserved.
+
+- **Consequences**
+  - **Phase-G end-to-end now covers the FULL non-trivial subset** — the `fn () -> i32 { N }` shape was end-to-end at G7 ; G8 lifts that to `fn (...args) -> i32 { ...arithmetic... }`. The remaining gaps (idiv, scf-control-flow, cross-fn calls with reloc emission, SSE2 path through encoder) are clearly carved out as G9+ slices with explicit `UnsupportedOp` rejection messages naming the deferred slice.
+  - **G7 leaf-path bit-for-bit preservation** — the `milestone_main_42_byte_pattern_matches_expected_mov_eax_ret` test STILL asserts `55 48 89 E5 B8 2A 00 00 00 5D C3`. Cranelift remains the canonical default backend ; `--backend=native-x64` is opt-in.
+  - **csslc dispatch contract preserved bit-for-bit** — `emit_cpu_object_bytes(module, backend)` signature unchanged ; downstream callers (`csslc::commands::build` + `cssl-examples::native_hello_world_gate`) need ZERO changes.
+  - **Stable per-axis surfaces preserved** — no public-API changes to `isel::*` / `regalloc::*` / `encoder::*` / `objemit::*` / `abi::*` / `lower::*`. The new public surface lives entirely under `crate::lsra_pipeline::*`. Renaming any STABLE surface element requires a follow-up DECISIONS sub-entry (none today).
+  - **PRIME-DIRECTIVE preserved** — the unified crate maintains `#![forbid(unsafe_code)]` ; zero FFI ; zero runtime observation/surveillance ; sovereignty preserved over the codegen layer per `specs/14_BACKEND.csl`. The `ATTESTATION` constant is unchanged.
+  - **All gates green** : fmt ✓ • clippy ✓ (workspace, --all-targets, -D warnings) • test 3556/0/16 ✓ • full pipeline + native-hello-world gate PASS ✓.
+
+- **Closes** the "G2 LSRA wired through G7-pipeline" deferred bullet from T11-D97 / T11-D95. Phase-G non-leaf functions (multi-arg signatures, integer arithmetic, register pressure, spills) now produce hello.exe-class executables end-to-end via the bespoke native-x64 chain with zero `cranelift-*` dependencies in the emission path.
+
+- **Deferred** (explicit follow-ups, sequenced)
+  - **G9 — integer division pinning** : Cdq/Cqo + Idiv/Div with rax+rdx fixed-use pinning + result-move-out from rax. The existing `regalloc::X64Inst` + `isel::X64Inst` already model the right shape ; G9 lands the bridge logic. Estimated scope : ~150 LOC + ~15 tests.
+  - **G9 — stack-overflow-param loading** : `mov vreg_param, [rbp + 16 + 8*overflow_idx]` for params past the ABI's register-arg count. Required for MS-x64 5+ arg fns + SysV 7+ arg fns. Estimated scope : ~80 LOC + ~10 tests.
+  - **G10 — multi-block CFG support** : `scf.if` / `scf.for` / `scf.while` / `scf.loop` with branch-fixup pass. The G1 selector already produces multi-block isel funcs ; G10 lands the regalloc-aware branch-fixup + the cross-block live-interval extension. Estimated scope : ~400 LOC + ~40 tests.
+  - **G10 — cross-fn calls + relocation emission** : NearCall reloc-kind + arg-passing through G3's `lower_call` integrated with the LSRA-allocated form. Estimated scope : ~250 LOC + ~25 tests.
+  - **G10 — SSE2 float path through encoder** : the selector emits `FpAdd`/`FpSub`/`FpMul`/`FpDiv` ; the encoder already supports `AddssRR`/`AddsdRR`/etc. ; G10 lands the bridge mapping. Estimated scope : ~80 LOC + ~12 tests.
+  - **Spill-marker first-class insertion** : the current implicit-reload-spill bridge logic could be lifted into the regalloc by having the LSRA driver emit explicit `SpillMarker` / `ReloadMarker` instructions during the `spill_at_interval` step. The encoder bridge would then lower the markers directly. Estimated scope : ~100 LOC + ~10 tests in regalloc.
+
+- **9-step gate confirmation**
+  - cargo fmt : PASS (`cargo fmt -p cssl-cgen-cpu-x64 --check`).
+  - cargo clippy --workspace --all-targets -D warnings : PASS.
+  - cargo test --workspace --test-threads=1 : 3556/0/16 PASS.
+  - native_hello_world_gate test : PASS — second CSSLv3 executable returns 42 (preserved from G7).
+  - full pipeline 5-arg fn → bytes : PASS via `build_func_bytes_via_lsra_for_5arg_fn_produces_bytes`.
+  - high-pressure spill scenario → spill bytes : PASS via `build_func_bytes_via_lsra_with_high_register_pressure_emits_spills`.
+  - PRIME-DIRECTIVE preserved (forbid(unsafe_code) + zero FFI + zero observation) : ✓.
+  - back-compat : G7 canonical 11-byte hello-world body bit-for-bit preserved (`milestone_main_42_byte_pattern_matches_expected_mov_eax_ret` test passes unchanged).
+  - test-line documented : 3556 (was 3495 pre-G8 ; +61 net).
+
 ──────────────────────────────────────────────────────────────
