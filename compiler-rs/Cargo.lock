@@ -552,6 +552,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-input"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-host-level-zero"
 version = "0.1.0"
 dependencies = [

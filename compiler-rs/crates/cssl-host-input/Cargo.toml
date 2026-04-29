@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-host-input"
+description            = "CSSLv3 stage0 — host input backend (keyboard / mouse / gamepad ; XInput + evdev + IOKit cfg-gated)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D80 (S7-F2) : the cross-host input surface (keyboard / mouse / gamepad)
+# scaffolds three OS-specific backends under cfg-gates :
+#   - Windows : XInput (gamepad) + raw-input WM_INPUT (keyboard / mouse) via
+#     hand-rolled FFI declarations against `Xinput.dll` / `User32.dll`. We do
+#     NOT pull in the windows-rs crate here — input wants a smaller surface
+#     than what the cssl-host-d3d12 dep already buys, and the FFI table is
+#     compact enough to declare locally (mirrors cssl-host-level-zero's
+#     hand-rolled L0 FFI strategy at S6-E5).
+#   - Linux   : evdev via /dev/input/event* file descriptors + libudev for
+#     hot-plug detection (libloading-driven dynamic-load — same pattern as
+#     cssl-host-level-zero's libze_loader.so handling).
+#   - macOS   : IOKit HID Manager via Objective-C-bridge (interface-mirror
+#     stub on non-Apple hosts — mirrors cssl-host-metal's strategy at S6-E3).
+# All three backends share an interface-mirror in the cross-platform `api`
+# module so source-level CSSLv3 sees a single `InputBackend` trait whose
+# active impl is selected at compile time.
+[dependencies]
+thiserror  = { workspace = true }
+# Linux evdev / udev dynamic-load (gated to Linux ; mirrors L0 loader strategy).
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = { workspace = true }
+
+[lints]
+workspace = true
