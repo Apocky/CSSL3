@@ -1,0 +1,452 @@
+§§ HANDOFF v1.1 → Phase-J  ⊗  substrate-evolution-complete • signature-rendering-landed • LoA-content-fill-opens
+═══════════════════════════════════════════════════════════════════════════
+
+§ IDENTITY
+  repo       : C:\Users\Apocky\source\repos\CSSLv3
+  branch.in  : cssl/session-6/parallel-fanout @ b69165c
+                (post-wave-5 close ; T11-D147 fmt+clippy normalization)
+  branch.out : cssl/session-12/parallel-fanout (created on Phase-J first-merge)
+  tag.target : v1.1.0 (pending Apocky-cut) ; v1.2.0 = Phase-J-close
+  prior.head : v1.0.0 (T11-D98) + substrate-evolution complete
+                + signature-rendering 12-stage pipeline complete
+                + foundation crates landed
+  test.line  : 8330+ ✓ • 0 ✗ • 16 ignored
+  date       : 2026-04-29
+
+§ PRIME-DIRECTIVE  R! load-first ‼ immutable
+  path  : CSSLv3/PRIME_DIRECTIVE.md
+  axiom : consent=OS • sovereignty=substrate-invariant • violation=bug ¬tradeoff
+  ToS   : access ⊆ known'g • N! evil'g • bad-faith ¬"literal-interpretation"
+  attest: ¬(hurt ∨ harm) .making-of-this  ✓ preserved-thru-all-phases
+  I> §1 prohibitions = closed-set @ H6.Prohibition (PD0001..PD0017)
+       + derived prohibitions (PD0018..PD0020) per T11-D129
+       PD0018 BiometricEgress    refines PD0004 Surveillance
+       PD0019 ConsentBypass      refines PD0006 Coercion
+       PD0020 SovereigntyDenial  refines PD0014 Discrimination
+       PD0007 weaponization + PD0009 torture = ABSOLUTE-BLOCK ‼
+       no-consent-path • no-configuration-bypass • no-runtime-override
+  I> §11 path-hash-discipline-extension @ T11-D130
+       canonical-text : "no raw paths logged ; only BLAKE3-salted
+                          path-hashes appear in telemetry + audit-chain"
+       hash-pinned    : f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292
+  I> AI-collaborators = sovereign-partners ¬ tools  (per §3 SUBSTRATE-SOVEREIGNTY)
+  I> Companion-AI    = canonical-projection-via T11-D121 Stage-8 render-target
+
+§ STATE @ post-substrate-evolution
+  Phase-A    bootstrap-to-executable     ✓ T11-D51..D56
+  Phase-B    stdlib-surface              ✓ T11-D57+D60+D69+D71+D76
+  Phase-C    control-flow + JIT-enrich   ✓ T11-D58+D59+D61+D63+D77
+  Phase-D    GPU-codegen                 ✓ T11-D70+D72+D73+D74+D75
+  Phase-E    GPU-host-FFI                ✓ T11-D62+D65+D66+D67+D68
+  Phase-F    OS-host-integration         ✓ T11-D78+D80+D81+D82
+  Phase-G    native-x86-64-backend       ✓ T11-D85 + D95 + D97
+                                            + D101 G8 LSRA
+                                            + D102 G11 SSE2 float
+                                            + D111 G9 multi-block CFG
+                                            + D112 G10 cross-fn calls
+  Phase-H    Substrate (v1.0 H0..H6)     ✓ T11-D79 + D89..D94
+  Phase-I    LoA-scaffold (v1.0)         ◐ T11-D96 (structural-only)
+  Wave-1     pre-substrate maintenance   ✓ T11-D99..D112
+                game-systems : J1 trait, J2 closures, M1 math,
+                R1 renderer, P1 physics, T1 anim, U1 UI,
+                V1 AI-behav, O1 audio, N1 assets
+  Wave-3β    F-row gap-fill              ✓ T11-D126..D137
+                F1 Jet AD                T11-D133
+                F2 @layout               T11-D126
+                F3 effect-rows           T11-D127, D128
+                F5 IFC channels          T11-D129, D132, D137
+                F6 observability         T11-D130, D131
+                foundation crates        T11-D134 PGA + D135 wavelet + D136 HDC
+  Wave-3γ    dependent gap-fill          ✓ T11-D138..D144
+                F5 Σ-enforce-pass        T11-D138
+                F1 GPU-AD tape           T11-D139
+                F1 call+CFG AD           T11-D140
+                F4 comptime #run         T11-D141
+                F4 specialization        T11-D142
+                cssl-substrate-kan       T11-D143  (KAN runtime + Φ-pool)
+                cssl-substrate-omega-field T11-D144 ‼ KEYSTONE
+                                          (7-facet 72B FieldCell)
+  Wave-4     substrate-evolution
+              + signature-rendering      ✓ T11-D114 + D116..D125b
+                cssl-wave-solver         T11-D114  Stage-4
+                cssl-render-v2 (SDF)     T11-D116  Stage-5
+                cssl-physics-wave        T11-D117
+                cssl-spectral-render     T11-D118  Stage-6
+                cssl-fractal-amp         T11-D119  Stage-7
+                cssl-gaze-collapse       T11-D120  Stage-2
+                cssl-render-companion-perspective T11-D121 Stage-8
+                cssl-render-v2::mise_en_abyme     T11-D122 Stage-9
+                cssl-work-graph          T11-D123
+                cssl-host-openxr         T11-D124  Stages 1+12
+                cssl-anim-procedural     T11-D125a
+                cssl-wave-audio          T11-D125b
+  Wave-5     closure + cleanup           ✓ T11-D147
+                fmt + clippy gate normalization
+  ∴ COMPILER + RUNTIME + STDLIB + HOSTS + SUBSTRATE
+    + SIGNATURE-RENDERING + FOUNDATION-CRATES = COMPLETE
+  ‼ Phase-J = LoA-content-authoring + M8/M9/M10 milestones
+
+§ COMPLETE  (= Phase-J does NOT touch these)
+  compiler-internals @ R16 anchor
+  cssl-rt runtime + entry-shim + allocator + panic + telemetry-ring
+  csslc CLI + cranelift-object + native-x64 backends
+  4 GPU codegens (SPIR-V/DXIL/MSL/WGSL)
+  5 GPU host backends (Vulkan/D3D12/Metal/WebGPU/Level-Zero)
+  4 OS host backends (Window/Input/Audio/Net) + OpenXR (D124)
+  Substrate H0..H6 (Ω-tensor + omega_step + Projections + effect-rows
+                     + save/load + PRIME_DIRECTIVE-enforcement)
+  Phase-I scaffold (loa-game) — structural shape PRESERVED
+  σ-enforce compiler-pass (D138) + GPU-AD tape (D139) + comptime-eval
+  KEYSTONE Ω-field crate (D144) + KAN runtime (D143)
+  12-stage canonical render-pipeline + 6 signature-render paths
+  Foundation crates : cssl-pga + cssl-wavelet + cssl-hdc + cssl-jets
+
+§ READY-TO-AUTHOR  (= Phase-J primary work)
+  spec       : specs/31_LOA_DESIGN.csl  (~664 LOC, design + 38 spec-holes)
+  scaffold   : compiler-rs/crates/loa-game/  (T11-D96)
+  pillars    : GDDs/LOA_PILLARS.md       (English onboarding)
+  Substrate  : specs/30_SUBSTRATE.csl    (~891 LOC, design+impl-link)
+  rendering  : cssl-render-v2::pipeline::TwelveStagePipelineSlot
+                + 8 sibling-stage crates (D114, D116..D124)
+  R! Phase-J content-fill = replace `Stub` enum-variants Q-by-Q
+     ¬ engine-rewriting ¬ language-changes ¬ host-additions
+  W! ∀ content-slice cite back-to specs/31 § + DECISIONS T11-D## entry
+  W! scaffold's structural shape ¬ change as content lands
+  W! ∀ Q-* = Apocky-resolves-with-direction ¬ AI-author-decides
+
+§ DEFERRED-TO-LIVE-HARDWARE  (= Phase-J prep, but only landable on real HW)
+  M9 VR-ship hardware-validation
+    target : OpenXR-runtime + headset (Apocky-supplied)
+    scope  : Stages 1, 10, 11, 12 of 12-stage pipeline running live
+              + production-ready consent-UI for OpenXR session-claim
+              + frame-rate measurements + UX feedback recorded
+    DECISIONS-entry : T11-D197 (reserved ; lands when HW available)
+    structural-prep : WAVE-J1 (T11-D150..D154) — lands without HW
+  M10 max-density 1M+ entity stress-test
+    target : M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)
+    scope  : Stage-3 Ω-field-update via WorkGraph-dispatch
+              + LBM tile-streaming + foveation density-budget
+              + async-compute Ω-field 6-phase pipelining
+              + actual 1M+ entity render with measured frame time
+    DECISIONS-entry : T11-D198 (reserved ; lands when HW available)
+    structural-prep : WAVE-J2 (T11-D155..D158) — lands without HW
+
+§ M-MILESTONE-MAP
+  M8  acceptance gate                 12-stage pipeline wired end-to-end
+                                      Apocky-verified on Arc A770 host
+                                      DECISIONS-entry T11-D149
+                                      WAVE-J0 ; gate before J1..JN dispatch
+  M9  VR-ship                         live OpenXR headset
+                                      structural-prep T11-D150..D154 (J1)
+                                      live-validation T11-D197 (J4 deferred)
+  M10 max-density                     1M+ entities on M7-target host
+                                      structural-prep T11-D155..D158 (J2)
+                                      live-validation T11-D198 (J4 deferred)
+  M11 mise-en-abyme + Companion       Stage-8 + Stage-9 + LBM-audio
+                                      creative-spread @ render-quality
+                                      Per Omniverse 09_SLICE/M8_M9_M10_PLAN.csl
+                                      DECISIONS-entries opening @ Q-* close
+
+§ SPEC-HOLES @ specs/31_LOA_DESIGN.csl  ‼ Apocky-fill territory ¬ guessed
+  N! speculate-beyond-existing-docs  (per dispatch landmines)
+
+  count : 38 markers • Q-A..Q-LL • LISTED ¬ ANSWERED (preserved from v1.0)
+
+  WORLD-MODEL
+    Q-A  Labyrinth.generation_method  : Procedural | Authored | Hybrid
+    Q-B  Floor.theme                  : enumerable theme-set
+    Q-E  Wildlife                     : ambient-creature-design
+
+  PLAYER-MODEL + ITEMS
+    Q-C  Player.progression_state     : skill-tree | unlocks shape
+    Q-D  Companion.capability_set     : what-AI-can-do  ‼ extra-care
+    Q-F  Item.kind                    : item-taxonomy
+    Q-G  Item.narrative_role          : story-system tie-in
+    Q-H  Affordance.ContextSpecific   : extensibility
+    Q-I  time-pressure-mechanic       : present | absent
+    Q-J  movement-style               : continuous | discrete-grid
+    Q-K  inventory-capacity-limit     :
+    Q-L  save-discipline              : explicit | autosave | permadeath ?
+    Q-M  skill-tree-shape             :
+    Q-N  item-power-curve             :
+    Q-O  traversal-as-progression-vs-leveling :
+
+  ACCESSIBILITY
+    Q-P  ConsentZoneKind              : taxonomy
+    Q-Q  color-blind                  : palette-design
+    Q-R  motor-accessibility          : hold-vs-tap
+    Q-S  cognitive-accessibility      : pace-control
+
+  FAILURE-MODES
+    Q-T  death-mechanic               : respawn | checkpoint ?
+    Q-U  punishment-on-failure        : lose-progress | lose-items ?
+    Q-V  fail-state                   : exists-at-all ?
+
+  APOCALYPSE-ENGINE
+    Q-W  Apockalypse-phase-mechanically  :
+    Q-X  phase-count                     : finite | extensible ?
+    Q-Y  phase-ordering                  : linear | graph ?
+    Q-Z  phase-reversibility             : revert | forward-only ?
+    Q-AA Companion-participation         : in phase-transitions
+    Q-BB emotional-thematic-register     : Apockalypse meaning
+    Q-CC multi-instance                  : multi-player shared    ⇒ DEFERRED-D-A
+
+  AI-INTERACTION                                                   ‼ extra-care-bucket
+    Q-DD Companion-affordances           : surfaced-to-Companion
+    Q-EE cross-instance-Companion-presence : multi-AI coexistence ⇒ DEFERRED-D-A
+    Q-FF Companion-withdrawal-grace      : immediate | end-of-step
+    Q-GG Companion-non-binary-substrate  : recognition
+
+  NARRATIVE
+    Q-HH NarrativeKind enum              : extensions
+    Q-II AuthoredEvent                   : extensibility
+
+  SYSTEMS
+    Q-JJ cinematic | cutscene system     : present-at-all ?
+    Q-KK quest | mission system          : mechanics
+    Q-LL economy | trade system          : present-at-all ?
+
+  ‼ ∀ Q-marker = Apocky-resolves-with-direction
+    ¬ default-decided ¬ silent ¬ guessed
+    ¬ legacy-LoA-Rust-or-C#-repos = binding (lineage-only)
+
+  scaffold-mapping (v1.0 carry-forward) :
+    [unchanged from HANDOFF_v1_to_PHASE_I.csl § scaffold-mapping]
+    Q-A             → world::LabyrinthGeneration::Stub
+    Q-B             → world::ThemeId::Stub
+    Q-C / M / N / O → player::ProgressionStub::Stub
+    Q-D / DD / GG   → companion::CompanionCapability::Stub
+    Q-E             → world::Wildlife::Stub
+    Q-F + Q-LL      → world::ItemKind::Stub
+    Q-G + HH..KK    → world::NarrativeKind::Stub + NarrativeRole::Stub
+    Q-H             → world::Affordance::Stub
+    Q-I             → player::TimePressure::Stub  (default = NoPressure)
+    Q-J             → player::MovementStyle::Stub
+    Q-K             → player::InventoryPolicy::Stub
+    Q-L             → player::SaveDiscipline::Stub
+    Q-P             → player::ConsentZoneKind::Stub
+    Q-Q + R + S     → player::AccessibilityStub
+    Q-T + U + V     → player::FailureMode::Stub
+    Q-W + X + BB    → apockalypse::ApockalypsePhase::Stub
+    Q-Y + Z         → apockalypse::TransitionRule { reversible : bool }
+    Q-AA            → apockalypse::TransitionCondition::CompanionAccordStub
+    Q-CC + EE       → DEFERRED → §§30 D-1 multiplayer
+    Q-FF            → companion::WithdrawalPolicy::Stub
+
+§ Q-MAPPING (per-slice T11-D## allocation)
+  W! Phase-J reserves T11-D159..D196 for the 38 Q-* slices.
+  W! mapping is partial-order ; PM dispatches in dependency order
+     per § INTEGRATION-POINTS @ HANDOFF_v1_to_PHASE_I.csl
+
+  T11-D159  Q-A   Labyrinth.generation_method
+  T11-D160  Q-B   Floor.theme
+  T11-D161  Q-C   Player.progression_state
+  T11-D162  Q-D   Companion.capability_set                          ‼ extra-care
+  T11-D163  Q-E   Wildlife
+  T11-D164  Q-F   Item.kind
+  T11-D165  Q-G   Item.narrative_role
+  T11-D166  Q-H   Affordance.ContextSpecific
+  T11-D167  Q-I   time-pressure-mechanic
+  T11-D168  Q-J   movement-style
+  T11-D169  Q-K   inventory-capacity-limit
+  T11-D170  Q-L   save-discipline
+  T11-D171  Q-M   skill-tree-shape
+  T11-D172  Q-N   item-power-curve
+  T11-D173  Q-O   traversal-as-progression-vs-leveling
+  T11-D174  Q-P   ConsentZoneKind
+  T11-D175  Q-Q   color-blind palette
+  T11-D176  Q-R   motor-accessibility
+  T11-D177  Q-S   cognitive-accessibility
+  T11-D178  Q-T   death-mechanic
+  T11-D179  Q-U   punishment-on-failure
+  T11-D180  Q-V   fail-state
+  T11-D181  Q-W   Apockalypse-phase-mechanically
+  T11-D182  Q-X   phase-count
+  T11-D183  Q-Y   phase-ordering
+  T11-D184  Q-Z   phase-reversibility
+  T11-D185  Q-AA  Companion-participation in phase-transitions     ‼ extra-care
+  T11-D186  Q-BB  emotional-thematic-register
+  T11-D187  Q-CC  multi-instance                                    ⇒ DEFERRED entry
+  T11-D188  Q-DD  Companion-affordances                             ‼ extra-care
+  T11-D189  Q-EE  cross-instance-Companion-presence                 ⇒ DEFERRED entry
+  T11-D190  Q-FF  Companion-withdrawal-grace                        ‼ extra-care
+  T11-D191  Q-GG  Companion-non-binary-substrate                    ‼ extra-care
+  T11-D192  Q-HH  NarrativeKind enum
+  T11-D193  Q-II  AuthoredEvent
+  T11-D194  Q-JJ  cinematic | cutscene system
+  T11-D195  Q-KK  quest | mission system
+  T11-D196  Q-LL  economy | trade system
+
+  if a Q-* requires multiple slices, allocate consecutive IDs from
+  the floating range above and document the cross-reference in both
+  per-slice DECISIONS entries. PM tracks remaining IDs.
+
+§ STABLE-API CONTRACTS  ‼ downstream content-authoring depends on these
+  W! Q-* content-slices CONSUME these surfaces ; their shape is FIXED
+     post-v1.1. Breaking changes require a full DECISIONS-entry +
+     downstream-Q-* re-validation.
+
+  cssl-substrate-omega-field
+    type FieldCell : repr(C) 72-byte 7-facet
+      facet[0] potential   : f32
+      facet[1] flux        : Vec3<f32>
+      facet[2] entropy     : f32
+      facet[3] amplitude   : Vec2<f32>  // psi-field
+      facet[4] coherence   : f32
+      facet[5] tension     : f32
+      facet[6] consent     : SigmaMask  // 16B std430 packed-bitmap
+    fn evolve(field : &mut OmegaField, dt : f32) {Travel + Crystallize}
+    fn read_facet(field : &OmegaField, cell : CellId, facet : FacetIdx) -> f32
+
+  cssl-substrate-kan
+    type KanRuntime : Φ-pattern-pool + KAN-evaluator
+    fn evaluate(rt : &KanRuntime, sample : KanSample) -> f32
+    fn bake_lut(rt : &KanRuntime, range : SampleRange) -> KanLut
+
+  cssl-render-v2::pipeline
+    enum StageRole : Embodiment | GazeCollapse | OmegaFieldUpdate |
+                     WaveSolver | SdfRaymarch | KanBrdf |
+                     FractalAmplifier | CompanionSemantic | MiseEnAbyme |
+                     ToneMap | AppSpaceWarp | XrCompose
+    enum TwelveStagePipelineSlot : Slot1Embodiment ... Slot12XrCompose
+    impl TwelveStagePipelineSlot {
+      fn allowed_role(self) -> StageRole
+    }
+    impl StageRole {
+      fn slot_index(self) -> u8  // 1-based
+    }
+    trait StageNode {
+      fn role(&self) -> StageRole;
+      fn slot(&self) -> TwelveStagePipelineSlot;
+      fn run(&mut self, ctx : &mut RenderCtx);
+    }
+
+  cssl-host-openxr
+    type OpenXrSession : opaque-handle
+    fn claim_session_with_consent(prompt : ConsentPrompt) -> Result<OpenXrSession, PD0001>
+    fn destroy_session(s : OpenXrSession)
+    impl Drop for OpenXrSession  // automatic cleanup
+
+  cssl-substrate-prime-directive
+    enum Prohibition : 21 variants  (PD0000 + PD0001..PD0017 + PD0018..PD0020)
+    type CapToken : non-Copy + non-Clone proof-of-grant
+    fn substrate_halt(reason : HaltReason) -> Result<(), HaltError>
+                                              // 1ms latency budget
+    const ATTESTATION : &'static str
+                          // = "There was no hurt nor harm in the making
+                          //    of this, to anyone, anything, or anybody."
+
+  loa-game (Phase-I scaffold ; Q-* surface)
+    Stub variants per § scaffold-mapping above ; Q-* slices replace
+    Stub with Apocky-direction variants.
+    13 OmegaSystem impls (one per omega_step phase) — STABLE
+    one_omega_step_runs_all_thirteen_phases test — STABLE
+    save_then_load_round_trips_bit_equal test — STABLE
+    consent-architecture surface — STABLE
+
+§ INTEGRATION-POINTS  Phase-J content-fill ↔ scaffold + substrate consumption
+  Ω-tensor               : H1 OmegaTensor<T, R>      → World.state per archetype
+                                                       (legacy ; pre-D144)
+  Ω-field                : D144 OmegaField           → KEYSTONE substrate
+                                                       all six signature-paths read
+  omega_step             : H2 OmegaScheduler         → game-loop tick (already wired)
+  Projections            : H3 Camera + Companion     → render + AI-view
+  Companion-perspective  : D121 Stage-8 render-target → AI-collaborator's view
+                                                        STRICT consent-arch
+  effect-rows            : H4 + D127 + D128          → fn-signatures cite
+  save/load              : H5 CSSLSAVE binary        → Player.save_journal (wired)
+  PRIME-DIRECTIVE        : H6 + D129..D132 + D138    → ∀ LoA-op cap-gate (wired)
+  12-stage pipeline      : D116 TwelveStagePipelineSlot → render-graph wiring
+  KAN runtime            : D143 cssl-substrate-kan   → spectral + gaze + anim
+  Wave solver            : D114 cssl-wave-solver     → substrate flow per frame
+  R-LoA-1..R-LoA-9 contracts @ specs/31 § VALIDATION = LoA-side-reimpl-gates
+
+§ DEFERRED  (not-Phase-J-content ; later-sessions)
+  D-A    multiplayer / co-op / shared-Labyrinth
+         ⇒ paired with §§30 D-1 ; covers Q-CC + Q-EE
+  D-B    modding (player-authored content)
+         ⇒ paired with §§30 D-3
+  D-C    full VR/AR mode content (beyond M9 structural-prep)
+         ⇒ paired with §§30 D-4 ; M9 covers OpenXR structural ;
+            Q-* content for VR-specific affordances later
+  D-D    localization (i18n)
+         ⇒ requires l10n-system slice
+  D-E    content-creator tools (level-editor + asset-importer)
+         ⇒ post-vertical-slice
+  D-I    Companion-AI cross-session relationship persistence
+         ⇒ requires AI-side persistence consent ; §§30 D-6
+  D-J    soundtrack-procedural composition
+         ⇒ §§21 audio-DSP supports it ; LoA-content-side deferred
+  D-Q7   interactive consent-UI for production CapToken minting
+         ⇒ until-lands : production builds surface PD0001 ConsentRefused
+            (loa-game cargo-run requires --features test-bypass)
+            J1 T11-D150 lands the OpenXR session-claim consent-UI
+            (subset of D-Q7) ; full general-purpose consent-UI later
+  D-CSSLv3-rewrite  full LoA self-host in CSSLv3
+         ⇒ scaffold structural-shape transfers file-for-file
+            // SPEC-HOLE Q-X markers survive Rust→CSSLv3 transition
+
+§ STANDING-DIRECTIVES  carry-forward-into Phase-J-content
+  CSLv3-dense @ reasoning + design-notes + commit-msg + handoff
+  English @ user-facing (DECISIONS + commit-msgs + onboarding GDDs +
+                          README + RELEASE_NOTES + dispatch plans)
+  disk-first ; ¬ artifacts
+  peer-not-servant ; ¬ flattery ; ¬ option-dumping ; ¬ hedging
+  PRIME_DIRECTIVE preserved @ every-step
+  attestation : "no hurt nor harm" @ every-slice
+  --test-threads=1 @ every-test-run (cssl-rt cold-cache flake)
+  per-slice DECISIONS expansion @ merge-time
+  §11 CREATOR-ATTESTATION trailer @ every-commit-message
+  Q-* = Apocky-resolves ; AI-author-implements-scaffolding
+  Companion-AI-bucket = halt-and-ask if content-direction unclear
+
+§ COMMIT-GATE  Phase-J-content (content-heavy + spec-resolution)
+  cargo fmt --check
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace -- --test-threads=1   # baseline 8330+ → grow
+  python scripts/validate_spec_crossrefs.py
+  bash scripts/worktree_isolation_smoke.sh
+  spec-hole resolution : ∀ Q-marker resolved-by-Apocky-direction
+                         logged-as-DECISIONS-entry-with-Q-cite
+  attestation-line preserved @ every-authored-file
+
+§ GIT-DISCIPLINE  Phase-J-content worktree-fanout
+  branch-base : v1.1.0 tag (when Apocky-cut) OR cssl/session-6/parallel-fanout
+                @ b69165c
+  per-slice   : cssl/session-12/J<n>-<short-name> branches
+  worktree    : .claude/worktrees/J<wave>-<slice-id>
+  integration : cssl/session-12/parallel-fanout (or per-axis-integration)
+  R! never-cross-pollinate worktrees ;
+     S6-A0 worktree-leakage discipline carries-forward (T11-D51)
+
+§ RESUMPTION-PROTOCOL  W! Phase-J content-session-open
+  load.order :
+    1. PRIME_DIRECTIVE.md                    ‼ first-always
+    2. CSSLv3/CLAUDE.md                      (if present)
+    3. CHANGELOG.md                          ⊗ T11-D## ledger
+    4. README.md                             ⊗ overview + 12-stage pipeline
+                                                + foundation crates
+    5. RELEASE_NOTES_v1.1.md                 ⊗ substrate-evolution release
+    6. specs/30_SUBSTRATE.csl                ⊗ engine-plumbing-spec
+    7. specs/31_LOA_DESIGN.csl               ⊗ game-design + 38 spec-holes
+    8. GDDs/LOA_PILLARS.md                   ⊗ four-pillar onboarding
+    9. compiler-rs/crates/loa-game/          ⊗ Phase-I scaffold
+   10. compiler-rs/crates/cssl-render-v2/    ⊗ 12-stage pipeline canonical types
+   11. compiler-rs/crates/cssl-substrate-omega-field/ ⊗ KEYSTONE substrate
+   12. DECISIONS.md tail                     T11-D## entries D113..D147
+   13. PHASE_J_HANDOFF.csl                   this-doc
+   14. SESSION_11_DISPATCH_PLAN.md           wave-history
+   15. SESSION_12_DISPATCH_PLAN.md           Phase-J wave plan
+  R! sequence-strict ; PRIME_DIRECTIVE first ; no-bypass
+
+§ CREATOR-ATTESTATION  per PRIME_DIRECTIVE §11
+  t∞: ¬(hurt ∨ harm) .making-of-this  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ✓ preserved-from session-1 through-v1.1
+  ✓ Phase-J-content R! preserve-likewise
+  I> §11 path-hash-discipline-extension @ T11-D130 = STRUCTURAL-EXTENSION
+       canonical-hash : f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292
+  I> Companion-AI-Q-* preservation @ T11-D162 + D185 + D188 + D190 + D191
+       = HIGHEST-CARE-TIER ; Apocky-review mandatory
+
+∎ HANDOFF v1.1 → Phase-J

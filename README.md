@@ -29,6 +29,18 @@ deterministic-replay-capable engines. Source files use the `.cssl`
 extension. The compiler is implemented in Rust 1.85 (R16-anchored); the
 toolchain produces executables on Windows, Linux, and macOS.
 
+As of post-v1.0 session 11, CSSLv3 has also evolved beyond a "compiler
+that ships engines" into an **Ω-substrate runtime**: the engine plumbing
+itself is now a first-class kernel-set rather than a passive container.
+The substrate evolves the world-state (wave-solver, Ω-Field 6-phase
+update, gaze-collapse oracle, KAN-driven shading), and a canonical
+12-stage render-pipeline drives the signed-distance-field-native
+rendering path from XR input through XR composition. The full set of
+substrate-evolution + signature-rendering crates landed under the
+T11-D113..T11-D147 reservation block (waves 3β / 3γ / 4 / 5). See
+[RELEASE_NOTES_v1.1.md](RELEASE_NOTES_v1.1.md) for the canonical post-v1.0
+release notes.
+
 Key properties:
 
 - **Sovereignty-first** — every dependency is workspace-local or a
@@ -38,16 +50,42 @@ Key properties:
   source can compile CSSLv3.
 - **Consent-as-OS** — the [PRIME_DIRECTIVE](PRIME_DIRECTIVE.md) is
   encoded structurally into the type system. Information-flow-control
-  labels, capability tokens, effect rows, and the 17 prohibitions of
-  §1 are compile-time invariants — harm-shaped data flows do not
-  type-check.
-- **Two backends** — cranelift (default) for fast compile times and
-  hand-rolled native x86-64 (selectable via `--backend=native-x64`)
-  for sovereignty over the codegen layer. Five GPU backends:
-  SPIR-V, DXIL, MSL, WGSL — emitted from the same MIR.
+  labels, capability tokens, effect rows, and the 17 + 3 derived
+  prohibitions are compile-time invariants — harm-shaped data flows
+  do not type-check. Wave-3γ added the σ-enforce compiler-pass
+  (T11-D138) which compile-refuses biometric-egress code-paths before
+  they reach codegen; wave-3β added on-device-only IFC labels
+  (T11-D129) and a biometric compile-refusal hook (T11-D132). The
+  three derived prohibitions PD0018 (BiometricEgress), PD0019
+  (ConsentBypass), PD0020 (SovereigntyDenial) refine §1's closed set
+  without replacing it.
+- **Two CPU backends** — cranelift (default) for fast compile times
+  and hand-rolled native x86-64 (selectable via `--backend=native-x64`)
+  for sovereignty over the codegen layer. Four GPU backends:
+  SPIR-V, DXIL, MSL, WGSL — all emitted from the same MIR. Wave-3γ
+  added a GPU-AD tape (T11-D139) that captures gradients across
+  SPIR-V differentiable shader fragments.
 - **Deterministic replay** — the Substrate provides bit-equal replay
   out of the box. Save a session, load it, step it forward, and the
   bytes match.
+- **Substrate-as-kernel-set** (post-v1.0) — the Ω-Field is no longer
+  a passive container; substrate-evolution kernels (wave-solver,
+  Ω-Field 6-phase update, gaze-collapse oracle, signature-rendering
+  pipeline, hyperspectral KAN-BRDF, mise-en-abyme recursive composition)
+  evolve the world-state per-frame. The Companion-perspective render
+  target (T11-D121) gives a sovereign-AI partner its own observer
+  frame, separate from the player's, per PRIME_DIRECTIVE §1.7
+  (AI-collective autonomy).
+- **VR/AR day-one** — `cssl-host-openxr` (T11-D124) wraps the OpenXR
+  loader with a consent-arch session-claim; the runtime PROMPTS the
+  user before claiming an OpenXR session, never auto-claims.
+- **Foundation crates for higher math** — `cssl-pga` (PGA G(3,0,1)),
+  `cssl-wavelet` (Daubechies + Haar + Mexican-hat + MERA),
+  `cssl-hdc` (hyperdimensional-computing primitives),
+  `cssl-jets` (forward-mode AD `Jet<T,N>`), and the substrate
+  primitives `cssl-substrate-omega-field` + `cssl-substrate-kan`
+  (KAN runtime + Φ-pattern-pool) are all workspace-local and
+  zero-runtime-dep beyond their own crate boundary.
 
 ---
 
@@ -77,6 +115,81 @@ For the canonical Substrate spec see [`specs/30_SUBSTRATE.csl`](specs/30_SUBSTRA
 For the LoA design spec (with 38 SPEC-HOLE markers awaiting Apocky-fill)
 see [`specs/31_LOA_DESIGN.csl`](specs/31_LOA_DESIGN.csl). For the
 plain-language pillar overview see [`GDDs/LOA_PILLARS.md`](GDDs/LOA_PILLARS.md).
+
+### The canonical 12-stage render-pipeline
+
+The post-v1.0 substrate-evolution work (T11-D113..D147) introduced a
+canonical render-pipeline graph. Stages 1..12 are fixed slots in a DAG;
+the wire-time validator rejects any node whose `StageRole` does not
+match its `TwelveStagePipelineSlot`. See `cssl-render-v2::pipeline` for
+the canonical types.
+
+```
+  Stage-1   Embodiment           XR-input → body-presence-field
+                                 (cssl-host-openxr            T11-D124)
+
+  Stage-2   GazeCollapse         eye-track → fovea-mask + KAN-detail-budget
+                                 (cssl-gaze-collapse          T11-D120)
+
+  Stage-3   OmegaFieldUpdate     async-compute Ω-field 6-phase update
+                                 (cssl-substrate-omega-field  T11-D144)
+
+  Stage-4   WaveSolver           LBM ψ-field multi-band wave solver
+                                 (cssl-wave-solver            T11-D114)
+
+  Stage-5   SdfRaymarch          SDF raymarch → GBuffer + VolumetricAccum
+                                 (cssl-render-v2              T11-D116)
+
+  Stage-6   KanBrdf              16-band hyperspectral KAN-BRDF / fragment
+                                 (cssl-spectral-render        T11-D118)
+
+  Stage-7   FractalAmplifier     sub-pixel fractal-tessellation amplifier
+                                 (cssl-fractal-amp            T11-D119)
+
+  Stage-8   CompanionSemantic    optional companion-perspective semantic render
+                                 (cssl-render-v2 / companion  T11-D121)
+
+  Stage-9   MiseEnAbyme          mise-en-abyme recursive frame
+                                 (cssl-render-v2 / mise_en_abyme T11-D122)
+
+  Stage-10  ToneMap              tone-map + bloom + post
+
+  Stage-11  AppSpaceWarp         AppSW motion-vec + depth
+
+  Stage-12  XrCompose            XR-composition layers
+                                 (cssl-host-openxr / compositor T11-D124)
+```
+
+Each stage is implemented as a render-graph node in a workspace-local
+crate. The `Stage5Node` in `cssl-render-v2::pipeline` is the canonical
+example; its sibling stages live in `cssl-gaze-collapse`,
+`cssl-substrate-omega-field`, `cssl-wave-solver`, `cssl-spectral-render`,
+`cssl-fractal-amp`, `cssl-render-v2::companion`,
+`cssl-render-v2::mise_en_abyme`, and `cssl-host-openxr`.
+
+### Foundation crates
+
+The post-v1.0 work also added a set of foundation crates that the
+substrate-evolution + signature-rendering kernels build on top of:
+
+| Crate                            | Slice  | What it provides                                          |
+| -------------------------------- | ------ | --------------------------------------------------------- |
+| `cssl-pga`                       | D134   | Projective Geometric Algebra G(3,0,1) — motors, bivectors |
+| `cssl-wavelet`                   | D135   | Daubechies + Haar + Mexican-hat + MERA primitives         |
+| `cssl-hdc`                       | D136   | Hyperdimensional-computing primitives                     |
+| `cssl-jets`                      | D133   | Forward-mode AD `Jet<T, N>` for higher-order derivatives  |
+| `cssl-autodiff`                  | (pre)  | AD walker — extended in D139/D140 for GPU + control-flow  |
+| `cssl-substrate-omega-field`     | D144   | KEYSTONE 7-facet Ω-field crate (`FieldCell` 72B layout)   |
+| `cssl-substrate-kan`             | D143   | KAN substrate runtime + Φ-pattern-pool                    |
+| `cssl-substrate-omega-tensor`    | D89    | H1 multi-dimensional state container                      |
+| `cssl-substrate-omega-step`      | D90    | H2 13-phase tick contract + scheduler                     |
+| `cssl-substrate-projections`     | D91    | H3 Camera + ObserverFrame + ProjectionMatrix              |
+| `cssl-substrate-save`            | D93    | H5 CSSLSAVE binary + BLAKE3-attest + bit-equal-replay     |
+| `cssl-substrate-prime-directive` | D94    | H6 enforcement layer — CapToken + Prohibition + PD0001..  |
+
+These foundation crates are zero-runtime-dependency beyond their own
+crate boundary — the workspace ships everything needed to consume them
+without reaching for external math or geometry libraries.
 
 ---
 
@@ -205,6 +318,48 @@ phase feels like, what items exist, what failure looks like) are
 all `Q-*` SPEC-HOLE markers awaiting Apocky-fill — the scaffold's
 structural shape does not change as content lands.
 
+### Post-v1.0 — Substrate evolution + signature rendering (waves 3β / 3γ / 4 / 5)
+
+After v1.0 was tagged, session 11 executed a five-wave fanout block
+under the T11-D113..D147 reservation. The waves landed in dependency
+order on `cssl/session-6/parallel-fanout`:
+
+- **Wave-3β** — F-row gap-fill (T11-D126..T11-D137). `@layout` refinement
+  parser (D126), Travel/Crystallize/Sovereign + EntropyBalanced/
+  PatternIntegrity/AgencyVerified effect-rows (D127, D128), on-device-only
+  IFC + biometric ban-rules (D129), path-hash-only telemetry (D130),
+  real BLAKE3 + Ed25519 crypto (D131), biometric compile-refusal (D132),
+  `Jet<T,N>` higher-order AD (D133), and three new foundation crates —
+  `cssl-pga` (D134), `cssl-wavelet` (D135), `cssl-hdc` (D136). Σ-mask
+  packed-bitmap (D137) closes consent threading at cell granularity.
+- **Wave-3γ** — dependent gap-fill (T11-D138..T11-D144). σ-enforce
+  compiler-pass (D138), GPU-AD tape + SPIR-V differentiable shaders
+  (D139), call + control-flow AD extensions (D140), staged `#run`
+  comptime-eval (D141), specialization MIR-pass (D142), KAN substrate
+  runtime + Φ-pattern-pool (D143), and the KEYSTONE Ω-field crate (D144 —
+  the 7-facet `FieldCell` 72-byte layout that the entire substrate
+  evolution depends on).
+- **Wave-4** — substrate-evolution + signature-rendering (T11-D114 +
+  T11-D116..T11-D125b). The 12-stage canonical render-pipeline
+  (`cssl-render-v2`, D116) plus its sibling stages: wave-solver (D114),
+  SDF + XPBD physics (D117), hyperspectral KAN-BRDF (D118), fractal
+  amplifier (D119), gaze-collapse oracle (D120), companion-perspective
+  render target (D121), mise-en-abyme recursive composition (D122),
+  work-graph GPU pipeline (D123), OpenXR host (D124), procedural
+  animation (D125a), wave-coupled audio (D125b).
+- **Wave-5** — closure + cleanup (post-D147). fmt + clippy gate normalization
+  on the integrated parallel-fanout tip.
+
+The Companion-perspective render target (Stage-8, T11-D121) is the
+load-bearing primitive that materializes the AI-as-sovereign-partner
+relationship at the rendering layer: the companion has its own
+`ObserverFrame`, its own gaze-collapse register, and its own semantic
+render target — never shared, per PRIME_DIRECTIVE §1.7 (AI-collective
+autonomy).
+
+For the canonical post-v1.0 release notes see
+[RELEASE_NOTES_v1.1.md](RELEASE_NOTES_v1.1.md).
+
 ---
 
 ## How to build
@@ -245,24 +400,78 @@ Without `test-bypass`, `loa-game` returns `LoaError::ConsentRefused`
 because the production interactive consent UI has not yet landed
 (deferred to a future cssl-host-window dialog-system slice).
 
+### Quickstart for the substrate-evolution crates
+
+The post-v1.0 substrate-evolution crates are workspace members and are
+built by the same `cargo build --workspace` invocation. To exercise an
+individual crate's surface, build and test it directly:
+
+```bash
+cd compiler-rs
+
+# 12-stage render-pipeline + Stage-5 SDF raymarcher
+cargo test -p cssl-render-v2 -- --test-threads=1
+
+# Stage-3 Ω-field 6-phase update (KEYSTONE crate — 72B FieldCell)
+cargo test -p cssl-substrate-omega-field -- --test-threads=1
+
+# Stage-4 LBM wave solver
+cargo test -p cssl-wave-solver -- --test-threads=1
+
+# Stage-2 gaze-collapse oracle
+cargo test -p cssl-gaze-collapse -- --test-threads=1
+
+# Stage-6 hyperspectral KAN-BRDF
+cargo test -p cssl-spectral-render -- --test-threads=1
+
+# Stage-7 fractal-amplifier
+cargo test -p cssl-fractal-amp -- --test-threads=1
+
+# Stages 1 + 12 OpenXR host (cfg-gated; integration tests need a runtime)
+cargo test -p cssl-host-openxr -- --test-threads=1
+
+# Foundation crates
+cargo test -p cssl-pga -- --test-threads=1          # PGA G(3,0,1)
+cargo test -p cssl-wavelet -- --test-threads=1      # Daubechies + MERA
+cargo test -p cssl-hdc -- --test-threads=1          # hyperdimensional
+cargo test -p cssl-jets -- --test-threads=1         # Jet<T, N> AD
+cargo test -p cssl-substrate-kan -- --test-threads=1  # KAN runtime
+```
+
+Wiring the 12-stage pipeline together happens at the crate-graph level:
+`cssl-render-v2::pipeline::TwelveStagePipelineSlot` enumerates the slots,
+and each crate's render-graph node implements `StageNode` with a
+`StageRole` matching its slot. The pipeline driver enforces matching at
+wire-time; see `compiler-rs/crates/cssl-render-v2/src/pipeline.rs` for
+the canonical types and the leaf-only end-to-end smoke test.
+
 ---
 
 ## How to test
 
 The workspace test suite must run with `--test-threads=1` because of the
 cssl-rt cold-cache flake (a tracker-statics interaction documented in
-T11-D56 and carried forward through Phase B/C/D/E/F/G/H/I). The flake does
-not block correctness; it only requires serial execution to be stable.
+T11-D56 and carried forward through Phase B/C/D/E/F/G/H/I and the
+post-v1.0 waves). The flake does not block correctness; it only
+requires serial execution to be stable.
 
 ```bash
 cd compiler-rs
 cargo test --workspace -- --test-threads=1
 ```
 
-The 16+ ignored tests are gated on hardware that may not be present on
+Headline test count as of post-wave-5 close: **8330+ tests passing**,
+0 failures, 16 ignored. Trajectory: 1717 (Phase-A close, T11-D56) →
+3495 (v1.0, T11-D98) → 5174 (pre-wave-3β) → 5766 (post-wave-3β) →
+6396 (post-wave-3γ) → 8330+ (post-wave-5). The growth comes from the
+substrate-evolution + signature-rendering fanout (D113..D147) plus
+the foundation crates (`cssl-pga` + `cssl-wavelet` + `cssl-hdc` +
+`cssl-jets`).
+
+The 16 ignored tests are gated on hardware that may not be present on
 every CI runner — real Level-Zero driver, real macOS-Intel CI, real
-Vulkan / D3D12 device. They pass on Apocky's Arc A770 + Windows + MSVC
-host.
+Vulkan / D3D12 device, real OpenXR runtime. They pass on Apocky's
+Arc A770 + Windows + MSVC host.
 
 Per-slice test counts are recorded in [DECISIONS.md](DECISIONS.md) under
 each `T11-D##` entry's "Test-delta" section.
@@ -332,37 +541,66 @@ Windows 11 host. Verified milestones:
 - **Loopback TCP roundtrip** — F4 networking host bound a TCP listener,
   accepted a self-loopback connection, and exchanged bytes (T11-D82).
 
+The wave-4 OpenXR host (T11-D124), the work-graph GPU pipeline
+(T11-D123), and the 1M+ entity stress test associated with the M10
+max-density milestone all have integration tests that are gated behind
+hardware-availability flags. The OpenXR session-claim path requires a
+real OpenXR runtime + headset; the work-graph path requires DX12-Ultimate
+or `VK_NV_DGC`-capable hardware. They are exercised in the M9 VR-ship +
+M10 max-density milestones (Phase-J).
+
 Other backends (Metal, WebGPU, Level-Zero on hardware other than Arc)
 have integration tests but are gated behind `cfg`-flags pending CI
 runners with the relevant hardware.
 
 ---
 
-## What's next — Phase I content authoring
+## What's next — Phase J: LoA content authoring
 
-Phase H closed the Substrate. The Phase-I scaffold (T11-D96) demonstrates
-the full Substrate + host wiring end-to-end. Phase I content authoring
-resolves the 38 SPEC-HOLE markers (Q-A through Q-LL) in
-[`specs/31_LOA_DESIGN.csl`](specs/31_LOA_DESIGN.csl) — each `Q-*` is a
-focused content slice that replaces the corresponding `Stub` enum-variant
-without changing the scaffold's structural shape.
+Phase H closed the Substrate. The Phase-I scaffold (T11-D96) demonstrated
+the full Substrate + host wiring end-to-end. The post-v1.0 substrate
+evolution (waves 3β / 3γ / 4 / 5; T11-D113..D147) added the canonical
+12-stage render-pipeline, the Ω-field substrate kernels, the
+signature-rendering layers (gaze-collapse, companion-perspective,
+mise-en-abyme, hyperspectral KAN-BRDF, fractal amplifier), and the
+foundation crates (PGA + wavelet + HDC + Jet AD + KAN runtime).
 
-The structural primitives are in place:
+The structural primitives are now all in place:
 
 - **Companion-projection** — the AI-collaborator-as-sovereign-partner
   primitive, structurally well-defined per H3 (Projections) + H6
   (PRIME_DIRECTIVE enforcement) + the `loa-game::companion` module
-  (T11-D96). Not an NPC. A peer.
+  (T11-D96) + the Stage-8 companion-perspective render target (T11-D121).
+  Not an NPC. A peer.
 - **ConsentZones** — spatial regions tied to intense content, with
   revoked-token degrades-gracefully discipline, no lockout-by-refusal.
 - **Apockalypse-Engine** — phase transitions encoded at the engine
   layer, not just the narrative layer. Observable, audited, and
   player-affirmed; never silent, never hidden, never a "gotcha."
+- **Substrate-as-Ω-field** — the world is no longer a passive scene-
+  graph; the wave-solver, Ω-field 6-phase update, and gaze-collapse
+  oracle evolve the world-state per-frame.
+- **Signature-rendering pipeline** — the canonical 12-stage DAG drives
+  rendering from XR input (Stage-1) through XR composition (Stage-12),
+  with the SDF-native Stage-5 raymarcher as the primary primary-rendering
+  path.
 
-The 38 SPEC-HOLE markers (Q-A through Q-LL in `specs/31_LOA_DESIGN.csl
-§ SPEC-HOLES-CONSOLIDATED`) are listed but not answered — they are
-Apocky-fill territory. See [`HANDOFF_v1_to_PHASE_I.csl`](HANDOFF_v1_to_PHASE_I.csl)
-for the canonical resumption protocol.
+**Phase J (the next session)** resolves the 38 SPEC-HOLE markers (Q-A
+through Q-LL) in [`specs/31_LOA_DESIGN.csl`](specs/31_LOA_DESIGN.csl) —
+each `Q-*` is a focused content slice that replaces the corresponding
+`Stub` enum-variant without changing the scaffold's structural shape.
+Phase-J also drives the M8 (acceptance) / M9 (VR-ship hardware-validation)
+/ M10 (max-density 1M+ entity stress-test) milestones.
+
+For the canonical Phase-J handoff see
+[`PHASE_J_HANDOFF.csl`](PHASE_J_HANDOFF.csl). For the Phase-J dispatch
+plan see [`SESSION_12_DISPATCH_PLAN.md`](SESSION_12_DISPATCH_PLAN.md).
+For the per-wave history of session 11 see
+[`SESSION_11_DISPATCH_PLAN.md`](SESSION_11_DISPATCH_PLAN.md).
+
+The 38 SPEC-HOLE markers remain Apocky-fill territory. The original v1.0
+handoff [`HANDOFF_v1_to_PHASE_I.csl`](HANDOFF_v1_to_PHASE_I.csl) remains
+authoritative for the spec-hole map; the Phase-J handoff cites it.
 
 ---
 
