@@ -170,6 +170,23 @@ pub mod objemit;
 pub mod pipeline;
 
 // ═══════════════════════════════════════════════════════════════════════
+// § G8 (T11-D101) : full LSRA-driven pipeline walker
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The G8 follow-up to G7 lands the FULL LSRA-driven path : non-leaf
+// functions (multi-arg signatures + integer arithmetic + register
+// pressure) route through `lsra_pipeline::build_func_bytes_via_lsra`
+// which threads `isel::X64Func → regalloc::X64FuncAllocated → encoder
+// bytes` end-to-end. Spill / reload markers from the LSRA allocator
+// lower to real `mov [rsp+disp], reg` / `mov reg, [rsp+disp]`
+// instructions ; callee-saved push/pop pairs come from the regalloc
+// `callee_saved_used` set fed into G3's `lower_prologue` / `lower_epilogue`.
+// The G7 scalar-leaf fast-path is preserved : leaf functions short-circuit
+// before the LSRA route via `ScalarLeafReturn::try_extract`.
+
+pub mod lsra_pipeline;
+
+// ═══════════════════════════════════════════════════════════════════════
 // § G6 (T11-D88) : top-level façade for csslc `--backend=native-x64`
 // ═══════════════════════════════════════════════════════════════════════
 //

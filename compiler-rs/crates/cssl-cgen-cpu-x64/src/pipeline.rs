@@ -349,6 +349,18 @@ pub fn select_module_with_marker(module: &MirModule) -> Result<Vec<IselFunc>, Se
 ///   2. G1→G4 lowered body (placement of the return-value into rax/xmm0),
 ///   3. G3 epilogue (`<callee-saved-pops> ; add rsp, frame ; pop rbp ; ret`).
 ///
+/// § DISPATCH (G7-leaf vs G8-LSRA)
+///   The function dispatches between two routes :
+///     - **G7 leaf-path** : if [`ScalarLeafReturn::try_extract`] succeeds,
+///       the function matches the canonical `fn () -> i32 { N }` shape and
+///       we use the simple G1 → G4 direct lowering (no register allocator
+///       involvement). This preserves the canonical 11-byte milestone body
+///       (`55 48 89 E5 B8 NN NN NN NN 5D C3`) for the hello-world case.
+///     - **G8 LSRA-path** : otherwise we delegate to
+///       [`crate::lsra_pipeline::build_func_bytes_via_lsra`] which routes
+///       through the full G2 LSRA + spill-slot allocation + callee-saved
+///       push/pop emission.
+///
 /// The `is_export` flag is wired through to the [`ObjFunc`] builder so the
 /// linker surfaces a STB_GLOBAL / EXTERNAL / N_EXT symbol when the fn is
 /// the module's main (or other public entry).
@@ -356,6 +368,30 @@ pub fn select_module_with_marker(module: &MirModule) -> Result<Vec<IselFunc>, Se
 /// # Errors
 /// Returns [`NativeX64Error`] for any per-stage adapter failure.
 pub fn build_func_bytes(
+    func: &IselFunc,
+    abi: X64Abi,
+    is_export: bool,
+) -> Result<ObjFunc, NativeX64Error> {
+    // § Try the G7 scalar-leaf fast-path first. If the function matches the
+    //   `fn () -> i32 { N }` shape, the simple lowering produces the
+    //   canonical milestone bytes ; this preserves the SECOND hello.exe = 42
+    //   bit-for-bit through G8 landing.
+    if let Ok(_leaf) = ScalarLeafReturn::try_extract(func) {
+        return build_func_bytes_leaf(func, abi, is_export);
+    }
+    // § G8 fallthrough : non-leaf functions (multi-arg signatures, integer
+    //   arithmetic, register pressure) route through the FULL LSRA pipeline.
+    crate::lsra_pipeline::build_func_bytes_via_lsra(func, abi, is_export)
+}
+
+/// G7 leaf-path body : the original simple lowering that produced the
+/// canonical 11-byte milestone body for `fn main() -> i32 { N }`. Preserved
+/// verbatim from T11-D97 so the milestone bit-pattern is bit-for-bit
+/// invariant across the G8 landing.
+///
+/// # Errors
+/// Returns [`NativeX64Error`] for any per-stage adapter failure.
+pub fn build_func_bytes_leaf(
     func: &IselFunc,
     abi: X64Abi,
     is_export: bool,
@@ -993,8 +1029,37 @@ mod tests {
 
     #[test]
     fn emit_object_module_native_with_unsupported_op_surfaces_unsupported_op() {
-        // Build a fn that uses `arith.addi` — outside the scalar-leaf
-        // subset at S7-G7. The pipeline must reject loudly.
+        // ‼ Post-T11-D101 (G8 LSRA-pipeline) the canonical `arith.addi` path
+        //   THAT WAS UNSUPPORTED at G7 now succeeds end-to-end via the LSRA
+        //   route. To keep this test asserting the canonical reject-path we
+        //   build a fn using `arith.sdivi` — which requires rax/rdx fixed-
+        //   preg pinning not yet wired in G8 (deferred to G9 slice).
+        let mut m = MirModule::new();
+        let mut f = cssl_mir::MirFunc::new(
+            "div_test",
+            vec![MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        // MirFunc::new auto-populates entry-block args from `params`.
+        let a = cssl_mir::ValueId(0);
+        let b = cssl_mir::ValueId(1);
+        let v_div = f.fresh_value_id();
+        f.push_op(
+            MirOp::std("arith.sdivi")
+                .with_result(v_div, MirType::Int(IntWidth::I32))
+                .with_operand(a)
+                .with_operand(b),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(v_div));
+        m.push_func(f);
+        let err = emit_object_module_native(&m).unwrap_err();
+        assert!(matches!(err, NativeX64Error::UnsupportedOp { .. }));
+    }
+
+    #[test]
+    fn emit_object_module_native_with_arith_addi_succeeds_via_g8_lsra() {
+        // ‼ T11-D101 G8 milestone : the addi-shape that pre-G8 surfaced
+        //   UnsupportedOp now succeeds via the LSRA path.
         let mut m = MirModule::new();
         let mut f = cssl_mir::MirFunc::new("two_plus", vec![], vec![MirType::Int(IntWidth::I32)]);
         let v0 = f.fresh_value_id();
@@ -1018,8 +1083,8 @@ mod tests {
         );
         f.push_op(MirOp::std("func.return").with_operand(v2));
         m.push_func(f);
-        let err = emit_object_module_native(&m).unwrap_err();
-        assert!(matches!(err, NativeX64Error::UnsupportedOp { .. }));
+        let bytes = emit_object_module_native(&m).expect("G8 LSRA path supports addi");
+        assert!(!bytes.is_empty());
     }
 
     // ─── translate_select_error ─────────────────────────────────────
