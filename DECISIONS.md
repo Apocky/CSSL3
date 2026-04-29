@@ -4854,3 +4854,47 @@ Each decision entry :
   - **`windows-sys` / `libc` dependency adoption** — flagged as DECISIONS-sub-entry-required by the dispatch-plan landmines. At this slice we deliberately avoided both. If a future slice wants to adopt either, the trade-off is : (a) cleaner type-safety on the FFI boundary, (b) automatic Windows-version + libc-ABI compatibility, (c) bigger build-time dependency footprint. Document the choice in a focused DECISIONS sub-entry.
 
 ───────────────────────────────────────────────────────────────
+
+## § T11-D86 : S7-G4 — Native x86-64 instruction encoder (REX + ModR/M + SIB + SSE2 baseline)
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Context** `specs/14_BACKEND.csl § OWNED x86-64 BACKEND` defines a 4-phase pipeline (isel → regalloc → schedule → emit). G4 is phase-4 : take a post-regalloc + ABI-lowered `X64Inst` stream and emit canonical x86-64 byte sequences per Intel SDM Vol 2. G1/G2/G3 sibling slices had not yet committed work at the time of fanout (all S7-G* worktrees pointed at the parallel-fanout tip df1daf5), so G4 had to land independently of the X64Inst surface defined in G1.
+- **Decision** Land the encoder + a self-contained `X64Inst` surface in a new crate `cssl-cgen-cpu-x64`, forward-compatible with whatever G1 ultimately defines.
+- **Surface**
+  - **`crates/cssl-cgen-cpu-x64/src/reg.rs`** (295 LOC) — `Gpr` 16-variant 4-bit-encoded enum (rax..r15) ; `Xmm` 16-variant (xmm0..xmm15) ; `OperandSize` (B8/B16/B32/B64) driving REX.W + 0x66 prefix dispatch. Each register exposes `rm_bits()` (low 3 bits) + `rex_bit()` (bit 3) + `forces_sib_as_base()` (rsp/r12) + `collides_with_riprel()` (rbp/r13) helpers per Intel SDM §2.2.
+  - **`crates/cssl-cgen-cpu-x64/src/mem.rs`** (89 LOC) — `MemOperand` 4-variant (Base / BaseIndex / IndexOnly / RipRel) ; `Scale` 4-variant (S1/S2/S4/S8). Constructors `base()` / `base_disp()` / `rip_rel()` for common cases.
+  - **`crates/cssl-cgen-cpu-x64/src/modrm.rs`** (217 LOC) — `make_rex_optional()` / `make_rex_forced()` / `make_modrm()` / `make_sib()` bit-packers ; `lower_mem_operand()` returns `MemEmission` carrying ModR/M.mode + r/m + SIB + REX.X/B + disp-kind + disp value. Implements the three landmine cases : rsp/r12 forces SIB ; rbp/r13 with disp=0 promotes to mod=01 disp8=0 (avoiding the RIP-rel slot) ; SIB.index=rsp invalid (debug_assert).
+  - **`crates/cssl-cgen-cpu-x64/src/inst.rs`** (221 LOC) — canonical `X64Inst` enum with 33 variants covering integer (Mov/Add/Sub/Mul/IMul/IDiv/Cmp/Lea/Push/Pop/Load/Store) + control (Jmp/Jcc/Call/Ret) + SSE2 scalar FP (Movss/Movsd/Addss/Addsd/Subss/Subsd/Mulss/Mulsd/Divss/Divsd/UComisd/CvtSi2sd/CvtSd2si). `Cond` 16-variant condition codes ; `BranchTarget::{Rel, Rel32}` for short/long branch encoding.
+  - **`crates/cssl-cgen-cpu-x64/src/encode.rs`** (420 LOC) — `encode_inst()` / `encode_into()` public API ; per-variant `emit_*` helpers ; `emit_alu_rr()` / `emit_alu_ri()` / `emit_unary_grp3()` shared paths for ADD/SUB/CMP + MUL/IMUL/IDIV families. SSE2 prefix discipline implemented (0x66 for double-precision ucomisd ; 0xF3 for scalar single ; 0xF2 for scalar double ; F2/F3 emitted BEFORE REX per Intel-SDM order). Branch encoding picks short form when |disp| ≤ 127, long form otherwise, with `Rel32` forcing long.
+  - **`crates/cssl-cgen-cpu-x64/src/tests.rs`** (700 LOC) — 56 byte-equality tests cross-verified against Intel SDM Vol 2 + the canonical `mov rax, 0x42 ⇒ 48 C7 C0 42 00 00 00` and `mov rax, 0xDEADBEEFCAFEBABE ⇒ 48 B8 BE BA FE CA EF BE AD DE` 64-bit-imm sample sequences. Coverage : REX construction (4) + ModR/M + SIB (3) + MOV r/imm + r/r (8) + ADD/SUB/CMP r/r + r/imm (8) + MUL/IMUL/IDIV (4) + PUSH/POP/RET/CALL (5) + JMP/JCC short+long (5) + LOAD/STORE/LEA (10) + SSE2 r/r (12) + extended-reg tests (3) + version sentinel.
+- **Coverage matrix** (slice spec)
+  - Mov ✓ Add ✓ Sub ✓ Mul ✓ IMul ✓ IDiv ✓ Cmp ✓ Jcc ✓ Jmp ✓ Call ✓ Ret ✓ Push ✓ Pop ✓ Lea ✓ Load ✓ Store ✓
+  - Movss ✓ Movsd ✓ Addss ✓ Addsd ✓ Subss ✓ Subsd ✓ Mulss ✓ Mulsd ✓ Divss ✓ Divsd ✓ UCOMisd ✓ CVTsi2sd ✓ CVTsd2si ✓
+- **Landmine handling**
+  - REX prefix : optional `make_rex_optional` returns `None` when W/R/X/B all zero (avoids the spurious 0x40 byte that some ad-hoc encoders emit).
+  - ModR/M.r/m == 100 with mod ∈ {00,01,10} : encoder synthesizes SIB byte automatically when base is rsp/r12.
+  - Mod=00 + r/m=101 = RIP-rel slot : `[rbp]` and `[r13]` (disp=0) promote to mod=01 disp8=0.
+  - SIB.base == 101 with mod=00 = "no base" : `[rbp + index*scale]` (disp=0) promotes to mod=01 disp8=0.
+  - SSE2 scalar prefix : 0x66 (double cmp) / 0xF2 (scalar double) / 0xF3 (scalar single) emitted BEFORE REX per Intel-SDM byte order.
+  - Branch encoding : auto-pick short (2 bytes) when |disp| ≤ 127 ; long (5 or 6 bytes) otherwise. `Rel32` forces long form for forward-refs that the linker / G5 step will patch.
+  - Call : near-call-relative E8 (5 bytes always — no short form for CALL).
+- **Consequences**
+  - Test count : 2380 → 2445 (+65). Workspace baseline preserved (full-serial run via `--test-threads=1`).
+  - `cssl-cgen-cpu-x64` is the first owned-CPU-backend crate to commit alongside the stage0 `cssl-cgen-cpu-cranelift` ; the two coexist under the workspace `crates/*` glob.
+  - **Independent of G1/G2/G3** — G4 carries its own X64Inst surface so siblings can land before, after, or never. When G1 (instruction-selection) lands its own `X64Inst`, two paths exist : (a) consume this crate's enum directly, or (b) define a separate enum in `cssl-cgen-cpu-isel` and provide a thin `into_emit()` adapter. Either path is lossless.
+  - **Encoder is post-regalloc + post-ABI-lower only.** It does NOT do : memory-form ALU ops (e.g. `add [rax + 8], rcx`), shifts/rotates, atomics, lock-prefix, AVX/AVX2 VEX, AVX-512 EVEX, or symbolic relocations. Each is documented in `specs/14_BACKEND.csl` as deferred or in the lib.rs § STAGE-2 DEFERRED block.
+  - Sample encodings verified : `mov rax, 0x42 ⇒ 48 C7 C0 42 00 00 00` ; `mov rax, 0xDEADBEEFCAFEBABE ⇒ 48 B8 BE BA FE CA EF BE AD DE` ; `mov rax, rcx ⇒ 48 89 C8` ; `add rax, rcx ⇒ 48 01 C8` ; `addsd xmm0, xmm1 ⇒ F2 0F 58 C1` ; `lea rax, [rsp + 0x10] ⇒ 48 8D 44 24 10` ; `cvtsi2sd xmm0, eax ⇒ F2 0F 2A C0`.
+  - All gates green : fmt ✓ clippy ✓ test 2445/0 ✓ doc ✓ xref ✓ smoke 4/4 ✓ (full 9-step commit-gate per `SESSION_6_DISPATCH_PLAN.md § 5`).
+- **Deferred** (sequenced)
+  - **Memory-form ALU** (e.g. `add [rax + 8], rcx`, `cmp [rdi], imm32`) — adds RM/MR variants to `X64Inst` + reuses `lower_mem_operand` ; ~120 LOC + 25 tests. Required before G5 can lower spills cleanly.
+  - **Shift / rotate / bit-test** (Sal/Sar/Shl/Shr/Rol/Ror/Test/Bt/Bsf/Bsr/Setcc) — Group-2 + Group-8 opcode families ; ~150 LOC + 30 tests.
+  - **Atomic prefix discipline** (LOCK CMPXCHG / XADD / XCHG) — ~80 LOC + 15 tests. Lands alongside cssl-mir atomic-op surface.
+  - **Memory-form SSE2** (Movsd xmm/[mem], Addsd [mem]/xmm, etc.) — ~100 LOC + 20 tests.
+  - **AVX/AVX2 VEX prefix** (Vmovss/Vfmadd231sd/Vbroadcastsd/Vpcmpeqd/etc.) — VEX-128 + VEX-256 byte-prefix synthesis ; ~400 LOC + 60 tests. Required for the AVX2 tier the §14 spec mandates as base.
+  - **AVX-512 EVEX prefix** (with masking + broadcast + rounding-mode bits) — ~600 LOC + 80 tests. Required for the µarchs that opportunistically emit AVX-512 (Zen4/5 + Arrow-Lake AVX10.1).
+  - **Symbolic relocations + branch fixup** — G5 will own the relocation-table layer ; encoder emits placeholder + fixup-record. Currently `BranchTarget::Rel32(0)` serves as the placeholder pattern.
+  - **Per-µarch latency table + scheduling hints** — phase-3 of §14 BACKEND ; depends on G3 + G4 stable surfaces.
+  - **DWARF-5 + CodeView debug-info emission** — out of scope for the encoder ; will land in cssl-cgen-cpu-debug or as a separate phase.
+
+───────────────────────────────────────────────────────────────

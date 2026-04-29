@@ -1,0 +1,14 @@
+[package]
+name                   = "cssl-cgen-cpu-x64"
+description            = "CSSLv3 stage1+ — owned x86-64 instruction encoder (REX + ModR/M + SIB + SSE2 baseline)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
