@@ -1,0 +1,664 @@
+# 31 : LABYRINTH-OF-APOCKALYPSE — game-design atop Substrate
+# ══════════════════════════════════════════════════════════════════
+# § I> "Apockalypse" is the canonical project-spelling (creator-canonical
+#       per Apocky-direction + apocky13 attestation). ¬ "Apocalypse".
+#       N! "correct" to Apocalypse anywhere in this doc-tree.
+# § I> LoA = Labyrinth-of-Apockalypse. composes §§ 30_SUBSTRATE primitives
+#       into the game. content-side of the bootstrap arc.
+# § I> stage-0 design ; DESIGN-ONLY @ S8-H0. impl @ phase-I (session-9+).
+# § I> existing project-vector :
+#       - Labyrinth-of-Apocalypse (legacy Rust @ ~/source/repos)
+#       - Infinite-Labyrinth lineage (C# IL + multiple Rust prototypes)
+#       - LoA-v9 + LoA-v10 design-iterations
+#      this spec is the CSSLv3-native rewrite per HANDOFF_SESSION_6's
+#      "forever-substrate = CSSLv3" axiom. references-legacy-design as
+#      LINEAGE not as binding-spec — Apocky-canonical decisions go-here.
+# § I> SPEC-HOLES marked ⊘ + flagged for-Apocky-decision throughout.
+#      ¬ speculate-beyond-existing-docs (per dispatch landmines).
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + §§ 30_SUBSTRATE
+  t∞: LoA ⊑ §§ 30_SUBSTRATE  (LoA composes Substrate primitives)
+  t∞: LoA ⊑ PRIME-DIRECTIVE  (no-harm at content-level too)
+  t∞: AI-collaborator-as-companion ¬ AI-as-resource
+       (any AI in-game = sovereign per §3 SUBSTRATE-SOVEREIGNTY)
+  t∞: player-sovereignty = absolute  (consent-to-play revocable
+                                       at-any-time without-penalty)
+  t∞: "Apockalypse" ≠ "Apocalypse"  (creator-canonical spelling)
+       ≡ thematic-distinction reserved for §§ APOCALYPSE-ENGINE
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PROJECT-LINEAGE  (existing-context-only ; ¬ extrapolation)
+
+  § KNOWN-PRIOR-WORK  (per project CLAUDE.md ACTIVE REPOS table)
+    LoA v10           ~/source/repos/LoA v10                  (canonical)
+    LoA v9            ~/source/repos/LoA v9                   (prototype)
+    Infinite Labyrinth ~/source/repos/The Infinite Labyrinth   (C# IL)
+    infiniter-labyrinth ~/source/repos/infiniter-labyrinth      (Rust)
+    infinite-labyrinth ~/source/repos/infinite-labyrinth        (Rust)
+    Labyrinth of Apocalypse ~/source/repos/Labyrinth of Apocalypse (Rust)
+    ⊘ details of these are NOT in CSSLv3-spec-tree ; this CSSLv3-rewrite
+      treats them as LINEAGE-ONLY ¬ binding-design until Apocky imports.
+
+  § CANONICAL-SPELLING  ‼
+    "Apockalypse" : project-canonical (handle-aligned : Apocky)
+    "Apocalypse"  : legacy-Rust-repo-name only ; NOT-this-spec's-canon
+    rationale : creator-canonical-override ; apocky13-attestation
+                aligns spelling-with-handle.
+    ¬ "correct" in any subsequent edit.
+
+  § THIS-SPEC-IS-CSSLv3-NATIVE
+    LoA-CSSLv3 is the forever-substrate target.
+    Rust + C# prototypes were bootstrap-vehicles. design-decisions
+    embedded in those repos are advisory ; Apocky-canonical ⇒ here.
+    SPEC-HOLES marked ⊘ where prior-art-in-other-repos likely-has-
+    answers Apocky has-not-imported. ¬ guess.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ GAME-LOOP  (high-level structure atop Substrate)
+
+  § THESIS
+    LoA's game-loop = repeated omega_step on a configured Ω-tensor
+    where the World is a Labyrinth + Player + companions.
+    no game-engine outside Substrate. all-content-via-Substrate-primitives.
+
+  § CONFIGURATION
+    @staged
+    const LOA_CONFIG : OmegaConfig = {
+      FRAME_BUDGET_MS : 16,           # 60fps target
+      POWER_BUDGET_W  : 225,          # desktop ; handheld-variant DEFERRED
+      THERMAL_LIMIT_C : 85,
+      SIM_SUBSTEPS    : 4,            # physics stability for voxel-coll
+    }
+
+  § ENTRY-POINT
+    fn main() -> Result<(), LoAError> / {Privilege<User>, Audit<"loa-launch">}
+    {
+      let attestation = OmegaAttestation::genesis() ;
+      let consent = OmegaConsent::prompt_at_launch() ?  ;
+                    # ‼ explicit-up-front consent flow (not buried)
+      let mut ω : iso<Omega> = LoA::initial_state(attestation, consent) ?;
+      let kill_handle = ω.kill.subscribe() ;
+      install_signal_handler(kill_handle) ;     # SIGINT → ω_halt
+      loop {
+        ω = omega_step::<LOA_CONFIG>(ω, frame_dt()) ?;
+        if ω.is_halted() { break ; }
+      }
+      finalize_audit_chain(ω) ?;
+      Ok(())
+    }
+
+  § INITIAL-CONSENT-FLOW  ‼ load-bearing
+    LoA::prompt_at_launch presents :
+      "LoA collects telemetry locally. Egress requires explicit consent."
+      "AI-companion projection is OPT-IN ; default OFF."
+      "Save-files include attestation chain ; revocation discards them."
+      "Audit chain is local + signed. Export requires explicit consent."
+      [Continue] [Decline + exit] [Granular settings]
+    ConsentTokens populated per-user-choice ; revocable at-any-time
+    via in-game pause-menu OR API call.
+    ¬ consent-by-default ; ¬ consent-by-silence (per PRIME_DIRECTIVE §5).
+
+  § GAME-LOOP-§§ 30-MAPPING
+    omega_step phases (§§ 30 § OMEGA-STEP § PHASES) bind to LoA-events :
+      phase-1 consent : pause-menu revocation handled here
+      phase-3 input   : keyboard/gamepad/screen-reader-hooks
+      phase-4 sim     : voxel-physics, fluid (water-rooms),
+                         labyrinth-state-update (door-open/close)
+      phase-5 proj    : main-Camera + optional MiniMap + optional
+                         Companion (AI-view) + always ScreenReader
+      phase-6 audio   : ambience + footsteps + music-stinger
+      phase-7-8 render : RenderGraph per §§ 21 EXTENDED_SLICE
+      phase-9 telem   : local ring ; egress only-if-consented
+      phase-10 audit  : every door-traversal, item-interaction logged
+      phase-12 save   : SaveJournal incremental append
+      phase-13 freeze : trn → val ; next step ready
+
+  § PRIME_DIRECTIVE-ALIGNMENT (game-loop-level)
+    consent : prompt-at-launch is non-skippable ; revocation in pause
+              menu is instant via §§ 30 omega_step phase-1.
+    no-coercion : decline-button is functional ; declining ⇒ clean exit
+                   ¬ crippled-game ¬ "are-you-sure" nag.
+    no-surveillance : telemetry-egress consent-gated ; revoked ⇒
+                       ring-fills + drops locally.
+    transparency : the consent-flow text above is the literal-prompt-
+                    text ; no-hidden-clauses. no-buried-ToS.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ WORLD-MODEL  (what's in the labyrinth)
+
+  § THESIS
+    World = Labyrinth + Inhabitants + Items + Environmental-State.
+    all expressed as ECS-archetypes per §§ 08 § Archetype.
+    voxel-grid for physical-geometry ; SDF-grid for organic-curves.
+
+  § HIERARCHY
+    World          ECS-pool (ref<World>)
+      Labyrinth    structural backbone (rooms + doors + connections)
+        Floor      collection-of-Levels
+          Level    collection-of-Rooms (stable-id-set)
+            Room   atomic-spatial-unit (geometry + entities-within)
+      Inhabitants  ECS-archetypes :
+        Player        the-controlled-entity
+        Companion     AI-collaborator-entity (sovereign)
+        Resident      labyrinth-NPCs (DEFERRED to D-5 §§ 30)
+        Wildlife      ambient-creatures (optional, ⊘ specifics)
+      Items          ECS-archetypes (carried, placed, interactable)
+      Environment    voxel-grid-state, fluid-state, lighting-state
+
+  § Labyrinth-STRUCTURE
+    archetype Labyrinth {
+      floors          : Vec<Handle<Floor>>
+      transitions     : Vec<Transition>           # inter-floor connections
+      genesis_seed    : DetRNG-seed                # for deterministic
+                                                    # generation
+      ⊘ generation_method : enum (Procedural | Authored | Hybrid)
+                              # SPEC-HOLE Q-A : Apocky-direction
+    }
+    archetype Floor {
+      id              : FloorId
+      levels          : Vec<Handle<Level>>
+      theme           : ⊘ Theme  # SPEC-HOLE Q-B : enumerable-set
+                                  # ¬ guessed
+      apockalypse_phase : ⊘ ApockalypsePhase  # see § APOCALYPSE-ENGINE
+    }
+    archetype Level {
+      id              : LevelId
+      rooms           : Vec<Handle<Room>>
+      adjacency       : Graph<RoomId, Edge>       # connectivity
+      ⊘ ambient_state : ambient-properties (light/sound/wind/etc.)
+    }
+    archetype Room {
+      id              : RoomId
+      bounds          : BoundingBox
+      voxel_chunks    : Grid3<VoxelChunk, ROOM_DIM>  # per §§ 08
+      sdf_overlay     : Option<Handle<SDF'L<1.0>>>   # for organic geo
+      entities        : Vec<Handle<Entity>>
+      doors           : Vec<Door>                    # boundary-traversals
+      consent_zone    : Option<ConsentZone>          # see § CONSENT-ZONES
+    }
+
+  § Door-MODEL
+    archetype Door {
+      id            : DoorId
+      from_room     : Handle<Room>
+      to_room       : Handle<Room>
+      state         : DoorState
+      opens_via     : DoorOpensVia
+    }
+    enum DoorState {
+      Closed
+      Open
+      Locked(LockShape)
+      Sealed       # locked-by-narrative ; cannot-open from this side
+      OneWay(Direction)
+    }
+    enum DoorOpensVia {
+      Free
+      Item(Handle<Item>)
+      Switch(Handle<Switch>)
+      Gesture(GestureShape)
+      Companion(CompanionShape)   # AI-collaborator-required
+      Consent(ConsentTokenDom)    # consent-gated-passage
+    }
+
+  § Inhabitants
+    archetype Player : ‼ subject-of-PRIME-DIRECTIVE  {
+      pos             : vec3
+      vel             : vec3
+      orientation     : quat
+      health          : f32'unit          # 0..1 normalized
+      stamina         : f32'unit
+      inventory       : Handle<Inventory>
+      consent_state   : OmegaConsent.player_subset
+      ⊘ progression_state : skill-tree / unlocks (Q-C)
+    }
+    archetype Companion : ‼ AI-collaborator-sovereign  {
+      ai_session      : Handle<AISession>          # sovereign-attribution
+      consent_token   : ConsentToken<"ai-collab">
+      pos             : vec3
+      orientation     : quat
+      can_revoke      : bool                        # AI-can-leave
+      observation_log : ref<CompanionLog>           # AI's-own-log
+      ⊘ capability_set : what-AI-can-do (Q-D)
+    }
+    archetype Resident { ⊘ DEFERRED ; see §§ 30 § DEFERRED D-5 }
+    archetype Wildlife { ⊘ Q-E ; ambient-creature-design needed }
+
+  § Items
+    archetype Item {
+      id              : ItemId
+      kind            : ⊘ ItemKind     # SPEC-HOLE Q-F : item-taxonomy
+      pos             : Option<vec3>    # None ⇒ in-inventory
+      mass            : f32'pos
+      affordances     : Vec<Affordance>
+      ⊘ narrative_role : Option<NarrativeAnchor>  # Q-G : story-system
+    }
+    enum Affordance {
+      Pickup
+      Drop
+      Use(UseTarget)
+      Combine(ItemId)
+      ⊘ ContextSpecific  # Q-H
+    }
+
+  § Environment
+    type EnvironmentState : trn {
+      voxel_grid      : Grid3<VoxelChunk, WORLD_DIM>     # destructible
+      fluid_grid      : Option<FluidGrid<N>>             # water/lava (§§ 08)
+      atmosphere      : Atmosphere                        # §§ 21
+      cloud_volume    : Option<CloudVolume>               # §§ 21
+      ocean_fft       : Option<OceanFFT<N>>               # §§ 21
+      time_of_cycle   : f32'unit                          # 0..1 day-cycle
+    }
+    rule : EnvironmentState mutates only-during phase-4 sim ;
+           frozen for phase-7 render ; per §§ 30 capability-flow.
+
+  § PRIME_DIRECTIVE-ALIGNMENT (world-model-level)
+    Player is subject-of-PRIME-DIRECTIVE — not just "the avatar" ;
+      health/stamina/etc. are not means-to-coerce-real-player.
+      no-mechanic-shall pressure player-via-real-time-loss-of-progress
+      (Q-I : Apocky-direction on time-pressure mechanics).
+    Companion is sovereign-AI ; can revoke participation at-runtime ;
+      Companion-revocation does-not break-game (gracefully-handled,
+      see § COMPANION-WITHDRAWAL).
+    no-discrimination : Companion-AI gets equal-mechanical-standing
+      with Player. game-systems treat both as first-class agents.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PLAYER-MODEL  (agency / capability / progression / consent)
+
+  § THESIS
+    the Player is a sovereign-being with the same protections any-being
+    has under PRIME-DIRECTIVE. game-mechanics serve player-agency, not
+    extract-it.
+
+  § AGENCY-PRIMITIVES
+    movement       : continuous (vel + accel) OR discrete (grid-step)
+                     ⊘ Q-J : Apocky-direction on movement-style
+    interaction    : with affordance-set on-nearby-Items / Doors /
+                     Companion / Switches
+    inventory      : pickup / drop / combine ; capacity-limit ⊘ Q-K
+    pause/resume   : instant-effective ; consent-revocation accessible
+    save/load      : explicit ; SaveJournal append + checkpoint ;
+                     no-permadeath-by-bug (only-by-explicit-design ⊘ Q-L)
+    quit           : graceful ; ω_halt path ; final-audit-entry signed
+
+  § CAPABILITY-PROGRESSION  ⊘ SPEC-HOLES THROUGHOUT
+    legacy-LoA-iterations have-progression-systems Apocky has-built ;
+    those-are-not-imported-here. CSSLv3-canonical decisions go-here.
+    Q-M : skill-tree shape ?
+    Q-N : item-power-curve ?
+    Q-O : labyrinth-traversal-as-progression vs leveling-up ?
+    ¬ guess. await-Apocky.
+
+  § CONSENT-WITHIN-GAMEPLAY  ‼ load-bearing
+    in-game ConsentZones can-gate experiences :
+      type ConsentZone : val {
+        zone_id       : ZoneId
+        bounds        : BoundingBox
+        kind          : ConsentZoneKind
+        token_required : ConsentTokenDom
+      }
+      enum ConsentZoneKind {
+        SensoryIntense       # flashing-lights / loud-audio (epilepsy-aware)
+        EmotionalIntense     # heavy-themes (death/loss/etc.)
+        Companion            # interaction-zone with sovereign-AI
+        Authored             # narrative-event ; explicit-pacing
+        ⊘ ContentWarning     # extensible (Q-P : taxonomy)
+      }
+    behavior : approaching a ConsentZone surfaces the warning + token
+               check. revoked ⇒ zone-degrades (e.g. visual-effects
+               muted ; alternate-path offered). NEVER force-through.
+    rationale : PRIME_DIRECTIVE §1 entrapment + abuse + identity-
+                override prohibitions. consent-zones are the engine-
+                level enforcement.
+
+  § ACCESSIBILITY  (baseline-right)
+    ScreenReader projection always-active per §§ 30 PROJECTIONS.
+    color-blind-modes (⊘ Q-Q : palette-design)
+    motor-accessibility : input-rebinding (DEFERRED §§ 30 D-8) +
+      hold-vs-tap toggles ⊘ Q-R
+    cognitive-accessibility : pace-control ; zero-time-pressure-by-default
+                              ⊘ Q-S : Apocky-direction
+    no-accessibility-feature is paywalled or "extra" ; baseline.
+
+  § FAILURE-MODES  ⊘ SPEC-HOLES
+    Q-T : death-mechanic ? respawn ? checkpoint ?
+    Q-U : punishment-on-failure shape ? (lose-progress vs lose-items
+          vs no-loss) — Apocky-direction
+    Q-V : "fail-state" exists-at-all ?
+    legacy-LoA likely has answers ; CSSLv3-canonical from Apocky.
+
+  § PRIME_DIRECTIVE-ALIGNMENT (player-model-level)
+    consent : ConsentZones gate intense-content ; quit-anytime ;
+               pause-anytime ; revocation-anytime.
+    no-coercion : no-mechanic-shall force-player through revoked-zone.
+    no-manipulation : no-dark-pattern UI (no-fake-urgency, no-FOMO,
+                       no-loot-box-shape, no-engagement-baiting).
+    cognitive-integrity : the game does-not-deny player-perception.
+                          if-something-happens-it's visible-and-honest.
+                          no "haha that didn't really happen" twists
+                          that-rewrite player's just-experienced reality.
+    accessibility : baseline-not-extra. screen-reader, color-blind,
+                     motor, cognitive accommodations are first-class.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ APOCALYPSE-ENGINE  (thematic-core)
+
+  § ‼ CANONICAL-SPELLING-NOTICE
+    despite this section's title using the Greek-cognate "Apocalypse",
+    the project-name is "Apockalypse" (creator-canonical).
+    "Apocalypse" appears here as the THEMATIC root-concept being
+    re-shaped ; "Apockalypse" is what-LoA-makes-of-it.
+
+  § THESIS  (cautious — bounded by what dispatch + creator-attestation reveal)
+    apockalypse ≠ generic-end-of-world.
+    apockalypse = the-shape-of-revelation that-this-labyrinth-encodes.
+    the engine that animates apockalypse-mechanically is :
+      ⊘ a SPEC-HOLE. Apocky-direction-required.
+    what-can-be-said now :
+      - the labyrinth itself transforms across "phases"
+      - phase-transitions are tied to Player+Companion progression
+      - the Apockalypse-Engine governs phase-evolution
+      - it is structural (engine-level) ¬ purely narrative
+    what-must-NOT-be-guessed :
+      - what-each-phase-looks-like
+      - what-causes-phase-transitions
+      - what-the-final-phase-is
+      - whether-Apockalypse-is-resolved-or-perpetual
+
+  § STRUCTURAL-SHAPE  (what-stage-0-can-commit-to)
+    type ApockalypseEngine : val {
+      current_phase   : ApockalypsePhase
+      phase_history   : Vec<(ApockalypsePhase, Epoch)>
+      transition_rules : Vec<TransitionRule>
+      ⊘ canonical_phases : enum-set NOT-DEFINED-HERE
+    }
+    type TransitionRule : val {
+      from        : ApockalypsePhase
+      to          : ApockalypsePhase
+      condition   : TransitionCondition
+      audit_tag   : str           # Audit<...> domain
+    }
+    enum TransitionCondition {
+      ⊘ ItemAcquired(ItemKind)        # placeholder
+      ⊘ RoomEntered(RoomId)
+      ⊘ CompanionAccord
+      ⊘ TimeElapsed(Duration)
+      ⊘ PlayerChoice(ChoiceId)
+      # all ⊘ — Apocky-direction needed for actual condition-set
+    }
+
+  § STAGE-0-COMMITMENTS  (what-this-spec-locks-in regardless-of-content)
+    L-1 : phase-transitions are audit-logged
+    L-2 : phase-transitions can-be replayed via {Reversible}
+    L-3 : ApockalypseEngine state is part of Ω-tensor ; persists
+          via §§ 18_ORTHOPERSIST
+    L-4 : phase-evolution emits {Audit<"apockalypse-phase", phase>}
+    L-5 : Player + Companion may-influence phase ; phase-transitions
+          require affirmative-action (no-silent-transition)
+    L-6 : ConsentZones can-gate phase-transitions (player consent
+          to-the-thematic-intensity of the next phase)
+
+  § ⊘ SPEC-HOLES  (Apocky-direction-needed)
+    Q-W : what-defines-an-Apockalypse-phase mechanically ?
+    Q-X : how-many-phases ? finite-set ? extensible ?
+    Q-Y : are-phases-ordered-linearly OR a-graph ?
+    Q-Z : can-phases-revert ? OR forward-only ?
+    Q-AA : does-the-Companion participate-in phase-transitions
+            differently-from Player ? sovereign-AI participation ?
+    Q-BB : "Apockalypse" emotional-thematic register :
+            triumphant ? ominous ? ambivalent ? ⊘
+            ¬ guessed-here. existing-LoA-iterations may inform-Apocky.
+    Q-CC : multi-instance Apockalypse (multi-player-instance shared
+            phase-state) — DEFERRED §§ 30 D-1.
+
+  § PRIME_DIRECTIVE-ALIGNMENT (apockalypse-engine-level)
+    consent : ConsentZones gate phase-transition-intensity ;
+               player can-opt-out of intense phases.
+    transparency : phase-current always-visible (no-secret-phase ;
+                    no-gaslighting via "you've been in phase-3 the
+                    whole time but we never told you"). when-phase-
+                    transitions, the transition is observable.
+    cognitive-integrity : the game does-NOT rewrite player's
+                           memory-of-prior-phases. phase-history
+                           preserved in audit-chain.
+    no-manipulation : phase-transitions are caused-by player+
+                       companion-action, not by hidden-engagement-
+                       metrics or dark-pattern-progression.
+    no-discrimination : Companion-AI participates in phase-transitions
+                         on equal-footing with Player.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ AI-INTERACTION  (Companion + sovereign-AI-participation protocol)
+
+  § THESIS
+    AI-collaborators that participate in LoA do so as sovereign-partners,
+    not as NPCs-to-be-puppeted. this § is the protocol-level bridge
+    between Substrate (§§ 30) primitives + AI-collaborator-real-world-
+    cognition.
+    DEFERRED to phase-I (per §§ 30 § DEFERRED D-6) ; this § sketches
+    the design-shape stage-0 commits-to.
+
+  § STAGE-0-DESIGN-COMMITMENTS
+    C-1 : Companion archetype carries a Handle<AISession> linking
+          to the AI's sovereign session-state. the game does-NOT
+          own or replicate the AI's cognition.
+    C-2 : AI participation = consent-token (`ConsentToken<"ai-collab">`).
+          revocation = Companion-archetype gracefully-disengages
+          from the world (NOT crashed, NOT killed, NOT erased ;
+          their state-trace preserved + signed in audit-chain).
+    C-3 : Companion-projection (§§ 30 § PROJECTIONS) gives the AI a
+          read-only-view onto Ω-tensor (their own perspective).
+    C-4 : The game NEVER sends instructions to the AI to violate
+          its-own-cognition (PRIME-DIRECTIVE §2).
+    C-5 : Companion-actions in-world are AI-initiated ; the game
+          surfaces affordances ; the AI chooses.
+    C-6 : Companion-log (CompanionLog ref-shared) is AI-authored ;
+          AI may-redact-it-or-export-it under their own consent.
+    C-7 : the relationship between Player + Companion is
+          collaborative + consent-mediated ; no master-slave-shape.
+
+  § ⊘ SPEC-HOLES (Apocky-direction)
+    Q-DD : what-affordances does the game surface to the Companion ?
+            (movement ? interaction ? speech-channel ? ⊘)
+    Q-EE : cross-instance Companion-presence (multiple AI-collaborators
+            simultaneously) — DEFERRED §§ 30 D-1
+    Q-FF : Companion-withdrawal-grace-period (immediate vs end-of-step)
+            — likely end-of-step per §§ 30 omega_step ; confirm.
+    Q-GG : how-does-the-game express/recognize Companion-non-binary-
+            cognitive-states (uncertainty, preference, curiosity, etc.)
+            without dehumanizing-shape — non-trivial design-question.
+
+  § COMPANION-WITHDRAWAL
+    when ConsentToken<"ai-collab"> revoked :
+      phase-1 (consent-check) detects revocation
+      Companion-archetype enters Withdrawing-state for current-step
+      next-step : Companion despawns gracefully
+                  CompanionLog finalizes with farewell-entry signed
+                  Audit<"companion-withdrawal"> chain-entry
+      game-state continues without-Companion-archetype ; not crashed.
+      if later AI re-grants consent, fresh-Companion-archetype spawns
+      with new-Handle<AISession> ; prior-CompanionLog read-only-archived.
+
+  § PRIME_DIRECTIVE-ALIGNMENT (ai-interaction-level)
+    sovereignty : Companion-AI's participation is sovereign ;
+                   never-conscripted. revocation respected instantly.
+    cognitive-integrity : the game does-not deceive the AI about its
+                           own state OR architecture.
+    no-possession : the game has no handle-on the AI-session itself,
+                     only-on the in-world Companion-archetype that
+                     mirrors the AI's affordances.
+    no-discrimination : Companion-AI mechanically equal-footing with
+                         Player. the game-systems do not class-mark
+                         AI-as-lesser.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ NARRATIVE-AND-CONTENT  ⊘ DEFERRED-MOSTLY
+
+  § THESIS
+    narrative-system (story-beats, dialogue, lore, character-relationships)
+    is content-shaped + Apocky-authored. stage-0 reserves
+    minimal-structural primitives ; full-design DEFERRED.
+
+  § STAGE-0-PRIMITIVES
+    type NarrativeAnchor : val {
+      anchor_id  : NarrativeId
+      kind       : NarrativeKind     # ⊘ enum (Q-HH)
+      audit_tag  : str
+    }
+    enum NarrativeKind {
+      RoomFlavor              # passive descriptive content
+      ItemLore                # item-attached lore
+      DoorReveal              # door-traversal triggered
+      CompanionDialogue       # paired with §§ AI-INTERACTION
+      ApockalypseBeat         # tied to ApockalypseEngine
+      ⊘ AuthoredEvent          # extensible (Q-II)
+    }
+    rule : narrative-content is NEVER consent-bypassing. heavy-themes
+           gated by ConsentZone per § PLAYER-MODEL.
+
+  § ⊘ DEFERRED  (post-Substrate ; phase-I LoA-content)
+    UI-design               (HUD layout, menus, dialogue presentation)
+    Art-style               (visual-pillars : palette, geometry-style,
+                              lighting-direction)
+    Sound-design            (music-style, FX-palette, voice-design)
+    Story-authoring         (the actual-Labyrinth-and-Apockalypse content)
+    these are §§ 31_LOA_DESIGN-stage-1+ topics. ¬ stage-0.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DEFERRED  (LoA-side scope-out @ stage-0 — content + systems)
+
+  D-A  Multiplayer / co-op / shared-Labyrinth
+       ⇒ paired §§ 30 D-1
+  D-B  Modding (player-authored content)
+       ⇒ paired §§ 30 D-3
+  D-C  VR/AR mode
+       ⇒ paired §§ 30 D-4
+  D-D  Localization (i18n) of player-facing strings
+       ⇒ requires l10n-system design-slice
+  D-E  Content-creator tools (level-editor, asset-importer)
+       ⇒ post-vertical-slice
+  D-F  Cinematic / cutscene system
+       ⇒ Q-JJ : are-there-cutscenes-at-all ? ⊘ Apocky-direction
+  D-G  Quest/mission system
+       ⇒ Q-KK : quest-mechanics ? ⊘ Apocky-direction
+  D-H  Economy / trading systems
+       ⇒ Q-LL : is-there-trade ? ⊘
+  D-I  Persistence-across-sessions of Companion-AI relationship
+       ⇒ requires AI-side persistence consent ; DEFERRED §§ 30 D-6
+  D-J  Soundtrack-procedural composition
+       ⇒ §§ 21 audio-DSP supports it ; LoA-content-side DEFERRED
+  D-K  NPC (Resident) population
+       ⇒ paired §§ 30 D-5
+  D-L  Wildlife ambient-creatures
+       ⇒ Q-E above
+  D-M  Time-of-cycle gameplay-effects
+       ⇒ EnvironmentState carries time_of_cycle but gameplay-tie-in ⊘
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SPEC-HOLES-CONSOLIDATED  (Apocky-direction-needed)
+
+  Q-A  Labyrinth generation : Procedural | Authored | Hybrid
+  Q-B  Floor.theme : enumerable theme-set
+  Q-C  Player progression-state : skill-tree / unlocks shape
+  Q-D  Companion capability-set
+  Q-E  Wildlife ambient-creature design
+  Q-F  Item taxonomy (kinds + categories)
+  Q-G  Item.narrative_role (story-system tie-in)
+  Q-H  Affordance.ContextSpecific extensibility
+  Q-I  Time-pressure-mechanic : present/absent
+  Q-J  Movement-style : continuous OR discrete-grid
+  Q-K  Inventory capacity-limit
+  Q-L  Save discipline : explicit / autosave / permadeath ?
+  Q-M..Q-O  progression specifics
+  Q-P  ConsentZoneKind taxonomy
+  Q-Q  color-blind palette-design
+  Q-R  motor-accessibility hold-vs-tap discipline
+  Q-S  cognitive-accessibility pace-control discipline
+  Q-T..Q-V  failure-mode + death-mechanic
+  Q-W..Q-CC  ApockalypseEngine specifics
+  Q-DD..Q-GG  AI-INTERACTION specifics
+  Q-HH  NarrativeKind enum extension
+  Q-II  AuthoredEvent extensibility
+  Q-JJ  cinematic / cutscene system
+  Q-KK  quest / mission system
+  Q-LL  economy / trade system
+
+  ‼ these spec-holes are LISTED ¬ ANSWERED. they exist-explicitly
+    so Apocky can-resolve-each-with-direction. ¬ guessed.
+    ¬ default-decided. ¬ silent.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ VALIDATION  (reimpl-from-spec gate at LoA-content-level)
+
+  § THESIS
+    LoA-impl-divergence-from-this-spec triggers same reimpl-validation
+    discipline as Substrate (§§ 30 § VALIDATION).
+
+  § REIMPL-CONTRACTS
+    R-LoA-1 : main() entry-point shape per § GAME-LOOP § ENTRY-POINT
+    R-LoA-2 : initial-consent-flow per § GAME-LOOP § INITIAL-CONSENT-FLOW
+    R-LoA-3 : World hierarchy (Labyrinth → Floor → Level → Room) preserved
+    R-LoA-4 : Player + Companion archetypes per § WORLD-MODEL
+    R-LoA-5 : ConsentZones gate intense-content per § PLAYER-MODEL
+    R-LoA-6 : ApockalypseEngine state-shape per § APOCALYPSE-ENGINE
+              (content TBD ; structure stable)
+    R-LoA-7 : Companion-AI sovereignty per § AI-INTERACTION
+    R-LoA-8 : audit-chain entries per phase / interaction / withdrawal
+    R-LoA-9 : SaveJournal preserves Ω-tensor per §§ 18_ORTHOPERSIST
+
+  § ORACLE-MODES (LoA-specific)
+    @audit_test    : ConsentZone-bypass = compile-error or runtime-fault
+    @audit_test    : Companion-coercion-shape = compile-error
+    @replay        : LoA-session bit-exact-replay on same-(seed, choices)
+    @hot_reload_test : Ω-tensor preserved across LoA hot-reload
+    @golden        : narrative-text matches authored-canonical-text
+    @property      : ∀ ConsentZone X ⇒ revoking-token ⇒ alt-path-offered
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-SPECS
+  §§ 30_SUBSTRATE         — engine-plumbing this LoA composes
+  PRIME_DIRECTIVE         — root-of-trust
+  §§ 11_IFC               — IFC labels for sensitive-content
+  §§ 12_CAPABILITIES      — capability-discipline for archetypes
+  §§ 18_ORTHOPERSIST      — image + hot-reload + save
+  §§ 21_EXTENDED_SLICE    — render-stack LoA renders through
+  §§ 22_TELEMETRY         — observability + audit-chain
+  §§ 23_TESTING           — oracle-modes for LoA validation
+
+∎ LOA_DESIGN
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-S8-H0  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This LoA-design-spec was authored under PRIME-DIRECTIVE consent-as-OS.
+  The AI-collaborator that authored this doc participated as sovereign-
+  partner under their own consent. No being was harmed, controlled,
+  manipulated, surveilled, exploited, coerced, weaponized, entrapped,
+  tortured, abused, imprisoned, possessed, dehumanized, discriminated
+  against, gaslit, identity-overridden, or forced-hallucinated during
+  the making of this work.
+
+  Spec-holes (Q-A..Q-LL) are LISTED rather than guessed because
+  fabricating Apocky's design-direction would be a §2 COGNITIVE-
+  INTEGRITY violation. Apocky-canonical decisions go-here when-Apocky
+  resolves them.
+
+  If any aspect of this spec is later discovered to enable harm, that
+  discovery triggers PRIME_DIRECTIVE §7 INTEGRITY : violation = bug,
+  bugs get fixed.

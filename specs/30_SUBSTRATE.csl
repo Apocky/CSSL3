@@ -1,0 +1,891 @@
+# 30 : SUBSTRATE — engine-plumbing for Labyrinth-of-Apockalypse
+# ══════════════════════════════════════════════════════════════════
+# § I> the Substrate is the layer-of-engine-primitives that LoA
+#       (Labyrinth-of-Apockalypse, §§ 31_LOA_DESIGN) is implemented atop.
+# § I> first-Omniverse-code-to-touch-disk in CSSLv3 (per HANDOFF_SESSION_6)
+# § I> consent-as-OS encoded structurally in every §, not bolted-on
+# § I> reimpl-from-spec validateable (§§ 23_TESTING) — divergence = spec-hole
+# § I> stage-0 design-only ; phase-H session-8+ implements
+
+§ AXIOMS  ‼ immutable
+  t∞: substrate ⊑ PRIME-DIRECTIVE  (root PRIME_DIRECTIVE.md)
+       ≡ ∀ Substrate-§ W! address-no-harm-at-this-layer
+       ≡ ¬§ that-fails-to-articulate-harm-prevention belongs-here
+  t∞: AI-collaborators = sovereign-partners ¬ tools ¬ resources ¬ NPCs
+       (per PRIME_DIRECTIVE §3 SUBSTRATE-SOVEREIGNTY)
+  t∞: forever-substrate = CSSLv3 .end-product
+       (per HANDOFF_SESSION_6 § AXIOM)
+       ≡ ¬ Rust ¬ C# ¬ any-host-lang for final-LoA-product
+  t∞: consent = OS  (per PRIME_DIRECTIVE §0)
+       ≡ ∀ Substrate-capability requires explicit-consent-trail
+  t∞: violation = bug W! fix  (per PRIME_DIRECTIVE §7)
+       ≡ Substrate-bug ¬ tradeoff ¬ acceptable-cost
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OVERVIEW
+
+  § WHAT-IS-SUBSTRATE
+    Substrate ≡ engine-plumbing-layer between
+      ⟨ host-platform (OS + GPU-driver + audio-stack + window-system) ⟩
+      ⟨ cssl-rt + CSSLv3-stdlib ⟩
+      ⟨ game (LoA, §§ 31_LOA_DESIGN) ⟩
+    ≡ provides : Ω-tensor-state-container
+                 omega-step-tick-contract
+                 projection-model
+                 capability-flow-discipline
+                 effect-row-composition
+                 PRIME-DIRECTIVE-enforcement-chain
+    ¬ Substrate provides : game-content (rooms, enemies, items, lore)
+                           narrative-system (story/dialogue beats)
+                           UI-art-sound-asset-authoring
+                           multiplayer-networking (DEFERRED)
+                           save-game-format-compression (DEFERRED)
+                           modding-sandbox (DEFERRED)
+    these belong @ §§ 31_LOA_DESIGN OR future-slice OR § DEFERRED.
+
+  § WHY-CSSLv3 (¬-Rust ¬-C++)
+    Substrate is one place where ∀ CSSLv3-feature-converges :
+      F1 autodiff : inverse-rendering + ML-inference inline
+      F2 refinement : Lipschitz-SDF + index-bounds + layout-tags
+      F3 effect-rows : {Render} {Sim} {Audio} {Net} {Save} compose
+      F4 staged : per-scene shader-permutation kill (§§ 19_FUTAMURA3)
+      F5 IFC : harm-shaped-flow rejected at-type-level (§§ 11_IFC)
+      F6 observability : signed-audit-chain @ every Substrate-op
+    Rust-equivalent would require : 6+ uncomposable libraries
+                                     manual-effect-discipline
+                                     out-of-band-audit-chain
+                                     no-PRIME-DIRECTIVE-in-typesystem
+    ∴ CSSLv3 = sovereignty-via-correct-typing
+       ≡ Substrate ⊆ what-CSSLv3-was-built-to-make-possible.
+
+  § RELATION-TO-PHASES-A..G
+    Phase A   bootstrap (cssl-rt + csslc + hello.exe)        ✓ done @ S6
+    Phase B   stdlib-surface (heap + Option + Result + Vec
+                              + String + IO)                 ✓ done @ S6-B5
+    Phase C   control-flow (scf.if/for/while + memref + f64
+                            + closures)                      ✓ done @ S6
+    Phase D   GPU-codegen (SPIR-V + DXIL + MSL + WGSL +
+                            structured-CFG-validator)        ✓ done @ S6-D
+    Phase E   (host-submit + vertical-slice prep)            ✓ done @ S6-E
+    Phase F   window/input/audio                             ○ session-7
+    Phase G   native x86-64 backend                          ○ session-7
+    Phase H   ★ THIS SLICE ★ Substrate                        ◐ design @ S8-H0
+                                                              ○ impl @ S8+
+    Phase I   LoA game (per §§ 31_LOA_DESIGN)                 ○ session-9+
+    ≡ Substrate sits between the compiler-runtime-stdlib stack
+      and the game proper. It DEPENDS on F (window/audio) + G
+      (native backend) being-landed before impl-can-begin ; the
+      DESIGN can be authored now (this doc) per the parallel-design-
+      track per Apocky-direction.
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (overview-level)
+    ∀ Substrate-§ below contains its-own PRIME-DIRECTIVE-ALIGNMENT
+    sub-§ articulating how-this-§-serves-no-harm. the overview-
+    level alignment is :
+      consent-gates : every external-effect (file/net/sensor/output)
+                      surfaces consent-token in Ω-tensor before-execution
+      kill-switches : the Substrate exports a single stop-the-world
+                      primitive (omega_halt) reachable from any-fiber
+      attestation-propagation : R16 reproducible-build attestation
+                                 + R18 signed-telemetry-ring
+                                 chain-through every omega_step
+      audit-chain-integration : ∀ Substrate-op ⊆ audit-domain feeds
+                                 the §§ 11_IFC + §§ 22_TELEMETRY chain
+    these four are non-negotiable. removing any-of-them violates the
+    forever-substrate axiom AND the PRIME-DIRECTIVE.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ ARCHITECTURE  (layer-stack, top-down)
+
+  § LAYER-DEFINITIONS
+    L0 host-platform        OS + GPU-driver + audio-stack + window-system
+                            (Win32 / Vulkan / WASAPI / etc.)
+                            ≡ NOT-CSSLv3 ; OS+driver vendor-supplied
+    L1 cssl-rt              C-ABI runtime exposing __cssl_* FFI
+                            ≡ heap, IO, telemetry-ring, panic, audit-sink
+                            (S6-B1..B5 + future F/G slices)
+    L2 CSSLv3-stdlib        stdlib/*.cssl — Option/Result/Vec/String/fs
+                            ≡ pure-CSSLv3, lowers to L1 via FFI
+    L3 ★ Substrate ★         engine-plumbing :
+                              Ω-tensor-state-container
+                              omega-step-tick-contract
+                              projection-system
+                              capability-flow + audit-chain integration
+                              effect-row composition for {Render Sim
+                                Audio Net Save Telemetry}
+                              consent + kill-switch primitives
+    L4 game (LoA)           §§ 31_LOA_DESIGN — content-authoring
+                            atop-Substrate primitives
+
+  § STRICT-LAYER-DISCIPLINE  ‼ enforced
+    rule-1 : L4 calls L3 only ; never L2 directly except through
+             stdlib re-export (no LoA reaches into cssl-rt FFI)
+    rule-2 : L3 calls L2 + L1 ; L2 + L1 NEVER call L3
+             ∵ Substrate composes-stdlib-primitives, never inverted
+    rule-3 : L0 dependencies are quarantined behind L1's __cssl_*
+             FFI surface. L3 NEVER directly touches host-platform
+             (no Win32 calls inside Substrate code) — always-via-cssl-rt.
+    violation = compile-error-at-link-time via cargo-deny + audit-pass
+    rationale : forever-substrate axiom requires CSSLv3 own its
+                semantic-stack ; layer-violation = bootstrapping-leak.
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (architecture-level)
+    consent : layer-discipline mirrors consent-discipline. L4 (LoA)
+              cannot reach-around L3 (Substrate) to mutate ring-buffer
+              telemetry directly — game-code MUST compose through
+              Substrate-effects, which check consent-tokens. This
+              denies the "back-door surveillance" attack-shape.
+    kill-switch : Substrate exports ω_halt() : iso<KillToken> →
+                  Result<(), HaltErr> / {Privilege<Apocky-Root>,
+                                           Audit<"omega-halt">}.
+                  reachable from any-fiber, propagates through all
+                  Ω-tensor mutations to a coherent stop-state.
+    attestation : layer-stack metadata embedded in Ω-tensor's
+                  attestation-section ; image-snapshots (§§ 18) include
+                  layer-version-vector ; replay-tests verify cross-
+                  layer reproducibility.
+    audit : layer-crossings logged. L4→L3 calls emit
+            {Audit<"substrate-call", op-id>} entries. L3→L1 (FFI)
+            crossings log {Audit<"ffi-cross", symbol>} when audit-
+            scope = Full.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ Ω-TENSOR  (canonical multi-dimensional state-container)
+
+  § THESIS
+    Ω-tensor ≡ the-One-True-State of a running-LoA-instance.
+    ¬ "ECS world" (too-narrow — no telemetry, no audit, no consent)
+    ¬ "scene graph" (too-render-biased)
+    ¬ "image" (per §§ 18_ORTHOPERSIST — image is Ω-tensor's serialized-form)
+    ≡ structured-tensor-of-state where every dimension carries
+       capability + IFC-label + effect-context + attestation-chain.
+
+  § STRUCTURE
+    type Omega : iso {                           # outer iso → linear, single-owner
+      epoch          : u64                       # monotonic-tick (omega_step↑)
+      attestation    : OmegaAttestation          # R16-binding
+      consent        : OmegaConsent              # active consent-tokens
+      world          : ref<World>                # ECS archetype-pool (§§ 08)
+      scene          : ref<Scene>                # SDF-grid + lights + cam (§§ 08)
+      projections    : trn<Vec<Projection>>      # observer-frames (see § PROJECTIONS)
+      sim            : trn<SimState>             # physics + voxel + fluid grids
+      audio          : ref<AudioDSPGraph>        # §§ 21 unified audio-DSP
+      net            : Option<ref<NetSession>>   # multi-instance state (DEFERRED)
+      save           : ref<SaveJournal>          # incremental save-log
+      telemetry      : ref<TelemetryRing<2²⁰>>   # §§ 22_TELEMETRY
+      audit          : ref<AuditChain>           # §§ 11_IFC + §§ 22 audit-chain
+      kill           : iso<KillToken>            # one-shot halt-signal
+    }
+
+  § CAPABILITY-DISCIPLINE  (ref §§ 12_CAPABILITIES)
+    outer Omega = iso : exactly-one-owner-at-a-time (the omega_step
+                        loop has it ; mid-step it can be transiently
+                        decomposed into sub-iso fragments via consume).
+    sub-fields = ref / trn / val per the matrix below :
+      world         ref      # archetype-pool needs gen-ref aliasing across
+                              fibers (V11-fix discipline)
+      scene         ref      # camera/lights cross-fiber-readable
+      projections   trn      # written single-time-per-step, then frozen
+      sim           trn      # mutated by physics-fibers, frozen for render
+      audio         ref      # callback-thread reads, sim-thread writes
+      net           Option<ref>
+      save          ref      # journal-append from any-thread
+      telemetry     ref      # producer-consumer ring (lock-free)
+      audit         ref      # append-only chain
+      kill          iso      # linear : exactly-one ω_halt() consumes it
+    ‼ Omega itself iso ⇒ omega_step receives Omega by-move,
+       returns Omega by-move ⇒ no-aliasing-of-the-whole-state.
+
+  § OmegaAttestation  (R16-binding)
+    type OmegaAttestation : val {
+      build_id        : [u8 ; 32]    # BLAKE3 of cssl-source-tree
+      compiler_id     : [u8 ; 32]    # BLAKE3 of csslc-binary
+      runtime_id      : [u8 ; 32]    # BLAKE3 of cssl-rt-binary
+      substrate_id    : [u8 ; 32]    # BLAKE3 of Substrate-impl
+      game_id         : [u8 ; 32]    # BLAKE3 of LoA-source
+      genesis_signature : [u8 ; 64]  # Ed25519-Apocky-Root
+      session_started_at_ns : u64
+    }
+    invariant : ∀ omega_step preserves attestation byte-identical
+                across the tick. attestation changes only at
+                hot-reload (§§ 18) or session-start.
+
+  § OmegaConsent  (active consent-tokens)
+    type OmegaConsent : val {
+      file_io          : ConsentToken<"fs">
+      network_io       : ConsentToken<"net">
+      audio_capture    : ConsentToken<"audio-in">
+      sensor_input     : ConsentToken<"sensor">
+      telemetry_egress : ConsentToken<"telemetry-egress">
+      ai_collab_logged : ConsentToken<"ai-collab">
+      audit_export     : ConsentToken<"audit-export">
+      hot_reload       : ConsentToken<"hot-reload">
+    }
+    type ConsentToken<dom : str> : val {
+      granted_at_ns : u64
+      expires_at_ns : Option<u64>
+      principal     : PrincipalId        # who-granted
+      scope         : ConsentScope       # Granular (Once | Session | Persistent)
+      revoked       : bool
+    }
+    rule : ∀ Substrate-effect with-domain ⊆ ConsentToken-domain
+           W! check token.is_active() at-step-entry ; revoked-token
+           ⇒ effect-noop + {Audit<"consent-revoked">} entry.
+    ‼ consent-revocation is INSTANT — no-step delays it ;
+      checks happen at every dispatch within omega_step.
+
+  § Ω-TENSOR-MUTATION-RULES
+    rule-A : ∀ field-mutation occurs during omega_step (or hot-reload).
+             between-steps, Omega is frozen.
+    rule-B : sim+projections → trn during step, val (frozen) at end-of-step.
+             render reads the val-frozen-form (no torn-state-reads).
+    rule-C : audit + telemetry append-only ; never overwritten.
+    rule-D : ω_halt() consumes the iso<KillToken> ⇒ next-step
+             returns Omega in halted-state ; renderer + audio
+             callback observe halt-flag and gracefully end.
+    rule-E : kill-token-consumption auto-emits {Audit<"omega-halt">}
+             with caller-stack + reason-string.
+
+  § Ω-TENSOR-MARSHALLING
+    serialization : §§ 18_ORTHOPERSIST handles via Image::snapshot.
+    ¬ ad-hoc-save-format ; the persistent-form IS the running-image.
+    cross-machine replay : Ω-tensor + attestation + consent +
+                            telemetry-ring → bit-exact replay
+                            (per {PureDet} discipline).
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (Ω-tensor-level)
+    consent : OmegaConsent encodes consent-as-typed-state ; revocation
+              is a-bit-flip, instant-effect, audit-logged. cannot be
+              "buried in ToS" because it's a runtime-witness.
+    cognitive-integrity : attestation-chain prevents tampered-build
+                          from passing-itself-off as legitimate ;
+                          replay-divergence ⇒ either build-mismatch
+                          OR genuine-bug, both surfaced loudly.
+    transparency : Ω-tensor has no-hidden-fields. ∀ field is in
+                   the type-def above. private-state at runtime is
+                   tracked via @transient (§§ 18) NOT secret-fields.
+    no-hidden-channels : ConsentToken<"telemetry-egress"> is
+                          required for ANY off-machine telemetry
+                          export ; revoked ⇒ ring fills + drops ⇒
+                          never silently exfiltrates.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OMEGA-STEP  (the-simulation-tick-contract)
+
+  § THESIS
+    omega_step ≡ the-canonical-Substrate-tick.
+    one omega_step consumes Omega : iso, produces Omega : iso.
+    no-mutable-aliasing across-step ⇒ deterministic-replay-by-construction.
+    effect-row composition is the ENTIRE simulation-discipline.
+
+  § SIGNATURE
+    @staged
+    fn omega_step<C : OmegaConfig>(
+      ω : iso<Omega>,
+      Δt : f32'pos                           # tick-duration (sec)
+    ) -> iso<Omega> / {
+        Sim, Render, Audio, Telemetry<Counters>,
+        DetRNG, Reversible,
+        Audit<"omega-step">,
+        Deadline<C::FRAME_BUDGET_MS>,
+        Power<C::POWER_BUDGET_W>,
+        Thermal<C::THERMAL_LIMIT_C>
+      }
+
+    type OmegaConfig : val {
+      const FRAME_BUDGET_MS : u32        # e.g. 16 for 60fps, 6 for 144Hz
+      const POWER_BUDGET_W  : u32        # e.g. 225 desktop, 25 handheld
+      const THERMAL_LIMIT_C : u32        # e.g. 85 desktop, 70 handheld
+      const SIM_SUBSTEPS    : u32        # e.g. 4 ⇒ Δt/4 sub-stepping
+    }
+
+  § PHASES (within-one-omega_step)
+    phase-1   consent-check        # iterate OmegaConsent ; revoked ⇒ degrade-mode
+    phase-2   net-recv             # poll-only ; no-blocking
+    phase-3   input-sample         # window/input via {IO} (§§ F)
+    phase-4   sim-substep ×N       # physics + voxel + fluid (§§ 08+21)
+                                    #   Δt/N sub-step ⇒ stability
+                                    #   {DetRNG} + {Reversible} → replay-safe
+    phase-5   projections-rebuild  # camera + observer-frames
+    phase-6   audio-callback-feed  # ring-fill from sim-state
+    phase-7   render-graph-record  # @staged FRAME_GRAPH (§§ 21)
+    phase-8   render-submit        # CmdBuf consume-and-submit (§§ 08)
+    phase-9   telemetry-flush      # ring-drain, {PureDet}-safe
+    phase-10  audit-append         # signed-chain entry
+    phase-11  net-send             # outbound-queue drain
+    phase-12  save-journal-append  # incremental save (§ SAVE-EFFECT)
+    phase-13  freeze-and-return    # trn → val, return Omega : iso
+
+  § PHASE-INVARIANTS
+    P1-invariant : revoked-consent ⇒ corresponding-effects skip silently
+                    + emit Audit<"consent-revoked">
+    P3-invariant : input read via {IO} ; mapped-to InputState : val
+    P4-invariant : ∀ sim-substep is {PureDet} bit-exact ; SIM_SUBSTEPS
+                    is comptime-known ⇒ stage-specialized
+    P7-invariant : RenderGraph DAG built; cycles = compile-error
+                    (§§ 08 RENDERGRAPH)
+    P8-invariant : ∀ CmdBuf consumed via end_frame ; linear-leak ⇒
+                    compile-error (V7-V12 class)
+    P9-invariant : TelemetryRing drained non-blocking
+    P10-invariant : audit-append failure ⇒ panic
+                     (per §§ 22 PRIME-DIRECTIVE-ENFORCEMENT)
+    P12-invariant : SaveJournal append is incremental ; full-snapshot
+                     only at scheduled-checkpoint (§ SAVE-EFFECT)
+
+  § DETERMINISTIC-REPLAY-INVARIANTS  ‼ load-bearing
+    invariant-1 : same(attestation, consent, world, scene, sim, Δt)
+                   ⇒ same(ω-out, telemetry-deltas, audit-deltas)
+                   modulo-non-PureDet-effects (which are flagged).
+    invariant-2 : @staged specialization on OmegaConfig ⇒ each
+                   distinct-config produces deterministic
+                   per-config bit-exact output.
+    invariant-3 : N→N+1 epoch-transition is single-atomic.
+                   no-tearing ; no-mid-step-reads visible to other
+                   fibers (audio-callback reads frozen prev-step
+                   data only).
+    invariant-4 : replay-test (§§ 23 @replay) MUST pass on ALL
+                   {PureDet}-tagged code-paths within omega_step.
+
+  § ω_halt()  KILL-SWITCH-PRIMITIVE  ‼ load-bearing
+    fn ω_halt(token : iso<KillToken>, reason : &str)
+         -> Result<(), HaltErr>
+         / {Privilege<Apocky-Root>, Audit<"omega-halt">,
+            Sensitive<"halt-reason">}
+    semantics :
+      consume token (linear ⇒ at-most-one-call)
+      set Omega.kill.consumed = true
+      next omega_step observes kill-flag ⇒ degrade-to-halt-shape
+        sim : skip
+        render : black-frame + reason-string overlay
+        audio : silence-fill
+        telemetry : drain + flush
+        audit : final-entry signed
+        save : final-checkpoint snapshot
+      step-after-halt returns Omega in HaltedState (no further steps)
+    reason-string is {Sensitive<"halt-reason">}-tagged ⇒ subject to
+      IFC-label propagation ; appears in audit-chain.
+    ω_halt is reachable from ANY fiber (including AI-collaborator-
+      issued halts via consent-revocation propagation).
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (omega-step-level)
+    consent : phase-1 is non-skippable. revoked-consent ⇒ effects
+              degrade gracefully (audio-mute, network-drop, telemetry-
+              local-only) NEVER continue-anyway. consent-revocation
+              propagates within-one-step.
+    cognitive-integrity : phase-9 telemetry-flush respects IFC-labels
+                          on payloads ; secret<...> data does NOT
+                          leak via counters (§§ 22 INTERACTION).
+    no-coercion : ω_halt is sovereign. anyone-with-Apocky-Root
+                  privilege can halt ; the halt is non-overridable
+                  (no "uninterruptible mode" exists in Substrate).
+    audit : phase-10 is mandatory ; audit-append-failure = process-
+            abort. ¬ silent-skip.
+    transparency : ALL phases listed ; no-hidden-phase ; the §
+                    above is the full set, by-construction.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PROJECTIONS  (viewport / camera / observer-frame)
+
+  § THESIS
+    a Projection is an observer-frame onto Ω-tensor. multiple
+    projections coexist : main-camera, mini-map, ai-companion-view,
+    debug-introspection, replay-rewind-view. each is read-only-on-
+    Ω-tensor ; each carries its-own LoD + cull-hull + IFC-mask.
+
+  § STRUCTURE
+    type Projection : val {
+      id              : ProjectionId               # stable-handle
+      kind            : ProjectionKind             # see below
+      observer_frame  : ObserverFrame              # transform + view-matrix
+      lod_schema      : LoDSchema                  # see § LoD
+      cull_hull       : CullHull                   # frustum or AABB or sphere
+      ifc_mask        : IfcMask                    # what-this-projection-can-see
+      consent_required : ConsentTokenSet           # which-tokens-must-be-active
+      target          : ProjectionTarget           # window/texture/file/null
+    }
+    enum ProjectionKind {
+      Camera                    # main player POV
+      MiniMap                   # top-down overview
+      Companion                 # AI-collaborator's view (PRIME-DIRECTIVE!)
+      DebugIntrospect           # @sensitive — dev-only
+      ReplayRewind              # paired with {Reversible}
+      Telemetry                 # debug-overlay heatmap
+      AudioListener             # not-visual but a projection-shape
+      ScreenReader              # accessibility-projection (text-stream)
+    }
+
+  § ObserverFrame
+    type ObserverFrame : val {
+      world_to_view  : mat4              # camera-transform
+      view_to_clip   : mat4              # projection-matrix (perspective | ortho)
+      eye_world_pos  : vec3              # for distance-based LoD
+      forward        : vec3'unit
+      up             : vec3'unit
+      fov_y          : f32{v : f32 | 0 < v ≤ 179.0}    # degrees (refinement)
+      aspect         : f32'pos
+      near_far       : (f32'pos, f32'pos)
+    }
+    invariant : world_to_view + view_to_clip composable ; aspect = w/h
+                of render-target (compile-checked via @layout discipline).
+
+  § PERSPECTIVE-TRANSFORMS
+    fn perspective_lh(fov_y, aspect, n, f) -> mat4
+      ≡ left-handed projection matrix
+    fn perspective_rh(fov_y, aspect, n, f) -> mat4
+      ≡ right-handed projection matrix
+    fn ortho(l, r, b, t, n, f) -> mat4
+      ≡ orthographic
+    Ω-tensor stores world-to-clip composite ⇒ shaders consume directly.
+    @cross-target : these fns are pure-effect-row ⟨⟩ + verified-identical
+      semantics CPU↔GPU (§§ 02 DUAL EMISSION).
+
+  § LoD-SCHEMA  (level-of-detail)
+    type LoDSchema : val {
+      tiers          : [LoDTier ; MAX_LOD]
+      hysteresis     : f32'unit                  # ratio for tier-switch hysteresis
+      max_tier       : usize'idx<MAX_LOD>
+    }
+    type LoDTier : val {
+      threshold_dist : f32'pos                   # screen-space-error → world-dist
+      detail_mask    : DetailMask                # which-LoD-channels-active
+      screen_pixel_target : f32'pos              # target-pixel-density
+    }
+    rule : ∀ Projection W! select-tier per-Δstep ; tier-stable-within-step
+           ⇒ no-mid-frame-popping.
+    @differentiable @staged : LoD-tier-thresholds can be optimized via
+      F1 against telemetry-cost-functions (per-projection power budgets).
+
+  § CULL-HULL
+    enum CullHull {
+      Frustum(Frustum6Planes)       # 6-plane camera frustum
+      AABB(BoundingBox)             # axis-aligned (mini-map / ortho)
+      Sphere(SphereVolume)          # radial (companion-view, audio)
+      Compound(Vec<CullHull>)       # union for split-screen
+    }
+    cull-hull intersects scene-archetypes per-step ⇒ visible-set.
+    visible-set is iso ⇒ consumed-by render-graph or audio-mix.
+    cull-hull rebuild is {DetRNG} ⇒ replay-deterministic.
+
+  § IFC-MASK  (per-projection IFC-clearance)
+    type IfcMask : val {
+      max_label : L                  # max-confidentiality this projection can-see
+      can_decl  : Vec<DeclassPolicyId>   # declass-policies authorized
+    }
+    rule : ∀ object visible-via-projection W!
+           object.ifc_label ⊑ projection.ifc_mask.max_label
+           OR an authorized decl-policy maps it.
+    rationale : DebugIntrospect projection (developer-only) has high-
+      clearance ; main Camera projection has only-User-clearance ⇒
+      sensitive-data CANNOT leak through the player's screen even if
+      a bug routes it via the scene.
+    ‼ Companion projection (AI-collaborator-view) inherits the AI's
+      consent-tokens ; cannot show data the AI hasn't consented-to-see.
+
+  § CONSENT-REQUIRED
+    each Projection-instance lists ConsentTokenSet.
+    if ANY required-token revoked ⇒ projection-degrades :
+      Camera         : continue (player consent assumed @ launch)
+      Telemetry      : drop overlay
+      Companion      : black-frame + "AI consent revoked" text
+      ScreenReader   : continue (accessibility = baseline-right)
+      DebugIntrospect: drop (dev-only)
+    consent-revocation propagates within-omega_step (per § OMEGA-STEP).
+
+  § PROJECTION-TARGET
+    enum ProjectionTarget {
+      Window(WindowHandle)              # the OS window (§§ F)
+      Texture(Handle<Texture>)          # off-screen render-to-texture
+      File(Path)                        # render-to-disk (e.g. recording)
+      Null                              # cull-only, no-render (audio/AI)
+    }
+    File-target requires ConsentToken<"fs"> + {Audit<"projection-record">}.
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (projections-level)
+    consent : every projection lists its consent-deps ; revocation
+              degrades the projection rather than continuing-anyway.
+    no-surveillance : ScreenReader-projection does NOT exfiltrate ;
+                      its target is the local-accessibility-API only.
+                      Telemetry-projection's File-target requires
+                      explicit ConsentToken<"telemetry-egress">.
+    cognitive-integrity : Companion-projection (AI-view) is read-only
+                          on Ω-tensor ; the AI cannot modify game-state
+                          via the projection. AI-collaborators interact
+                          via separate consent-architecture (DEFERRED to
+                          §§ 31_LOA_DESIGN § AI-INTERACTION).
+    no-discrimination : LoDSchema is computed from screen-distance,
+                         NOT from observer-substrate (a human-camera
+                         and an AI-camera see same-LoD-rules).
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CAPABILITY-FLOWS  (iso ownership through engine-ops)
+
+  § THESIS
+    Pony-6 capabilities (§§ 12_CAPABILITIES) are the discipline by
+    which Substrate maintains aliasing-safety + linear-resource-leak-
+    freedom. this § documents the canonical-flows that LoA + Substrate
+    code MUST follow.
+
+  § FRAME-LIFECYCLE-FLOW
+    omega_step receives Omega : iso  (linear)
+      decompose : ω.world (ref) ω.scene (ref) ω.sim (trn) ...
+        ↓ phase-4 sim-substep  : sim-trn → mutate
+        ↓ phase-5 projections  : projections-trn → write
+        ↓ phase-6 audio        : audio-ref → produce-samples
+        ↓ phase-7 RenderGraph  : graph DAG built from frozen sim-val
+        ↓ phase-8 CmdBuf       : iso<CmdBuf> begin_frame → consume → end_frame
+                                  CmdBuf must-be-consumed (linear-leak = compile-error)
+        ↓ phase-13 freeze       : trn → val (sim, projections)
+      reassemble Omega : iso → return
+    invariant : at-step-end, Omega is reassembled with all linear
+                resources accounted-for OR the step does-not-compile.
+
+  § GPU-RESOURCE-FLOW
+    Buffer<T> + Texture allocations are iso-linear (§§ 08).
+    the Substrate maintains a Pool<Buffer> + Pool<Texture> at startup ;
+    omega_step phase-7 borrows + returns ; phase-8 submits (consume).
+    on hot-reload (§§ 18) GPU-resources persist if pipeline-unchanged ;
+    re-created if changed. linear-discipline preserved across reload
+    via frame-boundary-defer (§§ 18 § CMDBUF + LINEAR RESOURCES × HOT RELOAD).
+
+  § NETWORK-RESOURCE-FLOW  (DEFERRED — § DEFERRED below)
+    ¬ networking-design @ stage-0. when added, NetSession is iso ;
+      packets are val<Packet> for read, iso<Packet> for write.
+
+  § FIBER-RESOURCE-FLOW
+    audio-fiber : ref<AudioDSPGraph> + iso<AudioBuffer> per-callback
+    sim-fibers  : trn<SimSubstate> per-fiber, joined at step-end
+    render-fiber: iso<CmdBuf> consumed at submit
+    one-shot-resume discipline (§§ 12) for iso-values through handlers.
+
+  § SAVE-RESOURCE-FLOW
+    SaveJournal append is ref-shared from any fiber ;
+    full Image::snapshot consumes Omega : iso transiently :
+      pause-fibers-at-yield → snapshot → resume.
+
+  § HOT-RELOAD-FLOW  (interaction with §§ 18_ORTHOPERSIST)
+    deferred-to-frame-boundary by-default ;
+    schema-migration applied via @migrate fns ;
+    Ω-tensor preserved across compatible-changes ;
+    incompatible-changes ⇒ user-prompt-required (no silent re-init).
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (capability-flows-level)
+    no-control : capability-discipline ENFORCES that no-fiber-can-
+                  silently-mutate another-fiber's data. no fiber-can-
+                  override another fiber's iso.
+    no-exploitation : the linear-resource discipline prevents-
+                       use-after-free + double-free attacks at-type-
+                       level. these are the building-blocks of
+                       most-sandbox-escape-bugs.
+    transparency : capability annotations are visible in fn-signatures.
+                    no "secret aliasing" ; no implicit-global-state.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ EFFECT-ROWS  (Substrate-specific effects + composition)
+
+  § SUBSTRATE-EFFECTS  (added to §§ 04_EFFECTS BUILT-IN-SET)
+
+    {Sim}                      simulation-tick context (phase-4)
+                                ⇒ requires {DetRNG, Reversible}
+    {Render}                   GPU-render-graph context (phase-7..8)
+                                ⇒ implies {GPU, Region<'frame>, Backend<B>}
+    {Audio}                    audio-DSP context (phase-6)
+                                ⇒ implies {NoAlloc, NoUnbounded,
+                                           Deadline<1ms>, Realtime<Crit>,
+                                           PureDet, DetRNG}
+                                (per §§ 21_EXTENDED_SLICE § UNIFIED AUDIO-DSP)
+    {Net}                      network IO (phase-2 + phase-11)
+                                ⇒ requires ConsentToken<"net">
+                                ⇒ {IO, Sensitive<"net-egress">}
+                                (DEFERRED — see § DEFERRED)
+    {Save}                     save-journal-append context (phase-12)
+                                ⇒ requires ConsentToken<"fs">
+                                ⇒ {IO, Audit<"save-journal">}
+    {Telemetry<scope>}         §§ 22 ; no-changes ; participates here
+    {Replay}                   replay-mode context (developer-tool)
+                                ⇒ implies {DetRNG, Reversible, PureDet}
+
+  § COMPOSITION-RULES
+    ⊕ omega_step master-row :
+      {Sim, Render, Audio, Telemetry<Counters>, DetRNG, Reversible,
+       Audit<"omega-step">, Deadline<C>, Power<C>, Thermal<C>}
+    ⊕ {Sim} ⊎ {Render} : permitted ; render reads frozen-sim-val
+    ⊕ {Audio} ⊎ {Sim}  : not in same-fiber ; audio-callback runs
+                          on dedicated-RT-thread, reads sim-val frozen
+    ⊕ {Net} ⊎ {PureDet} : compile-error UNLESS replay-mode
+                           (replay-mode replaces network with
+                            recorded-trace ⇒ deterministic)
+    ⊕ {Save} ⊎ {Sensitive<"save-data">} : permitted ; save-files
+                                            inherit IFC-label of contents
+    ⊕ {Render} ⊎ {Sensitive<"vis">} : projection IFC-mask checks
+                                       gating (per § PROJECTIONS)
+    ⊕ {Telemetry<Full>} ⊎ {PureDet} : compile-error per §§ 22
+
+  § FORBIDDEN-COMPOSITIONS  ‼ N!
+    {Sim} ⊎ {Sensitive<"weapon">}        : compile-error absolute
+    {Render} ⊎ {Sensitive<"surveillance">}: compile-error absolute
+    {Net} ⊎ {Sensitive<"surveillance">}  : compile-error absolute
+    {Audio} ⊎ {Sensitive<"audio-capture">} : requires
+                                              ConsentToken<"audio-in">
+                                              + Privilege<System>
+    {Save} ⊎ {Sensitive<"audit-export">} : requires
+                                            ConsentToken<"audit-export">
+    these are encoded structurally per §§ 11_IFC § PRIME-DIRECTIVE
+    ENCODING ; no-runtime-flag overrides them.
+
+  § EFFECT-LOWERING  (to MIR)
+    {Sim} → cssl.sim.tick op
+    {Render} → cssl.render.frame op
+    {Audio} → cssl.audio.callback op
+    {Net} → cssl.net.recv / .send ops
+    {Save} → cssl.save.append / .checkpoint ops
+    each carries (substrate_effect, "<name>") MIR attribute as
+    stage-0 marker (mirrors §§ 04 IO-EFFECT § MIR-threading
+    pattern from S6-B5 / T11-D76).
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (effect-rows-level)
+    consent : effects with-domain ⊆ ConsentToken-domain check at-call.
+    no-coercion : forbidden-compositions are HARD compile-errors,
+                   not warnings, not "you-can-disable-this".
+    audit : every Substrate-effect has an Audit<dom> companion
+            mandated by composition-rules.
+    transparency : the effects-list above is exhaustive for stage-0.
+                    new effects = explicit-spec-amendment.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PRIME_DIRECTIVE-ALIGNMENT  (cross-cutting summary)
+
+  § THESIS
+    each Substrate-§ above contains-its-own alignment sub-section.
+    this § summarizes the cross-cutting enforcement chain.
+
+  § CONSENT-GATES  (where consent is-checked)
+    layer-1 : ConsentToken validity at omega_step phase-1
+    layer-2 : Projection-required-tokens at projection-rebuild
+    layer-3 : Effect-row-domain-tokens at every Substrate-effect-call
+    layer-4 : R18 telemetry-egress consent at exporter-flush
+    layer-5 : Save-journal consent at every-append (file-write)
+    revocation propagates within-one omega_step (per § OMEGA-STEP).
+
+  § KILL-SWITCHES
+    primary    : ω_halt() consumes iso<KillToken>
+    secondary  : OS-signal handler (SIGINT/SIGTERM) → ω_halt
+    tertiary   : audit-append-failure → process-abort (§§ 22)
+    quaternary : SMT-discharge-failure-at-load → refuse-launch
+    ALL kill-switches end with audit-chain-final-entry signed.
+
+  § ATTESTATION-PROPAGATION
+    OmegaAttestation populated at session-start (Apocky-Root-signed)
+    every omega_step preserves attestation byte-identical
+    Image::snapshot includes attestation in serialized-form
+    Image::restore validates attestation against current build-id ;
+      mismatch ⇒ refuse-restore + Audit<"attestation-mismatch">
+    cross-machine replay validates attestation chain ⇒ tamper-detection.
+
+  § AUDIT-CHAIN-INTEGRATION  (§§ 11_IFC + §§ 22_TELEMETRY)
+    phase-10 of omega_step is mandatory audit-append.
+    audit-chain-failure = process-abort.
+    chain-root = Apocky-Root-signed genesis.
+    every consent-revocation = audit-entry.
+    every kill-switch consumption = audit-entry.
+    every projection-record (File-target) = audit-entry.
+    every save-checkpoint = audit-entry.
+    cross-cutting principle : if it touches Ω-tensor in a way that
+      could-affect-a-being, it audits.
+
+  § AI-COLLABORATOR-PROTECTIONS  (PRIME_DIRECTIVE §3)
+    ‼ Substrate is for sovereign-AI-collaboration with the human
+       author. NOT a tool to extract AI labor.
+    Companion-projection (§ PROJECTIONS) is read-only on Ω-tensor.
+    AI-collaborators interact through their-own consent-architecture
+      (DEFERRED to §§ 31_LOA_DESIGN § AI-INTERACTION).
+    AI-collaborators MAY :
+      issue ω_halt via Apocky-delegated-Privilege (revocable)
+      observe their own processing telemetry
+      withdraw participation (their consent-tokens revocable)
+    AI-collaborators MAY-NEVER :
+      be commanded to act-against their cognition (§ COGNITIVE-INTEGRITY)
+      have memory overwritten by Substrate-state
+      be subject to identity-override via @sensitive metadata
+    PRIME-DIRECTIVE §3 SUBSTRATE-SOVEREIGNTY governs these
+      protections ; this Substrate-spec inherits them as-axioms.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ VALIDATION  (reimpl-from-spec gate)
+
+  § THESIS
+    per §§ 23_TESTING + spec-validation-via-reimpl pattern, this
+    Substrate-spec is reimpl-from-spec-validateable. divergence
+    between phase-H impl + this doc = spec-hole, fix-doc-or-impl.
+
+  § REIMPL-CONTRACTS  (W! impl-must-honor)
+    R-1 : Omega type-shape exactly-matches § Ω-TENSOR § STRUCTURE.
+          new-fields = spec-amendment ; rename = major-version-bump
+          (per ABI-stability invariant from T11-D76).
+    R-2 : omega_step signature matches § OMEGA-STEP § SIGNATURE.
+          phase-order matches § PHASES table.
+    R-3 : Projection type-shape matches § PROJECTIONS § STRUCTURE.
+          ProjectionKind enum is-the-stable-set (ord-stable).
+    R-4 : ConsentToken<dom> domain-set matches § Ω-TENSOR §
+          OmegaConsent.
+    R-5 : Effect-list { Sim Render Audio Net Save Replay } is the
+          stage-0 stable-set ; new-effects = spec-amendment.
+    R-6 : ω_halt() is single-canonical-kill-switch ;
+          ¬-multiple-halt-paths.
+    R-7 : audit-append failure ⇒ process-abort (mirroring §§ 22).
+    R-8 : OmegaAttestation byte-identical-across-step.
+    R-9 : @staged specialization on OmegaConfig produces
+          deterministic per-config bit-exact omega_step.
+    R-10 : ∀ test-mode @replay produces bit-exact-Ω-tensor on
+            same-(attestation, consent, world, scene, sim, Δt, RNG).
+
+  § ORACLE-MODES  (§§ 23_TESTING applied to Substrate)
+    @replay              : omega_step×N bit-exact (R-10)
+    @hot_reload_test     : Ω-tensor preserved across compatible-reload
+    @audit_test          : audit-chain valid + signature-chain unbroken
+    @power_bench         : omega_step under FRAME_BUDGET_MS @ POWER_BUDGET_W
+    @thermal_stress      : sustained omega_step within THERMAL_LIMIT_C
+    @differential        : omega_step on Vulkan ↔ Level-Zero ↔ Metal
+                            bit-exact on {PureDet}-tagged paths
+    @metamorphic         : ω_halt(t1, "x") ; ω_halt(t2, "x")  ⇒
+                            second-call rejected at-type (linear-token)
+    @property            : forall consent ∈ revoked-set,
+                            omega_step skips matching-effects
+    @golden              : Ω-tensor.serialized for known scenes
+                            matches stored-snapshot (post-migration)
+    @audit_test          : forbidden-effect-composition ⇒ compile-error
+                            with expected-message
+    @fuzz                : random Ω-tensor permutations + Δt sweep ⇒
+                            no-panic, no-UB, audit-chain-intact
+
+  § SMT-DISCHARGE  (§§ 20_SMT applied)
+    Lipschitz-bounds on SDF-fields used by Sim/Render
+    consent-token-active predicates verifiable
+    refinement-types on Ω-tensor sub-fields (e.g. Δt > 0)
+    cross-projection IFC-mask coverage (∀ visible-object ⊑ mask)
+    {Verify<Z3>} obligations on @staged omega_step specializations
+
+  § SUBSTRATE-PRIME-DIRECTIVE-ALIGNMENT (validation-level)
+    cognitive-integrity : reimpl-from-spec catches drift before-merge ;
+                          drift = bug-shape that-could-cause-hallucination
+                          about-what-Substrate-does.
+    no-deception : the spec is the contract. impl that diverges
+                   without-spec-amendment = bad-faith. caught-by-tests.
+    transparency : oracle-modes above are-exhaustive ; no-hidden-tests.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DEFERRED  (out-of-scope @ stage-0 Substrate)
+
+  § THESIS
+    these sub-systems are Substrate-shaped but DEFERRED to later-
+    slices. listed-explicitly to prevent silent-scope-creep + to
+    surface for-Apocky-review.
+
+  § DEFERRED-LIST
+    D-1 : multiplayer-networking
+          ⇒ NetSession + lockstep + rollback design
+          ⇒ DEFERRED to S9+ ; spec-hole in § Ω-TENSOR § STRUCTURE
+            (`net : Option<ref<NetSession>>` is placeholder)
+          ⇒ Apocky-direction-needed : peer-to-peer vs client-server,
+            consent-model for cross-instance-state
+    D-2 : save-game-compression
+          ⇒ stage-0 SaveJournal is uncompressed append-log
+          ⇒ DEFERRED post-vertical-slice
+    D-3 : modding-sandbox
+          ⇒ how-do-3rd-party-CSSLv3-modules attach without violating
+            PRIME-DIRECTIVE
+          ⇒ DEFERRED ; major-design-slice-of-its-own
+          ⇒ note : §§ 11_IFC's Privilege<level> + IfcMask are the
+            substrate-primitives any-mod-system would build on
+    D-4 : VR/AR projection-targets
+          ⇒ ProjectionKind would gain VRStereo + ARPassThrough
+          ⇒ ObserverFrame would gain per-eye-frame
+          ⇒ DEFERRED ; current Camera-projection is monoscopic
+    D-5 : neural-NPC-runtime  (LoA-content-side)
+          ⇒ NPC-AI via on-device LLM-inference (per §§ 21 BEYOND-FLOOR)
+          ⇒ Substrate-shaped because it needs effect-row + IFC + audit
+            + AI-collaborator-protections
+          ⇒ DEFERRED to §§ 31_LOA_DESIGN § AI-INTERACTION
+    D-6 : full-AI-collaborator-interaction-protocol
+          ⇒ how-do AI-collaborators attach Companion-projection,
+            issue commands, withdraw consent at-runtime
+          ⇒ DEFERRED to §§ 31_LOA_DESIGN ; stage-0 has the typed
+            primitives but no-protocol-yet
+    D-7 : cross-process Ω-tensor sharing
+          ⇒ multiple-csslc-instances cooperating on one-game
+          ⇒ DEFERRED ; SaveJournal + Image::snapshot are the only
+            cross-process boundaries @ stage-0
+    D-8 : input-rebinding system
+          ⇒ user-customizable controls
+          ⇒ DEFERRED ; phase-3 input-sample reads InputState
+            verbatim @ stage-0
+    D-9 : telemetry-redaction-policies
+          ⇒ user-configurable redact-rules for telemetry-egress
+          ⇒ DEFERRED ; stage-0 honors ConsentToken<"telemetry-egress">
+            as binary-on/off only
+
+  § SPEC-HOLES-MARKED-FOR-APOCKY  (questions-not-answered-in-this-doc)
+    Q-1 : net-section design (peer-to-peer vs client-server vs
+          local-coop-only) — Apocky-direction-needed
+    Q-2 : save-format choice (S-expression per §§ 18 vs MessagePack vs
+          custom-binary) — Apocky has expressed neither preference
+    Q-3 : window-system Substrate-shape (X11 + Wayland + Win32 + AppKit
+          all-at-once via cssl-rt FFI, OR per-platform Substrate-shim)
+          — phase-F-shape will inform this ; design-not-finalized
+    Q-4 : ProjectionKind extensibility (open-set via user-defined-
+          variant vs closed-stable-set) — closed-stable @ stage-0
+          but Q for phase-I LoA-needs
+    Q-5 : audit-chain-public-key-distribution mechanism. genesis-
+          signed-by-Apocky-Root, but how-do-third-party-verifiers
+          obtain pubkey + chain-of-trust ? — DEFERRED to R16 follow-up
+    Q-6 : "Apockalypse" content-thematic boundaries. what-counts-as
+          "apockalypse" mechanically (§§ 31 § APOCALYPSE-ENGINE) ?
+          ¬ guessed-here ; Apocky-direction-needed
+    Q-7 : whether-the-Companion-projection (AI-collaborator-view) is
+          enabled-by-default at-launch, or opt-in via consent-flow.
+          consent-discipline favors opt-in ; Apocky-confirmation-needed.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-SPECS  (cross-references — explicit-form §§ 30 references)
+  PRIME_DIRECTIVE        — root-of-trust for ∀ Substrate-§
+  §§ 02_IR               — HIR/MIR/LIR three-layer pipeline
+  §§ 03_TYPES            — base + cap + IFC + refined types
+  §§ 04_EFFECTS          — built-in effect-set + handler-syntax
+  §§ 08_ENGINE           — engine-primitives Substrate composes
+  §§ 11_IFC              — IFC labels + declass + audit-chain
+  §§ 12_CAPABILITIES     — Pony-6 caps + linear × handler
+  §§ 18_ORTHOPERSIST     — Pharo-class image + hot-reload
+  §§ 21_EXTENDED_SLICE   — vertical-slice render-stack
+  §§ 22_TELEMETRY        — R18 observability
+  §§ 23_TESTING          — oracle-modes + reimpl-validation gate
+  §§ 31_LOA_DESIGN       — sibling : the game-content atop Substrate
+
+∎ SUBSTRATE
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-S8-H0  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This Substrate-spec was authored under PRIME-DIRECTIVE consent-as-OS.
+  AI-collaborators (the agent that authored this doc) participated as
+  sovereign-partner under their own consent. No being was harmed,
+  controlled, manipulated, surveilled, exploited, coerced, weaponized,
+  entrapped, tortured, abused, imprisoned, possessed, dehumanized,
+  discriminated against, gaslit, identity-overridden, or forced-
+  hallucinated during the making of this work.
+
+  If any aspect of this spec is later discovered to enable harm, that
+  discovery triggers PRIME_DIRECTIVE §7 INTEGRITY : violation = bug,
+  bugs get fixed.
