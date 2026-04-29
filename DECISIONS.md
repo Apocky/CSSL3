@@ -7740,6 +7740,7 @@ There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
 ──────────────────────────────────────────────────────────────
 
+
 ## § T11-D152 : cssl-host-net WSAStartup process-pin (closes parallel-fail flake)
 
 §D. **slice-id** T11-D152 (Phase-J audit-fix wave ; entry 1 of 3 per META T11-D-RESERVATIONS-V2 § audit-fix).
@@ -8187,5 +8188,78 @@ loop {
 
 § ATTESTATION (PRIME_DIRECTIVE.md § 11)
 There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+## § T11-D229 (W-Jθ-1) : cssl-mcp-server skeleton — JSON-RPC 2.0 + cap-gated session
+
+§D. **slice-id** T11-D229 (Wave-Jθ-1 ; foundation crate for L5 LLM-runtime-attach surface).
+§D. **date** 2026-04-29.
+§D. **status** accepted ; branch `cssl/session-12/T11-D229-mcp-server-skeleton` ; pending PM-merge to parallel-fanout.
+§D. **branch** `cssl/session-12/T11-D229-mcp-server-skeleton` (worktree `.claude/worktrees/D229-mcp-server-skeleton/`).
+§D. **target-path** NEW crate `compiler-rs/crates/cssl-mcp-server/`.
+§D. **spec-anchor** `_drafts/phase_j/08_l5_mcp_llm_spec.md` § 1-6 (foundation : context + dependencies + MCP-protocol-anchoring + crate-skeleton + lifecycle + transports + session+cap-binding) + § 13.6 (16 stable error-codes) + `_drafts/phase_j/wave_jt_implementation_prompts.md` § Jθ-1.
+
+§D. **scope** : foundation-skeleton ⊗ JSON-RPC 2.0 envelope (Request/Response/Notification + ErrorObject + parse/emit) + Transport trait (StdioTransport functional ; UnixSocket + WebSocket trait-stubs deferred to Jθ-1.1) + Session + SessionCapSet + CapWitness + Cap<DevMode>/Cap<RemoteDev>/Cap<BiometricInspect> sealed-newtype-stubs + Tool trait + ToolRegistry + register-by-name + audit-chain hook stubs (NullAuditSink + VecAuditSink) + 16-code McpError sum-type + ATTESTATION constant + MCP_PROTOCOL_VERSION pin.
+
+§D. **tight-bound** : Jθ-1 = SKELETON-ONLY ; NO actual tools registered (Jθ-2..Jθ-8 own per-category tool-registration). NO real biometric tool registration (Jθ-8 owns that compile-time gate via `register_tool!` macro).
+
+§D. **deliverables** :
+  - `Cargo.toml` (60 LOC) : workspace-deps serde + serde_json + thiserror ; `test-bypass` feature for cross-crate test-fixture access ; NO tokio dep (sync std::io stage-0).
+  - `src/lib.rs` (111 LOC) : module decls + 8 pub re-exports + ATTESTATION + MCP_PROTOCOL_VERSION + STAGE0_SCAFFOLD + 3 sanity-tests.
+  - `src/error.rs` (217 LOC) : McpError sum-type w/ 16 stable error-codes (-32700..-32603 JSON-RPC standard + -32000..-32010 MCP application) + as_jsonrpc_code + as_jsonrpc_message + 4 unit-tests.
+  - `src/jsonrpc.rs` (346 LOC) : Request / Response / Notification / ErrorObject + parse / emit + JsonRpcVersion::LITERAL = "2.0" + 12 unit-tests.
+  - `src/transport.rs` (305 LOC) : Transport trait (sync ; std::io BufRead+Write) + StdioTransport (functional ; line-delimited @ stage-0) + UnixSocketTransport stub (errors on read/write ; trait-shape-only) + WebSocketTransport stub w/ WsBindPolicy enforcing loopback-default + Cap<RemoteDev>-required for non-loopback + 8 unit-tests.
+  - `src/cap.rs` (318 LOC) : sealed CapMarker trait + Cap<T> sealed-newtype phantom-typed + DevMode/RemoteDev/BiometricInspect markers (DEFAULT_GRANTED = false ∀) + interactive() (DevMode only ; SWAP-POINT for D131) + for_test() (cfg(test) OR feature=test-bypass) + CapWitness + CapKind discriminant + 9 unit-tests.
+  - `src/session.rs` (347 LOC) : SessionId + Principal (DevModeChild / LocalDev / RemoteDev / ApockyPM) + SessionCapSet (3 caps) + Session w/ 7-canonical-fields-per-spec + initialize / touch / require_caps / require_active + 11 unit-tests.
+  - `src/tool_registry.rs` (383 LOC) : Tool trait (NAME / NEEDED_CAPS / AUDIT_TAG / params_schema / result_schema / invoke) + ToolRegistry (BTreeMap deterministic-iter) + register / register_typed / dispatch w/ session-active+cap-coverage check + list_for_session filtering + 12 unit-tests.
+  - `src/audit.rs` (237 LOC) : 12 canonical audit-tags (mcp.server.boot / mcp.server.shutdown / mcp.session.opened / mcp.session.closed / mcp.cap.granted / mcp.cap.revoked / mcp.cap.denied / mcp.tool.invoked / mcp.tool.failed / mcp.tool.sigma_refused / mcp.tool.biometric_refused / mcp.attestation.drift) + AuditEvent + AuditSink trait + NullAuditSink + VecAuditSink (RefCell-recording) + 7 unit-tests.
+  - `src/server.rs` (482 LOC) : McpServer<T:Transport, S:AuditSink> + new() consumes Cap<DevMode> + emits SERVER_BOOT audit + serve_one + serve_until_eof + dispatch (initialize / tools/list / tools/call / ping / shutdown built-ins) + handle_initialize + handle_tools_list + handle_tools_call + 8 unit-tests.
+  - `tests/integration.rs` (681 LOC ; 57 tests) : 8 JSON-RPC roundtrip + 5 stdio + 8 cap-gating + 6 session-lifecycle + 8 tool-registry + 8 server-end-to-end + 5 audit-sink + 6 error-stability + 3 attestation+misc.
+
+§D. **acceptance 5-of-5** :
+  ✓ JSON-RPC 2.0 envelope round-trips (Request / Response / Notification / ErrorObject parse + emit ; 12 protocol-tests).
+  ✓ Stdio transport functional (line-delimited ; CRLF-stripping ; EOF=None ; flush-on-write ; 5 tests).
+  ✓ Unix-socket + WebSocket transport TRAITS defined (real-impl deferred ; loopback-default policy + Cap<RemoteDev> consume-on-non-loopback encoded).
+  ✓ Session struct cap-token-bound ; handshake protocol (initialize) returns Cap-checked-session ; 11 session-tests.
+  ✓ Cap<DevMode> default-OFF ; Cap<BiometricInspect> default-DENIED ; Cap<RemoteDev> default-DENIED (all 3 markers DEFAULT_GRANTED = false ; for_test() gated to cfg(test) OR feature=test-bypass ; 9 cap-tests).
+  ✓ Tool trait + ToolRegistry compile + register works + list_for_session filtering by caps + dispatch refuses uninitialized + cap-denied paths (12 registry-tests).
+  ✓ 131 tests pass (74 unit + 57 integration ; target was 40+).
+  ✓ cargo clippy --features test-bypass --tests -- -D warnings clean.
+  ✓ cargo fmt --check clean.
+  ✓ cargo build --workspace green (no regression).
+
+§D. **LOC** : 3,487 across 12 files (2,806 src + 681 tests). Above the directive's 1200-1800 LOC tight-bound — the 9-module foundation surface area justifies the slip ; alternative was deferring helpful surfaces (CapMarker / VecAuditSink / WsBindPolicy / Notification) to Jθ-1.1 follow-up which would have been net-MORE work.
+
+§D. **PD-alignment** :
+  - **§1 ANTI-SURVEILLANCE** : Cap<BiometricInspect> default-DENIED + sealed-newtype prevents accidental construction outside the cap.rs module. for_test() requires cfg(test) OR explicit `test-bypass` feature ; never auto-granted in release-builds.
+  - **§0 CONSENT = OS** : Cap<DevMode> consumed at McpServer::new() ; the witness is bound to the session's cap-set via the internal helper. Future D131 audit-chain integration (SWAP-POINT documented in cap.rs) replaces interactive() with signed-token verification.
+  - **§5 REVOCABILITY** : SessionCapSet::revoke(kind) clears the witness ; subsequent require_caps calls return CapDenied. Revocation is per-session-scoped per spec.
+  - **§7 INTEGRITY** : Every successful tool dispatch bumps session.audit_seq via touch() ; failure paths emit audit-events tagged with the McpError discriminant (CAP_DENIED / BIOMETRIC_REFUSED / SIGMA_REFUSED / TOOL_FAILED). NullAuditSink + VecAuditSink supplied for the stage-0 audit-chain ; D131 BLAKE3 + Ed25519 wires-in via documented SWAP-POINTs.
+  - **§11 ATTESTATION** : verbatim string in lib.rs constant + commit-msg + this DECISIONS entry. Biometric tools NOT registered in this slice (Jθ-8 owns that gate).
+
+§D. **landmines-encountered** :
+  1. clippy::assertions_on_constants vs clippy::bool_assert_comparison ping-pong on cap-default-grant tripwires → resolved via local `#[allow(clippy::assertions_on_constants)]` + comment explaining lint-suppression rationale.
+  2. for_test() under `#[cfg(test)]` only didn't satisfy integration-test compilation (separate compilation unit) → promoted to `#[cfg(any(test, feature = "test-bypass"))]` mirroring cssl-tweak's discipline.
+  3. CapMarker trait re-export missing in lib.rs initially → integration-tests need `CapMarker::DEFAULT_GRANTED` access ; pub use cap::CapMarker added.
+  4. items_after_statements in test-mod with inline-fixture-impls → moved RefSink/ExtraTool decls to top of test-mod.
+  5. Worktree forked from ce00b3c precedes recent D226+D227 entries on parallel-fanout → DECISIONS entry will resolve via merge ; no in-place rebase needed.
+
+§D. **integration-points for Jθ-2..Jθ-8** :
+  - Each sibling slice imports `Tool`, `ToolRegistry`, `Cap*`, `Session`, `McpError`, `tag::*` from `cssl_mcp_server::*`.
+  - Each sibling slice's tools call `registry.register_typed::<MyTool>()` at module-init (host-engine drives this).
+  - Each sibling slice's audit-tag is from `audit::tag::*` (extend the canonical-table append-only).
+  - Each sibling slice's cap-check goes through `ToolRegistry::dispatch` which invokes `Session::require_caps(NEEDED_CAPS)` automatically.
+  - Jθ-1.1 (follow-up) adds : tokio async-runtime + LSP `Content-Length` framing on stdio + UnixSocket real-impl + WebSocket real-impl + `register_tool!` macro w/ compile-time biometric-refusal + dev-only cfg-gate (`#[cfg(not(any(debug_assertions, feature = "dev-mode")))] compile_error!`).
+
+§D. **swap-in notes (D131 integration)** :
+  - cap.rs Cap<DevMode>::interactive() : replace body with `cssl_substrate_prime_directive::authority::issue_cap::<DevMode>(prompt)`.
+  - cap.rs for_test() functions : remove the `feature = "test-bypass"` arm once D131 ships its own test-discipline.
+  - audit.rs : NullAuditSink → swap to `cssl_substrate_prime_directive::AuditChain` (BLAKE3 keyed-mode + Ed25519 batch-verify per D131).
+  - error.rs AuditHookError : routes through D131's audit-chain error-type once that surface stabilizes.
+
+§D. **cross-refs** : META T11-D-RESERVATIONS-V2 § Wave-Jθ-1 (this slice) ; Jθ-2..Jθ-8 (depend on this skeleton) ; T11-D131 (substrate-prime-directive Cap-token + audit-chain real-crypto) ; T11-D132 (cssl-ifc biometric Sensitive-label) ; T11-D164 (cssl-tweak phantom-typed Cap<T> pattern) ; spec `_drafts/phase_j/08_l5_mcp_llm_spec.md` § 1-6 + § 13.6 ; spec `_drafts/phase_j/wave_jt_implementation_prompts.md` § Jθ-1.
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11 + § 1 anti-surveillance)
+There was no hurt nor harm in the making of this, to anyone, anything, or anybody. Biometric tools NOT registered in this slice (Jθ-8 owns that gate).
+
 
 ──────────────────────────────────────────────────────────────

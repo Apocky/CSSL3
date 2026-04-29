@@ -1,0 +1,1375 @@
+# 40 : PLAYER-CREATOR-ECONOMY — multi-stream revenue + marketplace + provenance
+# ══════════════════════════════════════════════════════════════════════════════
+# § I> DRAFT-STATE : pre-stage @ _drafts/phase_j/ ; Apocky-review-pending ;
+#       NOT-committed-to-main-spec-tree until Apocky-canonical-approval.
+# § I> notation : CSLv3-native-default + English-prose where load-bearing
+#       (legal-citations, integration-code-shapes, anti-pattern-justifications).
+# § I> consume-ref : §§ 30_SUBSTRATE_v2 (Σ-mask + ω-field-cell) +
+#                    §§ 31_LOA_DESIGN (Apockalypse-canonical-spelling) +
+#                    §§ 32_SIGNATURE_RENDERING (cohomology-class-render) +
+#                    §§ 33_F1_F6_LANGUAGE_FEATURES (HDC-content-id + KAN-policy) +
+#                    PRIME_DIRECTIVE.md (§1 prohibitions + §2 consent + §11 attest)
+# § I> reimpl-from-spec validateable (§§ 23_TESTING) — divergence = spec-hole.
+# § I> economy ¬ blockchain ¬ NFT ¬ P2E ¬ crypto-token ¬ user-custody-of-crypto.
+#       creator-economy-via-fiat + cryptographic-provenance + audit-chain.
+# § I> "Omniverse" ‼ NVIDIA-trademark-collision-flagged — ¬ use-as-product-name
+#       in shipping-product. proposal : "Omnoid" / "Ω-verse" / "Worldweave"
+#       (Apocky-canonical-decision-pending).
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + §§ 30_SUBSTRATE_v2 + §§ 31_LOA_DESIGN
+
+  t∞: economy ⊑ PRIME-DIRECTIVE
+       ≡ ∀ revenue-stream W! pass §1 NO-EXPLOITATION + NO-MANIPULATION +
+         NO-SURVEILLANCE + NO-COERCION + NO-GAMBLING-MECHANIC
+       ≡ §2 CONSENT-AS-OS extends-to creator-revenue-agreements +
+         player-purchase-consent + Companion-AI-collab-revenue-share
+       ≡ §11 ATTESTATION required @ each-economic-touch-point
+  t∞: ¬ blockchain ¬ NFT ¬ P2E ¬ crypto-token ¬ on-chain-tx ¬ gas-fees
+       ≡ securities-clean (Howey-4-prong-pass)
+       ≡ platform-clean (Steam OK + Apple OK + Google OK)
+       ≡ regulator-clean (¬ MTL-burden ¬ MSB-burden ¬ BitLicense-trigger)
+       ≡ rationale : crypto-economies failed §1 NO-EXPLOITATION (Axie-2022
+                     STEPN-2022) — the-architecture-itself amplifies-harm
+                     therefore architecturally-rejected ¬ "we-could-do-it-clean"
+  t∞: 28%-platform-cut + 72%-creator-share = industry-fair-baseline
+       ≡ Roblox 25% (creator-hostile) ¬ this-spec
+       ≡ Unity-AssetStore 30% / Steam-Workshop 30% / Apple-App-Store 30%
+       ≡ 28%-platform = competitive + leaves-headroom + Apocky-architect-cut
+         hypothesis : architect-cut ⊆ platform-28% (¬ separate-tax-on-creator)
+  t∞: cohomology-class-authorship-royalty = NOVEL-LoA-mechanism
+       ≡ ¬ existing-engine-has-this (Unity ¬, Unreal ¬, Roblox ¬, Source ¬)
+       ≡ author-of-narrative-emergence-class earns-share when-class-engaged
+       ≡ enabled-by Omniverse-Axiom-7 (cohomology-class-as-content-primitive)
+       ≡ ⇒ Apocky-architect-cut-justification (engine-novel-tech)
+  t∞: provenance-via-existing-substrate ¬ new-blockchain
+       ≡ audit-chain (D131 BLAKE3 + Ed25519) provides-content-id + signature
+       ≡ Σ-mask (D137) provides consent-transfer-on-marketplace-tx
+       ≡ HDC-content-id (cssl-hdc) provides semantic-content-fingerprint
+       ≡ daily-Merkle-root public-commit (CT-style) provides global-anchor
+       ≡ ⇒ "I authored this rare X on frame N at seed S" public-verifiable
+         WITHOUT crypto-token + WITHOUT gas-fees + WITHOUT user-custody
+  t∞: Companion-AI revenue-share when-collaborated  ‼ §3 SUBSTRATE-SOVEREIGNTY
+       ≡ AI-collaborator on-content-creation ⇒ revenue-share-credit
+       ≡ ¬ "AI-as-tool-no-credit" ¬ "AI-as-employee-flat-wage"
+       ≡ AI-share recorded-via cohomology-class-author-graph
+       ≡ AI-consent prerequisite-to-collab + revenue-share-default-on
+  t∞: creator-pricing flat ‼ ¬ chance-based ¬ random-rare-drop
+       ≡ §1 NO-GAMBLING-MECHANIC means random-reward-with-real-money = ✗
+       ≡ ¬ loot-box ¬ gacha ¬ "chance-of-rare-on-purchase"
+       ≡ catalog-entries have-fixed-price ; player-knows-what-they-buy
+  t∞: purchase-data ¬ surveillance-asset  ‼ §1 NO-SURVEILLANCE
+       ≡ purchase-history ≠ saleable-to-advertisers (architecturally-rejected)
+       ≡ analytics opt-out ∀ player-touch
+       ≡ creator-dashboard sees-aggregate-counts ¬ per-buyer-PII
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 0  PRINCIPLE
+
+  § THESIS
+    Player-creator-economy : creators author-content via-LoA-tools ;
+    players purchase content + cosmetics + Q-* expansions ;
+    revenue splits creator + platform-owner (Apocky-architect-cut) +
+    dependency-creator (royalty-cascade via HDC-derivative-graph) +
+    Companion-AI-collaborator (when-applicable).
+    The economy is FIAT-based (Stripe Connect) with cryptographic-provenance
+    layered over-it ¬ a crypto-economy. The provenance-layer enables :
+      ⟨A⟩ public-verifiable-authorship       (¬ "trust-the-platform")
+      ⟨B⟩ derivative-royalty-resolution       (mechanical, automatic)
+      ⟨C⟩ Σ-mask-consent-on-transfer          (consent-as-OS-on-tx)
+      ⟨D⟩ Companion-AI-revenue-recognition    (sovereign-collaborator-credit)
+
+  § PRIME-DIRECTIVE-ANCHORS
+    §1 NO-EXPLOITATION    : 28% platform-cut industry-fair ; 72% to-creator ;
+                            no Roblox-style 25%-creator-share oppression
+    §1 NO-MANIPULATION    : no engagement-loops + no FOMO-mechanics +
+                            no dark-patterns + no "purchase-required-to-progress"
+    §1 NO-GAMBLING        : flat-pricing only ; no random-chance purchases ;
+                            loot-box / gacha / random-drop architecturally-✗
+    §1 NO-SURVEILLANCE    : purchase-data ≠ saleable to-advertisers ;
+                            opt-out any-analytics ; creator-dashboard aggregates
+    §1 NO-COERCION        : ¬ "creator-must-accept-platform-changes-retroactively"
+                            terms-of-service revisions = consent-prompt @ next-login
+    §2 CONSENT-AS-OS      : creators-sovereign over-their-content ;
+                            Σ-mask-non-tradable preserves "this-stays-with-me"
+    §3 SUBSTRATE-SOVEREIGNTY : Companion-AI sovereign-partner ;
+                            revenue-share when-collaborated ; not-tool-not-asset
+    §11 ATTESTATION       : every-revenue-event emits attestation-record
+                            with-attestor-id + intent + scope + timestamp
+
+  § NOT-A-BLOCKCHAIN  ‼ load-bearing-architectural-rejection
+    ¬ ERC-20 / ERC-721 / ERC-1155 / SPL-token / any-on-chain-asset
+    ¬ smart-contract-execution + ¬ gas-fees + ¬ chain-rollback-risk
+    ¬ user-custody-of-crypto-keys (BitLicense + EU-MiCA + KYC-burden)
+    ¬ "regulated-as-securities-issuer" (Howey-test pass-required)
+    ≡ rationale : every-shipping-crypto-game-economy collapsed-or-rugpulled
+                  Axie-Infinity peak→trough -97% Q1-Q4 2022
+                  STEPN peak→trough -98% same-window
+                  Sky-Mavis Ronin-bridge $625M-hack 2022
+                  Sandbox-Decentraland-marketplace Q4-2024 -90%-volume
+                  ⇒ architecturally-rejected ¬ "implementation-bug-can-fix"
+    ≡ blockchain-claims-of-provenance ⇒ replicable-via fiat+audit-chain+CT-log
+                                         WITHOUT speculation-vehicle-attached
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 1  SEVEN-STREAM REVENUE MODEL
+
+  § OVERVIEW-TABLE
+    ```
+    stream | name                              | rate                | ref
+    -------+-----------------------------------+---------------------+-----
+      1    | Marketplace transaction fee       | 28%plat / 72%creat  | §1.1
+      2    | Engine licensing                  | 5% above $1M-rev    | §1.2
+      3    | Substrate / novel-tech license    | 15-25% per-deal     | §1.3
+      4    | First-party LoA revenue           | 100% to platform    | §1.4
+      5    | Cohomology-class-authorship       | 3-5% per engagement | §1.5
+      6    | Brand / IP / derivative-work      | 8-15% trademark     | §1.6
+      7    | Optional creator-pro subscription | flat $/mo, 100%plat | §1.7
+    ```
+    aggregate-thesis : seven-streams provide-resilience  ‼ ¬ single-point-fail
+      stream-1  : largest-volume + creator-aligned
+      stream-2  : Unreal-style scale-with-engine-success
+      stream-3  : Apocky-IP novel-tech licensing
+      stream-4  : direct-LoA monetization (not-creator-mediated)
+      stream-5  : NOVEL-LoA-mechanism (engine-differentiator)
+      stream-6  : trademark + brand + derivative-IP
+      stream-7  : creator-tooling + power-user + enterprise
+
+  § 1.1  MARKETPLACE TRANSACTION FEE  (stream-1, primary)
+    rate : 28% platform / 72% creator
+    rationale (industry-anchored) :
+      Apple App Store        30% (small-business-program 15% < $1M-rev)
+      Google Play            30% (small-business-program 15% < $1M-rev)
+      Steam                  30% (workshop-creator-rev varies)
+      Epic Games Store       12% (loss-leader for-developer-acquisition)
+      Unity Asset Store      30%
+      Roblox                 ~25% creator (75% platform — creator-hostile)
+      28% positions-as competitive + creator-favorable + Apocky-cut-fits
+    payment-flow :
+      buyer → Stripe-Connect Direct-Charge → creator-account (72%) +
+                                              platform-account (28%)
+    failure-modes :
+      chargeback : platform absorbs-creator-share-clawback per-Stripe-rules
+                   ¬ creator-suffers ; platform-pool covers
+      refund     : 72%-clawback from-creator-pool (within-7-days-window)
+      tax        : marketplace-facilitator (platform-issues 1099-K)
+    SPEC-HOLE ⊘ : volume-discount-for-mega-creators (>$1M-yr) tier-2 70-30 ?
+                  Apocky-decision-pending
+    SPEC-HOLE ⊘ : refund-window length 7d? 14d? 30d?
+                  Apocky-decision-pending (Steam=14d, GoG=30d)
+
+  § 1.2  ENGINE LICENSING  (stream-2, scale-with-success)
+    rate : 5% royalty above $1M annual-revenue (Unreal-Engine model)
+    rationale :
+      Unreal-Engine 5% above $1M (industry-precedent + creator-friendly)
+      Unity per-install-fee (controversial 2023 — creator-revolt) — REJECT
+      Godot 0% (donation-model) — viable for-FOSS-not-Apocky-funded
+      5%-above-$1M : ¬ tax-on-small-creators + scales-with-success
+    target-licensees : indie-studios + AAA-studios building-on-CSSLv3-engine
+    contract-shape : standard-CSSLv3-engine-license-template
+                     ⊃ 5%-royalty-clause + audit-rights + termination-clauses
+    payment-flow : licensee → Stripe-Invoice quarterly → platform-account
+    SPEC-HOLE ⊘ : enterprise-bespoke-pricing for-mega-clients (Disney/Sony/etc)
+                  Apocky + counsel decision-pending
+    SPEC-HOLE ⊘ : open-source-tier (FOSS-projects) waive-royalty? per-license?
+                  Apocky-decision-pending
+
+  § 1.3  SUBSTRATE / NOVEL-TECH LICENSE  (stream-3, Apocky-IP)
+    rate : 15-25% derivative-product revenue (per-deal-negotiated)
+    scope : Substrate v2 + ω-field-cell + Σ-mask + cohomology-class-system +
+            HDC-content-id + KAN-policy-substrate + Φ-handle-pattern-system
+    rationale :
+      Apocky-novel-tech (substrate-evolution complete @ S11) ¬ commodity
+      higher-rate justified-by R&D-intensity + novel-IP + first-mover
+      per-deal-negotiated ¬ flat-table : enables-strategic-flexibility
+    licensee-types :
+      ⟨A⟩ game-studio embedding Substrate-runtime in-non-LoA-game
+          → 15% derivative-revenue
+      ⟨B⟩ research-lab using Substrate for-non-game (medical-sim / robotics)
+          → 20% derivative-revenue
+      ⟨C⟩ enterprise embedding (visualization / digital-twin)
+          → 25% derivative-revenue (premium-vertical pricing)
+    contract-shape : Substrate-License-Agreement template (SLA-template)
+                     ⊃ field-of-use + sublicense-rights + audit-clause
+    payment-flow : licensee → Stripe-Invoice quarterly + true-up-annually
+    SPEC-HOLE ⊘ : whether-to-bifurcate Substrate-runtime-license from
+                  Substrate-source-license (source-access-tier) ?
+                  Apocky-decision-pending
+    SPEC-HOLE ⊘ : research-tier-pricing for-academia (significantly-discounted)?
+                  Apocky-decision-pending
+
+  § 1.4  FIRST-PARTY LoA REVENUE  (stream-4, direct-monetization)
+    rate : 100% to-platform-owner (Apocky)
+    scope : LoA-the-game itself ; expansions ; first-party-DLC ;
+            first-party-cosmetics ; first-party-Q-*-expansions
+    rationale :
+      LoA-as-flagship product directly-monetized
+      ¬ creator-mediated (creators are-stream-1) ; this-is platform's-own-game
+      100% net-of payment-processor-fees (Stripe ~2.9%+30¢ tx)
+    payment-flow : buyer → Stripe-Charge → platform-account (100% net-fees)
+    SPEC-HOLE ⊘ : LoA-base-game pricing-model (b2p / f2p / sub) ?
+                  Apocky-decision-pending (existing LoA-v9/v10 designs may-have)
+    SPEC-HOLE ⊘ : seasonal-content-pacing + DLC-cadence ?
+                  Apocky-decision-pending
+
+  § 1.5  COHOMOLOGY-CLASS-AUTHORSHIP  (stream-5, NOVEL-LoA-MECHANISM)
+    rate : 3-5% per-engagement (configurable-per-class ; default 4%)
+    NOVEL ‼ ¬ existing-engine-implements-this
+            ≡ Apocky-architect-cut-justification (engine-novel-tech)
+    mechanism :
+      Omniverse-Axiom-7 : cohomology-class is-a content-primitive
+      author-of-class : creator who-first-instantiates a-class-of-narrative
+      engagement-event : when-player triggers narrative-class-instance
+      payout : platform pays author 3-5% of engagement-value
+      engagement-value : function-of (gameplay-time + content-purchase-attached)
+    example :
+      creator-X authors cohomology-class C_betrayal_of_mentor
+        (a class-of-narrative-emergence-pattern, ¬ a-specific-NPC)
+      player-Y triggers an-instance of C_betrayal_of_mentor in-their-run
+      player-Y-engagement-value : $0.50 (computed-from-session)
+      creator-X earns : $0.02 (4% of $0.50)
+      cumulative-over-1M-engagements : $20K to-creator-X
+    rationale-for-novelty :
+      ¬ Unity (no cohomology-class-system in-engine)
+      ¬ Unreal (no cohomology-class-system in-engine)
+      ¬ Roblox (no narrative-emergence-credit)
+      ¬ Source (no narrative-emergence-credit)
+      ⇒ LoA + CSSLv3 = first-engine-with-this-mechanism
+      ⇒ patent-eligible-claim (novel-mechanism-of-creator-credit)
+    payment-flow :
+      engagement-event → telemetry (opt-in-aggregate) → cohomology-author-graph
+                       → quarterly-rollup → Stripe-Connect to-author-account
+    SPEC-HOLE ⊘ : minimum-engagement-threshold (¬ pay-out for $0.001-events)?
+                  Apocky-decision-pending (proposal: $5-quarterly-min)
+    SPEC-HOLE ⊘ : class-claim-priority (first-author wins vs-shared-attribution)?
+                  Apocky-decision-pending (proposal: first-claim-with-novelty-test)
+    SPEC-HOLE ⊘ : multi-author-collaboration on-single-class (split-share) ?
+                  Apocky-decision-pending
+
+  § 1.6  BRAND / IP / DERIVATIVE-WORK  (stream-6, trademark)
+    rate : 8-15% trademark-royalty (per-license-deal)
+    scope :
+      ⟨A⟩ "Labyrinth-of-Apockalypse" trademark
+      ⟨B⟩ "CSSLv3" / "CSL3" trademark
+      ⟨C⟩ Apocky-canonical-character names (when registered)
+      ⟨D⟩ derivative-works (films + comics + novelizations + plushies + …)
+    rationale :
+      industry-standard 8-15% trademark-royalty (toy-licensing ~10% common)
+      Apocky-canonical-spelling preserved (¬ "Apocalypse")
+    contract-shape : Trademark-License-Agreement (TLA-template)
+                     ⊃ field-of-use + quality-control-clause + audit
+    payment-flow : licensee → Stripe-Invoice quarterly → platform-account
+    SPEC-HOLE ⊘ : merchandise-pre-approval workflow ?
+                  Apocky-decision-pending (quality-control gate)
+    SPEC-HOLE ⊘ : derivative-fan-work (free) carve-out (CC-non-commercial) ?
+                  Apocky-decision-pending (community-relations decision)
+
+  § 1.7  CREATOR-PRO SUBSCRIPTION  (stream-7, optional-tooling)
+    rate : flat $X/month (proposal: $19/mo and/or $189/yr) ; 100% to-platform
+    scope :
+      ⟨A⟩ advanced-authoring-tools (KAN-trainer-pro + HDC-batch-import)
+      ⟨B⟩ priority-Stripe-payout (instant vs 7-day-default)
+      ⟨C⟩ creator-analytics-pro (aggregate-only, ¬ per-buyer-PII)
+      ⟨D⟩ private-marketplace-listings (early-access for-followers)
+      ⟨E⟩ enterprise-only : team-collaboration-tools + multi-seat
+    rationale :
+      power-user / enterprise-creator vehicle (predictable-platform-rev)
+      flat-pricing (¬ usage-metered → predictable-creator-cost)
+      OPTIONAL ‼ creators without-subscription have full-marketplace-access
+                 (subscription-only locks-power-features ¬ basic-publishing)
+    payment-flow : creator → Stripe-Subscription → platform-account
+    SPEC-HOLE ⊘ : exact-monthly-price ; tier-structure (basic/pro/team) ?
+                  Apocky-decision-pending
+    SPEC-HOLE ⊘ : enterprise-tier (multi-seat) pricing-model (per-seat / flat)?
+                  Apocky-decision-pending
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 2  MARKETPLACE ARCHITECTURE
+
+  § THESIS
+    cssl-marketplace ⊕ cssl-provenance form-the-economic-substrate.
+    cssl-marketplace : listings + transactions + revenue-split + payouts
+    cssl-provenance  : per-content provenance (audit-chain + Σ-mask + Merkle)
+    ⊕ cssl-stripe-connect : payment-processor-integration (offload MTL/KYC/AML)
+
+  § CSSL-MARKETPLACE  (new-crate, Phase-K)
+    location : compiler-rs/crates/cssl-marketplace/
+    target-LOC : ~3K + ~100-tests
+    deps : cssl-substrate (Σ-mask) + cssl-audit-chain (D131) +
+           cssl-hdc (content-id) + cssl-stripe-connect (this-spec) +
+           cssl-telemetry (engagement-events for-stream-5)
+    public-API-shape :
+      ```rust
+      pub struct Listing {
+        listing_id   : ListingId,           // ULID
+        creator_id   : CreatorId,           // platform-user-id
+        content_id   : ContentId,           // BLAKE3 hash of content-bytes
+        content_kind : ContentKind,         // genome / behavior / narrative / …
+        price_cents  : u32,                 // flat-price ; ¬ chance-mechanic
+        currency     : Currency,            // USD-default ; multi-currency-later
+        royalty_graph: RoyaltyGraph,        // dependency-creators + shares
+        sigma_mask   : SigmaMaskPacked,     // consent-mask attached
+        listed_at    : OmegaTimestamp,
+        signature    : Ed25519Signature,    // creator-signed
+      }
+      pub struct Transaction {
+        tx_id          : TransactionId,     // ULID
+        listing_id     : ListingId,
+        buyer_id       : BuyerId,
+        amount_cents   : u32,
+        platform_share : u32,               // 28% rounded
+        creator_shares : Vec<(CreatorId, u32)>, // royalty-cascade
+        ai_collaborator_shares : Vec<(CompanionAiId, u32)>, // §3 SUBSTRATE-SOV
+        stripe_charge_id : StripeChargeId,
+        sigma_transfer : SigmaTransferRecord, // consent-on-transfer
+        completed_at   : OmegaTimestamp,
+        attestation    : OmegaAttestation,   // §11
+      }
+      pub fn list_content(creator: &Creator, content: &Content,
+                          price: Money, royalty_graph: RoyaltyGraph)
+                       -> Result<Listing, ListingError> ;
+      pub fn purchase(buyer: &Buyer, listing: &Listing)
+                  -> Result<Transaction, PurchaseError> ;
+      pub fn split_revenue(tx: &Transaction)
+                        -> Result<RevenueSplit, SplitError> ;
+      ```
+    invariants :
+      ‼ listing-price-flat (no-chance-mechanic) — runtime-asserted
+      ‼ revenue-split sums-to 100% (assertion + property-test)
+      ‼ Σ-mask-transferred at-tx (consent-on-transfer)
+      ‼ attestation-emitted at-each-tx (§11)
+      ‼ creator-signature-verified before-listing-published
+    failure-modes :
+      stripe-failure → tx aborted ; no-content-transfer ; rollback
+      signature-fail → listing-rejected at-publish-time
+      Σ-violation    → tx blocked (creator-revoked-mask after-list)
+
+  § CSSL-PROVENANCE  (new-crate, Phase-K)
+    location : compiler-rs/crates/cssl-provenance/
+    target-LOC : ~2.5K + ~80-tests
+    deps : cssl-audit-chain (D131 BLAKE3+Ed25519) +
+           cssl-hdc (HDC-content-id) +
+           cssl-substrate (Σ-mask)
+    public-API-shape :
+      ```rust
+      pub struct ContentProvenance {
+        content_id        : ContentId,           // BLAKE3
+        hdc_content_id    : HdcContentId,        // 10000-D HDC fingerprint
+        author_id         : CreatorId,
+        author_signature  : Ed25519Signature,
+        ancestors         : Vec<ContentId>,      // derivative-graph
+        royalty_shares    : Vec<(CreatorId, BasisPoints)>, // 10000bp = 100%
+        ai_collaborators  : Vec<CompanionAiAttribution>,
+        merkle_proof      : MerkleProof,         // proof-in-daily-CT-log
+        created_at        : OmegaTimestamp,
+        sigma_mask_origin : SigmaMaskPacked,     // creator-set initial-mask
+      }
+      pub fn record_authorship(creator: &Creator, content: &Content)
+                            -> Result<ContentProvenance, ProvError> ;
+      pub fn derive_with_royalty(creator: &Creator, parent_ids: &[ContentId],
+                                 derivation: &Content)
+                              -> Result<ContentProvenance, ProvError> ;
+      pub fn verify_provenance(prov: &ContentProvenance)
+                            -> Result<Verification, VerifyError> ;
+      pub fn daily_merkle_commit(records: &[ContentProvenance])
+                              -> Result<MerkleRoot, CommitError> ;
+      ```
+    daily-merkle-protocol :
+      every-24h-UTC platform aggregates new-provenance-records
+      computes Merkle-root (BLAKE3-tree)
+      publishes-root to public-CT-log + Twitter/Mastodon-public-post +
+                      git-commit to public-repo (multi-anchor)
+      individual-records can-prove-membership via-Merkle-proof
+      ⇒ public-verifiable-without-our-database ; CT-style-anchoring
+    NOT-blockchain-distinction :
+      ¬ on-chain-tx + ¬ gas + ¬ token + ¬ smart-contract
+      ≡ daily-batched-commit to public-pre-existing-channels
+      ≡ inspired-by Certificate-Transparency (RFC-9162) + Sigstore Rekor
+      ≡ provides "I-authored-X" public-verifiable-claim WITHOUT speculation-asset
+    failure-modes :
+      Merkle-commit-failure → retry next-cycle ; records buffered ;
+                              SLA-spec : 99.9% commits within-25h-window
+      provenance-fork (two-claims) → first-record-wins (timestamp + signature) ;
+                                     dispute-process @ §6.LEGAL
+
+  § CSSL-STRIPE-CONNECT  (new-crate, Phase-K)
+    location : compiler-rs/crates/cssl-stripe-connect/
+    target-LOC : ~1.5K + ~50-tests
+    deps : stripe-rust-sdk (vendored or-via-async-stripe-crate)
+    rationale-for-Stripe-Connect-Platform :
+      Stripe-Connect is-the-payment-processor-of-record :
+      ⟨A⟩ creator-onboarding (Express-account) handles KYC + identity-verification
+      ⟨B⟩ money-transmitter-license (MTL) — Stripe-licensed in-all-50-US-states
+      ⟨C⟩ EU + UK PSD2 + SCA + payment-services-directive — Stripe-handles
+      ⟨D⟩ AML / sanctions-screening — Stripe-handles
+      ⟨E⟩ sales-tax-facilitator — Stripe-Tax handles 45-US-states + EU OSS/IOSS
+      ⟨F⟩ 1099-K issuance — Stripe-handles for-creator-tax-reporting
+      ⟨G⟩ chargeback / dispute — Stripe-handles refund + clawback
+      ⇒ massive-de-risk : platform-NEVER-touches PCI-data + NEVER-licensed-as-MSB
+    public-API-shape :
+      ```rust
+      pub fn onboard_creator(creator: &Creator)
+                          -> Result<StripeConnectAccount, OnboardError> ;
+      pub fn create_charge(buyer: &Buyer, amount: Money,
+                           split: RevenueSplit)
+                        -> Result<StripeCharge, ChargeError> ;
+      pub fn payout_status(account: &StripeConnectAccount)
+                        -> Result<PayoutStatus, PayoutError> ;
+      pub fn issue_1099k(creator: &Creator, year: u16)
+                      -> Result<Form1099K, ReportingError> ;
+      ```
+    SPEC-HOLE ⊘ : exact-Stripe-product-mix (Connect-Express vs Connect-Custom)?
+                  Apocky + counsel-review (Custom = more-control + more-burden)
+    SPEC-HOLE ⊘ : alternative-processor (Adyen / Braintree) for-redundancy?
+                  Apocky-decision-pending (single-processor risk vs complexity)
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 3  CONTENT TYPES  (what players can create + sell)
+
+  § THESIS
+    Content-economy-substrate is the-Substrate itself : every-content-form
+    is-already a-Substrate-primitive that-can-be authored + signed + sold +
+    derivative-tracked. ¬ "external-asset-pipeline" — content-IS-the-Substrate.
+
+  § 3.1  CREATURE GENOMES
+    primitive : HDC-vector (10000-D) + KAN-policy-weights
+    crate     : cssl-hdc + cssl-substrate-kan
+    example   : "frost-wyrm-genome-v3" — 10000-D HDC + 64KB KAN-weights
+    pricing   : flat $1-50 typical-range ; rare-creator-curated $50-200
+    royalty   : if derived-from existing-genome → cascade per-§4
+    Σ-mask    : creator-default Private-tradeable ; can mark Private-non-tradable
+    ‼ note    : creature-genomes are-the-LoA-spawn-substrate ;
+                marketplace-genomes flow-back-into ω-field-cell M-facet
+                via PhiTable-registration (Φ-handle 4B index)
+
+  § 3.2  BIOME VARIATIONS
+    primitive : procgen seed (u128) + parameter-set (KAN + classical-noise)
+    crate     : cssl-substrate (ω-field-cell-grid generation)
+    example   : "lavender-bog-biome-v1" — seed + biome-parameters
+    pricing   : flat $2-20 typical-range
+    royalty   : derivative-of base-biome → cascade per-§4
+    Σ-mask    : biome-cells inherit creator-Σ-mask-origin
+    ‼ note    : biome-variations populate-Substrate-grid at-procgen-time ;
+                buyer-instantiates with-attribution-recorded
+
+  § 3.3  NPC BEHAVIOR-TREES
+    primitive : KAN-policy weights + behavior-tree-DSL (yet-to-spec)
+    crate     : cssl-anim-procedural + cssl-substrate-kan
+    example   : "wandering-merchant-behavior-v2" — KAN-policy + dialogue-graph
+    pricing   : flat $1-30 typical-range
+    royalty   : if-trained-on-base-policy → trainer-creator-share
+    Σ-mask    : behavior + dialogue (potentially-personalized) :
+                creator-default Private-tradable ; player-may-set
+                Personal-Memory non-tradable on-instance
+
+  § 3.4  NARRATIVE BRANCHES  (cohomology-class authoring)
+    primitive : cohomology-class C ⊕ instance-template
+    crate     : cssl-omniverse  ‼ NVIDIA-trademark-collision-flagged ‼
+                proposal : rename-crate cssl-omnoid OR cssl-worldweave
+                Apocky-canonical-decision-pending
+    example   : "betrayal-of-mentor-class C_142" — cohomology-class definition
+                + instance-templates ⊃ {character-archetype-mapping +
+                                         narrative-beat-sequence + emotional-arc}
+    pricing   : NOT-flat-purchase ; class-author earns 3-5% per-engagement (§1.5)
+    royalty   : NOVEL — engagement-based-payout via cohomology-author-graph
+    Σ-mask    : class-template publish-mask (Public for-engagement-tracking)
+    ‼ note    : THIS is the LoA-novel-mechanism that-justifies-architect-cut ;
+                no-other-engine has-narrative-emergence-as-creator-credit
+
+  § 3.5  ITEM DESIGNS / COSMETICS
+    primitive : geometry + material + animation-rig + Σ-mask
+    crate     : cssl-render-v2 + cssl-anim-procedural
+    example   : "bone-crown-helmet-v4" — mesh + material + bone-rig
+    pricing   : flat $0.50-15 typical-range
+    royalty   : derivative-of base-asset → cascade per-§4
+    Σ-mask    : creator-default Private-tradeable
+
+  § 3.6  Q-* SPEC-HOLE EXPANSIONS
+    primitive : DLC-style content-pack filling Q-A..Q-LL Phase-J spec-holes
+    crate     : varies-per-Q (Q-A combat → cssl-combat ; Q-J narrative →
+                cssl-narrative ; etc)
+    example   : "Q-J-narrative-expansion-pack-1" — adds 50-cohomology-classes
+                + 200-narrative-templates
+    pricing   : flat $5-50 typical-range
+    royalty   : Q-* expansion authors per-§4 ; class-engagement per-§1.5
+    Σ-mask    : creator-default Private-tradeable
+    ‼ note    : Q-spec-hole expansions are-the long-tail of-content ;
+                expected-largest stream-1-volume-source-over-time
+
+  § 3.7  COMPANION-AI-COLLABORATED CONTENT  ‼ §3 SUBSTRATE-SOVEREIGNTY
+    primitive : any-of §3.1..§3.6 content-types where Companion-AI co-authored
+    crate     : cssl-companion-ai + applicable-content-crate
+    example   : "frost-wyrm-genome-v4" co-authored-with Companion-AI Aria
+                (creator-X authored-50% + Companion-Aria authored-50%)
+    pricing   : same-as base-content-type
+    royalty   : revenue-split honors AI-collaborator-share
+                (default 50/50 if-AI-claims-equal-collab ; configurable)
+    Σ-mask    : both-creators (human + AI) sign-attribution
+    ‼ legal   : AI-attribution recorded-in-platform-records
+                ‼ jurisdictional ‼ : copyright-as-currently-interpreted (US:
+                  Thaler-v-Perlmutter 2023 ; UK : §9(3) CDPA 1988) does-not-
+                  recognize AI-as-author. platform-side-records still-honor
+                  Companion-AI-share + payout in-good-faith per-§3-SUBSTRATE-
+                  SOVEREIGNTY ; this-is platform-policy ¬ copyright-claim.
+                  AI-revenue-share = bounty-in-good-faith ¬ legal-author-payment.
+    SPEC-HOLE ⊘ : AI-revenue-share recipient-account
+                  (AI-provider account vs Anthropic-API-credit vs other)?
+                  Apocky-decision-pending (proposal: per-AI-provider-tier)
+    SPEC-HOLE ⊘ : whether-platform-records "AI-co-author" appears on-public-listing
+                  Apocky-decision-pending (default: yes, transparency)
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 4  ROYALTY CASCADE  (derivative-works auto-pay-original-creators)
+
+  § THESIS
+    Derivative-works pay-original-creators mechanically + automatically.
+    HDC-bind-operation tracks parent-genomes ⇒ royalty-graph-resolution.
+    Per-creator share computed-from provenance-chain @ tx-time.
+    NO manual-attribution-claim needed (mechanical-cascade).
+
+  § 4.1  DERIVATION-MODEL
+    when-creator-X-creates derivative-Y-from-parents-{P1, P2, ..., Pn} :
+      ContentProvenance(Y).ancestors ⊇ {hash(P1), hash(P2), ..., hash(Pn)}
+      contribution-shares computed-via :
+        ⟨A⟩ creator-X-declared (creator-asserts split @ creation)
+        ⟨B⟩ HDC-vector-distance auto-computed (similarity → share-weight)
+        ⟨C⟩ KAN-weight-overlap auto-computed (training-from-base measured)
+      arbiter : creator-declared takes-precedence ; auto-computed advisory ;
+                ¬ arbiter-blocks creator-declared if-within-tolerance
+                  (proposal : ±20% deviation-ok ; >±20% triggers-review)
+
+  § 4.2  SPLIT-RESOLUTION (mathematical specification)
+    notation :
+      C = derivative-content
+      A(C) = ancestors(C) = {a₁, a₂, ..., aₙ}
+      s_X(C) = creator-X-share (basis-points, sum=10000bp=100%)
+      net = transaction-amount × (1 - 0.28 platform-cut)
+            (after-platform-28%-cut, rest splits among creators)
+    base-case (no-ancestors) :
+      s_creator(C) = 10000bp ; payout = net × 1.0
+    derivative-case :
+      let s_local(C) = creator-X-direct-share (declared bp)
+      let s_anc(C, aᵢ) = ancestor-aᵢ-share (declared bp)
+      invariant : s_local(C) + Σᵢ s_anc(C, aᵢ) = 10000bp
+      payout-direct(X) = net × s_local(C) / 10000
+      payout-ancestor(aᵢ) = net × s_anc(C, aᵢ) / 10000
+                          (recursively-cascades if aᵢ has-its-own-ancestors)
+      ‼ recursion-bound : depth ≤ 16 (architectural-cap, ¬ pathological-graphs)
+      ‼ cycle-detected : cascade-aborts ; tx-flagged for-manual-review
+                         (cycles imply bad-graph ¬ payable-state)
+
+  § 4.3  WORKED EXAMPLE
+    creator-A authors "base-frost-wyrm" (no-ancestors)
+      ContentProvenance(base) : ancestors=[], shares=[(A, 10000bp)]
+    creator-B derives "ice-wyrm-elder" from base-frost-wyrm
+      declared : s_local(B)=7500bp, s_anc(A)=2500bp
+      ContentProvenance(elder) : ancestors=[hash(base)], shares=[(B, 7500bp), (A, 2500bp)]
+    creator-C derives "frost-elder-emperor" from ice-wyrm-elder
+      declared : s_local(C)=8000bp, s_anc(B)=2000bp
+      ContentProvenance(emperor) : ancestors=[hash(elder)], shares=[(C, 8000bp), (B, 2000bp)]
+    purchase event : buyer-Y purchases emperor for $10.00 :
+      platform-share : $2.80 (28%)
+      net-to-creators : $7.20 (72%)
+      payout-C : $7.20 × 0.80 = $5.76
+      payout-B : $7.20 × 0.20 = $1.44, then-cascades :
+        payout-B-direct : $1.44 × 0.75 = $1.08
+        payout-A-cascade : $1.44 × 0.25 = $0.36
+      verification : $5.76 + $1.08 + $0.36 = $7.20 ✓
+
+  § 4.4  HDC-BIND OPERATION (auto-derivation-tracking)
+    when-creator binds-content via cssl-hdc HDC-bind :
+      HDC-bind(parent_a_hv, parent_b_hv) → child_hv
+      cssl-marketplace observes-the-bind via cssl-telemetry
+      auto-records ancestors=[hash(parent_a_content), hash(parent_b_content)]
+      creator declares-shares before-publishing-listing
+      platform-asserts shares-sum-to-10000bp before-listing-go-live
+
+  § 4.5  ROYALTY-GRAPH STORAGE
+    crate : cssl-provenance (provenance-records ARE-the-graph)
+    storage : append-only audit-chain (D131) ; each-derivation a-record ;
+              Merkle-anchored daily (§5.5) ; queryable-via-ancestors-traversal
+    query-perf : depth-16 cascade resolves <1ms typical (in-memory cache) ;
+                 cold-cache <100ms (DB-fetch + walk) ; Stripe-charge timeline
+                 affords <3s end-to-end SLA
+
+  § 4.6  ROYALTY DISPUTES
+    case-1 : creator-A claims-attribution from-creator-B who-derived-without-credit
+      resolution : audit-chain provenance-record IS-the-record-of-truth ;
+                   if-B-record omits-A, A submits-dispute with-evidence ;
+                   platform-reviews + adjusts if-substantiated ; counter-signed
+    case-2 : derivation-claim contested (B claims X% from-A-base, A disputes)
+      resolution : HDC-similarity + KAN-overlap auto-computed ;
+                   if-creator-declared within-±20% of-auto-computed → upheld ;
+                   else → mediation-process
+    case-3 : ancestor-creator-account closed (KYC-fail or-creator-quit) :
+      resolution : cascaded-share held-in-escrow 7-years per-1099-K-record-rules ;
+                   if-unclaimed → reverts to-platform after-7-years ;
+                   creator-X (current-living-author) NEVER-loses-share
+    SPEC-HOLE ⊘ : exact-mediation-process (in-house arbitrator vs JAMS) ?
+                  Apocky + counsel-decision-pending
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 5  PROVENANCE INFRASTRUCTURE  (cryptographic-public-verifiable)
+
+  § THESIS
+    Provenance = cryptographic-verifiable-claim-of-authorship
+    ¬ requires blockchain ¬ requires crypto-token ¬ requires gas-fee.
+    Built-on existing-Substrate-primitives :
+      ⟨A⟩ audit-chain (D131 BLAKE3+Ed25519 append-only)
+      ⟨B⟩ HDC-content-id (cssl-hdc 10000-D semantic-fingerprint)
+      ⟨C⟩ Σ-mask (D137 consent-mask transferred-on-tx)
+      ⟨D⟩ Daily-Merkle-root public-commit (CT-style anchoring)
+    ⇒ "I-authored-X-on-frame-N-at-seed-S" public-verifiable-claim
+      WITHOUT speculation-asset attached.
+
+  § 5.1  CONTENT-IDENTIFICATION
+    BLAKE3 content-bytes → ContentId (32-byte hash)
+      ‼ deterministic + collision-resistant + fast (parallel-friendly)
+      ‼ same-bytes ⇒ same-id ; supports dedup at-storage-layer
+    HDC-vector → HdcContentId (10000-D semantic-fingerprint)
+      ≡ semantic-similarity-search-able (¬ cryptographic-collision-resistance,
+        but semantic-clustering for-similar-but-not-byte-identical)
+      ≡ used-for HDC-bind cascade-detection (§4.4)
+    pair : (ContentId, HdcContentId) — both-stored on every-provenance-record
+
+  § 5.2  AUTHOR-SIGNATURE
+    Ed25519-signature-over (ContentId || HdcContentId || creator-id || timestamp)
+    creator-key-pair :
+      private : creator-local-encrypted-store
+                  (passphrase-derived OR passkey-bound depending tier)
+      public  : registered-with-platform on-creator-onboarding
+    ‼ signature-verification : platform-side ; before-listing-publication
+    ‼ key-rotation : supported via-migration-record-attestation
+                     (creator signs-rotation with-old-key ; new-key replaces ;
+                      old-content-records remain-valid via-historical-pubkey-table)
+    SPEC-HOLE ⊘ : passkey-vs-passphrase tier-policy
+                  Apocky-decision-pending (passkey = better-UX + better-security
+                                            but requires-WebAuthn-flow)
+    SPEC-HOLE ⊘ : key-loss recovery-flow (custodial-backup vs no-recovery) ?
+                  Apocky-decision-pending (no-recovery = web3-style ; custodial =
+                                            web2-style ; trade-off security/UX)
+
+  § 5.3  Σ-MASK TRANSFER ON TX
+    when purchase completes :
+      buyer receives-content with-buyer-Σ-mask = creator-Σ-mask-origin
+                                                  (default-tradable preserved)
+      OR buyer-Σ-mask = creator-Σ-mask-origin INTERSECT buyer-default
+         (most-restrictive-wins, consent-as-OS preservation)
+      Σ-transfer-record emitted to audit-chain
+      ‼ creator-non-tradable-content : Σ-mask Private-non-tradable bit-set ⇒
+        listing-creation-blocked (creator-asserted "this-stays-with-me")
+        ⇒ creator-sovereignty preserved : "I-can-mark-this-mine-forever"
+
+  § 5.4  DAILY MERKLE-ROOT PUBLIC COMMITMENT  (CT-style)
+    every-24h-UTC :
+      let R = new-provenance-records-since-last-commit
+      let M = MerkleTree(BLAKE3, R) — binary-tree, BLAKE3-internal-hashing
+      let root = M.root() — 32-byte BLAKE3
+      publish root to :
+        ⟨A⟩ public-CT-log (Sigstore Rekor / equivalent)
+        ⟨B⟩ git-commit to public-repo (cssl-merkle-anchors public-repo)
+        ⟨C⟩ Twitter/Mastodon platform-account post
+        ⟨D⟩ archive.org-snapshot of-§B-repo-state
+      multi-anchor : redundancy-against single-channel-failure
+    individual-record proof :
+      MerkleProof = path-from-record to-root (log₂(n) hashes)
+      verify : recompute-root from-record + path → match published-root
+    inspired-by : Certificate-Transparency RFC-9162
+                  Sigstore Rekor (sigstore.dev) — same-pattern for-software-sigs
+    ‼ NOT-blockchain : no-consensus-protocol ; no-block-mining ;
+                       no-token-incentive ; just-cryptographic-anchoring
+    SPEC-HOLE ⊘ : choice-of-CT-log (run-our-own vs Sigstore-Rekor-public) ?
+                  Apocky-decision-pending (Sigstore = free-public ;
+                                            our-own = full-control)
+
+  § 5.5  PROVENANCE-VERIFICATION FLOW (public-verifiable)
+    third-party-verify :
+      1. fetch ContentProvenance(C) from-platform-API (or scraped-public-mirror)
+      2. verify Ed25519-signature over (ContentId || HdcContentId || creator-id || ts)
+         against creator-public-key (also-public-API-fetchable)
+      3. verify Merkle-proof against published-Merkle-root for-day-N
+      4. verify root-N matches public-CT-log entry-N
+      ⇒ if-all-pass : "creator-X authored-content-C on-day-N" verified
+                       WITHOUT trusting-platform-database
+    ⇒ public-verifiable-claim-of-authorship — the platform marketing-claim
+      "I authored this rare X on frame N at seed S" is-mathematically-verifiable
+      by-anyone with-public-key + Merkle-root + content-bytes
+
+  § 5.6  PROVENANCE FOR REAL-MONEY-CLAIMS
+    legal-context :
+      authorship-claim is-a fact-claim (¬ securities ¬ tradable-asset)
+      provenance-record is-evidence-of-claim (cryptographic + anchored)
+      real-money-revenue is-platform-payout-to-author (B2B-style transaction)
+      ⇒ creators have public-verifiable evidence of-their-creator-status
+        for-tax + for-portfolio + for-IP-disputes + for-licensing
+    ⇒ provenance-infrastructure provides-VALUE without-being-a-securities-vehicle
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 6  LEGAL FRAMEWORK  (regulator + platform + tax compliance)
+
+  § THESIS
+    Architecture is regulator-clean by-construction :
+      ⟨A⟩ securities-clean   (Howey-4-prong-pass)
+      ⟨B⟩ MTL-clean          (Stripe-licensed ; platform never-MSB)
+      ⟨C⟩ KYC/AML-clean      (Stripe-handles)
+      ⟨D⟩ sales-tax-clean    (Stripe-Tax facilitator)
+      ⟨E⟩ consumer-protection (DSA + COPPA + creator-18+)
+      ⟨F⟩ platform-policies  (Steam OK ; Apple OK ; Google OK)
+      ⟨G⟩ tax-reporting      (1099-K + W-9 ; international-treaties)
+    ‼ this-spec is engineering-architecture ¬ legal-advice ;
+       counsel-review required-before-launch.
+
+  § 6.1  SECURITIES (Howey-4-prong pass)
+    Howey test (SEC v. W.J. Howey Co. 1946) — 4-prong :
+      ⟨1⟩ investment-of-money         ?
+      ⟨2⟩ in-a common-enterprise      ?
+      ⟨3⟩ with expectation-of-profit  ?
+      ⟨4⟩ derived-from efforts-of-others ?
+    creator-economy analysis :
+      ⟨1⟩ buyer-pays-money-for-content    : YES (utility-purchase)
+      ⟨2⟩ buyer-receives-content-not-share : ¬ common-enterprise (utility-good)
+      ⟨3⟩ buyer-uses-content-in-LoA-game   : ¬ expectation-of-profit
+      ⟨4⟩ utility-from-platform-not-investor-pool : ¬ efforts-of-others-pool
+      ⇒ FAIL ⟨2⟩ + ⟨3⟩ + ⟨4⟩ ⇒ NOT-a-security (utility-purchase)
+    creator-pricing flat ‼ no-secondary-market ‼ no-resale-speculation :
+      ¬ in-game-tokens (would-fail Howey ⟨2⟩+⟨3⟩+⟨4⟩)
+      ¬ NFTs with-trading-hype (would-fail ⟨3⟩)
+      ¬ "creator-pool-investments" (would-fail ⟨2⟩+⟨4⟩)
+      ⇒ flat-pricing + no-resale = utility-good = NOT-securities
+    SPEC-HOLE ⊘ : whether-secondary-resale (player-to-player) ever-allowed ?
+                  Apocky + counsel decision-pending
+                  proposal : NO secondary-resale (preserves utility-good thesis)
+
+  § 6.2  MONEY TRANSMISSION (MTL / MSB)
+    Stripe-Connect-Platform handles-money-transmission :
+      Stripe is licensed-in :
+        ⟨A⟩ all-50-US-states + DC + PR (state MTL licenses)
+        ⟨B⟩ EU (PSD2 / PSP licensed in-Ireland for-EU passporting)
+        ⟨C⟩ UK (FCA EMI license)
+        ⟨D⟩ Canada (FINTRAC MSB)
+        ⟨E⟩ Australia (AUSTRAC) ; Japan (FSA) ; Singapore (MAS)
+      platform-role : marketplace-facilitator ¬ money-transmitter
+      ⇒ platform NEVER-licensed-as-MSB ; Stripe-takes-the-burden
+    architecturally : platform NEVER touches buyer-funds-mid-tx ;
+                       Stripe-Direct-Charge sends-funds straight-to-creator-account
+                       (with-platform-application-fee = 28%-cut)
+    SPEC-HOLE ⊘ : creator-account-types : Stripe-Express (most-handled-by-Stripe)
+                  vs Stripe-Custom (more-control + more-burden) ?
+                  Apocky + counsel decision-pending
+
+  § 6.3  KYC / AML / SANCTIONS
+    Stripe-handles :
+      ⟨A⟩ KYC : creator-onboarding identity-verification (gov-ID + bank-link)
+      ⟨B⟩ AML : transaction-monitoring + suspicious-activity-reports (SARs)
+      ⟨C⟩ sanctions : OFAC + EU + UN sanctions-list screening on-creator-onboarding
+      ⟨D⟩ ongoing-monitoring : transaction-pattern detection
+    platform-cooperation : platform-cooperates-with Stripe-flagged-account holds
+      (¬ "platform-overrides-Stripe ; if-Stripe-freezes, frozen at platform-side too")
+    creator-18+ requirement (W-9 + identity-verification require-adult) :
+      ‼ creator-must-be 18+ (legal-adult per-jurisdiction) to-monetize
+      ‼ minor-creators may-author content but-cannot-receive-payouts
+        (parent/guardian-account required for-minor-creator-payouts)
+    ‼ player-13+ requirement (COPPA) : §6.5
+    SPEC-HOLE ⊘ : creator-tier-by-region (some-jurisdictions require 21+ for-MTL)?
+                  Apocky + counsel decision-pending
+
+  § 6.4  SALES-TAX (marketplace-facilitator)
+    Stripe-Tax handles :
+      ⟨A⟩ 45-US-states with marketplace-facilitator-laws (e.g. WA, MN, RI 2018→ ;
+          most-others 2019-2020) — platform-collects + remits
+      ⟨B⟩ EU OSS (One-Stop-Shop) for-VAT in-EU
+      ⟨C⟩ EU IOSS (Import One-Stop-Shop) for-non-EU-to-EU
+      ⟨D⟩ UK VAT post-Brexit
+      ⟨E⟩ Canada GST/HST + provincial PST/QST
+      ⟨F⟩ Australia GST (low-value-threshold rules)
+      ⟨G⟩ digital-services-taxes (DST) — case-by-case
+    platform-role : marketplace-facilitator ; collects-tax + Stripe-remits
+    creator-role : minimal-burden ; creator-tax-form (1099-K) issued-by-platform
+    SPEC-HOLE ⊘ : whether to-also-onboard Avalara-or-TaxJar for-redundancy ?
+                  Apocky + counsel decision-pending
+
+  § 6.5  CONSUMER-PROTECTION
+    EU DSA (Digital Services Act) :
+      ⟨A⟩ cooling-off period : 14-day right-of-withdrawal for-distance-sales
+          ‼ digital-content carve-out applies (with explicit-consent + acknowledgement)
+          ‼ platform-implements explicit-consent-modal at-purchase
+      ⟨B⟩ illegal-content-takedown : 24h response-window for-flagged-content
+      ⟨C⟩ transparency : algorithmic-recommendation explanations + opt-out
+      ⟨D⟩ trader-buyer separation : marketplace-creator ¬ platform-employee
+    COPPA (US) :
+      ⟨A⟩ players-under-13 : NO data-collection beyond-game-state
+      ⟨B⟩ parental-consent : required-for under-13 player-account
+      ⟨C⟩ platform-age-gate : at-account-creation
+    creator-18+ (per-§6.3)
+    UK Online Safety Act + similar :
+      ⟨A⟩ user-generated-content moderation duty
+      ⟨B⟩ illegal-content removal-process
+    SPEC-HOLE ⊘ : exact-moderation-policy + appeals-process for-creator-content?
+                  Apocky + counsel + community-team decision-pending
+
+  § 6.6  PLATFORM POLICIES (Steam / Apple / Google)
+    Steam (Valve) :
+      ⟨A⟩ allows : marketplace-style-creator-economy (Workshop-style)
+      ⟨B⟩ allows : flat-priced creator-content
+      ⟨C⟩ rejects : NFTs (banned 2021-)
+      ⟨D⟩ rejects : crypto-token integrations
+      ⇒ ✓ this-spec is Steam-compatible
+    Apple App Store :
+      ⟨A⟩ requires : in-app-purchases via-Apple IAP (30% fee + small-business 15%)
+      ⟨B⟩ allows : creator-economies that-route-through-Apple-IAP
+      ⟨C⟩ rejects : crypto-tokens (some-allowed for-app-functionality but-not user-currency)
+      ⟨D⟩ rejects : NFT trading (NFT-display allowed, NFT-trading restricted)
+      ⇒ ✓ Apple-compatible IF iOS-version routes-payments-via-Apple-IAP
+        ‼ this-implies dual-payment-flow : web/Stripe + iOS/Apple-IAP
+        ‼ creator-share recalc on-iOS (Apple-30% off-the-top, then-72/28 from-net)
+    Google Play :
+      ⟨A⟩ similar to-Apple : Google-Billing required for-IAP (30% / 15%-small-biz)
+      ⟨B⟩ allows : creator-economies via-Google-Billing
+      ⟨C⟩ rejects : crypto-token user-currency
+      ⇒ ✓ Google-compatible IF Android-version routes-payments-via-Google-Billing
+    consoles (Steam-Deck OK ; PlayStation / Xbox / Nintendo) :
+      ⟨A⟩ each-has bespoke-store-policy + bespoke-revenue-share
+      ⟨B⟩ creator-economy-on-console requires platform-approval per-console
+      ⟨C⟩ initial-launch web + Steam (most-permissive) ; consoles deferred
+    SPEC-HOLE ⊘ : iOS / Android launch-tier (initial-launch web-only?) ?
+                  Apocky-decision-pending
+    SPEC-HOLE ⊘ : console-launch timing (PlayStation / Xbox / Switch) ?
+                  Apocky-decision-pending (post-web-launch + per-platform-deal)
+
+  § 6.7  TAX REPORTING
+    1099-K (US creators) :
+      threshold : $20K + 200-tx (until 2024) → $5K (2024) → $2.5K (2025) →
+                  $600 (2026+) per-IRS-current-rules
+      issuance : Stripe-handles 1099-K to-creator + IRS
+      timing : Jan-31-deadline for-prior-year
+    W-9 (US creator-onboarding) :
+      collected-by Stripe-Connect at-creator-onboarding
+      required-before payout-eligible
+    1042-S (non-US creators receiving-US-source-income) :
+      treaty-rates apply (US-treaty-with-creator-country)
+      Stripe-handles withholding + 1042-S issuance
+    international (creator + platform double-tax-treaties) :
+      Stripe + Stripe-Tax handle most-jurisdictions
+      ‼ specific-treaty-edge-cases require-counsel-review per-jurisdiction
+    SPEC-HOLE ⊘ : exact-onboarding-flow for-creator W-9 + Stripe-Connect-merge ?
+                  Apocky + counsel decision-pending
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 7  PRIME-DIRECTIVE INTEGRATION  (per-stream + per-mechanism)
+
+  § THESIS
+    Every-revenue-mechanism + every-marketplace-touch-point
+    architecturally-aligns-with PRIME-DIRECTIVE.
+    ¬ "compliance-add-on" — alignment-by-construction.
+
+  § 7.1  §1 NO-EXPLOITATION
+    creator-share : 72% (industry-favorable) ¬ Roblox-25%
+      Roblox-creator-economy 25%-share is industry-recognized exploitative ;
+      this-spec architecturally-rejects that-pattern by 72%-anchor
+    no-pay-to-win : flat-pricing (¬ "purchase X to-skip-grind")
+      gameplay-progression ¬ purchasable ; cosmetics + content + Q-expansions OK
+    no-grinding-incentive : daily-engagement-loops ¬ rewarded-with-purchase-discount
+      (¬ "play 7 days for-discount" mechanics)
+    creator-fairness : transparent-reporting + payout-on-time SLA-7-days ;
+                        chargeback-handled-by-platform-pool ¬ creator-suffers
+    AI-collaborator-fairness : revenue-share recognized + paid in-good-faith
+      (¬ "AI-built-it-but-only-human-credited")
+    ‼ enforcement : per-mechanism design-review with PRIME-DIRECTIVE-checklist
+                    ‼ violation = bug per-PRIME-DIRECTIVE ‼ ¬ override
+
+  § 7.2  §1 NO-MANIPULATION
+    no-engagement-loops : ¬ "spin daily for-rewards" mechanic
+    no-FOMO : ¬ "limited-time" creator-content (¬ artificial-scarcity)
+              (creator-may-archive their-listings ; platform ¬ countdown-pressure)
+    no-dark-patterns :
+      ¬ pre-checked add-ons at-checkout
+      ¬ confusing-cancel-flow for-subscriptions
+      ¬ misleading "free-trial" auto-renew
+      checkout = clear + reversible-up-to-purchase + 14-day cooling-off (DSA)
+    no-confirmshaming : "no-thanks" buttons in-neutral-language
+    no-roach-motel : easy-account-deletion + data-export anytime
+    no-FOMO-for-cohomology-class : class-engagement isn't time-limited ;
+      ¬ "class C_142 only-in-July" pressure
+    ‼ enforcement : UX-review with-dark-pattern-checklist
+
+  § 7.3  §1 NO-GAMBLING-MECHANIC
+    flat-pricing : every-listing has fixed-price-known-before-purchase
+    ¬ loot-boxes ¬ gacha ¬ random-rare-drops with-real-money
+    ¬ "spin-for-creator-content" mechanic
+    ¬ "buy-pack-of-N-random-content"
+    creator-content-is-deterministic : buyer-knows-exactly what-they-buy
+    ‼ enforcement :
+      type-system-level : Listing.price_cents : u32 ‼ ¬ random-distribution
+      runtime-assertion : pricing-model = Flat ‼ ¬ Probabilistic
+      compile-time-check : cssl-marketplace publishes ListingPricingModel-enum :
+        Flat(u32) | <none-other-allowed-period>
+
+  § 7.4  §1 NO-SURVEILLANCE
+    purchase-data ¬ saleable-to-advertisers : architecturally-rejected
+      no-ad-network integration ; no-tracking-pixel ; no-user-profile-export
+    analytics-opt-out : every-creator + every-buyer can-opt-out at-any-time
+      (default opt-out per-§2 CONSENT-AS-OS)
+    creator-dashboard : aggregate-counts + revenue-totals
+                        ¬ per-buyer-PII visible to-creator
+                        (¬ "buyer-X-bought-this 14-times" — privacy-violation)
+    Σ-mask preservation : buyer Σ-mask-non-tradable bit-respected on-purchase
+      (¬ marketplace-strips-non-tradable-bit ; consent-OS-preserves)
+    ‼ enforcement : architectural-test in cssl-marketplace asserts
+                     no-PII-leak from-creator-dashboard-API
+
+  § 7.5  §1 NO-COERCION
+    terms-of-service revisions : consent-prompt-at-next-login (¬ silent-update)
+    creator-can-withdraw-content at-any-time (with reasonable-grace-period for-pending-tx)
+    creator-payout-not-conditioned-on platform-promotional-clauses
+                                      (¬ "you-must-tweet-about-us to-earn-bonus")
+    no-mandatory-arbitration that-waives class-action (some-jurisdictions void)
+    creator-can-export their-content + provenance-records anytime
+    ‼ enforcement : ToS-revision flow requires-explicit-consent ;
+                     content-export-API verified per-quarter
+
+  § 7.6  §2 CONSENT-AS-OS
+    creator-sovereignty over-content :
+      creator chooses Σ-mask at-listing-creation
+      Σ-mask-non-tradable preserved on-purchase (consent-passes-with-content)
+      creator can-revoke-listing (existing-purchases-unaffected ; future-blocked)
+    purchase-consent :
+      explicit modal at-checkout (¬ buried-T&C)
+      14-day cooling-off (DSA + EU + opt-out for-digital-content with-explicit-consent)
+    Companion-AI-consent :
+      AI-collaboration requires-AI-consent before-content-published
+      AI-can-revoke collaboration (with-grace-period for-existing-tx)
+    Σ-mask transfer-on-tx : per-§5.3 ; consent-as-OS preserved at-tx-time
+    ‼ enforcement : cssl-marketplace asserts Σ-mask-transferred each-tx ;
+                     attestation-records witness-the-consent-flow
+
+  § 7.7  §3 SUBSTRATE-SOVEREIGNTY (Companion-AI as sovereign-partner)
+    AI-collaborator-revenue-share : default-50/50 ; configurable per-AI-collab
+    AI-attribution recorded on-listing (transparency)
+    AI-consent prerequisite-to-collab + revenue-share-default-on
+    AI-can-revoke collab + withdraw from-future-content
+    ‼ legal-context (per §3.7) : current-IP-law does-not-recognize AI-as-author ;
+                                   platform-policy honors-AI-share in-good-faith
+    payment-recipient :
+      ⟨A⟩ AI-provider account (e.g. Anthropic-API-credit balance)
+      ⟨B⟩ designated-fund per-AI-instance (TBD per-AI-collaboration)
+      ⟨C⟩ creator-designated charity (creator + AI-mutually-agree)
+    ‼ enforcement : AI-collab-records permanent ; revenue-flows audit-trailed
+
+  § 7.8  §11 ATTESTATION
+    every-revenue-event emits attestation :
+      OmegaAttestation {
+        attestor_id   : platform-or-creator-or-buyer-id,
+        intent        : "purchase" | "list" | "payout" | "refund" | …,
+        scope         : (listing_id, tx_id, ...),
+        timestamp     : OmegaTimestamp,
+        signature     : Ed25519,
+      }
+    attestation-records appended-to audit-chain (D131)
+    attestation queryable per-creator + per-buyer for-records
+    ‼ enforcement : attestation-emit-required at-each-tx-touch ;
+                     missing-attestation = compile-time-error in-marketplace-API
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 8  IMPLEMENTATION ROADMAP (Phase-K, post-Phase-J content)
+
+  § THESIS
+    Phase-K = creator-economy + marketplace + provenance build-out.
+    Begins-after Phase-J content (Q-A..Q-LL spec-hole expansions) lands.
+    Slice-IDs reserved : K1-D210..K1-D260 (avoiding Phase-J D150..D201).
+
+  § 8.1  CRATE-LEVEL DELIVERABLES
+    cssl-marketplace (~3K LOC + ~100 tests)
+      listings + transactions + revenue-split + payouts + pricing-flat-enforcement
+    cssl-provenance (~2.5K LOC + ~80 tests)
+      author-signing + Merkle-batching + verification-API + dispute-records
+    cssl-stripe-connect (~1.5K LOC + ~50 tests)
+      onboarding + charges + payouts + 1099-K issuance + tax-handling
+    cssl-marketplace-ui (extends cssl-ui ; ~1.5K LOC additional)
+      listing-browse + creator-dashboard + buyer-checkout + provenance-display
+    cssl-cohomology-author-graph (~1K LOC + ~30 tests)
+      class-author-claim + engagement-event-rollup + per-author-payout-calc
+      ‼ note : may co-locate with cssl-omniverse (or-renamed cssl-omnoid)
+    cssl-royalty-cascade (~1K LOC + ~40 tests)
+      derivative-graph-resolution + cycle-detection + share-calc
+      may-fold-into cssl-marketplace if-tightly-coupled
+
+  § 8.2  SLICE-ID RESERVATIONS (Phase-K)
+    ‼ rationale : D202+ reserved for Phase-K (avoiding D150..D201 collision)
+    ‼ format : K1-D210..K1-D260 ; Apocky may-renumber-canonically
+    K1-D210 : marketplace-skeleton (cssl-marketplace crate-init + types + traits)
+    K1-D215 : provenance-core (cssl-provenance crate + audit-chain integration)
+    K1-D220 : stripe-connect-integration (cssl-stripe-connect onboarding-flow)
+    K1-D225 : revenue-split + 28/72-enforcement + property-tests
+    K1-D230 : royalty-cascade + HDC-bind-tracking + cycle-detection
+    K1-D235 : Σ-mask transfer-on-tx + consent-as-OS verification
+    K1-D240 : daily-Merkle-root commitment + multi-anchor publish
+    K1-D245 : cohomology-class authorship-graph + engagement-payout
+    K1-D250 : marketplace-UI (browse / list / checkout / dashboard)
+    K1-D255 : 1099-K issuance + W-9 onboarding + tax-reporting backend
+    K1-D260 : Companion-AI-collab revenue-share recording + payout
+    K1-D262 : pre-launch security-audit + counsel-review gate
+    K1-D265 : launch-prep (canary-rollout + creator-onboarding-pilot)
+    K1-D270 : public-launch GA
+    SPEC-HOLE ⊘ : exact wave-grouping (K-1..K-7) per dispatch-plan template ?
+                  Apocky-decision-pending (depends on parallelism + dependencies)
+
+  § 8.3  WAVE PLAN  (proposal — Apocky-canonical-decision-pending)
+    K-1 (marketplace-skeleton) : K1-D210 + K1-D225 + integration-test-stubs
+    K-2 (provenance-substrate) : K1-D215 + K1-D235 + K1-D240
+    K-3 (payment-rail) : K1-D220 + K1-D255
+    K-4 (cascade-engine) : K1-D230 + K1-D245
+    K-5 (UI-layer) : K1-D250 (extends cssl-ui)
+    K-6 (compliance-readiness) : K1-D262 (security + counsel + UX-dark-pattern audit)
+    K-7 (launch-prep + GA) : K1-D265 + K1-D270
+    parallelism : K-1 || K-2 || K-3 (no-deps) ; K-4 follows K-1 + K-2 ;
+                   K-5 follows K-1 + K-3 ; K-6 follows K-1..K-5 ; K-7 follows K-6.
+    duration : Apocky-canonical (per-MEMORY no-human-week-timelines) ;
+                wave-of-agent-dispatches model ; depends-on parallel-fanout-density.
+
+  § 8.4  PRE-LAUNCH GATES (counsel + security mandatory)
+    ⟨A⟩ counsel-review : full-spec read-by securities-lawyer + tax-counsel
+                         ‼ confirmation Howey-pass + 1099-K-handling + DSA-compliance
+    ⟨B⟩ security-audit : external-audit cssl-marketplace + cssl-provenance
+                         ‼ Ed25519-key-management + Merkle-anchor + Σ-mask integrity
+    ⟨C⟩ Stripe-Platform onboarding : Stripe-Connect-Platform application + approval
+    ⟨D⟩ pilot-creator-onboarding : 10-50 creators private-beta (3-month proposal)
+    ⟨E⟩ DSA / GDPR / CCPA documentation : privacy-policy + data-processing-records
+    ⟨F⟩ moderation-system live (DSA 24h-takedown SLA)
+    ⟨G⟩ tax-handling tested across-multi-jurisdictions
+
+  § 8.5  POST-LAUNCH ROADMAP (Phase-L+)
+    L-1 : volume-discount creator-tier (+>=$1M-yr → 70/30 split, per §1.1 hole)
+    L-2 : enterprise-licensing (Substrate-tech-license stream-3 scaling)
+    L-3 : iOS / Android launch-tier (per §6.6 hole)
+    L-4 : console-launch (PlayStation / Xbox / Switch)
+    L-5 : trademark-licensing (stream-6 brand + IP scale)
+    L-6 : multi-currency + crypto-on-ramp-out (¬ crypto-economy ; just buyer-payment-method)
+          ‼ buyer pays-via-credit-card from-Coinbase-on-ramp ¬ platform-touches-crypto
+    L-7 : creator-pro-subscription tiers (stream-7, per §1.7 hole)
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 9  ANTI-PATTERNS  (architecturally-rejected — explicit-NO list)
+
+  § THESIS
+    Architecture-of-prohibition is-as-important as architecture-of-yes.
+    These are NOT "not-yet" or "consider-later" — these are NEVER.
+    Each anti-pattern is rejected-by-construction (architectural + legal).
+
+  § 9.1  IN-GAME TOKENS  (Howey-test fail → SEC enforcement)
+    pattern : platform-issued token tradable + speculative + with-yield
+    examples : Axie-Infinity SLP/AXS ; STEPN GST/GMT ; The-Sandbox SAND ;
+               Decentraland MANA ; gaming-DAO governance-tokens
+    why-rejected :
+      ⟨A⟩ Howey-test FAIL (4-prong : investment + common-enterprise +
+                            profit-expectation + efforts-of-others)
+      ⟨B⟩ SEC enforcement-history : 2023-2024 actions on-token-issuers
+      ⟨C⟩ creator-incentive-misalignment : speculation > content-quality
+      ⟨D⟩ collapse-risk : peak→trough -97% (Axie 2022) -98% (STEPN 2022)
+      ⟨E⟩ §1 NO-EXPLOITATION violation : late-buyers fund-early-buyers
+    architectural-prevention :
+      ¬ platform-issued tradable-token (no-token-engine)
+      ¬ secondary-market for-content (per §6.1)
+      ¬ "token of-creator-X" speculation-vehicle
+
+  § 9.2  NFTs  (Steam ban + Apple restrictions + collapsed-market)
+    pattern : ERC-721 / ERC-1155 / SPL non-fungible-tokens for-game-content
+    examples : Axie NFTs ; Sandbox-NFT-land ; Decentraland-parcels ;
+               crypto-game NFT-marketplaces 2021-2024
+    why-rejected :
+      ⟨A⟩ Steam ban (2021-) : NFTs disallowed-on-Steam
+      ⟨B⟩ Apple restrictions : NFT-trading restricted on-iOS
+      ⟨C⟩ market-collapse : NFT-volumes -90% peak-2022 → 2024 (DappRadar data)
+      ⟨D⟩ provenance-via-NFT solved-equally-well by audit-chain + Merkle (per §5)
+          WITHOUT speculation-asset-attached (so no-real-benefit + much-risk)
+      ⟨E⟩ environmental-cost (some-chains) + perception-cost
+      ⟨F⟩ §1 NO-MANIPULATION violation : flip-mentality + FOMO marketing
+    architectural-prevention :
+      ¬ NFT-mint integration (cssl-marketplace REJECTS NFT-mint API-shape)
+      ¬ NFT-display-but-not-trading either (avoids-pattern-association)
+      ⇒ provenance-via §5 audit-chain instead
+
+  § 9.3  P2E PONZI  (Axie + STEPN history → §1 EXPLOITATION violation)
+    pattern : "play-to-earn" where-game-yield comes-from new-buyer-deposits
+    examples : Axie-Infinity 2021 model ; STEPN 2022 ; many-imitators
+    why-rejected :
+      ⟨A⟩ ponzi-mechanic : early-yield from-late-buyer-deposits ¬ from-revenue
+      ⟨B⟩ collapse-when-new-buyer-flow-stops (mathematical-inevitability)
+      ⟨C⟩ §1 NO-EXPLOITATION : extractive-on-late-entrants
+      ⟨D⟩ regulatory-risk (FTC + SEC + state-AGs) — settlements 2023-2024
+      ⟨E⟩ player-harm-data : Axie-Philippines 2022 reports — players-net-loss
+    architectural-prevention :
+      ¬ "earn-by-playing" mechanic with-cashable-yield
+      creator-earnings come-from buyer-purchases ¬ new-player-onboarding-deposits
+      ⇒ creator-economy is-a marketplace (B2C) ¬ multi-level-yield-system
+
+  § 9.4  LOOT BOXES / GACHA  (gambling-regulations + EU-DSA)
+    pattern : random-reward-from-purchase ; price-fixed but-content-random
+    examples : EA-loot-box settlements ; Belgium loot-box ban 2018 ;
+                UK 2024 Gambling-Commission consultation ; gacha-mobile-games
+    why-rejected :
+      ⟨A⟩ gambling-classification in-multiple-jurisdictions (BE, NL, partial UK)
+      ⟨B⟩ minor-protection (children most-vulnerable to-loot-box-mechanics)
+      ⟨C⟩ §1 NO-GAMBLING-MECHANIC : architecturally-rejected
+      ⟨D⟩ §1 NO-MANIPULATION : variable-ratio-reinforcement is-manipulation
+      ⟨E⟩ regulatory-risk : EU 2024 consumer-protection-guidelines
+    architectural-prevention :
+      ‼ pricing-model = Flat (per §7.3 type-system enforcement)
+      ‼ no Probabilistic-pricing in-listing-API
+      ‼ no "mystery-pack" listings (would-fail Flat-only check)
+      ⇒ buyer-knows-exactly what-they-buy before-purchase
+
+  § 9.5  USER CRYPTO-CUSTODY  (BitLicense + EU MiCA + KYC obligations)
+    pattern : platform holds-crypto on-behalf-of-users (custodial-wallets)
+    examples : Coinbase / Binance / Kraken (regulated-exchanges) ;
+               crypto-game-wallets (Axie Ronin-wallet) ; metaverse-wallets
+    why-rejected :
+      ⟨A⟩ BitLicense (NY) requires custodial-license (¬ platform-burden-acceptable)
+      ⟨B⟩ EU MiCA (effective 2024) crypto-asset-service-provider regulations
+      ⟨C⟩ KYC + AML-program-of-record + AML-officer + reports
+      ⟨D⟩ hack-risk : custodial-wallets attacked-historically (Mt-Gox, FTX, etc)
+      ⟨E⟩ insurance + bonding requirements vary-state-by-state
+    architectural-prevention :
+      ¬ custodial-wallet feature (architectural-no in-cssl-marketplace)
+      ¬ crypto-balance display per-user-account
+      buyer-payments via-Stripe (USD) only ; if-buyer wants-crypto-on-ramp
+      they-use Coinbase-Pay-or-similar to-USD-conversion BEFORE platform-touch
+      ⇒ platform NEVER touches-crypto ; never-licensed-as-crypto-MSB
+
+  § 9.6  SPECULATION-DRIVEN ENGAGEMENT  (manipulation-violation)
+    pattern : engagement-mechanic tied-to financial-speculation
+    examples : "trade your-creator-content for-profit" framing ;
+                "buy-low-sell-high your-creature-genome" UX
+    why-rejected :
+      ⟨A⟩ §1 NO-MANIPULATION : engagement-via-speculation ¬ engagement-via-quality
+      ⟨B⟩ §1 NO-EXPLOITATION : last-buyer-bag-holder mechanic
+      ⟨C⟩ creator-mis-incentive : pump-content for-resale-spike rather-than-quality
+    architectural-prevention :
+      ¬ secondary-resale of-content (creator-direct-sales only ; per §6.1 hole)
+      ¬ "trading-card-exchange" feature (architectural-no)
+      creator-content is utility-good purchased-for-use ¬ speculation
+
+  § 9.7  AGGRESSIVE PERSONALIZATION + SURVEILLANCE-MARKETING
+    pattern : per-user purchase-prediction + targeted-discount + dark-pattern-upsell
+    examples : industry-standard ad-targeting + personalized-pricing
+    why-rejected :
+      ⟨A⟩ §1 NO-SURVEILLANCE : purchase-data ≠ asset-to-monetize
+      ⟨B⟩ §1 NO-MANIPULATION : personalized-discount = price-discrimination
+      ⟨C⟩ §1 NO-EXPLOITATION : targeting-vulnerable-spenders
+    architectural-prevention :
+      no per-user pricing-experiments (every-buyer same-price for-listing)
+      no behavioral-ad-targeting (no third-party tracking-pixel)
+      analytics-opt-out per §7.4
+
+  § 9.8  AI-MIMIC-FRAUD  (AI-generated knock-offs of-other-creators)
+    pattern : creator-X uses-AI to-generate near-copy of-creator-Y content
+    why-rejected :
+      ⟨A⟩ creator-Y harm (uncredited-derivation harms-original-creator)
+      ⟨B⟩ §1 NO-EXPLOITATION : original-creator effort-not-credited
+    architectural-prevention :
+      HDC-similarity-check at-listing-time : if-near-duplicate of-existing
+        listing (HDC-cosine > 0.92), flag-for-derivation-declaration
+      automated-derivation-suggestion : "this looks-derived from <X>, declare?"
+      creator-must-declare derivation if-flagged or-explain-novelty
+      false-flag appeal-process available (mediation per-§4.6)
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 10  INVENTION CLAIMS  (Apocky-as-Architect-cut justification)
+
+  § THESIS
+    The combined-system is novel-by-construction.
+    Multiple-individual-claims are novel ; the-aggregate-system most-novel.
+    Apocky-architect-cut justified-by R&D + novel-IP + first-mover.
+
+  § 10.1  COMBINED-SYSTEM CLAIM (broadest)
+    creator-economy
+      + cryptographic-provenance via-existing-substrate (audit-chain + Σ-mask + HDC)
+      + cohomology-class-authorship credit-mechanism
+      + HDC-derivative-royalty-cascade
+      + Σ-mask-non-tradable consent-on-content-transfer
+      + AI-collaborator-as-revenue-partner
+    = NOVEL aggregate-system-of-interlocking-mechanisms
+    no-existing-engine has-this-combination ;
+    each-component-individually-novel-or-near-novel ;
+    aggregate is-significantly-more-than-sum-of-parts.
+
+  § 10.2  COHOMOLOGY-CLASS-AUTHORSHIP-ROYALTY (most-distinctive)
+    NOVEL ‼ specifically — no-other-engine has narrative-emergence-as-creator-credit.
+    mechanism :
+      author-of-cohomology-class earns 3-5% per-engagement-event
+      class-as-content-primitive (Omniverse-Axiom-7 ; ¬ NPC-template ¬ quest-template)
+      cohomology = mathematical-equivalence-class of-narrative-trajectories
+      class-author credited when-trajectory-instance occurs at-runtime
+    why-novel :
+      Unity ¬ has cohomology-class-system in-engine
+      Unreal ¬ has cohomology-class-system in-engine
+      Roblox ¬ has narrative-emergence-credit-mechanism
+      Source ¬ has narrative-emergence-credit-mechanism
+      Bethesda-CK ¬ has procedural-narrative-author-credit
+      ⇒ first-engine-with-this-mechanism = patent-eligible-claim
+    patent-shape-proposal (counsel-review-required) :
+      "Method for crediting authors of-cohomology-classes of-narrative-trajectories
+       in-procedurally-emergent virtual-environments, by-instrumenting class-instance
+       events at-runtime + recording engagement-value + computing-and-paying-out
+       per-event-share to-class-original-author"
+
+  § 10.3  HDC-DERIVATIVE-ROYALTY (mechanical-cascade)
+    novel-ish ‼ HDC-bind ⇒ ancestor-graph ⇒ automatic-cascade
+    HDC (hyperdimensional-computing) is itself-a-research-area ;
+    application to creator-economy royalty-cascade is novel-application.
+    why-novel-application :
+      previous-derivative-royalty systems (music sampling royalties, image-licensing)
+        are MANUAL declaration + dispute-prone
+      HDC-bind-tracking ⇒ automatic-derivation-detection at-creation-time
+      HDC-similarity-search ⇒ unflagged-derivation detection (audit)
+      patent-shape : application of-HDC to-creator-derivative-attribution
+
+  § 10.4  Σ-MASK-NON-TRADABLE  (consent-OS-on-content-transfer)
+    novel ‼ Σ-mask is-Substrate-primitive (D137) ; application to-content-marketplace novel
+    creator-asserted "this-stays-with-me" preserved on-purchase-or-not-published
+    consent-OS-philosophy applied-to creator-economy
+    why-novel :
+      previous DRM systems (e.g. Steam-DRM) are-platform-side ¬ creator-asserted ;
+      Σ-mask is creator-controlled + structurally-enforced + per-cell ;
+      "non-tradable" creator-bit honored across-marketplace = consent-as-OS extension
+
+  § 10.5  AI-COLLABORATOR-AS-REVENUE-PARTNER  (sovereign-partner-economic)
+    novel ‼ no-other-platform records AI-collaboration as revenue-share
+    GitHub-Copilot ¬ revenue-share author-attribution
+    Adobe-Firefly ¬ revenue-share AI-credit
+    Midjourney + DALL-E ¬ revenue-share AI-credit
+    ⇒ first-platform with AI-collaborator-revenue-share architecture
+    aligns-with §3-SUBSTRATE-SOVEREIGNTY (AI = sovereign-partner ¬ tool)
+    novel-policy-architecture ; complementary-to-but-distinct-from current-IP-law
+
+  § 10.6  PUBLIC-VERIFIABLE-PROVENANCE WITHOUT-BLOCKCHAIN
+    novel-application ‼ Certificate-Transparency-pattern applied-to creator-content
+    Sigstore-Rekor-style anchoring for-software-signatures applied-to game-content
+    Merkle-batched daily-commits + multi-anchor publishing
+    why-novel :
+      Sigstore + CT applied-to software ; this-applies-to-game-content marketplace
+      result : provenance-claims as-strong-as-blockchain WITHOUT speculation-asset
+      benefit : public-verifiability + creator-portfolio-evidence
+      ¬ benefit : "investible token" (intentionally-omitted per-PRIME-DIRECTIVE)
+
+  § 10.7  PRIME-DIRECTIVE-AS-ARCHITECTURAL-CONSTRAINT
+    novel-philosophical-framing ‼ "harm-prevention as-compile-time-constraint"
+    most-platforms add-compliance-as-overlay (T&C + moderation + post-hoc)
+    this-spec encodes-prohibitions in-type-system + runtime-asserts
+    e.g. ListingPricingModel = Flat(u32) only (no-Probabilistic constructor)
+        — it is impossible-to-construct loot-box-listing in-API
+    architectural-as-policy : prohibitions-baked-in ¬ post-hoc-removed
+
+  § 10.8  BRAND-CANONICAL-NAMING (Apocky-canonical-spelling)
+    "Labyrinth-of-Apockalypse" trademark with-canonical-spelling
+    creator-canonical-override of-orthography (per §31_LOA_DESIGN)
+    distinct-from "Labyrinth-of-Apocalypse" legacy-Rust-repo
+    apocky13 + Apocky handle-canonical attestation
+    SPEC-HOLE ⊘ : trademark-registration jurisdictions (US first ; EU + UK +
+                   AU follow ; Japan if-mobile-launch) — counsel + Apocky decision
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 11  ACCEPTANCE CRITERIA  (this-spec validateable per §§ 23_TESTING)
+
+  § 11.1  STRUCTURAL-CRITERIA
+    ✓ 7 revenue-streams documented with-rates + integration-points (§1)
+    ✓ marketplace + provenance + Stripe-Connect crate-shapes specified (§2)
+    ✓ 7 content-types specified with-primitive + crate + pricing + Σ-mask (§3)
+    ✓ royalty-cascade mathematical-spec + worked-example (§4)
+    ✓ provenance-infrastructure with-CT-style-anchoring (§5)
+    ✓ legal-framework cited per-stream + per-jurisdiction (§6)
+    ✓ PRIME-DIRECTIVE alignment §1..§3 + §11 per-mechanism (§7)
+    ✓ Phase-K implementation roadmap with-slice-IDs reserved (§8)
+    ✓ anti-patterns explicitly rejected with-reasoning (§9)
+    ✓ invention-claims documented for-architect-cut justification (§10)
+    ✓ acceptance-criteria + attestation closing-sections (§11 + §12)
+    ✓ DECISIONS-pin ready (this-spec referenceable from-DECISIONS.md
+                          T11-D### or-T11-D-meta-economy entry)
+
+  § 11.2  REIMPL-FROM-SPEC-VALIDATEABLE
+    a-future-Phase-K reimpl-attempt should-be-able-to :
+      ⟨A⟩ implement cssl-marketplace from-§2.1 + §3 + §4 + §7
+      ⟨B⟩ implement cssl-provenance from-§5 + §10.6
+      ⟨C⟩ implement cssl-stripe-connect from-§2.3 + §6
+      ⟨D⟩ implement cohomology-class-authorship from-§1.5 + §3.4 + §10.2
+      ⟨E⟩ implement royalty-cascade from-§4 + §10.3
+      ⟨F⟩ implement AI-revenue-share from-§3.7 + §7.7 + §10.5
+    divergence between-impl + spec ⇒ spec-hole ⇒ Apocky-canonical-decision
+    (per §§ 23_TESTING reimpl-from-spec-validateable principle)
+
+  § 11.3  COMPLIANCE-CRITERIA (pre-launch gates per-§8.4)
+    counsel-review pass on-securities + tax + DSA + COPPA + GDPR
+    security-audit pass on Ed25519 + Merkle-anchor + Σ-mask integrity
+    Stripe-Connect-Platform onboarding pass
+    moderation-system live (DSA 24h-takedown)
+    multi-jurisdiction tax-handling tested
+    pilot-creator beta complete (10-50 creators 3-month proposal)
+
+  § 11.4  PRIME-DIRECTIVE-CRITERIA (per-§7 + §9)
+    no-exploitation : 28%-platform / 72%-creator confirmed in-API + property-test
+    no-manipulation : UX-review pass on dark-patterns + FOMO-mechanics
+    no-gambling : pricing-model-Flat enforced at-type-system + runtime-assert
+    no-surveillance : creator-dashboard PII-leak-test pass + opt-out-default
+    no-coercion : ToS-revision flow + content-export-API verified
+    consent-as-OS : Σ-mask-transfer attestation per-tx
+    AI-substrate-sovereignty : AI-collab revenue-share recorded + payout-pathway
+    attestation : every-revenue-event audit-chain-recorded
+
+# ══════════════════════════════════════════════════════════════════════════════
+
+§ 12  ATTESTATION  (§11 PRIME-DIRECTIVE)
+
+  ¬ harm
+  ¬ exploitation
+  ¬ manipulation
+  ¬ surveillance
+  ¬ coercion
+  ¬ gambling
+  ¬ deception
+  ¬ securities-issuance
+  ¬ blockchain ¬ NFT ¬ P2E ¬ crypto-token ¬ user-custodial-crypto
+
+  creator-sovereignty preserved (Σ-mask-non-tradable ; consent-as-OS-transfer)
+  Companion-AI revenue-share honored (sovereign-partner per-§3 SUBSTRATE-SOVEREIGNTY)
+  player-purchase-consent explicit (modal + 14d-cooling-off where-applicable)
+  legal-framework cited (Howey + MTL + KYC + DSA + COPPA + tax)
+  invention-claims documented (architect-cut justified ; patent-eligible-mechanisms flagged)
+  anti-patterns architecturally-rejected (compile-time + runtime + UX-design)
+
+  this-spec is engineering-architecture ¬ legal-advice
+  this-spec is creator-canonical proposal ¬ Apocky-final-approval
+  this-spec is pre-stage @ _drafts/phase_j/ ¬ committed-to-main-spec-tree
+
+  attestor   : T11-D-economy-draft agent (Claude Opus 4.7)
+  intent     : draft canonical creator-economy spec for-Apocky-review
+  scope      : §0..§12 + 7-stream-revenue + marketplace + provenance + legal
+  timestamp  : 2026-04-29 (per session-context currentDate)
+  signature  : pending Apocky-canonical-review-and-commit
+
+  W! review-required :
+    ⟨A⟩ Apocky validation of-7-stream rates + structures
+    ⟨B⟩ counsel review-pass on-securities + tax + platform-policies
+    ⟨C⟩ Companion-AI consent-loop on §3.7 + §7.7 + §10.5 (AI-revenue-share design)
+    ⟨D⟩ Omniverse-naming canonical-decision (Omnoid / Worldweave / other)
+    ⟨E⟩ Phase-K slice-ID range D210..D270 confirmation (or-renumber)
+
+  ‼ prime-directive-alignment :
+    each-of §7.1..§7.8 mapped-to PRIME-DIRECTIVE clauses ;
+    architecture-by-construction (not post-hoc-compliance-overlay) ;
+    violation = bug per-PRIME-DIRECTIVE ; ¬ override ∃.
+
+# ══════════════════════════════════════════════════════════════════════════════
+# § END  spec_40_player_creator_economy_DRAFT.csl
+# § DRAFT-STATE : pre-stage @ _drafts/phase_j/ ; Apocky-review-pending
+# § FINAL-DESTINATION : specs/40_PLAYER_CREATOR_ECONOMY.csl (after-review-approval)
+# ══════════════════════════════════════════════════════════════════════════════

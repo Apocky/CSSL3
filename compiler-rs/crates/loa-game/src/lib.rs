@@ -172,6 +172,7 @@ pub mod player;
 pub mod world;
 
 // ── M8 render-pipeline + per-stage frame-time instrumentation (T11-D158) ──
+pub mod diag;
 pub mod m8_integration;
 pub mod metrics_mock;
 pub mod test_room_scene;
