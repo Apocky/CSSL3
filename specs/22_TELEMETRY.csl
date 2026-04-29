@@ -216,6 +216,46 @@
     telemetry-scope=Full ≡ requires Realtime<Best-Effort> not Realtime<Crit>
   {NoAlloc} × {Telemetry} : ring-pre-allocated ∴ no-alloc-at-runtime ✓
 
+§ FS-OPS  (S6-B5 / T11-D76 — spec-gap closed via DECISIONS T11-D76)
+  thesis : every fs op is a telemetry-observable event ; the cssl-rt
+           tracker counters (open_count / read_count / write_count /
+           close_count / bytes_read_total / bytes_written_total) are
+           the canonical first-class observables.
+  surface : exposed through cssl-rt's `crate::io` module ;
+            each `__cssl_fs_*` FFI symbol increments the matching
+            counter atomically + (on failure) records the canonical
+            kind + raw OS code in the per-thread last-error slot
+            (LAST_ERROR_CODE).
+  effect-row tie-in :
+    every fs syscall fires under the {IO} effect (per §§ 04 IO-EFFECT)
+    fn `read_file(p : &str) -> Result<String, IoError> / {IO}`
+    is the canonical signature ; the `(io_effect, "true")` MIR
+    op-attribute on each `cssl.fs.*` op is the stage-0 marker that
+    threads {IO} from HIR-fn-decl through MIR. Real `MirEffectRow`
+    structural threading is deferred (DECISIONS T11-D76 § DEFERRED).
+  telemetry composition :
+    {Telemetry<Counters>} × fs : per-call timestamp + bytes-moved
+                                  emitted to the ring at op-entry / exit
+    {Telemetry<Full>} × fs : adds per-syscall errno / GetLastError
+                              breakdown + path-hash for de-anonymization-
+                              free correlation
+    {Audit<"fs-write">} × fs : every write op tagged into the audit-
+                                chain (§§ 11) — used when fs activity
+                                must be tamper-evidentially recorded
+  R18 ring composition :
+    fs op events feed the same TelemetryRing as CPU / GPU events ;
+    no separate ring required. Slot.scope = TelemetryScope::Events
+    (or Counters for the bytes-moved aggregate). Schema versioning
+    follows § COMPILE-TIME TELEMETRY-SCHEMA.
+  PRIME-DIRECTIVE :
+    fs telemetry-payload-of-path-strings INHERITS IFC-label of the
+    path argument ; exporter-endpoint external emit + path string
+    requires {Sensitive<"path-leak">} + audit-policy.
+    cssl-rt counters are LOCAL ; nothing escapes the process at
+    stage-0. The OPEN_FLAG_MASK + IoError code-table are STABLE
+    from S6-B5 forward (renaming = major-version bump per
+    DECISIONS T11-D76).
+
 § EXAMPLES
 
   // Audio-callback with Counters-level telemetry

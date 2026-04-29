@@ -6,13 +6,15 @@
 //!
 //! § ROLE
 //!   Linked into every CSSLv3 artifact. Provides:
-//!     - allocator + tracker  (`alloc` module)
-//!     - panic + format       (`panic` module)
-//!     - exit + abort         (`exit` module)
-//!     - entry shim           (`runtime` module)
-//!     - stable FFI surface   (`ffi` module)
+//!     - allocator + tracker     (`alloc` module)
+//!     - panic + format          (`panic` module)
+//!     - exit + abort            (`exit` module)
+//!     - entry shim              (`runtime` module)
+//!     - file-system I/O         (`io` + `io_win32` / `io_unix`)
+//!     - stable FFI surface      (`ffi` module)
 //!
-//! § FFI SURFACE  (ABI-stable from S6-A1 forward)
+//! § FFI SURFACE  (ABI-stable)
+//!   S6-A1 (T11-D52) — runtime baseline :
 //!   ```text
 //!   __cssl_entry(user_main: extern "C" fn() -> i32) -> i32
 //!   __cssl_alloc(size, align) -> *mut u8
@@ -21,6 +23,15 @@
 //!   __cssl_panic(msg, msg_len, file, file_len, line) -> !
 //!   __cssl_abort() -> !
 //!   __cssl_exit(code: i32) -> !
+//!   ```
+//!   S6-B5 (T11-D76) — fs surface :
+//!   ```text
+//!   __cssl_fs_open(path_ptr, path_len, flags) -> i64
+//!   __cssl_fs_read(handle, buf_ptr, buf_len) -> i64
+//!   __cssl_fs_write(handle, buf_ptr, buf_len) -> i64
+//!   __cssl_fs_close(handle) -> i64
+//!   __cssl_fs_last_error_kind() -> i32
+//!   __cssl_fs_last_error_os() -> i32
 //!   ```
 //!   See [`ffi`] for full documentation. Renaming any of these symbols
 //!   is a major-version-bump event.
@@ -58,6 +69,11 @@
 pub mod alloc;
 pub mod exit;
 pub mod ffi;
+pub mod io;
+#[cfg(not(target_os = "windows"))]
+pub mod io_unix;
+#[cfg(target_os = "windows")]
+pub mod io_win32;
 pub mod panic;
 pub mod runtime;
 
@@ -72,6 +88,13 @@ pub use alloc::{
 pub use exit::{
     abort_count, cssl_abort_impl, cssl_exit_impl, exit_count, last_exit_code, record_abort,
     record_exit, reset_exit_state_for_tests, testable_abort, testable_exit, ExitError,
+};
+pub use io::{
+    bytes_read_total, bytes_written_total, close_count, io_error_code, last_io_error_kind,
+    last_io_error_os, open_count, read_count, record_io_error, reset_io_for_tests,
+    reset_last_io_error_for_tests, validate_buffer, validate_open_flags, write_count,
+    INVALID_HANDLE, OPEN_APPEND, OPEN_CREATE, OPEN_CREATE_NEW, OPEN_FLAG_MASK, OPEN_READ,
+    OPEN_READ_WRITE, OPEN_TRUNCATE, OPEN_WRITE,
 };
 pub use panic::{format_panic, panic_count, record_panic, reset_panic_count_for_tests};
 pub use runtime::{
@@ -128,6 +151,7 @@ pub(crate) mod test_helpers {
         crate::panic::reset_panic_count_for_tests();
         crate::exit::reset_exit_state_for_tests();
         crate::runtime::reset_runtime_for_tests();
+        crate::io::reset_io_for_tests();
         g
     }
 }

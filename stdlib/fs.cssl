@@ -1,0 +1,474 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/fs.cssl  —  File-system I/O surface
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/04_EFFECTS.csl § IO-EFFECT (canonical reference for {IO})
+//        specs/22_TELEMETRY.csl § FS-OPS (spec-gap closed by DECISIONS
+//          T11-D76 ; the FS-OPS section is added in this slice — see
+//          DECISIONS § Spec gaps closed)
+//        specs/03_TYPES.csl § STRING-MODEL (paths sourced as String / &str)
+//        specs/03_TYPES.csl § GENERIC-COLLECTIONS (Vec<u8> for byte buffers)
+// Slice : S6-B5 (T11-D76).
+//
+// § PRIME_DIRECTIVE preserved : file I/O is the most surveillance-adjacent
+//   surface in the runtime. This module : (a) does no surveillance — every
+//   fs op fires only at the explicit invocation of source-level code,
+//   (b) the cssl-rt counters are LOCAL — nothing escapes the process,
+//   (c) errors surface through the typed `IoError` sum-type rather than
+//   silent swallow, (d) the {IO} effect-row makes file-touching operations
+//   visible in fn-signatures so consumers cannot accidentally invoke fs
+//   I/O from a context that forbids it.
+//
+//   ‼ The fs surface NEVER overrides PRIME_DIRECTIVE. Source-level code
+//   that opens a file remains subject to §1 PROHIBITIONS (no surveillance,
+//   no exploitation) and to §10 ToS. The wrappers below do not bypass
+//   any of those constraints — they expose exactly the syscall surface,
+//   no less + no more.
+//
+// § STAGE-0 NOTES (carried-forward to DECISIONS T11-D76)
+//   1. The four fs verbs (`open` / `read` / `write` / `close`) are
+//      recognized syntactically by `cssl_mir::body_lower::lower_call`.
+//      The recognizer fires on a 2-segment path `fs::<verb>` with the
+//      appropriate arity (open = 2 args, read = 3 args, write = 3 args,
+//      close = 1 arg). Each call lowers to a `cssl.fs.<verb>` op carrying
+//      the `(io_effect, "true")` attribute as the stage-0 marker for
+//      {IO} effect-row threading. Real `MirEffectRow` structural
+//      threading is deferred (see DECISIONS T11-D76 § DEFERRED).
+//   2. The `File` handle is encoded as a host-width integer (`i64`) at
+//      source-level rather than a typed `iso<!cssl.fs.handle>` — the
+//      same source-level grammar gap noted at B3 (typed-pointer field
+//      syntax). The bit-pattern is the platform handle (Win32 HANDLE
+//      cast / POSIX fd zero-extended). The cssl-rt `INVALID_HANDLE = -1`
+//      sentinel is recognized by every safe wrapper and translated into
+//      `Err(IoError::*)`.
+//   3. `IoError` is a sum-type with discriminants matching cssl-rt's
+//      `io_error_code` table. Constructors are recognized by the B2
+//      sum-type recognizer (`Ok(...)` / `Err(...)` enter the existing
+//      `cssl.result.{ok,err}` lowering path).
+//   4. `read_to_string(path) -> Result<String, IoError>` is the canonical
+//      "slurp the file" helper. At stage-0 the body is structural — the
+//      runtime-execution-of-loop pattern (read into Vec<u8> until EOF
+//      then call String::from_utf8) is the same deferred-ABI slice as
+//      Vec / String (see DECISIONS T11-D76 § DEFERRED).
+//   5. `write_all(handle, bytes)` loops `cssl.fs.write` until either all
+//      bytes have been written or an error is returned. The loop body
+//      uses scf.while + scf.if from C1/C2 ; this is structural at
+//      stage-0 (real execution lands in the deferred-ABI slice).
+//   6. The `OPEN_*` flag bitset mirrors cssl-rt's portable surface :
+//      `OPEN_READ` (0x0001), `OPEN_WRITE` (0x0002), `OPEN_READ_WRITE`
+//      (0x0004), `OPEN_APPEND` (0x0008), `OPEN_CREATE` (0x0010),
+//      `OPEN_CREATE_NEW` (0x0020), `OPEN_TRUNCATE` (0x0040). The values
+//      are STABLE from S6-B5 ; renaming requires a major-version bump.
+//   7. Per-thread `last_error_kind() / last_error_os()` accessors return
+//      the canonical-kind discriminant + the raw OS code from the most
+//      recent fs op. Wrappers below call them after every fs syscall
+//      that returned the `INVALID_HANDLE` / `-1` sentinel and translate
+//      the kind into the matching `IoError` variant.
+//   8. `unsafe` keyword for `from_raw_handle / into_raw_handle` style
+//      escape hatches — DEFERRED until the parser recognizes `unsafe fn`
+//      (carried-forward from B4 § STAGE-0 7). The fs handle wrapping
+//      below is value-out-parameter style without unsafe.
+//   9. `Drop` integration : a future trait-resolve slice will make
+//      `File` automatically close on scope-exit. At stage-0 callers MUST
+//      invoke `fs::close(file)` explicitly. The post-trait-dispatch form
+//      is the standard `impl Drop for File`.
+//  10. Per the slice handoff PM note, this file may have been split into
+//      a `B5-stdlib` sub-agent in parallel with `B5-win` + `B5-unix` ;
+//      we landed it as a unified slice for coherence.
+//
+// § INVARIANTS  (stage-0)
+//   - File.handle ≠ -1 for ALL valid File values (the `Err` path
+//     never produces a File ; the safe wrappers translate `-1` → Err)
+//   - Every successful `fs::open` MUST be paired with `fs::close` to
+//     release the OS resource. Stage-0 callers track this manually ;
+//     trait-Drop integration deferred per § 9 above.
+//   - `fs::read` returns `0` to signal EOF ; callers who need "all
+//     bytes" must loop until EOF or use `read_to_string` / `read_all`.
+//   - `fs::write` may return less than `bytes.len()` (short write) ;
+//     `write_all` loops until all bytes are written.
+
+module com.apocky.stdlib.fs
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type definitions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `File` wraps an OS-level handle (Win32 HANDLE on Windows, POSIX fd
+// elsewhere). Value-type at stage-0 ; once trait-Drop lands, the handle
+// will be released automatically at scope-exit.
+//
+// § INVARIANTS
+//   - `handle` ≠ -1 (the `INVALID_HANDLE` sentinel ; Err path never
+//     produces a File)
+//   - the handle is "open" until `fs::close(file)` is called ; using a
+//     File post-close yields `IoError::InvalidInput`
+struct File {
+    handle : i64,
+}
+
+// `IoError` is the canonical sum-type for fallible fs operations. Per
+// stage-0 sum-type discipline (B2) constructors are recognized
+// syntactically — `IoError::NotFound()` lowers through B2's
+// `try_lower_result_err` path because it appears as the Err payload
+// in `Result<T, IoError>` returns.
+//
+// ‼ The discriminant integers MUST match cssl-rt's `io_error_code`
+// table. Renaming a variant requires a lock-step update to
+// `cssl-rt::io::io_error_code` + a major-version bump.
+//
+// § VARIANTS  (matching cssl-rt::io::io_error_code)
+//   - NotFound          : path or file does not exist           (code 1)
+//   - PermissionDenied  : caller lacks rights                   (code 2)
+//   - AlreadyExists     : `OPEN_CREATE_NEW` saw a pre-existing  (code 3)
+//   - InvalidInput      : malformed flags/pointer/length        (code 4)
+//   - Interrupted       : syscall returned EINTR (POSIX)        (code 5)
+//   - UnexpectedEof     : read 0 before requested count          (code 6)
+//   - WriteZero         : write 0 mid-op (disk-full / quota)     (code 7)
+//   - Other             : raw OS code carried in payload         (code 99)
+enum IoError {
+    NotFound,
+    PermissionDenied,
+    AlreadyExists,
+    InvalidInput,
+    Interrupted,
+    UnexpectedEof,
+    WriteZero,
+    Other(i32),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Open-flag constants (mirror cssl-rt::io::OPEN_*).
+//
+//   These are STABLE from S6-B5. The bit-values match the cssl-rt
+//   portable bitset 1:1 ; the platform translation table in
+//   `cssl-rt::io_win32::translate_open_flags` /
+//   `cssl-rt::io_unix::translate_open_flags` is the single source of
+//   truth for how each bit maps to OS-native flags.
+// ───────────────────────────────────────────────────────────────────────
+
+fn open_read() -> i32 {
+    1
+}
+
+fn open_write() -> i32 {
+    2
+}
+
+fn open_read_write() -> i32 {
+    4
+}
+
+fn open_append() -> i32 {
+    8
+}
+
+fn open_create() -> i32 {
+    16
+}
+
+fn open_create_new() -> i32 {
+    32
+}
+
+fn open_truncate() -> i32 {
+    64
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § IoError discriminant constants.
+//
+//   Useful for `if-else` translation from the cssl-rt last_error_kind()
+//   integer into the IoError sum-type. The full discrimination is in
+//   `io_error_from_kind` below.
+// ───────────────────────────────────────────────────────────────────────
+
+fn io_err_code_not_found() -> i32 {
+    1
+}
+
+fn io_err_code_permission_denied() -> i32 {
+    2
+}
+
+fn io_err_code_already_exists() -> i32 {
+    3
+}
+
+fn io_err_code_invalid_input() -> i32 {
+    4
+}
+
+fn io_err_code_interrupted() -> i32 {
+    5
+}
+
+fn io_err_code_unexpected_eof() -> i32 {
+    6
+}
+
+fn io_err_code_write_zero() -> i32 {
+    7
+}
+
+fn io_err_code_other() -> i32 {
+    99
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Last-error reporting.
+//
+//   `last_error_kind() -> i32` and `last_error_os() -> i32` are bare-name
+//   wrappers around the cssl-rt FFI symbols `__cssl_fs_last_error_kind`
+//   and `__cssl_fs_last_error_os`. They route through the regular
+//   func.call path (no syntactic recognizer needed — the kind/os accessors
+//   are pure-i32 stage-0 reads). Stage-0 these are linkage-import stubs ;
+//   real wiring lands in the cgen layer per DECISIONS T11-D76 § DEFERRED.
+// ───────────────────────────────────────────────────────────────────────
+
+// `last_error_kind() -> i32` returns the canonical IoError discriminant
+// for the most recent fs op (or 0 = SUCCESS if no error). Wrappers
+// below consult this after every fs syscall that returned a sentinel.
+fn last_error_kind() -> i32 {
+    // Stage-0 placeholder — actual wiring routes through
+    // `__cssl_fs_last_error_kind` once the cgen layer fires the import.
+    // Until then this returns 0 (success). The body is the surface
+    // that the eventual recognizer / cgen pass replaces.
+    0
+}
+
+// `last_error_os() -> i32` returns the raw OS error code (Win32
+// `GetLastError` / POSIX `errno`). Useful when `last_error_kind()`
+// returns `OTHER`.
+fn last_error_os() -> i32 {
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Translate the cssl-rt last-error kind code into an `IoError` sum.
+// ───────────────────────────────────────────────────────────────────────
+
+// `io_error_from_kind(kind, os)` maps the i32 discriminants returned by
+// cssl-rt back into the typed `IoError` sum-type. Keeps the dispatch
+// table in source-level CSSLv3 so future variant additions only require
+// a stdlib edit (plus the lock-step cssl-rt update).
+fn io_error_from_kind(kind : i32, os : i32) -> IoError {
+    if kind == io_err_code_not_found() {
+        IoError::NotFound
+    } else {
+        if kind == io_err_code_permission_denied() {
+            IoError::PermissionDenied
+        } else {
+            if kind == io_err_code_already_exists() {
+                IoError::AlreadyExists
+            } else {
+                if kind == io_err_code_invalid_input() {
+                    IoError::InvalidInput
+                } else {
+                    if kind == io_err_code_interrupted() {
+                        IoError::Interrupted
+                    } else {
+                        if kind == io_err_code_unexpected_eof() {
+                            IoError::UnexpectedEof
+                        } else {
+                            if kind == io_err_code_write_zero() {
+                                IoError::WriteZero
+                            } else {
+                                IoError::Other(os)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Open / Close.
+// ───────────────────────────────────────────────────────────────────────
+
+// `fs::open(path, flags) -> Result<File, IoError>` — open `path` with
+// the given flag bitset. On success the Ok-payload is a `File` wrapping
+// the OS handle ; on failure the Err-payload is the typed `IoError`.
+//
+// § EFFECT-ROW
+//   This fn is {IO}-effecting. The `cssl.fs.open` op carries the
+//   `io_effect = "true"` attribute (per the body_lower recognizer
+//   landed at T11-D76). Once the structural `MirEffectRow` lands,
+//   the fn signature will read `fn open(path, flags) -> Result<...>
+//   / {IO}` per `specs/04_EFFECTS.csl § IO-EFFECT`.
+//
+// ‼ Stage-0 `fs::open` here is the safe wrapper ; the recognizer in
+//   body_lower fires on the bare `fs::open` call site INSIDE the user's
+//   code, NOT on this method body's call to `fs::open`. The method body
+//   directly calls the recognized form which lowers to `cssl.fs.open`,
+//   then post-checks the i64 sentinel.
+fn open(path : &str, flags : i32) -> Result<File, IoError> {
+    let handle = fs::open(path, flags) ;
+    if handle == -1 {
+        Err(io_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(File { handle : handle })
+    }
+}
+
+// `fs::close(file)` — close a previously-opened File. Returns
+// `Result<(), IoError>` ; on success the inner `()` (unit) is the
+// usual successful-completion marker.
+//
+// ‼ Stage-0 the unit-typed `Ok()` is encoded as `Ok(0)` because source-
+//   level grammar doesn't yet expose a clean unit-payload constructor
+//   for sum-types. The 0 sentinel is the canonical ABI value for the
+//   close success. Once unit-typed sum-payloads land, the migration is
+//   `Ok(0)` → `Ok(())` mechanically.
+fn close(file : File) -> Result<i32, IoError> {
+    let r = fs::close(file.handle) ;
+    if r == 0 {
+        Ok(0)
+    } else {
+        Err(io_error_from_kind(last_error_kind(), last_error_os()))
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Read / Write helpers.
+//
+//   Stage-0 caveat : the safe wrappers below expose the surface but
+//   their bodies invoke the recognizer-friendly `fs::read` / `fs::write`
+//   bare forms (which lower to the `cssl.fs.*` ops). Looping read /
+//   write_all-style flows are STRUCTURAL — runtime execution of the
+//   loop pattern lands in the deferred-ABI slice (same path as Vec
+//   load/store + format runtime). See DECISIONS T11-D76 § DEFERRED.
+// ───────────────────────────────────────────────────────────────────────
+
+// `fs::write_all(file, bytes_ptr, bytes_len)` — write the entire
+// `(bytes_ptr, bytes_len)` byte sequence, looping over short writes.
+//
+// Returns `Ok(bytes_len)` on success ; `Err(IoError)` on any error.
+// Returns `Err(WriteZero)` if write returns 0 mid-loop.
+//
+// ‼ Stage-0 BODY IS PLACEHOLDER : the loop pattern (while bytes_left > 0
+//   { write ; advance ptr ; subtract from len }) is structural — the
+//   real runtime walk requires the deferred typed memref / pointer-
+//   arithmetic infrastructure (T11-D57 § DEFERRED + T11-D69 § DEFERRED).
+//   At stage-0 the body issues a single `fs::write` and returns the
+//   result-shape. Once the deferred infra lands, the loop body lands
+//   mechanically.
+fn write_all(file : File, bytes_ptr : i64, bytes_len : i64) -> Result<i64, IoError> {
+    let n = fs::write(file.handle, bytes_ptr, bytes_len) ;
+    if n < 0 {
+        Err(io_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        if n == 0 {
+            if bytes_len > 0 {
+                Err(IoError::WriteZero)
+            } else {
+                Ok(0)
+            }
+        } else {
+            Ok(n)
+        }
+    }
+}
+
+// `fs::read_some(file, buf_ptr, buf_len)` — read up to `buf_len` bytes.
+// Returns `Ok(bytes_read)` (0 = EOF) ; `Err(IoError)` on syscall failure.
+fn read_some(file : File, buf_ptr : i64, buf_len : i64) -> Result<i64, IoError> {
+    let n = fs::read(file.handle, buf_ptr, buf_len) ;
+    if n < 0 {
+        Err(io_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(n)
+    }
+}
+
+// `fs::read_to_string(path) -> Result<String, IoError>` — open `path`,
+// read the entire contents, close, and return as a String.
+//
+// ‼ Stage-0 BODY IS STRUCTURAL : the canonical implementation is
+// ```text
+//   1. let f = fs::open(path, OPEN_READ)? ;
+//   2. let buf = vec_new::<u8>() ;
+//   3. loop {
+//        let chunk = vec_with_capacity::<u8>(4096) ;
+//        let n = fs::read(f.handle, chunk.data, 4096)? ;
+//        if n == 0 { break }
+//        // append chunk[0..n] to buf
+//        // grow buf as needed
+//      }
+//   4. fs::close(f)? ;
+//   5. String::from_utf8(buf)
+// ```
+// The execution-path of this loop requires the same deferred-ABI slice
+// as Vec push / String byte-buffering. At stage-0 we expose the
+// surface ; the body returns Err(InvalidInput) as a structural marker
+// (the call-graph walks + parses + monomorphizes ; runtime execution
+// lands later).
+fn read_to_string(path : &str) -> Result<i64, IoError> {
+    // Stage-0 placeholder : opens + closes the file, reports the open
+    // error if any. The full read-loop + UTF-8 validation lands once
+    // the deferred-ABI slice is in flight (see § STAGE-0 4 + DECISIONS
+    // T11-D76 § DEFERRED). Result-payload is i64-handle-style sentinel
+    // until String fat-pointer lifting lands at the recognizer level.
+    let opened = fs::open(path, open_read()) ;
+    if opened == -1 {
+        Err(io_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        let _ = fs::close(opened) ;
+        Ok(opened)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : open a file in read-only mode + close it.
+// Demonstrates the full open + close cycle through the typed surface.
+fn _example_open_then_close(path : &str) -> Result<i32, IoError> {
+    let handle = fs::open(path, open_read()) ;
+    if handle == -1 {
+        Err(IoError::NotFound)
+    } else {
+        let r = fs::close(handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(IoError::Other(0))
+        }
+    }
+}
+
+// Worked example : create + write + close. The classic "write a temp
+// file" pattern. Real runtime-execution depends on the deferred-ABI
+// slice ; the SURFACE flows through the pipeline as expected.
+fn _example_create_write_close(path : &str, payload_ptr : i64, payload_len : i64) -> Result<i64, IoError> {
+    let h = fs::open(path, 18) ;  // OPEN_WRITE | OPEN_CREATE = 2 | 16 = 18
+    if h == -1 {
+        Err(IoError::PermissionDenied)
+    } else {
+        let n = fs::write(h, payload_ptr, payload_len) ;
+        let _ = fs::close(h) ;
+        if n < 0 {
+            Err(IoError::WriteZero)
+        } else {
+            Ok(n)
+        }
+    }
+}
+
+// Worked example : the IoError-sum-type round-trip. Demonstrates the
+// dispatch from cssl-rt's i32 error code into the typed `IoError`
+// sum-type. Uses B2's sum-type recognizer for the constructor calls.
+fn _example_io_error_dispatch(kind : i32) -> IoError {
+    if kind == 1 {
+        IoError::NotFound
+    } else {
+        if kind == 2 {
+            IoError::PermissionDenied
+        } else {
+            IoError::Other(kind)
+        }
+    }
+}

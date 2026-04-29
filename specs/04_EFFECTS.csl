@@ -181,6 +181,49 @@
       Mac        : Metal HUD + mach_absolute_time
   composition with {Audit<d>} : signed-ring ≡ runtime-witness of contracts
 
+§ IO-EFFECT (S6-B5 / T11-D76 — file I/O surface within {IO} catch-all)
+  thesis : the {IO} effect (line 25 above, BUILT-IN EFFECTS § resource +
+           timing) covers OS file / net / clock operations. S6-B5 lands
+           the file-I/O surface within {IO} ; net + clock follow as
+           later slices.
+  surface :
+    fn open(path : &str, flags : i32) -> Result<File, IoError> / {IO}
+    fn close(file : File) -> Result<(), IoError> / {IO}
+    fn read(file : File, buf : &mut [u8]) -> Result<usize, IoError> / {IO}
+    fn write(file : File, bytes : &[u8]) -> Result<usize, IoError> / {IO}
+    fn write_all(file : File, bytes : &[u8]) -> Result<(), IoError> / {IO}
+    fn read_to_string(path : &str) -> Result<String, IoError> / {IO}
+  MIR threading :
+    each fs op recognized by `cssl_mir::body_lower` lowers to a
+    `cssl.fs.<verb>` MIR op (T11-D76, S6-B5). Each op carries the
+    `(io_effect, "true")` attribute as the stage-0 marker that {IO}
+    is active on this op. The structural `MirEffectRow` attribute on
+    the parent fn is deferred (DECISIONS T11-D76 § DEFERRED). At stage-0
+    capability + audit walkers iterate over ops with `io_effect ==
+    "true"` to find IO-touching MIR.
+  cssl-rt FFI :
+    `cssl.fs.open / read / write / close` lower to `__cssl_fs_open /
+    _read / _write / _close` symbols exposed by `cssl-rt` (T11-D76).
+    Renaming either side requires a major-version bump per
+    DECISIONS T11-D76 ABI-stability invariant.
+  IoError sum-type :
+    canonical variants : NotFound / PermissionDenied / AlreadyExists /
+                         InvalidInput / Interrupted / UnexpectedEof /
+                         WriteZero / Other(i32)
+    discriminants STABLE from S6-B5 (cssl-rt::io::io_error_code mirror).
+  open-flag bitset :
+    OPEN_READ / OPEN_WRITE / OPEN_READ_WRITE / OPEN_APPEND / OPEN_CREATE
+    / OPEN_CREATE_NEW / OPEN_TRUNCATE — STABLE bit-values from S6-B5.
+  composition :
+    {IO} ⊎ {NoAlloc} : permitted ; fs ops use a caller-supplied buffer
+                       (no heap-alloc inside fs.cssl by-default)
+    {IO} ⊎ {Realtime<Crit>} : allowed but discouraged ; OS fs syscalls
+                              do not honor real-time priority bounds
+    {IO} ⊎ {Sensitive<"path-leak">} : compile-error unless paired with
+                                       audit-policy + Privilege<level>
+    {IO} ⊎ {PureDet} : compile-error (fs ops are inherently
+                       non-deterministic between runs)
+
 § ERROR HANDLING
   Result<T, E>  canonical (Rust-lineage)
   ? operator    propagate Result::Err
