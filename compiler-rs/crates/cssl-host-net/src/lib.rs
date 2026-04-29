@@ -731,6 +731,30 @@ pub const ATTESTATION: &str =
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Crate-shared test lock.
+    ///
+    /// Tests in this module touch process-global state (`cssl_rt::net::caps_*`,
+    /// `last_net_error_*`, the new T11-D152 process-pinned WSAStartup state)
+    /// and must serialize. Without this lock, tests like
+    /// `caps_default_loopback_only` (which transiently grants then revokes
+    /// `NET_CAP_INBOUND`) can race with `tcp_listener_bind_any_without_
+    /// inbound_cap_denied` (which expects bind to ANY:0 to fail with
+    /// `CapDenied` under default caps).
+    static NET_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Acquire the shared test lock and reset cssl-rt net state. Mirrors
+    /// the cssl-rt-internal `test_helpers::lock_and_reset_all` pattern but
+    /// scoped to the cssl-host-net test binary (which runs in its own
+    /// process and does not share globals with cssl-rt's test binary).
+    fn lock_and_reset_net() -> MutexGuard<'static, ()> {
+        let g = NET_TEST_LOCK
+            .lock()
+            .expect("cssl-host-net shared test lock poisoned");
+        cssl_rt::net::reset_net_for_tests();
+        g
+    }
 
     #[test]
     fn version_present() {
@@ -773,10 +797,12 @@ mod tests {
 
     #[test]
     fn caps_default_loopback_only() {
-        // Reset to default before checking the natural posture.
-        // We avoid touching the global lock here ; just verify the
-        // default cap-set contains LOOPBACK and NOT OUTBOUND/INBOUND.
-        cssl_rt::net::reset_net_for_tests();
+        // T11-D152 : MUST hold NET_TEST_LOCK because this test transiently
+        // grants then revokes NET_CAP_INBOUND and NET_CAP_OUTBOUND ; without
+        // the lock, parallel cap-checking tests (e.g.,
+        // `tcp_listener_bind_any_without_inbound_cap_denied`) can race and
+        // observe the transient grant.
+        let _g = lock_and_reset_net();
         assert!(caps::loopback_granted());
         // grant + revoke cycle.
         caps::grant_outbound();
@@ -791,7 +817,7 @@ mod tests {
 
     #[test]
     fn tcp_listener_bind_loopback_default_caps() {
-        cssl_rt::net::reset_net_for_tests();
+        let _g = lock_and_reset_net();
         let addr = SocketAddrV4::loopback(0);
         let listener = TcpListener::bind(addr).expect("loopback bind should succeed");
         let local = listener.local_addr().expect("local_addr");
@@ -801,7 +827,7 @@ mod tests {
 
     #[test]
     fn tcp_listener_bind_any_without_inbound_cap_denied() {
-        cssl_rt::net::reset_net_for_tests();
+        let _g = lock_and_reset_net();
         // Default caps : LOOPBACK only. Bind to 0.0.0.0 → CapDenied.
         let addr = SocketAddrV4::any(0);
         let r = TcpListener::bind(addr);
@@ -813,7 +839,7 @@ mod tests {
 
     #[test]
     fn tcp_stream_connect_to_non_loopback_without_outbound_cap_denied() {
-        cssl_rt::net::reset_net_for_tests();
+        let _g = lock_and_reset_net();
         // 8.8.8.8:53 — non-loopback, default caps → CapDenied.
         let addr = SocketAddrV4::from_octets(8, 8, 8, 8, 53);
         let r = TcpStream::connect(addr);
@@ -826,7 +852,7 @@ mod tests {
     #[test]
     fn tcp_loopback_full_roundtrip() {
         // Full high-level API roundtrip on Apocky's host.
-        cssl_rt::net::reset_net_for_tests();
+        let _g = lock_and_reset_net();
         let listener = TcpListener::bind(SocketAddrV4::loopback(0)).expect("bind");
         let bound = listener.local_addr().expect("local_addr");
         // Spawn a client thread that connects.
@@ -844,7 +870,7 @@ mod tests {
 
     #[test]
     fn net_error_from_last_translates_kind() {
-        cssl_rt::net::reset_net_for_tests();
+        let _g = lock_and_reset_net();
         cssl_rt::net::record_net_error(net_error_code::CONNECTION_REFUSED, 10061);
         let e = NetError::from_last();
         assert_eq!(e, NetError::ConnectionRefused);
@@ -852,7 +878,7 @@ mod tests {
 
     #[test]
     fn net_error_from_last_returns_other_with_os_code() {
-        cssl_rt::net::reset_net_for_tests();
+        let _g = lock_and_reset_net();
         cssl_rt::net::record_net_error(net_error_code::OTHER, 12345);
         let e = NetError::from_last();
         assert_eq!(e, NetError::Other(12345));

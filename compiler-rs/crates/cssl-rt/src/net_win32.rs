@@ -1,9 +1,10 @@
 //! § cssl-rt networking — Windows / Winsock2 platform layer (T11-D82, S7-F4).
 //!
 //! § ROLE
-//!   Hand-rolled Win32 syscall bindings for `WSAStartup` / `WSACleanup` /
-//!   `socket` / `bind` / `listen` / `accept` / `connect` / `send` /
-//!   `recv` / `sendto` / `recvfrom` / `closesocket` / `WSAGetLastError`.
+//!   Hand-rolled Win32 syscall bindings for `WSAStartup` / `socket` /
+//!   `bind` / `listen` / `accept` / `connect` / `send` / `recv` /
+//!   `sendto` / `recvfrom` / `closesocket` / `WSAGetLastError`.
+//!   `WSACleanup` is intentionally NOT bound — see § WSAStartup PROCESS-PIN.
 //!   Per the dispatch-plan landmines we deliberately avoid pulling in the
 //!   `windows-sys` crate at this slice — the FFI surface is small + stable
 //!   since Winsock 2.2, and the cssl-rt convention established at T11-D52
@@ -11,16 +12,26 @@
 //!   `extern "system"` declarations with each `unsafe` block carrying an
 //!   inline SAFETY paragraph".
 //!
-//! § WSAStartup REF-COUNTING  (‼ landmine)
-//!   `WSAStartup(MAKEWORD(2,2), &wsa_data)` MUST be matched 1:1 with
-//!   `WSACleanup()`. We ref-count internally so partial-init / re-entrant
-//!   cases are handled :
-//!     - first net op on a thread → atomic CAS bumps init-count from 0→1
-//!       AND invokes WSAStartup ; subsequent ops only bump the count.
-//!     - `cssl_net_close_impl` decrements the count ; when it reaches 0,
-//!       `WSACleanup` fires.
-//!   This matches the Winsock-best-practice pattern from MSDN and the
-//!   Rust stdlib's net module.
+//! § WSAStartup PROCESS-PIN  (T11-D152 ; was ref-counted, now process-pinned)
+//!   `WSAStartup(MAKEWORD(2,2), &wsa_data)` MUST be paired with `WSACleanup`
+//!   exactly when the process wants Winsock torn down. The previous design
+//!   ref-counted across socket-creates / closes and called `WSACleanup` once
+//!   the count reached zero — but the decrement-and-cleanup pair is not
+//!   atomic with respect to a concurrent `socket()` syscall on another
+//!   thread, opening a race window where `socket()` can return
+//!   `WSANOTINITIALISED` mid-`WSACleanup`.
+//!
+//!   The current design (T11-D152) replaces ref-counting with **process-pin**:
+//!   the first net op invokes `WSAStartup` exactly once via `std::sync::Once`
+//!   and the result is cached in a static atomic. Subsequent ops branch on
+//!   the cached result. **`WSACleanup` is never called** — the OS reclaims
+//!   Winsock state at process exit. This is the canonical pattern used by
+//!   most production Winsock applications (and matches Rust stdlib's
+//!   approach in its net module).
+//!
+//!   The pin is invisible to user code, eliminates the parallel-test race
+//!   entirely, and makes `cargo test` safe under default parallelism without
+//!   `--test-threads=1`.
 //!
 //! § WIN32 ABI NOTES
 //!   - `SOCKET` = pointer-sized integer (`UINT_PTR`) ; we model as `usize`
@@ -47,10 +58,10 @@
 //!
 //! § PRIME-DIRECTIVE
 //!   See `crate::net` doc-block for the full attestation. Win32-specific
-//!   note : `WSAStartup` / `WSACleanup` are local to the process — they
-//!   create no externally-observable side-effects beyond the documented
-//!   socket-API initialization. There is no telemetry, no phone-home, no
-//!   covert channel.
+//!   note : `WSAStartup` is local to the process — it creates no
+//!   externally-observable side-effects beyond the documented socket-API
+//!   initialization. There is no telemetry, no phone-home, no covert
+//!   channel.
 
 #![allow(unsafe_code)]
 // Win32 type aliases (SOCKET / DWORD / LPVOID) and constant names
@@ -60,6 +71,7 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use core::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Once;
 
 use crate::net::{
     check_caps_for_addr, net_error_code, record_accept, record_connect, record_listen,
@@ -195,7 +207,8 @@ const _: () = assert!(core::mem::size_of::<BOOL>() == BOOL_LEN as usize);
 #[link(name = "ws2_32")]
 extern "system" {
     fn WSAStartup(w_version_requested: WORD, lp_wsa_data: *mut WSADATA) -> c_int;
-    fn WSACleanup() -> c_int;
+    // `WSACleanup` intentionally not declared — T11-D152 process-pin design
+    // never calls it ; the OS reclaims Winsock state at process exit.
     fn WSAGetLastError() -> c_int;
 
     fn socket(af: c_int, kind: c_int, protocol: c_int) -> SOCKET;
@@ -238,25 +251,52 @@ extern "system" {
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// § WSAStartup ref-count.
+// § WSAStartup process-pin (T11-D152).
 //
-//   Stage-0 stores the count as a global atomic. Multi-thread access is
-//   safe via fetch-add ; the actual `WSAStartup` call is gated behind a
-//   compare-exchange so only one thread fires it.
+//   The previous design ref-counted WSAStartup / WSACleanup across socket
+//   creates / closes. The decrement-and-`WSACleanup` pair is not atomic
+//   with respect to a concurrent `socket()` syscall on another thread,
+//   which opened a race window where parallel tests could observe
+//   `WSANOTINITIALISED` mid-cleanup.
+//
+//   Process-pin design : `WSAStartup` is called exactly once per process
+//   via `std::sync::Once` ; the result (success / failure code) is
+//   memoized in `WSA_INIT_RESULT`. **`WSACleanup` is never called** —
+//   the OS reclaims Winsock state at process exit. This is the canonical
+//   pattern used by most production Winsock applications.
+//
+//   Race-free properties :
+//     - WSAStartup is invoked at most once across the process lifetime
+//       (Once guarantee — reentrancy-safe + memory-fenced).
+//     - All callers after the first synchronize-with the initialization
+//       through Once's release/acquire fence (no torn reads of the result).
+//     - There is no decrement path, so no `socket()` can ever race with
+//       `WSACleanup` (because `WSACleanup` is never called).
 // ───────────────────────────────────────────────────────────────────────
 
-static WSA_INIT_COUNT: AtomicI32 = AtomicI32::new(0);
+/// Sentinel signalling `WSA_INIT_RESULT` has not yet been written by the
+/// `Once::call_once` initializer. Distinguishable from `0` (success) and
+/// from any non-zero `WSAStartup` error code (10000-10100 range).
+const WSA_INIT_RESULT_UNSET: i32 = i32::MIN;
 
-/// Ensure WSA has been started at least once on this process. Returns
-/// `Ok(())` on success, `Err(canonical-net-error)` on WSAStartup failure.
+/// Process-wide state guarding the single `WSAStartup` call.
+static WSA_PROCESS_INIT: Once = Once::new();
+
+/// Result of the single `WSAStartup` call : `0` on success, the raw
+/// non-zero return code on failure, or `WSA_INIT_RESULT_UNSET` before
+/// initialization. Read by every net op after the `Once` fires.
+static WSA_INIT_RESULT: AtomicI32 = AtomicI32::new(WSA_INIT_RESULT_UNSET);
+
+/// Ensure WSA has been started on this process. Returns `Ok(())` if
+/// `WSAStartup` succeeded (now or on a prior call), `Err(canonical-
+/// net-error)` if `WSAStartup` failed.
 ///
 /// This is called by every net op that touches the Winsock surface.
-/// Thread-safe via an atomic compare-exchange : only the thread that
-/// transitions the count from `0 → 1` actually invokes `WSAStartup`.
-fn ensure_wsa_started() -> Result<(), i32> {
-    let prev = WSA_INIT_COUNT.fetch_add(1, Ordering::AcqRel);
-    if prev == 0 {
-        // First caller — actually invoke WSAStartup.
+/// Thread-safe and race-free : `Once::call_once` serializes the actual
+/// `WSAStartup` invocation across all threads, and the cached result
+/// is read-only after that point. There is no decrement / cleanup path.
+fn ensure_wsa_process_pinned() -> Result<(), i32> {
+    WSA_PROCESS_INIT.call_once(|| {
         let mut wsa_data = WSADATA {
             w_version: 0,
             w_high_version: 0,
@@ -268,35 +308,39 @@ fn ensure_wsa_started() -> Result<(), i32> {
         };
         // SAFETY : WSADATA fully initialized to zero ; WSAStartup will
         // populate it with version + capability info. Per MSDN the call
-        // is thread-safe.
+        // is thread-safe ; Once::call_once additionally guarantees we
+        // run exactly one initializer across all threads.
         let r = unsafe { WSAStartup(WINSOCK_VERSION_2_2, &mut wsa_data) };
-        if r != 0 {
-            // Roll back the count we just incremented.
-            WSA_INIT_COUNT.fetch_sub(1, Ordering::AcqRel);
-            return Err(net_error_code::NOT_INITIALIZED);
-        }
-    }
-    Ok(())
-}
-
-/// Decrement the WSA init-count. When the count reaches 0, invoke
-/// `WSACleanup`. Idempotent ; safe to call from `cssl_net_close_impl`
-/// once per closed socket.
-fn release_wsa_started() {
-    let prev = WSA_INIT_COUNT.fetch_sub(1, Ordering::AcqRel);
-    if prev == 1 {
-        // Last release — invoke WSACleanup. Best-effort ; we don't
-        // surface the return value because we're already in cleanup.
-        // SAFETY : WSACleanup has no preconditions beyond a prior
-        // matching WSAStartup, which we just balanced.
-        let _ = unsafe { WSACleanup() };
+        WSA_INIT_RESULT.store(r, Ordering::Release);
+    });
+    // Once::call_once provides the acquire fence pairing with the Release
+    // store above ; the load below sees the initializer's result.
+    let r = WSA_INIT_RESULT.load(Ordering::Acquire);
+    if r == 0 {
+        Ok(())
+    } else {
+        // Either WSAStartup returned non-zero, or the load happened before
+        // the Once finished (impossible per call_once's synchronization,
+        // but treat any non-zero value as initialization failure).
+        Err(net_error_code::NOT_INITIALIZED)
     }
 }
 
-/// Read the current WSA init-count. Test-only diagnostic.
+/// Test-only diagnostic : `true` once the process has successfully
+/// invoked `WSAStartup` ; `false` if the initialization has not yet run
+/// or returned non-zero.
+#[doc(hidden)]
+pub fn wsa_process_pinned_for_tests() -> bool {
+    WSA_PROCESS_INIT.is_completed() && WSA_INIT_RESULT.load(Ordering::Acquire) == 0
+}
+
+/// Backwards-compatible diagnostic : returns `1` once the process has
+/// pinned a successful `WSAStartup`, `0` otherwise. Pre-T11-D152 callers
+/// expected a ref-count ; under process-pin the count is always 0 or 1
+/// (steady-state 1 once any net op has run).
 #[doc(hidden)]
 pub fn wsa_init_count_for_tests() -> i32 {
-    WSA_INIT_COUNT.load(Ordering::Acquire)
+    i32::from(wsa_process_pinned_for_tests())
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -433,28 +477,27 @@ pub unsafe fn cssl_net_socket_impl(flags: i32) -> i64 {
         record_net_error(kind, 0);
         return INVALID_SOCKET;
     }
-    if let Err(kind) = ensure_wsa_started() {
+    if let Err(kind) = ensure_wsa_process_pinned() {
         record_net_error(kind, 0);
         return INVALID_SOCKET;
     }
     let (kind_param, proto) = translate_sock_flags(flags);
     // SAFETY : `socket` accepts well-known c_int constants ; WSAStartup
-    // has been invoked.
+    // has been invoked (process-pinned via Once).
     let s = unsafe { socket(AF_INET, kind_param, proto) };
     if s == WIN_INVALID_SOCKET {
         // SAFETY : WSAGetLastError thread-local read.
         let err = unsafe { WSAGetLastError() };
         let canonical = translate_winsock_error(err);
         record_net_error(canonical, err);
-        // Roll back the WSA ref-count we took at the top.
-        release_wsa_started();
+        // T11-D152 : no ref-count to roll back ; WSAStartup is pinned.
         return INVALID_SOCKET;
     }
     if let Err(canonical) = apply_sock_options(s, flags) {
         // SAFETY : s is the just-created socket ; closesocket releases it.
         let _ = unsafe { closesocket(s) };
         record_net_error(canonical, 0);
-        release_wsa_started();
+        // T11-D152 : no ref-count to roll back ; WSAStartup is pinned.
         return INVALID_SOCKET;
     }
     record_socket();
@@ -557,9 +600,11 @@ pub unsafe fn cssl_net_accept_impl(socket_handle: i64) -> i64 {
         record_net_error(translate_winsock_error(err), err);
         return INVALID_SOCKET;
     }
-    // The new socket inherits the listening socket's WSA-ref ; we add one
-    // for it independently so close-balance works.
-    if let Err(kind) = ensure_wsa_started() {
+    // T11-D152 : WSAStartup is process-pinned, so any successful accept
+    // already runs against a started Winsock. The pin call below is a
+    // no-op-after-first-call but kept for invariant clarity : every code
+    // path that returns a socket has gone through `ensure_wsa_process_pinned`.
+    if let Err(kind) = ensure_wsa_process_pinned() {
         // SAFETY : new_sock is the just-accepted socket.
         let _ = unsafe { closesocket(new_sock) };
         record_net_error(kind, 0);
@@ -877,9 +922,8 @@ pub unsafe fn cssl_net_close_impl(socket_handle: i64) -> i64 {
     let s = socket_handle as SOCKET;
     // SAFETY : socket assumed valid by caller contract.
     let r = unsafe { closesocket(s) };
-    // Always release the WSA ref-count, even if closesocket failed —
-    // we incremented it on creation.
-    release_wsa_started();
+    // T11-D152 : WSAStartup is process-pinned ; no per-socket release.
+    // The OS reclaims Winsock state at process exit.
     if r == SOCKET_ERROR {
         let err = unsafe { WSAGetLastError() };
         record_net_error(translate_winsock_error(err), err);
@@ -1056,17 +1100,27 @@ mod tests {
     }
 
     #[test]
-    fn socket_create_then_close_balances_wsa_count() {
+    fn socket_create_pins_wsa_and_close_does_not_release() {
+        // T11-D152 : process-pin replaces ref-count. The first socket
+        // creation pins WSAStartup ; subsequent close does NOT decrement.
+        // The pin is permanent for the process lifetime.
         let _g = crate::test_helpers::lock_and_reset_all();
-        let initial = wsa_init_count_for_tests();
         // SAFETY : SOCK_TCP is a valid flag.
         let s = unsafe { cssl_net_socket_impl(SOCK_TCP) };
         assert_ne!(s, INVALID_SOCKET, "TCP socket creation should succeed");
-        assert_eq!(wsa_init_count_for_tests(), initial + 1);
+        assert!(
+            wsa_process_pinned_for_tests(),
+            "WSA should be pinned after first socket op"
+        );
         // SAFETY : valid socket.
         let r = unsafe { cssl_net_close_impl(s) };
         assert_eq!(r, 0);
-        assert_eq!(wsa_init_count_for_tests(), initial);
+        assert!(
+            wsa_process_pinned_for_tests(),
+            "WSA must remain pinned after close (no WSACleanup is called)"
+        );
+        // Backwards-compat shim : the legacy count returns 1 once pinned.
+        assert_eq!(wsa_init_count_for_tests(), 1);
     }
 
     #[test]
@@ -1336,5 +1390,85 @@ mod tests {
             );
         }
         let _ = unsafe { cssl_net_close_impl(s) };
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-D152 — process-pin parallel-safety regression tests.
+    //
+    //   These tests verify the WSAStartup process-pin invariant under
+    //   concurrent access. They MUST pass under default `cargo test`
+    //   parallelism (no `--test-threads=1`).
+    //
+    //   The previous ref-count design failed these scenarios with
+    //   `WSANOTINITIALISED` (canonical kind `NOT_INITIALIZED`) when
+    //   one thread's `release_wsa_started` raced with another thread's
+    //   `socket()` syscall mid-`WSACleanup`.
+    // ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn ensure_wsa_process_pinned_idempotent_under_concurrent_callers() {
+        // 32 threads each call `ensure_wsa_process_pinned` 100× ; every
+        // call must return Ok(()) and the pin state must be true throughout.
+        // No WSACleanup ever runs, so no race is possible.
+        const THREADS: usize = 32;
+        const ITERS: usize = 100;
+        let _g = crate::test_helpers::lock_and_reset_all();
+        let handles: Vec<_> = (0..THREADS)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    for _ in 0..ITERS {
+                        ensure_wsa_process_pinned()
+                            .expect("ensure_wsa_process_pinned must succeed");
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("worker thread");
+        }
+        assert!(
+            wsa_process_pinned_for_tests(),
+            "process must remain pinned after concurrent stress"
+        );
+    }
+
+    #[test]
+    fn parallel_socket_create_close_never_observes_not_initialized() {
+        // Stress regression : N threads each create and close TCP sockets
+        // M times ; under the old ref-count design, a fraction of these
+        // would observe NOT_INITIALIZED because of the WSACleanup race.
+        // Under T11-D152 process-pin, every socket creation must succeed.
+        const THREADS: usize = 8;
+        const ITERS: usize = 50;
+        let _g = crate::test_helpers::lock_and_reset_all();
+
+        // Pre-pin so the first thread doesn't carry the cost of WSAStartup.
+        ensure_wsa_process_pinned().expect("pre-pin");
+
+        let handles: Vec<_> = (0..THREADS)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    for _ in 0..ITERS {
+                        // SAFETY : SOCK_TCP is a valid flag.
+                        let s = unsafe { cssl_net_socket_impl(SOCK_TCP) };
+                        assert_ne!(
+                            s, INVALID_SOCKET,
+                            "socket creation must not observe NOT_INITIALIZED \
+                             under parallel stress (T11-D152 regression)"
+                        );
+                        // SAFETY : just-created socket.
+                        let r = unsafe { cssl_net_close_impl(s) };
+                        assert_eq!(r, 0, "close must succeed");
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("worker thread");
+        }
+        assert!(
+            wsa_process_pinned_for_tests(),
+            "WSA pin must persist after parallel create/close stress"
+        );
     }
 }
