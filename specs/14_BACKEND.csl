@@ -76,6 +76,47 @@
     bind_resources, dispatch/draw, submit, wait,
     telemetry_capture, sysman_query
 
+§ AUDIO HOST BACKENDS (S7-F3 / T11-D81 — render-only stage-0)
+  scope : output (render) only at stage-0 ; capture (microphone) DEFERRED
+          per PRIME-DIRECTIVE consent + UI-affordance gate
+  WASAPI       : stage0 windows-rs | stage1+ owned FFI
+                 IAudioClient + IAudioRenderClient
+                 shared-mode (mix-format negotiation) + exclusive-mode
+                 thread-affinity contract : caller must CoInitializeEx
+  ALSA         : stage0 hand-rolled FFI via libloading
+                 (libasound.so.2 + libpulse.so.0 dynamic-load)
+                 PulseAudio preferred when libpulse.so.0 present
+                 fallback ALSA direct when PA absent
+                 gate-skip when neither installed
+  CoreAudio    : stage0 hand-rolled FFI via libloading
+                 (AudioToolbox.framework + CoreAudio.framework)
+                 AudioComponentInstance + AudioUnit (default-output)
+                 macOS only (cfg-gated)
+  per-backend adapter-layer shared-interface :
+    open_default_output, query_format,
+    submit_frames (push-mode), poll_padding,
+    close, last_error
+  sample-format canonical : f32 interleaved channels
+    platform layer converts to/from device-native-format at boundary
+  ring-buffer : deterministic latency budget
+    default 256-frame @ 48kHz = 5.3ms
+    configurable via AudioStreamConfig.frame_buffer_size
+  underrun policy :
+    poll padding via platform-specific API (WASAPI : GetCurrentPadding ;
+      ALSA : snd_pcm_avail_update ; CoreAudio : output-callback timing)
+    emit AudioEvent::Underrun (telemetry-ring placeholder) — never silent-drop
+  sample-rate negotiation :
+    request → device-format query → if mismatch + can't negotiate :
+      fail-loud (AudioError::SampleRateMismatch)
+    linear-resample at boundary DEFERRED to stdlib DSP slice
+  capture-mode (DEFERRED — PRIME-DIRECTIVE) :
+    rationale — microphone-input is surveillance-adjacent
+    explicit consent + UI-affordance not yet designed
+    capture path WILL be implemented behind {Sensitive<"microphone">}
+      effect + audit-policy gate when UI-affordance lands
+    audio-loopback to system-output-recording is FORBIDDEN per PRIME-DIRECTIVE
+  DSP primitives : NONE at stage-0 (deferred to stdlib slice post-F)
+
 § BACKEND-MATRIX (ref §§ 00 + §§ 10)
   backend     graphics  compute   RT      XMX        power      scope
   Vulkan-1.4  ✓         ✓         ✓       via-coop   advisory   portable
