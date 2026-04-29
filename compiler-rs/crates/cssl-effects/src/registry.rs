@@ -675,10 +675,11 @@ mod tests {
 
     #[test]
     fn registry_total_with_substrate_rows() {
-        // 32 base + 3 substrate = 35.
+        // 32 base + 2 IFC (D129 OnDeviceOnly + Net) + 3 Substrate (D127)
+        // + 5 Conservation/Cosmology (D128) = 42.
         let r = EffectRegistry::with_builtins();
         assert_eq!(r.len(), BUILTIN_METADATA.len());
-        assert_eq!(r.len(), 35);
+        assert_eq!(r.len(), 42);
     }
 
     #[test]
