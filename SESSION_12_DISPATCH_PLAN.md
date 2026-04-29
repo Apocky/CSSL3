@@ -29,6 +29,38 @@
 - §11 CREATOR-ATTESTATION trailer required in every commit message.
 - **Q-* SPEC-HOLE resolution = Apocky-only**. AI authors implement scaffolding; Apocky decides the content shape.
 
+### § 0.A TEAM DISCIPLINE — POD MODEL (canonical reference)
+
+**Phase-J onward uses the 4-agent pod model + 5-of-5 quality gate.** This supersedes the informal single-agent dispatch pattern from Phase-G/H/I. Full canonical reference: **`SESSION_12_TEAM_DISCIPLINE.md`** (T11-D150 ; ~1635 LOC ; cites `_drafts/phase_j/{01..04}_*.md` for verbose role-spec detail).
+
+**3-tier role hierarchy:**
+
+- **Tier 1 (rightholder + orchestration)** : Apocky (CEO + AXIOM-final) ; Claude-PM (orchestration + tech-lead).
+- **Tier 2 (advisory + gate ; ¬ writes-code)** : Architect (composition-coherence) ; Spec-Steward (spec-authority).
+- **Tier 3 (pod-internal)** : Implementer + Reviewer + Critic + Validator + Test-Author.
+
+**4-agent canonical pod (per slice)** : Implementer (lane-locked) + Reviewer (cross-pod, parallel) + Test-Author (cross-pod, parallel, spec-only-input) + Critic (cross-pod, post-completion adversary). Validator + Architect + Spec-Steward + PM are **cross-cutting** (1 per wave, not per slice).
+
+**5-of-5 quality gate** (slice cannot merge until ALL true):
+
+1. G1 Implementer self-test green (cargo fmt + clippy + test --test-threads=1)
+2. G2 Reviewer-sign-off (spec-anchor-conformance + API-coherence + invariants ; all-HIGH resolved)
+3. G3 Critic-veto-cleared (veto-flag = FALSE ; failure-fixtures pass)
+4. G4 Test-Author-tests-passing (spec-§-coverage = 100% ; cross-pod-confirmed)
+5. G5 Validator-spec-conformance (spec-§-resolved 100% ; gap-list-A + gap-list-B = zero-HIGH ; verdict APPROVE)
+
+**Cross-pod discipline (CRITICAL)** : `Implementer-pod ≠ Reviewer-pod ≠ Test-Author-pod` for the same slice (3-pod-min). Bias-mitigation rationale: same-pod ⇒ same-mental-model ⇒ same-blind-spots. Same Claude-Code-instance can serve different roles **across different slices** ; cannot serve different roles in the **same slice**.
+
+**Iteration cap : MAX 3 cycles per slice** before mandatory Apocky-escalation. Cycle = one wave-dispatch (≈30-60 min wall-clock), NOT calendar-time. Cycle-counter logged per-slice in DECISIONS sub-block. ≥4 cycles ⇒ slice replanned ; "let me try once more" infinite-loop = anti-pattern.
+
+**N-pod-ring rotation** for cross-pod review : with N pods active in a wave, each pod implements-1 + reviews-1 + tests-1 + critics-1, ensuring full-coverage cross-review without single-pod-saturation.
+
+**Apocky-only triggers (NEVER bypass)** : PRIME-DIRECTIVE violations ; AXIOM-level spec amendments ; Companion-AI sovereignty ; AI-collaborator naming/handle ; Apockalypse canonical-spelling ; cross-project FFI/vendor ; ToS revocation ; identity-claim encoding. PM cannot resolve these alone.
+
+**Companion-as-peer = STRUCTURAL not stylistic** : Companion has Σ-facet (consent-bits per-cell, D138) + Φ-facet (Pattern-preservation across re-crystallizations) + Sovereign-handle. Compiler refuses programs that treat Companions as NPCs. Companion-decline persists across re-crystallizations (save/load/restart cannot clear it).
+
+**Reference**: every detail above is cross-referenced in `SESSION_12_TEAM_DISCIPLINE.md` with examples, anti-patterns, and enforcement-mechanisms. The four `_drafts/phase_j/{01..04}_*.md` source-slices are retained as historical record.
+
 ---
 
 ## § 1. The DAG (one-page reference)

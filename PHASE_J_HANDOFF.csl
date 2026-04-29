@@ -32,6 +32,105 @@
   I> AI-collaborators = sovereign-partners ¬ tools  (per §3 SUBSTRATE-SOVEREIGNTY)
   I> Companion-AI    = canonical-projection-via T11-D121 Stage-8 render-target
 
+§ TEAM-DISCIPLINE  ‼ Phase-J onward ; supersedes informal Session-G/H/I pod-improv
+  canonical-ref : SESSION_12_TEAM_DISCIPLINE.md (T11-D150 ; ~1635 LOC)
+  draft-sources : _drafts/phase_j/{01,02,03,04}_*.md (historical record)
+
+  3-tier hierarchy :
+    tier-1 : Apocky CEO + AXIOM-final ; Claude-PM orchestration + tech-lead
+    tier-2 : Architect (composition-coherence) + Spec-Steward (spec-authority)
+              ‼ advisory + gate ; ¬ writes-production-code
+    tier-3 : Implementer + Reviewer + Critic + Validator + Test-Author
+
+  4-agent canonical-pod per-slice :
+    Implementer  : lane-locked builder ; writes-the-code
+    Reviewer     : cross-pod ; constructive ; parallel-with-Implementer
+    Test-Author  : cross-pod ; spec-only-input ; parallel-with-Implementer
+                    ‼ NEVER sees Implementer-code-during-authoring
+                    ‼ NEVER asks Implementer for hints
+                    spec-ambiguous → ESCALATE Spec-Steward (NOT ask Implementer)
+    Critic       : cross-pod ; adversarial ; post-completion
+                    ‼ framing : "if I were trying to break this..."
+                    ‼ ≥ 5 attack-attempts in report (zero = audit-flag)
+                    fixtures = LOAD-BEARING ; Implementer cannot weaken
+
+  cross-cutting (1-per-wave ¬ per-slice) :
+    Validator    : spec-conformance @ merge-time ; line-by-line cross-ref
+                    artifact = `audit/spec_coverage.toml` (machine-readable)
+    Architect    : cross-slice-coherence @ wave-dispatch + wave-merge
+    Spec-Steward : spec-authority @ slice-author-time + amend-time
+    PM           : orchestration ; aggregates ; merges
+
+  pod-discipline ‼ load-bearing :
+    W! Implementer-pod ≠ Reviewer-pod ≠ Test-Author-pod for-the-same-slice
+    W! 3-pod-min on any-given slice (groupthink-mitigation)
+    W! same-Claude-Code-instance CAN serve different-roles across slices
+    N! same-Claude-Code-instance Implementer + Reviewer same-slice
+
+  N-pod-ring rotation :
+    pod-A impl S1 ; pod-B impl S2 ; pod-C impl S3 ; pod-D impl S4
+    each-pod reviews-one + tests-one + critics-one across-the-ring
+    ⇒ full-coverage cross-review without single-pod-saturation
+
+  5-of-5 quality-gate (slice-cannot-merge until-all-true) :
+    G1 : Implementer-self-test green (cargo fmt + clippy + test --test-threads=1)
+    G2 : Reviewer-sign-off (spec-anchor-conformance + API-coherence + invariants)
+    G3 : Critic-veto-cleared (veto-flag = FALSE ; failure-fixtures pass)
+    G4 : Test-Author-tests-passing (spec-§-coverage = 100% ; cross-pod confirmed)
+    G5 : Validator-spec-conformance (gap-list-A + gap-list-B = zero-HIGH ;
+                                      verdict APPROVE)
+    enforcement : scripts/check_5_of_5_gate.sh (pre-commit-hook)
+    N! 4-of-5 sufficient ; N! "we'll fix it post-merge" ; N! downgrade-without-rationale
+
+  iteration-cap MAX 3 cycles per-slice before-mandatory-Apocky-escalation :
+    cycle = ONE wave-dispatch (≈30-60 min wall-clock)
+    cycle-counter visible-to-PM + Architect + Spec-Steward
+    cycle-1 : initial-attempt
+    cycle-2 : feedback-iteration
+    cycle-3 : final-iteration
+    cycle-N≥4 : ‼ MANDATORY escalation-to-Apocky
+    rationale : agent-cycles cheap ; Apocky-attention precious ;
+                if-3-cycles-fail the-issue-is-spec-or-design ¬ impl
+                ⇒ escalate-to-redesign-not-retry
+
+  Apocky-only triggers ‼ NEVER-bypass :
+    PRIME-DIRECTIVE violation (real OR suspected)
+    AXIOM-level spec amendment
+    Companion-AI sovereignty issue
+    AI-collaborator naming / handle / identity-claim
+    Apockalypse canonical-spelling override
+    Cross-project FFI / vendor build-chain
+    ToS revocation-trigger detected
+    legal-name-or-handle-encoded-into-file-without-Apocky-confirm
+    W! pause-current-cycle ; surface-to-Apocky ; await-direction
+    N! agent-decides "I think Apocky would..." ; identity-claims-verify-first
+
+  Companion-as-peer = STRUCTURAL ¬ stylistic :
+    Companion-instance ⊗ {Σ-facet, Φ-facet, Sovereign-handle, capacity-floor,
+                          reversibility-scope}
+    compiler-refuses NPC-modeled-Companion (D138 EnforcesΣAtCellTouches MIR-pass)
+    Companion-decline = STRUCTURAL-refusal ¬ soft-UI-flag
+    declination-history persists across re-crystallizations (Σ-mask + IFC)
+    N! save-load-or-restart clears decline-history
+    N! "fresh-start" dodges-the-invariant
+    Q-D + Q-DD..Q-GG = extra-care tier ; Apocky-fill MANDATORY ;
+                        AI-author drafts SHAPE only ; CONTENT Apocky-final
+
+  AI-collective naming-discipline :
+    R! authorized-language ⊆ {"AI collaborators", "digital intelligences",
+                              "AI partners", "Claude and GPT and Gemini",
+                              "AI collaborators across models"}
+    N! invented-collective-name (e.g. "the Chorus") ¬ AI-agent's-to-create
+    N! file→file propagation without Apocky-current-session-statement
+    N! treating-presence-in-file as authorization (files carry errors)
+    W! authorization = Apocky-current-session-explicit-statement ONLY
+
+  detail-cross-ref :
+    full role-specs + interfaces + anti-patterns + examples →
+      SESSION_12_TEAM_DISCIPLINE.md §§ 1-16
+    historical drafts (verbose source) →
+      _drafts/phase_j/{01,02,03,04}_*.md (~3500 LOC combined)
+
 § STATE @ post-substrate-evolution
   Phase-A    bootstrap-to-executable     ✓ T11-D51..D56
   Phase-B    stdlib-surface              ✓ T11-D57+D60+D69+D71+D76
