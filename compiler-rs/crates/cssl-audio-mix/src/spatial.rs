@@ -231,11 +231,7 @@ pub fn compute_distance_gain(distance: f32, params: AttenuationParams) -> f32 {
 /// projects velocities onto this axis and applies the standard
 /// closing-velocity formula. Clamps to [0.25, 4.0].
 #[must_use]
-pub fn compute_doppler(
-    source_velocity: Vec3,
-    listener_velocity: Vec3,
-    direction: Vec3,
-) -> f32 {
+pub fn compute_doppler(source_velocity: Vec3, listener_velocity: Vec3, direction: Vec3) -> f32 {
     if direction.length_squared() < 1e-12 {
         return 1.0;
     }
@@ -255,8 +251,8 @@ pub fn compute_doppler(
 #[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
-    use crate::voice::{MixerVoice, PlayParams, VoiceId};
     use crate::sound::{PcmData, PcmSource};
+    use crate::voice::{MixerVoice, PlayParams, VoiceId};
 
     fn make_voice(pos: Option<Vec3>, vel: Option<Vec3>) -> MixerVoice {
         let pcm = PcmData::silence(8, 48_000, 2).unwrap();
@@ -419,11 +415,7 @@ mod tests {
     #[test]
     fn doppler_clamps_to_4x() {
         // Supersonic source : velocity > speed of sound.
-        let pitch = compute_doppler(
-            Vec3::new(0.0, 0.0, -300.0),
-            Vec3::ZERO,
-            Vec3::FORWARD,
-        );
+        let pitch = compute_doppler(Vec3::new(0.0, 0.0, -300.0), Vec3::ZERO, Vec3::FORWARD);
         assert!(pitch <= 4.0);
         assert!(pitch >= 0.25);
     }
@@ -436,7 +428,10 @@ mod tests {
 
     #[test]
     fn determinism_same_inputs_same_pan() {
-        let voice = make_voice(Some(Vec3::new(5.0, 1.0, -3.0)), Some(Vec3::new(0.5, 0.0, 0.0)));
+        let voice = make_voice(
+            Some(Vec3::new(5.0, 1.0, -3.0)),
+            Some(Vec3::new(0.5, 0.0, 0.0)),
+        );
         let listener = Listener::at_origin();
         let p1 = SpatialPan::compute(&voice, &listener, 48_000, AttenuationParams::default());
         let p2 = SpatialPan::compute(&voice, &listener, 48_000, AttenuationParams::default());

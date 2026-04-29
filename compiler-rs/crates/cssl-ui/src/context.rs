@@ -248,10 +248,16 @@ impl Ui {
             _ => {}
         }
         match &event {
-            UiEvent::PointerDown { button: MouseButton::Left, .. } => {
+            UiEvent::PointerDown {
+                button: MouseButton::Left,
+                ..
+            } => {
                 self.state.primary_down = true;
             }
-            UiEvent::PointerUp { button: MouseButton::Left, .. } => {
+            UiEvent::PointerUp {
+                button: MouseButton::Left,
+                ..
+            } => {
                 self.state.primary_down = false;
                 // Release the active widget when primary releases anywhere.
                 self.state.clear_active();
@@ -292,7 +298,11 @@ impl Ui {
                     // of earlier containers in immediate-mode flow).
                     self.state.hovered = self.hit_test_entries(*position);
                 }
-                UiEvent::PointerDown { position, button: MouseButton::Left, .. } => {
+                UiEvent::PointerDown {
+                    position,
+                    button: MouseButton::Left,
+                    ..
+                } => {
                     if let Some(id) = self.hit_test_entries(*position) {
                         self.state.set_active(id);
                         // Focus moves to the activated widget if it's
@@ -306,7 +316,11 @@ impl Ui {
                         }
                     }
                 }
-                UiEvent::PointerUp { position, button: MouseButton::Left, .. } => {
+                UiEvent::PointerUp {
+                    position,
+                    button: MouseButton::Left,
+                    ..
+                } => {
                     if let Some(active) = self.state.active {
                         if let Some(hit) = self.hit_test_entries(*position) {
                             if hit == active && mark_pressed(&mut self.entries, active) {
@@ -320,7 +334,11 @@ impl Ui {
                     }
                     self.state.clear_active();
                 }
-                UiEvent::KeyDown { key, modifiers, repeat: _ } => {
+                UiEvent::KeyDown {
+                    key,
+                    modifiers,
+                    repeat: _,
+                } => {
                     if let Some(nav) = key_to_nav(*key, *modifiers) {
                         match nav {
                             NavKey::Tab => {
@@ -339,12 +357,11 @@ impl Ui {
                             }
                             NavKey::ArrowLeft | NavKey::ArrowDown => {
                                 if let Some(id) = self.state.focused {
-                                    if let Some(new_val) =
-                                        nudge_value(&mut self.entries, id, -1.0)
+                                    if let Some(new_val) = nudge_value(&mut self.entries, id, -1.0)
                                     {
                                         // Persist new slider value into retained store.
-                                        let max = read_entry_slider_max(&self.entries, id)
-                                            .unwrap_or(1.0);
+                                        let max =
+                                            read_entry_slider_max(&self.entries, id).unwrap_or(1.0);
                                         self.state.set(id, RetainedState::Range(new_val, max));
                                         changed += 1;
                                     }
@@ -352,11 +369,9 @@ impl Ui {
                             }
                             NavKey::ArrowRight | NavKey::ArrowUp => {
                                 if let Some(id) = self.state.focused {
-                                    if let Some(new_val) =
-                                        nudge_value(&mut self.entries, id, 1.0)
-                                    {
-                                        let max = read_entry_slider_max(&self.entries, id)
-                                            .unwrap_or(1.0);
+                                    if let Some(new_val) = nudge_value(&mut self.entries, id, 1.0) {
+                                        let max =
+                                            read_entry_slider_max(&self.entries, id).unwrap_or(1.0);
                                         self.state.set(id, RetainedState::Range(new_val, max));
                                         changed += 1;
                                     }
@@ -371,8 +386,7 @@ impl Ui {
                         if append_text(&mut self.entries, id, *ch) {
                             // Persist into retained store.
                             if let Some(text) = read_entry_text(&self.entries, id) {
-                                self.state
-                                    .set(id, RetainedState::Text(text.to_string()));
+                                self.state.set(id, RetainedState::Text(text.to_string()));
                             }
                             changed += 1;
                         }
@@ -415,7 +429,11 @@ impl Ui {
         let focused = self.state.focused == Some(entry.id);
         let active = self.state.active == Some(entry.id);
         match &entry.kind {
-            FrameEntryKind::Button { label, hovered: _, pressed: _ } => {
+            FrameEntryKind::Button {
+                label,
+                hovered: _,
+                pressed: _,
+            } => {
                 let face = if active {
                     theme.color(crate::theme::ThemeSlot::ButtonActive)
                 } else if hovered {
@@ -497,7 +515,13 @@ impl Ui {
                     theme.color(crate::theme::ThemeSlot::Foreground),
                 );
             }
-            FrameEntryKind::Slider { label, value, min, max, .. } => {
+            FrameEntryKind::Slider {
+                label,
+                value,
+                min,
+                max,
+                ..
+            } => {
                 // Track.
                 let track_rect = Rect::new(
                     Point::new(
@@ -577,7 +601,8 @@ impl Ui {
                         + theme.spacing.normal
                         + (text.chars().count() as f32) * theme.font.size_px * 0.5;
                     let caret_top = entry.frame.origin.y + theme.spacing.normal;
-                    let caret_bot = entry.frame.origin.y + entry.frame.size.h - theme.spacing.normal;
+                    let caret_bot =
+                        entry.frame.origin.y + entry.frame.size.h - theme.spacing.normal;
                     painter.stroke_line(
                         Point::new(caret_x, caret_top),
                         Point::new(caret_x, caret_bot),
@@ -663,7 +688,9 @@ impl Ui {
         let start_idx = self
             .entries
             .iter()
-            .rposition(|e| matches!(&e.kind, FrameEntryKind::ContainerStart { .. }) && e.id == popped.id)
+            .rposition(|e| {
+                matches!(&e.kind, FrameEntryKind::ContainerStart { .. }) && e.id == popped.id
+            })
             .expect("container start entry missing");
         let (container, style) = match &self.entries[start_idx].kind {
             FrameEntryKind::ContainerStart { container, style } => (container.clone(), *style),
@@ -696,8 +723,10 @@ impl Ui {
                 continue;
             }
             if let Some(slot) = slot_iter.next() {
-                entry.frame =
-                    Rect::new(container_origin.translate(slot.frame.origin), slot.frame.size);
+                entry.frame = Rect::new(
+                    container_origin.translate(slot.frame.origin),
+                    slot.frame.size,
+                );
             }
         }
         // Push a synthetic ContainerEnd marker.
@@ -716,13 +745,14 @@ impl Ui {
     }
 
     fn current_parent(&self) -> WidgetId {
-        self.container_stack
-            .last()
-            .map_or(WidgetId::ROOT, |e| e.id)
+        self.container_stack.last().map_or(WidgetId::ROOT, |e| e.id)
     }
 
     fn next_sibling_index(&mut self, type_tag: &'static str) -> u32 {
-        let entry = self.container_stack.last_mut().expect("container stack empty");
+        let entry = self
+            .container_stack
+            .last_mut()
+            .expect("container stack empty");
         entry.next_index(type_tag)
     }
 
@@ -748,10 +778,7 @@ impl Ui {
             self.state.set(id, RetainedState::Bool(false));
         }
         let hovered = self.state.hovered == Some(id);
-        let frame = Rect::new(
-            Point::ORIGIN,
-            self.measure_button(&label),
-        );
+        let frame = Rect::new(Point::ORIGIN, self.measure_button(&label));
         self.entries.push(FrameEntry {
             id,
             parent,
@@ -909,8 +936,7 @@ impl Ui {
             }
             Some(s) => s,
             None => {
-                self.state
-                    .set(id, RetainedState::Text(buffer.clone()));
+                self.state.set(id, RetainedState::Text(buffer.clone()));
                 buffer.clone()
             }
         };
@@ -963,12 +989,18 @@ impl Ui {
     fn measure_button(&self, label: &str) -> Size {
         let pad = self.theme.spacing.normal * 2.0;
         let glyph_w = self.theme.font.size_px * 0.55;
-        Size::new(label.chars().count() as f32 * glyph_w + pad, self.theme.font.size_px + pad)
+        Size::new(
+            label.chars().count() as f32 * glyph_w + pad,
+            self.theme.font.size_px + pad,
+        )
     }
 
     fn measure_label(&self, text: &str) -> Size {
         let glyph_w = self.theme.font.size_px * 0.55;
-        Size::new(text.chars().count() as f32 * glyph_w, self.theme.font.size_px + 4.0)
+        Size::new(
+            text.chars().count() as f32 * glyph_w,
+            self.theme.font.size_px + 4.0,
+        )
     }
 
     fn measure_checkbox(&self, label: &str) -> Size {
@@ -985,7 +1017,10 @@ impl Ui {
     }
 
     fn measure_text_input(&self) -> Size {
-        Size::new(160.0, self.theme.font.size_px + self.theme.spacing.normal * 2.0)
+        Size::new(
+            160.0,
+            self.theme.font.size_px + self.theme.spacing.normal * 2.0,
+        )
     }
 }
 
@@ -1062,7 +1097,10 @@ fn mark_pressed(entries: &mut [FrameEntry], id: WidgetId) -> bool {
 fn nudge_value(entries: &mut [FrameEntry], id: WidgetId, delta: f32) -> Option<f32> {
     for entry in entries {
         if entry.id == id {
-            if let FrameEntryKind::Slider { value, min, max, .. } = &mut entry.kind {
+            if let FrameEntryKind::Slider {
+                value, min, max, ..
+            } = &mut entry.kind
+            {
                 let step = (*max - *min) * 0.05;
                 *value = (*value + delta * step).clamp(*min, *max);
                 return Some(*value);
@@ -1184,7 +1222,10 @@ mod tests {
     #[test]
     fn ui_new_default_theme() {
         let ui = Ui::default();
-        assert_eq!(ui.theme().container_padding, Theme::dark().container_padding);
+        assert_eq!(
+            ui.theme().container_padding,
+            Theme::dark().container_padding
+        );
     }
 
     #[test]
@@ -1205,9 +1246,10 @@ mod tests {
         // explicit start ; only begin_frame's synthetic root counts).
         // Actually we don't push a synthetic root entry — only an
         // implicit top-level frame state. So 1 entry after button.
-        assert!(ui.entries.iter().any(
-            |e| matches!(&e.kind, FrameEntryKind::Button { label, .. } if label == "Save")
-        ));
+        assert!(ui
+            .entries
+            .iter()
+            .any(|e| matches!(&e.kind, FrameEntryKind::Button { label, .. } if label == "Save")));
     }
 
     #[test]
@@ -1220,9 +1262,10 @@ mod tests {
     fn ui_label_records_entry() {
         let mut ui = fresh_ui();
         ui.label("Status: OK");
-        assert!(ui.entries.iter().any(
-            |e| matches!(&e.kind, FrameEntryKind::Label { text } if text == "Status: OK")
-        ));
+        assert!(ui
+            .entries
+            .iter()
+            .any(|e| matches!(&e.kind, FrameEntryKind::Label { text } if text == "Status: OK")));
     }
 
     #[test]
@@ -1278,8 +1321,16 @@ mod tests {
         ui.button("OK");
         ui.label("Hello");
         ui.container_end();
-        let cs = ui.entries.iter().filter(|e| matches!(&e.kind, FrameEntryKind::ContainerStart { .. })).count();
-        let ce = ui.entries.iter().filter(|e| matches!(&e.kind, FrameEntryKind::ContainerEnd)).count();
+        let cs = ui
+            .entries
+            .iter()
+            .filter(|e| matches!(&e.kind, FrameEntryKind::ContainerStart { .. }))
+            .count();
+        let ce = ui
+            .entries
+            .iter()
+            .filter(|e| matches!(&e.kind, FrameEntryKind::ContainerEnd))
+            .count();
         assert_eq!(cs, 1);
         assert_eq!(ce, 1);
     }
@@ -1339,7 +1390,10 @@ mod tests {
         ui.begin_frame(Size::new(200.0, 200.0));
         let clicked = ui.button("Save");
         let _ = ui.end_frame(&mut p);
-        assert!(clicked, "button should report click on next frame ; first id {btn_id:?}");
+        assert!(
+            clicked,
+            "button should report click on next frame ; first id {btn_id:?}"
+        );
     }
 
     #[test]

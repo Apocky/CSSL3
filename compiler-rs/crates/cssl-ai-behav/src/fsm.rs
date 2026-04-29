@@ -165,11 +165,7 @@ impl<S: FsmState> StateMachine<S> {
     ///
     /// § GUARD
     ///   Companion-archetype is rejected per PRIME_DIRECTIVE §3.
-    pub fn new(
-        kind: ActorKind,
-        states: Vec<S>,
-        initial: S,
-    ) -> Result<Self, StateMachineError> {
+    pub fn new(kind: ActorKind, states: Vec<S>, initial: S) -> Result<Self, StateMachineError> {
         assert_not_companion(kind)?;
         if !states.contains(&initial) {
             return Err(StateMachineError::UnknownTargetState {
@@ -265,7 +261,9 @@ impl<S: FsmState> StateMachine<S> {
     /// guarding ; meant for replay-restore or scripted-event injection.
     pub fn force_state(&mut self, target: S) -> Result<(), StateMachineError> {
         if !self.states.contains(&target) {
-            return Err(StateMachineError::UnknownTargetState { name: target.name() });
+            return Err(StateMachineError::UnknownTargetState {
+                name: target.name(),
+            });
         }
         self.current = target;
         Ok(())
@@ -440,12 +438,8 @@ mod tests {
 
     #[test]
     fn fsm_force_state_unknown_rejected() {
-        let mut f = StateMachine::new(
-            ActorKind::Npc,
-            vec![GuardState::Patrol],
-            GuardState::Patrol,
-        )
-        .unwrap();
+        let mut f = StateMachine::new(ActorKind::Npc, vec![GuardState::Patrol], GuardState::Patrol)
+            .unwrap();
         let err = f.force_state(GuardState::Flee).unwrap_err();
         assert!(matches!(err, StateMachineError::UnknownTargetState { .. }));
     }

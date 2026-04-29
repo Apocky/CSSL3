@@ -104,12 +104,14 @@ impl Widget for TabPanel {
         let widths = self.tab_widths();
         let total_tab_w: f32 = widths.iter().copied().sum();
         let content_size = if let Some(active_tab) = self.tabs.get_mut(self.active) {
-            active_tab.content.layout(constraint.shrink(crate::geometry::Insets::new(
-                0.0,
-                self.tab_height,
-                0.0,
-                0.0,
-            )))
+            active_tab
+                .content
+                .layout(constraint.shrink(crate::geometry::Insets::new(
+                    0.0,
+                    self.tab_height,
+                    0.0,
+                    0.0,
+                )))
         } else {
             Size::ZERO
         };
@@ -121,9 +123,10 @@ impl Widget for TabPanel {
     fn assign_final_size(&mut self, final_size: Size) {
         self.size = final_size;
         if let Some(active_tab) = self.tabs.get_mut(self.active) {
-            active_tab
-                .content
-                .assign_final_size(Size::new(final_size.w, (final_size.h - self.tab_height).max(0.0)));
+            active_tab.content.assign_final_size(Size::new(
+                final_size.w,
+                (final_size.h - self.tab_height).max(0.0),
+            ));
         }
     }
 
@@ -133,10 +136,10 @@ impl Widget for TabPanel {
             return EventResult::Ignored;
         }
         match event {
-            UiEvent::PointerDown { button, position, .. } => {
-                if !matches!(button, cssl_host_window::event::MouseButton::Left)
-                    || !ctx.hovered
-                {
+            UiEvent::PointerDown {
+                button, position, ..
+            } => {
+                if !matches!(button, cssl_host_window::event::MouseButton::Left) || !ctx.hovered {
                     // Forward to active content even outside the tab strip.
                     if let Some(active) = self.tabs.get_mut(self.active) {
                         return active.content.event(event, ctx);
@@ -201,10 +204,7 @@ impl Widget for TabPanel {
             painter.fill_rect(rect, face, 0.0);
             painter.stroke_rect(rect, theme.color(ThemeSlot::Border), 1.0, 0.0);
             painter.text(
-                Point::new(
-                    x + 8.0,
-                    self.tab_height * 0.5 + theme.font.size_px * 0.35,
-                ),
+                Point::new(x + 8.0, self.tab_height * 0.5 + theme.font.size_px * 0.35),
                 &tab.label,
                 &theme.font,
                 theme.color(ThemeSlot::Foreground),
@@ -271,7 +271,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(panel.active, 1);
@@ -287,7 +291,11 @@ mod tests {
                 modifiers: ModifierKeys::CTRL,
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(panel.active, 1);
@@ -305,7 +313,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

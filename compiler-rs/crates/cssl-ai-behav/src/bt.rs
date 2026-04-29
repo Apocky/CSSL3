@@ -190,7 +190,12 @@ impl BehaviorTree {
         let leaves_count = leaves.len() as u32;
         let mut repeater_remaining = Vec::new();
         let mut repeater_paths = Vec::new();
-        Self::validate_node(&root, leaves_count, &mut repeater_remaining, &mut repeater_paths)?;
+        Self::validate_node(
+            &root,
+            leaves_count,
+            &mut repeater_remaining,
+            &mut repeater_paths,
+        )?;
         Ok(Self {
             root,
             leaves,
@@ -280,7 +285,8 @@ impl BehaviorTree {
             BtNode::Sequence(children) => {
                 // Children in order ; first Failure short-circuits ; first Running propagates.
                 for child in children {
-                    let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                    let s =
+                        Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
                     match s {
                         BtStatus::Failure => return BtStatus::Failure,
                         BtStatus::Running => return BtStatus::Running,
@@ -292,7 +298,8 @@ impl BehaviorTree {
             BtNode::Selector(children) => {
                 // Children in order ; first Success short-circuits ; first Running propagates.
                 for child in children {
-                    let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                    let s =
+                        Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
                     match s {
                         BtStatus::Success => return BtStatus::Success,
                         BtStatus::Running => return BtStatus::Running,
@@ -306,7 +313,8 @@ impl BehaviorTree {
                 let mut fail = 0u32;
                 let mut running = 0u32;
                 for child in children {
-                    let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                    let s =
+                        Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
                     match s {
                         BtStatus::Success => succ += 1,
                         BtStatus::Failure => fail += 1,
@@ -349,7 +357,13 @@ impl BehaviorTree {
             BtNode::Decorator(kind, child) => {
                 match kind {
                     DecoratorKind::Inverter => {
-                        let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                        let s = Self::tick_node(
+                            child,
+                            leaves,
+                            repeater_remaining,
+                            repeater_idx_cursor,
+                            bb,
+                        );
                         match s {
                             BtStatus::Success => BtStatus::Failure,
                             BtStatus::Failure => BtStatus::Success,
@@ -357,14 +371,26 @@ impl BehaviorTree {
                         }
                     }
                     DecoratorKind::AlwaysSuccess => {
-                        let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                        let s = Self::tick_node(
+                            child,
+                            leaves,
+                            repeater_remaining,
+                            repeater_idx_cursor,
+                            bb,
+                        );
                         match s {
                             BtStatus::Running => BtStatus::Running,
                             _ => BtStatus::Success,
                         }
                     }
                     DecoratorKind::AlwaysFailure => {
-                        let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                        let s = Self::tick_node(
+                            child,
+                            leaves,
+                            repeater_remaining,
+                            repeater_idx_cursor,
+                            bb,
+                        );
                         match s {
                             BtStatus::Running => BtStatus::Running,
                             _ => BtStatus::Failure,
@@ -376,7 +402,13 @@ impl BehaviorTree {
                         // order at tick-time so cursor positions match.
                         let idx = *repeater_idx_cursor as usize;
                         *repeater_idx_cursor += 1;
-                        let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                        let s = Self::tick_node(
+                            child,
+                            leaves,
+                            repeater_remaining,
+                            repeater_idx_cursor,
+                            bb,
+                        );
                         match s {
                             BtStatus::Running => BtStatus::Running,
                             BtStatus::Success | BtStatus::Failure => {
@@ -392,7 +424,13 @@ impl BehaviorTree {
                         }
                     }
                     DecoratorKind::UntilFail => {
-                        let s = Self::tick_node(child, leaves, repeater_remaining, repeater_idx_cursor, bb);
+                        let s = Self::tick_node(
+                            child,
+                            leaves,
+                            repeater_remaining,
+                            repeater_idx_cursor,
+                            bb,
+                        );
                         match s {
                             BtStatus::Failure => BtStatus::Success,
                             BtStatus::Success | BtStatus::Running => BtStatus::Running,
@@ -486,12 +524,8 @@ mod tests {
     #[test]
     fn bt_companion_rejected() {
         let leaves: Vec<Box<dyn BtLeaf>> = vec![make_fixed(BtStatus::Success, "x")];
-        let err = BehaviorTree::new(
-            ActorKind::Companion,
-            BtNode::Leaf(LeafId(0)),
-            leaves,
-        )
-        .unwrap_err();
+        let err =
+            BehaviorTree::new(ActorKind::Companion, BtNode::Leaf(LeafId(0)), leaves).unwrap_err();
         assert!(matches!(err, BehaviorTreeError::Companion(_)));
         assert_eq!(err.code(), "AIBEHAV0030");
     }
@@ -499,12 +533,7 @@ mod tests {
     #[test]
     fn bt_leaf_id_out_of_bounds() {
         let leaves: Vec<Box<dyn BtLeaf>> = vec![make_fixed(BtStatus::Success, "x")];
-        let err = BehaviorTree::new(
-            ActorKind::Npc,
-            BtNode::Leaf(LeafId(99)),
-            leaves,
-        )
-        .unwrap_err();
+        let err = BehaviorTree::new(ActorKind::Npc, BtNode::Leaf(LeafId(99)), leaves).unwrap_err();
         assert!(matches!(err, BehaviorTreeError::LeafIdOutOfBounds { .. }));
         assert_eq!(err.code(), "AIBEHAV0031");
     }
@@ -547,9 +576,15 @@ mod tests {
     fn bt_sequence_first_failure_shortcircuits() {
         // a:Success, b:Failure, c:Success — sequence returns Failure ; c never ticks.
         let leaves: Vec<Box<dyn BtLeaf>> = vec![
-            Box::new(CounterLeaf { name: "a".into(), key: "a-ticks".into() }),
+            Box::new(CounterLeaf {
+                name: "a".into(),
+                key: "a-ticks".into(),
+            }),
             make_fixed(BtStatus::Failure, "b-fail"),
-            Box::new(CounterLeaf { name: "c".into(), key: "c-ticks".into() }),
+            Box::new(CounterLeaf {
+                name: "c".into(),
+                key: "c-ticks".into(),
+            }),
         ];
         let root = BtNode::Sequence(vec![
             BtNode::Leaf(LeafId(0)),
@@ -586,8 +621,14 @@ mod tests {
         // a:Failure, b:Success, c:Success — selector returns Success ; c never ticks.
         let leaves: Vec<Box<dyn BtLeaf>> = vec![
             make_fixed(BtStatus::Failure, "a-fail"),
-            Box::new(CounterLeaf { name: "b".into(), key: "b-ticks".into() }),
-            Box::new(CounterLeaf { name: "c".into(), key: "c-ticks".into() }),
+            Box::new(CounterLeaf {
+                name: "b".into(),
+                key: "b-ticks".into(),
+            }),
+            Box::new(CounterLeaf {
+                name: "c".into(),
+                key: "c-ticks".into(),
+            }),
         ];
         let root = BtNode::Selector(vec![
             BtNode::Leaf(LeafId(0)),
@@ -634,7 +675,10 @@ mod tests {
     #[test]
     fn bt_always_success() {
         let leaves: Vec<Box<dyn BtLeaf>> = vec![make_fixed(BtStatus::Failure, "x")];
-        let root = BtNode::Decorator(DecoratorKind::AlwaysSuccess, Box::new(BtNode::Leaf(LeafId(0))));
+        let root = BtNode::Decorator(
+            DecoratorKind::AlwaysSuccess,
+            Box::new(BtNode::Leaf(LeafId(0))),
+        );
         let mut bt = BehaviorTree::new(ActorKind::Npc, root, leaves).unwrap();
         let mut bb = BlackBoard::new();
         assert_eq!(bt.tick(&mut bb), BtStatus::Success);
@@ -643,7 +687,10 @@ mod tests {
     #[test]
     fn bt_always_failure() {
         let leaves: Vec<Box<dyn BtLeaf>> = vec![make_fixed(BtStatus::Success, "x")];
-        let root = BtNode::Decorator(DecoratorKind::AlwaysFailure, Box::new(BtNode::Leaf(LeafId(0))));
+        let root = BtNode::Decorator(
+            DecoratorKind::AlwaysFailure,
+            Box::new(BtNode::Leaf(LeafId(0))),
+        );
         let mut bt = BehaviorTree::new(ActorKind::Npc, root, leaves).unwrap();
         let mut bb = BlackBoard::new();
         assert_eq!(bt.tick(&mut bb), BtStatus::Failure);
@@ -790,7 +837,10 @@ mod tests {
             vec![BtNode::Leaf(LeafId(0))],
         );
         let err = BehaviorTree::new(ActorKind::Npc, root, leaves).unwrap_err();
-        assert!(matches!(err, BehaviorTreeError::InvalidTallyThreshold { .. }));
+        assert!(matches!(
+            err,
+            BehaviorTreeError::InvalidTallyThreshold { .. }
+        ));
         assert_eq!(err.code(), "AIBEHAV0033");
     }
 
@@ -802,7 +852,10 @@ mod tests {
             vec![BtNode::Leaf(LeafId(0))],
         );
         let err = BehaviorTree::new(ActorKind::Npc, root, leaves).unwrap_err();
-        assert!(matches!(err, BehaviorTreeError::InvalidTallyThreshold { .. }));
+        assert!(matches!(
+            err,
+            BehaviorTreeError::InvalidTallyThreshold { .. }
+        ));
     }
 
     #[test]

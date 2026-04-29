@@ -495,6 +495,9 @@ mod tests {
             .map(|i| buf[i * 2 + 1].abs())
             .fold(0.0_f32, f32::max);
         assert!(l_peak < 0.95, "L_peak={l_peak} ; expected compressed");
-        assert!((r_peak - 0.05).abs() < 0.02, "R_peak={r_peak} ; expected ≈ 0.05");
+        assert!(
+            (r_peak - 0.05).abs() < 0.02,
+            "R_peak={r_peak} ; expected ≈ 0.05"
+        );
     }
 }

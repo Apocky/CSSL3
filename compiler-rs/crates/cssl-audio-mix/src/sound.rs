@@ -335,7 +335,8 @@ impl fmt::Debug for Sound {
         match self {
             Self::OneShot(h) => f.debug_tuple("OneShot").field(h).finish(),
             Self::Looping(h) => f.debug_tuple("Looping").field(h).finish(),
-            Self::Streaming(_) => f.debug_struct("Streaming")
+            Self::Streaming(_) => f
+                .debug_struct("Streaming")
                 .field("source", &"<dyn SoundSource>")
                 .finish(),
         }
@@ -587,7 +588,10 @@ mod tests {
         let n = src.read_frames_looping(&mut out);
         assert_eq!(n, 5);
         // Pattern : 1,-1, 2,-2, 1,-1, 2,-2, 1,-1.
-        assert_eq!(out, &[1.0, -1.0, 2.0, -2.0, 1.0, -1.0, 2.0, -2.0, 1.0, -1.0]);
+        assert_eq!(
+            out,
+            &[1.0, -1.0, 2.0, -2.0, 1.0, -1.0, 2.0, -2.0, 1.0, -1.0]
+        );
     }
 
     #[test]
@@ -652,8 +656,10 @@ mod tests {
     #[test]
     fn bank_full_returns_error() {
         let mut bank = SoundBank::with_max(2);
-        bank.insert(PcmData::silence(1, 48_000, 1).unwrap()).unwrap();
-        bank.insert(PcmData::silence(1, 48_000, 1).unwrap()).unwrap();
+        bank.insert(PcmData::silence(1, 48_000, 1).unwrap())
+            .unwrap();
+        bank.insert(PcmData::silence(1, 48_000, 1).unwrap())
+            .unwrap();
         let err = bank.insert(PcmData::silence(1, 48_000, 1).unwrap());
         match err {
             Err(MixError::BankFull { capacity, max }) => {
@@ -667,7 +673,9 @@ mod tests {
     #[test]
     fn bank_clear_invalidates_handles() {
         let mut bank = SoundBank::new();
-        let h = bank.insert(PcmData::silence(1, 48_000, 1).unwrap()).unwrap();
+        let h = bank
+            .insert(PcmData::silence(1, 48_000, 1).unwrap())
+            .unwrap();
         bank.clear();
         assert!(bank.get(h).is_none());
     }

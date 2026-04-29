@@ -103,7 +103,8 @@ impl Bus {
             return;
         }
         // Effects first (run on raw mix), then gain.
-        self.effects.process(&mut self.accumulator, channels, sample_rate);
+        self.effects
+            .process(&mut self.accumulator, channels, sample_rate);
         if (self.gain - 1.0).abs() > 1e-7 {
             for slot in &mut self.accumulator {
                 *slot *= self.gain;
@@ -194,7 +195,8 @@ impl MasterBus {
                 *slot *= self.gain;
             }
         }
-        self.effects.process(&mut self.accumulator, channels, sample_rate);
+        self.effects
+            .process(&mut self.accumulator, channels, sample_rate);
         if self.limiter_enabled {
             apply_limiter(&mut self.accumulator, self.limiter_threshold);
         }

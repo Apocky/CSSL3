@@ -275,7 +275,10 @@ impl Mixer {
     /// Play a sound. Returns the new `VoiceId`.
     pub fn play(&mut self, sound: Sound, params: PlayParams) -> Result<VoiceId> {
         if self.voices.len() >= self.config.max_voices {
-            return Err(MixError::mixer_full(self.voices.len(), self.config.max_voices));
+            return Err(MixError::mixer_full(
+                self.voices.len(),
+                self.config.max_voices,
+            ));
         }
         // Validate bus reference if any.
         if let Some(bus_id) = params.bus {

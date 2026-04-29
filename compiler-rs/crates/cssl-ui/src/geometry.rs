@@ -45,7 +45,10 @@ impl Point {
     /// Translate by `delta` ; returns a new point.
     #[must_use]
     pub fn translate(self, delta: Self) -> Self {
-        Self { x: self.x + delta.x, y: self.y + delta.y }
+        Self {
+            x: self.x + delta.x,
+            y: self.y + delta.y,
+        }
     }
 
     /// Squared distance — avoids the sqrt for hover-test loops.
@@ -144,7 +147,10 @@ pub struct Rect {
 
 impl Rect {
     /// Empty rectangle at origin.
-    pub const EMPTY: Self = Self { origin: Point::ORIGIN, size: Size::ZERO };
+    pub const EMPTY: Self = Self {
+        origin: Point::ORIGIN,
+        size: Size::ZERO,
+    };
 
     /// Construct from origin + size.
     #[must_use]
@@ -240,18 +246,33 @@ pub struct Insets {
 
 impl Insets {
     /// Zero insets.
-    pub const ZERO: Self = Self { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 };
+    pub const ZERO: Self = Self {
+        left: 0.0,
+        top: 0.0,
+        right: 0.0,
+        bottom: 0.0,
+    };
 
     /// Construct from explicit edges.
     #[must_use]
     pub const fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
-        Self { left, top, right, bottom }
+        Self {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 
     /// Same value on every edge.
     #[must_use]
     pub const fn uniform(value: f32) -> Self {
-        Self { left: value, top: value, right: value, bottom: value }
+        Self {
+            left: value,
+            top: value,
+            right: value,
+            bottom: value,
+        }
     }
 
     /// Same value on left/right and top/bottom.

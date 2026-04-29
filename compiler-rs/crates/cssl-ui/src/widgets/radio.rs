@@ -40,7 +40,10 @@ impl Widget for Radio {
         let h = 22.0_f32;
         let glyph_w = 8.0_f32;
         let pad = 8.0_f32;
-        constraint.clamp(Size::new(h + pad + self.label.chars().count() as f32 * glyph_w, h))
+        constraint.clamp(Size::new(
+            h + pad + self.label.chars().count() as f32 * glyph_w,
+            h,
+        ))
     }
 
     fn event(&mut self, _event: &UiEvent, _ctx: EventContext<'_>) -> EventResult {
@@ -158,10 +161,10 @@ impl Widget for RadioGroup {
             return EventResult::Ignored;
         }
         match event {
-            UiEvent::PointerDown { button, position, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && ctx.hovered
-                {
+            UiEvent::PointerDown {
+                button, position, ..
+            } => {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && ctx.hovered {
                     if let Some(i) = self.row_at(position.y) {
                         if i != self.selected_index {
                             self.selected_index = i;
@@ -274,7 +277,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(g.selected_index, 1);
@@ -291,7 +298,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(g.selected_index, 1); // wrapped from 0 → 1 (n-1 mod n)
     }
@@ -309,7 +320,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(g.selected_index, 1);
@@ -326,7 +341,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

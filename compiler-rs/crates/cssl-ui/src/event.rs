@@ -99,7 +99,10 @@ impl UiEvent {
                 pointer_id: 0,
             }),
             WindowEventKind::MouseDown {
-                button, x, y, modifiers,
+                button,
+                x,
+                y,
+                modifiers,
             } => Some(Self::PointerDown {
                 position: Point::new(*x as f32, *y as f32),
                 button: *button,
@@ -107,7 +110,10 @@ impl UiEvent {
                 pointer_id: 0,
             }),
             WindowEventKind::MouseUp {
-                button, x, y, modifiers,
+                button,
+                x,
+                y,
+                modifiers,
             } => Some(Self::PointerUp {
                 position: Point::new(*x as f32, *y as f32),
                 button: *button,
@@ -115,13 +121,20 @@ impl UiEvent {
                 pointer_id: 0,
             }),
             WindowEventKind::Scroll {
-                delta, x, y, modifiers,
+                delta,
+                x,
+                y,
+                modifiers,
             } => Some(Self::Scroll {
                 position: Point::new(*x as f32, *y as f32),
                 delta: *delta,
                 modifiers: *modifiers,
             }),
-            WindowEventKind::KeyDown { key, modifiers, repeat } => Some(Self::KeyDown {
+            WindowEventKind::KeyDown {
+                key,
+                modifiers,
+                repeat,
+            } => Some(Self::KeyDown {
                 key: *key,
                 modifiers: *modifiers,
                 repeat: *repeat,
@@ -160,13 +173,25 @@ impl UiEvent {
     /// Helper : `true` if this event is a pointer-down for the left button.
     #[must_use]
     pub fn is_primary_press(&self) -> bool {
-        matches!(self, Self::PointerDown { button: MouseButton::Left, .. })
+        matches!(
+            self,
+            Self::PointerDown {
+                button: MouseButton::Left,
+                ..
+            }
+        )
     }
 
     /// Helper : `true` if this event is a pointer-up for the left button.
     #[must_use]
     pub fn is_primary_release(&self) -> bool {
-        matches!(self, Self::PointerUp { button: MouseButton::Left, .. })
+        matches!(
+            self,
+            Self::PointerUp {
+                button: MouseButton::Left,
+                ..
+            }
+        )
     }
 }
 
@@ -236,7 +261,9 @@ mod tests {
         };
         let ue = UiEvent::from_window(&we).unwrap();
         match ue {
-            UiEvent::PointerDown { button, modifiers, .. } => {
+            UiEvent::PointerDown {
+                button, modifiers, ..
+            } => {
                 assert_eq!(button, MouseButton::Right);
                 assert!(modifiers.contains(ModifierKeys::SHIFT));
             }

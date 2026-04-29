@@ -9,7 +9,7 @@
 
 use cssl_ai_behav::{
     assert_not_companion, ActorKind, AiBrain, AiBrainBuilder, BbValue, BehaviorTree, BlackBoard,
-    BtLeaf, BtNode, BtStatus, CompanionGuardError, CurveKind, Consideration, FsmState,
+    BtLeaf, BtNode, BtStatus, CompanionGuardError, Consideration, CurveKind, FsmState,
     FsmTransitionPredicate, LeafId, NavMesh, PathRequest, Point2, StateMachine, TriId,
     UtilityAction, UtilityAi,
 };
@@ -70,12 +70,7 @@ fn companion_guard_runtime_blocks_all_entries() {
         NpcState::Patrol,
     )
     .is_err());
-    assert!(BehaviorTree::new(
-        ActorKind::Companion,
-        BtNode::Sequence(vec![]),
-        vec![]
-    )
-    .is_err());
+    assert!(BehaviorTree::new(ActorKind::Companion, BtNode::Sequence(vec![]), vec![]).is_err());
     assert!(UtilityAi::new(ActorKind::Companion).is_err());
     assert!(AiBrainBuilder::<NpcState>::new("c", ActorKind::Companion)
         .build()
@@ -98,13 +93,7 @@ fn fsm_bt_navmesh_round_trip() {
         Point2::new(3.0, 0.0),
         Point2::new(3.0, 1.0),
     ];
-    let t = vec![
-        [0, 2, 1],
-        [2, 3, 1],
-        [2, 4, 3],
-        [4, 5, 3],
-        [4, 6, 5],
-    ];
+    let t = vec![[0, 2, 1], [2, 3, 1], [2, 4, 3], [4, 5, 3], [4, 6, 5]];
     let mesh = NavMesh::build(v, t).unwrap();
 
     // Pathfind across the corridor.
@@ -126,7 +115,9 @@ fn fsm_bt_navmesh_round_trip() {
     fsm.add_transition(
         NpcState::Patrol,
         NpcState::Chase,
-        FsmTransitionPredicate::new("see-target", |bb| bb.get_bool("see_target").unwrap_or(false)),
+        FsmTransitionPredicate::new("see-target", |bb| {
+            bb.get_bool("see_target").unwrap_or(false)
+        }),
     )
     .unwrap();
     fsm.add_transition(
@@ -170,7 +161,9 @@ fn fsm_bt_navmesh_round_trip() {
         CurveKind::Inverse, // closer = more want
         |bb| bb.get_float("dist").unwrap_or(1.0).clamp(0.0, 1.0),
     ));
-    let _action_attack = util.add_action(UtilityAction::new("attack", vec![c])).unwrap();
+    let _action_attack = util
+        .add_action(UtilityAction::new("attack", vec![c]))
+        .unwrap();
     let _action_idle = util.add_action(UtilityAction::new("idle", vec![])).unwrap();
 
     // 5. Assemble brain ; tick a sequence.
@@ -183,24 +176,36 @@ fn fsm_bt_navmesh_round_trip() {
 
     // Initial tick : nothing seen, FSM stays Patrol.
     brain.tick();
-    assert_eq!(brain.blackboard().get_text("_brain_fsm_state").unwrap(), "patrol");
+    assert_eq!(
+        brain.blackboard().get_text("_brain_fsm_state").unwrap(),
+        "patrol"
+    );
     assert_eq!(brain.blackboard().get_int("_brain_bt_status").unwrap(), 1); // success
 
     // Tick 2 : enemy spotted, dist far.
     brain.blackboard_mut().set_bool("see_target", true);
     brain.blackboard_mut().set_float("dist", 5.0);
     brain.tick();
-    assert_eq!(brain.blackboard().get_text("_brain_fsm_state").unwrap(), "chase");
+    assert_eq!(
+        brain.blackboard().get_text("_brain_fsm_state").unwrap(),
+        "chase"
+    );
 
     // Tick 3 : closing in, dist < 1.
     brain.blackboard_mut().set_float("dist", 0.5);
     brain.tick();
-    assert_eq!(brain.blackboard().get_text("_brain_fsm_state").unwrap(), "attack");
+    assert_eq!(
+        brain.blackboard().get_text("_brain_fsm_state").unwrap(),
+        "attack"
+    );
 
     // Tick 4 : target gone.
     brain.blackboard_mut().set_bool("see_target", false);
     brain.tick();
-    assert_eq!(brain.blackboard().get_text("_brain_fsm_state").unwrap(), "patrol");
+    assert_eq!(
+        brain.blackboard().get_text("_brain_fsm_state").unwrap(),
+        "patrol"
+    );
 
     // Tick counter has advanced to 4.
     assert_eq!(brain.tick_count(), 4);
@@ -226,9 +231,7 @@ fn brain_via_omega_scheduler_integration() {
     fsm.add_transition(
         NpcState::Patrol,
         NpcState::Chase,
-        FsmTransitionPredicate::new("trigger", |bb| {
-            bb.get_bool("trigger").unwrap_or(false)
-        }),
+        FsmTransitionPredicate::new("trigger", |bb| bb.get_bool("trigger").unwrap_or(false)),
     )
     .unwrap();
     let brain: AiBrain<NpcState> = AiBrainBuilder::new("scheduled-brain", ActorKind::Npc)
@@ -276,11 +279,9 @@ fn determinism_two_brains_identical_input_identical_output() {
         )
         .unwrap();
         let mut util = UtilityAi::new(ActorKind::Npc).unwrap();
-        let c = util.add_consideration(Consideration::new(
-            "x",
-            CurveKind::Quadratic,
-            |bb| bb.get_float("x").unwrap_or(0.0),
-        ));
+        let c = util.add_consideration(Consideration::new("x", CurveKind::Quadratic, |bb| {
+            bb.get_float("x").unwrap_or(0.0)
+        }));
         let _ = util.add_action(UtilityAction::new("a", vec![c])).unwrap();
         AiBrainBuilder::<NpcState>::new("b", ActorKind::Npc)
             .with_fsm(fsm)

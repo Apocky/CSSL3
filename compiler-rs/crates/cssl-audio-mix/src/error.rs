@@ -246,9 +246,7 @@ mod tests {
 
     #[test]
     fn is_format_mismatch_classification() {
-        assert!(
-            MixError::format_mismatch(44_100, 2, 48_000, 2).is_format_mismatch()
-        );
+        assert!(MixError::format_mismatch(44_100, 2, 48_000, 2).is_format_mismatch());
         assert!(!MixError::CaptureForbidden.is_format_mismatch());
     }
 }

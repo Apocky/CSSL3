@@ -98,7 +98,9 @@ impl Widget for Dropdown {
             return EventResult::Ignored;
         }
         match event {
-            UiEvent::PointerDown { button, position, .. } => {
+            UiEvent::PointerDown {
+                button, position, ..
+            } => {
                 if !matches!(button, cssl_host_window::event::MouseButton::Left) {
                     return EventResult::Ignored;
                 }
@@ -169,7 +171,11 @@ impl Widget for Dropdown {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         let trigger = Rect::new(Point::ORIGIN, Size::new(size.w, self.trigger_h));
-        painter.fill_rect(trigger, theme.color(ThemeSlot::ButtonFace), theme.corner_radius);
+        painter.fill_rect(
+            trigger,
+            theme.color(ThemeSlot::ButtonFace),
+            theme.corner_radius,
+        );
         painter.stroke_rect(
             trigger,
             theme.color(ThemeSlot::Border),
@@ -249,7 +255,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(d.expanded);
@@ -265,7 +275,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(d.selected_index, 1);
     }
@@ -282,7 +296,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: false, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(!d.expanded);
@@ -299,7 +317,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(!d.expanded);
@@ -316,7 +338,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

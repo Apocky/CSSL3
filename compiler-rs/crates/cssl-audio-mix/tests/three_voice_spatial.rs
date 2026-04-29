@@ -98,7 +98,10 @@ fn three_voice_mix_voice_at_minus_90_routes_left() {
         "-90° should route to L : L={rms_l}, R={rms_r}"
     );
     // R should be near-zero (sin(0) = 0 in equal-power pan).
-    assert!(rms_r < 0.01, "right channel should be near-silent : R={rms_r}");
+    assert!(
+        rms_r < 0.01,
+        "right channel should be near-silent : R={rms_r}"
+    );
 }
 
 #[test]
@@ -121,7 +124,10 @@ fn three_voice_mix_voice_at_plus_90_routes_right() {
         rms_r > rms_l * 5.0,
         "+90° should route to R : L={rms_l}, R={rms_r}"
     );
-    assert!(rms_l < 0.01, "left channel should be near-silent : L={rms_l}");
+    assert!(
+        rms_l < 0.01,
+        "left channel should be near-silent : L={rms_l}"
+    );
 }
 
 #[test]

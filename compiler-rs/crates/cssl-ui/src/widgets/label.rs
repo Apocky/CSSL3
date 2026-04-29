@@ -91,7 +91,11 @@ mod tests {
         let mut l = Label::new("x");
         let r = l.event(
             &UiEvent::WindowFocus,
-            EventContext { theme: &theme, hovered: false, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

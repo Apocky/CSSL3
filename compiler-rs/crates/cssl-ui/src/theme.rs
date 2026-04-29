@@ -41,7 +41,12 @@ pub struct Color {
 
 impl Color {
     /// Fully transparent colour.
-    pub const TRANSPARENT: Self = Self { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+    pub const TRANSPARENT: Self = Self {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.0,
+    };
 
     /// Construct from RGBA floats (clamped to `0.0..=1.0`).
     #[must_use]
@@ -86,7 +91,10 @@ impl Color {
     /// Multiply alpha by `factor` ; useful for hover / disabled states.
     #[must_use]
     pub fn with_alpha(self, alpha: f32) -> Self {
-        Self { a: alpha.clamp(0.0, 1.0), ..self }
+        Self {
+            a: alpha.clamp(0.0, 1.0),
+            ..self
+        }
     }
 }
 
@@ -141,7 +149,12 @@ pub struct Spacing {
 
 impl Spacing {
     /// Default spacing — the values used by [`Theme::default`].
-    pub const DEFAULT: Self = Self { tight: 2.0, normal: 6.0, loose: 12.0, gap: 4.0 };
+    pub const DEFAULT: Self = Self {
+        tight: 2.0,
+        normal: 6.0,
+        loose: 12.0,
+        gap: 4.0,
+    };
 }
 
 impl Default for Spacing {

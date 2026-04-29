@@ -326,7 +326,11 @@ mod tests {
         // Subsequent samples should be near-zero.
         assert!(max_late < 0.5, "max late echo : {max_late}");
         // The echo position itself should be loud.
-        assert!(buf[echo_pos].abs() > 0.5, "echo @ {echo_pos} = {}", buf[echo_pos]);
+        assert!(
+            buf[echo_pos].abs() > 0.5,
+            "echo @ {echo_pos} = {}",
+            buf[echo_pos]
+        );
     }
 
     #[test]
@@ -348,7 +352,10 @@ mod tests {
                 peaks += 1;
             }
         }
-        assert!(peaks >= 2, "peaks={peaks} ; expected at least 2 repeating echoes");
+        assert!(
+            peaks >= 2,
+            "peaks={peaks} ; expected at least 2 repeating echoes"
+        );
     }
 
     #[test]

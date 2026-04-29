@@ -114,8 +114,17 @@ impl Widget for ScrollView {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         let outer = Rect::new(Point::ORIGIN, size);
-        painter.fill_rect(outer, theme.color(ThemeSlot::Background), theme.corner_radius);
-        painter.stroke_rect(outer, theme.color(ThemeSlot::Border), 1.0, theme.corner_radius);
+        painter.fill_rect(
+            outer,
+            theme.color(ThemeSlot::Background),
+            theme.corner_radius,
+        );
+        painter.stroke_rect(
+            outer,
+            theme.color(ThemeSlot::Border),
+            1.0,
+            theme.corner_radius,
+        );
         painter.push_clip(outer);
         // Translate by -scroll_y by painting child at offset y. We can't
         // translate the painter directly (the trait has no transform stack),
@@ -184,7 +193,11 @@ mod tests {
                 delta: ScrollDelta::Lines { x: 0.0, y: -1.0 },
                 modifiers: ModifierKeys::empty(),
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(sv.scroll_y > 0.0);
@@ -209,7 +222,11 @@ mod tests {
                 delta: ScrollDelta::Lines { x: 0.0, y: -1.0 },
                 modifiers: ModifierKeys::empty(),
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

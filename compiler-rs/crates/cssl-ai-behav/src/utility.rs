@@ -245,10 +245,7 @@ impl UtilityAi {
         let count = self.considerations.len() as u32;
         for c in &action.considerations {
             if c.0 >= count {
-                return Err(UtilityAiError::ConsiderationOutOfBounds {
-                    id: c.0,
-                    count,
-                });
+                return Err(UtilityAiError::ConsiderationOutOfBounds { id: c.0, count });
             }
         }
         let id = ActionId(self.actions.len() as u32);
@@ -427,14 +424,10 @@ mod tests {
     #[test]
     fn util_single_action_picks_it() {
         let mut u = UtilityAi::new(ActorKind::Npc).unwrap();
-        let cid = u.add_consideration(Consideration::new(
-            "c0",
-            CurveKind::Linear,
-            |bb| bb.get_float("x").unwrap_or(0.0),
-        ));
-        let aid = u
-            .add_action(UtilityAction::new("only", vec![cid]))
-            .unwrap();
+        let cid = u.add_consideration(Consideration::new("c0", CurveKind::Linear, |bb| {
+            bb.get_float("x").unwrap_or(0.0)
+        }));
+        let aid = u.add_action(UtilityAction::new("only", vec![cid])).unwrap();
         let mut bb = BlackBoard::new();
         bb.set_float("x", 0.7);
         assert_eq!(u.pick(&bb).unwrap(), aid);
@@ -443,16 +436,12 @@ mod tests {
     #[test]
     fn util_higher_score_wins() {
         let mut u = UtilityAi::new(ActorKind::Npc).unwrap();
-        let c_hp = u.add_consideration(Consideration::new(
-            "hp",
-            CurveKind::Linear,
-            |bb| bb.get_float("hp_norm").unwrap_or(0.0),
-        ));
-        let c_dist = u.add_consideration(Consideration::new(
-            "dist",
-            CurveKind::Inverse,
-            |bb| bb.get_float("dist_norm").unwrap_or(1.0),
-        ));
+        let c_hp = u.add_consideration(Consideration::new("hp", CurveKind::Linear, |bb| {
+            bb.get_float("hp_norm").unwrap_or(0.0)
+        }));
+        let c_dist = u.add_consideration(Consideration::new("dist", CurveKind::Inverse, |bb| {
+            bb.get_float("dist_norm").unwrap_or(1.0)
+        }));
         let attack = u
             .add_action(UtilityAction::new("attack", vec![c_dist])) // close=high
             .unwrap();
@@ -483,16 +472,9 @@ mod tests {
     fn util_zero_score_consideration_zeros_action() {
         // A consideration that returns 0 zeros the whole action — gating.
         let mut u = UtilityAi::new(ActorKind::Npc).unwrap();
-        let always_one = u.add_consideration(Consideration::new(
-            "one",
-            CurveKind::Linear,
-            |_| 1.0,
-        ));
-        let always_zero = u.add_consideration(Consideration::new(
-            "zero",
-            CurveKind::Linear,
-            |_| 0.0,
-        ));
+        let always_one = u.add_consideration(Consideration::new("one", CurveKind::Linear, |_| 1.0));
+        let always_zero =
+            u.add_consideration(Consideration::new("zero", CurveKind::Linear, |_| 0.0));
         let _gate = u
             .add_action(UtilityAction::new("gated", vec![always_one, always_zero]))
             .unwrap();
@@ -556,11 +538,9 @@ mod tests {
     fn util_determinism_across_runs() {
         let make = || -> UtilityAi {
             let mut u = UtilityAi::new(ActorKind::Npc).unwrap();
-            let c = u.add_consideration(Consideration::new(
-                "c",
-                CurveKind::Quadratic,
-                |bb| bb.get_float("x").unwrap_or(0.0),
-            ));
+            let c = u.add_consideration(Consideration::new("c", CurveKind::Quadratic, |bb| {
+                bb.get_float("x").unwrap_or(0.0)
+            }));
             let _ = u.add_action(UtilityAction::new("a", vec![c])).unwrap();
             u
         };

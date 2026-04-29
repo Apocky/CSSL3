@@ -72,7 +72,11 @@ pub enum AccessibilityValue {
     None,
     Text(String),
     /// `(value, min, max)` for sliders + progress bars.
-    Numeric { value: f32, min: f32, max: f32 },
+    Numeric {
+        value: f32,
+        min: f32,
+        max: f32,
+    },
     /// Boolean for toggles (some screen-readers prefer this over the
     /// `checked` state flag).
     Toggle(bool),
@@ -239,8 +243,8 @@ mod tests {
             expanded: false,
             checked: Some(true),
         };
-        let n = AccessibilityNode::leaf(WidgetId(1), AccessibilityRole::Checkbox, "Mute")
-            .with_state(s);
+        let n =
+            AccessibilityNode::leaf(WidgetId(1), AccessibilityRole::Checkbox, "Mute").with_state(s);
         assert!(n.state.disabled);
         assert!(n.state.selected);
         assert_eq!(n.state.checked, Some(true));
@@ -248,12 +252,13 @@ mod tests {
 
     #[test]
     fn node_with_value_numeric() {
-        let n = AccessibilityNode::leaf(WidgetId(1), AccessibilityRole::Slider, "vol")
-            .with_value(AccessibilityValue::Numeric {
+        let n = AccessibilityNode::leaf(WidgetId(1), AccessibilityRole::Slider, "vol").with_value(
+            AccessibilityValue::Numeric {
                 value: 0.5,
                 min: 0.0,
                 max: 1.0,
-            });
+            },
+        );
         match n.value {
             AccessibilityValue::Numeric { value, .. } => {
                 assert!((value - 0.5).abs() < f32::EPSILON);
@@ -317,10 +322,7 @@ mod tests {
             "x",
         ));
         snap.add_root(a);
-        assert_eq!(
-            snap.find(WidgetId(2)).map(|n| n.name.as_str()),
-            Some("x")
-        );
+        assert_eq!(snap.find(WidgetId(2)).map(|n| n.name.as_str()), Some("x"));
     }
 
     #[test]

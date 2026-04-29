@@ -48,10 +48,7 @@ impl Widget for Checkbox {
         let h = 22.0_f32;
         let glyph_w = 8.0_f32;
         let pad = 8.0_f32;
-        let preferred = Size::new(
-            h + pad + self.label.chars().count() as f32 * glyph_w,
-            h,
-        );
+        let preferred = Size::new(h + pad + self.label.chars().count() as f32 * glyph_w, h);
         constraint.clamp(preferred)
     }
 
@@ -66,17 +63,13 @@ impl Widget for Checkbox {
         }
         match event {
             UiEvent::PointerDown { button, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && ctx.hovered
-                {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && ctx.hovered {
                     self.holding = true;
                     return EventResult::Consumed;
                 }
             }
             UiEvent::PointerUp { button, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && self.holding
-                {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && self.holding {
                     self.holding = false;
                     if ctx.hovered {
                         self.value = !self.value;
@@ -114,7 +107,12 @@ impl Widget for Checkbox {
             theme.color(ThemeSlot::ButtonFace)
         };
         painter.fill_rect(box_rect, face, theme.corner_radius);
-        painter.stroke_rect(box_rect, theme.color(ThemeSlot::Border), 1.0, theme.corner_radius);
+        painter.stroke_rect(
+            box_rect,
+            theme.color(ThemeSlot::Border),
+            1.0,
+            theme.corner_radius,
+        );
         if ctx.focused {
             painter.stroke_rect(
                 box_rect,
@@ -127,7 +125,11 @@ impl Widget for Checkbox {
             // Centre dot for the "checked" affordance.
             let cx = h * 0.5;
             let cy = h * 0.5;
-            painter.fill_circle(Point::new(cx, cy), h * 0.2, theme.color(ThemeSlot::Foreground));
+            painter.fill_circle(
+                Point::new(cx, cy),
+                h * 0.2,
+                theme.color(ThemeSlot::Foreground),
+            );
         }
         let baseline_y = h * 0.5 + theme.font.size_px * 0.35;
         painter.text(
@@ -175,7 +177,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         let r = c.event(
             &UiEvent::PointerUp {
@@ -184,7 +190,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(c.value);
@@ -201,7 +211,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(c.value);
@@ -219,7 +233,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
         assert!(!c.value);

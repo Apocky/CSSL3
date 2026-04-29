@@ -128,6 +128,25 @@
 // builder pattern used by Theme + Insets ; clippy's "must_use_candidate"
 // flag is not load-bearing here.
 #![allow(clippy::unnecessary_cast)]
+// § Widget state-bag structs (PaintContext / Checkbox / AccessibilityState)
+//   intentionally carry multiple bool fields (disabled / focused / selected /
+//   hovered / pressed / etc.) — the "state machine" refactor clippy suggests
+//   would lose the ergonomic accessor pattern that downstream widgets depend
+//   on. The booleans are independent dimensions of UI state, not enum
+//   discriminants.
+#![allow(clippy::struct_excessive_bools)]
+// § The retained-state map's typed accessors (as_bool / as_range / etc.)
+//   are most ergonomic when used through `.and_then(|v| v.as_bool())` ; the
+//   "redundant closure for method calls" lint suggests the pointer-to-method
+//   form which works but loses the readability of named-method dispatch.
+#![allow(clippy::redundant_closure_for_method_calls)]
+// § The layout + event-translation logic has alignment-arm + window-event
+//   variants whose bodies happen to compute identical values today (e.g.
+//   `MainAlign::SpaceBetween if children.len() <= 1` ⇒ same as `Center`,
+//   `WindowEventKind::Close` ⇒ same as catch-all `None` for kbd events).
+//   Keeping the arms explicit documents intent + makes future per-arm
+//   divergence trivial.
+#![allow(clippy::match_same_arms)]
 // § Many event-routing methods take a `&mut self` even when a particular
 // branch reads only ; consistent signatures aid extensibility.
 #![allow(clippy::unused_self)]

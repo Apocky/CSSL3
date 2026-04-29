@@ -72,10 +72,7 @@ impl Widget for Button {
         // Button's preferred width = label-width + padding ; height = font + pad.
         let glyph_w = 8.0_f32; // Approx average glyph width at default font ; theme-aware fonts override.
         let pad = 12.0_f32;
-        let preferred = Size::new(
-            self.label.chars().count() as f32 * glyph_w + pad,
-            22.0_f32,
-        );
+        let preferred = Size::new(self.label.chars().count() as f32 * glyph_w + pad, 22.0_f32);
         constraint.clamp(preferred)
     }
 
@@ -91,17 +88,13 @@ impl Widget for Button {
         }
         match event {
             UiEvent::PointerDown { button, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && ctx.hovered
-                {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && ctx.hovered {
                     self.holding = true;
                     return EventResult::Consumed;
                 }
             }
             UiEvent::PointerUp { button, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && self.holding
-                {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && self.holding {
                     if ctx.hovered {
                         self.pressed = true;
                         self.holding = false;
@@ -141,7 +134,12 @@ impl Widget for Button {
         };
         let rect = crate::geometry::Rect::new(Point::ORIGIN, size);
         painter.fill_rect(rect, face, theme.corner_radius);
-        painter.stroke_rect(rect, theme.color(ThemeSlot::Border), 1.0, theme.corner_radius);
+        painter.stroke_rect(
+            rect,
+            theme.color(ThemeSlot::Border),
+            1.0,
+            theme.corner_radius,
+        );
         if ctx.focused {
             painter.stroke_rect(
                 rect,
@@ -223,7 +221,11 @@ mod tests {
                 modifiers: cssl_host_window::event::ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         // Up still hovered → click.
         let r = b.event(
@@ -233,7 +235,11 @@ mod tests {
                 modifiers: cssl_host_window::event::ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(b.was_pressed());
@@ -250,7 +256,11 @@ mod tests {
                 modifiers: cssl_host_window::event::ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         let r = b.event(
             &UiEvent::PointerUp {
@@ -259,7 +269,11 @@ mod tests {
                 modifiers: cssl_host_window::event::ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: false, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Consumed);
         assert!(!b.was_pressed());
@@ -275,7 +289,11 @@ mod tests {
                 modifiers: cssl_host_window::event::ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(b.was_pressed());
@@ -292,7 +310,11 @@ mod tests {
                 modifiers: cssl_host_window::event::ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

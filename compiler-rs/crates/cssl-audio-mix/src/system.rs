@@ -112,13 +112,16 @@ impl OmegaSystem for MixerSystem {
         if self.render_buffer.len() < needed {
             self.render_buffer.resize(needed, 0.0);
         }
-        self.mixer.render_frames(&mut self.render_buffer[..needed], block_frames);
+        self.mixer
+            .render_frames(&mut self.render_buffer[..needed], block_frames);
 
         // Telemetry counters mirror the mixer's internal state so the
         // R18 ring sees per-step audio activity.
         let counters = self.mixer.counters();
-        ctx.telemetry().count_by("audio.frames_rendered", block_frames as u64);
-        ctx.telemetry().count_by("audio.voices_active", counters.voices_active as u64);
+        ctx.telemetry()
+            .count_by("audio.frames_rendered", block_frames as u64);
+        ctx.telemetry()
+            .count_by("audio.voices_active", counters.voices_active as u64);
         if counters.voices_retired_last_render > 0 {
             ctx.telemetry().count_by(
                 "audio.voices_retired",
@@ -312,8 +315,12 @@ mod tests {
         .unwrap();
         let h1 = s1.mixer_mut().register_sound(pcm.clone()).unwrap();
         let h2 = s2.mixer_mut().register_sound(pcm).unwrap();
-        s1.mixer_mut().play_oneshot(h1, PlayParams::default()).unwrap();
-        s2.mixer_mut().play_oneshot(h2, PlayParams::default()).unwrap();
+        s1.mixer_mut()
+            .play_oneshot(h1, PlayParams::default())
+            .unwrap();
+        s2.mixer_mut()
+            .play_oneshot(h2, PlayParams::default())
+            .unwrap();
         let mut omega1 = cssl_substrate_omega_step::OmegaSnapshot::new();
         let mut rngs1: BTreeMap<RngStreamId, DetRng> = BTreeMap::new();
         let mut telem1 = TelemetryHook::new();

@@ -19,6 +19,15 @@
 //!   Windows, Mach-O on macOS. Cross-format link tests are out of scope
 //!   here — they need a cross-linker setup that's not standard rustup.
 
+// § G10 (T11-D112) test bodies use names that pair caller/callee + cross-
+//   format conditional shapes ; clippy's "similar_names" / "useless_let_if_seq"
+//   / "manual_assert" / "implicit_clone" lints fire on these idioms which
+//   are intentional in test code (readability + cross-platform branching).
+#![allow(clippy::similar_names)]
+#![allow(clippy::useless_let_if_seq)]
+#![allow(clippy::manual_assert)]
+#![allow(clippy::implicit_clone)]
+
 use std::path::PathBuf;
 use std::process::Command;
 

@@ -59,7 +59,11 @@ impl Widget for ProgressBar {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         let rect = Rect::new(Point::ORIGIN, size);
-        painter.fill_rect(rect, theme.color(ThemeSlot::AccentMuted), theme.corner_radius);
+        painter.fill_rect(
+            rect,
+            theme.color(ThemeSlot::AccentMuted),
+            theme.corner_radius,
+        );
         if self.indeterminate {
             // Stage-0 : draw a fixed-width slug at the centre.
             let slug_w = size.w * 0.3;
@@ -109,7 +113,11 @@ mod tests {
         let theme = crate::theme::Theme::default();
         let r = p.event(
             &UiEvent::WindowFocus,
-            EventContext { theme: &theme, hovered: false, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

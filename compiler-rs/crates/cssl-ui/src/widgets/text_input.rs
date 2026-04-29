@@ -97,9 +97,7 @@ impl Widget for TextInput {
                     return EventResult::Ignored;
                 }
                 match key {
-                    cssl_host_window::event::KeyCode::Backspace
-                        if modifiers.is_empty() =>
-                    {
+                    cssl_host_window::event::KeyCode::Backspace if modifiers.is_empty() => {
                         if self.buffer.pop().is_some() {
                             self.just_changed = true;
                             return EventResult::Changed;
@@ -126,13 +124,21 @@ impl Widget for TextInput {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         let rect = Rect::new(Point::ORIGIN, size);
-        painter.fill_rect(rect, theme.color(ThemeSlot::ButtonFace), theme.corner_radius);
+        painter.fill_rect(
+            rect,
+            theme.color(ThemeSlot::ButtonFace),
+            theme.corner_radius,
+        );
         let border_color = if ctx.focused {
             theme.color(ThemeSlot::Accent)
         } else {
             theme.color(ThemeSlot::Border)
         };
-        let border_width = if ctx.focused { theme.focus_ring_width } else { 1.0 };
+        let border_width = if ctx.focused {
+            theme.focus_ring_width
+        } else {
+            1.0
+        };
         painter.stroke_rect(rect, border_color, border_width, theme.corner_radius);
         let baseline_y = size.h * 0.5 + theme.font.size_px * 0.35;
         let text_origin = Point::new(theme.spacing.normal, baseline_y);
@@ -193,8 +199,15 @@ mod tests {
         let theme = Theme::default();
         let mut t = TextInput::new("");
         let r = t.event(
-            &UiEvent::Char { ch: 'a', modifiers: ModifierKeys::empty() },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            &UiEvent::Char {
+                ch: 'a',
+                modifiers: ModifierKeys::empty(),
+            },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(t.buffer, "a");
@@ -205,8 +218,15 @@ mod tests {
         let theme = Theme::default();
         let mut t = TextInput::new("");
         let r = t.event(
-            &UiEvent::Char { ch: 'a', modifiers: ModifierKeys::empty() },
-            EventContext { theme: &theme, hovered: false, focused: false },
+            &UiEvent::Char {
+                ch: 'a',
+                modifiers: ModifierKeys::empty(),
+            },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
         assert!(t.buffer.is_empty());
@@ -223,7 +243,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(t.buffer, "h");
@@ -240,7 +264,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!(t.buffer.is_empty());
@@ -253,8 +281,15 @@ mod tests {
         t.max_length = 1;
         t.buffer = "x".into();
         let r = t.event(
-            &UiEvent::Char { ch: 'a', modifiers: ModifierKeys::empty() },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            &UiEvent::Char {
+                ch: 'a',
+                modifiers: ModifierKeys::empty(),
+            },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Consumed);
         assert_eq!(t.buffer, "x");
@@ -266,8 +301,15 @@ mod tests {
         let mut t = TextInput::new("");
         t.disabled = true;
         let r = t.event(
-            &UiEvent::Char { ch: 'a', modifiers: ModifierKeys::empty() },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            &UiEvent::Char {
+                ch: 'a',
+                modifiers: ModifierKeys::empty(),
+            },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

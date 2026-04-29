@@ -96,7 +96,8 @@
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::cast_precision_loss)] // f32 audio synthesis : usize→f32 fixtures intentional
 #![allow(clippy::cast_possible_truncation)] // sample-index → u32 truncation intentional
-#![allow(clippy::cast_sign_loss)] // distance-attenuation guards against negative values explicitly
+#![allow(clippy::cast_sign_loss)]
+// distance-attenuation guards against negative values explicitly
 // § Pedantic-bucket allowances — DSP code is hot-path-readable-first.
 //   - suboptimal_flops : `a*b + c` is the textbook DSP algebra ; `mul_add` is
 //                         a micro-optimization that obscures the per-line math.

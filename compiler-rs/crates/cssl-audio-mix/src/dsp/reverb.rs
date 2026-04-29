@@ -254,11 +254,7 @@ impl Reverb {
         for ci in 0..ch {
             // Per-channel stereo spread — left = base, right = base+spread,
             // others use multiples to decorrelate further.
-            let spread = if ci % 2 == 0 {
-                0
-            } else {
-                self.stereo_spread
-            };
+            let spread = if ci % 2 == 0 { 0 } else { self.stereo_spread };
             for (k, length) in Self::COMB_LENGTHS.iter().enumerate() {
                 let scaled = ((*length as f32 * scale) as u32 + spread) as usize;
                 self.channels[ci].combs[k].resize(scaled);
@@ -427,7 +423,10 @@ mod tests {
         r.process(&mut buf, 1, sr);
         // Late tail should have non-zero energy.
         let tail_energy: f32 = buf[2048..].iter().map(|x| x * x).sum();
-        assert!(tail_energy > 1e-4, "tail_energy={tail_energy} ; expected > 0");
+        assert!(
+            tail_energy > 1e-4,
+            "tail_energy={tail_energy} ; expected > 0"
+        );
     }
 
     #[test]

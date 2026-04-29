@@ -314,18 +314,9 @@ mod tests {
         assert_eq!(RetainedState::Bool(true).as_int(), None);
         assert_eq!(RetainedState::Int(7).as_int(), Some(7));
         assert_eq!(RetainedState::Float(1.5).as_float(), Some(1.5));
-        assert_eq!(
-            RetainedState::Text("hi".into()).as_text(),
-            Some("hi")
-        );
-        assert_eq!(
-            RetainedState::Range(0.5, 1.0).as_range(),
-            Some((0.5, 1.0))
-        );
-        assert_eq!(
-            RetainedState::SelectedIndex(2).as_selected_index(),
-            Some(2)
-        );
+        assert_eq!(RetainedState::Text("hi".into()).as_text(), Some("hi"));
+        assert_eq!(RetainedState::Range(0.5, 1.0).as_range(), Some((0.5, 1.0)));
+        assert_eq!(RetainedState::SelectedIndex(2).as_selected_index(), Some(2));
     }
 
     #[test]

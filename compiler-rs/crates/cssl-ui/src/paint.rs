@@ -128,7 +128,9 @@ impl PaintList {
     /// Construct an empty paint list.
     #[must_use]
     pub fn new() -> Self {
-        Self { commands: Vec::new() }
+        Self {
+            commands: Vec::new(),
+        }
     }
 
     /// Read-only access to the recorded commands.
@@ -162,21 +164,37 @@ impl PaintList {
 
 impl Painter for PaintList {
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {
-        self.commands.push(PaintCommand::FillRect { rect, color, corner_radius });
+        self.commands.push(PaintCommand::FillRect {
+            rect,
+            color,
+            corner_radius,
+        });
     }
 
     fn stroke_rect(&mut self, rect: Rect, color: Color, line_width: f32, corner_radius: f32) {
-        self.commands
-            .push(PaintCommand::StrokeRect { rect, color, line_width, corner_radius });
+        self.commands.push(PaintCommand::StrokeRect {
+            rect,
+            color,
+            line_width,
+            corner_radius,
+        });
     }
 
     fn fill_circle(&mut self, center: Point, radius: f32, color: Color) {
-        self.commands.push(PaintCommand::FillCircle { center, radius, color });
+        self.commands.push(PaintCommand::FillCircle {
+            center,
+            radius,
+            color,
+        });
     }
 
     fn stroke_line(&mut self, start: Point, end: Point, color: Color, line_width: f32) {
-        self.commands
-            .push(PaintCommand::StrokeLine { start, end, color, line_width });
+        self.commands.push(PaintCommand::StrokeLine {
+            start,
+            end,
+            color,
+            line_width,
+        });
     }
 
     fn text(&mut self, position: Point, text: &str, font: &FontStyle, color: Color) {
@@ -216,7 +234,11 @@ mod tests {
         p.fill_rect(rect, Color::rgb(1.0, 0.0, 0.0), 0.0);
         assert_eq!(p.len(), 1);
         match &p.commands()[0] {
-            PaintCommand::FillRect { rect: r, color, corner_radius } => {
+            PaintCommand::FillRect {
+                rect: r,
+                color,
+                corner_radius,
+            } => {
                 assert_eq!(*r, rect);
                 assert!((color.r - 1.0).abs() < f32::EPSILON);
                 assert!(corner_radius.abs() < f32::EPSILON);

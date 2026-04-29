@@ -146,7 +146,12 @@ impl RetainedNode {
                 &child_inputs,
             );
             for (child, slot) in self.children.iter_mut().zip(slots.iter()) {
-                child.place(origin.translate(slot.frame.origin), slot.frame.size, theme, frames);
+                child.place(
+                    origin.translate(slot.frame.origin),
+                    slot.frame.size,
+                    theme,
+                    frames,
+                );
             }
         }
     }
@@ -256,7 +261,15 @@ impl RetainedTree {
         let mut idx = 0;
         for root in &self.nodes {
             let mut local = idx;
-            paint_node(root, &mut local, &self.frames, painter, theme, self.hovered, self.focused);
+            paint_node(
+                root,
+                &mut local,
+                &self.frames,
+                painter,
+                theme,
+                self.hovered,
+                self.focused,
+            );
             idx = local;
         }
     }
@@ -388,7 +401,10 @@ mod tests {
         let mut t = RetainedTree::new();
         t.set_roots(vec![RetainedNode::leaf(
             WidgetId(1),
-            Box::new(StubLeaf { size: Size::new(20.0, 10.0), events_seen: 0 }),
+            Box::new(StubLeaf {
+                size: Size::new(20.0, 10.0),
+                events_seen: 0,
+            }),
         )]);
         assert_eq!(t.root_count(), 1);
     }
@@ -398,14 +414,14 @@ mod tests {
         let mut t = RetainedTree::new();
         t.set_roots(vec![RetainedNode::leaf(
             WidgetId(1),
-            Box::new(StubLeaf { size: Size::new(20.0, 10.0), events_seen: 0 }),
+            Box::new(StubLeaf {
+                size: Size::new(20.0, 10.0),
+                events_seen: 0,
+            }),
         )]);
         let theme = Theme::default();
         t.layout_pass(LayoutConstraint::loose(Size::new(100.0, 100.0)), &theme);
-        let _ = t.dispatch(
-            &UiEvent::WindowFocus,
-            &theme,
-        );
+        let _ = t.dispatch(&UiEvent::WindowFocus, &theme);
         // No assertion on counter ; this just exercises the path.
     }
 
@@ -420,15 +436,24 @@ mod tests {
     fn retained_node_walk_visits_self_and_children() {
         let leaf_a = RetainedNode::leaf(
             WidgetId(2),
-            Box::new(StubLeaf { size: Size::new(5.0, 5.0), events_seen: 0 }),
+            Box::new(StubLeaf {
+                size: Size::new(5.0, 5.0),
+                events_seen: 0,
+            }),
         );
         let leaf_b = RetainedNode::leaf(
             WidgetId(3),
-            Box::new(StubLeaf { size: Size::new(5.0, 5.0), events_seen: 0 }),
+            Box::new(StubLeaf {
+                size: Size::new(5.0, 5.0),
+                events_seen: 0,
+            }),
         );
         let parent = RetainedNode::container(
             WidgetId(1),
-            Box::new(StubLeaf { size: Size::new(10.0, 10.0), events_seen: 0 }),
+            Box::new(StubLeaf {
+                size: Size::new(10.0, 10.0),
+                events_seen: 0,
+            }),
             Container::Vbox,
             ContainerStyle::default(),
             vec![leaf_a, leaf_b],

@@ -49,9 +49,7 @@
 
 use std::fmt;
 
-use cssl_substrate_omega_step::{
-    EffectRow, OmegaError, OmegaStepCtx, OmegaSystem, RngStreamId,
-};
+use cssl_substrate_omega_step::{EffectRow, OmegaError, OmegaStepCtx, OmegaSystem, RngStreamId};
 use thiserror::Error;
 
 use crate::blackboard::BlackBoard;
@@ -287,7 +285,11 @@ impl<S: FsmState> AiBrainBuilder<S> {
     /// Seed the BlackBoard with an initial entry. Useful for setting
     /// the starting position / initial state-flags.
     #[must_use]
-    pub fn with_bb_entry(mut self, key: impl Into<String>, value: crate::blackboard::BbValue) -> Self {
+    pub fn with_bb_entry(
+        mut self,
+        key: impl Into<String>,
+        value: crate::blackboard::BbValue,
+    ) -> Self {
         self.initial_bb.set(key, value);
         self
     }
@@ -351,9 +353,7 @@ mod tests {
         fsm.add_transition(
             SimpleState::Idle,
             SimpleState::Active,
-            FsmTransitionPredicate::new("activate", |bb| {
-                bb.get_bool("trigger").unwrap_or(false)
-            }),
+            FsmTransitionPredicate::new("activate", |bb| bb.get_bool("trigger").unwrap_or(false)),
         )
         .unwrap();
         let bt = BehaviorTree::new(
@@ -363,11 +363,9 @@ mod tests {
         )
         .unwrap();
         let mut util = UtilityAi::new(ActorKind::Npc).unwrap();
-        let c = util.add_consideration(Consideration::new(
-            "score",
-            CurveKind::Linear,
-            |bb| bb.get_float("desire").unwrap_or(0.5),
-        ));
+        let c = util.add_consideration(Consideration::new("score", CurveKind::Linear, |bb| {
+            bb.get_float("desire").unwrap_or(0.5)
+        }));
         let _ = util.add_action(UtilityAction::new("act", vec![c])).unwrap();
 
         AiBrainBuilder::new("test-brain", ActorKind::Npc)

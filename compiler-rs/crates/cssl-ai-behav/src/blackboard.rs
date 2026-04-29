@@ -75,7 +75,9 @@ impl BbValue {
             (Self::Int(a), Self::Int(b)) => a == b,
             (Self::Float(a), Self::Float(b)) => a.to_bits() == b.to_bits(),
             (Self::Bool(a), Self::Bool(b)) => a == b,
-            (Self::Vec2(a), Self::Vec2(b)) => a[0].to_bits() == b[0].to_bits() && a[1].to_bits() == b[1].to_bits(),
+            (Self::Vec2(a), Self::Vec2(b)) => {
+                a[0].to_bits() == b[0].to_bits() && a[1].to_bits() == b[1].to_bits()
+            }
             (Self::Text(a), Self::Text(b)) => a == b,
             _ => false,
         }
@@ -96,31 +98,51 @@ impl BbValue {
     /// Read as `i64` — returns `None` on type mismatch.
     #[must_use]
     pub const fn as_int(&self) -> Option<i64> {
-        if let Self::Int(v) = self { Some(*v) } else { None }
+        if let Self::Int(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     /// Read as `f64` — returns `None` on type mismatch.
     #[must_use]
     pub const fn as_float(&self) -> Option<f64> {
-        if let Self::Float(v) = self { Some(*v) } else { None }
+        if let Self::Float(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     /// Read as `bool` — returns `None` on type mismatch.
     #[must_use]
     pub const fn as_bool(&self) -> Option<bool> {
-        if let Self::Bool(v) = self { Some(*v) } else { None }
+        if let Self::Bool(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     /// Read as `[f64; 2]` — returns `None` on type mismatch.
     #[must_use]
     pub const fn as_vec2(&self) -> Option<[f64; 2]> {
-        if let Self::Vec2(v) = self { Some(*v) } else { None }
+        if let Self::Vec2(v) = self {
+            Some(*v)
+        } else {
+            None
+        }
     }
 
     /// Read as `&str` — returns `None` on type mismatch.
     #[must_use]
     pub fn as_text(&self) -> Option<&str> {
-        if let Self::Text(v) = self { Some(v) } else { None }
+        if let Self::Text(v) = self {
+            Some(v)
+        } else {
+            None
+        }
     }
 }
 
@@ -206,7 +228,9 @@ impl BlackBoard {
     pub fn require(&self, key: &str) -> Result<&BbValue, BlackBoardError> {
         self.entries
             .get(key)
-            .ok_or_else(|| BlackBoardError::KeyNotFound { key: key.to_string() })
+            .ok_or_else(|| BlackBoardError::KeyNotFound {
+                key: key.to_string(),
+            })
     }
 
     /// Typed get for `i64` ; surfaces `TypeMismatch` if present-but-wrong-type.

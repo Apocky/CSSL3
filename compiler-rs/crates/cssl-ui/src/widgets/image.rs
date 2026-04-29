@@ -104,7 +104,11 @@ mod tests {
         let mut img = Image::new(ImageHandle(0), Size::new(10.0, 10.0));
         let r = img.event(
             &UiEvent::WindowFocus,
-            EventContext { theme: &theme, hovered: false, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }
@@ -126,7 +130,10 @@ mod tests {
             },
         );
         // FillRect + 2 strokes for the diagonal cross.
-        assert!(p.commands().iter().any(|c| matches!(c, crate::paint::PaintCommand::StrokeLine { .. })));
+        assert!(p
+            .commands()
+            .iter()
+            .any(|c| matches!(c, crate::paint::PaintCommand::StrokeLine { .. })));
     }
 
     #[test]
@@ -146,7 +153,10 @@ mod tests {
             },
         );
         // Just the fill, no diagonals.
-        assert!(!p.commands().iter().any(|c| matches!(c, crate::paint::PaintCommand::StrokeLine { .. })));
+        assert!(!p
+            .commands()
+            .iter()
+            .any(|c| matches!(c, crate::paint::PaintCommand::StrokeLine { .. })));
     }
 
     #[test]

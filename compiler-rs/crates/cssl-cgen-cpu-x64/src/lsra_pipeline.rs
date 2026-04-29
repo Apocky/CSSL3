@@ -524,7 +524,11 @@ pub fn x64preg_to_xmm(p: X64PReg) -> Xmm {
 /// # Errors
 /// Returns [`NativeX64Error::UnsupportedOp`] for any inst-kind the encoder
 /// bridge doesn't handle (deferred-to-G9 cases like Idiv pinning).
-#[allow(clippy::too_many_lines, clippy::if_not_else, clippy::cognitive_complexity)]
+#[allow(
+    clippy::too_many_lines,
+    clippy::if_not_else,
+    clippy::cognitive_complexity
+)]
 pub fn regalloc_to_encoder_insts(
     allocated: &crate::regalloc::inst::X64FuncAllocated,
 ) -> Result<Vec<EncInst>, NativeX64Error> {

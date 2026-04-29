@@ -423,9 +423,9 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                     //   placeholder ; the declared type is the user's
                     //   authoritative shape.
                     if let Some(sym) = extract_pattern_symbol(pat) {
-                        let final_ty = declared_ty.as_ref().map_or(ty, |t| {
-                            lower_hir_type_light(ctx.interner, t)
-                        });
+                        let final_ty = declared_ty
+                            .as_ref()
+                            .map_or(ty, |t| lower_hir_type_light(ctx.interner, t));
                         ctx.local_vars.insert(sym, (vid, final_ty));
                     }
                 }

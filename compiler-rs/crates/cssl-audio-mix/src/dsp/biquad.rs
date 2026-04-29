@@ -100,13 +100,23 @@ impl Biquad {
     /// Convenience : Butterworth-Q low-pass.
     #[must_use]
     pub fn low_pass(cutoff_hz: f32, sample_rate: u32) -> Self {
-        Self::new(BiquadKind::LowPass, cutoff_hz, std::f32::consts::FRAC_1_SQRT_2, sample_rate)
+        Self::new(
+            BiquadKind::LowPass,
+            cutoff_hz,
+            std::f32::consts::FRAC_1_SQRT_2,
+            sample_rate,
+        )
     }
 
     /// Convenience : Butterworth-Q high-pass.
     #[must_use]
     pub fn high_pass(cutoff_hz: f32, sample_rate: u32) -> Self {
-        Self::new(BiquadKind::HighPass, cutoff_hz, std::f32::consts::FRAC_1_SQRT_2, sample_rate)
+        Self::new(
+            BiquadKind::HighPass,
+            cutoff_hz,
+            std::f32::consts::FRAC_1_SQRT_2,
+            sample_rate,
+        )
     }
 
     /// Convenience : band-pass with explicit Q.
@@ -332,8 +342,7 @@ mod tests {
         }
         f.process(&mut buf, 1, sr);
         let half = buf.len() / 2;
-        let rms_late: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32))
-            .sqrt();
+        let rms_late: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32)).sqrt();
         // 12 kHz at low-pass(500) should be heavily attenuated (≪ unity).
         assert!(rms_late < 0.1, "RMS_late={rms_late} ; expected ≪ 0.1");
     }
@@ -353,10 +362,8 @@ mod tests {
         f.process(&mut buf, 1, sr);
         // Compute RMS of input vs output ; ratio should be ≈ 1.
         let half = buf.len() / 2;
-        let rms_in: f32 = (input[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32))
-            .sqrt();
-        let rms_out: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32))
-            .sqrt();
+        let rms_in: f32 = (input[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32)).sqrt();
+        let rms_out: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32)).sqrt();
         let ratio = rms_out / rms_in.max(1e-9);
         assert!(ratio > 0.85 && ratio < 1.15, "ratio={ratio} ; expected ≈ 1");
         // Suppress unused-mut warning :
@@ -377,10 +384,8 @@ mod tests {
         let input = buf.clone();
         f.process(&mut buf, 1, sr);
         let half = buf.len() / 2;
-        let rms_in: f32 = (input[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32))
-            .sqrt();
-        let rms_out: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32))
-            .sqrt();
+        let rms_in: f32 = (input[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32)).sqrt();
+        let rms_out: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32)).sqrt();
         let ratio = rms_out / rms_in.max(1e-9);
         assert!(ratio > 0.85 && ratio < 1.15, "ratio={ratio} ; expected ≈ 1");
     }
@@ -398,8 +403,7 @@ mod tests {
         }
         f.process(&mut buf, 1, sr);
         let half = buf.len() / 2;
-        let rms_late: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32))
-            .sqrt();
+        let rms_late: f32 = (buf[half..].iter().map(|x| x * x).sum::<f32>() / (half as f32)).sqrt();
         assert!(rms_late < 0.1, "RMS_late={rms_late}");
     }
 

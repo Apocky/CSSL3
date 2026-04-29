@@ -178,10 +178,10 @@ impl Widget for TreeView {
             return EventResult::Ignored;
         }
         match event {
-            UiEvent::PointerDown { button, position, .. } => {
-                if !matches!(button, cssl_host_window::event::MouseButton::Left)
-                    || !ctx.hovered
-                {
+            UiEvent::PointerDown {
+                button, position, ..
+            } => {
+                if !matches!(button, cssl_host_window::event::MouseButton::Left) || !ctx.hovered {
                     return EventResult::Ignored;
                 }
                 let idx = (position.y / self.row_height) as usize;
@@ -253,8 +253,17 @@ impl Widget for TreeView {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         let outer = Rect::new(Point::ORIGIN, size);
-        painter.fill_rect(outer, theme.color(ThemeSlot::Background), theme.corner_radius);
-        painter.stroke_rect(outer, theme.color(ThemeSlot::Border), 1.0, theme.corner_radius);
+        painter.fill_rect(
+            outer,
+            theme.color(ThemeSlot::Background),
+            theme.corner_radius,
+        );
+        painter.stroke_rect(
+            outer,
+            theme.color(ThemeSlot::Border),
+            1.0,
+            theme.corner_radius,
+        );
         for (i, (depth, label, expanded)) in self.flat.iter().enumerate() {
             let y = i as f32 * self.row_height;
             if self.selected == Some(i) {
@@ -344,7 +353,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(t.selected, Some(0));
     }
@@ -360,7 +373,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

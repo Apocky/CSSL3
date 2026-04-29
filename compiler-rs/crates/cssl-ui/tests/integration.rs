@@ -73,7 +73,7 @@ fn five_widget_ui_layout_converges_and_routes_events() {
         ui.container_end();
         // Locate the button frame (it's the second entry after the
         // container start + label).
-        let entries_snapshot: Vec<_> = ui.state().focus_order.to_vec();
+        let entries_snapshot: Vec<_> = ui.state().focus_order.clone();
         // Feed events : move cursor over button + click.
         // The button entry's frame is recorded — we hover over its centre.
         // First we have to know the resolved frame ; we end-frame to run
@@ -305,7 +305,10 @@ fn slider_value_persists_across_frames_via_retained_store() {
     ui.begin_frame(Size::new(200.0, 200.0));
     let _ = ui.slider("vol", &mut volume, 0.0, 1.0);
     let _ = ui.end_frame(&mut paint);
-    assert!(volume > 0.0, "slider value should have advanced ; got {volume}");
+    assert!(
+        volume > 0.0,
+        "slider value should have advanced ; got {volume}"
+    );
 }
 
 #[test]
@@ -400,5 +403,8 @@ fn pointer_outside_hits_nothing() {
     });
     let mut p = PaintList::new();
     let _ = ui.end_frame(&mut p);
-    assert!(ui.state().hovered.is_none(), "no widget should hover when cursor is off-screen");
+    assert!(
+        ui.state().hovered.is_none(),
+        "no widget should hover when cursor is off-screen"
+    );
 }

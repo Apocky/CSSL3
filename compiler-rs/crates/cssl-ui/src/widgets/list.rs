@@ -60,7 +60,12 @@ impl Widget for List {
 
     fn layout(&mut self, constraint: LayoutConstraint) -> Size {
         let glyph_w = 8.0_f32;
-        let max_label_len = self.items.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+        let max_label_len = self
+            .items
+            .iter()
+            .map(|s| s.chars().count())
+            .max()
+            .unwrap_or(0);
         let w = (max_label_len as f32 * glyph_w + 16.0).max(160.0);
         let h = self.content_height().max(self.row_height);
         constraint.clamp(Size::new(w, h))
@@ -76,10 +81,10 @@ impl Widget for List {
             return EventResult::Ignored;
         }
         match event {
-            UiEvent::PointerDown { button, position, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && ctx.hovered
-                {
+            UiEvent::PointerDown {
+                button, position, ..
+            } => {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && ctx.hovered {
                     let local_y = position.y + self.scroll_offset;
                     let idx = (local_y / self.row_height) as usize;
                     if idx < self.items.len() {
@@ -142,8 +147,17 @@ impl Widget for List {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         let outer = Rect::new(Point::ORIGIN, size);
-        painter.fill_rect(outer, theme.color(ThemeSlot::Background), theme.corner_radius);
-        painter.stroke_rect(outer, theme.color(ThemeSlot::Border), 1.0, theme.corner_radius);
+        painter.fill_rect(
+            outer,
+            theme.color(ThemeSlot::Background),
+            theme.corner_radius,
+        );
+        painter.stroke_rect(
+            outer,
+            theme.color(ThemeSlot::Border),
+            1.0,
+            theme.corner_radius,
+        );
         painter.push_clip(outer);
         for (i, item) in self.items.iter().enumerate() {
             let y = i as f32 * self.row_height - self.scroll_offset;
@@ -206,7 +220,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(l.selected, Some(1));
@@ -222,7 +240,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert_eq!(l.selected, Some(0));
@@ -238,7 +260,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(l.selected, Some(2));
         let _ = l.event(
@@ -247,7 +273,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(l.selected, Some(0));
     }
@@ -263,7 +293,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }
@@ -292,7 +326,11 @@ mod tests {
                 delta: cssl_host_window::event::ScrollDelta::Lines { x: 0.0, y: -100.0 },
                 modifiers: ModifierKeys::empty(),
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Consumed);
         assert!((l.scroll_offset - 60.0).abs() < f32::EPSILON);

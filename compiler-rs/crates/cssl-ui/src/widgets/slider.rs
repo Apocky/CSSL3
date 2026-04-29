@@ -75,10 +75,10 @@ impl Widget for Slider {
             return EventResult::Ignored;
         }
         match event {
-            UiEvent::PointerDown { button, position, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && ctx.hovered
-                {
+            UiEvent::PointerDown {
+                button, position, ..
+            } => {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && ctx.hovered {
                     self.dragging = true;
                     let new_value = self.snap_from_x(position.x);
                     if (new_value - self.value).abs() > f32::EPSILON {
@@ -100,9 +100,7 @@ impl Widget for Slider {
                 }
             }
             UiEvent::PointerUp { button, .. } => {
-                if matches!(button, cssl_host_window::event::MouseButton::Left)
-                    && self.dragging
-                {
+                if matches!(button, cssl_host_window::event::MouseButton::Left) && self.dragging {
                     self.dragging = false;
                     return EventResult::Consumed;
                 }
@@ -139,10 +137,7 @@ impl Widget for Slider {
     fn paint(&self, size: Size, painter: &mut dyn Painter, ctx: PaintContext<'_>) {
         let theme = ctx.theme;
         // Track.
-        let track = Rect::new(
-            Point::new(0.0, size.h * 0.5 - 2.0),
-            Size::new(size.w, 4.0),
-        );
+        let track = Rect::new(Point::new(0.0, size.h * 0.5 - 2.0), Size::new(size.w, 4.0));
         painter.fill_rect(track, theme.color(ThemeSlot::AccentMuted), 2.0);
         // Knob.
         let t = ((self.value - self.min) / (self.max - self.min)).clamp(0.0, 1.0);
@@ -191,7 +186,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Changed);
         assert!((s.value - 0.55).abs() < 0.001);
@@ -208,7 +207,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert!(s.value.abs() < f32::EPSILON);
     }
@@ -225,7 +228,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert!((s.value - 0.5).abs() < 0.01);
     }
@@ -243,7 +250,11 @@ mod tests {
                 modifiers: ModifierKeys::empty(),
                 pointer_id: 0,
             },
-            EventContext { theme: &theme, hovered: true, focused: false },
+            EventContext {
+                theme: &theme,
+                hovered: true,
+                focused: false,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }
@@ -265,7 +276,11 @@ mod tests {
                 modifiers: ModifierKeys::SHIFT,
                 repeat: false,
             },
-            EventContext { theme: &theme, hovered: false, focused: true },
+            EventContext {
+                theme: &theme,
+                hovered: false,
+                focused: true,
+            },
         );
         assert_eq!(r, EventResult::Ignored);
     }

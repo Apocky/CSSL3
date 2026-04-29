@@ -261,7 +261,9 @@ impl NavMesh {
             }
             // Degenerate-triangle check : all-three-vertices unique.
             if t[0] == t[1] || t[1] == t[2] || t[0] == t[2] {
-                return Err(NavMeshBuildError::DegenerateTriangle { tri_index: i as u32 });
+                return Err(NavMeshBuildError::DegenerateTriangle {
+                    tri_index: i as u32,
+                });
             }
             tris.push(Triangle { vertices: *t });
         }
@@ -312,7 +314,9 @@ impl NavMesh {
     /// Add a portal between two triangles.
     pub fn add_portal(&mut self, portal: Portal) -> Result<(), NavMeshBuildError> {
         if (portal.from.0 as usize) >= self.triangles.len() {
-            return Err(NavMeshBuildError::PortalUnknownTriangle { tri_id: portal.from });
+            return Err(NavMeshBuildError::PortalUnknownTriangle {
+                tri_id: portal.from,
+            });
         }
         if (portal.to.0 as usize) >= self.triangles.len() {
             return Err(NavMeshBuildError::PortalUnknownTriangle { tri_id: portal.to });
@@ -404,9 +408,7 @@ impl NavMesh {
         }
 
         let goal_centroid = self.centroids[req.goal.0 as usize];
-        let h = |id: TriId| -> f64 {
-            self.centroids[id.0 as usize].dist(goal_centroid)
-        };
+        let h = |id: TriId| -> f64 { self.centroids[id.0 as usize].dist(goal_centroid) };
 
         let mut g_score: BTreeMap<TriId, f64> = BTreeMap::new();
         g_score.insert(req.start, 0.0);
@@ -453,8 +455,8 @@ impl NavMesh {
 
             let neighbors = self.neighbors(node.tri);
             for nb in neighbors {
-                let edge_cost = self.centroids[node.tri.0 as usize]
-                    .dist(self.centroids[nb.0 as usize]);
+                let edge_cost =
+                    self.centroids[node.tri.0 as usize].dist(self.centroids[nb.0 as usize]);
                 let tentative_g = node.g + edge_cost;
                 let known = g_score.get(&nb).copied().unwrap_or(f64::INFINITY);
                 if tentative_g < known {
@@ -596,7 +598,10 @@ mod tests {
         let v = vec![Point2::new(0.0, 0.0)];
         let t = vec![[0, 1, 2]];
         let err = NavMesh::build(v, t).unwrap_err();
-        assert!(matches!(err, NavMeshBuildError::VertexIndexOutOfBounds { .. }));
+        assert!(matches!(
+            err,
+            NavMeshBuildError::VertexIndexOutOfBounds { .. }
+        ));
         assert_eq!(err.code(), "AIBEHAV0050");
     }
 
@@ -640,7 +645,9 @@ mod tests {
     #[test]
     fn astar_same_node_zero_cost() {
         let mesh = grid_2();
-        let r = mesh.find_path(PathRequest::new(TriId(0), TriId(0))).unwrap();
+        let r = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(0)))
+            .unwrap();
         assert_eq!(r.path, vec![TriId(0)]);
         assert!(r.cost.abs() < 1e-9);
     }
@@ -648,7 +655,9 @@ mod tests {
     #[test]
     fn astar_unknown_start() {
         let mesh = grid_2();
-        let err = mesh.find_path(PathRequest::new(TriId(99), TriId(0))).unwrap_err();
+        let err = mesh
+            .find_path(PathRequest::new(TriId(99), TriId(0)))
+            .unwrap_err();
         assert!(matches!(err, NavMeshError::UnknownStart(_)));
         assert_eq!(err.code(), "AIBEHAV0060");
     }
@@ -656,7 +665,9 @@ mod tests {
     #[test]
     fn astar_unknown_goal() {
         let mesh = grid_2();
-        let err = mesh.find_path(PathRequest::new(TriId(0), TriId(99))).unwrap_err();
+        let err = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(99)))
+            .unwrap_err();
         assert!(matches!(err, NavMeshError::UnknownGoal(_)));
         assert_eq!(err.code(), "AIBEHAV0061");
     }
@@ -664,7 +675,9 @@ mod tests {
     #[test]
     fn astar_two_node_path() {
         let mesh = grid_2();
-        let r = mesh.find_path(PathRequest::new(TriId(0), TriId(1))).unwrap();
+        let r = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(1)))
+            .unwrap();
         assert_eq!(r.path, vec![TriId(0), TriId(1)]);
         assert!(r.cost > 0.0);
     }
@@ -672,7 +685,9 @@ mod tests {
     #[test]
     fn astar_strip_path() {
         let mesh = strip(4); // 8 triangles in a strip
-        let r = mesh.find_path(PathRequest::new(TriId(0), TriId(7))).unwrap();
+        let r = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(7)))
+            .unwrap();
         assert_eq!(*r.path.first().unwrap(), TriId(0));
         assert_eq!(*r.path.last().unwrap(), TriId(7));
         assert!(r.path.len() >= 2);
@@ -693,7 +708,9 @@ mod tests {
         ];
         let t = vec![[0, 1, 2], [3, 4, 5]];
         let mesh = NavMesh::build(v, t).unwrap();
-        let err = mesh.find_path(PathRequest::new(TriId(0), TriId(1))).unwrap_err();
+        let err = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(1)))
+            .unwrap_err();
         assert!(matches!(err, NavMeshError::NoPath { .. }));
         assert_eq!(err.code(), "AIBEHAV0062");
     }
@@ -711,8 +728,12 @@ mod tests {
     #[test]
     fn astar_determinism_across_runs() {
         let mesh = strip(10);
-        let r1 = mesh.find_path(PathRequest::new(TriId(0), TriId(19))).unwrap();
-        let r2 = mesh.find_path(PathRequest::new(TriId(0), TriId(19))).unwrap();
+        let r1 = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(19)))
+            .unwrap();
+        let r2 = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(19)))
+            .unwrap();
         assert_eq!(r1.path, r2.path);
         assert_eq!(r1.cost.to_bits(), r2.cost.to_bits());
     }
@@ -736,7 +757,9 @@ mod tests {
             bidirectional: true,
         })
         .unwrap();
-        let r = mesh.find_path(PathRequest::new(TriId(0), TriId(1))).unwrap();
+        let r = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(1)))
+            .unwrap();
         assert_eq!(r.path, vec![TriId(0), TriId(1)]);
     }
 
@@ -759,10 +782,14 @@ mod tests {
         })
         .unwrap();
         // Forward path works.
-        let r = mesh.find_path(PathRequest::new(TriId(0), TriId(1))).unwrap();
+        let r = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(1)))
+            .unwrap();
         assert_eq!(r.path, vec![TriId(0), TriId(1)]);
         // Reverse path fails (one-way).
-        let err = mesh.find_path(PathRequest::new(TriId(1), TriId(0))).unwrap_err();
+        let err = mesh
+            .find_path(PathRequest::new(TriId(1), TriId(0)))
+            .unwrap_err();
         assert!(matches!(err, NavMeshError::NoPath { .. }));
     }
 
@@ -776,7 +803,10 @@ mod tests {
                 bidirectional: false,
             })
             .unwrap_err();
-        assert!(matches!(err, NavMeshBuildError::PortalUnknownTriangle { .. }));
+        assert!(matches!(
+            err,
+            NavMeshBuildError::PortalUnknownTriangle { .. }
+        ));
         assert_eq!(err.code(), "AIBEHAV0052");
     }
 
@@ -811,8 +841,10 @@ mod tests {
     #[test]
     fn astar_optimal_path_simple() {
         let mesh = strip(3); // 6 triangles
-        // Path 0 → 5 should hit every alternating triangle in order.
-        let r = mesh.find_path(PathRequest::new(TriId(0), TriId(5))).unwrap();
+                             // Path 0 → 5 should hit every alternating triangle in order.
+        let r = mesh
+            .find_path(PathRequest::new(TriId(0), TriId(5)))
+            .unwrap();
         // Path must include start + goal.
         assert_eq!(*r.path.first().unwrap(), TriId(0));
         assert_eq!(*r.path.last().unwrap(), TriId(5));
@@ -875,10 +907,7 @@ mod tests {
 
     #[test]
     fn astar_default_tie_break_is_g_desc_tri_asc() {
-        assert_eq!(
-            AStarTie::default_policy(),
-            AStarTie::GValueDescThenTriIdAsc
-        );
+        assert_eq!(AStarTie::default_policy(), AStarTie::GValueDescThenTriIdAsc);
     }
 
     #[test]

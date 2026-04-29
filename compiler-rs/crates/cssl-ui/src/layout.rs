@@ -308,7 +308,11 @@ fn solve_axis_box(
     // Available space for flex distribution.
     let available_major = axis.major(inner_max);
     let extra_major = (available_major - total_min_major).max(0.0);
-    let flex_unit = if total_flex > 0.0 { extra_major / total_flex } else { 0.0 };
+    let flex_unit = if total_flex > 0.0 {
+        extra_major / total_flex
+    } else {
+        0.0
+    };
 
     // Pass 2b : assign final frames.
     let mut slots = Vec::with_capacity(children.len());
@@ -329,10 +333,9 @@ fn solve_axis_box(
         MainAlign::Start => (0.0_f32, 0.0_f32),
         MainAlign::Center => (leftover_major * 0.5, 0.0),
         MainAlign::End => (leftover_major, 0.0),
-        MainAlign::SpaceBetween if children.len() > 1 => (
-            0.0,
-            leftover_major / (children.len() as f32 - 1.0),
-        ),
+        MainAlign::SpaceBetween if children.len() > 1 => {
+            (0.0, leftover_major / (children.len() as f32 - 1.0))
+        }
         MainAlign::SpaceBetween => (leftover_major * 0.5, 0.0),
         MainAlign::SpaceAround => {
             let slot = leftover_major / (children.len() as f32 + 1.0).max(1.0);
@@ -413,10 +416,9 @@ fn solve_stack(
                     pad.left + (inner.w - size.w) * 0.5,
                     pad.top + (inner.h - size.h) * 0.5,
                 ),
-                CrossAlign::End => Point::new(
-                    pad.left + (inner.w - size.w),
-                    pad.top + (inner.h - size.h),
-                ),
+                CrossAlign::End => {
+                    Point::new(pad.left + (inner.w - size.w), pad.top + (inner.h - size.h))
+                }
                 CrossAlign::Start => Point::new(pad.left, pad.top),
             };
             let final_size = if style.cross_align == CrossAlign::Stretch {
@@ -443,7 +445,10 @@ fn solve_absolute(
     let slots: Vec<_> = children
         .iter()
         .map(|c| {
-            let origin = Point::new(c.absolute_origin.x + pad.left, c.absolute_origin.y + pad.top);
+            let origin = Point::new(
+                c.absolute_origin.x + pad.left,
+                c.absolute_origin.y + pad.top,
+            );
             let frame = Rect::new(origin, c.min_size);
             let max = frame.max();
             if max.x > bounds.w {
@@ -452,7 +457,10 @@ fn solve_absolute(
             if max.y > bounds.h {
                 bounds.h = max.y;
             }
-            ChildSlot { frame, flex: c.flex }
+            ChildSlot {
+                frame,
+                flex: c.flex,
+            }
         })
         .collect();
     let resolved = constraint.clamp(Size::new(bounds.w + pad.right, bounds.h + pad.bottom));
@@ -507,7 +515,10 @@ fn solve_grid(
             let r = i / cols;
             let cl = i % cols;
             let frame = Rect::new(Point::new(col_x[cl], row_y[r]), c.min_size);
-            ChildSlot { frame, flex: c.flex }
+            ChildSlot {
+                frame,
+                flex: c.flex,
+            }
         })
         .collect();
 
@@ -577,8 +588,12 @@ mod tests {
     fn vbox_stacks_children_top_to_bottom() {
         let kids = [child_size(50.0, 20.0), child_size(50.0, 30.0)];
         let constraint = LayoutConstraint::loose(Size::new(200.0, 200.0));
-        let (size, slots) =
-            solve_container(&Container::Vbox, constraint, ContainerStyle::default(), &kids);
+        let (size, slots) = solve_container(
+            &Container::Vbox,
+            constraint,
+            ContainerStyle::default(),
+            &kids,
+        );
         assert_eq!(slots.len(), 2);
         // First child at y=0, second at y=20 (no gap).
         assert!((slots[0].frame.origin.y).abs() < f32::EPSILON);
@@ -590,7 +605,10 @@ mod tests {
     #[test]
     fn vbox_with_gap_inserts_separation() {
         let kids = [child_size(50.0, 20.0), child_size(50.0, 30.0)];
-        let style = ContainerStyle { gap: 4.0, ..Default::default() };
+        let style = ContainerStyle {
+            gap: 4.0,
+            ..Default::default()
+        };
         let constraint = LayoutConstraint::loose(Size::new(200.0, 200.0));
         let (_, slots) = solve_container(&Container::Vbox, constraint, style, &kids);
         // Second child at y = 20 + gap(4) = 24.
@@ -601,8 +619,12 @@ mod tests {
     fn hbox_stacks_children_left_to_right() {
         let kids = [child_size(20.0, 50.0), child_size(30.0, 50.0)];
         let constraint = LayoutConstraint::loose(Size::new(200.0, 200.0));
-        let (size, slots) =
-            solve_container(&Container::Hbox, constraint, ContainerStyle::default(), &kids);
+        let (size, slots) = solve_container(
+            &Container::Hbox,
+            constraint,
+            ContainerStyle::default(),
+            &kids,
+        );
         assert!((slots[0].frame.origin.x).abs() < f32::EPSILON);
         assert!((slots[1].frame.origin.x - 20.0).abs() < f32::EPSILON);
         assert!((size.w - 50.0).abs() < f32::EPSILON);
@@ -617,7 +639,9 @@ mod tests {
         let kids = [a, b];
         let constraint = LayoutConstraint::tight(Size::new(100.0, 100.0));
         let (_, slots) = solve_container(
-            &Container::Flex { axis: Axis::Horizontal },
+            &Container::Flex {
+                axis: Axis::Horizontal,
+            },
             constraint,
             ContainerStyle::default(),
             &kids,
@@ -633,8 +657,12 @@ mod tests {
     fn stack_overlays_children_at_origin() {
         let kids = [child_size(40.0, 30.0), child_size(20.0, 10.0)];
         let constraint = LayoutConstraint::loose(Size::new(100.0, 100.0));
-        let (size, slots) =
-            solve_container(&Container::Stack, constraint, ContainerStyle::default(), &kids);
+        let (size, slots) = solve_container(
+            &Container::Stack,
+            constraint,
+            ContainerStyle::default(),
+            &kids,
+        );
         // Stack size = max(40,20) x max(30,10) = 40 x 30.
         assert!((size.w - 40.0).abs() < f32::EPSILON);
         assert!((size.h - 30.0).abs() < f32::EPSILON);
