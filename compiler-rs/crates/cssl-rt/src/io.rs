@@ -219,6 +219,76 @@ static OPEN_COUNT: AtomicU64 = AtomicU64::new(0);
 static READ_COUNT: AtomicU64 = AtomicU64::new(0);
 static WRITE_COUNT: AtomicU64 = AtomicU64::new(0);
 static CLOSE_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Op-kind code recorded alongside the path-hash in [`PathHashEvent`].
+///
+/// § STABILITY
+///   Numeric values are STABLE across builds — they appear in audit-chain
+///   entries via [`crate::io::path_hash_events_drain`] consumers (the
+///   substrate-prime-directive crate) and renaming would break log
+///   replay. Adding a new variant requires a major bump.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PathHashOpKind {
+    /// `__cssl_fs_open` (any flags).
+    Open = 1,
+    /// `__cssl_fs_read` (call-site, regardless of byte count).
+    Read = 2,
+    /// `__cssl_fs_write` (call-site).
+    Write = 3,
+    /// `__cssl_fs_close`.
+    Close = 4,
+}
+
+impl PathHashOpKind {
+    /// Stable canonical name used in audit-chain tags. Renaming = ABI bump.
+    #[must_use]
+    pub const fn canonical_name(self) -> &'static str {
+        match self {
+            Self::Open => "fs-open",
+            Self::Read => "fs-read",
+            Self::Write => "fs-write",
+            Self::Close => "fs-close",
+        }
+    }
+}
+
+/// One path-hash event : (path_hash, op-kind).
+///
+/// § DISCIPLINE
+///   The `path_hash` field is the ONLY observable form of the path. The
+///   raw path is never stored, never serialized, never logged. The hash
+///   is computed at the FFI boundary (in `io_win32::cssl_fs_open_impl` /
+///   `io_unix::cssl_fs_open_impl`) before any other recording happens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PathHashEvent {
+    /// 32-byte BLAKE3 hash of the OS-native path bytes under the
+    /// per-installation salt (see `cssl_telemetry::path_hash`).
+    pub path_hash: [u8; 32],
+    /// Which fs-op happened.
+    pub op: PathHashOpKind,
+}
+
+// In-process bounded queue of path-hash events. Producers (FFI shims)
+// push lock-free with an overflow-counter ; consumers (the
+// substrate-prime-directive audit-bus) drain periodically.
+//
+// Stage-0 backing : a single `Mutex<VecDeque<...>>` matching the pattern
+// used by `cssl_telemetry::ring`. Phase-2 swaps for a real lock-free
+// SPSC ; the API surface is stable.
+//
+// Capacity bound : 4096 events, matching the default audit-export
+// flush-window. Beyond that, [`PATH_HASH_OVERFLOW_COUNT`] increments
+// and the new event is DROPPED — telemetry-prefers-lossy-non-blocking
+// per `specs/22 § RING-BUFFER`.
+
+/// Maximum buffered path-hash events before overflow.
+pub const PATH_HASH_QUEUE_CAPACITY: usize = 4096;
+
+static PATH_HASH_OVERFLOW_COUNT: AtomicU64 = AtomicU64::new(0);
+// One global Mutex<VecDeque> ; replace with lock-free in phase-2.
+static PATH_HASH_QUEUE: std::sync::Mutex<std::collections::VecDeque<PathHashEvent>> =
+    std::sync::Mutex::new(std::collections::VecDeque::new());
 // `pub(crate)` so platform layers can update the byte-totals after a
 // successful syscall without re-incrementing the call-count via
 // [`record_read`] / [`record_write`].
@@ -271,6 +341,10 @@ pub fn reset_io_for_tests() {
     CLOSE_COUNT.store(0, Ordering::Relaxed);
     BYTES_READ_TOTAL.store(0, Ordering::Relaxed);
     BYTES_WRITTEN_TOTAL.store(0, Ordering::Relaxed);
+    PATH_HASH_OVERFLOW_COUNT.store(0, Ordering::Relaxed);
+    if let Ok(mut q) = PATH_HASH_QUEUE.lock() {
+        q.clear();
+    }
     reset_last_io_error_for_tests();
 }
 
@@ -298,6 +372,60 @@ pub(crate) fn record_write(bytes: u64) {
 #[doc(hidden)]
 pub(crate) fn record_close() {
     CLOSE_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Path-hash event recording (T11-D130 — F6 path-hash-only discipline).
+// ───────────────────────────────────────────────────────────────────────
+
+/// Record a `(path_hash, op)` event into the in-process queue.
+///
+/// § DISCIPLINE
+///   This is the canonical recording entry-point for fs-ops that touched
+///   a path. The `path_hash` is the 32-byte BLAKE3-salted output of
+///   `cssl_telemetry::PathHasher::hash_bytes` ; the platform layer is
+///   responsible for computing it BEFORE any other recording happens
+///   (so the raw bytes never live longer than the syscall path).
+///
+/// § OVERFLOW
+///   On a full queue, the new event is DROPPED and
+///   [`path_hash_overflow_count`] is incremented. Telemetry prefers
+///   lossy-non-blocking per `specs/22 § RING-BUFFER` ; consumers are
+///   expected to drain frequently.
+pub fn record_path_hash_event(path_hash: [u8; 32], op: PathHashOpKind) {
+    if let Ok(mut q) = PATH_HASH_QUEUE.lock() {
+        if q.len() >= PATH_HASH_QUEUE_CAPACITY {
+            PATH_HASH_OVERFLOW_COUNT.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        q.push_back(PathHashEvent { path_hash, op });
+    } else {
+        // Mutex poisoned ; count as overflow rather than panic.
+        PATH_HASH_OVERFLOW_COUNT.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Number of path-hash events that were dropped due to queue-full.
+#[must_use]
+pub fn path_hash_overflow_count() -> u64 {
+    PATH_HASH_OVERFLOW_COUNT.load(Ordering::Relaxed)
+}
+
+/// Drain all queued path-hash events. The queue is empty after this call.
+/// Consumers (the substrate-prime-directive audit-bus) drain on a periodic
+/// schedule + on flush.
+#[must_use]
+pub fn path_hash_events_drain() -> alloc::vec::Vec<PathHashEvent> {
+    PATH_HASH_QUEUE
+        .lock()
+        .map_or_else(|_| alloc::vec::Vec::new(), |mut q| q.drain(..).collect())
+}
+
+/// Number of currently-queued path-hash events. Test-only convenience.
+#[doc(hidden)]
+#[must_use]
+pub fn path_hash_queue_len() -> usize {
+    PATH_HASH_QUEUE.lock().map(|q| q.len()).unwrap_or(0)
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -661,5 +789,118 @@ mod tests {
     fn invalid_handle_is_negative_one() {
         // ‼ ABI-stable per cssl-rt FFI invariant ; renaming requires major bump.
         assert_eq!(INVALID_HANDLE, -1);
+    }
+
+    // § T11-D130 : path-hash event recording tests
+
+    #[test]
+    fn path_hash_op_kind_canonical_names_stable() {
+        assert_eq!(PathHashOpKind::Open.canonical_name(), "fs-open");
+        assert_eq!(PathHashOpKind::Read.canonical_name(), "fs-read");
+        assert_eq!(PathHashOpKind::Write.canonical_name(), "fs-write");
+        assert_eq!(PathHashOpKind::Close.canonical_name(), "fs-close");
+    }
+
+    #[test]
+    fn record_path_hash_event_appends_to_queue() {
+        let _g = crate::test_helpers::lock_and_reset_all();
+        record_path_hash_event([1u8; 32], PathHashOpKind::Open);
+        record_path_hash_event([2u8; 32], PathHashOpKind::Read);
+        assert_eq!(path_hash_queue_len(), 2);
+        let events = path_hash_events_drain();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].path_hash, [1u8; 32]);
+        assert_eq!(events[0].op, PathHashOpKind::Open);
+        assert_eq!(events[1].path_hash, [2u8; 32]);
+        assert_eq!(events[1].op, PathHashOpKind::Read);
+    }
+
+    #[test]
+    fn path_hash_drain_empties_queue() {
+        let _g = crate::test_helpers::lock_and_reset_all();
+        record_path_hash_event([0xFFu8; 32], PathHashOpKind::Close);
+        assert_eq!(path_hash_queue_len(), 1);
+        let _ = path_hash_events_drain();
+        assert_eq!(path_hash_queue_len(), 0);
+    }
+
+    #[test]
+    fn path_hash_overflow_increments_counter_when_full() {
+        let _g = crate::test_helpers::lock_and_reset_all();
+        // Push 1 over the cap to verify the overflow path. We use the
+        // public API ; pushing exactly PATH_HASH_QUEUE_CAPACITY+1 events
+        // is expensive but bounded, and the test runs in milliseconds.
+        for i in 0..PATH_HASH_QUEUE_CAPACITY {
+            let mut h = [0u8; 32];
+            h[0] = (i & 0xFF) as u8;
+            record_path_hash_event(h, PathHashOpKind::Open);
+        }
+        // One more push triggers overflow.
+        record_path_hash_event([0xAAu8; 32], PathHashOpKind::Open);
+        assert!(path_hash_overflow_count() >= 1);
+        assert_eq!(path_hash_queue_len(), PATH_HASH_QUEUE_CAPACITY);
+    }
+
+    #[test]
+    fn path_hash_event_struct_is_pub_constructible() {
+        // Sanity : downstream code can build a PathHashEvent for tests.
+        let e = PathHashEvent {
+            path_hash: [7u8; 32],
+            op: PathHashOpKind::Write,
+        };
+        assert_eq!(e.op.canonical_name(), "fs-write");
+    }
+
+    #[test]
+    fn fs_open_records_path_hash_event_never_raw_path() {
+        // ‼ End-to-end : after a real fs_open call, the path-hash queue
+        // contains a 32-byte hash. The raw path bytes are NOT recoverable
+        // from the queue ; only the hash is.
+        let _g = crate::test_helpers::lock_and_reset_all();
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("cssl_d130_path_hash_e2e.txt");
+        let path_str = path.to_string_lossy().into_owned();
+
+        // SAFETY : valid path string + create flags.
+        #[cfg(target_os = "windows")]
+        let h = unsafe {
+            crate::io_win32::cssl_fs_open_impl(
+                path_str.as_ptr(),
+                path_str.len(),
+                OPEN_WRITE | OPEN_CREATE | OPEN_TRUNCATE,
+            )
+        };
+        #[cfg(not(target_os = "windows"))]
+        let h = unsafe {
+            crate::io_unix::cssl_fs_open_impl(
+                path_str.as_ptr(),
+                path_str.len(),
+                OPEN_WRITE | OPEN_CREATE | OPEN_TRUNCATE,
+            )
+        };
+        assert_ne!(h, INVALID_HANDLE);
+
+        let events = path_hash_events_drain();
+        assert!(!events.is_empty(), "fs_open must record a path-hash event");
+        let e = &events[0];
+        assert_eq!(e.op, PathHashOpKind::Open);
+        // The hash is non-zero (salted BLAKE3 of a non-empty path).
+        assert_ne!(e.path_hash, [0u8; 32]);
+        // The hash is exactly 32 bytes (BLAKE3 digest size).
+        assert_eq!(e.path_hash.len(), 32);
+        // ‼ The raw path bytes are NOT in the event. The event holds
+        // only the hash ; even attempting to recover the path from
+        // 32 bytes is cryptographically infeasible.
+
+        // Cleanup.
+        #[cfg(target_os = "windows")]
+        unsafe {
+            let _ = crate::io_win32::cssl_fs_close_impl(h);
+        }
+        #[cfg(not(target_os = "windows"))]
+        unsafe {
+            let _ = crate::io_unix::cssl_fs_close_impl(h);
+        }
+        let _ = std::fs::remove_file(&path);
     }
 }

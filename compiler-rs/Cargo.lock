@@ -739,6 +739,10 @@ dependencies = [
 [[package]]
 name = "cssl-rt"
 version = "0.1.0"
+dependencies = [
+ "blake3",
+ "rand",
+]
 
 [[package]]
 name = "cssl-smt"

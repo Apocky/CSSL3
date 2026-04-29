@@ -41,7 +41,8 @@ pub mod registry;
 pub mod substrate;
 
 pub use banned::{
-    banned_composition, banned_composition_with_domains, BannedReason, SensitiveDomain,
+    banned_composition, banned_composition_with_domains, check_telemetry_no_raw_path,
+    is_raw_path_type, BannedReason, SensitiveDomain, RAW_PATH_TYPE_NAMES,
 };
 pub use discipline::{
     classify_coercion, sub_effect_check, CoercionRule, EffectRef, SubEffectError,

@@ -274,6 +274,10 @@ pub unsafe fn cssl_fs_open_impl(path_ptr: *const u8, path_len: usize, flags: i32
         return INVALID_HANDLE;
     }
     crate::io::record_open();
+    // § T11-D130 : record path-hash event (raw path bytes never escape).
+    // SAFETY : path_ptr/path_len validated above to be non-null + non-zero.
+    let path_hash = unsafe { crate::path_hash::hash_path_ptr(path_ptr, path_len) };
+    crate::io::record_path_hash_event(path_hash, crate::io::PathHashOpKind::Open);
     i64::from(fd)
 }
 

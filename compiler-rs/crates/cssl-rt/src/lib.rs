@@ -98,6 +98,7 @@ pub mod net_unix;
 #[cfg(target_os = "windows")]
 pub mod net_win32;
 pub mod panic;
+pub mod path_hash;
 pub mod runtime;
 
 // ───────────────────────────────────────────────────────────────────────
@@ -114,11 +115,13 @@ pub use exit::{
 };
 pub use io::{
     bytes_read_total, bytes_written_total, close_count, io_error_code, last_io_error_kind,
-    last_io_error_os, open_count, read_count, record_io_error, reset_io_for_tests,
-    reset_last_io_error_for_tests, validate_buffer, validate_open_flags, write_count,
+    last_io_error_os, open_count, path_hash_events_drain, path_hash_overflow_count, read_count,
+    record_io_error, record_path_hash_event, reset_io_for_tests, reset_last_io_error_for_tests,
+    validate_buffer, validate_open_flags, write_count, PathHashEvent, PathHashOpKind,
     INVALID_HANDLE, OPEN_APPEND, OPEN_CREATE, OPEN_CREATE_NEW, OPEN_FLAG_MASK, OPEN_READ,
-    OPEN_READ_WRITE, OPEN_TRUNCATE, OPEN_WRITE,
+    OPEN_READ_WRITE, OPEN_TRUNCATE, OPEN_WRITE, PATH_HASH_QUEUE_CAPACITY,
 };
+pub use path_hash::{hash_path_bytes, install_test_salt};
 pub use net::{
     accept_count, addr_is_loopback, bytes_recv_total, bytes_sent_total, caps_current, caps_grant,
     caps_revoke, check_caps_for_addr, connect_count, last_net_error_kind, last_net_error_os,

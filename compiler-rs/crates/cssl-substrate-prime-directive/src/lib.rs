@@ -59,11 +59,13 @@ pub mod halt;
 pub mod harm;
 
 pub use attestation::{
-    attestation_check, attestation_constant_text, AttestationError, ATTESTATION, ATTESTATION_HASH,
+    attestation_check, attestation_constant_text, path_hash_discipline_attestation_constant_hash,
+    AttestationError, ATTESTATION, ATTESTATION_HASH, PATH_HASH_DISCIPLINE_ATTESTATION,
+    PATH_HASH_DISCIPLINE_ATTESTATION_HASH,
 };
 #[cfg(any(test, feature = "test-bypass"))]
 pub use audit::audit_chain_for_test;
-pub use audit::{AuditEvent, EnforcementAuditBus};
+pub use audit::{AuditEvent, EnforcementAuditBus, PathOpKind};
 pub use cap::{CapToken, CapTokenId, SubstrateCap};
 pub use consent::{
     caps_grant, caps_revoke, ConsentLog, ConsentScope, ConsentStore, GrantError,

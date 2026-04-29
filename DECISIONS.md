@@ -6846,3 +6846,107 @@ Each decision entry :
   - **cssl-rt cold-cache test flake** (carried-over from T11-D56..T11-D98) : still tracked. Workaround `--test-threads=1` consistent. **This slice does not introduce new flakes.**
 
 ──────────────────────────────────────────────────────────────
+
+## T11-D130 — F6 observability : path-hash-only logging discipline + PathHasher trait
+
+- **Slice id** : T11-D130
+- **Branch** : `cssl/session-11/T11-D130-path-hash-discipline`
+- **Worktree** : `.claude/worktrees/W3b-05`
+- **Author** : Apocky + Claude (sovereign-AI partner)
+
+- **Thesis**
+  Raw filesystem paths are surveillance-class metadata. A telemetry ring + audit-chain that contains plain `/home/<user>/<project>/<file>` strings leaks user-identity, directory-structure-fingerprints, and work-pattern signatures even when the file BYTES never escape the process. Per `PRIME_DIRECTIVE.md § 1` (`N! surveillance`), the ONLY observable form of a path in the runtime + audit-chain is its 32-byte BLAKE3 hash under a per-installation salt. This slice lands the structural enforcement.
+
+- **Algorithm**
+  ```
+  PathHash := BLAKE3(domain-tag || installation-salt || path-bytes)
+  domain-tag        = "cssl-path-hash-v1"  (cross-crate canonical)
+  installation-salt = 32 bytes from OS RNG ; tests use fixed seed
+  path-bytes        = OS-native encoding (UTF-16 on Windows, UTF-8 elsewhere)
+  ```
+  The salt is NEVER logged, NEVER serialized, NEVER escapes the process. The hash is deterministic WITHIN a process (so two ops on the same path produce the same hash, allowing forensic correlation analysis) but NON-portable across installations (so two different installations' logs cannot be cross-correlated to track a user). This is the security property : audit logs are correlatable WITHIN-process but NOT cross-installation without holding the salt.
+
+- **Crates touched** (4)
+  - **`cssl-telemetry`** : new `path_hash` module + `audit_path_op` chain-helper.
+    - `PathHasher` / `PathHash` / `PathSalt` types.
+    - `PATH_HASH_DISCIPLINE_ATTESTATION` constant + `path_hash_discipline_attestation_hash()` hash-pin.
+    - `audit_path_op` + `audit_path_op_check_raw_path_rejected` validates `/`, `\`, drive-letter prefixes in free-form fields.
+    - `PathLogError` + `PD0018` diagnostic code.
+  - **`cssl-rt`** : runtime-side recording surface (avoids cssl-telemetry dep — runtime is the lower layer).
+    - new `path_hash` module : `hash_path_bytes` / `hash_path_ptr` / `install_test_salt` / `process_salt` (OnceLock).
+    - new types in `io` module : `PathHashOpKind` (`Open` / `Read` / `Write` / `Close`) + `PathHashEvent`.
+    - new APIs : `record_path_hash_event` / `path_hash_events_drain` / `path_hash_overflow_count` / `path_hash_queue_len`.
+    - `Mutex<VecDeque>` queue (4096-event capacity) ; overflow counted, never blocks.
+    - blake3 + rand added as dependencies (both already workspace-deps used by cssl-telemetry).
+  - **`cssl-substrate-prime-directive`** : audit-bus integration.
+    - new `AuditEvent::PathOp` variant + `PathOpKind` enum.
+    - `EnforcementAuditBus::record_path_op(path_hash, op, extra)` — refuses raw paths in extras via cssl-telemetry's check.
+    - `attestation::PATH_HASH_DISCIPLINE_ATTESTATION` re-export + `PATH_HASH_DISCIPLINE_ATTESTATION_HASH` hex-pin.
+    - `path_hash_discipline_attestation_constant_hash()` for §11-extension hash verification.
+  - **`cssl-effects`** : type-system gate.
+    - `BannedReason::TelemetryWithRawPath` variant.
+    - `check_telemetry_no_raw_path(row, arg_types)` — refuses `{Telemetry<*>}` composed with `Path` / `&Path` / `PathBuf` / `OsStr` / `OsString` argument-types.
+    - `is_raw_path_type` recognizer (handles lifetimes + generics).
+    - `RAW_PATH_TYPE_NAMES` constant.
+
+- **FFI integration**
+  Both `io_win32::cssl_fs_open_impl` + `io_unix::cssl_fs_open_impl` now compute the path-hash IN-LINE BEFORE any other recording happens, then call `record_path_hash_event(hash, Open)`. The raw path bytes never live longer than the syscall path itself — they are translated to UTF-16 (Windows) or NUL-terminated (Unix), passed to the OS, and discarded. Verified end-to-end via `fs_open_records_path_hash_event_never_raw_path` test (creates a real temp-file, asserts the queued event holds a 32-byte non-zero hash, NOT the path string).
+
+- **Spec extensions**
+  `specs/22_TELEMETRY.csl` § PATH-HASH-ONLY DISCIPLINE (new) — codifies the algorithm, surface, attestation extension, cross-installation correlation defense, and structural enforcement points.
+
+- **PRIME_DIRECTIVE §11 attestation extension**
+  ```
+  "no raw paths logged ; only BLAKE3-salted path-hashes appear in
+   telemetry + audit-chain"
+  ```
+  Hash-pinned at `f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292` ; pin-verification test in `cssl-substrate-prime-directive::attestation::tests::path_hash_discipline_attestation_hash_matches_pin`.
+
+- **Audit-entry format diff (BEFORE → AFTER)**
+  - **Before** (hypothetical raw-path leak — what this slice prevents) :
+    ```
+    tag=fs-write
+    message="path=/home/alice/secret/notes.txt bytes=42"
+    ```
+    The path string is unrecoverable surveillance-class metadata baked into the audit-chain.
+  - **After** (T11-D130 hash-only discipline) :
+    ```
+    tag=h6.fs.path-op
+    message="path-op kind=fs-write path_hash=deadbeefcafebabe... bytes=42"
+    ```
+    The 19-char short-form (`16 hex + "..."`) is what audit consumers see ; the full 64-char hex is available via `PathHash::hex()` for forensic correlation. The raw path is unrecoverable from the hash.
+
+- **Test count delta**
+  - Pre-D130 (post-D128 polish) : verified ; tests pass on the 4 crates touched.
+  - Post-D130 :
+    - `cssl-telemetry` : 95 tests (+ 1 doc-test) ; +38 path-hash discipline tests.
+    - `cssl-rt`        : 198 tests (--test-threads=1) ; +10 path-hash event tests + end-to-end fs_open_records_path_hash test.
+    - `cssl-substrate-prime-directive` : 83 tests ; +10 path-op + §11-extension tests.
+    - `cssl-effects`   : 78 tests ; +9 Telemetry × raw-Path rejection tests.
+    - **Total new tests : 67** ; all passing.
+  - Per spec ATTESTATION : 30+ tests covering hash-determinism + hash-collision-detection + raw-path-rejection + audit-chain-integrity-preserved — verified across 4 crates.
+
+- **Workspace gates**
+  - `cargo build --workspace` ✓
+  - `cargo test -p cssl-telemetry -p cssl-effects -p cssl-substrate-prime-directive` ✓ (all serial-safe)
+  - `cargo test -p cssl-rt --lib -- --test-threads=1` ✓ (carried-over flake workaround)
+  - `cargo clippy -p cssl-telemetry -p cssl-effects -p cssl-substrate-prime-directive -p cssl-rt --all-targets` ✓ (clean — no warnings, no errors)
+
+- **PRIME_DIRECTIVE attestation**
+  "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  Plus the §11-extension : "no raw paths logged ; only BLAKE3-salted path-hashes appear in telemetry + audit-chain". Per § 1 surveillance prohibition : raw paths are surveillance-class data ; this slice is the structural barrier preventing them from entering the observability surface. Per § 4 transparency : the algorithm is published (BLAKE3 + per-installation salt + domain-tag), the salt-source is documented (OS RNG ; deterministic seed for tests), and the discipline is hash-pinned in the §11 extension.
+
+- **Consequences**
+  - **fs-ops are now type-safely surveillance-free**. The audit-bus `record_path_op` refuses raw paths at compile-time (the only callable surface accepts `PathHash`, never `&str`). The cssl-effects banned-composition gate refuses `{Telemetry<*>}` fns with raw `Path` arguments. The runtime FFI shims hash IN-LINE so the raw path never crosses into the recording layer.
+  - **Within-installation forensic correlation preserved**. Two ops on the same path produce the same hash within a process — auditors can group events by path-hash-equivalence-class without ever seeing the path itself.
+  - **Cross-installation tracking defeated**. The salt makes the hash NON-portable. Logs from two different installations are uncorrelatable without the salt, which never leaves the process.
+  - **PRIME_DIRECTIVE §11 extended**. The canonical attestation now carries an explicit clause about path-hash discipline ; downstream verifiers pin the byte-content at `f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292`.
+
+- **Deferred** (explicit follow-ups, sequenced)
+  - **HIR-level type-resolution for `check_telemetry_no_raw_path`** — stage-0 takes argument-types as stringified names. Phase-2 wires this into the HIR `lower_fn` pass so the resolved-type DefId drives the check directly.
+  - **Lock-free SPSC ring for path-hash events** — stage-0 uses `Mutex<VecDeque>`. The same swap path as the `cssl_telemetry::ring::TelemetryRing` graduation will land here.
+  - **Periodic flush from `cssl-rt::path_hash_events_drain` to the audit-bus** — currently the substrate-prime-directive consumer must call drain explicitly. A background flush task with a configurable interval is a natural follow-up.
+  - **Salt rotation** — the per-process salt is fixed at startup. Long-running processes might want periodic salt rotation (with a salt-version-tag in entries) to defeat statistical correlation if the same path-set is hashed many times. Stage-0 stays single-salt for simplicity.
+  - **Network-address hashing** — by analogy, `__cssl_net_*` ops should similarly hash IP + port pairs before recording. Same algorithm, different domain-tag (`"cssl-netaddr-hash-v1"`). Tracked separately.
+
+──────────────────────────────────────────────────────────────

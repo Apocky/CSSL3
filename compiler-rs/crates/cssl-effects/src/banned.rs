@@ -98,6 +98,16 @@ pub enum BannedReason {
          (PRIME DIRECTIVE § 1 : N! weaponization ; specs/04 PRIME-DIRECTIVE EFFECTS)"
     )]
     WeaponWithIoNeedsKernel,
+    /// `Telemetry<*>` composed with a raw `Path` argument is banned (T11-D130).
+    /// Per the path-hash-only discipline, a fn that observes paths under a
+    /// telemetry-effect MUST hash them at the boundary — receiving a raw
+    /// `Path` would let the path bytes flow into the telemetry ring.
+    #[error(
+        "Telemetry<*> composed with a raw Path argument is banned ; pass a \
+         PathHash instead (PRIME DIRECTIVE § 1 : N! surveillance ; \
+         specs/22 § FS-OPS ; T11-D130 path-hash-only discipline)"
+    )]
+    TelemetryWithRawPath,
 }
 
 /// Check whether an effect row is free of Prime-Directive-banned compositions.
@@ -141,6 +151,87 @@ pub fn banned_composition(row: &[EffectRef<'_>]) -> Result<(), Vec<BannedReason>
     } else {
         Err(violations)
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-D130 : path-hash-only discipline check.
+//
+// `check_telemetry_no_raw_path` rejects any fn that has both
+// `{Telemetry<S>}` in its effect-row AND a raw `Path` / `&Path` /
+// `PathBuf` argument. The argument types are passed as a slice of
+// stringified type-names (the elaborator already has these in HIR ;
+// stage-0 takes them as plain strings).
+//
+// The `BannedReason::TelemetryWithRawPath` reason is what the diagnostic
+// emits. The check is structurally part of the same banned-composition
+// table : a fn that violates is a compile error, regardless of handler
+// installation, runtime check, or feature flag.
+// ───────────────────────────────────────────────────────────────────────
+
+/// Type-name strings that count as "raw path" arguments. Stage-0 stringly-
+/// matches the most common Rust path-types ; the HIR-level lowering pass
+/// (T11-phase-2) will drive this off the resolved-type DefId.
+pub const RAW_PATH_TYPE_NAMES: &[&str] =
+    &["Path", "&Path", "PathBuf", "&PathBuf", "OsStr", "&OsStr", "OsString"];
+
+/// Heuristic : does `type_name` look like a raw filesystem-path type ?
+/// Stage-0 uses prefix matching to handle generics + lifetime-prefixes
+/// (e.g., `&'a Path`, `&Path<'a>`).
+#[must_use]
+pub fn is_raw_path_type(type_name: &str) -> bool {
+    let trimmed = type_name.trim();
+    // Strip leading `&'lt ` if present.
+    let core_name = trimmed.strip_prefix('&').map_or(trimmed, |s| {
+        // Skip optional lifetime token like 'a or 'static.
+        s.trim_start().strip_prefix('\'').map_or_else(
+            || s.trim_start(),
+            |rest| {
+                let after_lt = rest.trim_start_matches(|c: char| c.is_alphanumeric() || c == '_');
+                after_lt.trim_start()
+            },
+        )
+    });
+    for &candidate in RAW_PATH_TYPE_NAMES {
+        let stripped_candidate = candidate.trim_start_matches('&').trim_start();
+        if core_name == stripped_candidate
+            || core_name.starts_with(&format!("{stripped_candidate}<"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check that a fn with `{Telemetry<S>}` in its effect-row does NOT have
+/// a raw path-type argument.
+///
+/// § ARGUMENTS
+///   - `row`         : the fn's effect-row (any sub-shape).
+///   - `arg_types`   : stringified type-names of every fn argument
+///                     (e.g., `["&Path", "u64"]`).
+///
+/// Returns `Ok(())` if compositionally safe ;
+/// `Err(BannedReason::TelemetryWithRawPath)` otherwise.
+///
+/// # Errors
+/// Returns the violation reason on detected raw-path-typed argument
+/// in a Telemetry-rowed fn.
+pub fn check_telemetry_no_raw_path(
+    row: &[EffectRef<'_>],
+    arg_types: &[&str],
+) -> Result<(), BannedReason> {
+    let has_telemetry = row
+        .iter()
+        .any(|e| matches!(e.builtin, Some(BuiltinEffect::Telemetry)));
+    if !has_telemetry {
+        return Ok(());
+    }
+    for ty in arg_types {
+        if is_raw_path_type(ty) {
+            return Err(BannedReason::TelemetryWithRawPath);
+        }
+    }
+    Ok(())
 }
 
 /// Full-fidelity variant that inspects explicit `SensitiveDomain` labels instead
@@ -304,5 +395,89 @@ mod tests {
         } else {
             panic!("expected multiple violations");
         }
+    }
+
+    // § T11-D130 — Telemetry × raw-Path rejection tests
+
+    use super::{check_telemetry_no_raw_path, is_raw_path_type};
+
+    #[test]
+    fn raw_path_typename_recognizer_basic() {
+        assert!(is_raw_path_type("Path"));
+        assert!(is_raw_path_type("&Path"));
+        assert!(is_raw_path_type("PathBuf"));
+        assert!(is_raw_path_type("&PathBuf"));
+        assert!(is_raw_path_type("OsStr"));
+        assert!(is_raw_path_type("&OsStr"));
+        assert!(is_raw_path_type("OsString"));
+    }
+
+    #[test]
+    fn raw_path_typename_recognizer_with_lifetimes() {
+        assert!(is_raw_path_type("&'a Path"));
+        assert!(is_raw_path_type("&'static Path"));
+        assert!(is_raw_path_type("& 'lt PathBuf"));
+    }
+
+    #[test]
+    fn raw_path_typename_recognizer_rejects_other_types() {
+        assert!(!is_raw_path_type("u64"));
+        assert!(!is_raw_path_type("&str"));
+        assert!(!is_raw_path_type("String"));
+        assert!(!is_raw_path_type("PathHash"));
+        assert!(!is_raw_path_type("&PathHash"));
+    }
+
+    #[test]
+    fn raw_path_typename_recognizer_handles_generic_params() {
+        // Path with a generic parameter at the type level should still match.
+        assert!(is_raw_path_type("Path<'a>"));
+    }
+
+    #[test]
+    fn telemetry_with_raw_path_rejected() {
+        let row = vec![e("Telemetry", Some(BuiltinEffect::Telemetry), 1)];
+        let r = check_telemetry_no_raw_path(&row, &["&Path", "u64"]);
+        assert_eq!(r, Err(BannedReason::TelemetryWithRawPath));
+    }
+
+    #[test]
+    fn telemetry_with_pathbuf_rejected() {
+        let row = vec![e("Telemetry", Some(BuiltinEffect::Telemetry), 1)];
+        let r = check_telemetry_no_raw_path(&row, &["PathBuf"]);
+        assert_eq!(r, Err(BannedReason::TelemetryWithRawPath));
+    }
+
+    #[test]
+    fn telemetry_with_path_hash_accepted() {
+        let row = vec![e("Telemetry", Some(BuiltinEffect::Telemetry), 1)];
+        let r = check_telemetry_no_raw_path(&row, &["PathHash", "u64"]);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn telemetry_with_no_path_args_accepted() {
+        let row = vec![e("Telemetry", Some(BuiltinEffect::Telemetry), 1)];
+        let r = check_telemetry_no_raw_path(&row, &["&str", "i32", "f64"]);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn no_telemetry_with_raw_path_is_irrelevant() {
+        // Without {Telemetry<*>}, the path-arg is fine — no surveillance-
+        // surface to leak into.
+        let row = vec![e("IO", Some(BuiltinEffect::Io), 0)];
+        let r = check_telemetry_no_raw_path(&row, &["&Path"]);
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn telemetry_check_error_message_cites_t11_d130() {
+        let row = vec![e("Telemetry", Some(BuiltinEffect::Telemetry), 1)];
+        let r = check_telemetry_no_raw_path(&row, &["Path"]);
+        let err = r.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("T11-D130"));
+        assert!(msg.contains("PathHash"));
     }
 }

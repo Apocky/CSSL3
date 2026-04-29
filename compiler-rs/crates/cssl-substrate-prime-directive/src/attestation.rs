@@ -49,6 +49,33 @@ pub const ATTESTATION: &str =
 pub const ATTESTATION_HASH: &str =
     "4b24ec9e28e1c4f70b27d3d86918be0041413c89f421c1284ef9f61a8321b6e4";
 
+/// **§11 EXTENSION (T11-D130)** — path-hash-only discipline clause.
+///
+/// Re-exports
+/// [`cssl_telemetry::PATH_HASH_DISCIPLINE_ATTESTATION`]
+/// at the substrate-prime-directive level so siblings importing the
+/// enforcement layer can attach the attestation-clause to fs-ops without
+/// a direct dep on `cssl_telemetry::path_hash`.
+///
+/// § STABILITY
+///   Renaming this string = bug per §7 INTEGRITY. The
+///   [`PATH_HASH_DISCIPLINE_ATTESTATION_HASH`] hash-pin catches drift.
+pub use cssl_telemetry::path_hash::PATH_HASH_DISCIPLINE_ATTESTATION;
+
+/// Hex-encoded BLAKE3 hash of the §11-extension
+/// [`PATH_HASH_DISCIPLINE_ATTESTATION`] string. Drift-detection pin.
+pub const PATH_HASH_DISCIPLINE_ATTESTATION_HASH: &str =
+    "f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292";
+
+/// Compute the BLAKE3 hash of the §11-extension path-hash-discipline
+/// clause. Tested against [`PATH_HASH_DISCIPLINE_ATTESTATION_HASH`] in
+/// `path_hash_discipline_attestation_hash_matches_pin` ; drift triggers
+/// a §7 INTEGRITY violation.
+#[must_use]
+pub fn path_hash_discipline_attestation_constant_hash() -> ContentHash {
+    cssl_telemetry::path_hash_discipline_attestation_hash()
+}
+
 /// Return the canonical attestation text.
 #[must_use]
 pub const fn attestation_constant_text() -> &'static str {
@@ -168,5 +195,47 @@ mod tests {
         assert!(ATTESTATION.contains("anyone"));
         assert!(ATTESTATION.contains("anything"));
         assert!(ATTESTATION.contains("anybody"));
+    }
+
+    // § T11-D130 § 11-EXTENSION (path-hash-only discipline) tests
+
+    #[test]
+    fn path_hash_discipline_attestation_text_is_canonical() {
+        // Verbatim text — pinned at the substrate-prime-directive level.
+        assert_eq!(
+            super::PATH_HASH_DISCIPLINE_ATTESTATION,
+            "no raw paths logged ; only BLAKE3-salted path-hashes appear in telemetry + audit-chain"
+        );
+    }
+
+    #[test]
+    fn path_hash_discipline_attestation_hash_matches_pin() {
+        // Pin the hash — drift = §7 INTEGRITY violation.
+        let computed = super::path_hash_discipline_attestation_constant_hash();
+        assert_eq!(
+            computed.hex(),
+            super::PATH_HASH_DISCIPLINE_ATTESTATION_HASH,
+            "PATH_HASH_DISCIPLINE_ATTESTATION text drifted ; recompute the pin"
+        );
+    }
+
+    #[test]
+    fn path_hash_discipline_attestation_extends_main_attestation() {
+        // The §11-extension is conceptually subordinate to the main §11
+        // attestation : the main one says "no harm in the making", the
+        // extension specifies one concrete instance of that ("no raw
+        // paths in observability"). Both hashes are non-zero + distinct.
+        let main_h = attestation_constant_hash();
+        let ext_h = super::path_hash_discipline_attestation_constant_hash();
+        assert_ne!(main_h, ext_h);
+        assert_ne!(main_h.0, [0u8; 32]);
+        assert_ne!(ext_h.0, [0u8; 32]);
+    }
+
+    #[test]
+    fn path_hash_discipline_attestation_mentions_blake3_and_no_raw_paths() {
+        // Sanity-check the cited algorithm + key phrase.
+        assert!(super::PATH_HASH_DISCIPLINE_ATTESTATION.contains("BLAKE3"));
+        assert!(super::PATH_HASH_DISCIPLINE_ATTESTATION.contains("no raw paths"));
     }
 }

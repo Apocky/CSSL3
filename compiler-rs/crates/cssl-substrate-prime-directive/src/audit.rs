@@ -26,11 +26,44 @@ use std::sync::Mutex;
 
 use cssl_telemetry::audit::AuditChain;
 use cssl_telemetry::audit::AuditEntry;
+use cssl_telemetry::path_hash::PathHash;
 
 use crate::cap::{CapTokenId, SubstrateCap};
 use crate::consent::ConsentScope;
 use crate::halt::HaltReason;
 use crate::harm::Prohibition;
+
+/// Op-kind code for [`AuditEvent::PathOp`] entries (T11-D130).
+///
+/// § STABILITY
+///   Renaming a variant = ABI bump (audit-chain replays pin this name).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PathOpKind {
+    /// `__cssl_fs_open` (any flags).
+    Open,
+    /// `__cssl_fs_read` call.
+    Read,
+    /// `__cssl_fs_write` call.
+    Write,
+    /// `__cssl_fs_close`.
+    Close,
+    /// `SavePath::append_hashed` — substrate-level save journal append.
+    SaveAppend,
+}
+
+impl PathOpKind {
+    /// Stable canonical name in audit messages.
+    #[must_use]
+    pub const fn canonical_name(self) -> &'static str {
+        match self {
+            Self::Open => "fs-open",
+            Self::Read => "fs-read",
+            Self::Write => "fs-write",
+            Self::Close => "fs-close",
+            Self::SaveAppend => "save-append",
+        }
+    }
+}
 
 /// Kinds of enforcement events that can land on the audit-chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +107,19 @@ pub enum AuditEvent {
     /// Attestation drift was detected (the per-fn ATTESTATION constant
     /// did not match the canonical hash).
     AttestationDrift { site: String },
+    /// A path-touching op was recorded with hash-only discipline (T11-D130).
+    /// The path itself is NEVER stored — only the 32-byte
+    /// installation-salted BLAKE3 hash. Per `specs/22 § FS-OPS` and
+    /// `PRIME_DIRECTIVE.md § 1` (no surveillance).
+    PathOp {
+        /// 32-byte BLAKE3-salted hash of the path (never the raw path).
+        path_hash: PathHash,
+        /// Which fs-op the entry records.
+        op: PathOpKind,
+        /// Optional structured extra (e.g., `bytes=42`). Validated free of
+        /// raw-path patterns by [`cssl_telemetry::audit_path_op_check_raw_path_rejected`].
+        extra: String,
+    },
 }
 
 impl AuditEvent {
@@ -88,6 +134,7 @@ impl AuditEvent {
             Self::HarmCheckFailed { .. } => "h6.harm.failed",
             Self::Halted { .. } => "h6.halt",
             Self::AttestationDrift { .. } => "h6.attestation.drift",
+            Self::PathOp { .. } => "h6.fs.path-op",
         }
     }
 
@@ -127,6 +174,20 @@ impl AuditEvent {
                 reason.canonical_name()
             ),
             Self::AttestationDrift { site } => format!("attestation-drift site={site}"),
+            Self::PathOp {
+                path_hash,
+                op,
+                extra,
+            } => {
+                if extra.is_empty() {
+                    format!("path-op kind={} path_hash={path_hash}", op.canonical_name())
+                } else {
+                    format!(
+                        "path-op kind={} path_hash={path_hash} {extra}",
+                        op.canonical_name()
+                    )
+                }
+            }
         }
     }
 }
@@ -251,6 +312,35 @@ impl EnforcementAuditBus {
     pub fn record_attestation_drift(&mut self, site: impl Into<String>) {
         let event = AuditEvent::AttestationDrift { site: site.into() };
         self.append(&event);
+    }
+
+    /// Record a path-touching op with **hash-only discipline** (T11-D130).
+    ///
+    /// § DISCIPLINE
+    ///   `path_hash` is the 32-byte BLAKE3-salted hash of the path ;
+    ///   the raw path is NEVER passed to this method. `extra` is scanned
+    ///   for raw-path patterns by
+    ///   [`cssl_telemetry::audit_path_op_check_raw_path_rejected`] and
+    ///   rejected if it contains `/`, `\`, or a Windows drive prefix.
+    ///
+    /// # Errors
+    /// Returns
+    /// [`cssl_telemetry::PathLogError::RawPathInField`]
+    /// if `extra` contains a raw-path leak.
+    pub fn record_path_op(
+        &mut self,
+        path_hash: PathHash,
+        op: PathOpKind,
+        extra: &str,
+    ) -> Result<(), cssl_telemetry::PathLogError> {
+        cssl_telemetry::audit_path_op_check_raw_path_rejected(extra)?;
+        let event = AuditEvent::PathOp {
+            path_hash,
+            op,
+            extra: extra.to_string(),
+        };
+        self.append(&event);
+        Ok(())
     }
 }
 
@@ -443,5 +533,107 @@ mod tests {
             cap: SubstrateCap::SavePath,
         };
         assert_eq!(event_a.message(), event_b.message());
+    }
+
+    // § T11-D130 — path-hash-only audit-event tests
+
+    #[test]
+    fn path_op_event_tag_is_stable() {
+        use super::PathOpKind;
+        use cssl_telemetry::path_hash::PathHash;
+        let event = AuditEvent::PathOp {
+            path_hash: PathHash::zero(),
+            op: PathOpKind::Open,
+            extra: String::new(),
+        };
+        assert_eq!(event.tag(), "h6.fs.path-op");
+    }
+
+    #[test]
+    fn path_op_event_message_contains_hash_short_form_and_op_kind() {
+        use super::PathOpKind;
+        use cssl_telemetry::path_hash::PathHasher;
+        let h = PathHasher::from_seed([1u8; 32]).hash_str("/etc/hosts");
+        let event = AuditEvent::PathOp {
+            path_hash: h,
+            op: PathOpKind::Open,
+            extra: "bytes=0".to_string(),
+        };
+        let msg = event.message();
+        assert!(msg.contains("path_hash="));
+        assert!(msg.contains("..."));
+        assert!(msg.contains("kind=fs-open"));
+        assert!(msg.contains("bytes=0"));
+        // Critical : raw path bytes never appear.
+        assert!(!msg.contains("/etc"));
+    }
+
+    #[test]
+    fn bus_record_path_op_appends_hash_only_entry() {
+        use super::PathOpKind;
+        use cssl_telemetry::path_hash::PathHasher;
+        let mut bus = EnforcementAuditBus::new();
+        let h = PathHasher::from_seed([2u8; 32]).hash_str("/var/log/cssl.log");
+        bus.record_path_op(h, PathOpKind::Write, "bytes=42")
+            .expect("hash-form accepted");
+        let e = bus.iter().next().unwrap();
+        assert_eq!(e.tag, "h6.fs.path-op");
+        assert!(e.message.contains("path_hash="));
+        assert!(e.message.contains("kind=fs-write"));
+        assert!(!e.message.contains("/var"));
+    }
+
+    #[test]
+    fn bus_record_path_op_rejects_raw_path_in_extra() {
+        use super::PathOpKind;
+        use cssl_telemetry::path_hash::PathHasher;
+        let mut bus = EnforcementAuditBus::new();
+        let h = PathHasher::from_seed([2u8; 32]).hash_str("/foo");
+        // Try to leak a raw path through the extra field.
+        let r = bus.record_path_op(h, PathOpKind::Open, "leaked=/etc/passwd");
+        assert!(r.is_err());
+        // Bus is unchanged on rejection.
+        assert_eq!(bus.entry_count(), 0);
+    }
+
+    #[test]
+    fn bus_record_path_op_chain_verifies() {
+        use super::PathOpKind;
+        use cssl_telemetry::path_hash::PathHasher;
+        let mut bus = EnforcementAuditBus::new();
+        let hasher = PathHasher::from_seed([3u8; 32]);
+        for p in &["/a", "/b", "/c"] {
+            let h = hasher.hash_str(p);
+            bus.record_path_op(h, PathOpKind::Read, "bytes=4").unwrap();
+        }
+        bus.chain()
+            .verify_chain()
+            .expect("path-op chain must verify");
+        assert_eq!(bus.entry_count(), 3);
+    }
+
+    #[test]
+    fn path_op_event_empty_extra_omits_field() {
+        use super::PathOpKind;
+        use cssl_telemetry::path_hash::PathHasher;
+        let h = PathHasher::from_seed([4u8; 32]).hash_str("/tmp/x");
+        let event = AuditEvent::PathOp {
+            path_hash: h,
+            op: PathOpKind::Close,
+            extra: String::new(),
+        };
+        let msg = event.message();
+        // Format : `path-op kind=fs-close path_hash=<short>`
+        assert!(msg.starts_with("path-op kind=fs-close path_hash="));
+    }
+
+    #[test]
+    fn path_op_kind_canonical_names_are_stable() {
+        use super::PathOpKind;
+        assert_eq!(PathOpKind::Open.canonical_name(), "fs-open");
+        assert_eq!(PathOpKind::Read.canonical_name(), "fs-read");
+        assert_eq!(PathOpKind::Write.canonical_name(), "fs-write");
+        assert_eq!(PathOpKind::Close.canonical_name(), "fs-close");
+        assert_eq!(PathOpKind::SaveAppend.canonical_name(), "save-append");
     }
 }
