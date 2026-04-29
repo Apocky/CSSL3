@@ -449,6 +449,41 @@ pub fn translate_obligation(
             q.assert_named(format!("obl_{}_lipschitz", obligation.id.0), negated);
             Ok(q)
         }
+        ObligationKind::Layout {
+            kind_word,
+            expected_size,
+            expected_align,
+        } => {
+            // § T11-D126 : @layout(...) refinement encoded as size+align equality.
+            //
+            // The layout-validator in cssl-mir::layout_check has already computed
+            // the expected size+align from the `@layout(kind)` attribute and the
+            // type's structural-layout. We emit a structural unsat-query that the
+            // SMT pass uses as a placeholder for layout-discharge :
+            //   (declare-fun s () Int)
+            //   (declare-fun a () Int)
+            //   (assert (! (not (and (= s <expected_size>) (= a <expected_align>)))
+            //            :named obl_<id>_layout_<kind>))
+            // unsat ⇒ layout matches ; sat ⇒ layout mismatch.
+            let mut q = Query::new().with_theory(Theory::LIA);
+            q.declare_fn(FnDecl::new("s", vec![], Sort::Int));
+            q.declare_fn(FnDecl::new("a", vec![], Sort::Int));
+            let s_term = Term::var("s");
+            let a_term = Term::var("a");
+            let align_eq = Term::app("=", vec![a_term, Term::int(i64::from(*expected_align))]);
+            let conj = if let Some(size) = expected_size {
+                let size_eq = Term::app("=", vec![s_term, Term::int(i64::from(*size))]);
+                Term::app("and", vec![size_eq, align_eq])
+            } else {
+                align_eq
+            };
+            let negated = Term::app("not", vec![conj]);
+            q.assert_named(
+                format!("obl_{}_layout_{}", obligation.id.0, kind_word),
+                negated,
+            );
+            Ok(q)
+        }
     }
 }
 
