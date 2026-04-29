@@ -7,5 +7,14 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 
+[dependencies]
+# § T11-D130 : path-hash discipline requires BLAKE3 + OS RNG. Both are
+# already workspace-deps used by cssl-telemetry ; cssl-rt links them
+# directly to keep the FFI surface free of cssl-telemetry coupling
+# (the runtime is the lower layer ; depending on telemetry would invert
+# the dependency direction).
+blake3 = { workspace = true }
+rand   = { workspace = true }
+
 [lints]
 workspace = true

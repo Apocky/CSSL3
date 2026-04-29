@@ -256,6 +256,52 @@
     from S6-B5 forward (renaming = major-version bump per
     DECISIONS T11-D76).
 
+§ PATH-HASH-ONLY DISCIPLINE  (T11-D130 — F6 observability)
+  thesis : raw filesystem paths are surveillance-class metadata.
+           Telemetry rings + audit-chain entries that contain plain
+           path strings leak user-identity, directory-structure-
+           fingerprints, and work-pattern signatures even when the
+           file BYTES never escape the process. Per PRIME_DIRECTIVE
+           § 1 (N! surveillance), the only observable form of a path
+           is its 32-byte BLAKE3 hash under a per-installation salt.
+  algorithm :
+    PathHash := BLAKE3(domain-tag || installation-salt || path-bytes)
+    domain-tag = "cssl-path-hash-v1" (cross-crate-canonical)
+    installation-salt = 32 bytes from OS RNG ; tests use fixed seed
+    path-bytes = OS-native encoding (UTF-16 wn windows, UTF-8 elsewhere)
+  surface :
+    cssl-telemetry::PathHasher        — the canonical hashing API
+    cssl-telemetry::PathHash          — newtype around [u8; 32]
+    cssl-telemetry::audit_path_op     — chain-append helper that
+      validates extra-fields against raw-path patterns
+    cssl-rt::record_path_hash_event   — runtime-side event recording
+      (called by FFI shims AFTER hashing the path)
+    cssl-substrate-prime-directive::EnforcementAuditBus::record_path_op
+      — the audit-bus-level entry point ; refuses raw paths in extras
+    cssl-effects::check_telemetry_no_raw_path — type-system gate :
+      refuses {Telemetry<*>} composed with a raw Path / PathBuf
+      argument ; only PathHash is accepted
+  attestation extension :
+    "no raw paths logged ; only BLAKE3-salted path-hashes appear in
+     telemetry + audit-chain" appended to PRIME_DIRECTIVE §11
+     CREATOR-ATTESTATION via cssl_telemetry::PATH_HASH_DISCIPLINE_ATTESTATION
+     (constant ; hash-pinned in cssl-substrate-prime-directive at
+     PATH_HASH_DISCIPLINE_ATTESTATION_HASH).
+  cross-installation correlation defense :
+    The salt makes the hash NON-PORTABLE across installations. Two
+    different developer machines hashing /home/alice/secret.txt
+    produce DIFFERENT hashes ; logs are correlatable WITHIN a process
+    but NOT across installations without holding the salt. This is
+    the security property : audit logs survive forensic replay
+    without becoming a cross-installation tracking surface.
+  enforcement :
+    cssl-rt FFI shims compute the hash IN-LINE (raw path bytes do
+    not leave the syscall path). The `record_path_hash_event` API
+    accepts only [u8; 32] — there is no overload that accepts a
+    raw path. The audit-chain helper `audit_path_op_check_raw_path_rejected`
+    scans free-form extra-fields for `/`, `\`, and Windows drive
+    prefixes and rejects them.
+
 § AUDIO-OPS  (S7-F3 / T11-D81 — spec-gap closed via DECISIONS T11-D81)
   thesis : every audio output frame-submission + every underrun is a
            telemetry-observable event. The cssl-host-audio AudioStream

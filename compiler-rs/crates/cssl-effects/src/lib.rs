@@ -69,7 +69,8 @@ pub mod substrate;
 pub use banned::{
     banned_composition, banned_composition_with_domains,
     banned_composition_with_domains_and_privilege, banned_composition_with_privilege_l4,
-    BannedReason, SensitiveDomain,
+    check_telemetry_no_raw_path, is_raw_path_type, BannedReason, SensitiveDomain,
+    RAW_PATH_TYPE_NAMES,
 };
 pub use conservation::{
     check_conservation, check_entropy_balance, check_entropy_balance_with_epsilon,

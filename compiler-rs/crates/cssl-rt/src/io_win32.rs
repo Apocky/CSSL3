@@ -316,6 +316,13 @@ pub unsafe fn cssl_fs_open_impl(path_ptr: *const u8, path_len: usize, flags: i32
         }
     }
     crate::io::record_open();
+    // § T11-D130 : record path-hash event for the audit-bus drain. The
+    // raw path bytes never escape this fn ; the hash is computed in the
+    // upper-half (`hash_path_ptr`) which itself salts + BLAKE3-hashes
+    // before any other recording occurs.
+    // SAFETY : path_ptr/path_len validated above to be non-null + non-zero.
+    let path_hash = unsafe { crate::path_hash::hash_path_ptr(path_ptr, path_len) };
+    crate::io::record_path_hash_event(path_hash, crate::io::PathHashOpKind::Open);
     // Win32 HANDLE → i64 — round-trip preserves the bit-pattern.
     handle as i64
 }
