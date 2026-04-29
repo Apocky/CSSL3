@@ -880,6 +880,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-wave-audio"
+version = "0.1.0"
+dependencies = [
+ "cssl-audio-mix",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-prime-directive",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-wavelet"
 version = "0.1.0"
 

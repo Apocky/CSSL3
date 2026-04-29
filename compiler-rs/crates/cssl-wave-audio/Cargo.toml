@@ -1,0 +1,70 @@
+[package]
+name                   = "cssl-wave-audio"
+description            = "CSSLv3 — Wave-Unity audio projection : ψ-AUDIO-band → listener-position (HRTF + RC-derived ITD/ILD) + LBM-spatial-audio + binaural rendering + cross-band coupling + procedural creature vocalization. Cite : Omniverse 04_OMEGA_FIELD/04_WAVE_UNITY.csl ; Omniverse 07_AESTHETIC/04_FIELD_AUDIO.csl.md ; T11-D114 wave-solver downstream ; T11-D125b dispatch."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D125b — sibling of cssl-audio-mix (legacy preserved behind that
+#   crate's feature flag). cssl-wave-audio is the WAVE-UNITY-aligned audio
+#   path : ψ(x,t) ∈ ℂ AUDIO-band carrier → listener via HRTF/ITD/ILD ;
+#   LBM-Boltzmann room-resonance ; cross-band coupling reads the D114
+#   wave-solver coupling-matrix ; procedural vocalization synthesizes from
+#   SDF-vocal-tract + KAN-derived spectral coefficients.
+#
+# § DEPENDENCIES
+#   cssl-substrate-omega-field — provides MortonKey + SparseMortonGrid<T>
+#     storage + FieldCell ; the ψ-AUDIO overlay rides on the canonical
+#     sparse-Morton hash-grid.
+#   cssl-substrate-prime-directive — Σ-mask consent gate ; ψ-injection
+#     into Sovereign-domain cells must check Σ.consent_bits.
+#   cssl-substrate-kan — KAN spline-network for vocal spectral KAN +
+#     impedance KAN (when D114 lands its full coupling-matrix this is
+#     the substrate the matrix lives on).
+#
+# § DELIBERATELY-NO-DEP on cssl-audio-mix
+#   The legacy mixer is preserved as a SIBLING crate. cssl-wave-audio
+#   does not depend on it ; the two coexist during the deprecation
+#   window. Consumers pick which they want at link-time.
+#
+# § CAPTURE-MODE FORBIDDEN (§I attestation)
+#   This crate is OUTPUT-ONLY. Per PRIME-DIRECTIVE §1 (surveillance) the
+#   wave-audio path NEVER opens a capture device, NEVER records the
+#   post-render signal, NEVER builds a microphone-array reverb-impulse.
+#   All reverb is FIELD-DERIVED (LBM ψ-PDE on geometry-driven boundaries) ;
+#   no input is sampled from the user.
+
+[lib]
+# § doctest = false : the crate's docstrings carry CSLv3 glyphs +
+# spec-prose that are not Rust code. The test surface is unit-tests
+# inside `#[cfg(test)] mod tests` plus integration tests under
+# `tests/`. Matches the workspace baseline (sibling crates also
+# disable rustdoc-codeblock execution by either configuring this flag
+# or by avoiding indented-prose-blocks). Disabling here lets crate-
+# level docs use the canonical Wave-Unity citation conventions
+# without running them as Rust ; CI's fmt + clippy + test gates still
+# cover the full surface.
+doctest = false
+
+[features]
+default = []
+# § legacy_mixer : opt-in re-export bridge that pulls the legacy
+# cssl-audio-mix surface alongside the wave-audio surface so consumers
+# can A/B compare during the deprecation window. The bridge module
+# emits a deprecation note when imported.
+legacy_mixer = ["dep:cssl-audio-mix"]
+
+[dependencies]
+cssl-substrate-omega-field        = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-prime-directive    = { path = "../cssl-substrate-prime-directive" }
+cssl-substrate-kan                = { path = "../cssl-substrate-kan" }
+cssl-audio-mix                    = { path = "../cssl-audio-mix", optional = true }
+thiserror                         = { workspace = true }
+smallvec                          = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
