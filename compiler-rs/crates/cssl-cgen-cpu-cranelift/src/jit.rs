@@ -652,10 +652,8 @@ impl JitModule {
                             let callee_name = callee.clone();
                             // Determine the operand-width from the call's
                             // result type (transcendentals are T → T).
-                            let result_ty = op
-                                .results
-                                .first()
-                                .map_or(MirType::None, |r| r.ty.clone());
+                            let result_ty =
+                                op.results.first().map_or(MirType::None, |r| r.ty.clone());
                             let key = transcendental_callee_key(&callee_name, &result_ty);
                             if refs.contains_key(&key) {
                                 continue;
@@ -1217,10 +1215,7 @@ fn lower_intrinsic_call(
         //   Width-keyed FuncRef lookup matches what the pre-scan registered.
         "sin" | "cos" | "exp" | "log" | "ln" | "math.sin" | "math.cos" | "math.exp"
         | "math.log" => {
-            let result_ty = op
-                .results
-                .first()
-                .map_or(MirType::None, |r| r.ty.clone());
+            let result_ty = op.results.first().map_or(MirType::None, |r| r.ty.clone());
             let key = transcendental_callee_key(callee_str, &result_ty);
             if let Some(&func_ref) = callee_refs.get(&key) {
                 let a = op
