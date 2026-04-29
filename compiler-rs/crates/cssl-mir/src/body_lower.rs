@@ -1280,6 +1280,27 @@ fn lower_call(
             }
         }
     }
+    // § T11-D71 (S6-B4) — `format(fmt, ...args)` syntactic recognition.
+    //   Strict guard : the call must be a single-segment path named `format`
+    //   with at least one positional arg AND the first arg must be a
+    //   string-literal (so the recognizer can extract the format-string
+    //   for spec-counting + spec-validation). User code shadowing `format`
+    //   via a multi-segment path (e.g., `foo::format(x)`) bypasses the
+    //   recognizer and routes through the regular generic-call path.
+    //   See HANDOFF_SESSION_6 § PHASE-B § S6-B4 +
+    //   `specs/03_TYPES.csl § STRING-MODEL`.
+    //
+    //   ‼ Per the slice landmines `format!` macro syntax is NOT supported at
+    //     stage-0 (macro-bang invocation parsing is a separate slice). The
+    //     bare-call form `format(...)` is the canonical stage-0 surface.
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 1 && ctx.interner.resolve(segments[0]) == "format" && !args.is_empty()
+        {
+            if let Some(result) = try_lower_string_format(ctx, args, span) {
+                return Some(result);
+            }
+        }
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -1656,6 +1677,145 @@ fn try_lower_result_err(
             .with_attribute("source_loc", format!("{span:?}")),
     );
     Some((id, result_ty))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D71 (S6-B4) — `format(...)` printf-style builtin lowerer.
+//
+//   The recognizer fires when the call's callee is a bare `format` (1-segment
+//   path) with at least one positional arg AND the first arg is a string
+//   literal. The recognizer extracts the format-string at lower-time, scans
+//   it for `{...}` specifiers, and emits a `cssl.string.format` op that
+//   carries :
+//     - `fmt`        : the literal format-string (used by future spec-validation)
+//     - `spec_count` : number of `{...}` specifiers detected
+//     - `arg_count`  : number of positional args supplied (excluding fmt)
+//     - `source_loc` : original span
+//
+//   Stage-0 supported spec subset (per slice scope) :
+//     {}    : Display-equivalent — primitives only
+//     {:?}  : Debug-equivalent — primitives only
+//     {:.N} : precision-N float
+//     {:0Nd}: zero-padded integer width N
+//     {:N}  : width-N (right-aligned, space-padded)
+//
+//   Real runtime execution of format is the SAME deferred-ABI slice as
+//   Option/Result/Vec — the SURFACE is now stable and consumable.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower a syntactically-recognized `format(fmt, ...args)` call into a
+/// `cssl.string.format` op.
+///
+/// Returns `None` (caller falls through to the regular generic-call path) if
+/// the first arg is not a string-literal — this guards against accidental
+/// shadowing of the canonical `format` name.
+fn try_lower_string_format(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    // First arg MUST be a string literal — the recognizer extracts the
+    // format-string from the literal slice. Non-literal first arg falls
+    // through to the regular generic-call path.
+    let fmt_expr = match &args[0] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let HirExprKind::Literal(HirLiteral {
+        kind: HirLiteralKind::Str,
+        ..
+    }) = &fmt_expr.kind
+    else {
+        return None;
+    };
+    let fmt_slice = ctx
+        .source
+        .and_then(|s| s.slice(fmt_expr.span.start, fmt_expr.span.end))
+        .and_then(strip_string_quotes)
+        .unwrap_or("")
+        .to_string();
+    let spec_count = count_format_specifiers(&fmt_slice);
+
+    // Lower the format-string operand first so the argv contains the
+    // fmt-handle in slot 0 and the user's positional args in slots 1..N.
+    let (fmt_id, _fmt_ty) = lower_expr(ctx, fmt_expr)?;
+    let mut operand_ids: Vec<ValueId> = Vec::with_capacity(args.len());
+    operand_ids.push(fmt_id);
+    for arg in args.iter().skip(1) {
+        let a_expr = match arg {
+            HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+        };
+        if let Some((id, _ty)) = lower_expr(ctx, a_expr) {
+            operand_ids.push(id);
+        }
+    }
+    let arg_count = args.len().saturating_sub(1);
+
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque("!cssl.string".to_string());
+    let mut op = MirOp::new(CsslOp::StringFormat)
+        .with_result(result_id, result_ty.clone())
+        // `fmt` is recorded verbatim (with any escape sequences left as-is at
+        // stage-0 — full escape-resolution is T3.4+ work, same precedent as
+        // strip_string_quotes). Future spec-validation passes parse it.
+        .with_attribute("fmt", fmt_slice)
+        .with_attribute("spec_count", spec_count.to_string())
+        .with_attribute("arg_count", arg_count.to_string())
+        .with_attribute("source_loc", format!("{span:?}"));
+    for oid in operand_ids {
+        op = op.with_operand(oid);
+    }
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Count `{...}` format specifiers in a stage-0 format string.
+///
+/// § RECOGNIZED-SPEC-SUBSET  (per S6-B4 slice scope)
+///   `{}`      : Display
+///   `{:?}`    : Debug
+///   `{:.N}`   : precision-N float
+///   `{:0Nd}`  : zero-padded integer width N
+///   `{:N}`    : width-N (right-aligned)
+///
+/// § EDGE-CASES
+///   - `{{` lexes as a literal `{` — does NOT count as a specifier opener.
+///   - `}}` lexes as a literal `}` — does NOT count as a specifier closer.
+///   - An unmatched `{` (no closing `}`) is silently skipped at stage-0 ;
+///     real format-string validation lands in a follow-up slice (DECISIONS
+///     T11-D71 § DEFERRED — diagnostic-code FORMAT-001).
+fn count_format_specifiers(fmt: &str) -> usize {
+    let mut count = 0_usize;
+    let bytes = fmt.as_bytes();
+    let mut i = 0_usize;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            // `{{` : literal `{`, skip both.
+            if i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+                i += 2;
+                continue;
+            }
+            // Walk to the matching `}` ; tolerate an unmatched `{` at
+            // stage-0 (validation deferred).
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'}' {
+                j += 1;
+            }
+            if j < bytes.len() {
+                count += 1;
+                i = j + 1;
+                continue;
+            }
+            // Unmatched `{` — bail out of the loop without crediting it.
+            break;
+        }
+        if bytes[i] == b'}' && i + 1 < bytes.len() && bytes[i + 1] == b'}' {
+            // `}}` : literal `}`, skip both.
+            i += 2;
+            continue;
+        }
+        i += 1;
+    }
+    count
 }
 
 /// Known math-intrinsic callees whose result-type equals the first operand's
@@ -2911,5 +3071,220 @@ mod tests {
             !entry.ops.iter().any(|o| o.name == "cssl.heap.alloc"),
             "vec_new's empty-construction path must NOT emit cssl.heap.alloc",
         );
+    }
+
+    // ── S6-B4 (T11-D71) format() recognition coverage ───────────────────
+    //
+    //   These tests confirm that the `format(fmt, ...args)` builtin
+    //   recognizer fires on the canonical bare-name 1-segment form, that
+    //   it correctly counts `{...}` specifiers, that it threads the
+    //   positional args through as op-operands, and that the multi-segment
+    //   guard (mirroring B1's Box::new + B2's Some/None pattern) keeps
+    //   user-shadowed `foo::format(...)` routing through the regular
+    //   generic-call path.
+
+    #[test]
+    fn lower_format_simple_emits_string_format_op() {
+        // A bare `format("hello")` call must produce a `cssl.string.format`
+        // op carrying the format-string as the `fmt` attribute.
+        let src = "fn f() -> i32 { format(\"hello\") ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let fmt = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("format(\"hello\") must produce cssl.string.format");
+        let fmt_attr = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "fmt")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(fmt_attr, Some("hello"));
+    }
+
+    #[test]
+    fn lower_format_counts_one_specifier_for_brace_pair() {
+        // `format("x = {}", 7)` must record spec_count = 1 + arg_count = 1.
+        let src = "fn f() -> i32 { format(\"x = {}\", 7) ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let fmt = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("format with {} must produce cssl.string.format");
+        let spec = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "spec_count")
+            .map(|(_, v)| v.as_str());
+        let argc = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "arg_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(spec, Some("1"));
+        assert_eq!(argc, Some("1"));
+    }
+
+    #[test]
+    fn lower_format_counts_debug_specifier() {
+        // `{:?}` is a Debug specifier — recognized as one spec.
+        let src = "fn f() -> i32 { format(\"d = {:?}\", 42) ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let fmt = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("format with {:?} must produce cssl.string.format");
+        let spec = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "spec_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(spec, Some("1"));
+    }
+
+    #[test]
+    fn lower_format_counts_precision_and_width_specifiers() {
+        // `{:.3}` precision + `{:04d}` zero-padded + `{:5}` width = 3 specs.
+        let src = "fn f() -> i32 { \
+                   format(\"a = {:.3}, b = {:04d}, c = {:5}\", 1.25, 42, 7) ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let fmt = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("format with mixed specifiers must produce cssl.string.format");
+        let spec = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "spec_count")
+            .map(|(_, v)| v.as_str());
+        let argc = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "arg_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(spec, Some("3"));
+        assert_eq!(argc, Some("3"));
+    }
+
+    #[test]
+    fn lower_format_treats_doubled_braces_as_literals() {
+        // `{{` and `}}` are escaped literal braces — they do NOT count as
+        // a specifier opener / closer. `{{x}}` = 0 specs (the embedded `x`
+        // is between literal braces). NOTE : at stage-0 the parser parses
+        // `{{x}}` correctly within a string literal — this test verifies
+        // the format-spec scanner side, not the lexer.
+        let src = "fn f() -> i32 { format(\"{{ literal }}\") ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let fmt = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("format with escaped braces must produce cssl.string.format");
+        let spec = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "spec_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            spec,
+            Some("0"),
+            "doubled braces must not count as specifiers",
+        );
+    }
+
+    #[test]
+    fn lower_format_multi_segment_path_falls_through() {
+        // `foo::format(x)` is a 2-segment path — the recognizer's strict
+        // 1-segment guard must reject it, routing through the regular
+        // generic-call path (func.call). No `cssl.string.format` op should
+        // appear.
+        let src = "fn f() -> i32 { foo::format(\"hello\") ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.string.format"),
+            "multi-segment foo::format must not match the recognizer : {:?}",
+            entry.ops.iter().map(|o| &o.name).collect::<Vec<_>>(),
+        );
+        // But the call must still surface as a func.call so the
+        // user-defined `foo::format` resolves through the normal pipeline.
+        assert!(entry.ops.iter().any(|o| o.name == "func.call"));
+    }
+
+    #[test]
+    fn lower_format_non_literal_first_arg_falls_through() {
+        // The recognizer requires the FIRST arg to be a string-literal so
+        // it can extract the format-string at lower-time. A user calling
+        // `format(some_var)` must fall through to the regular func.call
+        // path so the local `format` fn (if defined) receives the call.
+        let src = "fn f(s : i32) -> i32 { format(s) ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.string.format"),
+            "non-literal first arg must not match the format recognizer : {:?}",
+            entry.ops.iter().map(|o| &o.name).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn lower_format_records_arg_count_separately_from_spec_count() {
+        // Spec/arg mismatch is NOT enforced at the recognizer (deferred to
+        // a future spec-validation pass per DECISIONS T11-D71 § DEFERRED) ;
+        // the recognizer simply records both counts so the validator slice
+        // has the data when it lands. This test confirms the two attributes
+        // are independent.
+        // 2 specs ({} {}) but only 1 supplied arg :
+        let src = "fn f() -> i32 { format(\"a = {} b = {}\", 7) ; 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let fmt = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.format")
+            .expect("format with mismatched specs must still emit cssl.string.format");
+        let spec = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "spec_count")
+            .map(|(_, v)| v.as_str());
+        let argc = fmt
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "arg_count")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(spec, Some("2"));
+        assert_eq!(argc, Some("1"));
+    }
+
+    #[test]
+    fn count_format_specifiers_handles_subset_table() {
+        // Direct unit-test on the spec-counter helper. Each row exercises
+        // one of the supported specifier shapes per S6-B4 slice scope.
+        assert_eq!(super::count_format_specifiers(""), 0);
+        assert_eq!(super::count_format_specifiers("no specs"), 0);
+        assert_eq!(super::count_format_specifiers("{}"), 1);
+        assert_eq!(super::count_format_specifiers("{:?}"), 1);
+        assert_eq!(super::count_format_specifiers("{:.3}"), 1);
+        assert_eq!(super::count_format_specifiers("{:04d}"), 1);
+        assert_eq!(super::count_format_specifiers("{:5}"), 1);
+        // Multi-spec compound :
+        assert_eq!(super::count_format_specifiers("{} {} {}"), 3);
+        assert_eq!(super::count_format_specifiers("a={:.3}, b={:?}"), 2);
+        // Doubled braces :
+        assert_eq!(super::count_format_specifiers("{{}}"), 0);
+        assert_eq!(super::count_format_specifiers("{{x}}"), 0);
+        // Mixed : `{{ {} }}` = one specifier between literal braces
+        assert_eq!(super::count_format_specifiers("{{ {} }}"), 1);
+        // Unmatched `{` is silently skipped (validation deferred) :
+        assert_eq!(super::count_format_specifiers("incomplete {"), 0);
     }
 }
