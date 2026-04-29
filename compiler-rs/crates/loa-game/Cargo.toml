@@ -55,6 +55,26 @@ cssl-host-net    = { path = "../cssl-host-net" }
 # § Workspace deps.
 thiserror = { workspace = true }
 
+# § T11-D228 (Phase-3) : Win32-target-gated GDI clear-color renderer for the
+# test-room visible-pixels acceptance gate. The bin-only `test_room_render`
+# module pulls Win32_Graphics_Gdi + Win32_UI_WindowsAndMessaging directly so
+# the lib's `#![forbid(unsafe_code)]` contract stays untouched (the GDI
+# unsafe-FFI lives only in the binary's module tree). HWND interop is via
+# the `usize` exposed by `cssl-host-window::raw_handle`. Non-Windows builds
+# skip the dep entirely (the renderer falls back to a no-op stub) so the
+# workspace `cargo check --workspace` stays green on Linux + macOS per
+# CSSLv3 R16 reproducibility-anchor.
+#
+# When `cssl-host-d3d12` ships a `Swapchain` helper a parallel D3D12 renderer
+# path will land behind a `gpu` feature ; this dep stays as the no-GPU
+# degraded-mode fallback.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [[bin]]
 name = "loa-game"
 path = "src/main.rs"
