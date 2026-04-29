@@ -210,9 +210,8 @@ mod imp {
             let mut out: Option<ID3D12Resource> = None;
             // D3D12_RESOURCE_STATES is `i32` ; we go through i32::from_ne_bytes
             // to avoid clippy::cast_possible_wrap on the u32→i32 step.
-            let initial_raw = D3D12_RESOURCE_STATES(i32::from_ne_bytes(
-                initial_state.as_u32().to_ne_bytes(),
-            ));
+            let initial_raw =
+                D3D12_RESOURCE_STATES(i32::from_ne_bytes(initial_state.as_u32().to_ne_bytes()));
             // SAFETY : FFI ; props + desc + nullable optimized clear value all valid.
             unsafe {
                 device.device.CreateCommittedResource(

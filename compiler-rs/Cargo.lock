@@ -551,6 +551,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-net"
+version = "0.1.0"
+dependencies = [
+ "cssl-rt",
+]
+
+[[package]]
 name = "cssl-host-vulkan"
 version = "0.1.0"
 dependencies = [

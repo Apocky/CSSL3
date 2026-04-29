@@ -247,6 +247,221 @@ pub unsafe extern "C" fn __cssl_fs_last_error_os() -> i32 {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § __cssl_net_* — networking surface (T11-D82, S7-F4).
+//
+// Each shim delegates to the platform `cssl_net_*_impl` selected via cfg
+// in [`crate::net`]. The shims preserve the `i64`-handle ABI so a single
+// CSSLv3-source-level interface can drive both Win32 SOCKETs and POSIX
+// fds. PRIME-DIRECTIVE attestation : see `crate::net` doc-block for the
+// surveillance / cap-system / TLS-deferred posture.
+// ───────────────────────────────────────────────────────────────────────
+
+/// FFI : create a new socket. See [`crate::net`] doc-block for the flag
+/// bitset + error semantics.
+///
+/// # Safety
+/// Always safe to call ; only state mutated is the per-thread last-error
+/// slot + (Win32) the WSA init-count.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_socket(flags: i32) -> i64 {
+    // SAFETY : impl is internally safe ; uses platform syscalls with
+    // matching SAFETY paragraphs.
+    unsafe { crate::net::cssl_net_socket_impl(flags) }
+}
+
+/// FFI : bind + listen on a TCP socket. Returns 0 on success, -1 on err.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid SOCKET handle from
+/// [`__cssl_net_socket`] with `SOCK_TCP` and not yet closed.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_listen(
+    socket_handle: i64,
+    addr_be: u32,
+    port: u16,
+    backlog: i32,
+) -> i64 {
+    // SAFETY : socket-handle contract inherited from caller.
+    unsafe { crate::net::cssl_net_listen_impl(socket_handle, addr_be, port, backlog) }
+}
+
+/// FFI : accept the next pending connection on a listening socket.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid TCP listening SOCKET.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_accept(socket_handle: i64) -> i64 {
+    // SAFETY : socket-handle contract inherited from caller.
+    unsafe { crate::net::cssl_net_accept_impl(socket_handle) }
+}
+
+/// FFI : connect a TCP socket to a peer.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid TCP SOCKET not yet
+/// connected.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_connect(socket_handle: i64, addr_be: u32, port: u16) -> i64 {
+    // SAFETY : socket-handle contract inherited from caller.
+    unsafe { crate::net::cssl_net_connect_impl(socket_handle, addr_be, port) }
+}
+
+/// FFI : send `buf_len` bytes on a connected socket. Returns bytes-sent.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid SOCKET in connected
+/// state and `buf_ptr` is valid for `buf_len` consecutive readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_send(
+    socket_handle: i64,
+    buf_ptr: *const u8,
+    buf_len: usize,
+) -> i64 {
+    // SAFETY : socket + buffer contract inherited from caller.
+    unsafe { crate::net::cssl_net_send_impl(socket_handle, buf_ptr, buf_len) }
+}
+
+/// FFI : recv up to `buf_len` bytes on a connected socket. Returns
+/// bytes-received (0 = clean peer close).
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid SOCKET in connected
+/// state and `buf_ptr` is valid for `buf_len` consecutive writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_recv(
+    socket_handle: i64,
+    buf_ptr: *mut u8,
+    buf_len: usize,
+) -> i64 {
+    // SAFETY : socket + buffer contract inherited from caller.
+    unsafe { crate::net::cssl_net_recv_impl(socket_handle, buf_ptr, buf_len) }
+}
+
+/// FFI : send a UDP datagram to `(addr, port)`.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid UDP SOCKET and
+/// `buf_ptr` is valid for `buf_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_sendto(
+    socket_handle: i64,
+    buf_ptr: *const u8,
+    buf_len: usize,
+    addr_be: u32,
+    port: u16,
+) -> i64 {
+    // SAFETY : socket + buffer contract inherited from caller.
+    unsafe { crate::net::cssl_net_sendto_impl(socket_handle, buf_ptr, buf_len, addr_be, port) }
+}
+
+/// FFI : recv a UDP datagram + peer address.
+///
+/// # Safety
+/// Caller must ensure all pointers are valid for their declared lengths
+/// or null (in the case of `peer_*_out`, null discards the peer info).
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_recvfrom(
+    socket_handle: i64,
+    buf_ptr: *mut u8,
+    buf_len: usize,
+    peer_addr_be_out: *mut u32,
+    peer_port_out: *mut u16,
+) -> i64 {
+    // SAFETY : socket + buffer + out-pointer contract inherited from caller.
+    unsafe {
+        crate::net::cssl_net_recvfrom_impl(
+            socket_handle,
+            buf_ptr,
+            buf_len,
+            peer_addr_be_out,
+            peer_port_out,
+        )
+    }
+}
+
+/// FFI : close a socket. Returns 0 on success, -1 on failure.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid SOCKET handle from
+/// [`__cssl_net_socket`] (or [`__cssl_net_accept`]) and not yet closed.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_close(socket_handle: i64) -> i64 {
+    // SAFETY : socket-handle contract inherited from caller.
+    unsafe { crate::net::cssl_net_close_impl(socket_handle) }
+}
+
+/// FFI : read back the bound local address of a socket. Useful for
+/// tests that bind to port 0 and need to know the assigned port.
+///
+/// # Safety
+/// Caller must ensure `socket_handle` is a valid SOCKET ; out-pointers
+/// are valid (or null to discard).
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_local_addr(
+    socket_handle: i64,
+    addr_be_out: *mut u32,
+    port_out: *mut u16,
+) -> i64 {
+    // SAFETY : pointer contract inherited from caller.
+    #[cfg(target_os = "windows")]
+    {
+        unsafe { crate::net_win32::cssl_net_local_addr_impl(socket_handle, addr_be_out, port_out) }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        unsafe { crate::net_unix::cssl_net_local_addr_impl(socket_handle, addr_be_out, port_out) }
+    }
+}
+
+/// FFI : read the canonical error kind from the last net op.
+///
+/// # Safety
+/// Always safe to call ; `unsafe` only because of `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_last_error_kind() -> i32 {
+    crate::net::last_net_error_kind()
+}
+
+/// FFI : read the raw OS code from the last net op (`WSAGetLastError`
+/// on Win32 / `errno` on POSIX).
+///
+/// # Safety
+/// Always safe to call ; `unsafe` only because of `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_last_error_os() -> i32 {
+    crate::net::last_net_error_os()
+}
+
+/// FFI : grant `cap_bits` to the cap-set. Returns the new cap-set.
+/// PRIME-DIRECTIVE-aligned default-deny policy ; see
+/// [`crate::net`] doc-block.
+///
+/// # Safety
+/// Always safe to call ; cap-set is a global atomic.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_caps_grant(cap_bits: i32) -> i32 {
+    crate::net::caps_grant(cap_bits)
+}
+
+/// FFI : revoke `cap_bits` from the cap-set. Returns the new cap-set.
+///
+/// # Safety
+/// Always safe to call ; cap-set is a global atomic.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_caps_revoke(cap_bits: i32) -> i32 {
+    crate::net::caps_revoke(cap_bits)
+}
+
+/// FFI : read the current cap-set.
+///
+/// # Safety
+/// Always safe to call ; cap-set is a global atomic.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_net_caps_current() -> i32 {
+    crate::net::caps_current()
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § tests — exercise FFI boundary
 // ───────────────────────────────────────────────────────────────────────
 
@@ -378,6 +593,102 @@ mod tests {
         let _: unsafe extern "C" fn(i64) -> i64 = __cssl_fs_close;
         let _: unsafe extern "C" fn() -> i32 = __cssl_fs_last_error_kind;
         let _: unsafe extern "C" fn() -> i32 = __cssl_fs_last_error_os;
+        // S7-F4 (T11-D82) — net surface ABI lock.
+        let _: unsafe extern "C" fn(i32) -> i64 = __cssl_net_socket;
+        let _: unsafe extern "C" fn(i64, u32, u16, i32) -> i64 = __cssl_net_listen;
+        let _: unsafe extern "C" fn(i64) -> i64 = __cssl_net_accept;
+        let _: unsafe extern "C" fn(i64, u32, u16) -> i64 = __cssl_net_connect;
+        let _: unsafe extern "C" fn(i64, *const u8, usize) -> i64 = __cssl_net_send;
+        let _: unsafe extern "C" fn(i64, *mut u8, usize) -> i64 = __cssl_net_recv;
+        let _: unsafe extern "C" fn(i64, *const u8, usize, u32, u16) -> i64 = __cssl_net_sendto;
+        let _: unsafe extern "C" fn(i64, *mut u8, usize, *mut u32, *mut u16) -> i64 =
+            __cssl_net_recvfrom;
+        let _: unsafe extern "C" fn(i64) -> i64 = __cssl_net_close;
+        let _: unsafe extern "C" fn(i64, *mut u32, *mut u16) -> i64 = __cssl_net_local_addr;
+        let _: unsafe extern "C" fn() -> i32 = __cssl_net_last_error_kind;
+        let _: unsafe extern "C" fn() -> i32 = __cssl_net_last_error_os;
+        let _: unsafe extern "C" fn(i32) -> i32 = __cssl_net_caps_grant;
+        let _: unsafe extern "C" fn(i32) -> i32 = __cssl_net_caps_revoke;
+        let _: unsafe extern "C" fn() -> i32 = __cssl_net_caps_current;
+    }
+
+    // ── S7-F4 (T11-D82) — net FFI surface tests ─────────────────────────
+
+    #[test]
+    fn ffi_net_socket_invalid_flags_returns_invalid_socket() {
+        let _g = lock_and_reset_all();
+        // SAFETY : safe call ; bad flag rejected before any syscall.
+        let r = unsafe { __cssl_net_socket(0x8000) };
+        assert_eq!(r, crate::net::INVALID_SOCKET);
+        let kind = unsafe { __cssl_net_last_error_kind() };
+        assert_eq!(kind, crate::net::net_error_code::INVALID_INPUT);
+    }
+
+    #[test]
+    fn ffi_net_close_invalid_socket_returns_minus_one() {
+        let _g = lock_and_reset_all();
+        // SAFETY : INVALID_SOCKET sentinel.
+        let r = unsafe { __cssl_net_close(crate::net::INVALID_SOCKET) };
+        assert_eq!(r, -1);
+        let kind = unsafe { __cssl_net_last_error_kind() };
+        assert_eq!(kind, crate::net::net_error_code::INVALID_INPUT);
+    }
+
+    #[test]
+    fn ffi_net_caps_grant_revoke_cycle() {
+        let _g = lock_and_reset_all();
+        // Initial : default cap-set = LOOPBACK only.
+        let initial = unsafe { __cssl_net_caps_current() };
+        assert_eq!(initial, crate::net::NET_CAP_LOOPBACK);
+        // Grant OUTBOUND.
+        let after_grant = unsafe { __cssl_net_caps_grant(crate::net::NET_CAP_OUTBOUND) };
+        assert_ne!(after_grant & crate::net::NET_CAP_OUTBOUND, 0);
+        // Revoke OUTBOUND.
+        let after_revoke = unsafe { __cssl_net_caps_revoke(crate::net::NET_CAP_OUTBOUND) };
+        assert_eq!(after_revoke & crate::net::NET_CAP_OUTBOUND, 0);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn ffi_net_tcp_loopback_roundtrip_via_ffi() {
+        // ‼ HANDOFF report-back gate via the FFI shims (= the surface
+        // CSSLv3-emitted code calls into). Mirrors the platform-specific
+        // roundtrip test but exercises every `__cssl_net_*` shim.
+        let _g = lock_and_reset_all();
+
+        // SAFETY : SOCK_TCP + SOCK_REUSEADDR.
+        let server =
+            unsafe { __cssl_net_socket(crate::net::SOCK_TCP | crate::net::SOCK_REUSEADDR) };
+        assert_ne!(server, crate::net::INVALID_SOCKET);
+        let lr = unsafe { __cssl_net_listen(server, crate::net::LOOPBACK_V4, 0, 4) };
+        assert_eq!(lr, 0);
+        let mut bound_addr: u32 = 0;
+        let mut bound_port: u16 = 0;
+        let gr = unsafe { __cssl_net_local_addr(server, &mut bound_addr, &mut bound_port) };
+        assert_eq!(gr, 0);
+        assert_eq!(bound_addr, crate::net::LOOPBACK_V4);
+        assert_ne!(bound_port, 0);
+
+        let client = unsafe { __cssl_net_socket(crate::net::SOCK_TCP) };
+        assert_ne!(client, crate::net::INVALID_SOCKET);
+        let cr = unsafe { __cssl_net_connect(client, crate::net::LOOPBACK_V4, bound_port) };
+        assert_eq!(cr, 0);
+
+        let conn = unsafe { __cssl_net_accept(server) };
+        assert_ne!(conn, crate::net::INVALID_SOCKET);
+
+        let payload = b"ffi roundtrip cssl-net f4";
+        let n = unsafe { __cssl_net_send(client, payload.as_ptr(), payload.len()) };
+        assert_eq!(n, payload.len() as i64);
+
+        let mut buf = vec![0u8; payload.len() + 8];
+        let nr = unsafe { __cssl_net_recv(conn, buf.as_mut_ptr(), buf.len()) };
+        assert_eq!(nr, payload.len() as i64);
+        assert_eq!(&buf[..payload.len()], payload);
+
+        let _ = unsafe { __cssl_net_close(conn) };
+        let _ = unsafe { __cssl_net_close(client) };
+        let _ = unsafe { __cssl_net_close(server) };
     }
 
     // S6-B5 (T11-D76) — fs FFI roundtrip via the FFI shims. Mirrors the

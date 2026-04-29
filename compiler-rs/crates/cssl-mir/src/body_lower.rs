@@ -1340,6 +1340,21 @@ fn lower_call(
             }
         }
     }
+    // § T11-D82 (S7-F4) — `net::socket` / `net::listen` / `net::accept` /
+    //   `net::connect` / `net::send` / `net::recv` / `net::sendto` /
+    //   `net::recvfrom` / `net::close` syntactic recognition. Strict
+    //   guard : the callee must be a 2-segment path with first segment
+    //   `net` ; the second segment selects which `cssl.net.*` op fires +
+    //   the expected argument count. Recognizing on a 2-segment path
+    //   avoids accidentally claiming user identifiers like `connect` /
+    //   `send` that legitimately exist in non-net contexts. The
+    //   canonical stdlib form is `net::connect(addr, port)` per
+    //   `stdlib/net.cssl`. See HANDOFF_SESSION_7 § PHASE-F § S7-F4 +
+    //   `specs/04_EFFECTS.csl § NET-EFFECT` +
+    //   `specs/11_IFC.csl § PRIME-DIRECTIVE ENCODING § NET-CAP rules`.
+    if let Some(result) = try_lower_net_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -1996,6 +2011,304 @@ fn try_lower_fs_close(
             .with_result(result_id, result_ty.clone())
             .with_attribute("io_effect", "true")
             .with_attribute("family", "fs")
+            .with_attribute("op", "close")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D82 (S7-F4) — networking I/O recognizers.
+//
+//   Stage-0 representation : each `net::*` call mints one `cssl.net.*` op
+//   carrying :
+//     - `net_effect` : "true"            // {Net} effect-row marker
+//     - `family`     : "net"
+//     - `op`         : "socket" | "listen" | "accept" | "connect" |
+//                      "send" | "recv" | "sendto" | "recvfrom" | "close"
+//     - `caps_required` : "net_outbound" / "net_inbound" (where applicable)
+//     - `source_loc` : original span
+//
+//   The op-result type is :
+//     - NetSocket   : `MirType::Int(I64)`   (socket-handle ; -1 on error)
+//     - NetListen   : `MirType::Int(I64)`   (0 = ok ; -1 on error)
+//     - NetAccept   : `MirType::Int(I64)`   (new-socket ; -1 on error)
+//     - NetConnect  : `MirType::Int(I64)`   (0 = ok ; -1 on error)
+//     - NetSend     : `MirType::Int(I64)`   (bytes-sent ; -1 on error)
+//     - NetRecv     : `MirType::Int(I64)`   (bytes-recv ; 0 = peer-close ;
+//                                            -1 on error)
+//     - NetSendTo   : `MirType::Int(I64)`   (bytes-sent ; -1 on error)
+//     - NetRecvFrom : `MirType::Int(I64)`   (bytes-recv ; -1 on error)
+//     - NetClose    : `MirType::Int(I64)`   (0 = ok ; -1 on error)
+//
+//   PRIME-DIRECTIVE attestation : the `caps_required` attribute is the
+//   stage-0 marker that downstream cap-system walkers consume to verify
+//   the host has granted the matching `NET_CAP_*` bit before allowing
+//   the call to fire (per `cssl-rt::net::caps_grant` discipline).
+//
+//   The cranelift / SPIR-V / DXIL / MSL / WGSL lowering of these ops to
+//   actual `__cssl_net_*` calls is a deferred follow-up — at this slice
+//   the ops are STRUCTURAL only (parse + walk + monomorph). Real
+//   runtime execution comes once the cgen layer wires `func.call
+//   __cssl_net_*` via `Linkage::Import` (mirrors B5's fs-op cgen wiring
+//   pattern from T11-D76 § DEFERRED).
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Dispatch a `net::*` callee to the matching `try_lower_net_*` recognizer.
+///
+/// Returns `Some(_)` if `callee` is a 2-segment path of the form
+/// `net::<verb>` with the canonical arity for that verb ; otherwise
+/// returns `None` so the caller falls through to the regular
+/// `func.call` path. Extracted from `lower_call` to keep that fn under
+/// the cognitive-complexity budget after S7-F4 added 9 net verbs.
+fn try_lower_net_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 || ctx.interner.resolve(segments[0]) != "net" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    match (op.as_str(), args.len()) {
+        ("socket", 1) => try_lower_net_socket(ctx, args, span),
+        ("listen", 4) => try_lower_net_listen(ctx, args, span),
+        ("accept", 1) => try_lower_net_accept(ctx, args, span),
+        ("connect", 3) => try_lower_net_connect(ctx, args, span),
+        ("send", 3) => try_lower_net_send(ctx, args, span),
+        ("recv", 3) => try_lower_net_recv(ctx, args, span),
+        ("sendto", 5) => try_lower_net_sendto(ctx, args, span),
+        ("recvfrom", 5) => try_lower_net_recvfrom(ctx, args, span),
+        ("close", 1) => try_lower_net_close(ctx, args, span),
+        _ => None,
+    }
+}
+
+/// Lower a syntactically-recognized `net::socket(flags)` call.
+fn try_lower_net_socket(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (flags_id, _) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetSocket)
+            .with_operand(flags_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "socket")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::listen(sock, addr, port, backlog)` call.
+fn try_lower_net_listen(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (a_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[2])?;
+    let (b_id, _) = lower_call_arg(ctx, &args[3])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetListen)
+            .with_operand(s_id)
+            .with_operand(a_id)
+            .with_operand(p_id)
+            .with_operand(b_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "listen")
+            .with_attribute("caps_required", "net_inbound")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::accept(sock)` call.
+fn try_lower_net_accept(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetAccept)
+            .with_operand(s_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "accept")
+            .with_attribute("caps_required", "net_inbound")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::connect(sock, addr, port)` call.
+fn try_lower_net_connect(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (a_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[2])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetConnect)
+            .with_operand(s_id)
+            .with_operand(a_id)
+            .with_operand(p_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "connect")
+            .with_attribute("caps_required", "net_outbound")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::send(sock, buf_ptr, buf_len)` call.
+fn try_lower_net_send(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (n_id, _) = lower_call_arg(ctx, &args[2])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetSend)
+            .with_operand(s_id)
+            .with_operand(p_id)
+            .with_operand(n_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "send")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::recv(sock, buf_ptr, buf_len)` call.
+fn try_lower_net_recv(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (n_id, _) = lower_call_arg(ctx, &args[2])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetRecv)
+            .with_operand(s_id)
+            .with_operand(p_id)
+            .with_operand(n_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "recv")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::sendto(sock, buf_ptr, buf_len, addr, port)` call.
+fn try_lower_net_sendto(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (n_id, _) = lower_call_arg(ctx, &args[2])?;
+    let (a_id, _) = lower_call_arg(ctx, &args[3])?;
+    let (po_id, _) = lower_call_arg(ctx, &args[4])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetSendTo)
+            .with_operand(s_id)
+            .with_operand(p_id)
+            .with_operand(n_id)
+            .with_operand(a_id)
+            .with_operand(po_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "sendto")
+            .with_attribute("caps_required", "net_outbound")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::recvfrom(sock, buf_ptr, buf_len, addr_out_ptr, port_out_ptr)` call.
+fn try_lower_net_recvfrom(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (n_id, _) = lower_call_arg(ctx, &args[2])?;
+    let (a_id, _) = lower_call_arg(ctx, &args[3])?;
+    let (po_id, _) = lower_call_arg(ctx, &args[4])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetRecvFrom)
+            .with_operand(s_id)
+            .with_operand(p_id)
+            .with_operand(n_id)
+            .with_operand(a_id)
+            .with_operand(po_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
+            .with_attribute("op", "recvfrom")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `net::close(sock)` call.
+fn try_lower_net_close(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::NetClose)
+            .with_operand(s_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("net_effect", "true")
+            .with_attribute("family", "net")
             .with_attribute("op", "close")
             .with_attribute("source_loc", format!("{span:?}")),
     );
@@ -3583,5 +3896,139 @@ mod tests {
         // source_loc is present and non-empty.
         let loc = attr(op, "source_loc").expect("source_loc attribute missing");
         assert!(!loc.is_empty(), "source_loc should be non-empty");
+    }
+
+    // ── S7-F4 (T11-D82) network recognizer coverage ─────────────────────
+    //
+    //   Mirrors the fs recognizer test block above. Each test confirms
+    //   that the canonical 2-segment `net::*` call lowers to the matching
+    //   `cssl.net.*` op + carries the `(net_effect, "true")` attribute
+    //   marker. The connect/listen/sendto/accept variants additionally
+    //   carry the `caps_required` PRIME-DIRECTIVE marker.
+
+    #[test]
+    fn lower_net_socket_emits_cssl_net_socket() {
+        // `net::socket(SOCK_TCP)` should lower to `cssl.net.socket`.
+        let (f, _) = lower_one("fn f() -> i64 { net::socket(1) }");
+        let op =
+            find_op(&f, "cssl.net.socket").expect("net::socket should lower to cssl.net.socket");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("net"));
+        assert_eq!(attr(op, "op"), Some("socket"));
+    }
+
+    #[test]
+    fn lower_net_listen_emits_cssl_net_listen_with_caps_inbound() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, a : i32, p : i32, b : i32) -> i64 { net::listen(s, a, p, b) }",
+        );
+        let op = find_op(&f, "cssl.net.listen").expect("net::listen should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("listen"));
+        assert_eq!(
+            attr(op, "caps_required"),
+            Some("net_inbound"),
+            "listen requires net_inbound cap"
+        );
+    }
+
+    #[test]
+    fn lower_net_accept_emits_cssl_net_accept_with_caps_inbound() {
+        let (f, _) = lower_one("fn f(s : i64) -> i64 { net::accept(s) }");
+        let op = find_op(&f, "cssl.net.accept").expect("net::accept should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "caps_required"), Some("net_inbound"));
+    }
+
+    #[test]
+    fn lower_net_connect_emits_cssl_net_connect_with_caps_outbound() {
+        let (f, _) = lower_one("fn f(s : i64, a : i32, p : i32) -> i64 { net::connect(s, a, p) }");
+        let op = find_op(&f, "cssl.net.connect").expect("net::connect should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(
+            attr(op, "caps_required"),
+            Some("net_outbound"),
+            "connect requires net_outbound cap"
+        );
+    }
+
+    #[test]
+    fn lower_net_send_emits_cssl_net_send() {
+        let (f, _) = lower_one("fn f(s : i64, p : i64, n : i64) -> i64 { net::send(s, p, n) }");
+        let op = find_op(&f, "cssl.net.send").expect("net::send should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("send"));
+    }
+
+    #[test]
+    fn lower_net_recv_emits_cssl_net_recv() {
+        let (f, _) = lower_one("fn f(s : i64, p : i64, n : i64) -> i64 { net::recv(s, p, n) }");
+        let op = find_op(&f, "cssl.net.recv").expect("net::recv should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("recv"));
+    }
+
+    #[test]
+    fn lower_net_sendto_emits_cssl_net_sendto_with_caps_outbound() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, p : i64, n : i64, a : i32, port : i32) -> i64 { \
+                net::sendto(s, p, n, a, port) \
+            }",
+        );
+        let op = find_op(&f, "cssl.net.sendto").expect("net::sendto should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "caps_required"), Some("net_outbound"));
+    }
+
+    #[test]
+    fn lower_net_recvfrom_emits_cssl_net_recvfrom() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, p : i64, n : i64, a : i64, po : i64) -> i64 { \
+                net::recvfrom(s, p, n, a, po) \
+            }",
+        );
+        let op = find_op(&f, "cssl.net.recvfrom").expect("net::recvfrom should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("recvfrom"));
+    }
+
+    #[test]
+    fn lower_net_close_emits_cssl_net_close() {
+        let (f, _) = lower_one("fn f(s : i64) -> i64 { net::close(s) }");
+        let op = find_op(&f, "cssl.net.close").expect("net::close should lower");
+        assert_eq!(attr(op, "net_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("close"));
+    }
+
+    #[test]
+    fn lower_net_socket_wrong_arity_falls_through_to_func_call() {
+        // 0-arg net::socket() doesn't match the recognizer (expects 1 arg).
+        let (f, _) = lower_one("fn f() -> i64 { net::socket() }");
+        // No cssl.net.socket op ; instead a func.call op exists.
+        assert!(find_op(&f, "cssl.net.socket").is_none());
+    }
+
+    #[test]
+    fn lower_bare_socket_is_not_claimed_by_recognizer() {
+        // `socket(...)` (single-segment) is NOT recognized — only the
+        // 2-segment `net::socket` form qualifies. Guards against
+        // accidental shadowing of user identifiers.
+        let (f, _) = lower_one("fn f() -> i64 { socket(1) }");
+        assert!(find_op(&f, "cssl.net.socket").is_none());
+    }
+
+    #[test]
+    fn lower_other_module_socket_is_not_claimed() {
+        // `foo::socket(...)` is NOT `net::socket(...)`.
+        let (f, _) = lower_one("fn f() -> i64 { foo::socket(1) }");
+        assert!(find_op(&f, "cssl.net.socket").is_none());
+    }
+
+    #[test]
+    fn lower_net_socket_records_source_loc_attribute() {
+        let (f, _) = lower_one("fn f() -> i64 { net::socket(1) }");
+        let op = find_op(&f, "cssl.net.socket").expect("net::socket should lower");
+        let loc = attr(op, "source_loc").expect("source_loc missing");
+        assert!(!loc.is_empty());
     }
 }

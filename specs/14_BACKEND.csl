@@ -76,6 +76,43 @@
     bind_resources, dispatch/draw, submit, wait,
     telemetry_capture, sysman_query
 
+§ HOST-NET (S7-F4 / T11-D82 — networking host backend)
+  thesis : per-platform networking surface for TCP + UDP bound to
+           connection-oriented + datagram primitives. Sits below
+           `stdlib/net.cssl` (the source-level surface) and exposes
+           the FFI symbols (`__cssl_net_*`) consumed by emitted code.
+  Win32        : Winsock 2.2 ; hand-rolled `extern "system"` bindings
+                 to ws2_32.dll (no `windows-sys` crate dep at S7-F4 ;
+                 matches B5 file-IO discipline). WSAStartup/WSACleanup
+                 ref-counted internally so partial-init is handled.
+  Linux+macOS  : BSD-sockets ; hand-rolled `extern "C"` bindings to
+                 libc (no `libc` crate dep). Apocky's host is Windows ;
+                 the Unix path is structurally tested (compile-only)
+                 until a non-Windows CI runner exists, mirroring B5.
+  Stage1+      : owned FFI dispatch (volk-like vtable for Win32 ;
+                 syscall-direct on Linux), TLS via owned implementation
+                 (or BoringSSL bridge), getaddrinfo wiring for
+                 hostname resolution, IPv6 (`SocketAddrV6`).
+  Crate layout :
+    cssl-rt::net          ← portable surface : flags / NetError / counters
+                              / last-error / cap-system
+    cssl-rt::net_win32    ← Winsock2 platform layer (cfg-gated)
+    cssl-rt::net_unix     ← BSD-sockets platform layer (cfg-gated)
+    cssl-rt::ffi          ← __cssl_net_* FFI shims (15 symbols)
+    cssl-host-net         ← high-level Rust API
+                              (TcpListener / TcpStream / UdpSocket /
+                              SocketAddrV4 / NetError / caps facade)
+    stdlib/net.cssl       ← source-level CSSLv3 surface
+    cssl-mir::body_lower  ← syntactic recognizer for `net::*` bare-name
+                              calls → cssl.net.* MIR ops
+  PRIME-DIRECTIVE attestation : every connect-style / bind-style call
+    routes through `cssl_rt::net::check_caps_for_addr` BEFORE the
+    syscall fires. Default cap-set = LOOPBACK only ; non-loopback
+    requires explicit `caps_grant(NET_CAP_OUTBOUND | NET_CAP_INBOUND)`.
+    Raw / packet sockets DEFERRED ; TLS DEFERRED ; IPv6 DEFERRED.
+    See `specs/11_IFC.csl § PRIME-DIRECTIVE ENCODING § NET-CAP rules`
+    for the full cap algebra.
+
 § BACKEND-MATRIX (ref §§ 00 + §§ 10)
   backend     graphics  compute   RT      XMX        power      scope
   Vulkan-1.4  ✓         ✓         ✓       via-coop   advisory   portable

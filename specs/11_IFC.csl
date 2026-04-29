@@ -96,6 +96,48 @@
     no-primitive for WeaponTarget-output-composition
     no-declass-policy can bridge these
 
+§ PRIME-DIRECTIVE ENCODING § NET-CAP rules (S7-F4 / T11-D82)
+  thesis : the cssl-rt networking surface (`specs/04_EFFECTS.csl
+           § NET-EFFECT`) is gated by a per-thread capability bitset
+           that operationalizes the §1 PROHIBITIONS (surveillance,
+           exfiltration) at the syscall layer. Default = LOOPBACK only.
+  cap-bits (matches cssl-rt::net::NET_CAP_*) :
+    NET_CAP_LOOPBACK (0x01) ← default ON ; permits 127.0.0.0/8
+    NET_CAP_OUTBOUND (0x02) ← default OFF ; permits connect / send
+                              to non-loopback addresses
+    NET_CAP_INBOUND  (0x04) ← default OFF ; permits listen / accept
+                              on non-loopback addresses
+  cap-grant rules :
+    granting requires explicit caller intent — there is NO blanket-allow
+    flag, NO env-var override, NO admin privilege escalation per
+    PRIME_DIRECTIVE.md § 6 SCOPE.
+    every connect / listen / sendto consults
+    `cssl_rt::net::check_caps_for_addr(addr, port, is_inbound)` BEFORE
+    the syscall fires. Non-loopback without the matching cap returns
+    NetError::CapDenied (= 17) immediately.
+  revocation :
+    `caps_revoke(NET_CAP_*)` is always permitted — consent is
+    revocable + granular + ongoing per § 5 CONSENT-ARCH.
+  raw-sockets : DEFERRED with explicit rationale — surveillance /
+                 network-poisoning capability is not stage-0 surface.
+                 Source-level CSSLv3 has NO addressable raw-socket
+                 primitive ; the cssl-rt platform layer does not
+                 expose AF_PACKET / SOCK_RAW / IP_HDRINCL.
+  TLS / encryption : DEFERRED to a follow-up slice — cssl.net.* APIs
+                     currently send PLAINTEXT bytes. Sensitive-labeled
+                     bytes flowing into a {Net} effect-row trigger the
+                     existing § PRIME-DIRECTIVE ENCODING rules :
+                       Sensitive<"surveillance"> ⊎ {Net} = compile-error
+                       Sensitive<"weapon">       ⊎ {Net} = compile-error
+                                                            unless
+                                                            Privilege<Kernel>
+  cap-system MIR markers :
+    body_lower's `cssl.net.connect` / `cssl.net.listen` /
+    `cssl.net.accept` / `cssl.net.sendto` ops carry a
+    `(caps_required, "net_outbound" | "net_inbound")` attribute
+    that downstream IFC walkers cross-reference against the host's
+    granted cap-set before allowing the call to fire.
+
 § PRIVILEGE EFFECT (§§ 04)
   {Privilege<level>} : level ∈ { User, System, Kernel, Root,
                                   Anthropic-Audit, Apocky-Root }

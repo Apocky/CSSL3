@@ -33,6 +33,24 @@
 //!   __cssl_fs_last_error_kind() -> i32
 //!   __cssl_fs_last_error_os() -> i32
 //!   ```
+//!   S7-F4 (T11-D82) — net surface :
+//!   ```text
+//!   __cssl_net_socket(flags) -> i64
+//!   __cssl_net_listen(sock, addr, port, backlog) -> i64
+//!   __cssl_net_accept(sock) -> i64
+//!   __cssl_net_connect(sock, addr, port) -> i64
+//!   __cssl_net_send(sock, buf_ptr, buf_len) -> i64
+//!   __cssl_net_recv(sock, buf_ptr, buf_len) -> i64
+//!   __cssl_net_sendto(sock, buf_ptr, buf_len, addr, port) -> i64
+//!   __cssl_net_recvfrom(sock, buf_ptr, buf_len, *addr_out, *port_out) -> i64
+//!   __cssl_net_close(sock) -> i64
+//!   __cssl_net_local_addr(sock, *addr_out, *port_out) -> i64
+//!   __cssl_net_last_error_kind() -> i32
+//!   __cssl_net_last_error_os() -> i32
+//!   __cssl_net_caps_grant(bits) -> i32
+//!   __cssl_net_caps_revoke(bits) -> i32
+//!   __cssl_net_caps_current() -> i32
+//!   ```
 //!   See [`ffi`] for full documentation. Renaming any of these symbols
 //!   is a major-version-bump event.
 //!
@@ -74,6 +92,11 @@ pub mod io;
 pub mod io_unix;
 #[cfg(target_os = "windows")]
 pub mod io_win32;
+pub mod net;
+#[cfg(not(target_os = "windows"))]
+pub mod net_unix;
+#[cfg(target_os = "windows")]
+pub mod net_win32;
 pub mod panic;
 pub mod runtime;
 
@@ -95,6 +118,15 @@ pub use io::{
     reset_last_io_error_for_tests, validate_buffer, validate_open_flags, write_count,
     INVALID_HANDLE, OPEN_APPEND, OPEN_CREATE, OPEN_CREATE_NEW, OPEN_FLAG_MASK, OPEN_READ,
     OPEN_READ_WRITE, OPEN_TRUNCATE, OPEN_WRITE,
+};
+pub use net::{
+    accept_count, addr_is_loopback, bytes_recv_total, bytes_sent_total, caps_current, caps_grant,
+    caps_revoke, check_caps_for_addr, connect_count, last_net_error_kind, last_net_error_os,
+    listen_count, net_close_count, net_error_code, record_net_error, recv_count,
+    reset_net_for_tests, send_count, socket_count, validate_sock_flags, ANY_V4, INVALID_SOCKET,
+    LOOPBACK_V4, NET_CAP_DEFAULT, NET_CAP_INBOUND, NET_CAP_LOOPBACK, NET_CAP_MASK,
+    NET_CAP_OUTBOUND, SOCK_FLAG_MASK, SOCK_NODELAY, SOCK_NONBLOCK, SOCK_REUSEADDR, SOCK_TCP,
+    SOCK_UDP,
 };
 pub use panic::{format_panic, panic_count, record_panic, reset_panic_count_for_tests};
 pub use runtime::{
@@ -152,6 +184,7 @@ pub(crate) mod test_helpers {
         crate::exit::reset_exit_state_for_tests();
         crate::runtime::reset_runtime_for_tests();
         crate::io::reset_io_for_tests();
+        crate::net::reset_net_for_tests();
         g
     }
 }

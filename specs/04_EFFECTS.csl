@@ -224,6 +224,85 @@
     {IO} ⊎ {PureDet} : compile-error (fs ops are inherently
                        non-deterministic between runs)
 
+§ NET-EFFECT (S7-F4 / T11-D82 — networking surface within {Net})
+  thesis : the {Net} effect specializes the broader {IO} catch-all for
+           network-touching operations. S7-F4 lands the networking
+           surface within {Net} ; clock follows as a later slice. The
+           {Net} effect carries strict PRIME-DIRECTIVE cap-system gates
+           (loopback default-allow, non-loopback requires explicit
+           `caps_grant(...)` per `specs/11_IFC.csl § PRIME-DIRECTIVE
+           ENCODING § NET-CAP rules`).
+  surface :
+    fn open_tcp_listener(addr : SocketAddrV4)
+        -> Result<TcpListener, NetError> / {Net}
+    fn open_tcp_stream(addr : SocketAddrV4)
+        -> Result<TcpStream, NetError> / {Net}
+    fn open_udp_socket(addr : SocketAddrV4)
+        -> Result<UdpSocket, NetError> / {Net}
+    fn accept_stream(listener : TcpListener)
+        -> Result<TcpStream, NetError> / {Net}
+    fn send_some(stream : TcpStream, bytes : &[u8])
+        -> Result<usize, NetError> / {Net}
+    fn recv_some(stream : TcpStream, buf : &mut [u8])
+        -> Result<usize, NetError> / {Net}
+    fn send_to(socket : UdpSocket, bytes : &[u8], dest : SocketAddrV4)
+        -> Result<usize, NetError> / {Net}
+    fn recv_from(socket : UdpSocket, buf : &mut [u8])
+        -> Result<(usize, SocketAddrV4), NetError> / {Net}
+    fn close_listener(listener : TcpListener)
+        -> Result<(), NetError> / {Net}
+  MIR threading :
+    each net op recognized by `cssl_mir::body_lower` lowers to a
+    `cssl.net.<verb>` MIR op (T11-D82, S7-F4). Each op carries the
+    `(net_effect, "true")` attribute as the stage-0 marker that {Net}
+    is active on this op. The connect-style variants additionally
+    carry `(caps_required, "net_outbound" | "net_inbound")` as the
+    PRIME-DIRECTIVE cap-system marker. Structural `MirEffectRow`
+    threading on the parent fn is deferred (matches the {IO}
+    deferral from T11-D76 § DEFERRED).
+  cssl-rt FFI :
+    `cssl.net.{socket,listen,accept,connect,send,recv,sendto,recvfrom,
+    close}` lower to `__cssl_net_<verb>` symbols exposed by `cssl-rt`
+    (T11-D82). Renaming either side requires a major-version bump per
+    DECISIONS T11-D82 ABI-stability invariant.
+  NetError sum-type :
+    canonical variants : InvalidInput / AddrInUse / AddrNotAvailable /
+                         ConnectionRefused / ConnectionReset /
+                         ConnectionAborted / NotConnected / TimedOut /
+                         WouldBlock / Interrupted / PermissionDenied /
+                         HostUnreachable / NetworkUnreachable /
+                         UnexpectedEof / BrokenPipe / NotInitialized /
+                         CapDenied / Other(i32)
+    discriminants STABLE from S7-F4 (cssl-rt::net::net_error_code mirror).
+  socket-flag bitset :
+    SOCK_TCP / SOCK_UDP / SOCK_NONBLOCK / SOCK_REUSEADDR / SOCK_NODELAY
+    — STABLE bit-values from S7-F4.
+  cap-system bitset :
+    NET_CAP_LOOPBACK (default ON) / NET_CAP_OUTBOUND (default OFF) /
+    NET_CAP_INBOUND (default OFF) — see `specs/11_IFC.csl
+    § PRIME-DIRECTIVE ENCODING § NET-CAP rules` for the full algebra.
+  composition :
+    {Net} ⊎ {NoAlloc} : permitted ; net ops use a caller-supplied buffer
+                        (no heap-alloc inside net.cssl by-default).
+    {Net} ⊎ {Realtime<Crit>} : allowed but discouraged ; OS network
+                                syscalls do not honor real-time priority
+                                bounds.
+    {Net} ⊎ {Sensitive<"surveillance">} : compile-error absolute ;
+                                           non-overrideable per § 11
+                                           PRIME-DIRECTIVE ENCODING.
+    {Net} ⊎ {Sensitive<"weapon">} : compile-error unless
+                                     {Privilege<Kernel>}.
+    {Net} ⊎ {PureDet} : compile-error (network ops are inherently
+                        non-deterministic between runs).
+  TLS / encryption  : DEFERRED (DECISIONS T11-D82) — current cssl.net.*
+                      APIs send PLAINTEXT bytes ; non-loopback
+                      connections require explicit caller awareness
+                      via the cap-grant ceremony.
+  raw / packet-sockets : DEFERRED (DECISIONS T11-D82) — surveillance /
+                         network-poisoning capability is not stage-0
+                         surface.
+  IPv6 + getaddrinfo : DEFERRED — v1 is numeric IPv4 only.
+
 § ERROR HANDLING
   Result<T, E>  canonical (Rust-lineage)
   ? operator    propagate Result::Err
