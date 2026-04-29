@@ -4,7 +4,7 @@
 //!
 //! § SCOPE (T11-phase-1 / this commit)
 //!   - [`TelemetryScope`]       — 26-variant scope taxonomy per `specs/22` §
-//!     TELEMETRY-SCOPE TAXONOMY.
+//!     TELEMETRY-SCOPE TAXONOMY (T11-D132 adds `BiometricRefused`).
 //!   - [`TelemetryKind`]        — event-kind (`Sample` / `SpanBegin` / `SpanEnd` /
 //!     `Counter` / `Audit`).
 //!   - [`TelemetrySlot`]        — 64-byte ring-slot record.
@@ -16,14 +16,24 @@
 //!   - [`ChromeTraceExporter`]  — stage-0 JSON-object-per-span writer.
 //!   - [`TelemetrySchema`]      — schema metadata for embedded fat-binary section.
 //!
+//! § T11-D132 (W3β-07) BIOMETRIC-COMPILE-REFUSAL
+//!   - [`biometric_refusal`] : `record_labeled` boundary that refuses
+//!     biometric-family + surveillance + coercion data AT COMPILE-TIME via
+//!     the `cssl-ifc::TelemetryEgress` capability + `validate_egress`
+//!     structural-gate. PRIME-DIRECTIVE §1 anti-surveillance is encoded
+//!     structurally — no `Privilege<*>` capability can override.
+//!   - `TelemetryScope::BiometricRefused` diagnostic-only variant logs the
+//!     refusal itself into the audit-chain (PRIME-DIRECTIVE §11
+//!     attestation gets a permanent signed witness of every leak attempt).
+//!
 //! § T11-phase-2 DEFERRED
-//!   - `blake3` / `ed25519-dalek` integration (currently stubbed hashes).
 //!   - Real OTLP gRPC + HTTP exporter (needs `prost` / `reqwest`).
 //!   - Cross-thread ring-producer (stage-0 is single-thread SPSC only).
 //!   - Level-Zero sampling-thread integration (wires via `cssl-host-level-zero`
 //!     `TelemetryProbe` when phase-2 adds actual FFI).
 //!   - Chrome-trace file-format round-trip + DevTools compatibility check.
-//!   - `{Telemetry<S>}` effect-row lowering pass (HIR-level instrumentation).
+//!   - `{Telemetry<S>}` effect-row lowering pass (HIR-level instrumentation
+//!     — partially landed via [`biometric_refusal`] gate at MIR boundary).
 //!   - Overhead-budget enforcement (0.5% for Counters scope per `specs/22`).
 
 #![forbid(unsafe_code)]
@@ -33,6 +43,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod audit;
+pub mod biometric_refusal;
 pub mod exporter;
 pub mod ring;
 pub mod schema;
@@ -41,10 +52,13 @@ pub mod scope;
 pub use audit::{
     verify_detached, AuditChain, AuditEntry, AuditError, ContentHash, Signature, SigningKey,
 };
+pub use biometric_refusal::{
+    record_labeled, record_labeled_safe, BiometricSafe, TelemetryRefusal,
+};
 pub use exporter::{ChromeTraceExporter, ExportError, Exporter, JsonExporter, OtlpExporter};
 pub use ring::{RingError, TelemetryRing, TelemetrySlot};
 pub use schema::{TelemetrySchema, TelemetryScopeSet};
-pub use scope::{TelemetryKind, TelemetryScope};
+pub use scope::{ScopeDomain, TelemetryKind, TelemetryScope};
 
 /// Crate version exposed for scaffold verification.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");

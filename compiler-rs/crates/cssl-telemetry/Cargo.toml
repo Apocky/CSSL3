@@ -9,6 +9,7 @@ authors.workspace      = true
 
 [dependencies]
 blake3        = { workspace = true }
+cssl-ifc      = { path = "../cssl-ifc" }
 ed25519-dalek = { workspace = true }
 rand          = { workspace = true }
 thiserror     = { workspace = true }
