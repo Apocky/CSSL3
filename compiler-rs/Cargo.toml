@@ -155,6 +155,22 @@ wgpu    = "23"
 # T11-D32 : shader validator — WGSL parse + validate. naga version pinned to
 # match wgpu 23's internal naga for API compatibility.
 naga    = { version = "23", features = ["wgsl-in"] }
+# § T11-D154 : pin transitive winapi-util to 0.1.10 to avoid dlltool.exe
+# requirement on the 1.85.0-x86_64-pc-windows-gnu toolchain. The dev-dep
+# chain `cssl-cgen-gpu-wgsl → naga → codespan-reporting → termcolor →
+# winapi-util` resolves to 0.1.11 by default, which pulls windows-sys
+# 0.61.2 ; that version's build.rs invokes `dlltool.exe` to generate import
+# libs and fails when dlltool is absent from PATH. winapi-util 0.1.10 is the
+# last patch-version using the older windows-sys (pre-0.61) line that ships
+# pre-generated import libs.
+#
+# Per pre-existing-failures-audit § Issue-3 (Option-A), this pin is enforced
+# by declaring winapi-util as a *direct* dev-dep of cssl-cgen-gpu-wgsl with
+# `winapi-util.workspace = true`. The `=0.1.10` exact-pin then constrains
+# the transitive resolution. (The `[patch.crates-io]` formulation suggested
+# by the audit is rejected by cargo when patching same-source registry deps
+# — the direct-dep route is the canonical cargo idiom for this pattern.)
+winapi-util = "=0.1.10"
 # metal crate mac-only : added per-target-cfg @ T10
 # ─ crypto (R18 audit-chain, T11 + T11-D131 wave-3β-06 real-crypto-wire) ─
 # § META-WAVE-3-PRELUDE : T11-D131 (W3β-06) lifts these from MOCK (cssl-crypto-stub

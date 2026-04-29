@@ -14,6 +14,10 @@ thiserror = { workspace = true }
 [dev-dependencies]
 # T11-D32 : validate emitted WGSL via naga's wgsl-in frontend.
 naga = { workspace = true }
+# § T11-D154 : pin transitive winapi-util via direct-dep so cargo enforces
+# =0.1.10 and avoids dlltool.exe requirement (windows-sys 0.61.2). See
+# workspace Cargo.toml [workspace.dependencies] block for full rationale.
+winapi-util = { workspace = true }
 
 [lints]
 workspace = true
