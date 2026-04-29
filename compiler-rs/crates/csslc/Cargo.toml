@@ -22,6 +22,7 @@ path = "src/main.rs"
 cssl-ast                = { path = "../cssl-ast" }
 cssl-autodiff           = { path = "../cssl-autodiff" }
 cssl-cgen-cpu-cranelift = { path = "../cssl-cgen-cpu-cranelift" }
+cssl-cgen-cpu-x64       = { path = "../cssl-cgen-cpu-x64" }
 cssl-hir                = { path = "../cssl-hir" }
 cssl-lex                = { path = "../cssl-lex" }
 cssl-mir                = { path = "../cssl-mir" }

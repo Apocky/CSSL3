@@ -1,27 +1,27 @@
 [package]
 name                   = "cssl-cgen-cpu-x64"
-description            = "CSSLv3 stage-1 — owned x86-64 backend (ABI lowering layer for System-V + MS-x64)"
+description            = "CSSLv3 stage1+ — unified hand-rolled native x86-64 backend (G-axis : ABI + isel + regalloc + encoder + objemit + csslc-dispatch facade)"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 
-# § T11-D85 (S7-G3) : ABI / calling-convention layer for the bespoke x86-64 backend.
-# Per `specs/14_BACKEND.csl § OWNED x86-64 BACKEND § ABI` this crate owns the
-# lowering of abstract Call / Ret / Prologue / Epilogue MIR ops into platform-
-# specific register / stack passing. Two ABIs : System-V AMD64 (Linux + Mac-Intel)
-# and MS-x64 (Windows-MSVC + Windows-GNU). Apocky's host is Windows so MS-x64 is
-# integration-tested ; System-V is structurally-tested (cfg-gated under
-# `target_os = "linux"` / "macos" for runtime gates ; structural tables compile
-# unconditionally so cross-ABI tests run on any host).
+# § T11-D95 (G-axis integration) : unified hand-rolled native x86-64 backend.
+# Combines T11-D83 (G1 isel) + T11-D84 (G2 regalloc) + T11-D85 (G3 ABI) +
+# T11-D86 (G4 encoder) + T11-D87 (G5 object emitter) + T11-D88 (G6 csslc
+# dispatch facade) into a single coherent crate, with each slice's surface
+# preserved as a submodule sibling-type per the slice handoff invariants.
 #
-# § ZERO RUNTIME DEPS : the layer is pure Rust enum + table + lowering logic.
-# `thiserror` is the only external dep (consistent w/ sibling cgen crates) for
-# diagnostic-error display. No assembly, no FFI, no LLVM, no Cranelift — the
-# bespoke trajectory per §§ 14_BACKEND § OWNED x86-64 BACKEND.
+# § ZERO RUNTIME DEPS BEYOND `cssl-mir` + `thiserror`. No assembly, no FFI,
+# no LLVM, no Cranelift, no `cranelift-object` — the bespoke trajectory per
+# `specs/14_BACKEND.csl § OWNED x86-64 BACKEND`.
+#
+# § ATTESTATION (PRIME_DIRECTIVE.md § 11) : There was no hurt nor harm in
+# the making of this, to anyone / anything / anybody.
 
 [dependencies]
+cssl-mir  = { path = "../cssl-mir" }
 thiserror = { workspace = true }
 
 [lints]

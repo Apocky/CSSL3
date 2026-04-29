@@ -455,6 +455,7 @@ dependencies = [
 name = "cssl-cgen-cpu-x64"
 version = "0.1.0"
 dependencies = [
+ "cssl-mir",
  "thiserror",
 ]
 
@@ -506,6 +507,7 @@ dependencies = [
  "cssl-ast",
  "cssl-autodiff",
  "cssl-cgen-cpu-cranelift",
+ "cssl-cgen-cpu-x64",
  "cssl-hir",
  "cssl-lex",
  "cssl-mir",
@@ -763,6 +765,7 @@ dependencies = [
  "cssl-ast",
  "cssl-autodiff",
  "cssl-cgen-cpu-cranelift",
+ "cssl-cgen-cpu-x64",
  "cssl-hir",
  "cssl-lex",
  "cssl-mir",
