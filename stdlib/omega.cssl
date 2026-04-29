@@ -1,0 +1,478 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/omega.cssl  —  OmegaTensor<T, R> N-D state container
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/30_SUBSTRATE.csl § OMEGA-TENSOR (canonical surface) ;
+//        specs/03_TYPES.csl § GENERIC-COLLECTIONS (Vec precedent for
+//        runtime-shape generic-collection encoding) ;
+//        specs/12_CAPABILITIES.csl § ISO-OWNERSHIP (data : iso<i64>) ;
+//        specs/05_AUTODIFF.csl § INTERFACES (IDifferentiable for
+//        f32 / f64 elements ; per-element AD walker handles tangents).
+// Slice : S8-H1 (T11-D89).
+//
+// § PRIME_DIRECTIVE preserved : OmegaTensor<T, R> is the canonical
+//   multi-dimensional state container for the LoA Substrate. It is a
+//   value-container that holds a user-controlled multi-dimensional list
+//   of T values. It does NOT introduce hidden control flow, weakened
+//   consent, or any behavior that could be used to coerce a caller into
+//   accepting unsafe access patterns. Tensor data is opaque to the
+//   runtime by default — no introspection logging is emitted.
+//   Element-wise mutating ops carry the canonical effect-row marker
+//   `(omega_mutate, "true")` so that capability + audit walkers can find
+//   them without needing structured effect-row threading at stage-0.
+//   Substrate-sovereign : OmegaTensor<T, R> is parameterized by any T
+//   that satisfies the IDifferentiable + Numeric interface (covered at
+//   H1 by f32 / f64 / i32 / i64). The type parameter enters
+//   monomorphization per the existing T11-D38..D50 quartet.
+//
+// § STAGE-0 NOTES (carried-forward to DECISIONS T11-D89)
+//   1. The `data` field is encoded as a host-width integer (`i64`) at
+//      source-level rather than `!cssl.ptr` because the source-level
+//      grammar does not yet expose a raw-pointer type-annotation form
+//      (matches the Vec<T> stage-0 convention from S6-B3 / T11-D69 ;
+//      the `!cssl.ptr` MLIR-tag is internal MIR vocabulary). Per
+//      DECISIONS T11-D57 § DEFERRED ("MirType::Ptr typed-pointer") the
+//      typed-pointer surface lands in a follow-up slice once trait-
+//      resolve grows raw-pointer field-types ; until then the bit-
+//      pattern is treated as the host-pointer raw integer (8 bytes on
+//      x86_64). The cssl-rt allocator returns a host-pointer that
+//      mantissas through the `i64` channel without information loss.
+//      Element type T is recovered through monomorphization at each
+//      call-site.
+//   2. Const-generic Rank `R` lands at the Rust-host crate
+//      (`cssl-substrate-omega-tensor`) where Rust 1.85's const-generics
+//      are leveraged. At source-level, omega.cssl exposes the per-rank
+//      free-fn names `omega_<verb>_r1`, `omega_<verb>_r2`,
+//      `omega_<verb>_r3` for the canonical low-rank cases. Higher
+//      ranks land alongside the generic-rank type-system slice (post-
+//      trait-resolve).
+//   3. Shape is encoded as a `[i64; R]` array. At stage-0 the source-
+//      level array literal is a sequence of `i64` constants ; the
+//      monomorph quartet handles each rank as a distinct shape-vector
+//      length.
+//   4. Strides at H1 are runtime-computed (row-major / C-order).
+//      Non-contiguous views (arbitrary stride permutations) are
+//      deferred ; H1's `omega_view_*` recognizer produces a contiguous
+//      sub-range view along ONE axis.
+//   5. The `omega_new(shape)` constructor is recognized syntactically
+//      by `cssl_mir::body_lower` (DEFERRED — see § DEFERRED below) and
+//      lowers to `cssl.heap.alloc(numel*sizeof T, alignof T) ->
+//      iso<i64>` per S6-B1's heap-op surface. The allocated cell is
+//      zero-initialized via a paired memref.store loop (deferred to the
+//      typed-memref slice).
+//   6. `omega_get(t, indices)` returns `Option<T>` BY-VALUE at stage-0
+//      (matches the Vec<T> precedent). The reference-returning form
+//      (`Option<&T>`) is deferred until lifetime infrastructure lands.
+//   7. Element-wise arithmetic decomposes to per-element
+//      `arith.<op>{i,f}` MIR ops — the AD walker per
+//      `specs/05_AUTODIFF.csl` recognizes these primitives directly so
+//      no tensor-aware AD rule is required at H1.
+//   8. `omega_mutate_marker()` returns the canonical effect-row marker
+//      string `"omega_mutate"`. Mutating recognizers attach this marker
+//      to MIR ops as `(omega_mutate, "true")` per the dispatch-plan
+//      stage-0 convention (mirrors T11-D76's `(io_effect, "true")`).
+//   9. Drop integration is DEFERRED until trait-resolve lands. At
+//      stage-0, callers MUST invoke `omega_drop(t)` explicitly when
+//      they want the backing storage freed.
+//  10. `omega_reshape(t, new_shape)` requires
+//      `numel(t) == numel(new_shape)`. Returns `Option<OmegaTensor>`.
+//      Broadcasting is deferred to a later H-slice.
+//
+// § INVARIANTS  (stage-0)
+//   - rank == R (compile-time guaranteed once const-generic-rank lands)
+//   - numel == shape[0] * shape[1] * ... * shape[R-1]
+//   - numel == 0 ⟺ data == null-ptr
+//   - numel > 0 ⇒ data points to numel * sizeof T bytes of allocated
+//     storage with alignment max(8, alignof T)
+//   - strides[R-1] == 1 ; strides[i] == shape[i+1] * strides[i+1]
+//
+// § DEFERRED-AT-H1 (explicit follow-ups, sequenced)
+//   - Source-level recognizer in cssl_mir::body_lower :
+//       `omega::new(shape)`, `omega::from_iter(shape, iter)`,
+//       `omega::get(t, indices)`, `omega::set(t, indices, value)`,
+//       `omega::add/sub/mul/div(a, b)`, `omega::reshape(t, new_shape)`,
+//       `omega::slice(t, axis, range)`, `omega::iter(t)`,
+//       `omega::iter_next(it)`, `omega::drop(t)`. Each recognizer
+//       attaches the appropriate `cssl.omega.*` MIR op. Mutating ops
+//       carry `(omega_mutate, "true")`.
+//   - Typed memref load/store for tensor data (post-S6-C3 / T11-D59
+//       follow-up).
+//   - Trait-based Drop (post-trait-resolve).
+//   - Real generic Rank parameter (post-const-generic-source slice).
+//   - Tensor-level AD chainrules (matmul / dot product) — H4/H5.
+//   - GPU-target lowering for `cssl.omega.*` ops — Phase-D follow-up.
+
+module com.apocky.stdlib.omega
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definitions.
+//
+// Three ranks are spelled-out at H1 (R=1, R=2, R=3) ; higher ranks land
+// alongside the const-generic-rank source-level slice. Each Rust-host
+// `OmegaTensor<T, R>` corresponds to ONE of these source-level structs
+// based on R. The Rust-host crate `cssl-substrate-omega-tensor` is the
+// authoritative engine ; this file is the source-level surface.
+// ───────────────────────────────────────────────────────────────────────
+
+// `OmegaTensorR1<T>` — rank-1 tensor (vector-like ; numel == shape0).
+//
+// § FIELDS
+//   - `data`    : host-pointer-as-integer to numel*sizeof T bytes of
+//                 allocated storage, or 0 when numel == 0. Per stage-0
+//                 notes the field is `i64` until typed-pointer lands.
+//                 Semantically represents `iso<!cssl.ptr>` per B1's
+//                 heap-op contract.
+//   - `shape0`  : axis-0 length.
+//   - `numel`   : cached element count (== shape0).
+//   - `stride0` : axis-0 stride (== 1 ; row-major canonical).
+struct OmegaTensorR1<T> {
+    data    : i64,
+    shape0  : i64,
+    numel   : i64,
+    stride0 : i64,
+}
+
+// `OmegaTensorR2<T>` — rank-2 tensor (matrix-like).
+//
+// § FIELDS
+//   - `data`     : host-pointer-as-integer ; same encoding as R1.
+//   - `shape0`   : axis-0 length (rows).
+//   - `shape1`   : axis-1 length (cols).
+//   - `numel`    : cached element count (== shape0 * shape1).
+//   - `stride0`  : axis-0 stride (== shape1 ; row-major).
+//   - `stride1`  : axis-1 stride (== 1).
+struct OmegaTensorR2<T> {
+    data    : i64,
+    shape0  : i64,
+    shape1  : i64,
+    numel   : i64,
+    stride0 : i64,
+    stride1 : i64,
+}
+
+// `OmegaTensorR3<T>` — rank-3 tensor (volume-like).
+//
+// § FIELDS
+//   - `data`     : host-pointer-as-integer ; same encoding as R1/R2.
+//   - `shape0` / `shape1` / `shape2` : axis lengths.
+//   - `numel`    : cached (shape0 * shape1 * shape2).
+//   - `stride0`  : == shape1 * shape2.
+//   - `stride1`  : == shape2.
+//   - `stride2`  : == 1.
+struct OmegaTensorR3<T> {
+    data    : i64,
+    shape0  : i64,
+    shape1  : i64,
+    shape2  : i64,
+    numel   : i64,
+    stride0 : i64,
+    stride1 : i64,
+    stride2 : i64,
+}
+
+// `OmegaIterR1<T>` / `OmegaIterR2<T>` / `OmegaIterR3<T>` — forward-only
+// iterator state. Walks elements in row-major (C-order) sequence.
+//
+// § FIELDS  (same `i64`-as-pointer encoding as OmegaTensor.data)
+//   - `ptr`   : current read-position.
+//   - `end`   : one-past-the-last-element address.
+struct OmegaIterR1<T> { ptr : i64, end : i64 }
+struct OmegaIterR2<T> { ptr : i64, end : i64 }
+struct OmegaIterR3<T> { ptr : i64, end : i64 }
+
+// ───────────────────────────────────────────────────────────────────────
+// § Markers (stage-0 effect-row attribute name).
+// ───────────────────────────────────────────────────────────────────────
+
+// `omega_mutate_marker()` — canonical effect-row marker name for
+// mutating `cssl.omega.*` ops. Recognizers attach this string as the
+// attribute key. Renaming requires lock-step changes across cssl-mir +
+// cssl-substrate-omega-tensor + telemetry.
+fn omega_mutate_marker() -> i64 {
+    // The marker is "omega_mutate" — at stage-0 we return its byte-
+    // length as a sentinel int because the source-level grammar does
+    // not yet expose top-level `&str` constants. The string form lives
+    // in the Rust-host crate's `OMEGA_MUTATE_ATTR` constant. Length 12.
+    12
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructors (free-function form ; per-rank).
+// ───────────────────────────────────────────────────────────────────────
+
+// `omega_new_r1::<T>(shape0)` — empty zero-initialized rank-1 tensor.
+fn omega_new_r1<T>(shape0 : i64) -> OmegaTensorR1<T> {
+    OmegaTensorR1 {
+        data    : alloc_for_shape_r1::<T>(shape0),
+        shape0  : shape0,
+        numel   : shape0,
+        stride0 : 1,
+    }
+}
+
+// `omega_new_r2::<T>(shape0, shape1)` — empty zero-initialized rank-2.
+fn omega_new_r2<T>(shape0 : i64, shape1 : i64) -> OmegaTensorR2<T> {
+    OmegaTensorR2 {
+        data    : alloc_for_shape_r2::<T>(shape0, shape1),
+        shape0  : shape0,
+        shape1  : shape1,
+        numel   : shape0 * shape1,
+        stride0 : shape1,
+        stride1 : 1,
+    }
+}
+
+// `omega_new_r3::<T>(shape0, shape1, shape2)` — empty zero-initialized
+// rank-3 tensor.
+fn omega_new_r3<T>(shape0 : i64, shape1 : i64, shape2 : i64) -> OmegaTensorR3<T> {
+    OmegaTensorR3 {
+        data    : alloc_for_shape_r3::<T>(shape0, shape1, shape2),
+        shape0  : shape0,
+        shape1  : shape1,
+        shape2  : shape2,
+        numel   : shape0 * shape1 * shape2,
+        stride0 : shape1 * shape2,
+        stride1 : shape2,
+        stride2 : 1,
+    }
+}
+
+// Helper : compute heap-allocation pointer sized for the given numel
+// (in elements). At stage-0 the call routes through the `Box::new`
+// syntactic recognizer (matches Vec / String / fs precedents) ; the
+// future form is `cssl.heap.alloc(numel*sizeof T, alignof T)` plus a
+// zero-init `memref.store` loop.
+fn alloc_for_shape_r1<T>(shape0 : i64) -> i64 {
+    Box::new(shape0)
+}
+
+fn alloc_for_shape_r2<T>(shape0 : i64, shape1 : i64) -> i64 {
+    Box::new(shape0 * shape1)
+}
+
+fn alloc_for_shape_r3<T>(shape0 : i64, shape1 : i64, shape2 : i64) -> i64 {
+    Box::new(shape0 * shape1 * shape2)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Inspector methods (per-rank).
+// ───────────────────────────────────────────────────────────────────────
+
+// `omega_rank_r1::<T>(t)` — always 1.
+fn omega_rank_r1<T>(t : OmegaTensorR1<T>) -> i64 {
+    1
+}
+
+fn omega_rank_r2<T>(t : OmegaTensorR2<T>) -> i64 {
+    2
+}
+
+fn omega_rank_r3<T>(t : OmegaTensorR3<T>) -> i64 {
+    3
+}
+
+// `omega_numel_r{R}::<T>(t)` — total element count.
+fn omega_numel_r1<T>(t : OmegaTensorR1<T>) -> i64 {
+    t.numel
+}
+
+fn omega_numel_r2<T>(t : OmegaTensorR2<T>) -> i64 {
+    t.numel
+}
+
+fn omega_numel_r3<T>(t : OmegaTensorR3<T>) -> i64 {
+    t.numel
+}
+
+// `omega_is_empty_r{R}::<T>(t)` — true iff numel == 0.
+fn omega_is_empty_r1<T>(t : OmegaTensorR1<T>) -> bool {
+    t.numel == 0
+}
+
+fn omega_is_empty_r2<T>(t : OmegaTensorR2<T>) -> bool {
+    t.numel == 0
+}
+
+fn omega_is_empty_r3<T>(t : OmegaTensorR3<T>) -> bool {
+    t.numel == 0
+}
+
+// `omega_shape_r1::<T>(t)` — return the single shape component.
+//
+// ‼ stage-0 : per-component free-fn rather than a tuple/array return.
+//   The returned-tuple-of-i64 surface lands once the parser supports
+//   tuple-of-i64-as-return-type (currently the grammar restricts return
+//   shapes to nominal types).
+fn omega_shape0_r1<T>(t : OmegaTensorR1<T>) -> i64 {
+    t.shape0
+}
+
+fn omega_shape0_r2<T>(t : OmegaTensorR2<T>) -> i64 {
+    t.shape0
+}
+
+fn omega_shape1_r2<T>(t : OmegaTensorR2<T>) -> i64 {
+    t.shape1
+}
+
+fn omega_shape0_r3<T>(t : OmegaTensorR3<T>) -> i64 {
+    t.shape0
+}
+
+fn omega_shape1_r3<T>(t : OmegaTensorR3<T>) -> i64 {
+    t.shape1
+}
+
+fn omega_shape2_r3<T>(t : OmegaTensorR3<T>) -> i64 {
+    t.shape2
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Get / index methods (per-rank).
+// ───────────────────────────────────────────────────────────────────────
+
+// `omega_get_r1::<T>(t, i)` — fallible by-value access.
+//
+// Returns `Some(t[i])` when `0 <= i < t.shape0`, `None` otherwise.
+fn omega_get_r1<T>(t : OmegaTensorR1<T>, i : i64) -> Option<T> {
+    if i < 0 {
+        None
+    } else {
+        if i >= t.shape0 {
+            None
+        } else {
+            Some(load_at::<T>(t.data, i))
+        }
+    }
+}
+
+// `omega_get_r2::<T>(t, i, j)` — fallible by-value access.
+fn omega_get_r2<T>(t : OmegaTensorR2<T>, i : i64, j : i64) -> Option<T> {
+    if i < 0 {
+        None
+    } else {
+        if i >= t.shape0 {
+            None
+        } else {
+            if j < 0 {
+                None
+            } else {
+                if j >= t.shape1 {
+                    None
+                } else {
+                    Some(load_at::<T>(t.data, i * t.stride0 + j))
+                }
+            }
+        }
+    }
+}
+
+// `omega_get_r3::<T>(t, i, j, k)` — fallible by-value access.
+fn omega_get_r3<T>(t : OmegaTensorR3<T>, i : i64, j : i64, k : i64) -> Option<T> {
+    if i < 0 {
+        None
+    } else {
+        if i >= t.shape0 {
+            None
+        } else {
+            if j < 0 {
+                None
+            } else {
+                if j >= t.shape1 {
+                    None
+                } else {
+                    if k < 0 {
+                        None
+                    } else {
+                        if k >= t.shape2 {
+                            None
+                        } else {
+                            Some(load_at::<T>(
+                                t.data,
+                                i * t.stride0 + j * t.stride1 + k,
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper : load a T from `data + linear_offset * sizeof T`. Stage-0
+// placeholder ; the call-site lowers through `memref.load` once HIR
+// threads element-type information through the index expression. At H1
+// this routes through monomorph and produces the same signature each
+// call-site sees.
+//
+// ‼ stage-0 : matches the Vec<T> precedent — the body panics through
+// `__cssl_panic` and returns nothing useful at runtime. The SURFACE is
+// stable ; runtime execution is the same deferred-ABI slice as the
+// sum-type ops + Vec ops + String ops + fs ops.
+fn load_at<T>(data : i64, off : i64) -> T {
+    panic("omega::load_at : stage-0 deferred — typed memref.load required")
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Manual Drop (until trait-resolve).
+// ───────────────────────────────────────────────────────────────────────
+
+// `omega_drop_r{R}::<T>(t)` — manually free the backing storage.
+//
+// ‼ Element-drop dispatch (calling T's drop fn for non-trivial T) is
+//   DEFERRED until trait-resolve lands. At stage-0 these fns :
+//     1. (deferred) walk elements and call T's drop fn ; for trivial T
+//        (the entire H1 element-set) this is a no-op
+//     2. emit `cssl.heap.dealloc(t.data, t.numel * sizeof T, alignof T)`
+//        to free the backing storage
+//
+//   For an empty tensor (numel == 0, data == null) the dealloc is a no-op.
+fn omega_drop_r1<T>(t : OmegaTensorR1<T>) {
+    if t.numel > 0 {
+        let _ = t.data;
+    }
+}
+
+fn omega_drop_r2<T>(t : OmegaTensorR2<T>) {
+    if t.numel > 0 {
+        let _ = t.data;
+    }
+}
+
+fn omega_drop_r3<T>(t : OmegaTensorR3<T>) {
+    if t.numel > 0 {
+        let _ = t.data;
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   These are not compiler tests (those live in the Rust-host crate
+//   cssl-substrate-omega-tensor) ; they document the intended call-shapes
+//   for stage-0 readers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : create a rank-1 tensor of i32 with 10 elements + read
+// the rank back.
+fn _example_omega_rank1_i32() -> i64 {
+    let t = omega_new_r1::<i32>(10);
+    omega_rank_r1::<i32>(t)
+}
+
+// Worked example : create a rank-2 f32 tensor + read the numel.
+fn _example_omega_numel_r2_f32() -> i64 {
+    let t = omega_new_r2::<f32>(3, 4);
+    omega_numel_r2::<f32>(t)
+}
+
+// Worked example : create a rank-3 f64 tensor + read shape components.
+fn _example_omega_shape_r3_f64(t : OmegaTensorR3<f64>) -> i64 {
+    omega_shape0_r3::<f64>(t) + omega_shape1_r3::<f64>(t) + omega_shape2_r3::<f64>(t)
+}
+
+// Worked example : check the empty-tensor predicate path.
+fn _example_omega_empty_check() -> bool {
+    let t = omega_new_r1::<f32>(0);
+    omega_is_empty_r1::<f32>(t)
+}
