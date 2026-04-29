@@ -294,14 +294,48 @@
       %clos = cssl.closure()  ; same body-region + attrs (capture_count=0,
                                 env_size=0)
                               ; lowering treats it as metadata-only.
-  invocation (deferred for stage-0) :
-    fn-call site adapts via : (fn-ptr, env-ptr) deconstruct → indirect-call
-    threading env-ptr as first arg → closure body's region accesses captures
-    by lowering memref.load on env_ptr at known offsets.
-    body-region inside cssl.closure does NOT yet do this rewrite at stage-0 ;
-    deferred to a follow-up slice that lands once a CSSLv3 source-call-site
-    against a closure-typed value parses + lowers (currently lambdas are
-    lowered but their call-sites flow through the regular lower_call path).
+  invocation (T11-D100 / J2 — closures callable from CSSLv3 source) :
+    canonical MIR shape :
+      %r = cssl.closure.call (%clos, %arg_0, …, %arg_{N-1})
+             with attrs:
+               param_count   = ⟨N⟩
+               capture_count = ⟨K⟩  (mirrors the construct-site)
+               env_size      = ⟨8K⟩
+               env_align     = 8
+               capture_offsets = "0,8,16,…"  (per-capture byte-offset)
+               source_loc    = "<file>:<line>:<col>"
+             : <result_ty>
+    operand[0] = the closure value-id (which IS the env_ptr at stage-0 ;
+                 the closure value's fn-ptr half is metadata-only until the
+                 trampoline-emit slice lands).
+    operand[1..N+1] = the call-site arg value-ids in source order.
+    stage-0 lowering = inline-expansion :
+      ‼ body_lower locates the closure DESCRIPTOR registered at construct-site
+        (params + body HirExpr + captures + env_ptr_id) ; emits the closure
+        body fresh into the OUTER ctx with :
+          - lambda params bound to call-site arg value-ids ;
+          - captured names bound to fresh memref.load value-ids loading from
+            env_ptr at the per-capture offsets stored at construct-time.
+      ‼ The `cssl.closure.call` op itself is a marker / diagnostic anchor ;
+        backends lower it as a no-op binder that delegates the result-id to
+        the trailing inlined yield. This keeps stage-0 simple — no per-
+        backend FuncRef-emit / call_indirect plumbing is needed.
+    type-check :
+      W! call-site arity matches the closure's param_count ;
+        mismatched arity is a HARD diagnostic (BodyError::ClosureArityMismatch).
+      ◐ stage-0 does NOT yet enforce per-arg type-equality (waits for the
+        inferred-closure-signature surface) — argument types flow through
+        the inlined body and surface as MIR-level arith/memref errors when
+        they conflict.
+    indirect-call (true second-class fn-ptr) :
+      DEFERRED : a real `call_indirect` that doesn't require the descriptor
+      to be visible at the call site lands once closures escape their
+      construction scope (return-from-fn, store-in-aggregate, pass-as-arg-
+      to-non-inlinable). At stage-0 the descriptor must be locally visible
+      via local_vars / param_vars resolution (works for `let g = …; g(7)`
+      and for `f(|x| x+1)` style argument-position closures inlined at the
+      callee surface). When indirect-call lands, the body region already
+      preserved on `cssl.closure` becomes the trampoline-fn's body.
   recursive closures :
     deferred ; self-referential (closure capturing itself) requires either
     a fixpoint operator (Y-combinator pattern) or a forward-decl + assign

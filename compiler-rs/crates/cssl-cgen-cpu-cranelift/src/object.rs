@@ -559,6 +559,23 @@ fn lower_one_op(
         //   with no captures. Inner body region is intentionally not walked —
         //   indirect-call lowering through the closure is deferred per spec.
         "cssl.closure" => obj_lower_closure(op, builder, value_map, fn_name, ptr_ty),
+        // § T11-D100 (J2 — closures callable) — `cssl.closure.call` marker.
+        //   The body has been inlined upstream (in
+        //   `body_lower::lower_closure_call`) — captures reloaded via
+        //   memref.load, lambda params bound to call-site args, body ops
+        //   emitted into the same block. This op is a pure value-map binder :
+        //   look up the `yield_value_id` attribute (the body's trailing SSA-id)
+        //   and re-bind the marker's result-id to it. See spec § CLOSURE-ENV
+        //   "invocation (T11-D100 / J2 …)".
+        "cssl.closure.call" => obj_lower_closure_call(op, value_map, fn_name),
+        // § T11-D100 (J2) — call-site arity-mismatch / arg-lowering-failure
+        //   marker. Bind the result-id to a typed-zero ptr sentinel ; error
+        //   detail rides as an attribute for future diagnostic surfacing.
+        //   Stage-0 doesn't trap at runtime — the error is structural at
+        //   lowering time.
+        "cssl.closure.call.error" => {
+            Ok(obj_lower_closure_call_error(op, builder, value_map, ptr_ty))
+        }
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
@@ -632,6 +649,63 @@ fn obj_lower_closure(
 
     value_map.insert(r.id, env_value);
     Ok(false)
+}
+
+/// § T11-D100 (J2 — closures callable) — Object-side `cssl.closure.call` marker.
+///
+/// Mirrors [`crate::jit::jit_lower_closure_call`] : the body has already been
+/// inlined upstream by `body_lower::lower_closure_call` (capture-reload memref
+/// loads + lambda-param→arg bindings + body ops). This op binds its result-id
+/// to the body's trailing SSA-value (recorded as the `yield_value_id` attr).
+/// No cranelift instructions are emitted — pure value-map plumbing.
+fn obj_lower_closure_call(
+    op: &MirOp,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    let Some(r) = op.results.first() else {
+        return Ok(false);
+    };
+    let yield_str = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "yield_value_id")
+        .map(|(_, v)| v.as_str());
+    let Some(yield_str) = yield_str else {
+        return Ok(false);
+    };
+    let yield_raw: u32 = yield_str.parse().map_err(|e| ObjectError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!("cssl.closure.call : malformed yield_value_id `{yield_str}` ({e})"),
+    })?;
+    let yield_target = ValueId(yield_raw);
+    let v = *value_map
+        .get(&yield_target)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: yield_raw,
+        })?;
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
+/// § T11-D100 (J2 — closures callable) — Object-side
+/// `cssl.closure.call.error` arity-mismatch marker. Binds the result-id to a
+/// typed-zero ptr sentinel ; error detail rides on attributes. Returns `false`
+/// always — the op is not a terminator and the error doesn't trap at runtime
+/// at stage-0 (the surface is structural, surfaced at MIR-build time).
+fn obj_lower_closure_call_error(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> bool {
+    let Some(r) = op.results.first() else {
+        return false;
+    };
+    let v = builder.ins().iconst(ptr_ty, 0);
+    value_map.insert(r.id, v);
+    false
 }
 
 /// Shared helper for the three `cssl.heap.*` ops. Resolves the import,
@@ -1941,5 +2015,212 @@ mod tests {
         module.push_func(f);
         let r = emit_object_module(&module);
         assert!(matches!(r, Err(ObjectError::LoweringFailed { .. })));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D100 (J2 — closures callable) — Object-emit `cssl.closure.call`
+    // marker + `cssl.closure.call.error` dispatch tests.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn obj_emit_closure_call_marker_succeeds() {
+        // The marker op is emitted upstream by body_lower's
+        // lower_closure_call ; backend treats it as a no-op binder. Use a
+        // canonical hand-built layout :
+        //   %0 = arith.constant 14 : i32   # the inlined body's yield
+        //   %1 = cssl.closure.call (%0) yield_value_id=0  -> i32
+        //   func.return %1
+        let mut f = MirFunc::new("call_marker", vec![], vec![MirType::Int(IntWidth::I32)]);
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(0), MirType::Int(IntWidth::I32))
+                .with_attribute("value", "14"),
+        );
+        f.push_op(
+            MirOp::std("cssl.closure.call")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32))
+                .with_attribute("param_count", "0")
+                .with_attribute("capture_count", "0")
+                .with_attribute("env_size", "0")
+                .with_attribute("env_align", "8")
+                .with_attribute("yield_value_id", "0"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_closure_call_marker_no_yield_id_is_no_op() {
+        // The marker without a `yield_value_id` attribute is a pure no-op ;
+        // the function returns void cleanly.
+        let mut f = MirFunc::new("call_marker_void", vec![], vec![]);
+        f.push_op(
+            MirOp::std("cssl.closure.call")
+                .with_attribute("param_count", "0")
+                .with_attribute("capture_count", "0")
+                .with_attribute("env_size", "0")
+                .with_attribute("env_align", "8"),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_closure_call_with_unknown_yield_value_id_errors() {
+        // The marker references a yield_value_id that wasn't bound by any
+        // upstream op ⇒ UnknownValueId at the binder step.
+        let mut f = MirFunc::new("bad_marker", vec![], vec![MirType::Int(IntWidth::I32)]);
+        f.push_op(
+            MirOp::std("cssl.closure.call")
+                .with_result(ValueId(0), MirType::Int(IntWidth::I32))
+                .with_attribute("yield_value_id", "999"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(matches!(r, Err(ObjectError::UnknownValueId { .. })));
+    }
+
+    #[test]
+    fn obj_emit_closure_call_error_op_lowers_to_zero_sentinel() {
+        // The error op binds its result-id to a typed-zero ptr sentinel ;
+        // surrounding ops execute cleanly. A function that consists purely
+        // of the error op + return should object-emit without complaint.
+        let mut f = MirFunc::new("call_err", vec![], vec![MirType::Ptr]);
+        f.push_op(
+            MirOp::std("cssl.closure.call.error")
+                .with_result(ValueId(0), MirType::Ptr)
+                .with_attribute("detail", "arity mismatch (test)")
+                .with_attribute("expected_arity", "1")
+                .with_attribute("actual_arity", "0"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("error op should object-emit");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_closure_call_with_capture_reload_chain_succeeds() {
+        // Full end-to-end MIR shape that body_lower produces for a single-
+        // capture closure call : env-pack at construct-site + capture-reload
+        // memref.load at the call site + the marker. Hand-built to verify
+        // the Object backend lowers the full chain cleanly.
+        //
+        // fn caller(y : i64) -> i64 {
+        //   ; § construct site
+        //   %sz   = arith.constant 8 : i64
+        //   %al   = arith.constant 8 : i64
+        //   %env  = cssl.heap.alloc(%sz, %al) -> !cssl.ptr
+        //   %off  = arith.constant 0 : i64
+        //   memref.store y, %env, %off
+        //   %clos = cssl.closure(%y, %env)         ; capture_count=1
+        //   ; § call site (inlined)
+        //   %ro   = arith.constant 0 : i64
+        //   %cap  = memref.load %env, %ro          ; origin=closure_capture_reload
+        //   %arg  = arith.constant 5 : i64
+        //   %sum  = arith.addi %arg, %cap          ; the inlined body : x + y
+        //   %res  = cssl.closure.call(%clos, %arg) yield_value_id=%sum -> i64
+        //   func.return %res
+        // }
+        use cssl_mir::{MirBlock, MirRegion};
+        let i64_ty = MirType::Int(IntWidth::I64);
+        let mut f = MirFunc::new("caller", vec![i64_ty.clone()], vec![i64_ty.clone()]);
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(1), i64_ty.clone())
+                .with_attribute("value", "8"),
+        );
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(2), i64_ty.clone())
+                .with_attribute("value", "8"),
+        );
+        f.push_op(
+            MirOp::std("cssl.heap.alloc")
+                .with_operand(ValueId(1))
+                .with_operand(ValueId(2))
+                .with_result(ValueId(3), MirType::Ptr)
+                .with_attribute("cap", "iso")
+                .with_attribute("origin", "closure_env"),
+        );
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(4), i64_ty.clone())
+                .with_attribute("value", "0"),
+        );
+        f.push_op(
+            MirOp::std("memref.store")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(3))
+                .with_operand(ValueId(4))
+                .with_attribute("alignment", "8"),
+        );
+        // cssl.closure construct.
+        let mut body_region = MirRegion::new();
+        body_region.push(MirBlock::new("entry"));
+        f.push_op(
+            MirOp::std("cssl.closure")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(3))
+                .with_result(ValueId(5), MirType::Opaque("!cssl.closure".into()))
+                .with_region(body_region)
+                .with_attribute("param_count", "1")
+                .with_attribute("capture_count", "1")
+                .with_attribute("env_size", "8")
+                .with_attribute("env_align", "8")
+                .with_attribute("cap_value", "val")
+                .with_attribute("capture_names", "y"),
+        );
+        // Call-site capture-reload.
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(6), i64_ty.clone())
+                .with_attribute("value", "0"),
+        );
+        f.push_op(
+            MirOp::std("memref.load")
+                .with_operand(ValueId(3))
+                .with_operand(ValueId(6))
+                .with_result(ValueId(7), i64_ty.clone())
+                .with_attribute("alignment", "8")
+                .with_attribute("origin", "closure_capture_reload"),
+        );
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(8), i64_ty.clone())
+                .with_attribute("value", "5"),
+        );
+        f.push_op(
+            MirOp::std("arith.addi")
+                .with_operand(ValueId(8))
+                .with_operand(ValueId(7))
+                .with_result(ValueId(9), i64_ty.clone()),
+        );
+        f.push_op(
+            MirOp::std("cssl.closure.call")
+                .with_operand(ValueId(5))
+                .with_operand(ValueId(8))
+                .with_result(ValueId(10), i64_ty)
+                .with_attribute("param_count", "1")
+                .with_attribute("capture_count", "1")
+                .with_attribute("env_size", "8")
+                .with_attribute("env_align", "8")
+                .with_attribute("yield_value_id", "9"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(10)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("full closure-call chain must object-emit");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
     }
 }

@@ -309,10 +309,17 @@ fn emit_op(op: &MirOp, em: &mut BodyEmitter<'_>) -> Result<(), BodyError> {
             })
         }
         // § Closures + unsupported placeholders — REJECT.
-        "cssl.closure" => Err(BodyError::ClosuresNotSupportedInMsl {
-            fn_name: em.fn_name.to_string(),
-            op_name: op.name.clone(),
-        }),
+        // T11-D100 (J2) : the closure-call site lowering emits
+        // `cssl.closure.call` + `cssl.closure.call.error` which join the
+        // rejected-set on the GPU side ; closures remain CPU-only at stage-0.
+        // Match by prefix rather than enumerating every sub-op name so future
+        // closure-shaped variants are caught here automatically.
+        n if n == "cssl.closure" || n.starts_with("cssl.closure.") => {
+            Err(BodyError::ClosuresNotSupportedInMsl {
+                fn_name: em.fn_name.to_string(),
+                op_name: op.name.clone(),
+            })
+        }
         n if n.starts_with("cssl.unsupported") => Err(BodyError::ClosuresNotSupportedInMsl {
             fn_name: em.fn_name.to_string(),
             op_name: op.name.clone(),
