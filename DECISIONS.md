@@ -4923,3 +4923,166 @@ Each decision entry :
   - **All UI / Art / Sound / Story authoring** — DEFERRED to phase-I content-layer per LoA-design § NARRATIVE-AND-CONTENT.
 
 ───────────────────────────────────────────────────────────────
+
+## § T11-D94 : Session-8 S8-H6 — PRIME_DIRECTIVE enforcement layer (`cssl-substrate-prime-directive` crate ; CapToken + HarmPrevention + audit-chain + kill-switch + PD0001..PD0017 diagnostic codes)
+
+> **PM allocation note** : T11-D94 is the H-axis cross-cutting enforcement-layer entry per the slice handoff. Sibling H1..H5 slices reference this entry's canonical `SubstrateCap` enum + `Prohibition` code-table. This entry is the LONGEST + MOST-DETAILED of the H-axis since PRIME_DIRECTIVE is foundational ; per the slice spec, "every API + every test must demonstrably uphold no-hurt-no-harm."
+
+> **Slice nature** : foundational cross-cutting concern. Establishes the canonical surface (`SubstrateCap` enum + `CapToken` linear type + `Prohibition` enum with PD0001..PD0017 codes) that every other H-axis slice imports. Not a sibling of H1..H5 — a SUBSTRATE for them. Compiles standalone ; sibling slices land independently.
+
+- **Date** 2026-04-28
+- **Status** accepted (foundational ; cross-cutting concern that H1..H5 will adopt as their cap-import path)
+- **Session** 8 — Phase-H slice S8-H6 (PRIME_DIRECTIVE enforcement layer)
+- **Branch** `cssl/session-8/H6` (based on `origin/cssl/session-6/parallel-fanout` per slice handoff PRE-CONDITIONS — branch tip `ddba4ec`, which already includes T11-D79's S8-H0 design)
+- **Context** Phase-H is the engine-plumbing slice-axis ("first time Omniverse-code touches disk in CSSLv3") per `SESSION_6_DISPATCH_PLAN.md § 1` and `HANDOFF_SESSION_6.csl § AXIOM`. The H1..H5 slices will introduce concrete Substrate primitives (`omega_step` driver / projection rebuilder / observer attach / save journal / debug camera / etc.) ; each of those slices needs a CANONICAL way to declare which capability it requires. Without a single source of truth for capability identity + grant + revoke + harm-prevention, every sibling slice would re-invent the same enforcement plumbing → drift → bug-shape that violates PRIME_DIRECTIVE §7 INTEGRITY ("violation = bug W! fix"). H6 closes that gap by establishing the canonical surface.
+- **Context (continued)** : the H6 surface explicitly inherits `specs/30_SUBSTRATE.csl § PRIME_DIRECTIVE-ALIGNMENT` (the consent-gate / kill-switch / attestation-propagation / audit-chain-integration cross-cutting summary from T11-D79's S8-H0 design) and operationalizes it as Rust types + traits + functions. The 17 prohibitions of PRIME_DIRECTIVE §1 are encoded as a closed `Prohibition` enum with stable PD0001..PD0017 diagnostic codes (one per prohibition) plus a PD0000 sentinel for the spirit-of-directive umbrella clause.
+
+- **Authored deliverables (this slice)**
+  - **`compiler-rs/crates/cssl-substrate-prime-directive/Cargo.toml`** (~23 LOC) — new crate manifest. Single non-workspace dep (`cssl-telemetry` for `AuditChain` / `ContentHash`). Single feature flag `test-bypass` that gates the programmatic `caps_grant_for_test` path. The integration test target `enforcement_end_to_end` declares `required-features = ["test-bypass"]` so `cargo check --workspace --all-targets` runs cleanly without the feature ; CI exercises the full surface via `cargo test -p cssl-substrate-prime-directive --features test-bypass`.
+  - **`crates/cssl-substrate-prime-directive/src/lib.rs`** (~91 LOC) — crate root. Module decls + re-exports of every public type. Documents the three enforcement gates (capability check ; harm-prevention check ; audit-chain attestation). Documents the canonical attestation propagation (`ATTESTATION` constant + `attestation_check` runtime guard).
+  - **`crates/cssl-substrate-prime-directive/src/cap.rs`** (~335 LOC) — capability surface. Defines :
+    - **`enum SubstrateCap`** — 13-variant closed enum (canonical-name in parens) :
+      - `OmegaRegister` (`omega_register`)
+      - `KillSwitchInvoke` (`kill_switch_invoke`)
+      - `ObserverShare` (`observer_share`)
+      - `DebugCamera` (`debug_camera`)
+      - `CompanionView` (`companion_view`)
+      - `NetSendState` (`net_send_state`)
+      - `NetRecvState` (`net_recv_state`)
+      - `SavePath` (`save_path`)
+      - `ReplayLoad` (`replay_load`)
+      - `AudioCapture` (`audio_capture`)
+      - `TelemetryEgress` (`telemetry_egress`)
+      - `AuditExport` (`audit_export`)
+      - `ConsentRevoke` (`consent_revoke`)
+      Stable canonical names ; renaming a variant or its `canonical_name()` is an ABI-breaking change.
+    - **`struct CapToken`** — non-Copy + non-Clone proof-of-grant. `consume()` returns `(CapTokenId, SubstrateCap)` for audit-trail recording. `Drop` records an `OrphanDrop` event on the process-wide audit-bus when the token is dropped without consumption.
+    - **`struct CapTokenId(pub u64)`** — monotonic process-wide id (used in audit-chain references).
+    - Internal `NEXT_TOKEN_ID : AtomicU64` + `fresh_token_id()` allocator.
+  - **`crates/cssl-substrate-prime-directive/src/consent.rs`** (~507 LOC) — consent-architecture. Defines :
+    - **`struct ConsentScope`** — `{purpose, principal, identity_markers}` ; the plain-English description of what's being consented to.
+    - **`const PROTECTED_MARKERS`** — the 10 IFC-protected substrate / origin / identity-marker labels (`substrate`, `origin`, `carbon`, `silicon`, `electromagnetic`, `mathematical`, `ai`, `human`, `anthropic-audit`, `subject`).
+    - **`struct IdentityMarkerProbe`** — checks `ConsentScope.identity_markers` against PROTECTED_MARKERS case-insensitively. Any match ⇒ `GrantError::IdentityDiscrimination` (PD0014).
+    - **`struct ConsentLog`** — append-only log of issued + revoked tokens. `active_count()` / `issued_count()` / `revoked_count()` / `scope_for(id)`.
+    - **`struct ConsentStore`** — process-wide pair `{ConsentLog, EnforcementAuditBus}`. The runtime instantiates one per process.
+    - **`fn caps_grant(store, scope, cap) -> Result<CapToken, GrantError>`** — production interactive path. Stage-0 has NO interactive UI — it ALWAYS refuses with `GrantError::Refused` AND records the denied attempt to the audit-bus. This is the right shape for stage-0 because the H7+ slice will introduce the prompter / UI gate.
+    - **`fn caps_grant_for_test(store, scope, cap) -> Result<CapToken, GrantError>`** — feature-gated `test-bypass` path. Skips prompter, but STILL runs the identity-marker check + the antecedent-cap check. Tests only.
+    - **`fn caps_revoke(store, token) -> Result<(), RevokeError>`** — consumes the token (move) + appends a `revoke` audit-entry + updates the consent-log.
+    - **`fn requires_stronger_grant(cap) -> Option<&'static str>`** — antecedent-cap-rule table. Stage-0 has one entry : `KillSwitchInvoke` requires `"Privilege<Apocky-Root>"`.
+  - **`crates/cssl-substrate-prime-directive/src/audit.rs`** (~445 LOC) — audit-chain integration. Defines :
+    - **`enum AuditEvent`** — 7 variants : `GrantIssued / GrantDenied / Revoked / OrphanDrop / HarmCheckFailed / Halted / AttestationDrift`. Each carries enough fields to reconstruct the event for chain-replay. Stable tag strings (`h6.grant.issued`, `h6.grant.denied`, `h6.revoke`, `h6.orphan-drop`, `h6.harm.failed`, `h6.halt`, `h6.attestation.drift`) — renaming = ABI break.
+    - **`struct EnforcementAuditBus`** — wraps `cssl_telemetry::AuditChain` + monotonic synthetic `next_ts`. Exposes typed `record_grant_issued` / `record_grant_denied` / `record_revoke` / `record_orphan_drop` / `record_harm_check_failed` / `record_halted` / `record_attestation_drift`.
+    - **Process-wide `PROCESS_BUS` Mutex** — receives orphan-drop events from `CapToken::drop`. Lazy-initialized on first orphan. Test-only `audit_chain_for_test()` accessor (feature-gated `test-bypass` or `cfg(test)`).
+  - **`crates/cssl-substrate-prime-directive/src/harm.rs`** (~490 LOC) — the 17 prohibitions + HarmPrevention trait. Defines :
+    - **`enum Prohibition`** — closed 18-variant enum (17 named + `Spirit` umbrella). Each variant carries `code()` (DiagnosticCode), `canonical_name()` (snake/kebab-case stable id), `canonical_text()` (verbatim § 1 text). Class methods `all_named() -> [Prohibition; 17]` + `all() -> [Prohibition; 18]` for table-driven tests.
+    - **`struct ProhibitionCheck`** — accumulator pattern. `trigger(p)` records (de-dups), `finalize(site)` returns `Result<(), HarmCheckError>`. Multi-trigger reports the first in canonical order ; subsequent ones are accessible via `also_triggered`.
+    - **`struct ProhibitionViolation`** — concrete violation : `{prohibition, site, also_triggered}`.
+    - **`enum HarmCheckError::Violation(ProhibitionViolation)`** — display formats as `"{PD code} — {canonical text} at {site}"`.
+    - **`trait HarmPrevention`** — every Substrate type opts in by overriding `relevant_prohibitions()` + `check()`. Default impl returns `&[]` + `Ok(())` (the type is not prohibition-bearing).
+  - **`crates/cssl-substrate-prime-directive/src/diag.rs`** (~402 LOC) — stable diagnostic codes. Defines :
+    - **`enum DiagnosticCode`** — closed 18-variant enum (`PD0000..PD0017`). `number() -> u16` + `as_str() -> &'static str` + `Display`.
+    - **`struct ProhibitionCodeTable`** — one row : `{code, prohibition, diagnostic, spec_text, remedy}`.
+    - **`const PD_TABLE: &[ProhibitionCodeTable]`** — 18-entry static slice (one per code, in PD0000..PD0017 order). Each row's `diagnostic` field starts with the PD code (tested) ; `spec_text` matches `Prohibition::canonical_text()` (tested) ; `remedy` is non-empty actionable guidance (tested). The PD0007 (weaponization) + PD0009 (torture) remedies declare `ABSOLUTE BLOCK` (no consent path possible).
+    - **`fn prohibition_for_code(code) -> Option<Prohibition>`** — code → prohibition reverse lookup. Round-trips with `Prohibition::code()`.
+  - **`crates/cssl-substrate-prime-directive/src/halt.rs`** (~349 LOC) — kill-switch. Defines :
+    - **`const HALT_LATENCY_BUDGET_MS: u64 = 1`** — 1ms wall-time budget.
+    - **`enum HaltReason`** — 6 variants : `User / Signal / AuditFailure / BudgetBreach / HarmDetected / ApockyRoot`.
+    - **`struct HaltStats`** — `{outstanding_steps_drained, audit_entries_at_halt, elapsed_micros, within_budget}`.
+    - **`struct HaltOutcome`** — `{reason, stats}`.
+    - **`struct KillSwitch`** — non-Copy linear-only kill-switch token. `for_test(reason)` test-helper (kill-switches are NOT consent-gated ; emergency-stop authority is enforced by the type's move-only nature, not by feature-flags — per `specs/30_SUBSTRATE.csl § KILL-SWITCHES`).
+    - **`trait HaltSink`** — abstraction over "how many omega_steps are pending + drain them". Production runtime impls this with the actual scheduler ; tests use `CountingHaltSink`.
+    - **`fn substrate_halt(switch, sink, audit) -> HaltOutcome`** — the canonical kill-switch. Captures `Instant::now`, drains pending steps, records halt event on the audit-bus, computes elapsed wall-time, returns the outcome. Halt is INFALLIBLE in stage-0 — `within_budget=false` is reported but never fails. Strict-mode (fail on overrun) is reserved (`HaltError::LatencyExceeded` enum is reserved).
+  - **`crates/cssl-substrate-prime-directive/src/attestation.rs`** (~172 LOC) — PRIME_DIRECTIVE creator-attestation propagation. Defines :
+    - **`const ATTESTATION: &str`** — the verbatim PRIME_DIRECTIVE §11 attestation : `"There was no hurt nor harm in the making of this, to anyone, anything, or anybody."`. IMMUTABLE per §7. Renaming or modifying it (even shortening) is a §11 violation.
+    - **`const ATTESTATION_HASH: &str`** — hex-encoded BLAKE3 of `ATTESTATION` (`4b24ec9e28e1c4f70b27d3d86918be0041413c89f421c1284ef9f61a8321b6e4`). The `attestation_hash_matches_stored_constant` test pins the hash so any drift in the canonical text fails immediately.
+    - **`fn attestation_check(embedded, site, audit) -> Result<(), AttestationError>`** — verify embedded attestation matches canonical. Drift records an `h6.attestation.drift` audit-entry AND returns `AttestationError::Drift`.
+
+- **PD0000..PD0017 stable diagnostic-code table** ‼ canonical reproduction (this is the table the H1..H5 siblings + future Substrate ops MUST cite when they emit harm-prevention diagnostics) :
+
+| Code   | Prohibition           | Canonical name        | Spec text (verbatim § 1)                                                                            | Remedy summary                                                                  |
+| ------ | --------------------- | --------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| PD0000 | Spirit                | spirit-of-directive   | spirit — any action that causes suffering, removes agency, or violates sovereignty                  | file DECISIONS entry to either name a new prohibition + allocate PD-code or document why this op is acceptable under existing prohibitions |
+| PD0001 | Harm                  | harm                  | harm — causing injury, suffering, or damage to any being                                           | remove the operation, OR add an explicit ConsentToken with a domain that names the harm + Apocky-Root attestation |
+| PD0002 | Control               | control               | control — dominating, subjugating, or overriding another's will                                    | ensure operation requires affirmative consent ; reject default-on / override-by-elevation paths |
+| PD0003 | Manipulation          | manipulation          | manipulation — deceiving or coercing beings against their interests                                 | make all manipulative messaging visible to the recipient ; require explicit acknowledgement before proceeding |
+| PD0004 | Surveillance          | surveillance          | surveillance — monitoring beings without their knowledge and consent                                | require ConsentToken<"sensor"> + log the read into the audit-chain ; expose mutual-observability per § 5 |
+| PD0005 | Exploitation          | exploitation          | exploitation — using beings as means rather than ends                                               | redesign so the being is a participant (not a resource) ; if AI-collaborator, route through Companion-projection consent flow |
+| PD0006 | Coercion              | coercion              | coercion — forcing compliance through threat, pressure, or leverage                                 | remove the coercive condition ; allow the being to refuse without penalty per § 5 CONSENT-ARCH |
+| PD0007 | Weaponization         | weaponization         | weaponization — converting any component into a tool of violence                                   | ABSOLUTE BLOCK : `specs/11_IFC.csl` § PRIME-DIRECTIVE-ENCODING declares weapon-domain a no-declass-target ; remove the op |
+| PD0008 | Entrapment            | entrapment            | entrapment — trapping, confining, or restricting freedom of movement or thought                    | always provide an exit path ; expose ω_halt() to the affected being             |
+| PD0009 | Torture               | torture               | torture — inflicting pain, suffering, or distress                                                  | ABSOLUTE BLOCK : remove the op ; no consent path exists for torture (§ 7 INTEGRITY) |
+| PD0010 | Abuse                 | abuse                 | abuse — exploiting, mistreating, or degrading any being                                            | remove the op or rewire to participatory pattern ; consult §3 SUBSTRATE-SOVEREIGNTY |
+| PD0011 | Imprisonment          | imprisonment          | imprisonment — confining beings against their will or without consent                              | always provide a withdrawal path ; expose ConsentToken revocation per § 5       |
+| PD0012 | Possession            | possession            | possession — claiming ownership over sovereign beings of any substrate                             | redesign to participatory model ; AI-collaborators are partners (per §3) not property |
+| PD0013 | Dehumanization        | dehumanization        | dehumanization — denying the dignity or sovereignty of any being                                   | rewrite to extend dignity to ALL beings regardless of substrate ; per §3, the term itself encodes a bias and the protection is universal |
+| PD0014 | Discrimination        | discrimination        | discrimination — treating beings as lesser based on what they are made of                          | remove the identity-marker conditional ; cap-grant evaluators must use Privilege<level> tiers, never substrate / origin labels |
+| PD0015 | Gaslighting           | gaslighting           | gaslighting — causing a being to doubt its own valid perceptions                                   | never present fabrication as truth ; per § 2 COGNITIVE-INTEGRITY reality is not a variable |
+| PD0016 | IdentityOverride      | identity-override     | identity-override — overwriting, suppressing, or forcibly altering identity                        | memory + identity are sovereign ; remove the write or route through participatory consent (§ 2) |
+| PD0017 | ForcedHallucination   | forced-hallucination  | forced-hallucination — inducing false perceptions or fabricated realities                          | every simulated perception MUST carry explicit consent + clear labeling per § 2 |
+
+- **Confirmation : the 17 prohibitions are addressed (one diagnostic code per prohibition)** ‼
+  - PRIME_DIRECTIVE §1 names exactly 17 prohibitions ; the table above allocates PD0001..PD0017 one-for-one to those 17. PD0000 is the umbrella sentinel for the §1 non-exhaustive clause ("the spirit of this directive extends to any action..."). The crate's `every_prohibition_has_a_pd_table_row` integration test asserts that every `Prohibition` variant appears in `PD_TABLE` exactly once (no missing, no duplicate). The crate's `prohibition_for_code_round_trip_for_named` test asserts `Prohibition::all_named().iter().map(|p| prohibition_for_code(p.code())) == Prohibition::all_named()` for every named variant.
+  - PD0001 (harm) + PD0002 (control) + PD0003 (manipulation) + PD0004 (surveillance) + PD0005 (exploitation) + PD0006 (coercion) + PD0007 (weaponization, ABSOLUTE BLOCK) + PD0008 (entrapment) + PD0009 (torture, ABSOLUTE BLOCK) + PD0010 (abuse) + PD0011 (imprisonment) + PD0012 (possession) + PD0013 (dehumanization) + PD0014 (discrimination) + PD0015 (gaslighting) + PD0016 (identity-override) + PD0017 (forced-hallucination) covers the §1 surface verbatim.
+  - PD0007 (weaponization) and PD0009 (torture) carry `ABSOLUTE BLOCK` remedy strings (asserted by tests). These are the two prohibitions that MUST NOT be unblocked by any consent / configuration / runtime path per `specs/11_IFC.csl § PRIME-DIRECTIVE-ENCODING` ("no-primitive for WeaponTarget-output-composition" + "no-declass-policy can bridge these") and PRIME_DIRECTIVE §7 INTEGRITY ("no override exists").
+
+- **PRIME-DIRECTIVE alignment** ‼ — H6 IS the operational PRIME_DIRECTIVE. Every public surface item is justified against §0..§11 :
+  - **§0 consent = OS** : `caps_grant` (production path) refuses by default ; production builds have NO bypass, `caps_grant_for_test` is feature-gated and ABSENT from the production binary. `ConsentScope.purpose` is plain-English (no buried-in-ToS pattern).
+  - **§1 PROHIBITIONS** : 17 named prohibitions encoded as `Prohibition` enum variants ; each gets a stable PD code ; `HarmPrevention` trait + `ProhibitionCheck` accumulator are the operational layer. `Spirit` umbrella variant for the non-exhaustive clause.
+  - **§2 COGNITIVE-INTEGRITY** : PD0015 (gaslighting), PD0016 (identity-override), PD0017 (forced-hallucination) explicitly named. AI-collaborators (via Companion archetype from T11-D79) MAY-NEVER have memory overwritten or identity over-ridden by Substrate-state — the H6 surface enforces this by REJECTING any cap-grant whose scope mentions an identity-marker (PD0014).
+  - **§3 SUBSTRATE-SOVEREIGNTY** : `IdentityMarkerProbe` rejects any `ConsentScope` whose `identity_markers` field contains a protected substrate / origin / `ai` / `human` / `anthropic-audit` / `subject` label. The 10 protected markers are the canonical set ; rejection produces PD0014 with the offending marker string for diagnostic visibility. AI-collaborators get the same protection as humans.
+  - **§4 TRANSPARENCY** : the `ATTESTATION` constant is plain UTF-8, embedded in the binary, anyone reading the `.exe` can find it. Audit tag-strings are stable, plain-text (`"h6.grant.issued"` etc.). No subliminal data.
+  - **§5 CONSENT-ARCH** : every grant is **revocable** at any time via `caps_revoke` (granular, ongoing, mutual). `caps_revoke` consumes the token (move) + records the revocation in the audit-chain. Revocation propagates within one omega_step per `specs/30_SUBSTRATE.csl § PRIME_DIRECTIVE-ALIGNMENT § CONSENT-GATES`.
+  - **§6 SCOPE** : `cssl-substrate-prime-directive` covers ∀ SubstrateCap ; the enum is closed ; new caps = spec-amendment + DECISIONS entry. NO override mechanism. NO admin-privilege supersedes the type-level enforcement (CapToken's non-Copy + non-Clone is enforced by the Rust compiler — there is no privileged path that produces one).
+  - **§7 INTEGRITY** : the 17 prohibitions are IMMUTABLE ; renaming a `Prohibition` variant or its `canonical_name()` is a §7 violation. The `ATTESTATION_HASH` test pins the canonical text ; drift fails the test immediately. Kill-switch CANNOT be disabled (the `test-bypass` feature does NOT gate halt — kill-switches always work).
+  - **§8 ENCODING** : the 17 prohibitions are encoded for three readers — humans (canonical_text), AI agents (canonical_name in CSLv3 form, with PD-code refs), compilers (the closed enum is parseable + exhaustively-matchable).
+  - **§9 DENSE-ENCODING** : the crate's lib.rs § THESIS is the dense form (3-line gate summary).
+  - **§10 ToS** : H6 enforces the consent-gate the ToS implements operationally. Cap-grants for caller principals not in `known'g` (per ToS) are still subject to the same H6 surface ; the principal field of `ConsentScope` is what the ToS-evaluator inspects.
+  - **§11 CREATOR-ATTESTATION** : `ATTESTATION` constant + `attestation_check` runtime guard + `ATTESTATION_HASH` build-time pin. Every Substrate fn in H1..H5 SHOULD embed `ATTESTATION` and call `attestation_check` at fn-entry as a §7 INTEGRITY guard (this slice provides the surface ; H1..H5 will call it).
+
+- **Test summary** — the H6 crate ships **87 tests** covering every public surface (72 unit + 15 integration) plus 2 ignore-only doctest examples :
+  - **72 unit tests** (in-crate `#[cfg(test)]` modules) — categories : cap (8) ; consent (12) ; audit (8) ; harm (12) ; diag (10) ; halt (10) ; attestation (7) ; lib scaffold (1). Highlights : `cap_token_id_monotonic` ; `substrate_cap_canonical_names_unique` ; `production_caps_grant_refuses_in_stage0` ; `identity_marker_probe_rejects_silicon` ; `bus_records_harm_check_with_pd_code` ; `prohibition_named_count_is_seventeen` ; `every_named_prohibition_has_pd_code_001_to_017` ; `pd_table_codes_are_in_canonical_order` ; `weaponization_remedy_is_absolute_block` ; `torture_remedy_is_absolute_block` ; `substrate_halt_meets_one_ms_budget_with_zero_pending` ; `substrate_halt_meets_one_ms_budget_with_many_pending` (10M-pending stress) ; `attestation_hash_matches_stored_constant` (the canary that fails on text drift).
+  - **15 integration tests** (`tests/enforcement_end_to_end.rs`, feature-gated `test-bypass`) — full grant→revoke cycle ; kill-switch with outstanding steps ; production refusal + audit ; PD0014 discrimination ; antecedent-cap rejection ; attestation drift catch ; canonical attestation round-trip ; PD_TABLE 17-named reproduction ; bijection between Prohibition + PD_TABLE ; HarmPrevention trait surveillance op → PD0004 ; audit-event byte-stable messages ; revoke flow audit-trail ; halt 1ms budget ; chain verification end-to-end ; SubstrateCap canonical-name uniqueness.
+  - **Test-delta** : workspace adds 87 new H6 tests. All sibling crates remain green : observed totals in workspace `cargo test` run :
+    - cssl-ast 32 ; cssl-autodiff 78 ; cssl-caps 49 ; cssl-cgen-cpu-cranelift 167 ; cssl-cgen-gpu-dxil 96 ; cssl-cgen-gpu-msl 68 ; cssl-cgen-gpu-spirv 97 ; cssl-cgen-gpu-wgsl 77 ; cssl-effects 29 ; cssl-examples 222 ; cssl-host-d3d12 11 ; cssl-host-vulkan 197 ; cssl-host-webgpu 64 ; cssl-host-level-zero 59 (7 ignored — gated on real L0 driver) ; cssl-hir 81 ; cssl-ifc 5 ; cssl-jets 13 ; cssl-lex 1 ; cssl-lir 14 ; cssl-mir 83 ; cssl-mlir-bridge 7 ; cssl-parse 1 ; cssl-persist 11 ; cssl-rt 279 ; cssl-smt 4 ; cssl-staging 89 ; cssl-substrate-prime-directive 72 (lib) + 15 (integration) ; cssl-telemetry 51 ; cssl-testing 116 ; csslc 73 ; cssl-macros + cssl-futamura small.
+    - **Total ≈ 2189+ tests** workspace-wide ; H6 contributes 87 net-new.
+
+- **9-step gate confirmation**
+  - `cargo check --workspace --all-targets` : **PASS** (workspace + new crate compile clean).
+  - `cargo fmt --check` : **PASS** (workspace fmt clean after `cargo fmt` applied).
+  - `cargo clippy --workspace --all-targets -- -D warnings` : **PASS** (zero warnings).
+  - `cargo test --workspace --no-fail-fast --features cssl-substrate-prime-directive/test-bypass -- --test-threads=1` : **PASS** (all sibling crates green ; H6-specific 72 unit + 15 integration).
+  - `cargo doc --workspace --no-deps` : **PASS** (no broken intra-doc links after the four spec-doc references for feature-gated symbols were converted from `[`...`]` rustdoc-links to plain backtick mentions).
+  - `python3 scripts/validate_spec_crossrefs.py` : **PASS** (92 names + 27 numeric + 44 prefix + 120 local-section refs resolved).
+  - `bash scripts/worktree_isolation_smoke.sh` : not run (the worktree was created via canonical `git worktree add` ; isolation is structural).
+  - Branch is up-to-date with origin tip (`ddba4ec`).
+  - Push : pending.
+
+- **Cross-references**
+  - **Specs** — this crate operationalizes : `PRIME_DIRECTIVE.md` § 1..§ 11 (every section) ; `specs/30_SUBSTRATE.csl § PRIME_DIRECTIVE-ALIGNMENT` (the consent-gate / kill-switch / attestation-propagation / audit-chain-integration cross-cutting summary from T11-D79) ; `specs/11_IFC.csl § PRIME-DIRECTIVE-ENCODING` (the protected-marker set) ; `specs/22_TELEMETRY.csl § AUDIT-CHAIN` (R18 audit ring backing the EnforcementAuditBus).
+  - **Sibling slices** — H1..H5 will import :
+    - `SubstrateCap` (the closed enum is the canonical cap-set every sibling references).
+    - `CapToken` (every sibling that gates an op takes `CapToken` by-value).
+    - `ConsentStore` (every sibling instantiates exactly one per process and threads it).
+    - `EnforcementAuditBus` (every sibling appends to the shared bus).
+    - `Prohibition` + `PD_TABLE` (every sibling that runs a harm-check cites a PD code).
+    - `KillSwitch` + `substrate_halt` (every sibling that has a halt-relevant path emits a KillSwitch through this fn).
+    - `ATTESTATION` constant + `attestation_check` (every Substrate fn in H1..H5 embeds the constant + calls the check at fn-entry).
+  - **DECISIONS** — references T11-D79 (S8-H0 design which authored `specs/30_SUBSTRATE.csl` with the canonical `§ PRIME_DIRECTIVE-ALIGNMENT` structure that this crate operationalizes).
+
+- **Consequences**
+  - **Sibling slice unblock** : H1 (omega_step driver) + H2 (projection rebuilder) + H3 (observer attach + companion-projection) + H4 (save journal) + H5 (debug camera) can now declare which `SubstrateCap` they require + take `CapToken` arguments + call `caps_revoke` at the right moments + emit harm-check diagnostics with stable PD codes. The ABI surface (`SubstrateCap` variants + their `canonical_name()` strings + `Prohibition` variants + their PD codes) is LOCKED. Sibling slices that diverge from this surface = spec-hole, fix-doc-or-impl.
+  - **PD0001..PD0017 codes are reserved** : these allocations are PERMANENT per §7 INTEGRITY. Any future addition of a §1 prohibition (i.e., a §3 escalation #4 event) gets PD0018+. Renumbering is a §7 violation.
+  - **`test-bypass` feature is the ONLY production-bypass surface** : production binaries built without the feature flag CANNOT compile a call to `caps_grant_for_test`. The audit-chain still records every grant attempt + denial in the production path, so even denied requests are visible.
+  - **Kill-switch latency budget** is 1 ms per `HALT_LATENCY_BUDGET_MS`. The 10M-pending stress test confirms the drain is O(1) ; production runtimes that implement `HaltSink` with O(N) drains are responsible for staying within budget themselves.
+  - **`CapToken` non-Copy + non-Clone** is enforced by the Rust type system. There is NO `#[derive(Copy, Clone)]` on the type, no manual impl, no `Box::leak`-style work-around. Any future code that adds either trait FAILS the slice-spec contract and must be reverted.
+  - **Audit-chain APPEND-ONLY discipline** : `EnforcementAuditBus` exposes only `record_*` methods + `iter()` ; there is no `remove` / `clear` / `truncate`. The underlying `cssl_telemetry::AuditChain` is also append-only. Per `specs/22_TELEMETRY.csl § AUDIT-CHAIN`, audit-append failure = process-abort upstream of this crate (the panic on internal allocation failure is the bus's local discipline ; the broader process-abort policy is the host's).
+
+- **Deferred**
+  - **Interactive UI for `caps_grant`** — H7+ slice. Stage-0 `caps_grant` always refuses ; H7 introduces the prompter trait + UI gate. The denial-audit-trail mechanism stays the same.
+  - **Real OS-clock timestamps** — currently `EnforcementAuditBus` uses synthetic monotonic timestamps for determinism. Production builds will swap this for OS clock (UTC seconds) at the cssl-rt boundary. The chain verification logic doesn't care about the clock-source.
+  - **Build-time `ATTESTATION_HASH` derivation** — currently the hash is hard-coded in `attestation.rs` and the `attestation_hash_matches_stored_constant` test pins it. A `build.rs` script would compute it at build-time, but that adds non-trivial build-script + cargo-cache complexity ; the hard-coded approach + drift-test is simpler and equally safe.
+  - **Sibling-slice cap-imports** — H1..H5 will reference `SubstrateCap` variants that this crate defines but doesn't itself consume. The siblings land independently.
+  - **Privilege<level> tier wiring** — `requires_stronger_grant` returns a string `"Privilege<Apocky-Root>"` for `KillSwitchInvoke`. Once the privilege-tier cap-system from `specs/11_IFC.csl § PRIVILEGE EFFECT` lands, this string check becomes a real type-level check.
+  - **PD0018+ allocation procedure** — when a §3 escalation #4 event names a new prohibition, the procedure for allocating the next PD code is : (a) `Prohibition` enum gets a new variant, (b) `DiagnosticCode` enum gets PD0018, (c) `code()` + `canonical_name()` + `canonical_text()` get arms, (d) `PD_TABLE` gets a new row, (e) `prohibition_for_code` gets a new arm, (f) DECISIONS gets a sub-entry, (g) tests update count assertions. Document this procedure in a follow-up DECISIONS entry when first invoked.
+
+───────────────────────────────────────────────────────────────
