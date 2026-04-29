@@ -83,6 +83,59 @@ pub const fn hir_cap_to_semantic(c: HirCapKind) -> CapKind {
     }
 }
 
+/// T11-D57 (S6-B1) — capability-flow contract for the MIR heap-op family
+/// (`cssl.heap.alloc / dealloc / realloc`).
+///
+/// Per `specs/12_CAPABILITIES.csl` § ISO-OWNERSHIP a freshly-allocated cell
+/// is uniquely owned : the producer-op result carries `iso<T>` linearity,
+/// and the consumer (`dealloc`) takes `iso<T>` and produces no value. The
+/// reallocator transfers iso : it consumes the input pointer and emits a
+/// fresh iso pointer.
+///
+/// Variants :
+///   - [`HeapOpCap::Produce`]  — op produces a single `iso<ptr>` result.
+///   - [`HeapOpCap::Consume`]  — op consumes its first operand's iso, no result.
+///   - [`HeapOpCap::Transfer`] — op consumes operand-0 iso, produces a fresh iso.
+///
+/// Centralising this mapping in `cap_check` keeps the body-lowerer
+/// (`cssl-mir`) and the future linear-tracking walker honest about the
+/// same contract — every heap op has exactly one entry here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HeapOpCap {
+    /// Op produces a single `iso<ptr>` result. (`cssl.heap.alloc`)
+    Produce,
+    /// Op consumes its first operand's iso, no result. (`cssl.heap.dealloc`)
+    Consume,
+    /// Op consumes operand-0 iso, produces a fresh iso. (`cssl.heap.realloc`)
+    Transfer,
+}
+
+/// Map a `cssl.heap.*` op-name to its capability-flow contract. Returns
+/// `None` for op-names outside the heap family.
+#[must_use]
+pub fn heap_op_capability(op_name: &str) -> Option<HeapOpCap> {
+    match op_name {
+        "cssl.heap.alloc" => Some(HeapOpCap::Produce),
+        "cssl.heap.dealloc" => Some(HeapOpCap::Consume),
+        "cssl.heap.realloc" => Some(HeapOpCap::Transfer),
+        _ => None,
+    }
+}
+
+/// T11-D57 (S6-B1) — capability of a heap-op's RESULT value (when one is
+/// produced). Returns `Some(CapKind::Iso)` for producer / transfer ops
+/// (`alloc` / `realloc`) and `None` for consumer ops (`dealloc`) or
+/// op-names outside the heap family. Used by the body-lowerer to attach
+/// the canonical `cap=iso` attribute and by the future linear-tracking
+/// walker to verify exactly-once consumption of allocated cells.
+#[must_use]
+pub fn heap_op_result_cap(op_name: &str) -> Option<CapKind> {
+    match heap_op_capability(op_name)? {
+        HeapOpCap::Produce | HeapOpCap::Transfer => Some(CapKind::Iso),
+        HeapOpCap::Consume => None,
+    }
+}
+
 /// Walk a HIR type and, if its top-level kind is a capability wrapper, return
 /// the semantic cap + inner HirType. Nested capability wrappers (e.g., `iso<ref<T>>`)
 /// are unsupported at stage-0 — the outer cap wins.
@@ -236,7 +289,10 @@ impl CapCtx {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_capabilities, hir_cap_to_semantic, param_subtype_check, top_cap, CapMap};
+    use super::{
+        check_capabilities, heap_op_capability, heap_op_result_cap, hir_cap_to_semantic,
+        param_subtype_check, top_cap, CapMap, HeapOpCap,
+    };
     use crate::arena::HirId;
     use crate::ty::{HirCapKind, HirType, HirTypeKind};
     use cssl_ast::{SourceId, Span};
@@ -320,5 +376,38 @@ mod tests {
         let (map, diags) = check_capabilities(&module);
         assert!(map.is_empty());
         assert!(diags.is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D57 (S6-B1) — heap-op capability mapping.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn heap_op_capability_classification_is_total() {
+        // The three known names map to distinct variants ; everything else → None.
+        assert_eq!(
+            heap_op_capability("cssl.heap.alloc"),
+            Some(HeapOpCap::Produce)
+        );
+        assert_eq!(
+            heap_op_capability("cssl.heap.dealloc"),
+            Some(HeapOpCap::Consume)
+        );
+        assert_eq!(
+            heap_op_capability("cssl.heap.realloc"),
+            Some(HeapOpCap::Transfer)
+        );
+        assert_eq!(heap_op_capability("arith.constant"), None);
+        assert_eq!(heap_op_capability("cssl.heap.bogus"), None);
+        assert_eq!(heap_op_capability(""), None);
+    }
+
+    #[test]
+    fn heap_op_result_cap_attaches_iso_only_to_producers() {
+        // alloc + realloc produce `iso<ptr>` ; dealloc has no result.
+        assert_eq!(heap_op_result_cap("cssl.heap.alloc"), Some(CapKind::Iso));
+        assert_eq!(heap_op_result_cap("cssl.heap.realloc"), Some(CapKind::Iso));
+        assert_eq!(heap_op_result_cap("cssl.heap.dealloc"), None);
+        assert_eq!(heap_op_result_cap("anything.else"), None);
     }
 }

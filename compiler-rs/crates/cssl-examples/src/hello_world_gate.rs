@@ -44,6 +44,13 @@ pub const HELLO_WORLD_CSSL_PATH: &str = concat!(
 );
 
 /// Produce a system-temp path with a unique-per-test executable name.
+///
+/// § T11-D57 (S6-B1) gate-restoration : tagged `#[cfg(test)]` because both
+/// call sites live inside `#[cfg(test)] mod tests`. Without this gate
+/// `cargo clippy --workspace --all-targets -- -D warnings` (mandated by
+/// HANDOFF_SESSION_6 § COMMIT-GATE step 3) escalated the pre-existing
+/// `dead_code` warning to an error.
+#[cfg(test)]
 fn unique_temp_exe(stem: &str) -> PathBuf {
     let pid = std::process::id();
     let tmp = std::env::temp_dir();

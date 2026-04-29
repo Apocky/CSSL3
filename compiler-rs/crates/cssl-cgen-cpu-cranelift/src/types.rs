@@ -79,6 +79,13 @@ pub fn clif_type_for(mir: &MirType) -> Option<ClifType> {
         }),
         MirType::Bool => Some(ClifType::B1),
         MirType::Handle => Some(ClifType::R64),
+        // T11-D57 (S6-B1) : raw pointer / heap cell. The JIT representation
+        // matches `R64` (host-pointer), the same approximation already used
+        // for `Handle`. The object backend's `mir_type_to_cl` (host-ISA
+        // pointer-type) handles the precise sizing for object-emit ; the
+        // JIT path consumes scalar arithmetic before heap ops land in JIT
+        // bodies (see deferred items in T11-D57).
+        MirType::Ptr => Some(ClifType::R64),
         MirType::None | MirType::Tuple(_) | MirType::Function { .. } | MirType::Memref { .. } => {
             None
         }
