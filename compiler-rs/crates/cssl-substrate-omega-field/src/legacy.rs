@@ -46,17 +46,17 @@ pub type LegacyTensor<T, const R: usize> = OmegaTensor<T, R>;
 /// Which facet of [`crate::FieldCell`] the scalar value lands into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScalarFacet {
-    /// Write into [`FieldCell::density`] (S-facet ρ).
+    /// Write into [`crate::FieldCell::density`] (S-facet ρ).
     Density,
-    /// Write into [`FieldCell::enthalpy`] (S-facet H).
+    /// Write into [`crate::FieldCell::enthalpy`] (S-facet H).
     Enthalpy,
     /// Write into the Ψ-overlay (Wigner-negativity scalar).
     PsiNegativity,
-    /// Write into [`FieldCell::velocity`] (uniform-x channel).
+    /// Write into [`crate::FieldCell::velocity`] (uniform-x channel).
     VelocityX,
-    /// Write into [`FieldCell::velocity`] (uniform-y channel).
+    /// Write into [`crate::FieldCell::velocity`] (uniform-y channel).
     VelocityY,
-    /// Write into [`FieldCell::velocity`] (uniform-z channel).
+    /// Write into [`crate::FieldCell::velocity`] (uniform-z channel).
     VelocityZ,
 }
 

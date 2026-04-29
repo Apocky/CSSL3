@@ -39,8 +39,8 @@ use smallvec::SmallVec;
 /// One Λ-token (24 bytes std430 wire-format).
 ///
 /// At this slice the in-memory representation is straightforward Rust
-/// fields ; the 24-byte wire-format is enforced by [`LambdaToken::to_bytes`]
-/// / [`LambdaToken::from_bytes`] for save/load + GPU upload paths.
+/// fields ; the 24-byte wire-format is enforced by `LambdaToken::to_bytes`
+/// / `LambdaToken::from_bytes` for save/load + GPU upload paths.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LambdaToken {
     /// Token kind (one of 18 canonical kinds + substrate-extension slots).

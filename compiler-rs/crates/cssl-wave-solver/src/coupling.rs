@@ -33,7 +33,7 @@
 //!   [`CouplingError::ForbiddenMapping`] : if a coupling-table entry
 //!   for a forbidden pair has non-zero strength, the call returns the
 //!   error and aborts the substep. Stage-0 ensures the canonical
-//!   table is well-formed via the [`forbidden_pairs_zero_strength`]
+//!   table is well-formed via the `forbidden_pairs_zero_strength`
 //!   test.
 //!
 //! § DETERMINISM
@@ -105,7 +105,7 @@ impl CrossBandTableEntry {
 /// § The canonical Wave-Unity cross-band table for the 5-band default.
 ///
 ///   Entries marked `forbidden=true` MUST have `strength=0` ; the
-///   [`forbidden_pairs_zero_strength`] test guards this invariant.
+///   `forbidden_pairs_zero_strength` test guards this invariant.
 pub const CROSS_BAND_TABLE: &[CrossBandTableEntry] = &[
     // ── Light ↔ Audio : the headline novelty ──
     CrossBandTableEntry {

@@ -61,7 +61,7 @@ pub fn default_absorption(class: BandClass) -> f32 {
 /// § Run one IMEX implicit-explicit substep. `forcing` carries any
 ///   explicit cross-band-coupling source that has been pre-computed by
 ///   [`crate::coupling::apply_cross_coupling`] into a separate buffer.
-///   At Stage-0 the forcing buffer is taken as zero (see [`imex_implicit_step_no_forcing`]).
+///   At Stage-0 the forcing buffer is taken as zero (see `imex_implicit_step_no_forcing`).
 pub fn imex_implicit_step_with_forcing<const C: usize>(
     prev: &WaveField<C>,
     next: &mut WaveField<C>,

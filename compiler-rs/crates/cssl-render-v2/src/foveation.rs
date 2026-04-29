@@ -55,7 +55,7 @@ impl ShadingRate {
 /// One foveation zone : center, half-cone-tangent, shading-rate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FoveationZones {
-    /// Center of the fovea ((u, v) ∈ [0,1]²) — gaze-location in the
+    /// Center of the fovea ((u, v) ∈ \[0,1\]²) — gaze-location in the
     /// per-eye render-target. Defaults to (0.5, 0.5) when gaze unavailable.
     pub center: [f32; 2],
     /// Tangent of the half-cone for the full-rate region (5° default).
@@ -100,7 +100,7 @@ impl FoveationZones {
 
 /// Foveation method (which GPU-stack feature drives the shading-rate).
 ///
-/// Drives backend selection in [`crate::pipeline::Stage5Node::resolve`].
+/// Drives backend selection in [`crate::pipeline::Stage5Node::wire`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FoveationMethod {
     /// Vulkan VK_KHR_fragment_shading_rate Tier-2.

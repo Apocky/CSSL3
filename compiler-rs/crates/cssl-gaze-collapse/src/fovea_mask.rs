@@ -31,7 +31,7 @@
 //!   `cssl_substrate_prime_directive::SigmaMaskPacked`), the FoveaMask
 //!   computation falls back to the previous-frame anchor rather than
 //!   committing to the new gaze. This is checked by the caller before
-//!   invoking [`FoveaMask::compute_at`] — see [`crate::pass`].
+//!   invoking [`FoveaMask::compute_at_anchor`] — see [`crate::pass`].
 
 use crate::config::GazeCollapseConfig;
 use crate::error::GazeCollapseError;

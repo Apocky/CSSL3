@@ -124,7 +124,7 @@ impl DgcLayoutToken {
     }
 }
 
-/// `VkIndirectCommandsLayoutNV` descriptor (compiled from a [`DgcSequence`]).
+/// `VkIndirectCommandsLayoutNV` descriptor (compiled from a `cssl_work_graph::DgcSequence`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DgcLayoutDesc {
     /// Tokens in stream order.

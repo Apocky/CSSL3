@@ -81,7 +81,7 @@
 //!   2. else `VK_NV_device_generated_commands` present → use DGC
 //!   3. else degrade to `ExecuteIndirect` chain
 //!
-//! All three paths converge on the same [`Schedule::dispatch`] ABI ; the
+//! All three paths converge on the same `Schedule::dispatch` ABI ; the
 //! caller does not see backend-specific details after construction.
 //!
 //! § PRIME-DIRECTIVE

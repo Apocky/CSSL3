@@ -26,7 +26,7 @@
 //!     field is `pub` (part of the cssl-ifc API), but every operation
 //!     that flows the value into a non-on-device sink hits
 //!     `validate_egress` which refuses.
-//!   - Tests in [`tests::sensitive_gaze_egress_refused`] verify the
+//!   - Tests in `tests::sensitive_gaze_egress_refused` verify the
 //!     gate fires for every constructor path.
 
 use std::collections::BTreeSet;

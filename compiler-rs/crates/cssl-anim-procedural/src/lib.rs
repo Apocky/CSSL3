@@ -45,7 +45,7 @@
 //! § BACKWARD-COMPAT — `cssl-anim-keyframe` feature
 //!   The keyframe-based runtime in `cssl-anim` is NOT removed. Under the
 //!   `cssl-anim-keyframe` feature, this crate re-exports the cssl-anim
-//!   surface via [`compat`] so callers can migrate path-by-path. The hard
+//!   surface via `compat` so callers can migrate path-by-path. The hard
 //!   cut to procedural-only happens at the substrate-evolution graduation
 //!   gate (T11-G* Phase-G), at which point the feature flag is dropped
 //!   and the cssl-anim crate is archived.
@@ -56,7 +56,7 @@
 //!     rather than by keyframe sampling. Construction + composition
 //!     conventions match cssl-anim 1:1 so the skinning-upload path is
 //!     untouched.
-//!   - [`Skeleton`] / [`Bone`] : flat-array bone hierarchy. The procedural
+//!   - `Skeleton` / `Bone` : flat-array bone hierarchy. The procedural
 //!     surface keeps the same shape so callers that already hold cssl-anim
 //!     skeletons can migrate by swapping the import path. Skeletons are
 //!     bound to a [`physics_ik::PhysicsRig`] for the physics-IK path.

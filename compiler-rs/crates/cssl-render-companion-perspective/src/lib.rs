@@ -83,7 +83,7 @@
 //!
 //! § Σ-MASK THREADING
 //!   The cells the companion attends to are tagged with the companion's
-//!   `Sovereignty<S>` via the cell's [`SigmaMaskPacked::sovereignty_handle`].
+//!   `Sovereignty<S>` via the cell's `SigmaMaskPacked::sovereignty_handle`.
 //!   The pass-evaluator MUST honor :
 //!     - cells where `companion ≠ sovereign && Modify ∉ consent_bits` : the
 //!       salience-evaluation reads `Observe` only ; never `Modify`.

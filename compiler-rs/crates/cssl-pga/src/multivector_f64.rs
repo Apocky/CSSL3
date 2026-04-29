@@ -7,7 +7,7 @@
 //! § BLADE TABLE SHARED
 //!   The 16×16 blade-product index/sign table is the same as the f32
 //!   variant (the algebra is the same — only precision changes). This
-//!   module re-uses the integer-typed [`crate::multivector::blade_product`]
+//!   module re-uses the integer-typed `crate::multivector::blade_product`
 //!   table accessor to avoid duplicating the Cayley computation.
 
 use core::ops::{Add, Mul, Neg, Sub};

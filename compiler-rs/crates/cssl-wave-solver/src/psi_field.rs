@@ -34,7 +34,7 @@
 //!   ```
 //!
 //! § REPLAY-DETERMINISM
-//!   Iter helpers ([`WaveField::cells_in_band`], [`WaveField::all_cells`])
+//!   Iter helpers (`WaveField::cells_in_band`, `WaveField::all_cells`)
 //!   walk the BTreeMap in sorted-key order, so two replays produce the
 //!   same per-cell update sequence. The unit tests assert this on
 //!   randomly-inserted keys.

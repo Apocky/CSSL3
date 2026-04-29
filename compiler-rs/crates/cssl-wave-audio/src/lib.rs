@@ -38,7 +38,7 @@
 //!   The legacy mixer at `crates/cssl-audio-mix` is a SIBLING crate ;
 //!   cssl-wave-audio does NOT depend on it. The two coexist during the
 //!   deprecation window. When the `legacy_mixer` feature is enabled
-//!   the [`legacy`] module re-exports the legacy types alongside the
+//!   the `legacy` module re-exports the legacy types alongside the
 //!   wave-audio surface so consumers can A/B compare ; the legacy
 //!   re-export emits a deprecation note via rustdoc.
 //!

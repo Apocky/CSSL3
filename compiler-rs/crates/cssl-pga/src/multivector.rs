@@ -365,7 +365,7 @@ impl Multivector {
     ///
     /// This is the algebraically-fundamental product of GA. The 16 × 16
     /// blade-multiplication table for G(3,0,1) is precomputed at compile
-    /// time as [`BLADE_PRODUCT`] from the Cayley rules — see the table
+    /// time as `BLADE_PRODUCT` from the Cayley rules — see the table
     /// section below. The compiler folds away the zero-coefficient paths
     /// for sparse inputs (motors, rotors, points etc.) automatically.
     #[must_use]

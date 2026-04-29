@@ -122,7 +122,7 @@ pub const fn morton_compact_by_3(v: u64) -> u64 {
 pub struct MortonKey(u64);
 
 impl MortonKey {
-    /// The "zero" key — encodes (0, 0, 0). Distinct from [`Self::sentinel`].
+    /// The "zero" key — encodes (0, 0, 0). Distinct from [`Self::SENTINEL`].
     pub const ZERO: MortonKey = MortonKey(0);
 
     /// The sentinel key — bit 63 set, indicates "empty slot" in tables.

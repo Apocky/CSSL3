@@ -16,7 +16,7 @@
 //!
 //! Per `density_budget § XI.B EDGE-7` the FB-of-FB-of-FB reduces entity
 //! count to 100K when no autonomous-dispatch is available — this crate
-//! exposes the knob via [`Schedule::entity_count_for_backend`].
+//! exposes the knob via [`crate::Schedule::entity_count_for_backend`].
 
 use core::fmt;
 

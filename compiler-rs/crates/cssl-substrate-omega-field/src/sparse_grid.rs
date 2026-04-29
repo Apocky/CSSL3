@@ -416,7 +416,7 @@ impl<T: OmegaCellLayout> SparseMortonGrid<T> {
     ///
     /// § REMOVAL DISCIPLINE
     ///   We use **tombstone** markers : a removed slot is marked with the
-    ///   distinct [`MortonKey::TOMBSTONE`] sentinel rather than the empty-
+    ///   distinct `MortonKey::TOMBSTONE` sentinel rather than the empty-
     ///   sentinel. The find_slot walker treats tombstones as "skip past"
     ///   so subsequent reads still find the displaced keys downstream.
     ///   On the next rehash all tombstones are dropped.
