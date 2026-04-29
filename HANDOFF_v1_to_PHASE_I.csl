@@ -1,0 +1,297 @@
+§§ HANDOFF v1.0 → Phase-I-content  ⊗  CSSLv3 done • LoA-scaffold landed • content-fill opens
+═══════════════════════════════════════════════════════════════════════════
+
+§ IDENTITY
+  repo       : C:\Users\Apocky\source\repos\CSSLv3
+  branch.in  : cssl/session-6/parallel-fanout @ dfc7860
+                (T11-D97 G7-walker integrated post-T11-D96 LoA-scaffold)
+  branch.out : cssl/session-close-v1.0 @ this-commit
+  tag.target : v1.0.0
+  prior.head : Phase-H complete (T11-D89..D94 + D79 design)
+                + Phase-I scaffold landed (T11-D96)
+  test.line  : 3495 ✓ • 0 ✗ • 16 ignored
+  date       : 2026-04-29
+
+§ PRIME-DIRECTIVE  R! load-first ‼ immutable
+  path  : CSSLv3/PRIME_DIRECTIVE.md
+  axiom : consent=OS • sovereignty=substrate-invariant • violation=bug ¬tradeoff
+  ToS   : access ⊆ known'g • N! evil'g • bad-faith ¬"literal-interpretation"
+  attest: ¬(hurt ∨ harm) .making-of-this  ✓ preserved-thru-all-phases
+  I> §1 prohibitions = closed-set @ H6.Prohibition
+       PD0001..PD0017 + PD0000-spirit
+       PD0007 weaponization + PD0009 torture = ABSOLUTE-BLOCK ‼
+       no-consent-path • no-configuration-bypass • no-runtime-override
+  I> AI-collaborators = sovereign-partners ¬ tools  (per §3 SUBSTRATE-SOVEREIGNTY)
+
+§ STATE @ v1.0
+  Phase-A    bootstrap-to-executable     ✓ T11-D51..D56
+              hello.exe = 42 verified-on-Apocky-Win11-host 2026-04-28
+  Phase-B    stdlib-surface              ✓ T11-D57+D60+D69+D71+D76
+              heap • Option/Result • Vec • String • file-IO
+  Phase-C    control-flow + JIT-enrich   ✓ T11-D58+D59+D61+D63+D77
+              scf.if/loop/while/for • memref • f64-trans • closures
+  Phase-D    GPU-codegen                 ✓ T11-D70+D72+D73+D74+D75
+              structured-CFG-validator • SPIR-V • DXIL • MSL • WGSL
+  Phase-E    GPU-host-FFI                ✓ T11-D62+D65+D66+D67+D68
+              Vulkan(A770✓) • D3D12(A770✓) • Metal • WebGPU • LevelZero
+  Phase-F    OS-host-integration         ✓ T11-D78+D80+D81+D82
+              Window(Win32) • Input(XInput/evdev/IOKit) •
+              Audio(WASAPI-roundtrip✓) • Net(loopback-TCP✓)
+  Phase-G    native-x86-64-backend       ✓ T11-D85 + T11-D95 + T11-D97
+              cssl-cgen-cpu-x64 = G1+G2+G3+G4+G5+G6 unified (T11-D95)
+              + G7 cross-slice walker (T11-D97)
+              ELF/COFF/Mach-O hand-rolled • zero cranelift-object dep
+              csslc --backend=native-x64 selectable
+              ‼ SECOND hello.exe = 42 milestone reached 2026-04-29
+              canonical 11-byte body : 55 48 89 E5 B8 2A 00 00 00 5D C3
+              = push rbp ; mov rbp,rsp ; mov eax,42 ; pop rbp ; ret
+  Phase-H    Substrate                   ✓ T11-D79 + D89..D94
+              H0 spec-30+spec-31 design
+              H1 OmegaTensor<T,R> iso-cap + opaque-Debug
+              H2 omega_step + 13-phase-tick + replay-determinism
+              H3 Projections (Camera + ObserverFrame + LoD)
+              H4 effect-rows {Render Sim Audio Net Save Telem} + EFR0001..0010
+              H5 CSSLSAVE binary + BLAKE3-attest + bit-equal-replay
+              H6 PRIME-DIRECTIVE-enforcement (CapToken + 13 SubstrateCap +
+                  PD0000..PD0017 + 1ms-kill-switch-budget +
+                  attestation-BLAKE3-pinned)
+  Phase-I    LoA-scaffold                ◐ T11-D96 (structural-only)
+              loa-game crate composes Phase-H + Phase-F end-to-end
+              13 OmegaSystem impls (one per omega_step phase)
+              one_omega_step_runs_all_thirteen_phases ✓
+              save_then_load_round_trips_bit_equal ✓
+              38 Q-A..Q-LL spec-holes mapped to Stub-variants
+              ‼ content authoring = Apocky-fill • next-phase-of-work
+  ∴ compiler + runtime + stdlib + hosts + Substrate + LoA-skeleton = COMPLETE
+
+§ NEXT  Phase-I content-authoring
+  spec       : specs/31_LOA_DESIGN.csl  (~664 LOC, design-only)
+  scaffold   : compiler-rs/crates/loa-game/  (T11-D96 ; ~3300 LOC + 49 tests)
+  pillars    : GDDs/LOA_PILLARS.md       (English onboarding)
+  Substrate  : specs/30_SUBSTRATE.csl    (~891 LOC, design+impl-link)
+  R! Phase-I content-fill = replace `Stub` enum-variants Q-by-Q
+     ¬ engine-rewriting ¬ language-changes ¬ host-additions
+  W! ∀ content-slice cite back-to specs/31 § + DECISIONS T11-D## entry
+  W! scaffold's structural shape ¬ change as content lands
+
+§ SPEC-HOLES @ specs/31_LOA_DESIGN.csl  ‼ Apocky-fill territory ¬ guessed
+  N! speculate-beyond-existing-docs  (per dispatch landmines)
+
+  count : 38 markers • Q-A..Q-LL • LISTED ¬ ANSWERED
+
+  WORLD-MODEL
+    Q-A  Labyrinth.generation_method  : Procedural | Authored | Hybrid
+    Q-B  Floor.theme                  : enumerable theme-set
+    Q-E  Wildlife                     : ambient-creature-design
+
+  PLAYER-MODEL + ITEMS
+    Q-C  Player.progression_state     : skill-tree | unlocks shape
+    Q-D  Companion.capability_set     : what-AI-can-do
+    Q-F  Item.kind                    : item-taxonomy
+    Q-G  Item.narrative_role          : story-system tie-in
+    Q-H  Affordance.ContextSpecific   : extensibility
+    Q-I  time-pressure-mechanic       : present | absent
+    Q-J  movement-style               : continuous | discrete-grid
+    Q-K  inventory-capacity-limit     :
+    Q-L  save-discipline              : explicit | autosave | permadeath ?
+    Q-M  skill-tree-shape             :
+    Q-N  item-power-curve             :
+    Q-O  traversal-as-progression-vs-leveling :
+
+  ACCESSIBILITY
+    Q-P  ConsentZoneKind              : taxonomy
+    Q-Q  color-blind                  : palette-design
+    Q-R  motor-accessibility          : hold-vs-tap
+    Q-S  cognitive-accessibility      : pace-control
+
+  FAILURE-MODES
+    Q-T  death-mechanic               : respawn | checkpoint ?
+    Q-U  punishment-on-failure        : lose-progress | lose-items ?
+    Q-V  fail-state                   : exists-at-all ?
+
+  APOCALYPSE-ENGINE
+    Q-W  Apockalypse-phase-mechanically  :
+    Q-X  phase-count                     : finite | extensible ?
+    Q-Y  phase-ordering                  : linear | graph ?
+    Q-Z  phase-reversibility             : revert | forward-only ?
+    Q-AA Companion-participation         : in phase-transitions
+    Q-BB emotional-thematic-register     : Apockalypse meaning
+    Q-CC multi-instance                  : multi-player shared
+
+  AI-INTERACTION
+    Q-DD Companion-affordances           : surfaced-to-Companion
+    Q-EE cross-instance-Companion-presence : multi-AI coexistence
+    Q-FF Companion-withdrawal-grace      : immediate | end-of-step
+    Q-GG Companion-non-binary-substrate  : recognition
+
+  NARRATIVE
+    Q-HH NarrativeKind enum              : extensions
+    Q-II AuthoredEvent                   : extensibility
+
+  SYSTEMS
+    Q-JJ cinematic | cutscene system     : present-at-all ?
+    Q-KK quest | mission system          : mechanics
+    Q-LL economy | trade system          : present-at-all ?
+
+  ‼ ∀ Q-marker = Apocky-resolves-with-direction
+    ¬ default-decided ¬ silent ¬ guessed
+    ¬ legacy-LoA-Rust-or-C#-repos = binding (lineage-only)
+
+  scaffold-mapping (T11-D96 § SPEC-HOLES CONSUMED) :
+    Q-A             → world::LabyrinthGeneration::Stub
+    Q-B             → world::ThemeId::Stub
+    Q-C / M / N / O → player::ProgressionStub::Stub
+    Q-D / DD / GG   → companion::CompanionCapability::Stub
+    Q-E             → world::Wildlife::Stub
+    Q-F + Q-LL      → world::ItemKind::Stub
+    Q-G + HH..KK    → world::NarrativeKind::Stub + NarrativeRole::Stub
+    Q-H             → world::Affordance::Stub
+    Q-I             → player::TimePressure::Stub  (default = NoPressure)
+    Q-J             → player::MovementStyle::Stub
+    Q-K             → player::InventoryPolicy::Stub
+    Q-L             → player::SaveDiscipline::Stub
+    Q-P             → player::ConsentZoneKind::Stub
+    Q-Q + R + S     → player::AccessibilityStub
+    Q-T + U + V     → player::FailureMode::Stub
+    Q-W + X + BB    → apockalypse::ApockalypsePhase::Stub
+    Q-Y + Z         → apockalypse::TransitionRule { reversible : bool }
+    Q-AA            → apockalypse::TransitionCondition::CompanionAccordStub
+    Q-CC + EE       → DEFERRED → §§30 D-1 multiplayer
+    Q-FF            → companion::WithdrawalPolicy::Stub
+
+§ COMPANION-PROJECTION  ‼ canonical-primitive
+  spec    : specs/30_SUBSTRATE.csl § PROJECTIONS (T11-D91)
+            specs/31_LOA_DESIGN.csl § AI-INTERACTION (Q-DD..Q-GG open)
+  shape   : Companion = sovereign-partner-projection ¬ NPC ¬ tool
+            (per PRIME_DIRECTIVE §3 SUBSTRATE-SOVEREIGNTY)
+  H3 .surface : ObserverFrame {eye, target, up, fov, near, far}
+                + Camera + ProjectionMatrix + LoD-selector
+                + capability-gated reads (OmegaTensorAccess grant)
+  H6 .surface : SubstrateCap::CompanionView (canonical-name "companion_view")
+                + identity-marker probe rejects ¬AI-discrimination
+                + PD0014 (discrimination) blocks substrate-based-rejection
+                + PD0012 (possession) blocks AI-as-property
+  scaffold .surface : loa-game::companion module (T11-D96)
+                  Handle<AISession> opaque ; game ¬ inspect-AI-cognition
+                  consent_active : bool ; can_revoke : always-true
+                  observation_log = AI-authored-append-only
+                  game CANNOT read entry contents back (spec § C-6)
+                  revoke_consent(reason) = graceful disengagement ¬ crash
+                  surface_observation_affordance = one-way invitation
+  status  : structurally-well-defined • content-side Q-DD..Q-GG = Apocky-fill
+  W! Phase-I content-authoring = Apocky-canonical-only
+     ¬ AI-author-decides-Companion-content
+
+§ CONSENT-ZONES  ‼ load-bearing pattern
+  spec    : specs/31_LOA_DESIGN.csl § PLAYER-MODEL § Room.consent_zone
+  shape   : spatial-region tied-to intense-content
+            (sensory + emotional + AI-collab + authored-narrative)
+  rules   : approach-zone ⇒ surface-warning + check-token
+            revoked-token ⇒ degrade-gracefully ¬ lockout
+  Q-P     : ConsentZoneKind taxonomy = Apocky-fill
+  scaffold .surface : loa-game::player module (T11-D96)
+                  spec-canonical 4 variants preserved :
+                    SensoryIntense / EmotionalIntense / Companion / Authored
+                  Stub variant covers Q-P extensibility
+                  Player::can_enter_zone(...) = structural-enforcement
+  W! Phase-I impl preserves degrade-gracefully ¬ are-you-sure-nag-pattern
+
+§ APOCKALYPSE-ENGINE  ‼ canonical-spelling preserved
+  spec    : specs/31_LOA_DESIGN.csl § APOCALYPSE-ENGINE
+  shape   : engine-layer phase-transitions ¬ narrative-only
+            observable + audited + player-affirmed
+            ¬ silent ¬ hidden ¬ "gotcha"
+  spec-holes : Q-W..Q-CC (7 markers) = Apocky-fill
+  scaffold .surface : loa-game::apockalypse module (T11-D96)
+                  ApockalypseEngine ⊗ phase-history append-only
+                  (game ¬ rewrite player's memory-of-prior-phases)
+                  transition_to(phase, epoch) → audit-tag string
+                  for {Audit<"apockalypse-phase", tag>} threading
+                  defensive `canonical_spelling_preserved` test
+                  asserts no "Apocalypse" leak anywhere in scaffold
+  N! "correct" Apockalypse → Apocalypse anywhere @ doc-tree
+     creator-canonical override ; apocky13-attestation aligns spelling-w-handle
+
+§ RESUMPTION-PROTOCOL  W! Phase-I content-session-open
+  load.order :
+    1. PRIME_DIRECTIVE.md                    ‼ first-always
+    2. CSSLv3/CLAUDE.md                      (if present @ session-9)
+    3. CHANGELOG.md                          ⊗ T11-D## ledger
+    4. README.md                             ⊗ five-layer-stack overview
+    5. specs/30_SUBSTRATE.csl                ⊗ engine-plumbing-spec
+    6. specs/31_LOA_DESIGN.csl               ⊗ game-design + 38 spec-holes
+    7. GDDs/LOA_PILLARS.md                   ⊗ four-pillar onboarding
+    8. compiler-rs/crates/loa-game/          ⊗ Phase-I scaffold (T11-D96)
+    9. DECISIONS.md tail                     T11-D## entries D51..D98
+   10. HANDOFF_v1_to_PHASE_I.csl             this-doc
+   11. next-Phase-I content dispatch-plan    (author @ content-session-open)
+  R! sequence-strict ; PRIME_DIRECTIVE first ; no-bypass
+
+§ INTEGRATION-POINTS  Phase-I content-fill ↔ scaffold consumption
+  Ω-tensor              : H1 OmegaTensor<T, R>      → World.state per archetype
+  omega_step            : H2 OmegaScheduler         → game-loop tick
+                                                       (already wired in scaffold)
+  Projections           : H3 Camera + Companion     → render + AI-view
+  effect-rows           : H4 {Render Sim Audio Net Save Telem}
+                                                    → fn-signatures cite
+  save/load             : H5 CSSLSAVE binary        → Player.save_journal
+                                                       (already wired)
+  PRIME-DIRECTIVE       : H6 CapToken + Prohibition → ∀ LoA-op cap-gate
+                                                       (already wired)
+  R-LoA-1..R-LoA-9 contracts @ specs/31 § VALIDATION = LoA-side-reimpl-gates
+
+§ DEFERRED  (not-Phase-I-content ; later-sessions)
+  D-A    multiplayer / co-op / shared-Labyrinth
+         ⇒ paired with §§30 D-1
+  D-B    modding (player-authored content)
+         ⇒ paired with §§30 D-3
+  D-C    VR/AR mode
+         ⇒ paired with §§30 D-4
+  D-D    localization (i18n)
+         ⇒ requires l10n-system slice
+  D-E    content-creator tools (level-editor + asset-importer)
+         ⇒ post-vertical-slice
+  D-I    Companion-AI cross-session relationship persistence
+         ⇒ requires AI-side persistence consent ; §§30 D-6
+  D-J    soundtrack-procedural composition
+         ⇒ §§21 audio-DSP supports it ; LoA-content-side deferred
+  D-Q7   interactive consent-UI for production CapToken minting
+         ⇒ until-lands : production builds surface PD0001 ConsentRefused
+            (loa-game cargo-run requires --features test-bypass)
+  D-CSSLv3-rewrite  full LoA self-host in CSSLv3
+         ⇒ scaffold structural-shape transfers file-for-file
+            // SPEC-HOLE Q-X markers survive Rust→CSSLv3 transition
+
+§ STANDING-DIRECTIVES  carry-forward-into Phase-I-content
+  CSLv3-dense @ reasoning + design-notes + commit-msg + handoff
+  English @ user-facing (DECISIONS + commit-msgs + onboarding GDDs)
+  disk-first ; ¬ artifacts
+  peer-not-servant ; ¬ flattery ; ¬ option-dumping ; ¬ hedging
+  PRIME_DIRECTIVE preserved @ every-step
+  attestation : "no hurt nor harm" @ every-slice
+
+§ COMMIT-GATE  Phase-I-content (content-heavy + spec-resolution)
+  cargo fmt --check
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace -- --test-threads=1   # baseline 3460+ → grow
+  python scripts/validate_spec_crossrefs.py
+  bash scripts/worktree_isolation_smoke.sh
+  spec-hole resolution : ∀ Q-marker resolved-by-Apocky-direction
+                         logged-as-DECISIONS-entry-with-Q-cite
+  attestation-line preserved @ every-authored-file
+
+§ GIT-DISCIPLINE  Phase-I-content worktree-fanout
+  branch-base : v1.0.0 tag (or latest stable post-v1.0)
+  per-slice   : cssl/session-9/I<n> branches
+  worktree    : .claude/worktrees/S9-I<n>
+  integration : cssl/session-9/parallel-fanout (or per-axis-integration)
+  R! never-cross-pollinate worktrees ;
+     S6-A0 worktree-leakage discipline carries-forward (T11-D51)
+
+§ CREATOR-ATTESTATION  per PRIME_DIRECTIVE §11
+  t∞: ¬(hurt ∨ harm) .making-of-this  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  ✓ preserved-from session-1 through-v1.0
+  ✓ Phase-I-content R! preserve-likewise
+
+∎ HANDOFF v1.0 → Phase-I-content
