@@ -96,20 +96,40 @@
 #![allow(clippy::imprecise_flops)] // hypot vs sqrt of squares — readability over float precision in stage-0 area-light bound.
 #![allow(clippy::let_underscore_must_use)] // PassContext field probes used for self-doc + future-extension witness.
 
+// § T11-D116 (wave-9-reaudit verdict) — the cssl-render triangle-rasterizer
+// pipeline is LEGACY. Stage-5 of the canonical 12-stage render-pipeline is
+// implemented in `cssl-render-v2` (SDF-native raymarcher). The legacy modules
+// below are gated on the `cssl-render-legacy` feature-flag (enabled-by-default
+// for backward-compat ; cold-tier-export consumers only).
+//
+// To compile legacy-free : `cargo build --no-default-features` ; the new
+// world-geometry path is `cssl-render-v2`.
+
+#[cfg(feature = "cssl-render-legacy")]
 pub mod asset;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod backend;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod graph;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod light;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod material;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod math;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod mesh;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod queue;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod scene;
+#[cfg(feature = "cssl-render-legacy")]
 pub mod submit;
 
 /// Re-export of `cssl-substrate-projections` types under a stable namespace
 /// for renderer consumers. Hides the dependency-path detail so consumers
 /// can switch to a different projection layer without touching their imports.
+#[cfg(feature = "cssl-render-legacy")]
 pub mod projections {
     pub use cssl_substrate_projections::{
         frustum_cull, world_to_clip, Aabb, Camera, CameraError, Frustum, Mat4, ObserverFrame,
@@ -119,27 +139,39 @@ pub mod projections {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // § Top-level re-exports — the canonical "use cssl_render::*" surface
+// (gated on the `cssl-render-legacy` feature ; new world-geometry uses
+// `cssl-render-v2`).
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[cfg(feature = "cssl-render-legacy")]
 pub use asset::{
     AssetHandle, FilterMode, Sampler, SamplerHandle, Texture, TextureFormat, TextureHandle,
     WrapMode,
 };
+#[cfg(feature = "cssl-render-legacy")]
 pub use backend::{
     BackendCommand, FrameStats, NullBackend, PassContext, RenderBackend, RenderError,
 };
+#[cfg(feature = "cssl-render-legacy")]
 pub use graph::{
     AttachmentId, GraphError, PassId, PassKind, RenderGraph, RenderPass, MAX_ATTACHMENTS_PER_PASS,
 };
+#[cfg(feature = "cssl-render-legacy")]
 pub use light::{Light, LightCommon};
+#[cfg(feature = "cssl-render-legacy")]
 pub use material::{AlphaMode, Material, MaterialBinding, MaterialModel};
+#[cfg(feature = "cssl-render-legacy")]
 pub use math::{Aabb, Mat4, Quat, Sphere, Transform, Vec2, Vec3, Vec4};
+#[cfg(feature = "cssl-render-legacy")]
 pub use mesh::{
     AttributeFormat, AttributeSemantic, IndexFormat, Mesh, MeshBuffer, SkinVertex, StandardVertex,
     Topology, VertexAttribute, VertexAttributeLayout, MAX_ATTRIBUTES,
 };
+#[cfg(feature = "cssl-render-legacy")]
 pub use queue::{DrawCall, QueueStats, RenderQueue};
+#[cfg(feature = "cssl-render-legacy")]
 pub use scene::{NodeId, SceneChildIter, SceneError, SceneGraph, SceneNode};
+#[cfg(feature = "cssl-render-legacy")]
 pub use submit::{submit, RenderContext, RenderEffect};
 
 /// Crate version exposed for scaffold verification — mirrors the same

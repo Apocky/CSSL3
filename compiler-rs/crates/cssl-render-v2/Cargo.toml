@@ -1,0 +1,48 @@
+[package]
+name                   = "cssl-render-v2"
+description            = "CSSLv3 — Stage-5 SDF-native raymarcher + foveated multi-view + meshlet-hybrid : replaces cssl-render's triangle-rasterizer per wave-9-reaudit verdict (15% match → FULL REWRITE). Cite : Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER.csl.md ; 07_AESTHETIC/06_RENDERING_PIPELINE.csl § Stage-5 ; T11-D116."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-render-v2 is the SDF-native Stage-5 of the canonical 12-stage render
+# pipeline (06_RENDERING_PIPELINE § III ; 2.5 ms @ Quest-3 / 2.0 ms @ Vision-Pro
+# budget). Dependencies are kept tight :
+#
+# § cssl-substrate-omega-field — the FieldCell + OmegaField + MERA pyramid the
+#   raymarcher walks. Stage-5 reads SDF + body-presence-conditioned cells from
+#   the OmegaField (no other facet other than M/SDF/MERA needed).
+#
+# § cssl-pga — analytic SDFs are derived from PGA primitives (Plane / Line /
+#   Point / Motor) ; reflection-via-sandwich gives the canonical mirror SDF
+#   used in mise-en-abyme stage-9 prep.
+#
+# § cssl-autodiff — BackwardDiffNormals is a wrapper around the F1 autodiff
+#   backward-mode driver (`apply_bwd`). Central differences are FORBIDDEN per
+#   the LoA-bug retrospective — the Jet path is the one true normal source.
+#
+# § cssl-substrate-projections — Camera + ObserverFrame for per-eye view-
+#   projection. Multi-view rendering composes 1 cmd-buf with 2 view-instances
+#   so the projections crate is the integration-point.
+#
+# § cssl-substrate-prime-directive — Σ-mask consent gate on gaze-data + body-
+#   presence reads. Stage-5 never receives raw gaze ; only the FoveaMask
+#   (already-Σ-protected) flows in.
+cssl-substrate-omega-field    = { path = "../cssl-substrate-omega-field" }
+cssl-pga                      = { path = "../cssl-pga", default-features = false }
+cssl-autodiff                 = { path = "../cssl-autodiff" }
+cssl-substrate-projections    = { path = "../cssl-substrate-projections" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+
+# § thiserror — RaymarchError + BudgetExceeded + RecursionDepthExhausted.
+thiserror = { workspace = true }
+# § smallvec — view-instances + per-pass buffer-handles.
+smallvec  = { workspace = true }
+# § bytemuck — std430-aligned GPU upload structs (GBuffer rows / FoveaMask).
+bytemuck  = { workspace = true }
