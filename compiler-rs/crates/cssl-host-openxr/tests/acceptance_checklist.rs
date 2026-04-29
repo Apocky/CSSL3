@@ -3,6 +3,9 @@
 //! Walks the spec's § XVI ACCEPTANCE bullet-list and verifies each item
 //! has at least one structural / runtime / compile-time check in the crate.
 
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::cast_possible_wrap)]
+
 use cssl_host_openxr::{
     foveation::{DFRFoveator, FFRFoveator, FFRProfile, Foveator, GazePrediction},
     instance::MockInstance,

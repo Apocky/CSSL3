@@ -195,6 +195,10 @@
 #![allow(clippy::manual_clamp)]
 #![allow(clippy::wildcard_imports)]
 #![allow(clippy::doc_markdown)]
+#![allow(clippy::branches_sharing_code)]
+#![allow(clippy::single_char_pattern)]
+#![allow(clippy::single_match)]
+#![allow(clippy::assertions_on_constants)]
 // Test fixtures often start with `Default::default()` then tweak one field for
 // clarity ; the alternate struct-literal form would force naming all defaults
 // at every test site.

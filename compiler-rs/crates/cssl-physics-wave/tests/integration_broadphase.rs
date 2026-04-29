@@ -14,6 +14,9 @@
 //!   3. **End-to-end physics_step** : a small world with bodies + ground
 //!      plane + verify gravity + contact + wave-excitation emission.
 
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::float_cmp)]
+
 use cssl_physics_wave::{
     body_plan::{BodyPlanPhysics, MORPHOLOGY_DIM, MORPHOLOGY_INDEX_BONE_COUNT},
     morton_hash::{MortonSpatialHash, SpatialHashConfig},

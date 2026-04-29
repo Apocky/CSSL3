@@ -3,6 +3,8 @@
 //! § SPEC : `07_AESTHETIC/05_VR_RENDERING.csl` § II.A + § II.B + § II.C +
 //!         § XVI ACCEPTANCE.
 
+#![allow(clippy::uninlined_format_args)]
+
 use cssl_host_openxr::{
     extensions::XrExtension,
     instance::MockInstance,

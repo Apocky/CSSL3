@@ -24,6 +24,10 @@
 //!     The demo verifies the pose's bone count + model-matrix layout
 //!     matches the avatar contract (5+ bones, model-matrices contiguous).
 
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::suboptimal_flops)]
+
 use cssl_anim_procedural::deformation::UniformFieldProbe;
 use cssl_anim_procedural::skeleton::{Bone, ROOT_PARENT};
 use cssl_anim_procedural::{

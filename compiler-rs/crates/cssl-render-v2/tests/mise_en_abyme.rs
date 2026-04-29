@@ -12,6 +12,8 @@
 //!     - Σ-Sovereign creature-eye consent gate
 
 #![allow(clippy::field_reassign_with_default)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::suboptimal_flops)]
 // Test fixtures often start with
 // Default + tweak ; the struct-literal
 // form would force naming all defaults.

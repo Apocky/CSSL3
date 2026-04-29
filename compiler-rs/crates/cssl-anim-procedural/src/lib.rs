@@ -155,6 +155,8 @@
 #![allow(clippy::must_use_candidate)]
 #![allow(clippy::doc_markdown)]
 #![allow(clippy::derive_partial_eq_without_eq)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::needless_collect)]
 
 pub mod deformation;
 pub mod error;

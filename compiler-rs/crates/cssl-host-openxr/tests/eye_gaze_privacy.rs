@@ -6,6 +6,8 @@
 //! `Err(BiometricEgressRefused { ... })` ; if any test passes by some
 //! other path (Ok), the crate is non-compliant + must be refused at CI.
 
+#![allow(clippy::uninlined_format_args)]
+
 use cssl_host_openxr::SensitiveDomain;
 use cssl_host_openxr::{
     body::{BodySkeleton, BodyTrackingProvider},
