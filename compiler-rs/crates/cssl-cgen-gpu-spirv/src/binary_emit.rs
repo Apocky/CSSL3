@@ -237,8 +237,11 @@ fn parse_three_u32(s: &str) -> Option<[u32; 3]> {
 /// Map our [`SpirvCapability`] enum to `rspirv::spirv::Capability`.
 ///
 /// The two enums share Khronos-canonical names, so the mapping is 1:1.
+///
+/// `pub(crate)` so the body emitter (T11-D72 / S6-D1) can reuse the same
+/// mapping without duplicating the catalogue.
 #[allow(clippy::too_many_lines)]
-fn map_capability(c: SpirvCapability) -> spirv::Capability {
+pub(crate) fn map_capability(c: SpirvCapability) -> spirv::Capability {
     use SpirvCapability as C;
     match c {
         C::Shader => spirv::Capability::Shader,
@@ -285,7 +288,7 @@ fn map_capability(c: SpirvCapability) -> spirv::Capability {
 const _: Option<SpirvExtension> = None;
 
 /// Map our [`MemoryModel`] to `rspirv::spirv::MemoryModel`.
-fn map_memory_model(m: MemoryModel) -> spirv::MemoryModel {
+pub(crate) fn map_memory_model(m: MemoryModel) -> spirv::MemoryModel {
     match m {
         MemoryModel::Simple => spirv::MemoryModel::Simple,
         MemoryModel::Glsl450 => spirv::MemoryModel::GLSL450,
@@ -295,7 +298,7 @@ fn map_memory_model(m: MemoryModel) -> spirv::MemoryModel {
 }
 
 /// Map our [`AddressingModel`] to `rspirv::spirv::AddressingModel`.
-fn map_addressing_model(a: AddressingModel) -> spirv::AddressingModel {
+pub(crate) fn map_addressing_model(a: AddressingModel) -> spirv::AddressingModel {
     match a {
         AddressingModel::Logical => spirv::AddressingModel::Logical,
         AddressingModel::Physical32 => spirv::AddressingModel::Physical32,
@@ -305,7 +308,7 @@ fn map_addressing_model(a: AddressingModel) -> spirv::AddressingModel {
 }
 
 /// Map our [`ExecutionModel`] to `rspirv::spirv::ExecutionModel`.
-fn map_execution_model(e: ExecutionModel) -> spirv::ExecutionModel {
+pub(crate) fn map_execution_model(e: ExecutionModel) -> spirv::ExecutionModel {
     match e {
         ExecutionModel::Vertex => spirv::ExecutionModel::Vertex,
         ExecutionModel::TessellationControl => spirv::ExecutionModel::TessellationControl,

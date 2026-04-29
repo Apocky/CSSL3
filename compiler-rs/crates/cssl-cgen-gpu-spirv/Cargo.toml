@@ -17,6 +17,12 @@ thiserror = { workspace = true }
 # the byte-exact output is structurally valid SPIR-V. This is the D32-parallel
 # pattern (naga-validates-WGSL → rspirv-validates-SPIR-V) specialized to the
 # binary format where pure-Rust round-trip IS the validation.
+#
+# T11-D72 (S6-D1) : real SPIR-V kernel body emission lives in `body_emit.rs`
+# alongside the existing void-fn emitter. The body emitter consumes
+# structured-CFG-validated MIR (D5 marker contract via cssl_mir::structured_cfg)
+# and lowers each MirOp to its rspirv counterpart (OpFAdd / OpIAdd /
+# OpSelectionMerge / OpLoopMerge / OpLoad / OpStore / OpReturn / etc).
 rspirv = { workspace = true }
 
 [lints]
