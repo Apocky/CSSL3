@@ -100,6 +100,19 @@ impl IntWidth {
             Self::Index => "index",
         }
     }
+
+    /// Natural alignment in bytes for CPU-host targets (T11-D59 / S6-C3).
+    /// Used by `memref.load` / `memref.store` lowering to derive the default
+    /// alignment when the op's `"alignment"` attribute is absent.
+    #[must_use]
+    pub const fn natural_alignment(self) -> u32 {
+        match self {
+            Self::I1 | Self::I8 => 1,
+            Self::I16 => 2,
+            Self::I32 => 4,
+            Self::I64 | Self::Index => 8,
+        }
+    }
 }
 
 /// Float bit-width (MLIR supports `f16`, `bf16`, `f32`, `f64`).
@@ -120,6 +133,58 @@ impl FloatWidth {
             Self::Bf16 => "bf16",
             Self::F32 => "f32",
             Self::F64 => "f64",
+        }
+    }
+
+    /// Natural alignment in bytes for CPU-host targets (T11-D59 / S6-C3).
+    /// Used by `memref.load` / `memref.store` lowering to derive the default
+    /// alignment when the op's `"alignment"` attribute is absent.
+    #[must_use]
+    pub const fn natural_alignment(self) -> u32 {
+        match self {
+            Self::F16 | Self::Bf16 => 2,
+            Self::F32 => 4,
+            Self::F64 => 8,
+        }
+    }
+}
+
+impl MirType {
+    /// Natural alignment in bytes for CPU-host targets (T11-D59 / S6-C3).
+    ///
+    /// Returns the byte-alignment a value of this type requires for a regular
+    /// (non-overaligned) load or store. Used by `memref.load` / `memref.store`
+    /// codegen as the default when the op carries no explicit `"alignment"`
+    /// attribute. Composite or non-scalar types return `None` ; callers must
+    /// then either supply an explicit alignment attribute or reject the op
+    /// as unsupported at stage-0.
+    ///
+    /// § INVARIANT — never under-align : per `specs/02_IR.csl § MEMORY-OPS`,
+    /// an explicit `"alignment"` attribute MUST be ≥ this natural alignment.
+    /// Codegen does not currently re-validate that invariant — the lowering
+    /// uses whichever value the op carries and trusts the type-checker / pass
+    /// pipeline to enforce it.
+    ///
+    /// `MirType::Ptr` (T11-D57 / S6-B1) returns `None` at stage-0 — the host
+    /// pointer-type's alignment isn't const-expressible from the MIR layer ;
+    /// memref ops on raw pointers must carry an explicit `"alignment"` attr
+    /// for now. A future refactor can introduce target-aware natural-align
+    /// once cross-compile target-triple plumbing lands.
+    #[must_use]
+    pub const fn natural_alignment(&self) -> Option<u32> {
+        match self {
+            Self::Int(w) => Some(w.natural_alignment()),
+            Self::Float(w) => Some(w.natural_alignment()),
+            Self::Bool => Some(1),
+            // Non-scalars : caller must specify explicitly.
+            Self::None
+            | Self::Handle
+            | Self::Tuple(_)
+            | Self::Function { .. }
+            | Self::Memref { .. }
+            | Self::Vec(_, _)
+            | Self::Ptr
+            | Self::Opaque(_) => None,
         }
     }
 }
@@ -322,5 +387,46 @@ mod tests {
         // Distinct from other types.
         assert_ne!(a, MirType::Int(IntWidth::I64));
         assert_ne!(a, MirType::Opaque("!cssl.ptr".into()));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D59 (S6-C3) : natural-alignment helpers used by memref.load /
+    // memref.store lowering.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn int_width_natural_alignment_canonical() {
+        assert_eq!(IntWidth::I1.natural_alignment(), 1);
+        assert_eq!(IntWidth::I8.natural_alignment(), 1);
+        assert_eq!(IntWidth::I16.natural_alignment(), 2);
+        assert_eq!(IntWidth::I32.natural_alignment(), 4);
+        assert_eq!(IntWidth::I64.natural_alignment(), 8);
+        assert_eq!(IntWidth::Index.natural_alignment(), 8);
+    }
+
+    #[test]
+    fn float_width_natural_alignment_canonical() {
+        assert_eq!(FloatWidth::F16.natural_alignment(), 2);
+        assert_eq!(FloatWidth::Bf16.natural_alignment(), 2);
+        assert_eq!(FloatWidth::F32.natural_alignment(), 4);
+        assert_eq!(FloatWidth::F64.natural_alignment(), 8);
+    }
+
+    #[test]
+    fn mir_type_natural_alignment_scalars() {
+        assert_eq!(MirType::Int(IntWidth::I32).natural_alignment(), Some(4));
+        assert_eq!(MirType::Int(IntWidth::I64).natural_alignment(), Some(8));
+        assert_eq!(MirType::Float(FloatWidth::F32).natural_alignment(), Some(4));
+        assert_eq!(MirType::Float(FloatWidth::F64).natural_alignment(), Some(8));
+        assert_eq!(MirType::Bool.natural_alignment(), Some(1));
+    }
+
+    #[test]
+    fn mir_type_natural_alignment_non_scalars_is_none() {
+        assert_eq!(MirType::None.natural_alignment(), None);
+        assert_eq!(MirType::Handle.natural_alignment(), None);
+        assert_eq!(MirType::Tuple(vec![]).natural_alignment(), None);
+        assert_eq!(MirType::Vec(3, FloatWidth::F32).natural_alignment(), None);
+        assert_eq!(MirType::Ptr.natural_alignment(), None);
     }
 }

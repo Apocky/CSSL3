@@ -72,8 +72,58 @@ pub fn lower_op(op: &MirOp) -> Option<Vec<ClifInsn>> {
         ))]),
         "func.call" => lower_call(op),
         "math.sqrtf" | "math.sqrt" => lower_unary(op, "sqrt"),
+        // T11-D59 / S6-C3 : memref.load / memref.store. CLIF surface keeps
+        // the alignment annotation so the textual artifact stays inspectable.
+        "memref.load" => lower_memref_load(op),
+        "memref.store" => lower_memref_store(op),
         _ => None,
     }
+}
+
+/// Format `aligned <bytes>` flag if the op carries an explicit `"alignment"`
+/// attribute ; otherwise empty (the cranelift textual default = element-natural).
+fn align_flag_str(op: &MirOp) -> String {
+    op.attributes
+        .iter()
+        .find(|(k, _)| k == "alignment")
+        .map_or(String::new(), |(_, v)| format!(" aligned {v}"))
+}
+
+/// Lower `memref.load` to CLIF text : `%r = load.<ty>[ aligned N], %ptr[, %off]`.
+fn lower_memref_load(op: &MirOp) -> Option<Vec<ClifInsn>> {
+    let r = op.results.first()?;
+    let ptr = op.operands.first()?;
+    let offset = op.operands.get(1);
+    let ty_str = crate::types::clif_type_for(&r.ty)?.as_str();
+    let aligned = align_flag_str(op);
+    let v_name = format_value(r.id);
+    let ptr_s = format_value(*ptr);
+    let insn = offset.map_or_else(
+        || format!("    {v_name} = load.{ty_str}{aligned} {ptr_s}"),
+        |off| {
+            let off_s = format_value(*off);
+            format!("    {v_name} = load.{ty_str}{aligned} {ptr_s}, {off_s}")
+        },
+    );
+    Some(vec![ClifInsn::new(insn)])
+}
+
+/// Lower `memref.store` to CLIF text : `store[ aligned N], %val, %ptr[, %off]`.
+fn lower_memref_store(op: &MirOp) -> Option<Vec<ClifInsn>> {
+    let val = op.operands.first()?;
+    let ptr = op.operands.get(1)?;
+    let offset = op.operands.get(2);
+    let aligned = align_flag_str(op);
+    let val_s = format_value(*val);
+    let ptr_s = format_value(*ptr);
+    let insn = offset.map_or_else(
+        || format!("    store{aligned} {val_s}, {ptr_s}"),
+        |off| {
+            let off_s = format_value(*off);
+            format!("    store{aligned} {val_s}, {ptr_s}, {off_s}")
+        },
+    );
+    Some(vec![ClifInsn::new(insn)])
 }
 
 /// Lower a binary scalar op : `%r = <clif_name> %a, %b`.
@@ -347,5 +397,59 @@ mod tests {
     fn lower_unknown_op_returns_none() {
         let op = MirOp::std("cssl.mystery").with_operand(ValueId(0));
         assert!(lower_op(&op).is_none());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D59 / S6-C3 : memref.load + memref.store text-CLIF tests.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lower_memref_load_emits_typed_load() {
+        // memref.load %0 -> %1 : i32
+        let op = MirOp::std("memref.load")
+            .with_operand(ValueId(0))
+            .with_result(ValueId(1), MirType::Int(IntWidth::I32));
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    v1 = load.i32 v0");
+    }
+
+    #[test]
+    fn lower_memref_load_with_offset_includes_offset_operand() {
+        let op = MirOp::std("memref.load")
+            .with_operand(ValueId(0))
+            .with_operand(ValueId(1))
+            .with_result(ValueId(2), MirType::Float(FloatWidth::F32));
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    v2 = load.f32 v0, v1");
+    }
+
+    #[test]
+    fn lower_memref_load_with_alignment_attr_emits_aligned_flag() {
+        let op = MirOp::std("memref.load")
+            .with_operand(ValueId(0))
+            .with_result(ValueId(1), MirType::Int(IntWidth::I64))
+            .with_attribute("alignment", "16");
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    v1 = load.i64 aligned 16 v0");
+    }
+
+    #[test]
+    fn lower_memref_store_emits_store() {
+        // memref.store %val, %ptr
+        let op = MirOp::std("memref.store")
+            .with_operand(ValueId(3))
+            .with_operand(ValueId(4));
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    store v3, v4");
+    }
+
+    #[test]
+    fn lower_memref_store_with_offset_includes_offset_operand() {
+        let op = MirOp::std("memref.store")
+            .with_operand(ValueId(3))
+            .with_operand(ValueId(4))
+            .with_operand(ValueId(5));
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    store v3, v4, v5");
     }
 }
