@@ -1,0 +1,34 @@
+[package]
+name                   = "cssl-iter-loop"
+description            = "CSSLv3 stage0 — Wave-Jι : LLM bug-fix iteration-loop fixtures + 9-step protocol state-machine + spec-coverage gap-pick + perf-regression baseline + live-debug orchestration. Foundation for Wave-Jθ MCP tools."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D233 (W-Jι) — bug-fix iteration-loop foundation.
+# § Spec : `_drafts/phase_j/wave_ji_iteration_loop_docs.md` (1631 LOC).
+#
+# § Dependencies : the diagnostic-infra crates merged through Wave-Jζ are real
+# deps below. Upstream stubs (McpSessionStub / EngineState / OmegaSnapshot /
+# CreatureSnapshot) are CRATE-LOCAL stub-types that swap to real impls when
+# cssl-mcp-server (S2-A2 D229) + cssl-substrate-omega-field upstream lands —
+# integration-points are documented inline as `// § INTEGRATION-POINT D233/<id>`.
+
+[dependencies]
+blake3              = { workspace = true }
+serde               = { workspace = true }
+serde_json          = { workspace = true }
+thiserror           = { workspace = true }
+cssl-error          = { path = "../cssl-error" }
+cssl-log            = { path = "../cssl-log" }
+cssl-metrics        = { path = "../cssl-metrics" }
+cssl-spec-coverage  = { path = "../cssl-spec-coverage" }
+cssl-inspect        = { path = "../cssl-inspect" }
+cssl-hot-reload     = { path = "../cssl-hot-reload" }
+cssl-tweak          = { path = "../cssl-tweak" }
+cssl-replay-validator = { path = "../cssl-replay-validator" }
+
+[lints]
+workspace = true

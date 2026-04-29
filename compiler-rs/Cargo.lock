@@ -760,6 +760,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-iter-loop"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-error",
+ "cssl-hot-reload",
+ "cssl-inspect",
+ "cssl-log",
+ "cssl-metrics",
+ "cssl-replay-validator",
+ "cssl-spec-coverage",
+ "cssl-tweak",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-jets"
 version = "0.1.0"
 dependencies = [
@@ -1962,6 +1980,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
+ "serde_derive",
 ]
 
 [[package]]
