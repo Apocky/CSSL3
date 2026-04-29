@@ -8,7 +8,14 @@ license.workspace      = true
 authors.workspace      = true
 
 [dependencies]
-thiserror = { workspace = true }
+thiserror      = { workspace = true }
+# § T11-D62 (S6-E5) : libloading drives the dynamic-load of the L0 ICD loader
+# (`libze_loader.so` / `ze_loader.dll`). This crate does NOT static-link L0 ;
+# absent loader => `LoaderError::NotFound` returned cleanly, no panic.
+libloading     = { workspace = true }
+# § T11-D62 (S6-E5) : sysman R18 samples emit through the cssl-telemetry ring
+# placeholder per the handoff S6-E5 brief (full R18 integration is later slice).
+cssl-telemetry = { path = "../cssl-telemetry" }
 
 [lints]
 workspace = true

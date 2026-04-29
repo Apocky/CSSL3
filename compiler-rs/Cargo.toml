@@ -101,7 +101,14 @@ rspirv        = "0.12"
 spirv-tools   = "0.12"
 # ─ hw/host (T10) ─
 ash = "0.38"
-# level-zero-sys = "0.3"  # T10 : verify-registry-availability
+# § T11-D62 (S6-E5) : level-zero-sys is NOT on crates.io as of toolchain 1.85.0.
+# CSSLv3's L0 host backend rolls its own FFI via libloading (dynamic-load of
+# `libze_loader.so` / `ze_loader.dll`) — matches the §§ 14 BACKEND stage1+
+# "owned FFI (volk-like dispatch)" trajectory and avoids 3rd-party crate-risk.
+# Upper-bound at 0.8.6 : 0.8.7+ requires `dlltool.exe` on Windows MSVC for
+# libstd-targeting which is not present in this environment ; older 0.8.x
+# versions use the Rust-native windows-sys path that compiles cleanly.
+libloading = ">=0.8.0, <0.8.7"
 windows = { version = "0.58", features = ["Win32_Foundation"] }
 wgpu    = "23"
 # T11-D32 : shader validator — WGSL parse + validate. naga version pinned to
