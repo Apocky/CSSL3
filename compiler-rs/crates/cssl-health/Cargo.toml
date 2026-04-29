@@ -1,0 +1,21 @@
+[package]
+name         = "cssl-health"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+authors      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+description  = "CSSLv3 — Per-subsystem health-probe trait + 12 mock probe-impls + worst-case-monoid aggregator. Foundation for MCP cssl_engine_health (Wave-Jθ-4)."
+
+# § T11-D159 (W-Jζ-3) : leaf-trait-crate. ZERO required-deps from CSSLv3
+# workspace : the 12 subsystem-crates (cssl-render-v2, cssl-physics-wave, ...)
+# are NOT depended-on here. Probes are MOCK-impls returning toy state.
+# Real-integration is a follow-up slice (per spec § V.4 Registration : the
+# subsystem-crates impl HealthProbe themselves and #[ctor]-register).
+[dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
