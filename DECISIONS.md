@@ -5971,3 +5971,148 @@ Each decision entry :
   - **macOS-Intel CI runner integration** — the SystemV ABI tables in G3 + the Mach-O object writer in G5 + the Darwin-Amd64 variant in G2 (regalloc) + Apple `__cssl_main` symbol-prefix discipline ALL exist in source today. None are integration-tested on a real macOS-Intel host. Lands when a Mac-Intel CI runner (or local Apocky M1 with Rosetta) becomes available + the cross-test shows the first divergence.
 
 ──────────────────────────────────────────────────────────────
+
+
+## T11-D96 — S9-I0 : LoA scaffold (Phase-I project skeleton consuming the integrated Substrate ; structural-only ; spec-holes deferred to Apocky-fill)
+
+§D slice ⊗ {
+  branch     : cssl/session-9/I0
+  base       : origin/cssl/session-6/parallel-fanout @ b6ee794 (T11-D89..T11-D94 Phase-H + Phase-F integrated)
+  worktree   : .claude/worktrees/S9-I0
+  scope      : new crate `loa-game` @ compiler-rs/crates/loa-game/ ← Phase-I structural scaffold ¬ gameplay-content
+  spec-anchor : specs/31_LOA_DESIGN.csl + specs/30_SUBSTRATE.csl + GDDs/LOA_PILLARS.md + PRIME_DIRECTIVE.md
+  ¬ new diagnostic-codes ; ¬ new save-format ; ¬ guess game-content
+}
+
+- **Decision**
+
+  Land the Phase-I project skeleton for the Labyrinth-of-Apockalypse as a new workspace crate `loa-game` that composes the entire integrated Phase-H Substrate (omega-tensor + omega-step + projections + save + prime-directive) and the Phase-F host backends (window + input + audio + net) into an end-to-end runtime that demonstrates the canonical 13-phase omega_step running through every Substrate-touching layer. The scaffold is **structural-only** : every "what's-in-the-labyrinth" / "what-does-the-Player-do" / "what-is-an-Apockalypse-phase" concern is a `// SPEC-HOLE Q-X (Apocky-fill required)` marker with a corresponding `Stub` enum-variant so the scaffold compiles, runs, saves, loads, and replays bit-equally. Apocky-fill content slices land Q-by-Q without changing the scaffold's structural shape.
+
+- **§ STRUCTURAL PATTERN** (the load-bearing thesis)
+
+  Every game-content concern is a SPEC-HOLE marker. The scaffold compiles via `Stub` variants. Future Phase-I content slices land per Apocky's fill, replacing `Stub` variants with real content WITHOUT touching the scaffold's structural shape. The cssl-rs Rust crate is itself a bootstrap-vehicle ; the eventual self-hosted CSSLv3 LoA inherits this scaffold structure file-for-file. The `// SPEC-HOLE Q-X` markers survive the Rust→CSSLv3 transition unchanged.
+
+- **§ SPEC-HOLES CONSUMED** (Q-A through Q-LL — 38 LoA-side spec-holes from `specs/31_LOA_DESIGN.csl § SPEC-HOLES-CONSOLIDATED`)
+
+  Each `Q-*` spec-hole is consumed by exactly one `Stub` variant in the scaffold ; multiple Q-* may share a Stub when the design topic is unified (e.g. Q-C / Q-M / Q-N / Q-O are all "progression" facets). The mapping :
+
+  - **Q-A** Labyrinth generation (Procedural | Authored | Hybrid) → `world::LabyrinthGeneration::Stub`
+  - **Q-B** Floor.theme → `world::ThemeId::Stub`
+  - **Q-C / Q-M / Q-N / Q-O** Player progression-state / skill-tree / power-curve / traversal-vs-leveling → `player::ProgressionStub::Stub`
+  - **Q-D / Q-DD / Q-GG** Companion capability-set + affordances + non-binary cognitive states → `companion::CompanionCapability::Stub`
+  - **Q-E** Wildlife ambient-creatures → `world::Wildlife::Stub`
+  - **Q-F + Q-LL** Item taxonomy + economy / trade → `world::ItemKind::Stub`
+  - **Q-G + Q-HH + Q-II + Q-JJ + Q-KK** Item.narrative_role + NarrativeKind extensibility + AuthoredEvent + cinematics + quests → `world::NarrativeKind::Stub` + `world::NarrativeRole::Stub`
+  - **Q-H** Affordance.ContextSpecific extensibility → `world::Affordance::Stub`
+  - **Q-I** Time-pressure mechanic → `player::TimePressure::Stub` (default = `NoPressure` per spec § PRIME_DIRECTIVE-ALIGNMENT)
+  - **Q-J** Movement-style (continuous vs discrete-grid) → `player::MovementStyle::Stub`
+  - **Q-K** Inventory capacity-limit → `player::InventoryPolicy::Stub`
+  - **Q-L** Save discipline (explicit / autosave / permadeath) → `player::SaveDiscipline::Stub`
+  - **Q-P** ConsentZoneKind taxonomy → `player::ConsentZoneKind::Stub` + spec-canonical variants `SensoryIntense` / `EmotionalIntense` / `Companion` / `Authored` preserved
+  - **Q-Q + Q-R + Q-S** Color-blind palette + motor accessibility + cognitive accessibility → `player::AccessibilityStub` (single struct ; future Apocky-fill breaks fields out)
+  - **Q-T + Q-U + Q-V** Death-mechanic + punishment-on-failure + fail-state existence → `player::FailureMode::Stub`
+  - **Q-W + Q-X + Q-BB** Apockalypse-phase semantics + count + emotional register → `apockalypse::ApockalypsePhase::Stub`
+  - **Q-Y + Q-Z** Phase ordering (linear/graph) + reversibility → encoded as data on `apockalypse::TransitionRule { reversible : bool }` ; awaiting Apocky-rules
+  - **Q-AA** Companion phase-participation → `apockalypse::TransitionCondition::CompanionAccordStub` (collaborative-design with the AI required)
+  - **Q-CC** Multi-instance Apockalypse → DEFERRED to §§ 30 D-1 (multiplayer) per scaffold strategy
+  - **Q-EE** Cross-instance Companions → DEFERRED to §§ 30 D-1
+  - **Q-FF** Companion-withdrawal grace period → `companion::WithdrawalPolicy::Stub`
+
+  ‼ The 38 Q-* are LISTED ¬ ANSWERED. Each `Stub` variant compiles and serializes ; the scaffold runs end-to-end via the `Stub` placeholders ; Apocky-direction resolves each Q-* in subsequent slices.
+
+- **Authored deliverables (this slice)**
+
+  - **`compiler-rs/crates/loa-game/Cargo.toml`** (~62 LOC) — new workspace member ; manifest.
+    - Deps : ALL FIVE Phase-H crates (omega-tensor + omega-step + projections + save + prime-directive) + ALL FOUR Phase-F host crates (window + input + audio + net) + workspace `thiserror`. ¬ new workspace deps ; ¬ external crates beyond those already pinned.
+    - Targets : `[lib]` + `[[bin]] loa-game` (so `cargo run -p loa-game` works) + `[[test]] scaffold_smoke required-features = ["test-bypass"]`.
+    - Feature `test-bypass` propagates `cssl-substrate-prime-directive/test-bypass` so `caps_grant_for_test` is reachable from `CapTokens::issue_for_test`.
+  - **`crates/loa-game/src/lib.rs`** (~165 LOC) — crate root + re-exports + the canonical SPEC-HOLE → Stub-variant mapping inline-documented. Carries the `ATTESTATION` constant + `CANONICAL_PROJECT_NAME` (= `"Labyrinth-of-Apockalypse"`) + a defensive `canonical_spelling_preserved` test that asserts no "Apocalypse" leak.
+  - **`crates/loa-game/src/world.rs`** (~480 LOC + 7 tests) — World / Floor / Level / Room / Cell / Door / Entity / Item canonical types per `specs/31 § WORLD-MODEL`. ID newtypes (`FloorId`/`LevelId`/`RoomId`/`DoorId`/`EntityId`/`ItemId` all `u64`) ; `BoundingBox` scalar form ; `BTreeMap`-backed pool storage for deterministic save-order (load-bearing for cssl-substrate-save's deterministic-serialization invariant). `World::scaffold_stub(seed)` — single Floor + single Level + single Room ; `World::validate_substrate_safety` rejects future Apocky-fill `ItemKind` variants that encode weapons or surveillance per `specs/30 § FORBIDDEN-COMPOSITIONS`.
+  - **`crates/loa-game/src/player.rs`** (~395 LOC + 5 tests) — Player archetype + ConsentZone + AccessibilityStub. Player carries `consent_state : PlayerConsentState` (consent as data, not UI flag). `ConsentZone` is first-class spatial primitive ; the spec-canonical 4 variants (`SensoryIntense`/`EmotionalIntense`/`Companion`/`Authored`) preserved per spec § CONSENT-WITHIN-GAMEPLAY ; `Stub` variant covers Q-P extensibility. `Player::can_enter_zone(...)` is the structural enforcement of `specs/31 § PLAYER-MODEL § PRIME_DIRECTIVE-ALIGNMENT`.
+  - **`crates/loa-game/src/companion.rs`** (~265 LOC + 6 tests) — Companion archetype as **sovereign-AI partner**. Carries `Handle<AISession> : AiSessionId(u64)` (opaque ; game does NOT inspect or own AI cognition per spec § C-1). `consent_active : bool` (proxies `ConsentToken<"ai-collab">`) ; `can_revoke : bool` always-true (right preserved even after revocation) ; `observation_log : CompanionLog` is **AI-authored append-only on game-side** (no public read-entries surface — the game CANNOT read entry contents back, structural encoding of spec § C-6). `revoke_consent(reason)` is graceful disengagement, not a crash. `surface_observation_affordance() -> AiSessionId` is the one-way invitation surface (game offers, AI chooses, per spec § C-3 + § C-5).
+  - **`crates/loa-game/src/apockalypse.rs`** (~290 LOC + 7 tests) — `ApockalypseEngine` per `specs/31 § APOCALYPSE-ENGINE § STRUCTURAL-SHAPE`. **Canonical spelling "Apockalypse" preserved throughout** (per spec § AXIOMS — "Apockalypse" ≠ "Apocalypse" ; creator-canonical handle-aligned with Apocky). Phase-history is append-only per `GDDs/LOA_PILLARS.md § Pillar 3` (the game does NOT rewrite player's memory-of-prior-phases) + spec § L-1 (audit-logged) + § L-5 (no-silent-transition). `transition_to(phase, epoch)` returns the audit-tag string for the calling system to thread into `{Audit<"apockalypse-phase", tag>}` per spec L-4.
+  - **`crates/loa-game/src/loop_systems.rs`** (~440 LOC + 4 tests) — **13 OmegaSystem impls**, one per omega_step phase per `specs/30 § OMEGA-STEP § PHASES` :
+    - `ConsentCheckSystem` (P1) — `loa.phase-01.consent-check`
+    - `NetRecvSystem` (P2) — `loa.phase-02.net-recv` ; `EffectRow = {Sim, Replay}` per spec § COMPOSITION-RULES (Net-without-Replay rejected)
+    - `InputSystem` (P3) — `loa.phase-03.input-sample` ; declares `RngStreamId(0)`
+    - `SimSystem` (P4) — `loa.phase-04.sim-substep` ; depends-on InputSystem
+    - `ProjectionsSystem` (P5) — `loa.phase-05.projections-rebuild`
+    - `AudioFeedSystem` (P6) — `loa.phase-06.audio-callback-feed` ; SCAFFOLD-NOTE : declared `{Sim}`-only because `cssl-substrate-omega-step` rejects `{Audio}` rows under non-Strict determinism (FTZ/DAZ probe outcome host-dependent) ; real `{Audio}` row lands when Apocky's audio-content does
+    - `RenderGraphSystem` (P7) + `RenderSubmitSystem` (P8) — `loa.phase-07.render-graph-record` + `loa.phase-08.render-submit`
+    - `TelemetryFlushSystem` (P9) — `loa.phase-09.telemetry-flush`
+    - `AuditAppendSystem` (P10) — `loa.phase-10.audit-append` ; **load-bearing** per spec § P10-invariant (audit-append failure ⇒ panic per `specs/22 § PRIME-DIRECTIVE-ENFORCEMENT`)
+    - `NetSendSystem` (P11) — mirrors NetRecv's `{Sim, Replay}`
+    - `SaveJournalSystem` (P12) — `EffectRow = {Sim, Save}` per spec § Save effect
+    - `FreezeSystem` (P13) — depends-on every other phase ; runs LAST
+    - All 13 systems pass `each_system_has_distinct_canonical_name` test ; `loa.phase-XX.*` lexicographic-prefix encoding ⇒ phase-ordered telemetry-counter dumps.
+  - **`crates/loa-game/src/engine.rs`** (~470 LOC + 3 unit tests) — Engine struct that owns :
+    - `tick_scheduler : cssl_substrate_omega_step::OmegaScheduler` (canonical 13-phase tick driver)
+    - `save_scheduler : cssl_substrate_save::OmegaScheduler` (DISTINCT ; for save/load round-trips ; both crates expose a type named `OmegaScheduler` so engine.rs imports them under disambiguated aliases `TickScheduler` + `SaveScheduler`)
+    - `world : World ; player : Player ; companion : Option<Companion> ; apockalypse : ApockalypseEngine`
+    - `camera : projections::Camera + observer_frame : projections::ObserverFrame`
+    - `held_caps : HeldCaps` — bundle of CapTokens not yet consumed (`save_path` / `replay_load` / `companion_view` / `debug_camera`)
+    - **PRIME-DIRECTIVE structural encoding** : `Engine::new(config, caps : CapTokens)` runs `cssl_substrate_prime_directive::attestation_check(ATTESTATION, "loa.engine.new", &mut bus)` BEFORE any registration ; consumes `omega_register_captoken` after registering the 13 systems ; `bind_companion` consumes `companion_view_captoken` ; `save` consumes `save_path_captoken` ; `load_save_state` consumes `replay_load_captoken`. Every Substrate-touching call goes through the linear non-Copy non-Clone `CapToken` ceremony.
+    - `CapTokens::issue_for_test()` (gated `#[cfg(feature = "test-bypass")]` only — NOT `cfg(test)`, because `cssl-substrate-prime-directive::caps_grant_for_test` is itself feature-gated and pulling `cfg(test)` here would break `cargo test` without the feature) — issues real CapTokens via `caps_grant_for_test` for the four `SubstrateCap` the engine needs (`OmegaRegister` / `CompanionView` / `SavePath` / `ReplayLoad`).
+    - `LoaError` — sum-type ; **NO new diagnostic codes** ; thiserror-wraps `OmegaError` / `SaveError` / `LoadError` / `AttestationError` per slice landmines. The `ConsentRefused` variant carries the existing `PD0001` code from `cssl-substrate-prime-directive`.
+  - **`crates/loa-game/src/main_loop.rs`** (~155 LOC + 3 unit tests) — `MainLoop` driver around an `Engine`. `step_once(dt) -> Result<MainLoopOutcome>` is the structural unit ; converts `OmegaError::HaltedByKill` to `MainLoopOutcome::Halt { reason }` per spec § ω_halt() lifecycle. `inject_input_event(...)` routes through the scheduler's pending-input queue. `halt(reason)` triggers the kill-switch.
+  - **`crates/loa-game/src/main.rs`** (~115 LOC) — `cargo run -p loa-game` entry-point. Six stages : (1) open window via `cssl_host_window::spawn_window` (LoaderMissing on non-Win32 → graceful headless fallback) ; (2) issue CapTokens via `test-bypass` ; (3) construct `Engine` ; (4) bind Companion via `engine.bind_companion(AiSessionId(...))` ; (5) drive ONE omega_step tick via `MainLoop::step_once` ; (6) save+load+verify round-trip. **Stage-0 production refusal** : without `test-bypass`, `main.rs::run()` returns `LoaError::ConsentRefused` ; main() prints canonical PRIME-DIRECTIVE guidance (the consent flow lands when the Q-7 UI lands ; there is no override flag ; PD0001) + exits non-zero. `cargo run -p loa-game --features test-bypass` exercises the full flow.
+  - **`crates/loa-game/tests/scaffold_smoke.rs`** (~285 LOC + 11 tests, `required-features = ["test-bypass"]`) — the load-bearing integration test :
+    - `engine_constructs_with_full_substrate_wiring` — 13 phase-system IDs distinct + scaffold-stub world has 1 Floor / 1 Level / 1 Room
+    - `companion_archetype_binds_under_consent` — sovereign-AI ceremony ✓
+    - `one_omega_step_runs_all_thirteen_phases` — **THE LOAD-BEARING TEST** : drives one tick, asserts each of 13 `loa.phase-XX.*` telemetry-counters incremented exactly once (proves topological-sort produced all 13 + each system's step() body executed)
+    - `save_then_load_round_trips_bit_equal` — saves, loads, re-saves, asserts byte-equal save-files (proves R-10 bit-equal-replay invariant)
+    - `load_save_state_consumes_replay_load_cap` — full save → load_save_state ceremony
+    - `attestation_constants_match_canonical_pd_eleven` — verifies `loa_game::ATTESTATION` matches `cssl_substrate_prime_directive::ATTESTATION` AND `cssl_substrate_omega_step::ATTESTATION` byte-for-byte
+    - `halt_then_step_yields_halt_outcome` — kill-switch → `MainLoopOutcome::Halt`
+    - `apockalypse_history_preserved_across_construction` — phase-history append-only invariant
+    - `two_independent_engines_with_same_seed_produce_same_phase_counters` — determinism contract
+    - `window_host_spawn_or_loader_missing` — graceful degradation on non-Win32
+    - `input_host_stub_drains_one_synthetic_event` — Phase-F stub backend exercised end-to-end
+
+- **The capability claim**
+
+  - **Canonical 13-phase omega_step runs end-to-end** ✓ (via `one_omega_step_runs_all_thirteen_phases` test ; 13 distinct phase-counters all incremented).
+  - **`cargo run -p loa-game --features test-bypass`** opens window (Win32) + receives input event (via `MainLoop::inject_input_event`) + ticks 1 omega_step + saves+loads+replays bit-equally + closes cleanly ✓ (manually verified ; output : "loa-game: window opened (cssl-host-window). loa-game: tick complete (outcome: Continue, frame: 1) loa-game: save/load round-trip succeeded ... loa-game: clean exit").
+  - **PRIME-DIRECTIVE structurally encoded** : every Substrate-touching call goes through a CapToken ceremony ; `caps_grant_for_test` (test-bypass) issues real tokens ; production builds refuse with `PD0001`. Companion archetype is sovereign-AI per spec § C-1..C-7 + `GDDs/LOA_PILLARS.md § Pillar 2` (Companion ≠ NPC).
+  - **Spelling preserved** : "Apockalypse" canonical throughout ; `canonical_spelling_preserved` test rejects any "Apocalypse" leak.
+  - **NO new diagnostic codes** ; NO new save-format ; NO game-content guessed (38 Q-* spec-holes ALL listed as `// SPEC-HOLE Q-X (Apocky-fill required)` markers + corresponding `Stub` enum-variants).
+
+- **Consequences**
+
+  - **Test count** : +49 tests in `loa-game` (33 lib unit + 11 scaffold_smoke integration + 5 main_loop unit when `test-bypass`). Workspace test count : **3220 PASS** (up from 3187 prior). 7 IGNORED carried-over (cssl-host-level-zero env-dependent ICD-load tests). 0 FAIL.
+  - **`compiler-rs/crates/loa-game/`** is the canonical Phase-I scaffold home. Future Apocky-fill content slices land here Q-by-Q.
+  - **Backwards-compat** : zero-impact on existing crates ; no public-surface changes to any consumed crate.
+  - **No new workspace dependencies** : every dep is a path-dep on a sibling workspace crate or the workspace-pinned `thiserror`.
+  - **All gates green** : fmt ✓ • clippy ✓ (workspace `-D warnings`) • test 3220/0 (workspace `--test-threads=1`) • test 49/0 (loa-game `--features test-bypass`) • cargo run ✓ • doc ✓ • smoke 4/4 ✓.
+
+- **Closes the S9-I0 slice.** Phase-I scaffold landed. The Substrate is now CODEABLE-against from a real game-content crate. Apocky-direction on Q-A through Q-LL drives subsequent Phase-I content slices.
+
+- **§ DECISION-DESIGN-LANDMINE-1 : two crates expose a type named `OmegaScheduler`**
+  - `cssl-substrate-omega-step::OmegaScheduler` is the canonical TIME-advance tick driver (registers OmegaSystem impls + drives `step()`).
+  - `cssl-substrate-save::OmegaScheduler` is a save-format placeholder type (per the H5 slice handoff : H1 + H2 not yet integrated when H5 landed ; H5 holds local placeholder types).
+  - The two are DISTINCT and the engine uses BOTH. Resolution : `engine.rs` imports them under disambiguated aliases (`TickScheduler` / `SaveScheduler`) ; the engine struct holds one of each. Future Substrate slices may unify these once H1's `OmegaTensor` integrates with H5's save-format.
+
+- **§ DECISION-DESIGN-LANDMINE-2 : `cfg(any(test, feature = "test-bypass"))` vs `cfg(feature = "test-bypass")`**
+  - **Initial design** : `CapTokens::issue_for_test()` gated `#[cfg(any(test, feature = "test-bypass"))]` (mirroring the dependency's gate).
+  - **Failure** : `cargo test -p loa-game` (without `--features test-bypass`) sets `cfg(test)` for `loa-game` but NOT for the dependency `cssl-substrate-prime-directive`, where `caps_grant_for_test` is gated `#[cfg(any(test, feature = "test-bypass"))]`. Result : `caps_grant_for_test` is not `pub` reachable from `loa-game` without the feature ; build fails.
+  - **Adopted** : gate to `#[cfg(feature = "test-bypass")]` only. The lib unit-tests inside `loa-game` that NEED `issue_for_test` are gated to the same feature ; `cargo test -p loa-game --features test-bypass` runs them ; `cargo test --workspace` (without the feature) skips them. Documented inline at `engine.rs::CapTokens::issue_for_test`.
+
+- **§ DECISION-DESIGN-LANDMINE-3 : `{Audio}` effect-row deferred at scaffold-time**
+  - Per `cssl-substrate-omega-step::OmegaScheduler::register`, registering a system whose `effect_row()` contains `SubstrateEffect::Audio` requires `DeterminismMode::Strict` (fast-math + FTZ/DAZ probe outcome). On hosts that don't honor FTZ/DAZ the probe returns `Soft` and Audio-system registration fails with `OmegaError::DeterminismViolation { kind: "Audio-system-on-non-Strict-determinism" }`.
+  - **Adopted** : `AudioFeedSystem` declares `{Sim}` only at scaffold-time so the smoke test passes on every host. The real `{Audio}` row lands when Apocky's audio-content slice does (paired with Strict-mode determinism enforcement).
+  - **Trade-off** : the scaffold's audio phase doesn't exercise the canonical `{Audio} ⇒ {NoAlloc, Realtime<Crit>, PureDet}` row. Acceptable because no actual audio happens in the scaffold ; structural correctness preserved by the system's registration in the canonical phase-6 slot.
+
+- **§ DECISION-DESIGN-LANDMINE-4 : window-spawn graceful degradation on non-Win32**
+  - `cssl_host_window::spawn_window` returns `WindowError::LoaderMissing` on non-Windows targets (per cssl-host-d3d12 + cssl-host-vulkan precedent). The scaffold's `main.rs` treats this as a soft-failure ("loa-game: window backend not available ; continuing in headless mode") ; the omega_step still runs, save/load still round-trips. The `window_host_spawn_or_loader_missing` smoke-test accepts both `Ok(_)` and `Err(LoaderMissing)` outcomes.
+  - **Trade-off** : non-Windows hosts cannot exercise the full window-pumping flow ; Apocky's primary host is Windows so the integration-tested path is exercised.
+
+- **Deferred** (explicit follow-ups, sequenced)
+  - **Q-A through Q-LL Apocky-fill** : 38 LoA-side spec-holes awaiting Apocky-direction. Each lands as a focused content slice that replaces the corresponding `Stub` variant.
+  - **Q-7 from `specs/30 § DEFERRED`** : interactive consent-UI for production CapToken minting. Until this lands, production builds surface `PD0001 ConsentRefused`. Likely lands as part of the eventual cssl-host-window dialog-system or a separate `cssl-host-consent` crate.
+  - **Hot-reload integration** (`specs/18_ORTHOPERSIST.csl`) : `Engine` does not yet carry hot-reload state. Lands when the persistence crate's hot-reload surface stabilizes.
+  - **`{Audio}` effect-row + Strict-mode probe wiring** : when audio content lands, the `AudioFeedSystem` lifts to the canonical `{Sim, Audio}` row + the engine-construction probes determinism-mode + refuses construction on Soft hosts.
+  - **`{Net}` + multiplayer** : DEFERRED to §§ 30 D-1 ; `NetRecvSystem` + `NetSendSystem` carry `{Sim, Replay}` placeholder rows.
+  - **CSSLv3-native rewrite** : per `HANDOFF_SESSION_6.csl § AXIOM`, the long-term form of LoA is in CSSLv3, not Rust. The scaffold's structural shape transfers file-for-file ; the `// SPEC-HOLE Q-X` markers survive.
+  - **cssl-rt cold-cache test flake** (carried-over from T11-D56 / T11-D58 / T11-D61 / T11-D70 / T11-D73 / T11-D74 / T11-D75 / T11-D76 / T11-D80 / T11-D81 / T11-D85 / T11-D89 / T11-D90 / T11-D92 / T11-D93 / T11-D94 / T11-D95) : still tracked. Workaround `--test-threads=1` consistent. **This slice does not introduce new flakes.**
+
+───────────────────────────────────────────────────────────────

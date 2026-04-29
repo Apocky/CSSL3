@@ -1193,6 +1193,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
+name = "loa-game"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-audio",
+ "cssl-host-input",
+ "cssl-host-net",
+ "cssl-host-window",
+ "cssl-substrate-omega-step",
+ "cssl-substrate-omega-tensor",
+ "cssl-substrate-prime-directive",
+ "cssl-substrate-projections",
+ "cssl-substrate-save",
+ "thiserror",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
