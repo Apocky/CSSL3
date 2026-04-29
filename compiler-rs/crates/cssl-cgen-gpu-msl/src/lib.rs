@@ -30,11 +30,13 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod body;
 pub mod emit;
 pub mod msl;
 pub mod spirv_cross;
 pub mod target;
 
+pub use body::{emit_body, has_body, BodyError};
 pub use emit::{emit_msl, MslError};
 pub use msl::{MslModule, MslStatement};
 pub use spirv_cross::{SpirvCrossInvocation, SpirvCrossInvoker, SpirvCrossOutcome};
