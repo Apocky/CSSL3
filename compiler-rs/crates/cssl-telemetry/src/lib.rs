@@ -10,14 +10,22 @@
 //!   - [`TelemetrySlot`]        — 64-byte ring-slot record.
 //!   - [`TelemetryRing`]        — SPSC lock-free ring-buffer with atomic head/tail.
 //!   - [`AuditEntry`]           — BLAKE3 content-hash + Ed25519-signature record
-//!     (cryptographic primitives stubbed ; full impl at T22).
+//!     (real `blake3` + `ed25519-dalek` crypto wired @ T11-D131).
 //!   - [`AuditChain`]           — append-only signed chain w/ genesis-hash anchor.
 //!   - [`Exporter`] trait       — OTLP / ChromeTrace / JSON exporter surface.
 //!   - [`ChromeTraceExporter`]  — stage-0 JSON-object-per-span writer.
 //!   - [`TelemetrySchema`]      — schema metadata for embedded fat-binary section.
 //!
-//! § T11-phase-2 DEFERRED
-//!   - `blake3` / `ed25519-dalek` integration (currently stubbed hashes).
+//! § T11-D131 (W3β-06) STATUS
+//!   - `blake3` / `ed25519-dalek` integration : LIVE (production-grade crypto).
+//!     [`ContentHash::hash`] uses real BLAKE3 ; [`Signature::sign`] uses real
+//!     Ed25519. Stub variants ([`ContentHash::stub_hash`] / [`Signature::stub_sign`])
+//!     retained as `#[doc(hidden)]` test-utilities — call-sites in production
+//!     code SHOULD construct chains via [`AuditChain::with_signing_key`].
+//!   - [`verify_detached`] free-function exposed for third-party auditors who
+//!     hold only the 32-byte verifying-key.
+//!
+//! § T11-phase-2 DEFERRED (residual, non-crypto)
 //!   - Real OTLP gRPC + HTTP exporter (needs `prost` / `reqwest`).
 //!   - Cross-thread ring-producer (stage-0 is single-thread SPSC only).
 //!   - Level-Zero sampling-thread integration (wires via `cssl-host-level-zero`

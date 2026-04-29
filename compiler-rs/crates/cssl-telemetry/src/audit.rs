@@ -2,23 +2,35 @@
 //!
 //! § SPEC : `specs/22_TELEMETRY.csl` + `specs/11_IFC.csl` + R18 audit-chain invariant.
 //!
-//! § T11-phase-2a CRYPTO UPGRADE
-//!   Real `blake3::hash` + `ed25519-dalek::SigningKey::sign` replace the stage-0
-//!   stub primitives. The stubs are retained as additional methods
-//!   ([`ContentHash::stub_hash`] / [`Signature::stub_sign`]) so existing tests
-//!   that pin specific byte-patterns continue to pass unchanged — phase-2a is
-//!   a pure additive swap, no public-API churn.
+//! § T11-D131 (W3β-06) CRYPTO INTEGRATION — LIVE
+//!   Real `blake3::hash` + `ed25519-dalek::SigningKey::sign` are the production
+//!   primitives. Stub variants ([`ContentHash::stub_hash`] /
+//!   [`Signature::stub_sign`]) are retained as `#[doc(hidden)]` deterministic
+//!   test-utilities ; production-code SHOULD attach a real signing-key via
+//!   [`AuditChain::with_signing_key`] (or seed-deterministic
+//!   [`AuditChain::production_with_seed`]).
+//!
+//! § FORWARD-COMPAT
+//!   The signing-key wire-format ([`SigningKey::verifying_key_bytes`] →
+//!   `[u8; 32]`, [`Signature`] → `[u8; 64]`) is unchanged from the stage-0
+//!   stub-API ; downstream serializers + on-disk audit-stores remain
+//!   binary-compatible.
 //!
 //! § USAGE
 //!
 //! - **Hashing** : [`ContentHash::hash(bytes)`] computes a real BLAKE3 digest.
-//! - **Signing** : [`SigningKey::generate`] (random) or [`SigningKey::from_seed`]
-//!   (deterministic). [`Signature::sign(&SigningKey, bytes)`] produces a real
-//!   Ed25519 signature. [`SigningKey::verify(bytes, &Signature)`] verifies.
+//! - **Signing** : [`SigningKey::generate`] (OS-random) or
+//!   [`SigningKey::from_seed`] (deterministic). [`Signature::sign(&SigningKey, bytes)`]
+//!   produces a real Ed25519 signature ; [`SigningKey::verify(bytes, &Signature)`]
+//!   verifies under the key-pair's verifying-key half.
+//! - **Detached verify** : [`verify_detached`] verifies a signature against a
+//!   raw 32-byte verifying-key (for downstream auditors who never hold the
+//!   secret half).
 //! - **Chain integration** : [`AuditChain::with_signing_key`] attaches a key ;
-//!   subsequent `append` calls produce real signatures. Without a key, the
-//!   chain falls back to stub-signatures (useful for unit-tests + CI without
-//!   a long-term key-store).
+//!   subsequent `append` calls produce real Ed25519 signatures. Without a key,
+//!   the chain falls back to a deterministic stub-signature — appropriate for
+//!   unit-tests and CI environments without a long-term key-store, NEVER for
+//!   production. Production code MUST attach a key.
 
 use ed25519_dalek::{Signer as _, SigningKey as DalekSigningKey, Verifier as _};
 use thiserror::Error;
@@ -46,7 +58,13 @@ impl ContentHash {
     /// **Deterministic non-crypto** stub hasher : XOR-fold bytes into a 32-byte
     /// output. Retained for unit-tests that pin specific patterns ; NOT
     /// cryptographically strong. Use [`hash`][Self::hash] for production.
+    ///
+    /// § This API is `#[doc(hidden)]` — call-sites in production-code MUST use
+    /// [`hash`][Self::hash]. The stub remains public-but-hidden so existing
+    /// tests + the in-tree no-key fallback path keep working ; downstream
+    /// crates SHOULD NEVER reference it.
     #[must_use]
+    #[doc(hidden)]
     pub fn stub_hash(bytes: &[u8]) -> Self {
         let mut out = [0u8; 32];
         for (i, b) in bytes.iter().enumerate() {
@@ -87,7 +105,13 @@ impl Signature {
     /// **Deterministic non-crypto** stub signer : hash the contents twice into a
     /// 64-byte pattern. Retained for unit-tests ; NOT cryptographically valid.
     /// Use [`sign`][Self::sign] for production.
+    ///
+    /// § This API is `#[doc(hidden)]` — call-sites in production-code MUST use
+    /// [`sign`][Self::sign]. The stub remains public-but-hidden so existing
+    /// tests + the in-tree no-key fallback path keep working ; downstream
+    /// crates SHOULD NEVER reference it.
     #[must_use]
+    #[doc(hidden)]
     pub fn stub_sign(message: &[u8]) -> Self {
         let a = ContentHash::stub_hash(message).0;
         let mut doubled = Vec::with_capacity(64);
@@ -239,6 +263,25 @@ impl AuditChain {
             entries: Vec::new(),
             signing_key: Some(key),
         }
+    }
+
+    /// New empty chain with a deterministic Ed25519 signing-key derived from
+    /// `seed`. Convenience constructor that combines [`SigningKey::from_seed`]
+    /// with [`AuditChain::with_signing_key`] ; useful for R16
+    /// reproducible-build attestation paths where the seed is itself an
+    /// attested constant.
+    #[must_use]
+    pub fn production_with_seed(seed: [u8; 32]) -> Self {
+        Self::with_signing_key(SigningKey::from_seed(seed))
+    }
+
+    /// New empty chain with an OS-random Ed25519 signing-key. Convenience
+    /// constructor for production audit-stores that do not need
+    /// reproducibility across processes (e.g., a long-running daemon's local
+    /// audit-bus).
+    #[must_use]
+    pub fn production_random() -> Self {
+        Self::with_signing_key(SigningKey::generate())
     }
 
     /// Return the attached signing-key, if any.
@@ -569,5 +612,273 @@ mod tests {
         let key = SigningKey::from_seed([5u8; 32]);
         let c = AuditChain::with_signing_key(key);
         assert!(c.signing_key().is_some());
+    }
+
+    // ── § T11-D131 (W3β-06) — production-crypto edge-case tests ──────────────────
+    // Net-new coverage : tamper-detection, verify-detached, real-blake3 determinism,
+    // key-from-seed reproducibility, mid-chain corruption, multi-message signatures,
+    // production-constructor wiring, and verifying-key handoff to detached auditors.
+
+    use super::{verify_detached, AuditEntry};
+
+    #[test]
+    fn real_blake3_determinism_across_repeated_calls() {
+        // BLAKE3 is a deterministic CRH ; ten back-to-back calls on the same
+        // payload must all return byte-identical digests.
+        let payload = b"audit-replay-determinism-vector";
+        let first = ContentHash::hash(payload);
+        for _ in 0..10 {
+            assert_eq!(ContentHash::hash(payload), first);
+        }
+    }
+
+    #[test]
+    fn real_blake3_avalanche_single_bit_flip() {
+        // Avalanche : flipping a single bit of input must change ≥ ~half the
+        // output bits (very weak bound — even 1-bit difference is enough to
+        // catch a stub mistakenly used in production).
+        let h0 = ContentHash::hash(b"audit-avalanche-vector").0;
+        let h1 = ContentHash::hash(b"audit-avalanche-Vector").0; // 1-bit flip
+        let differing_bits: u32 = h0
+            .iter()
+            .zip(h1.iter())
+            .map(|(a, b)| (a ^ b).count_ones())
+            .sum();
+        // BLAKE3 typically yields ~128 differing bits on a 1-bit flip ; assert
+        // a very loose lower bound to remain robust across versions.
+        assert!(
+            differing_bits >= 32,
+            "expected ≥32 differing bits, got {differing_bits}"
+        );
+    }
+
+    #[test]
+    fn real_blake3_empty_input_well_defined() {
+        // Empty-input is a defined BLAKE3 case — must not panic and must be
+        // reproducible.
+        let h0 = ContentHash::hash(b"");
+        let h1 = ContentHash::hash(b"");
+        assert_eq!(h0, h1);
+        assert_ne!(h0, ContentHash::zero());
+    }
+
+    #[test]
+    fn ed25519_tamper_detect_message_byte_flip() {
+        // Sign a payload, flip a single byte of the message at verify-time —
+        // the signature must reject.
+        let key = SigningKey::from_seed([13u8; 32]);
+        let mut msg = b"audit-payload-original".to_vec();
+        let sig = Signature::sign(&key, &msg);
+        msg[0] ^= 0x01;
+        let result = key.verify(&msg, &sig);
+        assert!(matches!(result, Err(AuditError::SignatureInvalid)));
+    }
+
+    #[test]
+    fn ed25519_tamper_detect_signature_byte_flip() {
+        // Tamper with the signature itself — must reject.
+        let key = SigningKey::from_seed([13u8; 32]);
+        let msg = b"audit-payload";
+        let mut sig = Signature::sign(&key, msg);
+        sig.0[0] ^= 0x80;
+        let result = key.verify(msg, &sig);
+        assert!(matches!(result, Err(AuditError::SignatureInvalid)));
+    }
+
+    #[test]
+    fn ed25519_tamper_detect_wrong_key() {
+        // Sign under one key, verify under a different key — must reject.
+        let signer = SigningKey::from_seed([1u8; 32]);
+        let other = SigningKey::from_seed([2u8; 32]);
+        let msg = b"audit-payload";
+        let sig = Signature::sign(&signer, msg);
+        let result = other.verify(msg, &sig);
+        assert!(matches!(result, Err(AuditError::SignatureInvalid)));
+    }
+
+    #[test]
+    fn chain_verify_after_mid_chain_message_tamper() {
+        // Tamper with the message at index 2 in a 5-entry signed chain.
+        let key = SigningKey::from_seed([21u8; 32]);
+        let mut c = AuditChain::with_signing_key(key);
+        for i in 0..5 {
+            c.append("evt", format!("entry-{i}"), 1_000 + i);
+        }
+        // Tampering with the message at idx 2 changes its content_hash @
+        // re-derive-time, but the entry's stored content_hash + signature still
+        // refer to the original message. Verification must catch the
+        // signature mismatch (signature does not cover tampered message).
+        c.entries[2].message = "TAMPERED".to_string();
+        let err = c.verify_chain().unwrap_err();
+        assert!(matches!(err, AuditError::SignatureInvalid));
+    }
+
+    #[test]
+    fn chain_verify_after_content_hash_tamper() {
+        // Directly overwrite a signed entry's content_hash.
+        let key = SigningKey::from_seed([22u8; 32]);
+        let mut c = AuditChain::with_signing_key(key);
+        c.append("evt-a", "first-message", 100);
+        c.append("evt-b", "second-message", 200);
+        c.entries[0].content_hash = ContentHash([0xAAu8; 32]);
+        let err = c.verify_chain().unwrap_err();
+        // First-failure: chain-link broke (entry 1's prev_hash no-longer matches
+        // entry 0's tampered content_hash) OR signature broke. Either is acceptable.
+        assert!(matches!(
+            err,
+            AuditError::ChainBreak { .. } | AuditError::SignatureInvalid
+        ));
+    }
+
+    #[test]
+    fn chain_verify_after_timestamp_tamper() {
+        // Tampering with the timestamp invalidates the signature (timestamp
+        // is part of the sign-input).
+        let key = SigningKey::from_seed([23u8; 32]);
+        let mut c = AuditChain::with_signing_key(key);
+        c.append("evt", "msg", 1_000);
+        c.entries[0].timestamp_s = 9_999;
+        let err = c.verify_chain().unwrap_err();
+        assert!(matches!(err, AuditError::SignatureInvalid));
+    }
+
+    #[test]
+    fn signing_key_from_seed_round_trip_signature() {
+        // Two keys from the same seed produce identical signatures over the
+        // same message (Ed25519 deterministic-signing property).
+        let k1 = SigningKey::from_seed([55u8; 32]);
+        let k2 = SigningKey::from_seed([55u8; 32]);
+        let msg = b"determinism-vector";
+        let s1 = Signature::sign(&k1, msg);
+        let s2 = Signature::sign(&k2, msg);
+        assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn verify_detached_round_trip() {
+        // Sign with the secret half, verify under the 32-byte public half via
+        // the detached free-function. This is the path third-party auditors use.
+        let key = SigningKey::from_seed([77u8; 32]);
+        let vk = key.verifying_key_bytes();
+        let msg = b"detached-audit-vector";
+        let sig = Signature::sign(&key, msg);
+        verify_detached(&vk, msg, &sig).expect("detached verify must succeed");
+    }
+
+    #[test]
+    fn verify_detached_rejects_tampered_message() {
+        let key = SigningKey::from_seed([78u8; 32]);
+        let vk = key.verifying_key_bytes();
+        let sig = Signature::sign(&key, b"original-msg");
+        let result = verify_detached(&vk, b"tampered-msg", &sig);
+        assert!(matches!(result, Err(AuditError::SignatureInvalid)));
+    }
+
+    #[test]
+    fn verify_detached_rejects_tampered_verifying_key() {
+        let key = SigningKey::from_seed([79u8; 32]);
+        let mut vk = key.verifying_key_bytes();
+        let msg = b"vk-tamper-vector";
+        let sig = Signature::sign(&key, msg);
+        // Flip a byte of the public-key — verify_detached must reject (either
+        // because the bytes do not decode to a valid curve-point or because
+        // the sig fails to verify under a different key).
+        vk[0] ^= 0xFF;
+        let result = verify_detached(&vk, msg, &sig);
+        assert!(matches!(result, Err(AuditError::SignatureInvalid)));
+    }
+
+    #[test]
+    fn verify_detached_rejects_unrelated_signature() {
+        // Sign a message with one key, then attempt to verify a signature
+        // produced by a different key under the first key's verifying-key.
+        let k1 = SigningKey::from_seed([80u8; 32]);
+        let k2 = SigningKey::from_seed([81u8; 32]);
+        let vk1 = k1.verifying_key_bytes();
+        let msg = b"cross-key-vector";
+        let sig_from_k2 = Signature::sign(&k2, msg);
+        let result = verify_detached(&vk1, msg, &sig_from_k2);
+        assert!(matches!(result, Err(AuditError::SignatureInvalid)));
+    }
+
+    #[test]
+    fn production_with_seed_is_deterministic() {
+        // Two chains from the same seed produce the same verifying-key.
+        let c1 = AuditChain::production_with_seed([42u8; 32]);
+        let c2 = AuditChain::production_with_seed([42u8; 32]);
+        let vk1 = c1.signing_key().unwrap().verifying_key_bytes();
+        let vk2 = c2.signing_key().unwrap().verifying_key_bytes();
+        assert_eq!(vk1, vk2);
+    }
+
+    #[test]
+    fn production_with_seed_produces_real_signed_chain() {
+        let mut c = AuditChain::production_with_seed([88u8; 32]);
+        c.append("attest", "binary-hash=DEADBEEF", 1_700_000_000);
+        c.append("attest", "config-hash=CAFEBABE", 1_700_000_001);
+        c.verify_chain()
+            .expect("seeded production-chain must verify");
+        assert_eq!(c.len(), 2);
+    }
+
+    #[test]
+    fn production_random_yields_unique_keys_per_construction() {
+        let c1 = AuditChain::production_random();
+        let c2 = AuditChain::production_random();
+        let vk1 = c1.signing_key().unwrap().verifying_key_bytes();
+        let vk2 = c2.signing_key().unwrap().verifying_key_bytes();
+        assert_ne!(vk1, vk2);
+    }
+
+    #[test]
+    fn production_random_chain_verifies_after_appends() {
+        let mut c = AuditChain::production_random();
+        for i in 0..7 {
+            c.append("audit", format!("payload-{i}"), 5_000 + i);
+        }
+        c.verify_chain()
+            .expect("OS-random production-chain must verify");
+    }
+
+    #[test]
+    fn detached_verify_handoff_from_signed_chain() {
+        // The full third-party-auditor path : produce a signed chain, hand
+        // off only the verifying-key + a (sign_input, signature) pair, and
+        // check via verify_detached.
+        let mut c = AuditChain::production_with_seed([200u8; 32]);
+        c.append("attest", "report-payload", 10_000);
+        let entry = c.iter().next().unwrap();
+        let sign_input = AuditEntry {
+            seq: entry.seq,
+            timestamp_s: entry.timestamp_s,
+            content_hash: entry.content_hash,
+            prev_hash: entry.prev_hash,
+            signature: Signature::zero(),
+            tag: entry.tag.clone(),
+            message: entry.message.clone(),
+        }
+        .sign_input();
+        let vk = c.signing_key().unwrap().verifying_key_bytes();
+        verify_detached(&vk, &sign_input, &entry.signature)
+            .expect("3rd-party detached verify must succeed");
+    }
+
+    #[test]
+    fn signed_chain_50_entries_resists_random_byte_corruption() {
+        // Long signed chain ; tamper with a random byte in a random entry's
+        // message ; verify_chain must reject. Deterministic pick (no rand-dep
+        // in tests).
+        let mut c = AuditChain::production_with_seed([99u8; 32]);
+        for i in 0..50 {
+            c.append("evt", format!("payload-{i:03}"), 6_000 + i);
+        }
+        c.verify_chain().expect("clean chain must verify");
+        // Tamper @ entry 37, message-byte 4.
+        let bytes = c.entries[37].message.as_bytes();
+        let mut new_bytes = bytes.to_vec();
+        new_bytes[4] ^= 0x10;
+        c.entries[37].message = String::from_utf8(new_bytes).unwrap_or_else(|_| "x".to_string());
+        let err = c.verify_chain().unwrap_err();
+        assert!(matches!(err, AuditError::SignatureInvalid));
     }
 }
