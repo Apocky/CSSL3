@@ -44,6 +44,7 @@ pub mod block;
 pub mod body_lower;
 pub mod drop_inject;
 pub mod func;
+pub mod layout_check;
 pub mod lower;
 pub mod monomorph;
 pub mod op;
@@ -62,6 +63,10 @@ pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{lower_fn_body, lower_fn_body_with_table, BodyLowerCtx};
 pub use drop_inject::{inject_drops_for_module, DropInjectionReport, DropOrder, ScopeDropPlan};
 pub use func::{MirFunc, MirModule};
+pub use layout_check::{
+    assert_struct_align, assert_struct_size, check_layouts, inject_layout_obligations,
+    ComputedLayout, LayoutCode, LayoutDiagnostic, LayoutEntry, LayoutReport,
+};
 pub use lower::{lower_function_signature, lower_module_signatures, LowerCtx};
 pub use monomorph::{
     hir_primitive_type, mangle_enum_specialization_name, mangle_specialization_name,

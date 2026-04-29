@@ -26,7 +26,10 @@ use crate::item::{HirFn, HirItem, HirModule};
 use crate::symbol::Symbol;
 use crate::ty::{HirRefinementKind, HirType, HirTypeKind};
 
-/// Kind of refinement obligation. Stage-0 recognizes two shapes.
+/// Kind of refinement obligation. Stage-0 recognizes the predicate / tag /
+/// Lipschitz / layout shapes ; T11-D126 added [`ObligationKind::Layout`] so
+/// `@layout(...)`-derived size+align predicates flow through the same SMT
+/// queue as `{v : T | P(v)}` predicates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObligationKind {
     /// `{v : T | P(v)}` predicate-form — SMT query is `∀v : T. P(v) → ⊥` (check
@@ -45,6 +48,21 @@ pub enum ObligationKind {
     Lipschitz {
         /// Textual bound expression.
         bound_text: String,
+    },
+    /// `@layout(kind)` derived size + alignment refinement.
+    /// Maps to `{v : T | size_of(v) == size && align_of(v) == align}`.
+    /// Constructed by the `cssl-mir::layout_check` validator + injected into
+    /// the same `ObligationBag` pipeline so the SMT-discharge pass can
+    /// validate layout-invariants alongside predicate-refinements.
+    ///
+    /// § T11-D126 (S11-W3β-01) — feeds `cssl-mir::layout_check`.
+    Layout {
+        /// Canonical layout-kind word (e.g., "std430", "std140").
+        kind_word: String,
+        /// Expected byte-size (`None` if not externally declared).
+        expected_size: Option<u32>,
+        /// Expected byte-alignment.
+        expected_align: u32,
     },
 }
 

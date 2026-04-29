@@ -88,7 +88,10 @@ pub use ad_legality::{
     check_ad_legality, is_pure_diff_primitive, AdLegalityDiagnostic, AdLegalityReport,
 };
 pub use arena::{DefId, HirArena, HirId};
-pub use attr::{HirAttr, HirAttrArg, HirAttrKind};
+pub use attr::{
+    extract_layout_kinds, extract_layout_kinds_with_unknown, HirAttr, HirAttrArg, HirAttrKind,
+    LayoutKind,
+};
 pub use cap_check::{
     check_capabilities, hir_cap_to_semantic, param_subtype_check, top_cap, CapMap,
 };
