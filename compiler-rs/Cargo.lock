@@ -791,6 +791,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-spectral-render"
+version = "0.1.0"
+dependencies = [
+ "cssl-autodiff",
+ "cssl-substrate-kan",
+ "cssl-substrate-projections",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-staging"
 version = "0.1.0"
 dependencies = [

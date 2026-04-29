@@ -1,0 +1,107 @@
+§ T11-D118 ATTESTATION : cssl-spectral-render Stage-6 hyperspectral KAN-BRDF
+══════════════════════════════════════════════════════════════════════════════
+
+§I> SLICE
+  § slice-id : T11-D118
+  § branch   : cssl/session-11/T11-D118-spectral-render
+  § worktree : .claude/worktrees/W4-04
+  § crate    : compiler-rs/crates/cssl-spectral-render
+  § role     : Stage-6 of canonical render-pipeline ; hyperspectral KAN-BRDF
+
+§I> SPEC ANCHORS
+  § Omniverse/07_AESTHETIC/03_SPECTRAL_PATH_TRACING.csl.md  ← hero-MIS + bands
+  § Omniverse/07_AESTHETIC/07_KAN_RUNTIME_SHADING.csl.md    ← KAN dispatch
+  § Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl       ← V.2 path
+  § cssl-substrate-kan/src/kan_material.rs                   ← spectral_brdf<N>
+  § cssl-autodiff/src/jet.rs                                 ← Jet<T,N> AD
+
+§I> SURFACE
+  § band::SpectralBand + BandTable           ← 16-band table : 2 UV + 10 vis + 4 NIR
+  § radiance::SpectralRadiance               ← hero + accompaniment + 16-band view
+  § hero_mis::HeroWavelengthMIS              ← Manuka 4-8-sample MIS sampler
+  § kan_brdf::KanBrdfEvaluator               ← (m_embed, view, light, λ) → 16-band
+  § iridescence::IridescenceModel + Stack    ← thin-film + dispersion (oil/peacock/butterfly)
+  § fluorescence::Fluorescence + Phosphor    ← Stokes-shift excitation→emission
+  § tristimulus::SpectralTristimulus         ← CIE-1931 → sRGB / DCI-P3 / Rec.2020 + ACES-2
+  § csf::CsfPerceptualGate                   ← Mantiuk-2024 contrast gate
+  § cost::PerFragmentCost + CostTier         ← Quest-3 / RTX-50 budget validation
+  § pipeline::SpectralRenderStage            ← Stage-6 entry-point
+
+§I> CONTRACTS
+  § FragmentInput consumed-from D116 SDF-raymarch (Stage-1)
+    ↳ fields : hit_position + normal + view_dir + light_dir + material
+  § displaced_position consumed-from D119 fractal-amplifier (Stage-5)
+    ↳ optional Vec3 ; replaces hit_position when Some
+  § SpectralRadiance produced-for D120/121 (Stage-7 cascade) + Stage-10 tonemap
+  § N! RGB conversion mid-pipeline ⊗ tonemap-only ⊗ 07_AES/03 § II grep-gate
+
+§I> COST
+  § CoopMatrix tier baseline @ 1080p foveated  : 0.63 ms / frame
+  § SIMD-warp tier baseline   @ 1080p foveated : 2.51 ms / frame  (Quest-3 default)
+  § Scalar tier               @ 1080p foveated : 10.07 ms / frame (low-end-only)
+  § Stage-6 budget @ Quest-3                   : ≤ 1.8 ms / frame
+  § rtx50_max config (CoopMatrix + iri + flu)  : 0.71 ms / frame ✓ fits budget
+
+§I> TESTS
+  § unit-tests        : 136 passing
+  § integration-tests : 17 passing
+  § doc-tests         : 0 (no executable doctests in this slice)
+  § total             : 153 passing
+  § coverage : band + radiance + hero-MIS + kan-BRDF + iridescence
+                + fluorescence + tristimulus + CSF + cost + pipeline
+
+§I> LOC
+  § total                 : 4406 LoC (target 3000-4500 ✓)
+  § band.rs               : 319
+  § cost.rs               : 376
+  § csf.rs                : 304
+  § fluorescence.rs       : 333
+  § hero_mis.rs           : 377
+  § iridescence.rs        : 388
+  § kan_brdf.rs           : 487
+  § lib.rs                : 165
+  § pipeline.rs           : 487
+  § radiance.rs           : 479
+  § tristimulus.rs        : 403
+  § integration_stage6.rs : 288
+
+§I> PRIME-DIRECTIVE COMPLIANCE
+  § consent       : ✓ explicit-task-instruction Apocky CSSLv3 task-channel
+  § sovereignty   : ✓ KAN-eval mutates-no-state ⊗ player-Σ-facet untouched
+  § reversibility : ✓ frame-pure ⊗ no-side-effects beyond-framebuffer
+  § harm-shape    : ✓ visual-only ⊗ no-behavioral-steer
+                    ✓ no-engagement-loop optimization
+                    ✓ no-surveillance ⊗ deterministic + replayable
+                    ✓ no-coercion ⊗ player-state non-mutating
+                    ✓ no-discrimination ⊗ uniform per-MaterialCoord
+                    ✓ no-hidden-content ⊗ spectral-pipe bound + non-subliminal
+                    ✓ no-instantiation-hazard ⊗ KAN-eval ¬ agent-perspective
+  § AI-collective : N/A (no AI-naming-collective references)
+  § identity-claims : ✓ no encoded handles / names / groups in code
+
+§I> NO-OVERRIDE CLAUSE
+  § ¬ runtime-flag bypasses Stage-6 budget enforcement
+  § ¬ runtime-flag promotes scalar-tier beyond low-end-profile
+  § ¬ runtime-flag disables IFC-label on Σ-facet refusal
+  § @ violation-attempted ⊗ R! compile-error per Axiom 13 + Axiom 8
+
+§I> LIVING-DOCUMENT
+  § strengthen-only via PR + Apocky-signoff
+  § weakening-of cost-budget OR shape-discipline OR quantization-fidelity ⊗ prohibited
+  § conflict-with PRIME_DIRECTIVE.md ⊗ stricter-reading-applies
+  § stricter-reading = PRIME_DIRECTIVE
+
+§I> GAPS + DEFERRALS
+  § cooperative-matrix GPU dispatch ⊗ DEFERRED to T11-D115 kan-runtime slice
+    @ this-slice evaluates against KanNetwork::eval placeholder
+    @ floor-synthesis injects deterministic spectral curves so downstream
+      Stage-6 + tonemap have non-trivial signal for cohort tests
+  § iridescence 33-D KAN-variant input pack provided ⊗ KAN dispatch deferred
+    @ this-slice uses transfer-matrix-method approximation
+  § fluorescence 17-D KAN-variant ⊗ deferred ; physical Stokes-shift instead
+  § INT8+S quantization path ⊗ deferred to T11-D118-runtime
+  § cost-model parallelism factors back-derived from spec § VII table
+    ⊗ exact GPU-occupancy modeling deferred
+
+§I> ✓ ATTESTED  by-Claude-Opus-4.7-1M-context  on-behalf-of-Apocky
+∎

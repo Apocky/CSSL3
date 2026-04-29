@@ -1,0 +1,38 @@
+[package]
+name                   = "cssl-spectral-render"
+description            = "CSSLv3 — hyperspectral KAN-BRDF render Stage-6 : 16-band spectral pipeline + per-fragment KAN-spline-network material evaluation + iridescence + fluorescence + CIE-XYZ tonemap + Mantiuk-2024 CSF perceptual gate. Implements 07_AESTHETIC/03 (spectral path-tracing) + 07_AESTHETIC/07 (KAN runtime shading). T11-D118."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § Surface deps — kept minimal at the Stage-6 floor.
+#
+# § cssl-substrate-kan (T11-D115 lift) provides the KanMaterial::spectral_brdf<N>
+#   variant + IridescenceStack reference + canonical 32-D MaterialCoord
+#   embedding. Per 07_AESTHETIC/07 § XII the KAN shape variants live in
+#   cssl-substrate-kan ; the runtime evaluator + dispatch tier selection
+#   would live in a kan-runtime crate (T11-D115 deferred-skeleton). For this
+#   Stage-6 slice we evaluate against the network shape directly via the
+#   `KanNetwork::eval` placeholder — the cooperative-matrix dispatch path
+#   binds in a follow-up slice (T11-D118-runtime).
+cssl-substrate-kan          = { path = "../cssl-substrate-kan" }
+# § cssl-autodiff Jet<T,N> — used for spectral-BRDF derivative-aware eval
+#   when the renderer is in inverse-rendering / training mode (per the
+#   07_AESTHETIC/07 § X integration block). The forward render path uses
+#   primal-only and is `Jet<f32, 1>`-equivalent.
+cssl-autodiff               = { path = "../cssl-autodiff" }
+# § cssl-substrate-projections — Vec3 / Camera / observer-frame for the
+#   Stage-6 pipeline integration with D116 SDF-raymarch (consumes RayHit
+#   surface positions) + D119 fractal-amplifier (consumes view_dir).
+cssl-substrate-projections  = { path = "../cssl-substrate-projections" }
+thiserror                   = { workspace = true }
+
+[dev-dependencies]
+# § Tests use the workspace's testing-infra ; no external crates needed for
+#   the deterministic spectral / KAN paths.
