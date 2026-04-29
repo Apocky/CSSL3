@@ -415,6 +415,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-anim"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-omega-step",
+ "cssl-substrate-projections",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-ast"
 version = "0.1.0"
 
