@@ -621,6 +621,13 @@ name = "cssl-hdc"
 version = "0.1.0"
 
 [[package]]
+name = "cssl-health"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-hir"
 version = "0.1.0"
 dependencies = [
@@ -722,6 +729,13 @@ dependencies = [
 
 [[package]]
 name = "cssl-ifc"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-inspect"
 version = "0.1.0"
 dependencies = [
  "thiserror",
@@ -976,6 +990,13 @@ name = "cssl-testing"
 version = "0.1.0"
 dependencies = [
  "cssl-telemetry",
+]
+
+[[package]]
+name = "cssl-tweak"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]

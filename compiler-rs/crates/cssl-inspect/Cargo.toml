@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-inspect"
+description            = "CSSLv3 — Runtime introspection (L3 diagnostic-infra). Read-only world-state inspection : SceneGraphSnapshot + EntitySnapshot + FieldCellSnapshot (Σ-mask gated) + pause/step/resume time-control + capture_frame (PNG/EXR/spectral-bin). Foundation for MCP inspect_cell/inspect_entity tools. Per phase-J spec § L3."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § T11-D162 : SCOPE-TIGHT slice — minimal deps. Upstream substrate crates
+# (cssl-substrate-omega-field for FieldCell+SigmaOverlay ; cssl-substrate-prime-directive
+# for Cap<DevMode>+SigmaMaskPacked) may not yet be merged into the workspace at
+# the moment this slice lands ; rather than block on cross-slice merge order
+# we MOCK the upstream surface via a local module (`mock_substrate`) that
+# defines the minimum trait-shapes consumed by cssl-inspect. ONE-LINE swap
+# when those crates land : replace `mock_substrate` re-exports with `pub use
+# cssl_substrate_omega_field::*;` etc. Documented inline in lib.rs.
+thiserror = "1"
+
+[features]
+default = []
+# § dev-mode : per phase-J § L3.2.1, the inspector is default-OFF in release
+# builds. The capability gate is enforced at construction (Inspector::attach
+# refuses without a Cap<DevMode> token). The feature flag here is a belt-and-
+# braces second-line-of-defence : release builds compiled without `dev-mode`
+# do not link the runtime-mutable methods at all. This MVP-slice keeps both
+# the cap-gate AND the feature-flag stubs in place ; later slices wire the
+# feature-flag through to LTO drop-checks.
+dev-mode = []
