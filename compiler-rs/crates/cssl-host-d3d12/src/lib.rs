@@ -49,6 +49,7 @@ pub mod pso;
 pub mod queue;
 pub mod resource;
 pub mod root_signature;
+pub mod work_graph;
 
 pub use adapter::{DxgiAdapter, FeatureLevel};
 pub use device::{AdapterPreference, AdapterRecord, Device, Factory};
@@ -65,6 +66,7 @@ pub use resource::{
 pub use root_signature::{
     RootParameter, RootParameterKind, RootSignature, RootSignatureBuilder, ShaderVisibility,
 };
+pub use work_graph::{DispatchGraphArgs, WorkGraphProgramDesc, WorkGraphsTier};
 
 /// Crate version exposed for scaffold verification.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");

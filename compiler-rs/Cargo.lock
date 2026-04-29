@@ -884,6 +884,15 @@ name = "cssl-wavelet"
 version = "0.1.0"
 
 [[package]]
+name = "cssl-work-graph"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-d3d12",
+ "cssl-host-vulkan",
+ "thiserror",
+]
+
+[[package]]
 name = "csslc"
 version = "0.1.0"
 dependencies = [
