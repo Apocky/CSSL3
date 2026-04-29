@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-substrate-prime-directive"
+description            = "CSSLv3 stage0 — Substrate PRIME_DIRECTIVE enforcement layer (CapToken + HarmPrevention + audit-chain + kill-switch + PD0001..PD0017)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[features]
+default     = []
+# § FEATURE-FLAG : `test-bypass` exposes the `caps_grant_for_test` programmatic-
+# consent path. Production builds NEVER enable this feature ; CI fast-suite leaves
+# it OFF by default. Unit-tests inside this crate enable it implicitly via
+# `#[cfg(any(test, feature = "test-bypass"))]`.
+test-bypass = []
+
+[dependencies]
+cssl-telemetry = { path = "../cssl-telemetry" }
+thiserror      = { workspace = true }
+
+# § Integration test target gated on `test-bypass` feature : the test uses
+# `caps_grant_for_test` which is feature-gated. Without `required-features`,
+# `cargo check --workspace --all-targets` would attempt to compile the test
+# without the feature on, fail to find the symbol, and abort the gate. With
+# `required-features` Cargo silently skips the test target unless the feature
+# is provided. Run via `cargo test -p cssl-substrate-prime-directive --features test-bypass`.
+[[test]]
+name              = "enforcement_end_to_end"
+required-features = ["test-bypass"]
