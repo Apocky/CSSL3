@@ -5569,3 +5569,94 @@ Each decision entry :
   - **cssl-rt cold-cache test flake** (carried-over from T11-D56 / D58 / D61 / D70 / D72..D76) : still tracked. Workaround `--test-threads=1` is consistent. **This slice does not introduce new flakes** — the H2 crate's tests are independent of the cssl-rt tracker statics.
 
 ───────────────────────────────────────────────────────────────
+
+## § T11-D91 : Session-8 S8-H3 — Projections (Camera + ObserverFrame + ProjectionMatrix + LoD selector)
+
+- **Date** 2026-04-29
+- **Status** accepted
+- **Session** 8 — Phase-H parallel-fanout, slice 3 of 8 (Projections : observer / camera / viewport / LoD)
+- **Branch** `cssl/session-8/H3` (based on `origin/cssl/session-6/parallel-fanout` per slice handoff PRE-CONDITIONS — H1 / Ω-tensor crate not yet on origin, fallback path used per dispatch directive)
+- **Context** Per `HANDOFF_SESSION_8` H-track design + the slice-handoff dispatch (`SLICE = S8-H3 : Projections — Camera + ObserverFrame + ProjectionMatrix`), this slice is the Substrate's perception layer : how observers (cameras / user-frame / debug-views) project the Ω-tensor's state into renderable / display-ready data. Builds atop the H0-design's canonical Projections section in `specs/30_SUBSTRATE.csl § PROJECTIONS` (T11-D79 design). Sibling H4 (effect-rows / T11-D92) + H5 (save/replay / T11-D93) landed concurrently on parallel-fanout — independent surfaces, no overlap. The Ω-tensor reference (H1) does not yet exist as a Rust surface ; H3 lands as a target-agnostic capability-gated math + observer-frame layer that H1 will wire into when its `OmegaTensorAccess` grant gate is exercised.
+- **Slice landed (this commit)** — ~2554 net LOC across 6 files (~614 production camera + ~465 mat + ~462 observer + ~445 caps + ~395 vec + ~153 lib + 20 Cargo.toml) + 62 new tests in a new workspace crate `cssl-substrate-projections` :
+  - **`crates/cssl-substrate-projections/src/vec.rs`** (new module, 395 LOC including doc-block + 9 tests) — minimal RH Y-up f32 vector + quaternion math. Defines :
+    - **`Vec3`** + **`Vec4`** — column-major-friendly f32 components ; standard `Add` / `Sub` / `Neg` / `Mul<f32>` operator overloads ; `dot` / `cross` / `length` / `length_squared` / `normalize`. **Substrate totality** : `Vec3::ZERO.normalize() == Vec3::ZERO` (no NaN), `Vec4::perspective_divide()` with near-zero `w` returns `Vec3::ZERO`. Const constructors for axis basis (`Vec3::X` / `Y` / `Z`) and `Vec3::ZERO` / `splat(v)`.
+    - **`Quat`** — Hamilton-convention unit quaternion `(x, y, z, w)` with `w` scalar ; `from_axis_angle` ; `rotate(Vec3)` via the standard triple-cross-product form ; `compose(other)` for right-to-left composition ; `conjugate` (== inverse for unit quats) ; `normalize` returns identity if degenerate (totality).
+  - **`crates/cssl-substrate-projections/src/mat.rs`** (new module, 465 LOC including doc-block + 9 tests) — 4x4 column-major float matrix + canonical projection-matrix constructors. Defines :
+    - **`Mat4`** — `cols[col][row]` storage (Vulkan / GLSL upload-friendly) ; `IDENTITY` / `ZERO` / `translation(Vec3)` / `scale(Vec3)` ; `compose(rhs) = self * rhs` (left-to-right reading) ; `mul_vec4(v)` ; `transpose` ; `from_cols_array([f32; 16])` + `to_cols_array() -> [f32; 16]` (direct shader-uniform upload).
+    - **`ProjectionMatrix`** — newtype wrapper. Three constructors :
+      - **`perspective_rh_reverse_z(fov_y_rad, aspect, near, far)`** — substrate canonical default. Near plane → `z = 1`, far plane → `z = 0` in NDC. Pair with depth cleared to `0.0` + `GREATER` depth-test on host. Derivation : `A = near/(far-near)`, `B = near*far/(far-near)`, `m22 = A`, `m23 = B`. Substrate totality : invalid inputs (NaN / non-positive aspect / non-positive fov / fov >= 179deg / near >= far) return `Mat4::IDENTITY`-wrapped.
+      - **`perspective_rh_forward_z(fov_y_rad, aspect, near, far)`** — alternative (near → 0, far → 1). Supplied for shadow-map passes that have forward-Z baked-in.
+      - **`ortho_rh_reverse_z(l, r, b, t, n, f)`** — orthographic with reverse-Z. Near plane → `z = 1`, far plane → `z = 0`.
+  - **`crates/cssl-substrate-projections/src/camera.rs`** (new module, 614 LOC including doc-block + 12 tests) — Camera transform + AABB + frustum + visibility tests. Defines :
+    - **`Camera`** — `(position, orientation, fov_y_rad, near, far, aspect)` value-type. `Camera::DEFAULT` = origin / identity / 60deg / 16:9 / 0.1-1000. `validate()` returns a typed `CameraError` for refinement-type violations. `forward()` / `up()` / `right()` accessors derived from orientation quaternion ; `view_matrix()` builds RH world→view ; `projection_matrix()` calls the reverse-Z RH perspective constructor ; `view_projection_matrix()` returns the composite world→clip.
+    - **`CameraError`** — `thiserror::Error` enum : `NonFinitePosition`, `FovOutOfRange(f32)`, `NonPositiveAspect(f32)`, `NonPositiveNear(f32)`, `FarBelowNear { near, far }`.
+    - **`world_to_clip(p : Vec3, cam : &Camera) -> Vec4`** — full pipeline. Caller divides by `w` to get NDC.
+    - **`Aabb`** — axis-aligned bounding box ; `from_center_half_extents` ; `center` / `half_extents` accessors.
+    - **`Plane`** — world-space plane ; `from_abcd` normalizes ; `signed_distance(p) -> f32`.
+    - **`Frustum`** — 6-plane frustum ; `from_view_projection(vp)` extracts via Gribb / Hartmann row-trick. **Reverse-Z auto-detect** : sign of `m22` distinguishes reverse-Z (m22 > 0, near = `m3 - m2`, far = `m2`) from forward-Z (m22 < 0, near = `m2`, far = `m3 - m2`). Plane indexing : `PLANE_LEFT = 0`, `PLANE_RIGHT = 1`, `PLANE_BOTTOM = 2`, `PLANE_TOP = 3`, `PLANE_NEAR = 4`, `PLANE_FAR = 5`. `contains_point(p)` and `intersects_aabb(aabb)` (p-vertex trick — conservative, no false negatives).
+    - **`frustum_cull(aabb, cam) -> bool`** — true iff AABB is entirely outside the camera's frustum.
+  - **`crates/cssl-substrate-projections/src/observer.rs`** (new module, 462 LOC including doc-block + 18 tests) — viewport + observer-frame composition + LoD. Defines :
+    - **`Viewport { x, y, width, height : u32 }`** ; `aspect()` returns `1.0` for zero-height (totality) ; `is_valid()`.
+    - **`LodPolicy { thresholds : Vec<f32> }`** ; `SINGLE_LEVEL` const ; `from_thresholds` ; `validate()` returns `LodError::*` ; `level_count()`.
+    - **`LodError`** — non-finite / negative / non-monotonic.
+    - **`select_lod(distance, lod_levels) -> usize`** — distance-based level picker. NaN treated as 0 (totality).
+    - **`ProjectionTarget`** — `{ Window, Texture, File, Null }` ; `Default = Null` (cull-only ; safe default).
+    - **`ProjectionId(u64)`** — opaque stable handle.
+    - **`ObserverFrame { id, camera, viewport, lod, target, caps : CapsToken }`** ; `sync_aspect()` ; `pick_lod(distance)` ; `resize(w, h)`. Multi-camera = `Vec<ObserverFrame>` for split-screen / stereo / mini-map / debug-introspect.
+  - **`crates/cssl-substrate-projections/src/caps.rs`** (new module, 445 LOC including doc-block + 11 tests) — capability gating + telemetry hook. Defines :
+    - **`Grant`** — three projection-level grants. **STABLE bit-positions from S8-H3** : `OmegaTensorAccess = bit 0`, `DebugCamera = bit 1`, `ObserverShare = bit 2`. Renaming requires major-version bump.
+    - **`CapsToken`** — opaque packed `u32` bitset ; `EMPTY` / `FULL` consts ; `with_grants` / `has` / `union` / `intersect` / `raw`.
+    - **`CapsError::Missing(&'static str)`** ; **`caps_grant(token, required)`** — canonical gate fn.
+    - **`DebugCamEvent { projection_id, grant, granted : bool }`** — captures both successes + rejections.
+    - **`TelemetryHook = fn(DebugCamEvent)`** ; `set_telemetry_hook` / `clear_telemetry_hook` / `telemetry_event_count`. Hook stored in `static HOOK : RwLock<Option<TelemetryHook>>` (std::sync — see § PRIME-DIRECTIVE-LANDMINE-2 below).
+    - **`caps_grant_debug_camera(token, projection_id) -> Result<(), CapsError>`** — canonical entry point ; increments event-count BEFORE the check (failed attempts ARE logged) ; invokes hook with `granted` boolean ; returns `Ok` or `Err(CapsError::Missing("DebugCamera"))`.
+  - **`crates/cssl-substrate-projections/src/lib.rs`** (153 LOC + 1 scaffold test) — re-exports + crate-doc covering surface summary, handedness + depth conventions, host-backend integration sketch, PRIME-DIRECTIVE rationale, stage-0 limitations / deferred follow-ups, stability contract.
+  - **`crates/cssl-substrate-projections/Cargo.toml`** — workspace member ; deps `thiserror = workspace` only.
+- **The capability claim**
+  - **Substrate canonical handedness** : right-handed, Y-up. View-space forward = `-Z`.
+  - **Substrate canonical depth** : reverse-Z. Near → `z = 1`, far → `z = 0`. NDC Z range `[0, 1]` (Vulkan / D3D12 / WebGPU canonical). Host backends MUST clear depth to `0.0` and use `VK_COMPARE_OP_GREATER` / `D3D12_COMPARISON_FUNC_GREATER`.
+  - **NDC space** : Z `[0, 1]`. OpenGL's `[-1, 1]` Z range is NOT supported directly.
+  - **Capability-gated Ω-tensor access + debug-cam telemetry** : the `CapsToken` / `Grant` / `caps_grant_debug_camera` triple is the canonical projections-level access control. Without `OmegaTensorAccess`, projections cannot pull live state. Without `DebugCamera`, debug-introspect cannot mint ; AND every debug-cam invocation (success OR rejection) increments the counter + invokes the registered hook.
+  - **PRIME-DIRECTIVE compliance** : §4 TRANSPARENCY motivates mandatory telemetry on debug-cam ; §1 SURVEILLANCE motivates the `OmegaTensorAccess` requirement ; §5 CONSENT-ARCHITECTURE motivates per-projection `CapsToken`.
+- **Consequences**
+  - **Test count** : +62 tests in `cssl-substrate-projections` (well above the 22-test target). Breakdown : 9 vec + 9 mat + 12 camera + 18 observer + 11 caps + 1 scaffold + 2 doc = 62.
+  - **`crates/cssl-substrate-projections/src/`** is the canonical Rust-side encoding of the projections surface. Substrate-target-agnostic ; host-backends consume as a non-FFI dep + apply target-specific NDC fixups.
+  - **`specs/30_SUBSTRATE.csl § PROJECTIONS`** is the canonical written spec. Reimpl-from-spec per `feedback_spec_validation_via_reimpl.md` discipline. Spec-vs-impl divergence : the spec's `LoDSchema` carries hysteresis + detail_mask + screen_pixel_target ; stage-0 surfaces only the distance-threshold slice (deferred).
+  - **Backwards-compat** : zero-impact. New crate ; no existing surface modified.
+  - **No new workspace dependencies** : `thiserror` (workspace) + `std` only. Specifically rejected `parking_lot` per § PRIME-DIRECTIVE-LANDMINE-2 below.
+  - **Stable bit-positions from S8-H3** : `OmegaTensorAccess.bit() = 0`, `DebugCamera.bit() = 1`, `ObserverShare.bit() = 2`. The `grant_bits_are_stable_from_s8_h3` test enforces these at compile-time.
+  - **Stable telemetry contract** : every `caps_grant_debug_camera` call atomically increments `EVENT_COUNT` BEFORE the grant check ; the registered `TelemetryHook` (if any) receives `DebugCamEvent { projection_id, grant : Grant::DebugCamera, granted : bool }` ; returns `Ok` on grant or `Err(CapsError::Missing("DebugCamera"))` on rejection. Both successes and rejections auditable.
+  - **Substrate totality preserved across math + camera layers** : every projection-matrix constructor returns `Mat4::IDENTITY`-wrapped on invalid inputs (NaN / non-positive aspect / non-positive fov / fov >= 179deg / near >= far). `Vec3::normalize()` returns `ZERO` for zero ; `Vec4::perspective_divide()` returns `Vec3::ZERO` for near-zero `w` ; `Camera::validate()` returns typed errors.
+  - **Reverse-Z frustum auto-detect** : sign of `m22` distinguishes reverse-Z from forward-Z so `PLANE_NEAR` always means "closer to camera" regardless of matrix's Z direction.
+  - **Multi-camera tested** : the `multi_observer_layout_works` test sets up a 2-up split-screen layout, sync-aspects each half, and verifies non-overlap + distinct IDs.
+  - All gates green : fmt ✓ clippy ✓ test 62/0 (cssl-substrate-projections) + workspace-serial via `--test-threads=1` ✓ doc ✓ xref ✓ smoke 4/4 ✓.
+- **Closes the S8-H3 slice.** Phase-H sub-slice 3 of 8 complete. The Projections runtime surface is ready for cssl-host-vulkan / cssl-host-d3d12 consumption ; the `OmegaTensorAccess` grant gate is the integration point that the H1 Ω-tensor slice will wire into.
+- **§ PRIME-DIRECTIVE-LANDMINE-1 : capability gating discipline**
+  - The slice-handoff PRE-CONDITIONS required all three : (a) `caps_grant(token, OmegaTensorAccess)` for Ω-tensor reads ; (b) `caps_grant(token, ObserverShare)` for cross-observer sharing ; (c) `caps_grant_debug_camera(token, projection_id)` combining grant check + telemetry emission for debug-views. ALL THREE implemented + tested.
+- **§ PRIME-DIRECTIVE-LANDMINE-2 : `parking_lot` rejected for telemetry hook storage**
+  - **Initial design** : `parking_lot::RwLock<Option<TelemetryHook>>`.
+  - **Rejection rationale** : the workspace's pinned `1.85.0-x86_64-pc-windows-gnu` toolchain cannot build `parking_lot_core` because it depends on the MinGW `dlltool.exe` for kernel32 import-library generation, which is not present in this environment. SAME constraint documented in `cssl-host-webgpu` (the `wgpu-runtime` feature is opt-in for this exact reason) and `Cargo.toml` workspace deps (the `libloading >=0.8.0, <0.8.7` upper bound — T11-D62).
+  - **Adopted alternative** : `std::sync::RwLock<Option<TelemetryHook>>`. `RwLock::new()` is const-fn since Rust 1.63 (workspace MSRV 1.75). Lock poisoning treated as "no hook" (best-effort telemetry) per substrate-totality discipline. Hot-path cost negligible : one `read()` per `caps_grant_debug_camera` call.
+  - **No DECISIONS sub-entry needed** : structural toolchain-driven rejection ; already documented elsewhere.
+- **Integration sketch with cssl-host-vulkan / cssl-host-d3d12** (per slice handoff REPORT BACK part (e))
+  - **`cssl-host-vulkan`** : non-FFI workspace dep on `cssl-substrate-projections`. Vulkan NDC has Y-down ; substrate canonical is Y-up — host post-multiplies `Mat4::scale((1, -1, 1))` after `view_projection_matrix()`. Reverse-Z honored : depth cleared to `0.0`, `vk::CompareOp::GREATER`. Frustum culling : iterate scene-archetypes, build `Aabb` per object, call `frustum_cull(aabb, &cam)`, skip on `true`.
+  - **`cssl-host-d3d12`** : NDC matches substrate canonical ; winding-order may need `D3D12_RASTERIZER_DESC::FrontCounterClockwise = TRUE` since substrate canonical RH produces CCW front-faces. Reverse-Z : `D3D12_COMPARISON_FUNC_GREATER`.
+  - **`cssl-host-metal`** : NDC + reverse-Z match substrate canonical directly via `MTLCompareFunctionGreater`. `Mat4` column-major matches `simd_float4x4` directly.
+  - **`cssl-host-webgpu`** : matches substrate canonical via `wgpu::CompareFunction::Greater`.
+  - **`cssl-host-level-zero`** : compute-only ; projections NA. Not a dep.
+  - **Integration test discipline** : when H1 Ω-tensor lands, round-trip test : (a) construct Camera + ObserverFrame ; (b) build OmegaTensor ; (c) compute view_projection_matrix ; (d) attempt Ω-tensor read with `EMPTY` → expect `Err` ; (e) re-attempt with `OmegaTensorAccess` grant → expect `Ok` ; (f) verify byte-equal rendered output under deterministic input.
+- **Deferred** (explicit follow-ups, sequenced)
+  - **`look_at(eye, target, up) -> Camera`** convenience constructor — ~30 LOC + 6 tests.
+  - **Hysteresis on LoD-tier switching** — spec's `LoDSchema` carries `hysteresis : f32'unit`. Stage-0 surfaces only flat thresholds. ~80 LOC + 12 tests.
+  - **`CullHull::{Sphere, Compound}`** — stage-0 has Frustum + AABB only. ~150 LOC + 18 tests.
+  - **`IfcMask + ConsentTokenSet` integration** — full `{IfcMask, max_label, can_decl}` per `specs/30 § IFC-MASK` lands once `cssl-effects::ifc` gains source-level types. ~120 LOC + 15 tests.
+  - **Source-level CSSLv3 syntax for `Camera` / `ObserverFrame` / `CapsToken`** — at stage-0 hosts construct via Rust API. Lands once `specs/18_VECTOR.csl` emits source-level vector types + trait-resolve infra stabilizes. Recognizer-pattern from S6-B5 fs::<verb> precedent. ~300 LOC + 20 tests.
+  - **Ω-tensor handle threading** — H1 slice wires the `OmegaTensorAccess` grant into actual tensor reads.
+  - **Frustum corner extraction (`Frustum::corners() -> [Vec3; 8]`)** — used for cascaded shadow-map fitting + debug-frustum-render. ~50 LOC + 6 tests.
+  - **`Camera::look_at_matrix(eye, target, up) -> Mat4`** standalone — ~30 LOC + 4 tests.
+  - **D3D12 winding-order convention sub-entry** — substrate canonical RH produces CCW front-faces ; D3D12 default is CW. Host must set `FrontCounterClockwise = TRUE`. Documented in lib.rs § HOST-BACKEND INTEGRATION but not enforced at crate level.
+  - **WGSL `enable f16;` Vec3 / Vec4 surface** — currently f32 only. Promotion is a forward-compat slice.
+  - **SIMD acceleration on Mat4 operations** — `Mat4::compose` is a 4×4 nested-loop. Host-backend layer can substitute SIMD via `to_cols_array()` flattening.
+  - **cssl-rt cold-cache test flake** (carried-over from T11-D56 / T11-D58 / T11-D61 / T11-D70 / T11-D73 / T11-D74 / T11-D75 / T11-D76 / T11-D80 / T11-D81 / T11-D85 / T11-D89 / T11-D90 / T11-D92 / T11-D93) : still tracked. Workaround `--test-threads=1` consistent. **This slice does not introduce new flakes.**
+
+───────────────────────────────────────────────────────────────
