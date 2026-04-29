@@ -2,7 +2,7 @@
 //!
 //! § SPEC : `specs/06_STAGING.csl` + `specs/19_FUTAMURA3.csl`.
 //!
-//! § SCOPE (T8-phase-1 / this commit)
+//! § SCOPE (T8-phase-1)
 //!   - [`StageArg`] + [`StageArgKind`] : classification of which fn-arguments are
 //!     known at compile-time vs runtime.
 //!   - [`StagedDecl`] : extracted metadata for every `@staged` fn in a HirModule.
@@ -11,12 +11,32 @@
 //!     a comptime-eval queue).
 //!   - [`Specializer`] skeleton : per-call-site specialization manifest.
 //!
-//! § T8-phase-2 DEFERRED
-//!   - Actual specialization walk (clone fn + const-propagate stage-args).
-//!   - Native comptime-eval (compile-native ; avoid Zig 20× interpreter cost per R14).
-//!   - `@type_info` / `@fn_info` / `@module_info` reflection API.
-//!   - Transform-dialect pass-schedule emission (`specs/15` § TRANSFORM-DIALECT).
-//!   - Futamura-P1 baseline + P2 specializer-reference + P3 self-bootstrap (separate crate `cssl-futamura`).
+//! § SCOPE (T11-D141 / this commit)
+//!   - [`comptime::ComptimeEvaluator`] : actual `#run` body execution. Pipeline :
+//!     HIR → synthetic-HirFn → MIR → JIT (cssl-cgen-cpu-cranelift) → invoke →
+//!     capture-result → encode-bytes → return [`comptime::ComptimeResult`].
+//!   - [`comptime::ComptimeValue`] / [`comptime::ComptimeResult`] : structured
+//!     + flat-bytes representation of a comptime value, with codecs in
+//!     [`comptime::encode_value_bytes_pub`].
+//!   - [`effect_scan::scan_expr_effects`] : pre-flight that refuses non-pure
+//!     `#run` bodies. Forbidden tokens listed in
+//!     [`effect_scan::FORBIDDEN_EFFECT_TOKENS`].
+//!   - [`sandbox::check_sandbox_policy`] : combined effect-row + result-type
+//!     eligibility guard.
+//!   - [`bake::bake_result`] / [`bake::bake_lut`] : embed a [`comptime::ComptimeResult`]
+//!     into MIR as `arith.constant` + `cssl.array.assemble` /
+//!     `cssl.struct.assemble` ops.
+//!   - [`lut_demo`] / [`kan_demo`] : end-to-end LUT-bake + KAN-weight-bake
+//!     demonstrations integrated into a [`cssl_mir::MirModule`].
+//!
+//! § T11-D142+ DEFERRED
+//!   - Specialization pass that consumes baked LUTs / weights to substitute
+//!     for runtime ops in `@staged` fn bodies.
+//!   - Native-`.o`-+-LoadLibraryEx / dlopen mode for cross-DSO comptime eval.
+//!   - Reflection API (`@type_info` / `@fn_info` / `@module_info`).
+//!   - Memoized comptime-result cache keyed by (fn-name, arg-hash, source-hash).
+//!   - Direct array/struct-by-value JIT return ABI (currently composite results
+//!     are assembled from per-element scalar evaluations).
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -24,6 +44,48 @@
 #![allow(clippy::match_same_arms)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![allow(clippy::redundant_clone)]
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::needless_pass_by_value)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::map_unwrap_or)]
+#![allow(clippy::option_if_let_else)]
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::suboptimal_flops)]
+
+pub mod bake;
+pub mod comptime;
+pub mod effect_scan;
+pub mod kan_demo;
+pub mod lut_demo;
+pub mod sandbox;
+
+pub use bake::{
+    bake_lut, bake_result, bake_scalar_constant, is_comptime_baked, scalar_mir_type, BakedOps,
+};
+pub use comptime::{
+    eval_all_run_blocks, eval_all_run_blocks_with_source, ComptimeError, ComptimeEvaluator,
+    ComptimeResult, ComptimeValue, DEFAULT_NEST_LIMIT, DEFAULT_OP_BUDGET,
+};
+pub use effect_scan::{
+    is_comptime_forbidden_effect, is_comptime_forbidden_fn, is_comptime_pure_fn,
+    scan_expr_effects, EffectScanError, ALLOWED_PURE_FN_NAMES, FORBIDDEN_EFFECT_TOKENS,
+    FORBIDDEN_FN_NAMES,
+};
+pub use kan_demo::{
+    bake_kan_layer_mir, integrate_kan_layer_into_module, kan_layer_as_comptime,
+    mock_train_kan_layer, MockKanLayer,
+};
+pub use lut_demo::{
+    analytical_sine_at, bake_sine_lut_mir, build_sine_lut, integrate_sine_lut_into_module,
+    SINE_LUT_SIZE,
+};
+pub use sandbox::{
+    check_sandbox_policy, first_disallowed_effect, is_allowed_effect_token,
+    is_comptime_eligible_result_type, SandboxDecision, COMPTIME_ALLOWED_EFFECT_TOKENS,
+};
 
 use thiserror::Error;
 

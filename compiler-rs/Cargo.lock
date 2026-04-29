@@ -784,8 +784,10 @@ name = "cssl-staging"
 version = "0.1.0"
 dependencies = [
  "cssl-ast",
+ "cssl-cgen-cpu-cranelift",
  "cssl-hir",
  "cssl-lex",
+ "cssl-mir",
  "cssl-parse",
  "thiserror",
 ]

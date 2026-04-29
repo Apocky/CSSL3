@@ -11,9 +11,11 @@ authors.workspace      = true
 workspace = true
 
 [dependencies]
-cssl-ast = { path = "../cssl-ast" }
-cssl-hir = { path = "../cssl-hir" }
-thiserror = { workspace = true }
+cssl-ast                = { path = "../cssl-ast" }
+cssl-hir                = { path = "../cssl-hir" }
+cssl-mir                = { path = "../cssl-mir" }
+cssl-cgen-cpu-cranelift = { path = "../cssl-cgen-cpu-cranelift" }
+thiserror               = { workspace = true }
 
 [dev-dependencies]
 cssl-lex   = { path = "../cssl-lex" }

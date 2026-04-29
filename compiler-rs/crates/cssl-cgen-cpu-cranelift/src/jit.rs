@@ -185,6 +185,68 @@ impl JitFn {
         Ok(f())
     }
 
+    /// Call as `fn() -> i64`. T11-D141 : comptime-eval invocation shape
+    /// for synthetic zero-arg fns whose body returns an i64 result.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_unit_to_i64(&self, module: &JitModule) -> Result<i64, JitError> {
+        self.check_sig(&[], MirType::Int(IntWidth::I64))?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`. Result-type i64 validated above.
+        let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
+        Ok(f())
+    }
+
+    /// Call as `fn() -> f32`. T11-D141 : comptime-eval invocation shape
+    /// for synthetic zero-arg fns whose body returns an f32 result. Used by
+    /// `cssl-staging::comptime::ComptimeEvaluator` for `#run` blocks that
+    /// evaluate to a float scalar (e.g., LUT-element generators).
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_unit_to_f32(&self, module: &JitModule) -> Result<f32, JitError> {
+        self.check_sig(&[], MirType::Float(FloatWidth::F32))?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`. Result-type f32 validated above.
+        let f: extern "C" fn() -> f32 = unsafe { std::mem::transmute(addr) };
+        Ok(f())
+    }
+
+    /// Call as `fn() -> f64`. T11-D141 : comptime-eval invocation shape
+    /// for synthetic zero-arg fns whose body returns an f64 result. Used by
+    /// `cssl-staging::comptime::ComptimeEvaluator` for `#run` blocks that
+    /// evaluate to an f64 scalar.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_unit_to_f64(&self, module: &JitModule) -> Result<f64, JitError> {
+        self.check_sig(&[], MirType::Float(FloatWidth::F64))?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`. Result-type f64 validated above.
+        let f: extern "C" fn() -> f64 = unsafe { std::mem::transmute(addr) };
+        Ok(f())
+    }
+
+    /// Call as `fn() -> bool` (returns the underlying i8 cast to a Rust `bool`).
+    /// T11-D141 : comptime-eval invocation shape for synthetic zero-arg fns
+    /// whose body returns a `bool` result. Cranelift represents i1 / Bool as
+    /// i8 on the ABI wire, so this transmutes the address to `extern "C" fn() -> u8`
+    /// and converts to bool via `!= 0`.
+    ///
+    /// # Errors
+    /// See [`Self::call_i64_i64_to_i64`].
+    pub fn call_unit_to_bool(&self, module: &JitModule) -> Result<bool, JitError> {
+        self.check_sig(&[], MirType::Bool)?;
+        let addr = module.code_addr_for(&self.name)?;
+        // SAFETY: see `call_i64_i64_to_i64`. MirType::Bool lowers to cranelift
+        // I8 in `mir_to_cl_type` ; the result is returned via the integer
+        // return-register on every supported platform. Reinterpret as u8 and
+        // canonicalize to bool.
+        let f: extern "C" fn() -> u8 = unsafe { std::mem::transmute(addr) };
+        Ok(f() != 0)
+    }
+
     /// Call as `fn(i32) -> i32`. T11-D38 : canonical shape for single-arg
     /// monomorphized identity / unary-integer fns like `id_i32(x : i32)`.
     ///
@@ -974,7 +1036,15 @@ fn lower_op_to_cl(
                 let f: f64 = value_str.parse().unwrap_or(0.0);
                 builder.ins().f64const(f)
             } else {
-                let i: i64 = value_str.parse().unwrap_or(0);
+                // T11-D141 : recognize boolean keywords for `arith.constant`
+                // ops produced by HirLiteralKind::Bool lowering. Without this,
+                // the `i64::parse` fallthrough returns 0 for both `true` and
+                // `false`, breaking `#run true` comptime evaluation.
+                let i: i64 = match value_str {
+                    "true" => 1,
+                    "false" => 0,
+                    other => other.parse().unwrap_or(0),
+                };
                 builder.ins().iconst(cl_ty, i)
             };
             value_map.insert(r.id, v);
