@@ -52,6 +52,16 @@ cssl-host-input  = { path = "../cssl-host-input" }
 cssl-host-audio  = { path = "../cssl-host-audio" }
 cssl-host-net    = { path = "../cssl-host-net" }
 
+# § T11-D234 (D228-followup) : SDF-math-render path. The world-is-math maxim
+# (Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl) demands every visible
+# pixel be MATH-EVALUATED — clear-color + procedural-fill are forbidden.
+# `cssl-render-v2` exposes the canonical CPU-side SDF raymarch surface
+# (`SdfRaymarchPass::march` + `SdfComposition` + `AnalyticSdf::sphere/plane`)
+# which the test-room renderer drives per-pixel. `cssl-pga` is needed for the
+# `Plane` primitive used by the analytic plane-SDF.
+cssl-render-v2 = { path = "../cssl-render-v2" }
+cssl-pga       = { path = "../cssl-pga", default-features = false }
+
 # § Workspace deps.
 thiserror = { workspace = true }
 

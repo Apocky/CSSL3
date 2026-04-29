@@ -1554,6 +1554,8 @@ dependencies = [
  "cssl-host-input",
  "cssl-host-net",
  "cssl-host-window",
+ "cssl-pga",
+ "cssl-render-v2",
  "cssl-substrate-omega-step",
  "cssl-substrate-omega-tensor",
  "cssl-substrate-prime-directive",

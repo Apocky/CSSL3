@@ -145,9 +145,6 @@ fn run() -> Result<(), LoaError> {
     const FRAME_DURATION: Duration = Duration::from_micros(16_667);
     // 1 second @ 60 Hz.
     const STATS_EVERY_N_FRAMES: u64 = 60;
-    // T11-D228 hue-cycle period : full 360° spectrum every 5 s @ 60 Hz so the
-    // user sees continuous color motion in the test-room window.
-    const HUE_PERIOD_FRAMES: u64 = 300;
 
     // ── Boot Phase [open window] ──────────────────────────────────────────
     // Per BOOT.csl § Phase 2, GPU pipeline create comes after CSSLv3 runtime
@@ -231,6 +228,15 @@ fn run() -> Result<(), LoaError> {
     let mut accumulated_step_micros: u64 = 0;
     let loop_start = Instant::now();
 
+    // T11-D234 : preallocated scratch buffer for the SDF math renderer. Sized
+    // once outside the loop so the per-frame paint is a fill-and-blit (no
+    // alloc on the hot path). `Vec::resize` inside the loop is a no-op when
+    // the size is already correct.
+    let mut sdf_scratch: Vec<u32> = Vec::with_capacity(
+        (test_room_render::sdf_scene::RENDER_W as usize)
+            * (test_room_render::sdf_scene::RENDER_H as usize),
+    );
+
     loop {
         let frame_start = Instant::now();
 
@@ -277,14 +283,25 @@ fn run() -> Result<(), LoaError> {
             MainLoopOutcome::Halt { reason } => Some(reason),
         };
 
-        // [d] render_frame — Phase-3 (T11-D228) : Win32 GDI clear-color cycle.
+        // [d] render_frame — Phase-3 (T11-D228 → T11-D234 followup) :
+        //                   Win32 GDI present of CPU-side SDF raymarch buffer.
         //
-        // Cycles the full hue spectrum once every 5 seconds (300 frames @ 60Hz)
-        // so the user sees continuous color motion proving the canonical loop
-        // is ticking. Renderer failures are logged but never break the loop —
-        // the close-event observer + omega_step continue regardless. When the
-        // cssl-host-d3d12 Swapchain helper lands, this branch will switch to
-        // the D3D12 path ; the GDI renderer remains as the no-GPU fallback.
+        // Per Apocky-maxim "the world is math"
+        // (Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V), every
+        // visible pixel MUST be the result of a math evaluation, not a
+        // clear-color or canvas-fill. T11-D228 wired the GDI BitBlt
+        // presentation path with HSV-cycle as a stop-gap ; T11-D234 replaces
+        // the per-frame fill with a CPU-side SDF raymarch via
+        // `cssl_render_v2::SdfRaymarchPass` over a canonical sphere+plane
+        // scene with an orbiting camera + Lambertian shading.
+        //
+        // The SDF buffer is rendered at a downsampled resolution
+        // (sdf_scene::RENDER_W × RENDER_H = 320×180) so the per-frame CPU
+        // march stays in budget at the test-room's 60Hz target ; GDI's
+        // StretchDIBits upsamples the result to fill the window.
+        //
+        // Renderer failures are logged but never break the loop — the
+        // close-event observer + omega_step continue regardless.
         if let Some(r) = renderer.as_mut() {
             // Refresh dims once per second to pick up resizes cheaply ; the
             // Win32 backend doesn't yet emit Resize events through to user-
@@ -292,9 +309,18 @@ fn run() -> Result<(), LoaError> {
             if frame_count % STATS_EVERY_N_FRAMES == 0 {
                 let _ = r.refresh_dimensions();
             }
-            let (cr, cg, cb) =
-                test_room_render::cycle_color_for_frame(frame_count, HUE_PERIOD_FRAMES);
-            let _outcome = r.paint_clear_color(cr, cg, cb);
+            // Render the SDF math-buffer for this tick + present.
+            sdf_scratch.resize(
+                (test_room_render::sdf_scene::RENDER_W as usize)
+                    * (test_room_render::sdf_scene::RENDER_H as usize),
+                0,
+            );
+            test_room_render::sdf_scene::render_into(&mut sdf_scratch, frame_count);
+            let _outcome = r.paint_buffer(
+                &sdf_scratch,
+                test_room_render::sdf_scene::RENDER_W,
+                test_room_render::sdf_scene::RENDER_H,
+            );
         }
 
         // Stats every STATS_EVERY_N_FRAMES.

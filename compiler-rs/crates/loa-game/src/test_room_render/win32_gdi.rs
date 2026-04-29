@@ -231,6 +231,90 @@ impl GdiRenderer {
         outcome
     }
 
+    /// Paint a caller-provided pixel buffer into the window via `StretchDIBits`.
+    ///
+    /// `buffer` is a slice of `src_w × src_h` BGRA `u32` pixels matching the
+    /// `BITMAPINFO` BI_RGB / 32bpp / top-down layout this module uses for its
+    /// internal buffer. The SOURCE is copied verbatim (top-down) to the
+    /// destination, with `StretchDIBits` upsampling to fill the window's
+    /// client area when `(src_w, src_h)` is smaller than `(self.width,
+    /// self.height)`. This is the canonical "render-at-low-res, upsample-on-
+    /// blit" path used by the SDF math-renderer per
+    /// [`super::sdf_scene`] § PERFORMANCE.
+    ///
+    /// Errors return [`RenderOutcome::Skipped`] (logged, never panicking) so
+    /// the loop's close-event handling stays uninterrupted (cssl-host-window
+    /// § PRIME-DIRECTIVE-KILL-SWITCH).
+    pub fn paint_buffer(&mut self, buffer: &[u32], src_w: u32, src_h: u32) -> RenderOutcome {
+        if buffer.len() != (src_w as usize) * (src_h as usize) {
+            eprintln!(
+                "loa-game: paint_buffer wrong size: got {}, expected {}",
+                buffer.len(),
+                (src_w as usize) * (src_h as usize)
+            );
+            return RenderOutcome::Skipped;
+        }
+        if src_w == 0 || src_h == 0 || self.width == 0 || self.height == 0 {
+            return RenderOutcome::Skipped;
+        }
+
+        let header = BITMAPINFOHEADER {
+            biSize: core::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: src_w as i32,
+            // Negative height = top-down DIB ; matches our buffer layout.
+            biHeight: -(src_h as i32),
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            biSizeImage: 0,
+            biXPelsPerMeter: 0,
+            biYPelsPerMeter: 0,
+            biClrUsed: 0,
+            biClrImportant: 0,
+        };
+        let bmi = BITMAPINFO {
+            bmiHeader: header,
+            bmiColors: [Default::default(); 1],
+        };
+
+        // SAFETY : hwnd_usize is non-null (checked at construction). `buffer`
+        // is a caller-owned slice with len verified above. BITMAPINFO is
+        // fully initialized. We release the DC on every path.
+        let outcome = unsafe {
+            let hwnd = HWND(self.hwnd_usize as *mut _);
+            let hdc = GetDC(hwnd);
+            if hdc.is_invalid() {
+                return RenderOutcome::Skipped;
+            }
+            let blit_result = StretchDIBits(
+                hdc,
+                0,
+                0,
+                self.width as i32,
+                self.height as i32,
+                0,
+                0,
+                src_w as i32,
+                src_h as i32,
+                Some(buffer.as_ptr().cast()),
+                &bmi as *const _,
+                DIB_RGB_COLORS,
+                SRCCOPY,
+            );
+            let _ = ReleaseDC(hwnd, hdc);
+            if blit_result == 0 {
+                RenderOutcome::Skipped
+            } else {
+                RenderOutcome::Painted
+            }
+        };
+
+        if matches!(outcome, RenderOutcome::Skipped) {
+            eprintln!("loa-game: GDI blit (paint_buffer) failed");
+        }
+        outcome
+    }
+
     /// Test-only : return the current cached buffer dimensions without
     /// querying GDI. Used by unit tests on non-windowed CI.
     #[cfg(test)]

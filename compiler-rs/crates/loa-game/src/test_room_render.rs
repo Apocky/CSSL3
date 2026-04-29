@@ -4,23 +4,39 @@
 //! § THESIS
 //!
 //!   Closes the Phase-3 acceptance gap : "user opens window, sees something move
-//!   on screen". Provides a thin clear-color renderer that paints a cycling
-//!   color into the LoA test-room window each frame, proving the canonical
+//!   on screen". Provides an SDF-math-driven renderer that ray-marches a
+//!   canonical sphere+plane scene per pixel, proving the canonical
 //!   `run_main_loop` is ticking + drives end-to-end pixels.
 //!
-//! § STRATEGY (T11-D228)
+//! § STRATEGY (T11-D228 → T11-D234 followup)
 //!
-//!   The slice ships a GDI fallback path FIRST :
-//!     - `cssl-host-d3d12` does NOT yet expose a `create_swapchain(hwnd,…)`
-//!       helper (verified by audit at slice-open ; it surfaces Device / Queue
-//!       / PSO / Resource / Fence but no swapchain wrapper). Wiring DXGI
-//!       directly inline would balloon the slice past its 1500-LOC ceiling.
-//!     - GDI `BitBlt` from a DIB section fully meets the acceptance criteria
-//!       ("VISIBLE PIXELS" + per-frame color cycling + close-event clean exit)
-//!       while keeping the unsafe-FFI surface to a single bounded module.
-//!     - When `cssl-host-d3d12` ships its own `Swapchain` type, this module
-//!       grows a parallel D3D12 path behind a `gpu` feature ; the GDI fallback
-//!       remains as a no-GPU degraded mode.
+//!   T11-D228 wired a GDI BitBlt path with HSV-cycle clear-color to close the
+//!   Phase-3 visible-pixels gate while the SDF stack was being audited.
+//!
+//!   T11-D234 (this slice) REPLACES the HSV-cycle with a CPU-side SDF
+//!   raymarch via [`cssl_render_v2::SdfRaymarchPass`] honoring the
+//!   Apocky-maxim "WORLD IS MATH"
+//!   (`Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V`) — every
+//!   visible pixel is a math evaluation, not a clear-color or canvas-fill.
+//!   See [`sdf_scene`] for the canonical scene definition + per-frame
+//!   render path.
+//!
+//!     - `cssl-render-v2::SdfRaymarchPass::march` is reused verbatim — the
+//!       crate exposes a CPU-side surface (pure `f32`, no GPU dep) that is
+//!       directly callable from this binary. Future slices port the loop to
+//!       the GPU SPIR-V kernel.
+//!     - GDI `StretchDIBits` blits the math-buffer into the window. The
+//!       SDF buffer is rendered at a downsampled resolution
+//!       ([`sdf_scene::RENDER_W`] × [`sdf_scene::RENDER_H`]) and GDI
+//!       upsamples to the window's actual size, keeping the per-frame CPU
+//!       cost bounded regardless of window resize.
+//!
+//! § ATTESTATION — "the world is math"
+//!
+//!   This module satisfies the world-is-math maxim : the per-pixel pipeline
+//!   is `[orbit-camera-basis] → [pixel-uv → ray] → [SDF-sphere-trace] →
+//!   [Lambertian shade]`. There is NO clear-color, NO procedural-texture, NO
+//!   canvas-fill — every visible pixel is math.
 //!
 //! § PRIME-DIRECTIVE
 //!
@@ -67,6 +83,14 @@
 #[cfg(target_os = "windows")]
 #[path = "test_room_render/win32_gdi.rs"]
 mod win32_gdi;
+
+// § T11-D234 SDF math-scene module — canonical sphere+plane scene + per-
+// pixel raymarch via cssl-render-v2. Lives in the same dir as win32_gdi.rs
+// for tidiness. Always-on (not gated by target_os) so the buffer-render +
+// scene-build are reachable from non-Windows tests too ; the Win32 blit
+// still requires `cfg(target_os = "windows")`.
+#[path = "test_room_render/sdf_scene.rs"]
+pub mod sdf_scene;
 
 // `GdiRenderError` is re-exported for its type-name to appear in any
 // future error-chain that callers want to match on ; it's not consumed
@@ -127,8 +151,22 @@ mod stub_impl {
             RenderOutcome::UnavailableOnPlatform
         }
 
+        /// No-op stub for the SDF math-buffer paint path
+        /// (T11-D234 followup). Non-Windows builds never present pixels ; the
+        /// SDF render functions in [`super::sdf_scene`] still execute (they
+        /// have no Win32 deps) so unit tests remain useful on Linux/macOS CI.
+        pub fn paint_buffer(&mut self, _buffer: &[u32], _src_w: u32, _src_h: u32) -> RenderOutcome {
+            RenderOutcome::UnavailableOnPlatform
+        }
+
         /// No-op stub.
         pub fn resize(&mut self, _w: u32, _h: u32) -> Result<(), GdiRenderError> {
+            Err(GdiRenderError::UnavailableOnPlatform)
+        }
+
+        /// No-op stub for `refresh_dimensions`. Non-Windows targets have no
+        /// HWND so we always report (0, 0).
+        pub fn refresh_dimensions(&mut self) -> Result<(u32, u32), GdiRenderError> {
             Err(GdiRenderError::UnavailableOnPlatform)
         }
     }
