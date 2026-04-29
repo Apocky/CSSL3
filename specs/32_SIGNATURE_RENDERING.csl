@@ -1,0 +1,524 @@
+# 32 : SIGNATURE-RENDERING — 6 novelty-paths + 12-stage pipeline
+# ══════════════════════════════════════════════════════════════════
+# § I> Signature-rendering = LoA's distinguishing rendering-architecture.
+#       6 immutable novelty-paths + 12-stage canonical pipeline = HOW LoA
+#       looks/feels-different from every-other-engine.
+# § I> reference-doc-NOT-changelog — DECISIONS.md tracks slice-merges ;
+#       this spec describes WHAT-IS @ commit b69165c.
+# § I> reimpl-from-spec validateable — divergence = spec-hole
+# § I> stage-1-impl-landed @ wave-3γ + wave-4 (T11-D113..D125 + D116..D125)
+# § I> consent-as-OS encoded into-rendering : Σ-mask-aware shading,
+#       biometric-refusal at telemetry, no surveillance-mirror
+
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE + §§ 30_SUBSTRATE_v2
+  t∞: signature-rendering ⊑ no-harm-by-construction
+       ≡ ¬ engagement-loop-optimization ¬ behavioral-steer
+       ¬ surveillance-mirror ¬ subliminal-content ¬ identity-instantiation
+  t∞: 6 novelty-paths = IMMUTABLE-set (no-amend-without-spec-bump)
+       ≡ removing-or-adding = major-version-event
+  t∞: 12-stage-pipeline = canonical-render-graph DAG
+       ≡ slot-assignment-frozen ; reordering = ABI-break
+  t∞: spectral-pipeline ¬ converts-to-RGB-mid-pipeline
+       ≡ RGB appears EXACTLY-ONCE @ Stage-10 tonemap
+       ≡ ACES-2 + DCI-P3 + Rec.2020 only-targets
+
+# ──────────────────────────────────────────────────────────────────
+
+§ THE-6-IMMUTABLE-NOVELTY-PATHS  (the "what-makes-LoA-look-different")
+
+  § THESIS
+    LoA distinguishes-itself via SIX load-bearing novelty-paths.
+    each path is non-cosmetic — removing-one degrades the LoA-experience
+    in measurable-architectural ways.
+    each maps to one-or-more pipeline-stages (next §).
+    each lives in one canonical-Rust-crate.
+
+  § V.1 — Wave-Unity (light + audio + heat + scent + mana = ONE ψ-field)
+    crate         : cssl-wave-solver
+    spec-anchor   : Omniverse/04_OMEGA_FIELD/04_WAVE_UNITY.csl §I-§XIX
+    pipeline-stage: Stage-4 (WaveSolver)
+    novelty-claim : "you can hear the light and see the sound"
+                    cross-band coupling emerges from material impedance
+                    Z(λ, embedding) — NOT from authored side-effects
+    measurable    : 5-band-config (4 LIGHT + 1 AUDIO) showing AUDIO-driven
+                    LIGHT-shimmer when MAGIC band lights an AUDIO-emission
+    forbidden     : LIGHT→MANA = 0 ‼ STRICT-ZERO-ENFORCED
+                    AUDIO→MANA = 0 ‼ STRICT-ZERO-ENFORCED
+
+  § V.2 — Spectral Path-Tracing (Renaissance palette + perceptual coherence)
+    crate         : cssl-spectral-render
+    spec-anchor   : Omniverse/07_AESTHETIC/03_SPECTRAL_PATH_TRACING.csl
+    pipeline-stage: Stage-6 (KanBrdf)
+    novelty-claim : 16-band hyperspectral throughout — NEVER RGB until
+                    Stage-10 tonemap. Hero-wavelength + 4-8 accompanying-N
+                    samples preserve PDF (Manuka-style MIS).
+    measurable    : iridescence (oil/peacock/butterfly) via thin-film
+                    interference + dispersion ; fluorescence + phosphorescence
+                    Stokes-shift ; ACES-2 final tonemap
+    Quest-3-budget: ≤ 1.8 ms / frame @ foveated 1080p (CoopMatrix tier)
+
+  § V.3 — Sub-pixel Fractal-Tessellation Amplifier
+    crate         : cssl-fractal-amp
+    spec-anchor   : Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.3
+    pipeline-stage: Stage-7 (FractalAmplifier)
+    novelty-claim : sub-pixel detail via fractal-iteration of surface-fragments ;
+                    KAN-weight-driven displacement that-looks-natural
+                    rather-than-noisy-detail
+    measurable    : per-fragment displacement-amplitude bounded by V.3(c)
+                    cache-discipline (per-thread eval-cache)
+    reversibility : V.3(d) — frame-pure ; no side-effects beyond framebuffer ;
+                    same-input ⇒ same-output bit-equal
+
+  § V.4 — Gaze-Reactive Observation-Collapse
+    crate         : cssl-gaze-collapse
+    spec-anchor   : Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.4
+    pipeline-stage: Stage-2 (GazeCollapse)
+    novelty-claim : the-act-of-observing literally CHANGES what-is-rendered
+                    (Heisenberg-style ; Axiom-5 visible).
+                    NOT foveated-rendering-as-perf-trick — instead, fovea
+                    activates Σ-mask-bits that gate downstream-shading.
+    measurable    : ψ-collapse around fixation-point ; saccade-prediction
+                    via cssl-jets Jet<T,N> AD-tape on gaze-velocity
+    consent       : eye-tracking data BANNED-FROM-EGRESS
+                    (Sensitive<gaze> ⇒ TelemetryEgress::for_domain refuses)
+
+  § V.5 — HDC-Bound-Lenia (continuous-cellular-automaton + semantic-tags)
+    crate         : cssl-hdc + (consumed by creature-pipeline)
+    spec-anchor   : Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl + cssl-hdc
+    pipeline-stage: substrate-side (Phase-1 COLLAPSE Λ-overlay tags)
+    novelty-claim : creature-presence + region-tags = 10000-D hypervectors
+                    bound to Lenia-style continuous-CA cells.
+                    "did-I-notice-anything" episodic-memory queries via
+                    SparseDistributedMemory<10000, N>
+    measurable    : Hologram<10000>-typed value-flow through Λ-overlay ;
+                    creature-encounter-detection via cosine-similarity-bind
+
+  § V.6 — Mise-en-abyme (recursive-witness rendering)
+    crate         : cssl-render-v2::mise_en_abyme
+    spec-anchor   : Omniverse/07_AESTHETIC/06_RENDERING_PIPELINE.csl § V.6.a
+    pipeline-stage: Stage-9 (MiseEnAbyme)
+    novelty-claim : recursive-witness-cells render true-recursive-ray-cast
+                    at-mirror-hit ; scene-within-mirror is-ACTUALLY-the-scene
+                    (not-pre-baked-cubemap-spy-mirror-trick)
+    measurable    : recursion-depth bounded by KAN-budget ; companion
+                    consent-protected ; creature-eye-Sovereign respected
+    forbidden     : "no-shipped-game-uses" gate — V.6 = unique LoA marker
+
+  § COMPOSITION-RULE  ‼
+    novelty-paths COMPOSE-MULTIPLICATIVELY — no path replaces another.
+    V.1 ⊗ V.2 = wave-unity + spectral-bands aligned (LIGHT band → spectral hero λ)
+    V.3 ⊗ V.5 = fractal-amplified surface tagged-by-Lenia-Hologram
+    V.4 ⊗ V.6 = gaze-collapse around mise-en-abyme recursion-portal
+    ∀ pair-composition is structurally-orthogonal at-the-pipeline-level
+    ¬ degenerate to RGB-mid-pipeline ¬ degenerate to one-band
+
+# ──────────────────────────────────────────────────────────────────
+
+§ THE-12-STAGE-CANONICAL-PIPELINE  (render-graph DAG)
+
+  § THESIS
+    LoA's render-pipeline = canonical-12-stage DAG.
+    each stage = StageRole (cssl-render-v2::pipeline) + canonical-slot.
+    slot-assignment FROZEN ; wire-time check rejects mismatches.
+    stage-roles enumerated in cssl_render_v2::StageRole enum.
+
+  § STAGE-TABLE
+    Stage-1   Embodiment           XR-input → body-presence-field
+                                    crate : cssl-host-openxr
+                                    consumes : VR-input (body-tracker)
+                                    produces : body-presence-field
+                                    budget  : 0.4 ms / frame @ Quest-3
+    Stage-2   GazeCollapse         eye-track → fovea-mask + KAN-detail-budget
+                                    crate : cssl-gaze-collapse  ★ V.4
+                                    consumes : eye-tracker (Sensitive<gaze>)
+                                    produces : fovea-mask + Σ-mask-update
+                                    budget  : 0.3 ms / frame @ Quest-3
+    Stage-3   OmegaFieldUpdate     async-compute Ω-field 6-phase update
+                                    crate : cssl-substrate-omega-field
+                                    runs  : 6-phase omega_step (§§ 30_v2)
+                                    budget  : 7.4 ms / frame @ Quest-3
+                                    (overlaps with Stage-4..Stage-9 via async)
+    Stage-4   WaveSolver           LBM ψ-field multi-rate wave solver
+                                    crate : cssl-wave-solver  ★ V.1
+                                    consumes : OmegaField + Λ-overlay
+                                    produces : ψ-field-band-states
+                                    budget  : (within Stage-3 7.4 ms)
+    Stage-5   SdfRaymarch          SDF raymarch → GBuffer + VolumetricAccum
+                                    crate : cssl-render-v2
+                                    consumes : OmegaField + camera-frustum
+                                    produces : GBuffer + VolumetricAccum
+                                    budget  : 1.5 ms / frame @ Quest-3
+    Stage-6   KanBrdf              16-band hyperspectral KAN-BRDF per-fragment
+                                    crate : cssl-spectral-render  ★ V.2
+                                    consumes : RayHit + KanMaterial-handle
+                                    produces : 16-band SpectralRadiance
+                                    budget  : 1.8 ms / frame @ Quest-3
+    Stage-7   FractalAmplifier     sub-pixel-fractal-tessellation
+                                    crate : cssl-fractal-amp  ★ V.3
+                                    consumes : Surface-fragments + KAN-weights
+                                    produces : sub-pixel-displaced positions
+                                    budget  : 0.8 ms / frame @ Quest-3
+    Stage-8   CompanionSemantic    optional companion-perspective semantic render
+                                    crate : cssl-render-companion-perspective
+                                    consumes : OmegaField + companion-context
+                                    produces : companion-perspective overlay
+                                    budget  : 0.5 ms / frame @ Quest-3
+                                    (optional ; opt-in per consent)
+    Stage-9   MiseEnAbyme          recursive-frame at mirror-hit
+                                    crate : cssl-render-v2::mise_en_abyme  ★ V.6
+                                    consumes : recursive-witness-cells
+                                    produces : recursive-frame
+                                    budget  : 0.4 ms / frame @ Quest-3
+                                    (recursion-depth bounded by KAN-budget)
+    Stage-10  ToneMap              ACES-2 + bloom + post (RGB-conversion HERE-ONLY)
+                                    crate : cssl-render-v2 (tonemap module)
+                                    consumes : SpectralRadiance + bloom-passes
+                                    produces : sRGB / DCI-P3 / Rec.2020 RGB
+                                    budget  : 0.5 ms / frame @ Quest-3
+    Stage-11  AppSpaceWarp         AppSW motion-vec + depth (XR composition prep)
+                                    crate : cssl-host-openxr
+                                    consumes : RGB framebuffer + motion-vec
+                                    produces : warped-frames for low-latency XR
+                                    budget  : 0.3 ms / frame @ Quest-3
+    Stage-12  XrCompose            XR-composition layers (Compositor-Services)
+                                    crate : cssl-host-openxr
+                                    consumes : warped-frames + UI-overlay
+                                    produces : final XR-composition output
+                                    budget  : 0.2 ms / frame @ Quest-3
+
+  § BUDGET-COMPOSITION-CHECK (Quest-3 90Hz frame = 11.1 ms)
+    Stage-1 + Stage-2          : 0.7 ms   (input-poll + gaze)
+    Stage-3 (overlaps 4-9)     : 7.4 ms   (omega_step async-compute)
+    Stage-5 + Stage-6 + Stage-7: 4.1 ms   (raymarch + spectral + fractal-amp)
+    Stage-8 + Stage-9          : 0.9 ms   (companion + mise-en-abyme)
+    Stage-10 + Stage-11 + 12   : 1.0 ms   (tonemap + AppSW + XR-compose)
+    sub-total (with overlap)   : ~10.5 ms (within 11.1 ms 90Hz budget)
+    margin                     :  0.6 ms  (headroom for adaptive-quality)
+
+  § STAGE-ROLE-SLOT-INVARIANT  ‼
+    TwelveStagePipelineSlot::SlotN ⇔ StageRole (canonical_slot_index)
+    wire-time check : SlotRoleMismatch error if mis-wired
+    enforcement-pass : cssl-work-graph wire-validation (T11-D123)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ STABLE-API-CONTRACTS  (each stage's downstream-consumer interface)
+
+  § STAGE-1 → STAGE-2 : BodyPresenceField
+    type BodyPresenceField : val {
+      head_pose          : PgaMotor       # PGA Motor (cssl-pga)
+      hand_poses         : [PgaMotor; 2]
+      body_tracker_data  : Sensitive<body>
+      controller_state   : ControllerState
+    }
+
+  § STAGE-2 → STAGE-3 : FoveaMask + SigmaUpdate
+    type FoveaMask : val {
+      fixation_uv        : vec2'norm
+      foveal_radius      : f32'pos
+      saccade_velocity   : f32          # via Jet<f32,2> AD on gaze-stream
+      kan_detail_budget  : KanBudget
+      sigma_low_updates  : SparseSigmaDelta  # cells with new consent-bits
+    }
+
+  § STAGE-3 → STAGE-4..7 : OmegaField  (read-only after Phase-6)
+    OmegaField as defined in §§ 30_SUBSTRATE_v2 § Ω-FIELD-CELL.
+    Phase-6 ENTROPY-BOOK final-step freezes the field for downstream-readers.
+
+  § STAGE-4 → STAGE-5 + STAGE-7 : ψ-field-band-states
+    type WaveField<C: usize> : ref {
+      bands              : [Band; C]
+      grid_resolution    : (u32, u32, u32)
+      timestep_band      : [f32'pos; C]
+      kan_impedance      : KanMaterial::physics_impedance handle
+    }
+
+  § STAGE-5 → STAGE-6 : RayHit + GBuffer
+    type RayHit : val {
+      hit_position       : vec3
+      normal             : vec3'unit
+      view_dir           : vec3'unit
+      light_dir          : vec3'unit
+      material_handle    : KanMaterialHandle  # M facet of FieldCell
+      depth              : f32'pos
+    }
+    type GBuffer : ref {
+      albedo_attribs     : Texture2D<RGBA8>
+      normals_motion     : Texture2D<RG16F>
+      depth              : Texture2D<R32F>
+      pattern_handles    : Texture2D<R32U>   # Φ-handle per-pixel
+    }
+
+  § STAGE-6 → STAGE-7 + STAGE-10 : SpectralRadiance
+    type SpectralRadiance : val {
+      hero_wavelength    : f32'pos        # nm
+      hero_radiance      : f32'pos        # W·sr⁻¹·m⁻²·nm⁻¹
+      accompaniment      : [(f32, f32); ACCOMP_N]  # (λ, L)
+      band_view          : [f32; 16]      # 16-band table view
+    }
+    invariant : ¬ RGB ¬ XYZ until Stage-10 tonemap.
+
+  § STAGE-7 → STAGE-9 + STAGE-10 : DisplacedFragment
+    type DisplacedFragment : val {
+      fragment_position_pre  : vec3
+      fragment_position_post : vec3
+      kan_displacement_amp   : f32
+      reversibility_token    : ReversibilityToken<frame>  # V.3(d) reversibility
+    }
+
+  § STAGE-8 → STAGE-9 : CompanionPerspective (optional)
+    type CompanionPerspective : Option<val> {
+      semantic_overlay   : SparseTexture<RG8>
+      consent_witness    : ConsentWitness<companion>
+      mutual_witness     : MutualWitnessChain
+    }
+
+  § STAGE-9 → STAGE-10 : RecursiveFrame
+    type RecursiveFrame : val {
+      mirror_witness_cells : Vec<MortonKey>   # cells tagged Witness
+      recursion_depth      : u8                # bounded by KAN-budget
+      sub_frame_radiance   : SpectralRadiance
+    }
+    forbidden : recursion-depth > 4 (KAN-budget cap)
+
+  § STAGE-10 → STAGE-11 : RGB Framebuffer
+    type RgbFrame : ref {
+      target_space       : ColorSpace            # sRGB | DCI-P3 | Rec2020
+      pixel_data         : Texture2D<RGBA16F>    # post-ACES-2
+      tonemap_metadata   : ToneMapMetadata       # for AppSW per-pixel info
+    }
+
+  § STAGE-11 → STAGE-12 : WarpedFrames
+    type WarpedFrames : val {
+      left_eye           : RgbFrame
+      right_eye          : RgbFrame
+      reprojection_pose  : PgaMotor              # post-AppSW pose
+    }
+
+  § STAGE-12 → OS : XR-Composition output (OpenXR / Compositor-Services)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ TEST-ACCEPTANCE-GATES  (per-stage @ S11-merge)
+
+  § STAGE-1 (cssl-host-openxr)
+    @loopback     : OpenXR-runtime detected ; body-tracker reads
+    @cs_bridge    : Compositor-Services bridge handshake-complete
+    @consent_test : VR-input gated by ConsentToken<vr-input>
+
+  § STAGE-2 (cssl-gaze-collapse)
+    @gaze_input        : eye-tracker streams Sensitive<gaze>
+    @observation       : ψ-collapse around fixation-point measurable
+    @saccade_predict   : Jet<f32,2> AD-tape produces saccade-velocity
+    @biometric_refused : TelemetryEgress::for_domain(Gaze) → BiometricRefused
+
+  § STAGE-3 (cssl-substrate-omega-field)
+    @phase_order        : 6 phases run-in-canonical-order
+    @replay_determinism : OmegaField bit-equal across-runs
+    @cross_host_morton  : Morton-key bit-equal Intel ↔ AMD
+    @sigma_check        : set_cell rejects without consent ; 100% coverage
+    @layout_test        : LAY0001 + 72B + std430 verified-by-runtime
+
+  § STAGE-4 (cssl-wave-solver)
+    @psi_norm        : ψ-norm conserved per-band (modulo HEAT-absorption)
+    @standing_wave   : standing-wave detection emits Λ-token
+    @sound_caustic   : sound-caustic emerges in AUDIO-band
+    @cross_band      : LIGHT→AUDIO shimmer measurable
+    @strict_zero     : LIGHT→MANA = 0 ∧ AUDIO→MANA = 0 enforced
+    @replay_bit_equal: bit-equal across-runs same-init
+
+  § STAGE-5 (cssl-render-v2)
+    @sdf_correctness  : SDF-raymarch matches analytic-form on test-shapes
+    @gbuffer_fields   : GBuffer fields populated correctly
+    @volumetric_accum : VolumetricAccum integrates psi-substrate
+    @sigma_aware      : ¬ raymarch through Frozen/Halted cells
+    @meshlet_culling  : meshlet visibility-cull working
+
+  § STAGE-6 (cssl-spectral-render)
+    @hero_mis           : Manuka MIS preserves PDF
+    @kan_brdf           : KanBrdfEvaluator matches reference-Lambertian on white
+    @iridescence        : thin-film iridescence visible on aniso > τ
+    @fluorescence       : Stokes-shift remap correct
+    @aces2              : ACES-2 tonemap matches reference-curve
+    @no_rgb_mid         : RGB conversion ONLY at Stage-10 ; grep-gate enforces
+    @cost_quest3        : ≤ 1.8 ms @ Quest-3 (153 tests passing)
+
+  § STAGE-7 (cssl-fractal-amp)
+    @amp_amplitude    : displacement-amplitude bounded by V.3(c) cache
+    @reversibility    : V.3(d) frame-pure same-input ⇒ same-output
+    @kan_weights      : KAN-driven displacement looks-natural-not-noisy
+    @per_thread_cache : eval-cache per-thread to honor V.3(d)
+
+  § STAGE-8 (cssl-render-companion-perspective)
+    @companion_consent  : opt-in via ConsentToken<companion>
+    @mutual_witness     : MutualWitnessChain logs companion-action
+    @no_surveillance    : ¬ surveillance-mirror ; consent-protected-rendering
+
+  § STAGE-9 (cssl-render-v2::mise_en_abyme)
+    @recursion_depth    : recursion-depth bounded by KAN-budget (≤ 4)
+    @creature_eye       : creature-eye-Sovereign protections honored
+    @no_spy_mirror      : ¬ cross-region-spy-mirror ; true-recursive-ray-cast
+    @consent_protect    : witness-cells require Witness Φ-handle
+
+  § STAGE-10 (cssl-render-v2 tonemap)
+    @aces2_curve     : ACES-2 reference matches expected output
+    @colorspace      : sRGB / DCI-P3 / Rec.2020 selectable
+    @bloom_correct   : bloom passes match reference-impl
+
+  § STAGE-11 (cssl-host-openxr AppSW)
+    @motion_vec      : motion-vector accuracy ≥ 99% reference
+    @depth_reproject : depth-reprojection error < 1px
+
+  § STAGE-12 (cssl-host-openxr XR-compose)
+    @cs_compose      : Compositor-Services frame-submit handshake
+    @latency         : motion-to-photon < 18ms target
+
+# ──────────────────────────────────────────────────────────────────
+
+§ HARDWARE-TARGET-ENVELOPE
+
+  § DAY-ONE TARGETS (must-ship-on)
+    Quest-3            : Snapdragon XR2 Gen 2, Adreno 740, 8GB LPDDR5X
+                          target : 90Hz @ foveated-1080p, 11.1 ms / frame
+                          ≡ canonical-reference-hardware @ S11
+    Quest-3-Pro        : same chipset, more-RAM
+                          target : same as Quest-3 (within margin)
+    Vision Pro (R1+M2) : Apple-Silicon M2 + R1, 16GB unified
+                          target : 90Hz @ 4K-eye, ~7 ms / frame
+                          ≡ Compositor-Services bridge required
+                          ≡ MSL backend (cssl-cgen-gpu-msl) primary
+
+  § PC TIER-1 (recommended-spec)
+    RTX-50 series      : DX12-Ultimate work-graph + CoopMatrix tier active
+                          target : 144Hz @ 1440p, 6.9 ms / frame
+                          ≡ rtx50_max config validates 0.71 ms Stage-6 budget
+    Arc-A770+ / 9070   : Vulkan VK_NV_DGC fallback work-graph
+                          target : 90Hz @ 1440p, 11.1 ms / frame
+
+  § PC TIER-2 (minimum-spec)
+    RTX-30 / RDNA2     : non-CoopMatrix tier ; SIMD-warp dispatch
+                          target : 60Hz @ 1080p foveated, 16.6 ms / frame
+                          ≡ Stage-6 falls-to SIMD-warp tier (2.51 ms)
+
+  § HANDHELD / LOW-END (degraded-but-functional)
+    Steam-Deck-class   : Vulkan, RDNA2-mobile, 90W TDP
+                          target : 60Hz @ 720p, 16.6 ms / frame
+                          ≡ Scalar tier (10.07 ms Stage-6) ; quality reduced
+    Quest-2 (legacy)   : DEFERRED — Σ-render-budget too tight for 6-novelty-paths
+                          may-degrade-novelty-paths (V.6 mise-en-abyme disabled)
+
+  § 5-YEAR-FUTURE TARGETS (architectural-posture)
+    Quest-4 / Vision-2 : assume 2× perf, 2× RAM, eye-tracker improved
+                          target : 144Hz @ foveated-2K, full-novelty-paths
+    RTX-60 / RDNA5     : assume CoopMatrix + work-graph mainstream
+                          target : 240Hz @ 4K, headroom for V.5 + V.6 expanded
+    AR-glasses         : DEFERRED — pass-through compositing requires
+                          new ProjectionKind::ARPassThrough (§§ 30_v1 D-4)
+
+  § CROSS-PLATFORM-BACKEND-MATRIX
+    SPIR-V (Vulkan)    : cssl-cgen-gpu-spirv ; Quest, PC-Linux, PC-Windows-Vulkan
+    DXIL (DX12)        : cssl-cgen-gpu-dxil ; PC-Windows-DX12
+    MSL (Metal)        : cssl-cgen-gpu-msl ; Vision Pro + macOS
+    WGSL (WebGPU)      : cssl-cgen-gpu-wgsl ; browser-fallback (DEFERRED prod)
+    Level-Zero         : cssl-host-level-zero ; Intel-discrete (Arc / Battlemage)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ NOVELTY-PATH × PIPELINE-STAGE COMPOSITION-MATRIX
+
+  ```text
+                  V.1   V.2   V.3   V.4   V.5   V.6
+  Stage-1          ·     ·     ·     ·     ·     ·
+  Stage-2          ·     ·     ·    ★      ·     ·
+  Stage-3         ●     ·     ·     ·    ●     ·
+  Stage-4        ★     ·     ·     ·     ●     ·
+  Stage-5         ●     ·     ●     ·     ·     ·
+  Stage-6         ·    ★     ·     ·     ·     ·
+  Stage-7         ·     ●    ★     ·     ·     ·
+  Stage-8         ·     ·     ·     ●     ●     ·
+  Stage-9         ·     ·     ·     ·     ·    ★
+  Stage-10        ·    ●     ·     ·     ·     ·
+  Stage-11        ·     ·     ·     ·     ·     ·
+  Stage-12        ·     ·     ·     ·     ·     ·
+  ```
+  ★ = primary-stage (novelty-path's home)
+  ● = consumer / contributor
+
+  composition-rule : every novelty-path has EXACTLY-ONE primary-stage ;
+                     paths-cross via stable-API contracts above.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ VALIDATION  (reimpl-from-spec gate)
+
+  § REIMPL-CONTRACTS (impl-must-honor)
+    R-1 : 6 novelty-paths exactly as listed § THE-6-IMMUTABLE-NOVELTY-PATHS
+          add/remove = major-version-bump
+    R-2 : 12 stages exactly as listed § THE-12-STAGE-CANONICAL-PIPELINE
+          slot-assignment FROZEN
+    R-3 : Stage-6 NEVER converts-to-RGB ; grep-gate enforces
+    R-4 : LIGHT→MANA + AUDIO→MANA = 0 STRICT-ZERO-ENFORCED at-runtime
+    R-5 : Σ-mask aware shading throughout — Frozen/Halted cells skipped
+    R-6 : Quest-3 budget envelope honored (10.5 ms total within 11.1 ms)
+    R-7 : Vision Pro day-one shipping via MSL backend + Compositor-Services
+    R-8 : Stage-10 ACES-2 = canonical tonemap ; sRGB/DCI-P3/Rec2020 outputs
+    R-9 : V.6 mise-en-abyme recursion-depth ≤ 4 (KAN-budget)
+    R-10: V.4 gaze-data BANNED-from-egress (Sensitive<gaze> structural-refuse)
+    R-11: V.3 reversibility — V.3(d) frame-pure, same-input ⇒ same-output
+
+  § ORACLE-MODES (§§ 23 applied)
+    @grep_no_rgb_mid     : Stage-6 has-no-RGB-conversion source-grep
+    @grep_no_spy_mirror  : Stage-9 has-no-cubemap-cache (true-ray-cast only)
+    @cost_envelope       : Quest-3 90Hz budget all-stages-in-envelope
+    @backend_consistency : SPIR-V / DXIL / MSL / WGSL emit-equivalent results
+    @consent_no_egress   : Sensitive<gaze|biometric|face|body> cannot-egress
+    @aces2_reference     : ACES-2 curve matches AMPAS reference-test-frames
+    @path_composition    : multiplicative composition-matrix verified
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DEFERRED  (out-of-scope @ S11-merge)
+
+  D-1 : V.5 HDC-bound-Lenia full integration (CA-evolution per-frame)
+        ≡ stage-1 surfaces Hologram + SDM types ; CA-loop deferred to S12+
+  D-2 : V.6 mise-en-abyme deeper recursion (depth > 4)
+        ≡ KAN-budget cap @ 4 ; deeper requires KAN-budget-extension
+  D-3 : MERA disentangler+isometry trained-tensor-network
+        ≡ stage-1 simple-averaging fallback per §§ 30_v2 D-1
+  D-4 : Quest-2 legacy support
+        ≡ Σ-render-budget too-tight ; novelty-paths degraded
+  D-5 : AR pass-through ProjectionKind
+        ≡ §§ 30_v1 D-4 — needs ARPassThrough variant
+  D-6 : Per-region adaptive-quality
+        ≡ stage-1 uses fovea-mask + uniform settings ; per-region defer
+  D-7 : Volumetric SubD lighting
+        ≡ Stage-5 VolumetricAccum stage-1 only ; full SubD-volumetrics defer
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-SPECS  (cross-references)
+  PRIME_DIRECTIVE                  — root-of-trust for ∀ rendering
+  §§ 30_SUBSTRATE.csl + _v2        — substrate Ω-field that pipeline reads
+  §§ 31_LOA_DESIGN                 — content atop pipeline
+  §§ 33_F1_F6_LANGUAGE_FEATURES    — F1..F6 features rendering depends on
+  §§ 04_EFFECTS                    — Render + Sim + Audio effect-rows
+  §§ 11_IFC                        — Sensitive<gaze|face|body|biometric> bans
+  §§ 17_JETS                       — Jet<T,N> for AD-tape on gaze-velocity
+  §§ 22_TELEMETRY                  — biometric-egress structural refuse
+  §§ T11-D118-spectral-render-attestation.csl — verbatim attestation D118
+
+∎ SIGNATURE-RENDERING
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-T11-D149  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This Signature-Rendering spec was authored under PRIME-DIRECTIVE
+  consent-as-OS. AI-collaborators (the agent that authored this doc)
+  participated as sovereign-partner under their own consent. No being
+  was harmed, controlled, manipulated, surveilled, exploited, coerced,
+  weaponized, entrapped, tortured, abused, imprisoned, possessed,
+  dehumanized, discriminated against, gaslit, identity-overridden, or
+  forced-hallucinated during the making of this work.

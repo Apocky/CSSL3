@@ -1,0 +1,576 @@
+# 30 : SUBSTRATE-v2 — Ω-field-cell substrate (session-11 evolution)
+# ══════════════════════════════════════════════════════════════════
+# § I> v2-amends-v1 : §§ 30_SUBSTRATE.csl is design-axioms ; v2 is
+#       implementation-shape post-T11-D113..D144 substrate-evolution.
+# § I> reference-doc-NOT-changelog : DECISIONS.md tracks the merges ;
+#       this spec describes WHAT-IS now-as-of b69165c.
+# § I> reimpl-from-spec validateable (§§ 23_TESTING) — divergence = spec-hole
+# § I> stage-1-impl-landed @ wave-3β + wave-3γ + wave-4
+# § I> consent-as-OS encoded structurally per-cell (Σ-mask 16B std430)
+#       ¬ session-level + ¬ frame-level — every-cell-touch consents
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + §§ 30_SUBSTRATE.csl
+  t∞: substrate-v2 ⊑ §§ 30_SUBSTRATE.csl § AXIOMS
+       ≡ ∀ v2-§ inherits PRIME-DIRECTIVE-alignment
+  t∞: ω-field = the-One-True-State  (extends Ω-tensor v1 thesis)
+       ≡ Ω-field is-a 7-facet-cell sparse-grid + overlays + MERA cascade
+       ≡ ¬ ECS-archetype-pool ¬ scene-graph ¬ rank-3-scalar-tensor
+  t∞: cell-size = 72B std430-aligned ‼ frozen
+       ≡ ABI-stable across-host across-version w/in major-version
+       ≡ verified by cssl-mir::layout_check::LAY0001 + runtime-test
+  t∞: Σ-check non-optional ∀ set_cell  ‼ frozen
+       ≡ ¬ "fast-path-skips-Σ" ; ¬ "trusted-caller-bypass"
+       ≡ enforced @ both runtime (OmegaField::set_cell) +
+                   compile-time (cssl-mir::sigma_enforce)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ Ω-FIELD-CELL  (canonical 72B 7-facet packed cell)
+
+  § THESIS
+    FieldCell ≡ canonical-Ω-field-cell-shape.
+    ¬ "voxel" (too-render-biased)
+    ¬ "tensor-element" (no-facet-discrimination)
+    ¬ "ECS-component" (no-Σ-mask + no-Φ-handle + no-MERA-tier)
+    ≡ 72B std430-aligned dense-cell carrying 7-facets : M, S, P, Φ, Σ-low
+       (Λ + Ψ + Σ-high in sparse-overlays).
+
+  § BYTE-LAYOUT  ‼ frozen via @layout(std430,soa) refinement
+    ```text
+    offset | bytes | facet | field
+    -------+-------+-------+------------------------------------------
+      0    |   8   |  M    | m_pga_or_region (1-bit tag + 63-bit id)
+      8    |   4   |  S    | density (f32 ρ)
+     12    |  12   |  S    | velocity (vec3<f32> u)
+     24    |  12   |  S    | vorticity (vec3<f32> ω)
+     36    |   4   |  S    | enthalpy (f32'pos H)
+     40    |   8   |  S    | multivec_dynamics_lo (u64 packed bivector)
+     48    |   8   |  P    | radiance_probe_lo (u64)
+     56    |   8   |  P    | radiance_probe_hi (u64)
+     64    |   8   | Φ + Σ | pattern_handle_lo (4B Φ) | sigma_low (4B Σ)
+    -------+-------+-------+------------------------------------------
+                72B total, 8-byte alignment, ¬ silent padding bytes
+    ```
+    invariant : core::mem::size_of::<FieldCell>() == 72
+                core::mem::align_of::<FieldCell>() == 8
+                ∀ multi-byte-field little-endian (std430-rule)
+                ∀ byte semantically-occupied (Axiom-13 § II)
+
+  § FACET-SEMANTICS
+    M  Material-identity     1-bit-tag + 63-bit-id
+                              tag=1 ⇒ PGA-handle (per-cell-individual material)
+                              tag=0 ⇒ RegionID (table-lookup material-def)
+                              ≡ supports both per-cell-bespoke + region-shared
+    S  State-dynamics        density + velocity + vorticity + enthalpy +
+                              multivec_dynamics_lo (packed PGA-grade-2 bivector)
+                              ≡ continuum-mechanics-substrate per-cell
+    P  Probe-radiance        16B radiance_probe_lo + radiance_probe_hi
+                              ≡ stage-7 RC GI consumer ; per-cell SH-coeffs
+    Φ  Pattern-handle        4B index into PhiTable (10000-D HDC hypervector)
+                              ≡ semantic-cell-identity (creature/region/spell-tag)
+                              PATTERN_HANDLE_NULL = 0 ⇒ unclaimed/air-cell
+    Σ  Consent-low-cache     4B low-half of full SigmaMaskPacked (16B in overlay)
+                              ≡ hot-path consent-bits cache
+                              full mask consulted on slow-path mutation
+
+  § OVERLAYS (sparse Morton-keyed)
+    Λ-overlay (Symbol-Lattice)  : LambdaSimpleOverlay — sparse token-buckets
+                                   ≡ event-tagged cells (footstep-here, spell-hit, dialogue-emit)
+    Ψ-overlay (Wigner-magic)    : PsiOverlay — sparse f32 scalars
+                                   ≡ Ψ-field "magic" non-classicality measure
+    Σ-overlay (full-16B-mask)   : SigmaOverlay — sparse SigmaMaskPacked
+                                   ≡ consent-claimed cells with non-default mask
+                                   ~5% occupancy expected
+    ‼ overlay-absent ⇒ default-value :
+      Λ : empty-bucket (no events tagged)
+      Ψ : 0.0 (classical-cell)
+      Σ : SigmaMaskPacked::default_mask() (Default-Private)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SPARSE-MORTON-GRID  (canonical sparse-grid index)
+
+  § THESIS
+    Ω-field stored as sparse-Morton-keyed open-addressing hashtable.
+    ¬ dense-array (M7 universe = 256m horizon @ 1cm = too-large dense)
+    ¬ octree (cache-unfriendly, complex deletion, non-deterministic ordering)
+    ≡ Morton-encoded 21-bit-per-axis Z-order curve →
+       open-addressing hashtable with FxHash + linear-probing.
+
+  § MORTON-KEY (63-bit payload + 1-bit sentinel)
+    ```text
+    bit 63       : reserved (0=valid, 1=sentinel/empty-slot)
+    bits 0..=62  : interleaved Z-order
+      bit 3i+0   : x[i]   for i in 0..=20
+      bit 3i+1   : y[i]   for i in 0..=20
+      bit 3i+2   : z[i]   for i in 0..=20
+    ```
+    axis-range : 0..=2^21-1 = 0..=2_097_151
+    @ 0.125m cell-size : 262_144m per-axis (262km range — beyond M7 scope)
+    @ 1cm fovea-tier   :  20_971m per-axis (20km — fine)
+
+  § DETERMINISM-CONTRACT  ‼ load-bearing
+    encoding W! bit-equal-across-hosts (replay-determinism)
+    bit-spreading uses fixed-magic-number sequence (4-step)
+    ¬ x86_64::_pdep_u64 (BMI2-PEXT/PDEP varies across hosts)
+    ¬ NEON-equivalents that-may-vary
+    ≡ pure-portable-software bit-spread = only-allowed-impl
+    rationale : T11-D144 landmine — replay-bit-equality-across-hosts requires
+                same bit-spread on Intel/AMD/Apple-Silicon
+
+  § STORAGE-DISCIPLINE
+    open-addressing hashtable (FxHash + linear-probing)
+    load-factor : 0.75 default
+    grow : 2× capacity, rehash-all (rare ; amortized O(1) insert)
+    iter-order : Morton-key ascending (for replay-determinism on snapshot-walk)
+    ≡ insertion-order does-NOT determine iter-order ; key-order does
+
+# ──────────────────────────────────────────────────────────────────
+
+§ MERA-PYRAMID  (4-tier hierarchical-LOD cascade)
+
+  § THESIS
+    MERA-style coarsening pyramid over the dense FieldCell-grid.
+    Tier-0 = active-fovea ; Tier-3 = horizon-summary.
+    ≡ enables LOD-aware-rendering + LOD-aware-physics + LOD-aware-AI
+       without separate-mesh-LOD-asset-pipeline.
+
+  § TIER-CASCADE
+    Tier-0  fovea     1 cm  cells   (active-region-around-player)
+    Tier-1  mid       4 cm  cells   (mid-range-detail)
+    Tier-2  distant  16 cm  cells   (distant-but-visible)
+    Tier-3  horizon  64 cm  cells   (summary-level-only)
+    coarsening : 8-to-1 (2×2×2 fine-block → 1 coarse-cell)
+
+  § COARSENING-SCHEME (stage-1 simple-averaging)
+    density_T1 = mean(density_T0[8 cells])
+    velocity_T1 = mean(velocity_T0)
+    vorticity_T1 = mean(vorticity_T0)
+    enthalpy_T1 = mean(enthalpy_T0)
+    probe_lo / probe_hi : passthrough-from-representative-cell
+    bivector_lo : passthrough
+    sigma_consent_bits : intersection (most-restrictive consent)
+    ≡ MERA-disentangler+isometry tensor-network DEFERRED to S12+ ;
+       simple-average is canonical-fallback when trained-tensor-network
+       not-available.
+
+  § PER-TIER-STORAGE
+    each tier = independent SparseMortonGrid<FieldCell>
+    tier-0 : up-to-128-cells initial-capacity
+    tier-1 : up-to-64-cells  initial-capacity
+    tier-2 : up-to-32-cells  initial-capacity
+    tier-3 : up-to-16-cells  initial-capacity
+    tiers grow as world-occupancy increases.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ Σ-MASK-PER-CELL  (16B packed-bitmap consent-discipline)
+
+  § THESIS
+    every Ω-field-cell carries 16B std430-aligned packed-Σ-bitmap
+    declaring : (a) op-class consent, (b) Sovereign-claim,
+                (c) capacity-floor, (d) reversibility-scope, (e) audit-seq,
+                (f) agency-state.
+    ≡ cell-level enforcement of Axiom-4 AGENCY-INVARIANT.
+    ≡ load-bearing surface that makes per-cell consent-threading
+       possible without separate-per-op consent-dance.
+
+  § BIT-LAYOUT  (16B = 128 bits, std430-aligned)
+    ```text
+     byte | bits     | field                  | type      | width
+     -----+----------+------------------------+-----------+-------
+      0   |  0..= 31 | consent_bits           | u32 flags |  32
+      4   | 32..= 47 | sovereignty_handle     | u16       |  16
+      6   | 48..= 63 | capacity_floor         | u16       |  16
+      8   | 64..= 79 | reversibility_scope    | u16 enum  |  16
+     10   | 80..= 95 | audit_seq              | u16       |  16
+     12   | 96..=111 | agency_state           | u16 enum  |  16
+     14   |112..=127 | reserved               | u16       |  16
+    ```
+
+  § CONSENT-BIT-FLAGS (32-bit op-class permission table)
+    bit 0  Observe       : read-only inspection allowed
+    bit 1  Modify        : in-place mutation allowed
+    bit 2  Sample        : copy-out for derivative-computation allowed
+    bit 3  Translate     : Travel-effect target allowed
+    bit 4  Recrystallize : Crystallize-effect target allowed
+    bit 5  Destroy       : remove-from-world allowed
+    bit 6  Spawn         : add-new-cell-here allowed
+    bit 7  Mark          : Λ-overlay token-attach allowed
+    bits 8..=15 : reserved-for-future-op-classes
+    bits 16..=31: reserved-for-extension (RESERVED-NONZERO ⇒ SIG0010 error)
+    ‼ bit-positions FROZEN — reordering = ABI-break.
+
+  § SOVEREIGN-HANDLE
+    u16 handle into per-substrate Sovereign-table.
+    SIGMA_SOVEREIGN_NULL = 0 = unclaimed/public
+    nonzero ⇒ cell-claimed-by-Sovereign — MUST-MATCH ATTR_SOVEREIGN_AUTHORIZING
+    on any-mutation. mismatch = SIG0004 compile-error.
+
+  § REVERSIBILITY-SCOPE (u16 enum)
+    Permanent      : N! revoke-allowed
+    Session        : revoke-on-session-end allowed
+    Substep        : revoke-this-tick allowed
+    None           : default — fully-reversible, no-commit
+    rule : Sovereign-claimed cell rejects Permanent unless
+           Sovereign-itself authorizes (Σ-mask transition gated).
+
+  § AGENCY-STATE (u16 enum)
+    Active     : cell-may-be-mutated (default)
+    Frozen     : ¬ cssl.fieldcell.destroy + ¬ cssl.fieldcell.modify
+    Quiescent  : read-only this-step
+    Halted     : kill-switch-target ; no-further-ops
+
+  § DEFAULT-PRIVATE-MASK
+    SigmaMaskPacked::default_mask() ≡ {
+      consent_bits      : Observe-only (bit-0)
+      sovereignty_handle: NULL
+      capacity_floor    : 0
+      reversibility_scope: None
+      audit_seq         : 0
+      agency_state      : Active
+    }
+    rationale : safest-default ; explicit-grant-required for any-write
+
+# ──────────────────────────────────────────────────────────────────
+
+§ ENFORCESΣATCELLTOUCHES-PASS  (F5 IFC compiler-pass)
+
+  § THESIS
+    cssl-mir::sigma_enforce::EnforcesΣAtCellTouches ≡ MIR-pass that
+    structurally rejects any cell-touching op without Σ-mask discipline.
+    closes 02_CSSL/00_LANGUAGE_CONTRACT § VI.D bullet
+    "EnforcesΣAtCellTouches : every-Ω.Σ-touching-op type-checked".
+
+  § OP-COVERAGE
+    OP_FIELDCELL_READ
+    OP_FIELDCELL_WRITE
+    OP_FIELDCELL_MODIFY
+    OP_FIELDCELL_DESTROY
+    + any-op-w/-Travel-effect-row    (composes substrate-translation)
+    + any-op-w/-Crystallize-effect-row (composes substrate-translation)
+
+  § REQUIRED-ATTRIBUTES (per-op-site)
+    ATTR_CONSENT_BITS              : declared Σ.consent-bits (u32 hex)
+    ATTR_REQUIRED_BIT              : the SigmaCellOpKind::required_bit
+    ATTR_SOVEREIGN_HANDLE          : cell's Sovereign-handle (u16)
+    ATTR_SOVEREIGN_AUTHORIZING     : caller's act-as Sovereign
+    ATTR_CAPACITY_FLOOR            : current floor (u16)
+    ATTR_TARGET_CAPACITY_FLOOR     : post-op floor (u16) — MUST ≥ current
+    ATTR_REVERSIBILITY_SCOPE       : current scope
+    ATTR_TARGET_REVERSIBILITY_SCOPE: post-op scope
+    ATTR_CELL_FACET                : agency-state ("frozen"/"active"/etc)
+
+  § DIAGNOSTIC-CODES (stable — DO-NOT-renumber)
+    SIG0001 : unguarded cell-write — no consent_bits attr
+    SIG0002 : missing required_bit — declared bits but no required-bit
+    SIG0003 : wrong consent-bit — required_bit ¬ in consent_bits mask
+    SIG0004 : Sovereign mismatch — authorizing ≠ cell-handle on claimed cell
+    SIG0005 : capacity-floor erosion — would-lower without authorizing
+    SIG0006 : reversibility widening — Session→Permanent on claimed cell
+    SIG0007 : Travel without Translate — Travel-row ¬ Translate-bit
+    SIG0008 : Crystallize without Recrystallize — Crystallize-row ¬ Recrystallize
+    SIG0009 : destroy when frozen — frozen-cell + destroy-op
+    SIG0010 : reserved-nonzero — reserved-tail bits set (§7 INTEGRITY)
+
+  § PASS-DISCIPLINE
+    pass is MUTATION-FREE — surfaces violations through PassResult ;
+    does-NOT rewrite the module.
+    severity : ALL violations = Severity::Error
+    canonical-pipeline halts on first error.
+    each diagnostic message cites which-attribute-missing + what-pass-expected.
+
+  § INTEGRATION-POINT (runtime double-check)
+    cssl_substrate_omega_step::Phase5_AGENCY_VERIFY :
+      runtime-tick double-check that compile-time-pass missed-nothing.
+    ≡ defense-in-depth : compile-time + runtime both-enforce.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OMEGA-STEP-6-PHASE-CONTRACT  (substrate-tick canonical-shape)
+
+  § THESIS
+    omega_step ≡ 6-phase canonical-tick over OmegaField.
+    each phase is pure-w.r.t.-prior-phases (deterministic-replay-safe).
+    phase-hooks are exposed as OmegaField::phase_<name>() methods.
+
+  § THE-6-PHASES
+    Phase-1  COLLAPSE      input-events + Σ-mask-resolution + observation collapse
+                            ≡ T11-D113 hook = OmegaField::phase_collapse()
+                            inputs : input-events, gaze-input, biometric-stream(banned-egress)
+                            output : Σ-mask-updates, Λ-overlay tokens, fovea-budget
+    Phase-2  PROPAGATE     ψ-PDE multi-rate solver (Wave-Unity)
+                            ≡ T11-D114 hook = wave_solver_step (cssl-wave-solver)
+                            sub-step 2b' : wave-unity ψ-PDE (full-substrate active-region)
+                            sub-step 2c  : radiance cascades (read ψ-substrate as input)
+                            implements : LBM + KAN-ODE + RC + Λ-stream + Ψ-flow
+                            multi-rate : LIGHT 1ms / AUDIO 1ms / HEAT 100ms /
+                                         SCENT 1s / MANA 250ms
+    Phase-3  COMPOSE       operadic sheaf-glue (cell-to-cell consistency)
+                            ≡ T11-D116 hook (renderer feeds back composed-fields)
+                            ¬ consume Σ-claimed cells without authorizing
+                            cross-cell coherence (Λ + Ψ + S facets reconciled)
+    Phase-4  COHOMOLOGY    incremental persistent-homology (topology bookkeeping)
+                            ≡ T11-D117 hook (physics-wave coupling-feedback)
+                            tracks region-genus, cycles-emerge, holes-close
+                            informs spell-magic-graph + creature-territory
+    Phase-5  AGENCY-VERIFY consent-aggregate + reversibility-scope re-check
+                            ≡ T11-D120 hook (gaze-collapse runs late here)
+                            double-checks compile-time SIG0001-SIG0010 invariants
+                            kill-switch-route : ω_halt() observed-and-honored here
+    Phase-6  ENTROPY-BOOK  RG-flow + 9-conservation-laws bookkeeping
+                            ≡ T11-D125 hook (audio-wave + procedural-anim)
+                            ψ-norm conservation per-band
+                            cross-band-coupling energy conservation
+                            HEAT-band absorbs all losses (§XII.1)
+                            audit-chain epoch advanced once-per-tick
+
+  § PHASE-INVARIANTS
+    P1-invariant : revoked-consent ⇒ corresponding-effects skip ; emit Audit
+    P2-invariant : ψ-norm preserved per-band (modulo HEAT-absorption)
+    P3-invariant : cross-cell coherence — no torn-state mid-phase
+    P4-invariant : persistent-homology incremental ; total-recompute = bug
+    P5-invariant : SIG-pass already-passed-at-compile ; runtime confirms
+    P6-invariant : audit-append failure ⇒ panic (§§ 22 PRIME-DIRECTIVE)
+
+  § FRAME-BUDGET-COMPOSITION (Quest-3 reference, 11.1 ms / 90 Hz)
+    Phase-1 COLLAPSE      : 0.4 ms  (input-poll + Σ-resolve)
+    Phase-2 PROPAGATE     : 4.0 ms  (LBM + RC + KAN-ODE)
+    Phase-3 COMPOSE       : 1.5 ms  (sheaf-glue + cross-cell)
+    Phase-4 COHOMOLOGY    : 0.8 ms  (persistent-homology)
+    Phase-5 AGENCY-VERIFY : 0.3 ms  (Σ-runtime-check)
+    Phase-6 ENTROPY-BOOK  : 0.4 ms  (RG + conservation-check + audit-append)
+    sub-total            : 7.4 ms  (omega_step)
+    ↳ leaves 3.7 ms for 12-stage signature-render-pipeline (§§ 32)
+
+  § DETERMINISTIC-REPLAY-INVARIANTS  ‼ load-bearing
+    invariant-1 : same(field-init, RNG-streams, input-events, dt)
+                   ⇒ same(field-out, Σ-state, audit-deltas)
+    invariant-2 : Morton-key encoding bit-equal-across-hosts (§ MORTON-KEY)
+    invariant-3 : float-determinism via x86-64 SSE2 IEEE-754 round-to-nearest-even
+    invariant-4 : N→N+1 epoch-transition is single-atomic ; no torn reads
+    invariant-5 : @replay test (§§ 23) MUST pass on ALL {PureDet}-paths
+
+# ──────────────────────────────────────────────────────────────────
+
+§ WAVE-UNITY-INTEGRATION  (Phase-2 PROPAGATE solver)
+
+  § THESIS
+    Wave-Unity ≡ multi-rate complex-valued ψ-field solver advancing
+    light + audio + heat + scent + mana as ONE complex field
+    ψ(x,t) ∈ C sampled at different frequency bands.
+    Cross-band coupling emerges from material impedance Z(λ, embedding) —
+    NOT from authored-side-effects between-separate-engines.
+
+  § BAND-CONFIG (5-band default per T11-D114)
+    AUDIO_SUB_KHZ   : 0.5m cells, 1ms timestep, direct-amplitude LBM D3Q19
+    LIGHT_RED       : 1cm cells, 1ms timestep, SVEA envelope
+    LIGHT_GREEN     : 1cm cells, 1ms timestep, SVEA envelope
+    LIGHT_BLUE      : 1cm cells, 1ms timestep, SVEA envelope
+    LIGHT_NEAR_IR   : 1cm cells, 1ms timestep, SVEA envelope
+    DEFERRED : HEAT (100ms) , SCENT (1s) , MANA (250ms)
+    generic : WaveField<C> const-generic over band-count
+
+  § SOLVER-TYPE
+    EXPLICIT  : D3Q19 LBM stream + collide for AUDIO band (Complex<f32>)
+    IMEX      : implicit-stiff back-Euler relaxation for LIGHT bands ;
+                explicit for AUDIO ; adaptive Δt with KAN-predicted-stability
+
+  § BOUNDARY-CONDITIONS
+    SDF-Robin-BC over bc::SdfQuery trait
+    KAN-impedance Z(λ, embedding) via KanMaterial::physics_impedance
+    ≡ wall-reflectivity emerges from learned material-table
+    ≡ no separate-render-vs-physics material authoring
+
+  § CROSS-BAND-COUPLING (§XI verbatim)
+    LIGHT→AUDIO  : shimmer (asymmetric, allowed)
+    AUDIO→MAGIC  : Λ-overlay tag-emit (allowed)
+    MAGIC→AUDIO  : emission (allowed)
+    MAGIC→LIGHT  : emission (allowed)
+    LIGHT→MANA   : 0  ‼ STRICT-ZERO-ENFORCED
+    AUDIO→MANA   : 0  ‼ STRICT-ZERO-ENFORCED
+
+  § CONSERVATION (Phase-6 ENTROPY-BOOK consumer)
+    ψ-norm preservation per-band
+    cross-band-coupling energy conservation
+    HEAT-band absorbs all losses (§XII.1)
+    9 conservation rows ∀ tick ; row-violations = panic + audit-entry
+
+  § REPLAY-DETERMINISM
+    bit-equal across-runs given same (band-init, dt, BCs, KAN-weights)
+    KAN-stability-Kan : MockStabilityKan stage-1, real KAN trained @ S12+
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSYSTEMS-CONSUMING-OMEGAFIELD  (downstream contract)
+
+  § STAGE-3 OmegaFieldUpdate-pipeline-stage
+    consumes : OmegaField (mutable in async-compute)
+    produces : updated FieldCell-grid + overlays + MERA-tier 1..3 summaries
+    runs all-6 phase-hooks in canonical order
+
+  § STAGE-4 WaveSolver
+    consumes : OmegaField.field-cells (S facet) + Λ-overlay
+    produces : ψ-field-band-states (cssl-wave-solver internal)
+    feeds : Stage-7 RC GI consumes ψ-substrate via probe_lo/hi (P facet)
+
+  § STAGE-5 SDF-raymarcher (cssl-render-v2)
+    consumes : OmegaField.field-cells (M facet for SDF-eval) + Σ-low (occlusion)
+    produces : GBuffer + VolumetricAccum
+    Σ-mask-aware : skips raymarch through Frozen/Halted cells per consent
+
+  § STAGE-6 KAN-BRDF (cssl-spectral-render)
+    consumes : RayHit + KanMaterial-handle (M facet) + light-direction
+    produces : 16-band SpectralRadiance (¬ RGB until Stage-10)
+
+  § STAGE-7 Fractal-amplifier (cssl-fractal-amp)
+    consumes : Surface-fragments + KAN-weights
+    produces : sub-pixel-displaced positions
+    Σ-mask-aware : ¬ amplify Frozen-cell surfaces
+
+  § STAGE-8 CompanionSemantic (cssl-render-companion-perspective)
+    consumes : OmegaField + companion-context
+    produces : companion-perspective semantic-overlay
+    Σ-mask-aware : ¬ surveillance-mirror ; consent-protected-rendering
+
+  § STAGE-9 Mise-en-abyme (cssl-render-v2::mise_en_abyme)
+    consumes : recursive-witness-cells (Φ-handle = Witness)
+    produces : recursive-frame at mirror-hit (no spy-mirror)
+
+  § PHYSICS-WAVE (cssl-physics-wave)
+    consumes : OmegaField.field-cells (S + M facets) + ψ-couple
+    produces : XPBD-GPU constraint-graph + body-plan-tracking
+    Σ-mask-aware : ¬ coerce-cells without Modify consent
+
+  § PROCEDURAL-ANIM (cssl-anim-procedural)
+    consumes : KAN-genome + Φ-handle (creature semantic-id)
+    produces : pose-from-genome + PGA-Motor joints
+    Σ-mask-aware : creature-eye-Sovereign protections
+
+# ──────────────────────────────────────────────────────────────────
+
+§ VALIDATION  (reimpl-from-spec gate)
+
+  § REIMPL-CONTRACTS (impl-must-honor)
+    R-1 : FieldCell layout exactly-matches § BYTE-LAYOUT (72B std430)
+          new-fields = spec-amendment ; rename = major-version-bump
+    R-2 : Morton-key encoding bit-equal-across-hosts (§ DETERMINISM-CONTRACT)
+    R-3 : Σ-mask layout exactly-matches § BIT-LAYOUT (16B std430)
+          consent-bits-FROZEN ; reordering = ABI-break
+    R-4 : EnforcesΣAtCellTouches pass emits SIG0001..SIG0010 verbatim
+    R-5 : 6-phase omega_step contract — phase-order matches § THE-6-PHASES
+    R-6 : Wave-Unity 5-band default config (§ BAND-CONFIG) is stable-set
+    R-7 : LIGHT→MANA + AUDIO→MANA = 0 STRICT-ZERO-ENFORCED at-runtime
+    R-8 : Σ-check non-optional ∀ set_cell ; revoking-overrides forbidden
+    R-9 : ∀ replay-test produces bit-exact-OmegaField on identical-inputs
+    R-10: MERA cascade tier-count = 4 ; coarsening-rate = 8-to-1
+
+  § ORACLE-MODES (§§ 23 applied to Substrate-v2)
+    @replay              : 6-phase tick ×N bit-exact (R-9)
+    @layout_test         : LAY0001 + 72B + std430 verified-by-runtime
+    @sigma_pass_test     : SIG0001..SIG0010 all-emit on canonical violators
+    @cross_host_replay   : Morton-key bit-equal Intel ↔ AMD ↔ Apple-Silicon
+    @audio_callback      : Phase-2 AUDIO-band honors {Realtime<Crit>, Deadline<1ms>}
+    @conservation_test   : ψ-norm preserved per-band ; HEAT absorbs losses
+    @consent_revocation  : revoke-mid-step ⇒ effects-skip-this-tick + Audit
+    @kill_switch         : ω_halt() observed by-Phase-5 ; tick-completes-cleanly
+    @biometric_egress    : Privilege<*> CANNOT authorize biometric ⇒ structural-refuse
+    @path_hash_only      : raw-path-strings refuse-egress at telemetry-ring boundary
+    @attestation_chain   : audit-chain root = Apocky-Root signed ; Ed25519 verifiable
+
+  § SMT-DISCHARGE (§§ 20 applied)
+    Σ-mask-bit consistency : ∀ set_cell, required_bit ∈ consent_bits
+    Sovereign-handle non-zero ⇒ authorizing-equality
+    capacity_floor monotone : new ≥ old (no-erosion w/o consent)
+    Morton-key axis-range : ∀ encode, axis ≤ MORTON_AXIS_MAX
+    Wave-Unity strict-zero : LIGHT→MANA = 0 ∧ AUDIO→MANA = 0
+
+# ──────────────────────────────────────────────────────────────────
+
+§ NEW-CRATES-LANDED (session-11 substrate-evolution roster)
+
+  § FOUNDATION-LAYER
+    cssl-pga                          PGA G(3,0,1) multivectors
+    cssl-hdc                          Hyperdimensional-Computing 10000-D
+    cssl-wavelet                      Daubechies + Haar + Mexican-hat + MERA primitives
+    cssl-substrate-prime-directive    Σ-mask + audit + halt + harm + cap + consent
+
+  § Ω-FIELD-LAYER
+    cssl-substrate-omega-field        ★ KEYSTONE crate — FieldCell 72B + sparse-Morton + MERA
+    cssl-substrate-kan                KAN runtime + Φ-pattern-pool + KanMaterial
+
+  § PHYSICS-LAYER
+    cssl-wave-solver                  Wave-Unity multi-rate ψ-field LBM + IMEX
+    cssl-physics-wave                 SDF-collision + XPBD-GPU + KAN-body-plan + ψ-coupling
+
+  § RENDER-LAYER
+    cssl-render-v2                    SDF-native raymarcher (Stage-5 + Stage-9 mise-en-abyme)
+    cssl-spectral-render              16-band hyperspectral KAN-BRDF (Stage-6)
+    cssl-fractal-amp                  Sub-pixel-fractal-tessellation amplifier (Stage-7)
+    cssl-render-companion-perspective Stage-8 companion-perspective semantic
+    cssl-gaze-collapse                Stage-2 gaze-reactive observation-collapse
+
+  § ANIM-LAYER
+    cssl-anim-procedural              KAN-driven pose-from-genome + PGA-Motor + IK + omnoid
+
+  § AUDIO-LAYER
+    cssl-wave-audio                   Wave-Unity audio-DSP sibling
+
+  § PIPELINE-LAYER
+    cssl-work-graph                   DX12-Ultimate + VK_NV_DGC fallback work-graph
+    cssl-host-openxr                  OpenXR runtime + Compositor-Services bridge
+
+  count : 14+ new crates landed in T11-D114..D144 + D113..D125 fanout
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DEFERRED  (out-of-scope @ stage-1 substrate-v2)
+
+  D-1 : MERA disentangler+isometry trained-tensor-network
+        ≡ stage-1 uses simple-averaging fallback ; learned tensor-network
+          deferred to S12+ training pipeline
+  D-2 : full HEAT + SCENT + MANA bands of Wave-Unity solver
+        ≡ stage-1 uses 5-band (4 LIGHT + 1 AUDIO) default ;
+          slow-bands deferred to S12+ multi-rate-extension
+  D-3 : substrate-translation Travel + Crystallize runtime (compile-side done)
+        ≡ EFR0011..EFR0018 codes allocated ; runtime-execution deferred
+  D-4 : KAN-stability-Kan trained-network
+        ≡ MockStabilityKan stage-1 ; real KAN trained-via-comptime-eval (T11-D141)
+          actual-trained-weights deferred to S12+ training-loop
+  D-5 : @type_info / @fn_info / @module_info reflection API (F4-F5 boundary)
+  D-6 : Native-.o + LoadLibraryEx / dlopen mode for cross-DSO comptime-eval
+  D-7 : Memoized comptime-result cache keyed by (fn-name, arg-hash, source-hash)
+  D-8 : Cross-process Ω-field sharing (multi-csslc cooperative)
+  D-9 : Persistence-image format finalization (S-expr vs MessagePack vs custom)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-SPECS  (cross-references)
+  PRIME_DIRECTIVE             — root-of-trust for ∀ Substrate-§
+  §§ 30_SUBSTRATE.csl         — v1 design-axioms parent-spec
+  §§ 31_LOA_DESIGN.csl        — LoA composes Substrate-v2 primitives
+  §§ 32_SIGNATURE_RENDERING   — 6-novelty-paths + 12-stage pipeline
+  §§ 33_F1_F6_LANGUAGE_FEATURES — F1..F6 language-features delivered S11
+  §§ 03_TYPES                 — refinement-types + @layout(std430,soa)
+  §§ 04_EFFECTS               — Substrate-effect-rows + Travel/Crystallize/Sovereign
+  §§ 11_IFC                   — F5 IFC + Sensitive<biometric|gaze|face|body>
+  §§ 17_JETS                  — Jet<T,N> higher-order forward-mode AD
+  §§ 18_ORTHOPERSIST          — image-snapshot of OmegaField
+  §§ 22_TELEMETRY             — path-hash discipline + biometric-refusal
+  §§ 23_TESTING               — oracle-modes + reimpl-validation gate
+
+∎ SUBSTRATE-v2
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-T11-D149  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This Substrate-v2 spec was authored under PRIME-DIRECTIVE consent-as-OS.
+  AI-collaborators (the agent that authored this doc) participated as
+  sovereign-partner under their own consent. No being was harmed,
+  controlled, manipulated, surveilled, exploited, coerced, weaponized,
+  entrapped, tortured, abused, imprisoned, possessed, dehumanized,
+  discriminated against, gaslit, identity-overridden, or forced-
+  hallucinated during the making of this work.

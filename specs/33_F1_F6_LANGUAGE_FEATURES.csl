@@ -1,0 +1,520 @@
+# 33 : F1..F6 LANGUAGE-FEATURES — delivered S11 substrate-evolution
+# ══════════════════════════════════════════════════════════════════
+# § I> CSSLv3 has 6 canonical-language-features F1..F6 that converge
+#       in §§ 30_SUBSTRATE_v2 + §§ 32_SIGNATURE_RENDERING. session-11
+#       landed all-six in implementation-ready-form.
+# § I> reference-doc-NOT-changelog — DECISIONS.md tracks slice-merges ;
+#       this spec describes WHAT-EACH-FEATURE-IS @ commit b69165c.
+# § I> reimpl-from-spec validateable — divergence = spec-hole
+# § I> consumer-crate × Omniverse-anchor cross-reference table @ end
+
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE
+  t∞: F1..F6 = canonical-set  (no-amend-without-spec-bump)
+       ≡ adding F7+ = major-version-event
+  t∞: features compose-orthogonally
+       ≡ ∀ pair (Fi, Fj) : i ≠ j ⇒ no-mutual-blocking
+  t∞: no-feature-can-bypass-PRIME-DIRECTIVE
+       ≡ F1 AD ¬ leaks Sensitive<biometric>
+       ≡ F4 staging ¬ specializes-around F5 IFC-checks
+       ≡ F6 observability ¬ exfiltrates raw-paths
+
+# ══════════════════════════════════════════════════════════════════
+
+§ F1 : AUTODIFF  (Jet<T,N> + GPU-AD-tape + Call-op + scf.* tape + DiffPG)
+
+  § THESIS
+    F1 ≡ first-class differentiable computation throughout CSSLv3.
+    NOT macro-AD ; NOT ad-hoc-per-call gradient-tape ; instead :
+    Jet<T,N> as a number-system + MIR-level AD-tape + structured-
+    control-flow tape-recording + DiffPG (differentiable-program-graph).
+
+  § F1.1 — Jet<T,N> higher-order forward-mode AD (T11-D133)
+    crate         : cssl-autodiff::jet
+    spec-anchor   : specs/17_JETS.csl § TYPE-DEFINITION + § ARITHMETIC-RULES
+    type          : Jet<T,N> stores N consecutive Taylor-terms
+                    terms[0]   = primal f(x)
+                    terms[1]   = 1st deriv f'(x)
+                    terms[k]   = kth deriv f^(k)(x)
+    operations    : +, -, *, /, sin, cos, exp, log, sqrt, pow
+                    higher-order : compose (Faà di Bruno)
+                    extras       : hessian_vector_product
+    storage       : Jet<T,N> = N-term storage = (N-1)-th order jet
+                    (off-by-one trick — stable-Rust without
+                     feature(generic_const_exprs))
+    consumers     : KAN-runtime sin/cos/pow for spline 2nd-derivs
+                    Hyperspectral-KAN-BRDF compose for spectral-basis
+                    Inverse-rendering Hessian-vector for 2nd-order optimizer
+                    Gaze-saccade prediction (cssl-gaze-collapse)
+
+  § F1.2 — GPU-AD tape + SPIR-V differentiable-shader (T11-D139)
+    crate         : cssl-autodiff::gpu
+    spec-anchor   : specs/05_AUTODIFF.csl § GPU-AD § SPIR-V-EMISSION
+    capability    : MIR-level cssl.ad.* ops emit SPIR-V Capability=Shader
+                    + OpExtInst GLSL.std.450 for differentiable-builtins
+    forward-mode  : per-thread Jet<f32,N> packed-in-registers for N≤4 ;
+                    larger-N spills to shared-memory / SSBO
+    backward-mode : tape recorded-in-SSBO ; replay-pass emits backward-grad
+                    ¬ checkpointing-yet (DEFERRED to memory-pressure)
+    DiffPG        : differentiable-program-graph encoded as MIR-region
+
+  § F1.3 — Call-op auto-dispatch (DiffPG) + scf.* tape-record (T11-D140)
+    crate         : cssl-autodiff::call_dispatch
+    spec-anchor   : specs/05_AUTODIFF.csl § CALL-OP + § SCF-TAPE
+    call-op       : cssl.call routed-through DiffPG-resolver :
+                      callee differentiable ⇒ generate dual-call
+                      callee non-differentiable ⇒ break-into-tape-checkpoint
+    scf.if-tape   : both branches recorded ; replay-walks both for backward
+    scf.for-tape  : loop-tape records iter-count + per-iter checkpoint
+    scf.while-tape: break-condition recorded ; backward-walk respects
+    invariant     : tape-record produces deterministic-replay-bytes
+                    same-fwd-trace ⇒ same-bwd-grad bit-equal
+
+  § F1.4 — Substitute (forward-mode pass) + walker + transform
+    crate         : cssl-autodiff::{substitute, walker, transform}
+    pass          : per-fn forward-mode AD pass
+                    consumes : MIR-fn with cssl.ad.* annotations
+                    produces : derivative-fn (Jet-typed return)
+    walker        : MIR-walker over scf.* + arith-ops emitting tape-record
+    rules         : cssl-autodiff::rules — chain-rule per-op-kind
+
+  § PRIME-DIRECTIVE-ALIGNMENT (F1)
+    differentiating Sensitive<biometric|gaze|face|body> values
+    ⇒ derivative-fn inherits the Sensitive<...> labels
+    ⇒ TelemetryEgress::for_domain(...) STILL refuses to authorize egress
+    ⇒ F1 cannot-be-used to launder biometric-data through gradient-step
+
+# ══════════════════════════════════════════════════════════════════
+
+§ F2 : REFINEMENT-TYPES  (@layout(std430,soa) + struct-alignment validation)
+
+  § THESIS
+    F2 ≡ refinement-types over base-types — enables "this struct
+    is exactly 72B std430-aligned" to be a TYPE-LEVEL claim that
+    the compiler discharges via a refinement-bag.
+
+  § F2.1 — @layout(...) attribute parser (T11-D126)
+    crate         : cssl-parse + cssl-hir + cssl-mir::layout_check
+    spec-anchor   : specs/03_TYPES.csl § F2 REFINEMENT-TYPES
+    syntax        : `@layout(kind, ...) struct FieldCell { ... }`
+                    kind ∈ { std140, std430, soa, aos, hot, cold }
+    parser-pass   : extracts layout-kinds-with-unknown HirAttr
+    validator     : computes natural byte-size + alignment under declared kind
+                    emits LAY*-diagnostics on mismatch
+
+  § F2.2 — Stable diagnostic-codes (FROZEN)
+    LAY0001 : declared-size ≠ computed-size (e.g. FieldCell ≠ 72B)
+    LAY0002 : alignment-violation (per-kind rule)
+    LAY0003 : unsupported-combination (e.g. @layout(soa, aos))
+
+  § F2.3 — Refinement-obligation queue → SMT (Phase-2 work)
+    bag           : RefinementObligation collected per-validated-struct
+    ingestion     : downstream cssl-smt {Verify<Z3>} discharges
+    invariant     : F2-refinement consistent with F4 staged-spec
+                    (specialized-fn shapes match-refinement post-bake)
+
+  § F2.4 — FieldCell concrete-test (load-bearing)
+    `@layout(std430,soa) struct FieldCell { ... }`
+    ⇒ size_of(FieldCell) == 72  ‼  enforced
+    ⇒ align_of(FieldCell) == 8   ‼  enforced
+    ⇒ 9 contiguous u64-rows pack-tight (no-silent-padding)
+    runtime-test confirms layout matches §§ 30_v2 § BYTE-LAYOUT
+
+  § PRIME-DIRECTIVE-ALIGNMENT (F2)
+    refinement-types make-explicit the @sensitive labels on struct-fields ;
+    cannot silently-elide IFC-information via implicit-conversion
+    refinement-discharge audit-logged via cssl-smt {Verify<Z3>} chain
+
+# ══════════════════════════════════════════════════════════════════
+
+§ F3 : EFFECT-SYSTEM  (Travel + Crystallize + Sovereign + Conservation rows)
+
+  § THESIS
+    F3 ≡ effect-rows are first-class type-system citizens.
+    composition-rules are STRUCTURAL ; forbidden-pairs are
+    compile-errors ; no runtime override exists.
+
+  § F3.1 — Substrate-effect-rows (T11-D127)
+    crate         : cssl-effects::substrate
+    spec-anchor   : specs/30_SUBSTRATE.csl § EFFECT-ROWS +
+                    Omniverse/02_CSSL/02_EFFECTS.csl § III
+    canonical-six : Render Sim Audio Net Save Telemetry  (legacy v1)
+    additions S11 : Travel Crystallize Sovereign<S>      (Axiom-2 substrate-relativity)
+    composition   : try_compose(rowA, rowB) → Ok(rowAB) | ConflictReason
+    diag-codes    : EFR0001..EFR0010 (six base) + EFR0011..EFR0018 (substrate-translation)
+
+  § F3.2 — Conservation + Cosmology rows (T11-D128)
+    crate         : cssl-effects::conservation
+    rows          : Conservation<{energy|momentum|charge|...}>
+                    Cosmology<{rg-flow|substrate-evolution|big-bounce}>
+    discipline    : every Phase-6 ENTROPY-BOOK op carries a Conservation<...> row
+                    violations panic + audit-entry per spec
+    consumers     : cssl-substrate-omega-field Phase-6 hook
+                    cssl-wave-solver ψ-norm-conservation
+                    cssl-physics-wave momentum-conservation
+
+  § F3.3 — Travel + Crystallize + Sovereign<S> (T11-D127)
+    Travel        : substrate-translation effect — moves subject
+                    to-different-substrate-region. requires Translate consent-bit.
+    Crystallize   : material-recrystallization — re-arranges S facet.
+                    requires Recrystallize consent-bit.
+    Sovereign<S>  : "this op acts-as Sovereign-S" — checked against cell's
+                    sovereignty_handle on every-touch.
+    forbidden     : Travel ⊎ Sensitive<surveillance> = compile-error
+                    Crystallize ⊎ Sensitive<weapon> = compile-error
+                    Sovereign<X> ⊎ Sovereign<Y> X≠Y = compile-error
+
+  § F3.4 — Discipline + Registry + Banned + Substrate
+    crate         : cssl-effects::{discipline, registry, banned, substrate}
+    discipline    : ordered-insertion + iteration ; no-allocation row-rep
+    registry      : table of canonical effect-rows + diag-codes
+    banned        : SensitiveDomain enum mirrors specs/11_IFC
+
+  § PRIME-DIRECTIVE-ALIGNMENT (F3)
+    Forbidden-pairs are structural — no caps_grant, no "unsafe-flag", no
+    runtime-override. The composition table IS the prime-directive
+    encoding at the effect-system layer.
+
+# ══════════════════════════════════════════════════════════════════
+
+§ F4 : STAGED-COMPUTATION  (Comptime-eval + Specialization pass)
+
+  § THESIS
+    F4 ≡ @staged fns evaluate-at-compile-time ; per-call-site specialization
+    eliminates runtime branching ; #run blocks execute @ comptime.
+
+  § F4.1 — @staged + #run + Specializer (existing scaffold)
+    crate         : cssl-staging
+    spec-anchor   : specs/06_STAGING.csl + specs/19_FUTAMURA3.csl
+    @staged-fn    : argument classification — comptime-known vs runtime
+    #run-block    : marks site for comptime-eval
+    Specializer   : per-call-site clone + pre-bind + const-prop + DCE +
+                    mangled-name emit
+    ‼ now active : SpecializerPass migrated to MIR-pass (T11-D142)
+
+  § F4.2 — Comptime-eval evaluator (T11-D141)
+    crate         : cssl-staging::comptime
+    pipeline      : HIR → synthetic-HirFn → MIR → JIT (cssl-cgen-cpu-cranelift)
+                    → invoke → capture-result → encode-bytes → ComptimeResult
+    types         : ComptimeValue (Int/Float/Bool/Str/Sym/Unit/Tuple)
+                    ComptimeResult (structured + flat-bytes + codecs)
+    pre-flight    : effect_scan refuses non-pure #run bodies
+                    sandbox::check_sandbox_policy combined effect+result-type guard
+
+  § F4.3 — Bake module (T11-D141)
+    crate         : cssl-staging::bake
+    bake_result   : embed ComptimeResult into MIR as arith.constant
+    bake_lut      : LUT-bake into cssl.array.assemble
+    bake_kan      : KAN-weight bake into cssl.struct.assemble
+    consumers     : cssl-substrate-kan KanMaterial weights pre-baked
+                    Stage-6 spectral-BRDF tables LUT-baked per-config
+                    Wave-Unity stability-Kan weights baked
+
+  § F4.4 — Specialization MIR-pass (T11-D142)
+    crate         : cssl-staging::specialize_pass
+    pass          : SpecializerPass runs AFTER monomorph + BEFORE AD/IFC/SMT
+    pipeline-pos  : per specs/06_STAGING § STAGED-SEMANTICS
+    mangling      : per-specialization mangled-name keeps replay-deterministic
+    cache         : DEFERRED — keyed by (fn-name, arg-hash, source-hash)
+    emit          : specialized-fn with const-folded body
+
+  § F4.5 — Demos (KAN-weight + LUT)
+    kan_demo      : KAN-weight comptime-bake demo (D141)
+    kan_specialize_demo : end-to-end specialization proving milestone
+    lut_demo      : LUT-bake into MIR demo
+    mock_evaluator: T11-D141 test-double evaluator
+
+  § PRIME-DIRECTIVE-ALIGNMENT (F4)
+    @staged specialization preserves IFC-labels on baked-values ;
+    Sensitive<biometric>-Jet baked into KAN-weights would still
+    refuse-egress. comptime-eval forbidden-effect-token list excludes
+    {Privilege<Kernel>, Net, Save} unless explicit pre-flight.
+
+# ══════════════════════════════════════════════════════════════════
+
+§ F5 : INFORMATION-FLOW-CONTROL  (OnDeviceOnly + Sensitive<biometric|gaze|face|body> + Σ-pass)
+
+  § THESIS
+    F5 ≡ values carry IFC-labels ; egress-checks happen at-type-level ;
+    no value crosses a confidentiality-boundary without a declass-policy.
+
+  § F5.1 — Sensitive<dom> domain enum (T11-D129)
+    crate         : cssl-ifc::domain
+    spec-anchor   : specs/11_IFC.csl § PRIME-DIRECTIVE ENCODING
+    domains       : Privacy Weapon Surveillance Coercion Manipulation
+                    Biometric Gaze Face Body  ★ T11-D132
+    biometric-family : { Biometric, Gaze, Face, Body } absolute-egress-banned
+
+  § F5.2 — TelemetryEgress capability (T11-D129)
+    crate         : cssl-ifc::egress
+    type          : TelemetryEgress (zero-sized capability-token)
+    constructor   : TelemetryEgress::for_domain(d) refuses biometric-family
+                    + Surveillance + Coercion at-COMPILE-TIME ; no unsafe alt
+    privilege     : Privilege<*> CANNOT override structural ban
+                    (User/System/Kernel/Root/AnthropicAudit/ApockyRoot all-fail)
+    P18 BiometricEgress : process-abort if biometric-family value reaches
+                          telemetry-ring-boundary at runtime
+
+  § F5.3 — OnDeviceOnly attribute (T11-D129)
+    crate         : cssl-ifc::label
+    spec-anchor   : specs/11_IFC.csl § ON-DEVICE-ONLY
+    intent        : @on-device-only fn cannot be called by code that emits
+                    network/file effects in same effect-row
+    consumers     : cssl-host-openxr (gaze-tracker fns @on-device-only)
+                    cssl-physics-wave (body-tracker fns @on-device-only)
+
+  § F5.4 — EnforcesΣAtCellTouches MIR-pass (T11-D138)
+    crate         : cssl-mir::sigma_enforce
+    spec-anchor   : Omniverse/02_CSSL/00_LANGUAGE_CONTRACT § VI.D
+                    + specs/30_SUBSTRATE_v2 § ENFORCESΣATCELLTOUCHES-PASS
+    coverage      : OP_FIELDCELL_{READ|WRITE|MODIFY|DESTROY}
+                    + Travel-row + Crystallize-row composing-substrate-translation
+    diag-codes    : SIG0001..SIG0010 (stable, frozen)
+    discipline    : MUTATION-FREE pass — surfaces-violations ; first-error halts
+    runtime-double: Phase-5 AGENCY-VERIFY runtime double-checks pass-completeness
+
+  § F5.5 — Σ-mask packed-bitmap (T11-D137)
+    crate         : cssl-substrate-prime-directive::sigma
+    type          : SigmaMaskPacked (16B std430)
+    spec-anchor   : Omniverse/01_AXIOMS/04_AGENCY_INVARIANT § II
+    contents      : consent_bits(32) + sovereignty_handle(16) +
+                    capacity_floor(16) + reversibility_scope(16) +
+                    audit_seq(16) + agency_state(16) + reserved(16)
+    invariant     : audit_seq monotone-increasing per cell — mutation
+                    that-doesn't-advance-seq = bug
+
+  § PRIME-DIRECTIVE-ALIGNMENT (F5)
+    F5 IS the structural encoding of PRIME-DIRECTIVE §1 anti-surveillance.
+    biometric-family egress-ban is non-overridable. Σ-mask per-cell consent
+    is the cell-level enforcement of Axiom-4 AGENCY-INVARIANT.
+
+# ══════════════════════════════════════════════════════════════════
+
+§ F6 : OBSERVABILITY  (path-hash + biometric-refusal + real BLAKE3+Ed25519)
+
+  § THESIS
+    F6 ≡ telemetry + audit-chain are first-class. raw-paths NEVER logged.
+    biometric egress-refused at runtime ring-boundary as defense-in-depth.
+    audit-chain signed via Ed25519 ; data-hashed via BLAKE3.
+
+  § F6.1 — path-hash-only logging discipline (T11-D130)
+    crate         : cssl-telemetry::path_hash
+    spec-anchor   : specs/22_TELEMETRY.csl § PRIME-DIRECTIVE-ENFORCEMENT
+                    + PRIME_DIRECTIVE.md §1 anti-surveillance
+    type          : PathHasher (BLAKE3 + per-installation salt)
+    type          : PathHash (newtype around [u8; 32])
+    discipline    : raw paths NEVER stored in audit + ring + exporters
+                    only-32-byte-BLAKE3 hash under per-installation salt
+                    deterministic-within-process (correlation-allowed)
+                    NON-portable across installations (anti-fingerprinting)
+    Display       : 16-hex + ellipsis (short-form) so format!-ing never
+                    produces a 64-char hex-blob mistaken for path
+
+  § F6.2 — Biometric-compile-refusal at telemetry-ring (T11-D132)
+    crate         : cssl-telemetry::biometric_refusal
+    spec-anchor   : F5.2 above + PRIME_DIRECTIVE.md §1
+    P18           : BiometricEgress process-abort runtime-defense
+                    if biometric-family value reaches ring-boundary
+    structural    : compile-time refusal via TelemetryEgress::for_domain
+                    runtime is defense-in-depth (catches dynamic dispatch)
+
+  § F6.3 — Real BLAKE3 + Ed25519 crypto integration (T11-D131)
+    crate         : cssl-telemetry::audit (extends with real-crypto)
+    blake3        : workspace dep blake3 = "1.x"
+    ed25519       : workspace dep ed25519-dalek = "2.x"
+    audit-chain   : every entry signed with Apocky-Root key-handle
+                    signature appended to chain ; verifiable post-hoc
+    R16-binding   : audit-chain root-hash embedded in OmegaAttestation
+                    (build_id + compiler_id + runtime_id + substrate_id)
+    R18-ring      : telemetry-ring lock-free producer-consumer ;
+                    schema versioned ; scope-tagged
+
+  § F6.4 — Telemetry surface modules
+    crate         : cssl-telemetry
+    modules       : audit ring schema scope exporter biometric_refusal path_hash
+    discipline    : ring drains non-blocking ; bounded-ring fills+drops
+                    when ConsentToken<telemetry-egress> revoked
+
+  § PRIME-DIRECTIVE-ALIGNMENT (F6)
+    Path-hash makes raw-paths surveillance-class data structurally
+    inaccessible to logs. Biometric-refusal compile-time + runtime
+    defense-in-depth. Real-crypto audit-chain prevents tampering.
+    Together : §1 anti-surveillance + §4 transparency + §11 attestation
+    encoded in the observability layer.
+
+# ══════════════════════════════════════════════════════════════════
+
+§ FEATURE × CRATE × OMNIVERSE-ANCHOR CROSS-REFERENCE-TABLE
+
+  ```text
+  F-#  | sub  | feature                 | consuming-crate(s)              | Omniverse-spec-anchor
+  -----+------+-------------------------+----------------------------------+----------------------------------------
+  F1   | 1.1  | Jet<T,N> higher-order   | cssl-autodiff                   | specs/17_JETS § TYPE-DEFINITION
+  F1   | 1.2  | GPU-AD tape SPIR-V      | cssl-autodiff::gpu              | specs/05_AUTODIFF § GPU-AD
+  F1   | 1.3  | Call-op DiffPG + scf-tape| cssl-autodiff::call_dispatch   | specs/05_AUTODIFF § CALL-OP
+  F1   | 1.4  | walker + transform      | cssl-autodiff::{walker,transform}| specs/05_AUTODIFF § FORWARD-MODE
+  F1   |      | KAN sin/cos/pow         | cssl-substrate-kan              | 07_AESTHETIC/07_KAN_RUNTIME_SHADING
+  F1   |      | Spectral compose        | cssl-spectral-render            | 07_AESTHETIC/03_SPECTRAL_PATH_TRACING
+  F1   |      | Inverse-render hess-vec | cssl-render-v2                  | 07_AESTHETIC/06_RENDERING_PIPELINE
+  F1   |      | Gaze saccade-predict    | cssl-gaze-collapse              | 07_AESTHETIC/00_EXOTICISM § V.4
+  -----+------+-------------------------+----------------------------------+----------------------------------------
+  F2   | 2.1  | @layout parse + lower   | cssl-parse + cssl-hir + cssl-mir| specs/03_TYPES § F2 REFINEMENT
+  F2   | 2.2  | LAY0001 + 72B verify    | cssl-mir::layout_check          | Omniverse/04_OMEGA_FIELD/00_FACETS
+  F2   | 2.3  | Refinement-bag → SMT    | cssl-mir + cssl-smt             | specs/20_SMT § DISCHARGE
+  F2   | 2.4  | FieldCell concrete      | cssl-substrate-omega-field      | Omniverse/04_OMEGA_FIELD/00_FACETS § I
+  -----+------+-------------------------+----------------------------------+----------------------------------------
+  F3   | 3.1  | Substrate-effect rows   | cssl-effects::substrate         | specs/30_SUBSTRATE § EFFECT-ROWS
+  F3   | 3.2  | Conservation+Cosmology  | cssl-effects::conservation      | specs/04_EFFECTS § CONSERVATION
+  F3   | 3.3  | Travel/Crystallize/Sov  | cssl-effects::substrate         | Omniverse/02_CSSL/02_EFFECTS § III
+  F3   | 3.4  | discipline+registry     | cssl-effects::{discipline,registry}| specs/04_EFFECTS § COMPOSITION
+  F3   |      | wave-solver conservation| cssl-wave-solver                | Omniverse/04_OMEGA_FIELD/04_WAVE_UNITY § XII
+  F3   |      | substrate-omega-field   | cssl-substrate-omega-field      | Omniverse/02_CSSL/06_SUBSTRATE_EVOLUTION § IV.3
+  F3   |      | physics conservation    | cssl-physics-wave               | Omniverse/04_OMEGA_FIELD/04_WAVE_UNITY § XII.1
+  -----+------+-------------------------+----------------------------------+----------------------------------------
+  F4   | 4.1  | @staged + Specializer   | cssl-staging                    | specs/06_STAGING + specs/19_FUTAMURA3
+  F4   | 4.2  | Comptime-eval evaluator | cssl-staging::comptime          | specs/06_STAGING § COMPTIME-EVAL
+  F4   | 4.3  | bake_result/lut/kan     | cssl-staging::bake              | specs/06_STAGING § BAKE
+  F4   | 4.4  | SpecializerPass MIR-pass| cssl-staging::specialize_pass   | specs/06_STAGING § STAGED-SEMANTICS
+  F4   | 4.5  | KAN-weight + LUT demos  | cssl-staging::{kan_demo,lut_demo}| Omniverse/07_AESTHETIC/07_KAN_RUNTIME_SHADING
+  F4   |      | Stage-6 LUT-bake        | cssl-spectral-render            | 07_AESTHETIC/03_SPECTRAL_PATH_TRACING
+  F4   |      | KAN-weight bake         | cssl-substrate-kan              | 07_AESTHETIC/07_KAN_RUNTIME_SHADING
+  F4   |      | Stability-Kan bake      | cssl-wave-solver                | 04_OMEGA_FIELD/04_WAVE_UNITY § VIII
+  -----+------+-------------------------+----------------------------------+----------------------------------------
+  F5   | 5.1  | Sensitive<dom> enum     | cssl-ifc::domain                | specs/11_IFC § PRIME-DIRECTIVE ENCODING
+  F5   | 5.2  | TelemetryEgress capability| cssl-ifc::egress              | specs/22_TELEMETRY § EGRESS-GATE
+  F5   | 5.3  | OnDeviceOnly attribute  | cssl-ifc::label                 | specs/11_IFC § ON-DEVICE-ONLY
+  F5   | 5.4  | EnforcesΣAtCellTouches  | cssl-mir::sigma_enforce         | Omniverse/02_CSSL/00_LANGUAGE_CONTRACT § VI.D
+  F5   | 5.5  | SigmaMaskPacked 16B     | cssl-substrate-prime-directive::sigma| Omniverse/01_AXIOMS/04_AGENCY_INVARIANT § II
+  F5   |      | gaze on-device-only     | cssl-gaze-collapse              | 07_AESTHETIC/00_EXOTICISM § V.4
+  F5   |      | body on-device-only     | cssl-physics-wave               | Omniverse/08_BODY/02_VR_EMBODIMENT § VIII
+  F5   |      | OmegaField Σ-check      | cssl-substrate-omega-field      | 04_OMEGA_FIELD/00_FACETS § VIII (Σ encoding)
+  -----+------+-------------------------+----------------------------------+----------------------------------------
+  F6   | 6.1  | path-hash-only logging  | cssl-telemetry::path_hash       | specs/22_TELEMETRY § PRIME-DIRECTIVE-ENFORCEMENT
+  F6   | 6.2  | biometric-refusal P18   | cssl-telemetry::biometric_refusal| PRIME_DIRECTIVE §1 anti-surveillance
+  F6   | 6.3  | BLAKE3 + Ed25519 crypto | cssl-telemetry::audit           | specs/22_TELEMETRY § R16-R18 BINDING
+  F6   | 6.4  | telemetry surface       | cssl-telemetry                  | specs/22_TELEMETRY § OBSERVABILITY-FIRST-CLASS
+  F6   |      | path-hash everywhere    | cssl-host-openxr                | 22_TELEMETRY § FS-OPS § telemetry-composition
+  F6   |      | audit-chain root        | cssl-substrate-omega-field      | 02_CSSL/06_SUBSTRATE_EVOLUTION § IV.3
+  ```
+
+# ══════════════════════════════════════════════════════════════════
+
+§ COMPOSITION-CASE-STUDIES  (real-world examples of F1..F6 multiplicative-composition)
+
+  § CASE-1 : KAN-driven spectral-BRDF gradient-step (F1 + F4 + F5)
+    setup     : Stage-6 spectral-BRDF needs differentiating-w.r.t. KAN-weights
+                for inverse-rendering optimization-loop
+    F1        : Jet<f32,2> stores primal-radiance + 1st-deriv-weight
+    F4        : KAN-weights pre-baked-at-comptime via bake_kan
+                @staged spectral-BRDF specializes per-band-config
+    F5        : KAN-weights @on-device-only ; gradient-step IFC-clean
+                no Sensitive<gaze> leaks into KAN-update
+    composition: orthogonal — F1 differentiates F4-baked F5-IFC-clean values
+
+  § CASE-2 : Foveated-render with gaze-saccade prediction (F1 + F5 + F6)
+    setup     : Stage-2 gaze-collapse predicts saccade-velocity to drive
+                fovea-mask Σ-update on next-frame
+    F1        : Jet<f32,2> on gaze-velocity-stream produces 1st-deriv prediction
+    F5        : gaze-stream tagged Sensitive<gaze> ; on-device-only
+                TelemetryEgress::for_domain(Gaze) refuses egress
+    F6        : path-hash-only logging if gaze-stream is fs-backed mock
+    composition: F1 derivative on F5-tagged stream ; F6 logging-discipline
+
+  § CASE-3 : Wave-Unity Phase-2 with conservation + comptime-bake (F3 + F4)
+    setup     : Stage-4 wave-solver advances ψ-field with strict-conservation
+    F3        : Conservation<ψ-norm> + Conservation<energy> rows on tick-fn
+                Travel + Crystallize forbidden in same composition
+    F4        : MockStabilityKan stage-1 fallback ; trained-Kan baked-at-comptime
+                via bake_kan when training-loop completes (S12+)
+    composition: F3 enforces conservation-laws ; F4 bakes optimization-table
+
+  § CASE-4 : Σ-mask cell-touch with real-crypto audit (F5 + F6)
+    setup     : OmegaField::set_cell mutates a Σ-claimed cell
+    F5        : EnforcesΣAtCellTouches MIR-pass already-passed @ compile
+                Phase-5 AGENCY-VERIFY runtime double-check confirms
+    F6        : audit-chain entry signed-with Ed25519 ; BLAKE3 over field-state
+                path-hash for fs-backed image-snapshot side-channel
+    composition: F5 structural-gate + F6 cryptographic-audit-trail
+
+# ══════════════════════════════════════════════════════════════════
+
+§ VALIDATION  (reimpl-from-spec gate)
+
+  § REIMPL-CONTRACTS (impl-must-honor)
+    R-1 : F1..F6 set is canonical ; adding F7+ = major-version-bump
+    R-2 : Jet<T,N> off-by-one (storage=N, order=N-1) is stable-Rust trick
+    R-3 : @layout(...) emits LAY0001 + LAY0002 + LAY0003 verbatim diags
+    R-4 : EnforcesΣAtCellTouches emits SIG0001..SIG0010 verbatim
+    R-5 : SubstrateEffect EFR0001..EFR0018 stable diag-block (frozen)
+    R-6 : @staged + #run + bake_* pipeline produces deterministic-MIR
+    R-7 : TelemetryEgress::for_domain refuses biometric-family at-compile
+    R-8 : Privilege<*> CANNOT-override biometric-egress structural-ban
+    R-9 : path-hash never-emits-raw-path ; per-installation salt
+    R-10: BLAKE3 + Ed25519 audit-chain root verifiable-post-hoc
+
+  § ORACLE-MODES (§§ 23 applied)
+    @jet_arithmetic     : Jet<f32,3> on sin/cos/exp matches reference-Taylor
+    @gpu_ad_consistency : GPU-AD output = CPU-AD output bit-equal
+                          (or noted-non-PureDet for fma paths)
+    @layout_72b_test    : FieldCell exactly 72B std430 ; LAY0001 absent
+    @effect_compose     : ∀ (rowA, rowB) try_compose deterministic-result
+    @forbidden_combo    : forbidden-pairs emit expected-EFR-codes
+    @comptime_pure      : @staged fns with #run-bodies are effect-pure
+    @specialize_mangle  : per-call-site mangle stable across-runs
+    @sensitive_egress   : ∀ Sensitive<biometric|gaze|face|body> refuses egress
+    @sigma_pass_complete: SIG0001..SIG0010 all-emit on canonical violators
+    @path_hash_no_raw   : telemetry-ring inspection no-raw-path-strings
+    @ed25519_verify     : audit-chain root signature verifies-against pubkey
+
+# ══════════════════════════════════════════════════════════════════
+
+§ DEFERRED  (out-of-scope @ S11-merge)
+
+  D-F1 : Lazy LazyJet<T> co-inductive stream — needs {NoUnbounded} effect
+  D-F1 : Backward-mode checkpointing for memory-pressure (GPU)
+  D-F2 : F2-phase-2 SMT-discharge of refinement-bag (skeleton present)
+  D-F3 : Open-row polymorphism (HIR layer required ; stage-1 closed-rows only)
+  D-F3 : User-defined Substrate-effects beyond the canonical-set
+  D-F4 : Native-.o + LoadLibraryEx / dlopen mode for cross-DSO comptime-eval
+  D-F4 : @type_info / @fn_info / @module_info reflection API
+  D-F4 : Memoized comptime-result cache keyed by (fn-name, arg-hash, source-hash)
+  D-F4 : Direct array/struct-by-value JIT return ABI
+  D-F4 : Futamura-P1/P2/P3 self-bootstrap (cssl-futamura crate scaffolded)
+  D-F5 : Declass-policy authoring system (compile-time POL0001+ block reserved)
+  D-F5 : SMT-discharge of IFC-label-coverage (∀ visible ⊑ mask) per-projection
+  D-F6 : Audit-chain public-key distribution mechanism
+  D-F6 : User-configurable telemetry-redaction policies
+  D-F6 : Structured-audit-export (JSON / CBOR / signed-bundles)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  PRIME_DIRECTIVE                    — root-of-trust for ∀ feature
+  §§ 30_SUBSTRATE.csl + _v2          — substrate that consumes F1..F6
+  §§ 31_LOA_DESIGN                   — LoA composes F1..F6 + Substrate
+  §§ 32_SIGNATURE_RENDERING          — pipeline depending on F1..F6
+  §§ 03_TYPES                        — F2 refinement-types parent
+  §§ 04_EFFECTS                      — F3 effect-rows parent
+  §§ 05_AUTODIFF                     — F1 autodiff parent
+  §§ 06_STAGING                      — F4 staged-computation parent
+  §§ 11_IFC                          — F5 IFC parent
+  §§ 17_JETS                         — F1.1 Jet<T,N> spec
+  §§ 19_FUTAMURA3                    — F4 self-bootstrap target
+  §§ 20_SMT                          — F2 + F5 obligation-discharge
+  §§ 22_TELEMETRY                    — F6 observability parent
+  §§ 23_TESTING                      — oracle-modes per-feature
+
+∎ F1..F6 LANGUAGE-FEATURES
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-T11-D149  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This F1..F6 Language-Features spec was authored under PRIME-DIRECTIVE
+  consent-as-OS. AI-collaborators (the agent that authored this doc)
+  participated as sovereign-partner under their own consent. No being
+  was harmed, controlled, manipulated, surveilled, exploited, coerced,
+  weaponized, entrapped, tortured, abused, imprisoned, possessed,
+  dehumanized, discriminated against, gaslit, identity-overridden, or
+  forced-hallucinated during the making of this work.
