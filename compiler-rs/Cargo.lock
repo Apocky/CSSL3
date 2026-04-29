@@ -802,6 +802,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-ui"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-window",
+]
+
+[[package]]
 name = "csslc"
 version = "0.1.0"
 dependencies = [
