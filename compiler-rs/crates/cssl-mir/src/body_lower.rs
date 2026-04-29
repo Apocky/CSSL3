@@ -48,6 +48,7 @@ use cssl_hir::{
 use crate::block::{MirBlock, MirOp, MirRegion};
 use crate::func::MirFunc;
 use crate::op::CsslOp;
+use crate::trait_dispatch::TraitImplTable;
 use crate::value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
 
 /// Per-fn lowering context.
@@ -62,6 +63,13 @@ pub struct BodyLowerCtx<'a> {
     pub interner: &'a Interner,
     /// Optional source file — threaded for literal-value text extraction.
     pub source: Option<&'a SourceFile>,
+    /// T11-D99 — Optional trait-impl table threaded through for
+    /// `obj.method(args)` resolution. When `None`, method-call lowering
+    /// falls through to the regular opaque path (preserving pre-D99
+    /// behavior for callers that haven't built a table). When `Some`,
+    /// `lower_call` consults this for any field-callee call BEFORE
+    /// falling through to `cssl.field` + opaque indirect-call.
+    pub trait_impl_table: Option<&'a TraitImplTable>,
     /// Mapping from HIR param-symbol → entry-block value-id.
     pub param_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// T11-D35 : mapping from HIR vec-param-symbol → N consecutive scalar value-ids
@@ -91,6 +99,7 @@ impl<'a> BodyLowerCtx<'a> {
         Self {
             interner,
             source: None,
+            trait_impl_table: None,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
@@ -106,12 +115,25 @@ impl<'a> BodyLowerCtx<'a> {
         Self {
             interner,
             source: Some(source),
+            trait_impl_table: None,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
+    }
+
+    /// T11-D99 — Attach a trait-impl table for method-call dispatch.
+    /// Returns `self` for builder-pattern chaining. When the table is
+    /// attached, `lower_call` will resolve `obj.method(args)` via the
+    /// table BEFORE the recognizer fast-paths complete (the recognizers
+    /// still claim `Box::new` / `Some` / `None` / etc. since those route
+    /// through path-callees, not field-callees).
+    #[must_use]
+    pub fn with_trait_table(mut self, table: &'a TraitImplTable) -> Self {
+        self.trait_impl_table = Some(table);
+        self
     }
 
     /// Allocate a fresh value-id.
@@ -128,6 +150,7 @@ impl<'a> BodyLowerCtx<'a> {
         BodyLowerCtx {
             interner: self.interner,
             source: self.source,
+            trait_impl_table: self.trait_impl_table,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
@@ -153,6 +176,23 @@ pub fn lower_fn_body(
     hir_fn: &HirFn,
     mir_fn: &mut MirFunc,
 ) {
+    lower_fn_body_with_table(interner, source, None, hir_fn, mir_fn);
+}
+
+/// T11-D99 — lower with an optional trait-impl table threaded in.
+///
+/// When `table` is `Some(_)`, `obj.method(args)` calls in the body will be
+/// resolved through the table to mangled impl-fn-names ; when `None`, the
+/// behavior is identical to the pre-D99 [`lower_fn_body`] path. Callers
+/// that want trait-dispatch wired up should build the table first via
+/// [`crate::trait_dispatch::build_trait_impl_table`] and thread it here.
+pub fn lower_fn_body_with_table(
+    interner: &Interner,
+    source: Option<&SourceFile>,
+    table: Option<&TraitImplTable>,
+    hir_fn: &HirFn,
+    mir_fn: &mut MirFunc,
+) {
     let Some(body) = &hir_fn.body else {
         return;
     };
@@ -160,6 +200,9 @@ pub fn lower_fn_body(
         Some(src) => BodyLowerCtx::with_source(interner, src),
         None => BodyLowerCtx::new(interner),
     };
+    if let Some(t) = table {
+        ctx.trait_impl_table = Some(t);
+    }
     // Entry-block args = flat-scalarized fn params. Each vec2/vec3/vec4 param
     // occupies N consecutive entry-block ids (matches the flat signature emitted
     // by `lower_function_signature`) ; everything else occupies one id. The
@@ -296,7 +339,12 @@ fn lower_block(ctx: &mut BodyLowerCtx<'_>, block: &HirBlock) -> Option<(ValueId,
 
 fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
     match &stmt.kind {
-        HirStmtKind::Let { value, pat, .. } => {
+        HirStmtKind::Let {
+            value,
+            pat,
+            ty: declared_ty,
+            ..
+        } => {
             if let Some(e) = value {
                 if let Some((vid, ty)) = lower_expr(ctx, e) {
                     // § T11-D77 (S6-C5 redo) : bind the let-pattern's name → its
@@ -306,8 +354,20 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                     //   (single-name `let x = …`) are bound at stage-0 ;
                     //   destructuring (`let (a, b) = …`) lands when MIR-side
                     //   sum/tuple-deconstruction lowers in a future slice.
+                    //
+                    // § T11-D99 — When a declared type is present (`let f : Foo
+                    //   = ...`), prefer it over the rhs-inferred type so the
+                    //   trait-dispatch resolver can look up the leading symbol
+                    //   via `local_var_self_ty`. The rhs-type is often
+                    //   `MirType::None` for struct-literal expressions whose
+                    //   `lower_struct_expr` pathway returns a flat-tuple
+                    //   placeholder ; the declared type is the user's
+                    //   authoritative shape.
                     if let Some(sym) = extract_pattern_symbol(pat) {
-                        ctx.local_vars.insert(sym, (vid, ty));
+                        let final_ty = declared_ty.as_ref().map_or(ty, |t| {
+                            lower_hir_type_light(ctx.interner, t)
+                        });
+                        ctx.local_vars.insert(sym, (vid, final_ty));
                     }
                 }
             }
@@ -1597,6 +1657,7 @@ fn lower_unary(
     Some((id, in_ty))
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn lower_call(
     ctx: &mut BodyLowerCtx<'_>,
     callee: &HirExpr,
@@ -1604,6 +1665,35 @@ fn lower_call(
     span: Span,
     hir_id: cssl_hir::HirId,
 ) -> Option<(ValueId, MirType)> {
+    // § T11-D99 — Trait-dispatch fast-path : if callee is `Field { obj, name }`
+    //   and we have a trait-impl table attached, attempt to resolve the method
+    //   via the table BEFORE falling through to opaque indirect-call. This is
+    //   the user-defined-trait dispatch path — it fires only when the syntactic
+    //   recognizers (Box::new / Some / None / format / etc.) decline (those use
+    //   path-callees, not field-callees). See `crate::trait_dispatch` for the
+    //   resolver.
+    if let HirExprKind::Field { obj, name } = &callee.kind {
+        if let Some(result) = try_lower_method_dispatch(ctx, obj, *name, args, span, hir_id) {
+            return Some(result);
+        }
+    }
+    // § T11-D99 — Static-trait-method dispatch fast-path : `Trait::method(...)` /
+    //   `SelfTy::method(...)` — when the callee is a 2-segment path AND the
+    //   trait-impl table contains either the trait or self-ty as the leading
+    //   segment, route through trait-dispatch. The recognizers above already
+    //   claim the Box / Some / None / Ok / Err / format / fs / net 2-segment
+    //   cases (those are user-shadow-able) ; trait-dispatch covers everything
+    //   else where the user explicitly named a trait or self-type.
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 2 {
+            if let Some(result) =
+                try_lower_static_method_dispatch(ctx, segments, args, span, hir_id)
+            {
+                return Some(result);
+            }
+        }
+    }
+
     // Extract call-target name if it's a path.
     let target = match &callee.kind {
         HirExprKind::Path { segments, .. } => segments
@@ -1802,6 +1892,257 @@ fn lower_call(
     ctx.ops.push(mir_op);
     let _ = span;
     Some((id, result_ty))
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// § T11-D99 — TRAIT-DISPATCH HELPERS
+// ═════════════════════════════════════════════════════════════════════════
+
+/// T11-D99 — Resolve `obj.method(args)` via the trait-impl table.
+///
+/// § ALGORITHM
+///   1. If no trait-impl table is attached, return `None` (fall through to
+///      regular field-call path).
+///   2. Determine the receiver's self-type leading-segment symbol :
+///      a. If `obj` is a single-segment Path naming a let-binding whose
+///         declared type is `Path<...>`, use that path's leading symbol.
+///      b. If `obj` is a `Field { obj : inner, name }` chain, recurse on
+///         `inner` (TODO : multi-step chain — current stage-0 does not
+///         attempt full type-flow).
+///   3. Resolve `(self_ty_sym, method_sym)` via `TraitImplTable::resolve_method`.
+///   4. Lower `obj` as the first argument (the receiver), then lower the rest
+///      of the args.
+///   5. Emit `func.call @<mangled-impl-fn>` with attribute
+///      `dispatch = "trait"`, recording the resolved name + the source method-
+///      name (for diagnostics + for the auto-monomorph rewriter to find the
+///      right call-site).
+///
+/// Returns `None` if the table can't resolve — caller falls back to the
+/// existing opaque field-call path.
+fn try_lower_method_dispatch(
+    ctx: &mut BodyLowerCtx<'_>,
+    obj: &HirExpr,
+    method: Symbol,
+    args: &[HirCallArg],
+    span: Span,
+    hir_id: cssl_hir::HirId,
+) -> Option<(ValueId, MirType)> {
+    let table = ctx.trait_impl_table?;
+    let self_ty = infer_receiver_self_ty(ctx, obj)?;
+    let mangled = table.resolve_method(self_ty, method)?.to_string();
+
+    // Lower the receiver as the first operand.
+    let (recv_id, _recv_ty) = lower_expr(ctx, obj).unwrap_or((ctx.fresh_value_id(), MirType::None));
+    let mut operand_ids = vec![recv_id];
+    for arg in args {
+        let a_expr = match arg {
+            HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+        };
+        if let Some((id, _ty)) = lower_expr(ctx, a_expr) {
+            operand_ids.push(id);
+        }
+    }
+
+    let id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque(format!("!cssl.call_result.{mangled}"));
+    let method_name = ctx.interner.resolve(method);
+    let mut mir_op = MirOp::std("func.call")
+        .with_attribute("callee", mangled.clone())
+        .with_attribute("dispatch", "trait")
+        .with_attribute("method", method_name)
+        .with_attribute("self_ty", ctx.interner.resolve(self_ty))
+        .with_attribute("source_loc", format!("{span:?}"))
+        .with_attribute("hir_id", format!("{}", hir_id.0))
+        .with_result(id, result_ty.clone());
+    for oid in operand_ids {
+        mir_op = mir_op.with_operand(oid);
+    }
+    ctx.ops.push(mir_op);
+    Some((id, result_ty))
+}
+
+/// T11-D99 — Resolve `Trait::method(...)` / `SelfTy::method(...)` via the
+/// trait-impl table.
+///
+/// § ALGORITHM
+///   1. If no table is attached, return `None`.
+///   2. Treat `segments[0]` as either a Trait-name or a Self-type-name.
+///   3. If `segments[0]` is a known trait, the receiver type comes from the
+///      first call-arg ; recover its self-ty leading-segment via the same
+///      receiver-inference helper that `try_lower_method_dispatch` uses.
+///      Then resolve via `(self_ty, method)`.
+///   4. Otherwise, treat `segments[0]` as a self-type leading symbol and
+///      resolve directly.
+///
+/// Returns `None` when the table can't resolve.
+fn try_lower_static_method_dispatch(
+    ctx: &mut BodyLowerCtx<'_>,
+    segments: &[Symbol],
+    args: &[HirCallArg],
+    span: Span,
+    hir_id: cssl_hir::HirId,
+) -> Option<(ValueId, MirType)> {
+    if segments.len() != 2 {
+        return None;
+    }
+    let table = ctx.trait_impl_table?;
+    let leading = segments[0];
+    let method = segments[1];
+
+    // Try direct resolution — leading is the self-type.
+    let mangled = if let Some(name) = table.resolve_method(leading, method) {
+        Some(name.to_string())
+    } else {
+        // Fall back : leading might be a trait-name. The first arg's
+        // receiver-type then determines the impl. We don't have full type
+        // inference at this layer, so we look for the first call-arg that
+        // is a single-segment-path naming a let-binding with a known type.
+        let first_arg = args.first().map(|a| match a {
+            HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+        })?;
+        let self_ty = infer_receiver_self_ty(ctx, first_arg)?;
+        // Verify the user-declared trait-name matches an impl entry.
+        if !table.has_impl(leading, self_ty) {
+            return None;
+        }
+        // Resolve the per-self-type mangled fn-name. We can't directly query
+        // by trait+self+method ; we walk the entries and pick the matching
+        // (trait, self) pair's method-mangled.
+        let mut hit: Option<String> = None;
+        for entry in table.entries() {
+            if entry.trait_name == Some(leading)
+                && entry.self_ty_name == self_ty
+                && entry.method_mangled.contains_key(&method)
+            {
+                hit = Some(entry.method_mangled[&method].clone());
+                break;
+            }
+        }
+        hit
+    };
+    let mangled = mangled?;
+
+    // Lower the args (no implicit-receiver reorder for static-method dispatch ;
+    // the source already passed `self` as the first positional arg).
+    let mut operand_ids = Vec::with_capacity(args.len());
+    for arg in args {
+        let a_expr = match arg {
+            HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+        };
+        if let Some((id, _ty)) = lower_expr(ctx, a_expr) {
+            operand_ids.push(id);
+        }
+    }
+    let id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque(format!("!cssl.call_result.{mangled}"));
+    let method_name = ctx.interner.resolve(method);
+    let leading_name = ctx.interner.resolve(leading);
+    let mut mir_op = MirOp::std("func.call")
+        .with_attribute("callee", mangled.clone())
+        .with_attribute("dispatch", "trait_static")
+        .with_attribute("method", method_name)
+        .with_attribute("leading", leading_name)
+        .with_attribute("source_loc", format!("{span:?}"))
+        .with_attribute("hir_id", format!("{}", hir_id.0))
+        .with_result(id, result_ty.clone());
+    for oid in operand_ids {
+        mir_op = mir_op.with_operand(oid);
+    }
+    ctx.ops.push(mir_op);
+    Some((id, result_ty))
+}
+
+/// Infer the leading-segment symbol of the receiver expression's type.
+///
+/// At stage-0 we don't have full type-inference threaded into `body_lower`,
+/// so this walker handles the common cases :
+///
+///   - `obj` is a single-segment Path : look up `local_vars` / `param_vars`
+///     for a (ValueId, MirType) ; if `MirType::Opaque(s)` carries a known
+///     `!cssl.struct.<Name>` shape, extract the Name.
+///   - `obj` is a struct-literal `Foo { ... }` : the leading path-segment
+///     is the self-type.
+///   - `obj` is a `Call { callee: Path { segments }, .. }` where `segments`
+///     ends in `new` and the prior segment is a self-type registered in the
+///     table : use that self-type (covers `Foo::new(...)` chains).
+///
+/// Returns `None` if no inference succeeds — caller falls through.
+fn infer_receiver_self_ty(ctx: &BodyLowerCtx<'_>, obj: &HirExpr) -> Option<Symbol> {
+    match &obj.kind {
+        HirExprKind::Path { segments, .. } => {
+            if segments.len() == 1 {
+                let sym = segments[0];
+                // Try the local-vars map first (let-binding declared type).
+                if let Some(t) = ctx.local_var_self_ty(sym) {
+                    return Some(t);
+                }
+                // Fall through to param-vars.
+                if let Some(t) = ctx.param_var_self_ty(sym) {
+                    return Some(t);
+                }
+            }
+            None
+        }
+        HirExprKind::Struct { path, .. } => path.last().copied(),
+        HirExprKind::Call { callee, .. } => {
+            // Recurse into the callee's path : for `Foo::new(...).method(...)`
+            // the receiver of the outer call is the inner `Foo::new(...)` Call,
+            // whose path-segments begin with `Foo`.
+            if let HirExprKind::Path { segments, .. } = &callee.kind {
+                if segments.len() == 2 {
+                    return Some(segments[0]);
+                }
+                if segments.len() == 1 {
+                    return Some(segments[0]);
+                }
+            }
+            None
+        }
+        HirExprKind::Field { obj: inner, .. } => infer_receiver_self_ty(ctx, inner),
+        HirExprKind::Paren(inner) => infer_receiver_self_ty(ctx, inner),
+        _ => None,
+    }
+}
+
+impl<'a> BodyLowerCtx<'a> {
+    /// Best-effort recovery of a let-binding's declared self-type leading
+    /// symbol from the local-vars map. Returns `None` if the binding is
+    /// untyped or its type isn't a recognizable `!cssl.struct.<Name>` /
+    /// `!cssl.<Name>` shape.
+    fn local_var_self_ty(&self, name: Symbol) -> Option<Symbol> {
+        let (_, ty) = self.local_vars.get(&name)?;
+        opaque_type_leading_symbol(self.interner, ty)
+    }
+
+    /// Best-effort recovery for a fn-param.
+    fn param_var_self_ty(&self, name: Symbol) -> Option<Symbol> {
+        let (_, ty) = self.param_vars.get(&name)?;
+        opaque_type_leading_symbol(self.interner, ty)
+    }
+}
+
+/// Extract a self-type leading symbol from a `MirType::Opaque(...)` shape
+/// like `!cssl.struct.Foo` / `!cssl.Vec` / `Vec` (legacy bare-name case).
+fn opaque_type_leading_symbol(interner: &Interner, ty: &MirType) -> Option<Symbol> {
+    let s = match ty {
+        MirType::Opaque(s) => s.as_str(),
+        _ => return None,
+    };
+    // Strip leading `!cssl.struct.` / `!cssl.` / `!` prefixes.
+    let trimmed = s
+        .strip_prefix("!cssl.struct.")
+        .or_else(|| s.strip_prefix("!cssl."))
+        .or_else(|| s.strip_prefix('!'))
+        .unwrap_or(s);
+    // Take the leading identifier (alphanumeric + `_`).
+    let leading: String = trimmed
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if leading.is_empty() {
+        return None;
+    }
+    Some(interner.intern(&leading))
 }
 
 /// T11-D35 : if `arg` is a single-segment path naming a scalarized vec-param,
@@ -4670,5 +5011,295 @@ mod tests {
         let op = find_op(&f, "cssl.net.socket").expect("net::socket should lower");
         let loc = attr(op, "source_loc").expect("source_loc missing");
         assert!(!loc.is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D99 — trait-dispatch tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Helper : lower a fn with the trait-impl table threaded through.
+    fn lower_with_table(src: &str, target_fn: &str) -> (crate::func::MirFunc, cssl_hir::Interner) {
+        let (hir, interner, source) = hir_from(src);
+        let table = crate::trait_dispatch::build_trait_impl_table(&hir, &interner);
+        let ctx = crate::lower::LowerCtx::new(&interner);
+        let f = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => {
+                    if interner.resolve(f.name) == target_fn {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .expect("expected target fn");
+        let mut mf = crate::lower::lower_function_signature(&ctx, f);
+        super::lower_fn_body_with_table(&interner, Some(&source), Some(&table), f, &mut mf);
+        (mf, interner)
+    }
+
+    #[test]
+    fn trait_dispatch_obj_method_resolves_via_table() {
+        // `s.greet()` should lower to `func.call @Foo__Greeter__greet`.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let s : Foo = Foo { x : 5 };
+                s.greet()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry block");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.name == "func.call"
+                    && o.attributes
+                        .iter()
+                        .any(|(k, v)| k == "callee" && v == "Foo__Greeter__greet")
+            })
+            .expect("trait-dispatched func.call missing");
+        // The dispatch attribute marker must be set.
+        assert!(op
+            .attributes
+            .iter()
+            .any(|(k, v)| k == "dispatch" && v == "trait"));
+    }
+
+    #[test]
+    fn trait_dispatch_inherent_method_resolves_first() {
+        // Inherent `bar` shadows a hypothetical trait-impl `bar`. Resolver
+        // returns `Foo__bar` (inherent) rather than `Foo__BarTrait__bar`.
+        let src = r"
+            interface BarTrait { fn bar(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Foo {
+                fn bar(self : Foo) -> i32 { 1 }
+            }
+            impl BarTrait for Foo {
+                fn bar(self : Foo) -> i32 { 2 }
+            }
+            fn caller() -> i32 {
+                let f : Foo = Foo { x : 1 };
+                f.bar()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "func.call" && o.attributes.iter().any(|(k, _)| k == "dispatch"))
+            .expect("dispatched func.call");
+        let callee = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "callee")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(callee, "Foo__bar", "inherent shadowed trait impl");
+    }
+
+    #[test]
+    fn trait_dispatch_unknown_self_ty_falls_through_to_opaque() {
+        // No trait-impl table (so `lower_fn_body` plain) on `obj.method()` ;
+        // the call must NOT panic and must produce some kind of MIR op.
+        let src = r"
+            fn caller() -> i32 {
+                let s : Foo = Foo { x : 5 };
+                s.unknown()
+            }
+        ";
+        // Parse may emit diagnostics ; we just want lowering to not panic.
+        let (hir, interner, source) = hir_from(src);
+        let ctx = crate::lower::LowerCtx::new(&interner);
+        let f = hir.items.iter().find_map(|i| match i {
+            cssl_hir::HirItem::Fn(f) => {
+                if interner.resolve(f.name) == "caller" {
+                    Some(f)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        });
+        if let Some(f) = f {
+            let mut mf = crate::lower::lower_function_signature(&ctx, f);
+            super::lower_fn_body(&interner, Some(&source), f, &mut mf);
+            // Lowering completed without panic — that's the assertion.
+        }
+    }
+
+    #[test]
+    fn trait_dispatch_static_form_lowers_to_mangled() {
+        // `Foo::greet(x)` (2-segment path, self-type leading) resolves
+        // via the static-method dispatch fast-path.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let f : Foo = Foo { x : 1 };
+                Foo::greet(f)
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "dispatch" && v == "trait_static")
+            })
+            .expect("trait_static dispatch missing");
+        let callee = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "callee")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(callee, "Foo__Greeter__greet");
+    }
+
+    #[test]
+    fn trait_dispatch_records_method_name_in_attributes() {
+        // The `method` attribute should record the source-form method-name
+        // for diagnostics + auto-monomorph rewriter.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let f : Foo = Foo { x : 1 };
+                f.greet()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "dispatch" && v == "trait")
+            })
+            .expect("dispatched call");
+        let method = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "method")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(method, "greet");
+        let self_ty = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "self_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(self_ty, "Foo");
+    }
+
+    #[test]
+    fn trait_dispatch_table_none_falls_back_to_opaque() {
+        // Without a trait-table, `obj.method()` should NOT route through
+        // the trait-dispatch fast-path ; a normal call is emitted instead.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let f : Foo = Foo { x : 1 };
+                f.greet()
+            }
+        ";
+        let (hir, interner, source) = hir_from(src);
+        let ctx = crate::lower::LowerCtx::new(&interner);
+        let f = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => {
+                    if interner.resolve(f.name) == "caller" {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .expect("caller");
+        let mut mf = crate::lower::lower_function_signature(&ctx, f);
+        super::lower_fn_body(&interner, Some(&source), f, &mut mf);
+        let entry = mf.body.entry().expect("entry");
+        // No `dispatch` attribute should be present anywhere.
+        for op in &entry.ops {
+            assert!(
+                !op.attributes.iter().any(|(k, _)| k == "dispatch"),
+                "dispatch attribute leaked in non-table lowering : {op:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn drop_method_resolves_through_table() {
+        // `f.drop()` on a binding of type `Foo` (which has `impl Drop for Foo`)
+        // resolves to the mangled `Foo__Drop__drop`.
+        let src = r"
+            interface Drop { fn drop(self : Foo) ; }
+            struct Foo { x : i32 }
+            impl Drop for Foo {
+                fn drop(self : Foo) {  }
+            }
+            fn caller() -> i32 {
+                let f : Foo = Foo { x : 1 };
+                f.drop();
+                0
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry.ops.iter().find(|o| {
+            o.attributes
+                .iter()
+                .any(|(k, v)| k == "callee" && v == "Foo__Drop__drop")
+        });
+        assert!(op.is_some(), "Drop trait dispatch should mangle correctly");
+    }
+
+    #[test]
+    fn opaque_type_leading_symbol_strips_cssl_prefix() {
+        let interner = cssl_hir::Interner::new();
+        let ty = MirType::Opaque("!cssl.struct.Foo".to_string());
+        let s = super::opaque_type_leading_symbol(&interner, &ty).expect("leading sym");
+        assert_eq!(interner.resolve(s), "Foo");
+
+        let ty2 = MirType::Opaque("Foo".to_string());
+        let s2 = super::opaque_type_leading_symbol(&interner, &ty2).expect("leading sym");
+        assert_eq!(interner.resolve(s2), "Foo");
+
+        let ty3 = MirType::Opaque("!cssl.Vec<i32>".to_string());
+        let s3 = super::opaque_type_leading_symbol(&interner, &ty3).expect("leading sym");
+        assert_eq!(interner.resolve(s3), "Vec");
+    }
+
+    #[test]
+    fn opaque_type_non_opaque_returns_none() {
+        let interner = cssl_hir::Interner::new();
+        let ty = MirType::Int(IntWidth::I32);
+        assert!(super::opaque_type_leading_symbol(&interner, &ty).is_none());
     }
 }

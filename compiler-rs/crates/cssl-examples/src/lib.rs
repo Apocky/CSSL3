@@ -44,6 +44,7 @@ pub mod jit_chain;
 pub mod native_hello_world_gate;
 pub mod stage1_scaffold;
 pub mod stdlib_gate;
+pub mod trait_dispatch_gate;
 
 use cssl_ast::{Module, SourceFile, SourceId, Surface};
 use cssl_hir::HirModule;

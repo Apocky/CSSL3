@@ -900,7 +900,10 @@ pub fn auto_monomorphize_impls(
     let mut report = AutoImplReport::default();
 
     // § Index generic impls by their self-type name (single-segment Path).
-    let mut impl_index: HashMap<Symbol, &HirImpl> = HashMap::new();
+    //   T11-D99 : multi-impl support — same self-type may have an inherent
+    //   impl PLUS one or more trait impls. Use Vec to retain all of them so
+    //   trait-impl monomorph also fires (e.g., `impl<T> Drop for Vec<T>`).
+    let mut impl_index: HashMap<Symbol, Vec<&HirImpl>> = HashMap::new();
     for item in &module.items {
         if let HirItem::Impl(i) = item {
             if i.generics.params.is_empty() {
@@ -908,23 +911,34 @@ pub fn auto_monomorphize_impls(
             }
             if let HirTypeKind::Path { path, .. } = &i.self_ty.kind {
                 if path.len() == 1 {
-                    impl_index.insert(path[0], i);
+                    impl_index.entry(path[0]).or_default().push(i);
                 }
             }
         }
     }
-    report.generic_impl_count = u32::try_from(impl_index.len()).unwrap_or(u32::MAX);
+    report.generic_impl_count =
+        u32::try_from(impl_index.values().map(Vec::len).sum::<usize>()).unwrap_or(u32::MAX);
 
     // § Collect type-annotation refs that match an indexed self-type name.
+    //
+    // T11-D99 — at each fn / impl-method we collect a set of "in-scope
+    // generic-param-names" so the per-type-arg filter can recognize bare
+    // refs to those names (e.g., `T` inside `impl<T> Box<T>` body's `let
+    // x : Box<T>`) and skip them — those would be spurious mono-triggers
+    // against the same generic impl.
     let mut refs: Vec<(Symbol, Vec<HirType>)> = Vec::new();
     for item in &module.items {
         match item {
             HirItem::Fn(f) => {
+                let scope: Vec<Symbol> = f.generics.params.iter().map(|p| p.name).collect();
                 for p in &f.params {
-                    collect_impl_self_ty_refs(&p.ty, &impl_index, &mut refs);
+                    collect_impl_self_ty_refs_scoped(&p.ty, &impl_index, &scope, &mut refs);
                 }
                 if let Some(rt) = &f.return_ty {
-                    collect_impl_self_ty_refs(rt, &impl_index, &mut refs);
+                    collect_impl_self_ty_refs_scoped(rt, &impl_index, &scope, &mut refs);
+                }
+                if let Some(body) = &f.body {
+                    walk_block_for_let_type_refs(body, &impl_index, &scope, &mut refs);
                 }
             }
             HirItem::Struct(s) => {
@@ -935,89 +949,342 @@ pub fn auto_monomorphize_impls(
                     walk_body_for_impl_refs(&v.body, &impl_index, &mut refs);
                 }
             }
+            HirItem::Impl(i) => {
+                // The impl's own generic-params + each method's own
+                // generic-params are in-scope ; uses of those param-names
+                // in the body must NOT trigger specialization.
+                let mut impl_scope: Vec<Symbol> =
+                    i.generics.params.iter().map(|p| p.name).collect();
+                for f in &i.fns {
+                    let mut method_scope = impl_scope.clone();
+                    for p in &f.generics.params {
+                        method_scope.push(p.name);
+                    }
+                    if let Some(body) = &f.body {
+                        walk_block_for_let_type_refs(body, &impl_index, &method_scope, &mut refs);
+                    }
+                }
+                let _ = &mut impl_scope;
+            }
             _ => {}
         }
     }
     report.ref_count = u32::try_from(refs.len()).unwrap_or(u32::MAX);
 
     // § Deduplicate (impl, type-args) tuples ; invoke specialize_generic_impl
-    //   per unique combination.
+    //   per unique combination — and fan out across EVERY impl of that self-
+    //   type so both inherent + trait-impls land specialized MirFuncs.
     let mut seen: HashSet<String> = HashSet::new();
     for (self_sym, type_args) in refs {
-        let impl_block = match impl_index.get(&self_sym) {
-            Some(i) => *i,
+        let impl_blocks = match impl_index.get(&self_sym) {
+            Some(v) => v.clone(),
             None => continue,
         };
+        for impl_block in impl_blocks {
+            if impl_block.generics.params.len() != type_args.len() {
+                continue;
+            }
+            let mut subst = TypeSubst::new();
+            for (param, ty) in impl_block.generics.params.iter().zip(type_args.iter()) {
+                subst.bind(param.name, ty.clone());
+            }
 
-        if impl_block.generics.params.len() != type_args.len() {
-            continue;
-        }
-        let mut subst = TypeSubst::new();
-        for (param, ty) in impl_block.generics.params.iter().zip(type_args.iter()) {
-            subst.bind(param.name, ty.clone());
-        }
+            // Dedup key : self_sym + trait_name + mangle_key of subst. Trait-
+            // name is folded in so distinct `impl A for Foo` / `impl B for Foo`
+            // both fire even though they share `(Foo, T↦i32)`.
+            let base = interner.resolve(self_sym);
+            let trait_part = match &impl_block.trait_ {
+                Some(t) => match &t.kind {
+                    HirTypeKind::Path { path, .. } => path
+                        .last()
+                        .map_or_else(|| "_inherent".to_string(), |s| interner.resolve(*s)),
+                    _ => "_inherent".to_string(),
+                },
+                None => "_inherent".to_string(),
+            };
+            let dedup_key = format!("{base}_{trait_part}_{}", mangle_key(&subst, interner));
+            if !seen.insert(dedup_key) {
+                continue;
+            }
 
-        // Dedup key : self_sym + mangle_key of subst.
-        let base = interner.resolve(self_sym);
-        let dedup_key = format!("{base}_{}", mangle_key(&subst, interner));
-        if !seen.insert(dedup_key) {
-            continue;
+            report.unique_spec_count = report.unique_spec_count.saturating_add(1);
+            let specs = specialize_generic_impl(interner, source, impl_block, &subst);
+            report.specializations.extend(specs);
         }
-
-        report.unique_spec_count = report.unique_spec_count.saturating_add(1);
-        let specs = specialize_generic_impl(interner, source, impl_block, &subst);
-        report.specializations.extend(specs);
     }
 
     report
 }
 
 /// Recursively walk a `HirType` collecting refs matching a known impl self-type name.
+///
+/// Thin wrapper that delegates to [`collect_impl_self_ty_refs_scoped`] with
+/// an empty generic-scope. Preserved for backward-compat with non-D99
+/// callers (struct + enum field walks).
 fn collect_impl_self_ty_refs(
     t: &HirType,
-    impl_index: &HashMap<Symbol, &HirImpl>,
+    impl_index: &HashMap<Symbol, Vec<&HirImpl>>,
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    collect_impl_self_ty_refs_scoped(t, impl_index, &[], out);
+}
+
+/// T11-D99 — scoped variant : the `generic_scope` carries the names of
+/// generic-params that are in-scope at this walk-site. A type-arg whose
+/// leading-segment matches an in-scope generic-param name is rejected as
+/// "not a concrete type" so the auto-monomorph walker doesn't fire against
+/// e.g. `impl<T> Box<T> { fn f() { let x : Box<T> = ... } }`.
+fn collect_impl_self_ty_refs_scoped(
+    t: &HirType,
+    impl_index: &HashMap<Symbol, Vec<&HirImpl>>,
+    generic_scope: &[Symbol],
     out: &mut Vec<(Symbol, Vec<HirType>)>,
 ) {
     match &t.kind {
         HirTypeKind::Path {
             path, type_args, ..
         } => {
-            if path.len() == 1 && !type_args.is_empty() && impl_index.contains_key(&path[0]) {
+            if path.len() == 1
+                && !type_args.is_empty()
+                && impl_index.contains_key(&path[0])
+                && type_args
+                    .iter()
+                    .all(|ta| !is_in_scope_generic_param(ta, generic_scope))
+            {
                 out.push((path[0], type_args.clone()));
             }
             for ta in type_args {
-                collect_impl_self_ty_refs(ta, impl_index, out);
+                collect_impl_self_ty_refs_scoped(ta, impl_index, generic_scope, out);
             }
         }
         HirTypeKind::Tuple { elems } => {
             for e in elems {
-                collect_impl_self_ty_refs(e, impl_index, out);
+                collect_impl_self_ty_refs_scoped(e, impl_index, generic_scope, out);
             }
         }
         HirTypeKind::Array { elem, .. } | HirTypeKind::Slice { elem } => {
-            collect_impl_self_ty_refs(elem, impl_index, out);
+            collect_impl_self_ty_refs_scoped(elem, impl_index, generic_scope, out);
         }
         HirTypeKind::Reference { inner, .. } | HirTypeKind::Capability { inner, .. } => {
-            collect_impl_self_ty_refs(inner, impl_index, out);
+            collect_impl_self_ty_refs_scoped(inner, impl_index, generic_scope, out);
         }
         HirTypeKind::Function {
             params, return_ty, ..
         } => {
             for p in params {
-                collect_impl_self_ty_refs(p, impl_index, out);
+                collect_impl_self_ty_refs_scoped(p, impl_index, generic_scope, out);
             }
-            collect_impl_self_ty_refs(return_ty, impl_index, out);
+            collect_impl_self_ty_refs_scoped(return_ty, impl_index, generic_scope, out);
         }
         HirTypeKind::Refined { base, .. } => {
-            collect_impl_self_ty_refs(base, impl_index, out);
+            collect_impl_self_ty_refs_scoped(base, impl_index, generic_scope, out);
         }
         HirTypeKind::Infer | HirTypeKind::Error => {}
     }
 }
 
+/// T11-D99 — `true` iff `t` is a single-segment Path with empty type-args
+/// AND its leading segment is in the in-scope generic-param list. Used by
+/// [`collect_impl_self_ty_refs_scoped`] to filter out spurious refs to
+/// unbound generic-params inside impl-method bodies.
+fn is_in_scope_generic_param(t: &HirType, generic_scope: &[Symbol]) -> bool {
+    match &t.kind {
+        HirTypeKind::Path {
+            path, type_args, ..
+        } => {
+            if path.len() != 1 || !type_args.is_empty() {
+                return false;
+            }
+            generic_scope.contains(&path[0])
+        }
+        _ => false,
+    }
+}
+
+/// T11-D99 — walk a fn body recursively, picking up every `let pat : T = ...`
+/// declared-type annotation and every turbofish call-site type-arg that
+/// matches an indexed impl self-type. Recurses into nested blocks.
+///
+/// `generic_scope` carries the names of generic-params in-scope at this
+/// walk-site (the enclosing fn / impl-method's type-param list) so spurious
+/// refs to unbound `T` can be filtered out.
+fn walk_block_for_let_type_refs(
+    block: &cssl_hir::HirBlock,
+    impl_index: &HashMap<Symbol, Vec<&HirImpl>>,
+    generic_scope: &[Symbol],
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    for stmt in &block.stmts {
+        match &stmt.kind {
+            cssl_hir::HirStmtKind::Let { ty, value, .. } => {
+                if let Some(t) = ty {
+                    collect_impl_self_ty_refs_scoped(t, impl_index, generic_scope, out);
+                }
+                if let Some(v) = value {
+                    walk_expr_for_let_type_refs(v, impl_index, generic_scope, out);
+                }
+            }
+            cssl_hir::HirStmtKind::Expr(e) => {
+                walk_expr_for_let_type_refs(e, impl_index, generic_scope, out);
+            }
+            cssl_hir::HirStmtKind::Item(_) => {}
+        }
+    }
+    if let Some(t) = &block.trailing {
+        walk_expr_for_let_type_refs(t, impl_index, generic_scope, out);
+    }
+}
+
+fn walk_expr_for_let_type_refs(
+    expr: &cssl_hir::HirExpr,
+    impl_index: &HashMap<Symbol, Vec<&HirImpl>>,
+    generic_scope: &[Symbol],
+    out: &mut Vec<(Symbol, Vec<HirType>)>,
+) {
+    match &expr.kind {
+        cssl_hir::HirExprKind::Block(b) => {
+            walk_block_for_let_type_refs(b, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::If {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            walk_expr_for_let_type_refs(cond, impl_index, generic_scope, out);
+            walk_block_for_let_type_refs(then_branch, impl_index, generic_scope, out);
+            if let Some(e) = else_branch {
+                walk_expr_for_let_type_refs(e, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::Match { scrutinee, arms } => {
+            walk_expr_for_let_type_refs(scrutinee, impl_index, generic_scope, out);
+            for arm in arms {
+                walk_expr_for_let_type_refs(&arm.body, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::For { iter, body, .. } => {
+            walk_expr_for_let_type_refs(iter, impl_index, generic_scope, out);
+            walk_block_for_let_type_refs(body, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::While { cond, body } => {
+            walk_expr_for_let_type_refs(cond, impl_index, generic_scope, out);
+            walk_block_for_let_type_refs(body, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Loop { body }
+        | cssl_hir::HirExprKind::Region { body, .. }
+        | cssl_hir::HirExprKind::With { body, .. } => {
+            walk_block_for_let_type_refs(body, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Call {
+            callee,
+            args,
+            type_args,
+        } => {
+            for ta in type_args {
+                collect_impl_self_ty_refs_scoped(ta, impl_index, generic_scope, out);
+            }
+            walk_expr_for_let_type_refs(callee, impl_index, generic_scope, out);
+            for a in args {
+                let e = match a {
+                    cssl_hir::HirCallArg::Positional(e)
+                    | cssl_hir::HirCallArg::Named { value: e, .. } => e,
+                };
+                walk_expr_for_let_type_refs(e, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::Field { obj, .. } | cssl_hir::HirExprKind::Paren(obj) => {
+            walk_expr_for_let_type_refs(obj, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Index { obj, index } => {
+            walk_expr_for_let_type_refs(obj, impl_index, generic_scope, out);
+            walk_expr_for_let_type_refs(index, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Binary { lhs, rhs, .. }
+        | cssl_hir::HirExprKind::Assign { lhs, rhs, .. }
+        | cssl_hir::HirExprKind::Pipeline { lhs, rhs }
+        | cssl_hir::HirExprKind::Compound { lhs, rhs, .. } => {
+            walk_expr_for_let_type_refs(lhs, impl_index, generic_scope, out);
+            walk_expr_for_let_type_refs(rhs, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Unary { operand, .. } => {
+            walk_expr_for_let_type_refs(operand, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Cast { expr, ty } => {
+            walk_expr_for_let_type_refs(expr, impl_index, generic_scope, out);
+            collect_impl_self_ty_refs_scoped(ty, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Run { expr } => {
+            walk_expr_for_let_type_refs(expr, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Range { lo, hi, .. } => {
+            if let Some(l) = lo {
+                walk_expr_for_let_type_refs(l, impl_index, generic_scope, out);
+            }
+            if let Some(h) = hi {
+                walk_expr_for_let_type_refs(h, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::TryDefault { expr, default } => {
+            walk_expr_for_let_type_refs(expr, impl_index, generic_scope, out);
+            walk_expr_for_let_type_refs(default, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Try { expr } => {
+            walk_expr_for_let_type_refs(expr, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Return { value } | cssl_hir::HirExprKind::Break { value, .. } => {
+            if let Some(v) = value {
+                walk_expr_for_let_type_refs(v, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::Lambda { body, .. } => {
+            walk_expr_for_let_type_refs(body, impl_index, generic_scope, out);
+        }
+        cssl_hir::HirExprKind::Tuple(elems) => {
+            for e in elems {
+                walk_expr_for_let_type_refs(e, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::Array(arr) => match arr {
+            cssl_hir::HirArrayExpr::List(es) => {
+                for e in es {
+                    walk_expr_for_let_type_refs(e, impl_index, generic_scope, out);
+                }
+            }
+            cssl_hir::HirArrayExpr::Repeat { elem, len } => {
+                walk_expr_for_let_type_refs(elem, impl_index, generic_scope, out);
+                walk_expr_for_let_type_refs(len, impl_index, generic_scope, out);
+            }
+        },
+        cssl_hir::HirExprKind::Struct { fields, spread, .. } => {
+            for fld in fields {
+                if let Some(v) = &fld.value {
+                    walk_expr_for_let_type_refs(v, impl_index, generic_scope, out);
+                }
+            }
+            if let Some(s) = spread {
+                walk_expr_for_let_type_refs(s, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::Perform { args, .. } => {
+            for a in args {
+                let e = match a {
+                    cssl_hir::HirCallArg::Positional(e)
+                    | cssl_hir::HirCallArg::Named { value: e, .. } => e,
+                };
+                walk_expr_for_let_type_refs(e, impl_index, generic_scope, out);
+            }
+        }
+        cssl_hir::HirExprKind::Continue { .. }
+        | cssl_hir::HirExprKind::Path { .. }
+        | cssl_hir::HirExprKind::Literal(_)
+        | cssl_hir::HirExprKind::SectionRef { .. }
+        | cssl_hir::HirExprKind::Error => {}
+    }
+}
+
 fn walk_body_for_impl_refs(
     body: &HirStructBody,
-    impl_index: &HashMap<Symbol, &HirImpl>,
+    impl_index: &HashMap<Symbol, Vec<&HirImpl>>,
     out: &mut Vec<(Symbol, Vec<HirType>)>,
 ) {
     let fields: &[HirFieldDecl] = match body {
@@ -1853,5 +2120,76 @@ mod tests {
         assert!(s.contains("generic impls"));
         assert!(s.contains("type-refs"));
         assert!(s.contains("method-specs"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D99 — trait-impl monomorph tests
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn trait_impl_monomorph_emits_three_segment_mangled_name() {
+        // `impl<T> Drop for Vec<T>` with a `Vec<i32>` ref must produce
+        // `Vec_i32__Drop__drop` per the T11-D99 mangling.
+        let src = r"
+            interface Drop { fn drop(self : Vec<i32>) ; }
+            struct Vec<T> { data : i64 }
+            impl<T> Drop for Vec<T> {
+                fn drop(self : Vec<T>) {  }
+            }
+            fn use_it(v : Vec<i32>) -> i32 { 0 }
+        ";
+        let r = walk_impls(src);
+        let names: Vec<&str> = r.specializations.iter().map(|f| f.name.as_str()).collect();
+        assert!(
+            names.iter().any(|n| n == &"Vec_i32__Drop__drop"),
+            "expected `Vec_i32__Drop__drop` in {names:?}"
+        );
+    }
+
+    #[test]
+    fn inherent_and_trait_impl_both_specialize() {
+        // Both `impl<T> Vec<T>` (inherent) and `impl<T> Drop for Vec<T>`
+        // (trait-impl) of the same self-type must each get their own
+        // specialization at the same call-site.
+        let src = r"
+            interface Drop { fn drop(self : Vec<i32>) ; }
+            struct Vec<T> { data : i64 }
+            impl<T> Vec<T> {
+                fn len(self : Vec<T>) -> i64 { 0 }
+            }
+            impl<T> Drop for Vec<T> {
+                fn drop(self : Vec<T>) {  }
+            }
+            fn use_it(v : Vec<i32>) -> i32 { 0 }
+        ";
+        let r = walk_impls(src);
+        let names: Vec<&str> = r.specializations.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.iter().any(|n| n == &"Vec_i32__len"));
+        assert!(names.iter().any(|n| n == &"Vec_i32__Drop__drop"));
+        // unique-spec count is 2 = (inherent for Vec<i32>) + (Drop-impl for Vec<i32>).
+        assert_eq!(r.unique_spec_count, 2);
+    }
+
+    #[test]
+    fn two_distinct_trait_impls_for_same_self_ty_dont_collide() {
+        // `impl<T> Display for Vec<T>` + `impl<T> Debug for Vec<T>` ⇒ both
+        // produce a `Vec_i32__<trait>__display` MirFunc with non-colliding
+        // mangled names.
+        let src = r"
+            interface Display { fn display(self : Vec<i32>) -> i32 ; }
+            interface Debug   { fn debug  (self : Vec<i32>) -> i32 ; }
+            struct Vec<T> { data : i64 }
+            impl<T> Display for Vec<T> {
+                fn display(self : Vec<T>) -> i32 { 0 }
+            }
+            impl<T> Debug for Vec<T> {
+                fn debug(self : Vec<T>) -> i32 { 1 }
+            }
+            fn use_it(v : Vec<i32>) -> i32 { 0 }
+        ";
+        let r = walk_impls(src);
+        let names: Vec<&str> = r.specializations.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.iter().any(|n| n == &"Vec_i32__Display__display"));
+        assert!(names.iter().any(|n| n == &"Vec_i32__Debug__debug"));
     }
 }

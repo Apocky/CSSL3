@@ -42,6 +42,7 @@
 pub mod auto_monomorph;
 pub mod block;
 pub mod body_lower;
+pub mod drop_inject;
 pub mod func;
 pub mod lower;
 pub mod monomorph;
@@ -49,6 +50,7 @@ pub mod op;
 pub mod pipeline;
 pub mod print;
 pub mod structured_cfg;
+pub mod trait_dispatch;
 pub mod value;
 
 pub use auto_monomorph::{
@@ -57,7 +59,8 @@ pub use auto_monomorph::{
     AutoMonomorphReport, AutoStructReport,
 };
 pub use block::{MirBlock, MirOp, MirRegion};
-pub use body_lower::{lower_fn_body, BodyLowerCtx};
+pub use body_lower::{lower_fn_body, lower_fn_body_with_table, BodyLowerCtx};
+pub use drop_inject::{inject_drops_for_module, DropInjectionReport, DropOrder, ScopeDropPlan};
 pub use func::{MirFunc, MirModule};
 pub use lower::{lower_function_signature, lower_module_signatures, LowerCtx};
 pub use monomorph::{
@@ -76,6 +79,11 @@ pub use print::{print_module, MlirPrinter};
 pub use structured_cfg::{
     has_structured_cfg_marker, validate_and_mark, validate_structured_cfg, CfgViolation,
     STRUCTURED_CFG_VALIDATED_KEY, STRUCTURED_CFG_VALIDATED_VALUE,
+};
+pub use trait_dispatch::{
+    build_trait_impl_table, build_trait_interface_table, check_trait_bounds, leading_path_symbol,
+    mangle_concrete_method_name, mangle_method_name, validate_trait_bounds_in_module,
+    ModuleBoundViolation, TraitBoundViolation, TraitImplEntry, TraitImplTable, TraitInterfaceTable,
 };
 pub use value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
 

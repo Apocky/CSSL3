@@ -527,6 +527,14 @@ pub fn specialize_generic_impl(
 ) -> Vec<MirFunc> {
     // Mangle component for the self-type post-substitution.
     let self_mangle = mangle_self_ty(&hir_impl.self_ty, interner, subst);
+    // T11-D99 — trait-impl mangling : when `trait_` is `Some`, the mangled
+    // name includes the trait-name so two distinct trait-impls of the same
+    // self-type don't collide on a method-name clash. Inherent impls keep
+    // the pre-D99 `<self>__<method>` shape.
+    let trait_name: Option<String> = hir_impl
+        .trait_
+        .as_ref()
+        .and_then(|t| trait_leading_name(t, interner));
     let mut out = Vec::with_capacity(hir_impl.fns.len());
     for f in &hir_impl.fns {
         // Clone the fn + apply the outer-impl's subst to signature.
@@ -541,11 +549,23 @@ pub fn specialize_generic_impl(
         let lower_ctx = LowerCtx::new(interner);
         let mut mir_fn = lower_function_signature(&lower_ctx, &specialized_fn);
         let fn_name = interner.resolve(f.name);
-        mir_fn.name = format!("{self_mangle}__{fn_name}");
+        mir_fn.name = match &trait_name {
+            Some(tn) => format!("{self_mangle}__{tn}__{fn_name}"),
+            None => format!("{self_mangle}__{fn_name}"),
+        };
         lower_fn_body(interner, source, &specialized_fn, &mut mir_fn);
         out.push(mir_fn);
     }
     out
+}
+
+/// Helper : extract the leading-segment name of a trait-type, used in
+/// trait-impl mangling. Returns `None` for non-Path or empty paths.
+fn trait_leading_name(t: &HirType, interner: &Interner) -> Option<String> {
+    match &t.kind {
+        HirTypeKind::Path { path, .. } => path.last().map(|s| interner.resolve(*s)),
+        _ => None,
+    }
 }
 
 /// Mangle a HirType serving as an impl's `self_ty` into its specialization
