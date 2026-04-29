@@ -100,9 +100,6 @@ name = "bitflags"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
-dependencies = [
- "serde_core",
-]
 
 [[package]]
 name = "blake3"
@@ -452,13 +449,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cssl-cgen-cpu-x64"
-version = "0.1.0"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "cssl-cgen-gpu-dxil"
 version = "0.1.0"
 dependencies = [
@@ -535,28 +525,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cssl-host-audio"
-version = "0.1.0"
-dependencies = [
- "libloading",
- "thiserror",
- "windows",
-]
-
-[[package]]
 name = "cssl-host-d3d12"
 version = "0.1.0"
 dependencies = [
  "thiserror",
  "windows",
-]
-
-[[package]]
-name = "cssl-host-input"
-version = "0.1.0"
-dependencies = [
- "libloading",
- "thiserror",
 ]
 
 [[package]]
@@ -592,15 +565,6 @@ dependencies = [
  "pollster",
  "thiserror",
  "wgpu",
-]
-
-[[package]]
-name = "cssl-host-window"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.11.1",
- "thiserror",
- "windows",
 ]
 
 [[package]]
@@ -693,16 +657,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cssl-substrate-omega-tensor"
+name = "cssl-substrate-omega-step"
 version = "0.1.0"
 dependencies = [
- "cssl-rt",
-]
-
-[[package]]
-name = "cssl-substrate-save"
-version = "0.1.0"
-dependencies = [
+ "cssl-caps",
+ "cssl-effects",
  "cssl-telemetry",
  "thiserror",
 ]
