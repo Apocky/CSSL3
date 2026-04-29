@@ -73,7 +73,59 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J0  M8 acceptance gate (T11-D150)                           │
+│ WAVE-Jα  Synthesis : SESSION_12_TEAM_DISCIPLINE.md (T11-D150)    │
+│           ✓ DONE @ 9de614e                                        │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-Jβ  Synthesis : DIAGNOSTIC_INFRA_PLAN.md (T11-D151)         │
+│           ✓ DONE @ 28b6834                                        │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ AUDIT-FIX  WAVE  (T11-D152..D154)                                 │
+│   D152 cssl-host-net WSAStartup race                              │
+│   D153 cssl-rt cold-cache lock (closes T11-D56)                   │
+│   D154 cssl-cgen-gpu-wgsl dlltool / windows-sys pin               │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-Jε  L0 + L1 diagnostic-infra (T11-D155..D156)               │
+│   D155 cssl-error • D156 cssl-log                                 │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-Jζ  L2 telemetry diagnostic-infra (T11-D157..D161)          │
+│   D157 cssl-metrics • D158 frame-time instrumentation             │
+│   D159 health-probes • D160 spec-coverage tracker                 │
+│   D161 replay-determinism preservation                            │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-Jη  L3 + L4 diagnostic-infra (T11-D162..D164)               │
+│   D162 cssl-inspect • D163 cssl-hot-reload • D164 cssl-tweak      │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-Jθ  L5 MCP-LLM CROWN diagnostic-infra (T11-D165..D172)      │
+│   D165 skeleton • D166 state • D167 telemetry • D168 health      │
+│   D169 time-control • D170 hot-reload • D171 test • D172 privacy │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-Jι  Iteration-loop documentation (T11-D173)                 │
+└──────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ WAVE-J0  M8 acceptance gate (T11-D174)                           │
 │   M8 = 12-stage pipeline wired end-to-end through loa-game ;     │
 │         on Apocky's Arc A770 host ; canonical SDF scene renders. │
 │   ◆ APOCKY VERIFIES M8 PERSONALLY BEFORE J1..JN DISPATCH ◆       │
@@ -81,7 +133,7 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J1  M9 VR-ship preparation (T11-D151..D155)                 │
+│ WAVE-J1  M9 VR-ship preparation (T11-D175..D179)                 │
 │   J1-OpenXR session-claim consent UI                             │
 │   J1-Stage1 Embodiment integration (XR-input → body-presence)    │
 │   J1-Stage12 XrCompose integration (XR-composition layers)       │
@@ -92,7 +144,7 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J2  M10 max-density preparation (T11-D156..D159)            │
+│ WAVE-J2  M10 max-density preparation (T11-D180..D183)            │
 │   J2-WorkGraph Stage-3 Ω-field-update integration                │
 │   J2-LBM-tile-streaming for 1M+ entity scaling                   │
 │   J2-Foveation budget-driven density-budget enforcement          │
@@ -103,7 +155,7 @@
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │ WAVE-J3  Q-* SPEC-HOLE content authoring                         │
-│         (T11-D160..D197 ; 38 slices ; APOCKY-FILL)               │
+│         (T11-D184..D221 ; 38 slices ; APOCKY-FILL)               │
 │   Q-A   Labyrinth.generation_method                              │
 │   Q-B   Floor.theme                                              │
 │   Q-C   Player.progression_state                                 │
@@ -117,14 +169,14 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J4  M9 / M10 hardware-validation (deferred to real HW)      │
-│   M9 — VR ship verification on live OpenXR headset               │
-│   M10 — 1M+ entity stress test on M7-target host                 │
+│ WAVE-J4  M9 / M10 hardware-validation (T11-D222..D223)           │
+│   M9 — VR ship verification on live OpenXR headset (D222)        │
+│   M10 — 1M+ entity stress test on M7-target host (D223)          │
 └──────────────────────────────────────────────────────────────────┘
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J5  v1.2 close + tag                                        │
+│ WAVE-J5  v1.2 close + tag (T11-D224..D225)                       │
 │   CHANGELOG + README update + RELEASE_NOTES_v1.2.md author       │
 │   Tag v1.2.0                                                     │
 └──────────────────────────────────────────────────────────────────┘
@@ -132,24 +184,41 @@
 
 ---
 
-## § 2. Slice-ID reservation block (T11-D150..T11-D201)
+## § 2. Slice-ID reservation block (T11-D150..T11-D225) — V2 ALLOCATION
 
-**Reserved range:** T11-D150..T11-D201 (52 IDs).
+**Reserved range:** T11-D150..T11-D225 (76 IDs).
 
-> **NOTE on numbering:** T11-D148 is this docs landing (README + dispatch plans + handoff). T11-D149 was used by Apocky's prior substrate-evolution reference-docs commit (specs 30v2 + 32 + 33). Phase-J therefore reserves from T11-D150 onward.
+> **NOTE on numbering:** T11-D148 is the prior docs landing (README + dispatch plans + handoff). T11-D149 was used by Apocky's prior substrate-evolution reference-docs commit (specs 30v2 + 32 + 33). T11-D150 + T11-D151 already landed as Phase-J synthesis-docs (Wave-Jα + Wave-Jβ). Phase-J therefore reserves from T11-D152 onward, with the original Phase-J content waves shifted by +24 vs the c79bcf3 fixup. Canonical authority: **DECISIONS.md § META T11-D-RESERVATIONS-V2**.
 
-**Allocation:**
+**Allocation (V2 — accommodates Jα/Jβ syntheses + audit-fix + Jε..Jι diagnostic-infra waves):**
 
-| ID range          | Wave       | Purpose                                                         |
-| ----------------- | ---------- | --------------------------------------------------------------- |
-| T11-D150          | J0         | M8 acceptance gate slice (12-stage pipeline end-to-end)         |
-| T11-D151..D155    | J1         | M9 VR-ship preparation (5 slices)                               |
-| T11-D156..D159    | J2         | M10 max-density preparation (4 slices)                          |
-| T11-D160..D197    | J3         | Q-* content authoring (38 SPEC-HOLE resolutions)                |
-| T11-D198..D199    | J4         | M9 + M10 hardware-validation entries (when live HW available)   |
-| T11-D200..D201    | J5         | v1.2 close + RELEASE_NOTES_v1.2.md + tag                        |
+| ID range          | Wave / Purpose                                                                                  | Status         |
+| ----------------- | ----------------------------------------------------------------------------------------------- | -------------- |
+| T11-D150          | Wave-Jα synthesis (SESSION_12_TEAM_DISCIPLINE.md)                                               | DONE @ 9de614e |
+| T11-D151          | Wave-Jβ synthesis (DIAGNOSTIC_INFRA_PLAN.md)                                                    | DONE @ 28b6834 |
+| T11-D152          | Audit-fix : cssl-host-net WSAStartup race                                                       | reserved       |
+| T11-D153          | Audit-fix : cssl-rt cold-cache lock (closes T11-D56)                                            | reserved       |
+| T11-D154          | Audit-fix : cssl-cgen-gpu-wgsl dlltool / windows-sys pin                                        | reserved       |
+| T11-D155          | Wave-Jε-1 : cssl-error                                                                          | reserved       |
+| T11-D156          | Wave-Jε-2 : cssl-log                                                                            | reserved       |
+| T11-D157          | Wave-Jζ-1 : cssl-metrics                                                                        | reserved       |
+| T11-D158          | Wave-Jζ-2 : per-stage frame-time instrumentation                                                | reserved       |
+| T11-D159          | Wave-Jζ-3 : per-subsystem health-probes                                                         | reserved       |
+| T11-D160          | Wave-Jζ-4 : spec-coverage tracker                                                               | reserved       |
+| T11-D161          | Wave-Jζ-5 : replay-determinism preservation                                                     | reserved       |
+| T11-D162          | Wave-Jη-1 : cssl-inspect                                                                        | reserved       |
+| T11-D163          | Wave-Jη-2 : cssl-hot-reload                                                                     | reserved       |
+| T11-D164          | Wave-Jη-3 : cssl-tweak                                                                          | reserved       |
+| T11-D165..D172    | Wave-Jθ MCP-LLM (8 slices : skeleton/state/telemetry/health/time/hotreload/test/privacy)        | reserved       |
+| T11-D173          | Wave-Jι iteration-loop documentation                                                            | reserved       |
+| T11-D174          | M8 acceptance gate (Wave-J0 ; 12-stage pipeline end-to-end)                                     | reserved       |
+| T11-D175..D179    | Wave-J1 M9 VR-ship preparation (5 slices)                                                       | reserved       |
+| T11-D180..D183    | Wave-J2 M10 max-density preparation (4 slices)                                                  | reserved       |
+| T11-D184..D221    | Wave-J3 Q-* SPEC-HOLE content authoring (38 slices)                                             | reserved       |
+| T11-D222..D223    | Wave-J4 M9 + M10 hardware-validation (when live HW available)                                   | reserved       |
+| T11-D224..D225    | Wave-J5 v1.2 close + RELEASE_NOTES_v1.2.md + tag                                                | reserved       |
 
-The **Q-* mapping** to T11-D160..D197 is in `PHASE_J_HANDOFF.csl § Q-MAPPING`. Each Q-* gets a single per-slice DECISIONS entry; the entry's title carries both the T11-D## and the Q-* anchor: e.g. `T11-D160 — Q-A Labyrinth.generation_method`.
+The **Q-* mapping** to T11-D184..D221 is in `PHASE_J_HANDOFF.csl § Q-MAPPING`. Each Q-* gets a single per-slice DECISIONS entry; the entry's title carries both the T11-D## and the Q-* anchor: e.g. `T11-D184 — Q-A Labyrinth.generation_method`.
 
 If Apocky's resolution of a Q-* requires multiple slices (e.g., Q-W "Apockalypse-phase mechanically" might fan out into two: a phase-state slice + a transition-rules slice), allocate consecutive IDs from the floating range and document the cross-reference in both entries.
 
@@ -210,7 +279,7 @@ The `--test-threads=1` requirement and the worktree-isolation smoke gate carry f
 
 ---
 
-## § 6. WAVE-J0 — M8 acceptance gate (T11-D150)
+## § 6. WAVE-J0 — M8 acceptance gate (T11-D174)
 
 **Intent:** wire the 12-stage canonical render-pipeline (`cssl-render-v2::pipeline`) end-to-end through the `loa-game` Phase-I scaffold. Each stage's render-graph node connects to its successor via the `TwelveStagePipelineSlot` enforcement; the leaf-only smoke test (already passing in `cssl-render-v2`) extends to a full 12-stage smoke that drives one frame from XR-input through XR-composition.
 
@@ -231,7 +300,7 @@ The `--test-threads=1` requirement and the worktree-isolation smoke gate carry f
 
 **Worktree:** `.claude/worktrees/M8-pipeline` on `cssl/session-12/M8-pipeline`.
 
-**Commit message:** `§ T11-D150 : M8 acceptance gate — 12-stage canonical render-pipeline wired end-to-end`.
+**Commit message:** `§ T11-D174 : M8 acceptance gate — 12-stage canonical render-pipeline wired end-to-end`.
 
 **LANDMINES:**
 
@@ -241,44 +310,44 @@ The `--test-threads=1` requirement and the worktree-isolation smoke gate carry f
 
 ---
 
-## § 7. WAVE-J1 — M9 VR-ship preparation (T11-D151..D155)
+## § 7. WAVE-J1 — M9 VR-ship preparation (T11-D175..D179)
 
 **Intent:** wire Stages 1, 10, 11, 12 of the 12-stage pipeline + the OpenXR session-claim consent UI. M9 is the LIVE-HARDWARE milestone (deferred to real headset); the wave-J1 prep makes everything ready *to* ship on a headset, but does not require one to be present at dispatch time.
 
 | Slice    | Crate / module                              | Goal                                                                                  |
 | -------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| T11-D151 | `cssl-host-openxr::session_claim`           | Consent-UI prompt before claiming OpenXR session ; production-ready (not test-bypass) |
-| T11-D152 | `cssl-host-openxr::stage1_embodiment`       | Stage-1 — XR-input → body-presence-field integration                                  |
-| T11-D153 | `cssl-host-openxr::stage12_xr_compose`      | Stage-12 — XR-composition layers integration                                          |
-| T11-D154 | `cssl-render-v2::stage10_tonemap`           | Stage-10 — tone-map + bloom + post                                                    |
-| T11-D155 | `cssl-render-v2::stage11_appsw`             | Stage-11 — AppSW motion-vec + depth                                                   |
+| T11-D175 | `cssl-host-openxr::session_claim`           | Consent-UI prompt before claiming OpenXR session ; production-ready (not test-bypass) |
+| T11-D176 | `cssl-host-openxr::stage1_embodiment`       | Stage-1 — XR-input → body-presence-field integration                                  |
+| T11-D177 | `cssl-host-openxr::stage12_xr_compose`      | Stage-12 — XR-composition layers integration                                          |
+| T11-D178 | `cssl-render-v2::stage10_tonemap`           | Stage-10 — tone-map + bloom + post                                                    |
+| T11-D179 | `cssl-render-v2::stage11_appsw`             | Stage-11 — AppSW motion-vec + depth                                                   |
 
-All five slices fan out in parallel after T11-D150 (M8) closes. Each lands its own per-slice DECISIONS entry with a `live-VR-deferred-to-M9` note.
+All five slices fan out in parallel after T11-D174 (M8) closes. Each lands its own per-slice DECISIONS entry with a `live-VR-deferred-to-M9` note.
 
-**Worktree pattern:** `.claude/worktrees/J1-{D151..D155}` on `cssl/session-12/J1-{slice-name}`.
+**Worktree pattern:** `.claude/worktrees/J1-{D175..D179}` on `cssl/session-12/J1-{slice-name}`.
 
-**M9 hardware-validation entry** (T11-D198) is reserved for the live-headset run when Apocky has hardware to verify on. The DECISIONS entry at the time of live-validation will record the headset model + OpenXR runtime version + frame-rate measured + any consent-prompt UX feedback.
+**M9 hardware-validation entry** (T11-D222) is reserved for the live-headset run when Apocky has hardware to verify on. The DECISIONS entry at the time of live-validation will record the headset model + OpenXR runtime version + frame-rate measured + any consent-prompt UX feedback.
 
 ---
 
-## § 8. WAVE-J2 — M10 max-density preparation (T11-D156..D159)
+## § 8. WAVE-J2 — M10 max-density preparation (T11-D180..D183)
 
 **Intent:** wire the structural primitives needed for 1M+ entity rendering. M10 is the LIVE-HARDWARE milestone (deferred to real M7-target host with sufficient GPU VRAM); the wave-J2 prep makes everything ready *to* scale to 1M+ entities.
 
 | Slice    | Crate / module                                          | Goal                                                                  |
 | -------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
-| T11-D156 | `cssl-work-graph::stage3_omega_field_dispatch`          | Stage-3 Ω-field-update via DX12-Ultimate WorkGraph                    |
-| T11-D157 | `cssl-substrate-omega-field::tile_streaming`            | LBM tile-streaming for 1M+ entity Ω-field cells                       |
-| T11-D158 | `cssl-render-v2::foveation::density_budget`             | Foveation budget-driven density-budget enforcement (D135 wavelet ties)|
-| T11-D159 | `cssl-substrate-omega-field::async_compute_pipelining`  | Async-compute Ω-field 6-phase pipelining across frames                |
+| T11-D180 | `cssl-work-graph::stage3_omega_field_dispatch`          | Stage-3 Ω-field-update via DX12-Ultimate WorkGraph                    |
+| T11-D181 | `cssl-substrate-omega-field::tile_streaming`            | LBM tile-streaming for 1M+ entity Ω-field cells                       |
+| T11-D182 | `cssl-render-v2::foveation::density_budget`             | Foveation budget-driven density-budget enforcement (D135 wavelet ties)|
+| T11-D183 | `cssl-substrate-omega-field::async_compute_pipelining`  | Async-compute Ω-field 6-phase pipelining across frames                |
 
-All four slices fan out in parallel after T11-D150 (M8) closes (independent of WAVE-J1). Each lands its own per-slice DECISIONS entry with a `live-1M+-stress-deferred-to-M10` note.
+All four slices fan out in parallel after T11-D174 (M8) closes (independent of WAVE-J1). Each lands its own per-slice DECISIONS entry with a `live-1M+-stress-deferred-to-M10` note.
 
-**M10 hardware-validation entry** (T11-D199) is reserved for the live-1M+-entity stress test when Apocky has hardware to verify on. The DECISIONS entry will record entity count + frame time + GPU memory pressure + any density-budget breach diagnostics.
+**M10 hardware-validation entry** (T11-D223) is reserved for the live-1M+-entity stress test when Apocky has hardware to verify on. The DECISIONS entry will record entity count + frame time + GPU memory pressure + any density-budget breach diagnostics.
 
 ---
 
-## § 9. WAVE-J3 — Q-* SPEC-HOLE content authoring (T11-D160..D197)
+## § 9. WAVE-J3 — Q-* SPEC-HOLE content authoring (T11-D184..D221)
 
 **Intent:** resolve the 38 SPEC-HOLE markers Q-A through Q-LL in `specs/31_LOA_DESIGN.csl § SPEC-HOLES-CONSOLIDATED`. **Apocky-fill territory.** AI authors implement the scaffolding; Apocky decides the shape.
 
@@ -299,7 +368,7 @@ Load (in order, mandatory):
 Slice: T11-D<n> — Q-<X> <name>
 
 Pre-conditions:
-  1. M8 acceptance landed AND Apocky-verified (T11-D150).
+  1. M8 acceptance landed AND Apocky-verified (T11-D174).
   2. <slice-specific upstream Q-* deps from PHASE_J_HANDOFF.csl § Q-DAG>
   3. cd compiler-rs && cargo test --workspace -- --test-threads=1 — ALL PASS.
 
@@ -341,78 +410,76 @@ On success: push, report. On block: escalate (PM-bumps-Apocky).
 
 ---
 
-## § 10. WAVE-J4 — M9 / M10 hardware-validation (deferred)
+## § 10. WAVE-J4 — M9 / M10 hardware-validation (T11-D222..D223)
 
 **Intent:** record the live-hardware verification when Apocky has access to the target hardware. This wave is dispatched on-demand, not on a schedule.
 
 | Slice    | Milestone   | Hardware target                                         |
 | -------- | ----------- | ------------------------------------------------------- |
-| T11-D198 | M9 VR-ship  | Live OpenXR-capable headset on Apocky's Arc A770 host   |
-| T11-D199 | M10 density | M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)|
+| T11-D222 | M9 VR-ship  | Live OpenXR-capable headset on Apocky's Arc A770 host   |
+| T11-D223 | M10 density | M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)|
 
 Both slices are short DECISIONS entries that record measurements, not implementation slices. The implementations land in WAVE-J1 + WAVE-J2.
 
 ---
 
-## § 11. WAVE-J5 — v1.2 close + tag (T11-D200..D201)
+## § 11. WAVE-J5 — v1.2 close + tag (T11-D224..D225)
 
 **Intent:** close Phase-J with a docs-only release-notes slice + the v1.2 tag.
 
 | Slice    | What lands                                                                                  |
 | -------- | ------------------------------------------------------------------------------------------- |
-| T11-D200 | RELEASE_NOTES_v1.2.md author + CHANGELOG update + README update + PHASE_K handoff author    |
-| T11-D201 | Tag v1.2.0 + Phase-K handoff close                                                          |
+| T11-D224 | RELEASE_NOTES_v1.2.md author + CHANGELOG update + README update + PHASE_K handoff author    |
+| T11-D225 | Tag v1.2.0 + Phase-K handoff close                                                          |
 
 ---
 
-## § 11.5. WAVE-Jε..Jθ — Diagnostic-Infrastructure (6-layer L0..L5)
+## § 11.5. WAVE-Jε..Jι — Diagnostic-Infrastructure + iteration-loop (6-layer L0..L5 + Jι doc)
 
-**Intent:** build the diagnostic-infrastructure that turns the engine into its-own-spec-coverage-witness, observable enough that an LLM can iterate against a live engine via the MCP protocol — without crossing PRIME-DIRECTIVE §1, §10, or §11.
+**Intent:** build the diagnostic-infrastructure that turns the engine into its-own-spec-coverage-witness, observable enough that an LLM can iterate against a live engine via the MCP protocol — without crossing PRIME-DIRECTIVE §1, §10, or §11. Wave-Jι documents the cross-LLM iteration-loop spec.
 
 **Master plan:** `DIAGNOSTIC_INFRA_PLAN.md` (concise-index ; references 4 drafts at `_drafts/phase_j/`).
 
-**Total scope:** ~38K LOC + ~1330 tests across 4 implementation waves.
+**Total scope:** ~38K LOC + ~1330 tests across 4 implementation waves + 1 docs wave (Jι).
 
-### § 11.5.1. Wave breakdown
+### § 11.5.1. Wave breakdown (V2 slice-ID allocation : T11-D155..D173)
 
-| Wave | Layers          | Crates                                               | LOC    | Tests | Depends-on                       |
-| ---- | --------------- | ---------------------------------------------------- | ------ | ----- | -------------------------------- |
-| Jε   | L0 + L1         | cssl-error + cssl-log + cssl-panic                   | ~6K    | ~250  | (substrate-evolution complete)   |
-| Jζ   | L2              | cssl-metrics + cssl-spec-coverage + cssl-health      | ~9K    | ~290  | Wave-Jε                          |
-| Jη   | L3 + L4         | cssl-inspect + cssl-hot-reload + cssl-tweak          | ~10K   | ~400  | Wave-Jζ                          |
-| Jθ   | L5 (CROWN)      | cssl-mcp-server (41 tools × 5 capability gates)      | ~13K   | ~390  | Wave-Jε + Wave-Jζ + Wave-Jη      |
+| Wave | Layers          | Crates / Scope                                       | LOC    | Tests | Slice-IDs        | Depends-on                       |
+| ---- | --------------- | ---------------------------------------------------- | ------ | ----- | ---------------- | -------------------------------- |
+| Jε   | L0 + L1         | cssl-error + cssl-log (panic-hook + lint folded)     | ~6K    | ~250  | D155..D156       | (audit-fix wave landed)          |
+| Jζ   | L2              | cssl-metrics + cssl-spec-coverage + cssl-health      | ~9K    | ~290  | D157..D161       | Wave-Jε                          |
+| Jη   | L3 + L4         | cssl-inspect + cssl-hot-reload + cssl-tweak          | ~10K   | ~400  | D162..D164       | Wave-Jζ                          |
+| Jθ   | L5 (CROWN)      | cssl-mcp-server (41 tools × 5 capability gates)      | ~13K   | ~390  | D165..D172       | Wave-Jε + Wave-Jζ + Wave-Jη      |
+| Jι   | docs            | Iteration-loop spec (LLM-against-engine via MCP)     | docs   | n/a   | D173             | Wave-Jθ                          |
 
 ### § 11.5.2. Wave-Jε slices (L0 + L1 ; ~6K LOC ; ~250 tests)
 
-| Slice  | Crate / Scope                            | LOC   | Tests | DECISIONS-pin |
-| ------ | ---------------------------------------- | ----- | ----- | ------------- |
-| Jε-1   | `cssl-error` — EngineError + Severity + ErrorContext + dedup | 2K | 80 | T11-D170 |
-| Jε-2   | `cssl-log` — macros + ring-buffer + sinks + sampling | 2.5K | 100 | T11-D171 |
-| Jε-3   | Cross-crate clippy lint — deny `unwrap`/`expect` on user-data | 0.5K | 30 | T11-D172 |
-| Jε-4   | `cssl-panic` — panic-hook + frame-boundary + replay-record | 1K | 40 | T11-D173 |
+| Slice  | Crate / Scope                                                                                                            | LOC  | Tests | DECISIONS-pin |
+| ------ | ------------------------------------------------------------------------------------------------------------------------ | ---- | ----- | ------------- |
+| Jε-1   | `cssl-error` — EngineError + Severity + ErrorContext + dedup + cross-crate clippy-lint folded in                         | 2.5K | 110   | T11-D155      |
+| Jε-2   | `cssl-log` — macros + ring-buffer + sinks + sampling + `cssl-panic` panic-hook + frame-boundary + replay-record folded in| 3.5K | 140   | T11-D156      |
 
-**Acceptance:** L0 + L1 invariants per draft 05 § 9 (path-hash discipline preserved ; PD-trip ALWAYS-WINS aggregation ; replay-determinism).
+**Acceptance:** L0 + L1 invariants per draft 05 § 9 (path-hash discipline preserved ; PD-trip ALWAYS-WINS aggregation ; replay-determinism). Cross-crate clippy-lint denying `unwrap`/`expect` on user-data ships with Jε-1 ; `cssl-panic` panic-hook ships with Jε-2.
 
 ### § 11.5.3. Wave-Jζ slices (L2 ; ~9K LOC ; ~290 tests)
 
-| Slice  | Crate / Scope                                    | LOC   | Tests | DECISIONS-pin |
-| ------ | ------------------------------------------------ | ----- | ----- | ------------- |
-| Jζ-1   | `cssl-metrics` primitives (Counter/Gauge/Histogram/Timer) + REGISTRY | 2.5K | 100 | T11-D174 |
-| Jζ-2   | Per-subsystem metrics (≈75 metrics × 12 subsystems) | 3.0K | 80 | T11-D175 |
-| Jζ-3   | `cssl-spec-coverage` — SpecAnchor + ImplStatus + TestStatus | 1.5K | 50 | T11-D176 |
-| Jζ-4   | `cssl-health` — per-subsystem probes + aggregate roll-up | 1.5K | 60 | T11-D177 |
-| Jζ-5   | MCP-preview surface (read-only stubs for Wave-Jθ) | 0.5K | 10 | T11-D178 |
+| Slice  | Crate / Scope                                                                                                              | LOC  | Tests | DECISIONS-pin |
+| ------ | -------------------------------------------------------------------------------------------------------------------------- | ---- | ----- | ------------- |
+| Jζ-1   | `cssl-metrics` primitives (Counter/Gauge/Histogram/Timer) + REGISTRY                                                       | 2.5K | 100   | T11-D157      |
+| Jζ-2   | Per-stage frame-time instrumentation (12 stages × per-frame-budget)                                                        | 3.0K | 80    | T11-D158      |
+| Jζ-3   | Per-subsystem health-probes (`cssl-health` ; per-subsystem + aggregate roll-up)                                            | 1.5K | 60    | T11-D159      |
+| Jζ-4   | `cssl-spec-coverage` tracker — SpecAnchor + ImplStatus + TestStatus                                                        | 1.5K | 50    | T11-D160      |
+| Jζ-5   | Replay-determinism preservation across L2 (metrics deterministic ; MCP-preview read-only stubs for Wave-Jθ)                | 1.0K | 20    | T11-D161      |
 
-**Acceptance:** ≥75 metrics registered (build-fail on missing per CATALOG self-check) ; spec-coverage tracker queryable at runtime ; health-registry probes <100µs each.
+**Acceptance:** ≥75 metrics registered (build-fail on missing per CATALOG self-check) ; spec-coverage tracker queryable at runtime ; health-registry probes <100µs each ; replay-determinism preserved (every metric snapshot reproduces from replay-log).
 
 ### § 11.5.4. Wave-Jη slices (L3 + L4 ; ~10K LOC ; ~400 tests)
 
-| Slice  | Crate / Scope                                    | LOC   | Tests | DECISIONS-pin |
-| ------ | ------------------------------------------------ | ----- | ----- | ------------- |
-| Jη-1   | `cssl-inspect` — cell/entity/region snapshots + Σ-mask threading (D138) | 3.5K | 150 | T11-D179 |
-| Jη-2   | `cssl-hot-reload` — OS-pump + atomic shader/asset/config/KAN-weight swap | 3.0K | 120 | T11-D180 |
-| Jη-3   | `cssl-tweak` — typed tunable-registry (30 tunables) + range-check + audit | 2.5K | 100 | T11-D181 |
-| Jη-4   | Replay-determinism integration across L3 + L4    | 1K   | 30  | T11-D182 |
+| Slice  | Crate / Scope                                                                                                                            | LOC  | Tests | DECISIONS-pin |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ---- | ----- | ------------- |
+| Jη-1   | `cssl-inspect` — cell/entity/region snapshots + Σ-mask threading (D138) + replay-determinism integration folded in                       | 4.0K | 170   | T11-D162      |
+| Jη-2   | `cssl-hot-reload` — OS-pump + atomic shader/asset/config/KAN-weight swap                                                                 | 3.5K | 130   | T11-D163      |
+| Jη-3   | `cssl-tweak` — typed tunable-registry (30 tunables) + range-check + audit                                                                | 2.5K | 100   | T11-D164      |
 
 **Acceptance:** every cell-touch through `EnforcesΣAtCellTouches` pass ; 30 tunables registered (build-fail on collision) ; hot-swap atomic-frame-fence verified ; replay reproduces every perturbation.
 
@@ -420,25 +487,35 @@ Both slices are short DECISIONS entries that record measurements, not implementa
 
 | Slice  | Scope                                                                  | LOC   | Tests | DECISIONS-pin |
 | ------ | ---------------------------------------------------------------------- | ----- | ----- | ------------- |
-| Jθ-1   | `cssl-mcp-server` skeleton + JSON-RPC 2.0 + cap-gate                   | 2K    | 60    | T11-D183 |
-| Jθ-2   | State-inspection tools (5)                                             | 1.5K  | 40    | T11-D184 |
-| Jθ-3   | Telemetry + log tools (5)                                              | 1.5K  | 50    | T11-D185 |
-| Jθ-4   | Health + invariants + spec-coverage tools (9)                          | 2K    | 70    | T11-D186 |
-| Jθ-5   | Time-control + frame-capture + replay tools (7)                        | 2K    | 60    | T11-D187 |
-| Jθ-6   | Hot-reload + tweak tools (7)                                           | 2K    | 40    | T11-D188 |
-| Jθ-7   | Test-status tools (3)                                                  | 1K    | 30    | T11-D189 |
-| Jθ-8   | Privacy + capability + audit + IFC integration (heavy negative-tests)  | 1K    | 40    | T11-D190 |
+| Jθ-1   | `cssl-mcp-server` skeleton + JSON-RPC 2.0 + cap-gate                   | 2K    | 60    | T11-D165      |
+| Jθ-2   | State-inspection tools (5)                                             | 1.5K  | 40    | T11-D166      |
+| Jθ-3   | Telemetry + log tools (5)                                              | 1.5K  | 50    | T11-D167      |
+| Jθ-4   | Health + invariants + spec-coverage tools (9)                          | 2K    | 70    | T11-D168      |
+| Jθ-5   | Time-control + frame-capture + replay tools (7)                        | 2K    | 60    | T11-D169      |
+| Jθ-6   | Hot-reload + tweak tools (7)                                           | 2K    | 40    | T11-D170      |
+| Jθ-7   | Test-status tools (3)                                                  | 1K    | 30    | T11-D171      |
+| Jθ-8   | Privacy + capability + audit + IFC integration (heavy negative-tests)  | 1K    | 40    | T11-D172      |
 
 **Acceptance:** 41 tools registered (build-fail on biometric-egress via `register_tool!()` static_assert) ; 5 capability gates default-DENY ; release-build compile-out verified ; chain-replay verifies every tool-invocation ; the never-tick canary `gaze.privacy_egress_attempts_refused` = 0 in all replay-traces.
 
-### § 11.5.6. Critical-path + dispatch discipline
+### § 11.5.6. Wave-Jι slice (iteration-loop documentation)
 
+| Slice  | Scope                                                                                                                                                                  | DECISIONS-pin |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| Jι-1   | Iteration-loop spec : LLM-against-live-engine via MCP — attach → state → focus → identify → patch → hot-swap → verify → record. Documents the microsecond-turnaround acceleration loop that Jε..Jθ unlock. | T11-D173      |
+
+**Acceptance:** ITERATION_LOOP_SPEC.md (or equivalent) authored ; cites Jε..Jθ slice-IDs as enablers ; PRIME-DIRECTIVE bindings preserved (no biometric egress ; capability gates honored).
+
+### § 11.5.7. Critical-path + dispatch discipline
+
+- Audit-fix wave (D152..D154) MUST complete before Wave-Jε (clean baseline)
 - Wave-Jε MUST complete before Wave-Jζ-2 (per-subsystem metrics depend on `cssl-error`)
-- Wave-Jζ-3 (spec-coverage) MUST complete before Wave-Jθ-4
+- Wave-Jζ-4 (spec-coverage) MUST complete before Wave-Jθ-4
 - Wave-Jη-3 (tunables) MUST complete before Wave-Jθ-6
-- Wave-Jθ-8 is the FINAL gate ← all privacy + audit + IFC integration tests must pass before Phase-J close
+- Wave-Jθ-8 is the FINAL gate ← all privacy + audit + IFC integration tests must pass before M8 dispatch (T11-D174)
+- Wave-Jι-1 docs land after Wave-Jθ close
 - Per-wave fanout: dispatch all slices in a wave in parallel worktrees ; integrate at wave-close ; dependent-wave dispatches at integration-merge
-- Per-slice DECISIONS-pin allocated from T11-D170..T11-D190 (within Phase-J reservation T11-D150..T11-D201)
+- Per-slice DECISIONS-pin allocated from T11-D155..T11-D173 (within Phase-J V2 reservation T11-D150..T11-D225)
 
 ### § 11.5.7. PRIME-DIRECTIVE bindings (diagnostic-infrastructure)
 
@@ -479,7 +556,7 @@ Every Q-* commit message MUST include a one-line confirmation that this binding 
 1. Load CSSLv3/CLAUDE.md
 2. Load this SESSION_12_DISPATCH_PLAN.md
 3. Load PHASE_J_HANDOFF.csl
-4. Load DECISIONS.md tail (any T11-D150..D201 entries committed)
+4. Load DECISIONS.md tail (any T11-D150..D225 entries committed) ; § META T11-D-RESERVATIONS-V2 = canonical allocation
 5. git branch -a → identify which cssl/session-12/* branches exist + last-commits
 6. git status → identify integration-branch state
 7. cd compiler-rs && cargo test --workspace -- --test-threads=1 2>&1 | tail -5

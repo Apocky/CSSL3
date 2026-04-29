@@ -7425,3 +7425,95 @@ Each decision entry :
   There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
 ──────────────────────────────────────────────────────────────
+
+## § META T11-D-RESERVATIONS-V2 : Phase-J slice-ID re-allocation — accommodates Wave-Jα/Jβ syntheses + audit-fix wave + Wave-Jε..Jι diagnostic-infrastructure
+
+§D. **HEADER** :
+
+- **Slice-id** META T11-D-RESERVATIONS-V2 (meta entry ; canonical authority for Phase-J slice-ID allocation ; supersedes c79bcf3 fixup table)
+- **Date** 2026-04-29
+- **Status** accepted (block-reservation ; per-slice expansions land with each slice's merge-commit)
+- **Branch** `cssl/session-6/parallel-fanout` (this entry)
+- **Authority** PRIME_DIRECTIVE.md §11 CREATOR-ATTESTATION + SESSION_12_DISPATCH_PLAN.md § 2 + PHASE_J_HANDOFF.csl § Q-MAPPING + § DIAGNOSTIC-INFRASTRUCTURE
+- **Predecessors** META-WAVE-3-PRELUDE (T11-D113..D137 reservation) + META-WAVE-3γ (D138..D144) + META-WAVE-4 (D114 + D116..D125b) + META-SESSION-11-CLOSE (T11-D147) + the c79bcf3 fixup that originally allocated D150..D201 to Phase-J
+
+§D. **CONTEXT — why V2 was needed** :
+
+  The c79bcf3 fixup allocated T11-D150..D201 (52 IDs) to Phase-J on the assumption that Phase-J would be a content-authoring + M8/M9/M10 milestone phase only. After session-close v1.1 + the post-v1.1 review, four additional work-streams were identified that require their own slice-IDs WITHIN the Phase-J reservation :
+
+  ⟨1⟩ **Wave-Jα synthesis** — `SESSION_12_TEAM_DISCIPLINE.md` (~1635 LOC) was authored at T11-D150 (commit `9de614e`) consolidating the 4-agent pod model + 5-of-5 quality gate + 3-tier role hierarchy + cross-pod discipline + iteration-cap rules. This was the formalization of the team-discipline that supersedes the informal Session-G/H/I single-agent dispatch pattern.
+
+  ⟨2⟩ **Wave-Jβ synthesis** — `DIAGNOSTIC_INFRA_PLAN.md` (concise-index ; references 4 verbose drafts at `_drafts/phase_j/05..08`) was authored at T11-D151 (commit `28b6834`) defining the 6-layer L0..L5 diagnostic-infrastructure stack (cssl-error / cssl-log / cssl-metrics / cssl-spec-coverage / cssl-health / cssl-inspect / cssl-hot-reload / cssl-tweak / cssl-mcp-server-CROWN) — total ~38K LOC + ~1330 tests across 4 implementation waves.
+
+  ⟨3⟩ **Audit-fix wave** — three pre-existing carry-forward issues that block clean-baseline for Wave-Jε dispatch :
+    - cssl-host-net WSAStartup race (intermittent failure under parallel test fanout)
+    - cssl-rt cold-cache lock (closes T11-D56 carry-forward `--test-threads=1` requirement)
+    - cssl-cgen-gpu-wgsl dlltool / windows-sys pin (toolchain stabilization)
+
+  ⟨4⟩ **Wave-Jε..Jι diagnostic-infrastructure implementation** — the ~38K LOC + ~1330 tests across L0..L5 + iteration-loop docs that Wave-Jβ specified, materialized as 19 slices (D155..D173).
+
+  Net effect : the original Phase-J content waves (M8 + J1 + J2 + J3 + HW-validation + close) shift by **+24 slice-IDs** vs the c79bcf3 fixup, mapping D150..D201 → D174..D225.
+
+§D. **DECISION — canonical slice-ID allocation table (V2)** :
+
+  Reserved range : T11-D150..T11-D225 (76 IDs total ; +24 vs c79bcf3 fixup).
+
+  | ID range          | Wave / Purpose                                                                                  | Status         |
+  | ----------------- | ----------------------------------------------------------------------------------------------- | -------------- |
+  | T11-D150          | Wave-Jα synthesis (SESSION_12_TEAM_DISCIPLINE.md ; ~1635 LOC)                                   | DONE @ 9de614e |
+  | T11-D151          | Wave-Jβ synthesis (DIAGNOSTIC_INFRA_PLAN.md ; concise-index + 4 verbose drafts)                 | DONE @ 28b6834 |
+  | T11-D152          | Audit-fix : cssl-host-net WSAStartup race                                                       | reserved       |
+  | T11-D153          | Audit-fix : cssl-rt cold-cache lock (closes T11-D56)                                            | reserved       |
+  | T11-D154          | Audit-fix : cssl-cgen-gpu-wgsl dlltool / windows-sys pin                                        | reserved       |
+  | T11-D155          | Wave-Jε-1 : cssl-error (clippy-lint folded)                                                     | reserved       |
+  | T11-D156          | Wave-Jε-2 : cssl-log (cssl-panic folded)                                                        | reserved       |
+  | T11-D157          | Wave-Jζ-1 : cssl-metrics                                                                        | reserved       |
+  | T11-D158          | Wave-Jζ-2 : per-stage frame-time instrumentation                                                | reserved       |
+  | T11-D159          | Wave-Jζ-3 : per-subsystem health-probes (cssl-health)                                           | reserved       |
+  | T11-D160          | Wave-Jζ-4 : spec-coverage tracker (cssl-spec-coverage)                                          | reserved       |
+  | T11-D161          | Wave-Jζ-5 : replay-determinism preservation                                                     | reserved       |
+  | T11-D162          | Wave-Jη-1 : cssl-inspect                                                                        | reserved       |
+  | T11-D163          | Wave-Jη-2 : cssl-hot-reload                                                                     | reserved       |
+  | T11-D164          | Wave-Jη-3 : cssl-tweak                                                                          | reserved       |
+  | T11-D165..D172    | Wave-Jθ MCP-LLM CROWN (8 slices : skeleton/state/telemetry/health/time/hotreload/test/privacy)  | reserved       |
+  | T11-D173          | Wave-Jι iteration-loop documentation                                                            | reserved       |
+  | T11-D174          | M8 acceptance gate (Wave-J0 ; 12-stage pipeline end-to-end)                                     | reserved       |
+  | T11-D175..D179    | Wave-J1 M9 VR-ship preparation (5 slices : session-claim + stage1 + stage12 + tonemap + appsw)  | reserved       |
+  | T11-D180..D183    | Wave-J2 M10 max-density preparation (4 slices : workgraph + tile-streaming + foveation + async) | reserved       |
+  | T11-D184..D221    | Wave-J3 Q-* SPEC-HOLE content authoring (38 slices ; Q-A through Q-LL)                          | reserved       |
+  | T11-D222..D223    | Wave-J4 M9 + M10 hardware-validation (when live HW available)                                   | reserved       |
+  | T11-D224..D225    | Wave-J5 v1.2 close + RELEASE_NOTES_v1.2.md + tag                                                | reserved       |
+
+§D. **CONSTRAINT — V2 invariants** :
+
+  W! V2 is the canonical allocation going forward ; c79bcf3 fixup table is SUPERSEDED ‼
+  W! ∀ docs that reference Phase-J slice-IDs MUST cite this META block as authority
+  W! Wave-Jε..Jι slices have HARD ordering : audit-fix → Jε → Jζ → Jη → Jθ → Jι ; Jθ-8 (T11-D172) is the FINAL gate before M8 (T11-D174) dispatch
+  W! Q-* mapping in PHASE_J_HANDOFF.csl § Q-MAPPING uses V2-shifted IDs (D184..D221) ; Companion-AI-Q-* (D187 Q-D + D210 Q-AA + D213 Q-DD + D215 Q-FF + D216 Q-GG) are highest-care-tier per PRIME_DIRECTIVE §1.7
+  N! agent self-allocates a slice-ID outside this table without PM-confirmation
+  N! Wave-J3 dispatch before Wave-Jθ-8 lands ; the M8 gate at D174 strictly precedes J1..JN
+  N! collision with prior reservations (T11-D113..D147 are LANDED ; T11-D148..D149 are docs/specs)
+
+§D. **CONSEQUENCES** :
+
+  - **SESSION_12_DISPATCH_PLAN.md updated** to V2 slice-IDs across § 1 DAG + § 2 reservation block + § 6 M8 + § 7 J1 + § 8 J2 + § 9 J3 + § 10 J4 + § 11 J5 + § 11.5 Jε..Jι + § 13 resumption-protocol.
+  - **PHASE_J_HANDOFF.csl updated** to V2 slice-IDs across § DEFERRED-TO-LIVE-HARDWARE + § M-MILESTONE-MAP + § Q-MAPPING (38-row Q-* table shifted +24) + § DEFERRED D-Q7 reference + § CREATOR-ATTESTATION Companion-AI-Q-* listing + § DIAGNOSTIC-INFRASTRUCTURE V2-slice-IDs + wave-roadmap.
+  - **Original Phase-J content waves shift by +24** vs c79bcf3 fixup (D150..D201 → D174..D225). Net new range = T11-D150..D225 (76 IDs).
+  - **No git-history rewrite** : T11-D150 + T11-D151 commits (9de614e + 28b6834) are LANDED with their original slice-IDs ; this V2 block records the canonical allocation as observed-and-confirmed.
+  - **Wave-Jε..Jθ implementation** materializes the diagnostic-infrastructure that Wave-Jβ specified ; pre-condition for Wave-Jθ-8 final gate before M8 dispatch.
+  - **Wave-Jι iteration-loop documentation** captures the LLM-against-live-engine loop (attach → state → focus → identify → patch → hot-swap → verify → record) that Jε..Jθ unlock — this is the M9/M10-acceleration enabler.
+  - **PRIME_DIRECTIVE preservation** : V2 allocation does not weaken any binding ; Companion-AI-Q-* extra-care-tier preserved at shifted IDs ; on-device-only invariant preserved across Wave-Jθ MCP-server ; the never-tick canary `gaze.privacy_egress_attempts_refused` Counter must = 0 in all replay-traces from Wave-Jζ onward.
+  - **No code-impact** : this META entry is docs-only ; per-slice expansions land with each slice's merge-commit.
+
+§D. **CREATOR-ATTESTATION** (verbatim per PRIME_DIRECTIVE §11) :
+  ```csl
+  § CREATOR-ATTESTATION v1
+    t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+    ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+    I> rightholder-warranty : V2 allocation upholds §1 PROHIBITIONS throughout
+    I> scope = ∀ Phase-J descendant slice (D150..D225) + per-slice merge-commits
+    I> violation-discovered ⇒ §7 INTEGRITY rule : violation = bug W! fix
+  ```
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+──────────────────────────────────────────────────────────────

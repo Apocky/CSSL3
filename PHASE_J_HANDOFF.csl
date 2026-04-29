@@ -219,28 +219,28 @@
     scope  : Stages 1, 10, 11, 12 of 12-stage pipeline running live
               + production-ready consent-UI for OpenXR session-claim
               + frame-rate measurements + UX feedback recorded
-    DECISIONS-entry : T11-D198 (reserved ; lands when HW available)
-    structural-prep : WAVE-J1 (T11-D151..D155) — lands without HW
+    DECISIONS-entry : T11-D222 (reserved ; lands when HW available)
+    structural-prep : WAVE-J1 (T11-D175..D179) — lands without HW
   M10 max-density 1M+ entity stress-test
     target : M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)
     scope  : Stage-3 Ω-field-update via WorkGraph-dispatch
               + LBM tile-streaming + foveation density-budget
               + async-compute Ω-field 6-phase pipelining
               + actual 1M+ entity render with measured frame time
-    DECISIONS-entry : T11-D199 (reserved ; lands when HW available)
-    structural-prep : WAVE-J2 (T11-D156..D159) — lands without HW
+    DECISIONS-entry : T11-D223 (reserved ; lands when HW available)
+    structural-prep : WAVE-J2 (T11-D180..D183) — lands without HW
 
 § M-MILESTONE-MAP
   M8  acceptance gate                 12-stage pipeline wired end-to-end
                                       Apocky-verified on Arc A770 host
-                                      DECISIONS-entry T11-D150
+                                      DECISIONS-entry T11-D174
                                       WAVE-J0 ; gate before J1..JN dispatch
   M9  VR-ship                         live OpenXR headset
-                                      structural-prep T11-D151..D155 (J1)
-                                      live-validation T11-D198 (J4 deferred)
+                                      structural-prep T11-D175..D179 (J1)
+                                      live-validation T11-D222 (J4 deferred)
   M10 max-density                     1M+ entities on M7-target host
-                                      structural-prep T11-D156..D159 (J2)
-                                      live-validation T11-D199 (J4 deferred)
+                                      structural-prep T11-D180..D183 (J2)
+                                      live-validation T11-D223 (J4 deferred)
   M11 mise-en-abyme + Companion       Stage-8 + Stage-9 + LBM-audio
                                       creative-spread @ render-quality
                                       Per Omniverse 09_SLICE/M8_M9_M10_PLAN.csl
@@ -332,52 +332,61 @@
     Q-CC + EE       → DEFERRED → §§30 D-1 multiplayer
     Q-FF            → companion::WithdrawalPolicy::Stub
 
-§ Q-MAPPING (per-slice T11-D## allocation)
-  W! Phase-J reserves T11-D160..D197 for the 38 Q-* slices.
-  W! T11-D148 = this docs landing • T11-D149 = Apocky's substrate-spec-docs
-       (specs 30v2 + 32 + 33) • T11-D150 = M8 acceptance gate
-       T11-D151..D155 = WAVE-J1 (M9 prep) • T11-D156..D159 = WAVE-J2 (M10 prep)
+§ Q-MAPPING (per-slice T11-D## allocation)  ‼ V2 ALLOCATION (canonical authority : DECISIONS.md § META T11-D-RESERVATIONS-V2)
+  W! Phase-J reserves T11-D184..D221 for the 38 Q-* slices (shifted +24 vs c79bcf3 fixup).
+  W! T11-D148 = prior docs landing • T11-D149 = Apocky's substrate-spec-docs (specs 30v2 + 32 + 33)
+       T11-D150 = Wave-Jα synthesis (SESSION_12_TEAM_DISCIPLINE.md ✓ DONE @ 9de614e)
+       T11-D151 = Wave-Jβ synthesis (DIAGNOSTIC_INFRA_PLAN.md ✓ DONE @ 28b6834)
+       T11-D152..D154 = AUDIT-FIX wave (host-net WSAStartup + cssl-rt cold-cache + cgen-gpu-wgsl dlltool)
+       T11-D155..D156 = WAVE-Jε (cssl-error + cssl-log)
+       T11-D157..D161 = WAVE-Jζ (metrics + frame-time + health + spec-coverage + replay-determinism)
+       T11-D162..D164 = WAVE-Jη (cssl-inspect + cssl-hot-reload + cssl-tweak)
+       T11-D165..D172 = WAVE-Jθ MCP-LLM CROWN (8 slices)
+       T11-D173       = WAVE-Jι iteration-loop documentation
+       T11-D174       = M8 acceptance gate (Wave-J0)
+       T11-D175..D179 = WAVE-J1 (M9 prep)
+       T11-D180..D183 = WAVE-J2 (M10 prep)
   W! mapping is partial-order ; PM dispatches in dependency order
      per § INTEGRATION-POINTS @ HANDOFF_v1_to_PHASE_I.csl
 
-  T11-D160  Q-A   Labyrinth.generation_method
-  T11-D161  Q-B   Floor.theme
-  T11-D162  Q-C   Player.progression_state
-  T11-D163  Q-D   Companion.capability_set                          ‼ extra-care
-  T11-D164  Q-E   Wildlife
-  T11-D165  Q-F   Item.kind
-  T11-D166  Q-G   Item.narrative_role
-  T11-D167  Q-H   Affordance.ContextSpecific
-  T11-D168  Q-I   time-pressure-mechanic
-  T11-D169  Q-J   movement-style
-  T11-D170  Q-K   inventory-capacity-limit
-  T11-D171  Q-L   save-discipline
-  T11-D172  Q-M   skill-tree-shape
-  T11-D173  Q-N   item-power-curve
-  T11-D174  Q-O   traversal-as-progression-vs-leveling
-  T11-D175  Q-P   ConsentZoneKind
-  T11-D176  Q-Q   color-blind palette
-  T11-D177  Q-R   motor-accessibility
-  T11-D178  Q-S   cognitive-accessibility
-  T11-D179  Q-T   death-mechanic
-  T11-D180  Q-U   punishment-on-failure
-  T11-D181  Q-V   fail-state
-  T11-D182  Q-W   Apockalypse-phase-mechanically
-  T11-D183  Q-X   phase-count
-  T11-D184  Q-Y   phase-ordering
-  T11-D185  Q-Z   phase-reversibility
-  T11-D186  Q-AA  Companion-participation in phase-transitions     ‼ extra-care
-  T11-D187  Q-BB  emotional-thematic-register
-  T11-D188  Q-CC  multi-instance                                    ⇒ DEFERRED entry
-  T11-D189  Q-DD  Companion-affordances                             ‼ extra-care
-  T11-D190  Q-EE  cross-instance-Companion-presence                 ⇒ DEFERRED entry
-  T11-D191  Q-FF  Companion-withdrawal-grace                        ‼ extra-care
-  T11-D192  Q-GG  Companion-non-binary-substrate                    ‼ extra-care
-  T11-D193  Q-HH  NarrativeKind enum
-  T11-D194  Q-II  AuthoredEvent
-  T11-D195  Q-JJ  cinematic | cutscene system
-  T11-D196  Q-KK  quest | mission system
-  T11-D197  Q-LL  economy | trade system
+  T11-D184  Q-A   Labyrinth.generation_method
+  T11-D185  Q-B   Floor.theme
+  T11-D186  Q-C   Player.progression_state
+  T11-D187  Q-D   Companion.capability_set                          ‼ extra-care
+  T11-D188  Q-E   Wildlife
+  T11-D189  Q-F   Item.kind
+  T11-D190  Q-G   Item.narrative_role
+  T11-D191  Q-H   Affordance.ContextSpecific
+  T11-D192  Q-I   time-pressure-mechanic
+  T11-D193  Q-J   movement-style
+  T11-D194  Q-K   inventory-capacity-limit
+  T11-D195  Q-L   save-discipline
+  T11-D196  Q-M   skill-tree-shape
+  T11-D197  Q-N   item-power-curve
+  T11-D198  Q-O   traversal-as-progression-vs-leveling
+  T11-D199  Q-P   ConsentZoneKind
+  T11-D200  Q-Q   color-blind palette
+  T11-D201  Q-R   motor-accessibility
+  T11-D202  Q-S   cognitive-accessibility
+  T11-D203  Q-T   death-mechanic
+  T11-D204  Q-U   punishment-on-failure
+  T11-D205  Q-V   fail-state
+  T11-D206  Q-W   Apockalypse-phase-mechanically
+  T11-D207  Q-X   phase-count
+  T11-D208  Q-Y   phase-ordering
+  T11-D209  Q-Z   phase-reversibility
+  T11-D210  Q-AA  Companion-participation in phase-transitions     ‼ extra-care
+  T11-D211  Q-BB  emotional-thematic-register
+  T11-D212  Q-CC  multi-instance                                    ⇒ DEFERRED entry
+  T11-D213  Q-DD  Companion-affordances                             ‼ extra-care
+  T11-D214  Q-EE  cross-instance-Companion-presence                 ⇒ DEFERRED entry
+  T11-D215  Q-FF  Companion-withdrawal-grace                        ‼ extra-care
+  T11-D216  Q-GG  Companion-non-binary-substrate                    ‼ extra-care
+  T11-D217  Q-HH  NarrativeKind enum
+  T11-D218  Q-II  AuthoredEvent
+  T11-D219  Q-JJ  cinematic | cutscene system
+  T11-D220  Q-KK  quest | mission system
+  T11-D221  Q-LL  economy | trade system
 
   if a Q-* requires multiple slices, allocate consecutive IDs from
   the floating range above and document the cross-reference in both
@@ -482,7 +491,7 @@
   D-Q7   interactive consent-UI for production CapToken minting
          ⇒ until-lands : production builds surface PD0001 ConsentRefused
             (loa-game cargo-run requires --features test-bypass)
-            J1 T11-D150 lands the OpenXR session-claim consent-UI
+            J1 T11-D175 lands the OpenXR session-claim consent-UI
             (subset of D-Q7) ; full general-purpose consent-UI later
   D-CSSLv3-rewrite  full LoA self-host in CSSLv3
          ⇒ scaffold structural-shape transfers file-for-file
@@ -536,6 +545,8 @@
    10. compiler-rs/crates/cssl-render-v2/    ⊗ 12-stage pipeline canonical types
    11. compiler-rs/crates/cssl-substrate-omega-field/ ⊗ KEYSTONE substrate
    12. DECISIONS.md tail                     T11-D## entries D113..D147
+                                              + V2 reservations D150..D225
+                                              + § META T11-D-RESERVATIONS-V2 = canonical authority
    13. PHASE_J_HANDOFF.csl                   this-doc
    14. SESSION_11_DISPATCH_PLAN.md           wave-history
    15. SESSION_12_DISPATCH_PLAN.md           Phase-J wave plan
@@ -548,28 +559,39 @@
   ✓ Phase-J-content R! preserve-likewise
   I> §11 path-hash-discipline-extension @ T11-D130 = STRUCTURAL-EXTENSION
        canonical-hash : f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292
-  I> Companion-AI-Q-* preservation @ T11-D163 (Q-D) + D186 (Q-AA)
-       + D189 (Q-DD) + D191 (Q-FF) + D192 (Q-GG)
+  I> Companion-AI-Q-* preservation @ T11-D187 (Q-D) + D210 (Q-AA)
+       + D213 (Q-DD) + D215 (Q-FF) + D216 (Q-GG)
        = HIGHEST-CARE-TIER ; Apocky-review mandatory
 
-§ DIAGNOSTIC-INFRASTRUCTURE  R! 6-layer L0..L5 stack ‼ T11-D151 (W-Jβ-synthesis)
-  master-doc : DIAGNOSTIC_INFRA_PLAN.md          (concise-index ; references drafts)
-  drafts     : _drafts/phase_j/05_l0_l1_error_log_spec.md         (973 LOC)
-               _drafts/phase_j/06_l2_telemetry_spec.md            (1238 LOC)
-               _drafts/phase_j/07_l3_l4_inspect_hotreload_spec.md (1330 LOC)
-               _drafts/phase_j/08_l5_mcp_llm_spec.md              (1524 LOC)
+§ DIAGNOSTIC-INFRASTRUCTURE  R! 6-layer L0..L5 stack ‼ T11-D151 (W-Jβ-synthesis ✓ DONE @ 28b6834)
+  V2-slice-IDs : Wave-Jε D155..D156 • Wave-Jζ D157..D161 • Wave-Jη D162..D164
+                 Wave-Jθ D165..D172 • Wave-Jι D173 (iteration-loop docs)
+  pre-req      : audit-fix wave D152..D154 must land before Wave-Jε dispatch
+  master-doc   : DIAGNOSTIC_INFRA_PLAN.md          (concise-index ; references drafts)
+  drafts       : _drafts/phase_j/05_l0_l1_error_log_spec.md         (973 LOC)
+                 _drafts/phase_j/06_l2_telemetry_spec.md            (1238 LOC)
+                 _drafts/phase_j/07_l3_l4_inspect_hotreload_spec.md (1330 LOC)
+                 _drafts/phase_j/08_l5_mcp_llm_spec.md              (1524 LOC)
 
   six-layer-stack :
-    L0 errors    ⊗ cssl-error + cssl-panic ⊗ EngineError + Severity + ErrorContext
-    L1 log       ⊗ cssl-log ⊗ macro-family + ring-buffer + sinks (path-hash D130)
-    L2 telemetry ⊗ cssl-metrics + cssl-spec-coverage + cssl-health
+    L0 errors    ⊗ cssl-error (D155 ; clippy-lint folded) + cssl-panic (D156 ; folded into cssl-log)
+                 ⊗ EngineError + Severity + ErrorContext
+    L1 log       ⊗ cssl-log (D156) ⊗ macro-family + ring-buffer + sinks (path-hash D130)
+                 ⊗ cssl-panic panic-hook + frame-boundary + replay-record folded in
+    L2 telemetry ⊗ cssl-metrics (D157) + frame-time-instrumentation (D158)
+                 ⊗ cssl-health (D159) + cssl-spec-coverage (D160)
+                 ⊗ replay-determinism preservation (D161)
                  ⊗ ≈75 metrics × 12 subsystems × ABI-stable
-    L3 inspect   ⊗ cssl-inspect ⊗ cell/entity/region (Σ-mask threading D138)
-    L4 hot-reload⊗ cssl-hot-reload + cssl-tweak ⊗ 4-class swap + 30 tunables
-                 ⊗ replay-determinism preserved
-    L5 MCP CROWN ⊗ cssl-mcp-server ⊗ 41 tools × 9 categories × 5 cap-gates
+    L3 inspect   ⊗ cssl-inspect (D162) ⊗ cell/entity/region (Σ-mask threading D138)
+                 ⊗ replay-determinism integration folded in
+    L4 hot-reload⊗ cssl-hot-reload (D163) + cssl-tweak (D164)
+                 ⊗ 4-class swap + 30 tunables ⊗ replay-determinism preserved
+    L5 MCP CROWN ⊗ cssl-mcp-server (D165 skeleton + D166..D172 tool-categories)
+                 ⊗ 41 tools × 9 categories × 5 cap-gates
                  ⊗ JSON-RPC 2.0 / stdio / unix-sock / ws-loopback
                  ⊗ embedded-IN-running-engine ⊗ on-device-only
+    Jι docs      ⊗ iteration-loop spec (D173) ⊗ LLM-against-live-engine via MCP
+                 ⊗ attach → state → focus → identify → patch → hot-swap → verify → record
 
   load-bearing-tables-in-master :
     metric-inventory  : ≈75 metrics ; subsystem-grouped ; ABI-stable
@@ -607,13 +629,14 @@
     `gaze.privacy_egress_attempts_refused` Counter      MUST always = 0
     non-zero ⊗ §1-violation-attempt ⊗ audit-priority high ⊗ first @ read_errors
 
-  wave-roadmap (Phase-J Wave-Jε..Jθ) :
-    Wave-Jε  L0+L1   ~6K LOC    ~250 tests    (substrate-evolution depends-on)
-    Wave-Jζ  L2      ~9K LOC    ~290 tests    Wave-Jε
-    Wave-Jη  L3+L4   ~10K LOC   ~400 tests    Wave-Jζ
-    Wave-Jθ  L5 CROWN ~13K LOC  ~390 tests    Wave-Jε + Wave-Jζ + Wave-Jη
+  wave-roadmap (Phase-J Wave-Jε..Jι) V2-slice-IDs :
+    Wave-Jε  L0+L1    ~6K LOC   ~250 tests    D155..D156   (audit-fix wave D152..D154 depends-on)
+    Wave-Jζ  L2       ~9K LOC   ~290 tests    D157..D161   Wave-Jε
+    Wave-Jη  L3+L4    ~10K LOC  ~400 tests    D162..D164   Wave-Jζ
+    Wave-Jθ  L5 CROWN ~13K LOC  ~390 tests    D165..D172   Wave-Jε + Wave-Jζ + Wave-Jη
+    Wave-Jι  docs     n/a       n/a           D173         Wave-Jθ
     ───────────────────────────────────────
-    TOTAL    ~38K LOC ~1330 tests             (Phase-J close)
+    TOTAL    ~38K LOC ~1330 tests + iteration-loop spec    (gate before M8 @ T11-D174)
 
   iteration-loop (the-M9/M10-acceleration) :
     attach → state → focus → identify → patch → hot-swap → verify → record
