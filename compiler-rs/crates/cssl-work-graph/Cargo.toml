@@ -1,0 +1,22 @@
+[package]
+name                   = "cssl-work-graph"
+description            = "CSSLv3 stage0 — Work-graph cross-platform abstraction (DX12-Ultimate work-graphs + Vulkan VK_NV_device_generated_commands fallback)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D123 (W4-09) : work-graph GPU pipeline supporting 1M+ entities @ 8.3ms.
+#   - DX12-Ultimate D3D12_WORK_GRAPH_DESC + DispatchGraph (preferred path)
+#   - Vulkan VK_NV_device_generated_commands fallback
+#   - graceful degradation : work-graph → DGC → ExecuteIndirect
+#   - mesh-node primitive (DX12-only ; Vulkan emits ExecuteIndirect-equivalent)
+#   - integration with D116 SDF-raymarch + D118 spectral-BRDF compute nodes
+[dependencies]
+thiserror             = { workspace = true }
+cssl-host-d3d12       = { path = "../cssl-host-d3d12" }
+cssl-host-vulkan      = { path = "../cssl-host-vulkan" }
+
+[lints]
+workspace = true

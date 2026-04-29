@@ -65,6 +65,7 @@
 
 pub mod arc_a770;
 pub mod device;
+pub mod dgc;
 pub mod extensions;
 pub mod ffi;
 pub mod probe;
@@ -72,6 +73,9 @@ pub mod spirv_blob;
 
 pub use arc_a770::ArcA770Profile;
 pub use device::{DeviceFeatures, DeviceType, GpuVendor, VulkanDevice, VulkanVersion};
+pub use dgc::{
+    DgcExtension, DgcLayoutDesc, DgcLayoutToken, DgcProbe, DgcTokenKind, NvDgcProbe, StubDgcProbe,
+};
 pub use extensions::{VulkanExtension, VulkanExtensionSet, VulkanLayer};
 pub use probe::{AshProbe, FeatureProbe, ProbeError, StubProbe};
 
