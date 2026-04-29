@@ -1,0 +1,26 @@
+[package]
+name                   = "cssl-wavelet"
+description            = "CSSLv3 — wavelet basis (Haar / Daubechies-N / Mexican-hat) + MERA tensor-network templates (disentangler / isometry / pyramid). Multi-resolution analysis substrate per Axiom-10 § III. Backs Radiance-Cascade probe pyramid + Ω-field MERA-summary tier."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-wavelet stays dependency-free at its foundation slice. Wavelet bases +
+# MERA templates are pure compute primitives ; the renderer (cssl-render) and
+# field-propagation (radiance-cascade subsystem) consume this crate, so a deep
+# dep-tree here would propagate transitively into hot paths. f32/f64 dispatch
+# is open-coded ; SIMD intrinsics are deferred to a follow-up perf slice and
+# guarded behind an off-by-default feature when they land.
+
+[features]
+default = []
+# § f64 path : enable 64-bit-precision Haar + Daubechies + Mexican-hat. Default
+# is f32-only to keep hot-path code paths small ; planet-scale + multi-band
+# scientific workloads enable f64 explicitly.
+f64 = []
