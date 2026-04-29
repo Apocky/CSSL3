@@ -1,5 +1,19 @@
 # CSSLv3
 
+```
+© 2026 [OWNER LEGAL NAME OR ENTITY NAME]. All rights reserved.
+Source available under AGPL-3.0-or-later OR a separate Commercial License.
+See LICENSE.md for the full dual-license grant, the patent grant, the
+anti-patent-troll clause, and the trademark notice. See PRIME_DIRECTIVE.md
+for the immutable root of trust that governs every artifact in this
+repository — LICENSE.md is subordinate to PRIME_DIRECTIVE.md.
+
+The placeholder [OWNER LEGAL NAME OR ENTITY NAME] is reserved for
+substitution prior to external publication or commercial distribution.
+The handle "Apocky" (apocky13@gmail.com / GitHub: @Apocky) is the
+public software-development handle for technical contact.
+```
+
 **Constraint-Specified Substrate Language, version 3.**
 
 CSSLv3 is a self-contained compiler, runtime, standard library, and Substrate
@@ -608,11 +622,87 @@ authoritative for the spec-hole map; the Phase-J handoff cites it.
 
 - **Repository** — https://github.com/Apocky/CSSL3
 - **Homepage** — https://cssl.dev
-- **License** — see PRIME_DIRECTIVE.md §10 TERMS-OF-SERVICE for the
-  canonical access + license terms. The directive itself is the root
-  of the trust chain; all license terms are subordinate to it.
-- **Author** — Shawn Wolfgang Michael Baker (formerly McKeon),
-  handle Apocky.
+- **License** — dual-licensed:
+  - **AGPL-3.0-or-later** (default) — see [LICENSE.md](LICENSE.md) § 1.A.
+    Source-disclosure obligations attach per AGPL § 13 for network use.
+    Supplemental conditions in LICENSE.md § 1.A apply on top of the AGPL,
+    including PRIME_DIRECTIVE compliance, notice preservation, modification
+    disclosure, and the no-additional-restrictions baseline.
+  - **Commercial** — negotiated per-licensee. See [LICENSE.md](LICENSE.md)
+    § 1.B for the sample Commercial Grant clause. Suitable for proprietary
+    integration, closed-source distribution, regulated environments, or
+    any use case incompatible with the AGPL's source-disclosure
+    requirements. Contact the Rightholder via the channels below.
+- **Patent grant** — see [LICENSE.md](LICENSE.md) § 2. Includes a
+  defensive patent-troll-deterrent clause (§ 2.C) that automatically
+  terminates all licenses to any party instituting a patent action
+  against the Work, its contributors, or its users.
+- **Trademark notice** — "Labyrinth of Apockalypse," "LoA," "CSSLv3,"
+  "CSLv3," "Apocky," and "infiniter" are trademarks of
+  `[OWNER LEGAL NAME OR ENTITY NAME]`. See [LICENSE.md](LICENSE.md) § 3
+  for the trademark notice and the limits on use under both license
+  branches. The AGPL Grant and the Commercial Grant do NOT, by
+  themselves, license use of the trademarks.
+- **PRIME DIRECTIVE** — see [PRIME_DIRECTIVE.md](PRIME_DIRECTIVE.md) for
+  the immutable root of trust. The directive governs in case of conflict
+  with LICENSE.md, and § 10 of the directive (Terms of Service) defines
+  the access-control criteria and the "evil" criteria that, if met,
+  terminate every license under LICENSE.md per LICENSE.md § 5.
+- **Third-party notices** — see [NOTICE.md](NOTICE.md).
+- **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md). All
+  contributions are subject to a Contributor License Agreement that
+  assigns rights to the Rightholder and aligns the contribution with
+  the PRIME DIRECTIVE.
+- **Author** — `[OWNER LEGAL NAME OR ENTITY NAME]`. Public handle:
+  Apocky (apocky13@gmail.com / GitHub: @Apocky). The legal-name
+  placeholder will be substituted prior to external publication or
+  commercial distribution; until then, treat the Rightholder as
+  identified by the handle Apocky for technical contact and by the
+  forthcoming legal-name substitution for legal context.
+
+### Trademark Notice — Omniverse prior-art conflict
+
+**FLAG — pending rename.** The term "Omniverse" appears in some
+internal documentation, design notes, and historical commits in this
+repository. **NVIDIA Corporation holds prior-art trademark registrations
+covering "Omniverse" in connection with simulation, collaboration, and
+graphics-platform software**, in classes that overlap with CSSLv3's
+target use cases (interactive simulation, real-time graphics, XR
+content authoring).
+
+The Rightholder does NOT claim "Omniverse" as a trademark and does NOT
+intend to use "Omniverse" as a mark in commerce in any class that
+conflicts with NVIDIA's prior registrations. Any historical use of the
+term in this repository is descriptive or working-title only and is
+being phased out.
+
+**Recommended renames** (any of the following is unencumbered as far as
+preliminary search has shown — full clearance search and counsel review
+required before any external use as a mark):
+
+  - **OmniSubstrate** — emphasizes the substrate-as-kernel-set framing
+    and the Ω-field core; phonetically distinct from "Omniverse"
+    while preserving the "omni-" prefix that signals the
+    multiple-substrate scope.
+  - **Omnoid** — single-word, phonetically distinct, suggests an
+    autonomous substrate-form ("-oid" suffix as in "android").
+  - **Omegaverse** — leans into the Ω-field nomenclature; needs
+    clearance against fan-fiction-genre prior usage.
+  - **Substraverse** — substrate-first compound; entirely descriptive
+    of the Ω-field-evolves-the-world architecture.
+  - **OmegaSubstrate** — the most descriptive; a candidate if
+    the goal is to anchor brand identity in the
+    Ω-field-as-truth-canon design.
+
+The Rightholder solicits Apocky's preference among the above (or
+counter-proposals) before the next external-publication-bearing
+release. Until rename is complete, internal documentation MAY continue
+to reference "Omniverse" descriptively, but no external-facing
+publication SHALL use "Omniverse" as a product mark, brand, or
+source-identifier.
+
+See [NOTICE.md](NOTICE.md) for the full third-party trademark
+attribution including the NVIDIA Omniverse mark.
 
 ---
 

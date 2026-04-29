@@ -60,8 +60,13 @@ exclude  = ["crates/cssl-playground"]
 version      = "0.1.0"
 edition      = "2021"
 rust-version = "1.75"
-license      = "Apache-2.0 OR MIT"
+# § T11-D??? : Dual-license (AGPL-3.0-or-later OR Commercial). LicenseRef-Commercial
+# refers to the Commercial Grant in /LICENSE.md § 1.B (negotiated per-licensee).
+# Default branch is AGPL-3.0-or-later ; commercial licensees execute a separate
+# written agreement with the Rightholder. See /LICENSE.md for full terms.
+license      = "AGPL-3.0-or-later OR LicenseRef-Commercial"
 authors      = ["Apocky <apocky13@gmail.com>"]
+description  = "CSSLv3 — Constraint-Specified Substrate Language v3 : compiler, runtime, stdlib, and Substrate kernel-set for the Labyrinth of Apockalypse and other deterministic-replay-capable interactive systems."
 repository   = "https://github.com/Apocky/CSSL3"
 homepage     = "https://cssl.dev"
 

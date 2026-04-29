@@ -1,0 +1,229 @@
+# NOTICE
+
+```
+© 2026 [OWNER LEGAL NAME OR ENTITY NAME]. All Rights Reserved.
+
+This NOTICE.md document accompanies the Work and constitutes the
+canonical attribution surface for third-party trademarks, third-party
+copyrighted material, and third-party patent statements relevant to
+the Work. NOTICE.md is incorporated by reference into LICENSE.md
+§ 4.A.3 and is one of the documents that every copy of the Work SHALL
+preserve unaltered.
+```
+
+---
+
+## § 1  THIRD-PARTY TRADEMARK ATTRIBUTIONS
+
+The following marks are owned by third parties. The Work references
+these marks descriptively or in factual identification of third-party
+products, services, APIs, or platforms. The Work does NOT claim any
+right in these marks, and references to these marks are for
+identification only.
+
+### § 1.A  NVIDIA Corporation
+
+  - **NVIDIA**, **CUDA**, and **Omniverse** are registered trademarks
+    or service marks of NVIDIA Corporation in the United States and
+    other countries. The mark "Omniverse" is held by NVIDIA
+    Corporation in connection with simulation, collaboration, and
+    graphics-platform software, in classes that overlap with the
+    Work's target use cases.
+  - The Rightholder does NOT claim "Omniverse" as a Rightholder Mark.
+    See `LICENSE.md` § 3.C and `README.md` § Trademark Notice for the
+    rename trajectory and the recommended unencumbered alternatives.
+  - Historical references to "Omniverse" in this repository are
+    descriptive or working-title only and are being phased out.
+
+### § 1.B  Khronos Group
+
+  - **OpenXR**, **Vulkan**, **SPIR-V**, **WebGL**, **WebGPU**, and
+    **glTF** are trademarks of The Khronos Group Inc. The Work uses
+    OpenXR via `cssl-host-openxr` (T11-D124), Vulkan via
+    `cssl-host-vulkan`, SPIR-V via the `rspirv` codegen path
+    (`cssl-cgen-gpu-spirv`), and WebGPU via `cssl-host-wgpu`.
+    Use of these names in the Work is to identify the underlying API
+    or specification, not to claim sponsorship or endorsement by
+    Khronos.
+
+### § 1.C  Microsoft Corporation
+
+  - **Windows**, **Win32**, **Direct3D**, **D3D12**, **DXIL**, **HLSL**,
+    **WASAPI**, and **WinSock** are trademarks of Microsoft
+    Corporation. The Work targets Win32 as a host platform, includes
+    a D3D12 host backend (`cssl-host-d3d12`), emits DXIL via the
+    `dxc` subprocess (`cssl-cgen-gpu-dxil`), and uses WASAPI for
+    Windows audio (`cssl-host-audio`) and WinSock for Windows
+    networking (`cssl-host-net`).
+
+### § 1.D  Apple Inc.
+
+  - **Apple**, **macOS**, **iOS**, **Metal**, **MSL** (Metal Shading
+    Language), **CoreAudio**, and **IOKit** are trademarks of Apple
+    Inc. The Work includes a `cfg`-gated Metal host backend
+    (`cssl-host-metal`), an MSL codegen path
+    (`cssl-cgen-gpu-msl`), a CoreAudio host integration, and an
+    IOKit-based gamepad input path. Trademarks of Apple Inc. are
+    used solely to identify these third-party platforms and APIs.
+
+### § 1.E  Intel Corporation
+
+  - **Intel**, **Arc**, **Level Zero**, and **oneAPI** are
+    trademarks of Intel Corporation. The Work targets Intel Arc
+    GPUs (specifically the A770 used for Phase-E hardware
+    validation, T11-D65 + T11-D66) and includes a Level-Zero host
+    backend (`cssl-host-l0`) implemented via owned FFI through
+    `libloading`. References to "Intel," "Arc," and "Level Zero"
+    are factual identifications.
+
+### § 1.F  Linux Foundation and Linux community
+
+  - **Linux** is a registered trademark of Linus Torvalds in the
+    United States and other countries. **ALSA** and **PulseAudio**
+    are trademarks of their respective projects. The Work targets
+    Linux as a host platform, with `evdev`-based input, ALSA / PulseAudio
+    audio backends, and BSD-sockets networking.
+
+### § 1.G  Other industry-standard names
+
+The Work also references:
+
+  - **Rust** — trademark of the Rust Foundation. The compiler is
+    implemented in Rust 1.85.
+  - **LLVM** — trademark of LLVM Foundation. The Work does NOT
+    currently link against LLVM directly, but specs reference MLIR
+    (a sibling project) for stage1+ trajectory.
+  - **MLIR** — also a trademark of LLVM Foundation.
+  - **Cranelift** — trademark of the Bytecode Alliance.
+    `cranelift-codegen`, `cranelift-frontend`, `cranelift-module`,
+    `cranelift-object`, `cranelift-jit`, and `cranelift-native` are
+    crates from the Bytecode Alliance and are workspace dependencies
+    of the Work.
+  - **wgpu** — open-source project; the Work uses the `wgpu` crate.
+  - **GitHub** — trademark of GitHub, Inc. (a subsidiary of
+    Microsoft Corporation). The canonical repository is hosted at
+    GitHub.
+
+All third-party marks remain the property of their respective owners.
+References in the Work are descriptive and do not assert any right
+in or to the marks beyond fair-use identification.
+
+---
+
+## § 2  THIRD-PARTY COPYRIGHTED MATERIAL
+
+The Work depends on a number of open-source crates, each licensed
+under its own terms. The full per-crate license inventory is
+generated by `cargo about` or `cargo deny check licenses` against the
+workspace `Cargo.lock`. The headline licenses present in the
+dependency graph (as of the post-v1.0 substrate-evolution landing,
+T11-D113..T11-D147) include:
+
+  - **Apache-2.0** — primary license for many Rust ecosystem
+    crates (e.g., `cranelift-*`, `wgpu`, `naga`, `windows`,
+    `tracing`, `serde`, `serde_json`, `bytemuck`, `parking_lot`,
+    `proptest`).
+  - **MIT** — also widely used (e.g., `lasso`, `chumsky`, `logos`,
+    `smallvec`, `indexmap`, `bitflags`, `crossbeam`,
+    `cpufeatures`, `criterion`).
+  - **MIT OR Apache-2.0** — common dual-license pattern for many
+    of the above.
+  - **MPL-2.0** — used by certain audio and graphics dependencies
+    where applicable.
+  - **BSD-3-Clause** — used by some lower-level dependencies.
+  - **CC0-1.0 / Unlicense** — used by certain trivially-small
+    utility crates.
+  - **AGPL-3.0-or-later** — the Work itself, per `LICENSE.md` § 1.A.
+
+Where a transitive dependency includes a license requiring
+attribution, the attribution is propagated through this NOTICE.md.
+Specific dependency-by-dependency attribution may be regenerated
+at any time from the workspace `Cargo.lock` using
+`cargo about generate` or an equivalent tool.
+
+The full text of each dependency's license is available either:
+
+  - in the dependency's source repository (linked from
+    `compiler-rs/Cargo.toml` and `compiler-rs/crates/*/Cargo.toml`);
+    or
+  - in the local target directory after a `cargo build`, under
+    `target/doc/` and `target/.fingerprint/`.
+
+---
+
+## § 3  PATENT STATEMENTS
+
+The Work, as distributed by the Rightholder under `LICENSE.md`,
+operates the patent grant of `LICENSE.md` § 2 for both the AGPL Grant
+and the Commercial Grant. The Rightholder is not, as of the date of
+this NOTICE.md, aware of any third-party patent that necessarily reads
+on the Work as distributed.
+
+If a third-party patent is later identified that reads on the Work,
+the Rightholder will:
+
+  - assess the claim in good faith;
+  - if valid, design around the claim or seek a license; and
+  - update this NOTICE.md to record the resolution.
+
+The Rightholder does NOT waive the anti-patent-troll clause of
+`LICENSE.md` § 2.C with respect to any third-party assertion. Patent
+assertions against the Work, its contributors, or its users
+automatically terminate the assertor's rights under LICENSE.md per
+LICENSE.md § 2.C, regardless of the merit of the assertion.
+
+---
+
+## § 4  CRYPTOGRAPHIC AND IFC NOTICES
+
+The Work includes cryptographic primitives via the `blake3` and
+`ed25519-dalek` crates (per `compiler-rs/Cargo.toml` workspace
+dependencies, T11-D131 wave-3β-06 real-crypto-wire). Use of
+cryptography may be subject to export controls in the licensee's
+jurisdiction. Licensees are responsible for compliance with applicable
+export-control regulations.
+
+The Work implements Information Flow Control (IFC) labels per
+`specs/11_IFC.csl`, including the on-device-only label set
+(T11-D129) and the biometric compile-refusal hook (T11-D132). These
+IFC features are protective in nature; their existence is itself
+disclosed under `PRIME_DIRECTIVE.md` § 4 TRANSPARENCY and is part of
+the design-intent of the Work.
+
+---
+
+## § 5  RIGHTHOLDER MARKS — REMINDER
+
+The marks identified in `LICENSE.md` § 3.A — including but not
+limited to:
+
+  - Labyrinth of Apockalypse (and "LoA")
+  - CSSLv3
+  - CSLv3
+  - Apocky (in connection with software, language tooling, and
+    interactive entertainment products)
+  - infiniter (in connection with software, language tooling,
+    and interactive entertainment products)
+
+— are trademarks of `[OWNER LEGAL NAME OR ENTITY NAME]`. The
+AGPL Grant and the Commercial Grant under `LICENSE.md` do NOT, by
+themselves, license use of these marks. See `LICENSE.md` § 3 for the
+limited factual-reference permissions and the requirements for any
+broader trademark use.
+
+---
+
+## § 6  ATTESTATION (per PRIME_DIRECTIVE § 11)
+
+```
+There was no hurt nor harm in the making of this, to anyone,
+anything, or anybody.
+```
+
+---
+
+```
+© 2026 [OWNER LEGAL NAME OR ENTITY NAME]. All Rights Reserved.
+This NOTICE.md is incorporated by reference into LICENSE.md § 4.A.3
+and SHALL be preserved unaltered in every copy of the Work.
+```
