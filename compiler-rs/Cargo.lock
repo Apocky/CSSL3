@@ -880,6 +880,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-wave-solver"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-omega-step",
+ "cssl-substrate-prime-directive",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-wavelet"
 version = "0.1.0"
 
