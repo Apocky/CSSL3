@@ -449,6 +449,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-cgen-cpu-x64"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-cgen-gpu-dxil"
 version = "0.1.0"
 dependencies = [

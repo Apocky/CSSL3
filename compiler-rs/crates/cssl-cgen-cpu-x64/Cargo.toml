@@ -1,0 +1,30 @@
+[package]
+name                   = "cssl-cgen-cpu-x64"
+description            = "CSSLv3 stage1+ — owned native x86-64 backend (object-file emitter ; zero cranelift-object dep)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D87 (S7-G5) : owned object-file emitter for the native x86-64 path.
+#   Closes the cranelift-object dep (§§ 14 BACKEND stage1+ trajectory) by
+#   hand-rolling ELF / COFF / Mach-O writers that mirror the relocatable-`.o`
+#   shape produced by cranelift-object so the S6-A4 linker accepts either.
+#
+#   NOTE : G1..G4 (encoder + regalloc + isel + frame-layout) are not yet
+#   landed on this branch. G5 emits object files from synthetic + future-real
+#   `X64Func` byte-arrays ; the X64Func type is defined here as the boundary
+#   that G1..G4 will populate. End-to-end `csslc build` integration is
+#   deferred until G1..G4 land.
+
+[dependencies]
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# Subprocess-based roundtrip tests use objdump/dumpbin/otool when present
+# on the host. The tests gate-skip with `BinaryMissing` per the S6-A4
+# precedent so CI doesn't fail on toolchain-less runners.
+
+[lints]
+workspace = true
