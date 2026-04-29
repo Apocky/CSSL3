@@ -136,6 +136,29 @@ pub fn heap_op_result_cap(op_name: &str) -> Option<CapKind> {
     }
 }
 
+/// T11-D64 (S6-C5) — default capability for a closure's captured value.
+///
+/// Per `specs/02_IR.csl` § CLOSURE-ENV, stage-0 closures capture by-value
+/// (snapshot-at-construct). The captured slot in the env is a copy of the
+/// outer-scope value at the moment of closure-construction ; the original
+/// outer-scope binding is unaffected. This corresponds to the `Val` cap
+/// (read-only sharing without ownership transfer).
+///
+/// Future slices may extend this helper to dispatch on a per-capture
+/// modifier (e.g. `move x` for capture-by-move ⇒ Iso transfer ; `&x` for
+/// capture-by-ref ⇒ Ref). Until those parser features land, every capture
+/// is by-value.
+///
+/// ‼ The closure VALUE itself (the pair `(fn-ptr, env-ptr)`) is iso : it
+/// owns its env and is consumed when dropped. That ownership is recorded
+/// on the `cssl.heap.alloc` op that mints the env-ptr (see
+/// [`heap_op_result_cap`]) — this helper only describes the captured
+/// slot's cap, NOT the closure value's cap.
+#[must_use]
+pub const fn closure_capture_default_cap() -> CapKind {
+    CapKind::Val
+}
+
 /// Walk a HIR type and, if its top-level kind is a capability wrapper, return
 /// the semantic cap + inner HirType. Nested capability wrappers (e.g., `iso<ref<T>>`)
 /// are unsupported at stage-0 — the outer cap wins.
@@ -290,8 +313,8 @@ impl CapCtx {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_capabilities, heap_op_capability, heap_op_result_cap, hir_cap_to_semantic,
-        param_subtype_check, top_cap, CapMap, HeapOpCap,
+        check_capabilities, closure_capture_default_cap, heap_op_capability, heap_op_result_cap,
+        hir_cap_to_semantic, param_subtype_check, top_cap, CapMap, HeapOpCap,
     };
     use crate::arena::HirId;
     use crate::ty::{HirCapKind, HirType, HirTypeKind};
@@ -409,5 +432,25 @@ mod tests {
         assert_eq!(heap_op_result_cap("cssl.heap.realloc"), Some(CapKind::Iso));
         assert_eq!(heap_op_result_cap("cssl.heap.dealloc"), None);
         assert_eq!(heap_op_result_cap("anything.else"), None);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D64 (S6-C5) — closure-capture cap default.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn closure_capture_default_is_val() {
+        // Per specs/02_IR.csl § CLOSURE-ENV stage-0 captures snapshot-by-value.
+        // The Val cap matches : read-only sharing, no ownership transfer.
+        assert_eq!(closure_capture_default_cap(), CapKind::Val);
+    }
+
+    #[test]
+    fn closure_capture_default_distinct_from_iso() {
+        // Cross-check : the default cap is NOT iso (which would imply linear
+        // ownership transfer). The closure VALUE is iso ; the captured SLOT
+        // is val. This test guards against future regressions that conflate
+        // the two layers.
+        assert_ne!(closure_capture_default_cap(), CapKind::Iso);
     }
 }

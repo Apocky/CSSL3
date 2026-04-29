@@ -541,11 +541,93 @@ fn lower_one_op(
         //   reject bare top-level scf.yield in a future slice.
         "scf.if" => lower_scf_if_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
         "scf.yield" => Ok(false),
+        // § T11-D64 (S6-C5) — `cssl.closure` materializes the closure VALUE
+        //   `(fn-ptr, env-ptr)` fat-pair. At stage-0 :
+        //     - the env-pack (alloc + stores) has already executed before the
+        //       closure op is reached (body_lower emits them in order),
+        //     - the fn-ptr half is metadata-only since closures aren't yet
+        //       called from any source-call-site (per spec § CLOSURE-ENV).
+        //   Result-binding : when the op carries an env-ptr operand
+        //   (capture_count ≥ 1), bind the closure result-id to that ptr-typed
+        //   value ; otherwise bind to a typed-zero sentinel of ptr_ty so the
+        //   downstream value_map stays well-formed even when no env exists.
+        //   The body-region inside the op is NOT walked here — the closure's
+        //   inner body lowers separately when called via an indirect-call
+        //   site (deferred).
+        "cssl.closure" => obj_lower_closure(op, builder, value_map, fn_name, ptr_ty),
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
         }),
     }
+}
+
+/// § T11-D64 (S6-C5) — `cssl.closure` lowering for the object backend.
+///
+/// Stage-0 contract :
+///   - Reads `capture_count` from op attributes. The trailing operand is the
+///     env-ptr when `capture_count ≥ 1` (operand-index = capture_count after
+///     the K capture-source operands). When `capture_count = 0`, no env-ptr
+///     operand exists ; bind the result to a typed-zero ptr sentinel.
+///   - Binds the closure result-id (when present) so subsequent ops can
+///     reference the closure value (e.g., a debug print, a return).
+///   - Emits NO cranelift instructions of its own (the env-pack already
+///     emitted its alloc + stores ; the closure value is the env-ptr at
+///     stage-0).
+///
+/// The inner body region is intentionally NOT walked — that's the
+/// indirect-call-site lowerer's job once a CSSLv3 source-call-site against
+/// a closure-typed value parses + lowers. Until then the body region rides
+/// along the MIR for diagnostic + future-pass consumption.
+fn obj_lower_closure(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let capture_count: usize = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "capture_count")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(0);
+
+    // Locate the closure result-id (when typed). Stage-0 always emits one
+    // result of type `!cssl.closure`, but we tolerate its absence rather
+    // than panic — a future MIR-pass might strip the result for
+    // diagnostic-only uses.
+    let Some(r) = op.results.first() else {
+        return Ok(false);
+    };
+
+    // The env-ptr operand (when present) is at index = capture_count.
+    let env_value =
+        if capture_count > 0 {
+            let env_op_idx = capture_count;
+            let env_vid = op.operands.get(env_op_idx).copied().ok_or_else(|| {
+                ObjectError::LoweringFailed {
+                    fn_name: fn_name.to_string(),
+                    detail: format!(
+                    "cssl.closure : capture_count={capture_count} but operand[{env_op_idx}] missing"
+                ),
+                }
+            })?;
+            *value_map
+                .get(&env_vid)
+                .ok_or_else(|| ObjectError::UnknownValueId {
+                    fn_name: fn_name.to_string(),
+                    value_id: env_vid.0,
+                })?
+        } else {
+            // No captures ⇒ env-ptr is null (typed zero). Stage-0 sentinel that
+            // preserves the value-map invariant ("every result-id has a value")
+            // without a real allocation.
+            builder.ins().iconst(ptr_ty, 0)
+        };
+
+    value_map.insert(r.id, env_value);
+    Ok(false)
 }
 
 /// Shared helper for the three `cssl.heap.*` ops. Resolves the import,
@@ -1505,6 +1587,138 @@ mod tests {
                 .with_operand(ValueId(0))
                 .with_operand(ValueId(1))
                 .with_result(ValueId(2), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(matches!(r, Err(ObjectError::LoweringFailed { .. })));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D64 (S6-C5) — Object-emit closure dispatch.
+    //
+    // Stage-0 contract : a fn whose body contains a `cssl.closure` op with
+    // capture_count=0 (no env-pack) must object-emit cleanly. A fn that
+    // ALSO contains the env-pack sequence (alloc + memref.store + closure)
+    // must also emit cleanly because the heap-alloc machinery is already
+    // wired up via S6-B1 (T11-D57).
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn obj_emit_zero_capture_closure_succeeds() {
+        // Build `fn make_clos() { cssl.closure() ; func.return }`. The
+        // closure op binds its result to a typed-zero ptr sentinel ; no
+        // env-pack ops are emitted (capture_count=0).
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("make_clos", vec![], vec![]);
+        let mut body_region = MirRegion::new();
+        body_region.push(MirBlock::new("entry"));
+        f.push_op(
+            MirOp::std("cssl.closure")
+                .with_result(ValueId(0), MirType::Opaque("!cssl.closure".into()))
+                .with_region(body_region)
+                .with_attribute("param_count", "0")
+                .with_attribute("capture_count", "0")
+                .with_attribute("env_size", "0")
+                .with_attribute("env_align", "8")
+                .with_attribute("cap_value", "val"),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_closure_with_one_capture_pulls_in_heap_alloc() {
+        // Build the full env-pack sequence body_lower emits when there's one
+        // capture : arith.constant + arith.constant + cssl.heap.alloc +
+        // arith.constant (offset) + memref.store + cssl.closure.
+        //
+        // fn capture_one(y : i64) -> () {
+        //   %sz = arith.constant 8 : i64
+        //   %al = arith.constant 8 : i64
+        //   %env = cssl.heap.alloc(%sz, %al) -> !cssl.ptr
+        //   %off = arith.constant 0 : i64
+        //   memref.store y, %env, %off
+        //   %clos = cssl.closure(%y, %env) -> !cssl.closure
+        //         { capture_count=1, env_size=8, env_align=8, cap_value="val" }
+        //   func.return
+        // }
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("capture_one", vec![MirType::Int(IntWidth::I64)], vec![]);
+        // entry-arg : y at ValueId(0).
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(1), MirType::Int(IntWidth::I64))
+                .with_attribute("value", "8"),
+        );
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(2), MirType::Int(IntWidth::I64))
+                .with_attribute("value", "8"),
+        );
+        f.push_op(
+            MirOp::std("cssl.heap.alloc")
+                .with_operand(ValueId(1))
+                .with_operand(ValueId(2))
+                .with_result(ValueId(3), MirType::Ptr)
+                .with_attribute("cap", "iso")
+                .with_attribute("origin", "closure_env"),
+        );
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(4), MirType::Int(IntWidth::I64))
+                .with_attribute("value", "0"),
+        );
+        f.push_op(
+            MirOp::std("memref.store")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(3))
+                .with_operand(ValueId(4))
+                .with_attribute("alignment", "8"),
+        );
+        // cssl.closure with operands : [capture_0=v0(y), env_ptr=v3].
+        let mut body_region = MirRegion::new();
+        body_region.push(MirBlock::new("entry"));
+        f.push_op(
+            MirOp::std("cssl.closure")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(3))
+                .with_result(ValueId(5), MirType::Opaque("!cssl.closure".into()))
+                .with_region(body_region)
+                .with_attribute("param_count", "1")
+                .with_attribute("capture_count", "1")
+                .with_attribute("env_size", "8")
+                .with_attribute("env_align", "8")
+                .with_attribute("cap_value", "val")
+                .with_attribute("capture_names", "y"),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok with capture");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_closure_capture_mismatch_errors_cleanly() {
+        // capture_count=2 in attributes but only 1 operand provided ⇒ env-ptr
+        // operand index = 2 but operands.len() = 1 ⇒ LoweringFailed with an
+        // actionable detail message.
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("bad_closure", vec![MirType::Int(IntWidth::I64)], vec![]);
+        let mut body_region = MirRegion::new();
+        body_region.push(MirBlock::new("entry"));
+        f.push_op(
+            MirOp::std("cssl.closure")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Opaque("!cssl.closure".into()))
+                .with_region(body_region)
+                .with_attribute("param_count", "0")
+                .with_attribute("capture_count", "2"),
         );
         f.push_op(MirOp::std("func.return"));
         let mut module = MirModule::new();
