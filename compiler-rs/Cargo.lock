@@ -725,6 +725,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-projections"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-substrate-save"
 version = "0.1.0"
 dependencies = [
