@@ -1,0 +1,35 @@
+[package]
+name                   = "cssl-tweak"
+description            = "CSSLv3 — runtime parameter adjustment registry (Wave-Jeta-3 ; L4 tweak surface)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D164 (W-Jeta-3) : cssl-tweak — Live-tunable registry
+# ────────────────────────────────────────────────────────────
+# Per spec _drafts/phase_j/07_l3_l4_inspect_hotreload_spec.md § 4 :
+#   - Type-erased Tunable<T> via TunableValue enum
+#   - 30 default tunables (§ 4.3 LOAD-BEARING table) covering
+#     render / physics / ai / wave / audio / engine / cohomology /
+#     consent / replay / inspect domains.
+#   - Cap<Tweak> stub-token gate on every mutate path
+#   - Frame-boundary defer : writes go to pending-buffer, applied
+#     at next frame_n increment.
+#   - Replay-log integration : every tweak emits an event with
+#     logical-frame-N for byte-equal record/replay.
+#
+# § DEPENDENCY POLICY
+# Per the T11-D164 prompt, cssl-substrate-prime-directive is mocked
+# via local stub-types (cap.rs) and cssl-replay / cssl-audit are
+# represented by in-crate AuditSink + ReplayLog. This keeps Wave-Jeta-3
+# parallelizable with Wave-Jeta-1 (cssl-inspect) and Wave-Jeta-2
+# (cssl-hot-reload). When the real crates land, the stubs become the
+# integration-seam.
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
