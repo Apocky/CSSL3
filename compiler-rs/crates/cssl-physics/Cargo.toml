@@ -1,0 +1,17 @@
+[package]
+name                   = "cssl-physics"
+description            = "CSSLv3 stage0 — Rigid-body physics : BVH broadphase + narrowphase + sequential-impulse solver + symplectic-Euler integrator ; OmegaSystem-compatible"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-substrate-omega-step = { path = "../cssl-substrate-omega-step" }
+cssl-caps                 = { path = "../cssl-caps" }
+cssl-effects              = { path = "../cssl-effects" }
+thiserror                 = { workspace = true }
