@@ -755,6 +755,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-physics-wave"
+version = "0.1.0"
+dependencies = [
+ "cssl-hdc",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-render"
 version = "0.1.0"
 dependencies = [

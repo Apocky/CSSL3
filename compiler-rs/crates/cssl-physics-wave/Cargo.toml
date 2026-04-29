@@ -1,0 +1,47 @@
+[package]
+name                   = "cssl-physics-wave"
+description            = "CSSLv3 T11-D117 — Wave-substrate physics : SDF-collision + Morton-spatial-hash O(1) broadphase + XPBD constraint solver + KAN-driven body-plan priors + ψ-field wave-impact coupling. Replaces cssl-physics (rigid-body, 10% match per audit). Cite : Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER.csl.md ; 06_PROCEDURAL/02_CREATURES_FROM_GENOME.csl.md ; 06_PROCEDURAL/06_HARD_SURFACE_PRIMITIVES.csl ; 04_OMEGA_FIELD/04_WAVE_UNITY.csl ; PRIME_DIRECTIVE.md."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# § cssl-physics-legacy — preserves the cssl-physics public-API surface
+# (RigidBody / BroadPhase / NarrowPhase / ConstraintSolver / PhysicsWorld)
+# behind a feature-flag so the rigid-body crate's downstream consumers can
+# continue building during the deprecation window. Off by default — wave-
+# substrate physics is the canonical path post-T11-D117.
+cssl-physics-legacy = []
+
+[dependencies]
+# § Foundation — Morton spatial hash + sparse grid live in cssl-substrate-omega-field.
+#   We import MortonKey + SparseMortonGrid + CellTier ; physics-wave uses the
+#   existing collision-free hash for O(1) broadphase per spec § II.
+cssl-substrate-omega-field = { path = "../cssl-substrate-omega-field" }
+
+# § Foundation — KAN body-plan priors come from cssl-substrate-kan's
+#   creature_morphology variant. Pattern + Handle + KanMaterialKind drive
+#   the BodyPlanPhysics skeleton-graph (joints + bone-segments).
+cssl-substrate-kan         = { path = "../cssl-substrate-kan" }
+
+# § thiserror — error-typing for SdfQueryError / ConstraintFailure /
+#   BroadphaseSaturation / BodyPlanError / WaveCouplingError.
+thiserror                  = { workspace = true }
+
+# § smallvec — XPBD constraint-graph color-buckets + bone-segment lists.
+smallvec                   = { workspace = true }
+
+[dev-dependencies]
+# § cssl-substrate-omega-field with default-features-on for integration tests
+#   that exercise the full FieldCell + OmegaField surface (physics_step).
+cssl-substrate-omega-field = { path = "../cssl-substrate-omega-field" }
+# § cssl-hdc — Genome construction in body-plan tests (tests use Genome::from_seed
+#   to mint patterns ; the lib doesn't depend on cssl-hdc directly because
+#   Pattern::stamp accepts &Genome opaquely through cssl-substrate-kan).
+cssl-hdc                   = { path = "../cssl-hdc" }
