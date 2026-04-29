@@ -10,6 +10,12 @@
 //!      sequence.
 //!   3. Frame-N is the canonical timestamp ⟶ no wall-clock contamination.
 
+#![allow(unused_imports)]
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::redundant_clone)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::items_after_statements)]
+
 use cssl_log::{
     emit_structured, init_default_policy, install_source_hasher, replay_capture_buffer,
     set_current_frame, set_replay_capture_buffer, set_replay_strict, Context, EmitOutcome,

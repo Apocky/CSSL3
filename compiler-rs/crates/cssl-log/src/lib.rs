@@ -71,6 +71,9 @@
 #![allow(clippy::declare_interior_mutable_const)] // const ZERO: AtomicU64 = ... pattern
 #![allow(clippy::use_self)]
 #![allow(dead_code)] // test-only helpers
+#![allow(clippy::redundant_clone)] // intentional explicit-clones in tests + Arc-discipline
+#![allow(clippy::clone_on_copy)] // SubsystemTag .clone() consistent w/ pattern at-call
+#![allow(clippy::items_after_statements)] // helper-fn definitions inside test fns
 
 // ───────────────────────────────────────────────────────────────────────
 // § Module structure

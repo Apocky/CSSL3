@@ -511,15 +511,15 @@ mod tests {
     #[test]
     fn current_count_visible_after_record() {
         let _g = lock_and_reset();
-        try_record_per_frame(Severity::Info, SubsystemTag::Render, 5);
-        try_record_per_frame(Severity::Info, SubsystemTag::Render, 5);
+        let _ = try_record_per_frame(Severity::Info, SubsystemTag::Render, 5);
+        let _ = try_record_per_frame(Severity::Info, SubsystemTag::Render, 5);
         assert_eq!(current_count(Severity::Info, SubsystemTag::Render, 5), 2);
     }
 
     #[test]
     fn current_count_zero_for_other_frame() {
         let _g = lock_and_reset();
-        try_record_per_frame(Severity::Info, SubsystemTag::Render, 5);
+        let _ = try_record_per_frame(Severity::Info, SubsystemTag::Render, 5);
         assert_eq!(current_count(Severity::Info, SubsystemTag::Render, 999), 0);
     }
 
@@ -626,7 +626,7 @@ mod tests {
         let ctx_b = fresh_ctx(2, 0);
         // Saturate FP-A.
         for _ in 0..4 {
-            try_record_per_fingerprint(Severity::Info, &ctx_a);
+            let _ = try_record_per_fingerprint(Severity::Info, &ctx_a);
         }
         // FP-B still has full budget.
         let d = try_record_per_fingerprint(Severity::Info, &ctx_b);

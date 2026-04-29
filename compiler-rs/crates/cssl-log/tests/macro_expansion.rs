@@ -6,6 +6,12 @@
 //! perspective — they import `cssl_log::*` and invoke macros without
 //! crate-internal access.
 
+#![allow(unused_imports)]
+#![allow(clippy::redundant_clone)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::items_after_statements)]
+
 use cssl_log::{
     debug, emit_structured, enable, enabled, error, fatal, info, install_sink_chain,
     install_source_hasher, log, set_current_frame, set_replay_strict, trace, warn, Context,
