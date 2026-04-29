@@ -1460,15 +1460,28 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 name = "loa-game"
 version = "0.1.0"
 dependencies = [
+ "cssl-anim-procedural",
+ "cssl-fractal-amp",
+ "cssl-gaze-collapse",
  "cssl-host-audio",
  "cssl-host-input",
  "cssl-host-net",
+ "cssl-host-openxr",
  "cssl-host-window",
+ "cssl-physics-wave",
+ "cssl-render-companion-perspective",
+ "cssl-render-v2",
+ "cssl-spectral-render",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
  "cssl-substrate-omega-step",
  "cssl-substrate-omega-tensor",
  "cssl-substrate-prime-directive",
  "cssl-substrate-projections",
  "cssl-substrate-save",
+ "cssl-wave-audio",
+ "cssl-wave-solver",
+ "cssl-work-graph",
  "thiserror",
 ]
 

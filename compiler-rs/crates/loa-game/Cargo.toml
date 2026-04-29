@@ -44,6 +44,21 @@ cssl-host-input  = { path = "../cssl-host-input" }
 cssl-host-audio  = { path = "../cssl-host-audio" }
 cssl-host-net    = { path = "../cssl-host-net" }
 
+# § Wave-4 substrate-evolution + signature-rendering crates (T11-D145 M8 integration).
+cssl-substrate-omega-field        = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-kan                = { path = "../cssl-substrate-kan" }
+cssl-render-v2                    = { path = "../cssl-render-v2" }
+cssl-spectral-render              = { path = "../cssl-spectral-render" }
+cssl-fractal-amp                  = { path = "../cssl-fractal-amp" }
+cssl-gaze-collapse                = { path = "../cssl-gaze-collapse" }
+cssl-render-companion-perspective = { path = "../cssl-render-companion-perspective" }
+cssl-wave-solver                  = { path = "../cssl-wave-solver" }
+cssl-physics-wave                 = { path = "../cssl-physics-wave" }
+cssl-anim-procedural              = { path = "../cssl-anim-procedural" }
+cssl-wave-audio                   = { path = "../cssl-wave-audio" }
+cssl-work-graph                   = { path = "../cssl-work-graph" }
+cssl-host-openxr                  = { path = "../cssl-host-openxr" }
+
 # § Workspace deps.
 thiserror = { workspace = true }
 
@@ -64,3 +79,11 @@ path = "src/lib.rs"
 name              = "scaffold_smoke"
 path              = "tests/scaffold_smoke.rs"
 required-features = ["test-bypass"]
+
+# § T11-D145 M8 integration smoke : exercises the wave-4 vertical-slice +
+# every M8 acceptance criterion end-to-end (no test-bypass needed because
+# the M8 pipeline does not consume Substrate CapTokens — those are owned
+# by the engine layer separately).
+[[test]]
+name = "m8_integration_smoke"
+path = "tests/m8_integration_smoke.rs"

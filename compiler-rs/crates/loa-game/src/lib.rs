@@ -116,6 +116,7 @@ pub mod apockalypse;
 pub mod companion;
 pub mod engine;
 pub mod loop_systems;
+pub mod m8_integration;
 pub mod main_loop;
 pub mod player;
 pub mod world;
@@ -127,6 +128,9 @@ pub use loop_systems::{
     AuditAppendSystem, ConsentCheckSystem, FreezeSystem, InputSystem, NetRecvSystem, NetSendSystem,
     ProjectionsSystem, RenderGraphSystem, RenderSubmitSystem, SaveJournalSystem, SimSystem,
     TelemetryFlushSystem,
+};
+pub use m8_integration::{
+    FramePipelineDigest, M8Pipeline, PipelineConfig, PipelineError, PipelineTelemetry, StageId,
 };
 pub use main_loop::{MainLoop, MainLoopOutcome};
 pub use player::{
