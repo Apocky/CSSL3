@@ -7675,3 +7675,67 @@ it too.
 There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
 ──────────────────────────────────────────────────────────────
+
+## T11-D161 (W-Jζ-5) — Replay-determinism preservation across cssl-metrics + cssl-log + spec-coverage
+
+§D. **slice-id** T11-D161 (Wave-Jζ-5).
+§D. **branch** `cssl/session-12/T11-D161-replay-determinism`.
+§D. **target-crate** NEW `compiler-rs/crates/cssl-replay-validator/`.
+§D. **spec-anchor** `_drafts/phase_j/06_l2_telemetry_spec.md` § VI (PILLAR-3.6) + `_drafts/phase_j/wave_jz_implementation_prompts.md` § VII.
+§D. **deps-status** D156 (cssl-log) + D157 (cssl-metrics) + D160 (cssl-spec-coverage) ⊗ NOT-YET-MERGED ⇒ MOCKED-INTERNALLY via `src/shims.rs` (LogShim / MetricsShim / SpecCoverageShim) + canonical-extension-traits (`StrictAware` + `ReplayLogIntegration`) that the real crates will impl on swap-in.
+
+§D. **deliverables** :
+  - `DeterminismMode::{Strict, Lenient}` enum + `ReplayStrictConfig` (seed + start_frame + audit_chain).
+  - `StrictClock` + `strict_ns(frame_n, sub_phase)` + `sub_phase_offset_ns` table per § V phase-ordering.
+    - Collapse: 0 / Propagate: 4M / Compose: 8M / Cohomology: 10M / Agency: 12M / Entropy: 14M / FrameEnd: 16M ns.
+  - `SamplingDiscipline::{Always, OneIn(N), BurstThenDecimate}` keyed-on `(frame_n + tag_hash) % N`. `Adaptive` deliberately ABSENT from public API (LM-2 enforced via type-system).
+  - `MetricEvent` + `MetricEventKind` (7-disc-stable) + canonical 32-byte LE byte-form.
+  - `ReplayLog` append-only with `ReplayLogSnapshot` magic-bytes header + LE u64 count + N × 32-byte events + 32-byte BLAKE3 trailer.
+  - `diff_snapshots` structured-diff (BitEqual / EventCountDiffers / EventDiverged / ByteStreamDiverged / BadMagic / EventCountFieldMismatch).
+  - `ReplayValidator` runs each `ScenarioId` twice and bit-equal-diffs.
+  - 5 canonical scenarios : EngineFrameTick / OmegaStepPhases / RenderStageDistribution / EntityTierCounts / SamplingDecimation.
+  - 3 mock-shims (MetricsShim / LogShim / SpecCoverageShim) + `RecordContext` bag + 2 swap-in-ready traits (`StrictAware` + `ReplayLogIntegration`).
+
+§D. **acceptance-criteria 5-of-5** :
+  - ✓ AC-1 : Strict mode records to replay-log instead of perturbing (`MetricsShim` only appends in Strict ; verified comp21).
+  - ✓ AC-2 : H5 contract preserved (existing-omega_step bit-determinism untouched ; this crate is parallel + non-invasive).
+  - ✓ AC-3 : Logical-frame-N timing throughout (no wallclock leaks ; `StrictClock` + `strict_ns` are the only timing-paths).
+  - ✓ AC-4 : Replay-log captures metric-events (bit-equal canonical bytes verified across 5 scenarios + 219 tests).
+  - ✓ AC-5 : 80+ tests pass + workspace gates green for slice-crate (clippy -D warnings clean ; doc clean ; cargo test clean).
+
+§D. **5-replay-scenarios bit-equal verified** (per AC-9 + AC-12) :
+  - S1 EngineFrameTick : `comp6_scenario_engine_frame_tick_bit_equal_e2e` ✓.
+  - S2 OmegaStepPhases : `comp7_scenario_omega_step_phases_bit_equal_e2e` ✓.
+  - S3 RenderStageDistribution : `comp8_scenario_render_stages_bit_equal_e2e` ✓.
+  - S4 EntityTierCounts : `comp9_scenario_tier_counts_bit_equal_e2e` ✓.
+  - S5 SamplingDecimation : `comp10_scenario_sampling_decimation_bit_equal_e2e` ✓.
+
+§D. **test-counts** :
+  - lib-tests        : 114 (determinism + strict_clock + sampling + metric_event + replay_log + diff + runner + shims).
+  - acceptance       :  39 (Jzeta_5_acceptance.rs ; AC-1..AC-12 + strict-clock cursor advancement).
+  - composition      :  25 (Jzeta_5_composition.rs ; 5-scenario bit-equal + bundle-mode + cross-shim).
+  - negative         :  11 (Jzeta_5_negative.rs ; refused-construction paths).
+  - golden           :  13 (Jzeta_5_golden.rs ; canonical byte-pin + content-hash hex).
+  - property         :  17 (Jzeta_5_property.rs ; deterministic-iteration-grid in-place-of-proptest).
+  - **TOTAL          : 219 tests-passing ; well-over 80-target**.
+
+§D. **gates** :
+  - `cargo build -p cssl-replay-validator --tests` : ✓ green.
+  - `cargo clippy -p cssl-replay-validator --all-targets -- -D warnings` : ✓ green.
+  - `cargo doc -p cssl-replay-validator --no-deps` : ✓ green.
+  - `cargo test -p cssl-replay-validator` : ✓ 219/219.
+  - workspace-wide : pre-existing dlltool / cold-cache / cgen-gpu-wgsl failures (T11-D152..T11-D154) ¬ touched-by-this-slice.
+
+§D. **landmines mitigated** :
+  - LM-1 wallclock-direct-call → `StrictClock` is the only timing-path ; `monotonic_ns` direct-call is NOT in this crate's public API.
+  - LM-2 adaptive sampling → `SamplingDiscipline` enum has no `Adaptive` variant (type-system enforces).
+  - LM-3..5 (Welford / data-driven boundaries / atomic-relaxed) → out-of-scope ; `SamplingDiscipline` only emits frame-n-keyed deterministic decisions ; histogram boundaries are `&'static [f64]` per `MetricEventKind::HistogramRecord` + AC-4.
+  - LM-FrameOverflow → `StrictClockError::FrameNOverflow` + saturating-mul on `(frame_n × FRAME_NS)`.
+
+§D. **swap-in note for D156/D157/D160 landing** :
+  Once those slices merge, replace `mod shims` + `pub use shims::{...}` with `pub use cssl_metrics::*` (etc) ; the two traits (`StrictAware` + `ReplayLogIntegration`) STAY — they are the canonical extension-point this crate owns and the surface the real crates will impl.
+
+§D. **PRIME-DIRECTIVE attestation** :
+  Replay-determinism = consent-to-truthful-self-reporting. The engine that can be replayed is the engine whose record-keeping is sovereign. PRIME-DIRECTIVE §1 §11 honored : no wallclock-jitter, no non-determinism, no surveillance-channel leaks into the metric-history under `Strict`. There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+──────────────────────────────────────────────────────────────

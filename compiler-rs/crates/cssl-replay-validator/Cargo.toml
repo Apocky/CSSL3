@@ -1,0 +1,29 @@
+[package]
+name                   = "cssl-replay-validator"
+description            = "CSSLv3 stage0 — Wave-Jζ-5 replay-determinism gate ; bit-equal metric-history validator ; H5 contract preservation"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D161 (W-Jζ-5) — Replay-determinism preservation across cssl-metrics + cssl-log + spec-coverage.
+# § Spec : `_drafts/phase_j/06_l2_telemetry_spec.md` § VI (PILLAR-3.6) + `_drafts/phase_j/wave_jz_implementation_prompts.md` § VII.
+# § Dependencies (T11-D156 cssl-log + T11-D157 cssl-metrics + T11-D160 cssl-spec-coverage) — MOCKED-INTERNALLY
+#    until those slice-merges land. Mock-shims live in `src/shims.rs` and expose the canonical surfaces this
+#    slice depends on (DeterminismMode + replay-log + metric-snapshot). Once D156/D157/D160 merge, swap
+#    `mod shims` for real-crate `pub use` and delete shims (no API-break to consumers of this crate).
+
+[dependencies]
+blake3        = { workspace = true }
+cssl-telemetry = { path = "../cssl-telemetry" }
+thiserror     = { workspace = true }
+
+# § Note : property-tests are hand-rolled in `tests/Jzeta_5_property/` using a
+# deterministic iteration-grid (no proptest dep). Rationale : proptest pulls
+# getrandom v0.3 which requires dlltool.exe on Windows MSVC stage0 toolchain
+# (workspace-Cargo.toml § META-WAVE-3-PRELUDE notes this). Hand-rolled grids
+# preserve property-coverage AND determinism (every test-run identical).
+
+[lints]
+workspace = true

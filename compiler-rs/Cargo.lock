@@ -903,6 +903,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-replay-validator"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-telemetry",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-rt"
 version = "0.1.0"
 dependencies = [
