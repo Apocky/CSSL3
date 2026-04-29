@@ -653,6 +653,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-math"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-omega-tensor",
+]
+
+[[package]]
 name = "cssl-mir"
 version = "0.1.0"
 dependencies = [

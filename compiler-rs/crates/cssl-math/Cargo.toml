@@ -1,0 +1,28 @@
+[package]
+name                   = "cssl-math"
+description            = "CSSLv3 — canonical 3D math library (Vec / Quat / Mat / Transform / Aabb / Sphere / Plane / Ray + interp). Foundation crate for renderer + physics + animation."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-math is intentionally dependency-free at the foundation slice. It is
+# the floor that renderer / physics / animation build on, so a deep dep-tree
+# here would propagate transitively into every consumer. The Ω-tensor batch-
+# op integration is wired through a feature gate so consumers can depend on
+# pure-math without dragging in cssl-rt's allocator path.
+cssl-substrate-omega-tensor = { path = "../cssl-substrate-omega-tensor", optional = true }
+
+[features]
+# § default-off : pure-math consumers (cssl-host-vulkan, cssl-physics, cssl-
+# animation) do not need the Ω-tensor batch-op surface and avoid the cssl-rt
+# alloc dependency entirely. Renderer batch-skinning + physics broadphase
+# enable the feature when they want array-of-Vec3 → OmegaTensor<f32, 2>
+# convertors.
+default = []
+omega-batch = ["dep:cssl-substrate-omega-tensor"]
