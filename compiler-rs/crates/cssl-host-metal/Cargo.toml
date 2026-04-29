@@ -1,6 +1,6 @@
 [package]
 name                   = "cssl-host-metal"
-description            = "CSSLv3 stage0 — Metal host submission (cfg-gated macOS / iOS) (FFI)"
+description            = "CSSLv3 stage0 — Metal host submission (cfg-gated macOS / iOS / tvOS / visionOS) (FFI)"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -8,7 +8,24 @@ license.workspace      = true
 authors.workspace      = true
 
 [dependencies]
-thiserror = { workspace = true }
+thiserror      = { workspace = true }
+# § T11-D67 (S6-E3) : telemetry-ring placeholder per the handoff brief ;
+# matches the cssl-host-level-zero (S6-E5) precedent for cross-host
+# telemetry consistency. Real R18 sampling-thread + audit-chain plumbing
+# arrives in a later slice.
+cssl-telemetry = { path = "../cssl-telemetry" }
+
+# § T11-D67 (S6-E3) : the real `metal` crate is Apple-only. The CSSLv3
+# `cssl-host-metal` crate compiles on every host (Apocky's primary host
+# is Windows), so the dep is gated to Apple targets ; non-Apple hosts
+# fall through to the `stub` module which is a no-op interface-mirror.
+#
+# Pin precisely : `metal = 0.33` is the latest maintained release and the
+# first to expose Metal-3 + ARC-aware retain/release in stable form.
+# Do NOT loosen this pin — ABI quirks across 0.30..0.33 are real and
+# the catalog/feature-detect surface depends on the 0.33 enum shapes.
+[target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "visionos"))'.dependencies]
+metal = "0.33"
 
 [lints]
 workspace = true
