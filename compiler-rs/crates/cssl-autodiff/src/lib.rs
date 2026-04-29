@@ -14,6 +14,14 @@
 //!     (FAdd / FSub / FMul / FDiv / FNeg + Sqrt / Sin / Cos / Exp / Log).
 //!   - [`TangentMap`] + [`SubstitutionReport`] : per-variant diagnostic surface.
 //!
+//! § HIGHER-ORDER FWD-MODE AD (T11-D133, this commit)
+//!   - [`Jet<T, N>`] : Taylor-truncation type with `N` stored terms (primal +
+//!     `N - 1` derivatives). `Jet<T, 2>` subsumes the existing first-order
+//!     [`apply_fwd`] semantics ; `Jet<T, k+1>` extends to `k`-th order.
+//!   - [`JetField`] : algebraic vocabulary (f32 + f64 implementations).
+//!   - Arithmetic + transcendentals + composition + Hessian-vector-product
+//!     surface — see `jet.rs` module-doc for spec-mapping + per-op rationale.
+//!
 //! § T7-phase-2c DEFERRED
 //!   - Tape-buffer allocation (iso-capability scoped) for control-flow.
 //!   - `@checkpoint` attribute recognition.
@@ -30,12 +38,16 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod decl;
+pub mod jet;
 pub mod rules;
 pub mod substitute;
 pub mod transform;
 pub mod walker;
 
 pub use decl::{collect_differentiable_fns, DiffDecl};
+pub use jet::{
+    hessian_vector_product_1d, hvp_axis, Jet, JetField, MAX_JET_ORDER_PLUS_ONE,
+};
 pub use rules::{DiffMode, DiffRule, DiffRuleTable, Primitive};
 pub use substitute::{apply_bwd, apply_fwd, SubstitutionReport, TangentMap};
 pub use transform::{DiffTransform, DiffVariants};
