@@ -563,6 +563,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-fractal-amp"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-kan",
+ "cssl-substrate-prime-directive",
+ "cssl-substrate-projections",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-futamura"
 version = "0.1.0"
 dependencies = [
