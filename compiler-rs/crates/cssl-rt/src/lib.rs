@@ -175,13 +175,42 @@ pub(crate) mod test_helpers {
 
     /// Acquire the shared test lock + reset every global counter / flag.
     ///
-    /// Panics on poisoned-lock (test failure earlier left state corrupt).
-    /// In practice, each test follows lock-and-reset → run → drop pattern,
-    /// so poisoning indicates a real bug in a prior test.
+    /// § T11-D153 — poison resilience.  Originally this routine panicked on a
+    /// poisoned mutex with the message `"crate-shared test lock poisoned ;
+    /// prior test failed mid-update"`.  The intent was "fail loudly so the
+    /// real bug is visible".  In practice the result was the OPPOSITE :
+    /// **one** flake (e.g. a cold-cache scheduler-jitter that interleaved an
+    /// unlocked arena_* test inside a locked test's critical section)
+    /// poisoned the mutex, and **every subsequent locked test** in the same
+    /// `cargo test` invocation panicked with PoisonError, manifesting as
+    /// the 118/198-failure cascade documented in T11-D56.  The original
+    /// failure was buried inside ~117 cascade panics.
+    ///
+    /// The fix : on a poisoned mutex we (a) clear the poison + (b) take the
+    /// guard via `into_inner()` so the test-suite can continue.  The reset
+    /// calls below restore all globals to a clean state regardless of how
+    /// the prior test exited, so it's safe to proceed.  The original
+    /// failure is still visible — it shows up as a single failed test
+    /// rather than 118 cascade panics.  This works *with* the per-test
+    /// `lock_and_reset_all()` discipline (now applied uniformly to all
+    /// arena_* tests in `alloc.rs` , see T11-D153 commentary there) ; the
+    /// poison-clearing is the **safety net** for an unlikely future
+    /// regression, not the primary fix.
     pub fn lock_and_reset_all() -> MutexGuard<'static, ()> {
-        let g = GLOBAL_TEST_LOCK
-            .lock()
-            .expect("crate-shared test lock poisoned ; prior test failed mid-update");
+        // § Poison-tolerant acquisition (T11-D153).
+        // `lock()` returns `Err(PoisonError)` if a previous holder panicked
+        // while holding the guard.  `clear_poison()` resets the flag so
+        // future acquisitions return `Ok` again ; `into_inner()` extracts
+        // the guard from the PoisonError.  The reset calls below restore
+        // every global counter to a clean state regardless of why the
+        // prior test exited.
+        let g = match GLOBAL_TEST_LOCK.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                GLOBAL_TEST_LOCK.clear_poison();
+                poisoned.into_inner()
+            }
+        };
         crate::alloc::reset_for_tests();
         crate::panic::reset_panic_count_for_tests();
         crate::exit::reset_exit_state_for_tests();
@@ -199,14 +228,17 @@ pub(crate) mod test_helpers {
 #[cfg(test)]
 mod crate_tests {
     use super::*;
+    use crate::test_helpers::lock_and_reset_all;
 
     #[test]
     fn version_present() {
+        // Pure : reads a const string ; no global state touched.
         assert!(!STAGE0_SCAFFOLD.is_empty());
     }
 
     #[test]
     fn attestation_present_and_canonical() {
+        // Pure : const equality ; no global state touched.
         assert_eq!(
             ATTESTATION,
             "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
@@ -215,6 +247,11 @@ mod crate_tests {
 
     #[test]
     fn re_exports_resolve() {
+        // § T11-D153 : reads global counters ; while individual `load(Relaxed)`
+        // is atomic, taking the lock makes this test deterministic w.r.t.
+        // concurrent locked tests so the type-witness check is the only
+        // observed effect rather than incidental state.
+        let _g = lock_and_reset_all();
         // Compile-time check : these names must be reachable via `cssl_rt::`.
         let _: u64 = alloc_count();
         let _: u64 = free_count();
@@ -230,12 +267,18 @@ mod crate_tests {
 
     #[test]
     fn align_max_is_power_of_two() {
+        // Pure : const arithmetic ; no global state touched.
         assert!(ALIGN_MAX.is_power_of_two());
         assert_eq!(ALIGN_MAX, 16);
     }
 
     #[test]
     fn bump_arena_constructible_via_top_level_re_export() {
+        // § T11-D153 : `BumpArena::new(64)` calls `raw_alloc` →
+        // `TRACKER.record_alloc` ; without the lock this incremented TRACKER
+        // concurrently with locked alloc-count assertions in `alloc::tests`,
+        // contributing to the cold-cache cascade documented in T11-D56.
+        let _g = lock_and_reset_all();
         let arena = BumpArena::new(64);
         assert!(arena.is_some());
     }

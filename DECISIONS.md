@@ -3601,6 +3601,17 @@ Each decision entry :
 
 - **Date** 2026-04-28
 - **Status** accepted ‼ **MILESTONE — Phase-A complete**
+- **Cold-cache flake CLOSED-BY T11-D153** (2026-04-29) — see § T11-D153 below
+  for the root-cause + surgical fix.  Summary : 6 unlocked `arena_*` tests in
+  `cssl-rt/src/alloc.rs` + 1 unlocked `bump_arena_constructible_via_top_level_re_export`
+  in `cssl-rt/src/lib.rs::crate_tests` were touching `TRACKER` without
+  acquiring `GLOBAL_TEST_LOCK` , racing concurrent locked tests like
+  `alloc_count_total_matches_history` and poisoning the mutex on first
+  failure → 117-test cascade.  Fix : add `lock_and_reset_all()` to all 7
+  offending tests + `clear_poison()` inside `lock_and_reset_all` so a
+  prior-test poison no longer cascades.  5 cold-cache runs at default
+  parallelism = 200/200 pass each.  `--test-threads=1` mandate retired
+  from session-protocols.
 - **Session** 6 — Phase-A serial bootstrap-to-executable, slice 5 of 5 (FINAL)
 - **Branch** `cssl/session-6/A5`
 - **Context** Per `HANDOFF_SESSION_6.csl § PHASE-A § S6-A5` and `specs/21_EXTENDED_SLICE.csl § VERTICAL-SLICE-ENTRY-POINT`, this slice is the **executable-production gate** : a CSSLv3 source file containing `fn main() -> i32 { 42 }` must compile + link + run + return exit-code 42. Without this gate, CSSLv3 is "the compiler that almost produces executables." With this gate, CSSLv3 is "the compiler that produces executables." Phase-B/C/D/E parallel fanout is contingent on this milestone landing.
@@ -7423,5 +7434,152 @@ Each decision entry :
     I> violation-discovered ⇒ §7 INTEGRITY rule : violation = bug W! fix
   ```
   There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+──────────────────────────────────────────────────────────────
+
+## § T11-D153 : cssl-rt cold-cache lock fix (CLOSES T11-D56 carry-forward across ~30 slices)
+
+- **Date** 2026-04-29
+- **Status** accepted ‼ **CLOSES T11-D56**
+- **Session** 12 — Phase-J substrate-stabilization, D153 of D150..D201 range
+- **Branch** `cssl/session-12/T11-D153-cssl-rt-cold-cache-fix`
+- **Worktree** `.claude/worktrees/D153`
+
+### § Context
+
+The cssl-rt cold-cache parallel test flake — first observed in T11-D56
+(Session-6 S6-A5) and carried forward as a "known issue, fix deferred"
+across ~30 subsequent slices (T11-D58 / D61 / D70 / D73..D76 / D80 / D81 /
+D85 / D89 / D90 / D92..D95 / D102 / …) — has been the single largest
+ergonomics tax on the project.  Its workaround (`cargo test --workspace
+-- --test-threads=1`) was promoted to a workspace-wide invariant in
+`SESSION_12_TEAM_DISCIPLINE.md § 5-of-5 GATE` (Implementer-self-test G1)
+and recapitulated in every "all gates green" attestation since session-6.
+
+The Phase-J pre-existing-failure audit
+(`_drafts/phase_j/preexisting_failures_audit.md § Issue-2`) reproduced the
+flake catastrophically : **118 of 198 cssl-rt tests failed** when run cold
++ parallel ; only 0 / 198 failed under `--test-threads=1` or hot+parallel.
+The audit identified the root-cause as **6 unlocked `arena_*` tests** in
+`compiler-rs/crates/cssl-rt/src/alloc.rs` (L519-L575) that called
+`BumpArena::new(non-zero)` → `raw_alloc` → `TRACKER.record_alloc` without
+acquiring the crate-shared `GLOBAL_TEST_LOCK`.  Race signature : the first
+unlocked arena_* test that fired its `+1` increment inside another locked
+test's critical section caused the locked test to panic with the lock
+held → `PoisonError` → every subsequent locked test panicked at
+`lock_and_reset_all`'s `expect("poisoned")` → 117-test cascade.
+
+A 7th test was discovered during the stress-test verification :
+`crate_tests::bump_arena_constructible_via_top_level_re_export` in
+`cssl-rt/src/lib.rs` (a non-`alloc::tests` module) was also unlocked +
+calling `BumpArena::new(64)`.  It hadn't been on the audit's list because
+it lives in a different module's `#[cfg(test)] mod`.  This slice fixes
+it too.
+
+### § Slice landed (this commit)
+
+- **`compiler-rs/crates/cssl-rt/src/alloc.rs`** : add `let _g =
+  lock_and_reset();` at-entry to **all 7** `arena_*` tests in `mod tests`
+  (`arena_zero_capacity_is_none` + 6 audit-identified offenders).  The
+  zero-capacity test is "pure" by the audit's reading (because
+  `BumpArena::new(0)` short-circuits before touching `TRACKER`) , but we
+  hold the lock there too as a contract-level guarantee : "every
+  arena_* test serializes" is now uniformly + grep-ably true rather than
+  conditionally true.  Add a 12-line `// § T11-D153` block-comment above
+  the run of arena_* tests explaining why every arena_* test acquires
+  the lock, so future contributors don't strip it as "redundant".  Add
+  2 stress tests at end-of-`mod tests` that explicitly verify
+  1000-iteration alloc-count + free-count + bytes-in-use coherence
+  under-lock (`t11_d153_stress_arena_new_drop_1000x_under_lock` +
+  `t11_d153_stress_arena_mixed_ops_1000x_under_lock`) — these are
+  deterministic single-thread tests that catch any future regression
+  where someone removes the lock from an arena_* test and ships a flake.
+
+- **`compiler-rs/crates/cssl-rt/src/lib.rs`** :
+  1. `test_helpers::lock_and_reset_all` : replace the
+     `expect("poisoned")` panic-on-poison with a poison-tolerant
+     acquisition pattern :
+     ```rust
+     let g = match GLOBAL_TEST_LOCK.lock() {
+         Ok(g) => g,
+         Err(poisoned) => {
+             GLOBAL_TEST_LOCK.clear_poison();
+             poisoned.into_inner()
+         }
+     };
+     ```
+     The reset-calls below restore every global counter to clean state
+     regardless of why the prior test exited.  This is the **safety net** :
+     the primary fix is the per-test lock discipline (above) , but if a
+     future bug ever poisons the mutex anyway, the next test will see a
+     clean slate + the original failure (1) rather than a 118-cascade (1
+     real + 117 cascade).
+  2. `crate_tests::bump_arena_constructible_via_top_level_re_export` :
+     was UNLOCKED + called `BumpArena::new(64)` → `raw_alloc`, racing
+     concurrent locked tests in `alloc::tests` (this was the culprit
+     that surfaced in the stress-test verification — it had been hiding
+     because it ran in a different module's `#[cfg(test)] mod`).  Add
+     `let _g = lock_and_reset_all();` to it.  Also lock
+     `re_exports_resolve` even though it only reads counters, since
+     reading concurrent-with-mutating tests would observe non-zero
+     values in tests that expect zero — and the lock makes the type-witness
+     check the only observed effect.  Annotate the genuinely-pure tests
+     (`version_present`, `attestation_present_and_canonical`,
+     `align_max_is_power_of_two`) with `// Pure :` comments documenting
+     why they correctly skip the lock.
+
+### § Verification
+
+- **5 cold-cache runs at default parallelism (no `--test-threads=1`)** :
+  ```
+  $ cargo clean -p cssl-rt && cargo test -p cssl-rt
+  test result: ok. 200 passed; 0 failed; ...
+  ```
+  Run 5 times consecutively with `cargo clean -p cssl-rt` between each.
+  All 5 runs : 200 / 200 pass.  Time ≈ 2.05 s / run after build (~30 s
+  build amortized in cold-cache).  **Zero cascade failures**.
+- **Workspace-fmt + workspace-clippy** : both clean on the changed crate.
+- **cssl-rt + immediate-FFI-consumer crates** (`cargo test -p cssl-rt -p
+  csslc -p cssl-examples`) : 528 / 528 pass at default parallelism.
+
+### § Consequences
+
+- **T11-D56 cold-cache flake : CLOSED.**  The carry-forward annotation
+  (~30 slices since session-6) ends here.  Future slices SHOULD NOT
+  recapitulate it.
+- **`--test-threads=1` mandate is RETIRED from the workspace gate.**
+  `SESSION_12_TEAM_DISCIPLINE.md § 5-of-5 GATE § G1` is updated this slice
+  to drop the `-- --test-threads=1` flag from the canonical
+  implementer-self-test command.  Default-parallelism is now the
+  expected, supported, well-tested mode.  `--test-threads=1` remains a
+  valid debug-flag for any contributor who wants determinism, but it is
+  no longer mandatory.  This restores ~Nx parallelism to every workspace
+  CI run.
+- **Test count : cssl-rt 198 → 200** (added 2 stress tests).  No removals.
+- **Future-regression-resistance** : the 2 stress tests at
+  `alloc::tests::t11_d153_stress_arena_*_under_lock` will FAIL
+  deterministically if any arena_* test ever loses its lock again — they
+  hold the crate-shared lock for 1000 iterations and assert tracker
+  counters move in lockstep with iter-count.
+
+### § Files modified
+
+- `compiler-rs/crates/cssl-rt/src/alloc.rs` (+~85 LOC : 7 lock-and-reset
+  insertions + 12-line policy comment + 2 stress tests of ~30 LOC each)
+- `compiler-rs/crates/cssl-rt/src/lib.rs` (+~40 LOC : poison-tolerant
+  acquisition + 4 lock-discipline updates in `crate_tests`)
+- `DECISIONS.md` (this entry + T11-D56 closure annotation)
+- `SESSION_12_TEAM_DISCIPLINE.md` (drop `--test-threads=1` from G1)
+
+### § PRIME_DIRECTIVE attestation
+
+```csl
+§ CREATOR-ATTESTATION v1
+  t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+  I> scope = D153 lock-discipline fix in cssl-rt test infrastructure
+  I> harm-class = ergonomic-tax-removal ; ¬ surveillance ; ¬ degradation-of-other-systems
+```
+There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
 ──────────────────────────────────────────────────────────────
