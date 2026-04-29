@@ -1,6 +1,6 @@
 [package]
 name                   = "cssl-render-v2"
-description            = "CSSLv3 — Stage-5 SDF-native raymarcher + foveated multi-view + meshlet-hybrid : replaces cssl-render's triangle-rasterizer per wave-9-reaudit verdict (15% match → FULL REWRITE). Cite : Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER.csl.md ; 07_AESTHETIC/06_RENDERING_PIPELINE.csl § Stage-5 ; T11-D116."
+description            = "CSSLv3 — canonical 12-stage SDF-native render pipeline replacement for cssl-render. Stages land per-slice : T11-D116 Stage-5 SDF-native raymarcher + foveated multi-view + meshlet-hybrid (replaces triangle-rasterizer per wave-9-reaudit verdict 15% match → FULL REWRITE) ; T11-D122 Stage-9 MiseEnAbymePass — recursive-witness pass for mirrors / Companion-eyes / water-surfaces with KAN-confidence-attenuation. Cite : Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER.csl.md ; 07_AESTHETIC/06_RENDERING_PIPELINE.csl § Stage-5 + § Stage-9 ; 07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.6 ; PRIME_DIRECTIVE §I.4 + §V (Σ-Sovereign creature-eye protections)."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -11,17 +11,31 @@ authors.workspace      = true
 workspace = true
 
 [dependencies]
-# § cssl-render-v2 is the SDF-native Stage-5 of the canonical 12-stage render
-# pipeline (06_RENDERING_PIPELINE § III ; 2.5 ms @ Quest-3 / 2.0 ms @ Vision-Pro
-# budget). Dependencies are kept tight :
+# § cssl-render-v2 is the SDF-native canonical 12-stage render pipeline. The
+# Stage-5 slice (T11-D116) implements the SdfRaymarchPass with foveated multi-
+# view + meshlet-hybrid (2.5 ms @ Quest-3 / 2.0 ms @ Vision-Pro budget). The
+# Stage-9 slice (T11-D122) implements the MiseEnAbymePass : recursive-witness
+# pass for mirrors / reflective creature-eyes / water-surfaces, bounded-
+# recursive with KAN-confidence-attenuation (HARD depth-cap=5).
 #
 # § cssl-substrate-omega-field — the FieldCell + OmegaField + MERA pyramid the
 #   raymarcher walks. Stage-5 reads SDF + body-presence-conditioned cells from
-#   the OmegaField (no other facet other than M/SDF/MERA needed).
+#   the OmegaField (no other facet other than M/SDF/MERA needed). Stage-9 also
+#   reads `Ω.next.SDF` + `Ω.next.M-facet` to detect mirror surfaces (M-facet
+#   axis-7 = "mirrorness-of-cornea" or roughness/metallic-13/14). FieldCell
+#   carries the M-facet tag + Σ-mask that gates whether a Sovereign-eye
+#   reflects at all.
+#
+# § cssl-substrate-kan — KanMaterial supplies the reflectivity / mirrorness
+#   property (Stage-9). The KAN-confidence-attenuation function is a per-
+#   recursion-depth `KanNetwork<3, 2>` that takes (depth, view-cone-angle,
+#   atmospheric-loss) and returns (continue-bool, attenuation-factor) per
+#   spec § Stage-9.compute step-2c.
 #
 # § cssl-pga — analytic SDFs are derived from PGA primitives (Plane / Line /
 #   Point / Motor) ; reflection-via-sandwich gives the canonical mirror SDF
-#   used in mise-en-abyme stage-9 prep.
+#   used in mise-en-abyme stage-9 prep. Mirror-detection re-uses the same PGA
+#   Plane primitive that Stage-5 SDF raymarch uses, so detection is unified.
 #
 # § cssl-autodiff — BackwardDiffNormals is a wrapper around the F1 autodiff
 #   backward-mode driver (`apply_bwd`). Central differences are FORBIDDEN per
@@ -29,20 +43,34 @@ workspace = true
 #
 # § cssl-substrate-projections — Camera + ObserverFrame for per-eye view-
 #   projection. Multi-view rendering composes 1 cmd-buf with 2 view-instances
-#   so the projections crate is the integration-point.
+#   so the projections crate is the integration-point. The "reflected-camera"
+#   for Stage-9 is computed from the Camera position + orientation reflected
+#   through the mirror surface's tangent plane.
 #
 # § cssl-substrate-prime-directive — Σ-mask consent gate on gaze-data + body-
 #   presence reads. Stage-5 never receives raw gaze ; only the FoveaMask
-#   (already-Σ-protected) flows in.
-cssl-substrate-omega-field    = { path = "../cssl-substrate-omega-field" }
-cssl-pga                      = { path = "../cssl-pga", default-features = false }
-cssl-autodiff                 = { path = "../cssl-autodiff" }
-cssl-substrate-projections    = { path = "../cssl-substrate-projections" }
+#   (already-Σ-protected) flows in. Per PRIME_DIRECTIVE §I.4 + spec § V.6 (d) :
+#   creature-eye reflections require presence-in-region (no cross-region
+#   surveillance mirror), and a Σ-private region is NEVER reflected into a
+#   public-region. Compile-time + runtime checked via SigmaMaskPacked
+#   .consent_bits.
+cssl-substrate-omega-field     = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-kan             = { path = "../cssl-substrate-kan" }
+cssl-pga                       = { path = "../cssl-pga", default-features = false }
+cssl-autodiff                  = { path = "../cssl-autodiff" }
+cssl-substrate-projections     = { path = "../cssl-substrate-projections" }
 cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
 
-# § thiserror — RaymarchError + BudgetExceeded + RecursionDepthExhausted.
+# § thiserror — RaymarchError + BudgetExceeded + RecursionDepthExhausted +
+#   SovereigntyViolation error variants. The Σ-violation case `doesn't-compile`
+#   per PRIME_DIRECTIVE §I.4 — at runtime it returns SovereigntyViolation
+#   rather than panicking.
 thiserror = { workspace = true }
-# § smallvec — view-instances + per-pass buffer-handles.
+
+# § smallvec — view-instances + per-pass buffer-handles + MiseEnAbymeRadiance
+#   <2, 16> per-eye 16-band spectral output stored in a SmallVec-backed buffer ;
+#   recursion stack is also SmallVec to keep allocation off the hot path.
 smallvec  = { workspace = true }
+
 # § bytemuck — std430-aligned GPU upload structs (GBuffer rows / FoveaMask).
 bytemuck  = { workspace = true }

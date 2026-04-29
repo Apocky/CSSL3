@@ -850,6 +850,7 @@ dependencies = [
  "bytemuck",
  "cssl-autodiff",
  "cssl-pga",
+ "cssl-substrate-kan",
  "cssl-substrate-omega-field",
  "cssl-substrate-prime-directive",
  "cssl-substrate-projections",
