@@ -53,6 +53,28 @@ pub enum BuiltinEffect {
     Telemetry,
     // § fiber + coroutine
     Resume,
+    // § conservation laws (T11-D128 / W3β-03 — Omniverse-required)
+    /// σ-bookkeeping required @ this fn ; entropy must balance per Axiom 9
+    /// (σ-density preserved across the op modulo the source/sink edges declared
+    /// in the row). Compile-time discipline-check + runtime-assert at debug builds.
+    EntropyBalanced,
+    /// Φ-preservation required ; Pattern-integrity-invariant per Axiom 2 must
+    /// hold across the op (no Pattern-rewrite without explicit RECRYSTALLIZE
+    /// ConsentBit + Sovereign-acknowledgement).
+    PatternIntegrity,
+    /// Well-formedness checked : the agency-triple {consent, sovereignty,
+    /// reversibility} per Axiom 4 has been verified for every op carried by
+    /// this fn. Sovereign-touching ops without this row are compile-errors.
+    AgencyVerified,
+    // § cosmology / observation (T11-D128 / W3β-03 — Omniverse-required)
+    /// Observation-collapse triggering per Axiom 5 ; the fn samples a
+    /// cosmology-consistent state from the wavefunction Ψ_R. Requires DetRNG
+    /// for replay-determinism + Region<'lifetime> for spatial scope.
+    RegionCollapse,
+    /// Cohomology-class-affecting per Axiom 7. Type-arg `H` is the class-id ;
+    /// the row records that this op may {birth, persist, transform, kill} the
+    /// named class. Required for any fn touching the cohomology DB.
+    Cohomology,
 }
 
 /// Logical category of an effect — used by the discipline checker to gate
@@ -66,6 +88,13 @@ pub enum EffectCategory {
     Prime,
     Error,
     Fiber,
+    /// Conservation laws (T11-D128) — σ / Φ / Σ-triple bookkeeping rows.
+    /// Maps to Axiom 3 § IV (six conservation laws + three Axiom-2/4 additions),
+    /// Axiom 9 (entropy-as-currency), Axiom 4 (agency-invariant).
+    Conservation,
+    /// Cosmology / observation (T11-D128) — region-collapse + cohomology-class
+    /// rows. Maps to Axiom 5 (observation-collapse) + Axiom 7 (cohomology-narrative).
+    Cosmology,
 }
 
 /// Argument-shape an effect accepts at the row-annotation site.
@@ -411,6 +440,43 @@ pub const BUILTIN_METADATA: &[EffectMeta] = &[
         args: EffectArgShape::OneType,
         discharge: DischargeTiming::UserHandler,
     },
+    // § conservation laws (T11-D128 / W3β-03 — Omniverse-required)
+    EffectMeta {
+        name: "EntropyBalanced",
+        effect: BuiltinEffect::EntropyBalanced,
+        category: EffectCategory::Conservation,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
+    EffectMeta {
+        name: "PatternIntegrity",
+        effect: BuiltinEffect::PatternIntegrity,
+        category: EffectCategory::Conservation,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
+    EffectMeta {
+        name: "AgencyVerified",
+        effect: BuiltinEffect::AgencyVerified,
+        category: EffectCategory::Conservation,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileOnly,
+    },
+    // § cosmology / observation (T11-D128)
+    EffectMeta {
+        name: "RegionCollapse",
+        effect: BuiltinEffect::RegionCollapse,
+        category: EffectCategory::Cosmology,
+        args: EffectArgShape::Nullary,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
+    EffectMeta {
+        name: "Cohomology",
+        effect: BuiltinEffect::Cohomology,
+        category: EffectCategory::Cosmology,
+        args: EffectArgShape::OneType,
+        discharge: DischargeTiming::CompileAndRuntimeAssert,
+    },
 ];
 
 #[cfg(test)]
@@ -456,6 +522,12 @@ mod tests {
             BuiltinEffect::Verify,
             BuiltinEffect::Telemetry,
             BuiltinEffect::Resume,
+            // T11-D128 / W3β-03 — Omniverse-required additions
+            BuiltinEffect::EntropyBalanced,
+            BuiltinEffect::PatternIntegrity,
+            BuiltinEffect::AgencyVerified,
+            BuiltinEffect::RegionCollapse,
+            BuiltinEffect::Cohomology,
         ];
         for v in variants {
             assert!(
