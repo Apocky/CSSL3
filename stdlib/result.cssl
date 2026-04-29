@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/result.cssl  —  Result<T, E> sum-type
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/03_TYPES.csl § BASE-TYPES § aggregate (sum-types)
+//        specs/04_EFFECTS.csl § ERROR HANDLING (Result canonical, ?-op
+//          propagates Result::Err)
+// Slice : S6-B2 (T11-D60).
+//
+// § PRIME_DIRECTIVE preserved : Result is the canonical error-channel —
+//   it carries success or failure WITHOUT silently coercing one to the
+//   other. The `?`-operator propagates Err to the caller's frame ; this
+//   propagation is visible in the type-row, never hidden, never used
+//   to override the caller's own error-handling.
+//
+// § STAGE-0 NOTES (carried-forward from DECISIONS T11-D60)
+//   1. Constructors `Ok(x)` and `Err(e)` are recognized syntactically by
+//      `cssl_mir::body_lower` and lower to `cssl.result.ok` /
+//      `cssl.result.err` MIR ops respectively.
+//   2. Method bodies use the free-function form `result_<method>::<T,E>`
+//      until trait-dispatch lands. Monomorphizes via the D38..D50
+//      quartet ; Result<i32,i32> and Result<i32,String> produce
+//      distinct mangled symbols.
+//   3. The `?`-operator (HirExprKind::Try) lowers to `cssl.try` and is
+//      generic over any sum-type with a "propagate-failure-tag" shape.
+//      Per `specs/04_EFFECTS.csl § ERROR HANDLING` the canonical
+//      semantic is : if the value's tag is the failure tag (Err / None),
+//      re-construct the same shape in the caller's return type and
+//      `func.return` it. Real ABI lowering is deferred to the same
+//      slice as Option.
+
+module com.apocky.stdlib.result
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definition.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Result<T, E>` represents either a successful value (Ok) or an error
+// payload (Err). The error payload is type-rich : E may be a domain-
+// specific error enum, a string, an integer code, or a more elaborate
+// structure carrying source-location + cause-chain.
+//
+// § INVARIANTS
+//   - tag-discipline : at the MIR level Ok carries `tag = "1"` and Err
+//     carries `tag = "0"`. The `?`-operator's propagate-on-failure path
+//     keys off the failure tag.
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Method surface (free-function form, generic, turbofish-callable).
+// ───────────────────────────────────────────────────────────────────────
+
+// `result_is_ok::<T, E>(r)` — true iff r is Ok.
+fn result_is_ok<T, E>(r: Result<T, E>) -> bool {
+    match r {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+// `result_is_err::<T, E>(r)` — true iff r is Err.
+fn result_is_err<T, E>(r: Result<T, E>) -> bool {
+    match r {
+        Ok(_) => false,
+        Err(_) => true,
+    }
+}
+
+// `result_unwrap::<T, E>(r)` — extract Ok payload or panic on Err.
+//
+// ‼ The unsafe-by-default extractor. Prefer `result_unwrap_or` /
+//   `result_or_else` / pattern-matching when Err is reachable.
+fn result_unwrap<T, E>(r: Result<T, E>) -> T {
+    match r {
+        Ok(x) => x,
+        Err(_) => panic("Result::unwrap on Err"),
+    }
+}
+
+// `result_expect::<T, E>(r, msg)` — like unwrap with a custom message.
+fn result_expect<T, E>(r: Result<T, E>, msg: &str) -> T {
+    match r {
+        Ok(x) => x,
+        Err(_) => panic(msg),
+    }
+}
+
+// `result_unwrap_or::<T, E>(r, default)` — extract or fall-back. Total.
+fn result_unwrap_or<T, E>(r: Result<T, E>, default: T) -> T {
+    match r {
+        Ok(x) => x,
+        Err(_) => default,
+    }
+}
+
+// `result_or_else::<T, E>(r, default_fn)` — chain a recovery computation.
+fn result_or_else<T, E>(r: Result<T, E>, default_fn: fn(E) -> Result<T, E>) -> Result<T, E> {
+    match r {
+        Ok(x) => Ok(x),
+        Err(e) => default_fn(e),
+    }
+}
+
+// `result_map::<T, U, E>(r, f)` — transform Ok(x) ; preserve Err.
+fn result_map<T, U, E>(r: Result<T, E>, f: fn(T) -> U) -> Result<U, E> {
+    match r {
+        Ok(x) => Ok(f(x)),
+        Err(e) => Err(e),
+    }
+}
+
+// `result_map_err::<T, E, F>(r, f)` — transform Err(e) ; preserve Ok.
+fn result_map_err<T, E, F>(r: Result<T, E>, f: fn(E) -> F) -> Result<T, F> {
+    match r {
+        Ok(x) => Ok(x),
+        Err(e) => Err(f(e)),
+    }
+}
+
+// `result_and_then::<T, U, E>(r, f)` — chain a fallible computation.
+fn result_and_then<T, U, E>(r: Result<T, E>, f: fn(T) -> Result<U, E>) -> Result<U, E> {
+    match r {
+        Ok(x) => f(x),
+        Err(e) => Err(e),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (documentation only).
+// ───────────────────────────────────────────────────────────────────────
+
+// Demonstrates ?-operator semantics : on Err the caller's frame returns
+// the propagated Err immediately ; on Ok the payload binds to `_x` and
+// execution continues. Compiles to a `cssl.try` MIR op.
+fn _example_result_try(r: Result<i32, i32>) -> Result<i32, i32> {
+    let _x = r?;
+    Ok(_x + 1)
+}
+
+// Demonstrates the call-shape that exercises monomorph (no closure ;
+// stage-0 lambda+turbofish parsing requires an extra slice — see
+// DECISIONS T11-D60 § DEFERRED). The full closure form lands
+// post-S6-C5.
+fn _example_result_map_i32_to_f32(r: Result<i32, i32>) -> Result<i32, i32> {
+    r
+}
