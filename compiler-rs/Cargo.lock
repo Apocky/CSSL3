@@ -797,6 +797,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-metrics"
+version = "0.1.0"
+dependencies = [
+ "cssl-telemetry",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-mir"
 version = "0.1.0"
 dependencies = [
