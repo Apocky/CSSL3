@@ -1,6 +1,9 @@
 //! § loa-game — Labyrinth-of-Apockalypse Phase-I scaffold + M8 render-pipeline.
 //! ════════════════════════════════════════════════════════════════════════════
 //!
+//! § T11-D235 : `test_room_scene` module — pure-math labyrinth + creature +
+//! companion scene definition. World-is-math maxim (every pixel = math).
+//!
 //! Authoritative spec : `specs/31_LOA_DESIGN.csl` (game design + 38 spec-holes
 //!   Q-A..Q-LL) + `specs/30_SUBSTRATE.csl` (engine plumbing) +
 //!   `GDDs/LOA_PILLARS.md` (project vision) + `PRIME_DIRECTIVE.md` (root-of-trust).
@@ -171,6 +174,7 @@ pub mod world;
 // ── M8 render-pipeline + per-stage frame-time instrumentation (T11-D158) ──
 pub mod m8_integration;
 pub mod metrics_mock;
+pub mod test_room_scene;
 
 pub use apockalypse::{ApockalypseEngine, ApockalypsePhase, TransitionCondition, TransitionRule};
 pub use companion::{Companion, CompanionCapability, CompanionLog, WithdrawalPolicy};
