@@ -763,6 +763,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-render-v2"
+version = "0.1.0"
+dependencies = [
+ "cssl-pga",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-prime-directive",
+ "cssl-substrate-projections",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-rt"
 version = "0.1.0"
 dependencies = [

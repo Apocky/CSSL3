@@ -1,0 +1,61 @@
+[package]
+name                   = "cssl-render-v2"
+description            = "CSSLv3 — canonical 12-stage SDF-native render pipeline replacement for cssl-render. This slice (T11-D122) lands ONLY Stage-9 MiseEnAbymePass — the recursive-witness pass for mirrors / Companion-eyes / water-surfaces with KAN-confidence-attenuation. Other stages land in adjacent slices (T11-D116..T11-D125). Cite : Omniverse 07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.6 ; 07_AESTHETIC/06_RENDERING_PIPELINE.csl § Stage-9 ; PRIME_DIRECTIVE §I.4 + §V (Σ-Sovereign creature-eye protections)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-render-v2 is the SDF-native canonical 12-stage render pipeline. This
+# slice (T11-D122) authors Stage-9 MiseEnAbymePass : the recursive-witness pass
+# for mirrors, reflective creature-eyes, and still-water surfaces. The pass is
+# bounded-recursive with KAN-confidence-attenuation and HARD depth-cap=5 ;
+# integrates with stages-5-7 cached output (re-used as base radiance) but
+# does not own those passes.
+#
+# § cssl-substrate-omega-field — Stage-9 reads `Ω.next.SDF` + `Ω.next.M-facet`
+#   to detect mirror surfaces (M-facet axis-7 = "mirrorness-of-cornea" or
+#   roughness/metallic-13/14). FieldCell carries the M-facet tag + Σ-mask that
+#   gates whether a Sovereign-eye reflects at all.
+#
+# § cssl-substrate-kan — KanMaterial supplies the reflectivity / mirrorness
+#   property. The KAN-confidence-attenuation function is a per-recursion-depth
+#   `KanNetwork<3, 2>` that takes (depth, view-cone-angle, atmospheric-loss)
+#   and returns (continue-bool, attenuation-factor) per spec § Stage-9.compute
+#   step-2c.
+#
+# § cssl-substrate-projections — Camera + Vec3 + reflection-via-plane motor.
+#   The "reflected-camera" (per spec § Stage-9.compute step-2a) is computed
+#   here using the Camera position + orientation reflected through the mirror
+#   surface's tangent plane.
+#
+# § cssl-substrate-prime-directive — Σ-mask consent gate. Per PRIME_DIRECTIVE
+#   §I.4 + the spec's § V.6 (d) : creature-eye reflections require
+#   presence-in-region (no cross-region surveillance mirror), and a Σ-private
+#   region is NEVER reflected into a public-region. Compile-time + runtime
+#   checked via SigmaMaskPacked.consent_bits.
+#
+# § cssl-pga — analytic SDFs derive from PGA primitives ; mirror-tangent-plane
+#   reflection is a PGA-sandwich-product on the Camera position pseudovector.
+#   The reflective-SDF surface detection uses the same PGA Plane primitive
+#   that stage-5 SDF raymarch (T11-D116) uses, so mirror-detection is unified.
+cssl-substrate-omega-field     = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-kan             = { path = "../cssl-substrate-kan" }
+cssl-substrate-projections     = { path = "../cssl-substrate-projections" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+cssl-pga                       = { path = "../cssl-pga", default-features = false }
+
+# § thiserror — RecursionDepthExhausted + BudgetExceeded + SovereigntyViolation
+#   error variants. The Σ-violation case `doesn't-compile` per PRIME_DIRECTIVE
+#   §I.4 — at runtime it returns SovereigntyViolation rather than panicking.
+thiserror = { workspace = true }
+
+# § smallvec — MiseEnAbymeRadiance<2, 16> per-eye 16-band spectral output is
+#   stored in a SmallVec-backed buffer ; recursion stack is also SmallVec to
+#   keep allocation off the hot path.
+smallvec  = { workspace = true }
