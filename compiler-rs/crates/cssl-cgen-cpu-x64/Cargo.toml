@@ -1,0 +1,28 @@
+[package]
+name                   = "cssl-cgen-cpu-x64"
+description            = "CSSLv3 stage-1 — owned x86-64 backend (ABI lowering layer for System-V + MS-x64)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D85 (S7-G3) : ABI / calling-convention layer for the bespoke x86-64 backend.
+# Per `specs/14_BACKEND.csl § OWNED x86-64 BACKEND § ABI` this crate owns the
+# lowering of abstract Call / Ret / Prologue / Epilogue MIR ops into platform-
+# specific register / stack passing. Two ABIs : System-V AMD64 (Linux + Mac-Intel)
+# and MS-x64 (Windows-MSVC + Windows-GNU). Apocky's host is Windows so MS-x64 is
+# integration-tested ; System-V is structurally-tested (cfg-gated under
+# `target_os = "linux"` / "macos" for runtime gates ; structural tables compile
+# unconditionally so cross-ABI tests run on any host).
+#
+# § ZERO RUNTIME DEPS : the layer is pure Rust enum + table + lowering logic.
+# `thiserror` is the only external dep (consistent w/ sibling cgen crates) for
+# diagnostic-error display. No assembly, no FFI, no LLVM, no Cranelift — the
+# bespoke trajectory per §§ 14_BACKEND § OWNED x86-64 BACKEND.
+
+[dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
