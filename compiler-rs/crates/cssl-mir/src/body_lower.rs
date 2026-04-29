@@ -1301,6 +1301,45 @@ fn lower_call(
             }
         }
     }
+    // § T11-D76 (S6-B5) — `fs::open` / `fs::read` / `fs::write` /
+    //   `fs::close` syntactic recognition. Strict guard : the callee must
+    //   be a 2-segment path with first segment `fs` ; the second segment
+    //   selects which `cssl.fs.*` op fires + the expected argument count.
+    //   Recognizing on a 2-segment path (rather than a bare-call name)
+    //   avoids accidentally claiming user identifiers like `open` / `read`
+    //   that legitimately exist in non-fs contexts. The canonical
+    //   stdlib form is `fs::open("path", flags)` per `stdlib/fs.cssl`.
+    //   See HANDOFF_SESSION_6 § PHASE-B § S6-B5 +
+    //   `specs/04_EFFECTS.csl § IO-EFFECT` +
+    //   `specs/22_TELEMETRY.csl § FS-OPS`.
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 2 && ctx.interner.resolve(segments[0]) == "fs" {
+            let op = ctx.interner.resolve(segments[1]);
+            match (op.as_str(), args.len()) {
+                ("open", 2) => {
+                    if let Some(result) = try_lower_fs_open(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("read", 3) => {
+                    if let Some(result) = try_lower_fs_read(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("write", 3) => {
+                    if let Some(result) = try_lower_fs_write(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("close", 1) => {
+                    if let Some(result) = try_lower_fs_close(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -1818,6 +1857,161 @@ fn count_format_specifiers(fmt: &str) -> usize {
     count
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D76 (S6-B5) — file-system I/O recognizers.
+//
+//   Stage-0 representation : each `fs::*` call mints one `cssl.fs.*` op
+//   carrying :
+//     - `io_effect`  : "true"            // {IO} effect-row marker
+//     - `family`     : "fs"
+//     - `op`         : "open" | "read" | "write" | "close"
+//     - `source_loc` : original span
+//
+//   The op-result type is :
+//     - FsOpen  : `MirType::Int(I64)`   (handle ; -1 on error)
+//     - FsRead  : `MirType::Int(I64)`   (bytes-read ; -1 on error ; 0 = EOF)
+//     - FsWrite : `MirType::Int(I64)`   (bytes-written ; -1 on error)
+//     - FsClose : `MirType::Int(I64)`   (0 = ok ; -1 on error)
+//
+//   Per the slice handoff REPORT BACK note, the `(io_effect, "true")`
+//   attribute is the stage-0 marker that signals fs-touching MIR ; full
+//   `MirEffectRow` structural threading is deferred (DECISIONS T11-D76 §
+//   DEFERRED). Downstream capability + audit walkers can iterate over
+//   ops looking for `io_effect == "true"` to find every fs op without
+//   needing a structured effect-row attribute on the parent fn yet.
+//
+//   The cranelift / SPIR-V / DXIL / MSL / WGSL lowering of these ops to
+//   actual `__cssl_fs_*` calls is a deferred follow-up — at this slice
+//   the ops are STRUCTURAL only (parse + walk + monomorph). Real
+//   runtime execution comes once the cgen layer wires
+//   `func.call __cssl_fs_open` / `__cssl_fs_read` / etc. via
+//   `Linkage::Import` (mirrors B1's heap-op cgen wiring established at
+//   T11-D57). See DECISIONS T11-D76 § DEFERRED.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower a syntactically-recognized `fs::open(path, flags)` call into a
+/// `cssl.fs.open` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %p     = <lower(path)>                          // !cssl.string
+///   %f     = <lower(flags)>                         // i32
+///   %h     = cssl.fs.open %p, %f : i64              // attribute io_effect=true
+/// ```
+fn try_lower_fs_open(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (path_id, _path_ty) = lower_call_arg(ctx, &args[0])?;
+    let (flags_id, _flags_ty) = lower_call_arg(ctx, &args[1])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::FsOpen)
+            .with_operand(path_id)
+            .with_operand(flags_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("io_effect", "true")
+            .with_attribute("family", "fs")
+            .with_attribute("op", "open")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `fs::read(handle, buf_ptr, buf_len)` call
+/// into a `cssl.fs.read` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %h     = <lower(handle)>     // i64
+///   %p     = <lower(buf_ptr)>    // ptr
+///   %n     = <lower(buf_len)>    // i64
+///   %r     = cssl.fs.read %h, %p, %n : i64
+/// ```
+fn try_lower_fs_read(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (h_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (n_id, _) = lower_call_arg(ctx, &args[2])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::FsRead)
+            .with_operand(h_id)
+            .with_operand(p_id)
+            .with_operand(n_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("io_effect", "true")
+            .with_attribute("family", "fs")
+            .with_attribute("op", "read")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `fs::write(handle, buf_ptr, buf_len)` call
+/// into a `cssl.fs.write` op.
+fn try_lower_fs_write(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (h_id, _) = lower_call_arg(ctx, &args[0])?;
+    let (p_id, _) = lower_call_arg(ctx, &args[1])?;
+    let (n_id, _) = lower_call_arg(ctx, &args[2])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::FsWrite)
+            .with_operand(h_id)
+            .with_operand(p_id)
+            .with_operand(n_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("io_effect", "true")
+            .with_attribute("family", "fs")
+            .with_attribute("op", "write")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `fs::close(handle)` call into a
+/// `cssl.fs.close` op.
+fn try_lower_fs_close(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (h_id, _) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Int(IntWidth::I64);
+    ctx.ops.push(
+        MirOp::new(CsslOp::FsClose)
+            .with_operand(h_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("io_effect", "true")
+            .with_attribute("family", "fs")
+            .with_attribute("op", "close")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Helper : lower a HirCallArg into a (ValueId, MirType) pair. Used by the
+/// fs-recognizers above ; mirrors the inline pattern used by string-format
+/// and sum-type recognizers.
+fn lower_call_arg(ctx: &mut BodyLowerCtx<'_>, arg: &HirCallArg) -> Option<(ValueId, MirType)> {
+    let expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    lower_expr(ctx, expr)
+}
+
 /// Known math-intrinsic callees whose result-type equals the first operand's
 /// type (scalar-unary + scalar-binary math). Returns `None` for user-defined
 /// or unknown callees — caller falls back to the opaque-result-type stub.
@@ -2004,6 +2198,7 @@ fn _unused(_: MirValue) {}
 mod tests {
     use super::lower_fn_body;
     use crate::lower::{lower_function_signature, LowerCtx};
+    use crate::value::IntWidth;
     use crate::value::MirType;
     use cssl_ast::{SourceFile, SourceId, Surface};
 
@@ -3286,5 +3481,107 @@ mod tests {
         assert_eq!(super::count_format_specifiers("{{ {} }}"), 1);
         // Unmatched `{` is silently skipped (validation deferred) :
         assert_eq!(super::count_format_specifiers("incomplete {"), 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D76 (S6-B5) — file-system I/O recognizer tests.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Helper : find an op by canonical name in the entry block.
+    fn find_op<'a>(f: &'a crate::func::MirFunc, name: &str) -> Option<&'a crate::block::MirOp> {
+        f.body.entry()?.ops.iter().find(|o| o.name == name)
+    }
+
+    /// Helper : look up an attribute value by key on an op.
+    fn attr<'a>(op: &'a crate::block::MirOp, key: &str) -> Option<&'a str> {
+        op.attributes
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn lower_fs_open_emits_cssl_fs_open() {
+        // `fs::open("path", 1)` should be recognized syntactically and
+        // produce a `cssl.fs.open` op carrying the io_effect marker.
+        let (f, _) = lower_one(r#"fn f() -> i64 { fs::open("foo.txt", 1) }"#);
+        let op = find_op(&f, "cssl.fs.open").expect("fs::open should lower to cssl.fs.open");
+        // Two operands : (path, flags).
+        assert_eq!(op.operands.len(), 2);
+        // Single result of i64 (handle).
+        assert_eq!(op.results.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        // io_effect marker present.
+        assert_eq!(attr(op, "io_effect"), Some("true"));
+        // family + op markers identify the op uniquely for downstream walkers.
+        assert_eq!(attr(op, "family"), Some("fs"));
+        assert_eq!(attr(op, "op"), Some("open"));
+    }
+
+    #[test]
+    fn lower_fs_close_emits_cssl_fs_close() {
+        let (f, _) = lower_one("fn f(h : i64) -> i64 { fs::close(h) }");
+        let op = find_op(&f, "cssl.fs.close").expect("fs::close should lower to cssl.fs.close");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "io_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("close"));
+    }
+
+    #[test]
+    fn lower_fs_read_emits_cssl_fs_read() {
+        let (f, _) = lower_one("fn f(h : i64, p : i64, n : i64) -> i64 { fs::read(h, p, n) }");
+        let op = find_op(&f, "cssl.fs.read").expect("fs::read should lower to cssl.fs.read");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results.len(), 1);
+        assert_eq!(attr(op, "io_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("read"));
+    }
+
+    #[test]
+    fn lower_fs_write_emits_cssl_fs_write() {
+        let (f, _) = lower_one("fn f(h : i64, p : i64, n : i64) -> i64 { fs::write(h, p, n) }");
+        let op = find_op(&f, "cssl.fs.write").expect("fs::write should lower to cssl.fs.write");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results.len(), 1);
+        assert_eq!(attr(op, "io_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("write"));
+    }
+
+    #[test]
+    fn lower_fs_open_with_wrong_arity_falls_through_to_generic_call() {
+        // 1-arg fs::open shouldn't match the recognizer (which expects 2
+        // args) ; should fall through to the regular func.call path
+        // with no cssl.fs.open op emitted.
+        let (f, _) = lower_one(r#"fn f() -> i64 { fs::open("foo.txt") }"#);
+        // No cssl.fs.open ; instead a func.call op exists.
+        assert!(find_op(&f, "cssl.fs.open").is_none());
+        let _call = find_op(&f, "func.call").expect("should fall through to func.call");
+    }
+
+    #[test]
+    fn lower_non_fs_path_is_not_claimed_by_recognizer() {
+        // `foo::open(...)` is NOT `fs::open(...)` — must not emit cssl.fs.open.
+        let (f, _) = lower_one(r#"fn f() -> i64 { foo::open("foo.txt", 1) }"#);
+        assert!(find_op(&f, "cssl.fs.open").is_none());
+    }
+
+    #[test]
+    fn lower_bare_open_is_not_claimed_by_recognizer() {
+        // `open(...)` (single-segment) is NOT recognized — only the
+        // 2-segment `fs::open` form qualifies. This guards against
+        // accidental shadowing of user identifiers like `open`.
+        let (f, _) = lower_one(r#"fn f() -> i64 { open("foo.txt", 1) }"#);
+        assert!(find_op(&f, "cssl.fs.open").is_none());
+    }
+
+    #[test]
+    fn lower_fs_open_records_source_loc_attribute() {
+        let (f, _) = lower_one(r#"fn f() -> i64 { fs::open("path.txt", 1) }"#);
+        let op = find_op(&f, "cssl.fs.open").expect("fs::open should lower");
+        // source_loc is present and non-empty.
+        let loc = attr(op, "source_loc").expect("source_loc attribute missing");
+        assert!(!loc.is_empty(), "source_loc should be non-empty");
     }
 }

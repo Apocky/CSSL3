@@ -146,10 +146,117 @@ pub unsafe extern "C" fn __cssl_entry(user_main: extern "C" fn() -> i32) -> i32 
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § __cssl_fs_open / __cssl_fs_read / __cssl_fs_write / __cssl_fs_close —
+// file-system I/O surface (T11-D76, S6-B5).
+//
+// Each shim delegates to the platform `cssl_fs_*_impl` selected via cfg
+// in [`crate::io`]. The shims preserve the i64-handle ABI so a single
+// CSSLv3-source-level interface can drive both Win32 HANDLEs and POSIX
+// fds without per-OS source-code changes.
+// ───────────────────────────────────────────────────────────────────────
+
+/// FFI : open a file for I/O. See [`crate::io`] doc-block for the flag
+/// bitset + error semantics.
+///
+/// Returns the platform handle cast to `i64` on success, or
+/// [`crate::io::INVALID_HANDLE`] (`-1`) on failure with the canonical
+/// error in the per-thread last-error slot.
+///
+/// # Safety
+/// Caller must ensure :
+/// - `path_ptr` valid for `path_len` bytes (or `path_len == 0` and
+///   `path_ptr` is null — yields `InvalidInput`).
+/// - `path_len <= isize::MAX`.
+/// - `flags` is a valid combination from
+///   [`crate::io::OPEN_FLAG_MASK`] (validation happens inside the impl ;
+///   bad flags produce `InvalidInput`).
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_fs_open(path_ptr: *const u8, path_len: usize, flags: i32) -> i64 {
+    // SAFETY : path_ptr / path_len contract inherited from caller.
+    unsafe { crate::io::cssl_fs_open_impl(path_ptr, path_len, flags) }
+}
+
+/// FFI : read up to `buf_len` bytes from `handle` into `buf_ptr`.
+///
+/// Returns bytes-read (0 at EOF) ; `-1` on failure with the canonical
+/// error in the per-thread last-error slot.
+///
+/// # Safety
+/// Caller must ensure :
+/// - `handle` is a valid handle returned from [`__cssl_fs_open`] with
+///   read access and not yet closed.
+/// - `buf_ptr` valid for `buf_len` writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_fs_read(handle: i64, buf_ptr: *mut u8, buf_len: usize) -> i64 {
+    // SAFETY : handle + buffer contract inherited from caller.
+    unsafe { crate::io::cssl_fs_read_impl(handle, buf_ptr, buf_len) }
+}
+
+/// FFI : write `buf_len` bytes from `buf_ptr` to `handle`.
+///
+/// Returns bytes-written ; `-1` on failure. Short writes are possible
+/// per-syscall ; callers loop until all bytes have been written.
+///
+/// # Safety
+/// Caller must ensure :
+/// - `handle` is a valid handle returned from [`__cssl_fs_open`] with
+///   write or append access and not yet closed.
+/// - `buf_ptr` valid for `buf_len` readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_fs_write(handle: i64, buf_ptr: *const u8, buf_len: usize) -> i64 {
+    // SAFETY : handle + buffer contract inherited from caller.
+    unsafe { crate::io::cssl_fs_write_impl(handle, buf_ptr, buf_len) }
+}
+
+/// FFI : close `handle`. Returns `0` on success, `-1` on failure with the
+/// canonical error in the per-thread last-error slot.
+///
+/// # Safety
+/// Caller must ensure `handle` is a valid handle returned from
+/// [`__cssl_fs_open`] and not yet closed.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_fs_close(handle: i64) -> i64 {
+    // SAFETY : handle contract inherited from caller.
+    unsafe { crate::io::cssl_fs_close_impl(handle) }
+}
+
+/// FFI : read the canonical error kind from the last fs op.
+///
+/// Returns the discriminant from [`crate::io::io_error_code`]
+/// (`SUCCESS = 0`, `NOT_FOUND = 1`, ...). Source-level CSSLv3 maps the
+/// returned i32 onto the `IoError` sum-type via the recognizer in
+/// `cssl_mir::body_lower`.
+///
+/// # Safety
+/// Always safe to call ; `unsafe` only because of `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_fs_last_error_kind() -> i32 {
+    crate::io::last_io_error_kind()
+}
+
+/// FFI : read the raw OS code from the last fs op (Win32
+/// `GetLastError` / POSIX `errno`).
+///
+/// Useful for diagnostic logging when the canonical kind is `OTHER`.
+///
+/// # Safety
+/// Always safe to call ; `unsafe` only because of `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_fs_last_error_os() -> i32 {
+    crate::io::last_io_error_os()
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § tests — exercise FFI boundary
 // ───────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+// fs FFI tests cast `payload.len() as i64` for assert comparison ;
+// scope the cast-lint suppression to this test mod (production paths
+// already carry per-fn `#[allow]` annotations).
+#[allow(clippy::cast_possible_wrap)]
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_possible_truncation)]
 mod tests {
     use super::*;
     use crate::test_helpers::lock_and_reset_all;
@@ -264,6 +371,85 @@ mod tests {
         let _: unsafe extern "C" fn() -> ! = __cssl_abort;
         let _: unsafe extern "C" fn(i32) -> ! = __cssl_exit;
         let _: unsafe extern "C" fn(extern "C" fn() -> i32) -> i32 = __cssl_entry;
+        // S6-B5 (T11-D76) — fs surface ABI lock.
+        let _: unsafe extern "C" fn(*const u8, usize, i32) -> i64 = __cssl_fs_open;
+        let _: unsafe extern "C" fn(i64, *mut u8, usize) -> i64 = __cssl_fs_read;
+        let _: unsafe extern "C" fn(i64, *const u8, usize) -> i64 = __cssl_fs_write;
+        let _: unsafe extern "C" fn(i64) -> i64 = __cssl_fs_close;
+        let _: unsafe extern "C" fn() -> i32 = __cssl_fs_last_error_kind;
+        let _: unsafe extern "C" fn() -> i32 = __cssl_fs_last_error_os;
+    }
+
+    // S6-B5 (T11-D76) — fs FFI roundtrip via the FFI shims. Mirrors the
+    // platform-specific `open_write_create_close_roundtrip` test but
+    // deliberately exercises the `__cssl_fs_*` symbols (= the surface
+    // CSSLv3-emitted code calls into) rather than the platform `_impl`
+    // fns directly. Confirms the FFI boundary preserves the i64-handle
+    // ABI without re-tagging.
+    #[test]
+    fn ffi_fs_open_write_read_close_roundtrip() {
+        let _g = lock_and_reset_all();
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("cssl_b5_ffi_roundtrip.txt");
+        let path_str = path.to_string_lossy().into_owned();
+        let _ = std::fs::remove_file(&path);
+
+        let payload = b"hello cssl-b5 ffi roundtrip\n";
+
+        // Write phase via __cssl_fs_*.
+        let h = unsafe {
+            __cssl_fs_open(
+                path_str.as_ptr(),
+                path_str.len(),
+                crate::io::OPEN_WRITE | crate::io::OPEN_CREATE | crate::io::OPEN_TRUNCATE,
+            )
+        };
+        assert_ne!(h, crate::io::INVALID_HANDLE);
+        let n = unsafe { __cssl_fs_write(h, payload.as_ptr(), payload.len()) };
+        assert_eq!(n, payload.len() as i64);
+        let cr = unsafe { __cssl_fs_close(h) };
+        assert_eq!(cr, 0);
+
+        // Read phase via __cssl_fs_*.
+        let h2 = unsafe { __cssl_fs_open(path_str.as_ptr(), path_str.len(), crate::io::OPEN_READ) };
+        assert_ne!(h2, crate::io::INVALID_HANDLE);
+        let mut buf = vec![0u8; payload.len() + 4];
+        let nr = unsafe { __cssl_fs_read(h2, buf.as_mut_ptr(), buf.len()) };
+        assert_eq!(nr, payload.len() as i64);
+        let cr2 = unsafe { __cssl_fs_close(h2) };
+        assert_eq!(cr2, 0);
+
+        assert_eq!(&buf[..payload.len()], payload);
+
+        // Counter discipline : 2 opens + ≥ 1 read + 1 write + 2 closes.
+        assert_eq!(crate::io::open_count(), 2);
+        assert_eq!(crate::io::write_count(), 1);
+        // read_count may be > 1 if the syscall returns short ; one read is
+        // the minimum.
+        assert!(crate::io::read_count() >= 1);
+        assert_eq!(crate::io::close_count(), 2);
+        assert_eq!(crate::io::bytes_written_total(), payload.len() as u64);
+        assert_eq!(crate::io::bytes_read_total(), payload.len() as u64);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn ffi_fs_open_invalid_path_returns_minus_one() {
+        let _g = lock_and_reset_all();
+        let r = unsafe { __cssl_fs_open(core::ptr::null(), 0, crate::io::OPEN_READ) };
+        assert_eq!(r, crate::io::INVALID_HANDLE);
+        let kind = unsafe { __cssl_fs_last_error_kind() };
+        assert_eq!(kind, crate::io::io_error_code::INVALID_INPUT);
+    }
+
+    #[test]
+    fn ffi_fs_close_invalid_handle_returns_minus_one() {
+        let _g = lock_and_reset_all();
+        let r = unsafe { __cssl_fs_close(crate::io::INVALID_HANDLE) };
+        assert_eq!(r, -1);
+        let kind = unsafe { __cssl_fs_last_error_kind() };
+        assert_eq!(kind, crate::io::io_error_code::INVALID_INPUT);
     }
 
     #[test]

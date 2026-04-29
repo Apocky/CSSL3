@@ -87,6 +87,30 @@ pub enum CsslOp {
     //   parses, walks, monomorphizes ; runtime execution is the same
     //   deferred-ABI slice as B2/B3.
     StringFormat,
+    // § File-system I/O surface (S6-B5, T11-D76) — per
+    //   `specs/04_EFFECTS.csl § IO-EFFECT` + `specs/22_TELEMETRY.csl §
+    //   FS-OPS` (the latter being a spec-gap closed by the slice's
+    //   DECISIONS sub-entry — see DECISIONS T11-D76 § Spec gaps closed).
+    //
+    //   Each fs op is emitted by a syntactic recognizer in
+    //   `cssl_mir::body_lower` (mirrors B1's `Box::new` pattern + B4's
+    //   `format(...)` precedent). Each carries the
+    //   `(io_effect, "true")` attribute as the stage-0 marker that the
+    //   {IO} effect-row threading is ACTIVE on this op. Per the slice
+    //   handoff REPORT BACK note, the canonical
+    //   `MirEffectRow` structural attribute on the parent fn is a
+    //   deferred follow-up (see DECISIONS T11-D76 § DEFERRED) ; the
+    //   per-op marker is sufficient at stage-0 for downstream
+    //   capability + audit walkers to detect IO-touching MIR.
+    //
+    //   Lowered to the `__cssl_fs_open / __cssl_fs_read / __cssl_fs_write
+    //   / __cssl_fs_close` FFI symbols exposed by `cssl-rt` (T11-D76,
+    //   S6-B5). Renaming either the MIR op or the FFI symbol requires
+    //   lock-step changes per the dispatch-plan landmines.
+    FsOpen,
+    FsRead,
+    FsWrite,
+    FsClose,
     /// Standard-dialect op — name stored separately. Used for `arith.*`, `scf.*`,
     /// `func.*`, `memref.*`, etc. that pass through without schema validation.
     Std,
@@ -132,6 +156,10 @@ impl CsslOp {
             Self::ResultOk => "cssl.result.ok",
             Self::ResultErr => "cssl.result.err",
             Self::StringFormat => "cssl.string.format",
+            Self::FsOpen => "cssl.fs.open",
+            Self::FsRead => "cssl.fs.read",
+            Self::FsWrite => "cssl.fs.write",
+            Self::FsClose => "cssl.fs.close",
             Self::Std => "cssl.std",
         }
     }
@@ -159,6 +187,7 @@ impl CsslOp {
                 OpCategory::SumType
             }
             Self::StringFormat => OpCategory::String,
+            Self::FsOpen | Self::FsRead | Self::FsWrite | Self::FsClose => OpCategory::FileIo,
             Self::Std => OpCategory::Std,
         }
     }
@@ -301,6 +330,30 @@ impl CsslOp {
                 operands: None,
                 results: Some(1),
             },
+            // File-system I/O (S6-B5) — see `specs/04_EFFECTS.csl § IO-EFFECT`.
+            //   open  : (path-bytes : !cssl.string, flags : i32) -> i64    // handle ; -1 on err
+            //   read  : (handle : i64, buf-ptr : ptr, buf-len : i64) -> i64 // bytes-read ; -1 on err
+            //   write : (handle : i64, buf-ptr : ptr, buf-len : i64) -> i64 // bytes-written ; -1 on err
+            //   close : (handle : i64) -> i64                                // 0=ok ; -1 on err
+            //
+            //   The path operand for FsOpen is the source-level
+            //   `String` / `&str` lifted to a `!cssl.string` value at
+            //   stage-0 ; the cgen layer extracts (ptr, len) from the
+            //   String fat-pointer / StrSlice value when wiring to
+            //   `__cssl_fs_open`. See body_lower's `try_lower_fs_open`
+            //   for the recognized call-shape.
+            Self::FsOpen => OpSignature {
+                operands: Some(2),
+                results: Some(1),
+            },
+            Self::FsRead | Self::FsWrite => OpSignature {
+                operands: Some(3),
+                results: Some(1),
+            },
+            Self::FsClose => OpSignature {
+                operands: Some(1),
+                results: Some(1),
+            },
             // Std : free-form.
             Self::Std => OpSignature {
                 operands: None,
@@ -310,7 +363,7 @@ impl CsslOp {
     }
 
     /// All `cssl.*` dialect ops (excluding `Std`).
-    pub const ALL_CSSL: [Self; 34] = [
+    pub const ALL_CSSL: [Self; 38] = [
         Self::DiffPrimal,
         Self::DiffFwd,
         Self::DiffBwd,
@@ -345,6 +398,10 @@ impl CsslOp {
         Self::ResultOk,
         Self::ResultErr,
         Self::StringFormat,
+        Self::FsOpen,
+        Self::FsRead,
+        Self::FsWrite,
+        Self::FsClose,
     ];
 }
 
@@ -380,6 +437,11 @@ pub enum OpCategory {
     /// String surface ops (S6-B4) — printf-style format. See
     /// `specs/03_TYPES.csl § STRING-MODEL`.
     String,
+    /// File-system I/O ops (S6-B5) — `cssl.fs.{open,read,write,close}`.
+    /// See `specs/04_EFFECTS.csl § IO-EFFECT` +
+    /// `specs/22_TELEMETRY.csl § FS-OPS` (the latter spec-gap closed by
+    /// DECISIONS T11-D76).
+    FileIo,
     Std,
 }
 
@@ -411,12 +473,13 @@ mod tests {
     }
 
     #[test]
-    fn all_34_cssl_ops_tracked() {
+    fn all_38_cssl_ops_tracked() {
         // S6-B1 (T11-D57) brought the count to 29 (HeapAlloc/Dealloc/Realloc).
         // S6-B2 (T11-D60) adds 4 sum-type constructors :
         //   OptionSome, OptionNone, ResultOk, ResultErr  →  total 33.
         // S6-B4 (T11-D71) adds StringFormat → total 34.
-        assert_eq!(CsslOp::ALL_CSSL.len(), 34);
+        // S6-B5 (T11-D76) adds 4 fs ops (Open/Read/Write/Close) → total 38.
+        assert_eq!(CsslOp::ALL_CSSL.len(), 38);
     }
 
     #[test]
@@ -583,5 +646,65 @@ mod tests {
     #[test]
     fn string_format_op_in_string_category() {
         assert_eq!(CsslOp::StringFormat.category(), OpCategory::String);
+    }
+
+    // ── S6-B5 (T11-D76) file-system I/O op coverage ─────────────────────
+
+    #[test]
+    fn fs_open_signature_is_2_to_1() {
+        // (path-bytes : !cssl.string, flags : i32) → handle : i64
+        let sig = CsslOp::FsOpen.signature();
+        assert_eq!(sig.operands, Some(2));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn fs_read_signature_is_3_to_1() {
+        // (handle : i64, buf-ptr : ptr, buf-len : i64) → bytes-read : i64
+        let sig = CsslOp::FsRead.signature();
+        assert_eq!(sig.operands, Some(3));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn fs_write_signature_is_3_to_1() {
+        // (handle : i64, buf-ptr : ptr, buf-len : i64) → bytes-written : i64
+        let sig = CsslOp::FsWrite.signature();
+        assert_eq!(sig.operands, Some(3));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn fs_close_signature_is_1_to_1() {
+        // (handle : i64) → status : i64    (0 = ok ; -1 = err)
+        let sig = CsslOp::FsClose.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn fs_op_names_match_cssl_rt_ffi_symbols() {
+        // ‼ Naming-match invariant : the MIR op-name suffixes mirror the
+        // cssl-rt FFI symbol stems (`open / read / write / close`).
+        // Renaming either side requires lock-step changes — see
+        // HANDOFF_SESSION_6 landmines + cssl-rt::ffi.
+        assert_eq!(CsslOp::FsOpen.name(), "cssl.fs.open");
+        assert_eq!(CsslOp::FsRead.name(), "cssl.fs.read");
+        assert_eq!(CsslOp::FsWrite.name(), "cssl.fs.write");
+        assert_eq!(CsslOp::FsClose.name(), "cssl.fs.close");
+    }
+
+    #[test]
+    fn fs_ops_in_file_io_category() {
+        assert_eq!(CsslOp::FsOpen.category(), OpCategory::FileIo);
+        assert_eq!(CsslOp::FsRead.category(), OpCategory::FileIo);
+        assert_eq!(CsslOp::FsWrite.category(), OpCategory::FileIo);
+        assert_eq!(CsslOp::FsClose.category(), OpCategory::FileIo);
+    }
+
+    #[test]
+    fn fs_op_display_matches_name() {
+        assert_eq!(format!("{}", CsslOp::FsOpen), "cssl.fs.open");
+        assert_eq!(format!("{}", CsslOp::FsClose), "cssl.fs.close");
     }
 }

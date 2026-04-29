@@ -16,6 +16,12 @@
 //!   - `stdlib/string.cssl`  — `String` (`Vec<u8>`-backed UTF-8) + `StrSlice`
 //!                              fat-pointer + `char` USV + minimal `format(...)`
 //!                              builtin (S6-B4 / T11-D71)
+//!   - `stdlib/fs.cssl`      — `File` + `IoError` sum-type + `open / close /
+//!                              read_some / write_all / read_to_string` free-fn
+//!                              method surface (S6-B5 / T11-D76). Uses
+//!                              syntactic-recognizer-emitted `cssl.fs.*` ops
+//!                              with the `(io_effect, "true")` marker for
+//!                              {IO} effect-row threading.
 //!
 //! § ACCEPTANCE
 //!   - lexer produces a non-trivial token stream
@@ -67,6 +73,14 @@ pub const STDLIB_STRING_SRC: &str = include_str!(concat!(
     "/../../../stdlib/string.cssl"
 ));
 
+/// `stdlib/fs.cssl` source, embedded at compile-time. Added at S6-B5
+/// (T11-D76) ; tracks the file-I/O surface (File / IoError /
+/// open / close / write_all / read_to_string).
+pub const STDLIB_FS_SRC: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../stdlib/fs.cssl"
+));
+
 /// Run the stage-0 front-end (lex + parse + HIR-lower) against every
 /// stdlib file and return the per-file outcome vector.
 #[must_use]
@@ -76,13 +90,14 @@ pub fn all_stdlib_outcomes() -> Vec<crate::PipelineOutcome> {
         pipeline_example("stdlib/result", STDLIB_RESULT_SRC),
         pipeline_example("stdlib/vec", STDLIB_VEC_SRC),
         pipeline_example("stdlib/string", STDLIB_STRING_SRC),
+        pipeline_example("stdlib/fs", STDLIB_FS_SRC),
     ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        all_stdlib_outcomes, pipeline_example, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC,
+        all_stdlib_outcomes, pipeline_example, STDLIB_FS_SRC, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC,
         STDLIB_STRING_SRC, STDLIB_VEC_SRC,
     };
 
@@ -209,14 +224,15 @@ mod tests {
     }
 
     #[test]
-    fn all_stdlib_outcomes_returns_four() {
+    fn all_stdlib_outcomes_returns_five() {
         let outs = all_stdlib_outcomes();
-        assert_eq!(outs.len(), 4);
+        assert_eq!(outs.len(), 5);
         let names: Vec<_> = outs.iter().map(|o| o.name.as_str()).collect();
         assert!(names.contains(&"stdlib/option"));
         assert!(names.contains(&"stdlib/result"));
         assert!(names.contains(&"stdlib/vec"));
         assert!(names.contains(&"stdlib/string"));
+        assert!(names.contains(&"stdlib/fs"));
     }
 
     #[test]
@@ -783,6 +799,193 @@ mod tests {
         assert!(
             !entry.ops.is_empty(),
             "string literal body must lower to ≥ 1 MIR op",
+        );
+    }
+
+    // ── S6-B5 (T11-D76) file-I/O stdlib coverage ────────────────────────
+
+    #[test]
+    fn stdlib_fs_src_non_empty() {
+        assert!(!STDLIB_FS_SRC.is_empty());
+        // Markers : the type-defs and the canonical surface.
+        assert!(STDLIB_FS_SRC.contains("struct File"));
+        assert!(STDLIB_FS_SRC.contains("enum IoError"));
+        assert!(STDLIB_FS_SRC.contains("NotFound"));
+        assert!(STDLIB_FS_SRC.contains("PermissionDenied"));
+        assert!(STDLIB_FS_SRC.contains("AlreadyExists"));
+        assert!(STDLIB_FS_SRC.contains("InvalidInput"));
+        assert!(STDLIB_FS_SRC.contains("WriteZero"));
+        assert!(STDLIB_FS_SRC.contains("Other"));
+        // Free-fn surface
+        assert!(STDLIB_FS_SRC.contains("fn open("));
+        assert!(STDLIB_FS_SRC.contains("fn close("));
+        assert!(STDLIB_FS_SRC.contains("fn write_all("));
+        assert!(STDLIB_FS_SRC.contains("fn read_some("));
+        assert!(STDLIB_FS_SRC.contains("fn read_to_string("));
+        // OPEN_* flag accessors
+        assert!(STDLIB_FS_SRC.contains("fn open_read"));
+        assert!(STDLIB_FS_SRC.contains("fn open_write"));
+        assert!(STDLIB_FS_SRC.contains("fn open_create"));
+        assert!(STDLIB_FS_SRC.contains("fn open_truncate"));
+        // IoError-discriminant accessors (cssl-rt code-table mirror)
+        assert!(STDLIB_FS_SRC.contains("fn io_err_code_not_found"));
+        assert!(STDLIB_FS_SRC.contains("fn io_err_code_other"));
+        // Effect-row marker note (preserved through documentation)
+        assert!(STDLIB_FS_SRC.contains("io_effect"));
+        assert!(STDLIB_FS_SRC.contains("{IO}"));
+    }
+
+    #[test]
+    fn stdlib_fs_tokenizes() {
+        let out = pipeline_example("stdlib/fs", STDLIB_FS_SRC);
+        assert!(
+            out.token_count > 0,
+            "stdlib/fs.cssl must tokenize : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_fs_parses_without_errors() {
+        let out = pipeline_example("stdlib/fs", STDLIB_FS_SRC);
+        assert_eq!(
+            out.parse_error_count,
+            0,
+            "stdlib/fs.cssl must parse cleanly through stage-0 : {}",
+            out.summary()
+        );
+        // 1 struct (File) + 1 enum (IoError) + many fns + worked examples.
+        assert!(
+            out.cst_item_count >= 5,
+            "stdlib/fs.cssl must yield ≥ 5 CST items : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_fs_hir_has_struct_enum_and_fns() {
+        // fs.cssl contains : 1 struct (File), 1 enum (IoError), the
+        // OPEN_* + io_err_code_* accessor fns, and the free-fn method
+        // surface (open / close / write_all / read_some / read_to_string)
+        // + worked examples + last_error_kind / _os.
+        // Total HIR-items ≥ 18.
+        let out = pipeline_example("stdlib/fs", STDLIB_FS_SRC);
+        assert!(
+            out.hir_item_count >= 18,
+            "stdlib/fs.cssl HIR must include struct + enum + ≥ 16 fns : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_fs_open_recognizer_lowers_to_intrinsic() {
+        // Direct probe : the bare `fs::open(path, flags)` shape must lower
+        // to `cssl.fs.open` even outside the stdlib file. Mirrors the
+        // B2 / B3 / B4 probe pattern.
+        let src = "fn f(p : &str) -> i64 { fs::open(p, 1) }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.fs.open")
+            .expect("fs::open must produce cssl.fs.open op");
+        // Confirm the io_effect marker is recorded (per slice handoff
+        // {IO} effect-row threading).
+        let io_effect = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "io_effect")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(io_effect, Some("true"));
+    }
+
+    #[test]
+    fn stdlib_fs_close_recognizer_lowers_to_intrinsic() {
+        let src = "fn f(h : i64) -> i64 { fs::close(h) }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        assert!(
+            entry.ops.iter().any(|o| o.name == "cssl.fs.close"),
+            "fs::close must produce cssl.fs.close op",
+        );
+    }
+
+    #[test]
+    fn stdlib_fs_read_write_recognizers_emit_distinct_ops() {
+        // Confirms read + write recognizers produce distinct ops + the
+        // io_effect marker rides on each. A single MIR fn body can host
+        // both ops without name collision.
+        let src = "fn f(h : i64, p : i64, n : i64) -> i64 { \
+                   let _r = fs::read(h, p, n) ; \
+                   let w = fs::write(h, p, n) ; \
+                   w }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        assert!(
+            entry.ops.iter().any(|o| o.name == "cssl.fs.read"),
+            "fs::read must produce cssl.fs.read op",
+        );
+        assert!(
+            entry.ops.iter().any(|o| o.name == "cssl.fs.write"),
+            "fs::write must produce cssl.fs.write op",
         );
     }
 }
