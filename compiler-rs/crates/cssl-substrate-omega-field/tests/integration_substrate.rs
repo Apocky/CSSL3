@@ -13,13 +13,13 @@
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::needless_range_loop)]
+#![allow(clippy::many_single_char_names)]
 #![allow(clippy::unreadable_literal)]
 
 use cssl_substrate_omega_field::{
-    CellTier, FieldCell, LegacyTensor, LegacyTensorMigration, MeraPyramid, MissPolicy,
-    MortonKey, MutationError, OmegaCellLayout, OmegaField, Pattern, PhiTable, PsiOverlay,
-    ScalarFacet, SigmaOverlay, SimpleLambdaSlot, SparseMortonGrid, StepPhase,
-    PATTERN_HANDLE_NULL,
+    CellTier, FieldCell, LegacyTensor, LegacyTensorMigration, MeraPyramid, MissPolicy, MortonKey,
+    MutationError, OmegaCellLayout, OmegaField, Pattern, PhiTable, PsiOverlay, ScalarFacet,
+    SigmaOverlay, SimpleLambdaSlot, SparseMortonGrid, StepPhase, PATTERN_HANDLE_NULL,
 };
 use cssl_substrate_prime_directive::sigma::{SigmaMaskPacked, SigmaPolicy};
 
@@ -66,15 +66,16 @@ fn integration_full_e2e_consent_gated_mutation_and_pattern_lookup() {
 
     // 2. Authorize a Sovereign claim at one cell.
     let key = MortonKey::encode(10, 20, 30).unwrap();
-    let claim_mask = SigmaMaskPacked::from_policy(SigmaPolicy::SovereignOnly)
-        .with_sovereign(42);
+    let claim_mask = SigmaMaskPacked::from_policy(SigmaPolicy::SovereignOnly).with_sovereign(42);
     field.set_sigma(key, claim_mask);
 
     // 3. Stamp the cell : claim attaches the Pattern + sets density.
     let mut hero_cell = FieldCell::default();
     hero_cell.density = 1.5;
     hero_cell.set_pattern_handle(pattern_handle);
-    field.set_cell_with_consent_grant(key, hero_cell, 42, claim_mask).unwrap();
+    field
+        .set_cell_with_consent_grant(key, hero_cell, 42, claim_mask)
+        .unwrap();
 
     // 4. Read back : the cell is live, the Pattern is reachable.
     assert_eq!(field.dense_cell_count(), 1);
@@ -127,7 +128,9 @@ fn integration_mera_cascade_4_tier_summary() {
         .unwrap();
     assert!((coarse_t1.density - 7.0).abs() < 1e-6);
     // sample_mera walks finest-to-coarsest.
-    let (tier, _cell) = field.sample_mera(MortonKey::encode(0, 0, 0).unwrap()).unwrap();
+    let (tier, _cell) = field
+        .sample_mera(MortonKey::encode(0, 0, 0).unwrap())
+        .unwrap();
     assert_eq!(tier, CellTier::T0Fovea);
 }
 
@@ -161,7 +164,9 @@ fn integration_sparse_grid_collision_rate_reasonable() {
     // Insert 1000 cells via a deterministic LCG ; collect collision stats.
     let mut s: u64 = 0xCAFE_BABE_F00D_BEEF;
     for i in 0..1000 {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let x = (s >> 4) & 0xFF;
         let y = (s >> 16) & 0xFF;
         let z = (s >> 32) & 0xFF;
@@ -262,14 +267,18 @@ fn integration_iter_by_tier_filters() {
 fn integration_lambda_slot_4_capacity_drops_overflow() {
     let mut slot = SimpleLambdaSlot::default();
     for i in 0..4 {
-        assert!(slot.push(cssl_substrate_omega_field::LambdaToken::new_utterance(
-            i, 1.0
-        )));
+        assert!(
+            slot.push(cssl_substrate_omega_field::LambdaToken::new_utterance(
+                i, 1.0
+            ))
+        );
     }
     // Fifth push fails (capacity = 4).
-    assert!(!slot.push(cssl_substrate_omega_field::LambdaToken::new_utterance(
-        99, 1.0
-    )));
+    assert!(
+        !slot.push(cssl_substrate_omega_field::LambdaToken::new_utterance(
+            99, 1.0
+        ))
+    );
     assert_eq!(slot.count, 4);
 }
 
@@ -283,11 +292,8 @@ fn integration_determinism_two_fields_with_same_inputs_match() {
         for i in 0..16_u64 {
             let mut c = FieldCell::default();
             c.density = i as f32;
-            f.stamp_cell_bootstrap(
-                MortonKey::encode(i, i + 1, i + 2).unwrap(),
-                c,
-            )
-            .unwrap();
+            f.stamp_cell_bootstrap(MortonKey::encode(i, i + 1, i + 2).unwrap(), c)
+                .unwrap();
         }
         f
     }

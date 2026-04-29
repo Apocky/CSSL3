@@ -17,9 +17,8 @@
 use cssl_hdc::genome::Genome;
 use cssl_pga::motor::Motor;
 use cssl_substrate_kan::{
-    AppendOnlyPool, Handle, KanGenomeWeights, KanMaterial, KanMaterialKind,
-    KanNetwork, Pattern, PatternFingerprint, PhiTable, PoolError, SubstrateClassTag,
-    EMBEDDING_DIM,
+    AppendOnlyPool, Handle, KanGenomeWeights, KanMaterial, KanMaterialKind, KanNetwork, Pattern,
+    PatternFingerprint, PhiTable, PoolError, SubstrateClassTag, EMBEDDING_DIM,
 };
 
 /// § Handle-collision-free across many stamps.
@@ -288,7 +287,12 @@ fn different_weights_different_patterns() {
     let p3 = Pattern::stamp(&g, &w3, SubstrateClassTag::Universal, 1).unwrap();
     let p4 = Pattern::stamp(&g, &w4, SubstrateClassTag::Universal, 1).unwrap();
 
-    let fps = [p1.fingerprint, p2.fingerprint, p3.fingerprint, p4.fingerprint];
+    let fps = [
+        p1.fingerprint,
+        p2.fingerprint,
+        p3.fingerprint,
+        p4.fingerprint,
+    ];
     for i in 0..fps.len() {
         for j in (i + 1)..fps.len() {
             assert_ne!(fps[i], fps[j]);
@@ -306,16 +310,11 @@ fn cross_substrate_round_trip() {
     let w = KanGenomeWeights::new_untrained();
     let p_orig = Pattern::stamp(&g, &w, SubstrateClassTag::Classical, 1).unwrap();
 
-    let p_translated =
-        p_orig.clone().re_tag(SubstrateClassTag::Plasma);
-    let p_back =
-        p_translated.re_tag(SubstrateClassTag::Classical);
+    let p_translated = p_orig.clone().re_tag(SubstrateClassTag::Plasma);
+    let p_back = p_translated.re_tag(SubstrateClassTag::Classical);
 
     assert_eq!(p_orig.fingerprint, p_back.fingerprint);
-    assert_eq!(
-        p_orig.substrate_class_tag,
-        p_back.substrate_class_tag
-    );
+    assert_eq!(p_orig.substrate_class_tag, p_back.substrate_class_tag);
 }
 
 /// § Stamp-epoch monotonicity in PhiTable : every stamp captures a

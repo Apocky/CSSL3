@@ -136,9 +136,7 @@ impl KanMaterial {
     /// Panics in debug builds if `N_BANDS == 0` or `N_BANDS > BRDF_OUT_DIM`.
     /// Production builds clamp into the valid range.
     #[must_use]
-    pub fn spectral_brdf<const N_BANDS: usize>(
-        embedding: [f32; EMBEDDING_DIM],
-    ) -> Self {
+    pub fn spectral_brdf<const N_BANDS: usize>(embedding: [f32; EMBEDDING_DIM]) -> Self {
         debug_assert!(N_BANDS > 0, "spectral_brdf requires N_BANDS > 0");
         debug_assert!(
             N_BANDS <= BRDF_OUT_DIM,
@@ -178,18 +176,22 @@ impl KanMaterial {
     /// § Internal : shared constructor that builds the canonical
     ///   variant-tagged material with default networks. Computes the
     ///   variant-aware fingerprint.
-    fn base_with_kind(
-        kind: KanMaterialKind,
-        embedding: [f32; EMBEDDING_DIM],
-    ) -> Self {
+    fn base_with_kind(kind: KanMaterialKind, embedding: [f32; EMBEDDING_DIM]) -> Self {
         let brdf_kan = KanNetwork::new_untrained();
         let ior_kan = KanNetwork::new_untrained();
         let emission_kan = KanNetwork::new_untrained();
         let thermal_kan = KanNetwork::new_untrained();
         let acoustic_kan = KanNetwork::new_untrained();
 
-        let fingerprint =
-            Self::compute_fingerprint(kind, &embedding, &brdf_kan, &ior_kan, &emission_kan, &thermal_kan, &acoustic_kan);
+        let fingerprint = Self::compute_fingerprint(
+            kind,
+            &embedding,
+            &brdf_kan,
+            &ior_kan,
+            &emission_kan,
+            &thermal_kan,
+            &acoustic_kan,
+        );
 
         Self {
             kind,
@@ -310,7 +312,10 @@ mod tests {
     #[test]
     fn spectral_brdf_variant_tag() {
         let m: KanMaterial = KanMaterial::spectral_brdf::<8>([0.0; EMBEDDING_DIM]);
-        assert!(matches!(m.kind, KanMaterialKind::SpectralBrdf { n_bands: 8 }));
+        assert!(matches!(
+            m.kind,
+            KanMaterialKind::SpectralBrdf { n_bands: 8 }
+        ));
     }
 
     /// § single_band_brdf variant produces correct kind tag.

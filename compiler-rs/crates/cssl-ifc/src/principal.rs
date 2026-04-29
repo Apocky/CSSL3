@@ -230,7 +230,9 @@ impl PrincipalSet {
     /// (biometric-family ∪ SurveillanceTarget ∪ CoercionTarget).
     #[must_use]
     pub fn has_absolutely_banned(&self) -> bool {
-        self.inner.iter().any(Principal::is_egress_absolutely_banned)
+        self.inner
+            .iter()
+            .any(Principal::is_egress_absolutely_banned)
     }
 }
 

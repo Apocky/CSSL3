@@ -50,9 +50,7 @@
 //!   `push_constant_offset = 0`. Renaming any of these requires a lock-step
 //!   update to the runtime side in `cssl-render-v2`.
 
-use cssl_autodiff::gpu::{
-    AtomicMode, CoopMatrixPath, GpuAdOp, OpRecordKind, TapeStorageMode,
-};
+use cssl_autodiff::gpu::{AtomicMode, CoopMatrixPath, GpuAdOp, OpRecordKind, TapeStorageMode};
 
 use crate::capability::{SpirvCapability, SpirvExtension};
 use crate::module::{SpirvEntryPoint, SpirvModule};
@@ -133,7 +131,10 @@ impl core::fmt::Display for DiffShaderError {
                 write!(f, "diff-shader unsupported on target-env {t:?}")
             }
             Self::MissingAtomicCapability(m) => {
-                write!(f, "atomic-mode {m:?} requires a SPIR-V capability that is missing")
+                write!(
+                    f,
+                    "atomic-mode {m:?} requires a SPIR-V capability that is missing"
+                )
             }
         }
     }
@@ -347,12 +348,24 @@ pub fn recognize_gpu_ad_op_name(name: &str) -> Option<GpuAdOp> {
 pub fn reverse_partial_rule(kind: OpRecordKind) -> &'static [PartialRule] {
     match kind {
         OpRecordKind::FAdd => &[
-            PartialRule::OperandTimes { idx: 0, factor: PartialFactor::One },
-            PartialRule::OperandTimes { idx: 1, factor: PartialFactor::One },
+            PartialRule::OperandTimes {
+                idx: 0,
+                factor: PartialFactor::One,
+            },
+            PartialRule::OperandTimes {
+                idx: 1,
+                factor: PartialFactor::One,
+            },
         ],
         OpRecordKind::FSub => &[
-            PartialRule::OperandTimes { idx: 0, factor: PartialFactor::One },
-            PartialRule::OperandTimes { idx: 1, factor: PartialFactor::NegOne },
+            PartialRule::OperandTimes {
+                idx: 0,
+                factor: PartialFactor::One,
+            },
+            PartialRule::OperandTimes {
+                idx: 1,
+                factor: PartialFactor::NegOne,
+            },
         ],
         OpRecordKind::FMul => &[
             PartialRule::OperandTimes {
@@ -503,8 +516,12 @@ mod tests {
         let mut m = SpirvModule::new(SpirvTargetEnv::VulkanKhr1_4);
         let cfg = DiffShaderConfig::default_forward();
         declare_diff_shader_caps(&mut m, &cfg).unwrap();
-        assert!(m.capabilities.contains(SpirvCapability::AtomicFloat32AddEXT));
-        assert!(m.extensions.contains(SpirvExtension::ExtShaderAtomicFloatAdd));
+        assert!(m
+            .capabilities
+            .contains(SpirvCapability::AtomicFloat32AddEXT));
+        assert!(m
+            .extensions
+            .contains(SpirvExtension::ExtShaderAtomicFloatAdd));
     }
 
     #[test]
@@ -513,7 +530,9 @@ mod tests {
         let mut cfg = DiffShaderConfig::default_forward();
         cfg.atomic_mode = AtomicMode::CasLoopEmulation;
         declare_diff_shader_caps(&mut m, &cfg).unwrap();
-        assert!(!m.capabilities.contains(SpirvCapability::AtomicFloat32AddEXT));
+        assert!(!m
+            .capabilities
+            .contains(SpirvCapability::AtomicFloat32AddEXT));
     }
 
     #[test]
@@ -523,7 +542,9 @@ mod tests {
         let mut cfg = DiffShaderConfig::default_forward();
         cfg.coop_matrix = Some(CoopMatrixPath::for_vendor(CoopMatrixVendor::IntelArcXmx));
         declare_diff_shader_caps(&mut m, &cfg).unwrap();
-        assert!(m.capabilities.contains(SpirvCapability::CooperativeMatrixKHR));
+        assert!(m
+            .capabilities
+            .contains(SpirvCapability::CooperativeMatrixKHR));
         assert!(m.extensions.contains(SpirvExtension::KhrCooperativeMatrix));
     }
 
@@ -542,13 +563,8 @@ mod tests {
     fn forward_emit_records_match_op_stream_length() {
         let mut m = SpirvModule::new(SpirvTargetEnv::VulkanKhr1_4);
         let cfg = DiffShaderConfig::default_forward();
-        let stream = [
-            OpRecordKind::FAdd,
-            OpRecordKind::FMul,
-            OpRecordKind::Sin,
-        ];
-        let report =
-            emit_forward_diff_shader(&mut m, &cfg, "fwd_main", &stream).unwrap();
+        let stream = [OpRecordKind::FAdd, OpRecordKind::FMul, OpRecordKind::Sin];
+        let report = emit_forward_diff_shader(&mut m, &cfg, "fwd_main", &stream).unwrap();
         assert_eq!(report.records_emitted, stream.len());
         assert!(report.alloc_emitted);
         assert_eq!(report.tape_storage_class, "Workgroup");

@@ -312,10 +312,8 @@ mod tests {
         let mut t = PhiTable::new();
         let h0 = t.append(Pattern::new("v0", 64));
         let _h1 = t.update(h0, Pattern::new("v1", 64)).unwrap();
-        let live: Vec<(PhiHandle, String)> = t
-            .iter_live()
-            .map(|(h, p)| (h, p.name.clone()))
-            .collect();
+        let live: Vec<(PhiHandle, String)> =
+            t.iter_live().map(|(h, p)| (h, p.name.clone())).collect();
         assert_eq!(live.len(), 1);
         assert_eq!(live[0].1, "v1");
     }

@@ -47,8 +47,23 @@ pub enum EffectScanError {
 /// trigger a refusal. Stage-0 is conservative — any `Perform` whose effect
 /// path's leading segment matches one of these tokens is refused.
 pub const FORBIDDEN_EFFECT_TOKENS: &[&str] = &[
-    "IO", "Io", "io", "Net", "Network", "net", "Fs", "FileSystem", "fs", "Time", "Random", "Rng",
-    "Telemetry", "Audio", "Render", "GPU", "Gpu",
+    "IO",
+    "Io",
+    "io",
+    "Net",
+    "Network",
+    "net",
+    "Fs",
+    "FileSystem",
+    "fs",
+    "Time",
+    "Random",
+    "Rng",
+    "Telemetry",
+    "Audio",
+    "Render",
+    "GPU",
+    "Gpu",
 ];
 
 /// Forbidden intrinsic / fn-name leading-segment allowlist : these are
@@ -259,9 +274,9 @@ impl<'a> EffectScanner<'a> {
                 }
                 Ok(())
             }
-            HirExprKind::Continue { .. }
-            | HirExprKind::SectionRef { .. }
-            | HirExprKind::Error => Ok(()),
+            HirExprKind::Continue { .. } | HirExprKind::SectionRef { .. } | HirExprKind::Error => {
+                Ok(())
+            }
             HirExprKind::TryDefault { expr, default } => {
                 self.walk(expr)?;
                 self.walk(default)

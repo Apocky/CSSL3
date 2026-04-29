@@ -18,9 +18,7 @@
 //!   tuned to the Arc A770 / Quest-3 / RTX-50 base profiles called out in
 //!   `Omniverse/07_AESTHETIC/07_KAN_RUNTIME_SHADING § II + III`.
 
-use super::tape::{
-    DEFAULT_GLOBAL_CAPACITY, DEFAULT_LDS_CAPACITY, DEFAULT_WORKGROUP_CAPACITY,
-};
+use super::tape::{DEFAULT_GLOBAL_CAPACITY, DEFAULT_LDS_CAPACITY, DEFAULT_WORKGROUP_CAPACITY};
 
 /// Per-thread LDS op-budget. Above this count we promote to workgroup-shared.
 pub const LDS_OP_BUDGET: usize = 64;
@@ -141,10 +139,7 @@ impl OperationDensity {
 #[must_use]
 pub fn select_storage_mode(d: OperationDensity) -> TapeStorageMode {
     // Hard-forces to SSBO :
-    if d.cross_workgroup_visible
-        || d.has_atomic_writes
-        || d.op_count > WORKGROUP_OP_BUDGET
-    {
+    if d.cross_workgroup_visible || d.has_atomic_writes || d.op_count > WORKGROUP_OP_BUDGET {
         return TapeStorageMode::GlobalSsbo;
     }
 

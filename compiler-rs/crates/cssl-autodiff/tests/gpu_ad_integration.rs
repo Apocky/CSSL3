@@ -131,7 +131,11 @@ fn forward_reverse_pipeline_recovers_sqrt_derivative() {
     let mut tape = GpuTape::new(TapeStorageMode::ThreadLocalLds);
     let a_val = 4.0_f64;
     let a = tape
-        .record(OpRecordKind::Load, vec![RecordedOperand::input(a_val)], a_val)
+        .record(
+            OpRecordKind::Load,
+            vec![RecordedOperand::input(a_val)],
+            a_val,
+        )
         .unwrap();
     tape.record(
         OpRecordKind::Sqrt,
@@ -155,7 +159,11 @@ fn forward_reverse_pipeline_recovers_exp_derivative() {
     let mut tape = GpuTape::new(TapeStorageMode::ThreadLocalLds);
     let a_val = 1.5_f64;
     let a = tape
-        .record(OpRecordKind::Load, vec![RecordedOperand::input(a_val)], a_val)
+        .record(
+            OpRecordKind::Load,
+            vec![RecordedOperand::input(a_val)],
+            a_val,
+        )
         .unwrap();
     tape.record(
         OpRecordKind::Exp,
@@ -179,7 +187,11 @@ fn forward_reverse_pipeline_recovers_log_derivative() {
     let mut tape = GpuTape::new(TapeStorageMode::ThreadLocalLds);
     let a_val = 2.5_f64;
     let a = tape
-        .record(OpRecordKind::Load, vec![RecordedOperand::input(a_val)], a_val)
+        .record(
+            OpRecordKind::Load,
+            vec![RecordedOperand::input(a_val)],
+            a_val,
+        )
         .unwrap();
     tape.record(
         OpRecordKind::Log,

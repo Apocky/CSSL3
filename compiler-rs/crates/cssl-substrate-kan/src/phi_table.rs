@@ -261,11 +261,9 @@ mod tests {
     /// § Display for PhiStampError.
     #[test]
     fn phi_stamp_error_display() {
-        let e: PhiStampError =
-            PhiStampError::Pool(PoolError::AtCapacity { len: 1, cap: 1 });
+        let e: PhiStampError = PhiStampError::Pool(PoolError::AtCapacity { len: 1, cap: 1 });
         assert!(format!("{e}").contains("pool"));
-        let e: PhiStampError =
-            PhiStampError::Stamp(PatternStampError::DegenerateInputs);
+        let e: PhiStampError = PhiStampError::Stamp(PatternStampError::DegenerateInputs);
         assert!(format!("{e}").contains("pattern"));
     }
 

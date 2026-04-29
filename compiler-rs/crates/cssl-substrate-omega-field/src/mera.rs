@@ -157,8 +157,7 @@ impl MeraPyramid {
         for (k, cell) in fine_grid.iter() {
             let (x, y, z) = k.decode();
             let coarse_xyz = (x / 2, y / 2, z / 2);
-            let coarse_key =
-                MortonKey::encode(coarse_xyz.0, coarse_xyz.1, coarse_xyz.2).unwrap();
+            let coarse_key = MortonKey::encode(coarse_xyz.0, coarse_xyz.1, coarse_xyz.2).unwrap();
             let entry = groups.entry(coarse_key).or_default();
             entry.add(*cell);
         }

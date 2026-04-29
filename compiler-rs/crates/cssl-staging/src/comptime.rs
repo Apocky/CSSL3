@@ -47,8 +47,8 @@ use std::collections::HashSet;
 
 use cssl_ast::SourceFile;
 use cssl_hir::{
-    HirArena, HirAttr, HirAttrKind, HirBlock, HirExpr, HirExprKind, HirFn, HirFnParam,
-    HirGenerics, HirModule, HirVisibility, Interner,
+    HirArena, HirAttr, HirAttrKind, HirBlock, HirExpr, HirExprKind, HirFn, HirFnParam, HirGenerics,
+    HirModule, HirVisibility, Interner,
 };
 use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirType};
 
@@ -420,9 +420,11 @@ pub(crate) fn infer_comptime_result_type(expr: &HirExpr) -> Result<MirType, Comp
             HirLiteralKind::Float => Ok(MirType::Float(FloatWidth::F32)),
             HirLiteralKind::Bool(_) => Ok(MirType::Bool),
             HirLiteralKind::Unit => Ok(MirType::None),
-            HirLiteralKind::Str | HirLiteralKind::Char => Err(ComptimeError::UnsupportedResultType(
-                "string/char comptime-result deferred to T11-D142+".into(),
-            )),
+            HirLiteralKind::Str | HirLiteralKind::Char => {
+                Err(ComptimeError::UnsupportedResultType(
+                    "string/char comptime-result deferred to T11-D142+".into(),
+                ))
+            }
         },
         HirExprKind::Block(b) => b
             .trailing
@@ -789,8 +791,8 @@ fn collect_run_inner_exprs_item(item: &cssl_hir::HirItem, out: &mut Vec<HirExpr>
 
 fn collect_run_inner_exprs_block(block: &HirBlock, out: &mut Vec<HirExpr>) {
     for s in &block.stmts {
-        if let cssl_hir::HirStmtKind::Let { value: Some(v), .. }
-        | cssl_hir::HirStmtKind::Expr(v) = &s.kind
+        if let cssl_hir::HirStmtKind::Let { value: Some(v), .. } | cssl_hir::HirStmtKind::Expr(v) =
+            &s.kind
         {
             collect_run_inner_exprs_expr(v, out);
         }

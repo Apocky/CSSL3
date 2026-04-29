@@ -284,8 +284,7 @@ mod tests {
     /// § with_layers accepts valid hidden-layer schedule.
     #[test]
     fn with_layers_accepts_valid_hidden() {
-        let net: KanNetwork<32, 16> =
-            KanNetwork::with_layers(&[32, 64, 64, 16]).unwrap();
+        let net: KanNetwork<32, 16> = KanNetwork::with_layers(&[32, 64, 64, 16]).unwrap();
         assert_eq!(net.layer_count(), 4);
         assert!(net.is_well_formed());
     }

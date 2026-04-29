@@ -67,10 +67,9 @@ pub enum PoolError {
 impl core::fmt::Display for PoolError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::AtCapacity { len, cap } => write!(
-                f,
-                "AppendOnlyPool at-capacity ; len = {len} ; max = {cap}"
-            ),
+            Self::AtCapacity { len, cap } => {
+                write!(f, "AppendOnlyPool at-capacity ; len = {len} ; max = {cap}")
+            }
         }
     }
 }
@@ -210,7 +209,8 @@ impl<T> AppendOnlyPool<T> {
     /// Panics if the handle is NULL, out-of-bounds, or has a stale
     /// generation tag.
     pub fn resolve_or_panic(&self, handle: Handle<T>) -> &T {
-        self.resolve(handle).expect("AppendOnlyPool::resolve_or_panic : invalid handle")
+        self.resolve(handle)
+            .expect("AppendOnlyPool::resolve_or_panic : invalid handle")
     }
 
     /// § True if the handle resolves to a live slot in this pool.
@@ -314,9 +314,7 @@ mod tests {
         let _ = p.push(1).unwrap();
         let bad = Handle::from_parts(1, 99);
         match p.resolve(bad) {
-            Err(HandleResolveError::OutOfBounds {
-                index, pool_len,
-            }) => {
+            Err(HandleResolveError::OutOfBounds { index, pool_len }) => {
                 assert_eq!(index, 99);
                 assert_eq!(pool_len, 1);
             }

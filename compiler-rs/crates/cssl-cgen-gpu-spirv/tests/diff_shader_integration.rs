@@ -19,11 +19,14 @@ fn forward_emit_lands_atomic_fadd_ext_for_native_mode() {
     let mut m = SpirvModule::new(SpirvTargetEnv::VulkanKhr1_4);
     let cfg = DiffShaderConfig::default_forward();
     let stream = [OpRecordKind::FAdd, OpRecordKind::FMul];
-    let report =
-        emit_forward_diff_shader(&mut m, &cfg, "fwd_main", &stream).unwrap();
+    let report = emit_forward_diff_shader(&mut m, &cfg, "fwd_main", &stream).unwrap();
     assert_eq!(report.records_emitted, 2);
-    assert!(m.capabilities.contains(SpirvCapability::AtomicFloat32AddEXT));
-    assert!(m.extensions.contains(SpirvExtension::ExtShaderAtomicFloatAdd));
+    assert!(m
+        .capabilities
+        .contains(SpirvCapability::AtomicFloat32AddEXT));
+    assert!(m
+        .extensions
+        .contains(SpirvExtension::ExtShaderAtomicFloatAdd));
 }
 
 #[test]
@@ -33,7 +36,9 @@ fn forward_emit_no_atomic_caps_for_cas_mode() {
     cfg.atomic_mode = AtomicMode::CasLoopEmulation;
     let stream = [OpRecordKind::FAdd];
     emit_forward_diff_shader(&mut m, &cfg, "fwd_cas", &stream).unwrap();
-    assert!(!m.capabilities.contains(SpirvCapability::AtomicFloat32AddEXT));
+    assert!(!m
+        .capabilities
+        .contains(SpirvCapability::AtomicFloat32AddEXT));
 }
 
 #[test]
@@ -43,7 +48,9 @@ fn coop_matrix_path_lands_capability() {
     cfg.coop_matrix = Some(CoopMatrixPath::for_vendor(CoopMatrixVendor::IntelArcXmx));
     let stream = [OpRecordKind::FMul];
     emit_forward_diff_shader(&mut m, &cfg, "coop", &stream).unwrap();
-    assert!(m.capabilities.contains(SpirvCapability::CooperativeMatrixKHR));
+    assert!(m
+        .capabilities
+        .contains(SpirvCapability::CooperativeMatrixKHR));
     assert!(m.extensions.contains(SpirvExtension::KhrCooperativeMatrix));
 }
 
@@ -109,7 +116,9 @@ fn forward_then_reverse_share_caps() {
     assert_eq!(m.entry_points[1].name, "rev");
 
     // Caps consolidated (set semantics — duplicates don't grow).
-    assert!(m.capabilities.contains(SpirvCapability::AtomicFloat32AddEXT));
+    assert!(m
+        .capabilities
+        .contains(SpirvCapability::AtomicFloat32AddEXT));
     assert!(m.capabilities.contains(SpirvCapability::Shader));
 }
 
@@ -159,14 +168,8 @@ fn fmul_partial_rule_uses_other_operand_for_both_partials() {
             PartialRule::OperandTimes { factor, .. } => *factor,
         })
         .collect();
-    assert!(matches!(
-        factors[0],
-        PartialFactor::OtherOperand { idx: 1 }
-    ));
-    assert!(matches!(
-        factors[1],
-        PartialFactor::OtherOperand { idx: 0 }
-    ));
+    assert!(matches!(factors[0], PartialFactor::OtherOperand { idx: 1 }));
+    assert!(matches!(factors[1], PartialFactor::OtherOperand { idx: 0 }));
 }
 
 #[test]

@@ -52,9 +52,7 @@ impl AtomicMode {
     #[must_use]
     pub const fn required_extension(self) -> Option<&'static str> {
         match self {
-            Self::NativeFAddF32 | Self::NativeFAddF64 => {
-                Some("SPV_EXT_shader_atomic_float_add")
-            }
+            Self::NativeFAddF32 | Self::NativeFAddF64 => Some("SPV_EXT_shader_atomic_float_add"),
             Self::CasLoopEmulation => None,
         }
     }
@@ -161,12 +159,7 @@ impl AtomicAdjointAccumulator {
                 let new_bits = new_val.to_bits();
                 if self
                     .bits64
-                    .compare_exchange(
-                        old_bits,
-                        new_bits,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    )
+                    .compare_exchange(old_bits, new_bits, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
                 {
                     return;
@@ -180,12 +173,7 @@ impl AtomicAdjointAccumulator {
                 let new_bits = (new_val as f32).to_bits();
                 if self
                     .bits32
-                    .compare_exchange(
-                        old_bits,
-                        new_bits,
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                    )
+                    .compare_exchange(old_bits, new_bits, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
                 {
                     return;

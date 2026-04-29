@@ -164,10 +164,18 @@ mod tests {
 
     #[test]
     fn is_comptime_eligible_result_type_int_widths() {
-        assert!(is_comptime_eligible_result_type(&MirType::Int(IntWidth::I8)));
-        assert!(is_comptime_eligible_result_type(&MirType::Int(IntWidth::I16)));
-        assert!(is_comptime_eligible_result_type(&MirType::Int(IntWidth::I32)));
-        assert!(is_comptime_eligible_result_type(&MirType::Int(IntWidth::I64)));
+        assert!(is_comptime_eligible_result_type(&MirType::Int(
+            IntWidth::I8
+        )));
+        assert!(is_comptime_eligible_result_type(&MirType::Int(
+            IntWidth::I16
+        )));
+        assert!(is_comptime_eligible_result_type(&MirType::Int(
+            IntWidth::I32
+        )));
+        assert!(is_comptime_eligible_result_type(&MirType::Int(
+            IntWidth::I64
+        )));
     }
 
     #[test]

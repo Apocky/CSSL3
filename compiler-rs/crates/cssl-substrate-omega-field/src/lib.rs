@@ -84,6 +84,23 @@
 #![allow(clippy::option_if_let_else)]
 #![allow(clippy::or_fun_call)]
 #![allow(clippy::needless_continue)]
+// § Additional allowances post-W3γ-merge :
+// - many_single_char_names : math/coordinate test bindings (x/y/z + g/h/k/etc).
+// - suboptimal_flops : explicit FMA-vs-mul-add is a precision concern outside clippy's scope.
+// - bool_to_int_with_if : load-bearing branchless conversion in soft-float emit.
+// - match_same_arms : MissPolicy::AnalyticSDF intentionally falls through to the same body
+//   as another arm pending wired-up implementation in a later slice.
+// - iter_without_into_iter : SparseMortonGrid intentionally exposes only `iter()` ;
+//   `IntoIterator` would require deciding between owned vs borrowed iter API.
+// - explicit_iter_loop : `comps.iter()` is more readable than `&comps` in field-byte tests.
+// - borrow_as_ptr : `&cell as *const FieldCell` is the canonical layout-test pattern.
+#![allow(clippy::many_single_char_names)]
+#![allow(clippy::suboptimal_flops)]
+#![allow(clippy::bool_to_int_with_if)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::iter_without_into_iter)]
+#![allow(clippy::explicit_iter_loop)]
+#![allow(clippy::borrow_as_ptr)]
 // `#[allow(unused)]` fields/items in scaffold modules.
 #![allow(dead_code)]
 

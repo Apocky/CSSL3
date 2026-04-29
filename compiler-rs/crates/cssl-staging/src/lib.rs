@@ -123,9 +123,12 @@ pub use dce::{
     eliminate_branches, eliminate_dead_arith_consts, eliminate_dead_ops, run_dce_pass, DceReport,
 };
 pub use effect_scan::{
-    is_comptime_forbidden_effect, is_comptime_forbidden_fn, is_comptime_pure_fn,
-    scan_expr_effects, EffectScanError, ALLOWED_PURE_FN_NAMES, FORBIDDEN_EFFECT_TOKENS,
-    FORBIDDEN_FN_NAMES,
+    is_comptime_forbidden_effect, is_comptime_forbidden_fn, is_comptime_pure_fn, scan_expr_effects,
+    EffectScanError, ALLOWED_PURE_FN_NAMES, FORBIDDEN_EFFECT_TOKENS, FORBIDDEN_FN_NAMES,
+};
+pub use kan_demo::{
+    bake_kan_layer_mir, integrate_kan_layer_into_module, kan_layer_as_comptime,
+    mock_train_kan_layer, MockKanLayer,
 };
 pub use kan_specialize_demo::{
     analytic_kan_value, build_kan_module, run_kan_specialization, KanDemoSummary,

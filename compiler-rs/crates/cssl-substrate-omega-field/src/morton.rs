@@ -136,13 +136,22 @@ impl MortonKey {
     /// exceeds [`MORTON_AXIS_MAX`].
     pub fn encode(x: u64, y: u64, z: u64) -> Result<MortonKey, MortonError> {
         if x > MORTON_AXIS_MAX {
-            return Err(MortonError::AxisOutOfRange { axis: 'x', value: x });
+            return Err(MortonError::AxisOutOfRange {
+                axis: 'x',
+                value: x,
+            });
         }
         if y > MORTON_AXIS_MAX {
-            return Err(MortonError::AxisOutOfRange { axis: 'y', value: y });
+            return Err(MortonError::AxisOutOfRange {
+                axis: 'y',
+                value: y,
+            });
         }
         if z > MORTON_AXIS_MAX {
-            return Err(MortonError::AxisOutOfRange { axis: 'z', value: z });
+            return Err(MortonError::AxisOutOfRange {
+                axis: 'z',
+                value: z,
+            });
         }
         let xs = morton_split_by_3(x);
         let ys = morton_split_by_3(y) << 1;
@@ -322,8 +331,8 @@ pub enum MortonError {
 #[cfg(test)]
 mod tests {
     use super::{
-        morton_compact_by_3, morton_split_by_3, CellTier, MortonError, MortonKey,
-        MORTON_AXIS_MAX, MORTON_AXIS_WIDTH, MORTON_PAYLOAD_WIDTH, MORTON_SENTINEL_BIT,
+        morton_compact_by_3, morton_split_by_3, CellTier, MortonError, MortonKey, MORTON_AXIS_MAX,
+        MORTON_AXIS_WIDTH, MORTON_PAYLOAD_WIDTH, MORTON_SENTINEL_BIT,
     };
 
     // ── Bit-spreading roundtrip ─────────────────────────────────────
@@ -349,7 +358,16 @@ mod tests {
 
     #[test]
     fn split_compact_roundtrip_arbitrary() {
-        for v in [0_u64, 1, 7, 42, 1024, 65535, MORTON_AXIS_MAX / 2, MORTON_AXIS_MAX] {
+        for v in [
+            0_u64,
+            1,
+            7,
+            42,
+            1024,
+            65535,
+            MORTON_AXIS_MAX / 2,
+            MORTON_AXIS_MAX,
+        ] {
             assert_eq!(morton_compact_by_3(morton_split_by_3(v)), v);
         }
     }
@@ -379,7 +397,10 @@ mod tests {
     fn encode_decode_roundtrip_max() {
         let k = MortonKey::encode(MORTON_AXIS_MAX, MORTON_AXIS_MAX, MORTON_AXIS_MAX).unwrap();
         let (x, y, z) = k.decode();
-        assert_eq!((x, y, z), (MORTON_AXIS_MAX, MORTON_AXIS_MAX, MORTON_AXIS_MAX));
+        assert_eq!(
+            (x, y, z),
+            (MORTON_AXIS_MAX, MORTON_AXIS_MAX, MORTON_AXIS_MAX)
+        );
     }
 
     #[test]
@@ -388,11 +409,17 @@ mod tests {
         // 21-bit range. We use a fixed-seed LCG so the test is replay-stable.
         let mut s: u64 = 0xC0FF_EE_BA_BE_42;
         for _ in 0..256 {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let x = (s >> 4) & MORTON_AXIS_MAX;
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let y = (s >> 4) & MORTON_AXIS_MAX;
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let z = (s >> 4) & MORTON_AXIS_MAX;
             let k = MortonKey::encode(x, y, z).unwrap();
             assert_eq!(k.decode(), (x, y, z));
@@ -505,7 +532,8 @@ mod tests {
 
     #[test]
     fn cell_tier_canonical_names_unique() {
-        let mut names: Vec<&'static str> = CellTier::all().iter().map(|t| t.canonical_name()).collect();
+        let mut names: Vec<&'static str> =
+            CellTier::all().iter().map(|t| t.canonical_name()).collect();
         names.sort_unstable();
         let original = names.len();
         names.dedup();

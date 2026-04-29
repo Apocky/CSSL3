@@ -183,7 +183,9 @@ impl OmegaField {
         // gate stays coherent.
         let mut new_cell = cell;
         new_cell.sync_sigma_low(mask);
-        self.cells.insert(key, new_cell).map_err(|e| MutationError::Grid(e))?;
+        self.cells
+            .insert(key, new_cell)
+            .map_err(|e| MutationError::Grid(e))?;
         self.epoch = self.epoch.wrapping_add(1);
         Ok(())
     }
@@ -233,7 +235,9 @@ impl OmegaField {
         // Now apply the cell.
         let mut new_cell = cell;
         new_cell.sync_sigma_low(new_mask);
-        self.cells.insert(key, new_cell).map_err(MutationError::Grid)?;
+        self.cells
+            .insert(key, new_cell)
+            .map_err(MutationError::Grid)?;
         self.epoch = self.epoch.wrapping_add(1);
         Ok(())
     }
@@ -296,9 +300,7 @@ impl OmegaField {
             return Some((t, c));
         }
         // Fall through to the canonical dense grid.
-        self.cells
-            .at_const(key)
-            .map(|c| (CellTier::T0Fovea, c))
+        self.cells.at_const(key).map(|c| (CellTier::T0Fovea, c))
     }
 
     /// Run the full coarsen-cascade : T0 → T1 → T2 → T3.
@@ -456,10 +458,7 @@ pub enum MutationError {
         .key.to_u64(),
         .consent_bits
     )]
-    SigmaRefused {
-        key: MortonKey,
-        consent_bits: u32,
-    },
+    SigmaRefused { key: MortonKey, consent_bits: u32 },
 
     /// The new Σ-mask supplied to `set_cell_with_consent_grant` does not
     /// itself permit Modify — the request is incoherent.
@@ -513,9 +512,8 @@ mod tests {
         let mut f = OmegaField::new();
         let k = MortonKey::encode(1, 2, 3).unwrap();
         // Grant Modify via Σ-overlay update.
-        let mask = SigmaMaskPacked::default_mask().with_consent(
-            ConsentBit::Modify.bits() | ConsentBit::Observe.bits(),
-        );
+        let mask = SigmaMaskPacked::default_mask()
+            .with_consent(ConsentBit::Modify.bits() | ConsentBit::Observe.bits());
         f.set_sigma(k, mask);
         let mut c = FieldCell::default();
         c.density = 2.0;
@@ -531,15 +529,15 @@ mod tests {
         let k = MortonKey::encode(7, 8, 9).unwrap();
         let mut c = FieldCell::default();
         c.density = 5.0;
-        let mask =
-            SigmaMaskPacked::from_policy(SigmaPolicy::SovereignOnly).with_sovereign(99);
+        let mask = SigmaMaskPacked::from_policy(SigmaPolicy::SovereignOnly).with_sovereign(99);
         f.set_cell_with_consent_grant(k, c, 99, mask).unwrap();
         assert_eq!(f.dense_cell_count(), 1);
         assert_eq!(f.epoch(), 1);
         // Sovereign mismatch on subsequent grant is rejected.
-        let other_mask =
-            SigmaMaskPacked::from_policy(SigmaPolicy::SovereignOnly).with_sovereign(7);
-        let err = f.set_cell_with_consent_grant(k, c, 7, other_mask).unwrap_err();
+        let other_mask = SigmaMaskPacked::from_policy(SigmaPolicy::SovereignOnly).with_sovereign(7);
+        let err = f
+            .set_cell_with_consent_grant(k, c, 7, other_mask)
+            .unwrap_err();
         assert!(matches!(err, MutationError::SovereignMismatch { .. }));
     }
 
@@ -581,9 +579,8 @@ mod tests {
         let mut f = OmegaField::new();
         let h = f.append_pattern(Pattern::new("npc", 64));
         let k = MortonKey::encode(2, 0, 0).unwrap();
-        let mask = SigmaMaskPacked::default_mask().with_consent(
-            ConsentBit::Modify.bits() | ConsentBit::Observe.bits(),
-        );
+        let mask = SigmaMaskPacked::default_mask()
+            .with_consent(ConsentBit::Modify.bits() | ConsentBit::Observe.bits());
         f.set_sigma(k, mask);
         let mut c = FieldCell::default();
         c.set_pattern_handle(h);

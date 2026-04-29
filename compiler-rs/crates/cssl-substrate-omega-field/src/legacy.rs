@@ -108,8 +108,7 @@ impl LegacyTensorMigration<f64> for LegacyTensor<f64, 3> {
             for j in 0..shape[1] {
                 for k in 0..shape[2] {
                     let v = self.get([i, j, k]).unwrap_or(0.0);
-                    let key = crate::MortonKey::encode(i, j, k)
-                        .map_err(MigrationError::Morton)?;
+                    let key = crate::MortonKey::encode(i, j, k).map_err(MigrationError::Morton)?;
                     apply_facet(&mut field, key, facet, v as f32)?;
                 }
             }
@@ -128,8 +127,7 @@ fn migrate_rank3_to_field(
         for j in 0..shape[1] {
             for k in 0..shape[2] {
                 let v = tensor.get([i, j, k]).unwrap_or(0.0);
-                let key = crate::MortonKey::encode(i, j, k)
-                    .map_err(MigrationError::Morton)?;
+                let key = crate::MortonKey::encode(i, j, k).map_err(MigrationError::Morton)?;
                 apply_facet(&mut field, key, facet, v)?;
             }
         }

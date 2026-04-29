@@ -108,6 +108,12 @@
 //!     at a different Pattern. Sovereignty over a Φ-handle is monotone.
 
 #![forbid(unsafe_code)]
+// § Style allowances for substrate-runtime numerical code :
+// - many_single_char_names : test fixtures using x/y/z/g/w/etc as natural-domain bindings
+// - suboptimal_flops : explicit fma vs sum-of-products is a precision/portability concern
+//   that we don't want clippy second-guessing in this layer.
+#![allow(clippy::many_single_char_names)]
+#![allow(clippy::suboptimal_flops)]
 
 pub mod handle;
 pub mod kan_genome_weights;
@@ -120,12 +126,10 @@ pub mod pool;
 // § Top-level re-exports for the canonical surface — match the
 //   `02_CSSL/06_SUBSTRATE_EVOLUTION.csl § IV` REQUIRED NEW TYPES list.
 pub use handle::{Handle, HandleResolveError, NULL_HANDLE};
-pub use kan_genome_weights::{
-    KanGenomeWeights, BODY_PARAMS, CAP_PARAMS, COG_PARAMS,
-};
+pub use kan_genome_weights::{KanGenomeWeights, BODY_PARAMS, CAP_PARAMS, COG_PARAMS};
 pub use kan_material::{
-    KanMaterial, KanMaterialKind, MaterialFingerprint, BRDF_OUT_DIM,
-    EMBEDDING_DIM, IMPEDANCE_BANDS, MORPHOLOGY_PARAMS,
+    KanMaterial, KanMaterialKind, MaterialFingerprint, BRDF_OUT_DIM, EMBEDDING_DIM,
+    IMPEDANCE_BANDS, MORPHOLOGY_PARAMS,
 };
 pub use kan_network::{KanNetwork, SplineBasis, KAN_LAYERS_MAX};
 pub use pattern::{Pattern, PatternFingerprint, PatternStampError, SubstrateClassTag};

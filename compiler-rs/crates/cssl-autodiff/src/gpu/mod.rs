@@ -116,6 +116,5 @@ pub use kan::{KanGpuForward, KanLayerKind, KanShape, KanVariant};
 pub use mir_ops::{GpuAdOp, GpuAdOpName};
 pub use storage::{select_storage_mode, OperationDensity, TapeStorageMode};
 pub use tape::{
-    record_op, replay_op, GpuTape, GpuTapeError, OpRecord, OpRecordKind, RecordedOperand,
-    TapeStats,
+    record_op, replay_op, GpuTape, GpuTapeError, OpRecord, OpRecordKind, RecordedOperand, TapeStats,
 };

@@ -81,6 +81,9 @@
 // over-indented list-continuation bullets that the newer clippy flags. The
 // docstrings render correctly as Markdown — fixing them would touch unrelated
 // content. Allow at crate-level until a separate docstring-polish slice lands.
+// `unknown_lints` guards against pre-1.86 toolchains that don't know the new
+// lint name yet.
+#![allow(unknown_lints)]
 #![allow(clippy::doc_overindented_list_items)]
 
 pub mod call_dispatch;

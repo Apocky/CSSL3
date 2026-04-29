@@ -132,9 +132,7 @@ impl TelemetryRefusal {
     #[must_use]
     pub fn diagnostic_bytes(&self) -> Vec<u8> {
         match self {
-            Self::BiometricRefused { domain } => {
-                format!("biometric-refused:{domain}").into_bytes()
-            }
+            Self::BiometricRefused { domain } => format!("biometric-refused:{domain}").into_bytes(),
             Self::SurveillanceRefused => b"surveillance-refused".to_vec(),
             Self::CoercionRefused => b"coercion-refused".to_vec(),
             Self::WeaponNeedsKernel => b"weapon-needs-kernel".to_vec(),

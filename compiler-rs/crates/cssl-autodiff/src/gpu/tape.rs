@@ -182,15 +182,9 @@ pub enum GpuTapeError {
     /// Replay attempted on an empty tape.
     EmptyTape,
     /// Replay attempted on a slot index outside the recorded range.
-    SlotOutOfRange {
-        slot: u32,
-        len: u32,
-    },
+    SlotOutOfRange { slot: u32, len: u32 },
     /// Cotangent-buffer length does not match tape length.
-    CotangentLengthMismatch {
-        expected: usize,
-        actual: usize,
-    },
+    CotangentLengthMismatch { expected: usize, actual: usize },
 }
 
 impl core::fmt::Display for GpuTapeError {
@@ -513,12 +507,8 @@ mod tests {
     use super::*;
 
     fn add_const(tape: &mut GpuTape, v: f64) -> u32 {
-        tape.record(
-            OpRecordKind::Load,
-            vec![RecordedOperand::input(v)],
-            v,
-        )
-        .unwrap()
+        tape.record(OpRecordKind::Load, vec![RecordedOperand::input(v)], v)
+            .unwrap()
     }
 
     #[test]
@@ -745,13 +735,8 @@ mod tests {
     #[test]
     fn record_from_jet_field_extracts_primal() {
         let mut t = GpuTape::new(TapeStorageMode::WorkgroupShared);
-        let s = record_from_jet_field::<f32>(
-            &mut t,
-            OpRecordKind::Load,
-            &[(None, 2.5_f32)],
-            2.5,
-        )
-        .unwrap();
+        let s = record_from_jet_field::<f32>(&mut t, OpRecordKind::Load, &[(None, 2.5_f32)], 2.5)
+            .unwrap();
         assert_eq!(s, 0);
         assert!((t.record_at(0).unwrap().result - 2.5).abs() < 1e-7);
     }

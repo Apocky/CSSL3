@@ -132,9 +132,9 @@ mod tests {
     fn set_and_read_full_mask() {
         let mut o = SigmaOverlay::new();
         let k = MortonKey::encode(7, 8, 9).unwrap();
-        let mask = SigmaMaskPacked::default_mask().with_sovereign(42).with_consent(
-            ConsentBit::Modify.bits() | ConsentBit::Observe.bits(),
-        );
+        let mask = SigmaMaskPacked::default_mask()
+            .with_sovereign(42)
+            .with_consent(ConsentBit::Modify.bits() | ConsentBit::Observe.bits());
         o.set(k, mask);
         let read = o.at(k);
         assert_eq!(read.sovereign_handle(), 42);

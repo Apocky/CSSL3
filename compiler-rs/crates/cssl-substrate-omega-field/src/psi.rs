@@ -96,10 +96,7 @@ impl PsiOverlay {
     /// missing cells (the spec's "all-other-cells ⊗ classical" default).
     #[must_use]
     pub fn at(&self, key: MortonKey) -> f32 {
-        self.grid
-            .at_const(key)
-            .map(|c| c.negativity)
-            .unwrap_or(0.0)
+        self.grid.at_const(key).map(|c| c.negativity).unwrap_or(0.0)
     }
 
     /// True iff the cell at `key` is "magical" (negativity > 0).
@@ -124,7 +121,10 @@ impl PsiOverlay {
     /// We expose the unlogged L1 norm here ; the log is the consumer's job.
     #[must_use]
     pub fn l1_norm(&self) -> f32 {
-        self.grid.iter_unordered().map(|(_, c)| c.negativity.abs()).sum()
+        self.grid
+            .iter_unordered()
+            .map(|(_, c)| c.negativity.abs())
+            .sum()
     }
 
     /// Iterate cells in MortonKey-ascending order.

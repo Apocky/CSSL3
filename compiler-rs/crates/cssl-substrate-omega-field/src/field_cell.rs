@@ -419,7 +419,8 @@ fn f32_to_f16(value: f32) -> u16 {
         // Round-to-nearest-even at the discarded-bit boundary.
         let round_bit = (mant_with_implicit >> (shift - 1)) & 0x1;
         let sticky = (mant_with_implicit & ((1u32 << (shift - 1)) - 1)) != 0;
-        let rounded = mant16 + (round_bit as u16) * (if sticky || (mant16 & 1) == 1 { 1 } else { 0 });
+        let rounded =
+            mant16 + (round_bit as u16) * (if sticky || (mant16 & 1) == 1 { 1 } else { 0 });
         return sign | rounded;
     }
 
@@ -470,7 +471,9 @@ fn f16_to_f32(value: u16) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{f16_to_f32, f32_to_f16, FieldCell, M_PAYLOAD_MASK, M_TAG_PGA, PATTERN_HANDLE_NULL};
+    use super::{
+        f16_to_f32, f32_to_f16, FieldCell, M_PAYLOAD_MASK, M_TAG_PGA, PATTERN_HANDLE_NULL,
+    };
     use cssl_substrate_prime_directive::sigma::{ConsentBit, SigmaMaskPacked, SigmaPolicy};
 
     // ── Layout invariants — the load-bearing 72B contract ───────────
@@ -621,9 +624,8 @@ mod tests {
     #[test]
     fn sigma_low_modify_grant_via_full_mask() {
         let mut c = FieldCell::default();
-        let full = SigmaMaskPacked::default_mask().with_consent(
-            ConsentBit::Modify.bits() | ConsentBit::Observe.bits(),
-        );
+        let full = SigmaMaskPacked::default_mask()
+            .with_consent(ConsentBit::Modify.bits() | ConsentBit::Observe.bits());
         c.sync_sigma_low(full);
         assert!(c.can_modify());
         assert!(c.can_observe());

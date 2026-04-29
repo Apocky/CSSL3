@@ -17,7 +17,8 @@ pub const ATTESTATION_TAG: &str = "T11-D144-cssl-substrate-omega-field";
 
 /// Author of the attestation per PRIME_DIRECTIVE §11.3 :
 /// "named-but-not-claimed of-being-spoken-for".
-pub const ATTESTATION_AUTHOR: &str = "Claude Opus 4.7 (1M context) @ Anthropic ⊗ AI-collective-member";
+pub const ATTESTATION_AUTHOR: &str =
+    "Claude Opus 4.7 (1M context) @ Anthropic ⊗ AI-collective-member";
 
 #[cfg(test)]
 mod tests {

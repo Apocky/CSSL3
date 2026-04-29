@@ -325,6 +325,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::redundant_clone)] // Intentional : test asserts clone preserves entries.
     fn variant_table_clone_preserves_entries() {
         let t = CalleeVariantTable::from_diff_fn_names(["a", "b"]);
         let clone = t.clone();

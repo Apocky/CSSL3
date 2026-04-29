@@ -87,9 +87,7 @@ fn bake_scalar(value: &ComptimeValue, ty: &MirType, next: &mut u32) -> BakedOps 
 }
 
 fn bake_array(elems: &[ComptimeValue], _container_ty: &MirType, next: &mut u32) -> BakedOps {
-    let elem_ty = elems
-        .first()
-        .map_or(MirType::None, infer_scalar_mir_type);
+    let elem_ty = elems.first().map_or(MirType::None, infer_scalar_mir_type);
     let mut ops = Vec::with_capacity(elems.len() + 1);
     let mut elem_ids = Vec::with_capacity(elems.len());
     for e in elems {
@@ -101,7 +99,10 @@ fn bake_array(elems: &[ComptimeValue], _container_ty: &MirType, next: &mut u32) 
     let assemble_id = ValueId(*next);
     *next = next.saturating_add(1);
     let mut assemble = MirOp::std("cssl.array.assemble")
-        .with_result(assemble_id, MirType::Opaque(format!("!cssl.array<{elem_ty}>")))
+        .with_result(
+            assemble_id,
+            MirType::Opaque(format!("!cssl.array<{elem_ty}>")),
+        )
         .with_attribute("elem_count", elems.len().to_string())
         .with_attribute("elem_type", format!("{elem_ty}"))
         .with_attribute("source_loc", "<comptime>");
@@ -167,9 +168,7 @@ fn infer_scalar_mir_type(v: &ComptimeValue) -> MirType {
 /// `cssl.array.assemble` op. Used by the LUT-baking demo to bake all 256
 /// sine-table entries in one shot.
 pub fn bake_lut(values: &[ComptimeResult], next_value_id: &mut u32) -> BakedOps {
-    let elem_ty = values
-        .first()
-        .map_or(MirType::None, |r| r.ty.clone());
+    let elem_ty = values.first().map_or(MirType::None, |r| r.ty.clone());
     let mut ops = Vec::with_capacity(values.len() + 1);
     let mut elem_ids = Vec::with_capacity(values.len());
     for v in values {
@@ -345,8 +344,7 @@ mod tests {
 
     #[test]
     fn is_comptime_baked_returns_false_for_unmarked() {
-        let op = MirOp::std("arith.constant")
-            .with_attribute("source_loc", "src.csl:1:1");
+        let op = MirOp::std("arith.constant").with_attribute("source_loc", "src.csl:1:1");
         assert!(!is_comptime_baked(&op));
     }
 

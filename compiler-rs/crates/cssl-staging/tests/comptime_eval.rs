@@ -13,6 +13,9 @@
 //!   - Bake-shape correctness (op-counts, attribute keys, source_loc markers).
 //!   - encode/decode round-trips for ComptimeValue ↔ bytes.
 
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::cast_precision_loss)]
+
 use cssl_ast::{SourceFile, SourceId, Surface};
 use cssl_hir::{HirExpr, HirExprKind, Interner};
 use cssl_mir::{FloatWidth, IntWidth, MirType};
@@ -61,8 +64,8 @@ fn find_run_in_block(block: &cssl_hir::HirBlock, out: &mut Option<HirExpr>) {
         return;
     }
     for s in &block.stmts {
-        if let cssl_hir::HirStmtKind::Let { value: Some(v), .. }
-        | cssl_hir::HirStmtKind::Expr(v) = &s.kind
+        if let cssl_hir::HirStmtKind::Let { value: Some(v), .. } | cssl_hir::HirStmtKind::Expr(v) =
+            &s.kind
         {
             find_run_in_expr(v, out);
             if out.is_some() {
@@ -416,8 +419,12 @@ fn check_sandbox_policy_rejects_unsupported_result_type() {
 
 #[test]
 fn is_comptime_eligible_result_type_basics() {
-    assert!(is_comptime_eligible_result_type(&MirType::Int(IntWidth::I32)));
-    assert!(is_comptime_eligible_result_type(&MirType::Float(FloatWidth::F32)));
+    assert!(is_comptime_eligible_result_type(&MirType::Int(
+        IntWidth::I32
+    )));
+    assert!(is_comptime_eligible_result_type(&MirType::Float(
+        FloatWidth::F32
+    )));
     assert!(is_comptime_eligible_result_type(&MirType::Bool));
     assert!(!is_comptime_eligible_result_type(&MirType::Handle));
 }

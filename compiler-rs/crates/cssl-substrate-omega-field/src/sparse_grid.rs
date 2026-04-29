@@ -822,11 +822,8 @@ mod tests {
             .unwrap(); // T1
         g.insert(MortonKey::encode(32, 0, 0).unwrap(), TestCell { tag: 2 })
             .unwrap(); // T2
-        g.insert(
-            MortonKey::encode(128, 0, 0).unwrap(),
-            TestCell { tag: 3 },
-        )
-        .unwrap(); // T3
+        g.insert(MortonKey::encode(128, 0, 0).unwrap(), TestCell { tag: 3 })
+            .unwrap(); // T3
         let t0_cells: Vec<_> = g.iter_by_tier(CellTier::T0Fovea).collect();
         let t3_cells: Vec<_> = g.iter_by_tier(CellTier::T3Horizon).collect();
         assert_eq!(t0_cells.len(), 1);
@@ -940,7 +937,9 @@ mod tests {
         let mut s: u64 = 0xDEAD_BEEF;
         let mut keys = Vec::new();
         for i in 0..1000 {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let x = (s >> 4) & 0xFFFF;
             let y = (s >> 24) & 0xFFFF;
             let z = (s >> 44) & 0xFFFF;
