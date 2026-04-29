@@ -540,6 +540,15 @@ fn lower_one_op(
         //   which we treat as a no-op here. D5 (StructuredCfgValidator) will
         //   reject bare top-level scf.yield in a future slice.
         "scf.if" => lower_scf_if_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
+        // § T11-D61 (S6-C2) — structured loops. Each delegates to the
+        //   matching `crate::scf::lower_scf_*` helper ; the body-walker
+        //   dispatcher closure re-enters `lower_one_op` so nested ops
+        //   (arith / heap / nested scf.*) flow through the same dispatch.
+        "scf.loop" => lower_scf_loop_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
+        "scf.while" => {
+            lower_scf_while_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty)
+        }
+        "scf.for" => lower_scf_for_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
         "scf.yield" => Ok(false),
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
@@ -639,6 +648,87 @@ fn lower_scf_if_in_object(
         crate::scf::BackendOrScfError::Scf(scf_err) => ObjectError::LoweringFailed {
             fn_name: fn_name.to_string(),
             detail: format!("scf.if : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
+    })
+}
+
+/// Adapter : delegate `scf.loop` lowering to [`crate::scf::lower_scf_loop`].
+fn lower_scf_loop_in_object(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    heap_refs: &HeapImports,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    crate::scf::lower_scf_loop(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |body_op, b, vm, name| -> Result<bool, ObjectError> {
+            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.loop : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
+    })
+}
+
+/// Adapter : delegate `scf.while` lowering to [`crate::scf::lower_scf_while`].
+fn lower_scf_while_in_object(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    heap_refs: &HeapImports,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    crate::scf::lower_scf_while(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |body_op, b, vm, name| -> Result<bool, ObjectError> {
+            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.while : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
+    })
+}
+
+/// Adapter : delegate `scf.for` lowering to [`crate::scf::lower_scf_for`].
+fn lower_scf_for_in_object(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    heap_refs: &HeapImports,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    crate::scf::lower_scf_for(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |body_op, b, vm, name| -> Result<bool, ObjectError> {
+            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.for : {scf_err}"),
         },
         crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
     })
@@ -1511,5 +1601,136 @@ mod tests {
         module.push_func(f);
         let r = emit_object_module(&module);
         assert!(matches!(r, Err(ObjectError::LoweringFailed { .. })));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-D61 (S6-C2) — scf.loop / scf.while / scf.for object-emit
+    // ─────────────────────────────────────────────────────────────────
+    //
+    // These tests verify the object backend accepts loop ops + produces
+    // a valid object file with the host-platform magic. Roundtrip-
+    // runtime tests live in jit.rs (which can actually execute) ; here
+    // we verify byte-shape invariants + structural-error propagation.
+
+    /// `fn loop_ret(x : i32) -> i32 { loop { return x } }`
+    #[test]
+    fn obj_emit_scf_loop_with_inner_return_succeeds() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "loop_ret",
+            vec![MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 1;
+        // Body : `func.return v0`
+        let mut body_blk = MirBlock::new("entry");
+        body_blk
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut body_region = MirRegion::new();
+        body_region.push(body_blk);
+        f.push_op(
+            MirOp::std("scf.loop")
+                .with_region(body_region)
+                .with_result(ValueId(0), MirType::None),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// `fn while_skip(c : bool, x : i32) -> i32 { while c { return 99 } x }`
+    #[test]
+    fn obj_emit_scf_while_with_branching_succeeds() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "while_skip",
+            vec![MirType::Bool, MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 3;
+        let mut body_blk = MirBlock::new("entry");
+        body_blk.ops.push(
+            MirOp::std("arith.constant")
+                .with_result(ValueId(2), MirType::Int(IntWidth::I32))
+                .with_attribute("value", "99"),
+        );
+        body_blk
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        let mut body_region = MirRegion::new();
+        body_region.push(body_blk);
+        f.push_op(
+            MirOp::std("scf.while")
+                .with_operand(ValueId(0))
+                .with_region(body_region)
+                .with_result(ValueId(0), MirType::None),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// `fn for_passthrough(iter : i64, x : i32) -> i32 { for _ in iter { } x }`
+    #[test]
+    fn obj_emit_scf_for_passthrough_succeeds() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "for_passthrough",
+            vec![MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        let body_blk = MirBlock::new("entry");
+        let mut body_region = MirRegion::new();
+        body_region.push(body_blk);
+        f.push_op(
+            MirOp::std("scf.for")
+                .with_operand(ValueId(0))
+                .with_region(body_region)
+                .with_result(ValueId(0), MirType::None),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// scf.loop with TWO regions → WrongLoopRegionCount → LoweringFailed.
+    #[test]
+    fn obj_emit_scf_loop_with_two_regions_errors() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "bad_loop",
+            vec![MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 1;
+        let mut r1_blk = MirBlock::new("entry");
+        r1_blk
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut r1 = MirRegion::new();
+        r1.push(r1_blk);
+        let r2 = MirRegion::new();
+        f.push_op(
+            MirOp::std("scf.loop")
+                .with_region(r1)
+                .with_region(r2)
+                .with_result(ValueId(0), MirType::None),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(
+            matches!(r, Err(ObjectError::LoweringFailed { ref detail, .. }) if detail.contains("scf.loop")),
+            "unexpected result : {r:?}"
+        );
     }
 }

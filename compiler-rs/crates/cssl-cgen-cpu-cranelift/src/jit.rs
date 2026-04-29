@@ -959,12 +959,22 @@ fn lower_op_to_cl(
         // shared helper in `crate::scf` walks the two regions and threads
         // the yielded value (when present) through a merge-block parameter.
         "scf.if" => lower_scf_if_in_jit(op, builder, value_map, fn_name, callee_refs),
-        // scf.yield is consumed by `lower_scf_if_in_jit` directly. Encountering
-        // it at the outer dispatch level means it leaked outside its parent
-        // region — that's a structured-CFG violation, but for stage-0 we
-        // accept it as a no-op so legacy hand-built MIR (without parent
-        // scf.if) keeps lowering. D5 (StructuredCfgValidator) will reject
-        // bare scf.yield at the outer level once it lands.
+        // T11-D61 / S6-C2 : structured-loop ops. Each delegates to the
+        // matching entry in `crate::scf` ; the body-walker dispatcher
+        // closure re-enters `lower_op_to_cl` for nested ops (including
+        // nested scf.* — recursion through this dispatch is how nested
+        // loops + conditionals work).
+        "scf.loop" => lower_scf_loop_in_jit(op, builder, value_map, fn_name, callee_refs),
+        "scf.while" => lower_scf_while_in_jit(op, builder, value_map, fn_name, callee_refs),
+        "scf.for" => lower_scf_for_in_jit(op, builder, value_map, fn_name, callee_refs),
+        // scf.yield is consumed by `lower_scf_if_in_jit` directly (and by
+        // `lower_scf_*` loop helpers as a no-op terminator). Encountering
+        // it at the outer dispatch level means it leaked outside its
+        // parent region — that's a structured-CFG violation, but for
+        // stage-0 we accept it as a no-op so legacy hand-built MIR
+        // (without parent scf.if) keeps lowering. D5
+        // (StructuredCfgValidator) will reject bare scf.yield at the
+        // outer level once it lands.
         "scf.yield" => Ok(false),
         // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
         // it carries one-operand-per-primal-float-param holding that param's
@@ -1564,6 +1574,86 @@ fn lower_scf_if_in_jit(
         crate::scf::BackendOrScfError::Scf(scf_err) => JitError::LoweringFailed {
             fn_name: fn_name.to_string(),
             detail: format!("scf.if : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(jit_err) => jit_err,
+    })
+}
+
+/// Adapter : delegate `scf.loop` lowering to [`crate::scf::lower_scf_loop`].
+/// Mirrors `lower_scf_if_in_jit` — see its doc-comment for the dispatcher-
+/// closure pattern.
+fn lower_scf_loop_in_jit(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<bool, JitError> {
+    crate::scf::lower_scf_loop(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |body_op, b, vm, name| -> Result<bool, JitError> {
+            lower_op_to_cl(body_op, b, vm, name, callee_refs)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.loop : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(jit_err) => jit_err,
+    })
+}
+
+/// Adapter : delegate `scf.while` lowering to [`crate::scf::lower_scf_while`].
+fn lower_scf_while_in_jit(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<bool, JitError> {
+    crate::scf::lower_scf_while(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |body_op, b, vm, name| -> Result<bool, JitError> {
+            lower_op_to_cl(body_op, b, vm, name, callee_refs)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.while : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(jit_err) => jit_err,
+    })
+}
+
+/// Adapter : delegate `scf.for` lowering to [`crate::scf::lower_scf_for`].
+fn lower_scf_for_in_jit(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<bool, JitError> {
+    crate::scf::lower_scf_for(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |body_op, b, vm, name| -> Result<bool, JitError> {
+            lower_op_to_cl(body_op, b, vm, name, callee_refs)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.for : {scf_err}"),
         },
         crate::scf::BackendOrScfError::Backend(jit_err) => jit_err,
     })
@@ -3182,5 +3272,399 @@ mod tests {
         let mut m = JitModule::new();
         let err = m.compile(&f).unwrap_err();
         assert!(matches!(err, JitError::LoweringFailed { .. }));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § T11-D61 (S6-C2) : scf.loop + scf.while + scf.for JIT tests.
+    //
+    // The hand-built MIR fixtures here exercise the loop-shape contract
+    // shared by `body_lower::lower_loop` / `_while` / `_for`. Each loop
+    // op carries :
+    //   - operand[0]   : leading operand (cond ValueId for while, iter
+    //                    ValueId for for, absent for loop)
+    //   - regions[0]   : single body-region with one entry block
+    //   - results[0]   : id + MirType::None (loops don't yield)
+    //
+    // The shared `crate::scf::lower_scf_*` helpers turn these into :
+    //   <caller>     : jump header_block
+    //   header_block : <op-specific brif/jump>
+    //   body_block   : <body-ops> ; jump header_block (or exit_block)
+    //   exit_block   : <continuation>
+    //
+    // Stage-0 limits (see `crate::scf` doc § DEFERRED) :
+    //   - scf.for runs the body once and falls through (no IV iteration)
+    //   - scf.while reads the cond once at op-entry, no re-eval
+    //   - scf.loop is a true infinite loop ; exit only via inner
+    //     func.return
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// `fn loop_then_return(x : i32) -> i32 { loop { return x } }` — the
+    /// loop body's inner func.return terminates immediately, so the
+    /// loop runs exactly once. Asserts the JIT compiles + executes.
+    fn hand_built_loop_returns_arg() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("loop_then_return", vec![i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i32_ty())];
+            // body : `func.return v0`
+            let mut body_blk = MirBlock::new("entry");
+            body_blk
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+            let mut body_region = MirRegion::new();
+            body_region.push(body_blk);
+            entry.ops.push(
+                MirOp::std("scf.loop")
+                    .with_region(body_region)
+                    .with_result(ValueId(0), MirType::None),
+            );
+            // Trailing func.return after the loop is unreachable but
+            // legal — guards against the loop dropping the cursor in a
+            // dangling state. We still emit it so the entry block has
+            // a terminator at the outer level.
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_loop_with_inner_return_executes_once() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_loop_returns_arg()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("loop_then_return").unwrap();
+        // SAFETY: see prior tests. Sig: (i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(7), 7);
+        assert_eq!(f(-12345), -12345);
+    }
+
+    /// `fn while_skip(cond : bool, x : i32) -> i32 { while cond { return 99 } x }`
+    /// — at stage-0 the cond is read once. When cond=false we skip the
+    /// loop entirely and return x ; when cond=true the inner return
+    /// fires the first iteration. Verifies the brif at the header
+    /// directs control correctly.
+    fn hand_built_while_skip_or_return() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("while_skip", vec![bool_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // body : produce a constant 99 + return it
+            let mut body_blk = MirBlock::new("entry");
+            body_blk.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), i32_ty())
+                    .with_attribute("value", "99"),
+            );
+            body_blk
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(2)));
+            let mut body_region = MirRegion::new();
+            body_region.push(body_blk);
+            // scf.while v0 [body]
+            entry.ops.push(
+                MirOp::std("scf.while")
+                    .with_operand(ValueId(0))
+                    .with_region(body_region)
+                    .with_result(ValueId(0), MirType::None),
+            );
+            // After the loop : return x
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_while_skips_when_cond_false() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_while_skip_or_return()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("while_skip").unwrap();
+        // SAFETY: see prior tests. Sig: (i8, i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // cond = 0 → skip body, return x
+        assert_eq!(f(0, 42), 42);
+    }
+
+    #[test]
+    fn scf_while_enters_when_cond_true() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_while_skip_or_return()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("while_skip").unwrap();
+        // SAFETY: see prior tests. Sig: (i8, i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // cond = 1 → body runs, returns 99 immediately
+        assert_eq!(f(1, 42), 99);
+    }
+
+    /// `fn for_passthrough(iter : i64, x : i32) -> i32 { for _ in iter { } x }`
+    /// — iter is a placeholder ValueId of any type (stage-0 doesn't
+    /// inspect it ; the cssl.range op upstream produces MirType::None
+    /// in real code, but for the JIT test we use an i64 param so the
+    /// value is in the value-map). Body is empty ; verifies fall-
+    /// through to the trailing return.
+    fn hand_built_for_passthrough() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("for_passthrough", vec![i64_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), i64_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // empty body
+            let body_blk = MirBlock::new("entry");
+            let mut body_region = MirRegion::new();
+            body_region.push(body_blk);
+            entry.ops.push(
+                MirOp::std("scf.for")
+                    .with_operand(ValueId(0))
+                    .with_region(body_region)
+                    .with_result(ValueId(0), MirType::None),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_for_passthrough_returns_trailing_value() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_for_passthrough()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("for_passthrough").unwrap();
+        // SAFETY: see prior tests. Sig: (i64, i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i64, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // Body empty + single-trip ⇒ returns the trailing arg.
+        assert_eq!(f(0xCAFE, 17), 17);
+    }
+
+    /// `fn for_with_arith(iter : i64, x : i32) -> i32 { for _ in iter { let y = x + x; return y } 0 }`
+    /// — verifies body-ops actually execute through the dispatcher
+    /// closure (not just the loop scaffolding). The `arith.constant`
+    /// + `arith.add` + `func.return` inside the body proves that the
+    /// per-op lowerer round-trips through the loop-helper.
+    fn hand_built_for_body_runs_arith() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("for_with_arith", vec![i64_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), i64_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // body : v2 = v1 + v1 ; return v2
+            let mut body_blk = MirBlock::new("entry");
+            body_blk.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), i32_ty()),
+            );
+            body_blk
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(2)));
+            let mut body_region = MirRegion::new();
+            body_region.push(body_blk);
+            entry.ops.push(
+                MirOp::std("scf.for")
+                    .with_operand(ValueId(0))
+                    .with_region(body_region)
+                    .with_result(ValueId(3), MirType::None),
+            );
+            // Trailing return : 0 — only reached if loop falls through
+            // without inner-return (i.e. when body is empty).
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(3), i32_ty())
+                    .with_attribute("value", "0"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_for_body_arith_executes_through_dispatcher() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_for_body_runs_arith()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("for_with_arith").unwrap();
+        // SAFETY: see prior tests. Sig: (i64, i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i64, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // Body fires once, returns x+x.
+        assert_eq!(f(0, 21), 42);
+        assert_eq!(f(0, -7), -14);
+    }
+
+    /// `fn nested_loop_inside_if(c : bool, x : i32) -> i32 { if c { loop { return x } } else { 99 } }`
+    /// — verifies a `scf.loop` nested inside a `scf.if` branch lowers
+    /// correctly. Tests recursion through `lower_op_to_cl` from inside
+    /// the loop's branch dispatcher.
+    fn hand_built_loop_inside_if() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("nested_li", vec![bool_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // Inner loop body : return x
+            let mut loop_body_blk = MirBlock::new("entry");
+            loop_body_blk
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+            let mut loop_body_region = MirRegion::new();
+            loop_body_region.push(loop_body_blk);
+            let inner_loop = MirOp::std("scf.loop")
+                .with_region(loop_body_region)
+                .with_result(ValueId(2), MirType::None);
+            // Then-branch : just the loop (no scf.yield because it
+            // never reaches the merge — the loop's inner return
+            // unwinds the function).
+            let mut then_blk = MirBlock::new("entry");
+            then_blk.ops.push(inner_loop);
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            // Else-branch : produce 99 + scf.yield
+            let mut else_blk = MirBlock::new("entry");
+            else_blk.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(3), i32_ty())
+                    .with_attribute("value", "99"),
+            );
+            else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(3)));
+            let mut else_region = MirRegion::new();
+            else_region.push(else_blk);
+            // scf.if : statement-form (then unwinds, so no merge value)
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(2), MirType::None),
+            );
+            // Trailing return : 0 sentinel (only reached when c=false
+            // because the else's scf.yield was a no-op for statement-
+            // form scf.if at stage-0 ; the value is discarded).
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(3), i32_ty())
+                    .with_attribute("value", "0"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_loop_nested_inside_scf_if_then_branch() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_loop_inside_if()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("nested_li").unwrap();
+        // SAFETY: see prior tests. Sig: (i8, i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // c=1 → enters then-branch's loop → inner-return fires with x.
+        assert_eq!(f(1, 555), 555);
+        // c=0 → else runs, no return inside, falls through to trailing
+        // return 0.
+        assert_eq!(f(0, 555), 0);
+    }
+
+    #[test]
+    fn scf_loop_with_two_regions_errors() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("bad_loop", vec![i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i32_ty())];
+            // Two regions — wrong shape for scf.loop (expects exactly 1).
+            let mut r1_blk = MirBlock::new("entry");
+            r1_blk
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+            let mut r1 = MirRegion::new();
+            r1.push(r1_blk);
+            let r2 = MirRegion::new();
+            entry.ops.push(
+                MirOp::std("scf.loop")
+                    .with_region(r1)
+                    .with_region(r2)
+                    .with_result(ValueId(0), MirType::None),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        }
+        let mut m = JitModule::new();
+        let err = m.compile(&f).unwrap_err();
+        assert!(
+            matches!(&err, JitError::LoweringFailed { detail, .. } if detail.contains("scf.loop")),
+            "unexpected error : {err:?}"
+        );
+    }
+
+    #[test]
+    fn scf_while_missing_cond_operand_errors() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("bad_while", vec![i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 1;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i32_ty())];
+            // scf.while with NO operands — should surface MissingLoopOperand.
+            let mut body_blk = MirBlock::new("entry");
+            body_blk
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+            let mut body_region = MirRegion::new();
+            body_region.push(body_blk);
+            entry.ops.push(
+                MirOp::std("scf.while")
+                    .with_region(body_region)
+                    .with_result(ValueId(0), MirType::None),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        }
+        let mut m = JitModule::new();
+        let err = m.compile(&f).unwrap_err();
+        assert!(
+            matches!(&err, JitError::LoweringFailed { detail, .. } if detail.contains("scf.while") && detail.contains("missing")),
+            "unexpected error : {err:?}"
+        );
     }
 }
