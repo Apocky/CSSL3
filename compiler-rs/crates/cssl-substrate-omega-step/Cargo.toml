@@ -1,0 +1,17 @@
+[package]
+name                   = "cssl-substrate-omega-step"
+description            = "CSSLv3 stage0 — Substrate omega_step contract + OmegaScheduler + deterministic-replay"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-caps      = { path = "../cssl-caps" }
+cssl-effects   = { path = "../cssl-effects" }
+cssl-telemetry = { path = "../cssl-telemetry" }
+thiserror      = { workspace = true }

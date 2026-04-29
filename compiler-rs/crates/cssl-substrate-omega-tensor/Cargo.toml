@@ -1,0 +1,14 @@
+[package]
+name                   = "cssl-substrate-omega-tensor"
+description            = "CSSLv3 stage0 — Substrate engine : Omega-tensor (canonical multi-dimensional state container)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-rt = { path = "../cssl-rt" }

@@ -1,0 +1,31 @@
+[package]
+name                   = "cssl-host-net"
+description            = "CSSLv3 stage0 — networking host (Win32 Winsock2 + BSD sockets ; TCP / UDP)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D82 (S7-F4) : networking host backend.
+#
+#   The crate sits ABOVE `cssl-rt::net` (which holds the platform syscall
+#   layer + cap-system + counters) and exposes a high-level Rust API
+#   (`TcpListener` / `TcpStream` / `UdpSocket` / `SocketAddrV4`) that
+#   downstream Rust code (tests, the CSSLv3 host runtime, examples) can
+#   consume. The CSSLv3 source-level surface lives in `stdlib/net.cssl`
+#   and routes through the same `__cssl_net_*` FFI symbols.
+#
+#   PRIME-DIRECTIVE attestation : every type in this crate honors the
+#   cssl-rt cap-system. `TcpListener::bind` / `TcpStream::connect` /
+#   `UdpSocket::bind` / `UdpSocket::send_to` invoke
+#   `cssl_rt::net::check_caps_for_addr` before the syscall fires ; the
+#   cap-set must be granted by the host BEFORE the call. The default
+#   posture (loopback-only) lets test code run without ceremony while
+#   non-loopback addresses require explicit `caps_grant(NET_CAP_OUTBOUND)`
+#   / `caps_grant(NET_CAP_INBOUND)` from the host.
+[dependencies]
+cssl-rt = { path = "../cssl-rt" }
+
+[lints]
+workspace = true

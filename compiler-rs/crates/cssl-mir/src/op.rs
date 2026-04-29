@@ -111,6 +111,40 @@ pub enum CsslOp {
     FsRead,
     FsWrite,
     FsClose,
+    // § Network surface (S7-F4, T11-D82) — per
+    //   `specs/04_EFFECTS.csl § NET-EFFECT` (mirror of § IO-EFFECT shape)
+    //   + `specs/11_IFC.csl § PRIME-DIRECTIVE ENCODING § NET-CAP rules`.
+    //
+    //   Each net op is emitted by a syntactic recognizer in
+    //   `cssl_mir::body_lower` (mirrors B5 file-IO + B4 string-format
+    //   patterns). Each carries the `(net_effect, "true")` attribute as
+    //   the stage-0 marker that the {Net} effect-row threading is ACTIVE
+    //   on this op. The full structural `MirEffectRow` for {Net} is a
+    //   deferred follow-up (matches the {IO} threading deferral from
+    //   T11-D76 § DEFERRED) ; the per-op marker is sufficient at stage-0
+    //   for downstream capability + audit walkers to detect
+    //   network-touching MIR.
+    //
+    //   PRIME-DIRECTIVE attestation : the `caps_required` attribute on
+    //   each connect-style op records whether `NET_CAP_OUTBOUND` /
+    //   `NET_CAP_INBOUND` is required. Downstream IFC walkers cross-
+    //   reference this against the host's granted cap-set (see
+    //   `cssl-rt::net::caps_grant`) before allowing the call to fire.
+    //
+    //   Lowered to the `__cssl_net_socket / _listen / _accept /
+    //   _connect / _send / _recv / _sendto / _recvfrom / _close /
+    //   _local_addr` FFI symbols exposed by `cssl-rt` (T11-D82, S7-F4).
+    //   Renaming either the MIR op or the FFI symbol requires
+    //   lock-step changes per the dispatch-plan landmines.
+    NetSocket,
+    NetListen,
+    NetAccept,
+    NetConnect,
+    NetSend,
+    NetRecv,
+    NetSendTo,
+    NetRecvFrom,
+    NetClose,
     /// Standard-dialect op — name stored separately. Used for `arith.*`, `scf.*`,
     /// `func.*`, `memref.*`, etc. that pass through without schema validation.
     Std,
@@ -160,6 +194,15 @@ impl CsslOp {
             Self::FsRead => "cssl.fs.read",
             Self::FsWrite => "cssl.fs.write",
             Self::FsClose => "cssl.fs.close",
+            Self::NetSocket => "cssl.net.socket",
+            Self::NetListen => "cssl.net.listen",
+            Self::NetAccept => "cssl.net.accept",
+            Self::NetConnect => "cssl.net.connect",
+            Self::NetSend => "cssl.net.send",
+            Self::NetRecv => "cssl.net.recv",
+            Self::NetSendTo => "cssl.net.sendto",
+            Self::NetRecvFrom => "cssl.net.recvfrom",
+            Self::NetClose => "cssl.net.close",
             Self::Std => "cssl.std",
         }
     }
@@ -188,6 +231,15 @@ impl CsslOp {
             }
             Self::StringFormat => OpCategory::String,
             Self::FsOpen | Self::FsRead | Self::FsWrite | Self::FsClose => OpCategory::FileIo,
+            Self::NetSocket
+            | Self::NetListen
+            | Self::NetAccept
+            | Self::NetConnect
+            | Self::NetSend
+            | Self::NetRecv
+            | Self::NetSendTo
+            | Self::NetRecvFrom
+            | Self::NetClose => OpCategory::Net,
             Self::Std => OpCategory::Std,
         }
     }
@@ -354,6 +406,48 @@ impl CsslOp {
                 operands: Some(1),
                 results: Some(1),
             },
+            // Network surface (S7-F4) — see `specs/04_EFFECTS.csl § NET-EFFECT`.
+            //   socket   : (flags : i32) -> i64                                     // sock-handle
+            //   listen   : (sock, addr : u32, port : u16, backlog : i32) -> i64     // 0 / -1
+            //   accept   : (sock) -> i64                                            // new-sock
+            //   connect  : (sock, addr : u32, port : u16) -> i64                    // 0 / -1
+            //   send     : (sock, buf-ptr, buf-len) -> i64                          // bytes-sent
+            //   recv     : (sock, buf-ptr, buf-len) -> i64                          // bytes-recv
+            //   sendto   : (sock, buf-ptr, buf-len, addr, port) -> i64
+            //   recvfrom : (sock, buf-ptr, buf-len, *addr-out, *port-out) -> i64
+            //   close    : (sock) -> i64                                            // 0 / -1
+            Self::NetSocket => OpSignature {
+                operands: Some(1),
+                results: Some(1),
+            },
+            Self::NetListen => OpSignature {
+                operands: Some(4),
+                results: Some(1),
+            },
+            Self::NetAccept => OpSignature {
+                operands: Some(1),
+                results: Some(1),
+            },
+            Self::NetConnect => OpSignature {
+                operands: Some(3),
+                results: Some(1),
+            },
+            Self::NetSend | Self::NetRecv => OpSignature {
+                operands: Some(3),
+                results: Some(1),
+            },
+            Self::NetSendTo => OpSignature {
+                operands: Some(5),
+                results: Some(1),
+            },
+            Self::NetRecvFrom => OpSignature {
+                operands: Some(5),
+                results: Some(1),
+            },
+            Self::NetClose => OpSignature {
+                operands: Some(1),
+                results: Some(1),
+            },
             // Std : free-form.
             Self::Std => OpSignature {
                 operands: None,
@@ -363,7 +457,7 @@ impl CsslOp {
     }
 
     /// All `cssl.*` dialect ops (excluding `Std`).
-    pub const ALL_CSSL: [Self; 38] = [
+    pub const ALL_CSSL: [Self; 47] = [
         Self::DiffPrimal,
         Self::DiffFwd,
         Self::DiffBwd,
@@ -402,6 +496,15 @@ impl CsslOp {
         Self::FsRead,
         Self::FsWrite,
         Self::FsClose,
+        Self::NetSocket,
+        Self::NetListen,
+        Self::NetAccept,
+        Self::NetConnect,
+        Self::NetSend,
+        Self::NetRecv,
+        Self::NetSendTo,
+        Self::NetRecvFrom,
+        Self::NetClose,
     ];
 }
 
@@ -442,6 +545,12 @@ pub enum OpCategory {
     /// `specs/22_TELEMETRY.csl § FS-OPS` (the latter spec-gap closed by
     /// DECISIONS T11-D76).
     FileIo,
+    /// Network I/O ops (S7-F4) —
+    /// `cssl.net.{socket,listen,accept,connect,send,recv,sendto,recvfrom,close}`.
+    /// See `specs/04_EFFECTS.csl § NET-EFFECT` +
+    /// `specs/11_IFC.csl § PRIME-DIRECTIVE ENCODING § NET-CAP rules`
+    /// (the latter spec-gap closed by DECISIONS T11-D82).
+    Net,
     Std,
 }
 
@@ -473,13 +582,15 @@ mod tests {
     }
 
     #[test]
-    fn all_38_cssl_ops_tracked() {
+    fn all_47_cssl_ops_tracked() {
         // S6-B1 (T11-D57) brought the count to 29 (HeapAlloc/Dealloc/Realloc).
         // S6-B2 (T11-D60) adds 4 sum-type constructors :
         //   OptionSome, OptionNone, ResultOk, ResultErr  →  total 33.
         // S6-B4 (T11-D71) adds StringFormat → total 34.
         // S6-B5 (T11-D76) adds 4 fs ops (Open/Read/Write/Close) → total 38.
-        assert_eq!(CsslOp::ALL_CSSL.len(), 38);
+        // S7-F4 (T11-D82) adds 9 net ops (Socket/Listen/Accept/Connect/
+        //   Send/Recv/SendTo/RecvFrom/Close) → total 47.
+        assert_eq!(CsslOp::ALL_CSSL.len(), 47);
     }
 
     #[test]
@@ -706,5 +817,113 @@ mod tests {
     fn fs_op_display_matches_name() {
         assert_eq!(format!("{}", CsslOp::FsOpen), "cssl.fs.open");
         assert_eq!(format!("{}", CsslOp::FsClose), "cssl.fs.close");
+    }
+
+    // ── S7-F4 (T11-D82) network-op coverage ─────────────────────────────
+
+    #[test]
+    fn net_socket_signature_is_1_to_1() {
+        // (flags : i32) → handle : i64
+        let sig = CsslOp::NetSocket.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_listen_signature_is_4_to_1() {
+        // (sock, addr, port, backlog) → status : i64
+        let sig = CsslOp::NetListen.signature();
+        assert_eq!(sig.operands, Some(4));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_accept_signature_is_1_to_1() {
+        // (sock) → new-sock : i64
+        let sig = CsslOp::NetAccept.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_connect_signature_is_3_to_1() {
+        // (sock, addr, port) → status : i64
+        let sig = CsslOp::NetConnect.signature();
+        assert_eq!(sig.operands, Some(3));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_send_signature_is_3_to_1() {
+        let sig = CsslOp::NetSend.signature();
+        assert_eq!(sig.operands, Some(3));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_recv_signature_is_3_to_1() {
+        let sig = CsslOp::NetRecv.signature();
+        assert_eq!(sig.operands, Some(3));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_sendto_signature_is_5_to_1() {
+        // (sock, buf-ptr, buf-len, addr, port) → bytes-sent : i64
+        let sig = CsslOp::NetSendTo.signature();
+        assert_eq!(sig.operands, Some(5));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_recvfrom_signature_is_5_to_1() {
+        // (sock, buf-ptr, buf-len, *addr-out, *port-out) → bytes-recv : i64
+        let sig = CsslOp::NetRecvFrom.signature();
+        assert_eq!(sig.operands, Some(5));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_close_signature_is_1_to_1() {
+        let sig = CsslOp::NetClose.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn net_op_names_match_cssl_rt_ffi_symbols() {
+        // ‼ Naming-match invariant : the MIR op-name suffixes mirror the
+        // cssl-rt FFI symbol stems (`socket / listen / accept / connect /
+        // send / recv / sendto / recvfrom / close`). Renaming either
+        // side requires lock-step changes — see HANDOFF_SESSION_7
+        // landmines + cssl-rt::ffi.
+        assert_eq!(CsslOp::NetSocket.name(), "cssl.net.socket");
+        assert_eq!(CsslOp::NetListen.name(), "cssl.net.listen");
+        assert_eq!(CsslOp::NetAccept.name(), "cssl.net.accept");
+        assert_eq!(CsslOp::NetConnect.name(), "cssl.net.connect");
+        assert_eq!(CsslOp::NetSend.name(), "cssl.net.send");
+        assert_eq!(CsslOp::NetRecv.name(), "cssl.net.recv");
+        assert_eq!(CsslOp::NetSendTo.name(), "cssl.net.sendto");
+        assert_eq!(CsslOp::NetRecvFrom.name(), "cssl.net.recvfrom");
+        assert_eq!(CsslOp::NetClose.name(), "cssl.net.close");
+    }
+
+    #[test]
+    fn net_ops_in_net_category() {
+        assert_eq!(CsslOp::NetSocket.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetListen.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetAccept.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetConnect.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetSend.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetRecv.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetSendTo.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetRecvFrom.category(), OpCategory::Net);
+        assert_eq!(CsslOp::NetClose.category(), OpCategory::Net);
+    }
+
+    #[test]
+    fn net_op_display_matches_name() {
+        assert_eq!(format!("{}", CsslOp::NetSocket), "cssl.net.socket");
+        assert_eq!(format!("{}", CsslOp::NetClose), "cssl.net.close");
     }
 }

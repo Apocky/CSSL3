@@ -580,6 +580,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-net"
+version = "0.1.0"
+dependencies = [
+ "cssl-rt",
+]
+
+[[package]]
 name = "cssl-host-vulkan"
 version = "0.1.0"
 dependencies = [
@@ -691,6 +698,38 @@ dependencies = [
  "cssl-hir",
  "cssl-lex",
  "cssl-parse",
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-substrate-omega-step"
+version = "0.1.0"
+dependencies = [
+ "cssl-caps",
+ "cssl-effects",
+ "cssl-telemetry",
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-substrate-omega-tensor"
+version = "0.1.0"
+dependencies = [
+ "cssl-rt",
+]
+
+[[package]]
+name = "cssl-substrate-prime-directive"
+version = "0.1.0"
+dependencies = [
+ "cssl-telemetry",
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-substrate-projections"
+version = "0.1.0"
+dependencies = [
  "thiserror",
 ]
 

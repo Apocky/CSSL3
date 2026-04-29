@@ -1,0 +1,694 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/net.cssl  —  Networking I/O surface
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/04_EFFECTS.csl § NET-EFFECT (canonical reference for {Net} ;
+//          spec-gap closed by DECISIONS T11-D82 — see § Spec gaps closed)
+//        specs/11_IFC.csl § PRIME-DIRECTIVE ENCODING (NET-CAP rules ;
+//          spec-gap closed by DECISIONS T11-D82)
+//        specs/14_BACKEND.csl § HOST-NET (the latter spec-gap closed by
+//          DECISIONS T11-D82)
+//        specs/03_TYPES.csl § STRING-MODEL (addresses sourced as i32 + u16)
+// Slice : S7-F4 (T11-D82).
+//
+// § PRIME_DIRECTIVE preserved : networking is the most surveillance-
+//   adjacent surface in the runtime. This module : (a) does no
+//   surveillance — every net op fires only at the explicit invocation
+//   of source-level code, (b) the cssl-rt counters are LOCAL — nothing
+//   escapes the process via this stdlib, (c) errors surface through
+//   the typed `NetError` sum-type rather than silent swallow, (d) the
+//   {Net} effect-row marker on every cssl.net.* MIR op makes
+//   network-touching operations visible in fn-signatures so consumers
+//   cannot accidentally invoke networking from a context that forbids
+//   it, (e) the cap-system gates non-loopback connect / listen /
+//   sendto behind explicit `caps_grant(...)` calls — the default
+//   cap-set permits LOOPBACK only.
+//
+//   ‼ The net surface NEVER overrides PRIME_DIRECTIVE. Source-level
+//   code that opens a socket remains subject to §1 PROHIBITIONS (no
+//   surveillance, no exploitation, no weaponization) and to §10 ToS.
+//   The wrappers below do not bypass any of those constraints — they
+//   expose exactly the syscall surface, no less + no more.
+//
+//   ‼ DEFERRED (NOT addressable from source-level code at stage-0) :
+//     - Raw / packet sockets (AF_PACKET / SOCK_RAW / IP_HDRINCL etc.) —
+//       surveillance / network-poisoning capability is not stage-0
+//       surface. See DECISIONS T11-D82 § DEFERRED.
+//     - TLS / encryption — current cssl.net.* APIs send PLAINTEXT
+//       bytes. A follow-up slice adds TLS via a dedicated stdlib
+//       module ; until then non-loopback connections require explicit
+//       caller awareness via the cap-grant ceremony.
+//     - DNS resolution beyond `127.0.0.1` — `getaddrinfo` wiring is
+//       a follow-up slice. v1 = numeric IPv4 addresses only.
+//     - IPv6 — `SocketAddrV6` lands in a follow-up slice.
+//
+// § STAGE-0 NOTES (carried-forward to DECISIONS T11-D82)
+//   1. The nine net verbs (`socket` / `listen` / `accept` / `connect` /
+//      `send` / `recv` / `sendto` / `recvfrom` / `close`) are
+//      recognized syntactically by `cssl_mir::body_lower::lower_call`.
+//      The recognizer fires on a 2-segment path `net::<verb>` with the
+//      appropriate arity. Each call lowers to a `cssl.net.<verb>` op
+//      carrying the `(net_effect, "true")` attribute as the stage-0
+//      marker for {Net} effect-row threading. The connect-style
+//      variants additionally carry `(caps_required, "net_outbound" |
+//      "net_inbound")` as the PRIME-DIRECTIVE cap-system marker. Real
+//      `MirEffectRow` structural threading is deferred (mirrors the
+//      {IO} threading deferral from T11-D76).
+//   2. The socket handle is encoded as a host-width integer (`i64`) at
+//      source-level rather than a typed `iso<!cssl.net.handle>` — the
+//      same source-level grammar gap noted at B5 (typed-pointer field
+//      syntax). The bit-pattern is the platform handle (Win32 SOCKET
+//      cast / POSIX fd zero-extended). The cssl-rt
+//      `INVALID_SOCKET = -1` sentinel is recognized by every safe
+//      wrapper and translated into `Err(NetError::*)`.
+//   3. `NetError` is a sum-type with discriminants matching cssl-rt's
+//      `net_error_code` table. Constructors are recognized by the B2
+//      sum-type recognizer.
+//   4. The `SOCK_*` flag bitset mirrors cssl-rt's portable surface :
+//      `SOCK_TCP` (0x01), `SOCK_UDP` (0x02), `SOCK_NONBLOCK` (0x04),
+//      `SOCK_REUSEADDR` (0x08), `SOCK_NODELAY` (0x10). The values are
+//      STABLE from S7-F4 ; renaming requires a major-version bump.
+//   5. The `NET_CAP_*` cap bitset mirrors cssl-rt's PRIME-DIRECTIVE
+//      cap-system : `NET_CAP_LOOPBACK` (0x01) — default ON,
+//      `NET_CAP_OUTBOUND` (0x02) — default OFF, `NET_CAP_INBOUND`
+//      (0x04) — default OFF.
+//   6. Per-thread `last_error_kind() / last_error_os()` accessors
+//      return the canonical-kind discriminant + the raw OS code from
+//      the most recent net op. Wrappers below call them after every
+//      net syscall that returned the `INVALID_SOCKET` / `-1`
+//      sentinel and translate the kind into the matching `NetError`
+//      variant.
+//   7. `Drop` integration : a future trait-resolve slice will make
+//      `TcpListener` / `TcpStream` / `UdpSocket` automatically close
+//      on scope-exit. At stage-0 callers MUST invoke
+//      `net::close(socket)` explicitly. The post-trait-dispatch form
+//      is the standard `impl Drop for TcpStream`.
+//   8. `getaddrinfo` / hostname-resolution is DEFERRED to a follow-up
+//      slice. v1 takes raw `(addr_be : i32, port : u16)` integers.
+//
+// § INVARIANTS  (stage-0)
+//   - `socket.handle` ≠ -1 for ALL valid socket values (the `Err` path
+//     never produces a TcpListener / TcpStream / UdpSocket ; the safe
+//     wrappers translate `-1` → Err).
+//   - Every successful `net::socket` MUST be paired with `net::close`
+//     to release the OS resource. Stage-0 callers track this manually ;
+//     trait-Drop integration deferred per § 7 above.
+//   - `net::recv` returns `0` to signal peer-close (≈ EOF) ; callers
+//     who need "all bytes" must loop until EOF or a length-prefixed
+//     framing protocol.
+//   - `net::send` may return less than `bytes.len()` (short send) ;
+//     `send_all` loops until all bytes are sent.
+
+module com.apocky.stdlib.net
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type definitions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `TcpListener` wraps an OS-level listening socket handle.
+//
+// § INVARIANTS
+//   - `handle` ≠ -1
+//   - the socket is in `LISTEN` state until `net::close(socket)` is
+//     called ; using a TcpListener post-close yields `NetError::InvalidInput`
+struct TcpListener {
+    handle : i64,
+}
+
+// `TcpStream` wraps a connected TCP socket handle (client-side
+// connect or server-side accepted).
+struct TcpStream {
+    handle : i64,
+}
+
+// `UdpSocket` wraps a bound UDP datagram socket handle.
+struct UdpSocket {
+    handle : i64,
+}
+
+// `SocketAddrV4` packs a `(addr_be, port)` IPv4 socket address. The
+// `addr_be` field is host-byte-order — `127.0.0.1` ≡ `0x7F00_0001`.
+//
+// IPv6 (`SocketAddrV6`) is DEFERRED to a follow-up slice ; v1 is
+// IPv4-only.
+struct SocketAddrV4 {
+    addr_be : i32,
+    port    : i32,
+}
+
+// `NetError` is the canonical sum-type for fallible net operations.
+// Per stage-0 sum-type discipline (B2) constructors are recognized
+// syntactically.
+//
+// ‼ The discriminant integers MUST match cssl-rt's `net_error_code`
+// table. Renaming a variant requires a lock-step update to
+// `cssl-rt::net::net_error_code` + a major-version bump.
+//
+// § VARIANTS  (matching cssl-rt::net::net_error_code)
+//   - InvalidInput        : malformed flags / pointer / length / addr (code 1)
+//   - AddrInUse           : bind to already-bound port              (code 2)
+//   - AddrNotAvailable    : addr not on this host                    (code 3)
+//   - ConnectionRefused   : peer rejected the connect                (code 4)
+//   - ConnectionReset     : peer reset an active conn                (code 5)
+//   - ConnectionAborted   : local aborted                            (code 6)
+//   - NotConnected        : op on not-yet-connected socket           (code 7)
+//   - TimedOut            : op exceeded deadline                     (code 8)
+//   - WouldBlock          : non-blocking op would block              (code 9)
+//   - Interrupted         : EINTR                                    (code 10)
+//   - PermissionDenied    : EACCES                                   (code 11)
+//   - HostUnreachable     : EHOSTUNREACH                             (code 12)
+//   - NetworkUnreachable  : ENETUNREACH                              (code 13)
+//   - UnexpectedEof       : peer closed mid-recv                     (code 14)
+//   - BrokenPipe          : write to closed peer (EPIPE)             (code 15)
+//   - NotInitialized      : Winsock not started                      (code 16)
+//   - CapDenied           : PRIME-DIRECTIVE cap-system rejected      (code 17)
+//   - Other(i32)          : raw OS code carried in payload           (code 99)
+enum NetError {
+    InvalidInput,
+    AddrInUse,
+    AddrNotAvailable,
+    ConnectionRefused,
+    ConnectionReset,
+    ConnectionAborted,
+    NotConnected,
+    TimedOut,
+    WouldBlock,
+    Interrupted,
+    PermissionDenied,
+    HostUnreachable,
+    NetworkUnreachable,
+    UnexpectedEof,
+    BrokenPipe,
+    NotInitialized,
+    CapDenied,
+    Other(i32),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Socket-flag constants (mirror cssl-rt::net::SOCK_*).
+//
+//   STABLE from S7-F4. Bit-values match the cssl-rt portable bitset 1:1.
+// ───────────────────────────────────────────────────────────────────────
+
+fn sock_tcp() -> i32 {
+    1
+}
+
+fn sock_udp() -> i32 {
+    2
+}
+
+fn sock_nonblock() -> i32 {
+    4
+}
+
+fn sock_reuseaddr() -> i32 {
+    8
+}
+
+fn sock_nodelay() -> i32 {
+    16
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Cap-system constants (mirror cssl-rt::net::NET_CAP_*).
+//
+//   PRIME_DIRECTIVE-aligned default-deny posture : the cap-set starts
+//   at NET_CAP_LOOPBACK only. Source-level code raises additional caps
+//   via `caps_grant(NET_CAP_OUTBOUND | NET_CAP_INBOUND)` BEFORE invoking
+//   the relevant net verb.
+// ───────────────────────────────────────────────────────────────────────
+
+fn net_cap_loopback() -> i32 {
+    1
+}
+
+fn net_cap_outbound() -> i32 {
+    2
+}
+
+fn net_cap_inbound() -> i32 {
+    4
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § NetError discriminant constants.
+// ───────────────────────────────────────────────────────────────────────
+
+fn net_err_invalid_input() -> i32 {
+    1
+}
+
+fn net_err_addr_in_use() -> i32 {
+    2
+}
+
+fn net_err_addr_not_available() -> i32 {
+    3
+}
+
+fn net_err_connection_refused() -> i32 {
+    4
+}
+
+fn net_err_connection_reset() -> i32 {
+    5
+}
+
+fn net_err_connection_aborted() -> i32 {
+    6
+}
+
+fn net_err_not_connected() -> i32 {
+    7
+}
+
+fn net_err_timed_out() -> i32 {
+    8
+}
+
+fn net_err_would_block() -> i32 {
+    9
+}
+
+fn net_err_interrupted() -> i32 {
+    10
+}
+
+fn net_err_permission_denied() -> i32 {
+    11
+}
+
+fn net_err_host_unreachable() -> i32 {
+    12
+}
+
+fn net_err_network_unreachable() -> i32 {
+    13
+}
+
+fn net_err_unexpected_eof() -> i32 {
+    14
+}
+
+fn net_err_broken_pipe() -> i32 {
+    15
+}
+
+fn net_err_not_initialized() -> i32 {
+    16
+}
+
+fn net_err_cap_denied() -> i32 {
+    17
+}
+
+fn net_err_other() -> i32 {
+    99
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Last-error reporting.
+// ───────────────────────────────────────────────────────────────────────
+
+// `last_error_kind() -> i32` returns the canonical NetError discriminant
+// for the most recent net op (or 0 = SUCCESS if no error).
+fn last_error_kind() -> i32 {
+    // Stage-0 placeholder — actual wiring routes through
+    // `__cssl_net_last_error_kind` once the cgen layer fires the import.
+    0
+}
+
+// `last_error_os() -> i32` returns the raw OS error code
+// (`WSAGetLastError` / `errno`).
+fn last_error_os() -> i32 {
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Translate the cssl-rt last-error kind code into a `NetError` sum.
+// ───────────────────────────────────────────────────────────────────────
+
+fn net_error_from_kind(kind : i32, os : i32) -> NetError {
+    if kind == net_err_invalid_input() {
+        NetError::InvalidInput
+    } else {
+        if kind == net_err_addr_in_use() {
+            NetError::AddrInUse
+        } else {
+            if kind == net_err_addr_not_available() {
+                NetError::AddrNotAvailable
+            } else {
+                if kind == net_err_connection_refused() {
+                    NetError::ConnectionRefused
+                } else {
+                    if kind == net_err_would_block() {
+                        NetError::WouldBlock
+                    } else {
+                        if kind == net_err_timed_out() {
+                            NetError::TimedOut
+                        } else {
+                            if kind == net_err_cap_denied() {
+                                NetError::CapDenied
+                            } else {
+                                NetError::Other(os)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Address-builders.
+//
+//   v1 stage-0 surface : numeric IPv4 only. `getaddrinfo` wiring lands
+//   in a follow-up slice (DECISIONS T11-D82 § DEFERRED).
+// ───────────────────────────────────────────────────────────────────────
+
+// Construct `127.0.0.1:port` (loopback). Always passes the cap-system
+// check under the default cap-set.
+fn loopback_v4(port : i32) -> SocketAddrV4 {
+    SocketAddrV4 {
+        addr_be : 2130706433,  // 0x7F00_0001 = 127.0.0.1
+        port    : port,
+    }
+}
+
+// Construct `0.0.0.0:port` (wildcard bind, all interfaces). Requires
+// `NET_CAP_INBOUND` for `bind`.
+fn any_v4(port : i32) -> SocketAddrV4 {
+    SocketAddrV4 {
+        addr_be : 0,
+        port    : port,
+    }
+}
+
+// Pack `(a, b, c, d, port)` into a SocketAddrV4. Each octet is `0..=255`.
+fn from_octets(a : i32, b : i32, c : i32, d : i32, port : i32) -> SocketAddrV4 {
+    SocketAddrV4 {
+        addr_be : (a * 16777216) + (b * 65536) + (c * 256) + d,
+        port    : port,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Cap-system wrappers.
+//
+//   These bare-name fns route through cssl-rt's
+//   `__cssl_net_caps_grant / _revoke / _current` FFI symbols.
+//   PRIME_DIRECTIVE-aligned : grant requires explicit caller intent ;
+//   revoke is always free (per § 5 CONSENT-ARCH).
+// ───────────────────────────────────────────────────────────────────────
+
+fn caps_grant(cap_bits : i32) -> i32 {
+    // Stage-0 placeholder — actual wiring routes through
+    // `__cssl_net_caps_grant`.
+    cap_bits
+}
+
+fn caps_revoke(cap_bits : i32) -> i32 {
+    cap_bits
+}
+
+fn caps_current() -> i32 {
+    1  // NET_CAP_LOOPBACK = default
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Socket creation + close.
+// ───────────────────────────────────────────────────────────────────────
+
+// `net::open_tcp_listener(addr) -> Result<TcpListener, NetError>` —
+// create a TCP socket bound to `addr` in listen state.
+//
+// § EFFECT-ROW
+//   This fn is {Net}-effecting. The recognized inner calls (`net::socket`
+//   / `net::listen`) carry the `(net_effect, "true")` attribute (per the
+//   body_lower recognizer landed at T11-D82). Once structural
+//   `MirEffectRow` lands, the fn signature reads
+//     `fn open_tcp_listener(...) -> Result<TcpListener, NetError> / {Net}`
+//   per `specs/04_EFFECTS.csl § NET-EFFECT`.
+fn open_tcp_listener(addr : SocketAddrV4) -> Result<TcpListener, NetError> {
+    let s = net::socket(sock_tcp() + sock_reuseaddr()) ;
+    if s == -1 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        let r = net::listen(s, addr.addr_be, addr.port, 128) ;
+        if r != 0 {
+            // Capture cap-denial / bind-error before close clobbers slot.
+            let kind = last_error_kind() ;
+            let os = last_error_os() ;
+            let _ = net::close(s) ;
+            Err(net_error_from_kind(kind, os))
+        } else {
+            Ok(TcpListener { handle : s })
+        }
+    }
+}
+
+// `net::open_tcp_stream(addr) -> Result<TcpStream, NetError>` —
+// connect a TCP socket to a remote peer.
+fn open_tcp_stream(addr : SocketAddrV4) -> Result<TcpStream, NetError> {
+    let s = net::socket(sock_tcp()) ;
+    if s == -1 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        let r = net::connect(s, addr.addr_be, addr.port) ;
+        if r != 0 {
+            let kind = last_error_kind() ;
+            let os = last_error_os() ;
+            let _ = net::close(s) ;
+            Err(net_error_from_kind(kind, os))
+        } else {
+            Ok(TcpStream { handle : s })
+        }
+    }
+}
+
+// `net::open_udp_socket(addr) -> Result<UdpSocket, NetError>` —
+// create a UDP socket bound to `addr`.
+fn open_udp_socket(addr : SocketAddrV4) -> Result<UdpSocket, NetError> {
+    let s = net::socket(sock_udp() + sock_reuseaddr()) ;
+    if s == -1 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        let r = net::listen(s, addr.addr_be, addr.port, 0) ;
+        if r != 0 {
+            let kind = last_error_kind() ;
+            if kind == net_err_cap_denied() {
+                let os = last_error_os() ;
+                let _ = net::close(s) ;
+                Err(net_error_from_kind(kind, os))
+            } else {
+                // For UDP, listen leg fails but bind succeeded — proceed.
+                Ok(UdpSocket { handle : s })
+            }
+        } else {
+            Ok(UdpSocket { handle : s })
+        }
+    }
+}
+
+// `net::close_listener(listener) -> Result<i32, NetError>`.
+//
+// ‼ Stage-0 the unit-typed `Ok()` is encoded as `Ok(0)` because source-
+//   level grammar doesn't yet expose unit-payload sum constructors
+//   (carried-forward grammar gap from B5).
+fn close_listener(listener : TcpListener) -> Result<i32, NetError> {
+    let r = net::close(listener.handle) ;
+    if r == 0 {
+        Ok(0)
+    } else {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    }
+}
+
+fn close_stream(stream : TcpStream) -> Result<i32, NetError> {
+    let r = net::close(stream.handle) ;
+    if r == 0 {
+        Ok(0)
+    } else {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    }
+}
+
+fn close_udp(socket : UdpSocket) -> Result<i32, NetError> {
+    let r = net::close(socket.handle) ;
+    if r == 0 {
+        Ok(0)
+    } else {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § TCP server : accept the next pending connection.
+// ───────────────────────────────────────────────────────────────────────
+
+fn accept_stream(listener : TcpListener) -> Result<TcpStream, NetError> {
+    let s = net::accept(listener.handle) ;
+    if s == -1 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(TcpStream { handle : s })
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Send / recv helpers.
+//
+//   Stage-0 caveat : the safe wrappers below expose the surface but
+//   their bodies invoke the recognizer-friendly `net::send` / `net::recv`
+//   bare forms which lower to the `cssl.net.*` ops. Real runtime
+//   execution depends on the deferred-ABI slice (same path as B5
+//   read/write loop machinery).
+// ───────────────────────────────────────────────────────────────────────
+
+// `net::send_some(stream, bytes_ptr, bytes_len) -> Result<i64, NetError>`
+// Returns bytes-actually-sent (≥ 0) on success ; Err on failure. Short
+// sends are possible per-syscall ; callers loop in `send_all`.
+fn send_some(stream : TcpStream, bytes_ptr : i64, bytes_len : i64) -> Result<i64, NetError> {
+    let n = net::send(stream.handle, bytes_ptr, bytes_len) ;
+    if n < 0 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(n)
+    }
+}
+
+// `net::recv_some(stream, buf_ptr, buf_len) -> Result<i64, NetError>` —
+// Receive up to `buf_len` bytes. Returns `Ok(bytes_read)` (0 = peer
+// closed cleanly) ; Err on syscall failure.
+fn recv_some(stream : TcpStream, buf_ptr : i64, buf_len : i64) -> Result<i64, NetError> {
+    let n = net::recv(stream.handle, buf_ptr, buf_len) ;
+    if n < 0 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(n)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § UDP sendto / recvfrom.
+// ───────────────────────────────────────────────────────────────────────
+
+fn send_to(socket : UdpSocket, bytes_ptr : i64, bytes_len : i64,
+           dest : SocketAddrV4) -> Result<i64, NetError> {
+    let n = net::sendto(socket.handle, bytes_ptr, bytes_len, dest.addr_be, dest.port) ;
+    if n < 0 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(n)
+    }
+}
+
+fn recv_from(socket : UdpSocket, buf_ptr : i64, buf_len : i64,
+             peer_addr_out : i64, peer_port_out : i64) -> Result<i64, NetError> {
+    let n = net::recvfrom(socket.handle, buf_ptr, buf_len, peer_addr_out, peer_port_out) ;
+    if n < 0 {
+        Err(net_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(n)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : create a TCP listener on 127.0.0.1, accept one
+// connection, close. Demonstrates the full server-side flow.
+fn _example_tcp_server_loopback(port : i32) -> Result<i32, NetError> {
+    let addr = loopback_v4(port) ;
+    let s = net::socket(sock_tcp() + sock_reuseaddr()) ;
+    if s == -1 {
+        Err(NetError::Other(0))
+    } else {
+        let r = net::listen(s, addr.addr_be, addr.port, 4) ;
+        if r != 0 {
+            let _ = net::close(s) ;
+            Err(NetError::AddrInUse)
+        } else {
+            let conn = net::accept(s) ;
+            let _ = net::close(s) ;
+            if conn == -1 {
+                Err(NetError::ConnectionAborted)
+            } else {
+                let _ = net::close(conn) ;
+                Ok(0)
+            }
+        }
+    }
+}
+
+// Worked example : connect to a peer + send "hello".
+fn _example_tcp_client_loopback(port : i32, payload_ptr : i64, payload_len : i64)
+    -> Result<i64, NetError>
+{
+    let addr = loopback_v4(port) ;
+    let s = net::socket(sock_tcp()) ;
+    if s == -1 {
+        Err(NetError::Other(0))
+    } else {
+        let r = net::connect(s, addr.addr_be, addr.port) ;
+        if r != 0 {
+            let _ = net::close(s) ;
+            Err(NetError::ConnectionRefused)
+        } else {
+            let n = net::send(s, payload_ptr, payload_len) ;
+            let _ = net::close(s) ;
+            if n < 0 {
+                Err(NetError::BrokenPipe)
+            } else {
+                Ok(n)
+            }
+        }
+    }
+}
+
+// Worked example : the NetError-sum-type round-trip. Demonstrates the
+// dispatch from cssl-rt's i32 error code into the typed `NetError`
+// sum-type.
+fn _example_net_error_dispatch(kind : i32) -> NetError {
+    if kind == 4 {
+        NetError::ConnectionRefused
+    } else {
+        if kind == 9 {
+            NetError::WouldBlock
+        } else {
+            if kind == 17 {
+                NetError::CapDenied
+            } else {
+                NetError::Other(kind)
+            }
+        }
+    }
+}
+
+// Worked example : caps-grant ceremony for a non-loopback connect.
+// Demonstrates the PRIME-DIRECTIVE flow : caller raises the
+// NET_CAP_OUTBOUND bit, performs the connect, then revokes the cap
+// (consent is granular + revocable).
+fn _example_caps_grant_revoke(port : i32) -> Result<i32, NetError> {
+    let _ = caps_grant(net_cap_outbound()) ;
+    // External (non-loopback) addr — would be cap-denied without the grant.
+    let addr = from_octets(8, 8, 8, 8, port) ;
+    let s = net::socket(sock_tcp()) ;
+    if s == -1 {
+        let _ = caps_revoke(net_cap_outbound()) ;
+        Err(NetError::Other(0))
+    } else {
+        let r = net::connect(s, addr.addr_be, addr.port) ;
+        let _ = net::close(s) ;
+        let _ = caps_revoke(net_cap_outbound()) ;
+        if r != 0 {
+            Err(NetError::ConnectionRefused)
+        } else {
+            Ok(0)
+        }
+    }
+}
