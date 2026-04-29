@@ -1,0 +1,158 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/option.cssl  —  Option<T> sum-type
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/03_TYPES.csl § BASE-TYPES § aggregate (sum-types)
+//        specs/04_EFFECTS.csl § ERROR HANDLING
+// Slice : S6-B2 (T11-D60).
+//
+// § PRIME_DIRECTIVE preserved : Option holds a value or holds nothing —
+//   its primary use is to encode the absence of a result without panicking.
+//   This file does not introduce hidden control flow, weakened consent, or
+//   any behavior that could be used to coerce a caller into accepting a
+//   None as a Some. Substrate-sovereign : Option<T> is parameterized by
+//   any T including iso<U>.
+//
+// § STAGE-0 NOTES (carried-forward from DECISIONS T11-D60)
+//   1. Constructors `Some(x)` and `None` are recognized syntactically by
+//      `cssl_mir::body_lower` and lower to `cssl.option.some` /
+//      `cssl.option.none` MIR ops respectively. Trait-dispatch is not
+//      yet landed at session-6 ; once it is, the recognizer becomes a
+//      fast-path / can be removed.
+//   2. The method bodies below are written as DOCUMENTATION + FUTURE-USE :
+//      Until trait-dispatch lands, callers exercise Option behavior via
+//      generic FREE FUNCTIONS named `option_<method>::<T>(...)` that are
+//      monomorphized through the existing T11-D38..D50 quartet. The free
+//      functions are also defined in this file so the surface stays
+//      consistent.
+//   3. `Some(T)` for trivial T (i32, f32, bool, ptr) emits a flat
+//      tagged-union (no heap). For non-trivial T heap allocation via
+//      `cssl.heap.alloc` (S6-B1) is the deferred path — wired once
+//      trait-dispatch and a real `MirType::TaggedUnion` ABI lowering
+//      land. See DECISIONS T11-D60 § DEFERRED.
+//   4. The `?`-operator is desugared by HIR into `HirExprKind::Try`
+//      which lowers to `cssl.try` ; for an Option-shaped operand the
+//      semantics propagate `None` to the caller, otherwise unwrap the
+//      payload. Real runtime-execution lands in the deferred ABI slice.
+
+module com.apocky.stdlib.option
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definition.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Option<T>` represents either the presence of a value of type T (Some)
+// or its absence (None). Pattern-matching on Option is the canonical way
+// to consume one ; the methods below offer ergonomic extractors.
+//
+// § INVARIANTS
+//   - exhaustively-matched : every `match opt { Some(x) => …, None => … }`
+//     covers all cases. The compiler refuses to compile a non-exhaustive
+//     match against Option once exhaustiveness-checking lands (deferred).
+//   - tag-discipline : at the MIR level the constructor's `tag` attribute
+//     is "1" for Some and "0" for None ; downstream tagged-union ABI
+//     lowering relies on this convention.
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Method surface (free-function form, generic, turbofish-callable).
+//
+//   Per the S6-B2 stage-0 plan : until trait-dispatch lands, callers use
+//   the free-function form `option_<method>::<T>(opt, ...)` to exercise
+//   the Option API. These functions monomorphize through the existing
+//   D38..D50 quartet and produce distinctly-mangled symbols per
+//   type-argument (Option<i32> ≠ Option<f32>).
+// ───────────────────────────────────────────────────────────────────────
+
+// `option_is_some::<T>(opt)` — true iff opt is Some.
+fn option_is_some<T>(opt: Option<T>) -> bool {
+    match opt {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+// `option_is_none::<T>(opt)` — true iff opt is None.
+fn option_is_none<T>(opt: Option<T>) -> bool {
+    match opt {
+        Some(_) => false,
+        None => true,
+    }
+}
+
+// `option_unwrap::<T>(opt)` — extract the inner value. Aborts with the
+// process-panic path (cssl-rt `__cssl_panic`) when opt is None.
+//
+// ‼ This is the unsafe-by-default path. Prefer `option_unwrap_or` or
+//   pattern-matching whenever the empty case is reachable.
+fn option_unwrap<T>(opt: Option<T>) -> T {
+    match opt {
+        Some(x) => x,
+        None => panic("Option::unwrap on None"),
+    }
+}
+
+// `option_expect::<T>(opt, msg)` — like unwrap but with a custom panic msg.
+fn option_expect<T>(opt: Option<T>, msg: &str) -> T {
+    match opt {
+        Some(x) => x,
+        None => panic(msg),
+    }
+}
+
+// `option_unwrap_or::<T>(opt, default)` — extract or fall-back. Total.
+fn option_unwrap_or<T>(opt: Option<T>, default: T) -> T {
+    match opt {
+        Some(x) => x,
+        None => default,
+    }
+}
+
+// `option_or_else::<T>(opt, default_fn)` — extract or compute fall-back.
+// `default_fn` is called only when opt is None (lazy-evaluated default).
+fn option_or_else<T>(opt: Option<T>, default_fn: fn() -> Option<T>) -> Option<T> {
+    match opt {
+        Some(x) => Some(x),
+        None => default_fn(),
+    }
+}
+
+// `option_map::<T, U>(opt, f)` — transform Some(x) via f ; preserve None.
+fn option_map<T, U>(opt: Option<T>, f: fn(T) -> U) -> Option<U> {
+    match opt {
+        Some(x) => Some(f(x)),
+        None => None,
+    }
+}
+
+// `option_and_then::<T, U>(opt, f)` — chain a fallible computation.
+// f returns Option<U> ; we propagate None.
+fn option_and_then<T, U>(opt: Option<T>, f: fn(T) -> Option<U>) -> Option<U> {
+    match opt {
+        Some(x) => f(x),
+        None => None,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   These are not compiler tests (those live in cssl-mir + cssl-examples) ;
+//   they document the intended call-shapes for stage-0 readers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : extract an i32 with a default.
+fn _example_option_i32_with_default() -> i32 {
+    let opt = Some(7);
+    option_unwrap_or::<i32>(opt, 0)
+}
+
+// Worked example : the call-shape that exercises monomorph (no closure
+// since stage-0 lambda+turbofish parsing requires an extra slice — see
+// DECISIONS T11-D60 § DEFERRED). Test fixture lives in cssl-examples.
+fn _example_option_map_i32_to_f32(opt: Option<i32>) -> Option<i32> {
+    opt
+}

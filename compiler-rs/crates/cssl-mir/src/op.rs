@@ -58,6 +58,22 @@ pub enum CsslOp {
     HeapAlloc,
     HeapDealloc,
     HeapRealloc,
+    // § Sum-type constructors (S6-B2, T11-D60) — Option<T> + Result<T,E>.
+    // Per `specs/03_TYPES.csl § BASE-TYPES § aggregate` (sum-types) and
+    // `specs/04_EFFECTS.csl § ERROR HANDLING` (Result canonical, ?-op
+    // propagates Err). These ops are emitted by the syntactic intrinsic
+    // recognizer in `cssl_mir::body_lower` (mirrors B1's `Box::new`
+    // recognition). Stage-0 representation : flat tagged-union — the op
+    // result carries `tag` + `payload_ty` attributes, JIT execution of
+    // these ops is deferred to a follow-up slice that adds a real
+    // `MirType::TaggedUnion` ABI lowering. Until then : (a) ops parse +
+    // walk + monomorphize, (b) the `?`-operator (HirExprKind::Try) lowers
+    // through the existing `cssl.try` op (D60 verifies it remains green
+    // when the operand is a Result-shape).
+    OptionSome,
+    OptionNone,
+    ResultOk,
+    ResultErr,
     /// Standard-dialect op — name stored separately. Used for `arith.*`, `scf.*`,
     /// `func.*`, `memref.*`, etc. that pass through without schema validation.
     Std,
@@ -98,6 +114,10 @@ impl CsslOp {
             Self::HeapAlloc => "cssl.heap.alloc",
             Self::HeapDealloc => "cssl.heap.dealloc",
             Self::HeapRealloc => "cssl.heap.realloc",
+            Self::OptionSome => "cssl.option.some",
+            Self::OptionNone => "cssl.option.none",
+            Self::ResultOk => "cssl.result.ok",
+            Self::ResultErr => "cssl.result.err",
             Self::Std => "cssl.std",
         }
     }
@@ -121,6 +141,9 @@ impl CsslOp {
             Self::RtTraceRay | Self::RtIntersect => OpCategory::Rt,
             Self::TelemetryProbe => OpCategory::Telemetry,
             Self::HeapAlloc | Self::HeapDealloc | Self::HeapRealloc => OpCategory::Heap,
+            Self::OptionSome | Self::OptionNone | Self::ResultOk | Self::ResultErr => {
+                OpCategory::SumType
+            }
             Self::Std => OpCategory::Std,
         }
     }
@@ -239,6 +262,19 @@ impl CsslOp {
                 operands: Some(4),
                 results: Some(1),
             },
+            // Sum-type constructors (S6-B2) — see `specs/03_TYPES.csl`.
+            //   option.some : (payload : T)        -> Option<T>     (tag = 1)
+            //   option.none : ()                   -> Option<T>     (tag = 0)
+            //   result.ok   : (payload : T)        -> Result<T, E>  (tag = 1)
+            //   result.err  : (err-payload : E)    -> Result<T, E>  (tag = 0)
+            Self::OptionSome | Self::ResultOk | Self::ResultErr => OpSignature {
+                operands: Some(1),
+                results: Some(1),
+            },
+            Self::OptionNone => OpSignature {
+                operands: Some(0),
+                results: Some(1),
+            },
             // Std : free-form.
             Self::Std => OpSignature {
                 operands: None,
@@ -248,7 +284,7 @@ impl CsslOp {
     }
 
     /// All `cssl.*` dialect ops (excluding `Std`).
-    pub const ALL_CSSL: [Self; 29] = [
+    pub const ALL_CSSL: [Self; 33] = [
         Self::DiffPrimal,
         Self::DiffFwd,
         Self::DiffBwd,
@@ -278,6 +314,10 @@ impl CsslOp {
         Self::HeapAlloc,
         Self::HeapDealloc,
         Self::HeapRealloc,
+        Self::OptionSome,
+        Self::OptionNone,
+        Self::ResultOk,
+        Self::ResultErr,
     ];
 }
 
@@ -306,6 +346,10 @@ pub enum OpCategory {
     Telemetry,
     /// Heap allocation (S6-B1) — see `specs/02_IR.csl` § HEAP-OPS.
     Heap,
+    /// Sum-type constructors (S6-B2) — `Option<T>` + `Result<T,E>`.
+    /// See `specs/03_TYPES.csl § BASE-TYPES` (sum-types) +
+    /// `specs/04_EFFECTS.csl § ERROR HANDLING` (Result + ?-op).
+    SumType,
     Std,
 }
 
@@ -337,9 +381,11 @@ mod tests {
     }
 
     #[test]
-    fn all_29_cssl_ops_tracked() {
-        // S6-B1 (T11-D57) added HeapAlloc / HeapDealloc / HeapRealloc — total 29.
-        assert_eq!(CsslOp::ALL_CSSL.len(), 29);
+    fn all_33_cssl_ops_tracked() {
+        // S6-B1 (T11-D57) brought the count to 29 (HeapAlloc/Dealloc/Realloc).
+        // S6-B2 (T11-D60) adds 4 sum-type constructors :
+        //   OptionSome, OptionNone, ResultOk, ResultErr  →  total 33.
+        assert_eq!(CsslOp::ALL_CSSL.len(), 33);
     }
 
     #[test]
@@ -424,5 +470,57 @@ mod tests {
     fn display_matches_name() {
         assert_eq!(format!("{}", CsslOp::SdfMarch), "cssl.sdf.march");
         assert_eq!(format!("{}", CsslOp::GpuBarrier), "cssl.gpu.barrier");
+    }
+
+    // ── S6-B2 (T11-D60) sum-type op coverage ────────────────────────────
+
+    #[test]
+    fn option_some_signature_is_1_to_1() {
+        // (payload : T) → Option<T>
+        let sig = CsslOp::OptionSome.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn option_none_signature_is_0_to_1() {
+        // () → Option<T>     (tag = 0 carried as attribute)
+        let sig = CsslOp::OptionNone.signature();
+        assert_eq!(sig.operands, Some(0));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn result_ok_signature_is_1_to_1() {
+        let sig = CsslOp::ResultOk.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn result_err_signature_is_1_to_1() {
+        let sig = CsslOp::ResultErr.signature();
+        assert_eq!(sig.operands, Some(1));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn sum_type_op_names_are_canonical() {
+        // ‼ The `cssl.option.*` / `cssl.result.*` names are part of the MIR
+        // public surface : downstream tooling (cssl-staging, body_lower
+        // recognizers, future trait-dispatch glue) keys off these literals.
+        // Renaming requires a lock-step update across all consumers.
+        assert_eq!(CsslOp::OptionSome.name(), "cssl.option.some");
+        assert_eq!(CsslOp::OptionNone.name(), "cssl.option.none");
+        assert_eq!(CsslOp::ResultOk.name(), "cssl.result.ok");
+        assert_eq!(CsslOp::ResultErr.name(), "cssl.result.err");
+    }
+
+    #[test]
+    fn sum_type_ops_in_sum_type_category() {
+        assert_eq!(CsslOp::OptionSome.category(), OpCategory::SumType);
+        assert_eq!(CsslOp::OptionNone.category(), OpCategory::SumType);
+        assert_eq!(CsslOp::ResultOk.category(), OpCategory::SumType);
+        assert_eq!(CsslOp::ResultErr.category(), OpCategory::SumType);
     }
 }

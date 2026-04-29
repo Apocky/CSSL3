@@ -1236,6 +1236,50 @@ fn lower_call(
             }
         }
     }
+    // § T11-D60 (S6-B2) — sum-type constructor recognition for
+    //   `Some(x)` / `None()` / `Ok(x)` / `Err(x)`. Strict guards mirror the
+    //   B1 pattern : the call must be a single-segment path matching the
+    //   canonical constructor name + the expected arity. Trait-dispatch is
+    //   not yet landed at session-6 ; this recognizer is the only path that
+    //   mints a `cssl.option.{some,none}` / `cssl.result.{ok,err}` op from
+    //   user source. Once trait-resolve lands (phase-B follow-up slice)
+    //   these become fast-paths / can be removed ; until then they are
+    //   the sole entry-point. See HANDOFF_SESSION_6 § PHASE-B § S6-B2 +
+    //   `specs/03_TYPES.csl § BASE-TYPES § aggregate` (sum-types) +
+    //   `specs/04_EFFECTS.csl § ERROR HANDLING`.
+    //
+    //   ‼ Constructor recognition matches by segment-name only ; user code
+    //   shadowing `Some`/`None`/`Ok`/`Err` (e.g., `mod foo { fn Some<T>(x:T)->T }`)
+    //   bypasses the recognizer when it routes through a multi-segment path
+    //   (e.g., `foo::Some(x)`), but a bare `Some(x)` will be claimed by the
+    //   sum-type recognizer. This matches the Rust prelude precedent : the
+    //   four canonical constructor names are reserved at the top-level.
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 1 {
+            let name = ctx.interner.resolve(segments[0]);
+            match (name.as_str(), args.len()) {
+                ("Some", 1) => {
+                    if let Some(result) = try_lower_option_some(ctx, &args[0], span) {
+                        return Some(result);
+                    }
+                }
+                ("None", 0) => {
+                    return Some(lower_option_none(ctx, span));
+                }
+                ("Ok", 1) => {
+                    if let Some(result) = try_lower_result_ok(ctx, &args[0], span) {
+                        return Some(result);
+                    }
+                }
+                ("Err", 1) => {
+                    if let Some(result) = try_lower_result_err(ctx, &args[0], span) {
+                        return Some(result);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -1489,6 +1533,129 @@ fn stage0_heuristic_align_of(t: &MirType) -> i64 {
         | MirType::Opaque(_)
         | MirType::None => 8,
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D60 (S6-B2) — sum-type constructor lowerers.
+//
+//   Stage-0 representation : flat tagged-union — each constructor emits a
+//   single `cssl.option.*` / `cssl.result.*` op carrying :
+//     - `tag`         : "0" (None / Err) | "1" (Some / Ok)
+//     - `payload_ty`  : the MirType of the payload (for typed introspection)
+//     - `family`      : "Option" | "Result"
+//     - `source_loc`  : original span for diagnostic chaining
+//
+//   The op-result type is `MirType::Opaque("!cssl.option.<T>")` /
+//   `"!cssl.result.<T>.<E>"` at stage-0 — a real `MirType::TaggedUnion` ABI
+//   is deferred to a follow-up slice (see DECISIONS T11-D60 § DEFERRED).
+//   Until that slice lands, the JIT and object backends will reject these
+//   ops with `UnsupportedMirOp` if a fn body actually attempts to RUN one.
+//   They lower correctly through the parser + walkers + monomorphization
+//   quartet, which is the slice's success-criterion (HANDOFF S6-B2).
+//
+//   ‼ Per the HANDOFF landmines :
+//     - `None` carries no heap allocation : it's a payload-less op.
+//     - `Some(T)` for trivial T (i32, f32, bool, ptr) : no heap — the op
+//       carries the payload value directly. A real flat tagged-union ABI
+//       at the cranelift / SPIR-V level lands later.
+//     - `Some(T)` for non-trivial T : may need heap once trait-dispatch
+//       lands and `Box<T>` is the canonical wrapper. At B2 the op records
+//       the payload-type ; the deferred ABI slice handles the heap path.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower a syntactically-recognized `Some(x)` constructor call into a
+/// `cssl.option.some` op. Mirrors the B1 `try_lower_box_new` pattern.
+fn try_lower_option_some(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let payload_expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (payload_id, payload_ty) = lower_expr(ctx, payload_expr)?;
+    let id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque(format!("!cssl.option.{payload_ty}"));
+    ctx.ops.push(
+        MirOp::new(CsslOp::OptionSome)
+            .with_operand(payload_id)
+            .with_result(id, result_ty.clone())
+            .with_attribute("tag", "1")
+            .with_attribute("family", "Option")
+            .with_attribute("payload_ty", format!("{payload_ty}"))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((id, result_ty))
+}
+
+/// Lower a syntactically-recognized `None` constructor call into a
+/// `cssl.option.none` op. The result-type carries no payload information at
+/// stage-0 ; a real `MirType::TaggedUnion` ABI lowering pass will resolve
+/// the actual `Option<T>` once monomorph + trait-dispatch wire the type
+/// argument through. At B2 the op records `payload_ty = "!cssl.unknown"` so
+/// downstream passes can detect the un-bound-payload form.
+fn lower_option_none(ctx: &mut BodyLowerCtx<'_>, span: Span) -> (ValueId, MirType) {
+    let id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque("!cssl.option.unknown".to_string());
+    ctx.ops.push(
+        MirOp::new(CsslOp::OptionNone)
+            .with_result(id, result_ty.clone())
+            .with_attribute("tag", "0")
+            .with_attribute("family", "Option")
+            .with_attribute("payload_ty", "!cssl.unknown")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (id, result_ty)
+}
+
+/// Lower a syntactically-recognized `Ok(x)` constructor call into a
+/// `cssl.result.ok` op.
+fn try_lower_result_ok(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let payload_expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (payload_id, payload_ty) = lower_expr(ctx, payload_expr)?;
+    let id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque(format!("!cssl.result.ok.{payload_ty}"));
+    ctx.ops.push(
+        MirOp::new(CsslOp::ResultOk)
+            .with_operand(payload_id)
+            .with_result(id, result_ty.clone())
+            .with_attribute("tag", "1")
+            .with_attribute("family", "Result")
+            .with_attribute("payload_ty", format!("{payload_ty}"))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((id, result_ty))
+}
+
+/// Lower a syntactically-recognized `Err(x)` constructor call into a
+/// `cssl.result.err` op.
+fn try_lower_result_err(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let err_expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (err_id, err_ty) = lower_expr(ctx, err_expr)?;
+    let id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque(format!("!cssl.result.err.{err_ty}"));
+    ctx.ops.push(
+        MirOp::new(CsslOp::ResultErr)
+            .with_operand(err_id)
+            .with_result(id, result_ty.clone())
+            .with_attribute("tag", "0")
+            .with_attribute("family", "Result")
+            .with_attribute("err_ty", format!("{err_ty}"))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((id, result_ty))
 }
 
 /// Known math-intrinsic callees whose result-type equals the first operand's
@@ -2447,5 +2614,174 @@ mod tests {
             entry.ops.iter().any(|o| o.name == "func.call"),
             "non-recognized path should fall through to func.call",
         );
+    }
+
+    // § T11-D60 (S6-B2) — sum-type constructor recognition.
+
+    #[test]
+    fn lower_some_emits_cssl_option_some() {
+        // `Some(7)` should be recognized syntactically and produce a
+        // `cssl.option.some` op tagged "1" carrying the payload value-id.
+        let (f, _) = lower_one("fn f() -> i32 { Some(7); 0 }");
+        let entry = f.body.entry().unwrap();
+        let some_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.option.some")
+            .expect("Some(...) should lower to cssl.option.some");
+        assert_eq!(some_op.operands.len(), 1, "Some takes exactly 1 payload");
+        assert_eq!(some_op.results.len(), 1, "Some produces 1 result");
+        let tag = some_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "tag")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(tag, Some("1"));
+        let family = some_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "family")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(family, Some("Option"));
+    }
+
+    #[test]
+    fn lower_none_emits_cssl_option_none() {
+        // Bare `None` (zero-arg call shape) lowers to `cssl.option.none` —
+        // tag = "0", no operands.
+        let (f, _) = lower_one("fn f() -> i32 { None(); 0 }");
+        let entry = f.body.entry().unwrap();
+        let none_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.option.none")
+            .expect("None() should lower to cssl.option.none");
+        assert!(none_op.operands.is_empty(), "None takes no operands");
+        assert_eq!(none_op.results.len(), 1);
+        let tag = none_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "tag")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(tag, Some("0"));
+    }
+
+    #[test]
+    fn lower_ok_emits_cssl_result_ok() {
+        let (f, _) = lower_one("fn f() -> i32 { Ok(42); 0 }");
+        let entry = f.body.entry().unwrap();
+        let ok_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.result.ok")
+            .expect("Ok(...) should lower to cssl.result.ok");
+        assert_eq!(ok_op.operands.len(), 1);
+        let family = ok_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "family")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(family, Some("Result"));
+        let tag = ok_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "tag")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(tag, Some("1"));
+    }
+
+    #[test]
+    fn lower_err_emits_cssl_result_err() {
+        let (f, _) = lower_one("fn f() -> i32 { Err(99); 0 }");
+        let entry = f.body.entry().unwrap();
+        let err_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.result.err")
+            .expect("Err(...) should lower to cssl.result.err");
+        assert_eq!(err_op.operands.len(), 1);
+        let tag = err_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "tag")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(tag, Some("0"));
+        let err_ty = err_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "err_ty")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(err_ty, Some("i32"));
+    }
+
+    #[test]
+    fn lower_some_with_multiseg_path_does_not_match_recognizer() {
+        // `foo::Some(x)` is NOT the bare-name form ; recognizer must reject it.
+        // Any user-defined multi-segment Some would route through func.call.
+        let src = "fn f() -> i32 { foo::Some(7); 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.option.some"),
+            "multi-segment `foo::Some` must not match the bare-Some recognizer",
+        );
+        assert!(
+            entry.ops.iter().any(|o| o.name == "func.call"),
+            "non-recognized path should fall through to func.call",
+        );
+    }
+
+    #[test]
+    fn lower_some_payload_type_propagates_to_attribute() {
+        // Constructor's `payload_ty` attribute must mirror the payload's lowered MirType.
+        // For a literal 42 this is `i32`.
+        let (f, _) = lower_one("fn f() -> i32 { Some(42); 0 }");
+        let entry = f.body.entry().unwrap();
+        let some_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.option.some")
+            .unwrap();
+        let payload_ty = some_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_ty")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(payload_ty, Some("i32"));
+    }
+
+    #[test]
+    fn lower_some_f32_payload_type() {
+        let (f, _) = lower_one("fn f() -> i32 { Some(2.5); 0 }");
+        let entry = f.body.entry().unwrap();
+        let some_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.option.some")
+            .unwrap();
+        let payload_ty = some_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_ty")
+            .map(|(_, v)| v.as_str());
+        // Default literal-float type at stage-0 is f32 ; if T3.4 inference
+        // becomes more aggressive this assertion may need to widen.
+        assert_eq!(payload_ty, Some("f32"));
+    }
+
+    #[test]
+    fn lower_user_two_seg_call_named_some_does_not_match() {
+        // `Some::weird(x)` (2 segments, first is `Some`) must NOT trip the
+        // sum-type recognizer (which requires segments.len() == 1). It also
+        // must NOT trip the Box::new recognizer (which checks both segments).
+        // Should fall through to a regular func.call.
+        let src = "fn f() -> i32 { Some::weird(7); 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.option.some"),
+            "multi-segment `Some::weird` must not match",
+        );
+        assert!(entry.ops.iter().any(|o| o.name == "func.call"));
     }
 }

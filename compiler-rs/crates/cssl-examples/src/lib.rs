@@ -42,6 +42,7 @@ pub mod analytic_vec3;
 pub mod hello_world_gate;
 pub mod jit_chain;
 pub mod stage1_scaffold;
+pub mod stdlib_gate;
 
 use cssl_ast::{Module, SourceFile, SourceId, Surface};
 use cssl_hir::HirModule;
