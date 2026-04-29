@@ -40,6 +40,7 @@ pub mod feature;
 pub mod jit;
 pub mod lower;
 pub mod object;
+pub mod scf;
 pub mod target;
 pub mod types;
 
@@ -52,6 +53,7 @@ pub use object::{
     emit_object_module, emit_object_module_with_format, host_default_format, magic_prefix,
     ObjectError,
 };
+pub use scf::{lower_scf_if, ScfError};
 pub use target::{CpuTarget, CpuTargetProfile, DebugFormat};
 pub use types::{clif_type_for, ClifType};
 
