@@ -256,6 +256,43 @@
     from S6-B5 forward (renaming = major-version bump per
     DECISIONS T11-D76).
 
+§ AUDIO-OPS  (S7-F3 / T11-D81 — spec-gap closed via DECISIONS T11-D81)
+  thesis : every audio output frame-submission + every underrun is a
+           telemetry-observable event. The cssl-host-audio AudioStream
+           tracks counter discipline (frames_submitted / frames_dropped
+           / underrun_count / sample_rate / channel_count) as first-
+           class observables.
+  surface : exposed through `cssl_host_audio::stream::AudioStream` ;
+            each `submit_frames` call increments the matching counter
+            atomically. Underruns produce `AudioEvent::Underrun` records
+            with frame-position + duration-of-gap.
+  effect-row tie-in :
+    audio-output runs under {IO, Realtime<Crit>} per §§ 04
+    fn `audio_render(stream : &mut AudioStream, buf : &[f32])
+        -> Result<usize, AudioError> / {IO, Realtime<Crit>}`
+    audio-callback realtime-class invariants ({NoAlloc, NoUnbounded,
+    Deadline<1ms>}) MUST hold within the callback body — see
+    EXAMPLES below.
+  capture-mode (DEFERRED — PRIME-DIRECTIVE) :
+    microphone-capture surface NOT yet implemented at stage-0. When
+    landed, capture path will require {Sensitive<"microphone">} effect
+    + UI-affordance consent + audit-policy. The PRIME_DIRECTIVE.md
+    §1 PROHIBITIONS surveillance clause makes silent microphone
+    activation a BUG class — every capture stream MUST have a visible
+    UI affordance + revocable consent contract.
+    audio-loopback to system-output-recording is FORBIDDEN — bypass
+    of the consent-gate via "record what's playing" is the same
+    surveillance class as direct microphone access.
+  telemetry composition :
+    {Telemetry<Counters>} × audio : per-callback timestamp +
+                                     frame-count emitted to the ring
+    {Telemetry<Full>} × audio : adds per-submit underrun-detector
+                                 state + buffer-padding-snapshot for
+                                 latency forensics
+  R18 ring composition :
+    audio events feed the same TelemetryRing. Underrun events are
+    tagged Slot.scope = TelemetryScope::Events with sub-kind = audio.
+
 § EXAMPLES
 
   // Audio-callback with Counters-level telemetry

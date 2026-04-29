@@ -1,0 +1,45 @@
+[package]
+name                   = "cssl-host-audio"
+description            = "CSSLv3 stage0 — audio host backend (WASAPI + ALSA/PA + CoreAudio cfg-gated)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+thiserror = { workspace = true }
+
+# § T11-D81 (S7-F3) : windows-rs target-gated to Windows targets only. Non-Windows
+# builds skip the dep entirely so the workspace `cargo check --workspace` stays
+# green on Linux + macOS. The features list is the minimum needed for WASAPI :
+# IAudioClient + IAudioRenderClient + IMMDevice + IMMDeviceEnumerator + COM init.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_KernelStreaming",
+    "Win32_Media_Multimedia",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_Devices_Properties",
+] }
+
+# § T11-D81 (S7-F3) : Linux audio uses libloading for ALSA + PulseAudio
+# dynamic-load — matches T11-D62 Level-Zero precedent. ALSA/libasound +
+# PulseAudio/libpulse loaded at runtime ; gate-skip when absent.
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = { workspace = true }
+
+# § T11-D81 (S7-F3) : macOS audio uses libloading for AudioToolbox +
+# CoreAudio framework dynamic-load. AudioComponentInstance + AudioUnit
+# (default-output) — see specs/14_BACKEND.csl § AUDIO HOST BACKENDS.
+[target.'cfg(target_os = "macos")'.dependencies]
+libloading = { workspace = true }
+
+[lints]
+workspace = true
