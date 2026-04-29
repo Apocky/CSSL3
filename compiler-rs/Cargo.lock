@@ -789,6 +789,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-omega-field"
+version = "0.1.0"
+dependencies = [
+ "cssl-hdc",
+ "cssl-pga",
+ "cssl-substrate-omega-tensor",
+ "cssl-substrate-prime-directive",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-substrate-omega-step"
 version = "0.1.0"
 dependencies = [

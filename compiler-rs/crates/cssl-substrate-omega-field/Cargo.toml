@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-substrate-omega-field"
+description            = "CSSLv3 — Canonical Ω-field substrate container : FieldCell 72B std430 + SparseMortonGrid<T> + 7-facet OmegaField + 4-tier MERA cascade. Cite : Omniverse 02_CSSL/06_SUBSTRATE_EVOLUTION.csl § IV ; Omniverse 04_OMEGA_FIELD/{00_FACETS,02_STORAGE,05_DENSITY_BUDGET}.csl.md ; T11-D144."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-substrate-omega-field bridges PGA bivector-dynamics + HDC pattern-
+# fingerprints + Σ-mask consent into the canonical 72B FieldCell. The deps
+# below are the foundations from wave-3β (D134/D136/D137).
+cssl-pga                         = { path = "../cssl-pga", default-features = false }
+cssl-hdc                         = { path = "../cssl-hdc" }
+cssl-substrate-prime-directive   = { path = "../cssl-substrate-prime-directive" }
+# § cssl-substrate-omega-tensor : LegacyTensor alias = OmegaTensor<T,R> ;
+# preserves S8-H1 surface verbatim per § VI deprecation-window T11-D113..D129.
+cssl-substrate-omega-tensor      = { path = "../cssl-substrate-omega-tensor" }
+
+# § thiserror — error-typing for Σ-mask refusal + collision-limit-exceeded.
+thiserror = { workspace = true }
+# § smallvec — Λ-overlay holds SmallVec<LambdaToken, 4> per cell.
+smallvec  = { workspace = true }
