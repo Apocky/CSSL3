@@ -1,0 +1,35 @@
+[package]
+name                   = "cssl-ui"
+description            = "CSSLv3 stage-0 — UI framework (widgets + layout + immediate-mode + retained-mode + theme)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D109 (S9-U1) : engine-side UI framework. Consumes cssl-host-window for
+# input event-shapes (KeyCode / ModifierKeys / MouseButton / ScrollDelta /
+# WindowEvent / WindowEventKind) and surfaces a Widget trait + Container layout
+# system + immediate-mode `Ui` context API. Render submission is surfaced via a
+# `Painter` trait so a future cssl-render slice (R1) consumes it through the
+# render-graph without this crate carrying any GPU dependency. The crate is
+# pure-Rust + safe (no unsafe blocks anywhere), no FFI, no platform branches —
+# the platform binding lives in cssl-host-window and is consumed by-value.
+#
+# § PRIME-DIRECTIVE
+#   - No surveillance : input events are surfaced transparently to user code,
+#     never logged, never accumulated. The `Ui::feed_event` entry-point is the
+#     ONLY way input flows in ; every event the framework sees is one the
+#     application explicitly handed it.
+#   - No covert state : the focus / hover / retained-state stores are public
+#     observable surface (`Ui::current_focus`, `Ui::is_hovered`).
+#   - Consent : the framework does not phone home, does not write to disk,
+#     does not mutate the host environment. Pure compute over input → output.
+[dependencies]
+cssl-host-window = { path = "../cssl-host-window" }
+
+[dev-dependencies]
+# (no extra dev-deps — std-only test path)
+
+[lints]
+workspace = true
