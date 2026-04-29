@@ -1,0 +1,32 @@
+[package]
+name                   = "cssl-audio-mix"
+description            = "CSSLv3 stage0 — audio mixer + 3D spatial DSP + effect chains (built atop cssl-host-audio)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D108 (S9-O1) : audio mixer crate. Engine-side voice management,
+# 3D spatial-panning (ITD + ILD), Doppler, distance attenuation, biquad
+# filters, Schroeder reverb, delay-tap, dynamics (compressor/limiter),
+# bus-routing, and an OmegaSystem impl so mixing happens per omega_step.
+#
+# § DEPENDENCIES
+#   - cssl-host-audio  (F3 / T11-D81) : output stream + AudioFormat + ring.
+#   - cssl-substrate-omega-step (H2 / T11-D90) : OmegaSystem trait + EffectRow.
+#
+# § CAPTURE-MODE FORBIDDEN
+#   This crate is OUTPUT-only. Per PRIME-DIRECTIVE §1 (surveillance) the
+#   mixer NEVER opens a capture device, NEVER routes the host-output to a
+#   recordable sink, NEVER provides a "record-what-is-playing" surface.
+
+[dependencies]
+thiserror                  = { workspace = true }
+cssl-host-audio            = { path = "../cssl-host-audio" }
+cssl-substrate-omega-step  = { path = "../cssl-substrate-omega-step" }
+
+[dev-dependencies]
+
+[lints]
+workspace = true

@@ -419,6 +419,15 @@ name = "cssl-ast"
 version = "0.1.0"
 
 [[package]]
+name = "cssl-audio-mix"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-audio",
+ "cssl-substrate-omega-step",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-autodiff"
 version = "0.1.0"
 dependencies = [
