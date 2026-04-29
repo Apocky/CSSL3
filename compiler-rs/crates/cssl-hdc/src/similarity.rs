@@ -55,10 +55,7 @@ pub fn hamming_distance<const D: usize>(a: &Hypervector<D>, b: &Hypervector<D>) 
 ///   a fraction (e.g. "below 0.4 is similar enough"). Returns `0.0`
 ///   when `D = 0`.
 #[must_use]
-pub fn hamming_distance_normalized<const D: usize>(
-    a: &Hypervector<D>,
-    b: &Hypervector<D>,
-) -> f32 {
+pub fn hamming_distance_normalized<const D: usize>(a: &Hypervector<D>, b: &Hypervector<D>) -> f32 {
     if D == 0 {
         return 0.0;
     }
@@ -223,7 +220,10 @@ mod tests {
         let h = hamming_distance(&a, &b) as f32;
         let s = similarity_bipolar(&a, &b);
         let expected_h = (1.0 - s) * 10000.0 / 2.0;
-        assert!((h - expected_h).abs() < 1.0, "h = {h} ; expected ≈ {expected_h}");
+        assert!(
+            (h - expected_h).abs() < 1.0,
+            "h = {h} ; expected ≈ {expected_h}"
+        );
     }
 
     /// § Zero-dim degenerate cases.

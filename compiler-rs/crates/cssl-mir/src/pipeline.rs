@@ -196,7 +196,9 @@ impl PassPipeline {
         p.push(Box::new(IfcLoweringPass));
         p.push(Box::new(SmtDischargeQueuePass));
         p.push(Box::new(TelemetryProbeInsertPass));
-        p.push(Box::new(crate::biometric_egress_check::BiometricEgressCheck));
+        p.push(Box::new(
+            crate::biometric_egress_check::BiometricEgressCheck,
+        ));
         p.push(Box::new(StructuredCfgValidator));
         p
     }

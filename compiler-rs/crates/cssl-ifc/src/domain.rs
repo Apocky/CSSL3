@@ -143,8 +143,7 @@ impl SensitiveDomain {
     ];
 
     /// All biometric-family domains, for table-driven tests.
-    pub const BIOMETRIC_FAMILY: [Self; 4] =
-        [Self::Biometric, Self::Gaze, Self::Face, Self::Body];
+    pub const BIOMETRIC_FAMILY: [Self; 4] = [Self::Biometric, Self::Gaze, Self::Face, Self::Body];
 }
 
 impl fmt::Display for SensitiveDomain {

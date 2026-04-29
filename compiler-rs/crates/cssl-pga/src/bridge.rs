@@ -151,7 +151,12 @@ mod tests {
         // Pin down that the bridge preserves rotation behavior across a
         // family of (axis, angle, point) triples — strong correctness check
         // for the Hamilton-↔-rotor sign convention.
-        let axes = [Vec3::X, Vec3::Y, Vec3::Z, Vec3::new(1.0, 1.0, 1.0).normalize()];
+        let axes = [
+            Vec3::X,
+            Vec3::Y,
+            Vec3::Z,
+            Vec3::new(1.0, 1.0, 1.0).normalize(),
+        ];
         let angles: &[f32] = &[0.1, 0.5, 1.2, 2.5, -1.0];
         let probes = [
             Vec3::new(1.0, 0.0, 0.0),

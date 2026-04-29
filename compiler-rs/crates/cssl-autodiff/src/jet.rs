@@ -741,11 +741,7 @@ impl<T: JetField, const N: usize> Jet<T, N> {
         if p == 0 {
             return Self::one();
         }
-        let (base, mut p) = if p < 0 {
-            (self.recip(), -p)
-        } else {
-            (self, p)
-        };
+        let (base, mut p) = if p < 0 { (self.recip(), -p) } else { (self, p) };
         let mut result = Self::one();
         let mut sq = base;
         while p > 0 {

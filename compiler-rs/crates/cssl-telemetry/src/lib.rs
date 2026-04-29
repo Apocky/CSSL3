@@ -65,9 +65,7 @@ pub mod scope;
 pub use audit::{
     verify_detached, AuditChain, AuditEntry, AuditError, ContentHash, Signature, SigningKey,
 };
-pub use biometric_refusal::{
-    record_labeled, record_labeled_safe, BiometricSafe, TelemetryRefusal,
-};
+pub use biometric_refusal::{record_labeled, record_labeled_safe, BiometricSafe, TelemetryRefusal};
 pub use exporter::{ChromeTraceExporter, ExportError, Exporter, JsonExporter, OtlpExporter};
 pub use path_hash::{
     path_hash_discipline_attestation_hash, PathHash, PathHasher, PathSalt,

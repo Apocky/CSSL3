@@ -59,7 +59,7 @@ pub fn exp_bivector(b: Line) -> Motor {
         let half = 0.5 * theta;
         let cos_h = half.cos();
         let sinc_h = half.sin() / theta; // sin(θ/2) / θ
-        // R = cos(θ/2) - sinc(θ/2) · B_r
+                                         // R = cos(θ/2) - sinc(θ/2) · B_r
         let s = cos_h;
         let r1 = -sinc_h * b.e23;
         let r2c = -sinc_h * b.e31;

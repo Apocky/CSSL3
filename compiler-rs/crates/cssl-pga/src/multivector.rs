@@ -247,22 +247,11 @@ impl Multivector {
     pub fn reverse(&self) -> Self {
         let c = &self.coeffs;
         Self::from_array([
-            c[0],   // grade-0 : +
-            c[1],   // grade-1 : +
-            c[2],
-            c[3],
-            c[4],
-            -c[5],  // grade-2 : −
-            -c[6],
-            -c[7],
-            -c[8],
-            -c[9],
-            -c[10],
-            -c[11], // grade-3 : −
-            -c[12],
-            -c[13],
-            -c[14],
-            c[15],  // grade-4 : +
+            c[0], // grade-0 : +
+            c[1], // grade-1 : +
+            c[2], c[3], c[4], -c[5], // grade-2 : −
+            -c[6], -c[7], -c[8], -c[9], -c[10], -c[11], // grade-3 : −
+            -c[12], -c[13], -c[14], c[15], // grade-4 : +
         ])
     }
 
@@ -276,22 +265,11 @@ impl Multivector {
     pub fn grade_involution(&self) -> Self {
         let c = &self.coeffs;
         Self::from_array([
-            c[0],   // grade-0 : +
-            -c[1],  // grade-1 : −
-            -c[2],
-            -c[3],
-            -c[4],
-            c[5],   // grade-2 : +
-            c[6],
-            c[7],
-            c[8],
-            c[9],
-            c[10],
-            -c[11], // grade-3 : −
-            -c[12],
-            -c[13],
-            -c[14],
-            c[15],  // grade-4 : +
+            c[0],  // grade-0 : +
+            -c[1], // grade-1 : −
+            -c[2], -c[3], -c[4], c[5], // grade-2 : +
+            c[6], c[7], c[8], c[9], c[10], -c[11], // grade-3 : −
+            -c[12], -c[13], -c[14], c[15], // grade-4 : +
         ])
     }
 
@@ -303,22 +281,11 @@ impl Multivector {
     pub fn clifford_conjugation(&self) -> Self {
         let c = &self.coeffs;
         Self::from_array([
-            c[0],   // grade-0 : +
-            -c[1],  // grade-1 : −
-            -c[2],
-            -c[3],
-            -c[4],
-            -c[5],  // grade-2 : −
-            -c[6],
-            -c[7],
-            -c[8],
-            -c[9],
-            -c[10],
-            c[11],  // grade-3 : +
-            c[12],
-            c[13],
-            c[14],
-            c[15],  // grade-4 : +
+            c[0],  // grade-0 : +
+            -c[1], // grade-1 : −
+            -c[2], -c[3], -c[4], -c[5], // grade-2 : −
+            -c[6], -c[7], -c[8], -c[9], -c[10], c[11], // grade-3 : +
+            c[12], c[13], c[14], c[15], // grade-4 : +
         ])
     }
 
@@ -745,8 +712,7 @@ const BLADE_PRODUCT: [[(usize, i8); BLADE_COUNT]; BLADE_COUNT] = {
                 // output is (sign_lex_i × sign_lex_j × sign_mul) × user_i × user_j.
                 // To convert this lex output to canonical output we divide by
                 // sign_result_lex (which equals multiplication since it's ±1).
-                let sign_canonical =
-                    sign_lex_i * sign_lex_j * sign_mul * sign_result_lex;
+                let sign_canonical = sign_lex_i * sign_lex_j * sign_mul * sign_result_lex;
                 table[i][j] = (result_idx, sign_canonical);
             }
 

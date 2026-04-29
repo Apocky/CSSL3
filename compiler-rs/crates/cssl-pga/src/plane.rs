@@ -95,12 +95,7 @@ impl Plane {
         let n2 = self.normal_norm_squared();
         if n2 > 1e-12 {
             let inv = n2.sqrt().recip();
-            Self::new(
-                self.e1 * inv,
-                self.e2 * inv,
-                self.e3 * inv,
-                self.e0 * inv,
-            )
+            Self::new(self.e1 * inv, self.e2 * inv, self.e3 * inv, self.e0 * inv)
         } else {
             self
         }
@@ -201,8 +196,8 @@ mod tests {
         // the Z axis.
         let p_xz = Plane::new(0.0, 1.0, 0.0, 0.0); // y = 0
         let p_yz = Plane::new(1.0, 0.0, 0.0, 0.0); // x = 0
-        // Reflecting (1, 0, 0) through y=0 gives (1, 0, 0). Then through
-        // x=0 gives (-1, 0, 0). That's a 180-deg rotation about Z.
+                                                   // Reflecting (1, 0, 0) through y=0 gives (1, 0, 0). Then through
+                                                   // x=0 gives (-1, 0, 0). That's a 180-deg rotation about Z.
         let p_in = Point::from_xyz(1.0, 0.0, 0.0).to_multivector();
         let after_first = p_xz.reflect(&p_in);
         let after_second = p_yz.reflect(&after_first);

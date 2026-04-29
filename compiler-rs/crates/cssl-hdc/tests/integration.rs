@@ -1,5 +1,11 @@
 //! § cssl-hdc integration tests
 //! ════════════════════════════════════════════════════════════════════════════
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::suboptimal_flops,
+    clippy::redundant_clone
+)]
 //!
 //! § ROLE
 //!   Cross-module integration scenarios that exercise the full HDC
@@ -97,10 +103,8 @@ fn genome_hologram_recall() {
         .map(|i| Genome::from_seed(200 + i as u64).into_hdc())
         .collect();
 
-    let pairs: Vec<(&Hypervector<10000>, &Hypervector<10000>)> = parents
-        .iter()
-        .zip(children.iter())
-        .collect();
+    let pairs: Vec<(&Hypervector<10000>, &Hypervector<10000>)> =
+        parents.iter().zip(children.iter()).collect();
     let h: Hologram<10000, 8> = Hologram::from_pairs(&pairs);
 
     for (i, parent) in parents.iter().enumerate() {

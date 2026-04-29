@@ -246,9 +246,17 @@ mod tests {
         let s: Vec<f32> = (0..16).map(|i| if i == 0 { 1.0 } else { 0.0 }).collect();
         let mut c = MultiResolution::decompose(&s, &Haar::new(), 2, BoundaryMode::Periodic);
         // Threshold to drop any small details
-        let detail_count_before: usize = c.details.iter().map(|v| v.iter().filter(|x| x.abs() > 0.0).count()).sum();
+        let detail_count_before: usize = c
+            .details
+            .iter()
+            .map(|v| v.iter().filter(|x| x.abs() > 0.0).count())
+            .sum();
         MultiResolution::threshold(&mut c, 0.4);
-        let detail_count_after: usize = c.details.iter().map(|v| v.iter().filter(|x| x.abs() > 0.0).count()).sum();
+        let detail_count_after: usize = c
+            .details
+            .iter()
+            .map(|v| v.iter().filter(|x| x.abs() > 0.0).count())
+            .sum();
         assert!(detail_count_after <= detail_count_before);
     }
 

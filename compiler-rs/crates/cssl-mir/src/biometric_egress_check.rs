@@ -404,10 +404,8 @@ mod tests {
         // Outer block has a host op carrying a nested region.
         let mut outer_block = MirBlock::new("entry");
         let mut nested_block = MirBlock::new("then");
-        nested_block.push(
-            MirOp::new(CsslOp::TelemetryRecord)
-                .with_attribute(SENSITIVE_DOMAIN_KEY, "gaze"),
-        );
+        nested_block
+            .push(MirOp::new(CsslOp::TelemetryRecord).with_attribute(SENSITIVE_DOMAIN_KEY, "gaze"));
         let nested_region = MirRegion {
             blocks: vec![nested_block],
         };
@@ -431,9 +429,7 @@ mod tests {
         let mut block = MirBlock::new("entry");
         // Even a non-record op with a biometric attribute (forged) is ignored —
         // the pass only inspects TelemetryRecord ops.
-        block.push(
-            MirOp::new(CsslOp::GpuBarrier).with_attribute(SENSITIVE_DOMAIN_KEY, "gaze"),
-        );
+        block.push(MirOp::new(CsslOp::GpuBarrier).with_attribute(SENSITIVE_DOMAIN_KEY, "gaze"));
         block.push(MirOp::new(CsslOp::TelemetryProbe));
         f.body = MirRegion {
             blocks: vec![block],
@@ -450,17 +446,14 @@ mod tests {
         let mut m = MirModule::new();
         let mut f = MirFunc::new("test", vec![], vec![]);
         let mut block = MirBlock::new("entry");
-        block.push(
-            MirOp::new(CsslOp::TelemetryRecord).with_attribute(SENSITIVE_DOMAIN_KEY, "gaze"),
-        );
+        block
+            .push(MirOp::new(CsslOp::TelemetryRecord).with_attribute(SENSITIVE_DOMAIN_KEY, "gaze"));
         block.push(
             MirOp::new(CsslOp::TelemetryRecord)
                 .with_attribute(SENSITIVE_DOMAIN_KEY, "surveillance"),
         );
-        block.push(
-            MirOp::new(CsslOp::TelemetryRecord)
-                .with_attribute(SENSITIVE_DOMAIN_KEY, "body"),
-        );
+        block
+            .push(MirOp::new(CsslOp::TelemetryRecord).with_attribute(SENSITIVE_DOMAIN_KEY, "body"));
         f.body = MirRegion {
             blocks: vec![block],
         };

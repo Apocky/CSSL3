@@ -255,11 +255,7 @@ mod tests {
         let b: Hypervector<100> = Hypervector::random_from_seed(2);
         let c: Hypervector<100> = Hypervector::random_from_seed(3);
         let result = bundle(&[&a, &b, &c]);
-        assert_eq!(
-            result.word(1) & !((1u64 << 36) - 1),
-            0,
-            "tail bits leaked"
-        );
+        assert_eq!(result.word(1) & !((1u64 << 36) - 1), 0, "tail bits leaked");
     }
 
     /// § Capacity test : bundle 33 random hypervectors at D = 10000.

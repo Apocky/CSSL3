@@ -212,15 +212,15 @@ pub fn validate_egress<T>(value: &LabeledValue<T>) -> Result<(), EgressGrantErro
     if value
         .sensitive_domains
         .contains(&SensitiveDomain::Surveillance)
-        || value.label.confidentiality.0.contains(
-            &crate::principal::Principal::SurveillanceTarget,
-        )
+        || value
+            .label
+            .confidentiality
+            .0
+            .contains(&crate::principal::Principal::SurveillanceTarget)
     {
         return Err(EgressGrantError::SurveillanceRefused);
     }
-    if value
-        .sensitive_domains
-        .contains(&SensitiveDomain::Coercion)
+    if value.sensitive_domains.contains(&SensitiveDomain::Coercion)
         || value
             .label
             .confidentiality
@@ -256,9 +256,7 @@ fn pick_biometric_domain_for_label(label: &crate::label::Label) -> SensitiveDoma
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        validate_egress, EgressGrantError, PrivilegeLevel, TelemetryEgress,
-    };
+    use super::{validate_egress, EgressGrantError, PrivilegeLevel, TelemetryEgress};
     use crate::domain::SensitiveDomain;
     use crate::label::Label;
     use crate::labeled::LabeledValue;
@@ -282,10 +280,14 @@ mod tests {
     fn for_domain_refuses_each_biometric_family_member() {
         for d in SensitiveDomain::BIOMETRIC_FAMILY {
             let result = TelemetryEgress::for_domain(d);
-            assert!(matches!(
-                result,
-                Err(EgressGrantError::BiometricRefused { domain }) if domain == d
-            ), "{:?} must refuse", d);
+            assert!(
+                matches!(
+                    result,
+                    Err(EgressGrantError::BiometricRefused { domain }) if domain == d
+                ),
+                "{:?} must refuse",
+                d
+            );
         }
     }
 
@@ -293,12 +295,12 @@ mod tests {
     fn for_domain_with_privilege_apocky_root_still_refuses_biometric() {
         // Even Apocky-Root cannot grant biometric egress.
         for d in SensitiveDomain::BIOMETRIC_FAMILY {
-            let result =
-                TelemetryEgress::for_domain_with_privilege(d, PrivilegeLevel::ApockyRoot);
-            assert!(matches!(
-                result,
-                Err(EgressGrantError::BiometricRefused { .. })
-            ), "Apocky-Root must NOT override biometric refusal for {:?}", d);
+            let result = TelemetryEgress::for_domain_with_privilege(d, PrivilegeLevel::ApockyRoot);
+            assert!(
+                matches!(result, Err(EgressGrantError::BiometricRefused { .. })),
+                "Apocky-Root must NOT override biometric refusal for {:?}",
+                d
+            );
         }
     }
 
@@ -373,10 +375,14 @@ mod tests {
         for d in SensitiveDomain::BIOMETRIC_FAMILY {
             let v: LabeledValue<i32> = LabeledValue::with_domain(0, benign_label(), d);
             let result = validate_egress(&v);
-            assert!(matches!(
-                result,
-                Err(EgressGrantError::BiometricRefused { domain }) if domain == d
-            ), "{:?}", d);
+            assert!(
+                matches!(
+                    result,
+                    Err(EgressGrantError::BiometricRefused { domain }) if domain == d
+                ),
+                "{:?}",
+                d
+            );
         }
     }
 
@@ -390,7 +396,9 @@ mod tests {
         let result = validate_egress(&v);
         assert!(matches!(
             result,
-            Err(EgressGrantError::BiometricRefused { domain: SensitiveDomain::Gaze })
+            Err(EgressGrantError::BiometricRefused {
+                domain: SensitiveDomain::Gaze
+            })
         ));
     }
 
@@ -404,7 +412,9 @@ mod tests {
         let result = validate_egress(&v);
         assert!(matches!(
             result,
-            Err(EgressGrantError::BiometricRefused { domain: SensitiveDomain::Face })
+            Err(EgressGrantError::BiometricRefused {
+                domain: SensitiveDomain::Face
+            })
         ));
     }
 
@@ -418,7 +428,9 @@ mod tests {
         let result = validate_egress(&v);
         assert!(matches!(
             result,
-            Err(EgressGrantError::BiometricRefused { domain: SensitiveDomain::Body })
+            Err(EgressGrantError::BiometricRefused {
+                domain: SensitiveDomain::Body
+            })
         ));
     }
 

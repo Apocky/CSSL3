@@ -377,7 +377,11 @@ mod tests {
         let mutated = g.mutate(&mut rng, 0.01);
         let d = Genome::distance(&g2, &mutated);
         // § Rate 0.01 ⇒ ≈ 100 flips ± 30.
-        assert!((50..=200).contains(&d.hamming), "low-rate flips : {}", d.hamming);
+        assert!(
+            (50..=200).contains(&d.hamming),
+            "low-rate flips : {}",
+            d.hamming
+        );
     }
 
     /// § Mutate clamps out-of-range rates.

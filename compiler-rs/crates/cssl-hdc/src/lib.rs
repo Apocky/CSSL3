@@ -154,6 +154,20 @@
 
 #![forbid(unsafe_code)]
 #![doc(html_root_url = "https://cssl.dev/api/cssl-hdc/")]
+// HDC-similarity computations are intrinsically lossy (D-dim averages, popcount
+// ratios) — float-precision-loss + cast-sign-loss + float-strict-comparison are
+// domain-justified per Kanerva 2009 + arXiv:2111.06077. Tests use exact-fraction
+// dimensions where that matters ; production accepts the precision bounds.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::float_cmp,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::redundant_clone
+)]
 
 pub mod bind;
 pub mod bundle;
@@ -163,8 +177,8 @@ pub mod hypervector;
 pub mod permute;
 pub mod prng;
 pub mod sdm;
-pub mod similarity;
 pub mod simd;
+pub mod similarity;
 
 // § Re-exports — flat public surface for downstream crate ergonomics.
 //   Consumers import `cssl_hdc::{Hypervector, bind, bundle, ...}` rather
@@ -179,11 +193,11 @@ pub use hypervector::{HamFn, Hypervector, HypervectorI8};
 pub use permute::{inverse_permute, permute, permute_in_place};
 pub use prng::{splitmix64_next, SplitMix64};
 pub use sdm::{HdcCell, SdmReadout, SparseDistributedMemory};
+pub use simd::{popcount_xor_slice, xor_slice_into};
 pub use similarity::{
     cosine_similarity, dot_product, hamming_distance, hamming_distance_normalized,
     similarity_bipolar,
 };
-pub use simd::{popcount_xor_slice, xor_slice_into};
 
 /// § Sentinel — re-exported so consumers can verify they linked the
 ///   stage-0 scaffold at runtime (parity with `cssl-math::STAGE0_NOTE`).

@@ -133,13 +133,13 @@ impl TelemetryRefusal {
     pub fn diagnostic_bytes(&self) -> Vec<u8> {
         match self {
             Self::BiometricRefused { domain } => {
-                format!("biometric-refused:{}", domain).into_bytes()
+                format!("biometric-refused:{domain}").into_bytes()
             }
             Self::SurveillanceRefused => b"surveillance-refused".to_vec(),
             Self::CoercionRefused => b"coercion-refused".to_vec(),
             Self::WeaponNeedsKernel => b"weapon-needs-kernel".to_vec(),
             Self::CapabilityMismatch { cap_auth } => {
-                format!("cap-mismatch:auth={}", cap_auth).into_bytes()
+                format!("cap-mismatch:auth={cap_auth}").into_bytes()
             }
         }
     }
@@ -192,7 +192,11 @@ pub fn record_labeled<T>(
     if let Err(e) = validate_egress(value) {
         let refusal = TelemetryRefusal::from(e);
         if let Some(chain) = audit_chain {
-            chain.append(refusal.refusal_tag(), refusal.to_string(), timestamp_ns / 1_000_000_000);
+            chain.append(
+                refusal.refusal_tag(),
+                refusal.to_string(),
+                timestamp_ns / 1_000_000_000,
+            );
         }
         let _ = ring.push(TelemetrySlot::refusal(timestamp_ns, &refusal));
         return Err(refusal);
@@ -205,7 +209,11 @@ pub fn record_labeled<T>(
             cap_auth: cap.authorized_domain,
         };
         if let Some(chain) = audit_chain {
-            chain.append(refusal.refusal_tag(), refusal.to_string(), timestamp_ns / 1_000_000_000);
+            chain.append(
+                refusal.refusal_tag(),
+                refusal.to_string(),
+                timestamp_ns / 1_000_000_000,
+            );
         }
         let _ = ring.push(TelemetrySlot::refusal(timestamp_ns, &refusal));
         return Err(refusal);
@@ -268,9 +276,7 @@ pub fn record_labeled_safe<T: BiometricSafe>(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        record_labeled, record_labeled_safe, BiometricSafe, TelemetryRefusal,
-    };
+    use super::{record_labeled, record_labeled_safe, BiometricSafe, TelemetryRefusal};
     use crate::audit::AuditChain;
     use crate::ring::TelemetryRing;
     use crate::scope::{TelemetryKind, TelemetryScope};
@@ -800,10 +806,7 @@ mod tests {
         // good slot for the legit log). FIFO order is preserved.
         assert_eq!(ring.len(), 2);
         let drained = ring.drain_all();
-        assert_eq!(
-            drained[0].scope,
-            TelemetryScope::BiometricRefused.as_u16()
-        );
+        assert_eq!(drained[0].scope, TelemetryScope::BiometricRefused.as_u16());
         assert_eq!(drained[1].scope, TelemetryScope::Counters.as_u16());
     }
 

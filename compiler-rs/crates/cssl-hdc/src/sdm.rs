@@ -312,8 +312,7 @@ mod tests {
     /// § Radius 0 means only exact-address activation.
     #[test]
     fn radius_zero_exact_match() {
-        let sdm: SparseDistributedMemory<128, 16> =
-            SparseDistributedMemory::with_radius(0, 0);
+        let sdm: SparseDistributedMemory<128, 16> = SparseDistributedMemory::with_radius(0, 0);
         let probe: Hypervector<128> = Hypervector::random_from_seed(99);
         let active = sdm.activated_cells(&probe);
         // § Random probe vs random cells : Hamming distance ≈ 64 ;
@@ -432,8 +431,7 @@ mod tests {
     /// § set_radius takes effect on subsequent reads.
     #[test]
     fn set_radius_affects_activation() {
-        let mut sdm: SparseDistributedMemory<256, 32> =
-            SparseDistributedMemory::with_radius(0, 0);
+        let mut sdm: SparseDistributedMemory<256, 32> = SparseDistributedMemory::with_radius(0, 0);
         let p: Hypervector<256> = Hypervector::random_from_seed(0);
         let active_zero_radius = sdm.activated_cells(&p);
         sdm.set_radius(256); // activates everything

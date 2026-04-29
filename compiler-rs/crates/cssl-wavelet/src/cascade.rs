@@ -176,14 +176,12 @@ impl CascadeProbePyramid {
         let coeffs = MultiResolution::decompose(probes, wavelet, coarsen.levels, coarsen.boundary);
         // Use a Haar-equivalent MERA pyramid for the tensor-network
         // view ; this matches the wavelet pyramid 1-1.
-        let layers: Vec<MeraLayer> = (0..coarsen.levels).map(|_| MeraLayer::haar_equivalent()).collect();
+        let layers: Vec<MeraLayer> = (0..coarsen.levels)
+            .map(|_| MeraLayer::haar_equivalent())
+            .collect();
         let mut mera = MeraPyramid::new(layers);
         mera.build(probes);
-        Self {
-            band,
-            coeffs,
-            mera,
-        }
+        Self { band, coeffs, mera }
     }
 
     /// Reconstruct the base-level probe field from the wavelet-coefficient

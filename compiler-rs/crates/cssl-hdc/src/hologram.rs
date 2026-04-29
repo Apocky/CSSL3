@@ -80,10 +80,7 @@ impl<const D: usize, const K: usize> Hologram<D, K> {
     /// § Construct a hologram from a slice of `(key, value)` pairs.
     ///   The storage is `bundle(bind(k_1, v_1), bind(k_2, v_2), ...)`.
     pub fn from_pairs(pairs: &[(&Hypervector<D>, &Hypervector<D>)]) -> Self {
-        let bound: Vec<Hypervector<D>> = pairs
-            .iter()
-            .map(|(k, v)| bind(k, v))
-            .collect();
+        let bound: Vec<Hypervector<D>> = pairs.iter().map(|(k, v)| bind(k, v)).collect();
         let bound_refs: Vec<&Hypervector<D>> = bound.iter().collect();
         Self {
             storage: bundle(&bound_refs),
@@ -283,10 +280,8 @@ mod tests {
         let values: Vec<Hypervector<10000>> = (0..6)
             .map(|i| Hypervector::random_from_seed(6000 + i as u64))
             .collect();
-        let pairs: Vec<(&Hypervector<10000>, &Hypervector<10000>)> = keys
-            .iter()
-            .zip(values.iter())
-            .collect();
+        let pairs: Vec<(&Hypervector<10000>, &Hypervector<10000>)> =
+            keys.iter().zip(values.iter()).collect();
         let h: Hologram<10000, 6> = Hologram::from_pairs(&pairs);
 
         for (i, key) in keys.iter().enumerate() {

@@ -289,7 +289,7 @@ mod tests {
     fn map_preserves_label_and_domains() {
         let v: LabeledValue<i32> =
             LabeledValue::with_domain(7, user_label(), SensitiveDomain::Gaze);
-        let mapped = v.clone().map(|x| x * 10);
+        let mapped = v.map(|x| x * 10);
         assert_eq!(mapped.value, 70);
         assert!(mapped.is_biometric());
     }

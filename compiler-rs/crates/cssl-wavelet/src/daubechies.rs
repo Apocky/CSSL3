@@ -51,12 +51,7 @@ pub const DAUB2_LO: &[f32] = &[
 ///   h[1] = (3 + √3) / (4√2) ≈ 0.836516304
 ///   h[2] = (3 − √3) / (4√2) ≈ 0.224143868
 ///   h[3] = (1 − √3) / (4√2) ≈ -0.129409523
-pub const DAUB4_LO: &[f32] = &[
-    0.482_962_9,
-    0.836_516_3,
-    0.224_143_87,
-    -0.129_409_52,
-];
+pub const DAUB4_LO: &[f32] = &[0.482_962_9, 0.836_516_3, 0.224_143_87, -0.129_409_52];
 
 /// § Daubechies-6 low-pass filter (db3 in standard naming) — three vanishing
 /// moments. Constants from Daubechies, *Ten Lectures on Wavelets*, Table 6.1.
@@ -157,7 +152,11 @@ pub fn check_vanishing_moments(h: &[f32], k_max: usize, tol: f32) -> Vec<bool> {
     for k in 0..k_max {
         let mut sum = 0.0_f32;
         for n in 0..l {
-            let g = if n & 1 == 0 { h[l - 1 - n] } else { -h[l - 1 - n] };
+            let g = if n & 1 == 0 {
+                h[l - 1 - n]
+            } else {
+                -h[l - 1 - n]
+            };
             let n_pow_k = if k == 0 {
                 1.0_f32
             } else {
@@ -296,9 +295,7 @@ mod tests {
     #[test]
     fn daub6_perfect_reconstruction() {
         let d = Daubechies::<6>::new();
-        let s: Vec<f32> = (0..32)
-            .map(|i| (i as f32 * 0.3).cos() * 2.0)
-            .collect();
+        let s: Vec<f32> = (0..32).map(|i| (i as f32 * 0.3).cos() * 2.0).collect();
         let fwd = d.forward_1d(&s, BoundaryMode::Periodic);
         let recon = d.inverse_1d(&fwd, BoundaryMode::Periodic);
         assert!(approx_eq_slice(&s, &recon, 1e-3));

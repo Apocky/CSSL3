@@ -177,7 +177,9 @@ impl Label {
     #[must_use]
     pub fn meet(&self, other: &Self) -> Self {
         Self {
-            confidentiality: Confidentiality(self.confidentiality.0.union(&other.confidentiality.0)),
+            confidentiality: Confidentiality(
+                self.confidentiality.0.union(&other.confidentiality.0),
+            ),
             integrity: Integrity(self.integrity.0.intersection(&other.integrity.0)),
         }
     }
@@ -187,7 +189,10 @@ impl Label {
     #[must_use]
     pub fn flows_to(&self, other: &Self) -> bool {
         // self.C ⊇ other.C : every reader of `other` is also a reader of `self`.
-        let c_ok = other.confidentiality.0.is_subset_of(&self.confidentiality.0);
+        let c_ok = other
+            .confidentiality
+            .0
+            .is_subset_of(&self.confidentiality.0);
         // self.I ⊆ other.I : every influencer of `self` is also an influencer of `other`.
         let i_ok = self.integrity.0.is_subset_of(&other.integrity.0);
         c_ok && i_ok
@@ -366,8 +371,7 @@ mod tests {
         );
         assert!(l.has_absolutely_banned_confidentiality());
         // Biometric also counts.
-        assert!(Label::restricted(p_gaze(), p_user())
-            .has_absolutely_banned_confidentiality());
+        assert!(Label::restricted(p_gaze(), p_user()).has_absolutely_banned_confidentiality());
     }
 
     #[test]

@@ -102,6 +102,22 @@
 //!   pub-items + onboarding text per ~/.claude/CLAUDE.md notation default.
 
 #![forbid(unsafe_code)]
+// Wavelet computations are intrinsically lossy (multi-resolution f32 cascades,
+// integer-grid → real conversions, signed-index boundary arithmetic). Per
+// `04_OMEGA_FIELD/05_DENSITY_BUDGET.csl` the precision-loss + cast-wrap +
+// multiply-add are domain-justified — tests pin specific dyadic values where
+// exactness matters ; production accepts the f32 bounds.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::suboptimal_flops,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::match_same_arms,
+    clippy::float_cmp
+)]
 
 pub mod boundary;
 pub mod cascade;

@@ -93,22 +93,22 @@ impl Grade {
 
 /// Grade lookup for each of the 16 canonical blade indices.
 const GRADE_TABLE: [Grade; BLADE_COUNT] = [
-    Grade::Scalar,                // 0  : 1
-    Grade::Vector,                // 1  : e1
-    Grade::Vector,                // 2  : e2
-    Grade::Vector,                // 3  : e3
-    Grade::Vector,                // 4  : e0
-    Grade::Bivector,              // 5  : e23
-    Grade::Bivector,              // 6  : e31
-    Grade::Bivector,              // 7  : e12
-    Grade::Bivector,              // 8  : e01
-    Grade::Bivector,              // 9  : e02
-    Grade::Bivector,              // 10 : e03
-    Grade::Trivector,             // 11 : e032
-    Grade::Trivector,             // 12 : e013
-    Grade::Trivector,             // 13 : e021
-    Grade::Trivector,             // 14 : e123
-    Grade::Pseudoscalar,          // 15 : e0123
+    Grade::Scalar,       // 0  : 1
+    Grade::Vector,       // 1  : e1
+    Grade::Vector,       // 2  : e2
+    Grade::Vector,       // 3  : e3
+    Grade::Vector,       // 4  : e0
+    Grade::Bivector,     // 5  : e23
+    Grade::Bivector,     // 6  : e31
+    Grade::Bivector,     // 7  : e12
+    Grade::Bivector,     // 8  : e01
+    Grade::Bivector,     // 9  : e02
+    Grade::Bivector,     // 10 : e03
+    Grade::Trivector,    // 11 : e032
+    Grade::Trivector,    // 12 : e013
+    Grade::Trivector,    // 13 : e021
+    Grade::Trivector,    // 14 : e123
+    Grade::Pseudoscalar, // 15 : e0123
 ];
 
 /// Look up the grade of the blade at canonical index `i`.
@@ -201,11 +201,26 @@ mod tests {
     #[test]
     fn grade_count_check() {
         // 1 + 4 + 6 + 4 + 1 = 16.
-        assert_eq!(Grade::Scalar.index_range().1 - Grade::Scalar.index_range().0, 1);
-        assert_eq!(Grade::Vector.index_range().1 - Grade::Vector.index_range().0, 4);
-        assert_eq!(Grade::Bivector.index_range().1 - Grade::Bivector.index_range().0, 6);
-        assert_eq!(Grade::Trivector.index_range().1 - Grade::Trivector.index_range().0, 4);
-        assert_eq!(Grade::Pseudoscalar.index_range().1 - Grade::Pseudoscalar.index_range().0, 1);
+        assert_eq!(
+            Grade::Scalar.index_range().1 - Grade::Scalar.index_range().0,
+            1
+        );
+        assert_eq!(
+            Grade::Vector.index_range().1 - Grade::Vector.index_range().0,
+            4
+        );
+        assert_eq!(
+            Grade::Bivector.index_range().1 - Grade::Bivector.index_range().0,
+            6
+        );
+        assert_eq!(
+            Grade::Trivector.index_range().1 - Grade::Trivector.index_range().0,
+            4
+        );
+        assert_eq!(
+            Grade::Pseudoscalar.index_range().1 - Grade::Pseudoscalar.index_range().0,
+            1
+        );
     }
 
     #[test]

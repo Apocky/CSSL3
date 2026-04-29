@@ -258,7 +258,10 @@ mod tests {
         let n_v = narrow.evaluate(1.0);
         let w_v = wide.evaluate(1.0);
         assert!(n_v < 0.0, "narrow at 1.0 should be negative (past zero)");
-        assert!(w_v > 0.0, "wide at 1.0 should be positive (still in main lobe)");
+        assert!(
+            w_v > 0.0,
+            "wide at 1.0 should be positive (still in main lobe)"
+        );
     }
 
     #[test]

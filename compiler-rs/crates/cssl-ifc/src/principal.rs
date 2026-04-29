@@ -223,14 +223,14 @@ impl PrincipalSet {
     /// `TelemetryRefusal::Biometric*` in `cssl-telemetry`.
     #[must_use]
     pub fn has_biometric_family(&self) -> bool {
-        self.inner.iter().any(|p| p.is_biometric_family())
+        self.inner.iter().any(Principal::is_biometric_family)
     }
 
     /// `true` iff `self` contains any absolute-egress-banned principal
     /// (biometric-family ∪ SurveillanceTarget ∪ CoercionTarget).
     #[must_use]
     pub fn has_absolutely_banned(&self) -> bool {
-        self.inner.iter().any(|p| p.is_egress_absolutely_banned())
+        self.inner.iter().any(Principal::is_egress_absolutely_banned)
     }
 }
 

@@ -49,6 +49,10 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 #![allow(clippy::module_name_repetitions)]
+// `format!` strings throughout cssl-ifc use the explicit-arg style for clarity
+// across the {label, principal, domain, egress, labeled} pre-D132 modules ;
+// the inlined-args lint is a stylistic preference not worth the diff.
+#![allow(clippy::uninlined_format_args)]
 
 pub mod domain;
 pub mod egress;
@@ -89,10 +93,14 @@ mod scaffold_tests {
         for d in SensitiveDomain::BIOMETRIC_FAMILY {
             let v: LabeledValue<u32> = LabeledValue::with_domain(0, label.clone(), d);
             let res = validate_egress(&v);
-            assert!(matches!(
-                res,
-                Err(EgressGrantError::BiometricRefused { domain }) if domain == d
-            ), "{:?}", d);
+            assert!(
+                matches!(
+                    res,
+                    Err(EgressGrantError::BiometricRefused { domain }) if domain == d
+                ),
+                "{:?}",
+                d
+            );
         }
     }
 }

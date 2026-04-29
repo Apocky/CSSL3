@@ -147,30 +147,30 @@
 #![allow(clippy::redundant_closure_for_method_calls)]
 
 pub mod basis;
+pub mod expmap;
+pub mod line;
+pub mod motor;
 pub mod multivector;
 pub mod multivector_f64;
+pub mod ops;
 pub mod plane;
-pub mod line;
 pub mod point;
 pub mod rotor;
 pub mod translator;
-pub mod motor;
-pub mod expmap;
-pub mod ops;
 
 #[cfg(feature = "cssl-math-bridge")]
 pub mod bridge;
 
 // ── public re-exports — f32 surface ────────────────────────────────────────
 pub use basis::{Grade, BASIS_NAMES};
+pub use line::Line;
+pub use motor::Motor;
 pub use multivector::Multivector as Multivector32;
 pub use multivector_f64::Multivector as Multivector64;
 pub use plane::Plane;
-pub use line::Line;
 pub use point::Point;
 pub use rotor::Rotor;
 pub use translator::Translator;
-pub use motor::Motor;
 
 /// Convenience alias — the unqualified `Multivector` is the `f32` variant,
 /// matching `cssl-math` ergonomic conventions. Use [`Multivector64`]

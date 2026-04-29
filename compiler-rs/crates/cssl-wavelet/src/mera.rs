@@ -64,7 +64,11 @@ impl Disentangler {
     /// Construct from a row-major 4×4 array. Panics if `data.len() != 16`.
     #[must_use]
     pub fn from_matrix(data: Vec<f32>) -> Self {
-        assert_eq!(data.len(), 16, "Disentangler : data must be 4×4 = 16 entries");
+        assert_eq!(
+            data.len(),
+            16,
+            "Disentangler : data must be 4×4 = 16 entries"
+        );
         Self { data }
     }
 
@@ -348,9 +352,9 @@ impl MeraPyramid {
     /// layer's isometry is isometric, to within `tol`.
     #[must_use]
     pub fn verify_unitarity(&self, tol: f32) -> bool {
-        self.layers.iter().all(|l| {
-            l.disentangler.is_unitary(tol) && l.isometry.is_isometric(tol)
-        })
+        self.layers
+            .iter()
+            .all(|l| l.disentangler.is_unitary(tol) && l.isometry.is_isometric(tol))
     }
 }
 

@@ -667,7 +667,10 @@ mod tests {
             .iter()
             .filter(|m| m.category == EffectCategory::Substrate)
             .count();
-        assert_eq!(count, 3, "Substrate category should hold {{Travel, Crystallize, Sovereign}}");
+        assert_eq!(
+            count, 3,
+            "Substrate category should hold {{Travel, Crystallize, Sovereign}}"
+        );
     }
 
     #[test]

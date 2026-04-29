@@ -219,6 +219,10 @@ mod tests {
         let result = bind(&a, &b);
         // § Word 1 has 36 valid bits ; high 28 must be zero.
         let last = result.word(1);
-        assert_eq!(last & !((1u64 << 36) - 1), 0, "tail bits leaked : {last:#x}");
+        assert_eq!(
+            last & !((1u64 << 36) - 1),
+            0,
+            "tail bits leaked : {last:#x}"
+        );
     }
 }

@@ -367,7 +367,13 @@ mod tests {
         // verify none happen to land on zero.
         let hasher = PathHasher::from_seed([7u8; 32]);
         for p in [
-            "/", "/etc", "/etc/hosts", "/home", "/home/x", "C:\\", "C:\\Users",
+            "/",
+            "/etc",
+            "/etc/hosts",
+            "/home",
+            "/home/x",
+            "C:\\",
+            "C:\\Users",
         ] {
             let h = hasher.hash_str(p);
             assert_ne!(h, PathHash::zero(), "salt collision with zero for {p}");
@@ -697,8 +703,7 @@ mod tests {
         let hasher = PathHasher::from_seed([0u8; 32]);
         let mut chain = AuditChain::new();
         let h = hasher.hash_str("/etc/hosts");
-        audit_path_op(&mut chain, "fs-open", h, "bytes=0", 1_000)
-            .expect("hash-form accepted");
+        audit_path_op(&mut chain, "fs-open", h, "bytes=0", 1_000).expect("hash-form accepted");
         let entry = chain.iter().next().unwrap();
         assert!(entry.message.contains("path_hash="));
         assert!(!entry.message.contains("/etc"));

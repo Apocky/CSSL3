@@ -45,9 +45,7 @@ pub mod transform;
 pub mod walker;
 
 pub use decl::{collect_differentiable_fns, DiffDecl};
-pub use jet::{
-    hessian_vector_product_1d, hvp_axis, Jet, JetField, MAX_JET_ORDER_PLUS_ONE,
-};
+pub use jet::{hessian_vector_product_1d, hvp_axis, Jet, JetField, MAX_JET_ORDER_PLUS_ONE};
 pub use rules::{DiffMode, DiffRule, DiffRuleTable, Primitive};
 pub use substitute::{apply_bwd, apply_fwd, SubstitutionReport, TangentMap};
 pub use transform::{DiffTransform, DiffVariants};

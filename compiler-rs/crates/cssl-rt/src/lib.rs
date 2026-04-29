@@ -121,7 +121,6 @@ pub use io::{
     INVALID_HANDLE, OPEN_APPEND, OPEN_CREATE, OPEN_CREATE_NEW, OPEN_FLAG_MASK, OPEN_READ,
     OPEN_READ_WRITE, OPEN_TRUNCATE, OPEN_WRITE, PATH_HASH_QUEUE_CAPACITY,
 };
-pub use path_hash::{hash_path_bytes, install_test_salt};
 pub use net::{
     accept_count, addr_is_loopback, bytes_recv_total, bytes_sent_total, caps_current, caps_grant,
     caps_revoke, check_caps_for_addr, connect_count, last_net_error_kind, last_net_error_os,
@@ -132,6 +131,7 @@ pub use net::{
     SOCK_UDP,
 };
 pub use panic::{format_panic, panic_count, record_panic, reset_panic_count_for_tests};
+pub use path_hash::{hash_path_bytes, install_test_salt};
 pub use runtime::{
     cssl_entry_impl, entry_invocation_count, init_count, is_runtime_initialized,
     reset_runtime_for_tests,

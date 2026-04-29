@@ -616,7 +616,6 @@ pub enum ConflictReason {
     SaveRequiresConsentToken,
 
     // ── T11-D127 — Ω-substrate-translation row composition codes ──────────
-
     /// EFR0011 — `{Travel} ⊎ {Sim}` requires `Crystallize` companion.
     /// Rationale : translating a Sovereign mid-simulation must derive the
     /// new Local-Machine for the target substrate, otherwise the Sovereign
@@ -1610,9 +1609,11 @@ mod tests {
         let result = try_compose(&a, &b, &ctx);
         // Hard errors absent ; advisory EFR0017 (canonical translate-row) may surface.
         assert!(
-            result.is_ok() || result.as_ref().err().map_or(true, |errs| {
-                !errs.iter().any(|e| e.code() == "EFR0011")
-            }),
+            result.is_ok()
+                || result
+                    .as_ref()
+                    .err()
+                    .map_or(true, |errs| { !errs.iter().any(|e| e.code() == "EFR0011") }),
             "EFR0011 should not surface when Crystallize is present"
         );
     }
@@ -1964,11 +1965,15 @@ mod tests {
         let result = try_compose(&a, &b, &ctx);
         // No hard-error EFR0011 (Crystallize present) ; advisories OK.
         assert!(
-            result.is_ok() || result.as_ref().err().map_or(true, |errs| {
-                !errs.iter().any(ConflictReason::is_hard_error)
-            }),
+            result.is_ok()
+                || result.as_ref().err().map_or(true, |errs| {
+                    !errs.iter().any(ConflictReason::is_hard_error)
+                }),
             "canonical translate-row must not trigger any hard error ; got {:?}",
-            result.as_ref().err().map(|errs| errs.iter().map(|e| e.code()).collect::<Vec<_>>())
+            result
+                .as_ref()
+                .err()
+                .map(|errs| errs.iter().map(|e| e.code()).collect::<Vec<_>>())
         );
     }
 
@@ -2041,12 +2046,18 @@ mod tests {
         // try_compose returns Ok (no hard-errors) ; compose_with_advisories returns
         // Err with EFR0017 informational.
         let try_res = try_compose(&a, &b, &ctx);
-        assert!(try_res.is_ok(), "well-formed translate row composes cleanly via try_compose");
+        assert!(
+            try_res.is_ok(),
+            "well-formed translate row composes cleanly via try_compose"
+        );
         let strict_res = compose_with_advisories(&a, &b, &ctx);
         assert!(strict_res.is_err());
         let errs = strict_res.unwrap_err();
         let codes: std::collections::HashSet<&str> = errs.iter().map(|e| e.code()).collect();
-        assert!(codes.contains("EFR0017"), "well-formed canonical row should advisory EFR0017");
+        assert!(
+            codes.contains("EFR0017"),
+            "well-formed canonical row should advisory EFR0017"
+        );
         // No hard-errors :
         for e in &errs {
             assert!(!e.is_hard_error(), "unexpected hard error: {e:?}");
@@ -2085,7 +2096,10 @@ mod tests {
             .with_pattern_integrity()
             .with_audit_companion();
         let result = try_compose(&a, &b, &ctx);
-        assert!(result.is_err(), "modder/kernel-tier without L4 cannot Travel");
+        assert!(
+            result.is_err(),
+            "modder/kernel-tier without L4 cannot Travel"
+        );
         let errs = result.unwrap_err();
         assert!(errs.iter().any(|e| e.code() == "EFR0013"));
     }
