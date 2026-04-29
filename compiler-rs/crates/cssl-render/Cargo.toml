@@ -1,0 +1,41 @@
+[package]
+name                   = "cssl-render"
+description            = "CSSLv3 — renderer foundation : SceneGraph + PBR Material + RenderGraph + per-host backend abstraction. Consumes MATH + ASSET + Substrate Projections ; targets Vulkan / D3D12 / Metal / WebGPU via per-host adapters."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-render is intentionally upstream-thin at the foundation slice. The
+# renderer crate is the floor that game-logic + scene-authoring + asset-
+# pipeline build on, so a deep dep-tree here propagates transitively into
+# every consumer.
+#
+# § MATH (M1) DEP STATUS — sibling-in-flight (S9 MATH branch)
+#   The cssl-math crate exists in the MATH worktree but has not landed on
+#   parallel-fanout yet. Per the wave-7 G-axis pattern documented in
+#   SESSION_7_DISPATCH_PLAN, this slice defines the canonical math surface
+#   it needs locally in `crate::math` so cssl-render compiles + tests
+#   against parallel-fanout HEAD. When MATH lands, the local module shrinks
+#   to a re-export wrapper around `cssl_math::*` and consumers see no API
+#   change.
+#
+# § ASSET (N1) DEP STATUS — sibling-in-flight
+#   Same pattern : `crate::asset` carries placeholder Texture / MeshAsset /
+#   AssetHandle types until cssl-asset lands.
+#
+# § SUBSTRATE PROJECTIONS DEP STATUS — landed (S8-H3, T11-D91)
+#   `cssl-substrate-projections` is on parallel-fanout. The renderer
+#   consumes Camera / ObserverFrame / ProjectionMatrix / Frustum from there
+#   for view-projection pipeline + frustum culling. Note projections has
+#   its OWN minimal Vec3/Quat/Mat4 surface ; the renderer's `crate::math`
+#   conforms to the same semantics (RH Y-up + reverse-Z + column-major) so
+#   the boundary is interchange-compatible. The projections types are
+#   re-exposed as `crate::projections` for consumer convenience.
+thiserror                   = { workspace = true }
+cssl-substrate-projections  = { path = "../cssl-substrate-projections" }
