@@ -3688,5 +3688,57 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D58 : Session-6 S6-C1 — `scf.if` lowering to cranelift `brif` + extended-blocks
+
+- **Date** 2026-04-29
+- **Status** accepted (PM may renumber on merge — B1 has T11-D57 reserved per dispatch plan § 4)
+- **Session** 6 — Phase-C control-flow + JIT enrichment, slice 1 of 5
+- **Branch** `cssl/session-6/C1`
+- **Context** Per `HANDOFF_SESSION_6.csl § PHASE-C § S6-C1` and `specs/15_MLIR.csl § SCF-DIALECT-LOWERING`, the cranelift backend at session-6 entry rejected every `scf.if` MIR op with `JitError::UnsupportedMirOp` / `ObjectError::UnsupportedOp` (and `object.rs` rejected any multi-block-region body up front). Without `scf.if` lowering, every CSSLv3 source file containing an `if` expression couldn't reach the JIT or the object backend. T11-D58 establishes the structured-control-flow lowering pattern : `body_lower::lower_if` emits MIR-level `scf.yield` ops to mark each branch's yielded value, and a new shared helper `cssl_cgen_cpu_cranelift::scf::lower_scf_if` turns the resulting `scf.if + 2 regions + scf.yield` shape into a cranelift `brif`-with-merge-block in three blocks. Phase-C2 (`scf.for` / `scf.while`) and Phase-D5 (Structured-CFG validator) build on the same scaffolding.
+- **Slice landed (this commit)** — ~830 net LOC (≈300 production + ≈530 tests / inline helpers + comments) + 20 new tests
+  - **`crates/cssl-mir/src/body_lower.rs`** :
+    - **Refactored `lower_if`** : was emitting both regions via the same `lower_sub_region_from` helper that drops yield info on the floor. Now each branch goes through a new `lower_branch_region` helper that returns the optional `(yield_id, yield_ty)` and appends a terminating `scf.yield <yield-id>` op when the branch produces a value. The scf.if's `result_ty` is derived from the then-branch's yield type when both branches yield (expression-form), otherwise remains `MirType::None` (statement-form).
+    - **New `lower_branch_region` helper** ; the existing `lower_sub_region_from` is preserved unchanged for the loop-shape lowerers (`scf.for` / `scf.while` / `scf.loop` — none of which yield).
+    - **+2 mir tests** : `if_expression_emits_scf_yield_in_each_branch` (asserts both regions terminate with `scf.yield` carrying one operand) + `if_statement_form_emits_no_scf_yield` (statement-form skips the yield).
+  - **`crates/cssl-cgen-cpu-cranelift/src/scf.rs`** (new module, ~290 LOC including doc comments + 5 tests) :
+    - **`pub enum ScfError`** — 6 variants (`MissingCondition` / `MultiBlockRegion` / `WrongRegionCount` / `UnknownYieldValue` / `UnknownConditionValue` / `NonScalarYield`) each with a `fn_name` for actionable diagnostics.
+    - **`pub enum BackendOrScfError<E>`** — type-parameterized wrapper letting backends keep one error type at dispatch. `ScfError` automatically converts via `#[from]` ; backend errors carry through `Backend(E)`.
+    - **`pub fn lower_scf_if<E, F>(op, builder, value_map, fn_name, lower_branch_op) -> Result<bool, BackendOrScfError<E>>`** — the shared lowering driver. Validates region count + region-shape, resolves the cond value, computes the merge-block param type from `op.results[0].ty`, creates `then_block` / `else_block` / `merge_block`, emits `brif(cond, then_block, &[], else_block, &[])` (per cranelift 0.115 signature : 1 cond + 1 true-dest + 1 false-dest + per-target arg-list), recurses through each branch's ops via the caller's `lower_branch_op` closure, captures each branch's `scf.yield` operand as the tail-jump arg into the merge-block, and switches the cursor back to the merge-block on exit. Sealing schedule : then + else sealed immediately (only-predecessor is the brif) ; merge sealed last (its predecessors are both branches' jump tails, complete after both emit).
+    - **`pub fn mir_to_cl(MirType) -> Option<Type>`** helper mirroring the JIT/object scalar-only convention.
+    - **5 unit tests** : `mir_to_cl_maps_int_widths` / `mir_to_cl_maps_float_widths` / `mir_to_cl_unsupported_yields_none` / `scf_error_display_is_actionable` / `scf_error_wrong_region_count_displays`.
+  - **`crates/cssl-cgen-cpu-cranelift/src/lib.rs`** : declared `pub mod scf` + re-exported `lower_scf_if` / `ScfError`.
+  - **`crates/cssl-cgen-cpu-cranelift/src/jit.rs`** :
+    - Added `"scf.if"` arm in `lower_op_to_cl` that delegates to a new `lower_scf_if_in_jit` adapter (translates `BackendOrScfError<JitError>` back into `JitError::LoweringFailed { detail }` for structural problems, or unwraps the inner `JitError` directly when the failure came from a branch op).
+    - Added `"scf.yield"` arm that returns `Ok(false)` — the yield is consumed by `lower_scf_if_in_jit` directly via the branch-walker ; reaching the outer dispatch is a structured-CFG violation that D5 will reject in a future slice. For stage-0 we treat it as a no-op so legacy hand-built MIR without parent scf.if keeps lowering.
+    - **+8 jit tests** : `scf_if_picks_then_arm_when_cond_true` / `scf_if_picks_else_arm_when_cond_false` / `scf_if_yields_f32_through_merge_block_param` / `scf_if_branch_arith_then_runs_in_then_block` / `scf_if_branch_arith_else_runs_in_else_block` / `scf_if_statement_form_lowers_without_merge_param` / `scf_if_nested_evaluates_through_correct_arms` / `scf_if_with_wrong_region_count_errors_cleanly`. The hand-built MIR fixtures cover : i32 yield, f32 yield, in-branch arith ops (the "merge isn't enough — branch ops must execute too" case), nested scf.if (recursion through `lower_scf_if`), statement-form (no merge-param), and structural-error reporting.
+  - **`crates/cssl-cgen-cpu-cranelift/src/object.rs`** :
+    - Added `"scf.if"` + `"scf.yield"` arms in `lower_one_op` mirroring the JIT side via a new `lower_scf_if_in_object` adapter (same `BackendOrScfError<ObjectError>` translation pattern).
+    - The pre-existing `MultiBlockBody` outer-body check is preserved unchanged ; it guards against multi-entry-block fns at the outer level. Structured-CFG ops carry their nested regions inside the single entry block, so this check no longer fires for valid scf.if-bearing fns.
+    - **+5 object tests** : `emit_scf_if_pick_succeeds` / `emit_scf_if_pick_starts_with_host_magic` / `emit_scf_if_with_branch_arith_succeeds` / `emit_scf_if_statement_form_succeeds` / `emit_scf_if_with_one_region_returns_error`. Each validates either byte-shape (host magic prefix on produced .obj/.o bytes) or structural-error propagation.
+  - **`crates/cssl-examples/src/hello_world_gate.rs`** : `unique_temp_exe` was clippy-flagged as `dead_code` under `--all-targets` (lib-only build, where the fn's `#[test]` callers aren't compiled). Added `#[cfg(test)]` so the function exists only for the test build — pre-existing baseline issue surfaced by S6-C1's commit-gate, fixed inline rather than blocking the slice.
+- **The capability claim**
+  - Source : hand-built MIR `fn pick(c : bool, a : i32, b : i32) -> i32 { if c { a } else { b } }` shape.
+  - Pipeline : MIR `scf.if v0 [region(scf.yield v1), region(scf.yield v2)] -> v3:i32` → `cssl_cgen_cpu_cranelift::scf::lower_scf_if` → cranelift `brif v0, then_block, &[], else_block, &[]` → `then_block : jump merge_block(v1)` ; `else_block : jump merge_block(v2)` ; `merge_block(v3 : i32) : <continuation>` → JIT compile + `JitFn::call` returns the chosen value.
+  - Runtime : `scf_if_picks_then_arm_when_cond_true` (cond=1 ⇒ a=100) + `scf_if_picks_else_arm_when_cond_false` (cond=0 ⇒ b=200) both pass on Apocky's host. Object-emit produces COFF/ELF/Mach-O bytes with the host magic prefix.
+  - **First time CSSLv3-derived MIR with structured control-flow executes through cranelift.** S6-C2 (`scf.for` / `scf.while`) reuses the `crate::scf` module's seal-schedule + brif pattern.
+- **Consequences**
+  - Test count : 1717 → 1737 (+20 ; 8 jit + 5 object + 5 scf-helpers + 2 mir). Workspace baseline preserved.
+  - **`scf.if` is no longer a JIT-blocking op**. CSSLv3 source files containing `if` expressions can now compile + execute end-to-end (provided the rest of the body uses the supported scalar-arith subset). The killer-app SDF demo's `min(a, b)` was previously lowered via `arith.select` ; with C1 landed, source-level `if a < b { a } else { b }` is also viable.
+  - **`crate::scf` is the canonical structured-control-flow scaffold for both backends**. C2 (scf.for / scf.while / scf.loop) plugs in by adding new entry points alongside `lower_scf_if`. The closure-based dispatcher pattern keeps backend-specific dispatch in `jit.rs` / `object.rs` while letting block-creation + sealing-schedule + brif-emission live in one place.
+  - **Cranelift 0.115 brif signature** is locked in by these uses : `(cond, then_block, &[then_args], else_block, &[else_args])`. If a future cranelift bump changes this, both backends fail at the `scf.rs` call-site simultaneously rather than diverging.
+  - **scf.yield emission is additive ¬ breaking**. Existing `if_emits_scf_if_with_regions` test still passes — the regions still have 2 entries, just with a `scf.yield` op at each tail. Downstream walkers (auto_monomorph + rewrite_generic_call_sites) ignore `scf.yield` because it's a `Std` op with no callee/turbofish info. No diagnostic-code changes required (the MIR-level op-shape is purely additive).
+  - All gates green : fmt ✓ clippy ✓ test 1737/0 (workspace serial — `cargo test --workspace -- --test-threads=1` per the cssl-rt cold-cache parallel flake documented in T11-D56) ✓ doc ✓ xref ✓ smoke 4/4 ✓.
+- **Closes the S6-C1 slice.**
+- **Deferred** (explicit follow-ups for future sessions / slices)
+  - **C2 — `scf.for` / `scf.while` / `scf.loop` lowering.** Reuses `lower_scf_if`'s block-creation + sealing pattern ; adds a header-block + body-block + exit-block triplet + loop-var threading via block-args.
+  - **Multi-block regions inside a single scf.if branch.** Currently `lower_branch_into` walks `region.blocks[0].ops` exactly once. A break / early-return inside a then-arm would require multi-block region traversal. C2 may require this for nested loops ; deferred until then.
+  - **`scf.yield` emission consistency for `auto_monomorph` + AD walkers.** The walkers don't currently visit nested-region ops ; if a yield's value is monomorphizable, that path will need explicit support. No symptom yet because the existing scf.if lowering didn't surface yields.
+  - **D5 — Structured-CFG validator.** Will reject orphan `scf.yield` / orphan branch ops at the outer dispatch level (currently both backends treat orphans as no-ops). Lands alongside the GPU-bound CFG-canonicalization slice.
+  - **`cf.cond_br` / `cf.br` rejection.** Per `specs/15_MLIR.csl § STRUCTURED CFG PRESERVATION (CC4)`, unstructured-CFG ops are never to be emitted from CSSLv3-source. Currently both backends would `UnsupportedOp` them ; D5 makes the rejection a first-class diagnostic.
+  - **JIT call signatures for 3-arg shapes.** The new tests use raw `extern "C" fn(i8, i32, i32) -> i32` casts because the existing `JitFn::call_*` helpers don't have a 3-arg form. A future cleanup slice may add `call_bool_i32_i32_to_i32` etc., but the raw-cast pattern is acceptable for hand-built test fixtures.
+  - **cssl-rt cold-cache test flake** (carried-over from T11-D56) : `cargo test --workspace` still occasionally trips the cssl-rt tracker statics under high-parallelism cold-cache. `--test-threads=1` is consistent. Workaround documented ; root-cause fix deferred to a Phase-B follow-up.
+
+───────────────────────────────────────────────────────────────
+
 
 

@@ -44,6 +44,11 @@ pub const HELLO_WORLD_CSSL_PATH: &str = concat!(
 );
 
 /// Produce a system-temp path with a unique-per-test executable name.
+//
+// Currently only called from the in-file `#[test]` blocks ; the
+// `cfg(test)` gate keeps lib-only clippy from flagging it as dead code
+// while preserving its visibility for the gate-test scaffold.
+#[cfg(test)]
 fn unique_temp_exe(stem: &str) -> PathBuf {
     let pid = std::process::id();
     let tmp = std::env::temp_dir();

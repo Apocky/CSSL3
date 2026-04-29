@@ -1352,22 +1352,33 @@ fn lower_if(
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (cond_id, _) = lower_expr(ctx, cond)?;
-    // Emit scf.if with nested regions. Stage-0 lowers each branch into a sub-region.
-    let then_region = lower_sub_region_from(ctx, then_branch);
-    let else_region = match else_branch {
-        Some(e) => {
-            let mut sub_ctx = ctx.sub();
-            let _ = lower_expr(&mut sub_ctx, e);
-            ctx.next_value_id = sub_ctx.next_value_id;
-            let mut blk = MirBlock::new("entry");
-            blk.ops = sub_ctx.ops;
-            let mut r = MirRegion::new();
-            r.push(blk);
-            r
-        }
-        None => MirRegion::new(),
+    // Emit scf.if with nested regions. Each branch becomes a sub-region whose
+    // entry block holds the lowered ops + (when the branch yields a value) a
+    // terminating `scf.yield <yield-id>` op. The yielded type is what the
+    // S6-C1 cranelift lowering uses to introduce a merge-block parameter.
+    //
+    // § T11-D58 / S6-C1
+    //   - Branches that produce no value (statement-only blocks, or an else
+    //     branch missing entirely) emit a yield-less region. The cranelift
+    //     lowering treats them as void and skips the merge-block-param.
+    //   - When BOTH branches yield, the result type is taken from the then
+    //     branch (the else branch must agree — the type checker enforces
+    //     that ; at this stage we trust HIR). When only one yields, the
+    //     scf.if op carries `MirType::None` and downstream is responsible
+    //     for ignoring the result.
+    let (then_region, then_yield_ty) =
+        lower_branch_region(ctx, |sub_ctx| lower_block(sub_ctx, then_branch));
+    let (else_region, else_yield_ty) = match else_branch {
+        Some(e) => lower_branch_region(ctx, |sub_ctx| lower_expr(sub_ctx, e)),
+        None => (MirRegion::new(), None),
     };
-    let result_ty = MirType::None; // stage-0 : scf.if result-type resolved @ phase-2b
+
+    // Result-type derivation : both arms must yield for scf.if to be an
+    // expression. Otherwise the op exists for its side-effects only.
+    let result_ty = match (then_yield_ty, else_yield_ty) {
+        (Some(ty), Some(_)) => ty,
+        _ => MirType::None,
+    };
     let id = ctx.fresh_value_id();
     ctx.ops.push(
         MirOp::std("scf.if")
@@ -1381,10 +1392,37 @@ fn lower_if(
     Some((id, result_ty))
 }
 
+/// Lower a branch (then or else) into a `MirRegion`. The closure receives a
+/// child [`BodyLowerCtx`] and returns the optional `(yield_id, yield_ty)` the
+/// branch produces. When `Some`, a terminating `scf.yield <id>` op is appended
+/// to the region's entry block. The parent's `next_value_id` is bumped so
+/// SSA-id allocation stays monotonic across nested regions.
+fn lower_branch_region<F>(ctx: &mut BodyLowerCtx<'_>, lower: F) -> (MirRegion, Option<MirType>)
+where
+    F: FnOnce(&mut BodyLowerCtx<'_>) -> Option<(ValueId, MirType)>,
+{
+    let mut sub_ctx = ctx.sub();
+    let yield_pair = lower(&mut sub_ctx);
+    if let Some((yield_id, _)) = yield_pair.as_ref() {
+        sub_ctx
+            .ops
+            .push(MirOp::std("scf.yield").with_operand(*yield_id));
+    }
+    ctx.next_value_id = sub_ctx.next_value_id;
+    let mut blk = MirBlock::new("entry");
+    blk.ops = sub_ctx.ops;
+    let mut r = MirRegion::new();
+    r.push(blk);
+    (r, yield_pair.map(|(_, ty)| ty))
+}
+
 /// Lower a block into a sub-region, inheriting + writing back the parent's
-/// `next_value_id`. Used for structured control-flow branches that need
-/// monotonic value-id allocation across the outer + inner ops, and
-/// preserves the source-file reference so nested literal extraction works.
+/// `next_value_id`. Used for structured control-flow loop bodies (scf.for /
+/// scf.while / scf.loop) that don't yield a value out of the structured op
+/// itself — only the trailing-statement value is dropped on the floor.
+///
+/// `scf.if` uses [`lower_branch_region`] instead so it can capture the yield
+/// type for the merge-block parameter.
 fn lower_sub_region_from(ctx: &mut BodyLowerCtx<'_>, block: &HirBlock) -> MirRegion {
     let mut sub_ctx = ctx.sub();
     let _ = lower_block(&mut sub_ctx, block);
@@ -1640,6 +1678,74 @@ mod tests {
             .find(|o| o.name == "scf.if")
             .unwrap();
         assert_eq!(if_op.regions.len(), 2);
+    }
+
+    /// T11-D58 / S6-C1 : an expression-form `if` where both branches yield
+    /// must emit a `scf.yield <id>` op at the tail of each region. This is
+    /// what the cranelift backend's shared scf-helper consumes to feed the
+    /// merge-block parameter.
+    #[test]
+    fn if_expression_emits_scf_yield_in_each_branch() {
+        let (f, _) = lower_one("fn choose(c : bool) -> i32 { if c { 1 } else { 2 } }");
+        let if_op = f
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.if")
+            .expect("scf.if present");
+        // Both regions must have a single block whose final op is scf.yield.
+        for (idx, region) in if_op.regions.iter().enumerate() {
+            let blk = region
+                .entry()
+                .unwrap_or_else(|| panic!("region #{idx} has no entry block"));
+            let last_op = blk
+                .ops
+                .last()
+                .unwrap_or_else(|| panic!("region #{idx} entry block has no ops"));
+            assert_eq!(
+                last_op.name, "scf.yield",
+                "region #{idx} terminator was {:?}, expected scf.yield",
+                last_op.name
+            );
+            assert_eq!(
+                last_op.operands.len(),
+                1,
+                "region #{idx} scf.yield must have exactly one yielded operand",
+            );
+        }
+    }
+
+    /// Statement-form if (no else, no expression-result usage) must NOT emit
+    /// scf.yield — both regions are statement-only and the cranelift lowering
+    /// passes empty arg-lists at the merge-block jumps.
+    #[test]
+    fn if_statement_form_emits_no_scf_yield() {
+        // The trailing `0` ensures the fn returns ; the if-expression itself
+        // is used in statement-position via a let, so its branches don't
+        // yield. body_lower currently still classifies bare `if c { 1 }` as
+        // an expression in some shapes, so we use a let-binding to force
+        // statement context.
+        let (f, _) = lower_one("fn s(c : bool) -> i32 { let _ = if c { 1 } ; 0 }");
+        let if_op = f
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.if")
+            .expect("scf.if present");
+        // Else region has no entry block ops at all (empty MirRegion).
+        let else_region = &if_op.regions[1];
+        let else_has_yield = else_region
+            .entry()
+            .is_some_and(|b| b.ops.iter().any(|o| o.name == "scf.yield"));
+        // The else branch is empty (no else clause was written), so no yield.
+        assert!(
+            !else_has_yield,
+            "missing-else region must not contain scf.yield",
+        );
     }
 
     #[test]

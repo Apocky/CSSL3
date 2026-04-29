@@ -197,6 +197,11 @@ fn compile_one_fn(
     codegen_ctx: &mut Context,
     mir_fn: &MirFunc,
 ) -> Result<(), ObjectError> {
+    // T11-D58 / S6-C1 : the outer fn body still has exactly one entry block
+    // ; structured-CFG ops (scf.if, future scf.for/while) carry their own
+    // nested regions inside that block. Multi-entry-block bodies remain
+    // disallowed at stage-0 — those would imply unstructured CFG which
+    // structured-CFG D5 will reject anyway.
     if mir_fn.body.blocks.len() > 1 {
         return Err(ObjectError::MultiBlockBody {
             fn_name: mir_fn.name.clone(),
@@ -373,11 +378,47 @@ fn lower_one_op(
             builder.ins().return_(&args);
             Ok(true)
         }
+        // T11-D58 / S6-C1 : structured-control-flow lowering. `scf.if`
+        // delegates to the shared `crate::scf::lower_scf_if` helper which
+        // creates the then/else/merge blocks + emits `brif`. `scf.yield`
+        // is consumed by that helper directly ; encountering it at the
+        // outer dispatch level means the parent region terminator leaked,
+        // which we treat as a no-op here. D5 (StructuredCfgValidator) will
+        // reject bare top-level scf.yield in a future slice.
+        "scf.if" => lower_scf_if_in_object(op, builder, value_map, fn_name),
+        "scf.yield" => Ok(false),
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
         }),
     }
+}
+
+/// Adapter : translate the shared scf-helper's [`crate::scf::BackendOrScfError`]
+/// into [`ObjectError`] so the outer object-emit dispatch keeps one error
+/// type. Mirrors `lower_scf_if_in_jit` in `jit.rs`.
+fn lower_scf_if_in_object(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    crate::scf::lower_scf_if(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |branch_op, b, vm, name| -> Result<bool, ObjectError> {
+            lower_one_op(branch_op, b, vm, name)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.if : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
+    })
 }
 
 fn binary_int<F>(
@@ -608,5 +649,214 @@ mod tests {
         module.push_func(f);
         let bytes = emit_object_module(&module).expect("emit ok");
         assert!(!bytes.is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D58 / S6-C1 — scf.if lowering through the object backend
+    // ─────────────────────────────────────────────────────────────────────
+    //
+    // The shared `crate::scf` helper means object.rs and jit.rs use the same
+    // brif/blocks shape. These tests assert that the object backend accepts
+    // scf.if MIR + produces a valid object file with the host-platform magic.
+    // Roundtrip-runtime tests live in jit.rs (which can actually execute) ;
+    // here we verify byte-shape invariants.
+
+    fn build_pick_i32_module() -> MirModule {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "pick",
+            vec![
+                MirType::Bool,
+                MirType::Int(IntWidth::I32),
+                MirType::Int(IntWidth::I32),
+            ],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            // MirFunc::new wires args ; we leave them.
+            let mut then_blk = MirBlock::new("entry");
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(1)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            let mut else_blk = MirBlock::new("entry");
+            else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(2)));
+            let mut else_region = MirRegion::new();
+            else_region.push(else_blk);
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(3), MirType::Int(IntWidth::I32)),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        let mut m = MirModule::new();
+        m.push_func(f);
+        m
+    }
+
+    #[test]
+    fn emit_scf_if_pick_succeeds() {
+        let module = build_pick_i32_module();
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(!bytes.is_empty());
+    }
+
+    #[test]
+    fn emit_scf_if_pick_starts_with_host_magic() {
+        let module = build_pick_i32_module();
+        let bytes = emit_object_module(&module).expect("emit ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(
+            bytes.starts_with(host_magic),
+            "expected magic {:02X?} ; first 8 bytes : {:02X?}",
+            host_magic,
+            &bytes[..bytes.len().min(8)],
+        );
+    }
+
+    #[test]
+    fn emit_scf_if_with_branch_arith_succeeds() {
+        // fn body_with_arith(cond: bool, a: i32) -> i32 {
+        //   let one = 1; if cond { a + one } else { a - one }
+        // }
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "branch_arith",
+            vec![MirType::Bool, MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 6;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), MirType::Int(IntWidth::I32))
+                    .with_attribute("value", "1"),
+            );
+            let mut then_blk = MirBlock::new("entry");
+            then_blk.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), MirType::Int(IntWidth::I32)),
+            );
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(3)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            let mut else_blk = MirBlock::new("entry");
+            else_blk.ops.push(
+                MirOp::std("arith.subi")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(4), MirType::Int(IntWidth::I32)),
+            );
+            else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(4)));
+            let mut else_region = MirRegion::new();
+            else_region.push(else_blk);
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(5), MirType::Int(IntWidth::I32)),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(5)));
+        }
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
+    }
+
+    #[test]
+    fn emit_scf_if_statement_form_succeeds() {
+        // fn stmt_if(cond: bool, a: i32) -> i32 { if cond { 0 } a }
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "stmt_if",
+            vec![MirType::Bool, MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            let mut then_blk = MirBlock::new("entry");
+            then_blk.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), MirType::Int(IntWidth::I32))
+                    .with_attribute("value", "0"),
+            );
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            let else_region = MirRegion::new();
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(3), MirType::None),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
+    }
+
+    #[test]
+    fn emit_scf_if_with_one_region_returns_error() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "bad",
+            vec![MirType::Bool, MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            let mut then_blk = MirBlock::new("entry");
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(1)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_result(ValueId(2), MirType::Int(IntWidth::I32)),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(
+            matches!(r, Err(ObjectError::LoweringFailed { ref detail, .. }) if detail.contains("scf.if")),
+            "unexpected result : {r:?}"
+        );
     }
 }

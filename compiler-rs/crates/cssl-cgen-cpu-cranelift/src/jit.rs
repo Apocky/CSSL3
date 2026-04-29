@@ -877,6 +877,17 @@ fn lower_op_to_cl(
         "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
         "arith.select" => lower_select(op, builder, value_map, fn_name),
         "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name, callee_refs),
+        // T11-D58 / S6-C1 : scf.if → cranelift brif + extended-blocks. The
+        // shared helper in `crate::scf` walks the two regions and threads
+        // the yielded value (when present) through a merge-block parameter.
+        "scf.if" => lower_scf_if_in_jit(op, builder, value_map, fn_name, callee_refs),
+        // scf.yield is consumed by `lower_scf_if_in_jit` directly. Encountering
+        // it at the outer dispatch level means it leaked outside its parent
+        // region — that's a structured-CFG violation, but for stage-0 we
+        // accept it as a no-op so legacy hand-built MIR (without parent
+        // scf.if) keeps lowering. D5 (StructuredCfgValidator) will reject
+        // bare scf.yield at the outer level once it lands.
+        "scf.yield" => Ok(false),
         // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
         // it carries one-operand-per-primal-float-param holding that param's
         // accumulated adjoint. Lower identically to `func.return` since the
@@ -1255,6 +1266,37 @@ fn parse_int_cc(s: &str) -> Option<cranelift_codegen::ir::condcodes::IntCC> {
         "ugt" => I::UnsignedGreaterThan,
         "uge" => I::UnsignedGreaterThanOrEqual,
         _ => return None,
+    })
+}
+
+/// Adapter : delegate `scf.if` lowering to the shared [`crate::scf`] helper,
+/// turning [`crate::scf::BackendOrScfError`] into [`JitError`] so the outer
+/// JIT dispatch keeps a single error type. The closure passed in re-enters
+/// [`lower_op_to_cl`] for each op inside a branch — that's how nested ops
+/// (arith, intrinsic calls, even nested scf.if) reach the right lowerer
+/// without `scf.rs` having to know about JIT internals.
+fn lower_scf_if_in_jit(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<bool, JitError> {
+    crate::scf::lower_scf_if(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |branch_op, b, vm, name| -> Result<bool, JitError> {
+            lower_op_to_cl(branch_op, b, vm, name, callee_refs)
+        },
+    )
+    .map_err(|e| match e {
+        crate::scf::BackendOrScfError::Scf(scf_err) => JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("scf.if : {scf_err}"),
+        },
+        crate::scf::BackendOrScfError::Backend(jit_err) => jit_err,
     })
 }
 
@@ -2195,5 +2237,419 @@ mod tests {
         let mut m = JitModule::new();
         let err = m.compile(&f).unwrap_err();
         assert!(matches!(err, JitError::LoweringFailed { .. }));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D58 / S6-C1 — scf.if → cranelift brif lowering
+    // ─────────────────────────────────────────────────────────────────────
+    //
+    // The hand-built MIR fixtures here exercise the structured-control-flow
+    // contract from `body_lower::lower_if`. Each scf.if op carries :
+    //   - operand[0] : i1/i8 condition value (from arith.cmpi / cmpf or a
+    //     direct boolean param)
+    //   - regions[0] : then-branch — entry block with its body ops + a
+    //     trailing `scf.yield <value-id>` when typed
+    //   - regions[1] : else-branch — same shape, possibly empty
+    //   - results[0] : the merge-block-param's MIR-id + type (or MirType::None)
+    //
+    // The shared `crate::scf::lower_scf_if` helper turns this into :
+    //   brif cond, then_block, else_block
+    //   then_block : <branch-ops> ; jump merge_block(<then-yield-arg>)
+    //   else_block : <branch-ops> ; jump merge_block(<else-yield-arg>)
+    //   merge_block(<param>) : <continuation>
+
+    fn bool_ty() -> MirType {
+        MirType::Bool
+    }
+
+    /// Hand-build `fn pick(cond: bool, a: i32, b: i32) -> i32 { if cond { a } else { b } }`.
+    fn hand_built_pick_i32() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("pick", vec![bool_ty(), i32_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+                MirValue::new(ValueId(2), i32_ty()),
+            ];
+            // Then-region : yield v1
+            let mut then_blk = MirBlock::new("entry");
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(1)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            // Else-region : yield v2
+            let mut else_blk = MirBlock::new("entry");
+            else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(2)));
+            let mut else_region = MirRegion::new();
+            else_region.push(else_blk);
+            // scf.if v0 -> v3 : i32
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(3), i32_ty()),
+            );
+            // return v3
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_if_picks_then_arm_when_cond_true() {
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_pick_i32()).unwrap();
+        m.finalize().unwrap();
+        // Need a 3-arg call shape : (i8, i32, i32) -> i32.
+        // Use the raw fn-ptr cast since we don't have a 3-arg-mixed helper.
+        let addr = m.code_addr_for("pick").unwrap();
+        // SAFETY: `addr` points into the JIT's executable memory, kept live
+        // by `m`. Cranelift signature : (i8, i32, i32) -> i32 with default
+        // call-conv = matching `extern "C"` on host.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(1, 100, 200), 100);
+        assert_eq!(h.name, "pick");
+    }
+
+    #[test]
+    fn scf_if_picks_else_arm_when_cond_false() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_pick_i32()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("pick").unwrap();
+        // SAFETY: same as `scf_if_picks_then_arm_when_cond_true`.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(0, 100, 200), 200);
+    }
+
+    /// Hand-build `fn pick_f32(cond: bool, a: f32, b: f32) -> f32 { if cond { a } else { b } }`.
+    fn hand_built_pick_f32() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "pick_f32",
+            vec![bool_ty(), f32_ty(), f32_ty()],
+            vec![f32_ty()],
+        );
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), f32_ty()),
+                MirValue::new(ValueId(2), f32_ty()),
+            ];
+            let mut then_blk = MirBlock::new("entry");
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(1)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            let mut else_blk = MirBlock::new("entry");
+            else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(2)));
+            let mut else_region = MirRegion::new();
+            else_region.push(else_blk);
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(3), f32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_if_yields_f32_through_merge_block_param() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_pick_f32()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("pick_f32").unwrap();
+        // SAFETY: see `scf_if_picks_then_arm_when_cond_true`.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, f32, f32) -> f32 = unsafe { std::mem::transmute(addr) };
+        assert!((f(1, 1.5, 2.5) - 1.5).abs() < 1e-6);
+        assert!((f(0, 1.5, 2.5) - 2.5).abs() < 1e-6);
+    }
+
+    /// Hand-build `fn body_with_arith(cond: bool, a: i32) -> i32 {
+    ///   if cond { a + 1 } else { a - 1 }
+    /// }`.
+    /// Exercises non-yield ops INSIDE a branch (the +1 / -1 must happen in
+    /// the then/else block before the merge-jump).
+    fn hand_built_branch_arith_i32() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("branch_arith", vec![bool_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 7;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // Constant 1 (used by both branches).
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), i32_ty())
+                    .with_attribute("value", "1"),
+            );
+            // Then : v3 = v1 + v2 ; yield v3
+            let mut then_blk = MirBlock::new("entry");
+            then_blk.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), i32_ty()),
+            );
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(3)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            // Else : v4 = v1 - v2 ; yield v4
+            let mut else_blk = MirBlock::new("entry");
+            else_blk.ops.push(
+                MirOp::std("arith.subi")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(4), i32_ty()),
+            );
+            else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(4)));
+            let mut else_region = MirRegion::new();
+            else_region.push(else_blk);
+            // scf.if v0 -> v5
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(5), i32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(5)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_if_branch_arith_then_runs_in_then_block() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_branch_arith_i32()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("branch_arith").unwrap();
+        // SAFETY: see prior tests.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(1, 10), 11);
+    }
+
+    #[test]
+    fn scf_if_branch_arith_else_runs_in_else_block() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_branch_arith_i32()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("branch_arith").unwrap();
+        // SAFETY: see prior tests.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(0, 10), 9);
+    }
+
+    /// Hand-build `fn no_else(cond: bool, a: i32) -> i32 { if cond { 0 } a }`.
+    /// Statement-form scf.if : the if has no else → no merge-block-param.
+    /// Lowering should still produce a runnable fn that returns `a`
+    /// regardless of `cond`.
+    fn hand_built_stmt_if_i32() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("stmt_if", vec![bool_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // Then : just an arith.constant (side-effect-free at JIT level
+            // ; here it's a no-op we drop on the floor). No scf.yield.
+            let mut then_blk = MirBlock::new("entry");
+            then_blk.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), i32_ty())
+                    .with_attribute("value", "0"),
+            );
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            // Else : empty.
+            let else_region = MirRegion::new();
+            // scf.if : no result type (statement-only).
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_region(else_region)
+                    .with_result(ValueId(3), MirType::None),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_if_statement_form_lowers_without_merge_param() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_stmt_if_i32()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("stmt_if").unwrap();
+        // SAFETY: see prior tests.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // Both branches drop through to `return a`.
+        assert_eq!(f(1, 42), 42);
+        assert_eq!(f(0, 42), 42);
+    }
+
+    /// Hand-build `fn nested(cond1: bool, cond2: bool, a: i32, b: i32, c: i32) -> i32 {
+    ///   if cond1 { if cond2 { a } else { b } } else { c }
+    /// }`.
+    /// Tests recursion through `lower_scf_if` : the inner scf.if is dispatched
+    /// while the outer's then-block is the active cursor.
+    fn hand_built_nested_if_i32() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new(
+            "nested",
+            vec![bool_ty(), bool_ty(), i32_ty(), i32_ty(), i32_ty()],
+            vec![i32_ty()],
+        );
+        f.next_value_id = 7;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), bool_ty()),
+                MirValue::new(ValueId(2), i32_ty()),
+                MirValue::new(ValueId(3), i32_ty()),
+                MirValue::new(ValueId(4), i32_ty()),
+            ];
+            // Inner scf.if : if cond2 { a } else { b } -> v5
+            let mut inner_then_blk = MirBlock::new("entry");
+            inner_then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(2)));
+            let mut inner_then_region = MirRegion::new();
+            inner_then_region.push(inner_then_blk);
+            let mut inner_else_blk = MirBlock::new("entry");
+            inner_else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(3)));
+            let mut inner_else_region = MirRegion::new();
+            inner_else_region.push(inner_else_blk);
+            let inner_if = MirOp::std("scf.if")
+                .with_operand(ValueId(1))
+                .with_region(inner_then_region)
+                .with_region(inner_else_region)
+                .with_result(ValueId(5), i32_ty());
+            // Outer then : nested if + yield v5
+            let mut outer_then_blk = MirBlock::new("entry");
+            outer_then_blk.ops.push(inner_if);
+            outer_then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(5)));
+            let mut outer_then_region = MirRegion::new();
+            outer_then_region.push(outer_then_blk);
+            // Outer else : yield v4 (c)
+            let mut outer_else_blk = MirBlock::new("entry");
+            outer_else_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(4)));
+            let mut outer_else_region = MirRegion::new();
+            outer_else_region.push(outer_else_blk);
+            // Outer scf.if -> v6
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(outer_then_region)
+                    .with_region(outer_else_region)
+                    .with_result(ValueId(6), i32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(6)));
+        }
+        f
+    }
+
+    #[test]
+    fn scf_if_nested_evaluates_through_correct_arms() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_nested_if_i32()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("nested").unwrap();
+        // SAFETY: see prior tests. Sig: (i8, i8, i32, i32, i32) -> i32.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i8, i8, i32, i32, i32) -> i32 = unsafe { std::mem::transmute(addr) };
+        // cond1=1 cond2=1 -> a
+        assert_eq!(f(1, 1, 10, 20, 30), 10);
+        // cond1=1 cond2=0 -> b
+        assert_eq!(f(1, 0, 10, 20, 30), 20);
+        // cond1=0 -> c (cond2 doesn't matter)
+        assert_eq!(f(0, 1, 10, 20, 30), 30);
+        assert_eq!(f(0, 0, 10, 20, 30), 30);
+    }
+
+    #[test]
+    fn scf_if_with_wrong_region_count_errors_cleanly() {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("bad_regions", vec![bool_ty(), i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 3;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![
+                MirValue::new(ValueId(0), bool_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // Build an scf.if with only ONE region — should error.
+            let mut then_blk = MirBlock::new("entry");
+            then_blk
+                .ops
+                .push(MirOp::std("scf.yield").with_operand(ValueId(1)));
+            let mut then_region = MirRegion::new();
+            then_region.push(then_blk);
+            entry.ops.push(
+                MirOp::std("scf.if")
+                    .with_operand(ValueId(0))
+                    .with_region(then_region)
+                    .with_result(ValueId(2), i32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut m = JitModule::new();
+        let err = m.compile(&f).unwrap_err();
+        assert!(
+            matches!(&err, JitError::LoweringFailed { detail, .. } if detail.contains("scf.if")),
+            "unexpected error : {err:?}"
+        );
     }
 }
