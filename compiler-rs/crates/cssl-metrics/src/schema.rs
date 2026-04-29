@@ -148,11 +148,7 @@ impl MetricSchema {
 ///   The ring is non-blocking ; if it's full the slot is dropped and the ring's
 ///   `overflow_count()` is incremented. Stage-0 returns Ok regardless ; the
 ///   caller can interrogate the ring directly.
-pub fn emit_into_ring(
-    ring: &TelemetryRing,
-    schema: &MetricSchema,
-    payload_u64: u64,
-) {
+pub fn emit_into_ring(ring: &TelemetryRing, schema: &MetricSchema, payload_u64: u64) {
     #[cfg(feature = "metrics-disabled")]
     {
         let _ = (ring, schema, payload_u64);

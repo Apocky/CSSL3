@@ -182,8 +182,8 @@ mod tests {
     #[test]
     fn stderr_sink_with_level_floor_overrides() {
         let cap = CaptureWriter::default();
-        let sink =
-            StderrSink::with_writer(cap.clone(), Format::JsonLines).with_level_floor(Severity::Warning);
+        let sink = StderrSink::with_writer(cap.clone(), Format::JsonLines)
+            .with_level_floor(Severity::Warning);
         sink.write(&fresh_record(Severity::Info)).unwrap(); // dropped
         sink.write(&fresh_record(Severity::Warning)).unwrap(); // kept
         let s = String::from_utf8(cap.captured()).unwrap();

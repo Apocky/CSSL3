@@ -197,7 +197,8 @@ fn neg_counter_overflow_first_returns_err() {
 #[test]
 fn neg_registry_collision_returns_err() {
     let r = cssl_metrics::MetricRegistry::new();
-    r.register("x", cssl_metrics::MetricKind::Counter, 1).unwrap();
+    r.register("x", cssl_metrics::MetricKind::Counter, 1)
+        .unwrap();
     let res = r.register("x", cssl_metrics::MetricKind::Counter, 2);
     assert!(matches!(res, Err(MetricError::SchemaCollision { .. })));
 }
@@ -205,7 +206,8 @@ fn neg_registry_collision_returns_err() {
 #[test]
 fn neg_registry_kind_mismatch_returns_err() {
     let r = cssl_metrics::MetricRegistry::new();
-    r.register("x", cssl_metrics::MetricKind::Counter, 1).unwrap();
+    r.register("x", cssl_metrics::MetricKind::Counter, 1)
+        .unwrap();
     let res = r.register("x", cssl_metrics::MetricKind::Gauge, 1);
     assert!(matches!(res, Err(MetricError::SchemaCollision { .. })));
 }
@@ -223,7 +225,9 @@ fn neg_adaptive_under_strict_refused() {
     let r = Counter::new_with(
         "neg.adaptive",
         &[],
-        SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 },
+        SamplingDiscipline::Adaptive {
+            target_overhead_pct: 0.5,
+        },
     );
     assert!(matches!(r, Err(MetricError::AdaptiveUnderStrict { .. })));
 }

@@ -10,9 +10,7 @@ use cssl_substrate_prime_directive::{CountingHaltSink, EnforcementAuditBus};
 
 #[test]
 fn frame_boundary_yields_structured_report_not_raw_panic() {
-    let r = catch_frame_panic::<_, ()>(SubsystemTag::Render, 7, || {
-        panic!("oops")
-    });
+    let r = catch_frame_panic::<_, ()>(SubsystemTag::Render, 7, || panic!("oops"));
     match r {
         Err(EngineError::Panic(report)) => {
             // Structured fields are present : not just a raw string.
@@ -40,9 +38,7 @@ fn frame_boundary_classifies_pd_panic_as_pd_violation() {
 
 #[test]
 fn frame_boundary_pd_panic_severity_is_fatal() {
-    let r = catch_frame_panic::<_, ()>(SubsystemTag::PrimeDirective, 1, || {
-        panic!("PD0001 : x")
-    });
+    let r = catch_frame_panic::<_, ()>(SubsystemTag::PrimeDirective, 1, || panic!("PD0001 : x"));
     if let Err(e) = r {
         assert_eq!(e.severity(), Severity::Fatal);
     } else {
@@ -52,9 +48,7 @@ fn frame_boundary_pd_panic_severity_is_fatal() {
 
 #[test]
 fn frame_boundary_normal_panic_severity_is_error() {
-    let r = catch_frame_panic::<_, ()>(SubsystemTag::Render, 1, || {
-        panic!("oops")
-    });
+    let r = catch_frame_panic::<_, ()>(SubsystemTag::Render, 1, || panic!("oops"));
     if let Err(e) = r {
         assert_eq!(e.severity(), Severity::Error);
     } else {
@@ -88,11 +82,8 @@ fn frame_boundary_records_distinct_subsystems() {
     let r1 = catch_frame_panic::<_, ()>(SubsystemTag::Render, 1, || panic!("a"));
     let r2 = catch_frame_panic::<_, ()>(SubsystemTag::Audio, 1, || panic!("a"));
     let r3 = catch_frame_panic::<_, ()>(SubsystemTag::Anim, 1, || panic!("a"));
-    if let (
-        Err(EngineError::Panic(p1)),
-        Err(EngineError::Panic(p2)),
-        Err(EngineError::Panic(p3)),
-    ) = (r1, r2, r3)
+    if let (Err(EngineError::Panic(p1)), Err(EngineError::Panic(p2)), Err(EngineError::Panic(p3))) =
+        (r1, r2, r3)
     {
         assert_eq!(p1.subsystem, SubsystemTag::Render);
         assert_eq!(p2.subsystem, SubsystemTag::Audio);

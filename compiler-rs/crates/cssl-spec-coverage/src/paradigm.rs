@@ -248,8 +248,7 @@ mod tests {
 
     #[test]
     fn split_citation_no_section() {
-        let (f, s) =
-            split_citation("Omniverse/04_OMEGA_FIELD/05_DENSITY_BUDGET.csl.md").unwrap();
+        let (f, s) = split_citation("Omniverse/04_OMEGA_FIELD/05_DENSITY_BUDGET.csl.md").unwrap();
         assert_eq!(f, "Omniverse/04_OMEGA_FIELD/05_DENSITY_BUDGET.csl.md");
         assert_eq!(s, "");
     }
@@ -270,10 +269,7 @@ mod tests {
 
     #[test]
     fn infer_root_specs() {
-        assert_eq!(
-            infer_root("specs/08_MIR.csl"),
-            SpecRoot::CssLv3
-        );
+        assert_eq!(infer_root("specs/08_MIR.csl"), SpecRoot::CssLv3);
     }
 
     #[test]

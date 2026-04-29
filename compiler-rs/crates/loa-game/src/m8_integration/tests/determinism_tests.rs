@@ -2,10 +2,8 @@
 //! and the per-stage outputs match across separate runs with identical
 //! input contexts.
 
-use crate::m8_integration::pipeline::Pipeline;
-use crate::m8_integration::PassContext;
-use crate::m8_integration::compose_xr_layers_pass::ComposeXrLayersPass;
 use crate::m8_integration::companion_semantic_pass::CompanionSemanticPass;
+use crate::m8_integration::compose_xr_layers_pass::ComposeXrLayersPass;
 use crate::m8_integration::embodiment_pass::EmbodimentPass;
 use crate::m8_integration::fractal_amplifier_pass::FractalAmplifierPass;
 use crate::m8_integration::gaze_collapse_pass::GazeCollapsePass;
@@ -13,10 +11,12 @@ use crate::m8_integration::kan_brdf_pass::KanBrdfPass;
 use crate::m8_integration::mise_en_abyme_pass::MiseEnAbymePass;
 use crate::m8_integration::motion_vec_pass::MotionVecPass;
 use crate::m8_integration::omega_field_update_pass::OmegaFieldUpdatePass;
+use crate::m8_integration::pipeline::Pipeline;
 use crate::m8_integration::sdf_raymarch_pass::SdfRaymarchPass;
 use crate::m8_integration::tonemap_pass::TonemapPass;
 use crate::m8_integration::wave_solver_pass::WaveSolverPass;
 use crate::m8_integration::Pass;
+use crate::m8_integration::PassContext;
 
 fn run_n_frames(passes: Vec<Box<dyn Pass>>, n: u64, workload: u32) -> Vec<u64> {
     use crate::metrics_mock::MockRegistry;

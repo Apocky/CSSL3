@@ -259,10 +259,7 @@ mod tests {
 
     #[test]
     fn severity_canonical_names_unique() {
-        let mut names: Vec<&str> = Severity::all()
-            .iter()
-            .map(|s| s.canonical_name())
-            .collect();
+        let mut names: Vec<&str> = Severity::all().iter().map(|s| s.canonical_name()).collect();
         names.sort_unstable();
         let original = names.len();
         names.dedup();

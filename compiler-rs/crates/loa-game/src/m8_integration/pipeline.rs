@@ -16,8 +16,8 @@
 
 use std::sync::Arc;
 
-use crate::m8_integration::compose_xr_layers_pass::ComposeXrLayersPass;
 use crate::m8_integration::companion_semantic_pass::CompanionSemanticPass;
+use crate::m8_integration::compose_xr_layers_pass::ComposeXrLayersPass;
 use crate::m8_integration::embodiment_pass::EmbodimentPass;
 use crate::m8_integration::fractal_amplifier_pass::FractalAmplifierPass;
 use crate::m8_integration::gaze_collapse_pass::GazeCollapsePass;
@@ -90,11 +90,13 @@ impl Pipeline {
     /// § PANICS
     /// When `passes.len() != 12` or stage-ids don't match canonical order.
     #[must_use]
-    pub fn with_passes(
-        registry: Arc<dyn MetricsRegistry>,
-        passes: Vec<Box<dyn Pass>>,
-    ) -> Self {
-        assert_eq!(passes.len(), 12, "expected 12 passes ; got {}", passes.len());
+    pub fn with_passes(registry: Arc<dyn MetricsRegistry>, passes: Vec<Box<dyn Pass>>) -> Self {
+        assert_eq!(
+            passes.len(),
+            12,
+            "expected 12 passes ; got {}",
+            passes.len()
+        );
         for (i, p) in passes.iter().enumerate() {
             assert_eq!(
                 p.stage_id(),

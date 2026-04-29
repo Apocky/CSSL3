@@ -180,7 +180,10 @@ impl Histogram {
     pub fn record(&self, value: f64) {
         #[cfg(feature = "metrics")]
         {
-            let mut inner = self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
             let cap = inner.capacity;
             if inner.samples.len() < cap {
                 inner.samples.push(value);
@@ -200,7 +203,10 @@ impl Histogram {
     pub fn len(&self) -> usize {
         #[cfg(feature = "metrics")]
         {
-            self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)").filled
+            self.inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)")
+                .filled
         }
         #[cfg(not(feature = "metrics"))]
         {
@@ -214,7 +220,10 @@ impl Histogram {
     pub fn total_count(&self) -> u64 {
         #[cfg(feature = "metrics")]
         {
-            self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)").total_count
+            self.inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)")
+                .total_count
         }
         #[cfg(not(feature = "metrics"))]
         {
@@ -259,7 +268,10 @@ impl Histogram {
     pub fn mean(&self) -> f64 {
         #[cfg(feature = "metrics")]
         {
-            let inner = self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+            let inner = self
+                .inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
             if inner.filled == 0 {
                 return f64::NAN;
             }
@@ -278,7 +290,10 @@ impl Histogram {
     pub fn min(&self) -> f64 {
         #[cfg(feature = "metrics")]
         {
-            let inner = self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+            let inner = self
+                .inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
             if inner.filled == 0 {
                 return f64::NAN;
             }
@@ -296,7 +311,10 @@ impl Histogram {
     pub fn max(&self) -> f64 {
         #[cfg(feature = "metrics")]
         {
-            let inner = self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+            let inner = self
+                .inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
             if inner.filled == 0 {
                 return f64::NAN;
             }
@@ -320,7 +338,10 @@ impl Histogram {
         #[cfg(feature = "metrics")]
         {
             let mut snap: Vec<f64> = {
-                let inner = self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+                let inner = self
+                    .inner
+                    .lock()
+                    .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
                 inner.samples.clone()
             };
             snap.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -337,7 +358,10 @@ impl Histogram {
     pub fn reset(&self) {
         #[cfg(feature = "metrics")]
         {
-            let mut inner = self.inner.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
             inner.samples.clear();
             inner.cursor = 0;
             inner.total_count = 0;
@@ -435,11 +459,11 @@ impl MetricsRegistry for MockRegistry {
     fn register_histogram(&self, namespace: &str) -> Histogram {
         #[cfg(feature = "metrics")]
         {
-            let mut entries = self.entries.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
-            entries
-                .entry(namespace.to_owned())
-                .or_default()
-                .clone()
+            let mut entries = self
+                .entries
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)");
+            entries.entry(namespace.to_owned()).or_default().clone()
         }
         #[cfg(not(feature = "metrics"))]
         {
@@ -452,7 +476,11 @@ impl MetricsRegistry for MockRegistry {
     fn lookup_histogram(&self, namespace: &str) -> Option<Histogram> {
         #[cfg(feature = "metrics")]
         {
-            self.entries.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)").get(namespace).cloned()
+            self.entries
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)")
+                .get(namespace)
+                .cloned()
         }
         #[cfg(not(feature = "metrics"))]
         {
@@ -464,7 +492,12 @@ impl MetricsRegistry for MockRegistry {
     fn enumerate_namespaces(&self) -> Vec<String> {
         #[cfg(feature = "metrics")]
         {
-            self.entries.lock().expect("histogram-mutex poisoned (observe-only path ; non-recoverable)").keys().cloned().collect()
+            self.entries
+                .lock()
+                .expect("histogram-mutex poisoned (observe-only path ; non-recoverable)")
+                .keys()
+                .cloned()
+                .collect()
         }
         #[cfg(not(feature = "metrics"))]
         {

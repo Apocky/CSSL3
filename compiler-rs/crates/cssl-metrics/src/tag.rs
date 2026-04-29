@@ -60,9 +60,7 @@ impl TagKey {
         if BIOMETRIC_TAG_KEYS.iter().any(|k| *k == s) {
             return true;
         }
-        BIOMETRIC_TAG_SUBSTRINGS
-            .iter()
-            .any(|sub| s.contains(*sub))
+        BIOMETRIC_TAG_SUBSTRINGS.iter().any(|sub| s.contains(*sub))
     }
 }
 
@@ -111,13 +109,7 @@ pub const BIOMETRIC_TAG_KEYS: &[&str] = &[
 
 /// Substrings that imply biometric/PII content even outside the canonical list
 /// (defense-in-depth against future keys not yet pinned).
-pub const BIOMETRIC_TAG_SUBSTRINGS: &[&str] = &[
-    "biometric",
-    "biom_",
-    "_biom",
-    "pii_",
-    "_pii",
-];
+pub const BIOMETRIC_TAG_SUBSTRINGS: &[&str] = &["biometric", "biom_", "_biom", "pii_", "_pii"];
 
 /// Tag-value : a deliberately-narrow surface preventing raw `&str` tags.
 ///
@@ -214,11 +206,7 @@ pub type TagSet = SmallVec<[(TagKey, TagVal); 4]>;
 /// # Errors
 /// Returns [`MetricError::BiometricTagKey`] or
 /// [`MetricError::RawPathTagValue`] per § FAILURE-MODES.
-pub fn validate_pair(
-    metric_name: &'static str,
-    key: TagKey,
-    val: TagVal,
-) -> MetricResult<()> {
+pub fn validate_pair(metric_name: &'static str, key: TagKey, val: TagVal) -> MetricResult<()> {
     if key.is_biometric() {
         return Err(MetricError::BiometricTagKey {
             name: metric_name,
@@ -403,11 +391,7 @@ mod tests {
 
     #[test]
     fn validate_pair_accepts_clean() {
-        let r = validate_pair(
-            "engine.frame_n",
-            TagKey::new("mode"),
-            TagVal::Static("60"),
-        );
+        let r = validate_pair("engine.frame_n", TagKey::new("mode"), TagVal::Static("60"));
         assert!(r.is_ok());
     }
 

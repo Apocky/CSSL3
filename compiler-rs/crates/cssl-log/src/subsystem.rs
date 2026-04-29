@@ -221,7 +221,13 @@ mod tests {
     #[test]
     fn discriminants_are_zero_indexed_and_dense() {
         for (i, t) in SubsystemTag::all().iter().enumerate() {
-            assert_eq!(t.as_u8() as usize, i, "discriminant {} != index {}", t.as_u8(), i);
+            assert_eq!(
+                t.as_u8() as usize,
+                i,
+                "discriminant {} != index {}",
+                t.as_u8(),
+                i
+            );
         }
     }
 

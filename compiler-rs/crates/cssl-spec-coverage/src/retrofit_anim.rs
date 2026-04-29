@@ -336,9 +336,9 @@ mod tests {
     #[test]
     fn cssl_anim_includes_omegasystem_anchor() {
         let anchors = cssl_anim_anchors();
-        let found = anchors.iter().any(|a| {
-            a.section.contains("OmegaStep") && a.spec_root == SpecRoot::Omniverse
-        });
+        let found = anchors
+            .iter()
+            .any(|a| a.section.contains("OmegaStep") && a.spec_root == SpecRoot::Omniverse);
         assert!(found, "should anchor against Omniverse OmegaStep facet");
     }
 
@@ -365,10 +365,7 @@ mod tests {
     #[test]
     fn cssl_anim_carries_test_paths_for_tested_anchors() {
         let anchors = cssl_anim_anchors();
-        let tested = anchors
-            .iter()
-            .filter(|a| a.test_status.is_tested())
-            .count();
+        let tested = anchors.iter().filter(|a| a.test_status.is_tested()).count();
         assert!(
             tested >= 8,
             "at least half the anchors should have test backing (got {tested})"

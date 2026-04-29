@@ -373,7 +373,11 @@ mod tests {
 
     #[test]
     fn spec_root_roundtrip() {
-        for root in [SpecRoot::Omniverse, SpecRoot::CssLv3, SpecRoot::DecisionsLog] {
+        for root in [
+            SpecRoot::Omniverse,
+            SpecRoot::CssLv3,
+            SpecRoot::DecisionsLog,
+        ] {
             let s = root.as_str();
             assert_eq!(SpecRoot::parse(s), Some(root));
         }

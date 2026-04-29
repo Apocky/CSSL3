@@ -165,7 +165,10 @@ mod tests {
 
     #[test]
     fn t_kind_disc_lenient() {
-        assert_eq!(DeterminismMode::Lenient.kind(), DeterminismModeKind::Lenient);
+        assert_eq!(
+            DeterminismMode::Lenient.kind(),
+            DeterminismModeKind::Lenient
+        );
     }
 
     #[test]
@@ -200,7 +203,10 @@ mod tests {
 
     #[test]
     fn t_seed_threaded() {
-        assert_eq!(DeterminismMode::strict_with_seed(0xC0FFEE).seed(), Some(0xC0FFEE));
+        assert_eq!(
+            DeterminismMode::strict_with_seed(0xC0FFEE).seed(),
+            Some(0xC0FFEE)
+        );
         assert_eq!(DeterminismMode::Lenient.seed(), None);
     }
 

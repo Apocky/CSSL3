@@ -127,8 +127,7 @@ struct SpecAnchorArgs {
 impl Parse for SpecAnchorArgs {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut out = SpecAnchorArgs::default();
-        let entries: Punctuated<KvEntry, Token![,]> =
-            Punctuated::parse_terminated(input)?;
+        let entries: Punctuated<KvEntry, Token![,]> = Punctuated::parse_terminated(input)?;
         for entry in entries {
             match entry.key.to_string().as_str() {
                 "omniverse" => out.omniverse = Some(entry.value_string()?),

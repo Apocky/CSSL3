@@ -239,7 +239,8 @@ mod tests {
         let hasher = PathHasher::from_seed([0u8; 32]);
         let h = hasher.hash_str("/secret.txt");
         let mut r = fresh_record();
-        r.fields.push(("path", FieldValue::Path(PathHashField::from_path_hash(h))));
+        r.fields
+            .push(("path", FieldValue::Path(PathHashField::from_path_hash(h))));
         let line = encode_json_lines(&r);
         assert!(line.contains("..."));
         assert!(!line.contains("/secret"));
@@ -260,13 +261,19 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
         assert_eq!(parsed["src"]["line"], 7);
         assert_eq!(parsed["src"]["col"], 3);
-        assert!(parsed["src"]["file_hash"].as_str().unwrap().ends_with("..."));
+        assert!(parsed["src"]["file_hash"]
+            .as_str()
+            .unwrap()
+            .ends_with("..."));
     }
 
     #[test]
     fn json_lines_does_not_contain_raw_path() {
         let mut r = fresh_record();
-        r.fields.push(("note", FieldValue::Str("this is /etc/hosts").sanitize_for_sink("note")));
+        r.fields.push((
+            "note",
+            FieldValue::Str("this is /etc/hosts").sanitize_for_sink("note"),
+        ));
         let line = encode_json_lines(&r);
         assert!(!line.contains("/etc/hosts"));
     }

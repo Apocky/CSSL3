@@ -126,10 +126,7 @@ pub fn scan_doc_comments(
 ///
 /// Each citation under a recognised heading produces one
 /// [`ExtractedAnchor`] tagged [`AnchorParadigm::DecisionsLog`].
-pub fn scan_decisions_log(
-    source: &str,
-    source_file: &str,
-) -> crate::Result<Vec<ExtractedAnchor>> {
+pub fn scan_decisions_log(source: &str, source_file: &str) -> crate::Result<Vec<ExtractedAnchor>> {
     let mut out = Vec::new();
     let mut current_slice: Option<String> = None;
     let mut in_anchors_block = false;
@@ -297,7 +294,10 @@ fn parse_section_marker(body: &str) -> Option<(SpecRoot, String, String, Option<
         return parse_with_root(SpecRoot::Omniverse, &format!("Omniverse/{rest}"));
     }
     // Variant 2 : "SPEC : <FILE> § <SECTION>"
-    if let Some(rest) = body.strip_prefix("SPEC :").or_else(|| body.strip_prefix("SPEC:")) {
+    if let Some(rest) = body
+        .strip_prefix("SPEC :")
+        .or_else(|| body.strip_prefix("SPEC:"))
+    {
         return parse_with_root(SpecRoot::CssLv3, rest);
     }
     // Variant 3 : "DECISIONS/<slice>"
@@ -321,7 +321,10 @@ fn parse_section_marker(body: &str) -> Option<(SpecRoot, String, String, Option<
     parse_with_root(infer_root(body), body)
 }
 
-fn parse_with_root(root: SpecRoot, rest: &str) -> Option<(SpecRoot, String, String, Option<String>)> {
+fn parse_with_root(
+    root: SpecRoot,
+    rest: &str,
+) -> Option<(SpecRoot, String, String, Option<String>)> {
     let rest = rest.trim();
     if rest.is_empty() {
         return None;
@@ -377,10 +380,7 @@ mod tests {
         assert_eq!(r.anchor.spec_root, SpecRoot::Omniverse);
         // The "Omniverse " dialect strips the prefix word — the SpecRoot
         // field disambiguates the corpus, so the raw file path is bare.
-        assert_eq!(
-            r.anchor.spec_file,
-            "04_OMEGA_FIELD/05_DENSITY_BUDGET"
-        );
+        assert_eq!(r.anchor.spec_file, "04_OMEGA_FIELD/05_DENSITY_BUDGET");
     }
 
     #[test]
@@ -519,14 +519,8 @@ spec-anchors :
         ];
         let result = scan_test_names(&names);
         assert_eq!(result.len(), 2);
-        assert_eq!(
-            result[0].fn_part,
-            "omega_field_cell_72b_layout"
-        );
-        assert_eq!(
-            result[0].anchor_part,
-            "06_substrate_evolution"
-        );
+        assert_eq!(result[0].fn_part, "omega_field_cell_72b_layout");
+        assert_eq!(result[0].anchor_part, "06_substrate_evolution");
     }
 
     #[test]
@@ -550,10 +544,7 @@ spec-anchors :
         // already disambiguates the corpus, so file path is bare.
         assert_eq!(file, "04_FILE.csl");
         assert_eq!(section, "§ V");
-        assert_eq!(
-            criterion.as_deref(),
-            Some("phase-COLLAPSE p99 <= 4ms")
-        );
+        assert_eq!(criterion.as_deref(), Some("phase-COLLAPSE p99 <= 4ms"));
     }
 
     #[test]

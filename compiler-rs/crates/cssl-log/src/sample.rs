@@ -46,12 +46,12 @@ impl FrameCounters {
             cells: [ZERO; SubsystemTag::COUNT * 6],
             current_frame: ZERO,
             caps: [
-                AtomicU64::new(64),         // Trace
-                AtomicU64::new(256),        // Debug
-                AtomicU64::new(1024),       // Info
-                AtomicU64::new(4096),       // Warning
-                AtomicU64::new(u64::MAX),   // Error
-                AtomicU64::new(u64::MAX),   // Fatal
+                AtomicU64::new(64),       // Trace
+                AtomicU64::new(256),      // Debug
+                AtomicU64::new(1024),     // Info
+                AtomicU64::new(4096),     // Warning
+                AtomicU64::new(u64::MAX), // Error
+                AtomicU64::new(u64::MAX), // Fatal
             ],
         }
     }
@@ -93,8 +93,7 @@ impl FrameCounters {
         }
 
         let cap = self.caps[severity.as_u8() as usize].load(Ordering::Acquire);
-        let prev =
-            self.cells[Self::cell_idx(severity, subsystem)].fetch_add(1, Ordering::AcqRel);
+        let prev = self.cells[Self::cell_idx(severity, subsystem)].fetch_add(1, Ordering::AcqRel);
         prev < cap
     }
 
@@ -124,11 +123,7 @@ static FRAME_COUNTERS: FrameCounters = FrameCounters::new();
 ///
 /// Exempt severities (Error / Fatal) always return `true`.
 #[must_use]
-pub fn try_record_per_frame(
-    severity: Severity,
-    subsystem: SubsystemTag,
-    frame_n: u64,
-) -> bool {
+pub fn try_record_per_frame(severity: Severity, subsystem: SubsystemTag, frame_n: u64) -> bool {
     FRAME_COUNTERS.try_record(severity, subsystem, frame_n)
 }
 
@@ -426,11 +421,27 @@ mod tests {
     fn frame_rollover_resets_counter() {
         let _g = lock_and_reset();
         set_per_frame_cap(Severity::Info, 2);
-        assert!(try_record_per_frame(Severity::Info, SubsystemTag::Render, 1));
-        assert!(try_record_per_frame(Severity::Info, SubsystemTag::Render, 1));
-        assert!(!try_record_per_frame(Severity::Info, SubsystemTag::Render, 1));
+        assert!(try_record_per_frame(
+            Severity::Info,
+            SubsystemTag::Render,
+            1
+        ));
+        assert!(try_record_per_frame(
+            Severity::Info,
+            SubsystemTag::Render,
+            1
+        ));
+        assert!(!try_record_per_frame(
+            Severity::Info,
+            SubsystemTag::Render,
+            1
+        ));
         // Frame rollover.
-        assert!(try_record_per_frame(Severity::Info, SubsystemTag::Render, 2));
+        assert!(try_record_per_frame(
+            Severity::Info,
+            SubsystemTag::Render,
+            2
+        ));
     }
 
     #[test]
@@ -472,7 +483,11 @@ mod tests {
     fn separate_subsystems_have_separate_counters() {
         let _g = lock_and_reset();
         set_per_frame_cap(Severity::Info, 1);
-        assert!(try_record_per_frame(Severity::Info, SubsystemTag::Render, 1));
+        assert!(try_record_per_frame(
+            Severity::Info,
+            SubsystemTag::Render,
+            1
+        ));
         assert!(try_record_per_frame(Severity::Info, SubsystemTag::Audio, 1));
     }
 
@@ -481,7 +496,11 @@ mod tests {
         let _g = lock_and_reset();
         set_per_frame_cap(Severity::Info, 1);
         set_per_frame_cap(Severity::Warning, 1);
-        assert!(try_record_per_frame(Severity::Info, SubsystemTag::Render, 1));
+        assert!(try_record_per_frame(
+            Severity::Info,
+            SubsystemTag::Render,
+            1
+        ));
         assert!(try_record_per_frame(
             Severity::Warning,
             SubsystemTag::Render,
@@ -575,8 +594,10 @@ mod tests {
         }
         let d1 = try_record_per_fingerprint(Severity::Info, &ctx);
         let d2 = try_record_per_fingerprint(Severity::Info, &ctx);
-        if let (FingerprintDecision::Drop { dropped_count: a }, FingerprintDecision::Drop { dropped_count: b }) =
-            (d1, d2)
+        if let (
+            FingerprintDecision::Drop { dropped_count: a },
+            FingerprintDecision::Drop { dropped_count: b },
+        ) = (d1, d2)
         {
             assert!(b > a);
         } else {

@@ -33,10 +33,7 @@ pub enum SamplingDiscipline {
     /// Record one in every `N` ; deterministic via `frame_n + tag_hash` keying.
     OneIn(OneIn),
     /// First `burst` records always recorded ; thereafter `OneIn(then_one_in)`.
-    BurstThenDecimate {
-        burst: u32,
-        then_one_in: OneIn,
-    },
+    BurstThenDecimate { burst: u32, then_one_in: OneIn },
 }
 
 /// Validated `OneIn(N)` ; guarantees `N >= 1`.
@@ -136,7 +133,10 @@ pub enum SamplingDisciplineError {
 /// Convenience : check `(frame_n + tag_hash) % N == 0` with overflow safety.
 #[must_use]
 fn is_decimated_hit(frame_n: FrameN, tag_hash: u64, n: u32) -> bool {
-    debug_assert!(n != 0, "OneIn(0) should be unreachable via constructor guard");
+    debug_assert!(
+        n != 0,
+        "OneIn(0) should be unreachable via constructor guard"
+    );
     let combined = frame_n.wrapping_add(tag_hash);
     combined % u64::from(n) == 0
 }
@@ -185,9 +185,7 @@ mod tests {
     #[test]
     fn t_one_in_3_pattern() {
         let s = SamplingDiscipline::one_in(3).unwrap();
-        let pat = (0..6)
-            .map(|f| s.should_sample(f, 0))
-            .collect::<Vec<_>>();
+        let pat = (0..6).map(|f| s.should_sample(f, 0)).collect::<Vec<_>>();
         assert_eq!(pat, vec![true, false, false, true, false, false]);
     }
 

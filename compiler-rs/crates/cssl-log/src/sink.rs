@@ -240,10 +240,7 @@ impl RingSink {
 
     /// Pending-slot count.
     pub fn pending_len(&self) -> usize {
-        self.ring
-            .lock()
-            .map(|g| g.len())
-            .unwrap_or_default()
+        self.ring.lock().map(|g| g.len()).unwrap_or_default()
     }
 
     /// Overflow counter (slots discarded due to capacity).
@@ -287,8 +284,8 @@ mod tests {
     use crate::severity::{Severity, SourceLocation};
     use crate::subsystem::SubsystemTag;
     use cssl_telemetry::PathHasher;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
 
     fn fresh_record() -> LogRecord {
         let hasher = PathHasher::from_seed([0u8; 32]);
@@ -412,9 +409,7 @@ mod tests {
     fn sink_chain_write_fans_out_to_all() {
         let s1 = Arc::new(CountingSink::new());
         let s2 = Arc::new(CountingSink::new());
-        let chain = SinkChain::new()
-            .with_sink(s1.clone())
-            .with_sink(s2.clone());
+        let chain = SinkChain::new().with_sink(s1.clone()).with_sink(s2.clone());
         let r = fresh_record();
         let errs = chain.write(&r);
         assert!(errs.is_empty());
@@ -426,9 +421,7 @@ mod tests {
     fn sink_chain_collects_errors_does_not_abort() {
         let s1 = Arc::new(CountingSink::failing());
         let s2 = Arc::new(CountingSink::new());
-        let chain = SinkChain::new()
-            .with_sink(s1.clone())
-            .with_sink(s2.clone());
+        let chain = SinkChain::new().with_sink(s1.clone()).with_sink(s2.clone());
         let r = fresh_record();
         let errs = chain.write(&r);
         assert_eq!(errs.len(), 1);

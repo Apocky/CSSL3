@@ -160,10 +160,7 @@ impl MetricRegistry {
     /// spec ; a non-empty `missing` is a build-fail-condition for downstream
     /// integration tests.
     #[must_use]
-    pub fn completeness_check(
-        &self,
-        catalog: &[(&'static str, MetricKind)],
-    ) -> CompletenessReport {
+    pub fn completeness_check(&self, catalog: &[(&'static str, MetricKind)]) -> CompletenessReport {
         let guard = self.inner.lock().expect("registry mutex poisoned");
         let mut missing = Vec::new();
         let mut mismatched = Vec::new();
@@ -367,9 +364,11 @@ mod tests {
     #[test]
     fn entries_with_prefix_filters() {
         let r = fresh_registry();
-        r.register("engine.frame_n", MetricKind::Counter, 1).unwrap();
+        r.register("engine.frame_n", MetricKind::Counter, 1)
+            .unwrap();
         r.register("engine.tick", MetricKind::Gauge, 2).unwrap();
-        r.register("render.stage_time", MetricKind::Timer, 3).unwrap();
+        r.register("render.stage_time", MetricKind::Timer, 3)
+            .unwrap();
         let engine = r.entries_with_prefix("engine.");
         assert_eq!(engine.len(), 2);
         let render = r.entries_with_prefix("render.");
@@ -477,7 +476,9 @@ mod tests {
         let entries = view.entries();
         // Could be ≥ 1 if other tests registered "subsystest_engine.*" too — count the
         // exact match instead to keep the assertion stable.
-        assert!(entries.iter().any(|e| e.name == "subsystest_engine.frame_x"));
+        assert!(entries
+            .iter()
+            .any(|e| e.name == "subsystest_engine.frame_x"));
     }
 
     #[test]

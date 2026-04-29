@@ -13,8 +13,8 @@
 //! [`ReplayLogSnapshot`]: crate::ReplayLogSnapshot
 
 use crate::metric_event::MetricEvent;
-use crate::REPLAY_LOG_MAGIC;
 use crate::replay_log::ReplayLogSnapshot;
+use crate::REPLAY_LOG_MAGIC;
 use thiserror::Error;
 
 /// Result of comparing two snapshots.
@@ -127,26 +127,38 @@ pub fn diff_snapshots(
     let r_magic_ok = &r_bytes[0..8] == REPLAY_LOG_MAGIC;
     match (l_magic_ok, r_magic_ok) {
         (true, true) => {}
-        (false, true) => return Ok(HistoryDiff::Diverged(HistoryDiffKind::BadMagic { which: DiffSide::Left })),
-        (true, false) => return Ok(HistoryDiff::Diverged(HistoryDiffKind::BadMagic { which: DiffSide::Right })),
+        (false, true) => {
+            return Ok(HistoryDiff::Diverged(HistoryDiffKind::BadMagic {
+                which: DiffSide::Left,
+            }))
+        }
+        (true, false) => {
+            return Ok(HistoryDiff::Diverged(HistoryDiffKind::BadMagic {
+                which: DiffSide::Right,
+            }))
+        }
         (false, false) => return Err(HistoryDiffError::BothMalformed),
     }
     // Validate event-count fields.
     let l_count = u64::from_le_bytes(l_bytes[8..16].try_into().unwrap_or([0u8; 8]));
     let r_count = u64::from_le_bytes(r_bytes[8..16].try_into().unwrap_or([0u8; 8]));
     if l_count as usize != left.event_count() {
-        return Ok(HistoryDiff::Diverged(HistoryDiffKind::EventCountFieldMismatch {
-            which: DiffSide::Left,
-            encoded: l_count,
-            reported: left.event_count(),
-        }));
+        return Ok(HistoryDiff::Diverged(
+            HistoryDiffKind::EventCountFieldMismatch {
+                which: DiffSide::Left,
+                encoded: l_count,
+                reported: left.event_count(),
+            },
+        ));
     }
     if r_count as usize != right.event_count() {
-        return Ok(HistoryDiff::Diverged(HistoryDiffKind::EventCountFieldMismatch {
-            which: DiffSide::Right,
-            encoded: r_count,
-            reported: right.event_count(),
-        }));
+        return Ok(HistoryDiff::Diverged(
+            HistoryDiffKind::EventCountFieldMismatch {
+                which: DiffSide::Right,
+                encoded: r_count,
+                reported: right.event_count(),
+            },
+        ));
     }
     if left.event_count() != right.event_count() {
         return Ok(HistoryDiff::Diverged(HistoryDiffKind::EventCountDiffers {
@@ -242,8 +254,12 @@ mod tests {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
         for i in 0..5 {
-            log_a.append(ev(i, MetricEventKind::CounterIncBy, i, 0)).unwrap();
-            log_b.append(ev(i, MetricEventKind::CounterIncBy, i, 0)).unwrap();
+            log_a
+                .append(ev(i, MetricEventKind::CounterIncBy, i, 0))
+                .unwrap();
+            log_b
+                .append(ev(i, MetricEventKind::CounterIncBy, i, 0))
+                .unwrap();
         }
         let a = log_a.snapshot();
         let b = log_b.snapshot();
@@ -254,9 +270,15 @@ mod tests {
     fn t_diff_different_count_diverged() {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
-        log_a.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
-        log_a.append(ev(1, MetricEventKind::CounterIncBy, 2, 0)).unwrap();
-        log_b.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
+        log_a
+            .append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
+        log_a
+            .append(ev(1, MetricEventKind::CounterIncBy, 2, 0))
+            .unwrap();
+        log_b
+            .append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
         let a = log_a.snapshot();
         let b = log_b.snapshot();
         let d = diff_snapshots(&a, &b).unwrap();
@@ -273,8 +295,12 @@ mod tests {
     fn t_diff_value_change_event_diverged() {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
-        log_a.append(ev(0, MetricEventKind::CounterIncBy, 5, 0)).unwrap();
-        log_b.append(ev(0, MetricEventKind::CounterIncBy, 6, 0)).unwrap();
+        log_a
+            .append(ev(0, MetricEventKind::CounterIncBy, 5, 0))
+            .unwrap();
+        log_b
+            .append(ev(0, MetricEventKind::CounterIncBy, 6, 0))
+            .unwrap();
         let a = log_a.snapshot();
         let b = log_b.snapshot();
         let d = diff_snapshots(&a, &b).unwrap();
@@ -296,8 +322,12 @@ mod tests {
     fn t_diff_kind_change_event_diverged() {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
-        log_a.append(ev(0, MetricEventKind::CounterIncBy, 5, 0)).unwrap();
-        log_b.append(ev(0, MetricEventKind::GaugeSet, 5, 0)).unwrap();
+        log_a
+            .append(ev(0, MetricEventKind::CounterIncBy, 5, 0))
+            .unwrap();
+        log_b
+            .append(ev(0, MetricEventKind::GaugeSet, 5, 0))
+            .unwrap();
         let a = log_a.snapshot();
         let b = log_b.snapshot();
         let d = diff_snapshots(&a, &b).unwrap();
@@ -311,10 +341,18 @@ mod tests {
     fn t_diff_diverged_at_second_event() {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
-        log_a.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
-        log_a.append(ev(1, MetricEventKind::CounterIncBy, 100, 0)).unwrap();
-        log_b.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
-        log_b.append(ev(1, MetricEventKind::CounterIncBy, 200, 0)).unwrap();
+        log_a
+            .append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
+        log_a
+            .append(ev(1, MetricEventKind::CounterIncBy, 100, 0))
+            .unwrap();
+        log_b
+            .append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
+        log_b
+            .append(ev(1, MetricEventKind::CounterIncBy, 200, 0))
+            .unwrap();
         let a = log_a.snapshot();
         let b = log_b.snapshot();
         match diff_snapshots(&a, &b).unwrap() {
@@ -337,7 +375,9 @@ mod tests {
     fn t_diff_is_diverged_true_for_count_mismatch() {
         let mut log_a = ReplayLog::new();
         let log_b = ReplayLog::new();
-        log_a.append(ev(0, MetricEventKind::CounterIncBy, 0, 0)).unwrap();
+        log_a
+            .append(ev(0, MetricEventKind::CounterIncBy, 0, 0))
+            .unwrap();
         let d = diff_snapshots(&log_a.snapshot(), &log_b.snapshot()).unwrap();
         assert!(d.is_diverged());
     }

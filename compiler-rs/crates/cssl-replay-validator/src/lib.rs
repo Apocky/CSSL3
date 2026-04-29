@@ -72,9 +72,7 @@ pub use diff::{HistoryDiff, HistoryDiffError, HistoryDiffKind};
 pub use metric_event::{MetricEvent, MetricEventKind, MetricValue};
 pub use replay_log::{ReplayLog, ReplayLogError, ReplayLogSnapshot};
 pub use runner::{ReplayRun, ReplayRunError, ReplayValidator, ScenarioId, ScenarioOutcome};
-pub use sampling::{
-    sampling_decision_strict, SamplingDiscipline, SamplingDisciplineError, OneIn,
-};
+pub use sampling::{sampling_decision_strict, OneIn, SamplingDiscipline, SamplingDisciplineError};
 pub use shims::{
     LogRecord, LogShim, MetricsShim, RecordContext, ReplayLogIntegration, SpecAnchorMock,
     SpecCoverageShim, StrictAware,

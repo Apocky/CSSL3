@@ -166,13 +166,19 @@ pub struct CoverageMatrix {
 
 impl CoverageMatrix {
     pub fn from_anchors<'a>(anchors: impl IntoIterator<Item = &'a SpecAnchor>) -> Self {
-        let mut rows: Vec<CoverageRow> = anchors.into_iter().map(CoverageRow::from_anchor).collect();
+        let mut rows: Vec<CoverageRow> =
+            anchors.into_iter().map(CoverageRow::from_anchor).collect();
         rows.sort_by(|a, b| {
-            (a.spec_root.as_str(), a.spec_file.as_str(), a.section.as_str()).cmp(&(
-                b.spec_root.as_str(),
-                b.spec_file.as_str(),
-                b.section.as_str(),
-            ))
+            (
+                a.spec_root.as_str(),
+                a.spec_file.as_str(),
+                a.section.as_str(),
+            )
+                .cmp(&(
+                    b.spec_root.as_str(),
+                    b.spec_file.as_str(),
+                    b.section.as_str(),
+                ))
         });
         let mut full = 0usize;
         let mut partial = 0usize;

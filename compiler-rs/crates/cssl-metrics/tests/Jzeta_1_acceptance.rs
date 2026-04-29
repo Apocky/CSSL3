@@ -22,7 +22,7 @@
 //!   AC-12 : Five-of-five gate                                       ✓
 
 use cssl_metrics::{
-    emit_into_ring, EffectRow, Counter, Gauge, Histogram, MetricKind, MetricRegistry, MetricSchema,
+    emit_into_ring, Counter, EffectRow, Gauge, Histogram, MetricKind, MetricRegistry, MetricSchema,
     SamplingDiscipline, SubsystemRegistry, TagKey, TagVal, Timer, BIOMETRIC_TAG_KEYS,
     LATENCY_NS_BUCKETS,
 };
@@ -127,8 +127,12 @@ fn ac2_handle_commit_records_immediately() {
 #[test]
 fn ac3_one_in_n_deterministic() {
     let s = SamplingDiscipline::OneIn(5);
-    let a = (0..100_u64).map(|i| s.should_sample(i, 0, i)).collect::<Vec<_>>();
-    let b = (0..100_u64).map(|i| s.should_sample(i, 0, i)).collect::<Vec<_>>();
+    let a = (0..100_u64)
+        .map(|i| s.should_sample(i, 0, i))
+        .collect::<Vec<_>>();
+    let b = (0..100_u64)
+        .map(|i| s.should_sample(i, 0, i))
+        .collect::<Vec<_>>();
     assert_eq!(a, b);
 }
 
@@ -278,9 +282,11 @@ fn ac8_registry_collision_on_kind() {
 #[test]
 fn ac9_subsystem_view_filters_prefix() {
     let r = MetricRegistry::new();
-    r.register("engine.frame_n", MetricKind::Counter, 1).unwrap();
+    r.register("engine.frame_n", MetricKind::Counter, 1)
+        .unwrap();
     r.register("engine.tick", MetricKind::Gauge, 2).unwrap();
-    r.register("render.stage_time", MetricKind::Timer, 3).unwrap();
+    r.register("render.stage_time", MetricKind::Timer, 3)
+        .unwrap();
     let engine_only = r.entries_with_prefix("engine.");
     assert_eq!(engine_only.len(), 2);
 }
@@ -324,8 +330,12 @@ fn ac10_emit_does_not_block_on_overflow() {
 #[test]
 fn ac11_one_in_sampling_deterministic_across_runs() {
     let s = SamplingDiscipline::OneIn(7);
-    let r1 = (0..1_000_u64).filter(|i| s.should_sample(*i, 13, 0)).count();
-    let r2 = (0..1_000_u64).filter(|i| s.should_sample(*i, 13, 0)).count();
+    let r1 = (0..1_000_u64)
+        .filter(|i| s.should_sample(*i, 13, 0))
+        .count();
+    let r2 = (0..1_000_u64)
+        .filter(|i| s.should_sample(*i, 13, 0))
+        .count();
     assert_eq!(r1, r2);
 }
 
@@ -345,7 +355,9 @@ fn ac11_strict_mode_adaptive_refused() {
     let r = Counter::new_with(
         "ac11.adaptive",
         &[],
-        SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 },
+        SamplingDiscipline::Adaptive {
+            target_overhead_pct: 0.5,
+        },
     );
     assert!(matches!(r, Err(MetricError::AdaptiveUnderStrict { .. })));
 }
@@ -387,8 +399,12 @@ fn ac12_five_of_five_gate() {
 
     // 3. Cross-crate registration via SubsystemRegistry
     let r = MetricRegistry::new();
-    r.register("ac12_engine.frame_n", MetricKind::Counter, counter.schema_id())
-        .unwrap();
+    r.register(
+        "ac12_engine.frame_n",
+        MetricKind::Counter,
+        counter.schema_id(),
+    )
+    .unwrap();
     r.register("ac12_render.gauge", MetricKind::Gauge, gauge.schema_id())
         .unwrap();
     assert_eq!(r.len(), 2);

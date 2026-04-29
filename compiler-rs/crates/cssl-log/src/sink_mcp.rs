@@ -53,10 +53,7 @@ impl McpSink {
     ///
     /// # Errors
     /// Returns [`SinkError::Mcp`] if the cap is fabricated.
-    pub fn new_with_cap(
-        capacity: usize,
-        cap: &DebugMcpCap,
-    ) -> Result<Self, SinkError> {
+    pub fn new_with_cap(capacity: usize, cap: &DebugMcpCap) -> Result<Self, SinkError> {
         if !cap.is_valid() {
             return Err(SinkError::Mcp(String::from(
                 "DebugMcpCap fabrication detected",
@@ -84,10 +81,7 @@ impl McpSink {
 
     /// Number of currently-buffered records.
     pub fn buffered_len(&self) -> usize {
-        self.queue
-            .lock()
-            .map(|q| q.len())
-            .unwrap_or_default()
+        self.queue.lock().map(|q| q.len()).unwrap_or_default()
     }
 }
 
@@ -195,8 +189,9 @@ mod tests {
     #[test]
     fn mcp_sink_with_level_floor_overrides() {
         let cap = DebugMcpCap::for_test();
-        let sink =
-            McpSink::new_with_cap(8, &cap).unwrap().with_level_floor(Severity::Warning);
+        let sink = McpSink::new_with_cap(8, &cap)
+            .unwrap()
+            .with_level_floor(Severity::Warning);
         sink.write(&fresh_record(Severity::Info, "no")).unwrap();
         sink.write(&fresh_record(Severity::Warning, "yes")).unwrap();
         assert_eq!(sink.buffered_len(), 1);

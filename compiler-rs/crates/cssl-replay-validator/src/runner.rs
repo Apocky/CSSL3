@@ -247,9 +247,10 @@ fn simulate_engine_frame_tick(
             value: MetricValue::from_u64(1),
             tag_hash: tag_hash_seed(cfg.seed, "engine"),
         };
-        log.append(ev).map_err(|_| ReplayRunError::ScenarioFailure {
-            reason: "engine_frame_tick replay-log capacity exceeded",
-        })?;
+        log.append(ev)
+            .map_err(|_| ReplayRunError::ScenarioFailure {
+                reason: "engine_frame_tick replay-log capacity exceeded",
+            })?;
     }
     Ok(())
 }
@@ -273,13 +274,13 @@ fn simulate_omega_step_phases(
                 value: MetricValue::from_u64(phase_synthetic_ns(phase, cfg.seed)),
                 tag_hash: tag_hash_seed(cfg.seed, phase.as_str()),
             };
-            log.append(ev).map_err(|_| ReplayRunError::ScenarioFailure {
-                reason: "omega_step_phases replay-log capacity exceeded",
-            })?;
+            log.append(ev)
+                .map_err(|_| ReplayRunError::ScenarioFailure {
+                    reason: "omega_step_phases replay-log capacity exceeded",
+                })?;
         }
         // Advance to next frame ; safe — bounded by `frames` outer loop.
-        clock
-            .jump_to(clock.cursor().0.saturating_add(1), SubPhase::Collapse);
+        clock.jump_to(clock.cursor().0.saturating_add(1), SubPhase::Collapse);
     }
     Ok(())
 }
@@ -302,9 +303,10 @@ fn simulate_render_stage_distribution(
                 value: MetricValue::from_u64(synth_ns),
                 tag_hash: tag_hash_stage(cfg.seed, stage),
             };
-            log.append(ev).map_err(|_| ReplayRunError::ScenarioFailure {
-                reason: "render_stage_distribution replay-log capacity exceeded",
-            })?;
+            log.append(ev)
+                .map_err(|_| ReplayRunError::ScenarioFailure {
+                    reason: "render_stage_distribution replay-log capacity exceeded",
+                })?;
         }
     }
     Ok(())
@@ -331,9 +333,10 @@ fn simulate_entity_tier_counts(
                 value: MetricValue::from_u64(count_bits),
                 tag_hash: tag_hash_tier(cfg.seed, tier),
             };
-            log.append(ev).map_err(|_| ReplayRunError::ScenarioFailure {
-                reason: "entity_tier_counts replay-log capacity exceeded",
-            })?;
+            log.append(ev)
+                .map_err(|_| ReplayRunError::ScenarioFailure {
+                    reason: "entity_tier_counts replay-log capacity exceeded",
+                })?;
         }
     }
     Ok(())
@@ -358,9 +361,10 @@ fn simulate_sampling_decimation(
             value: MetricValue::from_bool(decision),
             tag_hash: tag_h,
         };
-        log.append(ev).map_err(|_| ReplayRunError::ScenarioFailure {
-            reason: "sampling_decimation replay-log capacity exceeded",
-        })?;
+        log.append(ev)
+            .map_err(|_| ReplayRunError::ScenarioFailure {
+                reason: "sampling_decimation replay-log capacity exceeded",
+            })?;
     }
     Ok(())
 }
@@ -502,7 +506,9 @@ mod tests {
 
     #[test]
     fn t_validator_all_pass_helper() {
-        let v = ReplayValidator::new(strict_seed_zero()).unwrap().with_frames(3);
+        let v = ReplayValidator::new(strict_seed_zero())
+            .unwrap()
+            .with_frames(3);
         assert!(v.all_pass().unwrap());
     }
 
@@ -577,9 +583,7 @@ mod tests {
         // are NOT equal across seeds.
         assert!(s0.passed());
         assert!(s1.passed());
-        assert!(!s0
-            .run_a_snapshot
-            .is_bit_equal_to(&s1.run_a_snapshot));
+        assert!(!s0.run_a_snapshot.is_bit_equal_to(&s1.run_a_snapshot));
     }
 
     #[test]
@@ -595,4 +599,3 @@ mod tests {
         assert!(v_6.all_pass().unwrap());
     }
 }
-

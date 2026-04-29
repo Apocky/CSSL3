@@ -81,7 +81,9 @@ fn from_io_error_timed_out_is_retryable() {
     let std_err = std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout");
     let e: EngineError = std_err.into();
     match e {
-        EngineError::Io { retryable: true, .. } => {}
+        EngineError::Io {
+            retryable: true, ..
+        } => {}
         _ => panic!("expected retryable Io"),
     }
 }
@@ -135,8 +137,7 @@ fn from_panic_report_basic() {
 
 #[test]
 fn from_panic_report_pd_tagged_is_fatal() {
-    let r = PanicReport::new("PD0001 : harm", SubsystemTag::PrimeDirective)
-        .with_pd_violation(true);
+    let r = PanicReport::new("PD0001 : harm", SubsystemTag::PrimeDirective).with_pd_violation(true);
     let e: EngineError = r.into();
     assert_eq!(e.severity(), Severity::Fatal);
 }
@@ -276,9 +277,7 @@ fn engine_error_kind_id_for_each_variant_unique_and_nonzero() {
         EngineError::network("c", "x"),
         EngineError::Telemetry(cssl_telemetry::RingError::Overflow),
         EngineError::Audit(cssl_telemetry::AuditError::SignatureInvalid),
-        EngineError::PathLog(cssl_telemetry::PathLogError::RawPathInField {
-            field: "x".into(),
-        }),
+        EngineError::PathLog(cssl_telemetry::PathLogError::RawPathInField { field: "x".into() }),
         EngineError::io(IoErrorKind::NotFound),
         EngineError::from_crate_err("c", "x"),
         EngineError::Panic(PanicReport::new("p", SubsystemTag::Render)),
@@ -317,9 +316,7 @@ fn engine_error_question_mark_lifts_audit_failure() {
 #[test]
 fn engine_error_question_mark_lifts_path_log() {
     fn inner() -> Result<(), EngineError> {
-        Err(cssl_telemetry::PathLogError::RawPathInField {
-            field: "x".into(),
-        })?
+        Err(cssl_telemetry::PathLogError::RawPathInField { field: "x".into() })?
     }
     let r = inner();
     assert!(matches!(r, Err(EngineError::PathLog(_))));

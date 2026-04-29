@@ -28,8 +28,8 @@
 //!   - p50/p95/p99 readable per-stage post-frame
 //!   - feature-gate `metrics` off → identical machine-code to non-instrumented
 
-pub mod compose_xr_layers_pass;
 pub mod companion_semantic_pass;
+pub mod compose_xr_layers_pass;
 pub mod embodiment_pass;
 pub mod fractal_amplifier_pass;
 pub mod gaze_collapse_pass;

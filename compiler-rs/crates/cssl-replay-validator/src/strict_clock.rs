@@ -149,10 +149,7 @@ impl StrictClock {
     /// Construct a clock at exactly `(frame_n, sub_phase)`.
     #[must_use]
     pub const fn at(frame_n: FrameN, sub_phase: SubPhase) -> Self {
-        Self {
-            frame_n,
-            sub_phase,
-        }
+        Self { frame_n, sub_phase }
     }
 
     /// Snapshot the current `(frame_n, sub_phase)` pair.

@@ -53,9 +53,7 @@ pub const BYTES_BUCKETS: &[f64] = &[
 pub const COUNT_BUCKETS: &[f64] = &[1.0, 4.0, 16.0, 64.0, 256.0, 1_024.0, 4_096.0];
 
 /// Canonical pixel bucket-set (§ II.3).
-pub const PIXEL_BUCKETS: &[f64] = &[
-    1.0, 4.0, 16.0, 64.0, 256.0, 1_024.0, 4_096.0, 16_384.0,
-];
+pub const PIXEL_BUCKETS: &[f64] = &[1.0, 4.0, 16.0, 64.0, 256.0, 1_024.0, 4_096.0, 16_384.0];
 
 /// A read-only snapshot of histogram-state at one moment.
 #[derive(Debug, Clone)]
@@ -96,7 +94,9 @@ impl HistogramSnapshot {
         }
         let p = p.clamp(0.0, 1.0);
         if p == 0.0 {
-            return 0.0_f64.max(self.boundaries[0] / 2.0).min(self.boundaries[0]);
+            return 0.0_f64
+                .max(self.boundaries[0] / 2.0)
+                .min(self.boundaries[0]);
         }
         if p == 1.0 {
             return *self.boundaries.last().expect("boundaries non-empty");
@@ -114,7 +114,9 @@ impl HistogramSnapshot {
                     0.0
                 };
                 let lo = if i == 0 {
-                    0.0_f64.max(self.boundaries[0] / 2.0).min(self.boundaries[0])
+                    0.0_f64
+                        .max(self.boundaries[0] / 2.0)
+                        .min(self.boundaries[0])
                 } else {
                     self.boundaries[i - 1]
                 };
@@ -204,9 +206,7 @@ impl Histogram {
         for (k, v) in tags {
             tag_set.push((*k, *v));
         }
-        let counts = (0..=boundaries.len())
-            .map(|_| AtomicU64::new(0))
-            .collect();
+        let counts = (0..=boundaries.len()).map(|_| AtomicU64::new(0)).collect();
         Ok(Self {
             name,
             boundaries,
@@ -368,7 +368,13 @@ mod tests {
         assert_eq!(
             LATENCY_NS_BUCKETS,
             &[
-                10.0, 100.0, 1_000.0, 10_000.0, 100_000.0, 1_000_000.0, 10_000_000.0,
+                10.0,
+                100.0,
+                1_000.0,
+                10_000.0,
+                100_000.0,
+                1_000_000.0,
+                10_000_000.0,
                 100_000_000.0
             ]
         );
@@ -379,7 +385,14 @@ mod tests {
         assert_eq!(
             BYTES_BUCKETS,
             &[
-                64.0, 256.0, 1_024.0, 4_096.0, 16_384.0, 65_536.0, 262_144.0, 1_048_576.0
+                64.0,
+                256.0,
+                1_024.0,
+                4_096.0,
+                16_384.0,
+                65_536.0,
+                262_144.0,
+                1_048_576.0
             ]
         );
     }
@@ -417,7 +430,9 @@ mod tests {
     fn new_with_non_monotonic_refused() {
         const BAD: &[f64] = &[1.0, 2.0, 1.5];
         let r = Histogram::new("h", BAD);
-        assert!(matches!(r, Err(MetricError::Bucket { detail, .. }) if detail == "non-monotonic-boundaries"));
+        assert!(
+            matches!(r, Err(MetricError::Bucket { detail, .. }) if detail == "non-monotonic-boundaries")
+        );
     }
 
     #[test]
@@ -431,8 +446,10 @@ mod tests {
     fn new_with_nan_boundary_refused() {
         const BAD: &[f64] = &[1.0, f64::NAN];
         let r = Histogram::new("h", BAD);
-        assert!(matches!(r, Err(MetricError::Bucket { detail, .. }) if detail == "non-monotonic-boundaries"
-            || matches!(r, Err(MetricError::Bucket { detail, .. }) if detail == "nan-boundary")));
+        assert!(
+            matches!(r, Err(MetricError::Bucket { detail, .. }) if detail == "non-monotonic-boundaries"
+            || matches!(r, Err(MetricError::Bucket { detail, .. }) if detail == "nan-boundary"))
+        );
         // (Either path : non-monotonic comparison with NaN returns false ; some
         // platforms hit the explicit NaN check first.)
     }

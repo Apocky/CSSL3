@@ -18,13 +18,13 @@
 //!      acceptance criterion : "verified on cssl-cgen-cpu-x64 with 52
 //!      anchors").
 
-use cssl_spec_coverage::{
-    scan_decisions_log, scan_doc_comments, scan_test_names, ExportFormat,
-    SpecCoverageRegistry, SpecCoverageReport,
-};
 use cssl_spec_coverage::extract::TestNameMatch;
 use cssl_spec_coverage::retrofit_anim::{
     cssl_anim_anchors, register_cssl_anim_anchors, CSSL_ANIM_ANCHOR_COUNT,
+};
+use cssl_spec_coverage::{
+    scan_decisions_log, scan_doc_comments, scan_test_names, ExportFormat, SpecCoverageRegistry,
+    SpecCoverageReport,
 };
 
 #[test]

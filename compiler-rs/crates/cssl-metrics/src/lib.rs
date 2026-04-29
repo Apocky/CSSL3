@@ -113,8 +113,7 @@ pub use counter::Counter;
 pub use error::{MetricError, MetricResult};
 pub use gauge::{Gauge, InfPolicy};
 pub use histogram::{
-    Histogram, HistogramSnapshot, BYTES_BUCKETS, COUNT_BUCKETS, LATENCY_NS_BUCKETS,
-    PIXEL_BUCKETS,
+    Histogram, HistogramSnapshot, BYTES_BUCKETS, COUNT_BUCKETS, LATENCY_NS_BUCKETS, PIXEL_BUCKETS,
 };
 pub use registry::{
     global as global_registry, CompletenessReport, MetricKind, MetricRegistry, RegistryEntry,
@@ -144,9 +143,9 @@ pub const fn is_metrics_disabled() -> bool {
 #[cfg(test)]
 mod scaffold_tests {
     use super::{
-        is_metrics_disabled, is_strict_mode, Counter, Gauge, Histogram, MetricKind,
-        MetricRegistry, MetricSchema, SamplingDiscipline, SubsystemRegistry, TagKey, TagVal, Timer,
-        STAGE0_SCAFFOLD, LATENCY_NS_BUCKETS,
+        is_metrics_disabled, is_strict_mode, Counter, Gauge, Histogram, MetricKind, MetricRegistry,
+        MetricSchema, SamplingDiscipline, SubsystemRegistry, TagKey, TagVal, Timer,
+        LATENCY_NS_BUCKETS, STAGE0_SCAFFOLD,
     };
 
     #[test]
@@ -175,7 +174,8 @@ mod scaffold_tests {
     #[test]
     fn cross_crate_registration_via_subsystem() {
         let r = MetricRegistry::new();
-        r.register("engine.frame_n", MetricKind::Counter, 1).unwrap();
+        r.register("engine.frame_n", MetricKind::Counter, 1)
+            .unwrap();
         r.register("engine.tick", MetricKind::Gauge, 2).unwrap();
         r.register("render.stage_time_ns", MetricKind::Timer, 3)
             .unwrap();
@@ -209,8 +209,8 @@ mod scaffold_tests {
     #[cfg(not(feature = "metrics-disabled"))]
     #[test]
     fn end_to_end_counter_to_ring() {
-        use cssl_telemetry::TelemetryRing;
         use crate::{emit_into_ring, MetricSchema};
+        use cssl_telemetry::TelemetryRing;
 
         let ring = TelemetryRing::new(16);
         let counter = Counter::new("engine.frame_n").unwrap();

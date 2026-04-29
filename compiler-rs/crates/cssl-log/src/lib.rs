@@ -63,14 +63,14 @@
 // § Per-crate scaffold allowances (mirrors workspace pedantic clippy).
 // Tighten in a follow-up polish slice.
 #![allow(clippy::redundant_closure_for_method_calls)] // mutex unwrap_or_else patterns
-#![allow(clippy::collapsible_if)]                     // nested if-let inside outer guard
-#![allow(clippy::map_unwrap_or)]                      // explicit Option::map+unwrap_or chains
+#![allow(clippy::collapsible_if)] // nested if-let inside outer guard
+#![allow(clippy::map_unwrap_or)] // explicit Option::map+unwrap_or chains
 #![allow(clippy::if_not_else)]
 #![allow(clippy::option_if_let_else)]
-#![allow(clippy::significant_drop_tightening)]        // mutex-guard hold-time clarity
-#![allow(clippy::declare_interior_mutable_const)]     // const ZERO: AtomicU64 = ... pattern
+#![allow(clippy::significant_drop_tightening)] // mutex-guard hold-time clarity
+#![allow(clippy::declare_interior_mutable_const)] // const ZERO: AtomicU64 = ... pattern
 #![allow(clippy::use_self)]
-#![allow(dead_code)]                                  // test-only helpers
+#![allow(dead_code)] // test-only helpers
 
 // ───────────────────────────────────────────────────────────────────────
 // § Module structure
@@ -98,9 +98,7 @@ pub mod subsystem;
 // ───────────────────────────────────────────────────────────────────────
 
 pub use context::{current_frame, set_current_frame, Context};
-pub use emit::{
-    active_sink_chain, build_record, emit_structured, install_sink_chain, EmitOutcome,
-};
+pub use emit::{active_sink_chain, build_record, emit_structured, install_sink_chain, EmitOutcome};
 pub use enabled::{
     disable, disable_severity_all, enable, enable_severity_all, enabled, force_reset_to_default,
     init_default_policy, set_level_floor,
@@ -145,8 +143,7 @@ pub const ATTESTATION: &str =
 
 /// Path-hash discipline attestation (re-exported from cssl-telemetry).
 /// D130 extension to PRIME_DIRECTIVE §11.
-pub const PATH_HASH_DISCIPLINE_ATTESTATION: &str =
-    cssl_telemetry::PATH_HASH_DISCIPLINE_ATTESTATION;
+pub const PATH_HASH_DISCIPLINE_ATTESTATION: &str = cssl_telemetry::PATH_HASH_DISCIPLINE_ATTESTATION;
 
 #[cfg(test)]
 mod scaffold_tests {

@@ -150,8 +150,12 @@ mod tests {
     #[test]
     fn one_in_n_deterministic_repeated_calls() {
         let s = SamplingDiscipline::OneIn(7);
-        let first = (0..100).map(|i| s.should_sample(i, 11, 0)).collect::<Vec<_>>();
-        let second = (0..100).map(|i| s.should_sample(i, 11, 0)).collect::<Vec<_>>();
+        let first = (0..100)
+            .map(|i| s.should_sample(i, 11, 0))
+            .collect::<Vec<_>>();
+        let second = (0..100)
+            .map(|i| s.should_sample(i, 11, 0))
+            .collect::<Vec<_>>();
         assert_eq!(first, second);
     }
 
@@ -193,7 +197,9 @@ mod tests {
 
     #[test]
     fn adaptive_samples_every_event_in_stage0() {
-        let s = SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 };
+        let s = SamplingDiscipline::Adaptive {
+            target_overhead_pct: 0.5,
+        };
         for i in 0..10_u64 {
             assert!(s.should_sample(i, 0, i));
         }
@@ -201,7 +207,9 @@ mod tests {
 
     #[test]
     fn adaptive_is_not_replay_safe() {
-        let s = SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 };
+        let s = SamplingDiscipline::Adaptive {
+            target_overhead_pct: 0.5,
+        };
         assert!(!s.is_replay_safe());
     }
 
@@ -220,7 +228,9 @@ mod tests {
     fn strict_mode_check_under_non_strict_passes() {
         // Adaptive under non-strict is OK (default builds).
         if !cfg!(feature = "replay-strict") {
-            let s = SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 };
+            let s = SamplingDiscipline::Adaptive {
+                target_overhead_pct: 0.5,
+            };
             assert!(s.strict_mode_check("m").is_ok());
         }
     }
@@ -234,7 +244,9 @@ mod tests {
     #[cfg(feature = "replay-strict")]
     #[test]
     fn strict_mode_check_refuses_adaptive() {
-        let s = SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 };
+        let s = SamplingDiscipline::Adaptive {
+            target_overhead_pct: 0.5,
+        };
         let r = s.strict_mode_check("m");
         assert!(matches!(r, Err(MetricError::AdaptiveUnderStrict { .. })));
     }

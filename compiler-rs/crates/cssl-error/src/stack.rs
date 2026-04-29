@@ -118,7 +118,11 @@ impl fmt::Display for StackFrame {
         if self.line == 0 {
             write!(f, "{}", self.function)
         } else {
-            write!(f, "{} @ {}:{}", self.function, self.file_path_hash, self.line)
+            write!(
+                f,
+                "{} @ {}:{}",
+                self.function, self.file_path_hash, self.line
+            )
         }
     }
 }
@@ -344,10 +348,7 @@ mod tests {
 
     #[test]
     fn leading_index_colon_strip_basic() {
-        assert_eq!(
-            leading_index_colon_strip("0: foo::bar"),
-            Some("foo::bar")
-        );
+        assert_eq!(leading_index_colon_strip("0: foo::bar"), Some("foo::bar"));
         assert_eq!(
             leading_index_colon_strip("17:  some_module::fn"),
             Some("some_module::fn")

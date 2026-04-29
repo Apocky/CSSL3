@@ -46,12 +46,7 @@ struct PanicHandlingGuard;
 impl PanicHandlingGuard {
     /// Try to acquire the guard. Returns `None` if already held (nested panic).
     fn try_acquire() -> Option<Self> {
-        match IS_HANDLING_PANIC.compare_exchange(
-            false,
-            true,
-            Ordering::AcqRel,
-            Ordering::Acquire,
-        ) {
+        match IS_HANDLING_PANIC.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire) {
             Ok(_) => Some(Self),
             Err(_) => None,
         }
@@ -83,10 +78,7 @@ pub fn payload_is_pd_violation(payload: &(dyn Any + Send)) -> bool {
     }
     let digits = &msg[2..];
     let first_four_are_digits = digits.chars().take(4).all(|c| c.is_ascii_digit());
-    let fifth_is_not_digit = digits
-        .chars()
-        .nth(4)
-        .map_or(true, |c| !c.is_ascii_digit());
+    let fifth_is_not_digit = digits.chars().nth(4).map_or(true, |c| !c.is_ascii_digit());
     first_four_are_digits && fifth_is_not_digit
 }
 

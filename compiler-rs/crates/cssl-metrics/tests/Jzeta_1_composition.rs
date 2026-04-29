@@ -21,9 +21,12 @@ fn comp_three_subsystems_register_without_collision() {
     let c = Counter::new("engine.frame_n").unwrap();
     let g = Gauge::new("engine.tick_rate_hz").unwrap();
     let h = Histogram::new("render.sdf_marches", LATENCY_NS_BUCKETS).unwrap();
-    r.register("engine.frame_n", MetricKind::Counter, c.schema_id()).unwrap();
-    r.register("engine.tick_rate_hz", MetricKind::Gauge, g.schema_id()).unwrap();
-    r.register("render.sdf_marches", MetricKind::Histogram, h.schema_id()).unwrap();
+    r.register("engine.frame_n", MetricKind::Counter, c.schema_id())
+        .unwrap();
+    r.register("engine.tick_rate_hz", MetricKind::Gauge, g.schema_id())
+        .unwrap();
+    r.register("render.sdf_marches", MetricKind::Histogram, h.schema_id())
+        .unwrap();
     assert_eq!(r.len(), 3);
 }
 
@@ -42,7 +45,8 @@ fn comp_subsystem_filter_isolates_namespace() {
 #[test]
 fn comp_completeness_check_full_coverage() {
     let r = MetricRegistry::new();
-    r.register("engine.frame_n", MetricKind::Counter, 1).unwrap();
+    r.register("engine.frame_n", MetricKind::Counter, 1)
+        .unwrap();
     r.register("engine.tick", MetricKind::Gauge, 2).unwrap();
     let cat = [
         ("engine.frame_n", MetricKind::Counter),
@@ -56,7 +60,8 @@ fn comp_completeness_check_full_coverage() {
 #[test]
 fn comp_completeness_check_partial_coverage() {
     let r = MetricRegistry::new();
-    r.register("engine.frame_n", MetricKind::Counter, 1).unwrap();
+    r.register("engine.frame_n", MetricKind::Counter, 1)
+        .unwrap();
     let cat = [
         ("engine.frame_n", MetricKind::Counter),
         ("engine.tick", MetricKind::Gauge),
@@ -99,7 +104,11 @@ fn comp_emit_gauge_into_telemetry_ring() {
     let ring = TelemetryRing::new(64);
     let gauge = Gauge::new("comp.engine.tick_rate_hz").unwrap();
     gauge.set(60.0).unwrap();
-    let schema = MetricSchema::gauge("comp.engine.tick_rate_hz", gauge.schema_id(), "06_l2 § III.1");
+    let schema = MetricSchema::gauge(
+        "comp.engine.tick_rate_hz",
+        gauge.schema_id(),
+        "06_l2 § III.1",
+    );
     emit_into_ring(&ring, &schema, gauge.snapshot().to_bits());
     let slots = ring.drain_all();
     assert_eq!(slots.len(), 1);
@@ -198,8 +207,12 @@ fn comp_full_pipeline_engine_metrics() {
     let tick_rate = Gauge::new("pipe.engine.tick_rate_hz").unwrap();
     let frame_time = Timer::new("pipe.engine.frame_time_ns").unwrap();
 
-    r.register("pipe.engine.frame_n", MetricKind::Counter, frame_n.schema_id())
-        .unwrap();
+    r.register(
+        "pipe.engine.frame_n",
+        MetricKind::Counter,
+        frame_n.schema_id(),
+    )
+    .unwrap();
     r.register(
         "pipe.engine.tick_rate_hz",
         MetricKind::Gauge,

@@ -144,9 +144,7 @@ pub mod registry;
 pub mod report;
 pub mod retrofit_anim;
 
-pub use anchor::{
-    ImplConfidence, ImplStatus, SpecAnchor, SpecAnchorBuilder, SpecRoot, TestStatus,
-};
+pub use anchor::{ImplConfidence, ImplStatus, SpecAnchor, SpecAnchorBuilder, SpecRoot, TestStatus};
 pub use error::SpecCoverageError;
 pub use extract::{scan_decisions_log, scan_doc_comments, scan_test_names, ExtractedAnchor};
 pub use matrix::{CoverageCell, CoverageMatrix, CoverageRow, CoverageStatus};

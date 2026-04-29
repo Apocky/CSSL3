@@ -193,10 +193,7 @@ fn prop_replay_roundtrip_engine_frame_tick() {
                 .unwrap()
                 .with_frames(frames);
             let outcome = v.run_scenario(ScenarioId::EngineFrameTick).unwrap();
-            assert!(
-                outcome.passed(),
-                "seed={seed} frames={frames} did not pass"
-            );
+            assert!(outcome.passed(), "seed={seed} frames={frames} did not pass");
         }
     }
 }

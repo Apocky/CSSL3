@@ -19,7 +19,13 @@ impl LogSink for CapSink {
     }
 }
 
-fn lock_and_setup(seed: u8, base_frame: u64) -> (std::sync::MutexGuard<'static, ()>, Arc<Mutex<Vec<LogRecord>>>) {
+fn lock_and_setup(
+    seed: u8,
+    base_frame: u64,
+) -> (
+    std::sync::MutexGuard<'static, ()>,
+    Arc<Mutex<Vec<LogRecord>>>,
+) {
     let g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_replay_strict(false);
     cssl_log::force_reset_to_default();
@@ -80,11 +86,7 @@ fn path_hash_field_passes_through_clean() {
     let ctx = fresh_ctx(42, 13_002_000);
     let hasher = PathHasher::from_seed([42u8; 32]);
     let h = PathHashField::from_path_hash(hasher.hash_str("/etc/hosts"));
-    emit_structured(
-        &ctx,
-        "msg".to_string(),
-        vec![("path", FieldValue::Path(h))],
-    );
+    emit_structured(&ctx, "msg".to_string(), vec![("path", FieldValue::Path(h))]);
     let recs = captured.lock().unwrap();
     assert!(matches!(&recs[0].fields[0].1, FieldValue::Path(_)));
 }
@@ -196,11 +198,7 @@ fn message_text_unaffected_by_field_sanitization() {
     // The audit-sink does its own check on the message before audit-append.
     let (_g, captured) = lock_and_setup(49, 13_009_000);
     let ctx = fresh_ctx(49, 13_009_000);
-    emit_structured(
-        &ctx,
-        "loaded data from /etc/hosts".to_string(),
-        Vec::new(),
-    );
+    emit_structured(&ctx, "loaded data from /etc/hosts".to_string(), Vec::new());
     let recs = captured.lock().unwrap();
     // Message preserved verbatim ; audit-sink would reject this if asked
     // to append, but the ring/stderr/file/mcp sinks do not.

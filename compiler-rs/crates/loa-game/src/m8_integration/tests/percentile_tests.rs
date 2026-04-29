@@ -109,9 +109,21 @@ fn percentile_pipeline_no_data_returns_nan() {
         let p95 = pipe.p95_ms(stage);
         let p99 = pipe.p99_ms(stage);
         // Without metrics : NaN ; with metrics : NaN (empty histograms)
-        assert!(p50.is_nan(), "stage {:?} p50 should be NaN ; got {p50}", stage);
-        assert!(p95.is_nan(), "stage {:?} p95 should be NaN ; got {p95}", stage);
-        assert!(p99.is_nan(), "stage {:?} p99 should be NaN ; got {p99}", stage);
+        assert!(
+            p50.is_nan(),
+            "stage {:?} p50 should be NaN ; got {p50}",
+            stage
+        );
+        assert!(
+            p95.is_nan(),
+            "stage {:?} p95 should be NaN ; got {p95}",
+            stage
+        );
+        assert!(
+            p99.is_nan(),
+            "stage {:?} p99 should be NaN ; got {p99}",
+            stage
+        );
     }
 }
 

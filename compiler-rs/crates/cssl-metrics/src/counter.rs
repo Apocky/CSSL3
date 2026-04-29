@@ -440,7 +440,9 @@ mod tests {
         let r = Counter::new_with(
             "c",
             &[],
-            SamplingDiscipline::Adaptive { target_overhead_pct: 0.5 },
+            SamplingDiscipline::Adaptive {
+                target_overhead_pct: 0.5,
+            },
         );
         assert!(matches!(r, Err(MetricError::AdaptiveUnderStrict { .. })));
     }

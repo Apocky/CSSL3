@@ -178,8 +178,7 @@ mod tests {
     use crate::field::FieldValue;
     use crate::path_hash_field::PathHashField;
     use crate::replay::{
-        reset_replay_for_test, set_replay_capture_buffer, set_replay_strict,
-        ReplayCaptureBuffer,
+        reset_replay_for_test, set_replay_capture_buffer, set_replay_strict, ReplayCaptureBuffer,
     };
     use crate::sample::{
         reset_fingerprint_table_for_test, reset_frame_counters_for_test, set_per_frame_cap,

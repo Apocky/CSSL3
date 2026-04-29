@@ -438,11 +438,8 @@ impl ErrorContext {
     #[must_use]
     pub fn with_frame_n(mut self, frame_n: u64) -> Self {
         self.frame_n = frame_n;
-        self.fingerprint = crate::fingerprint::ErrorFingerprint::compute(
-            self.kind,
-            &self.source,
-            frame_n / 60,
-        );
+        self.fingerprint =
+            crate::fingerprint::ErrorFingerprint::compute(self.kind, &self.source, frame_n / 60);
         self
     }
 

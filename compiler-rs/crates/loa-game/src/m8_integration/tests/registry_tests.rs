@@ -28,7 +28,11 @@ fn registry_lookup_returns_same_handle_post_register() {
     pipe_run_one_frame(pipe);
     for stage in StageId::ALL {
         let lookup = registry.lookup_histogram(&stage.metric_namespace());
-        assert!(lookup.is_some(), "{:?} histogram should be registered", stage);
+        assert!(
+            lookup.is_some(),
+            "{:?} histogram should be registered",
+            stage
+        );
     }
 }
 

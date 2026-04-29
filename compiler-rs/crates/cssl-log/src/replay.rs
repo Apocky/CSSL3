@@ -82,10 +82,7 @@ impl ReplayCaptureBuffer {
     }
 
     pub fn len(&self) -> usize {
-        self.entries
-            .lock()
-            .map(|e| e.len())
-            .unwrap_or_default()
+        self.entries.lock().map(|e| e.len()).unwrap_or_default()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -124,8 +121,8 @@ pub fn replay_capture_buffer() -> Option<Arc<ReplayCaptureBuffer>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_replay_strict, replay_capture_buffer, reset_replay_for_test,
-        set_replay_capture_buffer, set_replay_strict, ReplayCaptureBuffer,
+        is_replay_strict, replay_capture_buffer, reset_replay_for_test, set_replay_capture_buffer,
+        set_replay_strict, ReplayCaptureBuffer,
     };
     use crate::field::FieldValue;
     use crate::path_hash_field::PathHashField;

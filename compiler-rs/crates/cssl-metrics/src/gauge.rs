@@ -58,12 +58,7 @@ impl Gauge {
     /// # Errors
     /// Inherits per [`Gauge::new_with`] (here unreachable since defaults are clean).
     pub fn new(name: &'static str) -> MetricResult<Self> {
-        Self::new_with(
-            name,
-            &[],
-            SamplingDiscipline::Always,
-            InfPolicy::Refuse,
-        )
+        Self::new_with(name, &[], SamplingDiscipline::Always, InfPolicy::Refuse)
     }
 
     /// Construct with explicit tags + sampling + Inf policy.

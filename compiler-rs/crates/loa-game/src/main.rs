@@ -116,19 +116,20 @@ fn run() -> Result<(), LoaError> {
     // ── Boot Phase [open window] ──────────────────────────────────────────
     // Per BOOT.csl § Phase 2, GPU pipeline create comes after CSSLv3 runtime
     // init ; here we substitute an OS-window-only path (no GPU swapchain yet).
-    let mut window: Option<Window> =
-        match spawn_window(&WindowConfig::new("Labyrinth-of-Apockalypse — Test Room", 1280, 720)) {
-            Ok(w) => {
-                eprintln!("loa-game: window opened.");
-                Some(w)
-            }
-            Err(e) => {
-                eprintln!(
-                    "loa-game: window backend not available ({e}). Continuing in headless mode."
-                );
-                None
-            }
-        };
+    let mut window: Option<Window> = match spawn_window(&WindowConfig::new(
+        "Labyrinth-of-Apockalypse — Test Room",
+        1280,
+        720,
+    )) {
+        Ok(w) => {
+            eprintln!("loa-game: window opened.");
+            Some(w)
+        }
+        Err(e) => {
+            eprintln!("loa-game: window backend not available ({e}). Continuing in headless mode.");
+            None
+        }
+    };
 
     // ── Boot Phase [CSSLv3 runtime / Sovereign / initial Ω] ──────────────
     // Per BOOT.csl § Phase 1+5+6+7 collapsed into Engine::new for stage-0

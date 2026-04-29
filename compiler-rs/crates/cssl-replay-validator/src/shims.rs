@@ -48,12 +48,7 @@ pub struct RecordContext {
 impl RecordContext {
     /// Construct from explicit fields.
     #[must_use]
-    pub const fn new(
-        frame_n: FrameN,
-        sub_phase: SubPhase,
-        metric_id: u32,
-        tag_hash: u64,
-    ) -> Self {
+    pub const fn new(frame_n: FrameN, sub_phase: SubPhase, metric_id: u32, tag_hash: u64) -> Self {
         Self {
             frame_n,
             sub_phase,

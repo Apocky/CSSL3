@@ -320,12 +320,8 @@ mod tests {
             "audit-chain-corrupt",
             PrimeDirectiveOrigin::HaltBus,
         );
-        let outcome = halt_for_pd_violation_with_reason(
-            &v,
-            HaltReason::AuditFailure,
-            &mut sink,
-            &mut audit,
-        );
+        let outcome =
+            halt_for_pd_violation_with_reason(&v, HaltReason::AuditFailure, &mut sink, &mut audit);
         assert_eq!(outcome.reason, HaltReason::AuditFailure);
     }
 
@@ -334,12 +330,8 @@ mod tests {
         let mut sink = CountingHaltSink::new(0);
         let mut audit = EnforcementAuditBus::new();
         let v = PrimeDirectiveViolation::new("PD0001", "operator-halt");
-        let outcome = halt_for_pd_violation_with_reason(
-            &v,
-            HaltReason::ApockyRoot,
-            &mut sink,
-            &mut audit,
-        );
+        let outcome =
+            halt_for_pd_violation_with_reason(&v, HaltReason::ApockyRoot, &mut sink, &mut audit);
         assert_eq!(outcome.reason, HaltReason::ApockyRoot);
     }
 

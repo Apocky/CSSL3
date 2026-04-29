@@ -93,10 +93,7 @@ impl IoErrorKind {
     pub const fn retryable(self) -> bool {
         matches!(
             self,
-            Self::ConnectionRefused
-                | Self::ConnectionReset
-                | Self::WouldBlock
-                | Self::TimedOut
+            Self::ConnectionRefused | Self::ConnectionReset | Self::WouldBlock | Self::TimedOut
         )
     }
 
@@ -175,11 +172,7 @@ pub struct CrateErrorPayload {
 impl CrateErrorPayload {
     /// Construct a [`CrateErrorPayload`].
     #[must_use]
-    pub fn new(
-        crate_name: &'static str,
-        message: impl Into<String>,
-        severity: Severity,
-    ) -> Self {
+    pub fn new(crate_name: &'static str, message: impl Into<String>, severity: Severity) -> Self {
         Self {
             crate_name,
             message: message.into(),
@@ -264,8 +257,7 @@ impl PanicReport {
     /// will fire the kill-switch.
     #[must_use]
     pub fn with_pd_violation(mut self, pd_violation: bool) -> Self {
-        self.pd_violation = pd_violation
-        ;
+        self.pd_violation = pd_violation;
         self
     }
 
@@ -504,8 +496,14 @@ impl EngineError {
         crate_name: &'static str,
         frame_n: u64,
     ) -> ErrorContext {
-        ErrorContext::minimal(source, self.subsystem(), crate_name, self.kind_id(), self.severity())
-            .with_frame_n(frame_n)
+        ErrorContext::minimal(
+            source,
+            self.subsystem(),
+            crate_name,
+            self.kind_id(),
+            self.severity(),
+        )
+        .with_frame_n(frame_n)
     }
 
     /// Construct a `Render` variant from any `Display`-able error.
@@ -600,7 +598,11 @@ impl EngineError {
         err: E,
         severity: Severity,
     ) -> Self {
-        Self::CrateError(CrateErrorPayload::new(crate_name, err.to_string(), severity))
+        Self::CrateError(CrateErrorPayload::new(
+            crate_name,
+            err.to_string(),
+            severity,
+        ))
     }
 
     /// Construct a free-form `Other(String)` ; permitted but lint-discouraged.
@@ -917,9 +919,8 @@ mod tests {
 
     #[test]
     fn engine_error_from_path_log_raw_path() {
-        let p: cssl_telemetry::PathLogError = cssl_telemetry::PathLogError::RawPathInField {
-            field: "x".into(),
-        };
+        let p: cssl_telemetry::PathLogError =
+            cssl_telemetry::PathLogError::RawPathInField { field: "x".into() };
         let e: EngineError = p.into();
         assert_eq!(e.subsystem(), SubsystemTag::Telemetry);
     }
@@ -1015,7 +1016,10 @@ mod tests {
 
     #[test]
     fn crate_name_to_subsystem_render() {
-        assert_eq!(crate_name_to_subsystem("cssl-render-v2"), SubsystemTag::Render);
+        assert_eq!(
+            crate_name_to_subsystem("cssl-render-v2"),
+            SubsystemTag::Render
+        );
         assert_eq!(
             crate_name_to_subsystem("cssl-spectral-render"),
             SubsystemTag::Render
@@ -1024,8 +1028,14 @@ mod tests {
 
     #[test]
     fn crate_name_to_subsystem_audio() {
-        assert_eq!(crate_name_to_subsystem("cssl-host-audio"), SubsystemTag::Audio);
-        assert_eq!(crate_name_to_subsystem("cssl-audio-mix"), SubsystemTag::Audio);
+        assert_eq!(
+            crate_name_to_subsystem("cssl-host-audio"),
+            SubsystemTag::Audio
+        );
+        assert_eq!(
+            crate_name_to_subsystem("cssl-audio-mix"),
+            SubsystemTag::Audio
+        );
     }
 
     #[test]
@@ -1039,7 +1049,10 @@ mod tests {
 
     #[test]
     fn crate_name_to_subsystem_physics() {
-        assert_eq!(crate_name_to_subsystem("cssl-physics"), SubsystemTag::Physics);
+        assert_eq!(
+            crate_name_to_subsystem("cssl-physics"),
+            SubsystemTag::Physics
+        );
         assert_eq!(
             crate_name_to_subsystem("cssl-physics-wave"),
             SubsystemTag::Physics
@@ -1060,7 +1073,10 @@ mod tests {
 
     #[test]
     fn crate_name_to_subsystem_unknown_is_other() {
-        assert_eq!(crate_name_to_subsystem("not-a-real-crate"), SubsystemTag::Other);
+        assert_eq!(
+            crate_name_to_subsystem("not-a-real-crate"),
+            SubsystemTag::Other
+        );
         assert_eq!(crate_name_to_subsystem(""), SubsystemTag::Other);
     }
 
@@ -1079,9 +1095,7 @@ mod tests {
 
     #[test]
     fn engine_error_is_panic_predicate() {
-        assert!(
-            EngineError::Panic(PanicReport::new("x", SubsystemTag::Render)).is_panic()
-        );
+        assert!(EngineError::Panic(PanicReport::new("x", SubsystemTag::Render)).is_panic());
         assert!(!EngineError::other("x").is_panic());
     }
 

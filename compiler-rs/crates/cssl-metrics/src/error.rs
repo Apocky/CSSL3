@@ -25,9 +25,7 @@ pub type MetricResult<T> = core::result::Result<T, MetricError>;
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum MetricError {
     /// Gauge.set was called with `f64::NAN`. § II.2 — N! silent-write.
-    #[error(
-        "MET0001 — Gauge.set(NaN) refused (06_l2_telemetry_spec § II.2 ; gauge {name})"
-    )]
+    #[error("MET0001 — Gauge.set(NaN) refused (06_l2_telemetry_spec § II.2 ; gauge {name})")]
     Nan {
         /// Metric-name that received the NaN.
         name: &'static str,
@@ -36,9 +34,7 @@ pub enum MetricError {
     /// Gauge.set was called with `f64::INFINITY` or `f64::NEG_INFINITY` AND
     /// the gauge's schema-policy says infinity is a refuse (rather than a clamp).
     /// § II.2 — `set(±Inf) ⊗ refused-or-clamped @ schema-policy`.
-    #[error(
-        "MET0002 — Gauge.set(±Inf) refused (06_l2_telemetry_spec § II.2 ; gauge {name})"
-    )]
+    #[error("MET0002 — Gauge.set(±Inf) refused (06_l2_telemetry_spec § II.2 ; gauge {name})")]
     Inf {
         /// Metric-name that received the infinity.
         name: &'static str,
@@ -212,7 +208,9 @@ mod tests {
 
     #[test]
     fn nan_carries_metric_name() {
-        let e = MetricError::Nan { name: "engine.frame_time_ns" };
+        let e = MetricError::Nan {
+            name: "engine.frame_time_ns",
+        };
         assert!(format!("{e}").contains("engine.frame_time_ns"));
         assert_eq!(e.code(), "MET0001");
         assert_eq!(e.audit_tag(), "metric-nan-refused");
@@ -220,7 +218,9 @@ mod tests {
 
     #[test]
     fn inf_carries_metric_name() {
-        let e = MetricError::Inf { name: "render.cull_rate" };
+        let e = MetricError::Inf {
+            name: "render.cull_rate",
+        };
         assert_eq!(e.code(), "MET0002");
         assert_eq!(e.audit_tag(), "metric-inf-refused");
     }
@@ -240,13 +240,18 @@ mod tests {
 
     #[test]
     fn overflow_audit_tag_stable() {
-        let e = MetricError::Overflow { name: "physics.morton_collisions" };
+        let e = MetricError::Overflow {
+            name: "physics.morton_collisions",
+        };
         assert_eq!(e.audit_tag(), "counter-overflow");
     }
 
     #[test]
     fn schema_collision_lists_both_names() {
-        let e = MetricError::SchemaCollision { existing: "a", new: "b" };
+        let e = MetricError::SchemaCollision {
+            existing: "a",
+            new: "b",
+        };
         let s = format!("{e}");
         assert!(s.contains("a"));
         assert!(s.contains("b"));
@@ -275,7 +280,10 @@ mod tests {
 
     #[test]
     fn biometric_tag_key_cites_prime_directive() {
-        let e = MetricError::BiometricTagKey { name: "m", key: "face_id" };
+        let e = MetricError::BiometricTagKey {
+            name: "m",
+            key: "face_id",
+        };
         let s = format!("{e}");
         assert!(s.contains("PRIME_DIRECTIVE"));
         assert!(s.contains("face_id"));
@@ -298,11 +306,24 @@ mod tests {
         let codes = [
             MetricError::Nan { name: "" }.code(),
             MetricError::Inf { name: "" }.code(),
-            MetricError::CounterDecrement { name: "", current: 0, proposed: 0 }.code(),
+            MetricError::CounterDecrement {
+                name: "",
+                current: 0,
+                proposed: 0,
+            }
+            .code(),
             MetricError::Overflow { name: "" }.code(),
-            MetricError::SchemaCollision { existing: "", new: "" }.code(),
+            MetricError::SchemaCollision {
+                existing: "",
+                new: "",
+            }
+            .code(),
             MetricError::AdaptiveUnderStrict { name: "" }.code(),
-            MetricError::Bucket { name: "", detail: "" }.code(),
+            MetricError::Bucket {
+                name: "",
+                detail: "",
+            }
+            .code(),
             MetricError::TagOverflow { name: "", len: 0 }.code(),
             MetricError::BiometricTagKey { name: "", key: "" }.code(),
             MetricError::RawPathTagValue { name: "" }.code(),
@@ -317,11 +338,24 @@ mod tests {
         let tags = [
             MetricError::Nan { name: "" }.audit_tag(),
             MetricError::Inf { name: "" }.audit_tag(),
-            MetricError::CounterDecrement { name: "", current: 0, proposed: 0 }.audit_tag(),
+            MetricError::CounterDecrement {
+                name: "",
+                current: 0,
+                proposed: 0,
+            }
+            .audit_tag(),
             MetricError::Overflow { name: "" }.audit_tag(),
-            MetricError::SchemaCollision { existing: "", new: "" }.audit_tag(),
+            MetricError::SchemaCollision {
+                existing: "",
+                new: "",
+            }
+            .audit_tag(),
             MetricError::AdaptiveUnderStrict { name: "" }.audit_tag(),
-            MetricError::Bucket { name: "", detail: "" }.audit_tag(),
+            MetricError::Bucket {
+                name: "",
+                detail: "",
+            }
+            .audit_tag(),
             MetricError::TagOverflow { name: "", len: 0 }.audit_tag(),
             MetricError::BiometricTagKey { name: "", key: "" }.audit_tag(),
             MetricError::RawPathTagValue { name: "" }.audit_tag(),

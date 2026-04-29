@@ -87,7 +87,11 @@ impl SpecCoverageReport {
             if a.is_stale() {
                 stale.push(entry.clone());
             }
-            if a.criterion.as_deref().map(|s| s.contains("deferred")).unwrap_or(false) {
+            if a.criterion
+                .as_deref()
+                .map(|s| s.contains("deferred"))
+                .unwrap_or(false)
+            {
                 deferred.push(entry.clone());
             }
         }
@@ -128,22 +132,10 @@ impl SpecCoverageReport {
         s.push_str(&format!("\"partial\":{},", self.partial_count));
         s.push_str(&format!("\"missing\":{},", self.missing_count));
         s.push_str(&format!("\"coverage\":{:.4},", self.coverage_percent));
-        s.push_str(&format!(
-            "\"gap_count\":{},",
-            self.gaps.len()
-        ));
-        s.push_str(&format!(
-            "\"pending_count\":{},",
-            self.pending_todos.len()
-        ));
-        s.push_str(&format!(
-            "\"stale_count\":{},",
-            self.stale.len()
-        ));
-        s.push_str(&format!(
-            "\"deferred_count\":{}",
-            self.deferred_items.len()
-        ));
+        s.push_str(&format!("\"gap_count\":{},", self.gaps.len()));
+        s.push_str(&format!("\"pending_count\":{},", self.pending_todos.len()));
+        s.push_str(&format!("\"stale_count\":{},", self.stale.len()));
+        s.push_str(&format!("\"deferred_count\":{}", self.deferred_items.len()));
         s.push('}');
         s
     }
@@ -159,10 +151,7 @@ impl SpecCoverageReport {
             "- Full     : {}\n- Partial  : {}\n- Missing  : {}\n\n",
             self.full_count, self.partial_count, self.missing_count
         ));
-        s.push_str(&format!(
-            "## GAP-LIST ({} anchors)\n\n",
-            self.gaps.len()
-        ));
+        s.push_str(&format!("## GAP-LIST ({} anchors)\n\n", self.gaps.len()));
         for entry in &self.gaps {
             s.push_str(&format!(
                 "- `{}` :: `{}` :: `{}`\n",
@@ -196,10 +185,7 @@ impl SpecCoverageReport {
             self.stale.len()
         ));
         for entry in &self.stale {
-            s.push_str(&format!(
-                "- `{}` :: `{}`\n",
-                entry.spec_file, entry.section
-            ));
+            s.push_str(&format!("- `{}` :: `{}`\n", entry.spec_file, entry.section));
         }
         s
     }
@@ -238,9 +224,7 @@ pub enum ExportFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::anchor::{
-        ImplConfidence, ImplStatus, SpecAnchorBuilder, SpecRoot, TestStatus,
-    };
+    use crate::anchor::{ImplConfidence, ImplStatus, SpecAnchorBuilder, SpecRoot, TestStatus};
 
     fn full_anchor(file: &str, sec: &str) -> SpecAnchor {
         SpecAnchorBuilder::new()

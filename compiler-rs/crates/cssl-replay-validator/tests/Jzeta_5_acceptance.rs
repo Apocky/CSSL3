@@ -3,9 +3,9 @@
 //! § SPEC : `_drafts/phase_j/06_l2_telemetry_spec.md` § VI.
 
 use cssl_replay_validator::{
-    sampling_decision_strict, strict_ns, sub_phase_offset_ns, DeterminismMode,
-    DeterminismModeKind, MetricEvent, MetricEventKind, MetricValue, ReplayLog, ReplayRun,
-    ReplayValidator, SamplingDiscipline, ScenarioId, StrictClock, SubPhase, FRAME_NS,
+    sampling_decision_strict, strict_ns, sub_phase_offset_ns, DeterminismMode, DeterminismModeKind,
+    MetricEvent, MetricEventKind, MetricValue, ReplayLog, ReplayRun, ReplayValidator,
+    SamplingDiscipline, ScenarioId, StrictClock, SubPhase, FRAME_NS,
 };
 
 // ───────────────────────────────────────────────────────────────────────
@@ -32,7 +32,10 @@ fn ac1_strict_kind_disc() {
 
 #[test]
 fn ac1_lenient_kind_disc() {
-    assert_eq!(DeterminismMode::Lenient.kind(), DeterminismModeKind::Lenient);
+    assert_eq!(
+        DeterminismMode::Lenient.kind(),
+        DeterminismModeKind::Lenient
+    );
 }
 
 #[test]
@@ -347,9 +350,7 @@ fn ac10_validator_deterministic_across_invocations() {
     let s_b = v_b.run_scenario(ScenarioId::OmegaStepPhases).unwrap();
     assert!(s_a.passed());
     assert!(s_b.passed());
-    assert!(s_a
-        .run_a_snapshot
-        .is_bit_equal_to(&s_b.run_a_snapshot));
+    assert!(s_a.run_a_snapshot.is_bit_equal_to(&s_b.run_a_snapshot));
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -420,9 +421,12 @@ fn strict_clock_jump_to_resets_cursor() {
 
 #[test]
 fn run_engine_frame_tick_yields_frame_count_events() {
-    let r = ReplayRun::new(ScenarioId::EngineFrameTick, DeterminismMode::strict_with_seed(0))
-        .unwrap()
-        .with_frames(13);
+    let r = ReplayRun::new(
+        ScenarioId::EngineFrameTick,
+        DeterminismMode::strict_with_seed(0),
+    )
+    .unwrap()
+    .with_frames(13);
     let snap = r.execute().unwrap();
     assert_eq!(snap.event_count(), 13);
 }

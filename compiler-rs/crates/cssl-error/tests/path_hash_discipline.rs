@@ -5,7 +5,7 @@
 
 use cssl_error::{
     catch_frame_panic, install_thread_path_hasher, ErrorContext, ErrorFingerprint, KindId,
-    SourceLocation, StackTrace, Severity, SubsystemTag,
+    Severity, SourceLocation, StackTrace, SubsystemTag,
 };
 use cssl_telemetry::{PathHash, PathHasher};
 

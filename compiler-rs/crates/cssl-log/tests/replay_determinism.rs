@@ -114,7 +114,11 @@ fn replay_capture_buffer_byte_equal_across_runs() {
         set_replay_strict(true);
         for i in 0..20 {
             let ctx = fresh_ctx(Severity::Info, i + 1, 7_000_000 + u64::from(i));
-            emit_structured(&ctx, format!("msg {i}"), vec![("k", FieldValue::I64(i as i64))]);
+            emit_structured(
+                &ctx,
+                format!("msg {i}"),
+                vec![("k", FieldValue::I64(i as i64))],
+            );
         }
         let snapshot = buf.snapshot();
         snapshot.iter().map(|r| r.encode_binary()).collect()

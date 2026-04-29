@@ -231,7 +231,8 @@ mod tests {
     #[test]
     fn t_append_then_len() {
         let mut log = ReplayLog::new();
-        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
+        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
         assert_eq!(log.len(), 1);
         assert!(!log.is_empty());
     }
@@ -249,8 +250,10 @@ mod tests {
     #[test]
     fn t_capacity_refusal() {
         let mut log = ReplayLog::with_capacity(2);
-        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
-        log.append(ev(1, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
+        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
+        log.append(ev(1, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
         let r = log.append(ev(2, MetricEventKind::CounterIncBy, 1, 0));
         assert_eq!(r, Err(ReplayLogError::CapacityExceeded { cap: 2 }));
     }
@@ -258,7 +261,8 @@ mod tests {
     #[test]
     fn t_clear_zeroes_len() {
         let mut log = ReplayLog::new();
-        log.append(ev(0, MetricEventKind::CounterSet, 7, 0)).unwrap();
+        log.append(ev(0, MetricEventKind::CounterSet, 7, 0))
+            .unwrap();
         log.clear();
         assert!(log.is_empty());
     }
@@ -266,9 +270,11 @@ mod tests {
     #[test]
     fn t_events_of_kind_filter() {
         let mut log = ReplayLog::new();
-        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
+        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
         log.append(ev(1, MetricEventKind::GaugeSet, 2, 0)).unwrap();
-        log.append(ev(2, MetricEventKind::CounterIncBy, 3, 0)).unwrap();
+        log.append(ev(2, MetricEventKind::CounterIncBy, 3, 0))
+            .unwrap();
         let counters = log.events_of_kind(MetricEventKind::CounterIncBy);
         assert_eq!(counters.len(), 2);
     }
@@ -276,7 +282,8 @@ mod tests {
     #[test]
     fn t_snapshot_byte_len() {
         let mut log = ReplayLog::new();
-        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
+        log.append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
         let snap = log.snapshot();
         // 8 magic + 8 count + 32 event + 32 hash = 80 bytes
         assert_eq!(snap.as_bytes().len(), 80);
@@ -295,8 +302,12 @@ mod tests {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
         for i in 0..10 {
-            log_a.append(ev(i, MetricEventKind::CounterIncBy, i, 0xAA)).unwrap();
-            log_b.append(ev(i, MetricEventKind::CounterIncBy, i, 0xAA)).unwrap();
+            log_a
+                .append(ev(i, MetricEventKind::CounterIncBy, i, 0xAA))
+                .unwrap();
+            log_b
+                .append(ev(i, MetricEventKind::CounterIncBy, i, 0xAA))
+                .unwrap();
         }
         let a = log_a.snapshot();
         let b = log_b.snapshot();
@@ -308,8 +319,12 @@ mod tests {
     fn t_snapshot_different_input_not_bit_equal() {
         let mut log_a = ReplayLog::new();
         let mut log_b = ReplayLog::new();
-        log_a.append(ev(0, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
-        log_b.append(ev(0, MetricEventKind::CounterIncBy, 2, 0)).unwrap();
+        log_a
+            .append(ev(0, MetricEventKind::CounterIncBy, 1, 0))
+            .unwrap();
+        log_b
+            .append(ev(0, MetricEventKind::CounterIncBy, 2, 0))
+            .unwrap();
         let a = log_a.snapshot();
         let b = log_b.snapshot();
         assert!(!a.is_bit_equal_to(&b));
@@ -338,7 +353,8 @@ mod tests {
     fn t_snapshot_count_le_encoding() {
         let mut log = ReplayLog::new();
         for i in 0..3 {
-            log.append(ev(i, MetricEventKind::CounterIncBy, 1, 0)).unwrap();
+            log.append(ev(i, MetricEventKind::CounterIncBy, 1, 0))
+                .unwrap();
         }
         let snap = log.snapshot();
         let bytes = snap.as_bytes();
@@ -350,8 +366,10 @@ mod tests {
     #[test]
     fn t_event_order_preserved_in_snapshot() {
         let mut log = ReplayLog::new();
-        log.append(ev(0, MetricEventKind::CounterIncBy, 0xA1, 0)).unwrap();
-        log.append(ev(1, MetricEventKind::CounterIncBy, 0xB2, 0)).unwrap();
+        log.append(ev(0, MetricEventKind::CounterIncBy, 0xA1, 0))
+            .unwrap();
+        log.append(ev(1, MetricEventKind::CounterIncBy, 0xB2, 0))
+            .unwrap();
         let snap = log.snapshot();
         let bytes = snap.as_bytes();
         // First event-value at offset 16 (8 magic + 8 count + 16 inside-event).

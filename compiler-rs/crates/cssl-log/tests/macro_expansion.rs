@@ -7,10 +7,10 @@
 //! crate-internal access.
 
 use cssl_log::{
-    debug, emit_structured, enable, enabled, error, fatal, info,
-    install_sink_chain, install_source_hasher, log, set_current_frame, set_replay_strict,
-    trace, warn, Context, EmitOutcome, FieldValue, LogRecord, LogSink, PathHashField, Severity,
-    SinkChain, SinkError, SourceLocation, SubsystemTag,
+    debug, emit_structured, enable, enabled, error, fatal, info, install_sink_chain,
+    install_source_hasher, log, set_current_frame, set_replay_strict, trace, warn, Context,
+    EmitOutcome, FieldValue, LogRecord, LogSink, PathHashField, Severity, SinkChain, SinkError,
+    SourceLocation, SubsystemTag,
 };
 use cssl_telemetry::PathHasher;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -236,11 +236,7 @@ fn macro_fans_out_to_multiple_sinks() {
     install_source_hasher(PathHasher::from_seed([15u8; 32]));
     let s1 = Arc::new(CapturingSink::new());
     let s2 = Arc::new(CapturingSink::new());
-    let chain = Arc::new(
-        SinkChain::new()
-            .with_sink(s1.clone())
-            .with_sink(s2.clone()),
-    );
+    let chain = Arc::new(SinkChain::new().with_sink(s1.clone()).with_sink(s2.clone()));
     install_sink_chain(chain);
     info!(SubsystemTag::Render, "fan-out");
     assert_eq!(s1.count(), 1);

@@ -216,10 +216,7 @@ impl SpecCoverageRegistry {
 
     /// Anchors whose tests are Untested.
     pub fn untested_anchors(&self) -> Vec<&SpecAnchor> {
-        self.anchors
-            .values()
-            .filter(|a| a.lacks_tests())
-            .collect()
+        self.anchors.values().filter(|a| a.lacks_tests()).collect()
     }
 
     /// Coverage percent (full / total).
@@ -230,9 +227,7 @@ impl SpecCoverageRegistry {
     /// Quick "register-completeness" check : true if every anchor has
     /// at least one source-of-truth attribution.
     pub fn anchors_have_provenance(&self) -> bool {
-        self.anchors
-            .keys()
-            .all(|k| self.provenance.contains_key(k))
+        self.anchors.keys().all(|k| self.provenance.contains_key(k))
     }
 
     /// All anchors lacking provenance (caller can build-warn on these).
@@ -696,22 +691,29 @@ mod tests {
 
     #[test]
     fn registry_test_quality_ordering() {
-        assert!(test_quality(&TestStatus::Untested) < test_quality(&TestStatus::NoTests {
-            rationale: String::new()
-        }));
-        assert!(test_quality(&TestStatus::NoTests {
-            rationale: String::new()
-        }) < test_quality(&TestStatus::Partial {
-            test_paths: vec![],
-            uncovered_criteria: vec![]
-        }));
-        assert!(test_quality(&TestStatus::Partial {
-            test_paths: vec![],
-            uncovered_criteria: vec![]
-        }) < test_quality(&TestStatus::Tested {
-            test_paths: vec![],
-            last_pass_date: String::new()
-        }));
+        assert!(
+            test_quality(&TestStatus::Untested)
+                < test_quality(&TestStatus::NoTests {
+                    rationale: String::new()
+                })
+        );
+        assert!(
+            test_quality(&TestStatus::NoTests {
+                rationale: String::new()
+            }) < test_quality(&TestStatus::Partial {
+                test_paths: vec![],
+                uncovered_criteria: vec![]
+            })
+        );
+        assert!(
+            test_quality(&TestStatus::Partial {
+                test_paths: vec![],
+                uncovered_criteria: vec![]
+            }) < test_quality(&TestStatus::Tested {
+                test_paths: vec![],
+                last_pass_date: String::new()
+            })
+        );
     }
 
     #[test]
