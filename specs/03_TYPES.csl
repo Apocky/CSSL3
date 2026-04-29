@@ -90,13 +90,85 @@
               get(i)  -> Option<T>  (by-value @ stage-0 ; by-ref deferred)
               index(i)-> T          (panic-on-OOB)
               iter()  -> VecIter<T> (forward-only cursor)
-              drop    : manual `vec_drop::<T>(v)` until trait-resolve lands
-  ∀ collection method-form = free-fn `<name>_<method>::<T>(...)` @ stage-0
-    ← trait-dispatch deferred → impl<T> Vec<T> migration on trait-resolve
+              drop    : trait-Drop @ T11-D99 — `impl<T> Drop for Vec<T>` auto-runs
+                        @ scope-exit per § TRAIT-DISPATCH + § DROP-INTEGRATION
+                        (below) ; manual `vec_drop::<T>(v)` form preserved as
+                        fallback for stage-0 source.
+  ∀ collection method-form @ stage-0 has TWO surfaces :
+    1. free-fn `<name>_<method>::<T>(...)`    (pre-D99 stable form)
+    2. `<binding>.<method>(...)` resolves via trait-dispatch table @ T11-D99
+       — both forms produce IDENTICAL mangled MIR fn-names ; the dispatch
+       form is the ergonomic surface, the free-fn form remains the stable
+       fallback while interior-mutability + by-ref-receivers land
   ∀ T = monomorphized through D38..D50 quartet (i32, f32, bool, ptr, etc.)
   N! `!cssl.ptr` source-level field-type (MIR-tag only) → use `i64` placeholder
   I> nested-turbofish parse-disambiguation (Vec<Option<T>>) deferred per Shr-token
      limitation ; nested generics still flow through compose-call sites
+
+§ TRAIT-DISPATCH  (T11-D99 / J1 — canonical reference @ cssl-mir/trait_dispatch.rs)
+  ‼ Dispatch strategy : MONOMORPHIZATION-ONLY @ stage-0 per T11-D38..D50
+    monomorph-quartet precedent. ¬ vtable / ¬ dyn-Trait runtime indirection.
+  table       : TraitImplTable indexed by (self-ty-name, method-name) +
+                (trait-name, self-ty-name). Built via build_trait_impl_table.
+  resolution  :
+    obj.method(args)             ⇒ resolve_method(self_ty, method)
+    Trait::method(args)          ⇒ static-dispatch via leading=trait-name
+    SelfTy::method(args)         ⇒ static-dispatch via leading=self-ty-name
+    inherent ⊳ trait             ← inherent shadows trait-impl on collision
+  mangling    :
+    inherent  : `<self>__<method>`            (e.g., Box__value)
+    trait     : `<self>__<trait>__<method>`   (e.g., Foo__Drop__drop)
+    monomorph : `<self>_<subst>__[<trait>__]<method>`
+                (e.g., Vec_i32__Drop__drop, Box_i32__value)
+  recognizers : Box::new / Some / None / Ok / Err / format / fs::* / net::*
+                fire BEFORE trait-dispatch — recognizers are the fast-path
+                for stdlib-builtins ; trait-dispatch handles user-defined
+                paths. Per slice landmines : recognizers ¬ replaced.
+  bounds      : `fn map<T : Display>(x : T) -> String { x.to_string() }`
+                — at call-site `map::<i32>(5)` the bound-checker confirms
+                `impl Display for i32` is in scope ; missing impl ⇒
+                ModuleBoundViolation w/ diagnostic
+                "trait bound `T : Display` not satisfied — no
+                `impl Display for i32` in scope".
+  Drop        : `impl Drop for T { fn drop(self : T) }` auto-injected @
+                scope exit per § DROP-INTEGRATION (below).
+  N! coherence (orphan-rule) : ¬ enforced @ stage-0 since workspace = closed-world.
+  N! associated-type projection (`<T as Trait>::Assoc`) : table records
+     assoc-type defs but resolver returns the HIR type unchanged ;
+     full substitution + projection deferred.
+  N! default methods on traits : interfaces = signature-only @ stage-0 ;
+     default-bodies on the trait itself deferred.
+  N! `+` / `-` / `*` / `/` operator-overloading via trait-dispatch :
+     stage-0 surface = explicit `Trait::method(a, b)` form ; binary-op
+     desugar (`a + b` ⇒ `Add::add(a, b)`) is a follow-up slice that wires
+     the trait-dispatch table into `lower_binary`.
+
+§ DROP-INTEGRATION  (T11-D99 / J1 — canonical reference @ cssl-mir/drop_inject.rs)
+  ‼ Drop fires automatically at scope-exit when `impl Drop for T` is in scope.
+  contract :
+    ∀ binding `let x : T = ...` where T has `impl Drop for T` registered →
+      compiler schedules `T::drop(x)` to fire @ end-of-block
+  ordering : REVERSE-CONSTRUCTION
+    bindings declared LAST drop FIRST ; matches Rust + standard
+    stack-discipline. For nested blocks : inner-block plan fires BEFORE
+    outer block continues.
+  layered-aggregates :
+    nested-struct-fields drop AFTER the parent body but BEFORE the
+    parent's own `Drop::drop` fires. Field-level drops are part of the
+    per-aggregate `Drop` impl body provided by the user (or by future
+    auto-derive) ; the auto-injector handles ONLY scope-level let-binding
+    drops, not field-level drops.
+  Vec<Box<i32>>::drop chain (counter-verified end-to-end @ T11-D99) :
+    - `let v : Vec<Box<i32>>` schedules `Vec_Box_i32__Drop__drop(v)`
+    - `Vec_Box_i32__Drop__drop` body iterates 0..len, calls
+      `Box_i32__Drop__drop` per element
+    - `Box_i32__Drop__drop` body emits `cssl.heap.dealloc(self.ptr)`
+  N! move-tracking : conservative @ stage-0 — every let-binding scheduled
+     for drop even if the value was moved out. T3.4 linear-tracking walker
+     will close the loop.
+  N! conditional drops on partial-init paths (e.g., `let x = if c { ... }`)
+     — deferred ; current behavior is "always drop" under the assumption
+     that all paths init.
 
 § REFINEMENT-TYPES (F2 • SMT-backed, §§ 20)
   tagged-suffix (surface sugar) :

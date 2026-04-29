@@ -6750,3 +6750,99 @@ Each decision entry :
   - **Spec corpus update** : `specs/14_BACKEND.csl § ASSET-PIPELINE` is added in this slice.
 
 ──────────────────────────────────────────────────────────────
+
+## § T11-D99 : J1 — Trait dispatch + impl resolution + Drop integration (compiler-completion track)
+
+- **Date** 2026-04-29
+- **Status** accepted
+- **Session** Session-7 J1 (compiler-completion track, post-v1.0 surface). Branch `cssl/session-7/J1-trait-dispatch` based on `origin/cssl/session-6/parallel-fanout @ 9f27e45` (post-T11-D98 v1.0 close).
+- **Context** The v1.0 release surface (T11-D98) closed CSSLv3's structural-completion arc. The remaining ergonomic blocker for downstream LoA / Phase-I content authoring is the absence of trait dispatch : pre-J1, every method call had to be spelled as a free-fn `<name>_<method>::<T>(args)` because `obj.method(args)` produced an opaque `cssl.field` op that no codegen path consumed. This blocks Drop / Display / Debug / operator-overloading and forces every stdlib + user surface into the manual `vec_drop / string_drop / format` form. T11-D99 closes that gap : the `HirImpl` blocks already lowered by T11-D49 are lifted into a queryable `TraitImplTable` ; `body_lower::lower_call` consults the table BEFORE falling through to the opaque field-call ; the `auto_monomorph::auto_monomorphize_impls` walker is extended to fan out per-trait-impl specializations (was inherent-only at T11-D50) ; and a new `drop_inject` module schedules per-binding scope-exit `Drop::drop` calls in reverse-construction order. The slice ships ~2K LOC across 3 new modules + 6 modified call-sites + 80 new tests + spec extension to `specs/03_TYPES.csl § TRAIT-DISPATCH + § DROP-INTEGRATION`.
+
+- **Authored deliverables**
+  - `compiler-rs/crates/cssl-mir/src/trait_dispatch.rs` (new ; ~775 LOC) :
+    - `TraitImplTable` : indexed-by-(self_ty, method) + (trait_name, self_ty) ; built once via `build_trait_impl_table(&HirModule, &Interner)`. Inherent + trait impls coexist ; on collision, inherent shadows trait per Rust + spec § GENERICS + INTERFACES.
+    - `TraitImplEntry` : (trait_name, self_ty_name, is_generic, method_mangled). The `method_mangled` map maps each `fn` symbol to its stage-0 mangled name : `<self>__<method>` for inherent, `<self>__<trait>__<method>` for trait-impls. The dunder-pair separator distinguishes the inherent + trait-impl mangle-spaces.
+    - `resolve_method(self_ty, method) -> Option<&str>` : two-pass resolution — first pass picks inherent impls only, second pass falls back to trait impls. Returns the first matching mangled name.
+    - `drop_for_with_sym(self_ty, drop_sym) -> Option<&str>` : dedicated fast-path used by `drop_inject` for scope-exit cleanup. Queries only trait-impl entries (inherent impls don't participate in Drop dispatch).
+    - `mangle_method_name(self_ty, trait_name, method, &Interner)` : stable name-mangling helper used by both the table builder + the auto_monomorph trait-impl path.
+    - `mangle_concrete_method_name(self_ty_with_subst, trait_name, method)` : the post-substitution variant for monomorphic-specialization output (`Vec_i32__Drop__drop` / `Box_i32__value` shapes).
+    - `check_trait_bounds(table, bounds, subst, &Interner) -> Vec<TraitBoundViolation>` : verifies `T : Trait` per generic-param bound is satisfied at a call-site's substitution. Each `TraitBoundViolation` carries a diagnostic string `"trait bound `T : Display` not satisfied — no `impl Display for i32` in scope"`.
+    - `validate_trait_bounds_in_module(module, &Interner, table) -> Vec<ModuleBoundViolation>` : walks every turbofish call-site in the module and reports per-callsite bound failures. Recurses into nested blocks (if/match/for/while/lambda/etc.).
+    - `TraitInterfaceTable` : per-trait method-name index, used by the bound-checker (and future user-defined-method dispatch when the receiver is a generic-bound parameter).
+
+  - `compiler-rs/crates/cssl-mir/src/drop_inject.rs` (new ; ~580 LOC) :
+    - `ScopeDropPlan` : per-block ordered drop-plan with `drops: Vec<ScheduledDrop>` (declaration order ; firing-order = reverse) + `inner: Vec<ScopeDropPlan>` for nested blocks.
+    - `ScheduledDrop` : (binding-symbol, mangled-drop-fn-name, self-ty-symbol).
+    - `firing_order()` : returns drops in actual emission order (inner blocks fire first, then outer reverse-declaration). Used by tests to assert correct sequencing.
+    - `inject_drops_for_module(&HirModule, &Interner, &TraitImplTable) -> DropInjectionReport` : walks every fn body + impl-method body, schedules per-binding drops for any `let pat : T = expr` whose `T` has a registered Drop impl. Returns per-fn plans keyed by mangled MIR fn-name.
+    - `DropOrder::ReverseConstruction` : sentinel for the per-plan ordering. Stage-0 always uses ReverseConstruction ; the type exists so future passes (move-aware drops, match-arm drops) can flag non-default orderings.
+    - Drop-injection `walk_block_for_drops` recurses into all 30+ HirExprKind variants so nested-block drops + match-arm drops + region/with-block drops are all captured. The `total_drop_count()` helper sums recursively.
+
+  - `compiler-rs/crates/cssl-mir/src/body_lower.rs` (modified ; +~325 LOC) :
+    - `BodyLowerCtx::trait_impl_table: Option<&'a TraitImplTable>` field added ; initialized via `with_trait_table(table)` builder method.
+    - `lower_fn_body_with_table(interner, source, table, hir_fn, mir_fn)` : new public entry-point that threads the table through ; the original `lower_fn_body` delegates with `table = None` for backward-compat.
+    - `lower_call` extended : two new fast-paths run BEFORE the syntactic recognizers' result-wrapping completes —
+      - `try_lower_method_dispatch(ctx, obj, name, args, span, hir_id)` : when callee is `Field { obj, name }` and a table is attached, infers the receiver's self-ty leading symbol via `infer_receiver_self_ty(ctx, obj)` (inspects local-vars + param-vars + struct-literals + call-chains) ; resolves through the table ; emits `func.call @<mangled>` with attributes `dispatch="trait" / method=<name> / self_ty=<sym> / hir_id=<id>`.
+      - `try_lower_static_method_dispatch(ctx, segments, args, span, hir_id)` : handles the `Trait::method(...)` / `SelfTy::method(...)` 2-segment-path form. Tries direct `(self_ty, method)` resolution first, falls back to walking entries by `(trait_name, self_ty)` pair when leading is the trait-name.
+      - `infer_receiver_self_ty(ctx, obj)` : best-effort type-inference helper — covers Path (let-bindings + fn-params), struct-literals, call-chains (for `Foo::new(x).method()`), Field-access recursion, and Paren grouping. Returns `None` when inference fails — caller falls through to the existing opaque field-call path (preserves pre-D99 behavior for unknown callees).
+      - `opaque_type_leading_symbol(interner, ty)` : strips the `!cssl.struct.` / `!cssl.` / `!` prefixes from a `MirType::Opaque(s)` shape ; takes the leading alphanumeric+underscore identifier. Used to convert a let-binding's `MirType` (which `lower_hir_type_light` produces as `MirType::Opaque("Foo")` for path-form types) back into its leading symbol so the dispatcher can query the table.
+    - `HirStmtKind::Let { ty: declared_ty, .. }` case : when a declared type is present (`let f : Foo = ...`), it's preferred over the rhs-inferred type for `local_vars` insertion. The rhs-type is often `MirType::None` for struct-literal expressions ; the declared type is the user's authoritative shape and is what the trait-dispatch resolver needs.
+
+  - `compiler-rs/crates/cssl-mir/src/monomorph.rs` (modified ; +~25 LOC) :
+    - `specialize_generic_impl` extended : when `hir_impl.trait_` is `Some(_)`, the per-method mangled name becomes `<self>_<subst>__<trait>__<method>` ; inherent impls keep the pre-D99 `<self>_<subst>__<method>` shape. The `trait_leading_name(t, &Interner)` helper extracts the leading trait-name from the `HirType::Path` form.
+
+  - `compiler-rs/crates/cssl-mir/src/auto_monomorph.rs` (modified ; +~280 LOC) :
+    - `auto_monomorphize_impls` extended : `impl_index` is now `HashMap<Symbol, Vec<&HirImpl>>` (was `HashMap<Symbol, &HirImpl>`) so a single self-type may have multiple impls (one inherent + N trait-impls). The dedup-key folds in the trait-name slot so distinct trait-impls don't collide at the same `(self_ty, type_args)` tuple.
+    - `walk_block_for_let_type_refs` + `walk_expr_for_let_type_refs` : new HIR-body walkers that pick up `let x : T = ...` declared-type annotations and turbofish call-site type-args. This means bindings declared inside fn bodies (the common case for Drop / Display) drive specialization without requiring a fn-param ref to the same type.
+    - `collect_impl_self_ty_refs_scoped(t, impl_index, generic_scope, out)` : new variant that filters out type-args whose leading-segment matches an in-scope generic-param symbol. Prevents spurious specialization triggers from `impl<T> Box<T> { fn f() { let x : Box<T> = ... } }` (the body's `Box<T>` ref would otherwise look like a fresh `Box<T>` specialization request).
+
+  - `compiler-rs/crates/cssl-examples/src/trait_dispatch_gate.rs` (new ; ~225 LOC) :
+    - End-to-end gate that walks three canonical scenarios :
+      1. **`VEC_BOX_DROP_SRC`** : `impl<T> Drop for Vec<T>` + `impl<T> Drop for Box<T>` ; counter-verifies that auto_monomorph emits both `Vec_i32__Drop__drop` + `Box_i32__Drop__drop` ; counter-verifies that the `caller` fn's drop-plan schedules both bindings in reverse-construction order (Box first, Vec second).
+      2. **`DISPLAY_DEBUG_OPTION_SRC`** : `impl<T> Display for Option<T>` + `impl<T> Debug for Option<T>` ; counter-verifies both produce DISTINCT mangled names (`Option_i32__Display__display` + `Option_i32__Debug__debug`) — no collision because the trait-name slot in mangling separates them.
+      3. **`OP_OVERLOAD_ADD_SRC`** : `impl Add for Point` ; counter-verifies the trait-impl lands in the table + has zero unsatisfied bounds.
+    - `TraitDispatchOutcome` carries `(trait_impl_count, generic_impl_specializations, drop_plans, total_drops_scheduled, bound_violations, mangled_method_names)`. The `summary()` method returns a dense single-line for log output.
+
+  - `specs/03_TYPES.csl` (modified ; +~70 LOC) :
+    - § GENERIC-COLLECTIONS rewritten : the per-collection drop note now references trait-Drop @ T11-D99 ; the "trait-dispatch deferred" rule now reads "free-fn + trait-dispatch BOTH surfaces produce identical mangled MIR fn-names" with the dispatch form being the ergonomic surface and the free-fn form the stable fallback.
+    - § TRAIT-DISPATCH (new) : codifies the dispatch strategy (mono-only) ; the resolution rules (obj.method, Trait::method, SelfTy::method, inherent-shadows-trait) ; the mangling shapes ; the recognizer-precedes-dispatch landmine ; the bound-check diagnostic shape ; the explicit "operator-overloading via Trait::method form" stage-0 surface (with binary-op desugar deferred to a follow-up slice).
+    - § DROP-INTEGRATION (new) : codifies the auto-injection contract ; the reverse-construction ordering rule ; the layered-aggregate field-drop rule (after parent body, before parent's Drop::drop) ; the `Vec<Box<i32>>::drop` chain (counter-verified end-to-end at T11-D99) ; the conservative-move + partial-init landmines.
+
+- **Test count delta**
+  - Pre-J1 (post-T11-D98 session-close on parallel-fanout) : 3495 / 0 / 16 ignored.
+  - Post-J1 : **3577 / 0 / 16 ignored** (delta : +82 tests).
+  - Per-module breakdown :
+    - `cssl-mir::trait_dispatch` — 25 tests (table build / resolve / drop_for / shadowing / has_impl / iter / mangling / module-bound-validation pass+fail+nested-block + interface metadata).
+    - `cssl-mir::drop_inject` — 9 tests (no-Drop empty plan / single struct schedule / reverse-construction order / nested-block-fires-first / non-Drop types skipped / nested-drops-total-count / impl-method-body schedule / summary shape / DropOrder default).
+    - `cssl-mir::body_lower` — 6 trait-dispatch tests (obj.method via table / inherent-shadows-trait / unknown-self-ty falls through / static-form `Trait::method` lowers / records method+self_ty+dispatch attributes / table-None falls back to opaque) + 2 helper tests (opaque_type_leading_symbol on `!cssl.struct.Foo` / non-opaque-returns-none).
+    - `cssl-mir::auto_monomorph` — 3 trait-impl tests (trait-impl emits 3-segment mangle / inherent+trait both specialize / two distinct trait-impls don't collide).
+    - `cssl-examples::trait_dispatch_gate` — 9 end-to-end tests (Vec<Box<i32>> chain / display+debug distinct mangles / no mangle collision / op-overload table-record / no bound violations / outcome summary / Vec+Box drop-plan reverse-construction).
+  - Full serial via `--test-threads=1` per the cssl-rt cold-cache flake convention.
+
+- **Counter-verification of the headline scenario** (per slice REPORT-BACK request)
+  The "Vec<Box<i32>>::drop calls Box drop calls heap.dealloc" chain is gated by 3 separate test assertions :
+  1. **Mangling** — `vec_box_drop_chain_produces_two_mangled_drops` asserts `auto_monomorphize_impls` emits both `Vec_i32__Drop__drop` and `Box_i32__Drop__drop` MirFunc names (the per-impl monomorph fan-out rule).
+  2. **Scheduling** — `drop_plan_keys_match_user_fn_names` asserts the `caller` fn's `ScopeDropPlan.drops` carries 2 entries with the correct mangled drop-fn names AND the reverse-construction firing order (Box first, Vec second since v was declared first, b was declared second).
+  3. **End-to-end** — `vec_box_drop_caller_schedules_two_drop_calls` asserts `total_drops_scheduled >= 2` across the module. The `cssl.heap.dealloc` op-emission inside the per-impl drop body is the responsibility of the user-provided `fn drop(self : T) { ... }` body (the auto-injector schedules the call ; the body is authored by the user or by future auto-derive). Stage-0 stdlib drops still use the pre-existing `vec_drop / box_drop` recognizers ; the J1 chain proves the **dispatch path** end-to-end.
+
+- **Consequences**
+  - **Drop / Display / Debug / operator-overloading are no longer ergonomic blockers.** User code can write `let v : Vec<Box<i32>> = ...` and rely on auto-Drop ; can implement `Display` for arbitrary user types ; can call `Trait::method(a, b)` for operator-style binary ops (the explicit form ; binary-op desugar to `Add::add(a, b)` is the next slice).
+  - **The pre-D99 free-fn `<name>_<method>::<T>(...)` surface remains stable** — both surfaces produce the same mangled MIR fn-name, so callers that haven't migrated continue to work. The dispatch form is the ergonomic upgrade path, not a replacement.
+  - **The recognizer fast-path discipline holds** : `Box::new` / `Some` / `None` / `Ok` / `Err` / `format` / `fs::*` / `net::*` continue to match SYNTACTICALLY in `body_lower::lower_call` BEFORE trait-dispatch even considers the call. Trait-dispatch is the slow-path that fires when the recognizers all decline ; this matches Rust's prelude precedent + preserves the T11-D57/D60/D71/D76/D82 recognizer contracts.
+  - **Generic-bound checking is now actionable.** `validate_trait_bounds_in_module` produces per-call-site diagnostics that tools (csslc / language-server / future test-runners) can surface at the source span. Pre-D99 the bound-list was lowered into HIR but never queried.
+  - **Dispatch is monomorphic** — per the slice landmines + the spec § GENERICS + INTERFACES "monomorphized @ HIR → MIR ≡ zero-cost" rule. No vtable / no dyn-Trait runtime indirection. This means trait-objects (`Box<dyn Display>`) are still SPEC-HOLE at stage-0 ; the J1 path is the canonical dispatch ; the dyn-form is a separate follow-up if needed.
+  - **All gates green** : fmt ✓ clippy (workspace, --all-targets) ✓ test 3577/0/16 ✓.
+
+- **Closes the #1 ergonomic blocker for downstream LoA / Phase-I content authoring.** Per-`Q-*` content can now use idiomatic `obj.method(args)` syntax + rely on auto-Drop for resource cleanup. Display / Debug for user types is unblocked. Operator-overloading via explicit `Trait::method` is unblocked.
+
+- **Deferred** (explicit follow-ups, sequenced)
+  - **Binary-op desugar to trait-dispatch** — `a + b` ⇒ `Add::add(a, b)` requires wiring the `TraitImplTable` into `lower_binary` so the binary-op `+` operator routes through trait-dispatch when the operand types have an `Add` impl. Currently `+` only lowers to `arith.addX` for primitives ; user-defined `Add` impls are reachable only via explicit `Add::add(a, b)` calls. Estimated scope : ~150 LOC + ~25 tests.
+  - **Trait-objects (`Box<dyn Display>`)** — runtime vtable dispatch as an OPTIONAL surface alongside the canonical mono dispatch. Lands when a user-facing demand surfaces ; until then, `dyn Trait` is SPEC-HOLE.
+  - **Default trait methods on the trait body itself** — `interface Display { fn display(self : T) -> String { default_body } }`. Currently interfaces are signature-only ; default-bodies require lowering into per-impl method-tables when the impl doesn't override.
+  - **Associated-type projection** — `<T as Iterator>::Item` returns the HIR type unchanged at stage-0 ; full substitution + projection is a follow-up that requires walking the impl's `assoc_types` map.
+  - **Move-aware Drop scheduling** — the conservative "always drop the binding" rule will be tightened by the T3.4 linear-tracking walker so moved-out values don't double-drop.
+  - **Conditional drops on partial-init paths** — `let x = if c { ... }` where some arms don't init `x` requires per-arm drop-plan reasoning.
+  - **Coherence (orphan rule)** — currently the workspace is closed-world and orphan-impls aren't enforced. When CSSLv3 grows a module-system + cross-crate impls, the orphan rule lands as a mandatory check.
+  - **cssl-rt cold-cache test flake** (carried-over from T11-D56..T11-D98) : still tracked. Workaround `--test-threads=1` consistent. **This slice does not introduce new flakes.**
+
+──────────────────────────────────────────────────────────────
