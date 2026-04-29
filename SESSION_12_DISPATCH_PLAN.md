@@ -41,7 +41,7 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J0  M8 acceptance gate (T11-D149)                           │
+│ WAVE-J0  M8 acceptance gate (T11-D150)                           │
 │   M8 = 12-stage pipeline wired end-to-end through loa-game ;     │
 │         on Apocky's Arc A770 host ; canonical SDF scene renders. │
 │   ◆ APOCKY VERIFIES M8 PERSONALLY BEFORE J1..JN DISPATCH ◆       │
@@ -49,7 +49,7 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J1  M9 VR-ship preparation (T11-D150..D154)                 │
+│ WAVE-J1  M9 VR-ship preparation (T11-D151..D155)                 │
 │   J1-OpenXR session-claim consent UI                             │
 │   J1-Stage1 Embodiment integration (XR-input → body-presence)    │
 │   J1-Stage12 XrCompose integration (XR-composition layers)       │
@@ -60,7 +60,7 @@
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ WAVE-J2  M10 max-density preparation (T11-D155..D158)            │
+│ WAVE-J2  M10 max-density preparation (T11-D156..D159)            │
 │   J2-WorkGraph Stage-3 Ω-field-update integration                │
 │   J2-LBM-tile-streaming for 1M+ entity scaling                   │
 │   J2-Foveation budget-driven density-budget enforcement          │
@@ -71,7 +71,7 @@
                                ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │ WAVE-J3  Q-* SPEC-HOLE content authoring                         │
-│         (T11-D159..D196 ; 38 slices ; APOCKY-FILL)               │
+│         (T11-D160..D197 ; 38 slices ; APOCKY-FILL)               │
 │   Q-A   Labyrinth.generation_method                              │
 │   Q-B   Floor.theme                                              │
 │   Q-C   Player.progression_state                                 │
@@ -100,22 +100,24 @@
 
 ---
 
-## § 2. Slice-ID reservation block (T11-D149..T11-D200)
+## § 2. Slice-ID reservation block (T11-D150..T11-D201)
 
-**Reserved range:** T11-D149..T11-D200 (52 IDs).
+**Reserved range:** T11-D150..T11-D201 (52 IDs).
+
+> **NOTE on numbering:** T11-D148 is this docs landing (README + dispatch plans + handoff). T11-D149 was used by Apocky's prior substrate-evolution reference-docs commit (specs 30v2 + 32 + 33). Phase-J therefore reserves from T11-D150 onward.
 
 **Allocation:**
 
 | ID range          | Wave       | Purpose                                                         |
 | ----------------- | ---------- | --------------------------------------------------------------- |
-| T11-D149          | J0         | M8 acceptance gate slice (12-stage pipeline end-to-end)         |
-| T11-D150..D154    | J1         | M9 VR-ship preparation (5 slices)                               |
-| T11-D155..D158    | J2         | M10 max-density preparation (4 slices)                          |
-| T11-D159..D196    | J3         | Q-* content authoring (38 SPEC-HOLE resolutions)                |
-| T11-D197..D198    | J4         | M9 + M10 hardware-validation entries (when live HW available)   |
-| T11-D199..D200    | J5         | v1.2 close + RELEASE_NOTES_v1.2.md + tag                        |
+| T11-D150          | J0         | M8 acceptance gate slice (12-stage pipeline end-to-end)         |
+| T11-D151..D155    | J1         | M9 VR-ship preparation (5 slices)                               |
+| T11-D156..D159    | J2         | M10 max-density preparation (4 slices)                          |
+| T11-D160..D197    | J3         | Q-* content authoring (38 SPEC-HOLE resolutions)                |
+| T11-D198..D199    | J4         | M9 + M10 hardware-validation entries (when live HW available)   |
+| T11-D200..D201    | J5         | v1.2 close + RELEASE_NOTES_v1.2.md + tag                        |
 
-The **Q-* mapping** to T11-D159..D196 is in `PHASE_J_HANDOFF.csl § Q-MAPPING`. Each Q-* gets a single per-slice DECISIONS entry; the entry's title carries both the T11-D## and the Q-* anchor: e.g. `T11-D159 — Q-A Labyrinth.generation_method`.
+The **Q-* mapping** to T11-D160..D197 is in `PHASE_J_HANDOFF.csl § Q-MAPPING`. Each Q-* gets a single per-slice DECISIONS entry; the entry's title carries both the T11-D## and the Q-* anchor: e.g. `T11-D160 — Q-A Labyrinth.generation_method`.
 
 If Apocky's resolution of a Q-* requires multiple slices (e.g., Q-W "Apockalypse-phase mechanically" might fan out into two: a phase-state slice + a transition-rules slice), allocate consecutive IDs from the floating range and document the cross-reference in both entries.
 
@@ -176,7 +178,7 @@ The `--test-threads=1` requirement and the worktree-isolation smoke gate carry f
 
 ---
 
-## § 6. WAVE-J0 — M8 acceptance gate (T11-D149)
+## § 6. WAVE-J0 — M8 acceptance gate (T11-D150)
 
 **Intent:** wire the 12-stage canonical render-pipeline (`cssl-render-v2::pipeline`) end-to-end through the `loa-game` Phase-I scaffold. Each stage's render-graph node connects to its successor via the `TwelveStagePipelineSlot` enforcement; the leaf-only smoke test (already passing in `cssl-render-v2`) extends to a full 12-stage smoke that drives one frame from XR-input through XR-composition.
 
@@ -197,7 +199,7 @@ The `--test-threads=1` requirement and the worktree-isolation smoke gate carry f
 
 **Worktree:** `.claude/worktrees/M8-pipeline` on `cssl/session-12/M8-pipeline`.
 
-**Commit message:** `§ T11-D149 : M8 acceptance gate — 12-stage canonical render-pipeline wired end-to-end`.
+**Commit message:** `§ T11-D150 : M8 acceptance gate — 12-stage canonical render-pipeline wired end-to-end`.
 
 **LANDMINES:**
 
@@ -207,44 +209,44 @@ The `--test-threads=1` requirement and the worktree-isolation smoke gate carry f
 
 ---
 
-## § 7. WAVE-J1 — M9 VR-ship preparation (T11-D150..D154)
+## § 7. WAVE-J1 — M9 VR-ship preparation (T11-D151..D155)
 
 **Intent:** wire Stages 1, 10, 11, 12 of the 12-stage pipeline + the OpenXR session-claim consent UI. M9 is the LIVE-HARDWARE milestone (deferred to real headset); the wave-J1 prep makes everything ready *to* ship on a headset, but does not require one to be present at dispatch time.
 
 | Slice    | Crate / module                              | Goal                                                                                  |
 | -------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| T11-D150 | `cssl-host-openxr::session_claim`           | Consent-UI prompt before claiming OpenXR session ; production-ready (not test-bypass) |
-| T11-D151 | `cssl-host-openxr::stage1_embodiment`       | Stage-1 — XR-input → body-presence-field integration                                  |
-| T11-D152 | `cssl-host-openxr::stage12_xr_compose`      | Stage-12 — XR-composition layers integration                                          |
-| T11-D153 | `cssl-render-v2::stage10_tonemap`           | Stage-10 — tone-map + bloom + post                                                    |
-| T11-D154 | `cssl-render-v2::stage11_appsw`             | Stage-11 — AppSW motion-vec + depth                                                   |
+| T11-D151 | `cssl-host-openxr::session_claim`           | Consent-UI prompt before claiming OpenXR session ; production-ready (not test-bypass) |
+| T11-D152 | `cssl-host-openxr::stage1_embodiment`       | Stage-1 — XR-input → body-presence-field integration                                  |
+| T11-D153 | `cssl-host-openxr::stage12_xr_compose`      | Stage-12 — XR-composition layers integration                                          |
+| T11-D154 | `cssl-render-v2::stage10_tonemap`           | Stage-10 — tone-map + bloom + post                                                    |
+| T11-D155 | `cssl-render-v2::stage11_appsw`             | Stage-11 — AppSW motion-vec + depth                                                   |
 
-All five slices fan out in parallel after T11-D149 (M8) closes. Each lands its own per-slice DECISIONS entry with a `live-VR-deferred-to-M9` note.
+All five slices fan out in parallel after T11-D150 (M8) closes. Each lands its own per-slice DECISIONS entry with a `live-VR-deferred-to-M9` note.
 
-**Worktree pattern:** `.claude/worktrees/J1-{D150..D154}` on `cssl/session-12/J1-{slice-name}`.
+**Worktree pattern:** `.claude/worktrees/J1-{D151..D155}` on `cssl/session-12/J1-{slice-name}`.
 
-**M9 hardware-validation entry** (T11-D197) is reserved for the live-headset run when Apocky has hardware to verify on. The DECISIONS entry at the time of live-validation will record the headset model + OpenXR runtime version + frame-rate measured + any consent-prompt UX feedback.
+**M9 hardware-validation entry** (T11-D198) is reserved for the live-headset run when Apocky has hardware to verify on. The DECISIONS entry at the time of live-validation will record the headset model + OpenXR runtime version + frame-rate measured + any consent-prompt UX feedback.
 
 ---
 
-## § 8. WAVE-J2 — M10 max-density preparation (T11-D155..D158)
+## § 8. WAVE-J2 — M10 max-density preparation (T11-D156..D159)
 
 **Intent:** wire the structural primitives needed for 1M+ entity rendering. M10 is the LIVE-HARDWARE milestone (deferred to real M7-target host with sufficient GPU VRAM); the wave-J2 prep makes everything ready *to* scale to 1M+ entities.
 
 | Slice    | Crate / module                                          | Goal                                                                  |
 | -------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
-| T11-D155 | `cssl-work-graph::stage3_omega_field_dispatch`          | Stage-3 Ω-field-update via DX12-Ultimate WorkGraph                    |
-| T11-D156 | `cssl-substrate-omega-field::tile_streaming`            | LBM tile-streaming for 1M+ entity Ω-field cells                       |
-| T11-D157 | `cssl-render-v2::foveation::density_budget`             | Foveation budget-driven density-budget enforcement (D135 wavelet ties)|
-| T11-D158 | `cssl-substrate-omega-field::async_compute_pipelining`  | Async-compute Ω-field 6-phase pipelining across frames                |
+| T11-D156 | `cssl-work-graph::stage3_omega_field_dispatch`          | Stage-3 Ω-field-update via DX12-Ultimate WorkGraph                    |
+| T11-D157 | `cssl-substrate-omega-field::tile_streaming`            | LBM tile-streaming for 1M+ entity Ω-field cells                       |
+| T11-D158 | `cssl-render-v2::foveation::density_budget`             | Foveation budget-driven density-budget enforcement (D135 wavelet ties)|
+| T11-D159 | `cssl-substrate-omega-field::async_compute_pipelining`  | Async-compute Ω-field 6-phase pipelining across frames                |
 
-All four slices fan out in parallel after T11-D149 (M8) closes (independent of WAVE-J1). Each lands its own per-slice DECISIONS entry with a `live-1M+-stress-deferred-to-M10` note.
+All four slices fan out in parallel after T11-D150 (M8) closes (independent of WAVE-J1). Each lands its own per-slice DECISIONS entry with a `live-1M+-stress-deferred-to-M10` note.
 
-**M10 hardware-validation entry** (T11-D198) is reserved for the live-1M+-entity stress test when Apocky has hardware to verify on. The DECISIONS entry will record entity count + frame time + GPU memory pressure + any density-budget breach diagnostics.
+**M10 hardware-validation entry** (T11-D199) is reserved for the live-1M+-entity stress test when Apocky has hardware to verify on. The DECISIONS entry will record entity count + frame time + GPU memory pressure + any density-budget breach diagnostics.
 
 ---
 
-## § 9. WAVE-J3 — Q-* SPEC-HOLE content authoring (T11-D159..D196)
+## § 9. WAVE-J3 — Q-* SPEC-HOLE content authoring (T11-D160..D197)
 
 **Intent:** resolve the 38 SPEC-HOLE markers Q-A through Q-LL in `specs/31_LOA_DESIGN.csl § SPEC-HOLES-CONSOLIDATED`. **Apocky-fill territory.** AI authors implement the scaffolding; Apocky decides the shape.
 
@@ -265,7 +267,7 @@ Load (in order, mandatory):
 Slice: T11-D<n> — Q-<X> <name>
 
 Pre-conditions:
-  1. M8 acceptance landed AND Apocky-verified (T11-D149).
+  1. M8 acceptance landed AND Apocky-verified (T11-D150).
   2. <slice-specific upstream Q-* deps from PHASE_J_HANDOFF.csl § Q-DAG>
   3. cd compiler-rs && cargo test --workspace -- --test-threads=1 — ALL PASS.
 
@@ -313,21 +315,21 @@ On success: push, report. On block: escalate (PM-bumps-Apocky).
 
 | Slice    | Milestone   | Hardware target                                         |
 | -------- | ----------- | ------------------------------------------------------- |
-| T11-D197 | M9 VR-ship  | Live OpenXR-capable headset on Apocky's Arc A770 host   |
-| T11-D198 | M10 density | M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)|
+| T11-D198 | M9 VR-ship  | Live OpenXR-capable headset on Apocky's Arc A770 host   |
+| T11-D199 | M10 density | M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)|
 
 Both slices are short DECISIONS entries that record measurements, not implementation slices. The implementations land in WAVE-J1 + WAVE-J2.
 
 ---
 
-## § 11. WAVE-J5 — v1.2 close + tag (T11-D199..D200)
+## § 11. WAVE-J5 — v1.2 close + tag (T11-D200..D201)
 
 **Intent:** close Phase-J with a docs-only release-notes slice + the v1.2 tag.
 
 | Slice    | What lands                                                                                  |
 | -------- | ------------------------------------------------------------------------------------------- |
-| T11-D199 | RELEASE_NOTES_v1.2.md author + CHANGELOG update + README update + PHASE_K handoff author    |
-| T11-D200 | Tag v1.2.0 + Phase-K handoff close                                                          |
+| T11-D200 | RELEASE_NOTES_v1.2.md author + CHANGELOG update + README update + PHASE_K handoff author    |
+| T11-D201 | Tag v1.2.0 + Phase-K handoff close                                                          |
 
 ---
 
@@ -355,7 +357,7 @@ Every Q-* commit message MUST include a one-line confirmation that this binding 
 1. Load CSSLv3/CLAUDE.md
 2. Load this SESSION_12_DISPATCH_PLAN.md
 3. Load PHASE_J_HANDOFF.csl
-4. Load DECISIONS.md tail (any T11-D149..D200 entries committed)
+4. Load DECISIONS.md tail (any T11-D150..D201 entries committed)
 5. git branch -a → identify which cssl/session-12/* branches exist + last-commits
 6. git status → identify integration-branch state
 7. cd compiler-rs && cargo test --workspace -- --test-threads=1 2>&1 | tail -5

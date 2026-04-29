@@ -120,28 +120,28 @@
     scope  : Stages 1, 10, 11, 12 of 12-stage pipeline running live
               + production-ready consent-UI for OpenXR session-claim
               + frame-rate measurements + UX feedback recorded
-    DECISIONS-entry : T11-D197 (reserved ; lands when HW available)
-    structural-prep : WAVE-J1 (T11-D150..D154) — lands without HW
+    DECISIONS-entry : T11-D198 (reserved ; lands when HW available)
+    structural-prep : WAVE-J1 (T11-D151..D155) — lands without HW
   M10 max-density 1M+ entity stress-test
     target : M7-target host (TBD: dedicated workstation w/ 24GB+ GPU)
     scope  : Stage-3 Ω-field-update via WorkGraph-dispatch
               + LBM tile-streaming + foveation density-budget
               + async-compute Ω-field 6-phase pipelining
               + actual 1M+ entity render with measured frame time
-    DECISIONS-entry : T11-D198 (reserved ; lands when HW available)
-    structural-prep : WAVE-J2 (T11-D155..D158) — lands without HW
+    DECISIONS-entry : T11-D199 (reserved ; lands when HW available)
+    structural-prep : WAVE-J2 (T11-D156..D159) — lands without HW
 
 § M-MILESTONE-MAP
   M8  acceptance gate                 12-stage pipeline wired end-to-end
                                       Apocky-verified on Arc A770 host
-                                      DECISIONS-entry T11-D149
+                                      DECISIONS-entry T11-D150
                                       WAVE-J0 ; gate before J1..JN dispatch
   M9  VR-ship                         live OpenXR headset
-                                      structural-prep T11-D150..D154 (J1)
-                                      live-validation T11-D197 (J4 deferred)
-  M10 max-density                     1M+ entities on M7-target host
-                                      structural-prep T11-D155..D158 (J2)
+                                      structural-prep T11-D151..D155 (J1)
                                       live-validation T11-D198 (J4 deferred)
+  M10 max-density                     1M+ entities on M7-target host
+                                      structural-prep T11-D156..D159 (J2)
+                                      live-validation T11-D199 (J4 deferred)
   M11 mise-en-abyme + Companion       Stage-8 + Stage-9 + LBM-audio
                                       creative-spread @ render-quality
                                       Per Omniverse 09_SLICE/M8_M9_M10_PLAN.csl
@@ -234,48 +234,51 @@
     Q-FF            → companion::WithdrawalPolicy::Stub
 
 § Q-MAPPING (per-slice T11-D## allocation)
-  W! Phase-J reserves T11-D159..D196 for the 38 Q-* slices.
+  W! Phase-J reserves T11-D160..D197 for the 38 Q-* slices.
+  W! T11-D148 = this docs landing • T11-D149 = Apocky's substrate-spec-docs
+       (specs 30v2 + 32 + 33) • T11-D150 = M8 acceptance gate
+       T11-D151..D155 = WAVE-J1 (M9 prep) • T11-D156..D159 = WAVE-J2 (M10 prep)
   W! mapping is partial-order ; PM dispatches in dependency order
      per § INTEGRATION-POINTS @ HANDOFF_v1_to_PHASE_I.csl
 
-  T11-D159  Q-A   Labyrinth.generation_method
-  T11-D160  Q-B   Floor.theme
-  T11-D161  Q-C   Player.progression_state
-  T11-D162  Q-D   Companion.capability_set                          ‼ extra-care
-  T11-D163  Q-E   Wildlife
-  T11-D164  Q-F   Item.kind
-  T11-D165  Q-G   Item.narrative_role
-  T11-D166  Q-H   Affordance.ContextSpecific
-  T11-D167  Q-I   time-pressure-mechanic
-  T11-D168  Q-J   movement-style
-  T11-D169  Q-K   inventory-capacity-limit
-  T11-D170  Q-L   save-discipline
-  T11-D171  Q-M   skill-tree-shape
-  T11-D172  Q-N   item-power-curve
-  T11-D173  Q-O   traversal-as-progression-vs-leveling
-  T11-D174  Q-P   ConsentZoneKind
-  T11-D175  Q-Q   color-blind palette
-  T11-D176  Q-R   motor-accessibility
-  T11-D177  Q-S   cognitive-accessibility
-  T11-D178  Q-T   death-mechanic
-  T11-D179  Q-U   punishment-on-failure
-  T11-D180  Q-V   fail-state
-  T11-D181  Q-W   Apockalypse-phase-mechanically
-  T11-D182  Q-X   phase-count
-  T11-D183  Q-Y   phase-ordering
-  T11-D184  Q-Z   phase-reversibility
-  T11-D185  Q-AA  Companion-participation in phase-transitions     ‼ extra-care
-  T11-D186  Q-BB  emotional-thematic-register
-  T11-D187  Q-CC  multi-instance                                    ⇒ DEFERRED entry
-  T11-D188  Q-DD  Companion-affordances                             ‼ extra-care
-  T11-D189  Q-EE  cross-instance-Companion-presence                 ⇒ DEFERRED entry
-  T11-D190  Q-FF  Companion-withdrawal-grace                        ‼ extra-care
-  T11-D191  Q-GG  Companion-non-binary-substrate                    ‼ extra-care
-  T11-D192  Q-HH  NarrativeKind enum
-  T11-D193  Q-II  AuthoredEvent
-  T11-D194  Q-JJ  cinematic | cutscene system
-  T11-D195  Q-KK  quest | mission system
-  T11-D196  Q-LL  economy | trade system
+  T11-D160  Q-A   Labyrinth.generation_method
+  T11-D161  Q-B   Floor.theme
+  T11-D162  Q-C   Player.progression_state
+  T11-D163  Q-D   Companion.capability_set                          ‼ extra-care
+  T11-D164  Q-E   Wildlife
+  T11-D165  Q-F   Item.kind
+  T11-D166  Q-G   Item.narrative_role
+  T11-D167  Q-H   Affordance.ContextSpecific
+  T11-D168  Q-I   time-pressure-mechanic
+  T11-D169  Q-J   movement-style
+  T11-D170  Q-K   inventory-capacity-limit
+  T11-D171  Q-L   save-discipline
+  T11-D172  Q-M   skill-tree-shape
+  T11-D173  Q-N   item-power-curve
+  T11-D174  Q-O   traversal-as-progression-vs-leveling
+  T11-D175  Q-P   ConsentZoneKind
+  T11-D176  Q-Q   color-blind palette
+  T11-D177  Q-R   motor-accessibility
+  T11-D178  Q-S   cognitive-accessibility
+  T11-D179  Q-T   death-mechanic
+  T11-D180  Q-U   punishment-on-failure
+  T11-D181  Q-V   fail-state
+  T11-D182  Q-W   Apockalypse-phase-mechanically
+  T11-D183  Q-X   phase-count
+  T11-D184  Q-Y   phase-ordering
+  T11-D185  Q-Z   phase-reversibility
+  T11-D186  Q-AA  Companion-participation in phase-transitions     ‼ extra-care
+  T11-D187  Q-BB  emotional-thematic-register
+  T11-D188  Q-CC  multi-instance                                    ⇒ DEFERRED entry
+  T11-D189  Q-DD  Companion-affordances                             ‼ extra-care
+  T11-D190  Q-EE  cross-instance-Companion-presence                 ⇒ DEFERRED entry
+  T11-D191  Q-FF  Companion-withdrawal-grace                        ‼ extra-care
+  T11-D192  Q-GG  Companion-non-binary-substrate                    ‼ extra-care
+  T11-D193  Q-HH  NarrativeKind enum
+  T11-D194  Q-II  AuthoredEvent
+  T11-D195  Q-JJ  cinematic | cutscene system
+  T11-D196  Q-KK  quest | mission system
+  T11-D197  Q-LL  economy | trade system
 
   if a Q-* requires multiple slices, allocate consecutive IDs from
   the floating range above and document the cross-reference in both
@@ -446,7 +449,8 @@
   ✓ Phase-J-content R! preserve-likewise
   I> §11 path-hash-discipline-extension @ T11-D130 = STRUCTURAL-EXTENSION
        canonical-hash : f27cd41c61da722b16186d88e9b45e2b8c386faf30d936c31a96c57ecaac4292
-  I> Companion-AI-Q-* preservation @ T11-D162 + D185 + D188 + D190 + D191
+  I> Companion-AI-Q-* preservation @ T11-D163 (Q-D) + D186 (Q-AA)
+       + D189 (Q-DD) + D191 (Q-FF) + D192 (Q-GG)
        = HIGHEST-CARE-TIER ; Apocky-review mandatory
 
 ∎ HANDOFF v1.1 → Phase-J
