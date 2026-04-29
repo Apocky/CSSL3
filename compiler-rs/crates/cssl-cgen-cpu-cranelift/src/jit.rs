@@ -1032,6 +1032,17 @@ fn lower_op_to_cl(
         // (StructuredCfgValidator) will reject bare scf.yield at the
         // outer level once it lands.
         "scf.yield" => Ok(false),
+        // § T11-D77 (S6-C5 redo) — closure-construction lowering. Stage-0 JIT :
+        //   bind the closure result-id to the env-ptr operand (when
+        //   capture_count ≥ 1) or to a typed-zero pointer sentinel. The
+        //   env-pack ops (cssl.heap.alloc, memref.store) the body_lower
+        //   emits when there are captures are NOT yet JIT-able — a fn body
+        //   that ACTUALLY contains captures must go through the Object
+        //   backend at stage-0. Closures with 0 captures (and any hand-
+        //   built MIR fixture exercising the dispatch surface) work fine
+        //   here because the typed-zero binding is sufficient for
+        //   subsequent ops to reference the closure value.
+        "cssl.closure" => jit_lower_closure(op, builder, value_map, fn_name),
         // `cssl.diff.bwd_return` is the AD walker's bwd-variant terminator —
         // it carries one-operand-per-primal-float-param holding that param's
         // accumulated adjoint. Lower identically to `func.return` since the
@@ -1765,6 +1776,55 @@ fn lower_scf_for_in_jit(
         },
         crate::scf::BackendOrScfError::Backend(jit_err) => jit_err,
     })
+}
+
+/// § T11-D77 (S6-C5 redo) — JIT-side `cssl.closure` no-op binder.
+///
+/// Mirrors [`crate::object::obj_lower_closure`] but uses `cl_types::I64` as
+/// the host pointer-type sentinel (the JIT path is x86_64-only at stage-0 ;
+/// when JIT cross-compile lands the helper will accept a `ptr_ty`
+/// parameter from the caller). Reads `capture_count` from attributes,
+/// binds the result-id to operand-`capture_count` (the env-ptr) when ≥1
+/// capture, otherwise to a typed-zero pointer sentinel. Inner body region
+/// is intentionally not walked — the indirect-call lowering is deferred.
+fn jit_lower_closure(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let capture_count: usize = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "capture_count")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(0);
+    let Some(r) = op.results.first() else {
+        return Ok(false);
+    };
+    let env_value = if capture_count > 0 {
+        let env_op_idx = capture_count;
+        let env_vid =
+            op.operands
+                .get(env_op_idx)
+                .copied()
+                .ok_or_else(|| JitError::LoweringFailed {
+                    fn_name: fn_name.to_string(),
+                    detail: format!(
+                    "cssl.closure : capture_count={capture_count} but operand[{env_op_idx}] missing"
+                ),
+                })?;
+        *value_map
+            .get(&env_vid)
+            .ok_or_else(|| JitError::LoweringFailed {
+                fn_name: fn_name.to_string(),
+                detail: format!("cssl.closure references unknown env ValueId({})", env_vid.0),
+            })?
+    } else {
+        builder.ins().iconst(cl_types::I64, 0)
+    };
+    value_map.insert(r.id, env_value);
+    Ok(false)
 }
 
 #[cfg(test)]
@@ -4045,5 +4105,80 @@ mod tests {
             matches!(&err, JitError::LoweringFailed { detail, .. } if detail.contains("scf.while") && detail.contains("missing")),
             "unexpected error : {err:?}"
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D77 (S6-C5 redo) — closure construction JIT dispatch.
+    //
+    // The cssl.closure op is a no-op binder at stage-0 ; these tests exercise
+    // the dispatch surface (compile + finalize success) without exercising
+    // env-pack (heap.alloc isn't yet JIT-able). A capture_count=0 closure
+    // built by hand is the closest analog to what body_lower emits when no
+    // free-vars are referenced. Result-id binding to a typed-zero pointer
+    // sentinel is verified via "the fn compiles and returns something sane".
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Hand-build `fn make_clos() -> i64 { let c = cssl.closure() ; 0 }` —
+    /// a fn that emits a zero-capture closure and discards its result. The
+    /// fn returns 0 so the test can verify a clean compile + finalize +
+    /// call without the closure being indirectly invoked.
+    fn hand_built_zero_capture_closure() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let mut f = MirFunc::new("make_clos", vec![], vec![i64_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![];
+            // cssl.closure with empty body region + capture_count=0 attr.
+            let inner_blk = MirBlock::new("entry");
+            let mut body_region = MirRegion::new();
+            body_region.push(inner_blk);
+            let mut clos_op = MirOp::std("cssl.closure")
+                .with_result(ValueId(0), MirType::Opaque("!cssl.closure".into()))
+                .with_attribute("param_count", "0")
+                .with_attribute("capture_count", "0")
+                .with_attribute("env_size", "0")
+                .with_attribute("env_align", "8")
+                .with_attribute("cap_value", "val");
+            clos_op = clos_op.with_region(body_region);
+            entry.ops.push(clos_op);
+            // Return a constant 0 (i64) — the closure-result is discarded.
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i64_ty())
+                    .with_attribute("value", "0"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn cssl_closure_zero_capture_compiles_and_finalizes() {
+        // Stage-0 contract : a fn containing a cssl.closure with no captures
+        // compiles + finalizes without UnsupportedMirOp.
+        let mut m = JitModule::new();
+        m.compile(&hand_built_zero_capture_closure())
+            .expect("zero-capture closure must compile");
+        m.finalize().expect("module finalize must succeed");
+    }
+
+    #[test]
+    fn cssl_closure_zero_capture_returns_sentinel() {
+        // The fn returns 0 (the constant sentinel after the closure op).
+        // This proves the closure dispatch didn't disrupt the surrounding
+        // ops — they still execute correctly.
+        let mut m = JitModule::new();
+        let _h = m.compile(&hand_built_zero_capture_closure()).unwrap();
+        m.finalize().unwrap();
+        let addr = m.code_addr_for("make_clos").unwrap();
+        // SAFETY: `addr` points into the JIT module's executable memory ;
+        // the module is borrowed by `m` for the call duration. Signature
+        // matches `extern "C" fn() -> i64` per the MIR + JIT default ABI.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f(), 0);
     }
 }

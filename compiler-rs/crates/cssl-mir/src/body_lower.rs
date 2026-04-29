@@ -70,6 +70,13 @@ pub struct BodyLowerCtx<'a> {
     /// (length(p) expands via these scalars ; normalize / dot / field access are
     /// deferred to future slices).
     pub vec_param_vars: HashMap<Symbol, (Vec<ValueId>, u32, FloatWidth)>,
+    /// T11-D77 (S6-C5 redo) : let-binding name → lowered ValueId + MirType.
+    /// Populated by `HirStmtKind::Let` with a `Binding`-pattern name and
+    /// consumed by `lower_path` (after [`Self::param_vars`]) + by the lambda
+    /// free-var resolver. Stage-0 is a flat map ; later-shadowing overwrites
+    /// by construction (single-pass lowerer ; no scope-stack restoration on
+    /// block exit). See `specs/02_IR.csl` § CLOSURE-ENV.
+    pub local_vars: HashMap<Symbol, (ValueId, MirType)>,
     /// Next free value-id (wired to `MirFunc.fresh_value_id`).
     pub next_value_id: u32,
     /// Accumulated ops (consumed at end into the entry-block).
@@ -86,6 +93,7 @@ impl<'a> BodyLowerCtx<'a> {
             source: None,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
+            local_vars: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
@@ -100,6 +108,7 @@ impl<'a> BodyLowerCtx<'a> {
             source: Some(source),
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
+            local_vars: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
         }
@@ -121,6 +130,7 @@ impl<'a> BodyLowerCtx<'a> {
             source: self.source,
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
+            local_vars: HashMap::new(),
             next_value_id: self.next_value_id,
             ops: Vec::new(),
         }
@@ -286,9 +296,20 @@ fn lower_block(ctx: &mut BodyLowerCtx<'_>, block: &HirBlock) -> Option<(ValueId,
 
 fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
     match &stmt.kind {
-        HirStmtKind::Let { value, .. } => {
+        HirStmtKind::Let { value, pat, .. } => {
             if let Some(e) = value {
-                let _ = lower_expr(ctx, e);
+                if let Some((vid, ty)) = lower_expr(ctx, e) {
+                    // § T11-D77 (S6-C5 redo) : bind the let-pattern's name → its
+                    //   lowered ValueId so subsequent path-refs resolve, AND so
+                    //   closure free-var analysis can map a captured local to
+                    //   its source SSA-value. Only `Binding`-patterns
+                    //   (single-name `let x = …`) are bound at stage-0 ;
+                    //   destructuring (`let (a, b) = …`) lands when MIR-side
+                    //   sum/tuple-deconstruction lowers in a future slice.
+                    if let Some(sym) = extract_pattern_symbol(pat) {
+                        ctx.local_vars.insert(sym, (vid, ty));
+                    }
+                }
             }
         }
         HirStmtKind::Expr(e) => {
@@ -744,11 +765,44 @@ fn lower_range(
 //   now have dedicated lowerers.
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Lower `|params| -> Ty { body }` into `cssl.closure` with a body-region.
+/// Lower `|params| -> Ty { body }` into `cssl.closure` with env-capture.
 ///
-/// Stage-0 : no env-capture analysis — the closure op carries `param_count` +
-/// optional `return_ty` attrs. Capture-discovery + environment-pack lowering
-/// land in T6-phase-2d.
+/// § T11-D77 (S6-C5 redo) — full env-capture analysis. See
+/// `specs/02_IR.csl` § CLOSURE-ENV for the canonical lowering contract.
+///
+/// § PIPELINE
+///   1. Collect free-vars of the body (HIR `Path { single-segment }` refs not
+///      shadowed by a lambda param or an inner `let`-binding).
+///   2. For each free-var, look it up in the OUTER ctx (`param_vars` →
+///      `local_vars`) to resolve its outer-scope `(ValueId, MirType)`. Vars
+///      that resolve nowhere (path is an unresolved module-ref or unknown
+///      binding) are dropped from the capture-list (they remain unresolved
+///      in body-text and will produce `cssl.path_ref` ops in the body region).
+///   3. If `capture_count ≥ 1` :
+///        a. Emit `arith.constant ⟨env_size⟩ : i64` + `arith.constant 8 : i64`
+///           to feed `cssl.heap.alloc` (env_size = 8 × capture_count, align = 8).
+///        b. Emit `cssl.heap.alloc(size, align)` returning `!cssl.ptr` with
+///           `cap=iso` per `specs/12_CAPABILITIES § ISO-OWNERSHIP`.
+///        c. For each capture i, emit `arith.constant ⟨8i⟩ : i64` + a
+///           `memref.store cap_i, env_ptr, offset_i` writing the captured
+///           value into its env slot.
+///   4. Build the body sub-region (inner ops are lowered with a separate
+///      `BodyLowerCtx`; lambda params seed that sub-ctx's `param_vars`).
+///   5. Emit the `cssl.closure` op carrying the captures-as-operands followed
+///      by the env-ptr (when present) ; attributes record `param_count` /
+///      `capture_count` / `env_size` / `env_align` / `cap_value` / source-loc.
+///
+/// § RESULT VALUE
+///   Closure type = `!cssl.closure` opaque (the conceptual `(fn-ptr, env-ptr)`
+///   fat-pair). At stage-0 the closure VALUE has its env-ptr accessible via
+///   the operand-trail ; the fn-ptr half is metadata-only — an indirect call
+///   hasn't yet been wired through any source-call-site against a closure-
+///   typed value (deferred per `specs/02_IR § CLOSURE-ENV`).
+///
+/// § ESCAPE ANALYSIS
+///   Stage-0 = correctness-first : any closure with ≥1 capture heap-allocates
+///   its env. Stack-promotion when the closure is provably non-escaping is a
+///   future MIR→MIR optimization pass.
 fn lower_lambda(
     ctx: &mut BodyLowerCtx<'_>,
     params: &[HirLambdaParam],
@@ -756,13 +810,103 @@ fn lower_lambda(
     body: &HirExpr,
     span: Span,
 ) -> (ValueId, MirType) {
-    // Build a sub-region for the lambda body. The inner lowerer runs in a
-    // sub-context so parameter names inside the lambda don't leak to the
-    // outer fn's `param_vars`.
+    // § 1. Collect lambda-param symbols (these are NOT free-vars).
+    let mut param_syms: Vec<Symbol> = Vec::with_capacity(params.len());
+    for p in params {
+        if let Some(sym) = extract_pattern_symbol(&p.pat) {
+            param_syms.push(sym);
+        }
+    }
+
+    // § 2. Walk the body collecting free-vars (single-segment paths not
+    //   shadowed by params or inner lets). The walker tracks introduced
+    //   names so an inner `let x = …` shadows a same-named outer free-var
+    //   for refs after that `let`.
+    let mut free_collector = FreeVarCollector::new(&param_syms);
+    free_collector.walk_expr(body);
+
+    // § 3. Resolve each free-var to its outer-scope source value.
+    //   Captures whose name resolves nowhere (unknown binding) are dropped
+    //   from the capture-list — they'll surface in the body region as
+    //   `cssl.path_ref` opaque-placeholders, matching pre-S6-C5 behavior.
+    let mut captures: Vec<(Symbol, ValueId, MirType)> =
+        Vec::with_capacity(free_collector.free_vars.len());
+    for sym in &free_collector.free_vars {
+        if let Some((vid, ty)) = ctx.param_vars.get(sym) {
+            captures.push((*sym, *vid, ty.clone()));
+        } else if let Some((vid, ty)) = ctx.local_vars.get(sym) {
+            captures.push((*sym, *vid, ty.clone()));
+        }
+        // else : unresolved — dropped from capture-list silently. The body's
+        // `cssl.path_ref` placeholder retains the name for diagnostic trail.
+    }
+
+    // § 4. Emit env-pack (alloc + per-capture store) when ≥1 capture.
+    //   Stage-0 layout : 8 bytes per slot, align = 8. See spec § CLOSURE-ENV.
+    //   Sizes are u64 (stable for `to_string()` ; stage-0 caps env at 2^63 by
+    //   construction so wrap-saturation is theoretical).
+    let env_ptr_id: Option<ValueId> = if captures.is_empty() {
+        None
+    } else {
+        const SLOT_BYTES: u64 = 8;
+        const ENV_ALIGN: u64 = 8;
+        let env_size: u64 = SLOT_BYTES.saturating_mul(captures.len() as u64);
+
+        // 4a. arith.constant env_size : i64.
+        let sz_id = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("arith.constant")
+                .with_result(sz_id, MirType::Int(IntWidth::I64))
+                .with_attribute("value", env_size.to_string())
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+        // 4b. arith.constant env_align : i64.
+        let al_id = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("arith.constant")
+                .with_result(al_id, MirType::Int(IntWidth::I64))
+                .with_attribute("value", ENV_ALIGN.to_string())
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+        // 4c. cssl.heap.alloc(sz, al) -> !cssl.ptr  (cap=iso).
+        let env_id = ctx.fresh_value_id();
+        ctx.ops.push(
+            MirOp::std("cssl.heap.alloc")
+                .with_operand(sz_id)
+                .with_operand(al_id)
+                .with_result(env_id, MirType::Ptr)
+                .with_attribute("cap", "iso")
+                .with_attribute("origin", "closure_env")
+                .with_attribute("source_loc", format!("{span:?}")),
+        );
+
+        // 4d. Per-capture store : write each captured value into its env slot.
+        for (i, (_sym, src_id, _src_ty)) in captures.iter().enumerate() {
+            let off: u64 = SLOT_BYTES.saturating_mul(i as u64);
+            let off_id = ctx.fresh_value_id();
+            ctx.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(off_id, MirType::Int(IntWidth::I64))
+                    .with_attribute("value", off.to_string())
+                    .with_attribute("source_loc", format!("{span:?}")),
+            );
+            // memref.store val, ptr, offset  (3-operand variant).
+            ctx.ops.push(
+                MirOp::std("memref.store")
+                    .with_operand(*src_id)
+                    .with_operand(env_id)
+                    .with_operand(off_id)
+                    .with_attribute("alignment", ENV_ALIGN.to_string())
+                    .with_attribute("source_loc", format!("{span:?}")),
+            );
+        }
+
+        Some(env_id)
+    };
+
+    // § 5. Build the body sub-region. The inner lowerer runs in a sub-context
+    //   so lambda-param names don't leak to the outer fn.
     let mut sub = ctx.sub();
-    // Seed sub-ctx param bindings so `HirExprKind::Path` references inside
-    // the lambda body can resolve to their block-args. Lambda params start
-    // at id 0 in the nested region's SSA space.
     for (i, p) in params.iter().enumerate() {
         let pid = ValueId(u32::try_from(i).unwrap_or(0));
         let pty =
@@ -772,7 +916,6 @@ fn lower_lambda(
             sub.param_vars.insert(sym, (pid, pty));
         }
     }
-    // Reserve param-ids in the sub-context's SSA space.
     sub.next_value_id = u32::try_from(params.len()).unwrap_or(0);
     let _ = lower_expr(&mut sub, body);
     let mut blk = MirBlock::new("entry");
@@ -780,20 +923,280 @@ fn lower_lambda(
     let mut body_region = MirRegion::new();
     body_region.push(blk);
 
+    // § 6. Emit cssl.closure carrying captures + env-ptr as operands.
     let id = ctx.fresh_value_id();
     let ty = MirType::Opaque("!cssl.closure".into());
+    let env_size: u64 = 8u64 * (captures.len() as u64);
     let mut op = MirOp::new(CsslOp::Std);
     op.name = "cssl.closure".to_string();
     op = op
         .with_result(id, ty.clone())
         .with_region(body_region)
         .with_attribute("param_count", params.len().to_string())
+        .with_attribute("capture_count", captures.len().to_string())
+        .with_attribute("env_size", env_size.to_string())
+        .with_attribute("env_align", "8")
+        .with_attribute("cap_value", "val")
         .with_attribute("source_loc", format!("{span:?}"));
+    // Attach captured-name list as a comma-joined attribute for diagnostic
+    // trail. Empty when there are no captures. Names round-trip through the
+    // interner so this is stable across compile units.
+    if !captures.is_empty() {
+        let names = captures
+            .iter()
+            .map(|(s, _, _)| ctx.interner.resolve(*s))
+            .collect::<Vec<_>>()
+            .join(",");
+        op = op.with_attribute("capture_names", names);
+    }
     if return_ty.is_some() {
         op = op.with_attribute("has_return_ty", "true");
     }
+    // Operand order : captures (in the order discovered by the free-var
+    // collector) followed by the env-ptr when present. Lowering side reads
+    // the operand-trail using `capture_count` to know where the env-ptr
+    // begins (operand-index = capture_count).
+    for (_sym, src_id, _ty) in &captures {
+        op = op.with_operand(*src_id);
+    }
+    if let Some(env_id) = env_ptr_id {
+        op = op.with_operand(env_id);
+    }
     ctx.ops.push(op);
     (id, ty)
+}
+
+/// § T11-D77 (S6-C5 redo) — free-var collector for a lambda body.
+///
+/// Walks an `HirExpr` AST and collects single-segment Path references that
+/// are NOT shadowed by lambda params or inner `let`-bindings. The walker is
+/// deliberately simple at stage-0 :
+///   - Only single-segment paths count as free-var candidates (multi-segment
+///     paths are module / constructor refs, not captures).
+///   - `let pat = …` introduces names whose binding-symbols (only Binding
+///     kind) are added to a per-block scoped set ; subsequent refs inside
+///     that same block see the binding and don't add the name to the
+///     free-var list.
+///   - Nested lambdas have their own free-vars resolved separately ; their
+///     params are added to the local seen-set so an outer-walker doesn't
+///     mistake them for outer free-vars.
+///   - Order : free-vars are reported in first-encountered order, deduped.
+struct FreeVarCollector {
+    /// Names provably bound by an enclosing lambda's params or by an inner
+    /// let. Acts as the "shadowed by current scope" set.
+    bound: std::collections::HashSet<Symbol>,
+    /// Free-vars discovered so far, in first-encountered order.
+    free_vars: Vec<Symbol>,
+    /// Dedup set for `free_vars` (avoids O(N²) on repeated refs).
+    seen: std::collections::HashSet<Symbol>,
+}
+
+impl FreeVarCollector {
+    fn new(lambda_param_syms: &[Symbol]) -> Self {
+        let mut bound = std::collections::HashSet::new();
+        for s in lambda_param_syms {
+            bound.insert(*s);
+        }
+        Self {
+            bound,
+            free_vars: Vec::new(),
+            seen: std::collections::HashSet::new(),
+        }
+    }
+
+    fn note_free(&mut self, sym: Symbol) {
+        if self.bound.contains(&sym) {
+            return;
+        }
+        if self.seen.insert(sym) {
+            self.free_vars.push(sym);
+        }
+    }
+
+    fn walk_expr(&mut self, e: &HirExpr) {
+        match &e.kind {
+            HirExprKind::Path { segments, .. } => {
+                if segments.len() == 1 {
+                    self.note_free(segments[0]);
+                }
+            }
+            HirExprKind::Literal(_)
+            | HirExprKind::Error
+            | HirExprKind::Break { value: None, .. }
+            | HirExprKind::Continue { .. }
+            | HirExprKind::SectionRef { .. } => {}
+            HirExprKind::Binary { lhs, rhs, .. } => {
+                self.walk_expr(lhs);
+                self.walk_expr(rhs);
+            }
+            HirExprKind::Unary { operand, .. } => self.walk_expr(operand),
+            HirExprKind::Block(b) => self.walk_block(b),
+            HirExprKind::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                self.walk_expr(cond);
+                self.walk_block(then_branch);
+                if let Some(eb) = else_branch.as_deref() {
+                    self.walk_expr(eb);
+                }
+            }
+            HirExprKind::Call { callee, args, .. } => {
+                self.walk_expr(callee);
+                for a in args {
+                    let inner = match a {
+                        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+                    };
+                    self.walk_expr(inner);
+                }
+            }
+            HirExprKind::Return { value } => {
+                if let Some(v) = value.as_deref() {
+                    self.walk_expr(v);
+                }
+            }
+            HirExprKind::Paren(inner) => self.walk_expr(inner),
+            HirExprKind::For { iter, body, .. } => {
+                self.walk_expr(iter);
+                self.walk_block(body);
+            }
+            HirExprKind::While { cond, body } => {
+                self.walk_expr(cond);
+                self.walk_block(body);
+            }
+            HirExprKind::Loop { body } => self.walk_block(body),
+            HirExprKind::Match { scrutinee, arms } => {
+                self.walk_expr(scrutinee);
+                for arm in arms {
+                    self.walk_expr(&arm.body);
+                }
+            }
+            HirExprKind::Field { obj, .. } => self.walk_expr(obj),
+            HirExprKind::Index { obj, index } => {
+                self.walk_expr(obj);
+                self.walk_expr(index);
+            }
+            HirExprKind::Assign { lhs, rhs, .. } => {
+                self.walk_expr(lhs);
+                self.walk_expr(rhs);
+            }
+            HirExprKind::Cast { expr: inner, .. } => self.walk_expr(inner),
+            HirExprKind::Tuple(es) => {
+                for e in es {
+                    self.walk_expr(e);
+                }
+            }
+            HirExprKind::Array(arr) => match arr {
+                cssl_hir::HirArrayExpr::List(items) => {
+                    for e in items {
+                        self.walk_expr(e);
+                    }
+                }
+                cssl_hir::HirArrayExpr::Repeat { elem, len } => {
+                    self.walk_expr(elem);
+                    self.walk_expr(len);
+                }
+            },
+            HirExprKind::Struct { fields, .. } => {
+                for f in fields {
+                    if let Some(v) = &f.value {
+                        self.walk_expr(v);
+                    }
+                }
+            }
+            HirExprKind::Run { expr: inner } => self.walk_expr(inner),
+            HirExprKind::Pipeline { lhs, rhs } => {
+                self.walk_expr(lhs);
+                self.walk_expr(rhs);
+            }
+            HirExprKind::TryDefault {
+                expr: inner,
+                default,
+            } => {
+                self.walk_expr(inner);
+                self.walk_expr(default);
+            }
+            HirExprKind::Try { expr: inner } => self.walk_expr(inner),
+            HirExprKind::Range { lo, hi, .. } => {
+                if let Some(e) = lo.as_deref() {
+                    self.walk_expr(e);
+                }
+                if let Some(e) = hi.as_deref() {
+                    self.walk_expr(e);
+                }
+            }
+            HirExprKind::Break { value: Some(v), .. } => self.walk_expr(v),
+            HirExprKind::Lambda {
+                params: inner_params,
+                body: inner_body,
+                ..
+            } => {
+                // Nested lambda : its own params shadow outer free-vars while
+                // walking its body. We add-then-walk-then-remove to keep the
+                // outer walker's bound-set minimal.
+                let mut added: Vec<Symbol> = Vec::new();
+                for p in inner_params {
+                    if let Some(sym) = extract_pattern_symbol(&p.pat) {
+                        if self.bound.insert(sym) {
+                            added.push(sym);
+                        }
+                    }
+                }
+                self.walk_expr(inner_body);
+                for sym in added {
+                    self.bound.remove(&sym);
+                }
+            }
+            HirExprKind::Perform { args, .. } => {
+                for a in args {
+                    let inner = match a {
+                        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+                    };
+                    self.walk_expr(inner);
+                }
+            }
+            HirExprKind::With { handler, body } => {
+                self.walk_expr(handler);
+                self.walk_block(body);
+            }
+            HirExprKind::Region { body, .. } => self.walk_block(body),
+            HirExprKind::Compound { lhs, rhs, .. } => {
+                self.walk_expr(lhs);
+                self.walk_expr(rhs);
+            }
+        }
+    }
+
+    fn walk_block(&mut self, b: &HirBlock) {
+        // § Inner-let bindings shadow outer free-vars for refs LATER in the
+        //   same block. We add-on-let, walk-the-rest, and roll back at block
+        //   exit. Adding to `bound` only when not already present preserves
+        //   the outer-shadow logic for the parent walker.
+        let mut added: Vec<Symbol> = Vec::new();
+        for stmt in &b.stmts {
+            match &stmt.kind {
+                HirStmtKind::Let { value, pat, .. } => {
+                    if let Some(e) = value {
+                        self.walk_expr(e);
+                    }
+                    if let Some(sym) = extract_pattern_symbol(pat) {
+                        if self.bound.insert(sym) {
+                            added.push(sym);
+                        }
+                    }
+                }
+                HirStmtKind::Expr(e) => self.walk_expr(e),
+                HirStmtKind::Item(_) => {}
+            }
+        }
+        if let Some(t) = b.trailing.as_ref() {
+            self.walk_expr(t);
+        }
+        for sym in added {
+            self.bound.remove(&sym);
+        }
+    }
 }
 
 /// Lower `perform Effect::op(args)` into `cssl.effect.perform`.
@@ -1075,9 +1478,18 @@ fn strip_char_quotes(raw: &str) -> Option<&str> {
 }
 
 fn lower_path(ctx: &mut BodyLowerCtx<'_>, segments: &[Symbol], span: Span) -> (ValueId, MirType) {
-    // Single-segment path : check param_vars.
+    // Single-segment path : check param_vars first, then local_vars (T11-D77).
+    // Param shadowing-by-local is handled by the lookup order : param_vars
+    // wins because params are declared first ; if a let inside the body uses
+    // the same name, `local_vars.insert` overwrites are still visible to
+    // post-shadow refs because we check local_vars second only when the
+    // param-lookup misses. (Stage-0 single-pass lowering can't preserve real
+    // lexical scoping ; later-shadowing is rare in practice.)
     if segments.len() == 1 {
         if let Some((id, ty)) = ctx.param_vars.get(&segments[0]) {
+            return (*id, ty.clone());
+        }
+        if let Some((id, ty)) = ctx.local_vars.get(&segments[0]) {
             return (*id, ty.clone());
         }
     }
@@ -3583,5 +3995,233 @@ mod tests {
         // source_loc is present and non-empty.
         let loc = attr(op, "source_loc").expect("source_loc attribute missing");
         assert!(!loc.is_empty(), "source_loc should be non-empty");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D77 (S6-C5 redo) — Closure env-capture lowering tests.
+    //
+    // Each test exercises an aspect of the free-var collector + env-pack +
+    // cssl.closure attribute surface defined in `specs/02_IR.csl § CLOSURE-ENV`.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Helper : retrieve the cssl.closure op (panics if missing).
+    fn closure_op(f: &crate::func::MirFunc) -> &crate::block::MirOp {
+        find_op(f, "cssl.closure").expect("missing cssl.closure")
+    }
+
+    #[test]
+    fn closure_with_no_captures_emits_zero_capture_count() {
+        // `|x| x + 1` references only its own param ⇒ no free-vars.
+        let src = "fn f() { let g = |x : i32| { x + 1 }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(attr(cop, "capture_count"), Some("0"));
+        assert_eq!(attr(cop, "env_size"), Some("0"));
+        assert_eq!(attr(cop, "env_align"), Some("8"));
+        // No env alloc when there are no captures.
+        let entry = f.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.heap.alloc"),
+            "no captures ⇒ no env alloc"
+        );
+    }
+
+    #[test]
+    fn closure_capturing_outer_let_binding_emits_heap_alloc() {
+        // `let y = 7; let g = |x| x + y` ⇒ y is a free-var ⇒ env-alloc.
+        let src = "fn f() { let y = 7; let g = |x : i32| { x + y }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(attr(cop, "capture_count"), Some("1"));
+        assert_eq!(attr(cop, "env_size"), Some("8"));
+        // capture_names attribute records discovered names in encounter-order.
+        assert_eq!(attr(cop, "capture_names"), Some("y"));
+        // The env alloc must precede the closure op.
+        let entry = f.body.entry().unwrap();
+        let alloc_idx = entry
+            .ops
+            .iter()
+            .position(|o| o.name == "cssl.heap.alloc")
+            .expect("missing cssl.heap.alloc");
+        let closure_idx = entry
+            .ops
+            .iter()
+            .position(|o| o.name == "cssl.closure")
+            .expect("missing cssl.closure");
+        assert!(alloc_idx < closure_idx, "env alloc must precede closure");
+    }
+
+    #[test]
+    fn closure_capturing_outer_param_emits_heap_alloc() {
+        // Outer `n` is a fn param ; inner `|| n + 1` captures it.
+        let src = "fn f(n : i32) -> i32 { let g = |x : i32| { x + n }; g(0) }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(attr(cop, "capture_count"), Some("1"));
+        assert_eq!(attr(cop, "capture_names"), Some("n"));
+    }
+
+    #[test]
+    fn closure_with_two_captures_emits_eight_byte_per_slot() {
+        // env_size = 8 × 2 = 16. Captures encountered in order : a then b.
+        let src = "fn f() { let a = 1; let b = 2; let g = |x : i32| { x + a + b }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(attr(cop, "capture_count"), Some("2"));
+        assert_eq!(attr(cop, "env_size"), Some("16"));
+        assert_eq!(attr(cop, "capture_names"), Some("a,b"));
+    }
+
+    #[test]
+    fn closure_op_carries_cap_value_attribute() {
+        // Capture-by-value default (CapKind::Val per cap_check).
+        let src = "fn f() { let y = 1; let g = |x : i32| { x + y }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(attr(cop, "cap_value"), Some("val"));
+    }
+
+    #[test]
+    fn closure_emits_env_alloc_with_iso_cap_attribute() {
+        // The env-alloc op must carry cap=iso per § ISO-OWNERSHIP.
+        let src = "fn f() { let y = 1; let g = |x : i32| { x + y }; g(0); }";
+        let (f, _) = lower_one(src);
+        let alloc = find_op(&f, "cssl.heap.alloc").expect("missing cssl.heap.alloc");
+        assert_eq!(attr(alloc, "cap"), Some("iso"));
+        assert_eq!(attr(alloc, "origin"), Some("closure_env"));
+    }
+
+    #[test]
+    fn closure_emits_one_memref_store_per_capture() {
+        // Two captures ⇒ two memref.store ops between the alloc and the closure.
+        let src = "fn f() { let a = 1; let b = 2; let g = |x : i32| { x + a + b }; g(0); }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let alloc_idx = entry
+            .ops
+            .iter()
+            .position(|o| o.name == "cssl.heap.alloc")
+            .expect("missing cssl.heap.alloc");
+        let closure_idx = entry
+            .ops
+            .iter()
+            .position(|o| o.name == "cssl.closure")
+            .expect("missing cssl.closure");
+        let store_count = entry.ops[alloc_idx..closure_idx]
+            .iter()
+            .filter(|o| o.name == "memref.store")
+            .count();
+        assert_eq!(
+            store_count, 2,
+            "expected 2 memref.store between alloc and closure"
+        );
+    }
+
+    #[test]
+    fn closure_lambda_param_does_not_become_capture() {
+        // `|x| x` references only its param — no free-vars even though `x`
+        // would resolve in an outer scope (it doesn't here, but the test
+        // confirms params take precedence over the outer `x` even if one
+        // existed).
+        let src = "fn f() { let x = 99; let g = |x : i32| { x + 1 }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        // The lambda's `x` shadows the outer `x` — no captures.
+        assert_eq!(attr(cop, "capture_count"), Some("0"));
+    }
+
+    #[test]
+    fn closure_unresolved_free_var_is_dropped() {
+        // The body refs `unknown` which doesn't bind anywhere ⇒ dropped from
+        // the capture-list (silently). This matches the documented stage-0
+        // behavior in lower_lambda's contract.
+        let src = "fn f() { let g = |x : i32| { x + unknown }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        // The collector found `unknown` as a free-var BUT it didn't resolve
+        // in either param_vars or local_vars — capture-list is empty.
+        assert_eq!(attr(cop, "capture_count"), Some("0"));
+    }
+
+    #[test]
+    fn closure_captured_value_appears_in_operand_list() {
+        // The captured outer-scope value-id must appear among the closure
+        // op's operands. `let y = 7; |x| x + y` : outer y becomes capture-0
+        // and the env-ptr is the trailing operand.
+        let src = "fn f() { let y = 7; let g = |x : i32| { x + y }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        // capture_count = 1, env-ptr = trailing operand ⇒ 2 operands total.
+        assert_eq!(cop.operands.len(), 2);
+    }
+
+    #[test]
+    fn closure_no_captures_op_has_no_operands() {
+        let src = "fn f() { let g = |x : i32| { x + 1 }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(cop.operands.len(), 0);
+    }
+
+    #[test]
+    fn closure_body_region_preserved() {
+        // Backwards-compat : the existing T6-phase-2c invariant — body lives
+        // in regions[0] — must hold across S6-C5 redo.
+        let src = "fn f() { let y = 1; let g = |x : i32| { x + y }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(cop.regions.len(), 1);
+        let body_ops = &cop.regions[0].blocks[0].ops;
+        assert!(
+            body_ops.iter().any(|o| o.name.starts_with("arith.")),
+            "expected arith.* in lambda body, got {:?}",
+            body_ops.iter().map(|o| &o.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn closure_inner_let_shadows_outer_free_var() {
+        // `|x| { let y = 5; x + y }` — inner `let y` shadows the outer y so
+        // the body's `x + y` refs the inner y. No captures should result.
+        let src = "fn f() { let y = 7; let g = |x : i32| { let y = 5; x + y }; g(0); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        // Inner-let y shadows outer y ⇒ no free-var ⇒ no captures.
+        assert_eq!(attr(cop, "capture_count"), Some("0"));
+    }
+
+    #[test]
+    fn closure_param_count_attribute_matches_params() {
+        // Multi-param lambda preserves the param_count attribute (T6-phase-2c
+        // backwards-compat).
+        let src = "fn f() { let g = |x : i32, y : i32| { x + y }; g(1, 2); }";
+        let (f, _) = lower_one(src);
+        let cop = closure_op(&f);
+        assert_eq!(attr(cop, "param_count"), Some("2"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § Path-resolution against local_vars — S6-C5 redo unblocks let-binding refs.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn let_binding_path_ref_resolves_to_let_value_id() {
+        // Pre-S6-C5 : `let x = 1; x + 2` would lower `x` to a `cssl.path_ref`
+        // placeholder. With local_vars threading, `x` resolves to the let's
+        // ValueId so `x + 2` becomes `arith.addi <let-value>, <constant>`.
+        let src = "fn f() -> i32 { let x = 1; x + 2 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        let names: Vec<&str> = entry.ops.iter().map(|o| o.name.as_str()).collect();
+        // The body must contain arith.addi (the binary op's resolved form),
+        // NOT a cssl.path_ref opaque placeholder for `x`.
+        assert!(
+            names.iter().any(|n| *n == "arith.addi"),
+            "expected arith.addi after let-binding resolution, got {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| *n == "cssl.path_ref"),
+            "let-binding `x` must not lower to opaque path_ref"
+        );
     }
 }

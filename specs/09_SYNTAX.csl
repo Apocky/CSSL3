@@ -62,6 +62,11 @@
     cast      x as f32   x as T
     pipeline  x |> f |> g    (▷ unicode)
     lambda    |x : T| -> U { body }    \x. body  (short-form)
+              § I> env-capture lowering : §§ 02_IR § CLOSURE-ENV
+              § I> stage-0 = capture-by-value (snapshot) ;
+              §      ≥1 capture ⇒ heap-env via cssl.heap.alloc +
+              §      memref.store ; closure value = (fn-ptr, env-ptr) pair
+              §      rendered as !cssl.closure
     if-expr   if cond { a } else { b }       (value-producing)
     match     match x { Some(v) => f(v), None => default }
     block     { stmt1; stmt2; expr }          (final-expr = value)
