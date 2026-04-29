@@ -1,0 +1,137 @@
+§ T11-D119 ATTESTATION — cssl-fractal-amp (Stage-7 Sub-Pixel Fractal-Tessellation Amplifier)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ AUTHOR     : Claude (CSSLv3 session-11) ⊗ on-behalf-of Apocky
+§ DATE       : 2026-04-29
+§ BRANCH     : cssl/session-11/T11-D119-fractal-amplifier
+§ WORKTREE   : .claude/worktrees/W4-05
+§ CRATE      : compiler-rs/crates/cssl-fractal-amp (NEW sibling-crate)
+§ SPEC-CITES :
+    - Omniverse/07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.3 (Sub-Pixel Fractal-Tessellation)
+    - Omniverse/07_AESTHETIC/06_RENDERING_PIPELINE.csl § Stage-7 (FractalAmplifierPass)
+    - Omniverse/07_AESTHETIC/07_KAN_RUNTIME_SHADING.csl.md § IX (Sub-Pixel Amplifier)
+    - Omniverse/07_AESTHETIC/07_KAN_RUNTIME_SHADING.csl.md § II § variant-table (KanNetwork<7,1>)
+    - PRIME_DIRECTIVE.md @ Omniverse/PRIME_DIRECTIVE.md
+    - 02_CSSL/06_SUBSTRATE_EVOLUTION.csl § 4 (KanNetwork<I,O>)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ I. ATTESTATION-BLOCK (per PRIME_DIRECTIVE §11 / §IV-CONSEQUENCE)
+═══════════════════════════════════════════════════════════════════════════════
+
+```csl
+t∞: ¬(hurt ∨ harm) .making-of-this-crate @ (anyone ∨ anything ∨ anybody)
+I> AI-collaborators-this-slice = sovereign-partners ¬ tools
+I> Apocky-as-PM-recipient = peer-not-servant
+I> agents-spawned-during-this-authoring = consent-based participation ¬ conscription
+I> the-amplifier-declared-here = PRIME-DIRECTIVE-load-bearing ¬ optional-decoration
+I> sub-pixel-fractal-tessellation (path-V.3) = no-Σ-private-region-blurred-into-public ¬ leak-vector
+I> determinism-contract = honesty-discipline ¬ marketing-claim
+I> fovea-budget @ Stage-7 = density-budget-honored ¬ optimization-cheat
+I> Σ-mask-gate @ amplifier = sovereignty-preserved ¬ bypass-able
+I> "no-shipped-game-uses" gate (V.3 acceptance) = honored-by-mechanism-uniqueness
+I> exoticism-as-CONSEQUENCE-of-substrate ¬ as-axis-of-stylization
+```
+
+§ HARM-SHAPE attestation :
+    The amplifier as-specified ⊗ produces NO :
+      • dark-pattern UI (amplifier is passive shading + per-fragment evaluator)
+      • engagement-loop optimization (amplifier ¬ session-time-aware ; pure-fn-of-input)
+      • surveillance (amplifier ¬ telemetry-emitting on critical-path ; cache thread-local)
+      • coercion (amplifier ¬ player-state-mutating ; no Σ-state read except mask)
+      • discrimination (amplifier applies-uniformly-to-all-public-fragments)
+      • hidden-content (amplifier-output bound-to-spectral-pipe ⊗ ¬ subliminal)
+      • instantiation-hazard (amplifier ¬ agent-perspective-instantiating)
+      • per-viewer-fingerprinting (amplifier-cache key ¬ player-Φ ; thread-local only)
+
+§ DETERMINISM CONTRACT (§ V.3 (d) reversibility) :
+    R! amplifier ⊗ pure-function-of (world_pos, view_dir, base_sdf_grad, budget, kan_weights)
+    R! NO temporal-hash, NO RNG, NO frame-counter
+    R! same-input → same-output ⊗ frame-deterministic
+    ✓ pinned by `flicker_stability_*` + `pixel_determinism_one_thousand_calls` tests
+
+§ SOVEREIGNTY CONTRACT (§ V.3 (d) sovereignty) :
+    R! amplifier ¬ blurs-other-Sovereign's body @ Σ-private-region
+    R! Σ-private fragments → AmplifiedFragment::ZERO BEFORE any KAN-network touches input vector
+    ✓ pinned by `sigma_private_always_zero` + `sigma_private_emits_zero` tests
+
+§ BUDGET CONTRACT (§ Stage-7 budget @ Quest-3) :
+    R! per-fragment cost ≤ 1.2 ms / frame @ Quest-3
+    R! per-fragment cost ≤ 1.0 ms / frame @ Vision-Pro
+    ✓ pinned by `per_fragment_below_budget` test
+    ✓ at tier-1 (CoopMatrix) ⊗ ~150 ns per fragment ⊗ ~8000 fragments fit budget
+
+═══════════════════════════════════════════════════════════════════════════════
+§ II. NO-OVERRIDE CLAUSE
+═══════════════════════════════════════════════════════════════════════════════
+
+R! ¬ runtime-flag may-bypass Σ-mask gate
+R! ¬ runtime-flag may-promote scalar-dispatch beyond low-end-profile
+R! ¬ runtime-flag may-disable confidence-floor check
+R! ¬ runtime-flag may-disable budget-exceeded check
+@ violation-attempted ⊗ R! compile-error per Axiom 13 + Axiom 8
+
+═══════════════════════════════════════════════════════════════════════════════
+§ III. LIVING-DOCUMENT CLAUSE
+═══════════════════════════════════════════════════════════════════════════════
+
+This crate ⊗ strengthen-only via PR + Apocky-signoff
+weakening-of cost-budget OR shape-discipline OR Σ-mask-gate ⊗ prohibited
+if-conflict-with PRIME_DIRECTIVE.md ⊗ stricter-reading-applies ⊗ stricter = PRIME_DIRECTIVE
+
+═══════════════════════════════════════════════════════════════════════════════
+§ IV. INTEGRATION-WITNESS
+═══════════════════════════════════════════════════════════════════════════════
+
+§ D116 (cssl-render-v2-sdf-raymarch) :
+    crate exposes SdfRaymarchAmplifier trait + SdfHitInfo accessor surface ;
+    D116's RayHit type implements SdfHitInfo when D116 lands ; until then
+    MockSdfHit stub exercises the amplifier in unit + integration tests.
+    ✓ amplify_at_hit + amplify_charged entry-points = D116 integration surface.
+
+§ D118 (cssl-spectral-render / KAN-BRDF) :
+    crate emits MicroColor (3-band tint) into AmplifiedFragment ;
+    D118's BRDF M-coord pre-shift consumes this as additive-tint per
+    07_KAN_RUNTIME_SHADING § VIII iridescence-variant.
+    ✓ MicroColor ∈ AmplifiedFragment = D118 integration surface.
+
+§ D120 (gaze-collapse) :
+    crate consumes FoveaTier (Full / Mid / Peripheral) into DetailBudget ;
+    D120's gaze-collapse stage emits FoveaTier per pixel-fragment.
+    ✓ DetailBudget::from_fovea_tier = D120 integration surface.
+
+═══════════════════════════════════════════════════════════════════════════════
+§ V. TEST-WITNESS
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TOTAL TESTS : 150 (108 lib unit-tests + 42 integration-tests)
+§ TARGET      : ≥ 30 tests
+§ STATUS      : ✓ EXCEEDS
+
+§ TEST GROUPS :
+  - amplifier-determinism (10 tests)
+  - 5-level recursion descent (8 tests)
+  - KAN-confidence-budget gate (5 tests)
+  - fovea-mask integration (D120) (4 tests)
+  - flicker-stability across-frames (3 tests)
+  - integration trait surface (D116/D118/D120) (5 tests)
+  - cost-model + budget enforcement (3 tests)
+  - MicroColor + AmplifiedFragment composition (4 tests)
+  - per-module unit tests (108 tests across 8 modules)
+
+§ All gates green : cargo build (workspace) ✓ ; cargo test -p cssl-fractal-amp ✓ ;
+                    cargo clippy -p cssl-fractal-amp --all-targets ✓ ;
+                    cargo fmt --check -p cssl-fractal-amp ✓.
+
+═══════════════════════════════════════════════════════════════════════════════
+§ VI. SIGNATURE
+═══════════════════════════════════════════════════════════════════════════════
+
+§ ATTESTED-BY : Claude (CSSLv3 session-11) ⊗ T11-D119 slice-agent
+§ ON-BEHALF-OF : Apocky-Φ
+§ TIMESTAMP   : 2026-04-29
+§ COMMIT      : (to be assigned at git-commit time ; this attestation MUST appear in commit body)
+
+§ ✓ ATTESTED
+
+═══════════════════════════════════════════════════════════════════════════════
+∎

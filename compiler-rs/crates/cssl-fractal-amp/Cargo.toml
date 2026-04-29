@@ -1,0 +1,54 @@
+[package]
+name                   = "cssl-fractal-amp"
+description            = "CSSLv3 — Stage-7 Sub-Pixel Fractal-Tessellation Amplifier : per-fragment KAN-spline-network driven micro-displacement / micro-roughness / micro-color-perturbation that turns coarse-SDF samples into infinite-detail SDF without LOD-popping. Cite : Omniverse 07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.3 ; 06_RENDERING_PIPELINE.csl § Stage-7 ; 07_KAN_RUNTIME_SHADING.csl.md § IX ; T11-D119."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § doctest = false : rustdocs in this crate use CSLv3-glyphs and prose code-
+# fences that are not valid Rust ; doctest harness would mis-parse them. The
+# unit + integration tests live under #[cfg(test)] and tests/ already.
+[lib]
+doctest = false
+
+[dependencies]
+# § cssl-fractal-amp is the Stage-7 KAN-amplifier of the canonical 12-stage
+# render pipeline (06_RENDERING_PIPELINE § III ; 1.2 ms @ Quest-3 budget). It
+# is authored as a sibling-crate to cssl-render-v2 so the two can land
+# independently — D116 (render-v2-sdf-raymarch) and D119 (this) are parallel
+# slices that meet at the SdfRaymarchAmplifier trait surface declared here.
+#
+# § cssl-substrate-kan — KanNetwork<I, O> + Pattern-fingerprint. The amplifier's
+#   per-fragment evaluation is a tier-3 thin wrapper around KanNetwork::eval ;
+#   the canonical micro-displacement KAN shape is KanNetwork<7, 1> per
+#   07_KAN_RUNTIME_SHADING § IX. Two additional networks for micro-roughness
+#   and micro-color-perturbation give the full V.3 surface :
+#     - KAN_micro_displacement      : KanNetwork<7, 1>
+#     - KAN_micro_roughness         : KanNetwork<7, 1>
+#     - KAN_micro_color_perturbation: KanNetwork<7, 3>
+#
+# § cssl-substrate-prime-directive — §§ V.3 PRIME-DIRECTIVE-ALIGNMENT row :
+#   amplifier ¬ blurs-other-Sovereign's body @ Σ-private-region. The trait
+#   surface enforces this by accepting a Σ-mask that the amplifier consults
+#   before evaluating. Σ-private fragments fall back to base-SDF (no
+#   micro-displacement applied).
+#
+# § cssl-substrate-projections — Camera + ObserverFrame for view-distance
+#   computation in DetailBudget. The amplifier needs to know the per-pixel
+#   sub-pixel-projected-area to decide whether the curvature-trigger fires
+#   (per 07_KAN_RUNTIME_SHADING § IX § fovea-amplifier-optimization).
+cssl-substrate-kan             = { path = "../cssl-substrate-kan" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+cssl-substrate-projections     = { path = "../cssl-substrate-projections" }
+
+# § thiserror — AmplifierError + DetailBudgetExhausted + KanConfidenceTooLow.
+thiserror = { workspace = true }
+# § smallvec — RecursiveDetailLOD's per-level-stack (max 5 levels) lives in a
+#   stack-allocated SmallVec to avoid heap traffic on the per-fragment hot
+#   path.
+smallvec  = { workspace = true }
