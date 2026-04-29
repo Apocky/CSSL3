@@ -44,6 +44,12 @@ pub const HELLO_WORLD_CSSL_PATH: &str = concat!(
 );
 
 /// Produce a system-temp path with a unique-per-test executable name.
+///
+/// Currently only consumed by tests in this module ; flagged dead by the
+/// crate's `-D dead-code` lint when those tests don't exercise the helper.
+/// Retained as a public API for future integration tests that need a fresh
+/// executable path per `(pid, stem)` pair.
+#[allow(dead_code)]
 fn unique_temp_exe(stem: &str) -> PathBuf {
     let pid = std::process::id();
     let tmp = std::env::temp_dir();

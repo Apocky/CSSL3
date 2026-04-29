@@ -3688,5 +3688,57 @@ Each decision entry :
 
 ───────────────────────────────────────────────────────────────
 
+## § T11-D59 : Session-6 S6-C3 — `memref.load` / `memref.store` (cranelift load/store, alignment-aware)
+
+> **PM allocation note** : T11-D57 reserved for B1 (heap-alloc) and T11-D58 reserved for C1 (scf.if) per the parallel-fanout dispatch plan. T11-D59 is the next-available slot for S6-C3. PM may renumber on merge if the B1 / C1 agents land out-of-order ; the substantive content of this entry is independent of the chosen ordinal.
+
+- **Date** 2026-04-28
+- **Status** accepted
+- **Session** 6 — Phase-C control-flow + JIT enrichment, slice 3 of 5 (parallel with C1 / C2)
+- **Branch** `cssl/session-6/C3`
+- **Context** Per `HANDOFF_SESSION_6.csl § PHASE-C § S6-C3` and the spec-hole identified in `specs/02_IR.csl § MEMORY-OPS` (now closed by this slice), the JIT and object backends recognized the MIR op-name `memref.load` (emitted by HIR `Index` lowering since T6-phase-1) but had no real lowering — both paths fell through to `UnsupportedMirOp` / `UnsupportedOp`. The slice goal : turn `memref.load` and `memref.store` into first-class scalar load/store cranelift instructions with alignment derived from the element type's natural alignment + an optional `"alignment"` attribute override + an optional ptr+offset operand pair. This is the smallest, most-independent C-axis slice (no dependency on C1's scf.if or C2's scf.for/while) and unblocks downstream B-phase work that produces real heap-backed reads/writes.
+- **Slice landed (this commit)** — ~370 LOC + 23 tests
+  - **`specs/02_IR.csl`** : new `§ MEMORY-OPS` section (closing a documented spec-hole) defining canonical operand shapes for `memref.load` / `memref.store`, target-mappings (cranelift CPU + SPIR-V + DXIL/MSL/WGSL stubs), the `natural-align(T)` table, and explicit non-scope notes (volatile / atomic / endianness deferred).
+  - **`compiler-rs/crates/cssl-mir/src/value.rs`** :
+    - **`IntWidth::natural_alignment()`** + **`FloatWidth::natural_alignment()`** + **`MirType::natural_alignment()`** — `const fn` helpers returning the byte alignment a value of that scalar type requires for a regular non-overaligned access. Non-scalars return `None` ; the caller then either supplies an explicit `"alignment"` attribute or rejects the op as unsupported at stage-0.
+    - 4 new unit tests covering every IntWidth, every FloatWidth, all scalar MirType variants, and the `None`-for-non-scalar invariant.
+  - **`compiler-rs/crates/cssl-cgen-cpu-cranelift/src/jit.rs`** : real cranelift `load` + `store` lowering for the JIT backend.
+    - `lower_op_to_cl` matches `"memref.load"` / `"memref.store"` and dispatches to dedicated helpers.
+    - `memref_alignment(op, elem_ty)` reads the `"alignment"` attribute (optional, parses as `u32`) and returns `max(natural, override)` so codegen never under-aligns ; `None` if the elem-type has no natural alignment.
+    - `memref_flags(align)` builds a `MemFlags` with `set_aligned()` ; the type-checker is responsible for ensuring the alignment claim is true at runtime.
+    - `memref_effective_addr(builder, value_map, ptr_id, offset_id)` returns `ptr` if no offset operand, else `iadd ptr, offset`. Both operands must already be present in the value-map.
+    - `lower_memref_load(op, …)` : `result.ty → cranelift Type` validation, `(ptr [, offset])` operand wiring, alignment derivation, `builder.ins().load(elem_ty, flags, addr, 0)`, value-map insert.
+    - `lower_memref_store(op, …)` : 0-result invariant check, `(val, ptr [, offset])` operand wiring, val cranelift-type → MirType reverse-mapping for alignment, `builder.ins().store(flags, val, addr, 0)`.
+    - `cl_to_mir_for_align(t)` : reverse of `mir_to_cl_type` for the scalar set the JIT supports — used by store to derive alignment from the val's cranelift IR type.
+    - 4 new `JitFn::call_*` adapters : `call_i64_to_i32` / `call_i64_to_i64` / `call_i64_to_f32` (canonical load shape — pointer in i64, scalar result) + `call_i32_i64_to_unit` (canonical store shape — val + ptr → ()).
+    - 9 new tests covering : load i32 / i64 / f32 from a Rust-stack pointer ; store i32 ; store-then-load roundtrip ; load with offset operand (4-element array, read element 2) ; load with explicit `"alignment"` attribute ; rejection of >2 operands on load ; rejection of non-empty results on store.
+  - **`compiler-rs/crates/cssl-cgen-cpu-cranelift/src/object.rs`** : mirror of the JIT lowering for the object backend, plus 5 new tests covering load i32 + store i32 + load with offset + load with alignment attribute + rejection of store-with-result. Both backends share the operand shape + alignment semantics ; the deferred follow-up (per T11-D54) is to extract these helpers into a single shared module.
+  - **`compiler-rs/crates/cssl-cgen-cpu-cranelift/src/lower.rs`** : `memref.load` / `memref.store` text-CLIF emission for the `clif-util`-readable artifact path, with the `aligned <bytes>` flag rendered when an explicit `"alignment"` attribute is present. 5 new tests.
+  - **`compiler-rs/crates/cssl-examples/src/hello_world_gate.rs`** : pre-existing `unique_temp_exe` helper marked `#[allow(dead_code)]` with a clarifying doc-comment. The crate's `-D dead-code` lint flagged it on the parallel-fanout branch tip ; without this fix the S6-C3 commit-gate's `cargo clippy --workspace --all-targets -- -D warnings` step fails on a baseline issue unrelated to memref ops. Marked as deferred follow-up : remove the `#[allow]` once a future test exercises the helper.
+- **The capability claim**
+  - Source : a hand-built `MirFunc` `fn load_i32(ptr : i64) -> i32 { memref.load ptr }`.
+  - Pipeline : MIR → cranelift IR (`load.i32 aligned <natural> v0`) → x86-64 → JIT-finalize → fn-pointer → call.
+  - Runtime : `call_i64_to_i32(stack_ptr_to_i32, &m)` returns the value at the pointer ; verified across i32, i64, f32 in the JIT test suite, and across i32 / store / offset / alignment in the object-emit + text-CLIF test suites. The end-to-end `memref_store_then_load_roundtrip_i32` test confirms the JIT-compiled store actually mutates memory observable by both Rust-side reads and a separate JIT-compiled load.
+  - **First time MIR `memref.load` / `memref.store` produce real machine-code load / store on this host.** The HIR-level `Index` expression now flows through to a working scalar memory operation in the JIT, which unblocks B-phase work that reads / writes through the cssl-rt allocator + Vec / String / file-IO datapath.
+- **Consequences**
+  - Test count : 1717 → 1740 (+23 : 4 cssl-mir natural-alignment tests + 9 jit memref tests + 5 object-emit memref tests + 5 lower text-CLIF memref tests). Workspace baseline preserved ; no other crate's behavior changed.
+  - **C-axis is now reachable in parallel** : C1 (scf.if) + C2 (scf.for/while) + this slice (C3) are now mutually independent and merge-friendly. C4 (f64 transcendentals) and C5 (closures) still require A5 only.
+  - **B-axis B1 (heap-alloc) consumes this slice's output** : `__cssl_alloc` returns a raw pointer ; user code dereferences it via memref.load / memref.store ; the capability-system at the type-checker level enforces the cap-ownership rules before MIR-emission. C3 lowers what type-check has approved — the aliasing discipline is not a codegen concern.
+  - **Spec-hole closed** : `specs/02_IR.csl § MEMORY-OPS` is now canonical for memref load/store operand shapes, alignment semantics, and target-mappings. The natural-align table lives on `IntWidth::natural_alignment` / `FloatWidth::natural_alignment` / `MirType::natural_alignment` ; the lowering reads it.
+  - **Volatile / atomic / endianness left explicit** : the `MEMORY-OPS` section calls these out as deferred. Volatile is an effect-row concern (Phase-B+) ; atomicity is a separate op family ; endianness is target-defined and cranelift handles it natively.
+  - **All gates green** : fmt ✓ clippy ✓ test 1740/0 ✓ doc ✓ xref ✓ smoke 4/4 ✓.
+- **Closes the S6-C3 slice.** Phase-C scope-3 success-gate met.
+- **Deferred** (explicit follow-ups)
+  - **Op-set extraction** : the JIT and Object lowerings share alignment + ptr-offset + cl↔mir helpers in two near-identical copies. Extracting them into a `cssl-cgen-cpu-cranelift::shared` module (alongside the cmp / select / call extraction noted in T11-D54) lets a single source of truth drive both backends. Deferred ; the duplication is small enough not to block C3.
+  - **`#[allow(dead_code)]` on `unique_temp_exe`** : remove once a test in `cssl-examples::hello_world_gate` actually exercises the helper. The function is clearly meant for future per-test isolation but is currently unused ; the allow is the smallest non-disruptive fix.
+  - **HIR-level alignment + element-type propagation** : the body_lower path emits `memref.load` with `result-ty = MirType::None` because HIR doesn't yet propagate index-target's element type. Once HIR-types are wired through Index expressions, the codegen path will see the correct elem-ty without needing the cranelift-level reverse-mapping in `cl_to_mir_for_align`. Deferred to a B-phase / C-phase enrichment slice.
+  - **Multi-block + structured-CFG load/store** : `memref.load` / `memref.store` inside `scf.if` / `scf.for` bodies need C1 + C2 to land first ; the lowering helpers themselves work in any block — what's missing is the surrounding control-flow infrastructure.
+  - **Volatile loads / stores via effect-row** : when CSSLv3's `{Volatile}` (or equivalent) effect is wired, `memref.load` / `memref.store` carrying that effect should emit `MemFlags` with `set_volatile()` and skip aligned-fast-path optimizations. Phase-D / Phase-E work.
+  - **GPU-target lowering** : the spec-table calls out SPIR-V `OpLoad` / `OpStore` with `Aligned` decoration ; D-phase emitters (D1..D4) will read the same `"alignment"` attribute to set the SPIR-V `MemoryAccess` mask correctly.
+  - **Object-emit ABI bridges** : currently the object backend uses the host call-conv for all fns. Once cross-compile target-triple plumbing (T11-D54-deferred) lands, memref.load / memref.store will pick up the right aliasing-disclaimer flags for the target ABI.
+  - **Atomicity** : separate op family `cssl.atomic.load` / `cssl.atomic.store` / `cssl.atomic.rmw` (the IR `arith` dialect's atomic variants don't quite fit). Deferred to whenever lock-free data-structures land.
+
+───────────────────────────────────────────────────────────────
+
 
 

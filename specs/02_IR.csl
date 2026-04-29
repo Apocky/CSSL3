@@ -168,6 +168,40 @@
   MLIR-scf dialect used for control-flow (scf.if, scf.for, scf.while)
   SPIR-V emission = walk scf.* structured-tree directly
 
+§ MEMORY-OPS  (T11-D59 / S6-C3)
+  ‼ MLIR memref dialect names retained ; semantics extended for stage-0 CPU JIT.
+  memref.load
+    operands : [ptr : i64]               # raw host-pointer (post-allocator)
+               [, offset : i64]          # OPTIONAL — added to ptr via iadd
+    results  : [val  : T]                # T ∈ scalar (i8|i16|i32|i64|f32|f64|bool)
+    attrs    :
+      "alignment" = u32-bytes  # OPTIONAL ; default = natural-align(T)
+                               # MUST ≥ natural-align(T) ; never under-align
+      "source_loc" = "<file>:<line>:<col>"
+    semantics : non-volatile read of T from (ptr [+ offset])
+                ¬ aliasing-discipline @ codegen ; that lives @ type-check + cap
+    target-mapping :
+      cranelift-CPU : `vN = load.<ty> aligned <align>, ptr [+offset]`
+      SPIR-V        : `OpLoad <result-type> <ptr-id> [Aligned <bytes>]`
+      DXIL/MSL/WGSL : address-space-tagged load (deferred to D-phase)
+  memref.store
+    operands : [val : T, ptr : i64]
+               [, offset : i64]          # OPTIONAL — added to ptr via iadd
+    results  : ()                        # void
+    attrs    : same-as-load (alignment + source_loc)
+    semantics : non-volatile write of T into (ptr [+ offset])
+    target-mapping :
+      cranelift-CPU : `store.<ty> aligned <align>, val, ptr [+offset]`
+      SPIR-V        : `OpStore <ptr-id> <val-id> [Aligned <bytes>]`
+  natural-align(T) (CPU-host) :
+    i8|bool = 1 • i16 = 2 • i32|f32 = 4 • i64|f64 = 8
+  ‼ volatile  : ¬ at C3 ; volatility = effect-row concern (deferred)
+  ‼ atomicity : ¬ at C3 ; atomic-loads/stores own a separate op family
+  ‼ endianness : target-defined ; cranelift emits native-endian raw load/store
+  ‼ aliasing-discipline lives @ type-check via cap (iso/trn/ref/val/box/tag) +
+    IFC-label propagation ; codegen lowers what type-check has approved ; the
+    cap-ownership rules are enforced before MIR-emission, ¬ during it
+
 § INCREMENTAL COMPILATION (for <2s hot-reload, R13)
   query-based compiler (salsa-style or rustc-query-lineage)
   keys : (source-hash, stage-args, target-profile, IFC-policy-hash)

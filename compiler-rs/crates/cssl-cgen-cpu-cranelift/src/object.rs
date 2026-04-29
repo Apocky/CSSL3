@@ -359,6 +359,10 @@ fn lower_one_op(
         "arith.divf" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().fdiv(a, c)
         }),
+        // T11-D59 / S6-C3 : memref.load + memref.store. See
+        // `specs/02_IR.csl § MEMORY-OPS` and the JIT-side mirror in `jit.rs`.
+        "memref.load" => obj_lower_memref_load(op, builder, value_map, fn_name),
+        "memref.store" => obj_lower_memref_store(op, builder, value_map, fn_name),
         "func.return" => {
             let mut args = Vec::with_capacity(op.operands.len());
             for vid in &op.operands {
@@ -377,6 +381,183 @@ fn lower_one_op(
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
         }),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-D59 / S6-C3 : object-emit memref.load / memref.store helpers.
+//
+// Mirrors the JIT lowering in `jit.rs`. The two paths share the same
+// alignment + ptr+offset derivation logic, but the JIT and Object backends
+// each declare their own helper (no shared module yet — extracting them is
+// the deferred follow-up that lets cmp / select / call also be one source
+// of truth).
+// ───────────────────────────────────────────────────────────────────────
+
+fn obj_memref_alignment(op: &MirOp, elem_ty: &MirType) -> Option<u32> {
+    let natural = elem_ty.natural_alignment()?;
+    let parsed = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "alignment")
+        .and_then(|(_, v)| v.parse::<u32>().ok());
+    Some(parsed.map_or(natural, |a| a.max(natural)))
+}
+
+fn obj_memref_flags(_align: u32) -> cranelift_codegen::ir::MemFlags {
+    let mut flags = cranelift_codegen::ir::MemFlags::new();
+    flags.set_aligned();
+    flags
+}
+
+fn obj_memref_effective_addr(
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &HashMap<ValueId, cranelift_codegen::ir::Value>,
+    ptr_id: ValueId,
+    offset_id: Option<ValueId>,
+    fn_name: &str,
+) -> Result<cranelift_codegen::ir::Value, ObjectError> {
+    let ptr = *value_map
+        .get(&ptr_id)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: ptr_id.0,
+        })?;
+    if let Some(off_id) = offset_id {
+        let off = *value_map
+            .get(&off_id)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: off_id.0,
+            })?;
+        Ok(builder.ins().iadd(ptr, off))
+    } else {
+        Ok(ptr)
+    }
+}
+
+fn obj_lower_memref_load(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "memref.load with no result".to_string(),
+        })?;
+    let elem_ty = mir_type_to_cl(&r.ty).ok_or_else(|| ObjectError::NonScalarType {
+        fn_name: fn_name.to_string(),
+        slot: 0,
+        ty: format!("{}", r.ty),
+    })?;
+    let &ptr_id = op
+        .operands
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "memref.load expected at least 1 operand (ptr)".to_string(),
+        })?;
+    let offset_id = op.operands.get(1).copied();
+    if op.operands.len() > 2 {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "memref.load expected 1 or 2 operands ; got {}",
+                op.operands.len()
+            ),
+        });
+    }
+    let align = obj_memref_alignment(op, &r.ty).ok_or_else(|| ObjectError::NonScalarType {
+        fn_name: fn_name.to_string(),
+        slot: 0,
+        ty: format!("{}", r.ty),
+    })?;
+    let addr = obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?;
+    let flags = obj_memref_flags(align);
+    let v = builder.ins().load(elem_ty, flags, addr, 0);
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
+fn obj_lower_memref_store(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    if !op.results.is_empty() {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "memref.store must have 0 results ; got {}",
+                op.results.len()
+            ),
+        });
+    }
+    let &val_id = op
+        .operands
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "memref.store expected operands (val, ptr [, offset])".to_string(),
+        })?;
+    let &ptr_id = op
+        .operands
+        .get(1)
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "memref.store expected at least 2 operands (val, ptr)".to_string(),
+        })?;
+    let offset_id = op.operands.get(2).copied();
+    if op.operands.len() > 3 {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "memref.store expected 2 or 3 operands ; got {}",
+                op.operands.len()
+            ),
+        });
+    }
+    let val = *value_map
+        .get(&val_id)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: val_id.0,
+        })?;
+    let val_ty = builder.func.dfg.value_type(val);
+    let mir_elem = obj_cl_to_mir_for_align(val_ty);
+    let align = mir_elem
+        .as_ref()
+        .and_then(|t| obj_memref_alignment(op, t))
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("memref.store value type `{val_ty}` has no natural alignment"),
+        })?;
+    let addr = obj_memref_effective_addr(builder, value_map, ptr_id, offset_id, fn_name)?;
+    let flags = obj_memref_flags(align);
+    builder.ins().store(flags, val, addr, 0);
+    Ok(false)
+}
+
+fn obj_cl_to_mir_for_align(t: cranelift_codegen::ir::Type) -> Option<MirType> {
+    if t == cl_types::I8 {
+        Some(MirType::Int(IntWidth::I8))
+    } else if t == cl_types::I16 {
+        Some(MirType::Int(IntWidth::I16))
+    } else if t == cl_types::I32 {
+        Some(MirType::Int(IntWidth::I32))
+    } else if t == cl_types::I64 {
+        Some(MirType::Int(IntWidth::I64))
+    } else if t == cl_types::F32 {
+        Some(MirType::Float(FloatWidth::F32))
+    } else if t == cl_types::F64 {
+        Some(MirType::Float(FloatWidth::F64))
+    } else {
+        None
     }
 }
 
@@ -608,5 +789,116 @@ mod tests {
         module.push_func(f);
         let bytes = emit_object_module(&module).expect("emit ok");
         assert!(!bytes.is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D59 / S6-C3 : memref.load + memref.store object-emit tests.
+    //
+    // These tests confirm the object backend produces non-empty bytes with
+    // the host-magic prefix when the input MIR contains memref ops. End-to-
+    // end runtime verification of the produced object lives in the JIT
+    // module (above) ; here we verify the codegen path doesn't reject the
+    // ops or panic.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn obj_emit_memref_load_i32_succeeds() {
+        // fn load_i32(ptr: i64) -> i32 { memref.load ptr }
+        let mut f = MirFunc::new(
+            "load_i32",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.push_op(
+            MirOp::std("memref.load")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_memref_store_i32_succeeds() {
+        // fn store_i32(val: i32, ptr: i64) { memref.store val, ptr }
+        let mut f = MirFunc::new(
+            "store_i32",
+            vec![MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I64)],
+            vec![],
+        );
+        f.push_op(
+            MirOp::std("memref.store")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1)),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_memref_load_with_offset_succeeds() {
+        // fn load_at(ptr: i64, off: i64) -> i32 { memref.load(ptr, off) }
+        let mut f = MirFunc::new(
+            "load_at",
+            vec![MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.push_op(
+            MirOp::std("memref.load")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_memref_load_with_alignment_attr_succeeds() {
+        let mut f = MirFunc::new(
+            "load_aligned",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.push_op(
+            MirOp::std("memref.load")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32))
+                .with_attribute("alignment", "8"),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn obj_emit_memref_store_with_result_errors() {
+        let mut f = MirFunc::new(
+            "bad_store",
+            vec![MirType::Int(IntWidth::I32), MirType::Int(IntWidth::I64)],
+            vec![],
+        );
+        f.push_op(
+            MirOp::std("memref.store")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(matches!(r, Err(ObjectError::LoweringFailed { .. })));
     }
 }
