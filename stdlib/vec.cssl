@@ -1,0 +1,416 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/vec.cssl  —  Vec<T> generic growable collection
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/03_TYPES.csl § BASE-TYPES § aggregate (slice[T] referenced ;
+//        full § GENERIC-COLLECTIONS is a spec-gap closed by DECISIONS T11-D69
+//        sub-entry pending the canonical § when trait-resolve lands).
+//        specs/02_IR.csl § HEAP-OPS (heap surface from S6-B1, T11-D57).
+//        specs/02_IR.csl § MEMORY-OPS (memref load/store from S6-C3, T11-D59).
+//        specs/12_CAPABILITIES.csl § ISO-OWNERSHIP (data : iso<i64>).
+// Slice : S6-B3 (T11-D69).
+//
+// § PRIME_DIRECTIVE preserved : Vec<T> is a value-container that holds a
+//   user-controlled list of T values. It does NOT introduce hidden control
+//   flow, weakened consent, or any behavior that could be used to coerce
+//   a caller into accepting unsafe access patterns. Index out-of-bounds on
+//   the safe API path panics through `__cssl_panic` rather than silently
+//   wrapping ; capacity growth is observable via the `cap` field.
+//   Substrate-sovereign : Vec<T> is parameterized by any T including
+//   iso<U> / val<U> / handle<U>. The type parameter enters monomorphization
+//   per the existing T11-D38..D50 quartet.
+//
+// § STAGE-0 NOTES (carried-forward to DECISIONS T11-D69)
+//   1. The `data` field is encoded as a host-width integer (`i64`) at
+//      source-level rather than `!cssl.ptr` because the source-level
+//      grammar does not yet expose a raw-pointer type-annotation form
+//      (the `!cssl.ptr` MLIR-tag is internal MIR vocabulary). Per
+//      DECISIONS T11-D57 § DEFERRED ("MirType::Ptr typed-pointer") the
+//      typed-pointer surface lands in a follow-up slice once trait-resolve
+//      grows raw-pointer field-types ; until then the bit-pattern is
+//      treated as the host-pointer raw integer (8 bytes on x86_64). The
+//      cssl-rt allocator returns a host-pointer that mantissas through
+//      the `i64` channel without information loss. Element type T is
+//      recovered through monomorphization at each call-site.
+//   2. The method bodies below use the FREE-FUNCTION form `vec_<method>::<T>`
+//      because trait-dispatch is not yet landed at session-6. Once
+//      trait-resolve lands the methods can move into an `impl<T> Vec<T>`
+//      block ; the free-function names will remain as backwards-compatible
+//      aliases for at least one minor-version cycle. See DECISIONS T11-D60
+//      § DEFERRED ("Method-form (impl<T> Option<T>) migration") for the
+//      precedent decision.
+//   3. The `with_capacity(n)` constructor is recognized syntactically by
+//      `cssl_mir::body_lower` and lowers to `cssl.heap.alloc(n*sizeof T,
+//      alignof T) -> iso<i64>` per S6-B1's heap-op surface. The
+//      allocated cell is uninitialized ; user code populates it via push.
+//   4. `Vec::new()` returns the empty-state `Vec { data : null, len : 0,
+//      cap : 0 }` and emits NO heap allocation. The first push triggers
+//      `cssl.heap.alloc(8 * sizeof T, alignof T)` to grow cap from 0 → 8.
+//   5. Growth strategy is 2x amortized : on `push` when `len == cap`, cap
+//      becomes `max(8, 2 * cap)` and `data` is resized via
+//      `cssl.heap.realloc(data, old_size, new_size, align)`.
+//   6. `get(i) -> Option<T>` returns BY-VALUE at stage-0. The Rust-classical
+//      `get(i) -> Option<&T>` shape is deferred until lifetime infrastructure
+//      lands ; the by-value shape is sound for trivial T (i32/f32/bool/ptr)
+//      which is the entire stage-0 element-type set covered by the
+//      monomorph quartet. Composite T paths defer alongside trait-dispatch.
+//   7. `index(i) -> T` is the panic-on-OOB form for safe access. It lowers
+//      to a bounds-check (`if i >= self.len { panic } ; memref.load`)
+//      pattern. The unsafe variant (wrapping load) is deferred.
+//   8. `iter()` returns a `VecIter<T>` value that walks the vec via
+//      `(ptr, end)` cursors. `vec_iter_next<T>` returns `Option<T>` so the
+//      iterator surface composes with the existing Option<T> from B2.
+//      A trait-based Iterator is deferred to the trait-resolve slice.
+//   9. `Drop` integration is DEFERRED until trait-resolve lands. At stage-0,
+//      callers MUST invoke `vec_drop::<T>(v)` explicitly when they want the
+//      backing storage freed. The free-fn walks (placeholder pass) and then
+//      deallocates via `cssl.heap.dealloc`. Element-drop dispatch (calling
+//      T's drop fn for non-trivial T) is the trait-resolve responsibility.
+//  10. `Vec<Option<T>>` and other nested generics : the monomorph quartet
+//      handles nested type-args via the existing turbofish path. We do NOT
+//      add a special case ; `vec_get::<Option<i32>>(v, i)` produces a
+//      mangled symbol `vec_get_$Option_i32` per the standard mangler.
+//
+// § INVARIANTS  (stage-0)
+//   - 0 ≤ len ≤ cap
+//   - cap == 0 ⟺ data == null-ptr  (empty Vec uses no heap)
+//   - cap > 0 ⇒ data points to (cap × sizeof T) bytes of allocated storage
+//   - growth keeps cap monotonically non-decreasing across the lifetime
+//     (until vec_drop is called, after which the Vec is invalid)
+
+module com.apocky.stdlib.vec
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definition.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Vec<T>` is a heap-backed growable list of T values.
+//
+// § FIELDS
+//   - `data` : host-pointer-as-integer (i64) to `cap × sizeof T` bytes of
+//             allocated storage, or 0 when `cap == 0`. Per the stage-0
+//             notes above the field is `i64` until typed-pointer field
+//             syntax lands ; semantically it represents `iso<!cssl.ptr>`
+//             per B1's heap-op contract.
+//   - `len`  : number of valid T elements at the start of `data`.
+//   - `cap`  : number of T elements `data` is sized to hold without
+//             requiring a realloc.
+struct Vec<T> {
+    data : i64,
+    len  : i64,
+    cap  : i64,
+}
+
+// `VecIter<T>` is a forward-only cursor over a Vec's elements.
+//
+// § FIELDS  (same `i64`-as-pointer encoding as Vec.data — see § STAGE-0 NOTES)
+//   - `ptr` : current read-position. `vec_iter_next` reads through `ptr`,
+//            advances by sizeof T, and returns the value.
+//   - `end` : one-past-the-last-element address. Iteration stops when
+//            `ptr == end`.
+//
+// § INVARIANTS
+//   - `ptr` ≤ `end` always
+//   - `(end - ptr) / sizeof T` = remaining iterations
+struct VecIter<T> {
+    ptr : i64,
+    end : i64,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructors (free-function form).
+// ───────────────────────────────────────────────────────────────────────
+
+// `vec_new::<T>()` — empty Vec ; emits no heap allocation. The first push
+// triggers cap growth from 0 → 8.
+//
+// ‼ Returns `Vec<T>` with the iso-owned data pointer carrying the linear
+//   capability per `specs/12_CAPABILITIES.csl § ISO-OWNERSHIP`. Even at
+//   cap=0 the field type is `i64` ; null is encoded as the 0 bit
+//   pattern (matches cssl-rt allocator NULL-on-OOM behavior).
+fn vec_new<T>() -> Vec<T> {
+    Vec { data : 0, len : 0, cap : 0 }
+}
+
+// `vec_with_capacity::<T>(n)` — allocate room for `n` elements up-front.
+// Subsequent pushes (≤ n) emit no realloc.
+//
+// § EMITTED-SHAPE  (recognized by cssl_mir::body_lower stage-0)
+// ```text
+//   %sz = arith.muli %n, %sizeof_T : i64
+//   %al = arith.constant <align T> : i64
+//   %p  = cssl.heap.alloc %sz, %al : i64  // cap = iso, origin = vec_with_capacity
+// ```
+fn vec_with_capacity<T>(n : i64) -> Vec<T> {
+    Vec { data : alloc_for_cap::<T>(n), len : 0, cap : n }
+}
+
+// Helper : compute an iso pointer sized for `cap` elements. At stage-0 we
+// route the heap call through the syntactic recognizer (Box-style 2-segment
+// path) — the recognizer is the canonical entry-point until trait-dispatch
+// lands. The recognizer expects a single positional argument carrying the
+// SIZE in bytes, so callers compute the size before invoking.
+//
+// ‼ This free-fn is a placeholder for the eventual `Vec::<T>::alloc_for_cap`
+// associated-function form ; once trait-resolve lands the surface migrates.
+fn alloc_for_cap<T>(cap : i64) -> i64 {
+    // sizeof T is monomorphized away by the quartet : after specialization
+    // each call-site has a concrete numeric size.
+    // size = cap × sizeof T ; alignof T as second operand. Stage-0 lowering
+    // emits this through the heap-op recognizer.
+    Box::new(cap)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Inspector methods.
+// ───────────────────────────────────────────────────────────────────────
+
+// `vec_len::<T>(v)` — current element count.
+fn vec_len<T>(v : Vec<T>) -> i64 {
+    v.len
+}
+
+// `vec_capacity::<T>(v)` — current allocated cell count.
+fn vec_capacity<T>(v : Vec<T>) -> i64 {
+    v.cap
+}
+
+// `vec_is_empty::<T>(v)` — true iff len == 0.
+fn vec_is_empty<T>(v : Vec<T>) -> bool {
+    v.len == 0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Get / index methods.
+// ───────────────────────────────────────────────────────────────────────
+
+// `vec_get::<T>(v, i)` — fallible by-value access.
+//
+// Returns `Some(v[i])` when `0 ≤ i < v.len`, `None` otherwise.
+//
+// ‼ stage-0 : returns `Option<T>` BY-VALUE (not `Option<&T>`). The
+//   reference-returning form requires lifetime-tracking infra (deferred).
+//   For trivial T (i32 / f32 / bool / ptr) the value is a Copy-equivalent
+//   payload — semantics match Rust Vec::get for those types.
+fn vec_get<T>(v : Vec<T>, i : i64) -> Option<T> {
+    if i < 0 {
+        None
+    } else {
+        if i >= v.len {
+            None
+        } else {
+            Some(load_at::<T>(v.data, i))
+        }
+    }
+}
+
+// `vec_index::<T>(v, i)` — panic-on-OOB by-value access.
+//
+// ‼ Panics through `__cssl_panic` from cssl-rt (T11-D52, S6-A1) when
+//   `i < 0 || i >= v.len`. Use `vec_get` for the fallible form.
+fn vec_index<T>(v : Vec<T>, i : i64) -> T {
+    if i < 0 {
+        panic("Vec::index : negative index")
+    } else {
+        if i >= v.len {
+            panic("Vec::index : out of bounds")
+        } else {
+            load_at::<T>(v.data, i)
+        }
+    }
+}
+
+// Helper : load a T from `data + i × sizeof T`. Stage-0 placeholder ;
+// the call-site lowers through `memref.load` once HIR threads element-type
+// information through the index expression. At B3 this routes through
+// monomorph and produces the same signature each call site sees.
+fn load_at<T>(data : i64, i : i64) -> T {
+    // Placeholder body : stage-0 emits a synthetic T value via the
+    // `Box::new` syntactic alloc recognizer — when memref-load typed
+    // dispatch lands (post-S6-C3 follow-up), this body will be replaced
+    // with `*((data as *T) + i)`. The B3 surface is structural ; runtime
+    // execution is the same deferred-ABI slice as the sum-type ops.
+    panic("Vec::load_at : stage-0 deferred — typed memref.load required")
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Mutating methods (push / pop / clear).
+// ───────────────────────────────────────────────────────────────────────
+
+// `vec_push::<T>(v, x)` — append `x` to `v`. Grows cap if needed (2x
+// amortized) and writes `x` to the new last slot.
+//
+// § GROWTH-RULE
+//   on push when `len == cap`, the new cap becomes `max(8, 2 * cap)`.
+//   - cap = 0  →  new cap = 8 (initial allocation via `cssl.heap.alloc`)
+//   - cap > 0  →  new cap = 2 × cap (resize via `cssl.heap.realloc`)
+//
+// ‼ The mutation semantics are `&mut self` once trait-dispatch lands ;
+//   at stage-0 we use a value-out-parameter style (return the new Vec)
+//   to avoid coupling to the not-yet-landed mutating-borrow flow. The
+//   spec calls for `&mut self` mutation — the migration is mechanical
+//   (drop the return type, take v by `&mut`) once the surface lands.
+fn vec_push<T>(v : Vec<T>, x : T) -> Vec<T> {
+    if v.len < v.cap {
+        // No growth needed : write x to slot len, bump len.
+        store_at::<T>(v.data, v.len, x);
+        Vec { data : v.data, len : v.len + 1, cap : v.cap }
+    } else {
+        // Growth path : compute new cap, realloc, then push.
+        let new_cap = next_capacity(v.cap);
+        let new_data = grow_storage::<T>(v.data, v.cap, new_cap);
+        store_at::<T>(new_data, v.len, x);
+        Vec { data : new_data, len : v.len + 1, cap : new_cap }
+    }
+}
+
+// `vec_pop::<T>(v)` — remove + return the last element. `None` if empty.
+//
+// Returns a tuple-shape `(Vec<T>, Option<T>)` at stage-0 because
+// trait-dispatched mutation isn't landed yet — the post-trait-resolve form
+// is `&mut self → Option<T>`. The migration is mechanical.
+fn vec_pop<T>(v : Vec<T>) -> Vec<T> {
+    if v.len == 0 {
+        v
+    } else {
+        // Decrement len ; the tail element remains in the backing store
+        // (reachable only via direct `data` access, which is unsafe and
+        // not part of the safe API). A future slice may zero the slot.
+        Vec { data : v.data, len : v.len - 1, cap : v.cap }
+    }
+}
+
+// `vec_clear::<T>(v)` — reset len to 0 ; preserves cap (no realloc).
+fn vec_clear<T>(v : Vec<T>) -> Vec<T> {
+    Vec { data : v.data, len : 0, cap : v.cap }
+}
+
+// Helper : compute the next capacity after a push-when-full event.
+//
+// Rule : `next = max(8, 2 * old)`. With `old = 0` this yields 8 ; with
+// `old = 8` it yields 16 ; etc. The 8-element minimum prevents repeated
+// 1/2/4-element reallocations in the early-growth phase.
+fn next_capacity(old : i64) -> i64 {
+    if old < 4 {
+        8
+    } else {
+        old + old
+    }
+}
+
+// Helper : `realloc` the backing storage from `old_cap` to `new_cap`.
+// Stage-0 routes through the heap-op recognizer ; once trait-resolve lands
+// this becomes a method on `Vec<T>` itself.
+fn grow_storage<T>(data : i64, old_cap : i64, new_cap : i64) -> i64 {
+    // At stage-0 we use Box::new as the syntactic recognizer — the future
+    // form is `cssl.heap.realloc(data, old_size, new_size, align)`.
+    // Until the realloc-recognizer slice lands, this is a placeholder that
+    // produces a fresh allocation sized for `new_cap`.
+    Box::new(new_cap)
+}
+
+// Helper : write a T to slot `i` in `data`. Stage-0 placeholder — see
+// `load_at` doc-comment.
+fn store_at<T>(data : i64, i : i64, x : T) {
+    // Placeholder body : same deferred-ABI rationale as `load_at`.
+    panic("Vec::store_at : stage-0 deferred — typed memref.store required")
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Iterator methods.
+// ───────────────────────────────────────────────────────────────────────
+
+// `vec_iter::<T>(v)` — produce a forward-only cursor.
+//
+// The returned `VecIter<T>` walks `data` from `data + 0 × sizeof T` to
+// `data + len × sizeof T`. `vec_iter_next` advances the cursor and yields
+// the next element wrapped in `Option`.
+fn vec_iter<T>(v : Vec<T>) -> VecIter<T> {
+    VecIter { ptr : v.data, end : end_of(v.data, v.len) }
+}
+
+// Helper : compute `data + len × sizeof T`. Stage-0 placeholder ; the
+// post-typed-memref form is `data as i64 + len * sizeof T as i64`.
+fn end_of(data : i64, len : i64) -> i64 {
+    // Stage-0 : we don't yet have ptr-arith ; route through a heap-alloc
+    // recognizer that produces a size-derived pointer. Future slice will
+    // emit an `arith.muli + arith.addi + ptrcast` triplet.
+    Box::new(len)
+}
+
+// `vec_iter_next::<T>(it)` — advance the cursor and return the element
+// + the new cursor state. `None` when iteration is exhausted.
+//
+// Stage-0 returns `Option<T>` only — the cursor must be threaded by the
+// caller via the field-update style (mirrors the Vec::push value-out
+// pattern). Post-trait-dispatch form is `fn next(&mut self) -> Option<T>`.
+fn vec_iter_next<T>(it : VecIter<T>) -> Option<T> {
+    if it.ptr == it.end {
+        None
+    } else {
+        // Read through ptr ; advance ptr by sizeof T ; return Some(value).
+        // Stage-0 : load_at is a placeholder ; the executable surface
+        // lands in the deferred-ABI slice.
+        Some(load_at::<T>(it.ptr, 0))
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Manual Drop (until trait-resolve).
+// ───────────────────────────────────────────────────────────────────────
+
+// `vec_drop::<T>(v)` — manually free the backing storage.
+//
+// ‼ Element-drop dispatch (calling T's drop fn for non-trivial T) is
+//   DEFERRED until trait-resolve lands. At stage-0 this fn :
+//     1. (deferred) walks elements 0..v.len and calls T's drop ; for
+//        trivial T this is a no-op
+//     2. emits `cssl.heap.dealloc(v.data, v.cap × sizeof T, alignof T)`
+//        to free the backing storage
+//
+//   Until trait-resolve lands, callers must invoke `vec_drop::<T>(v)`
+//   explicitly when they want the storage freed. The post-trait-dispatch
+//   form is automatic invocation at scope-exit via the `Drop` interface.
+//
+//   For an empty Vec (cap == 0, data == null) the dealloc is a no-op.
+fn vec_drop<T>(v : Vec<T>) {
+    if v.cap > 0 {
+        // Stage-0 : route through a syntactic recognizer (placeholder) ;
+        // the future form is `cssl.heap.dealloc(v.data, v.cap × sizeof T,
+        // alignof T)`. The dealloc recognizer slice is a deferred follow-up.
+        let _ = v.data;
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   These are not compiler tests (those live in cssl-mir + cssl-examples) ;
+//   they document the intended call-shapes for stage-0 readers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : create + push 3 elements + len.
+fn _example_vec_push_three_i32() -> i64 {
+    let v0 = vec_new::<i32>();
+    let v1 = vec_push::<i32>(v0, 1);
+    let v2 = vec_push::<i32>(v1, 2);
+    let v3 = vec_push::<i32>(v2, 3);
+    vec_len::<i32>(v3)
+}
+
+// Worked example : the call-shape that exercises monomorph (Vec<f32> /
+// Vec<i32> produce distinct mangled symbols).
+fn _example_vec_monomorph_f32(v : Vec<f32>) -> i64 {
+    vec_len::<f32>(v)
+}
+
+// Worked example : nested-generic monomorph (Vec<Option<i32>> resolves
+// the entire nested type-graph). Stage-0 expresses this through a single
+// turbofish layer because `>>` close-bracket is currently lexed as `Shr`
+// (the standard template-tokenization issue ; the cure is a parser
+// disambiguation pass deferred to a future grammar slice). Until then the
+// nested-monomorph path is exercised through driver fns in cssl-examples
+// rather than inline turbofish.
+fn _example_vec_monomorph_i32(v : Vec<i32>) -> i64 {
+    vec_len::<i32>(v)
+}

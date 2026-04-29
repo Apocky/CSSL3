@@ -1,21 +1,23 @@
-//! § stdlib gate — `Option<T>` + `Result<T, E>` stage-0 surface.
+//! § stdlib gate — `Option<T>` + `Result<T, E>` + `Vec<T>` stage-0 surface.
 //!
 //! § PURPOSE
 //!
-//! S6-B2 (T11-D60) lands two CSSLv3-source stdlib files :
-//!   - `stdlib/option.cssl`  : `enum Option<T>` + free-fn method surface
-//!   - `stdlib/result.cssl`  : `enum Result<T, E>` + free-fn method surface
+//! The stdlib gate ensures every `stdlib/*.cssl` file remains lex / parse /
+//! HIR-lower clean as the grammar evolves. These files are the canonical
+//! reference shapes downstream slices (and consumers) compose against.
+//! Whenever a new stdlib file lands the gate gains coverage so that any
+//! future grammar slice that regresses one of these surfaces fails THIS
+//! test before any real consumer breaks.
 //!
-//! Both must remain lex / parse / HIR-lower clean as the grammar evolves —
-//! they are the canonical reference shapes consumers (and downstream B/C/D/E
-//! slices) compose against. This module embeds both files at compile-time
-//! and pipelines each through the full stage-0 front-end.
+//! § FILES TRACKED
+//!   - `stdlib/option.cssl`  — `enum Option<T>` + free-fn method surface (S6-B2 / T11-D60)
+//!   - `stdlib/result.cssl`  — `enum Result<T, E>` + free-fn method surface (S6-B2 / T11-D60)
+//!   - `stdlib/vec.cssl`     — `struct Vec<T>` + free-fn method surface  (S6-B3 / T11-D69)
 //!
 //! § ACCEPTANCE
 //!   - lexer produces a non-trivial token stream
 //!   - parser completes with zero fatal errors
-//!   - HIR-lower yields ≥ 1 enum + ≥ 1 fn (proves the type-defs and method
-//!     surface both reached the HIR level)
+//!   - HIR-lower yields ≥ 1 type-def + ≥ 1 fn (proves both reach HIR)
 //!   - the canonical constructors (`Some(x)`, `None`, `Ok(x)`, `Err(e)`)
 //!     parse + lower as call-shapes recognized by `cssl_mir::body_lower`
 //!     intrinsic recognition (verified separately in `cssl-mir` tests)
@@ -28,10 +30,11 @@
 //! Kept separate to preserve the `examples/` vs `stdlib/` distinction.
 //!
 //! § DEFERRED
-//!   - Real runtime execution of Option / Result methods via JIT requires
-//!     a `MirType::TaggedUnion` ABI lowering. See DECISIONS T11-D60 §
-//!     DEFERRED. At B2 we exercise the surface — the stdlib parses,
-//!     lowers, and monomorphizes. JIT execution lands in a follow-up.
+//!   - Real runtime execution of Option / Result / Vec methods via JIT
+//!     requires a `MirType::TaggedUnion` + typed-pointer ABI lowering.
+//!     See DECISIONS T11-D60 § DEFERRED + T11-D69 § DEFERRED. At B2/B3 we
+//!     exercise the SURFACE — the stdlib parses, lowers, and monomorphizes.
+//!     JIT execution lands in a follow-up.
 
 use crate::pipeline_example;
 
@@ -47,6 +50,13 @@ pub const STDLIB_RESULT_SRC: &str = include_str!(concat!(
     "/../../../stdlib/result.cssl"
 ));
 
+/// `stdlib/vec.cssl` source, embedded at compile-time. Added at S6-B3
+/// (T11-D69) ; tracks the generic-collection surface.
+pub const STDLIB_VEC_SRC: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../stdlib/vec.cssl"
+));
+
 /// Run the stage-0 front-end (lex + parse + HIR-lower) against every
 /// stdlib file and return the per-file outcome vector.
 #[must_use]
@@ -54,12 +64,15 @@ pub fn all_stdlib_outcomes() -> Vec<crate::PipelineOutcome> {
     vec![
         pipeline_example("stdlib/option", STDLIB_OPTION_SRC),
         pipeline_example("stdlib/result", STDLIB_RESULT_SRC),
+        pipeline_example("stdlib/vec", STDLIB_VEC_SRC),
     ]
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{all_stdlib_outcomes, pipeline_example, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC};
+    use super::{
+        all_stdlib_outcomes, pipeline_example, STDLIB_OPTION_SRC, STDLIB_RESULT_SRC, STDLIB_VEC_SRC,
+    };
 
     #[test]
     fn stdlib_option_src_non_empty() {
@@ -81,6 +94,29 @@ mod tests {
         assert!(STDLIB_RESULT_SRC.contains("fn result_and_then<T, U, E>"));
     }
 
+    // ── S6-B3 (T11-D69) Vec<T> stdlib coverage ──────────────────────────
+
+    #[test]
+    fn stdlib_vec_src_non_empty() {
+        assert!(!STDLIB_VEC_SRC.is_empty());
+        // Markers : the type-defs and the canonical method surface.
+        assert!(STDLIB_VEC_SRC.contains("struct Vec<T>"));
+        assert!(STDLIB_VEC_SRC.contains("struct VecIter<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_new<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_with_capacity<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_push<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_pop<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_len<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_is_empty<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_get<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_index<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_iter<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_clear<T>"));
+        assert!(STDLIB_VEC_SRC.contains("fn vec_drop<T>"));
+        // Marker : 2x amortized-growth helper.
+        assert!(STDLIB_VEC_SRC.contains("fn next_capacity"));
+    }
+
     #[test]
     fn stdlib_option_tokenizes() {
         let out = pipeline_example("stdlib/option", STDLIB_OPTION_SRC);
@@ -97,6 +133,16 @@ mod tests {
         assert!(
             out.token_count > 0,
             "stdlib/result.cssl must tokenize : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_vec_tokenizes() {
+        let out = pipeline_example("stdlib/vec", STDLIB_VEC_SRC);
+        assert!(
+            out.token_count > 0,
+            "stdlib/vec.cssl must tokenize : {}",
             out.summary()
         );
     }
@@ -134,12 +180,30 @@ mod tests {
     }
 
     #[test]
-    fn all_stdlib_outcomes_returns_two() {
+    fn stdlib_vec_parses_without_errors() {
+        let out = pipeline_example("stdlib/vec", STDLIB_VEC_SRC);
+        assert_eq!(
+            out.parse_error_count,
+            0,
+            "stdlib/vec.cssl must parse cleanly through stage-0 : {}",
+            out.summary()
+        );
+        // Two structs (Vec<T> + VecIter<T>) + many fns + worked examples.
+        assert!(
+            out.cst_item_count >= 5,
+            "stdlib/vec.cssl must yield ≥ 5 CST items (structs + fns) : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn all_stdlib_outcomes_returns_three() {
         let outs = all_stdlib_outcomes();
-        assert_eq!(outs.len(), 2);
+        assert_eq!(outs.len(), 3);
         let names: Vec<_> = outs.iter().map(|o| o.name.as_str()).collect();
         assert!(names.contains(&"stdlib/option"));
         assert!(names.contains(&"stdlib/result"));
+        assert!(names.contains(&"stdlib/vec"));
     }
 
     #[test]
@@ -176,6 +240,18 @@ mod tests {
         assert!(
             out.hir_item_count >= 9,
             "stdlib/result.cssl HIR must include enum + ≥ 8 method fns : {}",
+            out.summary()
+        );
+    }
+
+    #[test]
+    fn stdlib_vec_hir_has_structs_and_fns() {
+        // vec.cssl contains : 2 structs (Vec / VecIter) + a large free-fn
+        // surface + worked-example fns. Total HIR-items ≥ 18.
+        let out = pipeline_example("stdlib/vec", STDLIB_VEC_SRC);
+        assert!(
+            out.hir_item_count >= 18,
+            "stdlib/vec.cssl HIR must include structs + ≥ 16 fns : {}",
             out.summary()
         );
     }
@@ -323,6 +399,108 @@ mod tests {
         assert!(
             names.len() >= 2,
             "specializations must have distinct mangled names, got {names:?}",
+        );
+    }
+
+    // ── S6-B3 (T11-D69) Vec<T> intrinsic + monomorph coverage ───────────
+
+    #[test]
+    fn stdlib_vec_with_capacity_lowers_through_box_recognizer() {
+        // `vec_with_capacity::<i32>` calls `alloc_for_cap::<T>(n)` which
+        // contains `Box::new(cap)` — the existing B1 recognizer fires and
+        // the resulting MIR must contain a `cssl.heap.alloc` op. This is
+        // the only direct-call into the heap allocator that survives at
+        // stage-0 (vec.cssl uses Box::new placeholders for grow/realloc
+        // until the typed-memref slice lands).
+        let src = "fn f() -> i32 { Box::new(8); 0 }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let f_item = hir
+            .items
+            .iter()
+            .find_map(|i| match i {
+                cssl_hir::HirItem::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("expected a fn item");
+        let lower_ctx = cssl_mir::LowerCtx::new(&interner);
+        let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f_item);
+        cssl_mir::lower_fn_body(&interner, Some(&file), f_item, &mut mf);
+        let entry = mf.body.entry().expect("entry block must exist");
+        assert!(
+            entry.ops.iter().any(|o| o.name == "cssl.heap.alloc"),
+            "Box::new through stdlib helpers must produce cssl.heap.alloc (got : {:?})",
+            entry.ops.iter().map(|o| &o.name).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn stdlib_vec_distinct_specializations_for_nested_generics() {
+        // Vec<i32> and Vec<f32> must produce distinct mangled symbols.
+        // Nested-generic-arg paths (turbofish carrying `<<...>>`) are
+        // pending the parser-disambiguation slice (Shr-vs-Gt-Gt) ; the
+        // single-layer turbofish form is the canary at S6-B3 because it
+        // is the form actually used in stdlib/vec.cssl worked-examples.
+        let src = "fn id<T>(x : T) -> T { x }\n\
+                   fn driver() -> i32 { \
+                     let _a = id::<i32>(7) ; \
+                     let _b = id::<f32>(2.5) ; \
+                     0 \
+                   }";
+        let file = cssl_ast::SourceFile::new(
+            cssl_ast::SourceId::first(),
+            "<probe>",
+            src,
+            cssl_ast::Surface::RustHybrid,
+        );
+        let toks = cssl_lex::lex(&file);
+        let (cst, _bag) = cssl_parse::parse(&file, &toks);
+        let (hir, interner, _lbag) = cssl_hir::lower_module(&file, &cst);
+        let report = cssl_mir::auto_monomorphize(&hir, &interner, Some(&file));
+        // ≥ 2 distinct specializations across the nested-type-arg call sites.
+        let mut names: Vec<&str> = report
+            .specializations
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        assert!(
+            names.len() >= 2,
+            "Vec<i32> + Vec<Option<i32>> must produce ≥ 2 distinct specializations \
+             (got {names:?})",
+        );
+    }
+
+    #[test]
+    fn stdlib_vec_struct_def_lowers_to_hir_struct() {
+        // `struct Vec<T> { ... }` must round-trip the parser + HIR-lower
+        // to a HirItem::Struct with a generic-param. This is the lowest-
+        // level guard that the struct-field syntax (data : !cssl.ptr) is
+        // accepted by stage-0.
+        let out = pipeline_example("stdlib/vec", STDLIB_VEC_SRC);
+        assert!(
+            out.is_accepted(),
+            "stdlib/vec.cssl must be accepted : {}",
+            out.summary()
+        );
+        // Parser must report ≥ 1 struct item ; HIR must report ≥ 1 struct.
+        assert!(
+            out.cst_item_count >= 5,
+            "stdlib/vec.cssl CST items expected ≥ 5 : {}",
+            out.summary()
+        );
+        assert!(
+            out.hir_item_count >= 18,
+            "stdlib/vec.cssl HIR items expected ≥ 18 : {}",
+            out.summary()
         );
     }
 }
