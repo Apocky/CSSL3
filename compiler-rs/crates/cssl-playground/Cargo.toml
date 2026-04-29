@@ -1,0 +1,37 @@
+[package]
+name                   = "cssl-playground"
+description            = "CSSLv3 browser playground — wasm-bindgen wrapper for parse→HIR pipeline"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § WASM-only crate.
+# cdylib  = wasm-bindgen output consumed by bundler / wasm-pack.
+# rlib    = allows `cargo test --lib` on host without wasm target.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+# ─ pipeline (parse→HIR only; no codegen/JIT/backend deps) ─────────────────
+[dependencies]
+cssl-ast   = { path = "../cssl-ast" }
+cssl-lex   = { path = "../cssl-lex" }
+cssl-parse = { path = "../cssl-parse" }
+cssl-hir   = { path = "../cssl-hir" }
+
+# ─ WASM glue ──────────────────────────────────────────────────────────────
+# wasm-bindgen/getrandom/console_error_panic_hook kept as direct crate-level
+# deps (not workspace) — playground is the only wasm consumer.
+wasm-bindgen             = "0.2"
+console_error_panic_hook = "0.1"
+
+# ─ serialisation ──────────────────────────────────────────────────────────
+serde_json = { workspace = true }
+
+# ─ host-only dev-deps ─────────────────────────────────────────────────────
+[dev-dependencies]
+# nothing yet — tests use cargo test --lib on host
