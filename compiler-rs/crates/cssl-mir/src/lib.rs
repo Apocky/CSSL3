@@ -51,6 +51,14 @@ pub mod monomorph;
 pub mod op;
 pub mod pipeline;
 pub mod print;
+// T11-D138 (W3g-01) — F5 IFC `EnforcesSigmaAtCellTouches` compiler-pass.
+// Walks every Ω-field cell-touching op + verifies it type-checks against
+// its declared Σ-mask + consent-bits + Sovereign-handle + capacity-floor
+// + reversibility-scope. Emits SIG0001..SIG0010 diagnostics. Wired into
+// the canonical pipeline AFTER `IfcLoweringPass` (consent attributes
+// must already be on the ops) + AFTER `BiometricEgressCheck` (so the
+// hard-no biometric refusal fires first).
+pub mod sigma_enforce;
 pub mod structured_cfg;
 pub mod trait_dispatch;
 pub mod value;
@@ -82,6 +90,17 @@ pub use pipeline::{
     TelemetryProbeInsertPass,
 };
 pub use print::{print_module, MlirPrinter};
+pub use sigma_enforce::{
+    EnforcesSigmaAtCellTouches, SigmaCellOpKind, SigmaEnforceContext, ATTR_CAPACITY_FLOOR,
+    ATTR_CELL_FACET, ATTR_CONSENT_BITS, ATTR_REQUIRED_BIT, ATTR_REVERSIBILITY_SCOPE,
+    ATTR_SOVEREIGN_AUTHORIZING, ATTR_SOVEREIGN_HANDLE, ATTR_TARGET_CAPACITY_FLOOR,
+    ATTR_TARGET_REVERSIBILITY_SCOPE, OP_FIELDCELL_DESTROY, OP_FIELDCELL_MODIFY, OP_FIELDCELL_READ,
+    OP_FIELDCELL_WRITE, SIG0001_UNGUARDED_CELL_WRITE, SIG0002_MISSING_CONSENT_BIT,
+    SIG0003_WRONG_CONSENT_BIT, SIG0004_SOVEREIGN_MISMATCH, SIG0005_CAPACITY_FLOOR_ERODED,
+    SIG0006_REVERSIBILITY_WIDEN_WITHOUT_CONSENT, SIG0007_TRAVEL_NEEDS_TRANSLATE,
+    SIG0008_CRYSTALLIZE_NEEDS_RECRYSTALLIZE, SIG0009_DESTROY_FORBIDDEN_WHEN_FROZEN,
+    SIG0010_RESERVED_NONZERO_ATTR, SIGMA_ENFORCE_PASS_NAME,
+};
 pub use structured_cfg::{
     has_structured_cfg_marker, validate_and_mark, validate_structured_cfg, CfgViolation,
     STRUCTURED_CFG_VALIDATED_KEY, STRUCTURED_CFG_VALIDATED_VALUE,

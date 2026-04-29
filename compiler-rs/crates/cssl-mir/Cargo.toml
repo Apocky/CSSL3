@@ -11,9 +11,18 @@ authors.workspace      = true
 workspace = true
 
 [dependencies]
-cssl-ast  = { path = "../cssl-ast" }
-cssl-hir  = { path = "../cssl-hir" }
-thiserror = { workspace = true }
+cssl-ast                       = { path = "../cssl-ast" }
+cssl-hir                       = { path = "../cssl-hir" }
+# T11-D138 (W3g-01) : the F5 IFC `EnforcesSigmaAtCellTouches` pass walks
+# `cssl.fieldcell.*` ops + cross-references the per-op `consent_bits` /
+# Sovereign / capacity-floor / reversibility-scope attributes against the
+# canonical `ConsentBit` + `SigmaPolicy` + `ReversibilityScope` enums
+# defined in `cssl-substrate-prime-directive::sigma`. Adding the dep
+# here is a structural addition only ; no runtime / cgen behavior
+# changes elsewhere. (Cyclic-dep check : substrate-prime-directive does
+# NOT depend on cssl-mir, so this is safe.)
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+thiserror                      = { workspace = true }
 
 [dev-dependencies]
 cssl-lex   = { path = "../cssl-lex" }

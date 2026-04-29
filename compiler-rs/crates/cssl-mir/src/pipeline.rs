@@ -177,7 +177,9 @@ impl PassPipeline {
 
     /// Build the canonical stage-0 pipeline with all stock passes in spec-order.
     ///
-    /// Order (per `specs/15` § PASS-PIPELINE) :
+    /// Order (per `specs/15` § PASS-PIPELINE +
+    /// `Omniverse/02_CSSL/00_LANGUAGE_CONTRACT.csl.md` § VI.D required-pass
+    /// list) :
     ///   1. monomorphization  (clones generic-fn call-sites)
     ///   2. ad-transform      (emits primal/fwd/bwd variants for `@differentiable`)
     ///   3. ifc-lowering      (emits `cssl.ifc.label` + `cssl.ifc.declassify`)
@@ -187,7 +189,17 @@ impl PassPipeline {
     ///      `cssl.telemetry.record` with biometric / surveillance / coercion
     ///      tagged operands per PRIME-DIRECTIVE §1. Wired AFTER
     ///      `IfcLoweringPass` so IFC-attributes are present.
-    ///   7. structured-cfg-validator (final sanity-check ; must-pass)
+    ///   7. **enforces-sigma-at-cell-touches** (T11-D138 / W3g-01) : closes
+    ///      the `EnforcesΣAtCellTouches` row from the LANGUAGE_CONTRACT
+    ///      required-pass list. Walks every Ω-field cell-touching op
+    ///      (`cssl.fieldcell.{read,write,modify,destroy}` + `cssl.travel.*`
+    ///      + `cssl.crystallize.*`) + cross-checks declared `consent_bits`
+    ///      vs the kind's `required_bit` + Sovereign-handle / capacity-
+    ///      floor / reversibility-scope rules. Wired AFTER
+    ///      `BiometricEgressCheck` so the absolute biometric / surveillance
+    ///      refusal fires first ; wired BEFORE the structured-CFG validator
+    ///      so structural validation is the FINAL gate.
+    ///   8. structured-cfg-validator (final sanity-check ; must-pass)
     #[must_use]
     pub fn canonical() -> Self {
         let mut p = Self::new();
@@ -199,6 +211,7 @@ impl PassPipeline {
         p.push(Box::new(
             crate::biometric_egress_check::BiometricEgressCheck,
         ));
+        p.push(Box::new(crate::sigma_enforce::EnforcesSigmaAtCellTouches));
         p.push(Box::new(StructuredCfgValidator));
         p
     }
@@ -484,15 +497,18 @@ mod tests {
 
     #[test]
     fn canonical_pipeline_shape() {
+        // T11-D138 (W3g-01) : `enforces-sigma-at-cell-touches` joins the
+        // canonical set, raising the pass-count from 7 to 8.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
         assert!(names.contains(&"smt-discharge-queue"));
         assert!(names.contains(&"telemetry-probe-insert"));
         assert!(names.contains(&"biometric-egress-check"));
+        assert!(names.contains(&"enforces-sigma-at-cell-touches"));
         assert!(names.contains(&"structured-cfg-validator"));
     }
 
@@ -501,8 +517,9 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 7 stock passes should execute (no errors on empty module).
-        assert_eq!(results.len(), 7);
+        // All 8 stock passes (T11-D138 added enforces-sigma-at-cell-touches)
+        // should execute on an empty module without errors.
+        assert_eq!(results.len(), 8);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the

@@ -709,6 +709,7 @@ dependencies = [
  "cssl-hir",
  "cssl-lex",
  "cssl-parse",
+ "cssl-substrate-prime-directive",
  "thiserror",
 ]
 
