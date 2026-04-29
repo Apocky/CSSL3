@@ -147,9 +147,9 @@ mod tests {
     }
 
     #[test]
-    fn scope_set_full_has_all_25() {
+    fn scope_set_full_has_all_26() {
         let s = TelemetryScopeSet::full();
-        assert_eq!(s.len(), 25);
+        assert_eq!(s.len(), 26);
     }
 
     #[test]

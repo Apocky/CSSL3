@@ -833,6 +833,7 @@ name = "cssl-telemetry"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "cssl-ifc",
  "ed25519-dalek",
  "rand",
  "thiserror",

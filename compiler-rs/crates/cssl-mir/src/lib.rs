@@ -40,6 +40,7 @@
 #![allow(clippy::single_match_else)]
 
 pub mod auto_monomorph;
+pub mod biometric_egress_check;
 pub mod block;
 pub mod body_lower;
 pub mod drop_inject;

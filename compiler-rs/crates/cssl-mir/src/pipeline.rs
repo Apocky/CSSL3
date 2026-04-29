@@ -183,7 +183,11 @@ impl PassPipeline {
     ///   3. ifc-lowering      (emits `cssl.ifc.label` + `cssl.ifc.declassify`)
     ///   4. smt-discharge-queue (emits `cssl.verify.assert` + queues obligations)
     ///   5. telemetry-probe-insert (inserts `cssl.telemetry.probe` per-scope)
-    ///   6. structured-cfg-validator (final sanity-check ; must-pass)
+    ///   6. **biometric-egress-check** (T11-D132 / W3β-07) : refuses any
+    ///      `cssl.telemetry.record` with biometric / surveillance / coercion
+    ///      tagged operands per PRIME-DIRECTIVE §1. Wired AFTER
+    ///      `IfcLoweringPass` so IFC-attributes are present.
+    ///   7. structured-cfg-validator (final sanity-check ; must-pass)
     #[must_use]
     pub fn canonical() -> Self {
         let mut p = Self::new();
@@ -192,6 +196,7 @@ impl PassPipeline {
         p.push(Box::new(IfcLoweringPass));
         p.push(Box::new(SmtDischargeQueuePass));
         p.push(Box::new(TelemetryProbeInsertPass));
+        p.push(Box::new(crate::biometric_egress_check::BiometricEgressCheck));
         p.push(Box::new(StructuredCfgValidator));
         p
     }
@@ -479,12 +484,13 @@ mod tests {
     fn canonical_pipeline_shape() {
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 7);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
         assert!(names.contains(&"smt-discharge-queue"));
         assert!(names.contains(&"telemetry-probe-insert"));
+        assert!(names.contains(&"biometric-egress-check"));
         assert!(names.contains(&"structured-cfg-validator"));
     }
 
@@ -493,8 +499,8 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 6 stock passes should execute (no errors on empty module).
-        assert_eq!(results.len(), 6);
+        // All 7 stock passes should execute (no errors on empty module).
+        assert_eq!(results.len(), 7);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the

@@ -63,6 +63,17 @@ pub enum TelemetryScope {
     // § Compound (1)
     /// All-of-above (maximum overhead).
     Full,
+    // § PRIME-DIRECTIVE diagnostic (T11-D132)
+    /// **Diagnostic-only** scope used by the biometric-egress-refusal
+    /// boundary in [`crate::TelemetrySlot::record_labeled`] to mark the
+    /// audit-chain entry that records a refused egress attempt.
+    ///
+    /// This scope is **never** used to log actual biometric data — it
+    /// records *the refusal itself* (timestamp + refusal-reason + domain)
+    /// so PRIME-DIRECTIVE §11 attestation has a permanent signed witness
+    /// of every biometric-data-leak attempt. The variant is named
+    /// `BiometricRefused` to make the audit-chain self-documenting.
+    BiometricRefused,
 }
 
 impl TelemetryScope {
@@ -95,6 +106,7 @@ impl TelemetryScope {
             Self::Events => "events",
             Self::Audit => "audit",
             Self::Full => "full",
+            Self::BiometricRefused => "biometric-refused",
         }
     }
 
@@ -122,6 +134,7 @@ impl TelemetryScope {
             Self::EccErrors | Self::PcieReplay => ScopeDomain::Ras,
             Self::Counters | Self::Spans | Self::Events | Self::Audit => ScopeDomain::AppSemantic,
             Self::Full => ScopeDomain::Compound,
+            Self::BiometricRefused => ScopeDomain::PrimeDirective,
         }
     }
 
@@ -154,11 +167,12 @@ impl TelemetryScope {
             Self::Events => 22,
             Self::Audit => 23,
             Self::Full => 255,
+            Self::BiometricRefused => 254,
         }
     }
 
-    /// All 25 scopes.
-    pub const ALL_SCOPES: [Self; 25] = [
+    /// All 26 scopes (25 telemetry + 1 PRIME-DIRECTIVE diagnostic).
+    pub const ALL_SCOPES: [Self; 26] = [
         Self::WallClock,
         Self::CpuCycles,
         Self::CpuInstRetired,
@@ -184,6 +198,7 @@ impl TelemetryScope {
         Self::Events,
         Self::Audit,
         Self::Full,
+        Self::BiometricRefused,
     ];
 }
 
@@ -208,6 +223,8 @@ pub enum ScopeDomain {
     AppSemantic,
     /// Compound (all-of-above).
     Compound,
+    /// PRIME-DIRECTIVE diagnostic (biometric-refusal etc).
+    PrimeDirective,
 }
 
 impl ScopeDomain {
@@ -221,6 +238,7 @@ impl ScopeDomain {
             Self::Ras => "ras",
             Self::AppSemantic => "app-semantic",
             Self::Compound => "compound",
+            Self::PrimeDirective => "prime-directive",
         }
     }
 }
@@ -272,7 +290,7 @@ mod tests {
 
     #[test]
     fn scope_count() {
-        assert_eq!(TelemetryScope::ALL_SCOPES.len(), 25);
+        assert_eq!(TelemetryScope::ALL_SCOPES.len(), 26);
     }
 
     #[test]
@@ -286,7 +304,7 @@ mod tests {
     fn scope_u16_unique_non_full() {
         let mut seen = std::collections::HashSet::new();
         for s in TelemetryScope::ALL_SCOPES {
-            if s != TelemetryScope::Full {
+            if s != TelemetryScope::Full && s != TelemetryScope::BiometricRefused {
                 seen.insert(s.as_u16());
             }
         }
@@ -296,6 +314,28 @@ mod tests {
     #[test]
     fn scope_u16_full_is_255() {
         assert_eq!(TelemetryScope::Full.as_u16(), 255);
+    }
+
+    #[test]
+    fn scope_u16_biometric_refused_is_254() {
+        assert_eq!(TelemetryScope::BiometricRefused.as_u16(), 254);
+    }
+
+    #[test]
+    fn scope_biometric_refused_canonical_name() {
+        assert_eq!(
+            TelemetryScope::BiometricRefused.as_str(),
+            "biometric-refused"
+        );
+    }
+
+    #[test]
+    fn scope_biometric_refused_domain_is_prime_directive() {
+        assert_eq!(
+            TelemetryScope::BiometricRefused.domain(),
+            ScopeDomain::PrimeDirective
+        );
+        assert_eq!(ScopeDomain::PrimeDirective.as_str(), "prime-directive");
     }
 
     #[test]

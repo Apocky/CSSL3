@@ -50,6 +50,25 @@ pub enum CsslOp {
     RtIntersect,
     // § Telemetry (R18)
     TelemetryProbe,
+    /// `cssl.telemetry.record` — produces a labeled telemetry-slot.
+    ///
+    /// Per `specs/22_TELEMETRY.csl` § OBSERVABILITY-FIRST-CLASS + T11-D132
+    /// (W3β-07) biometric-compile-refusal slice. Each `cssl.telemetry.record`
+    /// op carries the operand's IFC label-attributes ; the
+    /// `biometric_egress_check` MIR pass walks every such op + refuses the
+    /// build at compile-time if any operand carries a biometric-family /
+    /// surveillance / coercion sensitive-domain.
+    ///
+    /// Op-attributes :
+    ///   - `(scope, "<TelemetryScope name>")` — required.
+    ///   - `(kind, "<TelemetryKind name>")`   — required.
+    ///   - `(sensitive_domain, "<domain>")`   — optional, present iff the
+    ///     operand was tagged with `Sensitive<dom>`.
+    ///   - `(ifc_principal, "<principal>")`   — optional, present iff the
+    ///     operand's IFC label confidentiality contains a non-User principal.
+    ///   - `(privilege, "<level>")`           — optional, present iff a
+    ///     `Privilege<level>` cap was held at the call-site.
+    TelemetryRecord,
     // § Heap allocation (S6-B1, T11-D57) — capability-aware allocator surface.
     // Lowered to the `__cssl_alloc` / `__cssl_free` / `__cssl_realloc` FFI
     // symbols exposed by `cssl-rt` (T11-D52, S6-A1). Per `specs/12_CAPABILITIES`
@@ -182,6 +201,7 @@ impl CsslOp {
             Self::RtTraceRay => "cssl.rt.trace_ray",
             Self::RtIntersect => "cssl.rt.intersect",
             Self::TelemetryProbe => "cssl.telemetry.probe",
+            Self::TelemetryRecord => "cssl.telemetry.record",
             Self::HeapAlloc => "cssl.heap.alloc",
             Self::HeapDealloc => "cssl.heap.dealloc",
             Self::HeapRealloc => "cssl.heap.realloc",
@@ -224,7 +244,7 @@ impl CsslOp {
             Self::GpuBarrier => OpCategory::Gpu,
             Self::XmxCoopMatmul => OpCategory::Xmx,
             Self::RtTraceRay | Self::RtIntersect => OpCategory::Rt,
-            Self::TelemetryProbe => OpCategory::Telemetry,
+            Self::TelemetryProbe | Self::TelemetryRecord => OpCategory::Telemetry,
             Self::HeapAlloc | Self::HeapDealloc | Self::HeapRealloc => OpCategory::Heap,
             Self::OptionSome | Self::OptionNone | Self::ResultOk | Self::ResultErr => {
                 OpCategory::SumType
@@ -342,6 +362,14 @@ impl CsslOp {
                 operands: Some(0),
                 results: Some(0),
             },
+            // Telemetry record : 1 operand (the labeled value to log) → 0 results.
+            // The `biometric_egress_check` MIR pass refuses any record op
+            // whose operand carries a biometric / surveillance / coercion
+            // sensitive-domain attribute.
+            Self::TelemetryRecord => OpSignature {
+                operands: Some(1),
+                results: Some(0),
+            },
             // Heap (S6-B1) — see `specs/02_IR.csl` § HEAP-OPS.
             //   alloc   : (size : i64, align : i64)                          -> iso<ptr>
             //   dealloc : (ptr : iso<ptr>, size : i64, align : i64)          -> ()
@@ -457,7 +485,7 @@ impl CsslOp {
     }
 
     /// All `cssl.*` dialect ops (excluding `Std`).
-    pub const ALL_CSSL: [Self; 47] = [
+    pub const ALL_CSSL: [Self; 48] = [
         Self::DiffPrimal,
         Self::DiffFwd,
         Self::DiffBwd,
@@ -484,6 +512,7 @@ impl CsslOp {
         Self::RtTraceRay,
         Self::RtIntersect,
         Self::TelemetryProbe,
+        Self::TelemetryRecord,
         Self::HeapAlloc,
         Self::HeapDealloc,
         Self::HeapRealloc,
@@ -582,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn all_47_cssl_ops_tracked() {
+    fn all_48_cssl_ops_tracked() {
         // S6-B1 (T11-D57) brought the count to 29 (HeapAlloc/Dealloc/Realloc).
         // S6-B2 (T11-D60) adds 4 sum-type constructors :
         //   OptionSome, OptionNone, ResultOk, ResultErr  →  total 33.
@@ -590,7 +619,9 @@ mod tests {
         // S6-B5 (T11-D76) adds 4 fs ops (Open/Read/Write/Close) → total 38.
         // S7-F4 (T11-D82) adds 9 net ops (Socket/Listen/Accept/Connect/
         //   Send/Recv/SendTo/RecvFrom/Close) → total 47.
-        assert_eq!(CsslOp::ALL_CSSL.len(), 47);
+        // T11-D132 (W3β-07) adds TelemetryRecord (biometric-egress check
+        //   target op) → total 48.
+        assert_eq!(CsslOp::ALL_CSSL.len(), 48);
     }
 
     #[test]
