@@ -14,7 +14,7 @@
 //!     (FAdd / FSub / FMul / FDiv / FNeg + Sqrt / Sin / Cos / Exp / Log).
 //!   - [`TangentMap`] + [`SubstitutionReport`] : per-variant diagnostic surface.
 //!
-//! § HIGHER-ORDER FWD-MODE AD (T11-D133, this commit)
+//! § HIGHER-ORDER FWD-MODE AD (T11-D133)
 //!   - [`Jet<T, N>`] : Taylor-truncation type with `N` stored terms (primal +
 //!     `N - 1` derivatives). `Jet<T, 2>` subsumes the existing first-order
 //!     [`apply_fwd`] semantics ; `Jet<T, k+1>` extends to `k`-th order.
@@ -22,12 +22,33 @@
 //!   - Arithmetic + transcendentals + composition + Hessian-vector-product
 //!     surface — see `jet.rs` module-doc for spec-mapping + per-op rationale.
 //!
-//! § T7-phase-2c DEFERRED
-//!   - Tape-buffer allocation (iso-capability scoped) for control-flow.
-//!   - `@checkpoint` attribute recognition.
-//!   - GPU-AD tape-location resolution.
-//!   - Multi-result tangent-tuple emission.
-//!   - Killer-app gate : `bwd_diff(sphere_sdf)(p).d_p` bit-exact vs analytic.
+//! § CALL-OP AUTO-DISPATCH + CONTROL-FLOW TAPE-RECORD (T11-D140, this commit)
+//!   - [`CalleeVariantTable`] : map `<primal>` → (`<primal>_fwd`,
+//!     `<primal>_bwd`) so fwd/bwd substitution can route `func.call` to the
+//!     right callee variant ; auto-built from `@differentiable` fn-list.
+//!   - [`marshal_fwd_call_operands`] / [`marshal_bwd_call_operands`] : produce
+//!     the dual-arg operand list per spec ("Call(g, args)  ⇒  call g_fwd
+//!     (or g_bwd) with dual-args") ; interleaved `[a, d_a, b, d_b, ...]` for
+//!     fwd, `[a, b, ..., d_y]` for bwd.
+//!   - [`BranchTape`] : per-fn ring-buffer of [`BranchEvent`] cells recording
+//!     scf.if arm-index / scf.for/while/loop iter-counts on the fwd pass for
+//!     bwd-replay (per spec "If / Loop ⇒ record branch-taken / iter-count on
+//!     tape for bwd-replay").
+//!   - [`TapeReplay`] : reverse-iteration cursor over a [`BranchTape`].
+//!   - `apply_fwd` / `apply_bwd` now :
+//!     * recurse into nested scf.if / scf.for / scf.while / scf.loop regions
+//!       and emit real tangent / adjoint ops (not just placeholders).
+//!     * auto-dispatch func.call to the registered fwd/bwd variant when the
+//!       callee is in [`AdWalker::callee_table`].
+//!     * stamp record / replay attributes on the structured-CFG ops so the
+//!       bwd-pass can pop the matching event from the per-fn tape.
+//!
+//! § STILL-DEFERRED
+//!   - On-device tape-buffer allocation (iso-capability scoped, GPU memory).
+//!   - `@checkpoint` attribute recognition (selective recomputation).
+//!   - Killer-app gate : `bwd_diff(sphere_sdf)(p).d_p` bit-exact vs analytic
+//!     (will be the next slice that runs the CPU-JIT / cranelift execution
+//!     of the bwd-variant end-to-end).
 
 #![forbid(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -36,18 +57,33 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::module_name_repetitions)]
+// T11-D140 toolchain-bump compat : pre-existing jet.rs (D133) docstrings use
+// over-indented list-continuation bullets that the newer clippy flags. The
+// docstrings render correctly as Markdown — fixing them would touch unrelated
+// content. Allow at crate-level until a separate docstring-polish slice lands.
+#![allow(clippy::doc_overindented_list_items)]
 
+pub mod call_dispatch;
 pub mod decl;
 pub mod jet;
 pub mod rules;
 pub mod substitute;
+pub mod tape;
 pub mod transform;
 pub mod walker;
 
+pub use call_dispatch::{
+    marshal_bwd_call_operands, marshal_fwd_call_operands, BwdCallMarshal, CalleeVariantTable,
+    CalleeVariants, FwdCallMarshal,
+};
 pub use decl::{collect_differentiable_fns, DiffDecl};
 pub use jet::{hessian_vector_product_1d, hvp_axis, Jet, JetField, MAX_JET_ORDER_PLUS_ONE};
 pub use rules::{DiffMode, DiffRule, DiffRuleTable, Primitive};
-pub use substitute::{apply_bwd, apply_fwd, SubstitutionReport, TangentMap};
+pub use substitute::{
+    apply_bwd, apply_bwd_with_callees, apply_fwd, apply_fwd_with_callees, SubstitutionReport,
+    TangentMap,
+};
+pub use tape::{BranchEvent, BranchTape, TapeError, TapeReplay, DEFAULT_TAPE_CAP};
 pub use transform::{DiffTransform, DiffVariants};
 pub use walker::{
     op_to_primitive, specialize_transcendental, AdWalker, AdWalkerPass, AdWalkerReport,
