@@ -141,8 +141,16 @@ mod tests {
     fn plane_signed_distance_known_values() {
         // XZ-plane (y = 0).
         let plane = Plane::new(Vec3::Y, 0.0);
-        assert!(approx(plane.signed_distance(Vec3::new(0.0, 5.0, 0.0)), 5.0, 1e-5));
-        assert!(approx(plane.signed_distance(Vec3::new(0.0, -3.0, 0.0)), -3.0, 1e-5));
+        assert!(approx(
+            plane.signed_distance(Vec3::new(0.0, 5.0, 0.0)),
+            5.0,
+            1e-5
+        ));
+        assert!(approx(
+            plane.signed_distance(Vec3::new(0.0, -3.0, 0.0)),
+            -3.0,
+            1e-5
+        ));
         assert!(approx(plane.signed_distance(Vec3::ZERO), 0.0, 1e-5));
     }
 

@@ -213,7 +213,9 @@ impl Transform {
                 0.0
             },
         );
-        self.rotation.rotate(inv_scale.mul_componentwise(n)).normalize()
+        self.rotation
+            .rotate(inv_scale.mul_componentwise(n))
+            .normalize()
     }
 }
 
@@ -240,11 +242,7 @@ mod tests {
     #[test]
     fn transform_point_applies_trs_in_order() {
         let r = Quat::from_axis_angle(Vec3::Y, core::f32::consts::FRAC_PI_2);
-        let xform = Transform::from_trs(
-            Vec3::new(10.0, 0.0, 0.0),
-            r,
-            Vec3::new(2.0, 2.0, 2.0),
-        );
+        let xform = Transform::from_trs(Vec3::new(10.0, 0.0, 0.0), r, Vec3::new(2.0, 2.0, 2.0));
         // X axis : scale 2x ⇒ (2,0,0). Rotate 90 around Y ⇒ (0,0,-2).
         // Translate +10 X ⇒ (10, 0, -2).
         let out = xform.transform_point(Vec3::X);
@@ -260,11 +258,7 @@ mod tests {
     #[test]
     fn transform_inverse_round_trip_is_identity_uniform_scale() {
         let r = Quat::from_axis_angle(Vec3::new(1.0, 2.0, 3.0).normalize(), 0.7);
-        let xform = Transform::from_trs(
-            Vec3::new(5.0, -3.0, 2.0),
-            r,
-            Vec3::splat(2.0),
-        );
+        let xform = Transform::from_trs(Vec3::new(5.0, -3.0, 2.0), r, Vec3::splat(2.0));
         let inv = xform.inverse().expect("non-zero uniform scale");
         let v = Vec3::new(1.0, 2.0, 3.0);
         let round_trip = inv.transform_point(xform.transform_point(v));

@@ -333,8 +333,10 @@ mod tests {
     fn quat_approx(a: Quat, b: Quat, eps: f32) -> bool {
         // Two unit quaternions q and -q represent the same rotation —
         // accept either form.
-        let direct =
-            approx(a.x, b.x, eps) && approx(a.y, b.y, eps) && approx(a.z, b.z, eps) && approx(a.w, b.w, eps);
+        let direct = approx(a.x, b.x, eps)
+            && approx(a.y, b.y, eps)
+            && approx(a.z, b.z, eps)
+            && approx(a.w, b.w, eps);
         let flipped = approx(a.x, -b.x, eps)
             && approx(a.y, -b.y, eps)
             && approx(a.z, -b.z, eps)
@@ -363,7 +365,11 @@ mod tests {
         let q45 = Quat::from_axis_angle(Vec3::Y, core::f32::consts::FRAC_PI_4);
         let q90 = Quat::from_axis_angle(Vec3::Y, core::f32::consts::FRAC_PI_2);
         let combined = q45 * q45;
-        assert!(vec_approx(combined.rotate(Vec3::X), q90.rotate(Vec3::X), 1e-5));
+        assert!(vec_approx(
+            combined.rotate(Vec3::X),
+            q90.rotate(Vec3::X),
+            1e-5
+        ));
     }
 
     #[test]

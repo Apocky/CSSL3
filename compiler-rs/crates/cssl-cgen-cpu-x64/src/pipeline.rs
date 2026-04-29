@@ -288,8 +288,8 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
     let block = &func.blocks[0];
 
     // § Detect : does this fn have a float signature OR contain an Fp* op ?
-    let has_float_sig = func.sig.params.iter().any(|w| w.is_sse())
-        || func.sig.results.iter().any(|w| w.is_sse());
+    let has_float_sig =
+        func.sig.params.iter().any(|w| w.is_sse()) || func.sig.results.iter().any(|w| w.is_sse());
     let has_float_op = block.insts.iter().any(|inst| {
         matches!(
             inst,
@@ -308,8 +308,7 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
     let abi = X64Abi::host_default();
     let int_arg_regs = abi.int_arg_regs();
     let float_arg_regs = abi.float_arg_regs();
-    let mut locs: std::collections::HashMap<u32, VregLoc> =
-        std::collections::HashMap::new();
+    let mut locs: std::collections::HashMap<u32, VregLoc> = std::collections::HashMap::new();
     let mut int_idx = 0usize;
     let mut float_idx = 0usize;
     for (positional_idx, (i, w)) in func.sig.params.iter().enumerate().enumerate() {
@@ -364,7 +363,11 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
     // of param-bound regs ; at G11 we rarely need GPR temporaries on the
     // float path so this is a small pool.
     let mut xmm_pool: Vec<Xmm> = (1u8..=15)
-        .filter(|i| !locs.values().any(|l| matches!(l, VregLoc::Xmm(x) if x.index() == *i)))
+        .filter(|i| {
+            !locs
+                .values()
+                .any(|l| matches!(l, VregLoc::Xmm(x) if x.index() == *i))
+        })
         .map(Xmm::from_index)
         .collect();
     // Reverse so we pop from the front-of-pool (xmm1, xmm2, ...) by reversing
@@ -372,11 +375,21 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
     xmm_pool.reverse();
 
     let mut gpr_pool: Vec<Gpr> = [
-        Gpr::R11, Gpr::R10, Gpr::R9, Gpr::R8, Gpr::Rdx, Gpr::Rcx, Gpr::Rax,
+        Gpr::R11,
+        Gpr::R10,
+        Gpr::R9,
+        Gpr::R8,
+        Gpr::Rdx,
+        Gpr::Rcx,
+        Gpr::Rax,
     ]
     .iter()
     .copied()
-    .filter(|g| !locs.values().any(|l| matches!(l, VregLoc::Gpr(r) if r == g)))
+    .filter(|g| {
+        !locs
+            .values()
+            .any(|l| matches!(l, VregLoc::Gpr(r) if r == g))
+    })
     .collect();
 
     let mut body = Vec::new();
@@ -389,13 +402,15 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
                 if width.is_sse() {
                     // Materialize via : mov rax, bits ; movq xmm, rax (f64)
                     //                : mov eax, bits ; movd xmm, eax (f32).
-                    let xmm = xmm_pool.pop().ok_or_else(|| NativeX64Error::UnsupportedOp {
-                        fn_name: func.name.clone(),
-                        op_name: format!(
-                            "f-vreg pool exhausted at MovImm v{vid}",
-                            vid = dst.id
-                        ),
-                    })?;
+                    let xmm = xmm_pool
+                        .pop()
+                        .ok_or_else(|| NativeX64Error::UnsupportedOp {
+                            fn_name: func.name.clone(),
+                            op_name: format!(
+                                "f-vreg pool exhausted at MovImm v{vid}",
+                                vid = dst.id
+                            ),
+                        })?;
                     match imm {
                         X64Imm::F32(bits) => {
                             // Use rax as the temporary GPR for the bit-transfer.
@@ -438,13 +453,15 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
                     // Int constant on the float path : materialize into a
                     // GPR temporary so that downstream cvtsi2sd / cvtsi2ss
                     // can pick it up.
-                    let gpr = gpr_pool.pop().ok_or_else(|| NativeX64Error::UnsupportedOp {
-                        fn_name: func.name.clone(),
-                        op_name: format!(
-                            "i-vreg pool exhausted at MovImm v{vid}",
-                            vid = dst.id
-                        ),
-                    })?;
+                    let gpr = gpr_pool
+                        .pop()
+                        .ok_or_else(|| NativeX64Error::UnsupportedOp {
+                            fn_name: func.name.clone(),
+                            op_name: format!(
+                                "i-vreg pool exhausted at MovImm v{vid}",
+                                vid = dst.id
+                            ),
+                        })?;
                     let (size, raw) = match imm {
                         X64Imm::I32(v) => (OperandSize::B32, i64::from(*v)),
                         X64Imm::I64(v) => (OperandSize::B64, *v),
@@ -468,13 +485,12 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
             }
             IselInst::Mov { dst, src } => {
                 // dst <- src : zero-cost rename in the loc-map.
-                let src_loc = *locs.get(&src.id).ok_or_else(|| NativeX64Error::UnsupportedOp {
-                    fn_name: func.name.clone(),
-                    op_name: format!(
-                        "Mov references undefined vreg v{vid}",
-                        vid = src.id
-                    ),
-                })?;
+                let src_loc = *locs
+                    .get(&src.id)
+                    .ok_or_else(|| NativeX64Error::UnsupportedOp {
+                        fn_name: func.name.clone(),
+                        op_name: format!("Mov references undefined vreg v{vid}", vid = src.id),
+                    })?;
                 locs.insert(dst.id, src_loc);
             }
             IselInst::FpAdd { dst, src } => {
@@ -503,13 +519,12 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
         IselTerm::Ret { operands } if operands.is_empty() => {}
         IselTerm::Ret { operands } if operands.len() == 1 => {
             let v = operands[0];
-            let loc = *locs.get(&v.id).ok_or_else(|| NativeX64Error::UnsupportedOp {
-                fn_name: func.name.clone(),
-                op_name: format!(
-                    "Ret references undefined vreg v{vid}",
-                    vid = v.id
-                ),
-            })?;
+            let loc = *locs
+                .get(&v.id)
+                .ok_or_else(|| NativeX64Error::UnsupportedOp {
+                    fn_name: func.name.clone(),
+                    op_name: format!("Ret references undefined vreg v{vid}", vid = v.id),
+                })?;
             match (v.width, loc) {
                 (X64Width::F32, VregLoc::Xmm(src)) => {
                     if src != Xmm::Xmm0 {
@@ -527,7 +542,10 @@ fn try_lower_float_leaf(func: &IselFunc) -> Result<Option<Vec<EncInst>>, NativeX
                         });
                     }
                 }
-                (X64Width::I32 | X64Width::I8 | X64Width::I16 | X64Width::Bool, VregLoc::Gpr(src)) => {
+                (
+                    X64Width::I32 | X64Width::I8 | X64Width::I16 | X64Width::Bool,
+                    VregLoc::Gpr(src),
+                ) => {
                     if src != Gpr::Rax {
                         body.push(EncInst::MovRR {
                             size: OperandSize::B32,
@@ -594,20 +612,22 @@ fn emit_fp_binary(
     src: crate::isel::vreg::X64VReg,
     kind: FpBinOpKind,
 ) -> Result<(), NativeX64Error> {
-    let dst_loc = *locs.get(&dst.id).ok_or_else(|| NativeX64Error::UnsupportedOp {
-        fn_name: "<fp-bin>".to_string(),
-        op_name: format!("Fp* refs undefined dst v{vid}", vid = dst.id),
-    })?;
-    let src_loc = *locs.get(&src.id).ok_or_else(|| NativeX64Error::UnsupportedOp {
-        fn_name: "<fp-bin>".to_string(),
-        op_name: format!("Fp* refs undefined src v{vid}", vid = src.id),
-    })?;
+    let dst_loc = *locs
+        .get(&dst.id)
+        .ok_or_else(|| NativeX64Error::UnsupportedOp {
+            fn_name: "<fp-bin>".to_string(),
+            op_name: format!("Fp* refs undefined dst v{vid}", vid = dst.id),
+        })?;
+    let src_loc = *locs
+        .get(&src.id)
+        .ok_or_else(|| NativeX64Error::UnsupportedOp {
+            fn_name: "<fp-bin>".to_string(),
+            op_name: format!("Fp* refs undefined src v{vid}", vid = src.id),
+        })?;
     let (VregLoc::Xmm(dst_x), VregLoc::Xmm(src_x)) = (dst_loc, src_loc) else {
         return Err(NativeX64Error::UnsupportedOp {
             fn_name: "<fp-bin>".to_string(),
-            op_name: format!(
-                "Fp* expected XMM operands ; got dst={dst_loc:?} src={src_loc:?}"
-            ),
+            op_name: format!("Fp* expected XMM operands ; got dst={dst_loc:?} src={src_loc:?}"),
         });
     };
     match (dst.width, kind) {
@@ -1465,6 +1485,18 @@ pub fn select_module_with_marker(module: &MirModule) -> Result<Vec<IselFunc>, Se
 /// final byte offset within the per-fn encoded bytes (= prologue length
 /// + body-local offset).
 ///
+/// § DISPATCH (S7-G7 / G8 / G9 / G10 / G11)
+///   - **Multi-block / structured-CFG** (G9 / T11-D111) : `Jcc` / `Jmp` /
+///     `Fallthrough` / multi-block `Ret` terminators → `mb_walker`.
+///   - **Single-block scalar-leaf** (G7 / T11-D97) : `fn () -> i32 { N }`
+///     → preserves the canonical 11-byte hello.exe = 42 milestone bytes.
+///   - **Single-block float-leaf** (G11 / T11-D102) : `fn pi() -> f64`,
+///     `fn add_f64(a, b) -> f64 { a + b }` → SSE2 walker.
+///   - **Cross-fn calls** (G10 / T11-D112) : intra-module + extern FFI
+///     calls → NearCall reloc emission.
+///   - **Non-leaf without calls** (G8 / T11-D101) : multi-arg integer
+///     signatures + register pressure → full G2 LSRA pipeline.
+///
 /// # Errors
 /// Returns [`NativeX64Error`] for any per-stage adapter failure.
 pub fn build_func_bytes(
@@ -1473,32 +1505,34 @@ pub fn build_func_bytes(
     is_export: bool,
     plan: &ModulePlan,
 ) -> Result<ObjFunc, NativeX64Error> {
-    // § 1. Try the G7 scalar-leaf fast-path (i32 leaves : `fn () -> i32 { N }`).
-    //      This preserves the canonical 11-byte hello.exe = 42 milestone
+    // § 1. Multi-block dispatch (G9 / T11-D111). The mb_walker handles the
+    //      structured-CFG ops (`scf.if` / `scf.for` / `scf.while` /
+    //      `scf.loop`) with iterative branch-displacement optimization.
+    if crate::mb_walker::is_multi_block(func) {
+        return crate::mb_walker::build_multi_block_func_bytes(func, abi, is_export);
+    }
+
+    // § 2. G7 scalar-leaf fast-path (i32 leaves : `fn () -> i32 { N }`).
+    //      Preserves the canonical 11-byte hello.exe = 42 milestone
     //      bit-for-bit.
     if ScalarLeafReturn::try_extract(func).is_ok() {
         return build_func_bytes_leaf(func, abi, is_export);
     }
 
-    // § 2. Try the G11 float-leaf fast-path (f32/f64 leaves : `fn pi() ->
-    //      f64 { 3.14159... }`, `fn add_f64(a, b) -> f64 { a + b }`).
-    //      `try_lower_float_leaf` returns `Ok(Some(_))` for matched float-
-    //      leaf shapes ; on match we route through `build_func_bytes_leaf`
-    //      which calls `isel_to_encoder_simple` (the G11 dispatch picks
-    //      the float path internally).
+    // § 3. G11 float-leaf fast-path (f32/f64 leaves). On match we route
+    //      through `build_func_bytes_leaf` which calls `isel_to_encoder_simple`
+    //      (its dispatch picks the float path internally).
     if !has_call_inst(func) && try_lower_float_leaf(func)?.is_some() {
         return build_func_bytes_leaf(func, abi, is_export);
     }
 
-    // § 3. Try the G10 cross-fn-call path if the body contains any Call
-    //      instructions (intra-module or extern FFI). Handles `fn caller()
-    //      -> i32 { callee() }` and `fn use_sin() -> f64 { sin(0.0) }`
-    //      with NearCall reloc emission.
+    // § 4. G10 cross-fn-call path : bodies containing any Call instruction
+    //      (intra-module or extern FFI) produce NearCall relocs.
     if has_call_inst(func) {
         return build_func_bytes_with_calls(func, abi, is_export, plan);
     }
 
-    // § 4. G8 fallthrough : non-leaf functions without calls (multi-arg
+    // § 5. G8 fallthrough : non-leaf functions without calls (multi-arg
     //      integer signatures, register pressure) route through the FULL
     //      G2 LSRA pipeline.
     crate::lsra_pipeline::build_func_bytes_via_lsra(func, abi, is_export)
@@ -1516,7 +1550,7 @@ fn has_call_inst(func: &IselFunc) -> bool {
 /// G7 leaf-path body : the original simple lowering that produced the
 /// canonical 11-byte milestone body for `fn main() -> i32 { N }`. Preserved
 /// verbatim from T11-D97 so the milestone bit-pattern is bit-for-bit
-/// invariant across G8 / G10 / G11 landings.
+/// invariant across G8 / G9 / G10 / G11 landings.
 ///
 /// # Errors
 /// Returns [`NativeX64Error`] for any per-stage adapter failure.
@@ -2643,7 +2677,10 @@ mod tests {
         let m = build_const_f64("pi", core::f64::consts::PI);
         let funcs = select_module_with_marker(&m).unwrap();
         let body = isel_to_encoder_simple(&funcs[0]).unwrap();
-        assert!(!body.is_empty(), "f64 leaf must emit at least the const-mat");
+        assert!(
+            !body.is_empty(),
+            "f64 leaf must emit at least the const-mat"
+        );
     }
 
     // ── f64 constant materialization ───────────────────────────────────
@@ -3166,7 +3203,10 @@ mod tests {
         // Either Addsd (in-place result) OR a final MovsdRR copying into xmm0.
         // Both are correct shapes ; we just assert it's one of the two.
         assert!(
-            matches!(last, EncInst::AddsdRR { dst: Xmm::Xmm0, .. } | EncInst::MovsdRR { dst: Xmm::Xmm0, .. }),
+            matches!(
+                last,
+                EncInst::AddsdRR { dst: Xmm::Xmm0, .. } | EncInst::MovsdRR { dst: Xmm::Xmm0, .. }
+            ),
             "expected last inst to leave result in xmm0 ; got {last:?}"
         );
     }
@@ -3282,7 +3322,14 @@ mod tests {
         // The body should be empty or contain just a no-op move (xmm0 → xmm0
         // is elided in our return-placement).
         assert!(
-            body.is_empty() || body.iter().all(|i| matches!(i, EncInst::MovsdRR { dst: Xmm::Xmm0, src: Xmm::Xmm0 })),
+            body.is_empty()
+                || body.iter().all(|i| matches!(
+                    i,
+                    EncInst::MovsdRR {
+                        dst: Xmm::Xmm0,
+                        src: Xmm::Xmm0
+                    }
+                )),
             "id_f64 should require no copy ; got {body:?}"
         );
     }
@@ -3303,7 +3350,9 @@ mod tests {
         });
         assert!(
             final_xmm0 == Some(Xmm::Xmm0)
-                || body.iter().any(|i| matches!(i, EncInst::MovsdRR { dst: Xmm::Xmm0, .. })),
+                || body
+                    .iter()
+                    .any(|i| matches!(i, EncInst::MovsdRR { dst: Xmm::Xmm0, .. })),
             "expected xmm0 to receive the f64 value ; got body {body:?}"
         );
     }
@@ -3472,7 +3521,10 @@ mod tests {
         // Pipeline should not bind anything.
         let funcs = select_module_with_marker(&local).unwrap();
         let result = try_lower_float_leaf(&funcs[0]).unwrap();
-        assert!(result.is_none(), "void+no-float fn must not match float leaf");
+        assert!(
+            result.is_none(),
+            "void+no-float fn must not match float leaf"
+        );
     }
 
     #[test]
