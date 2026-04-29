@@ -8,7 +8,12 @@
 //!   - [`PassResult`]  : per-pass diagnostics + `changed` flag + name.
 //!   - [`PassDiagnostic`] : severity + message + optional pass-internal code.
 //!   - Stock passes (mostly stubs pending phase-2b content) :
-//!     * [`StructuredCfgValidator`] — **real** : checks every region has ≥ 1 block.
+//!     * [`StructuredCfgValidator`] — **real, T11-D70** : delegates to
+//!       [`crate::structured_cfg::validate_structured_cfg`] for the full D5
+//!       contract (rejects orphan scf.yield / cf.cond_br / cf.br + validates
+//!       scf.if region count + validates loop region shape + flags
+//!       Break/Continue placeholders). One [`PassDiagnostic`] per
+//!       [`crate::structured_cfg::CfgViolation`] with the stable diagnostic-code.
 //!     * [`MonomorphizationPass`]   — stub.
 //!     * [`AdTransformPass`]        — stub (delegates to `cssl-autodiff` at phase-2b).
 //!     * [`IfcLoweringPass`]        — stub (needs T3.4-phase-3 IFC slice first).
@@ -34,8 +39,8 @@
 //!   - Pass-ordering constraints + dependency-graph enforcement.
 //!   - Per-pass timing + summary reporting.
 
-use crate::block::MirRegion;
 use crate::func::MirModule;
+use crate::structured_cfg::validate_structured_cfg;
 
 /// Severity of a pass-emitted diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -235,9 +240,21 @@ impl PassPipeline {
 // § Stock passes
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Real structured-CFG validator : every region must have at-least one block,
-/// and every block must terminate (empty bodies are treated as implicitly
-/// terminated by `func.return` at stage-0).
+/// Real structured-CFG validator (T11-D70 / S6-D5) : delegates to
+/// [`crate::structured_cfg::validate_structured_cfg`] for the full D5
+/// contract. Each [`crate::structured_cfg::CfgViolation`] becomes one
+/// [`PassDiagnostic`] carrying the stable diagnostic-code (CFG0001..CFG0010)
+/// and an actionable message. The pre-D5 stub only checked `CFG0001` (empty
+/// region) ; the D5 expansion adds CFG0002..CFG0010 covering orphan
+/// terminators, unstructured CFG ops, malformed scf.* shapes, and
+/// unsupported Break/Continue placeholders.
+///
+/// This impl mutates the module ONLY in the success-marker case : when
+/// `validate_structured_cfg` returns `Ok(())`, the validator writes the
+/// `("structured_cfg.validated", "true")` attribute to `module.attributes`
+/// so downstream GPU emitters D1..D4 can short-circuit-check whether D5
+/// passed. On any violation, no marker is written and the diagnostics
+/// surface through `PassResult.diagnostics`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct StructuredCfgValidator;
 
@@ -247,30 +264,44 @@ impl MirPass for StructuredCfgValidator {
     }
 
     fn run(&self, module: &mut MirModule) -> PassResult {
-        let mut diagnostics = Vec::new();
-        for f in &module.funcs {
-            validate_region(&f.body, &f.name, &mut diagnostics);
-        }
-        PassResult {
-            name: self.name().to_string(),
-            changed: false,
-            diagnostics,
-        }
-    }
-}
-
-fn validate_region(region: &MirRegion, fn_name: &str, out: &mut Vec<PassDiagnostic>) {
-    if region.blocks.is_empty() {
-        out.push(PassDiagnostic::error(
-            "CFG0001",
-            format!("fn `{fn_name}` has empty region (no entry block)"),
-        ));
-        return;
-    }
-    for block in &region.blocks {
-        for op in &block.ops {
-            for sub in &op.regions {
-                validate_region(sub, fn_name, out);
+        match validate_structured_cfg(module) {
+            Ok(()) => {
+                // Apply the success marker idempotently. `validate_and_mark`
+                // would re-validate ; we already did, so write the marker
+                // directly.
+                let already = module
+                    .attributes
+                    .iter()
+                    .any(|(k, _)| k == crate::structured_cfg::STRUCTURED_CFG_VALIDATED_KEY);
+                let changed = if already {
+                    false
+                } else {
+                    module.attributes.push((
+                        crate::structured_cfg::STRUCTURED_CFG_VALIDATED_KEY.to_string(),
+                        crate::structured_cfg::STRUCTURED_CFG_VALIDATED_VALUE.to_string(),
+                    ));
+                    true
+                };
+                PassResult {
+                    name: self.name().to_string(),
+                    changed,
+                    diagnostics: Vec::new(),
+                }
+            }
+            Err(violations) => {
+                // One PassDiagnostic per violation. The diagnostic-code
+                // carries through unchanged ; the message is the
+                // thiserror-rendered Display for the variant (which
+                // already includes the code prefix).
+                let diagnostics = violations
+                    .into_iter()
+                    .map(|v| PassDiagnostic::error(v.code(), format!("{v}")))
+                    .collect();
+                PassResult {
+                    name: self.name().to_string(),
+                    changed: false,
+                    diagnostics,
+                }
             }
         }
     }
@@ -464,14 +495,32 @@ mod tests {
         let results = p.run_all(&mut module);
         // All 6 stock passes should execute (no errors on empty module).
         assert_eq!(results.len(), 6);
-        // No pass should report `changed` on an empty module.
+        // Stub passes should not report `changed`. The
+        // `structured-cfg-validator` legitimately reports `changed=true`
+        // on first run because T11-D70 / S6-D5 made it write the
+        // `("structured_cfg.validated", "true")` marker on success — the
+        // marker IS a module mutation. All other stubs are no-ops.
         for r in &results {
+            if r.name == "structured-cfg-validator" {
+                continue;
+            }
             assert!(
                 !r.changed,
                 "{} reported changed=true on empty module",
                 r.name
             );
         }
+    }
+
+    #[test]
+    fn canonical_validator_writes_marker_on_empty_module() {
+        // Companion to `canonical_runs_all_on_empty_module` : the
+        // structured-cfg-validator's `changed=true` corresponds to the
+        // marker attribute being set. T11-D70 contract.
+        let p = PassPipeline::canonical();
+        let mut module = MirModule::new();
+        let _ = p.run_all(&mut module);
+        assert!(crate::structured_cfg::has_structured_cfg_marker(&module));
     }
 
     #[test]

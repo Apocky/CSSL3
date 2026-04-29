@@ -76,6 +76,9 @@
   compile-time rejection of unstructured-patterns
   lowering to spirv-dialect preserves scf → OpSelectionMerge / OpLoopMerge
   lowering to llvm-dialect (Cranelift stage0) decomposes scf → structured CLIF
+  ‼ canonical validator @ `cssl_mir::structured_cfg::validate_structured_cfg` :
+    see specs/02_IR.csl § STRUCTURED-CFG VALIDATOR for the diagnostic-code
+    table (CFG0001..CFG0010) + marker-contract + pipeline-position.
 
 § PASS-PIPELINE (MIR → LIR)
   1 : cssl-to-cssl

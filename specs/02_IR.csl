@@ -168,6 +168,38 @@
   MLIR-scf dialect used for control-flow (scf.if, scf.for, scf.while)
   SPIR-V emission = walk scf.* structured-tree directly
 
+§ STRUCTURED-CFG VALIDATOR  (T11-D70 / S6-D5)
+  ‼ MIR-level pass enforcing the CC4 invariant before codegen.
+  pass-name : `structured-cfg-validator`
+  pipeline-position : AFTER monomorphization-quartet (T11-D38..D50)
+                       BEFORE all codegen backends (CPU + GPU D1..D4)
+  surface :
+    fn validate_structured_cfg(&MirModule) -> Result<(), Vec<CfgViolation>>
+    fn validate_and_mark(&mut MirModule) -> Result<(), Vec<CfgViolation>>
+    const STRUCTURED_CFG_VALIDATED_KEY = "structured_cfg.validated"
+    const STRUCTURED_CFG_VALIDATED_VALUE = "true"
+  marker-contract :
+    on-success → write ("structured_cfg.validated", "true") @ module.attributes
+    GPU emitters D1..D4 W! check this marker before emission
+    calling D1..D4 on un-marked module = programmer-error → panic
+  diagnostic-codes (STABLE per § 3 escalation #4 ; allocated en-masse @ T11-D70) :
+    CFG0001 — empty region (no entry block)
+    CFG0002 — orphan scf.yield outside structured parent
+    CFG0003 — unstructured cf.cond_br op
+    CFG0004 — unstructured cf.br op
+    CFG0005 — scf.if region-count ≠ 2
+    CFG0006 — scf.for/scf.while/scf.loop region-count ≠ 1
+    CFG0007 — multi-block region inside scf parent (stage-0)
+    CFG0008 — orphan scf.condition (must live inside scf.while parent)
+    CFG0009 — cssl.unsupported(Break) placeholder leaked to validator
+    CFG0010 — cssl.unsupported(Continue) placeholder leaked to validator
+  structured-parents (legitimate scf.yield containers) :
+    scf.if (always) ; scf.for / scf.while / scf.loop (forward-compat for
+    future loop-yield) ; scf.match (reserved for future match-lowering)
+  rejection-only @ stage-0 : ¬ canonicalization (loop-form transforms
+    deferred to a future slice when GPU emitters need them)
+  full-walk error collection : returns ALL violations, ¬ first-fail
+
 § MEMORY-OPS  (T11-D59 / S6-C3)
   ‼ MLIR memref dialect names retained ; semantics extended for stage-0 CPU JIT.
   memref.load

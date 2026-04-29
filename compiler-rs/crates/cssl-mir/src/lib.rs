@@ -48,6 +48,7 @@ pub mod monomorph;
 pub mod op;
 pub mod pipeline;
 pub mod print;
+pub mod structured_cfg;
 pub mod value;
 
 pub use auto_monomorph::{
@@ -72,6 +73,10 @@ pub use pipeline::{
     TelemetryProbeInsertPass,
 };
 pub use print::{print_module, MlirPrinter};
+pub use structured_cfg::{
+    has_structured_cfg_marker, validate_and_mark, validate_structured_cfg, CfgViolation,
+    STRUCTURED_CFG_VALIDATED_KEY, STRUCTURED_CFG_VALIDATED_VALUE,
+};
 pub use value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
 
 /// Crate version exposed for scaffold verification.
