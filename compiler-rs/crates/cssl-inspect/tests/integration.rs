@@ -3,9 +3,9 @@
 //! Spec-acceptance gate : 50+ tests pass. We deliver 60+.
 
 use cssl_inspect::{
-    capture_frame as _, Cap, CaptureFormat, ConsentBit, DevMode, EntityId, EntitySnapshot,
-    FieldCellSnapshot, InspectError, Inspector, MaterialView, MortonKey, SceneGraphSnapshot,
-    SigmaConsentBits, SigmaOverlay, TelemetryEgress, TimeMode, ATTESTATION, SLICE_ID,
+    Cap, CaptureFormat, ConsentBit, DevMode, EntityId, EntitySnapshot, FieldCellSnapshot,
+    InspectError, Inspector, MaterialView, MortonKey, SceneGraphSnapshot, SigmaConsentBits,
+    SigmaOverlay, TelemetryEgress, TimeMode, ATTESTATION, SLICE_ID,
 };
 
 fn build_scene_with_three_cells() -> SceneGraphSnapshot {
