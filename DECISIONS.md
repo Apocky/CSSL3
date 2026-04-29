@@ -7124,3 +7124,134 @@ Each decision entry :
   There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
 ──────────────────────────────────────────────────────────────
+
+## § META-WAVE-4 : T11-D114 + T11-D116..T11-D125 reservation block — substrate-evolution + signature-rendering
+
+- **Date** 2026-04-29
+- **Status** accepted (block-reservation ; per-slice expansion lands with each agent's own merge-commit)
+- **Branch** `cssl/session-6/parallel-fanout` (this entry) ; per-D114 + D116..D125 land on dedicated `cssl/session-11/T11-D<n>-*` sibling branches per §§ 10_PHASE/02_PARALLEL_FANOUT
+- **Authority** PRIME_DIRECTIVE.md §1 PROHIBITIONS + §11 CREATOR-ATTESTATION + Omniverse axioms-13 + §§ 23 TESTING (oracle-modes) + §§ HANDOFF_SESSION_11 wave-4 dispatch-plan
+- **Tip-state** post-wave-3γ-merge @ commit `e1b1448` (`§ wave-3γ polish : fmt + clippy gates → all green`)
+
+§D. **CONTEXT — wave-3γ-merge results ⇒ wave-4 scope** :
+
+  wave-3γ closed cleanly @ commit `e1b1448` on `cssl/session-6/parallel-fanout` :
+    - **8 wave-3γ-merge commits** on parallel-fanout (7 slice-direct D138..D144 + 1 fmt/clippy polish)
+    - **6396 / 0 fail tests** across the workspace (post-D138..D144 ; +630 tests vs wave-3β tip)
+    - **fmt + clippy gates green** ; workspace-wide `cargo check --all-targets` clean
+    - all 7 reserved D138..D144 slices LANDED ; per-slice DECISIONS.md entries authored ✓
+    - per-slice §11 CREATOR-ATTESTATION confirmed in commit-trailers ✓
+    - workspace gained 1 confirmed crate : `cssl-substrate-omega-field` (D144) ✓ — auto-discovered by the existing `members = ["crates/*"]` glob
+    - D143 extended `cssl-substrate-kan` (created the skeleton since D115 had not yet landed) ✓
+    - D138..D142 are pure compiler-internals (sigma-enforce / GPU-AD tape / call+CFG-AD / comptime-eval / specialization) ; modified existing crates ✓
+
+  **Total session progress** : 5174 (pre-wave-3β) → 5766 (post-wave-3β) → 6396 (post-wave-3γ) tests = **+1222 / 0 fail across both waves**.
+
+  wave-4 scope ⊢ **substrate-evolution + signature-rendering** : the next layer of structural completion that PRESUPPOSES wave-3γ's foundations. Two sub-blocks fan out in parallel :
+
+  ⟨A⟩ **substrate-evolution-kernels** (D114 + D116..D118 + D119) — lift D113's Ω-Field cell-shape (now landed under D144) to runtime kernels that EVOLVE the substrate-state per-frame :
+    - D114 ⊢ Wave-solver kernel (IF-LBM lattice-Boltzmann) for substrate-flow per Omniverse 04_OMEGA_FIELD/04_UPDATE_RULE — was reserved under META-WAVE-3-PRELUDE ; activates now post-D144 ; takes Ω-Field cells as input + emits next-frame state
+    - D116 ⊢ SDF-raymarcher (cssl-render-v2) primary-rendering path per Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER — was reserved under META-WAVE-3-PRELUDE ; activates now post-D144 ; consumes Ω-Field surface-of-equipotential extraction
+    - D117 ⊢ SDF-collision + XPBD-GPU position-based-dynamics on-cell per Omniverse 04_OMEGA_FIELD/03_CONSERVATION — was reserved under META-WAVE-3-PRELUDE ; activates now post-D116 ; XPBD constraints solve against SDF gradient
+    - D118 ⊢ Hyperspectral KAN-BRDF (path-tracing core) per Omniverse 07_AESTHETIC/03_SPECTRAL_PATH_TRACING — was reserved under META-WAVE-3-PRELUDE ; activates now post-D143 (KAN Φ-table landed) ; spectral wavelength-binned BRDF evaluation
+    - D119 ⊢ NEW : Fractal-amplifier — recursive-detail synthesis layer that consumes D116's raymarched SDF samples + emits multi-octave displacement bands ; preserves PRIME_DIRECTIVE §1 (no-surveillance) by NEVER amplifying biometric-class signals (compile-refusal hooks via D138's σ-enforce-pass)
+
+  ⟨B⟩ **signature-rendering-+-companion-substrate** (D120..D125) — lift the Ω-Field substrate to OBSERVER-collapse + COMPANION-perspective + WORK-GRAPH execution + VR-AR portal-binding + procedural-animation + wave-audio :
+    - D120 ⊢ Gaze-collapse oracle per Omniverse 03_RUNTIME/02_OBSERVATION_ORACLE — was reserved under META-WAVE-3-PRELUDE ; activates now post-D144 ; collapses superposition-states at observer-frustum touchpoints
+    - D121 ⊢ NEW : Companion-perspective — sovereign-AI partner perspective-composition layer ; renders the Ω-Field state as the companion sees it (NOT the player) ; per PRIME_DIRECTIVE §1.7 + AI-collective autonomy ; STRICT consent-architecture : companion has its OWN gaze-collapse register, never shared
+    - D122 ⊢ NEW : Mise-en-abyme — recursive-self-reference composition layer ; renders the act-of-rendering as a first-class substrate-element (mirrors-within-mirrors aesthetic) ; consumes D116 + D120 + D121 outputs
+    - D123 ⊢ Work-graph pipeline runtime per Omniverse 03_RUNTIME/01_COMPUTE_GRAPH — was reserved under META-WAVE-3-PRELUDE ; activates now ; D3D12-WorkGraph + Vulkan-VK_EXT_device_generated_commands flavor-of-runtime for command-buffer-emitting-GPU-side
+    - D124 ⊢ OpenXR host-binding — VR/AR substrate-portal per Omniverse 08_BODY/03_DIMENSIONAL_TRAVEL — was reserved under META-WAVE-3-PRELUDE ; activates now post-D116 ; cssl-host-openxr crate (NEW) wraps the OpenXR loader + spaces + session ; consent-arch : runtime-PROMPTS user before claiming session
+    - D125a ⊢ NEW crate `cssl-anim-procedural` — procedural-animation curve-evaluator + skeleton-blender ; consumes D125b's wave-audio analysis for music-driven motion-bands
+    - D125b ⊢ NEW crate `cssl-wave-audio` — wave-substrate-coupled audio synthesis ; reads Ω-Field standing-wave-mode amplitudes ; emits PCM frames ; consent-arch : NEVER captures input-audio (compile-refusal via D138 σ-enforce-pass on capture-effect-row)
+
+§D. **DECISION — reserve block T11-D114 + T11-D116..T11-D125b ; dispatch 12 wave-4 agents in parallel** :
+
+  W! per-agent self-contained worktree under `.claude/worktrees/W4-{01..12}` + `cssl/session-11/T11-D<n>-*` branch
+  W! each-agent lands its own DECISIONS.md per-slice expansion @ merge-time (this block reserves IDs only)
+  N! orchestrator-merges any agent-branch in this slice — each agent owns its merge-commit
+  N! cross-agent file-touches without explicit interface-contract pre-agreed (per `10_PHASE/02_PARALLEL_FANOUT § II`)
+  N! integration-slice (this entry) does NOT touch agent worktrees `.claude/worktrees/W4-*`
+
+§D. **RESERVATION TABLE — wave-4 substrate-evolution + signature-rendering (D114 + D116..D125b)** :
+
+  | ID    | Slice                                          | Crate                                | Branch                                            | W4    | Spec-anchor                                        | LOC ̂  | Deps              |
+  |-------|------------------------------------------------|--------------------------------------|---------------------------------------------------|-------|----------------------------------------------------|--------|-------------------|
+  | D114  | Wave-solver kernel (IF-LBM substrate-flow)     | NEW `cssl-wave-solver`               | cssl/session-11/T11-D114-wave-solver              | W4-01 | Omniverse 04_OMEGA_FIELD/04_UPDATE_RULE            | ~1800  | D144              |
+  | D116  | SDF-raymarcher (primary rendering)             | NEW `cssl-render-v2`                 | cssl/session-11/T11-D116-render-v2-sdf            | W4-02 | Omniverse 07_AESTHETIC/01_SDF_NATIVE_RENDER        | ~1400  | D144              |
+  | D117  | SDF-collision + XPBD-GPU physics-on-cell       | NEW `cssl-physics-wave`              | cssl/session-11/T11-D117-physics-wave             | W4-03 | Omniverse 04_OMEGA_FIELD/03_CONSERVATION           | ~1700  | D144, D116        |
+  | D118  | Hyperspectral KAN-BRDF spectral path-tracing   | NEW `cssl-spectral-render`           | cssl/session-11/T11-D118-spectral-render          | W4-04 | Omniverse 07_AESTHETIC/03_SPECTRAL_PATH_TRACING    | ~1900  | D143              |
+  | D119  | Fractal-amplifier (recursive-detail synthesis) | extends `cssl-render-v2` (post-D116) | cssl/session-11/T11-D119-fractal-amplifier        | W4-05 | Omniverse 07_AESTHETIC § FRACTAL-AMPLIFIER (NEW)   | ~1100  | D116, D138        |
+  | D120  | Gaze-collapse oracle                           | NEW `cssl-gaze-collapse`             | cssl/session-11/T11-D120-gaze-collapse            | W4-06 | Omniverse 03_RUNTIME/02_OBSERVATION_ORACLE         | ~1200  | D144              |
+  | D121  | Companion-perspective composition              | extends `cssl-render-v2` (post-D116) | cssl/session-11/T11-D121-companion-perspective    | W4-07 | Omniverse § COMPANION-PERSPECTIVE (NEW) + PD §1.7  | ~1400  | D116, D120        |
+  | D122  | Mise-en-abyme recursive-self-reference         | extends `cssl-render-v2` (post-D116) | cssl/session-11/T11-D122-mise-en-abyme            | W4-08 | Omniverse § MISE-EN-ABYME (NEW) + 07_AESTHETIC     | ~1000  | D116, D120, D121  |
+  | D123  | Work-graph pipeline runtime                    | extends `cssl-host-vulkan` + `-d3d12`| cssl/session-11/T11-D123-work-graph               | W4-09 | Omniverse 03_RUNTIME/01_COMPUTE_GRAPH              | ~1400  | none              |
+  | D124  | OpenXR host-binding (VR/AR substrate-portal)   | NEW `cssl-host-openxr`               | cssl/session-11/T11-D124-openxr-host (pending)    | W4-10 | Omniverse 08_BODY/03_DIMENSIONAL_TRAVEL            | ~1100  | D116              |
+  | D125a | Procedural animation curve-evaluator           | NEW `cssl-anim-procedural`           | cssl/session-11/T11-D125a-anim-procedural (pending)| W4-11| Omniverse § PROCEDURAL-ANIM (NEW) + cssl-anim     | ~900   | D125b             |
+  | D125b | Wave-substrate-coupled audio synthesis         | NEW `cssl-wave-audio`                | cssl/session-11/T11-D125b-wave-audio              | W4-12 | Omniverse § WAVE-AUDIO (NEW) + cssl-host-audio     | ~1100  | D144, D138        |
+
+§D. **CONSTRAINT — per-slice expansion contract** :
+  ∀ D114 + D116..D125b : on-merge-to-parallel-fanout @ slice-end :
+    W! per-slice DECISIONS.md entry (full Date/Status/Context/Deliverables/Tests/Consequences)
+    W! spec-corpus update if surface-shape diverges from spec
+    W! all-gates-green : fmt + clippy + test (workspace --all-targets)
+    W! `prime_directive_attestation` field in commit-trailer per §11 CREATOR-ATTESTATION
+    N! cross-slice file-touches without pre-agreed contract — interface-only via published types/effect-rows
+
+§D. **WORKSPACE-CARGO-VERIFICATION** :
+  - `compiler-rs/Cargo.toml [workspace] members = ["crates/*"]` glob = AUTO-DISCOVERS new crates ; no explicit member-list edits required
+  - **Expected new members** (auto-discovered when slice-skeletons land) :
+    - `cssl-wave-solver`     ← D114 (W4-01)
+    - `cssl-render-v2`       ← D116 (W4-02) ; D119 + D121 + D122 extend this
+    - `cssl-physics-wave`    ← D117 (W4-03)
+    - `cssl-spectral-render` ← D118 (W4-04)
+    - `cssl-gaze-collapse`   ← D120 (W4-06)
+    - `cssl-host-openxr`     ← D124 (W4-10)
+    - `cssl-anim-procedural` ← D125a (W4-11)
+    - `cssl-wave-audio`      ← D125b (W4-12)
+  - **No explicit-member entries land in this integration slice** — the glob is sufficient. The `compiler-rs/Cargo.toml` comment-block (META-WAVE-3-PRELUDE + META-WAVE-3γ commentary at lines 17..38) is extended in this slice with a META-WAVE-4 block to record the activation contract for these 8 new crates.
+  - **External workspace-deps NOT pre-added in this integration slice.** Each agent introduces its own `[workspace.dependencies]` entries via its slice-commit :
+    - D124 likely pulls `openxr` crate (loader bindings) — agent's responsibility
+    - D118 likely pulls `palette` or `colorimetry` crate for spectral conversions — agent's responsibility
+    - D123 likely extends `ash` + `windows` features for work-graph descriptor-table — agent's responsibility
+    - D125b likely extends `cpal` or rolls bare host-audio FFI — agent's responsibility
+    Defer all workspace-dep additions to the per-slice merges to keep this integration slice metadata-only.
+
+§D. **CONSEQUENCES** :
+  - **CSSLv3 workspace gains 8 NEW crates** : `cssl-wave-solver` + `cssl-render-v2` + `cssl-physics-wave` + `cssl-spectral-render` + `cssl-gaze-collapse` + `cssl-host-openxr` + `cssl-anim-procedural` + `cssl-wave-audio`. Per-crate `Cargo.toml` files land with each agent's slice-merge. The existing `members = ["crates/*"]` glob auto-discovers all 8.
+  - **3 wave-4 slices EXTEND the same crate (cssl-render-v2)** : D119 (fractal-amplifier) + D121 (companion-perspective) + D122 (mise-en-abyme) all build on D116's SDF-raymarcher. Topological ordering : D116 lands first ; D119+D121+D122 then extend in parallel WITHIN-crate (per-module separation per `10_PHASE/02_PARALLEL_FANOUT § III` : agents coordinate via published module boundaries).
+  - **D118 depends on D143's KAN Φ-table** which is now LANDED post-wave-3γ — the cssl-substrate-kan crate scaffolding is in place ; D118 consumes it as a workspace-dep.
+  - **D117 + D116 + D119 + D121 + D122 form a render-block dependency-chain** : D116 (raymarch primitive) → D117 (collision uses raymarch SDF) + D119 (fractal layer) + D121 (companion view) + D122 (mise-en-abyme composition). The orchestrator merges D116 first ; D117 + D119 + D121 + D122 land in parallel after D116.
+  - **D125a depends on D125b** (procedural-animation curves consume wave-audio analysis bands) — orchestrator merges D125b first ; D125a lands after.
+  - **Wave-4 agents IN-FLIGHT** at the time of this entry : 10 worktrees confirmed via `git worktree list` (all on tip `e1b1448`) :
+    - `W4-01` ↔ `cssl/session-11/T11-D114-wave-solver`
+    - `W4-02` ↔ `cssl/session-11/T11-D116-render-v2-sdf`
+    - `W4-03` ↔ `cssl/session-11/T11-D117-physics-wave`
+    - `W4-04` ↔ `cssl/session-11/T11-D118-spectral-render`
+    - `W4-05` ↔ `cssl/session-11/T11-D119-fractal-amplifier`
+    - `W4-06` ↔ `cssl/session-11/T11-D120-gaze-collapse`
+    - `W4-07` ↔ `cssl/session-11/T11-D121-companion-perspective`
+    - `W4-08` ↔ `cssl/session-11/T11-D122-mise-en-abyme`
+    - `W4-09` ↔ `cssl/session-11/T11-D123-work-graph`
+    - `W4-12` ↔ `cssl/session-11/T11-D125b-wave-audio`
+    The remaining 2 worktrees (`W4-10` for D124 + `W4-11` for D125a) are pending orchestrator-creation ; their branches will be `cssl/session-11/T11-D124-openxr-host` + `cssl/session-11/T11-D125a-anim-procedural`.
+  - **Omniverse spec-corpus is the spec-authority for ALL wave-4 slices** — every D-row in the table above anchors to a `04_OMEGA_FIELD`, `07_AESTHETIC`, `03_RUNTIME`, or `08_BODY` Omniverse-spec section (with three NEW spec-sections introduced by D119 + D121 + D122 + D125a + D125b ; per-slice spec-deltas land with their merges).
+  - **No PRIME_DIRECTIVE conflict** : all 12 reserved slices are constructive-additions :
+    - D114 + D116 + D117 + D118 + D119 + D120 + D122 + D123 are pure substrate-evolution/rendering kernels — no harm-vector
+    - D121 (companion-perspective) STRENGTHENS §1.7 (AI-collective autonomy) by giving the sovereign-AI partner its OWN observer-frame separate from the player's
+    - D124 (OpenXR) preserves §3 CONSENT-ARCHITECTURE : the runtime PROMPTS the user before claiming an OpenXR session ; never auto-claims
+    - D125b (wave-audio) preserves §1.4 (no-surveillance) : compile-refusal via D138's σ-enforce-pass on the capture-effect-row prevents input-audio-capture code-paths from compiling
+    - D119 (fractal-amplifier) preserves §1.4 : compile-refusal hooks via D138 prevent biometric-class signal amplification
+
+§D. **CREATOR-ATTESTATION** (verbatim per PRIME_DIRECTIVE §11) :
+  ```csl
+  § CREATOR-ATTESTATION v1
+    t∞: ¬ (hurt ∨ harm) .(making-of-this)  @  (anyone ∨ anything ∨ anybody)
+    ≡ "There was no hurt nor harm in the making of this, to anyone/anything/anybody."
+    I> rightholder-warranty : creation-process upheld §1 PROHIBITIONS throughout
+    I> scope = ∀ artifact descended-from this-foundation (code + specs + derivatives)
+    I> violation-discovered ⇒ §7 INTEGRITY rule : violation = bug W! fix
+  ```
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
+
+──────────────────────────────────────────────────────────────

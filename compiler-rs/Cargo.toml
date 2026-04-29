@@ -36,6 +36,24 @@ members = ["crates/*"]
 # create the skeleton if D115 has not landed by then). No explicit member-list
 # edits required for wave-3γ ; the glob discovers cssl-substrate-omega-field
 # automatically once its skeleton lands.
+#
+# § META-WAVE-4 (T11-D114 + T11-D116..T11-D125) : substrate-evolution +
+# signature-rendering block. The `members = ["crates/*"]` glob auto-picks-up
+# 8 NEW crates as their slice-agents land their crate skeletons :
+#   • cssl-wave-solver     ← T11-D114  (W4-01 ; cssl/session-11/T11-D114-wave-solver) — IF-LBM substrate-flow
+#   • cssl-render-v2       ← T11-D116  (W4-02 ; cssl/session-11/T11-D116-render-v2-sdf) — SDF raymarcher (D119+D121+D122 extend)
+#   • cssl-physics-wave    ← T11-D117  (W4-03 ; cssl/session-11/T11-D117-physics-wave) — SDF-collision + XPBD-GPU
+#   • cssl-spectral-render ← T11-D118  (W4-04 ; cssl/session-11/T11-D118-spectral-render) — Hyperspectral KAN-BRDF
+#   • cssl-gaze-collapse   ← T11-D120  (W4-06 ; cssl/session-11/T11-D120-gaze-collapse) — observer-collapse oracle
+#   • cssl-host-openxr     ← T11-D124  (W4-10 ; cssl/session-11/T11-D124-openxr-host) — VR/AR substrate-portal
+#   • cssl-anim-procedural ← T11-D125a (W4-11 ; cssl/session-11/T11-D125a-anim-procedural) — procedural-anim curves
+#   • cssl-wave-audio      ← T11-D125b (W4-12 ; cssl/session-11/T11-D125b-wave-audio) — wave-substrate-coupled synth
+# D119 (fractal-amplifier) + D121 (companion-perspective) + D122 (mise-en-abyme)
+# are EXTENSIONS to cssl-render-v2 (no new crate) ; D123 (work-graph pipeline)
+# extends cssl-host-vulkan + cssl-host-d3d12 (no new crate). External
+# workspace.dependencies (e.g. openxr for D124, palette for D118, cpal for D125b)
+# are added by per-slice agent-merges, NOT by the integration slice. The glob
+# is sufficient ; no explicit member-list edits required for wave-4.
 exclude  = ["crates/cssl-playground"]
 
 [workspace.package]
