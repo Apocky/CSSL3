@@ -562,6 +562,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-wavelet"
+version = "0.1.0"
+
+[[package]]
 name = "csslc"
 version = "0.1.0"
 
