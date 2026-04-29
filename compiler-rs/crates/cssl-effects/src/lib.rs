@@ -61,6 +61,7 @@
 #![allow(clippy::similar_names)]
 
 pub mod banned;
+pub mod conservation;
 pub mod discipline;
 pub mod registry;
 pub mod substrate;
@@ -69,6 +70,10 @@ pub use banned::{
     banned_composition, banned_composition_with_domains,
     banned_composition_with_domains_and_privilege, banned_composition_with_privilege_l4,
     BannedReason, SensitiveDomain,
+};
+pub use conservation::{
+    check_conservation, check_entropy_balance, check_entropy_balance_with_epsilon,
+    sum_entropy_edges, ConservationContext, ConservationViolation, EntropyEdge, ENTROPY_EPSILON,
 };
 pub use discipline::{
     classify_coercion, sub_effect_check, CoercionRule, EffectRef, SubEffectError,
