@@ -63,6 +63,14 @@ pub enum MirType {
     /// the u32 (typically 2/3/4/8/16) ; element type is the FloatWidth.
     /// Rendered as MLIR `vector<NxfM>` (e.g., `vector<3xf32>`).
     Vec(u32, FloatWidth),
+    /// T11-D57 (S6-B1) : raw pointer / heap-allocated cell. Rendered as
+    /// `!cssl.ptr`. Produced by `cssl.heap.alloc` and consumed by
+    /// `cssl.heap.dealloc / realloc` per `specs/02_IR.csl` § HEAP-OPS.
+    /// Capability-aware lowering attaches `iso<ptr>` semantics via op
+    /// attributes (see body_lower / cap_check) ; at the cranelift level this
+    /// lowers to the host pointer type from the active ISA (8 bytes on
+    /// x86_64, 4 on arm32).
+    Ptr,
     /// Opaque / uncategorized — name passed through verbatim.
     Opaque(String),
 }
@@ -167,6 +175,7 @@ impl fmt::Display for MirType {
                 write!(f, "{elem}>")
             }
             Self::Vec(lanes, w) => write!(f, "vector<{lanes}x{}>", w.as_str()),
+            Self::Ptr => f.write_str("!cssl.ptr"),
             Self::Opaque(s) => f.write_str(s),
         }
     }
@@ -292,5 +301,26 @@ mod tests {
         // Confirm MirType::Vec can be used as a MirValue type without panicking.
         let v = MirValue::new(ValueId(7), MirType::Vec(3, FloatWidth::F32));
         assert_eq!(v.ty, MirType::Vec(3, FloatWidth::F32));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D57 (S6-B1) : MirType::Ptr — raw pointer for heap-alloc results.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn mir_type_display_ptr_canonical_form() {
+        // ‼ Ptr renders as `!cssl.ptr` (MLIR-style opaque-tag) ; downstream
+        //   tooling matches on this canonical name.
+        assert_eq!(format!("{}", MirType::Ptr), "!cssl.ptr");
+    }
+
+    #[test]
+    fn mir_type_ptr_equality_and_clone() {
+        let a = MirType::Ptr;
+        let b = a.clone();
+        assert_eq!(a, b);
+        // Distinct from other types.
+        assert_ne!(a, MirType::Int(IntWidth::I64));
+        assert_ne!(a, MirType::Opaque("!cssl.ptr".into()));
     }
 }

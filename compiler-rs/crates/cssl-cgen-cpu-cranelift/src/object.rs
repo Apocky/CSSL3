@@ -18,6 +18,12 @@
 //!   - Const : `arith.constant` (i32 / i64 / f32 / f64).
 //!   - Return : `func.return` with operand list.
 //!   - Arith  : `arith.addi` / `subi` / `muli` / `addf` / `subf` / `mulf` / `divf`.
+//!   - Heap (S6-B1, T11-D57) : `cssl.heap.alloc` / `cssl.heap.dealloc` /
+//!     `cssl.heap.realloc` lowered to `__cssl_alloc` / `__cssl_free` /
+//!     `__cssl_realloc` import calls into `cssl-rt` (T11-D52, S6-A1).
+//!     Result-bind discipline mirrors the MIR signature : `alloc` and
+//!     `realloc` produce a single pointer-typed result ; `dealloc`
+//!     produces nothing.
 //!
 //! § DEFERRED to later phases
 //!   - Per-call FuncRef declarations (deferred — handled by S6-A3 follow-up
@@ -205,9 +211,13 @@ fn compile_one_fn(
 
     // § 1. Build cranelift signature.
     let call_conv = obj_module.isa().default_call_conv();
+    // Stage-0 single-host : the active ISA's pointer type is what `__cssl_alloc`
+    // and friends operate on. Cache once for both signature emission and the
+    // per-op lowering loop below.
+    let ptr_ty = obj_module.isa().pointer_type();
     let mut sig = Signature::new(call_conv);
     for (idx, p_ty) in mir_fn.params.iter().enumerate() {
-        let cl_ty = mir_type_to_cl(p_ty).ok_or_else(|| ObjectError::NonScalarType {
+        let cl_ty = mir_type_to_cl(p_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
             fn_name: mir_fn.name.clone(),
             slot: idx,
             ty: format!("{p_ty}"),
@@ -215,7 +225,7 @@ fn compile_one_fn(
         sig.params.push(AbiParam::new(cl_ty));
     }
     for (idx, r_ty) in mir_fn.results.iter().enumerate() {
-        let cl_ty = mir_type_to_cl(r_ty).ok_or_else(|| ObjectError::NonScalarType {
+        let cl_ty = mir_type_to_cl(r_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
             fn_name: mir_fn.name.clone(),
             slot: idx,
             ty: format!("{r_ty}"),
@@ -233,6 +243,16 @@ fn compile_one_fn(
     codegen_ctx.clear();
     codegen_ctx.func.signature = sig.clone();
     codegen_ctx.func.name = UserFuncName::user(0, func_id.as_u32());
+
+    // § T11-D57 (S6-B1) — pre-scan body ops for `cssl.heap.*` references.
+    //   For each unique heap op present in this fn's body, declare the
+    //   corresponding `__cssl_*` symbol from `cssl-rt` as `Linkage::Import`,
+    //   then bind a per-fn `FuncRef` so the body-lowering loop can emit
+    //   a real `call` instruction. Mirrors the JIT pattern at `jit.rs`.
+    //   Pattern is identical to the libm transcendental wiring landed in
+    //   T11-D29 — duplicated here rather than refactored because cssl-mir
+    //   cannot dev-dep cssl-cgen-cpu-cranelift (cycle landmine, see HANDOFF).
+    let heap_refs = declare_heap_imports_for_fn(obj_module, codegen_ctx, mir_fn, ptr_ty)?;
 
     // § 2. Build body.
     {
@@ -254,7 +274,14 @@ fn compile_one_fn(
                 if returned {
                     break;
                 }
-                returned = lower_one_op(op, &mut builder, &mut value_map, &mir_fn.name)?;
+                returned = lower_one_op(
+                    op,
+                    &mut builder,
+                    &mut value_map,
+                    &mir_fn.name,
+                    &heap_refs,
+                    ptr_ty,
+                )?;
             }
             if !returned {
                 // No explicit return ; emit an implicit return.
@@ -294,6 +321,112 @@ fn compile_one_fn(
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § cssl-rt heap-FFI imports — declare-once-per-fn pre-scan.
+//
+//   Each entry in [`HeapImports`] maps the source-form MIR op-name to the
+//   per-fn `FuncRef` that body lowering can issue a `call` against. Sigs
+//   match the FFI surface in `cssl-rt::ffi`. The signatures are all
+//   `usize`-shaped on the host pointer-type ; we use the active ISA's
+//   pointer width for both `*mut u8` and `usize` so this matches the
+//   Rust ABI on x86_64 (8 bytes) without target-specific branches.
+// ───────────────────────────────────────────────────────────────────────
+
+/// FFI symbol name on the cssl-rt side. Renaming either side requires
+/// updating both — see HANDOFF_SESSION_6 § LANDMINES + cssl-rt/src/ffi.rs.
+const HEAP_ALLOC_SYMBOL: &str = "__cssl_alloc";
+const HEAP_FREE_SYMBOL: &str = "__cssl_free";
+const HEAP_REALLOC_SYMBOL: &str = "__cssl_realloc";
+
+/// Per-fn map of MIR heap-op name → cranelift `FuncRef` for the imported
+/// `cssl-rt` symbol. An entry is only present when the fn body actually
+/// references the corresponding op — keeps the import surface lean.
+#[derive(Default)]
+struct HeapImports {
+    refs: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+}
+
+impl HeapImports {
+    fn get(&self, op_name: &str) -> Option<cranelift_codegen::ir::FuncRef> {
+        self.refs.get(op_name).copied()
+    }
+}
+
+fn declare_heap_imports_for_fn(
+    obj_module: &mut ObjectModule,
+    codegen_ctx: &mut Context,
+    mir_fn: &MirFunc,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<HeapImports, ObjectError> {
+    let mut imports = HeapImports::default();
+    let Some(entry_block) = mir_fn.body.blocks.first() else {
+        return Ok(imports);
+    };
+    // Walk this fn's ops once and remember which heap ops are referenced.
+    let mut needs_alloc = false;
+    let mut needs_free = false;
+    let mut needs_realloc = false;
+    for op in &entry_block.ops {
+        match op.name.as_str() {
+            "cssl.heap.alloc" => needs_alloc = true,
+            "cssl.heap.dealloc" => needs_free = true,
+            "cssl.heap.realloc" => needs_realloc = true,
+            _ => {}
+        }
+    }
+    let call_conv = obj_module.isa().default_call_conv();
+    let abi_ptr = AbiParam::new(ptr_ty);
+
+    if needs_alloc {
+        // (size : usize, align : usize) -> *mut u8
+        let mut sig = Signature::new(call_conv);
+        sig.params.push(abi_ptr);
+        sig.params.push(abi_ptr);
+        sig.returns.push(abi_ptr);
+        let id = obj_module
+            .declare_function(HEAP_ALLOC_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare {HEAP_ALLOC_SYMBOL} : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.refs.insert("cssl.heap.alloc", fref);
+    }
+    if needs_free {
+        // (ptr : *mut u8, size : usize, align : usize) -> ()
+        let mut sig = Signature::new(call_conv);
+        sig.params.push(abi_ptr);
+        sig.params.push(abi_ptr);
+        sig.params.push(abi_ptr);
+        let id = obj_module
+            .declare_function(HEAP_FREE_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare {HEAP_FREE_SYMBOL} : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.refs.insert("cssl.heap.dealloc", fref);
+    }
+    if needs_realloc {
+        // (ptr, old_size, new_size, align) -> *mut u8
+        let mut sig = Signature::new(call_conv);
+        sig.params.push(abi_ptr);
+        sig.params.push(abi_ptr);
+        sig.params.push(abi_ptr);
+        sig.params.push(abi_ptr);
+        sig.returns.push(abi_ptr);
+        let id = obj_module
+            .declare_function(HEAP_REALLOC_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare {HEAP_REALLOC_SYMBOL} : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.refs.insert("cssl.heap.realloc", fref);
+    }
+    Ok(imports)
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § per-op lowering (subset)
 // ───────────────────────────────────────────────────────────────────────
 
@@ -302,6 +435,8 @@ fn lower_one_op(
     builder: &mut FunctionBuilder<'_>,
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
+    heap_refs: &HeapImports,
+    ptr_ty: cranelift_codegen::ir::Type,
 ) -> Result<bool, ObjectError> {
     match op.name.as_str() {
         "arith.constant" => {
@@ -317,11 +452,12 @@ fn lower_one_op(
                 .iter()
                 .find(|(k, _)| k == "value")
                 .map_or("0", |(_, v)| v.as_str());
-            let cl_ty = mir_type_to_cl(&r.ty).ok_or_else(|| ObjectError::NonScalarType {
-                fn_name: fn_name.to_string(),
-                slot: 0,
-                ty: format!("{}", r.ty),
-            })?;
+            let cl_ty =
+                mir_type_to_cl(&r.ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
+                    fn_name: fn_name.to_string(),
+                    slot: 0,
+                    ty: format!("{}", r.ty),
+                })?;
             let v = if cl_ty == cl_types::F32 {
                 builder
                     .ins()
@@ -373,11 +509,92 @@ fn lower_one_op(
             builder.ins().return_(&args);
             Ok(true)
         }
+        // § T11-D57 (S6-B1) — heap-FFI lowering. Each op resolves its
+        //   import via the per-fn `HeapImports` map (declared up front in
+        //   `declare_heap_imports_for_fn`), then issues a `call` carrying
+        //   the operands in MIR-source order. `alloc` and `realloc` bind
+        //   one ptr-typed result ; `dealloc` produces no result.
+        "cssl.heap.alloc" => emit_heap_call(
+            op, builder, value_map, fn_name, heap_refs, ptr_ty, /* expects_result = */ true,
+        ),
+        "cssl.heap.dealloc" => emit_heap_call(
+            op, builder, value_map, fn_name, heap_refs, ptr_ty, /* expects_result = */ false,
+        ),
+        "cssl.heap.realloc" => emit_heap_call(
+            op, builder, value_map, fn_name, heap_refs, ptr_ty, /* expects_result = */ true,
+        ),
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
         }),
     }
+}
+
+/// Shared helper for the three `cssl.heap.*` ops. Resolves the import,
+/// gathers operands (with type-coercion to the host pointer-type so a
+/// `i64`-typed `arith.constant` for size/align matches the FFI signature),
+/// and binds the call's result if any.
+///
+/// § COERCION
+///   Operands flow through MIR as scalar integers (`i64`) for size/align
+///   and `!cssl.ptr` for pointers. Cranelift wants every operand to match
+///   the imported function's `AbiParam` type (host-ptr-width). We coerce
+///   non-matching integer operands via `uextend` / `ireduce` as needed —
+///   this is correct for `usize`-shaped sizes on 64-bit hosts (no-op when
+///   already `i64`) and would also work for 32-bit hosts (would emit a
+///   single `ireduce`). For pointer operands we rely on `MirType::Ptr` →
+///   `ptr_ty` already matching, so no coercion is needed.
+fn emit_heap_call(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    heap_refs: &HeapImports,
+    ptr_ty: cranelift_codegen::ir::Type,
+    expects_result: bool,
+) -> Result<bool, ObjectError> {
+    let fref = heap_refs
+        .get(op.name.as_str())
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("`{}` import not declared (pre-scan bug)", op.name),
+        })?;
+    let mut args = Vec::with_capacity(op.operands.len());
+    for vid in &op.operands {
+        let raw = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        let raw_ty = builder.func.dfg.value_type(raw);
+        let coerced = if raw_ty == ptr_ty {
+            raw
+        } else if raw_ty.bits() < ptr_ty.bits() {
+            builder.ins().uextend(ptr_ty, raw)
+        } else {
+            // raw_ty.bits() > ptr_ty.bits() : narrow.
+            builder.ins().ireduce(ptr_ty, raw)
+        };
+        args.push(coerced);
+    }
+    let call = builder.ins().call(fref, &args);
+    if expects_result {
+        let r = op
+            .results
+            .first()
+            .ok_or_else(|| ObjectError::LoweringFailed {
+                fn_name: fn_name.to_string(),
+                detail: format!("{} expects a result but op carries none", op.name),
+            })?;
+        let results = builder.inst_results(call).to_vec();
+        let cl_value = *results.first().ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} produced no cranelift result value", op.name),
+        })?;
+        value_map.insert(r.id, cl_value);
+    }
+    Ok(false)
 }
 
 fn binary_int<F>(
@@ -428,7 +645,10 @@ where
 // § MirType → cranelift Type
 // ───────────────────────────────────────────────────────────────────────
 
-fn mir_type_to_cl(t: &MirType) -> Option<cranelift_codegen::ir::Type> {
+fn mir_type_to_cl(
+    t: &MirType,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Option<cranelift_codegen::ir::Type> {
     match t {
         MirType::Int(IntWidth::I32) => Some(cl_types::I32),
         MirType::Int(IntWidth::I64) => Some(cl_types::I64),
@@ -437,6 +657,10 @@ fn mir_type_to_cl(t: &MirType) -> Option<cranelift_codegen::ir::Type> {
         MirType::Float(FloatWidth::F32) => Some(cl_types::F32),
         MirType::Float(FloatWidth::F64) => Some(cl_types::F64),
         MirType::Bool => Some(cl_types::I8),
+        // T11-D57 (S6-B1) — `!cssl.ptr` lowers to the active ISA's host
+        //   pointer type. Tied to S6-A3's "ISA = host" assumption ;
+        //   cross-compilation will revisit when target-triple resolution lands.
+        MirType::Ptr | MirType::Handle => Some(ptr_ty),
         _ => None,
     }
 }
@@ -607,6 +831,140 @@ mod tests {
         let mut module = MirModule::new();
         module.push_func(f);
         let bytes = emit_object_module(&module).expect("emit ok");
+        assert!(!bytes.is_empty());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D57 (S6-B1) — heap-FFI lowering.
+    //   Builds a synthetic MirFunc that exercises each of the three
+    //   `cssl.heap.*` ops in turn and asserts the produced object bytes
+    //   start with the host magic. Functional verification (run the .o,
+    //   confirm it allocs/frees) lives in the cssl-examples integration
+    //   gate where it can link against cssl-rt.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Build a MirFunc with two i64 entry-args (size, align) → !cssl.ptr,
+    /// emitting a single `cssl.heap.alloc(size, align) -> ptr` then
+    /// returning the pointer.
+    fn build_alloc_passthrough() -> MirFunc {
+        let mut f = MirFunc::new(
+            "alloc_passthrough",
+            vec![MirType::Int(IntWidth::I64), MirType::Int(IntWidth::I64)],
+            vec![MirType::Ptr],
+        );
+        f.push_op(
+            MirOp::std("cssl.heap.alloc")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Ptr),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+        f
+    }
+
+    #[test]
+    fn emit_heap_alloc_imports_cssl_alloc_symbol() {
+        // The produced object must declare the imported `__cssl_alloc`
+        // symbol — verified by compiling without panic.
+        let mut module = MirModule::new();
+        module.push_func(build_alloc_passthrough());
+        let bytes = emit_object_module(&module).expect("emit heap.alloc ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(
+            bytes.starts_with(host_magic),
+            "heap.alloc-using fn produced invalid object header"
+        );
+    }
+
+    #[test]
+    fn emit_heap_dealloc_imports_cssl_free_symbol() {
+        // fn dealloc_call(ptr : !cssl.ptr, size : i64, align : i64) -> ()
+        // emits `cssl.heap.dealloc` then a void return.
+        let mut f = MirFunc::new(
+            "dealloc_call",
+            vec![
+                MirType::Ptr,
+                MirType::Int(IntWidth::I64),
+                MirType::Int(IntWidth::I64),
+            ],
+            vec![],
+        );
+        f.push_op(
+            MirOp::std("cssl.heap.dealloc")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_operand(ValueId(2)),
+        );
+        f.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit heap.dealloc ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
+    }
+
+    #[test]
+    fn emit_heap_realloc_imports_cssl_realloc_symbol() {
+        // fn realloc_call(ptr, old, new, align) -> !cssl.ptr — exercises
+        // the 4-operand → 1-result shape unique to realloc.
+        let mut f = MirFunc::new(
+            "realloc_call",
+            vec![
+                MirType::Ptr,
+                MirType::Int(IntWidth::I64),
+                MirType::Int(IntWidth::I64),
+                MirType::Int(IntWidth::I64),
+            ],
+            vec![MirType::Ptr],
+        );
+        f.push_op(
+            MirOp::std("cssl.heap.realloc")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_operand(ValueId(2))
+                .with_operand(ValueId(3))
+                .with_result(ValueId(4), MirType::Ptr),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(4)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit heap.realloc ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
+    }
+
+    #[test]
+    fn emit_heap_alloc_with_constant_operands_succeeds() {
+        // fn alloc_blob() -> !cssl.ptr {
+        //   let sz = arith.constant 64 : i64
+        //   let al = arith.constant  8 : i64
+        //   cssl.heap.alloc(sz, al) -> ptr
+        //   return ptr
+        // }
+        // Mirrors the body_lower Box::new() shape end-to-end.
+        let mut f = MirFunc::new("alloc_blob", vec![], vec![MirType::Ptr]);
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "64")
+                .with_result(ValueId(0), MirType::Int(IntWidth::I64)),
+        );
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "8")
+                .with_result(ValueId(1), MirType::Int(IntWidth::I64)),
+        );
+        f.push_op(
+            MirOp::std("cssl.heap.alloc")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Ptr),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("emit alloc_blob ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
         assert!(!bytes.is_empty());
     }
 }

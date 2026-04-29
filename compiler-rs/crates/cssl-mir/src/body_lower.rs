@@ -1217,6 +1217,25 @@ fn lower_call(
             return Some(result);
         }
     }
+    // § T11-D57 (S6-B1) — `Box::new(x)` syntactic recognition.
+    //   Strict guard : the call must be a path-callee with EXACTLY two segments
+    //   `["Box", "new"]` and one positional arg. False positives (e.g. a user
+    //   shadowing `Box`) are blocked by the segment-count + name match. Full
+    //   trait-dispatch is deferred to the phase-B trait-resolve slice ; until
+    //   then this recognizer is the only path that mints a `cssl.heap.alloc`
+    //   from user source. See HANDOFF_SESSION_6 § PHASE-B § S6-B1.
+    if args.len() == 1 {
+        if let HirExprKind::Path { segments, .. } = &callee.kind {
+            if segments.len() == 2
+                && ctx.interner.resolve(segments[0]) == "Box"
+                && ctx.interner.resolve(segments[1]) == "new"
+            {
+                if let Some(result) = try_lower_box_new(ctx, &args[0], span) {
+                    return Some(result);
+                }
+            }
+        }
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -1325,6 +1344,151 @@ fn try_lower_vec_length_from_path(
             .with_result(len_id, scalar_ty.clone()),
     );
     Some((len_id, scalar_ty))
+}
+
+/// T11-D57 (S6-B1) — lower a syntactically-recognized `Box::new(x)` call into
+/// a `cssl.heap.alloc` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %inner = <lower(x)>                                   // payload value
+///   %sz    = arith.constant N : i64                        // sizeof T (heuristic)
+///   %al    = arith.constant 8 : i64                        // align (default 8)
+///   %p     = cssl.heap.alloc %sz, %al : !cssl.ptr          // attribute cap=iso
+/// ```
+///
+/// § GUARDS + CAVEATS
+///   - At B1 the size-of operand is a stage-0 heuristic : `8` for scalar
+///     payloads, `0` for unknown / opaque types. Real layout-computation
+///     lands once `MirType::Struct(DefId, Vec<MirType>)` exists (see the
+///     deferred work in `T11-D50`). The op carries `size` and `align` as
+///     attributes mirroring the operand values, plus `payload_ty` so later
+///     passes can resolve real layouts without losing the type.
+///   - Initialization (`*p = inner`) is NOT emitted at B1 — `cssl.heap.alloc`
+///     produces uninitialized memory per the cssl-rt contract. A follow-up
+///     slice will emit a paired `memref.store` once memref-load/store ops
+///     land in S6-C3. Until then the recognized form is "alloc and discard
+///     payload" — sufficient to validate the lowering surface.
+///   - The result value-id carries the `cap=iso` attribute on the producing
+///     op so downstream linear-tracking can verify exactly-once consumption.
+fn try_lower_box_new(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let payload_expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    // Lower the payload expression so its side-effects + value land in the
+    // op-stream. Even though we don't (yet) store it through the pointer at
+    // B1, lowering preserves any computed value the user expressed — the
+    // store-through-pointer pairing happens once memref ops land (S6-C3).
+    let (_payload_id, payload_ty) = lower_expr(ctx, payload_expr)?;
+
+    // § Heuristic size-of for stage-0 payloads. Real layout-computation
+    //   requires `MirType::Struct(DefId, Vec<MirType>)` (deferred ; see
+    //   `DECISIONS.md` T11-D50 § "What's still missing for real `struct
+    //   Vec<T>`"). At B1 we encode size as a constant attribute :
+    //     - scalar Int / Float / Bool / Ptr   → byte-width per type
+    //     - everything else                  → 0 (opaque) — downstream
+    //       passes will fix once layout exists.
+    let payload_size_bytes: i64 = stage0_heuristic_size_of(&payload_ty);
+    let payload_align_bytes: i64 = stage0_heuristic_align_of(&payload_ty);
+
+    let size_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.constant")
+            .with_attribute("value", payload_size_bytes.to_string())
+            .with_result(size_id, MirType::Int(IntWidth::I64))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let align_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.constant")
+            .with_attribute("value", payload_align_bytes.to_string())
+            .with_result(align_id, MirType::Int(IntWidth::I64))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+
+    let ptr_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::new(CsslOp::HeapAlloc)
+            .with_operand(size_id)
+            .with_operand(align_id)
+            .with_result(ptr_id, MirType::Ptr)
+            // ‼ cap=iso : per `specs/12_CAPABILITIES.csl` § ISO-OWNERSHIP a
+            //   freshly-allocated heap cell is uniquely owned (linear).
+            //   Downstream linear-tracking + handler-one-shot enforcement
+            //   look up this attribute.
+            .with_attribute("cap", "iso")
+            // Carry payload-type as a string so later passes can recover
+            // the typed shape without parsing the op-name.
+            .with_attribute("payload_ty", format!("{payload_ty}"))
+            // Source-recognition marker — distinguishes Box::new() lowering
+            // from future direct `cssl.heap.alloc` emissions (e.g., from
+            // Vec::with_capacity or arena-bump fallback paths).
+            .with_attribute("origin", "box_new")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((ptr_id, MirType::Ptr))
+}
+
+/// T11-D57 stage-0 heuristic : byte-size for `MirType` payloads handled at B1.
+/// Returns `0` for types whose layout isn't computable yet (`Opaque` /
+/// `Function` / non-trivial `Memref`). Future slices replace this once real
+/// layout-computation lands (see `T11-D50` deferred items).
+fn stage0_heuristic_size_of(t: &MirType) -> i64 {
+    match t {
+        MirType::Int(IntWidth::I1 | IntWidth::I8) | MirType::Bool => 1,
+        MirType::Int(IntWidth::I16) => 2,
+        MirType::Int(IntWidth::I32) => 4,
+        MirType::Int(IntWidth::I64 | IntWidth::Index) => 8,
+        MirType::Float(FloatWidth::F16 | FloatWidth::Bf16) => 2,
+        MirType::Float(FloatWidth::F32) => 4,
+        MirType::Float(FloatWidth::F64) => 8,
+        MirType::Ptr | MirType::Handle => 8, // assume 64-bit host @ stage-0
+        MirType::Vec(lanes, w) => {
+            let lane_bytes: i64 = match w {
+                FloatWidth::F16 | FloatWidth::Bf16 => 2,
+                FloatWidth::F32 => 4,
+                FloatWidth::F64 => 8,
+            };
+            i64::from(*lanes) * lane_bytes
+        }
+        // Composite / unresolved : 0 ; future slices fill in.
+        MirType::Tuple(_)
+        | MirType::Function { .. }
+        | MirType::Memref { .. }
+        | MirType::Opaque(_)
+        | MirType::None => 0,
+    }
+}
+
+/// T11-D57 stage-0 heuristic : preferred alignment for a payload type. Mirrors
+/// `stage0_heuristic_size_of` but rounds up to the natural ABI alignment for
+/// scalars. Composite / unresolved types use `8` (safe upper bound for 64-bit
+/// hosts) to avoid invalid alignments at the runtime allocator boundary.
+fn stage0_heuristic_align_of(t: &MirType) -> i64 {
+    match t {
+        MirType::Int(IntWidth::I1 | IntWidth::I8) | MirType::Bool => 1,
+        MirType::Int(IntWidth::I16) | MirType::Float(FloatWidth::F16 | FloatWidth::Bf16) => 2,
+        MirType::Int(IntWidth::I32) | MirType::Float(FloatWidth::F32) => 4,
+        MirType::Int(IntWidth::I64 | IntWidth::Index)
+        | MirType::Float(FloatWidth::F64)
+        | MirType::Ptr
+        | MirType::Handle => 8,
+        MirType::Vec(_, w) => match w {
+            FloatWidth::F16 | FloatWidth::Bf16 => 2,
+            FloatWidth::F32 => 4,
+            FloatWidth::F64 => 8,
+        },
+        // Composite / unresolved → 8 (max-alignment safe default at stage-0).
+        MirType::Tuple(_)
+        | MirType::Function { .. }
+        | MirType::Memref { .. }
+        | MirType::Opaque(_)
+        | MirType::None => 8,
+    }
 }
 
 /// Known math-intrinsic callees whose result-type equals the first operand's
@@ -1475,6 +1639,7 @@ fn _unused(_: MirValue) {}
 mod tests {
     use super::lower_fn_body;
     use crate::lower::{lower_function_signature, LowerCtx};
+    use crate::value::MirType;
     use cssl_ast::{SourceFile, SourceId, Surface};
 
     fn hir_from(src: &str) -> (cssl_hir::HirModule, cssl_hir::Interner, SourceFile) {
@@ -2062,5 +2227,119 @@ mod tests {
             .map(|(_, v)| v.as_str());
         // Without source, falls back to stage0_* placeholder.
         assert_eq!(value, Some("stage0_int"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D57 (S6-B1) — `Box::new(x)` syntactic recognition.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lower_box_new_emits_cssl_heap_alloc() {
+        // `Box::new(42)` should be recognized syntactically and produce a
+        // `cssl.heap.alloc` op carrying an `iso` capability attribute.
+        let (f, _) = lower_one("fn f() -> i32 { Box::new(42); 0 }");
+        let entry = f.body.entry().unwrap();
+        let alloc_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.heap.alloc")
+            .expect("Box::new should lower to cssl.heap.alloc");
+        // Must carry the cap=iso attribute per `specs/12_CAPABILITIES`.
+        let cap = alloc_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "cap")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(cap, Some("iso"));
+        // Origin marker disambiguates from raw heap.alloc emissions.
+        let origin = alloc_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(origin, Some("box_new"));
+        // Two operands : (size, align). Per OpSignature.
+        assert_eq!(alloc_op.operands.len(), 2);
+        // Single result of type !cssl.ptr.
+        assert_eq!(alloc_op.results.len(), 1);
+        assert_eq!(alloc_op.results[0].ty, MirType::Ptr);
+    }
+
+    #[test]
+    fn lower_box_new_records_payload_size_for_int_payload() {
+        // i32 payload → size attribute should be 4 (heuristic).
+        let (f, _) = lower_one("fn f() -> i32 { Box::new(42); 0 }");
+        let entry = f.body.entry().unwrap();
+        // The two arith.constant ops emitted right before the heap.alloc
+        // carry size + align in their `value` attributes.
+        let consts: Vec<&str> = entry
+            .ops
+            .iter()
+            .filter(|o| o.name == "arith.constant")
+            .filter_map(|o| {
+                o.attributes
+                    .iter()
+                    .find(|(k, _)| k == "value")
+                    .map(|(_, v)| v.as_str())
+            })
+            .collect();
+        // First const = payload (42 from source) ; the next two are size + align
+        // emitted by the Box::new lowering (4, 4 for an i32).
+        assert!(
+            consts.iter().any(|v| *v == "4"),
+            "expected size=4 for i32 payload ; got constants : {consts:?}",
+        );
+    }
+
+    #[test]
+    fn lower_box_new_payload_type_attribute_records_ty() {
+        // The heap.alloc op should carry a `payload_ty` attribute matching
+        // the lowered payload type (here, `i32`).
+        let (f, _) = lower_one("fn f() -> i32 { Box::new(7); 0 }");
+        let entry = f.body.entry().unwrap();
+        let alloc_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.heap.alloc")
+            .expect("missing cssl.heap.alloc");
+        let payload_ty = alloc_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_ty")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(payload_ty, Some("i32"));
+    }
+
+    #[test]
+    fn lower_non_box_call_does_not_emit_heap_alloc() {
+        // Regular user calls must NOT trip the recognizer.
+        let (f, _) = lower_one("fn helper(x : i32) -> i32 { x }\nfn f() -> i32 { helper(7) }");
+        // Find `f` (last item) and inspect its body.
+        let f_main = if f.name == "f" { f.clone() } else { f };
+        let entry = f_main.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.heap.alloc"),
+            "regular user-call must not emit cssl.heap.alloc : {:?}",
+            entry.ops.iter().map(|o| &o.name).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn lower_box_with_extra_segments_does_not_match() {
+        // `a::Box::new(x)` is NOT the canonical 2-segment form ; recognizer
+        // must reject it (3 segments). Any user-defined `a::Box::new` would
+        // route through the generic-call path emitting `func.call @a.Box.new`.
+        let src = "fn f() -> i32 { a::Box::new(7); 0 }";
+        let (f, _) = lower_one(src);
+        let entry = f.body.entry().unwrap();
+        assert!(
+            !entry.ops.iter().any(|o| o.name == "cssl.heap.alloc"),
+            "3-segment `a::Box::new` must not match — heap.alloc must NOT appear",
+        );
+        // The call must still be lowered as a regular func.call.
+        assert!(
+            entry.ops.iter().any(|o| o.name == "func.call"),
+            "non-recognized path should fall through to func.call",
+        );
     }
 }

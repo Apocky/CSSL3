@@ -50,6 +50,14 @@ pub enum CsslOp {
     RtIntersect,
     // § Telemetry (R18)
     TelemetryProbe,
+    // § Heap allocation (S6-B1, T11-D57) — capability-aware allocator surface.
+    // Lowered to the `__cssl_alloc` / `__cssl_free` / `__cssl_realloc` FFI
+    // symbols exposed by `cssl-rt` (T11-D52, S6-A1). Per `specs/12_CAPABILITIES`
+    // § ISO-OWNERSHIP, `cssl.heap.alloc` returns an `iso<T>` (linear, unique),
+    // and `cssl.heap.dealloc` consumes the iso (no result).
+    HeapAlloc,
+    HeapDealloc,
+    HeapRealloc,
     /// Standard-dialect op — name stored separately. Used for `arith.*`, `scf.*`,
     /// `func.*`, `memref.*`, etc. that pass through without schema validation.
     Std,
@@ -87,6 +95,9 @@ impl CsslOp {
             Self::RtTraceRay => "cssl.rt.trace_ray",
             Self::RtIntersect => "cssl.rt.intersect",
             Self::TelemetryProbe => "cssl.telemetry.probe",
+            Self::HeapAlloc => "cssl.heap.alloc",
+            Self::HeapDealloc => "cssl.heap.dealloc",
+            Self::HeapRealloc => "cssl.heap.realloc",
             Self::Std => "cssl.std",
         }
     }
@@ -109,6 +120,7 @@ impl CsslOp {
             Self::XmxCoopMatmul => OpCategory::Xmx,
             Self::RtTraceRay | Self::RtIntersect => OpCategory::Rt,
             Self::TelemetryProbe => OpCategory::Telemetry,
+            Self::HeapAlloc | Self::HeapDealloc | Self::HeapRealloc => OpCategory::Heap,
             Self::Std => OpCategory::Std,
         }
     }
@@ -211,6 +223,22 @@ impl CsslOp {
                 operands: Some(0),
                 results: Some(0),
             },
+            // Heap (S6-B1) — see `specs/02_IR.csl` § HEAP-OPS.
+            //   alloc   : (size : i64, align : i64)                          -> iso<ptr>
+            //   dealloc : (ptr : iso<ptr>, size : i64, align : i64)          -> ()
+            //   realloc : (ptr : iso<ptr>, old_size, new_size, align : i64)  -> iso<ptr>
+            Self::HeapAlloc => OpSignature {
+                operands: Some(2),
+                results: Some(1),
+            },
+            Self::HeapDealloc => OpSignature {
+                operands: Some(3),
+                results: Some(0),
+            },
+            Self::HeapRealloc => OpSignature {
+                operands: Some(4),
+                results: Some(1),
+            },
             // Std : free-form.
             Self::Std => OpSignature {
                 operands: None,
@@ -220,7 +248,7 @@ impl CsslOp {
     }
 
     /// All `cssl.*` dialect ops (excluding `Std`).
-    pub const ALL_CSSL: [Self; 26] = [
+    pub const ALL_CSSL: [Self; 29] = [
         Self::DiffPrimal,
         Self::DiffFwd,
         Self::DiffBwd,
@@ -247,6 +275,9 @@ impl CsslOp {
         Self::RtTraceRay,
         Self::RtIntersect,
         Self::TelemetryProbe,
+        Self::HeapAlloc,
+        Self::HeapDealloc,
+        Self::HeapRealloc,
     ];
 }
 
@@ -273,6 +304,8 @@ pub enum OpCategory {
     Xmx,
     Rt,
     Telemetry,
+    /// Heap allocation (S6-B1) — see `specs/02_IR.csl` § HEAP-OPS.
+    Heap,
     Std,
 }
 
@@ -304,8 +337,51 @@ mod tests {
     }
 
     #[test]
-    fn all_26_cssl_ops_tracked() {
-        assert_eq!(CsslOp::ALL_CSSL.len(), 26);
+    fn all_29_cssl_ops_tracked() {
+        // S6-B1 (T11-D57) added HeapAlloc / HeapDealloc / HeapRealloc — total 29.
+        assert_eq!(CsslOp::ALL_CSSL.len(), 29);
+    }
+
+    #[test]
+    fn heap_alloc_signature_is_2_to_1() {
+        // (size : i64, align : i64) → iso<ptr>
+        let sig = CsslOp::HeapAlloc.signature();
+        assert_eq!(sig.operands, Some(2));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn heap_dealloc_signature_is_3_to_0() {
+        // (ptr, size, align) → ()  (consumes iso<ptr>, no result)
+        let sig = CsslOp::HeapDealloc.signature();
+        assert_eq!(sig.operands, Some(3));
+        assert_eq!(sig.results, Some(0));
+    }
+
+    #[test]
+    fn heap_realloc_signature_is_4_to_1() {
+        // (ptr, old_size, new_size, align) → iso<ptr>
+        let sig = CsslOp::HeapRealloc.signature();
+        assert_eq!(sig.operands, Some(4));
+        assert_eq!(sig.results, Some(1));
+    }
+
+    #[test]
+    fn heap_op_names_match_cssl_rt_ffi_symbols() {
+        // ‼ Naming-match invariant : the MIR op-name suffixes mirror the
+        // cssl-rt FFI symbol stems (`alloc / free / realloc`). Renaming
+        // either side requires lock-step changes — see HANDOFF_SESSION_6
+        // landmines + cssl-rt::ffi.
+        assert_eq!(CsslOp::HeapAlloc.name(), "cssl.heap.alloc");
+        assert_eq!(CsslOp::HeapDealloc.name(), "cssl.heap.dealloc");
+        assert_eq!(CsslOp::HeapRealloc.name(), "cssl.heap.realloc");
+    }
+
+    #[test]
+    fn heap_ops_in_heap_category() {
+        assert_eq!(CsslOp::HeapAlloc.category(), OpCategory::Heap);
+        assert_eq!(CsslOp::HeapDealloc.category(), OpCategory::Heap);
+        assert_eq!(CsslOp::HeapRealloc.category(), OpCategory::Heap);
     }
 
     #[test]
