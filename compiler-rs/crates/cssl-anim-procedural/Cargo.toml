@@ -1,0 +1,45 @@
+[package]
+name                   = "cssl-anim-procedural"
+description            = "CSSLv3 — Procedural animation : KAN-driven pose-from-genome + PGA-Motor joints + physics-IK rig + body-omnoid five-layer integration. Replaces keyframe-based cssl-anim per substrate-evolution audit (T11-D125a)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[features]
+# § Default : pure procedural surface ; no keyframe dependencies.
+default = []
+
+# § Backward-compat : re-exports cssl-anim's keyframe surface (Transform,
+#   Skeleton, AnimationClip, AnimSampler, BlendTree, TwoBoneIk, FabrikChain,
+#   Pose, AnimationWorld) under `cssl_anim_procedural::compat` so callers can
+#   migrate path-by-path. The keyframe code-paths stay available via the
+#   feature flag — they are NOT removed pre-substrate-evolution graduation
+#   (T11-G* Phase-G hard-cut).
+cssl-anim-keyframe = ["dep:cssl-anim"]
+
+[dependencies]
+# § Substrate plumbing — every procedural-anim system registers as an
+#   OmegaSystem and ticks per omega_step.
+cssl-substrate-omega-step  = { path = "../cssl-substrate-omega-step" }
+# § Vec3/Quat/Mat4 — host-side runtime math. The procedural surface emits
+#   bone-local Transforms compatible with the existing skinning-upload path.
+cssl-substrate-projections = { path = "../cssl-substrate-projections" }
+# § PGA Motor / Rotor / Translator — joint kinematics live in the
+#   algebraically-closed PGA surface ; no slerp-near-collinear pathologies.
+cssl-pga                   = { path = "../cssl-pga" }
+# § Genome → phenotype : KAN-network evaluator + Phi-pattern handles. The
+#   `creature_morphology` variant of KanMaterial drives the body-plan.
+cssl-substrate-kan         = { path = "../cssl-substrate-kan" }
+# § Wave-field embedding for soft-body / deformation forces. The
+#   omega-field is also where five-layer body-omnoid layers project.
+cssl-substrate-omega-field = { path = "../cssl-substrate-omega-field" }
+# § Diagnostic surface.
+thiserror                  = { workspace = true }
+
+# § Optional : keyframe compat shim.
+cssl-anim                  = { path = "../cssl-anim", optional = true }
