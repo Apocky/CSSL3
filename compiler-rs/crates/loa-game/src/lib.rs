@@ -1,4 +1,4 @@
-//! § loa-game — Labyrinth-of-Apockalypse Phase-I scaffold.
+//! § loa-game — Labyrinth-of-Apockalypse Phase-I scaffold + M8 render-pipeline.
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! Authoritative spec : `specs/31_LOA_DESIGN.csl` (game design + 38 spec-holes
@@ -21,6 +21,30 @@
 //!   `Stub` enum-variant exists so the scaffold compiles + runs end-to-end,
 //!   and Apocky's later content slices replace the `Stub` variants with
 //!   real content per `specs/31_LOA_DESIGN.csl`.
+//!
+//! § T11-D158 (W-Jζ-2) — M8 RENDER-PIPELINE INSTRUMENTATION
+//!
+//!   The [`m8_integration`] module overlays a 12-stage M8 render-pipeline
+//!   orchestrator on top of the scaffold, per-stage frame-time instrumented
+//!   via the [`metrics_mock`] shim. Per `DIAGNOSTIC_INFRA_PLAN.md § 3.3.3
+//!   render-pipeline` : namespace `pipeline.stage_N_<name>.frame_time_ms`
+//!   (N=1..=12), p50/p95/p99 via [`metrics_mock::Histogram`] aggregation,
+//!   cross-frame trend N=1024, feature-gate `metrics` zero-overhead-when-off,
+//!   replay-determinism (timing observe-only ; ¬state-mutation).
+//!
+//!   12 canonical stages (frozen-set) :
+//!   1.  embodiment              — body-tracking + IK retargeting
+//!   2.  gaze_collapse           — saccade-driven Ω-collapse bias
+//!   3.  omega_field_update      — Ω-field tier-resolution + Σ-mask
+//!   4.  wave_solver             — ψ-evolution + spectral propagate
+//!   5.  sdf_raymarch            — sphere-trace + foveated pixel-march
+//!   6.  kan_brdf                — KAN spectral-BRDF eval per-fragment
+//!   7.  fractal_amplifier       — RC-fractal detail injection
+//!   8.  companion_semantic      — companion-perspective per-character
+//!   9.  mise_en_abyme           — recursion-depth witnessed amplification
+//!   10. tonemap                 — HDR → display ; fovea-tier compose
+//!   11. motion_vec              — frame-N→N+1 motion vectors @ AppSW
+//!   12. compose_xr_layers       — quad/cyl/cube layer compose per-eye
 //!
 //! § SPEC-HOLES CONSUMED  (per `specs/31_LOA_DESIGN.csl § SPEC-HOLES-CONSOLIDATED`)
 //!
@@ -111,7 +135,31 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 #![allow(clippy::module_name_repetitions)]
+// ── D158 lint allowances : intentional patterns for instrumentation + tests ──
+#![allow(clippy::cast_precision_loss)]
+#![allow(clippy::cast_possible_wrap)]
+// `#[inline(always)]` on Timer + Histogram::record is load-bearing :
+// it is a hard requirement for zero-overhead-when-feature-off ; the
+// compiler must elide call-sites entirely. Override the clippy-perf
+// suggestion which is unaware of this ABI commitment.
+#![allow(clippy::inline_always)]
+// Tests instantiate near-identical pass-pairs (p1a/p1b) by design to
+// validate replay-determinism ; clippy-similar-names is noise here.
+#![allow(clippy::similar_names)]
+// Tests use `format!("{}-{}", a, b)` style ; uninlined-format-args is
+// nursery-level and the format-style is stable + readable.
+#![allow(clippy::uninlined_format_args)]
+// Test-helpers that look like clones of trivial calls are intentional
+// to validate Arc-shared state visible across handles.
+#![allow(clippy::redundant_clone)]
+// Synthetic-workload calculations include f32-precision drops that are
+// scoped to test-fixtures ; not load-bearing for production timing.
+#![allow(clippy::suboptimal_flops)]
+// Some math expressions in synthetic workloads use cast_lossless that
+// is correct but flagged ; suppress at crate level.
+#![allow(clippy::cast_lossless)]
 
+// ── Phase-I LoA scaffold modules (T11-D96 / S9-I0) ────────────────────
 pub mod apockalypse;
 pub mod companion;
 pub mod engine;
@@ -119,6 +167,10 @@ pub mod loop_systems;
 pub mod main_loop;
 pub mod player;
 pub mod world;
+
+// ── M8 render-pipeline + per-stage frame-time instrumentation (T11-D158) ──
+pub mod m8_integration;
+pub mod metrics_mock;
 
 pub use apockalypse::{ApockalypseEngine, ApockalypsePhase, TransitionCondition, TransitionRule};
 pub use companion::{Companion, CompanionCapability, CompanionLog, WithdrawalPolicy};
@@ -138,8 +190,16 @@ pub use world::{
     NarrativeKind, NarrativeRole, Room, ThemeId, Wildlife, World,
 };
 
+// D158 re-exports : pipeline + per-stage instrumentation surface
+pub use m8_integration::pipeline::Pipeline;
+pub use m8_integration::Pass;
+pub use metrics_mock::{Histogram, MetricsRegistry, Timer};
+
 /// Crate version — mirrors the `cssl-*` scaffold convention.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");
+
+/// D158 scaffold version exposed for diff-test reads.
+pub const D158_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");
 
 /// PRIME-DIRECTIVE attestation literal — present in every CSSLv3 artifact
 /// per `PRIME_DIRECTIVE.md § 11 CREATOR-ATTESTATION`.

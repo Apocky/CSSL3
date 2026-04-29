@@ -1,6 +1,6 @@
 [package]
 name                   = "loa-game"
-description            = "Labyrinth-of-Apockalypse — Phase-I game scaffold (consumes the integrated CSSLv3 Substrate ; structural-only ; spec-holes deferred to Apocky-fill per specs/31_LOA_DESIGN.csl)"
+description            = "Labyrinth-of-Apockalypse — Phase-I game scaffold + M8 12-stage render-pipeline w/ per-stage frame-time instrumentation (T11-D158 W-Jζ-2)"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -16,6 +16,10 @@ workspace = true
 # binary target (so `cargo run -p loa-game` opens a window + ticks the
 # canonical 13-phase omega_step + saves state + replays it bit-equally).
 #
+# § T11-D158 (W-Jζ-2) : Per-stage frame-time instrumentation overlaid via
+# `m8_integration` module + `metrics_mock` shim. Feature `metrics` toggles
+# zero-overhead-when-off. Replay-determinism : timing observe-only.
+#
 # § FEATURE FLAGS
 #   `test-bypass` propagates the cssl-substrate-prime-directive `test-bypass`
 #   feature so tests + the binary entry-point can issue real CapTokens via
@@ -26,9 +30,13 @@ workspace = true
 #   When the real consent-UI lands (post-S9-I0 ; Apocky-direction-needed)
 #   the binary's `main()` will route through it and `test-bypass` will
 #   shrink back to test-only.
+#
+#   `metrics` (default-on) : enables D158 per-stage timing instrumentation.
+#   Disable via `--no-default-features` for zero-overhead production builds.
 [features]
-default     = []
+default     = ["metrics"]
 test-bypass = ["cssl-substrate-prime-directive/test-bypass"]
+metrics     = []
 
 [dependencies]
 # § Phase-H Substrate crates (all five, integrated).
