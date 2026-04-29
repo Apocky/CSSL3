@@ -1,0 +1,77 @@
+[package]
+name                   = "cssl-render-companion-perspective"
+description            = "CSSLv3 — Companion-perspective semantic render-target (canonical Stage-8 of the VR render-pipeline). Second render-pipeline showing what the AI-companion PERCEIVES of the world : a salience-tensor projection of the Ω-field through the companion's active-inference belief-state, mapped to glow-edges + palette-warmth + fade. Cite : Omniverse 07_AESTHETIC/00_EXOTICISM_PRINCIPLES.csl § V.5 (Companion-Perspective Semantic Render-Target) ; Omniverse 07_AESTHETIC/06_RENDERING_PIPELINE.csl Stage-8 (CompanionSemanticPass) ; Omniverse 08_BODY/02_VR_EMBODIMENT.csl § VII (Companion mutual-witness) ; T11-D121 (W4-07)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+[lints]
+workspace = true
+
+[lib]
+# § Doctests are disabled for this crate. The module-level rustdoc carries
+#   CSLv3-native notation (Σ, Φ, Ω, Λ, π, ⊗, ‼, →) inline in spec-quote
+#   block-bullets. These render fine in `cargo doc` but rustdoc's doctest
+#   harness attempts to compile every indented block as Rust which trips
+#   on the non-ASCII glyphs. The crate's correctness is fully covered by
+#   the unit tests in `src/*::tests` + the `tests/integration_test.rs` ;
+#   doctests would not add to coverage here. This matches the precedent
+#   set by `cssl-substrate-prime-directive` which carries similar CSLv3-
+#   native rustdoc.
+doctest = false
+
+[dependencies]
+# § cssl-render-companion-perspective bridges :
+#   - cssl-substrate-kan                : KAN-network evaluator (semantic-salience scoring)
+#   - cssl-substrate-prime-directive    : SigmaMaskPacked + ConsentBit + Sovereignty-handle
+#                                         (Σ-mask threading for companion-consent gate)
+#   - cssl-substrate-projections        : Camera + ObserverFrame + ProjectionMatrix
+#                                         (per-eye view-projection for VR stereo)
+#
+# This crate is intentionally OFF the cssl-render foundation (R1) — it is a
+# SIBLING crate that consumes the same projections-foundation but exposes a
+# DIFFERENT semantic-render-target orthogonal to the geometry-render path.
+# Stage-8 of the canonical pipeline lives here and only here ; the geometry-
+# foundation crate (cssl-render) does not depend on this crate, so the
+# Stage-8 toggle (player-disabled) compiles to zero overhead in headless +
+# server-only builds that link only the geometry side.
+#
+# Deferred deps (intentional non-deps) :
+#   - cssl-render             : geometry-foundation. Stage-8 outputs do NOT
+#                               re-enter the geometry-render-graph ; they are
+#                               composited by Stage-10 (ToneMapPass) which
+#                               accepts a SEPARATE CompanionView<2,16> input
+#                               per the spec. Keeping this crate
+#                               geometry-foundation-free keeps the build
+#                               surface small + makes the consent-gate
+#                               testable in isolation.
+#   - cssl-substrate-omega-field : the spec input is "Ω.next.full-tensor",
+#                               but the per-cell salience-evaluation contract
+#                               here is structural : the evaluator takes a
+#                               companion-context + a world-position + an
+#                               opaque CellRef : it does NOT know the cell's
+#                               72B std430 layout. This keeps the salience
+#                               evaluator portable to any future substrate
+#                               rep + makes it unit-testable without a full
+#                               OmegaField fixture.
+#   - cssl-host-d3d12 / -vulkan / -metal / -webgpu : per-host adapters. The
+#                               pipeline pass is BACKEND-AGNOSTIC ; the
+#                               output is a CompanionView buffer that the
+#                               host backend uploads as a 16-band hyperspec
+#                               texture. No host types appear in the public
+#                               API of this crate.
+cssl-substrate-kan              = { path = "../cssl-substrate-kan" }
+cssl-substrate-prime-directive  = { path = "../cssl-substrate-prime-directive" }
+cssl-substrate-projections      = { path = "../cssl-substrate-projections" }
+thiserror                       = { workspace = true }
+smallvec                        = { workspace = true }
+
+[dev-dependencies]
+# § Tests use the full prime-directive surface for SigmaMaskPacked builders +
+#   the audit-bus reads. No additional deps beyond the runtime set are
+#   required ; the crate's test suite is intentionally self-contained so
+#   the consent-gate semantics are reviewable from a single readable file.

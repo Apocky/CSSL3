@@ -794,6 +794,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-render-companion-perspective"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-kan",
+ "cssl-substrate-prime-directive",
+ "cssl-substrate-projections",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-rt"
 version = "0.1.0"
 dependencies = [
