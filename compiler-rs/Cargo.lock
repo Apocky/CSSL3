@@ -657,6 +657,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-omega-step"
+version = "0.1.0"
+dependencies = [
+ "cssl-caps",
+ "cssl-effects",
+ "cssl-telemetry",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-telemetry"
 version = "0.1.0"
 dependencies = [
