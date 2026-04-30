@@ -12,6 +12,11 @@ workspace = true
 
 [dependencies]
 cssl-ast                       = { path = "../cssl-ast" }
+# § T11-D286 (W-E5-3) — cap_runtime_check pass needs CapKind directly to
+# encode the wire-protocol with cssl-rt::cap_verify. Existing deps only
+# reach CapKind transitively via cssl-hir which doesn't re-export it ;
+# the direct dep keeps the import surface narrow + obvious.
+cssl-caps                      = { path = "../cssl-caps" }
 cssl-hir                       = { path = "../cssl-hir" }
 # T11-D138 (W3g-01) : the F5 IFC `EnforcesSigmaAtCellTouches` pass walks
 # `cssl.fieldcell.*` ops + cross-references the per-op `consent_bits` /

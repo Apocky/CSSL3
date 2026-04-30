@@ -85,6 +85,13 @@
 #![allow(clippy::missing_safety_doc)]
 
 pub mod alloc;
+// § T11-D286 (W-E5-3) — runtime cap-verify defense-in-depth helper. Pairs
+// with `cssl-mir::cap_runtime_check` which emits `cssl.cap.verify` ops at
+// every cap-boundary, and with `cssl-cgen-cpu-cranelift::jit` which
+// lowers each emitted op to a `call __cssl_cap_verify(handle, op_kind)`
+// against this module's FFI symbol. The static HIR `cap_check` pass
+// remains authoritative ; this is a defense-in-depth runtime check.
+pub mod cap_verify;
 pub mod exit;
 pub mod ffi;
 // § Wave-D host-FFI surface (T11-D250 integration commit) — modules
@@ -123,6 +130,13 @@ pub mod runtime;
 pub use alloc::{
     alloc_count, bytes_allocated_total, bytes_freed_total, bytes_in_use, free_count,
     reset_for_tests, AllocTracker, BumpArena, ALIGN_MAX,
+};
+// § T11-D286 (W-E5-3) — re-export the cap-verify surface so cgen-side
+// import-helpers and unit tests can reach it via `cssl_rt::*`.
+pub use cap_verify::{
+    cap_verify_impl, reset_cap_verify_for_tests, verify_call_count, verify_deny_count,
+    CAP_INDEX_BOX, CAP_INDEX_ISO, CAP_INDEX_REF, CAP_INDEX_TAG, CAP_INDEX_TRN, CAP_INDEX_VAL,
+    CAP_KIND_COUNT, OP_CALL_PASS_PARAM, OP_FIELD_ACCESS, OP_FN_ENTRY, OP_KIND_MAX, OP_RETURN,
 };
 pub use exit::{
     abort_count, cssl_abort_impl, cssl_exit_impl, exit_count, last_exit_code, record_abort,
