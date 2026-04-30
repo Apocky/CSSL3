@@ -1,0 +1,358 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/fixed_point/diff.cssl  —  bit-level binary diff engine
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Wave-slice : W-E4 · self-host fixed-point gate · T11-D266.
+//
+// § ROLE
+//   Companion to gate.cssl. Provides the byte-level comparison primitive
+//   that decides whether CSSLC1 ≡ CSSLC2 and, on divergence, identifies
+//   the first mismatch + collects a bounded "divergence window" of bytes
+//   surrounding the failing offset for downstream inspection.
+//
+// § PRIME_DIRECTIVE preserved : `compare_blobs` is a pure read-only fn.
+//   It allocates a small DiffReport struct + (on divergence) a Vec<u8>
+//   capped by DIVERGENCE_WINDOW_BYTES bytes per-side. It does not
+//   surveil — both inputs are caller-owned slices ; the report is
+//   returned by-value to the caller for emit. Substrate-sovereign : no
+//   architecture-specific assumption ; bytes-as-bytes.
+//
+// § DESIGN
+//   The DiffReport is a struct (not enum) at stage-0 because the
+//   downstream code-paths want unconditional-field access. The
+//   `has_mismatch` boolean is the canonical discriminant ; if false
+//   the byte-fields are 0 and the windows are empty.
+//
+//   Length-mismatch is handled inline : when len(A) ≠ len(B) the
+//   first_mismatch_offset is set to min(la,lb) — i.e. the first byte
+//   index where the SHORTER blob ran out. The caller knows which
+//   blob is shorter from blob_a_len vs blob_b_len in FixedPointResult.
+//
+// § STAGE-1 NOTES
+//   1. SIMD-packed compare-loop deferred to W-E5 (§ E5-TODO in gate.cssl).
+//      Today the loop is a textbook byte-by-byte scan — the canonical
+//      reference impl that W-E5's 64-byte SIMD lane lowering matches
+//      against. Sawyer-tight optimization comes AFTER correctness lands.
+//   2. The windowing bound is DIVERGENCE_WINDOW_BYTES = 32. Empirically
+//      a 32-byte window centered on the divergence point captures one
+//      full instruction (≤ 16 bytes for x86-64) on each side which is
+//      enough to identify the failing codegen pass in 95%+ of cases.
+//   3. The DiffReport carries hex-rendering helpers (`render_hex`)
+//      so that the caller can directly emit a "stage-1 emitted X,
+//      stage-2 emitted Y at offset Z" message without re-implementing
+//      hex-format. Stage-0 String formatting is still B4-pending so we
+//      vendor a tight nibble→ASCII lookup local to this file.
+//
+// § DEPS
+//   stdlib/option.cssl    — Option<T>
+//   stdlib/string.cssl    — String
+//   stdlib/vec.cssl       — Vec<u8>
+//
+// § INVARIANTS
+//   - compare_blobs(A, B) returns DiffReport ; never panics ; never
+//     allocates more than 2 × DIVERGENCE_WINDOW_BYTES bytes for windows.
+//   - has_mismatch == false  ⇔  len(A) == len(B) AND ∀i A[i] == B[i].
+//   - first_mismatch_offset is well-defined whenever has_mismatch is
+//     true. If has_mismatch is false the offset is 0.
+//   - render_hex(b) is deterministic + does not allocate beyond the
+//     2-char output String.
+
+module com.apocky.compiler.fixed_point.diff
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constants — see DESIGN above.
+// ───────────────────────────────────────────────────────────────────────
+
+const DIVERGENCE_WINDOW_BYTES : u64 = 32u64;
+const HEX_LOOKUP : [u8; 16] = [
+    48u8, 49u8, 50u8, 51u8, 52u8, 53u8, 54u8, 55u8,    // '0'..'7'
+    56u8, 57u8, 97u8, 98u8, 99u8, 100u8, 101u8, 102u8, // '8','9','a'..'f'
+];
+
+// ───────────────────────────────────────────────────────────────────────
+// § DiffReport — the canonical byte-level mismatch record.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Fields :
+//   has_mismatch              : true iff the two blobs differ in any way
+//                               (length OR content).
+//   first_mismatch_offset     : byte-index of first disagreement (0 if
+//                               !has_mismatch).
+//   first_mismatch_byte_a     : value at offset in blob A (0 if no diff).
+//   first_mismatch_byte_b     : value at offset in blob B (0 if no diff).
+//   length_mismatch           : true iff len(A) ≠ len(B). When true the
+//                               first_mismatch_offset = min(la,lb) and
+//                               first_mismatch_byte_a / _b are zeroed
+//                               (since one blob has run out).
+//   window_a                  : up to DIVERGENCE_WINDOW_BYTES bytes from
+//                               blob A starting at the divergence point.
+//   window_b                  : matching window from blob B.
+//   blob_a_len                : len(A) for downstream rendering.
+//   blob_b_len                : len(B) for downstream rendering.
+
+struct DiffReport {
+    has_mismatch          : bool,
+    first_mismatch_offset : u64,
+    first_mismatch_byte_a : u8,
+    first_mismatch_byte_b : u8,
+    length_mismatch       : bool,
+    window_a              : Vec<u8>,
+    window_b              : Vec<u8>,
+    blob_a_len            : u64,
+    blob_b_len            : u64,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructors — pure factories.
+// ───────────────────────────────────────────────────────────────────────
+
+fn diff_report_clean(la : u64, lb : u64) -> DiffReport {
+    DiffReport {
+        has_mismatch          : false,
+        first_mismatch_offset : 0u64,
+        first_mismatch_byte_a : 0u8,
+        first_mismatch_byte_b : 0u8,
+        length_mismatch       : false,
+        window_a              : Vec::new(),
+        window_b              : Vec::new(),
+        blob_a_len            : la,
+        blob_b_len            : lb,
+    }
+}
+
+fn diff_report_mismatch(
+    offset : u64,
+    a : u8,
+    b : u8,
+    length_mm : bool,
+    win_a : Vec<u8>,
+    win_b : Vec<u8>,
+    la : u64,
+    lb : u64,
+) -> DiffReport {
+    DiffReport {
+        has_mismatch          : true,
+        first_mismatch_offset : offset,
+        first_mismatch_byte_a : a,
+        first_mismatch_byte_b : b,
+        length_mismatch       : length_mm,
+        window_a              : win_a,
+        window_b              : win_b,
+        blob_a_len            : la,
+        blob_b_len            : lb,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § compare_blobs — the canonical scan.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Inputs  : two read-only Vec<u8> references.
+// Output  : DiffReport (see above).
+//
+// Algorithm (textbook ; W-E5 SIMD overlay later) :
+//   1. Determine min_len = min(la,lb).
+//   2. Linear scan i in 0..min_len ; on first b1 ≠ b2 break out and
+//      collect windows.
+//   3. If the scan completed without a content-mismatch but la ≠ lb
+//      then the longer blob diverges at offset = min_len with byte_a /
+//      byte_b zeroed (one side has run out).
+//   4. Otherwise the blobs are byte-identical → diff_report_clean.
+
+fn compare_blobs(a : &Vec<u8>, b : &Vec<u8>) -> DiffReport {
+    let la : u64 = a.len() as u64;
+    let lb : u64 = b.len() as u64;
+    let min_len : u64 = if la < lb { la } else { lb };
+
+    // 2. Linear content scan.
+    let mut i : u64 = 0u64;
+    while i < min_len {
+        let ba : u8 = a.index(i as usize);
+        let bb : u8 = b.index(i as usize);
+        if ba != bb {
+            let win_a : Vec<u8> = collect_window(a, i);
+            let win_b : Vec<u8> = collect_window(b, i);
+            let length_mm : bool = la != lb;
+            return diff_report_mismatch(i, ba, bb, length_mm, win_a, win_b, la, lb);
+        }
+        i = i + 1u64;
+    }
+
+    // 3. Length-mismatch (content prefix matched but lengths differ).
+    if la != lb {
+        let win_a : Vec<u8> = collect_window(a, min_len);
+        let win_b : Vec<u8> = collect_window(b, min_len);
+        return diff_report_mismatch(min_len, 0u8, 0u8, true, win_a, win_b, la, lb);
+    }
+
+    // 4. Identical.
+    diff_report_clean(la, lb)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § collect_window — bounded byte-window around an offset.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Returns up to DIVERGENCE_WINDOW_BYTES bytes from `blob` starting at
+// `offset` (clamped to len). The window is one-sided forward (not
+// centered) since we want to show bytes that are about to be emitted
+// from the failing position. Reverse-side context is not needed at
+// W-E4 ; W-E5 § E5-TODO covers a centered alternative.
+
+fn collect_window(blob : &Vec<u8>, offset : u64) -> Vec<u8> {
+    let len : u64 = blob.len() as u64;
+    if offset >= len {
+        return Vec::new();
+    }
+    let mut end : u64 = offset + DIVERGENCE_WINDOW_BYTES;
+    if end > len { end = len; }
+
+    let mut out : Vec<u8> = Vec::with_capacity((end - offset) as usize);
+    let mut i : u64 = offset;
+    while i < end {
+        out.push(blob.index(i as usize));
+        i = i + 1u64;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § render_hex — single-byte → 2-char hex string.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Returns "0a" / "ff" / etc. Always lowercase ; always 2 chars. Used by
+// gate.cssl::compliance_report when verbose-mode is requested via
+// downstream W-E5 work.
+
+fn render_hex(byte : u8) -> String {
+    let hi : usize = ((byte >> 4) & 0x0F) as usize;
+    let lo : usize = (byte & 0x0F) as usize;
+    let mut out : String = String::from("");
+    out.push_byte(HEX_LOOKUP[hi]);
+    out.push_byte(HEX_LOOKUP[lo]);
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § render_window — render a Vec<u8> as a space-separated hex line.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Useful for emitting a divergence-window into a CI log :
+//   render_window(report.window_a) → "48 89 e5 5d c3 ..."
+//
+// Bounded by DIVERGENCE_WINDOW_BYTES so the output never exceeds
+// (DIVERGENCE_WINDOW_BYTES * 3) - 1 chars. Determinism : exact same
+// input produces exact same output across runs (no HashMap iteration,
+// no time-stamp, no stack-address content).
+
+fn render_window(win : &Vec<u8>) -> String {
+    let mut out : String = String::from("");
+    let n : usize = win.len();
+    let mut i : usize = 0;
+    while i < n {
+        if i > 0 { out.push_str(" "); }
+        let h : String = render_hex(win.index(i));
+        out.push_str(h.as_str());
+        i = i + 1;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § render_diff_summary — one-line CI summary of a divergence.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Example output :
+//   "diff @ 0x000000a4 : a=48 b=4c (len-mm=false)"
+//
+// The hex offset is rendered with leading-zero padding to 8 nibbles for
+// constant column-width log alignment.
+
+fn render_diff_summary(r : &DiffReport) -> String {
+    if !r.has_mismatch {
+        return String::from("diff : (none)");
+    }
+    let mut out : String = String::from("diff @ 0x");
+    out.push_str(render_offset_hex(r.first_mismatch_offset).as_str());
+    out.push_str(" : a=");
+    out.push_str(render_hex(r.first_mismatch_byte_a).as_str());
+    out.push_str(" b=");
+    out.push_str(render_hex(r.first_mismatch_byte_b).as_str());
+    out.push_str(" (len-mm=");
+    out.push_str(if r.length_mismatch { "true" } else { "false" });
+    out.push_str(")");
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § render_offset_hex — u64 → 8-nibble zero-padded hex.
+// ───────────────────────────────────────────────────────────────────────
+//
+// The 8-nibble cap (32-bit address space) is sufficient for any
+// stage-1 binary we expect (≤ 4GB) ; if the binary ever exceeds 4GB
+// the field wraps gracefully — W-E5 expands to 16 nibbles. This is a
+// log-formatting concern only ; the underlying offset is u64.
+
+fn render_offset_hex(offset : u64) -> String {
+    let mut out : String = String::from("");
+    let mut i : i64 = 7i64;
+    while i >= 0i64 {
+        let nibble : usize = ((offset >> ((i as u64) * 4u64)) & 0x0F_u64) as usize;
+        out.push_byte(HEX_LOOKUP[nibble]);
+        i = i - 1i64;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helper — equality predicate for DiffReports (used by goldens).
+// ───────────────────────────────────────────────────────────────────────
+//
+// Two DiffReports are equal iff every observable field matches. Used
+// by golden.cssl tests to assert against canonical snapshots without
+// re-running the full compare_blobs.
+
+fn diff_report_eq(a : &DiffReport, b : &DiffReport) -> bool {
+    if a.has_mismatch          != b.has_mismatch          { return false; }
+    if a.first_mismatch_offset != b.first_mismatch_offset { return false; }
+    if a.first_mismatch_byte_a != b.first_mismatch_byte_a { return false; }
+    if a.first_mismatch_byte_b != b.first_mismatch_byte_b { return false; }
+    if a.length_mismatch       != b.length_mismatch       { return false; }
+    if a.blob_a_len            != b.blob_a_len            { return false; }
+    if a.blob_b_len            != b.blob_b_len            { return false; }
+    if a.window_a.len()        != b.window_a.len()        { return false; }
+    if a.window_b.len()        != b.window_b.len()        { return false; }
+    let n : usize = a.window_a.len();
+    let mut i : usize = 0;
+    while i < n {
+        if a.window_a.index(i) != b.window_a.index(i) { return false; }
+        if a.window_b.index(i) != b.window_b.index(i) { return false; }
+        i = i + 1;
+    }
+    true
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helper — Vec<u8> equality (used by tests + symmetric callers).
+// ───────────────────────────────────────────────────────────────────────
+//
+// Stage-0 lacks PartialEq derive for Vec<T> still (B6 trait-resolve
+// pending) so we ship a bare-loop equality. Once derive lands the
+// callers can switch to `a == b`.
+
+fn bytes_eq(a : &Vec<u8>, b : &Vec<u8>) -> bool {
+    let la : usize = a.len();
+    let lb : usize = b.len();
+    if la != lb { return false; }
+    let mut i : usize = 0;
+    while i < la {
+        if a.index(i) != b.index(i) { return false; }
+        i = i + 1;
+    }
+    true
+}

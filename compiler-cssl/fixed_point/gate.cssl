@@ -1,0 +1,358 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/fixed_point/gate.cssl  —  stage-1 self-host fixed-point driver
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Wave-slice : W-E4 · self-host fixed-point gate · T11-D266.
+//
+// § ROLE
+//   Drives the canonical self-host proof :
+//
+//      stage-0  (Rust csslc)   ─compiles─►  compiler-cssl/*       ─►  CSSLC1 (binary)
+//      CSSLC1                  ─compiles─►  compiler-cssl/*       ─►  CSSLC2 (binary)
+//      CSSLC1  ≟  CSSLC2  (byte-identical)
+//
+//   If the byte-equality holds the compiler is at a fixed-point and stage-1
+//   is a valid self-host : it has reproduced its own emission. If they
+//   differ the gate emits a divergence-report identifying the first byte
+//   that disagreed and (when possible) the source-input that produced it.
+//
+// § PRIME_DIRECTIVE preserved : the gate is a PURE COMPARISON pass — it
+//   does not surveil, mutate, or coerce the binaries it inspects. Both
+//   inputs are read-only Vec<u8> handles ; no syscall escapes the reader
+//   except through the explicit `fs::read_to_string` wrapper at the
+//   driver-level. Substrate-sovereign : the gate does not import
+//   specific platform assumptions — byte-equality is host-invariant
+//   (a u8 sequence is a u8 sequence on any architecture).
+//
+// § DESIGN
+//   1. `FixedPointResult` is a sum-typed-shaped struct (CSSL stage-0 still
+//      lacks full enum-payload generic dispatch — see DECISIONS T11-D60
+//      § DEFERRED). The discriminant lives in `kind` ; payload fields are
+//      conditionally populated.
+//   2. `run_fixed_point` is the single public entry. Callers pass a
+//      `Module` describing compiler-cssl-source-as-CST + the two binary
+//      blobs already produced by stage-0 + stage-1 respectively. The
+//      driver does NOT itself invoke csslc — that is the orchestrator's
+//      job (compiler-rs or future stage-1 driver). The gate only proves
+//      the bit-identical property.
+//   3. The Module argument exists so that downstream W-E5/E6 slices can
+//      attach source-level diagnostic context to a divergence : when
+//      `compare_blobs` reports byte i differs, an enrichment pass walks
+//      `self_source.items` to identify which fn/module/codegen-pass
+//      contributed bytes near offset i. At W-E4 we record the offset
+//      only ; the enrichment is a stub returning Empty.
+//
+// § STAGE-1 FAILURE-MODE NOTES
+//   At time of authoring, stage-0 csslc does NOT yet handle every CSSL
+//   feature used in compiler-cssl/*. The known gaps are :
+//     a) full generic-trait dispatch (B2/B6 sum-type+method paths)
+//     b) effect-row threading for {IO} on real fs/net surface
+//     c) cap-check + ifc passes — present in HIR but not yet wired into
+//        codegen monomorphization
+//   The gate therefore reports COMPLIANCE = ◐ partial today. The output
+//   is normative : when the gaps close (W-E5+) the SAME gate fn
+//   re-runs and flips ✓ complete with no source-change here.
+//
+// § DEPS
+//   stdlib/option.cssl                          — Option<T>
+//   stdlib/string.cssl                          — String
+//   stdlib/vec.cssl                             — Vec<u8>
+//   compiler-cssl/parser/parser.cssl            — Module CST type
+//   compiler-cssl/fixed_point/diff.cssl         — DiffReport / compare_blobs
+//
+// § INVARIANTS
+//   - run_fixed_point NEVER panics ; on missing blob it returns
+//     FixedPointResult { kind = Blocked , reason = "missing-blob" }.
+//   - Identical-blob path returns kind = Achieved , divergence_offset = 0,
+//     divergence_summary = "" , ¬ allocates a new Vec.
+//   - Divergent-blob path returns kind = Divergent w/ first-diff offset
+//     + a DiffReport ref for downstream rendering.
+//   - Compliance-report verbiage is held in `compliance_label()` so that
+//     W-E5 can flip ✓/◐/✗ via a single-line constant change.
+
+module com.apocky.compiler.fixed_point.gate
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.parser.parser
+import com.apocky.compiler.fixed_point.diff
+
+// ───────────────────────────────────────────────────────────────────────
+// § FixedPointKind — discriminant for the sum-shaped result.
+// ───────────────────────────────────────────────────────────────────────
+//
+// The four observable outcomes of a fixed-point run.
+//   Achieved  : CSSLC1 == CSSLC2 byte-for-byte. Stage-1 self-host valid.
+//   Divergent : CSSLC1 ≠ CSSLC2 ; report first-diff offset.
+//   Partial   : One of the two compilations succeeded but the other
+//               failed mid-build (e.g. csslc panicked on a feature still
+//               pending). The report records WHICH stage failed.
+//   Blocked   : Stage-0 csslc could not even start — usually a missing
+//               input blob or a feature so unsupported it short-circuits
+//               the whole pipeline.
+
+enum FixedPointKind {
+    Achieved  = 0u32,
+    Divergent = 1u32,
+    Partial   = 2u32,
+    Blocked   = 3u32,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § FixedPointResult — the canonical result record.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Fields :
+//   kind                  : FixedPointKind discriminant
+//   divergence_offset     : first byte index where CSSLC1 ≠ CSSLC2 (0 if
+//                           Achieved)
+//   divergence_byte_a     : byte value at offset in CSSLC1 (0 if Achieved)
+//   divergence_byte_b     : byte value at offset in CSSLC2 (0 if Achieved)
+//   blob_a_len            : len(CSSLC1) ; for length-mismatch detection
+//   blob_b_len            : len(CSSLC2) ; same
+//   reason                : free-form diagnostic ("missing-blob",
+//                           "stage-0-panic", "length-mismatch", ...)
+//   diff_report           : populated only for Divergent ; holds the
+//                           full per-byte diff window (see diff.cssl)
+
+struct FixedPointResult {
+    kind              : FixedPointKind,
+    divergence_offset : u64,
+    divergence_byte_a : u8,
+    divergence_byte_b : u8,
+    blob_a_len        : u64,
+    blob_b_len        : u64,
+    reason            : String,
+    diff_report       : Option<DiffReport>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructors — pure factories ; no side-effects.
+// ───────────────────────────────────────────────────────────────────────
+
+fn result_achieved(blob_len : u64) -> FixedPointResult {
+    FixedPointResult {
+        kind              : FixedPointKind::Achieved,
+        divergence_offset : 0u64,
+        divergence_byte_a : 0u8,
+        divergence_byte_b : 0u8,
+        blob_a_len        : blob_len,
+        blob_b_len        : blob_len,
+        reason            : String::from(""),
+        diff_report       : Option::None,
+    }
+}
+
+fn result_divergent(offset : u64, a : u8, b : u8, la : u64, lb : u64,
+                    report : DiffReport) -> FixedPointResult {
+    FixedPointResult {
+        kind              : FixedPointKind::Divergent,
+        divergence_offset : offset,
+        divergence_byte_a : a,
+        divergence_byte_b : b,
+        blob_a_len        : la,
+        blob_b_len        : lb,
+        reason            : String::from("byte-mismatch"),
+        diff_report       : Option::Some(report),
+    }
+}
+
+fn result_partial(reason : String, la : u64, lb : u64) -> FixedPointResult {
+    FixedPointResult {
+        kind              : FixedPointKind::Partial,
+        divergence_offset : 0u64,
+        divergence_byte_a : 0u8,
+        divergence_byte_b : 0u8,
+        blob_a_len        : la,
+        blob_b_len        : lb,
+        reason            : reason,
+        diff_report       : Option::None,
+    }
+}
+
+fn result_blocked(reason : String) -> FixedPointResult {
+    FixedPointResult {
+        kind              : FixedPointKind::Blocked,
+        divergence_offset : 0u64,
+        divergence_byte_a : 0u8,
+        divergence_byte_b : 0u8,
+        blob_a_len        : 0u64,
+        blob_b_len        : 0u64,
+        reason            : reason,
+        diff_report       : Option::None,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § run_fixed_point — the gate driver.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Inputs :
+//   self_source : the parsed compiler-cssl source as a Module CST. Held
+//                 for downstream divergence-enrichment ; the gate itself
+//                 does not re-parse or re-lower.
+//   stage1_blob : Vec<u8> — the binary CSSLC1 produced by stage-0 csslc.
+//   stage2_blob : Vec<u8> — the binary CSSLC2 produced by CSSLC1 fed
+//                           compiler-cssl/* a second time.
+//
+// Output :
+//   FixedPointResult — see above.
+//
+// Algorithm :
+//   1. Pre-flight : both blobs must be non-empty and lengths recorded.
+//   2. Length-equality short-circuit : if len(A) ≠ len(B) the result
+//      is Divergent w/ a length-mismatch reason and offset = min(la,lb).
+//   3. Linear byte scan : compare_blobs(A, B) returns DiffReport ; if
+//      first_mismatch is None → Achieved. Otherwise → Divergent.
+//   4. The self_source argument is held for symbol re-attribution in
+//      W-E5+ (the body here only records that we received it ; the
+//      enrichment pass becomes a real call once cap_check lands).
+
+fn run_fixed_point(
+    self_source : &Module,
+    stage1_blob : &Vec<u8>,
+    stage2_blob : &Vec<u8>,
+) -> FixedPointResult {
+    let la : u64 = stage1_blob.len() as u64;
+    let lb : u64 = stage2_blob.len() as u64;
+
+    // 1. Pre-flight : both blobs must be non-empty.
+    if la == 0u64 && lb == 0u64 {
+        return result_blocked(String::from("missing-blob: both stages empty"));
+    }
+    if la == 0u64 {
+        return result_partial(String::from("stage-1-empty: csslc-stage-0 produced no output"), la, lb);
+    }
+    if lb == 0u64 {
+        return result_partial(String::from("stage-2-empty: csslc-stage-1 produced no output"), la, lb);
+    }
+
+    // 2. Length-equality short-circuit.
+    if la != lb {
+        let report : DiffReport = compare_blobs(stage1_blob, stage2_blob);
+        let off : u64 = report.first_mismatch_offset;
+        let a   : u8  = report.first_mismatch_byte_a;
+        let b   : u8  = report.first_mismatch_byte_b;
+        return result_divergent(off, a, b, la, lb, report);
+    }
+
+    // 3. Linear byte scan.
+    let report : DiffReport = compare_blobs(stage1_blob, stage2_blob);
+    if !report.has_mismatch {
+        // Hold a touch of self_source so the field is observably wired ;
+        // W-E5+ enrichment pass replaces this with real DefId-attribution.
+        let _items_seen : u64 = self_source.items.len() as u64;
+        return result_achieved(la);
+    }
+
+    // 4. Divergence path.
+    let off : u64 = report.first_mismatch_offset;
+    let a   : u8  = report.first_mismatch_byte_a;
+    let b   : u8  = report.first_mismatch_byte_b;
+    result_divergent(off, a, b, la, lb, report)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Compliance label — single-line truth-source for the report header.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Stage-1 self-host is currently ◐ partial : stage-0 csslc lacks several
+// codegen paths needed to emit the full compiler-cssl/* tree. The W-E5
+// follow-up wave closes those gaps — at which point this fn flips to
+// the ✓ complete arm. Failure-mode flips to ✗ blocked.
+//
+// The string is intentionally compact + machine-greppable :
+//   "✓ complete"  | "◐ partial"  | "✗ blocked-by-X"
+
+fn compliance_label(r : &FixedPointResult) -> String {
+    match r.kind {
+        FixedPointKind::Achieved  => String::from("✓ complete"),
+        FixedPointKind::Divergent => String::from("◐ partial : divergence at offset"),
+        FixedPointKind::Partial   => String::from("◐ partial : pipeline-failure"),
+        FixedPointKind::Blocked   => String::from("✗ blocked"),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Compliance report — human-readable summary.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Returns a String of the form :
+//   "Stage-1 self-host : <label> | la=<len> lb=<len> | reason=<r>"
+//
+// Designed for direct stdout-emit by a higher-level driver ; CSL3-native
+// glyph-block rendering is left to W-E5 since it requires the canonical
+// String-formatter B4 path that lands later. The current shape is
+// human-readable + machine-greppable — sufficient for stage-1 CI.
+
+fn compliance_report(r : &FixedPointResult) -> String {
+    let mut out : String = String::from("Stage-1 self-host : ");
+    out.push_str(compliance_label(r).as_str());
+    out.push_str(" | la=");
+    out.push_str(u64_to_string(r.blob_a_len).as_str());
+    out.push_str(" lb=");
+    out.push_str(u64_to_string(r.blob_b_len).as_str());
+    out.push_str(" | reason=");
+    out.push_str(r.reason.as_str());
+    if r.kind == FixedPointKind::Divergent {
+        out.push_str(" | offset=");
+        out.push_str(u64_to_string(r.divergence_offset).as_str());
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helpers — local-only ; do NOT export.
+// ───────────────────────────────────────────────────────────────────────
+//
+// `u64_to_string` is a stage-0 minimal decimal printer. The canonical
+// String-formatting trait dispatch lands in B4 (see DECISIONS T11-D69)
+// at which point this helper is replaced by `r.blob_a_len.to_string()`.
+// Until then we ship a tight loop.
+
+fn u64_to_string(mut v : u64) -> String {
+    if v == 0u64 {
+        return String::from("0");
+    }
+    // Build digits in reverse then flip.
+    let mut digits : Vec<u8> = Vec::new();
+    while v > 0u64 {
+        let d : u8 = ((v % 10u64) as u8) + 48u8;     // ASCII '0' = 48
+        digits.push(d);
+        v = v / 10u64;
+    }
+    let mut out : String = String::from("");
+    let mut i : i64 = (digits.len() as i64) - 1i64;
+    while i >= 0i64 {
+        let b : u8 = digits.index(i as usize);
+        out.push_byte(b);
+        i = i - 1i64;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § W-E5 follow-ups — items we deliberately defer.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Each line is a one-shot todo for the next compiler-cssl wave. They
+// exist in code rather than DECISIONS.md so a `grep '§ E5-TODO'`
+// surfaces every gap atomically.
+//
+// § E5-TODO  full enum-payload trait dispatch — needed for compare_blobs
+//            to use a real Result<(), Mismatch> instead of a struct flag.
+// § E5-TODO  effect-row {IO} threading — fs::read_to_string surfaces
+//            need to thread {IO} so the driver-level orchestrator can
+//            forbid invocation from purity-required contexts.
+// § E5-TODO  cap_check pass wired into codegen monomorphization — once
+//            ifc.cssl + cap_check.cssl land in the lowering chain the
+//            self_source enrichment pass becomes implementable.
+// § E5-TODO  divergence-byte → source-DefId attribution. Today the
+//            FixedPointResult names an offset ; W-E5 walks self_source
+//            to map offset → fn/symbol/pass and emits a CSL3 §-glyph
+//            divergence-trace.
+// § E5-TODO  parallel byte-scan — Sawyer-tight inner loop : SIMD-pack
+//            64-byte compare_blobs lanes so 100MB binaries diff in < 1s.
+//            Today the linear scan is the canonical reference impl.

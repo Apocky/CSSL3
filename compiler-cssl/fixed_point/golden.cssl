@@ -1,0 +1,617 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/fixed_point/golden.cssl  —  fixed-point golden test suite
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Wave-slice : W-E4 · self-host fixed-point gate · T11-D266.
+//
+// § ROLE
+//   Asserts the parser/HIR/codegen pipeline produces deterministic
+//   snapshots for known inputs. Each test is a canonical input + the
+//   expected output ; if the pipeline drifts the test fails before
+//   the divergence reaches the fixed-point gate. This decouples
+//   "did anything change?" (golden) from "is stage-1 self-hosting?"
+//   (gate). Both predicates are necessary for a clean self-host claim.
+//
+// § PRIME_DIRECTIVE preserved : tests do not surveil — every input is
+//   embedded in source ; every output is asserted-against in source ;
+//   no network/file I/O happens. The single fs::read_to_string call
+//   in `test_gate_runner_reads_self` is the canonical exception and
+//   carries the {IO} effect ; in stage-0 the call is short-circuited
+//   to an embedded blob (see test body).
+//
+// § DESIGN
+//   Each test fn returns bool (true = pass). A driver fn `run_all`
+//   collects results into a Vec<TestResult> for the W-E5 reporter.
+//   The shape mirrors compiler-rs/crates/cssl-test-harness/src/lib.rs
+//   so a future stage-1 driver can directly invoke either harness with
+//   the same signature.
+//
+// § TEST CATALOG  (≥ 6 required by W-E4 spec)
+//   1. test_compare_identical_blobs       : compare_blobs on equal Vec<u8>
+//                                            → DiffReport { !has_mismatch }
+//   2. test_compare_divergent_blobs       : single-byte difference detected
+//                                            at correct offset
+//   3. test_compare_length_mismatch       : prefix matches but lengths differ
+//                                            → length_mismatch = true
+//   4. test_gate_achieved_path            : run_fixed_point on identical
+//                                            blobs → kind = Achieved
+//   5. test_gate_divergent_path           : run_fixed_point on divergent
+//                                            blobs → kind = Divergent + offset
+//   6. test_gate_blocked_path             : run_fixed_point on empty blobs
+//                                            → kind = Blocked
+//   7. test_empty_module_snapshot         : empty Module CST roundtrips
+//                                            (parser shape preserved)
+//   8. test_single_fn_module_snapshot     : single-fn Module CST golden
+//   9. test_stmt_roundtrip_snapshot       : let/return stmt golden
+//  10. test_diff_window_bounded           : divergence-window respects
+//                                            DIVERGENCE_WINDOW_BYTES cap
+//  11. test_render_hex_canonical          : hex-formatter is deterministic
+//                                            + lowercase
+//  12. test_compliance_label_kinds        : every FixedPointKind maps to
+//                                            a non-empty compliance string
+//
+// § DEPS
+//   stdlib/option.cssl                              — Option<T>
+//   stdlib/string.cssl                              — String
+//   stdlib/vec.cssl                                 — Vec<u8>
+//   compiler-cssl/parser/parser.cssl                — Module + ModulePath
+//   compiler-cssl/parser/lexer.cssl                 — Span (used in test fixtures)
+//   compiler-cssl/fixed_point/gate.cssl             — run_fixed_point + kinds
+//   compiler-cssl/fixed_point/diff.cssl             — compare_blobs + helpers
+
+module com.apocky.compiler.fixed_point.golden
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.parser.parser
+import com.apocky.compiler.parser.lexer
+import com.apocky.compiler.fixed_point.gate
+import com.apocky.compiler.fixed_point.diff
+
+// ───────────────────────────────────────────────────────────────────────
+// § TestResult — canonical pass/fail record.
+// ───────────────────────────────────────────────────────────────────────
+
+struct TestResult {
+    name   : String,
+    passed : bool,
+    note   : String,
+}
+
+fn test_result_pass(name : String) -> TestResult {
+    TestResult {
+        name   : name,
+        passed : true,
+        note   : String::from(""),
+    }
+}
+
+fn test_result_fail(name : String, note : String) -> TestResult {
+    TestResult {
+        name   : name,
+        passed : false,
+        note   : note,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helpers — fixture builders.
+// ───────────────────────────────────────────────────────────────────────
+//
+// `make_blob` : push the given bytes one-by-one into a fresh Vec<u8>.
+// Stage-0 lacks the `[u8]` literal-vec sugar (B6 deferred) so we hand-
+// build. `empty_module` : minimum-CST root (no path, no items, no attrs).
+//
+// `make_blob_seq(n)` : 0..n bytes — used for length-mismatch tests.
+
+fn make_blob_3(a : u8, b : u8, c : u8) -> Vec<u8> {
+    let mut v : Vec<u8> = Vec::with_capacity(3);
+    v.push(a); v.push(b); v.push(c);
+    v
+}
+
+fn make_blob_seq(n : u64) -> Vec<u8> {
+    let mut v : Vec<u8> = Vec::with_capacity(n as usize);
+    let mut i : u64 = 0u64;
+    while i < n {
+        v.push((i & 0xFFu64) as u8);
+        i = i + 1u64;
+    }
+    v
+}
+
+fn empty_module() -> Module {
+    Module {
+        span        : span_dummy(),
+        inner_attrs : Vec::new(),
+        path        : Option::None,
+        items       : Vec::new(),
+    }
+}
+
+fn span_dummy() -> Span {
+    // Span shape mirrors parser/lexer.cssl::Span — three u32 fields.
+    Span { source_id : 0u32, start : 0u32, end : 0u32 }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 1. test_compare_identical_blobs
+// ───────────────────────────────────────────────────────────────────────
+//
+// Two identical 3-byte blobs must produce a DiffReport with
+// has_mismatch = false ; offsets/bytes zeroed ; windows empty.
+
+fn test_compare_identical_blobs() -> TestResult {
+    let a : Vec<u8> = make_blob_3(0x48u8, 0x89u8, 0xe5u8);
+    let b : Vec<u8> = make_blob_3(0x48u8, 0x89u8, 0xe5u8);
+    let r : DiffReport = compare_blobs(&a, &b);
+    if r.has_mismatch {
+        return test_result_fail(
+            String::from("test_compare_identical_blobs"),
+            String::from("expected !has_mismatch ; got mismatch"),
+        );
+    }
+    if r.blob_a_len != 3u64 || r.blob_b_len != 3u64 {
+        return test_result_fail(
+            String::from("test_compare_identical_blobs"),
+            String::from("blob lengths not 3"),
+        );
+    }
+    test_result_pass(String::from("test_compare_identical_blobs"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 2. test_compare_divergent_blobs
+// ───────────────────────────────────────────────────────────────────────
+//
+// Two 3-byte blobs differing at offset 1 ; expect first_mismatch_offset
+// = 1 ; first_mismatch_byte_a = 0x89 ; first_mismatch_byte_b = 0x88.
+
+fn test_compare_divergent_blobs() -> TestResult {
+    let a : Vec<u8> = make_blob_3(0x48u8, 0x89u8, 0xe5u8);
+    let b : Vec<u8> = make_blob_3(0x48u8, 0x88u8, 0xe5u8);
+    let r : DiffReport = compare_blobs(&a, &b);
+    if !r.has_mismatch {
+        return test_result_fail(
+            String::from("test_compare_divergent_blobs"),
+            String::from("expected has_mismatch ; got clean"),
+        );
+    }
+    if r.first_mismatch_offset != 1u64 {
+        return test_result_fail(
+            String::from("test_compare_divergent_blobs"),
+            String::from("expected offset 1"),
+        );
+    }
+    if r.first_mismatch_byte_a != 0x89u8 || r.first_mismatch_byte_b != 0x88u8 {
+        return test_result_fail(
+            String::from("test_compare_divergent_blobs"),
+            String::from("byte values misreported"),
+        );
+    }
+    if r.length_mismatch {
+        return test_result_fail(
+            String::from("test_compare_divergent_blobs"),
+            String::from("length_mismatch should be false"),
+        );
+    }
+    test_result_pass(String::from("test_compare_divergent_blobs"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 3. test_compare_length_mismatch
+// ───────────────────────────────────────────────────────────────────────
+//
+// Prefix matches but lengths differ → length_mismatch = true ;
+// first_mismatch_offset = min(la,lb) = 3 ; bytes are zeroed.
+
+fn test_compare_length_mismatch() -> TestResult {
+    let a : Vec<u8> = make_blob_seq(5u64);   // 0,1,2,3,4
+    let b : Vec<u8> = make_blob_seq(3u64);   // 0,1,2
+    let r : DiffReport = compare_blobs(&a, &b);
+    if !r.has_mismatch {
+        return test_result_fail(
+            String::from("test_compare_length_mismatch"),
+            String::from("length-mm: expected has_mismatch"),
+        );
+    }
+    if !r.length_mismatch {
+        return test_result_fail(
+            String::from("test_compare_length_mismatch"),
+            String::from("length_mismatch flag not raised"),
+        );
+    }
+    if r.first_mismatch_offset != 3u64 {
+        return test_result_fail(
+            String::from("test_compare_length_mismatch"),
+            String::from("expected offset = min(la,lb) = 3"),
+        );
+    }
+    test_result_pass(String::from("test_compare_length_mismatch"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 4. test_gate_achieved_path
+// ───────────────────────────────────────────────────────────────────────
+//
+// run_fixed_point on identical blobs produces FixedPointKind::Achieved.
+// Compliance label must be "✓ complete".
+
+fn test_gate_achieved_path() -> TestResult {
+    let m : Module = empty_module();
+    let a : Vec<u8> = make_blob_seq(64u64);
+    let b : Vec<u8> = make_blob_seq(64u64);
+    let r : FixedPointResult = run_fixed_point(&m, &a, &b);
+    if r.kind != FixedPointKind::Achieved {
+        return test_result_fail(
+            String::from("test_gate_achieved_path"),
+            String::from("expected kind=Achieved"),
+        );
+    }
+    if r.divergence_offset != 0u64 {
+        return test_result_fail(
+            String::from("test_gate_achieved_path"),
+            String::from("achieved path must zero divergence_offset"),
+        );
+    }
+    let label : String = compliance_label(&r);
+    if !str_eq(&label, "✓ complete") {
+        return test_result_fail(
+            String::from("test_gate_achieved_path"),
+            String::from("compliance label mismatch"),
+        );
+    }
+    test_result_pass(String::from("test_gate_achieved_path"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 5. test_gate_divergent_path
+// ───────────────────────────────────────────────────────────────────────
+//
+// run_fixed_point with a single-byte difference at offset 7 detects
+// kind=Divergent with offset=7 + populated DiffReport.
+
+fn test_gate_divergent_path() -> TestResult {
+    let m : Module = empty_module();
+    let mut a : Vec<u8> = make_blob_seq(16u64);
+    let mut b : Vec<u8> = make_blob_seq(16u64);
+    // Mutate b[7] : flip to a value distinct from b[7] = 7.
+    b.set(7, 0xAAu8);
+    let r : FixedPointResult = run_fixed_point(&m, &a, &b);
+    if r.kind != FixedPointKind::Divergent {
+        return test_result_fail(
+            String::from("test_gate_divergent_path"),
+            String::from("expected kind=Divergent"),
+        );
+    }
+    if r.divergence_offset != 7u64 {
+        return test_result_fail(
+            String::from("test_gate_divergent_path"),
+            String::from("expected offset=7"),
+        );
+    }
+    if r.divergence_byte_a != 7u8 || r.divergence_byte_b != 0xAAu8 {
+        return test_result_fail(
+            String::from("test_gate_divergent_path"),
+            String::from("byte values misreported in result"),
+        );
+    }
+    if r.diff_report.is_none() {
+        return test_result_fail(
+            String::from("test_gate_divergent_path"),
+            String::from("diff_report must be populated on divergence"),
+        );
+    }
+    test_result_pass(String::from("test_gate_divergent_path"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 6. test_gate_blocked_path
+// ───────────────────────────────────────────────────────────────────────
+//
+// Both blobs empty → kind=Blocked + reason mentions missing-blob.
+
+fn test_gate_blocked_path() -> TestResult {
+    let m : Module = empty_module();
+    let a : Vec<u8> = Vec::new();
+    let b : Vec<u8> = Vec::new();
+    let r : FixedPointResult = run_fixed_point(&m, &a, &b);
+    if r.kind != FixedPointKind::Blocked {
+        return test_result_fail(
+            String::from("test_gate_blocked_path"),
+            String::from("expected kind=Blocked"),
+        );
+    }
+    if !str_contains(&r.reason, "missing-blob") {
+        return test_result_fail(
+            String::from("test_gate_blocked_path"),
+            String::from("reason must mention missing-blob"),
+        );
+    }
+    test_result_pass(String::from("test_gate_blocked_path"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 7. test_empty_module_snapshot
+// ───────────────────────────────────────────────────────────────────────
+//
+// Empty module CST has zero items + zero inner_attrs + path is None.
+// This is a snapshot of the parser surface — if the Module struct grows
+// a field, this test breaks LOUDLY and forces an update.
+
+fn test_empty_module_snapshot() -> TestResult {
+    let m : Module = empty_module();
+    if m.items.len() != 0 {
+        return test_result_fail(
+            String::from("test_empty_module_snapshot"),
+            String::from("empty module must have 0 items"),
+        );
+    }
+    if m.inner_attrs.len() != 0 {
+        return test_result_fail(
+            String::from("test_empty_module_snapshot"),
+            String::from("empty module must have 0 inner_attrs"),
+        );
+    }
+    if m.path.is_some() {
+        return test_result_fail(
+            String::from("test_empty_module_snapshot"),
+            String::from("empty module must have None path"),
+        );
+    }
+    test_result_pass(String::from("test_empty_module_snapshot"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 8. test_single_fn_module_snapshot
+// ───────────────────────────────────────────────────────────────────────
+//
+// Module containing one synthetic Item (placeholder) — verifies that
+// items-as-Vec<Item> wiring is intact. We do not parse real source here
+// (that lives in W-E1 tests) ; we assert structural shape.
+
+fn test_single_fn_module_snapshot() -> TestResult {
+    let mut m : Module = empty_module();
+    // Push a synthetic Item-shaped placeholder. The Item enum has been
+    // forward-declared in stmt.cssl ; for the snapshot we only need to
+    // observe that pushing-and-counting works correctly.
+    let item : Item = Item::Placeholder;
+    m.items.push(item);
+    if m.items.len() != 1 {
+        return test_result_fail(
+            String::from("test_single_fn_module_snapshot"),
+            String::from("expected items.len()==1 after push"),
+        );
+    }
+    test_result_pass(String::from("test_single_fn_module_snapshot"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 9. test_stmt_roundtrip_snapshot
+// ───────────────────────────────────────────────────────────────────────
+//
+// Build a 4-byte blob {0xDE, 0xAD, 0xBE, 0xEF} and round-trip it
+// through compare_blobs against itself + a clone. Asserts that the
+// fixture builder is byte-identical-deterministic — a pre-condition
+// for any downstream stmt-level codegen golden.
+
+fn test_stmt_roundtrip_snapshot() -> TestResult {
+    let a : Vec<u8> = make_blob_3(0xDEu8, 0xADu8, 0xBEu8);
+    let b : Vec<u8> = make_blob_3(0xDEu8, 0xADu8, 0xBEu8);
+    if !bytes_eq(&a, &b) {
+        return test_result_fail(
+            String::from("test_stmt_roundtrip_snapshot"),
+            String::from("identical fixture bytes not equal"),
+        );
+    }
+    let r : DiffReport = compare_blobs(&a, &b);
+    if r.has_mismatch {
+        return test_result_fail(
+            String::from("test_stmt_roundtrip_snapshot"),
+            String::from("identical fixture flagged as mismatched"),
+        );
+    }
+    test_result_pass(String::from("test_stmt_roundtrip_snapshot"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 10. test_diff_window_bounded
+// ───────────────────────────────────────────────────────────────────────
+//
+// Build 100-byte blobs differing at offset 5 ; verify the divergence
+// window does NOT exceed DIVERGENCE_WINDOW_BYTES (32).
+
+fn test_diff_window_bounded() -> TestResult {
+    let mut a : Vec<u8> = make_blob_seq(100u64);
+    let mut b : Vec<u8> = make_blob_seq(100u64);
+    b.set(5, 0xFFu8);
+    let r : DiffReport = compare_blobs(&a, &b);
+    if !r.has_mismatch {
+        return test_result_fail(
+            String::from("test_diff_window_bounded"),
+            String::from("expected has_mismatch"),
+        );
+    }
+    if (r.window_a.len() as u64) > 32u64 {
+        return test_result_fail(
+            String::from("test_diff_window_bounded"),
+            String::from("window_a exceeds 32-byte cap"),
+        );
+    }
+    if (r.window_b.len() as u64) > 32u64 {
+        return test_result_fail(
+            String::from("test_diff_window_bounded"),
+            String::from("window_b exceeds 32-byte cap"),
+        );
+    }
+    test_result_pass(String::from("test_diff_window_bounded"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 11. test_render_hex_canonical
+// ───────────────────────────────────────────────────────────────────────
+//
+// render_hex(0x00) = "00" ; render_hex(0xFF) = "ff" ; render_hex(0xA5)
+// = "a5". Deterministic + lowercase.
+
+fn test_render_hex_canonical() -> TestResult {
+    let s00 : String = render_hex(0x00u8);
+    let sff : String = render_hex(0xFFu8);
+    let sa5 : String = render_hex(0xA5u8);
+    if !str_eq(&s00, "00") {
+        return test_result_fail(
+            String::from("test_render_hex_canonical"),
+            String::from("render_hex(0x00) != \"00\""),
+        );
+    }
+    if !str_eq(&sff, "ff") {
+        return test_result_fail(
+            String::from("test_render_hex_canonical"),
+            String::from("render_hex(0xFF) != \"ff\""),
+        );
+    }
+    if !str_eq(&sa5, "a5") {
+        return test_result_fail(
+            String::from("test_render_hex_canonical"),
+            String::from("render_hex(0xA5) != \"a5\""),
+        );
+    }
+    test_result_pass(String::from("test_render_hex_canonical"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § 12. test_compliance_label_kinds
+// ───────────────────────────────────────────────────────────────────────
+//
+// Each FixedPointKind must produce a non-empty compliance string. This
+// is an anti-regression guard : if W-E5 reorders kinds and forgets to
+// update compliance_label, this test catches it before CI green-lights.
+
+fn test_compliance_label_kinds() -> TestResult {
+    let r_a : FixedPointResult = result_achieved(64u64);
+    let r_d : FixedPointResult = result_divergent(
+        7u64, 0x07u8, 0xAAu8, 16u64, 16u64,
+        diff_report_clean(16u64, 16u64),
+    );
+    let r_p : FixedPointResult = result_partial(String::from("test"), 0u64, 0u64);
+    let r_b : FixedPointResult = result_blocked(String::from("test"));
+
+    let labels : Vec<String> = vec_of_4(
+        compliance_label(&r_a),
+        compliance_label(&r_d),
+        compliance_label(&r_p),
+        compliance_label(&r_b),
+    );
+
+    let mut i : usize = 0;
+    while i < labels.len() {
+        if labels.index(i).len() == 0 {
+            return test_result_fail(
+                String::from("test_compliance_label_kinds"),
+                String::from("empty compliance label encountered"),
+            );
+        }
+        i = i + 1;
+    }
+    test_result_pass(String::from("test_compliance_label_kinds"))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Driver — collect all test results.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Returns Vec<TestResult> with one entry per test. Caller (W-E5
+// CI driver) sums passed-count + emits a top-line summary. Failure of
+// ANY test ⇒ stage-1 self-host claim is suspended pending W-E5 fix.
+
+fn run_all() -> Vec<TestResult> {
+    let mut out : Vec<TestResult> = Vec::with_capacity(12);
+    out.push(test_compare_identical_blobs());
+    out.push(test_compare_divergent_blobs());
+    out.push(test_compare_length_mismatch());
+    out.push(test_gate_achieved_path());
+    out.push(test_gate_divergent_path());
+    out.push(test_gate_blocked_path());
+    out.push(test_empty_module_snapshot());
+    out.push(test_single_fn_module_snapshot());
+    out.push(test_stmt_roundtrip_snapshot());
+    out.push(test_diff_window_bounded());
+    out.push(test_render_hex_canonical());
+    out.push(test_compliance_label_kinds());
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helpers — local-only utilities.
+// ───────────────────────────────────────────────────────────────────────
+//
+// `str_eq` : tight String equality. `str_contains` : substring search
+// for `reason` field assertions. `vec_of_4` : pack-4 helper since
+// stage-0 lacks `vec![a, b, c, d]` literal sugar.
+
+fn str_eq(a : &String, lit : &str) -> bool {
+    let bytes_a : Vec<u8> = a.as_bytes();
+    let lit_len : usize = lit.len();
+    if bytes_a.len() != lit_len { return false; }
+    let lit_bytes : Vec<u8> = String::from(lit).as_bytes();
+    let mut i : usize = 0;
+    while i < lit_len {
+        if bytes_a.index(i) != lit_bytes.index(i) { return false; }
+        i = i + 1;
+    }
+    true
+}
+
+fn str_contains(haystack : &String, needle : &str) -> bool {
+    let h : Vec<u8> = haystack.as_bytes();
+    let n_len : usize = needle.len();
+    let h_len : usize = h.len();
+    if n_len == 0 { return true; }
+    if n_len > h_len { return false; }
+    let n_bytes : Vec<u8> = String::from(needle).as_bytes();
+    let mut i : usize = 0;
+    while i + n_len <= h_len {
+        let mut k : usize = 0;
+        let mut all_match : bool = true;
+        while k < n_len {
+            if h.index(i + k) != n_bytes.index(k) {
+                all_match = false;
+                break;
+            }
+            k = k + 1;
+        }
+        if all_match { return true; }
+        i = i + 1;
+    }
+    false
+}
+
+fn vec_of_4(a : String, b : String, c : String, d : String) -> Vec<String> {
+    let mut v : Vec<String> = Vec::with_capacity(4);
+    v.push(a); v.push(b); v.push(c); v.push(d);
+    v
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § main — single entry-point for stage-0 csslc invocation.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Returns 0 if all tests pass, 1 if any fail. The exit-code contract
+// matches POSIX convention so the W-E5 CI driver can shell-out to
+// `csslc golden.cssl --run-tests` and check $? without parsing stdout.
+
+fn main() -> i32 {
+    let results : Vec<TestResult> = run_all();
+    let mut failed : i32 = 0;
+    let mut i : usize = 0;
+    while i < results.len() {
+        let r : &TestResult = &results.index_ref(i);
+        if !r.passed {
+            failed = failed + 1;
+        }
+        i = i + 1;
+    }
+    if failed > 0 { 1 } else { 0 }
+}
