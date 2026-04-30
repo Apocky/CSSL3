@@ -70,7 +70,14 @@
 //!   - `cargo build --features full` compiles all FFI paths together
 //!     where the host platform supports them.
 
-#![forbid(unsafe_code)]
+// § T11-D260 (W-H3) : `ffi/` submodule introduces from-scratch OpenXR 1.0
+// FFI bindings (no `openxr` crate · zero-external thesis). FFI requires
+// `unsafe` — the policy mirrors the sibling `cssl-host-vulkan` crate :
+//   • crate-level   : `#![deny(unsafe_code)]` keeps catalog/abstraction sound
+//   • `ffi` module  : `#![allow(unsafe_code)]` opt-in (see `ffi/mod.rs`)
+// Every `unsafe` block in the FFI subtree MUST carry an inline `// SAFETY :`
+// preamble stating the precondition. Refer to `ffi/mod.rs § UNSAFE-FFI POLICY`.
+#![deny(unsafe_code)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 // Stage-0 scaffold lints (matches sibling host-* crates' allow-list).
@@ -107,6 +114,7 @@ pub mod error;
 pub mod extensions;
 pub mod eye_gaze;
 pub mod face;
+pub mod ffi;
 pub mod foveation;
 pub mod frame_loop;
 pub mod hand;
