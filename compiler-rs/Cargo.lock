@@ -1013,6 +1013,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-loa-kan"
+version = "0.1.0"
+dependencies = [
+ "cssl-hdc",
+ "cssl-pga",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-prime-directive",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-substrate-omega-field"
 version = "0.1.0"
 dependencies = [

@@ -71,6 +71,13 @@ pub mod ffi;
 pub mod probe;
 pub mod spirv_blob;
 
+// § T11-D258 (W-H1) : pure-FFI parallel-implementation surface.
+//   From-scratch Vulkan FFI declarations with ZERO external crate
+//   dependencies (no `ash`, no `vulkano`). Coexists with `ffi/`
+//   (which wraps ash for stage-0 compute-pipeline smoke-tests).
+//   See `pure_ffi/mod.rs` for the staging plan + scope.
+pub mod pure_ffi;
+
 pub use arc_a770::ArcA770Profile;
 pub use device::{DeviceFeatures, DeviceType, GpuVendor, VulkanDevice, VulkanVersion};
 pub use dgc::{
