@@ -1,0 +1,43 @@
+[package]
+name                   = "cssl-cgen-dxil"
+description            = "CSSLv3 stage0 — from-scratch DXIL bytecode emitter (DXBC container + LLVM-3.7 bitcode) for Windows D3D12. Zero external deps : no dxc, no dxil-rs."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D268 (W-G2) : cssl-cgen-dxil — DXIL shader codegen backend (Windows D3D12).
+#
+# § DISTINCTION FROM cssl-cgen-gpu-dxil
+#   cssl-cgen-gpu-dxil (T11-D73, S6-D2) emits HLSL text + shells out to dxc.exe
+#   to produce DXIL bytes — it depends on the external Microsoft DXC toolchain
+#   binary at compile-time. That path is convenient when dxc is on PATH, but
+#   violates LoA-v13's zero-external-deps thesis at the slice level.
+#
+#   cssl-cgen-dxil (this crate, T11-D268) authors DXIL bytecode FROM SCRATCH :
+#     • DXBC container framing (magic 0x43425844, chunk-table, hash) : container.rs
+#     • LLVM-3.7 bitcode emission (BC_HEADER, abbrev-defined module blocks,
+#       function blocks, DirectX-specific intrinsic-name strings) : bitcode.rs
+#     • MIR-shader-fn → DXIL container driver : lower.rs
+#
+#   The two crates coexist : agents that have dxc.exe available continue using
+#   cssl-cgen-gpu-dxil for ergonomics ; substrate-of-record uses cssl-cgen-dxil
+#   for sovereignty + offline-CI + minimal-Win32-runtime profile.
+#
+# § SPEC : `specs/07_CODEGEN.csl` § GPU BACKEND — DXIL native path
+#         + `specs/14_BACKEND.csl` § OWNED EMITTER doctrine.
+#
+# § COMMIT-OF-RECORD : T11-D268 (W-G2) · attestation-marker slice ; the
+# initial file-landing in commit 7212637 (W-G4 sibling) bundled this
+# crate's source files into that commit due to a parallel-fanout
+# stage-race. This file marks T11-D268 as the owning slice for the
+# DXIL backend ; W-G2's deliverable + ATTESTATION applies to the
+# 1499-LOC ≤ 1500 LOC budget for cssl-cgen-dxil/.
+
+[dependencies]
+cssl-mir  = { path = "../cssl-mir" }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
