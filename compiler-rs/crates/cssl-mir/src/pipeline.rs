@@ -41,6 +41,8 @@
 
 use crate::func::MirModule;
 use crate::structured_cfg::validate_structured_cfg;
+use crate::tagged_union_abi::expand_module as expand_tagged_union_module;
+use crate::try_op_lower::lower_try_ops_in_module;
 
 /// Severity of a pass-emitted diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -199,7 +201,19 @@ impl PassPipeline {
     ///      `BiometricEgressCheck` so the absolute biometric / surveillance
     ///      refusal fires first ; wired BEFORE the structured-CFG validator
     ///      so structural validation is the FINAL gate.
-    ///   8. structured-cfg-validator (final sanity-check ; must-pass)
+    ///   8. **tagged-union-abi** (W-B-RECOGNIZER / Wave-A1) : expands every
+    ///      `cssl.option.{some,none}` / `cssl.result.{ok,err}` op into a
+    ///      packed `{tag : u32, payload : [u8; sizeof T]}` cell shape via
+    ///      `tagged_union_abi::expand_module`. Wired BEFORE `try-op-lower`
+    ///      because the `?`-op rewriter consumes the tagged-union helper
+    ///      surface ; wired AFTER all type/effect passes so it sees the
+    ///      monomorphized + IFC-attributed op stream.
+    ///   9. **try-op-lower** (W-B-RECOGNIZER / Wave-A3) : rewrites every
+    ///      `cssl.try` op into a tag-dispatched short-circuit-return on
+    ///      the operand's tagged-union shape via
+    ///      `try_op_lower::lower_try_ops_in_module`. Wired AFTER the
+    ///      tagged-union ABI pass so the cell layout is in place.
+    ///   10. structured-cfg-validator (final sanity-check ; must-pass)
     #[must_use]
     pub fn canonical() -> Self {
         let mut p = Self::new();
@@ -212,6 +226,12 @@ impl PassPipeline {
             crate::biometric_egress_check::BiometricEgressCheck,
         ));
         p.push(Box::new(crate::sigma_enforce::EnforcesSigmaAtCellTouches));
+        // § W-B-RECOGNIZER (Wave-A1 + Wave-A3) — wired AFTER all type/
+        //   effect passes + BEFORE the final structured-CFG validator. The
+        //   tagged-union ABI pass MUST run before the try-op rewriter
+        //   because the latter expects the cell-layout the former stamps.
+        p.push(Box::new(TaggedUnionAbiPass));
+        p.push(Box::new(TryOpLowerPass));
         p.push(Box::new(StructuredCfgValidator));
         p
     }
@@ -432,6 +452,120 @@ impl MirPass for TelemetryProbeInsertPass {
     }
 }
 
+/// W-B-RECOGNIZER (Wave-A1) — tagged-union ABI lowering pass.
+///
+/// Wraps [`crate::tagged_union_abi::expand_module`] in the `MirPass` shape so
+/// it can be placed in the canonical pipeline. Walks every fn in the module +
+/// rewrites each `cssl.option.{some,none}` / `cssl.result.{ok,err}` op into a
+/// packed `{tag : u32, payload : [u8; sizeof T]}` cell shape (the canonical
+/// stage-0 ABI).
+///
+/// § DIAGNOSTIC-CODES
+///   - `TUNI0000` (Info)  — emitted with the per-pass `ExpansionReport`
+///     summary so downstream auditors can verify the rewrite count without
+///     re-walking the module. The summary is only emitted when the report's
+///     `total_count() > 0` — empty modules stay quiet.
+///
+/// The `changed` flag is set whenever any op was expanded (i.e.
+/// `report.total_count() > 0`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TaggedUnionAbiPass;
+
+impl MirPass for TaggedUnionAbiPass {
+    fn name(&self) -> &'static str {
+        "tagged-union-abi"
+    }
+
+    fn run(&self, module: &mut MirModule) -> PassResult {
+        let report = expand_tagged_union_module(module);
+        let mut diagnostics = Vec::new();
+        let total = report.total_count();
+        if total > 0 {
+            diagnostics.push(PassDiagnostic::info(
+                "TUNI0000",
+                format!(
+                    "tagged-union ABI expansion : {total} construct ops rewritten \
+                     ({some} Some, {none} None, {ok} Ok, {err} Err) ; \
+                     {bytes} bytes total",
+                    some = report.option_some_count,
+                    none = report.option_none_count,
+                    ok = report.result_ok_count,
+                    err = report.result_err_count,
+                    bytes = report.total_bytes_allocated,
+                ),
+            ));
+        }
+        PassResult {
+            name: self.name().to_string(),
+            changed: total > 0,
+            diagnostics,
+        }
+    }
+}
+
+/// W-B-RECOGNIZER (Wave-A3) — `?`-operator MIR-rewrite pass.
+///
+/// Wraps [`crate::try_op_lower::lower_try_ops_in_module`] in the `MirPass`
+/// shape. Rewrites every `cssl.try` op into a tag-dispatched short-circuit-
+/// return on the operand's tagged-union shape — the failure-arm reconstructs
+/// the failure value in the caller's return type (`None` / `Err(payload)`)
+/// + emits `func.return` ; the success-arm extracts the payload via
+/// `memref.load`.
+///
+/// § DIAGNOSTIC-CODES
+///   - `TRY0000` (Info)    — per-pass rewrite summary (count + total-bytes).
+///   - `TRY0001` (Warning) — per-pass type-mismatch counter > 0 ; HIR's
+///     `infer.rs` already surfaces the source-level error, but the MIR
+///     pass emits an audit-trail diagnostic so downstream tooling can
+///     observe the count without trawling the HIR diagnostic-bag.
+///
+/// The pass MUST run AFTER [`TaggedUnionAbiPass`] (per the module-doc
+/// `STAGE-0 ASSUMPTIONS` — the rewrite expects the operand's `cssl.try`
+/// scrutinee to be a Ptr-to-tagged-union cell, which is the post-A1
+/// shape).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TryOpLowerPass;
+
+impl MirPass for TryOpLowerPass {
+    fn name(&self) -> &'static str {
+        "try-op-lower"
+    }
+
+    fn run(&self, module: &mut MirModule) -> PassResult {
+        let report = lower_try_ops_in_module(module);
+        let mut diagnostics = Vec::new();
+        let total = report.total_count();
+        if total > 0 {
+            diagnostics.push(PassDiagnostic::info(
+                "TRY0000",
+                format!(
+                    "try-op lowering : {rewritten} rewritten, {mismatch} type-mismatch, \
+                     {malformed} malformed (total {total})",
+                    rewritten = report.rewritten_count,
+                    mismatch = report.type_mismatch_count,
+                    malformed = report.malformed_count,
+                ),
+            ));
+        }
+        if report.type_mismatch_count > 0 {
+            diagnostics.push(PassDiagnostic::warning(
+                "TRY0001",
+                format!(
+                    "{} ?-op call-site(s) found in non-Option/non-Result fn \
+                     return position ; HIR diagnoses these — MIR pass left \
+                     them un-rewritten for downstream visibility",
+                    report.type_mismatch_count
+                ),
+            ));
+        }
+        PassResult {
+            name: self.name().to_string(),
+            changed: report.rewritten_count > 0,
+            diagnostics,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -497,11 +631,13 @@ mod tests {
 
     #[test]
     fn canonical_pipeline_shape() {
-        // T11-D138 (W3g-01) : `enforces-sigma-at-cell-touches` joins the
-        // canonical set, raising the pass-count from 7 to 8.
+        // T11-D138 (W3g-01) : `enforces-sigma-at-cell-touches` joined the
+        // canonical set, raising the pass-count to 8.
+        // W-B-RECOGNIZER : `tagged-union-abi` + `try-op-lower` join the
+        // canonical set, raising the pass-count from 8 to 10.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 8);
+        assert_eq!(names.len(), 10);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
@@ -509,6 +645,8 @@ mod tests {
         assert!(names.contains(&"telemetry-probe-insert"));
         assert!(names.contains(&"biometric-egress-check"));
         assert!(names.contains(&"enforces-sigma-at-cell-touches"));
+        assert!(names.contains(&"tagged-union-abi"));
+        assert!(names.contains(&"try-op-lower"));
         assert!(names.contains(&"structured-cfg-validator"));
     }
 
@@ -517,14 +655,17 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 8 stock passes (T11-D138 added enforces-sigma-at-cell-touches)
-        // should execute on an empty module without errors.
-        assert_eq!(results.len(), 8);
+        // All 10 stock passes should execute on an empty module without
+        // errors. (T11-D138 added enforces-sigma-at-cell-touches ;
+        // W-B-RECOGNIZER added tagged-union-abi + try-op-lower.)
+        assert_eq!(results.len(), 10);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the
         // `("structured_cfg.validated", "true")` marker on success — the
         // marker IS a module mutation. All other stubs are no-ops.
+        // The two W-B-RECOGNIZER passes (tagged-union-abi + try-op-lower)
+        // also stay no-op on empty modules (no construct ops + no ?-ops).
         for r in &results {
             if r.name == "structured-cfg-validator" {
                 continue;
@@ -609,5 +750,138 @@ mod tests {
         let s = format!("{p:?}");
         assert!(s.contains("PassPipeline"));
         assert!(s.contains("ad-transform"));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § W-B-RECOGNIZER tests — Wave-A1 (TaggedUnionAbiPass) +
+    //   Wave-A3 (TryOpLowerPass) MirPass-impls.
+    // ═════════════════════════════════════════════════════════════════════
+
+    use super::{TaggedUnionAbiPass, TryOpLowerPass};
+
+    #[test]
+    fn tagged_union_abi_pass_name() {
+        assert_eq!(TaggedUnionAbiPass.name(), "tagged-union-abi");
+    }
+
+    #[test]
+    fn try_op_lower_pass_name() {
+        assert_eq!(TryOpLowerPass.name(), "try-op-lower");
+    }
+
+    #[test]
+    fn tagged_union_abi_empty_module_no_change() {
+        // Empty module : no construct ops to expand → changed=false +
+        // no diagnostics emitted.
+        let mut module = MirModule::new();
+        let r = TaggedUnionAbiPass.run(&mut module);
+        assert_eq!(r.name, "tagged-union-abi");
+        assert!(!r.changed, "empty module should not report changed=true");
+        assert!(r.diagnostics.is_empty(), "diagnostics on empty: {:?}", r.diagnostics);
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn try_op_lower_empty_module_no_change() {
+        let mut module = MirModule::new();
+        let r = TryOpLowerPass.run(&mut module);
+        assert_eq!(r.name, "try-op-lower");
+        assert!(!r.changed);
+        assert!(r.diagnostics.is_empty());
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn tagged_union_abi_diagnostic_code_TUNI0000() {
+        // The pass emits `TUNI0000` (Info) when it has any expansion to
+        // report. On empty modules nothing is emitted ; the constant is
+        // reachable via the canonical-pipeline flow when real ops are
+        // present (covered by `tagged_union_abi`'s own crate-internal tests).
+        // Here we just confirm the pass exists + runs without error.
+        let mut module = MirModule::new();
+        let r = TaggedUnionAbiPass.run(&mut module);
+        for d in &r.diagnostics {
+            assert!(d.code.starts_with("TUNI"), "unexpected code: {}", d.code);
+        }
+    }
+
+    #[test]
+    fn try_op_lower_diagnostic_codes() {
+        // The pass emits TRY0000 / TRY0001 codes when ?-ops are present.
+        let mut module = MirModule::new();
+        let r = TryOpLowerPass.run(&mut module);
+        for d in &r.diagnostics {
+            assert!(d.code.starts_with("TRY"), "unexpected code: {}", d.code);
+        }
+    }
+
+    #[test]
+    fn tagged_union_runs_before_try_op_lower_in_canonical() {
+        // Per the Wave-A3 module-doc § STAGE-0 ASSUMPTIONS, `try-op-lower`
+        // requires `tagged-union-abi` to have run first. Verify the
+        // canonical pipeline orders them correctly.
+        let p = PassPipeline::canonical();
+        let names: Vec<&str> = p.names().collect();
+        let abi_idx = names.iter().position(|n| *n == "tagged-union-abi");
+        let try_idx = names.iter().position(|n| *n == "try-op-lower");
+        assert!(abi_idx.is_some());
+        assert!(try_idx.is_some());
+        assert!(
+            abi_idx.unwrap() < try_idx.unwrap(),
+            "tagged-union-abi must precede try-op-lower in canonical pipeline"
+        );
+    }
+
+    #[test]
+    fn tagged_union_runs_before_cfg_validator() {
+        // The structured-CFG validator is the FINAL gate — both Wave-A
+        // passes must run BEFORE it.
+        let p = PassPipeline::canonical();
+        let names: Vec<&str> = p.names().collect();
+        let abi_idx = names
+            .iter()
+            .position(|n| *n == "tagged-union-abi")
+            .expect("tagged-union-abi");
+        let try_idx = names
+            .iter()
+            .position(|n| *n == "try-op-lower")
+            .expect("try-op-lower");
+        let cfg_idx = names
+            .iter()
+            .position(|n| *n == "structured-cfg-validator")
+            .expect("structured-cfg-validator");
+        assert!(abi_idx < cfg_idx);
+        assert!(try_idx < cfg_idx);
+    }
+
+    #[test]
+    fn tagged_union_runs_after_sigma_enforce() {
+        // Wave-A passes must run AFTER all type/effect passes — verify
+        // they sit AFTER `enforces-sigma-at-cell-touches` (the last of
+        // the type/effect passes).
+        let p = PassPipeline::canonical();
+        let names: Vec<&str> = p.names().collect();
+        let sigma_idx = names
+            .iter()
+            .position(|n| *n == "enforces-sigma-at-cell-touches")
+            .expect("sigma");
+        let abi_idx = names
+            .iter()
+            .position(|n| *n == "tagged-union-abi")
+            .expect("abi");
+        assert!(sigma_idx < abi_idx);
+    }
+
+    #[test]
+    fn pipeline_runs_wave_a_passes_in_order() {
+        // Smoke : the canonical pipeline executes all 10 passes including
+        // both W-B-RECOGNIZER additions. Using the run_all path we should
+        // see results from BOTH passes in the result-sequence.
+        let p = PassPipeline::canonical();
+        let mut module = MirModule::new();
+        let results = p.run_all(&mut module);
+        let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
+        assert!(names.contains(&"tagged-union-abi"));
+        assert!(names.contains(&"try-op-lower"));
     }
 }

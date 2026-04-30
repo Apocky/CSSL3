@@ -454,7 +454,11 @@ fn lower_expr(ctx: &mut BodyLowerCtx<'_>, expr: &HirExpr) -> Option<(ValueId, Mi
             then_branch,
             else_branch,
         } => lower_if(ctx, cond, then_branch, else_branch.as_deref(), expr.span),
-        HirExprKind::Call { callee, args, .. } => lower_call(ctx, callee, args, expr.span, expr.id),
+        HirExprKind::Call {
+            callee,
+            args,
+            type_args,
+        } => lower_call(ctx, callee, args, type_args, expr.span, expr.id),
         HirExprKind::Return { value } => {
             let trailing = value.as_deref().and_then(|e| lower_expr(ctx, e));
             emit_return(ctx, trailing, expr.span);
@@ -1978,6 +1982,7 @@ fn lower_call(
     ctx: &mut BodyLowerCtx<'_>,
     callee: &HirExpr,
     args: &[HirCallArg],
+    type_args: &[HirType],
     span: Span,
     hir_id: cssl_hir::HirId,
 ) -> Option<(ValueId, MirType)> {
@@ -2132,6 +2137,66 @@ fn lower_call(
                 }
                 ("Err", 1) => {
                     if let Some(result) = try_lower_result_err(ctx, &args[0], span) {
+                        return Some(result);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    // § W-B-RECOGNIZER — Wave-A op-emit recognizers : `vec_drop::<T>` /
+    //   `vec_load_at::<T>` / `vec_store_at::<T>` / `vec_end_of`.
+    //
+    //   Strict guards mirror the Some/None/Ok/Err recognizer pattern : the
+    //   call must be a single-segment path matching the canonical fn-name
+    //   + the expected arity. Each recognizer also accepts the bare-name
+    //   form (`load_at` / `store_at` / `end_of` / `vec_drop`) used inside
+    //   stdlib/vec.cssl — `vec_load_at` / `vec_store_at` / `vec_end_of`
+    //   variants are reserved for future migration to the trait-resolved
+    //   form. See `specs/40_WAVE_CSSL_PLAN.csl § WAVES § WAVE-A`.
+    //
+    //   ‼ Branch-friendly ordering : `vec_drop` fires first (most-frequent
+    //   per Vec lifecycle), then `vec_load_at` / `vec_store_at` (per-element
+    //   access), then `vec_end_of` (iter-init only). The recognizer chain
+    //   short-circuits on first match so common paths skip irrelevant
+    //   string compares.
+    //
+    //   § SWAP-POINT (sizeof_T monomorph extraction)
+    //     The HIR `Call.type_args` carries the `::<T>` turbofish-arg
+    //     (per `cssl-hir::HirExprKind::Call.type_args`). We thread that
+    //     through `lower_hir_type_light(ctx.interner, &type_args[0])` to
+    //     resolve the cell-kind via `TypedMemrefElem::from_mir_type`.
+    //     Composite payload-T (struct / sum-type) DECLINES the
+    //     recognizer — the regular generic-call path then takes over so
+    //     the source still compiles (the panic("...deferred") body in
+    //     stdlib/vec.cssl still serves as the fallback).
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 1 {
+            let name = ctx.interner.resolve(segments[0]);
+            match (name.as_str(), args.len()) {
+                ("vec_drop", 1) => {
+                    if let Some(result) = try_lower_vec_drop(ctx, &args[0], type_args, span) {
+                        return Some(result);
+                    }
+                }
+                ("load_at" | "vec_load_at", 2) => {
+                    if let Some(result) =
+                        try_lower_vec_load_at(ctx, args, type_args, span)
+                    {
+                        return Some(result);
+                    }
+                }
+                ("store_at" | "vec_store_at", 3) => {
+                    if let Some(result) =
+                        try_lower_vec_store_at(ctx, args, type_args, span)
+                    {
+                        return Some(result);
+                    }
+                }
+                ("end_of" | "vec_end_of", 2) => {
+                    if let Some(result) =
+                        try_lower_vec_end_of(ctx, args, type_args, span)
+                    {
                         return Some(result);
                     }
                 }
@@ -2841,6 +2906,318 @@ fn try_lower_result_err(
             .with_attribute("source_loc", format!("{span:?}")),
     );
     Some((id, result_ty))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § W-B-RECOGNIZER — Wave-A op-emit recognizer helpers.
+//
+//   Each helper resolves the type-arg `<T>` to a `TypedMemrefElem` (i8 / i16
+//   / i32 / i64 / f32 / f64) via `lower_hir_type_light` + the LUT in
+//   `memref_typed::TypedMemrefElem::from_mir_type`. Composite / unsupported
+//   payload-T returns `None` so the caller declines the recognizer and the
+//   regular generic-call path takes over (preserving the existing panic-stub
+//   stdlib bodies as a safe fallback).
+//
+//   § SWAP-POINT (per `specs/40_WAVE_CSSL_PLAN.csl § WAVE-A`)
+//     The vec_drop helper threads `v.cap` AT RUNTIME (a `cssl.field` op
+//     read) rather than as a compile-time constant — this matches the
+//     stdlib/vec.cssl § Manual Drop intent (`v.cap × sizeof T`). The
+//     payload-T sizeof remains compile-time per `dealloc_size_for`. A
+//     follow-up slice replaces this with a true monomorph-context lookup
+//     once auto_monomorph threads cap-known sites separately.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Resolve the first turbofish type-argument to a `TypedMemrefElem`. Returns
+/// `None` if no type-arg is present OR the type-arg lowers to a composite /
+/// unsupported MIR-type (caller declines the recognizer in that case).
+///
+/// § SAWYER-EFFICIENCY
+///   - Single LUT-style match via `from_mir_type` ; no allocation on the
+///     hot path.
+///   - Returns `Copy` value (`TypedMemrefElem` is `#[derive(Copy)]`) so the
+///     caller can stash it in a local without a clone.
+fn resolve_typed_memref_elem(
+    ctx: &BodyLowerCtx<'_>,
+    type_args: &[HirType],
+) -> Option<crate::memref_typed::TypedMemrefElem> {
+    let t = type_args.first()?;
+    let mir_ty = lower_hir_type_light(ctx.interner, t);
+    crate::memref_typed::TypedMemrefElem::from_mir_type(&mir_ty)
+}
+
+/// Lower a syntactically-recognized `vec_load_at::<T>(data, i)` call.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %data   = <lower(args[0])>                      // i64 base ptr
+///   %i      = <lower(args[1])>                      // i64 index
+///   %sz     = arith.constant <sizeof T> : i64       // via build_index_offset
+///   %bytes  = arith.muli %i, %sz : i64
+///   %r      = memref.load.<T> %data, %bytes : <T>   // via build_typed_load
+/// ```
+/// Returns the typed-load result `(ValueId, MirType)` on success ; declines
+/// with `None` for composite payload-T.
+fn try_lower_vec_load_at(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let elem = resolve_typed_memref_elem(ctx, type_args)?;
+
+    // Lower the two args (data, i) — both i64.
+    let data_expr = match &args[0] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let idx_expr = match &args[1] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (data_id, _) = lower_expr(ctx, data_expr)?;
+    let (idx_id, _) = lower_expr(ctx, idx_expr)?;
+
+    // Mint the index-offset triplet (constant + muli) via the canonical
+    // `build_index_offset` helper. Sawyer-efficiency : 2 ops appended in
+    // place ; no scratch Vec allocations beyond the helper's single
+    // `Vec::with_capacity(2)` (which is the helper's contract — we just
+    // re-borrow into ctx.ops via extend).
+    let sizeof_const_id = ctx.fresh_value_id();
+    let bytes_id = ctx.fresh_value_id();
+    let index_ops = crate::memref_typed::build_index_offset(elem, idx_id, sizeof_const_id, bytes_id);
+    for op in index_ops {
+        let op = op.with_attribute("source_loc", format!("{span:?}"));
+        ctx.ops.push(op);
+    }
+
+    // Mint the typed load.
+    let result_id = ctx.fresh_value_id();
+    let result_ty = elem.to_mir_type();
+    let load_op = crate::memref_typed::build_typed_load(elem, data_id, bytes_id, result_id)
+        .with_attribute("source_loc", format!("{span:?}"))
+        .with_attribute("origin", "vec_load_at");
+    ctx.ops.push(load_op);
+
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `vec_store_at::<T>(data, i, x)` call.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %data   = <lower(args[0])>                          // i64 base ptr
+///   %i      = <lower(args[1])>                          // i64 index
+///   %x      = <lower(args[2])>                          // T value
+///   %sz     = arith.constant <sizeof T> : i64
+///   %bytes  = arith.muli %i, %sz : i64
+///   memref.store.<T> %x, %data, %bytes                  // side-effect only
+/// ```
+/// Returns a `(ValueId, MirType::None)` placeholder result — the store
+/// itself has no SSA-value, but the caller expects a tuple to thread back
+/// into the expression-position. We mint a fresh-id with `MirType::None`
+/// to keep the SSA-id space monotonic.
+fn try_lower_vec_store_at(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let elem = resolve_typed_memref_elem(ctx, type_args)?;
+
+    let data_expr = match &args[0] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let idx_expr = match &args[1] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let val_expr = match &args[2] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (data_id, _) = lower_expr(ctx, data_expr)?;
+    let (idx_id, _) = lower_expr(ctx, idx_expr)?;
+    let (val_id, _) = lower_expr(ctx, val_expr)?;
+
+    // Mint index-offset triplet.
+    let sizeof_const_id = ctx.fresh_value_id();
+    let bytes_id = ctx.fresh_value_id();
+    let index_ops = crate::memref_typed::build_index_offset(elem, idx_id, sizeof_const_id, bytes_id);
+    for op in index_ops {
+        let op = op.with_attribute("source_loc", format!("{span:?}"));
+        ctx.ops.push(op);
+    }
+
+    // Mint the typed store.
+    let store_op = crate::memref_typed::build_typed_store(elem, val_id, data_id, bytes_id)
+        .with_attribute("source_loc", format!("{span:?}"))
+        .with_attribute("origin", "vec_store_at");
+    ctx.ops.push(store_op);
+
+    // Return a unit-shape placeholder so callers in expression-position get
+    // an SSA-id back. The store itself has no result.
+    let placeholder_id = ctx.fresh_value_id();
+    Some((placeholder_id, MirType::None))
+}
+
+/// Lower a syntactically-recognized `vec_end_of(data, len)` call.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %data   = <lower(args[0])>                          // i64 base ptr
+///   %len    = <lower(args[1])>                          // i64 elem-count
+///   %sz     = arith.constant <sizeof T> : i64
+///   %bytes  = arith.muli %len, %sz : i64
+///   %end    = memref.ptr.end_of %data, %bytes : i64     // via build_typed_end_of
+/// ```
+/// Stage-0 SWAP-POINT : the type-arg `<T>` selects the cell-kind ; when no
+/// turbofish is present, the recognizer DECLINES (returns `None`) and falls
+/// back to the regular generic-call path. The stdlib's bare `end_of` form
+/// is ONLY recognized when a turbofish supplies T — see `vec_iter::<T>` /
+/// `vec_iter_next::<T>` call-sites in stdlib/vec.cssl which thread the
+/// type-arg through.
+fn try_lower_vec_end_of(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let elem = resolve_typed_memref_elem(ctx, type_args)?;
+
+    let data_expr = match &args[0] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let len_expr = match &args[1] {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (data_id, _) = lower_expr(ctx, data_expr)?;
+    let (len_id, _) = lower_expr(ctx, len_expr)?;
+
+    // Mint sizeof-const + muli + end_of triplet via canonical helper.
+    let sizeof_const_id = ctx.fresh_value_id();
+    let bytes_id = ctx.fresh_value_id();
+    let end_id = ctx.fresh_value_id();
+    let end_ops = crate::memref_typed::build_typed_end_of(
+        elem,
+        data_id,
+        len_id,
+        sizeof_const_id,
+        bytes_id,
+        end_id,
+    );
+    for op in end_ops {
+        let op = op
+            .with_attribute("source_loc", format!("{span:?}"))
+            .with_attribute("origin", "vec_end_of");
+        ctx.ops.push(op);
+    }
+
+    // Result is the end-pointer as i64 (matches `build_typed_end_of`'s
+    // documented contract).
+    Some((end_id, MirType::Int(IntWidth::I64)))
+}
+
+/// Lower a syntactically-recognized `vec_drop::<T>(v)` call into a
+/// `cssl.heap.dealloc(v.data, v.cap × sizeof T, alignof T)` op-sequence.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %v_id   = <lower(args[0])>                          // !cssl.struct.Vec
+///   %data   = cssl.field %v_id, "data" : i64
+///   %cap    = cssl.field %v_id, "cap" : i64
+///   %sz     = arith.constant <sizeof T> : i64
+///   %bytes  = arith.muli %cap, %sz : i64                // total alloc size
+///   %al     = arith.constant <alignof T> : i64
+///   cssl.heap.dealloc %data, %bytes, %al                // via build_heap_dealloc_op
+/// ```
+/// Stage-0 SWAP-POINT : `v.cap` is read at RUNTIME via a `cssl.field` op
+/// (matches the stdlib/vec.cssl § Manual Drop intent of `v.cap × sizeof T`).
+/// The payload-T sizeof + alignof remain compile-time constants per
+/// `heap_dealloc::dealloc_size_for` / `dealloc_align_for`. A follow-up
+/// slice may collapse this to a single compile-time constant once
+/// auto_monomorph threads cap-known sites separately.
+///
+/// Returns `(ValueId, MirType::None)` — vec_drop has no SSA result.
+fn try_lower_vec_drop(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    // Resolve payload-T to MIR-type for sizeof + alignof. Composite / opaque
+    // types DECLINE — caller falls through to the regular path.
+    let payload_ty = lower_hir_type_light(ctx.interner, type_args.first()?);
+    let payload_size_bytes = crate::heap_dealloc::dealloc_size_for(&payload_ty);
+    if payload_size_bytes == 0 {
+        // Unresolved / composite payload : decline so the regular generic-
+        // call path consumes the call (preserves the placeholder body).
+        return None;
+    }
+    let payload_align_bytes = crate::heap_dealloc::dealloc_align_for(&payload_ty);
+
+    // Lower the v argument.
+    let v_expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let (v_id, _v_ty) = lower_expr(ctx, v_expr)?;
+
+    // Read v.data + v.cap via `cssl.field` ops (the canonical struct-field
+    // accessor at stage-0 ; see existing `lower_field` for the shape).
+    let data_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(v_id)
+            .with_result(data_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "data")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let cap_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(v_id)
+            .with_result(cap_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "cap")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+
+    // sizeof T constant.
+    let sz_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.constant")
+            .with_attribute("value", payload_size_bytes.to_string())
+            .with_result(sz_id, MirType::Int(IntWidth::I64))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+
+    // bytes = cap × sizeof T (runtime muli — cap is dynamic).
+    let bytes_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.muli")
+            .with_operand(cap_id)
+            .with_operand(sz_id)
+            .with_result(bytes_id, MirType::Int(IntWidth::I64))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+
+    // alignof T constant.
+    let al_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.constant")
+            .with_attribute("value", payload_align_bytes.to_string())
+            .with_result(al_id, MirType::Int(IntWidth::I64))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+
+    // The actual dealloc op via the canonical builder.
+    let dealloc_op = crate::heap_dealloc::build_heap_dealloc_op(
+        data_id,
+        bytes_id,
+        al_id,
+        &payload_ty,
+        Some(crate::heap_dealloc::ORIGIN_VEC_DROP),
+        &format!("{span:?}"),
+    );
+    ctx.ops.push(dealloc_op);
+
+    // vec_drop returns unit ; mint a fresh-id for the placeholder result.
+    let placeholder_id = ctx.fresh_value_id();
+    Some((placeholder_id, MirType::None))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -6075,5 +6452,254 @@ mod tests {
         let interner = cssl_hir::Interner::new();
         let ty = MirType::Int(IntWidth::I32);
         assert!(super::opaque_type_leading_symbol(&interner, &ty).is_none());
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § W-B-RECOGNIZER tests — Wave-A op-emit recognizers (vec_load_at /
+    //   vec_store_at / vec_end_of / vec_drop).
+    //
+    //   Each recognizer-claim test verifies :
+    //     1. The expected typed-memref op shows up in the lowered ops.
+    //     2. The op carries the canonical attribute set (elem_ty / origin /
+    //        sizeof / alignment).
+    //     3. The fall-back path (no turbofish / composite-T) still routes
+    //        through the regular func.call op.
+    // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn vec_load_at_i32_emits_typed_load() {
+        // `load_at::<i32>(data, 0)` should mint a `memref.load.i32`.
+        let src = r"
+            fn read_first(data : i64) -> i32 {
+                load_at::<i32>(data, 0)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"memref.load.i32"),
+            "expected memref.load.i32 in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let load_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "memref.load.i32")
+            .expect("missing memref.load.i32");
+        let elem_ty = load_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "elem_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(elem_ty, "i32");
+        let origin = load_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(origin, "vec_load_at");
+    }
+
+    #[test]
+    fn vec_load_at_f64_emits_typed_load_f64_suffix() {
+        let src = r"
+            fn read_first_f64(data : i64) -> f64 {
+                load_at::<f64>(data, 0)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"memref.load.f64"),
+            "expected memref.load.f64 in {names:?}"
+        );
+    }
+
+    #[test]
+    fn vec_load_at_no_turbofish_falls_through_to_func_call() {
+        // No `::<T>` turbofish → recognizer declines → regular func.call.
+        let src = r"
+            fn read_first(data : i64) -> i32 {
+                load_at(data, 0)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        // Must NOT contain a typed memref load — the fallback is func.call.
+        assert!(
+            !names.iter().any(|n| n.starts_with("memref.load.")),
+            "unexpected typed-load with no turbofish: {names:?}"
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
+    }
+
+    #[test]
+    fn vec_store_at_i32_emits_typed_store() {
+        let src = r"
+            fn write_first(data : i64, x : i32) {
+                store_at::<i32>(data, 0, x)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"memref.store.i32"),
+            "expected memref.store.i32 in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let store_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "memref.store.i32")
+            .expect("missing memref.store.i32");
+        let elem_ty = store_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "elem_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(elem_ty, "i32");
+        let origin = store_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(origin, "vec_store_at");
+    }
+
+    #[test]
+    fn vec_end_of_i64_emits_ptr_end_of() {
+        let src = r"
+            fn end(data : i64, len : i64) -> i64 {
+                end_of::<i64>(data, len)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"memref.ptr.end_of"),
+            "expected memref.ptr.end_of in {names:?}"
+        );
+        // Should also have a sizeof constant (8 for i64) + arith.muli for
+        // len × sizeof T.
+        assert!(names.iter().any(|n| n == &"arith.constant"));
+        assert!(names.iter().any(|n| n == &"arith.muli"));
+    }
+
+    #[test]
+    fn vec_drop_i32_emits_heap_dealloc() {
+        // The `vec_drop::<i32>(v)` recognizer mints a cssl.heap.dealloc op.
+        // The struct accessor `cssl.field` ops fire too (for v.data + v.cap).
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            fn drop_a_vec(v : Vec<i32>) {
+                vec_drop::<i32>(v)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.heap.dealloc"),
+            "expected cssl.heap.dealloc in {names:?}"
+        );
+        // Must also load v.data + v.cap via cssl.field ops.
+        let field_count = names.iter().filter(|n| **n == "cssl.field").count();
+        assert!(
+            field_count >= 2,
+            "expected ≥ 2 cssl.field ops (data + cap) in {names:?}",
+        );
+        // And the dealloc op should carry origin = "vec_drop" + payload_ty.
+        let entry = f.body.entry().expect("entry");
+        let dealloc_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.heap.dealloc")
+            .expect("missing cssl.heap.dealloc");
+        let origin = dealloc_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(origin, "vec_drop");
+        let cap = dealloc_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "cap")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(cap, "iso_consumed");
+    }
+
+    #[test]
+    fn vec_drop_no_turbofish_falls_through() {
+        // Without `::<T>`, recognizer declines → regular func.call path.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            fn drop_a_vec(v : Vec<i32>) {
+                vec_drop(v)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        // No heap.dealloc minted without the turbofish.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.heap.dealloc"),
+            "unexpected heap.dealloc with no turbofish: {names:?}",
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
+    }
+
+    #[test]
+    fn vec_drop_composite_t_falls_through_to_func_call() {
+        // Composite payload-T (struct / opaque) → recognizer declines.
+        // The Bar opaque type lowers to MirType::Opaque whose
+        // dealloc_size_for returns 0 → recognizer declines.
+        let src = r"
+            struct Bar { y : i32 }
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            fn drop_a_vec(v : Vec<Bar>) {
+                vec_drop::<Bar>(v)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        // Composite T → recognizer declines → no cssl.heap.dealloc.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.heap.dealloc"),
+            "unexpected heap.dealloc for opaque T: {names:?}",
+        );
+    }
+
+    // ── Smoke tests : combined recognizer-chain integration ──────────────
+
+    #[test]
+    fn vec_load_at_with_index_param_lowers() {
+        // End-to-end : `load_at::<f32>(data, i)` where i is a fn-param.
+        // Verifies the recognizer correctly lowers BOTH operands and emits
+        // the typed-load triplet (sizeof / muli / load).
+        let src = r"
+            fn read_at(data : i64, i : i64) -> f32 {
+                load_at::<f32>(data, i)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(names.iter().any(|n| n == &"memref.load.f32"));
+        assert!(names.iter().any(|n| n == &"arith.constant"));
+        assert!(names.iter().any(|n| n == &"arith.muli"));
+    }
+
+    #[test]
+    fn vec_load_then_store_smoke() {
+        // Smoke : both load + store in same fn body. The recognizer chain
+        // must claim BOTH calls (no leakage into func.call for either).
+        let src = r"
+            fn copy_one(src : i64, dst : i64) {
+                let x : i32 = load_at::<i32>(src, 0);
+                store_at::<i32>(dst, 0, x)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(names.iter().any(|n| n == &"memref.load.i32"));
+        assert!(names.iter().any(|n| n == &"memref.store.i32"));
     }
 }
