@@ -1,0 +1,36 @@
+[package]
+name                   = "cssl-test-coordinator"
+description            = "CSSLv3 — workspace-wide test orchestration + report (W-T1 ; T11-D350)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D350 (W-T1) : cssl-test-coordinator
+# ─────────────────────────────────────────────────────────────────────────────
+# Workspace-wide test orchestration : invokes `cargo test --message-format=json`,
+# parses per-crate pass/fail/ignored, generates HTML + JSON reports, tracks
+# regressions vs prior runs.
+#
+# § GOAL · ≤ 700 LOC · single-commit · NO --amend
+# § DEPS · workspace stdlib + serde + serde_json (zero new external deps)
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_test_coordinator"
+path = "src/lib.rs"
+
+# [[bin]]
+# name = "cssl-test-coordinator"
+# path = "src/bin/cssl-test-coordinator.rs"
+# § W-T1 partial : bin entry-point not yet authored (rate-limit-truncated) · pending post-CSSL-greenlight
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+
+[dev-dependencies]
+serde_json  = { workspace = true }

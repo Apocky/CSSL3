@@ -5,16 +5,17 @@
 //!          ops (`cssl.option.some` / `cssl.option.none` / `cssl.result.ok` /
 //!          `cssl.result.err`) into the canonical packed tagged-union ABI :
 //!
-//!          ```text
-//!          struct TaggedUnion<T> {           // for Option<T>
-//!              tag    : u32,                 // offset 0,  4 bytes
-//!              payload: [u8; sizeof(T)],     // offset 4
-//!          }
-//!          struct TaggedUnion<T,E> {         // for Result<T,E>
-//!              tag    : u32,                 // offset 0,  4 bytes
-//!              payload: [u8; max(T,E)],      // offset 4
-//!          }
-//!          ```
+//! ```ignore
+//! // (Pseudocode · ABI shape · NOT compileable Rust)
+//! struct TaggedUnion<T> {           // for Option<T>
+//!     tag    : u32,                 // offset 0,  4 bytes
+//!     payload: [u8; sizeof(T)],     // offset 4
+//! }
+//! struct TaggedUnion<T,E> {         // for Result<T,E>
+//!     tag    : u32,                 // offset 0,  4 bytes
+//!     payload: [u8; max(T,E)],      // offset 4
+//! }
+//! ```
 //!
 //!   § TAG-DISCIPLINE
 //!     - `Option`  : `Some=1`, `None=0` (matches `body_lower::try_lower_option_some` /
