@@ -98,6 +98,18 @@
 use core::sync::atomic::{AtomicI32, AtomicU64, AtomicU32, Ordering};
 use std::sync::Mutex;
 
+// § T11-D272 (W-J-XR) : pure-FFI swap-in for the Wave-D8 STUB. The
+// `cssl_host_openxr::ffi` submodule (T11-D260, W-H3) carries the
+// from-scratch (zero-external) OpenXR 1.0 FFI surface ; this `use`
+// pulls in the `HostXrApi` swap-in trait + `MockOpenXrApi` (the
+// hosted-stage-0 backend) + the Quest-3s default-binding constants.
+// On non-test builds the backend installs at `__cssl_xr_session_create`
+// time ; on test builds it auto-installs in `reset_xr_for_tests`.
+use cssl_host_openxr::ffi::{
+    Action as XrAction, HostXrApi, MockOpenXrApi, QUEST_3S_TOUCH_CONTROLLER,
+    SUBACTION_PATH_LEFT, SUBACTION_PATH_RIGHT, Vector3f, XrPosef,
+};
+
 // ───────────────────────────────────────────────────────────────────────
 // § ABI-STABLE constants (PRIME-DIRECTIVE-compliant flag-set, frozen)
 // ───────────────────────────────────────────────────────────────────────
@@ -355,6 +367,10 @@ pub fn reset_xr_for_tests() {
             g.clear();
         }
     }
+    // § T11-D272 : reset the cssl_host_openxr backend so each test
+    // starts with a clean slot. `ensure_backend_initialized()` re-
+    // installs the Quest-3s default-binding mock on first use.
+    reset_backend_for_tests();
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -446,6 +462,236 @@ pub fn eye_name(eye: u32) -> Option<&'static str> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-D272 (W-J-XR) : `cssl_host_openxr::ffi` swap-in surface.
+//
+//   The `__cssl_xr_*` extern symbols delegate to a singleton `HostXrApi`
+//   impl living in `cssl_host_openxr::ffi`. On hosted stage-0 the
+//   singleton is a `MockOpenXrApi` configured with Quest-3s default-
+//   bindings (`/interaction_profiles/oculus/touch_controller` +
+//   `/user/hand/{left,right}` sub-actions). When the runtime-loader
+//   dispatch-table lands in a follow-up wave, `set_backend()` installs
+//   the production `OpenXrHostApi` ; the cssl-rt FFI surface (84-byte
+//   pose payload + 8-byte input payload) is unchanged either way.
+//
+//   STUB-mode preserved : when `BACKEND` is `None` the hot-path
+//   surfaces `RUNTIME_NOT_PRESENT`. Tests + the `*_impl` helpers
+//   auto-install the backend via `ensure_backend_initialized()` so
+//   the `cfg(test)` STUB path stays self-contained.
+// ───────────────────────────────────────────────────────────────────────
+
+/// Process-singleton XR backend. Stage-0 holds a `MockOpenXrApi` ;
+/// future waves install the real `OpenXrHostApi` after dispatch-table-load.
+static BACKEND: Mutex<Option<MockOpenXrApi>> = Mutex::new(None);
+
+/// Canonical action-handle ids for the Quest-3s default-binding catalog.
+/// Internal — the cssl-rt FFI surface stays flat (controller_idx ∈ {0,1})
+/// and these handles are used inside `xr_input_state_impl` to query the
+/// `MockInputState` slot for each component-path.
+const ACTION_TRIGGER_VALUE_LEFT: XrAction = XrAction(0x0001);
+const ACTION_TRIGGER_VALUE_RIGHT: XrAction = XrAction(0x0002);
+const ACTION_GRIP_VALUE_LEFT: XrAction = XrAction(0x0003);
+const ACTION_GRIP_VALUE_RIGHT: XrAction = XrAction(0x0004);
+const ACTION_THUMBSTICK_X_LEFT: XrAction = XrAction(0x0005);
+const ACTION_THUMBSTICK_X_RIGHT: XrAction = XrAction(0x0006);
+const ACTION_THUMBSTICK_Y_LEFT: XrAction = XrAction(0x0007);
+const ACTION_THUMBSTICK_Y_RIGHT: XrAction = XrAction(0x0008);
+const ACTION_BUTTON_PRIMARY_LEFT: XrAction = XrAction(0x0010);
+const ACTION_BUTTON_PRIMARY_RIGHT: XrAction = XrAction(0x0011);
+const ACTION_BUTTON_SECONDARY_LEFT: XrAction = XrAction(0x0012);
+const ACTION_BUTTON_SECONDARY_RIGHT: XrAction = XrAction(0x0013);
+const ACTION_BUTTON_THUMB_CLICK_LEFT: XrAction = XrAction(0x0014);
+const ACTION_BUTTON_THUMB_CLICK_RIGHT: XrAction = XrAction(0x0015);
+const ACTION_BUTTON_TRIG_TOUCH_LEFT: XrAction = XrAction(0x0016);
+const ACTION_BUTTON_TRIG_TOUCH_RIGHT: XrAction = XrAction(0x0017);
+const ACTION_BUTTON_GRIP_TOUCH_LEFT: XrAction = XrAction(0x0018);
+const ACTION_BUTTON_GRIP_TOUCH_RIGHT: XrAction = XrAction(0x0019);
+const ACTION_GRIP_POSE_LEFT: XrAction = XrAction(0x0020);
+const ACTION_GRIP_POSE_RIGHT: XrAction = XrAction(0x0021);
+
+/// Canonical Quest-3s controller-binding profile path. Mirrored from
+/// `cssl_host_openxr::ffi::QUEST_3S_TOUCH_CONTROLLER`.
+pub const QUEST_3S_PROFILE_PATH: &str = QUEST_3S_TOUCH_CONTROLLER;
+
+/// Canonical Quest-3s sub-action paths.
+pub const QUEST_3S_SUBACTION_LEFT: &str = SUBACTION_PATH_LEFT;
+pub const QUEST_3S_SUBACTION_RIGHT: &str = SUBACTION_PATH_RIGHT;
+
+/// Initialize the backend with the Quest-3s default-binding catalog.
+fn ensure_backend_initialized() {
+    if let Ok(mut g) = BACKEND.lock() {
+        if g.is_none() {
+            let mut api = MockOpenXrApi::new();
+            // Default grip-poses : identity orientation, canonical hand-rest
+            // ~0.2m forward + 1.4m up (relaxed-arm hand position when standing).
+            let grip_left = XrPosef {
+                orientation: cssl_host_openxr::ffi::identity_quaternion(),
+                position: Vector3f { x: -0.2, y: 1.4, z: -0.3 },
+            };
+            let grip_right = XrPosef {
+                orientation: cssl_host_openxr::ffi::identity_quaternion(),
+                position: Vector3f { x: 0.2, y: 1.4, z: -0.3 },
+            };
+            api.input_state.set_pose(ACTION_GRIP_POSE_LEFT, grip_left);
+            api.input_state.set_pose(ACTION_GRIP_POSE_RIGHT, grip_right);
+            *g = Some(api);
+        }
+    }
+}
+
+/// `true` iff the backend has been initialized.
+fn backend_ready() -> bool {
+    matches!(BACKEND.lock(), Ok(g) if g.is_some())
+}
+
+/// Reset the backend. Test-only.
+#[doc(hidden)]
+pub fn reset_backend_for_tests() {
+    if let Ok(mut g) = BACKEND.lock() {
+        *g = None;
+    }
+}
+
+/// Inject input-state values for the Quest-3s default-bindings.
+/// `controller_idx ∈ {0=left, 1=right}` ; trigger + grip are
+/// f32 ∈ [0,1] ; thumb_x + thumb_y are f32 ∈ [-1,1] ; buttons is the
+/// 5-bit bitset (primary, secondary, thumb-click, trigger-touch,
+/// grip-touch). Used by tests + the engine-side capture path.
+#[doc(hidden)]
+pub fn set_input_for_tests(
+    controller_idx: u32,
+    trigger: f32,
+    grip: f32,
+    thumb_x: f32,
+    thumb_y: f32,
+    buttons: u32,
+) {
+    ensure_backend_initialized();
+    if let Ok(mut g) = BACKEND.lock() {
+        if let Some(api) = g.as_mut() {
+            let (trig_a, grip_a, tx, ty, primary, secondary, thumb_click, trig_touch, grip_touch) =
+                if controller_idx == 0 {
+                    (
+                        ACTION_TRIGGER_VALUE_LEFT,
+                        ACTION_GRIP_VALUE_LEFT,
+                        ACTION_THUMBSTICK_X_LEFT,
+                        ACTION_THUMBSTICK_Y_LEFT,
+                        ACTION_BUTTON_PRIMARY_LEFT,
+                        ACTION_BUTTON_SECONDARY_LEFT,
+                        ACTION_BUTTON_THUMB_CLICK_LEFT,
+                        ACTION_BUTTON_TRIG_TOUCH_LEFT,
+                        ACTION_BUTTON_GRIP_TOUCH_LEFT,
+                    )
+                } else {
+                    (
+                        ACTION_TRIGGER_VALUE_RIGHT,
+                        ACTION_GRIP_VALUE_RIGHT,
+                        ACTION_THUMBSTICK_X_RIGHT,
+                        ACTION_THUMBSTICK_Y_RIGHT,
+                        ACTION_BUTTON_PRIMARY_RIGHT,
+                        ACTION_BUTTON_SECONDARY_RIGHT,
+                        ACTION_BUTTON_THUMB_CLICK_RIGHT,
+                        ACTION_BUTTON_TRIG_TOUCH_RIGHT,
+                        ACTION_BUTTON_GRIP_TOUCH_RIGHT,
+                    )
+                };
+            api.input_state.set_float(trig_a, trigger.clamp(0.0, 1.0));
+            api.input_state.set_float(grip_a, grip.clamp(0.0, 1.0));
+            api.input_state.set_float(tx, thumb_x.clamp(-1.0, 1.0));
+            api.input_state.set_float(ty, thumb_y.clamp(-1.0, 1.0));
+            api.input_state.set_bool(primary, (buttons & 0x1) != 0);
+            api.input_state.set_bool(secondary, (buttons & 0x2) != 0);
+            api.input_state.set_bool(thumb_click, (buttons & 0x4) != 0);
+            api.input_state.set_bool(trig_touch, (buttons & 0x8) != 0);
+            api.input_state.set_bool(grip_touch, (buttons & 0x10) != 0);
+        }
+    }
+}
+
+/// Probe whether the OpenXR runtime-loader is reachable. Stage-0 returns
+/// `true` once the mock backend installs ; future waves return `true` only
+/// after `xrInitializeLoaderKHR` + `xrGetInstanceProcAddr` resolve.
+#[must_use]
+pub fn openxr_loader_probe() -> bool {
+    backend_ready()
+}
+
+/// Encode an `XrPosef` as the canonical 28-byte payload :
+/// `(x, y, z, qx, qy, qz, qw)` little-endian f32. Matches `XR_POSE_BYTES`.
+#[inline]
+fn encode_posef_bytes(pose: &XrPosef, out: &mut [u8; XR_POSE_BYTES]) {
+    let floats: [f32; 7] = [
+        pose.position.x,
+        pose.position.y,
+        pose.position.z,
+        pose.orientation.x,
+        pose.orientation.y,
+        pose.orientation.z,
+        pose.orientation.w,
+    ];
+    for (i, f) in floats.iter().enumerate() {
+        out[i * 4..(i + 1) * 4].copy_from_slice(&f.to_le_bytes());
+    }
+}
+
+/// Decode a 28-byte payload back into a 7-tuple of floats. Used by tests.
+#[must_use]
+#[doc(hidden)]
+pub fn decode_posef_bytes(buf: &[u8; XR_POSE_BYTES]) -> (f32, f32, f32, f32, f32, f32, f32) {
+    let mut floats = [0.0f32; 7];
+    for i in 0..7 {
+        let mut b = [0u8; 4];
+        b.copy_from_slice(&buf[i * 4..(i + 1) * 4]);
+        floats[i] = f32::from_le_bytes(b);
+    }
+    (floats[0], floats[1], floats[2], floats[3], floats[4], floats[5], floats[6])
+}
+
+/// Quantize controller axes into the 8-byte input-state payload :
+///   - byte 0 : trigger (u8 [0..=255], = round(v * 255))
+///   - byte 1 : grip (u8 [0..=255])
+///   - byte 2 : thumbstick-x (i8 [-128..=127], = round(v * 127))
+///   - byte 3 : thumbstick-y (i8 [-128..=127])
+///   - bytes 4..8 : button bitset (u32-LE)
+#[inline]
+fn encode_input_state_bytes(
+    trigger: f32,
+    grip: f32,
+    thumb_x: f32,
+    thumb_y: f32,
+    buttons: u32,
+    out: &mut [u8; XR_INPUT_STATE_BYTES],
+) {
+    let q_u8 = |v: f32| -> u8 {
+        let c = v.clamp(0.0, 1.0);
+        (c * 255.0).round() as u8
+    };
+    let q_i8 = |v: f32| -> i8 {
+        let c = v.clamp(-1.0, 1.0);
+        (c * 127.0).round() as i8
+    };
+    out[0] = q_u8(trigger);
+    out[1] = q_u8(grip);
+    out[2] = q_i8(thumb_x) as u8;
+    out[3] = q_i8(thumb_y) as u8;
+    out[4..8].copy_from_slice(&buttons.to_le_bytes());
+}
+
+/// Decode an 8-byte input-state payload into (trigger, grip, thumb_x,
+/// thumb_y, buttons). Used by tests + telemetry round-trip witnesses.
+#[must_use]
+#[doc(hidden)]
+pub fn decode_input_state_bytes(buf: &[u8; XR_INPUT_STATE_BYTES]) -> (f32, f32, f32, f32, u32) {
+    let trigger = f32::from(buf[0]) / 255.0;
+    let grip = f32::from(buf[1]) / 255.0;
+    let thumb_x = f32::from(buf[2] as i8) / 127.0;
+    let thumb_y = f32::from(buf[3] as i8) / 127.0;
+    let mut bb = [0u8; 4];
+    bb.copy_from_slice(&buf[4..8]);
+    let buttons = u32::from_le_bytes(bb);
+    (trigger, grip, thumb_x, thumb_y, buttons)
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Pure-Rust `*_impl` helpers (delegate from extern symbols).
 //
 //   These are testable without going through the FFI boundary. Each
@@ -480,10 +726,13 @@ pub fn xr_session_create_impl(flags: u32) -> u64 {
         record_xr_error(xr_error_code::SESSION_LIMIT, 0);
         return INVALID_XR_HANDLE;
     };
-    // SWAP-POINT : on Windows / Quest builds, we'd call
-    // cssl_host_openxr::session::create() here. The stage-0 stub uses
-    // a deterministic generation-counter so pure-Rust tests are
-    // reproducible. The generation MUST be ≥ 1 (0 = free / invalid).
+    // § T11-D272 (W-J-XR) : real swap-in path. The generation-counter
+    // discipline is unchanged ; we additionally install / refresh the
+    // `cssl_host_openxr::ffi` backend so pose / input / swapchain ops
+    // route through the real abstraction. On hosted stage-0 the
+    // backend is `MockOpenXrApi` configured for Quest-3s default-
+    // bindings ; future waves dlopen the dispatch-table + install
+    // `OpenXrHostApi`.
     static GENERATION_COUNTER: AtomicU32 = AtomicU32::new(0);
     let gen = GENERATION_COUNTER.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
     let gen = if gen == 0 { 1 } else { gen };
@@ -494,6 +743,8 @@ pub fn xr_session_create_impl(flags: u32) -> u64 {
         last_image_right: 0,
         image_counter: 0,
     };
+    drop(g);
+    ensure_backend_initialized();
     SESSION_CREATE_COUNT.fetch_add(1, Ordering::Relaxed);
     record_xr_error(xr_error_code::SUCCESS, 0);
     #[allow(clippy::cast_possible_truncation)]
@@ -570,16 +821,61 @@ pub unsafe fn xr_pose_stream_impl(
         record_xr_error(xr_error_code::BUFFER_TOO_SMALL, 0);
         return -1;
     }
-    // SWAP-POINT : on Quest / Vision Pro builds, we'd call
-    // cssl_host_openxr::session::locate_views() + ::locate_action_space()
-    // here. The stage-0 stub writes deterministic-zero floats.
-    //
+    // § T11-D272 (W-J-XR) : real swap-in via cssl_host_openxr::ffi.
+    // Build the 84-byte payload from backend-supplied poses :
+    //   bytes 0..28   : head pose (midpoint of left + right view-poses)
+    //   bytes 28..56  : left controller grip-pose
+    //   bytes 56..84  : right controller grip-pose
+    let mut head_buf = [0u8; XR_POSE_BYTES];
+    let mut left_buf = [0u8; XR_POSE_BYTES];
+    let mut right_buf = [0u8; XR_POSE_BYTES];
+    {
+        ensure_backend_initialized();
+        let Ok(mut g) = BACKEND.lock() else {
+            record_xr_error(xr_error_code::OTHER, 0);
+            return -1;
+        };
+        let Some(api) = g.as_mut() else {
+            record_xr_error(xr_error_code::RUNTIME_NOT_PRESENT, 0);
+            return -1;
+        };
+        // `xrBeginFrame` : on the mock impl this bumps a counter ;
+        // on the real impl it issues the FFI call against the
+        // dispatch-table. Failing that doesn't abort the pose-stream —
+        // we still serialize whatever poses the backend has.
+        let _ = api.frame_begin();
+        let left_eye = api.view_locate(XR_EYE_LEFT).unwrap_or_default();
+        let right_eye = api.view_locate(XR_EYE_RIGHT).unwrap_or_default();
+        let head_pose = XrPosef {
+            orientation: left_eye.0.orientation,
+            position: Vector3f {
+                x: (left_eye.0.position.x + right_eye.0.position.x) * 0.5,
+                y: (left_eye.0.position.y + right_eye.0.position.y) * 0.5,
+                z: (left_eye.0.position.z + right_eye.0.position.z) * 0.5,
+            },
+        };
+        encode_posef_bytes(&head_pose, &mut head_buf);
+        let left_grip = api
+            .action_state_pose(ACTION_GRIP_POSE_LEFT)
+            .unwrap_or_default();
+        let right_grip = api
+            .action_state_pose(ACTION_GRIP_POSE_RIGHT)
+            .unwrap_or_default();
+        encode_posef_bytes(&left_grip, &mut left_buf);
+        encode_posef_bytes(&right_grip, &mut right_buf);
+    }
     // SAFETY : caller pre-cond promises head_pose_out is valid for
-    // `max_len ≥ XR_POSE_STREAM_BYTES` bytes ; we write exactly the
-    // payload size which is bounded.
+    // `max_len ≥ XR_POSE_STREAM_BYTES` bytes ; we write exactly 84
+    // bytes (head 28 + left 28 + right 28) which is bounded.
     unsafe {
-        for i in 0..XR_POSE_STREAM_BYTES {
-            *head_pose_out.add(i) = 0u8;
+        for (i, &b) in head_buf.iter().enumerate() {
+            *head_pose_out.add(i) = b;
+        }
+        for (i, &b) in left_buf.iter().enumerate() {
+            *head_pose_out.add(XR_POSE_BYTES + i) = b;
+        }
+        for (i, &b) in right_buf.iter().enumerate() {
+            *head_pose_out.add(XR_POSE_BYTES * 2 + i) = b;
         }
     }
     // If caller passes a separate controller-pose buffer, mirror the
@@ -587,8 +883,11 @@ pub unsafe fn xr_pose_stream_impl(
     if !controller_pose_out.is_null() {
         // SAFETY : same bounded-write contract.
         unsafe {
-            for i in 0..(XR_POSE_BYTES * 2) {
-                *controller_pose_out.add(i) = 0u8;
+            for (i, &b) in left_buf.iter().enumerate() {
+                *controller_pose_out.add(i) = b;
+            }
+            for (i, &b) in right_buf.iter().enumerate() {
+                *controller_pose_out.add(XR_POSE_BYTES + i) = b;
             }
         }
     }
@@ -640,10 +939,23 @@ pub unsafe fn xr_swapchain_stereo_acquire_impl(
     } else {
         g[slot_idx].last_image_right = img;
     }
-    // SWAP-POINT : real OpenXR dispatch via xrAcquireSwapchainImage +
-    // xrWaitSwapchainImage for the per-eye Vulkan/D3D12/Metal image.
-    // The stage-0 stub returns the monotonic image_counter.
-    //
+    drop(g);
+    // § T11-D272 (W-J-XR) : route the acquire through the real backend.
+    // The mock impl returns Some(0) ; the real impl issues
+    // `xrAcquireSwapchainImage` + `xrWaitSwapchainImage` against the
+    // dispatch-table. We treat backend failure as a soft fallback —
+    // the per-session monotonic image_counter still serves as the
+    // engine-side image-id.
+    {
+        ensure_backend_initialized();
+        if let Ok(mut bg) = BACKEND.lock() {
+            if let Some(api) = bg.as_mut() {
+                let _ = api.swapchain_acquire(
+                    cssl_host_openxr::ffi::SwapchainHandle(img),
+                );
+            }
+        }
+    }
     // SAFETY : caller pre-cond promises image_out is non-null + aligned.
     unsafe {
         *image_out = img;
@@ -689,6 +1001,18 @@ pub fn xr_swapchain_stereo_release_impl(session: u64, eye: u32, image: u64) -> i
     } else {
         g[slot_idx].last_image_right = 0;
     }
+    drop(g);
+    // § T11-D272 (W-J-XR) : route the release through the real backend.
+    {
+        ensure_backend_initialized();
+        if let Ok(mut bg) = BACKEND.lock() {
+            if let Some(api) = bg.as_mut() {
+                let _ = api.swapchain_release(
+                    cssl_host_openxr::ffi::SwapchainHandle(image),
+                );
+            }
+        }
+    }
     SWAPCHAIN_RELEASE_COUNT.fetch_add(1, Ordering::Relaxed);
     record_xr_error(xr_error_code::SUCCESS, 0);
     0
@@ -731,14 +1055,76 @@ pub unsafe fn xr_input_state_impl(
         record_xr_error(xr_error_code::BUFFER_TOO_SMALL, 0);
         return -1;
     }
-    // SWAP-POINT : on Quest / Vision Pro builds, we'd call
-    // cssl_host_openxr::action::poll_input_state() here. Stage-0 stub
-    // writes deterministic-zero state.
-    //
+    // § T11-D272 (W-J-XR) : real swap-in via cssl_host_openxr::ffi.
+    // Query the backend for trigger / grip / thumbstick / button state
+    // for the requested controller side ; serialize into the canonical
+    // 8-byte payload (axes-quantized + button-bitset).
+    let mut state_buf = [0u8; XR_INPUT_STATE_BYTES];
+    {
+        ensure_backend_initialized();
+        let Ok(mut g) = BACKEND.lock() else {
+            record_xr_error(xr_error_code::OTHER, 0);
+            return -1;
+        };
+        let Some(api) = g.as_mut() else {
+            record_xr_error(xr_error_code::RUNTIME_NOT_PRESENT, 0);
+            return -1;
+        };
+        // Sync action-state cache from the runtime ; on the mock impl
+        // this is a no-op, on the real impl it issues `xrSyncActions`.
+        let _ = api.action_sync();
+        let (trig_a, grip_a, tx_a, ty_a, primary, secondary, thumb_click, trig_touch, grip_touch) =
+            if controller_idx == 0 {
+                (
+                    ACTION_TRIGGER_VALUE_LEFT,
+                    ACTION_GRIP_VALUE_LEFT,
+                    ACTION_THUMBSTICK_X_LEFT,
+                    ACTION_THUMBSTICK_Y_LEFT,
+                    ACTION_BUTTON_PRIMARY_LEFT,
+                    ACTION_BUTTON_SECONDARY_LEFT,
+                    ACTION_BUTTON_THUMB_CLICK_LEFT,
+                    ACTION_BUTTON_TRIG_TOUCH_LEFT,
+                    ACTION_BUTTON_GRIP_TOUCH_LEFT,
+                )
+            } else {
+                (
+                    ACTION_TRIGGER_VALUE_RIGHT,
+                    ACTION_GRIP_VALUE_RIGHT,
+                    ACTION_THUMBSTICK_X_RIGHT,
+                    ACTION_THUMBSTICK_Y_RIGHT,
+                    ACTION_BUTTON_PRIMARY_RIGHT,
+                    ACTION_BUTTON_SECONDARY_RIGHT,
+                    ACTION_BUTTON_THUMB_CLICK_RIGHT,
+                    ACTION_BUTTON_TRIG_TOUCH_RIGHT,
+                    ACTION_BUTTON_GRIP_TOUCH_RIGHT,
+                )
+            };
+        let trigger = api.action_state_float(trig_a).unwrap_or(0.0);
+        let grip = api.action_state_float(grip_a).unwrap_or(0.0);
+        let thumb_x = api.action_state_float(tx_a).unwrap_or(0.0);
+        let thumb_y = api.action_state_float(ty_a).unwrap_or(0.0);
+        let mut buttons = 0u32;
+        if api.action_state_bool(primary).unwrap_or(false) {
+            buttons |= 0x1;
+        }
+        if api.action_state_bool(secondary).unwrap_or(false) {
+            buttons |= 0x2;
+        }
+        if api.action_state_bool(thumb_click).unwrap_or(false) {
+            buttons |= 0x4;
+        }
+        if api.action_state_bool(trig_touch).unwrap_or(false) {
+            buttons |= 0x8;
+        }
+        if api.action_state_bool(grip_touch).unwrap_or(false) {
+            buttons |= 0x10;
+        }
+        encode_input_state_bytes(trigger, grip, thumb_x, thumb_y, buttons, &mut state_buf);
+    }
     // SAFETY : caller pre-cond promises state_out valid for ≥ 8 bytes.
     unsafe {
-        for i in 0..XR_INPUT_STATE_BYTES {
-            *state_out.add(i) = 0u8;
+        for (i, &b) in state_buf.iter().enumerate() {
+            *state_out.add(i) = b;
         }
     }
     INPUT_STATE_COUNT.fetch_add(1, Ordering::Relaxed);
@@ -1132,10 +1518,13 @@ mod tests {
             xr_pose_stream_impl(h, head.as_mut_ptr(), core::ptr::null_mut(), head.len())
         };
         assert_eq!(r, XR_POSE_STREAM_BYTES as i32);
-        // First 84 bytes overwritten ; deterministic-zero stub.
-        for &b in &head {
-            assert_eq!(b, 0);
-        }
+        // § T11-D272 (W-J-XR) : the cssl_host_openxr backend writes
+        // real Quest-3s pose payloads ; the head pose has the synthetic
+        // standing-eye-height (1.6m) so the buffer is no longer all-zeros.
+        // Witness : at least one byte across the 84-byte payload differs
+        // from the pre-fill 0xFF.
+        let any_overwritten = head.iter().any(|&b| b != 0xFF);
+        assert!(any_overwritten, "buffer must be overwritten");
     }
 
     #[test]
@@ -1178,10 +1567,9 @@ mod tests {
             xr_pose_stream_impl(h, head.as_mut_ptr(), ctrl.as_mut_ptr(), head.len())
         };
         assert_eq!(r, XR_POSE_STREAM_BYTES as i32);
-        // Both buffers overwritten by the deterministic-zero stub.
-        for &b in &ctrl {
-            assert_eq!(b, 0, "controller buffer must be overwritten");
-        }
+        // § T11-D272 : both buffers overwritten with real backend poses.
+        let any_ctrl_changed = ctrl.iter().any(|&b| b != 0xAA);
+        assert!(any_ctrl_changed, "controller buffer must be overwritten");
     }
 
     // ── stereo-swapchain acquire-release roundtrip ─────────────────────
@@ -1242,6 +1630,11 @@ mod tests {
             xr_input_state_impl(h, 0, state.as_mut_ptr(), state.len())
         };
         assert_eq!(r, XR_INPUT_STATE_BYTES as i32);
+        // § T11-D272 : with no input injected, the backend defaults to
+        // 0.0 axes + 0 buttons → all 8 bytes are zero. Witness :
+        // every byte is overwritten (was 0xFF pre-fill).
+        let any_overwritten = state.iter().any(|&b| b != 0xFF);
+        assert!(any_overwritten, "buffer must be overwritten");
         for &b in &state {
             assert_eq!(b, 0);
         }
@@ -1308,6 +1701,130 @@ mod tests {
         };
         assert_eq!(r2, -1);
         assert_eq!(last_xr_error_kind(), xr_error_code::INVALID_SESSION);
+    }
+
+    // ── § T11-D272 (W-J-XR) cssl-host-openxr swap-in tests ─────────────
+
+    #[test]
+    fn t11_d272_stub_path_still_works_session_pose_input_roundtrip() {
+        // STUB-still-works : after the swap-in, the same flow that worked
+        // pre-D272 must still complete cleanly when no input is injected.
+        let _g = lock_and_reset();
+        xr_caps_grant(XR_CAP_SESSION | XR_CAP_POSE_HEAD | XR_CAP_POSE_CONTROLLER | XR_CAP_INPUT);
+        let h = xr_session_create_impl(0);
+        assert_ne!(h, INVALID_XR_HANDLE);
+        let mut head = [0u8; XR_POSE_STREAM_BYTES];
+        let r = unsafe {
+            xr_pose_stream_impl(h, head.as_mut_ptr(), core::ptr::null_mut(), head.len())
+        };
+        assert_eq!(r, XR_POSE_STREAM_BYTES as i32);
+        let mut state = [0u8; XR_INPUT_STATE_BYTES];
+        let r2 = unsafe { xr_input_state_impl(h, 0, state.as_mut_ptr(), state.len()) };
+        assert_eq!(r2, XR_INPUT_STATE_BYTES as i32);
+        let r3 = xr_session_destroy_impl(h);
+        assert_eq!(r3, 0);
+    }
+
+    #[test]
+    fn t11_d272_openxr_loader_probe_after_session_create() {
+        // openxr-loader-probe-mock : the probe returns true once the
+        // backend is installed (mock or real). Pre-session, false.
+        let _g = lock_and_reset();
+        assert!(!super::openxr_loader_probe(), "no backend pre-init");
+        xr_caps_grant(XR_CAP_SESSION);
+        let h = xr_session_create_impl(0);
+        assert_ne!(h, INVALID_XR_HANDLE);
+        assert!(super::openxr_loader_probe(), "backend installed at create");
+    }
+
+    #[test]
+    fn t11_d272_session_state_machine_drives_to_focused_via_backend() {
+        // session-state-machine : the backend session-state machine
+        // (UNKNOWN → IDLE → READY → SYNCHRONIZED → VISIBLE → FOCUSED)
+        // must be reachable through cssl_host_openxr::ffi::MockSession.
+        use cssl_host_openxr::ffi::session::{MockSession, SessionState};
+        let _g = lock_and_reset();
+        let mut s = MockSession::create(0xC551_BEEF).expect("create");
+        assert_eq!(s.state, SessionState::Idle);
+        let r = s.drive_to_focused();
+        assert_eq!(r, cssl_host_openxr::ffi::XrResult::SUCCESS);
+        assert!(s.reached_focused());
+        assert_eq!(s.state, SessionState::Focused);
+    }
+
+    #[test]
+    fn t11_d272_pose_decode_roundtrip_through_84_byte_payload() {
+        // pose-decode-roundtrip : encoding a known pose through
+        // `encode_posef_bytes` + decoding via `decode_posef_bytes`
+        // must reproduce the inputs (modulo f32 rounding).
+        use cssl_host_openxr::ffi::{Quaternionf, Vector3f, XrPosef};
+        use core::f32::consts::FRAC_1_SQRT_2;
+        let _g = lock_and_reset();
+        xr_caps_grant(XR_CAP_SESSION | XR_CAP_POSE_HEAD | XR_CAP_POSE_CONTROLLER);
+        let h = xr_session_create_impl(0);
+        // Inject a known grip-pose for the right controller through
+        // the backend, then read the 84-byte payload back through the
+        // FFI surface and decode the right-controller-pose section.
+        // 90° rotation about Y axis : qy = qw = 1/sqrt(2).
+        let known_pose = XrPosef {
+            orientation: Quaternionf { x: 0.0, y: FRAC_1_SQRT_2, z: 0.0, w: FRAC_1_SQRT_2 },
+            position: Vector3f { x: 0.5, y: 1.5, z: -0.25 },
+        };
+        if let Ok(mut g) = super::BACKEND.lock() {
+            if let Some(api) = g.as_mut() {
+                api.input_state.set_pose(super::ACTION_GRIP_POSE_RIGHT, known_pose);
+            }
+        }
+        let mut head = [0u8; XR_POSE_STREAM_BYTES];
+        let r = unsafe {
+            xr_pose_stream_impl(h, head.as_mut_ptr(), core::ptr::null_mut(), head.len())
+        };
+        assert_eq!(r, XR_POSE_STREAM_BYTES as i32);
+        // bytes 56..84 = right-controller pose
+        let mut right = [0u8; XR_POSE_BYTES];
+        right.copy_from_slice(&head[XR_POSE_BYTES * 2..]);
+        let (px, py, pz, qx, qy, qz, qw) = super::decode_posef_bytes(&right);
+        assert!((px - 0.5).abs() < 1e-5);
+        assert!((py - 1.5).abs() < 1e-5);
+        assert!((pz - (-0.25)).abs() < 1e-5);
+        assert!((qy - FRAC_1_SQRT_2).abs() < 1e-5);
+        assert!((qw - FRAC_1_SQRT_2).abs() < 1e-5);
+        assert!(qx.abs() < 1e-5);
+        assert!(qz.abs() < 1e-5);
+    }
+
+    #[test]
+    fn t11_d272_controller_input_decode_roundtrip_8_bytes() {
+        // controller-input-decode : injecting controller axes + buttons
+        // via `set_input_for_tests`, reading via `xr_input_state_impl`,
+        // and decoding via `decode_input_state_bytes` must round-trip.
+        let _g = lock_and_reset();
+        xr_caps_grant(XR_CAP_SESSION | XR_CAP_INPUT);
+        let h = xr_session_create_impl(0);
+        // Trigger 0.5, grip 0.75, thumb (0.25, -0.5), buttons primary +
+        // trigger-touch (= 0x1 | 0x8 = 0x9).
+        super::set_input_for_tests(0, 0.5, 0.75, 0.25, -0.5, 0x9);
+        let mut state = [0u8; XR_INPUT_STATE_BYTES];
+        let r = unsafe { xr_input_state_impl(h, 0, state.as_mut_ptr(), state.len()) };
+        assert_eq!(r, XR_INPUT_STATE_BYTES as i32);
+        let (trigger, grip, thumb_x, thumb_y, buttons) = super::decode_input_state_bytes(&state);
+        // 8-bit u8 quantization : tolerate 1/255 ≈ 0.004 error.
+        assert!((trigger - 0.5).abs() < 0.01, "trigger = {trigger}");
+        assert!((grip - 0.75).abs() < 0.01, "grip = {grip}");
+        // 7-bit i8 quantization : tolerate 1/127 ≈ 0.008 error.
+        assert!((thumb_x - 0.25).abs() < 0.01, "thumb_x = {thumb_x}");
+        assert!((thumb_y - (-0.5)).abs() < 0.01, "thumb_y = {thumb_y}");
+        assert_eq!(buttons, 0x9);
+        // Right-controller is independent of left.
+        super::set_input_for_tests(1, 1.0, 0.0, 0.0, 0.0, 0x2);
+        let mut state_r = [0u8; XR_INPUT_STATE_BYTES];
+        let r2 = unsafe {
+            xr_input_state_impl(h, 1, state_r.as_mut_ptr(), state_r.len())
+        };
+        assert_eq!(r2, XR_INPUT_STATE_BYTES as i32);
+        let (tr, _gr, _, _, br) = super::decode_input_state_bytes(&state_r);
+        assert!((tr - 1.0).abs() < 0.01);
+        assert_eq!(br, 0x2);
     }
 
     // ── extern-C symbol arity (compile-time witness) ───────────────────
