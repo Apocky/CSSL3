@@ -112,6 +112,13 @@ pub mod host_xr;
 pub mod io;
 #[cfg(not(target_os = "windows"))]
 pub mod io_unix;
+// § T11-D317 (W-CSSL-rt-LoA-stubs) — host-symbol stubs for the LoA
+// `__cssl_*` FFI surface (window / GPU / ω-field / time / telemetry /
+// audio / MCP / cap / player / scene / utility). Stage-1 backend-binding
+// work incrementally replaces each stub with its real implementation ;
+// the ABI signatures locked here are the stable contract LoA scenes
+// link against. See `loa_stubs.rs` § STAGE-1 PATH per-symbol.
+pub mod loa_stubs;
 #[cfg(target_os = "windows")]
 pub mod io_win32;
 pub mod net;
@@ -201,6 +208,15 @@ pub use host_xr::{
     XR_CAP_POSE_CONTROLLER, XR_CAP_POSE_HEAD, XR_CAP_SESSION, XR_CAP_SWAPCHAIN, XR_EYE_COUNT,
     XR_EYE_LEFT, XR_EYE_RIGHT, XR_INPUT_STATE_BYTES, XR_MAX_SESSIONS, XR_POSE_BYTES,
     XR_POSE_STREAM_BYTES,
+};
+// § T11-D317 (W-CSSL-rt-LoA-stubs) — re-export the LoA-stub surface so
+// downstream tests + cgen-side helpers can reach the constants/handles
+// without going through the FFI boundary. Each symbol's `extern "C"`
+// `#[no_mangle]` export is what LoA scenes link against ; these re-exports
+// are convenience for Rust-side consumers.
+pub use loa_stubs::{
+    loa_monotonic_count, FIELD_CELL_BYTES, LOA_ERR, LOA_INVALID_HANDLE, LOA_OK, LOA_TRUE,
+    MCP_TOOL_REGISTRY_CAP, PLAYER_STATE_BYTES, TELEMETRY_PAYLOAD_MAX, TELEMETRY_RING_CAP,
 };
 pub use io::{
     bytes_read_total, bytes_written_total, close_count, io_error_code, last_io_error_kind,
