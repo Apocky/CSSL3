@@ -62,10 +62,10 @@
 #![allow(clippy::similar_names)]
 #![allow(dead_code)]
 
-use cssl_ast::{Module, SourceFile, SourceId, Surface};
+use cssl_ast::{SourceFile, SourceId, Surface};
 use cssl_cgen_cpu_cranelift::{JitError, JitModule};
 use cssl_hir::HirModule;
-use cssl_mir::{LowerCtx, MirFunc, MirModule};
+use cssl_mir::{LowerCtx, MirFunc, MirModule, PassPipeline};
 
 // ════════════════════════════════════════════════════════════════════════
 // § WaveAPipeline — composer for the lex → parse → HIR → MIR pipeline.
@@ -159,6 +159,15 @@ pub fn run_pipeline(name: &str, source: &str) -> (WaveAOutcome, MirModule) {
 
 /// Lower every `HirItem::Fn` in `module` to MIR. Mirrors the shape used in
 /// `lib.rs::run_f1_chain` so behaviour stays in sync with the F1 chain.
+///
+/// § W-A7 (T11-D244) — after lowering, runs the canonical
+/// [`PassPipeline::canonical`] over the produced module so the
+/// `TaggedUnionAbiPass` + `TryOpLowerPass` + (when present) `StringAbiPass`
+/// expansions are applied BEFORE the JIT sees the MIR. Without this the
+/// JIT's cgen layer encounters raw `cssl.option.*` / `cssl.result.*` /
+/// `cssl.try` ops which the stage-0 scalar-arith path doesn't understand
+/// (the canonical-pipeline is what rewrites them into tag-dispatched
+/// scalar-pair shapes).
 fn lower_hir_to_mir(file: &SourceFile, module: &HirModule, interner: &cssl_hir::Interner) -> MirModule {
     let lower_ctx = LowerCtx::new(interner);
     let mut mir_mod = MirModule::new();
@@ -169,6 +178,12 @@ fn lower_hir_to_mir(file: &SourceFile, module: &HirModule, interner: &cssl_hir::
             mir_mod.push_func(mf);
         }
     }
+    // Run the canonical MIR-pass pipeline so tagged-union + try-op
+    // expansions are stamped before JIT-compile. Pass-result diagnostics
+    // are intentionally discarded here ; the W-A pipeline-clean tests
+    // assert only that lex/parse/HIR-lower produced no errors. If a pass
+    // fails the JIT compile-step downstream is the canonical signal.
+    let _diags = PassPipeline::canonical().run_all(&mut mir_mod);
     mir_mod
 }
 
@@ -191,6 +206,52 @@ pub fn jit_finalize_one(module: &MirModule, entry: &str) -> Result<(JitModule, c
     let handle = jm.compile(mf)?;
     jm.finalize()?;
     Ok((jm, handle))
+}
+
+/// Attempt to JIT-compile EVERY fn in `module` then finalize. Returns the
+/// finalized JitModule plus the `JitFn` handle for `entry`. This is the
+/// canonical shape for end-to-end Wave-A gates whose `main()` calls into
+/// other user-defined helpers (`extract` / `parse_ok` / `add_two_pos`).
+///
+/// Functions that fail the per-fn `compile` step are skipped (their MIR may
+/// reference Wave-A op-emit slices that the recognizer hasn't wired in yet
+/// — e.g. `vec_new` / `vec_push` / `vec_index`). The caller-facing error
+/// is delayed to the `entry` lookup or the final `finalize`.
+///
+/// # Errors
+/// Propagates `JitError` from the entry-point `compile` or `finalize`.
+pub fn jit_finalize_all(module: &MirModule, entry: &str) -> Result<(JitModule, cssl_cgen_cpu_cranelift::JitFn), JitError> {
+    let mut jm = JitModule::new();
+    // Compile callees first so the entry's `func.call` ops resolve to
+    // already-compiled FuncRefs ; entry compiled last to ensure all
+    // declared callees exist.
+    let mut callee_errors: Vec<String> = Vec::new();
+    for mf in &module.funcs {
+        if mf.name == entry {
+            continue;
+        }
+        if let Err(e) = jm.compile(mf) {
+            callee_errors.push(format!("callee `{}` failed : {e}", mf.name));
+        }
+    }
+    let mf = find_fn(module, entry)
+        .ok_or_else(|| JitError::UnknownFunction { name: entry.to_string() })?;
+    let entry_handle = match jm.compile(mf) {
+        Ok(h) => h,
+        Err(e) => {
+            // Surface accumulated callee-compile errors alongside the entry
+            // failure so the test panic actually reveals the upstream cause.
+            if !callee_errors.is_empty() {
+                eprintln!(
+                    "[jit_finalize_all] entry `{entry}` failed ; prior callee compile errors :\n  - {}",
+                    callee_errors.join("\n  - ")
+                );
+            }
+            return Err(e);
+        }
+    };
+    jm.finalize()?;
+    Ok((jm, entry_handle))
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -303,7 +364,7 @@ fn try_jit_main_returns_i32(name: &str, source: &str) -> Result<i32, String> {
             outcome.summary()
         ));
     }
-    let (jm, handle) = jit_finalize_one(&mir_mod, "main")
+    let (jm, handle) = jit_finalize_all(&mir_mod, "main")
         .map_err(|e| format!("JIT compile/finalize failed : {e}"))?;
     handle
         .call_unit_to_i32(&jm)
@@ -371,8 +432,18 @@ mod tests {
     /// `W-B-RECOGNIZER` is still landing. Run with
     /// `cargo test -p cssl-examples wave_a_endtoend_gate -- --ignored`
     /// once the recognizer is wired in.
+    /// W-A1 (tagged-union ABI) JIT-execute. Currently DEFERRED on a real
+    /// bug : `TaggedUnionAbiPass` rewrites the body OPS but leaves fn
+    /// SIGNATURES carrying `Option<T>` / `Result<T, E>` types. The JIT's
+    /// `mir_to_cl_type` rejects those because they're not scalar-JIT-able.
+    /// True fix is a Wave-A1-α follow-up : either (a) extend
+    /// `TaggedUnionAbiPass` to rewrite signatures into a scalar-pair
+    /// `(tag : u32, payload : i64)` shape, or (b) teach the JIT
+    /// `mir_to_cl_type` to lower `MirType::Adt("Option" | "Result", _)`
+    /// to a scalar-pair ABI (out-param + i32 result). Tracked for a
+    /// future wave (NOT W-A7 scope).
     #[test]
-    #[ignore = "JIT-execute path requires W-B-RECOGNIZER body_lower wire-in"]
+    #[ignore = "BUG-FOUND: TaggedUnionAbiPass rewrites body-ops but NOT fn signatures ; JIT mir_to_cl_type rejects MirType::Adt(Option, _) — needs Wave-A1-α follow-up"]
     fn wave_a1_option_some_jit_returns_42() {
         match try_jit_main_returns_i32("wave-a1-option-some", WAVE_A1_OPTION_SOME) {
             Ok(code) => assert_eq!(code, 42, "expected 42, got {code}"),
@@ -381,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "JIT-execute path requires W-B-RECOGNIZER body_lower wire-in"]
+    #[ignore = "BUG-FOUND: TaggedUnionAbiPass rewrites body-ops but NOT fn signatures ; JIT mir_to_cl_type rejects MirType::Adt(Result, _) — needs Wave-A1-α follow-up"]
     fn wave_a1_result_ok_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a1-result-ok", WAVE_A1_RESULT_OK) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
@@ -404,8 +475,15 @@ mod tests {
         assert_eq!(out.mir_fn_count, 1, "{}", out.summary());
     }
 
+    /// W-A2 (typed-memref) JIT-execute. Currently DEFERRED : `vec_new` /
+    /// `vec_push` / `vec_index` are stdlib intrinsics with no user-defined
+    /// MIR body — the body_lower recognizer (W-B-RECOGNIZER) emits cssl.
+    /// memref.* ops only for `vec_drop` / `load_at` / `store_at` / `end_of`.
+    /// `vec_new` + `vec_push` + `vec_index` need their own recognizer arms
+    /// (Wave-A2-α follow-up : cssl.heap.alloc + cssl.memref.store + cssl.
+    /// memref.load) before this test can pass end-to-end.
     #[test]
-    #[ignore = "JIT-execute path requires W-B-RECOGNIZER memref-typed wire-in"]
+    #[ignore = "BUG-FOUND: `vec_new` / `vec_push` / `vec_index` recognizers not yet wired ; only `vec_drop` / `load_at` / `store_at` / `end_of` recognized — needs Wave-A2-α follow-up"]
     fn wave_a2_vec_push_index_jit_returns_13() {
         match try_jit_main_returns_i32("wave-a2-vec-push-index", WAVE_A2_VEC_PUSH_INDEX) {
             Ok(code) => assert_eq!(code, 13, "expected 13, got {code}"),
@@ -426,8 +504,12 @@ mod tests {
         assert!(out.mir_fn_count >= 3, "{}", out.summary());
     }
 
+    /// W-A3 (?-op) JIT-execute. Same blocker as W-A1 : `must_be_positive`
+    /// + `add_two_pos` return `Result<i32, i32>` ; `TaggedUnionAbiPass`
+    /// rewrites bodies but not signatures. Will be unblocked by the same
+    /// Wave-A1-α follow-up that fixes the W-A1 sig-rewrite gap.
     #[test]
-    #[ignore = "JIT-execute path requires W-B-RECOGNIZER try_op_lower wire-in"]
+    #[ignore = "BUG-FOUND: blocked by Wave-A1-α (signature-rewrite gap in TaggedUnionAbiPass)"]
     fn wave_a3_try_propagation_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a3-try", WAVE_A3_TRY_PROPAGATION) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
@@ -493,8 +575,14 @@ mod tests {
         assert_eq!(out.mir_fn_count, 1, "{}", out.summary());
     }
 
+    /// W-A5 (heap.dealloc) JIT-execute. Same blocker as W-A2 : `vec_new`
+    /// recognizer not yet wired — `let v0 = vec_new::<i32>()` produces
+    /// a `func.call callee=vec_new` op the JIT can't resolve. The
+    /// `vec_drop::<i32>(v1)` line itself IS recognized + lowers to
+    /// `cssl.heap.dealloc` (verified in cssl-mir's
+    /// `vec_drop_i32_emits_heap_dealloc` test) ; the gap is upstream.
     #[test]
-    #[ignore = "JIT-execute path requires W-B-RECOGNIZER heap_dealloc wire-in"]
+    #[ignore = "BUG-FOUND: blocked by Wave-A2-α (`vec_new` recognizer arm missing)"]
     fn wave_a5_vec_drop_jit_returns_0() {
         match try_jit_main_returns_i32("wave-a5-vec-drop", WAVE_A5_VEC_DROP) {
             Ok(code) => assert_eq!(code, 0, "expected 0, got {code}"),
