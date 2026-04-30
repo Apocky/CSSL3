@@ -51,6 +51,10 @@ pub mod cgen_tagged_union;
 // emit_tag_eq_compare / emit_payload_load) ; pass-pipeline registration
 // runs AFTER tagged_union_abi::expand_module + BEFORE Cranelift cgen drive.
 pub mod cgen_try;
+// § Wave-C1 integration (recovery from race-orphan fa11c3d) — Cranelift cgen
+// for cssl.string.* + str-slice + char ops. Pairs with cssl-mir::string_abi.
+// 4-state UTF-8 DFA validator + format-spec LUT + USV-invariant fast-path.
+pub mod cgen_string;
 pub mod emit;
 pub mod feature;
 pub mod jit;

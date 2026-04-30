@@ -58,6 +58,11 @@ pub mod tagged_union_abi;
 // scf.if (failure-arm reconstructs in caller's return type ; success-arm
 // extracts payload via memref.load).
 pub mod try_op_lower;
+// § Wave-C1 integration (recovery from race-orphan fa11c3d) — UTF-8 string
+// ABI lowering + str-slice fat-pointer + char USV-invariant. Mirrors
+// Wave-A1 tagged-union ABI pattern. Cgen helpers in cssl-cgen-cpu-cranelift::
+// cgen_string.
+pub mod string_abi;
 pub mod lower;
 pub mod monomorph;
 pub mod op;
