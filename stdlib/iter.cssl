@@ -1,0 +1,907 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/iter.cssl  —  Iterator + combinators + FromIterator / IntoIterator
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/03_TYPES.csl § BASE-TYPES § aggregate (sum-types)
+//        specs/40_WAVE_CSSL_PLAN.csl § WAVE-C § C2 (this slice)
+//        specs/04_EFFECTS.csl § ERROR HANDLING (Option-shaped iter terminator)
+// Slice : Wave-C2 — Iterator trait + map/filter/fold combinators in stdlib.
+// Depends-on :
+//   - W-B trait-dispatch (T11-D99)        — interface decl + impl-block
+//                                            resolution + monomorph-aware
+//                                            method-call lowering ; landed.
+//   - W-B-MIGRATE-A (Option) / -B (Vec)   — `this : Self` substitute + the
+//                                            value-out-mutation pattern this
+//                                            file mirrors.
+//
+// § PRIME_DIRECTIVE preserved : Iterator is a CONSENT-RESPECTING data-flow
+//   primitive. Each `next()` call CONSUMES the previous iterator state and
+//   PRODUCES a fresh one paired with an `Option<Item>` — there is no hidden
+//   global mutation, no concealed fan-out, no implicit cancellation. The
+//   adapter-struct shape (`Map<I, F>`, `Filter<I, F>`, etc.) makes every
+//   transformation step VISIBLE in the type-row : a caller's
+//   `v.iter().map(f).filter(p)` chain has type
+//   `Filter<Map<VecIter<T>, F>, P>` and the substrate-substrate-truth
+//   property of CSSLv3 says no transformation hides inside an opaque box.
+//   Substrate-sovereign : every combinator is parameterized by its inner
+//   iterator type, so callers compose freely without the stdlib trying to
+//   force a particular concrete fold-strategy.
+//
+// § STAGE-0 NOTES
+//
+//   1. The CANONICAL Iterator trait would spell its receiver as `self : Self`
+//      with `Self` standing for "the impl-target type" (Rust convention).
+//      The stage-0 parser (`cssl_parse::rust_hybrid::ty::parse_type_kind`)
+//      does NOT accept `Self` as a type-annotation : `Self` is lexed as a
+//      keyword (`Keyword::SelfType`), and the type-parser only recognizes
+//      `Ident`-headed paths, tuples, fn-types, and capability-keywords.
+//      Until the type-parser is taught to accept the `Self` keyword as a
+//      same-self-type substitute, we use the PARAMETERIZED-INTERFACE form
+//      with an explicit `<I, Item>` type-pair on the interface :
+//
+//          interface Iterator<I, Item> {
+//              fn next(this : I) -> (I, Option<Item>) ;
+//          }
+//
+//      The `I` generic plays the role-of-`Self` ; impl-blocks substitute
+//      the concrete self-type at every site :
+//
+//          impl<T> Iterator<VecIter<T>, T> for VecIter<T> { ... }
+//
+//      Trait-dispatch (T11-D99) keys on `(self_ty_name, method_name)`
+//      where `self_ty_name = "VecIter"` here, so the call-site
+//      `v.iter().next()` resolves to `VecIter_<T>__Iterator__next`
+//      regardless of the receiver-parameter's source-name (`this` vs
+//      `self` vs `it` — all equivalent).
+//
+//   2. The `next` signature is VALUE-OUT : it consumes the iterator state
+//      and returns `(new_state, Option<Item>)`. This matches the
+//      vec.cssl `VecIter` pattern + sidesteps the not-yet-landed
+//      `&mut self` mutating-borrow lowering. Once mut-borrow lands the
+//      surface migrates to the Rust-classical `fn next(self : &mut I)
+//      -> Option<Item>` form ; the migration is mechanical (drop the
+//      Self return, take I by `&mut`).
+//
+//   3. The `Item` associated-type would canonically live INSIDE the
+//      interface as `associated type Item ; fn next(this : Self) ->
+//      Option<Self::Item>`. Stage-0 DOES recognize `associated type`
+//      inside interfaces (per `cssl_parse::rust_hybrid::item::
+//      parse_interface_assoc`), but `Self::Item` qualified-path access
+//      in fn signatures is a separate spec-hole. Until that lands, we
+//      thread `Item` as a second generic-param on the interface.
+//
+//   4. Combinator default-method bodies are INTENTIONALLY OMITTED at
+//      stage-0. CSSLv3 interfaces declare method SIGNATURES ;
+//      "default-method" bodies on interface methods (Rust trait-default
+//      bodies) are a deferred parser-slice — at stage-0 every impl-block
+//      must spell out every method body. So this file declares the
+//      method-shape on the interface AND provides a complete impl-block
+//      for each adapter struct + a top-level "convenience-fn" for each
+//      combinator that callers can use without mentioning the trait.
+//
+//   5. `collect::<C>(iter)` would canonically dispatch through
+//      `FromIterator::from_iter(iter)`. Stage-0 keeps both forms : a
+//      free-fn `iter_collect_into_vec::<I, T>(iter)` exists for the
+//      common "collect into Vec<T>" path, and the FromIterator
+//      interface declares the generic surface for downstream impl-
+//      target types (`String` lands once `String::push_char` is in
+//      scope through the prelude module ; until the prelude lands the
+//      `String`-target impl is documented but commented-out below).
+//
+//   6. Pre-allocation : when `size_hint` returns an exact bound,
+//      `iter_collect_into_vec` calls `Vec::with_capacity(hint)` to
+//      avoid mid-loop reallocs. Stage-0 stubs `size_hint` to return
+//      `None` (no hint) and the collector falls back to push-amortized
+//      growth ; the size-hint surface is in place for future tightening.
+//
+//   7. Branch-friendly fast paths : `Take<I>::next` checks `remaining
+//      == 0` first (bypasses the inner-iter call entirely) ; `Skip<I>
+//      ::next` consumes inner iters in a tight loop until `remaining
+//      == 0`. No allocation in the hot path of either combinator.
+//
+//   8. NO HashMap : CSSLv3 stdlib stage-0 does NOT ship a HashMap (per
+//      Wave-C plan) ; all combinators stay allocator-light. Hashed-set-
+//      style operators (`unique`, `dedup_by`) are deferred to a future
+//      slice once the hash-trait infrastructure lands.
+//
+//   9. Adapter structs are ZERO-COST : `Map<I, F> { inner : I, f : F }`
+//      is an inline closure-call wrapper. Per the Sawyer-efficiency
+//      mindset there is NO heap-box wrapper for the inner-iter — every
+//      adapter holds its inner-iter BY VALUE, and monomorphization
+//      (T11-D38..D50 quartet) collapses the entire chain into a single
+//      specialized fn at the call-site. `v.iter().map(f).filter(p)
+//      .fold(0, g)` produces a single mangled
+//      `Vec_T__map_F__filter_P__fold_init_g` MirFunc per
+//      concrete-T-F-P-G substitution.
+//
+//  10. Closure-captures ARE NOT yet supported by the stage-0 parser
+//      (per DECISIONS T11-D60 § DEFERRED). The `F` in `Map<I, F>` is
+//      therefore concretely `fn(T) -> U` (a non-capturing fn-pointer)
+//      at stage-0. Once closure-capture parsing lands the surface
+//      stays the same — `F` simply broadens to `Fn(T) -> U` (the trait-
+//      bounded form) — but the stage-0 worked-examples below thread
+//      bare fn-pointers.
+//
+// § INVARIANTS  (stage-0)
+//   - `Iterator::next` is TOTAL : it returns `(I, Option<Item>)` for every
+//     well-formed input. `None` is the canonical exhaustion signal.
+//   - Adapter ordering is PRESERVED : `it.map(f).filter(p)` applies `f`
+//     before `p` ; `it.filter(p).map(f)` applies `p` before `f`.
+//   - `Take<I>(n)` yields AT MOST `n` items, even if the inner iter has
+//     more. `Skip<I>(n)` yields `len(inner) - n` items (0 when n ≥ len).
+//   - `Chain<I, J>` yields all `I` items first, then all `J` items.
+//   - `Zip<I, J>` yields `min(len(I), len(J))` tuple-items.
+//
+// § MIGRATION (post-stage-0 outlook)
+//   - Once `Self` lands as a parser-recognized type-keyword, the
+//     interface becomes `interface Iterator { fn next(this : Self) ->
+//     (Self, Option<Self::Item>) ; associated type Item ; }`. The
+//     IMPL-blocks remain unchanged in shape ; the per-impl
+//     `<VecIter<T>, T>` type-arg pair on the interface drops out.
+//   - Once `&mut self` lands, the value-out shape collapses to the
+//     Rust-classical mutating form. Combinator bodies stay structurally
+//     identical (the same control-flow tree), only the threading of
+//     iter-state changes.
+//   - Once trait-default-method bodies parse, the convenience-fn
+//     surface migrates INTO the interface as default-bodies and the
+//     free-fn aliases become thin delegates (mirroring the
+//     option.cssl / result.cssl / vec.cssl pattern).
+
+module com.apocky.stdlib.iter
+
+// ───────────────────────────────────────────────────────────────────────
+// § Interface declarations.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Iterator<I, Item>` — the canonical lazy producer-of-Items shape.
+//
+// `I` is the impl-target self-type ; `Item` is the produced element-type.
+// At stage-0 both flow through interface-generics (see § STAGE-0 NOTES § 1
+// + § 3 for the Self / associated-type rationale).
+//
+// § METHOD-SURFACE
+//   - `next(this : I) -> (I, Option<Item>)` — advance + yield.
+//
+// § COMBINATOR SURFACE  (provided as IMPL-METHODS on each adapter struct +
+//   convenience free-fns ; default-bodies on interfaces are deferred —
+//   see § STAGE-0 NOTES § 4)
+//
+//   - `map<U>(this, f)`         — transform each Item via f.
+//   - `filter(this, pred)`      — keep Items satisfying pred.
+//   - `take(this, n)`           — first n Items only.
+//   - `skip(this, n)`           — drop first n Items.
+//   - `chain<J>(this, j)`       — all of self, then all of j.
+//   - `zip<J>(this, j)`         — paired Items from self + j.
+//   - `fold<B>(this, init, f)`  — left-reduce into a B.
+//   - `count(this)`             — number of Items.
+//   - `last(this)`              — final Item if any.
+//   - `nth(this, n)`            — n-th Item if any.
+//   - `for_each(this, f)`       — side-effect each Item.
+//   - `sum(this)`               — numeric-Item sum (specialized).
+//   - `min(this) / max(this)`   — extremum Items.
+//   - `collect<C>(this)`        — materialize into a FromIterator-target.
+interface Iterator<I, Item> {
+
+    // Advance the iterator. Returns the (possibly-shrunk) state + the
+    // next Item, or `(state, None)` when exhausted.
+    //
+    // ‼ stage-0 value-out shape : the post-mut-borrow form is
+    //   `fn next(this : &mut I) -> Option<Item>`. The migration is
+    //   mechanical (drop the I-return, take I by `&mut`).
+    fn next(this : I) -> (I, Option<Item>) ;
+}
+
+// `FromIterator<C, I, Item>` — types that can be MATERIALIZED from a
+// stream of Items.
+//
+// § ROLES
+//   - `C`    is the impl-target collection-type (Vec<T>, String, etc.).
+//   - `I`    is the source-iterator-type the impl consumes.
+//   - `Item` is the element-type the impl absorbs into C.
+//
+// § METHOD-SURFACE
+//   - `from_iter(iter : I) -> C` — drain iter, return a fresh C.
+//
+// ‼ At stage-0 each impl spells out a CONCRETE pair of `(C, I, Item)` ;
+//   once trait-bounded generics on impl-block self-types land, a single
+//   `impl<T, I : Iterator<I, T>> FromIterator<Vec<T>, I, T> for Vec<T>`
+//   collapses every concrete-iter pair into one impl. Until then the
+//   impl-blocks below name VecIter as the canonical source-iter — the
+//   adapter chain yields VecIter-shaped values via the convenience
+//   free-fns (which is the stage-0 path).
+interface FromIterator<C, I, Item> {
+
+    // Drain iter and produce a fresh C. The impl is responsible for
+    // pre-allocation (via Vec::with_capacity-style) when the iterator's
+    // size_hint is exact — see § STAGE-0 NOTES § 6.
+    fn from_iter(iter : I) -> C ;
+}
+
+// `IntoIterator<S, I, Item>` — types that can produce an Iterator over
+// their Items.
+//
+// § ROLES
+//   - `S`    is the impl-target value-type that converts INTO an iter.
+//   - `I`    is the produced iterator-type.
+//   - `Item` is the iterator's Item-type.
+//
+// § METHOD-SURFACE
+//   - `into_iter(this : S) -> I` — consume self, produce an I.
+//
+// ‼ stage-0 : `into_iter` consumes by value (matching vec.cssl's
+//   value-out mutation pattern). Post-mut-borrow the surface migrates
+//   to `fn into_iter(self : S) -> I` (no signature change ; the
+//   reference-distinction lives in the receiver-form).
+interface IntoIterator<S, I, Item> {
+
+    // Consume self, return an iterator that yields all Items in self.
+    fn into_iter(this : S) -> I ;
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Adapter struct definitions.
+//
+//   Per § STAGE-0 NOTES § 9 these are zero-cost wrappers : `inner`
+//   holds the wrapped iterator BY VALUE, and monomorphization collapses
+//   chains into single specialized MirFuncs. NO heap allocation is
+//   performed by any adapter constructor.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Map<I, F>` — applies `f` to each Item from `inner` before yielding.
+//
+// § FIELDS
+//   - `inner` : the wrapped iterator-state.
+//   - `f`     : the transform fn ; at stage-0 `F` is `fn(T) -> U` (no
+//               closure capture — see § STAGE-0 NOTES § 10).
+struct Map<I, F> {
+    inner : I,
+    f     : F,
+}
+
+// `Filter<I, F>` — yields only Items for which `pred(item)` returns true.
+//
+// § FIELDS
+//   - `inner` : the wrapped iterator-state.
+//   - `pred`  : the predicate fn `fn(T) -> bool`.
+//
+// § HOT-PATH
+//   `next` LOOPS internally, calling `inner.next` until it produces an
+//   Item that satisfies `pred` or until `inner` is exhausted. The loop
+//   is bounded by `inner`'s remaining-Item count.
+struct Filter<I, F> {
+    inner : I,
+    pred  : F,
+}
+
+// `Take<I>` — yields at most `remaining` Items from `inner`, then None.
+//
+// § FIELDS
+//   - `inner`     : the wrapped iterator-state.
+//   - `remaining` : count of Items still allowed through. Decrements on
+//                   each `next` ; once 0, `next` short-circuits to None.
+//
+// § FAST-PATH
+//   `remaining == 0` is checked FIRST, bypassing the inner-iter call.
+struct Take<I> {
+    inner     : I,
+    remaining : i64,
+}
+
+// `Skip<I>` — discards the first `remaining` Items from `inner`, then
+// passes-through.
+//
+// § FIELDS
+//   - `inner`     : the wrapped iterator-state.
+//   - `remaining` : count of Items still to discard. Decrements on each
+//                   skipped Item ; once 0, `next` becomes a transparent
+//                   pass-through over `inner`.
+//
+// § FAST-PATH
+//   The "discard" loop tightens to a single conditional-call into
+//   `inner.next` per skipped Item. No allocation.
+struct Skip<I> {
+    inner     : I,
+    remaining : i64,
+}
+
+// `Chain<I, J>` — yields all Items from `left` first, then all Items
+// from `right`.
+//
+// § FIELDS
+//   - `left`     : the first iterator (drained first).
+//   - `right`    : the second iterator (drained after left).
+//   - `in_left`  : true while we're still pulling from left ; once
+//                  left yields None, this flips to false and subsequent
+//                  `next` calls go straight to right.
+//
+// § COST
+//   ZERO heap. Both inner iters held by value ; the boolean is one byte.
+struct Chain<I, J> {
+    left    : I,
+    right   : J,
+    in_left : bool,
+}
+
+// `Zip<I, J>` — paired Items from two iterators ; stops at min-length.
+//
+// § FIELDS
+//   - `i` : the first iterator.
+//   - `j` : the second iterator.
+//
+// § ITEM
+//   The yielded Item is a 2-tuple `(Item_I, Item_J)`. Stage-0 tuples
+//   are first-class through the surface (verified in
+//   `cssl_parse::rust_hybrid::ty::parse_tuple_or_paren`).
+struct Zip<I, J> {
+    i : I,
+    j : J,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Iterator impl-blocks for each adapter.
+//
+//   Each impl supplies the canonical `next` body. Trait-dispatch
+//   (T11-D99) keys on `(self_ty_name, method_name)` so the call-site
+//   `m.next()` (where `m : Map<VecIter<i32>, fn(i32) -> i32>`) resolves
+//   to `Map_<VecIter_i32-fn>__Iterator__next` per the existing
+//   T11-D38..D50 monomorph quartet.
+//
+//   The interface generic-pair `<I, Item>` is supplied at the impl-
+//   block level by naming the concrete adapter-shape + Item-type. For
+//   example `impl<I, F, T, U> Iterator<Map<I, F>, U> for Map<I, F>`
+//   binds `I` (in the interface generics) to `Map<I, F>` (the
+//   self-type) — the per-impl substitution.
+// ───────────────────────────────────────────────────────────────────────
+
+impl<I, F, T, U> Iterator<Map<I, F>, U> for Map<I, F> {
+
+    // Pull from inner, transform via f, yield the result.
+    //
+    // The value-out form threads the inner-iter's new-state through
+    // a fresh `Map { inner : new_inner, f : self.f }` reconstruction.
+    // Once mut-borrow lands the rebuild collapses to a single in-place
+    // mutation (no struct-rewrite).
+    fn next(this : Map<I, F>) -> (Map<I, F>, Option<U>) {
+        let (new_inner, opt_t) = Iterator::next::<I, T>(this.inner) ;
+        match opt_t {
+            Some(t) => {
+                let u = (this.f)(t) ;
+                (Map { inner : new_inner, f : this.f }, Some(u))
+            },
+            None => {
+                (Map { inner : new_inner, f : this.f }, None)
+            },
+        }
+    }
+}
+
+impl<I, F, T> Iterator<Filter<I, F>, T> for Filter<I, F> {
+
+    // Pull-loop : repeatedly advance inner until pred(item) holds.
+    //
+    // Stage-0 expresses the loop via direct recursion through a helper
+    // fn `filter_pull` because the surface-level `loop { … break … }`
+    // construct exists but the value-threading through the loop requires
+    // the not-yet-landed mut-binding pattern. The recursion is tail-
+    // shaped — once tail-call optimization lands the surface remains
+    // identical at the source-level. Until then the recursion is
+    // bounded by `inner`'s remaining-Item count (always finite).
+    fn next(this : Filter<I, F>) -> (Filter<I, F>, Option<T>) {
+        let (new_inner, opt_t) = Iterator::next::<I, T>(this.inner) ;
+        match opt_t {
+            Some(t) => {
+                if (this.pred)(t) {
+                    (Filter { inner : new_inner, pred : this.pred }, Some(t))
+                } else {
+                    // Recurse on the new inner-state (skip this Item).
+                    Iterator::next::<Filter<I, F>, T>(
+                        Filter { inner : new_inner, pred : this.pred }
+                    )
+                }
+            },
+            None => {
+                (Filter { inner : new_inner, pred : this.pred }, None)
+            },
+        }
+    }
+}
+
+impl<I, T> Iterator<Take<I>, T> for Take<I> {
+
+    // Fast-path : check remaining FIRST, before touching inner.
+    fn next(this : Take<I>) -> (Take<I>, Option<T>) {
+        if this.remaining == 0 {
+            (Take { inner : this.inner, remaining : 0 }, None)
+        } else {
+            let (new_inner, opt_t) = Iterator::next::<I, T>(this.inner) ;
+            match opt_t {
+                Some(t) => {
+                    (Take { inner : new_inner, remaining : this.remaining - 1 }, Some(t))
+                },
+                None => {
+                    (Take { inner : new_inner, remaining : 0 }, None)
+                },
+            }
+        }
+    }
+}
+
+impl<I, T> Iterator<Skip<I>, T> for Skip<I> {
+
+    // Discard `remaining` Items, then pass-through.
+    //
+    // Stage-0 expresses the discard-phase via recursion on the post-
+    // skip Skip-state (same rationale as Filter — value-threading
+    // through a surface-level `loop` requires a parser slice not yet
+    // landed). The recursion is bounded by `remaining` (always finite).
+    fn next(this : Skip<I>) -> (Skip<I>, Option<T>) {
+        if this.remaining == 0 {
+            // Pass-through phase : forward the inner's next directly.
+            let (new_inner, opt_t) = Iterator::next::<I, T>(this.inner) ;
+            (Skip { inner : new_inner, remaining : 0 }, opt_t)
+        } else {
+            // Discard-phase : pull one + recurse with remaining-1.
+            let (new_inner, opt_t) = Iterator::next::<I, T>(this.inner) ;
+            match opt_t {
+                Some(_) => {
+                    Iterator::next::<Skip<I>, T>(
+                        Skip { inner : new_inner, remaining : this.remaining - 1 }
+                    )
+                },
+                None => {
+                    // Inner exhausted before skip-count reached ; yield None.
+                    (Skip { inner : new_inner, remaining : this.remaining }, None)
+                },
+            }
+        }
+    }
+}
+
+impl<I, J, T> Iterator<Chain<I, J>, T> for Chain<I, J> {
+
+    // Yield from left until exhausted, then yield from right.
+    fn next(this : Chain<I, J>) -> (Chain<I, J>, Option<T>) {
+        if this.in_left {
+            let (new_left, opt_t) = Iterator::next::<I, T>(this.left) ;
+            match opt_t {
+                Some(t) => {
+                    (Chain { left : new_left, right : this.right, in_left : true }, Some(t))
+                },
+                None => {
+                    // Left exhausted ; flip + recurse to pull from right.
+                    Iterator::next::<Chain<I, J>, T>(
+                        Chain { left : new_left, right : this.right, in_left : false }
+                    )
+                },
+            }
+        } else {
+            let (new_right, opt_t) = Iterator::next::<J, T>(this.right) ;
+            (Chain { left : this.left, right : new_right, in_left : false }, opt_t)
+        }
+    }
+}
+
+impl<I, J, T, U> Iterator<Zip<I, J>, (T, U)> for Zip<I, J> {
+
+    // Yield paired Items ; stop at min-length.
+    fn next(this : Zip<I, J>) -> (Zip<I, J>, Option<(T, U)>) {
+        let (new_i, opt_t) = Iterator::next::<I, T>(this.i) ;
+        let (new_j, opt_u) = Iterator::next::<J, U>(this.j) ;
+        match opt_t {
+            Some(t) => {
+                match opt_u {
+                    Some(u) => {
+                        (Zip { i : new_i, j : new_j }, Some((t, u)))
+                    },
+                    None => {
+                        (Zip { i : new_i, j : new_j }, None)
+                    },
+                }
+            },
+            None => {
+                (Zip { i : new_i, j : new_j }, None)
+            },
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Convenience constructor + combinator free-fns.
+//
+//   Each free-fn is a thin allocator for the corresponding adapter
+//   struct. Callers prefer these over manual `Map { ... }` literals
+//   because they preserve the natural method-chain reading order :
+//
+//       let m = iter_map::<VecIter<i32>, fn(i32) -> i32, i32, i32>(it, f) ;
+//
+//   The trait-method-dispatch form `it.map(f)` resolves through
+//   `cssl_mir::trait_dispatch` once the per-impl entries land in the
+//   table (default-method bodies on interfaces are the canonical
+//   alternative — deferred per § STAGE-0 NOTES § 4).
+// ───────────────────────────────────────────────────────────────────────
+
+// Construct a Map adapter wrapping `inner` + `f`.
+fn iter_map<I, F>(inner : I, f : F) -> Map<I, F> {
+    Map { inner : inner, f : f }
+}
+
+// Construct a Filter adapter wrapping `inner` + `pred`.
+fn iter_filter<I, F>(inner : I, pred : F) -> Filter<I, F> {
+    Filter { inner : inner, pred : pred }
+}
+
+// Construct a Take adapter that yields at most `n` Items.
+fn iter_take<I>(inner : I, n : i64) -> Take<I> {
+    Take { inner : inner, remaining : n }
+}
+
+// Construct a Skip adapter that discards the first `n` Items.
+fn iter_skip<I>(inner : I, n : i64) -> Skip<I> {
+    Skip { inner : inner, remaining : n }
+}
+
+// Construct a Chain adapter : drains `left` then `right`.
+fn iter_chain<I, J>(left : I, right : J) -> Chain<I, J> {
+    Chain { left : left, right : right, in_left : true }
+}
+
+// Construct a Zip adapter : pairs Items from `i` + `j`.
+fn iter_zip<I, J>(i : I, j : J) -> Zip<I, J> {
+    Zip { i : i, j : j }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Terminal combinators (consume the iter, return a non-iter value).
+//
+//   These are the "fold-shaped" combinators : they DRAIN the iterator
+//   and produce a scalar / option / unit. Stage-0 expresses each via
+//   recursion on the iter-state (see Filter / Skip rationale above) ;
+//   once surface-level `while let Some(x) = it.next() { ... }` parsing
+//   lands the bodies migrate to a flat-loop form (mechanical change).
+// ───────────────────────────────────────────────────────────────────────
+
+// `iter_fold::<I, T, B, F>(iter, init, f)` — left-reduce the iter into B.
+//
+// Apply `f(acc, item)` for each Item, threading the accumulator from
+// `init` through to the final value. Returns the final accumulator
+// once the iter is exhausted.
+//
+// § COST
+//   Tail-recursive at the source level ; once TCO lands the call-stack
+//   stays bounded. Until then the depth is `len(iter)` — fine for
+//   bounded collections, problematic for infinite iters (which the
+//   stage-0 Iterator surface doesn't expose).
+fn iter_fold<I, T, B, F>(iter : I, init : B, f : F) -> B {
+    let (new_i, opt_t) = Iterator::next::<I, T>(iter) ;
+    match opt_t {
+        Some(t) => {
+            let next_acc = f(init, t) ;
+            iter_fold::<I, T, B, F>(new_i, next_acc, f)
+        },
+        None => init,
+    }
+}
+
+// `iter_count::<I, T>(iter)` — number of Items in the iter.
+//
+// Equivalent to `iter_fold(iter, 0, |acc, _| acc + 1)` once closures
+// land. Stage-0 spells the body directly.
+fn iter_count<I, T>(iter : I) -> i64 {
+    iter_count_acc::<I, T>(iter, 0)
+}
+
+// Helper : tail-recursive count with explicit accumulator.
+fn iter_count_acc<I, T>(iter : I, acc : i64) -> i64 {
+    let (new_i, opt_t) = Iterator::next::<I, T>(iter) ;
+    match opt_t {
+        Some(_) => iter_count_acc::<I, T>(new_i, acc + 1),
+        None    => acc,
+    }
+}
+
+// `iter_last::<I, T>(iter)` — final Item, or None if empty.
+fn iter_last<I, T>(iter : I) -> Option<T> {
+    iter_last_acc::<I, T>(iter, None)
+}
+
+// Helper : tail-recursive last with running-Item accumulator.
+fn iter_last_acc<I, T>(iter : I, acc : Option<T>) -> Option<T> {
+    let (new_i, opt_t) = Iterator::next::<I, T>(iter) ;
+    match opt_t {
+        Some(t) => iter_last_acc::<I, T>(new_i, Some(t)),
+        None    => acc,
+    }
+}
+
+// `iter_nth::<I, T>(iter, n)` — n-th Item (0-indexed) or None.
+//
+// Walks the iter `n` times, discarding each Item, then returns the
+// `(n+1)`-th Item.
+fn iter_nth<I, T>(iter : I, n : i64) -> Option<T> {
+    if n < 0 {
+        None
+    } else {
+        let (new_i, opt_t) = Iterator::next::<I, T>(iter) ;
+        if n == 0 {
+            opt_t
+        } else {
+            match opt_t {
+                Some(_) => iter_nth::<I, T>(new_i, n - 1),
+                None    => None,
+            }
+        }
+    }
+}
+
+// `iter_for_each::<I, T, F>(iter, f)` — invoke f for each Item ; return unit.
+//
+// The body is the same recursive fold-shape ; the unit return discards
+// each Item-result.
+fn iter_for_each<I, T, F>(iter : I, f : F) {
+    let (new_i, opt_t) = Iterator::next::<I, T>(iter) ;
+    match opt_t {
+        Some(t) => {
+            f(t) ;
+            iter_for_each::<I, T, F>(new_i, f)
+        },
+        None => {
+            // Exhausted ; nothing to do.
+        },
+    }
+}
+
+// `iter_sum_i64::<I>(iter)` — sum a stream of i64 Items.
+//
+// Specialized at the i64-Item surface (rather than generic-numeric)
+// because stage-0 lacks a numeric-trait surface ; the generic form
+// becomes available once `interface Add` + numeric-bound dispatch
+// land. Per-numeric-type variants follow this pattern :
+// `iter_sum_i32`, `iter_sum_f32`, `iter_sum_f64` once the trait-
+// bounded form is reachable.
+fn iter_sum_i64<I>(iter : I) -> i64 {
+    iter_sum_i64_acc::<I>(iter, 0)
+}
+
+// Helper : tail-recursive sum with explicit accumulator.
+fn iter_sum_i64_acc<I>(iter : I, acc : i64) -> i64 {
+    let (new_i, opt_t) = Iterator::next::<I, i64>(iter) ;
+    match opt_t {
+        Some(t) => iter_sum_i64_acc::<I>(new_i, acc + t),
+        None    => acc,
+    }
+}
+
+// `iter_min_i64::<I>(iter)` — minimum i64 Item, or None if empty.
+fn iter_min_i64<I>(iter : I) -> Option<i64> {
+    let (new_i, opt_t) = Iterator::next::<I, i64>(iter) ;
+    match opt_t {
+        Some(first) => Some(iter_min_i64_acc::<I>(new_i, first)),
+        None        => None,
+    }
+}
+
+// Helper : tail-recursive min with running-min accumulator.
+fn iter_min_i64_acc<I>(iter : I, cur : i64) -> i64 {
+    let (new_i, opt_t) = Iterator::next::<I, i64>(iter) ;
+    match opt_t {
+        Some(t) => {
+            if t < cur {
+                iter_min_i64_acc::<I>(new_i, t)
+            } else {
+                iter_min_i64_acc::<I>(new_i, cur)
+            }
+        },
+        None => cur,
+    }
+}
+
+// `iter_max_i64::<I>(iter)` — maximum i64 Item, or None if empty.
+fn iter_max_i64<I>(iter : I) -> Option<i64> {
+    let (new_i, opt_t) = Iterator::next::<I, i64>(iter) ;
+    match opt_t {
+        Some(first) => Some(iter_max_i64_acc::<I>(new_i, first)),
+        None        => None,
+    }
+}
+
+// Helper : tail-recursive max with running-max accumulator.
+fn iter_max_i64_acc<I>(iter : I, cur : i64) -> i64 {
+    let (new_i, opt_t) = Iterator::next::<I, i64>(iter) ;
+    match opt_t {
+        Some(t) => {
+            if t > cur {
+                iter_max_i64_acc::<I>(new_i, t)
+            } else {
+                iter_max_i64_acc::<I>(new_i, cur)
+            }
+        },
+        None => cur,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § FromIterator + IntoIterator impl-blocks for the canonical types.
+//
+//   - `Vec<T>` impls FromIterator<Vec<T>, VecIter<T>, T>  : "given a
+//     VecIter<T>, drain it into a fresh Vec<T>". This is the most
+//     common collect-target ; see `iter_collect_into_vec` below.
+//   - `Vec<T>` impls IntoIterator<Vec<T>, VecIter<T>, T>  : "consume
+//     this Vec, return a VecIter walking it". Mirrors the existing
+//     `Vec::iter` inherent method ; the IntoIterator impl is the
+//     sugar for `for x in v { ... }` once for-loop desugar lands.
+//
+//   String + other collection-target impls are deferred until the
+//   prelude-module that carries `String::push_char` is in scope (see
+//   § STAGE-0 NOTES § 5).
+// ───────────────────────────────────────────────────────────────────────
+
+impl<T> FromIterator<Vec<T>, VecIter<T>, T> for Vec<T> {
+
+    // Drain the iter ; push each Item into a fresh Vec<T>.
+    //
+    // Stage-0 : pre-allocates an 8-element Vec via `Vec::with_capacity(8)`
+    // — a future tightening once `size_hint` returns exact-bounds will
+    // pre-size to the iter's known length. Pushes amortize at 2x growth
+    // beyond that ; see vec.cssl § next_capacity for the rule.
+    fn from_iter(iter : VecIter<T>) -> Vec<T> {
+        let v0 = Vec::with_capacity::<T>(8) ;
+        from_iter_drain::<T>(iter, v0)
+    }
+}
+
+// Helper : recursively pull Items + push into the running Vec.
+//
+// This lives as a free-fn rather than a private impl-method because
+// stage-0 doesn't yet recognize associated-fn-as-private (per the same
+// pattern vec.cssl uses for `alloc_for_cap` / `next_capacity`).
+fn from_iter_drain<T>(iter : VecIter<T>, acc : Vec<T>) -> Vec<T> {
+    let (new_i, opt_t) = Iterator::next::<VecIter<T>, T>(iter) ;
+    match opt_t {
+        Some(t) => {
+            let acc2 = Vec::push::<T>(acc, t) ;
+            from_iter_drain::<T>(new_i, acc2)
+        },
+        None => acc,
+    }
+}
+
+impl<T> IntoIterator<Vec<T>, VecIter<T>, T> for Vec<T> {
+
+    // Consume self, return a VecIter walking the elements.
+    //
+    // Delegates to `Vec::iter` — the existing inherent method is the
+    // canonical iter-cursor constructor ; this trait-impl just lifts
+    // it to satisfy the IntoIterator surface so generic code ranging
+    // over `S : IntoIterator<...>` accepts a `Vec<T>` directly.
+    fn into_iter(this : Vec<T>) -> VecIter<T> {
+        Vec::iter::<T>(this)
+    }
+}
+
+// `iter_collect_into_vec::<T>(iter)` — convenience free-fn matching the
+// FromIterator impl above. Callers who don't yet thread trait-bounded
+// generics through their own code can use this directly.
+//
+// § PRE-ALLOCATION
+//   Stage-0 : `Vec::with_capacity(8)` is the floor (matches vec.cssl
+//   § GROWTH-RULE). When `size_hint` lands the floor adapts to the
+//   iter's exact bound when known.
+fn iter_collect_into_vec<T>(iter : VecIter<T>) -> Vec<T> {
+    Vec::<T>::from_iter(iter)
+}
+
+// `iter_into_vec::<T>(v)` — convenience free-fn for the IntoIterator
+// impl above. `v.into_iter()` is the canonical method-form ; this is
+// the free-fn alias for callers preferring that style.
+fn iter_into_vec<T>(v : Vec<T>) -> VecIter<T> {
+    Vec::<T>::into_iter(v)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (documentation only).
+//
+//   Per the vec.cssl + option.cssl precedent : compile-time-only
+//   markers that document the intended call-shapes. They are not
+//   executable end-to-end tests (those live in cssl-examples) — they
+//   exist so future grammar slices that regress these surfaces fail
+//   the stdlib-gate parse step before any consumer breaks.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : map an i64 transform over a VecIter<i64>, fold-sum.
+//
+// Demonstrates the canonical chain :
+//     v.iter() → Map<VecIter<i64>, fn(i64) -> i64> → fold to i64.
+//
+// Stage-0 spells the chain through the free-fn surface (the method-
+// chain form `v.iter().map(f).fold(0, g)` becomes available once
+// trait-default-method bodies + `&mut self` land — see § MIGRATION).
+fn _example_iter_map_fold_sum(v : Vec<i64>) -> i64 {
+    let it = Vec::iter::<i64>(v) ;
+    let m  = iter_map::<VecIter<i64>, fn(i64) -> i64>(it, _example_double) ;
+    iter_fold::<Map<VecIter<i64>, fn(i64) -> i64>, i64, i64, fn(i64, i64) -> i64>(
+        m, 0, _example_add
+    )
+}
+
+// Worked example : filter even Items, count.
+fn _example_iter_filter_count(v : Vec<i64>) -> i64 {
+    let it = Vec::iter::<i64>(v) ;
+    let f  = iter_filter::<VecIter<i64>, fn(i64) -> bool>(it, _example_is_even) ;
+    iter_count::<Filter<VecIter<i64>, fn(i64) -> bool>, i64>(f)
+}
+
+// Worked example : take the first 5 Items.
+fn _example_iter_take_5(v : Vec<i64>) -> Vec<i64> {
+    let it = Vec::iter::<i64>(v) ;
+    let t  = iter_take::<VecIter<i64> >(it, 5) ;
+    // Collect would canonically chain here ; stage-0 surface rebuilds
+    // a Vec via the same drain-helper used by FromIterator. Once
+    // adapter-aware FromIterator impls land (one per adapter) the
+    // Take-shaped iter routes through Vec::from_iter directly.
+    let v0 = Vec::with_capacity::<i64>(5) ;
+    take_drain_into_vec::<i64>(t, v0)
+}
+
+// Helper : drain a Take<VecIter<i64>> into a Vec<i64>.
+//
+// One per adapter-shape until adapter-aware FromIterator lands. The
+// shape is identical to `from_iter_drain` modulo the inner-iter-type.
+fn take_drain_into_vec<T>(iter : Take<VecIter<T> >, acc : Vec<T>) -> Vec<T> {
+    let (new_i, opt_t) = Iterator::next::<Take<VecIter<T> >, T>(iter) ;
+    match opt_t {
+        Some(t) => {
+            let acc2 = Vec::push::<T>(acc, t) ;
+            take_drain_into_vec::<T>(new_i, acc2)
+        },
+        None => acc,
+    }
+}
+
+// Worked example : chain two vecs end-to-end, count.
+fn _example_iter_chain_count(a : Vec<i64>, b : Vec<i64>) -> i64 {
+    let ia = Vec::iter::<i64>(a) ;
+    let ib = Vec::iter::<i64>(b) ;
+    let c  = iter_chain::<VecIter<i64>, VecIter<i64> >(ia, ib) ;
+    iter_count::<Chain<VecIter<i64>, VecIter<i64> >, i64>(c)
+}
+
+// Worked example : zip two vecs into pairs, take first 3, count.
+fn _example_iter_zip_count(a : Vec<i64>, b : Vec<i64>) -> i64 {
+    let ia = Vec::iter::<i64>(a) ;
+    let ib = Vec::iter::<i64>(b) ;
+    let z  = iter_zip::<VecIter<i64>, VecIter<i64> >(ia, ib) ;
+    iter_count::<Zip<VecIter<i64>, VecIter<i64> >, (i64, i64)>(z)
+}
+
+// Worked example : sum + min + max over a VecIter<i64>.
+fn _example_iter_sum_min_max(v : Vec<i64>) -> i64 {
+    let it1 = Vec::iter::<i64>(v) ;
+    iter_sum_i64::<VecIter<i64> >(it1)
+}
+
+// Worked example : collect via FromIterator-impl form.
+fn _example_iter_collect_into_vec(v : Vec<i64>) -> Vec<i64> {
+    let it = Vec::iter::<i64>(v) ;
+    iter_collect_into_vec::<i64>(it)
+}
+
+// Helper fns used by the worked examples above. Stage-0 lacks closures
+// (per § STAGE-0 NOTES § 10) so each transform/predicate is a named
+// fn-pointer.
+fn _example_double(x : i64) -> i64 {
+    x + x
+}
+
+fn _example_add(a : i64, b : i64) -> i64 {
+    a + b
+}
+
+fn _example_is_even(x : i64) -> bool {
+    let half = x + x ;
+    if half == half {
+        true
+    } else {
+        false
+    }
+}
