@@ -567,6 +567,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-cgen-msl"
+version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-cgen-wgsl"
+version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-effects"
 version = "0.1.0"
 dependencies = [
