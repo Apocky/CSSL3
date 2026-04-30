@@ -210,6 +210,12 @@ pub enum HookError {
 // § W-S-CORE-6 (T11-D305) — CROSS-PILLAR COMPANION-AI HOOK
 // ════════════════════════════════════════════════════════════════════════════
 //
+// § ATTRIBUTION-NOTE
+//   This block (W-S-CORE-6) was authored under the T11-D305 task. Due
+//   to a concurrent-fanout commit-collision, the initial landing tree
+//   was bundled into a sibling commit ; this attribution-note documents
+//   the canonical task-tag for telemetry / audit-trail discoverability.
+//
 // § ROLE
 //   Generalizes the per-cell CompanionAiHook (procgen-only) into a
 //   cross-pillar surface that lets a companion-AI propose mutations
