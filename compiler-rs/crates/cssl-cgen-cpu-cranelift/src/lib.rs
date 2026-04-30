@@ -55,6 +55,16 @@ pub mod cgen_memref;
 // pre-scan via the `NetImportSet` bitfield.
 pub mod cgen_net;
 pub mod cgen_tagged_union;
+// § Wave-A2-γ-redo (T11-D267) — Cranelift cgen helpers for the
+// `cssl.vec.*` struct-ABI rewrite. Sister-module to `cgen_tagged_union` :
+// canonical attribute / source-kind constants + predicate helpers +
+// per-fn pre-scan for the heap-import set + cranelift Signature
+// builders for `__cssl_alloc` / `__cssl_realloc` / `__cssl_free`. The
+// MIR rewrite (`cssl_mir::vec_abi`) lowers every `cssl.vec.*` op into
+// primitive heap + memref ops the existing object.rs path already
+// emits ; this module is the recognizer + audit surface that the
+// cgen layer reads to flag-up + diagnose the post-rewrite shape.
+pub mod cgen_vec;
 pub mod cgen_thread;
 pub mod cgen_time;
 // § Wave-A3 cgen integration (b761263) — `cssl.try` lowering helpers reuse

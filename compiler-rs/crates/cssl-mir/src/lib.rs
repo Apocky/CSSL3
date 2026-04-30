@@ -63,6 +63,14 @@ pub mod try_op_lower;
 // Wave-A1 tagged-union ABI pattern. Cgen helpers in cssl-cgen-cpu-cranelift::
 // cgen_string.
 pub mod string_abi;
+// § Wave-A2-γ-redo (T11-D267) — Vec full struct-ABI rewrite. Mirrors the
+// tagged-union ABI pattern : walks fn-signatures + body-ops + rewrites
+// `Vec<T>` → 3-cell `{data: ptr, len: usize, cap: usize}` triple-cell
+// pointer. Closes the W-A2-α/β recognizer chain by lowering each
+// `cssl.vec.*` op into the canonical heap.alloc + memref.store / load +
+// heap.realloc + heap.dealloc primitive shape that downstream cgen
+// already supports (parallel to `tagged_union_abi::expand_module`).
+pub mod vec_abi;
 pub mod lower;
 pub mod monomorph;
 pub mod op;
@@ -128,6 +136,16 @@ pub use trait_dispatch::{
     ModuleBoundViolation, TraitBoundViolation, TraitImplEntry, TraitImplTable, TraitInterfaceTable,
 };
 pub use value::{FloatWidth, IntWidth, MirType, MirValue, ValueId};
+pub use vec_abi::{
+    expand_vec_func, expand_vec_module, expand_vec_op, is_vec_opaque_str, is_vec_type,
+    parse_payload_ty as parse_vec_payload_ty, payload_ty_str as vec_payload_ty_str,
+    rewrite_vec_signature, vec_op_kind, FreshIdSeq as VecFreshIdSeq, VecAbiPass, VecExpansion,
+    VecExpansionReport, VecLayout, VecOpKind, ATTR_ORIGIN as VEC_ATTR_ORIGIN,
+    ATTR_PAYLOAD_TY as VEC_ATTR_PAYLOAD_TY, ATTR_SOURCE_KIND as VEC_ATTR_SOURCE_KIND,
+    OP_VEC_CAP, OP_VEC_DROP, OP_VEC_INDEX, OP_VEC_LEN, OP_VEC_NEW, OP_VEC_PUSH,
+    SOURCE_KIND_VEC_ALIAS, SOURCE_KIND_VEC_CELL, SOURCE_KIND_VEC_DATA, VEC_SIG_REWRITTEN_KEY,
+    VEC_SIG_REWRITTEN_VALUE,
+};
 
 /// Crate version exposed for scaffold verification.
 pub const STAGE0_SCAFFOLD: &str = env!("CARGO_PKG_VERSION");
