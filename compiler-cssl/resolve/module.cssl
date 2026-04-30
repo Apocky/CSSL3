@@ -1,0 +1,805 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/resolve/module.cssl  —  module-registry IN CSSL
+// § Wave    : W-E1-δ · T11-D255 · parser-in-cssl FOURTH SLICE
+// § Mirror  : compiler-rs/crates/cssl-hir/src/{resolve.rs, lower.rs}
+// § Deps    : hir/arena (DefId/HirId) · hir/symbol (Symbol) · stdlib
+// § Role    : module-tree + path-resolution data-structures
+// § Shape   : ModuleId · VisibilityHir · PathSegmentKind · CanonicalPath
+//             UseBinding · ModuleEntry · ModuleRegistry
+// § Invar   : pure-data ; mutators return fresh Registry ; root @ idx 0 ;
+//             crate-root parent = u32::MAX sentinel ; flat Vec ¬ HashMap ;
+//             ¬ global state ; ¬ telemetry ; ¬ surveillance hook
+
+module com.apocky.compiler.resolve.module
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.hir.arena
+import com.apocky.compiler.hir.symbol
+
+// ───────────────────────────────────────────────────────────────────────
+// § ModuleId — opaque u32 handle into ModuleRegistry.modules.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ModuleId` is the registry-local identifier for a module. Distinct from
+// DefId : DefIds are global across all item-kinds, ModuleIds index this
+// registry's `modules` Vec specifically.
+struct ModuleId {
+    raw : u32,
+}
+
+// Sentinel for "no parent" (crate-root). Spelled directly because typed
+// numeric constants slice has not landed yet.
+fn module_id_root_parent() -> ModuleId {
+    ModuleId { raw : 4294967295u32 }
+}
+
+// Construct a ModuleId from a raw u32.
+fn module_id_from_raw(raw : u32) -> ModuleId {
+    ModuleId { raw : raw }
+}
+
+// Project the raw u32 out.
+fn module_id_raw(id : ModuleId) -> u32 {
+    id.raw
+}
+
+// Equality : true iff bit-equal.
+fn module_id_eq(a : ModuleId, b : ModuleId) -> bool {
+    a.raw == b.raw
+}
+
+// `true` iff this is the root-parent sentinel.
+fn module_id_is_root_parent(id : ModuleId) -> bool {
+    id.raw == 4294967295u32
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § VisibilityHir — resolve-layer visibility tier.
+// ───────────────────────────────────────────────────────────────────────
+
+// VisibilityHir mirrors the parser's VisibilityKind but lives in resolve-
+// namespace so visibility-checks don't transitively pull in CST modules.
+enum VisibilityHir {
+    Public,        // `pub`     — reachable from any crate
+    Private,       // (default) — reachable only from same module
+    PublicCrate,   // `pub(crate)` — reachable within this crate only
+}
+
+// VisibilityHir equality.
+fn visibility_hir_eq(a : VisibilityHir, b : VisibilityHir) -> bool {
+    match a {
+        VisibilityHir::Public => match b { VisibilityHir::Public => true, _ => false },
+        VisibilityHir::Private => match b { VisibilityHir::Private => true, _ => false },
+        VisibilityHir::PublicCrate => match b { VisibilityHir::PublicCrate => true, _ => false },
+    }
+}
+
+// Render visibility tier as a short canonical string.
+fn visibility_hir_as_str(v : VisibilityHir) -> &str {
+    match v {
+        VisibilityHir::Public      => "pub",
+        VisibilityHir::Private     => "private",
+        VisibilityHir::PublicCrate => "pub(crate)",
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § PathSegmentKind — how a path segment is interpreted.
+// ───────────────────────────────────────────────────────────────────────
+
+// `PathSegmentKind` distinguishes the THREE special path-roots (Crate /
+// Super / SelfMod) from a generic Named segment. CSSL paths follow Rust-
+// like rules :
+//   - `crate::...`  → reset to crate-root
+//   - `super::...`  → walk up one parent
+//   - `self::...`   → start at current module
+//   - `name::...`   → resolve `name` in current scope, then walk in
+enum PathSegmentKind {
+    Crate,            // `crate`
+    Super,            // `super`
+    SelfMod,          // `self`
+    Named(Symbol),    // any other identifier
+}
+
+// PathSegmentKind equality (structural).
+fn path_segment_kind_eq(a : PathSegmentKind, b : PathSegmentKind) -> bool {
+    match a {
+        PathSegmentKind::Crate => match b { PathSegmentKind::Crate => true, _ => false },
+        PathSegmentKind::Super => match b { PathSegmentKind::Super => true, _ => false },
+        PathSegmentKind::SelfMod => match b { PathSegmentKind::SelfMod => true, _ => false },
+        PathSegmentKind::Named(sa) => match b {
+            PathSegmentKind::Named(sb) => symbol_eq(sa, sb),
+            _ => false,
+        },
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CanonicalPath — `crate::a::b::c` after binding-canonicalization.
+// ───────────────────────────────────────────────────────────────────────
+
+// `CanonicalPath` is the rooted-at-crate-root, fully-resolved path to a
+// definition. Produced by `canonicalize_path` after walking through any
+// `use` aliases.
+struct CanonicalPath {
+    segments : Vec<Symbol>,    // `[a, b, c]` for `crate::a::b::c`
+}
+
+// Empty canonical path (crate-root alone).
+fn canonical_path_empty() -> CanonicalPath {
+    CanonicalPath { segments : vec_new::<Symbol>() }
+}
+
+// Construct from an existing segment-vec (consume).
+fn canonical_path_from_segments(segs : Vec<Symbol>) -> CanonicalPath {
+    CanonicalPath { segments : segs }
+}
+
+// Append a single segment ; returns fresh path.
+fn canonical_path_push(p : CanonicalPath, sym : Symbol) -> CanonicalPath {
+    CanonicalPath { segments : vec_push::<Symbol>(p.segments, sym) }
+}
+
+// Length (number of segments).
+fn canonical_path_len(p : CanonicalPath) -> i64 {
+    vec_len::<Symbol>(p.segments)
+}
+
+// Equality : segment-by-segment Symbol comparison.
+fn canonical_path_eq(a : CanonicalPath, b : CanonicalPath) -> bool {
+    let na = vec_len::<Symbol>(a.segments) ;
+    let nb = vec_len::<Symbol>(b.segments) ;
+    if na != nb { return false ; }
+    let mut i : i64 = 0 ;
+    let mut keep = true ;
+    while keep && i < na {
+        let sa = vec_get_unchecked::<Symbol>(a.segments, i) ;
+        let sb = vec_get_unchecked::<Symbol>(b.segments, i) ;
+        if !symbol_eq(sa, sb) { keep = false ; return false ; }
+        i = i + 1 ;
+    }
+    true
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ModuleItem — registry-side view of a top-level item.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ModuleItem` is the registry's view of a single top-level declaration
+// inside a module. The full HIR item-struct lives in `compiler-cssl/hir/
+// items.cssl` ; for resolution purposes we only need (name, def, visibility,
+// child-module-id-or-none).
+struct ModuleItem {
+    name        : Symbol,
+    def         : DefId,
+    visibility  : VisibilityHir,
+    // `child` is `Some(id)` when this item is a NESTED MODULE — points at
+    // the registry-entry for the nested module body. `None` for non-module
+    // items (fn / struct / enum / interface / impl / use / etc).
+    child       : Option<ModuleId>,
+}
+
+fn module_item_new(name : Symbol, def : DefId, visibility : VisibilityHir,
+                   child : Option<ModuleId>) -> ModuleItem {
+    ModuleItem { name : name, def : def, visibility : visibility, child : child }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § UseBinding — `use a::b::c as x` after parsing.
+// ───────────────────────────────────────────────────────────────────────
+
+// `UseBinding` is the registry-side view of a `use` declaration. Local
+// callers see `local_name` ; canonicalization rewrites `local_name` to
+// `target_path` (the fully-rooted CanonicalPath).
+struct UseBinding {
+    local_name  : Symbol,
+    target_path : CanonicalPath,
+    visibility  : VisibilityHir,    // re-export iff Public
+}
+
+fn use_binding_new(local_name : Symbol, target_path : CanonicalPath,
+                   visibility : VisibilityHir) -> UseBinding {
+    UseBinding { local_name : local_name, target_path : target_path,
+                 visibility : visibility }
+}
+
+// `true` iff this binding is a re-export (visible outside this module).
+fn use_binding_is_reexport(b : UseBinding) -> bool {
+    match b.visibility {
+        VisibilityHir::Private => false,
+        _ => true,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ModuleEntry — single record in the ModuleRegistry.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ModuleEntry` describes one module's resolved-shape inside the registry.
+// Crate-root has `name = sym("<crate>")` and `parent = root_parent_sentinel`.
+struct ModuleEntry {
+    id            : ModuleId,
+    parent        : ModuleId,           // root_parent_sentinel iff crate-root
+    name          : Symbol,
+    visibility    : VisibilityHir,      // tier this module is exposed at
+    items         : Vec<ModuleItem>,
+    use_bindings  : Vec<UseBinding>,
+}
+
+fn module_entry_new(id : ModuleId, parent : ModuleId, name : Symbol,
+                    visibility : VisibilityHir) -> ModuleEntry {
+    ModuleEntry {
+        id : id,
+        parent : parent,
+        name : name,
+        visibility : visibility,
+        items : vec_new::<ModuleItem>(),
+        use_bindings : vec_new::<UseBinding>(),
+    }
+}
+
+// Append an item to an existing entry. Returns a fresh entry.
+fn module_entry_add_item(e : ModuleEntry, item : ModuleItem) -> ModuleEntry {
+    ModuleEntry {
+        id : e.id,
+        parent : e.parent,
+        name : e.name,
+        visibility : e.visibility,
+        items : vec_push::<ModuleItem>(e.items, item),
+        use_bindings : e.use_bindings,
+    }
+}
+
+// Append a use-binding. Returns a fresh entry.
+fn module_entry_add_use(e : ModuleEntry, b : UseBinding) -> ModuleEntry {
+    ModuleEntry {
+        id : e.id,
+        parent : e.parent,
+        name : e.name,
+        visibility : e.visibility,
+        items : e.items,
+        use_bindings : vec_push::<UseBinding>(e.use_bindings, b),
+    }
+}
+
+// Lookup an item in this entry by name. Returns Option<ModuleItem>.
+fn module_entry_lookup_item(e : ModuleEntry, name : Symbol) -> Option<ModuleItem> {
+    let n = vec_len::<ModuleItem>(e.items) ;
+    let mut i : i64 = 0 ;
+    while i < n {
+        let it = vec_get_unchecked::<ModuleItem>(e.items, i) ;
+        if symbol_eq(it.name, name) { return Some(it) ; }
+        i = i + 1 ;
+    }
+    None
+}
+
+// Lookup a use-binding by local-name. Returns Option<UseBinding>.
+fn module_entry_lookup_use(e : ModuleEntry, name : Symbol) -> Option<UseBinding> {
+    let n = vec_len::<UseBinding>(e.use_bindings) ;
+    let mut i : i64 = 0 ;
+    while i < n {
+        let b = vec_get_unchecked::<UseBinding>(e.use_bindings, i) ;
+        if symbol_eq(b.local_name, name) { return Some(b) ; }
+        i = i + 1 ;
+    }
+    None
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ModuleRegistry — flat Vec<ModuleEntry> with crate-root at index 0.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ModuleRegistry` is the flat-array storage for every module in the
+// crate. Crate-root is always at index 0 ; child modules are appended in
+// declaration order. Look-up is via parent+name linear-scan (small N).
+struct ModuleRegistry {
+    modules    : Vec<ModuleEntry>,
+    crate_name : Symbol,
+}
+
+// Construct an empty registry — caller MUST call `registry_add_crate_root`
+// before any other operation.
+fn registry_empty(crate_name : Symbol) -> ModuleRegistry {
+    ModuleRegistry {
+        modules : vec_new::<ModuleEntry>(),
+        crate_name : crate_name,
+    }
+}
+
+// Add the crate-root to a fresh registry. Crate-root MUST be at index 0.
+// Returns the (registry, root-id) pair.
+fn registry_add_crate_root(reg : ModuleRegistry, name : Symbol) -> ModuleRegistry {
+    let root_id = ModuleId { raw : 0u32 } ;
+    let parent = module_id_root_parent() ;
+    let root = module_entry_new(root_id, parent, name, VisibilityHir::Public) ;
+    ModuleRegistry {
+        modules : vec_push::<ModuleEntry>(reg.modules, root),
+        crate_name : reg.crate_name,
+    }
+}
+
+// Number of modules in the registry.
+fn registry_len(reg : ModuleRegistry) -> i64 {
+    vec_len::<ModuleEntry>(reg.modules)
+}
+
+// Look up a module-entry by id. Returns Option<ModuleEntry>.
+fn registry_get(reg : ModuleRegistry, id : ModuleId) -> Option<ModuleEntry> {
+    if module_id_is_root_parent(id) { return None ; }
+    let n = vec_len::<ModuleEntry>(reg.modules) ;
+    let idx : i64 = id.raw as i64 ;
+    if idx < 0 || idx >= n { return None ; }
+    Some(vec_get_unchecked::<ModuleEntry>(reg.modules, idx))
+}
+
+// Replace a module-entry at the given id. Returns fresh registry.
+fn registry_set(reg : ModuleRegistry, id : ModuleId, e : ModuleEntry) -> ModuleRegistry {
+    let n = vec_len::<ModuleEntry>(reg.modules) ;
+    let idx : i64 = id.raw as i64 ;
+    let mut out = vec_new::<ModuleEntry>() ;
+    let mut i : i64 = 0 ;
+    while i < n {
+        if i == idx {
+            out = vec_push::<ModuleEntry>(out, e) ;
+        } else {
+            out = vec_push::<ModuleEntry>(out, vec_get_unchecked::<ModuleEntry>(reg.modules, i)) ;
+        }
+        i = i + 1 ;
+    }
+    ModuleRegistry { modules : out, crate_name : reg.crate_name }
+}
+
+// Append a fresh child-module. Returns (registry, fresh-id).
+fn registry_add_child(reg : ModuleRegistry, parent : ModuleId, name : Symbol,
+                      visibility : VisibilityHir) -> ModuleRegistry {
+    let next_raw : u32 = vec_len::<ModuleEntry>(reg.modules) as u32 ;
+    let id = ModuleId { raw : next_raw } ;
+    let entry = module_entry_new(id, parent, name, visibility) ;
+    ModuleRegistry {
+        modules : vec_push::<ModuleEntry>(reg.modules, entry),
+        crate_name : reg.crate_name,
+    }
+}
+
+// `registry_last_added_id(reg)` — id of the most-recently-appended module.
+// Helper after `registry_add_child` since stage-0 stage cannot return tuples
+// from a multi-arg fn cleanly.
+fn registry_last_added_id(reg : ModuleRegistry) -> ModuleId {
+    let n = vec_len::<ModuleEntry>(reg.modules) ;
+    if n == 0 { return module_id_root_parent() ; }
+    ModuleId { raw : (n - 1) as u32 }
+}
+
+// Crate-root id (always 0 by convention).
+fn registry_crate_root(reg : ModuleRegistry) -> ModuleId {
+    if vec_len::<ModuleEntry>(reg.modules) == 0 {
+        return module_id_root_parent() ;
+    }
+    ModuleId { raw : 0u32 }
+}
+
+// Walk up `n` parent links from `start`. Returns sentinel if we walk past
+// crate-root. Used by `super::` resolution.
+fn registry_walk_up(reg : ModuleRegistry, start : ModuleId, n : u32) -> ModuleId {
+    let mut current = start ;
+    let mut i : u32 = 0u32 ;
+    while i < n {
+        match registry_get(reg, current) {
+            Some(e) => { current = e.parent ; }
+            None    => { return module_id_root_parent() ; }
+        }
+        if module_id_is_root_parent(current) { return current ; }
+        i = i + 1u32 ;
+    }
+    current
+}
+
+// `true` iff `descendant` is `ancestor` itself OR a transitive child of it.
+// Used by visibility-checks for `pub(crate)` (= reachable when ancestor is
+// crate-root).
+fn registry_is_ancestor(reg : ModuleRegistry, ancestor : ModuleId,
+                        descendant : ModuleId) -> bool {
+    if module_id_eq(ancestor, descendant) { return true ; }
+    let mut current = descendant ;
+    let mut keep = true ;
+    while keep {
+        match registry_get(reg, current) {
+            Some(e) => {
+                if module_id_is_root_parent(e.parent) { return false ; }
+                if module_id_eq(e.parent, ancestor) { return true ; }
+                current = e.parent ;
+            }
+            None => { keep = false ; }
+        }
+    }
+    false
+}
+
+// Add an item to a module by id. Returns fresh registry.
+fn registry_add_item(reg : ModuleRegistry, mod_id : ModuleId,
+                     item : ModuleItem) -> ModuleRegistry {
+    match registry_get(reg, mod_id) {
+        Some(e) => {
+            let e2 = module_entry_add_item(e, item) ;
+            registry_set(reg, mod_id, e2)
+        }
+        None => reg,
+    }
+}
+
+// Add a use-binding to a module by id. Returns fresh registry.
+fn registry_add_use(reg : ModuleRegistry, mod_id : ModuleId,
+                    b : UseBinding) -> ModuleRegistry {
+    match registry_get(reg, mod_id) {
+        Some(e) => {
+            let e2 = module_entry_add_use(e, b) ;
+            registry_set(reg, mod_id, e2)
+        }
+        None => reg,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Path-resolution against the registry.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ResolveOk` packages a successful resolution result.
+struct ResolveOk {
+    def    : DefId,
+    module : ModuleId,    // the module that contains the resolved item
+}
+
+fn resolve_ok_new(def : DefId, module : ModuleId) -> ResolveOk {
+    ResolveOk { def : def, module : module }
+}
+
+// `ResolveErr` describes WHY a resolution failed — used by the resolver
+// visitor to emit precise diagnostics.
+enum ResolveErr {
+    Unresolved(Symbol),                // segment doesn't exist in scope
+    NotAModule(Symbol),                // segment exists but isn't a module
+    VisibilityViolation(Symbol),       // exists but is private/pub(crate)
+    SuperBeyondRoot,                   // `super::` from crate-root
+    EmptyPath,                         // path with no segments
+}
+
+// Resolution-result : Ok or Err. Stage-0 enums-with-payloads land cleanly.
+enum ResolveResult {
+    Ok(ResolveOk),
+    Err(ResolveErr),
+}
+
+// `resolve_segments(reg, start, segments)` — walk a Vec<PathSegmentKind>
+// from `start`, returning the final resolution. This is the workhorse for
+// both `resolve_path` and `resolve_use` — the latter just feeds in the
+// pre-parsed segment-list from a `use` tree.
+//
+// Visibility-checks happen at EVERY hop : if we're walking through a
+// non-public module-segment from outside its parent's scope we record a
+// VisibilityViolation. The caller (resolver) is responsible for knowing
+// which module was the requester (see `from_module` parameter).
+fn resolve_segments(reg : ModuleRegistry, start : ModuleId,
+                    from_module : ModuleId,
+                    segments : Vec<PathSegmentKind>) -> ResolveResult {
+    let n = vec_len::<PathSegmentKind>(segments) ;
+    if n == 0 { return ResolveResult::Err(ResolveErr::EmptyPath) ; }
+
+    // Resolve the head — special segments (Crate/Super/SelfMod) shift the
+    // current-module pointer ; Named segments fall through to the loop.
+    let head = vec_get_unchecked::<PathSegmentKind>(segments, 0) ;
+    let mut current = start ;
+    let mut idx : i64 = 0 ;
+    match head {
+        PathSegmentKind::Crate => {
+            current = registry_crate_root(reg) ;
+            idx = 1 ;
+        }
+        PathSegmentKind::Super => {
+            let up = registry_walk_up(reg, start, 1u32) ;
+            if module_id_is_root_parent(up) {
+                return ResolveResult::Err(ResolveErr::SuperBeyondRoot) ;
+            }
+            current = up ;
+            idx = 1 ;
+        }
+        PathSegmentKind::SelfMod => {
+            current = start ;
+            idx = 1 ;
+        }
+        PathSegmentKind::Named(_) => {
+            // Loop body handles named segments uniformly.
+        }
+    }
+
+    // Walk every remaining segment. Each iteration either :
+    //   (a) reaches a child module (intermediate segment) — recurse via
+    //       `current = child` and continue ;
+    //   (b) reaches a leaf item (final segment) — return ResolveOk ;
+    //   (c) fails to find the segment — return Unresolved.
+    while idx < n {
+        let seg = vec_get_unchecked::<PathSegmentKind>(segments, idx) ;
+        let is_last = idx == n - 1 ;
+        match seg {
+            PathSegmentKind::Named(name) => {
+                match registry_get(reg, current) {
+                    None => { return ResolveResult::Err(ResolveErr::Unresolved(name)) ; }
+                    Some(entry) => {
+                        // Look up named item ; if it's a use-binding alias,
+                        // walk through it (resolution is transitive).
+                        match module_entry_lookup_item(entry, name) {
+                            Some(it) => {
+                                // Visibility-check : if the item is private
+                                // and we're not in the same module, fail.
+                                if !visibility_visible(reg, it.visibility,
+                                                       current, from_module) {
+                                    return ResolveResult::Err(
+                                        ResolveErr::VisibilityViolation(name)) ;
+                                }
+                                if is_last {
+                                    return ResolveResult::Ok(
+                                        resolve_ok_new(it.def, current)) ;
+                                }
+                                // Not last — must be a child module.
+                                match it.child {
+                                    Some(child_id) => { current = child_id ; }
+                                    None => {
+                                        return ResolveResult::Err(
+                                            ResolveErr::NotAModule(name)) ;
+                                    }
+                                }
+                            }
+                            None => {
+                                // Maybe it's a use-binding ?
+                                match module_entry_lookup_use(entry, name) {
+                                    Some(b) => {
+                                        if !visibility_visible(reg, b.visibility,
+                                                               current, from_module) {
+                                            return ResolveResult::Err(
+                                                ResolveErr::VisibilityViolation(name)) ;
+                                        }
+                                        // Resolve the target-path from crate-root.
+                                        let target_segs = canonical_path_to_segments(b.target_path) ;
+                                        return resolve_segments(reg,
+                                            registry_crate_root(reg),
+                                            from_module,
+                                            target_segs) ;
+                                    }
+                                    None => {
+                                        return ResolveResult::Err(
+                                            ResolveErr::Unresolved(name)) ;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            PathSegmentKind::Crate => {
+                // `crate` only legal as head-segment.
+                return ResolveResult::Err(ResolveErr::Unresolved(symbol_from_raw(0u32))) ;
+            }
+            PathSegmentKind::Super => {
+                let up = registry_walk_up(reg, current, 1u32) ;
+                if module_id_is_root_parent(up) {
+                    return ResolveResult::Err(ResolveErr::SuperBeyondRoot) ;
+                }
+                current = up ;
+            }
+            PathSegmentKind::SelfMod => {
+                // `self::self::...` is legal but a no-op.
+            }
+        }
+        idx = idx + 1 ;
+    }
+    // We exhausted the segment-list without hitting a leaf — that means
+    // the path resolved to a MODULE (not an item). Synthesize a DefId
+    // from the module's index ; downstream consumers tag this as Module.
+    ResolveResult::Ok(resolve_ok_new(def_id_from_raw(current.raw), current))
+}
+
+// `canonical_path_to_segments` — convert a CanonicalPath (pre-rooted at
+// crate) to a Vec<PathSegmentKind>. Prepends the implicit `Crate` head
+// so `resolve_segments` walks from the crate-root.
+fn canonical_path_to_segments(p : CanonicalPath) -> Vec<PathSegmentKind> {
+    let mut out = vec_new::<PathSegmentKind>() ;
+    out = vec_push::<PathSegmentKind>(out, PathSegmentKind::Crate) ;
+    let n = vec_len::<Symbol>(p.segments) ;
+    let mut i : i64 = 0 ;
+    while i < n {
+        let s = vec_get_unchecked::<Symbol>(p.segments, i) ;
+        out = vec_push::<PathSegmentKind>(out, PathSegmentKind::Named(s)) ;
+        i = i + 1 ;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Visibility checks.
+// ───────────────────────────────────────────────────────────────────────
+
+// `visibility_visible(reg, vis, owner, from)` — true iff an item with
+// visibility `vis` defined in `owner` is visible from `from`. The rules :
+//   - Public            : always visible.
+//   - PublicCrate       : visible iff `from` and `owner` share a crate-root.
+//                         Since one registry models exactly one crate, this
+//                         degenerates to "always-true within this registry"
+//                         and "false if ever queried cross-crate".
+//   - Private           : visible iff `from == owner` OR `owner` is the
+//                         direct ancestor-chain to `from` (i.e., a child
+//                         in the same module-tree branch).
+fn visibility_visible(reg : ModuleRegistry, vis : VisibilityHir,
+                      owner : ModuleId, from : ModuleId) -> bool {
+    match vis {
+        VisibilityHir::Public => true,
+        VisibilityHir::PublicCrate => {
+            // Both must trace back to the same crate-root. Within one
+            // registry that's automatic.
+            let root = registry_crate_root(reg) ;
+            registry_is_ancestor(reg, root, owner) &&
+                registry_is_ancestor(reg, root, from)
+        }
+        VisibilityHir::Private => {
+            // Same module : visible. Otherwise check ancestor-chain :
+            // private items are visible to descendants of their owner.
+            if module_id_eq(owner, from) { return true ; }
+            registry_is_ancestor(reg, owner, from)
+        }
+    }
+}
+
+// `visibility_from_kind(k)` — convert parser CST `VisibilityKind` (named in
+// the parser as Public / Private / PublicCrate) to resolve `VisibilityHir`.
+// Stage-1 keeps the two enums separate so resolve doesn't pull CST modules.
+// This bridge fn is intentionally tiny.
+fn visibility_from_kind_raw(raw : u8) -> VisibilityHir {
+    if raw == 0u8 { return VisibilityHir::Public ; }
+    if raw == 2u8 { return VisibilityHir::PublicCrate ; }
+    VisibilityHir::Private
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Use-binding canonicalization.
+// ───────────────────────────────────────────────────────────────────────
+
+// `canonicalize_use(reg, owner, segments, alias)` — given a `use` tree's
+// segment-list authored inside `owner`, produce a UseBinding whose
+// `target_path` is rooted at the crate-root. The local-name is `alias` if
+// provided ; otherwise the LAST named-segment in `segments`.
+//
+// Returns Option<UseBinding> — None on degenerate inputs (empty list,
+// `use super;` with no trailing segment, etc).
+fn canonicalize_use(reg : ModuleRegistry, owner : ModuleId,
+                    segments : Vec<PathSegmentKind>,
+                    alias : Option<Symbol>,
+                    visibility : VisibilityHir) -> Option<UseBinding> {
+    let n = vec_len::<PathSegmentKind>(segments) ;
+    if n == 0 { return None ; }
+
+    // Walk the head to determine the rooted-prefix.
+    let mut prefix_segs = vec_new::<Symbol>() ;
+    let mut idx : i64 = 0 ;
+    let head = vec_get_unchecked::<PathSegmentKind>(segments, 0) ;
+    let mut current = owner ;
+    match head {
+        PathSegmentKind::Crate => { current = registry_crate_root(reg) ; idx = 1 ; }
+        PathSegmentKind::Super => {
+            let up = registry_walk_up(reg, owner, 1u32) ;
+            if module_id_is_root_parent(up) { return None ; }
+            current = up ; idx = 1 ;
+        }
+        PathSegmentKind::SelfMod => { current = owner ; idx = 1 ; }
+        PathSegmentKind::Named(_) => { current = registry_crate_root(reg) ; }
+    }
+
+    // Build prefix-segments by walking from crate-root → current.
+    prefix_segs = path_from_root_to(reg, current) ;
+
+    // Append all post-head segments (Named only ; intermediate Super/Self
+    // are unusual but tolerated).
+    let mut last_named : Option<Symbol> = None ;
+    while idx < n {
+        let s = vec_get_unchecked::<PathSegmentKind>(segments, idx) ;
+        match s {
+            PathSegmentKind::Named(sym) => {
+                prefix_segs = vec_push::<Symbol>(prefix_segs, sym) ;
+                last_named = Some(sym) ;
+            }
+            PathSegmentKind::Super => {
+                // Pop one segment (walk up).
+                let len = vec_len::<Symbol>(prefix_segs) ;
+                if len == 0 { return None ; }
+                prefix_segs = vec_pop_clone::<Symbol>(prefix_segs) ;
+            }
+            PathSegmentKind::SelfMod => { /* no-op */ }
+            PathSegmentKind::Crate => {
+                // `crate` mid-path resets — drop accumulated and continue.
+                prefix_segs = vec_new::<Symbol>() ;
+            }
+        }
+        idx = idx + 1 ;
+    }
+
+    let local : Symbol = match alias {
+        Some(a) => a,
+        None => match last_named {
+            Some(s) => s,
+            None => return None,
+        },
+    } ;
+
+    let target = canonical_path_from_segments(prefix_segs) ;
+    Some(use_binding_new(local, target, visibility))
+}
+
+// `path_from_root_to(reg, id)` — segments from crate-root → id, ordered.
+// Empty Vec for crate-root itself.
+fn path_from_root_to(reg : ModuleRegistry, id : ModuleId) -> Vec<Symbol> {
+    let mut stack = vec_new::<Symbol>() ;
+    let mut current = id ;
+    let root = registry_crate_root(reg) ;
+    let mut keep = true ;
+    while keep && !module_id_eq(current, root) {
+        match registry_get(reg, current) {
+            Some(e) => {
+                stack = vec_push::<Symbol>(stack, e.name) ;
+                current = e.parent ;
+                if module_id_is_root_parent(current) { keep = false ; }
+            }
+            None => { keep = false ; }
+        }
+    }
+    // Reverse stack → root-first ordering.
+    let n = vec_len::<Symbol>(stack) ;
+    let mut out = vec_new::<Symbol>() ;
+    let mut i : i64 = n - 1 ;
+    while i >= 0 {
+        out = vec_push::<Symbol>(out, vec_get_unchecked::<Symbol>(stack, i)) ;
+        i = i - 1 ;
+    }
+    out
+}
+
+// Stub : `vec_pop_clone` — pop the last element non-destructively.
+// stdlib provides this once vec.cssl exposes it ; declared extern here so
+// the resolve module compiles in isolation prior to that landing.
+extern fn vec_pop_clone<T>(v : Vec<T>) -> Vec<T> ;
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : registry_add_crate_root returns a 1-entry registry.
+fn _example_empty_then_root() -> bool {
+    let reg0 = registry_empty(symbol_from_raw(7u32)) ;
+    let reg1 = registry_add_crate_root(reg0, symbol_from_raw(7u32)) ;
+    registry_len(reg1) == 1
+}
+
+// Worked example : registry_walk_up from crate-root returns sentinel.
+fn _example_super_at_root() -> bool {
+    let reg0 = registry_empty(symbol_from_raw(7u32)) ;
+    let reg1 = registry_add_crate_root(reg0, symbol_from_raw(7u32)) ;
+    let root = registry_crate_root(reg1) ;
+    let up = registry_walk_up(reg1, root, 1u32) ;
+    module_id_is_root_parent(up)
+}
+
+// Worked example : registry_is_ancestor is reflexive.
+fn _example_is_ancestor_self() -> bool {
+    let reg0 = registry_empty(symbol_from_raw(7u32)) ;
+    let reg1 = registry_add_crate_root(reg0, symbol_from_raw(7u32)) ;
+    let root = registry_crate_root(reg1) ;
+    registry_is_ancestor(reg1, root, root)
+}
+
+// Worked example : visibility_visible(Public) is universally true.
+fn _example_public_always_visible() -> bool {
+    let reg0 = registry_empty(symbol_from_raw(7u32)) ;
+    let reg1 = registry_add_crate_root(reg0, symbol_from_raw(7u32)) ;
+    let root = registry_crate_root(reg1) ;
+    visibility_visible(reg1, VisibilityHir::Public, root, root)
+}

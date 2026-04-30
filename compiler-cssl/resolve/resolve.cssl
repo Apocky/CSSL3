@@ -1,0 +1,1079 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/resolve/resolve.cssl  —  name-resolver IN CSSL
+// § Wave    : W-E1-δ · T11-D255 · parser-in-cssl FOURTH SLICE
+// § Mirror  : compiler-rs/crates/cssl-hir/src/{resolve.rs, lower.rs}
+// § Deps    : resolve/module · hir/arena · hir/symbol · stdlib
+// § Surface : Scope · ScopeMap · Resolver · resolve_path · resolve_use ·
+//             resolve_self · build_scope_from_module
+// § Rules   : locals-shadow-items · innermost-first · pub-public ·
+//             pub(crate)-in-crate · private-same-mod-or-descendant
+// § Invar   : pure-data ¬ HashMap ¬ &str ¬ interior-mut ¬ global-state ;
+//             every mutator returns fresh Resolver ; visitor read-only
+//             after build → parallel-fanout safe
+
+module com.apocky.compiler.resolve.resolve
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.hir.arena
+import com.apocky.compiler.hir.symbol
+import com.apocky.compiler.resolve.module
+
+// ───────────────────────────────────────────────────────────────────────
+// § ScopeBinding — one (Symbol, DefId) entry inside a Scope.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ScopeBinding` is one (name, def) pair inside a Scope. Stage-0 stage
+// lacks first-class tuples in struct fields ; this gives us the cleanest
+// shape.
+struct ScopeBinding {
+    name : Symbol,
+    def  : DefId,
+}
+
+fn scope_binding_new(name : Symbol, def : DefId) -> ScopeBinding {
+    ScopeBinding { name : name, def : def }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Scope — single block-level binding layer.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Scope` is the record-struct backing a single layer of the resolution
+// stack. At module-level it pre-loads with the module's items ; nested
+// blocks push fresh empty scopes.
+struct Scope {
+    bindings : Vec<ScopeBinding>,
+}
+
+// Construct a fresh empty scope.
+fn scope_new() -> Scope {
+    Scope { bindings : vec_new::<ScopeBinding>() }
+}
+
+// Insert a (name, def) binding. Returns fresh scope ; older binding is
+// SHADOWED (new entry is appended ; lookups walk newest-first).
+fn scope_insert(s : Scope, name : Symbol, def : DefId) -> Scope {
+    let b = scope_binding_new(name, def) ;
+    Scope { bindings : vec_push::<ScopeBinding>(s.bindings, b) }
+}
+
+// Lookup `name` in this scope only — newest binding first (shadowing).
+// Returns Option<DefId>.
+fn scope_lookup(s : Scope, name : Symbol) -> Option<DefId> {
+    let n = vec_len::<ScopeBinding>(s.bindings) ;
+    let mut i : i64 = n - 1 ;
+    while i >= 0 {
+        let b = vec_get_unchecked::<ScopeBinding>(s.bindings, i) ;
+        if symbol_eq(b.name, name) { return Some(b.def) ; }
+        i = i - 1 ;
+    }
+    None
+}
+
+// Number of bindings in this scope.
+fn scope_len(s : Scope) -> i64 {
+    vec_len::<ScopeBinding>(s.bindings)
+}
+
+// `true` iff scope has no bindings.
+fn scope_is_empty(s : Scope) -> bool {
+    scope_len(s) == 0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ScopeMap — stack of Scopes, top = innermost.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ScopeMap` is the resolution-stack. The MODULE scope is always at
+// index 0 (never popped) ; nested blocks push fresh scopes that are popped
+// on block-exit.
+struct ScopeMap {
+    module : Scope,         // module-level (immutable across stack ops)
+    stack  : Vec<Scope>,    // pushed inner scopes
+}
+
+// Build an empty ScopeMap.
+fn scope_map_new() -> ScopeMap {
+    ScopeMap { module : scope_new(), stack : vec_new::<Scope>() }
+}
+
+// Push a fresh nested scope (for entering a block / fn body / impl body).
+fn scope_map_enter(m : ScopeMap) -> ScopeMap {
+    ScopeMap {
+        module : m.module,
+        stack  : vec_push::<Scope>(m.stack, scope_new()),
+    }
+}
+
+// Pop the innermost nested scope. No-op if already at module-level.
+fn scope_map_leave(m : ScopeMap) -> ScopeMap {
+    let n = vec_len::<Scope>(m.stack) ;
+    if n == 0 { return m ; }
+    let mut out = vec_new::<Scope>() ;
+    let mut i : i64 = 0 ;
+    while i < n - 1 {
+        out = vec_push::<Scope>(out, vec_get_unchecked::<Scope>(m.stack, i)) ;
+        i = i + 1 ;
+    }
+    ScopeMap { module : m.module, stack : out }
+}
+
+// Insert a binding into the INNERMOST scope (or module-level if stack
+// is empty).
+fn scope_map_insert(m : ScopeMap, name : Symbol, def : DefId) -> ScopeMap {
+    let n = vec_len::<Scope>(m.stack) ;
+    if n == 0 {
+        return ScopeMap {
+            module : scope_insert(m.module, name, def),
+            stack  : m.stack,
+        } ;
+    }
+    // Replace the top-of-stack with an updated copy.
+    let top = vec_get_unchecked::<Scope>(m.stack, n - 1) ;
+    let new_top = scope_insert(top, name, def) ;
+    let mut out = vec_new::<Scope>() ;
+    let mut i : i64 = 0 ;
+    while i < n - 1 {
+        out = vec_push::<Scope>(out, vec_get_unchecked::<Scope>(m.stack, i)) ;
+        i = i + 1 ;
+    }
+    out = vec_push::<Scope>(out, new_top) ;
+    ScopeMap { module : m.module, stack : out }
+}
+
+// Insert directly into the module-level scope, regardless of stack depth.
+// Used when pre-registering top-level items at lower-time so they're
+// visible across the whole module.
+fn scope_map_insert_module(m : ScopeMap, name : Symbol, def : DefId) -> ScopeMap {
+    ScopeMap {
+        module : scope_insert(m.module, name, def),
+        stack  : m.stack,
+    }
+}
+
+// Look up a name : innermost-to-outermost-to-module. Returns Option<DefId>.
+fn scope_map_lookup(m : ScopeMap, name : Symbol) -> Option<DefId> {
+    let n = vec_len::<Scope>(m.stack) ;
+    let mut i : i64 = n - 1 ;
+    while i >= 0 {
+        let s = vec_get_unchecked::<Scope>(m.stack, i) ;
+        match scope_lookup(s, name) {
+            Some(d) => { return Some(d) ; }
+            None    => { /* fall through to next-outer scope */ }
+        }
+        i = i - 1 ;
+    }
+    scope_lookup(m.module, name)
+}
+
+// Look up a name AT MODULE LEVEL ONLY (skip nested scopes).
+fn scope_map_lookup_module(m : ScopeMap, name : Symbol) -> Option<DefId> {
+    scope_lookup(m.module, name)
+}
+
+// Current stack depth (0 at module-level).
+fn scope_map_depth(m : ScopeMap) -> i64 {
+    vec_len::<Scope>(m.stack)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ResolveDiagnostic — resolver-emitted diagnostic record.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ResolveDiagnostic` describes a resolver-detected error. The CST `Span`
+// is intentionally NOT carried here ; the visitor records the diagnostic +
+// the caller pairs it with the offending node-span out-of-band. (Stage-0
+// keeps these enums payload-light to avoid tying resolve to CST Span.)
+enum ResolveDiagnostic {
+    UnresolvedPath(Symbol),
+    PathNotAModule(Symbol),
+    VisibilityViolation(Symbol),
+    SuperBeyondRoot,
+    EmptyPath,
+    UseTargetUnresolved(Symbol),
+    SelfOutsideImpl,
+}
+
+// Render a diagnostic as a single-line short string for the test-suite
+// substring-assertions + the LSP human-readable surface.
+fn resolve_diagnostic_render(d : ResolveDiagnostic) -> String {
+    match d {
+        ResolveDiagnostic::UnresolvedPath(_) =>
+            string_from_str("unresolved path"),
+        ResolveDiagnostic::PathNotAModule(_) =>
+            string_from_str("path segment is not a module"),
+        ResolveDiagnostic::VisibilityViolation(_) =>
+            string_from_str("visibility violation : item not accessible from caller"),
+        ResolveDiagnostic::SuperBeyondRoot =>
+            string_from_str("`super::` walks past crate-root"),
+        ResolveDiagnostic::EmptyPath =>
+            string_from_str("empty path"),
+        ResolveDiagnostic::UseTargetUnresolved(_) =>
+            string_from_str("use-target unresolved"),
+        ResolveDiagnostic::SelfOutsideImpl =>
+            string_from_str("`self` referenced outside impl-block"),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § PathResolution — entry in the (path-id → DefId) side-table.
+// ───────────────────────────────────────────────────────────────────────
+
+// `PathResolution` records a single Path-CST-node's resolution result.
+// The `path_hir` is the HirId of the lowered Path node (assigned by the
+// HIR-lowerer downstream) ; we store it abstractly here as a u32.
+struct PathResolution {
+    path_id : u32,         // identifies the CST/HIR node we resolved
+    def     : Option<DefId>,   // None iff resolution failed
+}
+
+fn path_resolution_new(path_id : u32, def : Option<DefId>) -> PathResolution {
+    PathResolution { path_id : path_id, def : def }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Resolver — the visitor state.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Resolver` packages the working state of name-resolution.
+struct Resolver {
+    registry     : ModuleRegistry,
+    scope_map    : ScopeMap,
+    current_mod  : ModuleId,
+    diagnostics  : Vec<ResolveDiagnostic>,
+    resolutions  : Vec<PathResolution>,
+    // `self_def` : present when we're inside an impl-block, gives the
+    // DefId of the receiver type so `self::` resolves to it.
+    self_def     : Option<DefId>,
+    next_path_id : u32,
+}
+
+// Build a fresh resolver positioned at crate-root with an empty scope-map.
+fn resolver_new(reg : ModuleRegistry) -> Resolver {
+    let root = registry_crate_root(reg) ;
+    Resolver {
+        registry : reg,
+        scope_map : scope_map_new(),
+        current_mod : root,
+        diagnostics : vec_new::<ResolveDiagnostic>(),
+        resolutions : vec_new::<PathResolution>(),
+        self_def : None,
+        next_path_id : 0u32,
+    }
+}
+
+// Push a nested scope (block-entry).
+fn resolver_enter_block(r : Resolver) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : scope_map_enter(r.scope_map),
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : r.self_def,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Pop a nested scope (block-exit).
+fn resolver_leave_block(r : Resolver) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : scope_map_leave(r.scope_map),
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : r.self_def,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Switch the resolver's `current_mod` (descending into a nested module).
+fn resolver_enter_module(r : Resolver, mod_id : ModuleId) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : r.scope_map,
+        current_mod : mod_id,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : r.self_def,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Mark entry into an impl-block ; sets self_def for `self::` resolution.
+fn resolver_enter_impl(r : Resolver, self_def : DefId) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : r.scope_map,
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : Some(self_def),
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Leave impl-block (clears self_def).
+fn resolver_leave_impl(r : Resolver) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : r.scope_map,
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : None,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Add a binding to the innermost scope (let-binding / fn-param).
+fn resolver_bind_local(r : Resolver, name : Symbol, def : DefId) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : scope_map_insert(r.scope_map, name, def),
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : r.self_def,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Add a binding at module-level (top-level item pre-registration).
+fn resolver_bind_module(r : Resolver, name : Symbol, def : DefId) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : scope_map_insert_module(r.scope_map, name, def),
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : r.resolutions,
+        self_def : r.self_def,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Push a diagnostic. Returns fresh resolver.
+fn resolver_emit_diag(r : Resolver, d : ResolveDiagnostic) -> Resolver {
+    Resolver {
+        registry : r.registry,
+        scope_map : r.scope_map,
+        current_mod : r.current_mod,
+        diagnostics : vec_push::<ResolveDiagnostic>(r.diagnostics, d),
+        resolutions : r.resolutions,
+        self_def : r.self_def,
+        next_path_id : r.next_path_id,
+    }
+}
+
+// Record a resolution result ; allocates a fresh path_id.
+// Returns (resolver, path_id).
+fn resolver_record_resolution(r : Resolver, def : Option<DefId>) -> Resolver {
+    let pid = r.next_path_id ;
+    let entry = path_resolution_new(pid, def) ;
+    Resolver {
+        registry : r.registry,
+        scope_map : r.scope_map,
+        current_mod : r.current_mod,
+        diagnostics : r.diagnostics,
+        resolutions : vec_push::<PathResolution>(r.resolutions, entry),
+        self_def : r.self_def,
+        next_path_id : pid + 1u32,
+    }
+}
+
+// Number of recorded diagnostics.
+fn resolver_diag_count(r : Resolver) -> i64 {
+    vec_len::<ResolveDiagnostic>(r.diagnostics)
+}
+
+// `true` iff resolver has at least one diagnostic.
+fn resolver_has_errors(r : Resolver) -> bool {
+    resolver_diag_count(r) > 0
+}
+
+// Number of recorded resolutions.
+fn resolver_resolution_count(r : Resolver) -> i64 {
+    vec_len::<PathResolution>(r.resolutions)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § resolve_path — single-path resolution against scope-map + registry.
+// ───────────────────────────────────────────────────────────────────────
+
+// `resolve_path(r, segments)` — the central resolution entry-point. The
+// resolution rules :
+//
+//   1. Single-segment, Named(s) :
+//      - Try scope_map_lookup(s) FIRST (locals shadow items).
+//      - On miss, try registry path-resolution starting from current_mod.
+//
+//   2. Multi-segment :
+//      - Walk via `resolve_segments` from current_mod.
+//
+//   3. Crate-rooted (head == Crate) :
+//      - Walk via `resolve_segments` from crate-root.
+//
+//   4. Self-rooted (head == SelfMod) without `impl` self-def :
+//      - Treated as `current_mod::...`.
+//      - With self-def : SelfMod resolves to self_def directly.
+//
+//   5. Super-rooted (head == Super) :
+//      - Walk one parent up ; emit diagnostic if at crate-root.
+//
+// Returns (resolver, ResolveResult). The resolver carries any emitted
+// diagnostics + the resolution-table entry.
+fn resolve_path(r : Resolver, segments : Vec<PathSegmentKind>) -> Resolver {
+    let n = vec_len::<PathSegmentKind>(segments) ;
+    if n == 0 {
+        let r1 = resolver_emit_diag(r, ResolveDiagnostic::EmptyPath) ;
+        return resolver_record_resolution(r1, None) ;
+    }
+
+    // Single-segment Named — local-scope lookup first.
+    if n == 1 {
+        let head = vec_get_unchecked::<PathSegmentKind>(segments, 0) ;
+        match head {
+            PathSegmentKind::Named(name) => {
+                match scope_map_lookup(r.scope_map, name) {
+                    Some(d) => { return resolver_record_resolution(r, Some(d)) ; }
+                    None => { /* fall through */ }
+                }
+            }
+            PathSegmentKind::SelfMod => {
+                match r.self_def {
+                    Some(d) => { return resolver_record_resolution(r, Some(d)) ; }
+                    None => {
+                        // `self` outside impl : treat as current_mod.
+                        let mid = r.current_mod ;
+                        let synth = def_id_from_raw(mid.raw) ;
+                        return resolver_record_resolution(r, Some(synth)) ;
+                    }
+                }
+            }
+            PathSegmentKind::Crate => {
+                let cid = registry_crate_root(r.registry) ;
+                let synth = def_id_from_raw(cid.raw) ;
+                return resolver_record_resolution(r, Some(synth)) ;
+            }
+            PathSegmentKind::Super => {
+                let up = registry_walk_up(r.registry, r.current_mod, 1u32) ;
+                if module_id_is_root_parent(up) {
+                    let r1 = resolver_emit_diag(r, ResolveDiagnostic::SuperBeyondRoot) ;
+                    return resolver_record_resolution(r1, None) ;
+                }
+                let synth = def_id_from_raw(up.raw) ;
+                return resolver_record_resolution(r, Some(synth)) ;
+            }
+        }
+    }
+
+    // Multi-segment OR single-segment item not in local scope :
+    // walk through registry.
+    let result = resolve_segments(r.registry, r.current_mod, r.current_mod,
+                                  segments) ;
+    match result {
+        ResolveResult::Ok(ok) => {
+            resolver_record_resolution(r, Some(ok.def))
+        }
+        ResolveResult::Err(err) => {
+            let diag = match err {
+                ResolveErr::Unresolved(s) => ResolveDiagnostic::UnresolvedPath(s),
+                ResolveErr::NotAModule(s) => ResolveDiagnostic::PathNotAModule(s),
+                ResolveErr::VisibilityViolation(s) =>
+                    ResolveDiagnostic::VisibilityViolation(s),
+                ResolveErr::SuperBeyondRoot => ResolveDiagnostic::SuperBeyondRoot,
+                ResolveErr::EmptyPath => ResolveDiagnostic::EmptyPath,
+            } ;
+            let r1 = resolver_emit_diag(r, diag) ;
+            resolver_record_resolution(r1, None)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § resolve_use — `use` declaration → UseBinding registration.
+// ───────────────────────────────────────────────────────────────────────
+
+// `resolve_use(r, segments, alias, visibility)` — register a `use a::b::c
+// [as alias]` binding in the current module. Validates the target path
+// resolves ; emits UseTargetUnresolved if not. The local-name shadows
+// existing items in this scope (which is already what scope_map_insert
+// implements via newest-first lookup).
+//
+// Stage-1 supports flat `use` paths only ; UseTree::Group / UseTree::Glob
+// expansion is provided via `resolve_use_tree` (below) which recursively
+// flattens groups + glob to individual segment-lists.
+fn resolve_use(r : Resolver, segments : Vec<PathSegmentKind>,
+               alias : Option<Symbol>, visibility : VisibilityHir) -> Resolver {
+    // Validate target resolves.
+    let result = resolve_segments(r.registry, r.current_mod, r.current_mod,
+                                  segments) ;
+    let target_def_opt = match result {
+        ResolveResult::Ok(ok) => Some(ok.def),
+        ResolveResult::Err(_) => None,
+    } ;
+    match target_def_opt {
+        None => {
+            // Pick an Unresolved-name to attach to the diagnostic.
+            let n = vec_len::<PathSegmentKind>(segments) ;
+            let last_name = if n > 0 {
+                let s = vec_get_unchecked::<PathSegmentKind>(segments, n - 1) ;
+                match s {
+                    PathSegmentKind::Named(sym) => sym,
+                    _ => symbol_from_raw(0u32),
+                }
+            } else { symbol_from_raw(0u32) } ;
+            return resolver_emit_diag(r, ResolveDiagnostic::UseTargetUnresolved(last_name)) ;
+        }
+        Some(def) => {
+            // Canonicalize ; if successful, register the use-binding in
+            // the registry AND bind the local-name in module-scope.
+            match canonicalize_use(r.registry, r.current_mod, segments,
+                                    alias, visibility) {
+                Some(b) => {
+                    let local = b.local_name ;
+                    let reg2 = registry_add_use(r.registry, r.current_mod, b) ;
+                    let r1 = Resolver {
+                        registry : reg2,
+                        scope_map : r.scope_map,
+                        current_mod : r.current_mod,
+                        diagnostics : r.diagnostics,
+                        resolutions : r.resolutions,
+                        self_def : r.self_def,
+                        next_path_id : r.next_path_id,
+                    } ;
+                    resolver_bind_module(r1, local, def)
+                }
+                None => {
+                    resolver_emit_diag(r, ResolveDiagnostic::EmptyPath)
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § resolve_self — convenience wrapper for `self::name` lookups inside
+// impl-blocks.
+// ───────────────────────────────────────────────────────────────────────
+
+// `resolve_self(r, name)` — resolve `self::name` against the resolver's
+// active self_def. Returns the resolver after recording the resolution.
+fn resolve_self(r : Resolver, name : Symbol) -> Resolver {
+    match r.self_def {
+        None => {
+            let r1 = resolver_emit_diag(r, ResolveDiagnostic::SelfOutsideImpl) ;
+            resolver_record_resolution(r1, None)
+        }
+        Some(_self_def) => {
+            // For stage-1 we resolve `self::name` to the named item inside
+            // the current module — methods + associated types. Future
+            // slices will dispatch through self_def's impl-table.
+            let mut segs = vec_new::<PathSegmentKind>() ;
+            segs = vec_push::<PathSegmentKind>(segs, PathSegmentKind::SelfMod) ;
+            segs = vec_push::<PathSegmentKind>(segs, PathSegmentKind::Named(name)) ;
+            resolve_path(r, segs)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § build_scope_from_module — pre-register every top-level item.
+// ───────────────────────────────────────────────────────────────────────
+
+// `build_scope_from_module(r, mod_id)` — pre-register every item in the
+// given module-entry into the resolver's module-scope. This is called
+// ONCE per module before walking expression-trees so forward references
+// (fn calls within the same module declared later) resolve cleanly.
+fn build_scope_from_module(r : Resolver, mod_id : ModuleId) -> Resolver {
+    match registry_get(r.registry, mod_id) {
+        None => r,
+        Some(entry) => {
+            let n = vec_len::<ModuleItem>(entry.items) ;
+            let mut acc = r ;
+            let mut i : i64 = 0 ;
+            while i < n {
+                let it = vec_get_unchecked::<ModuleItem>(entry.items, i) ;
+                acc = resolver_bind_module(acc, it.name, it.def) ;
+                i = i + 1 ;
+            }
+            // Also register any use-bindings as module-scope aliases.
+            let nu = vec_len::<UseBinding>(entry.use_bindings) ;
+            let mut j : i64 = 0 ;
+            while j < nu {
+                let b = vec_get_unchecked::<UseBinding>(entry.use_bindings, j) ;
+                // Resolve the target-path for the binding.
+                let tsegs = canonical_path_to_segments(b.target_path) ;
+                let result = resolve_segments(acc.registry,
+                    registry_crate_root(acc.registry), mod_id, tsegs) ;
+                match result {
+                    ResolveResult::Ok(ok) => {
+                        acc = resolver_bind_module(acc, b.local_name, ok.def) ;
+                    }
+                    ResolveResult::Err(_) => { /* error reported elsewhere */ }
+                }
+                j = j + 1 ;
+            }
+            acc
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Test-harness helpers — used by inline #[test] markers below.
+// ───────────────────────────────────────────────────────────────────────
+
+// `test_make_named(sym)` — single Named segment. Convenience for tests.
+fn test_make_named(sym : Symbol) -> Vec<PathSegmentKind> {
+    let mut v = vec_new::<PathSegmentKind>() ;
+    v = vec_push::<PathSegmentKind>(v, PathSegmentKind::Named(sym)) ;
+    v
+}
+
+// `test_make_two(a, b)` — `a::b` segment-list.
+fn test_make_two(a : Symbol, b : Symbol) -> Vec<PathSegmentKind> {
+    let mut v = vec_new::<PathSegmentKind>() ;
+    v = vec_push::<PathSegmentKind>(v, PathSegmentKind::Named(a)) ;
+    v = vec_push::<PathSegmentKind>(v, PathSegmentKind::Named(b)) ;
+    v
+}
+
+// `test_make_crate_two(a, b)` — `crate::a::b` segment-list.
+fn test_make_crate_two(a : Symbol, b : Symbol) -> Vec<PathSegmentKind> {
+    let mut v = vec_new::<PathSegmentKind>() ;
+    v = vec_push::<PathSegmentKind>(v, PathSegmentKind::Crate) ;
+    v = vec_push::<PathSegmentKind>(v, PathSegmentKind::Named(a)) ;
+    v = vec_push::<PathSegmentKind>(v, PathSegmentKind::Named(b)) ;
+    v
+}
+
+// `test_last_resolution(r)` — most-recent recorded resolution. Used by
+// tests to assert the resolved DefId after a single resolve_path call.
+fn test_last_resolution(r : Resolver) -> Option<DefId> {
+    let n = vec_len::<PathResolution>(r.resolutions) ;
+    if n == 0 { return None ; }
+    let last = vec_get_unchecked::<PathResolution>(r.resolutions, n - 1) ;
+    last.def
+}
+
+// `test_last_diag(r)` — most-recent recorded diagnostic.
+fn test_last_diag(r : Resolver) -> Option<ResolveDiagnostic> {
+    let n = vec_len::<ResolveDiagnostic>(r.diagnostics) ;
+    if n == 0 { return None ; }
+    Some(vec_get_unchecked::<ResolveDiagnostic>(r.diagnostics, n - 1))
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests — ≥ 8 round-trip resolution scenarios.
+// ───────────────────────────────────────────────────────────────────────
+
+// Helper : build a 1-module crate with one fn named `add` (DefId 100).
+fn test_setup_simple() -> Resolver {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let add_sym = symbol_from_raw(2u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+    let item = module_item_new(add_sym, def_id_from_raw(100u32),
+                                VisibilityHir::Public, None) ;
+    let reg2 = registry_add_item(reg1, root, item) ;
+    let r0 = resolver_new(reg2) ;
+    build_scope_from_module(r0, root)
+}
+
+// Test 1 : module-with-fn resolves fn-name to its DefId.
+#[test]
+fn test_module_with_fn_resolves() {
+    let add_sym = symbol_from_raw(2u32) ;
+    let r = test_setup_simple() ;
+    let segs = test_make_named(add_sym) ;
+    let r1 = resolve_path(r, segs) ;
+    let res = test_last_resolution(r1) ;
+    let ok = match res {
+        Some(d) => d.raw == 100u32,
+        None => false,
+    } ;
+    assert(ok) ;
+    assert(!resolver_has_errors(r1)) ;
+}
+
+// Test 2 : let-binding shadows fn-binding in inner block.
+#[test]
+fn test_shadowing_let_over_fn() {
+    let add_sym = symbol_from_raw(2u32) ;
+    let r0 = test_setup_simple() ;
+    let r1 = resolver_enter_block(r0) ;
+    let r2 = resolver_bind_local(r1, add_sym, def_id_from_raw(999u32)) ;
+    let segs = test_make_named(add_sym) ;
+    let r3 = resolve_path(r2, segs) ;
+    let res = test_last_resolution(r3) ;
+    let ok = match res {
+        Some(d) => d.raw == 999u32,    // shadowed
+        None => false,
+    } ;
+    assert(ok) ;
+
+    // After block-exit, original fn-binding should resolve again.
+    let r4 = resolver_leave_block(r3) ;
+    let r5 = resolve_path(r4, test_make_named(add_sym)) ;
+    let res2 = test_last_resolution(r5) ;
+    let ok2 = match res2 {
+        Some(d) => d.raw == 100u32,    // un-shadowed
+        None => false,
+    } ;
+    assert(ok2) ;
+}
+
+// Test 3 : unresolved path emits diagnostic.
+#[test]
+fn test_unresolved_emits_diag() {
+    let r0 = test_setup_simple() ;
+    let unknown = symbol_from_raw(99u32) ;
+    let r1 = resolve_path(r0, test_make_named(unknown)) ;
+    let res = test_last_resolution(r1) ;
+    assert(match res { None => true, _ => false }) ;
+    assert(resolver_has_errors(r1)) ;
+    let d = test_last_diag(r1) ;
+    let is_unresolved = match d {
+        Some(ResolveDiagnostic::UnresolvedPath(_)) => true,
+        _ => false,
+    } ;
+    assert(is_unresolved) ;
+}
+
+// Test 4 : nested-module path `a::b` resolves through parent → child.
+#[test]
+fn test_nested_module_path() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let fn_b_sym = symbol_from_raw(3u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+
+    // Create child module `a`.
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+
+    // Register `a` as an item of root (with child = Some(mod_a_id)).
+    let mod_a_def = def_id_from_raw(50u32) ;
+    let item_a = module_item_new(mod_a_sym, mod_a_def, VisibilityHir::Public,
+                                  Some(mod_a_id)) ;
+    let reg3 = registry_add_item(reg2, root, item_a) ;
+
+    // Add fn `b` inside module `a`.
+    let item_b = module_item_new(fn_b_sym, def_id_from_raw(51u32),
+                                  VisibilityHir::Public, None) ;
+    let reg4 = registry_add_item(reg3, mod_a_id, item_b) ;
+
+    let r0 = resolver_new(reg4) ;
+    let r1 = build_scope_from_module(r0, root) ;
+    let segs = test_make_two(mod_a_sym, fn_b_sym) ;
+    let r2 = resolve_path(r1, segs) ;
+    let res = test_last_resolution(r2) ;
+    let ok = match res { Some(d) => d.raw == 51u32, None => false } ;
+    assert(ok) ;
+}
+
+// Test 5 : pub-fn callable from sibling-module ; private-fn not callable.
+#[test]
+fn test_visibility_pub_vs_private() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let mod_b_sym = symbol_from_raw(3u32) ;
+    let pub_fn_sym = symbol_from_raw(4u32) ;
+    let priv_fn_sym = symbol_from_raw(5u32) ;
+
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+    let reg3 = registry_add_child(reg2, root, mod_b_sym, VisibilityHir::Public) ;
+    let mod_b_id = registry_last_added_id(reg3) ;
+
+    // Wire each child as a root-item.
+    let item_a = module_item_new(mod_a_sym, def_id_from_raw(20u32),
+                                  VisibilityHir::Public, Some(mod_a_id)) ;
+    let item_b = module_item_new(mod_b_sym, def_id_from_raw(21u32),
+                                  VisibilityHir::Public, Some(mod_b_id)) ;
+    let reg4 = registry_add_item(reg3, root, item_a) ;
+    let reg5 = registry_add_item(reg4, root, item_b) ;
+
+    // a::pub_fn (public) + a::priv_fn (private).
+    let pub_item = module_item_new(pub_fn_sym, def_id_from_raw(200u32),
+                                    VisibilityHir::Public, None) ;
+    let priv_item = module_item_new(priv_fn_sym, def_id_from_raw(201u32),
+                                     VisibilityHir::Private, None) ;
+    let reg6 = registry_add_item(reg5, mod_a_id, pub_item) ;
+    let reg7 = registry_add_item(reg6, mod_a_id, priv_item) ;
+
+    // Resolver positioned in mod-b ; should reach a::pub_fn but NOT a::priv_fn.
+    let r0 = resolver_new(reg7) ;
+    let r1 = resolver_enter_module(r0, mod_b_id) ;
+    let r2 = build_scope_from_module(r1, root) ;
+
+    // a::pub_fn resolves cleanly.
+    let segs1 = test_make_two(mod_a_sym, pub_fn_sym) ;
+    let r3 = resolve_path(r2, segs1) ;
+    let res1 = test_last_resolution(r3) ;
+    let ok1 = match res1 { Some(d) => d.raw == 200u32, None => false } ;
+    assert(ok1) ;
+
+    // a::priv_fn raises VisibilityViolation.
+    let segs2 = test_make_two(mod_a_sym, priv_fn_sym) ;
+    let r4 = resolve_path(r3, segs2) ;
+    let d = test_last_diag(r4) ;
+    let is_vis = match d {
+        Some(ResolveDiagnostic::VisibilityViolation(_)) => true,
+        _ => false,
+    } ;
+    assert(is_vis) ;
+}
+
+// Test 6 : pub(crate)-fn reachable within crate ; not cross-crate.
+// (Single-registry == single-crate ⇒ pub(crate) behaves as Public here.
+//  This test verifies the IN-CRATE half ; cross-crate is enforced by the
+//  caller refusing to chain registries.)
+#[test]
+fn test_visibility_pub_crate_in_crate() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let fn_sym = symbol_from_raw(3u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+    let item_a = module_item_new(mod_a_sym, def_id_from_raw(10u32),
+                                  VisibilityHir::Public, Some(mod_a_id)) ;
+    let reg3 = registry_add_item(reg2, root, item_a) ;
+
+    let pcfn_item = module_item_new(fn_sym, def_id_from_raw(300u32),
+                                     VisibilityHir::PublicCrate, None) ;
+    let reg4 = registry_add_item(reg3, mod_a_id, pcfn_item) ;
+
+    let r0 = resolver_new(reg4) ;
+    let r1 = build_scope_from_module(r0, root) ;
+    let segs = test_make_two(mod_a_sym, fn_sym) ;
+    let r2 = resolve_path(r1, segs) ;
+    let res = test_last_resolution(r2) ;
+    let ok = match res { Some(d) => d.raw == 300u32, None => false } ;
+    assert(ok) ;
+}
+
+// Test 7 : use-binding canonicalizes to absolute-path + creates alias.
+#[test]
+fn test_use_binding_canonicalizes() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let fn_sym = symbol_from_raw(3u32) ;
+    let alias_sym = symbol_from_raw(4u32) ;
+
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+    let item_a = module_item_new(mod_a_sym, def_id_from_raw(10u32),
+                                  VisibilityHir::Public, Some(mod_a_id)) ;
+    let reg3 = registry_add_item(reg2, root, item_a) ;
+    let fn_item = module_item_new(fn_sym, def_id_from_raw(400u32),
+                                   VisibilityHir::Public, None) ;
+    let reg4 = registry_add_item(reg3, mod_a_id, fn_item) ;
+
+    let r0 = resolver_new(reg4) ;
+    let r1 = build_scope_from_module(r0, root) ;
+
+    // `use a::fn as alias`.
+    let target_segs = test_make_two(mod_a_sym, fn_sym) ;
+    let r2 = resolve_use(r1, target_segs, Some(alias_sym), VisibilityHir::Private) ;
+    assert(!resolver_has_errors(r2)) ;
+
+    // The alias now resolves to the same DefId as the original fn.
+    let r3 = resolve_path(r2, test_make_named(alias_sym)) ;
+    let res = test_last_resolution(r3) ;
+    let ok = match res { Some(d) => d.raw == 400u32, None => false } ;
+    assert(ok) ;
+}
+
+// Test 8 : self-resolution in impl-block.
+#[test]
+fn test_self_resolution_in_impl() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let struct_sym = symbol_from_raw(2u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+    let struct_def = def_id_from_raw(700u32) ;
+    let item = module_item_new(struct_sym, struct_def,
+                                VisibilityHir::Public, None) ;
+    let reg2 = registry_add_item(reg1, root, item) ;
+
+    let r0 = resolver_new(reg2) ;
+    let r1 = build_scope_from_module(r0, root) ;
+    let r2 = resolver_enter_impl(r1, struct_def) ;
+
+    // Single `self` segment resolves to struct_def.
+    let mut segs = vec_new::<PathSegmentKind>() ;
+    segs = vec_push::<PathSegmentKind>(segs, PathSegmentKind::SelfMod) ;
+    let r3 = resolve_path(r2, segs) ;
+    let res = test_last_resolution(r3) ;
+    let ok = match res { Some(d) => d.raw == 700u32, None => false } ;
+    assert(ok) ;
+
+    // Leaving impl : self_def cleared.
+    let r4 = resolver_leave_impl(r3) ;
+    match r4.self_def { None => assert(true), _ => assert(false) }
+}
+
+// Test 9 : re-export — pub use in mod-a makes target reachable as a::name
+// from a sibling module.
+#[test]
+fn test_reexport_via_pub_use() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let mod_b_sym = symbol_from_raw(3u32) ;
+    let fn_sym = symbol_from_raw(4u32) ;
+
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+    let reg3 = registry_add_child(reg2, root, mod_b_sym, VisibilityHir::Public) ;
+    let mod_b_id = registry_last_added_id(reg3) ;
+
+    let item_a = module_item_new(mod_a_sym, def_id_from_raw(10u32),
+                                  VisibilityHir::Public, Some(mod_a_id)) ;
+    let item_b = module_item_new(mod_b_sym, def_id_from_raw(11u32),
+                                  VisibilityHir::Public, Some(mod_b_id)) ;
+    let reg4 = registry_add_item(reg3, root, item_a) ;
+    let reg5 = registry_add_item(reg4, root, item_b) ;
+
+    // Original fn lives in mod-b.
+    let fn_item = module_item_new(fn_sym, def_id_from_raw(500u32),
+                                   VisibilityHir::Public, None) ;
+    let reg6 = registry_add_item(reg5, mod_b_id, fn_item) ;
+
+    // mod-a does `pub use crate::b::fn` ⇒ reexport.
+    let mut target_segs = vec_new::<PathSegmentKind>() ;
+    target_segs = vec_push::<PathSegmentKind>(target_segs, PathSegmentKind::Crate) ;
+    target_segs = vec_push::<PathSegmentKind>(target_segs, PathSegmentKind::Named(mod_b_sym)) ;
+    target_segs = vec_push::<PathSegmentKind>(target_segs, PathSegmentKind::Named(fn_sym)) ;
+
+    let canon = canonicalize_use(reg6, mod_a_id, target_segs, None,
+                                  VisibilityHir::Public) ;
+    let reg7 = match canon {
+        Some(b) => registry_add_use(reg6, mod_a_id, b),
+        None => reg6,
+    } ;
+
+    // From mod-c (= root, here) : a::fn should now resolve through the
+    // reexport to the original DefId.
+    let r0 = resolver_new(reg7) ;
+    let r1 = build_scope_from_module(r0, root) ;
+    let segs = test_make_two(mod_a_sym, fn_sym) ;
+    let r2 = resolve_path(r1, segs) ;
+    let res = test_last_resolution(r2) ;
+    let ok = match res { Some(d) => d.raw == 500u32, None => false } ;
+    assert(ok) ;
+}
+
+// Test 10 : crate-rooted path resolution.
+#[test]
+fn test_crate_rooted_path() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let fn_sym = symbol_from_raw(3u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+    let item_a = module_item_new(mod_a_sym, def_id_from_raw(10u32),
+                                  VisibilityHir::Public, Some(mod_a_id)) ;
+    let reg3 = registry_add_item(reg2, root, item_a) ;
+    let fn_item = module_item_new(fn_sym, def_id_from_raw(600u32),
+                                   VisibilityHir::Public, None) ;
+    let reg4 = registry_add_item(reg3, mod_a_id, fn_item) ;
+
+    // Resolver positioned in mod-a ; resolve `crate::a::fn`.
+    let r0 = resolver_new(reg4) ;
+    let r1 = resolver_enter_module(r0, mod_a_id) ;
+    let r2 = build_scope_from_module(r1, root) ;
+    let segs = test_make_crate_two(mod_a_sym, fn_sym) ;
+    let r3 = resolve_path(r2, segs) ;
+    let res = test_last_resolution(r3) ;
+    let ok = match res { Some(d) => d.raw == 600u32, None => false } ;
+    assert(ok) ;
+}
+
+// Test 11 : super::-walking returns parent module.
+#[test]
+fn test_super_walks_to_parent() {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let mod_a_sym = symbol_from_raw(2u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let root = registry_crate_root(reg1) ;
+    let reg2 = registry_add_child(reg1, root, mod_a_sym, VisibilityHir::Public) ;
+    let mod_a_id = registry_last_added_id(reg2) ;
+    let item_a = module_item_new(mod_a_sym, def_id_from_raw(10u32),
+                                  VisibilityHir::Public, Some(mod_a_id)) ;
+    let reg3 = registry_add_item(reg2, root, item_a) ;
+
+    let r0 = resolver_new(reg3) ;
+    let r1 = resolver_enter_module(r0, mod_a_id) ;
+
+    // Single `super` from mod-a should resolve to root.
+    let mut segs = vec_new::<PathSegmentKind>() ;
+    segs = vec_push::<PathSegmentKind>(segs, PathSegmentKind::Super) ;
+    let r2 = resolve_path(r1, segs) ;
+    let res = test_last_resolution(r2) ;
+    let ok = match res {
+        Some(d) => d.raw == 0u32,    // root module's id
+        None => false,
+    } ;
+    assert(ok) ;
+
+    // From crate-root : `super` emits SuperBeyondRoot.
+    let r3 = resolver_enter_module(r0, root) ;
+    let mut segs2 = vec_new::<PathSegmentKind>() ;
+    segs2 = vec_push::<PathSegmentKind>(segs2, PathSegmentKind::Super) ;
+    let r4 = resolve_path(r3, segs2) ;
+    let d = test_last_diag(r4) ;
+    let is_super_err = match d {
+        Some(ResolveDiagnostic::SuperBeyondRoot) => true,
+        _ => false,
+    } ;
+    assert(is_super_err) ;
+}
+
+// Worked example : a fresh resolver has zero diagnostics + zero resolutions.
+fn _example_fresh_resolver_clean() -> bool {
+    let crate_sym = symbol_from_raw(1u32) ;
+    let reg0 = registry_empty(crate_sym) ;
+    let reg1 = registry_add_crate_root(reg0, crate_sym) ;
+    let r = resolver_new(reg1) ;
+    !resolver_has_errors(r) && resolver_resolution_count(r) == 0
+}
+
+// Worked example : scope-map enter/leave preserves depth invariants.
+fn _example_scope_map_depth() -> bool {
+    let m0 = scope_map_new() ;
+    let d0 = scope_map_depth(m0) ;
+    let m1 = scope_map_enter(m0) ;
+    let d1 = scope_map_depth(m1) ;
+    let m2 = scope_map_leave(m1) ;
+    let d2 = scope_map_depth(m2) ;
+    d0 == 0 && d1 == 1 && d2 == 0
+}
