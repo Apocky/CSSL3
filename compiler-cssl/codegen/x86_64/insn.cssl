@@ -1,0 +1,293 @@
+// § compiler-cssl/codegen/x86_64/insn.cssl
+// § T11-D242 (W-E3-α / W-Eα) · x86-64 instruction enum (~30 ops)
+// §
+// § Self-host bootstrap · sibling to regs.cssl + encode.cssl. This is the
+// § canonical IR-level instruction enum the encoder consumes. Each variant
+// § represents a single x86-64 machine instruction with its operands ;
+// § encode.cssl pattern-matches and emits raw bytes per Intel SDM Vol 2.
+// §
+// § COVERAGE TARGET : ~30 ops sufficient to lower a basic CSSL function :
+// §   data movement   · MOV ⊗ LEA ⊗ XCHG
+// §   arithmetic      · ADD ⊗ SUB ⊗ INC ⊗ DEC ⊗ NEG ⊗ IMUL ⊗ IDIV
+// §   logical         · AND ⊗ OR ⊗ XOR ⊗ NOT ⊗ SHL ⊗ SHR ⊗ SAR
+// §   compare/test    · CMP ⊗ TEST
+// §   control flow    · JMP ⊗ Jcc(16-cond) ⊗ CALL ⊗ RET
+// §   stack           · PUSH ⊗ POP
+// §   misc            · NOP ⊗ INT3 ⊗ SYSCALL ⊗ UD2
+// §
+// § OPERAND-FORM ABBREVIATIONS (Intel SDM convention) :
+// §   r64    = 64-bit register
+// §   imm8   = 8-bit signed immediate
+// §   imm32  = 32-bit signed immediate
+// §   imm64  = 64-bit immediate
+// §   rel32  = 32-bit relative displacement (for jumps/calls)
+// §   m64    = 64-bit memory operand (base + index*scale + disp32)
+
+// ─────────────────────────────────────────────────────────────────────
+// § Memory operand · base + index*scale + disp32
+// ─────────────────────────────────────────────────────────────────────
+// § Models the SIB+disp32 addressing mode. `index = None` ⇒ no SIB index
+// § (encoded as RSP-slot 100 in SIB.index = "no index"). `scale ∈ {1,2,4,8}`
+// § corresponds to SIB.ss = {00, 01, 10, 11}.
+
+struct MemOp {
+    base  : Reg64,           // base register (always present in this slice)
+    index : Option<Reg64>,   // optional index register
+    scale : u8,              // 1 / 2 / 4 / 8 — encoded as ss=00..11
+    disp  : i32,             // signed 32-bit displacement (0 ⇒ no-disp form)
+}
+
+impl MemOp {
+    fn base_only(b : Reg64) -> Self {
+        MemOp { base : b, index : None, scale : 1, disp : 0 }
+    }
+
+    fn base_disp(b : Reg64, d : i32) -> Self {
+        MemOp { base : b, index : None, scale : 1, disp : d }
+    }
+
+    fn full(b : Reg64, i : Reg64, s : u8, d : i32) -> Self {
+        MemOp { base : b, index : Some(i), scale : s, disp : d }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Cond · 16 condition codes (Intel SDM Vol 1 Appendix B / Vol 2 § Jcc)
+// ─────────────────────────────────────────────────────────────────────
+// § Discriminant value = the 4-bit `tttn` field used by Jcc/SETcc/CMOVcc.
+// § Pairs of inverse conditions differ in the low bit (0/1).
+
+enum Cond {
+    O    = 0x0,   // overflow                · OF=1
+    NO   = 0x1,   // no overflow             · OF=0
+    B    = 0x2,   // below   (unsigned <)    · CF=1                 · alias C / NAE
+    AE   = 0x3,   // above-or-eq             · CF=0                 · alias NB / NC
+    E    = 0x4,   // equal                   · ZF=1                 · alias Z
+    NE   = 0x5,   // not-equal               · ZF=0                 · alias NZ
+    BE   = 0x6,   // below-or-eq (uns ≤)     · CF=1 ∨ ZF=1          · alias NA
+    A    = 0x7,   // above       (uns >)     · CF=0 ∧ ZF=0          · alias NBE
+    S    = 0x8,   // sign        (negative)  · SF=1
+    NS   = 0x9,   // not-sign                · SF=0
+    P    = 0xA,   // parity-even             · PF=1                 · alias PE
+    NP   = 0xB,   // parity-odd              · PF=0                 · alias PO
+    L    = 0xC,   // less   (signed <)       · SF≠OF                · alias NGE
+    GE   = 0xD,   // greater-or-eq (s ≥)     · SF=OF                · alias NL
+    LE   = 0xE,   // less-or-eq    (s ≤)     · ZF=1 ∨ SF≠OF         · alias NG
+    G    = 0xF,   // greater       (s >)     · ZF=0 ∧ SF=OF         · alias NLE
+}
+
+impl Cond {
+    fn opcode_byte(self) -> u8 {
+        // Jcc rel32 opcodes are 2-byte : 0F 80+tttn
+        // SETcc r/m8     opcodes are 2-byte : 0F 90+tttn
+        // CMOVcc r,r/m   opcodes are 2-byte : 0F 40+tttn
+        // Caller adds the base (0x80 / 0x90 / 0x40) to this value.
+        self as u8
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § ShiftOp · shift/rotate sub-opcode (ModR/M.reg field for /n forms)
+// ─────────────────────────────────────────────────────────────────────
+
+enum ShiftOp {
+    Shl = 4,    // /4 · logical-left   (alias Sal)
+    Shr = 5,    // /5 · logical-right
+    Sar = 7,    // /7 · arithmetic-right (sign-extending)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Insn · canonical x86-64 instruction enum
+// ─────────────────────────────────────────────────────────────────────
+// § Each variant encodes one logical instruction. Where Intel offers
+// § multiple operand-forms (e.g. MOV r,r vs MOV r,imm), we expose them as
+// § distinct variants (`MovRR` vs `MovRImm64`) — the encoder pattern-matches.
+// §
+// § DESIGN : flat-enum (no nesting). Easier for stage-1 codegen to drive
+// § from match-arms ; LUT-friendly for opcode dispatch.
+
+enum Insn {
+    // ─── data movement ──────────────────────────────────────────────
+
+    MovRR    { dst : Reg64, src : Reg64 },                  // MOV  r64, r64
+    MovRImm64{ dst : Reg64, imm : u64   },                  // MOV  r64, imm64   (REX.W + B8+rd io)
+    MovRImm32{ dst : Reg64, imm : i32   },                  // MOV  r/m64, imm32 (sign-extended)
+    MovRM    { dst : Reg64, src : MemOp },                  // MOV  r64, [mem]
+    MovMR    { dst : MemOp, src : Reg64 },                  // MOV  [mem], r64
+    Lea      { dst : Reg64, src : MemOp },                  // LEA  r64, m
+
+    // ─── arithmetic ─────────────────────────────────────────────────
+
+    AddRR    { dst : Reg64, src : Reg64 },                  // ADD  r64, r64
+    AddRImm32{ dst : Reg64, imm : i32   },                  // ADD  r/m64, imm32
+    SubRR    { dst : Reg64, src : Reg64 },                  // SUB  r64, r64
+    SubRImm32{ dst : Reg64, imm : i32   },                  // SUB  r/m64, imm32
+    Inc      { dst : Reg64                },                // INC  r/m64
+    Dec      { dst : Reg64                },                // DEC  r/m64
+    Neg      { dst : Reg64                },                // NEG  r/m64
+    ImulRR   { dst : Reg64, src : Reg64 },                  // IMUL r64, r/m64    (0F AF /r)
+    IdivR    { divisor : Reg64           },                 // IDIV r/m64         (F7 /7) — implicit RDX:RAX
+
+    // ─── logical ────────────────────────────────────────────────────
+
+    AndRR    { dst : Reg64, src : Reg64 },                  // AND  r64, r64
+    OrRR     { dst : Reg64, src : Reg64 },                  // OR   r64, r64
+    XorRR    { dst : Reg64, src : Reg64 },                  // XOR  r64, r64
+    NotR     { dst : Reg64                },                // NOT  r/m64
+    ShiftRImm{ op : ShiftOp, dst : Reg64, count : u8 },     // SHL/SHR/SAR r/m64, imm8
+
+    // ─── compare/test ───────────────────────────────────────────────
+
+    CmpRR    { left : Reg64, right : Reg64 },               // CMP  r64, r64
+    CmpRImm32{ left : Reg64, imm : i32   },                 // CMP  r/m64, imm32
+    TestRR   { left : Reg64, right : Reg64 },               // TEST r64, r64
+
+    // ─── control flow ───────────────────────────────────────────────
+
+    JmpRel32 { rel : i32  },                                // JMP  rel32          (E9 cd)
+    Jcc      { cond : Cond, rel : i32 },                    // Jcc  rel32          (0F 80+tttn cd)
+    CallRel32{ rel : i32  },                                // CALL rel32          (E8 cd)
+    CallR    { target : Reg64 },                            // CALL r/m64          (FF /2)
+    Ret,                                                    // RET                 (C3)
+
+    // ─── stack ──────────────────────────────────────────────────────
+
+    PushR    { src : Reg64 },                               // PUSH r64            (50+rd · REX.B for R8-R15)
+    PopR     { dst : Reg64 },                               // POP  r64            (58+rd)
+
+    // ─── misc / debugging / OS interface ────────────────────────────
+
+    Nop,                                                    // NOP                 (90)
+    Int3,                                                   // INT3                (CC)  — debugger trap
+    Syscall,                                                // SYSCALL             (0F 05) — Linux/macOS only
+    Ud2,                                                    // UD2                 (0F 0B) — guaranteed-undefined
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Helper constructors · ergonomic factories
+// ─────────────────────────────────────────────────────────────────────
+// § Reduces call-site noise for the hot-path opcodes the IR-lowering will
+// § emit thousands of times. Mirrors Cranelift's `InstBuilder` style.
+
+impl Insn {
+    fn mov_rr(dst : Reg64, src : Reg64) -> Self {
+        Insn::MovRR { dst, src }
+    }
+
+    fn mov_imm(dst : Reg64, imm : u64) -> Self {
+        Insn::MovRImm64 { dst, imm }
+    }
+
+    fn add_rr(dst : Reg64, src : Reg64) -> Self {
+        Insn::AddRR { dst, src }
+    }
+
+    fn sub_rr(dst : Reg64, src : Reg64) -> Self {
+        Insn::SubRR { dst, src }
+    }
+
+    fn cmp_rr(left : Reg64, right : Reg64) -> Self {
+        Insn::CmpRR { left, right }
+    }
+
+    fn jmp(rel : i32) -> Self {
+        Insn::JmpRel32 { rel }
+    }
+
+    fn jcc(cond : Cond, rel : i32) -> Self {
+        Insn::Jcc { cond, rel }
+    }
+
+    fn call(rel : i32) -> Self {
+        Insn::CallRel32 { rel }
+    }
+
+    fn ret() -> Self {
+        Insn::Ret
+    }
+
+    fn push(src : Reg64) -> Self {
+        Insn::PushR { src }
+    }
+
+    fn pop(dst : Reg64) -> Self {
+        Insn::PopR { dst }
+    }
+
+    fn nop() -> Self {
+        Insn::Nop
+    }
+
+    fn syscall() -> Self {
+        Insn::Syscall
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Sub-opcode LUTs · ALU /n field for grouped immediate-form opcodes
+// ─────────────────────────────────────────────────────────────────────
+// § Intel groups ADD/OR/ADC/SBB/AND/SUB/XOR/CMP under the 0x80/0x81/0x83
+// § opcode-family with the sub-op selected by ModR/M.reg (the "/n" field).
+// § Encoder consults this when emitting *RImm32 variants.
+
+// /0 ADD · /1 OR · /2 ADC · /3 SBB · /4 AND · /5 SUB · /6 XOR · /7 CMP
+const ALU_SUBOP_ADD : u8 = 0;
+const ALU_SUBOP_OR  : u8 = 1;
+const ALU_SUBOP_AND : u8 = 4;
+const ALU_SUBOP_SUB : u8 = 5;
+const ALU_SUBOP_XOR : u8 = 6;
+const ALU_SUBOP_CMP : u8 = 7;
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · insn.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_cond_codes() {
+    // Intel SDM Vol 1 Appendix B : Jcc tttn ordering.
+    assert_eq!(Cond::E.opcode_byte(),  0x4);
+    assert_eq!(Cond::NE.opcode_byte(), 0x5);
+    assert_eq!(Cond::L.opcode_byte(),  0xC);
+    assert_eq!(Cond::G.opcode_byte(),  0xF);
+}
+
+#[test]
+fn test_cond_pairs_inverse_low_bit() {
+    // Inverse condition codes differ in low bit (Intel invariant).
+    assert_eq!(Cond::E.opcode_byte()  ^ 1, Cond::NE.opcode_byte());
+    assert_eq!(Cond::B.opcode_byte()  ^ 1, Cond::AE.opcode_byte());
+    assert_eq!(Cond::L.opcode_byte()  ^ 1, Cond::GE.opcode_byte());
+    assert_eq!(Cond::LE.opcode_byte() ^ 1, Cond::G.opcode_byte());
+}
+
+#[test]
+fn test_helper_constructors() {
+    let m1 = Insn::mov_rr(Reg64::RAX, Reg64::RBX);
+    match m1 {
+        Insn::MovRR { dst, src } => {
+            assert_eq!(dst as u8, Reg64::RAX as u8);
+            assert_eq!(src as u8, Reg64::RBX as u8);
+        }
+        _ => panic!("expected MovRR"),
+    }
+}
+
+#[test]
+fn test_memop_builders() {
+    let m = MemOp::base_disp(Reg64::RBP, -8);
+    assert_eq!(m.base as u8, Reg64::RBP as u8);
+    assert_eq!(m.disp, -8);
+    assert!(m.index.is_none());
+
+    let m2 = MemOp::full(Reg64::RAX, Reg64::RCX, 4, 16);
+    assert_eq!(m2.scale, 4);
+    assert_eq!(m2.disp, 16);
+}
+
+#[test]
+fn test_alu_subop_constants() {
+    // Spot-check that we have the canonical /n ordering memorized correctly.
+    assert_eq!(ALU_SUBOP_ADD, 0);
+    assert_eq!(ALU_SUBOP_SUB, 5);
+    assert_eq!(ALU_SUBOP_CMP, 7);
+}

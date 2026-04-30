@@ -1,0 +1,752 @@
+// § compiler-cssl/codegen/x86_64/encode.cssl
+// § T11-D242 (W-E3-α / W-Eα) · raw x86-64 byte encoder
+// §
+// § Self-host bootstrap : authored in CSSL itself. Consumes Insn (insn.cssl)
+// § + Reg64/MemOp (regs.cssl) and emits Vec<u8> ready to write into a code
+// § buffer. Replaces stage-0's Cranelift dependency for raw machine code.
+// §
+// § REFERENCE : Intel SDM Vol 2A § 2.1 INSTRUCTION FORMAT IN 64-BIT MODE
+// §            Intel SDM Vol 2A § 2.2 IA-32E MODE (REX prefix)
+// §            Intel SDM Vol 2A § 2.1.5 ADDRESSING-MODE ENCODING (ModR/M, SIB)
+// §
+// § INSTRUCTION LAYOUT (max bytes given) :
+// §   [Legacy Pfx 0..4][REX 0..1][Opcode 1..3][ModR/M 0..1][SIB 0..1][Disp 0..4][Imm 0..8]
+// §
+// § REX PREFIX FORMAT · § 2.2.1.2 :
+// §   0100 W R X B
+// §        ↓ ↓ ↓ ↓
+// §        │ │ │ └─ ModR/M.rm extension OR opcode-reg extension OR SIB.base ext
+// §        │ │ └─── SIB.index extension
+// §        │ └───── ModR/M.reg extension
+// §        └─────── operand size : 1 ⇒ 64-bit · 0 ⇒ default (32-bit for most ops)
+// §   Base value 0x40 ; W=0x08 R=0x04 X=0x02 B=0x01
+// §
+// § MODR/M FORMAT · § 2.1.5 Table 2-2 :
+// §   mod[7:6] reg[5:3] rm[2:0]
+// §   mod = 11 ⇒ register-direct (rm IS the second operand register)
+// §   mod = 00/01/10 ⇒ memory addressing forms with disp 0/8/32 bytes
+// §
+// § DISCIPLINE :
+// §   - LUTs not HashMap (Sawyer-mandate)
+// §   - Vec<u8>::push for byte emission · let LLVM/Cranelift inline
+// §   - all little-endian (x86-64 invariant) — emit bytes low-to-high
+// §   - sign-extension for disp8/disp32 done at IR-level not encoder
+
+// ─────────────────────────────────────────────────────────────────────
+// § REX prefix · helpers
+// ─────────────────────────────────────────────────────────────────────
+
+const REX_BASE : u8 = 0x40;
+const REX_W    : u8 = 0x08;     // 64-bit operand size
+const REX_R    : u8 = 0x04;     // ModR/M.reg extension
+const REX_X    : u8 = 0x02;     // SIB.index extension
+const REX_B    : u8 = 0x01;     // ModR/M.rm / SIB.base / opcode-reg extension
+
+// Build REX prefix from W/R/X/B flags. Returns 0 if none required AND W=0
+// (caller decides whether to push it). For 64-bit ops we always need REX.W,
+// so all encode_* functions for r64 ops pass w=true.
+fn rex(w : bool, r : bool, x : bool, b : bool) -> u8 {
+    let mut byte : u8 = REX_BASE;
+    if w { byte |= REX_W; }
+    if r { byte |= REX_R; }
+    if x { byte |= REX_X; }
+    if b { byte |= REX_B; }
+    byte
+}
+
+// Shorthand for the common case : 64-bit op with two register operands.
+// `reg` drives REX.R · `rm` drives REX.B.
+fn rex_w_rr(reg : Reg64, rm : Reg64) -> u8 {
+    rex(true, reg.high() != 0, false, rm.high() != 0)
+}
+
+// REX for opcode-reg form (50+rd PUSH, 58+rd POP, B8+rd MOV imm64). Only
+// REX.B matters (extends the embedded reg to R8..R15). REX.W also set
+// where the op needs 64-bit operand size.
+fn rex_w_b(w : bool, rm : Reg64) -> Option<u8> {
+    let needs = w || rm.high() != 0;
+    if needs {
+        Some(rex(w, false, false, rm.high() != 0))
+    } else {
+        None
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § ModR/M byte · § 2.1.5
+// ─────────────────────────────────────────────────────────────────────
+// § Pack mod (2 bits) · reg (3 bits) · rm (3 bits) into one byte.
+
+fn modrm(mod_bits : u8, reg : u8, rm : u8) -> u8 {
+    ((mod_bits & 0b11) << 6) | ((reg & 0b111) << 3) | (rm & 0b111)
+}
+
+const MOD_INDIRECT       : u8 = 0b00;   // [rm]                          (with disp32 if rm=101)
+const MOD_INDIRECT_DISP8 : u8 = 0b01;   // [rm + disp8]
+const MOD_INDIRECT_DISP32: u8 = 0b10;   // [rm + disp32]
+const MOD_DIRECT         : u8 = 0b11;   // rm IS a register (no memory)
+
+// ─────────────────────────────────────────────────────────────────────
+// § SIB byte · § 2.1.5 Table 2-3
+// ─────────────────────────────────────────────────────────────────────
+// § scale (2) · index (3) · base (3). Used when ModR/M.rm = 100 in indirect
+// § addressing modes. We emit it for any MemOp with explicit `index` or
+// § when base is RSP/R12 (which collide with the SIB-escape encoding).
+
+fn sib(scale_ss : u8, index : u8, base : u8) -> u8 {
+    ((scale_ss & 0b11) << 6) | ((index & 0b111) << 3) | (base & 0b111)
+}
+
+// Map scale-factor (1/2/4/8) to SIB.ss (00/01/10/11).
+fn scale_to_ss(s : u8) -> u8 {
+    match s {
+        1 => 0b00,
+        2 => 0b01,
+        4 => 0b10,
+        8 => 0b11,
+        _ => 0b00,    // invalid scale → 1× (caller should validate upstream)
+    }
+}
+
+const SIB_NO_INDEX : u8 = 0b100;    // RSP-slot in SIB.index = "no index"
+
+// ─────────────────────────────────────────────────────────────────────
+// § Little-endian byte emitters
+// ─────────────────────────────────────────────────────────────────────
+
+fn emit_u8(buf : &mut Vec<u8>, v : u8) {
+    buf.push(v);
+}
+
+fn emit_u16_le(buf : &mut Vec<u8>, v : u16) {
+    buf.push((v & 0xFF) as u8);
+    buf.push(((v >> 8) & 0xFF) as u8);
+}
+
+fn emit_u32_le(buf : &mut Vec<u8>, v : u32) {
+    buf.push((v & 0xFF) as u8);
+    buf.push(((v >> 8)  & 0xFF) as u8);
+    buf.push(((v >> 16) & 0xFF) as u8);
+    buf.push(((v >> 24) & 0xFF) as u8);
+}
+
+fn emit_i32_le(buf : &mut Vec<u8>, v : i32) {
+    emit_u32_le(buf, v as u32);
+}
+
+fn emit_u64_le(buf : &mut Vec<u8>, v : u64) {
+    let mut i : u32 = 0;
+    while i < 8 {
+        buf.push(((v >> (i * 8)) & 0xFF) as u8);
+        i = i + 1;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § encode_modrm_mem · MemOp → ModR/M [+ SIB] [+ disp]
+// ─────────────────────────────────────────────────────────────────────
+// § Handles the four addressing-mode cases :
+// §
+// §   1. [base]                               · mod=00/01 with disp=0
+// §   2. [base + disp8]                       · mod=01 disp8
+// §   3. [base + disp32]                      · mod=10 disp32
+// §   4. [base + index*scale + disp]          · SIB byte required
+// §
+// § Pitfalls (encoded explicitly) :
+// §   - base ∈ {RSP, R12} (rm = 100) MUST use SIB even with no index
+// §     (rm=100 in mod≠11 means "SIB follows", not [rsp]).
+// §   - base ∈ {RBP, R13} (rm = 101) with mod=00 means RIP-relative ; for
+// §     the [rbp]/[r13] form we MUST emit mod=01 + disp8=0.
+// §
+// § `reg_field` = the ModR/M.reg low-3 bits (the OTHER operand for r/m forms).
+
+fn encode_modrm_mem(buf : &mut Vec<u8>, mem : &MemOp, reg_field : u8) {
+    let base_low = mem.base.low3();
+    let has_index = mem.index.is_some();
+    let needs_sib = has_index || mem.base.is_rsp_family();
+
+    // Decide mod-bits based on displacement magnitude + RBP-family quirk.
+    let mod_bits : u8 = if !needs_sib && mem.base.is_rbp_family() && mem.disp == 0 {
+        // [rbp]/[r13] cannot use mod=00 (that means RIP-rel) — force disp8=0.
+        MOD_INDIRECT_DISP8
+    } else if mem.disp == 0 {
+        MOD_INDIRECT
+    } else if mem.disp >= -128 && mem.disp <= 127 {
+        MOD_INDIRECT_DISP8
+    } else {
+        MOD_INDIRECT_DISP32
+    };
+
+    if needs_sib {
+        // ModR/M.rm = 100 escape ⇒ SIB byte follows.
+        emit_u8(buf, modrm(mod_bits, reg_field, 0b100));
+
+        let (idx_low3, ss) = match mem.index {
+            Some(i) => (i.low3(), scale_to_ss(mem.scale)),
+            None    => (SIB_NO_INDEX, 0b00),
+        };
+        emit_u8(buf, sib(ss, idx_low3, base_low));
+    } else {
+        emit_u8(buf, modrm(mod_bits, reg_field, base_low));
+    }
+
+    // Displacement bytes per mod_bits.
+    if mod_bits == MOD_INDIRECT_DISP8 {
+        emit_u8(buf, (mem.disp as i8) as u8);
+    } else if mod_bits == MOD_INDIRECT_DISP32 {
+        emit_i32_le(buf, mem.disp);
+    }
+    // mod=00 emits no disp (with our invariant that base ∉ RBP-family there).
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § encode_insn · MAIN ENTRY POINT
+// ─────────────────────────────────────────────────────────────────────
+// § Pattern-match dispatch over Insn → Vec<u8>. The bulk of the encoder.
+// § Small per-op closures keep each case self-contained.
+
+fn encode_insn(insn : &Insn) -> Vec<u8> {
+    let mut buf : Vec<u8> = Vec::new();
+
+    match insn {
+        // ─── data movement ─────────────────────────────────────────
+
+        Insn::MovRR { dst, src } => {
+            // 0x89 /r — MOV r/m64, r64 · src→ModR/M.reg, dst→ModR/M.rm
+            // (Intel allows 0x8B for MOV r64, r/m64 — symmetric ; pick 0x89
+            //  by convention to match GAS / objdump default.)
+            emit_u8(&mut buf, rex_w_rr(*src, *dst));
+            emit_u8(&mut buf, 0x89);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, src.low3(), dst.low3()));
+        }
+
+        Insn::MovRImm64 { dst, imm } => {
+            // REX.W + B8+rd io — MOV r64, imm64
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xB8 + dst.low3());
+            emit_u64_le(&mut buf, *imm);
+        }
+
+        Insn::MovRImm32 { dst, imm } => {
+            // REX.W + C7 /0 id — MOV r/m64, imm32 (sign-extended to 64)
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xC7);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 0, dst.low3()));
+            emit_i32_le(&mut buf, *imm);
+        }
+
+        Insn::MovRM { dst, src } => {
+            // 0x8B /r — MOV r64, r/m64
+            let r_ext = dst.high() != 0;
+            let x_ext = match src.index { Some(i) => i.high() != 0, None => false };
+            let b_ext = src.base.high() != 0;
+            emit_u8(&mut buf, rex(true, r_ext, x_ext, b_ext));
+            emit_u8(&mut buf, 0x8B);
+            encode_modrm_mem(&mut buf, src, dst.low3());
+        }
+
+        Insn::MovMR { dst, src } => {
+            // 0x89 /r — MOV r/m64, r64
+            let r_ext = src.high() != 0;
+            let x_ext = match dst.index { Some(i) => i.high() != 0, None => false };
+            let b_ext = dst.base.high() != 0;
+            emit_u8(&mut buf, rex(true, r_ext, x_ext, b_ext));
+            emit_u8(&mut buf, 0x89);
+            encode_modrm_mem(&mut buf, dst, src.low3());
+        }
+
+        Insn::Lea { dst, src } => {
+            // 0x8D /r — LEA r64, m
+            let r_ext = dst.high() != 0;
+            let x_ext = match src.index { Some(i) => i.high() != 0, None => false };
+            let b_ext = src.base.high() != 0;
+            emit_u8(&mut buf, rex(true, r_ext, x_ext, b_ext));
+            emit_u8(&mut buf, 0x8D);
+            encode_modrm_mem(&mut buf, src, dst.low3());
+        }
+
+        // ─── arithmetic ────────────────────────────────────────────
+
+        Insn::AddRR { dst, src } => {
+            // 0x01 /r — ADD r/m64, r64
+            emit_u8(&mut buf, rex_w_rr(*src, *dst));
+            emit_u8(&mut buf, 0x01);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, src.low3(), dst.low3()));
+        }
+
+        Insn::AddRImm32 { dst, imm } => {
+            // 0x81 /0 id — ADD r/m64, imm32
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0x81);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, ALU_SUBOP_ADD, dst.low3()));
+            emit_i32_le(&mut buf, *imm);
+        }
+
+        Insn::SubRR { dst, src } => {
+            // 0x29 /r — SUB r/m64, r64
+            emit_u8(&mut buf, rex_w_rr(*src, *dst));
+            emit_u8(&mut buf, 0x29);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, src.low3(), dst.low3()));
+        }
+
+        Insn::SubRImm32 { dst, imm } => {
+            // 0x81 /5 id — SUB r/m64, imm32
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0x81);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, ALU_SUBOP_SUB, dst.low3()));
+            emit_i32_le(&mut buf, *imm);
+        }
+
+        Insn::Inc { dst } => {
+            // 0xFF /0 — INC r/m64
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xFF);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 0, dst.low3()));
+        }
+
+        Insn::Dec { dst } => {
+            // 0xFF /1 — DEC r/m64
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xFF);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 1, dst.low3()));
+        }
+
+        Insn::Neg { dst } => {
+            // 0xF7 /3 — NEG r/m64
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xF7);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 3, dst.low3()));
+        }
+
+        Insn::ImulRR { dst, src } => {
+            // 0x0F 0xAF /r — IMUL r64, r/m64 · dst→reg, src→rm
+            emit_u8(&mut buf, rex(true, dst.high() != 0, false, src.high() != 0));
+            emit_u8(&mut buf, 0x0F);
+            emit_u8(&mut buf, 0xAF);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, dst.low3(), src.low3()));
+        }
+
+        Insn::IdivR { divisor } => {
+            // 0xF7 /7 — IDIV r/m64 (RDX:RAX / divisor → RAX, rem RDX)
+            emit_u8(&mut buf, rex(true, false, false, divisor.high() != 0));
+            emit_u8(&mut buf, 0xF7);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 7, divisor.low3()));
+        }
+
+        // ─── logical ───────────────────────────────────────────────
+
+        Insn::AndRR { dst, src } => {
+            // 0x21 /r
+            emit_u8(&mut buf, rex_w_rr(*src, *dst));
+            emit_u8(&mut buf, 0x21);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, src.low3(), dst.low3()));
+        }
+
+        Insn::OrRR { dst, src } => {
+            // 0x09 /r
+            emit_u8(&mut buf, rex_w_rr(*src, *dst));
+            emit_u8(&mut buf, 0x09);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, src.low3(), dst.low3()));
+        }
+
+        Insn::XorRR { dst, src } => {
+            // 0x31 /r — common idiom : XOR rax, rax to zero RAX (smaller than MOV)
+            emit_u8(&mut buf, rex_w_rr(*src, *dst));
+            emit_u8(&mut buf, 0x31);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, src.low3(), dst.low3()));
+        }
+
+        Insn::NotR { dst } => {
+            // 0xF7 /2
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xF7);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 2, dst.low3()));
+        }
+
+        Insn::ShiftRImm { op, dst, count } => {
+            // 0xC1 /n ib — SHL/SHR/SAR r/m64, imm8
+            emit_u8(&mut buf, rex(true, false, false, dst.high() != 0));
+            emit_u8(&mut buf, 0xC1);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, *op as u8, dst.low3()));
+            emit_u8(&mut buf, *count);
+        }
+
+        // ─── compare/test ──────────────────────────────────────────
+
+        Insn::CmpRR { left, right } => {
+            // 0x39 /r — CMP r/m64, r64 · left=rm, right=reg (computes left-right)
+            emit_u8(&mut buf, rex_w_rr(*right, *left));
+            emit_u8(&mut buf, 0x39);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, right.low3(), left.low3()));
+        }
+
+        Insn::CmpRImm32 { left, imm } => {
+            // 0x81 /7 id — CMP r/m64, imm32
+            emit_u8(&mut buf, rex(true, false, false, left.high() != 0));
+            emit_u8(&mut buf, 0x81);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, ALU_SUBOP_CMP, left.low3()));
+            emit_i32_le(&mut buf, *imm);
+        }
+
+        Insn::TestRR { left, right } => {
+            // 0x85 /r — TEST r/m64, r64
+            emit_u8(&mut buf, rex_w_rr(*right, *left));
+            emit_u8(&mut buf, 0x85);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, right.low3(), left.low3()));
+        }
+
+        // ─── control flow ──────────────────────────────────────────
+
+        Insn::JmpRel32 { rel } => {
+            // 0xE9 cd — JMP rel32 (relative to NEXT instruction = end-of-this-jmp = +5)
+            emit_u8(&mut buf, 0xE9);
+            emit_i32_le(&mut buf, *rel);
+        }
+
+        Insn::Jcc { cond, rel } => {
+            // 0x0F 0x80+tttn cd — Jcc rel32
+            emit_u8(&mut buf, 0x0F);
+            emit_u8(&mut buf, 0x80 + cond.opcode_byte());
+            emit_i32_le(&mut buf, *rel);
+        }
+
+        Insn::CallRel32 { rel } => {
+            // 0xE8 cd — CALL rel32 (relative to instruction-after-call)
+            emit_u8(&mut buf, 0xE8);
+            emit_i32_le(&mut buf, *rel);
+        }
+
+        Insn::CallR { target } => {
+            // 0xFF /2 — CALL r/m64 (indirect)
+            // No REX.W — CALL r/m64 defaults to 64-bit operand size in long mode.
+            if target.high() != 0 {
+                emit_u8(&mut buf, rex(false, false, false, true));
+            }
+            emit_u8(&mut buf, 0xFF);
+            emit_u8(&mut buf, modrm(MOD_DIRECT, 2, target.low3()));
+        }
+
+        Insn::Ret => {
+            // 0xC3 — near return
+            emit_u8(&mut buf, 0xC3);
+        }
+
+        // ─── stack ─────────────────────────────────────────────────
+
+        Insn::PushR { src } => {
+            // 0x50+rd — PUSH r64. Default operand size in long mode = 64-bit
+            // (REX.W not needed). REX.B only if R8..R15.
+            if src.high() != 0 {
+                emit_u8(&mut buf, rex(false, false, false, true));
+            }
+            emit_u8(&mut buf, 0x50 + src.low3());
+        }
+
+        Insn::PopR { dst } => {
+            // 0x58+rd — POP r64
+            if dst.high() != 0 {
+                emit_u8(&mut buf, rex(false, false, false, true));
+            }
+            emit_u8(&mut buf, 0x58 + dst.low3());
+        }
+
+        // ─── misc / debug / OS ─────────────────────────────────────
+
+        Insn::Nop     => { emit_u8(&mut buf, 0x90); }
+        Insn::Int3    => { emit_u8(&mut buf, 0xCC); }
+        Insn::Syscall => { emit_u8(&mut buf, 0x0F); emit_u8(&mut buf, 0x05); }
+        Insn::Ud2     => { emit_u8(&mut buf, 0x0F); emit_u8(&mut buf, 0x0B); }
+    }
+
+    buf
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · encode.cssl
+// ─────────────────────────────────────────────────────────────────────
+// § ≥ 8 round-trip checks. Each `expected` byte sequence verified against
+// § GAS output `as -64 -o /dev/stdout | objdump -d -M intel` (mental model
+// § from Intel SDM Vol 2 directly — encoder authored from primary source).
+
+#[test]
+fn test_ret_single_byte() {
+    // C3 — the canonical "function epilogue".
+    assert_eq!(encode_insn(&Insn::Ret), vec![0xC3]);
+}
+
+#[test]
+fn test_nop_int3_syscall() {
+    assert_eq!(encode_insn(&Insn::Nop),     vec![0x90]);
+    assert_eq!(encode_insn(&Insn::Int3),    vec![0xCC]);
+    assert_eq!(encode_insn(&Insn::Syscall), vec![0x0F, 0x05]);
+    assert_eq!(encode_insn(&Insn::Ud2),     vec![0x0F, 0x0B]);
+}
+
+#[test]
+fn test_mov_rax_rbx() {
+    // MOV RAX, RBX  →  48 89 D8
+    //   REX.W=1     · 0x48
+    //   opcode      · 0x89 (MOV r/m64, r64)
+    //   ModR/M      · 11 011 000 = 0xD8 (mod=DIRECT, reg=RBX=3, rm=RAX=0)
+    let bytes = encode_insn(&Insn::MovRR { dst : Reg64::RAX, src : Reg64::RBX });
+    assert_eq!(bytes, vec![0x48, 0x89, 0xD8]);
+}
+
+#[test]
+fn test_mov_r8_r15_extended() {
+    // MOV R8, R15  →  4D 89 F8
+    //   REX  = 0100 1 1 0 1 = 0x4D (W=1, R=1[for src R15], X=0, B=1[for dst R8])
+    //   89   = MOV r/m64, r64
+    //   ModR/M = 11 111 000 = 0xF8 (reg=R15&7=7, rm=R8&7=0)
+    let bytes = encode_insn(&Insn::MovRR { dst : Reg64::R8, src : Reg64::R15 });
+    assert_eq!(bytes, vec![0x4D, 0x89, 0xF8]);
+}
+
+#[test]
+fn test_mov_rax_imm64() {
+    // MOV RAX, 0x1122334455667788  →  48 B8 88 77 66 55 44 33 22 11
+    //   REX.W       · 0x48
+    //   B8+rd       · 0xB8 (RAX low3=0)
+    //   imm64 LE
+    let bytes = encode_insn(&Insn::MovRImm64 { dst : Reg64::RAX, imm : 0x1122334455667788 });
+    assert_eq!(bytes, vec![0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11]);
+}
+
+#[test]
+fn test_add_rax_rcx() {
+    // ADD RAX, RCX  →  48 01 C8
+    //   REX.W       · 0x48
+    //   01 /r       · ADD r/m64, r64
+    //   ModR/M      · 11 001 000 = 0xC8 (reg=RCX=1, rm=RAX=0)
+    let bytes = encode_insn(&Insn::AddRR { dst : Reg64::RAX, src : Reg64::RCX });
+    assert_eq!(bytes, vec![0x48, 0x01, 0xC8]);
+}
+
+#[test]
+fn test_sub_rdi_rsi() {
+    // SUB RDI, RSI  →  48 29 F7
+    //   REX.W       · 0x48
+    //   29 /r       · SUB r/m64, r64
+    //   ModR/M      · 11 110 111 = 0xF7 (reg=RSI=6, rm=RDI=7)
+    let bytes = encode_insn(&Insn::SubRR { dst : Reg64::RDI, src : Reg64::RSI });
+    assert_eq!(bytes, vec![0x48, 0x29, 0xF7]);
+}
+
+#[test]
+fn test_cmp_rax_rbx() {
+    // CMP RAX, RBX  →  48 39 D8
+    //   REX.W       · 0x48
+    //   39 /r       · CMP r/m64, r64
+    //   ModR/M      · 11 011 000 = 0xD8 (reg=RBX, rm=RAX)
+    let bytes = encode_insn(&Insn::CmpRR { left : Reg64::RAX, right : Reg64::RBX });
+    assert_eq!(bytes, vec![0x48, 0x39, 0xD8]);
+}
+
+#[test]
+fn test_xor_rax_rax_zero_idiom() {
+    // XOR RAX, RAX  →  48 31 C0  (canonical zero-RAX, smaller than MOV imm64)
+    let bytes = encode_insn(&Insn::XorRR { dst : Reg64::RAX, src : Reg64::RAX });
+    assert_eq!(bytes, vec![0x48, 0x31, 0xC0]);
+}
+
+#[test]
+fn test_push_rbp_legacy() {
+    // PUSH RBP  →  55  (no REX, RBP fits in 0x50..0x57)
+    let bytes = encode_insn(&Insn::PushR { src : Reg64::RBP });
+    assert_eq!(bytes, vec![0x55]);
+}
+
+#[test]
+fn test_push_r12_extended() {
+    // PUSH R12  →  41 54
+    //   REX.B       · 0x41
+    //   50+rd       · 0x50 + (R12&7)=4 = 0x54
+    let bytes = encode_insn(&Insn::PushR { src : Reg64::R12 });
+    assert_eq!(bytes, vec![0x41, 0x54]);
+}
+
+#[test]
+fn test_pop_rbp_legacy() {
+    // POP RBP  →  5D
+    let bytes = encode_insn(&Insn::PopR { dst : Reg64::RBP });
+    assert_eq!(bytes, vec![0x5D]);
+}
+
+#[test]
+fn test_jmp_rel32() {
+    // JMP +0  →  E9 00 00 00 00
+    let bytes = encode_insn(&Insn::JmpRel32 { rel : 0 });
+    assert_eq!(bytes, vec![0xE9, 0x00, 0x00, 0x00, 0x00]);
+
+    // JMP +0x12345678 (rel32 little-endian)
+    let bytes = encode_insn(&Insn::JmpRel32 { rel : 0x12345678 });
+    assert_eq!(bytes, vec![0xE9, 0x78, 0x56, 0x34, 0x12]);
+}
+
+#[test]
+fn test_je_rel32() {
+    // JE +0  →  0F 84 00 00 00 00
+    //   0F 80+tttn  · tttn for E = 0x4 ⇒ 0x84
+    let bytes = encode_insn(&Insn::Jcc { cond : Cond::E, rel : 0 });
+    assert_eq!(bytes, vec![0x0F, 0x84, 0x00, 0x00, 0x00, 0x00]);
+}
+
+#[test]
+fn test_jne_rel32() {
+    // JNE +0  →  0F 85 00 00 00 00
+    let bytes = encode_insn(&Insn::Jcc { cond : Cond::NE, rel : 0 });
+    assert_eq!(bytes, vec![0x0F, 0x85, 0x00, 0x00, 0x00, 0x00]);
+}
+
+#[test]
+fn test_call_rel32() {
+    // CALL +0  →  E8 00 00 00 00
+    let bytes = encode_insn(&Insn::CallRel32 { rel : 0 });
+    assert_eq!(bytes, vec![0xE8, 0x00, 0x00, 0x00, 0x00]);
+}
+
+#[test]
+fn test_inc_rax() {
+    // INC RAX  →  48 FF C0
+    //   REX.W   · 48
+    //   FF /0   · ModR/M = 11 000 000 = 0xC0
+    let bytes = encode_insn(&Insn::Inc { dst : Reg64::RAX });
+    assert_eq!(bytes, vec![0x48, 0xFF, 0xC0]);
+}
+
+#[test]
+fn test_dec_rcx() {
+    // DEC RCX  →  48 FF C9
+    //   FF /1 · ModR/M = 11 001 001 = 0xC9
+    let bytes = encode_insn(&Insn::Dec { dst : Reg64::RCX });
+    assert_eq!(bytes, vec![0x48, 0xFF, 0xC9]);
+}
+
+#[test]
+fn test_imul_rax_rbx() {
+    // IMUL RAX, RBX  →  48 0F AF C3
+    //   REX.W=1, R=0, B=0  · 0x48
+    //   0F AF /r           · IMUL r64, r/m64
+    //   ModR/M = 11 000 011 = 0xC3 (reg=RAX, rm=RBX)
+    let bytes = encode_insn(&Insn::ImulRR { dst : Reg64::RAX, src : Reg64::RBX });
+    assert_eq!(bytes, vec![0x48, 0x0F, 0xAF, 0xC3]);
+}
+
+#[test]
+fn test_add_rax_imm32() {
+    // ADD RAX, 0x12345678  →  48 81 C0 78 56 34 12
+    //   REX.W   · 48
+    //   81 /0   · ALU group with /0 = ADD
+    //   ModR/M  · 11 000 000 = 0xC0
+    //   imm32   · 78 56 34 12
+    let bytes = encode_insn(&Insn::AddRImm32 { dst : Reg64::RAX, imm : 0x12345678 });
+    assert_eq!(bytes, vec![0x48, 0x81, 0xC0, 0x78, 0x56, 0x34, 0x12]);
+}
+
+#[test]
+fn test_mov_imm64_r15() {
+    // MOV R15, 0xDEADBEEFCAFEBABE  →  49 BF BE BA FE CA EF BE AD DE
+    //   REX = 0100 1001 = 0x49 (W=1, B=1)
+    //   B8+rd · 0xB8 + (R15&7)=7 = 0xBF
+    let bytes = encode_insn(&Insn::MovRImm64 { dst : Reg64::R15, imm : 0xDEADBEEFCAFEBABE });
+    assert_eq!(bytes, vec![0x49, 0xBF, 0xBE, 0xBA, 0xFE, 0xCA, 0xEF, 0xBE, 0xAD, 0xDE]);
+}
+
+#[test]
+fn test_neg_rax() {
+    // NEG RAX  →  48 F7 D8
+    //   F7 /3  · ModR/M = 11 011 000 = 0xD8
+    let bytes = encode_insn(&Insn::Neg { dst : Reg64::RAX });
+    assert_eq!(bytes, vec![0x48, 0xF7, 0xD8]);
+}
+
+#[test]
+fn test_not_rax() {
+    // NOT RAX  →  48 F7 D0
+    //   F7 /2  · ModR/M = 11 010 000 = 0xD0
+    let bytes = encode_insn(&Insn::NotR { dst : Reg64::RAX });
+    assert_eq!(bytes, vec![0x48, 0xF7, 0xD0]);
+}
+
+#[test]
+fn test_and_or_rr() {
+    // AND RAX, RBX → 48 21 D8
+    let b1 = encode_insn(&Insn::AndRR { dst : Reg64::RAX, src : Reg64::RBX });
+    assert_eq!(b1, vec![0x48, 0x21, 0xD8]);
+    // OR  RAX, RBX → 48 09 D8
+    let b2 = encode_insn(&Insn::OrRR  { dst : Reg64::RAX, src : Reg64::RBX });
+    assert_eq!(b2, vec![0x48, 0x09, 0xD8]);
+}
+
+#[test]
+fn test_test_rr() {
+    // TEST RAX, RAX → 48 85 C0  (zero-flag set iff RAX = 0)
+    let bytes = encode_insn(&Insn::TestRR { left : Reg64::RAX, right : Reg64::RAX });
+    assert_eq!(bytes, vec![0x48, 0x85, 0xC0]);
+}
+
+#[test]
+fn test_call_indirect_rax() {
+    // CALL RAX  →  FF D0
+    //   No REX (legacy reg, default 64-bit operand size)
+    //   FF /2 · ModR/M = 11 010 000 = 0xD0
+    let bytes = encode_insn(&Insn::CallR { target : Reg64::RAX });
+    assert_eq!(bytes, vec![0xFF, 0xD0]);
+}
+
+#[test]
+fn test_call_indirect_r11() {
+    // CALL R11  →  41 FF D3
+    //   REX.B=1   · 0x41
+    //   FF /2     · ModR/M = 11 010 011 = 0xD3
+    let bytes = encode_insn(&Insn::CallR { target : Reg64::R11 });
+    assert_eq!(bytes, vec![0x41, 0xFF, 0xD3]);
+}
+
+#[test]
+fn test_lea_rax_rbp_minus_8() {
+    // LEA RAX, [RBP - 8]  →  48 8D 45 F8
+    //   REX.W            · 0x48
+    //   8D /r            · LEA r64, m
+    //   ModR/M           · 01 000 101 = 0x45  (mod=disp8, reg=RAX=0, rm=RBP=5)
+    //   disp8            · 0xF8 (-8 as i8)
+    let mem = MemOp::base_disp(Reg64::RBP, -8);
+    let bytes = encode_insn(&Insn::Lea { dst : Reg64::RAX, src : mem });
+    assert_eq!(bytes, vec![0x48, 0x8D, 0x45, 0xF8]);
+}
+
+#[test]
+fn test_mov_load_rsp_indirect_uses_sib() {
+    // MOV RAX, [RSP]  →  48 8B 04 24
+    //   REX.W       · 0x48
+    //   8B /r       · MOV r64, r/m64
+    //   ModR/M      · 00 000 100 = 0x04  (rm=100 escape ⇒ SIB follows)
+    //   SIB         · 00 100 100 = 0x24  (ss=00, index=100=NO_INDEX, base=RSP=4)
+    let mem = MemOp::base_only(Reg64::RSP);
+    let bytes = encode_insn(&Insn::MovRM { dst : Reg64::RAX, src : mem });
+    assert_eq!(bytes, vec![0x48, 0x8B, 0x04, 0x24]);
+}
+
+#[test]
+fn test_mov_load_rbp_zero_uses_disp8() {
+    // MOV RAX, [RBP]  →  48 8B 45 00  (NOT mod=00 — that means RIP-rel)
+    //   REX.W      · 0x48
+    //   8B /r      · MOV r64, r/m64
+    //   ModR/M     · 01 000 101 = 0x45  (mod=disp8 forced by RBP-quirk)
+    //   disp8      · 0x00
+    let mem = MemOp::base_only(Reg64::RBP);
+    let bytes = encode_insn(&Insn::MovRM { dst : Reg64::RAX, src : mem });
+    assert_eq!(bytes, vec![0x48, 0x8B, 0x45, 0x00]);
+}
+
+#[test]
+fn test_shift_shl_rax_4() {
+    // SHL RAX, 4  →  48 C1 E0 04
+    //   REX.W   · 0x48
+    //   C1 /4   · ModR/M = 11 100 000 = 0xE0
+    //   imm8    · 0x04
+    let bytes = encode_insn(&Insn::ShiftRImm {
+        op : ShiftOp::Shl, dst : Reg64::RAX, count : 4,
+    });
+    assert_eq!(bytes, vec![0x48, 0xC1, 0xE0, 0x04]);
+}

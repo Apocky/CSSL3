@@ -1,0 +1,231 @@
+// § compiler-cssl/codegen/x86_64/regs.cssl
+// § T11-D242 (W-E3-α / W-Eα) · x86-64 register definitions + encoding LUTs
+// §
+// § Self-host bootstrap : authored in CSSL itself (NOT Rust). Stage-0 compiles
+// § this file via Cranelift ; stage-1 will compile it via the encoder built
+// § from this very source. Replaces stage-0's external Cranelift dependency
+// § for raw machine-code emission.
+// §
+// § REFERENCE : Intel SDM Vol 2 § 2.1 Instruction Format · § 3.1 Registers
+// §
+// § GPR layout @ x86-64 :
+// §   3-bit base index (encoded in ModR/M.reg / ModR/M.rm / SIB fields)
+// §   4th high bit promoted to REX.R / REX.X / REX.B prefix
+// §   ∴ index 0..7 = legacy regs, 8..15 = R8..R15 (require REX prefix)
+// §
+// § DISCIPLINE : LUTs (const arrays) — NOT HashMap (Sawyer-mandate)
+
+// ─────────────────────────────────────────────────────────────────────
+// § Reg64 · 64-bit GPR enum
+// ─────────────────────────────────────────────────────────────────────
+// § Encoding index 0..15 matches Intel SDM register-encoding ordinal.
+// § This ordering is LOAD-BEARING : the discriminant is the encoding.
+// § NEVER reorder these variants — SIB/ModR/M emission depends on it.
+
+enum Reg64 {
+    RAX = 0,    // accumulator                · low-3 = 000 · REX.B = 0
+    RCX = 1,    // counter                    · low-3 = 001 · REX.B = 0
+    RDX = 2,    // data                       · low-3 = 010 · REX.B = 0
+    RBX = 3,    // base                       · low-3 = 011 · REX.B = 0
+    RSP = 4,    // stack pointer              · low-3 = 100 · REX.B = 0  (SIB-escape in ModR/M.rm)
+    RBP = 5,    // base pointer               · low-3 = 101 · REX.B = 0  (no-disp escape in mod=00)
+    RSI = 6,    // source index               · low-3 = 110 · REX.B = 0
+    RDI = 7,    // destination index          · low-3 = 111 · REX.B = 0
+    R8  = 8,    // extended GPR 0             · low-3 = 000 · REX.B = 1
+    R9  = 9,    // extended GPR 1             · low-3 = 001 · REX.B = 1
+    R10 = 10,   // extended GPR 2             · low-3 = 010 · REX.B = 1
+    R11 = 11,   // extended GPR 3             · low-3 = 011 · REX.B = 1
+    R12 = 12,   // extended GPR 4             · low-3 = 100 · REX.B = 1  (SIB-escape)
+    R13 = 13,   // extended GPR 5             · low-3 = 101 · REX.B = 1  (no-disp escape)
+    R14 = 14,   // extended GPR 6             · low-3 = 110 · REX.B = 1
+    R15 = 15,   // extended GPR 7             · low-3 = 111 · REX.B = 1
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Reg32 · 32-bit GPR enum (low halves of Reg64)
+// ─────────────────────────────────────────────────────────────────────
+// § For 32-bit operations (no REX.W = 0). Same encoding ordinal as Reg64.
+
+enum Reg32 {
+    EAX  = 0,   ECX  = 1,   EDX  = 2,   EBX  = 3,
+    ESP  = 4,   EBP  = 5,   ESI  = 6,   EDI  = 7,
+    R8D  = 8,   R9D  = 9,   R10D = 10,  R11D = 11,
+    R12D = 12,  R13D = 13,  R14D = 14,  R15D = 15,
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § REG_ENCODING · LUT (Sawyer-discipline · Σ-precomputed not Σ-runtime-hash)
+// ─────────────────────────────────────────────────────────────────────
+// § Maps Reg64 ordinal (0..15) → low-3-bit encoding (0..7) for ModR/M / SIB.
+// § Trivially identity-mod-8, but we materialize the table so the encoder
+// § path is branch-free + LLVM/Cranelift can const-fold the indexed load.
+
+const REG_LOW3 : [u8 ; 16] = [
+    0, 1, 2, 3, 4, 5, 6, 7,    // RAX..RDI
+    0, 1, 2, 3, 4, 5, 6, 7,    // R8..R15
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § REG_HIGH_BIT · LUT (extension-bit per register)
+// ─────────────────────────────────────────────────────────────────────
+// § Maps Reg64 ordinal → 0 (legacy) or 1 (extended). Used to set
+// § REX.R / REX.X / REX.B depending on which encoding-slot the reg occupies.
+
+const REG_HIGH : [u8 ; 16] = [
+    0, 0, 0, 0, 0, 0, 0, 0,    // RAX..RDI : no extension
+    1, 1, 1, 1, 1, 1, 1, 1,    // R8..R15  : extension required
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § REG_NEEDS_SIB_ESCAPE · LUT
+// ─────────────────────────────────────────────────────────────────────
+// § ModR/M.rm = 100 (RSP, R12) means "SIB byte follows" instead of "use rsp".
+// § For pure register-direct addressing (mod=11) this does NOT apply, but
+// § indirect-addressing helpers consult this table.
+
+const REG_IS_RSP_FAMILY : [u8 ; 16] = [
+    0, 0, 0, 0, 1, 0, 0, 0,    // RSP @ idx 4
+    0, 0, 0, 0, 1, 0, 0, 0,    // R12 @ idx 12
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § REG_IS_RBP_FAMILY · LUT
+// ─────────────────────────────────────────────────────────────────────
+// § ModR/M.rm = 101 with mod=00 means "RIP-relative disp32 follows" rather
+// § than "[rbp]". For [rbp] the encoder MUST emit mod=01 with disp8=0.
+// § Same family : RBP (idx 5), R13 (idx 13).
+
+const REG_IS_RBP_FAMILY : [u8 ; 16] = [
+    0, 0, 0, 0, 0, 1, 0, 0,    // RBP @ idx 5
+    0, 0, 0, 0, 0, 1, 0, 0,    // R13 @ idx 13
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § Reg64 · accessors
+// ─────────────────────────────────────────────────────────────────────
+
+impl Reg64 {
+    // Get low-3-bit encoding for ModR/M.reg or ModR/M.rm or SIB.base/index.
+    fn low3(self) -> u8 {
+        REG_LOW3[self as usize]
+    }
+
+    // Get high-extension-bit (drives REX.R / REX.X / REX.B).
+    fn high(self) -> u8 {
+        REG_HIGH[self as usize]
+    }
+
+    // True iff this reg's low-3 encoding collides with SIB-escape slot (100).
+    fn is_rsp_family(self) -> bool {
+        REG_IS_RSP_FAMILY[self as usize] != 0
+    }
+
+    // True iff this reg's low-3 encoding collides with RIP-relative slot (101).
+    fn is_rbp_family(self) -> bool {
+        REG_IS_RBP_FAMILY[self as usize] != 0
+    }
+
+    // True iff the reg requires REX prefix to be addressable (R8..R15).
+    fn needs_rex(self) -> bool {
+        REG_HIGH[self as usize] != 0
+    }
+}
+
+impl Reg32 {
+    fn low3(self) -> u8 { REG_LOW3[self as usize] }
+    fn high(self) -> u8 { REG_HIGH[self as usize] }
+    fn needs_rex(self) -> bool { REG_HIGH[self as usize] != 0 }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § System V AMD64 ABI · caller-saved / callee-saved partitions
+// ─────────────────────────────────────────────────────────────────────
+// § Reference : System V Application Binary Interface · AMD64 § 3.2.1
+// §
+// § ARG REGISTERS (integer/pointer · in order) :
+// §   RDI · RSI · RDX · RCX · R8 · R9
+// § RETURN : RAX (low 64) ⊗ RDX (high 64 of 128-bit return)
+// § CALLER-SAVED (volatile · scratch) : RAX RCX RDX RSI RDI R8 R9 R10 R11
+// § CALLEE-SAVED (preserved)          : RBX RBP R12 R13 R14 R15 + RSP (impl)
+// §
+// § (Win-x64 ABI differs : RCX RDX R8 R9 are args, RSI RDI callee-saved.
+// §  Encoder is ABI-agnostic ; calling-convention layer plugs in higher up.)
+
+const SYSV_ARG_REGS : [Reg64 ; 6] = [
+    Reg64::RDI, Reg64::RSI, Reg64::RDX, Reg64::RCX, Reg64::R8, Reg64::R9,
+];
+
+const SYSV_CALLER_SAVED : [Reg64 ; 9] = [
+    Reg64::RAX, Reg64::RCX, Reg64::RDX, Reg64::RSI, Reg64::RDI,
+    Reg64::R8,  Reg64::R9,  Reg64::R10, Reg64::R11,
+];
+
+const SYSV_CALLEE_SAVED : [Reg64 ; 6] = [
+    Reg64::RBX, Reg64::RBP, Reg64::R12, Reg64::R13, Reg64::R14, Reg64::R15,
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · regs.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_reg_low3_legacy() {
+    assert_eq!(Reg64::RAX.low3(), 0);
+    assert_eq!(Reg64::RCX.low3(), 1);
+    assert_eq!(Reg64::RDI.low3(), 7);
+}
+
+#[test]
+fn test_reg_low3_extended() {
+    assert_eq!(Reg64::R8.low3(),  0);   // wraps mod-8
+    assert_eq!(Reg64::R12.low3(), 4);
+    assert_eq!(Reg64::R15.low3(), 7);
+}
+
+#[test]
+fn test_reg_high_bit() {
+    assert_eq!(Reg64::RAX.high(), 0);
+    assert_eq!(Reg64::RDI.high(), 0);
+    assert_eq!(Reg64::R8.high(),  1);
+    assert_eq!(Reg64::R15.high(), 1);
+}
+
+#[test]
+fn test_reg_needs_rex() {
+    assert_eq!(Reg64::RAX.needs_rex(), false);
+    assert_eq!(Reg64::RDI.needs_rex(), false);
+    assert_eq!(Reg64::R8.needs_rex(),  true);
+    assert_eq!(Reg64::R15.needs_rex(), true);
+}
+
+#[test]
+fn test_rsp_family() {
+    assert_eq!(Reg64::RSP.is_rsp_family(), true);
+    assert_eq!(Reg64::R12.is_rsp_family(), true);
+    assert_eq!(Reg64::RBP.is_rsp_family(), false);
+    assert_eq!(Reg64::RAX.is_rsp_family(), false);
+}
+
+#[test]
+fn test_rbp_family() {
+    assert_eq!(Reg64::RBP.is_rbp_family(), true);
+    assert_eq!(Reg64::R13.is_rbp_family(), true);
+    assert_eq!(Reg64::RSP.is_rbp_family(), false);
+    assert_eq!(Reg64::RAX.is_rbp_family(), false);
+}
+
+#[test]
+fn test_sysv_arg_regs_ordering() {
+    // System V AMD64 § 3.2.1 : RDI is arg0, RSI is arg1, ...
+    assert_eq!(SYSV_ARG_REGS[0] as u8, Reg64::RDI as u8);
+    assert_eq!(SYSV_ARG_REGS[1] as u8, Reg64::RSI as u8);
+    assert_eq!(SYSV_ARG_REGS[5] as u8, Reg64::R9  as u8);
+}
+
+#[test]
+fn test_reg32_parallels_reg64() {
+    // 32-bit GPR low3 matches its 64-bit counterpart.
+    assert_eq!(Reg32::EAX.low3(), Reg64::RAX.low3());
+    assert_eq!(Reg32::R8D.low3(), Reg64::R8.low3());
+    assert_eq!(Reg32::R8D.needs_rex(), true);
+}
