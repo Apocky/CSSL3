@@ -85,6 +85,20 @@ pub struct BodyLowerCtx<'a> {
     /// by construction (single-pass lowerer ; no scope-stack restoration on
     /// block exit). See `specs/02_IR.csl` § CLOSURE-ENV.
     pub local_vars: HashMap<Symbol, (ValueId, MirType)>,
+    /// T11-D318 (W-CC-mut-assign) : `let mut x` bindings declare a stack-slot
+    /// cell ; this map records the cell's pointer-typed `ValueId` (the
+    /// `cssl.local.alloca` op result) plus the element MirType. Reads of `x`
+    /// inside `lower_path` emit a fresh `memref.load alloca` ; writes via
+    /// `lower_assign` emit a `memref.store rhs, alloca` (no result-bind on
+    /// the binding itself — the cell-id stays stable across the fn body).
+    ///
+    /// The map is INHERITED by sub-contexts (via `sub()`) so loop bodies and
+    /// branch arms can reach mutable bindings declared in their parent scope.
+    /// New cells created inside a sub-region don't escape — that matches
+    /// stage-0 single-pass scoping semantics (no real scope-stack
+    /// restoration on block exit) and prevents inner shadowing from leaking
+    /// into the outer scope.
+    pub local_cells: HashMap<Symbol, (ValueId, MirType)>,
     /// T11-D100 (J2 — closures callable) : closure-value-id → descriptor that
     /// the call-site recognizer consumes when it sees a callee path resolving
     /// to a closure-typed local. Populated by `lower_lambda` immediately after
@@ -159,6 +173,7 @@ impl<'a> BodyLowerCtx<'a> {
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
+            local_cells: HashMap::new(),
             closure_descriptors: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
@@ -176,6 +191,7 @@ impl<'a> BodyLowerCtx<'a> {
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
+            local_cells: HashMap::new(),
             closure_descriptors: HashMap::new(),
             next_value_id: 0,
             ops: Vec::new(),
@@ -212,6 +228,14 @@ impl<'a> BodyLowerCtx<'a> {
             param_vars: HashMap::new(),
             vec_param_vars: HashMap::new(),
             local_vars: HashMap::new(),
+            // T11-D318 (W-CC-mut-assign) : INHERIT mutable-cell map so loop
+            // bodies + branch arms can reach `let mut x` cells declared in
+            // their parent scope. Reads/writes via `memref.load`/`memref.store`
+            // hit the same alloca regardless of which sub-region the access
+            // happens in. New cells declared inside the sub-region don't
+            // escape — that matches stage-0 single-pass scoping (no real
+            // scope-stack restoration on block exit).
+            local_cells: self.local_cells.clone(),
             closure_descriptors: HashMap::new(),
             next_value_id: self.next_value_id,
             ops: Vec::new(),
@@ -304,6 +328,65 @@ fn extract_pattern_symbol(pat: &cssl_hir::HirPattern) -> Option<Symbol> {
         cssl_hir::HirPatternKind::Binding { name, .. } => Some(*name),
         _ => None,
     }
+}
+
+/// § T11-D318 (W-CC-mut-assign) — extract `(name, mutable)` from a
+/// `Binding`-pattern. Returns `None` for non-binding patterns (wildcard,
+/// destructuring, etc.) ; mutability of those is N/A at stage-0.
+fn extract_binding_pattern(pat: &cssl_hir::HirPattern) -> Option<(Symbol, bool)> {
+    match &pat.kind {
+        cssl_hir::HirPatternKind::Binding { name, mutable } => Some((*name, *mutable)),
+        _ => None,
+    }
+}
+
+/// § T11-D318 (W-CC-mut-assign) — emit a `cssl.local.alloca` op declaring a
+/// stack-cell of the given element type. The result is a pointer-typed
+/// ValueId that subsequent `memref.load`/`memref.store` ops use to read/
+/// write the cell. The element type is recorded as a `slot_ty` attribute
+/// so the cgen-side lowering can size the StackSlotData correctly.
+fn emit_local_alloca(ctx: &mut BodyLowerCtx<'_>, elem_ty: &MirType, span: Span) -> ValueId {
+    let cell_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.local.alloca")
+            .with_result(cell_id, MirType::Ptr)
+            .with_attribute("slot_ty", format!("{elem_ty}"))
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    cell_id
+}
+
+/// § T11-D318 — emit a `memref.store value, cell` op (no result). Mirrors
+/// the existing index-store lowering shape so the cgen-side `memref.store`
+/// handler doesn't need a special-case for stack-cell writes.
+fn emit_local_store(ctx: &mut BodyLowerCtx<'_>, cell_id: ValueId, value_id: ValueId, span: Span) {
+    ctx.ops.push(
+        MirOp::std("memref.store")
+            .with_operand(value_id)
+            .with_operand(cell_id)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+}
+
+/// § T11-D318 — emit a `memref.load cell` op returning the loaded value
+/// in the cell's element type. Each call mints a fresh ValueId so each
+/// read of `x` is a distinct SSA value (cranelift accepts repeated reads
+/// from the same stack-slot ; the ValueId is the SSA name for that load
+/// instance).
+fn emit_local_load(
+    ctx: &mut BodyLowerCtx<'_>,
+    cell_id: ValueId,
+    elem_ty: &MirType,
+    span: Span,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("memref.load")
+            .with_operand(cell_id)
+            .with_result(result_id, elem_ty.clone())
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    (result_id, elem_ty.clone())
 }
 
 /// Shallow HIR-type → MIR-type translation (mirrors the T6-phase-1 mapping).
@@ -458,11 +541,40 @@ fn lower_stmt(ctx: &mut BodyLowerCtx<'_>, stmt: &HirStmt) {
                     //   `lower_struct_expr` pathway returns a flat-tuple
                     //   placeholder ; the declared type is the user's
                     //   authoritative shape.
-                    if let Some(sym) = extract_pattern_symbol(pat) {
+                    //
+                    // § T11-D318 (W-CC-mut-assign) — `let mut x = init`
+                    //   lowers to a stack-cell : emit `cssl.local.alloca`
+                    //   for the cell-pointer, `memref.store init, cell` to
+                    //   seed the initial value, and register `x` in
+                    //   `local_cells`. Subsequent `lower_path(x)` reads emit
+                    //   `memref.load cell` per access (fresh ValueIds) and
+                    //   `lower_assign(x = rhs)` emits `memref.store rhs,
+                    //   cell` (no result-bind on the binding's identity).
+                    //   Immutable `let` keeps the pre-D318 SSA-binding path.
+                    if let Some((sym, mutable)) = extract_binding_pattern(pat) {
                         let final_ty = declared_ty
                             .as_ref()
-                            .map_or(ty, |t| lower_hir_type_light(ctx.interner, t));
-                        ctx.local_vars.insert(sym, (vid, final_ty));
+                            .map_or(ty.clone(), |t| lower_hir_type_light(ctx.interner, t));
+                        if mutable {
+                            // § T11-D318 — declare the stack-slot cell + seed
+                            //   it with the rhs-value. Register `x` in
+                            //   `local_cells` so reads/writes route through
+                            //   memref.load/store. The cell is element-typed
+                            //   via the `slot_ty` attribute so the cgen-side
+                            //   `cssl.local.alloca` lowering can compute the
+                            //   right StackSlotData size + alignment.
+                            let cell_id = emit_local_alloca(ctx, &final_ty, stmt.span);
+                            emit_local_store(ctx, cell_id, vid, stmt.span);
+                            ctx.local_cells.insert(sym, (cell_id, final_ty.clone()));
+                            // Also keep `local_vars` populated with the LATEST
+                            // SSA-vid so callers that bypass `lower_path`
+                            // (e.g., closure-capture free-var analysis) still
+                            // see the binding ; reads via `lower_path` prefer
+                            // `local_cells` and emit a fresh load.
+                            ctx.local_vars.insert(sym, (vid, final_ty));
+                        } else {
+                            ctx.local_vars.insert(sym, (vid, final_ty));
+                        }
                     }
                 }
             }
@@ -596,12 +708,52 @@ fn lower_while(
     body: &HirBlock,
     span: Span,
 ) -> (ValueId, MirType) {
+    // § T11-D318 (W-CC-mut-assign) — `scf.while` shape evolves :
+    //   Region[0] = cond_region (re-evaluated at each loop header) ; the
+    //                last op in cond_region's entry-block carries the
+    //                cond's ValueId via a `scf.condition` terminator-op.
+    //   Region[1] = body_region (executed when cond is true).
+    //
+    //   The leading operand keeps a backward-compat snapshot of the cond's
+    //   ValueId at op-construction time (computed in the OUTER ctx), so
+    //   pre-existing JIT/object lowerings that read `op.operands[0]` still
+    //   compile + run with the one-shot semantics on cond expressions
+    //   that don't read mutable cells (the common pre-D318 case). When
+    //   the cond expression reads a mutable cell, the cond_region in
+    //   region[0] is what the cgen-side `lower_scf_while` MUST walk on
+    //   each iteration to observe the latest cell value.
+    //
+    //   A future slice that grows `scf.condition` as a first-class MIR
+    //   op replaces the "last op's ValueId is the cond" shape with an
+    //   explicit operand-binding ; today the cgen side reads the trailing
+    //   op's first result as the cond.
+    let mut cond_sub = ctx.sub();
+    let (sub_cond_id, _) =
+        lower_expr(&mut cond_sub, cond).unwrap_or((cond_sub.fresh_value_id(), MirType::Bool));
+    // Append a `scf.condition` marker carrying the cond ValueId so the
+    // cgen-side walker doesn't have to guess which op produced the cond.
+    cond_sub.ops.push(
+        MirOp::std("scf.condition")
+            .with_operand(sub_cond_id)
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let mut cond_blk = MirBlock::new("entry");
+    cond_blk.ops = cond_sub.ops;
+    let mut cond_region = MirRegion::new();
+    cond_region.push(cond_blk);
+    ctx.next_value_id = cond_sub.next_value_id;
+
+    // Pre-D318 backward-compat operand : also lower the cond once in the
+    // outer ctx so callers that read `op.operands[0]` still see a valid
+    // ValueId. This preserves the one-shot path for non-mutating conds.
     let (cond_id, _) = lower_expr(ctx, cond).unwrap_or((ctx.fresh_value_id(), MirType::Bool));
+
     let body_region = lower_sub_region_from(ctx, body);
     let id = ctx.fresh_value_id();
     ctx.ops.push(
         MirOp::std("scf.while")
             .with_operand(cond_id)
+            .with_region(cond_region)
             .with_region(body_region)
             .with_result(id, MirType::None)
             .with_attribute("source_loc", format!("{span:?}")),
@@ -700,6 +852,52 @@ fn lower_assign(
     rhs: &HirExpr,
     span: Span,
 ) -> (ValueId, MirType) {
+    // § T11-D318 (W-CC-mut-assign) — Detect path-LHS to a `let mut` cell
+    //   FIRST, before lowering the LHS as an expression. Lowering the LHS
+    //   as an expression would emit a stray `memref.load cell` op whose
+    //   result is dead — harmless but wasteful, and (in old-style flows)
+    //   could leak a phantom `cssl.path_ref` placeholder. The cell-check
+    //   covers the simple case `x = expr` and compound `x += expr` /
+    //   `x -= expr` / `x *= expr` / `x /= expr` for any single-segment
+    //   path-LHS that resolves to a known mutable-cell binding.
+    if let HirExprKind::Path { segments, .. } = &lhs.kind {
+        if segments.len() == 1 {
+            if let Some((cell_id, elem_ty)) = ctx.local_cells.get(&segments[0]).cloned() {
+                let (rhs_id, _rhs_ty) =
+                    lower_expr(ctx, rhs).unwrap_or((ctx.fresh_value_id(), elem_ty.clone()));
+                let value_to_store = match op {
+                    None => rhs_id,
+                    Some(bin_op) => {
+                        // Compound-assign : load old, apply binary op,
+                        // store new. The cell-id is reused unchanged so
+                        // the next read observes the freshly-stored
+                        // value.
+                        let (old_id, _) = emit_local_load(ctx, cell_id, &elem_ty, span);
+                        emit_compound_op(ctx, bin_op, old_id, rhs_id, &elem_ty, span)
+                    }
+                };
+                emit_local_store(ctx, cell_id, value_to_store, span);
+                // The expression-form value of an assignment is `()` at
+                // stage-0 — return a placeholder ValueId / MirType::None
+                // so callers that read the result don't panic. Most
+                // assignment forms are statement-level (HirStmtKind::Expr)
+                // so this is rarely consumed.
+                let result_id = ctx.fresh_value_id();
+                ctx.ops.push(
+                    MirOp::std("cssl.assign")
+                        .with_result(result_id, MirType::None)
+                        .with_attribute("source_loc", format!("{span:?}"))
+                        .with_attribute("target", "local_cell"),
+                );
+                return (result_id, MirType::None);
+            }
+        }
+    }
+    // Fallback : non-cell LHS (param, field, index, unresolved path, etc.).
+    // The pre-D318 behavior emits an opaque `cssl.assign*` placeholder so
+    // downstream passes have a typed value to walk. The object-emit
+    // backend will refuse this op (it remains outside the stage-0 subset
+    // for non-cell targets — fields/indexing land in a future slice).
     let (_lhs_id, _) = lower_expr(ctx, lhs).unwrap_or((ctx.fresh_value_id(), MirType::None));
     let (rhs_id, rhs_ty) = lower_expr(ctx, rhs).unwrap_or((ctx.fresh_value_id(), MirType::None));
     // Compound-assign : emit the binary-op first (x += y → arith.addX x y → store).
@@ -719,6 +917,54 @@ fn lower_assign(
             .with_attribute("source_loc", format!("{span:?}")),
     );
     (id, rhs_ty)
+}
+
+/// § T11-D318 — apply a compound-assign binary op for stack-cell writes.
+/// Maps the small subset of `HirBinOp` that's well-defined for `+= -= *=
+/// /= %=` against scalar element types ; mirrors `lower_binary` but emits
+/// only one op (the binary itself ; the store is the caller's job).
+fn emit_compound_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op: HirBinOp,
+    lhs_id: ValueId,
+    rhs_id: ValueId,
+    elem_ty: &MirType,
+    span: Span,
+) -> ValueId {
+    let is_float = matches!(elem_ty, MirType::Float(_));
+    let op_name = match (op, is_float) {
+        (HirBinOp::Add, false) => "arith.addi",
+        (HirBinOp::Add, true) => "arith.addf",
+        (HirBinOp::Sub, false) => "arith.subi",
+        (HirBinOp::Sub, true) => "arith.subf",
+        (HirBinOp::Mul, false) => "arith.muli",
+        (HirBinOp::Mul, true) => "arith.mulf",
+        (HirBinOp::Div, false) => "arith.divsi",
+        (HirBinOp::Div, true) => "arith.divf",
+        (HirBinOp::Rem, false) => "arith.remsi",
+        (HirBinOp::Rem, true) => "arith.remf",
+        // Bitwise / logical compounds : these aren't standard `+=`-shape but
+        // appear in some HIR shapes. Map to integer-bitwise ops ; the cgen
+        // backend already lowers these via the same `binary_int` helper.
+        (HirBinOp::BitAnd | HirBinOp::And, _) => "arith.andi",
+        (HirBinOp::BitOr | HirBinOp::Or, _) => "arith.ori",
+        (HirBinOp::BitXor, _) => "arith.xori",
+        (HirBinOp::Shl, _) => "arith.shli",
+        (HirBinOp::Shr, _) => "arith.shrsi",
+        // Compound forms of comparison / implication don't make sense ; map
+        // to a placeholder add as the safest fallback (the source-level
+        // shape is malformed, but crashing here would be worse).
+        _ => "arith.addi",
+    };
+    let result_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std(op_name)
+            .with_operand(lhs_id)
+            .with_operand(rhs_id)
+            .with_result(result_id, elem_ty.clone())
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    result_id
 }
 
 fn lower_cast(ctx: &mut BodyLowerCtx<'_>, inner: &HirExpr, span: Span) -> (ValueId, MirType) {
@@ -1886,16 +2132,27 @@ fn strip_char_quotes(raw: &str) -> Option<&str> {
 }
 
 fn lower_path(ctx: &mut BodyLowerCtx<'_>, segments: &[Symbol], span: Span) -> (ValueId, MirType) {
-    // Single-segment path : check param_vars first, then local_vars (T11-D77).
-    // Param shadowing-by-local is handled by the lookup order : param_vars
-    // wins because params are declared first ; if a let inside the body uses
-    // the same name, `local_vars.insert` overwrites are still visible to
-    // post-shadow refs because we check local_vars second only when the
-    // param-lookup misses. (Stage-0 single-pass lowering can't preserve real
-    // lexical scoping ; later-shadowing is rare in practice.)
+    // Single-segment path : check param_vars first, then local_cells
+    // (T11-D318), then local_vars (T11-D77). Param shadowing-by-local is
+    // handled by the lookup order : param_vars wins because params are
+    // declared first ; if a let inside the body uses the same name,
+    // `local_vars.insert` overwrites are still visible to post-shadow refs
+    // because we check local_vars second only when the param-lookup misses.
+    // (Stage-0 single-pass lowering can't preserve real lexical scoping ;
+    // later-shadowing is rare in practice.)
+    //
+    // § T11-D318 (W-CC-mut-assign) — `let mut x` bindings live in
+    // `local_cells` ; reads of those bindings emit a fresh `memref.load
+    // cell` so post-mutation reads observe the latest stored value. The
+    // cell-check happens BEFORE `local_vars` because `local_vars` may
+    // still hold the stale init-value from `lower_stmt` (we deliberately
+    // populate it for closure-capture compat).
     if segments.len() == 1 {
         if let Some((id, ty)) = ctx.param_vars.get(&segments[0]) {
             return (*id, ty.clone());
+        }
+        if let Some((cell_id, elem_ty)) = ctx.local_cells.get(&segments[0]).cloned() {
+            return emit_local_load(ctx, cell_id, &elem_ty, span);
         }
         if let Some((id, ty)) = ctx.local_vars.get(&segments[0]) {
             return (*id, ty.clone());
@@ -5301,6 +5558,173 @@ mod tests {
         assert!(names
             .iter()
             .any(|n| n == &"cssl.assign_add" || n == &"cssl.std"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-D318 (W-CC-mut-assign) — `let mut` + assignment + while-loop
+    // ─────────────────────────────────────────────────────────────────
+
+    /// `let mut x : i32 = 0 ; x` — declare-and-read-back. The body
+    /// should emit a `cssl.local.alloca` (cell declaration), a
+    /// `memref.store` (initial seed), and a `memref.load` (read-back
+    /// for the trailing expr).
+    #[test]
+    fn let_mut_basic_init_then_read() {
+        let (f, _) = lower_one(
+            "fn read_back() -> i32 { let mut x : i32 = 0 ; x }",
+        );
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.local.alloca"),
+            "let mut should declare a stack-cell ; got names = {names:?}"
+        );
+        // At least one memref.store (initial seed) and one memref.load
+        // (the trailing-expr read-back).
+        assert!(
+            names.iter().filter(|n| **n == "memref.store").count() >= 1,
+            "let mut init should emit memref.store ; got names = {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == &"memref.load"),
+            "let mut read-back should emit memref.load ; got names = {names:?}"
+        );
+        // Critical : NO `cssl.path_ref` placeholder leaks for the
+        // mutable-binding read.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.path_ref"),
+            "let mut should not leak cssl.path_ref ; got names = {names:?}"
+        );
+    }
+
+    /// `let mut x : i32 = 0 ; x = 5 ; x` — assign then read. The body
+    /// should emit two `memref.store` (init + assign) and one
+    /// `memref.load` (read-back).
+    #[test]
+    fn let_mut_assign_simple() {
+        let (f, _) = lower_one(
+            "fn assign_simple() -> i32 { let mut x : i32 = 0 ; x = 5 ; x }",
+        );
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.local.alloca"),
+            "let mut declares a cell ; got names = {names:?}"
+        );
+        let store_count = names.iter().filter(|n| **n == "memref.store").count();
+        assert!(
+            store_count >= 2,
+            "expected ≥2 memref.store (init + assign) ; got {store_count}, \
+             names = {names:?}"
+        );
+        // No path_ref placeholder for the mutable binding.
+        assert!(!names.iter().any(|n| n == &"cssl.path_ref"));
+    }
+
+    /// `let mut frame : i32 = 0 ; while frame < 60 { frame = frame +
+    /// 1 } ; frame` — the failing case from MISSION. The MIR should
+    /// contain : alloca + initial-store + scf.while (with a cond_region
+    /// containing memref.load) + body containing memref.load + arith.addi
+    /// + memref.store + final memref.load for the trailing expr.
+    #[test]
+    fn let_mut_in_while_increment() {
+        let (f, _) = lower_one(
+            "fn loop_inc() -> i32 { \
+               let mut frame : i32 = 0 ; \
+               while frame < 60 { frame = frame + 1 } ; \
+               frame \
+             }",
+        );
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.local.alloca"),
+            "let mut frame declares a cell ; got names = {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == &"scf.while"),
+            "while should emit scf.while ; got names = {names:?}"
+        );
+        // No path_ref placeholders should leak.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.path_ref"),
+            "while-loop with mut frame must not leak cssl.path_ref ; got = {names:?}"
+        );
+        // The scf.while op should now carry TWO regions (cond + body) per
+        // the T11-D318 shape evolution.
+        let scf_while = f
+            .body
+            .entry()
+            .unwrap()
+            .ops
+            .iter()
+            .find(|o| o.name == "scf.while")
+            .unwrap();
+        assert_eq!(
+            scf_while.regions.len(),
+            2,
+            "scf.while should have 2 regions (cond + body) post-D318"
+        );
+    }
+
+    /// `let mut a : i32 = 0 ; let mut b : i32 = 0 ; while a < 10 { a =
+    /// a + 1 ; b = b + 2 }` — two independent mutable cells updated
+    /// inside the same loop. Each binding should resolve to its OWN
+    /// cell-id ; cross-talk would cause one binding's writes to land
+    /// in the other's slot.
+    #[test]
+    fn let_mut_two_vars_indep_update() {
+        let (f, _) = lower_one(
+            "fn two_vars() -> i32 { \
+               let mut a : i32 = 0 ; \
+               let mut b : i32 = 0 ; \
+               while a < 10 { a = a + 1 ; b = b + 2 } ; \
+               b \
+             }",
+        );
+        let names = op_names(&f);
+        // Two separate alloca ops, one per `let mut`.
+        let alloca_count = names.iter().filter(|n| **n == "cssl.local.alloca").count();
+        assert_eq!(
+            alloca_count, 2,
+            "expected 2 cssl.local.alloca (one per let mut) ; got {alloca_count}, \
+             names = {names:?}"
+        );
+        // No path_ref leaks.
+        assert!(!names.iter().any(|n| n == &"cssl.path_ref"));
+    }
+
+    /// `let mut x : i32 = 7 ; x = x + 1` — verify the assignment's RHS
+    /// reads the OLD value of x (via memref.load) before the new value
+    /// is stored. The order of ops in the body should be : alloca,
+    /// memref.store(7), memref.load (for the rhs read), arith.constant
+    /// (1), arith.addi, memref.store(new).
+    #[test]
+    fn let_mut_assign_uses_old_value() {
+        let (f, _) = lower_one(
+            "fn old_then_new() -> i32 { \
+               let mut x : i32 = 7 ; \
+               x = x + 1 ; \
+               x \
+             }",
+        );
+        let names = op_names(&f);
+        // arith.addi should appear (the `x + 1` binary op).
+        assert!(
+            names.iter().any(|n| n == &"arith.addi"),
+            "x + 1 should emit arith.addi ; got = {names:?}"
+        );
+        // memref.load count : at least 2 (one for the rhs read inside
+        // `x + 1`, one for the trailing-expr read-back).
+        let load_count = names.iter().filter(|n| **n == "memref.load").count();
+        assert!(
+            load_count >= 2,
+            "expected ≥2 memref.load (rhs read + trailing read) ; \
+             got {load_count}, names = {names:?}"
+        );
+        // memref.store count : at least 2 (init + assign).
+        let store_count = names.iter().filter(|n| **n == "memref.store").count();
+        assert!(
+            store_count >= 2,
+            "expected ≥2 memref.store (init + assign) ; got {store_count}"
+        );
     }
 
     #[test]

@@ -643,13 +643,17 @@ where
     Ok(false)
 }
 
-/// Lower an `scf.while` op : a pre-test loop gated on a pre-computed
-/// condition ValueId. Stage-0 shape :
+/// Lower an `scf.while` op : a pre-test loop with cond re-evaluated at
+/// every loop-header. Stage-0 shape (post T11-D318) :
 ///
 /// ```text
 ///   <caller's current block>
 ///       jump header_block
 ///   header_block:                       (preds : caller, body-back-edge)
+///       <cond-region ops>               (re-walked each iteration —
+///                                        observes the latest values
+///                                        in any mutable cells the
+///                                        cond expression reads)
 ///       brif cond_val, body_block, exit_block
 ///   body_block:                         (preds : header)
 ///       <body-ops>
@@ -658,12 +662,23 @@ where
 ///       <continuation>
 /// ```
 ///
-/// At stage-0 the cond is computed once before the op and read at every
-/// iteration — see § DEFERRED in this module's doc for the re-eval
-/// follow-up. This is correct given the MIR shape `body_lower` emits :
-/// when cond is true at op-entry, the loop iterates forever (exit only
-/// via inner `func.return`) ; when cond is false, the loop is skipped
-/// entirely.
+/// § T11-D318 (W-CC-mut-assign) — Two `scf.while` shapes are accepted :
+///   - **OLD (1 region, leading operand = cond)** : pre-D318 shape where
+///     the cond ValueId is computed once in the OUTER block and read at
+///     every iteration. Correct only when the cond doesn't depend on a
+///     mutable cell that the body modifies — otherwise the loop iterates
+///     forever or skips entirely.
+///   - **NEW (2 regions, region[0] = cond_region, region[1] = body_region)** :
+///     post-D318 shape where the cond computation lives inside
+///     `cond_region` and is re-walked on each header entry. The
+///     `cond_region`'s entry-block ends in a `scf.condition` op whose
+///     leading operand is the freshly-computed cond ValueId. This is the
+///     shape that lets `let mut frame; while frame < 60 { frame = frame
+///     + 1 }` terminate after 60 iterations.
+///
+/// The lowerer detects the shape via region-count : 1 region → OLD path
+/// (one-shot cond from operand) ; 2 regions → NEW path (re-emit cond at
+/// header).
 ///
 /// # Errors
 ///   Returns [`BackendOrScfError::Scf`] for missing / unknown cond,
@@ -688,8 +703,47 @@ where
         &str,
     ) -> Result<bool, E>,
 {
-    let body_region = extract_single_body_region(op, "while", fn_name)?;
-    let cond_val = resolve_loop_operand(op, value_map, "while", fn_name)?;
+    // § T11-D318 (W-CC-mut-assign) — region-count dispatch :
+    //   1 region  : old shape (one-shot cond from operand).
+    //   2 regions : new shape (cond_region re-walked + body_region).
+    let region_count = op.regions.len();
+    if region_count != 1 && region_count != 2 {
+        return Err(ScfError::WrongLoopRegionCount {
+            op_name: "while".to_string(),
+            fn_name: fn_name.to_string(),
+            count: region_count,
+        }
+        .into());
+    }
+    let (cond_region_opt, body_region) = if region_count == 2 {
+        let cond = &op.regions[0];
+        let body = &op.regions[1];
+        if cond.blocks.len() > 1 {
+            return Err(ScfError::MultiBlockRegion {
+                fn_name: fn_name.to_string(),
+                count: cond.blocks.len(),
+            }
+            .into());
+        }
+        if body.blocks.len() > 1 {
+            return Err(ScfError::MultiBlockRegion {
+                fn_name: fn_name.to_string(),
+                count: body.blocks.len(),
+            }
+            .into());
+        }
+        (Some(cond), body)
+    } else {
+        let body = &op.regions[0];
+        if body.blocks.len() > 1 {
+            return Err(ScfError::MultiBlockRegion {
+                fn_name: fn_name.to_string(),
+                count: body.blocks.len(),
+            }
+            .into());
+        }
+        (None, body)
+    };
 
     // § 1. Create the three blocks.
     let header_block = builder.create_block();
@@ -699,10 +753,20 @@ where
     // § 2. Entry-edge : caller's current block jumps into header.
     builder.ins().jump(header_block, &[]);
 
-    // § 3. Header : conditional branch on the pre-computed cond_val.
-    //      `cond_val` is a SSA-Value valid in any block per cranelift's
-    //      dominance rules — the caller's block dominates the header.
+    // § 3. Header : if a cond_region is present, re-walk it now to compute
+    //      the cond fresh ; otherwise fall back to the leading-operand
+    //      one-shot path. `cond_val` is a SSA-Value valid in this block
+    //      per cranelift's dominance rules.
     builder.switch_to_block(header_block);
+    let cond_val = if let Some(cond_region) = cond_region_opt {
+        // Walk the cond-region's ops and capture the `scf.condition`
+        // terminator's first operand as the cond ValueId. The walker
+        // forwards every non-terminator op to the dispatcher so arith
+        // / memref.load / nested ops compose normally.
+        lower_while_cond_region(cond_region, builder, value_map, fn_name, &mut lower_body_op)?
+    } else {
+        resolve_loop_operand(op, value_map, "while", fn_name)?
+    };
     builder
         .ins()
         .brif(cond_val, body_block, &[], exit_block, &[]);
@@ -727,6 +791,70 @@ where
     builder.seal_block(exit_block);
 
     Ok(false)
+}
+
+/// § T11-D318 (W-CC-mut-assign) — walk a `scf.while` cond-region inside
+/// the loop header and return the cond's CLIF Value. The region's entry
+/// block contains the cond-defining op chain ; the LAST op (or a
+/// `scf.condition` marker if present) carries the cond ValueId in its
+/// first operand. Forwards intermediate ops to the dispatcher so arith /
+/// memref.load / nested ops lower normally.
+///
+/// The walker treats `scf.condition` as the region's terminator and
+/// stops walking after consuming it. If the region's last op isn't
+/// `scf.condition` (older MIR shapes), the walker uses the last op's
+/// first result as the cond fallback — matches the body_lower
+/// convention before the explicit terminator was added.
+fn lower_while_cond_region<E, F>(
+    region: &cssl_mir::MirRegion,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    lower_body_op: &mut F,
+) -> Result<cranelift_codegen::ir::Value, BackendOrScfError<E>>
+where
+    F: FnMut(
+        &MirOp,
+        &mut FunctionBuilder<'_>,
+        &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+        &str,
+    ) -> Result<bool, E>,
+{
+    let entry = region
+        .blocks
+        .first()
+        .ok_or_else(|| ScfError::MissingLoopOperand {
+            op_name: "while".to_string(),
+            fn_name: fn_name.to_string(),
+        })?;
+
+    let mut last_result_id: Option<ValueId> = None;
+    let mut cond_id_from_terminator: Option<ValueId> = None;
+    for cond_op in &entry.ops {
+        if cond_op.name == "scf.condition" {
+            cond_id_from_terminator = cond_op.operands.first().copied();
+            break;
+        }
+        // Forward to dispatcher ; ignore the terminator-flag because
+        // cond-region ops are pure arith/load/no func.return.
+        let _ = lower_body_op(cond_op, builder, value_map, fn_name)
+            .map_err(BackendOrScfError::Backend)?;
+        if let Some(r) = cond_op.results.first() {
+            last_result_id = Some(r.id);
+        }
+    }
+    let cond_id = cond_id_from_terminator
+        .or(last_result_id)
+        .ok_or_else(|| ScfError::MissingLoopOperand {
+            op_name: "while".to_string(),
+            fn_name: fn_name.to_string(),
+        })?;
+    let v = *value_map.get(&cond_id).ok_or(ScfError::UnknownLoopOperand {
+        op_name: "while".to_string(),
+        fn_name: fn_name.to_string(),
+        value_id: cond_id.0,
+    })?;
+    Ok(v)
 }
 
 /// Lower an `scf.for` op : a counted loop. Stage-0 shape (single-trip
