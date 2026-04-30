@@ -1,0 +1,31 @@
+[package]
+name                   = "cssl-cgen-spirv"
+description            = "CSSLv3 — from-scratch SPIR-V binary backend (zero external deps)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D267 (W-G1) : NEW from-scratch SPIR-V binary emitter.
+#
+#   ⊥ rspirv ⊥ spirv-tools ⊥ ash — zero external deps.
+#
+#   ∵ § PRIME-DIRECTIVE / § take-words-LITERALLY / § proprietary-everything —
+#   LoA-v13 GPU-shader codegen authored own bindings, byte-for-byte against
+#   the Khronos SPIR-V spec § 3 (Binary Form). The `cssl-cgen-gpu-spirv`
+#   companion crate (T11-D34) wraps `rspirv` for cross-validation only —
+#   THIS crate is the canonical emit path the LoA-v13 stack ships.
+#
+#   ∵ § zero-cargo-deps thesis — the SPIR-V binary format is public
+#   (Khronos under Apache-2.0) ; encoding it is straightforward little-
+#   endian word emission. No FFI required ; no C++ toolchain required.
+#
+# § cssl-mir is the input contract — `MirFunc` shaped per
+# `specs/02_IR.csl § MIR` lowers to a SPIR-V module via `lower::lower_function`.
+[dependencies]
+cssl-mir  = { path = "../cssl-mir" }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
