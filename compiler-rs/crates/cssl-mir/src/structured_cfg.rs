@@ -412,7 +412,13 @@ fn walk_op(op: &MirOp, fn_name: &str, parent: &str, out: &mut Vec<CfgViolation>)
             // op_name carries the bare suffix for actionable diagnostics
             // (`for` / `while` / `loop`).
             let suffix = op.name.strip_prefix("scf.").unwrap_or(&op.name);
-            if op.regions.len() != 1 {
+            // § T11-D318 (W-CC-mut-assign) — scf.while evolved from a 1-
+            //   region shape (body only · cond pre-computed) to a 2-region
+            //   shape (cond_region + body_region · cond re-walked at every
+            //   loop-header to observe mutated state). scf.for / scf.loop
+            //   stay 1-region per the original C2 contract.
+            let max_allowed = if op.name == "scf.while" { 2 } else { 1 };
+            if op.regions.is_empty() || op.regions.len() > max_allowed {
                 out.push(CfgViolation::LoopWrongRegionCount {
                     fn_name: fn_name.to_string(),
                     op_name: suffix.to_string(),

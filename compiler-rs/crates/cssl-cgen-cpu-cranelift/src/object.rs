@@ -926,6 +926,13 @@ fn lower_one_op(
         // cond else f. Cranelift's `select` natively expresses this so no
         // extra block-splitting is needed.
         "arith.select" => obj_lower_select(op, builder, value_map, fn_name),
+        // § T11-D318 (W-CC-mut-assign) — `cssl.assign` is a marker op that
+        //   body_lower emits AFTER `emit_local_store` to record the
+        //   assignment target for diagnostics. The actual store is already
+        //   in the op stream as `memref.store`. Treat as a no-op : bind
+        //   the (unit) result and continue. The marker carries
+        //   target=local_cell when cell-store path was taken.
+        "cssl.assign" => Ok(false),
         // § T11-D59 (S6-C3) — memref.load + memref.store. See
         // `specs/02_IR.csl § MEMORY-OPS` and the JIT-side mirror in `jit.rs`.
         "memref.load" => obj_lower_memref_load(op, builder, value_map, fn_name, ptr_ty),
