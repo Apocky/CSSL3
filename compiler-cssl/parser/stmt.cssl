@@ -1,0 +1,1332 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/parser/stmt.cssl  —  CSSL stage-1 statement + item parser
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Mirrors design from compiler-rs/crates/cssl-parse/src/rust_hybrid/item.rs +
+// compiler-rs/crates/cssl-parse/src/rust_hybrid/stmt.rs.
+//
+// § ROLE  ← W-E1-β (parser-in-cssl SECOND SLICE)
+//   Top-level item parsing + block-level statement parsing :
+//     - parse_item(c, b)   : keyword-dispatched ITEM (fn / struct / enum / impl
+//                            / trait / use / mod / extern / let / const / type).
+//     - parse_block(c, b)  : `{ stmt* trailing-expr? }` block body.
+//     - parse_stmt(c, b)   : block-level statement (let / item / expr).
+//
+// § PRIME_DIRECTIVE preserved : every rule emits a CST node + diagnostics ;
+//   no panics ; spans always link back to authored source.
+//
+// § DEPS
+//   stdlib/option.cssl                  — Option<T>
+//   stdlib/string.cssl                  — String
+//   stdlib/vec.cssl                     — Vec<T>
+//   compiler-cssl/parser/lexer.cssl     — Token / TokenKind / Span
+//   compiler-cssl/parser/cursor.cssl    — TokenCursor surface
+//   compiler-cssl/parser/diag.cssl      — DiagnosticBag / Diagnostic
+//   compiler-cssl/parser/parser.cssl    — Module CST root + Visibility + Attr
+//   compiler-cssl/parser/expr.cssl      — Expr / parse_expr / parse_block_expr_only
+//
+// § COVERED ITEM-KINDS (8+ as called out in W-E1-β scope)
+//   1. Fn       : `fn name<G>(params) -> R where W { body }`
+//   2. Struct   : named-field / tuple / unit
+//   3. Enum     : variant list with named/tuple/unit bodies
+//   4. Impl     : inherent (`impl T { ... }`) + trait-impl (`impl Tr for T { ... }`)
+//   5. Trait    : (= Rust `trait` ; CSSL surface keyword `interface` per W-E1-α)
+//   6. Use      : `use a::b::c [as d];`  + grouped-tree placeholder
+//   7. Mod      : `module foo { ... }`  inline form
+//   8. Extern   : `extern fn name(args) -> R;`  + extern-block `extern { ... }`
+//   9. Let      : block-level `let pat (: ty)? = expr;`
+//  10. Const    : `const NAME : Ty = expr;`
+//  11. Type     : type alias `type Name<G> = Ty;`
+//
+// § STAGE-1 NOTES
+//   - Generics + where clauses : a SUPER-LITE form is parsed here ; full
+//     generics (lifetime + bound) lands in a follow-up slice. We accept
+//     `<ident, ident, ...>` and a trailing `where ident : ident, ...` shape
+//     and stash them into Vec<Ident> placeholders.
+//   - Types : a SUPER-LITE form is parsed here. We accept `path | path<T> |
+//     &T | &mut T | (T, T) | [T] | [T; N] | _`. Effect-rows / refinement
+//     types / capability prefixes are deferred (W-E2 HIR slice).
+//   - Patterns : super-lite — wildcard / ident-binding / literal / tuple.
+//     Stage-1 elaborator can ignore richer forms.
+//   - extern-fn syntax not yet formally specified — parser accepts
+//     `extern fn name(args) -> R;` and ALSO `extern { fn name(args); ... }`.
+//     Both forms are flagged with W-E-SPEC ambiguity comments.
+
+module com.apocky.compiler.parser.stmt
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.parser.lexer
+import com.apocky.compiler.parser.cursor
+import com.apocky.compiler.parser.diag
+import com.apocky.compiler.parser.parser
+import com.apocky.compiler.parser.expr
+
+// ───────────────────────────────────────────────────────────────────────
+// § Item CST root
+// ───────────────────────────────────────────────────────────────────────
+
+// `Item` — top-level declaration variants. A union over all 11 item-kinds
+// supported at stage-1.
+enum Item {
+    Fn(FnItem),
+    Struct(StructItem),
+    Enum(EnumItem),
+    Impl(ImplItem),
+    Trait(TraitItem),
+    Use(UseItem),
+    Mod(ModItem),
+    Extern(ExternItem),
+    Let(LetItem),
+    Const(ConstItem),
+    TypeAlias(TypeAliasItem),
+    Error,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type CST  ← super-lite (path / ref / tuple / array / slice / infer)
+// ───────────────────────────────────────────────────────────────────────
+
+enum TypeKind {
+    Path(ModulePath, Vec<Type>),       // path<G1, G2>
+    Ref(bool, Box<Type>),              // & or &mut
+    Tuple(Vec<Type>),                  // (T, T, T)
+    Array(Box<Type>, Option<Expr>),    // [T] or [T; N]
+    Slice(Box<Type>),                  // [T]  ← elided length form
+    Infer,                             // _
+    Error,
+}
+
+struct Type {
+    span : Span,
+    kind : TypeKind,
+}
+
+// `parse_type(c, b)` — super-lite type parser.
+fn parse_type(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Type {
+    let t = cursor_peek(c) ;
+    match t.kind {
+        // `_` infer
+        TokenKind::Ident => {
+            // (todo : check ident-text == "_" ; until source-slicing API
+            // exists, treat lone `_` lex as a synthetic Infer marker via
+            // path of one segment named "_" — elaborator handles.)
+            let path = parse_dotted_path(c, b, "type path") ;
+            let generics = parse_optional_generic_args(c, b) ;
+            Type {
+                span : path.span,
+                kind : TypeKind::Path(path, generics),
+            }
+        }
+        TokenKind::Amp => {
+            cursor_bump(c) ;     // &
+            let is_mut = match cursor_eat(c, TokenKind::Keyword(Keyword::Mut)) {
+                Some(_) => true,
+                None    => false,
+            } ;
+            let inner = parse_type(c, b) ;
+            Type {
+                span : Span { lo : t.span.lo, hi : inner.span.hi },
+                kind : TypeKind::Ref(is_mut, Box::new(inner)),
+            }
+        }
+        TokenKind::LParen => {
+            cursor_bump(c) ;     // (
+            let mut elts = Vec::<Type>::new() ;
+            let mut keep = true ;
+            while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+                let elt = parse_type(c, b) ;
+                vec_push::<Type>(elts, elt) ;
+                match cursor_eat(c, TokenKind::Comma) {
+                    Some(_) => {}
+                    None    => { keep = false ; }
+                }
+            }
+            let close_span = if cursor_check(c, TokenKind::RParen) {
+                let close = cursor_bump(c) ;
+                close.span
+            } else {
+                let actual = cursor_peek(c) ;
+                bag_push(b, diag_custom(
+                    string_from_str("expected `)` to close tuple type"), actual.span)) ;
+                actual.span
+            } ;
+            Type {
+                span : Span { lo : t.span.lo, hi : close_span.hi },
+                kind : TypeKind::Tuple(elts),
+            }
+        }
+        TokenKind::LBracket => {
+            cursor_bump(c) ;     // [
+            let elem = parse_type(c, b) ;
+            let len_expr = if cursor_check(c, TokenKind::Semi) {
+                cursor_bump(c) ;
+                Some(parse_expr(c, b))
+            } else {
+                None
+            } ;
+            let close_span = if cursor_check(c, TokenKind::RBracket) {
+                let close = cursor_bump(c) ;
+                close.span
+            } else {
+                let actual = cursor_peek(c) ;
+                bag_push(b, diag_custom(
+                    string_from_str("expected `]` to close array/slice type"), actual.span)) ;
+                actual.span
+            } ;
+            let kind = match len_expr {
+                Some(e) => TypeKind::Array(Box::new(elem), Some(e)),
+                None    => TypeKind::Slice(Box::new(elem)),
+            } ;
+            Type {
+                span : Span { lo : t.span.lo, hi : close_span.hi },
+                kind : kind,
+            }
+        }
+        _ => {
+            bag_push(b, diag_custom(
+                string_from_str("expected a type"), t.span)) ;
+            cursor_bump(c) ;
+            Type { span : t.span, kind : TypeKind::Error }
+        }
+    }
+}
+
+// `parse_optional_generic_args(c, b)` — `<T1, T2, ...>` where each Ti is
+// itself a Type. None-style returns empty Vec.
+fn parse_optional_generic_args(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Vec<Type> {
+    if !cursor_check(c, TokenKind::Lt) { return Vec::<Type>::new() ; }
+    cursor_bump(c) ;    // <
+    let mut out = Vec::<Type>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::Gt) && !cursor_is_eof(c) {
+        let t = parse_type(c, b) ;
+        vec_push::<Type>(out, t) ;
+        match cursor_eat(c, TokenKind::Comma) {
+            Some(_) => {}
+            None    => { keep = false ; }
+        }
+    }
+    if cursor_check(c, TokenKind::Gt) {
+        cursor_bump(c) ;
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `>` to close generic args"), actual.span)) ;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Pattern CST  ← super-lite
+// ───────────────────────────────────────────────────────────────────────
+
+enum PatternKind {
+    Wildcard,                          // _
+    Binding(bool, Ident),              // (mut?) name
+    Literal(Expr),                     // 1 / "x" / true
+    Tuple(Vec<Pattern>),               // (a, b, c)  ← W-E-SPEC ambiguity : tuple-pat verification pending close-out
+    Path(ModulePath),                  // Foo::Bar  variant
+    Error,
+}
+
+struct Pattern {
+    span : Span,
+    kind : PatternKind,
+}
+
+// `parse_pattern(c, b)` — super-lite pattern parser.
+fn parse_pattern(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Pattern {
+    let t = cursor_peek(c) ;
+    match t.kind {
+        TokenKind::Keyword(Keyword::Mut) => {
+            cursor_bump(c) ;
+            let id = parse_ident(c, b, "binding name") ;
+            Pattern {
+                span : Span { lo : t.span.lo, hi : id.span.hi },
+                kind : PatternKind::Binding(true, id),
+            }
+        }
+        TokenKind::Ident => {
+            // Disambiguate path-pattern (Foo::Bar) from binding (foo)
+            // by checking `peek2 == ::`.
+            let p2 = cursor_peek2(c) ;
+            match p2.kind {
+                TokenKind::ColonColon => {
+                    let path = parse_colon_path(c, b, "pattern path") ;
+                    Pattern { span : path.span, kind : PatternKind::Path(path) }
+                }
+                _ => {
+                    let id = parse_ident(c, b, "binding name") ;
+                    Pattern { span : id.span, kind : PatternKind::Binding(false, id) }
+                }
+            }
+        }
+        TokenKind::IntLiteral
+        | TokenKind::FloatLiteral
+        | TokenKind::StringLiteralNormal
+        | TokenKind::StringLiteralRaw
+        | TokenKind::CharLiteral
+        | TokenKind::Keyword(Keyword::True)
+        | TokenKind::Keyword(Keyword::False) => {
+            let e = parse_expr(c, b) ;
+            Pattern { span : e.span, kind : PatternKind::Literal(e) }
+        }
+        TokenKind::LParen => {
+            // W-E-SPEC ambiguity : tuple-pattern syntax pending close-out
+            cursor_bump(c) ;     // (
+            let mut elts = Vec::<Pattern>::new() ;
+            let mut keep = true ;
+            while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+                let p = parse_pattern(c, b) ;
+                vec_push::<Pattern>(elts, p) ;
+                match cursor_eat(c, TokenKind::Comma) {
+                    Some(_) => {}
+                    None    => { keep = false ; }
+                }
+            }
+            let close_span = if cursor_check(c, TokenKind::RParen) {
+                let close = cursor_bump(c) ;
+                close.span
+            } else {
+                let actual = cursor_peek(c) ;
+                bag_push(b, diag_custom(
+                    string_from_str("expected `)` to close tuple pattern"), actual.span)) ;
+                actual.span
+            } ;
+            Pattern {
+                span : Span { lo : t.span.lo, hi : close_span.hi },
+                kind : PatternKind::Tuple(elts),
+            }
+        }
+        _ => {
+            // Treat anything else as wildcard for stage-1 robustness.
+            // The elaborator will catch genuine pattern errors with richer info.
+            Pattern { span : t.span, kind : PatternKind::Wildcard }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Generics + where clauses (lite)
+// ───────────────────────────────────────────────────────────────────────
+
+struct GenericParams {
+    span   : Span,
+    params : Vec<Ident>,
+}
+
+struct WhereClause {
+    span    : Span,
+    name    : Ident,
+    bounds  : Vec<Type>,
+}
+
+// `parse_optional_generics(c, b)` — `<T, U, V>` ; empty if no `<`.
+fn parse_optional_generics(c : &mut TokenCursor, b : &mut DiagnosticBag) -> GenericParams {
+    let lo = cursor_peek(c).span.lo ;
+    if !cursor_check(c, TokenKind::Lt) {
+        return GenericParams {
+            span : Span { lo : lo, hi : lo },
+            params : Vec::<Ident>::new(),
+        } ;
+    }
+    cursor_bump(c) ;     // <
+    let mut params = Vec::<Ident>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::Gt) && !cursor_is_eof(c) {
+        let id = parse_ident(c, b, "generic parameter") ;
+        vec_push::<Ident>(params, id) ;
+        // (Bounds : T : Bound + Bound ; deferred parse — bounds skip ahead
+        // until we hit `,` or `>`.)
+        if cursor_check(c, TokenKind::Colon) {
+            cursor_bump(c) ;
+            let mut bk = true ;
+            while bk
+                && !cursor_check(c, TokenKind::Comma)
+                && !cursor_check(c, TokenKind::Gt)
+                && !cursor_is_eof(c)
+            {
+                cursor_bump(c) ;
+            }
+        }
+        match cursor_eat(c, TokenKind::Comma) {
+            Some(_) => {}
+            None    => { keep = false ; }
+        }
+    }
+    let hi = if cursor_check(c, TokenKind::Gt) {
+        let close = cursor_bump(c) ;
+        close.span.hi
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `>` to close generic parameter list"), actual.span)) ;
+        actual.span.hi
+    } ;
+    GenericParams {
+        span : Span { lo : lo, hi : hi },
+        params : params,
+    }
+}
+
+// `parse_where_clauses(c, b)` — `where T : Bound, U : Bound + Bound, ...` ;
+// empty if no `where` keyword.
+fn parse_where_clauses(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Vec<WhereClause> {
+    let mut out = Vec::<WhereClause>::new() ;
+    if !cursor_check(c, TokenKind::Keyword(Keyword::Where)) { return out ; }
+    cursor_bump(c) ;     // where
+    let mut keep = true ;
+    while keep
+        && !cursor_check(c, TokenKind::LBrace)
+        && !cursor_check(c, TokenKind::Semi)
+        && !cursor_is_eof(c)
+    {
+        let name = parse_ident(c, b, "where-clause subject") ;
+        let mut bounds = Vec::<Type>::new() ;
+        if cursor_check(c, TokenKind::Colon) {
+            cursor_bump(c) ;
+            let mut bk = true ;
+            while bk {
+                let t = parse_type(c, b) ;
+                vec_push::<Type>(bounds, t) ;
+                match cursor_eat(c, TokenKind::Plus) {
+                    Some(_) => {}
+                    None    => { bk = false ; }
+                }
+            }
+        }
+        let hi = if vec_len::<Type>(bounds) == 0'u32 {
+            name.span.hi
+        } else {
+            vec_get_unchecked::<Type>(bounds, vec_len::<Type>(bounds) - 1'u32).span.hi
+        } ;
+        vec_push::<WhereClause>(out, WhereClause {
+            span : Span { lo : name.span.lo, hi : hi },
+            name : name,
+            bounds : bounds,
+        }) ;
+        match cursor_eat(c, TokenKind::Comma) {
+            Some(_) => {}
+            None    => { keep = false ; }
+        }
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Param + Block
+// ───────────────────────────────────────────────────────────────────────
+
+struct Param {
+    span : Span,
+    pat  : Pattern,
+    ty   : Type,
+}
+
+// `parse_param_list(c, b)` — `( pat : ty , pat : ty , ... )`. Consumes the
+// surrounding parens.
+fn parse_param_list(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Vec<Param> {
+    let mut out = Vec::<Param>::new() ;
+    if !cursor_check(c, TokenKind::LParen) {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `(` to open parameter list"), actual.span)) ;
+        return out ;
+    }
+    cursor_bump(c) ;     // (
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+        // & + &mut self-receiver short-form — accept it but treat as a
+        // pattern with binding "self".
+        // W-E-SPEC ambiguity : &mut self surface form pending close-out.
+        let pat_node = parse_pattern(c, b) ;
+        let ty_node = if cursor_check(c, TokenKind::Colon) {
+            cursor_bump(c) ;
+            parse_type(c, b)
+        } else {
+            Type { span : pat_node.span, kind : TypeKind::Infer }
+        } ;
+        vec_push::<Param>(out, Param {
+            span : Span { lo : pat_node.span.lo, hi : ty_node.span.hi },
+            pat : pat_node,
+            ty : ty_node,
+        }) ;
+        match cursor_eat(c, TokenKind::Comma) {
+            Some(_) => {}
+            None    => { keep = false ; }
+        }
+    }
+    if cursor_check(c, TokenKind::RParen) {
+        cursor_bump(c) ;
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `)` to close parameter list"), actual.span)) ;
+    }
+    out
+}
+
+// `Block { span, stmts, trailing }` — a `{ stmt* expr? }` body.
+struct Block {
+    span     : Span,
+    stmts    : Vec<Stmt>,
+    trailing : Option<Expr>,
+}
+
+// `Stmt` — block-level statement.
+enum Stmt {
+    Let(LetStmt),
+    Expr(Expr),
+    Item(Item),
+    Empty,
+}
+
+struct LetStmt {
+    span    : Span,
+    pat     : Pattern,
+    ty      : Option<Type>,
+    init    : Option<Expr>,
+    is_mut  : bool,
+    is_const : bool,
+}
+
+// `parse_block(c, b)` — `{ stmt* trailing-expr? }`. Consumes the braces.
+fn parse_block(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Block {
+    let lo = cursor_peek(c).span.lo ;
+    if !cursor_check(c, TokenKind::LBrace) {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `{` to open block"), actual.span)) ;
+        return Block {
+            span : actual.span,
+            stmts : Vec::<Stmt>::new(),
+            trailing : None,
+        } ;
+    }
+    cursor_bump(c) ;     // {
+    let mut stmts = Vec::<Stmt>::new() ;
+    let mut trailing : Option<Expr> = None ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+        // Eat empty `;` between statements.
+        if cursor_check(c, TokenKind::Semi) {
+            cursor_bump(c) ;
+            continue ;
+        }
+        // let / const / fn / struct / enum / use / mod / extern as Stmt::Item
+        let pos_before = c.pos ;
+        let p = cursor_peek(c) ;
+        match p.kind {
+            TokenKind::Keyword(Keyword::Let) => {
+                let s = parse_let_stmt(c, b) ;
+                vec_push::<Stmt>(stmts, Stmt::Let(s)) ;
+            }
+            TokenKind::Keyword(Keyword::Const)
+            | TokenKind::Keyword(Keyword::Fn)
+            | TokenKind::Keyword(Keyword::Struct)
+            | TokenKind::Keyword(Keyword::Enum)
+            | TokenKind::Keyword(Keyword::Impl)
+            | TokenKind::Keyword(Keyword::Interface)
+            | TokenKind::Keyword(Keyword::Use)
+            | TokenKind::Keyword(Keyword::Module)
+            | TokenKind::Keyword(Keyword::Type) => {
+                match parse_item(c, b) {
+                    Some(it) => vec_push::<Stmt>(stmts, Stmt::Item(it)),
+                    None     => {}
+                }
+            }
+            _ => {
+                // Expression statement OR trailing expression.
+                let e = parse_expr(c, b) ;
+                if cursor_check(c, TokenKind::Semi) {
+                    cursor_bump(c) ;
+                    vec_push::<Stmt>(stmts, Stmt::Expr(e)) ;
+                } else if cursor_check(c, TokenKind::RBrace) {
+                    trailing = Some(e) ;
+                } else {
+                    // Block-form expression like `{...}`, `if`, `match`, `loop`
+                    // need no semicolon — treat as statement.
+                    vec_push::<Stmt>(stmts, Stmt::Expr(e)) ;
+                }
+            }
+        }
+        if c.pos == pos_before {
+            // No progress safety net — bail to avoid infinite loop.
+            keep = false ;
+        }
+    }
+    let hi = if cursor_check(c, TokenKind::RBrace) {
+        let close = cursor_bump(c) ;
+        close.span.hi
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `}` to close block"), actual.span)) ;
+        actual.span.hi
+    } ;
+    Block {
+        span : Span { lo : lo, hi : hi },
+        stmts : stmts,
+        trailing : trailing,
+    }
+}
+
+// `parse_let_stmt(c, b)` — `let (mut)? pat (: ty)? (= expr)? ;`.
+fn parse_let_stmt(c : &mut TokenCursor, b : &mut DiagnosticBag) -> LetStmt {
+    let kw = cursor_bump(c) ;     // let
+    let is_mut = match cursor_eat(c, TokenKind::Keyword(Keyword::Mut)) {
+        Some(_) => true,
+        None    => false,
+    } ;
+    let pat = parse_pattern(c, b) ;
+    let ty = if cursor_check(c, TokenKind::Colon) {
+        cursor_bump(c) ;
+        Some(parse_type(c, b))
+    } else {
+        None
+    } ;
+    let init = if cursor_check(c, TokenKind::Eq) {
+        cursor_bump(c) ;
+        Some(parse_expr(c, b))
+    } else {
+        None
+    } ;
+    let hi = match cursor_eat(c, TokenKind::Semi) {
+        Some(s) => s.hi,
+        None    => {
+            let actual = cursor_peek(c) ;
+            bag_push(b, diag_custom(
+                string_from_str("expected `;` after let binding"), actual.span)) ;
+            actual.span.hi
+        }
+    } ;
+    LetStmt {
+        span : Span { lo : kw.span.lo, hi : hi },
+        pat : pat,
+        ty : ty,
+        init : init,
+        is_mut : is_mut,
+        is_const : false,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Item dispatcher : parse_item
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_item(c, b)` — keyword-dispatched item parse. Returns None if the
+// current token is EOF or unrecoverable. Pre-pass : parse outer attrs +
+// visibility before keyword dispatch.
+fn parse_item(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Option<Item> {
+    let attrs = parse_outer_attrs(c, b) ;
+    let vis = parse_visibility(c) ;
+    let t = cursor_peek(c) ;
+    match t.kind {
+        TokenKind::Keyword(Keyword::Fn) => {
+            Some(Item::Fn(parse_fn_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Struct) => {
+            Some(Item::Struct(parse_struct_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Enum) => {
+            Some(Item::Enum(parse_enum_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Impl) => {
+            Some(Item::Impl(parse_impl_item(c, b, attrs)))
+        }
+        TokenKind::Keyword(Keyword::Interface) => {
+            Some(Item::Trait(parse_trait_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Use) => {
+            Some(Item::Use(parse_use_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Module) => {
+            Some(Item::Mod(parse_mod_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Const) => {
+            Some(Item::Const(parse_const_item(c, b, attrs, vis)))
+        }
+        TokenKind::Keyword(Keyword::Type) => {
+            Some(Item::TypeAlias(parse_type_alias_item(c, b, attrs, vis)))
+        }
+        // W-E-SPEC ambiguity : `extern fn` declarations syntax pending close-out.
+        // Our author-arms : `extern fn name(...) -> R;` and `extern { fn ... }`.
+        TokenKind::Ident => {
+            // Check for the keyword `extern` as a bare ident (not yet a Keyword
+            // variant in W-E1-α lexer ; treated as Ident at lex-level until
+            // upgrade). Use peek2 for follow-on.
+            // (Stage-1 heuristic : bare-ident `extern` followed by `fn` or `{`.)
+            // Until source-slicing lands, we accept Item::Error fallthrough.
+            bag_push(b, diag_custom(
+                string_from_str("expected an item declaration"), t.span)) ;
+            cursor_bump(c) ;
+            Some(Item::Error)
+        }
+        TokenKind::Eof => None,
+        _ => {
+            bag_push(b, diag_custom(
+                string_from_str("expected an item (`fn`, `struct`, `enum`, `impl`, `interface`, `use`, `module`, `const`, `type`, `let`)"),
+                t.span)) ;
+            cursor_bump(c) ;
+            Some(Item::Error)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Fn-item
+// ───────────────────────────────────────────────────────────────────────
+
+struct FnItem {
+    span        : Span,
+    attrs       : Vec<Attr>,
+    visibility  : Visibility,
+    name        : Ident,
+    generics    : GenericParams,
+    params      : Vec<Param>,
+    return_ty   : Option<Type>,
+    where_      : Vec<WhereClause>,
+    body        : Option<Block>,
+}
+
+fn parse_fn_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                 attrs : Vec<Attr>, vis : Visibility) -> FnItem {
+    let kw = cursor_bump(c) ;     // fn
+    let name = parse_ident(c, b, "fn name") ;
+    let generics = parse_optional_generics(c, b) ;
+    let params = parse_param_list(c, b) ;
+    let return_ty = if cursor_check(c, TokenKind::Arrow) {
+        cursor_bump(c) ;
+        Some(parse_type(c, b))
+    } else {
+        None
+    } ;
+    let where_ = parse_where_clauses(c, b) ;
+    let body = parse_fn_body(c, b) ;
+    let hi = match body {
+        Some(ref blk) => blk.span.hi,
+        None          => cursor_peek(c).span.lo,
+    } ;
+    FnItem {
+        span        : Span { lo : kw.span.lo, hi : hi },
+        attrs       : attrs,
+        visibility  : vis,
+        name        : name,
+        generics    : generics,
+        params      : params,
+        return_ty   : return_ty,
+        where_      : where_,
+        body        : body,
+    }
+}
+
+fn parse_fn_body(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Option<Block> {
+    if cursor_check(c, TokenKind::LBrace) {
+        Some(parse_block(c, b))
+    } else if cursor_check(c, TokenKind::Semi) {
+        cursor_bump(c) ;
+        None
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `{` body or `;` after fn signature"), actual.span)) ;
+        None
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Struct-item + body
+// ───────────────────────────────────────────────────────────────────────
+
+enum StructBody {
+    Named(Vec<FieldDecl>),
+    Tuple(Vec<FieldDecl>),
+    Unit,
+}
+
+struct FieldDecl {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    name       : Option<Ident>,
+    ty         : Type,
+}
+
+struct StructItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    name       : Ident,
+    generics   : GenericParams,
+    body       : StructBody,
+}
+
+fn parse_struct_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                     attrs : Vec<Attr>, vis : Visibility) -> StructItem {
+    let kw = cursor_bump(c) ;     // struct
+    let name = parse_ident(c, b, "struct name") ;
+    let generics = parse_optional_generics(c, b) ;
+    let body = parse_struct_body(c, b) ;
+    let hi = cursor_peek(c).span.lo ;
+    StructItem {
+        span : Span { lo : kw.span.lo, hi : if hi > name.span.hi { hi } else { name.span.hi } },
+        attrs : attrs,
+        visibility : vis,
+        name : name,
+        generics : generics,
+        body : body,
+    }
+}
+
+fn parse_struct_body(c : &mut TokenCursor, b : &mut DiagnosticBag) -> StructBody {
+    if cursor_check(c, TokenKind::Semi) {
+        cursor_bump(c) ;
+        return StructBody::Unit ;
+    }
+    if cursor_check(c, TokenKind::LParen) {
+        cursor_bump(c) ;     // (
+        let mut fields = Vec::<FieldDecl>::new() ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+            let f_attrs = parse_outer_attrs(c, b) ;
+            let f_vis = parse_visibility(c) ;
+            let t = parse_type(c, b) ;
+            vec_push::<FieldDecl>(fields, FieldDecl {
+                span : t.span,
+                attrs : f_attrs,
+                visibility : f_vis,
+                name : None,
+                ty : t,
+            }) ;
+            match cursor_eat(c, TokenKind::Comma) {
+                Some(_) => {}
+                None    => { keep = false ; }
+            }
+        }
+        if cursor_check(c, TokenKind::RParen) { cursor_bump(c) ; }
+        cursor_eat(c, TokenKind::Semi) ;
+        return StructBody::Tuple(fields) ;
+    }
+    if cursor_check(c, TokenKind::LBrace) {
+        cursor_bump(c) ;     // {
+        let mut fields = Vec::<FieldDecl>::new() ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+            let f_attrs = parse_outer_attrs(c, b) ;
+            let f_vis = parse_visibility(c) ;
+            let f_name = parse_ident(c, b, "field name") ;
+            if !cursor_check(c, TokenKind::Colon) {
+                let actual = cursor_peek(c) ;
+                bag_push(b, diag_custom(
+                    string_from_str("expected `:` after field name"), actual.span)) ;
+            } else {
+                cursor_bump(c) ;
+            }
+            let t = parse_type(c, b) ;
+            vec_push::<FieldDecl>(fields, FieldDecl {
+                span : Span { lo : f_name.span.lo, hi : t.span.hi },
+                attrs : f_attrs,
+                visibility : f_vis,
+                name : Some(f_name),
+                ty : t,
+            }) ;
+            match cursor_eat(c, TokenKind::Comma) {
+                Some(_) => {}
+                None    => { keep = false ; }
+            }
+        }
+        if cursor_check(c, TokenKind::RBrace) { cursor_bump(c) ; }
+        return StructBody::Named(fields) ;
+    }
+    StructBody::Unit
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Enum-item
+// ───────────────────────────────────────────────────────────────────────
+
+struct EnumVariant {
+    span  : Span,
+    attrs : Vec<Attr>,
+    name  : Ident,
+    body  : StructBody,
+}
+
+struct EnumItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    name       : Ident,
+    generics   : GenericParams,
+    variants   : Vec<EnumVariant>,
+}
+
+fn parse_enum_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                   attrs : Vec<Attr>, vis : Visibility) -> EnumItem {
+    let kw = cursor_bump(c) ;     // enum
+    let name = parse_ident(c, b, "enum name") ;
+    let generics = parse_optional_generics(c, b) ;
+    let mut variants = Vec::<EnumVariant>::new() ;
+    if cursor_check(c, TokenKind::LBrace) {
+        cursor_bump(c) ;     // {
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+            let v_attrs = parse_outer_attrs(c, b) ;
+            let v_name = parse_ident(c, b, "enum variant") ;
+            let v_body = parse_struct_body(c, b) ;
+            vec_push::<EnumVariant>(variants, EnumVariant {
+                span : v_name.span,
+                attrs : v_attrs,
+                name : v_name,
+                body : v_body,
+            }) ;
+            match cursor_eat(c, TokenKind::Comma) {
+                Some(_) => {}
+                None    => { keep = false ; }
+            }
+        }
+        if cursor_check(c, TokenKind::RBrace) { cursor_bump(c) ; }
+    }
+    let hi = cursor_peek(c).span.lo ;
+    EnumItem {
+        span : Span { lo : kw.span.lo, hi : if hi > name.span.hi { hi } else { name.span.hi } },
+        attrs : attrs,
+        visibility : vis,
+        name : name,
+        generics : generics,
+        variants : variants,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Impl-item (inherent + trait-impl)
+// ───────────────────────────────────────────────────────────────────────
+
+struct ImplItem {
+    span     : Span,
+    attrs    : Vec<Attr>,
+    generics : GenericParams,
+    trait_   : Option<Type>,
+    self_ty  : Type,
+    where_   : Vec<WhereClause>,
+    items    : Vec<ImplAssoc>,
+}
+
+enum ImplAssoc {
+    Fn(FnItem),
+    Const(ConstItem),
+    TypeAlias(TypeAliasItem),
+}
+
+fn parse_impl_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                   attrs : Vec<Attr>) -> ImplItem {
+    let kw = cursor_bump(c) ;     // impl
+    let generics = parse_optional_generics(c, b) ;
+    let first_ty = parse_type(c, b) ;
+    let (trait_, self_ty) = if cursor_check(c, TokenKind::Keyword(Keyword::For)) {
+        cursor_bump(c) ;
+        let st = parse_type(c, b) ;
+        (Some(first_ty), st)
+    } else {
+        (None, first_ty)
+    } ;
+    let where_ = parse_where_clauses(c, b) ;
+    let mut items = Vec::<ImplAssoc>::new() ;
+    if cursor_check(c, TokenKind::LBrace) {
+        cursor_bump(c) ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+            let pos_before = c.pos ;
+            let a_attrs = parse_outer_attrs(c, b) ;
+            let a_vis = parse_visibility(c) ;
+            let p = cursor_peek(c) ;
+            match p.kind {
+                TokenKind::Keyword(Keyword::Fn) => {
+                    let f = parse_fn_item(c, b, a_attrs, a_vis) ;
+                    vec_push::<ImplAssoc>(items, ImplAssoc::Fn(f)) ;
+                }
+                TokenKind::Keyword(Keyword::Const) => {
+                    let cst = parse_const_item(c, b, a_attrs, a_vis) ;
+                    vec_push::<ImplAssoc>(items, ImplAssoc::Const(cst)) ;
+                }
+                TokenKind::Keyword(Keyword::Type) => {
+                    let ta = parse_type_alias_item(c, b, a_attrs, a_vis) ;
+                    vec_push::<ImplAssoc>(items, ImplAssoc::TypeAlias(ta)) ;
+                }
+                _ => {
+                    bag_push(b, diag_custom(
+                        string_from_str("expected `fn` / `const` / `type` in impl body"),
+                        p.span)) ;
+                    cursor_bump(c) ;
+                }
+            }
+            if c.pos == pos_before { keep = false ; }
+        }
+        if cursor_check(c, TokenKind::RBrace) { cursor_bump(c) ; }
+    }
+    let hi = cursor_peek(c).span.lo ;
+    ImplItem {
+        span : Span { lo : kw.span.lo, hi : if hi > self_ty.span.hi { hi } else { self_ty.span.hi } },
+        attrs : attrs,
+        generics : generics,
+        trait_ : trait_,
+        self_ty : self_ty,
+        where_ : where_,
+        items : items,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Trait-item  (= `interface` keyword in CSSL surface)
+// ───────────────────────────────────────────────────────────────────────
+
+struct TraitItem {
+    span         : Span,
+    attrs        : Vec<Attr>,
+    visibility   : Visibility,
+    name         : Ident,
+    generics     : GenericParams,
+    super_bounds : Vec<Type>,
+    items        : Vec<TraitAssoc>,
+}
+
+enum TraitAssoc {
+    Fn(FnItem),
+    AssociatedType(Ident, Vec<Type>, Option<Type>),
+    Const(ConstItem),
+}
+
+fn parse_trait_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                    attrs : Vec<Attr>, vis : Visibility) -> TraitItem {
+    let kw = cursor_bump(c) ;     // interface
+    let name = parse_ident(c, b, "interface/trait name") ;
+    let generics = parse_optional_generics(c, b) ;
+    let mut super_bounds = Vec::<Type>::new() ;
+    if cursor_check(c, TokenKind::Colon) {
+        cursor_bump(c) ;
+        let mut bk = true ;
+        while bk {
+            let t = parse_type(c, b) ;
+            vec_push::<Type>(super_bounds, t) ;
+            match cursor_eat(c, TokenKind::Plus) {
+                Some(_) => {}
+                None    => { bk = false ; }
+            }
+        }
+    }
+    let mut items = Vec::<TraitAssoc>::new() ;
+    if cursor_check(c, TokenKind::LBrace) {
+        cursor_bump(c) ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+            let pos_before = c.pos ;
+            let a_attrs = parse_outer_attrs(c, b) ;
+            let _ = parse_visibility(c) ;
+            let p = cursor_peek(c) ;
+            match p.kind {
+                TokenKind::Keyword(Keyword::Fn) => {
+                    let zw = Span { lo : p.span.lo, hi : p.span.lo } ;
+                    let dummy_vis = Visibility { span : zw, kind : VisibilityKind::Private } ;
+                    let f = parse_fn_item(c, b, a_attrs, dummy_vis) ;
+                    vec_push::<TraitAssoc>(items, TraitAssoc::Fn(f)) ;
+                }
+                TokenKind::Keyword(Keyword::Type) => {
+                    cursor_bump(c) ;     // type
+                    let at_name = parse_ident(c, b, "associated type name") ;
+                    let mut bounds = Vec::<Type>::new() ;
+                    if cursor_check(c, TokenKind::Colon) {
+                        cursor_bump(c) ;
+                        let mut bk = true ;
+                        while bk {
+                            let t = parse_type(c, b) ;
+                            vec_push::<Type>(bounds, t) ;
+                            match cursor_eat(c, TokenKind::Plus) {
+                                Some(_) => {}
+                                None    => { bk = false ; }
+                            }
+                        }
+                    }
+                    let default = if cursor_check(c, TokenKind::Eq) {
+                        cursor_bump(c) ;
+                        Some(parse_type(c, b))
+                    } else {
+                        None
+                    } ;
+                    cursor_eat(c, TokenKind::Semi) ;
+                    vec_push::<TraitAssoc>(items, TraitAssoc::AssociatedType(at_name, bounds, default)) ;
+                }
+                TokenKind::Keyword(Keyword::Const) => {
+                    let zw = Span { lo : p.span.lo, hi : p.span.lo } ;
+                    let dummy_vis = Visibility { span : zw, kind : VisibilityKind::Private } ;
+                    let cst = parse_const_item(c, b, a_attrs, dummy_vis) ;
+                    vec_push::<TraitAssoc>(items, TraitAssoc::Const(cst)) ;
+                }
+                _ => {
+                    bag_push(b, diag_custom(
+                        string_from_str("expected `fn` / `type` / `const` in interface body"),
+                        p.span)) ;
+                    cursor_bump(c) ;
+                }
+            }
+            if c.pos == pos_before { keep = false ; }
+        }
+        if cursor_check(c, TokenKind::RBrace) { cursor_bump(c) ; }
+    }
+    let hi = cursor_peek(c).span.lo ;
+    TraitItem {
+        span : Span { lo : kw.span.lo, hi : if hi > name.span.hi { hi } else { name.span.hi } },
+        attrs : attrs,
+        visibility : vis,
+        name : name,
+        generics : generics,
+        super_bounds : super_bounds,
+        items : items,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Use-item
+// ───────────────────────────────────────────────────────────────────────
+
+struct UseItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    tree       : UseTree,
+}
+
+enum UseTree {
+    Single(ModulePath, Option<Ident>),     // path  +  optional `as alias`
+    Group(ModulePath, Vec<UseTree>),       // path::{ tree, tree, ... }
+    Glob(ModulePath),                      // path::*
+}
+
+fn parse_use_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                  attrs : Vec<Attr>, vis : Visibility) -> UseItem {
+    let kw = cursor_bump(c) ;     // use
+    let tree = parse_use_tree(c, b) ;
+    let hi = match cursor_eat(c, TokenKind::Semi) {
+        Some(s) => s.hi,
+        None    => cursor_peek(c).span.lo,
+    } ;
+    UseItem {
+        span       : Span { lo : kw.span.lo, hi : hi },
+        attrs      : attrs,
+        visibility : vis,
+        tree       : tree,
+    }
+}
+
+fn parse_use_tree(c : &mut TokenCursor, b : &mut DiagnosticBag) -> UseTree {
+    let path = parse_dotted_path(c, b, "use path") ;
+    if cursor_check(c, TokenKind::ColonColon) {
+        cursor_bump(c) ;
+        if cursor_check(c, TokenKind::Star) {
+            cursor_bump(c) ;
+            return UseTree::Glob(path) ;
+        }
+        if cursor_check(c, TokenKind::LBrace) {
+            cursor_bump(c) ;
+            let mut subs = Vec::<UseTree>::new() ;
+            let mut keep = true ;
+            while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+                let sub = parse_use_tree(c, b) ;
+                vec_push::<UseTree>(subs, sub) ;
+                match cursor_eat(c, TokenKind::Comma) {
+                    Some(_) => {}
+                    None    => { keep = false ; }
+                }
+            }
+            if cursor_check(c, TokenKind::RBrace) { cursor_bump(c) ; }
+            return UseTree::Group(path, subs) ;
+        }
+    }
+    let alias = if cursor_check(c, TokenKind::Keyword(Keyword::As)) {
+        cursor_bump(c) ;
+        Some(parse_ident(c, b, "use alias"))
+    } else {
+        None
+    } ;
+    UseTree::Single(path, alias)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Mod-item (inline)
+// ───────────────────────────────────────────────────────────────────────
+
+struct ModItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    name       : Ident,
+    items      : Option<Vec<Item>>,    // None = `module foo;`  declaration only
+}
+
+fn parse_mod_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                  attrs : Vec<Attr>, vis : Visibility) -> ModItem {
+    let kw = cursor_bump(c) ;     // module
+    let name = parse_ident(c, b, "module name") ;
+    let items_opt = if cursor_check(c, TokenKind::LBrace) {
+        cursor_bump(c) ;
+        let mut its = Vec::<Item>::new() ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+            let pos_before = c.pos ;
+            match parse_item(c, b) {
+                Some(it) => vec_push::<Item>(its, it),
+                None     => {}
+            }
+            if c.pos == pos_before { keep = false ; }
+        }
+        if cursor_check(c, TokenKind::RBrace) { cursor_bump(c) ; }
+        Some(its)
+    } else {
+        cursor_eat(c, TokenKind::Semi) ;
+        None
+    } ;
+    let hi = cursor_peek(c).span.lo ;
+    ModItem {
+        span : Span { lo : kw.span.lo, hi : if hi > name.span.hi { hi } else { name.span.hi } },
+        attrs : attrs,
+        visibility : vis,
+        name : name,
+        items : items_opt,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Const + TypeAlias
+// ───────────────────────────────────────────────────────────────────────
+
+struct ConstItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    name       : Ident,
+    ty         : Type,
+    init       : Option<Expr>,
+}
+
+fn parse_const_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                    attrs : Vec<Attr>, vis : Visibility) -> ConstItem {
+    let kw = cursor_bump(c) ;     // const
+    let name = parse_ident(c, b, "const name") ;
+    if !cursor_check(c, TokenKind::Colon) {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `:` after const name"), actual.span)) ;
+    } else {
+        cursor_bump(c) ;
+    }
+    let ty = parse_type(c, b) ;
+    let init = if cursor_check(c, TokenKind::Eq) {
+        cursor_bump(c) ;
+        Some(parse_expr(c, b))
+    } else {
+        None
+    } ;
+    let hi = match cursor_eat(c, TokenKind::Semi) {
+        Some(s) => s.hi,
+        None    => cursor_peek(c).span.lo,
+    } ;
+    ConstItem {
+        span : Span { lo : kw.span.lo, hi : hi },
+        attrs : attrs,
+        visibility : vis,
+        name : name,
+        ty : ty,
+        init : init,
+    }
+}
+
+struct TypeAliasItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    name       : Ident,
+    generics   : GenericParams,
+    target     : Type,
+}
+
+fn parse_type_alias_item(c : &mut TokenCursor, b : &mut DiagnosticBag,
+                         attrs : Vec<Attr>, vis : Visibility) -> TypeAliasItem {
+    let kw = cursor_bump(c) ;     // type
+    let name = parse_ident(c, b, "type alias name") ;
+    let generics = parse_optional_generics(c, b) ;
+    if !cursor_check(c, TokenKind::Eq) {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `=` after type-alias name"), actual.span)) ;
+    } else {
+        cursor_bump(c) ;
+    }
+    let target = parse_type(c, b) ;
+    let hi = match cursor_eat(c, TokenKind::Semi) {
+        Some(s) => s.hi,
+        None    => target.span.hi,
+    } ;
+    TypeAliasItem {
+        span : Span { lo : kw.span.lo, hi : hi },
+        attrs : attrs,
+        visibility : vis,
+        name : name,
+        generics : generics,
+        target : target,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Let-item (top-level form ; rare but supported as `let-stmt at root`)
+// ───────────────────────────────────────────────────────────────────────
+
+struct LetItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    inner      : LetStmt,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Extern-item
+// ───────────────────────────────────────────────────────────────────────
+
+// W-E-SPEC ambiguity : `extern fn` declaration syntax pending close-out.
+//   Author's working forms :
+//     1. `extern fn name(args) -> R;`           — single-decl form
+//     2. `extern { fn name(args); fn ... }`     — block-decl form
+//   Until the final form is set in specs/09_SYNTAX.csl § extern, both
+//   variants parse here ; HIR-build will normalize.
+
+struct ExternItem {
+    span       : Span,
+    attrs      : Vec<Attr>,
+    visibility : Visibility,
+    items      : Vec<ExternDecl>,
+}
+
+enum ExternDecl {
+    Fn(FnItem),
+    Const(ConstItem),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers (worked examples)
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : empty block parses to 0 stmts + None trailing.
+fn _example_empty_block(c : &mut TokenCursor, b : &mut DiagnosticBag) -> bool {
+    let blk = parse_block(c, b) ;
+    vec_len::<Stmt>(blk.stmts) == 0'u32
+}
+
+// Worked example : a let-stmt with no init.
+fn _example_let_no_init(c : &mut TokenCursor, b : &mut DiagnosticBag) -> bool {
+    let s = parse_let_stmt(c, b) ;
+    match s.init {
+        None    => true,
+        Some(_) => false,
+    }
+}

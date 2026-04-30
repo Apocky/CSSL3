@@ -1,0 +1,447 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/parser/parser.cssl  —  CSSL stage-1 module-entry parser
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Mirrors design from compiler-rs/crates/cssl-parse/src/rust_hybrid/mod.rs.
+//
+// § ROLE  ← W-E1-β (parser-in-cssl SECOND SLICE)
+//   Top-level parser entry. Consumes a `Vec<Token>` produced by the W-E1-α
+//   lexer + builds a `Module` CST. The work-distribution :
+//     - parser.cssl  (this file) : `parse_module`, visibility, attribute pre-pass,
+//                                  CST root types (Module / Visibility / Attr).
+//     - stmt.cssl                : item-level (fn / struct / enum / impl /
+//                                  trait / use / mod / extern / let / const).
+//     - expr.cssl                : Pratt-precedence climbing for expressions.
+//
+// § PRIME_DIRECTIVE preserved : the parser is purely informational ; rules
+//   never panic or coerce silent acceptance. Every diagnostic carries a
+//   span back to the source-bytes the user authored.
+//
+// § ARCHITECTURE
+//   Rules carry the signature `parse_X(c : &mut TokenCursor, b : &mut DiagnosticBag) -> X`.
+//   On parse-error a synthetic Error variant is returned (never `Result`)
+//   and a Diagnostic is pushed onto the bag. This keeps rules composable
+//   in the LSP-partial-document workflow.
+//
+//   The CST nodes here are SHALLOW spine types ; deeper structural types
+//   live in stmt.cssl + expr.cssl. parser.cssl only owns Module + Visibility
+//   + Attr + the dispatcher entry.
+//
+// § DEPS
+//   stdlib/option.cssl                 — Option<T>
+//   stdlib/string.cssl                 — String
+//   stdlib/vec.cssl                    — Vec<T> for items / attrs
+//   compiler-cssl/parser/lexer.cssl    — Token / TokenKind / Span
+//   compiler-cssl/parser/cursor.cssl   — TokenCursor surface
+//   compiler-cssl/parser/diag.cssl     — DiagnosticBag / Diagnostic
+//   compiler-cssl/parser/stmt.cssl     — parse_item dispatch + Item variants
+//   compiler-cssl/parser/expr.cssl     — parse_expr + Expr variants
+//
+// § STAGE-1 NOTES
+//   1. The cursor is constructed in newline-skipping mode (Rust-hybrid surface).
+//      CSLv3-native callers will use cursor_newline_aware() externally.
+//   2. Module-path declaration `module a.b.c` may appear at file head ;
+//      detection requires LL(2)+ lookahead to avoid mis-parsing nested
+//      module item `module foo { ... }` as a path-decl. Handled in stmt.cssl.
+//   3. Inner attributes `#![path = ...]` may appear before the module-path ;
+//      the loop below picks them up greedily until the first non-`#!` token.
+//   4. Outer attributes `@name(args)` attach to ITEMS not the module ; they
+//      are parsed at item entry (stmt.cssl::parse_item).
+
+module com.apocky.compiler.parser.parser
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.parser.lexer
+import com.apocky.compiler.parser.cursor
+import com.apocky.compiler.parser.diag
+import com.apocky.compiler.parser.stmt
+import com.apocky.compiler.parser.expr
+
+// ───────────────────────────────────────────────────────────────────────
+// § Module CST root
+// ───────────────────────────────────────────────────────────────────────
+
+// `Module { span, inner_attrs, path, items }` — the CST root.
+struct Module {
+    span        : Span,
+    inner_attrs : Vec<Attr>,
+    path        : Option<ModulePath>,
+    items       : Vec<Item>,
+}
+
+// `ModulePath { span, segments }` — dotted/colon-separated identifier path.
+struct ModulePath {
+    span     : Span,
+    segments : Vec<Ident>,
+}
+
+// `Ident { span }` — bare identifier (the actual text is recovered by
+// re-slicing the source via span). At stage-1 we do not yet intern.
+struct Ident {
+    span : Span,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Visibility
+// ───────────────────────────────────────────────────────────────────────
+
+enum VisibilityKind {
+    Public,
+    Private,
+    PublicCrate,    // pub(crate)
+}
+
+struct Visibility {
+    span : Span,
+    kind : VisibilityKind,
+}
+
+// `parse_visibility(c)` — pure peek-and-bump on `pub` ; private otherwise.
+// Stage-1 does NOT yet recognize `pub(crate)` / `pub(super)` / `pub(in path)` ;
+// those resolve in a follow-up slice once the path-form is stable.
+fn parse_visibility(c : &mut TokenCursor) -> Visibility {
+    if cursor_check(c, TokenKind::Keyword(Keyword::Pub)) {
+        let t = cursor_bump(c) ;
+        Visibility { span : t.span, kind : VisibilityKind::Public }
+    } else {
+        let t = cursor_peek(c) ;
+        let zw = Span { lo : t.span.lo, hi : t.span.lo } ;
+        Visibility { span : zw, kind : VisibilityKind::Private }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Attribute  ← @name(args) outer / #![name = ...] inner
+// ───────────────────────────────────────────────────────────────────────
+
+enum AttrKind {
+    Outer,    // @name(args)
+    Inner,    // #![name = ...]
+}
+
+enum AttrArg {
+    Positional(Expr),
+    Named(Ident, Expr),
+}
+
+struct Attr {
+    span : Span,
+    kind : AttrKind,
+    path : ModulePath,
+    args : Vec<AttrArg>,
+}
+
+// `parse_outer_attrs(c, b)` — greedy zero-or-more outer `@…` attributes.
+// Stops at first non-`@` token. Returns Vec<Attr> (possibly empty).
+fn parse_outer_attrs(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Vec<Attr> {
+    let mut out = Vec::<Attr>::new() ;
+    let mut keep = true ;
+    while keep {
+        match parse_outer_attr(c, b) {
+            Some(a) => vec_push::<Attr>(out, a),
+            None    => { keep = false ; }
+        }
+    }
+    out
+}
+
+// `parse_outer_attr(c, b)` — single outer attribute parse. Returns None
+// if the current token is not `@`.
+fn parse_outer_attr(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Option<Attr> {
+    if !cursor_check(c, TokenKind::At) { return None ; }
+    let at = cursor_bump(c) ;
+    let path = parse_dotted_path(c, b, "attribute name") ;
+    let args = if cursor_check(c, TokenKind::LParen) {
+        parse_attr_args(c, b)
+    } else {
+        Vec::<AttrArg>::new()
+    } ;
+    let end_span = path.span ;
+    Some(Attr {
+        span : Span { lo : at.span.lo, hi : end_span.hi },
+        kind : AttrKind::Outer,
+        path : path,
+        args : args,
+    })
+}
+
+// `parse_inner_attr(c, b)` — single inner attribute `#![path = expr]`. None
+// if the current sequence is not `#` `!`.
+fn parse_inner_attr(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Option<Attr> {
+    if !cursor_check(c, TokenKind::Hash) { return None ; }
+    let p2 = cursor_peek2(c) ;
+    match p2.kind {
+        TokenKind::Bang => {}
+        _               => return None,
+    }
+    let hash = cursor_bump(c) ;     // #
+    cursor_bump(c) ;                 // !
+    if cursor_check(c, TokenKind::LBracket) {
+        cursor_bump(c) ;             // [
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(string_from_str("expected `[` after `#!`"), actual.span)) ;
+    }
+    let path = parse_dotted_path(c, b, "inner attribute path") ;
+    let mut args = Vec::<AttrArg>::new() ;
+    if cursor_check(c, TokenKind::Eq) {
+        cursor_bump(c) ;
+        let v = parse_expr(c, b) ;
+        vec_push::<AttrArg>(args, AttrArg::Positional(v)) ;
+    } else if cursor_check(c, TokenKind::LParen) {
+        args = parse_attr_args(c, b) ;
+    }
+    if cursor_check(c, TokenKind::RBracket) {
+        let close = cursor_bump(c) ;
+        Some(Attr {
+            span : Span { lo : hash.span.lo, hi : close.span.hi },
+            kind : AttrKind::Inner,
+            path : path,
+            args : args,
+        })
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `]` to close inner attribute"), actual.span)) ;
+        Some(Attr {
+            span : Span { lo : hash.span.lo, hi : actual.span.hi },
+            kind : AttrKind::Inner,
+            path : path,
+            args : args,
+        })
+    }
+}
+
+// `parse_inner_attrs(c, b)` — zero-or-more inner attributes at file head.
+fn parse_inner_attrs(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Vec<Attr> {
+    let mut out = Vec::<Attr>::new() ;
+    let mut keep = true ;
+    while keep {
+        if cursor_check(c, TokenKind::Hash) {
+            let p2 = cursor_peek2(c) ;
+            match p2.kind {
+                TokenKind::Bang => {
+                    match parse_inner_attr(c, b) {
+                        Some(a) => vec_push::<Attr>(out, a),
+                        None    => { keep = false ; }
+                    }
+                }
+                _ => { keep = false ; }
+            }
+        } else {
+            keep = false ;
+        }
+    }
+    out
+}
+
+// `parse_attr_args(c, b)` — `( arg1, arg2, ... )` arg-list. Each arg is
+// `expr` (positional) or `ident = expr` (named).
+fn parse_attr_args(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Vec<AttrArg> {
+    cursor_bump(c) ;  // (
+    let mut out = Vec::<AttrArg>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+        // Named-form lookahead : `ident =`.
+        let p1 = cursor_peek(c) ;
+        let p2 = cursor_peek2(c) ;
+        match (p1.kind, p2.kind) {
+            (TokenKind::Ident, TokenKind::Eq) => {
+                let id = parse_ident(c, b, "attribute arg name") ;
+                cursor_bump(c) ;             // =
+                let v = parse_expr(c, b) ;
+                vec_push::<AttrArg>(out, AttrArg::Named(id, v)) ;
+            }
+            _ => {
+                let v = parse_expr(c, b) ;
+                vec_push::<AttrArg>(out, AttrArg::Positional(v)) ;
+            }
+        }
+        match cursor_eat(c, TokenKind::Comma) {
+            Some(_) => {}
+            None    => { keep = false ; }
+        }
+    }
+    if cursor_check(c, TokenKind::RParen) {
+        cursor_bump(c) ;
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_custom(
+            string_from_str("expected `)` to close attribute arguments"), actual.span)) ;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helpers : ident + dotted-path
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_ident(c, b, ctx)` — consume one Ident. On mismatch push a
+// diagnostic and return a synthetic Ident at the current span.
+fn parse_ident(c : &mut TokenCursor, b : &mut DiagnosticBag, ctx : &str) -> Ident {
+    if cursor_check(c, TokenKind::Ident) {
+        let t = cursor_bump(c) ;
+        Ident { span : t.span }
+    } else {
+        let actual = cursor_peek(c) ;
+        bag_push(b, diag_expected_one(TokenKind::Ident, actual.kind, actual.span, ctx)) ;
+        Ident { span : actual.span }
+    }
+}
+
+// `parse_dotted_path(c, b, ctx)` — `ident (. ident)*` or `ident (:: ident)*`.
+// The two separators are accepted interchangeably (CSLv3 source author may
+// pick either ; W-E2 HIR-build will normalize).
+fn parse_dotted_path(c : &mut TokenCursor, b : &mut DiagnosticBag, ctx : &str) -> ModulePath {
+    let head = parse_ident(c, b, ctx) ;
+    let mut segs = Vec::<Ident>::new() ;
+    vec_push::<Ident>(segs, head) ;
+    let mut keep = true ;
+    let lo = head.span.lo ;
+    let mut hi = head.span.hi ;
+    while keep {
+        let p = cursor_peek(c) ;
+        match p.kind {
+            TokenKind::Dot | TokenKind::ColonColon => {
+                cursor_bump(c) ;
+                let nxt = parse_ident(c, b, ctx) ;
+                hi = nxt.span.hi ;
+                vec_push::<Ident>(segs, nxt) ;
+            }
+            _ => { keep = false ; }
+        }
+    }
+    ModulePath { span : Span { lo : lo, hi : hi }, segments : segs }
+}
+
+// `parse_colon_path(c, b, ctx)` — variant that ONLY accepts `::` separators
+// (used in expression-level path-references where `.` is field-access).
+fn parse_colon_path(c : &mut TokenCursor, b : &mut DiagnosticBag, ctx : &str) -> ModulePath {
+    let head = parse_ident(c, b, ctx) ;
+    let mut segs = Vec::<Ident>::new() ;
+    vec_push::<Ident>(segs, head) ;
+    let mut keep = true ;
+    let lo = head.span.lo ;
+    let mut hi = head.span.hi ;
+    while keep {
+        if cursor_check(c, TokenKind::ColonColon) {
+            cursor_bump(c) ;
+            let nxt = parse_ident(c, b, ctx) ;
+            hi = nxt.span.hi ;
+            vec_push::<Ident>(segs, nxt) ;
+        } else {
+            keep = false ;
+        }
+    }
+    ModulePath { span : Span { lo : lo, hi : hi }, segments : segs }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Top-level entry : parse_module
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_module(tokens) -> (Module, Vec<Diagnostic>)` — primary entry.
+// Drives the cursor through inner-attrs → optional module-path → items
+// until EOF, accumulating diagnostics into a fresh bag.
+fn parse_module(tokens : Vec<Token>) -> (Module, Vec<Diagnostic>) {
+    let mut c = cursor_new(tokens) ;
+    let mut bag = bag_new() ;
+
+    // Span : start at first token (or zero), end at EOF span.
+    let first = cursor_peek(&c) ;
+    let lo = first.span.lo ;
+    let eof = cursor_eof_span(&c) ;
+    let module_span = Span { lo : lo, hi : eof.hi } ;
+
+    // 1. Inner attributes at file head.
+    let inner_attrs = parse_inner_attrs(&mut c, &mut bag) ;
+
+    // 2. Optional module path declaration.
+    let path = parse_optional_module_path(&mut c, &mut bag) ;
+
+    // 3. Items until EOF, with progress-guarded recovery.
+    let mut items = Vec::<Item>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_is_eof(&c) {
+        let pos_before = c.pos ;
+        match parse_item(&mut c, &mut bag) {
+            Some(it) => vec_push::<Item>(items, it),
+            None     => {
+                if c.pos == pos_before {
+                    // No progress — bail to avoid infinite loop.
+                    keep = false ;
+                }
+                // else : at least one token was consumed by error-recovery.
+            }
+        }
+    }
+
+    let m = Module {
+        span        : module_span,
+        inner_attrs : inner_attrs,
+        path        : path,
+        items       : items,
+    } ;
+    (m, bag.items)
+}
+
+// `parse_optional_module_path(c, b)` — peek for `module ident.ident...` at
+// file head. Disambiguates against nested `module foo { ... }` item form
+// by LL-lookahead : if a `{` follows the dotted name, it's a module-item.
+fn parse_optional_module_path(c : &mut TokenCursor, b : &mut DiagnosticBag) -> Option<ModulePath> {
+    if !cursor_check(c, TokenKind::Keyword(Keyword::Module)) { return None ; }
+
+    // Probe forward without committing : count idents/separators ; if `{`
+    // appears at the end → not a path-decl. We do this by saving `c.pos`,
+    // running a probe, then restoring on `{`.
+    let saved_pos = c.pos ;
+    cursor_bump(c) ;  // module
+    let mut keep = true ;
+    while keep {
+        if cursor_check(c, TokenKind::Ident) {
+            cursor_bump(c) ;
+            let p = cursor_peek(c) ;
+            match p.kind {
+                TokenKind::Dot | TokenKind::ColonColon => { cursor_bump(c) ; }
+                _ => { keep = false ; }
+            }
+        } else {
+            keep = false ;
+        }
+    }
+    if cursor_check(c, TokenKind::LBrace) {
+        // Nested module item — restore + leave for parse_item.
+        c.pos = saved_pos ;
+        return None ;
+    }
+    // Real path-decl. Restore + parse cleanly via parse_dotted_path so we
+    // get correct spans + diagnostics.
+    c.pos = saved_pos ;
+    cursor_bump(c) ;  // module
+    let path = parse_dotted_path(c, b, "module declaration") ;
+    cursor_eat(c, TokenKind::Semi) ;  // optional terminator
+    Some(path)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers (worked examples)
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : empty token stream parses to empty module.
+fn _example_empty_module() -> bool {
+    let toks = Vec::<Token>::new() ;
+    let (m, diags) = parse_module(toks) ;
+    vec_len::<Item>(m.items) == 0'u32 && vec_len::<Diagnostic>(diags) == 0'u32
+}
+
+// Worked example : a fresh visibility from no `pub` is Private.
+fn _example_no_pub_is_private(c : &mut TokenCursor) -> bool {
+    let v = parse_visibility(c) ;
+    match v.kind {
+        VisibilityKind::Private => true,
+        _                       => false,
+    }
+}
