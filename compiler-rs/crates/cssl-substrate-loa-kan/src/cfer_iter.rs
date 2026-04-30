@@ -1,6 +1,17 @@
 //! § cfer_iter — CFER iteration driver (per-cell `kan_step`).
 //! ════════════════════════════════════════════════════════════════════════════
 //!
+//! § PROVENANCE
+//!   Substantive W-S-CORE-3 code (`KanBand` + `KanBandTable` + canonical
+//!   5-rule update-set + `kan_step` driver + `drive_iteration_with_evidence`
+//!   + 56 tests across kan_band/update_rules/cfer_iter modules) landed via
+//!   commit f7b5be8 (mis-labeled T11-D303 W-S-CORE-4 due to concurrent-
+//!   fanout commit-collision : the W-S-CORE-4 adjoint-method commit's
+//!   workspace-add picked up these 3 files alongside its own crate). This
+//!   attribution-note records the canonical task-tag T11-D302 (W-S-CORE-3)
+//!   for telemetry / audit-trail discovery — same pattern as 1ebd24d's
+//!   recovery for T11-D305 W-S-CORE-6.
+//!
 //! § ROLE
 //!   The substrate-side per-cell CFER iteration step. Per
 //!   specs/36_CFER_RENDERER.csl § ALGORITHM, each iteration computes
