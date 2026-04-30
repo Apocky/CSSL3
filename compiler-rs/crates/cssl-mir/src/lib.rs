@@ -44,6 +44,10 @@ pub mod biometric_egress_check;
 pub mod block;
 pub mod body_lower;
 pub mod drop_inject;
+// T11-D285 (W-E5-2) : `{IO}` effect-row plumbing — call-graph validator
+// closing the W-E4 fixed-point gate gap 2/5. Walks every `func.call` op +
+// verifies caller-row ⊇ callee-row per § 04 sub-effect discipline.
+pub mod effect_row_check;
 pub mod func;
 // § Wave-A integration (T11-D239 follow-up) — deferred-ABI MIR ops landed.
 // Wave-A1 (f3c2643) tagged-union ABI · Wave-A2 (96b8f65) typed-memref ·
@@ -88,6 +92,10 @@ pub use auto_monomorph::{
 pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{lower_fn_body, lower_fn_body_with_table, BodyLowerCtx};
 pub use drop_inject::{inject_drops_for_module, DropInjectionReport, DropOrder, ScopeDropPlan};
+pub use effect_row_check::{
+    parse_effect_row, EffectRowValidatorPass, EFFECT_ROW_VALIDATOR_PASS_NAME,
+    EFFROW0000_SUMMARY, EFFROW0001_MISSING_EFFECT, EFFROW0002_UNRESOLVED_CALLEE,
+};
 pub use func::{MirFunc, MirModule};
 pub use layout_check::{
     assert_struct_align, assert_struct_size, check_layouts, inject_layout_obligations,

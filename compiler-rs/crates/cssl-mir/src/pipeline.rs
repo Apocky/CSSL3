@@ -217,23 +217,17 @@ impl PassPipeline {
     ///       run of the tagged-union ABI pass — required because
     ///       `TryOpLowerPass` emits NEW `cssl.option.none` /
     ///       `cssl.result.err` construct-ops inside the failure-arms of
-    ///       its synthesized `scf.if` cascades (see
-    ///       `try_op_lower::build_option_failure_region` /
-    ///       `build_result_failure_region`). The first sweep already
-    ///       processed the body's original construct-ops + ran
-    ///       sig-rewriting ; this second sweep is idempotent on the body
+    ///       its synthesized `scf.if` cascades. Idempotent on the body
     ///       (per `tagged_union_abi.sig_rewritten` stamp) BUT picks up
     ///       the new constructs the try-op rewrite spliced into scf.if
-    ///       branch-regions, expanding them into the canonical
-    ///       `heap.alloc + tag-store + payload-store` shape. The
-    ///       construct-op's arg-path-references (e.g. `%err_payload` in
-    ///       the failure-arm) resolve correctly because the
-    ///       `expand_region` walker recurses into nested `scf.if`
-    ///       regions and the `payload_id` operand is anchored to a
-    ///       sibling `memref.load` emitted in the SAME region. Without
-    ///       this sweep, cgen-cl encounters raw `cssl.result.err` ops
-    ///       inside scf.if-branches and fails with `UnsupportedMirOp`.
-    ///   11. structured-cfg-validator (final sanity-check ; must-pass)
+    ///       branch-regions. Without this sweep, cgen-cl encounters raw
+    ///       `cssl.result.err` ops inside scf.if-branches and fails with
+    ///       `UnsupportedMirOp`.
+    ///   11. **effect-row-validator** (T11-D285 / W-E5-2) : closes the W-E4
+    ///       fixed-point gate gap 2/5. Walks every `func.call` op + verifies
+    ///       caller-row ⊇ callee-row per § 04 sub-effect discipline. Wired
+    ///       AFTER `IfcLoweringPass` + BEFORE `BiometricEgressCheck`.
+    ///   12. structured-cfg-validator (final sanity-check ; must-pass)
     #[must_use]
     pub fn canonical() -> Self {
         let mut p = Self::new();
@@ -242,6 +236,11 @@ impl PassPipeline {
         p.push(Box::new(IfcLoweringPass));
         p.push(Box::new(SmtDischargeQueuePass));
         p.push(Box::new(TelemetryProbeInsertPass));
+        // § T11-D285 (W-E5-2) — effect-row validator. Wired BEFORE the
+        // hard-no biometric refusal (whose existence is enforced at runtime
+        // regardless) so violations surface cleanly during the type-effect
+        // pass-block, not interleaved with structural-CFG checks.
+        p.push(Box::new(crate::effect_row_check::EffectRowValidatorPass));
         p.push(Box::new(
             crate::biometric_egress_check::BiometricEgressCheck,
         ));
@@ -814,9 +813,11 @@ mod tests {
         // T11-D282 (W-A1-ε) : `tagged-union-abi` runs a SECOND time after
         // `try-op-lower` to catch construct-ops the try-op rewrite
         // synthesizes inside scf.if failure-arms. Pass-count 11 → 12.
+        // T11-D285 (W-E5-2) : `effect-row-validator` joins the canonical set,
+        // raising the pass-count from 12 to 13.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 12);
+        assert_eq!(names.len(), 13);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
@@ -834,6 +835,7 @@ mod tests {
             2,
             "expected 2 invocations of tagged-union-abi (W-A1-ε sweep-2)",
         );
+        assert!(names.contains(&"effect-row-validator"));
     }
 
     #[test]
@@ -841,12 +843,13 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 12 stock passes should execute on an empty module without
+        // All 13 stock passes should execute on an empty module without
         // errors. (T11-D138 added enforces-sigma-at-cell-touches ;
         // W-B-RECOGNIZER added tagged-union-abi + try-op-lower ;
         // T11-D245 W-A8 added string-abi ; T11-D282 W-A1-ε added a
-        // second tagged-union-abi sweep after try-op-lower.)
-        assert_eq!(results.len(), 12);
+        // second tagged-union-abi sweep after try-op-lower ;
+        // T11-D285 W-E5-2 added effect-row-validator.)
+        assert_eq!(results.len(), 13);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the
@@ -1150,10 +1153,11 @@ mod tests {
 
     #[test]
     fn pipeline_runs_wave_a_passes_in_order() {
-        // Smoke : the canonical pipeline executes all 12 passes including
-        // both W-B-RECOGNIZER additions + the W-A1-ε sweep-2. Using the
-        // run_all path we should see results from BOTH passes in the
-        // result-sequence (with tagged-union-abi appearing twice).
+        // Smoke : the canonical pipeline executes all 13 passes including
+        // both W-B-RECOGNIZER additions + the W-A1-ε sweep-2 + W-E5-2
+        // effect-row-validator. Using the run_all path we should see results
+        // from all passes in the result-sequence (with tagged-union-abi
+        // appearing twice).
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
