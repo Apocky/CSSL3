@@ -1,0 +1,533 @@
+// § compiler-cssl/codegen/x86_64/prologue.cssl
+// § T11-D254 (W-E3-β · x86-64-backend-in-cssl SECOND SLICE) · prologue/epilogue
+// §
+// § Self-host bootstrap : authored in CSSL itself. Sibling to cc.cssl ;
+// § consumes FrameLayout (cc.cssl) + Reg64 (regs.cssl) + Insn (insn.cssl) and
+// § emits the canonical x86-64 function-entry / function-exit instruction
+// § sequences as Vec<Insn> (the encoder turns them into bytes).
+// §
+// § PROLOGUE TEMPLATE (canonical · with frame-pointer) :
+// §   push rbp                          ; save caller's RBP
+// §   mov  rbp, rsp                     ; new frame-pointer
+// §   push r12 / r13 / ... (touched)    ; spill any callee-saved we'll clobber
+// §   sub  rsp, alloc_bytes             ; carve out locals + spill + shadow
+// §
+// § PROLOGUE TEMPLATE (omit-fp · leaf-fn-style) :
+// §   sub  rsp, alloc_bytes             ; (only ; no rbp dance)
+// §
+// § EPILOGUE TEMPLATE (mirror of prologue) :
+// §   add  rsp, alloc_bytes             ; release locals
+// §   pop  ... (callee-saved · reverse order)
+// §   pop  rbp                          ; restore caller's RBP
+// §   ret
+// §
+// § REFERENCE : SysV § 3.2.2 (frame-pointer convention) ; MSDN x64 prolog/epilog
+// §            Intel SDM Vol 2 · PUSH/POP/SUB/ADD/MOV semantics
+// §
+// § DISCIPLINE :
+// §   - Vec<Insn>::push for instruction-stream emission ; Σ-LUT-driven dispatch
+// §   - LUT iteration over callee-saved set (cc.cssl) — not HashMap
+// §   - Skip-LEAF-fn red-zone optimization (SysV only · ≤128 bytes locals)
+
+// ─────────────────────────────────────────────────────────────────────
+// § Touched-callee-saved tracking
+// ─────────────────────────────────────────────────────────────────────
+// § Regalloc tells us which callee-saved regs the body actually touches.
+// § Only those need to be spilled — sparing PUSH/POP cycles per Sawyer.
+
+struct TouchedCallees {
+    // Bit-set indexed by Reg64 ordinal (0..15). Bit i set ⇔ reg i touched.
+    // Stored as u16 — 16 bits cover all GPRs + free for SSE bookkeeping.
+    bits : u16,
+}
+
+impl TouchedCallees {
+    fn empty() -> Self { TouchedCallees { bits : 0 } }
+
+    fn mark(&mut self, r : Reg64) {
+        self.bits = self.bits | (1 << (r as u16));
+    }
+
+    fn contains(&self, r : Reg64) -> bool {
+        (self.bits >> (r as u16)) & 1 == 1
+    }
+
+    fn count(&self) -> u32 {
+        // Population-count (Σ-bit-trick). Stage-0 lacks popcnt-intrinsic so we
+        // compute it iteratively · 16 bits ⇒ tight loop.
+        let mut x : u16 = self.bits;
+        let mut n : u32 = 0;
+        while x != 0 {
+            n = n + ((x & 1) as u32);
+            x = x >> 1;
+        }
+        n
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § emit_prologue · Vec<Insn> for fn-entry
+// ─────────────────────────────────────────────────────────────────────
+// § Emits the canonical entry sequence per FrameLayout. Returns a fresh
+// § Vec<Insn> ready for the encoder.
+// §
+// § INVARIANTS :
+// §   - On entry RSP is misaligned-by-8 (CALL pushed return-addr).
+// §   - After we've pushed RBP + N callee-saved + sub-rsp by alloc_bytes(),
+// §     RSP must be 16-aligned for the next CALL the body might emit.
+// §   - alloc_bytes() (cc.cssl) already encodes that alignment math.
+// §
+// § ORDER (matters for correct epilogue mirror) :
+// §   1. push rbp                            (only if use_frame_ptr)
+// §   2. mov rbp, rsp                        (only if use_frame_ptr)
+// §   3. push touched callee-saved (ASCEND)  (R12 then R13 then ...)
+// §   4. sub rsp, alloc_bytes()
+// §
+// § Step 3 ascending order pairs with epilogue's descending POP — symmetric.
+
+fn emit_prologue(layout : &FrameLayout, touched : &TouchedCallees) -> Vec<Insn> {
+    let mut out : Vec<Insn> = Vec::new();
+
+    // ── 1+2 : frame-pointer dance ──────────────────────────────────────
+    if layout.use_frame_ptr {
+        out.push(Insn::PushR { src : Reg64::RBP });
+        out.push(Insn::MovRR { dst : Reg64::RBP, src : Reg64::RSP });
+    }
+
+    // ── 3 : spill touched callee-saved (skip RBP — already handled above) ──
+    let saved = layout.abi.callee_saved();
+    let mut i : u32 = 0;
+    let n = saved.len() as u32;
+    while i < n {
+        let r = saved[i as usize];
+        // Skip RBP : the frame-pointer push above already saved it.
+        // (When use_frame_ptr=false we still skip RBP — it's preserved
+        // implicitly because we don't touch it.)
+        if r as u8 != Reg64::RBP as u8 && touched.contains(r) {
+            out.push(Insn::PushR { src : r });
+        }
+        i = i + 1;
+    }
+
+    // ── 4 : carve locals + spill + shadow ──────────────────────────────
+    // Skip the SUB on a leaf-fn that fits in the red-zone (SysV only).
+    let alloc = layout.alloc_bytes();
+    let red_zone_ok = layout.leaf_fn
+                      && layout.abi.red_zone() > 0
+                      && alloc <= layout.abi.red_zone();
+    if alloc > 0 && !red_zone_ok {
+        out.push(Insn::SubRImm32 { dst : Reg64::RSP, imm : alloc as i32 });
+    }
+
+    out
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § emit_epilogue · Vec<Insn> for fn-exit
+// ─────────────────────────────────────────────────────────────────────
+// § Mirrors emit_prologue in REVERSE order :
+// §   1. add rsp, alloc_bytes()              (skip if red-zone leaf)
+// §   2. pop touched callee-saved (DESCEND)
+// §   3. pop rbp                             (only if use_frame_ptr)
+// §   4. ret
+// §
+// § The descending pop-order matches LIFO stack discipline : last reg
+// § pushed in step-3 of prologue is first popped here.
+
+fn emit_epilogue(layout : &FrameLayout, touched : &TouchedCallees) -> Vec<Insn> {
+    let mut out : Vec<Insn> = Vec::new();
+
+    // ── 1 : release locals ─────────────────────────────────────────────
+    let alloc = layout.alloc_bytes();
+    let red_zone_ok = layout.leaf_fn
+                      && layout.abi.red_zone() > 0
+                      && alloc <= layout.abi.red_zone();
+    if alloc > 0 && !red_zone_ok {
+        out.push(Insn::AddRImm32 { dst : Reg64::RSP, imm : alloc as i32 });
+    }
+
+    // ── 2 : restore touched callee-saved (REVERSE of prologue order) ───
+    let saved = layout.abi.callee_saved();
+    let n = saved.len() as i32;
+    let mut i : i32 = n - 1;
+    while i >= 0 {
+        let r = saved[i as usize];
+        // Skip RBP : we'll pop it in step-3 (matches prologue's step-1 push).
+        if r as u8 != Reg64::RBP as u8 && touched.contains(r) {
+            out.push(Insn::PopR { dst : r });
+        }
+        i = i - 1;
+    }
+
+    // ── 3 : restore RBP ────────────────────────────────────────────────
+    if layout.use_frame_ptr {
+        out.push(Insn::PopR { dst : Reg64::RBP });
+    }
+
+    // ── 4 : return ─────────────────────────────────────────────────────
+    out.push(Insn::Ret);
+
+    out
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § build_frame_for_fn · convenience top-level
+// ─────────────────────────────────────────────────────────────────────
+// § Combines cc.cssl FrameLayout::new + the regalloc-supplied callee-spill
+// § count into a single helper. Caller still drives :
+// §   - emit_prologue(layout, touched)
+// §   - body emission via regalloc + insn-encoder
+// §   - emit_epilogue(layout, touched)
+// §
+// § Encapsulates the "compute n_callee_spilled FROM TouchedCallees" step :
+// § we don't double-count RBP (frame-pointer push handles it).
+
+fn build_frame_for_fn(
+    abi     : AbiTarget,
+    n_args  : u32,
+    locals  : u32,
+    touched : &TouchedCallees,
+    omit_fp : bool,
+    leaf    : bool,
+) -> FrameLayout {
+    // Count callee-saved spills EXCLUDING RBP (the frame-pointer push handles it
+    // when use_frame_ptr=true ; when omit_fp=true RBP isn't a spill candidate
+    // because we leave it alone).
+    let mut n_spill : u32 = 0;
+    let saved = abi.callee_saved();
+    let mut i : u32 = 0;
+    let n = saved.len() as u32;
+    while i < n {
+        let r = saved[i as usize];
+        if r as u8 != Reg64::RBP as u8 && touched.contains(r) {
+            n_spill = n_spill + 1;
+        }
+        i = i + 1;
+    }
+
+    let mut f = FrameLayout::new(abi, n_args)
+        .with_locals(locals)
+        .with_callee_spilled(n_spill);
+
+    if omit_fp { f = f.with_omit_fp(); }
+    if leaf    { f = f.with_leaf();    }
+
+    f
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · prologue.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_touched_callees_basics() {
+    let mut t = TouchedCallees::empty();
+    assert_eq!(t.count(), 0);
+    assert!(!t.contains(Reg64::R12));
+    t.mark(Reg64::R12);
+    assert!(t.contains(Reg64::R12));
+    assert!(!t.contains(Reg64::R13));
+    t.mark(Reg64::R13);
+    t.mark(Reg64::RBX);
+    assert_eq!(t.count(), 3);
+    // Idempotent : marking again does nothing.
+    t.mark(Reg64::R12);
+    assert_eq!(t.count(), 3);
+}
+
+#[test]
+fn test_prologue_zero_arg_no_spills() {
+    // 0-arg fn, no callee-saved touched, no locals.
+    // Expected emission :
+    //   push rbp
+    //   mov  rbp, rsp
+    // (alloc=0 ⇒ no sub-rsp.)
+    let layout = FrameLayout::new(AbiTarget::SysV, 0);
+    let touched = TouchedCallees::empty();
+    let prologue = emit_prologue(&layout, &touched);
+
+    assert_eq!(prologue.len(), 2);
+    match prologue[0] {
+        Insn::PushR { src } => assert_eq!(src as u8, Reg64::RBP as u8),
+        _ => panic!("[0] expected PUSH RBP"),
+    }
+    match prologue[1] {
+        Insn::MovRR { dst, src } => {
+            assert_eq!(dst as u8, Reg64::RBP as u8);
+            assert_eq!(src as u8, Reg64::RSP as u8);
+        }
+        _ => panic!("[1] expected MOV RBP, RSP"),
+    }
+}
+
+#[test]
+fn test_prologue_one_arg_with_locals() {
+    // 1-arg fn with 32 bytes of locals : rbp dance + sub rsp, N.
+    let layout = FrameLayout::new(AbiTarget::SysV, 1).with_locals(32);
+    let touched = TouchedCallees::empty();
+    let prologue = emit_prologue(&layout, &touched);
+
+    // Insn-stream : push rbp ; mov rbp, rsp ; sub rsp, alloc.
+    assert_eq!(prologue.len(), 3);
+    let expected_alloc = layout.alloc_bytes() as i32;
+    match &prologue[2] {
+        Insn::SubRImm32 { dst, imm } => {
+            assert_eq!(*dst as u8, Reg64::RSP as u8);
+            assert_eq!(*imm, expected_alloc);
+        }
+        _ => panic!("[2] expected SUB RSP, imm32"),
+    }
+}
+
+#[test]
+fn test_prologue_six_arg_no_callee_spill() {
+    // 6 args all in regs, no callee-spill, no locals.
+    // Same shape as zero-arg — register-args don't perturb the prologue.
+    let layout = FrameLayout::new(AbiTarget::SysV, 6);
+    let touched = TouchedCallees::empty();
+    let prologue = emit_prologue(&layout, &touched);
+    assert_eq!(prologue.len(), 2);
+}
+
+#[test]
+fn test_prologue_seven_arg_uses_stack_arg() {
+    // 7th arg goes on stack. The arg-slot lookup is what matters here ;
+    // prologue itself only changes if we touch callee-saved.
+    let layout = FrameLayout::new(AbiTarget::SysV, 7);
+    match layout.arg_slot(6) {
+        ArgSlot::OnStack { offset_from_rbp } => assert_eq!(offset_from_rbp, 16),
+        _ => panic!("arg6 should spill to stack"),
+    }
+    // Body can read [rbp + 16] for arg6, [rbp + 24] for arg7, etc.
+    let touched = TouchedCallees::empty();
+    let prologue = emit_prologue(&layout, &touched);
+    // No locals, no spill ⇒ only the rbp dance.
+    assert_eq!(prologue.len(), 2);
+}
+
+#[test]
+fn test_prologue_with_callee_spilled() {
+    // Body touches R12 + R13 + RBX → all three pushed after frame-pointer.
+    let mut touched = TouchedCallees::empty();
+    touched.mark(Reg64::R12);
+    touched.mark(Reg64::R13);
+    touched.mark(Reg64::RBX);
+
+    // build_frame_for_fn correctly counts the 3 spills (excluding RBP).
+    let layout = build_frame_for_fn(AbiTarget::SysV, 0, 0, &touched, false, false);
+    assert_eq!(layout.n_callee_spilled, 3);
+
+    let prologue = emit_prologue(&layout, &touched);
+    // Expected : push rbp ; mov rbp, rsp ; push RBX ; push R12 ; push R13 ;
+    // (alloc may be padded to 16-align given 3 extra pushes.)
+    assert!(prologue.len() >= 5);
+
+    // Verify the three callee-spilled pushes appear AFTER the frame-pointer dance.
+    let mut spill_ord : Vec<Reg64> = Vec::new();
+    let mut i : u32 = 2;
+    let n = prologue.len() as u32;
+    while i < n {
+        match &prologue[i as usize] {
+            Insn::PushR { src } => spill_ord.push(*src),
+            _ => break,
+        }
+        i = i + 1;
+    }
+    // SysV callee-saved order : RBX RBP R12 R13 R14 R15.
+    // Excluding RBP, ascending order ⇒ RBX, R12, R13.
+    assert_eq!(spill_ord.len(), 3);
+    assert_eq!(spill_ord[0] as u8, Reg64::RBX as u8);
+    assert_eq!(spill_ord[1] as u8, Reg64::R12 as u8);
+    assert_eq!(spill_ord[2] as u8, Reg64::R13 as u8);
+}
+
+#[test]
+fn test_epilogue_mirrors_prologue() {
+    // Prologue order  : [push RBP] [mov RBP,RSP] [push RBX] [push R12] [sub RSP,N]
+    // Epilogue order  : [add RSP,N] [pop R12] [pop RBX] [pop RBP] [ret]
+    let mut touched = TouchedCallees::empty();
+    touched.mark(Reg64::R12);
+    touched.mark(Reg64::RBX);
+
+    let layout = build_frame_for_fn(AbiTarget::SysV, 0, 16, &touched, false, false);
+    let epilogue = emit_epilogue(&layout, &touched);
+
+    // [0] add rsp, alloc
+    let alloc = layout.alloc_bytes() as i32;
+    match &epilogue[0] {
+        Insn::AddRImm32 { dst, imm } => {
+            assert_eq!(*dst as u8, Reg64::RSP as u8);
+            assert_eq!(*imm, alloc);
+        }
+        _ => panic!("[0] expected ADD RSP, imm"),
+    }
+    // [1] pop R12 (reverse-ascending = first popped after the post-prologue order)
+    match &epilogue[1] {
+        Insn::PopR { dst } => assert_eq!(*dst as u8, Reg64::R12 as u8),
+        _ => panic!("[1] expected POP R12"),
+    }
+    // [2] pop RBX
+    match &epilogue[2] {
+        Insn::PopR { dst } => assert_eq!(*dst as u8, Reg64::RBX as u8),
+        _ => panic!("[2] expected POP RBX"),
+    }
+    // [3] pop RBP
+    match &epilogue[3] {
+        Insn::PopR { dst } => assert_eq!(*dst as u8, Reg64::RBP as u8),
+        _ => panic!("[3] expected POP RBP"),
+    }
+    // [4] ret
+    match &epilogue[4] {
+        Insn::Ret => {}
+        _ => panic!("[4] expected RET"),
+    }
+}
+
+#[test]
+fn test_omit_fp_skips_rbp_dance() {
+    // Omit-FP : no push-rbp ; no mov-rbp-rsp ; no pop-rbp.
+    let layout = FrameLayout::new(AbiTarget::SysV, 0).with_omit_fp().with_locals(8);
+    let touched = TouchedCallees::empty();
+    let prologue = emit_prologue(&layout, &touched);
+    let epilogue = emit_epilogue(&layout, &touched);
+
+    // Prologue should be [sub rsp, 8] only.
+    assert_eq!(prologue.len(), 1);
+    match &prologue[0] {
+        Insn::SubRImm32 { dst, imm } => {
+            assert_eq!(*dst as u8, Reg64::RSP as u8);
+            assert_eq!(*imm, 8);
+        }
+        _ => panic!("[0] expected SUB RSP, 8"),
+    }
+
+    // Epilogue should be [add rsp, 8] [ret].
+    assert_eq!(epilogue.len(), 2);
+    match &epilogue[0] {
+        Insn::AddRImm32 { dst, imm } => {
+            assert_eq!(*dst as u8, Reg64::RSP as u8);
+            assert_eq!(*imm, 8);
+        }
+        _ => panic!("[0] expected ADD RSP, 8"),
+    }
+    match &epilogue[1] {
+        Insn::Ret => {}
+        _ => panic!("[1] expected RET"),
+    }
+}
+
+#[test]
+fn test_red_zone_leaf_skips_sub() {
+    // Leaf-fn under SysV with locals ≤ 128 may use the red-zone : prologue
+    // emits NO sub-rsp ; epilogue emits NO add-rsp.
+    let layout = FrameLayout::new(AbiTarget::SysV, 0)
+        .with_locals(64)
+        .with_leaf()
+        .with_omit_fp();   // most leaf-fns also omit FP
+    let touched = TouchedCallees::empty();
+
+    let prologue = emit_prologue(&layout, &touched);
+    let epilogue = emit_epilogue(&layout, &touched);
+
+    // Empty prologue (no rbp-dance, no sub-rsp).
+    assert_eq!(prologue.len(), 0);
+    // Epilogue is just RET.
+    assert_eq!(epilogue.len(), 1);
+    match &epilogue[0] {
+        Insn::Ret => {}
+        _ => panic!("expected RET"),
+    }
+
+    // Win64 has no red-zone ⇒ same shape DOES emit sub-rsp.
+    let layout_w = FrameLayout::new(AbiTarget::Win64, 0)
+        .with_locals(64)
+        .with_leaf()
+        .with_omit_fp();
+    let prologue_w = emit_prologue(&layout_w, &touched);
+    // Win64 must still SUB even with leaf — no red-zone allowed.
+    assert!(prologue_w.len() > 0);
+    match &prologue_w[0] {
+        Insn::SubRImm32 { .. } => {}
+        _ => panic!("Win64 leaf still needs SUB RSP"),
+    }
+}
+
+#[test]
+fn test_win64_callee_spill_includes_rdi_rsi() {
+    // Win64 promotes RDI/RSI to callee-saved. If body touches them they
+    // must be spilled in the prologue.
+    let mut touched = TouchedCallees::empty();
+    touched.mark(Reg64::RDI);
+    touched.mark(Reg64::RSI);
+
+    let layout = build_frame_for_fn(AbiTarget::Win64, 0, 0, &touched, false, false);
+    // n_callee_spilled = 2 (RDI, RSI ; RBP excluded).
+    assert_eq!(layout.n_callee_spilled, 2);
+
+    let prologue = emit_prologue(&layout, &touched);
+    // Expected : push rbp ; mov rbp, rsp ; push RDI ; push RSI ; (sub rsp, ...)
+    // Callee-saved order on Win64 : RBX RBP RDI RSI R12..R15 → ascending without RBP = RBX(-) RDI RSI R12..
+    // Only RDI + RSI marked ⇒ pushes [RDI, RSI].
+    let mut spill_ord : Vec<Reg64> = Vec::new();
+    let mut i : u32 = 2;
+    let n = prologue.len() as u32;
+    while i < n {
+        match &prologue[i as usize] {
+            Insn::PushR { src } => spill_ord.push(*src),
+            _ => break,
+        }
+        i = i + 1;
+    }
+    assert_eq!(spill_ord.len(), 2);
+    assert_eq!(spill_ord[0] as u8, Reg64::RDI as u8);
+    assert_eq!(spill_ord[1] as u8, Reg64::RSI as u8);
+
+    // Under SysV the same touched-set would NOT spill (RDI/RSI are caller-saved there).
+    let layout_sysv = build_frame_for_fn(AbiTarget::SysV, 0, 0, &touched, false, false);
+    assert_eq!(layout_sysv.n_callee_spilled, 0);
+}
+
+#[test]
+fn test_canonical_encode_roundtrip() {
+    // Verify the prologue encodes to the bytes Intel SDM specifies.
+    // 0-arg, no spills, no locals ⇒ emit { push rbp ; mov rbp, rsp }.
+    // Expected bytes :
+    //   push rbp        →  55
+    //   mov  rbp, rsp   →  48 89 E5
+    let layout = FrameLayout::new(AbiTarget::SysV, 0);
+    let touched = TouchedCallees::empty();
+    let prologue = emit_prologue(&layout, &touched);
+
+    let mut all_bytes : Vec<u8> = Vec::new();
+    let mut i : u32 = 0;
+    let n = prologue.len() as u32;
+    while i < n {
+        let bs = encode_insn(&prologue[i as usize]);
+        let mut j : u32 = 0;
+        let m = bs.len() as u32;
+        while j < m {
+            all_bytes.push(bs[j as usize]);
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    // 55 48 89 E5
+    assert_eq!(all_bytes, vec![0x55, 0x48, 0x89, 0xE5]);
+
+    // And the epilogue : pop rbp ; ret  →  5D C3.
+    let epilogue = emit_epilogue(&layout, &touched);
+    let mut epi_bytes : Vec<u8> = Vec::new();
+    let mut i : u32 = 0;
+    let n = epilogue.len() as u32;
+    while i < n {
+        let bs = encode_insn(&epilogue[i as usize]);
+        let mut j : u32 = 0;
+        let m = bs.len() as u32;
+        while j < m {
+            epi_bytes.push(bs[j as usize]);
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    assert_eq!(epi_bytes, vec![0x5D, 0xC3]);
+}

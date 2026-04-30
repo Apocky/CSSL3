@@ -1,0 +1,504 @@
+// § compiler-cssl/codegen/x86_64/cc.cssl
+// § T11-D254 (W-E3-β · x86-64-backend-in-cssl SECOND SLICE) · calling-convention
+// §
+// § Self-host bootstrap : authored in CSSL itself. Sibling to regs.cssl /
+// § insn.cssl / encode.cssl from W-E3-α (commit 8a26b94). Defines the two
+// § x86-64 ABIs the backend must support :
+// §
+// §   1. SysV-AMD64  · Linux / macOS / *BSD  (System V Application Binary
+// §                    Interface · AMD64 Architecture Processor Supplement)
+// §   2. Win64       · Windows  (Microsoft x64 calling convention · MSDN)
+// §
+// § Both ABIs share : 16-byte stack-align before any CALL, callee-saved
+// § subset, return-value in RAX (+ RDX for 128-bit). They differ in :
+// §   - integer-arg register set (6 vs 4)
+// §   - float-arg register set (8 vs 4)
+// §   - shadow-space (Win64 reserves 32 bytes ; SysV does not)
+// §   - red-zone (SysV gives 128 bytes below RSP ; Win64 forbids it)
+// §   - callee-saved set (RBX/RBP/R12-R15 vs RBX/RBP/RDI/RSI/R12-R15)
+// §
+// § REFERENCE :
+// §   - SysV § 3.2 · System V AMD64 ABI (Matz/Hubička/Jaeger/Mitchell · psABI)
+// §   - MSDN x64 calling-convention · Microsoft Learn 2024
+// §
+// § DISCIPLINE :
+// §   - LUTs not HashMap (Sawyer-mandate · Σ-precomputed)
+// §   - LUT indexed by AbiTarget enum ordinal (0=SysV, 1=Win64)
+// §   - Per-arg-index reg lookup via SYSV_ARG_REGS / WIN64_ARG_REGS arrays
+
+// ─────────────────────────────────────────────────────────────────────
+// § AbiTarget · which calling-convention to emit for
+// ─────────────────────────────────────────────────────────────────────
+// § Discriminant value LOAD-BEARING : indexes into ABI feature LUTs.
+
+enum AbiTarget {
+    SysV  = 0,    // Linux / macOS / *BSD
+    Win64 = 1,    // Windows
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Integer-argument-register LUTs
+// ─────────────────────────────────────────────────────────────────────
+// § For arg index i ∈ 0..N, the i-th int-arg goes in ARG_REGS[i] ;
+// § for i ≥ N it spills onto the stack (after shadow-space on Win64).
+// §
+// § SysV § 3.2.3 : RDI · RSI · RDX · RCX · R8 · R9              (N = 6)
+// § Win64        : RCX · RDX · R8  · R9                          (N = 4)
+
+const SYSV_ARG_REGS : [Reg64 ; 6] = [
+    Reg64::RDI, Reg64::RSI, Reg64::RDX, Reg64::RCX, Reg64::R8, Reg64::R9,
+];
+
+const WIN64_ARG_REGS : [Reg64 ; 4] = [
+    Reg64::RCX, Reg64::RDX, Reg64::R8, Reg64::R9,
+];
+
+// Number-of-int-arg-regs by AbiTarget ordinal.
+const ABI_NUM_INT_ARG_REGS : [u32 ; 2] = [6, 4];
+
+// ─────────────────────────────────────────────────────────────────────
+// § Float / XMM argument-register sets
+// ─────────────────────────────────────────────────────────────────────
+// § XMM regs are encoded 0..15 (no enum yet — backend adds Reg128/Xmm
+// § in a later slice). For now we expose count + slot-index ; emitter
+// § will translate to actual XMM ordinal when float-ops are wired.
+// §
+// § SysV § 3.2.3 : XMM0..XMM7 (8 slots)
+// § Win64        : XMM0..XMM3 (4 slots)
+
+const ABI_NUM_FLT_ARG_REGS : [u32 ; 2] = [8, 4];
+
+// ─────────────────────────────────────────────────────────────────────
+// § Caller-saved (volatile / scratch) register sets
+// ─────────────────────────────────────────────────────────────────────
+// § Caller MUST spill these across CALL if it needs the value preserved.
+// § The regalloc layer treats these as "free for short-range temps".
+// §
+// § SysV : RAX RCX RDX RSI RDI R8..R11        (9 regs)
+// § Win64: RAX RCX RDX R8..R11                (7 regs · RSI/RDI callee-saved)
+
+const SYSV_CALLER_SAVED : [Reg64 ; 9] = [
+    Reg64::RAX, Reg64::RCX, Reg64::RDX, Reg64::RSI, Reg64::RDI,
+    Reg64::R8,  Reg64::R9,  Reg64::R10, Reg64::R11,
+];
+
+const WIN64_CALLER_SAVED : [Reg64 ; 7] = [
+    Reg64::RAX, Reg64::RCX, Reg64::RDX,
+    Reg64::R8,  Reg64::R9,  Reg64::R10, Reg64::R11,
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § Callee-saved (preserved / non-volatile) register sets
+// ─────────────────────────────────────────────────────────────────────
+// § Callee MUST spill+restore in prologue/epilogue iff it touches one.
+// §
+// § SysV  : RBX RBP R12..R15                  (6 regs · RSP implicit)
+// § Win64 : RBX RBP RDI RSI R12..R15          (8 regs · RSP implicit)
+
+const SYSV_CALLEE_SAVED : [Reg64 ; 6] = [
+    Reg64::RBX, Reg64::RBP, Reg64::R12, Reg64::R13, Reg64::R14, Reg64::R15,
+];
+
+const WIN64_CALLEE_SAVED : [Reg64 ; 8] = [
+    Reg64::RBX, Reg64::RBP, Reg64::RDI, Reg64::RSI,
+    Reg64::R12, Reg64::R13, Reg64::R14, Reg64::R15,
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// § Return-value registers
+// ─────────────────────────────────────────────────────────────────────
+// § Both ABIs use RAX for primary integer return ; RDX for the upper-64
+// § of a 128-bit return. Floats go in XMM0 (both) ; SysV adds XMM1 for
+// § a 128-bit float-pair (e.g. complex<double>).
+
+const RET_REG_INT_LO : Reg64 = Reg64::RAX;
+const RET_REG_INT_HI : Reg64 = Reg64::RDX;    // for __int128 / pair returns
+
+// ─────────────────────────────────────────────────────────────────────
+// § Stack-frame discipline LUTs
+// ─────────────────────────────────────────────────────────────────────
+// § STACK_ALIGN  · alignment required at the moment of CALL (both = 16)
+// § SHADOW_BYTES · home-space the caller reserves for first-4-args (Win64=32)
+// § RED_ZONE     · scratch below RSP a leaf-fn may use without sub-rsp (SysV=128)
+
+const ABI_STACK_ALIGN  : [u32 ; 2] = [16, 16];     // both ABIs : 16-byte aligned at CALL
+const ABI_SHADOW_BYTES : [u32 ; 2] = [ 0, 32];     // SysV none ; Win64 reserves 32
+const ABI_RED_ZONE     : [u32 ; 2] = [128, 0];     // SysV grants 128 ; Win64 forbids
+
+// ─────────────────────────────────────────────────────────────────────
+// § AbiTarget · accessors
+// ─────────────────────────────────────────────────────────────────────
+// § Branch-free LUT lookups indexed by enum ordinal. All hot-path ; no
+// § hash-map · no Σ-runtime dispatch ; per Sawyer-discipline.
+
+impl AbiTarget {
+    // Number of integer-arg slots passed in registers (rest spill to stack).
+    fn num_int_arg_regs(self) -> u32 {
+        ABI_NUM_INT_ARG_REGS[self as usize]
+    }
+
+    // Number of float-arg slots passed in XMM registers.
+    fn num_flt_arg_regs(self) -> u32 {
+        ABI_NUM_FLT_ARG_REGS[self as usize]
+    }
+
+    // Stack alignment required immediately before a CALL instruction.
+    fn stack_align(self) -> u32 {
+        ABI_STACK_ALIGN[self as usize]
+    }
+
+    // Bytes of home-space the caller pre-reserves for first-N reg-args.
+    // (Win64 wants 32 ; SysV wants 0.) Always 16-byte multiple ⇒ no
+    // alignment math needed at the call-site.
+    fn shadow_bytes(self) -> u32 {
+        ABI_SHADOW_BYTES[self as usize]
+    }
+
+    // Bytes below RSP a leaf function may scribble in without sub-rsp.
+    // SysV grants 128 ; Win64 = 0 (forbidden).
+    fn red_zone(self) -> u32 {
+        ABI_RED_ZONE[self as usize]
+    }
+
+    // Lookup the i-th int-arg register. Returns None if i ≥ reg-count
+    // (caller spills to stack).
+    fn int_arg_reg(self, i : u32) -> Option<Reg64> {
+        match self {
+            AbiTarget::SysV => {
+                if i < 6 { Some(SYSV_ARG_REGS[i as usize]) } else { None }
+            }
+            AbiTarget::Win64 => {
+                if i < 4 { Some(WIN64_ARG_REGS[i as usize]) } else { None }
+            }
+        }
+    }
+
+    // Caller-saved set as a slice (the regalloc free-pool prior to spilling).
+    fn caller_saved(self) -> &'static [Reg64] {
+        match self {
+            AbiTarget::SysV  => &SYSV_CALLER_SAVED,
+            AbiTarget::Win64 => &WIN64_CALLER_SAVED,
+        }
+    }
+
+    // Callee-saved set as a slice (each touched member needs prologue spill).
+    fn callee_saved(self) -> &'static [Reg64] {
+        match self {
+            AbiTarget::SysV  => &SYSV_CALLEE_SAVED,
+            AbiTarget::Win64 => &WIN64_CALLEE_SAVED,
+        }
+    }
+
+    // Test : is `r` callee-saved under this ABI ? Linear scan — set is small (≤8).
+    fn is_callee_saved(self, r : Reg64) -> bool {
+        let saved = self.callee_saved();
+        let mut i : u32 = 0;
+        let n = saved.len() as u32;
+        while i < n {
+            if saved[i as usize] as u8 == r as u8 { return true; }
+            i = i + 1;
+        }
+        false
+    }
+
+    // Test : is `r` caller-saved (volatile) under this ABI ?
+    fn is_caller_saved(self, r : Reg64) -> bool {
+        let saved = self.caller_saved();
+        let mut i : u32 = 0;
+        let n = saved.len() as u32;
+        while i < n {
+            if saved[i as usize] as u8 == r as u8 { return true; }
+            i = i + 1;
+        }
+        false
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § FrameLayout · per-fn stack-frame plan
+// ─────────────────────────────────────────────────────────────────────
+// § Computed by the calling-convention layer ; consumed by prologue/epilogue
+// § emitter. Captures all the parameters needed to lay out a call-frame :
+// §
+// §   ┌──────────────────────────┐  ← caller's RSP at entry (16-aligned + 8)
+// §   │ in-stack args (arg6+)    │      [SysV] / [arg4+ on Win64]
+// §   ├──────────────────────────┤
+// §   │ return address           │  ← RSP at fn-entry  (caller's [rsp+0])
+// §   ├──────────────────────────┤
+// §   │ saved RBP (if FP used)   │  ← +pushed by prologue
+// §   ├──────────────────────────┤
+// §   │ saved callee-saved regs  │  ← prologue PUSHes touched callee-saved
+// §   ├──────────────────────────┤
+// §   │ local variables / spills │  ← sub rsp, locals_bytes
+// §   ├──────────────────────────┤
+// §   │ shadow space (Win64=32)  │  ← reserved for callees' arg0..3 home
+// §   └──────────────────────────┘  ← RSP at CALL (must be 16-aligned)
+
+struct FrameLayout {
+    abi              : AbiTarget,
+    n_args           : u32,         // # logical args (informational)
+    n_callee_spilled : u32,         // # callee-saved regs prologue spills
+    locals_bytes     : u32,         // sub rsp, N for stack-allocated locals
+    shadow_bytes     : u32,         // pre-reserved for outgoing CALL home-space
+    use_frame_ptr    : bool,        // true ⇒ push rbp ; mov rbp, rsp
+    leaf_fn          : bool,        // true ⇒ may use red-zone (SysV only)
+}
+
+impl FrameLayout {
+    // Total bytes the prologue subtracts from RSP after the optional
+    // PUSH-RBP and callee-saved spills. Includes :
+    //   - locals (incl. spill slots)
+    //   - outgoing-call shadow space
+    //   - 16-byte alignment fix-up
+    //
+    // After CALL the stack is misaligned by 8 (return-addr push). Each
+    // PUSH (saved-RBP, callee-saved spill) tilts it another 8. We compute
+    // the residual misalignment + add an even/odd correction so that
+    // the post-prologue RSP lands 16-byte-aligned for any callee CALL.
+    fn alloc_bytes(&self) -> u32 {
+        let pushes : u32 = (if self.use_frame_ptr { 1 } else { 0 }) + self.n_callee_spilled;
+        // After RET-addr push (8) + `pushes` 8-byte pushes, RSP ≡ (8 + 8*pushes) mod 16.
+        // We want the post-`sub rsp, N` RSP ≡ 0 mod 16, then we'll subtract shadow_bytes
+        // (always 16-multiple) and locals_bytes (we round up). Compute padding now.
+        let unaligned = (8 + 8 * pushes + self.locals_bytes + self.shadow_bytes) & 0xF;
+        let pad = if unaligned == 0 { 0 } else { 16 - unaligned };
+        self.locals_bytes + self.shadow_bytes + pad
+    }
+
+    // Prologue-pushed bytes (return-addr already on stack at fn entry).
+    // Used by epilogue to know how much to ADD-RSP / POP before RET.
+    fn pushed_bytes(&self) -> u32 {
+        let pushes : u32 = (if self.use_frame_ptr { 1 } else { 0 }) + self.n_callee_spilled;
+        8 * pushes
+    }
+
+    // Build a default frame for `n_args` int-args under `abi`. Callers
+    // adjust callee-saved count + locals after regalloc finishes.
+    fn new(abi : AbiTarget, n_args : u32) -> Self {
+        FrameLayout {
+            abi,
+            n_args,
+            n_callee_spilled : 0,
+            locals_bytes     : 0,
+            shadow_bytes     : abi.shadow_bytes(),
+            use_frame_ptr    : true,        // default ON ; opt out via with_omit_fp()
+            leaf_fn          : false,
+        }
+    }
+
+    fn with_locals(mut self, b : u32) -> Self { self.locals_bytes = b; self }
+
+    fn with_callee_spilled(mut self, n : u32) -> Self { self.n_callee_spilled = n; self }
+
+    fn with_omit_fp(mut self) -> Self { self.use_frame_ptr = false; self }
+
+    fn with_leaf(mut self) -> Self { self.leaf_fn = true; self }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § ArgSlot · where the i-th arg lives at fn-entry
+// ─────────────────────────────────────────────────────────────────────
+// § Returned by FrameLayout::arg_slot(i). Lowering reads from this slot
+// § when emitting the body's references to function-parameters.
+// §
+// §   InReg(r)        · arg arrived in register r (SysV first 6 / Win64 first 4)
+// §   OnStack(off)    · arg sits at [rbp + off] (after the saved-RBP+ret-addr area)
+
+enum ArgSlot {
+    InReg   { reg : Reg64 },
+    OnStack { offset_from_rbp : i32 },
+}
+
+impl FrameLayout {
+    // Locate the i-th arg under this ABI/frame. Stack-args are numbered
+    // starting at the first-spilled-arg index ; on SysV that's i=6, on
+    // Win64 i=4. Stack-slot offsets count UP from RBP+16 (skipping saved-
+    // RBP at +0..+8 and return-addr at +8..+16). Win64's caller-side
+    // shadow-space sits at +16..+48 (the home for arg0..arg3 even though
+    // the args themselves came in registers).
+    fn arg_slot(&self, i : u32) -> ArgSlot {
+        match self.abi.int_arg_reg(i) {
+            Some(r) => ArgSlot::InReg { reg : r },
+            None => {
+                // Stack arg : start above saved-RBP (+0) + return-addr (+8).
+                // Each stack-arg = 8 bytes.
+                let n_reg = self.abi.num_int_arg_regs();
+                let stack_idx = i - n_reg;
+                let base : i32 = match self.abi {
+                    // SysV : caller's stack-args sit immediately above ret-addr.
+                    AbiTarget::SysV  => 16,
+                    // Win64 : caller reserves 32-byte shadow above ret-addr,
+                    // then stack-args start at RBP+48.
+                    AbiTarget::Win64 => 16 + 32,
+                };
+                ArgSlot::OnStack {
+                    offset_from_rbp : base + (stack_idx as i32) * 8,
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · cc.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_sysv_arg_regs_ordering() {
+    // SysV § 3.2.3 ordering : RDI, RSI, RDX, RCX, R8, R9.
+    let abi = AbiTarget::SysV;
+    assert_eq!(abi.int_arg_reg(0).unwrap() as u8, Reg64::RDI as u8);
+    assert_eq!(abi.int_arg_reg(1).unwrap() as u8, Reg64::RSI as u8);
+    assert_eq!(abi.int_arg_reg(2).unwrap() as u8, Reg64::RDX as u8);
+    assert_eq!(abi.int_arg_reg(3).unwrap() as u8, Reg64::RCX as u8);
+    assert_eq!(abi.int_arg_reg(4).unwrap() as u8, Reg64::R8  as u8);
+    assert_eq!(abi.int_arg_reg(5).unwrap() as u8, Reg64::R9  as u8);
+    // 7th and beyond spill.
+    assert!(abi.int_arg_reg(6).is_none());
+    assert!(abi.int_arg_reg(99).is_none());
+}
+
+#[test]
+fn test_win64_arg_regs_ordering() {
+    // Win64 ordering : RCX, RDX, R8, R9 (note RCX is FIRST, not RDI).
+    let abi = AbiTarget::Win64;
+    assert_eq!(abi.int_arg_reg(0).unwrap() as u8, Reg64::RCX as u8);
+    assert_eq!(abi.int_arg_reg(1).unwrap() as u8, Reg64::RDX as u8);
+    assert_eq!(abi.int_arg_reg(2).unwrap() as u8, Reg64::R8  as u8);
+    assert_eq!(abi.int_arg_reg(3).unwrap() as u8, Reg64::R9  as u8);
+    assert!(abi.int_arg_reg(4).is_none());
+}
+
+#[test]
+fn test_arg_count_features() {
+    assert_eq!(AbiTarget::SysV.num_int_arg_regs(),  6);
+    assert_eq!(AbiTarget::Win64.num_int_arg_regs(), 4);
+    assert_eq!(AbiTarget::SysV.num_flt_arg_regs(),  8);
+    assert_eq!(AbiTarget::Win64.num_flt_arg_regs(), 4);
+}
+
+#[test]
+fn test_shadow_and_red_zone() {
+    // SysV : no shadow, 128-byte red zone.
+    assert_eq!(AbiTarget::SysV.shadow_bytes(),  0);
+    assert_eq!(AbiTarget::SysV.red_zone(),    128);
+    // Win64 : 32-byte shadow, no red zone.
+    assert_eq!(AbiTarget::Win64.shadow_bytes(), 32);
+    assert_eq!(AbiTarget::Win64.red_zone(),      0);
+    // Both align stack to 16 at CALL.
+    assert_eq!(AbiTarget::SysV.stack_align(),  16);
+    assert_eq!(AbiTarget::Win64.stack_align(), 16);
+}
+
+#[test]
+fn test_callee_vs_caller_saved_partitions() {
+    let abi = AbiTarget::SysV;
+    // RBX/RBP/R12-R15 callee-saved.
+    assert!(abi.is_callee_saved(Reg64::RBX));
+    assert!(abi.is_callee_saved(Reg64::RBP));
+    assert!(abi.is_callee_saved(Reg64::R12));
+    assert!(abi.is_callee_saved(Reg64::R15));
+    // RAX/RCX/RDX/RSI/RDI/R8..R11 caller-saved.
+    assert!(abi.is_caller_saved(Reg64::RAX));
+    assert!(abi.is_caller_saved(Reg64::RDI));
+    assert!(abi.is_caller_saved(Reg64::R11));
+    // Disjoint partition invariant.
+    assert!(!abi.is_callee_saved(Reg64::RAX));
+    assert!(!abi.is_caller_saved(Reg64::RBX));
+}
+
+#[test]
+fn test_win64_rdi_rsi_callee_saved() {
+    // KEY DIFFERENCE from SysV : Win64 promotes RDI/RSI to callee-saved
+    // because they're not args under that ABI.
+    let abi = AbiTarget::Win64;
+    assert!(abi.is_callee_saved(Reg64::RDI));
+    assert!(abi.is_callee_saved(Reg64::RSI));
+    // And under SysV they are NOT.
+    assert!(!AbiTarget::SysV.is_callee_saved(Reg64::RDI));
+    assert!(!AbiTarget::SysV.is_callee_saved(Reg64::RSI));
+}
+
+#[test]
+fn test_frame_layout_zero_arg() {
+    // 0-arg fn, no spills, no locals, no FP-omit ⇒ aligns to 16 with no padding.
+    let f = FrameLayout::new(AbiTarget::SysV, 0);
+    // pushes = 1 (rbp). After ret-addr+rbp, RSP = misalign 0 ⇒ alloc 0.
+    // (8 + 8*1 + 0 + 0) & 0xF = 0 ⇒ pad = 0.
+    assert_eq!(f.alloc_bytes(), 0);
+    assert_eq!(f.pushed_bytes(), 8);    // just RBP
+}
+
+#[test]
+fn test_frame_layout_with_locals() {
+    let f = FrameLayout::new(AbiTarget::SysV, 1).with_locals(40);
+    // pushes = 1 (rbp). (8 + 8 + 40 + 0) = 56 ; 56 & 15 = 8 ⇒ pad = 8.
+    // alloc = 40 + 0 + 8 = 48 (a 16-multiple after the base shifts).
+    assert_eq!(f.alloc_bytes(), 48);
+}
+
+#[test]
+fn test_frame_layout_win64_shadow() {
+    // Win64 : shadow_bytes defaults to 32. With no locals + no callee-spill :
+    // pushes = 1 (rbp). (8 + 8 + 0 + 32) = 48 · 48 & 15 = 0 ⇒ pad = 0.
+    // alloc = 0 + 32 + 0 = 32.
+    let f = FrameLayout::new(AbiTarget::Win64, 0);
+    assert_eq!(f.shadow_bytes, 32);
+    assert_eq!(f.alloc_bytes(), 32);
+}
+
+#[test]
+fn test_frame_layout_omit_fp() {
+    let f = FrameLayout::new(AbiTarget::SysV, 0).with_omit_fp().with_locals(8);
+    // No frame-pointer push. (8 + 0 + 8 + 0) = 16 ; 16 & 15 = 0 ⇒ pad = 0.
+    assert_eq!(f.use_frame_ptr, false);
+    assert_eq!(f.alloc_bytes(), 8);
+    assert_eq!(f.pushed_bytes(), 0);    // no pushes — leaf-style
+}
+
+#[test]
+fn test_arg_slot_register_args_sysv() {
+    // First 6 args : InReg ; 7th+ : OnStack.
+    let f = FrameLayout::new(AbiTarget::SysV, 7);
+    match f.arg_slot(0) {
+        ArgSlot::InReg { reg } => assert_eq!(reg as u8, Reg64::RDI as u8),
+        _ => panic!("arg0 should be InReg(RDI)"),
+    }
+    match f.arg_slot(5) {
+        ArgSlot::InReg { reg } => assert_eq!(reg as u8, Reg64::R9 as u8),
+        _ => panic!("arg5 should be InReg(R9)"),
+    }
+    match f.arg_slot(6) {
+        ArgSlot::OnStack { offset_from_rbp } => assert_eq!(offset_from_rbp, 16),
+        _ => panic!("arg6 should be OnStack"),
+    }
+}
+
+#[test]
+fn test_arg_slot_win64_stack_starts_after_shadow() {
+    // Win64 : 5th arg is stack-arg. Offset from RBP must skip
+    // saved-RBP(8) + ret-addr(8) + shadow(32) = 48.
+    let f = FrameLayout::new(AbiTarget::Win64, 5);
+    match f.arg_slot(4) {
+        ArgSlot::OnStack { offset_from_rbp } => assert_eq!(offset_from_rbp, 48),
+        _ => panic!("arg4 should be OnStack"),
+    }
+    // arg5 lands one slot above (8 bytes higher).
+    match f.arg_slot(5) {
+        ArgSlot::OnStack { offset_from_rbp } => assert_eq!(offset_from_rbp, 56),
+        _ => panic!("arg5 should be OnStack"),
+    }
+}
+
+#[test]
+fn test_alignment_invariant_random_locals() {
+    // For any locals_bytes value, alloc_bytes() + pushed_bytes() + 8 (ret-addr)
+    // must be 16-aligned. Property-style spot-check across sizes.
+    let mut local : u32 = 0;
+    while local <= 200 {
+        let f = FrameLayout::new(AbiTarget::SysV, 0).with_locals(local);
+        let total = 8 + f.pushed_bytes() + f.alloc_bytes();
+        assert_eq!(total & 0xF, 0, "alignment broken at locals={}", local);
+        local = local + 8;
+    }
+}

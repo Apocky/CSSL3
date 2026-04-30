@@ -1,0 +1,775 @@
+// § compiler-cssl/codegen/x86_64/regalloc.cssl
+// § T11-D254 (W-E3-β · x86-64-backend-in-cssl SECOND SLICE) · linear-scan regalloc
+// §
+// § Self-host bootstrap : authored in CSSL itself. Sibling to cc.cssl /
+// § prologue.cssl / regs.cssl / insn.cssl. Implements minimal linear-scan
+// § register-allocation per Poletto+Sarkar 1999, with spill-code emission
+// § feeding through the W-E3-α encoder.
+// §
+// § ALGORITHM (Poletto+Sarkar · TOPLAS 21:5 · 1999) :
+// §   1. Compute live-ranges (vreg → [start, end) interval) over linearized IR.
+// §   2. Sort by start-position ascending.
+// §   3. Walk intervals in order ; maintain `active` set of currently-live ones.
+// §      For each new interval :
+// §         a. Expire actives whose end ≤ current.start.
+// §         b. If a free physreg ∈ free-pool : allocate it.
+// §         c. Else : spill the active with the FARTHEST end (`spill-at-end`
+// §            heuristic) ; current vreg gets that pool's freed reg ; spilled
+// §            vreg gets a stack-slot, all subsequent uses go through memory.
+// §
+// § NOTES :
+// §   - This slice does NOT do live-range splitting (Σ-trade : simpler code,
+// §     marginal extra spills). Callers wanting tighter packing rerun after
+// §     splitting. Suffices for stage-1 boot.
+// §   - Free-pool seeded from caller-saved by default (cheap, no prologue cost).
+// §     We promote to callee-saved when caller-saved is exhausted ; the prologue
+// §     emitter (prologue.cssl) reads our `touched` set to spill-and-restore.
+// §   - We reserve RSP unconditionally (it's the stack-pointer, not allocatable).
+// §   - We reserve RBP iff use_frame_ptr=true (frame-pointer convention).
+// §   - Scratch reg (RAX) is reserved for spill-code emission so the spill
+// §     load+store doesn't recursively need a register.
+// §
+// § DISCIPLINE :
+// §   - No HashMap : Vec<(VReg, PhysReg)> mapping + linear scan when querying.
+// §     With ≤ 16 physregs the fanout is bounded ; we don't pay hash overhead.
+// §   - Sawyer Σ-pre-alloc : Vec capacities reserved up-front from interval-count
+// §   - LUT for "is this physreg in the free-pool" : per-Reg64-ordinal bit-set u16.
+// §   - All linear scans in O(N · physregs) ; physregs is constant ⇒ O(N).
+
+// ─────────────────────────────────────────────────────────────────────
+// § VReg · virtual register · pre-allocation IR token
+// ─────────────────────────────────────────────────────────────────────
+// § Frontend / IR-lowering produces VReg(0), VReg(1), ... as it generates
+// § temps. Linear-scan maps them onto Reg64 (PhysReg) or to stack slots.
+
+struct VReg {
+    id : u32,
+}
+
+impl VReg {
+    fn new(id : u32) -> Self { VReg { id } }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § LiveInterval · [start, end) instruction-index range
+// ─────────────────────────────────────────────────────────────────────
+// § `start` = first instruction the vreg is live ; `end` = first instruction
+// § AFTER which it's no-longer-needed (exclusive). A vreg lives at instruction
+// § i iff start ≤ i < end.
+// §
+// § Caller computes intervals from the linearized IR (def-use scan). For
+// § stage-1 we accept them as input ; future slice can compute them inline.
+
+struct LiveInterval {
+    vreg  : VReg,
+    start : u32,
+    end   : u32,
+}
+
+impl LiveInterval {
+    fn new(vreg : VReg, start : u32, end : u32) -> Self {
+        LiveInterval { vreg, start, end }
+    }
+
+    // Two intervals overlap iff [a.start, a.end) ∩ [b.start, b.end) ≠ ∅.
+    fn overlaps(&self, other : &LiveInterval) -> bool {
+        self.start < other.end && other.start < self.end
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Assignment · what a vreg ended up bound to
+// ─────────────────────────────────────────────────────────────────────
+
+enum Assignment {
+    InReg     { reg : Reg64 },          // vreg lives in this physreg
+    Spilled   { slot_off : i32 },       // vreg lives at [rbp - slot_off]
+}
+
+struct VRegAssignment {
+    vreg       : VReg,
+    assignment : Assignment,
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Free-pool · bit-set over Reg64 ordinals 0..15
+// ─────────────────────────────────────────────────────────────────────
+// § Bit i set ⇔ Reg64 ordinal i is currently FREE (not bound to any
+// § active vreg). Linear-scan flips bits as it allocates / expires.
+
+struct FreePool {
+    bits : u16,    // bit i = 1 ⇒ register i is free
+}
+
+impl FreePool {
+    fn empty() -> Self { FreePool { bits : 0 } }
+
+    fn mark_free(&mut self, r : Reg64) {
+        self.bits = self.bits | (1 << (r as u16));
+    }
+
+    fn mark_used(&mut self, r : Reg64) {
+        self.bits = self.bits & !(1 << (r as u16));
+    }
+
+    fn is_free(&self, r : Reg64) -> bool {
+        (self.bits >> (r as u16)) & 1 == 1
+    }
+
+    // Pick a free reg from a preference-ordered list. Returns the FIRST free
+    // candidate ; None if all in `prefs` are busy. Caller-saved come first
+    // (cheap to allocate ; no prologue cost), then callee-saved.
+    fn pick_from(&self, prefs : &[Reg64]) -> Option<Reg64> {
+        let mut i : u32 = 0;
+        let n = prefs.len() as u32;
+        while i < n {
+            let r = prefs[i as usize];
+            if self.is_free(r) { return Some(r); }
+            i = i + 1;
+        }
+        None
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Active set · currently-live vreg→physreg bindings
+// ─────────────────────────────────────────────────────────────────────
+// § During the linear-scan walk we keep a Vec of (vreg, physreg, end)
+// § triples — the actively-live intervals. Sorted by ascending `end`
+// § so spill-at-farthest-end is cheap (last entry).
+
+struct Active {
+    vreg     : VReg,
+    physreg  : Reg64,
+    end      : u32,
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Allocator · top-level state
+// ─────────────────────────────────────────────────────────────────────
+
+struct Allocator {
+    abi              : AbiTarget,
+    free_pool        : FreePool,
+    actives          : Vec<Active>,
+    assignments      : Vec<VRegAssignment>,
+    next_spill_off   : i32,        // next stack-slot offset (negative from RBP)
+    touched_callees  : TouchedCallees,
+    use_frame_ptr    : bool,
+}
+
+impl Allocator {
+    // Build a fresh allocator under `abi`. By default RSP (and RBP if FP-used)
+    // are reserved out of the free-pool ; everything else is initially free.
+    // RAX is also reserved as a scratch-reg for spill-code emission.
+    fn new(abi : AbiTarget, use_frame_ptr : bool) -> Self {
+        let mut pool = FreePool::empty();
+
+        // Seed pool from caller-saved + callee-saved (everything allocatable).
+        // We mark FREE then strip the un-allocatable ones below.
+        let cs = abi.caller_saved();
+        let mut i : u32 = 0;
+        let n = cs.len() as u32;
+        while i < n {
+            pool.mark_free(cs[i as usize]);
+            i = i + 1;
+        }
+        let cv = abi.callee_saved();
+        let mut i : u32 = 0;
+        let n = cv.len() as u32;
+        while i < n {
+            pool.mark_free(cv[i as usize]);
+            i = i + 1;
+        }
+
+        // Reserve : RSP (stack-pointer) and RBP (frame-pointer when used).
+        pool.mark_used(Reg64::RSP);
+        if use_frame_ptr { pool.mark_used(Reg64::RBP); }
+
+        // Reserve RAX as scratch for spill-code (load/store helper).
+        // The IR-lowering must avoid emitting an "RAX-live-here" demand —
+        // alternative is to emit the spill code via a different temp, which
+        // requires a 2-pass scan. For stage-1 boot, reserving RAX is the
+        // simpler invariant that always works.
+        pool.mark_used(Reg64::RAX);
+
+        Allocator {
+            abi,
+            free_pool        : pool,
+            actives          : Vec::new(),
+            assignments      : Vec::new(),
+            next_spill_off   : -8,     // first slot at [rbp - 8]
+            touched_callees  : TouchedCallees::empty(),
+            use_frame_ptr,
+        }
+    }
+
+    // Preference order for picking a free register. Caller-saved first
+    // (cheap : no prologue spill), then callee-saved. Inside each tier we
+    // walk in declaration-order — this is deterministic and reproducible
+    // across compilations (Σ-stable-output discipline).
+    fn pref_order(&self) -> Vec<Reg64> {
+        let mut out : Vec<Reg64> = Vec::new();
+        // Caller-saved tier.
+        let cs = self.abi.caller_saved();
+        let mut i : u32 = 0;
+        let n = cs.len() as u32;
+        while i < n {
+            let r = cs[i as usize];
+            // Skip RAX (reserved as scratch).
+            if r as u8 != Reg64::RAX as u8 {
+                out.push(r);
+            }
+            i = i + 1;
+        }
+        // Callee-saved tier.
+        let cv = self.abi.callee_saved();
+        let mut i : u32 = 0;
+        let n = cv.len() as u32;
+        while i < n {
+            let r = cv[i as usize];
+            // Skip RBP (frame-pointer when used).
+            if r as u8 != Reg64::RBP as u8 || !self.use_frame_ptr {
+                out.push(r);
+            }
+            i = i + 1;
+        }
+        out
+    }
+
+    // Expire actives whose end ≤ current.start. Frees their physregs back
+    // to the pool. Called at the top of each `walk` iteration.
+    fn expire(&mut self, current_start : u32) {
+        let mut i : u32 = 0;
+        // Manual filter-loop : iterate, when an entry expires move-the-tail
+        // and decrement. (We don't have Vec::retain in stage-0 — and the
+        // closure-capture path is heavier than this 5-line scan.)
+        while i < self.actives.len() as u32 {
+            let act_end = self.actives[i as usize].end;
+            if act_end <= current_start {
+                let freed = self.actives[i as usize].physreg;
+                self.free_pool.mark_free(freed);
+                // Swap-remove (Σ-O(1) — order of `actives` doesn't matter
+                // for spill-decision since we re-search by `end` then).
+                let last = self.actives.len() - 1;
+                self.actives.swap(i as usize, last);
+                self.actives.pop();
+                // Don't increment i ; the swapped-in entry needs checking.
+            } else {
+                i = i + 1;
+            }
+        }
+    }
+
+    // Find the active with the FARTHEST end (spill-at-end heuristic).
+    // Returns (index, end). Caller compares against current.end before
+    // deciding to spill the active vs. the new interval.
+    fn farthest_active(&self) -> Option<(u32, u32)> {
+        if self.actives.is_empty() { return None; }
+        let mut best_idx : u32 = 0;
+        let mut best_end : u32 = self.actives[0].end;
+        let mut i : u32 = 1;
+        let n = self.actives.len() as u32;
+        while i < n {
+            let e = self.actives[i as usize].end;
+            if e > best_end {
+                best_end = e;
+                best_idx = i;
+            }
+            i = i + 1;
+        }
+        Some((best_idx, best_end))
+    }
+
+    // Allocate a fresh stack-slot for a spilled vreg. Slot offsets count DOWN
+    // from RBP : first spill at -8, next at -16, ... All 8-byte aligned.
+    fn alloc_spill_slot(&mut self) -> i32 {
+        let off = self.next_spill_off;
+        self.next_spill_off = self.next_spill_off - 8;
+        off
+    }
+
+    // Record an assignment — vreg is now bound to either a physreg or a slot.
+    // We don't dedupe here ; the caller invokes once per vreg.
+    fn record_assignment(&mut self, vreg : VReg, a : Assignment) {
+        // If we used a callee-saved physreg, mark it `touched` — the
+        // prologue emitter consults this set to know what to spill at fn-entry.
+        match a {
+            Assignment::InReg { reg } => {
+                if self.abi.is_callee_saved(reg) {
+                    self.touched_callees.mark(reg);
+                }
+            }
+            Assignment::Spilled { .. } => {}
+        }
+        self.assignments.push(VRegAssignment {
+            vreg,
+            assignment : a,
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § allocate · main entry — runs linear-scan over a list of intervals
+    // ─────────────────────────────────────────────────────────────────
+    // § Intervals must be sorted by start ascending (caller's responsibility ;
+    // § a future slice can do it inline). Returns total spill-slot bytes
+    // § needed for the prologue's `locals_bytes` field.
+    fn allocate(&mut self, intervals : &Vec<LiveInterval>) -> u32 {
+        let prefs = self.pref_order();
+        let mut idx : u32 = 0;
+        let n = intervals.len() as u32;
+
+        while idx < n {
+            let cur = &intervals[idx as usize];
+
+            // Step 1 : expire ended actives.
+            self.expire(cur.start);
+
+            // Step 2 : try to allocate from the free pool.
+            match self.free_pool.pick_from(&prefs) {
+                Some(reg) => {
+                    self.free_pool.mark_used(reg);
+                    self.actives.push(Active {
+                        vreg    : VReg::new(cur.vreg.id),
+                        physreg : reg,
+                        end     : cur.end,
+                    });
+                    self.record_assignment(
+                        VReg::new(cur.vreg.id),
+                        Assignment::InReg { reg },
+                    );
+                }
+                None => {
+                    // Step 3 : spill — swap with the farthest-end active
+                    // if its end > current.end ; otherwise spill current.
+                    match self.farthest_active() {
+                        Some((spill_idx, spill_end)) => {
+                            if spill_end > cur.end {
+                                // Spill the active : current takes its physreg.
+                                let active = &self.actives[spill_idx as usize];
+                                let evicted_reg  = active.physreg;
+                                let evicted_vreg = VReg::new(active.vreg.id);
+                                let slot = self.alloc_spill_slot();
+                                // Replace in-place : the new vreg keeps the slot
+                                // in `actives` ; just overwrite with current.
+                                self.actives[spill_idx as usize] = Active {
+                                    vreg    : VReg::new(cur.vreg.id),
+                                    physreg : evicted_reg,
+                                    end     : cur.end,
+                                };
+                                self.record_assignment(
+                                    evicted_vreg,
+                                    Assignment::Spilled { slot_off : slot },
+                                );
+                                self.record_assignment(
+                                    VReg::new(cur.vreg.id),
+                                    Assignment::InReg { reg : evicted_reg },
+                                );
+                            } else {
+                                // Spill current itself.
+                                let slot = self.alloc_spill_slot();
+                                self.record_assignment(
+                                    VReg::new(cur.vreg.id),
+                                    Assignment::Spilled { slot_off : slot },
+                                );
+                            }
+                        }
+                        None => {
+                            // No actives somehow ⇒ shouldn't happen if pool
+                            // is exhausted, but for safety spill current.
+                            let slot = self.alloc_spill_slot();
+                            self.record_assignment(
+                                VReg::new(cur.vreg.id),
+                                Assignment::Spilled { slot_off : slot },
+                            );
+                        }
+                    }
+                }
+            }
+
+            idx = idx + 1;
+        }
+
+        // Total bytes the frame must reserve for spill slots.
+        // next_spill_off started at -8 and decremented per spill.
+        // ((-next_spill_off) - 8) gives the count*8 ; equiv. the abs delta.
+        // But we want a positive byte-count :
+        //   first spill : next_spill_off was -8, now -16 ⇒ 8 bytes used
+        //   N spills    : next_spill_off was -8, now -(8 + 8*N) ⇒ 8*N bytes
+        // ⇒ bytes = -next_spill_off - 8.
+        if self.next_spill_off >= -8 { 0 } else { (-self.next_spill_off - 8) as u32 }
+    }
+
+    // Look up a vreg's assignment after `allocate` has run.
+    fn assignment_for(&self, vreg : VReg) -> Option<&Assignment> {
+        let mut i : u32 = 0;
+        let n = self.assignments.len() as u32;
+        while i < n {
+            if self.assignments[i as usize].vreg.id == vreg.id {
+                return Some(&self.assignments[i as usize].assignment);
+            }
+            i = i + 1;
+        }
+        None
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Spill-code emission helpers
+// ─────────────────────────────────────────────────────────────────────
+// § For each USE of a spilled vreg the lowering layer must emit :
+// §   mov RAX, [rbp + slot_off]    ; load spilled value into scratch
+// §   <use RAX in place of vreg>
+// §   mov [rbp + slot_off], RAX    ; store back if vreg was modified
+// §
+// § These helpers produce the canonical Insn-pairs.
+
+fn emit_spill_load(slot_off : i32) -> Insn {
+    // MOV RAX, [RBP + slot_off]
+    Insn::MovRM {
+        dst : Reg64::RAX,
+        src : MemOp::base_disp(Reg64::RBP, slot_off),
+    }
+}
+
+fn emit_spill_store(slot_off : i32) -> Insn {
+    // MOV [RBP + slot_off], RAX
+    Insn::MovMR {
+        dst : MemOp::base_disp(Reg64::RBP, slot_off),
+        src : Reg64::RAX,
+    }
+}
+
+// Reload a spilled vreg into an arbitrary destination register (when the
+// caller has a non-RAX physreg available locally — bypasses the scratch-RAX
+// invariant and saves a MOV).
+fn emit_spill_load_to(dst : Reg64, slot_off : i32) -> Insn {
+    Insn::MovRM {
+        dst,
+        src : MemOp::base_disp(Reg64::RBP, slot_off),
+    }
+}
+
+fn emit_spill_store_from(src : Reg64, slot_off : i32) -> Insn {
+    Insn::MovMR {
+        dst : MemOp::base_disp(Reg64::RBP, slot_off),
+        src,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · regalloc.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_live_interval_overlap() {
+    let a = LiveInterval::new(VReg::new(0), 0, 10);
+    let b = LiveInterval::new(VReg::new(1), 5, 15);
+    let c = LiveInterval::new(VReg::new(2), 10, 20);  // touches but ¬ overlaps a
+    let d = LiveInterval::new(VReg::new(3), 12, 14);  // inside b
+
+    assert!(a.overlaps(&b));
+    assert!(b.overlaps(&a));
+    assert!(!a.overlaps(&c));    // [0,10) ∩ [10,20) = ∅ (end is exclusive)
+    assert!(b.overlaps(&d));
+}
+
+#[test]
+fn test_free_pool_basic() {
+    let mut p = FreePool::empty();
+    p.mark_free(Reg64::RAX);
+    p.mark_free(Reg64::RBX);
+    assert!(p.is_free(Reg64::RAX));
+    assert!(p.is_free(Reg64::RBX));
+    assert!(!p.is_free(Reg64::RCX));
+
+    p.mark_used(Reg64::RAX);
+    assert!(!p.is_free(Reg64::RAX));
+    assert!(p.is_free(Reg64::RBX));
+
+    let prefs = vec![Reg64::RAX, Reg64::RBX];
+    match p.pick_from(&prefs) {
+        Some(r) => assert_eq!(r as u8, Reg64::RBX as u8),
+        None    => panic!("expected to pick RBX"),
+    }
+}
+
+#[test]
+fn test_allocator_seeds_pool_correctly() {
+    // Under SysV : caller-saved (RCX,RDX,RSI,RDI,R8..R11) + callee-saved
+    // (RBX,R12..R15) all free. RAX (scratch), RSP (stack), RBP (frame-ptr)
+    // reserved.
+    let alloc = Allocator::new(AbiTarget::SysV, true);
+    assert!(!alloc.free_pool.is_free(Reg64::RAX));    // scratch reserved
+    assert!(!alloc.free_pool.is_free(Reg64::RSP));    // stack-ptr
+    assert!(!alloc.free_pool.is_free(Reg64::RBP));    // frame-ptr (FP=true)
+    // Allocatable ones :
+    assert!(alloc.free_pool.is_free(Reg64::RCX));
+    assert!(alloc.free_pool.is_free(Reg64::RDX));
+    assert!(alloc.free_pool.is_free(Reg64::RBX));
+    assert!(alloc.free_pool.is_free(Reg64::R12));
+    assert!(alloc.free_pool.is_free(Reg64::R15));
+}
+
+#[test]
+fn test_allocator_omit_fp_releases_rbp() {
+    // With omit-fp, RBP becomes allocatable.
+    let alloc = Allocator::new(AbiTarget::SysV, false);
+    assert!(alloc.free_pool.is_free(Reg64::RBP));
+}
+
+#[test]
+fn test_pref_order_caller_first() {
+    // Sanity : caller-saved appear before callee-saved in pref order.
+    let alloc = Allocator::new(AbiTarget::SysV, true);
+    let prefs = alloc.pref_order();
+    // First entry : a caller-saved (NOT RAX, since reserved). Should be RCX
+    // (first non-RAX entry in SYSV_CALLER_SAVED).
+    assert_eq!(prefs[0] as u8, Reg64::RCX as u8);
+    // RBX (first callee-saved, non-RBP) appears AFTER all caller-saved.
+    let mut found_rbx_at : i32 = -1;
+    let mut found_first_callee_at : i32 = -1;
+    let mut i : u32 = 0;
+    let n = prefs.len() as u32;
+    while i < n {
+        if prefs[i as usize] as u8 == Reg64::RBX as u8 {
+            found_rbx_at = i as i32;
+        }
+        if AbiTarget::SysV.is_callee_saved(prefs[i as usize]) && found_first_callee_at == -1 {
+            found_first_callee_at = i as i32;
+        }
+        i = i + 1;
+    }
+    assert!(found_rbx_at >= 0);
+    // Caller-saved excluding RAX = 8 regs ⇒ first callee-saved at index ≥ 8.
+    assert!(found_first_callee_at >= 8);
+}
+
+#[test]
+fn test_linear_scan_no_overlap_uses_caller_saved() {
+    // Three sequential vregs — no overlap ⇒ all reuse the same physreg.
+    let intervals = vec![
+        LiveInterval::new(VReg::new(0), 0,  5),
+        LiveInterval::new(VReg::new(1), 5, 10),
+        LiveInterval::new(VReg::new(2), 10, 15),
+    ];
+    let mut alloc = Allocator::new(AbiTarget::SysV, true);
+    let spill_bytes = alloc.allocate(&intervals);
+
+    // Zero spills.
+    assert_eq!(spill_bytes, 0);
+
+    // All three got the same physreg (whichever was first in pref-order).
+    let a0 = alloc.assignment_for(VReg::new(0)).unwrap();
+    let a1 = alloc.assignment_for(VReg::new(1)).unwrap();
+    let a2 = alloc.assignment_for(VReg::new(2)).unwrap();
+    let r0 = match a0 { Assignment::InReg { reg } => *reg, _ => panic!() };
+    let r1 = match a1 { Assignment::InReg { reg } => *reg, _ => panic!() };
+    let r2 = match a2 { Assignment::InReg { reg } => *reg, _ => panic!() };
+    assert_eq!(r0 as u8, r1 as u8);
+    assert_eq!(r1 as u8, r2 as u8);
+    // And it should be RCX (first in pref order under SysV, after RAX is reserved).
+    assert_eq!(r0 as u8, Reg64::RCX as u8);
+}
+
+#[test]
+fn test_linear_scan_six_overlapping_uses_six_regs() {
+    // Six fully-overlapping intervals : each gets a distinct physreg ; no spills.
+    let intervals = vec![
+        LiveInterval::new(VReg::new(0), 0, 100),
+        LiveInterval::new(VReg::new(1), 1, 100),
+        LiveInterval::new(VReg::new(2), 2, 100),
+        LiveInterval::new(VReg::new(3), 3, 100),
+        LiveInterval::new(VReg::new(4), 4, 100),
+        LiveInterval::new(VReg::new(5), 5, 100),
+    ];
+    let mut alloc = Allocator::new(AbiTarget::SysV, true);
+    let spill_bytes = alloc.allocate(&intervals);
+    assert_eq!(spill_bytes, 0);    // no spills with 6 vregs (we have ≥ 13 free)
+
+    // All six got DISTINCT physregs.
+    let mut seen : u16 = 0;
+    let mut i : u32 = 0;
+    while i < 6 {
+        let a = alloc.assignment_for(VReg::new(i)).unwrap();
+        let r = match a { Assignment::InReg { reg } => *reg, _ => panic!("expected InReg") };
+        let bit = 1 << (r as u16);
+        // Must not have seen this reg before.
+        assert_eq!(seen & bit, 0);
+        seen = seen | bit;
+        i = i + 1;
+    }
+}
+
+#[test]
+fn test_linear_scan_spill_when_pressure_exceeds_pool() {
+    // Allocate MORE concurrent vregs than the free pool size ⇒ at least one
+    // must spill. SysV pool after reservations (RAX, RSP, RBP) = 13 regs free.
+    // We make 14 fully-overlapping intervals to force ≥ 1 spill.
+    let mut intervals : Vec<LiveInterval> = Vec::new();
+    let mut k : u32 = 0;
+    while k < 14 {
+        intervals.push(LiveInterval::new(VReg::new(k), k, 1000));
+        k = k + 1;
+    }
+
+    let mut alloc = Allocator::new(AbiTarget::SysV, true);
+    let spill_bytes = alloc.allocate(&intervals);
+
+    // ≥ 1 vreg spilled ⇒ spill_bytes > 0. (Heuristic spills at most one per
+    // collision in this test since all share the same end ; we assert a
+    // multiple of 8 bytes.)
+    assert!(spill_bytes >= 8);
+    assert_eq!(spill_bytes & 7, 0);    // 8-byte aligned
+
+    // Some vreg got Spilled.
+    let mut spilled_count : u32 = 0;
+    let mut k : u32 = 0;
+    while k < 14 {
+        let a = alloc.assignment_for(VReg::new(k)).unwrap();
+        match a {
+            Assignment::Spilled { .. } => spilled_count = spilled_count + 1,
+            _ => {}
+        }
+        k = k + 1;
+    }
+    assert!(spilled_count >= 1);
+}
+
+#[test]
+fn test_callee_saved_marked_when_used() {
+    // 10 fully-overlapping vregs ⇒ allocator runs out of caller-saved
+    // (excluding RAX = 8 regs) and dips into callee-saved.
+    let mut intervals : Vec<LiveInterval> = Vec::new();
+    let mut k : u32 = 0;
+    while k < 10 {
+        intervals.push(LiveInterval::new(VReg::new(k), k, 1000));
+        k = k + 1;
+    }
+    let mut alloc = Allocator::new(AbiTarget::SysV, true);
+    let _ = alloc.allocate(&intervals);
+
+    // touched_callees should have at least 2 callee-saved bits set
+    // (10 vregs - 8 caller-saved = 2 spilled into callee-saved).
+    assert!(alloc.touched_callees.count() >= 2);
+    // Those bits should map to actual callee-saved regs (not e.g. RDI).
+    let saved = AbiTarget::SysV.callee_saved();
+    let mut found : u32 = 0;
+    let mut i : u32 = 0;
+    let n = saved.len() as u32;
+    while i < n {
+        if alloc.touched_callees.contains(saved[i as usize]) {
+            found = found + 1;
+        }
+        i = i + 1;
+    }
+    assert!(found >= 2);
+}
+
+#[test]
+fn test_win64_uses_smaller_arg_set_but_same_pool_size() {
+    // Win64 has fewer arg-regs (4) but RDI/RSI become callee-saved →
+    // total allocatable regs is still ~13 (RAX/RSP/RBP reserved).
+    let mut intervals : Vec<LiveInterval> = Vec::new();
+    let mut k : u32 = 0;
+    while k < 13 {
+        intervals.push(LiveInterval::new(VReg::new(k), k, 1000));
+        k = k + 1;
+    }
+    let mut alloc = Allocator::new(AbiTarget::Win64, true);
+    let spill_bytes = alloc.allocate(&intervals);
+    // 13 fully-overlapping vregs SHOULD fit without spill on Win64
+    // (allocatable = caller-saved 7 - RAX + callee-saved 8 - RBP = 13).
+    assert_eq!(spill_bytes, 0);
+}
+
+#[test]
+fn test_spill_load_store_emission() {
+    // Spill load : MOV RAX, [RBP - 8]  →  48 8B 45 F8
+    let load = emit_spill_load(-8);
+    let bytes = encode_insn(&load);
+    assert_eq!(bytes, vec![0x48, 0x8B, 0x45, 0xF8]);
+
+    // Spill store : MOV [RBP - 8], RAX  →  48 89 45 F8
+    let store = emit_spill_store(-8);
+    let bytes = encode_insn(&store);
+    assert_eq!(bytes, vec![0x48, 0x89, 0x45, 0xF8]);
+}
+
+#[test]
+fn test_spill_load_store_alternate_dst() {
+    // Reload to RBX instead of RAX : MOV RBX, [RBP - 16] → 48 8B 5D F0
+    let load = emit_spill_load_to(Reg64::RBX, -16);
+    let bytes = encode_insn(&load);
+    assert_eq!(bytes, vec![0x48, 0x8B, 0x5D, 0xF0]);
+
+    // Store from RCX : MOV [RBP - 16], RCX → 48 89 4D F0
+    let store = emit_spill_store_from(Reg64::RCX, -16);
+    let bytes = encode_insn(&store);
+    assert_eq!(bytes, vec![0x48, 0x89, 0x4D, 0xF0]);
+}
+
+#[test]
+fn test_expire_returns_reg_to_pool() {
+    // After an active expires its physreg should be reusable.
+    let intervals = vec![
+        LiveInterval::new(VReg::new(0),  0,  5),    // ends at 5
+        LiveInterval::new(VReg::new(1), 10, 20),    // starts AFTER vreg0 ends
+    ];
+    let mut alloc = Allocator::new(AbiTarget::SysV, true);
+    let _ = alloc.allocate(&intervals);
+
+    let a0 = alloc.assignment_for(VReg::new(0)).unwrap();
+    let a1 = alloc.assignment_for(VReg::new(1)).unwrap();
+    let r0 = match a0 { Assignment::InReg { reg } => *reg, _ => panic!() };
+    let r1 = match a1 { Assignment::InReg { reg } => *reg, _ => panic!() };
+    // Same physreg (RCX) — vreg0 expired before vreg1 started ⇒ reused.
+    assert_eq!(r0 as u8, r1 as u8);
+}
+
+#[test]
+fn test_spill_slots_unique_and_descending() {
+    // Force multiple spills, verify slot offsets are -8, -16, -24, ...
+    let mut intervals : Vec<LiveInterval> = Vec::new();
+    let mut k : u32 = 0;
+    while k < 16 {
+        intervals.push(LiveInterval::new(VReg::new(k), k, 1000));
+        k = k + 1;
+    }
+    let mut alloc = Allocator::new(AbiTarget::SysV, true);
+    let _ = alloc.allocate(&intervals);
+
+    // Collect Spilled offsets — they must all be distinct + 8-byte spaced.
+    let mut offs : Vec<i32> = Vec::new();
+    let mut k : u32 = 0;
+    while k < 16 {
+        let a = alloc.assignment_for(VReg::new(k)).unwrap();
+        match a {
+            Assignment::Spilled { slot_off } => offs.push(*slot_off),
+            _ => {}
+        }
+        k = k + 1;
+    }
+    // Sort offsets — should be {-8, -16, ...} contiguous.
+    let mut i : u32 = 0;
+    let n = offs.len() as u32;
+    while i < n {
+        let mut j : u32 = i + 1;
+        while j < n {
+            if offs[j as usize] > offs[i as usize] {
+                let tmp = offs[i as usize];
+                offs[i as usize] = offs[j as usize];
+                offs[j as usize] = tmp;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    // Check descending by 8.
+    let mut i : u32 = 0;
+    while i < n {
+        let expected = -8 * (i as i32 + 1);
+        assert_eq!(offs[i as usize], expected);
+        i = i + 1;
+    }
+}
