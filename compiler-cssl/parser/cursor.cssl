@@ -1,0 +1,569 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/parser/cursor.cssl  —  CSSL stage-1 token-cursor
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Mirrors design from compiler-rs/crates/cssl-parse/src/cursor.rs.
+//
+// § ROLE  ← W-E1-α (parser-in-cssl FIRST SLICE)
+//   The token-cursor is the parser's view over a `Vec<Token>` produced by
+//   the lexer. It exposes peek / peek2 / advance / span / check_eof helpers
+//   that hide trivia and provide stable LL(2) lookahead.
+//
+// § PRIME_DIRECTIVE preserved : the cursor is purely informational — it
+//   provides a transparent traversal view. It introduces no hidden control
+//   flow, no surveillance, no coercion. Every position has a span back to
+//   the source-bytes the user authored.
+//
+// § ARCHITECTURE
+//   The cursor holds (tokens : Vec<Token>, pos : u32, skip_newlines : bool,
+//   eof_span : Span). It returns synthetic Eof tokens past end-of-stream,
+//   never panics, and treats Whitespace + LineComment + BlockComment as
+//   trivia (skipped on peek/advance regardless of skip_newlines).
+//
+//   `skip_newlines = true` is the default for the Rust-hybrid surface ;
+//   the CSLv3-native surface flips it off to make line-breaks structural.
+//
+// § DEPS
+//   stdlib/option.cssl           — Option<T> for fallible expect
+//   stdlib/vec.cssl              — Vec<Token> backing
+//   compiler-cssl/parser/lexer.cssl — Token / TokenKind / Span definitions
+//   compiler-cssl/parser/diag.cssl  — Diagnostic for expect/expect_one error path
+//
+// § STAGE-1 NOTES
+//   1. The cursor does NOT own the tokens ; in stage-1 source-form we pass
+//      Vec<Token> by-value (CSSL's value-semantics keeps clone-cost bounded
+//      by the iso<Vec<u8>> backing + the Token Copy semantics).
+//   2. `peek2` is implemented as a clone-and-bump rather than direct index
+//      because trivia-skipping must run from the post-`bump` position. The
+//      clone is O(1) — just two u32 fields and a Vec ptr.
+//   3. `expect(kind, ctx)` consumes the token if it matches ; otherwise
+//      pushes a Diagnostic via the helper `parser_diag::expected_one` and
+//      returns the synthetic Eof so the parser can keep running.
+//   4. `effective_pos()` is the trivia-skipping cursor position. It scans
+//      forward over Whitespace + LineComment + BlockComment + (Newline if
+//      skip_newlines).
+//   5. The cursor is a value-passing cursor : `bump(&mut cursor)` mutates
+//      pos in-place and returns the consumed Token by value.
+
+module com.apocky.compiler.parser.cursor
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.vec
+import com.apocky.compiler.parser.lexer
+import com.apocky.compiler.parser.diag
+
+// ───────────────────────────────────────────────────────────────────────
+// § TokenCursor
+// ───────────────────────────────────────────────────────────────────────
+
+// `TokenCursor { tokens, pos, skip_newlines, eof_span }` — cursor over a
+// flat token-stream with 2-token lookahead and trivia-skip semantics.
+struct TokenCursor {
+    tokens        : Vec<Token>,
+    pos           : u32,
+    skip_newlines : bool,
+    eof_span      : Span,
+}
+
+// `TokenCursor::new(tokens)` — primary constructor (newline-skipping mode).
+// The eof_span is synthesized from the tail of `tokens` — if the last
+// token is Eof its span is reused ; otherwise we synthesize a zero-width
+// span at the end of the last real token's range, falling back to dummy.
+fn cursor_new(tokens : Vec<Token>) -> TokenCursor {
+    let n = vec_len::<Token>(tokens) ;
+    let eof_sp = derive_eof_span(tokens, n) ;
+    TokenCursor {
+        tokens        : tokens,
+        pos           : 0'u32,
+        skip_newlines : true,
+        eof_span      : eof_sp,
+    }
+}
+
+// `TokenCursor::newline_aware(tokens)` — newline-aware (CSLv3-native) mode.
+fn cursor_newline_aware(tokens : Vec<Token>) -> TokenCursor {
+    let mut c = cursor_new(tokens) ;
+    c.skip_newlines = false ;
+    c
+}
+
+// Compute the EOF sentinel-span for `tokens`.
+fn derive_eof_span(tokens : Vec<Token>, n : u32) -> Span {
+    if n == 0'u32 { return span_dummy() ; }
+    // Walk backward to find an Eof token if present.
+    let mut i : u32 = n ;
+    while i > 0'u32 {
+        i = i - 1'u32 ;
+        let t = vec_get_unchecked::<Token>(tokens, i) ;
+        match t.kind {
+            TokenKind::Eof => return t.span,
+            _              => {}
+        }
+    }
+    // No Eof : use last token's hi as a zero-width sentinel.
+    let last = vec_get_unchecked::<Token>(tokens, n - 1'u32) ;
+    Span { lo : last.span.hi, hi : last.span.hi }
+}
+
+// `set_skip_newlines(c, skip)` — toggle the newline-skipping policy.
+fn cursor_set_skip_newlines(c : &mut TokenCursor, skip : bool) {
+    c.skip_newlines = skip
+}
+
+// `is_trivia(c, t)` — predicate identifying a token that should be skipped
+// by peek/advance.
+fn is_trivia(c : &TokenCursor, t : Token) -> bool {
+    match t.kind {
+        TokenKind::Whitespace   => true,
+        TokenKind::LineComment  => true,
+        TokenKind::BlockComment => true,
+        TokenKind::Newline      => c.skip_newlines,
+        _                       => false,
+    }
+}
+
+// `effective_pos(c)` — current position after trivia-skip. Returns the
+// raw index into `tokens` of the first non-trivia token at-or-after `pos`.
+fn cursor_effective_pos(c : &TokenCursor) -> u32 {
+    let n = vec_len::<Token>(c.tokens) ;
+    let mut i : u32 = c.pos ;
+    let mut keep = true ;
+    while keep && i < n {
+        let t = vec_get_unchecked::<Token>(c.tokens, i) ;
+        if is_trivia(c, t) {
+            i = i + 1'u32 ;
+        } else {
+            keep = false ;
+        }
+    }
+    i
+}
+
+// `peek(c)` — peek at the current token without consuming. Returns a
+// synthetic Eof past end-of-stream.
+fn cursor_peek(c : &TokenCursor) -> Token {
+    let idx = cursor_effective_pos(c) ;
+    let n = vec_len::<Token>(c.tokens) ;
+    if idx >= n {
+        Token { kind : TokenKind::Eof, span : c.eof_span }
+    } else {
+        vec_get_unchecked::<Token>(c.tokens, idx)
+    }
+}
+
+// `peek2(c)` — peek at the token PAST `peek`. Trivia is skipped on both
+// slots. Returns a synthetic Eof on end-of-stream.
+fn cursor_peek2(c : &TokenCursor) -> Token {
+    // Skip trivia to first non-trivia, advance past it, then skip trivia again.
+    let n = vec_len::<Token>(c.tokens) ;
+    let mut i : u32 = cursor_effective_pos(c) ;
+    if i >= n {
+        return Token { kind : TokenKind::Eof, span : c.eof_span } ;
+    }
+    i = i + 1'u32 ;  // step past the first non-trivia
+    let mut keep = true ;
+    while keep && i < n {
+        let t = vec_get_unchecked::<Token>(c.tokens, i) ;
+        if is_trivia(c, t) {
+            i = i + 1'u32 ;
+        } else {
+            keep = false ;
+        }
+    }
+    if i >= n {
+        Token { kind : TokenKind::Eof, span : c.eof_span }
+    } else {
+        vec_get_unchecked::<Token>(c.tokens, i)
+    }
+}
+
+// `bump(c)` — consume the current token (after trivia-skip) and return it
+// by value. Returns a synthetic Eof if already past end-of-stream.
+fn cursor_bump(c : &mut TokenCursor) -> Token {
+    c.pos = cursor_effective_pos(c) ;
+    let n = vec_len::<Token>(c.tokens) ;
+    if c.pos >= n {
+        return Token { kind : TokenKind::Eof, span : c.eof_span } ;
+    }
+    let t = vec_get_unchecked::<Token>(c.tokens, c.pos) ;
+    match t.kind {
+        TokenKind::Eof => t,
+        _              => {
+            c.pos = c.pos + 1'u32 ;
+            t
+        }
+    }
+}
+
+// `check(c, expected)` — true iff peek().kind == expected.
+fn cursor_check(c : &TokenCursor, expected : TokenKind) -> bool {
+    token_kind_eq(cursor_peek(c).kind, expected)
+}
+
+// `eat(c, expected)` — if matches, consume and return Some(span) ; else None.
+fn cursor_eat(c : &mut TokenCursor, expected : TokenKind) -> Option<Span> {
+    if cursor_check(c, expected) {
+        let t = cursor_bump(c) ;
+        Some(t.span)
+    } else {
+        None
+    }
+}
+
+// `expect(c, expected, ctx, diags)` — consume on match ; on mismatch push
+// an `expected_one` diagnostic and return None. Either way the cursor is
+// not corrupted (mismatch leaves pos unchanged ; the parser may then
+// invoke a recovery routine).
+fn cursor_expect(c : &mut TokenCursor,
+                 expected : TokenKind,
+                 ctx : &str,
+                 diags : &mut Vec<Diagnostic>) -> Option<Span> {
+    if cursor_check(c, expected) {
+        let t = cursor_bump(c) ;
+        Some(t.span)
+    } else {
+        let actual = cursor_peek(c) ;
+        let d = diag_expected_one(expected, actual.kind, actual.span, ctx) ;
+        vec_push::<Diagnostic>(diags, d) ;
+        None
+    }
+}
+
+// `expect_any(c, expected, ctx, diags)` — like expect but accepts a Vec
+// of legal kinds. Pushes `expected_any` on mismatch.
+fn cursor_expect_any(c : &mut TokenCursor,
+                     expected : Vec<TokenKind>,
+                     ctx : &str,
+                     diags : &mut Vec<Diagnostic>) -> Option<Span> {
+    let cur = cursor_peek(c).kind ;
+    if any_kind_matches(expected, cur) {
+        let t = cursor_bump(c) ;
+        Some(t.span)
+    } else {
+        let actual = cursor_peek(c) ;
+        let d = diag_expected_any(expected, actual.kind, actual.span, ctx) ;
+        vec_push::<Diagnostic>(diags, d) ;
+        None
+    }
+}
+
+// `is_eof(c)` — true iff peek() is Eof.
+fn cursor_is_eof(c : &TokenCursor) -> bool {
+    let p = cursor_peek(c) ;
+    match p.kind {
+        TokenKind::Eof => true,
+        _              => false,
+    }
+}
+
+// `eof_span(c)` — return the EOF sentinel-span recorded at construction.
+fn cursor_eof_span(c : &TokenCursor) -> Span {
+    c.eof_span
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § TokenKind equality + match-any
+// ───────────────────────────────────────────────────────────────────────
+
+// `token_kind_eq(a, b)` — structural equality on TokenKind.
+//
+// § STAGE-1 NOTE : the auto-derived #[derive(PartialEq)] form lands once
+//   trait-derive lands (deferred) ; until then this is hand-rolled. The
+//   pattern matches each variant and recurses into payload-bearing ones.
+fn token_kind_eq(a : TokenKind, b : TokenKind) -> bool {
+    match (a, b) {
+        (TokenKind::Ident, TokenKind::Ident) => true,
+        (TokenKind::IntLiteral, TokenKind::IntLiteral) => true,
+        (TokenKind::FloatLiteral, TokenKind::FloatLiteral) => true,
+        (TokenKind::StringLiteralNormal, TokenKind::StringLiteralNormal) => true,
+        (TokenKind::StringLiteralRaw, TokenKind::StringLiteralRaw) => true,
+        (TokenKind::CharLiteral, TokenKind::CharLiteral) => true,
+        (TokenKind::Suffix(s1), TokenKind::Suffix(s2)) => suffix_eq(s1, s2),
+        (TokenKind::Keyword(k1), TokenKind::Keyword(k2)) => keyword_eq(k1, k2),
+        (TokenKind::LParen, TokenKind::LParen) => true,
+        (TokenKind::RParen, TokenKind::RParen) => true,
+        (TokenKind::LBrace, TokenKind::LBrace) => true,
+        (TokenKind::RBrace, TokenKind::RBrace) => true,
+        (TokenKind::LBracket, TokenKind::LBracket) => true,
+        (TokenKind::RBracket, TokenKind::RBracket) => true,
+        (TokenKind::Comma, TokenKind::Comma) => true,
+        (TokenKind::Semi, TokenKind::Semi) => true,
+        (TokenKind::Colon, TokenKind::Colon) => true,
+        (TokenKind::ColonColon, TokenKind::ColonColon) => true,
+        (TokenKind::Dot, TokenKind::Dot) => true,
+        (TokenKind::DotDot, TokenKind::DotDot) => true,
+        (TokenKind::DotDotEq, TokenKind::DotDotEq) => true,
+        (TokenKind::At, TokenKind::At) => true,
+        (TokenKind::Hash, TokenKind::Hash) => true,
+        (TokenKind::Dollar, TokenKind::Dollar) => true,
+        (TokenKind::Apostrophe, TokenKind::Apostrophe) => true,
+        (TokenKind::Question, TokenKind::Question) => true,
+        (TokenKind::QuestionQuestion, TokenKind::QuestionQuestion) => true,
+        (TokenKind::Plus, TokenKind::Plus) => true,
+        (TokenKind::Minus, TokenKind::Minus) => true,
+        (TokenKind::Star, TokenKind::Star) => true,
+        (TokenKind::Slash, TokenKind::Slash) => true,
+        (TokenKind::Percent, TokenKind::Percent) => true,
+        (TokenKind::Eq, TokenKind::Eq) => true,
+        (TokenKind::EqEq, TokenKind::EqEq) => true,
+        (TokenKind::Ne, TokenKind::Ne) => true,
+        (TokenKind::Lt, TokenKind::Lt) => true,
+        (TokenKind::Le, TokenKind::Le) => true,
+        (TokenKind::Gt, TokenKind::Gt) => true,
+        (TokenKind::Ge, TokenKind::Ge) => true,
+        (TokenKind::Amp, TokenKind::Amp) => true,
+        (TokenKind::Pipe, TokenKind::Pipe) => true,
+        (TokenKind::Caret, TokenKind::Caret) => true,
+        (TokenKind::Tilde, TokenKind::Tilde) => true,
+        (TokenKind::Bang, TokenKind::Bang) => true,
+        (TokenKind::AmpAmp, TokenKind::AmpAmp) => true,
+        (TokenKind::PipePipe, TokenKind::PipePipe) => true,
+        (TokenKind::LShift, TokenKind::LShift) => true,
+        (TokenKind::RShift, TokenKind::RShift) => true,
+        (TokenKind::Arrow, TokenKind::Arrow) => true,
+        (TokenKind::LeftArrow, TokenKind::LeftArrow) => true,
+        (TokenKind::BiArrow, TokenKind::BiArrow) => true,
+        (TokenKind::FatArrow, TokenKind::FatArrow) => true,
+        (TokenKind::PipeArrow, TokenKind::PipeArrow) => true,
+        (TokenKind::PipeArrowBack, TokenKind::PipeArrowBack) => true,
+        (TokenKind::SquigglyArrow, TokenKind::SquigglyArrow) => true,
+        (TokenKind::Section, TokenKind::Section) => true,
+        (TokenKind::SectionRef, TokenKind::SectionRef) => true,
+        (TokenKind::Evidence(e1), TokenKind::Evidence(e2)) => evidence_eq(e1, e2),
+        (TokenKind::Modal(m1), TokenKind::Modal(m2)) => modal_eq(m1, m2),
+        (TokenKind::Compound(c1), TokenKind::Compound(c2)) => compound_eq(c1, c2),
+        (TokenKind::Determinative(d1, s1), TokenKind::Determinative(d2, s2)) =>
+            determinative_eq(d1, d2) && bracket_side_eq(s1, s2),
+        (TokenKind::ForAll, TokenKind::ForAll) => true,
+        (TokenKind::Exists, TokenKind::Exists) => true,
+        (TokenKind::ElemOf, TokenKind::ElemOf) => true,
+        (TokenKind::NotElemOf, TokenKind::NotElemOf) => true,
+        (TokenKind::Subset, TokenKind::Subset) => true,
+        (TokenKind::Superset, TokenKind::Superset) => true,
+        (TokenKind::Therefore, TokenKind::Therefore) => true,
+        (TokenKind::Because, TokenKind::Because) => true,
+        (TokenKind::Entails, TokenKind::Entails) => true,
+        (TokenKind::Qed, TokenKind::Qed) => true,
+        (TokenKind::EmptySet, TokenKind::EmptySet) => true,
+        (TokenKind::Infinity, TokenKind::Infinity) => true,
+        (TokenKind::Newline, TokenKind::Newline) => true,
+        (TokenKind::Indent, TokenKind::Indent) => true,
+        (TokenKind::Dedent, TokenKind::Dedent) => true,
+        (TokenKind::Whitespace, TokenKind::Whitespace) => true,
+        (TokenKind::LineComment, TokenKind::LineComment) => true,
+        (TokenKind::BlockComment, TokenKind::BlockComment) => true,
+        (TokenKind::Eof, TokenKind::Eof) => true,
+        (TokenKind::Error, TokenKind::Error) => true,
+        _ => false,
+    }
+}
+
+// `any_kind_matches(kinds, k)` — true iff k equals at least one element of `kinds`.
+fn any_kind_matches(kinds : Vec<TokenKind>, k : TokenKind) -> bool {
+    let n = vec_len::<TokenKind>(kinds) ;
+    let mut i : u32 = 0'u32 ;
+    let mut found = false ;
+    while i < n && !found {
+        if token_kind_eq(vec_get_unchecked::<TokenKind>(kinds, i), k) {
+            found = true ;
+        }
+        i = i + 1'u32 ;
+    }
+    found
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Sub-enum equality (hand-rolled until trait-derive lands)
+// ───────────────────────────────────────────────────────────────────────
+
+fn keyword_eq(a : Keyword, b : Keyword) -> bool {
+    match (a, b) {
+        (Keyword::Fn, Keyword::Fn) => true,
+        (Keyword::Let, Keyword::Let) => true,
+        (Keyword::Const, Keyword::Const) => true,
+        (Keyword::Mut, Keyword::Mut) => true,
+        (Keyword::Pub, Keyword::Pub) => true,
+        (Keyword::Use, Keyword::Use) => true,
+        (Keyword::Module, Keyword::Module) => true,
+        (Keyword::Type, Keyword::Type) => true,
+        (Keyword::Struct, Keyword::Struct) => true,
+        (Keyword::Enum, Keyword::Enum) => true,
+        (Keyword::Interface, Keyword::Interface) => true,
+        (Keyword::Impl, Keyword::Impl) => true,
+        (Keyword::If, Keyword::If) => true,
+        (Keyword::Else, Keyword::Else) => true,
+        (Keyword::Match, Keyword::Match) => true,
+        (Keyword::While, Keyword::While) => true,
+        (Keyword::For, Keyword::For) => true,
+        (Keyword::In, Keyword::In) => true,
+        (Keyword::Return, Keyword::Return) => true,
+        (Keyword::Break, Keyword::Break) => true,
+        (Keyword::Continue, Keyword::Continue) => true,
+        (Keyword::Loop, Keyword::Loop) => true,
+        (Keyword::Where, Keyword::Where) => true,
+        (Keyword::Effect, Keyword::Effect) => true,
+        (Keyword::Handler, Keyword::Handler) => true,
+        (Keyword::Perform, Keyword::Perform) => true,
+        (Keyword::With, Keyword::With) => true,
+        (Keyword::Region, Keyword::Region) => true,
+        (Keyword::Iso, Keyword::Iso) => true,
+        (Keyword::Trn, Keyword::Trn) => true,
+        (Keyword::Ref, Keyword::Ref) => true,
+        (Keyword::Val, Keyword::Val) => true,
+        (Keyword::Box, Keyword::Box) => true,
+        (Keyword::Tag, Keyword::Tag) => true,
+        (Keyword::Comptime, Keyword::Comptime) => true,
+        (Keyword::Run, Keyword::Run) => true,
+        (Keyword::True, Keyword::True) => true,
+        (Keyword::False, Keyword::False) => true,
+        (Keyword::As, Keyword::As) => true,
+        (Keyword::SelfValue, Keyword::SelfValue) => true,
+        (Keyword::SelfType, Keyword::SelfType) => true,
+        _ => false,
+    }
+}
+
+fn suffix_eq(a : TypeSuffix, b : TypeSuffix) -> bool {
+    match (a, b) {
+        (TypeSuffix::Data, TypeSuffix::Data) => true,
+        (TypeSuffix::Func, TypeSuffix::Func) => true,
+        (TypeSuffix::System, TypeSuffix::System) => true,
+        (TypeSuffix::Type, TypeSuffix::Type) => true,
+        (TypeSuffix::Entity, TypeSuffix::Entity) => true,
+        (TypeSuffix::Material, TypeSuffix::Material) => true,
+        (TypeSuffix::Property, TypeSuffix::Property) => true,
+        (TypeSuffix::Gate, TypeSuffix::Gate) => true,
+        (TypeSuffix::Rule, TypeSuffix::Rule) => true,
+        _ => false,
+    }
+}
+
+fn evidence_eq(a : EvidenceMark, b : EvidenceMark) -> bool {
+    match (a, b) {
+        (EvidenceMark::Confirmed, EvidenceMark::Confirmed) => true,
+        (EvidenceMark::Partial, EvidenceMark::Partial) => true,
+        (EvidenceMark::Pending, EvidenceMark::Pending) => true,
+        (EvidenceMark::Failed, EvidenceMark::Failed) => true,
+        (EvidenceMark::Unknown, EvidenceMark::Unknown) => true,
+        (EvidenceMark::Hypothetical, EvidenceMark::Hypothetical) => true,
+        (EvidenceMark::Deprecated, EvidenceMark::Deprecated) => true,
+        (EvidenceMark::Proven, EvidenceMark::Proven) => true,
+        _ => false,
+    }
+}
+
+fn modal_eq(a : ModalOp, b : ModalOp) -> bool {
+    match (a, b) {
+        (ModalOp::Must, ModalOp::Must) => true,
+        (ModalOp::Should, ModalOp::Should) => true,
+        (ModalOp::May, ModalOp::May) => true,
+        (ModalOp::MustNot, ModalOp::MustNot) => true,
+        (ModalOp::Insight, ModalOp::Insight) => true,
+        (ModalOp::Question, ModalOp::Question) => true,
+        (ModalOp::PushFurther, ModalOp::PushFurther) => true,
+        (ModalOp::Decision, ModalOp::Decision) => true,
+        (ModalOp::Todo, ModalOp::Todo) => true,
+        (ModalOp::Fixme, ModalOp::Fixme) => true,
+        _ => false,
+    }
+}
+
+fn compound_eq(a : CompoundOp, b : CompoundOp) -> bool {
+    match (a, b) {
+        (CompoundOp::Tp, CompoundOp::Tp) => true,
+        (CompoundOp::Dv, CompoundOp::Dv) => true,
+        (CompoundOp::Kd, CompoundOp::Kd) => true,
+        (CompoundOp::Bv, CompoundOp::Bv) => true,
+        (CompoundOp::Av, CompoundOp::Av) => true,
+        _ => false,
+    }
+}
+
+fn determinative_eq(a : DeterminativeKind, b : DeterminativeKind) -> bool {
+    match (a, b) {
+        (DeterminativeKind::AngleTuple, DeterminativeKind::AngleTuple) => true,
+        (DeterminativeKind::Formula, DeterminativeKind::Formula) => true,
+        (DeterminativeKind::Constraint, DeterminativeKind::Constraint) => true,
+        (DeterminativeKind::Precondition, DeterminativeKind::Precondition) => true,
+        (DeterminativeKind::Quotation, DeterminativeKind::Quotation) => true,
+        (DeterminativeKind::Temporal, DeterminativeKind::Temporal) => true,
+        _ => false,
+    }
+}
+
+fn bracket_side_eq(a : BracketSide, b : BracketSide) -> bool {
+    match (a, b) {
+        (BracketSide::Open, BracketSide::Open) => true,
+        (BracketSide::Close, BracketSide::Close) => true,
+        _ => false,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § High-level convenience helpers
+// ───────────────────────────────────────────────────────────────────────
+
+// `cursor_check_kind_class(c, predicate)` — generic check via predicate.
+// Useful for testing classes like `is-keyword` or `is-evidence` without
+// re-spelling token_kind_eq.
+fn cursor_check_kind_class(c : &TokenCursor, pred : fn(TokenKind) -> bool) -> bool {
+    pred(cursor_peek(c).kind)
+}
+
+// `is_punct_open_brace(k)` — predicate: `{`.
+fn is_punct_open_brace(k : TokenKind) -> bool {
+    match k { TokenKind::LBrace => true, _ => false }
+}
+
+// `is_punct_close_brace(k)` — predicate: `}`.
+fn is_punct_close_brace(k : TokenKind) -> bool {
+    match k { TokenKind::RBrace => true, _ => false }
+}
+
+// `is_punct_open_paren(k)` — predicate: `(`.
+fn is_punct_open_paren(k : TokenKind) -> bool {
+    match k { TokenKind::LParen => true, _ => false }
+}
+
+// `is_punct_close_paren(k)` — predicate: `)`.
+fn is_punct_close_paren(k : TokenKind) -> bool {
+    match k { TokenKind::RParen => true, _ => false }
+}
+
+// `is_keyword(k)` — predicate: any Keyword variant.
+fn is_keyword(k : TokenKind) -> bool {
+    match k { TokenKind::Keyword(_) => true, _ => false }
+}
+
+// `is_keyword_kind(k, kw)` — predicate: matches a specific keyword.
+fn is_keyword_kind(k : TokenKind, kw : Keyword) -> bool {
+    match k {
+        TokenKind::Keyword(actual) => keyword_eq(actual, kw),
+        _                          => false,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers (worked examples)
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : a fresh cursor at empty input is at Eof.
+fn _example_empty_cursor_is_eof() -> bool {
+    let toks = Vec::<Token>::new() ;
+    let c = cursor_new(toks) ;
+    cursor_is_eof(&c)
+}
+
+// Worked example : peek does not advance ; bump does.
+fn _example_peek_then_bump_idempotent(c : &mut TokenCursor) -> bool {
+    let p1 = cursor_peek(c) ;
+    let p2 = cursor_peek(c) ;
+    let consumed = cursor_bump(c) ;
+    span_eq(p1.span, p2.span) && span_eq(p1.span, consumed.span)
+}
+
+// `span_eq(a, b)` — structural equality on spans (helper for tests).
+fn span_eq(a : Span, b : Span) -> bool {
+    a.lo == b.lo && a.hi == b.hi
+}
