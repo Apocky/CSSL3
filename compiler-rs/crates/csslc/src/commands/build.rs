@@ -190,16 +190,23 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                 );
                 return ExitCode::from(exit_code::USER_ERROR);
             }
-            // Invoke linker.
+            // Invoke linker. T11-D319 : auto-discover + default-link cssl-rt
+            // staticlib so the loa_startup.rs ctor (`.CRT$XCU` / `.init_array`
+            // initializer) activates without requiring CSSL-side FFI calls.
+            // The build-log surface adds a "+ cssl-rt" suffix when discovery
+            // succeeded so the user can confirm the runtime is wired in.
+            let rt_linked = crate::linker::discover_cssl_rt_staticlib().is_some();
             match crate::linker::link(&[obj_path.clone()], &output_path, &[]) {
                 Ok(()) => {
+                    let rt_tag = if rt_linked { " + cssl-rt" } else { "" };
                     eprintln!(
-                        "csslc: build {} → {} : {} MIR fn(s) → {} bytes (object, backend={}) → linked exe",
+                        "csslc: build {} → {} : {} MIR fn(s) → {} bytes (object, backend={}) → linked exe{}",
                         path.display(),
                         output_path.display(),
                         mir_fn_count,
                         bytes.len(),
                         args.backend.label(),
+                        rt_tag,
                     );
                 }
                 Err(e) => {
