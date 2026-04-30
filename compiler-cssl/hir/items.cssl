@@ -4,13 +4,14 @@
 //
 // CSSLv3 stage-1 self-host : HIR item-shape IN CSSL.
 // Mirror-of   : compiler-rs/crates/cssl-hir/src/item.rs
-// Wave-slice  : Wave-E2-α (W-Eα · hir-in-cssl FIRST SLICE — T11-D241).
+// Wave-slice  : Wave-E2-α (W-Eα · hir-in-cssl FIRST SLICE — T11-D241)
+//               + Wave-E2-δ (placeholder→Full rationalization — T11-D265).
 // Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
 //               compiler-cssl/hir/symbol.cssl (Symbol)
-//               stdlib Vec ; stdlib Option ; stdlib String
-//               + FORWARD-DECLARED placeholder shells for HirSpan / HirAttr /
-//                 HirExpr / HirBlock / HirPattern / HirType / HirEffectRow
-//                 (sibling Wave-E slices replace these w/ canonical bodies).
+//               compiler-cssl/hir/expr.cssl   (HirExprFull / HirBlockFull)
+//               compiler-cssl/hir/pat.cssl    (HirPatternFull)
+//               compiler-cssl/hir/ty.cssl     (HirTypeFull / HirEffectRowFull)
+//               stdlib Vec ; stdlib Option ; stdlib String.
 //
 // § PRIME_DIRECTIVE preserved : HIR item-structs are pure-data records
 //   describing the SHAPE of every top-level declaration. They expose NO
@@ -22,30 +23,33 @@
 // § DESIGN
 //   Item-kind STRUCTS mirror compiler-rs/crates/cssl-hir/src/item.rs 1:1.
 //   Each item carries :
-//     - span        : source-position range
+//     - span        : source-position range (HirSpan, defined here as the
+//                     canonical cross-cutting span record)
 //     - def         : DefId for the item's identity (Impl + Use have NO DefId)
 //     - visibility  : pub/private flag (HirVisibility)
 //     - attrs       : Vec<HirAttr> for `#[attribute]` annotations
 //     - name        : the declared identifier (Symbol) when present
 //     - body-fields : kind-specific (e.g., generics / fields / variants)
 //
+//   W-E2-δ : the W-E2-α placeholder shells for HirType / HirEffectRow /
+//   HirPattern / HirExpr / HirBlock have been REMOVED. All field-types
+//   below now reference the canonical W-E2-β `*Full`-suffixed records
+//   (HirTypeFull / HirEffectRowFull / HirPatternFull / HirExprFull /
+//   HirBlockFull) defined in expr.cssl / pat.cssl / ty.cssl. HirSpan +
+//   HirAttr remain canonical to this module — they're cross-cutting
+//   infrastructure referenced by every sibling slice.
+//
 // § STAGE-0 SOURCE-LEVEL NOTES
 //   1. ENUM PAYLOADS : `enum HirItem { Fn(HirFn) ; Struct(HirStruct) ; ... }`
 //      mirrors the Rust source directly (S6-B2 enum surface).
-//   2. FORWARD-DECLARED PLACEHOLDERS : sibling Wave-E slices land HirAttr /
-//      HirExpr / HirBlock / HirPattern / HirType / HirEffectRow. Until those
-//      land we declare MINIMAL placeholder structs with HirId + a marker
-//      ; downstream slices REPLACE them with full bodies.
-//   3. HIR-SPAN PLACEHOLDER : `HirSpan { source_id, start, end }` until the
-//      canonical `cssl_parse::span::Span` lands.
-//   4. NO `&str` IN STRUCT FIELDS : owned `String` for any string-typed
+//   2. NO `&str` IN STRUCT FIELDS : owned `String` for any string-typed
 //      field. Symbol is the preferred handle for textual identity.
-//   5. DEFAULTS via FACTORY-FN : `hir_generics_empty()` since derive-Default
+//   3. DEFAULTS via FACTORY-FN : `hir_generics_empty()` since derive-Default
 //      not yet landed.
 //
 // § INVARIANTS  (stage-0)
 //   - Every Rust-mirror item-struct appears here under the same name +
-//     same field-set (modulo placeholder substitutions).
+//     same field-set.
 //   - hir_item_def_id(item) returns Some(d) iff kind has a DefId
 //     (Fn/Struct/Enum/Interface/Effect/Handler/TypeAlias/Const/Module → Some ;
 //     Impl/Use → None).
@@ -55,11 +59,13 @@
 module com.apocky.compiler.hir.items
 
 // ───────────────────────────────────────────────────────────────────────
-// § HirSpan — source-position placeholder.
+// § HirSpan — source-position range.
 // ───────────────────────────────────────────────────────────────────────
 
 // `HirSpan` is the source-position range attached to every HIR node.
-// Sibling Wave-E parser slice lands the canonical Span type.
+// Canonical to this module ; sibling slices (expr.cssl / pat.cssl / ty.cssl /
+// cap_check.cssl / ifc.cssl / infer.cssl / infer_full.cssl) all reference
+// THIS HirSpan as the single cross-cutting span record.
 struct HirSpan {
     source_id : u32,
     start     : u32,
@@ -70,17 +76,18 @@ fn hir_span_new(source_id : u32, start : u32, end : u32) -> HirSpan {
     HirSpan { source_id : source_id, start : start, end : end }
 }
 
-// Synthetic-span sentinel for placeholder / desugared nodes.
+// Synthetic-span sentinel for desugared / synthesized nodes.
 fn hir_span_dummy() -> HirSpan {
     HirSpan { source_id : 0u32, start : 0u32, end : 0u32 }
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// § Forward-declared placeholders (HirAttr / HirType / HirEffectRow /
-//   HirPattern / HirExpr / HirBlock).
+// § HirAttr — `#[attribute]` record.
 // ───────────────────────────────────────────────────────────────────────
 
-// `HirAttr` is the placeholder for an `#[attribute]` record.
+// `HirAttr` records a single `#[attribute]` annotation on an item, expr,
+// pattern, or fn-param. Canonical to this module ; sibling slices reference
+// THIS HirAttr as the single cross-cutting attribute record.
 struct HirAttr {
     id   : HirId,
     name : Symbol,
@@ -89,81 +96,6 @@ struct HirAttr {
 
 fn hir_attr_new(id : HirId, name : Symbol, args : String) -> HirAttr {
     HirAttr { id : id, name : name, args : args }
-}
-
-// `HirTypeKind` placeholder — sibling slice expands w/ full variant set.
-enum HirTypeKind {
-    Infer,
-    Placeholder,
-}
-
-// `HirType` placeholder — replaced by the canonical type-tree in a sibling slice.
-struct HirType {
-    span : HirSpan,
-    id   : HirId,
-    kind : HirTypeKind,
-}
-
-fn hir_type_infer(span : HirSpan, id : HirId) -> HirType {
-    HirType { span : span, id : id, kind : HirTypeKind::Infer }
-}
-
-// `HirEffectRow` placeholder — effect-row annotation on a fn signature.
-struct HirEffectRow {
-    span    : HirSpan,
-    id      : HirId,
-    effects : Vec<HirType>,
-}
-
-// `HirPatternKind` placeholder.
-enum HirPatternKind {
-    Wildcard,
-    Placeholder,
-}
-
-// `HirPattern` placeholder — replaced by full pattern-tree in sibling slice.
-struct HirPattern {
-    span : HirSpan,
-    id   : HirId,
-    kind : HirPatternKind,
-}
-
-fn hir_pattern_wildcard(span : HirSpan, id : HirId) -> HirPattern {
-    HirPattern { span : span, id : id, kind : HirPatternKind::Wildcard }
-}
-
-// `HirExprKind` placeholder.
-enum HirExprKind {
-    Unit,
-    Placeholder,
-}
-
-// `HirExpr` placeholder — replaced by expr-tree in sibling slice.
-struct HirExpr {
-    span : HirSpan,
-    id   : HirId,
-    kind : HirExprKind,
-}
-
-fn hir_expr_unit(span : HirSpan, id : HirId) -> HirExpr {
-    HirExpr { span : span, id : id, kind : HirExprKind::Unit }
-}
-
-// `HirBlock` placeholder — `{ stmts ... ; tail-expr }` block.
-struct HirBlock {
-    span  : HirSpan,
-    id    : HirId,
-    stmts : Vec<HirExpr>,
-    tail  : Option<HirExpr>,
-}
-
-fn hir_block_empty(span : HirSpan, id : HirId) -> HirBlock {
-    HirBlock {
-        span  : span,
-        id    : id,
-        stmts : Vec::new::<HirExpr>(),
-        tail  : None,
-    }
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -199,8 +131,8 @@ struct HirGenericParam {
     id      : HirId,
     name    : Symbol,
     kind    : HirGenericParamKind,
-    bounds  : Vec<HirType>,
-    default : Option<HirType>,
+    bounds  : Vec<HirTypeFull>,
+    default : Option<HirTypeFull>,
 }
 
 // Generic-parameter list attached to a fn / struct / enum / interface /
@@ -221,8 +153,8 @@ fn hir_generics_empty() -> HirGenerics {
 // One entry in a `where` clause attached to a fn / impl / interface / etc.
 struct HirWhereClause {
     span   : HirSpan,
-    ty     : HirType,
-    bounds : Vec<HirType>,
+    ty     : HirTypeFull,
+    bounds : Vec<HirTypeFull>,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -233,9 +165,9 @@ struct HirFnParam {
     span    : HirSpan,
     id      : HirId,
     attrs   : Vec<HirAttr>,
-    pat     : HirPattern,
-    ty      : HirType,
-    default : Option<HirExpr>,
+    pat     : HirPatternFull,
+    ty      : HirTypeFull,
+    default : Option<HirExprFull>,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -252,10 +184,10 @@ struct HirFn {
     name          : Symbol,
     generics      : HirGenerics,
     params        : Vec<HirFnParam>,
-    return_ty     : Option<HirType>,
-    effect_row    : Option<HirEffectRow>,
+    return_ty     : Option<HirTypeFull>,
+    effect_row    : Option<HirEffectRowFull>,
     where_clauses : Vec<HirWhereClause>,
-    body          : Option<HirBlock>,
+    body          : Option<HirBlockFull>,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -270,7 +202,7 @@ struct HirFieldDecl {
     attrs      : Vec<HirAttr>,
     visibility : HirVisibility,
     name       : Option<Symbol>,
-    ty         : HirType,
+    ty         : HirTypeFull,
 }
 
 // Struct-body kind : Unit (no fields), Tuple (positional), Named.
@@ -325,8 +257,8 @@ struct HirAssocTypeDecl {
     def     : DefId,
     attrs   : Vec<HirAttr>,
     name    : Symbol,
-    bounds  : Vec<HirType>,
-    default : Option<HirType>,
+    bounds  : Vec<HirTypeFull>,
+    default : Option<HirTypeFull>,
 }
 
 // `interface Name<Generics> : SuperBounds { ... }` item-shape.
@@ -338,7 +270,7 @@ struct HirInterface {
     attrs        : Vec<HirAttr>,
     name         : Symbol,
     generics     : HirGenerics,
-    super_bounds : Vec<HirType>,
+    super_bounds : Vec<HirTypeFull>,
     fns          : Vec<HirFn>,
     assoc_types  : Vec<HirAssocTypeDecl>,
     consts       : Vec<HirConst>,
@@ -354,7 +286,7 @@ struct HirAssocTypeDef {
     def   : DefId,
     attrs : Vec<HirAttr>,
     name  : Symbol,
-    ty    : HirType,
+    ty    : HirTypeFull,
 }
 
 // `impl<Generics> Trait for Self { items }` item-shape.
@@ -364,8 +296,8 @@ struct HirImpl {
     span          : HirSpan,
     attrs         : Vec<HirAttr>,
     generics      : HirGenerics,
-    trait_        : Option<HirType>,
-    self_ty       : HirType,
+    trait_        : Option<HirTypeFull>,
+    self_ty       : HirTypeFull,
     where_clauses : Vec<HirWhereClause>,
     fns           : Vec<HirFn>,
     assoc_types   : Vec<HirAssocTypeDef>,
@@ -397,10 +329,10 @@ struct HirHandler {
     name           : Symbol,
     generics       : HirGenerics,
     params         : Vec<HirFnParam>,
-    handled_effect : HirType,
-    return_ty      : Option<HirType>,
+    handled_effect : HirTypeFull,
+    return_ty      : Option<HirTypeFull>,
     ops            : Vec<HirFn>,
-    return_clause  : Option<HirBlock>,
+    return_clause  : Option<HirBlockFull>,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -415,7 +347,7 @@ struct HirTypeAlias {
     attrs      : Vec<HirAttr>,
     name       : Symbol,
     generics   : HirGenerics,
-    ty         : HirType,
+    ty         : HirTypeFull,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -452,8 +384,8 @@ struct HirConst {
     visibility : HirVisibility,
     attrs      : Vec<HirAttr>,
     name       : Symbol,
-    ty         : HirType,
-    value      : HirExpr,
+    ty         : HirTypeFull,
+    value      : HirExprFull,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -576,7 +508,8 @@ fn hir_module_empty(span : HirSpan) -> HirModule {
 
 // ───────────────────────────────────────────────────────────────────────
 // § Tests embedded as documentation + worked examples.
-//   Mirror the Rust `mod tests` block at the end of item.rs.
+//   Mirror the Rust `mod tests` block at the end of item.rs + extend with
+//   W-E2-δ unification round-trips that exercise the items↔expr↔ty surface.
 // ───────────────────────────────────────────────────────────────────────
 
 // Mirror : `visibility_variants`.
@@ -598,7 +531,7 @@ fn _example_arena_allocates_def_ids() -> bool {
 fn _example_item_impl_and_use_have_no_def_id() -> bool {
     let span = hir_span_dummy();
     let id_h = hir_id_dummy();
-    let placeholder_ty = hir_type_infer(span, id_h);
+    let placeholder_ty = hir_type_full_infer(span, id_h);
 
     let imp = HirItem::Impl(HirImpl {
         span          : span,
@@ -636,4 +569,131 @@ fn _example_hir_module_empty_initial_state() -> bool {
     let h_zero = arena_hir_count(m.arena) == 0u32;
     let d_zero = arena_def_count(m.arena) == 0u32;
     if items_empty { if attrs_empty { if path_none { if h_zero { d_zero } else { false } } else { false } } else { false } } else { false }
+}
+
+// W-E2-δ test #1 : HirFnParam carries HirPatternFull pat + HirTypeFull ty +
+// optional HirExprFull default — exercises items↔pat↔ty↔expr unification.
+fn _example_w_e2_delta_fnparam_unifies_full_records() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+
+    let pat = hir_pat_wildcard_full(span, id);
+    let ty  = hir_type_full_infer(span, id);
+    let default_lit = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+
+    let p = HirFnParam {
+        span    : span,
+        id      : id,
+        attrs   : Vec::new::<HirAttr>(),
+        pat     : pat,
+        ty      : ty,
+        default : Some(default_lit),
+    };
+
+    let pat_ok = hir_pat_kind_tag(p.pat) == 0u32;          // wildcard tag = 0
+    let ty_ok  = hir_type_kind_tag(p.ty) == 8u32;           // infer tag = 8
+    let def_ok = match p.default {
+        Some(e) => hir_expr_kind_tag(e) == 0u32,            // literal tag = 0
+        None    => false,
+    };
+
+    if pat_ok { if ty_ok { def_ok } else { false } } else { false }
+}
+
+// W-E2-δ test #2 : HirFn body = HirBlockFull tail HirExprFull —
+// exercises items↔expr-block unification at a fn item.
+fn _example_w_e2_delta_fn_body_block_unifies() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let (a0, def) = arena_fresh_def_id(arena_new());
+    let _ = a0;
+
+    let return_ty = hir_type_full_unit(span, id);
+    let block     = hir_block_full_empty(span, id);
+
+    let f = HirFn {
+        span          : span,
+        def           : def,
+        visibility    : HirVisibility::Public,
+        attrs         : Vec::new::<HirAttr>(),
+        name          : symbol_from_raw(7u32),
+        generics      : hir_generics_empty(),
+        params        : Vec::new::<HirFnParam>(),
+        return_ty     : Some(return_ty),
+        effect_row    : None,
+        where_clauses : Vec::new::<HirWhereClause>(),
+        body          : Some(block),
+    };
+
+    let ret_ok = match f.return_ty {
+        Some(t) => hir_type_is_unit(t),
+        None    => false,
+    };
+    let body_ok = match f.body {
+        Some(b) => vec_is_empty::<HirExprFull>(b.stmts),
+        None    => false,
+    };
+    let pub_ok = hir_visibility_is_public(f.visibility);
+
+    if ret_ok { if body_ok { pub_ok } else { false } } else { false }
+}
+
+// W-E2-δ test #3 : HirConst carries HirTypeFull ty + HirExprFull value —
+// exercises items↔ty↔expr unification at a const-decl site.
+fn _example_w_e2_delta_const_unifies_ty_and_value() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let (_a, def) = arena_fresh_def_id(arena_new());
+
+    let ty    = hir_type_full_infer(span, id);
+    let value = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+
+    let c = HirConst {
+        span       : span,
+        def        : def,
+        visibility : HirVisibility::Private,
+        attrs      : Vec::new::<HirAttr>(),
+        name       : symbol_from_raw(11u32),
+        ty         : ty,
+        value      : value,
+    };
+
+    let item = HirItem::Const(c);
+    let span_ok = match hir_item_span(item) {
+        HirSpan { source_id : 0u32, start : 0u32, end : 0u32 } => true,
+        _ => false,
+    };
+    let def_ok = match hir_item_def_id(item) { Some(_) => true, None => false };
+    let name_ok = match hir_item_name(item) { Some(_) => true, None => false };
+
+    if span_ok { if def_ok { name_ok } else { false } } else { false }
+}
+
+// W-E2-δ test #4 : HirImpl carries HirTypeFull self_ty + Option<trait_> —
+// exercises items↔ty unification at an impl-block.
+fn _example_w_e2_delta_impl_self_ty_is_full_type() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let self_ty = hir_type_full_infer(span, id);
+    let trait_ty = hir_type_full_infer(span, id);
+
+    let imp = HirImpl {
+        span          : span,
+        attrs         : Vec::new::<HirAttr>(),
+        generics      : hir_generics_empty(),
+        trait_        : Some(trait_ty),
+        self_ty       : self_ty,
+        where_clauses : Vec::new::<HirWhereClause>(),
+        fns           : Vec::new::<HirFn>(),
+        assoc_types   : Vec::new::<HirAssocTypeDef>(),
+        consts        : Vec::new::<HirConst>(),
+    };
+
+    let self_ok = hir_type_is_infer(imp.self_ty);
+    let trait_ok = match imp.trait_ {
+        Some(t) => hir_type_is_infer(t),
+        None    => false,
+    };
+
+    if self_ok { trait_ok } else { false }
 }

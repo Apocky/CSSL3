@@ -1744,14 +1744,14 @@ fn _example_match_expr_arms_unify() -> bool {
     let arm_a = HirMatchArm {
         span  : span,
         attrs : Vec::new::<HirAttr>(),
-        pat   : hir_pattern_wildcard(span, id),
+        pat   : hir_pat_wildcard_full(span, id),
         guard : None,
         body  : arm_body_a,
     };
     let arm_b = HirMatchArm {
         span  : span,
         attrs : Vec::new::<HirAttr>(),
-        pat   : hir_pattern_wildcard(span, id),
+        pat   : hir_pat_wildcard_full(span, id),
         guard : None,
         body  : arm_body_b,
     };

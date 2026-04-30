@@ -238,9 +238,9 @@ fn hir_array_expr_repeat(elem : HirExprFull, len : HirExprFull) -> HirArrayExpr 
 
 struct HirLambdaParam {
     span : HirSpan,
-    pat  : HirPattern,
+    pat  : HirPatternFull,
     // None → `_` (to be inferred).
-    ty   : Option<HirType>,
+    ty   : Option<HirTypeFull>,
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -250,7 +250,7 @@ struct HirLambdaParam {
 struct HirMatchArm {
     span  : HirSpan,
     attrs : Vec<HirAttr>,
-    pat   : HirPattern,
+    pat   : HirPatternFull,
     // None → no guard ; Some(g) → `if g`.
     guard : Option<HirExprFull>,
     body  : HirExprFull,
@@ -342,7 +342,7 @@ struct HirPathExpr {
 struct HirCallExpr {
     callee    : Vec<HirExprFull>,  // singleton
     args      : Vec<HirCallArg>,
-    type_args : Vec<HirType>,
+    type_args : Vec<HirTypeFull>,
 }
 
 // `obj.field` — receiver + field-name.
@@ -386,7 +386,7 @@ struct HirMatchExpr {
 
 // `for pat in iter { body }`.
 struct HirForExpr {
-    pat  : HirPattern,
+    pat  : HirPatternFull,
     iter : Vec<HirExprFull>,  // singleton
     body : HirBlockFull,
 }
@@ -421,7 +421,7 @@ struct HirContinueExpr {
 // `|params| -> return { body }`.
 struct HirLambdaExpr {
     params    : Vec<HirLambdaParam>,
-    return_ty : Option<HirType>,
+    return_ty : Option<HirTypeFull>,
     body      : Vec<HirExprFull>,  // singleton
 }
 
@@ -435,7 +435,7 @@ struct HirAssignExpr {
 // `expr as Ty`.
 struct HirCastExpr {
     expr : Vec<HirExprFull>,  // singleton
-    ty   : HirType,
+    ty   : HirTypeFull,
 }
 
 // `lo..hi` / `lo..=hi` / `lo..` / `..hi`.
@@ -613,7 +613,7 @@ fn hir_expr_call(
     id        : HirId,
     callee    : HirExprFull,
     args      : Vec<HirCallArg>,
-    type_args : Vec<HirType>,
+    type_args : Vec<HirTypeFull>,
 ) -> HirExprFull {
     let callee_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), callee);
     HirExprFull {
@@ -844,7 +844,7 @@ fn hir_expr_cast(
     span : HirSpan,
     id   : HirId,
     expr : HirExprFull,
-    ty   : HirType,
+    ty   : HirTypeFull,
 ) -> HirExprFull {
     let e_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), expr);
     HirExprFull {
