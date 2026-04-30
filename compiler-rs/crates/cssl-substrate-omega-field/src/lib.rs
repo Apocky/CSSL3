@@ -105,6 +105,7 @@
 #![allow(dead_code)]
 
 pub mod attestation;
+pub mod cell_v3;
 pub mod field_cell;
 pub mod lambda;
 pub mod legacy;
@@ -117,6 +118,11 @@ pub mod psi;
 pub mod sigma_overlay;
 pub mod sparse_grid;
 
+pub use cell_v3::{
+    v2_to_v3, v3_to_v2, CapTable, CapTableRow, FieldCellV3, KanBandRow, KanBandTable,
+    CAP_HANDLE_NULL, ENTROPY_BAND_MASK, ENTROPY_BAND_SHIFT, EPOCH_BITS, EPOCH_MASK,
+    KAN_BAND_HANDLE_NULL, RESERVED_E_MASK, RESERVED_E_SHIFT,
+};
 pub use field_cell::{FieldCell, M_PAYLOAD_MASK, M_TAG_PGA, PATTERN_HANDLE_NULL};
 pub use lambda::{LambdaSimpleOverlay, LambdaToken, SimpleLambdaSlot};
 pub use legacy::{LegacyTensor, LegacyTensorMigration, MigrationError, ScalarFacet};
@@ -167,6 +173,16 @@ mod crate_invariants {
     #[test]
     fn field_cell_aligned_to_8() {
         assert_eq!(core::mem::align_of::<FieldCell>(), 8);
+    }
+
+    #[test]
+    fn field_cell_v3_is_88_bytes() {
+        assert_eq!(core::mem::size_of::<FieldCellV3>(), 88);
+    }
+
+    #[test]
+    fn field_cell_v3_aligned_to_8() {
+        assert_eq!(core::mem::align_of::<FieldCellV3>(), 8);
     }
 
     #[test]
