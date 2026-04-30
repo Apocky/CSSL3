@@ -12,7 +12,9 @@
 //!   - Or `a | b | c`
 //!   - Range `a..b` / `a..=b`
 
-use cssl_ast::{DiagnosticBag, Literal, LiteralKind, Pattern, PatternField, PatternKind, Span};
+use cssl_ast::{
+    DiagnosticBag, Ident, Literal, LiteralKind, Pattern, PatternField, PatternKind, Span,
+};
 use cssl_lex::{BracketKind, BracketSide, Keyword, TokenKind};
 
 use crate::common::{parse_colon_path, parse_ident};
@@ -108,6 +110,20 @@ fn parse_atomic_pattern(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -
             let mutable = cursor.eat(TokenKind::Keyword(Keyword::Mut)).is_some();
             let inner = Box::new(parse_atomic_pattern(cursor, bag));
             PatternKind::Ref { mutable, inner }
+        }
+        // `self` keyword as fn-parameter binding pattern.
+        // § Mirrors Rust grammar : bare `self` (no `&` / `&mut` prefix) binds the
+        //   implicit method receiver. Trait-dispatch (T11-D99) resolves the binding's
+        //   type from the impl-block self-type-leading-segment, so we emit a normal
+        //   Binding here and let the source-text slice through `Ident.span` re-slice
+        //   to literal "self" downstream.
+        // § DEFERRED : `&self` / `&mut self` method-syntax-borrow forms — out of slice.
+        TokenKind::Keyword(Keyword::SelfValue) => {
+            cursor.bump();
+            PatternKind::Binding {
+                mutable: false,
+                name: Ident { span: start.span },
+            }
         }
         // path → variant / struct / binding
         TokenKind::Ident => parse_path_pattern(cursor, bag),
@@ -321,5 +337,108 @@ mod tests {
         } else {
             panic!("expected Or");
         }
+    }
+
+    // ─ T11-D243 (W-A6) : `self`-keyword as fn-param binding pattern ─────────
+
+    /// Bare `self` parses to a `Binding` whose `Ident.span` re-slices to "self".
+    #[test]
+    fn self_keyword_binding_pattern() {
+        let (f, toks) = prep("self");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_pattern(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "no diagnostics expected for `self`");
+        let PatternKind::Binding { mutable, name } = p.kind else {
+            panic!("expected Binding for `self`, got {:?}", p.kind);
+        };
+        assert!(!mutable, "`self` is not mutable by default");
+        let text = f
+            .slice(name.span.start, name.span.end)
+            .expect("ident span in source bounds");
+        assert_eq!(text, "self", "Ident.span must re-slice to literal `self`");
+    }
+
+    /// `self` is not consumed greedily — the `parse_pattern` returns a single
+    /// Binding and leaves following tokens for the caller (so fn-param-list works).
+    #[test]
+    fn self_then_comma_leaves_comma_for_caller() {
+        let (_f, toks) = prep("self, x");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_pattern(&mut c, &mut bag);
+        assert!(matches!(p.kind, PatternKind::Binding { .. }));
+        // Comma should remain on the cursor for the param-list driver to consume.
+        assert!(
+            c.check(cssl_lex::TokenKind::Comma),
+            "comma after `self` must remain unconsumed"
+        );
+    }
+
+    /// `fn unwrap(self) -> T { ... }` — full item parse round-trip via `parse_item`.
+    #[test]
+    fn self_in_fn_param_list_full_parse() {
+        use crate::rust_hybrid::item;
+        let src = "fn unwrap(self) -> i32 { 0 }";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let item_opt = item::parse_item(&mut c, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "no diagnostics expected for `fn unwrap(self)`"
+        );
+        let Some(cssl_ast::Item::Fn(fn_item)) = item_opt else {
+            panic!("expected Item::Fn for `fn unwrap(self) ...`");
+        };
+        assert_eq!(fn_item.params.len(), 1, "one param `self`");
+        assert!(matches!(
+            fn_item.params[0].pat.kind,
+            PatternKind::Binding { mutable: false, .. }
+        ));
+    }
+
+    /// `fn map(self, f : F) -> U { ... }` — `self` as first of multi-param.
+    #[test]
+    fn self_first_of_multi_param() {
+        use crate::rust_hybrid::item;
+        let src = "fn map(self, f : F) -> U { f }";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let item_opt = item::parse_item(&mut c, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "no diagnostics for `fn map(self, f : F)`"
+        );
+        let Some(cssl_ast::Item::Fn(fn_item)) = item_opt else {
+            panic!("expected Item::Fn for `fn map(self, f : F) ...`");
+        };
+        assert_eq!(fn_item.params.len(), 2);
+        assert!(matches!(
+            fn_item.params[0].pat.kind,
+            PatternKind::Binding { mutable: false, .. }
+        ));
+        assert!(matches!(
+            fn_item.params[1].pat.kind,
+            PatternKind::Binding { mutable: false, .. }
+        ));
+    }
+
+    /// Idempotency check : pre-existing identifier-binding behavior is unchanged
+    /// — `x` does NOT become a `self`-binding.
+    #[test]
+    fn plain_ident_still_binds_to_x() {
+        let (f, toks) = prep("x");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_pattern(&mut c, &mut bag);
+        let PatternKind::Binding { name, .. } = p.kind else {
+            panic!("expected Binding for `x`");
+        };
+        let text = f.slice(name.span.start, name.span.end).expect("in bounds");
+        assert_eq!(text, "x");
     }
 }
