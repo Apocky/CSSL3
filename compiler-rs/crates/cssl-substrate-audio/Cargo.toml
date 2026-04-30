@@ -10,3 +10,5 @@ name = "cssl_substrate_audio"
 path = "src/lib.rs"
 
 [dependencies]
+thiserror = { workspace = true }
+smallvec = { workspace = true }
