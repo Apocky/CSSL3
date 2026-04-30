@@ -214,6 +214,13 @@ impl PassPipeline {
     ///      `try_op_lower::lower_try_ops_in_module`. Wired AFTER the
     ///      tagged-union ABI pass so the cell layout is in place.
     ///   10. structured-cfg-validator (final sanity-check ; must-pass)
+    ///   11. **effect-row-validator** (T11-D285 / W-E5-2) : closes the W-E4
+    ///      fixed-point gate gap 2/5. Walks every `func.call` op + verifies
+    ///      caller-row ⊇ callee-row per § 04 sub-effect discipline.
+    ///      Wired AFTER `MonomorphizationPass` + `AdTransformPass` (so
+    ///      synthesized call-sites are present) + AFTER `IfcLoweringPass`
+    ///      (so consent attributes are stamped) + BEFORE `BiometricEgressCheck`
+    ///      (whose absolute biometric refusal fires regardless).
     #[must_use]
     pub fn canonical() -> Self {
         let mut p = Self::new();
@@ -222,6 +229,11 @@ impl PassPipeline {
         p.push(Box::new(IfcLoweringPass));
         p.push(Box::new(SmtDischargeQueuePass));
         p.push(Box::new(TelemetryProbeInsertPass));
+        // § T11-D285 (W-E5-2) — effect-row validator. Wired BEFORE the
+        // hard-no biometric refusal (whose existence is enforced at runtime
+        // regardless) so violations surface cleanly during the type-effect
+        // pass-block, not interleaved with structural-CFG checks.
+        p.push(Box::new(crate::effect_row_check::EffectRowValidatorPass));
         p.push(Box::new(
             crate::biometric_egress_check::BiometricEgressCheck,
         ));
@@ -777,9 +789,11 @@ mod tests {
         // canonical set, raising the pass-count from 8 to 10.
         // T11-D245 (W-A8 / Wave-C1 carry-forward) : `string-abi` joins the
         // canonical set, raising the pass-count from 10 to 11.
+        // T11-D285 (W-E5-2) : `effect-row-validator` joins the canonical set,
+        // raising the pass-count from 11 to 12.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 11);
+        assert_eq!(names.len(), 12);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
@@ -791,6 +805,7 @@ mod tests {
         assert!(names.contains(&"string-abi"));
         assert!(names.contains(&"try-op-lower"));
         assert!(names.contains(&"structured-cfg-validator"));
+        assert!(names.contains(&"effect-row-validator"));
     }
 
     #[test]
@@ -798,11 +813,12 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 11 stock passes should execute on an empty module without
+        // All 12 stock passes should execute on an empty module without
         // errors. (T11-D138 added enforces-sigma-at-cell-touches ;
         // W-B-RECOGNIZER added tagged-union-abi + try-op-lower ;
-        // T11-D245 W-A8 added string-abi.)
-        assert_eq!(results.len(), 11);
+        // T11-D245 W-A8 added string-abi ;
+        // T11-D285 W-E5-2 added effect-row-validator.)
+        assert_eq!(results.len(), 12);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the
@@ -1106,7 +1122,7 @@ mod tests {
 
     #[test]
     fn pipeline_runs_wave_a_passes_in_order() {
-        // Smoke : the canonical pipeline executes all 10 passes including
+        // Smoke : the canonical pipeline executes all 12 passes including
         // both W-B-RECOGNIZER additions. Using the run_all path we should
         // see results from BOTH passes in the result-sequence.
         let p = PassPipeline::canonical();
