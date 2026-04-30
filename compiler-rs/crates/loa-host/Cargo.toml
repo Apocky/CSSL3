@@ -1,0 +1,39 @@
+[package]
+name                   = "loa-host"
+description            = "Labyrinth-of-Apockalypse — host runtime · DM director + GM narrator · stage-0 bootstrap (T11-LOA-HOST-4 W-LOA-host-dm)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § T11-LOA-HOST-4 (W-LOA-host-dm) — DM director + GM narrator engine-internal
+# intelligence runtime. Mirrors `scenes/dm_director.cssl` + `scenes/gm_narrator.cssl`
+# (authoritative design specs ; this Rust code is the stage-0 bootstrap).
+#
+# § ROLE
+#   At runtime the engine autonomously paces encounters (DM 4-state FSM),
+#   narrates the environment + dialogue (GM procedural pools), and proposes
+#   events without needing Claude API calls. Apocky directive : "do we have
+#   the internal intelligence DM/GM set up?" — yes ; in this crate.
+#
+# § ASSUMPTION
+#   Sibling W-LOA-host-render lands the loa-host crate skeleton + render
+#   modules. This SHIM Cargo.toml unblocks the parallel-fanout — when sibling
+#   lands its render.rs / input.rs / mcp.rs modules, the integration slice
+#   merges them under the `pub mod` declarations in lib.rs (additive).
+#
+# § DEPENDENCIES
+#   `cssl-rt` — log_event() telemetry sink.
+#
+#   No `glam` dep : workspace doesn't export glam at this revision ; the DM
+#   director + GM narrator use a stage-0-local `Vec3` (struct of three f32)
+#   defined in `dm_runtime.rs`. When the workspace adopts glam (likely via
+#   the render pipeline or render-v2) sibling slices can swap the local
+#   `Vec3` for `glam::Vec3` without API churn — the narrator only consumes
+#   the `(x, y, z)` triplet.
+[dependencies]
+cssl-rt = { path = "../cssl-rt" }
