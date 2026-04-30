@@ -45,6 +45,14 @@ pub mod native_hello_world_gate;
 pub mod stage1_scaffold;
 pub mod stdlib_gate;
 pub mod trait_dispatch_gate;
+// § Wave-B integration : Wave-A end-to-end gate (W-B-ENDTOEND, fd05f32) —
+// golden tests for A1 tagged-union + A2 typed-memref + A3 ?-op + A4
+// exhaustiveness + A5 heap-dealloc. 9 always-on pipeline-cleanliness tests
+// + 7 #[ignore]'d JIT-execute tests gated on full body_lower + pipeline
+// integration (the W-B-RECOGNIZER slice f1bcecf is now in tree ; the
+// JIT tests can be un-ignored in a follow-up slice that wires the cgen
+// emit-phase end-to-end).
+pub mod wave_a_endtoend_gate;
 
 use cssl_ast::{Module, SourceFile, SourceId, Surface};
 use cssl_hir::HirModule;
