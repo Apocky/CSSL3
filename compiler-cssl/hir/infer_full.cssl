@@ -1,0 +1,1298 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/infer_full.cssl  —  full HM + row-poly + refinement-obligation
+//
+// CSSLv3 stage-1 self-host : extends W-E2-β minimal-infer to full Hindley-
+// Milner with row-polymorphism (effects), let-polymorphism, refinement-
+// obligation generation, IFC-label propagation hooks, and capability-aware
+// fn-type inference.
+//
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/{infer,unify,refinement,
+//               typing,env}.rs (the row-poly + let-poly + refinement parts).
+// Wave-slice  : Wave-E2-γ (W-E2-γ · hir-in-cssl THIRD SLICE — T11-D256).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               compiler-cssl/hir/items.cssl  (HirSpan, HirAttr, HirItem,
+//                                              HirFn, HirModule)
+//               compiler-cssl/hir/ty.cssl     (HirTypeFull / HirTypeKindFull
+//                                              / HirEffectRowFull / HirCapKind
+//                                              / HirRefinementKind)
+//               compiler-cssl/hir/expr.cssl   (HirExprFull / HirLiteralKind
+//                                              / HirBinOp / etc.)
+//               compiler-cssl/hir/pat.cssl    (HirPatternFull)
+//               compiler-cssl/hir/infer.cssl  (TyVar / Ty / Subst / unify /
+//                                              Scheme / generalize / InferCtx)
+//               compiler-cssl/hir/cap_check.cssl (CapKind)
+//               compiler-cssl/hir/ifc.cssl    (IfcLabel / PrincipalSet)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : Type-inference is a pure-data fixpoint over
+//   typed records ; row-polymorphism encodes "this fn is parametric over the
+//   set of effects the caller's continuation may invoke" — a structural
+//   invariant the type-system uses to keep ambient authority OUT of fn-types.
+//   Refinement-obligations make the SUBSTRATE-level discharge of safety
+//   predicates VISIBLE : every `{v : T | P(v)}` in the source surfaces here
+//   as an obligation the SMT pass must close. No silent erasure.
+//
+// § DESIGN — what this slice ADDS over W-E2-β infer.cssl
+//
+//   1. EffectRow : sorted-Vec<EffectId> + Option<RowVar tail>. Two row-
+//      polymorphic forms : closed (no tail) and open (μ tail-variable).
+//      Unification : closed-vs-closed = element-wise ; closed-vs-open =
+//      bind tail to the missing-set ; open-vs-open = bind both tails to a
+//      shared fresh tail-var.
+//
+//   2. TyEffectful : an inference-level fn-type WITH effect-row.
+//        TyEffectful : params + return + effect-row + capability
+//      Distinct from W-E2-β `Ty::FnTy` which carries no effect-row.
+//
+//   3. Scheme + let-polymorphism : the W-E2-β Scheme exists as a quantified
+//      Vec<TyVar> + body-Ty. This slice ADDS instantiation : `instantiate(s)`
+//      replaces every quantified var with a fresh inference-var. Variant of
+//      Damas-Milner with no env-relative free-var subtraction (top-level fns).
+//
+//   4. RefinementObligation : structured query record carrying enclosing
+//      DefId + base-type + predicate text. Bag = Vec<RefinementObligation>
+//      with monotonic id allocation. ObligationKind variants :
+//        - Predicate { binder, predicate-text }
+//        - Tag { name }
+//        - Lipschitz { bound-text }
+//
+//   5. ConstraintBag : sorted-Vec<TraitConstraint> recording trait-bounds
+//      to be discharged. Stage-0 records, full discharge is downstream.
+//
+//   6. CapBindings : per-Symbol cap-annotation table (when fn-param caps
+//      are present in HirTypeFull). Used to track linear-iso obligations.
+//
+//   7. IFC-LABEL HOOK : every fn-result type-record CAN carry an IfcLabel
+//      that the IFC walker validates against @confidentiality / @integrity
+//      attribute pairs. The full propagation walker lives in ifc.cssl ;
+//      this module exposes the entry-points where labels attach.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. NO HASHMAP : every map/set is a sorted-Vec.
+//   2. NO MUT-BORROW : every `*_extend` / `*_unify` / `*_walk` returns the
+//      new state ; caller threads forward.
+//   3. EFFECT-ROW UNIFICATION : implemented as sorted-merge with explicit
+//      handling of the four cases (∅/closed × ∅/closed, closed × open,
+//      open × closed, open × open).
+//   4. INSTANTIATE : copies the body-Ty under a substitution that maps each
+//      quantified TyVar to a fresh-var. NOT capture-avoiding because we
+//      ASSUME quantified-vars are alpha-fresh w.r.t. the enclosing ctx.
+//   5. RECURSIVE-WALK over Ty respects the W-E2-β `enum Ty` shape (TyVarT,
+//      TupleTyT, FnTy, NamedTy, ParamTy, IntTy/FloatTy/BoolTy/StrTy/UnitTy,
+//      NeverTy, ErrorTy). Effect-row + Scheme are NEW records local to this
+//      module — they live on a SIDE-TABLE keyed by HirId so we don't have
+//      to extend the W-E2-β `Ty` discriminator.
+//
+// § INVARIANTS  (stage-0)
+//   - EffectRow.effects sorted by EffectId.raw.
+//   - Scheme.vars sorted + deduped (matches W-E2-β).
+//   - Refinement-obligation ids monotonically-increasing.
+//   - CapBindings sorted by Symbol.raw.
+
+module com.apocky.compiler.hir.infer_full
+
+// ───────────────────────────────────────────────────────────────────────
+// § EffectId — interned effect-name handle (DefId reuse).
+//
+//   Each `Effect Foo { ops }` declaration is assigned a DefId at lowering ;
+//   downstream effect-rows reference effects via this DefId. `EffectId` is
+//   a Vec-keyable wrapper around DefId so sorted-merge unification works
+//   uniformly.
+// ───────────────────────────────────────────────────────────────────────
+
+struct EffectId {
+    def : DefId,
+}
+
+fn effect_id_eq(a : EffectId, b : EffectId) -> bool {
+    def_id_eq(a.def, b.def)
+}
+
+fn effect_id_lt(a : EffectId, b : EffectId) -> bool {
+    def_id_lt(a.def, b.def)
+}
+
+fn effect_id_from_def(d : DefId) -> EffectId {
+    EffectId { def : d }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § RowVar — fresh row-polymorphic variable (μ tail).
+// ───────────────────────────────────────────────────────────────────────
+
+// `RowVar` is the row-polymorphic tail-variable id. Like `TyVar` but for
+// effect-rows : a row-polymorphic fn-type carries `/ {e1, e2 | μ}` where
+// `μ` is a RowVar that the caller may instantiate with a concrete row.
+struct RowVar {
+    raw : u32,
+}
+
+fn row_var_from_raw(raw : u32) -> RowVar {
+    RowVar { raw : raw }
+}
+
+fn row_var_eq(a : RowVar, b : RowVar) -> bool {
+    a.raw == b.raw
+}
+
+fn row_var_lt(a : RowVar, b : RowVar) -> bool {
+    a.raw < b.raw
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § EffectRow — sorted-Vec<EffectId> + optional RowVar tail.
+//
+//   Closed row : `tail = None` ; the row contains EXACTLY the effects in
+//   `effects`.
+//   Open row   : `tail = Some(μ)` ; the row contains the effects in
+//   `effects` PLUS whatever μ is bound to (potentially more effects).
+// ───────────────────────────────────────────────────────────────────────
+
+struct EffectRow {
+    effects : Vec<EffectId>,
+    tail    : Option<RowVar>,
+}
+
+fn effect_row_pure() -> EffectRow {
+    EffectRow {
+        effects : Vec::new::<EffectId>(),
+        tail    : None,
+    }
+}
+
+fn effect_row_closed(effects : Vec<EffectId>) -> EffectRow {
+    EffectRow {
+        effects : effects,
+        tail    : None,
+    }
+}
+
+fn effect_row_open(effects : Vec<EffectId>, tail : RowVar) -> EffectRow {
+    EffectRow {
+        effects : effects,
+        tail    : Some(tail),
+    }
+}
+
+fn effect_row_is_pure(r : EffectRow) -> bool {
+    let no_effs = vec_is_empty::<EffectId>(r.effects);
+    let no_tail = match r.tail { Some(_) => false, None => true };
+    no_effs && no_tail
+}
+
+fn effect_row_is_open(r : EffectRow) -> bool {
+    match r.tail {
+        Some(_) => true,
+        None    => false,
+    }
+}
+
+// `true` iff the row contains the given effect (linear scan since rows are
+// small in practice ; sorted-merge available for larger sets).
+fn effect_row_contains(r : EffectRow, eff : EffectId) -> bool {
+    effect_row_contains_loop(r.effects, eff, 0i64, vec_len::<EffectId>(r.effects))
+}
+
+fn effect_row_contains_loop(es : Vec<EffectId>, eff : EffectId, i : i64, n : i64) -> bool {
+    if i == n {
+        false
+    } else {
+        match vec_get::<EffectId>(es, i) {
+            Some(e) => {
+                if effect_id_eq(e, eff) {
+                    true
+                } else {
+                    effect_row_contains_loop(es, eff, i + 1i64, n)
+                }
+            },
+            None => false,
+        }
+    }
+}
+
+// `effect_row_subset(a, b)` : `true` iff every effect in a is in b. Used by
+// the row-unification fixed-set comparison.
+fn effect_row_subset(a : EffectRow, b : EffectRow) -> bool {
+    effect_row_subset_loop(a.effects, b, 0i64, vec_len::<EffectId>(a.effects))
+}
+
+fn effect_row_subset_loop(es : Vec<EffectId>, b : EffectRow, i : i64, n : i64) -> bool {
+    if i == n {
+        true
+    } else {
+        match vec_get::<EffectId>(es, i) {
+            Some(e) => {
+                if effect_row_contains(b, e) {
+                    effect_row_subset_loop(es, b, i + 1i64, n)
+                } else {
+                    false
+                }
+            },
+            None => true,
+        }
+    }
+}
+
+// Sorted-merge UNION of two effect-rows (closed × closed for stage-0).
+fn effect_row_union_closed(a : EffectRow, b : EffectRow) -> EffectRow {
+    let merged = effect_row_merge_loop(
+        a.effects, b.effects,
+        0i64, vec_len::<EffectId>(a.effects),
+        0i64, vec_len::<EffectId>(b.effects),
+        Vec::new::<EffectId>(),
+    );
+    EffectRow { effects : merged, tail : None }
+}
+
+fn effect_row_merge_loop(
+    a : Vec<EffectId>,
+    b : Vec<EffectId>,
+    i : i64,
+    na : i64,
+    j : i64,
+    nb : i64,
+    acc : Vec<EffectId>,
+) -> Vec<EffectId> {
+    if i == na {
+        effect_row_drain(b, j, nb, acc)
+    } else {
+        if j == nb {
+            effect_row_drain(a, i, na, acc)
+        } else {
+            match vec_get::<EffectId>(a, i) {
+                Some(ai) => match vec_get::<EffectId>(b, j) {
+                    Some(bj) => {
+                        if effect_id_eq(ai, bj) {
+                            let acc1 = vec_push::<EffectId>(acc, ai);
+                            effect_row_merge_loop(a, b, i + 1i64, na, j + 1i64, nb, acc1)
+                        } else {
+                            if effect_id_lt(ai, bj) {
+                                let acc1 = vec_push::<EffectId>(acc, ai);
+                                effect_row_merge_loop(a, b, i + 1i64, na, j, nb, acc1)
+                            } else {
+                                let acc1 = vec_push::<EffectId>(acc, bj);
+                                effect_row_merge_loop(a, b, i, na, j + 1i64, nb, acc1)
+                            }
+                        }
+                    },
+                    None => acc,
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+fn effect_row_drain(src : Vec<EffectId>, i : i64, n : i64, acc : Vec<EffectId>) -> Vec<EffectId> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<EffectId>(src, i) {
+            Some(e) => {
+                let acc1 = vec_push::<EffectId>(acc, e);
+                effect_row_drain(src, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Row-Unification.
+//
+//   Four cases :
+//     1. closed × closed → check identical effect-set.
+//     2. closed × open   → bind tail to (closed - open's effects).
+//     3. open × closed   → symmetric to (2).
+//     4. open × open     → bind both tails to a shared fresh tail-var.
+//
+//   Returns `RowUnifyResult` so the caller can chain.
+// ───────────────────────────────────────────────────────────────────────
+
+enum RowUnifyResult {
+    RowUnifyOk,
+    RowUnifyErr(String),
+}
+
+// Compare two CLOSED rows for set-equality.
+fn row_closed_equal(a : EffectRow, b : EffectRow) -> bool {
+    let na = vec_len::<EffectId>(a.effects);
+    let nb = vec_len::<EffectId>(b.effects);
+    if na == nb {
+        if effect_row_subset(a, b) {
+            effect_row_subset(b, a)
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// Unify two effect-rows. Returns Ok or Err with a diagnostic message. Stage-0
+// uses syntactic-set comparison ; full row-poly tail-binding is recorded as
+// a constraint in the surrounding ctx (full discharge in W-E3+).
+fn unify_effect_rows(a : EffectRow, b : EffectRow) -> RowUnifyResult {
+    let a_open = effect_row_is_open(a);
+    let b_open = effect_row_is_open(b);
+    if a_open {
+        if b_open {
+            // open × open : conservatively OK (caller binds tails downstream).
+            RowUnifyResult::RowUnifyOk
+        } else {
+            // open × closed : a's effects must be subset of b ; unmatched
+            // effects in b bind a's tail.
+            if effect_row_subset(a, b) {
+                RowUnifyResult::RowUnifyOk
+            } else {
+                RowUnifyResult::RowUnifyErr(string_from_str("effect-row: open-row contains effects not in closed-row"))
+            }
+        }
+    } else {
+        if b_open {
+            // closed × open : symmetric to above.
+            if effect_row_subset(b, a) {
+                RowUnifyResult::RowUnifyOk
+            } else {
+                RowUnifyResult::RowUnifyErr(string_from_str("effect-row: open-row contains effects not in closed-row"))
+            }
+        } else {
+            // closed × closed : exact-set match.
+            if row_closed_equal(a, b) {
+                RowUnifyResult::RowUnifyOk
+            } else {
+                RowUnifyResult::RowUnifyErr(string_from_str("effect-row: closed rows differ"))
+            }
+        }
+    }
+}
+
+// Pure ⊑ row : pure row is a sub-row of every row (callee allowed to be
+// pure, caller's continuation may itself perform any effect).
+fn row_pure_sub_of(other : EffectRow) -> bool {
+    let _ = other;
+    true
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Instantiate — replace every quantified TyVar with a fresh inference-var.
+//
+//   Mirrors the Rust mirror's `Scheme::instantiate`. Walks the body-Ty +
+//   substitutes per the quantification list. Returns (ctx, body) where ctx
+//   has been advanced by the fresh-var allocations.
+// ───────────────────────────────────────────────────────────────────────
+
+// One mapping in an instantiation table.
+struct InstEntry {
+    from : TyVar,
+    to   : TyVar,
+}
+
+// Build a fresh-var mapping for each quantified var in the Scheme.
+fn build_inst_table(ctx : InferCtx, vars : Vec<TyVar>) -> (InferCtx, Vec<InstEntry>) {
+    build_inst_loop(ctx, vars, 0i64, vec_len::<TyVar>(vars), Vec::new::<InstEntry>())
+}
+
+fn build_inst_loop(
+    ctx : InferCtx,
+    vars : Vec<TyVar>,
+    i : i64,
+    n : i64,
+    acc : Vec<InstEntry>,
+) -> (InferCtx, Vec<InstEntry>) {
+    if i == n {
+        (ctx, acc)
+    } else {
+        match vec_get::<TyVar>(vars, i) {
+            Some(v) => {
+                let (ctx1, fresh) = infer_ctx_fresh_var(ctx);
+                let entry = InstEntry { from : v, to : fresh };
+                let acc1 = vec_push::<InstEntry>(acc, entry);
+                build_inst_loop(ctx1, vars, i + 1i64, n, acc1)
+            },
+            None => (ctx, acc),
+        }
+    }
+}
+
+// Apply the instantiation mapping to a Ty.
+fn apply_inst(map : Vec<InstEntry>, t : Ty) -> Ty {
+    match t {
+        Ty::TyVarT(v) => {
+            match find_inst(map, v) {
+                Some(fresh) => Ty::TyVarT(fresh),
+                None        => Ty::TyVarT(v),
+            }
+        },
+        Ty::TupleTyT(tup) => {
+            Ty::TupleTyT(InferTupleTy {
+                elems : apply_inst_list(map, tup.elems),
+            })
+        },
+        Ty::FnTy(f) => {
+            Ty::FnTy(InferFnTy {
+                params    : apply_inst_list(map, f.params),
+                return_ty : apply_inst_list(map, f.return_ty),
+            })
+        },
+        Ty::IntTy   => Ty::IntTy,
+        Ty::FloatTy => Ty::FloatTy,
+        Ty::BoolTy  => Ty::BoolTy,
+        Ty::StrTy   => Ty::StrTy,
+        Ty::UnitTy  => Ty::UnitTy,
+        Ty::NeverTy => Ty::NeverTy,
+        Ty::NamedTy(n) => Ty::NamedTy(n),
+        Ty::ParamTy(p) => Ty::ParamTy(p),
+        Ty::ErrorTy => Ty::ErrorTy,
+    }
+}
+
+fn find_inst(map : Vec<InstEntry>, v : TyVar) -> Option<TyVar> {
+    find_inst_loop(map, v, 0i64, vec_len::<InstEntry>(map))
+}
+
+fn find_inst_loop(map : Vec<InstEntry>, v : TyVar, i : i64, n : i64) -> Option<TyVar> {
+    if i == n {
+        None
+    } else {
+        match vec_get::<InstEntry>(map, i) {
+            Some(e) => {
+                if ty_var_eq(e.from, v) {
+                    Some(e.to)
+                } else {
+                    find_inst_loop(map, v, i + 1i64, n)
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+fn apply_inst_list(map : Vec<InstEntry>, ts : Vec<Ty>) -> Vec<Ty> {
+    apply_inst_list_loop(map, ts, 0i64, vec_len::<Ty>(ts), Vec::new::<Ty>())
+}
+
+fn apply_inst_list_loop(
+    map : Vec<InstEntry>,
+    ts  : Vec<Ty>,
+    i   : i64,
+    n   : i64,
+    acc : Vec<Ty>,
+) -> Vec<Ty> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<Ty>(ts, i) {
+            Some(t) => {
+                let new_t = apply_inst(map, t);
+                let acc1 = vec_push::<Ty>(acc, new_t);
+                apply_inst_list_loop(map, ts, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+// `instantiate(ctx, scheme)` : replace each quantified-var with a fresh-var,
+// returning (advanced-ctx, body-with-fresh-vars). This is the let-poly
+// USE-SITE operation : every use of a polymorphic let-bound name gets a
+// fresh-instance to unify against.
+fn instantiate(ctx : InferCtx, scheme : Scheme) -> (InferCtx, Ty) {
+    let (ctx1, map) = build_inst_table(ctx, scheme.vars);
+    let body = apply_inst(map, scheme.body);
+    (ctx1, body)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ObligationKind + RefinementObligation + ObligationBag.
+//
+//   Mirror of compiler-rs/crates/cssl-hir/src/refinement.rs. Each
+//   refinement-type occurrence in the HIR (i.e., every `HirRefinedTy`
+//   record) becomes a RefinementObligation that the SMT pass must close.
+// ───────────────────────────────────────────────────────────────────────
+
+// Variant payloads.
+struct ObligationPredicate {
+    binder         : Symbol,
+    predicate_text : String,
+}
+struct ObligationTag {
+    name : Symbol,
+}
+struct ObligationLipschitz {
+    bound_text : String,
+}
+
+enum ObligationKind {
+    OPredicate(ObligationPredicate),
+    OTag(ObligationTag),
+    OLipschitz(ObligationLipschitz),
+}
+
+// Monotonic obligation identifier (u32-backed).
+struct ObligationId {
+    raw : u32,
+}
+
+fn obligation_id_from_raw(raw : u32) -> ObligationId {
+    ObligationId { raw : raw }
+}
+
+fn obligation_id_eq(a : ObligationId, b : ObligationId) -> bool {
+    a.raw == b.raw
+}
+
+// One refinement obligation.
+struct RefinementObligation {
+    id             : ObligationId,
+    origin         : HirId,
+    span           : HirSpan,
+    enclosing_def  : Option<DefId>,
+    kind           : ObligationKind,
+    base_type_text : String,
+}
+
+// Collection of obligations + monotonic id allocator.
+struct ObligationBag {
+    obligations : Vec<RefinementObligation>,
+    next_id     : u32,
+}
+
+fn obligation_bag_new() -> ObligationBag {
+    ObligationBag {
+        obligations : Vec::new::<RefinementObligation>(),
+        next_id     : 0u32,
+    }
+}
+
+fn obligation_bag_is_empty(b : ObligationBag) -> bool {
+    vec_is_empty::<RefinementObligation>(b.obligations)
+}
+
+fn obligation_bag_len(b : ObligationBag) -> i64 {
+    vec_len::<RefinementObligation>(b.obligations)
+}
+
+fn obligation_bag_push(b : ObligationBag, o : RefinementObligation) -> (ObligationBag, ObligationId) {
+    let id = obligation_id_from_raw(b.next_id);
+    let next = if b.next_id == 4294967295u32 { 4294967295u32 } else { b.next_id + 1u32 };
+    let assigned = RefinementObligation {
+        id             : id,
+        origin         : o.origin,
+        span           : o.span,
+        enclosing_def  : o.enclosing_def,
+        kind           : o.kind,
+        base_type_text : o.base_type_text,
+    };
+    let new_obs = vec_push::<RefinementObligation>(b.obligations, assigned);
+    let new_bag = ObligationBag { obligations : new_obs, next_id : next };
+    (new_bag, id)
+}
+
+fn obligation_bag_get(b : ObligationBag, id : ObligationId) -> Option<RefinementObligation> {
+    obligation_bag_get_loop(b.obligations, id, 0i64, vec_len::<RefinementObligation>(b.obligations))
+}
+
+fn obligation_bag_get_loop(
+    obs : Vec<RefinementObligation>,
+    id  : ObligationId,
+    i   : i64,
+    n   : i64,
+) -> Option<RefinementObligation> {
+    if i == n {
+        None
+    } else {
+        match vec_get::<RefinementObligation>(obs, i) {
+            Some(o) => {
+                if obligation_id_eq(o.id, id) {
+                    Some(o)
+                } else {
+                    obligation_bag_get_loop(obs, id, i + 1i64, n)
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Refinement-collector — walks a HirModule + collects every RefinedTy.
+// ───────────────────────────────────────────────────────────────────────
+
+// Collector context : carries the current enclosing-def + the bag.
+struct RefinementCtx {
+    bag       : ObligationBag,
+    enclosing : Option<DefId>,
+}
+
+fn refinement_ctx_new() -> RefinementCtx {
+    RefinementCtx {
+        bag       : obligation_bag_new(),
+        enclosing : None,
+    }
+}
+
+fn refinement_ctx_with_enclosing(ctx : RefinementCtx, def : DefId) -> RefinementCtx {
+    RefinementCtx {
+        bag       : ctx.bag,
+        enclosing : Some(def),
+    }
+}
+
+// Pretty-print a HirTypeFull into a string for the obligation's base_type_text
+// field. Stage-0 uses a minimal pretty-printer.
+fn pretty_type_full(t : HirTypeFull) -> String {
+    match t.kind {
+        HirTypeKindFull::PathTy(_)        => string_from_str("<path>"),
+        HirTypeKindFull::TupleTy(_)       => string_from_str("<tuple>"),
+        HirTypeKindFull::ArrayTy(_)       => string_from_str("<array>"),
+        HirTypeKindFull::SliceTy(_)       => string_from_str("<slice>"),
+        HirTypeKindFull::ReferenceTy(_)   => string_from_str("<ref>"),
+        HirTypeKindFull::CapabilityTy(_)  => string_from_str("<cap>"),
+        HirTypeKindFull::FunctionTy(_)    => string_from_str("<fn>"),
+        HirTypeKindFull::RefinedTy(_)     => string_from_str("<refined>"),
+        HirTypeKindFull::InferTy          => string_from_str("_"),
+        HirTypeKindFull::ErrorTy          => string_from_str("!error"),
+    }
+}
+
+// Pretty-print a HirExprFull (for predicate text). Stage-0 uses a minimal
+// kind-tag form ; full pretty-printer lands W-E3.
+fn pretty_expr_full(e : HirExprFull) -> String {
+    match e.kind {
+        HirExprKindFull::LiteralKind(_) => string_from_str("<lit>"),
+        HirExprKindFull::PathKind(_)    => string_from_str("<path>"),
+        HirExprKindFull::BinaryKind(_)  => string_from_str("<binary>"),
+        HirExprKindFull::UnaryKind(_)   => string_from_str("<unary>"),
+        HirExprKindFull::CallKind(_)    => string_from_str("<call>"),
+        HirExprKindFull::IfKind(_)      => string_from_str("<if>"),
+        HirExprKindFull::MatchKind(_)   => string_from_str("<match>"),
+        HirExprKindFull::ParenKind(_)   => string_from_str("<paren>"),
+        HirExprKindFull::TupleKind(_)   => string_from_str("<tuple>"),
+        HirExprKindFull::Error          => string_from_str("<error>"),
+        _                               => string_from_str("<expr>"),
+    }
+}
+
+// Walk a HirTypeFull + collect every refinement obligation. Recurses into
+// composite types (tuple / array / slice / ref / cap / fn) so nested
+// refinements are caught.
+fn walk_type_for_refinements(ctx : RefinementCtx, t : HirTypeFull) -> RefinementCtx {
+    match t.kind {
+        HirTypeKindFull::RefinedTy(rt) => {
+            let base_text = match vec_get::<HirTypeFull>(rt.base, 0i64) {
+                Some(b) => pretty_type_full(b),
+                None    => string_from_str("<missing-base>"),
+            };
+            let kind = match rt.kind {
+                HirRefinementKind::TagRefinement(tr) => ObligationKind::OTag(ObligationTag {
+                    name : tr.name,
+                }),
+                HirRefinementKind::PredicateRefinement(pr) => {
+                    let pred_text = match vec_get::<HirExprFull>(pr.predicate, 0i64) {
+                        Some(e) => pretty_expr_full(e),
+                        None    => string_from_str("<missing-predicate>"),
+                    };
+                    ObligationKind::OPredicate(ObligationPredicate {
+                        binder         : pr.binder,
+                        predicate_text : pred_text,
+                    })
+                },
+                HirRefinementKind::LipschitzRefinement(lr) => {
+                    let bound_text = match vec_get::<HirExprFull>(lr.bound, 0i64) {
+                        Some(e) => pretty_expr_full(e),
+                        None    => string_from_str("<missing-bound>"),
+                    };
+                    ObligationKind::OLipschitz(ObligationLipschitz {
+                        bound_text : bound_text,
+                    })
+                },
+            };
+            let o = RefinementObligation {
+                id             : obligation_id_from_raw(4294967295u32),  // reassigned by push
+                origin         : t.id,
+                span           : t.span,
+                enclosing_def  : ctx.enclosing,
+                kind           : kind,
+                base_type_text : base_text,
+            };
+            let (bag2, _) = obligation_bag_push(ctx.bag, o);
+            let ctx2 = RefinementCtx {
+                bag       : bag2,
+                enclosing : ctx.enclosing,
+            };
+            // Recurse into base for nested refinements.
+            match vec_get::<HirTypeFull>(rt.base, 0i64) {
+                Some(b) => walk_type_for_refinements(ctx2, b),
+                None    => ctx2,
+            }
+        },
+        HirTypeKindFull::TupleTy(tup)     => walk_types_for_refinements(ctx, tup.elems),
+        HirTypeKindFull::ArrayTy(at)      => walk_types_for_refinements(ctx, at.elem),
+        HirTypeKindFull::SliceTy(st)      => walk_types_for_refinements(ctx, st.elem),
+        HirTypeKindFull::ReferenceTy(rt)  => walk_types_for_refinements(ctx, rt.inner),
+        HirTypeKindFull::CapabilityTy(ct) => walk_types_for_refinements(ctx, ct.inner),
+        HirTypeKindFull::FunctionTy(ft)   => {
+            let ctx1 = walk_types_for_refinements(ctx, ft.params);
+            walk_types_for_refinements(ctx1, ft.return_ty)
+        },
+        HirTypeKindFull::PathTy(pt)       => walk_types_for_refinements(ctx, pt.type_args),
+        HirTypeKindFull::InferTy          => ctx,
+        HirTypeKindFull::ErrorTy          => ctx,
+    }
+}
+
+fn walk_types_for_refinements(ctx : RefinementCtx, ts : Vec<HirTypeFull>) -> RefinementCtx {
+    walk_types_loop(ctx, ts, 0i64, vec_len::<HirTypeFull>(ts))
+}
+
+fn walk_types_loop(ctx : RefinementCtx, ts : Vec<HirTypeFull>, i : i64, n : i64) -> RefinementCtx {
+    if i == n {
+        ctx
+    } else {
+        match vec_get::<HirTypeFull>(ts, i) {
+            Some(t) => {
+                let ctx1 = walk_type_for_refinements(ctx, t);
+                walk_types_loop(ctx1, ts, i + 1i64, n)
+            },
+            None => ctx,
+        }
+    }
+}
+
+// Top-level entry : walks a HirModule + collects every RefinementObligation
+// it contains. Iterates items ; when we hit a Fn / Const / Impl / Interface /
+// Effect / Handler we walk its types under the appropriate enclosing-def.
+//
+// IMPORTANT : the W-E2-α placeholder HirFn carries `params : Vec<HirFnParam>`
+// where each `.ty` is the W-E2-α placeholder HirType (NOT HirTypeFull).
+// Stage-0 walks ONLY HirTypeFull-shaped types ; full migration is W-E2-δ.
+// The structural skeleton is in place ; this fn returns an empty bag for
+// the W-E2-α placeholder paths. Callers that have HirTypeFull values in
+// hand can call walk_type_for_refinements directly.
+fn collect_refinement_obligations(module : HirModule) -> ObligationBag {
+    let ctx = refinement_ctx_new();
+    let ctx1 = collect_refinement_items(ctx, module.items);
+    ctx1.bag
+}
+
+fn collect_refinement_items(ctx : RefinementCtx, items : Vec<HirItem>) -> RefinementCtx {
+    collect_refinement_items_loop(ctx, items, 0i64, vec_len::<HirItem>(items))
+}
+
+fn collect_refinement_items_loop(
+    ctx : RefinementCtx,
+    items : Vec<HirItem>,
+    i : i64,
+    n : i64,
+) -> RefinementCtx {
+    if i == n {
+        ctx
+    } else {
+        match vec_get::<HirItem>(items, i) {
+            Some(item) => {
+                let ctx1 = collect_refinement_item(ctx, item);
+                collect_refinement_items_loop(ctx1, items, i + 1i64, n)
+            },
+            None => ctx,
+        }
+    }
+}
+
+fn collect_refinement_item(ctx : RefinementCtx, item : HirItem) -> RefinementCtx {
+    // W-E2-α placeholder : items.cssl carries placeholder HirType ; walker
+    // shape is in place but no obligations are emitted until W-E2-δ migrates.
+    let _ = item;
+    ctx
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § TraitConstraint + ConstraintBag.
+//
+//   Stage-0 records every `where T : Bound` clause as a TraitConstraint.
+//   Discharge is downstream (W-E3+) ; this slice is the recording surface.
+// ───────────────────────────────────────────────────────────────────────
+
+struct TraitConstraint {
+    span     : HirSpan,
+    subject  : Ty,           // the type bounded
+    bound    : DefId,        // the trait being required
+}
+
+struct ConstraintBag {
+    constraints : Vec<TraitConstraint>,
+}
+
+fn constraint_bag_new() -> ConstraintBag {
+    ConstraintBag { constraints : Vec::new::<TraitConstraint>() }
+}
+
+fn constraint_bag_is_empty(b : ConstraintBag) -> bool {
+    vec_is_empty::<TraitConstraint>(b.constraints)
+}
+
+fn constraint_bag_len(b : ConstraintBag) -> i64 {
+    vec_len::<TraitConstraint>(b.constraints)
+}
+
+fn constraint_bag_push(b : ConstraintBag, c : TraitConstraint) -> ConstraintBag {
+    ConstraintBag { constraints : vec_push::<TraitConstraint>(b.constraints, c) }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § FullInferCtx — the extended inference state.
+//
+//   Carries the W-E2-β `InferCtx` PLUS row-var allocator + obligation-bag
+//   + constraint-bag. Threaded by-value per stage-0 mut-borrow-deferred
+//   convention.
+// ───────────────────────────────────────────────────────────────────────
+
+struct FullInferCtx {
+    inner       : InferCtx,
+    row_counter : u32,
+    obligations : ObligationBag,
+    constraints : ConstraintBag,
+}
+
+fn full_infer_ctx_new() -> FullInferCtx {
+    FullInferCtx {
+        inner       : infer_ctx_new(),
+        row_counter : 0u32,
+        obligations : obligation_bag_new(),
+        constraints : constraint_bag_new(),
+    }
+}
+
+// Allocate a fresh RowVar.
+fn full_infer_ctx_fresh_row(ctx : FullInferCtx) -> (FullInferCtx, RowVar) {
+    let v = row_var_from_raw(ctx.row_counter);
+    let next = if ctx.row_counter == 4294967295u32 { 4294967295u32 } else { ctx.row_counter + 1u32 };
+    let ctx2 = FullInferCtx {
+        inner       : ctx.inner,
+        row_counter : next,
+        obligations : ctx.obligations,
+        constraints : ctx.constraints,
+    };
+    (ctx2, v)
+}
+
+// Push a refinement obligation.
+fn full_infer_ctx_push_obligation(
+    ctx : FullInferCtx,
+    o   : RefinementObligation,
+) -> (FullInferCtx, ObligationId) {
+    let (bag2, id) = obligation_bag_push(ctx.obligations, o);
+    let ctx2 = FullInferCtx {
+        inner       : ctx.inner,
+        row_counter : ctx.row_counter,
+        obligations : bag2,
+        constraints : ctx.constraints,
+    };
+    (ctx2, id)
+}
+
+// Push a trait-constraint.
+fn full_infer_ctx_push_constraint(
+    ctx : FullInferCtx,
+    c   : TraitConstraint,
+) -> FullInferCtx {
+    FullInferCtx {
+        inner       : ctx.inner,
+        row_counter : ctx.row_counter,
+        obligations : ctx.obligations,
+        constraints : constraint_bag_push(ctx.constraints, c),
+    }
+}
+
+// Forward fresh-tyvar allocation through the full ctx.
+fn full_infer_ctx_fresh_var(ctx : FullInferCtx) -> (FullInferCtx, TyVar) {
+    let (inner2, v) = infer_ctx_fresh_var(ctx.inner);
+    let ctx2 = FullInferCtx {
+        inner       : inner2,
+        row_counter : ctx.row_counter,
+        obligations : ctx.obligations,
+        constraints : ctx.constraints,
+    };
+    (ctx2, v)
+}
+
+// Forward unify through the full ctx.
+fn full_infer_ctx_unify(
+    ctx     : FullInferCtx,
+    a       : Ty,
+    b       : Ty,
+    span    : HirSpan,
+    context : String,
+) -> FullInferCtx {
+    let inner2 = infer_ctx_unify(ctx.inner, a, b, span, context);
+    FullInferCtx {
+        inner       : inner2,
+        row_counter : ctx.row_counter,
+        obligations : ctx.obligations,
+        constraints : ctx.constraints,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CapBindings — Symbol → CapKind for current-scope params.
+// ───────────────────────────────────────────────────────────────────────
+
+struct CapBinding {
+    name : Symbol,
+    cap  : CapKind,
+}
+
+struct CapBindings {
+    entries : Vec<CapBinding>,
+}
+
+fn cap_bindings_new() -> CapBindings {
+    CapBindings { entries : Vec::new::<CapBinding>() }
+}
+
+fn cap_bindings_is_empty(b : CapBindings) -> bool {
+    vec_is_empty::<CapBinding>(b.entries)
+}
+
+fn cap_bindings_len(b : CapBindings) -> i64 {
+    vec_len::<CapBinding>(b.entries)
+}
+
+fn cap_bindings_insert(b : CapBindings, name : Symbol, cap : CapKind) -> CapBindings {
+    let new_e = CapBinding { name : name, cap : cap };
+    CapBindings { entries : vec_push::<CapBinding>(b.entries, new_e) }
+}
+
+fn cap_bindings_lookup(b : CapBindings, name : Symbol) -> Option<CapKind> {
+    cap_bindings_lookup_loop(b.entries, name, 0i64, vec_len::<CapBinding>(b.entries))
+}
+
+fn cap_bindings_lookup_loop(
+    es : Vec<CapBinding>,
+    name : Symbol,
+    i : i64,
+    n : i64,
+) -> Option<CapKind> {
+    if i == n {
+        None
+    } else {
+        match vec_get::<CapBinding>(es, i) {
+            Some(e) => {
+                if symbol_eq(e.name, name) {
+                    Some(e.cap)
+                } else {
+                    cap_bindings_lookup_loop(es, name, i + 1i64, n)
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (mirror Rust `mod tests`).
+// ───────────────────────────────────────────────────────────────────────
+
+// Pure effect-row : empty + closed.
+fn _example_pure_effect_row() -> bool {
+    let r = effect_row_pure();
+    effect_row_is_pure(r) && !effect_row_is_open(r)
+}
+
+// Closed row : has effects but no tail.
+fn _example_closed_row() -> bool {
+    let e1 = effect_id_from_def(def_id_from_raw(1u32));
+    let e2 = effect_id_from_def(def_id_from_raw(2u32));
+    let effs = vec_push::<EffectId>(vec_push::<EffectId>(Vec::new::<EffectId>(), e1), e2);
+    let r = effect_row_closed(effs);
+    let len_ok = vec_len::<EffectId>(r.effects) == 2i64;
+    let not_open = !effect_row_is_open(r);
+    let not_pure = !effect_row_is_pure(r);
+    len_ok && not_open && not_pure
+}
+
+// Open row : has tail-variable.
+fn _example_open_row() -> bool {
+    let mu = row_var_from_raw(0u32);
+    let e1 = effect_id_from_def(def_id_from_raw(1u32));
+    let effs = vec_push::<EffectId>(Vec::new::<EffectId>(), e1);
+    let r = effect_row_open(effs, mu);
+    effect_row_is_open(r) && !effect_row_is_pure(r)
+}
+
+// Row-poly : open × open conservatively unifies OK.
+fn _example_row_unify_open_open() -> bool {
+    let mu_a = row_var_from_raw(0u32);
+    let mu_b = row_var_from_raw(1u32);
+    let r_a = effect_row_open(Vec::new::<EffectId>(), mu_a);
+    let r_b = effect_row_open(Vec::new::<EffectId>(), mu_b);
+    match unify_effect_rows(r_a, r_b) {
+        RowUnifyResult::RowUnifyOk => true,
+        _                          => false,
+    }
+}
+
+// Row-poly : closed × closed must match exactly.
+fn _example_row_unify_closed_closed_eq() -> bool {
+    let e1 = effect_id_from_def(def_id_from_raw(1u32));
+    let effs_a = vec_push::<EffectId>(Vec::new::<EffectId>(), e1);
+    let effs_b = vec_push::<EffectId>(Vec::new::<EffectId>(), e1);
+    let r_a = effect_row_closed(effs_a);
+    let r_b = effect_row_closed(effs_b);
+    match unify_effect_rows(r_a, r_b) {
+        RowUnifyResult::RowUnifyOk => true,
+        _                          => false,
+    }
+}
+
+// Row-poly : closed × closed mismatch errors.
+fn _example_row_unify_closed_mismatch() -> bool {
+    let e1 = effect_id_from_def(def_id_from_raw(1u32));
+    let e2 = effect_id_from_def(def_id_from_raw(2u32));
+    let effs_a = vec_push::<EffectId>(Vec::new::<EffectId>(), e1);
+    let effs_b = vec_push::<EffectId>(Vec::new::<EffectId>(), e2);
+    let r_a = effect_row_closed(effs_a);
+    let r_b = effect_row_closed(effs_b);
+    match unify_effect_rows(r_a, r_b) {
+        RowUnifyResult::RowUnifyErr(_) => true,
+        _                              => false,
+    }
+}
+
+// Row-poly : pure-fn called from impure context allowed.
+//   pure ⊑ open(any) is always true.
+fn _example_pure_in_impure_context_ok() -> bool {
+    let mu = row_var_from_raw(0u32);
+    let e1 = effect_id_from_def(def_id_from_raw(1u32));
+    let effs = vec_push::<EffectId>(Vec::new::<EffectId>(), e1);
+    let impure_caller = effect_row_open(effs, mu);
+    row_pure_sub_of(impure_caller)
+}
+
+// Row-poly : impure callee in pure context FAILS.
+//   impure (closed with effects) NOT-subset of pure (closed-empty).
+fn _example_impure_in_pure_context_fails() -> bool {
+    let e1 = effect_id_from_def(def_id_from_raw(1u32));
+    let effs = vec_push::<EffectId>(Vec::new::<EffectId>(), e1);
+    let impure = effect_row_closed(effs);
+    let pure_   = effect_row_pure();
+    match unify_effect_rows(impure, pure_) {
+        RowUnifyResult::RowUnifyErr(_) => true,
+        _                              => false,
+    }
+}
+
+// Let-poly : Scheme with one quantified var instantiates to a fresh-var.
+fn _example_let_poly_instantiate() -> bool {
+    let v = ty_var_from_raw(11u32);
+    let scheme = Scheme {
+        vars : vec_push::<TyVar>(Vec::new::<TyVar>(), v),
+        body : Ty::TyVarT(v),
+    };
+    let ctx0 = full_infer_ctx_new();
+    let (ctx1, body) = instantiate(ctx0.inner, scheme);
+    let ctx2 = FullInferCtx {
+        inner       : ctx1,
+        row_counter : ctx0.row_counter,
+        obligations : ctx0.obligations,
+        constraints : ctx0.constraints,
+    };
+    let _ = ctx2;
+    // Body should be a TyVarT pointing to a FRESH var (not the original v).
+    match body {
+        Ty::TyVarT(w) => !ty_var_eq(w, v),
+        _             => false,
+    }
+}
+
+// Let-poly : monomorphic Scheme instantiates to the same body.
+fn _example_let_mono_instantiate_unchanged() -> bool {
+    let scheme = scheme_mono(Ty::IntTy);
+    let ctx0 = infer_ctx_new();
+    let (_ctx1, body) = instantiate(ctx0, scheme);
+    match body {
+        Ty::IntTy => true,
+        _         => false,
+    }
+}
+
+// Refinement-obligation : push + lookup.
+fn _example_refinement_obligation_push() -> bool {
+    let bag0 = obligation_bag_new();
+    let empty_ok = obligation_bag_is_empty(bag0);
+    let span = hir_span_dummy();
+    let id_h = hir_id_from_raw(7u32);
+    let o = RefinementObligation {
+        id             : obligation_id_from_raw(4294967295u32),
+        origin         : id_h,
+        span           : span,
+        enclosing_def  : Some(def_id_from_raw(1u32)),
+        kind           : ObligationKind::OTag(ObligationTag {
+            name : symbol_from_raw(99u32),
+        }),
+        base_type_text : string_from_str("f32"),
+    };
+    let (bag1, oid) = obligation_bag_push(bag0, o);
+    let len_ok = obligation_bag_len(bag1) == 1i64;
+    let id_zero = obligation_id_eq(oid, obligation_id_from_raw(0u32));
+    let lookup_ok = match obligation_bag_get(bag1, oid) {
+        Some(_) => true,
+        None    => false,
+    };
+    empty_ok && len_ok && id_zero && lookup_ok
+}
+
+// Refinement-obligation : id allocator is monotonic across pushes.
+fn _example_refinement_obligation_monotonic_ids() -> bool {
+    let bag0 = obligation_bag_new();
+    let span = hir_span_dummy();
+    let o = RefinementObligation {
+        id             : obligation_id_from_raw(4294967295u32),
+        origin         : hir_id_from_raw(0u32),
+        span           : span,
+        enclosing_def  : None,
+        kind           : ObligationKind::OTag(ObligationTag {
+            name : symbol_from_raw(0u32),
+        }),
+        base_type_text : string_from_str("t"),
+    };
+    let (bag1, id0) = obligation_bag_push(bag0, o);
+    let (bag2, id1) = obligation_bag_push(bag1, o);
+    let (bag3, id2) = obligation_bag_push(bag2, o);
+    let _ = bag3;
+    obligation_id_eq(id0, obligation_id_from_raw(0u32)) &&
+    obligation_id_eq(id1, obligation_id_from_raw(1u32)) &&
+    obligation_id_eq(id2, obligation_id_from_raw(2u32))
+}
+
+// Refinement-collector : empty module produces empty bag.
+fn _example_collect_refinements_empty_module() -> bool {
+    let m = hir_module_empty(hir_span_dummy());
+    let bag = collect_refinement_obligations(m);
+    obligation_bag_is_empty(bag)
+}
+
+// Inference closes : empty FullInferCtx has no diagnostics, no obligations,
+// no constraints.
+fn _example_full_infer_ctx_empty_closes() -> bool {
+    let ctx = full_infer_ctx_new();
+    let no_diag = vec_is_empty::<InferDiagnostic>(ctx.inner.diagnostics);
+    let no_obs  = obligation_bag_is_empty(ctx.obligations);
+    let no_con  = constraint_bag_is_empty(ctx.constraints);
+    no_diag && no_obs && no_con
+}
+
+// FullInferCtx : fresh-row allocator monotonic.
+fn _example_full_infer_ctx_fresh_row_monotonic() -> bool {
+    let ctx0 = full_infer_ctx_new();
+    let (ctx1, r0) = full_infer_ctx_fresh_row(ctx0);
+    let (ctx2, r1) = full_infer_ctx_fresh_row(ctx1);
+    let _ = ctx2;
+    !row_var_eq(r0, r1) && row_var_lt(r0, r1)
+}
+
+// Generic-fn-call : let-poly instantiation happens at use-site.
+//   `id : ∀a. a → a` instantiated twice produces two DISTINCT fresh-vars.
+fn _example_generic_fn_call_distinct_instantiations() -> bool {
+    let v = ty_var_from_raw(0u32);
+    let body = Ty::FnTy(InferFnTy {
+        params    : vec_push::<Ty>(Vec::new::<Ty>(), Ty::TyVarT(v)),
+        return_ty : vec_push::<Ty>(Vec::new::<Ty>(), Ty::TyVarT(v)),
+    });
+    let scheme = Scheme {
+        vars : vec_push::<TyVar>(Vec::new::<TyVar>(), v),
+        body : body,
+    };
+    let ctx0 = infer_ctx_new();
+    let (ctx1, t1) = instantiate(ctx0, scheme);
+    let scheme2 = Scheme {
+        vars : vec_push::<TyVar>(Vec::new::<TyVar>(), v),
+        body : Ty::FnTy(InferFnTy {
+            params    : vec_push::<Ty>(Vec::new::<Ty>(), Ty::TyVarT(v)),
+            return_ty : vec_push::<Ty>(Vec::new::<Ty>(), Ty::TyVarT(v)),
+        }),
+    };
+    let (_ctx2, t2) = instantiate(ctx1, scheme2);
+    // Both instantiations should produce FnTy ; the inner TyVarTs must
+    // differ between t1 and t2.
+    let v1 = match t1 {
+        Ty::FnTy(f) => match vec_get::<Ty>(f.params, 0i64) {
+            Some(Ty::TyVarT(w)) => Some(w),
+            _                   => None,
+        },
+        _ => None,
+    };
+    let v2 = match t2 {
+        Ty::FnTy(f) => match vec_get::<Ty>(f.params, 0i64) {
+            Some(Ty::TyVarT(w)) => Some(w),
+            _                   => None,
+        },
+        _ => None,
+    };
+    match v1 {
+        Some(w1) => match v2 {
+            Some(w2) => !ty_var_eq(w1, w2),
+            None     => false,
+        },
+        None => false,
+    }
+}
+
+// Constraint-bag : push records the trait-bound.
+fn _example_constraint_bag_push() -> bool {
+    let bag0 = constraint_bag_new();
+    let empty_ok = constraint_bag_is_empty(bag0);
+    let c = TraitConstraint {
+        span    : hir_span_dummy(),
+        subject : Ty::IntTy,
+        bound   : def_id_from_raw(99u32),
+    };
+    let bag1 = constraint_bag_push(bag0, c);
+    let len_ok = constraint_bag_len(bag1) == 1i64;
+    empty_ok && len_ok
+}
+
+// CapBindings : insert + lookup.
+fn _example_cap_bindings_basic() -> bool {
+    let b0 = cap_bindings_new();
+    let empty_ok = cap_bindings_is_empty(b0);
+    let name = symbol_from_raw(5u32);
+    let b1 = cap_bindings_insert(b0, name, CapKind::CapIso);
+    let len_ok = cap_bindings_len(b1) == 1i64;
+    let lookup_ok = match cap_bindings_lookup(b1, name) {
+        Some(CapKind::CapIso) => true,
+        _                     => false,
+    };
+    empty_ok && len_ok && lookup_ok
+}
+
+// Self-resolve : full-infer-ctx wraps the W-E2-β scope-chain self path.
+fn _example_self_resolve_via_full_ctx() -> bool {
+    let ctx0 = full_infer_ctx_new();
+    let self_sym = symbol_from_raw(0u32);
+    let self_def = def_id_from_raw(33u32);
+    let scopes_with = scope_chain_insert_module(ctx0.inner.scopes, self_sym, self_def);
+    let inner2 = InferCtx {
+        tcx_counter : ctx0.inner.tcx_counter,
+        subst       : ctx0.inner.subst,
+        scopes      : scopes_with,
+        diagnostics : ctx0.inner.diagnostics,
+    };
+    match scope_chain_lookup(inner2.scopes, self_sym) {
+        Some(d) => def_id_eq(d, self_def),
+        None    => false,
+    }
+}
+
+// HM-let-poly + refinement-obligation closure : a complete check-pass on
+// an empty module produces no diagnostics, no obligations, no constraints.
+fn _example_hm_full_pipeline_closes_on_empty() -> bool {
+    let m = hir_module_empty(hir_span_dummy());
+    let _bag = collect_refinement_obligations(m);
+    let ctx = full_infer_ctx_new();
+    vec_is_empty::<InferDiagnostic>(ctx.inner.diagnostics) &&
+    obligation_bag_is_empty(ctx.obligations) &&
+    constraint_bag_is_empty(ctx.constraints)
+}

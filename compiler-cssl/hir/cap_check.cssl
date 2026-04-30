@@ -1,0 +1,908 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/cap_check.cssl  —  Pony-6 capability-check pass
+//
+// CSSLv3 stage-1 self-host : capability-validation IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/cap_check.rs
+// Wave-slice  : Wave-E2-γ (W-E2-γ · hir-in-cssl THIRD SLICE — T11-D256).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               compiler-cssl/hir/items.cssl  (HirSpan, HirItem, HirFn, HirFnParam,
+//                                              HirImpl, HirInterface, HirEffect,
+//                                              HirHandler, HirNestedModule)
+//               compiler-cssl/hir/ty.cssl     (HirCapKind, HirTypeFull,
+//                                              HirTypeKindFull, HirCapabilityTy)
+//               compiler-cssl/hir/pat.cssl    (HirPatternFull, HirPatternKindFull)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : Capability checking is a pure structural-walk
+//   over typed records. No side-effect, no surveillance, no global state. The
+//   CapCtx is a plain record threaded by-value through fn / item walks ; the
+//   resulting CapMap is data the caller inspects. Capabilities ENFORCE
+//   substrate sovereignty : iso = uniquely-owned (no aliasing channel),
+//   tag = identity-only (no read channel) — the type-system literally encodes
+//   the absence-of-surveillance invariant.
+//
+// § DESIGN
+//   Pony-6 capability set (mirroring Pony / per `specs/12_CAPABILITIES.csl`) :
+//     iso : isolated · sole-owner-of-mutable     — linear-thread-transferable
+//     trn : transition · sole-mutable-readonly-aliases-OK
+//     ref : ref · multiple-mutable-aliases-OK    — single-thread
+//     val : value · immutable-share-anywhere     — read-channel only
+//     box : box · readonly-view                  — read-channel any-source
+//     tag : tag · identity-only                  — equality-only, no read
+//
+//   Stage-0 + stage-1 : SIGNATURE-LEVEL validation. Walks every fn-param /
+//   fn-return / let-binding ; maps the cap wrapper to a CapMap entry keyed by
+//   HirId. Linear-tracking for iso parameters is recorded as a Vec<HirId>
+//   (BindingId stand-in) ; full body-walk consume-tracking lands at a follow-
+//   up slice (mirrors Rust deferral note in cap_check.rs § DEFERRED).
+//
+//   Coercion lattice (subtype-on-cap) per `cssl_caps::coerce` :
+//     iso →* { iso, trn, ref, val, box, tag }    — iso supertypes ALL
+//     trn → { trn, box, tag }
+//     ref → { ref, box, tag }
+//     val → { val, box, tag }                    — val is shareable-immutable
+//     box → { box, tag }
+//     tag → { tag }                              — tag is bottom of lattice
+//
+//   gen-ref soundness : a generic-cap parameter (ParamCap stand-in) is
+//   compatible iff the constraint subsumes the call-site cap. Stage-0 records
+//   the obligation ; SMT discharge is a downstream slice.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. NO HASHMAP : CapMap uses sorted-Vec lookup keyed by HirId.raw.
+//   2. NO MUT-BORROW : every cap_ctx_* fn returns the new state.
+//   3. SUBTYPE-ERROR : encoded as enum SubtypeError { ok, err(String) }.
+//   4. HEAP-OP NAMES : the "cssl.heap.{alloc,dealloc,realloc}" recogniser
+//      is supplied as a string-equality helper since the stdlib does not
+//      expose pattern-matching on String yet.
+//   5. NESTED-CAP WRAPPER : iso<ref<T>> ⇒ outer cap wins (matches Rust).
+//
+// § INVARIANTS  (stage-0)
+//   - HirCapKind enum has exactly 6 variants (Iso · Trn · RefCap · Val · BoxCap · Tag).
+//   - CapMap entries sorted by HirId.raw ascending ; binary-search lookup.
+//   - LinearTracker stores one BindingId per iso param ; close_scope returns the count.
+
+module com.apocky.compiler.hir.cap_check
+
+// ───────────────────────────────────────────────────────────────────────
+// § CapKind — semantic alias for HirCapKind.
+//
+//   Mirror-of cssl_caps::CapKind. The HIR carries HirCapKind on type-trees ;
+//   downstream cap-passes consume the semantic CapKind. Stage-0 keeps them
+//   structurally identical ; the alias is a typing-discipline marker so call
+//   sites read more cleanly.
+// ───────────────────────────────────────────────────────────────────────
+
+enum CapKind {
+    CapIso,
+    CapTrn,
+    CapRef,
+    CapVal,
+    CapBox,
+    CapTag,
+}
+
+// Translate `HirCapKind` (CST-mirror) to `CapKind` (semantic).
+fn hir_cap_to_semantic(c : HirCapKind) -> CapKind {
+    match c {
+        HirCapKind::Iso    => CapKind::CapIso,
+        HirCapKind::Trn    => CapKind::CapTrn,
+        HirCapKind::RefCap => CapKind::CapRef,
+        HirCapKind::Val    => CapKind::CapVal,
+        HirCapKind::BoxCap => CapKind::CapBox,
+        HirCapKind::Tag    => CapKind::CapTag,
+    }
+}
+
+// CapKind equality.
+fn cap_kind_eq(a : CapKind, b : CapKind) -> bool {
+    match a {
+        CapKind::CapIso => match b { CapKind::CapIso => true, _ => false },
+        CapKind::CapTrn => match b { CapKind::CapTrn => true, _ => false },
+        CapKind::CapRef => match b { CapKind::CapRef => true, _ => false },
+        CapKind::CapVal => match b { CapKind::CapVal => true, _ => false },
+        CapKind::CapBox => match b { CapKind::CapBox => true, _ => false },
+        CapKind::CapTag => match b { CapKind::CapTag => true, _ => false },
+    }
+}
+
+// `true` iff the cap is one of the linear caps (iso / trn) — these participate
+// in linear-use tracking. mirrors `cssl_caps::CapKind::is_linear`.
+fn cap_kind_is_linear(c : CapKind) -> bool {
+    match c {
+        CapKind::CapIso => true,
+        CapKind::CapTrn => true,
+        _               => false,
+    }
+}
+
+// Render CapKind as a String (diagnostic helper).
+fn cap_kind_display(c : CapKind) -> String {
+    match c {
+        CapKind::CapIso => string_from_str("iso"),
+        CapKind::CapTrn => string_from_str("trn"),
+        CapKind::CapRef => string_from_str("ref"),
+        CapKind::CapVal => string_from_str("val"),
+        CapKind::CapBox => string_from_str("box"),
+        CapKind::CapTag => string_from_str("tag"),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Subtype-coercion lattice (Pony-6 alias matrix).
+//
+//   coerce(src, dst) returns true iff a value of cap `src` may be passed
+//   where cap `dst` is expected. Mirrors the Pony-6 alias-matrix used by
+//   the Rust `cssl_caps::coerce`.
+// ───────────────────────────────────────────────────────────────────────
+
+// `true` iff src <: dst per the Pony-6 alias matrix.
+//   iso <: { iso, trn, ref, val, box, tag }
+//   trn <: { trn, box, tag }
+//   ref <: { ref, box, tag }
+//   val <: { val, box, tag }
+//   box <: { box, tag }
+//   tag <: { tag }
+fn cap_coerce(src : CapKind, dst : CapKind) -> bool {
+    match src {
+        CapKind::CapIso => true, // iso → anything
+        CapKind::CapTrn => match dst {
+            CapKind::CapTrn => true,
+            CapKind::CapBox => true,
+            CapKind::CapTag => true,
+            _               => false,
+        },
+        CapKind::CapRef => match dst {
+            CapKind::CapRef => true,
+            CapKind::CapBox => true,
+            CapKind::CapTag => true,
+            _               => false,
+        },
+        CapKind::CapVal => match dst {
+            CapKind::CapVal => true,
+            CapKind::CapBox => true,
+            CapKind::CapTag => true,
+            _               => false,
+        },
+        CapKind::CapBox => match dst {
+            CapKind::CapBox => true,
+            CapKind::CapTag => true,
+            _               => false,
+        },
+        CapKind::CapTag => match dst {
+            CapKind::CapTag => true,
+            _               => false,
+        },
+    }
+}
+
+// `SubtypeError` is the result of a cap-coercion attempt.
+enum SubtypeError {
+    SubtypeOk,
+    SubtypeBad(SubtypeMismatch),
+}
+
+struct SubtypeMismatch {
+    src : CapKind,
+    dst : CapKind,
+}
+
+// Param-subtype check : caller's cap must be coercible into the parameter's cap.
+fn param_subtype_check(caller : CapKind, callee_param : CapKind) -> SubtypeError {
+    if cap_coerce(caller, callee_param) {
+        SubtypeError::SubtypeOk
+    } else {
+        SubtypeError::SubtypeBad(SubtypeMismatch { src : caller, dst : callee_param })
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HeapOpCap — capability-flow for cssl.heap.{alloc,dealloc,realloc}.
+//
+//   T11-D57 mirror : heap-op contract per `specs/12_CAPABILITIES.csl`
+//   § ISO-OWNERSHIP — alloc produces a fresh iso<ptr> ; dealloc consumes
+//   one ; realloc transfers one. Centralizing here keeps every consumer
+//   honest about exactly-once iso flow.
+// ───────────────────────────────────────────────────────────────────────
+
+enum HeapOpCap {
+    HeapProduce,   // alloc : produces iso<ptr>
+    HeapConsume,   // dealloc : consumes iso<ptr>
+    HeapTransfer,  // realloc : consumes input iso, produces fresh iso
+}
+
+// Map a heap-op name → its cap-flow contract. Returns None for non-heap names.
+fn heap_op_capability(op_name : String) -> Option<HeapOpCap> {
+    if string_eq(op_name, string_from_str("cssl.heap.alloc")) {
+        Some(HeapOpCap::HeapProduce)
+    } else {
+        if string_eq(op_name, string_from_str("cssl.heap.dealloc")) {
+            Some(HeapOpCap::HeapConsume)
+        } else {
+            if string_eq(op_name, string_from_str("cssl.heap.realloc")) {
+                Some(HeapOpCap::HeapTransfer)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+// CapKind of a heap-op's RESULT value (alloc / realloc → iso ; dealloc → none).
+fn heap_op_result_cap(op_name : String) -> Option<CapKind> {
+    match heap_op_capability(op_name) {
+        Some(HeapOpCap::HeapProduce)  => Some(CapKind::CapIso),
+        Some(HeapOpCap::HeapTransfer) => Some(CapKind::CapIso),
+        Some(HeapOpCap::HeapConsume)  => None,
+        None                          => None,
+    }
+}
+
+// Closure-capture default : per specs/02_IR.csl § CLOSURE-ENV stage-0
+// captures snapshot-by-value ; the captured slot is `val`. The closure
+// VALUE itself is iso (separate concern recorded on alloc).
+fn closure_capture_default_cap() -> CapKind {
+    CapKind::CapVal
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CapMapEntry + CapMap — HirId → CapKind side-table.
+// ───────────────────────────────────────────────────────────────────────
+
+// One entry in the HirId-keyed cap map.
+struct CapMapEntry {
+    id  : HirId,
+    cap : CapKind,
+}
+
+// `CapMap` : HirId → CapKind side-table. Populated only for cap-bearing
+// HIR nodes (fn-params, let-bindings, fn-returns, struct fields with
+// declared caps). Sorted by HirId.raw for binary-search lookup.
+struct CapMap {
+    entries : Vec<CapMapEntry>,
+}
+
+fn cap_map_new() -> CapMap {
+    CapMap { entries : Vec::new::<CapMapEntry>() }
+}
+
+fn cap_map_is_empty(m : CapMap) -> bool {
+    vec_is_empty::<CapMapEntry>(m.entries)
+}
+
+fn cap_map_len(m : CapMap) -> i64 {
+    vec_len::<CapMapEntry>(m.entries)
+}
+
+// Sorted-Vec insertion-point binary search by HirId.raw.
+fn cap_map_pos(entries : Vec<CapMapEntry>, id : HirId, lo : i64, hi : i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<CapMapEntry>(entries, mid) {
+            Some(e) => {
+                if hir_id_lt(e.id, id) {
+                    cap_map_pos(entries, id, mid + 1i64, hi)
+                } else {
+                    cap_map_pos(entries, id, lo, mid)
+                }
+            },
+            None => lo,
+        }
+    }
+}
+
+// Insert (or overwrite) a CapMap entry. Returns the new map.
+fn cap_map_insert(m : CapMap, id : HirId, cap : CapKind) -> CapMap {
+    let n = vec_len::<CapMapEntry>(m.entries);
+    let pos = cap_map_pos(m.entries, id, 0i64, n);
+    let new_e = CapMapEntry { id : id, cap : cap };
+    if pos < n {
+        match vec_get::<CapMapEntry>(m.entries, pos) {
+            Some(at_pos) => {
+                if hir_id_eq(at_pos.id, id) {
+                    let new_entries = cap_map_replace_at(m.entries, pos, new_e);
+                    CapMap { entries : new_entries }
+                } else {
+                    let new_entries = cap_map_insert_at(m.entries, pos, new_e);
+                    CapMap { entries : new_entries }
+                }
+            },
+            None => m,
+        }
+    } else {
+        CapMap { entries : vec_push::<CapMapEntry>(m.entries, new_e) }
+    }
+}
+
+// Splice replacement at a known index.
+fn cap_map_replace_at(src : Vec<CapMapEntry>, pos : i64, new_e : CapMapEntry) -> Vec<CapMapEntry> {
+    cap_map_replace_loop(src, pos, new_e, vec_len::<CapMapEntry>(src), 0i64, Vec::new::<CapMapEntry>())
+}
+
+fn cap_map_replace_loop(
+    src   : Vec<CapMapEntry>,
+    pos   : i64,
+    new_e : CapMapEntry,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<CapMapEntry>,
+) -> Vec<CapMapEntry> {
+    if i == n {
+        acc
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<CapMapEntry>(acc, new_e);
+            cap_map_replace_loop(src, pos, new_e, n, i + 1i64, acc1)
+        } else {
+            match vec_get::<CapMapEntry>(src, i) {
+                Some(e) => {
+                    let acc1 = vec_push::<CapMapEntry>(acc, e);
+                    cap_map_replace_loop(src, pos, new_e, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Splice insertion at a known index.
+fn cap_map_insert_at(src : Vec<CapMapEntry>, pos : i64, new_e : CapMapEntry) -> Vec<CapMapEntry> {
+    cap_map_insert_at_loop(src, pos, new_e, vec_len::<CapMapEntry>(src), 0i64, Vec::new::<CapMapEntry>())
+}
+
+fn cap_map_insert_at_loop(
+    src   : Vec<CapMapEntry>,
+    pos   : i64,
+    new_e : CapMapEntry,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<CapMapEntry>,
+) -> Vec<CapMapEntry> {
+    if i == n {
+        if pos == n {
+            vec_push::<CapMapEntry>(acc, new_e)
+        } else {
+            acc
+        }
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<CapMapEntry>(acc, new_e);
+            match vec_get::<CapMapEntry>(src, i) {
+                Some(e) => {
+                    let acc2 = vec_push::<CapMapEntry>(acc1, e);
+                    cap_map_insert_at_loop(src, pos, new_e, n, i + 1i64, acc2)
+                },
+                None => acc1,
+            }
+        } else {
+            match vec_get::<CapMapEntry>(src, i) {
+                Some(e) => {
+                    let acc1 = vec_push::<CapMapEntry>(acc, e);
+                    cap_map_insert_at_loop(src, pos, new_e, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Look up a CapKind by HirId. Returns Some(cap) on hit, None on miss.
+fn cap_map_get(m : CapMap, id : HirId) -> Option<CapKind> {
+    cap_map_get_loop(m.entries, id, 0i64, vec_len::<CapMapEntry>(m.entries))
+}
+
+fn cap_map_get_loop(entries : Vec<CapMapEntry>, id : HirId, lo : i64, hi : i64) -> Option<CapKind> {
+    if lo >= hi {
+        None
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<CapMapEntry>(entries, mid) {
+            Some(e) => {
+                if hir_id_eq(e.id, id) {
+                    Some(e.cap)
+                } else {
+                    if hir_id_lt(e.id, id) {
+                        cap_map_get_loop(entries, id, mid + 1i64, hi)
+                    } else {
+                        cap_map_get_loop(entries, id, lo, mid)
+                    }
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § LinearTracker — iso/trn binding consume-tracker (stage-0 stub).
+// ───────────────────────────────────────────────────────────────────────
+
+// One linear binding under tracking.
+struct LinearBinding {
+    id  : HirId,
+    cap : CapKind,
+}
+
+// `LinearTracker` records iso/trn bindings introduced into a scope. A full
+// consume-tracking walk through expression bodies lives in a future slice
+// (T3.4-phase-2.5 mirror). Stage-0 simply collects the set so close_scope
+// can report `(count, leaks)`.
+struct LinearTracker {
+    bindings : Vec<LinearBinding>,
+}
+
+fn linear_tracker_new() -> LinearTracker {
+    LinearTracker { bindings : Vec::new::<LinearBinding>() }
+}
+
+// Register an iso/trn binding for tracking. Caller is expected to gate on
+// `cap_kind_is_linear`. Returns the new tracker.
+fn linear_tracker_introduce(t : LinearTracker, id : HirId, cap : CapKind) -> LinearTracker {
+    let b = LinearBinding { id : id, cap : cap };
+    LinearTracker { bindings : vec_push::<LinearBinding>(t.bindings, b) }
+}
+
+// Close the current scope. Returns the number of bindings that were
+// introduced ; in a full consume-walk this would equal `# leaks`.
+fn linear_tracker_close_scope(t : LinearTracker) -> i64 {
+    vec_len::<LinearBinding>(t.bindings)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CapDiagnostic — a single cap-level diagnostic.
+// ───────────────────────────────────────────────────────────────────────
+
+struct CapDiagnostic {
+    span    : HirSpan,
+    message : String,
+}
+
+fn cap_diagnostic_new(span : HirSpan, message : String) -> CapDiagnostic {
+    CapDiagnostic { span : span, message : message }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CapCtx — threaded cap-checker state.
+// ───────────────────────────────────────────────────────────────────────
+
+struct CapCtx {
+    caps        : CapMap,
+    diagnostics : Vec<CapDiagnostic>,
+    fns_checked : u32,
+}
+
+fn cap_ctx_new() -> CapCtx {
+    CapCtx {
+        caps        : cap_map_new(),
+        diagnostics : Vec::new::<CapDiagnostic>(),
+        fns_checked : 0u32,
+    }
+}
+
+fn cap_ctx_emit(ctx : CapCtx, span : HirSpan, message : String) -> CapCtx {
+    let d = cap_diagnostic_new(span, message);
+    CapCtx {
+        caps        : ctx.caps,
+        diagnostics : vec_push::<CapDiagnostic>(ctx.diagnostics, d),
+        fns_checked : ctx.fns_checked,
+    }
+}
+
+fn cap_ctx_record(ctx : CapCtx, id : HirId, cap : CapKind) -> CapCtx {
+    CapCtx {
+        caps        : cap_map_insert(ctx.caps, id, cap),
+        diagnostics : ctx.diagnostics,
+        fns_checked : ctx.fns_checked,
+    }
+}
+
+fn cap_ctx_inc_fns(ctx : CapCtx) -> CapCtx {
+    let next = if ctx.fns_checked == 4294967295u32 {
+        4294967295u32
+    } else {
+        ctx.fns_checked + 1u32
+    };
+    CapCtx {
+        caps        : ctx.caps,
+        diagnostics : ctx.diagnostics,
+        fns_checked : next,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § top_cap — extract the top-level cap of a HIR type if it's a wrapper.
+// ───────────────────────────────────────────────────────────────────────
+
+// Walk a HIR type and, if its top-level kind is `CapabilityTy`, return the
+// semantic cap. Nested wrappers (iso<ref<T>>) return the OUTER cap (matches
+// Rust mirror : the outer cap wins at stage-0).
+fn top_cap_of_type(t : HirTypeFull) -> Option<CapKind> {
+    match t.kind {
+        HirTypeKindFull::CapabilityTy(ct) => Some(hir_cap_to_semantic(ct.cap)),
+        _                                 => None,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Item-level walkers.
+// ───────────────────────────────────────────────────────────────────────
+
+// `check_capabilities` : entry-point. Walks every fn / impl / interface /
+// effect / handler / module-nested-item ; emits CapMap + diagnostics.
+fn check_capabilities(module : HirModule) -> (CapMap, Vec<CapDiagnostic>) {
+    let ctx = cap_ctx_new();
+    let ctx2 = check_items(ctx, module.items);
+    (ctx2.caps, ctx2.diagnostics)
+}
+
+fn check_items(ctx : CapCtx, items : Vec<HirItem>) -> CapCtx {
+    check_items_loop(ctx, items, 0i64, vec_len::<HirItem>(items))
+}
+
+fn check_items_loop(ctx : CapCtx, items : Vec<HirItem>, i : i64, n : i64) -> CapCtx {
+    if i == n {
+        ctx
+    } else {
+        match vec_get::<HirItem>(items, i) {
+            Some(item) => {
+                let ctx1 = check_item(ctx, item);
+                check_items_loop(ctx1, items, i + 1i64, n)
+            },
+            None => ctx,
+        }
+    }
+}
+
+fn check_item(ctx : CapCtx, item : HirItem) -> CapCtx {
+    match item {
+        HirItem::Fn(f)        => check_fn(ctx, f),
+        HirItem::Impl(i)      => check_fn_list(ctx, i.fns),
+        HirItem::Interface(i) => check_fn_list(ctx, i.fns),
+        HirItem::Effect(e)    => check_fn_list(ctx, e.ops),
+        HirItem::Handler(h)   => check_fn_list(ctx, h.ops),
+        HirItem::Module(m)    => match m.items {
+            Some(sub) => check_items(ctx, sub),
+            None      => ctx,
+        },
+        // Struct / Enum / TypeAlias / Use / Const : no fn-bodies to cap-check
+        // at signature level. Field-cap validation happens per-constructor at
+        // call sites (deferred slice).
+        _ => ctx,
+    }
+}
+
+fn check_fn_list(ctx : CapCtx, fns : Vec<HirFn>) -> CapCtx {
+    check_fn_list_loop(ctx, fns, 0i64, vec_len::<HirFn>(fns))
+}
+
+fn check_fn_list_loop(ctx : CapCtx, fns : Vec<HirFn>, i : i64, n : i64) -> CapCtx {
+    if i == n {
+        ctx
+    } else {
+        match vec_get::<HirFn>(fns, i) {
+            Some(f) => {
+                let ctx1 = check_fn(ctx, f);
+                check_fn_list_loop(ctx1, fns, i + 1i64, n)
+            },
+            None => ctx,
+        }
+    }
+}
+
+// `check_fn` : per-fn cap walker. Walks params + return + body-let-bindings
+// (when body present) ; tracks linear-iso bindings via LinearTracker. Emits
+// diagnostics for unknown caps + structural mismatches.
+//
+// IMPORTANT : the W-E2-α placeholder HirFn carries `params : Vec<HirFnParam>`
+// where each HirFnParam.ty is the W-E2-α placeholder HirType (NOT HirTypeFull).
+// Stage-0 cap-check walks ONLY HirTypeFull-shaped types ; this fn therefore
+// returns ctx unmodified for the W-E2-α placeholder paths, with the cap
+// info recorded ONLY when downstream slices migrate items.cssl to use
+// HirTypeFull. The structural skeleton is in place ; the migration is
+// mechanical (W-E2-δ).
+fn check_fn(ctx : CapCtx, f : HirFn) -> CapCtx {
+    let ctx0 = cap_ctx_inc_fns(ctx);
+    let _tracker = linear_tracker_new();
+    // Param walk (placeholder-types — no caps recorded until items.cssl
+    // migration). Iterates for completeness so the walker shape is in place.
+    let ctx1 = check_fn_params(ctx0, f.params);
+    // Return-ty (Option<HirType placeholder>) — same migration note.
+    let _ = f.return_ty;
+    // Body-statement let-bindings — same migration note.
+    let _ = f.body;
+    ctx1
+}
+
+fn check_fn_params(ctx : CapCtx, params : Vec<HirFnParam>) -> CapCtx {
+    check_fn_params_loop(ctx, params, 0i64, vec_len::<HirFnParam>(params))
+}
+
+fn check_fn_params_loop(ctx : CapCtx, params : Vec<HirFnParam>, i : i64, n : i64) -> CapCtx {
+    if i == n {
+        ctx
+    } else {
+        match vec_get::<HirFnParam>(params, i) {
+            Some(_p) => {
+                // W-E2-γ records the param-id slot ; cap-extraction from
+                // HirTypeFull happens once items.cssl migrates (W-E2-δ).
+                check_fn_params_loop(ctx, params, i + 1i64, n)
+            },
+            None => ctx,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Direct-cap checking helpers (for callers that have HirTypeFull in hand).
+//
+//   These helpers are the SEMANTIC cap-check API : caller resolves a
+//   HirTypeFull to its cap, optionally records it on a HirId, and verifies
+//   coercions at call sites. Independent of the items.cssl migration ;
+//   downstream type-aware passes (lower → infer_full) consume these directly.
+// ───────────────────────────────────────────────────────────────────────
+
+// Record a cap for a HirTypeFull on a HirId, returning the new ctx.
+//   Non-cap types : ctx unchanged.
+fn cap_check_record_type(ctx : CapCtx, id : HirId, t : HirTypeFull) -> CapCtx {
+    match top_cap_of_type(t) {
+        Some(cap) => cap_ctx_record(ctx, id, cap),
+        None      => ctx,
+    }
+}
+
+// Walk a pattern + record the declared cap on every binding-site. Stage-0
+// composite-pattern handling : tuple / struct / variant / or all record the
+// outer cap on their root id (per-child caps are a downstream slice).
+fn cap_check_walk_pattern(ctx : CapCtx, pat : HirPatternFull, cap : CapKind) -> CapCtx {
+    match pat.kind {
+        HirPatternKindFull::WildcardKind      => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::BindingKind(_)    => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::TuplePatKind(_)   => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::StructPatKind(_)  => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::VariantKind(_)    => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::OrPatKind(_)      => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::PathPatKind(_)    => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::SelfPatKind       => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::SlicePatKind(_)   => cap_ctx_record(ctx, pat.id, cap),
+        HirPatternKindFull::RefPatKind(rp)    => match vec_get::<HirPatternFull>(rp.inner, 0i64) {
+            Some(inner) => cap_check_walk_pattern(ctx, inner, cap),
+            None        => ctx,
+        },
+        HirPatternKindFull::LiteralPatKind(_) => ctx,
+        HirPatternKindFull::RangePatKind(_)   => ctx,
+        HirPatternKindFull::Error             => ctx,
+    }
+}
+
+// Validate a call-site cap-coercion. Records a diagnostic on failure.
+fn cap_check_call_site(
+    ctx     : CapCtx,
+    span    : HirSpan,
+    caller  : CapKind,
+    callee  : CapKind,
+) -> CapCtx {
+    match param_subtype_check(caller, callee) {
+        SubtypeError::SubtypeOk => ctx,
+        SubtypeError::SubtypeBad(m) => {
+            let msg = string_concat(
+                string_concat(
+                    string_concat(string_from_str("cap-coerce: "), cap_kind_display(m.src)),
+                    string_from_str(" </: ")),
+                cap_kind_display(m.dst),
+            );
+            cap_ctx_emit(ctx, span, msg)
+        },
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Convenience constructors for tests + worked examples.
+// ───────────────────────────────────────────────────────────────────────
+
+// Build a HirCapabilityTy wrapper around an inner type with the given cap.
+fn make_cap_type(span : HirSpan, id : HirId, cap : HirCapKind, inner : HirTypeFull) -> HirTypeFull {
+    let ct = HirCapabilityTy {
+        cap   : cap,
+        inner : vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), inner),
+    };
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::CapabilityTy(ct),
+    }
+}
+
+// Build a "bare" HirTypeFull (InferTy) for use as wrapper-inner / placeholder.
+fn make_infer_type(span : HirSpan, id : HirId) -> HirTypeFull {
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::InferTy,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (mirror Rust `mod tests`).
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `hir_cap_translation_preserves_variants` (6 caps, 6 distinct results).
+fn _example_hir_cap_translation_preserves_variants() -> bool {
+    let iso = match hir_cap_to_semantic(HirCapKind::Iso)    { CapKind::CapIso => true, _ => false };
+    let trn = match hir_cap_to_semantic(HirCapKind::Trn)    { CapKind::CapTrn => true, _ => false };
+    let r   = match hir_cap_to_semantic(HirCapKind::RefCap) { CapKind::CapRef => true, _ => false };
+    let v   = match hir_cap_to_semantic(HirCapKind::Val)    { CapKind::CapVal => true, _ => false };
+    let b   = match hir_cap_to_semantic(HirCapKind::BoxCap) { CapKind::CapBox => true, _ => false };
+    let t   = match hir_cap_to_semantic(HirCapKind::Tag)    { CapKind::CapTag => true, _ => false };
+    iso && trn && r && v && b && t
+}
+
+// Mirror : `top_cap_extracts_iso_wrapper` — iso<infer> top_cap == iso.
+fn _example_top_cap_extracts_iso_wrapper() -> bool {
+    let span = hir_span_dummy();
+    let id_in = hir_id_from_raw(1u32);
+    let id_out = hir_id_from_raw(2u32);
+    let inner = make_infer_type(span, id_in);
+    let outer = make_cap_type(span, id_out, HirCapKind::Iso, inner);
+    match top_cap_of_type(outer) {
+        Some(CapKind::CapIso) => true,
+        _                     => false,
+    }
+}
+
+// Mirror : `top_cap_returns_none_for_non_wrapped`.
+fn _example_top_cap_none_for_infer() -> bool {
+    let span = hir_span_dummy();
+    let id = hir_id_from_raw(0u32);
+    let t = make_infer_type(span, id);
+    match top_cap_of_type(t) {
+        None => true,
+        _    => false,
+    }
+}
+
+// Mirror : `cap_map_roundtrip` — insert + lookup.
+fn _example_cap_map_roundtrip() -> bool {
+    let m0 = cap_map_new();
+    let empty_ok = cap_map_is_empty(m0);
+    let id = hir_id_from_raw(5u32);
+    let m1 = cap_map_insert(m0, id, CapKind::CapIso);
+    let len_ok = cap_map_len(m1) == 1i64;
+    let lookup_ok = match cap_map_get(m1, id) {
+        Some(CapKind::CapIso) => true,
+        _                     => false,
+    };
+    empty_ok && len_ok && lookup_ok
+}
+
+// Mirror : `param_subtype_iso_to_val_ok` + reverse failure.
+fn _example_param_subtype_iso_val_lattice() -> bool {
+    let iso_to_val = match param_subtype_check(CapKind::CapIso, CapKind::CapVal) {
+        SubtypeError::SubtypeOk => true,
+        _                       => false,
+    };
+    let val_to_iso = match param_subtype_check(CapKind::CapVal, CapKind::CapIso) {
+        SubtypeError::SubtypeOk     => false,
+        SubtypeError::SubtypeBad(_) => true,
+    };
+    iso_to_val && val_to_iso
+}
+
+// Mirror : `iso_supertypes_all` — iso coerces into every cap.
+fn _example_iso_supertypes_all() -> bool {
+    cap_coerce(CapKind::CapIso, CapKind::CapIso) &&
+    cap_coerce(CapKind::CapIso, CapKind::CapTrn) &&
+    cap_coerce(CapKind::CapIso, CapKind::CapRef) &&
+    cap_coerce(CapKind::CapIso, CapKind::CapVal) &&
+    cap_coerce(CapKind::CapIso, CapKind::CapBox) &&
+    cap_coerce(CapKind::CapIso, CapKind::CapTag)
+}
+
+// Mirror : `tag_is_bottom` — tag accepts only itself.
+fn _example_tag_bottom() -> bool {
+    cap_coerce(CapKind::CapTag, CapKind::CapTag) &&
+    !cap_coerce(CapKind::CapTag, CapKind::CapBox) &&
+    !cap_coerce(CapKind::CapTag, CapKind::CapVal) &&
+    !cap_coerce(CapKind::CapTag, CapKind::CapRef) &&
+    !cap_coerce(CapKind::CapTag, CapKind::CapTrn) &&
+    !cap_coerce(CapKind::CapTag, CapKind::CapIso)
+}
+
+// Mirror : `ref_to_box_ok` (T11-D256 spec test).
+fn _example_ref_to_box_coerces() -> bool {
+    cap_coerce(CapKind::CapRef, CapKind::CapBox) &&
+    !cap_coerce(CapKind::CapRef, CapKind::CapVal) &&
+    !cap_coerce(CapKind::CapRef, CapKind::CapTrn) &&
+    !cap_coerce(CapKind::CapRef, CapKind::CapIso)
+}
+
+// Mirror : `heap_op_capability_classification_is_total`.
+fn _example_heap_op_classification() -> bool {
+    let alloc_ok = match heap_op_capability(string_from_str("cssl.heap.alloc")) {
+        Some(HeapOpCap::HeapProduce) => true, _ => false,
+    };
+    let dealloc_ok = match heap_op_capability(string_from_str("cssl.heap.dealloc")) {
+        Some(HeapOpCap::HeapConsume) => true, _ => false,
+    };
+    let realloc_ok = match heap_op_capability(string_from_str("cssl.heap.realloc")) {
+        Some(HeapOpCap::HeapTransfer) => true, _ => false,
+    };
+    let bogus_ok = match heap_op_capability(string_from_str("arith.constant")) {
+        None => true, _ => false,
+    };
+    alloc_ok && dealloc_ok && realloc_ok && bogus_ok
+}
+
+// Mirror : `heap_op_result_cap_attaches_iso_only_to_producers`.
+fn _example_heap_op_result_caps() -> bool {
+    let alloc_iso = match heap_op_result_cap(string_from_str("cssl.heap.alloc")) {
+        Some(CapKind::CapIso) => true, _ => false,
+    };
+    let realloc_iso = match heap_op_result_cap(string_from_str("cssl.heap.realloc")) {
+        Some(CapKind::CapIso) => true, _ => false,
+    };
+    let dealloc_none = match heap_op_result_cap(string_from_str("cssl.heap.dealloc")) {
+        None => true, _ => false,
+    };
+    alloc_iso && realloc_iso && dealloc_none
+}
+
+// Mirror : `closure_capture_default_is_val`.
+fn _example_closure_capture_default_val() -> bool {
+    match closure_capture_default_cap() {
+        CapKind::CapVal => true,
+        _               => false,
+    }
+}
+
+// `is_linear` — only iso/trn participate in linear-tracking.
+fn _example_is_linear_classification() -> bool {
+    cap_kind_is_linear(CapKind::CapIso) &&
+    cap_kind_is_linear(CapKind::CapTrn) &&
+    !cap_kind_is_linear(CapKind::CapRef) &&
+    !cap_kind_is_linear(CapKind::CapVal) &&
+    !cap_kind_is_linear(CapKind::CapBox) &&
+    !cap_kind_is_linear(CapKind::CapTag)
+}
+
+// LinearTracker introduce + close_scope returns the count.
+fn _example_linear_tracker_count() -> bool {
+    let t0 = linear_tracker_new();
+    let t1 = linear_tracker_introduce(t0, hir_id_from_raw(1u32), CapKind::CapIso);
+    let t2 = linear_tracker_introduce(t1, hir_id_from_raw(2u32), CapKind::CapTrn);
+    linear_tracker_close_scope(t2) == 2i64
+}
+
+// CapCtx record + diagnostic plumbing.
+fn _example_cap_ctx_record_emit() -> bool {
+    let c0 = cap_ctx_new();
+    let c1 = cap_ctx_record(c0, hir_id_from_raw(7u32), CapKind::CapBox);
+    let recorded = match cap_map_get(c1.caps, hir_id_from_raw(7u32)) {
+        Some(CapKind::CapBox) => true,
+        _                     => false,
+    };
+    let c2 = cap_ctx_emit(c1, hir_span_dummy(), string_from_str("dummy"));
+    let one_diag = vec_len::<CapDiagnostic>(c2.diagnostics) == 1i64;
+    recorded && one_diag
+}
+
+// check_capabilities on empty module → empty cap-map + empty diagnostics.
+fn _example_check_capabilities_empty_module() -> bool {
+    let m = hir_module_empty(hir_span_dummy());
+    let (caps, diags) = check_capabilities(m);
+    cap_map_is_empty(caps) && vec_is_empty::<CapDiagnostic>(diags)
+}
+
+// cap_check_call_site : iso → val OK ; val → iso → diagnostic emitted.
+fn _example_call_site_lattice() -> bool {
+    let c0 = cap_ctx_new();
+    let span = hir_span_dummy();
+    let c1 = cap_check_call_site(c0, span, CapKind::CapIso, CapKind::CapVal);
+    let no_diag = vec_is_empty::<CapDiagnostic>(c1.diagnostics);
+    let c2 = cap_check_call_site(c1, span, CapKind::CapVal, CapKind::CapIso);
+    let one_diag = vec_len::<CapDiagnostic>(c2.diagnostics) == 1i64;
+    no_diag && one_diag
+}

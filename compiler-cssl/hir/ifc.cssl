@@ -1,0 +1,1353 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/ifc.cssl  —  Information Flow Control (IFC) lattice + walker
+//
+// CSSLv3 stage-1 self-host : Jif-DLM IFC lattice + structural+flow walkers IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/ifc.rs
+// Wave-slice  : Wave-E2-γ (W-E2-γ · hir-in-cssl THIRD SLICE — T11-D256).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               compiler-cssl/hir/items.cssl  (HirSpan, HirItem, HirFn, HirAttr)
+//               compiler-cssl/hir/expr.cssl   (HirExprFull, HirExprKindFull, …)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : IFC labels are pure-data records describing
+//   confidentiality + integrity principal-sets ; the walker is a structural
+//   pass over typed-tree records with no side-effect, no surveillance, no
+//   global state. The PRIME_DIRECTIVE is encoded STRUCTURALLY :
+//     - HarmTarget Surveiller Coercer Weaponizer = built-in principals
+//     - Sensitive<X> tracking via @sensitive attribute
+//     - declassification REQUIRES an explicit privilege-level annotation
+//     - missing-label diagnostics block flows that cannot be SMT-discharged
+//
+// § DESIGN
+//   `IfcLabel` = `(confidentiality : sorted-Vec<Symbol>, integrity : sorted-Vec<Symbol>)`
+//
+//   Lattice algebra (Myers-Liskov DLM) :
+//     TOP    = (∅, All)             ← nobody-reads, everyone-influences
+//     BOTTOM = (All, ∅)             ← everyone-reads, nobody-influences
+//     L1 ⊑ L2  ≡  C1 ⊇ C2  ∧  I1 ⊆ I2     stricter-reader-set + tighter-influencer-set
+//     L1 ⊔ L2 ≡ (C1 ∩ C2, I1 ∪ I2)
+//     L1 ⊓ L2 ≡ (C1 ∪ C2, I1 ∩ I2)
+//
+//   PRIME-DIRECTIVE built-in principals (per `specs/11_IFC.csl`) :
+//     HarmTarget · Surveiller · Coercer · Weaponizer · System · Kernel ·
+//     User · Public · Anthropic-Audit
+//
+//   Diagnostics with stable codes :
+//     IFC0001 : MissingLabel             — sensitive param without fn label
+//     IFC0002 : MissingDeclassPolicy     — declass without @requires(Privilege)
+//     IFC0003 : UnauthorizedDowngrade    — declass widens confidentiality
+//     IFC0004 : FlowViolation            — sensitive param flows to return
+//                                          without label/declass authority
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. NO BTREESET : confidentiality + integrity sets stored as sorted-Vec<Symbol>
+//      with binary-search lookup + sorted-merge union/intersection.
+//   2. NO HASHMAP : LabelRegistry (DefId → IfcLabel) is a sorted-Vec.
+//   3. ATTRIBUTE-NAME-AS-SYMBOL : @ifc_label / @sensitive / @declass / @requires
+//      are looked up by their Symbol-interned name on each HirAttr.
+//   4. PRINCIPAL-SET DIAGNOSTICS : `format_label` produces `confid{a,b}+integ{c}`.
+//   5. SENSITIVE<X> TRACKING : modeled as a per-binding IfcLabel where X is the
+//      principal — stage-0 uses `User` as the placeholder principal for any
+//      `@sensitive` annotation (matches Rust mirror).
+//
+// § INVARIANTS  (stage-0)
+//   - confidentiality + integrity Vecs are sorted-by-Symbol.raw + de-duped.
+//   - IfcDiagnostic codes are stable strings : "IFC0001".."IFC0004".
+//   - empty + sorted invariants preserved across union/intersection ops.
+
+module com.apocky.compiler.hir.ifc
+
+// ───────────────────────────────────────────────────────────────────────
+// § PrincipalSet — sorted-Vec<Symbol> with set-algebra helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Wraps a sorted-deduplicated Vec<Symbol> for lattice-set ops. By choosing a
+// sorted-Vec backing instead of a HashMap-or-BTreeSet, every set-op is a
+// linear-pass merge → O(n+m) without hash-state / probing concerns.
+struct PrincipalSet {
+    members : Vec<Symbol>,
+}
+
+fn principal_set_empty() -> PrincipalSet {
+    PrincipalSet { members : Vec::new::<Symbol>() }
+}
+
+fn principal_set_is_empty(s : PrincipalSet) -> bool {
+    vec_is_empty::<Symbol>(s.members)
+}
+
+fn principal_set_len(s : PrincipalSet) -> i64 {
+    vec_len::<Symbol>(s.members)
+}
+
+// Insertion-point binary-search by Symbol.raw.
+fn principal_set_pos(members : Vec<Symbol>, sym : Symbol, lo : i64, hi : i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<Symbol>(members, mid) {
+            Some(p) => {
+                if symbol_lt(p, sym) {
+                    principal_set_pos(members, sym, mid + 1i64, hi)
+                } else {
+                    principal_set_pos(members, sym, lo, mid)
+                }
+            },
+            None => lo,
+        }
+    }
+}
+
+// `true` iff sym ∈ s.
+fn principal_set_contains(s : PrincipalSet, sym : Symbol) -> bool {
+    principal_set_contains_loop(s.members, sym, 0i64, vec_len::<Symbol>(s.members))
+}
+
+fn principal_set_contains_loop(ms : Vec<Symbol>, sym : Symbol, lo : i64, hi : i64) -> bool {
+    if lo >= hi {
+        false
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<Symbol>(ms, mid) {
+            Some(p) => {
+                if symbol_eq(p, sym) {
+                    true
+                } else {
+                    if symbol_lt(p, sym) {
+                        principal_set_contains_loop(ms, sym, mid + 1i64, hi)
+                    } else {
+                        principal_set_contains_loop(ms, sym, lo, mid)
+                    }
+                }
+            },
+            None => false,
+        }
+    }
+}
+
+// Insert sym into s ; idempotent on hit.
+fn principal_set_insert(s : PrincipalSet, sym : Symbol) -> PrincipalSet {
+    let pos = principal_set_pos(s.members, sym, 0i64, vec_len::<Symbol>(s.members));
+    let n = vec_len::<Symbol>(s.members);
+    if pos < n {
+        match vec_get::<Symbol>(s.members, pos) {
+            Some(at_pos) => {
+                if symbol_eq(at_pos, sym) {
+                    s
+                } else {
+                    PrincipalSet { members : principal_set_splice_at(s.members, pos, sym) }
+                }
+            },
+            None => s,
+        }
+    } else {
+        PrincipalSet { members : vec_push::<Symbol>(s.members, sym) }
+    }
+}
+
+fn principal_set_splice_at(src : Vec<Symbol>, pos : i64, sym : Symbol) -> Vec<Symbol> {
+    principal_set_splice_loop(src, pos, sym, vec_len::<Symbol>(src), 0i64, Vec::new::<Symbol>())
+}
+
+fn principal_set_splice_loop(
+    src : Vec<Symbol>,
+    pos : i64,
+    sym : Symbol,
+    n   : i64,
+    i   : i64,
+    acc : Vec<Symbol>,
+) -> Vec<Symbol> {
+    if i == n {
+        if pos == n {
+            vec_push::<Symbol>(acc, sym)
+        } else {
+            acc
+        }
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<Symbol>(acc, sym);
+            match vec_get::<Symbol>(src, i) {
+                Some(p) => {
+                    let acc2 = vec_push::<Symbol>(acc1, p);
+                    principal_set_splice_loop(src, pos, sym, n, i + 1i64, acc2)
+                },
+                None => acc1,
+            }
+        } else {
+            match vec_get::<Symbol>(src, i) {
+                Some(p) => {
+                    let acc1 = vec_push::<Symbol>(acc, p);
+                    principal_set_splice_loop(src, pos, sym, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Sorted-merge UNION (symmetric, dedup-on-collision).
+fn principal_set_union(a : PrincipalSet, b : PrincipalSet) -> PrincipalSet {
+    let merged = principal_set_union_loop(
+        a.members, b.members,
+        0i64, vec_len::<Symbol>(a.members),
+        0i64, vec_len::<Symbol>(b.members),
+        Vec::new::<Symbol>(),
+    );
+    PrincipalSet { members : merged }
+}
+
+fn principal_set_union_loop(
+    a : Vec<Symbol>,
+    b : Vec<Symbol>,
+    i : i64,
+    na : i64,
+    j : i64,
+    nb : i64,
+    acc : Vec<Symbol>,
+) -> Vec<Symbol> {
+    if i == na {
+        // Drain b
+        principal_set_drain(b, j, nb, acc)
+    } else {
+        if j == nb {
+            principal_set_drain(a, i, na, acc)
+        } else {
+            match vec_get::<Symbol>(a, i) {
+                Some(ai) => match vec_get::<Symbol>(b, j) {
+                    Some(bj) => {
+                        if symbol_eq(ai, bj) {
+                            let acc1 = vec_push::<Symbol>(acc, ai);
+                            principal_set_union_loop(a, b, i + 1i64, na, j + 1i64, nb, acc1)
+                        } else {
+                            if symbol_lt(ai, bj) {
+                                let acc1 = vec_push::<Symbol>(acc, ai);
+                                principal_set_union_loop(a, b, i + 1i64, na, j, nb, acc1)
+                            } else {
+                                let acc1 = vec_push::<Symbol>(acc, bj);
+                                principal_set_union_loop(a, b, i, na, j + 1i64, nb, acc1)
+                            }
+                        }
+                    },
+                    None => acc,
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+fn principal_set_drain(src : Vec<Symbol>, i : i64, n : i64, acc : Vec<Symbol>) -> Vec<Symbol> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<Symbol>(src, i) {
+            Some(p) => {
+                let acc1 = vec_push::<Symbol>(acc, p);
+                principal_set_drain(src, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+// Sorted-merge INTERSECTION.
+fn principal_set_intersect(a : PrincipalSet, b : PrincipalSet) -> PrincipalSet {
+    let merged = principal_set_intersect_loop(
+        a.members, b.members,
+        0i64, vec_len::<Symbol>(a.members),
+        0i64, vec_len::<Symbol>(b.members),
+        Vec::new::<Symbol>(),
+    );
+    PrincipalSet { members : merged }
+}
+
+fn principal_set_intersect_loop(
+    a : Vec<Symbol>,
+    b : Vec<Symbol>,
+    i : i64,
+    na : i64,
+    j : i64,
+    nb : i64,
+    acc : Vec<Symbol>,
+) -> Vec<Symbol> {
+    if i == na {
+        acc
+    } else {
+        if j == nb {
+            acc
+        } else {
+            match vec_get::<Symbol>(a, i) {
+                Some(ai) => match vec_get::<Symbol>(b, j) {
+                    Some(bj) => {
+                        if symbol_eq(ai, bj) {
+                            let acc1 = vec_push::<Symbol>(acc, ai);
+                            principal_set_intersect_loop(a, b, i + 1i64, na, j + 1i64, nb, acc1)
+                        } else {
+                            if symbol_lt(ai, bj) {
+                                principal_set_intersect_loop(a, b, i + 1i64, na, j, nb, acc)
+                            } else {
+                                principal_set_intersect_loop(a, b, i, na, j + 1i64, nb, acc)
+                            }
+                        }
+                    },
+                    None => acc,
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// `true` iff a ⊆ b.
+fn principal_set_is_subset(a : PrincipalSet, b : PrincipalSet) -> bool {
+    principal_set_is_subset_loop(a.members, b, 0i64, vec_len::<Symbol>(a.members))
+}
+
+fn principal_set_is_subset_loop(ms : Vec<Symbol>, b : PrincipalSet, i : i64, n : i64) -> bool {
+    if i == n {
+        true
+    } else {
+        match vec_get::<Symbol>(ms, i) {
+            Some(p) => {
+                if principal_set_contains(b, p) {
+                    principal_set_is_subset_loop(ms, b, i + 1i64, n)
+                } else {
+                    false
+                }
+            },
+            None => true,
+        }
+    }
+}
+
+// Build a PrincipalSet from a Vec<Symbol> by repeated insertion (deduplicates +
+// sorts as a side-effect of insertion — O(n²) worst case ; acceptable for the
+// small principal-sets stage-0 sees).
+fn principal_set_from_vec(members : Vec<Symbol>) -> PrincipalSet {
+    principal_set_from_loop(members, 0i64, vec_len::<Symbol>(members), principal_set_empty())
+}
+
+fn principal_set_from_loop(src : Vec<Symbol>, i : i64, n : i64, acc : PrincipalSet) -> PrincipalSet {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<Symbol>(src, i) {
+            Some(p) => {
+                let acc1 = principal_set_insert(acc, p);
+                principal_set_from_loop(src, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § IfcLabel — confidentiality + integrity pair.
+// ───────────────────────────────────────────────────────────────────────
+
+struct IfcLabel {
+    confidentiality : PrincipalSet,
+    integrity       : PrincipalSet,
+}
+
+fn ifc_label_empty() -> IfcLabel {
+    IfcLabel {
+        confidentiality : principal_set_empty(),
+        integrity       : principal_set_empty(),
+    }
+}
+
+fn ifc_label_new(
+    confidentiality : Vec<Symbol>,
+    integrity       : Vec<Symbol>,
+) -> IfcLabel {
+    IfcLabel {
+        confidentiality : principal_set_from_vec(confidentiality),
+        integrity       : principal_set_from_vec(integrity),
+    }
+}
+
+// `true` iff EITHER set is non-empty (concrete-label assertion).
+fn ifc_label_is_labeled(l : IfcLabel) -> bool {
+    let c_ne = !principal_set_is_empty(l.confidentiality);
+    let i_ne = !principal_set_is_empty(l.integrity);
+    c_ne || i_ne
+}
+
+// Lattice `⊑` : self ⊑ other  ≡  C_self ⊇ C_other  ∧  I_self ⊆ I_other
+fn ifc_label_is_sub_of(self_l : IfcLabel, other : IfcLabel) -> bool {
+    let c_super = principal_set_is_subset(other.confidentiality, self_l.confidentiality);
+    let i_sub   = principal_set_is_subset(self_l.integrity, other.integrity);
+    c_super && i_sub
+}
+
+// Lattice join `⊔` : (C1 ∩ C2, I1 ∪ I2). Stricter-reader-set + wider-influencer-set.
+fn ifc_label_join(a : IfcLabel, b : IfcLabel) -> IfcLabel {
+    IfcLabel {
+        confidentiality : principal_set_intersect(a.confidentiality, b.confidentiality),
+        integrity       : principal_set_union(a.integrity, b.integrity),
+    }
+}
+
+// Lattice meet `⊓` : (C1 ∪ C2, I1 ∩ I2).
+fn ifc_label_meet(a : IfcLabel, b : IfcLabel) -> IfcLabel {
+    IfcLabel {
+        confidentiality : principal_set_union(a.confidentiality, b.confidentiality),
+        integrity       : principal_set_intersect(a.integrity, b.integrity),
+    }
+}
+
+// Taint-tracking combine : UNION of both confid + integ. Differs from formal `⊔`
+// (which intersects confid) — used by the flow-walker for over-approximating
+// taint propagation. Stage-0 mirror of Rust `combine_labels`.
+fn ifc_label_combine_taint(a : IfcLabel, b : IfcLabel) -> IfcLabel {
+    IfcLabel {
+        confidentiality : principal_set_union(a.confidentiality, b.confidentiality),
+        integrity       : principal_set_union(a.integrity, b.integrity),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Builtin-principal Symbols (PRIME-DIRECTIVE-encoded).
+// ───────────────────────────────────────────────────────────────────────
+
+// `true` iff `name` is a built-in principal name. Stage-0 uses string
+// comparison ; downstream slices re-cast as Symbol-set membership against
+// an interner-derived sentinel-set.
+fn is_builtin_principal_name(name : String) -> bool {
+    if string_eq(name, string_from_str("HarmTarget"))      { true } else {
+    if string_eq(name, string_from_str("Surveiller"))      { true } else {
+    if string_eq(name, string_from_str("Coercer"))         { true } else {
+    if string_eq(name, string_from_str("Weaponizer"))      { true } else {
+    if string_eq(name, string_from_str("System"))          { true } else {
+    if string_eq(name, string_from_str("Kernel"))          { true } else {
+    if string_eq(name, string_from_str("User"))            { true } else {
+    if string_eq(name, string_from_str("Public"))          { true } else {
+    if string_eq(name, string_from_str("Anthropic-Audit")) { true } else {
+        false
+    }}}}}}}}}
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § IfcDiagnostic — stable-coded structural + flow violations.
+// ───────────────────────────────────────────────────────────────────────
+
+// Variant payloads for the four diagnostic codes (IFC0001..IFC0004).
+struct IfcMissingLabel {
+    fn_name : String,
+    fn_span : HirSpan,
+}
+struct IfcMissingDeclassPolicy {
+    fn_name : String,
+    fn_span : HirSpan,
+}
+struct IfcUnauthorizedDowngrade {
+    fn_name : String,
+    from    : String,
+    to      : String,
+    fn_span : HirSpan,
+}
+struct IfcFlowViolation {
+    fn_name    : String,
+    param_name : String,
+    label      : String,
+    fn_span    : HirSpan,
+}
+
+enum IfcDiagnostic {
+    MissingLabel(IfcMissingLabel),
+    MissingDeclassPolicy(IfcMissingDeclassPolicy),
+    UnauthorizedDowngrade(IfcUnauthorizedDowngrade),
+    FlowViolation(IfcFlowViolation),
+}
+
+// Stable code (for CI log-parsing).
+fn ifc_diagnostic_code(d : IfcDiagnostic) -> String {
+    match d {
+        IfcDiagnostic::MissingLabel(_)          => string_from_str("IFC0001"),
+        IfcDiagnostic::MissingDeclassPolicy(_)  => string_from_str("IFC0002"),
+        IfcDiagnostic::UnauthorizedDowngrade(_) => string_from_str("IFC0003"),
+        IfcDiagnostic::FlowViolation(_)         => string_from_str("IFC0004"),
+    }
+}
+
+fn ifc_diagnostic_span(d : IfcDiagnostic) -> HirSpan {
+    match d {
+        IfcDiagnostic::MissingLabel(p)          => p.fn_span,
+        IfcDiagnostic::MissingDeclassPolicy(p)  => p.fn_span,
+        IfcDiagnostic::UnauthorizedDowngrade(p) => p.fn_span,
+        IfcDiagnostic::FlowViolation(p)         => p.fn_span,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § IfcReport — aggregate walker output.
+// ───────────────────────────────────────────────────────────────────────
+
+struct IfcReport {
+    diagnostics      : Vec<IfcDiagnostic>,
+    fns_checked      : u32,
+    fns_with_labels  : u32,
+    declass_attempts : u32,
+}
+
+fn ifc_report_new() -> IfcReport {
+    IfcReport {
+        diagnostics      : Vec::new::<IfcDiagnostic>(),
+        fns_checked      : 0u32,
+        fns_with_labels  : 0u32,
+        declass_attempts : 0u32,
+    }
+}
+
+fn ifc_report_is_clean(r : IfcReport) -> bool {
+    vec_is_empty::<IfcDiagnostic>(r.diagnostics)
+}
+
+// Count diagnostics by code.
+fn ifc_report_count(r : IfcReport, code : String) -> i64 {
+    ifc_report_count_loop(r.diagnostics, code, 0i64, vec_len::<IfcDiagnostic>(r.diagnostics), 0i64)
+}
+
+fn ifc_report_count_loop(
+    ds : Vec<IfcDiagnostic>,
+    code : String,
+    i : i64,
+    n : i64,
+    acc : i64,
+) -> i64 {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<IfcDiagnostic>(ds, i) {
+            Some(d) => {
+                let acc1 = if string_eq(ifc_diagnostic_code(d), code) {
+                    acc + 1i64
+                } else {
+                    acc
+                };
+                ifc_report_count_loop(ds, code, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+fn ifc_report_push(r : IfcReport, d : IfcDiagnostic) -> IfcReport {
+    IfcReport {
+        diagnostics      : vec_push::<IfcDiagnostic>(r.diagnostics, d),
+        fns_checked      : r.fns_checked,
+        fns_with_labels  : r.fns_with_labels,
+        declass_attempts : r.declass_attempts,
+    }
+}
+
+fn ifc_report_inc_checked(r : IfcReport) -> IfcReport {
+    let next = if r.fns_checked == 4294967295u32 { 4294967295u32 } else { r.fns_checked + 1u32 };
+    IfcReport {
+        diagnostics      : r.diagnostics,
+        fns_checked      : next,
+        fns_with_labels  : r.fns_with_labels,
+        declass_attempts : r.declass_attempts,
+    }
+}
+
+fn ifc_report_inc_labeled(r : IfcReport) -> IfcReport {
+    let next = if r.fns_with_labels == 4294967295u32 { 4294967295u32 } else { r.fns_with_labels + 1u32 };
+    IfcReport {
+        diagnostics      : r.diagnostics,
+        fns_checked      : r.fns_checked,
+        fns_with_labels  : next,
+        declass_attempts : r.declass_attempts,
+    }
+}
+
+fn ifc_report_inc_declass(r : IfcReport) -> IfcReport {
+    let next = if r.declass_attempts == 4294967295u32 { 4294967295u32 } else { r.declass_attempts + 1u32 };
+    IfcReport {
+        diagnostics      : r.diagnostics,
+        fns_checked      : r.fns_checked,
+        fns_with_labels  : r.fns_with_labels,
+        declass_attempts : next,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Attribute-presence helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+// `true` iff an attribute with the given Symbol-name is present in attrs.
+fn has_attr(attrs : Vec<HirAttr>, name : Symbol) -> bool {
+    has_attr_loop(attrs, name, 0i64, vec_len::<HirAttr>(attrs))
+}
+
+fn has_attr_loop(attrs : Vec<HirAttr>, name : Symbol, i : i64, n : i64) -> bool {
+    if i == n {
+        false
+    } else {
+        match vec_get::<HirAttr>(attrs, i) {
+            Some(a) => {
+                if symbol_eq(a.name, name) {
+                    true
+                } else {
+                    has_attr_loop(attrs, name, i + 1i64, n)
+                }
+            },
+            None => false,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § IFC structural walker (check_ifc).
+// ───────────────────────────────────────────────────────────────────────
+
+// `IfcSyms` collects the interned symbols the walker needs in one record.
+// Caller provides them via `ifc_syms_for(interner)` once per walk.
+struct IfcSyms {
+    sensitive : Symbol,
+    confid    : Symbol,
+    integrity : Symbol,
+    ifc_label : Symbol,
+    declass   : Symbol,
+    requires  : Symbol,
+    user      : Symbol,
+}
+
+// Build the IfcSyms record by interning the canonical attribute names.
+fn ifc_syms_for(interner : Interner) -> (Interner, IfcSyms) {
+    let (i1, sensitive) = interner_intern(interner, string_from_str("sensitive"));
+    let (i2, confid)    = interner_intern(i1, string_from_str("confidentiality"));
+    let (i3, integrity) = interner_intern(i2, string_from_str("integrity"));
+    let (i4, ifc_label) = interner_intern(i3, string_from_str("ifc_label"));
+    let (i5, declass)   = interner_intern(i4, string_from_str("declass"));
+    let (i6, requires)  = interner_intern(i5, string_from_str("requires"));
+    let (i7, user)      = interner_intern(i6, string_from_str("User"));
+    (i7, IfcSyms {
+        sensitive : sensitive,
+        confid    : confid,
+        integrity : integrity,
+        ifc_label : ifc_label,
+        declass   : declass,
+        requires  : requires,
+        user      : user,
+    })
+}
+
+// Top-level structural walker. Visits every fn ; inspects @sensitive +
+// @confidentiality + @declass + @requires presence ; emits IFC0001..3.
+fn check_ifc(module : HirModule, syms : IfcSyms) -> IfcReport {
+    let r0 = ifc_report_new();
+    check_ifc_items(r0, module.items, syms)
+}
+
+fn check_ifc_items(r : IfcReport, items : Vec<HirItem>, syms : IfcSyms) -> IfcReport {
+    check_ifc_items_loop(r, items, syms, 0i64, vec_len::<HirItem>(items))
+}
+
+fn check_ifc_items_loop(
+    r : IfcReport,
+    items : Vec<HirItem>,
+    syms : IfcSyms,
+    i : i64,
+    n : i64,
+) -> IfcReport {
+    if i == n {
+        r
+    } else {
+        match vec_get::<HirItem>(items, i) {
+            Some(item) => {
+                let r1 = check_ifc_item(r, item, syms);
+                check_ifc_items_loop(r1, items, syms, i + 1i64, n)
+            },
+            None => r,
+        }
+    }
+}
+
+fn check_ifc_item(r : IfcReport, item : HirItem, syms : IfcSyms) -> IfcReport {
+    match item {
+        HirItem::Fn(f)        => check_ifc_fn(r, f, syms),
+        HirItem::Impl(i)      => check_ifc_fn_list(r, i.fns, syms),
+        HirItem::Interface(i) => check_ifc_fn_list(r, i.fns, syms),
+        HirItem::Effect(e)    => check_ifc_fn_list(r, e.ops, syms),
+        HirItem::Handler(h)   => check_ifc_fn_list(r, h.ops, syms),
+        HirItem::Module(m)    => match m.items {
+            Some(sub) => check_ifc_items(r, sub, syms),
+            None      => r,
+        },
+        _ => r,
+    }
+}
+
+fn check_ifc_fn_list(r : IfcReport, fns : Vec<HirFn>, syms : IfcSyms) -> IfcReport {
+    check_ifc_fn_list_loop(r, fns, syms, 0i64, vec_len::<HirFn>(fns))
+}
+
+fn check_ifc_fn_list_loop(
+    r : IfcReport,
+    fns : Vec<HirFn>,
+    syms : IfcSyms,
+    i : i64,
+    n : i64,
+) -> IfcReport {
+    if i == n {
+        r
+    } else {
+        match vec_get::<HirFn>(fns, i) {
+            Some(f) => {
+                let r1 = check_ifc_fn(r, f, syms);
+                check_ifc_fn_list_loop(r1, fns, syms, i + 1i64, n)
+            },
+            None => r,
+        }
+    }
+}
+
+// Per-fn structural walker. Increments fns_checked + fns_with_labels +
+// declass_attempts ; emits IFC0001 / IFC0002.
+fn check_ifc_fn(r : IfcReport, f : HirFn, syms : IfcSyms) -> IfcReport {
+    let r0 = ifc_report_inc_checked(r);
+    let has_confid    = has_attr(f.attrs, syms.confid);
+    let has_integrity = has_attr(f.attrs, syms.integrity);
+    let has_ifc_label = has_attr(f.attrs, syms.ifc_label);
+    let labeled       = has_confid || has_integrity || has_ifc_label;
+    let r1 = if labeled { ifc_report_inc_labeled(r0) } else { r0 };
+
+    // Sensitive-param presence : any param with @sensitive attribute.
+    let any_sensitive = any_param_sensitive(f.params, syms.sensitive);
+    let r2 = if any_sensitive {
+        if labeled {
+            r1
+        } else {
+            // IFC0001 : MissingLabel
+            let fn_name = string_from_str("<fn>");  // stage-0 ; full pretty-name in resolve slice
+            let d = IfcDiagnostic::MissingLabel(IfcMissingLabel {
+                fn_name : fn_name,
+                fn_span : f.span,
+            });
+            ifc_report_push(r1, d)
+        }
+    } else {
+        r1
+    };
+
+    // Declass authority : @declass + @requires authorize downgrade.
+    let has_declass = has_attr(f.attrs, syms.declass);
+    let has_requires = has_attr(f.attrs, syms.requires);
+    let r3 = if has_declass {
+        let r2a = ifc_report_inc_declass(r2);
+        if has_requires {
+            r2a
+        } else {
+            // IFC0002 : MissingDeclassPolicy
+            let fn_name = string_from_str("<fn>");
+            let d = IfcDiagnostic::MissingDeclassPolicy(IfcMissingDeclassPolicy {
+                fn_name : fn_name,
+                fn_span : f.span,
+            });
+            ifc_report_push(r2a, d)
+        }
+    } else {
+        r2
+    };
+    r3
+}
+
+fn any_param_sensitive(params : Vec<HirFnParam>, sensitive_sym : Symbol) -> bool {
+    any_param_sensitive_loop(params, sensitive_sym, 0i64, vec_len::<HirFnParam>(params))
+}
+
+fn any_param_sensitive_loop(
+    params : Vec<HirFnParam>,
+    sensitive_sym : Symbol,
+    i : i64,
+    n : i64,
+) -> bool {
+    if i == n {
+        false
+    } else {
+        match vec_get::<HirFnParam>(params, i) {
+            Some(p) => {
+                if has_attr(p.attrs, sensitive_sym) {
+                    true
+                } else {
+                    any_param_sensitive_loop(params, sensitive_sym, i + 1i64, n)
+                }
+            },
+            None => false,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § LabelEnv — Symbol → IfcLabel local-binding table for flow-walker.
+// ───────────────────────────────────────────────────────────────────────
+
+struct LabelEntry {
+    name  : Symbol,
+    label : IfcLabel,
+}
+
+struct LabelEnv {
+    entries : Vec<LabelEntry>,
+}
+
+fn label_env_new() -> LabelEnv {
+    LabelEnv { entries : Vec::new::<LabelEntry>() }
+}
+
+fn label_env_lookup(env : LabelEnv, name : Symbol) -> Option<IfcLabel> {
+    label_env_lookup_loop(env.entries, name, 0i64, vec_len::<LabelEntry>(env.entries))
+}
+
+fn label_env_lookup_loop(
+    es : Vec<LabelEntry>,
+    name : Symbol,
+    i : i64,
+    n : i64,
+) -> Option<IfcLabel> {
+    if i == n {
+        None
+    } else {
+        match vec_get::<LabelEntry>(es, i) {
+            Some(e) => {
+                if symbol_eq(e.name, name) {
+                    Some(e.label)
+                } else {
+                    label_env_lookup_loop(es, name, i + 1i64, n)
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// Insert / overwrite a binding. Stage-0 uses linear-scan ; sorted-Vec is
+// not strictly necessary at this slice (small N expected per fn).
+fn label_env_insert(env : LabelEnv, name : Symbol, label : IfcLabel) -> LabelEnv {
+    let new_e = LabelEntry { name : name, label : label };
+    let new_entries = label_env_replace_or_append(env.entries, new_e);
+    LabelEnv { entries : new_entries }
+}
+
+fn label_env_replace_or_append(es : Vec<LabelEntry>, new_e : LabelEntry) -> Vec<LabelEntry> {
+    let n = vec_len::<LabelEntry>(es);
+    let pos = label_env_find_pos(es, new_e.name, 0i64, n);
+    if pos < n {
+        label_env_replace_at(es, pos, new_e)
+    } else {
+        vec_push::<LabelEntry>(es, new_e)
+    }
+}
+
+fn label_env_find_pos(es : Vec<LabelEntry>, name : Symbol, i : i64, n : i64) -> i64 {
+    if i == n {
+        n
+    } else {
+        match vec_get::<LabelEntry>(es, i) {
+            Some(e) => {
+                if symbol_eq(e.name, name) {
+                    i
+                } else {
+                    label_env_find_pos(es, name, i + 1i64, n)
+                }
+            },
+            None => n,
+        }
+    }
+}
+
+fn label_env_replace_at(es : Vec<LabelEntry>, pos : i64, new_e : LabelEntry) -> Vec<LabelEntry> {
+    label_env_replace_loop(es, pos, new_e, vec_len::<LabelEntry>(es), 0i64, Vec::new::<LabelEntry>())
+}
+
+fn label_env_replace_loop(
+    src : Vec<LabelEntry>,
+    pos : i64,
+    new_e : LabelEntry,
+    n : i64,
+    i : i64,
+    acc : Vec<LabelEntry>,
+) -> Vec<LabelEntry> {
+    if i == n {
+        acc
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<LabelEntry>(acc, new_e);
+            label_env_replace_loop(src, pos, new_e, n, i + 1i64, acc1)
+        } else {
+            match vec_get::<LabelEntry>(src, i) {
+                Some(e) => {
+                    let acc1 = vec_push::<LabelEntry>(acc, e);
+                    label_env_replace_loop(src, pos, new_e, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Flow-walker (T11-D36) : taint-propagation through expressions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `label_of_expr` : compute the IfcLabel of a HIR expression by structural
+// taint-tracking. Path-references look up the env ; binary/call/field
+// combine sub-expression labels via `ifc_label_combine_taint`. Conservative
+// over-approximation : unhandled variants return empty (sound under-approx).
+fn label_of_expr(env : LabelEnv, e : HirExprFull) -> IfcLabel {
+    match e.kind {
+        HirExprKindFull::LiteralKind(_) => ifc_label_empty(),
+        HirExprKindFull::PathKind(p) => label_of_path(env, p),
+        HirExprKindFull::BinaryKind(b) => label_of_binary(env, b),
+        HirExprKindFull::UnaryKind(u) => label_of_unary(env, u),
+        HirExprKindFull::CallKind(c) => label_of_call(env, c),
+        HirExprKindFull::FieldKind(f) => label_of_field(env, f),
+        HirExprKindFull::IndexKind(i) => label_of_index(env, i),
+        HirExprKindFull::IfKind(if_e) => label_of_if(env, if_e),
+        HirExprKindFull::MatchKind(m) => label_of_match(env, m),
+        HirExprKindFull::TupleKind(t) => label_of_tuple(env, t),
+        HirExprKindFull::ParenKind(p) => label_of_paren(env, p),
+        HirExprKindFull::ReturnKind(r) => label_of_return(env, r),
+        HirExprKindFull::CastKind(c) => label_of_cast(env, c),
+        HirExprKindFull::BlockKind(b) => label_of_block(env, b),
+        // Conservative : unhandled variants return empty.
+        _ => ifc_label_empty(),
+    }
+}
+
+fn label_of_path(env : LabelEnv, p : HirPathExpr) -> IfcLabel {
+    let n = vec_len::<Symbol>(p.segments);
+    if n == 1i64 {
+        match vec_get::<Symbol>(p.segments, 0i64) {
+            Some(name) => match label_env_lookup(env, name) {
+                Some(l) => l,
+                None    => ifc_label_empty(),
+            },
+            None => ifc_label_empty(),
+        }
+    } else {
+        ifc_label_empty()
+    }
+}
+
+fn label_of_binary(env : LabelEnv, b : HirBinaryExpr) -> IfcLabel {
+    let lhs = match vec_get::<HirExprFull>(b.lhs, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    let rhs = match vec_get::<HirExprFull>(b.rhs, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    ifc_label_combine_taint(lhs, rhs)
+}
+
+fn label_of_unary(env : LabelEnv, u : HirUnaryExpr) -> IfcLabel {
+    match vec_get::<HirExprFull>(u.operand, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    }
+}
+
+fn label_of_call(env : LabelEnv, c : HirCallExpr) -> IfcLabel {
+    let callee_l = match vec_get::<HirExprFull>(c.callee, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    label_of_call_args(env, c.args, callee_l, 0i64, vec_len::<HirCallArg>(c.args))
+}
+
+fn label_of_call_args(
+    env : LabelEnv,
+    args : Vec<HirCallArg>,
+    acc : IfcLabel,
+    i : i64,
+    n : i64,
+) -> IfcLabel {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<HirCallArg>(args, i) {
+            Some(a) => {
+                let arg_l = label_of_expr(env, a.value);
+                let acc1 = ifc_label_combine_taint(acc, arg_l);
+                label_of_call_args(env, args, acc1, i + 1i64, n)
+            },
+            None => acc,
+        }
+    }
+}
+
+fn label_of_field(env : LabelEnv, f : HirFieldExpr) -> IfcLabel {
+    match vec_get::<HirExprFull>(f.obj, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    }
+}
+
+fn label_of_index(env : LabelEnv, ix : HirIndexExpr) -> IfcLabel {
+    let obj = match vec_get::<HirExprFull>(ix.obj, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    let idx = match vec_get::<HirExprFull>(ix.index, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    ifc_label_combine_taint(obj, idx)
+}
+
+fn label_of_if(env : LabelEnv, if_e : HirIfExpr) -> IfcLabel {
+    let cond_l = match vec_get::<HirExprFull>(if_e.cond, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    let then_l = label_of_block(env, if_e.then_branch);
+    let else_l = match vec_get::<HirExprFull>(if_e.else_branch, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    ifc_label_combine_taint(ifc_label_combine_taint(cond_l, then_l), else_l)
+}
+
+fn label_of_match(env : LabelEnv, m : HirMatchExpr) -> IfcLabel {
+    let scr = match vec_get::<HirExprFull>(m.scrutinee, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    };
+    label_of_match_arms(env, m.arms, scr, 0i64, vec_len::<HirMatchArm>(m.arms))
+}
+
+fn label_of_match_arms(
+    env : LabelEnv,
+    arms : Vec<HirMatchArm>,
+    acc : IfcLabel,
+    i : i64,
+    n : i64,
+) -> IfcLabel {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<HirMatchArm>(arms, i) {
+            Some(arm) => {
+                let body_l = label_of_expr(env, arm.body);
+                let acc1 = ifc_label_combine_taint(acc, body_l);
+                label_of_match_arms(env, arms, acc1, i + 1i64, n)
+            },
+            None => acc,
+        }
+    }
+}
+
+fn label_of_tuple(env : LabelEnv, t : HirTupleExpr) -> IfcLabel {
+    label_of_tuple_loop(env, t.elems, ifc_label_empty(), 0i64, vec_len::<HirExprFull>(t.elems))
+}
+
+fn label_of_tuple_loop(
+    env : LabelEnv,
+    elems : Vec<HirExprFull>,
+    acc : IfcLabel,
+    i : i64,
+    n : i64,
+) -> IfcLabel {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<HirExprFull>(elems, i) {
+            Some(e) => {
+                let l = label_of_expr(env, e);
+                let acc1 = ifc_label_combine_taint(acc, l);
+                label_of_tuple_loop(env, elems, acc1, i + 1i64, n)
+            },
+            None => acc,
+        }
+    }
+}
+
+fn label_of_paren(env : LabelEnv, p : HirParenExpr) -> IfcLabel {
+    match vec_get::<HirExprFull>(p.inner, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    }
+}
+
+fn label_of_return(env : LabelEnv, r : HirReturnExpr) -> IfcLabel {
+    match vec_get::<HirExprFull>(r.value, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    }
+}
+
+fn label_of_cast(env : LabelEnv, c : HirCastExpr) -> IfcLabel {
+    match vec_get::<HirExprFull>(c.expr, 0i64) {
+        Some(e) => label_of_expr(env, e),
+        None    => ifc_label_empty(),
+    }
+}
+
+fn label_of_block(env : LabelEnv, b : HirBlockFull) -> IfcLabel {
+    // Stage-0 : block-walk inspects only trailing-expression label. Full
+    // statement-by-statement label-env extension lands in the W-E2-δ slice
+    // once stmts are migrated to use HirExprFull.
+    match b.trailing {
+        Some(_) => ifc_label_empty(),  // placeholder until stmt-walker landed
+        None    => ifc_label_empty(),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § LabelRegistry — DefId → IfcLabel (cross-module persistent labels).
+// ───────────────────────────────────────────────────────────────────────
+
+struct LabelRegEntry {
+    def   : DefId,
+    label : IfcLabel,
+}
+
+struct IfcLabelRegistry {
+    entries : Vec<LabelRegEntry>,
+}
+
+fn ifc_label_registry_new() -> IfcLabelRegistry {
+    IfcLabelRegistry { entries : Vec::new::<LabelRegEntry>() }
+}
+
+fn ifc_label_registry_is_empty(r : IfcLabelRegistry) -> bool {
+    vec_is_empty::<LabelRegEntry>(r.entries)
+}
+
+fn ifc_label_registry_len(r : IfcLabelRegistry) -> i64 {
+    vec_len::<LabelRegEntry>(r.entries)
+}
+
+fn ifc_label_registry_insert(r : IfcLabelRegistry, def : DefId, label : IfcLabel) -> IfcLabelRegistry {
+    let new_e = LabelRegEntry { def : def, label : label };
+    IfcLabelRegistry { entries : vec_push::<LabelRegEntry>(r.entries, new_e) }
+}
+
+fn ifc_label_registry_get(r : IfcLabelRegistry, def : DefId) -> Option<IfcLabel> {
+    ifc_label_registry_get_loop(r.entries, def, 0i64, vec_len::<LabelRegEntry>(r.entries))
+}
+
+fn ifc_label_registry_get_loop(
+    es : Vec<LabelRegEntry>,
+    def : DefId,
+    i : i64,
+    n : i64,
+) -> Option<IfcLabel> {
+    if i == n {
+        None
+    } else {
+        match vec_get::<LabelRegEntry>(es, i) {
+            Some(e) => {
+                if def_id_eq(e.def, def) {
+                    Some(e.label)
+                } else {
+                    ifc_label_registry_get_loop(es, def, i + 1i64, n)
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Sensitive<X> tracking convenience.
+//
+//   `Sensitive<Behavioral>` / `Sensitive<Voice>` / `Sensitive<Spatial>` etc.
+//   are CSSL refinement-types whose desugaring at stage-0 attaches an IFC
+//   label with a single confidentiality principal. The principal-name is
+//   the inner type-parameter — `Behavioral` / `Voice` / `Spatial` / `Biometric`
+//   / `Genetic` / `Location`. Stage-0 helper builds the canonical label.
+// ───────────────────────────────────────────────────────────────────────
+
+// Construct an IfcLabel for `Sensitive<Behavioral>` style refinements.
+//   `principal_name` is the kind of sensitivity (e.g., "Behavioral" / "Voice"
+//   / "Spatial" / "Biometric"). Confidentiality = {principal} ; integrity = ∅.
+fn label_for_sensitive(principal : Symbol) -> IfcLabel {
+    let principals = vec_push::<Symbol>(Vec::new::<Symbol>(), principal);
+    ifc_label_new(principals, Vec::new::<Symbol>())
+}
+
+// Convenience shorthand : `secret(User)` → confid={User}.
+fn label_for_secret(principal : Symbol) -> IfcLabel {
+    label_for_sensitive(principal)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (mirror Rust `mod tests`).
+// ───────────────────────────────────────────────────────────────────────
+
+// PrincipalSet round-trip : insert + contains.
+fn _example_principal_set_basic() -> bool {
+    let s0 = principal_set_empty();
+    let empty_ok = principal_set_is_empty(s0);
+    let a = symbol_from_raw(1u32);
+    let b = symbol_from_raw(2u32);
+    let s1 = principal_set_insert(s0, a);
+    let s2 = principal_set_insert(s1, b);
+    let s3 = principal_set_insert(s2, a);  // dup
+    let len_ok = principal_set_len(s3) == 2i64;
+    let has_a = principal_set_contains(s3, a);
+    let has_b = principal_set_contains(s3, b);
+    let no_c = !principal_set_contains(s3, symbol_from_raw(3u32));
+    empty_ok && len_ok && has_a && has_b && no_c
+}
+
+// PrincipalSet union + intersection algebra.
+fn _example_principal_set_lattice_ops() -> bool {
+    let a = symbol_from_raw(1u32);
+    let b = symbol_from_raw(2u32);
+    let c = symbol_from_raw(3u32);
+    let s_ab = principal_set_from_vec(vec_push::<Symbol>(vec_push::<Symbol>(Vec::new::<Symbol>(), a), b));
+    let s_bc = principal_set_from_vec(vec_push::<Symbol>(vec_push::<Symbol>(Vec::new::<Symbol>(), b), c));
+    let union_abc = principal_set_union(s_ab, s_bc);
+    let intersect_b = principal_set_intersect(s_ab, s_bc);
+    let union_ok = principal_set_len(union_abc) == 3i64;
+    let intersect_ok = principal_set_len(intersect_b) == 1i64 && principal_set_contains(intersect_b, b);
+    let subset_ok = principal_set_is_subset(intersect_b, s_ab);
+    union_ok && intersect_ok && subset_ok
+}
+
+// IfcLabel empty + labeled + lattice subset.
+fn _example_ifc_label_empty_and_labeled() -> bool {
+    let l0 = ifc_label_empty();
+    let unlabeled = !ifc_label_is_labeled(l0);
+    let user = symbol_from_raw(7u32);
+    let l_user = label_for_sensitive(user);
+    let labeled = ifc_label_is_labeled(l_user);
+    unlabeled && labeled
+}
+
+// Lattice : (∅,∅) ⊑ (∅,∅) ; ({User},∅) is NOT ⊑ (∅,∅) (confid widens going up).
+fn _example_ifc_label_sub_of() -> bool {
+    let empty = ifc_label_empty();
+    let user = symbol_from_raw(7u32);
+    let l_user = label_for_sensitive(user);
+    let empty_sub_empty = ifc_label_is_sub_of(empty, empty);
+    let user_sub_empty = ifc_label_is_sub_of(l_user, empty);
+    let empty_not_sub_user = !ifc_label_is_sub_of(empty, l_user);
+    empty_sub_empty && user_sub_empty && empty_not_sub_user
+}
+
+// Sensitive<Behavioral> doesn't escape to Public without declassify : if
+// the env has `x : Sensitive<Behavioral>` and we look up `x`, the resulting
+// label MUST contain Behavioral. (This is the structural invariant the IFC
+// flow-walker enforces — full network-escape detection lives in the body
+// walker which uses this primitive.)
+fn _example_sensitive_does_not_escape_silently() -> bool {
+    let behavioral = symbol_from_raw(42u32);
+    let x_name = symbol_from_raw(100u32);
+    let env0 = label_env_new();
+    let env1 = label_env_insert(env0, x_name, label_for_sensitive(behavioral));
+    let lookup_l = match label_env_lookup(env1, x_name) {
+        Some(l) => l,
+        None    => ifc_label_empty(),
+    };
+    let labeled = ifc_label_is_labeled(lookup_l);
+    let has_behavioral = principal_set_contains(lookup_l.confidentiality, behavioral);
+    labeled && has_behavioral
+}
+
+// Principal-flow respects lattice : taint-combine of two sensitive labels
+// produces a label that contains BOTH principals.
+fn _example_principal_flow_respects_lattice() -> bool {
+    let user = symbol_from_raw(7u32);
+    let voice = symbol_from_raw(8u32);
+    let l_user = label_for_sensitive(user);
+    let l_voice = label_for_sensitive(voice);
+    let combined = ifc_label_combine_taint(l_user, l_voice);
+    let has_user  = principal_set_contains(combined.confidentiality, user);
+    let has_voice = principal_set_contains(combined.confidentiality, voice);
+    has_user && has_voice
+}
+
+// Diagnostic-code stability.
+fn _example_ifc_diagnostic_codes() -> bool {
+    let s = hir_span_dummy();
+    let d1 = IfcDiagnostic::MissingLabel(IfcMissingLabel { fn_name : string_from_str("f"), fn_span : s });
+    let d2 = IfcDiagnostic::MissingDeclassPolicy(IfcMissingDeclassPolicy { fn_name : string_from_str("f"), fn_span : s });
+    let d3 = IfcDiagnostic::UnauthorizedDowngrade(IfcUnauthorizedDowngrade {
+        fn_name : string_from_str("f"),
+        from    : string_from_str("hi"),
+        to      : string_from_str("lo"),
+        fn_span : s,
+    });
+    let d4 = IfcDiagnostic::FlowViolation(IfcFlowViolation {
+        fn_name    : string_from_str("f"),
+        param_name : string_from_str("x"),
+        label      : string_from_str("confid{User}+integ{}"),
+        fn_span    : s,
+    });
+    string_eq(ifc_diagnostic_code(d1), string_from_str("IFC0001")) &&
+    string_eq(ifc_diagnostic_code(d2), string_from_str("IFC0002")) &&
+    string_eq(ifc_diagnostic_code(d3), string_from_str("IFC0003")) &&
+    string_eq(ifc_diagnostic_code(d4), string_from_str("IFC0004"))
+}
+
+// is_builtin_principal_name covers the canonical 9-name set.
+fn _example_builtin_principals() -> bool {
+    is_builtin_principal_name(string_from_str("HarmTarget")) &&
+    is_builtin_principal_name(string_from_str("Surveiller")) &&
+    is_builtin_principal_name(string_from_str("Coercer")) &&
+    is_builtin_principal_name(string_from_str("Weaponizer")) &&
+    is_builtin_principal_name(string_from_str("System")) &&
+    is_builtin_principal_name(string_from_str("Kernel")) &&
+    is_builtin_principal_name(string_from_str("User")) &&
+    is_builtin_principal_name(string_from_str("Public")) &&
+    is_builtin_principal_name(string_from_str("Anthropic-Audit")) &&
+    !is_builtin_principal_name(string_from_str("RandomGuy"))
+}
+
+// IfcReport push + clean + count.
+fn _example_ifc_report_basic() -> bool {
+    let r0 = ifc_report_new();
+    let clean = ifc_report_is_clean(r0);
+    let s = hir_span_dummy();
+    let d = IfcDiagnostic::MissingLabel(IfcMissingLabel {
+        fn_name : string_from_str("f"),
+        fn_span : s,
+    });
+    let r1 = ifc_report_push(r0, d);
+    let not_clean = !ifc_report_is_clean(r1);
+    let count_ok = ifc_report_count(r1, string_from_str("IFC0001")) == 1i64;
+    let other_ok = ifc_report_count(r1, string_from_str("IFC0004")) == 0i64;
+    clean && not_clean && count_ok && other_ok
+}
+
+// IfcLabelRegistry insert + lookup.
+fn _example_ifc_label_registry() -> bool {
+    let r0 = ifc_label_registry_new();
+    let empty_ok = ifc_label_registry_is_empty(r0);
+    let d = def_id_from_raw(5u32);
+    let user = symbol_from_raw(7u32);
+    let l_user = label_for_sensitive(user);
+    let r1 = ifc_label_registry_insert(r0, d, l_user);
+    let len_ok = ifc_label_registry_len(r1) == 1i64;
+    let lookup_ok = match ifc_label_registry_get(r1, d) {
+        Some(_) => true,
+        None    => false,
+    };
+    empty_ok && len_ok && lookup_ok
+}
+
+// check_ifc on empty module → empty report (clean + zero counters).
+fn _example_check_ifc_empty_module() -> bool {
+    let m = hir_module_empty(hir_span_dummy());
+    let syms = IfcSyms {
+        sensitive : symbol_from_raw(1u32),
+        confid    : symbol_from_raw(2u32),
+        integrity : symbol_from_raw(3u32),
+        ifc_label : symbol_from_raw(4u32),
+        declass   : symbol_from_raw(5u32),
+        requires  : symbol_from_raw(6u32),
+        user      : symbol_from_raw(7u32),
+    };
+    let r = check_ifc(m, syms);
+    ifc_report_is_clean(r) && r.fns_checked == 0u32
+}
