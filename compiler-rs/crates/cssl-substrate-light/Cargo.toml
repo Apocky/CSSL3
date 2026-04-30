@@ -1,0 +1,30 @@
+[package]
+name                   = "cssl-substrate-light"
+description            = "CSSLv3 — ApockyLight per-quantum primitive type : 32B std430-aligned light-quantum (hero-radiance + λ_hero + 8 accompaniment bands packed-f16 + DoP + octahedral direction + KAN-band-handle + evidence-glyph + cap-handle). Per-cell angular-spectral light-distribution carrier consumed by §§ 36 CFER renderer. Cite : specs/34_APOCKY_LIGHT.csl + specs/30_SUBSTRATE_v3.csl § APOCKY-LIGHT + specs/36_CFER_RENDERER.csl § Light-state ; T11-D301 (W-S-CORE-2)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-caps — Pony-6 capability algebra ; ApockyLight.cap_handle is an opaque
+#   index into a per-process CapTable bound to a CapKind subset (typically
+#   `val` for shared-immutable scene-static lights ; `iso` for player-bound
+#   sources that must not aliase across actors).
+cssl-caps = { path = "../cssl-caps" }
+# § cssl-ifc — DLM label-lattice + egress capability ; ApockyLight may carry
+#   a confidentiality label when the light originates from a sensitive-domain
+#   source (e.g. companion-AI-perspective gaze-cone illumination). The
+#   `combine_caps` helper uses Label::join semantics for IFC propagation.
+cssl-ifc  = { path = "../cssl-ifc" }
+# § thiserror — IFC violations + cap-mismatch + DoP-out-of-range produce
+#   typed errors ; downstream renderer surfaces them at the pipeline boundary.
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# § Tests verify std430 layout + physics-invariants + IFC flow without
+#   pulling additional crates ; the workspace's stdlib is sufficient.
