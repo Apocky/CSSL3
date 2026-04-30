@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-substrate-adjoint"
+description            = "CSSLv3 — adjoint-method kernel for ADCS full-differentiability : forward/backward driver + checkpoint-every-N-steps + Parameter trait (KAN-cell weights · material-coefs · vertex-positions · NPC-traits · audio-coefs) + loss-functions + SGD/Adam optimizers. Backprops through CFER field-evolution per specs/30_SUBSTRATE_v3 § FULL-DIFFERENTIABILITY + specs/36_CFER_RENDERER § DIFFERENTIABILITY."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-substrate-adjoint sits ABOVE the substrate runtime : it consumes the
+# canonical Ω-field + KAN-cell update-rule and produces ∂L/∂θ for arbitrary
+# loss-fn over arbitrary parameter-set. No new substrate ABI is added — the
+# adjoint state lives in side-tables keyed by Morton-cell-id and parameter-id.
+cssl-substrate-omega-field    = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-loa-kan        = { path = "../cssl-substrate-loa-kan" }
+cssl-substrate-prime-directive = { path = "../cssl-substrate-prime-directive" }
+
+# § thiserror — adjoint-error chain (parameter-id-out-of-range +
+# checkpoint-corruption + dimension-mismatch + finite-diff-validation-fail).
+thiserror                     = { workspace = true }
+# § smallvec — per-cell adjoint-state arrays + per-parameter gradient-accumulator
+# slots (≤ 16 inline ; spills to heap for KAN-cell-weights with ≥ 16 coefs).
+smallvec                      = { workspace = true }
