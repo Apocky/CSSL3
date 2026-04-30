@@ -444,7 +444,7 @@ mod tests {
     /// FIRST construct-op encountered. Tracked as Wave-A1-β follow-up
     /// (parallel to the Wave-A2-β / cgen-cl-vec-op gap).
     #[test]
-    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
+    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) + W-A1-ε sweep-2 landed (T11-D282 ; expands try-op-emitted construct-ops in scf.if branch-arms) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast still not wired in lower_op_to_cl — needs Wave-A1-δ to unblock"]
     fn wave_a1_option_some_jit_returns_42() {
         match try_jit_main_returns_i32("wave-a1-option-some", WAVE_A1_OPTION_SOME) {
             Ok(code) => assert_eq!(code, 42, "expected 42, got {code}"),
@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
+    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) + W-A1-ε sweep-2 landed (T11-D282 ; expands try-op-emitted construct-ops in scf.if branch-arms) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast still not wired in lower_op_to_cl — needs Wave-A1-δ to unblock"]
     fn wave_a1_result_ok_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a1-result-ok", WAVE_A1_RESULT_OK) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
@@ -514,7 +514,7 @@ mod tests {
     /// JIT body-cgen for `cssl.heap.alloc` / `arith.bitcast` is the
     /// next blocker (Wave-A1-β follow-up).
     #[test]
-    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
+    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) + W-A1-ε sweep-2 landed (T11-D282 ; expands try-op-emitted construct-ops in scf.if branch-arms) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast still not wired in lower_op_to_cl — needs Wave-A1-δ to unblock"]
     fn wave_a3_try_propagation_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a3-try", WAVE_A3_TRY_PROPAGATION) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
