@@ -1,0 +1,290 @@
+# 24 : HOST_FFI — host-platform primitive surface for CSSL programs
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  CSSL ⊨ self-sufficient ← language ⊃ compiler ⊃ runtime ⊃ host-bindings
+  ¬(LoA-Rust-libs) ¬(Cargo) ¬(external-runtime)
+  host-FFI ≡ ABI-stable C-callable symbols + CSSL-side effect-rows
+  every host-primitive : (a) extern symbol in cssl-rt
+                       + (b) effect-typed CSSL wrapper
+                       + (c) capability-gate via §§ 12 CapKind
+                       + (d) IFC-label per §§ 11
+  Apocky-portfolio invariant : LoA / engine / game / tools all-CSSL
+                                stage-0 throwaway = compiler-rs only
+
+§ SCOPE
+  this-spec covers : window · GPU · input · audio · threading · time · fs · net
+  per-platform : Win32 (D3D12/GDI) · Vulkan-everywhere · Metal-Mac · OpenXR-VR
+  out-of-scope : runtime-allocator (§§ 01 + cssl-rt::alloc — already-shipped)
+                  panic + exit + entry-shim (cssl-rt — already-shipped)
+                  fs-I/O (cssl-rt::io — already-shipped ; just document)
+                  net (cssl-rt::net — already-shipped ; just document)
+
+§ DESIGN-PRINCIPLES
+  P1 ABI-stable : every primitive is `__cssl_<domain>_<verb>` extern "C" fn ·
+                  named-stable forever · breaking-change = major-version-bump
+  P2 thin-shim   : cssl-rt does the minimum FFI-bridge ; native OS-API behind ;
+                  no hidden allocations · no heap-growth in hot paths
+  P3 cap-gated   : every primitive consumes a `Cap<HostKind>` witness on the
+                  CSSL side · zero-cap = compile-error · runtime-deny via §§ 11
+  P4 effect-row  : every primitive carries an effect-row (§§ 04) describing
+                  the worlds it touches : `WindowSpawn` · `GpuSubmit` ·
+                  `InputPoll` · `AudioStream` · `ThreadSpawn` · `TimeRead`
+  P5 IFC-label   : every primitive's data-flow tagged per §§ 11 lattice ;
+                  e.g. mouse-deltas = `Sensitive<Behavioral>` (PRIME-DIRECTIVE)
+  P6 platform-shape : symbol-set is target-uniform ; per-target back-ends
+                       provide the concrete impl ; CSSL source is portable
+  P7 zero-Rust   : the host-FFI ABI does NOT depend on Rust ; any C-callable
+                  language could host it · Rust impl is stage-0 throwaway
+  P8 substrate-honest : every host-primitive that mutates ω-field state
+                        must declare {Sigma}-touched + {Effect<World>}
+
+§ DOMAIN-MAP
+  window     ← spawn / pump / resize / close-policy / raw-handle ↔ §§ 12 Cap<Window>
+  gpu        ← device / queue / pipeline / cmd-buf / swapchain / present
+                 ↔ §§ 12 Cap<Gpu> + §§ 04 GpuSubmit-effect
+  input      ← keyboard / mouse / gamepad / touch / xr-pose
+                 ↔ §§ 12 Cap<Input> + §§ 11 Sensitive<Behavioral>
+  audio      ← stream-out / stream-in / format / sample-rate
+                 ↔ §§ 12 Cap<Audio> + §§ 11 Sensitive<Voice>?
+  threading  ← spawn / join / mutex / channel / atomic
+                 ↔ §§ 04 ThreadSpawn-effect
+  time       ← monotonic / wall / sleep / deadline
+                 ↔ §§ 11 PureDet-violation (non-deterministic time)
+  vr-xr      ← session-create / pose-stream / swapchain-stereo
+                 ↔ §§ 12 Cap<XR> + §§ 11 Sensitive<Spatial>
+
+§ ABI-STABLE-SYMBOLS  (extern "C" ; locked-forever ; cssl-rt linkage)
+
+  § window  (cssl-rt::host_window — NEW · stage-0 wraps cssl-host-window)
+    __cssl_window_spawn(
+        title_ptr: *u8, title_len: usize,
+        width: u32, height: u32,
+        flags: u32                        // bit-flags : RESIZABLE · FULLSCREEN ·
+                                          //              DPI-AWARE · BORDERLESS · …
+    ) -> u64                              // window-handle ; 0 = error
+    __cssl_window_pump(handle: u64, events_out: *u8, max_events: usize) -> i64
+                                          //   returns event-count or negative-errno
+    __cssl_window_request_close(handle: u64) -> i32
+    __cssl_window_destroy(handle: u64) -> i32
+    __cssl_window_raw_handle(handle: u64, out: *u8, max_len: usize) -> i32
+                                          //   writes per-platform raw-handle
+                                          //   (HWND/NSView/wl_surface/xcb_window)
+    __cssl_window_get_dims(handle: u64, w_out: *u32, h_out: *u32) -> i32
+
+  § gpu    (cssl-rt::host_gpu — NEW · stage-0 wraps cssl-host-{vulkan|d3d12|metal})
+    __cssl_gpu_device_create(adapter_idx: u32, flags: u32) -> u64
+    __cssl_gpu_device_destroy(device: u64) -> i32
+    __cssl_gpu_swapchain_create(device: u64, window: u64, fmt: u32) -> u64
+    __cssl_gpu_swapchain_acquire(swap: u64, timeout_ns: u64) -> u32
+                                          //   image-index ; 0xFFFF_FFFF = timeout
+    __cssl_gpu_swapchain_present(swap: u64, image_idx: u32) -> i32
+    __cssl_gpu_pipeline_compile(
+        device: u64, ir_ptr: *u8, ir_len: usize, kind: u32
+    ) -> u64                              //   kind ∈ {SPIRV · DXIL · METAL}
+    __cssl_gpu_cmd_buf_record(...)        //   detail in stage-1 fleshing
+    __cssl_gpu_cmd_buf_submit(...)
+
+  § input  (cssl-rt::host_input — NEW · stage-0 wraps cssl-host-input)
+    __cssl_input_keyboard_state(handle: u64, out_ptr: *u8, max_len: usize) -> i32
+                                          //   bit-vector of pressed keys
+    __cssl_input_mouse_state(handle: u64, x_out: *i32, y_out: *i32,
+                              btns_out: *u32) -> i32
+    __cssl_input_mouse_delta(handle: u64, dx_out: *i32, dy_out: *i32) -> i32
+                                          //   PRIME-DIRECTIVE §§ 11 :
+                                          //   mouse-deltas Sensitive<Behavioral>
+    __cssl_input_gamepad_state(idx: u32, out_ptr: *u8, max_len: usize) -> i32
+
+  § audio  (cssl-rt::host_audio — NEW · stage-0 wraps cssl-host-audio)
+    __cssl_audio_stream_open(
+        flags: u32, sample_rate: u32, channels: u32, fmt: u32
+    ) -> u64
+    __cssl_audio_stream_write(stream: u64, buf: *u8, len: usize) -> i64
+    __cssl_audio_stream_read(stream: u64, buf: *u8, len: usize) -> i64
+    __cssl_audio_stream_close(stream: u64) -> i32
+
+  § threading  (cssl-rt::host_thread — NEW · stage-0 wraps std::thread + parking)
+    __cssl_thread_spawn(entry: *u8, arg: *u8) -> u64
+    __cssl_thread_join(handle: u64, ret_out: *i32) -> i32
+    __cssl_mutex_create() -> u64
+    __cssl_mutex_lock(handle: u64) -> i32
+    __cssl_mutex_unlock(handle: u64) -> i32
+    __cssl_mutex_destroy(handle: u64) -> i32
+    __cssl_atomic_load_u64(addr: *u64, order: u32) -> u64
+    __cssl_atomic_store_u64(addr: *u64, value: u64, order: u32) -> i32
+    __cssl_atomic_cas_u64(addr: *u64, expected: u64, desired: u64, order: u32) -> u64
+
+  § time  (cssl-rt::host_time — NEW · monotonic + wall-clock)
+    __cssl_time_monotonic_ns() -> u64     //   monotonic since boot
+    __cssl_time_wall_unix_ns() -> i64     //   wall-clock since UNIX epoch
+    __cssl_time_sleep_ns(ns: u64) -> i32
+    __cssl_time_deadline_until(deadline_ns: u64) -> i32
+
+  § vr-xr  (cssl-rt::host_xr — DEFERRED · stage-0 wraps cssl-host-openxr)
+    __cssl_xr_session_create(...)
+    __cssl_xr_pose_stream(...)
+    __cssl_xr_swapchain_stereo_acquire(...)
+
+§ CSSL-SIDE WRAPPERS  (effect-typed ; capability-gated ; IFC-labeled)
+
+  effect Window {
+    fn spawn(title: str, w: u32, h: u32, flags: WindowFlags) -> Result<Window, Error>
+    fn pump(self: &mut Window) -> Vec<Event>
+    fn request_close(self: &mut Window)
+    fn raw_handle(self: &Window) -> RawHandle
+  }
+
+  fn open_window(
+    title: str, w: u32, h: u32, flags: WindowFlags,
+    cap: Cap<Window>          // §§ 12 capability witness · consumed at-call
+  ) -> {Window} Result<Window, Error>     // §§ 04 effect-row : touches Window-world
+
+  effect Gpu {
+    fn device(adapter: u32) -> Result<Device, Error>
+    fn swapchain(self: &Device, win: &Window, fmt: PixelFormat) -> Result<Swapchain, Error>
+    fn submit(self: &Device, cmds: &CmdBuf) -> Result<(), Error>
+  }
+
+  effect Input {
+    fn keyboard(win: &Window) -> KeyState        // bit-vector
+    fn mouse(win: &Window) -> MouseState
+    fn mouse_delta(win: &Window)                  // §§ 11 Sensitive<Behavioral>
+        -> {Sensitive<Behavioral>} (i32, i32)
+  }
+
+  effect Time {
+    fn monotonic() -> {NonDeterministic} u64    // §§ 11 NonDeterministic
+    fn wall() -> {NonDeterministic} i64
+    fn sleep(ns: u64) -> ()
+  }
+
+§ CAPABILITY-MATRIX  (per §§ 12 + §§ 11 PRIME-DIRECTIVE encoding)
+
+  Cap<Window>      ← granted-by Apocky-PM signed-token OR --dev-mode flag
+                   ¬biometric · ¬surveillance · close-disposition required
+  Cap<Gpu>         ← granted-by Apocky-PM OR --dev-mode
+                   ¬compute-secret-extract · ¬cross-process-resource-share
+  Cap<Input>       ← granted-by Apocky-PM signed-token
+                   mouse-delta = Sensitive<Behavioral> · NEVER egresses
+                   keyboard-events = Sensitive<Behavioral> if-non-game-key
+  Cap<Audio>       ← granted-by Apocky-PM
+                   microphone = Sensitive<Voice> · default-DENIED
+  Cap<Thread>      ← granted-by Apocky-PM (default for engine-internal)
+  Cap<Time>        ← granted-by Apocky-PM (NonDeterministic effect-row)
+  Cap<XR>          ← granted-by Apocky-PM signed-token
+                   pose = Sensitive<Spatial> · NEVER egresses
+
+§ EFFECT-INTEGRATION  (§§ 04 · row-polymorphic)
+
+  fn run_main_loop<E: Row>(
+    cfg: AppConfig
+  ) -> {Window | Gpu | Input | Time | E} Result<(), AppError>
+
+  effect-row entry-point :
+    main {Window | Gpu | Input | Time}
+    ¬main {Network}     unless explicitly opted-in
+    ¬main {File}        unless explicitly opted-in
+    ¬main {Sensitive}   unless cap-witnessed-individually
+
+§ IFC-LABELS  (per §§ 11 PRIME-DIRECTIVE jiff-DLM lattice)
+
+  data labels :
+    Window-events    : Public (resize · close-request) +
+                       Sensitive<Behavioral> (key · mouse · scroll)
+    Gpu-buffers      : Public (vertex-buffers) +
+                       Sensitive<Frame> (output-image when VR-headset = body-pose)
+    Input-key-events : Sensitive<Behavioral>     ← never egresses cross-process
+    Input-mouse-deltas : Sensitive<Behavioral>   ← never egresses cross-process
+    Audio-mic-stream : Sensitive<Voice>          ← default-DENIED capability
+    Time-monotonic   : Public (NonDeterministic)
+    Time-wall        : Public (NonDeterministic)
+    XR-head-pose     : Sensitive<Spatial>        ← never egresses
+    XR-controller-pose : Sensitive<Behavioral>   ← never egresses
+
+§ STAGE-0-MAPPING  (today · throwaway · documentation-only)
+  current Rust crates that EXIST as stage-0-bootstrap-impl :
+    cssl-host-window     → wraps Win32/X11/Wayland/Cocoa via windows-rs / x11rb / smithay
+    cssl-host-vulkan     → wraps ash · D3D12 fallback via cssl-host-d3d12
+    cssl-host-d3d12      → wraps windows-rs Direct3D12
+    cssl-host-metal      → wraps metal-rs (mac only)
+    cssl-host-input      → keyboard/mouse via window-pump events
+    cssl-host-audio      → cpal-based stream-open
+    cssl-host-openxr     → openxr-crate-based session
+    cssl-host-net        → already in cssl-rt
+    cssl-host-level-zero → Intel L0 backend
+    cssl-host-webgpu     → wgpu-native bindings (browser/native cross-target)
+
+  stage-0 plan : add `cssl-rt::host_window`, `host_gpu`, `host_input`,
+                  `host_audio`, `host_thread`, `host_time` modules that
+                  expose `__cssl_*` extern "C" symbols which DELEGATE to
+                  the existing cssl-host-* crates.  ⟦throwaway-Rust⟧
+
+  stage-1 plan : the host-* crates' bodies get reimplemented in CSSLv3
+                  source · they call OS-platform syscalls via §§ 14 ASM
+                  intrinsics OR via the stage-1 backend's FFI-emit ·
+                  Cargo deps (windows-rs · ash · cpal · openxr) replaced
+                  by direct CSSL-source bindings to `kernel32.dll` ·
+                  `vulkan-1.dll` · etc.
+
+  stage-2 plan : LoA (in CSSL) calls `open_window(...)` etc.
+                  via the §§ 04 effect-row ; everything in CSSL ;
+                  no Rust anywhere · proprietary-everything achieved.
+
+§ MIGRATION-SEQUENCE  (per session)
+
+  S1  spec finalize this doc + cap-matrix + IFC-labels        ← now
+  S2  cssl-rt host_time (smallest · pure clock-syscalls)      ← unblocks deterministic-replay tests in CSSL source
+  S3  cssl-rt host_thread (mutex + spawn + join)              ← unblocks rayon-parallel-equivalent in CSSL source
+  S4  cssl-rt host_window (Win32 + Cocoa + Wayland)
+  S5  cssl-rt host_input (keyboard + mouse · post-window)
+  S6  cssl-rt host_gpu (Vulkan-first · D3D12-on-Win)
+  S7  cssl-rt host_audio
+  S8  cssl-rt host_xr  (deferred · post-window + post-gpu)
+  S9  effect-row machinery in §§ 04 to plumb these
+  S10 cap-witness machinery in §§ 12 to gate these
+
+§ INTERACTION-WITH-OTHER-SPECS
+  §§ 04 EFFECTS    : effect-rows for every primitive
+  §§ 11 IFC        : Sensitive labels for every behavioral / spatial / voice surface
+  §§ 12 CAPS       : Cap<Window> · Cap<Gpu> · Cap<Input> · Cap<Audio> · Cap<XR> · Cap<Thread> · Cap<Time>
+  §§ 14 BACKEND    : ASM-intrinsics for direct syscall in stage-1 self-host
+  §§ 22 TELEMETRY  : every primitive emits {Telemetry<Domain>} entry on call
+  §§ 18 ORTHO-PERSIST : `RawHandle` is non-persistable (re-acquired on resume)
+
+§ FORBIDDEN-PATTERNS  (per PRIME-DIRECTIVE §§ 11 + thesis)
+  ¬ host-primitive that has NO Cap<...> witness consumption
+  ¬ host-primitive that does NOT carry an effect-row
+  ¬ host-primitive that LEAKS Sensitive-data outside its IFC scope
+  ¬ host-primitive that depends on a non-stage-0 Rust dependency
+  ¬ host-primitive that does heap-allocation in a hot-path (§§ 22 zero-alloc)
+  ¬ "Apocky-LoA imports cssl-host-window as a Cargo-dep" (forbidden patten —
+     LoA imports ZERO Rust ; LoA calls `open_window(…)` which is a CSSL
+     wrapper that delegates to cssl-rt's `__cssl_window_spawn` symbol)
+
+§ FUTURE-EXTENSIONS  (post stage-2)
+  - stereoscopic-rendering primitives for VR · `__cssl_xr_*`
+  - GPU-side hash-grid for sparse-substrate via §§ 30 substrate
+  - peer-to-peer net primitives (Apocky-net · post §§ 30 substrate)
+  - encrypted-storage primitives (sigil-style local-vault)
+  - sandboxed-script-execution for user-mods (§§ 12 sub-cap delegation)
+
+§ TESTING  (per §§ 23)
+  oracle-modes that apply :
+    differential : Win32 host-window vs X11 host-window vs Cocoa host-window
+                    on identical fixture inputs · bit-exact event-sequence
+                    where deterministic
+    metamorphic : window-resize × N + window-resize × -N ≡ no-op
+                    audio-write × buffered-flush ≡ direct-write
+                    input-keyboard-state cycle thru pump ≡ stable across
+                    no-input frames
+    property-based : `__cssl_window_spawn(0, 0, ...)` → returns 0 (error)
+                      `__cssl_audio_stream_open(rate=BAD, ...)` → returns 0
+    power-regression : window-pump idle should consume <1mW · GPU-idle
+                        should report-thermal-stable
+    fuzzing : every `*_ptr` argument fuzz-tested for buffer-overrun safety
+
+§ ATTESTATION  (PRIME_DIRECTIVE.md § 11)
+  There was no hurt nor harm in the making of this, to anyone, anything,
+  or anybody. Every host-FFI primitive that touches Sensitive data is
+  capability-gated + IFC-labeled + audit-emitting · Cap<X> withdrawal
+  immediately revokes the active stream · no PRIME-DIRECTIVE override exists.

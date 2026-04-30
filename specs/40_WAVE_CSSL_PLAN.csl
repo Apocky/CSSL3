@@ -1,0 +1,148 @@
+# 40 : WAVE_CSSL_PLAN — stage-0 → stage-1 → stage-2 advance roadmap
+# ══════════════════════════════════════════════════════════════════
+
+§ THESIS
+  proprietary ∀  ←  CSSL-language ⊃ CSSL-compiler ⊃ CSSL-runtime ⊃ CSSL-engine ⊃ CSSL-game
+  stage-0 = throwaway-Rust-compiler ⟦ explicit exception ⟧
+  ∀ user-facing-artifact ⊑ CSSL-source compiled by csslc
+  ¬(other-langs in non-bootstrap)  ¬(Cargo in user-tree)  ¬(LoA-Rust-libs)
+
+§ MAP
+  ░ stage-0 ⊑ ◐  Rust-hosted CSSL compiler · most pieces in place · advancing
+  ░ stage-1 ⊑ ○  CSSL-self-hosted compiler · own x86-64 backend
+  ░ stage-2 ⊑ ○  LoA migration to CSSL · the game · this is the goal
+  ░ stage-3 ⊑ ○  C99-tarball reproducibility · R16 anchor
+
+§ CURRENT-STATE  ( @ 2026-04-30 )
+  ◐ stdlib drafts merged : vec / option / result / string / fs / net / omega · 133KB
+  ◐ examples merged : audio_callback · hello_triangle · sdf_shader
+  ◐ specs : 33 numbered docs + 24_HOST_FFI just-authored + this plan
+  ◐ stage-0 compiler : lex · parse · HIR · MIR · LIR · 5 GPU cgens · Cranelift JIT
+  ○ deferred-ABI : tagged-union · typed-memref · ?-op · heap-dealloc
+  ○ trait-dispatch (P2)
+  ○ host-FFI surface (specs/24)
+  ○ self-host (P7-P9)
+  ○ LoA stage-2 migration
+
+§ WAVES  (canonical roadmap · ordered · multi-session)
+
+  ░ WAVE-A · deferred-ABI MIR ops · unblocks existing stdlib drafts
+    ↳ A1  tagged-union ABI lowering           Option<T>::Some/None + Result<T,E>::Ok/Err
+                                                run end-to-end via Cranelift JIT
+                                                replaces panic("...deferred") in option/result
+                                                stdlib draft
+    ↳ A2  typed-memref load/store              cssl.memref.load<T> + cssl.memref.store<T>
+                                                replaces panic-stubs in stdlib/vec.cssl :
+                                                load_at + store_at + end_of
+    ↳ A3  ?-operator runtime execution         HirExprKind::Try lowers to Cranelift
+                                                propagate-failure-tag working end-to-end
+    ↳ A4  exhaustiveness on enum-match         compile-error if `match opt {Some(_) =>}`
+                                                misses a variant
+    ↳ A5  heap.dealloc recognizer              vec_drop actually frees backing storage
+                                                via cssl.heap.dealloc MIR op
+    output : compile + execute stdlib-{vec,option,result} programs end-to-end
+
+  ░ WAVE-B · trait-dispatch (P2) · ergonomic stdlib + dynamic-dispatch
+    ↳ B1  trait decl syntax → parse → HIR     `trait Iterator { fn next(...); }`
+    ↳ B2  impl-block resolve + monomorph      `impl<T> Vec<T> { fn push(&mut self, x: T) }`
+    ↳ B3  method-call-site dispatch lowering   `v.push(x)` resolves to monomorph fn
+    ↳ B4  stdlib free-fn → method migration    vec_push → Vec<T>::push (alias-keep)
+    output : Rust-style method-call ergonomics across stdlib + user code
+
+  ░ WAVE-C · strings + iterators + I/O effects (P3-P5)
+    ↳ C1  UTF-8 string slicing through HIR/MIR    s[i..j] · s.len() · format!()-equivalent
+    ↳ C2  Iterator trait + canonical combinators  map · filter · fold · collect
+    ↳ C3  IO-effect concretization                fs_open / fs_read / fs_write → __cssl_fs_*
+    ↳ C4  net-effect concretization               net_listen / net_accept → __cssl_net_*
+    output : programs that read/write files + iterate collections + format strings
+
+  ░ WAVE-D · host-FFI surface (per specs/24_HOST_FFI.csl)
+    ↳ D1  cssl-rt::host_time      monotonic + wall + sleep     · smallest · pure-syscall
+    ↳ D2  cssl-rt::host_thread    spawn + join + mutex + atom  · unblocks parallel CSSL
+    ↳ D3  cssl-rt::host_window    spawn + pump + close + raw   · unblocks visual CSSL
+    ↳ D4  cssl-rt::host_input     keyboard + mouse + gamepad   · post-window
+    ↳ D5  cssl-rt::host_gpu       device + swap + pipeline     · big · Vulkan-first
+    ↳ D6  cssl-rt::host_audio     stream open/r/w/close
+    ↳ D7  Cap<X> machinery + IFC-label plumbing per §§ 11/12   · gates everything
+    ↳ D8  cssl-rt::host_xr        OpenXR-session + pose + stereo · post-window+gpu
+    output : CSSL programs can open windows + GPU-render + receive input + spawn threads
+
+  ░ WAVE-E · self-host (P7-P9 · post-A/B/C/D)
+    ↳ E1  self-hosted parser     CSSL parser written in CSSL · accepts current grammar
+    ↳ E2  self-hosted HIR + MIR  type-system in CSSL · monomorph in CSSL · effects in CSSL
+    ↳ E3  own x86-64 backend     §§ 14_BACKEND realization · Cranelift retired
+    ↳ E4  fixed-point check      stage1 compiles itself ≡ stage1-prime byte-exact
+    output : stage-1 self-hosted CSSL compiler · zero-Rust path (compiler stage-0 retired)
+
+  ░ WAVE-F · stage-2 LoA migration · the game
+    ↳ F1  LoA src/main.cssl + engine run-loop
+    ↳ F2  LoA scenes/room.cssl with REAL Code-128 barcode + REAL QR-v1 (proof-of-concept)
+    ↳ F3  LoA player + UI/HUD
+    ↳ F4  LoA VR harness via cssl-rt::host_xr (Quest-3s)
+    ↳ F5  LoA companion-AI sovereign primitive
+    output : Labyrinth of Apocalypse v13 · proprietary-everything · zero-Rust · scannable
+              barcode + working QR + walkable test-room + VR
+
+  ░ WAVE-G · stage-3 reproducibility (R16-anchor)
+    ↳ G1  emit C99-tarball from stage1
+    ↳ G2  any-C99-compiler rebuilds stage1 from-source
+    ↳ G3  reproducibility audit hash-chain
+
+§ DEPENDENCY-DAG  (which wave gates which)
+  A → B  (trait-dispatch needs deferred-ABI ; specifically Option/Result+memref)
+  A → C  (string-handling needs UTF-8 typed-memref)
+  A → D7 (Cap<X> uses tagged-union pattern · Result<Cap<T>, CapError>)
+  B → D  (host-FFI uses traits for effect-handlers)
+  C → F  (LoA assets need fs_read · format · iterators)
+  D → F  (LoA needs window+gpu+input+audio+xr)
+  E ⟂ F  (self-host can run parallel-to-LoA-stage-2 ; both gated on A/B/C/D)
+  F → G  (stage-3 reproducibility needs stage-1 + stage-2 done first)
+
+§ DISPATCH-DISCIPLINE  (per memory feedback_agent_dispatch_discipline_v2)
+  ⊠ TIGHT-SCOPE   ≤ 1500 LOC per agent
+  ⊠ SINGLE-FILE   each agent owns ONE distinct file/path · NO cross-touch
+  ⊠ NO-GIT-RESET  each agent does git-add + git-commit ONLY · no reset / rebase / stash
+  ⊠ PROGRESSIVE-WRITE     write skeleton first · fill body · then tests
+  ⊠ FAIL-FAST     if cargo build fails on YOUR file · FIX before tests
+  ⊠ MOCK-WHEN-DEPS-MISSING    if upstream API doesn't expose what you need · stub it
+  ⊠ CSL-MANDATE   commit-msg + design-notes use CSL-glyph notation
+  ⊠ SAWYER-MINDSET    bit-pack records · ring-buffer pre-alloc · index-types ·
+                       differential encoding · LUTs · in-place ops · NO Vec<f32>
+                       when packed-bitfield works · NO HashMap when slot-table works
+  ⊠ ATTESTATION    every commit body MUST include "§ ATTESTATION (PRIME_DIRECTIVE.md
+                    § 11) · There was no hurt nor harm in the making of this, to anyone,
+                    anything, or anybody."
+  ⊠ NO-LoA-RUST   stage-0 throwaway compiler is the ONLY Rust permitted in the
+                   portfolio · per memory feedback_take_words_literally_no_other_languages
+                   any agent caught proposing user-tree Rust = directive violation
+
+§ SUCCESS-CRITERIA  (per wave)
+  WAVE-A ✓ when : `csslc build stdlib/option.cssl --target=x86_64-pc-windows-msvc -o opt.exe`
+                  produces an exe that prints "Some(42)" via cssl-stdlib + cssl-rt
+  WAVE-B ✓ when : `let mut v = Vec::<i32>::new(); v.push(1); v.push(2)` compiles + runs
+  WAVE-C ✓ when : `let s = read_file("foo.txt"); for line in s.lines() { print(line) }` works
+  WAVE-D ✓ when : `let win = open_window("Hi", 800, 600, cap); pump(&mut win)` opens a window
+  WAVE-E ✓ when : `csslc-stage1.exe build stdlib/vec.cssl` produces same MIR as stage-0
+  WAVE-F ✓ when : Run-LoA.bat opens a window and renders the v9-style 4-quadrant test-room
+                  with scannable Code-128 barcode + working QR-v1 + checkered floor
+  WAVE-G ✓ when : `tar xf cssl-stage1-c99.tar.gz && cd cssl-stage1-c99 && make` produces
+                   a working stage-1 compiler from any C99-compatible toolchain
+
+§ NON-GOALS  (explicit · prevent scope-creep)
+  ¬ rewrite the compiler in another non-CSSL language at any stage
+  ¬ "CSSL transpiles to Rust" · CSSL emits native objects directly via Cranelift / x86-64
+  ¬ "let's just use Rust for LoA while we wait" · directive-violation per memory
+  ¬ external runtime dependency outside cssl-rt (allocator + panic + IO + host-FFI)
+  ¬ Cargo dep on any CSSL-emitted artifact
+
+§ FORBIDDEN-PATTERNS  (audit-trail for future agents)
+  ¬ user-tree Rust source files
+  ¬ Cargo.toml outside compiler-rs/ or cssl-rt/
+  ¬ "stage-0 throwaway" excuse extending to LoA / engine / game / tools
+  ¬ assumption that Apocky meant something other than the literal directive
+  ¬ proposing hybrid solutions when an absolutist directive has been given
+
+§ ATTESTATION  (PRIME_DIRECTIVE.md § 11)
+  There was no hurt nor harm in the making of this, to anyone, anything, or
+  anybody. The plan honors the proprietary-everything thesis · stage-0 Rust
+  is bounded · stage-1 self-host retires it · stage-2 LoA in CSSL is the goal.
