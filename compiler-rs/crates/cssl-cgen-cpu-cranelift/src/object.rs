@@ -43,7 +43,9 @@
 
 use std::collections::HashMap;
 
-use cranelift_codegen::ir::{types as cl_types, AbiParam, InstBuilder, Signature, UserFuncName};
+use cranelift_codegen::ir::{
+    types as cl_types, AbiParam, Block as ClBlock, InstBuilder, Signature, UserFuncName,
+};
 use cranelift_codegen::settings::Configurable as _;
 use cranelift_codegen::{settings, Context};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -111,15 +113,39 @@ pub enum ObjectError {
     #[error("fn `{fn_name}` uses MIR op `{op_name}` ; not in stage-0 object-emit subset")]
     UnsupportedOp { fn_name: String, op_name: String },
 
-    /// Multi-block bodies require structured-CFG support which lands later.
+    /// Multi-block bodies are now SUPPORTED at stage-0 (T11-CC-1, W-CC-multiblock).
+    /// Variant retained for diagnostic compatibility — it can fire when a
+    /// MIR-block carries an unrecognized terminator-shape (operand counts that
+    /// don't match `cssl.branch` / `cssl.brif` attribute counts, etc.).
     #[error(
-        "fn `{fn_name}` has multi-block body ; stage-0 object-emit supports only the entry block"
+        "fn `{fn_name}` multi-block body lowering failed : {detail}"
     )]
-    MultiBlockBody { fn_name: String },
+    MultiBlockBody { fn_name: String, detail: String },
 
     /// A `MirFunc` referenced an unknown ValueId.
     #[error("fn `{fn_name}` references unknown ValueId({value_id})")]
     UnknownValueId { fn_name: String, value_id: u32 },
+
+    /// A `cssl.branch` / `cssl.brif` referenced a block index that doesn't
+    /// exist in the parent fn's block-list.
+    #[error(
+        "fn `{fn_name}` branch-target block#{target_idx} out of range ({block_count} blocks)"
+    )]
+    BlockTargetOutOfRange {
+        fn_name: String,
+        target_idx: usize,
+        block_count: usize,
+    },
+
+    /// A non-entry block contained a non-terminator at the LAST position.
+    /// The MIR contract for multi-block bodies requires every block to end with
+    /// `func.return` / `cssl.branch` / `cssl.brif`.
+    #[error("fn `{fn_name}` block#{block_idx} (`{label}`) is missing a terminator")]
+    BlockMissingTerminator {
+        fn_name: String,
+        block_idx: usize,
+        label: String,
+    },
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -203,16 +229,24 @@ fn compile_one_fn(
     codegen_ctx: &mut Context,
     mir_fn: &MirFunc,
 ) -> Result<(), ObjectError> {
-    // T11-D58 / S6-C1 : the outer fn body still has exactly one entry block
-    // ; structured-CFG ops (scf.if, future scf.for/while) carry their own
-    // nested regions inside that block. Multi-entry-block bodies remain
-    // disallowed at stage-0 — those would imply unstructured CFG which
-    // structured-CFG D5 will reject anyway.
-    if mir_fn.body.blocks.len() > 1 {
-        return Err(ObjectError::MultiBlockBody {
-            fn_name: mir_fn.name.clone(),
-        });
-    }
+    // § T11-CC-1 (W-CC-multiblock) — multi-block bodies are now supported.
+    //   Each MIR-block in `mir_fn.body.blocks` maps 1:1 to a cranelift
+    //   `Block`. The entry block (idx 0) is created via `create_block` +
+    //   `append_block_params_for_function_params` (params come from the
+    //   fn signature). Non-entry blocks are created via `create_block` +
+    //   `append_block_params_for_block_signature` from each MIR block's
+    //   `args` (the block-param SSA values).
+    //
+    //   Terminators recognized at the multi-block level :
+    //     `func.return ARGS...`
+    //     `cssl.branch  TARGET_BLK [ARG...]`            attr `target=N`
+    //     `cssl.brif    COND, THEN_BLK, ELSE_BLK [...]` attrs `then_target=`,
+    //         `else_target=`, `then_arg_count=`, `else_arg_count=` ;
+    //         operands `[cond, then_args..., else_args...]`.
+    //
+    //   See `lower_one_op` for the per-op dispatch — the new arms `cssl.branch`
+    //   / `cssl.brif` resolve their targets against the `block_map` slice
+    //   indexed by MIR block-index.
 
     // § 1. Build cranelift signature.
     let call_conv = obj_module.isa().default_call_conv();
@@ -259,48 +293,19 @@ fn compile_one_fn(
     //   cannot dev-dep cssl-cgen-cpu-cranelift (cycle landmine, see HANDOFF).
     let heap_refs = declare_heap_imports_for_fn(obj_module, codegen_ctx, mir_fn, ptr_ty)?;
 
-    // § 2. Build body.
+    // § 2. Build body — multi-block aware (§ T11-CC-1).
     {
         let mut builder = FunctionBuilder::new(&mut codegen_ctx.func, builder_ctx);
-        let entry = builder.create_block();
-        builder.append_block_params_for_function_params(entry);
-        builder.switch_to_block(entry);
-        builder.seal_block(entry);
 
         let mut value_map: HashMap<ValueId, cranelift_codegen::ir::Value> = HashMap::new();
-        let block_params: Vec<_> = builder.block_params(entry).to_vec();
-        if let Some(entry_mir_block) = mir_fn.body.blocks.first() {
-            for (arg_meta, &bp) in entry_mir_block.args.iter().zip(block_params.iter()) {
-                value_map.insert(arg_meta.id, bp);
-            }
 
-            let mut returned = false;
-            for op in &entry_mir_block.ops {
-                if returned {
-                    break;
-                }
-                returned = lower_one_op(
-                    op,
-                    &mut builder,
-                    &mut value_map,
-                    &mir_fn.name,
-                    &heap_refs,
-                    ptr_ty,
-                )?;
-            }
-            if !returned {
-                // No explicit return ; emit an implicit return.
-                if mir_fn.results.is_empty() {
-                    builder.ins().return_(&[]);
-                } else {
-                    return Err(ObjectError::LoweringFailed {
-                        fn_name: mir_fn.name.clone(),
-                        detail: "fn body is missing a `func.return` terminator".to_string(),
-                    });
-                }
-            }
-        } else {
+        let mir_blocks = &mir_fn.body.blocks;
+        if mir_blocks.is_empty() {
             // Empty body → return-void (only valid if results empty).
+            let entry = builder.create_block();
+            builder.append_block_params_for_function_params(entry);
+            builder.switch_to_block(entry);
+            builder.seal_block(entry);
             if mir_fn.results.is_empty() {
                 builder.ins().return_(&[]);
             } else {
@@ -309,9 +314,99 @@ fn compile_one_fn(
                     detail: "empty body but non-empty results".to_string(),
                 });
             }
-        }
+            builder.finalize();
+        } else {
+            // § 2a. PRE-DECLARE one cranelift Block per MIR block.
+            //   Entry block carries the fn-signature params ; non-entry blocks
+            //   carry block-args derived from `MirBlock.args`.
+            let mut block_map: Vec<ClBlock> = Vec::with_capacity(mir_blocks.len());
+            for (idx, mir_block) in mir_blocks.iter().enumerate() {
+                let cl_blk = builder.create_block();
+                if idx == 0 {
+                    builder.append_block_params_for_function_params(cl_blk);
+                } else {
+                    for arg_meta in &mir_block.args {
+                        let cl_ty = mir_type_to_cl(&arg_meta.ty, ptr_ty).ok_or_else(|| {
+                            ObjectError::NonScalarType {
+                                fn_name: mir_fn.name.clone(),
+                                slot: 0,
+                                ty: format!("{}", arg_meta.ty),
+                            }
+                        })?;
+                        builder.append_block_param(cl_blk, cl_ty);
+                    }
+                }
+                block_map.push(cl_blk);
+            }
 
-        builder.finalize();
+            // § 2b. Walk each MIR block in order. Switch into its cranelift
+            //   block, bind the block's args to its cranelift block-params,
+            //   then lower ops. The LAST op should be the terminator —
+            //   `func.return` / `cssl.branch` / `cssl.brif`. If none present,
+            //   we error out for non-entry blocks ; the entry block keeps the
+            //   single-block fallback (implicit-return for void fns) for
+            //   backwards compat with the existing test suite.
+            for (idx, mir_block) in mir_blocks.iter().enumerate() {
+                let cl_blk = block_map[idx];
+                builder.switch_to_block(cl_blk);
+
+                // Bind block-params to ValueIds. For the entry block the
+                // params come from the fn signature ; for non-entry blocks
+                // they come from `MirBlock.args`. Either way the `MirBlock`
+                // carries the canonical receiver-id list, so the binding
+                // is the same.
+                let block_params: Vec<_> = builder.block_params(cl_blk).to_vec();
+                for (arg_meta, &bp) in mir_block.args.iter().zip(block_params.iter()) {
+                    value_map.insert(arg_meta.id, bp);
+                }
+
+                let mut terminated = false;
+                for op in &mir_block.ops {
+                    if terminated {
+                        break;
+                    }
+                    terminated = lower_one_op(
+                        op,
+                        &mut builder,
+                        &mut value_map,
+                        &mir_fn.name,
+                        &heap_refs,
+                        ptr_ty,
+                        &block_map,
+                    )?;
+                }
+
+                if !terminated {
+                    if mir_blocks.len() == 1 {
+                        // Single-block fn : preserve existing semantics —
+                        // implicit-return for void fns.
+                        if mir_fn.results.is_empty() {
+                            builder.ins().return_(&[]);
+                        } else {
+                            return Err(ObjectError::LoweringFailed {
+                                fn_name: mir_fn.name.clone(),
+                                detail: "fn body is missing a `func.return` terminator"
+                                    .to_string(),
+                            });
+                        }
+                    } else {
+                        return Err(ObjectError::BlockMissingTerminator {
+                            fn_name: mir_fn.name.clone(),
+                            block_idx: idx,
+                            label: mir_block.label.clone(),
+                        });
+                    }
+                }
+            }
+
+            // § 2c. Seal all blocks. Cranelift's `seal_all_blocks` walks the
+            //   block-list once and seals each ; back-edges (loop body →
+            //   loop header) are handled because the back-edge is already
+            //   emitted by the time we call this. Doing it after the walk
+            //   keeps loop SSA construction sound.
+            builder.seal_all_blocks();
+            builder.finalize();
+        }
     }
 
     // § 3. Define the function in the object module.
@@ -442,6 +537,7 @@ fn lower_one_op(
     fn_name: &str,
     heap_refs: &HeapImports,
     ptr_ty: cranelift_codegen::ir::Type,
+    block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     match op.name.as_str() {
         "arith.constant" => {
@@ -574,6 +670,18 @@ fn lower_one_op(
             builder.ins().return_(&args);
             Ok(true)
         }
+        // § T11-CC-1 (W-CC-multiblock) — unconditional jump to another MIR
+        //   block. Carries `target=N` attribute (block-index in the parent
+        //   fn's `body.blocks`). Operands are the SSA values to forward as
+        //   block-args of the destination.
+        "cssl.branch" => obj_lower_cssl_branch(op, builder, value_map, fn_name, block_map),
+        // § T11-CC-1 (W-CC-multiblock) — conditional branch. Carries
+        //   `then_target=N` / `else_target=M` block-index attributes plus
+        //   `then_arg_count=K` / `else_arg_count=L` so we know how to slice
+        //   the operand list. Operand layout :
+        //     `[cond, then_arg_0, …, then_arg_{K-1}, else_arg_0, …, else_arg_{L-1}]`.
+        //   Cranelift's `brif(cond, then_blk, &then_args, else_blk, &else_args)`.
+        "cssl.brif" => obj_lower_cssl_brif(op, builder, value_map, fn_name, block_map),
         // § T11-D57 (S6-B1) — heap-FFI lowering. Each op resolves its
         //   import via the per-fn `HeapImports` map (declared up front in
         //   `declare_heap_imports_for_fn`), then issues a `call` carrying
@@ -595,16 +703,22 @@ fn lower_one_op(
         //   outer dispatch level means the parent region terminator leaked,
         //   which we treat as a no-op here. D5 (StructuredCfgValidator) will
         //   reject bare top-level scf.yield in a future slice.
-        "scf.if" => lower_scf_if_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
+        "scf.if" => {
+            lower_scf_if_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map)
+        }
         // § T11-D61 (S6-C2) — structured loops. Each delegates to the
         //   matching `crate::scf::lower_scf_*` helper ; the body-walker
         //   dispatcher closure re-enters `lower_one_op` so nested ops
         //   (arith / heap / nested scf.*) flow through the same dispatch.
-        "scf.loop" => lower_scf_loop_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
-        "scf.while" => {
-            lower_scf_while_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty)
+        "scf.loop" => lower_scf_loop_in_object(
+            op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map,
+        ),
+        "scf.while" => lower_scf_while_in_object(
+            op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map,
+        ),
+        "scf.for" => {
+            lower_scf_for_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map)
         }
-        "scf.for" => lower_scf_for_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty),
         "scf.yield" => Ok(false),
         // § T11-D77 (S6-C5 redo) — `cssl.closure` materializes the closure VALUE
         //   (the `(fn-ptr, env-ptr)` fat-pair). At stage-0 the body_lower has
@@ -841,6 +955,7 @@ fn lower_scf_if_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     ptr_ty: cranelift_codegen::ir::Type,
+    block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     crate::scf::lower_scf_if(
         op,
@@ -848,7 +963,7 @@ fn lower_scf_if_in_object(
         value_map,
         fn_name,
         |branch_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(branch_op, b, vm, name, heap_refs, ptr_ty)
+            lower_one_op(branch_op, b, vm, name, heap_refs, ptr_ty, block_map)
         },
     )
     .map_err(|e| match e {
@@ -868,6 +983,7 @@ fn lower_scf_loop_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     ptr_ty: cranelift_codegen::ir::Type,
+    block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     crate::scf::lower_scf_loop(
         op,
@@ -875,7 +991,7 @@ fn lower_scf_loop_in_object(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty)
+            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty, block_map)
         },
     )
     .map_err(|e| match e {
@@ -895,6 +1011,7 @@ fn lower_scf_while_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     ptr_ty: cranelift_codegen::ir::Type,
+    block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     crate::scf::lower_scf_while(
         op,
@@ -902,7 +1019,7 @@ fn lower_scf_while_in_object(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty)
+            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty, block_map)
         },
     )
     .map_err(|e| match e {
@@ -922,6 +1039,7 @@ fn lower_scf_for_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     ptr_ty: cranelift_codegen::ir::Type,
+    block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     crate::scf::lower_scf_for(
         op,
@@ -929,7 +1047,7 @@ fn lower_scf_for_in_object(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty)
+            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty, block_map)
         },
     )
     .map_err(|e| match e {
@@ -939,6 +1057,141 @@ fn lower_scf_for_in_object(
         },
         crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
     })
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-CC-1 (W-CC-multiblock) — multi-block terminator helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+/// Resolve a `target=N` style attribute to a cranelift Block from the
+/// fn-scoped `block_map`. Returns `BlockTargetOutOfRange` when the
+/// requested index is past the end of the MIR-block list.
+fn resolve_block_target(
+    op: &MirOp,
+    attr_key: &str,
+    fn_name: &str,
+    block_map: &[ClBlock],
+) -> Result<ClBlock, ObjectError> {
+    let target_str = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == attr_key)
+        .map(|(_, v)| v.as_str())
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} : missing `{attr_key}` attribute", op.name),
+        })?;
+    let target_idx: usize =
+        target_str
+            .parse()
+            .map_err(|e: std::num::ParseIntError| ObjectError::LoweringFailed {
+                fn_name: fn_name.to_string(),
+                detail: format!(
+                    "{} : malformed `{attr_key}` attribute `{target_str}` ({e})",
+                    op.name
+                ),
+            })?;
+    block_map
+        .get(target_idx)
+        .copied()
+        .ok_or_else(|| ObjectError::BlockTargetOutOfRange {
+            fn_name: fn_name.to_string(),
+            target_idx,
+            block_count: block_map.len(),
+        })
+}
+
+/// Lower `cssl.branch` : unconditional `jump` to the target MIR-block,
+/// forwarding all operands as block-args.
+fn obj_lower_cssl_branch(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    block_map: &[ClBlock],
+) -> Result<bool, ObjectError> {
+    let target_blk = resolve_block_target(op, "target", fn_name, block_map)?;
+    let mut args = Vec::with_capacity(op.operands.len());
+    for vid in &op.operands {
+        let v = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        args.push(v);
+    }
+    builder.ins().jump(target_blk, &args);
+    Ok(true)
+}
+
+/// Lower `cssl.brif` : conditional branch via cranelift's `brif`.
+///   Operand layout :
+///     `[cond, then_arg_0, …, then_arg_{K-1}, else_arg_0, …, else_arg_{L-1}]`
+///   where K = `then_arg_count` attribute (default 0) and L =
+///   `else_arg_count` attribute (default 0). The total operand count must
+///   equal `1 + K + L` ; mismatch errors out cleanly.
+fn obj_lower_cssl_brif(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    block_map: &[ClBlock],
+) -> Result<bool, ObjectError> {
+    let then_blk = resolve_block_target(op, "then_target", fn_name, block_map)?;
+    let else_blk = resolve_block_target(op, "else_target", fn_name, block_map)?;
+    let then_arg_count: usize = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "then_arg_count")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(0);
+    let else_arg_count: usize = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "else_arg_count")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(0);
+    let expected = 1 + then_arg_count + else_arg_count;
+    if op.operands.len() != expected {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "cssl.brif : operand-count mismatch ; expected 1+{then_arg_count}+{else_arg_count}={expected} got {}",
+                op.operands.len()
+            ),
+        });
+    }
+    let cond = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    let mut then_args = Vec::with_capacity(then_arg_count);
+    for vid in &op.operands[1..1 + then_arg_count] {
+        let v = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        then_args.push(v);
+    }
+    let mut else_args = Vec::with_capacity(else_arg_count);
+    for vid in &op.operands[1 + then_arg_count..] {
+        let v = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        else_args.push(v);
+    }
+    builder
+        .ins()
+        .brif(cond, then_blk, &then_args, else_blk, &else_args);
+    Ok(true)
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -1446,15 +1699,221 @@ mod tests {
         assert!(matches!(r, Err(ObjectError::UnsupportedOp { .. })));
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-CC-1 (W-CC-multiblock) — multi-block body lowering tests.
+    //
+    // The single-block regression coverage lives in
+    // `emit_minimal_main_returns_bytes` / `emit_addi_function_succeeds` /
+    // friends ; the new tests exercise the multi-block branching path.
+    // Each builds a synthetic MirFunc with N>1 blocks wired by `cssl.branch`
+    // / `cssl.brif` terminators, asserts the produced object bytes carry
+    // the host-platform magic, and where useful asserts a meaningful error
+    // for malformed shapes.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// REGRESSION : the single-block path must still object-emit cleanly
+    /// after the multi-block-aware refactor.
     #[test]
-    fn emit_multi_block_body_returns_error() {
+    fn single_block_still_compiles() {
+        let main = build_const_return_fn("main", 42, MirType::Int(IntWidth::I32));
+        let mut module = MirModule::new();
+        module.push_func(main);
+        let bytes = emit_object_module(&module).expect("single-block emit ok");
+        let host_magic = magic_prefix(host_default_format());
+        assert!(bytes.starts_with(host_magic));
+    }
+
+    /// `fn jump_then_return() -> i32 {
+    ///   block 0 (entry) : jump block 1
+    ///   block 1         : return 7
+    /// }`
+    #[test]
+    fn two_block_jump_compiles() {
         use cssl_mir::MirBlock;
-        let mut f = MirFunc::new("multi", vec![], vec![]);
-        f.body.push(MirBlock::new("exit"));
+        let mut f = MirFunc::new("jump_then_return", vec![], vec![MirType::Int(IntWidth::I32)]);
+        f.next_value_id = 1;
+        // Entry : `cssl.branch target=1`
+        f.push_op(MirOp::std("cssl.branch").with_attribute("target", "1"));
+        // Block 1 : `%0 = arith.constant 7 ; func.return %0`
+        let mut blk1 = MirBlock::new("ret");
+        blk1.ops.push(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "7")
+                .with_result(ValueId(0), MirType::Int(IntWidth::I32)),
+        );
+        blk1.ops
+            .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        f.body.push(blk1);
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("two-block jump emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// `fn pick_branch(cond : bool) -> i32 {
+    ///   block 0 (entry) : brif cond -> block 1 / block 2
+    ///   block 1         : return 42
+    ///   block 2         : return 0
+    /// }`
+    #[test]
+    fn if_else_two_branches_compile() {
+        use cssl_mir::MirBlock;
+        let mut f = MirFunc::new(
+            "pick_branch",
+            vec![MirType::Bool],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 3;
+        // Entry op : `cssl.brif (%0=cond) then=1 else=2`
+        f.push_op(
+            MirOp::std("cssl.brif")
+                .with_operand(ValueId(0))
+                .with_attribute("then_target", "1")
+                .with_attribute("else_target", "2")
+                .with_attribute("then_arg_count", "0")
+                .with_attribute("else_arg_count", "0"),
+        );
+        // Then-block : `%1 = arith.constant 42 ; return %1`
+        let mut then_blk = MirBlock::new("then");
+        then_blk.ops.push(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "42")
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+        );
+        then_blk
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        f.body.push(then_blk);
+        // Else-block : `%2 = arith.constant 0 ; return %2`
+        let mut else_blk = MirBlock::new("else");
+        else_blk.ops.push(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "0")
+                .with_result(ValueId(2), MirType::Int(IntWidth::I32)),
+        );
+        else_blk
+            .ops
+            .push(MirOp::std("func.return").with_operand(ValueId(2)));
+        f.body.push(else_blk);
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("if-else two-branch emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// `fn while_body(cond : bool, x : i32) -> i32 {
+    ///   block 0 (entry)  : jump header (block 1)
+    ///   block 1 (header) : brif cond -> body (block 2) / exit (block 3)
+    ///   block 2 (body)   : jump header (block 1)        ; back-edge
+    ///   block 3 (exit)   : return x
+    /// }`
+    /// Tests classic while-loop SSA shape with a back-edge.
+    #[test]
+    fn while_loop_compiles() {
+        use cssl_mir::MirBlock;
+        let mut f = MirFunc::new(
+            "while_body",
+            vec![MirType::Bool, MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        // Entry op : `cssl.branch target=1` (jump to header).
+        f.push_op(MirOp::std("cssl.branch").with_attribute("target", "1"));
+        // Block 1 (header) : `cssl.brif (%0=cond) then=2 else=3`.
+        let mut header = MirBlock::new("header");
+        header.ops.push(
+            MirOp::std("cssl.brif")
+                .with_operand(ValueId(0))
+                .with_attribute("then_target", "2")
+                .with_attribute("else_target", "3")
+                .with_attribute("then_arg_count", "0")
+                .with_attribute("else_arg_count", "0"),
+        );
+        f.body.push(header);
+        // Block 2 (body) : back-edge to header.
+        let mut body = MirBlock::new("body");
+        body.ops
+            .push(MirOp::std("cssl.branch").with_attribute("target", "1"));
+        f.body.push(body);
+        // Block 3 (exit) : `func.return %1=x`.
+        let mut exit = MirBlock::new("exit");
+        exit.ops
+            .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        f.body.push(exit);
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("while-loop emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// `fn passthrough(x : i32) -> i32 {
+    ///   block 0 (entry) : jump block 1 forwarding %x
+    ///   block 1 (tail)  : block-arg %1 : i32 ; return %1
+    /// }`
+    /// Verifies that block-param SSA values plumb across cssl.branch edges.
+    #[test]
+    fn block_args_pass_through() {
+        use cssl_mir::{MirBlock, MirValue};
+        let mut f = MirFunc::new(
+            "passthrough",
+            vec![MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        // Entry op : `cssl.branch target=1 forward=%0`. The destination
+        // block's block-arg (%1) is the receiving SSA value.
+        f.push_op(
+            MirOp::std("cssl.branch")
+                .with_operand(ValueId(0))
+                .with_attribute("target", "1"),
+        );
+        // Block 1 (tail) : args=[%1 : i32], ops = `func.return %1`.
+        let mut tail = MirBlock::new("tail");
+        tail.args
+            .push(MirValue::new(ValueId(1), MirType::Int(IntWidth::I32)));
+        tail.ops
+            .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        f.body.push(tail);
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("block-args pass-through emit ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    /// MALFORMED : a non-entry block that ends without a terminator should
+    /// produce `BlockMissingTerminator`. The single-block fallback still
+    /// implicit-returns for the entry block, but for N>1 blocks every
+    /// block must be explicitly terminated.
+    #[test]
+    fn multi_block_without_terminator_errors() {
+        use cssl_mir::MirBlock;
+        let mut f = MirFunc::new("bad_term", vec![], vec![]);
+        f.push_op(MirOp::std("cssl.branch").with_attribute("target", "1"));
+        // Block 1 : empty (no terminator). Multi-block-strict :
+        // BlockMissingTerminator.
+        f.body.push(MirBlock::new("dangler"));
         let mut module = MirModule::new();
         module.push_func(f);
         let r = emit_object_module(&module);
-        assert!(matches!(r, Err(ObjectError::MultiBlockBody { .. })));
+        assert!(
+            matches!(r, Err(ObjectError::BlockMissingTerminator { .. })),
+            "expected BlockMissingTerminator ; got {r:?}"
+        );
+    }
+
+    /// MALFORMED : a `cssl.branch` whose `target=N` references a
+    /// nonexistent block should produce `BlockTargetOutOfRange`.
+    #[test]
+    fn cssl_branch_with_invalid_target_errors() {
+        let mut f = MirFunc::new("bad_target", vec![], vec![]);
+        f.push_op(MirOp::std("cssl.branch").with_attribute("target", "99"));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(
+            matches!(r, Err(ObjectError::BlockTargetOutOfRange { target_idx: 99, .. })),
+            "expected BlockTargetOutOfRange{{target_idx:99}} ; got {r:?}"
+        );
     }
 
     #[test]
