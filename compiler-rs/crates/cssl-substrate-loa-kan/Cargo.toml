@@ -1,0 +1,32 @@
+[package]
+name                   = "cssl-substrate-loa-kan"
+description            = "CSSLv3 — LoA-specific KAN extensions : per-cell parametric activation functions for scene authoring + companion-AI scene-glue + adaptive-LoA-content modulation. Wraps cssl-substrate-kan with LoA-side hooks (companion-perspective + creature-behavior + scene-glue) per specs/30_SUBSTRATE_v2 § DEFERRED D-1 (substrate-S12 evolution)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-substrate-loa-kan extends the canonical cssl-substrate-kan runtime with
+# per-cell LoA-scene-aware modulation : KAN-extensions specific to scene
+# authoring (per-cell parametric activation, companion-AI hooks, adaptive
+# content scaling). Per specs/30_SUBSTRATE_v2 § DEFERRED D-1 this lifts the
+# stage-1 simple-averaging fallback on the LoA-author-facing surface ; per
+# specs/33_F1_F6_LANGUAGE_FEATURES § F4.3 (bake_kan) the modulation tables
+# are comptime-bake-friendly so LoA scenes can specialize KAN cells per
+# region.
+cssl-pga                         = { path = "../cssl-pga", default-features = false }
+cssl-hdc                         = { path = "../cssl-hdc" }
+cssl-substrate-prime-directive   = { path = "../cssl-substrate-prime-directive" }
+cssl-substrate-omega-field       = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-kan               = { path = "../cssl-substrate-kan" }
+
+# § thiserror : LoA-KAN errors carry the same canonical-error-row discipline
+# as the parent OmegaField MutationError chain.
+thiserror                        = { workspace = true }
+# § smallvec : per-cell modulation parameter arrays (≤ 8 layers, ≤ 16 ctrl).
+smallvec                         = { workspace = true }

@@ -476,3 +476,532 @@ fn _example_omega_empty_check() -> bool {
     let t = omega_new_r1::<f32>(0);
     omega_is_empty_r1::<f32>(t)
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// § LOA-BINDINGS — Σ-mask + capability-gate substrate-Ω-field surface.
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Substrate-S12 advance per § T11-D261 (W-S12) : adds the LoA-side surface
+// for scene-authors to read/write per-cell Ω-field state through the
+// canonical EnforcesΣAtCellTouches gate. Each entry-point is a thin shim
+// around a Rust-host adapter (cssl_substrate_omega_field::loa_bindings)
+// that performs the Σ-mask check + Sovereign-capability check + advances
+// the audit-chain epoch on success.
+//
+// § DESIGN (CSSL-side)
+//   - `OmegaCoord3` : (x, y, z) coordinate in the 21-bit-per-axis Morton
+//                     range (0..=2_097_151 per axis).
+//   - `OmegaCellHandle` : opaque handle into the OmegaField sparse-Morton
+//                          grid. Stage-0 represents this as i64 (host-
+//                          pointer-as-integer) per the existing precedent.
+//   - `SovereignCap` : u16 newtype wrapping the Sovereign-handle. 0 ⇒
+//                       NULL (refuses all capability-gated ops).
+//   - `OmegaCellPayload` : value-shape mirror of the Rust 72B FieldCell.
+//                            Stage-0 represents a subset (density +
+//                            velocity + enthalpy + pattern_handle +
+//                            consent_bits) that the source-level surface
+//                            actually exposes ; the full 72B encoding
+//                            lives in the Rust adapter.
+//
+// § PRIME-DIRECTIVE-ALIGNMENT
+//   - sovereign_cap == 0 ⇒ structural-refusal (see omega_loa_read_cell
+//     return : Err(IfcViolation::SovereignCapNull)).
+//   - Read-side checks Observe consent ; Sample-bit grants public-read
+//     bypass on Sovereign-claimed cells.
+//   - Write-side checks Modify consent + Sovereign-handle match (no
+//     Sample-bypass on writes).
+//   - Σ-mask GRANT (omega_loa_grant_sovereign) requires the new mask's
+//     declared sovereign_handle to match the presented sovereign_cap.
+//
+// § CAPABILITY-GATE FLOW (canonical)
+//
+//   ```cssl
+//   // 1. Scene-load : Sovereign claims the cell with permissive mask.
+//   let cap = sovereign_cap_new(42);
+//   let mask = omega_sigma_mask_permissive(42);
+//   let _ = omega_loa_grant_sovereign(field, coord, mask, cap);
+//   //
+//   // 2. Runtime : Sovereign mutates cell-state through the Σ-gate.
+//   let cell = omega_cell_payload_new();
+//   let _ = omega_loa_write_cell(field, coord, cell, cap);
+//   //
+//   // 3. Public read : un-authorized actor reads a cell with Sample-bit.
+//   let public_cap = sovereign_cap_new(99);
+//   let read = omega_loa_read_cell(field, coord, public_cap);
+//   //   ⇒ Ok(cell) iff mask.can_observe() && (mask.matches(99) || mask.can_sample())
+//   //   ⇒ Err(IfcViolation::SovereignMismatch) otherwise.
+//   ```
+
+// ───────────────────────────────────────────────────────────────────────
+// § OmegaCoord3 : 21-bit-per-axis Morton coordinate.
+// ───────────────────────────────────────────────────────────────────────
+
+// `OmegaCoord3` — three axis indices in the 0..=2_097_151 range each.
+// MUST decode-to a valid MortonKey via the canonical morton_split_by_3
+// fixed-magic-number cascade. Out-of-range axes return
+// IfcViolation::InvalidCoord on encode.
+struct OmegaCoord3 {
+    x : i64,
+    y : i64,
+    z : i64,
+}
+
+// `omega_coord3_new(x, y, z)` — construct a coordinate.
+fn omega_coord3_new(x : i64, y : i64, z : i64) -> OmegaCoord3 {
+    OmegaCoord3 { x : x, y : y, z : z }
+}
+
+// `omega_coord3_x(c)` / `_y(c)` / `_z(c)` — accessors.
+fn omega_coord3_x(c : OmegaCoord3) -> i64 { c.x }
+fn omega_coord3_y(c : OmegaCoord3) -> i64 { c.y }
+fn omega_coord3_z(c : OmegaCoord3) -> i64 { c.z }
+
+// `omega_coord3_in_range(c)` — true iff x, y, z all ≤ MORTON_AXIS_MAX
+// (= 2^21 - 1 = 2_097_151). Used for client-side pre-flight validation.
+fn omega_coord3_in_range(c : OmegaCoord3) -> bool {
+    if c.x < 0 {
+        false
+    } else {
+        if c.x > 2097151 {
+            false
+        } else {
+            if c.y < 0 {
+                false
+            } else {
+                if c.y > 2097151 {
+                    false
+                } else {
+                    if c.z < 0 {
+                        false
+                    } else {
+                        if c.z > 2097151 {
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § SovereignCap : u16 newtype for the Sovereign-handle capability.
+// ───────────────────────────────────────────────────────────────────────
+
+// `SovereignCap` — wrapper around a 16-bit Sovereign-handle. The 0
+// sentinel = NULL (refuses all capability-gated ops).
+struct SovereignCap {
+    handle : i64,    // u16 promoted to i64 for stage-0 encoding
+}
+
+// `sovereign_cap_null()` — the NULL capability. Refused at every gate.
+fn sovereign_cap_null() -> SovereignCap {
+    SovereignCap { handle : 0 }
+}
+
+// `sovereign_cap_new(handle)` — construct from a non-zero handle. handle
+// 0 produces the NULL sentinel.
+fn sovereign_cap_new(handle : i64) -> SovereignCap {
+    SovereignCap { handle : handle }
+}
+
+// `sovereign_cap_handle(cap)` — extract the wrapped handle.
+fn sovereign_cap_handle(cap : SovereignCap) -> i64 {
+    cap.handle
+}
+
+// `sovereign_cap_is_null(cap)` — true iff cap is the NULL sentinel.
+fn sovereign_cap_is_null(cap : SovereignCap) -> bool {
+    cap.handle == 0
+}
+
+// `sovereign_cap_matches(cap, other)` — true iff both caps wrap the same
+// non-zero handle.
+fn sovereign_cap_matches(cap : SovereignCap, other : SovereignCap) -> bool {
+    if cap.handle == 0 {
+        false
+    } else {
+        cap.handle == other.handle
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § IfcViolation : structural-refusal-class enum mirror.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Mirror of cssl_substrate_omega_field::loa_bindings::IfcViolation. The
+// numeric discriminants match the Rust-side definitions exactly so the
+// recognizer can transcode without a lookup table. Diagnostic codes
+// SIG0001..SIG0010 are emitted by the EnforcesΣAtCellTouches MIR-pass
+// per specs/30_SUBSTRATE_v2 § ENFORCESΣATCELLTOUCHES-PASS.
+
+enum IfcViolation {
+    NoObserveConsent,                 // = 1 ; SIG0001
+    NoModifyConsent,                  // = 2 ; SIG0001
+    NoSampleConsent,                  // = 3 ; SIG0001
+    SovereignMismatch,                // = 4 ; SIG0004
+    CapacityFloorErosion,             // = 5 ; SIG0005
+    ReversibilityWidening,            // = 6 ; SIG0006
+    TravelWithoutTranslate,           // = 7 ; SIG0007
+    CrystallizeWithoutRecrystallize,  // = 8 ; SIG0008
+    DestroyOnFrozen,                  // = 9 ; SIG0009
+    ReservedNonZero,                  // = 10 ; SIG0010
+    SovereignCapNull,                 // = 11 ; LBND001
+    InvalidCoord,                     // = 12 ; LBND002
+}
+
+// `ifc_violation_diag_code(v)` — return the canonical SIG/LBND code as
+// a small integer (matches the Rust-side stable codes for telemetry).
+// 1..=10 ⇒ SIG codes ; 11..=12 ⇒ LBND codes (loa-binding-side).
+fn ifc_violation_diag_code(v : IfcViolation) -> i64 {
+    match v {
+        NoObserveConsent => 1,
+        NoModifyConsent => 1,
+        NoSampleConsent => 1,
+        SovereignMismatch => 4,
+        CapacityFloorErosion => 5,
+        ReversibilityWidening => 6,
+        TravelWithoutTranslate => 7,
+        CrystallizeWithoutRecrystallize => 8,
+        DestroyOnFrozen => 9,
+        ReservedNonZero => 10,
+        SovereignCapNull => 11,
+        InvalidCoord => 12,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § OmegaCellPayload : source-level mirror of FieldCell (subset).
+// ───────────────────────────────────────────────────────────────────────
+//
+// Stage-0 source-level surface exposes a SUBSET of the 72B Rust FieldCell.
+// The recognizer translates between this struct + the canonical Rust
+// representation. Adding fields requires lock-step changes here +
+// cssl_substrate_omega_field::loa_bindings + the recognizer.
+
+struct OmegaCellPayload {
+    density           : f32,    // f32 ρ
+    velocity_x        : f32,    // vec3<f32> u.x
+    velocity_y        : f32,
+    velocity_z        : f32,
+    enthalpy          : f32,    // f32'pos H
+    pattern_handle    : i64,    // u32 promoted to i64
+    sigma_consent_bits: i64,    // u32 promoted to i64
+}
+
+// `omega_cell_payload_default()` — air-cell default. density=0,
+// velocity=0, enthalpy=0, no pattern, Observe-only consent.
+fn omega_cell_payload_default() -> OmegaCellPayload {
+    OmegaCellPayload {
+        density            : 0.0,
+        velocity_x         : 0.0,
+        velocity_y         : 0.0,
+        velocity_z         : 0.0,
+        enthalpy           : 0.0,
+        pattern_handle     : 0,
+        sigma_consent_bits : 1,    // Observe = bit 0 = 1
+    }
+}
+
+// `omega_cell_payload_new(density, vx, vy, vz, enthalpy)` — construct
+// with explicit physical-state fields. Pattern + consent default.
+fn omega_cell_payload_new(
+    density : f32,
+    vx : f32,
+    vy : f32,
+    vz : f32,
+    enthalpy : f32,
+) -> OmegaCellPayload {
+    OmegaCellPayload {
+        density            : density,
+        velocity_x         : vx,
+        velocity_y         : vy,
+        velocity_z         : vz,
+        enthalpy           : enthalpy,
+        pattern_handle     : 0,
+        sigma_consent_bits : 1,
+    }
+}
+
+// `omega_cell_payload_with_pattern(p, handle)` — set pattern handle.
+fn omega_cell_payload_with_pattern(
+    p : OmegaCellPayload,
+    handle : i64,
+) -> OmegaCellPayload {
+    OmegaCellPayload {
+        density            : p.density,
+        velocity_x         : p.velocity_x,
+        velocity_y         : p.velocity_y,
+        velocity_z         : p.velocity_z,
+        enthalpy           : p.enthalpy,
+        pattern_handle     : handle,
+        sigma_consent_bits : p.sigma_consent_bits,
+    }
+}
+
+// `omega_cell_payload_density(p)` / `_enthalpy(p)` / `_pattern_handle(p)`
+// — read accessors.
+fn omega_cell_payload_density(p : OmegaCellPayload) -> f32 {
+    p.density
+}
+fn omega_cell_payload_enthalpy(p : OmegaCellPayload) -> f32 {
+    p.enthalpy
+}
+fn omega_cell_payload_pattern_handle(p : OmegaCellPayload) -> i64 {
+    p.pattern_handle
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Σ-mask consent-bit constants (subset surface).
+// ───────────────────────────────────────────────────────────────────────
+//
+// Mirror of cssl_substrate_prime_directive::sigma::ConsentBit. Bit
+// positions FROZEN per specs/30_SUBSTRATE_v2 § BIT-LAYOUT.
+
+fn sigma_bit_observe() -> i64       { 1 }    // 1 << 0
+fn sigma_bit_traverse() -> i64      { 2 }    // 1 << 1
+fn sigma_bit_modify() -> i64        { 4 }    // 1 << 2
+fn sigma_bit_communicate() -> i64   { 8 }    // 1 << 3
+fn sigma_bit_sample() -> i64        { 16 }   // 1 << 4
+fn sigma_bit_reconfigure() -> i64   { 32 }   // 1 << 5
+fn sigma_bit_translate() -> i64     { 64 }   // 1 << 6
+fn sigma_bit_recrystallize() -> i64 { 128 }  // 1 << 7
+fn sigma_bit_destroy() -> i64       { 256 }  // 1 << 8
+
+// `sigma_default_private_mask()` — Default-Private (Observe-only).
+fn sigma_default_private_mask() -> i64 {
+    sigma_bit_observe()
+}
+
+// `sigma_public_read_mask()` — Observe + Sample.
+fn sigma_public_read_mask() -> i64 {
+    sigma_bit_observe() + sigma_bit_sample()
+}
+
+// `sigma_permissive_mask()` — Observe + Sample + Modify + Reconfigure.
+// Used by Sovereign actors for full-control regions.
+fn sigma_permissive_mask() -> i64 {
+    sigma_bit_observe() + sigma_bit_sample() + sigma_bit_modify() + sigma_bit_reconfigure()
+}
+
+// `sigma_mask_permits(mask, bit)` — bitwise check.
+fn sigma_mask_permits(mask : i64, bit : i64) -> bool {
+    let masked = bit_and(mask, bit);
+    masked != 0
+}
+
+// `bit_and(a, b)` — bitwise-AND helper. Stage-0 lacks a top-level &
+// operator on i64 ; the recognizer lowers this to `arith.andi`.
+fn bit_and(a : i64, b : i64) -> i64 {
+    panic("omega::bit_and : stage-0 deferred — arith.andi recognizer required")
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § LoA-binding entry-points.
+// ───────────────────────────────────────────────────────────────────────
+//
+// Each entry-point is a thin shim that the recognizer (cssl_mir::body_lower)
+// lowers to a `cssl.omega.loa_*` MIR op. The MIR op carries the
+// canonical (omega_loa, "true") attribute marker so the
+// EnforcesΣAtCellTouches MIR-pass walker recognizes it as a Σ-touching
+// op-site that requires the canonical attribute set per spec
+// § REQUIRED-ATTRIBUTES.
+
+// `omega_loa_read_cell(field_handle, coord, cap)` — capability-gated
+// cell read. Returns Result<OmegaCellPayload, IfcViolation>.
+//
+// § GATE
+//   - cap MUST be non-NULL ⇒ Err(SovereignCapNull) otherwise.
+//   - coord MUST decode to valid MortonKey ⇒ Err(InvalidCoord) otherwise.
+//   - cell's Σ-mask MUST permit Observe ⇒ Err(NoObserveConsent) otherwise.
+//   - Σ-claimed cell + cap-mismatch + no Sample-bit ⇒
+//     Err(SovereignMismatch).
+fn omega_loa_read_cell(
+    field_handle : i64,
+    coord : OmegaCoord3,
+    cap : SovereignCap,
+) -> Result<OmegaCellPayload, IfcViolation> {
+    if sovereign_cap_is_null(cap) {
+        Err(SovereignCapNull)
+    } else {
+        if omega_coord3_in_range(coord) {
+            // Forward to Rust-side adapter ; recognizer lowers this body
+            // to `cssl.omega.loa_read_cell` which dispatches into
+            // cssl_substrate_omega_field::loa_bindings::loa_read_cell.
+            panic("omega::omega_loa_read_cell : stage-0 deferred — recognizer lowers to cssl.omega.loa_read_cell")
+        } else {
+            Err(InvalidCoord)
+        }
+    }
+}
+
+// `omega_loa_write_cell(field_handle, coord, cell, cap)` — capability-
+// gated cell write. Returns Result<(), IfcViolation>.
+//
+// § GATE
+//   - cap MUST be non-NULL ⇒ Err(SovereignCapNull) otherwise.
+//   - coord MUST decode to valid MortonKey ⇒ Err(InvalidCoord) otherwise.
+//   - cell's Σ-mask MUST permit Modify ⇒ Err(NoModifyConsent) otherwise.
+//   - Σ-claimed cell + cap-mismatch ⇒ Err(SovereignMismatch).
+//   - On success : audit-chain epoch advances ; the cell is written with
+//     synced low-half Σ cache.
+fn omega_loa_write_cell(
+    field_handle : i64,
+    coord : OmegaCoord3,
+    cell : OmegaCellPayload,
+    cap : SovereignCap,
+) -> Result<i64, IfcViolation> {
+    if sovereign_cap_is_null(cap) {
+        Err(SovereignCapNull)
+    } else {
+        if omega_coord3_in_range(coord) {
+            panic("omega::omega_loa_write_cell : stage-0 deferred — recognizer lowers to cssl.omega.loa_write_cell")
+        } else {
+            Err(InvalidCoord)
+        }
+    }
+}
+
+// `omega_loa_sample_cell(field_handle, coord, cap)` — derivative-out
+// read. Requires Sample consent (NOT just Observe). Used for cell-data
+// extraction into derivative-computation paths.
+fn omega_loa_sample_cell(
+    field_handle : i64,
+    coord : OmegaCoord3,
+    cap : SovereignCap,
+) -> Result<OmegaCellPayload, IfcViolation> {
+    if sovereign_cap_is_null(cap) {
+        Err(SovereignCapNull)
+    } else {
+        if omega_coord3_in_range(coord) {
+            panic("omega::omega_loa_sample_cell : stage-0 deferred — recognizer lowers to cssl.omega.loa_sample_cell")
+        } else {
+            Err(InvalidCoord)
+        }
+    }
+}
+
+// `omega_loa_grant_sovereign(field_handle, coord, new_mask_bits, new_sov, cap)`
+// — Σ-mask GRANT op. Used to claim a cell for a Sovereign + grant
+// consent-bits in one audited operation. Returns Result<(), IfcViolation>.
+//
+// § GATE
+//   - cap MUST be non-NULL ⇒ Err(SovereignCapNull) otherwise.
+//   - new_sov MUST equal cap.handle ⇒ Err(SovereignMismatch) otherwise.
+//   - If the cell is already-claimed by a different Sovereign ⇒
+//     Err(SovereignMismatch).
+fn omega_loa_grant_sovereign(
+    field_handle : i64,
+    coord : OmegaCoord3,
+    new_mask_bits : i64,
+    new_sov : i64,
+    cap : SovereignCap,
+) -> Result<i64, IfcViolation> {
+    if sovereign_cap_is_null(cap) {
+        Err(SovereignCapNull)
+    } else {
+        if new_sov != sovereign_cap_handle(cap) {
+            Err(SovereignMismatch)
+        } else {
+            if omega_coord3_in_range(coord) {
+                panic("omega::omega_loa_grant_sovereign : stage-0 deferred — recognizer lowers to cssl.omega.loa_grant_sovereign")
+            } else {
+                Err(InvalidCoord)
+            }
+        }
+    }
+}
+
+// `omega_loa_can_read(field_handle, coord, cap)` — pre-flight probe.
+// Returns true iff a subsequent omega_loa_read_cell would succeed.
+// Useful for client-side fast-path that wants to avoid the full call.
+fn omega_loa_can_read(
+    field_handle : i64,
+    coord : OmegaCoord3,
+    cap : SovereignCap,
+) -> bool {
+    if sovereign_cap_is_null(cap) {
+        false
+    } else {
+        if omega_coord3_in_range(coord) {
+            panic("omega::omega_loa_can_read : stage-0 deferred — recognizer lowers to cssl.omega.loa_can_read")
+        } else {
+            false
+        }
+    }
+}
+
+// `omega_loa_can_write(field_handle, coord, cap)` — pre-flight probe
+// for write-side gating.
+fn omega_loa_can_write(
+    field_handle : i64,
+    coord : OmegaCoord3,
+    cap : SovereignCap,
+) -> bool {
+    if sovereign_cap_is_null(cap) {
+        false
+    } else {
+        if omega_coord3_in_range(coord) {
+            panic("omega::omega_loa_can_write : stage-0 deferred — recognizer lowers to cssl.omega.loa_can_write")
+        } else {
+            false
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (LoA-binding side).
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : Sovereign 42 claims cell (10, 20, 30) with permissive mask.
+fn _example_loa_claim_cell() -> i64 {
+    let coord = omega_coord3_new(10, 20, 30);
+    let cap = sovereign_cap_new(42);
+    let mask_bits = sigma_permissive_mask();
+    // Stub field-handle (recognizer lowers to a real handle).
+    let field_handle = 0;
+    let r = omega_loa_grant_sovereign(field_handle, coord, mask_bits, 42, cap);
+    match r {
+        Ok(_) => 0,
+        Err(_) => 1,
+    }
+}
+
+// Worked example : NULL cap is refused at the read gate.
+fn _example_loa_null_cap_refused() -> i64 {
+    let coord = omega_coord3_new(0, 0, 0);
+    let cap = sovereign_cap_null();
+    let field_handle = 0;
+    let r = omega_loa_read_cell(field_handle, coord, cap);
+    match r {
+        Ok(_) => 0,
+        Err(_) => 1,
+    }
+}
+
+// Worked example : out-of-range coordinate is refused.
+fn _example_loa_oor_coord_refused() -> bool {
+    let bad = omega_coord3_new(2097152, 0, 0);     // > MORTON_AXIS_MAX
+    omega_coord3_in_range(bad) == false
+}
+
+// Worked example : Σ-mask permission-check via bit constants.
+fn _example_sigma_permissive_includes_modify() -> bool {
+    let mask = sigma_permissive_mask();
+    sigma_mask_permits(mask, sigma_bit_modify())
+}
+
+// Worked example : capability-match predicate.
+fn _example_sovereign_cap_match() -> bool {
+    let a = sovereign_cap_new(42);
+    let b = sovereign_cap_new(42);
+    sovereign_cap_matches(a, b)
+}
+
+// Worked example : NULL caps never match.
+fn _example_sovereign_cap_null_no_match() -> bool {
+    let n = sovereign_cap_null();
+    sovereign_cap_matches(n, n) == false
+}

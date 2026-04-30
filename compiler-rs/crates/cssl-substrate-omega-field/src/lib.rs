@@ -108,6 +108,7 @@ pub mod attestation;
 pub mod field_cell;
 pub mod lambda;
 pub mod legacy;
+pub mod loa_bindings;
 pub mod mera;
 pub mod morton;
 pub mod omega_field;
@@ -119,6 +120,10 @@ pub mod sparse_grid;
 pub use field_cell::{FieldCell, M_PAYLOAD_MASK, M_TAG_PGA, PATTERN_HANDLE_NULL};
 pub use lambda::{LambdaSimpleOverlay, LambdaToken, SimpleLambdaSlot};
 pub use legacy::{LegacyTensor, LegacyTensorMigration, MigrationError, ScalarFacet};
+pub use loa_bindings::{
+    loa_can_read, loa_can_write, loa_grant_sovereign, loa_read_cell, loa_sample_cell,
+    loa_write_cell, IfcViolation, LoaBindingError, LOA_SOVEREIGN_NULL_CAP,
+};
 pub use mera::{MeraPyramid, MERA_TIER_COUNT};
 pub use morton::{
     CellTier, MortonError, MortonKey, MORTON_AXIS_MASK, MORTON_AXIS_MAX, MORTON_AXIS_WIDTH,
