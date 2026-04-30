@@ -500,6 +500,62 @@ fn lower_one_op(
         "arith.divf" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().fdiv(a, c)
         }),
+        // § T11-D316 (W-A2-δ stage-0-emit-expand) — signed integer divide /
+        // remainder. Symmetric with the existing add/sub/mul triple ; needed
+        // for `let q = x / y` style straight-line code that body_lower emits
+        // as `arith.divi`.
+        "arith.divi" | "arith.divsi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().sdiv(a, c)
+        }),
+        "arith.divui" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().udiv(a, c)
+        }),
+        "arith.remi" | "arith.remsi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().srem(a, c)
+        }),
+        "arith.remui" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().urem(a, c)
+        }),
+        // § T11-D316 (W-A2-δ) — integer + float comparisons. body_lower emits
+        // the predicate as a name-suffix (`arith.cmpi_sgt`, `arith.cmpf_olt`,
+        // …) rather than an attribute, so the dispatch arms list every variant
+        // and the helpers `obj_lower_cmpi` / `obj_lower_cmpf` extract the
+        // predicate via the shared `obj_predicate_from_op` extractor (mirrors
+        // the SPIR-V emitter's pattern in `body_emit::predicate_from_op`).
+        "arith.cmpi"
+        | "arith.cmpi_eq"
+        | "arith.cmpi_ne"
+        | "arith.cmpi_slt"
+        | "arith.cmpi_sle"
+        | "arith.cmpi_sgt"
+        | "arith.cmpi_sge"
+        | "arith.cmpi_ult"
+        | "arith.cmpi_ule"
+        | "arith.cmpi_ugt"
+        | "arith.cmpi_uge" => obj_lower_cmpi(op, builder, value_map, fn_name),
+        "arith.cmpf"
+        | "arith.cmpf_eq"
+        | "arith.cmpf_oeq"
+        | "arith.cmpf_ne"
+        | "arith.cmpf_one"
+        | "arith.cmpf_olt"
+        | "arith.cmpf_lt"
+        | "arith.cmpf_ole"
+        | "arith.cmpf_le"
+        | "arith.cmpf_ogt"
+        | "arith.cmpf_gt"
+        | "arith.cmpf_oge"
+        | "arith.cmpf_ge"
+        | "arith.cmpf_ult"
+        | "arith.cmpf_ule"
+        | "arith.cmpf_ugt"
+        | "arith.cmpf_uge"
+        | "arith.cmpf_ord"
+        | "arith.cmpf_uno" => obj_lower_cmpf(op, builder, value_map, fn_name),
+        // § T11-D316 (W-A2-δ) — `arith.select` ternary. (cond, t, f) → t if
+        // cond else f. Cranelift's `select` natively expresses this so no
+        // extra block-splitting is needed.
+        "arith.select" => obj_lower_select(op, builder, value_map, fn_name),
         // § T11-D59 (S6-C3) — memref.load + memref.store. See
         // `specs/02_IR.csl § MEMORY-OPS` and the JIT-side mirror in `jit.rs`.
         "memref.load" => obj_lower_memref_load(op, builder, value_map, fn_name, ptr_ty),
@@ -1103,6 +1159,139 @@ where
             value_id: op.operands[1].0,
         })?;
     let v = emit(builder, a, b);
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
+// § T11-D316 (W-A2-δ) — comparison + select helpers. Predicate is recovered
+// from either the op-name suffix (`arith.cmpi_sgt` → "sgt") or the legacy
+// `predicate` attribute (JIT convention). Mirrors
+// `body_emit::predicate_from_op` in cssl-cgen-gpu-spirv.
+
+fn obj_predicate_from_op<'a>(op: &'a MirOp, family: char) -> &'a str {
+    let prefix = if family == 'i' {
+        "arith.cmpi_"
+    } else {
+        "arith.cmpf_"
+    };
+    if let Some(rest) = op.name.strip_prefix(prefix) {
+        return rest;
+    }
+    op.attributes
+        .iter()
+        .find(|(k, _)| k == "predicate")
+        .map_or("", |(_, v)| v.as_str())
+}
+
+fn parse_int_cc(s: &str) -> Option<cranelift_codegen::ir::condcodes::IntCC> {
+    use cranelift_codegen::ir::condcodes::IntCC as I;
+    Some(match s {
+        "eq" => I::Equal,
+        "ne" => I::NotEqual,
+        "slt" => I::SignedLessThan,
+        "sle" => I::SignedLessThanOrEqual,
+        "sgt" => I::SignedGreaterThan,
+        "sge" => I::SignedGreaterThanOrEqual,
+        "ult" => I::UnsignedLessThan,
+        "ule" => I::UnsignedLessThanOrEqual,
+        "ugt" => I::UnsignedGreaterThan,
+        "uge" => I::UnsignedGreaterThanOrEqual,
+        _ => return None,
+    })
+}
+
+fn parse_float_cc(s: &str) -> Option<cranelift_codegen::ir::condcodes::FloatCC> {
+    use cranelift_codegen::ir::condcodes::FloatCC as F;
+    Some(match s {
+        "eq" | "oeq" => F::Equal,
+        "ne" | "one" => F::NotEqual,
+        "olt" | "lt" => F::LessThan,
+        "ole" | "le" => F::LessThanOrEqual,
+        "ogt" | "gt" => F::GreaterThan,
+        "oge" | "ge" => F::GreaterThanOrEqual,
+        "ult" => F::UnorderedOrLessThan,
+        "ule" => F::UnorderedOrLessThanOrEqual,
+        "ugt" => F::UnorderedOrGreaterThan,
+        "uge" => F::UnorderedOrGreaterThanOrEqual,
+        "ord" => F::Ordered,
+        "uno" => F::Unordered,
+        _ => return None,
+    })
+}
+
+fn obj_lower_cmpi(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    let pred_str = obj_predicate_from_op(op, 'i');
+    let cc = parse_int_cc(pred_str).ok_or_else(|| ObjectError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!("unknown {} predicate `{pred_str}`", op.name),
+    })?;
+    binary_int(op, builder, value_map, fn_name, |b, a, c| {
+        b.ins().icmp(cc, a, c)
+    })
+}
+
+fn obj_lower_cmpf(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    let pred_str = obj_predicate_from_op(op, 'f');
+    let cc = parse_float_cc(pred_str).ok_or_else(|| ObjectError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!("unknown {} predicate `{pred_str}`", op.name),
+    })?;
+    binary_int(op, builder, value_map, fn_name, |b, a, c| {
+        b.ins().fcmp(cc, a, c)
+    })
+}
+
+fn obj_lower_select(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "arith.select with no result".to_string(),
+        })?;
+    if op.operands.len() != 3 {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "arith.select expected 3 operands (cond, t, f), got {}",
+                op.operands.len()
+            ),
+        });
+    }
+    let cond = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    let t = *value_map
+        .get(&op.operands[1])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[1].0,
+        })?;
+    let f = *value_map
+        .get(&op.operands[2])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[2].0,
+        })?;
+    let v = builder.ins().select(cond, t, f);
     value_map.insert(r.id, v);
     Ok(false)
 }

@@ -1013,6 +1013,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-audio"
+version = "0.1.0"
+dependencies = [
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-substrate-kan"
 version = "0.1.0"
 dependencies = [
@@ -1096,6 +1104,14 @@ dependencies = [
  "ed25519-dalek",
  "rand",
  "thiserror",
+]
+
+[[package]]
+name = "cssl-test-coordinator"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
