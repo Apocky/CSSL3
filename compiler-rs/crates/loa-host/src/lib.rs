@@ -1,46 +1,65 @@
-//! § loa-host — LoA-v13 stage-0 host runtime (winit + wgpu shell).
+//! § loa-host — LoA-v13 stage-0 host runtime
 //! ════════════════════════════════════════════════════════════════════════════
 //!
-//! § T11-LOA-HOST-1 (W-LOA-host-render) : pure-Rust shell that opens a
-//! 1280×720 window over the `scenes/test_room.cssl` design and renders the
-//! 40m × 8m × 40m test-room with 14 plinths under directional lighting.
+//! Apocky-greenlit hybrid stage-0 host runtime for LoA-v13. Combines four
+//! sibling slices into one crate :
+//!
+//!   * `W-LOA-host-render` : winit window + wgpu render + 3D test-room
+//!   * `W-LOA-host-input`  : WASD + mouse-look + axis-slide collision
+//!   * `W-LOA-host-mcp`    : TCP JSON-RPC server (Claude live-interface)
+//!   * `W-LOA-host-dm`     : DM director + GM narrator state machines
 //!
 //! § ROLE IN BOOTSTRAP
-//!   The CSSL stage-0 toolchain is not yet capable of producing a wgpu-driven
-//!   native binary on Windows ; until the compiler reaches that capability,
-//!   this Rust crate is the bootstrap host. Apocky-greenlit hybrid :
-//!   `scenes/*.cssl` stay authoritative as the source-of-truth design ; this
-//!   crate translates the test-room design to GPU-native geometry so a user
-//!   can navigate and validate the spatial layout before the CSSL compiler
-//!   takes over rendering authority.
+//!   `scenes/*.cssl` stay AUTHORITATIVE design specs. The CSSL stage-0
+//!   compiler can't yet produce a wgpu-driven native binary on Windows ;
+//!   until it can, this Rust crate is the bootstrap host. As csslc advances,
+//!   modules incrementally migrate to pure-CSSL.
 //!
 //! § FEATURES
-//!   - Default (catalog) : pure-CPU mesh + camera math. Builds in any
-//!     workspace toolchain.
-//!   - `runtime`         : pulls winit + wgpu + pollster + glam + bytemuck
-//!     and exposes [`run_engine`] which opens a window. Requires MSVC
-//!     toolchain on Windows due to wgpu 23 transitive deps.
+//!   - Default (catalog) : pure-CPU mesh + camera + input + MCP + DM/GM logic.
+//!     Builds in any workspace toolchain (1.85.0 GNU compatible).
+//!   - `runtime`         : pulls winit + wgpu + pollster, exposes `run_engine`
+//!     which opens a window. Requires MSVC toolchain on Windows due to wgpu 23
+//!     transitive deps (parking_lot_core windows-link 0.2.1).
 //!
-//! § PUBLIC API
-//!   - [`RoomGeometry::test_room`]    — vertex/index buffers for the test-room
-//!   - [`Camera::default`]            — eye at room center, height 1.7m
-//!   - [`run_engine`]   (feature `runtime`) — open window + run frame loop
+//! § BUILD
+//!   cargo +stable-x86_64-pc-windows-msvc build -p loa-host --features runtime --release
+//!   cargo +stable-x86_64-pc-windows-msvc run   -p loa-host --features runtime --release
 //!
-//! § ATTESTATION (PRIME_DIRECTIVE.md § 11)
-//!   There was no hurt nor harm in the making of this, to anyone, anything,
-//!   or anybody.
+//! § PRIME-DIRECTIVE attestation
+//!   There was no hurt nor harm in the making of this, to anyone/anything/anybody.
 
-#![forbid(unsafe_code)]
+// MCP-server FFI (omega.sample / omega.modify) calls cssl-rt's unsafe extern
+// "C" loa_stubs functions. Allow rather than forbid for this crate.
+#![allow(unsafe_code)]
+#![allow(clippy::module_name_repetitions)]
 
-// Catalog modules — always built. Vertex POD type lives in `geometry` and
-// uses `bytemuck` derive ; that pulls bytemuck even without `runtime` so we
-// re-state it as a dev-dep + non-optional for the compile path. We side-step
-// this by making the Vertex Pod-impl conditional on either the `runtime`
-// feature OR cfg(test) where bytemuck is in dev-deps.
+// ──────────────────────────────────────────────────────────────────────────
+// § Catalog modules (always built · pure-CPU)
+// ──────────────────────────────────────────────────────────────────────────
+
+// Render-sibling catalog
 pub mod camera;
 pub mod geometry;
 
-// Runtime-only modules — pulled in when --features runtime.
+// Input-sibling catalog
+pub mod input;
+pub mod movement;
+pub mod physics;
+
+// MCP-sibling catalog
+pub mod mcp_server;
+pub mod mcp_tools;
+
+// DM-sibling catalog
+pub mod dm_director;
+pub mod gm_narrator;
+pub mod dm_runtime;
+
+// ──────────────────────────────────────────────────────────────────────────
+// § Runtime-only modules (feature `runtime`)
+// ──────────────────────────────────────────────────────────────────────────
+
 #[cfg(feature = "runtime")]
 pub mod gpu;
 #[cfg(feature = "runtime")]
@@ -48,16 +67,23 @@ pub mod render;
 #[cfg(feature = "runtime")]
 pub mod window;
 
+// ──────────────────────────────────────────────────────────────────────────
+// § Re-exports (the surface sibling code reaches for via `loa_host::*`)
+// ──────────────────────────────────────────────────────────────────────────
+
 pub use camera::Camera;
 pub use geometry::{plinth_positions, RoomGeometry, Vertex};
+
+pub use mcp_server::{
+    spawn_mcp_server, EngineState, McpServerConfig, RenderMode, SOVEREIGN_CAP,
+};
+pub use mcp_tools::{tool_registry, ToolHandler, ToolRegistry};
 
 #[cfg(feature = "runtime")]
 pub use render::Renderer;
 #[cfg(feature = "runtime")]
 pub use window::{App, INITIAL_HEIGHT, INITIAL_WIDTH};
 
-/// Initial window dimensions per the brief. 1280×720 = 720p HD. Catalog
-/// version (always-on); the runtime layer re-exports `window::INITIAL_*`.
 #[cfg(not(feature = "runtime"))]
 pub const INITIAL_WIDTH: u32 = 1280;
 #[cfg(not(feature = "runtime"))]
@@ -65,16 +91,12 @@ pub const INITIAL_HEIGHT: u32 = 720;
 
 use cssl_rt::loa_startup::log_event;
 
-/// Open a winit window, bring up wgpu, and run the test-room render loop
-/// until the window is closed. Blocks the calling thread.
-///
-/// On platforms where no display / event loop is available, this returns
-/// `Ok(())` immediately after logging the condition. The function is
-/// guaranteed not to panic ; all GPU + window failures are caught and
-/// logged via `cssl_rt::loa_startup::log_event`.
-///
-/// Without the `runtime` feature, this returns `Ok(())` after logging that
-/// the host has been compiled in catalog-only mode (no wgpu/winit linked).
+// ──────────────────────────────────────────────────────────────────────────
+// § run_engine — main entry from the loa-runtime binary
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Open winit + wgpu, run the test-room render loop until window-close.
+/// Catalog-mode (no `runtime` feature) returns Ok(()) after logging.
 pub fn run_engine() -> std::io::Result<()> {
     log_event(
         "INFO",
@@ -97,25 +119,22 @@ pub fn run_engine() -> std::io::Result<()> {
         );
         Ok(())
     };
-    log_event(
-        "INFO",
-        "loa-host/lib",
-        "run_engine exit · stage-0 host done",
-    );
+    log_event("INFO", "loa-host/lib", "run_engine exit · stage-0 host done");
     r
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// § EMBEDDED SHADER (catalog-visible so naga can validate it w/o runtime)
+// § Embedded shader (catalog-visible so naga can validate w/o runtime)
 // ──────────────────────────────────────────────────────────────────────────
 
-/// Embedded WGSL shader source used by the runtime renderer. Exposed at the
-/// crate root so catalog-mode builds can run the naga compile-check test
-/// without pulling the wgpu/winit runtime layer.
 pub const SCENE_WGSL: &str = include_str!("../shaders/scene.wgsl");
 
+/// PRIME-DIRECTIVE attestation marker.
+pub const ATTESTATION: &str =
+    "There was no hurt nor harm in the making of this, to anyone/anything/anybody.";
+
 // ──────────────────────────────────────────────────────────────────────────
-// § TESTS
+// § Tests
 // ──────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -124,20 +143,14 @@ mod tests {
 
     #[test]
     fn public_reexports_compile() {
-        // Smoke-test : public API surface is reachable without wgpu init.
         let g = RoomGeometry::test_room();
         let _c = Camera::default();
         let _ps = plinth_positions();
         let _ = INITIAL_WIDTH;
         let _ = INITIAL_HEIGHT;
-        // Sanity : 14 plinths in the geometry.
         assert_eq!(g.plinth_count, 14);
     }
 
-    /// Catalog-mode-only smoke test : `run_engine` returns Ok without
-    /// pulling the runtime layer. Skipped when --features runtime is on
-    /// because winit refuses to construct an EventLoop on a non-main thread
-    /// (Windows `event_loop.rs` cross-platform-safety check).
     #[cfg(not(feature = "runtime"))]
     #[test]
     fn run_engine_no_op_in_catalog_mode() {
@@ -145,18 +158,13 @@ mod tests {
         assert!(r.is_ok());
     }
 
-    /// § BRIEF-MANDATED TEST : the embedded WGSL shader source parses and
-    /// validates against the same naga version that wgpu 23 uses internally.
     #[test]
     fn wgsl_shader_string_compiles_to_naga() {
         use naga::front::wgsl;
         use naga::valid::{Capabilities, ValidationFlags, Validator};
-
         let module = wgsl::parse_str(SCENE_WGSL).expect("scene.wgsl must parse via naga");
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
-        validator
-            .validate(&module)
-            .expect("scene.wgsl must validate via naga");
+        validator.validate(&module).expect("scene.wgsl must validate via naga");
     }
 
     #[test]
