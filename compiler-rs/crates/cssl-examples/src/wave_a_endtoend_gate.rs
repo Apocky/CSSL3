@@ -428,22 +428,23 @@ mod tests {
         assert!(out.has_mir_fn("parse_ok"), "{}", out.summary());
     }
 
-    /// Real JIT-execute gate for W-A1 Option-Some. Soft-skip while
-    /// `W-B-RECOGNIZER` is still landing. Run with
-    /// `cargo test -p cssl-examples wave_a_endtoend_gate -- --ignored`
-    /// once the recognizer is wired in.
-    /// W-A1 (tagged-union ABI) JIT-execute. Currently DEFERRED on a real
-    /// bug : `TaggedUnionAbiPass` rewrites the body OPS but leaves fn
-    /// SIGNATURES carrying `Option<T>` / `Result<T, E>` types. The JIT's
-    /// `mir_to_cl_type` rejects those because they're not scalar-JIT-able.
-    /// True fix is a Wave-A1-α follow-up : either (a) extend
-    /// `TaggedUnionAbiPass` to rewrite signatures into a scalar-pair
-    /// `(tag : u32, payload : i64)` shape, or (b) teach the JIT
-    /// `mir_to_cl_type` to lower `MirType::Adt("Option" | "Result", _)`
-    /// to a scalar-pair ABI (out-param + i32 result). Tracked for a
-    /// future wave (NOT W-A7 scope).
+    /// W-A1 (tagged-union ABI) JIT-execute. T11-D248 / W-A1-α-fix
+    /// extended `TaggedUnionAbiPass` to rewrite fn-signatures alongside
+    /// body-ops : every `Option<T>` / `Result<T,E>` slot in params +
+    /// returns + entry-block-args is lowered to `MirType::Ptr` so the
+    /// JIT's `mir_to_cl_type` accepts the post-rewrite signature. The
+    /// pass is idempotent via the `tagged_union_abi.sig_rewritten=true`
+    /// stamp attribute. The same fix added a `MirType::Ptr` arm to the
+    /// JIT's `mir_to_cl_type` so the rewritten signatures lower to
+    /// `cl_types::I64` (host pointer width). The remaining gap is the
+    /// JIT body-cgen for the post-rewrite `cssl.heap.alloc` +
+    /// `arith.bitcast` op shapes ; the cgen-cl crate has these in
+    /// `cgen_tagged_union` but `jit::lower_op_to_cl` doesn't yet
+    /// dispatch to them, so end-to-end JIT execution fails on the
+    /// FIRST construct-op encountered. Tracked as Wave-A1-β follow-up
+    /// (parallel to the Wave-A2-β / cgen-cl-vec-op gap).
     #[test]
-    #[ignore = "BUG-FOUND: TaggedUnionAbiPass rewrites body-ops but NOT fn signatures ; JIT mir_to_cl_type rejects MirType::Adt(Option, _) — needs Wave-A1-α follow-up"]
+    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
     fn wave_a1_option_some_jit_returns_42() {
         match try_jit_main_returns_i32("wave-a1-option-some", WAVE_A1_OPTION_SOME) {
             Ok(code) => assert_eq!(code, 42, "expected 42, got {code}"),
@@ -452,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG-FOUND: TaggedUnionAbiPass rewrites body-ops but NOT fn signatures ; JIT mir_to_cl_type rejects MirType::Adt(Result, _) — needs Wave-A1-α follow-up"]
+    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
     fn wave_a1_result_ok_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a1-result-ok", WAVE_A1_RESULT_OK) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
@@ -507,12 +508,13 @@ mod tests {
         assert!(out.mir_fn_count >= 3, "{}", out.summary());
     }
 
-    /// W-A3 (?-op) JIT-execute. Same blocker as W-A1 : `must_be_positive`
-    /// + `add_two_pos` return `Result<i32, i32>` ; `TaggedUnionAbiPass`
-    /// rewrites bodies but not signatures. Will be unblocked by the same
-    /// Wave-A1-α follow-up that fixes the W-A1 sig-rewrite gap.
+    /// W-A3 (?-op) JIT-execute. Same blocker-shape as W-A1 : T11-D248 /
+    /// W-A1-α-fix landed the sig-rewrite for `Result<i32,i32>` slots
+    /// (params + returns + entry-args lowered to `MirType::Ptr`) ; the
+    /// JIT body-cgen for `cssl.heap.alloc` / `arith.bitcast` is the
+    /// next blocker (Wave-A1-β follow-up).
     #[test]
-    #[ignore = "BUG-FOUND: blocked by Wave-A1-α (signature-rewrite gap in TaggedUnionAbiPass)"]
+    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
     fn wave_a3_try_propagation_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a3-try", WAVE_A3_TRY_PROPAGATION) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),

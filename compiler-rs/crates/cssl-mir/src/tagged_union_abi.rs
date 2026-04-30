@@ -683,6 +683,13 @@ pub struct ExpansionReport {
     /// for sanity-checking that the rewrite didn't accidentally over-
     /// expand a hot inner loop.
     pub total_bytes_allocated: u32,
+    /// W-A1-α (T11-D248) : count of fn-signature slots (params +
+    /// returns) rewritten from a tagged-union opaque-type into the
+    /// canonical post-ABI `MirType::Ptr` cell shape. Tracks the
+    /// signature-side of the lowering so the JIT's `mir_to_cl_type`
+    /// no longer rejects fn-sigs containing `Option<T>` / `Result<T,E>`
+    /// when the body-rewrite has already lowered every cell-touch op.
+    pub sig_rewrites: u32,
 }
 
 impl ExpansionReport {
@@ -720,7 +727,179 @@ pub fn expand_func(func: &mut MirFunc) -> ExpansionReport {
     let mut ids = FreshIdSeq::new(func.next_value_id);
     expand_region(&mut func.body, &mut ids, &mut report);
     func.next_value_id = ids.next;
+    rewrite_func_signature(func, &mut report);
     report
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § W-A1-α (T11-D248) — fn-signature rewriting.
+//
+// After body-op rewriting the construction op's original opaque-typed
+// result-id is rebound to a `MirType::Ptr` cell via `arith.bitcast`. But
+// the surrounding fn's PARAMS + RESULTS slots still carry the high-level
+// `MirType::Opaque("Option")` / `"Result"` / `"!cssl.option.<T>"` / etc.
+// shapes that HIR-lowering produced. The JIT's `mir_to_cl_type` rejects
+// those because they're not scalar-JIT-able — the bug surfaced by
+// `wave_a_endtoend_gate::wave_a1_option_some_jit_returns_42`.
+//
+// The fix : walk every fn's params + results post-body-rewrite + lower
+// each tagged-union shape to `MirType::Ptr` (matching the body-side
+// bitcast-alias output). The block-entry args of `body.entry` mirror
+// the params slot, so we update those in lockstep so the body's first-
+// op operands keep typing through.
+//
+// IDEMPOTENCY : a stamp attribute (`tagged_union_abi.sig_rewritten=true`)
+// is added on first run. Subsequent runs short-circuit per-fn so the
+// counts in [`ExpansionReport.sig_rewrites`] only grow on the first
+// call. The body-walk also short-circuits on construction ops that are
+// already gone (the rewrite removes them), so calling [`expand_func`]
+// twice produces the same MIR + zero new sig-rewrites the second time.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Stamp key on a `MirFunc.attributes` to mark the signature as already
+/// rewritten by `TaggedUnionAbiPass`. Idempotency guard.
+pub const SIG_REWRITTEN_KEY: &str = "tagged_union_abi.sig_rewritten";
+/// Stamp value when [`SIG_REWRITTEN_KEY`] is set.
+pub const SIG_REWRITTEN_VALUE: &str = "true";
+
+/// `true` iff `t` is a tagged-union shape that should be lowered to
+/// `MirType::Ptr` in fn-signature position. Matches BOTH the raw
+/// nominal forms (`Opaque("Option")` / `Opaque("Result")`) emitted by
+/// `lower::lower_type` AND the post-construction-op canonical forms
+/// (`Opaque("!cssl.option.<T>")` / `"!cssl.result.<...>")`) that body-
+/// rewrite leaves attached to local SSA-values. The single-source-of-
+/// truth helper used by both signature- and entry-arg rewriting.
+#[must_use]
+pub fn is_tagged_union_type(t: &MirType) -> bool {
+    let MirType::Opaque(s) = t else {
+        return false;
+    };
+    is_tagged_union_opaque_str(s)
+}
+
+/// Predicate for the textual shape of a tagged-union opaque type. Split
+/// out so callers can match against the textual cache without first
+/// constructing a `MirType::Opaque` wrapper.
+#[must_use]
+pub fn is_tagged_union_opaque_str(s: &str) -> bool {
+    // Bare nominal forms emitted by `lower::lower_type` for
+    // unparameterized `Option` / `Result` paths.
+    if s == "Option" || s == "Result" {
+        return true;
+    }
+    // Construction-op canonical forms emitted by `body_lower` :
+    //   - `!cssl.option.<T>`        — Some / None construction-op result
+    //   - `!cssl.option.unknown`    — None payload-less variant
+    //   - `!cssl.result.ok.<T>`     — Ok construction-op result
+    //   - `!cssl.result.err.<E>`    — Err construction-op result
+    //   - `!cssl.result.<T>.<E>`    — (older convention ; tolerated)
+    if s.starts_with("!cssl.option.") || s.starts_with("!cssl.result.") {
+        return true;
+    }
+    false
+}
+
+/// Lower one slot. `MirType::Ptr` is left alone (idempotency on the
+/// rare cross-pass call) ; tagged-union opaques become `MirType::Ptr`.
+/// Returns `true` iff the slot was rewritten.
+fn rewrite_slot(slot: &mut MirType) -> bool {
+    if is_tagged_union_type(slot) {
+        *slot = MirType::Ptr;
+        true
+    } else {
+        false
+    }
+}
+
+/// Walk the fn's params + results + entry-block-args + return-result-
+/// types and rewrite every tagged-union slot to `MirType::Ptr`.
+///
+/// The entry-block args MUST stay in lockstep with `func.params` —
+/// `lower::lower_function_signature` constructs the entry-block with
+/// arg-types that mirror the params slice. The body's first-op operands
+/// look up the entry-arg's `MirValue.ty` via the value-map, so a stale
+/// Opaque on an entry-arg would re-emerge as a JIT-rejected type even
+/// after sig-rewrite.
+///
+/// Idempotent : the `SIG_REWRITTEN_KEY` attribute short-circuits any
+/// fn that's already been processed.
+pub fn rewrite_func_signature(func: &mut MirFunc, report: &mut ExpansionReport) {
+    if func
+        .attributes
+        .iter()
+        .any(|(k, v)| k == SIG_REWRITTEN_KEY && v == SIG_REWRITTEN_VALUE)
+    {
+        return;
+    }
+
+    let mut local = 0_u32;
+
+    // Params slice.
+    for slot in &mut func.params {
+        if rewrite_slot(slot) {
+            local += 1;
+        }
+    }
+
+    // Results slice.
+    for slot in &mut func.results {
+        if rewrite_slot(slot) {
+            local += 1;
+        }
+    }
+
+    // Entry-block args : mirror the params slice. Per
+    // `MirFunc::new` the entry-block carries a 1-to-1 arg list keyed by
+    // ValueId(0..params.len()) ; we walk every block arg defensively
+    // (the body-lower may have appended extra block-args during
+    // expansion ; those extra args also get the rewrite if their type
+    // is tagged-union-shaped).
+    for block in &mut func.body.blocks {
+        for arg in &mut block.args {
+            if rewrite_slot(&mut arg.ty) {
+                local += 1;
+            }
+        }
+    }
+
+    // Walk every op in every nested region — the body's `func.call` op
+    // result-types may carry `Opaque("!cssl.option.<T>")` shapes where
+    // the callee returned a tagged-union ; lowering those to Ptr keeps
+    // the value-map's typing consistent so downstream ops (e.g.
+    // `memref.load` reading the tag from a returned Option-cell) see
+    // the canonical Ptr scrutinee. Construction-op outputs are
+    // already Ptr after body-rewrite (the bitcast-alias), so this
+    // mostly catches `func.call` + the few ops whose result-types
+    // body_lower stamped before the recognizer rewrote them.
+    rewrite_op_result_types_in_region(&mut func.body, &mut local);
+
+    if local > 0 {
+        report.sig_rewrites = report.sig_rewrites.saturating_add(local);
+    }
+
+    func.attributes.push((
+        SIG_REWRITTEN_KEY.to_string(),
+        SIG_REWRITTEN_VALUE.to_string(),
+    ));
+}
+
+/// Walk a region's ops + rewrite tagged-union shapes on every op-result
+/// + recurse into nested regions. Call-site result-types are the main
+/// target ; construction-op results were already lowered to Ptr by the
+/// body-rewrite's bitcast-alias.
+fn rewrite_op_result_types_in_region(region: &mut MirRegion, local: &mut u32) {
+    for block in &mut region.blocks {
+        for op in &mut block.ops {
+            for r in &mut op.results {
+                if rewrite_slot(&mut r.ty) {
+                    *local += 1;
+                }
+            }
+            for nested in &mut op.regions {
+                rewrite_op_result_types_in_region(nested, local);
+            }
+        }
+    }
 }
 
 /// Expand every sum-type construction op across an entire `MirModule`.
@@ -740,6 +919,7 @@ pub fn expand_module(module: &mut MirModule) -> ExpansionReport {
         report.total_bytes_allocated = report
             .total_bytes_allocated
             .saturating_add(per_fn.total_bytes_allocated);
+        report.sig_rewrites = report.sig_rewrites.saturating_add(per_fn.sig_rewrites);
     }
     report
 }
@@ -1267,6 +1447,7 @@ mod tests {
             result_ok_count: 1,
             result_err_count: 4,
             total_bytes_allocated: 0,
+            sig_rewrites: 0,
         };
         assert_eq!(r.total_count(), 10);
     }
@@ -1277,6 +1458,264 @@ mod tests {
         assert_eq!(ids.fresh(), ValueId(7));
         assert_eq!(ids.fresh(), ValueId(8));
         assert_eq!(ids.next, 9);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § W-A1-α (T11-D248) — fn-signature rewriting tests.
+    //
+    //   Verifies that `expand_func` lowers Option / Result types in
+    //   the fn's params + results + entry-block-args to `MirType::Ptr`
+    //   so the JIT's `mir_to_cl_type` accepts the post-rewrite signature.
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn is_tagged_union_type_recognizes_bare_nominals() {
+        assert!(is_tagged_union_type(&MirType::Opaque("Option".into())));
+        assert!(is_tagged_union_type(&MirType::Opaque("Result".into())));
+    }
+
+    #[test]
+    fn is_tagged_union_type_recognizes_canonical_construct_forms() {
+        assert!(is_tagged_union_type(&MirType::Opaque(
+            "!cssl.option.i32".into()
+        )));
+        assert!(is_tagged_union_type(&MirType::Opaque(
+            "!cssl.option.unknown".into()
+        )));
+        assert!(is_tagged_union_type(&MirType::Opaque(
+            "!cssl.result.ok.i32".into()
+        )));
+        assert!(is_tagged_union_type(&MirType::Opaque(
+            "!cssl.result.err.i32".into()
+        )));
+        assert!(is_tagged_union_type(&MirType::Opaque(
+            "!cssl.result.i32.i32".into()
+        )));
+    }
+
+    #[test]
+    fn is_tagged_union_type_rejects_scalars_and_ptr() {
+        assert!(!is_tagged_union_type(&MirType::Int(IntWidth::I32)));
+        assert!(!is_tagged_union_type(&MirType::Ptr));
+        assert!(!is_tagged_union_type(&MirType::Bool));
+        assert!(!is_tagged_union_type(&MirType::Opaque("Box".into())));
+        assert!(!is_tagged_union_type(&MirType::Opaque("Vec".into())));
+    }
+
+    #[test]
+    fn rewrite_func_signature_lowers_option_param_to_ptr() {
+        // fn extract(opt : Option<i32>) -> i32 { ... }
+        let mut func = MirFunc::new(
+            "extract",
+            vec![MirType::Opaque("Option".into())],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        let mut report = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut report);
+        // The Option param became Ptr ; the i32 return stayed.
+        assert_eq!(func.params, vec![MirType::Ptr]);
+        assert_eq!(func.results, vec![MirType::Int(IntWidth::I32)]);
+        // Entry-block arg also rewritten in lockstep with params.
+        let entry = func.body.entry().unwrap();
+        assert_eq!(entry.args.len(), 1);
+        assert_eq!(entry.args[0].ty, MirType::Ptr);
+        // Counters : params (1) + entry-arg (1) = 2.
+        assert_eq!(report.sig_rewrites, 2);
+        // Stamp attribute is set.
+        assert!(func
+            .attributes
+            .iter()
+            .any(|(k, v)| k == SIG_REWRITTEN_KEY && v == SIG_REWRITTEN_VALUE));
+    }
+
+    #[test]
+    fn rewrite_func_signature_lowers_result_return_to_ptr() {
+        // fn parse_ok(x : i32) -> Result<i32, i32> { Ok(x) }
+        let mut func = MirFunc::new(
+            "parse_ok",
+            vec![MirType::Int(IntWidth::I32)],
+            vec![MirType::Opaque("Result".into())],
+        );
+        let mut report = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut report);
+        assert_eq!(func.params, vec![MirType::Int(IntWidth::I32)]);
+        assert_eq!(func.results, vec![MirType::Ptr]);
+        // Counters : results (1) only — params unchanged + entry-args
+        // mirrored params (i32 stays scalar).
+        assert_eq!(report.sig_rewrites, 1);
+    }
+
+    #[test]
+    fn rewrite_func_signature_idempotent() {
+        // Run twice — second run is a no-op.
+        let mut func = MirFunc::new(
+            "extract",
+            vec![MirType::Opaque("Option".into())],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        let mut r1 = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut r1);
+        let pre_sig = func.params.clone();
+        let pre_results = func.results.clone();
+        let pre_attrs = func.attributes.clone();
+
+        let mut r2 = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut r2);
+        // Second run : no mutation, no count growth.
+        assert_eq!(r2.sig_rewrites, 0);
+        assert_eq!(func.params, pre_sig);
+        assert_eq!(func.results, pre_results);
+        assert_eq!(func.attributes, pre_attrs);
+    }
+
+    #[test]
+    fn rewrite_func_signature_handles_canonical_payload_typed_results() {
+        // fn make_some_42() -> Option<i32> { Some(42) }
+        // After body-lowering the result-slot may carry the canonical
+        // construct-op form `!cssl.option.i32` (this is what
+        // `lower::lower_type` does NOT produce, but the BodyLowerCtx
+        // sometimes propagates ; the rewriter must accept both).
+        let mut func = MirFunc::new(
+            "make_some_42",
+            Vec::new(),
+            vec![MirType::Opaque("!cssl.option.i32".into())],
+        );
+        let mut report = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut report);
+        assert_eq!(func.results, vec![MirType::Ptr]);
+        assert_eq!(report.sig_rewrites, 1);
+    }
+
+    #[test]
+    fn expand_func_rewrites_signature_alongside_body() {
+        // Build a fn returning Option<i32> + Some(42) body. The full
+        // expand_func pipeline must rewrite BOTH the body construction
+        // op AND the fn-result slot.
+        let mut func = build_make_some_fn();
+        let report = expand_func(&mut func);
+        // Body-side : Some(42) construction expanded.
+        assert_eq!(report.option_some_count, 1);
+        // Sig-side : the result slot was rewritten from
+        // Opaque("!cssl.option.i32") → Ptr.
+        assert!(report.sig_rewrites >= 1);
+        assert_eq!(func.results, vec![MirType::Ptr]);
+    }
+
+    #[test]
+    fn expand_module_aggregates_sig_rewrites_across_fns() {
+        // Mixed module : 2 fns each contribute sig-rewrites + body-
+        // expansions. The aggregated report carries both totals.
+        let mut module = MirModule::with_name("mixed");
+        module.push_func(build_make_some_fn());
+        // Add a fn with an Option param.
+        let mut extract = MirFunc::new(
+            "extract",
+            vec![MirType::Opaque("Option".into())],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        // Body : just `func.return %0` — we don't care about the body-
+        // op shape for this test.
+        extract.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        module.push_func(extract);
+
+        let report = expand_module(&mut module);
+        // make_some_42 : 1 result-rewrite ; extract : 1 param-rewrite +
+        // 1 entry-arg-rewrite = at least 3 across the module.
+        assert!(
+            report.sig_rewrites >= 3,
+            "expected at least 3 sig_rewrites, got {}",
+            report.sig_rewrites
+        );
+        // Both fns now stamped.
+        assert!(module.funcs.iter().all(|f| f
+            .attributes
+            .iter()
+            .any(|(k, v)| k == SIG_REWRITTEN_KEY && v == SIG_REWRITTEN_VALUE)));
+    }
+
+    #[test]
+    fn expand_func_running_twice_is_idempotent_full() {
+        // End-to-end idempotency : the full expand_func pipeline is
+        // safe to call twice. First call rewrites body + sig ; second
+        // call sees the stamp + the construction-op-already-gone state
+        // + reports zero new work.
+        let mut func = build_make_some_fn();
+        let r1 = expand_func(&mut func);
+        let after_first_params = func.params.clone();
+        let after_first_results = func.results.clone();
+        let after_first_op_count = func.body.entry().unwrap().ops.len();
+
+        let r2 = expand_func(&mut func);
+        // Second run : no construction ops left to expand + sig already
+        // rewritten.
+        assert_eq!(r2.option_some_count, 0);
+        assert_eq!(r2.option_none_count, 0);
+        assert_eq!(r2.result_ok_count, 0);
+        assert_eq!(r2.result_err_count, 0);
+        assert_eq!(r2.sig_rewrites, 0);
+        assert!(r1.sig_rewrites >= 1);
+        // Module shape unchanged across the second run.
+        assert_eq!(func.params, after_first_params);
+        assert_eq!(func.results, after_first_results);
+        assert_eq!(func.body.entry().unwrap().ops.len(), after_first_op_count);
+    }
+
+    #[test]
+    fn rewrite_func_signature_lowers_call_result_types() {
+        // Build a fn whose body has a `func.call` returning an opaque
+        // call-result that's actually a tagged-union shape (the body-
+        // lower stamps this on intra-module calls). The sig-rewrite
+        // walks op-result types so the value-map's typing stays
+        // consistent for downstream loads.
+        let mut func = MirFunc::new("caller", Vec::new(), vec![MirType::Int(IntWidth::I32)]);
+        // %0 = func.call @make_some_42 : !cssl.option.i32
+        func.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "make_some_42")
+                .with_result(ValueId(0), MirType::Opaque("!cssl.option.i32".into())),
+        );
+        let mut report = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut report);
+        // The call-result type was lowered to Ptr.
+        let entry = func.body.entry().unwrap();
+        let call_op = entry.ops.iter().find(|o| o.name == "func.call").unwrap();
+        assert_eq!(call_op.results[0].ty, MirType::Ptr);
+        assert!(report.sig_rewrites >= 1);
+    }
+
+    #[test]
+    fn rewrite_func_signature_recurses_into_nested_regions() {
+        // scf.if op with a nested region holding a func.call returning
+        // Option. The walker must descend into nested regions so the
+        // inner op-result types are rewritten too.
+        let mut func = MirFunc::new("with_if", Vec::new(), vec![MirType::Int(IntWidth::I32)]);
+        let nested_call = MirOp::std("func.call")
+            .with_attribute("callee", "inner")
+            .with_result(ValueId(0), MirType::Opaque("Option".into()));
+        let mut nested_block = MirBlock::new("then");
+        nested_block.ops.push(nested_call);
+        let mut nested_region = MirRegion::new();
+        nested_region.push(nested_block);
+        let scf_if = MirOp::std("scf.if")
+            .with_operand(ValueId(99))
+            .with_region(nested_region);
+        func.push_op(scf_if);
+
+        let mut report = ExpansionReport::default();
+        rewrite_func_signature(&mut func, &mut report);
+        // Walk into the scf.if's then-region + assert the nested
+        // func.call result-type was lowered.
+        let entry = func.body.entry().unwrap();
+        let scf_if_op = entry.ops.iter().find(|o| o.name == "scf.if").unwrap();
+        let inner_region = scf_if_op.regions.first().unwrap();
+        let inner_block = inner_region.blocks.first().unwrap();
+        let inner_call = inner_block
+            .ops
+            .iter()
+            .find(|o| o.name == "func.call")
+            .unwrap();
+        assert_eq!(inner_call.results[0].ty, MirType::Ptr);
+        assert!(report.sig_rewrites >= 1);
     }
 }
 

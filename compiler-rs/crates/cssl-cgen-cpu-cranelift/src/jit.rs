@@ -982,6 +982,15 @@ impl Default for JitModule {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// Map a MIR scalar type to the Cranelift `ir::Type`.
+///
+/// § T11-D248 / W-A1-α-fix : `MirType::Ptr` is also accepted as a
+/// JIT-callable scalar — lowered to `I64` (the host pointer-width on
+/// stage-0's 64-bit target). This mirrors the post-`TaggedUnionAbiPass`
+/// signature shape : `Option<T>` / `Result<T,E>` slots are lowered to
+/// `MirType::Ptr` (cell-pointer) so the fn-call ABI passes the
+/// tagged-union by reference. Without the Ptr arm here, the sig-
+/// rewrite would still leave `mir_to_cl_type` rejecting the post-
+/// rewrite type-shape, defeating the W-A1 closure.
 fn mir_to_cl_type(mir: &MirType) -> Option<cranelift_codegen::ir::Type> {
     match mir {
         MirType::Int(w) => Some(match w {
@@ -997,6 +1006,13 @@ fn mir_to_cl_type(mir: &MirType) -> Option<cranelift_codegen::ir::Type> {
             FloatWidth::F64 => cl_types::F64,
         }),
         MirType::Bool => Some(cl_types::I8),
+        // Stage-0 host-pointer width = 8 bytes (x86_64 / aarch64). A
+        // future cross-compile slice would parameterize this on the
+        // active ISA's `pointer_type()`, but the body-rewrite + heap
+        // cell-allocation path already hard-code the 8-byte
+        // assumption (see `tagged_union_abi::heuristic_size_of` /
+        // `heuristic_align_of` for `Ptr`).
+        MirType::Ptr => Some(cl_types::I64),
         _ => None,
     }
 }
