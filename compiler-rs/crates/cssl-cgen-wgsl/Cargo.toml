@@ -1,0 +1,31 @@
+[package]
+name                   = "cssl-cgen-wgsl"
+description            = "CSSLv3 stage0 — WebGPU Shading Language source-string emitter (web-deployment path for LoA-v13)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-D270 (W-G4) — `cssl-cgen-wgsl` is the *thin* WGSL source-string
+# emitter targeted at LoA-v13's WebGPU browser-deployment path. It is a
+# parallel sibling to `cssl-cgen-gpu-wgsl` (T11-D32 / D75), which carries
+# the heavyweight Tint-shim + naga round-trip validator. The split reflects
+# two different deployment surfaces :
+#
+#   • cssl-cgen-gpu-wgsl  (heavy)  — desktop wgpu host ; naga-validates every emit ;
+#                                    full structured-CFG-marker contract enforcement.
+#   • cssl-cgen-wgsl      (thin)   — browser host ; the browser engine compiles WGSL ;
+#                                    we only need a clean source-string emitter
+#                                    (no naga dep ; no FFI ; no winapi-util pin).
+#
+# This minimal-deps profile is what makes the crate web-WASM-compilable
+# without dragging the `naga` + `codespan-reporting` + `termcolor` chain
+# (which currently requires the winapi-util=0.1.10 pin per D154).
+
+[dependencies]
+cssl-mir  = { path = "../cssl-mir" }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
