@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/arena.cssl  —  HirId / DefId newtypes + arena counters
+//
+// CSSLv3 stage-1 self-host : HIR foundation IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/arena.rs
+// Wave-slice  : Wave-E2-α (W-Eα · hir-in-cssl FIRST SLICE — T11-D241).
+// Depends-on  : Wave-A/B/C end-to-end MIR/codegen (landed) ; stdlib Vec
+//               (S6-B3 · T11-D69) ; stdlib Option (S6-B2 · T11-D60).
+//
+// § PRIME_DIRECTIVE preserved : HirId / DefId are pure-data identifier
+//   handles. They expose NO control-flow capability, NO heap-aliasing
+//   capability, NO observable side-effect — they are u32 newtypes with
+//   sentinel values for "synthetic" / "unresolved" cases. Substrate-
+//   sovereign : the arena lives BY-VALUE in HirModule per source-of-truth
+//   shape ; no hidden global state, no telemetry wired through the counter.
+//
+// § DESIGN
+//   Every HIR node has a stable `HirId` : a dense `u32` assigned at
+//   lowering time. Item-level nodes additionally carry a `DefId` —
+//   the identity used by name-resolution and cross-item references.
+//   `DefId` ⊆ `HirId` (every definition is a HIR node) but not vice
+//   versa (expressions and patterns have `HirId`s but no `DefId`).
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. NEWTYPE-AS-STRUCT : tuple-struct `HirId(pub u32)` is deferred ;
+//      we use record-struct `HirId { raw : u32 }` instead.
+//   2. ASSOCIATED-CONSTANTS : impl-consts deferred ; sentinels delivered
+//      as top-level constructor fns. Migration is mechanical.
+//   3. U32::MAX SENTINEL : spelled as the literal `4294967295` (= 2^32 - 1)
+//      pending typed-numeric-constant slice.
+//   4. SATURATING-ADD : implemented as guarded increment.
+//   5. DISPLAY : `*_display(id) -> String` free fns ; once Display-trait
+//      lands these become impl Display { fn fmt(&self, f) { ... } } bodies.
+//   6. VALUE-OUT MUTATION : arena fns consume + return arena per W-B-MIGRATE.
+//
+// § INVARIANTS  (stage-0)
+//   - `HirId.raw` is dense u32 ; values 0..arena.hir_counter are issued.
+//   - `DefId.raw` is dense u32 ; values 0..arena.def_counter are issued.
+//   - `4294967295u32` is RESERVED — sentinel must never collide w/ fresh id.
+//   - Saturating-add halts counter at u32::MAX ; programming-error on overflow.
+
+module com.apocky.compiler.hir.arena
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirId — monotonic identifier for any HIR node.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirId` is the dense per-module identifier assigned at HIR-lowering.
+// Every HIR node carries one ; primary lookup key for the arena +
+// per-id side-tables that name-resolution + type-check build downstream.
+struct HirId {
+    raw : u32,
+}
+
+// Returns the sentinel HirId for synthetic / placeholder nodes.
+fn hir_id_dummy() -> HirId {
+    HirId { raw : 4294967295u32 }
+}
+
+// `true` iff the id is the synthetic-placeholder sentinel.
+fn hir_id_is_dummy(id : HirId) -> bool {
+    id.raw == 4294967295u32
+}
+
+// Construct a HirId from a raw u32 (escape-hatch for lowering).
+fn hir_id_from_raw(raw : u32) -> HirId {
+    HirId { raw : raw }
+}
+
+// Project the raw u32 out — mirrors `pub fn raw(&self) -> u32`.
+fn hir_id_raw(id : HirId) -> u32 {
+    id.raw
+}
+
+// HirId equality — true iff underlying u32 handles are bit-equal.
+fn hir_id_eq(a : HirId, b : HirId) -> bool {
+    a.raw == b.raw
+}
+
+// HirId ordering — `a.raw < b.raw`.
+fn hir_id_lt(a : HirId, b : HirId) -> bool {
+    a.raw < b.raw
+}
+
+// Render a HirId to a String for diagnostics.
+//   "hir#N"        for normal ids
+//   "hir#<dummy>"  for the synthetic-sentinel
+fn hir_id_display(id : HirId) -> String {
+    if hir_id_is_dummy(id) {
+        string_from_str("hir#<dummy>")
+    } else {
+        let prefix = string_from_str("hir#");
+        let num_s  = string_from_u32(id.raw);
+        string_concat(prefix, num_s)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DefId — monotonic identifier for definition-level HIR nodes.
+// ───────────────────────────────────────────────────────────────────────
+
+// `DefId` is the per-module identifier for ITEM-LEVEL HIR nodes only
+// (fn / struct / enum / interface / impl-method / etc.). Distinct from
+// `HirId` so name-resolution targets only definitions.
+struct DefId {
+    raw : u32,
+}
+
+// Returns the sentinel DefId for "external reference not yet wired".
+fn def_id_unresolved() -> DefId {
+    DefId { raw : 4294967295u32 }
+}
+
+// `true` iff the id is the unresolved-reference sentinel.
+fn def_id_is_unresolved(d : DefId) -> bool {
+    d.raw == 4294967295u32
+}
+
+// Construct a DefId from a raw u32 (escape-hatch for lowering).
+fn def_id_from_raw(raw : u32) -> DefId {
+    DefId { raw : raw }
+}
+
+// Project the raw u32 out of a DefId.
+fn def_id_raw(d : DefId) -> u32 {
+    d.raw
+}
+
+// DefId equality.
+fn def_id_eq(a : DefId, b : DefId) -> bool {
+    a.raw == b.raw
+}
+
+// DefId ordering — `a.raw < b.raw`.
+fn def_id_lt(a : DefId, b : DefId) -> bool {
+    a.raw < b.raw
+}
+
+// Render a DefId to a String for diagnostics.
+//   "def#N"             for normal ids
+//   "def#<unresolved>"  for the sentinel
+fn def_id_display(d : DefId) -> String {
+    if def_id_is_unresolved(d) {
+        string_from_str("def#<unresolved>")
+    } else {
+        let prefix = string_from_str("def#");
+        let num_s  = string_from_u32(d.raw);
+        string_concat(prefix, num_s)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirArena — monotonic id-counter pair for a single lowering pass.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirArena` allocates fresh HirId + DefId values via a pair of monotonic
+// counters. One arena lives per-module : HirModule owns the arena BY-VALUE
+// so the counter state is encapsulated with the module it serves.
+//
+// § FIELDS
+//   - `hir_counter` : next HirId.raw to issue. Starts at 0.
+//   - `def_counter` : next DefId.raw to issue. Starts at 0.
+//
+// § INVARIANTS
+//   - Counters are MONOTONIC (saturating at u32::MAX = 4294967295).
+struct HirArena {
+    hir_counter : u32,
+    def_counter : u32,
+}
+
+// Construct a fresh empty arena. Both counters start at 0.
+fn arena_new() -> HirArena {
+    HirArena {
+        hir_counter : 0u32,
+        def_counter : 0u32,
+    }
+}
+
+// Allocate a fresh HirId from the arena. Arena counter bumps by 1
+// (saturating at u32::MAX). Returns (new_arena, fresh_id) — value-out
+// mutation per the stage-0 mut-borrow-deferred convention.
+fn arena_fresh_hir_id(a : HirArena) -> (HirArena, HirId) {
+    let id = HirId { raw : a.hir_counter };
+    let next = if a.hir_counter == 4294967295u32 {
+        4294967295u32
+    } else {
+        a.hir_counter + 1u32
+    };
+    let a2 = HirArena {
+        hir_counter : next,
+        def_counter : a.def_counter,
+    };
+    (a2, id)
+}
+
+// Allocate a fresh DefId from the arena.
+fn arena_fresh_def_id(a : HirArena) -> (HirArena, DefId) {
+    let id = DefId { raw : a.def_counter };
+    let next = if a.def_counter == 4294967295u32 {
+        4294967295u32
+    } else {
+        a.def_counter + 1u32
+    };
+    let a2 = HirArena {
+        hir_counter : a.hir_counter,
+        def_counter : next,
+    };
+    (a2, id)
+}
+
+// How many HirIds have been issued so far.
+fn arena_hir_count(a : HirArena) -> u32 {
+    a.hir_counter
+}
+
+// How many DefIds have been issued so far.
+fn arena_def_count(a : HirArena) -> u32 {
+    a.def_counter
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Slab Arena<T> — generic incremental Vec-backed arena.
+//
+//   Used by downstream HIR-lowering for typed-per-id-side-tables (inferred-
+//   types per HirId, resolved-defs per DefId, etc.). Composes with the
+//   counter-based arena : the index N IS the HirId.raw N.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Arena<T>` is a Vec<T>-backed slab.
+//   `arena_t_alloc(arena, value)` pushes the value, returning a HirId
+//   whose `raw` is the pre-push length.
+//   `arena_t_get(arena, id)` projects the value back out by index.
+struct Arena<T> {
+    cells : Vec<T>,
+}
+
+// Construct a fresh empty Arena<T>.
+fn arena_t_new<T>() -> Arena<T> {
+    Arena { cells : Vec::new::<T>() }
+}
+
+// Push `value` into the arena, returning (new_arena, fresh_id).
+fn arena_t_alloc<T>(a : Arena<T>, value : T) -> (Arena<T>, HirId) {
+    let cells_before_len = vec_len::<T>(a.cells);
+    let cells_after = vec_push::<T>(a.cells, value);
+    let id = HirId { raw : cells_before_len as u32 };
+    let a2 = Arena { cells : cells_after };
+    (a2, id)
+}
+
+// Project the value at `id` back out. Some(T) when id is in-bounds, None
+// otherwise (including for dummy ids).
+fn arena_t_get<T>(a : Arena<T>, id : HirId) -> Option<T> {
+    if hir_id_is_dummy(id) {
+        None
+    } else {
+        let i = id.raw as i64;
+        vec_get::<T>(a.cells, i)
+    }
+}
+
+// How many cells the arena currently contains.
+fn arena_t_len<T>(a : Arena<T>) -> i64 {
+    vec_len::<T>(a.cells)
+}
+
+// `true` iff the arena holds zero cells.
+fn arena_t_is_empty<T>(a : Arena<T>) -> bool {
+    vec_is_empty::<T>(a.cells)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   Mirror the Rust `mod tests` block at the end of arena.rs.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `dummy_sentinels_identify_correctly`.
+fn _example_dummy_sentinels() -> bool {
+    let h_dummy_ok = hir_id_is_dummy(hir_id_dummy());
+    let h_zero_not = if hir_id_is_dummy(hir_id_from_raw(0u32)) { false } else { true };
+    let d_unres_ok = def_id_is_unresolved(def_id_unresolved());
+    let d_zero_not = if def_id_is_unresolved(def_id_from_raw(0u32)) { false } else { true };
+    if h_dummy_ok { if h_zero_not { if d_unres_ok { d_zero_not } else { false } } else { false } } else { false }
+}
+
+// Mirror : `arena_counts_distinctly`.
+fn _example_arena_counts_distinctly() -> bool {
+    let a0 = arena_new();
+    let (a1, h0) = arena_fresh_hir_id(a0);
+    let (a2, h1) = arena_fresh_hir_id(a1);
+    let (a3, d0) = arena_fresh_def_id(a2);
+    let h0_ok = h0.raw == 0u32;
+    let h1_ok = h1.raw == 1u32;
+    let d0_ok = d0.raw == 0u32;
+    let n_ok  = arena_hir_count(a3) == 2u32;
+    let dn_ok = arena_def_count(a3) == 1u32;
+    if h0_ok { if h1_ok { if d0_ok { if n_ok { dn_ok } else { false } } else { false } } else { false } } else { false }
+}
+
+// Mirror : `display_formats_include_prefix`.
+fn _example_display_formats() -> bool {
+    let s_h7    = hir_id_display(hir_id_from_raw(7u32));
+    let s_d3    = def_id_display(def_id_from_raw(3u32));
+    let s_dummy = hir_id_display(hir_id_dummy());
+    let s_unres = def_id_display(def_id_unresolved());
+    let h7_ok    = string_eq(s_h7,    string_from_str("hir#7"));
+    let d3_ok    = string_eq(s_d3,    string_from_str("def#3"));
+    let dummy_ok = string_eq(s_dummy, string_from_str("hir#<dummy>"));
+    let unres_ok = string_eq(s_unres, string_from_str("def#<unresolved>"));
+    if h7_ok { if d3_ok { if dummy_ok { unres_ok } else { false } } else { false } } else { false }
+}
+
+// Generic-arena round-trip : push 3 cells, verify ids + len.
+fn _example_arena_t_roundtrip() -> bool {
+    let a0 = arena_t_new::<i32>();
+    let (a1, h0) = arena_t_alloc::<i32>(a0, 10);
+    let (a2, h1) = arena_t_alloc::<i32>(a1, 20);
+    let (a3, h2) = arena_t_alloc::<i32>(a2, 30);
+    let len_ok = arena_t_len::<i32>(a3) == 3;
+    let h0_ok  = h0.raw == 0u32;
+    let h1_ok  = h1.raw == 1u32;
+    let h2_ok  = h2.raw == 2u32;
+    if len_ok { if h0_ok { if h1_ok { h2_ok } else { false } } else { false } } else { false }
+}

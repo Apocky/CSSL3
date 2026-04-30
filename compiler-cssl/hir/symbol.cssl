@@ -1,0 +1,406 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/symbol.cssl  —  Symbol + Interner (sorted-Vec)
+//
+// CSSLv3 stage-1 self-host : HIR string-interner IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/symbol.rs
+// Wave-slice  : Wave-E2-α (W-Eα · hir-in-cssl FIRST SLICE — T11-D241).
+// Depends-on  : compiler-cssl/hir/arena.cssl ; stdlib Vec ; stdlib String ;
+//               stdlib Option.
+//
+// § PRIME_DIRECTIVE preserved : Symbol is an opaque interned-string handle.
+//   Interning gives every identifier a u32-cheap copy + stable equality.
+//   The Interner is a pure data-store ; intern(s) returns a handle (alloc on
+//   miss, dedup on hit) with no observable side-effect beyond the dedup itself.
+//   Substrate-sovereign : Interner state lives BY-VALUE inside HirModule ;
+//   no global static, no surveillance hook, no telemetry.
+//
+// § DESIGN
+//   Identifiers lexed from source are interned into a Symbol(u32) handle.
+//   All HIR nodes carry Symbol references instead of byte-slice spans for
+//   textual identity.
+//
+//   The Rust mirror at S6-B3 backs the Interner with `lasso::Rodeo`. The
+//   CSSL stage-0 stdlib does NOT ship a HashMap (per Wave-C plan + Sawyer-
+//   efficiency mindset) so this implementation uses a SORTED-VEC + BINARY-
+//   SEARCH approach that is :
+//     - O(log n) lookup for `intern(existing)` cases (binary-search hit).
+//     - O(n)     insertion when the string is fresh (sorted-Vec splice).
+//     - O(1)     resolve(symbol) — direct array index by Symbol.raw.
+//
+//   Cache-friendly sequential layout ; NO hash-state, NO probing, NO
+//   collision behavior to reason about — pure flat array + parallel index.
+//
+// § SAWYER-DISCIPLINE
+//   ✓ bit-pack records (Symbol = single u32)
+//   ✓ index-types (Symbol indexes into Vec)
+//   ✓ LUTs (sorted-Vec lookup IS a LUT)
+//   ✓ in-place ops (no temp allocations during search)
+//   ✗ HashMap<&str, Symbol>       — would require hash-trait infra
+//   ✗ B-Tree<&str, Symbol>        — would require Ord-trait + balancing
+//   ✓ sorted-Vec + binary-search of (string, symbol)-pairs
+//
+// § DATA-STRUCTURE LAYOUT
+//   Two parallel Vecs (one logical sorted-Vec, decomposed for SoA cache
+//   locality during binary-search) :
+//     strings : Vec<String>      — INDEX BY Symbol.raw → original String
+//     sorted  : Vec<SortedEntry> — sorted-by-string ; binary-search target
+//
+//   SortedEntry pairs string-slice + Symbol so a hit yields the Symbol
+//   immediately. `len(strings) == len(sorted)` after every operation.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. NEWTYPE-AS-STRUCT : `struct Symbol { raw : u32 }` (tuple-struct deferred).
+//   2. STRING-AS-i64 BORROWS : interner uses `string_eq` for byte comparison.
+//   3. NO `&str` IN STRUCT FIELDS : intern accepts owned `String`.
+//   4. BINARY-SEARCH RECURSION : tail-recursive helpers (loop syntax landed but
+//      tail-recursion is structurally simpler at this slice).
+//   5. LASSO :: Rodeo MIRROR : merged intern + intern_static into one fn ;
+//      resolve returns owned String (matches Rust mirror's RefCell-Rodeo shape).
+//
+// § INVARIANTS  (stage-0)
+//   - `intern(s) == intern(s)` is a pointwise identity for any s.
+//   - `len(strings) == len(sorted)` after every public-API call.
+//   - `sorted` is monotonically non-decreasing under string_lt.
+
+module com.apocky.compiler.hir.symbol
+
+// ───────────────────────────────────────────────────────────────────────
+// § Symbol — opaque interned-string handle.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Symbol` is the u32-backed handle HIR nodes carry instead of raw byte-
+// slice strings. Two Symbols are equal IFF they were produced by interning
+// the same string in the same Interner.
+struct Symbol {
+    raw : u32,
+}
+
+// Construct a Symbol from a raw u32 (escape-hatch for serializing +
+// reloading interner state). Non-serialization callers should use
+// `interner_intern` and treat Symbol as opaque.
+fn symbol_from_raw(raw : u32) -> Symbol {
+    Symbol { raw : raw }
+}
+
+// Project the raw u32 out — mirrors `Symbol::spur()` in the Rust mirror.
+fn symbol_raw(s : Symbol) -> u32 {
+    s.raw
+}
+
+// Symbol equality.
+fn symbol_eq(a : Symbol, b : Symbol) -> bool {
+    a.raw == b.raw
+}
+
+// Symbol ordering — `a.raw < b.raw`.
+fn symbol_lt(a : Symbol, b : Symbol) -> bool {
+    a.raw < b.raw
+}
+
+// Render a Symbol to a String : "sym#N". Does NOT resolve back to the
+// original string (use `interner_resolve` then format if needed).
+fn symbol_display(s : Symbol) -> String {
+    let prefix = string_from_str("sym#");
+    let num_s  = string_from_u32(s.raw);
+    string_concat(prefix, num_s)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § SortedEntry — single record in the sorted-Vec lookup table.
+// ───────────────────────────────────────────────────────────────────────
+
+// `SortedEntry` pairs an interned string with its Symbol handle. The
+// Interner's `sorted` field is a Vec<SortedEntry> kept sorted under
+// `string_lt(a.text, b.text)`.
+struct SortedEntry {
+    text : String,
+    sym  : Symbol,
+}
+
+// Construct a SortedEntry. Used by `interner_intern` on alloc-on-miss.
+fn sorted_entry_new(text : String, sym : Symbol) -> SortedEntry {
+    SortedEntry { text : text, sym : sym }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Interner — sorted-Vec backed string interner.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Interner` is the per-module string-interning state.
+//
+// § FIELDS
+//   - `strings` : Vec<String> indexed by Symbol.raw ; resolves Symbol → text.
+//   - `sorted`  : Vec<SortedEntry> sorted by text ; resolves text → Symbol.
+//
+// § INVARIANTS
+//   - vec_len(strings) == vec_len(sorted) ; counts agree.
+//   - sorted is monotonically non-decreasing under string_lt on `.text`.
+//   - For every i in [0, vec_len(strings)), there exists exactly one
+//     j such that string_eq(strings[i], sorted[j].text) AND
+//     sorted[j].sym.raw == i.
+struct Interner {
+    strings : Vec<String>,
+    sorted  : Vec<SortedEntry>,
+}
+
+// Construct a fresh empty Interner.
+fn interner_new() -> Interner {
+    Interner {
+        strings : Vec::new::<String>(),
+        sorted  : Vec::new::<SortedEntry>(),
+    }
+}
+
+// Intern a string, returning a stable Symbol. If `text` is already in
+// the interner, the existing Symbol is returned (no allocation). Otherwise
+// `text` is appended to `strings`, a fresh Symbol is issued, and a new
+// SortedEntry is spliced into `sorted` to maintain order.
+//
+// § ALGORITHM
+//   1. Binary-search `sorted` for entry whose `.text == text`.
+//   2. HIT  → return entry's `.sym`.
+//   3. MISS → allocate Symbol { raw : len(strings) as u32 } ;
+//             push text to strings ; splice new SortedEntry into sorted
+//             at the bsearch insertion point.
+//
+// Returns (new_interner, sym) per stage-0 mut-borrow-deferred convention.
+// Rust-classical signature : `fn intern(&self, text : &str) -> Symbol`.
+fn interner_intern(i : Interner, text : String) -> (Interner, Symbol) {
+    let lookup = sorted_bsearch(i.sorted, text);
+    match lookup {
+        Some(hit) => {
+            // HIT path : return the existing Symbol unchanged.
+            (i, hit)
+        },
+        None => {
+            // MISS path : allocate + insert.
+            let ins_pos = sorted_bsearch_insert_pos(i.sorted, text);
+            let next_raw = vec_len::<String>(i.strings) as u32;
+            let new_sym = Symbol { raw : next_raw };
+            let strings2 = vec_push::<String>(i.strings, text);
+            let entry = sorted_entry_new(text, new_sym);
+            let sorted2 = sorted_vec_insert_at(i.sorted, ins_pos, entry);
+            let i2 = Interner {
+                strings : strings2,
+                sorted  : sorted2,
+            };
+            (i2, new_sym)
+        },
+    }
+}
+
+// Resolve a Symbol back to its original interned string. Returns
+// Some(text) when the Symbol is in-bounds, None for out-of-bounds.
+fn interner_resolve(i : Interner, sym : Symbol) -> Option<String> {
+    let idx = sym.raw as i64;
+    vec_get::<String>(i.strings, idx)
+}
+
+// How many distinct strings are currently interned.
+fn interner_len(i : Interner) -> i64 {
+    vec_len::<String>(i.strings)
+}
+
+// `true` iff no strings have been interned.
+fn interner_is_empty(i : Interner) -> bool {
+    vec_is_empty::<String>(i.strings)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Sorted-Vec helpers — binary-search + splice-insert.
+// ───────────────────────────────────────────────────────────────────────
+
+// Binary-search the sorted Vec for an entry whose `.text == target`.
+// Returns Some(sym) on hit, None on miss. Tail-recursive iterative form.
+fn sorted_bsearch(v : Vec<SortedEntry>, target : String) -> Option<Symbol> {
+    let n = vec_len::<SortedEntry>(v);
+    if n == 0 {
+        None
+    } else {
+        sorted_bsearch_loop(v, target, 0i64, n - 1i64)
+    }
+}
+
+// Inner loop : iterative binary-search with lo/hi rebound each iteration.
+fn sorted_bsearch_loop(
+    v      : Vec<SortedEntry>,
+    target : String,
+    lo     : i64,
+    hi     : i64,
+) -> Option<Symbol> {
+    if lo > hi {
+        None
+    } else {
+        let mid = (lo + hi) / 2i64;
+        let mid_entry_opt = vec_get::<SortedEntry>(v, mid);
+        match mid_entry_opt {
+            Some(entry) => {
+                if string_eq(entry.text, target) {
+                    Some(entry.sym)
+                } else {
+                    if string_lt(entry.text, target) {
+                        sorted_bsearch_loop(v, target, mid + 1i64, hi)
+                    } else {
+                        sorted_bsearch_loop(v, target, lo, mid - 1i64)
+                    }
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// Find the insertion-point in the sorted Vec for `target`. Returns the
+// i64 index where target would be spliced to maintain order.
+fn sorted_bsearch_insert_pos(v : Vec<SortedEntry>, target : String) -> i64 {
+    let n = vec_len::<SortedEntry>(v);
+    if n == 0 {
+        0i64
+    } else {
+        sorted_insert_pos_loop(v, target, 0i64, n)
+    }
+}
+
+// Inner loop for insertion-point bsearch. Half-open invariant : answer
+// is in [lo, hi). Loop terminates when lo == hi.
+fn sorted_insert_pos_loop(
+    v      : Vec<SortedEntry>,
+    target : String,
+    lo     : i64,
+    hi     : i64,
+) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = (lo + hi) / 2i64;
+        let mid_entry_opt = vec_get::<SortedEntry>(v, mid);
+        match mid_entry_opt {
+            Some(entry) => {
+                if string_lt(entry.text, target) {
+                    sorted_insert_pos_loop(v, target, mid + 1i64, hi)
+                } else {
+                    sorted_insert_pos_loop(v, target, lo, mid)
+                }
+            },
+            None => lo,
+        }
+    }
+}
+
+// Splice `entry` into `v` at index `pos`. Returns a new Vec with the
+// element inserted ; existing elements at indices ≥ pos shift up by 1.
+// O(n) cost — same asymptotic as Rust's `Vec::insert`.
+fn sorted_vec_insert_at(v : Vec<SortedEntry>, pos : i64, entry : SortedEntry)
+    -> Vec<SortedEntry>
+{
+    let n = vec_len::<SortedEntry>(v);
+    sorted_vec_insert_loop(v, pos, entry, n, 0i64, Vec::new::<SortedEntry>())
+}
+
+// Inner loop walking the source Vec index-by-index ; emits new Vec into acc.
+fn sorted_vec_insert_loop(
+    src   : Vec<SortedEntry>,
+    pos   : i64,
+    entry : SortedEntry,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<SortedEntry>,
+) -> Vec<SortedEntry> {
+    if i == n {
+        if pos == n {
+            vec_push::<SortedEntry>(acc, entry)
+        } else {
+            acc
+        }
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<SortedEntry>(acc, entry);
+            let src_i_opt = vec_get::<SortedEntry>(src, i);
+            match src_i_opt {
+                Some(src_i) => {
+                    let acc2 = vec_push::<SortedEntry>(acc1, src_i);
+                    sorted_vec_insert_loop(src, pos, entry, n, i + 1i64, acc2)
+                },
+                None => acc1,
+            }
+        } else {
+            let src_i_opt = vec_get::<SortedEntry>(src, i);
+            match src_i_opt {
+                Some(src_i) => {
+                    let acc1 = vec_push::<SortedEntry>(acc, src_i);
+                    sorted_vec_insert_loop(src, pos, entry, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   Mirror the Rust `mod tests` block at the end of symbol.rs.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `intern_gives_stable_symbol`.
+fn _example_intern_gives_stable_symbol() -> bool {
+    let i0 = interner_new();
+    let (i1, a) = interner_intern(i0, string_from_str("foo"));
+    let (i2, b) = interner_intern(i1, string_from_str("foo"));
+    symbol_eq(a, b)
+}
+
+// Mirror : `distinct_strings_give_distinct_symbols`.
+fn _example_distinct_strings_give_distinct_symbols() -> bool {
+    let i0 = interner_new();
+    let (i1, a) = interner_intern(i0, string_from_str("foo"));
+    let (i2, b) = interner_intern(i1, string_from_str("bar"));
+    if symbol_eq(a, b) { false } else { true }
+}
+
+// Mirror : `resolve_returns_original_string`.
+fn _example_resolve_returns_original_string() -> bool {
+    let i0 = interner_new();
+    let (i1, sym) = interner_intern(i0, string_from_str("hello"));
+    match interner_resolve(i1, sym) {
+        Some(text) => string_eq(text, string_from_str("hello")),
+        None => false,
+    }
+}
+
+// Mirror : `len_tracks_unique_strings`. After interning "a","b","a"
+// the len is 2 (the second "a" is dedup-hit).
+fn _example_len_tracks_unique_strings() -> bool {
+    let i0 = interner_new();
+    let i0_empty = interner_is_empty(i0);
+    let (i1, _) = interner_intern(i0, string_from_str("a"));
+    let (i2, _) = interner_intern(i1, string_from_str("b"));
+    let (i3, _) = interner_intern(i2, string_from_str("a"));
+    let final_len = interner_len(i3);
+    if i0_empty { final_len == 2i64 } else { false }
+}
+
+// Round-trip test : intern several strings in non-sorted order ; verify
+// each resolves correctly + interner len is the count of unique inputs.
+fn _example_sorted_vec_invariant() -> bool {
+    let i0 = interner_new();
+    let (i1, sym_zeta)  = interner_intern(i0, string_from_str("zeta"));
+    let (i2, sym_alpha) = interner_intern(i1, string_from_str("alpha"));
+    let (i3, sym_mid)   = interner_intern(i2, string_from_str("middle"));
+    let (i4, sym_zeta2) = interner_intern(i3, string_from_str("zeta"));
+    let zeta_dedup = symbol_eq(sym_zeta, sym_zeta2);
+    let len_ok     = interner_len(i4) == 3i64;
+    let r_zeta_ok = match interner_resolve(i4, sym_zeta) {
+        Some(t) => string_eq(t, string_from_str("zeta")),
+        None => false,
+    };
+    let r_alpha_ok = match interner_resolve(i4, sym_alpha) {
+        Some(t) => string_eq(t, string_from_str("alpha")),
+        None => false,
+    };
+    let r_mid_ok = match interner_resolve(i4, sym_mid) {
+        Some(t) => string_eq(t, string_from_str("middle")),
+        None => false,
+    };
+    if zeta_dedup { if len_ok { if r_zeta_ok { if r_alpha_ok { r_mid_ok } else { false } } else { false } } else { false } } else { false }
+}

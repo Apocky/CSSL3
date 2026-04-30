@@ -1,0 +1,639 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/items.cssl  —  HIR item-kind structs (canonical AST mirror)
+//
+// CSSLv3 stage-1 self-host : HIR item-shape IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/item.rs
+// Wave-slice  : Wave-E2-α (W-Eα · hir-in-cssl FIRST SLICE — T11-D241).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               stdlib Vec ; stdlib Option ; stdlib String
+//               + FORWARD-DECLARED placeholder shells for HirSpan / HirAttr /
+//                 HirExpr / HirBlock / HirPattern / HirType / HirEffectRow
+//                 (sibling Wave-E slices replace these w/ canonical bodies).
+//
+// § PRIME_DIRECTIVE preserved : HIR item-structs are pure-data records
+//   describing the SHAPE of every top-level declaration. They expose NO
+//   side-effect, NO control-flow primitive — pure typed-tree the compiler
+//   walks. Substrate-sovereign : every item carries a DefId ; the resolver
+//   wires path-references via DefId so cross-item links are explicit +
+//   auditable. No hidden inheritance, no hidden coercion, no surveillance.
+//
+// § DESIGN
+//   Item-kind STRUCTS mirror compiler-rs/crates/cssl-hir/src/item.rs 1:1.
+//   Each item carries :
+//     - span        : source-position range
+//     - def         : DefId for the item's identity (Impl + Use have NO DefId)
+//     - visibility  : pub/private flag (HirVisibility)
+//     - attrs       : Vec<HirAttr> for `#[attribute]` annotations
+//     - name        : the declared identifier (Symbol) when present
+//     - body-fields : kind-specific (e.g., generics / fields / variants)
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. ENUM PAYLOADS : `enum HirItem { Fn(HirFn) ; Struct(HirStruct) ; ... }`
+//      mirrors the Rust source directly (S6-B2 enum surface).
+//   2. FORWARD-DECLARED PLACEHOLDERS : sibling Wave-E slices land HirAttr /
+//      HirExpr / HirBlock / HirPattern / HirType / HirEffectRow. Until those
+//      land we declare MINIMAL placeholder structs with HirId + a marker
+//      ; downstream slices REPLACE them with full bodies.
+//   3. HIR-SPAN PLACEHOLDER : `HirSpan { source_id, start, end }` until the
+//      canonical `cssl_parse::span::Span` lands.
+//   4. NO `&str` IN STRUCT FIELDS : owned `String` for any string-typed
+//      field. Symbol is the preferred handle for textual identity.
+//   5. DEFAULTS via FACTORY-FN : `hir_generics_empty()` since derive-Default
+//      not yet landed.
+//
+// § INVARIANTS  (stage-0)
+//   - Every Rust-mirror item-struct appears here under the same name +
+//     same field-set (modulo placeholder substitutions).
+//   - hir_item_def_id(item) returns Some(d) iff kind has a DefId
+//     (Fn/Struct/Enum/Interface/Effect/Handler/TypeAlias/Const/Module → Some ;
+//     Impl/Use → None).
+//   - Field ordering inside each struct mirrors the Rust source for
+//     diff-friendly review.
+
+module com.apocky.compiler.hir.items
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirSpan — source-position placeholder.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirSpan` is the source-position range attached to every HIR node.
+// Sibling Wave-E parser slice lands the canonical Span type.
+struct HirSpan {
+    source_id : u32,
+    start     : u32,
+    end       : u32,
+}
+
+fn hir_span_new(source_id : u32, start : u32, end : u32) -> HirSpan {
+    HirSpan { source_id : source_id, start : start, end : end }
+}
+
+// Synthetic-span sentinel for placeholder / desugared nodes.
+fn hir_span_dummy() -> HirSpan {
+    HirSpan { source_id : 0u32, start : 0u32, end : 0u32 }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Forward-declared placeholders (HirAttr / HirType / HirEffectRow /
+//   HirPattern / HirExpr / HirBlock).
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirAttr` is the placeholder for an `#[attribute]` record.
+struct HirAttr {
+    id   : HirId,
+    name : Symbol,
+    args : String,
+}
+
+fn hir_attr_new(id : HirId, name : Symbol, args : String) -> HirAttr {
+    HirAttr { id : id, name : name, args : args }
+}
+
+// `HirTypeKind` placeholder — sibling slice expands w/ full variant set.
+enum HirTypeKind {
+    Infer,
+    Placeholder,
+}
+
+// `HirType` placeholder — replaced by the canonical type-tree in a sibling slice.
+struct HirType {
+    span : HirSpan,
+    id   : HirId,
+    kind : HirTypeKind,
+}
+
+fn hir_type_infer(span : HirSpan, id : HirId) -> HirType {
+    HirType { span : span, id : id, kind : HirTypeKind::Infer }
+}
+
+// `HirEffectRow` placeholder — effect-row annotation on a fn signature.
+struct HirEffectRow {
+    span    : HirSpan,
+    id      : HirId,
+    effects : Vec<HirType>,
+}
+
+// `HirPatternKind` placeholder.
+enum HirPatternKind {
+    Wildcard,
+    Placeholder,
+}
+
+// `HirPattern` placeholder — replaced by full pattern-tree in sibling slice.
+struct HirPattern {
+    span : HirSpan,
+    id   : HirId,
+    kind : HirPatternKind,
+}
+
+fn hir_pattern_wildcard(span : HirSpan, id : HirId) -> HirPattern {
+    HirPattern { span : span, id : id, kind : HirPatternKind::Wildcard }
+}
+
+// `HirExprKind` placeholder.
+enum HirExprKind {
+    Unit,
+    Placeholder,
+}
+
+// `HirExpr` placeholder — replaced by expr-tree in sibling slice.
+struct HirExpr {
+    span : HirSpan,
+    id   : HirId,
+    kind : HirExprKind,
+}
+
+fn hir_expr_unit(span : HirSpan, id : HirId) -> HirExpr {
+    HirExpr { span : span, id : id, kind : HirExprKind::Unit }
+}
+
+// `HirBlock` placeholder — `{ stmts ... ; tail-expr }` block.
+struct HirBlock {
+    span  : HirSpan,
+    id    : HirId,
+    stmts : Vec<HirExpr>,
+    tail  : Option<HirExpr>,
+}
+
+fn hir_block_empty(span : HirSpan, id : HirId) -> HirBlock {
+    HirBlock {
+        span  : span,
+        id    : id,
+        stmts : Vec::new::<HirExpr>(),
+        tail  : None,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirVisibility — pub/private flag.
+// ───────────────────────────────────────────────────────────────────────
+
+enum HirVisibility {
+    Private,
+    Public,
+}
+
+fn hir_visibility_is_public(v : HirVisibility) -> bool {
+    match v {
+        HirVisibility::Public => true,
+        HirVisibility::Private => false,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirGenerics — generic-parameter container.
+// ───────────────────────────────────────────────────────────────────────
+
+// Type / Region (lifetime) / Const generic-param discriminator.
+enum HirGenericParamKind {
+    Type,
+    Region,
+    Const,
+}
+
+// One entry in a generic-parameter list.
+struct HirGenericParam {
+    span    : HirSpan,
+    id      : HirId,
+    name    : Symbol,
+    kind    : HirGenericParamKind,
+    bounds  : Vec<HirType>,
+    default : Option<HirType>,
+}
+
+// Generic-parameter list attached to a fn / struct / enum / interface /
+// impl / effect / handler / type-alias.
+struct HirGenerics {
+    params : Vec<HirGenericParam>,
+}
+
+// Construct an empty HirGenerics (substitute for derive-Default).
+fn hir_generics_empty() -> HirGenerics {
+    HirGenerics { params : Vec::new::<HirGenericParam>() }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirWhereClause — `where T : Bound` constraint.
+// ───────────────────────────────────────────────────────────────────────
+
+// One entry in a `where` clause attached to a fn / impl / interface / etc.
+struct HirWhereClause {
+    span   : HirSpan,
+    ty     : HirType,
+    bounds : Vec<HirType>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirFnParam — single fn-parameter.
+// ───────────────────────────────────────────────────────────────────────
+
+struct HirFnParam {
+    span    : HirSpan,
+    id      : HirId,
+    attrs   : Vec<HirAttr>,
+    pat     : HirPattern,
+    ty      : HirType,
+    default : Option<HirExpr>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirFn — fn item.
+// ───────────────────────────────────────────────────────────────────────
+
+// `fn name<Generics>(params) -> Return where ... { body }` item-shape.
+//   - `body` is None for prototype-only decls (interface methods, extern fns).
+struct HirFn {
+    span          : HirSpan,
+    def           : DefId,
+    visibility    : HirVisibility,
+    attrs         : Vec<HirAttr>,
+    name          : Symbol,
+    generics      : HirGenerics,
+    params        : Vec<HirFnParam>,
+    return_ty     : Option<HirType>,
+    effect_row    : Option<HirEffectRow>,
+    where_clauses : Vec<HirWhereClause>,
+    body          : Option<HirBlock>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirStruct + HirStructBody + HirFieldDecl.
+// ───────────────────────────────────────────────────────────────────────
+
+// One field in a struct or struct-shaped enum-variant.
+//   - `name : None` for tuple-struct positional fields.
+struct HirFieldDecl {
+    span       : HirSpan,
+    id         : HirId,
+    attrs      : Vec<HirAttr>,
+    visibility : HirVisibility,
+    name       : Option<Symbol>,
+    ty         : HirType,
+}
+
+// Struct-body kind : Unit (no fields), Tuple (positional), Named.
+enum HirStructBody {
+    Unit,
+    Tuple(Vec<HirFieldDecl>),
+    Named(Vec<HirFieldDecl>),
+}
+
+// `struct Name<Generics> { body }` item-shape.
+struct HirStruct {
+    span       : HirSpan,
+    def        : DefId,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    name       : Symbol,
+    generics   : HirGenerics,
+    body       : HirStructBody,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirEnum + HirEnumVariant.
+// ───────────────────────────────────────────────────────────────────────
+
+// One variant in `enum Foo { ... }`. Variants carry their own DefId.
+struct HirEnumVariant {
+    span  : HirSpan,
+    def   : DefId,
+    attrs : Vec<HirAttr>,
+    name  : Symbol,
+    body  : HirStructBody,
+}
+
+// `enum Name<Generics> { variants }` item-shape.
+struct HirEnum {
+    span       : HirSpan,
+    def        : DefId,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    name       : Symbol,
+    generics   : HirGenerics,
+    variants   : Vec<HirEnumVariant>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirInterface + HirAssocTypeDecl.
+// ───────────────────────────────────────────────────────────────────────
+
+// `associated type Name : Bounds [= Default]` declaration in an interface.
+struct HirAssocTypeDecl {
+    span    : HirSpan,
+    def     : DefId,
+    attrs   : Vec<HirAttr>,
+    name    : Symbol,
+    bounds  : Vec<HirType>,
+    default : Option<HirType>,
+}
+
+// `interface Name<Generics> : SuperBounds { ... }` item-shape.
+//   - `fns` are method-decls (no bodies for stage-0).
+struct HirInterface {
+    span         : HirSpan,
+    def          : DefId,
+    visibility   : HirVisibility,
+    attrs        : Vec<HirAttr>,
+    name         : Symbol,
+    generics     : HirGenerics,
+    super_bounds : Vec<HirType>,
+    fns          : Vec<HirFn>,
+    assoc_types  : Vec<HirAssocTypeDecl>,
+    consts       : Vec<HirConst>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirImpl + HirAssocTypeDef.
+// ───────────────────────────────────────────────────────────────────────
+
+// `associated type Name = T` definition in an impl-block.
+struct HirAssocTypeDef {
+    span  : HirSpan,
+    def   : DefId,
+    attrs : Vec<HirAttr>,
+    name  : Symbol,
+    ty    : HirType,
+}
+
+// `impl<Generics> Trait for Self { items }` item-shape.
+//   - Inherent impls : `trait_ : None`.
+//   - HirImpl carries NO DefId (its members carry their own DefIds).
+struct HirImpl {
+    span          : HirSpan,
+    attrs         : Vec<HirAttr>,
+    generics      : HirGenerics,
+    trait_        : Option<HirType>,
+    self_ty       : HirType,
+    where_clauses : Vec<HirWhereClause>,
+    fns           : Vec<HirFn>,
+    assoc_types   : Vec<HirAssocTypeDef>,
+    consts        : Vec<HirConst>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirEffect + HirHandler.
+// ───────────────────────────────────────────────────────────────────────
+
+// `effect Name<Generics> { ops }` — declares a new effect with op-set.
+struct HirEffect {
+    span       : HirSpan,
+    def        : DefId,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    name       : Symbol,
+    generics   : HirGenerics,
+    ops        : Vec<HirFn>,
+}
+
+// `handler name(params) for Effect<args> -> Ret { ops + return }` —
+// defines an interpreter for an effect's operations.
+struct HirHandler {
+    span           : HirSpan,
+    def            : DefId,
+    visibility     : HirVisibility,
+    attrs          : Vec<HirAttr>,
+    name           : Symbol,
+    generics       : HirGenerics,
+    params         : Vec<HirFnParam>,
+    handled_effect : HirType,
+    return_ty      : Option<HirType>,
+    ops            : Vec<HirFn>,
+    return_clause  : Option<HirBlock>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirTypeAlias.
+// ───────────────────────────────────────────────────────────────────────
+
+// `type Alias<Generics> = T` item-shape.
+struct HirTypeAlias {
+    span       : HirSpan,
+    def        : DefId,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    name       : Symbol,
+    generics   : HirGenerics,
+    ty         : HirType,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirUse + HirUseBinding.
+// ───────────────────────────────────────────────────────────────────────
+
+// One resolved `use`-tree leaf. `def : Option<DefId>` filled by name-resolution.
+struct HirUseBinding {
+    span    : HirSpan,
+    path    : Vec<Symbol>,
+    alias   : Option<Symbol>,
+    is_glob : bool,
+    def     : Option<DefId>,
+}
+
+// `use path::{a, b as c}` item-shape — flattened into Vec<HirUseBinding>.
+//   - HirUse carries NO DefId (each binding carries its own def-target).
+struct HirUse {
+    span       : HirSpan,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    bindings   : Vec<HirUseBinding>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirConst.
+// ───────────────────────────────────────────────────────────────────────
+
+// `const NAME : T = expr` item-shape. Also used for assoc-consts in
+// interfaces + impl-blocks.
+struct HirConst {
+    span       : HirSpan,
+    def        : DefId,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    name       : Symbol,
+    ty         : HirType,
+    value      : HirExpr,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirNestedModule.
+// ───────────────────────────────────────────────────────────────────────
+
+// `module Name { items }` (inline) or `module Name ;` (declaration-only).
+//   - `items : None` → declaration-only ; body in a separate file.
+struct HirNestedModule {
+    span       : HirSpan,
+    def        : DefId,
+    visibility : HirVisibility,
+    attrs      : Vec<HirAttr>,
+    name       : Symbol,
+    items      : Option<Vec<HirItem>>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirItem — sum of all top-level item kinds.
+// ───────────────────────────────────────────────────────────────────────
+
+// Every variant carries the corresponding kind-specific struct as its
+// payload. Mirrors the Rust source 1:1.
+//   - Impl, Use : NO DefId (impl-blocks anonymous ; use-bindings carry per-binding paths).
+enum HirItem {
+    Fn(HirFn),
+    Struct(HirStruct),
+    Enum(HirEnum),
+    Interface(HirInterface),
+    Impl(HirImpl),
+    Effect(HirEffect),
+    Handler(HirHandler),
+    TypeAlias(HirTypeAlias),
+    Use(HirUse),
+    Const(HirConst),
+    Module(HirNestedModule),
+}
+
+// `HirItem::span(item)` — span of the item.
+fn hir_item_span(item : HirItem) -> HirSpan {
+    match item {
+        HirItem::Fn(i)        => i.span,
+        HirItem::Struct(i)    => i.span,
+        HirItem::Enum(i)      => i.span,
+        HirItem::Interface(i) => i.span,
+        HirItem::Impl(i)      => i.span,
+        HirItem::Effect(i)    => i.span,
+        HirItem::Handler(i)   => i.span,
+        HirItem::TypeAlias(i) => i.span,
+        HirItem::Use(i)       => i.span,
+        HirItem::Const(i)     => i.span,
+        HirItem::Module(i)    => i.span,
+    }
+}
+
+// `HirItem::def_id(item)` — DefId of the item, if it carries one.
+//   Impl + Use return None ; all other variants return Some(item.def).
+fn hir_item_def_id(item : HirItem) -> Option<DefId> {
+    match item {
+        HirItem::Fn(i)        => Some(i.def),
+        HirItem::Struct(i)    => Some(i.def),
+        HirItem::Enum(i)      => Some(i.def),
+        HirItem::Interface(i) => Some(i.def),
+        HirItem::Impl(_)      => None,
+        HirItem::Effect(i)    => Some(i.def),
+        HirItem::Handler(i)   => Some(i.def),
+        HirItem::TypeAlias(i) => Some(i.def),
+        HirItem::Use(_)       => None,
+        HirItem::Const(i)     => Some(i.def),
+        HirItem::Module(i)    => Some(i.def),
+    }
+}
+
+// `HirItem::name(item)` — declared name if the item carries one.
+//   Impl + Use return None.
+fn hir_item_name(item : HirItem) -> Option<Symbol> {
+    match item {
+        HirItem::Fn(i)        => Some(i.name),
+        HirItem::Struct(i)    => Some(i.name),
+        HirItem::Enum(i)      => Some(i.name),
+        HirItem::Interface(i) => Some(i.name),
+        HirItem::Impl(_)      => None,
+        HirItem::Effect(i)    => Some(i.name),
+        HirItem::Handler(i)   => Some(i.name),
+        HirItem::TypeAlias(i) => Some(i.name),
+        HirItem::Use(_)       => None,
+        HirItem::Const(i)     => Some(i.name),
+        HirItem::Module(i)    => Some(i.name),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirModule — the top-level container.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirModule` is the top-level container produced by lowering. One
+// HirModule per source file (or inline `module` block) carrying :
+//   - arena       : HirArena counter-state for this module's id-issuance
+//   - inner_attrs : `#![attribute]` annotations at file-head
+//   - module_path : Option<Vec<Symbol>> for declared `module com.apocky.foo`
+//   - items       : ordered Vec of top-level items
+struct HirModule {
+    span        : HirSpan,
+    arena       : HirArena,
+    inner_attrs : Vec<HirAttr>,
+    module_path : Option<Vec<Symbol>>,
+    items       : Vec<HirItem>,
+}
+
+// Construct a fresh empty HirModule.
+fn hir_module_empty(span : HirSpan) -> HirModule {
+    HirModule {
+        span        : span,
+        arena       : arena_new(),
+        inner_attrs : Vec::new::<HirAttr>(),
+        module_path : None,
+        items       : Vec::new::<HirItem>(),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   Mirror the Rust `mod tests` block at the end of item.rs.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `visibility_variants`.
+fn _example_visibility_variants() -> bool {
+    let pri_pub = hir_visibility_is_public(HirVisibility::Private);
+    let pub_pub = hir_visibility_is_public(HirVisibility::Public);
+    if pri_pub { false } else { pub_pub }
+}
+
+// Mirror : `arena_allocates_def_ids`.
+fn _example_arena_allocates_def_ids() -> bool {
+    let a0 = arena_new();
+    let (a1, d0) = arena_fresh_def_id(a0);
+    let (a2, d1) = arena_fresh_def_id(a1);
+    if def_id_eq(d0, d1) { false } else { true }
+}
+
+// Mirror : `item_impl_and_use_have_no_def_id`.
+fn _example_item_impl_and_use_have_no_def_id() -> bool {
+    let span = hir_span_dummy();
+    let id_h = hir_id_dummy();
+    let placeholder_ty = hir_type_infer(span, id_h);
+
+    let imp = HirItem::Impl(HirImpl {
+        span          : span,
+        attrs         : Vec::new::<HirAttr>(),
+        generics      : hir_generics_empty(),
+        trait_        : None,
+        self_ty       : placeholder_ty,
+        where_clauses : Vec::new::<HirWhereClause>(),
+        fns           : Vec::new::<HirFn>(),
+        assoc_types   : Vec::new::<HirAssocTypeDef>(),
+        consts        : Vec::new::<HirConst>(),
+    });
+    let imp_def_none = match hir_item_def_id(imp) { Some(_) => false, None => true };
+    let imp_name_none = match hir_item_name(imp) { Some(_) => false, None => true };
+
+    let use_item = HirItem::Use(HirUse {
+        span       : span,
+        visibility : HirVisibility::Private,
+        attrs      : Vec::new::<HirAttr>(),
+        bindings   : Vec::new::<HirUseBinding>(),
+    });
+    let use_def_none = match hir_item_def_id(use_item) { Some(_) => false, None => true };
+
+    let _ = def_id_unresolved();
+
+    if imp_def_none { if imp_name_none { use_def_none } else { false } } else { false }
+}
+
+// Round-trip : empty HirModule has no items, no attrs, no path, fresh arena.
+fn _example_hir_module_empty_initial_state() -> bool {
+    let m = hir_module_empty(hir_span_dummy());
+    let items_empty = vec_is_empty::<HirItem>(m.items);
+    let attrs_empty = vec_is_empty::<HirAttr>(m.inner_attrs);
+    let path_none   = match m.module_path { Some(_) => false, None => true };
+    let h_zero = arena_hir_count(m.arena) == 0u32;
+    let d_zero = arena_def_count(m.arena) == 0u32;
+    if items_empty { if attrs_empty { if path_none { if h_zero { d_zero } else { false } } else { false } } else { false } } else { false }
+}
