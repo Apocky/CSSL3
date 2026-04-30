@@ -1,0 +1,571 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/parser/attr.cssl  —  CSSL stage-1 attribute parser (FULL)
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Mirrors design from compiler-rs/crates/cssl-parse/src/rust_hybrid/attr.rs
+// extended with `#[outer]` Rust-style outer-attribute syntax + doc-comments.
+//
+// § ROLE  ← W-E1-γ (parser-in-cssl THIRD SLICE)
+//   Builds on W-E1-α (35c0709). Coexists with W-E1-β's parser.cssl which
+//   ships a "super-lite" attr surface : `Attr / AttrKind / AttrArg /
+//   parse_outer_attrs / parse_outer_attr / parse_inner_attr`.
+//
+//   This file authors the FULL attribute surface :
+//   - `@name(args)` outer (sigil form)
+//   - `#[name]` / `#[name = val]` / `#[name(args)]` outer (Rust form)
+//   - `#![name]` / `#![name = val]` / `#![name(args)]` inner
+//   - `///` doc-comments (LineComment-classified ; trivia-preserving cursor)
+//   - cfg : ordinary attribute path with args (semantics deferred)
+//
+//   All names are suffixed `Full` to coexist with β's stubs ; T11-D253
+//   reconciles them by routing β's attr surface through this one once the
+//   elaborator's spec-test gates pass.
+//
+// § PRIME_DIRECTIVE preserved : attribute-parsing is purely informational ;
+//   every emitted AttrFull carries Span back to the source-bytes the user
+//   authored. Doc-comments are passed through as Attr nodes so the
+//   elaborator can preserve hover-text without special-casing trivia.
+//
+// § COVERED
+//   - Outer `@name` / `@name(args)`              — sigil-style
+//   - Outer `#[name]` / `#[name = val]` /        — Rust-style
+//                       `#[name(args)]`
+//   - Inner `#![name]` / `#![name = val]` /      — `#!` lead → inner-attr
+//                       `#![name(args)]`
+//   - Args : positional `expr` and named `key = expr`
+//   - Doc comments : `///` → AttrFull{path="doc", args=[Positional(Str)]}
+//   - Pre-pass : `parse_outer_attrs_full` consumes a sequence of leading
+//                attrs until the first non-attribute lead-token
+//
+// § STAGE-1 NOTES
+//   1. Attribute arg expressions are stored as ExprPlaceholderFull spans
+//      (γ-canonical from ty.cssl). W-E1-β's expr.cssl lifts placeholders
+//      to AST nodes once T11-D253 lands.
+//   2. `///` doc-comments lex as TokenKind::LineComment ; the bridge helper
+//      `extern_line_comment_is_doc(span)` returns true iff the comment
+//      bytes start with `///`.
+//   3. The lexer does NOT split `#!` as a 2-token combinator ; it lexes
+//      `#` (Hash) followed by `!` (Bang). We use peek2 to detect.
+//   4. `cfg` and other attribute paths are NOT semantically validated here.
+//      Validation lands in HIR lowering (W-E2-…).
+//   5. Inner attributes inside `#![…]` may also use the `path = expr`
+//      key-value sugar form ; we treat as a single Positional arg whose
+//      ExprPlaceholderFull span starts at the value-token.
+//
+// § DEPS
+//   stdlib/option.cssl              — Option<T>
+//   stdlib/vec.cssl                 — Vec<T>
+//   stdlib/string.cssl              — String
+//   compiler-cssl/parser/lexer.cssl — Span / Token / TokenKind
+//   compiler-cssl/parser/cursor.cssl — TokenCursor + bump/peek/check/eat
+//   compiler-cssl/parser/diag.cssl  — Diagnostic factories
+//   compiler-cssl/parser/parser.cssl — Ident / ModulePath (β-canonical)
+//   compiler-cssl/parser/ty.cssl    — ExprPlaceholderFull (γ-canonical)
+//
+// § INVARIANTS
+//   - parse_outer_attrs_full ALWAYS terminates : stops at first non-attr
+//     lead-token + returns the accumulated Vec<AttrFull>
+//   - every AttrFull's Span covers the lead-sigil through the closing
+//     `)` / `]`
+//   - parse_outer_full / parse_inner_full / parse_doc_comment_full never
+//     panic on bad input — they push diagnostics + return None / synthetic
+
+module com.apocky.compiler.parser.attr
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.vec
+import com.apocky.stdlib.string
+import com.apocky.compiler.parser.lexer
+import com.apocky.compiler.parser.cursor
+import com.apocky.compiler.parser.diag
+import com.apocky.compiler.parser.parser
+import com.apocky.compiler.parser.ty
+
+// ───────────────────────────────────────────────────────────────────────
+// § AttrFull CST nodes
+// ───────────────────────────────────────────────────────────────────────
+
+// `AttrFull { span, kind, path, args }` — full-surface attribute.
+// Coexists with β's super-lite `Attr` ; T11-D253 reconciles surfaces.
+struct AttrFull {
+    span : Span,
+    kind : AttrKindFull,
+    path : ModulePath,
+    args : Vec<AttrArgFull>,
+}
+
+// AttrKindFull discriminator.
+enum AttrKindFull {
+    OuterFull,    // `@name` / `#[name]`
+    InnerFull,    // `#![name]`
+    DocFull,      // `/// …`
+}
+
+// AttrArgFull discriminator : positional vs named.
+enum AttrArgFull {
+    PositionalA(ExprPlaceholderFull),
+    NamedA(Ident, ExprPlaceholderFull),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Public entry : parse_outer_full
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_outer_full(c, diags)` — recognise an outer attribute in either
+// sigil-form `@name(args)` or Rust-form `#[name(args)]`. Returns None
+// when the cursor is not at `@` or at `#` (with no `!` immediately after).
+fn parse_outer_full(c : &mut TokenCursor, diags : &mut Vec<Diagnostic>) -> Option<AttrFull> {
+    let lead = cursor_peek(c) ;
+    match lead.kind {
+        TokenKind::At   => parse_outer_at_full(c, diags),
+        TokenKind::Hash => {
+            let p2 = cursor_peek2(c) ;
+            match p2.kind {
+                TokenKind::Bang => None,                       // belongs to inner
+                _               => parse_outer_hash_full(c, diags),
+            }
+        }
+        _ => None,
+    }
+}
+
+// `parse_outer_at_full(c, diags)` — `@path(args)` form.
+fn parse_outer_at_full(c : &mut TokenCursor,
+                       diags : &mut Vec<Diagnostic>) -> Option<AttrFull> {
+    let at = cursor_bump(c) ;          // @
+    let path = parse_module_path_attr_full(c, diags, "attribute name") ;
+    let args = if cursor_check(c, TokenKind::LParen) {
+        parse_attr_arg_list_full(c, diags)
+    } else {
+        Vec::<AttrArgFull>::new()
+    } ;
+    let end_hi = compute_attr_end_full(path.span.hi, args) ;
+    Some(AttrFull {
+        span : Span { lo : at.span.lo, hi : end_hi },
+        kind : AttrKindFull::OuterFull,
+        path : path,
+        args : args,
+    })
+}
+
+// `parse_outer_hash_full(c, diags)` — `#[path]` / `#[path = val]` / `#[path(args)]`.
+fn parse_outer_hash_full(c : &mut TokenCursor,
+                         diags : &mut Vec<Diagnostic>) -> Option<AttrFull> {
+    let hash = cursor_bump(c) ;        // #
+    if !cursor_check(c, TokenKind::LBracket) {
+        let actual = cursor_peek(c) ;
+        let d = diag_custom(
+            string_from_str("expected `[` after `#`"),
+            actual.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+        return None ;
+    }
+    let _ = cursor_bump(c) ;           // [
+    let path = parse_module_path_attr_full(c, diags, "outer attribute path") ;
+    let mut args = Vec::<AttrArgFull>::new() ;
+    if cursor_check(c, TokenKind::Eq) {
+        let _ = cursor_bump(c) ;        // =
+        let val = parse_expr_placeholder_attr_full(c, diags) ;
+        vec_push::<AttrArgFull>(args, AttrArgFull::PositionalA(val)) ;
+    } else if cursor_check(c, TokenKind::LParen) {
+        args = parse_attr_arg_list_full(c, diags) ;
+    }
+    let close = cursor_peek(c) ;
+    if cursor_check(c, TokenKind::RBracket) {
+        let _ = cursor_bump(c) ;
+    } else {
+        let d = diag_custom(
+            string_from_str("expected `]` to close outer attribute"),
+            close.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+    }
+    Some(AttrFull {
+        span : Span { lo : hash.span.lo, hi : close.span.hi },
+        kind : AttrKindFull::OuterFull,
+        path : path,
+        args : args,
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Public entry : parse_inner_full  (for `#![…]`)
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_inner_full(c : &mut TokenCursor,
+                    diags : &mut Vec<Diagnostic>) -> Option<AttrFull> {
+    let hash = cursor_peek(c) ;
+    match hash.kind {
+        TokenKind::Hash => {}
+        _               => return None,
+    }
+    let p2 = cursor_peek2(c) ;
+    match p2.kind {
+        TokenKind::Bang => {}
+        _               => return None,
+    }
+    let _ = cursor_bump(c) ;           // #
+    let _ = cursor_bump(c) ;           // !
+    if !cursor_check(c, TokenKind::LBracket) {
+        let actual = cursor_peek(c) ;
+        let d = diag_custom(
+            string_from_str("expected `[` after `#!`"),
+            actual.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+        return None ;
+    }
+    let _ = cursor_bump(c) ;           // [
+    let path = parse_module_path_attr_full(c, diags, "inner attribute path") ;
+    let mut args = Vec::<AttrArgFull>::new() ;
+    if cursor_check(c, TokenKind::Eq) {
+        let _ = cursor_bump(c) ;
+        let val = parse_expr_placeholder_attr_full(c, diags) ;
+        vec_push::<AttrArgFull>(args, AttrArgFull::PositionalA(val)) ;
+    } else if cursor_check(c, TokenKind::LParen) {
+        args = parse_attr_arg_list_full(c, diags) ;
+    }
+    let close = cursor_peek(c) ;
+    if cursor_check(c, TokenKind::RBracket) {
+        let _ = cursor_bump(c) ;
+    } else {
+        let d = diag_custom(
+            string_from_str("expected `]` to close inner attribute"),
+            close.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+    }
+    Some(AttrFull {
+        span : Span { lo : hash.span.lo, hi : close.span.hi },
+        kind : AttrKindFull::InnerFull,
+        path : path,
+        args : args,
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Doc comments  : `/// …` → AttrFull{Doc}
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_doc_comment_full(c, diags)` — recognise a doc-comment LineComment
+// and emit it as an AttrFull{DocFull}.
+//
+// § PRECONDITION : the caller supplies a trivia-preserving cursor (so
+//   LineComment tokens are not skipped). If the LineComment is NOT a
+//   doc-comment, returns None and leaves the cursor unchanged.
+fn parse_doc_comment_full(c : &mut TokenCursor,
+                          diags : &mut Vec<Diagnostic>) -> Option<AttrFull> {
+    let _ = diags ;
+    let lead = cursor_peek(c) ;
+    match lead.kind {
+        TokenKind::LineComment => {
+            if !extern_line_comment_is_doc(lead.span) {
+                return None ;
+            }
+            let _ = cursor_bump(c) ;
+            // Synthesize the path "doc" with a zero-width Ident at lead.lo.
+            let doc_id = Ident { span : Span { lo : lead.span.lo, hi : lead.span.lo } } ;
+            let mut segs = Vec::<Ident>::new() ;
+            vec_push::<Ident>(segs, doc_id) ;
+            let path = ModulePath { span : doc_id.span, segments : segs } ;
+            let mut args = Vec::<AttrArgFull>::new() ;
+            vec_push::<AttrArgFull>(args, AttrArgFull::PositionalA(ExprPlaceholderFull { span : lead.span })) ;
+            Some(AttrFull {
+                span : lead.span,
+                kind : AttrKindFull::DocFull,
+                path : path,
+                args : args,
+            })
+        }
+        _ => None,
+    }
+}
+
+extern fn extern_line_comment_is_doc(s : Span) -> bool ;
+
+// ───────────────────────────────────────────────────────────────────────
+// § Pre-pass : parse_outer_attrs_full / parse_inner_attrs_full
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_outer_attrs_full(c, diags)` — consume zero-or-more leading outer
+// attributes (both `@…` and `#[…]` lead-sigils). Stops at the first non-
+// attribute lead-token. Source-order ; can be hoisted onto next item/expr.
+fn parse_outer_attrs_full(c : &mut TokenCursor,
+                          diags : &mut Vec<Diagnostic>) -> Vec<AttrFull> {
+    let mut out = Vec::<AttrFull>::new() ;
+    let mut keep = true ;
+    while keep {
+        match parse_outer_full(c, diags) {
+            Some(a) => vec_push::<AttrFull>(out, a),
+            None    => { keep = false ; }
+        }
+    }
+    out
+}
+
+// `parse_inner_attrs_full(c, diags)` — consume zero-or-more leading inner
+// attributes (used at module top-level before any item).
+fn parse_inner_attrs_full(c : &mut TokenCursor,
+                          diags : &mut Vec<Diagnostic>) -> Vec<AttrFull> {
+    let mut out = Vec::<AttrFull>::new() ;
+    let mut keep = true ;
+    while keep {
+        match parse_inner_full(c, diags) {
+            Some(a) => vec_push::<AttrFull>(out, a),
+            None    => { keep = false ; }
+        }
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Arg-list parser
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_attr_arg_list_full(c, diags)` — comma-separated `(arg, …)`. Caller
+// has verified `(` is the current peek.
+fn parse_attr_arg_list_full(c : &mut TokenCursor,
+                            diags : &mut Vec<Diagnostic>) -> Vec<AttrArgFull> {
+    let _ = cursor_bump(c) ;           // (
+    let mut args = Vec::<AttrArgFull>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+        let p1 = cursor_peek(c) ;
+        let p2 = cursor_peek2(c) ;
+        let is_named = match (p1.kind, p2.kind) {
+            (TokenKind::Ident, TokenKind::Eq) => true,
+            _                                 => false,
+        } ;
+        if is_named {
+            let name = parse_ident_attr_full(c, diags, "attribute arg name") ;
+            let _ = cursor_bump(c) ;     // =
+            let value = parse_expr_placeholder_attr_full(c, diags) ;
+            vec_push::<AttrArgFull>(args, AttrArgFull::NamedA(name, value)) ;
+        } else {
+            let value = parse_expr_placeholder_attr_full(c, diags) ;
+            vec_push::<AttrArgFull>(args, AttrArgFull::PositionalA(value)) ;
+        }
+        if cursor_eat(c, TokenKind::Comma).is_none() {
+            keep = false ;
+        }
+    }
+    if cursor_check(c, TokenKind::RParen) {
+        let _ = cursor_bump(c) ;
+    } else {
+        let actual = cursor_peek(c) ;
+        let d = diag_custom(
+            string_from_str("expected `)` to close attribute arguments"),
+            actual.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+    }
+    args
+}
+
+// `compute_attr_end_full(path_hi, args)` — span-hi of an outer-attribute is
+// the last arg's hi (if any) or the path's hi otherwise.
+fn compute_attr_end_full(path_hi : u32, args : Vec<AttrArgFull>) -> u32 {
+    let n = vec_len::<AttrArgFull>(args) ;
+    if n == 0'u32 {
+        return path_hi ;
+    }
+    let last = vec_get_unchecked::<AttrArgFull>(args, n - 1'u32) ;
+    let last_hi = match last {
+        AttrArgFull::PositionalA(p) => p.span.hi,
+        AttrArgFull::NamedA(_, v)   => v.span.hi,
+    } ;
+    if last_hi > path_hi { last_hi } else { path_hi }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Local helpers (suffixed `_attr_full` to coexist with β + ty.cssl)
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_ident_attr_full(c : &mut TokenCursor,
+                         diags : &mut Vec<Diagnostic>,
+                         ctx : &str) -> Ident {
+    let t = cursor_peek(c) ;
+    match t.kind {
+        TokenKind::Ident => {
+            let _ = cursor_bump(c) ;
+            Ident { span : t.span }
+        }
+        _ => {
+            let d = diag_expected_one(TokenKind::Ident, t.kind, t.span, ctx) ;
+            vec_push::<Diagnostic>(diags, d) ;
+            Ident { span : Span { lo : t.span.lo, hi : t.span.lo } }
+        }
+    }
+}
+
+fn parse_module_path_attr_full(c : &mut TokenCursor,
+                               diags : &mut Vec<Diagnostic>,
+                               ctx : &str) -> ModulePath {
+    let first = parse_ident_attr_full(c, diags, ctx) ;
+    let mut segments = Vec::<Ident>::new() ;
+    vec_push::<Ident>(segments, first) ;
+    let mut keep = true ;
+    while keep {
+        let sep = cursor_peek(c) ;
+        let is_sep = match sep.kind {
+            TokenKind::ColonColon => true,
+            TokenKind::Dot        => true,
+            _                     => false,
+        } ;
+        if is_sep {
+            let p2 = cursor_peek2(c) ;
+            match p2.kind {
+                TokenKind::Ident => {
+                    let _ = cursor_bump(c) ;
+                    let seg = parse_ident_attr_full(c, diags, ctx) ;
+                    vec_push::<Ident>(segments, seg) ;
+                }
+                _ => { keep = false ; }
+            }
+        } else {
+            keep = false ;
+        }
+    }
+    let n = vec_len::<Ident>(segments) ;
+    let lo = if n > 0'u32 { vec_get_unchecked::<Ident>(segments, 0'u32).span.lo } else { 0'u32 } ;
+    let hi = if n > 0'u32 { vec_get_unchecked::<Ident>(segments, n - 1'u32).span.hi } else { 0'u32 } ;
+    ModulePath { span : Span { lo : lo, hi : hi }, segments : segments }
+}
+
+// `parse_expr_placeholder_attr_full(c, diags)` — local skim helper for
+// attribute arg-bodies. Brace/paren/bracket-balanced ; stops at top-level
+// `,` `;` `)` `]` `}`.
+fn parse_expr_placeholder_attr_full(c : &mut TokenCursor,
+                                    diags : &mut Vec<Diagnostic>) -> ExprPlaceholderFull {
+    let _ = diags ;
+    let start = cursor_peek(c).span ;
+    let mut paren_depth : u32 = 0'u32 ;
+    let mut brack_depth : u32 = 0'u32 ;
+    let mut brace_depth : u32 = 0'u32 ;
+    let mut last_hi = start.lo ;
+    let mut keep = true ;
+    while keep && !cursor_is_eof(c) {
+        let t = cursor_peek(c) ;
+        let at_top = paren_depth == 0'u32
+                     && brack_depth == 0'u32
+                     && brace_depth == 0'u32 ;
+        match t.kind {
+            TokenKind::Comma     if at_top                  => { keep = false ; }
+            TokenKind::Semi      if at_top                  => { keep = false ; }
+            TokenKind::RParen    if paren_depth == 0'u32    => { keep = false ; }
+            TokenKind::RBracket  if brack_depth == 0'u32    => { keep = false ; }
+            TokenKind::RBrace    if brace_depth == 0'u32    => { keep = false ; }
+            TokenKind::LParen   => { paren_depth = paren_depth + 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::RParen   => { paren_depth = paren_depth - 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::LBracket => { brack_depth = brack_depth + 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::RBracket => { brack_depth = brack_depth - 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::LBrace   => { brace_depth = brace_depth + 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::RBrace   => { brace_depth = brace_depth - 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            _                   => { let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+        }
+    }
+    if last_hi < start.lo { last_hi = start.lo ; }
+    ExprPlaceholderFull { span : Span { lo : start.lo, hi : last_hi } }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers (worked examples)
+// ───────────────────────────────────────────────────────────────────────
+
+// 1. `@bare` → OuterFull, args.len() == 0
+fn _example_outer_at_bare() -> bool {
+    match tokenize_and_parse_outer_full("@bare") {
+        Some(a) => match a.kind {
+            AttrKindFull::OuterFull => vec_len::<AttrArgFull>(a.args) == 0'u32,
+            _                       => false,
+        },
+        None    => false,
+    }
+}
+
+// 2. `@cfg(feature = "alpha")` → OuterFull with one Named arg
+fn _example_outer_at_named() -> bool {
+    match tokenize_and_parse_outer_full("@cfg(feature = \"alpha\")") {
+        Some(a) => match a.kind {
+            AttrKindFull::OuterFull => vec_len::<AttrArgFull>(a.args) == 1'u32,
+            _                       => false,
+        },
+        None    => false,
+    }
+}
+
+// 3. `#[derive(Eq)]` → OuterFull with one Positional arg
+fn _example_outer_hash_args() -> bool {
+    match tokenize_and_parse_outer_full("#[derive(Eq)]") {
+        Some(a) => match a.kind {
+            AttrKindFull::OuterFull => vec_len::<AttrArgFull>(a.args) == 1'u32,
+            _                       => false,
+        },
+        None    => false,
+    }
+}
+
+// 4. `#[name = 42]` → OuterFull with one Positional arg (key=value sugar)
+fn _example_outer_hash_kv() -> bool {
+    match tokenize_and_parse_outer_full("#[name = 42]") {
+        Some(a) => match a.kind {
+            AttrKindFull::OuterFull => vec_len::<AttrArgFull>(a.args) == 1'u32,
+            _                       => false,
+        },
+        None    => false,
+    }
+}
+
+// 5. `#![surface = "csl"]` → InnerFull
+fn _example_inner_kv() -> bool {
+    match tokenize_and_parse_inner_full("#![surface = \"csl\"]") {
+        Some(a) => match a.kind {
+            AttrKindFull::InnerFull => vec_len::<AttrArgFull>(a.args) == 1'u32,
+            _                       => false,
+        },
+        None    => false,
+    }
+}
+
+// 6. `@a @b @c` → 3 outer attrs via parse_outer_attrs_full
+fn _example_outer_attrs_chain() -> bool {
+    let stream = match tokenize("@a @b @c") {
+        Ok(s)  => s,
+        Err(_) => TokenStream { tokens : Vec::<Token>::new() },
+    } ;
+    let mut c = cursor_new(stream.tokens) ;
+    let mut diags = Vec::<Diagnostic>::new() ;
+    let attrs = parse_outer_attrs_full(&mut c, &mut diags) ;
+    vec_len::<AttrFull>(attrs) == 3'u32
+}
+
+// 7. `@a @b fn` → parse_outer_attrs_full stops at `fn`
+fn _example_outer_attrs_stops_at_non_at() -> bool {
+    let stream = match tokenize("@a @b fn") {
+        Ok(s)  => s,
+        Err(_) => TokenStream { tokens : Vec::<Token>::new() },
+    } ;
+    let mut c = cursor_new(stream.tokens) ;
+    let mut diags = Vec::<Diagnostic>::new() ;
+    let attrs = parse_outer_attrs_full(&mut c, &mut diags) ;
+    vec_len::<AttrFull>(attrs) == 2'u32
+}
+
+// `tokenize_and_parse_outer_full(src)` — driver helper.
+fn tokenize_and_parse_outer_full(src : &str) -> Option<AttrFull> {
+    let stream = match tokenize(src) {
+        Ok(s)  => s,
+        Err(_) => TokenStream { tokens : Vec::<Token>::new() },
+    } ;
+    let mut c = cursor_new(stream.tokens) ;
+    let mut diags = Vec::<Diagnostic>::new() ;
+    parse_outer_full(&mut c, &mut diags)
+}
+
+// `tokenize_and_parse_inner_full(src)` — driver helper.
+fn tokenize_and_parse_inner_full(src : &str) -> Option<AttrFull> {
+    let stream = match tokenize(src) {
+        Ok(s)  => s,
+        Err(_) => TokenStream { tokens : Vec::<Token>::new() },
+    } ;
+    let mut c = cursor_new(stream.tokens) ;
+    let mut diags = Vec::<Diagnostic>::new() ;
+    parse_inner_full(&mut c, &mut diags)
+}

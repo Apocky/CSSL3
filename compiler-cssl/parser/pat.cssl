@@ -1,0 +1,702 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/parser/pat.cssl  —  CSSL stage-1 pattern parser
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Mirrors design from compiler-rs/crates/cssl-parse/src/rust_hybrid/pat.rs.
+//
+// § ROLE  ← W-E1-γ (parser-in-cssl THIRD SLICE)
+//   Builds on W-E1-α (35c0709) — TokenCursor + Diagnostic + TokenKind — and
+//   coexists with W-E1-β's parser.cssl/expr.cssl/stmt.cssl which ship a
+//   "super-lite" Pattern surface.
+//
+//   This file authors the FULL pattern surface :
+//   binding · literal · wildcard · path · struct · enum-variant · tuple ·
+//   slice · range · or-pattern · `if let` form · `self`-keyword (W-A6).
+//   All names are suffixed `Full` to coexist with β's stubs ; T11-D253
+//   reconciles them by routing β's `parse_pattern` through
+//   `parse_pattern_full` once the elaborator's spec-test gates pass.
+//
+// § PRIME_DIRECTIVE preserved : pattern-parsing is purely informational.
+//   Every produced PatternFull carries a Span back to the source-bytes the
+//   user authored. No hidden control flow, no surveillance, no coercion.
+//
+// § COVERED
+//   - Wildcard      : `_`
+//   - Literal       : int / float / string / char / true / false
+//   - Binding       : `x` / `mut x`
+//   - Ref-binding   : `ref x` / `ref mut x`
+//   - Tuple         : `(a, b, c)`
+//   - Slice         : `[a, b, c]` / `[a, ..]` / `[a, .., b]`
+//   - Struct        : `Point { x, y : b, .. }`
+//   - Variant       : `Some(v)` / `None` / `Color::Red`
+//   - Range         : `a..b` / `a..=b`
+//   - Or            : `a | b | c`
+//   - `self`        : bare `self` (W-A6) ; `&self` / `&mut self` deferred
+//   - `if let`      : `if let Pat = expr { … }` form via parse_if_let_arm_full
+//
+// § STAGE-1 NOTES
+//   1. Wildcard recognition : the lexer emits `_` as Ident with span-len 1.
+//      We dispatch via the `extern_byte_is_underscore_at` bridge helper
+//      that ty.cssl declares. Stage-1 single-symbol-per-name policy ; we
+//      do not re-declare here.
+//   2. `self` is a reserved Keyword(SelfValue). Per T11-D243 (W-A6) we
+//      emit a Binding{mutable=false, name=Ident{span}} where span re-slices
+//      to literal "self".
+//   3. Range patterns : `a..b` and `a..=b` lex as DotDot / DotDotEq atomic
+//      tokens recognised mid-pattern after a literal lead.
+//   4. Or-pattern : top-level only ; we delimit at `,` `;` `=>` `}` `)` `]`.
+//   5. `if let` ARM is `if let <pat> = <expr-placeholder> {…}`. The body is
+//      a brace-balanced placeholder ; W-E1-β's expr.cssl provides the real
+//      `Expr` once T11-D253 reconciliation lands.
+//
+// § DEPS
+//   stdlib/option.cssl              — Option<T>
+//   stdlib/vec.cssl                 — Vec<T>
+//   stdlib/string.cssl              — String for diagnostic-msg construction
+//   compiler-cssl/parser/lexer.cssl — Span / Token / TokenKind / Keyword
+//   compiler-cssl/parser/cursor.cssl — TokenCursor + bump/peek/check/eat
+//   compiler-cssl/parser/diag.cssl  — Diagnostic factories
+//   compiler-cssl/parser/parser.cssl — Ident / ModulePath (β-canonical)
+//   compiler-cssl/parser/ty.cssl    — ExprPlaceholderFull (γ-canonical)
+//
+// § INVARIANTS
+//   - parse_pattern_full ALWAYS makes at least one token of progress
+//   - every PatternFull carries Span lo ≤ hi covering its lead through tail
+//   - wildcard / self produce zero-error parses (no diagnostics pushed)
+
+module com.apocky.compiler.parser.pat
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.vec
+import com.apocky.stdlib.string
+import com.apocky.compiler.parser.lexer
+import com.apocky.compiler.parser.cursor
+import com.apocky.compiler.parser.diag
+import com.apocky.compiler.parser.parser
+import com.apocky.compiler.parser.ty
+
+// ───────────────────────────────────────────────────────────────────────
+// § Pattern CST nodes (full surface)
+// ───────────────────────────────────────────────────────────────────────
+
+// `PatternFull { span, kind }` — full-surface pattern CST node.
+//
+// Coexists with β's super-lite `Pattern`. T11-D253 routes β through
+// parse_pattern_full once the elaborator's spec-tests gate green.
+struct PatternFull {
+    span : Span,
+    kind : PatternKindFull,
+}
+
+// `LiteralFull { span, kind }` — a literal-pattern's underlying literal.
+struct LiteralFull {
+    span : Span,
+    kind : LiteralKindFull,
+}
+
+// LiteralKindFull discriminator. Mirrors compiler-rs LiteralKind.
+enum LiteralKindFull {
+    IntL,
+    FloatL,
+    StrL,
+    CharL,
+    BoolTrueL,
+    BoolFalseL,
+}
+
+// `PatternFieldFull { span, name, pat }` — a struct-pattern field.
+//
+// `pat` is None for shorthand `{ x }` (alias for `{ x : x }`).
+struct PatternFieldFull {
+    span : Span,
+    name : Ident,
+    pat  : Option<PatternFull>,
+}
+
+// PatternKindFull discriminator.
+enum PatternKindFull {
+    WildcardP,                                              // `_`
+    LiteralP(LiteralFull),                                  // `42` / `"x"` / true
+    BindingP(bool, Ident),                                  // `x` / `mut x`
+    RefP(bool, PatternFull),                                // `ref x` / `ref mut x`
+    TupleP(Vec<PatternFull>),                               // `(a, b, c)`
+    SliceP(Vec<SlicePartFull>),                             // `[a, b, ..]`
+    StructP(ModulePath, Vec<PatternFieldFull>, bool),       // `Point { x, y, .. }`
+    VariantP(ModulePath, Vec<PatternFull>),                 // `Some(v)` / `None`
+    RangeP(LiteralFull, bool, LiteralFull),                 // `1..10` / `1..=10`
+    OrP(Vec<PatternFull>),                                  // `a | b | c`
+    ErrorP(Span),                                           // synthetic recovery
+}
+
+// SlicePartFull — element-or-rest in a slice-pattern.
+enum SlicePartFull {
+    ElemP(PatternFull),
+    RestP,                  // `..`
+}
+
+// `IfLetArmFull { span, pat, scrutinee, body }` — `if let Pat = scrutinee { body }`
+struct IfLetArmFull {
+    span       : Span,
+    pat        : PatternFull,
+    scrutinee  : ExprPlaceholderFull,
+    body       : ExprPlaceholderFull,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Public entry : parse_pattern_full
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_pattern_full(c, diags)` — parse a single pattern with top-level
+// or-pattern combinator. Range-pattern is post-fix on a literal lead.
+//
+// § INVARIANT : on return the cursor has consumed AT LEAST ONE token.
+fn parse_pattern_full(c : &mut TokenCursor, diags : &mut Vec<Diagnostic>) -> PatternFull {
+    let first = parse_atomic_pattern_full(c, diags) ;
+    if !cursor_check(c, TokenKind::Pipe) {
+        return first ;
+    }
+    let mut alts = Vec::<PatternFull>::new() ;
+    vec_push::<PatternFull>(alts, first) ;
+    let mut keep = true ;
+    while keep {
+        if cursor_eat(c, TokenKind::Pipe).is_some() {
+            let nxt = parse_atomic_pattern_full(c, diags) ;
+            vec_push::<PatternFull>(alts, nxt) ;
+        } else {
+            keep = false ;
+        }
+    }
+    let n = vec_len::<PatternFull>(alts) ;
+    let lo = vec_get_unchecked::<PatternFull>(alts, 0'u32).span.lo ;
+    let hi = vec_get_unchecked::<PatternFull>(alts, n - 1'u32).span.hi ;
+    PatternFull {
+        span : Span { lo : lo, hi : hi },
+        kind : PatternKindFull::OrP(alts),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Atomic pattern dispatch
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_atomic_pattern_full(c : &mut TokenCursor,
+                             diags : &mut Vec<Diagnostic>) -> PatternFull {
+    let lead = cursor_peek(c) ;
+    let kind : PatternKindFull = match lead.kind {
+        TokenKind::Ident if pat_ident_is_underscore_full(lead) => {
+            let _ = cursor_bump(c) ;
+            PatternKindFull::WildcardP
+        }
+        TokenKind::IntLiteral => {
+            let _ = cursor_bump(c) ;
+            let lit = LiteralFull { span : lead.span, kind : LiteralKindFull::IntL } ;
+            parse_range_or_literal_full(c, diags, lit)
+        }
+        TokenKind::FloatLiteral => {
+            let _ = cursor_bump(c) ;
+            let lit = LiteralFull { span : lead.span, kind : LiteralKindFull::FloatL } ;
+            parse_range_or_literal_full(c, diags, lit)
+        }
+        TokenKind::StringLiteralNormal | TokenKind::StringLiteralRaw => {
+            let _ = cursor_bump(c) ;
+            PatternKindFull::LiteralP(LiteralFull { span : lead.span, kind : LiteralKindFull::StrL })
+        }
+        TokenKind::CharLiteral => {
+            let _ = cursor_bump(c) ;
+            let lit = LiteralFull { span : lead.span, kind : LiteralKindFull::CharL } ;
+            parse_range_or_literal_full(c, diags, lit)
+        }
+        TokenKind::Keyword(Keyword::True) => {
+            let _ = cursor_bump(c) ;
+            PatternKindFull::LiteralP(LiteralFull { span : lead.span, kind : LiteralKindFull::BoolTrueL })
+        }
+        TokenKind::Keyword(Keyword::False) => {
+            let _ = cursor_bump(c) ;
+            PatternKindFull::LiteralP(LiteralFull { span : lead.span, kind : LiteralKindFull::BoolFalseL })
+        }
+        TokenKind::LParen   => parse_tuple_pattern_full(c, diags),
+        TokenKind::LBracket => parse_slice_pattern_full(c, diags),
+        TokenKind::Keyword(Keyword::Mut) => {
+            let _ = cursor_bump(c) ;
+            let name = parse_ident_pat_full(c, diags, "binding after `mut`") ;
+            PatternKindFull::BindingP(true, name)
+        }
+        TokenKind::Keyword(Keyword::Ref) => {
+            let _ = cursor_bump(c) ;
+            let mutable = cursor_eat(c, TokenKind::Keyword(Keyword::Mut)).is_some() ;
+            let inner = parse_atomic_pattern_full(c, diags) ;
+            PatternKindFull::RefP(mutable, inner)
+        }
+        // `self` keyword (W-A6) — fn-param binding.
+        TokenKind::Keyword(Keyword::SelfValue) => {
+            let _ = cursor_bump(c) ;
+            PatternKindFull::BindingP(false, Ident { span : lead.span })
+        }
+        TokenKind::Ident => parse_path_pattern_full(c, diags),
+        _ => {
+            let d = diag_custom(string_from_str("expected a pattern"), lead.span) ;
+            vec_push::<Diagnostic>(diags, d) ;
+            let _ = cursor_bump(c) ;
+            PatternKindFull::ErrorP(lead.span)
+        }
+    } ;
+    let end_lo = cursor_peek(c).span.lo ;
+    let hi = if end_lo > lead.span.hi { end_lo } else { lead.span.hi } ;
+    PatternFull {
+        span : Span { lo : lead.span.lo, hi : hi },
+        kind : kind,
+    }
+}
+
+// `pat_ident_is_underscore_full(t)` — true iff Ident-token is single-byte `_`.
+// Bridges to ty.cssl's `extern_byte_is_underscore_at`.
+fn pat_ident_is_underscore_full(t : Token) -> bool {
+    span_len(t.span) == 1'u32 && extern_byte_is_underscore_at(t.span)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Range vs literal
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_range_or_literal_full(c : &mut TokenCursor,
+                               diags : &mut Vec<Diagnostic>,
+                               lit : LiteralFull) -> PatternKindFull {
+    if cursor_check(c, TokenKind::DotDotEq) {
+        let _ = cursor_bump(c) ;
+        let hi = parse_range_endpoint_full(c, diags) ;
+        return PatternKindFull::RangeP(lit, true, hi) ;
+    }
+    if cursor_check(c, TokenKind::DotDot) {
+        let _ = cursor_bump(c) ;
+        let hi = parse_range_endpoint_full(c, diags) ;
+        return PatternKindFull::RangeP(lit, false, hi) ;
+    }
+    PatternKindFull::LiteralP(lit)
+}
+
+fn parse_range_endpoint_full(c : &mut TokenCursor,
+                             diags : &mut Vec<Diagnostic>) -> LiteralFull {
+    let t = cursor_peek(c) ;
+    match t.kind {
+        TokenKind::IntLiteral   => {
+            let _ = cursor_bump(c) ;
+            LiteralFull { span : t.span, kind : LiteralKindFull::IntL }
+        }
+        TokenKind::FloatLiteral => {
+            let _ = cursor_bump(c) ;
+            LiteralFull { span : t.span, kind : LiteralKindFull::FloatL }
+        }
+        TokenKind::CharLiteral  => {
+            let _ = cursor_bump(c) ;
+            LiteralFull { span : t.span, kind : LiteralKindFull::CharL }
+        }
+        _ => {
+            let d = diag_custom(
+                string_from_str("expected literal at range endpoint"),
+                t.span) ;
+            vec_push::<Diagnostic>(diags, d) ;
+            LiteralFull { span : Span { lo : t.span.lo, hi : t.span.lo }, kind : LiteralKindFull::IntL }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tuple pattern
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_tuple_pattern_full(c : &mut TokenCursor,
+                            diags : &mut Vec<Diagnostic>) -> PatternKindFull {
+    let _ = cursor_bump(c) ;          // (
+    let mut elems = Vec::<PatternFull>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+        let p = parse_pattern_full(c, diags) ;
+        vec_push::<PatternFull>(elems, p) ;
+        if cursor_eat(c, TokenKind::Comma).is_none() {
+            keep = false ;
+        }
+    }
+    if cursor_check(c, TokenKind::RParen) {
+        let _ = cursor_bump(c) ;
+    } else {
+        let actual = cursor_peek(c) ;
+        let d = diag_custom(
+            string_from_str("expected `)` to close tuple pattern"),
+            actual.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+    }
+    PatternKindFull::TupleP(elems)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Slice pattern `[a, b, .., c]`
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_slice_pattern_full(c : &mut TokenCursor,
+                            diags : &mut Vec<Diagnostic>) -> PatternKindFull {
+    let _ = cursor_bump(c) ;          // [
+    let mut parts = Vec::<SlicePartFull>::new() ;
+    let mut keep = true ;
+    while keep && !cursor_check(c, TokenKind::RBracket) && !cursor_is_eof(c) {
+        if cursor_check(c, TokenKind::DotDot) {
+            let _ = cursor_bump(c) ;
+            vec_push::<SlicePartFull>(parts, SlicePartFull::RestP) ;
+        } else {
+            let p = parse_pattern_full(c, diags) ;
+            vec_push::<SlicePartFull>(parts, SlicePartFull::ElemP(p)) ;
+        }
+        if cursor_eat(c, TokenKind::Comma).is_none() {
+            keep = false ;
+        }
+    }
+    if cursor_check(c, TokenKind::RBracket) {
+        let _ = cursor_bump(c) ;
+    } else {
+        let actual = cursor_peek(c) ;
+        let d = diag_custom(
+            string_from_str("expected `]` to close slice pattern"),
+            actual.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+    }
+    PatternKindFull::SliceP(parts)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Path pattern : variant / struct / binding
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_path_pattern_full(c : &mut TokenCursor,
+                           diags : &mut Vec<Diagnostic>) -> PatternKindFull {
+    let path = parse_colon_path_pat_full(c, diags, "pattern path") ;
+    if cursor_check(c, TokenKind::LParen) {
+        let _ = cursor_bump(c) ;       // (
+        let mut args = Vec::<PatternFull>::new() ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RParen) && !cursor_is_eof(c) {
+            let p = parse_pattern_full(c, diags) ;
+            vec_push::<PatternFull>(args, p) ;
+            if cursor_eat(c, TokenKind::Comma).is_none() {
+                keep = false ;
+            }
+        }
+        if cursor_check(c, TokenKind::RParen) {
+            let _ = cursor_bump(c) ;
+        } else {
+            let actual = cursor_peek(c) ;
+            let d = diag_custom(
+                string_from_str("expected `)` to close variant pattern"),
+                actual.span) ;
+            vec_push::<Diagnostic>(diags, d) ;
+        }
+        return PatternKindFull::VariantP(path, args) ;
+    }
+    if cursor_check(c, TokenKind::LBrace) {
+        let _ = cursor_bump(c) ;       // {
+        let mut fields = Vec::<PatternFieldFull>::new() ;
+        let mut rest = false ;
+        let mut keep = true ;
+        while keep && !cursor_check(c, TokenKind::RBrace) && !cursor_is_eof(c) {
+            if cursor_eat(c, TokenKind::DotDot).is_some() {
+                rest = true ;
+                keep = false ;
+            } else {
+                let name = parse_ident_pat_full(c, diags, "struct field name") ;
+                let pat = if cursor_eat(c, TokenKind::Colon).is_some() {
+                    Some(parse_pattern_full(c, diags))
+                } else {
+                    None
+                } ;
+                let lo = name.span.lo ;
+                let hi = match pat {
+                    Some(ref p) => p.span.hi,
+                    None        => name.span.hi,
+                } ;
+                vec_push::<PatternFieldFull>(fields, PatternFieldFull {
+                    span : Span { lo : lo, hi : hi },
+                    name : name,
+                    pat  : pat,
+                }) ;
+                if cursor_eat(c, TokenKind::Comma).is_none() {
+                    keep = false ;
+                }
+            }
+        }
+        if cursor_check(c, TokenKind::RBrace) {
+            let _ = cursor_bump(c) ;
+        } else {
+            let actual = cursor_peek(c) ;
+            let d = diag_custom(
+                string_from_str("expected `}` to close struct pattern"),
+                actual.span) ;
+            vec_push::<Diagnostic>(diags, d) ;
+        }
+        return PatternKindFull::StructP(path, fields, rest) ;
+    }
+    let n = vec_len::<Ident>(path.segments) ;
+    if n == 1'u32 {
+        let only = vec_get_unchecked::<Ident>(path.segments, 0'u32) ;
+        return PatternKindFull::BindingP(false, only) ;
+    }
+    PatternKindFull::VariantP(path, Vec::<PatternFull>::new())
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Public entry : if-let arm
+// ───────────────────────────────────────────────────────────────────────
+
+// `parse_if_let_arm_full(c, diags)` — `if let <pat> = <expr> { <body> }`.
+// Returns None unless the next two tokens are `if` `let`.
+fn parse_if_let_arm_full(c : &mut TokenCursor,
+                         diags : &mut Vec<Diagnostic>) -> Option<IfLetArmFull> {
+    if !cursor_check(c, TokenKind::Keyword(Keyword::If)) {
+        return None ;
+    }
+    let p2 = cursor_peek2(c) ;
+    let is_let = match p2.kind {
+        TokenKind::Keyword(Keyword::Let) => true,
+        _                                => false,
+    } ;
+    if !is_let { return None ; }
+    let if_tok = cursor_bump(c) ;     // if
+    let _      = cursor_bump(c) ;     // let
+    let pat = parse_pattern_full(c, diags) ;
+    if cursor_eat(c, TokenKind::Eq).is_none() {
+        let actual = cursor_peek(c) ;
+        let d = diag_custom(
+            string_from_str("expected `=` after `if let <pattern>`"),
+            actual.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+    }
+    let scrutinee = parse_expr_placeholder_pat_full(c, diags) ;
+    let body = parse_brace_body_placeholder_full(c, diags) ;
+    Some(IfLetArmFull {
+        span      : Span { lo : if_tok.span.lo, hi : body.span.hi },
+        pat       : pat,
+        scrutinee : scrutinee,
+        body      : body,
+    })
+}
+
+// `parse_brace_body_placeholder_full(c, diags)` — consume `{ … }` block.
+fn parse_brace_body_placeholder_full(c : &mut TokenCursor,
+                                     diags : &mut Vec<Diagnostic>) -> ExprPlaceholderFull {
+    let lead = cursor_peek(c) ;
+    if !cursor_check(c, TokenKind::LBrace) {
+        let d = diag_custom(
+            string_from_str("expected `{` for if-let body"),
+            lead.span) ;
+        vec_push::<Diagnostic>(diags, d) ;
+        return ExprPlaceholderFull { span : Span { lo : lead.span.lo, hi : lead.span.lo } } ;
+    }
+    let open = cursor_bump(c) ;       // {
+    let mut depth : u32 = 1'u32 ;
+    let mut last_hi = open.span.hi ;
+    while depth > 0'u32 && !cursor_is_eof(c) {
+        let t = cursor_bump(c) ;
+        last_hi = t.span.hi ;
+        match t.kind {
+            TokenKind::LBrace => depth = depth + 1'u32,
+            TokenKind::RBrace => depth = depth - 1'u32,
+            _                 => {}
+        }
+    }
+    ExprPlaceholderFull { span : Span { lo : open.span.lo, hi : last_hi } }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Local helpers (suffixed `_pat_full` to coexist with β + ty.cssl)
+// ───────────────────────────────────────────────────────────────────────
+
+fn parse_ident_pat_full(c : &mut TokenCursor,
+                        diags : &mut Vec<Diagnostic>,
+                        ctx : &str) -> Ident {
+    let t = cursor_peek(c) ;
+    match t.kind {
+        TokenKind::Ident => {
+            let _ = cursor_bump(c) ;
+            Ident { span : t.span }
+        }
+        _ => {
+            let d = diag_expected_one(TokenKind::Ident, t.kind, t.span, ctx) ;
+            vec_push::<Diagnostic>(diags, d) ;
+            Ident { span : Span { lo : t.span.lo, hi : t.span.lo } }
+        }
+    }
+}
+
+fn parse_colon_path_pat_full(c : &mut TokenCursor,
+                             diags : &mut Vec<Diagnostic>,
+                             ctx : &str) -> ModulePath {
+    let first = parse_ident_pat_full(c, diags, ctx) ;
+    let mut segments = Vec::<Ident>::new() ;
+    vec_push::<Ident>(segments, first) ;
+    let mut keep = true ;
+    while keep {
+        if cursor_check(c, TokenKind::ColonColon) {
+            let p2 = cursor_peek2(c) ;
+            match p2.kind {
+                TokenKind::Ident => {
+                    let _ = cursor_bump(c) ;
+                    let seg = parse_ident_pat_full(c, diags, ctx) ;
+                    vec_push::<Ident>(segments, seg) ;
+                }
+                _ => { keep = false ; }
+            }
+        } else {
+            keep = false ;
+        }
+    }
+    let n = vec_len::<Ident>(segments) ;
+    let lo = if n > 0'u32 { vec_get_unchecked::<Ident>(segments, 0'u32).span.lo } else { 0'u32 } ;
+    let hi = if n > 0'u32 { vec_get_unchecked::<Ident>(segments, n - 1'u32).span.hi } else { 0'u32 } ;
+    ModulePath { span : Span { lo : lo, hi : hi }, segments : segments }
+}
+
+// `parse_expr_placeholder_pat_full` — local skim helper for if-let scrutinee.
+// Mirrors ty.cssl's helper ; replicated here so this file stays standalone.
+fn parse_expr_placeholder_pat_full(c : &mut TokenCursor,
+                                   diags : &mut Vec<Diagnostic>) -> ExprPlaceholderFull {
+    let _ = diags ;
+    let start = cursor_peek(c).span ;
+    let mut paren_depth : u32 = 0'u32 ;
+    let mut brack_depth : u32 = 0'u32 ;
+    let mut brace_depth : u32 = 0'u32 ;
+    let mut last_hi = start.lo ;
+    let mut keep = true ;
+    while keep && !cursor_is_eof(c) {
+        let t = cursor_peek(c) ;
+        let at_top = paren_depth == 0'u32
+                     && brack_depth == 0'u32
+                     && brace_depth == 0'u32 ;
+        match t.kind {
+            // Stop at `{` of body when at top-level (we DO NOT consume the body
+            // here — that's parse_brace_body_placeholder_full's job).
+            TokenKind::LBrace if at_top                      => { keep = false ; }
+            TokenKind::Comma  if at_top                      => { keep = false ; }
+            TokenKind::Semi   if at_top                      => { keep = false ; }
+            TokenKind::RParen   if paren_depth == 0'u32      => { keep = false ; }
+            TokenKind::RBracket if brack_depth == 0'u32      => { keep = false ; }
+            TokenKind::LParen   => { paren_depth = paren_depth + 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::RParen   => { paren_depth = paren_depth - 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::LBracket => { brack_depth = brack_depth + 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            TokenKind::RBracket => { brack_depth = brack_depth - 1'u32 ; let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+            _                   => { let _ = cursor_bump(c) ; last_hi = t.span.hi ; }
+        }
+    }
+    if last_hi < start.lo { last_hi = start.lo ; }
+    ExprPlaceholderFull { span : Span { lo : start.lo, hi : last_hi } }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers (worked examples)
+//
+// ≥ 10 round-trip oracles : tokenize → parse → assert-shape.
+// ───────────────────────────────────────────────────────────────────────
+
+// 1. `x` → BindingP{mutable=false}
+fn _example_binding_pat() -> bool {
+    match tokenize_and_parse_pattern_full("x").kind {
+        PatternKindFull::BindingP(false, _) => true,
+        _                                   => false,
+    }
+}
+
+// 2. `42` → LiteralP{IntL}
+fn _example_literal_int_pat() -> bool {
+    match tokenize_and_parse_pattern_full("42").kind {
+        PatternKindFull::LiteralP(_) => true,
+        _                            => false,
+    }
+}
+
+// 3. `_` → WildcardP
+fn _example_wildcard_pat() -> bool {
+    match tokenize_and_parse_pattern_full("_").kind {
+        PatternKindFull::WildcardP => true,
+        _                          => false,
+    }
+}
+
+// 4. `Point { x, y : b }` → StructP
+fn _example_struct_pat() -> bool {
+    match tokenize_and_parse_pattern_full("Point { x, y : b }").kind {
+        PatternKindFull::StructP(_, _, _) => true,
+        _                                 => false,
+    }
+}
+
+// 5. `Some(v)` → VariantP
+fn _example_enum_variant_pat() -> bool {
+    match tokenize_and_parse_pattern_full("Some(v)").kind {
+        PatternKindFull::VariantP(_, _) => true,
+        _                               => false,
+    }
+}
+
+// 6. `(a, b, c)` → TupleP{arity=3}
+fn _example_tuple_pat() -> bool {
+    match tokenize_and_parse_pattern_full("(a, b, c)").kind {
+        PatternKindFull::TupleP(elems) => vec_len::<PatternFull>(elems) == 3'u32,
+        _                              => false,
+    }
+}
+
+// 7. `[a, .., b]` → SliceP with parts.len() == 3
+fn _example_slice_pat() -> bool {
+    match tokenize_and_parse_pattern_full("[a, .., b]").kind {
+        PatternKindFull::SliceP(parts) => vec_len::<SlicePartFull>(parts) == 3'u32,
+        _                              => false,
+    }
+}
+
+// 8. `1..10` → RangeP exclusive
+fn _example_range_pat() -> bool {
+    match tokenize_and_parse_pattern_full("1..10").kind {
+        PatternKindFull::RangeP(_, false, _) => true,
+        _                                    => false,
+    }
+}
+
+// 9. `1..=10` → RangeP inclusive
+fn _example_range_inclusive_pat() -> bool {
+    match tokenize_and_parse_pattern_full("1..=10").kind {
+        PatternKindFull::RangeP(_, true, _) => true,
+        _                                   => false,
+    }
+}
+
+// 10. `1 | 2 | 3` → OrP with 3 alts
+fn _example_or_pat() -> bool {
+    match tokenize_and_parse_pattern_full("1 | 2 | 3").kind {
+        PatternKindFull::OrP(alts) => vec_len::<PatternFull>(alts) == 3'u32,
+        _                          => false,
+    }
+}
+
+// 11. `self` → BindingP (W-A6)
+fn _example_self_pat() -> bool {
+    match tokenize_and_parse_pattern_full("self").kind {
+        PatternKindFull::BindingP(false, _) => true,
+        _                                   => false,
+    }
+}
+
+// 12. `mut x` → BindingP{mutable=true}
+fn _example_mut_binding_pat() -> bool {
+    match tokenize_and_parse_pattern_full("mut x").kind {
+        PatternKindFull::BindingP(true, _) => true,
+        _                                  => false,
+    }
+}
+
+// `tokenize_and_parse_pattern_full(src)` — driver helper.
+fn tokenize_and_parse_pattern_full(src : &str) -> PatternFull {
+    let stream = match tokenize(src) {
+        Ok(s)  => s,
+        Err(_) => TokenStream { tokens : Vec::<Token>::new() },
+    } ;
+    let mut c = cursor_new(stream.tokens) ;
+    let mut diags = Vec::<Diagnostic>::new() ;
+    parse_pattern_full(&mut c, &mut diags)
+}
