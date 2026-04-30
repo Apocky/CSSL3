@@ -475,15 +475,18 @@ mod tests {
         assert_eq!(out.mir_fn_count, 1, "{}", out.summary());
     }
 
-    /// W-A2 (typed-memref) JIT-execute. Currently DEFERRED : `vec_new` /
-    /// `vec_push` / `vec_index` are stdlib intrinsics with no user-defined
-    /// MIR body — the body_lower recognizer (W-B-RECOGNIZER) emits cssl.
-    /// memref.* ops only for `vec_drop` / `load_at` / `store_at` / `end_of`.
-    /// `vec_new` + `vec_push` + `vec_index` need their own recognizer arms
-    /// (Wave-A2-α follow-up : cssl.heap.alloc + cssl.memref.store + cssl.
-    /// memref.load) before this test can pass end-to-end.
+    /// W-A2 (typed-memref) JIT-execute. Recognizer arms for `vec_new` /
+    /// `vec_push` / `vec_index` ARE now wired (T11-D249 / W-A2-α-fix) :
+    /// the call-sites lower to canonical `cssl.vec.new` / `cssl.vec.push`
+    /// / `cssl.vec.index` MIR ops carrying `payload_ty` + `bounds_check`
+    /// attributes. The next blocker is the cgen-cl layer
+    /// (`cssl-cgen-cpu-cranelift`) — it currently rejects `cssl.vec.*`
+    /// ops as "scalars-arith-only" and needs a follow-up slice
+    /// (Wave-A2-β) to expand each `cssl.vec.*` into its
+    /// `cssl.heap.alloc` + `cssl.memref.store` + `cssl.memref.load`
+    /// realization.
     #[test]
-    #[ignore = "BUG-FOUND: `vec_new` / `vec_push` / `vec_index` recognizers not yet wired ; only `vec_drop` / `load_at` / `store_at` / `end_of` recognized — needs Wave-A2-α follow-up"]
+    #[ignore = "BUG-FOUND: cgen-cl rejects cssl.vec.* ops (`scalars-arith-only`) — recognizer arms wired (T11-D249) ; needs Wave-A2-β cgen-cl op-handlers"]
     fn wave_a2_vec_push_index_jit_returns_13() {
         match try_jit_main_returns_i32("wave-a2-vec-push-index", WAVE_A2_VEC_PUSH_INDEX) {
             Ok(code) => assert_eq!(code, 13, "expected 13, got {code}"),
@@ -575,14 +578,15 @@ mod tests {
         assert_eq!(out.mir_fn_count, 1, "{}", out.summary());
     }
 
-    /// W-A5 (heap.dealloc) JIT-execute. Same blocker as W-A2 : `vec_new`
-    /// recognizer not yet wired — `let v0 = vec_new::<i32>()` produces
-    /// a `func.call callee=vec_new` op the JIT can't resolve. The
-    /// `vec_drop::<i32>(v1)` line itself IS recognized + lowers to
-    /// `cssl.heap.dealloc` (verified in cssl-mir's
-    /// `vec_drop_i32_emits_heap_dealloc` test) ; the gap is upstream.
+    /// W-A5 (heap.dealloc) JIT-execute. Same blocker-shape as W-A2 :
+    /// recognizer arms for `vec_new` / `vec_push` ARE now wired
+    /// (T11-D249 / W-A2-α-fix) and emit canonical `cssl.vec.*` ops.
+    /// The next blocker is the cgen-cl layer
+    /// (`cssl-cgen-cpu-cranelift`) — it currently rejects `cssl.vec.*`
+    /// ops as "scalars-arith-only". Same Wave-A2-β follow-up that
+    /// unblocks W-A2 unblocks this test.
     #[test]
-    #[ignore = "BUG-FOUND: blocked by Wave-A2-α (`vec_new` recognizer arm missing)"]
+    #[ignore = "BUG-FOUND: cgen-cl rejects cssl.vec.* ops (`scalars-arith-only`) — recognizer arms wired (T11-D249) ; needs Wave-A2-β cgen-cl op-handlers"]
     fn wave_a5_vec_drop_jit_returns_0() {
         match try_jit_main_returns_i32("wave-a5-vec-drop", WAVE_A5_VEC_DROP) {
             Ok(code) => assert_eq!(code, 0, "expected 0, got {code}"),

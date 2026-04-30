@@ -2200,6 +2200,34 @@ fn lower_call(
                         return Some(result);
                     }
                 }
+                // § T11-D249 (W-A2-α-fix) — `vec_new::<T>()` /
+                //   `vec_push::<T>(v, x)` / `vec_index::<T>(v, i)` recognizer
+                //   arms. Strict guard : the call must be a single-segment
+                //   path matching the canonical fn-name + the expected arity
+                //   AND must carry a turbofish-T (composite-T declines).
+                //   Each recognizer mints a `cssl.vec.*` MIR op the cgen
+                //   layer can dispatch on. See `stdlib/vec.cssl § vec_new /
+                //   vec_push / vec_index` + the W-A8 string-recognizer
+                //   pattern (T11-D245) for the parallel structure.
+                ("vec_new", 0) => {
+                    if let Some(result) = try_lower_vec_new(ctx, type_args, span) {
+                        return Some(result);
+                    }
+                }
+                ("vec_push", 2) => {
+                    if let Some(result) =
+                        try_lower_vec_push(ctx, args, type_args, span)
+                    {
+                        return Some(result);
+                    }
+                }
+                ("vec_index", 2) => {
+                    if let Some(result) =
+                        try_lower_vec_index(ctx, args, type_args, span)
+                    {
+                        return Some(result);
+                    }
+                }
                 _ => {}
             }
         }
@@ -3303,6 +3331,149 @@ fn try_lower_vec_drop(
     // vec_drop returns unit ; mint a fresh-id for the placeholder result.
     let placeholder_id = ctx.fresh_value_id();
     Some((placeholder_id, MirType::None))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D249 (W-A2-α-fix) — `cssl.vec.*` constructor / push / index
+//   recognizer helpers. Mirrors the W-A8 string-recognizer pattern
+//   (T11-D245) : one canonical `MirOp::std("cssl.vec.*")` op per call ;
+//   `payload_ty` attribute carries the monomorphized T so the cgen layer
+//   (`cssl-cgen-cpu-cranelift`) can dispatch on element-kind without
+//   re-parsing op-name. The recognizer DECLINES on missing turbofish or
+//   composite-T so the regular generic-call path takes over (preserving
+//   the panic-stub bodies in `stdlib/vec.cssl` as a safe fallback).
+//
+//   § DESIGN-NOTE
+//     Stage-0 result-type for `vec_new` / `vec_push` is `MirType::Opaque
+//     ("Vec")` — the structural Vec ABI is the same deferred-ABI slice as
+//     Option/Result/String, threaded through `TaggedUnionAbiPass` once it
+//     gains struct-aware sig-rewrite. `vec_index` returns the resolved
+//     element type T (`lower_hir_type_light(type_args[0])`) so downstream
+//     consumers see a typed value. Bounds-checking is emitted as an
+//     `bounds_check="panic"` attribute the cgen layer expands into a
+//     compare + `__cssl_panic` extern call when wired (paired with the
+//     existing `__cssl_panic` symbol from T11-D52, S6-A1).
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower a syntactically-recognized `vec_new::<T>()` call into a
+/// `cssl.vec.new` op. Mirrors the empty-construction shortcut from
+/// `stdlib/vec.cssl § vec_new` — does NOT emit `cssl.heap.alloc` (cap=0).
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %v = cssl.vec.new : !cssl.vec.<T>            // payload_ty=<T>, cap=iso, len=0
+/// ```
+///
+/// Stage-0 result-type is `MirType::Opaque("Vec")` ; the structural ABI
+/// rewrite to `(data, len, cap)` is the same deferred-ABI slice as
+/// Option/Result. Composite payload-T DECLINES — caller falls through to
+/// the regular generic-call path.
+fn try_lower_vec_new(
+    ctx: &mut BodyLowerCtx<'_>,
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    // Resolve payload-T to a primitive cell-kind ; composite / opaque T
+    // declines so the regular generic-call path consumes the call.
+    let elem = resolve_typed_memref_elem(ctx, type_args)?;
+    let payload_ty = elem.to_mir_type();
+
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque("Vec".to_string());
+    ctx.ops.push(
+        MirOp::std("cssl.vec.new")
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("payload_ty", format!("{payload_ty}"))
+            .with_attribute("cap", "iso")
+            .with_attribute("origin", "vec_new")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `vec_push::<T>(v, x)` call into a
+/// `cssl.vec.push` op. Per `stdlib/vec.cssl § vec_push` the push grows
+/// the backing buffer if `len == cap` (2× amortized growth) and writes
+/// `x` to the new last slot.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %v = <lower(args[0])>                            // !cssl.vec.<T>
+///   %x = <lower(args[1])>                            // T value
+///   %v' = cssl.vec.push %v, %x : !cssl.vec.<T>       // payload_ty=<T>
+/// ```
+///
+/// Stage-0 result-type is `MirType::Opaque("Vec")` (return-by-value form
+/// per the stdlib's `Vec<T> -> Vec<T>` signature ; trait-resolved
+/// `&mut self` migration is mechanical once the borrow-flow lands).
+/// Composite payload-T DECLINES.
+fn try_lower_vec_push(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let elem = resolve_typed_memref_elem(ctx, type_args)?;
+    let payload_ty = elem.to_mir_type();
+
+    let (v_id, _v_ty) = lower_call_arg(ctx, &args[0])?;
+    let (x_id, _x_ty) = lower_call_arg(ctx, &args[1])?;
+
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Opaque("Vec".to_string());
+    ctx.ops.push(
+        MirOp::std("cssl.vec.push")
+            .with_operand(v_id)
+            .with_operand(x_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("payload_ty", format!("{payload_ty}"))
+            .with_attribute("origin", "vec_push")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `vec_index::<T>(v, i)` call into a
+/// `cssl.vec.index` op. Per `stdlib/vec.cssl § vec_index` the access
+/// panics through `__cssl_panic` (T11-D52, S6-A1) when `i < 0 ||
+/// i >= v.len`.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %v = <lower(args[0])>                            // !cssl.vec.<T>
+///   %i = <lower(args[1])>                            // i64 index
+///   %r = cssl.vec.index %v, %i : <T>                 // payload_ty=<T>,
+///                                                       bounds_check="panic"
+/// ```
+///
+/// Result type is the resolved element type `T` (via the typed-memref
+/// LUT) so downstream consumers see a typed value. Composite payload-T
+/// DECLINES.
+fn try_lower_vec_index(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    type_args: &[HirType],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let elem = resolve_typed_memref_elem(ctx, type_args)?;
+    let payload_ty = elem.to_mir_type();
+
+    let (v_id, _v_ty) = lower_call_arg(ctx, &args[0])?;
+    let (i_id, _i_ty) = lower_call_arg(ctx, &args[1])?;
+
+    let result_id = ctx.fresh_value_id();
+    let result_ty = payload_ty.clone();
+    ctx.ops.push(
+        MirOp::std("cssl.vec.index")
+            .with_operand(v_id)
+            .with_operand(i_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute("payload_ty", format!("{payload_ty}"))
+            .with_attribute("bounds_check", "panic")
+            .with_attribute("origin", "vec_index")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -7070,6 +7241,223 @@ mod tests {
             !names.iter().any(|n| n == &"cssl.heap.dealloc"),
             "unexpected heap.dealloc for opaque T: {names:?}",
         );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § T11-D249 (W-A2-α-fix) tests — `vec_new::<T>()` / `vec_push::<T>` /
+    //   `vec_index::<T>` recognizer arms. Mirrors the W-B-RECOGNIZER /
+    //   W-A8-string test patterns.
+    // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn vec_new_i32_emits_cssl_vec_new() {
+        // `vec_new::<i32>()` should mint a `cssl.vec.new` op carrying
+        // payload_ty=i32 + origin=vec_new + cap=iso. CRITICAL : MUST NOT
+        // emit `cssl.heap.alloc` (cap=0 invariant — see existing
+        // `lower_vec_empty_constructor_emits_no_heap_alloc` test).
+        let src = r"
+            fn make_empty() -> i64 {
+                let v = vec_new::<i32>();
+                0
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.vec.new"),
+            "expected cssl.vec.new in {names:?}"
+        );
+        // Empty-construction shortcut : no heap allocation.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.heap.alloc"),
+            "vec_new must NOT emit cssl.heap.alloc : {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let new_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.vec.new")
+            .expect("missing cssl.vec.new");
+        let payload_ty = new_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(payload_ty, "i32");
+        let origin = new_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(origin, "vec_new");
+        let cap = new_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "cap")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(cap, "iso");
+    }
+
+    #[test]
+    fn vec_push_i32_emits_cssl_vec_push_with_two_operands() {
+        // `vec_push::<i32>(v, x)` should mint a `cssl.vec.push` op with
+        // 2 operands (v, x) + payload_ty=i32 + origin=vec_push.
+        let src = r"
+            fn append_one(v : i64, x : i32) -> i64 {
+                let v2 = vec_push::<i32>(v, x);
+                0
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.vec.push"),
+            "expected cssl.vec.push in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let push_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.vec.push")
+            .expect("missing cssl.vec.push");
+        // 2 operands : the receiver Vec + the value to append.
+        assert_eq!(
+            push_op.operands.len(),
+            2,
+            "vec_push must have exactly 2 operands : {:?}",
+            push_op.operands,
+        );
+        let payload_ty = push_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(payload_ty, "i32");
+        let origin = push_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(origin, "vec_push");
+    }
+
+    #[test]
+    fn vec_index_i32_emits_cssl_vec_index_with_bounds_check() {
+        // `vec_index::<i32>(v, i)` should mint a `cssl.vec.index` op with
+        // bounds_check="panic" + payload_ty=i32 + origin=vec_index.
+        let src = r"
+            fn read_at(v : i64, i : i64) -> i32 {
+                vec_index::<i32>(v, i)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.vec.index"),
+            "expected cssl.vec.index in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let idx_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.vec.index")
+            .expect("missing cssl.vec.index");
+        // 2 operands : the receiver Vec + the index.
+        assert_eq!(
+            idx_op.operands.len(),
+            2,
+            "vec_index must have exactly 2 operands : {:?}",
+            idx_op.operands,
+        );
+        let payload_ty = idx_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(payload_ty, "i32");
+        let bounds_check = idx_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "bounds_check")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(bounds_check, "panic");
+        let origin = idx_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "origin")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(origin, "vec_index");
+    }
+
+    #[test]
+    fn vec_recognizer_smoke_combo_new_push_index() {
+        // Smoke : the canonical `vec_new + vec_push + vec_index` round-trip
+        // (matches the W-A2 end-to-end fixture
+        // `WAVE_A2_VEC_PUSH_INDEX`). The recognizer chain must claim ALL
+        // three calls (no leakage into func.call).
+        let src = r"
+            fn round_trip() -> i32 {
+                let v0 = vec_new::<i32>();
+                let v1 = vec_push::<i32>(v0, 11);
+                let v2 = vec_push::<i32>(v1, 13);
+                vec_index::<i32>(v2, 1)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.vec.new"),
+            "expected cssl.vec.new in {names:?}"
+        );
+        // Two pushes → two cssl.vec.push ops.
+        let push_count = names.iter().filter(|n| **n == "cssl.vec.push").count();
+        assert_eq!(
+            push_count, 2,
+            "expected exactly 2 cssl.vec.push ops in {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == &"cssl.vec.index"),
+            "expected cssl.vec.index in {names:?}"
+        );
+        // None of these calls should leak into func.call — full recognizer
+        // claim. (other generic-call func.call ops may exist for monomorph
+        // wrappers ; verify by checking the count of unclaimed `vec_*`
+        // callees specifically.)
+        let entry = f.body.entry().expect("entry");
+        let leaked_vec_calls = entry
+            .ops
+            .iter()
+            .filter(|o| o.name == "func.call")
+            .filter(|o| {
+                o.attributes.iter().any(|(k, v)| {
+                    k == "callee"
+                        && (v == "vec_new" || v == "vec_push" || v == "vec_index")
+                })
+            })
+            .count();
+        assert_eq!(
+            leaked_vec_calls, 0,
+            "no vec_* callees should leak into func.call : {names:?}",
+        );
+    }
+
+    #[test]
+    fn vec_new_no_turbofish_falls_through_to_func_call() {
+        // Without `::<T>`, recognizer declines → regular func.call path.
+        let src = r"
+            fn make() -> i64 {
+                let v = vec_new();
+                0
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        // No cssl.vec.new minted without the turbofish.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.vec.new"),
+            "unexpected cssl.vec.new with no turbofish: {names:?}",
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
     }
 
     // ── Smoke tests : combined recognizer-chain integration ──────────────
