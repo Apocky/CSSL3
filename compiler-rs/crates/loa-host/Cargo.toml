@@ -1,0 +1,41 @@
+[package]
+name                   = "loa-host"
+description            = "LoA-v13 host runtime · windowed first-person shell (input + camera + axis-slide collision)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-LOA-HOST-2 (W-LOA-host-input) ─────────────────────────────────
+# This crate is the SHIM Cargo.toml for the loa-host runtime. The sibling
+# slice W-LOA-host-render lands the wgpu+window skeleton and `Camera` +
+# `run_engine()` entry-point ; this slice (host-input) lands :
+#   • src/input.rs     — abstract event capture (WASD + mouse + Esc + F1-F10 + Tab + `)
+#   • src/movement.rs  — camera state update from input deltas
+#   • src/physics.rs   — axis-slide collision + 8-compass-ray proprioception
+#
+# Authoring decision : the input layer is winit-EVENT-shape-COMPATIBLE but
+# does NOT depend on winit directly in this slice. The render-sibling owns
+# the winit dep ; we expose a `RawEvent` enum that captures the shape of
+# winit::event::Event variants we care about. The integration commit can
+# wire winit→RawEvent in a thin adapter (one match-arm per variant).
+#
+# Rationale : SHIM-build-standalone discipline per task-prompt § ASSUMPTION.
+# Adding winit to workspace.dependencies here would require coordinating with
+# the render-sibling's Cargo.toml — race-clean discipline says NO. The shape
+# of winit's Event enum is stable across the 0.29..0.30 line for the variants
+# we touch (KeyboardInput · CursorMoved · MouseMotion · WindowEvent::CloseRequested).
+#
+# Integration commit (post-merge) wires :
+#   loa-host/Cargo.toml ← winit dep added
+#   loa-host/src/input.rs::adapt_winit_event() ← bridges winit::event::Event → RawEvent
+#
+# Tests in this crate use synthetic RawEvent emission ; no winit at test-time.
+
+[dependencies]
+# § cssl-rt provides log_event() · pulled in for telemetry per task-prompt § TELEMETRY
+cssl-rt = { path = "../cssl-rt" }
+
+[lints]
+workspace = true
