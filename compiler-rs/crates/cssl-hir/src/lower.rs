@@ -20,7 +20,7 @@
 use cssl_ast::cst;
 use cssl_ast::{DiagnosticBag, Ident, Module as CstModule, SourceFile, Span};
 
-use crate::arena::{DefId, HirArena, HirId};
+use crate::arena::{AttributionKey, DefId, DefKind, HirArena, HirId};
 use crate::attr::{HirAttr, HirAttrArg, HirAttrKind};
 use crate::expr::{
     HirArrayExpr, HirBinOp, HirBlock, HirCallArg, HirCompoundOp, HirExpr, HirExprKind,
@@ -70,6 +70,20 @@ impl<'a> LowerCtx<'a> {
 
     fn def_id(&mut self) -> DefId {
         self.arena.fresh_def_id()
+    }
+
+    /// Allocate a fresh `DefId` AND record its content-stable attribution-key.
+    /// Lowering call-sites for definition-bearing items must call this so the
+    /// fixed-point gate can fingerprint the module without depending on `Spur`
+    /// numerics — see `arena::AttributionKey` doc-comment.
+    fn def_id_for(&mut self, kind: DefKind, span: Span, name: Ident) -> DefId {
+        self.arena.fresh_def_id_with(AttributionKey::new(
+            kind,
+            span.start,
+            span.end,
+            name.span.start,
+            name.span.end,
+        ))
     }
 
     // ─ Identifier / path interning ──────────────────────────────────────────
@@ -645,7 +659,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_fn(&mut self, f: &cst::FnItem) -> HirFn {
         HirFn {
             span: f.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::Fn, f.span, f.name),
             visibility: Self::lower_visibility(f.visibility),
             attrs: self.lower_attrs(&f.attrs),
             name: self.intern_ident(f.name),
@@ -684,7 +698,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_struct(&mut self, s: &cst::StructItem) -> HirStruct {
         HirStruct {
             span: s.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::Struct, s.span, s.name),
             visibility: Self::lower_visibility(s.visibility),
             attrs: self.lower_attrs(&s.attrs),
             name: self.intern_ident(s.name),
@@ -694,9 +708,10 @@ impl<'a> LowerCtx<'a> {
     }
 
     fn lower_enum(&mut self, e: &cst::EnumItem) -> HirEnum {
+        let def = self.def_id_for(DefKind::Enum, e.span, e.name);
         HirEnum {
             span: e.span,
-            def: self.def_id(),
+            def,
             visibility: Self::lower_visibility(e.visibility),
             attrs: self.lower_attrs(&e.attrs),
             name: self.intern_ident(e.name),
@@ -706,7 +721,7 @@ impl<'a> LowerCtx<'a> {
                 .iter()
                 .map(|v| HirEnumVariant {
                     span: v.span,
-                    def: self.def_id(),
+                    def: self.def_id_for(DefKind::Variant, v.span, v.name),
                     attrs: self.lower_attrs(&v.attrs),
                     name: self.intern_ident(v.name),
                     body: self.lower_struct_body(&v.body),
@@ -716,7 +731,7 @@ impl<'a> LowerCtx<'a> {
     }
 
     fn lower_interface(&mut self, i: &cst::InterfaceItem) -> HirInterface {
-        let def = self.def_id();
+        let def = self.def_id_for(DefKind::Interface, i.span, i.name);
         let mut fns = Vec::new();
         let mut assoc_types = Vec::new();
         let mut consts = Vec::new();
@@ -725,7 +740,7 @@ impl<'a> LowerCtx<'a> {
                 cst::InterfaceAssocItem::Fn(f) => fns.push(self.lower_fn(f)),
                 cst::InterfaceAssocItem::AssociatedType(a) => assoc_types.push(HirAssocTypeDecl {
                     span: a.span,
-                    def: self.def_id(),
+                    def: self.def_id_for(DefKind::AssocTypeDecl, a.span, a.name),
                     attrs: self.lower_attrs(&a.attrs),
                     name: self.intern_ident(a.name),
                     bounds: a.bounds.iter().map(|b| self.lower_type(b)).collect(),
@@ -757,7 +772,7 @@ impl<'a> LowerCtx<'a> {
                 cst::ImplAssocItem::Fn(f) => fns.push(self.lower_fn(f)),
                 cst::ImplAssocItem::AssociatedType(a) => assoc_types.push(HirAssocTypeDef {
                     span: a.span,
-                    def: self.def_id(),
+                    def: self.def_id_for(DefKind::AssocTypeDef, a.span, a.name),
                     attrs: self.lower_attrs(&a.attrs),
                     name: self.intern_ident(a.name),
                     ty: self.lower_type(&a.ty),
@@ -781,7 +796,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_effect_item(&mut self, e: &cst::EffectItem) -> HirEffect {
         HirEffect {
             span: e.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::Effect, e.span, e.name),
             visibility: Self::lower_visibility(e.visibility),
             attrs: self.lower_attrs(&e.attrs),
             name: self.intern_ident(e.name),
@@ -793,7 +808,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_handler(&mut self, h: &cst::HandlerItem) -> HirHandler {
         HirHandler {
             span: h.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::Handler, h.span, h.name),
             visibility: Self::lower_visibility(h.visibility),
             attrs: self.lower_attrs(&h.attrs),
             name: self.intern_ident(h.name),
@@ -809,7 +824,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_type_alias(&mut self, t: &cst::TypeAliasItem) -> HirTypeAlias {
         HirTypeAlias {
             span: t.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::TypeAlias, t.span, t.name),
             visibility: Self::lower_visibility(t.visibility),
             attrs: self.lower_attrs(&t.attrs),
             name: self.intern_ident(t.name),
@@ -872,7 +887,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_const(&mut self, c: &cst::ConstItem) -> HirConst {
         HirConst {
             span: c.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::Const, c.span, c.name),
             visibility: Self::lower_visibility(c.visibility),
             attrs: self.lower_attrs(&c.attrs),
             name: self.intern_ident(c.name),
@@ -884,7 +899,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_nested_module(&mut self, m: &cst::ModuleItem) -> HirNestedModule {
         HirNestedModule {
             span: m.span,
-            def: self.def_id(),
+            def: self.def_id_for(DefKind::Module, m.span, m.name),
             visibility: Self::lower_visibility(m.visibility),
             attrs: self.lower_attrs(&m.attrs),
             name: self.intern_ident(m.name),
@@ -1388,5 +1403,122 @@ mod tests {
         let hir = lex_parse_lower_get_hir("fn wrapper() -> i32 { pair::<i32, f32>(1, 2.0) }");
         let ta = first_call_type_args(&hir).expect("call found");
         assert_eq!(ta.len(), 2, "two turbofish args produce two HIR type-args");
+    }
+
+    // ─ § T11-D287 (W-E5-4) attribution-stability integration tests ───────
+
+    /// § same-source-stable-fingerprint — lowering the same source twice yields
+    /// the same `module_fingerprint`. Guards against any HashMap-iteration leak
+    /// affecting `DefId`-attribution.
+    #[test]
+    fn lower_same_source_stable_fingerprint() {
+        let src = "fn alpha(x : i32) -> i32 { x } \
+                   struct Beta { y : f32 } \
+                   enum Gamma { One, Two(i32) }";
+        let h1 = lex_parse_lower_get_hir(src);
+        let h2 = lex_parse_lower_get_hir(src);
+        assert_eq!(
+            h1.arena.attribution().module_fingerprint(),
+            h2.arena.attribution().module_fingerprint(),
+            "same source must produce identical attribution-fingerprint"
+        );
+    }
+
+    /// § attribution-records-source-position — every item DefId carries an
+    /// `AttributionKey` whose `span_start` matches the item's source span.
+    #[test]
+    fn attribution_records_source_position() {
+        let src = "fn first() -> i32 { 1 } fn second() -> i32 { 2 }";
+        let hir = lex_parse_lower_get_hir(src);
+        for item in &hir.items {
+            if let crate::item::HirItem::Fn(f) = item {
+                let key = hir
+                    .arena
+                    .attribution()
+                    .get(f.def)
+                    .expect("attribution recorded for fn");
+                assert_eq!(
+                    key.span_start, f.span.start,
+                    "attribution span_start must match item span"
+                );
+                assert_eq!(key.kind, crate::arena::DefKind::Fn);
+            }
+        }
+    }
+
+    /// § cross-run-determinism-real-source — lowering two byte-identical source
+    /// strings produces the same DefId → AttributionKey mapping for every
+    /// definition (not just the aggregate fingerprint).
+    #[test]
+    fn cross_run_determinism_real_source() {
+        let src = "fn a() {} fn b() {} struct C {}";
+        let h1 = lex_parse_lower_get_hir(src);
+        let h2 = lex_parse_lower_get_hir(src);
+
+        let attr1: Vec<_> = h1.arena.attribution().iter().collect();
+        let attr2: Vec<_> = h2.arena.attribution().iter().collect();
+        assert_eq!(attr1, attr2, "DefId attribution must match across runs");
+    }
+
+    /// § different-source-different-fingerprint — modifying source SHAPE
+    /// (kind, position, or identifier-length) changes the fingerprint.
+    ///
+    /// § INTENTIONAL CONTRACT : the fingerprint is byte-position-based, NOT
+    /// name-text-based — two items at the same span with same-length names
+    /// produce the same fingerprint by design. That is acceptable for the
+    /// fixed-point gate because the gate ALSO compares the rest of the HIR
+    /// blob, which carries the resolved name-spans for downstream emission.
+    /// This test guards SHAPE-CHANGE detection : if the user adds a new fn,
+    /// changes a struct to an enum, or extends an identifier, the fingerprint
+    /// must change.
+    #[test]
+    fn different_source_different_fingerprint() {
+        // Different ITEM COUNT → different fingerprint (extra fn appended).
+        let src1 = "fn foo() {}";
+        let src2 = "fn foo() {} fn extra() {}";
+        let h1 = lex_parse_lower_get_hir(src1);
+        let h2 = lex_parse_lower_get_hir(src2);
+        assert_ne!(
+            h1.arena.attribution().module_fingerprint(),
+            h2.arena.attribution().module_fingerprint(),
+            "extra item must produce different fingerprint"
+        );
+
+        // Different ITEM KIND at same position → different fingerprint
+        // (struct vs fn) — guards against a kind-misclassification regression.
+        let src_fn = "fn x() -> i32 { 0 }";
+        let src_struct = "struct x { y : i32 }";
+        let hf = lex_parse_lower_get_hir(src_fn);
+        let hs = lex_parse_lower_get_hir(src_struct);
+        assert_ne!(
+            hf.arena.attribution().module_fingerprint(),
+            hs.arena.attribution().module_fingerprint(),
+            "different item-kind must produce different fingerprint"
+        );
+
+        // Different IDENTIFIER LENGTH at same position → different fingerprint.
+        let src_short = "fn ab() {}";
+        let src_long = "fn abcdef() {}";
+        let hsh = lex_parse_lower_get_hir(src_short);
+        let hln = lex_parse_lower_get_hir(src_long);
+        assert_ne!(
+            hsh.arena.attribution().module_fingerprint(),
+            hln.arena.attribution().module_fingerprint(),
+            "different identifier-length must produce different fingerprint"
+        );
+    }
+
+    /// § sorted-canonical-view-matches-source-order — items lowered in source
+    /// order yield a sorted-canonical view that matches the allocation iter.
+    #[test]
+    fn sorted_canonical_view_matches_source_order() {
+        let src = "fn aaa() {} fn bbb() {} fn ccc() {}";
+        let hir = lex_parse_lower_get_hir(src);
+        let alloc_order: Vec<_> = hir.arena.attribution().iter().collect();
+        let canonical = hir.arena.attribution().sorted_by_source_position();
+        assert_eq!(
+            alloc_order, canonical,
+            "in-source-order lowering matches canonical view"
+        );
     }
 }

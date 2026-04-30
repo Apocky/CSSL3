@@ -567,6 +567,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-cgen-spirv"
+version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-effects"
 version = "0.1.0"
 dependencies = [

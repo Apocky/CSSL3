@@ -95,7 +95,7 @@ pub mod exhaustiveness;
 pub use ad_legality::{
     check_ad_legality, is_pure_diff_primitive, AdLegalityDiagnostic, AdLegalityReport,
 };
-pub use arena::{DefId, HirArena, HirId};
+pub use arena::{AttributionKey, DefId, DefIdAttribution, DefKind, HirArena, HirId};
 pub use attr::{
     extract_layout_kinds, extract_layout_kinds_with_unknown, HirAttr, HirAttrArg, HirAttrKind,
     LayoutKind,
