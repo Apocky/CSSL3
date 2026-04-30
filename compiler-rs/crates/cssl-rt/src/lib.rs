@@ -87,6 +87,21 @@
 pub mod alloc;
 pub mod exit;
 pub mod ffi;
+// § Wave-D host-FFI surface (T11-D250 integration commit) — modules
+// authored by W-D1..D8 fanout were committed dormant per race-discipline.
+// This integration commit activates the seven cssl-rt host-* modules ;
+// cssl-cgen-cpu-cranelift's matching cgen_* modules are activated in
+// parallel. Real-backend swaps (cssl-host-vulkan / -d3d12 / -openxr / etc.)
+// are deferred to post-Wave-E backend-binding work — current modules are
+// stub or stdlib-only impls. Each module's `INTEGRATION_NOTE` block
+// documents the swap-points + future cargo-dep additions.
+pub mod host_audio;
+pub mod host_gpu;
+pub mod host_input;
+pub mod host_thread;
+pub mod host_time;
+pub mod host_window;
+pub mod host_xr;
 pub mod io;
 #[cfg(not(target_os = "windows"))]
 pub mod io_unix;
@@ -112,6 +127,66 @@ pub use alloc::{
 pub use exit::{
     abort_count, cssl_abort_impl, cssl_exit_impl, exit_count, last_exit_code, record_abort,
     record_exit, reset_exit_state_for_tests, testable_abort, testable_exit, ExitError,
+};
+// § Wave-D host-FFI re-exports (T11-D250).
+//
+// Avoids name-collisions with `alloc::reset_for_tests` by accessing
+// per-module reset-fns through their module path (see test_helpers
+// below). The re-exported surface here is the ABI-constants + the
+// audit-counter accessors + selected `_impl` helpers callers need
+// at the top-level for ergonomic test-writing.
+pub use host_audio::{
+    audio_caps_current, audio_caps_grant, audio_caps_revoke, audio_error_code, is_valid_format,
+    last_audio_error_kind, reset_audio_for_tests, AUDIO_CAP_DEFAULT, AUDIO_CAP_INPUT,
+    AUDIO_CAP_MASK, AUDIO_CAP_OUTPUT, FMT_F32, FMT_F64, FMT_I16, FMT_I24, FMT_I32, FMT_MAX,
+    FMT_MIN, INVALID_STREAM, MAX_STREAMS, STREAM_EXCLUSIVE, STREAM_FLAG_MASK, STREAM_INPUT,
+    STREAM_NONBLOCK, STREAM_OUTPUT, STREAM_SHARED,
+};
+pub use host_gpu::{
+    pipeline_kind_from_u32, pipeline_kind_to_u32, GpuPipelineKind, GPU_HANDLE_ERROR_SENTINEL,
+    GPU_I32_ERROR_SENTINEL, GPU_I32_OK_SENTINEL, GPU_PIPELINE_IR_LEN_MAX,
+    GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL,
+};
+pub use host_input::{
+    caps_satisfied as input_caps_satisfied, gamepad_read_count, input_error_count,
+    keyboard_read_count, last_input_error, mouse_delta_read_count, mouse_read_count,
+    GAMEPAD_SLOT_COUNT, GAMEPAD_STATE_BYTES, INPUT_CAP_GAMEPAD, INPUT_CAP_KEYBOARD,
+    INPUT_CAP_MASK, INPUT_CAP_MOUSE, INPUT_CAP_MOUSE_DELTA, INPUT_CAP_NONE,
+    INPUT_ERR_BUFFER_TOO_SMALL, INPUT_ERR_CAP_DENIED, INPUT_ERR_DISCONNECTED,
+    INPUT_ERR_INVALID_HANDLE, INPUT_ERR_INVALID_INDEX, INPUT_ERR_NULL_OUT, INPUT_HANDLE_SLOT_COUNT,
+    INPUT_OK, KEYBOARD_STATE_BYTES, MOUSE_STATE_BYTES,
+};
+pub use host_thread::{
+    map_load_ordering, map_ordering, map_store_ordering, ATOMIC_CAS_U64_SYMBOL,
+    ATOMIC_LOAD_U64_SYMBOL, ATOMIC_STORE_U64_SYMBOL, MUTEX_CREATE_SYMBOL, MUTEX_DESTROY_SYMBOL,
+    MUTEX_LOCK_SYMBOL, MUTEX_UNLOCK_SYMBOL, ORDERING_ACQUIRE, ORDERING_ACQ_REL, ORDERING_RELAXED,
+    ORDERING_RELEASE, ORDERING_SEQ_CST, RC_ERR, RC_OK, THREAD_JOIN_SYMBOL, THREAD_SPAWN_SYMBOL,
+};
+pub use host_time::{
+    cssl_time_deadline_until_impl, cssl_time_monotonic_ns_impl, cssl_time_sleep_ns_impl,
+    cssl_time_wall_unix_ns_impl, deadline_count, monotonic_count, reset_time_for_tests,
+    sleep_count, total_sleep_ns, wall_count, TIME_DEADLINE_ALREADY_PAST, TIME_ERR, TIME_OK,
+};
+pub use host_window::{
+    cssl_window_destroy_impl, cssl_window_request_close_impl, destroy_count, pump_count,
+    spawn_count, validate_spawn_flags, EVENT_KIND_CLOSE, EVENT_KIND_DPI_CHANGE,
+    EVENT_KIND_FOCUS_GAIN, EVENT_KIND_FOCUS_LOSS, EVENT_KIND_KEY_DOWN, EVENT_KIND_KEY_UP,
+    EVENT_KIND_MOUSE_DOWN, EVENT_KIND_MOUSE_MOVE, EVENT_KIND_MOUSE_UP, EVENT_KIND_NONE,
+    EVENT_KIND_RESIZE, EVENT_KIND_SCROLL, EVENT_RECORD_SIZE, INVALID_WINDOW_HANDLE,
+    PUMP_ERR_BAD_HANDLE, PUMP_ERR_DESTROYED, PUMP_ERR_NULL_BUF, RAW_HANDLE_MAX_BYTES_WIN32,
+    SPAWN_FLAG_BORDERLESS, SPAWN_FLAG_DPI_AWARE, SPAWN_FLAG_FULLSCREEN, SPAWN_FLAG_MASK,
+    SPAWN_FLAG_RESIZABLE,
+};
+pub use host_xr::{
+    eye_name, input_state_count, last_xr_error_kind, last_xr_error_os, pose_stream_count,
+    record_xr_error, reset_xr_for_tests, session_create_count, session_destroy_count,
+    swapchain_acquire_count, swapchain_release_count, xr_caps_current, xr_caps_grant,
+    xr_caps_revoke, xr_error_code, xr_input_state_impl, xr_pose_stream_impl,
+    xr_session_create_impl, xr_session_destroy_impl, xr_swapchain_stereo_acquire_impl,
+    xr_swapchain_stereo_release_impl, INVALID_XR_HANDLE, XR_CAP_INPUT, XR_CAP_MASK, XR_CAP_NONE,
+    XR_CAP_POSE_CONTROLLER, XR_CAP_POSE_HEAD, XR_CAP_SESSION, XR_CAP_SWAPCHAIN, XR_EYE_COUNT,
+    XR_EYE_LEFT, XR_EYE_RIGHT, XR_INPUT_STATE_BYTES, XR_MAX_SESSIONS, XR_POSE_BYTES,
+    XR_POSE_STREAM_BYTES,
 };
 pub use io::{
     bytes_read_total, bytes_written_total, close_count, io_error_code, last_io_error_kind,
@@ -217,6 +292,21 @@ pub(crate) mod test_helpers {
         crate::runtime::reset_runtime_for_tests();
         crate::io::reset_io_for_tests();
         crate::net::reset_net_for_tests();
+        // § Wave-D host-FFI reset propagation INTENTIONALLY OMITTED here
+        // (T11-D250 integration). Each W-D `host_*` module ships its own
+        // MODULE-LOCAL test Mutex (e.g. `host_time::tests::
+        // HOST_TIME_TEST_LOCK`) and `reset_*_for_tests` routine that
+        // serializes its OWN counters. Adding a
+        // `crate::host_*::reset_*_for_tests()` call here would nuke those
+        // counters concurrently with tests holding the module-local lock
+        // (a flake source confirmed empirically during D250 integration —
+        // `host_time::tests::deadline_in_future_sleeps_and_returns_ok`
+        // observed `total_sleep_ns == 0` mid-sleep when GLOBAL_TEST_LOCK
+        // reset fired in another module's test). Wave-D modules don't
+        // touch alloc/panic/exit/runtime/io/net globals, so the two-lock
+        // regime is correct as-is. If a future cross-module reset becomes
+        // necessary, redesign by having each module expose a single
+        // `lock_and_reset_with_global` that acquires BOTH locks.
         g
     }
 }
@@ -283,3 +373,4 @@ mod crate_tests {
         assert!(arena.is_some());
     }
 }
+

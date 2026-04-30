@@ -338,7 +338,7 @@ impl<'a> EnumTable<'a> {
 /// regardless of whether violations were found ; callers consume the report and
 /// upgrade `E1004` diagnostics to compile-errors.
 #[must_use]
-pub(crate) fn check_exhaustiveness(
+pub fn check_exhaustiveness(
     module: &HirModule,
     interner: &Interner,
 ) -> ExhaustivenessReport {

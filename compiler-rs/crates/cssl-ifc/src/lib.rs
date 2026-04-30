@@ -56,12 +56,20 @@
 
 pub mod domain;
 pub mod egress;
+// § Wave-D7 (T11-D250 integration) — host-FFI sensitive-tag projection.
+// `cssl-rt::host_*` shims call `verify_label` BEFORE any `HostSensitiveTag`-
+// tagged byte crosses an FFI boundary ; `IfcViolation::*` ⇒ `-EPERM` +
+// `{Audit<*>}` event per `specs/11` § AUDIT EFFECT.
+pub mod host_labels;
 pub mod label;
 pub mod labeled;
 pub mod principal;
 
 pub use domain::SensitiveDomain;
 pub use egress::{validate_egress, EgressGrantError, PrivilegeLevel, TelemetryEgress};
+pub use host_labels::{
+    verify_label, HostLabel, HostLabelScope, HostSensitiveTag, IfcViolation, SovereignContext,
+};
 pub use label::{Confidentiality, Integrity, Label};
 pub use labeled::LabeledValue;
 pub use principal::{Principal, PrincipalSet};

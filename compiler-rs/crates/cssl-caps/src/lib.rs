@@ -34,12 +34,21 @@
 
 pub mod cap;
 pub mod genref;
+// § Wave-D7 (T11-D250 integration) — host-domain capability witnesses
+// (Window/Gpu/Input/Audio/Thread/Time/XR). Used by `cssl-rt::host_*` shims
+// to gate `__cssl_<domain>_*` calls at the FFI boundary.
+pub mod host_caps;
 pub mod linearity;
 pub mod matrix;
 pub mod subtype;
 
 pub use cap::{CapKind, CapSet};
 pub use genref::{GenRef, GEN_BITS, GEN_MASK, IDX_BITS, IDX_MASK};
+pub use host_caps::{
+    verify_cap, Audio as AudioMarker, Cap as HostCap, CapDenied, Gpu as GpuMarker, HostCapKind,
+    HostCapMarker, HostCapWitness, Input as InputMarker, Thread as ThreadMarker,
+    Time as TimeMarker, Window as WindowMarker, XR as XRMarker,
+};
 pub use linearity::{LinearTracker, LinearUse, LinearViolation, UseKind};
 pub use matrix::{AliasMatrix, AliasRights, AliasRow};
 pub use subtype::{coerce, is_subtype, Subtype, SubtypeError};

@@ -35,10 +35,19 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod abi;
+// § Wave-D host-FFI cgen surface (T11-D250 integration commit) — Cranelift
+// lowering of MIR `cssl.<host-domain>.*` ops onto the matching cssl-rt
+// `__cssl_<domain>_*` extern symbols. Authored by W-D1..D8 fanout +
+// committed dormant per race-discipline ; this integration commit pairs
+// with the cssl-rt host_* activations to expose the full vertical :
+// MIR → cranelift `call __cssl_<domain>_*` → cssl-rt impl → OS syscall.
+pub mod cgen_audio;
+pub mod cgen_gpu;
 // § Wave-A integration (T11-D239 follow-up) — Cranelift cgen for the new MIR ops.
 // Wave-A1 (f3c2643) tagged-union cgen · Wave-A2 (96b8f65) memref cgen ·
 // Wave-A5 (f5ec1c6) heap-dealloc cgen.
 pub mod cgen_heap_dealloc;
+pub mod cgen_input;
 pub mod cgen_memref;
 // § Wave-C4 (S7-F4 / T11-D82) — net-effect cgen helpers parallel to Wave-C3
 // `cgen_fs`. Maps `cssl.net.*` MIR ops onto `__cssl_net_*` FFI symbols +
@@ -46,6 +55,8 @@ pub mod cgen_memref;
 // pre-scan via the `NetImportSet` bitfield.
 pub mod cgen_net;
 pub mod cgen_tagged_union;
+pub mod cgen_thread;
+pub mod cgen_time;
 // § Wave-A3 cgen integration (b761263) — `cssl.try` lowering helpers reuse
 // the Wave-A1 cgen_tagged_union emit-helpers (emit_tag_load /
 // emit_tag_eq_compare / emit_payload_load) ; pass-pipeline registration
@@ -55,6 +66,8 @@ pub mod cgen_try;
 // for cssl.string.* + str-slice + char ops. Pairs with cssl-mir::string_abi.
 // 4-state UTF-8 DFA validator + format-spec LUT + USV-invariant fast-path.
 pub mod cgen_string;
+pub mod cgen_window;
+pub mod cgen_xr;
 pub mod emit;
 pub mod feature;
 pub mod jit;
