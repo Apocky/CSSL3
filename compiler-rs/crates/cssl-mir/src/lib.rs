@@ -43,6 +43,12 @@ pub mod auto_monomorph;
 pub mod biometric_egress_check;
 pub mod block;
 pub mod body_lower;
+// § T11-D286 (W-E5-3) — runtime cap-verify wire-through pass. Walks every
+// fn carrying `cap_required.<idx>` attrs (HIR cap_check side-table, threaded
+// through `cssl_mir::lower`) and prepends a `cssl.cap.verify` preamble onto
+// the entry block. Cgen lowers each verify-op to `call __cssl_cap_verify`
+// against `cssl-rt::cap_verify`.
+pub mod cap_runtime_check;
 pub mod drop_inject;
 // T11-D285 (W-E5-2) : `{IO}` effect-row plumbing — call-graph validator
 // closing the W-E4 fixed-point gate gap 2/5. Walks every `func.call` op +
@@ -99,6 +105,13 @@ pub use auto_monomorph::{
 };
 pub use block::{MirBlock, MirOp, MirRegion};
 pub use body_lower::{lower_fn_body, lower_fn_body_with_table, BodyLowerCtx};
+pub use cap_runtime_check::{
+    cap_kind_from_attr, cap_kind_index, collect_cap_required_params, count_cap_verify_ops,
+    op_kind_numeric, CapRuntimeCheckPass, OpKindTag, ParamCapEntry, ATTR_CAP_KIND,
+    ATTR_OP_KIND_TAG, ATTR_ORIGIN as CAP_ATTR_ORIGIN, FN_ATTR_CAP_REQUIRED_PREFIX,
+    FN_ATTR_CAP_RUNTIME_INSTALLED, OP_CAP_VERIFY, ORIGIN_FN_ENTRY, TAG_CALL_PASS_PARAM,
+    TAG_FIELD_ACCESS, TAG_FN_ENTRY, TAG_RETURN,
+};
 pub use drop_inject::{inject_drops_for_module, DropInjectionReport, DropOrder, ScopeDropPlan};
 pub use effect_row_check::{
     parse_effect_row, EffectRowValidatorPass, EFFECT_ROW_VALIDATOR_PASS_NAME,

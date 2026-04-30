@@ -234,6 +234,12 @@ impl PassPipeline {
         p.push(Box::new(MonomorphizationPass));
         p.push(Box::new(AdTransformPass));
         p.push(Box::new(IfcLoweringPass));
+        // § T11-D286 (W-E5-3) — runtime cap-verify wire-through. Wired AFTER
+        // monomorphization (so generic placeholders are resolved) +
+        // IfcLoweringPass (so the IFC-lowered call shape is stable), and
+        // BEFORE the SMT/telemetry/biometric-egress passes (so the
+        // cap-preambles are part of the audit-target stream).
+        p.push(Box::new(crate::cap_runtime_check::CapRuntimeCheckPass));
         p.push(Box::new(SmtDischargeQueuePass));
         p.push(Box::new(TelemetryProbeInsertPass));
         // § T11-D285 (W-E5-2) — effect-row validator. Wired BEFORE the
@@ -815,12 +821,15 @@ mod tests {
         // synthesizes inside scf.if failure-arms. Pass-count 11 → 12.
         // T11-D285 (W-E5-2) : `effect-row-validator` joins the canonical set,
         // raising the pass-count from 12 to 13.
+        // T11-D286 (W-E5-3) : `cap-runtime-check` joins the canonical set,
+        // raising the pass-count from 13 to 14.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 13);
+        assert_eq!(names.len(), 14);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
+        assert!(names.contains(&"cap-runtime-check"));
         assert!(names.contains(&"smt-discharge-queue"));
         assert!(names.contains(&"telemetry-probe-insert"));
         assert!(names.contains(&"biometric-egress-check"));
@@ -843,13 +852,14 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 13 stock passes should execute on an empty module without
+        // All 14 stock passes should execute on an empty module without
         // errors. (T11-D138 added enforces-sigma-at-cell-touches ;
         // W-B-RECOGNIZER added tagged-union-abi + try-op-lower ;
         // T11-D245 W-A8 added string-abi ; T11-D282 W-A1-ε added a
         // second tagged-union-abi sweep after try-op-lower ;
-        // T11-D285 W-E5-2 added effect-row-validator.)
-        assert_eq!(results.len(), 13);
+        // T11-D285 W-E5-2 added effect-row-validator ;
+        // T11-D286 W-E5-3 added cap-runtime-check.)
+        assert_eq!(results.len(), 14);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the

@@ -54,6 +54,14 @@
 
 use std::collections::HashMap;
 
+// § T11-D286 (W-E5-3) — wire-protocol constants for the runtime cap-verify
+// surface. The op-name + FFI-symbol must agree byte-for-byte with
+// `cssl-mir::cap_runtime_check::OP_CAP_VERIFY` and
+// `cssl-rt::cap_verify::__cssl_cap_verify`. Renaming either side requires
+// lock-step changes — this constant centralises the cgen-side anchor.
+const CAP_VERIFY_OP_NAME: &str = "cssl.cap.verify";
+const CAP_VERIFY_FFI_SYMBOL: &str = "__cssl_cap_verify";
+
 use cranelift_codegen::ir::types as cl_types;
 use cranelift_codegen::ir::{AbiParam, InstBuilder, Signature, UserFuncName};
 use cranelift_codegen::settings::{self, Configurable};
@@ -707,6 +715,32 @@ impl JitModule {
         let callee_refs = {
             let mut refs: HashMap<String, cranelift_codegen::ir::FuncRef> = HashMap::new();
             if let Some(entry_block) = primal.body.blocks.first() {
+                // § T11-D286 (W-E5-3) — pre-scan for `cssl.cap.verify` ops.
+                // If any are present, declare the `__cssl_cap_verify(u64,
+                // u32) -> u8` extern once + register its FuncRef under the
+                // canonical key `__cssl_cap_verify`. The lowering arm later
+                // looks the FuncRef up by exact name to emit the call.
+                let needs_cap_verify = entry_block
+                    .ops
+                    .iter()
+                    .any(|op| op.name == CAP_VERIFY_OP_NAME);
+                if needs_cap_verify {
+                    let mut cv_sig = Signature::new(call_conv);
+                    cv_sig.params.push(AbiParam::new(cl_types::I64));
+                    cv_sig.params.push(AbiParam::new(cl_types::I32));
+                    cv_sig.returns.push(AbiParam::new(cl_types::I8));
+                    let cv_id = module
+                        .declare_function(CAP_VERIFY_FFI_SYMBOL, Linkage::Import, &cv_sig)
+                        .map_err(|e| JitError::LoweringFailed {
+                            fn_name: primal.name.clone(),
+                            detail: format!(
+                                "declare {CAP_VERIFY_FFI_SYMBOL} : {e}"
+                            ),
+                        })?;
+                    let fref = module
+                        .declare_func_in_func(cv_id, &mut self.codegen_ctx.func);
+                    refs.insert(CAP_VERIFY_FFI_SYMBOL.to_string(), fref);
+                }
                 for op in &entry_block.ops {
                     if op.name == "func.call" {
                         if let Some((_, callee)) = op.attributes.iter().find(|(k, _)| k == "callee")
@@ -1131,6 +1165,19 @@ fn lower_op_to_cl(
         // (StructuredCfgValidator) will reject bare scf.yield at the
         // outer level once it lands.
         "scf.yield" => Ok(false),
+        // § T11-D286 (W-E5-3) — runtime cap-verify wire-through.
+        //   The MIR pass `cap_runtime_check` emits a 3-op preamble onto fn
+        //   entry blocks for every cap-required parameter :
+        //     %h = arith.constant <cap_index>      : i64    // already lowered above
+        //     %k = arith.constant <op_kind=fn_entry> : i32  // already lowered above
+        //     cssl.cap.verify(%h, %k) : i8
+        //   This arm lowers the verify-op into a cranelift `call` against
+        //   the pre-declared `__cssl_cap_verify` FuncRef. The result byte is
+        //   bound into `value_map` (so a future deny-on-zero brif slice can
+        //   consume it). At stage-0 the verify acts as a side-effecting
+        //   defense-in-depth check ; cranelift cannot DCE the call because
+        //   the FFI is opaque.
+        "cssl.cap.verify" => lower_cap_verify(op, builder, value_map, fn_name, callee_refs),
         // § T11-D77 (S6-C5 redo) — closure-construction lowering. Stage-0 JIT :
         //   bind the closure result-id to the env-ptr operand (when
         //   capture_count ≥ 1) or to a typed-zero pointer sentinel. The
@@ -1506,6 +1553,54 @@ fn transcendental_callee_key(callee: &str, ty: &MirType) -> String {
         _ => "f32",
     };
     format!("{callee}#{tag}")
+}
+
+/// § T11-D286 (W-E5-3) — lower `cssl.cap.verify(%h, %k) : i8` into a
+/// cranelift `call __cssl_cap_verify(%h, %k)` invocation. The 2 operands
+/// are typed `(i64, i32)` per the runtime FFI contract ; the result byte
+/// is bound into the `value_map` so a future deny-on-zero brif slice can
+/// extend the lowering to branch into `__cssl_panic`. At stage-0 the call
+/// is treated as a side-effecting check — cranelift's optimizer can NOT
+/// DCE an extern call, so the runtime verification fires unconditionally.
+fn lower_cap_verify(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+) -> Result<bool, JitError> {
+    let (Some(&h_id), Some(&k_id)) = (op.operands.first(), op.operands.get(1)) else {
+        return Err(JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.cap.verify expected 2 operands (cap_handle, op_kind)".to_string(),
+        });
+    };
+    let h = *value_map
+        .get(&h_id)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("cap.verify : unknown operand ValueId({})", h_id.0),
+        })?;
+    let k = *value_map
+        .get(&k_id)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("cap.verify : unknown operand ValueId({})", k_id.0),
+        })?;
+    let func_ref = *callee_refs
+        .get(CAP_VERIFY_FFI_SYMBOL)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "cap.verify : `{CAP_VERIFY_FFI_SYMBOL}` extern not declared (pre-scan bug)"
+            ),
+        })?;
+    let inst = builder.ins().call(func_ref, &[h, k]);
+    let results = builder.inst_results(inst);
+    if let (Some(r), Some(&first_res)) = (op.results.first(), results.first()) {
+        value_map.insert(r.id, first_res);
+    }
+    Ok(false)
 }
 
 /// Lower `arith.select %cond, %t, %f` → cranelift `select cond, t, f`.

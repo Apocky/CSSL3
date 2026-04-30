@@ -158,7 +158,29 @@ pub fn lower_function_signature(ctx: &LowerCtx<'_>, f: &HirFn) -> MirFunc {
             mf.cap = Some(cssl_hir::hir_cap_to_semantic(*cap).to_string());
         }
     }
+    // § T11-D286 (W-E5-3) — propagate per-param cap-info onto fn attributes
+    // so the `cap_runtime_check` MIR pass can emit one runtime verify-op per
+    // cap-required parameter. Attribute key is `cap_required.<param-idx>` ;
+    // value is the cap source-form name (e.g. `"iso"`). Sub-types of the
+    // top-level Capability wrapper are walked one level — nested caps are a
+    // future-slice deferral per the cap_check pass scope.
+    for (idx, p) in f.params.iter().enumerate() {
+        if let HirTypeKind::Capability { cap, .. } = &p.ty.kind {
+            mf.attributes.push((
+                format!("{}{}", cssl_mir_cap_required_prefix(), idx),
+                cssl_hir::hir_cap_to_semantic(*cap).to_string(),
+            ));
+        }
+    }
     mf
+}
+
+/// Helper : the canonical fn-attribute prefix recognized by the
+/// `cap_runtime_check` pass for cap-required parameter threading. Re-exposed
+/// here so signature-lowering can mint matching keys without reaching into
+/// the pass module directly.
+const fn cssl_mir_cap_required_prefix() -> &'static str {
+    crate::cap_runtime_check::FN_ATTR_CAP_REQUIRED_PREFIX
 }
 
 /// Walk a `HirModule` and produce a `MirModule` with one `MirFunc` per `HirFn` item.

@@ -519,6 +519,7 @@ dependencies = [
  "cranelift-native",
  "cranelift-object",
  "cssl-mir",
+ "cssl-rt",
  "thiserror",
 ]
 
@@ -852,6 +853,7 @@ name = "cssl-mir"
 version = "0.1.0"
 dependencies = [
  "cssl-ast",
+ "cssl-caps",
  "cssl-hir",
  "cssl-lex",
  "cssl-parse",

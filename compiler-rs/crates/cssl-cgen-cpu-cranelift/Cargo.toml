@@ -17,5 +17,11 @@ cranelift-jit      = { workspace = true }
 cranelift-native   = { workspace = true }
 cranelift-object   = { workspace = true }
 
+[dev-dependencies]
+# § T11-D286 (W-E5-3) — the cap-verify JIT-integration test in `tests/`
+# loads `__cssl_cap_verify` from cssl-rt's link surface. Dev-dep only ;
+# production builds link cssl-rt at the host-binary level.
+cssl-rt = { path = "../cssl-rt" }
+
 [lints]
 workspace = true
