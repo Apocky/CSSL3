@@ -231,6 +231,16 @@ impl PassPipeline {
         //   tagged-union ABI pass MUST run before the try-op rewriter
         //   because the latter expects the cell-layout the former stamps.
         p.push(Box::new(TaggedUnionAbiPass));
+        // § W-A8 (T11-D245 / Wave-C1 carry-forward) — `cssl.string.*`
+        //   structural-audit pass. Wired AFTER `TaggedUnionAbiPass` (so
+        //   any `cssl.option.*` ops embedded in `cssl.char.from_u32`
+        //   lowerings see the canonical tagged-union shape) + BEFORE
+        //   `TryOpLowerPass` (so the `?`-op rewriter sees the lowered
+        //   `cssl.string.from_utf8` Result-cell op). Audits the body-
+        //   lower string-recognizer output by counting + summary-
+        //   reporting Wave-C1 ops ; the actual cgen path lives in
+        //   `cssl-cgen-cpu-cranelift::cgen_string`.
+        p.push(Box::new(StringAbiPass));
         p.push(Box::new(TryOpLowerPass));
         p.push(Box::new(StructuredCfgValidator));
         p
@@ -503,6 +513,136 @@ impl MirPass for TaggedUnionAbiPass {
     }
 }
 
+/// W-A8 (T11-D245 / Wave-C1 carry-forward) — `cssl.string.*` ABI audit pass.
+///
+/// Walks every fn in the module + counts ops in the Wave-C1 string-ABI
+/// family :
+///   - `cssl.string.from_utf8` / `cssl.string.from_utf8_unchecked`
+///   - `cssl.string.len` / `cssl.string.byte_at` / `cssl.string.slice`
+///   - `cssl.string.format` / `cssl.string.push_str`
+///   - `cssl.str_slice.new` / `cssl.str_slice.len` / `cssl.str_slice.as_bytes`
+///   - `cssl.char.from_u32`
+///
+/// The pass is structural-audit only at this slice : the recognizer arms
+/// in `body_lower::try_lower_string_*` already lower the source-level
+/// stdlib calls into the canonical Wave-C1 op shapes. The audit pass
+/// summarizes the count so downstream consumers (cgen, IFC, telemetry)
+/// can verify wire-protocol coverage without re-walking the module.
+/// Future slices may extend this pass to expand
+/// `cssl.string.from_utf8_unchecked` into the explicit
+/// `cssl.heap.alloc + memref.store + ...` shape ; at this slice the
+/// expansion is delegated to `cssl-cgen-cpu-cranelift::cgen_string`
+/// at codegen time.
+///
+/// § DIAGNOSTIC-CODES
+///   - `STRABI0000` (Info)  — per-pass count summary. Only emitted when
+///     at least one Wave-C1 op is observed.
+///
+/// The `changed` flag is always `false` at this slice — the pass is read-
+/// only. Once the pass starts expanding ops (future slice), the flag flips.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StringAbiPass;
+
+impl MirPass for StringAbiPass {
+    fn name(&self) -> &'static str {
+        "string-abi"
+    }
+
+    fn run(&self, module: &mut MirModule) -> PassResult {
+        // Per-family counters. Walked recursively so ops nested inside
+        // scf.if / scf.for / cssl.region.* are also counted.
+        let mut counts = StringAbiCounts::default();
+        for func in module.funcs.iter() {
+            count_string_abi_ops_in_region(&func.body, &mut counts);
+        }
+        let StringAbiCounts {
+            from_utf8,
+            from_utf8_unchecked,
+            string_len,
+            string_byte_at,
+            string_format,
+            string_push_str,
+            str_slice_new,
+            str_slice_len,
+            str_slice_as_bytes,
+            char_from_u32,
+        } = counts;
+        let total = from_utf8
+            + from_utf8_unchecked
+            + string_len
+            + string_byte_at
+            + string_format
+            + string_push_str
+            + str_slice_new
+            + str_slice_len
+            + str_slice_as_bytes
+            + char_from_u32;
+        let mut diagnostics = Vec::new();
+        if total > 0 {
+            diagnostics.push(PassDiagnostic::info(
+                "STRABI0000",
+                format!(
+                    "string ABI audit : {total} Wave-C1 ops observed \
+                     ({string_len} string.len, {string_byte_at} string.byte_at, \
+                     {from_utf8} string.from_utf8, {from_utf8_unchecked} string.from_utf8_unchecked, \
+                     {string_format} string.format, {string_push_str} string.push_str, \
+                     {str_slice_new} str_slice.new, {str_slice_len} str_slice.len, \
+                     {str_slice_as_bytes} str_slice.as_bytes, {char_from_u32} char.from_u32)",
+                ),
+            ));
+        }
+        PassResult {
+            name: self.name().to_string(),
+            // Read-only audit pass — never mutates ops at this slice.
+            changed: false,
+            diagnostics,
+        }
+    }
+}
+
+/// Per-family Wave-C1 op-counts collected by [`StringAbiPass`].
+#[derive(Debug, Clone, Copy, Default)]
+struct StringAbiCounts {
+    from_utf8: usize,
+    from_utf8_unchecked: usize,
+    string_len: usize,
+    string_byte_at: usize,
+    string_format: usize,
+    string_push_str: usize,
+    str_slice_new: usize,
+    str_slice_len: usize,
+    str_slice_as_bytes: usize,
+    char_from_u32: usize,
+}
+
+/// Walk a `MirRegion` recursively + tally Wave-C1 ops into `counts`.
+///
+/// Recurses into every nested region of every op (so ops inside scf.if
+/// then/else regions and scf.for / scf.while / cssl.region.* bodies are
+/// also counted). The walker is read-only ; matches by canonical op-name.
+fn count_string_abi_ops_in_region(region: &crate::block::MirRegion, counts: &mut StringAbiCounts) {
+    for block in region.blocks.iter() {
+        for op in block.ops.iter() {
+            match op.name.as_str() {
+                "cssl.string.from_utf8" => counts.from_utf8 += 1,
+                "cssl.string.from_utf8_unchecked" => counts.from_utf8_unchecked += 1,
+                "cssl.string.len" => counts.string_len += 1,
+                "cssl.string.byte_at" => counts.string_byte_at += 1,
+                "cssl.string.format" => counts.string_format += 1,
+                "cssl.string.push_str" => counts.string_push_str += 1,
+                "cssl.str_slice.new" => counts.str_slice_new += 1,
+                "cssl.str_slice.len" => counts.str_slice_len += 1,
+                "cssl.str_slice.as_bytes" => counts.str_slice_as_bytes += 1,
+                "cssl.char.from_u32" => counts.char_from_u32 += 1,
+                _ => {}
+            }
+            for nested in op.regions.iter() {
+                count_string_abi_ops_in_region(nested, counts);
+            }
+        }
+    }
+}
+
 /// W-B-RECOGNIZER (Wave-A3) — `?`-operator MIR-rewrite pass.
 ///
 /// Wraps [`crate::try_op_lower::lower_try_ops_in_module`] in the `MirPass`
@@ -635,9 +775,11 @@ mod tests {
         // canonical set, raising the pass-count to 8.
         // W-B-RECOGNIZER : `tagged-union-abi` + `try-op-lower` join the
         // canonical set, raising the pass-count from 8 to 10.
+        // T11-D245 (W-A8 / Wave-C1 carry-forward) : `string-abi` joins the
+        // canonical set, raising the pass-count from 10 to 11.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 10);
+        assert_eq!(names.len(), 11);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
@@ -646,6 +788,7 @@ mod tests {
         assert!(names.contains(&"biometric-egress-check"));
         assert!(names.contains(&"enforces-sigma-at-cell-touches"));
         assert!(names.contains(&"tagged-union-abi"));
+        assert!(names.contains(&"string-abi"));
         assert!(names.contains(&"try-op-lower"));
         assert!(names.contains(&"structured-cfg-validator"));
     }
@@ -655,10 +798,11 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 10 stock passes should execute on an empty module without
+        // All 11 stock passes should execute on an empty module without
         // errors. (T11-D138 added enforces-sigma-at-cell-touches ;
-        // W-B-RECOGNIZER added tagged-union-abi + try-op-lower.)
-        assert_eq!(results.len(), 10);
+        // W-B-RECOGNIZER added tagged-union-abi + try-op-lower ;
+        // T11-D245 W-A8 added string-abi.)
+        assert_eq!(results.len(), 11);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the
@@ -757,7 +901,7 @@ mod tests {
     //   Wave-A3 (TryOpLowerPass) MirPass-impls.
     // ═════════════════════════════════════════════════════════════════════
 
-    use super::{TaggedUnionAbiPass, TryOpLowerPass};
+    use super::{StringAbiPass, TaggedUnionAbiPass, TryOpLowerPass};
 
     #[test]
     fn tagged_union_abi_pass_name() {
@@ -813,6 +957,94 @@ mod tests {
         for d in &r.diagnostics {
             assert!(d.code.starts_with("TRY"), "unexpected code: {}", d.code);
         }
+    }
+
+    // ── T11-D245 (W-A8 / Wave-C1 carry-forward) — `string-abi` pass tests ─
+
+    #[test]
+    fn string_abi_pass_name() {
+        assert_eq!(StringAbiPass.name(), "string-abi");
+    }
+
+    #[test]
+    fn string_abi_empty_module_no_change() {
+        // Empty module : no Wave-C1 ops to count → changed=false +
+        // no diagnostics emitted (audit-only pass).
+        let mut module = MirModule::new();
+        let r = StringAbiPass.run(&mut module);
+        assert_eq!(r.name, "string-abi");
+        assert!(!r.changed, "empty module should not report changed=true");
+        assert!(
+            r.diagnostics.is_empty(),
+            "diagnostics on empty: {:?}",
+            r.diagnostics
+        );
+        assert!(!r.has_errors());
+    }
+
+    #[test]
+    fn string_abi_counts_recognized_ops() {
+        // Build a module containing one of each Wave-C1 op kind
+        // (synthesized inline). The audit-pass should count exactly those
+        // ops + emit a STRABI0000 Info-diagnostic.
+        use crate::block::MirOp;
+        use crate::value::{IntWidth, MirType, ValueId};
+        let mut module = MirModule::new();
+        let mut f = MirFunc::new("string_caller", vec![], vec![]);
+        if let Some(entry) = f.body.entry_mut() {
+            entry.push(
+                MirOp::std("cssl.string.len")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), MirType::Int(IntWidth::I64)),
+            );
+            entry.push(
+                MirOp::std("cssl.str_slice.len")
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Int(IntWidth::I64)),
+            );
+            entry.push(
+                MirOp::std("cssl.char.from_u32")
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), MirType::Ptr),
+            );
+            entry.push(
+                MirOp::std("cssl.string.byte_at")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(4), MirType::Int(IntWidth::I32)),
+            );
+        }
+        module.push_func(f);
+        let r = StringAbiPass.run(&mut module);
+        assert!(!r.changed, "audit-only pass must not mutate ops");
+        assert_eq!(r.diagnostics.len(), 1);
+        assert_eq!(r.diagnostics[0].code, "STRABI0000");
+        assert!(r.diagnostics[0].message.contains("4 Wave-C1 ops observed"));
+    }
+
+    #[test]
+    fn string_abi_runs_after_tagged_union_in_canonical() {
+        // Per the W-A8 module-doc § DESIGN, `string-abi` MUST run AFTER
+        // `tagged-union-abi` (so embedded Option<char> ops in
+        // `cssl.char.from_u32` lowerings see the canonical Wave-A1 cell
+        // shape) and BEFORE `try-op-lower` (so `?` on `string_from_utf8`'s
+        // Result is rewritten with the lowered op-stream visible).
+        let p = PassPipeline::canonical();
+        let names: Vec<&str> = p.names().collect();
+        let abi_idx = names
+            .iter()
+            .position(|n| *n == "tagged-union-abi")
+            .expect("tagged-union-abi");
+        let str_idx = names
+            .iter()
+            .position(|n| *n == "string-abi")
+            .expect("string-abi");
+        let try_idx = names
+            .iter()
+            .position(|n| *n == "try-op-lower")
+            .expect("try-op-lower");
+        assert!(abi_idx < str_idx, "string-abi must follow tagged-union-abi");
+        assert!(str_idx < try_idx, "string-abi must precede try-op-lower");
     }
 
     #[test]

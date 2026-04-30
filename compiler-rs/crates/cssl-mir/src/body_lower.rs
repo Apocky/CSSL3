@@ -2225,6 +2225,91 @@ fn lower_call(
             }
         }
     }
+    // § T11-D245 (W-A8 / Wave-C1 carry-forward) — `cssl.string.*` stdlib
+    //   recognizer arms. Strict guard : the call must be a single-segment
+    //   path matching one of the canonical stdlib string fn-names + the
+    //   expected arity. Each recognizer mints the post-Wave-C1 MIR op shape
+    //   via `crate::string_abi::build_*` ; the cgen layer
+    //   (`cssl-cgen-cpu-cranelift::cgen_string`) consumes those ops to emit
+    //   real Cranelift IR. See `specs/40_WAVE_CSSL_PLAN.csl § WAVE-C § C1` +
+    //   `stdlib/string.cssl`.
+    //
+    //   ‼ Branch-friendly ordering : `string_len` / `str_len` (most-frequent
+    //   inspector ops) fire first, then constructors (`string_from_utf8` /
+    //   `string_from_utf8_unchecked`), then mutators (`string_push_str`),
+    //   then borrow / coerce (`string_as_str`), then char-USV
+    //   (`char_from_u32`). The recognizer chain short-circuits on first
+    //   match.
+    //
+    //   § CANONICAL-SURFACE  (matches stdlib/string.cssl 1-segment fn-names)
+    //     - `string_len(s) -> i64`              → cssl.string.len
+    //     - `str_len(s) -> i64`                 → cssl.str_slice.len
+    //     - `string_from_utf8(bytes) -> R<S,E>` → cssl.string.from_utf8
+    //     - `string_from_utf8_unchecked(b) -> S`→ cssl.string.from_utf8_unchecked
+    //     - `string_push_str(s, slice) -> S`    → cssl.string.push_str
+    //     - `string_as_str(s) -> StrSlice`      → cssl.str_slice.new (from String)
+    //     - `string_byte_at(s, i) -> i32`       → cssl.string.byte_at
+    //     - `str_as_bytes(slice) -> i64`        → cssl.str_slice.as_bytes
+    //     - `char_from_u32(code) -> Option<i32>`→ cssl.char.from_u32
+    //
+    //   § DECLINE-ON-MISMATCH : if arity doesn't match, the arm declines
+    //     and the regular generic-call path takes over (preserving the
+    //     placeholder body in stdlib/string.cssl as a fallback).
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 1 {
+            let name = ctx.interner.resolve(segments[0]);
+            match (name.as_str(), args.len()) {
+                ("string_len", 1) => {
+                    if let Some(result) = try_lower_string_len(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("str_len", 1) => {
+                    if let Some(result) = try_lower_str_slice_len(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("string_from_utf8", 1) => {
+                    if let Some(result) = try_lower_string_from_utf8(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("string_from_utf8_unchecked", 1) => {
+                    if let Some(result) =
+                        try_lower_string_from_utf8_unchecked(ctx, args, span)
+                    {
+                        return Some(result);
+                    }
+                }
+                ("string_push_str", 2) => {
+                    if let Some(result) = try_lower_string_push_str(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("string_as_str", 1) => {
+                    if let Some(result) = try_lower_string_as_str(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("string_byte_at", 2) => {
+                    if let Some(result) = try_lower_string_byte_at(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("str_as_bytes", 1) => {
+                    if let Some(result) = try_lower_str_slice_as_bytes(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("char_from_u32", 1) => {
+                    if let Some(result) = try_lower_char_from_u32(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     // § T11-D76 (S6-B5) — `fs::open` / `fs::read` / `fs::write` /
     //   `fs::close` syntactic recognition. Strict guard : the callee must
     //   be a 2-segment path with first segment `fs` ; the second segment
@@ -3357,6 +3442,325 @@ fn count_format_specifiers(fmt: &str) -> usize {
         i += 1;
     }
     count
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D245 (W-A8 / Wave-C1 carry-forward) — `cssl.string.*` stdlib
+//   recognizer helpers. Each `try_lower_string_*` mints the post-Wave-C1
+//   MIR op shape via `crate::string_abi::build_*`. The cgen layer
+//   `cssl-cgen-cpu-cranelift::cgen_string` consumes those ops to emit
+//   real Cranelift IR. Mirrors the Vec / fs / net recognizer-helper
+//   pattern : each helper :
+//     1. lowers each arg via `lower_call_arg`,
+//     2. mints a fresh result-id via `ctx.fresh_value_id()`,
+//     3. attaches `source_loc` for diagnostics,
+//     4. returns `(result_id, result_ty)` on success / `None` on decline.
+//
+//   The helpers reuse `string_abi::build_*` for the canonical op-name +
+//   attribute set so the cgen-side dispatch (which keys off op-name
+//   prefix) stays in lock-step.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower a syntactically-recognized `string_len(s) -> i64` call into a
+/// `cssl.string.len` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %s_id = <lower(args[0])>                          // !cssl.string
+///   %len  = cssl.string.len %s_id : i64               // field=len, offset=8
+/// ```
+fn try_lower_string_len(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _s_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::string_abi::build_string_len(s_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, MirType::Int(IntWidth::I64)))
+}
+
+/// Lower a syntactically-recognized `str_len(slice) -> i64` call into a
+/// `cssl.str_slice.len` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %sl_id = <lower(args[0])>                         // !cssl.str_slice
+///   %len   = cssl.str_slice.len %sl_id : i64          // field=len, offset=8
+/// ```
+fn try_lower_str_slice_len(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (sl_id, _sl_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::string_abi::build_str_slice_len(sl_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, MirType::Int(IntWidth::I64)))
+}
+
+/// Lower a syntactically-recognized `string_from_utf8(bytes) ->
+/// Result<String, FromUtf8Error>` call into a `cssl.string.from_utf8` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %b_id      = <lower(args[0])>                       // !cssl.struct.Vec<u8>
+///   %data      = cssl.field %b_id, "data" : i64         // bytes_ptr
+///   %len       = cssl.field %b_id, "len"  : i64         // bytes_len
+///   %result    = cssl.string.from_utf8 %data, %len : !cssl.ptr
+///                                                       // validate_symbol="__cssl_strvalidate"
+/// ```
+///
+/// Result type is `MirType::Ptr` — the Result<String, FromUtf8Error>
+/// tagged-union cell (Wave-A1 layout). The cgen lowering emits the
+/// runtime UTF-8-validation extern call + Result construction.
+fn try_lower_string_from_utf8(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (bytes_id, _bytes_ty) = lower_call_arg(ctx, &args[0])?;
+    // Read bytes.data + bytes.len via `cssl.field` ops (matches the
+    // Vec.data / Vec.len access pattern from `try_lower_vec_drop`).
+    let data_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(bytes_id)
+            .with_result(data_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "data")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let len_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(bytes_id)
+            .with_result(len_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "len")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Ptr;
+    let mut op = crate::string_abi::build_string_from_utf8(data_id, len_id);
+    op = op
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `string_from_utf8_unchecked(bytes) ->
+/// String` call into a `cssl.string.from_utf8_unchecked` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %b_id   = <lower(args[0])>                          // !cssl.struct.Vec<u8>
+///   %data   = cssl.field %b_id, "data" : i64
+///   %len    = cssl.field %b_id, "len"  : i64
+///   %result = cssl.string.from_utf8_unchecked %data, %len : !cssl.ptr
+///                                                       // total_size=24, alignment=8
+/// ```
+///
+/// ‼ SAFETY (carried forward from stdlib/string.cssl) : caller guarantees
+///   the bytes are valid UTF-8. The compiler does NOT check ; the cgen
+///   lowering emits the heap-alloc + memcpy + triple-write fast-path
+///   without the `__cssl_strvalidate` call.
+fn try_lower_string_from_utf8_unchecked(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (bytes_id, _bytes_ty) = lower_call_arg(ctx, &args[0])?;
+    let data_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(bytes_id)
+            .with_result(data_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "data")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let len_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(bytes_id)
+            .with_result(len_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "len")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Ptr;
+    let mut op = crate::string_abi::build_string_from_utf8_unchecked(data_id, len_id);
+    op = op
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `string_push_str(s, slice) -> String`
+/// call into a `cssl.string.push_str` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %s_id    = <lower(args[0])>                         // !cssl.string
+///   %sl_id   = <lower(args[1])>                         // !cssl.str_slice
+///   %result  = cssl.string.push_str %s_id, %sl_id : !cssl.ptr
+///                                                       // op="push_str"
+/// ```
+///
+/// Stage-0 result-type is `!cssl.ptr` — the cgen lowering emits the
+/// canonical Vec-extend + len-update sequence and the result is a fresh
+/// String triple cell. A follow-up slice replaces the opaque tag with
+/// the structural `String { data, len, cap }` once `MirType::String`
+/// lands.
+fn try_lower_string_push_str(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _s_ty) = lower_call_arg(ctx, &args[0])?;
+    let (sl_id, _sl_ty) = lower_call_arg(ctx, &args[1])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Ptr;
+    let layout = crate::string_abi::StringLayout::canonical();
+    ctx.ops.push(
+        MirOp::std("cssl.string.push_str")
+            .with_operand(s_id)
+            .with_operand(sl_id)
+            .with_result(result_id, result_ty.clone())
+            .with_attribute(
+                crate::string_abi::ATTR_SOURCE_KIND,
+                crate::string_abi::SOURCE_KIND_STRING_ABI,
+            )
+            .with_attribute("op", "push_str")
+            .with_attribute("total_size", layout.total_size.to_string())
+            .with_attribute(
+                crate::string_abi::ATTR_ALIGNMENT,
+                layout.alignment.to_string(),
+            )
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `string_as_str(s) -> StrSlice` call
+/// into a `cssl.str_slice.new(data, len)` op pair (preceded by `data` +
+/// `len` field-loads on the source `String`).
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %s_id    = <lower(args[0])>                         // !cssl.string
+///   %data    = cssl.field %s_id, "data" : i64           // String.data
+///   %len     = cssl.field %s_id, "len"  : i64           // String.len
+///   %result  = cssl.str_slice.new %data, %len : !cssl.ptr
+///                                                       // total_size=16, alignment=8
+/// ```
+fn try_lower_string_as_str(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _s_ty) = lower_call_arg(ctx, &args[0])?;
+    // Load String.data (host byte ptr).
+    let data_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(s_id)
+            .with_result(data_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "data")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    // Load String.len (byte count).
+    let len_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("cssl.field")
+            .with_operand(s_id)
+            .with_result(len_id, MirType::Int(IntWidth::I64))
+            .with_attribute("field", "len")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Ptr;
+    let mut op = crate::string_abi::build_str_slice_new(data_id, len_id);
+    op = op
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower a syntactically-recognized `string_byte_at(s, i) -> i32` call
+/// into a `cssl.string.byte_at` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %s_id   = <lower(args[0])>                          // !cssl.string
+///   %i_id   = <lower(args[1])>                          // i64
+///   %byte   = cssl.string.byte_at %s_id, %i_id : i32    // field=data, offset=0
+/// ```
+fn try_lower_string_byte_at(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (s_id, _s_ty) = lower_call_arg(ctx, &args[0])?;
+    let (i_id, _i_ty) = lower_call_arg(ctx, &args[1])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::string_abi::build_string_byte_at(s_id, i_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, MirType::Int(IntWidth::I32)))
+}
+
+/// Lower a syntactically-recognized `str_as_bytes(slice) -> i64` call
+/// into a `cssl.str_slice.as_bytes` op.
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %sl_id = <lower(args[0])>                           // !cssl.str_slice
+///   %ptr   = cssl.str_slice.as_bytes %sl_id : i64       // field=ptr, offset=0
+/// ```
+fn try_lower_str_slice_as_bytes(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (sl_id, _sl_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::string_abi::build_str_slice_as_bytes(sl_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, MirType::Int(IntWidth::I64)))
+}
+
+/// Lower a syntactically-recognized `char_from_u32(code) -> Option<char>`
+/// call into a `cssl.char.from_u32` op (with a 5-cmp USV-invariant check
+/// + Wave-A1 Option-construction at cgen time).
+///
+/// § EMITTED-SHAPE
+/// ```text
+///   %code   = <lower(args[0])>                          // i64
+///   %option = cssl.char.from_u32 %code : !cssl.ptr      // tagged Option<i32>
+///                                                       // usv_max_bmp / usv_max attrs
+/// ```
+///
+/// Result-type is `MirType::Ptr` — the Option<char> tagged-union cell
+/// (Wave-A1 layout, `!cssl.option.i32`).
+fn try_lower_char_from_u32(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (code_id, _code_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let result_ty = MirType::Ptr;
+    let mut op = crate::string_abi::build_char_from_u32(code_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -6701,5 +7105,350 @@ mod tests {
         let names = op_names(&f);
         assert!(names.iter().any(|n| n == &"memref.load.i32"));
         assert!(names.iter().any(|n| n == &"memref.store.i32"));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § T11-D245 (W-A8 / Wave-C1 carry-forward) — `cssl.string.*` recognizer
+    //   tests. Each recognizer-claim test verifies :
+    //     1. The expected `cssl.string.*` / `cssl.str_slice.*` /
+    //        `cssl.char.from_u32` op shows up in the lowered ops.
+    //     2. The op carries the canonical attribute set
+    //        (source_kind / op / field / total_size / alignment).
+    //     3. The fall-back path (wrong arity / multi-segment shadow) still
+    //        routes through the regular func.call op.
+    //
+    //   The stdlib types (`String`, `StrSlice`) are declared inline in each
+    //   test source so the body_lower test scaffold doesn't need to load
+    //   the full `stdlib/string.cssl` ; the leading-segment of the
+    //   declared struct is what the recognizer claims via 1-segment-path
+    //   match, NOT the type-system shape (which lower_call_arg threads
+    //   through opaquely at this stage-0 layer).
+    // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn string_len_emits_cssl_string_len() {
+        // `string_len(s)` should mint a `cssl.string.len` op carrying the
+        // canonical `field=len, offset=8` attributes.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            fn measure(s : String) -> i64 {
+                string_len(s)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.string.len"),
+            "expected cssl.string.len in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let len_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.len")
+            .expect("missing cssl.string.len");
+        let field = len_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "field")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(field, "len");
+        let offset = len_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "offset")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(offset, "8");
+    }
+
+    #[test]
+    fn str_len_emits_cssl_str_slice_len() {
+        // `str_len(slice)` should mint a `cssl.str_slice.len` op.
+        let src = r"
+            struct StrSlice { ptr : i64, len : i64 }
+            fn measure_slice(s : StrSlice) -> i64 {
+                str_len(s)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.str_slice.len"),
+            "expected cssl.str_slice.len in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.str_slice.len")
+            .expect("missing cssl.str_slice.len");
+        let field = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "field")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(field, "len");
+    }
+
+    #[test]
+    fn string_from_utf8_unchecked_emits_cssl_string_from_utf8_unchecked() {
+        // `string_from_utf8_unchecked(bytes)` should mint a
+        // `cssl.string.from_utf8_unchecked` op (preceded by data + len
+        // field-loads on the source Vec<u8>).
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            fn unchecked(b : Vec<u8>) -> i64 {
+                string_from_utf8_unchecked(b)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.string.from_utf8_unchecked"),
+            "expected cssl.string.from_utf8_unchecked in {names:?}"
+        );
+        // Must also load b.data + b.len via cssl.field ops.
+        let field_count = names.iter().filter(|n| **n == "cssl.field").count();
+        assert!(
+            field_count >= 2,
+            "expected ≥ 2 cssl.field ops (data + len) in {names:?}",
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.from_utf8_unchecked")
+            .expect("missing cssl.string.from_utf8_unchecked");
+        let total_size = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "total_size")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(total_size, "24");
+    }
+
+    #[test]
+    fn string_from_utf8_emits_validate_op() {
+        // `string_from_utf8(bytes)` should mint a `cssl.string.from_utf8`
+        // op carrying the `validate_symbol="__cssl_strvalidate"` attribute.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            fn checked(b : Vec<u8>) -> i64 {
+                string_from_utf8(b)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.string.from_utf8"),
+            "expected cssl.string.from_utf8 in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.from_utf8")
+            .expect("missing cssl.string.from_utf8");
+        let validate_symbol = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "validate_symbol")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(validate_symbol, "__cssl_strvalidate");
+    }
+
+    #[test]
+    fn string_push_str_emits_cssl_string_push_str() {
+        // `string_push_str(s, slice)` should mint a `cssl.string.push_str` op.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            struct StrSlice { ptr : i64, len : i64 }
+            fn append(s : String, sl : StrSlice) -> i64 {
+                string_push_str(s, sl)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.string.push_str"),
+            "expected cssl.string.push_str in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.push_str")
+            .expect("missing cssl.string.push_str");
+        // Must carry exactly 2 operands : the string + the slice.
+        assert_eq!(op.operands.len(), 2);
+        let kind = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "source_kind")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(kind, "string_abi");
+    }
+
+    #[test]
+    fn string_as_str_emits_cssl_str_slice_new() {
+        // `string_as_str(s)` should mint two `cssl.field` ops (data + len)
+        // and one `cssl.str_slice.new`.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            fn borrow(s : String) -> i64 {
+                string_as_str(s)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.str_slice.new"),
+            "expected cssl.str_slice.new in {names:?}"
+        );
+        let field_count = names.iter().filter(|n| **n == "cssl.field").count();
+        assert!(
+            field_count >= 2,
+            "expected ≥ 2 cssl.field ops (data + len) in {names:?}",
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.str_slice.new")
+            .expect("missing cssl.str_slice.new");
+        let total_size = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "total_size")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(total_size, "16");
+    }
+
+    #[test]
+    fn char_from_u32_emits_cssl_char_from_u32() {
+        // `char_from_u32(code)` should mint a `cssl.char.from_u32` op
+        // carrying the USV-range constants as attributes.
+        let src = r"
+            fn check(code : i64) -> i64 {
+                char_from_u32(code)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.char.from_u32"),
+            "expected cssl.char.from_u32 in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.char.from_u32")
+            .expect("missing cssl.char.from_u32");
+        // Must carry the canonical USV-range constants for the cgen DFA.
+        let usv_max = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "usv_max")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(usv_max, "1114111");
+        let usv_max_bmp = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "usv_max_bmp")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(usv_max_bmp, "55295");
+    }
+
+    #[test]
+    fn string_byte_at_emits_cssl_string_byte_at() {
+        // `string_byte_at(s, i)` should mint a `cssl.string.byte_at` op.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            fn at(s : String, i : i64) -> i32 {
+                string_byte_at(s, i)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.string.byte_at"),
+            "expected cssl.string.byte_at in {names:?}"
+        );
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.string.byte_at")
+            .expect("missing cssl.string.byte_at");
+        let field = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "field")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(field, "data");
+    }
+
+    #[test]
+    fn string_len_wrong_arity_falls_through_to_func_call() {
+        // `string_len(a, b)` (2 args, not 1) → recognizer declines → func.call.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            fn measure(s : String, t : String) -> i64 {
+                string_len(s, t)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        // Wrong arity → recognizer must NOT claim ; falls through to func.call.
+        assert!(
+            !names.iter().any(|n| n == &"cssl.string.len"),
+            "unexpected cssl.string.len with wrong arity: {names:?}"
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
+    }
+
+    #[test]
+    fn string_len_multi_segment_path_falls_through() {
+        // `foo::string_len(s)` (2-segment path) → recognizer requires
+        // 1-segment path, so it declines → regular func.call.
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            fn measure(s : String) -> i64 {
+                foo::string_len(s)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            !names.iter().any(|n| n == &"cssl.string.len"),
+            "unexpected cssl.string.len from multi-segment path: {names:?}"
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
+    }
+
+    #[test]
+    fn string_recognizer_smoke_combo() {
+        // Smoke : multiple string ops in same fn body. The recognizer chain
+        // must claim ALL three calls (no leakage into func.call).
+        let src = r"
+            struct Vec<T> { data : i64, len : i64, cap : i64 }
+            struct String { bytes : Vec<u8> }
+            fn combo(s : String, code : i64) -> i64 {
+                let n = string_len(s);
+                let opt = char_from_u32(code);
+                n
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(names.iter().any(|n| n == &"cssl.string.len"));
+        assert!(names.iter().any(|n| n == &"cssl.char.from_u32"));
     }
 }
