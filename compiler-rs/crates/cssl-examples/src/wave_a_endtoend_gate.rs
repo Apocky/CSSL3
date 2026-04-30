@@ -428,23 +428,30 @@ mod tests {
         assert!(out.has_mir_fn("parse_ok"), "{}", out.summary());
     }
 
-    /// W-A1 (tagged-union ABI) JIT-execute. T11-D248 / W-A1-α-fix
-    /// extended `TaggedUnionAbiPass` to rewrite fn-signatures alongside
-    /// body-ops : every `Option<T>` / `Result<T,E>` slot in params +
-    /// returns + entry-block-args is lowered to `MirType::Ptr` so the
-    /// JIT's `mir_to_cl_type` accepts the post-rewrite signature. The
-    /// pass is idempotent via the `tagged_union_abi.sig_rewritten=true`
-    /// stamp attribute. The same fix added a `MirType::Ptr` arm to the
-    /// JIT's `mir_to_cl_type` so the rewritten signatures lower to
-    /// `cl_types::I64` (host pointer width). The remaining gap is the
-    /// JIT body-cgen for the post-rewrite `cssl.heap.alloc` +
-    /// `arith.bitcast` op shapes ; the cgen-cl crate has these in
-    /// `cgen_tagged_union` but `jit::lower_op_to_cl` doesn't yet
-    /// dispatch to them, so end-to-end JIT execution fails on the
-    /// FIRST construct-op encountered. Tracked as Wave-A1-β follow-up
-    /// (parallel to the Wave-A2-β / cgen-cl-vec-op gap).
+    /// W-A1 (tagged-union ABI) JIT-execute. T11-D263 / W-A1-β closed
+    /// half-1 : `lower_op_to_cl` now dispatches `cssl.heap.alloc` to a
+    /// real `__cssl_alloc(bytes, align)` call (cssl-rt symbols registered
+    /// on the JITBuilder) + `arith.bitcast` to a value-map alias for
+    /// the tagged-union construct-result path + the `JitModule.compile`
+    /// surface resets `builder_ctx` on Err so failed compiles don't
+    /// leak state into the next call. T11-D263 also extended `lower_cmpi`
+    /// to accept the body_lower-emitted suffixed shape
+    /// `arith.cmpi_<pred>`. End-to-end coverage for these wiring slices
+    /// lands in `cssl-cgen-cpu-cranelift::jit::tests` (4 hand-built MIR
+    /// fixtures — `heap_alloc_jit_returns_nonzero_pointer`,
+    /// `arith_bitcast_jit_aliases_pointer_value`,
+    /// `failed_compile_does_not_leak_builder_ctx`,
+    /// `heap_alloc_then_dealloc_roundtrip`).
+    ///
+    /// Source-driven JIT-execute remains gated : the source `match` arm
+    /// lowers to a `scf.match` MirOp with no MatchExpansionPass yet to
+    /// fold it into a `scf.if`-cascade against the loaded tag. The
+    /// cascade-builder `cssl_mir::tagged_union_abi::build_match_dispatch_cascade`
+    /// already exists ; W-A1-γ is the pipeline-pass that walks every
+    /// `scf.match` op against a tagged-union scrutinee and rewrites it
+    /// in place using that helper.
     #[test]
-    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
+    #[ignore = "BUG-FOUND: W-A1-β closed (T11-D263 wired heap.alloc + bitcast + state-leak + cmpi-suffix) ; W-A1-γ pending : MatchExpansionPass to fold scf.match → scf.if-cascade"]
     fn wave_a1_option_some_jit_returns_42() {
         match try_jit_main_returns_i32("wave-a1-option-some", WAVE_A1_OPTION_SOME) {
             Ok(code) => assert_eq!(code, 42, "expected 42, got {code}"),
@@ -453,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
+    #[ignore = "BUG-FOUND: W-A1-β closed (T11-D263 wired heap.alloc + bitcast + state-leak + cmpi-suffix) ; W-A1-γ pending : MatchExpansionPass to fold scf.match → scf.if-cascade"]
     fn wave_a1_result_ok_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a1-result-ok", WAVE_A1_RESULT_OK) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
@@ -508,13 +515,13 @@ mod tests {
         assert!(out.mir_fn_count >= 3, "{}", out.summary());
     }
 
-    /// W-A3 (?-op) JIT-execute. Same blocker-shape as W-A1 : T11-D248 /
-    /// W-A1-α-fix landed the sig-rewrite for `Result<i32,i32>` slots
-    /// (params + returns + entry-args lowered to `MirType::Ptr`) ; the
-    /// JIT body-cgen for `cssl.heap.alloc` / `arith.bitcast` is the
-    /// next blocker (Wave-A1-β follow-up).
+    /// W-A3 (?-op) JIT-execute. Shares the W-A1-β closure shape : the
+    /// W-A1-β wiring (T11-D263) covers heap.alloc + bitcast + state-leak +
+    /// cmpi-suffix ; the remaining gap is the same MatchExpansionPass
+    /// (W-A1-γ) needed to fold `scf.match` into a `scf.if`-cascade for
+    /// the `?`-propagation source-shape.
     #[test]
-    #[ignore = "BUG-FOUND: sig-rewrite landed (T11-D248) ; JIT body-cgen for cssl.heap.alloc + arith.bitcast not yet wired in lower_op_to_cl — needs Wave-A1-β follow-up"]
+    #[ignore = "BUG-FOUND: W-A1-β closed (T11-D263) ; W-A1-γ pending : MatchExpansionPass to fold scf.match → scf.if-cascade"]
     fn wave_a3_try_propagation_jit_returns_7() {
         match try_jit_main_returns_i32("wave-a3-try", WAVE_A3_TRY_PROPAGATION) {
             Ok(code) => assert_eq!(code, 7, "expected 7, got {code}"),
