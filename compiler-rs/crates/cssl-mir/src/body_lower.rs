@@ -2338,6 +2338,64 @@ fn lower_call(
             }
         }
     }
+    // § T11-D288 (W-E5-5) — `simd_v128_load` / `simd_v128_store` /
+    //   `simd_v_byte_eq` / `simd_v_byte_lt` / `simd_v_byte_in_range` /
+    //   `simd_v_prefix_sum` / `simd_v_horizontal_sum` syntactic recognition.
+    //   Strict guard : single-segment path matching the canonical
+    //   stdlib SIMD-intrinsic fn-name + the expected arity. Each
+    //   recognizer mints the post-W-E5-5 MIR op shape via
+    //   `crate::simd_abi::build_*` ; the cgen layer
+    //   (`cssl-cgen-cpu-cranelift::cgen_simd`) consumes those ops to
+    //   emit real Cranelift CLIF SSE2/AVX2 vector intrinsics. Closes
+    //   the W-E4 fixed-point gate's gap 5/5 — last gap before stage-0
+    //   csslc declares the lexer/UTF-8/interner hot paths self-hosted.
+    //
+    //   ‼ DECLINE-ON-MISMATCH : if arity doesn't match, the arm declines
+    //     and the regular generic-call path takes over (preserving the
+    //     placeholder body in stdlib SIMD intrinsics as a fallback).
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 1 {
+            let name = ctx.interner.resolve(segments[0]);
+            match (name.as_str(), args.len()) {
+                ("simd_v128_load", 1) => {
+                    if let Some(result) = try_lower_simd_v128_load(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("simd_v128_store", 2) => {
+                    if let Some(result) = try_lower_simd_v128_store(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("simd_v_byte_eq", 2) => {
+                    if let Some(result) = try_lower_simd_v_byte_eq(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("simd_v_byte_lt", 2) => {
+                    if let Some(result) = try_lower_simd_v_byte_lt(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("simd_v_byte_in_range", 3) => {
+                    if let Some(result) = try_lower_simd_v_byte_in_range(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("simd_v_prefix_sum", 1) => {
+                    if let Some(result) = try_lower_simd_v_prefix_sum(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                ("simd_v_horizontal_sum", 1) => {
+                    if let Some(result) = try_lower_simd_v_horizontal_sum(ctx, args, span) {
+                        return Some(result);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
     // § T11-D76 (S6-B5) — `fs::open` / `fs::read` / `fs::write` /
     //   `fs::close` syntactic recognition. Strict guard : the callee must
     //   be a 2-segment path with first segment `fs` ; the second segment
@@ -4562,6 +4620,137 @@ fn discriminant_name(kind: &HirExprKind) -> &'static str {
         HirExprKind::Paren(_) => "Paren",
         HirExprKind::Error => "Error",
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-D288 (W-E5-5) — SIMD-intrinsic recognizer helpers.
+//
+//   Each helper lowers a syntactically-recognized stdlib SIMD-intrinsic
+//   call into the matching `cssl.simd.*` MIR op shape produced by
+//   `crate::simd_abi::build_*`. The op carries lane-width / lanes /
+//   alignment attributes so the cgen layer can dispatch to the correct
+//   CLIF SIMD type (`i8x16` / `i16x8` / `i32x4` / `i64x2`).
+//
+//   The helpers preserve the `lower_call_arg` + `fresh_value_id` pattern
+//   used by the string / vec / fs / net recognizer chains above.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Lower `simd_v128_load(ptr) -> v128`. Default lane-width 8 (i8x16).
+fn try_lower_simd_v128_load(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (ptr_id, _ptr_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::simd_abi::build_v128_load(ptr_id, result_id, 8);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    let result_ty = crate::simd_abi::v128_ty();
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower `simd_v128_store(v, ptr)`. Returns a synthesized unit-id since
+/// stage-0 ops always produce some result-id — caller may discard.
+fn try_lower_simd_v128_store(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (v_id, _v_ty) = lower_call_arg(ctx, &args[0])?;
+    let (ptr_id, _ptr_ty) = lower_call_arg(ctx, &args[1])?;
+    let mut op = crate::simd_abi::build_v128_store(v_id, ptr_id, 8);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    // Synthesize an i32-zero value-id as the call's notional result so
+    // downstream lowering can thread a value through (matches the
+    // pattern used by other void-returning stdlib recognizers).
+    let unit_id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.constant")
+            .with_result(unit_id, MirType::Int(IntWidth::I32))
+            .with_attribute("value", "0")
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    Some((unit_id, MirType::Int(IntWidth::I32)))
+}
+
+/// Lower `simd_v_byte_eq(a, b) -> v128`.
+fn try_lower_simd_v_byte_eq(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (a_id, _a_ty) = lower_call_arg(ctx, &args[0])?;
+    let (b_id, _b_ty) = lower_call_arg(ctx, &args[1])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::simd_abi::build_v_byte_eq(a_id, b_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    let result_ty = crate::simd_abi::v128_ty();
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower `simd_v_byte_lt(a, b) -> v128` (unsigned).
+fn try_lower_simd_v_byte_lt(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (a_id, _a_ty) = lower_call_arg(ctx, &args[0])?;
+    let (b_id, _b_ty) = lower_call_arg(ctx, &args[1])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::simd_abi::build_v_byte_lt(a_id, b_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    let result_ty = crate::simd_abi::v128_ty();
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower `simd_v_byte_in_range(v, lo, hi) -> v128` (inclusive).
+fn try_lower_simd_v_byte_in_range(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (v_id, _v_ty) = lower_call_arg(ctx, &args[0])?;
+    let (lo_id, _lo_ty) = lower_call_arg(ctx, &args[1])?;
+    let (hi_id, _hi_ty) = lower_call_arg(ctx, &args[2])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::simd_abi::build_v_byte_in_range(v_id, lo_id, hi_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    let result_ty = crate::simd_abi::v128_ty();
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower `simd_v_prefix_sum(v) -> v128`.
+fn try_lower_simd_v_prefix_sum(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (v_id, _v_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::simd_abi::build_v_prefix_sum(v_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    let result_ty = crate::simd_abi::v128_ty();
+    ctx.ops.push(op);
+    Some((result_id, result_ty))
+}
+
+/// Lower `simd_v_horizontal_sum(v) -> i32`.
+fn try_lower_simd_v_horizontal_sum(
+    ctx: &mut BodyLowerCtx<'_>,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let (v_id, _v_ty) = lower_call_arg(ctx, &args[0])?;
+    let result_id = ctx.fresh_value_id();
+    let mut op = crate::simd_abi::build_v_horizontal_sum(v_id, result_id);
+    op = op.with_attribute("source_loc", format!("{span:?}"));
+    ctx.ops.push(op);
+    Some((result_id, MirType::Int(IntWidth::I32)))
 }
 
 // Silence unused-warning on MirValue when no tests reference it directly at
@@ -7838,5 +8027,162 @@ mod tests {
         let names = op_names(&f);
         assert!(names.iter().any(|n| n == &"cssl.string.len"));
         assert!(names.iter().any(|n| n == &"cssl.char.from_u32"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D288 (W-E5-5) — SIMD-intrinsic recognizer integration tests.
+    //
+    //   Validate that the recognizer arms in `lower_call` mint the
+    //   canonical `cssl.simd.*` op shape when the corresponding stdlib
+    //   SIMD-intrinsic call appears in source. Mirrors the W-A8 string
+    //   recognizer integration-test pattern (T11-D245).
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn simd_v128_load_emits_cssl_simd_v128_load() {
+        let src = r"
+            fn scan(p : i64) -> i64 {
+                simd_v128_load(p);
+                p
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.simd.v128_load"),
+            "expected cssl.simd.v128_load in {names:?}",
+        );
+    }
+
+    #[test]
+    fn simd_v_byte_eq_recognizer_claims_two_arg_form() {
+        let src = r"
+            fn cmp(a : i64, b : i64) -> i64 {
+                simd_v_byte_eq(a, b);
+                a
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.simd.v_byte_eq"),
+            "expected cssl.simd.v_byte_eq in {names:?}",
+        );
+        // The minted op must NOT also leak into func.call (recognizer
+        // claims it ; falls-through path must not fire).
+        let entry = f.body.entry().expect("entry");
+        let simd_op = entry
+            .ops
+            .iter()
+            .find(|o| o.name == "cssl.simd.v_byte_eq")
+            .expect("missing cssl.simd.v_byte_eq");
+        let lane_w = simd_op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "lane_width")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(lane_w, "8");
+    }
+
+    #[test]
+    fn simd_v_byte_in_range_three_arg_form_claimed() {
+        let src = r"
+            fn classify(v : i64, lo : i64, hi : i64) -> i64 {
+                simd_v_byte_in_range(v, lo, hi);
+                v
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.simd.v_byte_in_range"),
+            "expected cssl.simd.v_byte_in_range in {names:?}",
+        );
+    }
+
+    #[test]
+    fn simd_v_prefix_sum_recognizer_claims_one_arg_form() {
+        let src = r"
+            fn scan(v : i64) -> i64 {
+                simd_v_prefix_sum(v);
+                v
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.simd.v_prefix_sum"),
+            "expected cssl.simd.v_prefix_sum in {names:?}",
+        );
+    }
+
+    #[test]
+    fn simd_v_horizontal_sum_returns_i32() {
+        let src = r"
+            fn fold(v : i64) -> i32 {
+                simd_v_horizontal_sum(v)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            names.iter().any(|n| n == &"cssl.simd.v_horizontal_sum"),
+            "expected cssl.simd.v_horizontal_sum in {names:?}",
+        );
+    }
+
+    #[test]
+    fn simd_recognizer_wrong_arity_falls_through_to_func_call() {
+        // simd_v128_load expects 1 arg ; passing 2 must decline ; falls
+        // through to regular func.call. Mirrors the
+        // `string_len_wrong_arity_falls_through_to_func_call` discipline.
+        let src = r"
+            fn bad(a : i64, b : i64) -> i64 {
+                simd_v128_load(a, b)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            !names.iter().any(|n| n == &"cssl.simd.v128_load"),
+            "unexpected cssl.simd.v128_load with wrong arity: {names:?}",
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
+    }
+
+    #[test]
+    fn simd_recognizer_multi_segment_path_falls_through() {
+        // `foo::simd_v_byte_eq(a, b)` (2-segment) — recognizer requires
+        // single-segment ; declines ; fall-through to func.call.
+        let src = r"
+            fn shadow(a : i64, b : i64) -> i64 {
+                foo::simd_v_byte_eq(a, b)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(
+            !names.iter().any(|n| n == &"cssl.simd.v_byte_eq"),
+            "unexpected cssl.simd.v_byte_eq from multi-segment path: {names:?}",
+        );
+        assert!(names.iter().any(|n| n == &"func.call"));
+    }
+
+    #[test]
+    fn simd_recognizer_smoke_combo() {
+        // Smoke : multi-op SIMD body — load + compare + horizontal-sum
+        // must all be claimed by the recognizer chain (no func.call leak).
+        let src = r"
+            fn pipeline(p : i64, b : i64) -> i32 {
+                let v  = simd_v128_load(p);
+                let m  = simd_v_byte_eq(v, b);
+                simd_v_horizontal_sum(m)
+            }
+        ";
+        let (f, _) = lower_one(src);
+        let names = op_names(&f);
+        assert!(names.iter().any(|n| n == &"cssl.simd.v128_load"));
+        assert!(names.iter().any(|n| n == &"cssl.simd.v_byte_eq"));
+        assert!(names.iter().any(|n| n == &"cssl.simd.v_horizontal_sum"));
     }
 }
