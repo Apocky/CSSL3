@@ -1,0 +1,29 @@
+[package]
+name                   = "loa-host"
+description            = "Labyrinth-of-Apockalypse — host runtime crate (window/input/render/MCP-control-plane). Sibling W-LOA-host-* slices populate modules ; this slice adds the MCP TCP JSON-RPC server (W-LOA-host-mcp ; T11-LOA-HOST-3)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § T11-LOA-HOST-3 (W-LOA-host-mcp) : MCP TCP JSON-RPC server. The
+# crate is intentionally SHIM-thin pre-sibling-merges ; W-LOA-host-render
+# (input/render/main-loop) and W-LOA-host-DM (DM/GM scenes) extend it
+# in parallel waves. The MCP server is self-contained — only depends on
+# cssl-rt for log_event + the LoA ω-field FFI surface (loa_stubs).
+
+[dependencies]
+# Workspace serde + serde_json. JSON-RPC 2.0 over newline-delimited JSON
+# is parsed/encoded with serde_json::Value (untyped) so the per-tool
+# handlers can return arbitrary result shapes without a typed-result-enum
+# explosion.
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+# cssl-rt provides log_event (loa_startup) + the ω-field FFI symbols
+# (loa_stubs::__cssl_omega_field_sample / __cssl_omega_field_modify) the
+# MCP omega.* tools call into. cssl-rt is path-dep, no version pin.
+cssl-rt = { path = "../cssl-rt" }
