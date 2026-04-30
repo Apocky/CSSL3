@@ -40,6 +40,11 @@ pub mod abi;
 // Wave-A5 (f5ec1c6) heap-dealloc cgen.
 pub mod cgen_heap_dealloc;
 pub mod cgen_memref;
+// § Wave-C4 (S7-F4 / T11-D82) — net-effect cgen helpers parallel to Wave-C3
+// `cgen_fs`. Maps `cssl.net.*` MIR ops onto `__cssl_net_*` FFI symbols +
+// declares per-fn cranelift `Signature` + provides per-block import-need
+// pre-scan via the `NetImportSet` bitfield.
+pub mod cgen_net;
 pub mod cgen_tagged_union;
 // § Wave-A3 cgen integration (b761263) — `cssl.try` lowering helpers reuse
 // the Wave-A1 cgen_tagged_union emit-helpers (emit_tag_load /
