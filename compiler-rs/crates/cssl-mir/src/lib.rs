@@ -81,6 +81,12 @@ pub mod string_abi;
 // heap.realloc + heap.dealloc primitive shape that downstream cgen
 // already supports (parallel to `tagged_union_abi::expand_module`).
 pub mod vec_abi;
+// § W-E5-5 (T11-D288) — `cssl.simd.*` SIMD-intrinsic ABI lowering.
+// Recognizer arms in `body_lower` mint the canonical `cssl.simd.*` op
+// shape via `simd_abi::build_*` ; cgen helpers in cssl-cgen-cpu-cranelift::
+// cgen_simd consume those ops to emit Cranelift CLIF (SSE2/AVX2 lanes).
+// Closes W-E4 fixed-point gate gap 5/5 — stage-0 csslc SIMD codegen.
+pub mod simd_abi;
 pub mod lower;
 pub mod monomorph;
 pub mod op;

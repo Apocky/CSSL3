@@ -76,6 +76,13 @@ pub mod cgen_try;
 // for cssl.string.* + str-slice + char ops. Pairs with cssl-mir::string_abi.
 // 4-state UTF-8 DFA validator + format-spec LUT + USV-invariant fast-path.
 pub mod cgen_string;
+// § W-E5-5 (T11-D288) — Cranelift cgen for `cssl.simd.*` ops. Pairs with
+// `cssl-mir::simd_abi`. Lowers v128_load / v128_store / v_byte_eq /
+// v_byte_lt / v_byte_in_range / v_prefix_sum / v_horizontal_sum onto
+// CLIF SSE2 / AVX2 vector intrinsics. Closes W-E4 fixed-point gap 5/5
+// (SIMD codegen for stage-0 csslc — lexer-byte-classify + UTF-8-DFA +
+// interner-bsearch hot paths).
+pub mod cgen_simd;
 pub mod cgen_window;
 pub mod cgen_xr;
 pub mod emit;

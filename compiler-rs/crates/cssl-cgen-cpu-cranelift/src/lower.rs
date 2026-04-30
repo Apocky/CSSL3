@@ -76,6 +76,11 @@ pub fn lower_op(op: &MirOp) -> Option<Vec<ClifInsn>> {
         // the alignment annotation so the textual artifact stays inspectable.
         "memref.load" => lower_memref_load(op),
         "memref.store" => lower_memref_store(op),
+        // § W-E5-5 (T11-D288) — `cssl.simd.*` SIMD ops dispatch to cgen_simd.
+        // Closes W-E4 fixed-point gap 5/5 — the lexer-byte-classify /
+        // UTF-8-DFA / interner-bsearch hot paths now lower to real SSE2/AVX2
+        // CLIF intrinsics rather than falling back to scalar emit.
+        n if n.starts_with("cssl.simd.") => crate::cgen_simd::lower_simd_op(op),
         _ => None,
     }
 }
