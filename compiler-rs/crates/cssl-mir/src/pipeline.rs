@@ -213,7 +213,27 @@ impl PassPipeline {
     ///      the operand's tagged-union shape via
     ///      `try_op_lower::lower_try_ops_in_module`. Wired AFTER the
     ///      tagged-union ABI pass so the cell layout is in place.
-    ///   10. structured-cfg-validator (final sanity-check ; must-pass)
+    ///   10. **tagged-union-abi (sweep-2)** (T11-D282 / W-A1-ε) : SECOND
+    ///       run of the tagged-union ABI pass — required because
+    ///       `TryOpLowerPass` emits NEW `cssl.option.none` /
+    ///       `cssl.result.err` construct-ops inside the failure-arms of
+    ///       its synthesized `scf.if` cascades (see
+    ///       `try_op_lower::build_option_failure_region` /
+    ///       `build_result_failure_region`). The first sweep already
+    ///       processed the body's original construct-ops + ran
+    ///       sig-rewriting ; this second sweep is idempotent on the body
+    ///       (per `tagged_union_abi.sig_rewritten` stamp) BUT picks up
+    ///       the new constructs the try-op rewrite spliced into scf.if
+    ///       branch-regions, expanding them into the canonical
+    ///       `heap.alloc + tag-store + payload-store` shape. The
+    ///       construct-op's arg-path-references (e.g. `%err_payload` in
+    ///       the failure-arm) resolve correctly because the
+    ///       `expand_region` walker recurses into nested `scf.if`
+    ///       regions and the `payload_id` operand is anchored to a
+    ///       sibling `memref.load` emitted in the SAME region. Without
+    ///       this sweep, cgen-cl encounters raw `cssl.result.err` ops
+    ///       inside scf.if-branches and fails with `UnsupportedMirOp`.
+    ///   11. structured-cfg-validator (final sanity-check ; must-pass)
     #[must_use]
     pub fn canonical() -> Self {
         let mut p = Self::new();
@@ -242,6 +262,20 @@ impl PassPipeline {
         //   `cssl-cgen-cpu-cranelift::cgen_string`.
         p.push(Box::new(StringAbiPass));
         p.push(Box::new(TryOpLowerPass));
+        // § T11-D282 (W-A1-ε) — sweep-2 of the tagged-union ABI pass.
+        //   `TryOpLowerPass` synthesizes `cssl.option.none` /
+        //   `cssl.result.err` construct-ops INSIDE the failure-arm
+        //   regions of the scf.if-cascades it emits. Those construct-ops
+        //   are NOT processed by the first `TaggedUnionAbiPass` (which
+        //   ran BEFORE the try-op rewrite). Re-running the pass after
+        //   try-op-lower finds + expands them into the canonical
+        //   `heap.alloc + tag-store + payload-store` shape, with the
+        //   construct-op's arg-path-references resolving in the
+        //   spliced-region context (the `expand_region` walker recurses
+        //   into scf.if regions naturally). The pass is idempotent so
+        //   the body's already-expanded ops are untouched on this second
+        //   sweep.
+        p.push(Box::new(TaggedUnionAbiPass));
         p.push(Box::new(StructuredCfgValidator));
         p
     }
@@ -777,9 +811,12 @@ mod tests {
         // canonical set, raising the pass-count from 8 to 10.
         // T11-D245 (W-A8 / Wave-C1 carry-forward) : `string-abi` joins the
         // canonical set, raising the pass-count from 10 to 11.
+        // T11-D282 (W-A1-ε) : `tagged-union-abi` runs a SECOND time after
+        // `try-op-lower` to catch construct-ops the try-op rewrite
+        // synthesizes inside scf.if failure-arms. Pass-count 11 → 12.
         let p = PassPipeline::canonical();
         let names: Vec<&str> = p.names().collect();
-        assert_eq!(names.len(), 11);
+        assert_eq!(names.len(), 12);
         assert!(names.contains(&"monomorphization"));
         assert!(names.contains(&"ad-transform"));
         assert!(names.contains(&"ifc-lowering"));
@@ -791,6 +828,12 @@ mod tests {
         assert!(names.contains(&"string-abi"));
         assert!(names.contains(&"try-op-lower"));
         assert!(names.contains(&"structured-cfg-validator"));
+        // tagged-union-abi appears twice (sweep-1 + W-A1-ε sweep-2).
+        assert_eq!(
+            names.iter().filter(|n| **n == "tagged-union-abi").count(),
+            2,
+            "expected 2 invocations of tagged-union-abi (W-A1-ε sweep-2)",
+        );
     }
 
     #[test]
@@ -798,11 +841,12 @@ mod tests {
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
-        // All 11 stock passes should execute on an empty module without
+        // All 12 stock passes should execute on an empty module without
         // errors. (T11-D138 added enforces-sigma-at-cell-touches ;
         // W-B-RECOGNIZER added tagged-union-abi + try-op-lower ;
-        // T11-D245 W-A8 added string-abi.)
-        assert_eq!(results.len(), 11);
+        // T11-D245 W-A8 added string-abi ; T11-D282 W-A1-ε added a
+        // second tagged-union-abi sweep after try-op-lower.)
+        assert_eq!(results.len(), 12);
         // Stub passes should not report `changed`. The
         // `structured-cfg-validator` legitimately reports `changed=true`
         // on first run because T11-D70 / S6-D5 made it write the
@@ -1106,14 +1150,369 @@ mod tests {
 
     #[test]
     fn pipeline_runs_wave_a_passes_in_order() {
-        // Smoke : the canonical pipeline executes all 10 passes including
-        // both W-B-RECOGNIZER additions. Using the run_all path we should
-        // see results from BOTH passes in the result-sequence.
+        // Smoke : the canonical pipeline executes all 12 passes including
+        // both W-B-RECOGNIZER additions + the W-A1-ε sweep-2. Using the
+        // run_all path we should see results from BOTH passes in the
+        // result-sequence (with tagged-union-abi appearing twice).
         let p = PassPipeline::canonical();
         let mut module = MirModule::new();
         let results = p.run_all(&mut module);
         let names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
         assert!(names.contains(&"tagged-union-abi"));
         assert!(names.contains(&"try-op-lower"));
+        // W-A1-ε : tagged-union-abi appears twice in run-results too.
+        assert_eq!(
+            names.iter().filter(|n| **n == "tagged-union-abi").count(),
+            2,
+            "expected 2 result-entries for tagged-union-abi (W-A1-ε)",
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § T11-D282 (W-A1-ε) — sweep-2 of TaggedUnionAbiPass after
+    //   TryOpLowerPass. Verifies that Ok / Err / None construct-ops
+    //   synthesized by `try_op_lower::build_*_failure_region` inside
+    //   scf.if branches are picked up by the second sweep + expanded
+    //   into the canonical heap.alloc + tag-store + payload-store
+    //   shape, with the construct-op's arg-path-references resolving
+    //   correctly within the spliced if/else cascade-arm.
+    // ═════════════════════════════════════════════════════════════════════
+
+    use super::TaggedUnionAbiPass as W_A1_eps_TaggedUnionAbiPass;
+    use super::TryOpLowerPass as W_A1_eps_TryOpLowerPass;
+    use crate::block::{MirOp, MirRegion};
+    use crate::op::CsslOp;
+    use crate::value::{IntWidth, MirType, MirValue, ValueId};
+
+    /// Build a fn whose body has a single `cssl.try` op with a
+    /// Result-shaped operand + return type. After `lower_fn_body`-style
+    /// pipeline, the `try-op-lower` pass would synthesize `cssl.result.err`
+    /// in the failure-arm of an scf.if cascade. The W-A1-ε sweep-2
+    /// expands that construct-op.
+    fn build_fn_with_try_on_result() -> MirFunc {
+        let mut func = MirFunc::new(
+            "try_caller",
+            // params : a Result<i32, i32> coming in.
+            vec![MirType::Opaque("!cssl.result.i32.i32".into())],
+            // return : Result<i32, i32>.
+            vec![MirType::Opaque("!cssl.result.i32.i32".into())],
+        );
+        // Stamp the entry-arg in the body.
+        if let Some(entry) = func.body.entry_mut() {
+            entry.args.push(MirValue {
+                id: ValueId(0),
+                ty: MirType::Opaque("!cssl.result.i32.i32".into()),
+            });
+            // % cssl.try %0  →  i32   (success-payload extracted)
+            entry.push(
+                MirOp::std("cssl.try")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+            );
+            // % cssl.result.ok %1   →  Result<i32, i32>
+            entry.push(
+                MirOp::new(CsslOp::ResultOk)
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Opaque("!cssl.result.ok.i32".into()))
+                    .with_attribute("payload_ty", "i32"),
+            );
+            entry.push(MirOp::std("func.return").with_operand(ValueId(2)));
+        }
+        func.next_value_id = 3;
+        func
+    }
+
+    /// W-A1-ε goldenA : the W-A1-ε sweep-2 (TaggedUnionAbiPass run AFTER
+    /// TryOpLowerPass) expands the Err construct-op that try-op-lower
+    /// synthesizes inside the failure-arm scf.if region. After the
+    /// W-A1-ε-relevant subset runs (try-op-lower then TaggedUnionAbiPass)
+    /// there are zero raw `cssl.result.err` ops left anywhere in the
+    /// module.
+    ///
+    /// This test isolates the ε-scope (sweep-2 catches synthesized
+    /// constructs) from the wider sig-rewrite-vs-classify ordering issue
+    /// in the canonical pipeline (a sister W-A1 sub-slice).
+    #[test]
+    fn w_a1_eps_sweep2_expands_try_emitted_err_construct_op() {
+        let mut module = MirModule::new();
+        module.push_func(build_fn_with_try_on_result());
+        // try-op-lower runs first → synthesizes failure-arm constructs.
+        let _ = W_A1_eps_TryOpLowerPass.run(&mut module);
+        // sweep-2 expands those synthesized constructs.
+        let _ = W_A1_eps_TaggedUnionAbiPass.run(&mut module);
+
+        // Walk every op in every region — recursively — and assert no
+        // raw construct op survives.
+        let mut raw_construct_count = 0_u32;
+        for func in &module.funcs {
+            count_raw_construct_ops_in_region(&func.body, &mut raw_construct_count);
+        }
+        assert_eq!(
+            raw_construct_count, 0,
+            "W-A1-ε sweep-2 should leave zero raw construct ops anywhere",
+        );
+    }
+
+    /// W-A1-ε goldenB : after try-op-lower runs (without sweep-1's
+    /// sig-rewrite muting the type-strings), the raw `cssl.result.err`
+    /// op survives inside the synthesized failure-arm. This is the BUG
+    /// that sweep-2 closes : the construct-op the try-op rewriter
+    /// spliced into the scf.if branch is never expanded if no further
+    /// TaggedUnionAbiPass sweep is scheduled.
+    ///
+    /// Test runs ONLY `TryOpLowerPass` (skipping sweep-1) so the
+    /// classify_caller_return logic sees the un-rewritten opaque
+    /// return-type — this isolates the W-A1-ε scope (construct-arg-path
+    /// in if/else cascade-arms) from the wider sig-rewrite-vs-classify
+    /// ordering issue (a sister W-A1 sub-slice).
+    #[test]
+    fn w_a1_eps_partial_pipeline_leaves_raw_err_in_failure_arm() {
+        let mut module = MirModule::new();
+        module.push_func(build_fn_with_try_on_result());
+        // Run try-op-lower DIRECTLY (no prior sig-rewrite). The
+        // synthesized failure-arm carries `cssl.result.err` ops that
+        // are NOT yet expanded.
+        let _ = W_A1_eps_TryOpLowerPass.run(&mut module);
+        let mut raw_construct_count = 0_u32;
+        for func in &module.funcs {
+            count_raw_construct_ops_in_region(&func.body, &mut raw_construct_count);
+        }
+        // At least one raw construct op should be present (the
+        // `cssl.result.err` synthesized by try-op-lower's failure-arm).
+        // This is the BUG that W-A1-ε's sweep-2 closes.
+        assert!(
+            raw_construct_count >= 1,
+            "expected ≥ 1 raw construct op without sweep-2 ; got {raw_construct_count}",
+        );
+    }
+
+    /// W-A1-ε idempotency : running the canonical pipeline twice on the
+    /// same module is a no-op for the second sweep-2 (the body is
+    /// already expanded ; sweep-2 finds zero new construct-ops).
+    #[test]
+    fn w_a1_eps_sweep2_idempotent_on_already_expanded_module() {
+        let mut module = MirModule::new();
+        module.push_func(build_fn_with_try_on_result());
+        let p = PassPipeline::canonical();
+        let r1 = p.run_all(&mut module);
+        // Snapshot the op-count after the first canonical pipeline run.
+        let mut count_after_run1 = 0_u32;
+        for func in &module.funcs {
+            count_total_ops_in_region(&func.body, &mut count_after_run1);
+        }
+        let r2 = p.run_all(&mut module);
+        let mut count_after_run2 = 0_u32;
+        for func in &module.funcs {
+            count_total_ops_in_region(&func.body, &mut count_after_run2);
+        }
+        assert_eq!(
+            count_after_run1, count_after_run2,
+            "second canonical-run should produce no additional ops (idempotency)",
+        );
+        // Both runs should have succeeded without errors.
+        for r in r1.iter().chain(r2.iter()) {
+            assert!(
+                !r.has_errors(),
+                "pass `{}` errored : {:?}",
+                r.name,
+                r.diagnostics
+            );
+        }
+    }
+
+    /// W-A1-ε arg-path : the `cssl.result.err` construct-op synthesized
+    /// by try-op-lower references `%err_payload` as its operand-0. After
+    /// the W-A1-ε sweep-2 expands it, the resulting
+    /// `memref.store payload, cell` lives inside the SAME scf.if
+    /// failure-arm region, and its `payload`-operand still resolves to
+    /// the load that produced `%err_payload` (the load is a sibling op
+    /// in the same arm-region). This test pins the arg-path-resolution
+    /// in the spliced cascade-arm.
+    ///
+    /// Runs the W-A1-ε-relevant subset directly (try-op-lower then
+    /// TaggedUnionAbiPass sweep-2) to isolate the ε-fix scope.
+    #[test]
+    fn w_a1_eps_sweep2_preserves_err_payload_arg_path() {
+        let mut module = MirModule::new();
+        module.push_func(build_fn_with_try_on_result());
+        // try-op-lower synthesizes the cssl.result.err inside the
+        // failure-arm scf.if region.
+        let _ = W_A1_eps_TryOpLowerPass.run(&mut module);
+        // sweep-2 expands the synthesized construct-ops. This is the
+        // exact W-A1-ε behavior under test.
+        let _ = W_A1_eps_TaggedUnionAbiPass.run(&mut module);
+
+        // Walk to the failure-arm region of the try-op's scf.if + locate
+        // the post-sweep-2 op-shape : we expect the original `memref.load`
+        // (loading err-payload) to feed a `memref.store` (the expanded
+        // payload-store) at offset 4 of the new cell-ptr. The construct-
+        // op itself (`cssl.result.err`) should be GONE.
+        let func = &module.funcs[0];
+        let mut found_payload_store = false;
+        let mut found_raw_err = false;
+        find_payload_store_in_scf_if_arms(&func.body, &mut found_payload_store, &mut found_raw_err);
+        assert!(
+            found_payload_store,
+            "expected sweep-2 to emit a memref.store(payload) inside the scf.if failure-arm",
+        );
+        assert!(
+            !found_raw_err,
+            "expected sweep-2 to leave NO raw cssl.result.err in scf.if branches",
+        );
+    }
+
+    /// W-A1-ε pass-order : sweep-2 of `tagged-union-abi` MUST appear
+    /// AFTER `try-op-lower` in the canonical pipeline. This is the
+    /// structural invariant the fix establishes.
+    #[test]
+    fn w_a1_eps_sweep2_runs_after_try_op_lower() {
+        let p = PassPipeline::canonical();
+        let names: Vec<&str> = p.names().collect();
+        let try_idx = names
+            .iter()
+            .position(|n| *n == "try-op-lower")
+            .expect("try-op-lower");
+        // Find the LAST tagged-union-abi (sweep-2).
+        let last_abi_idx = names
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| **n == "tagged-union-abi")
+            .map(|(i, _)| i)
+            .last()
+            .expect("at least one tagged-union-abi");
+        assert!(
+            try_idx < last_abi_idx,
+            "sweep-2 of tagged-union-abi (idx {last_abi_idx}) must run AFTER try-op-lower (idx {try_idx})",
+        );
+    }
+
+    /// W-A1-ε : sweep-2 also handles `cssl.option.none` synthesized by
+    /// the Option-family failure-arm path (`build_option_failure_region`).
+    /// Build an Option-typed fn with `cssl.try` + verify the synthesized
+    /// `cssl.option.none` is also expanded.
+    ///
+    /// Runs the W-A1-ε-relevant subset directly (try-op-lower then
+    /// TaggedUnionAbiPass sweep-2) to isolate the ε-fix scope.
+    #[test]
+    fn w_a1_eps_sweep2_expands_try_emitted_option_none_construct_op() {
+        let mut func = MirFunc::new(
+            "try_caller_opt",
+            vec![MirType::Opaque("!cssl.option.i32".into())],
+            vec![MirType::Opaque("!cssl.option.i32".into())],
+        );
+        if let Some(entry) = func.body.entry_mut() {
+            entry.args.push(MirValue {
+                id: ValueId(0),
+                ty: MirType::Opaque("!cssl.option.i32".into()),
+            });
+            entry.push(
+                MirOp::std("cssl.try")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+            );
+            entry.push(
+                MirOp::new(CsslOp::OptionSome)
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Opaque("!cssl.option.i32".into()))
+                    .with_attribute("payload_ty", "i32"),
+            );
+            entry.push(MirOp::std("func.return").with_operand(ValueId(2)));
+        }
+        func.next_value_id = 3;
+
+        let mut module = MirModule::new();
+        module.push_func(func);
+        // try-op-lower synthesizes `cssl.option.none` in the failure-arm.
+        let _ = W_A1_eps_TryOpLowerPass.run(&mut module);
+        // sweep-2 expands the synthesized constructs.
+        let _ = W_A1_eps_TaggedUnionAbiPass.run(&mut module);
+
+        let mut raw_construct_count = 0_u32;
+        for f in &module.funcs {
+            count_raw_construct_ops_in_region(&f.body, &mut raw_construct_count);
+        }
+        assert_eq!(
+            raw_construct_count, 0,
+            "W-A1-ε sweep-2 should expand Option-family construct-ops too",
+        );
+    }
+
+    // ── helpers used by the W-A1-ε tests above ──
+
+    fn count_raw_construct_ops_in_region(region: &MirRegion, count: &mut u32) {
+        for block in &region.blocks {
+            for op in &block.ops {
+                if matches!(
+                    op.op,
+                    CsslOp::OptionSome | CsslOp::OptionNone | CsslOp::ResultOk | CsslOp::ResultErr
+                ) {
+                    *count += 1;
+                }
+                for nested in &op.regions {
+                    count_raw_construct_ops_in_region(nested, count);
+                }
+            }
+        }
+    }
+
+    fn count_total_ops_in_region(region: &MirRegion, count: &mut u32) {
+        for block in &region.blocks {
+            for op in &block.ops {
+                *count += 1;
+                for nested in &op.regions {
+                    count_total_ops_in_region(nested, count);
+                }
+            }
+        }
+    }
+
+    fn find_payload_store_in_scf_if_arms(
+        region: &MirRegion,
+        found_store: &mut bool,
+        found_raw_err: &mut bool,
+    ) {
+        for block in &region.blocks {
+            for op in &block.ops {
+                if op.name == "scf.if" {
+                    for nested in &op.regions {
+                        for nb in &nested.blocks {
+                            for inner in &nb.ops {
+                                // memref.store with field=payload : the
+                                // post-sweep-2 expansion of an Err / None
+                                // / Some / Ok construct-op INSIDE this
+                                // branch.
+                                let is_payload_store = inner.name == "memref.store"
+                                    && inner.attributes.iter().any(|(k, v)| k == "field" && v == "payload");
+                                if is_payload_store {
+                                    *found_store = true;
+                                }
+                                if matches!(
+                                    inner.op,
+                                    CsslOp::ResultErr
+                                        | CsslOp::ResultOk
+                                        | CsslOp::OptionNone
+                                        | CsslOp::OptionSome
+                                ) {
+                                    *found_raw_err = true;
+                                }
+                                // Recurse into nested scf.if (e.g. a
+                                // dispatch cascade nested inside a
+                                // try-op's failure-arm).
+                                for deeper in &inner.regions {
+                                    find_payload_store_in_scf_if_arms(
+                                        deeper,
+                                        found_store,
+                                        found_raw_err,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                for nested in &op.regions {
+                    find_payload_store_in_scf_if_arms(nested, found_store, found_raw_err);
+                }
+            }
+        }
     }
 }
