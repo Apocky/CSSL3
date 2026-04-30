@@ -1,0 +1,29 @@
+[package]
+name                   = "cssl-substrate-render"
+description            = "CSSLv3 — CFER (Causal Field-Evolution Rendering) iterator core. ADCS Wave-S core (W-S-CORE-5). Authoritative driver for the per-cell KAN-update + V-cycle multigrid + evidence-glyph adaptive-budget + spatio-temporal denoiser pipeline that replaces ray-stream sampling with field-iteration. Cite : specs/36_CFER_RENDERER.csl § ALGORITHM + § IMPLEMENTATION ; specs/30_SUBSTRATE_v3.csl § PILLAR-3 render. T11-D304."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-substrate-render reads the canonical 72B FieldCell + SparseMortonGrid
+# from cssl-substrate-omega-field (W-S-CORE-1 · canonical). Light-state and
+# KAN-update-rule per W-S-CORE-2 + W-S-CORE-3 are STUB at the time of this
+# slice ; the local stubs in `light_stub.rs` + `kan_stub.rs` document the
+# expected ABI so the iterator core can be wired to the real crates without
+# diff-churn once they land. See § STUB-MIGRATION in src/lib.rs for the
+# upgrade-path checklist.
+cssl-substrate-omega-field = { path = "../cssl-substrate-omega-field" }
+
+# § thiserror — RenderError discrimination (CFER-budget-exhausted ·
+# convergence-failure · invalid-camera · etc.).
+thiserror = { workspace = true }
+# § smallvec — per-cell light-state bands fit ≤ 8 KAN-coefs in the hot path.
+smallvec  = { workspace = true }
+# § bytemuck — std430-aligned Image + Camera.uniform_buffer marshalling.
+bytemuck  = { workspace = true }
