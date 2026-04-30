@@ -796,6 +796,13 @@ pub fn is_tagged_union_opaque_str(s: &str) -> bool {
     if s.starts_with("!cssl.option.") || s.starts_with("!cssl.result.") {
         return true;
     }
+    // T11-D284 (W-E5-1) declared-type encoding of `Option<T>` / `Result<T, E>`
+    // emitted by `body_lower::lower_hir_type_light` — angle-bracket form.
+    // Distinct from the dotted construction-op form so the dispatch
+    // resolver can peel the inner payload-type without ambiguity.
+    if s.starts_with("!cssl.option<") || s.starts_with("!cssl.result<") {
+        return true;
+    }
     false
 }
 
