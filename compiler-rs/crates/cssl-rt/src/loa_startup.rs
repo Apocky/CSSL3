@@ -154,6 +154,16 @@ extern "C" fn loa_startup_ctor_thunk() {
 #[link_section = ".CRT$XCU"]
 static LOA_STARTUP_CTOR: extern "C" fn() = loa_startup_ctor_thunk;
 
+// § Windows GNU (MinGW + MSYS2) : the GNU runtime uses `.ctors` (legacy)
+//   and `.init_array` (modern). MinGW-w64's CRT walks `.init_array` since
+//   ~2014 ; we use the modern section to match Linux/BSD behavior. T11-D319
+//   adds this branch so cssl-rt's startup ctor activates regardless of
+//   whether the build host uses the MSVC or GNU rust toolchain.
+#[cfg(all(target_os = "windows", target_env = "gnu"))]
+#[used]
+#[link_section = ".init_array"]
+static LOA_STARTUP_CTOR: extern "C" fn() = loa_startup_ctor_thunk;
+
 // § ELF (Linux + most BSDs) : the dynamic linker walks `.init_array`.
 #[cfg(all(unix, not(target_os = "macos")))]
 #[used]

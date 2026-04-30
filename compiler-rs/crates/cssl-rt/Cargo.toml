@@ -7,6 +7,17 @@ rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
 
+# § T11-D319 (W-CSSL-default-link) : produce staticlib in addition to rlib so
+# csslc can default-link cssl-rt into every produced .exe. The rlib stays for
+# downstream rust consumers (cssl-playground / tests) ; the staticlib is the
+# `lib<name>.lib` (Windows-MSVC) / `lib<name>.a` (Unix) artifact csslc reaches
+# for via auto-discovery in `csslc::linker::discover_cssl_rt_staticlib`. The
+# `loa_startup.rs` ctor (`.CRT$XCU` / `.init_array`) only fires when the
+# staticlib is in the link command, hence default-link.
+[lib]
+name       = "cssl_rt"
+crate-type = ["rlib", "staticlib"]
+
 [dependencies]
 # § T11-D130 : path-hash discipline requires BLAKE3 + OS RNG. Both are
 # already workspace-deps used by cssl-telemetry ; cssl-rt links them
