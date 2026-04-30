@@ -45,7 +45,14 @@ pub mod block;
 pub mod body_lower;
 pub mod drop_inject;
 pub mod func;
+// § Wave-A integration (T11-D239 follow-up) — deferred-ABI MIR ops landed.
+// Wave-A1 (f3c2643) tagged-union ABI · Wave-A2 (96b8f65) typed-memref ·
+// Wave-A5 (f5ec1c6) heap-dealloc. Authored as standalone modules ; this
+// commit wires their `pub mod` declarations + makes them crate-API.
+pub mod heap_dealloc;
 pub mod layout_check;
+pub mod memref_typed;
+pub mod tagged_union_abi;
 pub mod lower;
 pub mod monomorph;
 pub mod op;

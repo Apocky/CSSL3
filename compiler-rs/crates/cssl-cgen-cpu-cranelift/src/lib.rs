@@ -35,6 +35,12 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod abi;
+// § Wave-A integration (T11-D239 follow-up) — Cranelift cgen for the new MIR ops.
+// Wave-A1 (f3c2643) tagged-union cgen · Wave-A2 (96b8f65) memref cgen ·
+// Wave-A5 (f5ec1c6) heap-dealloc cgen.
+pub mod cgen_heap_dealloc;
+pub mod cgen_memref;
+pub mod cgen_tagged_union;
 pub mod emit;
 pub mod feature;
 pub mod jit;
