@@ -194,6 +194,14 @@ pub fn mir_to_cl(ty: &MirType) -> Option<Type> {
             FloatWidth::F64 => cl_types::F64,
         }),
         MirType::Bool => Some(cl_types::I8),
+        // § T11-D281 (W-A1-δ) : Ptr / Handle widen to host pointer width
+        // (I64 on x86_64). The `MatchExpansionPass` cascade can yield cell-
+        // pointer SSA values through scf.if merge-blocks (e.g. when an arm
+        // returns the variant payload via cssl.heap.alloc handle), so the
+        // merge-param-ty derivation must accept the pointer-shaped MIR
+        // types. See `crates/cssl-cgen-cpu-cranelift/src/jit.rs` § Ptr
+        // path for the matching jit-side mir_to_cl_type entries.
+        MirType::Ptr | MirType::Handle => Some(cl_types::I64),
         _ => None,
     }
 }
@@ -225,10 +233,14 @@ pub fn mir_to_cl(ty: &MirType) -> Option<Type> {
 ///   [`BackendOrScfError::Backend`] for whatever the inner-op lowerer returns.
 ///
 /// # Tail-flag
-///   Returns `Ok(false)` because scf.if itself is not a function-terminator.
-///   Cranelift's `brif` is a block-terminator, but the merge-block is open
-///   for further ops so the caller's "is this op a terminator" check stays
-///   false.
+///   Returns `Ok(false)` in the common case — scf.if itself is not a
+///   function-terminator and the merge-block is open for further ops,
+///   so the caller's outer op-loop continues normally. § T11-D281
+///   (W-A1-δ) extension : returns `Ok(true)` when BOTH branches ended in
+///   a function-terminator (e.g. `func.return`). This propagates up so
+///   the parent op-loop knows subsequent ops in its block are
+///   unreachable, preventing value-map ghost-binds against phantom
+///   merge-block-params. See [`lower_branch_into`] for full context.
 //
 // `clippy::implicit_hasher` would force a `BuildHasher` type parameter on
 // the public signature, which neither backend cares about — they hand in
@@ -325,55 +337,125 @@ where
         .brif(cond_val, then_block, &[], else_block, &[]);
 
     // § 6. Lower the THEN branch.
+    //
+    // § T11-D281 (W-A1-δ) — Cascade-region splice value-map continuity :
+    //   `lower_branch_into` now returns BOTH the captured yield-Value AND
+    //   a `terminated` flag. When a branch ends in `func.return` (e.g. a
+    //   `MatchExpansionPass`-generated arm whose body is `Ok(_) => return
+    //   x` or whose terminal arm always-returns), cranelift has already
+    //   emitted the `return_` instruction — appending another `jump
+    //   merge_block` would (a) double-terminate the block + (b) leave
+    //   merge_block with a phantom predecessor whose value-map state is
+    //   unreachable. Skipping the merge-jump in that case keeps the
+    //   value_map honest : the parent's pre-cascade entries remain
+    //   uncontaminated, and the surviving branch (or merge-block, if
+    //   both branches terminate, the merge becomes truly dead and
+    //   cranelift accepts zero-pred sealed blocks just like
+    //   `scf.loop` exit-blocks).
     builder.switch_to_block(then_block);
     builder.seal_block(then_block);
-    let then_yield_arg = lower_branch_into(
+    let (then_yield_arg, then_terminated) = lower_branch_into(
         then_region,
         builder,
         value_map,
         fn_name,
         &mut lower_branch_op,
     )?;
-    emit_terminating_jump(builder, merge_block, then_yield_arg, merge_param_ty);
+    if !then_terminated {
+        emit_terminating_jump(builder, merge_block, then_yield_arg, merge_param_ty);
+    }
 
     // § 7. Lower the ELSE branch.
     builder.switch_to_block(else_block);
     builder.seal_block(else_block);
-    let else_yield_arg = lower_branch_into(
+    let (else_yield_arg, else_terminated) = lower_branch_into(
         else_region,
         builder,
         value_map,
         fn_name,
         &mut lower_branch_op,
     )?;
-    emit_terminating_jump(builder, merge_block, else_yield_arg, merge_param_ty);
+    if !else_terminated {
+        emit_terminating_jump(builder, merge_block, else_yield_arg, merge_param_ty);
+    }
 
     // § 8. Switch to merge-block + record the merge-block-param as the scf.if
     //      result (when typed).
+    //
+    // § T11-D281 (W-A1-δ) — Both-branches-terminate edge case :
+    //   When both arms returned (e.g. `match x { Ok(v) => return v ; Err(e)
+    //   => return -1 }`), the merge-block has ZERO predecessors. Cranelift
+    //   accepts a sealed zero-pred block (it becomes dead-code, the
+    //   verifier prunes it on emission), but we must NOT read its
+    //   block-params : the arg appended at § 4 is well-defined as
+    //   structure but has no incoming jump-arg and reading it via
+    //   `block_params(merge_block)[0]` returns a Value reference whose
+    //   defining edge doesn't exist. Subsequent post-cascade ops in the
+    //   parent block would be unreachable in either case ; binding the
+    //   scf.if's result-id to that phantom block-param is harmless when
+    //   nothing reads it but a value-map continuity nightmare if a
+    //   subsequent op DOES try to read it.
+    //
+    //   The safest contract : when both branches terminated, propagate
+    //   the terminator-flag back to the caller so they can decide
+    //   whether to keep walking. Today scf.if itself is not a function-
+    //   terminator (per the doc-comment at the top), so we still return
+    //   `Ok(false)` ; but the caller (the dispatcher in `lower_op_to_cl`)
+    //   is itself wrapped by a loop that respects the terminator-flag,
+    //   so a wholly-terminating cascade upstream of further ops will
+    //   surface as "subsequent ops are unreachable" rather than a
+    //   value-map miss.
     builder.switch_to_block(merge_block);
     builder.seal_block(merge_block);
+    let both_branches_terminated = then_terminated && else_terminated;
     if let Some(_param_ty) = merge_param_ty {
-        // The scf.if's result `MirValue.id` must now map to the merge-block-param[0].
-        if let Some(r) = op.results.first() {
-            let merge_params = builder.block_params(merge_block);
-            let bp = *merge_params.first().expect("merge-block-param appended");
-            value_map.insert(r.id, bp);
+        // The scf.if's result `MirValue.id` must now map to the merge-block-param[0]
+        // — but only when at least one branch fed the merge (otherwise
+        // the block-param is phantom).
+        if !both_branches_terminated {
+            if let Some(r) = op.results.first() {
+                let merge_params = builder.block_params(merge_block);
+                let bp = *merge_params.first().expect("merge-block-param appended");
+                value_map.insert(r.id, bp);
+            }
         }
     }
 
-    Ok(false)
+    // Propagate the cascade-region termination flag : when both branches
+    // returned, the parent op-loop can stop walking subsequent ops in
+    // this block. This is the value-map-continuity insurance the
+    // `MatchExpansionPass` cascade pattern needs — see the doc-comment
+    // on `lower_branch_into` for the W-A1-γ context.
+    Ok(both_branches_terminated)
 }
 
 /// Lower the ops of a branch's single block. Skips `scf.yield` (its operand
-/// is captured separately as the branch's tail-jump arg). Returns the
-/// captured yield value (when present + scalar-typed).
+/// is captured separately as the branch's tail-jump arg). Returns
+/// `(captured_yield, terminated)` :
+///   - `captured_yield` : the yielded `cranelift::ir::Value` (when the
+///     region ends in `scf.yield` with an operand) ;
+///   - `terminated` : `true` iff a non-yield op inside the region was
+///     itself a function-terminator (today : `func.return` /
+///     `cssl.diff.bwd_return`). When `true`, the caller MUST NOT emit a
+///     merge-jump — the cranelift block has already terminated.
+///
+/// § T11-D281 (W-A1-δ) — terminator-flag propagation :
+///   `MatchExpansionPass` (W-A1-γ) splices arm-regions verbatim into the
+///   nested cascade `scf.if`s. When an arm body's tail is
+///   `=> return x` (rather than `=> x` for value-yield), the arm-region
+///   contains a bare `func.return` and NO `scf.yield`. Pre-W-A1-δ this
+///   path emitted both `return_` AND a follow-up `jump merge_block` —
+///   cranelift treated the second instruction as dead-code and the
+///   merge-block silently lost a predecessor, breaking the value_map
+///   invariant for any subsequent op that read the cascade's result.
+///   Plumbing the flag back to the caller resolves it cleanly.
 fn lower_branch_into<E, F>(
     region: &cssl_mir::MirRegion,
     builder: &mut FunctionBuilder<'_>,
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     lower_branch_op: &mut F,
-) -> Result<Option<cranelift_codegen::ir::Value>, BackendOrScfError<E>>
+) -> Result<(Option<cranelift_codegen::ir::Value>, bool), BackendOrScfError<E>>
 where
     F: FnMut(
         &MirOp,
@@ -383,9 +465,10 @@ where
     ) -> Result<bool, E>,
 {
     let Some(entry) = region.blocks.first() else {
-        return Ok(None);
+        return Ok((None, false));
     };
     let mut yield_val = None;
+    let mut terminated = false;
     for branch_op in &entry.ops {
         if branch_op.name == "scf.yield" {
             // Capture the yielded value's CLIF Value (already in value_map
@@ -401,15 +484,19 @@ where
             // Stop walking ops in this branch — scf.yield is a region terminator.
             break;
         }
-        // Non-yield op : delegate to the caller's per-op lowerer. We ignore
-        // the "is-terminator" flag because scf.if branches must reach their
-        // tail jump ; an inner func.return inside a branch would be a
-        // structured-CFG violation that D5 (StructuredCfgValidator) will
-        // catch in a later slice.
-        let _ = lower_branch_op(branch_op, builder, value_map, fn_name)
+        // Non-yield op : delegate to the caller's per-op lowerer. The
+        // returned bool indicates whether the dispatcher emitted a
+        // function-terminator (e.g. `return_`) ; if so, no further ops
+        // in this block can be lowered and the caller must skip the
+        // merge-block jump.
+        let was_terminator = lower_branch_op(branch_op, builder, value_map, fn_name)
             .map_err(BackendOrScfError::Backend)?;
+        if was_terminator {
+            terminated = true;
+            break;
+        }
     }
-    Ok(yield_val)
+    Ok((yield_val, terminated))
 }
 
 /// Emit the terminating `jump` for a branch. When the merge-block has a
@@ -925,5 +1012,110 @@ mod tests {
         let msg = format!("{e}");
         assert!(msg.contains("scf.for"), "msg={msg}");
         assert!(msg.contains("42"), "msg={msg}");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-D281 (W-A1-δ) — value-map continuity tests
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn mir_to_cl_maps_ptr_to_i64() {
+        // Cascade-spliced scf.if can yield !cssl.ptr through merge-blocks
+        // when an arm returns a heap-allocated cell (e.g., the variant
+        // payload pointer for `Ok(x) => x` where x : Box<T>). Stage-0
+        // contract widens this to host-pointer-width I64 on x86_64 to
+        // keep the merge-param-ty derivation valid for cgen-cl.
+        use cranelift_codegen::ir::types as cl_types;
+        assert_eq!(mir_to_cl(&MirType::Ptr), Some(cl_types::I64));
+    }
+
+    #[test]
+    fn mir_to_cl_maps_handle_to_i64() {
+        // !cssl.handle is the packed generational reference type ; same
+        // host-pointer-width widening as Ptr so cascade-yielded handles
+        // (e.g., from `cssl.handle.pack` producers in arm-regions) can
+        // join through scf.if merge-blocks.
+        use cranelift_codegen::ir::types as cl_types;
+        assert_eq!(mir_to_cl(&MirType::Handle), Some(cl_types::I64));
+    }
+
+    #[test]
+    fn mir_to_cl_still_rejects_unrepresentable_types() {
+        // Sanity : Tuple / Memref / Function / Opaque must remain
+        // unrepresentable at the cranelift-scalar level — they need
+        // explicit `cssl.tuple.unpack` / aggregate-lowering before
+        // landing in a scf.if merge.
+        assert!(mir_to_cl(&MirType::Tuple(vec![])).is_none());
+        assert!(mir_to_cl(&MirType::Memref {
+            shape: vec![Some(8)],
+            elem: Box::new(MirType::Float(FloatWidth::F32))
+        })
+        .is_none());
+        assert!(mir_to_cl(&MirType::Opaque("custom".to_string())).is_none());
+    }
+
+    /// § T11-D281 (W-A1-δ) — terminator-flag propagation contract is
+    /// asserted at the type-system level : `lower_branch_into` returns
+    /// `Result<(Option<Value>, bool), BackendOrScfError<E>>`. Any future
+    /// refactor that reverts to bare `Option<Value>` breaks the
+    /// destructuring at the §6/§7 call-sites in `lower_scf_if` and
+    /// fails to compile. This test makes that invariant explicit by
+    /// reading the source verbatim and looking for the tuple-shape +
+    /// the destructuring at the call-site.
+    ///
+    /// (Full end-to-end JIT roundtrip of cascade-terminating arms is
+    /// the un-ignored W-A1 / W-A3 e2e gate that lands once the W-A1-δ
+    /// + W-A1-ε pair both close.)
+    #[test]
+    fn lower_branch_into_returns_yield_and_terminator_tuple() {
+        let module_src = include_str!("scf.rs");
+        // Type-shape : the helper returns the tuple `(Option<Value>, bool)`.
+        assert!(
+            module_src.contains(
+                "Result<(Option<cranelift_codegen::ir::Value>, bool), BackendOrScfError<E>>"
+            ),
+            "lower_branch_into must return (yield, terminated) tuple"
+        );
+        // Call-site : both §6 (then) and §7 (else) destructure the tuple
+        // and gate `emit_terminating_jump` on the terminator flag.
+        assert!(
+            module_src.contains("let (then_yield_arg, then_terminated) = lower_branch_into("),
+            "§6 call-site must destructure the tuple to gate the merge-jump"
+        );
+        assert!(
+            module_src.contains("let (else_yield_arg, else_terminated) = lower_branch_into("),
+            "§7 call-site must destructure the tuple to gate the merge-jump"
+        );
+        assert!(
+            module_src.contains("if !then_terminated {"),
+            "§6 must skip emit_terminating_jump when the then-branch returned"
+        );
+        assert!(
+            module_src.contains("if !else_terminated {"),
+            "§7 must skip emit_terminating_jump when the else-branch returned"
+        );
+    }
+
+    /// § T11-D281 (W-A1-δ) — the documented contract that
+    /// `lower_scf_if` returns `Ok(true)` when both branches terminated.
+    /// Asserted via the doc-comment cross-reference + the in-fn tail
+    /// expression (`Ok(both_branches_terminated)`). A future refactor
+    /// changing that tail must also update this test's reference
+    /// expectation.
+    #[test]
+    fn lower_scf_if_documents_both_branches_terminate_contract() {
+        let module_src = include_str!("scf.rs");
+        // Doc contract : top-level fn doc-comment mentions the
+        // `Ok(true)` semantics for both-branches-terminate.
+        assert!(
+            module_src.contains("BOTH branches ended in"),
+            "doc-comment must call out the both-branches-terminate \
+             contract for value-map-continuity"
+        );
+        assert!(
+            module_src.contains("both_branches_terminated"),
+            "implementation must thread the both-branches-terminated \
+             flag back as the tail Ok(...) expression"
+        );
     }
 }

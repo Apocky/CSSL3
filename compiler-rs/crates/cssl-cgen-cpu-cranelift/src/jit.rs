@@ -1072,6 +1072,19 @@ fn lower_op_to_cl(
         "arith.subi" => emit_binary(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().isub(a, c)
         }),
+        // § T11-D281 (W-A1-δ) — `arith.subi_neg` is the unary-negation
+        // form emitted by `body_lower::lower_unary` for `HirUnOp::Neg` on
+        // integer operands (see `compiler-rs/crates/cssl-mir/src/body_lower.rs`
+        // `lower_unary` arm at L1953). Semantically this is `0 - x` ;
+        // cranelift's `ineg` is the typed-zero-subtract intrinsic for
+        // any I8/I16/I32/I64. Without this dispatch arm any `-x` on an
+        // integer operand fired through to the `UnsupportedMirOp` error
+        // path, which is what blocked the W-A1-δ cascade-spliced JIT
+        // tests (`Some(x) => x` in `Option<i32>` had no dispatch when
+        // body_lower happened to pre-emit a sign-flip for the variant
+        // payload). Mirrors the WGSL backend's same-named arm at
+        // `compiler-rs/crates/cssl-cgen-gpu-wgsl/src/body_emit.rs:298`.
+        "arith.subi_neg" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().ineg(a)),
         "arith.muli" => emit_binary(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().imul(a, c)
         }),
@@ -4664,5 +4677,109 @@ mod tests {
         #[allow(unsafe_code)]
         let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
         assert_eq!(f(), 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-D281 (W-A1-δ) — `arith.subi_neg` cgen-handler roundtrip.
+    //   `body_lower::lower_unary` emits this op for `HirUnOp::Neg` on
+    //   integer operands. Pre-W-A1-δ jit.rs had no dispatch arm and
+    //   surfaced `JitError::UnsupportedMirOp { op_name: "arith.subi_neg",
+    //   .. }`, which is what blocked the W-A1-δ cascade-spliced JIT
+    //   tests. These tests cover I32 + I64 widths to exercise both
+    //   common code-paths (`ineg` is type-polymorphic across cranelift
+    //   integer widths so a single arm suffices).
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Build `fn neg_i32(x: i32) -> i32 { -x }` using `arith.subi_neg`.
+    fn hand_built_neg_i32() -> MirFunc {
+        let mut f = MirFunc::new("neg_i32", vec![i32_ty()], vec![i32_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i32_ty())];
+            entry.ops.push(
+                MirOp::std("arith.subi_neg")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), i32_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    #[test]
+    fn arith_subi_neg_i32_negates_positive() {
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_neg_i32()).unwrap();
+        m.finalize().unwrap();
+        assert_eq!(h.call_i32_to_i32(7, &m).unwrap(), -7);
+    }
+
+    #[test]
+    fn arith_subi_neg_i32_negates_negative_to_positive() {
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_neg_i32()).unwrap();
+        m.finalize().unwrap();
+        assert_eq!(h.call_i32_to_i32(-42, &m).unwrap(), 42);
+    }
+
+    #[test]
+    fn arith_subi_neg_i32_zero_stays_zero() {
+        let mut m = JitModule::new();
+        let h = m.compile(&hand_built_neg_i32()).unwrap();
+        m.finalize().unwrap();
+        assert_eq!(h.call_i32_to_i32(0, &m).unwrap(), 0);
+    }
+
+    #[test]
+    fn arith_subi_neg_i64_negates_correctly() {
+        let mut f = MirFunc::new("neg_i64", vec![i64_ty()], vec![i64_ty()]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![MirValue::new(ValueId(0), i64_ty())];
+            entry.ops.push(
+                MirOp::std("arith.subi_neg")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), i64_ty()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        let mut m = JitModule::new();
+        m.compile(&f).unwrap();
+        m.finalize().unwrap();
+        // The fn-handle helpers are 2-arg-shaped ; this fn is 1-arg
+        // (i64 -> i64), so we extract the raw fn-ptr directly.
+        let addr = m.code_addr_for("neg_i64").unwrap();
+        // SAFETY : JIT-finalized fn pointer with `extern "C" fn(i64) -> i64` ABI.
+        #[allow(unsafe_code)]
+        let f_ptr: extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(addr) };
+        assert_eq!(f_ptr(123_456_789_012_i64), -123_456_789_012_i64);
+        assert_eq!(f_ptr(-i64::MAX), i64::MAX);
+    }
+
+    /// Negative-path : if the dispatch arm regresses, the JIT must
+    /// surface `UnsupportedMirOp` so callers (test-gates, downstream
+    /// passes) know that's the gap. This test asserts the POSITIVE
+    /// path : `arith.subi_neg` is recognized, NOT routed through the
+    /// `UnsupportedMirOp` fallback.
+    #[test]
+    fn arith_subi_neg_does_not_surface_unsupported_op_error() {
+        let mut m = JitModule::new();
+        let result = m.compile(&hand_built_neg_i32());
+        match result {
+            Ok(_) => {}
+            Err(JitError::UnsupportedMirOp { op_name, .. }) => {
+                panic!(
+                    "arith.subi_neg must be recognized by lower_op_to_cl after W-A1-δ \
+                     ; instead surfaced UnsupportedMirOp({op_name})"
+                );
+            }
+            Err(other) => panic!("unexpected JitError variant : {other:?}"),
+        }
     }
 }
