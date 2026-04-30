@@ -1,0 +1,12 @@
+[package]
+name = "cssl-substrate-audio"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "CSSL substrate · audio engine · HRTF + KAN-synth + reverb (rescue-stub manifest pending W-S-AUD-1 full landing post-CSSL-greenlight)"
+
+[lib]
+name = "cssl_substrate_audio"
+path = "src/lib.rs"
+
+[dependencies]
