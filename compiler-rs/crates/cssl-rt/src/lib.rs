@@ -119,6 +119,12 @@ pub mod io_unix;
 // the ABI signatures locked here are the stable contract LoA scenes
 // link against. See `loa_stubs.rs` § STAGE-1 PATH per-symbol.
 pub mod loa_stubs;
+// § T11-LOA-LOG-1 — auto-init logger : .CRT$XCU / .init_array / __mod_init_func
+// ctor that fires before main() so any binary linked with cssl-rt produces
+// logs/loa_runtime.log + a stderr banner from frame zero. Activated only
+// once cssl-rt is in the binary's link surface (force via cssl.heap.alloc
+// or future csslc-side default-link).
+pub mod loa_startup;
 #[cfg(target_os = "windows")]
 pub mod io_win32;
 pub mod net;
