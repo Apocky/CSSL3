@@ -39,25 +39,39 @@
 #![allow(clippy::struct_excessive_bools)]
 
 pub mod adapter;
+pub mod cmd;
 pub mod device;
 pub mod dred;
 pub mod error;
 pub mod features;
 pub mod fence;
+pub mod ffi;
 pub mod heap;
+pub mod pipeline;
 pub mod pso;
 pub mod queue;
 pub mod resource;
 pub mod root_signature;
+pub mod swapchain;
 pub mod work_graph;
 
 pub use adapter::{DxgiAdapter, FeatureLevel};
+pub use cmd::{CmdOp, CmdQueueDesc, CmdRecorder, Submission, submit_mock, submit_real};
 pub use device::{AdapterPreference, AdapterRecord, Device, Factory};
 pub use dred::{DiagnosticMessage, DiagnosticSeverity, DredCapture};
 pub use error::{D3d12Error, Result};
 pub use features::{D3d12FeatureOptions, WaveMatrixTier};
 pub use fence::{Fence, FenceWait};
+pub use ffi::{
+    ComPtr, CommandListTypeRaw, D3DFeatureLevel, DxgiFormat, Guid, HRESULT, IUnknownVTable,
+    Loader, S_OK, failed, hr_check, succeeded,
+};
 pub use heap::{CommandListType, DescriptorHeapType, HeapType};
+pub use pipeline::{
+    ComputePipelineDesc, DXBC_MAGIC, DxilBytecode, GraphicsPipelineDesc, PipelineHandle,
+    PipelineKind, create_compute_pipeline_mock, create_compute_pipeline_real,
+    create_graphics_pipeline_mock, synth_dxil_fixture,
+};
 pub use pso::{ComputePsoDesc, GraphicsPsoDesc, PipelineState};
 pub use queue::{CommandAllocator, CommandList, CommandQueue, CommandQueuePriority};
 pub use resource::{
@@ -66,6 +80,7 @@ pub use resource::{
 pub use root_signature::{
     RootParameter, RootParameterKind, RootSignature, RootSignatureBuilder, ShaderVisibility,
 };
+pub use swapchain::{Hwnd, PresentMode, SwapChain, SwapChainConfig, SwapEffect};
 pub use work_graph::{DispatchGraphArgs, WorkGraphProgramDesc, WorkGraphsTier};
 
 /// Crate version exposed for scaffold verification.
