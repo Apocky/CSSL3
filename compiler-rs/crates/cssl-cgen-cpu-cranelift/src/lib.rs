@@ -49,6 +49,13 @@ pub mod cgen_gpu;
 pub mod cgen_heap_dealloc;
 pub mod cgen_input;
 pub mod cgen_memref;
+// § Wave-A2-β (T11-D264) — `cssl.vec.*` op-handlers : text-CLIF lowerers
+// for `lower::lower_op` + JIT-side cranelift IR-emit helpers for
+// `jit::lower_op_to_cl`. Pairs with the W-A2-α-fix body_lower recognizers
+// (commit 5b1fb77) that mint these ops. Stage-0 represents Vec values as
+// a single I64 SSA (sentinel-data-ptr) ; the full struct-ABI rewrite to
+// (data, len, cap) lands in W-A2-γ.
+pub mod cgen_vec;
 // § Wave-C4 (S7-F4 / T11-D82) — net-effect cgen helpers parallel to Wave-C3
 // `cgen_fs`. Maps `cssl.net.*` MIR ops onto `__cssl_net_*` FFI symbols +
 // declares per-fn cranelift `Signature` + provides per-block import-need

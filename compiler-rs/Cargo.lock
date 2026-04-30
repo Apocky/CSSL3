@@ -519,6 +519,7 @@ dependencies = [
  "cranelift-native",
  "cranelift-object",
  "cssl-mir",
+ "cssl-rt",
  "thiserror",
 ]
 
@@ -966,6 +967,9 @@ name = "cssl-rt"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "cssl-host-d3d12",
+ "cssl-host-openxr",
+ "cssl-host-vulkan",
  "rand",
 ]
 
@@ -1019,6 +1023,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-adjoint"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-loa-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-prime-directive",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-substrate-kan"
 version = "0.1.0"
 dependencies = [
@@ -1029,10 +1044,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-light"
+version = "0.1.0"
+dependencies = [
+ "cssl-caps",
+ "cssl-ifc",
+ "thiserror",
+]
+
+[[package]]
 name = "cssl-substrate-loa-kan"
 version = "0.1.0"
 dependencies = [
  "cssl-hdc",
+ "cssl-ifc",
  "cssl-pga",
  "cssl-substrate-kan",
  "cssl-substrate-omega-field",
@@ -1082,6 +1107,16 @@ dependencies = [
 name = "cssl-substrate-projections"
 version = "0.1.0"
 dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "cssl-substrate-render"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cssl-substrate-omega-field",
+ "smallvec",
  "thiserror",
 ]
 

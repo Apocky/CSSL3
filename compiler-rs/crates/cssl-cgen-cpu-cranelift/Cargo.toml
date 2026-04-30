@@ -9,6 +9,12 @@ authors.workspace      = true
 
 [dependencies]
 cssl-mir           = { path = "../cssl-mir" }
+# § T11-D263 (W-A1-β) : cssl-rt provides `__cssl_alloc` / `__cssl_free` /
+#   `__cssl_realloc` symbols the JIT registers via `JITBuilder::symbol`
+#   so emitted heap-call instructions can resolve at finalize-time. Without
+#   this dep the in-process JIT cannot link tagged-union construct ops
+#   (which expand to `cssl.heap.alloc`).
+cssl-rt            = { path = "../cssl-rt" }
 thiserror          = { workspace = true }
 cranelift-codegen  = { workspace = true }
 cranelift-frontend = { workspace = true }

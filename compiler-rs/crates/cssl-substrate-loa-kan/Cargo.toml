@@ -24,6 +24,10 @@ cssl-hdc                         = { path = "../cssl-hdc" }
 cssl-substrate-prime-directive   = { path = "../cssl-substrate-prime-directive" }
 cssl-substrate-omega-field       = { path = "../cssl-substrate-omega-field" }
 cssl-substrate-kan               = { path = "../cssl-substrate-kan" }
+# § W-S-CORE-6 (T11-D305) : cross-pillar companion-AI hook needs IFC
+# (IfcViolation + SovereignContext) for default-deny on cross-scope
+# proposals + capability-bounded apply gating.
+cssl-ifc                         = { path = "../cssl-ifc" }
 
 # § thiserror : LoA-KAN errors carry the same canonical-error-row discipline
 # as the parent OmegaField MutationError chain.

@@ -74,17 +74,38 @@
 
 pub mod activation;
 pub mod adaptive_scaler;
+pub mod cfer_iter;
 pub mod companion_hook;
 pub mod extension;
+pub mod kan_band;
 pub mod modulation;
 pub mod overlay;
+pub mod update_rules;
 
 pub use activation::{ActivationKind, ParametricActivation, ACTIVATION_PARAM_MAX};
 pub use adaptive_scaler::{AdaptiveContentScaler, KanDetailTier, ScalerError};
-pub use companion_hook::{CompanionAiHook, CompanionAiKind, CompanionConsent, HookError};
+pub use cfer_iter::{
+    drive_iteration_with_evidence, is_converged, kan_iterate_to_convergence, kan_step,
+    parallel_step_serial, CferStepError, DriveReport, EvidenceGlyph, KAN_CONFIDENCE_THRESHOLD,
+    KAN_LOOP_MAX_ITER, KAN_LOOP_THRESHOLD, KAN_STEP_EPSILON,
+};
+pub use companion_hook::{
+    AICapPolicy, AICapScope, AuditDecision, AuditEntry, AuditStage, CompanionAiHook,
+    CompanionAiKind, CompanionConsent, ConsentDecision, CrossPillarCompanionAi, HookError,
+    Mutation, RefuseReason,
+};
 pub use extension::{LoaKanExtension, LoaKanExtensionError, EXTENSION_VERSION_TAG};
+pub use kan_band::{
+    decode_spectrum, encode_spectrum, BasisKind, KanBand, KanBandError, KanBandTable, COEF_BOUND,
+    KAN_BAND_RANK_DEFAULT, KAN_BAND_RANK_MAX, SPECTRUM_BINS,
+};
 pub use modulation::{LoaKanCellModulation, ModulationError, MODULATION_DIM};
 pub use overlay::{LoaKanOverlay, LoaKanOverlayCell, OverlayError};
+pub use update_rules::{
+    compose_rules, AbsorptionRule, CanonicalRuleSet, DiffusionRule, EmissionRule,
+    InterCellTransportRule, KanUpdateRule, MaterialContext, Neighbor, ScatteringRule,
+    UpdateRuleError,
+};
 
 /// Crate-version stamp (S12 lift of S11 substrate-foundation).
 pub const CSSL_LOA_KAN_VERSION: &str = env!("CARGO_PKG_VERSION");

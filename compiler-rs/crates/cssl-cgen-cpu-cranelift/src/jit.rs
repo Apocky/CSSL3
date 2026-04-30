@@ -604,7 +604,22 @@ impl JitModule {
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
-        let builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        // § T11-D263 (W-A1-β) : register cssl-rt FFI symbols so emitted
+        //   `__cssl_alloc` / `__cssl_free` / `__cssl_realloc` calls can
+        //   resolve in the in-process JIT. The Object backend gets these
+        //   via static-link of `cssl_rt.lib` ; the JIT path needs the
+        //   raw fn-pointer bound at builder-construction time.
+        // SAFETY : cssl-rt's `__cssl_*` symbols are `#[no_mangle]
+        //   pub unsafe extern "C" fn(...)` — taking their address in
+        //   process and binding it as `*const u8` is the standard
+        //   pattern documented in `cranelift_jit::JITBuilder::symbol`.
+        let alloc_ptr = cssl_rt::ffi::__cssl_alloc as *const u8;
+        let free_ptr = cssl_rt::ffi::__cssl_free as *const u8;
+        let realloc_ptr = cssl_rt::ffi::__cssl_realloc as *const u8;
+        builder.symbol("__cssl_alloc", alloc_ptr);
+        builder.symbol("__cssl_free", free_ptr);
+        builder.symbol("__cssl_realloc", realloc_ptr);
         let inner = ClJitModule::new(builder);
         Self {
             inner: Some(inner),
@@ -624,7 +639,33 @@ impl JitModule {
     /// [`JitError::UnsupportedFeature`] for multi-result fns.
     /// [`JitError::UnsupportedMirOp`] for op-names stage-0 doesn't JIT.
     /// [`JitError::LoweringFailed`] on Cranelift codegen errors.
+    ///
+    /// § T11-D263 (W-A1-β) STATE-LEAK FIX
+    ///   On any failure between `FunctionBuilder::new` and
+    ///   `builder.finalize()`, the persistent `self.builder_ctx` is left
+    ///   non-empty (FunctionBuilderContext::clear is private — only
+    ///   `FunctionBuilder::finalize` calls it). The next `compile()` call
+    ///   would then panic at `FunctionBuilder::new` 's
+    ///   `debug_assert!(func_ctx.is_empty())`. We wrap the body-build in
+    ///   an inner closure + reset `builder_ctx` on Err so retries work.
     pub fn compile(&mut self, primal: &MirFunc) -> Result<JitFn, JitError> {
+        match self.compile_inner(primal) {
+            Ok(handle) => Ok(handle),
+            Err(e) => {
+                // § T11-D263 — drop any partial FunctionBuilderContext
+                //   state from the failed compile. Re-creating gives us
+                //   a fresh `is_empty() == true` ctx for the next call.
+                self.builder_ctx = FunctionBuilderContext::new();
+                self.codegen_ctx.clear();
+                Err(e)
+            }
+        }
+    }
+
+    /// Inner compile — the original compile-body, wrapped so the public
+    /// surface can apply the state-leak-recovery layer above without
+    /// duplicating the entire body.
+    fn compile_inner(&mut self, primal: &MirFunc) -> Result<JitFn, JitError> {
         if self.finalized {
             return Err(JitError::AlreadyFinalized);
         }
@@ -704,6 +745,15 @@ impl JitModule {
         //     FuncRef needed.
         //   Result-type-driven dispatch : transcendentals are T → T, so the
         //   op's first result type uniquely determines operand width.
+        // § T11-D263 (W-A1-β) — heap-FFI imports per-fn pre-scan. Mirrors
+        //   `object::declare_heap_imports_for_fn` ; the resulting FuncRefs
+        //   are threaded through `lower_op_to_cl` so heap-call sites emit
+        //   actual cranelift `call`s to `__cssl_alloc` / `__cssl_free` /
+        //   `__cssl_realloc` (registered as JITBuilder symbols in
+        //   `JitModule::new`).
+        let heap_refs =
+            declare_jit_heap_imports_for_fn(module, &mut self.codegen_ctx, primal)?;
+
         let callee_refs = {
             let mut refs: HashMap<String, cranelift_codegen::ir::FuncRef> = HashMap::new();
             if let Some(entry_block) = primal.body.blocks.first() {
@@ -853,7 +903,14 @@ impl JitModule {
                     saw_return = true;
                     break;
                 }
-                if lower_op_to_cl(op, &mut builder, &mut value_map, &primal.name, &callee_refs)? {
+                if lower_op_to_cl(
+                    op,
+                    &mut builder,
+                    &mut value_map,
+                    &primal.name,
+                    &callee_refs,
+                    &heap_refs,
+                )? {
                     saw_return = true;
                 }
             }
@@ -978,6 +1035,237 @@ impl Default for JitModule {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// § T11-D263 (W-A1-β) — JIT heap-FFI imports.
+//
+//   Mirrors the Object backend's `HeapImports` (object.rs) but resolves
+//   against in-process cssl-rt via the `JITBuilder::symbol` registration
+//   in `JitModule::new`. Each `compile()` call performs the same op-name
+//   pre-scan + per-fn FuncRef declaration so the body emit can issue
+//   `builder.ins().call(fref, ...)` to `__cssl_alloc` / `__cssl_free` /
+//   `__cssl_realloc` for the post-`TaggedUnionAbiPass` MIR shape.
+// ─────────────────────────────────────────────────────────────────────────
+
+const JIT_HEAP_ALLOC_SYMBOL: &str = "__cssl_alloc";
+const JIT_HEAP_FREE_SYMBOL: &str = "__cssl_free";
+const JIT_HEAP_REALLOC_SYMBOL: &str = "__cssl_realloc";
+
+/// Per-fn map of MIR heap-op name → cranelift `FuncRef` for the
+/// imported cssl-rt symbol. An entry is only present when the fn body
+/// actually references the corresponding op.
+#[derive(Default)]
+struct JitHeapImports {
+    refs: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+}
+
+impl JitHeapImports {
+    fn get(&self, op_name: &str) -> Option<cranelift_codegen::ir::FuncRef> {
+        self.refs.get(op_name).copied()
+    }
+}
+
+fn declare_jit_heap_imports_for_fn(
+    module: &mut ClJitModule,
+    codegen_ctx: &mut Context,
+    primal: &MirFunc,
+) -> Result<JitHeapImports, JitError> {
+    let mut imports = JitHeapImports::default();
+    let Some(entry) = primal.body.blocks.first() else {
+        return Ok(imports);
+    };
+    let mut needs_alloc = false;
+    let mut needs_free = false;
+    let mut needs_realloc = false;
+    for op in &entry.ops {
+        match op.name.as_str() {
+            "cssl.heap.alloc" => needs_alloc = true,
+            "cssl.heap.dealloc" => needs_free = true,
+            "cssl.heap.realloc" => needs_realloc = true,
+            _ => {}
+        }
+    }
+    let call_conv = module.isa().default_call_conv();
+    let ptr_ty = module.isa().pointer_type();
+    let abi_ptr = AbiParam::new(ptr_ty);
+    let mk_sig = |params: usize, returns: bool| {
+        let mut sig = Signature::new(call_conv);
+        for _ in 0..params {
+            sig.params.push(abi_ptr);
+        }
+        if returns {
+            sig.returns.push(abi_ptr);
+        }
+        sig
+    };
+
+    if needs_alloc {
+        let sig = mk_sig(2, true);
+        let id = module
+            .declare_function(JIT_HEAP_ALLOC_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| JitError::LoweringFailed {
+                fn_name: primal.name.clone(),
+                detail: format!("declare {JIT_HEAP_ALLOC_SYMBOL} : {e}"),
+            })?;
+        let fref = module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.refs.insert("cssl.heap.alloc", fref);
+    }
+    if needs_free {
+        let sig = mk_sig(3, false);
+        let id = module
+            .declare_function(JIT_HEAP_FREE_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| JitError::LoweringFailed {
+                fn_name: primal.name.clone(),
+                detail: format!("declare {JIT_HEAP_FREE_SYMBOL} : {e}"),
+            })?;
+        let fref = module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.refs.insert("cssl.heap.dealloc", fref);
+    }
+    if needs_realloc {
+        let sig = mk_sig(4, true);
+        let id = module
+            .declare_function(JIT_HEAP_REALLOC_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| JitError::LoweringFailed {
+                fn_name: primal.name.clone(),
+                detail: format!("declare {JIT_HEAP_REALLOC_SYMBOL} : {e}"),
+            })?;
+        let fref = module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.refs.insert("cssl.heap.realloc", fref);
+    }
+    Ok(imports)
+}
+
+/// Emit a `cssl.heap.{alloc,dealloc,realloc}` op as a cranelift call to
+/// the pre-declared cssl-rt FuncRef. Mirrors `object::emit_heap_call` ;
+/// operands are coerced to the host pointer width via uextend / ireduce
+/// so MIR's wider-than-ptr `usize` literals (carried as I64) line up
+/// with the FFI sig's `*mut u8` / `usize` (both `pointer_type()`).
+fn jit_emit_heap_call(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    heap_refs: &JitHeapImports,
+    expects_result: bool,
+) -> Result<bool, JitError> {
+    let fref = heap_refs
+        .get(op.name.as_str())
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("`{}` import not declared (pre-scan bug)", op.name),
+        })?;
+    let ptr_ty = cl_types::I64;
+    let mut args = Vec::with_capacity(op.operands.len());
+    let operand_count = op.operands.len();
+    for (idx, vid) in op.operands.iter().enumerate() {
+        let raw = *value_map.get(vid).ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "{} operand #{idx} : unknown ValueId({})",
+                op.name, vid.0
+            ),
+        })?;
+        let raw_ty = builder.func.dfg.value_type(raw);
+        let coerced = if raw_ty == ptr_ty {
+            raw
+        } else if raw_ty.bits() < ptr_ty.bits() {
+            builder.ins().uextend(ptr_ty, raw)
+        } else {
+            builder.ins().ireduce(ptr_ty, raw)
+        };
+        args.push(coerced);
+    }
+    // Defensive : the construct-expansion's heap.alloc carries operand-
+    // less attribute-based size (MIR rewrite stamps `bytes=` /
+    // `alignment=` attrs). The Object backend reads those attrs and
+    // synthesizes constants ; the JIT body-loop relies on operands.
+    // When operand-count is 0, synthesize alloc from attributes.
+    if op.name == "cssl.heap.alloc" && operand_count == 0 {
+        let bytes = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "bytes")
+            .and_then(|(_, v)| v.parse::<i64>().ok())
+            .unwrap_or(8);
+        let align = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "alignment")
+            .and_then(|(_, v)| v.parse::<i64>().ok())
+            .unwrap_or(8);
+        let bytes_v = builder.ins().iconst(ptr_ty, bytes);
+        let align_v = builder.ins().iconst(ptr_ty, align);
+        args.push(bytes_v);
+        args.push(align_v);
+    }
+    let call = builder.ins().call(fref, &args);
+    if expects_result {
+        let r = op.results.first().ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} expects a result", op.name),
+        })?;
+        let results = builder.inst_results(call).to_vec();
+        let cl_value = *results.first().ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} produced no cranelift result", op.name),
+        })?;
+        value_map.insert(r.id, cl_value);
+    }
+    Ok(false)
+}
+
+/// Lower an `arith.bitcast` op : cgen-side this is a value-map alias.
+///
+/// § T11-D263 (W-A1-β) — the `tagged_union_abi::expand_module` rewrite
+/// stamps `source_kind=tagged_union_alias` on a synthesized
+/// `arith.bitcast` op that re-routes the original Option/Result
+/// construct-result-id onto the cell-ptr. The JIT aliases the
+/// result-id to the operand's already-bound CLIF Value when both
+/// sides share the same representation.
+fn jit_lower_bitcast(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    let &operand_id = op.operands.first().ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: "arith.bitcast expects 1 operand".to_string(),
+    })?;
+    let r = op.results.first().ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: "arith.bitcast has no result".to_string(),
+    })?;
+    let v = *value_map
+        .get(&operand_id)
+        .ok_or_else(|| JitError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("arith.bitcast unknown operand ValueId({})", operand_id.0),
+        })?;
+    let v_ty = builder.func.dfg.value_type(v);
+    let target_ty = mir_to_cl_type(&r.ty).ok_or_else(|| JitError::UnsupportedFeature {
+        fn_name: fn_name.to_string(),
+        reason: format!("arith.bitcast result type `{}` not scalar", r.ty),
+    })?;
+    if v_ty == target_ty {
+        value_map.insert(r.id, v);
+    } else if v_ty.bits() == target_ty.bits() {
+        let casted = builder.ins().bitcast(
+            target_ty,
+            cranelift_codegen::ir::MemFlags::new(),
+            v,
+        );
+        value_map.insert(r.id, casted);
+    } else {
+        return Err(JitError::UnsupportedFeature {
+            fn_name: fn_name.to_string(),
+            reason: format!(
+                "arith.bitcast width-mismatch : {v_ty} → {target_ty} (no truncate/extend on bitcast)"
+            ),
+        });
+    }
+    Ok(false)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // § Type + Op lowering helpers.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -1022,6 +1310,10 @@ fn mir_to_cl_type(mir: &MirType) -> Option<cranelift_codegen::ir::Type> {
 ///
 /// `callee_refs` : pre-declared cranelift FuncRefs for user-defined callees
 /// that this fn references. Populated by the compile-pass pre-scan.
+///
+/// `heap_refs` : pre-declared cssl-rt FuncRefs for `__cssl_alloc` / free /
+/// realloc — populated by `declare_jit_heap_imports_for_fn` when the body
+/// references the corresponding op (T11-D263 / W-A1-β).
 #[allow(clippy::too_many_lines)]
 fn lower_op_to_cl(
     op: &MirOp,
@@ -1029,6 +1321,7 @@ fn lower_op_to_cl(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+    heap_refs: &JitHeapImports,
 ) -> Result<bool, JitError> {
     match op.name.as_str() {
         "arith.constant" => {
@@ -1089,26 +1382,78 @@ fn lower_op_to_cl(
         }),
         "arith.negf" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
         "arith.cmpf" => lower_cmpf(op, builder, value_map, fn_name),
-        "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
+        // § T11-D263 (W-A1-β · cmpi-predicate-shape) — accept the
+        //   body_lower-emitted suffixed shape `arith.cmpi_<pred>` for the
+        //   six int predicates the front-end emits (eq/ne/slt/sle/sgt/sge ;
+        //   see body_lower.rs:1907). `lower_cmpi` peels the suffix when the
+        //   op-name carries it. The canonical attribute-shape continues to
+        //   work via the same fn for hand-built MIR fixtures.
+        "arith.cmpi"
+        | "arith.cmpi_eq"
+        | "arith.cmpi_ne"
+        | "arith.cmpi_slt"
+        | "arith.cmpi_sle"
+        | "arith.cmpi_sgt"
+        | "arith.cmpi_sge"
+        | "arith.cmpi_ult"
+        | "arith.cmpi_ule"
+        | "arith.cmpi_ugt"
+        | "arith.cmpi_uge" => lower_cmpi(op, builder, value_map, fn_name),
         "arith.select" => lower_select(op, builder, value_map, fn_name),
         // T11-D59 / S6-C3 : memref.load / memref.store — non-volatile
         // raw-pointer load + store with optional ptr+offset and explicit
         // alignment override. See `specs/02_IR.csl § MEMORY-OPS`.
         "memref.load" => lower_memref_load(op, builder, value_map, fn_name),
         "memref.store" => lower_memref_store(op, builder, value_map, fn_name),
+        // § T11-D263 (W-A1-β) — heap-FFI ops emit cranelift `call` to
+        //   the cssl-rt symbols registered on the JITBuilder. Each op
+        //   resolves its FuncRef via the per-fn `JitHeapImports` map
+        //   declared in the compile-pass pre-scan. `alloc` + `realloc`
+        //   bind one ptr-typed result ; `dealloc` produces no result.
+        "cssl.heap.alloc" => jit_emit_heap_call(
+            op, builder, value_map, fn_name, heap_refs, /* expects_result = */ true,
+        ),
+        "cssl.heap.dealloc" => jit_emit_heap_call(
+            op, builder, value_map, fn_name, heap_refs, /* expects_result = */ false,
+        ),
+        "cssl.heap.realloc" => jit_emit_heap_call(
+            op, builder, value_map, fn_name, heap_refs, /* expects_result = */ true,
+        ),
+        // § T11-D263 (W-A1-β) — `arith.bitcast` is the alias-marker
+        //   stamped by `tagged_union_abi::expand_module` to re-route
+        //   the original construct-result-id onto the cell-ptr. The
+        //   JIT treats it as a value-map alias when the source + target
+        //   CLIF types agree (the typical Ptr-to-Ptr alias case), or
+        //   emits a true cranelift `bitcast` for equal-width type-puns.
+        "arith.bitcast" => jit_lower_bitcast(op, builder, value_map, fn_name),
+        // § Wave-A2-β (T11-D264) — `cssl.vec.*` JIT IR-emit handlers.
+        //   Stage-0 represents a Vec value as a single I64 SSA (sentinel
+        //   data-ptr) ; len + cap are not tracked separately at the JIT
+        //   level until the W-A2-γ Vec struct-ABI rewrite lands. Each
+        //   handler returns Ok(false) (non-terminator) — vec ops never
+        //   end a basic block. See `cgen_vec.rs § JIT-side cranelift IR
+        //   emit handlers` for per-op semantics.
+        "cssl.vec.new" => crate::cgen_vec::jit_lower_vec_new(op, builder, value_map, fn_name),
+        "cssl.vec.push" => crate::cgen_vec::jit_lower_vec_push(op, builder, value_map, fn_name),
+        "cssl.vec.index" => {
+            crate::cgen_vec::jit_lower_vec_index(op, builder, value_map, fn_name)
+        }
+        "cssl.vec.len" => crate::cgen_vec::jit_lower_vec_len(op, builder, value_map, fn_name),
+        "cssl.vec.cap" => crate::cgen_vec::jit_lower_vec_cap(op, builder, value_map, fn_name),
+        "cssl.vec.drop" => crate::cgen_vec::jit_lower_vec_drop(op, builder, value_map, fn_name),
         "func.call" => lower_intrinsic_call(op, builder, value_map, fn_name, callee_refs),
         // T11-D58 / S6-C1 : scf.if → cranelift brif + extended-blocks. The
         // shared helper in `crate::scf` walks the two regions and threads
         // the yielded value (when present) through a merge-block parameter.
-        "scf.if" => lower_scf_if_in_jit(op, builder, value_map, fn_name, callee_refs),
+        "scf.if" => lower_scf_if_in_jit(op, builder, value_map, fn_name, callee_refs, heap_refs),
         // T11-D61 / S6-C2 : structured-loop ops. Each delegates to the
         // matching entry in `crate::scf` ; the body-walker dispatcher
         // closure re-enters `lower_op_to_cl` for nested ops (including
         // nested scf.* — recursion through this dispatch is how nested
         // loops + conditionals work).
-        "scf.loop" => lower_scf_loop_in_jit(op, builder, value_map, fn_name, callee_refs),
-        "scf.while" => lower_scf_while_in_jit(op, builder, value_map, fn_name, callee_refs),
-        "scf.for" => lower_scf_for_in_jit(op, builder, value_map, fn_name, callee_refs),
+        "scf.loop" => lower_scf_loop_in_jit(op, builder, value_map, fn_name, callee_refs, heap_refs),
+        "scf.while" => lower_scf_while_in_jit(op, builder, value_map, fn_name, callee_refs, heap_refs),
+        "scf.for" => lower_scf_for_in_jit(op, builder, value_map, fn_name, callee_refs, heap_refs),
         // scf.yield is consumed by `lower_scf_if_in_jit` directly (and by
         // `lower_scf_*` loop helpers as a no-op terminator). Encountering
         // it at the outer dispatch level means it leaked outside its
@@ -1280,7 +1625,18 @@ fn lower_cmpi(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
 ) -> Result<bool, JitError> {
-    let pred_str = predicate_attr(op)?;
+    // § T11-D263 (W-A1-β · cmpi-predicate-shape) — accept BOTH op-name
+    //   shapes that body_lower may emit :
+    //     (a) canonical `arith.cmpi` w/ `predicate=<pred>` attribute
+    //     (b) suffixed `arith.cmpi_<pred>` w/ no attribute (the body_lower
+    //         shape stamped at body_lower.rs:1907 lines).
+    //   Object-backend already handles the suffixed form via
+    //   `lower::lower_op` cascade ; mirroring here.
+    let pred_str = if let Some(suffix) = op.name.strip_prefix("arith.cmpi_") {
+        suffix
+    } else {
+        predicate_attr(op)?
+    };
     let cc = parse_int_cc(pred_str).ok_or_else(|| JitError::LoweringFailed {
         fn_name: fn_name.to_string(),
         detail: format!("unknown arith.cmpi predicate `{pred_str}`"),
@@ -1789,6 +2145,7 @@ fn lower_scf_if_in_jit(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+    heap_refs: &JitHeapImports,
 ) -> Result<bool, JitError> {
     crate::scf::lower_scf_if(
         op,
@@ -1796,7 +2153,7 @@ fn lower_scf_if_in_jit(
         value_map,
         fn_name,
         |branch_op, b, vm, name| -> Result<bool, JitError> {
-            lower_op_to_cl(branch_op, b, vm, name, callee_refs)
+            lower_op_to_cl(branch_op, b, vm, name, callee_refs, heap_refs)
         },
     )
     .map_err(|e| match e {
@@ -1817,6 +2174,7 @@ fn lower_scf_loop_in_jit(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+    heap_refs: &JitHeapImports,
 ) -> Result<bool, JitError> {
     crate::scf::lower_scf_loop(
         op,
@@ -1824,7 +2182,7 @@ fn lower_scf_loop_in_jit(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, JitError> {
-            lower_op_to_cl(body_op, b, vm, name, callee_refs)
+            lower_op_to_cl(body_op, b, vm, name, callee_refs, heap_refs)
         },
     )
     .map_err(|e| match e {
@@ -1843,6 +2201,7 @@ fn lower_scf_while_in_jit(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+    heap_refs: &JitHeapImports,
 ) -> Result<bool, JitError> {
     crate::scf::lower_scf_while(
         op,
@@ -1850,7 +2209,7 @@ fn lower_scf_while_in_jit(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, JitError> {
-            lower_op_to_cl(body_op, b, vm, name, callee_refs)
+            lower_op_to_cl(body_op, b, vm, name, callee_refs, heap_refs)
         },
     )
     .map_err(|e| match e {
@@ -1869,6 +2228,7 @@ fn lower_scf_for_in_jit(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     callee_refs: &HashMap<String, cranelift_codegen::ir::FuncRef>,
+    heap_refs: &JitHeapImports,
 ) -> Result<bool, JitError> {
     crate::scf::lower_scf_for(
         op,
@@ -1876,7 +2236,7 @@ fn lower_scf_for_in_jit(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, JitError> {
-            lower_op_to_cl(body_op, b, vm, name, callee_refs)
+            lower_op_to_cl(body_op, b, vm, name, callee_refs, heap_refs)
         },
     )
     .map_err(|e| match e {
@@ -4664,5 +5024,227 @@ mod tests {
         #[allow(unsafe_code)]
         let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
         assert_eq!(f(), 0);
+    }
+
+    // ─── § T11-D263 (W-A1-β) — JIT body-cgen coverage ──────────────────────
+    //
+    //   Four tests verify the closure between sig-rewriting (W-A1-α-fix)
+    //   and JIT execution :
+    //     1. heap_alloc_jit_returns_nonzero_pointer       — alloc op emits
+    //        a real `__cssl_alloc(8, 4)` call returning a non-null ptr.
+    //     2. arith_bitcast_jit_aliases_pointer_value      — bitcast op is
+    //        a value-map alias (the ptr passes through).
+    //     3. failed_compile_does_not_leak_builder_ctx     — state-leak fix :
+    //        a compile-fail leaves the JIT in a state where the next
+    //        successful compile works.
+    //     4. heap_alloc_then_dealloc_roundtrip            — alloc + dealloc
+    //        round-trip via a JIT-compiled fn body.
+
+    /// Hand-build MIR : `fn alloc_8() -> i64 { ptr_as_i64(heap.alloc(8, 4)) }`.
+    /// Returns the allocated cell-ptr cast to i64 so the test can verify
+    /// non-null-ness via fn-ptr cast.
+    fn hand_built_heap_alloc() -> MirFunc {
+        let mut f = MirFunc::new("alloc_8", vec![], vec![i64_ty()]);
+        f.next_value_id = 4;
+        {
+            let entry = f.body.entry_mut().expect("entry block");
+            // %0 = arith.constant {value=8} : i64   (size operand)
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(0), i64_ty())
+                    .with_attribute("value", "8"),
+            );
+            // %1 = arith.constant {value=4} : i64   (align operand)
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i64_ty())
+                    .with_attribute("value", "4"),
+            );
+            // %2 = cssl.heap.alloc %0, %1 -> ptr
+            entry.ops.push(
+                MirOp::std("cssl.heap.alloc")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Ptr),
+            );
+            // %3 = arith.bitcast %2 -> i64    (so call_unit_to_i64 works)
+            entry.ops.push(
+                MirOp::std("arith.bitcast")
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(3), i64_ty()),
+            );
+            // return %3
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    /// W-A1-β test 1 : heap.alloc executes and returns a non-null ptr.
+    #[test]
+    fn heap_alloc_jit_returns_nonzero_pointer() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_heap_alloc())
+            .expect("heap.alloc body should compile");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("alloc_8").unwrap();
+        // SAFETY: JIT-finalized fn pointer with `extern "C" fn() -> i64` ABI.
+        // The fn body calls into cssl-rt's `__cssl_alloc(8, 4)` registered as
+        // a JITBuilder symbol in `JitModule::new`.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
+        let ptr_as_i64 = f();
+        assert!(
+            ptr_as_i64 != 0,
+            "__cssl_alloc(8,4) returned null — symbol-registration or call-emit broke"
+        );
+        // SAFETY : pair the alloc with a free so the test doesn't leak. The
+        // raw_free uses the same (size, align) pair.
+        #[allow(unsafe_code)]
+        unsafe {
+            cssl_rt::ffi::__cssl_free(ptr_as_i64 as *mut u8, 8, 4);
+        }
+    }
+
+    /// Hand-build MIR : `fn pass_through(p: ptr) -> ptr { bitcast(p) }`.
+    /// Verifies arith.bitcast is a value-map alias.
+    fn hand_built_bitcast_alias() -> MirFunc {
+        let mut f = MirFunc::new("pass_through", vec![MirType::Ptr], vec![MirType::Ptr]);
+        f.next_value_id = 2;
+        {
+            let entry = f.body.entry_mut().expect("entry block");
+            entry.args = vec![MirValue::new(ValueId(0), MirType::Ptr)];
+            // %1 = arith.bitcast %0 -> ptr  {source_kind=tagged_union_alias}
+            entry.ops.push(
+                MirOp::std("arith.bitcast")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(1), MirType::Ptr)
+                    .with_attribute("source_kind", "tagged_union_alias"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(1)));
+        }
+        f
+    }
+
+    /// W-A1-β test 2 : arith.bitcast aliases the operand value through.
+    #[test]
+    fn arith_bitcast_jit_aliases_pointer_value() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_bitcast_alias())
+            .expect("bitcast body should compile");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("pass_through").unwrap();
+        // SAFETY: JIT-finalized fn pointer with `extern "C" fn(i64) -> i64` ABI
+        // (Ptr lowers to I64 on stage-0).
+        #[allow(unsafe_code)]
+        let f: extern "C" fn(i64) -> i64 = unsafe { std::mem::transmute(addr) };
+        // Pass through a sentinel pointer-shaped value ; the bitcast must
+        // alias-thru, returning the same value.
+        let sentinel: i64 = 0xdead_beef_cafe_babe_u64 as i64;
+        assert_eq!(f(sentinel), sentinel);
+    }
+
+    /// W-A1-β test 3 : a failed compile resets the FunctionBuilderContext
+    /// so the next compile() call doesn't panic on the
+    /// `debug_assert!(func_ctx.is_empty())` at FunctionBuilder::new.
+    #[test]
+    fn failed_compile_does_not_leak_builder_ctx() {
+        // Construct a fn that will trip `UnsupportedMirOp` halfway through
+        // body-emit — after `FunctionBuilder::new` started but before
+        // `builder.finalize()` runs. This is the canonical leak-trigger
+        // shape (a pre-fix compile() left builder_ctx non-empty).
+        let mut bad = MirFunc::new("bad_op", vec![i32_ty(), i32_ty()], vec![i32_ty()]);
+        bad.next_value_id = 2;
+        {
+            let entry = bad.body.entry_mut().expect("entry block");
+            entry.args = vec![
+                MirValue::new(ValueId(0), i32_ty()),
+                MirValue::new(ValueId(1), i32_ty()),
+            ];
+            // Unsupported op AFTER builder.create_block — triggers
+            // mid-emit error path.
+            entry.ops.push(
+                MirOp::std("cssl.bogus.op_that_does_not_exist")
+                    .with_operand(ValueId(0)),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(0)));
+        }
+        let mut m = JitModule::new();
+        let err = m.compile(&bad).unwrap_err();
+        assert!(
+            matches!(err, JitError::UnsupportedMirOp { .. }),
+            "expected UnsupportedMirOp ; got {err:?}"
+        );
+        // The state-leak FIX : the next compile MUST succeed, not panic.
+        // Pre-fix this would `debug_assert!(func_ctx.is_empty())` panic.
+        let good = hand_built_add_i32();
+        let h = m.compile(&good).expect("compile after failure should succeed");
+        m.finalize().expect("finalize should succeed");
+        let result = h.call_i32_i32_to_i32(2, 3, &m).unwrap();
+        assert_eq!(result, 5);
+    }
+
+    /// Hand-build : `fn alloc_then_free() -> i64 { let p = alloc(8,4) ; free(p,8,4) ; 1 }`.
+    fn hand_built_heap_alloc_dealloc() -> MirFunc {
+        let mut f = MirFunc::new("alloc_then_free", vec![], vec![i64_ty()]);
+        f.next_value_id = 5;
+        {
+            let entry = f.body.entry_mut().expect("entry block");
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(0), i64_ty())
+                    .with_attribute("value", "8"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i64_ty())
+                    .with_attribute("value", "4"),
+            );
+            entry.ops.push(
+                MirOp::std("cssl.heap.alloc")
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1))
+                    .with_result(ValueId(2), MirType::Ptr),
+            );
+            // dealloc(ptr, size, align) -> ()
+            entry.ops.push(
+                MirOp::std("cssl.heap.dealloc")
+                    .with_operand(ValueId(2))
+                    .with_operand(ValueId(0))
+                    .with_operand(ValueId(1)),
+            );
+            // success-sentinel : return 1
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(3), i64_ty())
+                    .with_attribute("value", "1"),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(3)));
+        }
+        f
+    }
+
+    /// W-A1-β test 4 : heap.alloc + heap.dealloc round-trip in one fn.
+    #[test]
+    fn heap_alloc_then_dealloc_roundtrip() {
+        let mut m = JitModule::new();
+        m.compile(&hand_built_heap_alloc_dealloc())
+            .expect("alloc+dealloc body should compile");
+        m.finalize().expect("finalize should succeed");
+        let addr = m.code_addr_for("alloc_then_free").unwrap();
+        // SAFETY: JIT-finalized fn pointer with `extern "C" fn() -> i64` ABI.
+        // The fn body calls `__cssl_alloc(8, 4)` then `__cssl_free(ptr, 8, 4)`
+        // — both linked against cssl-rt via the JITBuilder symbol-table.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn() -> i64 = unsafe { std::mem::transmute(addr) };
+        // Should return success-sentinel 1 (no crash from the dealloc).
+        assert_eq!(f(), 1);
     }
 }

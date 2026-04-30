@@ -76,6 +76,14 @@ pub fn lower_op(op: &MirOp) -> Option<Vec<ClifInsn>> {
         // the alignment annotation so the textual artifact stays inspectable.
         "memref.load" => lower_memref_load(op),
         "memref.store" => lower_memref_store(op),
+        // § Wave-A2-β (T11-D264) — `cssl.vec.*` dispatch arm. The
+        //   `cgen_vec::is_vec_op` predicate matches all six recognizer
+        //   op-names (vec.new / push / index / len / cap / drop) ;
+        //   `lower_vec_op` returns `None` only when the op-shape is
+        //   malformed (wrong arity / missing result), in which case the
+        //   outer `_ => None` fall-through mirrors the existing
+        //   unrecognized-op behavior.
+        name if crate::cgen_vec::is_vec_op(name) => crate::cgen_vec::lower_vec_op(op),
         _ => None,
     }
 }
