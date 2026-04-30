@@ -49,7 +49,7 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::settings::Configurable as _;
 use cranelift_codegen::{settings, Context};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirModule, MirOp, MirType, ValueId};
 use thiserror::Error;
@@ -204,11 +204,53 @@ pub fn emit_object_module_with_format(
     let mut builder_ctx = FunctionBuilderContext::new();
     let mut codegen_ctx = Context::new();
 
+    // § T11-CC-2 (W-CC-funccall) — pre-declare every non-generic, defined fn
+    //   in the module so per-fn body lowering can resolve `func.call` callees
+    //   that target a sibling fn declared LATER in source order. This mirrors
+    //   `jit::JitModule.fn_table` : signature-only / extern fns stay un-pre-
+    //   declared here ; they get a `Linkage::Import` declaration on first use
+    //   inside `declare_callee_imports_for_fn`. The `pre_decl` map carries
+    //   the cranelift `FuncId` keyed by source-form fn name for both pass-2
+    //   reuse (when defining the body of fn `X`) AND for callsite resolution
+    //   (when fn `Y` issues a `func.call @X`).
+    let ptr_ty_for_decl = obj_module.isa().pointer_type();
+    let mut fn_table: HashMap<String, FuncId> = HashMap::new();
+    for mir_fn in &module.funcs {
+        if mir_fn.is_generic {
+            continue;
+        }
+        // § Extern declaration : a single empty entry block + no other blocks
+        // is the canonical "extern fn" shape (interface-method / FFI decl).
+        // Multi-block all-empty bodies are MALFORMED MIR — fall through so
+        // pass-2's `compile_one_fn` can surface `MultiBlockBody`.
+        if mir_fn.body.blocks.len() <= 1 && mir_fn.is_signature_only() {
+            continue;
+        }
+        let func_id = declare_fn_signature(&mut obj_module, mir_fn, ptr_ty_for_decl)?;
+        fn_table.insert(mir_fn.name.clone(), func_id);
+    }
+
     for mir_fn in &module.funcs {
         if mir_fn.is_generic {
             continue; // skip unspecialized generic fns
         }
-        compile_one_fn(&mut obj_module, &mut builder_ctx, &mut codegen_ctx, mir_fn)?;
+        if mir_fn.body.blocks.len() <= 1 && mir_fn.is_signature_only() {
+            continue; // extern decl ; no body to define ; resolved as import on use.
+        }
+        let func_id = *fn_table
+            .get(&mir_fn.name)
+            .ok_or_else(|| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: "pre-declared FuncId missing (pass-1 bug)".to_string(),
+            })?;
+        compile_one_fn(
+            &mut obj_module,
+            &mut builder_ctx,
+            &mut codegen_ctx,
+            mir_fn,
+            func_id,
+            &fn_table,
+        )?;
     }
 
     // § 4. Finish + emit.
@@ -223,11 +265,66 @@ pub fn emit_object_module_with_format(
 // § per-fn compilation
 // ───────────────────────────────────────────────────────────────────────
 
+/// Build a cranelift `Signature` from the MIR fn's params + results.
+///
+/// Shared by pass-1 (pre-declare every non-generic, non-signature-only fn for
+/// callsite-resolution) + pass-2 (emit body) + the callee-import pre-scan
+/// (when an extern callee MUST be declared as `Linkage::Import`). Stage-0
+/// scalar-only ; non-scalar slot types surface as [`ObjectError::NonScalarType`].
+fn build_clif_signature(
+    isa_call_conv: cranelift_codegen::isa::CallConv,
+    fn_name: &str,
+    params: &[MirType],
+    results: &[MirType],
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<Signature, ObjectError> {
+    let mut sig = Signature::new(isa_call_conv);
+    for (idx, p_ty) in params.iter().enumerate() {
+        let cl_ty = mir_type_to_cl(p_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
+            fn_name: fn_name.to_string(),
+            slot: idx,
+            ty: format!("{p_ty}"),
+        })?;
+        sig.params.push(AbiParam::new(cl_ty));
+    }
+    for (idx, r_ty) in results.iter().enumerate() {
+        let cl_ty = mir_type_to_cl(r_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
+            fn_name: fn_name.to_string(),
+            slot: idx,
+            ty: format!("{r_ty}"),
+        })?;
+        sig.returns.push(AbiParam::new(cl_ty));
+    }
+    Ok(sig)
+}
+
+/// § T11-CC-2 (W-CC-funccall) pass-1 helper — declare a `MirFunc`'s symbol
+/// against the object module without emitting a body. The returned `FuncId`
+/// is stored in the per-module `fn_table` for both pass-2 body emission +
+/// for sibling-fn `func.call` resolution. Linkage = `Export` so cross-TU
+/// linking still works (matches the previous single-pass behavior).
+fn declare_fn_signature(
+    obj_module: &mut ObjectModule,
+    mir_fn: &MirFunc,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<FuncId, ObjectError> {
+    let call_conv = obj_module.isa().default_call_conv();
+    let sig = build_clif_signature(call_conv, &mir_fn.name, &mir_fn.params, &mir_fn.results, ptr_ty)?;
+    obj_module
+        .declare_function(&mir_fn.name, Linkage::Export, &sig)
+        .map_err(|e| ObjectError::LoweringFailed {
+            fn_name: mir_fn.name.clone(),
+            detail: format!("declare_function : {e}"),
+        })
+}
+
 fn compile_one_fn(
     obj_module: &mut ObjectModule,
     builder_ctx: &mut FunctionBuilderContext,
     codegen_ctx: &mut Context,
     mir_fn: &MirFunc,
+    func_id: FuncId,
+    fn_table: &HashMap<String, FuncId>,
 ) -> Result<(), ObjectError> {
     // § T11-CC-1 (W-CC-multiblock) — multi-block bodies are now supported.
     //   Each MIR-block in `mir_fn.body.blocks` maps 1:1 to a cranelift
@@ -254,30 +351,7 @@ fn compile_one_fn(
     // and friends operate on. Cache once for both signature emission and the
     // per-op lowering loop below.
     let ptr_ty = obj_module.isa().pointer_type();
-    let mut sig = Signature::new(call_conv);
-    for (idx, p_ty) in mir_fn.params.iter().enumerate() {
-        let cl_ty = mir_type_to_cl(p_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
-            fn_name: mir_fn.name.clone(),
-            slot: idx,
-            ty: format!("{p_ty}"),
-        })?;
-        sig.params.push(AbiParam::new(cl_ty));
-    }
-    for (idx, r_ty) in mir_fn.results.iter().enumerate() {
-        let cl_ty = mir_type_to_cl(r_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
-            fn_name: mir_fn.name.clone(),
-            slot: idx,
-            ty: format!("{r_ty}"),
-        })?;
-        sig.returns.push(AbiParam::new(cl_ty));
-    }
-
-    let func_id = obj_module
-        .declare_function(&mir_fn.name, Linkage::Export, &sig)
-        .map_err(|e| ObjectError::LoweringFailed {
-            fn_name: mir_fn.name.clone(),
-            detail: format!("declare_function : {e}"),
-        })?;
+    let sig = build_clif_signature(call_conv, &mir_fn.name, &mir_fn.params, &mir_fn.results, ptr_ty)?;
 
     codegen_ctx.clear();
     codegen_ctx.func.signature = sig.clone();
@@ -292,6 +366,29 @@ fn compile_one_fn(
     //   T11-D29 — duplicated here rather than refactored because cssl-mir
     //   cannot dev-dep cssl-cgen-cpu-cranelift (cycle landmine, see HANDOFF).
     let heap_refs = declare_heap_imports_for_fn(obj_module, codegen_ctx, mir_fn, ptr_ty)?;
+
+    // § T11-CC-2 (W-CC-funccall) — pre-scan body ops for `func.call` references.
+    //   For each unique callee referenced in this fn's body :
+    //     - If `fn_table` has the callee → resolve it to the pre-declared
+    //       `FuncId` (intra-module, sibling fn defined locally).
+    //     - Otherwise → declare it as `Linkage::Import` using a signature
+    //       derived from the callsite operand types (looked up via the per-
+    //       fn value-type map) + result types (carried directly on the op).
+    //   Each callee declared once per fn-body ; multiple `func.call` ops
+    //   targeting the same callee share a single `FuncRef`. Mirrors the
+    //   JIT-side pre-scan at `jit.rs` (~line 715) but uses an op-name-keyed
+    //   import map similar to `HeapImports` — no `#width` keying needed
+    //   because user-defined callees are width-monomorphic at this point.
+    //   The walk descends 1 level into nested-region ops (scf.if/loop/while/for)
+    //   so func.call ops inside structured-CFG regions still get their callees
+    //   declared up front.
+    let callee_refs = declare_callee_imports_for_fn(
+        obj_module,
+        codegen_ctx,
+        mir_fn,
+        fn_table,
+        ptr_ty,
+    )?;
 
     // § 2. Build body — multi-block aware (§ T11-CC-1).
     {
@@ -371,6 +468,7 @@ fn compile_one_fn(
                         &mut value_map,
                         &mir_fn.name,
                         &heap_refs,
+                        &callee_refs,
                         ptr_ty,
                         &block_map,
                     )?;
@@ -527,6 +625,181 @@ fn declare_heap_imports_for_fn(
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-CC-2 (W-CC-funccall) — `func.call` callee imports.
+//
+//   `CalleeImports` is the object-side mirror of [`HeapImports`] : a per-fn
+//   map from source-form callee-name → cranelift `FuncRef`. Populated by the
+//   pre-scan helper [`declare_callee_imports_for_fn`] and consumed at
+//   `func.call` lowering time by [`obj_lower_func_call`].
+//
+//   Two callee classes coexist :
+//     1. Intra-module : the callee is a `MirFunc` defined elsewhere in the
+//        same `MirModule`. Pass-1 of `emit_object_module_with_format`
+//        already declared it as `Linkage::Export` and stored its `FuncId`
+//        in the per-module `fn_table`. Here we just re-bind it to the
+//        current fn via `declare_func_in_func`.
+//     2. Extern : the callee is NOT in the module (e.g., a host symbol like
+//        `__cssl_loa_test_call_host_get_42` or a sibling stage-0 stub). Here
+//        we declare it as `Linkage::Import` against the cranelift module
+//        with a signature derived from the callsite : operand types come
+//        from a value-type map built by walking the entry block's
+//        block-args + each prior op's results ; result types come straight
+//        off the `func.call` op's `results` field.
+//
+//   Stage-0 contract : single-result callees only (any result-count > 1
+//   surfaces via the existing `LoweringFailed` path on first lowered op
+//   that consumes the missing values). Predicate-suffix dispatch (jit's
+//   `transcendental_callee_key` "name#width" form) is NOT used — user-
+//   defined callees are width-monomorphic at object-emit time (the
+//   `auto_monomorph` MIR pass has already rewritten any generic call-sites
+//   to mangled-name concrete callsites).
+// ───────────────────────────────────────────────────────────────────────
+
+/// Per-fn map of source-form callee-name → cranelift `FuncRef` for that
+/// callee within the current fn body. Mirrors [`HeapImports`].
+#[derive(Default)]
+struct CalleeImports {
+    refs: HashMap<String, cranelift_codegen::ir::FuncRef>,
+}
+
+impl CalleeImports {
+    fn get(&self, callee: &str) -> Option<cranelift_codegen::ir::FuncRef> {
+        self.refs.get(callee).copied()
+    }
+}
+
+/// Build a `ValueId → MirType` map by walking the entry block once.
+/// Block-args + each op's results contribute their types. Used by the
+/// callee-import pre-scan to derive an extern-callee's signature from
+/// callsite operand types when no other signature source is available.
+fn build_value_type_map(mir_fn: &MirFunc) -> HashMap<ValueId, MirType> {
+    let mut tys: HashMap<ValueId, MirType> = HashMap::new();
+    if let Some(entry) = mir_fn.body.blocks.first() {
+        for arg in &entry.args {
+            tys.insert(arg.id, arg.ty.clone());
+        }
+        for op in &entry.ops {
+            for r in &op.results {
+                tys.insert(r.id, r.ty.clone());
+            }
+            // Walk inner regions one level deep so structured-CFG ops
+            // contribute their nested results to the type-map. Stage-0 only
+            // needs entry-block-level visibility for func.call sigs (the
+            // callee names referenced there) — but a callsite inside a then-
+            // branch IS reachable from the dispatcher, so include it.
+            for region in &op.regions {
+                for inner_block in &region.blocks {
+                    for arg in &inner_block.args {
+                        tys.insert(arg.id, arg.ty.clone());
+                    }
+                    for inner_op in &inner_block.ops {
+                        for r in &inner_op.results {
+                            tys.insert(r.id, r.ty.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    tys
+}
+
+/// Pre-scan the fn body for unique `func.call` callee names ; for each :
+///   - resolve to the pre-declared `FuncId` from `fn_table` if present
+///     (intra-module, sibling fn defined locally) ; bind via
+///     `declare_func_in_func` so the body-lowerer can issue a `call`.
+///   - else declare it as `Linkage::Import` with a signature derived from
+///     the callsite operand types (via `value_types` lookup) + result
+///     types (carried on the op).
+///
+/// Walks both the entry-block ops AND the immediate inner regions of any
+/// structured-CFG ops in the entry block — `func.call` sites inside an
+/// `scf.if` then-branch share the per-fn import surface with the parent.
+fn declare_callee_imports_for_fn(
+    obj_module: &mut ObjectModule,
+    codegen_ctx: &mut Context,
+    mir_fn: &MirFunc,
+    fn_table: &HashMap<String, FuncId>,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<CalleeImports, ObjectError> {
+    let mut imports = CalleeImports::default();
+    let Some(entry_block) = mir_fn.body.blocks.first() else {
+        return Ok(imports);
+    };
+
+    let value_types = build_value_type_map(mir_fn);
+    let call_conv = obj_module.isa().default_call_conv();
+
+    // Recursive walker : visit the op's immediate body + any nested-region
+    // ops one level deep. Stage-0 doesn't recurse arbitrarily — D5 will
+    // tighten the structural surface — but we DO want `func.call` inside
+    // `scf.if` / `scf.loop` to participate in the import surface.
+    fn collect_callees<'a>(
+        ops: &'a [MirOp],
+        out: &mut Vec<&'a MirOp>,
+    ) {
+        for op in ops {
+            if op.name == "func.call" {
+                out.push(op);
+            }
+            for region in &op.regions {
+                for block in &region.blocks {
+                    collect_callees(&block.ops, out);
+                }
+            }
+        }
+    }
+    let mut call_ops: Vec<&MirOp> = Vec::new();
+    collect_callees(&entry_block.ops, &mut call_ops);
+
+    for op in call_ops {
+        let Some((_, callee)) = op.attributes.iter().find(|(k, _)| k == "callee") else {
+            // Malformed `func.call` lacking a callee attribute — defer the
+            // diagnostic to body lowering where we already produce a
+            // descriptive `LoweringFailed`.
+            continue;
+        };
+        if imports.refs.contains_key(callee) {
+            continue;
+        }
+
+        // Path-1 : intra-module sibling fn already declared by pass-1.
+        if let Some(&callee_id) = fn_table.get(callee) {
+            let fref = obj_module.declare_func_in_func(callee_id, &mut codegen_ctx.func);
+            imports.refs.insert(callee.clone(), fref);
+            continue;
+        }
+
+        // Path-2 : extern callee — derive signature from the callsite.
+        // Operand types : look up each operand-id in `value_types`. Missing
+        // entries fall back to the host pointer type (matches the FFI
+        // convention used for `__cssl_*` symbols).
+        let mut param_tys: Vec<MirType> = Vec::with_capacity(op.operands.len());
+        for vid in &op.operands {
+            let mt = value_types
+                .get(vid)
+                .cloned()
+                .unwrap_or(MirType::Ptr);
+            param_tys.push(mt);
+        }
+        // Result types come straight from the op's results — stage-0 ≤ 1.
+        let result_tys: Vec<MirType> =
+            op.results.iter().map(|r| r.ty.clone()).collect();
+
+        let sig = build_clif_signature(call_conv, callee, &param_tys, &result_tys, ptr_ty)?;
+        let extern_id = obj_module
+            .declare_function(callee, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare extern callee `{callee}` : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(extern_id, &mut codegen_ctx.func);
+        imports.refs.insert(callee.clone(), fref);
+    }
+    Ok(imports)
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § per-op lowering (subset)
 // ───────────────────────────────────────────────────────────────────────
 
@@ -536,6 +809,7 @@ fn lower_one_op(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     heap_refs: &HeapImports,
+    callee_refs: &CalleeImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -696,6 +970,13 @@ fn lower_one_op(
         "cssl.heap.realloc" => emit_heap_call(
             op, builder, value_map, fn_name, heap_refs, ptr_ty, /* expects_result = */ true,
         ),
+        // § T11-CC-2 (W-CC-funccall) — `func.call` lowering. Resolves the
+        //   pre-declared `FuncRef` from `callee_refs` (built up-front by
+        //   `declare_callee_imports_for_fn`) and emits a cranelift `call`.
+        //   Stage-0 single-result : the first cranelift result-value is bound
+        //   into `value_map` under the op's first result-id. Void callees
+        //   produce no result and are valid (callsite carries no `.results`).
+        "func.call" => obj_lower_func_call(op, builder, value_map, fn_name, callee_refs),
         // § T11-D58 (S6-C1) — structured-control-flow lowering. `scf.if`
         //   delegates to the shared `crate::scf::lower_scf_if` helper which
         //   creates the then/else/merge blocks + emits `brif`. `scf.yield`
@@ -703,22 +984,50 @@ fn lower_one_op(
         //   outer dispatch level means the parent region terminator leaked,
         //   which we treat as a no-op here. D5 (StructuredCfgValidator) will
         //   reject bare top-level scf.yield in a future slice.
-        "scf.if" => {
-            lower_scf_if_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map)
-        }
+        "scf.if" => lower_scf_if_in_object(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            heap_refs,
+            callee_refs,
+            ptr_ty,
+            block_map,
+        ),
         // § T11-D61 (S6-C2) — structured loops. Each delegates to the
         //   matching `crate::scf::lower_scf_*` helper ; the body-walker
         //   dispatcher closure re-enters `lower_one_op` so nested ops
         //   (arith / heap / nested scf.*) flow through the same dispatch.
         "scf.loop" => lower_scf_loop_in_object(
-            op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map,
+            op,
+            builder,
+            value_map,
+            fn_name,
+            heap_refs,
+            callee_refs,
+            ptr_ty,
+            block_map,
         ),
         "scf.while" => lower_scf_while_in_object(
-            op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map,
+            op,
+            builder,
+            value_map,
+            fn_name,
+            heap_refs,
+            callee_refs,
+            ptr_ty,
+            block_map,
         ),
-        "scf.for" => {
-            lower_scf_for_in_object(op, builder, value_map, fn_name, heap_refs, ptr_ty, block_map)
-        }
+        "scf.for" => lower_scf_for_in_object(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            heap_refs,
+            callee_refs,
+            ptr_ty,
+            block_map,
+        ),
         "scf.yield" => Ok(false),
         // § T11-D77 (S6-C5 redo) — `cssl.closure` materializes the closure VALUE
         //   (the `(fn-ptr, env-ptr)` fat-pair). At stage-0 the body_lower has
@@ -945,6 +1254,65 @@ fn emit_heap_call(
     Ok(false)
 }
 
+/// § T11-CC-2 (W-CC-funccall) — Object-side `func.call` lowering.
+///
+/// Reads the `callee` attribute, looks up the pre-declared cranelift
+/// `FuncRef` in `callee_refs` (populated by
+/// [`declare_callee_imports_for_fn`]), gathers operand cranelift `Value`s
+/// from `value_map`, and emits a cranelift `call`. Single-result calls bind
+/// the first cranelift result-value into the value-map under the op's first
+/// result-id. Void calls produce no result.
+fn obj_lower_func_call(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    callee_refs: &CalleeImports,
+) -> Result<bool, ObjectError> {
+    let (_, callee) = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "callee")
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "func.call missing `callee` attribute".to_string(),
+        })?;
+    let func_ref =
+        callee_refs
+            .get(callee.as_str())
+            .ok_or_else(|| ObjectError::LoweringFailed {
+                fn_name: fn_name.to_string(),
+                detail: format!(
+                    "func.call to `{callee}` : FuncRef not declared (pre-scan bug)"
+                ),
+            })?;
+
+    let mut args: Vec<cranelift_codegen::ir::Value> = Vec::with_capacity(op.operands.len());
+    for vid in &op.operands {
+        let v = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        args.push(v);
+    }
+    let inst = builder.ins().call(func_ref, &args);
+
+    if let Some(r) = op.results.first() {
+        let results = builder.inst_results(inst).to_vec();
+        let cl_value = *results.first().ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "func.call to `{callee}` produced no cranelift result but op has {} result(s)",
+                op.results.len()
+            ),
+        })?;
+        value_map.insert(r.id, cl_value);
+    }
+    Ok(false)
+}
+
 /// Adapter : translate the shared scf-helper's [`crate::scf::BackendOrScfError`]
 /// into [`ObjectError`] so the outer object-emit dispatch keeps one error
 /// type. Mirrors `lower_scf_if_in_jit` in `jit.rs`.
@@ -954,6 +1322,7 @@ fn lower_scf_if_in_object(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     heap_refs: &HeapImports,
+    callee_refs: &CalleeImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -963,7 +1332,16 @@ fn lower_scf_if_in_object(
         value_map,
         fn_name,
         |branch_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(branch_op, b, vm, name, heap_refs, ptr_ty, block_map)
+            lower_one_op(
+                branch_op,
+                b,
+                vm,
+                name,
+                heap_refs,
+                callee_refs,
+                ptr_ty,
+                block_map,
+            )
         },
     )
     .map_err(|e| match e {
@@ -982,6 +1360,7 @@ fn lower_scf_loop_in_object(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     heap_refs: &HeapImports,
+    callee_refs: &CalleeImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -991,7 +1370,16 @@ fn lower_scf_loop_in_object(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty, block_map)
+            lower_one_op(
+                body_op,
+                b,
+                vm,
+                name,
+                heap_refs,
+                callee_refs,
+                ptr_ty,
+                block_map,
+            )
         },
     )
     .map_err(|e| match e {
@@ -1010,6 +1398,7 @@ fn lower_scf_while_in_object(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     heap_refs: &HeapImports,
+    callee_refs: &CalleeImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1019,7 +1408,16 @@ fn lower_scf_while_in_object(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty, block_map)
+            lower_one_op(
+                body_op,
+                b,
+                vm,
+                name,
+                heap_refs,
+                callee_refs,
+                ptr_ty,
+                block_map,
+            )
         },
     )
     .map_err(|e| match e {
@@ -1038,6 +1436,7 @@ fn lower_scf_for_in_object(
     value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
     fn_name: &str,
     heap_refs: &HeapImports,
+    callee_refs: &CalleeImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1047,7 +1446,16 @@ fn lower_scf_for_in_object(
         value_map,
         fn_name,
         |body_op, b, vm, name| -> Result<bool, ObjectError> {
-            lower_one_op(body_op, b, vm, name, heap_refs, ptr_ty, block_map)
+            lower_one_op(
+                body_op,
+                b,
+                vm,
+                name,
+                heap_refs,
+                callee_refs,
+                ptr_ty,
+                block_map,
+            )
         },
     )
     .map_err(|e| match e {
@@ -2870,5 +3278,240 @@ mod tests {
         module.push_func(f);
         let bytes = emit_object_module(&module).expect("full closure-call chain must object-emit");
         assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-CC-2 (W-CC-funccall) — `func.call` lowering tests.
+    //
+    // Each test exercises a distinct facet of the CalleeImports + body-
+    // lowering surface :
+    //   1. extern_call_one_arg_one_result   — Linkage::Import path + 1-arg
+    //                                         + i32-result binding.
+    //   2. extern_call_no_args              — empty operand list, i32 result.
+    //   3. extern_call_no_result            — void callsite (no result-bind).
+    //   4. multi_call_same_callee_one_funcref
+    //                                       — repeated callsites share one
+    //                                         FuncRef declaration.
+    //   5. intra_module_call                — sibling fn defined locally
+    //                                         resolves through fn_table
+    //                                         (no Linkage::Import).
+    // Functional verification (link + run) lives in cssl-examples ; here we
+    // assert the emit-pipeline accepts the MIR + returns valid object bytes
+    // with the host magic prefix.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Helper : build a `main` fn that calls `<callee>(<arg_const>)` with one
+    /// i32 arg + binds the i32 result + returns it. Used by the extern_call_*
+    /// fixtures so each test focuses on its own structural facet.
+    fn build_caller_one_i32_arg(callee: &str, arg_value: i64) -> MirFunc {
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut f = MirFunc::new("main", vec![], vec![i32_ty.clone()]);
+        f.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", arg_value.to_string())
+                .with_result(ValueId(0), i32_ty.clone()),
+        );
+        f.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", callee)
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), i32_ty),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        f
+    }
+
+    #[test]
+    fn extern_call_one_arg_one_result() {
+        // fn main() -> i32 { add42(13) }   where add42 : (i32) -> i32 is extern.
+        // The callee is NOT defined in the module ; pre-scan must declare it
+        // as Linkage::Import using the callsite-derived signature.
+        let main_fn = build_caller_one_i32_arg("add42", 13);
+        let mut module = MirModule::new();
+        module.push_func(main_fn);
+        let bytes = emit_object_module(&module).expect("emit extern call ok");
+        assert!(
+            bytes.starts_with(magic_prefix(host_default_format())),
+            "extern_call output must carry the host object magic"
+        );
+        // Sanity : object body is non-trivial — a `call` instruction carries
+        // a relocation entry which guarantees byte-volume above the empty
+        // module floor (validated against control runs).
+        assert!(bytes.len() > 100, "extern_call object too small : {}", bytes.len());
+    }
+
+    #[test]
+    fn extern_call_no_args() {
+        // fn main() -> i32 { host_get_42() }   host_get_42 : () -> i32 extern.
+        // Validates the zero-operand path through CalleeImports + the call
+        // instruction emission with an empty arg-list.
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut main_fn = MirFunc::new("main", vec![], vec![i32_ty.clone()]);
+        main_fn.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "host_get_42")
+                .with_result(ValueId(0), i32_ty),
+        );
+        main_fn.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(main_fn);
+        let bytes = emit_object_module(&module).expect("emit no-arg extern call ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn extern_call_no_result() {
+        // fn main() { host_emit_event(7) }   host_emit_event : (i32) -> ()
+        // Pure side-effect call : no result on the func.call op ; main itself
+        // returns void. Validates the result-binding skip path in
+        // `obj_lower_func_call`.
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut main_fn = MirFunc::new("main", vec![], vec![]);
+        main_fn.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "7")
+                .with_result(ValueId(0), i32_ty),
+        );
+        main_fn.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "host_emit_event")
+                .with_operand(ValueId(0)),
+        );
+        main_fn.push_op(MirOp::std("func.return"));
+        let mut module = MirModule::new();
+        module.push_func(main_fn);
+        let bytes = emit_object_module(&module).expect("emit void extern call ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn multi_call_same_callee_one_funcref() {
+        // fn main() -> i32 { let a = side_effect_inc(0); let b = side_effect_inc(a); b }
+        // Two `func.call`s naming the same extern callee. `declare_callee_imports_for_fn`
+        // pre-scans uniquely so `side_effect_inc` is declared exactly once at
+        // the module level + its `FuncRef` is shared by both call-sites. We
+        // verify by running the emit pipeline (it would error
+        // `IncompatibleSignature` or similar if double-declared).
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut main_fn = MirFunc::new("main", vec![], vec![i32_ty.clone()]);
+        main_fn.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "0")
+                .with_result(ValueId(0), i32_ty.clone()),
+        );
+        main_fn.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "side_effect_inc")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), i32_ty.clone()),
+        );
+        main_fn.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "side_effect_inc")
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), i32_ty),
+        );
+        main_fn.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+        let mut module = MirModule::new();
+        module.push_func(main_fn);
+        let bytes =
+            emit_object_module(&module).expect("emit multi-call sharing one FuncRef ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn intra_module_call() {
+        // fn helper(x : i32) -> i32 { x }   ; pass-through, body : return %0.
+        // fn main() -> i32 { helper(42) }
+        // Resolves `helper` through the fn_table populated by pass-1 of
+        // `emit_object_module_with_format` ; NOT declared as Linkage::Import.
+        // Validates the intra-module path inside `declare_callee_imports_for_fn`.
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut helper = MirFunc::new("helper", vec![i32_ty.clone()], vec![i32_ty.clone()]);
+        // helper's entry block has arg ValueId(0) wired by MirFunc::new.
+        helper.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+
+        let mut main_fn = MirFunc::new("main", vec![], vec![i32_ty.clone()]);
+        main_fn.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "42")
+                .with_result(ValueId(0), i32_ty.clone()),
+        );
+        main_fn.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "helper")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), i32_ty),
+        );
+        main_fn.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+
+        let mut module = MirModule::new();
+        // Push helper FIRST so pass-1 can declare it before main's body
+        // pre-scan walks. (Pass-1 declares all fns regardless of order so
+        // the reverse case also works ; this ordering matches what
+        // body_lower emits in source order.)
+        module.push_func(helper);
+        module.push_func(main_fn);
+        let bytes = emit_object_module(&module).expect("emit intra-module call ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn intra_module_call_reverse_decl_order() {
+        // Stronger guarantee : `main` is pushed BEFORE `helper`, but the
+        // pass-1 declare-all sweep means main's pre-scan still finds the
+        // helper FuncId in fn_table. Source-order independence matters
+        // because body_lower may not always emit callees first (mutual
+        // recursion would break a single-pass design — this test pins the
+        // 2-pass shape down).
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut helper = MirFunc::new("helper", vec![i32_ty.clone()], vec![i32_ty.clone()]);
+        helper.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+
+        let mut main_fn = MirFunc::new("main", vec![], vec![i32_ty.clone()]);
+        main_fn.push_op(
+            MirOp::std("arith.constant")
+                .with_attribute("value", "9")
+                .with_result(ValueId(0), i32_ty.clone()),
+        );
+        main_fn.push_op(
+            MirOp::std("func.call")
+                .with_attribute("callee", "helper")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), i32_ty),
+        );
+        main_fn.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+
+        let mut module = MirModule::new();
+        module.push_func(main_fn); // FORWARD-decl order : caller before callee.
+        module.push_func(helper);
+        let bytes = emit_object_module(&module).expect("emit reverse-order intra call ok");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn func_call_missing_callee_attribute_errors() {
+        // Defensive : a `func.call` op without a `callee` attribute is
+        // malformed MIR. The pre-scan tolerates it (skips the op for
+        // import-declaration), but `obj_lower_func_call` MUST surface a
+        // descriptive error rather than panic-or-skip.
+        let i32_ty = MirType::Int(IntWidth::I32);
+        let mut f = MirFunc::new("malformed", vec![], vec![i32_ty.clone()]);
+        f.push_op(
+            MirOp::std("func.call")
+                .with_result(ValueId(0), i32_ty),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let r = emit_object_module(&module);
+        assert!(
+            matches!(
+                r,
+                Err(ObjectError::LoweringFailed { ref detail, .. })
+                    if detail.contains("missing `callee`")
+            ),
+            "expected `missing callee` LoweringFailed ; got {r:?}"
+        );
     }
 }
