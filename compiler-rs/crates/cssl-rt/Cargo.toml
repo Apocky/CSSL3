@@ -16,5 +16,31 @@ authors.workspace      = true
 blake3 = { workspace = true }
 rand   = { workspace = true }
 
+# § T11-D272 (W-J-XR) : pure-FFI swap-in for `host_xr` STUB. The
+# `cssl-host-openxr` crate carries the from-scratch (zero-external)
+# OpenXR 1.0 FFI bindings (T11-D260, W-H3) plus the engine-side
+# abstraction layer (T11-D124, W4-10). The cssl-rt `__cssl_xr_*`
+# extern "C" symbols delegate to `cssl_host_openxr::ffi::HostXrApi`
+# once a session is active. `default-features=false` keeps the
+# swap-in headless on every host (no `ash` / `windows` / `metal`
+# pulled transitively — matches the upstream crate's `default = []`).
+cssl-host-openxr = { path = "../cssl-host-openxr", default-features = false }
+
+# § T11-D271 (W-J-GPU re-dispatch) : pure-FFI host-GPU backends.
+#   `cssl-host-vulkan` ships a `pure_ffi` submodule with from-scratch
+#   Vulkan declarations + a `VulkanLoader` indirection trait (Stage A).
+#   We use it from every target ; on non-Linux/Windows hosts the
+#   loader returns NULL and host_gpu falls back to the STUB path.
+#   `cssl-host-d3d12` ships `Loader::probe()` that LoadLibraryW's
+#   `d3d12.dll` + `dxgi.dll` ; Windows-only target-gated so the
+#   workspace stays green on Linux + macOS. Path-deps because the
+#   workspace.dependencies table only lists 3rd-party crates.
+#   ABI signatures in `host_gpu::ffi::__cssl_gpu_*` are sacred — the
+#   swap-in is body-only.
+cssl-host-vulkan = { path = "../cssl-host-vulkan" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+cssl-host-d3d12 = { path = "../cssl-host-d3d12" }
+
 [lints]
 workspace = true

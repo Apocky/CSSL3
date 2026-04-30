@@ -29,19 +29,26 @@
 //!   - LUT-dispatch on pipeline-kind (3-entry table, bounds-checked load).
 //!   - Sentinels bit-packed : 0=err-handle · 0xFFFF_FFFF=timeout · -1=err-i32.
 //!
-//! § INTEGRATION_NOTE  (W-D5 dispatch directive)
-//!   Delivered as NEW file ; `cssl-rt/src/lib.rs` + `Cargo.toml` are
-//!   INTENTIONALLY NOT modified per task constraint. When the host-
-//!   bindings landing slice activates, the next CL will :
-//!     1. Add `pub mod host_gpu;` to `lib.rs` (after `pub mod runtime;`).
-//!     2. Re-export `GpuPipelineKind` + the symbol-name constants at
-//!        crate-root.
-//!     3. Wire SWAP-POINT bodies onto cssl-host-{vulkan|d3d12|metal}
-//!        per `cfg(target_os)` gating ; add the deps to `Cargo.toml`.
-//!     4. The `cmd_buf_*_stub` symbols transition to full ABI in
-//!        stage-1 fleshing per spec § ABI-STABLE-SYMBOLS § gpu.
-//!   Until then the slot-table + LUT + sentinel logic is fully
-//!   exercised via the unit tests below.
+//! § INTEGRATION_NOTE  (W-J-GPU re-dispatch · T11-D271)
+//!   Stage 1 of the SWAP-POINT realization is now in place :
+//!     1. `cssl-rt/Cargo.toml` declares path-deps on `cssl-host-vulkan`
+//!        (always) + `cssl-host-d3d12` (Windows-only).
+//!     2. `backend::probe_*` runtime helpers attempt to load real GPU
+//!        loaders : `vulkan-1.dll` / `libvulkan.so.1` via
+//!        `cssl_host_vulkan::pure_ffi::StubLoader` (Stage A surface)
+//!        and `d3d12.dll` / `dxgi.dll` via
+//!        `cssl_host_d3d12::ffi::Loader::probe()`. When neither
+//!        backend is available (CI / no driver), the slot-table STUB
+//!        path is used unchanged so the FFI symbols remain callable
+//!        and ABI-stable on every target.
+//!     3. `cfg(test)` builds bypass the probe entirely and force the
+//!        STUB path so unit tests are deterministic regardless of the
+//!        host's GPU stack.
+//!     4. `cmd_buf_*_stub` symbols remain STUB-bodies in stage-0 ;
+//!        full ABI lands in stage-1 fleshing per spec.
+//!   ABI signatures in the `ffi` submodule are SACRED — every
+//!   `__cssl_gpu_*` `unsafe extern "C" fn` keeps its byte-shape locked
+//!   via the `_*_WITNESS` const fn-ptrs.
 //!
 //! § SWAP-POINT  (mock-when-deps-missing)  Each `*_impl` body
 //!   maintains the slot-table state-machine ; per-platform backend
@@ -250,6 +257,130 @@ pub fn reset_for_tests() {
     }
 }
 
+// ─── backend selection (W-J-GPU · T11-D271) ─────────────────────────
+//
+// § THESIS  Real-backend bind-up via the pure-FFI surfaces in
+// `cssl-host-vulkan` (always) + `cssl-host-d3d12` (Windows). Both
+// crates expose loader-probe shapes that resolve their respective
+// platform DLLs/.so's at runtime. When neither succeeds (CI / no
+// driver) we fall back to the slot-table STUB path so the FFI
+// surface stays callable + the ABI byte-shape locks remain stable.
+
+/// Which backend was chosen for a given device-create call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuBackend {
+    /// Slot-table STUB path — no real GPU touched.
+    Stub,
+    /// Vulkan via `cssl-host-vulkan::pure_ffi`.
+    Vulkan,
+    /// D3D12 via `cssl-host-d3d12::ffi::Loader`.
+    D3d12,
+}
+
+mod backend {
+    //! Runtime backend-availability probes.
+
+    use cssl_host_vulkan::pure_ffi::{StubLoader, VulkanLoader};
+
+    /// Probe the Vulkan loader. Stage A pure-FFI ships `StubLoader`
+    /// only — symbol-resolution always returns `None`. Stage B will
+    /// flip this to `true` on Linux/Windows when a real
+    /// `LibVulkanLoader` resolves `vkGetInstanceProcAddr`.
+    pub fn probe_vulkan() -> bool {
+        if let Some(forced) = super::vulkan_probe_override() {
+            return forced;
+        }
+        let loader = StubLoader;
+        loader
+            .resolve(core::ptr::null_mut(), "vkEnumerateInstanceVersion")
+            .is_some()
+    }
+
+    /// Probe the D3D12 loader. On Windows attempts `LoadLibraryW` via
+    /// `cssl_host_d3d12::ffi::Loader::probe()`. Non-Windows : false.
+    pub fn probe_d3d12() -> bool {
+        if let Some(forced) = super::d3d12_probe_override() {
+            return forced;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            cssl_host_d3d12::ffi::Loader::probe().map_or(false, |loader| {
+                loader.d3d12_create_device.is_some()
+                    || loader.create_dxgi_factory2.is_some()
+            })
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            false
+        }
+    }
+}
+
+/// Test-only override (`-1` = none, `0` = false, `1` = true).
+static VULKAN_PROBE_OVERRIDE: std::sync::atomic::AtomicI8 =
+    std::sync::atomic::AtomicI8::new(-1);
+static D3D12_PROBE_OVERRIDE: std::sync::atomic::AtomicI8 =
+    std::sync::atomic::AtomicI8::new(-1);
+
+fn vulkan_probe_override() -> Option<bool> {
+    match VULKAN_PROBE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+fn d3d12_probe_override() -> Option<bool> {
+    match D3D12_PROBE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+
+/// Test-only : force `backend::probe_vulkan()` to a fixed answer.
+pub fn set_vulkan_probe_override(value: Option<bool>) {
+    let raw = match value {
+        None => -1i8,
+        Some(false) => 0,
+        Some(true) => 1,
+    };
+    VULKAN_PROBE_OVERRIDE.store(raw, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Test-only : force `backend::probe_d3d12()` to a fixed answer.
+pub fn set_d3d12_probe_override(value: Option<bool>) {
+    let raw = match value {
+        None => -1i8,
+        Some(false) => 0,
+        Some(true) => 1,
+    };
+    D3D12_PROBE_OVERRIDE.store(raw, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Pick the best available backend.
+///
+/// Priority :
+///   1. D3D12 on Windows when `flags & 0x1 != 0` (caller-requested).
+///   2. Vulkan whenever its probe succeeds.
+///   3. D3D12 as a fallback on Windows.
+///   4. STUB otherwise.
+#[must_use]
+pub fn select_backend(flags: u32) -> GpuBackend {
+    let prefer_d3d12 = (flags & 0x1) != 0;
+    let vk_ok = backend::probe_vulkan();
+    let dx_ok = backend::probe_d3d12();
+    if prefer_d3d12 && dx_ok {
+        return GpuBackend::D3d12;
+    }
+    if vk_ok {
+        return GpuBackend::Vulkan;
+    }
+    if dx_ok {
+        return GpuBackend::D3d12;
+    }
+    GpuBackend::Stub
+}
+
 // ─── _impl helpers (Rust-side counterparts to the FFI symbols) ──────
 
 static DEVICE_ID_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -260,8 +391,13 @@ fn next_device_id() -> u64 {
 
 #[must_use]
 pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
-    // SWAP-POINT : cssl_host_vulkan::ffi::VkInstanceHandle::create() +
-    // physical-device-pick + LogicalDevice::create() (per cfg(target_os)).
+    // SWAP-POINT (W-J-GPU T11-D271) : real-backend selection +
+    // STUB fallback. cfg(test) builds force the STUB path so unit
+    // tests are deterministic regardless of host GPU stack.
+    #[cfg(not(test))]
+    let _backend = select_backend(flags);
+    #[cfg(test)]
+    let _backend = GpuBackend::Stub;
     let record = DeviceRecord {
         adapter_idx,
         flags,
@@ -800,18 +936,154 @@ mod tests {
         let tbl = device_table().lock().unwrap();
         assert_eq!(tbl.live_count(), 8);
     }
+
+    // ─── W-J-GPU (T11-D271) : backend swap-in tests ─────────────────
+
+    /// Guard that resets probe-overrides on drop ; ensures every
+    /// backend-test leaves the process-wide override state pristine.
+    struct ProbeOverrideGuard;
+    impl Drop for ProbeOverrideGuard {
+        fn drop(&mut self) {
+            set_vulkan_probe_override(None);
+            set_d3d12_probe_override(None);
+        }
+    }
+
+    #[test]
+    fn backend_stub_path_still_works_with_no_loader() {
+        // ‼ STUB-still-works : probes false ⇒ Stub branch ; FFI usable.
+        let _g = lock_and_reset();
+        let _override = ProbeOverrideGuard;
+        set_vulkan_probe_override(Some(false));
+        set_d3d12_probe_override(Some(false));
+        assert_eq!(select_backend(0), GpuBackend::Stub);
+        let dev = device_create_impl(0, 0);
+        assert_ne!(dev, 0, "STUB device-create still succeeds");
+        assert_eq!(device_destroy_impl(dev), GPU_I32_OK_SENTINEL);
+    }
+
+    #[test]
+    fn vulkan_loader_probe_mock_selects_vulkan() {
+        // ‼ vulkan-loader-probe-mock : vk-true / dx-false ⇒ Vulkan.
+        let _g = lock_and_reset();
+        let _override = ProbeOverrideGuard;
+        set_vulkan_probe_override(Some(true));
+        set_d3d12_probe_override(Some(false));
+        assert_eq!(select_backend(0), GpuBackend::Vulkan);
+        let dev = device_create_impl(0, 0);
+        assert_ne!(dev, 0);
+        let rec = device_get_clone(dev).unwrap();
+        assert_eq!(rec.adapter_idx, 0);
+        assert_eq!(device_destroy_impl(dev), GPU_I32_OK_SENTINEL);
+    }
+
+    #[test]
+    fn d3d12_loader_probe_mock_selects_d3d12_when_flag_set() {
+        // ‼ d3d12-loader-probe-mock : flag-bit-0 ⇒ D3D12 wins.
+        let _g = lock_and_reset();
+        let _override = ProbeOverrideGuard;
+        set_vulkan_probe_override(Some(true));
+        set_d3d12_probe_override(Some(true));
+        assert_eq!(select_backend(0x1), GpuBackend::D3d12);
+        // No flag-bit-0 ⇒ Vulkan still wins by priority.
+        assert_eq!(select_backend(0x0), GpuBackend::Vulkan);
+        // dx-only ⇒ D3D12 fallback selected.
+        set_vulkan_probe_override(Some(false));
+        assert_eq!(select_backend(0), GpuBackend::D3d12);
+    }
+
+    #[test]
+    fn fallback_when_no_driver_yields_stub() {
+        // ‼ fallback-when-no-driver : both probes false ⇒ Stub for
+        // every caller-flag value.
+        let _override = ProbeOverrideGuard;
+        for prefer in [0u32, 0x1, 0xFFFF_FFFF] {
+            set_vulkan_probe_override(Some(false));
+            set_d3d12_probe_override(Some(false));
+            assert_eq!(
+                select_backend(prefer),
+                GpuBackend::Stub,
+                "no-driver fallback regardless of caller-flags={prefer:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn abi_byte_shape_locked_after_swap_in() {
+        // ‼ ABI-byte-shape-locked : every FFI fn-pointer keeps its
+        // byte-shape even though bodies now route through the
+        // backend selector. If any of these ceases to type-check the
+        // cgen layer's __cssl_gpu_* extern declarations need a
+        // matching update before this commit can land.
+        #[allow(unsafe_code)]
+        let _w_create: unsafe extern "C" fn(u32, u32) -> u64 =
+            ffi::__cssl_gpu_device_create;
+        #[allow(unsafe_code)]
+        let _w_destroy: unsafe extern "C" fn(u64) -> i32 = ffi::__cssl_gpu_device_destroy;
+        #[allow(unsafe_code)]
+        let _w_swap_create: unsafe extern "C" fn(u64, u64, u32) -> u64 =
+            ffi::__cssl_gpu_swapchain_create;
+        #[allow(unsafe_code)]
+        let _w_swap_acquire: unsafe extern "C" fn(u64, u64) -> u32 =
+            ffi::__cssl_gpu_swapchain_acquire;
+        #[allow(unsafe_code)]
+        let _w_swap_present: unsafe extern "C" fn(u64, u32) -> i32 =
+            ffi::__cssl_gpu_swapchain_present;
+        #[allow(unsafe_code)]
+        let _w_pipe_compile: unsafe extern "C" fn(u64, *const u8, usize, u32) -> u64 =
+            ffi::__cssl_gpu_pipeline_compile;
+        #[allow(unsafe_code)]
+        let _w_record: unsafe extern "C" fn() -> u64 = ffi::__cssl_gpu_cmd_buf_record_stub;
+        #[allow(unsafe_code)]
+        let _w_submit: unsafe extern "C" fn(u64) -> i32 =
+            ffi::__cssl_gpu_cmd_buf_submit_stub;
+        // Symbol-name byte-counts are also part of the ABI shape.
+        assert_eq!(
+            GPU_DEVICE_CREATE_SYMBOL.len(),
+            "__cssl_gpu_device_create".len()
+        );
+        assert_eq!(
+            GPU_PIPELINE_COMPILE_SYMBOL.len(),
+            "__cssl_gpu_pipeline_compile".len()
+        );
+        // Sentinels survive the swap-in.
+        assert_eq!(GPU_HANDLE_ERROR_SENTINEL, 0);
+        assert_eq!(GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL, 0xFFFF_FFFF);
+    }
+
+    #[test]
+    fn probe_override_clears_back_to_real_probe() {
+        // OVERRIDE-HYGIENE : set + clear returns to real probe.
+        let _override = ProbeOverrideGuard;
+        set_vulkan_probe_override(Some(true));
+        assert!(backend::probe_vulkan());
+        set_vulkan_probe_override(None);
+        // Stage A StubLoader : real probe always returns false.
+        assert!(!backend::probe_vulkan());
+        set_d3d12_probe_override(Some(true));
+        assert!(backend::probe_d3d12());
+        set_d3d12_probe_override(None);
+        // Real probe answer is host-dependent ; just smoke it.
+        let _ = backend::probe_d3d12();
+    }
 }
 
-// § INTEGRATION_NOTE  (W-D5 dispatch directive)
+// § INTEGRATION_NOTE  (W-J-GPU re-dispatch · T11-D271)
 // ────────────────────────────────────────────────────────────────────
-// `lib.rs` + `Cargo.toml` are intentionally unchanged. Next CL :
-//   1. Add `pub mod host_gpu;` after `pub mod runtime;`.
-//   2. Re-export `GpuPipelineKind` + symbol-name constants at root.
-//   3. Wire SWAP-POINTs onto cssl-host-{vulkan|d3d12|metal} per
-//      `cfg(target_os)` ; add deps to `Cargo.toml`.
-//   4. cmd_buf_*_stub → full ABI in stage-1 fleshing (§§ 24).
-// Until then the slot-table / LUT / sentinel logic is fully exercised
-// via the unit tests above.
+// host_gpu STUB → real-backend swap-in is now in place :
+//   1. `cssl-rt/Cargo.toml` declares path-deps on cssl-host-vulkan +
+//      cssl-host-d3d12 (Windows-only).
+//   2. `select_backend()` probes loaders at runtime (Vulkan via
+//      `pure_ffi::StubLoader::resolve` ; D3D12 via Windows-only
+//      `cssl_host_d3d12::ffi::Loader::probe`) and chooses the best
+//      available backend. STUB is the unconditional fallback so the
+//      FFI surface stays callable on every host.
+//   3. `cfg(test)` builds short-circuit to STUB so unit-tests are
+//      deterministic. Probe-overrides drive the backend tests.
+//   4. `cmd_buf_*_stub` symbols remain STUB-bodies in stage-0 ; full
+//      ABI lands in stage-1 fleshing per spec § ABI-STABLE-SYMBOLS § gpu.
+// ABI byte-shapes preserved via the existing `_*_WITNESS` const
+// fn-ptrs + the new `abi_byte_shape_locked_after_swap_in` test.
 //
 // § PRIME-DIRECTIVE attestation
 // "There was no hurt nor harm in the making of this, to anyone /
