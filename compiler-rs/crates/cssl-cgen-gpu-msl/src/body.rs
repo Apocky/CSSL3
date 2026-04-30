@@ -780,8 +780,15 @@ fn emit_scf_for(op: &MirOp, em: &mut BodyEmitter<'_>) -> Result<(), BodyError> {
 /// `scf.while` → MSL `while (cond) { body; }`. The cond is computed once
 /// before the op (MIR shape from body_lower) and we read it at every header
 /// iteration. Mirrors the cranelift lowering's stage-0 semantics.
+///
+/// § T11-D318 (W-CC-mut-assign) — accepts both the pre-D318 1-region
+/// shape (body only ; cond from operand[0]) and the post-D318 2-region
+/// shape (region[0] = cond, region[1] = body). Stage-0 MSL keeps the
+/// one-shot cond from operand[0] for backward-compat ; cond_region
+/// re-walking is a CPU-only T11-D318 capability the GPU side can land
+/// in a follow-up.
 fn emit_scf_while(op: &MirOp, em: &mut BodyEmitter<'_>) -> Result<(), BodyError> {
-    expect_one_body(op, "scf.while", em.fn_name)?;
+    let body_idx = expect_one_or_two_regions(op, "scf.while", em.fn_name)?;
     let cond = em.name_for(*op.operands.first().ok_or_else(|| BodyError::MalformedScf {
         fn_name: em.fn_name.to_string(),
         op_name: "scf.while".into(),
@@ -789,10 +796,45 @@ fn emit_scf_while(op: &MirOp, em: &mut BodyEmitter<'_>) -> Result<(), BodyError>
     })?)?;
     em.line(format!("while ({cond}) {{"));
     em.indent += 1;
-    walk_block_ops(&op.regions[0].blocks[0].ops, em)?;
+    walk_block_ops(&op.regions[body_idx].blocks[0].ops, em)?;
     em.indent -= 1;
     em.line("}".to_string());
     Ok(())
+}
+
+/// § T11-D318 (W-CC-mut-assign) — accept 1 or 2 regions ; return the
+/// body-region index (0 for 1-region shape, 1 for 2-region shape).
+/// Mirrors the cranelift `scf::lower_scf_while` region-count dispatch.
+fn expect_one_or_two_regions(
+    op: &MirOp,
+    op_name: &str,
+    fn_name: &str,
+) -> Result<usize, BodyError> {
+    let body_idx = match op.regions.len() {
+        1 => 0,
+        2 => 1,
+        _ => {
+            return Err(BodyError::MalformedScf {
+                fn_name: fn_name.to_string(),
+                op_name: op_name.to_string(),
+                reason: format!(
+                    "region count = {} (expected 1 or 2)",
+                    op.regions.len()
+                ),
+            });
+        }
+    };
+    if op.regions[body_idx].blocks.len() > 1 {
+        return Err(BodyError::MalformedScf {
+            fn_name: fn_name.to_string(),
+            op_name: op_name.to_string(),
+            reason: format!(
+                "multi-block body ({} blocks)",
+                op.regions[body_idx].blocks.len()
+            ),
+        });
+    }
+    Ok(body_idx)
 }
 
 /// `scf.loop` → MSL `for (;;) { body; }`. Unconditional infinite loop ;

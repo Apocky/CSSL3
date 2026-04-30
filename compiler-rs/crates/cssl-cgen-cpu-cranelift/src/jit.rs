@@ -1135,8 +1135,40 @@ fn lower_op_to_cl(
             b.ins().fdiv(a, c)
         }),
         "arith.negf" => emit_unary(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
-        "arith.cmpf" => lower_cmpf(op, builder, value_map, fn_name),
-        "arith.cmpi" => lower_cmpi(op, builder, value_map, fn_name),
+        // § T11-D318 (W-CC-mut-assign) — accept both the bare name (with a
+        //   `predicate` attribute, legacy form) and the suffix form
+        //   (`arith.cmpi_slt`, body_lower's canonical output post-D316/D318).
+        //   Mirrors the object backend's same dispatch list.
+        "arith.cmpi"
+        | "arith.cmpi_eq"
+        | "arith.cmpi_ne"
+        | "arith.cmpi_slt"
+        | "arith.cmpi_sle"
+        | "arith.cmpi_sgt"
+        | "arith.cmpi_sge"
+        | "arith.cmpi_ult"
+        | "arith.cmpi_ule"
+        | "arith.cmpi_ugt"
+        | "arith.cmpi_uge" => lower_cmpi(op, builder, value_map, fn_name),
+        "arith.cmpf"
+        | "arith.cmpf_eq"
+        | "arith.cmpf_oeq"
+        | "arith.cmpf_ne"
+        | "arith.cmpf_one"
+        | "arith.cmpf_olt"
+        | "arith.cmpf_lt"
+        | "arith.cmpf_ole"
+        | "arith.cmpf_le"
+        | "arith.cmpf_ogt"
+        | "arith.cmpf_gt"
+        | "arith.cmpf_oge"
+        | "arith.cmpf_ge"
+        | "arith.cmpf_ult"
+        | "arith.cmpf_ule"
+        | "arith.cmpf_ugt"
+        | "arith.cmpf_uge"
+        | "arith.cmpf_ord"
+        | "arith.cmpf_uno" => lower_cmpf(op, builder, value_map, fn_name),
         "arith.select" => lower_select(op, builder, value_map, fn_name),
         // T11-D59 / S6-C3 : memref.load / memref.store — non-volatile
         // raw-pointer load + store with optional ptr+offset and explicit
@@ -1165,6 +1197,12 @@ fn lower_op_to_cl(
         // (StructuredCfgValidator) will reject bare scf.yield at the
         // outer level once it lands.
         "scf.yield" => Ok(false),
+        // § T11-D318 (W-CC-mut-assign) — same handling as object.rs : the
+        //   cond-region walker consumes `scf.condition` directly ; if it
+        //   leaks here, treat as a no-op. `cssl.local.alloca` declares a
+        //   stack-cell + binds the slot's stack-addr to the result-id.
+        "scf.condition" => Ok(false),
+        "cssl.local.alloca" => jit_lower_local_alloca(op, builder, value_map, fn_name),
         // § T11-D286 (W-E5-3) — runtime cap-verify wire-through.
         //   The MIR pass `cap_runtime_check` emits a 3-op preamble onto fn
         //   entry blocks for every cap-required parameter :
@@ -1646,6 +1684,19 @@ fn lower_select(
 }
 
 fn predicate_attr(op: &MirOp) -> Result<&str, JitError> {
+    // § T11-D318 (W-CC-mut-assign) — Mirror the object backend's
+    //   `obj_predicate_from_op` : recover the predicate from either the
+    //   suffixed op-name (`arith.cmpi_slt` → "slt") or the legacy
+    //   `predicate` attribute (`arith.cmpi {predicate = "slt"}`).
+    //   body_lower (post-D316/D318) emits the suffix form ; older hand-
+    //   built MIR fixtures carry the attribute. Both paths must work to
+    //   keep the JIT compatible with the canonical body_lower output.
+    if let Some(rest) = op.name.strip_prefix("arith.cmpi_") {
+        return Ok(rest);
+    }
+    if let Some(rest) = op.name.strip_prefix("arith.cmpf_") {
+        return Ok(rest);
+    }
     op.attributes
         .iter()
         .find(|(k, _)| k == "predicate")
@@ -1765,6 +1816,60 @@ fn lower_memref_load(
     let v = builder.ins().load(elem_ty, flags, addr, 0);
     value_map.insert(r.id, v);
     Ok(false)
+}
+
+/// § T11-D318 (W-CC-mut-assign) — JIT-side `cssl.local.alloca`. Mirrors
+/// the object backend's `obj_lower_local_alloca` : creates a cranelift
+/// `StackSlot` sized + aligned per the `slot_ty` attribute, then binds
+/// the slot's `stack_addr` to the op's result-id. Subsequent
+/// `memref.load` / `memref.store` against that address read/write the
+/// cell.
+fn jit_lower_local_alloca(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+) -> Result<bool, JitError> {
+    use cranelift_codegen::ir::{StackSlotData, StackSlotKind};
+    let r = op.results.first().ok_or_else(|| JitError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: "cssl.local.alloca with no result".to_string(),
+    })?;
+    let slot_ty_str = op
+        .attributes
+        .iter()
+        .find(|(k, _)| k == "slot_ty")
+        .map_or("", |(_, v)| v.as_str());
+    // Host-pointer-width fallback — JIT runs on the host so I64 is the
+    // canonical pointer width on x86_64. (Cranelift accepts I64 for
+    // stack-addr on every supported host today ; cross-target tweaks
+    // land when stage-0 grows non-host targets.)
+    let ptr_ty = cranelift_codegen::ir::types::I64;
+    let (slot_size, slot_align_log2) = jit_parse_slot_ty_size_align(slot_ty_str);
+    let slot = builder.create_sized_stack_slot(StackSlotData::new(
+        StackSlotKind::ExplicitSlot,
+        slot_size,
+        slot_align_log2,
+    ));
+    let addr = builder.ins().stack_addr(ptr_ty, slot, 0);
+    value_map.insert(r.id, addr);
+    Ok(false)
+}
+
+/// JIT-side mirror of `parse_slot_ty_size_align` in object.rs. Kept
+/// duplicated here rather than refactored cross-crate because the cgen
+/// crate wants to avoid a self-dependency cycle. Recognized scalar
+/// types match the object-backend coverage.
+fn jit_parse_slot_ty_size_align(slot_ty_str: &str) -> (u32, u8) {
+    let s = slot_ty_str.trim();
+    match s {
+        "i1" | "i8" | "u8" | "bool" => (1, 0),
+        "i16" | "u16" => (2, 1),
+        "i32" | "u32" | "f32" => (4, 2),
+        "i64" | "u64" | "f64" | "index" => (8, 3),
+        // Host pointer width default for Ptr / Handle / unknown.
+        _ => (8, 3),
+    }
 }
 
 /// Lower `memref.store %val, %ptr [, %offset]`.
@@ -4876,5 +4981,202 @@ mod tests {
             }
             Err(other) => panic!("unexpected JitError variant : {other:?}"),
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-D318 (W-CC-mut-assign) — let-mut + assign + while-loop
+    //   end-to-end JIT roundtrip. Builds the MIR shape that
+    //   `body_lower::lower_while` + `lower_assign` + `lower_stmt::Let
+    //   { mutable: true, .. }` emits, then compiles + executes via the
+    //   JIT and asserts the runtime exit value.
+    // ─────────────────────────────────────────────────────────────────
+
+    /// Hand-build the MIR shape for :
+    ///
+    /// ```cssl
+    /// fn frame_counter() -> i32 {
+    ///   let mut frame : i32 = 0
+    ///   while frame < 60 {
+    ///     frame = frame + 1
+    ///   }
+    ///   frame
+    /// }
+    /// ```
+    ///
+    /// The shape uses the new T11-D318 ops :
+    ///   - `cssl.local.alloca` declares the frame-cell.
+    ///   - Initial seed : `arith.constant 0 → memref.store cell, 0`.
+    ///   - `scf.while` carries TWO regions :
+    ///       region[0] (cond) : load+const+cmpi+`scf.condition` term ;
+    ///       region[1] (body) : load+const+addi+store back into cell.
+    ///   - Trailing : `memref.load cell → func.return`.
+    fn hand_built_let_mut_frame_counter() -> MirFunc {
+        use cssl_mir::{MirBlock, MirRegion};
+        let i32t = || MirType::Int(IntWidth::I32);
+        let bool_t = || MirType::Bool;
+        let mut f = MirFunc::new("frame_counter", vec![], vec![i32t()]);
+        // ValueId allocation plan :
+        //   v0 : alloca cell-ptr
+        //   v1 : arith.constant 0 (init value)
+        //   (memref.store v1, v0 — no result)
+        //   v2 : arith.constant 60 (cond rhs — captured for the legacy
+        //          operand path ; not strictly needed by the new region
+        //          shape but body_lower emits it for backward-compat)
+        //   v3 : memref.load cell (cond-region : capture pre-D318
+        //          one-shot operand value)
+        //   v4 : arith.cmpi_slt v3, v2 (cond-region : the legacy operand
+        //          path consumes this)
+        //   v5..v7  : cond-region's per-iter sub-context :
+        //               v5 = memref.load cell ; v6 = const 60 ; v7 = cmpi v5, v6
+        //   (scf.condition v7 — terminator)
+        //   v8..v11 : body-region :
+        //               v8 = memref.load cell ; v9 = const 1 ;
+        //               v10 = arith.addi v8, v9 ; (memref.store v10, v0)
+        //   v11 = scf.while result (None-typed)
+        //   v12 = memref.load cell (trailing read for the return)
+        f.next_value_id = 13;
+        {
+            let entry = f.body.entry_mut().unwrap();
+            entry.args = vec![];
+
+            // § Outer-block ops : alloca + init + scf.while + trailing read +
+            //   func.return.
+            entry.ops.push(
+                MirOp::std("cssl.local.alloca")
+                    .with_result(ValueId(0), MirType::Ptr)
+                    .with_attribute("slot_ty", "i32"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(1), i32t())
+                    .with_attribute("value", "0"),
+            );
+            entry.ops.push(
+                MirOp::std("memref.store")
+                    .with_operand(ValueId(1))
+                    .with_operand(ValueId(0)),
+            );
+            // Pre-D318 backward-compat operand : load + const + cmpi
+            // computed in the OUTER block. The new cond_region in the
+            // scf.while op re-walks its own copy each iteration ; this
+            // outer-block computation is dead but keeps the operand
+            // valid for the legacy path.
+            entry.ops.push(
+                MirOp::std("memref.load")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(3), i32t()),
+            );
+            entry.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(2), i32t())
+                    .with_attribute("value", "60"),
+            );
+            entry.ops.push(
+                MirOp::std("arith.cmpi_slt")
+                    .with_operand(ValueId(3))
+                    .with_operand(ValueId(2))
+                    .with_result(ValueId(4), bool_t()),
+            );
+
+            // § cond_region : load cell ; const 60 ; cmpi ; scf.condition.
+            let mut cond_blk = MirBlock::new("entry");
+            cond_blk.ops.push(
+                MirOp::std("memref.load")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(5), i32t()),
+            );
+            cond_blk.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(6), i32t())
+                    .with_attribute("value", "60"),
+            );
+            cond_blk.ops.push(
+                MirOp::std("arith.cmpi_slt")
+                    .with_operand(ValueId(5))
+                    .with_operand(ValueId(6))
+                    .with_result(ValueId(7), bool_t()),
+            );
+            cond_blk
+                .ops
+                .push(MirOp::std("scf.condition").with_operand(ValueId(7)));
+            let mut cond_region = MirRegion::new();
+            cond_region.push(cond_blk);
+
+            // § body_region : load cell ; const 1 ; addi ; store back.
+            let mut body_blk = MirBlock::new("entry");
+            body_blk.ops.push(
+                MirOp::std("memref.load")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(8), i32t()),
+            );
+            body_blk.ops.push(
+                MirOp::std("arith.constant")
+                    .with_result(ValueId(9), i32t())
+                    .with_attribute("value", "1"),
+            );
+            body_blk.ops.push(
+                MirOp::std("arith.addi")
+                    .with_operand(ValueId(8))
+                    .with_operand(ValueId(9))
+                    .with_result(ValueId(10), i32t()),
+            );
+            body_blk.ops.push(
+                MirOp::std("memref.store")
+                    .with_operand(ValueId(10))
+                    .with_operand(ValueId(0)),
+            );
+            let mut body_region = MirRegion::new();
+            body_region.push(body_blk);
+
+            // § scf.while : cond_region (region[0]) + body_region
+            //   (region[1]). Operand[0] = the legacy one-shot cond
+            //   ValueId for backward-compat with non-D318 cgen paths.
+            entry.ops.push(
+                MirOp::std("scf.while")
+                    .with_operand(ValueId(4))
+                    .with_region(cond_region)
+                    .with_region(body_region)
+                    .with_result(ValueId(11), MirType::None),
+            );
+
+            // § Trailing read + return.
+            entry.ops.push(
+                MirOp::std("memref.load")
+                    .with_operand(ValueId(0))
+                    .with_result(ValueId(12), i32t()),
+            );
+            entry
+                .ops
+                .push(MirOp::std("func.return").with_operand(ValueId(12)));
+        }
+        f
+    }
+
+    #[test]
+    fn jit_let_mut_while_loop_returns_60() {
+        // ═══════════════════════════════════════════════════════════════
+        // § THE T11-D318 KILLER TEST : a hand-built MIR fixture matching
+        //   the shape `body_lower` emits for `let mut frame : i32 = 0 ;
+        //   while frame < 60 { frame = frame + 1 } ; frame` compiles +
+        //   runs + returns 60. This is the failing-case from MISSION
+        //   converted to a runtime-roundtrip gate.
+        // ═══════════════════════════════════════════════════════════════
+        let mut m = JitModule::new();
+        m.compile(&hand_built_let_mut_frame_counter())
+            .expect("frame_counter should compile via cssl.local.alloca + scf.while two-region");
+        m.finalize().expect("module finalize");
+        let addr = m
+            .code_addr_for("frame_counter")
+            .expect("symbol should be present after finalize");
+        // SAFETY: the JIT module owns the executable memory ; the fn
+        // signature () -> i32 matches the MIR's empty-param + i32-result
+        // shape via the host's default ABI.
+        #[allow(unsafe_code)]
+        let f: extern "C" fn() -> i32 = unsafe { std::mem::transmute(addr) };
+        let result = f();
+        assert_eq!(
+            result, 60,
+            "let-mut frame counter should iterate 60 times then return 60"
+        );
     }
 }

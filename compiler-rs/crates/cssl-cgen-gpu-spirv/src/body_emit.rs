@@ -1351,17 +1351,32 @@ fn emit_loop_shape(
     op: &MirOp,
     shape: LoopShape,
 ) -> Result<(), BodyEmitError> {
-    if op.regions.len() != 1 {
-        return Err(BodyEmitError::MalformedOp {
-            fn_name: ctx.fn_name.to_string(),
-            op_name: op.name.clone(),
-            detail: format!(
-                "{} expected 1 region (body) ; got {}",
-                op.name,
-                op.regions.len()
-            ),
-        });
-    }
+    // § T11-D318 (W-CC-mut-assign) — `scf.while` shape evolution :
+    //   - 1 region : pre-D318 shape (body only ; cond is the operand
+    //     and is evaluated once outside the loop). Stage-0 SPIR-V
+    //     keeps the one-shot semantic which is correct for any
+    //     non-mutating cond (the common case for shaders).
+    //   - 2 regions : post-D318 shape (region[0] = cond ; region[1] =
+    //     body). Stage-0 SPIR-V doesn't yet re-walk the cond_region
+    //     at the header (that's a CPU-only T11-D318 capability the
+    //     GPU backends can land in a follow-up). For now, treat
+    //     region[1] as the body-region so the body still emits ;
+    //     the cond stays one-shot via the leading operand.
+    let body_region_idx = match op.regions.len() {
+        1 => 0,
+        2 => 1,
+        _ => {
+            return Err(BodyEmitError::MalformedOp {
+                fn_name: ctx.fn_name.to_string(),
+                op_name: op.name.clone(),
+                detail: format!(
+                    "{} expected 1 or 2 regions (body, optionally cond+body) ; got {}",
+                    op.name,
+                    op.regions.len()
+                ),
+            });
+        }
+    };
 
     // Cond/iter operand : scf.for / scf.while take 1 operand. scf.loop
     // takes 0 operands (the synthetic `true` cond goes through a constant
@@ -1403,8 +1418,8 @@ fn emit_loop_shape(
         .map_err(|e| BodyEmitError::BuilderFailed {
             detail: format!("begin_block (body) : {e:?}"),
         })?;
-    emit_branch_region_ops(b, ctx, &op.regions[0], None)?;
-    if !region_ends_with_terminator(&op.regions[0]) {
+    emit_branch_region_ops(b, ctx, &op.regions[body_region_idx], None)?;
+    if !region_ends_with_terminator(&op.regions[body_region_idx]) {
         b.branch(continue_label)
             .map_err(|e| BodyEmitError::BuilderFailed {
                 detail: format!("branch (body→continue) : {e:?}"),

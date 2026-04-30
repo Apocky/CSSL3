@@ -550,13 +550,24 @@ fn emit_scf_if(ctx: &mut Ctx, op: &MirOp) -> Result<(), BodyEmitError> {
 // (the iter + step + count desugaring is a future-slice transform).
 
 fn emit_scf_loop(ctx: &mut Ctx, op: &MirOp, form: &str) -> Result<(), BodyEmitError> {
-    if op.regions.len() != 1 {
-        return Err(BodyEmitError::LoopWrongRegions {
-            fn_name: ctx.name(),
-            loop_form: form.to_string(),
-            actual: op.regions.len(),
-        });
-    }
+    // § T11-D318 (W-CC-mut-assign) — `scf.while` shape evolution :
+    //   - 1 region : pre-D318 shape (body only, cond from operand[0]).
+    //   - 2 regions : post-D318 shape (region[0] = cond, region[1] =
+    //     body). Stage-0 WGSL keeps the one-shot cond from operand[0]
+    //     for backward-compat with non-mutating cond expressions ;
+    //     re-walking the cond_region at each iteration is a future
+    //     follow-up matching the cranelift-side T11-D318 work.
+    let body_idx = match op.regions.len() {
+        1 => 0,
+        2 => 1,
+        _ => {
+            return Err(BodyEmitError::LoopWrongRegions {
+                fn_name: ctx.name(),
+                loop_form: form.to_string(),
+                actual: op.regions.len(),
+            });
+        }
+    };
     ctx.push(format!("loop {{ // scf.{form}"));
     if form == "while" {
         if let Some(cond) = op.operands.first() {
@@ -568,7 +579,7 @@ fn emit_scf_loop(ctx: &mut Ctx, op: &MirOp, form: &str) -> Result<(), BodyEmitEr
     // assignment (per the D5 forward-compat policy in
     // `is_structured_parent_for_yield`).
     ctx.yield_targets.push(String::new());
-    walk_region(ctx, &op.regions[0])?;
+    walk_region(ctx, &op.regions[body_idx])?;
     ctx.yield_targets.pop();
     ctx.push("}");
     Ok(())
