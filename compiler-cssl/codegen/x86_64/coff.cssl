@@ -1,0 +1,446 @@
+// § compiler-cssl/codegen/x86_64/coff.cssl
+// § T11-D257 (W-E3-γ · x86-64-backend-in-cssl THIRD SLICE) · COFF/PE object emitter
+// §
+// § Self-host bootstrap : authored in CSSL itself. Wraps the encoder's
+// § Vec<u8> machine-code stream into a Microsoft COFF object file (.obj)
+// § suitable for link.exe / lld-link to combine into a Windows EXE/DLL.
+// §
+// § This emits AMD64 COFF (the OBJ format used by MSVC / LLVM-Clang on
+// § Windows). NOT the full PE32+ image — that is the format produced by
+// § the LINKER, not the assembler/codegen. Per spec § 3 (COFF Sections) :
+// §   - File header   (IMAGE_FILE_HEADER · 20 bytes)
+// §   - N section hdrs (IMAGE_SECTION_HEADER · 40 bytes each)
+// §   - Section bodies (raw data)
+// §   - Relocations    (per section · IMAGE_RELOCATION · 10 bytes each)
+// §   - Symbol table   (IMAGE_SYMBOL · 18 bytes each)
+// §   - String table   (4-byte length-prefix + zero-terminated names)
+// §
+// § REFERENCE :
+// §   - Microsoft PE/COFF Specification · v8.3 (2018-10)
+// §       § 3.1 File Headers · § 4 Section Table · § 5 Symbol Table
+// §       · § 5.1 Section Number Values · § 6 Relocations
+// §
+// § NOTES :
+// §   - All multi-byte fields are LITTLE-ENDIAN per spec § 1.4.
+// §   - Section names ≤ 8 bytes are stored INLINE in IMAGE_SECTION_HEADER.Name
+// §     (NUL-padded). Longer names use "/N" form pointing into the string-table.
+// §   - Symbol names ≤ 8 bytes also stored INLINE (in IMAGE_SYMBOL.Name).
+// §     We always use the long-form (offset into string table) for simplicity.
+// §
+// § DISCIPLINE :
+// §   - LE-only · obj_common::emit_u16/u32/u64
+// §   - Pre-pass computes section + reloc offsets ; second pass writes bytes.
+// §   - String table starts at 4-byte length-field ; entries indexed from 4.
+
+// ─────────────────────────────────────────────────────────────────────
+// § IMAGE_FILE_HEADER constants · spec § 3.3
+// ─────────────────────────────────────────────────────────────────────
+
+const IMAGE_FILE_MACHINE_AMD64        : u16 = 0x8664;
+
+// Machine + flags
+const IMAGE_FILE_RELOCS_STRIPPED      : u16 = 0x0001;
+const IMAGE_FILE_LINE_NUMS_STRIPPED   : u16 = 0x0004;
+const IMAGE_FILE_LOCAL_SYMS_STRIPPED  : u16 = 0x0008;
+
+const IMAGE_FILE_HEADER_SIZE          : u32 = 20;
+const IMAGE_SECTION_HEADER_SIZE       : u32 = 40;
+const IMAGE_SYMBOL_SIZE               : u32 = 18;
+const IMAGE_RELOCATION_SIZE           : u32 = 10;
+
+// ─────────────────────────────────────────────────────────────────────
+// § IMAGE_SECTION_HEADER characteristics · spec § 4.1
+// ─────────────────────────────────────────────────────────────────────
+
+const IMAGE_SCN_CNT_CODE              : u32 = 0x00000020;
+const IMAGE_SCN_CNT_INITIALIZED_DATA  : u32 = 0x00000040;
+const IMAGE_SCN_CNT_UNINITIALIZED_DATA: u32 = 0x00000080;
+const IMAGE_SCN_ALIGN_16BYTES         : u32 = 0x00500000;
+const IMAGE_SCN_MEM_EXECUTE           : u32 = 0x20000000;
+const IMAGE_SCN_MEM_READ              : u32 = 0x40000000;
+const IMAGE_SCN_MEM_WRITE             : u32 = 0x80000000;
+
+// ─────────────────────────────────────────────────────────────────────
+// § IMAGE_SYMBOL storage classes · spec § 5.4 · WinNT.h
+// ─────────────────────────────────────────────────────────────────────
+
+const IMAGE_SYM_CLASS_NULL            : u8 = 0;
+const IMAGE_SYM_CLASS_EXTERNAL        : u8 = 2;     // global
+const IMAGE_SYM_CLASS_STATIC          : u8 = 3;     // file-local
+const IMAGE_SYM_CLASS_LABEL           : u8 = 6;
+const IMAGE_SYM_CLASS_FUNCTION        : u8 = 101;   // .bf / .lf / .ef aux records
+const IMAGE_SYM_CLASS_FILE            : u8 = 103;
+const IMAGE_SYM_CLASS_WEAK_EXTERNAL   : u8 = 105;
+
+// ─────────────────────────────────────────────────────────────────────
+// § Symbol type field · spec § 5.4.3 (low byte = base, high byte = derived)
+// ─────────────────────────────────────────────────────────────────────
+
+const IMAGE_SYM_TYPE_NULL             : u16 = 0x0000;
+const IMAGE_SYM_DTYPE_FUNCTION_LO     : u16 = 0x0020;     // 0x20 in low half ; spec: high nybble = 2 (DT_FCN)
+
+// ─────────────────────────────────────────────────────────────────────
+// § AMD64 COFF relocation types · spec § 6.2.2 / WinNT.h
+// ─────────────────────────────────────────────────────────────────────
+
+const IMAGE_REL_AMD64_ABSOLUTE        : u16 = 0x0000;
+const IMAGE_REL_AMD64_ADDR64          : u16 = 0x0001;
+const IMAGE_REL_AMD64_ADDR32          : u16 = 0x0002;
+const IMAGE_REL_AMD64_REL32           : u16 = 0x0004;
+const IMAGE_REL_AMD64_REL32_1         : u16 = 0x0005;
+
+// Translate cross-format RelocKind to COFF AMD64 relocation type.
+fn coff_reloc_type(kind : RelocKind) -> u16 {
+    match kind {
+        RelocKind::Abs64    => IMAGE_REL_AMD64_ADDR64,
+        RelocKind::Pc32     => IMAGE_REL_AMD64_REL32,
+        RelocKind::Plt32    => IMAGE_REL_AMD64_REL32,
+        RelocKind::GotPcRel => IMAGE_REL_AMD64_REL32,        // closest analog ; Windows PE uses GOT-equivalent IAT
+    }
+}
+
+// Translate cross-format SymBinding to COFF storage class.
+fn coff_storage_class(b : SymBinding) -> u8 {
+    match b {
+        SymBinding::Local  => IMAGE_SYM_CLASS_STATIC,
+        SymBinding::Global => IMAGE_SYM_CLASS_EXTERNAL,
+        SymBinding::Weak   => IMAGE_SYM_CLASS_WEAK_EXTERNAL,
+    }
+}
+
+// Translate cross-format SymKind to COFF Type field.
+fn coff_sym_type(kind : SymKind) -> u16 {
+    match kind {
+        SymKind::Func   => IMAGE_SYM_DTYPE_FUNCTION_LO,
+        _               => IMAGE_SYM_TYPE_NULL,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § emit_coff · top-level COFF AMD64 object emitter
+// ─────────────────────────────────────────────────────────────────────
+// § Inputs :
+// §   machine_code · raw .text bytes from W-E3-α encoder
+// §   symbols      · cross-format Symbol records
+// §   relocs       · cross-format Reloc records (against .text)
+// §
+// § Output :
+// §   Vec<u8> · complete COFF AMD64 .obj ready for link.exe
+// §
+// § Section indexes (1-based per COFF convention) :
+// §   1 = .text
+// §
+// § File layout :
+// §   IMAGE_FILE_HEADER (20)
+// §   IMAGE_SECTION_HEADER × 1 (40)            ⇒ off 20..60
+// §   .text raw bytes                          ⇒ off 60..60+M
+// §   IMAGE_RELOCATION × N_RELOCS (10 each)    ⇒ after .text
+// §   IMAGE_SYMBOL × N_SYMS (18 each)          ⇒ pointed-to by ehdr
+// §   StringTable (4-byte length + names)
+
+fn emit_coff(machine_code : &Vec<u8>, symbols : &Vec<Symbol>, relocs : &Vec<Reloc>) -> Vec<u8> {
+    // ── Stage 1 : compute layout offsets ────────────────────────────────
+
+    let n_sections : u16 = 1;                                       // just .text in this slice
+    let n_relocs = relocs.len() as u32;
+    let n_syms = symbols.len() as u32;
+
+    let mut off : u32 = IMAGE_FILE_HEADER_SIZE
+                      + ((n_sections as u32) * IMAGE_SECTION_HEADER_SIZE);    // section bodies start here
+
+    let text_off = off;
+    let text_size = machine_code.len() as u32;
+    off = off + text_size;
+
+    let reloc_off = off;
+    let reloc_total_size = n_relocs * IMAGE_RELOCATION_SIZE;
+    off = off + reloc_total_size;
+
+    let sym_off = off;
+    let sym_total_size = n_syms * IMAGE_SYMBOL_SIZE;
+    off = off + sym_total_size;
+
+    // String table : 4-byte length-prefix + (offset, name, NUL) entries.
+    // Offsets in symbol Name field are RELATIVE TO THE START OF THE STRING-
+    // TABLE (which is itself the 4-byte length field). So the FIRST name
+    // sits at offset 4.
+    let mut strtab : Vec<u8> = Vec::new();
+    // Reserve 4 bytes for the length prefix · we'll patch at the end.
+    strtab.push(0); strtab.push(0); strtab.push(0); strtab.push(0);
+
+    // For each symbol record the offset in the string-table where its name lives.
+    let mut sym_name_offs : Vec<u32> = Vec::new();
+    let mut i : u32 = 0;
+    while i < n_syms {
+        let s = &symbols[i as usize];
+        let off_n = strtab.len() as u32;
+        // Append name + NUL.
+        let mut k : u32 = 0;
+        let nm = &s.name;
+        let nlen = nm.len() as u32;
+        while k < nlen { strtab.push(nm[k as usize]); k = k + 1; }
+        strtab.push(0);
+        sym_name_offs.push(off_n);
+        i = i + 1;
+    }
+
+    // Patch the 4-byte length prefix in-place (LE, total length INCLUSIVE
+    // of the prefix per Microsoft spec).
+    let total_str_len = strtab.len() as u32;
+    strtab[0] = (total_str_len        & 0xFF) as u8;
+    strtab[1] = ((total_str_len >>  8) & 0xFF) as u8;
+    strtab[2] = ((total_str_len >> 16) & 0xFF) as u8;
+    strtab[3] = ((total_str_len >> 24) & 0xFF) as u8;
+
+    // ── Stage 2 : write the bytes ───────────────────────────────────────
+
+    let mut buf : Vec<u8> = Vec::new();
+
+    // IMAGE_FILE_HEADER (20 bytes) · spec § 3.3
+    emit_u16(&mut buf, IMAGE_FILE_MACHINE_AMD64);                // Machine
+    emit_u16(&mut buf, n_sections);                              // NumberOfSections
+    emit_u32(&mut buf, 0);                                       // TimeDateStamp (0 = unknown)
+    emit_u32(&mut buf, sym_off);                                 // PointerToSymbolTable
+    emit_u32(&mut buf, n_syms);                                  // NumberOfSymbols
+    emit_u16(&mut buf, 0);                                       // SizeOfOptionalHeader (0 for OBJ)
+    emit_u16(&mut buf, IMAGE_FILE_LINE_NUMS_STRIPPED);           // Characteristics
+
+    // IMAGE_SECTION_HEADER × 1 (40 bytes) · spec § 4.1
+    // Name : ".text\0\0\0" inline (8 bytes total).
+    emit_u8(&mut buf, 0x2E);     // '.'
+    emit_u8(&mut buf, 0x74);     // 't'
+    emit_u8(&mut buf, 0x65);     // 'e'
+    emit_u8(&mut buf, 0x78);     // 'x'
+    emit_u8(&mut buf, 0x74);     // 't'
+    emit_u8(&mut buf, 0);
+    emit_u8(&mut buf, 0);
+    emit_u8(&mut buf, 0);
+
+    emit_u32(&mut buf, 0);                                       // VirtualSize    (0 for OBJ)
+    emit_u32(&mut buf, 0);                                       // VirtualAddress (0 for OBJ)
+    emit_u32(&mut buf, text_size);                               // SizeOfRawData
+    emit_u32(&mut buf, text_off);                                // PointerToRawData
+    emit_u32(&mut buf, if n_relocs > 0 { reloc_off } else { 0 }); // PointerToRelocations
+    emit_u32(&mut buf, 0);                                       // PointerToLinenumbers
+    emit_u16(&mut buf, n_relocs as u16);                         // NumberOfRelocations
+    emit_u16(&mut buf, 0);                                       // NumberOfLinenumbers
+    let text_chars = IMAGE_SCN_CNT_CODE
+                   | IMAGE_SCN_ALIGN_16BYTES
+                   | IMAGE_SCN_MEM_EXECUTE
+                   | IMAGE_SCN_MEM_READ;
+    emit_u32(&mut buf, text_chars);                              // Characteristics
+
+    // .text raw bytes
+    emit_bytes(&mut buf, machine_code);
+
+    // IMAGE_RELOCATION × N (10 bytes each) · spec § 6
+    let mut r : u32 = 0;
+    while r < n_relocs {
+        let rl = &relocs[r as usize];
+        emit_u32(&mut buf, rl.offset as u32);                    // VirtualAddress (within .text)
+        emit_u32(&mut buf, rl.symbol);                           // SymbolTableIndex
+        emit_u16(&mut buf, coff_reloc_type(rl.kind));            // Type
+        r = r + 1;
+    }
+
+    // IMAGE_SYMBOL × N (18 bytes each) · spec § 5.4
+    let mut s : u32 = 0;
+    while s < n_syms {
+        let sym = &symbols[s as usize];
+        // Name field (8 bytes) : long-form ⇒ first 4 bytes = 0, next 4 bytes = offset
+        emit_u32(&mut buf, 0);                                   // zeros marker
+        emit_u32(&mut buf, sym_name_offs[s as usize]);           // string-table offset
+
+        emit_u32(&mut buf, sym.value as u32);                    // Value
+        emit_u16(&mut buf, sym.section);                         // SectionNumber (1-based)
+        emit_u16(&mut buf, coff_sym_type(sym.kind));             // Type
+        emit_u8(&mut buf, coff_storage_class(sym.binding));      // StorageClass
+        emit_u8(&mut buf, 0);                                    // NumberOfAuxSymbols
+        s = s + 1;
+    }
+
+    // String table : prefix + names
+    emit_bytes(&mut buf, &strtab);
+
+    buf
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · coff.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_coff_machine_field_amd64() {
+    // Empty .text · single global func.
+    let code : Vec<u8> = Vec::new();
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66); name.push(0x6F); name.push(0x6F);     // "foo"
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 0, 1, SymBinding::Global));
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // Machine field at offset 0 = 0x8664 (LE → 0x64 0x86)
+    assert_eq!(bytes[0], 0x64);
+    assert_eq!(bytes[1], 0x86);
+    assert_eq!(read_u16_le(&bytes, 0), IMAGE_FILE_MACHINE_AMD64);
+
+    // NumberOfSections at off 2 = 1
+    assert_eq!(read_u16_le(&bytes, 2), 1);
+}
+
+#[test]
+fn test_coff_section_header_text_name_inline() {
+    let code : Vec<u8> = Vec::new();
+    let syms : Vec<Symbol> = Vec::new();
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // First section header sits at offset 20 (immediately after IMAGE_FILE_HEADER).
+    // Name ".text\0\0\0" occupies offsets 20..28.
+    assert_eq!(bytes[20], 0x2E);     // '.'
+    assert_eq!(bytes[21], 0x74);     // 't'
+    assert_eq!(bytes[22], 0x65);     // 'e'
+    assert_eq!(bytes[23], 0x78);     // 'x'
+    assert_eq!(bytes[24], 0x74);     // 't'
+    assert_eq!(bytes[25], 0);
+    assert_eq!(bytes[26], 0);
+    assert_eq!(bytes[27], 0);
+}
+
+#[test]
+fn test_coff_section_characteristics_executable_code() {
+    let code : Vec<u8> = Vec::new();
+    let syms : Vec<Symbol> = Vec::new();
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // Characteristics @ off 20 + 36 = 56
+    let chars = read_u32_le(&bytes, 56);
+    let expected = IMAGE_SCN_CNT_CODE
+                 | IMAGE_SCN_ALIGN_16BYTES
+                 | IMAGE_SCN_MEM_EXECUTE
+                 | IMAGE_SCN_MEM_READ;
+    assert_eq!(chars, expected);
+
+    // Bit checks
+    assert_eq!(chars & IMAGE_SCN_CNT_CODE,    IMAGE_SCN_CNT_CODE);
+    assert_eq!(chars & IMAGE_SCN_MEM_EXECUTE, IMAGE_SCN_MEM_EXECUTE);
+    assert_eq!(chars & IMAGE_SCN_MEM_READ,    IMAGE_SCN_MEM_READ);
+}
+
+#[test]
+fn test_coff_text_bytes_at_section_pointer() {
+    // Place ret + nop into .text · verify they appear at PointerToRawData.
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0xC3);                      // RET
+    code.push(0x90);                      // NOP
+    let syms : Vec<Symbol> = Vec::new();
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // PointerToRawData @ off 20 + 20 = 40
+    let ptr_raw = read_u32_le(&bytes, 40);
+    // .text immediately after the 1 section-header (20 + 40 = 60)
+    assert_eq!(ptr_raw, 60);
+    assert_eq!(bytes[(ptr_raw + 0) as usize], 0xC3);
+    assert_eq!(bytes[(ptr_raw + 1) as usize], 0x90);
+}
+
+#[test]
+fn test_coff_symbol_table_long_name_form() {
+    // Place 1 symbol with name "foo" (3 bytes < 8 ⇒ would normally fit
+    // inline, but our emitter always uses long form for simplicity).
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0xC3);                      // RET
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66); name.push(0x6F); name.push(0x6F);     // "foo"
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 1, 1, SymBinding::Global));
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // PointerToSymbolTable @ off 8
+    let ptr_sym = read_u32_le(&bytes, 8);
+    // First 4 bytes of Name = 0 (long-form marker)
+    assert_eq!(read_u32_le(&bytes, ptr_sym), 0);
+    // Next 4 bytes = string-table offset = 4 (first entry after the length prefix)
+    assert_eq!(read_u32_le(&bytes, ptr_sym + 4), 4);
+    // SectionNumber @ ptr_sym + 12 = 1
+    assert_eq!(read_u16_le(&bytes, ptr_sym + 12), 1);
+    // StorageClass @ ptr_sym + 16 = IMAGE_SYM_CLASS_EXTERNAL (2)
+    assert_eq!(bytes[(ptr_sym + 16) as usize], IMAGE_SYM_CLASS_EXTERNAL);
+    // NumberOfAuxSymbols @ ptr_sym + 17 = 0
+    assert_eq!(bytes[(ptr_sym + 17) as usize], 0);
+}
+
+#[test]
+fn test_coff_string_table_length_prefix() {
+    // 1 sym with name "foo" (3 bytes) ⇒ string-table = 4-byte length + "foo\0" = 8.
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0xC3);
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66); name.push(0x6F); name.push(0x6F);
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 1, 1, SymBinding::Global));
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // String table starts after the symbol table.
+    let ptr_sym = read_u32_le(&bytes, 8);
+    let n_syms = read_u32_le(&bytes, 12);
+    let str_off = ptr_sym + n_syms * IMAGE_SYMBOL_SIZE;
+
+    // Length prefix = 8
+    assert_eq!(read_u32_le(&bytes, str_off), 8);
+    // Bytes 4..7 = "foo\0"
+    assert_eq!(bytes[(str_off + 4) as usize], 0x66);
+    assert_eq!(bytes[(str_off + 5) as usize], 0x6F);
+    assert_eq!(bytes[(str_off + 6) as usize], 0x6F);
+    assert_eq!(bytes[(str_off + 7) as usize], 0);
+}
+
+#[test]
+fn test_coff_relocation_emission() {
+    // 4-byte .text · 1 sym · 1 reloc against sym 0 at offset 1.
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0xE8); code.push(0); code.push(0); code.push(0); code.push(0);    // CALL rel32 placeholder
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66);                      // "f"
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 5, 1, SymBinding::Global));
+    let mut relocs : Vec<Reloc> = Vec::new();
+    relocs.push(Reloc::new(1, 0, RelocKind::Pc32, 0));
+
+    let bytes = emit_coff(&code, &syms, &relocs);
+
+    // PointerToRelocations @ off 20 + 24 = 44
+    let ptr_rel = read_u32_le(&bytes, 44);
+    // NumberOfRelocations @ off 20 + 32 = 52 (u16)
+    assert_eq!(read_u16_le(&bytes, 52), 1);
+
+    // Read the IMAGE_RELOCATION (10 bytes : VA u32 + SymIdx u32 + Type u16)
+    assert_eq!(read_u32_le(&bytes, ptr_rel),     1);                  // VirtualAddress
+    assert_eq!(read_u32_le(&bytes, ptr_rel + 4), 0);                  // SymbolTableIndex
+    assert_eq!(read_u16_le(&bytes, ptr_rel + 8), IMAGE_REL_AMD64_REL32);
+}
+
+#[test]
+fn test_coff_storage_class_translation() {
+    assert_eq!(coff_storage_class(SymBinding::Local),  IMAGE_SYM_CLASS_STATIC);
+    assert_eq!(coff_storage_class(SymBinding::Global), IMAGE_SYM_CLASS_EXTERNAL);
+    assert_eq!(coff_storage_class(SymBinding::Weak),   IMAGE_SYM_CLASS_WEAK_EXTERNAL);
+}
+
+#[test]
+fn test_coff_reloc_kind_translation() {
+    assert_eq!(coff_reloc_type(RelocKind::Abs64),    IMAGE_REL_AMD64_ADDR64);
+    assert_eq!(coff_reloc_type(RelocKind::Pc32),     IMAGE_REL_AMD64_REL32);
+    assert_eq!(coff_reloc_type(RelocKind::Plt32),    IMAGE_REL_AMD64_REL32);
+}

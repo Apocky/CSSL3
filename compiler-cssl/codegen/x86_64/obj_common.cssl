@@ -1,0 +1,336 @@
+// § compiler-cssl/codegen/x86_64/obj_common.cssl
+// § T11-D257 (W-E3-γ · x86-64-backend-in-cssl THIRD SLICE) · shared object-file types
+// §
+// § Self-host bootstrap : authored in CSSL itself. Shared between elf.cssl /
+// § coff.cssl / macho.cssl. Each format-specific emitter consumes the SAME
+// § Symbol + Reloc + Section types and translates them into format-native byte
+// § layouts. Keeps the upstream codegen pipeline format-agnostic until link.
+// §
+// § REFERENCE :
+// §   - System V ABI · ELF specification (TIS · 1.2) — for ELF64 mapping
+// §   - PE/COFF specification · v8.3 (Microsoft 2018)
+// §   - Mach-O Runtime Reference (Apple 2010 archived ; loader.h headers)
+// §
+// § DISCIPLINE :
+// §   - LITTLE-ENDIAN everywhere (x86-64 invariant ; format spec also LE for
+// §     ELF/COFF/Mach-O on x86-64). All multi-byte writes via emit_u16/u32/u64.
+// §   - Vec<u8>::push for byte emission · Σ-pre-alloc capacity at section-start
+// §   - String-table builds : zero-terminated · offset returned by add() call
+// §   - No HashMap : symbols + relocs are short Vec<T> · linear-scan resolution
+
+// ─────────────────────────────────────────────────────────────────────
+// § Symbol · cross-format symbol record
+// ─────────────────────────────────────────────────────────────────────
+// § `name`     = symbol name (linker-visible)
+// § `value`    = byte-offset within `section` where symbol lives (function entry,
+//                global-data slot, etc.)
+// § `section`  = index into the section list (0 = undef / external)
+// § `kind`     = function vs data vs section vs file (per-format mapping below)
+// § `binding`  = local / global / weak (ELF; COFF/MachO have analogous fields)
+
+struct Symbol {
+    name    : Vec<u8>,        // raw bytes ; not null-terminated here
+    value   : u64,             // offset within section (or absolute addr)
+    size    : u64,             // size in bytes (0 ⇒ unknown / not-applicable)
+    section : u16,             // section index (0 = SHN_UNDEF / N_UNDF)
+    kind    : SymKind,
+    binding : SymBinding,
+}
+
+enum SymKind {
+    Notype   = 0,        // ELF STT_NOTYPE   · COFF IMAGE_SYM_TYPE_NULL    · MachO N_SECT-untyped
+    Object   = 1,        // ELF STT_OBJECT   · COFF data symbol            · MachO N_SECT data
+    Func     = 2,        // ELF STT_FUNC     · COFF DT_FCN                 · MachO N_SECT text
+    Section  = 3,        // ELF STT_SECTION  · COFF section-symbol         · MachO N_SECT
+    File     = 4,        // ELF STT_FILE     · COFF aux-file               · MachO N_OSO
+}
+
+enum SymBinding {
+    Local    = 0,        // ELF STB_LOCAL    · COFF IMAGE_SYM_CLASS_STATIC   · MachO !N_EXT
+    Global   = 1,        // ELF STB_GLOBAL   · COFF IMAGE_SYM_CLASS_EXTERNAL · MachO N_EXT
+    Weak     = 2,        // ELF STB_WEAK     · COFF (weak external)          · MachO N_WEAK_DEF
+}
+
+impl Symbol {
+    fn new_func(name : Vec<u8>, value : u64, size : u64, section : u16, binding : SymBinding) -> Self {
+        Symbol {
+            name, value, size, section,
+            kind : SymKind::Func, binding,
+        }
+    }
+
+    fn new_undef(name : Vec<u8>) -> Self {
+        Symbol {
+            name, value : 0, size : 0, section : 0,
+            kind : SymKind::Notype, binding : SymBinding::Global,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Reloc · cross-format relocation record
+// ─────────────────────────────────────────────────────────────────────
+// § `offset`  = byte-offset within target section where the patch goes
+// § `symbol`  = index into the symbol-table (resolved at link time)
+// § `kind`    = relocation kind (translated per-format below)
+// § `addend`  = signed offset added to the symbol value before patching
+//              (ELF RELA always · COFF/MachO often implicit-zero ; we carry it
+//              uniformly and let the per-format emitter drop or fold it).
+
+struct Reloc {
+    offset : u64,
+    symbol : u32,         // index into symbol table
+    kind   : RelocKind,
+    addend : i64,
+}
+
+enum RelocKind {
+    Abs64    = 0,         // 64-bit absolute · ELF R_X86_64_64    · COFF AMD64_ADDR64    · MachO X86_64_RELOC_UNSIGNED
+    Pc32     = 1,         // 32-bit pc-rel   · ELF R_X86_64_PC32  · COFF AMD64_REL32     · MachO X86_64_RELOC_BRANCH
+    Plt32    = 2,         // 32-bit PLT call · ELF R_X86_64_PLT32 · COFF AMD64_REL32     · MachO X86_64_RELOC_BRANCH
+    GotPcRel = 3,         // 32-bit GOT-rel  · ELF R_X86_64_GOTPCREL · MachO X86_64_RELOC_GOT
+}
+
+impl Reloc {
+    fn new(offset : u64, symbol : u32, kind : RelocKind, addend : i64) -> Self {
+        Reloc { offset, symbol, kind, addend }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Section · in-memory model the per-format emitters consume
+// ─────────────────────────────────────────────────────────────────────
+// § Real object files have many more attributes (alignment, flags, addr-align,
+// § etc.) — per-format emitters compute the missing pieces from kind. This
+// § struct is the format-agnostic core.
+
+struct Section {
+    name  : Vec<u8>,         // ".text" / ".data" / "__TEXT,__text" depending on caller
+    kind  : SectionKind,
+    bytes : Vec<u8>,         // raw section bytes (machine code, etc.)
+}
+
+enum SectionKind {
+    Text     = 0,        // executable code  · SHF_EXECINSTR · IMAGE_SCN_CNT_CODE   · S_REGULAR + ATTR_PURE_INSTRUCTIONS
+    Data     = 1,        // initialized data · SHF_WRITE     · IMAGE_SCN_CNT_INITIALIZED_DATA · S_REGULAR
+    Bss      = 2,        // zero-init data   · SHT_NOBITS    · IMAGE_SCN_CNT_UNINITIALIZED_DATA · S_ZEROFILL
+    RoData   = 3,        // read-only data   · SHF_ALLOC     · IMAGE_SCN_MEM_READ   · S_REGULAR (no WRITE)
+}
+
+impl Section {
+    fn text(bytes : Vec<u8>) -> Self {
+        // ELF default text-section name. ELF emitter uses this verbatim ;
+        // COFF emitter reuses ".text" too ; MachO emitter prepends "__TEXT,".
+        let mut name : Vec<u8> = Vec::new();
+        name.push(0x2E); name.push(0x74); name.push(0x65); name.push(0x78); name.push(0x74);   // ".text"
+        Section { name, kind : SectionKind::Text, bytes }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Little-endian byte-emit primitives
+// ─────────────────────────────────────────────────────────────────────
+// § Used by ALL three format emitters. Object-file bytes are LE on x86-64.
+
+fn emit_u8(buf : &mut Vec<u8>, v : u8) {
+    buf.push(v);
+}
+
+fn emit_u16(buf : &mut Vec<u8>, v : u16) {
+    buf.push((v       & 0xFF) as u8);
+    buf.push(((v >> 8) & 0xFF) as u8);
+}
+
+fn emit_u32(buf : &mut Vec<u8>, v : u32) {
+    buf.push((v        & 0xFF) as u8);
+    buf.push(((v >>  8) & 0xFF) as u8);
+    buf.push(((v >> 16) & 0xFF) as u8);
+    buf.push(((v >> 24) & 0xFF) as u8);
+}
+
+fn emit_u64(buf : &mut Vec<u8>, v : u64) {
+    buf.push((v        & 0xFF) as u8);
+    buf.push(((v >>  8) & 0xFF) as u8);
+    buf.push(((v >> 16) & 0xFF) as u8);
+    buf.push(((v >> 24) & 0xFF) as u8);
+    buf.push(((v >> 32) & 0xFF) as u8);
+    buf.push(((v >> 40) & 0xFF) as u8);
+    buf.push(((v >> 48) & 0xFF) as u8);
+    buf.push(((v >> 56) & 0xFF) as u8);
+}
+
+fn emit_i32(buf : &mut Vec<u8>, v : i32) {
+    emit_u32(buf, v as u32);
+}
+
+fn emit_i64(buf : &mut Vec<u8>, v : i64) {
+    emit_u64(buf, v as u64);
+}
+
+fn emit_bytes(buf : &mut Vec<u8>, src : &Vec<u8>) {
+    let mut i : u32 = 0;
+    let n = src.len() as u32;
+    while i < n {
+        buf.push(src[i as usize]);
+        i = i + 1;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Little-endian byte-read primitives (round-trip tests)
+// ─────────────────────────────────────────────────────────────────────
+
+fn read_u16_le(buf : &Vec<u8>, off : u32) -> u16 {
+    let lo = buf[off as usize] as u16;
+    let hi = buf[(off + 1) as usize] as u16;
+    lo | (hi << 8)
+}
+
+fn read_u32_le(buf : &Vec<u8>, off : u32) -> u32 {
+    let b0 = buf[off as usize] as u32;
+    let b1 = buf[(off + 1) as usize] as u32;
+    let b2 = buf[(off + 2) as usize] as u32;
+    let b3 = buf[(off + 3) as usize] as u32;
+    b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+}
+
+fn read_u64_le(buf : &Vec<u8>, off : u32) -> u64 {
+    let lo = read_u32_le(buf, off) as u64;
+    let hi = read_u32_le(buf, off + 4) as u64;
+    lo | (hi << 32)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § StringTable · zero-terminated string-pool with offset interning
+// ─────────────────────────────────────────────────────────────────────
+// § ELF .strtab + .shstrtab are zero-prefixed (offset 0 is the empty string).
+// § COFF string-table starts with a 4-byte length-prefix (we model that in
+// § coff.cssl directly). Mach-O is similar to ELF (zero-prefixed).
+// § This builder produces the ELF/MachO style ; COFF wraps differently.
+
+struct StringTable {
+    bytes : Vec<u8>,        // running raw buffer
+}
+
+impl StringTable {
+    fn new() -> Self {
+        // First byte = NUL (offset 0 → empty string · canonical ELF/MachO).
+        let mut bytes : Vec<u8> = Vec::new();
+        bytes.push(0);
+        StringTable { bytes }
+    }
+
+    // Append a name (raw bytes, no NUL inside) + trailing NUL. Returns the
+    // offset of the FIRST byte of `name`. Linear-scan dedup is overkill for
+    // typical symbol counts (< 256) ; we just append.
+    fn add(&mut self, name : &Vec<u8>) -> u32 {
+        let off = self.bytes.len() as u32;
+        let mut i : u32 = 0;
+        let n = name.len() as u32;
+        while i < n {
+            self.bytes.push(name[i as usize]);
+            i = i + 1;
+        }
+        self.bytes.push(0);
+        off
+    }
+
+    fn len(&self) -> u32 { self.bytes.len() as u32 }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Padding · align buffer to N-byte boundary
+// ─────────────────────────────────────────────────────────────────────
+// § ELF/Mach-O often require 8-byte alignment for symbol/reloc tables.
+// § Caller specifies pow-of-2 alignment ; we pad with zero-bytes.
+
+fn pad_to(buf : &mut Vec<u8>, align : u32) {
+    let n = buf.len() as u32;
+    let rem = n & (align - 1);    // n mod align (assumes align is pow-of-2)
+    if rem == 0 { return; }
+    let need = align - rem;
+    let mut i : u32 = 0;
+    while i < need {
+        buf.push(0);
+        i = i + 1;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · obj_common.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_emit_u16_le() {
+    let mut buf : Vec<u8> = Vec::new();
+    emit_u16(&mut buf, 0x1234);
+    assert_eq!(buf, vec![0x34, 0x12]);
+}
+
+#[test]
+fn test_emit_u32_le() {
+    let mut buf : Vec<u8> = Vec::new();
+    emit_u32(&mut buf, 0xDEADBEEF);
+    assert_eq!(buf, vec![0xEF, 0xBE, 0xAD, 0xDE]);
+}
+
+#[test]
+fn test_emit_u64_le() {
+    let mut buf : Vec<u8> = Vec::new();
+    emit_u64(&mut buf, 0xCAFEBABE_DEADBEEF);
+    assert_eq!(buf, vec![0xEF, 0xBE, 0xAD, 0xDE, 0xBE, 0xBA, 0xFE, 0xCA]);
+}
+
+#[test]
+fn test_round_trip_u32() {
+    let mut buf : Vec<u8> = Vec::new();
+    emit_u32(&mut buf, 0x12345678);
+    assert_eq!(read_u32_le(&buf, 0), 0x12345678);
+}
+
+#[test]
+fn test_round_trip_u64() {
+    let mut buf : Vec<u8> = Vec::new();
+    emit_u64(&mut buf, 0xFEEDFACE_F00DBEEF);
+    assert_eq!(read_u64_le(&buf, 0), 0xFEEDFACE_F00DBEEF);
+}
+
+#[test]
+fn test_string_table_offsets() {
+    let mut st = StringTable::new();
+    let mut a : Vec<u8> = Vec::new();
+    a.push(0x41); a.push(0x41);   // "AA"
+    let off_a = st.add(&a);
+
+    let mut b : Vec<u8> = Vec::new();
+    b.push(0x42);                 // "B"
+    let off_b = st.add(&b);
+
+    // First entry starts at offset 1 (offset 0 is the leading NUL).
+    assert_eq!(off_a, 1);
+    // After "AA\0" (3 bytes from offset 1) ⇒ next at 4.
+    assert_eq!(off_b, 4);
+    // Total : NUL + "AA\0" + "B\0" = 1 + 3 + 2 = 6 bytes.
+    assert_eq!(st.len(), 6);
+    // Byte-wise verify.
+    assert_eq!(st.bytes, vec![0x00, 0x41, 0x41, 0x00, 0x42, 0x00]);
+}
+
+#[test]
+fn test_pad_to_8() {
+    let mut buf : Vec<u8> = Vec::new();
+    buf.push(0xAA); buf.push(0xBB); buf.push(0xCC);   // 3 bytes
+    pad_to(&mut buf, 8);
+    // Padded to next 8-byte boundary ⇒ 8 bytes total ; trailing 5 zeros.
+    assert_eq!(buf.len(), 8);
+    assert_eq!(buf[3], 0); assert_eq!(buf[7], 0);
+}
+
+#[test]
+fn test_pad_to_noop_when_aligned() {
+    let mut buf : Vec<u8> = Vec::new();
+    let mut i : u32 = 0;
+    while i < 16 { buf.push(i as u8); i = i + 1; }    // 16 bytes (already 8-aligned)
+    pad_to(&mut buf, 8);
+    assert_eq!(buf.len(), 16);    // no pad applied
+}

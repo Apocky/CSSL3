@@ -1,0 +1,594 @@
+// § compiler-cssl/codegen/x86_64/elf.cssl
+// § T11-D257 (W-E3-γ · x86-64-backend-in-cssl THIRD SLICE) · ELF64 object emitter
+// §
+// § Self-host bootstrap : authored in CSSL itself. Wraps the encoder's
+// § Vec<u8> machine-code stream into a linkable ELF64 relocatable object
+// § (ET_REL) suitable for ld / lld / mold to combine into an executable
+// § or shared library.
+// §
+// § REFERENCE :
+// §   - System V ABI · ELF Specification (TIS) v1.2 · 1995
+// §   - System V Application Binary Interface · AMD64 Supplement (psABI)
+// §     · § 4 Object Files · § 4.4 Relocation
+// §   - elf.h headers (Linux glibc · BSDs)
+// §
+// § FILE LAYOUT (canonical ELF relocatable object · 64-bit · LE) :
+// §   ┌─────────────────────────────┐ off=0
+// §   │  Elf64_Ehdr (64 bytes)      │
+// §   ├─────────────────────────────┤
+// §   │  .text section bytes        │  (machine code from encoder)
+// §   ├─────────────────────────────┤
+// §   │  Elf64_Sym × N_SYMS         │
+// §   ├─────────────────────────────┤
+// §   │  .strtab bytes              │  (zero-prefixed symbol-name pool)
+// §   ├─────────────────────────────┤
+// §   │  Elf64_Rela × N_RELOCS      │  (only emitted iff relocs.len() > 0)
+// §   ├─────────────────────────────┤
+// §   │  .shstrtab bytes            │  (zero-prefixed section-name pool)
+// §   ├─────────────────────────────┤
+// §   │  Elf64_Shdr × N_SHDRS       │  (1 NULL + .text + .symtab + .strtab
+// §   │                              │   + .rela.text? + .shstrtab)
+// §   └─────────────────────────────┘
+// §
+// § DISCIPLINE : LE-only · u32/u64 little-endian via obj_common · padding
+// § handled per ELF64 alignment rules (8-byte for shdrs and tables).
+
+// ─────────────────────────────────────────────────────────────────────
+// § ELF identification constants · § 1.4 Data Encoding · elf.h
+// ─────────────────────────────────────────────────────────────────────
+
+const ELFMAG0      : u8 = 0x7F;
+const ELFMAG1      : u8 = 0x45;     // 'E'
+const ELFMAG2      : u8 = 0x4C;     // 'L'
+const ELFMAG3      : u8 = 0x46;     // 'F'
+
+const ELFCLASS64   : u8 = 2;        // EI_CLASS · 64-bit
+const ELFDATA2LSB  : u8 = 1;        // EI_DATA  · little-endian
+const EV_CURRENT   : u8 = 1;        // EI_VERSION · current ELF version
+const ELFOSABI_SYSV: u8 = 0;        // EI_OSABI · System V
+
+// ─────────────────────────────────────────────────────────────────────
+// § ELF type / machine constants · § 4.1 ELF Header
+// ─────────────────────────────────────────────────────────────────────
+
+const ET_REL       : u16 = 1;       // e_type · relocatable file
+const EM_X86_64    : u16 = 62;      // e_machine · AMD64
+
+const EHDR64_SIZE  : u16 = 64;      // sizeof(Elf64_Ehdr)
+const SHDR64_SIZE  : u16 = 64;      // sizeof(Elf64_Shdr)
+const SYM64_SIZE   : u16 = 24;      // sizeof(Elf64_Sym)
+const RELA64_SIZE  : u32 = 24;      // sizeof(Elf64_Rela)
+
+// ─────────────────────────────────────────────────────────────────────
+// § Section-header types · § 4.2 Sections
+// ─────────────────────────────────────────────────────────────────────
+
+const SHT_NULL     : u32 = 0;
+const SHT_PROGBITS : u32 = 1;       // .text / .data
+const SHT_SYMTAB   : u32 = 2;       // symbol table
+const SHT_STRTAB   : u32 = 3;       // string table
+const SHT_RELA     : u32 = 4;       // relocations w/ addend (RELA form)
+
+// Section flags (sh_flags · u64 · § 4.2 Table 4-9)
+const SHF_WRITE    : u64 = 0x1;
+const SHF_ALLOC    : u64 = 0x2;
+const SHF_EXECINSTR: u64 = 0x4;
+const SHF_INFO_LINK: u64 = 0x40;    // sh_info holds section index (used for .rela.text)
+
+// Special section indexes
+const SHN_UNDEF    : u16 = 0;       // undefined section index
+const SHN_ABS      : u16 = 0xFFF1;  // absolute symbols
+
+// ─────────────────────────────────────────────────────────────────────
+// § Symbol-table info · § 4.5 Symbol Table
+// ─────────────────────────────────────────────────────────────────────
+// § st_info packs binding (high 4 bits) and type (low 4 bits) :
+// §   st_info = (binding << 4) | (type & 0xF)
+
+const STB_LOCAL    : u8 = 0;
+const STB_GLOBAL   : u8 = 1;
+const STB_WEAK     : u8 = 2;
+
+const STT_NOTYPE   : u8 = 0;
+const STT_OBJECT   : u8 = 1;
+const STT_FUNC     : u8 = 2;
+const STT_SECTION  : u8 = 3;
+const STT_FILE     : u8 = 4;
+
+fn st_info(binding : u8, ty : u8) -> u8 {
+    (binding << 4) | (ty & 0xF)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Relocation constants · § 4.4 / psABI § 4.4 Table 4.10
+// ─────────────────────────────────────────────────────────────────────
+
+const R_X86_64_64       : u32 = 1;
+const R_X86_64_PC32     : u32 = 2;
+const R_X86_64_GOTPCREL : u32 = 9;
+const R_X86_64_PLT32    : u32 = 4;
+
+// r_info packs symbol-index (high 32 bits) and type (low 32 bits) :
+fn r_info(sym_idx : u32, rtype : u32) -> u64 {
+    ((sym_idx as u64) << 32) | (rtype as u64)
+}
+
+// Translate cross-format RelocKind to ELF R_X86_64_* constants.
+fn elf_reloc_type(kind : RelocKind) -> u32 {
+    match kind {
+        RelocKind::Abs64    => R_X86_64_64,
+        RelocKind::Pc32     => R_X86_64_PC32,
+        RelocKind::Plt32    => R_X86_64_PLT32,
+        RelocKind::GotPcRel => R_X86_64_GOTPCREL,
+    }
+}
+
+// Translate cross-format SymKind / SymBinding to ELF STT_* / STB_*.
+fn elf_sym_type(kind : SymKind) -> u8 {
+    match kind {
+        SymKind::Notype  => STT_NOTYPE,
+        SymKind::Object  => STT_OBJECT,
+        SymKind::Func    => STT_FUNC,
+        SymKind::Section => STT_SECTION,
+        SymKind::File    => STT_FILE,
+    }
+}
+
+fn elf_sym_binding(b : SymBinding) -> u8 {
+    match b {
+        SymBinding::Local  => STB_LOCAL,
+        SymBinding::Global => STB_GLOBAL,
+        SymBinding::Weak   => STB_WEAK,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § emit_elf · top-level ELF64 object emitter
+// ─────────────────────────────────────────────────────────────────────
+// § Inputs :
+// §   machine_code · raw .text bytes from W-E3-α encoder
+// §   symbols      · cross-format Symbol records
+// §   relocs       · cross-format Reloc records (against .text)
+// §
+// § Output :
+// §   Vec<u8> · complete ELF64 ET_REL ready to write to disk
+// §
+// § Section indexes (after this builder finishes) :
+// §   0 = SHN_UNDEF    (always-zero placeholder)
+// §   1 = .text
+// §   2 = .symtab
+// §   3 = .strtab
+// §   4 = .rela.text   (only when relocs non-empty)
+// §   5 (or 4) = .shstrtab
+
+fn emit_elf(machine_code : &Vec<u8>, symbols : &Vec<Symbol>, relocs : &Vec<Reloc>) -> Vec<u8> {
+    // ── Stage 1 : compute layout offsets ────────────────────────────────
+    // Pre-pass : we need section file-offsets BEFORE we write the header,
+    // since the header records e_shoff (offset of section-header table).
+
+    let n_relocs = relocs.len() as u32;
+    let has_relocs = n_relocs > 0;
+    let n_sections : u16 = if has_relocs { 6 } else { 5 };
+
+    // Offsets are computed sequentially. All sections start 8-byte aligned.
+    let mut off : u64 = EHDR64_SIZE as u64;     // .text follows the ehdr immediately
+
+    let text_off = off;
+    let text_size = machine_code.len() as u64;
+    off = off + text_size;
+    // 8-byte align before .symtab
+    let pad1 = align_pad(off, 8);
+    off = off + pad1;
+
+    let symtab_off = off;
+    // +1 for the obligatory STN_UNDEF symbol entry at index 0.
+    let n_syms : u32 = (symbols.len() as u32) + 1;
+    let symtab_size = (n_syms as u64) * (SYM64_SIZE as u64);
+    off = off + symtab_size;
+
+    // .strtab : built from symbol names + section names
+    let strtab_off = off;
+    let mut strtab = StringTable::new();
+    let mut sym_name_offs : Vec<u32> = Vec::new();
+    let mut i : u32 = 0;
+    let n = symbols.len() as u32;
+    while i < n {
+        let off_n = strtab.add(&symbols[i as usize].name);
+        sym_name_offs.push(off_n);
+        i = i + 1;
+    }
+    let strtab_size = strtab.len() as u64;
+    off = off + strtab_size;
+
+    let mut rela_off : u64 = 0;
+    let mut rela_size : u64 = 0;
+    if has_relocs {
+        let pad2 = align_pad(off, 8);
+        off = off + pad2;
+        rela_off = off;
+        rela_size = (n_relocs as u64) * (RELA64_SIZE as u64);
+        off = off + rela_size;
+    }
+
+    let shstrtab_off = off;
+    let mut shstr = StringTable::new();
+    // Pre-add canonical section names, capture offsets.
+    let off_text     = shstr.add(&shstr_dot_text());
+    let off_symtab   = shstr.add(&shstr_dot_symtab());
+    let off_strtab   = shstr.add(&shstr_dot_strtab());
+    let mut off_rela : u32 = 0;
+    if has_relocs {
+        off_rela = shstr.add(&shstr_dot_rela_text());
+    }
+    let off_shstr    = shstr.add(&shstr_dot_shstrtab());
+    let shstrtab_size = shstr.len() as u64;
+    off = off + shstrtab_size;
+
+    let pad3 = align_pad(off, 8);
+    off = off + pad3;
+    let shoff = off;
+
+    // ── Stage 2 : write the bytes ───────────────────────────────────────
+
+    let mut buf : Vec<u8> = Vec::new();
+
+    // Elf64_Ehdr (64 bytes)
+    emit_u8(&mut buf, ELFMAG0);
+    emit_u8(&mut buf, ELFMAG1);
+    emit_u8(&mut buf, ELFMAG2);
+    emit_u8(&mut buf, ELFMAG3);
+    emit_u8(&mut buf, ELFCLASS64);
+    emit_u8(&mut buf, ELFDATA2LSB);
+    emit_u8(&mut buf, EV_CURRENT);
+    emit_u8(&mut buf, ELFOSABI_SYSV);
+    // EI_ABIVERSION + 7 padding bytes
+    let mut k : u32 = 0;
+    while k < 8 { emit_u8(&mut buf, 0); k = k + 1; }
+
+    emit_u16(&mut buf, ET_REL);
+    emit_u16(&mut buf, EM_X86_64);
+    emit_u32(&mut buf, EV_CURRENT as u32);
+    emit_u64(&mut buf, 0);                      // e_entry  (none in ET_REL)
+    emit_u64(&mut buf, 0);                      // e_phoff  (no program headers)
+    emit_u64(&mut buf, shoff);                  // e_shoff
+    emit_u32(&mut buf, 0);                      // e_flags
+    emit_u16(&mut buf, EHDR64_SIZE);            // e_ehsize
+    emit_u16(&mut buf, 0);                      // e_phentsize
+    emit_u16(&mut buf, 0);                      // e_phnum
+    emit_u16(&mut buf, SHDR64_SIZE);            // e_shentsize
+    emit_u16(&mut buf, n_sections);             // e_shnum
+    // e_shstrndx — last section (.shstrtab)
+    let e_shstrndx : u16 = n_sections - 1;
+    emit_u16(&mut buf, e_shstrndx);
+
+    // .text bytes
+    emit_bytes(&mut buf, machine_code);
+    pad_to(&mut buf, 8);
+
+    // .symtab — one Elf64_Sym per entry · entry 0 is STN_UNDEF (all zeros)
+    // STN_UNDEF (24 bytes of 0)
+    let mut z : u32 = 0;
+    while z < (SYM64_SIZE as u32) { emit_u8(&mut buf, 0); z = z + 1; }
+
+    // Subsequent symbols
+    let mut s_idx : u32 = 0;
+    let s_count = symbols.len() as u32;
+    while s_idx < s_count {
+        let s = &symbols[s_idx as usize];
+        emit_u32(&mut buf, sym_name_offs[s_idx as usize]);          // st_name
+        let info = st_info(elf_sym_binding(s.binding), elf_sym_type(s.kind));
+        emit_u8(&mut buf, info);                                     // st_info
+        emit_u8(&mut buf, 0);                                        // st_other
+        emit_u16(&mut buf, s.section);                               // st_shndx
+        emit_u64(&mut buf, s.value);                                 // st_value
+        emit_u64(&mut buf, s.size);                                  // st_size
+        s_idx = s_idx + 1;
+    }
+
+    // .strtab bytes
+    emit_bytes(&mut buf, &strtab.bytes);
+
+    // .rela.text — Elf64_Rela × N_RELOCS (when present)
+    if has_relocs {
+        pad_to(&mut buf, 8);
+        let mut r_idx : u32 = 0;
+        while r_idx < n_relocs {
+            let r = &relocs[r_idx as usize];
+            // ELF symbol indices are off-by-one because index 0 is STN_UNDEF.
+            // Caller's `symbol` field is 0-indexed into `symbols` ; we add 1.
+            emit_u64(&mut buf, r.offset);                            // r_offset
+            emit_u64(&mut buf, r_info(r.symbol + 1, elf_reloc_type(r.kind)));
+            emit_i64(&mut buf, r.addend);                            // r_addend
+            r_idx = r_idx + 1;
+        }
+    }
+
+    // .shstrtab bytes
+    emit_bytes(&mut buf, &shstr.bytes);
+    pad_to(&mut buf, 8);
+
+    // ── Stage 3 : section-header table ──────────────────────────────────
+    // Index 0 : SHT_NULL (all zero entry)
+    let mut q : u32 = 0;
+    while q < (SHDR64_SIZE as u32) { emit_u8(&mut buf, 0); q = q + 1; }
+
+    // Index 1 : .text
+    emit_shdr(&mut buf,
+        off_text, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR,
+        0, text_off, text_size, 0, 0, 16, 0);
+
+    // Index 2 : .symtab
+    // sh_link = .strtab index ; sh_info = index of FIRST non-local symbol (index 1
+    //   if all are global ; we set 1 conservatively which is correct for our tests).
+    let symtab_link : u32 = 3;     // .strtab is at index 3
+    let symtab_info : u32 = 1;     // first global = entry 1 (entry 0 is STN_UNDEF)
+    emit_shdr(&mut buf,
+        off_symtab, SHT_SYMTAB, 0,
+        0, symtab_off, symtab_size, symtab_link, symtab_info, 8, SYM64_SIZE as u64);
+
+    // Index 3 : .strtab
+    emit_shdr(&mut buf,
+        off_strtab, SHT_STRTAB, 0,
+        0, strtab_off, strtab_size, 0, 0, 1, 0);
+
+    // Index 4 : .rela.text  (when present)
+    if has_relocs {
+        // sh_link = .symtab index (2) ; sh_info = .text index (1)
+        emit_shdr(&mut buf,
+            off_rela, SHT_RELA, SHF_INFO_LINK,
+            0, rela_off, rela_size, 2, 1, 8, RELA64_SIZE as u64);
+    }
+
+    // Last index : .shstrtab
+    emit_shdr(&mut buf,
+        off_shstr, SHT_STRTAB, 0,
+        0, shstrtab_off, shstrtab_size, 0, 0, 1, 0);
+
+    buf
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § emit_shdr · Elf64_Shdr writer (64 bytes)
+// ─────────────────────────────────────────────────────────────────────
+// § Field order per ELF64 spec :
+// §   sh_name (u32) · sh_type (u32) · sh_flags (u64) · sh_addr (u64)
+// §   sh_offset (u64) · sh_size (u64) · sh_link (u32) · sh_info (u32)
+// §   sh_addralign (u64) · sh_entsize (u64)
+
+fn emit_shdr(
+    buf : &mut Vec<u8>,
+    name      : u32,
+    sh_type   : u32,
+    flags     : u64,
+    addr      : u64,
+    offset    : u64,
+    size      : u64,
+    link      : u32,
+    info      : u32,
+    addralign : u64,
+    entsize   : u64,
+) {
+    emit_u32(buf, name);
+    emit_u32(buf, sh_type);
+    emit_u64(buf, flags);
+    emit_u64(buf, addr);
+    emit_u64(buf, offset);
+    emit_u64(buf, size);
+    emit_u32(buf, link);
+    emit_u32(buf, info);
+    emit_u64(buf, addralign);
+    emit_u64(buf, entsize);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Helpers · canonical section-name byte strings (stage-0 friendly :
+// § no &str dependency · each canonical ELF section name has a dedicated
+// § byte-builder fn that materialises it as Vec<u8>).
+// ─────────────────────────────────────────────────────────────────────
+
+fn shstr_dot_text() -> Vec<u8> {
+    // ".text"  ⇒ 0x2E 0x74 0x65 0x78 0x74
+    let mut v : Vec<u8> = Vec::new();
+    v.push(0x2E); v.push(0x74); v.push(0x65); v.push(0x78); v.push(0x74);
+    v
+}
+
+fn shstr_dot_symtab() -> Vec<u8> {
+    // ".symtab"
+    let mut v : Vec<u8> = Vec::new();
+    v.push(0x2E); v.push(0x73); v.push(0x79); v.push(0x6D);
+    v.push(0x74); v.push(0x61); v.push(0x62);
+    v
+}
+
+fn shstr_dot_strtab() -> Vec<u8> {
+    // ".strtab"
+    let mut v : Vec<u8> = Vec::new();
+    v.push(0x2E); v.push(0x73); v.push(0x74); v.push(0x72);
+    v.push(0x74); v.push(0x61); v.push(0x62);
+    v
+}
+
+fn shstr_dot_rela_text() -> Vec<u8> {
+    // ".rela.text"
+    let mut v : Vec<u8> = Vec::new();
+    v.push(0x2E); v.push(0x72); v.push(0x65); v.push(0x6C);
+    v.push(0x61); v.push(0x2E); v.push(0x74); v.push(0x65);
+    v.push(0x78); v.push(0x74);
+    v
+}
+
+fn shstr_dot_shstrtab() -> Vec<u8> {
+    // ".shstrtab"
+    let mut v : Vec<u8> = Vec::new();
+    v.push(0x2E); v.push(0x73); v.push(0x68); v.push(0x73);
+    v.push(0x74); v.push(0x72); v.push(0x74); v.push(0x61);
+    v.push(0x62);
+    v
+}
+
+fn align_pad(off : u64, align : u64) -> u64 {
+    let rem = off & (align - 1);
+    if rem == 0 { 0 } else { align - rem }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// § Tests · elf.cssl
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_elf_magic_and_header_shape() {
+    // Empty .text · single global func symbol · no relocs.
+    let code : Vec<u8> = Vec::new();
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66); name.push(0x6F); name.push(0x6F);     // "foo"
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 0, 1, SymBinding::Global));
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_elf(&code, &syms, &relocs);
+
+    // Magic 0x7F 'E' 'L' 'F'
+    assert_eq!(bytes[0], 0x7F);
+    assert_eq!(bytes[1], 0x45);
+    assert_eq!(bytes[2], 0x4C);
+    assert_eq!(bytes[3], 0x46);
+    // EI_CLASS = ELFCLASS64
+    assert_eq!(bytes[4], ELFCLASS64);
+    // EI_DATA = ELFDATA2LSB
+    assert_eq!(bytes[5], ELFDATA2LSB);
+    // EI_VERSION = EV_CURRENT
+    assert_eq!(bytes[6], EV_CURRENT);
+    // EI_OSABI = ELFOSABI_SYSV
+    assert_eq!(bytes[7], ELFOSABI_SYSV);
+
+    // e_type @ off 16 = ET_REL (1)
+    assert_eq!(read_u16_le(&bytes, 16), ET_REL);
+    // e_machine @ off 18 = EM_X86_64 (62)
+    assert_eq!(read_u16_le(&bytes, 18), EM_X86_64);
+    // e_version @ off 20 = 1
+    assert_eq!(read_u32_le(&bytes, 20), 1);
+    // e_ehsize @ off 52 = 64
+    assert_eq!(read_u16_le(&bytes, 52), EHDR64_SIZE);
+    // e_shentsize @ off 58 = 64
+    assert_eq!(read_u16_le(&bytes, 58), SHDR64_SIZE);
+    // No relocs ⇒ 5 sections : NULL + .text + .symtab + .strtab + .shstrtab
+    assert_eq!(read_u16_le(&bytes, 60), 5);
+    // e_shstrndx @ off 62 = last section (4)
+    assert_eq!(read_u16_le(&bytes, 62), 4);
+}
+
+#[test]
+fn test_elf_text_bytes_present() {
+    // Place 4 bytes (UD2 + INT3 + INT3) into .text · verify they survive
+    // round-trip from buffer offset = 64 (after Elf64_Ehdr).
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0x0F); code.push(0x0B);     // UD2
+    code.push(0xCC); code.push(0xCC);     // INT3 INT3
+    let syms : Vec<Symbol> = Vec::new();
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_elf(&code, &syms, &relocs);
+
+    // .text starts immediately after Elf64_Ehdr (offset 64).
+    assert_eq!(bytes[64], 0x0F);
+    assert_eq!(bytes[65], 0x0B);
+    assert_eq!(bytes[66], 0xCC);
+    assert_eq!(bytes[67], 0xCC);
+}
+
+#[test]
+fn test_elf_symbol_table_writes_undef_first() {
+    // The first symbol-table entry must be the STN_UNDEF placeholder
+    // (24 bytes of zeros). Verify by reading right after the .text bytes
+    // (padded to 8-byte alignment).
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0xC3);                      // RET (1 byte)
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66);                      // "f"
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 1, 1, SymBinding::Global));
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_elf(&code, &syms, &relocs);
+
+    // .text = 1 byte at off 64. Pad to 8 ⇒ symtab starts at off 72.
+    let symtab_off : u32 = 72;
+    let mut i : u32 = 0;
+    while i < 24 {
+        assert_eq!(bytes[(symtab_off + i) as usize], 0);
+        i = i + 1;
+    }
+    // Second sym (offset 72+24 = 96). st_name is the FIRST 4 bytes ; should
+    // be 1 (offset 0 is the leading NUL in .strtab).
+    assert_eq!(read_u32_le(&bytes, 96), 1);
+    // st_info = (STB_GLOBAL << 4) | STT_FUNC = 0x12
+    assert_eq!(bytes[100], 0x12);
+    // st_shndx (off +6 from sym start) = 1 (.text)
+    assert_eq!(read_u16_le(&bytes, 102), 1);
+}
+
+#[test]
+fn test_elf_rela_section_emitted_when_relocs_present() {
+    // 1-byte .text · 1 sym · 1 reloc against that sym at offset 0 with addend 8.
+    let mut code : Vec<u8> = Vec::new();
+    code.push(0x90);                      // NOP
+    let mut name : Vec<u8> = Vec::new();
+    name.push(0x66);                      // "f"
+    let mut syms : Vec<Symbol> = Vec::new();
+    syms.push(Symbol::new_func(name, 0, 1, 1, SymBinding::Global));
+    let mut relocs : Vec<Reloc> = Vec::new();
+    relocs.push(Reloc::new(0, 0, RelocKind::Pc32, 8));
+
+    let bytes = emit_elf(&code, &syms, &relocs);
+
+    // 6 sections : NULL + .text + .symtab + .strtab + .rela.text + .shstrtab.
+    assert_eq!(read_u16_le(&bytes, 60), 6);
+    // e_shstrndx = 5
+    assert_eq!(read_u16_le(&bytes, 62), 5);
+}
+
+#[test]
+fn test_elf_round_trip_e_shoff_points_at_shdrs() {
+    // Read e_shoff from the header · seek there · verify SHT_NULL first.
+    let code : Vec<u8> = Vec::new();
+    let syms : Vec<Symbol> = Vec::new();
+    let relocs : Vec<Reloc> = Vec::new();
+
+    let bytes = emit_elf(&code, &syms, &relocs);
+
+    // e_shoff @ off 40 (after e_ident[16] + e_type[2] + e_machine[2] + e_version[4]
+    //                    + e_entry[8] + e_phoff[8] = 16 + 16 = 32 ; we land at 40)
+    let shoff = read_u64_le(&bytes, 40) as u32;
+    // SHT_NULL has sh_type == 0 ; sh_type field is at +4 within the shdr.
+    assert_eq!(read_u32_le(&bytes, shoff + 4), SHT_NULL);
+    // First 8 bytes (sh_name + sh_type) of SHT_NULL must be zero.
+    assert_eq!(read_u32_le(&bytes, shoff), 0);
+    assert_eq!(read_u32_le(&bytes, shoff + 4), 0);
+}
+
+#[test]
+fn test_elf_st_info_packing() {
+    // STB_GLOBAL=1, STT_FUNC=2 ⇒ st_info = 0x12 ; STB_LOCAL=0, STT_OBJECT=1 ⇒ 0x01.
+    assert_eq!(st_info(STB_GLOBAL, STT_FUNC), 0x12);
+    assert_eq!(st_info(STB_LOCAL,  STT_OBJECT), 0x01);
+    assert_eq!(st_info(STB_WEAK,   STT_FUNC), 0x22);
+}
+
+#[test]
+fn test_elf_r_info_packing() {
+    // r_info(sym=2, type=R_X86_64_PC32(2)) = (2 << 32) | 2
+    let v = r_info(2, R_X86_64_PC32);
+    assert_eq!(v, ((2u64) << 32) | 2u64);
+    // Type field round-trip from low 32 bits.
+    assert_eq!((v & 0xFFFFFFFF) as u32, R_X86_64_PC32);
+    assert_eq!((v >> 32) as u32, 2);
+}
+
+#[test]
+fn test_elf_reloc_kind_translation() {
+    assert_eq!(elf_reloc_type(RelocKind::Abs64),    R_X86_64_64);
+    assert_eq!(elf_reloc_type(RelocKind::Pc32),     R_X86_64_PC32);
+    assert_eq!(elf_reloc_type(RelocKind::Plt32),    R_X86_64_PLT32);
+    assert_eq!(elf_reloc_type(RelocKind::GotPcRel), R_X86_64_GOTPCREL);
+}
