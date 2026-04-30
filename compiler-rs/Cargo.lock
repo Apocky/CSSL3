@@ -1636,8 +1636,6 @@ name = "loa-host"
 version = "0.1.0"
 dependencies = [
  "cssl-rt",
- "serde",
- "serde_json",
 ]
 
 [[package]]
