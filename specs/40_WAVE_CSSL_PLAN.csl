@@ -88,6 +88,15 @@
     ↳ G2  any-C99-compiler rebuilds stage1 from-source
     ↳ G3  reproducibility audit hash-chain
 
+  ░ WAVE-X · spec close-outs from W-E1-α/β parser slices       ✓ DONE
+    ↳ X1  09_SYNTAX.csl § W-X.1  extern fn (single + block)        ✓
+    ↳ X2  09_SYNTAX.csl § W-X.2  self-pattern variants + caps      ✓
+    ↳ X3  09_SYNTAX.csl § W-X.3  tuple-patterns in match           ✓
+    ↳ X4  09_SYNTAX.csl § W-X.4  if-let form + let-else contrast   ✓
+    ↳ X5  13_GRAMMAR_SELF.csl    PLANNED · NOT-YET-AUTHORED        ○
+    output : firm grammar surface for W-E4 fixed-point gate ; future
+              parser/spec slices align to § W-X.* productions @ T11-D262
+
 § DEPENDENCY-DAG  (which wave gates which)
   A → B  (trait-dispatch needs deferred-ABI ; specifically Option/Result+memref)
   A → C  (string-handling needs UTF-8 typed-memref)

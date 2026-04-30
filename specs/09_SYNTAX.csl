@@ -242,4 +242,375 @@
     fn contact(a : Entity, b : Entity) -> Option<Hit>
   }
 
+# ══════════════════════════════════════════════════════════════════
+# § W-X SPEC CLOSE-OUTS — formalize 4 W-E1-α/β parser ambiguities
+# ══════════════════════════════════════════════════════════════════
+#   provenance : W-E1-α (35c0709 lexer/cursor/diag) + W-E1-β (f2717c2
+#                stmt/expr/parser) flagged 4 surface-form ambiguities via
+#                `// W-E-SPEC ambiguity` markers ; this section closes
+#                each one with grammar + examples + edge-cases so W-E4
+#                fixed-point gate sees a firm grammar.
+#   binding    : these productions are NORMATIVE for stage-0 + stage-1 ;
+#                future surface extensions MUST extend, not contradict.
+
+§ W-X.1  EXTERN-FN DECLARATIONS  (host-FFI surface · §§ 24)
+  motivation
+    : CSSL-source declares host-symbol bindings so the linker resolves
+      `__cssl_<domain>_<verb>` (§§ 24 § ABI-STABLE-SYMBOLS) without
+      requiring a real fn body in CSSL ; cssl-rt provides the impl.
+
+  surface-forms (both NORMATIVE)
+    F1 single-decl :
+      extern_fn_decl ::= "extern" abi_string? "fn" ident
+                         generic_params?
+                         "(" param_list? ")"
+                         ("->" type)?
+                         where_clause? ";"
+    F2 block-decl :
+      extern_block ::= "extern" abi_string? "{"
+                         (extern_fn_in_block | extern_static)*
+                       "}"
+      extern_fn_in_block ::= attr* "fn" ident
+                             generic_params?
+                             "(" param_list? ")"
+                             ("->" type)? ";"
+      extern_static ::= attr* "static" "mut"? ident ":" type ";"
+
+  abi_string ::= string_lit
+    default-when-omitted : "C"
+    canonical-set        : "C" | "Rust" | "system" | "cssl-rt"
+      "C"        host-platform C ABI ; default for __cssl_* primitives
+      "Rust"     unstable Rust ABI ; bootstrap-only ; NOT cross-stage
+      "system"   stdcall/win64-as-appropriate per target-OS
+      "cssl-rt"  CSSL-runtime ABI (§§ 24 P1 ABI-stable contract)
+
+  examples
+    E1 (canonical · matches §§ 24 host-FFI surface) :
+      extern "C" fn __cssl_host_time_monotonic_ns() -> u64 ;
+
+    E2 (block · groups by ABI · attrs per-fn) :
+      extern "C" {
+        @sensitive
+        fn __cssl_host_thread_spawn(entry : fn(usize) -> ()) -> u64 ;
+        fn __cssl_host_thread_join(tid : u64) -> i32 ;
+        fn __cssl_host_thread_yield() -> () ;
+      }
+
+    E3 (default-ABI · ABI-string elided · IS valid) :
+      extern fn lex_string(source : String) -> Vec<Token> ;
+      § ≡ extern "C" fn lex_string(source : String) -> Vec<Token> ;
+
+  edge-cases
+    EC1 generics on extern fns are PERMITTED but monomorphized at
+        call-site ; the linker symbol is the mangled monomorph
+        (∴ extern fns can be generic at source-level only).
+    EC2 effect-rows on extern fns are RESERVED ; stage-0 rejects with
+        diag E0921 "extern fns may not declare effect-rows ; cssl-rt
+        primitives are pure-by-construction or wrap effects via Cap<X>".
+    EC3 body present on extern fn → diag E0922 "extern fn cannot have
+        a body ; remove `{ ... }` or remove `extern`".
+    EC4 extern-block nested inside fn-body → diag E0923 "extern blocks
+        only at module-scope" ; matches §§ 24 ABI-locked-forever.
+    EC5 ABI-string after ident (e.g. `extern fn foo "C" ()`) → reject ;
+        ABI-string MUST precede `fn` keyword.
+    EC6 `pub extern fn` is permitted ; visibility applies to the
+        CSSL-side handle ; the actual symbol is always linker-visible.
+
+  HIR-lowering
+    : extern fn → HirItemKind::ExternFn { abi, sig, attrs }
+    : extern block → desugars to N × HirItemKind::ExternFn with shared
+      abi inherited unless per-fn override (per-fn override RESERVED ·
+      stage-0 forbids).
+
+§ W-X.2  SELF-PATTERN VARIANTS  (method-receiver surface)
+  motivation
+    : impl-block fns may consume / borrow / share their receiver ; the
+      surface form must let authors express each receiver-mode WITHOUT
+      ambiguity vs. ordinary-pattern fallthrough. Parser currently
+      accepts via pattern-fallthrough ; this close-out promotes it to
+      a first-class self_param production.
+
+  grammar
+    fn_param ::= self_param | normal_param
+    self_param ::= cap_kw? ref_form? "self" (":" type)?
+
+    ref_form  ::= "&" lifetime? "mut"?     § Rust-borrow surface
+                | ε                          § value-receiver
+
+    cap_kw    ::= "iso" | "trn" | "ref" | "val" | "box" | "tag"
+      § Pony-6 capability surface (§§ 12 CAPABILITIES)
+
+    lifetime  ::= "'" ident                 § lifetime-bound borrow
+
+  canonical-cohort  (Rust-borrow surface · §§ 16 dual-surface)
+    P1  self           ⇒  move-receiver       (consumed · linear-by-default)
+    P2  &self          ⇒  immutable-borrow    (≡ box-self in §§ 12 lattice)
+    P3  &mut self      ⇒  mutable-borrow      (≡ trn-self · single-writer)
+    P4  &'a self       ⇒  lifetime-bound borrow (region 'a · §§ 03)
+    P5  &'a mut self   ⇒  lifetime-bound mutable-borrow
+
+  capability-cohort  (Pony-6 surface · §§ 12 CAPABILITIES)
+    Q1  iso self       ⇒  isolated · linear · sendable-across-threads
+    Q2  trn self       ⇒  writable-unique · freezable-to-val
+    Q3  ref self       ⇒  local-mut-alias (single-thread)
+    Q4  val self       ⇒  immutable-shared (deep-immutable)
+    Q5  box self       ⇒  read-only-view (accepts iso/trn/val argument)
+    Q6  tag self       ⇒  identity-only (no data-access ; Handle<T>-like)
+
+  surface-equivalence  (W! both surfaces lower to SAME HirSelfKind)
+    &self        ≡  box self           § ⇒ HirSelfKind::Box
+    &mut self    ≡  ref self           § ⇒ HirSelfKind::Ref
+    self  (move) ≡  iso self           § ⇒ HirSelfKind::Iso
+                                          (when impl is iso-typed)
+                ≡  val self           § ⇒ HirSelfKind::Val
+                                          (when impl is val-typed)
+    § I> impl-block cap-bound (§§ 12 § IMPL-BLOCKS) disambiguates.
+
+  examples
+    E1 Rust-borrow surface :
+      impl<T> Vec<T> {
+        fn len(&self) -> usize { ... }            § box-self
+        fn push(&mut self, x : T) -> () { ... }   § ref-self
+        fn drain(self) -> Iter<T> { ... }         § iso-self (move)
+      }
+
+    E2 Capability surface (CSLv3-native preferred) :
+      impl<T> Vec<T> {
+        § len ≡ box self → usize
+        § push ≡ ref self ⊗ x:T → ()
+        § drain ≡ iso self → Iter<T>
+      }
+
+    E3 Lifetime-bound :
+      impl Frame {
+        fn pixels<'a>(&'a self) -> &'a [Pixel] { ... }
+        § ≡ box 'a self → box 'a [Pixel]
+      }
+
+  edge-cases
+    EC1 self MUST be the FIRST param ; `fn f(x : i32, &self)` →
+        diag E0931 "self-param must be first parameter".
+    EC2 Mixing surfaces in one signature is REJECTED :
+        `fn f(iso &mut self)` → diag E0932 "use exactly one of
+        capability-keyword OR borrow-form, not both".
+        Choose `iso self` OR `&mut self`, not both.
+    EC3 Type-annotation on self (`self : Self`) is permitted but
+        REDUNDANT ; formatter strips it.
+    EC4 `self` in a free fn (no impl-block) → diag E0933 "self only
+        valid as receiver-param of impl/trait method".
+    EC5 `&'static self` is reserved-but-rare ; legal only when the
+        receiver is statically-allocated (e.g. global singleton).
+    EC6 cap-kw on self requires the impl-block declare a matching
+        cap-bound (§§ 12 § IMPL-BLOCKS) ; otherwise diag E0934.
+
+  HIR-lowering
+    : self_param → HirParam {
+        kind: Self,
+        cap: HirSelfKind::{Iso, Trn, Ref, Val, Box, Tag},
+        lifetime: Option<HirLifetime>,
+      }
+    : both surfaces produce identical HirSelfKind enum-tag ; round-trip
+      via formatter preserves AUTHOR-CHOSEN surface.
+
+§ W-X.3  TUPLE-PATTERNS IN MATCH  (destructuring surface)
+  motivation
+    : pattern-matching on tuples (return-multi, scrutinee-pairs, etc.)
+      requires arity-checked nested-destructuring without leaking into
+      adjacent grammar (call-args, tuple-types). Parser currently
+      accepts ; this close-out formalizes arity + nesting + rest.
+
+  grammar
+    pat ::= literal_pat | wildcard_pat | binding_pat
+          | path_pat | constructor_pat | tuple_pat
+          | struct_pat | array_pat | range_pat | rest_pat
+          | or_pat
+
+    tuple_pat ::= "(" tuple_pat_elems? ")"
+    tuple_pat_elems ::= pat_or_rest ("," pat_or_rest)* ","?
+    pat_or_rest ::= pat | rest_pat
+    rest_pat ::= ".."                  § matches zero-or-more elements
+                                          (at most ONE per tuple_pat)
+
+    constructor_pat ::= path "(" tuple_pat_elems? ")"
+      § enum-variant Foo(T, U) destructured with same elem-grammar
+
+  arity-rule
+    : tuple_pat without rest_pat MUST exact-match scrutinee arity ;
+      otherwise diag E0941 "tuple pattern arity N does not match
+      scrutinee arity M".
+    : tuple_pat WITH rest_pat matches when scrutinee arity ≥ N-1
+      (where N = elems including rest_pat).
+    : at-most-ONE rest_pat per tuple_pat ; multi-rest → diag E0942.
+
+  binding-form
+    : `let (x, y) = pair ;` is sugar for
+      `match pair { (x, y) => { ... } }` (irrefutable-binding).
+    : if pair has type (T1, T2) the binding gives x:T1, y:T2.
+
+  examples
+    E1 flat tuple :
+      match (x, y) {
+        (0, 0)        => "origin",
+        (a, 0) if a>0 => "pos-x-axis",
+        (_, _)        => "elsewhere",
+      }
+
+    E2 nested + rest + binding :
+      match scene_query() {
+        (Hit(pos, n), .., Some(mat))   => shade(pos, n, mat),
+        (Miss, ..)                     => background(),
+      }
+
+    E3 destructure-in-let :
+      let (head, rest_tail @ ..) = list ;
+      § head : T0 ; rest_tail : (T1, T2, ..., Tn-1)
+
+    E4 enum-constructor with tuple-args :
+      match opt_pair {
+        Some((a, b)) => f(a, b),
+        None         => default(),
+      }
+
+  edge-cases
+    EC1 unit-tuple `()` matches only the unit value ; serves as
+        end-of-args sentinel.
+    EC2 single-elem tuple-pat `(x,)` (trailing comma) is valid ; bare
+        `(x)` is parens-grouping NOT a tuple-pat.
+    EC3 rest_pat `..` is positional ; cannot appear in struct-pat
+        without preceding field-pat (struct-pat-rest uses same `..`
+        but with field-name semantics ; see W-X.3-FUTURE).
+    EC4 binding-with-rest `name @ ..` captures the residual sub-tuple
+        as a tuple-typed value ; arity inferred from scrutinee.
+    EC5 or-pat (`(0, 1) | (1, 0)`) requires same-arity + same-bindings
+        across alternatives ; otherwise diag E0943.
+    EC6 nested tuple inside struct-pat-field is permitted :
+        `Frame { size: (w, h), .. }`.
+
+  HIR-lowering
+    : tuple_pat → HirPatKind::Tuple { elems: Vec<HirPat>, rest: Option<usize> }
+      (rest field stores INDEX of `..` if present, else None).
+    : exhaustiveness-check (§§ HIR exhaustiveness) walks tuple_pats
+      Cartesian-product against enum-variants per elem-position.
+
+§ W-X.4  IF-LET FORM  (single-arm match sugar)
+  motivation
+    : ergonomic single-pattern test without the verbosity of full
+      match ; common when extracting Option/Result variants in
+      conditional flow.
+
+  grammar
+    if_let_expr ::= "if" "let" pat "=" expr block else_clause?
+    else_clause ::= "else" (block | if_expr | if_let_expr)
+                                   § ⇒ else / else if / else if let
+
+    let_else_stmt ::= "let" pat "=" expr "else" block ";"
+                                   § contrast-form (early-return)
+
+  desugar  (NORMATIVE · stage-0 lowering rule)
+    if let PAT = EXPR { THEN_BLOCK } else { ELSE_BLOCK }
+      ≡
+    match EXPR {
+      PAT => { THEN_BLOCK },
+      _   => { ELSE_BLOCK },
+    }
+
+    if let PAT = EXPR { THEN_BLOCK }   § no else
+      ≡
+    match EXPR {
+      PAT => { THEN_BLOCK },
+      _   => { },                      § unit-fall-through
+    }
+
+    if let PAT = EXPR { A } else if let PAT2 = EXPR2 { B } else { C }
+      ≡
+    match EXPR {
+      PAT => { A },
+      _   => match EXPR2 {
+        PAT2 => { B },
+        _    => { C },
+      },
+    }
+
+  contrast · let-else  (early-return-on-no-match)
+    let PAT = EXPR else { DIVERGE_BLOCK } ;
+      ≡
+    let TMP = EXPR ;
+    match TMP {
+      PAT => { /* bindings escape into surrounding scope */ },
+      _   => { DIVERGE_BLOCK },        § block must diverge :
+    }                                    return / break / continue /
+                                         panic / never-typed-call ; any
+                                         other → diag E0951 "let-else
+                                         block must diverge".
+
+  examples
+    E1 simple Option-extract :
+      if let Some(v) = lookup(key) {
+        process(v)
+      } else {
+        log_miss(key)
+      }
+
+    E2 chain + arity-binding :
+      if let Some((a, b)) = pair_query() {
+        emit_pair(a, b)
+      } else if let Some(single) = single_query() {
+        emit_single(single)
+      } else {
+        emit_default()
+      }
+
+    E3 let-else (early-return) :
+      fn process(req : Request) -> Result<(), Err> {
+        let Some(token) = req.auth_token else {
+          return Err(Err::MissingAuth) ;
+        } ;
+        let Ok(parsed) = parse_token(token) else {
+          return Err(Err::BadAuth) ;
+        } ;
+        § token + parsed both bound here onward
+        proceed(parsed)
+      }
+
+  edge-cases
+    EC1 if-let is an EXPRESSION (value-producing) ; both branches must
+        type-unify ; missing-else → result-type must be `()`.
+    EC2 binding-scope of PAT extends through THEN_BLOCK only ; ELSE
+        does NOT see bindings (matches Rust ; consistent with
+        match-arm-scoping).
+    EC3 guards on if-let : `if let Some(x) = e if x > 0 { ... }` is
+        REJECTED at surface ; lift to `if let Some(x) = e { if x > 0
+        { ... } }` or use full match. (Rust permits `if let ... && cond`
+        chain ; CSSL stage-0 RESERVES this syntax pending W-E1-γ.)
+    EC4 let-else block divergence is NORMATIVE : the block MUST end in
+        a Never-typed expression (return/break/continue/panic/loop{}) ;
+        diag E0951 if not.
+    EC5 `else if let` chains to arbitrary depth (no max) ; stage-0
+        lowering is recursive desugaring above.
+    EC6 PAT may be irrefutable (e.g. `if let x = e { ... }`) ; this
+        compiles but emits warn W0951 "if-let with irrefutable pattern
+        ; use plain `let` binding instead".
+
+  HIR-lowering
+    : if_let_expr → HirExprKind::Match { scrutinee, arms: [pat-arm,
+      wildcard-arm] } ; identical to match HIR after desugar.
+    : let_else_stmt → HirStmtKind::LetElse { pat, init, diverge_block } ;
+      type-checker enforces diverge_block : Never.
+    : pretty-printer can RE-RAISE if-let / let-else from canonical
+      match-HIR when the structure matches the desugar template
+      (round-trip-lossless surface preservation).
+
+# ══════════════════════════════════════════════════════════════════
+# § W-X CLOSE-OUT-NOTES
+#   * companion grammar-self spec : 13_GRAMMAR_SELF.csl PLANNED but
+#     NOT-YET-AUTHORED @ T11-D262 ; productions above are CANONICAL
+#     pending its creation ; future grammar-self MUST cite back to
+#     this section.
+#   * parser slices W-E1-α (35c0709) + W-E1-β (f2717c2) are the
+#     source-of-record for parser-side acceptance ; this spec is the
+#     source-of-record for grammar-correctness.
+#   * W-E4 fixed-point gate consumers : these productions are the
+#     stable surface ; bytewise-identical re-parse expected.
+# ══════════════════════════════════════════════════════════════════
+
 ∎ SYNTAX
