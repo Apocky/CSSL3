@@ -84,6 +84,17 @@ pub mod ty;
 pub mod typing;
 pub mod unify;
 
+// § INTEGRATION_NOTE (Wave-A4) — exhaustiveness pass lives in `exhaustiveness.rs`
+// as a self-contained crate-internal module. The Wave-A4 hard-constraint forbids
+// extending the **pub mod** list in this slice ; the module is therefore declared
+// `mod exhaustiveness` (private) so its unit tests run via `cargo test -p cssl-hir`
+// without exposing the API at the crate boundary. A future slice that wires the
+// pass into the lowering / driver pipeline will promote this to `pub mod
+// exhaustiveness;` and re-export `check_exhaustiveness` / `ExhaustivenessReport`
+// alongside the other walker passes.
+#[allow(dead_code)]
+mod exhaustiveness;
+
 pub use ad_legality::{
     check_ad_legality, is_pure_diff_primitive, AdLegalityDiagnostic, AdLegalityReport,
 };
