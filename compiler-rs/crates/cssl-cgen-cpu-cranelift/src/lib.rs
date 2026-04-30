@@ -41,6 +41,11 @@ pub mod abi;
 pub mod cgen_heap_dealloc;
 pub mod cgen_memref;
 pub mod cgen_tagged_union;
+// § Wave-A3 cgen integration (b761263) — `cssl.try` lowering helpers reuse
+// the Wave-A1 cgen_tagged_union emit-helpers (emit_tag_load /
+// emit_tag_eq_compare / emit_payload_load) ; pass-pipeline registration
+// runs AFTER tagged_union_abi::expand_module + BEFORE Cranelift cgen drive.
+pub mod cgen_try;
 pub mod emit;
 pub mod feature;
 pub mod jit;

@@ -53,6 +53,11 @@ pub mod heap_dealloc;
 pub mod layout_check;
 pub mod memref_typed;
 pub mod tagged_union_abi;
+// § Wave-A3 integration (b761263) — ?-operator MIR rewrite. Builds on
+// Wave-A1 tagged-union helpers ; lowers `cssl.try` to tag-load + cmp +
+// scf.if (failure-arm reconstructs in caller's return type ; success-arm
+// extracts payload via memref.load).
+pub mod try_op_lower;
 pub mod lower;
 pub mod monomorph;
 pub mod op;
