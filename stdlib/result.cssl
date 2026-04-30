@@ -6,7 +6,7 @@
 // Spec : specs/03_TYPES.csl § BASE-TYPES § aggregate (sum-types)
 //        specs/04_EFFECTS.csl § ERROR HANDLING (Result canonical, ?-op
 //          propagates Result::Err)
-// Slice : S6-B2 (T11-D60).
+// Slice : S6-B2 (T11-D60) ; impl-method migration : W-B-MIGRATE-A.
 //
 // § PRIME_DIRECTIVE preserved : Result is the canonical error-channel —
 //   it carries success or failure WITHOUT silently coercing one to the
@@ -17,11 +17,15 @@
 // § STAGE-0 NOTES (carried-forward from DECISIONS T11-D60)
 //   1. Constructors `Ok(x)` and `Err(e)` are recognized syntactically by
 //      `cssl_mir::body_lower` and lower to `cssl.result.ok` /
-//      `cssl.result.err` MIR ops respectively.
-//   2. Method bodies use the free-function form `result_<method>::<T,E>`
-//      until trait-dispatch lands. Monomorphizes via the D38..D50
-//      quartet ; Result<i32,i32> and Result<i32,String> produce
-//      distinct mangled symbols.
+//      `cssl.result.err` MIR ops respectively. With trait-dispatch (T11-D99)
+//      now landed, the impl-method form below is the canonical surface ;
+//      the recognizer remains the fast-path for the constructors.
+//   2. Method bodies use the impl-method form `Result<T, E>::<method>` per
+//      W-B-MIGRATE-A. Trait-dispatch (T11-D99) resolves `r.unwrap()` /
+//      `r.map(f)` / etc. to the monomorphized `Result_<T,E-mangle>__<method>`
+//      MirFunc through the existing T11-D38..D50 quartet. Result<i32,i32>
+//      and Result<i32,String> produce distinct mangled symbols. The free
+//      functions are kept as alias-delegates for back-compat.
 //   3. The `?`-operator (HirExprKind::Try) lowers to `cssl.try` and is
 //      generic over any sum-type with a "propagate-failure-tag" shape.
 //      Per `specs/04_EFFECTS.csl § ERROR HANDLING` the canonical
@@ -51,82 +55,166 @@ enum Result<T, E> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// § Method surface (free-function form, generic, turbofish-callable).
+// § MIGRATION (W-B-MIGRATE-A) — impl-method form is canonical.
+//
+//   Per the W-B-MIGRATE-A migration (W-J branch wave) the impl-method form
+//   below is the primary surface ; trait-dispatch (T11-D99) resolves
+//   `r.unwrap()` / `r.map(f)` / etc. to the monomorphized
+//   `Result_<T,E>__<method>` MirFunc. The free-function form
+//   `result_<method>` is preserved as a thin alias-delegate that calls the
+//   impl-method, ensuring back-compat with any caller that landed on the
+//   free-fn surface pre-migration.
+//
+//   § RECEIVER-NAME SPEC-GAP (deferred — `this` substitutes for `self`)
+//
+//     The stage-0 parser (`cssl_parse::rust_hybrid::pat::parse_atomic_pattern`)
+//     does NOT yet accept `self` as a binding-pattern in fn-params : `self`
+//     is lexed as `Keyword::SelfValue`, which the pattern parser treats
+//     as `_ => bag.push("expected a pattern")`. The `self` keyword IS
+//     accepted in expression contexts (`match self { ... }` works), but
+//     the receiver-name is rejected at parse-time.
+//
+//     Until the parser is taught to accept `self` as a binding-pattern,
+//     the impl-method receiver here is named `this : Result<T, E>`. This
+//     is semantically equivalent — trait-dispatch (T11-D99) keys impl
+//     entries on the (self-ty-name, method-name) pair via
+//     `cssl_mir::trait_dispatch::TraitImplTable`, which is independent of
+//     the receiver-parameter's source-name. Method-call lowering remains
+//     `obj.method(args)` → `Result_<T,E>__method(obj, args)`.
+//
+//     The migration to bare `self` is logged as a follow-up parser slice ;
+//     see option.cssl § MIGRATION for the same note (mirror copy keeps
+//     each stdlib file self-contained for grep + onboarding).
+// ───────────────────────────────────────────────────────────────────────
+
+impl<T, E> Result<T, E> {
+    // `Result<T, E>::is_ok` — true iff `this` is Ok.
+    fn is_ok(this : Result<T, E>) -> bool {
+        match this {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
+    // `Result<T, E>::is_err` — true iff `this` is Err.
+    fn is_err(this : Result<T, E>) -> bool {
+        match this {
+            Ok(_) => false,
+            Err(_) => true,
+        }
+    }
+
+    // `Result<T, E>::unwrap` — extract Ok payload or panic on Err.
+    //
+    // ‼ The unsafe-by-default extractor. Prefer `unwrap_or` / `or_else` /
+    //   pattern-matching when Err is reachable.
+    fn unwrap(this : Result<T, E>) -> T {
+        match this {
+            Ok(x) => x,
+            Err(_) => panic("Result::unwrap on Err"),
+        }
+    }
+
+    // `Result<T, E>::expect` — like unwrap with a custom message.
+    fn expect(this : Result<T, E>, msg : &str) -> T {
+        match this {
+            Ok(x) => x,
+            Err(_) => panic(msg),
+        }
+    }
+
+    // `Result<T, E>::unwrap_or` — extract or fall-back. Total.
+    fn unwrap_or(this : Result<T, E>, default : T) -> T {
+        match this {
+            Ok(x) => x,
+            Err(_) => default,
+        }
+    }
+
+    // `Result<T, E>::or_else` — chain a recovery computation.
+    fn or_else(this : Result<T, E>, default_fn : fn(E) -> Result<T, E>) -> Result<T, E> {
+        match this {
+            Ok(x) => Ok(x),
+            Err(e) => default_fn(e),
+        }
+    }
+
+    // `Result<T, E>::map` — transform Ok(x) via f ; preserve Err.
+    fn map<U>(this : Result<T, E>, f : fn(T) -> U) -> Result<U, E> {
+        match this {
+            Ok(x) => Ok(f(x)),
+            Err(e) => Err(e),
+        }
+    }
+
+    // `Result<T, E>::map_err` — transform Err(e) via f ; preserve Ok.
+    fn map_err<F>(this : Result<T, E>, f : fn(E) -> F) -> Result<T, F> {
+        match this {
+            Ok(x) => Ok(x),
+            Err(e) => Err(f(e)),
+        }
+    }
+
+    // `Result<T, E>::and_then` — chain a fallible computation.
+    fn and_then<U>(this : Result<T, E>, f : fn(T) -> Result<U, E>) -> Result<U, E> {
+        match this {
+            Ok(x) => f(x),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Free-function alias surface (back-compat ; delegate to impl-methods).
+//
+//   These wrappers preserve the pre-migration call-shape
+//   `result_<method>::<T, E>(r, ...)` — every body delegates to the
+//   canonical impl-method via the standard method-dispatch path.
 // ───────────────────────────────────────────────────────────────────────
 
 // `result_is_ok::<T, E>(r)` — true iff r is Ok.
-fn result_is_ok<T, E>(r: Result<T, E>) -> bool {
-    match r {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+fn result_is_ok<T, E>(r : Result<T, E>) -> bool {
+    r.is_ok()
 }
 
 // `result_is_err::<T, E>(r)` — true iff r is Err.
-fn result_is_err<T, E>(r: Result<T, E>) -> bool {
-    match r {
-        Ok(_) => false,
-        Err(_) => true,
-    }
+fn result_is_err<T, E>(r : Result<T, E>) -> bool {
+    r.is_err()
 }
 
 // `result_unwrap::<T, E>(r)` — extract Ok payload or panic on Err.
-//
-// ‼ The unsafe-by-default extractor. Prefer `result_unwrap_or` /
-//   `result_or_else` / pattern-matching when Err is reachable.
-fn result_unwrap<T, E>(r: Result<T, E>) -> T {
-    match r {
-        Ok(x) => x,
-        Err(_) => panic("Result::unwrap on Err"),
-    }
+fn result_unwrap<T, E>(r : Result<T, E>) -> T {
+    r.unwrap()
 }
 
 // `result_expect::<T, E>(r, msg)` — like unwrap with a custom message.
-fn result_expect<T, E>(r: Result<T, E>, msg: &str) -> T {
-    match r {
-        Ok(x) => x,
-        Err(_) => panic(msg),
-    }
+fn result_expect<T, E>(r : Result<T, E>, msg : &str) -> T {
+    r.expect(msg)
 }
 
 // `result_unwrap_or::<T, E>(r, default)` — extract or fall-back. Total.
-fn result_unwrap_or<T, E>(r: Result<T, E>, default: T) -> T {
-    match r {
-        Ok(x) => x,
-        Err(_) => default,
-    }
+fn result_unwrap_or<T, E>(r : Result<T, E>, default : T) -> T {
+    r.unwrap_or(default)
 }
 
 // `result_or_else::<T, E>(r, default_fn)` — chain a recovery computation.
-fn result_or_else<T, E>(r: Result<T, E>, default_fn: fn(E) -> Result<T, E>) -> Result<T, E> {
-    match r {
-        Ok(x) => Ok(x),
-        Err(e) => default_fn(e),
-    }
+fn result_or_else<T, E>(r : Result<T, E>, default_fn : fn(E) -> Result<T, E>) -> Result<T, E> {
+    r.or_else(default_fn)
 }
 
 // `result_map::<T, U, E>(r, f)` — transform Ok(x) ; preserve Err.
-fn result_map<T, U, E>(r: Result<T, E>, f: fn(T) -> U) -> Result<U, E> {
-    match r {
-        Ok(x) => Ok(f(x)),
-        Err(e) => Err(e),
-    }
+fn result_map<T, U, E>(r : Result<T, E>, f : fn(T) -> U) -> Result<U, E> {
+    r.map::<U>(f)
 }
 
 // `result_map_err::<T, E, F>(r, f)` — transform Err(e) ; preserve Ok.
-fn result_map_err<T, E, F>(r: Result<T, E>, f: fn(E) -> F) -> Result<T, F> {
-    match r {
-        Ok(x) => Ok(x),
-        Err(e) => Err(f(e)),
-    }
+fn result_map_err<T, E, F>(r : Result<T, E>, f : fn(E) -> F) -> Result<T, F> {
+    r.map_err::<F>(f)
 }
 
 // `result_and_then::<T, U, E>(r, f)` — chain a fallible computation.
-fn result_and_then<T, U, E>(r: Result<T, E>, f: fn(T) -> Result<U, E>) -> Result<U, E> {
-    match r {
-        Ok(x) => f(x),
-        Err(e) => Err(e),
-    }
+fn result_and_then<T, U, E>(r : Result<T, E>, f : fn(T) -> Result<U, E>) -> Result<U, E> {
+    r.and_then::<U>(f)
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -136,7 +224,7 @@ fn result_and_then<T, U, E>(r: Result<T, E>, f: fn(T) -> Result<U, E>) -> Result
 // Demonstrates ?-operator semantics : on Err the caller's frame returns
 // the propagated Err immediately ; on Ok the payload binds to `_x` and
 // execution continues. Compiles to a `cssl.try` MIR op.
-fn _example_result_try(r: Result<i32, i32>) -> Result<i32, i32> {
+fn _example_result_try(r : Result<i32, i32>) -> Result<i32, i32> {
     let _x = r?;
     Ok(_x + 1)
 }
@@ -145,6 +233,6 @@ fn _example_result_try(r: Result<i32, i32>) -> Result<i32, i32> {
 // stage-0 lambda+turbofish parsing requires an extra slice — see
 // DECISIONS T11-D60 § DEFERRED). The full closure form lands
 // post-S6-C5.
-fn _example_result_map_i32_to_f32(r: Result<i32, i32>) -> Result<i32, i32> {
+fn _example_result_map_i32_to_f32(r : Result<i32, i32>) -> Result<i32, i32> {
     r
 }

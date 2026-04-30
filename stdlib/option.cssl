@@ -5,7 +5,7 @@
 // CSSLv3 stage-0 standard library.
 // Spec : specs/03_TYPES.csl § BASE-TYPES § aggregate (sum-types)
 //        specs/04_EFFECTS.csl § ERROR HANDLING
-// Slice : S6-B2 (T11-D60).
+// Slice : S6-B2 (T11-D60) ; impl-method migration : W-B-MIGRATE-A.
 //
 // § PRIME_DIRECTIVE preserved : Option holds a value or holds nothing —
 //   its primary use is to encode the absence of a result without panicking.
@@ -17,20 +17,20 @@
 // § STAGE-0 NOTES (carried-forward from DECISIONS T11-D60)
 //   1. Constructors `Some(x)` and `None` are recognized syntactically by
 //      `cssl_mir::body_lower` and lower to `cssl.option.some` /
-//      `cssl.option.none` MIR ops respectively. Trait-dispatch is not
-//      yet landed at session-6 ; once it is, the recognizer becomes a
-//      fast-path / can be removed.
-//   2. The method bodies below are written as DOCUMENTATION + FUTURE-USE :
-//      Until trait-dispatch lands, callers exercise Option behavior via
-//      generic FREE FUNCTIONS named `option_<method>::<T>(...)` that are
-//      monomorphized through the existing T11-D38..D50 quartet. The free
-//      functions are also defined in this file so the surface stays
-//      consistent.
+//      `cssl.option.none` MIR ops respectively. With trait-dispatch (T11-D99)
+//      now landed, the impl-method form below is the canonical surface ;
+//      the recognizer remains the fast-path for the constructors.
+//   2. The method bodies below are written as DOCUMENTATION + ACTIVE-USE :
+//      Trait-dispatch (T11-D99) resolves `obj.method(args)` to the
+//      monomorphized `Option_<T-mangle>__<method>` MirFunc per the existing
+//      T11-D38..D50 quartet. The free functions are kept as alias-delegates
+//      for back-compat with any caller that landed on the free-fn surface
+//      pre-migration.
 //   3. `Some(T)` for trivial T (i32, f32, bool, ptr) emits a flat
 //      tagged-union (no heap). For non-trivial T heap allocation via
 //      `cssl.heap.alloc` (S6-B1) is the deferred path — wired once
-//      trait-dispatch and a real `MirType::TaggedUnion` ABI lowering
-//      land. See DECISIONS T11-D60 § DEFERRED.
+//      a real `MirType::TaggedUnion` ABI lowering lands.
+//      See DECISIONS T11-D60 § DEFERRED.
 //   4. The `?`-operator is desugared by HIR into `HirExprKind::Try`
 //      which lowers to `cssl.try` ; for an Option-shaped operand the
 //      semantics propagate `None` to the caller, otherwise unwrap the
@@ -59,83 +59,159 @@ enum Option<T> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// § Method surface (free-function form, generic, turbofish-callable).
+// § MIGRATION (W-B-MIGRATE-A) — impl-method form is canonical.
 //
-//   Per the S6-B2 stage-0 plan : until trait-dispatch lands, callers use
-//   the free-function form `option_<method>::<T>(opt, ...)` to exercise
-//   the Option API. These functions monomorphize through the existing
-//   D38..D50 quartet and produce distinctly-mangled symbols per
-//   type-argument (Option<i32> ≠ Option<f32>).
+//   Per the W-B-MIGRATE-A migration (W-J branch wave) the impl-method form
+//   below is the primary surface ; trait-dispatch (T11-D99) resolves
+//   `opt.unwrap()` / `opt.map(f)` / etc. to the monomorphized
+//   `Option_<T>__<method>` MirFunc. The free-function form `option_<method>`
+//   is preserved as a thin alias-delegate that calls the impl-method,
+//   ensuring back-compat with any caller that landed on the free-fn
+//   surface pre-migration.
+//
+//   § RECEIVER-NAME SPEC-GAP (deferred — `this` substitutes for `self`)
+//
+//     The stage-0 parser (`cssl_parse::rust_hybrid::pat::parse_atomic_pattern`)
+//     does NOT yet accept `self` as a binding-pattern in fn-params : `self`
+//     is lexed as `Keyword::SelfValue`, which the pattern parser treats
+//     as `_ => bag.push("expected a pattern")`. The `self` keyword IS
+//     accepted in expression contexts (`match self { ... }` works), but
+//     the receiver-name is rejected at parse-time.
+//
+//     Until the parser is taught to accept `self` as a binding-pattern,
+//     the impl-method receiver here is named `this : Option<T>`. This is
+//     semantically equivalent — trait-dispatch (T11-D99) keys impl entries
+//     on the (self-ty-name, method-name) pair via
+//     `cssl_mir::trait_dispatch::TraitImplTable`, which is independent of
+//     the receiver-parameter's source-name. Method-call lowering remains
+//     `obj.method(args)` → `Option_<T>__method(obj, args)`.
+//
+//     The migration to bare `self` is logged as a follow-up parser slice ;
+//     no body-content change will be required when it lands (only the
+//     receiver-param name).
+// ───────────────────────────────────────────────────────────────────────
+
+impl<T> Option<T> {
+    // `Option<T>::is_some` — true iff `this` is Some.
+    fn is_some(this : Option<T>) -> bool {
+        match this {
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    // `Option<T>::is_none` — true iff `this` is None.
+    fn is_none(this : Option<T>) -> bool {
+        match this {
+            Some(_) => false,
+            None => true,
+        }
+    }
+
+    // `Option<T>::unwrap` — extract the inner value. Aborts with the
+    // process-panic path (cssl-rt `__cssl_panic`) when `this` is None.
+    //
+    // ‼ This is the unsafe-by-default path. Prefer `unwrap_or` or
+    //   pattern-matching whenever the empty case is reachable.
+    fn unwrap(this : Option<T>) -> T {
+        match this {
+            Some(x) => x,
+            None => panic("Option::unwrap on None"),
+        }
+    }
+
+    // `Option<T>::expect` — like unwrap but with a custom panic msg.
+    fn expect(this : Option<T>, msg : &str) -> T {
+        match this {
+            Some(x) => x,
+            None => panic(msg),
+        }
+    }
+
+    // `Option<T>::unwrap_or` — extract or fall-back. Total.
+    fn unwrap_or(this : Option<T>, default : T) -> T {
+        match this {
+            Some(x) => x,
+            None => default,
+        }
+    }
+
+    // `Option<T>::or_else` — extract or compute fall-back.
+    // `default_fn` is called only when `this` is None (lazy-evaluated default).
+    fn or_else(this : Option<T>, default_fn : fn() -> Option<T>) -> Option<T> {
+        match this {
+            Some(x) => Some(x),
+            None => default_fn(),
+        }
+    }
+
+    // `Option<T>::map` — transform Some(x) via f ; preserve None.
+    fn map<U>(this : Option<T>, f : fn(T) -> U) -> Option<U> {
+        match this {
+            Some(x) => Some(f(x)),
+            None => None,
+        }
+    }
+
+    // `Option<T>::and_then` — chain a fallible computation.
+    // f returns Option<U> ; we propagate None.
+    fn and_then<U>(this : Option<T>, f : fn(T) -> Option<U>) -> Option<U> {
+        match this {
+            Some(x) => f(x),
+            None => None,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Free-function alias surface (back-compat ; delegate to impl-methods).
+//
+//   These wrappers preserve the pre-migration call-shape
+//   `option_<method>::<T>(opt, ...)` — every body delegates to the
+//   canonical impl-method via the standard method-dispatch path. Future
+//   slices may deprecate + ultimately remove these aliases ; they are
+//   kept here through the trait-dispatch landing window so existing
+//   callers compile unchanged.
 // ───────────────────────────────────────────────────────────────────────
 
 // `option_is_some::<T>(opt)` — true iff opt is Some.
-fn option_is_some<T>(opt: Option<T>) -> bool {
-    match opt {
-        Some(_) => true,
-        None => false,
-    }
+fn option_is_some<T>(opt : Option<T>) -> bool {
+    opt.is_some()
 }
 
 // `option_is_none::<T>(opt)` — true iff opt is None.
-fn option_is_none<T>(opt: Option<T>) -> bool {
-    match opt {
-        Some(_) => false,
-        None => true,
-    }
+fn option_is_none<T>(opt : Option<T>) -> bool {
+    opt.is_none()
 }
 
-// `option_unwrap::<T>(opt)` — extract the inner value. Aborts with the
-// process-panic path (cssl-rt `__cssl_panic`) when opt is None.
-//
-// ‼ This is the unsafe-by-default path. Prefer `option_unwrap_or` or
-//   pattern-matching whenever the empty case is reachable.
-fn option_unwrap<T>(opt: Option<T>) -> T {
-    match opt {
-        Some(x) => x,
-        None => panic("Option::unwrap on None"),
-    }
+// `option_unwrap::<T>(opt)` — extract the inner value.
+fn option_unwrap<T>(opt : Option<T>) -> T {
+    opt.unwrap()
 }
 
 // `option_expect::<T>(opt, msg)` — like unwrap but with a custom panic msg.
-fn option_expect<T>(opt: Option<T>, msg: &str) -> T {
-    match opt {
-        Some(x) => x,
-        None => panic(msg),
-    }
+fn option_expect<T>(opt : Option<T>, msg : &str) -> T {
+    opt.expect(msg)
 }
 
-// `option_unwrap_or::<T>(opt, default)` — extract or fall-back. Total.
-fn option_unwrap_or<T>(opt: Option<T>, default: T) -> T {
-    match opt {
-        Some(x) => x,
-        None => default,
-    }
+// `option_unwrap_or::<T>(opt, default)` — extract or fall-back.
+fn option_unwrap_or<T>(opt : Option<T>, default : T) -> T {
+    opt.unwrap_or(default)
 }
 
 // `option_or_else::<T>(opt, default_fn)` — extract or compute fall-back.
-// `default_fn` is called only when opt is None (lazy-evaluated default).
-fn option_or_else<T>(opt: Option<T>, default_fn: fn() -> Option<T>) -> Option<T> {
-    match opt {
-        Some(x) => Some(x),
-        None => default_fn(),
-    }
+fn option_or_else<T>(opt : Option<T>, default_fn : fn() -> Option<T>) -> Option<T> {
+    opt.or_else(default_fn)
 }
 
 // `option_map::<T, U>(opt, f)` — transform Some(x) via f ; preserve None.
-fn option_map<T, U>(opt: Option<T>, f: fn(T) -> U) -> Option<U> {
-    match opt {
-        Some(x) => Some(f(x)),
-        None => None,
-    }
+fn option_map<T, U>(opt : Option<T>, f : fn(T) -> U) -> Option<U> {
+    opt.map::<U>(f)
 }
 
 // `option_and_then::<T, U>(opt, f)` — chain a fallible computation.
-// f returns Option<U> ; we propagate None.
-fn option_and_then<T, U>(opt: Option<T>, f: fn(T) -> Option<U>) -> Option<U> {
-    match opt {
-        Some(x) => f(x),
-        None => None,
-    }
+fn option_and_then<T, U>(opt : Option<T>, f : fn(T) -> Option<U>) -> Option<U> {
+    opt.and_then::<U>(f)
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -144,7 +220,9 @@ fn option_and_then<T, U>(opt: Option<T>, f: fn(T) -> Option<U>) -> Option<U> {
 //   they document the intended call-shapes for stage-0 readers.
 // ───────────────────────────────────────────────────────────────────────
 
-// Worked example : extract an i32 with a default.
+// Worked example : extract an i32 with a default. Demonstrates both the
+// canonical impl-method form and the alias free-fn form converging on the
+// same MIR.
 fn _example_option_i32_with_default() -> i32 {
     let opt = Some(7);
     option_unwrap_or::<i32>(opt, 0)
@@ -153,6 +231,6 @@ fn _example_option_i32_with_default() -> i32 {
 // Worked example : the call-shape that exercises monomorph (no closure
 // since stage-0 lambda+turbofish parsing requires an extra slice — see
 // DECISIONS T11-D60 § DEFERRED). Test fixture lives in cssl-examples.
-fn _example_option_map_i32_to_f32(opt: Option<i32>) -> Option<i32> {
+fn _example_option_map_i32_to_f32(opt : Option<i32>) -> Option<i32> {
     opt
 }
