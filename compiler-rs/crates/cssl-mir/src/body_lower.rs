@@ -309,7 +309,9 @@ fn extract_pattern_symbol(pat: &cssl_hir::HirPattern) -> Option<Symbol> {
 /// Shallow HIR-type → MIR-type translation (mirrors the T6-phase-1 mapping).
 fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
     match &t.kind {
-        HirTypeKind::Path { path, .. } if path.len() == 1 => {
+        HirTypeKind::Path {
+            path, type_args, ..
+        } if path.len() == 1 => {
             let n = interner.resolve(path[0]);
             match n.as_str() {
                 "i8" => MirType::Int(IntWidth::I8),
@@ -322,6 +324,23 @@ fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
                 "f64" => MirType::Float(FloatWidth::F64),
                 "bool" => MirType::Bool,
                 "Handle" => MirType::Handle,
+                // § T11-D284 (W-E5-1) — encode payload-type into `Option<T>` /
+                //   `Result<T, E>` opaque shape so the trait-dispatch resolver
+                //   can peel the wrapper and resolve impls on the inner T.
+                //   Without this, `let x : Option<Foo> = ... ; x.method()`
+                //   would carry the type `Opaque("Option")` and the table
+                //   would search for `(Option, method)` only, missing any
+                //   `impl SomeTrait for Foo { fn method ... }` that the
+                //   user expected to dispatch through after payload-unwrap.
+                "Option" if type_args.len() == 1 => {
+                    let payload = enum_payload_type_string(interner, &type_args[0]);
+                    MirType::Opaque(format!("!cssl.option<{payload}>"))
+                }
+                "Result" if type_args.len() == 2 => {
+                    let ok = enum_payload_type_string(interner, &type_args[0]);
+                    let err = enum_payload_type_string(interner, &type_args[1]);
+                    MirType::Opaque(format!("!cssl.result<{ok},{err}>"))
+                }
                 other => MirType::Opaque(other.to_string()),
             }
         }
@@ -329,6 +348,23 @@ fn lower_hir_type_light(interner: &Interner, t: &HirType) -> MirType {
         HirTypeKind::Reference { inner, .. } => lower_hir_type_light(interner, inner),
         HirTypeKind::Infer => MirType::None,
         _ => MirType::None,
+    }
+}
+
+/// T11-D284 (W-E5-1) — render a HirType's leading-segment name as a string
+/// for embedding into Option/Result opaque-type encodings. Multi-segment
+/// paths are rendered dotted (`a.b.c`). Non-path types collapse to `?`
+/// (the dispatch resolver treats `?` as "unknown payload — decline unwrap").
+fn enum_payload_type_string(interner: &Interner, t: &HirType) -> String {
+    match &t.kind {
+        HirTypeKind::Path { path, .. } if !path.is_empty() => path
+            .iter()
+            .map(|s| interner.resolve(*s))
+            .collect::<Vec<_>>()
+            .join("."),
+        HirTypeKind::Refined { base, .. } => enum_payload_type_string(interner, base),
+        HirTypeKind::Reference { inner, .. } => enum_payload_type_string(interner, inner),
+        _ => "?".to_string(),
     }
 }
 
@@ -2180,23 +2216,17 @@ fn lower_call(
                     }
                 }
                 ("load_at" | "vec_load_at", 2) => {
-                    if let Some(result) =
-                        try_lower_vec_load_at(ctx, args, type_args, span)
-                    {
+                    if let Some(result) = try_lower_vec_load_at(ctx, args, type_args, span) {
                         return Some(result);
                     }
                 }
                 ("store_at" | "vec_store_at", 3) => {
-                    if let Some(result) =
-                        try_lower_vec_store_at(ctx, args, type_args, span)
-                    {
+                    if let Some(result) = try_lower_vec_store_at(ctx, args, type_args, span) {
                         return Some(result);
                     }
                 }
                 ("end_of" | "vec_end_of", 2) => {
-                    if let Some(result) =
-                        try_lower_vec_end_of(ctx, args, type_args, span)
-                    {
+                    if let Some(result) = try_lower_vec_end_of(ctx, args, type_args, span) {
                         return Some(result);
                     }
                 }
@@ -2215,16 +2245,12 @@ fn lower_call(
                     }
                 }
                 ("vec_push", 2) => {
-                    if let Some(result) =
-                        try_lower_vec_push(ctx, args, type_args, span)
-                    {
+                    if let Some(result) = try_lower_vec_push(ctx, args, type_args, span) {
                         return Some(result);
                     }
                 }
                 ("vec_index", 2) => {
-                    if let Some(result) =
-                        try_lower_vec_index(ctx, args, type_args, span)
-                    {
+                    if let Some(result) = try_lower_vec_index(ctx, args, type_args, span) {
                         return Some(result);
                     }
                 }
@@ -2303,9 +2329,7 @@ fn lower_call(
                     }
                 }
                 ("string_from_utf8_unchecked", 1) => {
-                    if let Some(result) =
-                        try_lower_string_from_utf8_unchecked(ctx, args, span)
-                    {
+                    if let Some(result) = try_lower_string_from_utf8_unchecked(ctx, args, span) {
                         return Some(result);
                     }
                 }
@@ -2463,8 +2487,24 @@ fn try_lower_method_dispatch(
     hir_id: cssl_hir::HirId,
 ) -> Option<(ValueId, MirType)> {
     let table = ctx.trait_impl_table?;
-    let self_ty = infer_receiver_self_ty(ctx, obj)?;
-    let mangled = table.resolve_method(self_ty, method)?.to_string();
+    // § T11-D284 (W-E5-1) — receiver-resolution probe :
+    //   1. Wrapper self-ty (e.g., `Option`, `Result`, or a plain `Foo`).
+    //   2. Optional payload self-ty when the wrapper is an enum-payload
+    //      tagged-union (`Option<Foo>` ⇒ payload `Foo`).
+    //   The probe tries (wrapper, method) first ; on miss, falls back to
+    //   (payload, method). This implements the "payload-receiver-unwrap"
+    //   semantic — dispatching `obj.method()` against the unwrapped
+    //   variant's payload-type when the wrapper itself has no impl.
+    let probe = infer_receiver_self_ty_with_payload(ctx, obj)?;
+    let (resolved_self_ty, dispatch_kind, mangled) =
+        if let Some(name) = table.resolve_method(probe.wrapper, method) {
+            (probe.wrapper, "trait", name.to_string())
+        } else if let Some(payload_sym) = probe.payload {
+            let name = table.resolve_method(payload_sym, method)?;
+            (payload_sym, "trait_payload_unwrap", name.to_string())
+        } else {
+            return None;
+        };
 
     // Lower the receiver as the first operand.
     let (recv_id, _recv_ty) = lower_expr(ctx, obj).unwrap_or((ctx.fresh_value_id(), MirType::None));
@@ -2483,12 +2523,20 @@ fn try_lower_method_dispatch(
     let method_name = ctx.interner.resolve(method);
     let mut mir_op = MirOp::std("func.call")
         .with_attribute("callee", mangled.clone())
-        .with_attribute("dispatch", "trait")
+        .with_attribute("dispatch", dispatch_kind)
         .with_attribute("method", method_name)
-        .with_attribute("self_ty", ctx.interner.resolve(self_ty))
+        .with_attribute("self_ty", ctx.interner.resolve(resolved_self_ty))
         .with_attribute("source_loc", format!("{span:?}"))
         .with_attribute("hir_id", format!("{}", hir_id.0))
         .with_result(id, result_ty.clone());
+    // § T11-D284 — record the wrapper-ty when the dispatch unwrapped a payload
+    //   so downstream passes (codegen + IR-printer) can recover the tagged-
+    //   union instance the receiver was loaded from.
+    if dispatch_kind == "trait_payload_unwrap" {
+        mir_op = mir_op
+            .with_attribute("wrapper_self_ty", ctx.interner.resolve(probe.wrapper))
+            .with_attribute("payload_unwrap", "true");
+    }
     for oid in operand_ids {
         mir_op = mir_op.with_operand(oid);
     }
@@ -2535,21 +2583,33 @@ fn try_lower_static_method_dispatch(
         let first_arg = args.first().map(|a| match a {
             HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
         })?;
-        let self_ty = infer_receiver_self_ty(ctx, first_arg)?;
-        // Verify the user-declared trait-name matches an impl entry.
-        if !table.has_impl(leading, self_ty) {
-            return None;
-        }
-        // Resolve the per-self-type mangled fn-name. We can't directly query
-        // by trait+self+method ; we walk the entries and pick the matching
-        // (trait, self) pair's method-mangled.
+        // § T11-D284 (W-E5-1) — payload-unwrap probe for static-method dispatch.
+        //   When the first-arg's type is `Option<Foo>` / `Result<Foo, E>` and
+        //   `leading` is a trait-name, look for `impl <leading> for <wrapper>`
+        //   first ; if absent, fall back to `impl <leading> for <payload>`.
+        let probe = infer_receiver_self_ty_with_payload(ctx, first_arg)?;
+        let candidate_self_tys: Vec<Symbol> = {
+            let mut v = vec![probe.wrapper];
+            if let Some(p) = probe.payload {
+                v.push(p);
+            }
+            v
+        };
         let mut hit: Option<String> = None;
-        for entry in table.entries() {
-            if entry.trait_name == Some(leading)
-                && entry.self_ty_name == self_ty
-                && entry.method_mangled.contains_key(&method)
-            {
-                hit = Some(entry.method_mangled[&method].clone());
+        for self_ty in &candidate_self_tys {
+            if !table.has_impl(leading, *self_ty) {
+                continue;
+            }
+            for entry in table.entries() {
+                if entry.trait_name == Some(leading)
+                    && entry.self_ty_name == *self_ty
+                    && entry.method_mangled.contains_key(&method)
+                {
+                    hit = Some(entry.method_mangled[&method].clone());
+                    break;
+                }
+            }
+            if hit.is_some() {
                 break;
             }
         }
@@ -2637,6 +2697,130 @@ fn infer_receiver_self_ty(ctx: &BodyLowerCtx<'_>, obj: &HirExpr) -> Option<Symbo
         HirExprKind::Paren(inner) => infer_receiver_self_ty(ctx, inner),
         _ => None,
     }
+}
+
+/// T11-D284 (W-E5-1) — receiver-resolution probe with optional enum-payload
+/// unwrap.
+///
+/// Returns the wrapper self-ty (mandatory) plus an optional payload self-ty
+/// when the wrapper's MirType encodes an `Option<T>` / `Result<T, E>` shape.
+/// The dispatch resolver tries `(wrapper, method)` first ; on miss, retries
+/// `(payload, method)`. This makes `let x : Option<Foo> = Some(foo) ;
+/// x.method()` dispatch through `impl SomeTrait for Foo { fn method ... }`
+/// correctly when no `impl SomeTrait for Option<T>` exists.
+#[derive(Debug, Clone, Copy)]
+struct ReceiverProbe {
+    /// Outer self-ty leading symbol (always present).
+    wrapper: Symbol,
+    /// Inner payload self-ty leading symbol — only when the wrapper is an
+    /// enum-payload tagged-union AND the payload encoded into the type
+    /// resolves to a known leading symbol. `None` for plain self-tys
+    /// (`Foo` / `Bar`) or for `Option<unknown>` where the payload
+    /// can't be peeled.
+    payload: Option<Symbol>,
+}
+
+fn infer_receiver_self_ty_with_payload(
+    ctx: &BodyLowerCtx<'_>,
+    obj: &HirExpr,
+) -> Option<ReceiverProbe> {
+    // For Path-receivers naming a let-binding / param, peek at the binding's
+    // MirType to detect Option/Result encoding. The encoded form
+    // `!cssl.option<Foo>` would otherwise have `infer_receiver_self_ty`
+    // strip the `!cssl.` prefix and yield lowercase `option` — but the
+    // user-written `impl Trait for Option { ... }` registers under the
+    // capitalized `Option` symbol. So when the binding's type carries the
+    // encoded enum form, we OVERRIDE the wrapper to the canonical capitalized
+    // family-name (`Option` / `Result`) and extract the payload via
+    // `enum_payload_self_ty`. For plain receivers without enum encoding,
+    // this falls through to the regular wrapper-only path.
+    if let Some(family) = enum_family_self_ty(ctx, obj) {
+        let payload = enum_payload_self_ty(ctx, obj);
+        return Some(ReceiverProbe {
+            wrapper: family,
+            payload,
+        });
+    }
+    let wrapper = infer_receiver_self_ty(ctx, obj)?;
+    Some(ReceiverProbe {
+        wrapper,
+        payload: None,
+    })
+}
+
+/// T11-D284 (W-E5-1) — when the receiver's MirType encodes an Option/Result
+/// shape (`!cssl.option<...>` / `!cssl.result<...>`), return the canonical
+/// source-form family-name interned via `ctx.interner` (`Option` or `Result`).
+/// For non-enum receivers, returns `None`.
+fn enum_family_self_ty(ctx: &BodyLowerCtx<'_>, obj: &HirExpr) -> Option<Symbol> {
+    let sym = match &obj.kind {
+        HirExprKind::Path { segments, .. } if segments.len() == 1 => segments[0],
+        HirExprKind::Paren(inner) => return enum_family_self_ty(ctx, inner),
+        _ => return None,
+    };
+    let (_, ty) = ctx
+        .local_vars
+        .get(&sym)
+        .or_else(|| ctx.param_vars.get(&sym))?;
+    let s = match ty {
+        MirType::Opaque(s) => s.as_str(),
+        _ => return None,
+    };
+    if s.starts_with("!cssl.option<") {
+        Some(ctx.interner.intern("Option"))
+    } else if s.starts_with("!cssl.result<") {
+        Some(ctx.interner.intern("Result"))
+    } else {
+        None
+    }
+}
+
+/// T11-D284 (W-E5-1) — extract the payload's leading self-ty symbol when the
+/// receiver is a let-binding / param whose declared type is `Option<T>` /
+/// `Result<T, E>`. For `Option`, the payload is T. For `Result`, the
+/// payload is the Ok-branch T (the Err-branch tracks separately for `?`-
+/// operator + match-arm dispatch — those don't share the trait-method-call
+/// receiver path because `Err` always lacks the success-arm methods the
+/// trait declares).
+fn enum_payload_self_ty(ctx: &BodyLowerCtx<'_>, obj: &HirExpr) -> Option<Symbol> {
+    let sym = match &obj.kind {
+        HirExprKind::Path { segments, .. } if segments.len() == 1 => segments[0],
+        HirExprKind::Paren(inner) => return enum_payload_self_ty(ctx, inner),
+        _ => return None,
+    };
+    let (_, ty) = ctx
+        .local_vars
+        .get(&sym)
+        .or_else(|| ctx.param_vars.get(&sym))?;
+    let s = match ty {
+        MirType::Opaque(s) => s.as_str(),
+        _ => return None,
+    };
+    // Match the encoding produced by `lower_hir_type_light`'s Option/Result
+    // arms : `!cssl.option<Foo>` / `!cssl.result<Foo,E>`.
+    let payload_str = if let Some(rest) = s.strip_prefix("!cssl.option<") {
+        rest.strip_suffix('>')?
+    } else if let Some(rest) = s.strip_prefix("!cssl.result<") {
+        // First comma-separated fragment is the Ok-branch payload.
+        let inner = rest.strip_suffix('>')?;
+        let comma = inner.find(',')?;
+        &inner[..comma]
+    } else {
+        return None;
+    };
+    if payload_str.is_empty() || payload_str == "?" {
+        return None;
+    }
+    // Take the leading identifier (alphanumeric + `_`) to robustly handle
+    // dotted multi-segment paths (`a.b.c`) that flatten to leading `a`.
+    let leading: String = payload_str
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if leading.is_empty() {
+        return None;
+    }
+    Some(ctx.interner.intern(&leading))
 }
 
 impl<'a> BodyLowerCtx<'a> {
@@ -3095,7 +3279,8 @@ fn try_lower_vec_load_at(
     // re-borrow into ctx.ops via extend).
     let sizeof_const_id = ctx.fresh_value_id();
     let bytes_id = ctx.fresh_value_id();
-    let index_ops = crate::memref_typed::build_index_offset(elem, idx_id, sizeof_const_id, bytes_id);
+    let index_ops =
+        crate::memref_typed::build_index_offset(elem, idx_id, sizeof_const_id, bytes_id);
     for op in index_ops {
         let op = op.with_attribute("source_loc", format!("{span:?}"));
         ctx.ops.push(op);
@@ -3151,7 +3336,8 @@ fn try_lower_vec_store_at(
     // Mint index-offset triplet.
     let sizeof_const_id = ctx.fresh_value_id();
     let bytes_id = ctx.fresh_value_id();
-    let index_ops = crate::memref_typed::build_index_offset(elem, idx_id, sizeof_const_id, bytes_id);
+    let index_ops =
+        crate::memref_typed::build_index_offset(elem, idx_id, sizeof_const_id, bytes_id);
     for op in index_ops {
         let op = op.with_attribute("source_loc", format!("{span:?}"));
         ctx.ops.push(op);
@@ -7430,8 +7616,7 @@ mod tests {
             .filter(|o| o.name == "func.call")
             .filter(|o| {
                 o.attributes.iter().any(|(k, v)| {
-                    k == "callee"
-                        && (v == "vec_new" || v == "vec_push" || v == "vec_index")
+                    k == "callee" && (v == "vec_new" || v == "vec_push" || v == "vec_index")
                 })
             })
             .count();
@@ -7593,7 +7778,9 @@ mod tests {
         let (f, _) = lower_one(src);
         let names = op_names(&f);
         assert!(
-            names.iter().any(|n| n == &"cssl.string.from_utf8_unchecked"),
+            names
+                .iter()
+                .any(|n| n == &"cssl.string.from_utf8_unchecked"),
             "expected cssl.string.from_utf8_unchecked in {names:?}"
         );
         // Must also load b.data + b.len via cssl.field ops.
@@ -7838,5 +8025,290 @@ mod tests {
         let names = op_names(&f);
         assert!(names.iter().any(|n| n == &"cssl.string.len"));
         assert!(names.iter().any(|n| n == &"cssl.char.from_u32"));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // § T11-D284 (W-E5-1) — enum-payload trait dispatch tests.
+    //
+    //   Closes the `obj.method(args)` dispatch gap when `obj`'s declared
+    //   type is `Option<T>` / `Result<T, E>` and the trait-impl is on
+    //   the inner T (the unwrapped payload). Each test shapes a different
+    //   tier of the resolution probe :
+    //
+    //     1. basic-trait-dispatch-on-enum  — `impl Trait for Option<Foo>`
+    //        wrapper-tier hit, no payload unwrap.
+    //     2. payload-receiver-unwrap       — `impl Trait for Foo` only ;
+    //        payload-tier resolves, dispatch records `payload_unwrap=true`.
+    //     3. Option-trait-impl             — `obj : Option<Foo>` peels to
+    //        `Foo` cleanly (the canonical payload-unwrap shape).
+    //     4. Result-trait-impl             — `obj : Result<Foo, Bar>` peels
+    //        to the Ok-branch `Foo` (matches stage-0's success-arm
+    //        dispatch convention).
+    //     5. regression-no-break-non-enum  — plain `let f : Foo = ...`
+    //        receivers must continue to dispatch through the wrapper-tier
+    //        and NEVER carry the `payload_unwrap` attribute.
+    // ═════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn w_e5_1_basic_trait_dispatch_on_enum_uses_wrapper_tier() {
+        // Wrapper-tier hit — `impl Greeter for Option { fn greet(...) }`
+        // resolves directly without invoking the payload-unwrap fallback.
+        // This validates that the new probe DOES NOT regress when the
+        // wrapper itself carries the impl.
+        let src = r"
+            interface Greeter { fn greet(self : Option) -> i32 ; }
+            impl Greeter for Option {
+                fn greet(self : Option) -> i32 { 42 }
+            }
+            struct Foo { x : i32 }
+            fn caller() -> i32 {
+                let o : Option<Foo> = None();
+                o.greet()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "Option__Greeter__greet")
+            })
+            .expect("Option-wrapper trait dispatch should resolve");
+        // Must NOT have the payload_unwrap marker — the wrapper-tier hit.
+        assert!(
+            !op.attributes.iter().any(|(k, _)| k == "payload_unwrap"),
+            "wrapper-tier hit must NOT mark payload_unwrap"
+        );
+        let dispatch = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "dispatch")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(dispatch, "trait");
+    }
+
+    #[test]
+    fn w_e5_1_payload_receiver_unwrap_resolves_to_inner_t() {
+        // Payload-tier hit — `impl Greeter for Foo { fn greet(...) }` only ;
+        // a binding `o : Option<Foo>` must peel the wrapper and dispatch
+        // through `Foo__Greeter__greet` with `payload_unwrap=true`.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let o : Option<Foo> = None();
+                o.greet()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "Foo__Greeter__greet")
+            })
+            .expect("payload-unwrap dispatch should resolve to Foo's impl");
+        // Payload-unwrap marker MUST be present.
+        let unwrap_marker = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_unwrap")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(unwrap_marker, "true", "expected payload_unwrap=true");
+        // Wrapper-self-ty attribute records the original Option wrapper.
+        let wrapper = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "wrapper_self_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(wrapper, "Option");
+        // dispatch attribute must be `trait_payload_unwrap`.
+        let dispatch = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "dispatch")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(dispatch, "trait_payload_unwrap");
+    }
+
+    #[test]
+    fn w_e5_1_option_trait_impl_dispatches_through_payload() {
+        // Canonical Option<Foo> payload-unwrap : trait method exists only
+        // on Foo. The caller binds an `Option<Foo>` and invokes the method ;
+        // dispatch must succeed via payload-unwrap.
+        let src = r"
+            interface Display { fn render(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Display for Foo {
+                fn render(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let opt : Option<Foo> = None();
+                opt.render()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "Foo__Display__render")
+            })
+            .expect("Option<Foo>.render() should peel to Foo's Display impl");
+        // self_ty must record the unwrapped payload type, not the wrapper.
+        let self_ty = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "self_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(self_ty, "Foo");
+    }
+
+    #[test]
+    fn w_e5_1_result_trait_impl_dispatches_through_ok_payload() {
+        // Result<Foo, Bar> peels to the Ok-branch payload (Foo) for trait-
+        // method-call dispatch. The Err-branch tracks separately for
+        // `?`-operator + match-arm — those don't share this receiver path.
+        // We use a fn-param rather than a let-binding to sidestep the
+        // construction-op rhs typing — the param's declared type is the
+        // single source of truth for the dispatch resolver.
+        //
+        // ‼ method-name = `apply` (NOT `perform` — `perform` is the CSSL
+        //   algebraic-effect keyword and lowers to `cssl.effect.perform`,
+        //   bypassing the trait-dispatch path).
+        let src = r"
+            interface Action { fn apply(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            struct Bar { y : i32 }
+            impl Action for Foo {
+                fn apply(self : Foo) -> i32 { self.x }
+            }
+            fn caller(res : Result<Foo, Bar>) -> i32 {
+                res.apply()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "Foo__Action__apply")
+            })
+            .expect("Result<Foo, Bar>.apply() should peel to Foo's impl");
+        let unwrap_marker = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "payload_unwrap")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(unwrap_marker, "true");
+        let wrapper = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "wrapper_self_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(wrapper, "Result");
+    }
+
+    #[test]
+    fn w_e5_1_regression_non_enum_receiver_does_not_payload_unwrap() {
+        // Regression-guard : a plain `let f : Foo = ...` receiver MUST
+        // continue dispatching through the wrapper-tier and NEVER carry
+        // the `payload_unwrap` attribute. If this regresses, the new probe
+        // is over-applying the unwrap path and would corrupt non-enum
+        // dispatch self-ty attributes.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let f : Foo = Foo { x : 9 };
+                f.greet()
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "Foo__Greeter__greet")
+            })
+            .expect("plain receiver dispatch must resolve");
+        // No payload_unwrap attribute on plain dispatch.
+        assert!(
+            !op.attributes.iter().any(|(k, _)| k == "payload_unwrap"),
+            "plain receiver MUST NOT carry payload_unwrap"
+        );
+        // self_ty == Foo (no wrapper).
+        let self_ty = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "self_ty")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(self_ty, "Foo");
+        // dispatch attribute is the canonical `trait`, not the unwrap variant.
+        let dispatch = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "dispatch")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(dispatch, "trait");
+    }
+
+    #[test]
+    fn w_e5_1_static_dispatch_payload_unwrap_for_trait_static_form() {
+        // Static-form `Trait::method(opt)` where `opt : Option<Foo>` and
+        // `impl Trait for Foo` — the resolver's static-method path must
+        // also probe the payload-tier when the wrapper has no impl.
+        let src = r"
+            interface Greeter { fn greet(self : Foo) -> i32 ; }
+            struct Foo { x : i32 }
+            impl Greeter for Foo {
+                fn greet(self : Foo) -> i32 { self.x }
+            }
+            fn caller() -> i32 {
+                let opt : Option<Foo> = None();
+                Greeter::greet(opt)
+            }
+        ";
+        let (f, _) = lower_with_table(src, "caller");
+        let entry = f.body.entry().expect("entry");
+        let op = entry
+            .ops
+            .iter()
+            .find(|o| {
+                o.attributes
+                    .iter()
+                    .any(|(k, v)| k == "callee" && v == "Foo__Greeter__greet")
+            })
+            .expect("static-form payload-unwrap must resolve to Foo's impl");
+        // Static-form dispatch attribute is `trait_static`. The fact that
+        // the resolver picked Foo's mangled name (not Option's) is the
+        // observable proof of payload-unwrap.
+        let callee = op
+            .attributes
+            .iter()
+            .find(|(k, _)| k == "callee")
+            .map_or("", |(_, v)| v.as_str());
+        assert_eq!(callee, "Foo__Greeter__greet");
     }
 }
