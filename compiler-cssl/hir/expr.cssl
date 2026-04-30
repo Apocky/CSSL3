@@ -1,0 +1,1107 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/expr.cssl  —  HirExprFull + HirExprKindFull (25+ kinds)
+//
+// CSSLv3 stage-1 self-host : HIR expression-tree IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/expr.rs
+// Wave-slice  : Wave-E2-β (W-E2-β · hir-in-cssl SECOND SLICE — T11-D253).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               compiler-cssl/hir/items.cssl  (HirSpan, HirAttr, HirType,
+//                                              HirPattern, HirBlock placeholders)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : HIR expression-trees are pure data records
+//   describing the SHAPE of computation. They expose NO control-flow
+//   capability themselves — control-flow is the LOWERER's responsibility,
+//   not the data-shape's. Substrate-sovereign : every expr carries its
+//   own HirId so name-resolution + inference build per-id side-tables
+//   without mutating the tree itself. No hidden side effects, no surveillance.
+//
+// § DESIGN
+//   `HirExprFull` is the canonical W-E2-β expression-record. Each variant
+//   of `HirExprKindFull` mirrors a distinct surface-syntax form :
+//     - Literal · Path · Call · Field · Index · Binary · Unary
+//     - Block · If · Match · For · While · Loop
+//     - Return · Break · Continue · Lambda · Assign · Cast
+//     - Range · Pipeline · TryDefault · Try · Perform · With · Region
+//     - Tuple · Array · Struct · Run · Compound · SectionRef · Paren · Error
+//   ⇒ 33 variants total · ≥ 25-kind target met.
+//
+//   The W-E2-α `HirExpr` placeholder remains untouched in items.cssl so
+//   item-shape structs (HirFnParam.default, HirConst.value, HirBlock.tail/
+//   stmts, HirHandler.return_clause) keep compiling. W-E2-γ will rationalize
+//   by migrating items.cssl to use `HirExprFull` once the lowerer + infer
+//   pipeline is fully wired.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. ENUM PAYLOADS : `enum HirExprKindFull { Literal(HirLiteral) ; ... }`
+//      mirrors the Rust source directly (S6-B2 enum surface).
+//   2. RECURSION : nested expressions live in `Vec<HirExprFull>` ; stage-0
+//      avoids `Box<T>` (cycle-broken via owning-Vec where needed).
+//   3. NO `&str` IN STRUCT FIELDS : owned String for any string-typed field.
+//   4. ATTRS : Vec<HirAttr> per node ; honors items.cssl's HirAttr.
+//   5. SUB-EXPR-AS-NESTED : where Rust uses `Box<HirExpr>`, we use a 1-element
+//      Vec<HirExprFull> as the stage-0 indirection — the empty Vec encodes
+//      "no sub-expression" while a singleton Vec encodes "one nested expr".
+//      vec_get(vec, 0) projects out the singleton.
+//
+// § INVARIANTS  (stage-0)
+//   - Every variant of `HirExprKindFull` carries either zero, one, or two
+//     `Vec<HirExprFull>` payloads ; binary-recursive shapes use two-vec.
+//   - `Vec<HirExprFull>` stand-ins for `Box<HirExpr>` always have len ≤ 1
+//     when used as singleton-indirection.
+//   - Compound-op enum has exactly 5 variants (Tp · Dv · Kd · Bv · Av)
+//     mirroring CSLv3 §§ 13.
+
+module com.apocky.compiler.hir.expr
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirLiteral + HirLiteralKind — typed literal value.
+// ───────────────────────────────────────────────────────────────────────
+
+// Literal-kind discriminator. `Bool` carries the boolean value directly ;
+// the other variants reference span-bytes for the actual textual form.
+enum HirLiteralKind {
+    Int,
+    Float,
+    Str,
+    Char,
+    BoolTrue,
+    BoolFalse,
+    Unit,
+}
+
+// `HirLiteral` is a typed literal value with its source span.
+struct HirLiteral {
+    span : HirSpan,
+    kind : HirLiteralKind,
+}
+
+// Construct a HirLiteral.
+fn hir_literal_new(span : HirSpan, kind : HirLiteralKind) -> HirLiteral {
+    HirLiteral { span : span, kind : kind }
+}
+
+// `true` iff the literal is the unit-value `()`.
+fn hir_literal_is_unit(l : HirLiteral) -> bool {
+    match l.kind {
+        HirLiteralKind::Unit => true,
+        HirLiteralKind::Int => false,
+        HirLiteralKind::Float => false,
+        HirLiteralKind::Str => false,
+        HirLiteralKind::Char => false,
+        HirLiteralKind::BoolTrue => false,
+        HirLiteralKind::BoolFalse => false,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirBinOp — binary operator enumeration.
+// ───────────────────────────────────────────────────────────────────────
+
+// 20-variant binary-operator enumeration mirroring expr.rs.
+//   Arithmetic : Add · Sub · Mul · Div · Rem
+//   Comparison : Eq · Ne · Lt · Le · Gt · Ge
+//   Logical    : And · Or
+//   Bitwise    : BitAnd · BitOr · BitXor · Shl · Shr
+//   Logic      : Implies · Entails
+enum HirBinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    EqOp,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Implies,
+    Entails,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirUnOp — unary operator enumeration.
+// ───────────────────────────────────────────────────────────────────────
+
+// 6-variant unary-operator enumeration.
+//   Not · Neg · BitNot — value-producing
+//   RefOp · RefMut · Deref — reference-related
+enum HirUnOp {
+    Not,
+    Neg,
+    BitNot,
+    RefOp,
+    RefMut,
+    Deref,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirCompoundOp — CSLv3-native compound-formation operator.
+// ───────────────────────────────────────────────────────────────────────
+
+// 5-variant compound-formation operator (per CSLv3 §§ 13).
+//   Tp `.`  — tatpuruṣa : B-of-A
+//   Dv `+`  — dvandva : co-equal conjunction
+//   Kd `-`  — karmadhāraya : B-that-is-A
+//   Bv `⊗`  — bahuvrīhi : thing-having-A+B
+//   Av `@`  — avyayībhāva : at/per/in-scope-of
+enum HirCompoundOp {
+    Tp,
+    Dv,
+    Kd,
+    Bv,
+    Av,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirCallArg — fn-call argument (positional or named).
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirCallArg` is one argument to a function call.
+//   - is_named=false : positional argument (`f(x)`).
+//   - is_named=true  : named argument (`f(name : x)`).
+struct HirCallArg {
+    is_named : bool,
+    name     : Option<Symbol>,
+    value    : HirExprFull,
+}
+
+// Construct a positional call-arg.
+fn hir_call_arg_positional(value : HirExprFull) -> HirCallArg {
+    HirCallArg { is_named : false, name : None, value : value }
+}
+
+// Construct a named call-arg.
+fn hir_call_arg_named(name : Symbol, value : HirExprFull) -> HirCallArg {
+    HirCallArg { is_named : true, name : Some(name), value : value }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirStructFieldInit — struct-constructor field initializer.
+// ───────────────────────────────────────────────────────────────────────
+
+// `name : value` (or `name` shorthand → value=None).
+struct HirStructFieldInit {
+    span  : HirSpan,
+    name  : Symbol,
+    // None → shorthand `name` ≡ `name : name`.
+    value : Option<HirExprFull>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirArrayExpr — array-expression form.
+// ───────────────────────────────────────────────────────────────────────
+
+// `[a, b, c]` (List) or `[elem ; len]` (Repeat).
+//   - is_repeat=false : `elements` holds `[a, b, c]` ; `repeat_len` empty.
+//   - is_repeat=true  : `elements` holds singleton `[elem]` ; `repeat_len`
+//     holds singleton `[len_expr]`.
+struct HirArrayExpr {
+    is_repeat  : bool,
+    elements   : Vec<HirExprFull>,
+    repeat_len : Vec<HirExprFull>,
+}
+
+// Construct a list-form array-expr.
+fn hir_array_expr_list(elements : Vec<HirExprFull>) -> HirArrayExpr {
+    HirArrayExpr {
+        is_repeat  : false,
+        elements   : elements,
+        repeat_len : Vec::new::<HirExprFull>(),
+    }
+}
+
+// Construct a repeat-form array-expr.
+fn hir_array_expr_repeat(elem : HirExprFull, len : HirExprFull) -> HirArrayExpr {
+    let elements = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), elem);
+    let repeat_len = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), len);
+    HirArrayExpr {
+        is_repeat  : true,
+        elements   : elements,
+        repeat_len : repeat_len,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirLambdaParam — lambda parameter (simplified).
+// ───────────────────────────────────────────────────────────────────────
+
+struct HirLambdaParam {
+    span : HirSpan,
+    pat  : HirPattern,
+    // None → `_` (to be inferred).
+    ty   : Option<HirType>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirMatchArm — `pat [if guard] => body` form.
+// ───────────────────────────────────────────────────────────────────────
+
+struct HirMatchArm {
+    span  : HirSpan,
+    attrs : Vec<HirAttr>,
+    pat   : HirPattern,
+    // None → no guard ; Some(g) → `if g`.
+    guard : Option<HirExprFull>,
+    body  : HirExprFull,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirBlockFull — full-fidelity `{ stmts ... ; trailing? }` block.
+// ───────────────────────────────────────────────────────────────────────
+
+// HirBlockFull mirrors the canonical Rust HirBlock. Replaces W-E2-α's
+// items.cssl HirBlock placeholder for inference + lowering use.
+//   - stmts    : non-trailing stmts (let / item / expr-stmt forms).
+//   - trailing : tail expression that produces the block's value (None when block ends with `;`).
+struct HirBlockFull {
+    span     : HirSpan,
+    id       : HirId,
+    stmts    : Vec<HirExprFull>,
+    trailing : Option<HirExprFull>,
+}
+
+// Construct an empty HirBlockFull.
+fn hir_block_full_empty(span : HirSpan, id : HirId) -> HirBlockFull {
+    HirBlockFull {
+        span     : span,
+        id       : id,
+        stmts    : Vec::new::<HirExprFull>(),
+        trailing : None,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirExprKindFull — 33-variant expr-kind enumeration.
+// ───────────────────────────────────────────────────────────────────────
+
+// Each variant carries the kind-specific payload struct/value. Where
+// Rust uses `Box<HirExpr>` for sub-expressions, we use either a singleton
+// `Vec<HirExprFull>` (single sub-expr) or a multi-Vec (multiple).
+enum HirExprKindFull {
+    // Pure-data leaf forms.
+    LiteralKind(HirLiteral),
+    PathKind(HirPathExpr),
+    Error,
+
+    // Recursive forms — payloads pack sub-expressions.
+    CallKind(HirCallExpr),
+    FieldKind(HirFieldExpr),
+    IndexKind(HirIndexExpr),
+    BinaryKind(HirBinaryExpr),
+    UnaryKind(HirUnaryExpr),
+    BlockKind(HirBlockFull),
+    IfKind(HirIfExpr),
+    MatchKind(HirMatchExpr),
+    ForKind(HirForExpr),
+    WhileKind(HirWhileExpr),
+    LoopKind(HirLoopExpr),
+    ReturnKind(HirReturnExpr),
+    BreakKind(HirBreakExpr),
+    ContinueKind(HirContinueExpr),
+    LambdaKind(HirLambdaExpr),
+    AssignKind(HirAssignExpr),
+    CastKind(HirCastExpr),
+    RangeKind(HirRangeExpr),
+    PipelineKind(HirPipelineExpr),
+    TryDefaultKind(HirTryDefaultExpr),
+    TryKind(HirTryExpr),
+    PerformKind(HirPerformExpr),
+    WithKind(HirWithExpr),
+    RegionKind(HirRegionExpr),
+    TupleKind(HirTupleExpr),
+    ArrayKind(HirArrayExpr),
+    StructKind(HirStructExpr),
+    RunKind(HirRunExpr),
+    CompoundKind(HirCompoundExpr),
+    SectionRefKind(HirSectionRefExpr),
+    ParenKind(HirParenExpr),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Per-kind payload structs.
+// ───────────────────────────────────────────────────────────────────────
+
+// `path` form `module::Item` — segments interned ; `def` resolved by name-resolution.
+struct HirPathExpr {
+    segments : Vec<Symbol>,
+    def      : Option<DefId>,
+}
+
+// `f(arg1, arg2)` — callee + args + turbofish-type-args.
+struct HirCallExpr {
+    callee    : Vec<HirExprFull>,  // singleton
+    args      : Vec<HirCallArg>,
+    type_args : Vec<HirType>,
+}
+
+// `obj.field` — receiver + field-name.
+struct HirFieldExpr {
+    obj  : Vec<HirExprFull>,  // singleton
+    name : Symbol,
+}
+
+// `arr[idx]` — receiver + index.
+struct HirIndexExpr {
+    obj   : Vec<HirExprFull>,  // singleton
+    index : Vec<HirExprFull>,  // singleton
+}
+
+// `lhs op rhs` binary-op application.
+struct HirBinaryExpr {
+    op  : HirBinOp,
+    lhs : Vec<HirExprFull>,  // singleton
+    rhs : Vec<HirExprFull>,  // singleton
+}
+
+// `op operand` unary-op application.
+struct HirUnaryExpr {
+    op      : HirUnOp,
+    operand : Vec<HirExprFull>,  // singleton
+}
+
+// `if cond { then } else { else }`.
+//   else_branch empty Vec → no else-clause.
+struct HirIfExpr {
+    cond        : Vec<HirExprFull>,  // singleton
+    then_branch : HirBlockFull,
+    else_branch : Vec<HirExprFull>,  // singleton or empty
+}
+
+// `match scrutinee { arms }`.
+struct HirMatchExpr {
+    scrutinee : Vec<HirExprFull>,  // singleton
+    arms      : Vec<HirMatchArm>,
+}
+
+// `for pat in iter { body }`.
+struct HirForExpr {
+    pat  : HirPattern,
+    iter : Vec<HirExprFull>,  // singleton
+    body : HirBlockFull,
+}
+
+// `while cond { body }`.
+struct HirWhileExpr {
+    cond : Vec<HirExprFull>,  // singleton
+    body : HirBlockFull,
+}
+
+// `loop { body }`.
+struct HirLoopExpr {
+    body : HirBlockFull,
+}
+
+// `return [value]?` — empty Vec → bare return.
+struct HirReturnExpr {
+    value : Vec<HirExprFull>,  // singleton or empty
+}
+
+// `break [label] [value]?`.
+struct HirBreakExpr {
+    label : Option<Symbol>,
+    value : Vec<HirExprFull>,  // singleton or empty
+}
+
+// `continue [label]?`.
+struct HirContinueExpr {
+    label : Option<Symbol>,
+}
+
+// `|params| -> return { body }`.
+struct HirLambdaExpr {
+    params    : Vec<HirLambdaParam>,
+    return_ty : Option<HirType>,
+    body      : Vec<HirExprFull>,  // singleton
+}
+
+// `lhs = rhs` (op=None) or compound `lhs op= rhs` (op=Some).
+struct HirAssignExpr {
+    op  : Option<HirBinOp>,
+    lhs : Vec<HirExprFull>,  // singleton
+    rhs : Vec<HirExprFull>,  // singleton
+}
+
+// `expr as Ty`.
+struct HirCastExpr {
+    expr : Vec<HirExprFull>,  // singleton
+    ty   : HirType,
+}
+
+// `lo..hi` / `lo..=hi` / `lo..` / `..hi`.
+struct HirRangeExpr {
+    lo        : Vec<HirExprFull>,  // singleton or empty
+    hi        : Vec<HirExprFull>,  // singleton or empty
+    inclusive : bool,
+}
+
+// `lhs |> rhs` pipeline.
+struct HirPipelineExpr {
+    lhs : Vec<HirExprFull>,  // singleton
+    rhs : Vec<HirExprFull>,  // singleton
+}
+
+// `expr ? : default` early-return.
+struct HirTryDefaultExpr {
+    expr    : Vec<HirExprFull>,  // singleton
+    default : Vec<HirExprFull>,  // singleton
+}
+
+// `expr ?` Try-propagation.
+struct HirTryExpr {
+    expr : Vec<HirExprFull>,  // singleton
+}
+
+// `perform Effect::op(args)`.
+struct HirPerformExpr {
+    path : Vec<Symbol>,
+    def  : Option<DefId>,
+    args : Vec<HirCallArg>,
+}
+
+// `with handler { body }`.
+struct HirWithExpr {
+    handler : Vec<HirExprFull>,  // singleton
+    body    : HirBlockFull,
+}
+
+// `region 'r { body }`.
+struct HirRegionExpr {
+    label : Option<Symbol>,
+    body  : HirBlockFull,
+}
+
+// `(a, b, c)` tuple constructor.
+struct HirTupleExpr {
+    elems : Vec<HirExprFull>,
+}
+
+// `Point { x : 1, y : 2 [, ..base] }` struct-constructor.
+struct HirStructExpr {
+    path   : Vec<Symbol>,
+    def    : Option<DefId>,
+    fields : Vec<HirStructFieldInit>,
+    spread : Vec<HirExprFull>,  // singleton or empty
+}
+
+// `#run expr` compile-time-eval marker.
+struct HirRunExpr {
+    expr : Vec<HirExprFull>,  // singleton
+}
+
+// CSLv3-native compound-formation expr.
+struct HirCompoundExpr {
+    op  : HirCompoundOp,
+    lhs : Vec<HirExprFull>,  // singleton
+    rhs : Vec<HirExprFull>,  // singleton
+}
+
+// `§§ path` section-reference.
+struct HirSectionRefExpr {
+    path : Vec<Symbol>,
+}
+
+// `( expr )` parenthesized — preserved for round-trip fidelity.
+struct HirParenExpr {
+    inner : Vec<HirExprFull>,  // singleton
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirExprFull — top-level expr-record.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirExprFull` is the canonical W-E2-β expression-record. Every node
+// carries span + HirId + attrs + kind. Mirrors compiler-rs HirExpr 1:1.
+struct HirExprFull {
+    span  : HirSpan,
+    id    : HirId,
+    attrs : Vec<HirAttr>,
+    kind  : HirExprKindFull,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructor helpers — one per kind for ergonomic lowering.
+// ───────────────────────────────────────────────────────────────────────
+
+// Construct a literal expression.
+fn hir_expr_literal(span : HirSpan, id : HirId, lit : HirLiteral) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::LiteralKind(lit),
+    }
+}
+
+// Construct a path expression.
+fn hir_expr_path(span : HirSpan, id : HirId, segments : Vec<Symbol>) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::PathKind(HirPathExpr {
+            segments : segments,
+            def      : None,
+        }),
+    }
+}
+
+// Construct an error-recovery expression.
+fn hir_expr_error(span : HirSpan, id : HirId) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::Error,
+    }
+}
+
+// Construct a binary-op expression.
+fn hir_expr_binary(
+    span : HirSpan,
+    id   : HirId,
+    op   : HirBinOp,
+    lhs  : HirExprFull,
+    rhs  : HirExprFull,
+) -> HirExprFull {
+    let lhs_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), lhs);
+    let rhs_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), rhs);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::BinaryKind(HirBinaryExpr {
+            op  : op,
+            lhs : lhs_v,
+            rhs : rhs_v,
+        }),
+    }
+}
+
+// Construct a unary-op expression.
+fn hir_expr_unary(
+    span    : HirSpan,
+    id      : HirId,
+    op      : HirUnOp,
+    operand : HirExprFull,
+) -> HirExprFull {
+    let opd_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), operand);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::UnaryKind(HirUnaryExpr {
+            op      : op,
+            operand : opd_v,
+        }),
+    }
+}
+
+// Construct a call expression.
+fn hir_expr_call(
+    span      : HirSpan,
+    id        : HirId,
+    callee    : HirExprFull,
+    args      : Vec<HirCallArg>,
+    type_args : Vec<HirType>,
+) -> HirExprFull {
+    let callee_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), callee);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::CallKind(HirCallExpr {
+            callee    : callee_v,
+            args      : args,
+            type_args : type_args,
+        }),
+    }
+}
+
+// Construct a field-access expression.
+fn hir_expr_field(
+    span : HirSpan,
+    id   : HirId,
+    obj  : HirExprFull,
+    name : Symbol,
+) -> HirExprFull {
+    let obj_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), obj);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::FieldKind(HirFieldExpr {
+            obj  : obj_v,
+            name : name,
+        }),
+    }
+}
+
+// Construct an index expression.
+fn hir_expr_index(
+    span  : HirSpan,
+    id    : HirId,
+    obj   : HirExprFull,
+    index : HirExprFull,
+) -> HirExprFull {
+    let obj_v   = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), obj);
+    let index_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), index);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::IndexKind(HirIndexExpr {
+            obj   : obj_v,
+            index : index_v,
+        }),
+    }
+}
+
+// Construct a block expression.
+fn hir_expr_block(span : HirSpan, id : HirId, block : HirBlockFull) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::BlockKind(block),
+    }
+}
+
+// Construct an if-expression with an else-branch.
+fn hir_expr_if(
+    span        : HirSpan,
+    id          : HirId,
+    cond        : HirExprFull,
+    then_branch : HirBlockFull,
+    else_branch : Option<HirExprFull>,
+) -> HirExprFull {
+    let cond_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), cond);
+    let else_v = match else_branch {
+        Some(e) => vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), e),
+        None    => Vec::new::<HirExprFull>(),
+    };
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::IfKind(HirIfExpr {
+            cond        : cond_v,
+            then_branch : then_branch,
+            else_branch : else_v,
+        }),
+    }
+}
+
+// Construct a match expression.
+fn hir_expr_match(
+    span      : HirSpan,
+    id        : HirId,
+    scrutinee : HirExprFull,
+    arms      : Vec<HirMatchArm>,
+) -> HirExprFull {
+    let scr_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), scrutinee);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::MatchKind(HirMatchExpr {
+            scrutinee : scr_v,
+            arms      : arms,
+        }),
+    }
+}
+
+// Construct a while-loop expression.
+fn hir_expr_while(
+    span : HirSpan,
+    id   : HirId,
+    cond : HirExprFull,
+    body : HirBlockFull,
+) -> HirExprFull {
+    let cond_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), cond);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::WhileKind(HirWhileExpr {
+            cond : cond_v,
+            body : body,
+        }),
+    }
+}
+
+// Construct an unconditional-loop expression.
+fn hir_expr_loop(span : HirSpan, id : HirId, body : HirBlockFull) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::LoopKind(HirLoopExpr { body : body }),
+    }
+}
+
+// Construct a return expression.
+fn hir_expr_return(span : HirSpan, id : HirId, value : Option<HirExprFull>) -> HirExprFull {
+    let value_v = match value {
+        Some(v) => vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), v),
+        None    => Vec::new::<HirExprFull>(),
+    };
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::ReturnKind(HirReturnExpr { value : value_v }),
+    }
+}
+
+// Construct a break expression.
+fn hir_expr_break(
+    span  : HirSpan,
+    id    : HirId,
+    label : Option<Symbol>,
+    value : Option<HirExprFull>,
+) -> HirExprFull {
+    let value_v = match value {
+        Some(v) => vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), v),
+        None    => Vec::new::<HirExprFull>(),
+    };
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::BreakKind(HirBreakExpr {
+            label : label,
+            value : value_v,
+        }),
+    }
+}
+
+// Construct a continue expression.
+fn hir_expr_continue(span : HirSpan, id : HirId, label : Option<Symbol>) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::ContinueKind(HirContinueExpr { label : label }),
+    }
+}
+
+// Construct a tuple expression.
+fn hir_expr_tuple(span : HirSpan, id : HirId, elems : Vec<HirExprFull>) -> HirExprFull {
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::TupleKind(HirTupleExpr { elems : elems }),
+    }
+}
+
+// Construct a parenthesized expression.
+fn hir_expr_paren(span : HirSpan, id : HirId, inner : HirExprFull) -> HirExprFull {
+    let inner_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), inner);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::ParenKind(HirParenExpr { inner : inner_v }),
+    }
+}
+
+// Construct an assign expression.
+fn hir_expr_assign(
+    span : HirSpan,
+    id   : HirId,
+    op   : Option<HirBinOp>,
+    lhs  : HirExprFull,
+    rhs  : HirExprFull,
+) -> HirExprFull {
+    let lhs_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), lhs);
+    let rhs_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), rhs);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::AssignKind(HirAssignExpr {
+            op  : op,
+            lhs : lhs_v,
+            rhs : rhs_v,
+        }),
+    }
+}
+
+// Construct a cast expression.
+fn hir_expr_cast(
+    span : HirSpan,
+    id   : HirId,
+    expr : HirExprFull,
+    ty   : HirType,
+) -> HirExprFull {
+    let e_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), expr);
+    HirExprFull {
+        span  : span,
+        id    : id,
+        attrs : Vec::new::<HirAttr>(),
+        kind  : HirExprKindFull::CastKind(HirCastExpr { expr : e_v, ty : ty }),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Selectors / projections — 1:1 with kind variants.
+// ───────────────────────────────────────────────────────────────────────
+
+// Project the kind-tag out for top-level dispatch on form. Returns a
+// stable u32 enumeration : 0=Literal · 1=Path · 2=Error · 3=Call · 4=Field
+// · 5=Index · 6=Binary · 7=Unary · 8=Block · 9=If · 10=Match · 11=For
+// · 12=While · 13=Loop · 14=Return · 15=Break · 16=Continue · 17=Lambda
+// · 18=Assign · 19=Cast · 20=Range · 21=Pipeline · 22=TryDefault · 23=Try
+// · 24=Perform · 25=With · 26=Region · 27=Tuple · 28=Array · 29=Struct
+// · 30=Run · 31=Compound · 32=SectionRef · 33=Paren.
+fn hir_expr_kind_tag(e : HirExprFull) -> u32 {
+    match e.kind {
+        HirExprKindFull::LiteralKind(_)    => 0u32,
+        HirExprKindFull::PathKind(_)       => 1u32,
+        HirExprKindFull::Error             => 2u32,
+        HirExprKindFull::CallKind(_)       => 3u32,
+        HirExprKindFull::FieldKind(_)      => 4u32,
+        HirExprKindFull::IndexKind(_)      => 5u32,
+        HirExprKindFull::BinaryKind(_)     => 6u32,
+        HirExprKindFull::UnaryKind(_)      => 7u32,
+        HirExprKindFull::BlockKind(_)      => 8u32,
+        HirExprKindFull::IfKind(_)         => 9u32,
+        HirExprKindFull::MatchKind(_)      => 10u32,
+        HirExprKindFull::ForKind(_)        => 11u32,
+        HirExprKindFull::WhileKind(_)      => 12u32,
+        HirExprKindFull::LoopKind(_)       => 13u32,
+        HirExprKindFull::ReturnKind(_)     => 14u32,
+        HirExprKindFull::BreakKind(_)      => 15u32,
+        HirExprKindFull::ContinueKind(_)   => 16u32,
+        HirExprKindFull::LambdaKind(_)     => 17u32,
+        HirExprKindFull::AssignKind(_)     => 18u32,
+        HirExprKindFull::CastKind(_)       => 19u32,
+        HirExprKindFull::RangeKind(_)      => 20u32,
+        HirExprKindFull::PipelineKind(_)   => 21u32,
+        HirExprKindFull::TryDefaultKind(_) => 22u32,
+        HirExprKindFull::TryKind(_)        => 23u32,
+        HirExprKindFull::PerformKind(_)    => 24u32,
+        HirExprKindFull::WithKind(_)       => 25u32,
+        HirExprKindFull::RegionKind(_)     => 26u32,
+        HirExprKindFull::TupleKind(_)      => 27u32,
+        HirExprKindFull::ArrayKind(_)      => 28u32,
+        HirExprKindFull::StructKind(_)     => 29u32,
+        HirExprKindFull::RunKind(_)        => 30u32,
+        HirExprKindFull::CompoundKind(_)   => 31u32,
+        HirExprKindFull::SectionRefKind(_) => 32u32,
+        HirExprKindFull::ParenKind(_)      => 33u32,
+    }
+}
+
+// `true` iff the expr is a leaf (literal · path · error · continue ·
+// section-ref). Useful for tree-walker termination conditions.
+fn hir_expr_is_leaf(e : HirExprFull) -> bool {
+    let tag = hir_expr_kind_tag(e);
+    if tag == 0u32 {
+        true
+    } else {
+        if tag == 1u32 {
+            true
+        } else {
+            if tag == 2u32 {
+                true
+            } else {
+                if tag == 16u32 {
+                    true
+                } else {
+                    tag == 32u32
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   Mirror the Rust `mod tests` block at the end of expr.rs + add round-
+//   trip / kind-tag tests for every variant family.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `literal_constructs`. Round-trip an int-literal expr.
+fn _example_literal_constructs() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit  = hir_literal_new(span, HirLiteralKind::Int);
+    let e    = hir_expr_literal(span, id, lit);
+    hir_expr_kind_tag(e) == 0u32
+}
+
+// Mirror : `binop_variants_count`. Verify 20 binary-op variants.
+fn _example_binop_20_variants() -> bool {
+    let ops = vec_push::<HirBinOp>(Vec::new::<HirBinOp>(), HirBinOp::Add);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Sub);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Mul);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Div);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Rem);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::EqOp);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Ne);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Lt);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Le);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Gt);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Ge);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::And);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Or);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::BitAnd);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::BitOr);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::BitXor);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Shl);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Shr);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Implies);
+    let ops = vec_push::<HirBinOp>(ops, HirBinOp::Entails);
+    vec_len::<HirBinOp>(ops) == 20i64
+}
+
+// Mirror : `compound_ops_5_variants`. Verify 5 compound-op variants.
+fn _example_compound_ops_5_variants() -> bool {
+    let ops = vec_push::<HirCompoundOp>(Vec::new::<HirCompoundOp>(), HirCompoundOp::Tp);
+    let ops = vec_push::<HirCompoundOp>(ops, HirCompoundOp::Dv);
+    let ops = vec_push::<HirCompoundOp>(ops, HirCompoundOp::Kd);
+    let ops = vec_push::<HirCompoundOp>(ops, HirCompoundOp::Bv);
+    let ops = vec_push::<HirCompoundOp>(ops, HirCompoundOp::Av);
+    vec_len::<HirCompoundOp>(ops) == 5i64
+}
+
+// Round-trip : binary-expr packs both sub-expressions into singleton vecs
+// and the kind-tag is BinaryKind=6.
+fn _example_binary_expr_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_a = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let lit_b = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let bin   = hir_expr_binary(span, id, HirBinOp::Add, lit_a, lit_b);
+    let tag_ok = hir_expr_kind_tag(bin) == 6u32;
+    let leaf_no = if hir_expr_is_leaf(bin) { false } else { true };
+    if tag_ok { leaf_no } else { false }
+}
+
+// Round-trip : if-expr w/ no else gives empty else-branch Vec.
+fn _example_if_no_else_empty_branch() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let cond = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::BoolTrue));
+    let then_block = hir_block_full_empty(span, id);
+    let if_expr = hir_expr_if(span, id, cond, then_block, None);
+    match if_expr.kind {
+        HirExprKindFull::IfKind(ifk) => vec_is_empty::<HirExprFull>(ifk.else_branch),
+        _ => false,
+    }
+}
+
+// Round-trip : leaf-tag predicate identifies literal/path/error correctly.
+fn _example_leaf_tag_predicate() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_e = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let path_e = hir_expr_path(span, id, Vec::new::<Symbol>());
+    let err_e  = hir_expr_error(span, id);
+    let cont_e = hir_expr_continue(span, id, None);
+    let lit_leaf = hir_expr_is_leaf(lit_e);
+    let path_leaf = hir_expr_is_leaf(path_e);
+    let err_leaf = hir_expr_is_leaf(err_e);
+    let cont_leaf = hir_expr_is_leaf(cont_e);
+    if lit_leaf { if path_leaf { if err_leaf { cont_leaf } else { false } } else { false } } else { false }
+}
+
+// Round-trip : tuple expr packs N elements faithfully.
+fn _example_tuple_expr_packs_elements() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_a = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let lit_b = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::BoolTrue));
+    let lit_c = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Unit));
+    let elems = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), lit_a);
+    let elems = vec_push::<HirExprFull>(elems, lit_b);
+    let elems = vec_push::<HirExprFull>(elems, lit_c);
+    let tup   = hir_expr_tuple(span, id, elems);
+    match tup.kind {
+        HirExprKindFull::TupleKind(t) => vec_len::<HirExprFull>(t.elems) == 3i64,
+        _ => false,
+    }
+}
+
+// Round-trip : array-expr list-form holds N elements ; repeat-form has
+// distinct shape (singleton elements + singleton repeat_len).
+fn _example_array_expr_list_vs_repeat() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit  = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let lit2 = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let len_lit = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+
+    let list_elems = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), lit);
+    let list_elems = vec_push::<HirExprFull>(list_elems, lit2);
+    let list_arr   = hir_array_expr_list(list_elems);
+    let list_ok = if list_arr.is_repeat { false } else { vec_len::<HirExprFull>(list_arr.elements) == 2i64 };
+
+    let lit3 = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let rpt_arr = hir_array_expr_repeat(lit3, len_lit);
+    let rpt_ok = if rpt_arr.is_repeat {
+        if vec_len::<HirExprFull>(rpt_arr.elements) == 1i64 {
+            vec_len::<HirExprFull>(rpt_arr.repeat_len) == 1i64
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if list_ok { rpt_ok } else { false }
+}
+
+// Round-trip : block-expr wraps an empty block correctly.
+fn _example_block_expr_empty() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let blk  = hir_block_full_empty(span, id);
+    let e    = hir_expr_block(span, id, blk);
+    hir_expr_kind_tag(e) == 8u32
+}
+
+// Round-trip : return-expr w/ no value = empty value Vec.
+fn _example_return_no_value_empty_vec() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let r    = hir_expr_return(span, id, None);
+    match r.kind {
+        HirExprKindFull::ReturnKind(rk) => vec_is_empty::<HirExprFull>(rk.value),
+        _ => false,
+    }
+}
+
+// Mirror : unary-op enum has 6 variants.
+fn _example_unary_op_6_variants() -> bool {
+    let ops = vec_push::<HirUnOp>(Vec::new::<HirUnOp>(), HirUnOp::Not);
+    let ops = vec_push::<HirUnOp>(ops, HirUnOp::Neg);
+    let ops = vec_push::<HirUnOp>(ops, HirUnOp::BitNot);
+    let ops = vec_push::<HirUnOp>(ops, HirUnOp::RefOp);
+    let ops = vec_push::<HirUnOp>(ops, HirUnOp::RefMut);
+    let ops = vec_push::<HirUnOp>(ops, HirUnOp::Deref);
+    vec_len::<HirUnOp>(ops) == 6i64
+}
+
+// Round-trip : literal-kind unit-detection works for Unit + non-Unit.
+fn _example_literal_unit_detection() -> bool {
+    let span = hir_span_dummy();
+    let unit_lit = hir_literal_new(span, HirLiteralKind::Unit);
+    let int_lit  = hir_literal_new(span, HirLiteralKind::Int);
+    let unit_ok = hir_literal_is_unit(unit_lit);
+    let int_no  = if hir_literal_is_unit(int_lit) { false } else { true };
+    if unit_ok { int_no } else { false }
+}

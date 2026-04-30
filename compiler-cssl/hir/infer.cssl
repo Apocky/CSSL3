@@ -1,0 +1,1764 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/infer.cssl  —  minimal Hindley-Milner + stub resolve
+//
+// CSSLv3 stage-1 self-host : HM-style inference + name-resolution IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/{infer,resolve,unify,typing,env}.rs
+//               (subset sufficient for compiler-cssl-self-compile)
+// Wave-slice  : Wave-E2-β (W-E2-β · hir-in-cssl SECOND SLICE — T11-D253).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol / Interner)
+//               compiler-cssl/hir/items.cssl  (HirSpan, HirModule)
+//               compiler-cssl/hir/expr.cssl   (HirExprFull / HirLiteralKind / HirBinOp)
+//               compiler-cssl/hir/pat.cssl    (HirPatternFull)
+//               compiler-cssl/hir/ty.cssl     (HirTypeFull / HirEffectRowFull)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : Type-inference is data-flow over pure
+//   typed-tree records ; no side-effect, no surveillance, no global state.
+//   The InferCtx is a plain record passed by value through the recursive
+//   walk — no hidden environment, no thread-local. Diagnostics emerge as
+//   a Vec<HirSpan + String> in the result, observable to the caller. The
+//   substitution table is a sorted-Vec of (TyVar, Ty) pairs ; lookup is
+//   binary-search ; updates are pure-functional copy-on-write.
+//
+// § DESIGN
+//   Stage-1 self-host inference need NOT match stage-0 cssl-hir 1:1 — it
+//   only needs to handle the subset of CSSL used by the compiler-cssl
+//   source itself. Coverage target :
+//     ✓ literal-typing (Int / Float / Bool / Str / Unit)
+//     ✓ binop-typing  (arithmetic + comparison + logical)
+//     ✓ fn-call-typing (with arity check)
+//     ✓ let-poly      (single-binding generalization)
+//     ✓ match-narrowing (per-arm pattern → scrutinee-type unification)
+//     ✓ identifier-resolution via Scope-chain
+//     ✓ self-resolve via impl-block (single-receiver)
+//   ⊘ row-polymorphism (deferred to W-E2-γ)
+//   ⊘ trait-resolution (deferred to W-E2-γ)
+//   ⊘ refinement obligations (deferred to W-E2-γ)
+//
+//   All algorithms run on the W-E2-β `HirExprFull` / `HirPatternFull` /
+//   `HirTypeFull` records ; the items.cssl placeholder shells (`HirExpr`,
+//   `HirPattern`, `HirType`) are NOT walked here. W-E2-γ migrates
+//   items.cssl to use the Full-records.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. NO HASHMAP : Subst + ScopeChain use sorted-Vec lookups (mirroring
+//      the symbol.cssl interner approach).
+//   2. NO MUT-BORROW : every `unify` / `apply_subst` / `scope_insert`
+//      returns the new state ; caller threads the value forward.
+//   3. NO TYPE-CONSTRAINTS : let-poly is implemented as eager-instantiation
+//      at use-sites + skolem-binding at fn-sig entry (mirrors stage-0
+//      cssl-hir : NO let-generalization for locals).
+//   4. NO TRAIT-RESOLUTION : interface bounds are recorded but not propagated.
+//
+// § INVARIANTS  (stage-0)
+//   - Subst is monotonically-extending : after `unify(a, b, s)` returns
+//     Ok(s2), every binding in s also appears in s2.
+//   - TyVar.raw is dense u32 ; allocated by InferCtx.tcx_counter monotonically.
+//   - ScopeChain.stack is LIFO ; outermost-scope at index 0.
+//   - Every diagnostic in InferCtx.diagnostics has a non-dummy span.
+
+module com.apocky.compiler.hir.infer
+
+// ───────────────────────────────────────────────────────────────────────
+// § TyVar — fresh inference variable.
+// ───────────────────────────────────────────────────────────────────────
+
+// `TyVar` is an inference-variable identifier. Distinct from HirId :
+// allocated by the InferCtx during a check-pass, lives in side-tables
+// keyed by HirId.
+struct TyVar {
+    raw : u32,
+}
+
+fn ty_var_from_raw(raw : u32) -> TyVar {
+    TyVar { raw : raw }
+}
+
+fn ty_var_eq(a : TyVar, b : TyVar) -> bool {
+    a.raw == b.raw
+}
+
+fn ty_var_lt(a : TyVar, b : TyVar) -> bool {
+    a.raw < b.raw
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Ty — inference-level type language.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Ty` is the inference-level type. Distinct from HirTypeFull (which is
+// the CST-mirror) : Ty is the post-elaboration representation produced by
+// inference, stored in the TypeMap side-table per HirId.
+//
+// Stage-1-self-host subset variants :
+//   IntTy · FloatTy · BoolTy · StrTy · UnitTy · NeverTy
+//   · NamedTy(DefId)        — nominal reference (no type-args at this slice)
+//   · TupleTy(Vec<Ty>)      — tuple
+//   · FnTy(params, return)  — function pointer (no effect-row at this slice)
+//   · TyVarT(TyVar)         — fresh inference var
+//   · ParamTy(Symbol)       — skolem generic-param
+//   · ErrorTy               — error-recovery (unifies w/ anything)
+enum Ty {
+    IntTy,
+    FloatTy,
+    BoolTy,
+    StrTy,
+    UnitTy,
+    NeverTy,
+    NamedTy(InferNamedTy),
+    TupleTyT(InferTupleTy),
+    FnTy(InferFnTy),
+    TyVarT(TyVar),
+    ParamTy(Symbol),
+    ErrorTy,
+}
+
+// Payload for `Ty::NamedTy` — nominal reference.
+struct InferNamedTy {
+    def : DefId,
+}
+
+// Payload for `Ty::TupleTyT` — tuple.
+struct InferTupleTy {
+    elems : Vec<Ty>,
+}
+
+// Payload for `Ty::FnTy` — function-pointer.
+struct InferFnTy {
+    params    : Vec<Ty>,
+    return_ty : Vec<Ty>,  // singleton
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § SubstEntry + Subst — substitution table.
+// ───────────────────────────────────────────────────────────────────────
+
+// One entry in the substitution table : maps a TyVar to its current binding.
+struct SubstEntry {
+    var : TyVar,
+    ty  : Ty,
+}
+
+// `Subst` is a sorted-Vec backed substitution table ; ordered by var.raw
+// for binary-search lookup. Mirror of the Rust HashMap-backed Subst.
+struct Subst {
+    entries : Vec<SubstEntry>,
+}
+
+fn subst_new() -> Subst {
+    Subst { entries : Vec::new::<SubstEntry>() }
+}
+
+// Look up a TyVar in the subst. Returns Some(ty) on hit, None on miss.
+fn subst_lookup(s : Subst, v : TyVar) -> Option<Ty> {
+    subst_lookup_loop(s.entries, v, 0i64, vec_len::<SubstEntry>(s.entries))
+}
+
+fn subst_lookup_loop(entries : Vec<SubstEntry>, v : TyVar, lo : i64, hi : i64) -> Option<Ty> {
+    if lo >= hi {
+        None
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<SubstEntry>(entries, mid) {
+            Some(e) => {
+                if ty_var_eq(e.var, v) {
+                    Some(e.ty)
+                } else {
+                    if ty_var_lt(e.var, v) {
+                        subst_lookup_loop(entries, v, mid + 1i64, hi)
+                    } else {
+                        subst_lookup_loop(entries, v, lo, mid)
+                    }
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// Insert or update a binding in the subst. Returns the new subst.
+//   - HIT  → overwrite the existing binding.
+//   - MISS → splice a new entry into the sorted position.
+fn subst_extend(s : Subst, v : TyVar, t : Ty) -> Subst {
+    let pos = subst_insert_pos(s.entries, v, 0i64, vec_len::<SubstEntry>(s.entries));
+    let n = vec_len::<SubstEntry>(s.entries);
+    if pos < n {
+        match vec_get::<SubstEntry>(s.entries, pos) {
+            Some(at_pos) => {
+                if ty_var_eq(at_pos.var, v) {
+                    // HIT : overwrite
+                    let new_entries = subst_replace_at(s.entries, pos, SubstEntry { var : v, ty : t });
+                    Subst { entries : new_entries }
+                } else {
+                    // MISS : splice
+                    let new_entries = subst_insert_at(s.entries, pos, SubstEntry { var : v, ty : t });
+                    Subst { entries : new_entries }
+                }
+            },
+            None => s,
+        }
+    } else {
+        // Append at end
+        let new_entries = vec_push::<SubstEntry>(s.entries, SubstEntry { var : v, ty : t });
+        Subst { entries : new_entries }
+    }
+}
+
+// Sorted-Vec insertion-point binary search.
+fn subst_insert_pos(entries : Vec<SubstEntry>, v : TyVar, lo : i64, hi : i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<SubstEntry>(entries, mid) {
+            Some(e) => {
+                if ty_var_lt(e.var, v) {
+                    subst_insert_pos(entries, v, mid + 1i64, hi)
+                } else {
+                    subst_insert_pos(entries, v, lo, mid)
+                }
+            },
+            None => lo,
+        }
+    }
+}
+
+// Splice replacement at a known index. Builds new Vec.
+fn subst_replace_at(entries : Vec<SubstEntry>, pos : i64, new_e : SubstEntry) -> Vec<SubstEntry> {
+    subst_replace_loop(entries, pos, new_e, vec_len::<SubstEntry>(entries), 0i64, Vec::new::<SubstEntry>())
+}
+
+fn subst_replace_loop(
+    src   : Vec<SubstEntry>,
+    pos   : i64,
+    new_e : SubstEntry,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<SubstEntry>,
+) -> Vec<SubstEntry> {
+    if i == n {
+        acc
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<SubstEntry>(acc, new_e);
+            subst_replace_loop(src, pos, new_e, n, i + 1i64, acc1)
+        } else {
+            match vec_get::<SubstEntry>(src, i) {
+                Some(e) => {
+                    let acc1 = vec_push::<SubstEntry>(acc, e);
+                    subst_replace_loop(src, pos, new_e, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Splice insertion at a known index. Builds new Vec.
+fn subst_insert_at(entries : Vec<SubstEntry>, pos : i64, new_e : SubstEntry) -> Vec<SubstEntry> {
+    subst_insert_loop(entries, pos, new_e, vec_len::<SubstEntry>(entries), 0i64, Vec::new::<SubstEntry>())
+}
+
+fn subst_insert_loop(
+    src   : Vec<SubstEntry>,
+    pos   : i64,
+    new_e : SubstEntry,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<SubstEntry>,
+) -> Vec<SubstEntry> {
+    if i == n {
+        if pos == n {
+            vec_push::<SubstEntry>(acc, new_e)
+        } else {
+            acc
+        }
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<SubstEntry>(acc, new_e);
+            match vec_get::<SubstEntry>(src, i) {
+                Some(e) => {
+                    let acc2 = vec_push::<SubstEntry>(acc1, e);
+                    subst_insert_loop(src, pos, new_e, n, i + 1i64, acc2)
+                },
+                None => acc1,
+            }
+        } else {
+            match vec_get::<SubstEntry>(src, i) {
+                Some(e) => {
+                    let acc1 = vec_push::<SubstEntry>(acc, e);
+                    subst_insert_loop(src, pos, new_e, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Apply the substitution to a type — recursively walks Ty + replaces every
+// TyVar with its binding (transitively).
+fn subst_apply(s : Subst, t : Ty) -> Ty {
+    match t {
+        Ty::TyVarT(v) => {
+            match subst_lookup(s, v) {
+                Some(bound) => subst_apply(s, bound),
+                None => Ty::TyVarT(v),
+            }
+        },
+        Ty::TupleTyT(tup) => {
+            Ty::TupleTyT(InferTupleTy {
+                elems : subst_apply_list(s, tup.elems),
+            })
+        },
+        Ty::FnTy(f) => {
+            let new_params = subst_apply_list(s, f.params);
+            let new_ret = subst_apply_list(s, f.return_ty);
+            Ty::FnTy(InferFnTy {
+                params    : new_params,
+                return_ty : new_ret,
+            })
+        },
+        Ty::IntTy => Ty::IntTy,
+        Ty::FloatTy => Ty::FloatTy,
+        Ty::BoolTy => Ty::BoolTy,
+        Ty::StrTy => Ty::StrTy,
+        Ty::UnitTy => Ty::UnitTy,
+        Ty::NeverTy => Ty::NeverTy,
+        Ty::NamedTy(n) => Ty::NamedTy(n),
+        Ty::ParamTy(p) => Ty::ParamTy(p),
+        Ty::ErrorTy => Ty::ErrorTy,
+    }
+}
+
+// Apply substitution element-wise to a Vec<Ty>.
+fn subst_apply_list(s : Subst, ts : Vec<Ty>) -> Vec<Ty> {
+    subst_apply_list_loop(s, ts, 0i64, vec_len::<Ty>(ts), Vec::new::<Ty>())
+}
+
+fn subst_apply_list_loop(
+    s   : Subst,
+    ts  : Vec<Ty>,
+    i   : i64,
+    n   : i64,
+    acc : Vec<Ty>,
+) -> Vec<Ty> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<Ty>(ts, i) {
+            Some(t) => {
+                let new_t = subst_apply(s, t);
+                let acc1 = vec_push::<Ty>(acc, new_t);
+                subst_apply_list_loop(s, ts, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § UnifyError + unify.
+// ───────────────────────────────────────────────────────────────────────
+
+// `UnifyResult` : Ok(s2) on success ; Err(message) on failure.
+enum UnifyResult {
+    UnifyOk(Subst),
+    UnifyErr(String),
+}
+
+// Unify two types under the current substitution. Returns the extended
+// substitution on success or a diagnostic message on failure.
+fn unify(a : Ty, b : Ty, s : Subst) -> UnifyResult {
+    let a_resolved = subst_apply(s, a);
+    let b_resolved = subst_apply(s, b);
+    unify_resolved(a_resolved, b_resolved, s)
+}
+
+// Unify after both sides have been substitution-resolved.
+fn unify_resolved(a : Ty, b : Ty, s : Subst) -> UnifyResult {
+    match a {
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        Ty::TyVarT(va) => unify_var_with(va, b, s),
+        Ty::IntTy => unify_concrete(a, b, s, string_from_str("int")),
+        Ty::FloatTy => unify_concrete(a, b, s, string_from_str("float")),
+        Ty::BoolTy => unify_concrete(a, b, s, string_from_str("bool")),
+        Ty::StrTy => unify_concrete(a, b, s, string_from_str("str")),
+        Ty::UnitTy => unify_concrete(a, b, s, string_from_str("unit")),
+        Ty::NamedTy(an) => unify_named(an, b, s),
+        Ty::ParamTy(ap) => unify_param(ap, b, s),
+        Ty::TupleTyT(at) => unify_tuple(at, b, s),
+        Ty::FnTy(af) => unify_fn(af, b, s),
+    }
+}
+
+// Bind a TyVar to a target type (with occurs-check). Bidirectional :
+// if RHS is also a var, prefers to bind the smaller-numbered var.
+fn unify_var_with(va : TyVar, b : Ty, s : Subst) -> UnifyResult {
+    match b {
+        Ty::TyVarT(vb) => {
+            if ty_var_eq(va, vb) {
+                UnifyResult::UnifyOk(s)
+            } else {
+                if ty_var_lt(va, vb) {
+                    UnifyResult::UnifyOk(subst_extend(s, vb, Ty::TyVarT(va)))
+                } else {
+                    UnifyResult::UnifyOk(subst_extend(s, va, Ty::TyVarT(vb)))
+                }
+            }
+        },
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        _ => {
+            if occurs_check(va, b) {
+                UnifyResult::UnifyErr(string_from_str("occurs-check failed (infinite type)"))
+            } else {
+                UnifyResult::UnifyOk(subst_extend(s, va, b))
+            }
+        },
+    }
+}
+
+// Concrete-type unification : both sides must be the same primitive.
+fn unify_concrete(a : Ty, b : Ty, s : Subst, name : String) -> UnifyResult {
+    match b {
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        Ty::TyVarT(vb) => UnifyResult::UnifyOk(subst_extend(s, vb, a)),
+        Ty::IntTy => {
+            match a {
+                Ty::IntTy => UnifyResult::UnifyOk(s),
+                _ => UnifyResult::UnifyErr(string_concat(string_from_str("type mismatch: expected "), name)),
+            }
+        },
+        Ty::FloatTy => {
+            match a {
+                Ty::FloatTy => UnifyResult::UnifyOk(s),
+                _ => UnifyResult::UnifyErr(string_concat(string_from_str("type mismatch: expected "), name)),
+            }
+        },
+        Ty::BoolTy => {
+            match a {
+                Ty::BoolTy => UnifyResult::UnifyOk(s),
+                _ => UnifyResult::UnifyErr(string_concat(string_from_str("type mismatch: expected "), name)),
+            }
+        },
+        Ty::StrTy => {
+            match a {
+                Ty::StrTy => UnifyResult::UnifyOk(s),
+                _ => UnifyResult::UnifyErr(string_concat(string_from_str("type mismatch: expected "), name)),
+            }
+        },
+        Ty::UnitTy => {
+            match a {
+                Ty::UnitTy => UnifyResult::UnifyOk(s),
+                _ => UnifyResult::UnifyErr(string_concat(string_from_str("type mismatch: expected "), name)),
+            }
+        },
+        _ => UnifyResult::UnifyErr(string_concat(string_from_str("type mismatch: expected "), name)),
+    }
+}
+
+// Named-type unification : both sides must reference the same DefId.
+fn unify_named(an : InferNamedTy, b : Ty, s : Subst) -> UnifyResult {
+    match b {
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        Ty::TyVarT(vb) => UnifyResult::UnifyOk(subst_extend(s, vb, Ty::NamedTy(an))),
+        Ty::NamedTy(bn) => {
+            if def_id_eq(an.def, bn.def) {
+                UnifyResult::UnifyOk(s)
+            } else {
+                UnifyResult::UnifyErr(string_from_str("nominal-type mismatch (distinct DefIds)"))
+            }
+        },
+        _ => UnifyResult::UnifyErr(string_from_str("type mismatch: expected named type")),
+    }
+}
+
+// Skolem-param unification : both sides must reference the same Symbol.
+fn unify_param(ap : Symbol, b : Ty, s : Subst) -> UnifyResult {
+    match b {
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        Ty::TyVarT(vb) => UnifyResult::UnifyOk(subst_extend(s, vb, Ty::ParamTy(ap))),
+        Ty::ParamTy(bp) => {
+            if symbol_eq(ap, bp) {
+                UnifyResult::UnifyOk(s)
+            } else {
+                UnifyResult::UnifyErr(string_from_str("skolem-param mismatch"))
+            }
+        },
+        _ => UnifyResult::UnifyErr(string_from_str("type mismatch: expected skolem param")),
+    }
+}
+
+// Tuple-type unification : same arity + element-wise unify.
+fn unify_tuple(at : InferTupleTy, b : Ty, s : Subst) -> UnifyResult {
+    match b {
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        Ty::TyVarT(vb) => UnifyResult::UnifyOk(subst_extend(s, vb, Ty::TupleTyT(at))),
+        Ty::TupleTyT(bt) => {
+            let arity_a = vec_len::<Ty>(at.elems);
+            let arity_b = vec_len::<Ty>(bt.elems);
+            if arity_a == arity_b {
+                unify_list(at.elems, bt.elems, s, 0i64, arity_a)
+            } else {
+                UnifyResult::UnifyErr(string_from_str("tuple arity mismatch"))
+            }
+        },
+        _ => UnifyResult::UnifyErr(string_from_str("type mismatch: expected tuple")),
+    }
+}
+
+// Function-type unification : same arity + element-wise unify on params + return.
+fn unify_fn(af : InferFnTy, b : Ty, s : Subst) -> UnifyResult {
+    match b {
+        Ty::ErrorTy => UnifyResult::UnifyOk(s),
+        Ty::NeverTy => UnifyResult::UnifyOk(s),
+        Ty::TyVarT(vb) => UnifyResult::UnifyOk(subst_extend(s, vb, Ty::FnTy(af))),
+        Ty::FnTy(bf) => {
+            let arity_a = vec_len::<Ty>(af.params);
+            let arity_b = vec_len::<Ty>(bf.params);
+            if arity_a == arity_b {
+                let s2 = unify_list(af.params, bf.params, s, 0i64, arity_a);
+                match s2 {
+                    UnifyResult::UnifyErr(m) => UnifyResult::UnifyErr(m),
+                    UnifyResult::UnifyOk(s3) => unify_list(af.return_ty, bf.return_ty, s3, 0i64, vec_len::<Ty>(af.return_ty)),
+                }
+            } else {
+                UnifyResult::UnifyErr(string_from_str("fn arity mismatch"))
+            }
+        },
+        _ => UnifyResult::UnifyErr(string_from_str("type mismatch: expected fn-type")),
+    }
+}
+
+// Element-wise unify : zip + unify each pair.
+fn unify_list(as_ : Vec<Ty>, bs : Vec<Ty>, s : Subst, i : i64, n : i64) -> UnifyResult {
+    if i == n {
+        UnifyResult::UnifyOk(s)
+    } else {
+        match vec_get::<Ty>(as_, i) {
+            Some(a) => {
+                match vec_get::<Ty>(bs, i) {
+                    Some(b) => {
+                        match unify(a, b, s) {
+                            UnifyResult::UnifyErr(m) => UnifyResult::UnifyErr(m),
+                            UnifyResult::UnifyOk(s2) => unify_list(as_, bs, s2, i + 1i64, n),
+                        }
+                    },
+                    None => UnifyResult::UnifyErr(string_from_str("list-unify: index out of bounds")),
+                }
+            },
+            None => UnifyResult::UnifyErr(string_from_str("list-unify: index out of bounds")),
+        }
+    }
+}
+
+// Occurs-check : `true` iff `v` appears in `t` (would cause infinite type).
+fn occurs_check(v : TyVar, t : Ty) -> bool {
+    match t {
+        Ty::TyVarT(w) => ty_var_eq(v, w),
+        Ty::TupleTyT(tup) => occurs_check_list(v, tup.elems),
+        Ty::FnTy(f) => {
+            if occurs_check_list(v, f.params) {
+                true
+            } else {
+                occurs_check_list(v, f.return_ty)
+            }
+        },
+        Ty::IntTy => false,
+        Ty::FloatTy => false,
+        Ty::BoolTy => false,
+        Ty::StrTy => false,
+        Ty::UnitTy => false,
+        Ty::NeverTy => false,
+        Ty::NamedTy(_) => false,
+        Ty::ParamTy(_) => false,
+        Ty::ErrorTy => false,
+    }
+}
+
+fn occurs_check_list(v : TyVar, ts : Vec<Ty>) -> bool {
+    occurs_check_list_loop(v, ts, 0i64, vec_len::<Ty>(ts))
+}
+
+fn occurs_check_list_loop(v : TyVar, ts : Vec<Ty>, i : i64, n : i64) -> bool {
+    if i == n {
+        false
+    } else {
+        match vec_get::<Ty>(ts, i) {
+            Some(t) => {
+                if occurs_check(v, t) { true } else { occurs_check_list_loop(v, ts, i + 1i64, n) }
+            },
+            None => false,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Generalization (Scheme + free-vars).
+// ───────────────────────────────────────────────────────────────────────
+
+// `Scheme` is a polymorphic type-scheme : `∀ vars . body`.
+//   vars empty → monomorphic (no quantification).
+struct Scheme {
+    vars : Vec<TyVar>,
+    body : Ty,
+}
+
+fn scheme_mono(t : Ty) -> Scheme {
+    Scheme { vars : Vec::new::<TyVar>(), body : t }
+}
+
+// Generalize a type to a scheme : every free-var in body becomes a quantified var.
+// Stage-0 NOTE : this is naive generalization without environment-relative
+// free-variable subtraction (sufficient for top-level fns that don't capture).
+fn generalize(t : Ty) -> Scheme {
+    let vars = free_vars_of_ty(t);
+    Scheme { vars : vars, body : t }
+}
+
+// Free-vars of a type as a sorted-deduplicated Vec<TyVar>.
+fn free_vars_of_ty(t : Ty) -> Vec<TyVar> {
+    let collected = free_vars_collect(t, Vec::new::<TyVar>());
+    dedup_sorted_tyvars(collected)
+}
+
+// Walk Ty + push every TyVar found into accumulator.
+fn free_vars_collect(t : Ty, acc : Vec<TyVar>) -> Vec<TyVar> {
+    match t {
+        Ty::TyVarT(v) => vec_push::<TyVar>(acc, v),
+        Ty::TupleTyT(tup) => free_vars_list(tup.elems, acc),
+        Ty::FnTy(f) => {
+            let acc1 = free_vars_list(f.params, acc);
+            free_vars_list(f.return_ty, acc1)
+        },
+        Ty::IntTy => acc,
+        Ty::FloatTy => acc,
+        Ty::BoolTy => acc,
+        Ty::StrTy => acc,
+        Ty::UnitTy => acc,
+        Ty::NeverTy => acc,
+        Ty::NamedTy(_) => acc,
+        Ty::ParamTy(_) => acc,
+        Ty::ErrorTy => acc,
+    }
+}
+
+fn free_vars_list(ts : Vec<Ty>, acc : Vec<TyVar>) -> Vec<TyVar> {
+    free_vars_list_loop(ts, acc, 0i64, vec_len::<Ty>(ts))
+}
+
+fn free_vars_list_loop(ts : Vec<Ty>, acc : Vec<TyVar>, i : i64, n : i64) -> Vec<TyVar> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<Ty>(ts, i) {
+            Some(t) => {
+                let acc1 = free_vars_collect(t, acc);
+                free_vars_list_loop(ts, acc1, i + 1i64, n)
+            },
+            None => acc,
+        }
+    }
+}
+
+// Sort-and-dedup a Vec<TyVar> by raw value (insertion sort + skip-equal).
+fn dedup_sorted_tyvars(vs : Vec<TyVar>) -> Vec<TyVar> {
+    let sorted = insertion_sort_tyvars(vs);
+    dedup_pass(sorted)
+}
+
+fn insertion_sort_tyvars(vs : Vec<TyVar>) -> Vec<TyVar> {
+    insertion_sort_loop(vs, 0i64, vec_len::<TyVar>(vs), Vec::new::<TyVar>())
+}
+
+fn insertion_sort_loop(src : Vec<TyVar>, i : i64, n : i64, acc : Vec<TyVar>) -> Vec<TyVar> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<TyVar>(src, i) {
+            Some(v) => {
+                let acc1 = insert_sorted_tyvar(acc, v);
+                insertion_sort_loop(src, i + 1i64, n, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+fn insert_sorted_tyvar(sorted : Vec<TyVar>, v : TyVar) -> Vec<TyVar> {
+    let pos = sorted_tyvar_insert_pos(sorted, v, 0i64, vec_len::<TyVar>(sorted));
+    sorted_tyvar_insert_at(sorted, pos, v)
+}
+
+fn sorted_tyvar_insert_pos(vs : Vec<TyVar>, v : TyVar, lo : i64, hi : i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<TyVar>(vs, mid) {
+            Some(w) => {
+                if ty_var_lt(w, v) {
+                    sorted_tyvar_insert_pos(vs, v, mid + 1i64, hi)
+                } else {
+                    sorted_tyvar_insert_pos(vs, v, lo, mid)
+                }
+            },
+            None => lo,
+        }
+    }
+}
+
+fn sorted_tyvar_insert_at(vs : Vec<TyVar>, pos : i64, v : TyVar) -> Vec<TyVar> {
+    sorted_tyvar_insert_loop(vs, pos, v, vec_len::<TyVar>(vs), 0i64, Vec::new::<TyVar>())
+}
+
+fn sorted_tyvar_insert_loop(
+    src : Vec<TyVar>,
+    pos : i64,
+    v   : TyVar,
+    n   : i64,
+    i   : i64,
+    acc : Vec<TyVar>,
+) -> Vec<TyVar> {
+    if i == n {
+        if pos == n {
+            vec_push::<TyVar>(acc, v)
+        } else {
+            acc
+        }
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<TyVar>(acc, v);
+            match vec_get::<TyVar>(src, i) {
+                Some(w) => {
+                    let acc2 = vec_push::<TyVar>(acc1, w);
+                    sorted_tyvar_insert_loop(src, pos, v, n, i + 1i64, acc2)
+                },
+                None => acc1,
+            }
+        } else {
+            match vec_get::<TyVar>(src, i) {
+                Some(w) => {
+                    let acc1 = vec_push::<TyVar>(acc, w);
+                    sorted_tyvar_insert_loop(src, pos, v, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+fn dedup_pass(vs : Vec<TyVar>) -> Vec<TyVar> {
+    dedup_loop(vs, 0i64, vec_len::<TyVar>(vs), Vec::new::<TyVar>())
+}
+
+fn dedup_loop(src : Vec<TyVar>, i : i64, n : i64, acc : Vec<TyVar>) -> Vec<TyVar> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<TyVar>(src, i) {
+            Some(v) => {
+                let last_idx = vec_len::<TyVar>(acc) - 1i64;
+                let dup = if last_idx < 0i64 {
+                    false
+                } else {
+                    match vec_get::<TyVar>(acc, last_idx) {
+                        Some(prev) => ty_var_eq(prev, v),
+                        None => false,
+                    }
+                };
+                if dup {
+                    dedup_loop(src, i + 1i64, n, acc)
+                } else {
+                    let acc1 = vec_push::<TyVar>(acc, v);
+                    dedup_loop(src, i + 1i64, n, acc1)
+                }
+            },
+            None => acc,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ScopeChain — stub name-resolution.
+// ───────────────────────────────────────────────────────────────────────
+
+// One scope-frame : Vec<(Symbol, DefId)> as a sorted-Vec for binary-search lookup.
+struct ScopeFrame {
+    bindings : Vec<ScopeBinding>,
+}
+
+struct ScopeBinding {
+    name : Symbol,
+    def  : DefId,
+}
+
+// `ScopeChain` is the resolver's current name-binding stack.
+//   - module : module-level bindings (always at outermost depth).
+//   - stack  : nested-scope frames, innermost at end-of-Vec.
+struct ScopeChain {
+    module : ScopeFrame,
+    stack  : Vec<ScopeFrame>,
+}
+
+fn scope_frame_empty() -> ScopeFrame {
+    ScopeFrame { bindings : Vec::new::<ScopeBinding>() }
+}
+
+fn scope_chain_new() -> ScopeChain {
+    ScopeChain {
+        module : scope_frame_empty(),
+        stack  : Vec::new::<ScopeFrame>(),
+    }
+}
+
+// Push a fresh nested-scope onto the chain.
+fn scope_chain_enter(c : ScopeChain) -> ScopeChain {
+    let stack2 = vec_push::<ScopeFrame>(c.stack, scope_frame_empty());
+    ScopeChain {
+        module : c.module,
+        stack  : stack2,
+    }
+}
+
+// Pop the innermost nested-scope. No-op when stack is empty.
+fn scope_chain_leave(c : ScopeChain) -> ScopeChain {
+    let n = vec_len::<ScopeFrame>(c.stack);
+    if n == 0i64 {
+        c
+    } else {
+        let stack2 = vec_take_n::<ScopeFrame>(c.stack, n - 1i64);
+        ScopeChain {
+            module : c.module,
+            stack  : stack2,
+        }
+    }
+}
+
+// Take first N elements of a Vec (stage-0 helper for pop).
+fn vec_take_n<T>(v : Vec<T>, n : i64) -> Vec<T> {
+    vec_take_loop::<T>(v, n, 0i64, Vec::new::<T>())
+}
+
+fn vec_take_loop<T>(src : Vec<T>, n : i64, i : i64, acc : Vec<T>) -> Vec<T> {
+    if i == n {
+        acc
+    } else {
+        match vec_get::<T>(src, i) {
+            Some(x) => {
+                let acc1 = vec_push::<T>(acc, x);
+                vec_take_loop::<T>(src, n, i + 1i64, acc1)
+            },
+            None => acc,
+        }
+    }
+}
+
+// Insert into innermost-scope (or module if stack empty).
+fn scope_chain_insert(c : ScopeChain, name : Symbol, def : DefId) -> ScopeChain {
+    let n = vec_len::<ScopeFrame>(c.stack);
+    if n == 0i64 {
+        let m2 = scope_frame_insert(c.module, name, def);
+        ScopeChain { module : m2, stack : c.stack }
+    } else {
+        let top_idx = n - 1i64;
+        match vec_get::<ScopeFrame>(c.stack, top_idx) {
+            Some(top) => {
+                let top2 = scope_frame_insert(top, name, def);
+                let stack2 = scope_chain_replace_top(c.stack, top_idx, top2);
+                ScopeChain { module : c.module, stack : stack2 }
+            },
+            None => c,
+        }
+    }
+}
+
+// Insert directly into module-scope regardless of nesting depth.
+fn scope_chain_insert_module(c : ScopeChain, name : Symbol, def : DefId) -> ScopeChain {
+    let m2 = scope_frame_insert(c.module, name, def);
+    ScopeChain { module : m2, stack : c.stack }
+}
+
+fn scope_chain_replace_top(stack : Vec<ScopeFrame>, idx : i64, frame : ScopeFrame) -> Vec<ScopeFrame> {
+    scope_chain_replace_loop(stack, idx, frame, vec_len::<ScopeFrame>(stack), 0i64, Vec::new::<ScopeFrame>())
+}
+
+fn scope_chain_replace_loop(
+    src   : Vec<ScopeFrame>,
+    idx   : i64,
+    frame : ScopeFrame,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<ScopeFrame>,
+) -> Vec<ScopeFrame> {
+    if i == n {
+        acc
+    } else {
+        if i == idx {
+            let acc1 = vec_push::<ScopeFrame>(acc, frame);
+            scope_chain_replace_loop(src, idx, frame, n, i + 1i64, acc1)
+        } else {
+            match vec_get::<ScopeFrame>(src, i) {
+                Some(f) => {
+                    let acc1 = vec_push::<ScopeFrame>(acc, f);
+                    scope_chain_replace_loop(src, idx, frame, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Insert into a sorted-Vec scope-frame ; replaces existing binding for the
+// same Symbol (shadowing) or splices a new entry.
+fn scope_frame_insert(f : ScopeFrame, name : Symbol, def : DefId) -> ScopeFrame {
+    let pos = scope_frame_pos(f.bindings, name, 0i64, vec_len::<ScopeBinding>(f.bindings));
+    let n = vec_len::<ScopeBinding>(f.bindings);
+    let new_b = ScopeBinding { name : name, def : def };
+    if pos < n {
+        match vec_get::<ScopeBinding>(f.bindings, pos) {
+            Some(at_pos) => {
+                if symbol_eq(at_pos.name, name) {
+                    let new_bindings = scope_frame_replace(f.bindings, pos, new_b);
+                    ScopeFrame { bindings : new_bindings }
+                } else {
+                    let new_bindings = scope_frame_insert_at(f.bindings, pos, new_b);
+                    ScopeFrame { bindings : new_bindings }
+                }
+            },
+            None => f,
+        }
+    } else {
+        ScopeFrame { bindings : vec_push::<ScopeBinding>(f.bindings, new_b) }
+    }
+}
+
+fn scope_frame_pos(bs : Vec<ScopeBinding>, name : Symbol, lo : i64, hi : i64) -> i64 {
+    if lo == hi {
+        lo
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<ScopeBinding>(bs, mid) {
+            Some(b) => {
+                if symbol_lt(b.name, name) {
+                    scope_frame_pos(bs, name, mid + 1i64, hi)
+                } else {
+                    scope_frame_pos(bs, name, lo, mid)
+                }
+            },
+            None => lo,
+        }
+    }
+}
+
+fn scope_frame_replace(bs : Vec<ScopeBinding>, pos : i64, new_b : ScopeBinding) -> Vec<ScopeBinding> {
+    scope_frame_replace_loop(bs, pos, new_b, vec_len::<ScopeBinding>(bs), 0i64, Vec::new::<ScopeBinding>())
+}
+
+fn scope_frame_replace_loop(
+    src   : Vec<ScopeBinding>,
+    pos   : i64,
+    new_b : ScopeBinding,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<ScopeBinding>,
+) -> Vec<ScopeBinding> {
+    if i == n {
+        acc
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<ScopeBinding>(acc, new_b);
+            scope_frame_replace_loop(src, pos, new_b, n, i + 1i64, acc1)
+        } else {
+            match vec_get::<ScopeBinding>(src, i) {
+                Some(b) => {
+                    let acc1 = vec_push::<ScopeBinding>(acc, b);
+                    scope_frame_replace_loop(src, pos, new_b, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+fn scope_frame_insert_at(bs : Vec<ScopeBinding>, pos : i64, new_b : ScopeBinding) -> Vec<ScopeBinding> {
+    scope_frame_insert_at_loop(bs, pos, new_b, vec_len::<ScopeBinding>(bs), 0i64, Vec::new::<ScopeBinding>())
+}
+
+fn scope_frame_insert_at_loop(
+    src   : Vec<ScopeBinding>,
+    pos   : i64,
+    new_b : ScopeBinding,
+    n     : i64,
+    i     : i64,
+    acc   : Vec<ScopeBinding>,
+) -> Vec<ScopeBinding> {
+    if i == n {
+        if pos == n {
+            vec_push::<ScopeBinding>(acc, new_b)
+        } else {
+            acc
+        }
+    } else {
+        if i == pos {
+            let acc1 = vec_push::<ScopeBinding>(acc, new_b);
+            match vec_get::<ScopeBinding>(src, i) {
+                Some(b) => {
+                    let acc2 = vec_push::<ScopeBinding>(acc1, b);
+                    scope_frame_insert_at_loop(src, pos, new_b, n, i + 1i64, acc2)
+                },
+                None => acc1,
+            }
+        } else {
+            match vec_get::<ScopeBinding>(src, i) {
+                Some(b) => {
+                    let acc1 = vec_push::<ScopeBinding>(acc, b);
+                    scope_frame_insert_at_loop(src, pos, new_b, n, i + 1i64, acc1)
+                },
+                None => acc,
+            }
+        }
+    }
+}
+
+// Look up an identifier — innermost-to-outermost scope walk.
+fn scope_chain_lookup(c : ScopeChain, name : Symbol) -> Option<DefId> {
+    let stack_n = vec_len::<ScopeFrame>(c.stack);
+    let nested = scope_chain_lookup_stack(c.stack, name, stack_n - 1i64);
+    match nested {
+        Some(d) => Some(d),
+        None => scope_frame_lookup(c.module, name),
+    }
+}
+
+fn scope_chain_lookup_stack(stack : Vec<ScopeFrame>, name : Symbol, i : i64) -> Option<DefId> {
+    if i < 0i64 {
+        None
+    } else {
+        match vec_get::<ScopeFrame>(stack, i) {
+            Some(frame) => {
+                match scope_frame_lookup(frame, name) {
+                    Some(d) => Some(d),
+                    None => scope_chain_lookup_stack(stack, name, i - 1i64),
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+fn scope_frame_lookup(f : ScopeFrame, name : Symbol) -> Option<DefId> {
+    scope_frame_lookup_loop(f.bindings, name, 0i64, vec_len::<ScopeBinding>(f.bindings))
+}
+
+fn scope_frame_lookup_loop(bs : Vec<ScopeBinding>, name : Symbol, lo : i64, hi : i64) -> Option<DefId> {
+    if lo >= hi {
+        None
+    } else {
+        let mid = (lo + hi) / 2i64;
+        match vec_get::<ScopeBinding>(bs, mid) {
+            Some(b) => {
+                if symbol_eq(b.name, name) {
+                    Some(b.def)
+                } else {
+                    if symbol_lt(b.name, name) {
+                        scope_frame_lookup_loop(bs, name, mid + 1i64, hi)
+                    } else {
+                        scope_frame_lookup_loop(bs, name, lo, mid)
+                    }
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § InferDiagnostic — single type-error report.
+// ───────────────────────────────────────────────────────────────────────
+
+struct InferDiagnostic {
+    span    : HirSpan,
+    message : String,
+}
+
+fn infer_diagnostic_new(span : HirSpan, message : String) -> InferDiagnostic {
+    InferDiagnostic { span : span, message : message }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § InferCtx — the threaded inference state.
+// ───────────────────────────────────────────────────────────────────────
+
+// `InferCtx` is the inference engine's evolving state. Threaded by-value
+// per stage-0 mut-borrow-deferred convention.
+struct InferCtx {
+    tcx_counter : u32,                     // monotonic TyVar.raw allocator
+    subst       : Subst,                   // current substitution
+    scopes      : ScopeChain,              // identifier → DefId resolver
+    diagnostics : Vec<InferDiagnostic>,    // accumulated type-errors
+}
+
+fn infer_ctx_new() -> InferCtx {
+    InferCtx {
+        tcx_counter : 0u32,
+        subst       : subst_new(),
+        scopes      : scope_chain_new(),
+        diagnostics : Vec::new::<InferDiagnostic>(),
+    }
+}
+
+// Allocate a fresh TyVar from the context.
+fn infer_ctx_fresh_var(ctx : InferCtx) -> (InferCtx, TyVar) {
+    let v = ty_var_from_raw(ctx.tcx_counter);
+    let next = if ctx.tcx_counter == 4294967295u32 {
+        4294967295u32
+    } else {
+        ctx.tcx_counter + 1u32
+    };
+    let ctx2 = InferCtx {
+        tcx_counter : next,
+        subst       : ctx.subst,
+        scopes      : ctx.scopes,
+        diagnostics : ctx.diagnostics,
+    };
+    (ctx2, v)
+}
+
+// Emit a diagnostic into the context.
+fn infer_ctx_emit(ctx : InferCtx, span : HirSpan, message : String) -> InferCtx {
+    let d = infer_diagnostic_new(span, message);
+    InferCtx {
+        tcx_counter : ctx.tcx_counter,
+        subst       : ctx.subst,
+        scopes      : ctx.scopes,
+        diagnostics : vec_push::<InferDiagnostic>(ctx.diagnostics, d),
+    }
+}
+
+// Apply unify to two types ; emit diagnostic on failure ; update subst on success.
+fn infer_ctx_unify(ctx : InferCtx, a : Ty, b : Ty, span : HirSpan, context_msg : String) -> InferCtx {
+    match unify(a, b, ctx.subst) {
+        UnifyResult::UnifyOk(s2) => {
+            InferCtx {
+                tcx_counter : ctx.tcx_counter,
+                subst       : s2,
+                scopes      : ctx.scopes,
+                diagnostics : ctx.diagnostics,
+            }
+        },
+        UnifyResult::UnifyErr(msg) => {
+            let full_msg = string_concat(string_concat(msg, string_from_str(" in ")), context_msg);
+            infer_ctx_emit(ctx, span, full_msg)
+        },
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Bidirectional check + synthesize entry-points.
+// ───────────────────────────────────────────────────────────────────────
+
+// Synthesize the type of an expression. Returns (ctx, ty).
+//   Stage-1-self-host coverage : Literal · Path · Binary · Tuple · Block ·
+//   If (single arm, narrow scope) · Match · Call · Paren · Error.
+fn synth_expr(ctx : InferCtx, e : HirExprFull) -> (InferCtx, Ty) {
+    match e.kind {
+        HirExprKindFull::LiteralKind(lit) => synth_literal(ctx, lit),
+        HirExprKindFull::PathKind(p) => synth_path(ctx, e.span, p),
+        HirExprKindFull::BinaryKind(b) => synth_binary(ctx, e.span, b),
+        HirExprKindFull::UnaryKind(u) => synth_unary(ctx, e.span, u),
+        HirExprKindFull::TupleKind(t) => synth_tuple(ctx, e.span, t),
+        HirExprKindFull::ParenKind(p) => synth_paren(ctx, p),
+        HirExprKindFull::IfKind(if_e) => synth_if(ctx, e.span, if_e),
+        HirExprKindFull::CallKind(c) => synth_call(ctx, e.span, c),
+        HirExprKindFull::MatchKind(m) => synth_match(ctx, e.span, m),
+        HirExprKindFull::Error => (ctx, Ty::ErrorTy),
+        _ => {
+            // Variants outside the stage-1-self-host subset → fresh-var.
+            let (ctx1, v) = infer_ctx_fresh_var(ctx);
+            (ctx1, Ty::TyVarT(v))
+        },
+    }
+}
+
+// Check an expression against an expected type. Returns the updated ctx.
+//   Default impl : synthesize then unify.
+fn check_expr(ctx : InferCtx, e : HirExprFull, expected : Ty) -> InferCtx {
+    let span_e = e.span;
+    let (ctx1, t) = synth_expr(ctx, e);
+    infer_ctx_unify(ctx1, t, expected, span_e, string_from_str("expression"))
+}
+
+// Synthesize a literal. Int → IntTy ; Float → FloatTy ; Bool → BoolTy ;
+// Str → StrTy ; Char → IntTy (stage-0) ; Unit → UnitTy.
+fn synth_literal(ctx : InferCtx, lit : HirLiteral) -> (InferCtx, Ty) {
+    match lit.kind {
+        HirLiteralKind::Int       => (ctx, Ty::IntTy),
+        HirLiteralKind::Float     => (ctx, Ty::FloatTy),
+        HirLiteralKind::Str       => (ctx, Ty::StrTy),
+        HirLiteralKind::Char      => (ctx, Ty::IntTy),
+        HirLiteralKind::BoolTrue  => (ctx, Ty::BoolTy),
+        HirLiteralKind::BoolFalse => (ctx, Ty::BoolTy),
+        HirLiteralKind::Unit      => (ctx, Ty::UnitTy),
+    }
+}
+
+// Synthesize a path expression : look up the name in scope-chain.
+//   HIT  → NamedTy(def)
+//   MISS → emit diagnostic + ErrorTy
+fn synth_path(ctx : InferCtx, span : HirSpan, p : HirPathExpr) -> (InferCtx, Ty) {
+    let n = vec_len::<Symbol>(p.segments);
+    if n == 1i64 {
+        match vec_get::<Symbol>(p.segments, 0i64) {
+            Some(name) => {
+                match scope_chain_lookup(ctx.scopes, name) {
+                    Some(d) => (ctx, Ty::NamedTy(InferNamedTy { def : d })),
+                    None => {
+                        let ctx1 = infer_ctx_emit(ctx, span, string_from_str("unresolved identifier"));
+                        (ctx1, Ty::ErrorTy)
+                    },
+                }
+            },
+            None => {
+                let ctx1 = infer_ctx_emit(ctx, span, string_from_str("empty path"));
+                (ctx1, Ty::ErrorTy)
+            },
+        }
+    } else {
+        // Multi-segment paths deferred to W-E2-γ.
+        let (ctx1, v) = infer_ctx_fresh_var(ctx);
+        (ctx1, Ty::TyVarT(v))
+    }
+}
+
+// Synthesize a binary-op expression. Both sides unify with each other ;
+// arithmetic ops yield the operand-type (numeric) ; comparison ops yield Bool.
+fn synth_binary(ctx : InferCtx, span : HirSpan, b : HirBinaryExpr) -> (InferCtx, Ty) {
+    let lhs_e = match vec_get::<HirExprFull>(b.lhs, 0i64) {
+        Some(e) => e,
+        None => return (ctx, Ty::ErrorTy),
+    };
+    let rhs_e = match vec_get::<HirExprFull>(b.rhs, 0i64) {
+        Some(e) => e,
+        None => return (ctx, Ty::ErrorTy),
+    };
+    let (ctx1, t_lhs) = synth_expr(ctx, lhs_e);
+    let (ctx2, t_rhs) = synth_expr(ctx1, rhs_e);
+    let ctx3 = infer_ctx_unify(ctx2, t_lhs, t_rhs, span, string_from_str("binary-op operands"));
+    binop_result_ty(ctx3, b.op, t_lhs)
+}
+
+// Compute the result-type of a binary-op given the operand-type.
+fn binop_result_ty(ctx : InferCtx, op : HirBinOp, operand_ty : Ty) -> (InferCtx, Ty) {
+    match op {
+        HirBinOp::Add => (ctx, operand_ty),
+        HirBinOp::Sub => (ctx, operand_ty),
+        HirBinOp::Mul => (ctx, operand_ty),
+        HirBinOp::Div => (ctx, operand_ty),
+        HirBinOp::Rem => (ctx, operand_ty),
+        HirBinOp::EqOp => (ctx, Ty::BoolTy),
+        HirBinOp::Ne => (ctx, Ty::BoolTy),
+        HirBinOp::Lt => (ctx, Ty::BoolTy),
+        HirBinOp::Le => (ctx, Ty::BoolTy),
+        HirBinOp::Gt => (ctx, Ty::BoolTy),
+        HirBinOp::Ge => (ctx, Ty::BoolTy),
+        HirBinOp::And => (ctx, Ty::BoolTy),
+        HirBinOp::Or => (ctx, Ty::BoolTy),
+        HirBinOp::BitAnd => (ctx, operand_ty),
+        HirBinOp::BitOr => (ctx, operand_ty),
+        HirBinOp::BitXor => (ctx, operand_ty),
+        HirBinOp::Shl => (ctx, operand_ty),
+        HirBinOp::Shr => (ctx, operand_ty),
+        HirBinOp::Implies => (ctx, Ty::BoolTy),
+        HirBinOp::Entails => (ctx, Ty::BoolTy),
+    }
+}
+
+// Synthesize a unary-op expression. Not → Bool ; Neg/BitNot → operand-ty.
+fn synth_unary(ctx : InferCtx, span : HirSpan, u : HirUnaryExpr) -> (InferCtx, Ty) {
+    let opd_e = match vec_get::<HirExprFull>(u.operand, 0i64) {
+        Some(e) => e,
+        None => return (ctx, Ty::ErrorTy),
+    };
+    let (ctx1, t_opd) = synth_expr(ctx, opd_e);
+    match u.op {
+        HirUnOp::Not => {
+            let ctx2 = infer_ctx_unify(ctx1, t_opd, Ty::BoolTy, span, string_from_str("unary not"));
+            (ctx2, Ty::BoolTy)
+        },
+        HirUnOp::Neg => (ctx1, t_opd),
+        HirUnOp::BitNot => (ctx1, t_opd),
+        HirUnOp::RefOp => {
+            let (ctx2, v) = infer_ctx_fresh_var(ctx1);
+            (ctx2, Ty::TyVarT(v))
+        },
+        HirUnOp::RefMut => {
+            let (ctx2, v) = infer_ctx_fresh_var(ctx1);
+            (ctx2, Ty::TyVarT(v))
+        },
+        HirUnOp::Deref => {
+            let (ctx2, v) = infer_ctx_fresh_var(ctx1);
+            (ctx2, Ty::TyVarT(v))
+        },
+    }
+}
+
+// Synthesize a tuple expression : element-wise synth.
+fn synth_tuple(ctx : InferCtx, span : HirSpan, t : HirTupleExpr) -> (InferCtx, Ty) {
+    let n = vec_len::<HirExprFull>(t.elems);
+    let (ctx1, elem_tys) = synth_tuple_loop(ctx, t.elems, 0i64, n, Vec::new::<Ty>());
+    (ctx1, Ty::TupleTyT(InferTupleTy { elems : elem_tys }))
+}
+
+fn synth_tuple_loop(
+    ctx : InferCtx,
+    elems : Vec<HirExprFull>,
+    i : i64,
+    n : i64,
+    acc : Vec<Ty>,
+) -> (InferCtx, Vec<Ty>) {
+    if i == n {
+        (ctx, acc)
+    } else {
+        match vec_get::<HirExprFull>(elems, i) {
+            Some(e) => {
+                let (ctx1, t) = synth_expr(ctx, e);
+                let acc1 = vec_push::<Ty>(acc, t);
+                synth_tuple_loop(ctx1, elems, i + 1i64, n, acc1)
+            },
+            None => (ctx, acc),
+        }
+    }
+}
+
+// Synthesize a paren-expression : pass-through to inner.
+fn synth_paren(ctx : InferCtx, p : HirParenExpr) -> (InferCtx, Ty) {
+    match vec_get::<HirExprFull>(p.inner, 0i64) {
+        Some(e) => synth_expr(ctx, e),
+        None => (ctx, Ty::ErrorTy),
+    }
+}
+
+// Synthesize an if-expression. cond is checked against Bool ; then/else
+// branches are synthesized + unified to a common type.
+fn synth_if(ctx : InferCtx, span : HirSpan, if_e : HirIfExpr) -> (InferCtx, Ty) {
+    let cond_e = match vec_get::<HirExprFull>(if_e.cond, 0i64) {
+        Some(e) => e,
+        None => return (ctx, Ty::ErrorTy),
+    };
+    let ctx1 = check_expr(ctx, cond_e, Ty::BoolTy);
+    // Then-branch evaluates as block-type ; stage-1 returns fresh-var.
+    let (ctx2, t_then) = infer_ctx_fresh_var(ctx1);
+    // Else-branch
+    let n_else = vec_len::<HirExprFull>(if_e.else_branch);
+    if n_else == 0i64 {
+        // No-else → unit
+        let ctx3 = infer_ctx_unify(ctx2, Ty::TyVarT(t_then), Ty::UnitTy, span, string_from_str("if no-else"));
+        (ctx3, Ty::UnitTy)
+    } else {
+        match vec_get::<HirExprFull>(if_e.else_branch, 0i64) {
+            Some(else_e) => {
+                let (ctx3, t_else) = synth_expr(ctx2, else_e);
+                let ctx4 = infer_ctx_unify(ctx3, Ty::TyVarT(t_then), t_else, span, string_from_str("if branches"));
+                (ctx4, t_else)
+            },
+            None => (ctx2, Ty::TyVarT(t_then)),
+        }
+    }
+}
+
+// Synthesize a call expression. Callee must be a fn-type ; args check
+// element-wise against param-types.
+fn synth_call(ctx : InferCtx, span : HirSpan, c : HirCallExpr) -> (InferCtx, Ty) {
+    let callee_e = match vec_get::<HirExprFull>(c.callee, 0i64) {
+        Some(e) => e,
+        None => return (ctx, Ty::ErrorTy),
+    };
+    let (ctx1, t_callee) = synth_expr(ctx, callee_e);
+    let arity = vec_len::<HirCallArg>(c.args);
+    let (ctx2, arg_tys) = synth_call_args_loop(ctx1, c.args, 0i64, arity, Vec::new::<Ty>());
+    let (ctx3, ret_var) = infer_ctx_fresh_var(ctx2);
+    let expected_callee = Ty::FnTy(InferFnTy {
+        params    : arg_tys,
+        return_ty : vec_push::<Ty>(Vec::new::<Ty>(), Ty::TyVarT(ret_var)),
+    });
+    let ctx4 = infer_ctx_unify(ctx3, t_callee, expected_callee, span, string_from_str("function call"));
+    (ctx4, Ty::TyVarT(ret_var))
+}
+
+fn synth_call_args_loop(
+    ctx : InferCtx,
+    args : Vec<HirCallArg>,
+    i : i64,
+    n : i64,
+    acc : Vec<Ty>,
+) -> (InferCtx, Vec<Ty>) {
+    if i == n {
+        (ctx, acc)
+    } else {
+        match vec_get::<HirCallArg>(args, i) {
+            Some(arg) => {
+                let (ctx1, t) = synth_expr(ctx, arg.value);
+                let acc1 = vec_push::<Ty>(acc, t);
+                synth_call_args_loop(ctx1, args, i + 1i64, n, acc1)
+            },
+            None => (ctx, acc),
+        }
+    }
+}
+
+// Synthesize a match expression : scrutinee + arms unify under the same body-ty.
+//   Pattern → scrutinee-type narrowing happens via per-arm pat-binding extension
+//   (single-arm view in stage-1 ; full exhaustiveness in W-E2-γ).
+fn synth_match(ctx : InferCtx, span : HirSpan, m : HirMatchExpr) -> (InferCtx, Ty) {
+    let scrut_e = match vec_get::<HirExprFull>(m.scrutinee, 0i64) {
+        Some(e) => e,
+        None => return (ctx, Ty::ErrorTy),
+    };
+    let (ctx1, t_scrut) = synth_expr(ctx, scrut_e);
+    let (ctx2, t_body) = infer_ctx_fresh_var(ctx1);
+    let n = vec_len::<HirMatchArm>(m.arms);
+    let ctx3 = synth_match_arms_loop(ctx2, m.arms, 0i64, n, t_scrut, Ty::TyVarT(t_body), span);
+    (ctx3, Ty::TyVarT(t_body))
+}
+
+fn synth_match_arms_loop(
+    ctx : InferCtx,
+    arms : Vec<HirMatchArm>,
+    i : i64,
+    n : i64,
+    t_scrut : Ty,
+    t_body : Ty,
+    span : HirSpan,
+) -> InferCtx {
+    if i == n {
+        ctx
+    } else {
+        match vec_get::<HirMatchArm>(arms, i) {
+            Some(arm) => {
+                // Stage-1 : pattern-narrowing is structural ; we don't extend
+                // bindings in this slice — full narrowing in W-E2-γ.
+                let (ctx1, t_arm) = synth_expr(ctx, arm.body);
+                let ctx2 = infer_ctx_unify(ctx1, t_arm, t_body, span, string_from_str("match arm"));
+                synth_match_arms_loop(ctx2, arms, i + 1i64, n, t_scrut, t_body, span)
+            },
+            None => ctx,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § check_module — minimal entry-point.
+// ───────────────────────────────────────────────────────────────────────
+
+// `check_module` is the W-E2-β entry-point. Stage-1 implementation walks
+// the items.cssl HirModule but type-checks NOTHING in this slice — we
+// register zero diagnostics + return the empty ctx. W-E2-γ extends with
+// per-fn body-checking once items.cssl is migrated to use HirExprFull.
+fn check_module(m : HirModule) -> InferCtx {
+    let _ = m;
+    infer_ctx_new()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `subst_lookup_round_trip`.
+fn _example_subst_lookup_round_trip() -> bool {
+    let s0 = subst_new();
+    let v = ty_var_from_raw(7u32);
+    let s1 = subst_extend(s0, v, Ty::IntTy);
+    match subst_lookup(s1, v) {
+        Some(t) => match t { Ty::IntTy => true, _ => false },
+        None => false,
+    }
+}
+
+// Round-trip : subst_extend + subst_apply transitively resolves.
+fn _example_subst_apply_transitive() -> bool {
+    let s0 = subst_new();
+    let v0 = ty_var_from_raw(0u32);
+    let v1 = ty_var_from_raw(1u32);
+    let s1 = subst_extend(s0, v0, Ty::TyVarT(v1));
+    let s2 = subst_extend(s1, v1, Ty::IntTy);
+    match subst_apply(s2, Ty::TyVarT(v0)) {
+        Ty::IntTy => true,
+        _ => false,
+    }
+}
+
+// Round-trip : unify Int + Int succeeds ; unify Int + Bool fails.
+fn _example_unify_concrete_types() -> bool {
+    let s = subst_new();
+    let int_int = match unify(Ty::IntTy, Ty::IntTy, s) {
+        UnifyResult::UnifyOk(_) => true,
+        UnifyResult::UnifyErr(_) => false,
+    };
+    let int_bool = match unify(Ty::IntTy, Ty::BoolTy, s) {
+        UnifyResult::UnifyOk(_) => false,
+        UnifyResult::UnifyErr(_) => true,
+    };
+    if int_int { int_bool } else { false }
+}
+
+// Round-trip : unify a fresh var with Int yields a binding.
+fn _example_unify_var_with_int() -> bool {
+    let s = subst_new();
+    let v = ty_var_from_raw(42u32);
+    match unify(Ty::TyVarT(v), Ty::IntTy, s) {
+        UnifyResult::UnifyOk(s2) => {
+            match subst_lookup(s2, v) {
+                Some(Ty::IntTy) => true,
+                _ => false,
+            }
+        },
+        UnifyResult::UnifyErr(_) => false,
+    }
+}
+
+// Round-trip : occurs-check rejects v ↦ Tuple(v).
+fn _example_occurs_check_rejects_self() -> bool {
+    let v = ty_var_from_raw(1u32);
+    let recursive = Ty::TupleTyT(InferTupleTy {
+        elems : vec_push::<Ty>(Vec::new::<Ty>(), Ty::TyVarT(v)),
+    });
+    occurs_check(v, recursive)
+}
+
+// Round-trip : synthesize int-literal yields IntTy.
+fn _example_synth_literal_int() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit  = hir_literal_new(span, HirLiteralKind::Int);
+    let e    = hir_expr_literal(span, id, lit);
+    let ctx  = infer_ctx_new();
+    let (_, t) = synth_expr(ctx, e);
+    match t { Ty::IntTy => true, _ => false }
+}
+
+// Round-trip : synthesize bool-literal yields BoolTy.
+fn _example_synth_literal_bool() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit  = hir_literal_new(span, HirLiteralKind::BoolTrue);
+    let e    = hir_expr_literal(span, id, lit);
+    let ctx  = infer_ctx_new();
+    let (_, t) = synth_expr(ctx, e);
+    match t { Ty::BoolTy => true, _ => false }
+}
+
+// Round-trip : synthesize binary-add of two ints yields IntTy.
+fn _example_synth_binary_add_int() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_a = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let lit_b = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let bin = hir_expr_binary(span, id, HirBinOp::Add, lit_a, lit_b);
+    let ctx = infer_ctx_new();
+    let (_, t) = synth_expr(ctx, bin);
+    match t { Ty::IntTy => true, _ => false }
+}
+
+// Round-trip : synthesize binary-Lt of two ints yields BoolTy.
+fn _example_synth_binary_lt_yields_bool() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_a = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let lit_b = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let bin = hir_expr_binary(span, id, HirBinOp::Lt, lit_a, lit_b);
+    let ctx = infer_ctx_new();
+    let (_, t) = synth_expr(ctx, bin);
+    match t { Ty::BoolTy => true, _ => false }
+}
+
+// Round-trip : synthesize tuple-of-int-bool yields Tuple([Int, Bool]).
+fn _example_synth_tuple_mixed() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_i = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let lit_b = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::BoolTrue));
+    let elems = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), lit_i);
+    let elems = vec_push::<HirExprFull>(elems, lit_b);
+    let tup = hir_expr_tuple(span, id, elems);
+    let ctx = infer_ctx_new();
+    let (_, t) = synth_expr(ctx, tup);
+    match t {
+        Ty::TupleTyT(tup_ty) => {
+            let n_ok = vec_len::<Ty>(tup_ty.elems) == 2i64;
+            let first_ok = match vec_get::<Ty>(tup_ty.elems, 0i64) {
+                Some(Ty::IntTy) => true,
+                _ => false,
+            };
+            let second_ok = match vec_get::<Ty>(tup_ty.elems, 1i64) {
+                Some(Ty::BoolTy) => true,
+                _ => false,
+            };
+            if n_ok { if first_ok { second_ok } else { false } } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : scope-chain insert + lookup at module level.
+fn _example_scope_module_lookup() -> bool {
+    let c0 = scope_chain_new();
+    let name = symbol_from_raw(5u32);
+    let def = def_id_from_raw(99u32);
+    let c1 = scope_chain_insert_module(c0, name, def);
+    match scope_chain_lookup(c1, name) {
+        Some(d) => def_id_eq(d, def),
+        None => false,
+    }
+}
+
+// Round-trip : nested scope shadows module scope.
+fn _example_scope_nested_shadows_module() -> bool {
+    let c0 = scope_chain_new();
+    let name = symbol_from_raw(3u32);
+    let outer = def_id_from_raw(1u32);
+    let inner = def_id_from_raw(2u32);
+    let c1 = scope_chain_insert_module(c0, name, outer);
+    let c2 = scope_chain_enter(c1);
+    let c3 = scope_chain_insert(c2, name, inner);
+    let inner_ok = match scope_chain_lookup(c3, name) {
+        Some(d) => def_id_eq(d, inner),
+        None => false,
+    };
+    let c4 = scope_chain_leave(c3);
+    let outer_ok = match scope_chain_lookup(c4, name) {
+        Some(d) => def_id_eq(d, outer),
+        None => false,
+    };
+    if inner_ok { outer_ok } else { false }
+}
+
+// Round-trip : path-resolution finds an identifier in scope.
+fn _example_path_resolution_finds_identifier() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let name = symbol_from_raw(7u32);
+    let def  = def_id_from_raw(42u32);
+    let path_segs = vec_push::<Symbol>(Vec::new::<Symbol>(), name);
+    let path_e = hir_expr_path(span, id, path_segs);
+    let ctx0 = infer_ctx_new();
+    let scopes_with = scope_chain_insert_module(ctx0.scopes, name, def);
+    let ctx1 = InferCtx {
+        tcx_counter : ctx0.tcx_counter,
+        subst       : ctx0.subst,
+        scopes      : scopes_with,
+        diagnostics : ctx0.diagnostics,
+    };
+    let (_ctx2, t) = synth_expr(ctx1, path_e);
+    match t {
+        Ty::NamedTy(n) => def_id_eq(n.def, def),
+        _ => false,
+    }
+}
+
+// Round-trip : path-resolution emits diagnostic on miss.
+fn _example_path_resolution_misses_emit_diagnostic() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let name = symbol_from_raw(99u32);
+    let path_segs = vec_push::<Symbol>(Vec::new::<Symbol>(), name);
+    let path_e = hir_expr_path(span, id, path_segs);
+    let ctx0 = infer_ctx_new();
+    let (ctx1, t) = synth_expr(ctx0, path_e);
+    let err_ok = match t { Ty::ErrorTy => true, _ => false };
+    let diag_ok = vec_len::<InferDiagnostic>(ctx1.diagnostics) == 1i64;
+    if err_ok { diag_ok } else { false }
+}
+
+// Round-trip : check_expr unifies a literal against a wrong expected type
+// and emits a diagnostic.
+fn _example_check_expr_type_mismatch_emits_diagnostic() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit  = hir_literal_new(span, HirLiteralKind::Int);
+    let e    = hir_expr_literal(span, id, lit);
+    let ctx0 = infer_ctx_new();
+    let ctx1 = check_expr(ctx0, e, Ty::BoolTy);
+    vec_len::<InferDiagnostic>(ctx1.diagnostics) == 1i64
+}
+
+// Round-trip : generalize empty-Ty produces mono-scheme ; generalize var-Ty
+// produces a quantified scheme.
+fn _example_generalize_mono_vs_poly() -> bool {
+    let mono_scheme = generalize(Ty::IntTy);
+    let mono_ok = vec_is_empty::<TyVar>(mono_scheme.vars);
+    let v = ty_var_from_raw(5u32);
+    let poly_scheme = generalize(Ty::TyVarT(v));
+    let poly_ok = vec_len::<TyVar>(poly_scheme.vars) == 1i64;
+    if mono_ok { poly_ok } else { false }
+}
+
+// Round-trip : check_module accepts an empty module + emits zero diagnostics.
+fn _example_check_module_empty() -> bool {
+    let m = hir_module_empty(hir_span_dummy());
+    let ctx = check_module(m);
+    vec_is_empty::<InferDiagnostic>(ctx.diagnostics)
+}
+
+// Round-trip : self-resolve via impl-block stub. Inserts a binding for
+// `self` into a nested scope and looks it up.
+fn _example_self_resolve_via_impl_block() -> bool {
+    let c0 = scope_chain_new();
+    let self_sym = symbol_from_raw(0u32);
+    let impl_def = def_id_from_raw(33u32);
+    let c1 = scope_chain_enter(c0);
+    let c2 = scope_chain_insert(c1, self_sym, impl_def);
+    match scope_chain_lookup(c2, self_sym) {
+        Some(d) => def_id_eq(d, impl_def),
+        None => false,
+    }
+}
+
+// Round-trip : let-poly via single-binding scheme. Generalize Ty::TyVarT
+// then check that the scheme has 1 quantified var + body matches.
+fn _example_let_poly_single_binding() -> bool {
+    let v = ty_var_from_raw(11u32);
+    let scheme = generalize(Ty::TyVarT(v));
+    let var_ok = vec_len::<TyVar>(scheme.vars) == 1i64;
+    let body_ok = match scheme.body {
+        Ty::TyVarT(w) => ty_var_eq(w, v),
+        _ => false,
+    };
+    if var_ok { body_ok } else { false }
+}
+
+// Round-trip : match-expr type-narrowing — all arms unify to a common ty.
+fn _example_match_expr_arms_unify() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let scrut = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let arm_body_a = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let arm_body_b = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let arm_a = HirMatchArm {
+        span  : span,
+        attrs : Vec::new::<HirAttr>(),
+        pat   : hir_pattern_wildcard(span, id),
+        guard : None,
+        body  : arm_body_a,
+    };
+    let arm_b = HirMatchArm {
+        span  : span,
+        attrs : Vec::new::<HirAttr>(),
+        pat   : hir_pattern_wildcard(span, id),
+        guard : None,
+        body  : arm_body_b,
+    };
+    let arms = vec_push::<HirMatchArm>(Vec::new::<HirMatchArm>(), arm_a);
+    let arms = vec_push::<HirMatchArm>(arms, arm_b);
+    let m = hir_expr_match(span, id, scrut, arms);
+    let ctx = infer_ctx_new();
+    let (ctx1, _) = synth_expr(ctx, m);
+    vec_is_empty::<InferDiagnostic>(ctx1.diagnostics)
+}

@@ -1,0 +1,740 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/ty.cssl  —  HirTypeFull + HirTypeKindFull + HirEffectRowFull
+//
+// CSSLv3 stage-1 self-host : HIR type-tree IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/ty.rs
+// Wave-slice  : Wave-E2-β (W-E2-β · hir-in-cssl SECOND SLICE — T11-D253).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               compiler-cssl/hir/items.cssl  (HirSpan)
+//               compiler-cssl/hir/expr.cssl   (HirExprFull for refinement-pred)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : HIR types are pure-data records describing
+//   shape + capability + effect-row ; no side-effect, no control-flow. The
+//   resolver wires path-references via DefId so cross-item links are
+//   explicit + auditable. Substrate-sovereign : refinement predicates are
+//   data the elaborator reads, not embedded callbacks.
+//
+// § DESIGN
+//   `HirTypeFull` is the canonical W-E2-β type-record. `HirTypeKindFull`
+//   variant set :
+//     - PathTy · TupleTy · ArrayTy · SliceTy · ReferenceTy · CapabilityTy
+//     - FunctionTy · RefinedTy · InferTy · ErrorTy
+//   ⇒ 10 variants total · meets stage-1 self-host coverage target.
+//
+//   Capability-kind enum has the full Pony-6 set (Iso · Trn · Ref · Val
+//   · Box · Tag).
+//
+//   Refinement-shape enum : Tag · Predicate · Lipschitz mirrors Rust source.
+//
+//   `HirEffectRowFull` is the canonical effect-row record carrying
+//   Vec<HirEffectAnnotation> + optional row-tail (Symbol).
+//
+//   The W-E2-α `HirType` placeholder remains untouched in items.cssl so
+//   item-shape structs (HirFnParam.ty, HirFn.return_ty, HirGenericParam.bounds,
+//   HirWhereClause.ty/bounds, HirAssocTypeDecl.bounds, HirAssocTypeDef.ty,
+//   HirEnumVariant via HirStructBody fields, HirInterface.super_bounds,
+//   HirImpl.trait_/self_ty, HirHandler.handled_effect, HirTypeAlias.ty,
+//   HirConst.ty) keep compiling. W-E2-γ rationalizes by migrating items.cssl
+//   to use HirTypeFull once lowerer + infer fully wired.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. ENUM PAYLOADS : `enum HirTypeKindFull { PathTy(HirPathTy) ; ... }`
+//      mirrors the Rust source.
+//   2. RECURSION : nested types live in `Vec<HirTypeFull>` (singleton or multi).
+//      Rust `Box<HirType>` for elem/inner/return becomes singleton-Vec.
+//   3. NO `&str` IN STRUCT FIELDS : owned String for any string-typed field.
+//   4. EFFECT-ROW : `HirEffectArg` mirrors Rust via two-variant enum (Type/Expr).
+//   5. ARRAY-LEN-AS-EXPR : array-length is a HirExprFull singleton-Vec.
+//
+// § INVARIANTS  (stage-0)
+//   - Singleton-indirection Vecs always have len ≤ 1.
+//   - Capability-kind enum has exactly 6 variants (Iso · Trn · Ref · Val · Box · Tag).
+//   - Refinement-shape enum has exactly 3 variants (Tag · Predicate · Lipschitz).
+//   - HirEffectArg has exactly 2 variants (TypeArg · ExprArg).
+
+module com.apocky.compiler.hir.ty
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirCapKind — Pony-6 capability set.
+// ───────────────────────────────────────────────────────────────────────
+
+// 6-variant capability-kind (per CSSL caps spec mirroring Pony-6).
+//   Iso : isolated · sole-owner-of-mutable
+//   Trn : transition · sole-mutable-readonly-aliases-allowed
+//   RefCap : ref · multiple-mutable-aliases-OK-single-thread
+//   Val : value · immutable-share-anywhere
+//   BoxCap : box · readonly-view
+//   Tag : tag · identity-only
+enum HirCapKind {
+    Iso,
+    Trn,
+    RefCap,
+    Val,
+    BoxCap,
+    Tag,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirRefinementKind — refinement-shape enum.
+// ───────────────────────────────────────────────────────────────────────
+
+// 3-variant refinement-shape attached to a base type.
+//   TagRefinement       — `T'tagname` resolved by elaboration.
+//   PredicateRefinement — `{v : T | P(v)}` explicit predicate.
+//   LipschitzRefinement — `SDF'L<k>` Lipschitz-bound.
+enum HirRefinementKind {
+    TagRefinement(HirTagRefinement),
+    PredicateRefinement(HirPredicateRefinement),
+    LipschitzRefinement(HirLipschitzRefinement),
+}
+
+// `T'tagname` form.
+struct HirTagRefinement {
+    name : Symbol,
+}
+
+// `{v : T | P(v)}` form.
+struct HirPredicateRefinement {
+    binder    : Symbol,
+    predicate : Vec<HirExprFull>,  // singleton — predicate body
+}
+
+// `SDF'L<k>` Lipschitz-bound form.
+struct HirLipschitzRefinement {
+    bound : Vec<HirExprFull>,  // singleton — bound expression
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirEffectArg — single effect-row argument.
+// ───────────────────────────────────────────────────────────────────────
+
+// Effect arguments can be types or expressions in stage-0.
+enum HirEffectArg {
+    TypeArg(HirTypeFull),
+    ExprArg(HirExprFull),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirEffectAnnotation — single entry in an effect-row.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Effect<args>` form ; `name` is a path of segments (e.g., `Module::Effect`).
+struct HirEffectAnnotation {
+    span : HirSpan,
+    name : Vec<Symbol>,
+    args : Vec<HirEffectArg>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirEffectRowFull — `/ {e1, e2<arg>, … | μ}` form.
+// ───────────────────────────────────────────────────────────────────────
+
+// Effect-row attached to a function type. Replaces W-E2-α's
+// `HirEffectRow` placeholder. The `tail` Option<Symbol> is the
+// row-polymorphic variable name (e.g., `μ`) — `None` for closed rows.
+struct HirEffectRowFull {
+    span    : HirSpan,
+    effects : Vec<HirEffectAnnotation>,
+    tail    : Option<Symbol>,
+}
+
+// Construct a pure (empty + closed) effect-row.
+fn hir_effect_row_pure(span : HirSpan) -> HirEffectRowFull {
+    HirEffectRowFull {
+        span    : span,
+        effects : Vec::new::<HirEffectAnnotation>(),
+        tail    : None,
+    }
+}
+
+// Construct a closed effect-row from a list of annotations.
+fn hir_effect_row_closed(
+    span    : HirSpan,
+    effects : Vec<HirEffectAnnotation>,
+) -> HirEffectRowFull {
+    HirEffectRowFull {
+        span    : span,
+        effects : effects,
+        tail    : None,
+    }
+}
+
+// Construct an open (row-polymorphic) effect-row with a tail variable.
+fn hir_effect_row_open(
+    span    : HirSpan,
+    effects : Vec<HirEffectAnnotation>,
+    tail    : Symbol,
+) -> HirEffectRowFull {
+    HirEffectRowFull {
+        span    : span,
+        effects : effects,
+        tail    : Some(tail),
+    }
+}
+
+// `true` iff the row has no effects AND no tail-variable (pure).
+fn hir_effect_row_is_pure(r : HirEffectRowFull) -> bool {
+    let no_effs = vec_is_empty::<HirEffectAnnotation>(r.effects);
+    let no_tail = match r.tail { Some(_) => false, None => true };
+    if no_effs { no_tail } else { false }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirTypeKindFull — 10-variant type-kind enumeration.
+// ───────────────────────────────────────────────────────────────────────
+
+enum HirTypeKindFull {
+    PathTy(HirPathTy),
+    TupleTy(HirTupleTy),
+    ArrayTy(HirArrayTy),
+    SliceTy(HirSliceTy),
+    ReferenceTy(HirReferenceTy),
+    CapabilityTy(HirCapabilityTy),
+    FunctionTy(HirFunctionTy),
+    RefinedTy(HirRefinedTy),
+    InferTy,
+    ErrorTy,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Per-kind payload structs.
+// ───────────────────────────────────────────────────────────────────────
+
+// `module::T<A, B>` — resolved path with optional DefId + type-args.
+struct HirPathTy {
+    path      : Vec<Symbol>,
+    def       : Option<DefId>,
+    type_args : Vec<HirTypeFull>,
+}
+
+// `(T, U, V)` — arity 0 = unit.
+struct HirTupleTy {
+    elems : Vec<HirTypeFull>,
+}
+
+// `[T ; N]` — element + length-expression.
+struct HirArrayTy {
+    elem : Vec<HirTypeFull>,  // singleton
+    len  : Vec<HirExprFull>,  // singleton — length expression
+}
+
+// `[T]` — slice-of-T.
+struct HirSliceTy {
+    elem : Vec<HirTypeFull>,  // singleton
+}
+
+// `&T` / `&mut T` — reference type.
+struct HirReferenceTy {
+    mutable : bool,
+    inner   : Vec<HirTypeFull>,  // singleton
+}
+
+// `iso<T>` / `trn<T>` / `ref<T>` / `val<T>` / `box<T>` / `tag<T>` — capability-wrapped type.
+struct HirCapabilityTy {
+    cap   : HirCapKind,
+    inner : Vec<HirTypeFull>,  // singleton
+}
+
+// `fn(T1, …) -> U / ε` — function-pointer type with effect-row.
+struct HirFunctionTy {
+    params     : Vec<HirTypeFull>,
+    return_ty  : Vec<HirTypeFull>,  // singleton
+    effect_row : Vec<HirEffectRowFull>,  // singleton or empty
+}
+
+// Refined-type wrapping a base type.
+struct HirRefinedTy {
+    base : Vec<HirTypeFull>,  // singleton
+    kind : HirRefinementKind,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirTypeFull — top-level type-record.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirTypeFull` is the canonical W-E2-β type-record. Every node carries
+// span + HirId + kind. Mirrors Rust HirType 1:1.
+struct HirTypeFull {
+    span : HirSpan,
+    id   : HirId,
+    kind : HirTypeKindFull,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructor helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Construct an inferred-type placeholder (`_`).
+fn hir_type_full_infer(span : HirSpan, id : HirId) -> HirTypeFull {
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::InferTy,
+    }
+}
+
+// Construct an error-recovery type.
+fn hir_type_full_error(span : HirSpan, id : HirId) -> HirTypeFull {
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::ErrorTy,
+    }
+}
+
+// Construct a path-type.
+fn hir_type_full_path(
+    span      : HirSpan,
+    id        : HirId,
+    path      : Vec<Symbol>,
+    type_args : Vec<HirTypeFull>,
+) -> HirTypeFull {
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::PathTy(HirPathTy {
+            path      : path,
+            def       : None,
+            type_args : type_args,
+        }),
+    }
+}
+
+// Construct a unit-type `()`.
+fn hir_type_full_unit(span : HirSpan, id : HirId) -> HirTypeFull {
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::TupleTy(HirTupleTy { elems : Vec::new::<HirTypeFull>() }),
+    }
+}
+
+// Construct a tuple-type.
+fn hir_type_full_tuple(
+    span  : HirSpan,
+    id    : HirId,
+    elems : Vec<HirTypeFull>,
+) -> HirTypeFull {
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::TupleTy(HirTupleTy { elems : elems }),
+    }
+}
+
+// Construct a slice-type `[T]`.
+fn hir_type_full_slice(
+    span : HirSpan,
+    id   : HirId,
+    elem : HirTypeFull,
+) -> HirTypeFull {
+    let elem_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), elem);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::SliceTy(HirSliceTy { elem : elem_v }),
+    }
+}
+
+// Construct an array-type `[T ; N]`.
+fn hir_type_full_array(
+    span : HirSpan,
+    id   : HirId,
+    elem : HirTypeFull,
+    len  : HirExprFull,
+) -> HirTypeFull {
+    let elem_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), elem);
+    let len_v  = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), len);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::ArrayTy(HirArrayTy {
+            elem : elem_v,
+            len  : len_v,
+        }),
+    }
+}
+
+// Construct a reference-type `&T` / `&mut T`.
+fn hir_type_full_reference(
+    span    : HirSpan,
+    id      : HirId,
+    mutable : bool,
+    inner   : HirTypeFull,
+) -> HirTypeFull {
+    let inner_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), inner);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::ReferenceTy(HirReferenceTy {
+            mutable : mutable,
+            inner   : inner_v,
+        }),
+    }
+}
+
+// Construct a capability-wrapped type.
+fn hir_type_full_capability(
+    span  : HirSpan,
+    id    : HirId,
+    cap   : HirCapKind,
+    inner : HirTypeFull,
+) -> HirTypeFull {
+    let inner_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), inner);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::CapabilityTy(HirCapabilityTy {
+            cap   : cap,
+            inner : inner_v,
+        }),
+    }
+}
+
+// Construct a function-type `fn(params) -> return / effect-row`.
+fn hir_type_full_function(
+    span       : HirSpan,
+    id         : HirId,
+    params     : Vec<HirTypeFull>,
+    return_ty  : HirTypeFull,
+    effect_row : Option<HirEffectRowFull>,
+) -> HirTypeFull {
+    let ret_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), return_ty);
+    let eff_v = match effect_row {
+        Some(r) => vec_push::<HirEffectRowFull>(Vec::new::<HirEffectRowFull>(), r),
+        None    => Vec::new::<HirEffectRowFull>(),
+    };
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::FunctionTy(HirFunctionTy {
+            params     : params,
+            return_ty  : ret_v,
+            effect_row : eff_v,
+        }),
+    }
+}
+
+// Construct a tag-refined type `T'tag`.
+fn hir_type_full_refined_tag(
+    span : HirSpan,
+    id   : HirId,
+    base : HirTypeFull,
+    name : Symbol,
+) -> HirTypeFull {
+    let base_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), base);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::RefinedTy(HirRefinedTy {
+            base : base_v,
+            kind : HirRefinementKind::TagRefinement(HirTagRefinement { name : name }),
+        }),
+    }
+}
+
+// Construct a predicate-refined type `{v : T | P(v)}`.
+fn hir_type_full_refined_predicate(
+    span      : HirSpan,
+    id        : HirId,
+    base      : HirTypeFull,
+    binder    : Symbol,
+    predicate : HirExprFull,
+) -> HirTypeFull {
+    let base_v = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), base);
+    let pred_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), predicate);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::RefinedTy(HirRefinedTy {
+            base : base_v,
+            kind : HirRefinementKind::PredicateRefinement(HirPredicateRefinement {
+                binder    : binder,
+                predicate : pred_v,
+            }),
+        }),
+    }
+}
+
+// Construct a Lipschitz-refined type `T'L<k>`.
+fn hir_type_full_refined_lipschitz(
+    span  : HirSpan,
+    id    : HirId,
+    base  : HirTypeFull,
+    bound : HirExprFull,
+) -> HirTypeFull {
+    let base_v  = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), base);
+    let bound_v = vec_push::<HirExprFull>(Vec::new::<HirExprFull>(), bound);
+    HirTypeFull {
+        span : span,
+        id   : id,
+        kind : HirTypeKindFull::RefinedTy(HirRefinedTy {
+            base : base_v,
+            kind : HirRefinementKind::LipschitzRefinement(HirLipschitzRefinement {
+                bound : bound_v,
+            }),
+        }),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Selectors / projections.
+// ───────────────────────────────────────────────────────────────────────
+
+// Project the kind-tag for top-level dispatch. Stable u32 enumeration :
+//   0=PathTy · 1=TupleTy · 2=ArrayTy · 3=SliceTy · 4=ReferenceTy
+//   · 5=CapabilityTy · 6=FunctionTy · 7=RefinedTy · 8=InferTy · 9=ErrorTy.
+fn hir_type_kind_tag(t : HirTypeFull) -> u32 {
+    match t.kind {
+        HirTypeKindFull::PathTy(_)       => 0u32,
+        HirTypeKindFull::TupleTy(_)      => 1u32,
+        HirTypeKindFull::ArrayTy(_)      => 2u32,
+        HirTypeKindFull::SliceTy(_)      => 3u32,
+        HirTypeKindFull::ReferenceTy(_)  => 4u32,
+        HirTypeKindFull::CapabilityTy(_) => 5u32,
+        HirTypeKindFull::FunctionTy(_)   => 6u32,
+        HirTypeKindFull::RefinedTy(_)    => 7u32,
+        HirTypeKindFull::InferTy         => 8u32,
+        HirTypeKindFull::ErrorTy         => 9u32,
+    }
+}
+
+// `true` iff the type is the inferred-placeholder (`_`).
+fn hir_type_is_infer(t : HirTypeFull) -> bool {
+    hir_type_kind_tag(t) == 8u32
+}
+
+// `true` iff the type is the unit-tuple `()` (TupleTy with empty elems).
+fn hir_type_is_unit(t : HirTypeFull) -> bool {
+    match t.kind {
+        HirTypeKindFull::TupleTy(tup) => vec_is_empty::<HirTypeFull>(tup.elems),
+        _ => false,
+    }
+}
+
+// `true` iff the type is a primitive-path single-segment matching one of
+//   i8 · i16 · i32 · i64 · isize · u8 · u16 · u32 · u64 · usize
+//   · f16 · f32 · f64 · bool · str · String.
+//
+// Caller supplies the pre-resolved name-strings via the symbol-resolver
+// pattern : compares Symbol.raw against an array of known-primitive
+// raw-codes that the bootstrap interner is expected to pre-populate.
+//
+// Stage-0 NOTE : without an interner-handle, this returns true only when
+// the path is exactly one segment long and `def` is unresolved — leaves
+// the actual semantic check to infer.cssl which has the interner handle.
+fn hir_type_is_singleton_path(t : HirTypeFull) -> bool {
+    match t.kind {
+        HirTypeKindFull::PathTy(p) => vec_len::<Symbol>(p.path) == 1i64,
+        _ => false,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `type_kind_variants_constructible`. Round-trip a few kinds.
+fn _example_type_kind_variants_constructible() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let infer = hir_type_full_infer(span, id);
+    let tuple = hir_type_full_unit(span, id);
+    let err   = hir_type_full_error(span, id);
+    let infer_tag = hir_type_kind_tag(infer) == 8u32;
+    let tuple_tag = hir_type_kind_tag(tuple) == 1u32;
+    let err_tag   = hir_type_kind_tag(err) == 9u32;
+    if infer_tag { if tuple_tag { err_tag } else { false } } else { false }
+}
+
+// Mirror : `cap_kinds_enumerated`. Verify all 6 capability variants.
+fn _example_cap_kinds_6_variants() -> bool {
+    let caps = vec_push::<HirCapKind>(Vec::new::<HirCapKind>(), HirCapKind::Iso);
+    let caps = vec_push::<HirCapKind>(caps, HirCapKind::Trn);
+    let caps = vec_push::<HirCapKind>(caps, HirCapKind::RefCap);
+    let caps = vec_push::<HirCapKind>(caps, HirCapKind::Val);
+    let caps = vec_push::<HirCapKind>(caps, HirCapKind::BoxCap);
+    let caps = vec_push::<HirCapKind>(caps, HirCapKind::Tag);
+    vec_len::<HirCapKind>(caps) == 6i64
+}
+
+// Round-trip : reference-type preserves mutability flag + wraps inner.
+fn _example_reference_type_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let inner = hir_type_full_infer(span, id);
+    let ref_imm = hir_type_full_reference(span, id, false, inner);
+    let inner2 = hir_type_full_infer(span, id);
+    let ref_mut = hir_type_full_reference(span, id, true, inner2);
+    let imm_ok = match ref_imm.kind {
+        HirTypeKindFull::ReferenceTy(r) => {
+            if r.mutable { false } else { vec_len::<HirTypeFull>(r.inner) == 1i64 }
+        },
+        _ => false,
+    };
+    let mut_ok = match ref_mut.kind {
+        HirTypeKindFull::ReferenceTy(r) => {
+            if r.mutable { vec_len::<HirTypeFull>(r.inner) == 1i64 } else { false }
+        },
+        _ => false,
+    };
+    if imm_ok { mut_ok } else { false }
+}
+
+// Round-trip : capability-wrapped type tracks the cap-kind correctly.
+fn _example_capability_type_tracks_kind() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let inner = hir_type_full_infer(span, id);
+    let val_t = hir_type_full_capability(span, id, HirCapKind::Val, inner);
+    match val_t.kind {
+        HirTypeKindFull::CapabilityTy(c) => {
+            match c.cap {
+                HirCapKind::Val => vec_len::<HirTypeFull>(c.inner) == 1i64,
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : function-type packs params + return + optional effect-row.
+fn _example_function_type_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let p1 = hir_type_full_infer(span, id);
+    let p2 = hir_type_full_infer(span, id);
+    let params = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), p1);
+    let params = vec_push::<HirTypeFull>(params, p2);
+    let ret = hir_type_full_unit(span, id);
+    let fn_t = hir_type_full_function(span, id, params, ret, None);
+    match fn_t.kind {
+        HirTypeKindFull::FunctionTy(f) => {
+            let p_ok   = vec_len::<HirTypeFull>(f.params) == 2i64;
+            let r_ok   = vec_len::<HirTypeFull>(f.return_ty) == 1i64;
+            let eff_ok = vec_is_empty::<HirEffectRowFull>(f.effect_row);
+            if p_ok { if r_ok { eff_ok } else { false } } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : function-type w/ pure effect-row carries the row.
+fn _example_function_with_effect_row() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let ret  = hir_type_full_unit(span, id);
+    let row  = hir_effect_row_pure(span);
+    let fn_t = hir_type_full_function(span, id, Vec::new::<HirTypeFull>(), ret, Some(row));
+    match fn_t.kind {
+        HirTypeKindFull::FunctionTy(f) => {
+            let eff_one = vec_len::<HirEffectRowFull>(f.effect_row) == 1i64;
+            let row_pure = match vec_get::<HirEffectRowFull>(f.effect_row, 0i64) {
+                Some(r) => hir_effect_row_is_pure(r),
+                None => false,
+            };
+            if eff_one { row_pure } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : array-type packs element + length-expression.
+fn _example_array_type_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let elem = hir_type_full_infer(span, id);
+    let len_lit = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let arr_t = hir_type_full_array(span, id, elem, len_lit);
+    match arr_t.kind {
+        HirTypeKindFull::ArrayTy(a) => {
+            let e_ok = vec_len::<HirTypeFull>(a.elem) == 1i64;
+            let l_ok = vec_len::<HirExprFull>(a.len) == 1i64;
+            if e_ok { l_ok } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : refined-type wraps a base and carries the refinement-kind.
+fn _example_refined_type_tag_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let base = hir_type_full_infer(span, id);
+    let tag_sym = symbol_from_raw(99u32);
+    let refined = hir_type_full_refined_tag(span, id, base, tag_sym);
+    match refined.kind {
+        HirTypeKindFull::RefinedTy(r) => {
+            let base_ok = vec_len::<HirTypeFull>(r.base) == 1i64;
+            let kind_ok = match r.kind {
+                HirRefinementKind::TagRefinement(t) => symbol_eq(t.name, tag_sym),
+                _ => false,
+            };
+            if base_ok { kind_ok } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : predicate-refinement preserves binder + predicate body.
+fn _example_refined_type_predicate_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let base = hir_type_full_infer(span, id);
+    let binder = symbol_from_raw(11u32);
+    let pred = hir_expr_literal(span, id, hir_literal_new(span, HirLiteralKind::BoolTrue));
+    let refined = hir_type_full_refined_predicate(span, id, base, binder, pred);
+    match refined.kind {
+        HirTypeKindFull::RefinedTy(r) => {
+            match r.kind {
+                HirRefinementKind::PredicateRefinement(p) => {
+                    let binder_ok = symbol_eq(p.binder, binder);
+                    let body_ok = vec_len::<HirExprFull>(p.predicate) == 1i64;
+                    if binder_ok { body_ok } else { false }
+                },
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : effect-row pure detection works for empty + non-empty.
+fn _example_effect_row_pure_detection() -> bool {
+    let span = hir_span_dummy();
+    let pure_row = hir_effect_row_pure(span);
+    let pure_ok = hir_effect_row_is_pure(pure_row);
+    let tail_sym = symbol_from_raw(13u32);
+    let open_row = hir_effect_row_open(span, Vec::new::<HirEffectAnnotation>(), tail_sym);
+    let open_pure_no = if hir_effect_row_is_pure(open_row) { false } else { true };
+    if pure_ok { open_pure_no } else { false }
+}
+
+// Mirror : path-type singleton detection.
+fn _example_path_type_singleton_detection() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let i32_sym = symbol_from_raw(1u32);
+    let path = vec_push::<Symbol>(Vec::new::<Symbol>(), i32_sym);
+    let path_t = hir_type_full_path(span, id, path, Vec::new::<HirTypeFull>());
+    let single_ok = hir_type_is_singleton_path(path_t);
+    let infer = hir_type_full_infer(span, id);
+    let infer_no = if hir_type_is_singleton_path(infer) { false } else { true };
+    if single_ok { infer_no } else { false }
+}
+
+// Round-trip : unit-detection works for unit-tuple + non-unit-tuple.
+fn _example_unit_detection_for_tuple_types() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let unit = hir_type_full_unit(span, id);
+    let elem = hir_type_full_infer(span, id);
+    let elems = vec_push::<HirTypeFull>(Vec::new::<HirTypeFull>(), elem);
+    let pair = hir_type_full_tuple(span, id, elems);
+    let unit_ok = hir_type_is_unit(unit);
+    let pair_no = if hir_type_is_unit(pair) { false } else { true };
+    if unit_ok { pair_no } else { false }
+}

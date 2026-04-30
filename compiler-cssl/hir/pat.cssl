@@ -1,0 +1,687 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/hir/pat.cssl  —  HirPatternFull + HirPatternKindFull (12+ kinds)
+//
+// CSSLv3 stage-1 self-host : HIR pattern-tree IN CSSL.
+// Mirror-of   : compiler-rs/crates/cssl-hir/src/pat.rs
+// Wave-slice  : Wave-E2-β (W-E2-β · hir-in-cssl SECOND SLICE — T11-D253).
+// Depends-on  : compiler-cssl/hir/arena.cssl  (HirId / DefId)
+//               compiler-cssl/hir/symbol.cssl (Symbol)
+//               compiler-cssl/hir/items.cssl  (HirSpan)
+//               compiler-cssl/hir/expr.cssl   (HirLiteral)
+//               stdlib Vec ; stdlib Option ; stdlib String.
+//
+// § PRIME_DIRECTIVE preserved : HIR patterns are pure-data records describing
+//   match-arm shape. They expose NO side-effect, NO control-flow primitive —
+//   the matching algorithm reads patterns as data + decides. Substrate-
+//   sovereign : every pattern carries its own HirId so name-resolution +
+//   exhaustiveness-checking attach side-tables without mutating the tree.
+//
+// § DESIGN
+//   `HirPatternFull` is the canonical W-E2-β pattern-record. Each variant
+//   of `HirPatternKindFull` mirrors a distinct surface-syntax pattern :
+//     - Wildcard · Literal · Binding · Tuple · Struct · Variant
+//     - Or · Range · Ref · Slice · Path · SelfPat · Error
+//   ⇒ 13 variants total · ≥ 12-kind target met.
+//
+//   The W-E2-α `HirPattern` placeholder remains untouched in items.cssl so
+//   item-shape structs (HirFnParam.pat) keep compiling. W-E2-γ rationalizes
+//   by migrating items.cssl to use `HirPatternFull` once lowerer is fully
+//   wired.
+//
+// § STAGE-0 SOURCE-LEVEL NOTES
+//   1. ENUM PAYLOADS : `enum HirPatternKindFull { Wildcard ; Literal(HirLiteral) ; ... }`
+//      mirrors the Rust source directly (S6-B2 enum surface).
+//   2. RECURSION : nested patterns live in `Vec<HirPatternFull>` ; stage-0
+//      avoids `Box<T>` (cycle-broken via owning-Vec where needed).
+//   3. NO `&str` IN STRUCT FIELDS : owned String for any string-typed field.
+//   4. SUB-PAT-AS-NESTED : where Rust uses `Box<HirPattern>` for ref/range
+//      bounds, we use a 1-element Vec<HirPatternFull> as singleton-indirection.
+//
+// § INVARIANTS  (stage-0)
+//   - Every variant carries either zero or one Vec<HirPatternFull> payload
+//     (multi-Vec for Tuple/Or/Variant-args/Struct-fields/Slice-elements).
+//   - Singleton-indirection Vecs for Ref/Range bounds always have len ≤ 1.
+//   - Or-patterns flatten left-to-right ; nested Or remains valid but
+//     normalization is a future pass.
+
+module com.apocky.compiler.hir.pat
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirPatternField — `name : pat` or `name`-shorthand in struct-pat.
+// ───────────────────────────────────────────────────────────────────────
+
+// One field in a struct-pattern `Point { x, y : b }`.
+//   pat=None → shorthand `{ x }` ≡ `{ x : x }`.
+struct HirPatternField {
+    span : HirSpan,
+    name : Symbol,
+    pat  : Option<HirPatternFull>,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirPatternKindFull — 13-variant pattern-kind enumeration.
+// ───────────────────────────────────────────────────────────────────────
+
+// Each variant carries kind-specific payload struct/value. Where Rust uses
+// `Box<HirPattern>` for sub-patterns, we use singleton-Vec indirection.
+enum HirPatternKindFull {
+    // Leaf forms.
+    WildcardKind,
+    LiteralPatKind(HirLiteral),
+    SelfPatKind,
+    Error,
+
+    // Binding form — `x` / `mut x`.
+    BindingKind(HirBindingPat),
+
+    // Path form — `Module::Variant` (no payload, like `None`).
+    PathPatKind(HirPathPat),
+
+    // Recursive forms.
+    TuplePatKind(HirTuplePat),
+    StructPatKind(HirStructPat),
+    VariantKind(HirVariantPat),
+    OrPatKind(HirOrPat),
+    RangePatKind(HirRangePat),
+    RefPatKind(HirRefPat),
+    SlicePatKind(HirSlicePat),
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Per-kind payload structs.
+// ───────────────────────────────────────────────────────────────────────
+
+// `x` / `mut x` — binding pattern. The DefId is filled by name-resolution
+// for ref-style bindings ; `None` for fresh-binding cases.
+struct HirBindingPat {
+    mutable : bool,
+    name    : Symbol,
+}
+
+// `Module::Item` — path-only pattern (no payload).
+struct HirPathPat {
+    segments : Vec<Symbol>,
+    def      : Option<DefId>,
+}
+
+// `(a, b, c)` — tuple pattern.
+struct HirTuplePat {
+    elements : Vec<HirPatternFull>,
+}
+
+// `Point { x, y : b, .. }` — struct-pattern.
+//   rest=true → `..` rest-elision is present.
+struct HirStructPat {
+    path   : Vec<Symbol>,
+    def    : Option<DefId>,
+    fields : Vec<HirPatternField>,
+    rest   : bool,
+}
+
+// `Some(v)` / `Variant(a, b)` — variant-pattern with payload args.
+struct HirVariantPat {
+    path : Vec<Symbol>,
+    def  : Option<DefId>,
+    args : Vec<HirPatternFull>,
+}
+
+// `a | b | c` — or-pattern.
+struct HirOrPat {
+    alternatives : Vec<HirPatternFull>,
+}
+
+// `a..b` / `a..=b` / `..b` / `a..` — range pattern.
+//   start/end : singleton-Vec or empty.
+struct HirRangePat {
+    start     : Vec<HirPatternFull>,
+    end       : Vec<HirPatternFull>,
+    inclusive : bool,
+}
+
+// `ref x` / `ref mut x` — ref-binding pattern wrapping inner pattern.
+struct HirRefPat {
+    mutable : bool,
+    inner   : Vec<HirPatternFull>,  // singleton
+}
+
+// `[a, b, c]` / `[head, .., tail]` — slice pattern.
+//   has_rest=true → `..` separator present at index `rest_index` ;
+//   elements before rest_index are prefix, after are suffix.
+struct HirSlicePat {
+    elements   : Vec<HirPatternFull>,
+    has_rest   : bool,
+    rest_index : i64,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § HirPatternFull — top-level pattern-record.
+// ───────────────────────────────────────────────────────────────────────
+
+// `HirPatternFull` is the canonical W-E2-β pattern-record. Mirrors Rust
+// HirPattern 1:1.
+struct HirPatternFull {
+    span : HirSpan,
+    id   : HirId,
+    kind : HirPatternKindFull,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructor helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+// Construct a wildcard pattern.
+fn hir_pat_wildcard_full(span : HirSpan, id : HirId) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::WildcardKind,
+    }
+}
+
+// Construct a literal pattern.
+fn hir_pat_literal(span : HirSpan, id : HirId, lit : HirLiteral) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::LiteralPatKind(lit),
+    }
+}
+
+// Construct a self-pattern.
+fn hir_pat_self(span : HirSpan, id : HirId) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::SelfPatKind,
+    }
+}
+
+// Construct an error-recovery pattern.
+fn hir_pat_error(span : HirSpan, id : HirId) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::Error,
+    }
+}
+
+// Construct a binding pattern.
+fn hir_pat_binding(
+    span    : HirSpan,
+    id      : HirId,
+    mutable : bool,
+    name    : Symbol,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::BindingKind(HirBindingPat {
+            mutable : mutable,
+            name    : name,
+        }),
+    }
+}
+
+// Construct a path pattern.
+fn hir_pat_path(
+    span     : HirSpan,
+    id       : HirId,
+    segments : Vec<Symbol>,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::PathPatKind(HirPathPat {
+            segments : segments,
+            def      : None,
+        }),
+    }
+}
+
+// Construct a tuple pattern.
+fn hir_pat_tuple(
+    span     : HirSpan,
+    id       : HirId,
+    elements : Vec<HirPatternFull>,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::TuplePatKind(HirTuplePat { elements : elements }),
+    }
+}
+
+// Construct a struct pattern.
+fn hir_pat_struct(
+    span   : HirSpan,
+    id     : HirId,
+    path   : Vec<Symbol>,
+    fields : Vec<HirPatternField>,
+    rest   : bool,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::StructPatKind(HirStructPat {
+            path   : path,
+            def    : None,
+            fields : fields,
+            rest   : rest,
+        }),
+    }
+}
+
+// Construct a variant pattern.
+fn hir_pat_variant(
+    span : HirSpan,
+    id   : HirId,
+    path : Vec<Symbol>,
+    args : Vec<HirPatternFull>,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::VariantKind(HirVariantPat {
+            path : path,
+            def  : None,
+            args : args,
+        }),
+    }
+}
+
+// Construct an or-pattern.
+fn hir_pat_or(
+    span         : HirSpan,
+    id           : HirId,
+    alternatives : Vec<HirPatternFull>,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::OrPatKind(HirOrPat {
+            alternatives : alternatives,
+        }),
+    }
+}
+
+// Construct a range pattern.
+fn hir_pat_range(
+    span      : HirSpan,
+    id        : HirId,
+    start     : Option<HirPatternFull>,
+    end       : Option<HirPatternFull>,
+    inclusive : bool,
+) -> HirPatternFull {
+    let s_v = match start {
+        Some(s) => vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), s),
+        None    => Vec::new::<HirPatternFull>(),
+    };
+    let e_v = match end {
+        Some(e) => vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), e),
+        None    => Vec::new::<HirPatternFull>(),
+    };
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::RangePatKind(HirRangePat {
+            start     : s_v,
+            end       : e_v,
+            inclusive : inclusive,
+        }),
+    }
+}
+
+// Construct a ref-binding pattern wrapping an inner pattern.
+fn hir_pat_ref(
+    span    : HirSpan,
+    id      : HirId,
+    mutable : bool,
+    inner   : HirPatternFull,
+) -> HirPatternFull {
+    let inner_v = vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), inner);
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::RefPatKind(HirRefPat {
+            mutable : mutable,
+            inner   : inner_v,
+        }),
+    }
+}
+
+// Construct a slice pattern with no rest-elision.
+fn hir_pat_slice_full(
+    span     : HirSpan,
+    id       : HirId,
+    elements : Vec<HirPatternFull>,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::SlicePatKind(HirSlicePat {
+            elements   : elements,
+            has_rest   : false,
+            rest_index : -1i64,
+        }),
+    }
+}
+
+// Construct a slice pattern with rest-elision at given index.
+fn hir_pat_slice_with_rest(
+    span       : HirSpan,
+    id         : HirId,
+    elements   : Vec<HirPatternFull>,
+    rest_index : i64,
+) -> HirPatternFull {
+    HirPatternFull {
+        span : span,
+        id   : id,
+        kind : HirPatternKindFull::SlicePatKind(HirSlicePat {
+            elements   : elements,
+            has_rest   : true,
+            rest_index : rest_index,
+        }),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Selectors / projections.
+// ───────────────────────────────────────────────────────────────────────
+
+// Project the kind-tag for top-level dispatch. Stable u32 enumeration :
+//   0=Wildcard · 1=Literal · 2=SelfPat · 3=Error · 4=Binding · 5=Path
+//   · 6=Tuple · 7=Struct · 8=Variant · 9=Or · 10=Range · 11=Ref · 12=Slice.
+fn hir_pat_kind_tag(p : HirPatternFull) -> u32 {
+    match p.kind {
+        HirPatternKindFull::WildcardKind     => 0u32,
+        HirPatternKindFull::LiteralPatKind(_) => 1u32,
+        HirPatternKindFull::SelfPatKind      => 2u32,
+        HirPatternKindFull::Error            => 3u32,
+        HirPatternKindFull::BindingKind(_)   => 4u32,
+        HirPatternKindFull::PathPatKind(_)   => 5u32,
+        HirPatternKindFull::TuplePatKind(_)  => 6u32,
+        HirPatternKindFull::StructPatKind(_) => 7u32,
+        HirPatternKindFull::VariantKind(_)   => 8u32,
+        HirPatternKindFull::OrPatKind(_)     => 9u32,
+        HirPatternKindFull::RangePatKind(_)  => 10u32,
+        HirPatternKindFull::RefPatKind(_)    => 11u32,
+        HirPatternKindFull::SlicePatKind(_)  => 12u32,
+    }
+}
+
+// `true` iff the pattern is irrefutable (always matches).
+//   Irrefutable patterns : Wildcard · Binding · SelfPat ·
+//   Tuple-of-irrefutable · Ref-of-irrefutable.
+//   Refutable patterns   : Literal · Variant · Range · Or · Struct (in
+//   general, since rest may not match all fields) · Slice (similar) ·
+//   Path (could be a non-default variant constructor) · Error.
+fn hir_pat_is_irrefutable(p : HirPatternFull) -> bool {
+    match p.kind {
+        HirPatternKindFull::WildcardKind => true,
+        HirPatternKindFull::BindingKind(_) => true,
+        HirPatternKindFull::SelfPatKind => true,
+        HirPatternKindFull::TuplePatKind(t) => hir_pat_all_irrefutable(t.elements),
+        HirPatternKindFull::RefPatKind(r) => {
+            match vec_get::<HirPatternFull>(r.inner, 0i64) {
+                Some(inner) => hir_pat_is_irrefutable(inner),
+                None => false,
+            }
+        },
+        HirPatternKindFull::LiteralPatKind(_) => false,
+        HirPatternKindFull::PathPatKind(_) => false,
+        HirPatternKindFull::StructPatKind(_) => false,
+        HirPatternKindFull::VariantKind(_) => false,
+        HirPatternKindFull::OrPatKind(_) => false,
+        HirPatternKindFull::RangePatKind(_) => false,
+        HirPatternKindFull::SlicePatKind(_) => false,
+        HirPatternKindFull::Error => false,
+    }
+}
+
+// `true` iff every pattern in `pats` is irrefutable. Recursive helper for
+// hir_pat_is_irrefutable's tuple case.
+fn hir_pat_all_irrefutable(pats : Vec<HirPatternFull>) -> bool {
+    hir_pat_all_irrefutable_loop(pats, 0i64)
+}
+
+// Inner loop walking the Vec ; returns false on first refutable element.
+fn hir_pat_all_irrefutable_loop(pats : Vec<HirPatternFull>, i : i64) -> bool {
+    let n = vec_len::<HirPatternFull>(pats);
+    if i == n {
+        true
+    } else {
+        match vec_get::<HirPatternFull>(pats, i) {
+            Some(p) => {
+                if hir_pat_is_irrefutable(p) {
+                    hir_pat_all_irrefutable_loop(pats, i + 1i64)
+                } else {
+                    false
+                }
+            },
+            None => true,
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Tests embedded as documentation + worked examples.
+//   Mirror the Rust `mod tests` block + add round-trip / kind-tag tests.
+// ───────────────────────────────────────────────────────────────────────
+
+// Mirror : `pattern_kinds_constructible`. Wildcard + Error.
+fn _example_pattern_kinds_constructible() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let wild = hir_pat_wildcard_full(span, id);
+    let err  = hir_pat_error(span, id);
+    let wild_tag = hir_pat_kind_tag(wild) == 0u32;
+    let err_tag  = hir_pat_kind_tag(err) == 3u32;
+    if wild_tag { err_tag } else { false }
+}
+
+// Round-trip : binding pattern preserves mutability + name.
+fn _example_binding_pattern_roundtrip() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let name = symbol_from_raw(42u32);
+    let bind_immut = hir_pat_binding(span, id, false, name);
+    let bind_mut   = hir_pat_binding(span, id, true,  name);
+    let immut_ok = match bind_immut.kind {
+        HirPatternKindFull::BindingKind(b) => {
+            if b.mutable { false } else { symbol_eq(b.name, name) }
+        },
+        _ => false,
+    };
+    let mut_ok = match bind_mut.kind {
+        HirPatternKindFull::BindingKind(b) => {
+            if b.mutable { symbol_eq(b.name, name) } else { false }
+        },
+        _ => false,
+    };
+    if immut_ok { mut_ok } else { false }
+}
+
+// Round-trip : tuple pattern preserves N elements.
+fn _example_tuple_pattern_packs_n_elements() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let p1 = hir_pat_wildcard_full(span, id);
+    let p2 = hir_pat_wildcard_full(span, id);
+    let p3 = hir_pat_wildcard_full(span, id);
+    let elems = vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), p1);
+    let elems = vec_push::<HirPatternFull>(elems, p2);
+    let elems = vec_push::<HirPatternFull>(elems, p3);
+    let tup = hir_pat_tuple(span, id, elems);
+    match tup.kind {
+        HirPatternKindFull::TuplePatKind(t) => vec_len::<HirPatternFull>(t.elements) == 3i64,
+        _ => false,
+    }
+}
+
+// Round-trip : variant pattern preserves path + args.
+fn _example_variant_pattern_path_and_args() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let some_sym = symbol_from_raw(7u32);
+    let path = vec_push::<Symbol>(Vec::new::<Symbol>(), some_sym);
+    let arg = hir_pat_wildcard_full(span, id);
+    let args = vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), arg);
+    let var = hir_pat_variant(span, id, path, args);
+    match var.kind {
+        HirPatternKindFull::VariantKind(v) => {
+            let path_ok = vec_len::<Symbol>(v.path) == 1i64;
+            let args_ok = vec_len::<HirPatternFull>(v.args) == 1i64;
+            if path_ok { args_ok } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : ref pattern preserves mutability flag + wraps inner.
+fn _example_ref_pattern_wraps_inner() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let inner = hir_pat_wildcard_full(span, id);
+    let ref_pat = hir_pat_ref(span, id, true, inner);
+    match ref_pat.kind {
+        HirPatternKindFull::RefPatKind(r) => {
+            if r.mutable { vec_len::<HirPatternFull>(r.inner) == 1i64 } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : range pattern w/ both bounds + inclusive flag.
+fn _example_range_pattern_bounds() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_lo = hir_literal_new(span, HirLiteralKind::Int);
+    let lit_hi = hir_literal_new(span, HirLiteralKind::Int);
+    let lo_pat = hir_pat_literal(span, id, lit_lo);
+    let hi_pat = hir_pat_literal(span, id, lit_hi);
+    let r = hir_pat_range(span, id, Some(lo_pat), Some(hi_pat), true);
+    match r.kind {
+        HirPatternKindFull::RangePatKind(rp) => {
+            let s_ok = vec_len::<HirPatternFull>(rp.start) == 1i64;
+            let e_ok = vec_len::<HirPatternFull>(rp.end) == 1i64;
+            let inc_ok = rp.inclusive;
+            if s_ok { if e_ok { inc_ok } else { false } } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : open-ended range pattern (no lower bound).
+fn _example_range_pattern_open_lower() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let lit_hi = hir_literal_new(span, HirLiteralKind::Int);
+    let hi_pat = hir_pat_literal(span, id, lit_hi);
+    let r = hir_pat_range(span, id, None, Some(hi_pat), false);
+    match r.kind {
+        HirPatternKindFull::RangePatKind(rp) => {
+            let s_empty = vec_is_empty::<HirPatternFull>(rp.start);
+            let e_one   = vec_len::<HirPatternFull>(rp.end) == 1i64;
+            if s_empty { e_one } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Round-trip : slice pattern with rest-elision tracks rest_index.
+fn _example_slice_pattern_with_rest() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let p1 = hir_pat_wildcard_full(span, id);
+    let p2 = hir_pat_wildcard_full(span, id);
+    let elems = vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), p1);
+    let elems = vec_push::<HirPatternFull>(elems, p2);
+    let slice = hir_pat_slice_with_rest(span, id, elems, 1i64);
+    match slice.kind {
+        HirPatternKindFull::SlicePatKind(s) => {
+            if s.has_rest { s.rest_index == 1i64 } else { false }
+        },
+        _ => false,
+    }
+}
+
+// Irrefutable check : wildcard + binding are irrefutable ;
+// literal + variant + range are refutable.
+fn _example_irrefutable_classification() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let wild = hir_pat_wildcard_full(span, id);
+    let bind = hir_pat_binding(span, id, false, symbol_from_raw(0u32));
+    let lit  = hir_pat_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let wild_irref = hir_pat_is_irrefutable(wild);
+    let bind_irref = hir_pat_is_irrefutable(bind);
+    let lit_refut  = if hir_pat_is_irrefutable(lit) { false } else { true };
+    if wild_irref { if bind_irref { lit_refut } else { false } } else { false }
+}
+
+// Tuple of irrefutables is irrefutable ; tuple containing literal is refutable.
+fn _example_tuple_irrefutable_propagation() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let w1 = hir_pat_wildcard_full(span, id);
+    let w2 = hir_pat_wildcard_full(span, id);
+    let pure_wild = vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), w1);
+    let pure_wild = vec_push::<HirPatternFull>(pure_wild, w2);
+    let tup_pure = hir_pat_tuple(span, id, pure_wild);
+    let tup_pure_irref = hir_pat_is_irrefutable(tup_pure);
+
+    let w3 = hir_pat_wildcard_full(span, id);
+    let lit = hir_pat_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let mixed = vec_push::<HirPatternFull>(Vec::new::<HirPatternFull>(), w3);
+    let mixed = vec_push::<HirPatternFull>(mixed, lit);
+    let tup_mixed = hir_pat_tuple(span, id, mixed);
+    let tup_mixed_refut = if hir_pat_is_irrefutable(tup_mixed) { false } else { true };
+
+    if tup_pure_irref { tup_mixed_refut } else { false }
+}
+
+// Mirror : count of pattern-kind variants is at least 12.
+fn _example_pattern_kind_variant_count_at_least_12() -> bool {
+    let span = hir_span_dummy();
+    let id   = hir_id_dummy();
+    let p0 = hir_pat_wildcard_full(span, id);
+    let p1 = hir_pat_literal(span, id, hir_literal_new(span, HirLiteralKind::Int));
+    let p2 = hir_pat_self(span, id);
+    let p3 = hir_pat_error(span, id);
+    let p4 = hir_pat_binding(span, id, false, symbol_from_raw(0u32));
+    let p5 = hir_pat_path(span, id, Vec::new::<Symbol>());
+    let p6 = hir_pat_tuple(span, id, Vec::new::<HirPatternFull>());
+    let p7 = hir_pat_struct(span, id, Vec::new::<Symbol>(), Vec::new::<HirPatternField>(), false);
+    let p8 = hir_pat_variant(span, id, Vec::new::<Symbol>(), Vec::new::<HirPatternFull>());
+    let p9 = hir_pat_or(span, id, Vec::new::<HirPatternFull>());
+    let p10 = hir_pat_range(span, id, None, None, false);
+    let p11 = hir_pat_ref(span, id, false, hir_pat_wildcard_full(span, id));
+    let p12 = hir_pat_slice_full(span, id, Vec::new::<HirPatternFull>());
+    let tags_distinct = if hir_pat_kind_tag(p0) == 0u32 {
+        if hir_pat_kind_tag(p1) == 1u32 {
+            if hir_pat_kind_tag(p2) == 2u32 {
+                if hir_pat_kind_tag(p3) == 3u32 {
+                    if hir_pat_kind_tag(p4) == 4u32 {
+                        if hir_pat_kind_tag(p5) == 5u32 {
+                            if hir_pat_kind_tag(p6) == 6u32 {
+                                if hir_pat_kind_tag(p7) == 7u32 {
+                                    if hir_pat_kind_tag(p8) == 8u32 {
+                                        if hir_pat_kind_tag(p9) == 9u32 {
+                                            if hir_pat_kind_tag(p10) == 10u32 {
+                                                if hir_pat_kind_tag(p11) == 11u32 {
+                                                    hir_pat_kind_tag(p12) == 12u32
+                                                } else { false }
+                                            } else { false }
+                                        } else { false }
+                                    } else { false }
+                                } else { false }
+                            } else { false }
+                        } else { false }
+                    } else { false }
+                } else { false }
+            } else { false }
+        } else { false }
+    } else { false };
+    tags_distinct
+}
