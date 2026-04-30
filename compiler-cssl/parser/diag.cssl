@@ -1,0 +1,456 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § compiler-cssl/parser/diag.cssl  —  CSSL stage-1 diagnostic surface
+//
+// CSSLv3 stage-1 self-host bootstrap.
+// Mirrors design from compiler-rs/crates/cssl-parse/src/error.rs +
+// compiler-rs/crates/cssl-ast/src/diag.rs (Diagnostic struct + Severity).
+//
+// § ROLE  ← W-E1-α (parser-in-cssl FIRST SLICE)
+//   Parser rules NEVER return Result — they always produce a CST node
+//   (possibly a synthetic Error variant) and accumulate diagnostics into
+//   a shared bag. This keeps rule-signatures uniform and lets LSP partial
+//   documents still walk a CST after a parse-error. The diag module here
+//   provides :
+//     - Severity enum  : Error / Warning / Note
+//     - Diagnostic struct  : { severity, msg, span, labels }
+//     - DiagnosticBag  : Vec<Diagnostic> + push helpers
+//     - factory helpers : diag_error / diag_warning / diag_expected_one
+//                         / diag_expected_any / diag_unexpected_eof /
+//                         diag_nyi / diag_custom
+//
+// § PRIME_DIRECTIVE preserved : diagnostics are the cognitive-integrity
+//   surface of the compiler. They are ACTIONABLE, point at exact spans,
+//   and never coerce silent acceptance. A diagnostic is either visible
+//   to the user OR explicitly suppressed — never hidden.
+//
+// § DEPS
+//   stdlib/string.cssl  — String for messages
+//   stdlib/vec.cssl     — Vec<Diagnostic> for the bag + Vec<Label> for labels
+//   compiler-cssl/parser/lexer.cssl — Span + TokenKind for the spans
+//                                     + token-kind-name rendering
+//
+// § STAGE-1 NOTE
+//   String-formatting of TokenKind names is hand-rolled here (no Display
+//   trait yet ; trait-derive lands in a follow-up slice). Each variant
+//   has a deterministic short name suitable for IDE quick-fix detection
+//   and CI substring assertions, mirroring the Rust-stage-0 #[error(...)]
+//   strings in `compiler-rs/.../error.rs`.
+
+module com.apocky.compiler.parser.diag
+
+import com.apocky.stdlib.option
+import com.apocky.stdlib.string
+import com.apocky.stdlib.vec
+import com.apocky.compiler.parser.lexer
+
+// ───────────────────────────────────────────────────────────────────────
+// § Severity
+// ───────────────────────────────────────────────────────────────────────
+
+// Diagnostic severity tier. Mirrors cssl_ast::Severity.
+enum Severity {
+    Error,
+    Warning,
+    Note,
+}
+
+// `severity_as_str(s)` — canonical short-form rendering.
+fn severity_as_str(s : Severity) -> &str {
+    match s {
+        Severity::Error   => "error",
+        Severity::Warning => "warning",
+        Severity::Note    => "note",
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Label  ← optional secondary span on a diagnostic
+// ───────────────────────────────────────────────────────────────────────
+
+// `Label { span, msg }` — secondary span attached to a Diagnostic. Used to
+// point at e.g. the opening `{` for an unmatched-close diagnostic.
+struct Label {
+    span : Span,
+    msg  : String,
+}
+
+// `label_new(span, msg)` — primary constructor.
+fn label_new(span : Span, msg : String) -> Label {
+    Label { span : span, msg : msg }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Diagnostic
+// ───────────────────────────────────────────────────────────────────────
+
+// `Diagnostic { severity, msg, span, labels }` — a single emit-able
+// diagnostic record. The span is the PRIMARY pointer ; secondary labels
+// can be added via `with_label` for richer rendering.
+struct Diagnostic {
+    severity : Severity,
+    msg      : String,
+    span     : Span,
+    labels   : Vec<Label>,
+}
+
+// `diag_error(msg, span)` — primary error-tier factory.
+fn diag_error(msg : String, span : Span) -> Diagnostic {
+    Diagnostic {
+        severity : Severity::Error,
+        msg      : msg,
+        span     : span,
+        labels   : Vec::<Label>::new(),
+    }
+}
+
+// `diag_warning(msg, span)` — primary warning-tier factory.
+fn diag_warning(msg : String, span : Span) -> Diagnostic {
+    Diagnostic {
+        severity : Severity::Warning,
+        msg      : msg,
+        span     : span,
+        labels   : Vec::<Label>::new(),
+    }
+}
+
+// `diag_note(msg, span)` — primary note-tier factory.
+fn diag_note(msg : String, span : Span) -> Diagnostic {
+    Diagnostic {
+        severity : Severity::Note,
+        msg      : msg,
+        span     : span,
+        labels   : Vec::<Label>::new(),
+    }
+}
+
+// `diag_with_label(d, label)` — attach a secondary label.
+fn diag_with_label(d : Diagnostic, label : Label) -> Diagnostic {
+    let mut out = d ;
+    vec_push::<Label>(out.labels, label) ;
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Parser-error factories
+// ───────────────────────────────────────────────────────────────────────
+
+// `diag_expected_one(expected, found, span, ctx)` — build the canonical
+// "expected X, found Y while parsing Z" diagnostic. Mirrors
+// compiler-rs ParseError::Expected with a single alternative.
+fn diag_expected_one(expected : TokenKind,
+                     found    : TokenKind,
+                     span     : Span,
+                     ctx      : &str) -> Diagnostic {
+    let mut msg = string_from_str("expected ") ;
+    msg = string_concat(msg, token_kind_name(expected)) ;
+    msg = string_concat(msg, string_from_str(", found ")) ;
+    msg = string_concat(msg, token_kind_name(found)) ;
+    msg = string_concat(msg, string_from_str(" while parsing ")) ;
+    msg = string_concat(msg, string_from_str(ctx)) ;
+    diag_error(msg, span)
+}
+
+// `diag_expected_any(expected, found, span, ctx)` — multi-alternative
+// version of expected_one.
+fn diag_expected_any(expected : Vec<TokenKind>,
+                     found    : TokenKind,
+                     span     : Span,
+                     ctx      : &str) -> Diagnostic {
+    let mut msg = string_from_str("expected one of [") ;
+    msg = string_concat(msg, render_kinds(expected)) ;
+    msg = string_concat(msg, string_from_str("], found ")) ;
+    msg = string_concat(msg, token_kind_name(found)) ;
+    msg = string_concat(msg, string_from_str(" while parsing ")) ;
+    msg = string_concat(msg, string_from_str(ctx)) ;
+    diag_error(msg, span)
+}
+
+// `diag_unexpected_eof(span, ctx)` — premature-eof diagnostic.
+fn diag_unexpected_eof(span : Span, ctx : &str) -> Diagnostic {
+    let mut msg = string_from_str("unexpected end of input while parsing ") ;
+    msg = string_concat(msg, string_from_str(ctx)) ;
+    diag_error(msg, span)
+}
+
+// `diag_nyi(form, span)` — "syntactic form not yet supported at stage1"
+// diagnostic ; used for spec-acknowledged forms that are reserved but
+// not yet implementable.
+fn diag_nyi(form : &str, span : Span) -> Diagnostic {
+    let mut msg = string_from_str("syntactic form not yet supported at stage1 : ") ;
+    msg = string_concat(msg, string_from_str(form)) ;
+    diag_error(msg, span)
+}
+
+// `diag_custom(msg, span)` — free-form factory (used sparingly).
+fn diag_custom(msg : String, span : Span) -> Diagnostic {
+    diag_error(msg, span)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DiagnosticBag (thin Vec<Diagnostic> wrapper)
+// ───────────────────────────────────────────────────────────────────────
+
+// `DiagnosticBag` — accumulator carried through the parser. The parser
+// pushes onto it ; the public API of cssl_parse exposes it via
+// `compile()` for IDE consumption.
+struct DiagnosticBag {
+    items : Vec<Diagnostic>,
+}
+
+// `bag_new()` — empty bag.
+fn bag_new() -> DiagnosticBag {
+    DiagnosticBag { items : Vec::<Diagnostic>::new() }
+}
+
+// `bag_push(b, d)` — append.
+fn bag_push(b : &mut DiagnosticBag, d : Diagnostic) {
+    vec_push::<Diagnostic>(b.items, d)
+}
+
+// `bag_count(b)` — total entry count.
+fn bag_count(b : &DiagnosticBag) -> u32 {
+    vec_len::<Diagnostic>(b.items)
+}
+
+// `bag_has_errors(b)` — true iff at least one Error-severity entry.
+fn bag_has_errors(b : &DiagnosticBag) -> bool {
+    let n = vec_len::<Diagnostic>(b.items) ;
+    let mut i : u32 = 0'u32 ;
+    let mut found = false ;
+    while i < n && !found {
+        let d = vec_get_unchecked::<Diagnostic>(b.items, i) ;
+        match d.severity {
+            Severity::Error => { found = true ; }
+            _               => { i = i + 1'u32 ; }
+        }
+    }
+    found
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Token-kind rendering (hand-rolled)
+// ───────────────────────────────────────────────────────────────────────
+
+// `token_kind_name(k)` — short canonical name for diagnostic messages.
+// Each name is stable for CI assertions ; mirrors the Debug output of the
+// Rust enum (e.g., `Keyword(Fn)` becomes `"Keyword(Fn)"`).
+fn token_kind_name(k : TokenKind) -> String {
+    match k {
+        TokenKind::Ident                 => string_from_str("Ident"),
+        TokenKind::IntLiteral            => string_from_str("IntLiteral"),
+        TokenKind::FloatLiteral          => string_from_str("FloatLiteral"),
+        TokenKind::StringLiteralNormal   => string_from_str("StringLiteral(Normal)"),
+        TokenKind::StringLiteralRaw      => string_from_str("StringLiteral(Raw)"),
+        TokenKind::CharLiteral           => string_from_str("CharLiteral"),
+        TokenKind::Suffix(_)             => string_from_str("Suffix"),
+        TokenKind::Keyword(kw)           => render_keyword(kw),
+        TokenKind::LParen                => string_from_str("("),
+        TokenKind::RParen                => string_from_str(")"),
+        TokenKind::LBrace                => string_from_str("{"),
+        TokenKind::RBrace                => string_from_str("}"),
+        TokenKind::LBracket              => string_from_str("["),
+        TokenKind::RBracket              => string_from_str("]"),
+        TokenKind::Comma                 => string_from_str(","),
+        TokenKind::Semi                  => string_from_str(";"),
+        TokenKind::Colon                 => string_from_str(":"),
+        TokenKind::ColonColon            => string_from_str("::"),
+        TokenKind::Dot                   => string_from_str("."),
+        TokenKind::DotDot                => string_from_str(".."),
+        TokenKind::DotDotEq              => string_from_str("..="),
+        TokenKind::At                    => string_from_str("@"),
+        TokenKind::Hash                  => string_from_str("#"),
+        TokenKind::Dollar                => string_from_str("$"),
+        TokenKind::Apostrophe            => string_from_str("'"),
+        TokenKind::Question              => string_from_str("?"),
+        TokenKind::QuestionQuestion      => string_from_str("??"),
+        TokenKind::Plus                  => string_from_str("+"),
+        TokenKind::Minus                 => string_from_str("-"),
+        TokenKind::Star                  => string_from_str("*"),
+        TokenKind::Slash                 => string_from_str("/"),
+        TokenKind::Percent               => string_from_str("%"),
+        TokenKind::Eq                    => string_from_str("="),
+        TokenKind::EqEq                  => string_from_str("=="),
+        TokenKind::Ne                    => string_from_str("!="),
+        TokenKind::Lt                    => string_from_str("<"),
+        TokenKind::Le                    => string_from_str("<="),
+        TokenKind::Gt                    => string_from_str(">"),
+        TokenKind::Ge                    => string_from_str(">="),
+        TokenKind::Amp                   => string_from_str("&"),
+        TokenKind::Pipe                  => string_from_str("|"),
+        TokenKind::Caret                 => string_from_str("^"),
+        TokenKind::Tilde                 => string_from_str("~"),
+        TokenKind::Bang                  => string_from_str("!"),
+        TokenKind::AmpAmp                => string_from_str("&&"),
+        TokenKind::PipePipe              => string_from_str("||"),
+        TokenKind::LShift                => string_from_str("<<"),
+        TokenKind::RShift                => string_from_str(">>"),
+        TokenKind::Arrow                 => string_from_str("->"),
+        TokenKind::LeftArrow             => string_from_str("<-"),
+        TokenKind::BiArrow               => string_from_str("<->"),
+        TokenKind::FatArrow              => string_from_str("=>"),
+        TokenKind::PipeArrow             => string_from_str("|>"),
+        TokenKind::PipeArrowBack         => string_from_str("<|"),
+        TokenKind::SquigglyArrow         => string_from_str("~>"),
+        TokenKind::Section               => string_from_str("§"),
+        TokenKind::SectionRef            => string_from_str("§§"),
+        TokenKind::Evidence(_)           => string_from_str("Evidence"),
+        TokenKind::Modal(_)              => string_from_str("Modal"),
+        TokenKind::Compound(_)           => string_from_str("Compound"),
+        TokenKind::Determinative(_, _)   => string_from_str("Determinative"),
+        TokenKind::ForAll                => string_from_str("∀"),
+        TokenKind::Exists                => string_from_str("∃"),
+        TokenKind::ElemOf                => string_from_str("∈"),
+        TokenKind::NotElemOf             => string_from_str("∉"),
+        TokenKind::Subset                => string_from_str("⊂"),
+        TokenKind::Superset              => string_from_str("⊃"),
+        TokenKind::Therefore             => string_from_str("∴"),
+        TokenKind::Because               => string_from_str("∵"),
+        TokenKind::Entails               => string_from_str("⊢"),
+        TokenKind::Qed                   => string_from_str("∎"),
+        TokenKind::EmptySet              => string_from_str("∅"),
+        TokenKind::Infinity              => string_from_str("∞"),
+        TokenKind::Newline               => string_from_str("Newline"),
+        TokenKind::Indent                => string_from_str("Indent"),
+        TokenKind::Dedent                => string_from_str("Dedent"),
+        TokenKind::Whitespace            => string_from_str("Whitespace"),
+        TokenKind::LineComment           => string_from_str("LineComment"),
+        TokenKind::BlockComment          => string_from_str("BlockComment"),
+        TokenKind::Eof                   => string_from_str("Eof"),
+        TokenKind::Error                 => string_from_str("Error"),
+    }
+}
+
+// `render_keyword(kw)` — render as `Keyword(<kw>)` for diagnostic messages.
+fn render_keyword(kw : Keyword) -> String {
+    let mut out = string_from_str("Keyword(") ;
+    out = string_concat(out, string_from_str(keyword_canonical_str(kw))) ;
+    out = string_concat(out, string_from_str(")")) ;
+    out
+}
+
+// `keyword_canonical_str(kw)` — canonical source-spelling of a keyword.
+fn keyword_canonical_str(kw : Keyword) -> &str {
+    match kw {
+        Keyword::Fn        => "fn",
+        Keyword::Let       => "let",
+        Keyword::Const     => "const",
+        Keyword::Mut       => "mut",
+        Keyword::Pub       => "pub",
+        Keyword::Use       => "use",
+        Keyword::Module    => "module",
+        Keyword::Type      => "type",
+        Keyword::Struct    => "struct",
+        Keyword::Enum      => "enum",
+        Keyword::Interface => "interface",
+        Keyword::Impl      => "impl",
+        Keyword::If        => "if",
+        Keyword::Else      => "else",
+        Keyword::Match     => "match",
+        Keyword::While     => "while",
+        Keyword::For       => "for",
+        Keyword::In        => "in",
+        Keyword::Return    => "return",
+        Keyword::Break     => "break",
+        Keyword::Continue  => "continue",
+        Keyword::Loop      => "loop",
+        Keyword::Where     => "where",
+        Keyword::Effect    => "effect",
+        Keyword::Handler   => "handler",
+        Keyword::Perform   => "perform",
+        Keyword::With      => "with",
+        Keyword::Region    => "region",
+        Keyword::Iso       => "iso",
+        Keyword::Trn       => "trn",
+        Keyword::Ref       => "ref",
+        Keyword::Val       => "val",
+        Keyword::Box       => "box",
+        Keyword::Tag       => "tag",
+        Keyword::Comptime  => "comptime",
+        Keyword::Run       => "run",
+        Keyword::True      => "true",
+        Keyword::False     => "false",
+        Keyword::As        => "as",
+        Keyword::SelfValue => "self",
+        Keyword::SelfType  => "Self",
+    }
+}
+
+// `render_kinds(ks)` — comma-separated list of token-kind names. Used by
+// `diag_expected_any` to render the alternatives list.
+fn render_kinds(ks : Vec<TokenKind>) -> String {
+    let n = vec_len::<TokenKind>(ks) ;
+    let mut out = string_from_str("") ;
+    let mut i : u32 = 0'u32 ;
+    while i < n {
+        if i > 0'u32 {
+            out = string_concat(out, string_from_str(", ")) ;
+        }
+        out = string_concat(out, token_kind_name(vec_get_unchecked::<TokenKind>(ks, i))) ;
+        i = i + 1'u32 ;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Emit (caller-side)
+// ───────────────────────────────────────────────────────────────────────
+
+// `diag_emit_one(d) -> String` — render a single diagnostic to a single
+// human-readable line (no source-snippet ; that's a later slice). Format :
+//
+//   "<severity> @ <span.lo>..<span.hi> : <msg>"
+fn diag_emit_one(d : Diagnostic) -> String {
+    let mut out = string_from_str(severity_as_str(d.severity)) ;
+    out = string_concat(out, string_from_str(" @ ")) ;
+    out = string_concat(out, u32_to_string(d.span.lo)) ;
+    out = string_concat(out, string_from_str("..")) ;
+    out = string_concat(out, u32_to_string(d.span.hi)) ;
+    out = string_concat(out, string_from_str(" : ")) ;
+    out = string_concat(out, d.msg) ;
+    out
+}
+
+// `diag_emit_all(b) -> String` — render every diagnostic in `b` joined by
+// newlines. Used by the LSP path to ship a batch.
+fn diag_emit_all(b : DiagnosticBag) -> String {
+    let n = vec_len::<Diagnostic>(b.items) ;
+    let mut out = string_from_str("") ;
+    let mut i : u32 = 0'u32 ;
+    while i < n {
+        if i > 0'u32 {
+            out = string_concat(out, string_from_str("\n")) ;
+        }
+        out = string_concat(out, diag_emit_one(vec_get_unchecked::<Diagnostic>(b.items, i))) ;
+        i = i + 1'u32 ;
+    }
+    out
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Bridge helpers (deferred to runtime crate)
+// ───────────────────────────────────────────────────────────────────────
+//
+// Forward declarations of helpers defined in compiler-cssl/runtime
+// (future slice). Until the bridge lands these compile as forward decls
+// resolved at MIR-link time.
+
+extern fn u32_to_string(n : u32) -> String ;
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stage-1 self-test markers (worked examples)
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : a fresh bag has zero entries.
+fn _example_empty_bag() -> bool {
+    let b = bag_new() ;
+    bag_count(&b) == 0'u32 && !bag_has_errors(&b)
+}
+
+// Worked example : push an error then check has_errors.
+fn _example_push_error() -> bool {
+    let mut b = bag_new() ;
+    let d = diag_error(string_from_str("oops"), span_dummy()) ;
+    bag_push(&mut b, d) ;
+    bag_has_errors(&b)
+}
