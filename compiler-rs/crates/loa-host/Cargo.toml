@@ -1,0 +1,84 @@
+[package]
+name                   = "loa-host"
+description            = "CSSLv3 stage-0 LoA-v13 host runtime — winit window + wgpu render + test-room geometry. T11-LOA-HOST-1 (W-LOA-host-render)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-LOA-HOST-1 (W-LOA-host-render) : pure-Rust stage-0 host shell that
+# opens a navigable window over the test-room scene. Apocky-greenlit-hybrid :
+# scenes/*.cssl stay authoritative ; this Rust crate is the bootstrap host
+# that opens a wgpu surface + paints test-room geometry from the
+# scenes/test_room.cssl design.
+#
+# § ARCHITECTURE — two layers (matches cssl-host-webgpu pattern @ T11-D68)
+#
+#   Phase-1 (default) : the catalog modules (`camera`, `geometry`) carry the
+#     pure-CPU mesh + camera math WITHOUT pulling `winit` or `wgpu` itself.
+#     This keeps the crate buildable in the workspace's pinned 1.85.0
+#     `x86_64-pc-windows-gnu` toolchain (T11-D20 R16-anchor) which lacks
+#     MinGW's `dlltool.exe` + `as` required by wgpu 23 transitive deps
+#     (parking_lot_core windows-link 0.2.1).
+#
+#   Phase-2 (`runtime` feature) : pulls `winit` 0.30 + `wgpu` 23 + `pollster`
+#     + `glam` + `bytemuck` and wires the actual window/render loop. Compiles
+#     cleanly on the Apocky host with `+stable-x86_64-pc-windows-msvc` :
+#       cargo +stable-x86_64-pc-windows-msvc build  -p loa-host --features runtime --release
+#       cargo +stable-x86_64-pc-windows-msvc run    -p loa-host --features runtime --release
+#       cargo +stable-x86_64-pc-windows-msvc test   -p loa-host --features runtime --release
+#
+# § Why feature-gated ?
+#   The workspace's pinned 1.85.0 toolchain is the GNU variant which needs
+#   MinGW assembler tools at link time. Apocky's host has the MSVC stable
+#   toolchain installed but the pinned channel for the workspace is GNU
+#   (per T1-D7 the ABI switch is pre-authorized but not yet executed). Until
+#   that switch lands, the runtime feature is opt-in so :
+#     (a) `cargo check --workspace` (CI fast suite) stays green ;
+#     (b) `cargo build --workspace` succeeds on hosts without MinGW assembler ;
+#     (c) the binary user invokes with `--features runtime` + MSVC override
+#         to get an actual navigable window.
+#
+# § wgpu / winit version pinning
+#   wgpu = "23" (workspace) matches naga 23.1.0 ; winit = "0.30" matches
+#   raw-window-handle 0.6 ABI used by wgpu 23. wgpu 24+ requires Rust 1.87
+#   per cssl-host-webgpu T11-D68 ; gated on a toolchain bump.
+
+[features]
+default = []
+# Opt-in real wgpu/winit runtime (see header comment for toolchain prereqs).
+runtime = ["dep:wgpu", "dep:winit", "dep:pollster"]
+
+[dependencies]
+# Phase-1 (catalog) : no wgpu/winit deps. Pure-Rust mesh+camera math is in
+# this layer and compiles in any workspace toolchain.
+cssl-rt   = { path = "../cssl-rt" }
+# bytemuck + glam are pure-Rust no-link deps that the catalog needs for the
+# Vertex POD type (bytemuck::Pod derive) and the Mat4/Vec3 camera math
+# (glam). Both compile cleanly in the workspace 1.85.0 GNU toolchain.
+bytemuck  = { workspace = true }
+glam      = { version = "0.25", features = ["bytemuck"] }
+
+# Phase-2 (runtime) : optional dependencies pulled when --features runtime.
+# wgpu / winit / pollster transitively pull parking_lot_core which needs
+# MinGW dlltool on the workspace 1.85.0 GNU toolchain ; gate them behind
+# the feature so `cargo build -p loa-host` (default-features) succeeds.
+winit     = { version = "0.30", optional = true }
+wgpu      = { workspace = true, features = ["wgsl", "dx12", "vulkan-portability"], optional = true }
+pollster  = { version = "0.3", optional = true }
+
+[dev-dependencies]
+# Naga validates the embedded WGSL shader source at test time.
+naga      = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+name = "loa_host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "loa-runtime"
+path = "src/main.rs"

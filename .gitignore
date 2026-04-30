@@ -35,6 +35,11 @@ perf.data*
 .cache/
 /compiler-rs/target-doc/
 
+# § T11-LOA-LOG-1 : cssl-rt loa_startup writes a per-invocation runtime log
+# under `logs/` (cwd-relative). Not committed.
+**/logs/loa_runtime.log
+**/logs/
+
 # Claude Code ephemera + internal agent files
 .claude/
 CLAUDE.md
