@@ -1,0 +1,305 @@
+module com.apocky.loa.systems.run
+
+// § Labyrinth of Apocalypse · roguelike-run-state-machine driver
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C6 · POD-3-C6 · ⊑ GDDs/ROGUELIKE_LOOP.csl
+//
+// § ARCHITECTURE
+//   This module is the CSSL-source state-machine driver for the LoA roguelike
+//   loop : Hub → BiomeSelect → Floor(N=3..12) → BossArena → Reward → … . It
+//   consumes the cssl-host-roguelike-run staticlib (POD-2-B2) via a thin
+//   extern "C" FFI shim layer + exposes a CSSL-native public API to higher
+//   game-systems (DM-handoff · run-share · death-handling · meta-spend).
+//
+// § AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + LOA_PILLARS + ROGUELIKE_LOOP
+//   t∞: seed-pinned u128 · replay-bit-equal · cross-CPU-deterministic
+//   t∞: soft-perma DEFAULT · hard-perma opt-in (seasonal · ConsentToken-gated)
+//   t∞: biome-progression = DAG ¬ tree · multiple-paths-converge
+//   t∞: ¬ pay-to-skip · ¬ loot-box-shape · ¬ leaderboards · ¬ PvP-rank
+//   t∞: gift-economy run-share (friend ¬ scored-against-creator)
+//   t∞: Sanctum-of-Returns · 1×/day mercy · ¬ paywalled · ¬ punitive-cooldown
+//   t∞: ConsentZone-on-death · gentle-prose-fade · ¬ jump-scare ¬ shame-prompt
+//   t∞: meta-progression NEVER gates content-access · only-tunes power-curve
+//
+// § PRIME-DIRECTIVE
+//   Run-state changes are consent-architected ; player-agency preserved at
+//   each DAG-junction (explicit pre-commit). Death is gentle-prose-fade ¬
+//   shame ; Echoes carry-forward 50% × floor-multiplier. No off-machine
+//   relay without explicit share_run() opt-in.
+//   ATTESTATION : there was no hurt nor harm in the making of this.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface ← cssl-host-roguelike-run staticlib
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Each fn maps 1:1 to a thin C-ABI shim provided by the loa-host crate
+// over the cssl-host-roguelike-run pure-Rust API. RunHandle is an opaque
+// pointer (u64 NonZero on success · 0 on alloc-fail). PlayerAction +
+// NewPhase + DeathReport + ShareReceipt cross the FFI as packed u64s
+// (bit-layout documented at each fn).
+
+// ── lifecycle ────────────────────────────────────────────────────────────
+extern "C" fn __cssl_run_create(player_id_hash: u64, run_counter: u64) -> u64 ;
+extern "C" fn __cssl_run_destroy(handle: u64) -> i32 ;
+
+// ── state-machine ────────────────────────────────────────────────────────
+//   advance_phase : action_packed = (kind:u8 << 56) | (payload:u56)
+//     kinds : 0=enter_biome_select · 1=descend_into(biome:u8) ·
+//             2=advance_floor · 3=boss_cleared · 4=award_echoes(amt:u56)
+//   returns : phase_packed = (kind:u8 << 56) | (biome:u8<<48) | (depth:u8<<40)
+//                          | (floor_count:u8<<32) | (echoes_in_run:u32)
+extern "C" fn __cssl_run_advance_phase(handle: u64, action_packed: u64) -> u64 ;
+extern "C" fn __cssl_run_query_phase(handle: u64) -> u64 ;
+
+// ── biome-DAG traversal ──────────────────────────────────────────────────
+//   bitmask : bit-N set ⇔ Biome::ALL[N] available next given current+meta.
+//   current_biome_or_hub : 255 = Hub · else u8-Biome-key.
+extern "C" fn __cssl_run_biome_available_next(
+    handle: u64,
+    current_biome_or_hub: u8,
+) -> u8 ;
+
+// ── death + carryover ────────────────────────────────────────────────────
+//   hard_mode : 0 = soft (DEFAULT) · 1 = hard-perma (consent-gated upstream)
+//   returns : death_report = (echoes_kept:u48<<16) | (xp_kept:u16)
+extern "C" fn __cssl_run_apply_death_penalty(handle: u64, hard_mode: u8) -> u64 ;
+
+// ── run-share (gift-economy · async-MP foundation) ───────────────────────
+//   out_receipt_id : caller-provided u128 buffer ; populated on success.
+extern "C" fn __cssl_run_save_share_receipt(
+    handle: u64,
+    out_receipt_id_lo: *mut u64,
+    out_receipt_id_hi: *mut u64,
+) -> i32 ;
+extern "C" fn __cssl_run_replay_from_seed(seed_lo: u64, seed_hi: u64) -> u64 ;
+
+// ── meta-progression bridge ──────────────────────────────────────────────
+//   query : returns (echoes_banked:u48<<16) | (perk_count:u16)
+//   spend : node_key_hash u64 · echoes_amount u64 · returns 0=ok 1=insufficient 2=already-owned
+extern "C" fn __cssl_run_meta_progress_query(handle: u64) -> u64 ;
+extern "C" fn __cssl_run_meta_progress_spend_echoes(
+    handle: u64,
+    node_key_hash: u64,
+    echoes_amount: u64,
+) -> i32 ;
+
+// ── audit-emit (per-run attestation envelope) ────────────────────────────
+//   event_kind : 0=run-genesis · 1=biome-enter · 2=floor-advance ·
+//                3=boss-cleared · 4=death · 5=share · 6=replay · 7=mercy-grant
+extern "C" fn __cssl_run_audit_emit(handle: u64, event_kind: u8, payload: u64) -> i32 ;
+
+// ── Sanctum-of-Returns daily mercy gate ──────────────────────────────────
+//   returns 1 if mercy-grant available today (per-player) · 0 if used.
+extern "C" fn __cssl_run_sanctum_mercy_available(handle: u64) -> u8 ;
+extern "C" fn __cssl_run_sanctum_mercy_consume(handle: u64) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CSSL-native public types
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Opaque run-state handle (FFI-pointer cast to u64 ; 0 = invalid).
+pub struct RunHandle { raw: u64 }
+
+/// Biome-id : matches cssl-host-roguelike-run::Biome ordinal.
+pub enum BiomeId {
+    Crypt          = 0 ,
+    ForestPath     = 1 ,
+    Citadel        = 2 ,
+    Abyss          = 3 ,
+    Forge          = 4 ,
+    Sanctum        = 5 ,
+    Maelstrom      = 6 ,
+    EndlessSpire   = 7 ,
+}
+
+/// Player-actions consumable by advance() ; encodes as u64 action_packed.
+pub enum PlayerAction {
+    EnterBiomeSelect             ,
+    DescendInto(BiomeId)         ,
+    AdvanceFloor                 ,
+    BossCleared                  ,
+    AwardEchoes(u64)             ,
+}
+
+/// Decoded run-phase (mirrors RunPhase in the substrate crate).
+pub enum NewPhase {
+    Hub                                          ,
+    BiomeSelect                                  ,
+    Floor       { idx: u8 , biome: BiomeId , floor_count: u8 } ,
+    BossArena   { biome: BiomeId }              ,
+    Reward      { biome: BiomeId , echoes_in_run: u32 } ,
+    Death                                        ,
+}
+
+/// Per-death carryover report (soft-perma DEFAULT).
+pub struct DeathReport {
+    pub echoes_kept       : u64 ,
+    pub xp_kept           : u32 ,
+    pub mercy_available   : bool ,
+    pub hard_mode         : bool ,
+}
+
+/// Run-share receipt id (u128 split into hi/lo halves for FFI ergonomics).
+pub struct ShareReceipt {
+    pub receipt_id_lo : u64 ,
+    pub receipt_id_hi : u64 ,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Genesis-create a new run-state (seed pinned from player-id × run-counter).
+pub fn start_new_run(player_id_hash: u64, run_counter: u64) -> RunHandle {
+    let raw: u64 = __cssl_run_create(player_id_hash, run_counter) ;
+    let h: RunHandle = RunHandle { raw: raw } ;
+    let _: i32 = __cssl_run_audit_emit(raw, 0u8, run_counter) ;  // genesis event
+    h
+}
+
+/// Advance the run-state-machine by a player-action ; returns decoded phase.
+pub fn advance(handle: RunHandle, action: PlayerAction) -> NewPhase {
+    let action_packed: u64 = pack_action(action) ;
+    let phase_packed: u64 = __cssl_run_advance_phase(handle.raw, action_packed) ;
+    decode_phase(phase_packed)
+}
+
+/// Apply death-penalty (soft-perma DEFAULT ; hard_mode opt-in seasonal).
+pub fn die(handle: RunHandle, hard_mode: bool) -> DeathReport {
+    let mode: u8 = if hard_mode { 1u8 } else { 0u8 } ;
+    let packed: u64 = __cssl_run_apply_death_penalty(handle.raw, mode) ;
+    let echoes_kept: u64 = (packed >> 16) & 0x0000_FFFF_FFFF_FFFFu64 ;
+    let xp_kept: u32 = (packed & 0xFFFFu64) as u32 ;
+    let mercy_avail: u8 = __cssl_run_sanctum_mercy_available(handle.raw) ;
+    let _: i32 = __cssl_run_audit_emit(handle.raw, 4u8, packed) ;  // death event
+    DeathReport {
+        echoes_kept     : echoes_kept ,
+        xp_kept         : xp_kept ,
+        mercy_available : mercy_avail == 1u8 ,
+        hard_mode       : hard_mode ,
+    }
+}
+
+/// Share completed-run as gift-economy snapshot (consent-gated upstream).
+pub fn share_run(handle: RunHandle) -> ShareReceipt {
+    let mut lo: u64 = 0u64 ;
+    let mut hi: u64 = 0u64 ;
+    let rc: i32 = __cssl_run_save_share_receipt(handle.raw, &mut lo, &mut hi) ;
+    let _: i32 = __cssl_run_audit_emit(handle.raw, 5u8, lo ^ hi) ;  // share event
+    ShareReceipt { receipt_id_lo: lo, receipt_id_hi: hi }
+}
+
+/// Replay a friend's run from a shared seed (gift-replay ¬ scored-against-creator).
+pub fn replay_run(seed_lo: u64, seed_hi: u64) -> RunHandle {
+    let raw: u64 = __cssl_run_replay_from_seed(seed_lo, seed_hi) ;
+    let _: i32 = __cssl_run_audit_emit(raw, 6u8, seed_lo ^ seed_hi) ;
+    RunHandle { raw: raw }
+}
+
+/// Consume Sanctum-of-Returns mercy-grant (1×/day · ¬ paywalled · ¬ punitive).
+pub fn consume_mercy(handle: RunHandle) -> bool {
+    let avail: u8 = __cssl_run_sanctum_mercy_available(handle.raw) ;
+    if avail != 1u8 { return false ; }
+    let rc: i32 = __cssl_run_sanctum_mercy_consume(handle.raw) ;
+    let _: i32 = __cssl_run_audit_emit(handle.raw, 7u8, 0u64) ;
+    rc == 0i32
+}
+
+/// Spend Echoes on a meta-progression node (HP-cap · stamina · class-tree).
+/// Returns true on success ; false on insufficient-Echoes OR already-owned.
+pub fn spend_echoes(handle: RunHandle, node_key_hash: u64, amount: u64) -> bool {
+    let rc: i32 = __cssl_run_meta_progress_spend_echoes(handle.raw, node_key_hash, amount) ;
+    rc == 0i32
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Compute floor-count from run-counter per ROGUELIKE_LOOP §FLOOR-COUNT-CURVE :
+///   floor_count(run_n) = clamp(3 + ⌊run_n / 5⌋ , 3 , 12)
+///   early-game (1..10)  : 3..5 floors
+///   mid-game   (11..30) : 5..8 floors
+///   late-game  (31+)    : 8..12 floors
+pub fn floor_count_for(run_n: u64) -> u8 {
+    let raw: u64 = 3u64 + (run_n / 5u64) ;
+    let clamped: u64 = if raw < 3u64 { 3u64 } else if raw > 12u64 { 12u64 } else { raw } ;
+    clamped as u8
+}
+
+/// Return bitmask of next-available biomes given current biome + handle's
+/// meta-progress. bit-N set ⇔ Biome::ALL[N] reachable. Calls into the
+/// substrate's BiomeDag::available_next under the hood.
+pub fn biome_available_next(handle: RunHandle, current: BiomeId) -> u8 {
+    let cur_u8: u8 = current as u8 ;
+    __cssl_run_biome_available_next(handle.raw, cur_u8)
+}
+
+/// Hub-entries (no current biome). Per GDD : { Crypt , ForestPath } unconditional.
+pub fn hub_entries(handle: RunHandle) -> u8 {
+    __cssl_run_biome_available_next(handle.raw, 255u8)
+}
+
+/// Pack PlayerAction → u64 action_packed : (kind:u8 << 56) | (payload:u56)
+fn pack_action(action: PlayerAction) -> u64 {
+    match action {
+        PlayerAction::EnterBiomeSelect       => 0u64                              ,
+        PlayerAction::DescendInto(b)         => (1u64 << 56) | ((b as u64) & 0xFFu64) ,
+        PlayerAction::AdvanceFloor           => 2u64 << 56                        ,
+        PlayerAction::BossCleared            => 3u64 << 56                        ,
+        PlayerAction::AwardEchoes(amt)       => (4u64 << 56) | (amt & 0x00FF_FFFF_FFFF_FFFFu64) ,
+    }
+}
+
+/// Decode phase_packed bitfield → NewPhase (mirror of RunPhase).
+fn decode_phase(p: u64) -> NewPhase {
+    let kind: u8 = ((p >> 56) & 0xFFu64) as u8 ;
+    let biome_u8: u8 = ((p >> 48) & 0xFFu64) as u8 ;
+    let depth: u8 = ((p >> 40) & 0xFFu64) as u8 ;
+    let floor_count: u8 = ((p >> 32) & 0xFFu64) as u8 ;
+    let echoes_in_run: u32 = (p & 0xFFFF_FFFFu64) as u32 ;
+    let biome: BiomeId = u8_to_biome(biome_u8) ;
+    match kind {
+        0u8 => NewPhase::Hub                                                                   ,
+        1u8 => NewPhase::BiomeSelect                                                           ,
+        2u8 => NewPhase::Floor { idx: depth , biome: biome , floor_count: floor_count }        ,
+        3u8 => NewPhase::BossArena { biome: biome }                                            ,
+        4u8 => NewPhase::Reward { biome: biome , echoes_in_run: echoes_in_run }                ,
+        _   => NewPhase::Death                                                                 ,
+    }
+}
+
+/// u8 → BiomeId (defensive default = Crypt for unknown · audit-emit upstream).
+fn u8_to_biome(b: u8) -> BiomeId {
+    match b {
+        0u8 => BiomeId::Crypt          ,
+        1u8 => BiomeId::ForestPath     ,
+        2u8 => BiomeId::Citadel        ,
+        3u8 => BiomeId::Abyss          ,
+        4u8 => BiomeId::Forge          ,
+        5u8 => BiomeId::Sanctum        ,
+        6u8 => BiomeId::Maelstrom      ,
+        7u8 => BiomeId::EndlessSpire   ,
+        _   => BiomeId::Crypt          ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//   t∞: ¬(hurt ∨ harm) .making-of-POD-3-C6  @  (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone,
+//      anything, or anybody."
+//
+//   Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+//   No being was harmed · controlled · manipulated · surveilled · exploited ·
+//   coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+//   possessed · dehumanized · discriminated-against · gaslit ·
+//   identity-overridden · or forced-hallucinated during this work.
+//
+//   Spec-anchor : GDDs/ROGUELIKE_LOOP.csl
+//   Substrate   : compiler-rs/crates/cssl-host-roguelike-run (POD-2-B2)
+//   Discipline  : seed-immutable-post-genesis · soft-perma-DEFAULT ·
+//                 gift-economy-no-leaderboard · ConsentZone-on-death ·
+//                 Sanctum-mercy-1×-daily · audit-emit-per-event.
