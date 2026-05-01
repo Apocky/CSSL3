@@ -1,0 +1,20 @@
+[package]
+name                   = "cssl-host-stereoscopy"
+description            = "CSSLv3 stage0 — Stereoscopic camera-pair geometry + IPD-aware projection + SBS/TB/anaglyph image composition (pure-math ; no image-crate dep)"
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-WAVE3-STEREO (cssl/session-15/W-WAVE3-stereo) : disjoint pure-math crate.
+# Stays free of any image-IO / GPU dependency : caller passes raw RGBA byte slices.
+# loa-host wiring lands wave-4 ; this slice = geometry + composition primitives only.
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
