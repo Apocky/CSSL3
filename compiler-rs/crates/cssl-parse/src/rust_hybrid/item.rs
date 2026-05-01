@@ -182,14 +182,21 @@ fn parse_fn_item(
 /// Parse `extern fn name(params) -> ret` body-less FFI declaration.
 ///
 /// § GRAMMAR (stage-0)
-///   extern-fn-decl := `extern` `fn` IDENT `(` param-list `)` (`->` TYPE)? `;`?
+///   extern-fn-decl := `extern` ABI-LITERAL? `fn` IDENT `(` param-list `)` (`->` TYPE)? `;`?
+///   ABI-LITERAL    := STRING-LITERAL              (e.g. `"C"`, `"system"`, `"Rust"`)
 ///
 /// The trailing `;` is optional ; if absent, the next item-boundary
 /// terminates the declaration. No body, no generics, no effect-row, no
 /// where-clauses are accepted ; emit a parse error if any appear.
 ///
-/// Stage-0 ABI is implicit "C" — future revisions will accept
-/// `extern "abi" fn name(…)`.
+/// § ABI (T11-CC-PARSER-8 / W-CC-extern-c-abi)
+///   The parser accepts an optional string-literal between `extern` and `fn`.
+///   When present, its span is preserved in `ExternFnItem::abi_span` so HIR
+///   lowering can resolve the verbatim ABI text via `SourceFile::slice`.
+///   The parser cannot decode the literal here (no `SourceFile` access at
+///   this layer), so it leaves `abi: "C".to_string()` as a placeholder —
+///   lowering replaces it with the actual unquoted text when `abi_span` is
+///   `Some(_)`. When the literal is omitted, the implicit ABI is "C".
 fn parse_extern_fn_decl(
     cursor: &mut TokenCursor<'_>,
     bag: &mut DiagnosticBag,
@@ -197,6 +204,22 @@ fn parse_extern_fn_decl(
     visibility: Visibility,
 ) -> ExternFnItem {
     let kw = cursor.bump(); // extern
+
+    // Optional ABI tag : `"<abi>"` between `extern` and `fn`.
+    // Match either flavor of string literal (Normal or Raw) — both are
+    // syntactically legal as ABI tags. The parser preserves the literal's
+    // span so downstream passes can recover the verbatim text. The parser
+    // does not validate the ABI string here ; HIR/MIR/codegen are
+    // responsible for rejecting unrecognized ABI strings at link time.
+    let abi_span = if matches!(
+        cursor.peek().kind,
+        TokenKind::StringLiteral(_)
+    ) {
+        Some(cursor.bump().span)
+    } else {
+        None
+    };
+
     if cursor.eat(TokenKind::Keyword(Keyword::Fn)).is_none() {
         bag.push(custom(
             "expected `fn` after `extern` in extern-fn declaration",
@@ -223,6 +246,7 @@ fn parse_extern_fn_decl(
         params,
         return_ty,
         abi: "C".to_string(),
+        abi_span,
     }
 }
 
@@ -1820,5 +1844,162 @@ fn main() -> i32 { 42 }\n";
         assert_eq!(m.items.len(), 2);
         assert!(matches!(m.items[0], Item::ExternFn(_)));
         assert!(matches!(m.items[1], Item::Fn(_)));
+    }
+
+    // ─ § T11-CC-PARSER-8 (W-CC-extern-c-abi) — `extern "C" fn` ABI tag ─────
+    //
+    // The 44+ LoA scenes (`Labyrinth of Apocalypse/main.cssl`, `engine.cssl`,
+    // `scenes/torii.cssl`, etc.) all forward-declare host symbols using
+    // `extern "C" fn name(…)`. The previous extern-fn parser (T11-CC-PARSER-1)
+    // accepted only `extern fn …` and rejected the explicit ABI tag with
+    // `expected `fn` after `extern` …`. These tests pin the optional
+    // string-literal between `extern` and `fn`, covering :
+    //   1. regression : implicit-C still works (no ABI literal present)
+    //   2. explicit "C" — the LoA-scene canonical form
+    //   3. forward-friendly : "system" parses without rejection
+    //   4. composability : explicit "C" + raw-pointer params (the LoA
+    //      `__cssl_telemetry_emit` shape) parses end-to-end
+
+    #[test]
+    fn parse_extern_fn_no_abi_defaults_to_c() {
+        // Regression : the implicit-C form (no ABI literal) must continue
+        // to parse cleanly and yield `abi == "C"` with `abi_span == None`.
+        let (_f, toks) = prep("extern fn write(fd : i32) -> i32");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert_eq!(e.abi, "C", "implicit ABI defaults to C");
+            assert!(
+                e.abi_span.is_none(),
+                "no literal present ⇒ abi_span must be None, got {:?}",
+                e.abi_span
+            );
+            assert_eq!(e.params.len(), 1);
+            assert!(e.return_ty.is_some());
+        } else {
+            panic!("expected ExternFn, got {:?}", it);
+        }
+    }
+
+    #[test]
+    fn parse_extern_c_abi_explicit() {
+        // The canonical LoA-scene shape : `extern "C" fn …`.
+        // Verify the literal parses without error, the literal-span covers
+        // the `"C"` token (quotes included), and the slice text matches.
+        let src = "extern \"C\" fn bar(x : i32) -> i32";
+        let (f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0, "expected zero errors");
+        if let Item::ExternFn(e) = it {
+            let span = e.abi_span.expect("explicit ABI ⇒ abi_span must be Some");
+            let slice = f.slice(span.start, span.end).expect("abi span in-bounds");
+            assert_eq!(
+                slice, "\"C\"",
+                "abi_span must cover the literal incl. quotes"
+            );
+            // Parser leaves `abi` as the placeholder "C" ; HIR lowering
+            // resolves the verbatim text via SourceFile slice.
+            assert_eq!(e.abi, "C");
+            assert_eq!(e.params.len(), 1);
+            assert!(e.return_ty.is_some());
+        } else {
+            panic!("expected ExternFn, got {:?}", it);
+        }
+    }
+
+    #[test]
+    fn parse_extern_system_abi() {
+        // Forward-friendly : the parser accepts any ABI string verbatim.
+        // Stage-0 only links `"C"` ; downstream codegen rejects unknowns
+        // at link time. The parser's job is to NOT reject the literal.
+        let src = "extern \"system\" fn baz() -> i32";
+        let (f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0, "expected zero errors");
+        if let Item::ExternFn(e) = it {
+            let span = e.abi_span.expect("explicit ABI ⇒ abi_span must be Some");
+            let slice = f.slice(span.start, span.end).expect("abi span in-bounds");
+            assert_eq!(
+                slice, "\"system\"",
+                "abi_span must cover `\"system\"` literal verbatim"
+            );
+            assert!(e.params.is_empty());
+            assert!(e.return_ty.is_some());
+        } else {
+            panic!("expected ExternFn, got {:?}", it);
+        }
+    }
+
+    #[test]
+    fn parse_extern_c_abi_with_pointer_param() {
+        // LoA-scene composability : explicit `"C"` ABI + raw-pointer params,
+        // mirroring `__cssl_telemetry_emit(event_id, payload, len)`.
+        let src = "extern \"C\" fn foo(p : *const u8) -> i32";
+        let (f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0, "expected zero errors");
+        if let Item::ExternFn(e) = it {
+            let span = e.abi_span.expect("explicit ABI ⇒ abi_span must be Some");
+            assert_eq!(f.slice(span.start, span.end), Some("\"C\""));
+            assert_eq!(e.params.len(), 1);
+            // Verify the pointer-type lowered to RawPointer{mutable=false}.
+            use cssl_ast::TypeKind;
+            assert!(
+                matches!(
+                    e.params[0].ty.kind,
+                    TypeKind::RawPointer { mutable: false, .. }
+                ),
+                "expected `*const u8`, got {:?}",
+                e.params[0].ty.kind
+            );
+        } else {
+            panic!("expected ExternFn, got {:?}", it);
+        }
+    }
+
+    #[test]
+    fn parse_extern_c_abi_loa_acceptance_module() {
+        // End-to-end acceptance corpus mirroring the prompt's `csslc check`
+        // example. Both extern-"C" forwards + the trailing `fn main()` must
+        // parse cleanly with zero parser errors.
+        let src = "module com.apocky.loa.test_extern_c\n\
+                   extern \"C\" fn __cssl_telemetry_emit(event_id : u32, payload : *const u8, \
+                   len : i32) -> i32\n\
+                   extern \"C\" fn __cssl_alloc(size : u64, align : u64) -> *mut u8\n\
+                   fn main() -> i32 { 42 }";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parser errors for extern-\"C\" LoA acceptance corpus"
+        );
+        assert_eq!(m.items.len(), 3);
+        assert!(matches!(m.items[0], Item::ExternFn(_)));
+        assert!(matches!(m.items[1], Item::ExternFn(_)));
+        assert!(matches!(m.items[2], Item::Fn(_)));
+        // Both extern fns should carry an abi_span pointing at `"C"`.
+        for (i, expected_quoted) in [(0_usize, "\"C\""), (1, "\"C\"")] {
+            if let Item::ExternFn(e) = &m.items[i] {
+                let span = e
+                    .abi_span
+                    .unwrap_or_else(|| panic!("item[{i}] missing abi_span"));
+                assert_eq!(
+                    f.slice(span.start, span.end),
+                    Some(expected_quoted),
+                    "item[{i}] abi_span text mismatch"
+                );
+            }
+        }
     }
 }

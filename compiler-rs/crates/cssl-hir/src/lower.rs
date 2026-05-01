@@ -683,6 +683,15 @@ impl<'a> LowerCtx<'a> {
     /// with a fresh DefId so callers (`func.call` lowering) resolve to the
     /// declaration ; the absence of a body signals to MIR + codegen that
     /// the symbol must be linked as an external import.
+    ///
+    /// § ABI RESOLUTION (T11-CC-PARSER-8 / W-CC-extern-c-abi)
+    ///   The CST carries `abi: "C"` plus an optional `abi_span` covering the
+    ///   literal token (quotes included) in the originating source. When the
+    ///   span is `Some(_)`, this lowerer slices `self.source` to recover the
+    ///   verbatim ABI text and stores the unquoted form on the HIR item.
+    ///   When the span is `None`, the implicit ABI is "C". This keeps the
+    ///   parser independent of `SourceFile` while still propagating the
+    ///   author-written ABI tag downstream.
     fn lower_extern_fn(&mut self, f: &cssl_ast::ExternFnItem) -> crate::item::HirExternFn {
         crate::item::HirExternFn {
             span: f.span,
@@ -692,7 +701,38 @@ impl<'a> LowerCtx<'a> {
             name: self.intern_ident(f.name),
             params: f.params.iter().map(|p| self.lower_fn_param(p)).collect(),
             return_ty: f.return_ty.as_ref().map(|t| self.lower_type(t)),
-            abi: f.abi.clone(),
+            abi: self.resolve_extern_abi(f),
+        }
+    }
+
+    /// Resolve the verbatim ABI string from an `extern fn` declaration's
+    /// optional ABI literal span. Strips the surrounding quotes from a
+    /// `Normal` (`"…"`) literal ; for raw literals (`r"…"` / `r#"…"#`) the
+    /// escape rules differ but the same outer-quote-strip approach applies
+    /// at the byte level here. Falls back to "C" on missing span or
+    /// out-of-bounds slice.
+    fn resolve_extern_abi(&self, f: &cssl_ast::ExternFnItem) -> String {
+        let Some(span) = f.abi_span else {
+            return "C".to_string();
+        };
+        let raw = match self.source.slice(span.start, span.end) {
+            Some(s) => s,
+            None => return "C".to_string(),
+        };
+        // Strip the surrounding `"` quotes. Raw-literal `r"…"` / `r#"…"#`
+        // forms also have leading/trailing `"`, so this trim handles both
+        // surface forms uniformly. We don't process escape sequences ;
+        // ABI tags are short identifier-like strings in practice.
+        let trimmed = raw.trim_start_matches(|c: char| c == 'r' || c == '#');
+        let trimmed = trimmed
+            .strip_prefix('"')
+            .unwrap_or(trimmed)
+            .trim_end_matches('#');
+        let inner = trimmed.strip_suffix('"').unwrap_or(trimmed);
+        if inner.is_empty() {
+            "C".to_string()
+        } else {
+            inner.to_string()
         }
     }
 

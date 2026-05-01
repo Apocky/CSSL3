@@ -172,8 +172,14 @@ pub struct FnItem {
 /// instead of CSSL effect rows), and no where-clauses.
 ///
 /// § ABI
-/// Stage-0 implicit ABI is "C". Future revisions may accept
-/// `extern "abi"` after the `extern` keyword.
+/// Stage-0 implicit ABI is "C". The grammar accepts an optional ABI
+/// string-literal between `extern` and `fn` (e.g. `extern "C" fn foo(…)`,
+/// `extern "system" fn bar(…)`). When the literal is present, its span is
+/// preserved in `abi_span` so downstream passes (HIR lowering) can resolve
+/// the verbatim ABI text via `SourceFile::slice` ; the unquoted text is
+/// stored in `abi` at lower time. The parser itself only records the span
+/// (the parser has no `SourceFile` access), defaulting `abi` to "C" until
+/// resolution.
 #[derive(Debug, Clone)]
 pub struct ExternFnItem {
     pub span: Span,
@@ -182,8 +188,13 @@ pub struct ExternFnItem {
     pub name: Ident,
     pub params: Vec<Param>,
     pub return_ty: Option<Type>,
-    /// Source-form ABI string. Stage-0 always "C".
+    /// Source-form ABI string. Stage-0 default "C". When `abi_span` is
+    /// `Some(_)`, lowering replaces this with the unquoted literal text
+    /// sliced from the originating `SourceFile`.
     pub abi: String,
+    /// Span of the optional ABI string-literal token (quotes included).
+    /// `None` when the declaration omits an explicit ABI tag — implicit "C".
+    pub abi_span: Option<Span>,
 }
 
 /// `struct Name<G> { fields }`  or tuple-struct / unit-struct variants.
