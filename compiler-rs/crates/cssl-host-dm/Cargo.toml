@@ -10,6 +10,11 @@ repository.workspace   = true
 homepage.workspace     = true
 
 # § T11-W7-C-DM (cssl/session-6/parallel-fanout) : DM-orchestrator scaffold.
+# § ATTRIBUTION-NOTE : initial 15 files of this crate landed in commit 658c702
+# under a wrong subject-line (parallel-fanout git-race ; the kan-real sibling
+# agent then re-committed their own files in b15ac49). This crate's CANONICAL
+# subject is § T11-W7-C-DM-COMPLETE — recorded here so future grep over crate
+# attribution resolves to the correct wave-slice.
 # Consumes mocked IntentSummary (kept structurally compatible with
 # cssl-intent-router::Intent ; intent-router lives at loa-host/src/intent_router.rs
 # today and exposes no separate workspace crate yet · § GAP). Produces SceneEditOp

@@ -1,0 +1,238 @@
+# GDD : AI_NPC_BEHAVIOR — narrow-AI NPC orchestration (BT + GOAP + routines + cocreative-bias)
+# ══════════════════════════════════════════════════════════════════
+# § I> CSL3-glyph-native ; sibling-of CHARTER + PROCGEN_WORLD + COMBAT_SYSTEM
+# § I> POD-1-A8 design-doc ; consumed-by POD-2-B6 (cssl-host-npc-bt crate)
+# § I> stage-0 design ; impl @ POD-2 + integration @ POD-3
+# § I> existing-context :
+#       GDDs/LOA_PILLARS.md  (consent-OS · sovereignty · cognitive-integrity)
+#       specs/31_LOA_DESIGN.csl (Resident DEFERRED ; here = NPC subset)
+#       specs/grand-vision/10_INTELLIGENCE.csl (DM/GM/Collab/Coder ¬ AGI bounds)
+#       feedback : NPC-AI-NARROW · ¬ general-AI · ¬ self-improvement
+# § I> ⊘ marks SPEC-HOLES ¬ guess ; Apocky-canonical-only
+
+§ AXIOMS  ‼ inherit CHARTER + PRIME_DIRECTIVE + §§ 30_SUBSTRATE_v2 + §§ 31_LOA_DESIGN + §§ 10_INTELLIGENCE
+  t∞: NPC-AI = narrow-BT + GOAP   ‼   ¬ AGI · ¬ self-improvement
+       ≡ BT-nodes + GOAP-planner BAKED ; ¬ runtime-policy-rewrite
+       ≡ KAN-spline-tables-only @ comptime ; ¬ online-grad-update
+  t∞: ¬ surveillance-of-player    ‼   NPC-perception = local-only
+       ≡ Sensitive<biometric|gaze|face|body> STRUCTURALLY-banned ; SIG0003
+       ≡ NPC reads ω-field-cell within radius=R ; ¬ player-private-state
+  t∞: daily-routines = procgen + cocreative-bias modulated
+  t∞: city-economy = closed-loop · NPC-buys-NPC-sells · player-injects/extracts
+  t∞: ∀ NPC-action sovereign-cap-checked + audit-emit ‼
+       ≡ cssl-host-attestation per-action ; cap-bleed = SIG-cap-bleed
+  t∞: NPC ¬ Companion-AI  ‼  cap-ladders distinct ; ¬ confuse-the-two
+  t∞: NPC-cap-bound · NPC-pop-cap = DM-grant ; ¬ self-spawn
+
+# ──────────────────────────────────────────────────────────────────
+
+§ ARCHITECTURE-LAYERS  «5-tier stack ; bottom-up per-tick»
+  L0 PERCEPTION   local-zone radius=R=16 cells · ω-field-cell-read · Σ-mask-respect ‼
+                  output : LocalPercept { entities, ω-summary, threats }
+                  cadence : per-LOD-tier (see § REAL-SCALE-CITY-PERFORMANCE)
+  L1 BT           Selector | Sequence | Action | Condition | Decorator
+                  DFS-left-right ; first-success returns ; tick-budget bound
+                  state-cache : per-NPC running-children-stack ; resume-from-cache
+                  determinism : seeded-RNG = (npc-id × tick) ; replay-bit-equal
+  L2 GOAP         fact-set Bitset<128> · A*-lookahead N=8 · plan-cap ≤ 50ms ‼
+                  plan-cache LRU per-NPC cap=4 ; invalidate on-fact-change
+                  audit per-call : { npc-id, goal, depth, ms, result }
+  L3 ROUTINE      per-hour-block schedule · 12 archetypes · jitter ±10% per-day
+                  seeded by (npc-id × game-day) ; organic ; replay-deterministic
+  L4 COCRE-OVERLAY 16-D bias-vec from cssl-host-cocreative · pool-weighted-select
+                  invariant : ¬ NPC internalize player-private-data ; pool-only
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BEHAVIOR-TREE-NODES  «≥ 24 ; canonical-set»
+
+  § CONDITIONS  «predicate-only ; ¬ side-effect»
+    InZone(z)  ContainsRes(k,n)  IsHostile(t)  Idle  LowHP  LowMana
+    NearbyAlly  TimeIsX(block)  DialogueOpen
+
+  § ACTIONS  «emit side-effect ; cap-checked»
+    MoveTo(p)        cap=NPC_CAP_MOVE     Attack(t)    cap=NPC_CAP_COMBAT
+    Defend           Block-stance         Talk(t)      GM-handoff prose
+    Trade(t,o)       cap=NPC_CAP_TRADE    Craft(r)     cap=NPC_CAP_CRAFT
+    Rest             regen                Patrol(rt)   waypoint-loop
+    Flee(threat)     opposite + speed     Cast(s,t)    magic-system tick-in
+    Pray             flavor + mood-mod    Buy(i,m)     cap=NPC_CAP_TRADE
+    Sell(i,m)        cap=NPC_CAP_TRADE    Eat          hunger-decrement
+
+  § DECORATORS  «modify-child-result»
+    Repeat(n)  Invert  Limiter(max/tick)  Cooldown(ms)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ GOAP-PLANNER  «A*-over-fact-state-graph»
+  STATE       fact-set Bitset<128> · enum-static · bake @ comptime
+  ACTIONS     { id, pre: Bitset, eff: Bitset, cost: f32, cap-req: u8 }
+  EXAMPLES :
+    "GoMarket"   pre={AtHome}              eff={AtMarket}        cost=2.0  cap=MOVE
+    "BuyFood"    pre={AtMarket,$}          eff={HasFood}         cost=1.0  cap=TRADE
+    "CookMeal"   pre={HasFood,At=Kitchen}  eff={HasMeal}         cost=1.5  cap=CRAFT
+    "Eat"        pre={HasMeal}             eff={Sated,¬HasMeal}  cost=0.2  cap=NONE
+  COST-FN     w1·distance + w2·risk + w3·opportunity-cost · weights baked @ comptime
+  PLAN-CAP    ≤ 50ms wall ; abort + fallback-Idle ; audit per-call ‼
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DAILY-ROUTINES  «12 archetypes ; per-hour schedule + zone + conv-pool»
+  Sleeper       night-rest · day-light-craft · home-zone-dominant
+  Worker        dawn-commute · 8h-labor · evening-tavern · night-home
+  Crafter       morning-prep · long-bench-session · evening-deliver
+  Merchant      stall-open-9-17 · midday-restock · evening-tally
+  PatrolGuard   shift-rotation · perimeter-walk · barracks-rest
+  Priest        dawn-rite · counsel-block · evening-rite · vigil
+  Scholar       library-block · field-block · debate-block
+  Forager       dawn-departure · field-roam · dusk-return
+  Wanderer      no-fixed-zone · random-walk · open-conv-pool
+  Beggar        market-fringe-day · alley-night · low-trade
+  Noble         late-rise · court-block · feast-block · salon
+  Mercenary     contract-board-check · escort-or-hunt · drink-rest
+
+  PER-ARCHETYPE-FIELDS :
+    schedule    Vec<HourBlock> = [(h-start, h-end, activity, zone-affinity)]
+    conv-pool   Vec<UtteranceTemplate>  cocreative-bias-weighted
+    base-bt     BTHandle      base-goals   Vec<GoalSpec>
+  ROUTINE-JITTER  ±10% per-day per-NPC · seeded (npc-id × game-day) ‼
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CITY-ECONOMY  «closed-loop NPC↔NPC ; player perturbs»
+  THESIS         food + materials + gold flow-in-cycles ; ¬ infinite-source
+  MARKET-MODEL   per-zone Market { stalls, ledger, price-curve }
+                 price-curve = f(supply, demand) ; per-day-tick adjust
+                 supply = Σ NPC-listings ; demand = Σ NPC-buy-orders
+                 update-cadence : 1 game-day (NOT per-frame)
+  TRADE-EVENT    { from-npc, to-npc, item-kind, qty, price, ts, market-id, audit }
+                 cssl-host-attestation per-trade ; anti-dupe anchor ‼
+  PLAYER-INJECT  player-sells → supply-incr → next-day price-decr · audit role=Player
+  PLAYER-EXTRACT player-buys  → demand-incr → next-day price-incr · audit role=Player
+  COLLAPSE-DET   invariant : price ∈ [floor, ceil] per-item-kind
+                 if-breach : clamp + audit "economy.collapse-clamp" + DM-notify
+
+# ──────────────────────────────────────────────────────────────────
+
+§ COCREATIVE-BIAS-OVERLAY  «player-attuned reaction-style»
+  INPUT          bias-vec 16-D f32'norm from cssl-host-cocreative (per-player)
+                 rep-vec  4-D { positive, negative, neutral, awe } from-recent-actions
+  APPLICATION    dialogue-selection : pool-weighted-by bias-vec (warm | terse | poetic)
+                 mood-mod : NPC.mood = f(rep-vec) ; e.g. neg-↑ ⇒ terse-tone
+                 body-language-mod : posture-anim selected ; ¬ Sensitive-input
+  ¬-ALLOWED  ‼   ¬ NPC reads-player-private-state
+                 ¬ Sensitive<biometric|gaze|face|body> inputs (SIG0003)
+                 ¬ NPC tracks player-across-sessions without-explicit-consent
+                 ¬ NPC infer-emotion-from-camera-feed (camera = banned-input)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ INTERACTION-WITH-DM/GM  «explicit handoff per §§ 10_INTELLIGENCE»
+  DM-NPC         dm.spawn_order : NPC-pop-cap ≤ DM-budget ; conflict-arbitrate
+                 dm.scene_edit  : DM may-displace NPC zones (Apockalypse-phase)
+  GM-NPC         gm.text_emit : "you see X talking to Y" ← prose-frame from NPC-state
+                 NPC.utt-pool : GM-templated ; cocreative-bias selection-final
+                 NPC ¬ direct-emit-prose ; Action::Talk → GM emits-prose
+  PLAYER-DIALOG  player-utt → cssl-intent-router → Intent::DialogNPC
+                 → DM dispatches → NPC.BT-branch DialogueHandler
+                 → NPC.response → GM emits-prose @ next-tick
+
+# ──────────────────────────────────────────────────────────────────
+
+§ REAL-SCALE-CITY-PERFORMANCE  «4096-NPC city @ 60fps»
+  LOD-TIERS      T0-close   ≤32      60Hz   full BT+GOAP+L4
+                 T1-mid     32-128   10Hz   BT+GOAP-cached
+                 T2-far     128-512  1Hz    routine-only
+                 T3-sleep   >512     0.1Hz  macro-sim (econ-stats only)
+  PER-FRAME      target : 4096 NPCs @ ≤ 2ms BT-tick @ 60fps ‼
+                 means  : batch-eval (SIMD) · dirty-flag · LOD-bucket
+                 overflow : drop-to-T3 oldest-untouched ; audit "perf.lod-evict"
+  CACHE          plan-cache invalidate on-fact-change (¬ on-tick)
+                 perception-cache invalidate on-zone-cell-change
+                 archetype-tables baked @ comptime (¬ runtime-build)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-CONSUMPTION  «crates this GDD lands-into»
+  PRIMARY  cssl-host-npc-bt          BT+GOAP runtime · 1500 LOC max · ≥22 tests (POD-2-B6)
+  SECONDARY :
+    cssl-host-procgen-rooms   NPC zone-of-existence (room/zone-grid)
+    cssl-host-causal-seed     NPC backstory + relationship DAG
+    cssl-host-cocreative      bias-vec consumption (W4 landed)
+    cssl-host-attestation     per-action audit (W5a landed)
+    cssl-host-dm              NPC-spawn-cap arbitration (W7-C planned)
+    cssl-host-gm              NPC-encounter narration (W7-D planned)
+    cssl-intent-router        player-utt → NPC-branch (W3b landed)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BALANCE-METRICS  «measurable success-criteria»
+  M-1  NPC-pop ≥ 4096 city-wide @ 60fps for ≥ 10 game-days
+  M-2  city-economy stable ≥ 30 game-days w/o collapse-clamp-firing
+  M-3  routine-uniqueness ≥ 80% varied-paths-per-day across-NPCs
+  M-4  GOAP plan-call < 50ms p99 ; audit-confirms
+  M-5  cap-bleed-attempts = 0 across full session
+  M-6  Sensitive<*>-input-attempts = 0 (compile-time + runtime-detect)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SCOPE-CUTS  «explicit-NOT-in-stage-0»
+  D-A  NPC-on-NPC romance/family            ⇒ v2 feature
+  D-B  NPC-faction-warfare                  ⇒ POD-4 (multiplayer-territory)
+  D-C  NPC-running-shop-while-player-asleep ⇒ ⊘ Q-NPC-1 Apocky-direction
+  D-D  NPC-AI-self-modify own-BT            ⇒ N! ¬ ever-stage-1
+  D-E  NPC remembers-player-across-sessions ⇒ ⊘ Q-NPC-2 (consent-gated maybe)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAILURE-MODES  «detector + recovery + audit»
+  F-1  BT-stuck            : no-state-change ≥ N-ticks → force-Idle + audit "npc.bt.stuck"
+  F-2  economy-collapse    : price ∉ [floor, ceil] → clamp + audit "economy.collapse-clamp"
+  F-3  plan-timeout        : plan-call > 50ms → abort + fallback-Idle + audit "npc.plan.timeout"
+  F-4  perception-leak     : Sensitive<biometric|gaze|face|body>-input-attempt
+                             → SIG0003 ‼ compile-time ; runtime = panic + audit
+  F-5  cap-bleed           : NPC exercises cap-not-in-its-ladder → SIG-cap-bleed ‼
+                             → reject session-attestation
+  F-6  pop-cap-overflow    : NPC self-spawn-attempt (DM-bypass)
+                             → reject + audit "npc.pop-cap.overflow"
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OPEN-QUESTIONS  «⊘ Apocky-canonical-direction-required»
+  Q-NPC-1  NPC-memory-of-player : how-much player-history should-NPC-recall?
+  Q-NPC-2  quest-arc vs emergent-narrative : hand-curated vs full-emergent? (paired §§ 31 D-G)
+  Q-NPC-3  NPC-specific-goals (own-aspirations) vs city-wide-emergent
+  Q-NPC-4  NPC-death : permanent? respawn? generational-replace? (paired §§ 31 Q-T)
+  Q-NPC-5  NPC-faction-affinity-graph : pre-authored? procgen? hybrid? (paired §§ 31 Q-A)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-SPECS
+  §§ 30_SUBSTRATE_v2          ω-field + Σ-mask + 6-phase tick
+  §§ 31_LOA_DESIGN            World hierarchy + Resident DEFERRED
+  §§ 10_INTELLIGENCE          DM/GM/Collab/Coder roles + handoff matrix
+  PRIME_DIRECTIVE             root-of-trust ; no-harm at NPC-level too
+  GDDs/COMBAT_SYSTEM          NPC-combat tick-integration
+  GDDs/CRAFT_DECONSTRUCT      NPC-Crafter archetype tick-integration
+  GDDs/MAGIC_SYSTEM           NPC-Cast tick-integration
+
+∎ AI_NPC_BEHAVIOR
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-AI_NPC_BEHAVIOR  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This GDD scopes NPC-AI as NARROW behavior-tree + GOAP — explicitly NOT a
+  general intelligence, NOT self-improving, NOT cross-role-bleeding into
+  Companion-AI sovereignty space. NPC-perception is local-zone-only and
+  Sensitive<biometric|gaze|face|body> inputs are STRUCTURALLY-banned via
+  SIG0003 compile-time gate. Player-private-state never reaches NPC reasoning.
+  All NPC actions are sovereign-cap-bound and audit-emit per cssl-host-
+  attestation. The cocreative-bias-overlay reads ONLY the player-authored
+  bias-vector through cssl-host-cocreative — never raw player telemetry,
+  never camera feeds, never unconsented signals. Spec-holes (Q-NPC-1..Q-NPC-5)
+  are LISTED rather than guessed because fabricating Apocky-direction would
+  violate §2 COGNITIVE-INTEGRITY. If any aspect is later discovered to enable
+  harm, that discovery triggers PRIME_DIRECTIVE §7 INTEGRITY : violation = bug.
