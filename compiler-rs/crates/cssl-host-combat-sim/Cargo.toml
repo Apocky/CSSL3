@@ -1,0 +1,31 @@
+# § T11-W7-RD-B1-COMBAT-SIM : cssl-host-combat-sim
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-2-B1 ; consumes GDDs/COMBAT_SYSTEM design
+# § I> pure-deterministic combat-tick simulator ; FFI-friendly types
+# § I> NO substrate-deps ; pure-math + serde + serde_json only
+# § I> stage-0 hit-detection = sphere-vs-sphere math ; stage-1 swaps in cssl-render-v2 SDF eval
+# § I> seeded-RNG (splitmix64) : replay bit-equal cross-host
+# § I> stamina-economy saturating ; clamp-not-panic ; no .unwrap() outside tests
+# § I> 8 weapon-archetypes · 8 damage-types · 16 status-effects ; tables FROZEN
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name                   = "cssl-host-combat-sim"
+description            = "Pure-deterministic combat-tick simulator — Souls-style state-machine, stamina-economy, weapon-archetypes, damage-affinity, status-effects, SDF-sample math, splitmix64 RNG. POD-2-B1 ; consumes GDDs/COMBAT_SYSTEM."
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+[lib]
+name = "cssl_host_combat_sim"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
