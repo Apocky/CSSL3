@@ -86,15 +86,22 @@ mod integration_tests {
         }
         // REPLAY : drain via next_due() with a generous time-jump so all
         // events become due ; assert kind-order matches.
+        //
+        // The first next_due() call captures `started_at` from its `now`
+        // argument ; subsequent calls measure elapsed-since-started_at
+        // against each event's ts_micros.  To drain in a single loop, prime
+        // started_at on the first call with `start`, then advance `now` to
+        // `start + 60s` for the actual draining.
         let mut player = Replayer::from_path(&p).expect("load");
         let start = Instant::now();
-        let later = start + Duration::from_secs(60);
+        // Prime started_at = start (first call : ts_micros=0 event is due
+        // and consumed, since 0 <= 0).
         let mut got: Vec<ReplayEventKind> = Vec::new();
-        // Prime started_at deterministically.
-        let _ = player.next_due(start);
-        // Now drain at +60s — every recorded event must be due.
-        // Re-include the first-drained event by rewinding first.
-        player.rewind();
+        if let Some(ev) = player.next_due(start) {
+            got.push(ev.kind.clone());
+        }
+        // Now advance to +60s ; remaining 4 events all become due.
+        let later = start + Duration::from_secs(60);
         while let Some(ev) = player.next_due(later) {
             got.push(ev.kind.clone());
         }

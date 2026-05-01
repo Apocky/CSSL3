@@ -44,7 +44,7 @@ impl ReplayEvent {
 /// Replayer treats unknown variants as malformed and skips with a log line
 /// (no panic — preserves forward-compat replays).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", content = "data")]
 pub enum ReplayEventKind {
     /// Keyboard key-down event.  `code` is the platform-neutral keycode
     /// (mapped by `cssl-host-input` ; opaque to this crate).
