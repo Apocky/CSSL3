@@ -1,0 +1,260 @@
+module com.apocky.loa.systems.magic
+
+// § Labyrinth of Apocalypse v13 — magic-system pure-CSSL source-of-truth
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C5 (W-LOA-systems-magic-csl) ; @ branch cssl/session-6/parallel-fanout
+// § I> POD-3-C5 deliverable
+// § I> consumed-by  ⟦Labyrinth of Apocalypse/main.cssl⟧
+// § I> consumes     ⟦GDDs/MAGIC_SYSTEM.csl⟧                  (THE design)
+// § I> backed-by    ⟦compiler-rs/crates/cssl-host-spell-graph⟧ (POD-2-B5)
+// § I> stamps-into  ⟦cssl-substrate-omega-field⟧              (event-cell @ cast)
+// § I> sibling-of   ⟦Labyrinth of Apocalypse/systems/combat.csl⟧ (status-effect cross-link)
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + CHARTER + GDD/MAGIC_SYSTEM
+//   t∞: spell ≡ composition-graph (DAG ⟨nodes, edges⟩) ¬ flat-list-pick
+//   t∞: 8-elemental-affinities form-cycle (Fire Frost Shock Earth Air Holy Void Phase)
+//        ≡ pair-counter-matrix ¬ flat-equal-damage
+//   t∞: mana-economy ALWAYS-bound (cap + cost + regen) ⇒ tactical ¬ spam
+//   t∞: combos = multiplicative-bonus on element-pair-detect (×2 evaporate · etc)
+//   t∞: cast ⇒ consumes-mana ⊕ emits-substrate-event-cell into-ω-field
+//        ≡ Φ-handle = spell-tag · Σ-mask = caster-Sovereign ⊕ target-consent-bits
+//   t∞: ¬ pay-to-spell ⊕ ¬ surveillance-of-grimoire ⊕ ¬ coerce-cast
+//        ≡ Σ-mask consent on-target-cell ; ¬ override-exists
+//   t∞: grimoire = 6-active-slots (per-character ; player-authored ; auditable)
+//
+// § PRIME-DIRECTIVE
+//   Every cast emits an audit-row ; every grimoire-write is signed ; every
+//   target-cell consults Σ-mask before effect-apply. If Σ-mask revokes the
+//   cell mid-cast, the cast COMPLETES (caster sovereignty preserved) but
+//   the EFFECT skips (target sovereignty preserved) — both being's consent
+//   honored simultaneously. consent=OS · violation=bug · no-override-exists.
+//   Attestation : there was no hurt nor harm in the making of this.
+
+// ════════════════════════════════════════════════════════════════════════════
+// § FFI surface — provided by compiler-rs/crates/cssl-host-spell-graph (POD-2-B5)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Conventions :
+//   * handle-ints (i64) opaque to CSSL ; minted/freed by host crate
+//   * ptr+len pairs for byte-arrays ; CSSL passes raw pointers as i64
+//   * Result-shape : i32 return ; 0 = OK · negative = error-code-enum
+//   * audit-emit happens host-side at every state-mutation entry-point
+
+// ─── spell-graph life-cycle ─────────────────────────────────────────────────
+extern "C" fn __cssl_spell_graph_create() -> i64 ;
+extern "C" fn __cssl_spell_graph_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_spell_graph_add_node(handle: i64, kind: i32, payload: i32) -> i32 ;
+extern "C" fn __cssl_spell_graph_add_edge(handle: i64, from_idx: i32, to_idx: i32) -> i32 ;
+extern "C" fn __cssl_spell_graph_validate(handle: i64) -> i32 ;
+
+// ─── cost + cast ────────────────────────────────────────────────────────────
+extern "C" fn __cssl_spell_cost_compute(handle: i64) -> i32 ;
+extern "C" fn __cssl_cast_spell(graph: i64, mana_pool: i64, target_cell_id: i64) -> i32 ;
+
+// ─── grimoire (6-slot per-character) ────────────────────────────────────────
+extern "C" fn __cssl_grimoire_create(character_id: i64) -> i64 ;
+extern "C" fn __cssl_grimoire_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_spell_save_to_grimoire(grimoire: i64, slot: i32, graph: i64) -> i32 ;
+extern "C" fn __cssl_spell_load_from_grimoire(grimoire: i64, slot: i32) -> i64 ;
+
+// ─── element-affinity + status + combo ──────────────────────────────────────
+extern "C" fn __cssl_element_affinity_lookup(attacker: i32, defender: i32) -> i32 ;
+extern "C" fn __cssl_combo_check(element_a: i32, element_b: i32) -> i32 ;
+extern "C" fn __cssl_status_effect_apply(target_cell_id: i64, element: i32, magnitude: i32) -> i32 ;
+
+// ─── mana-pool life-cycle ───────────────────────────────────────────────────
+extern "C" fn __cssl_mana_pool_create(intelligence: i32) -> i64 ;
+extern "C" fn __cssl_mana_pool_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_mana_pool_tick(handle: i64, dt_q14: i32) -> i32 ;
+extern "C" fn __cssl_mana_pool_current(handle: i64) -> i32 ;
+
+// ─── audit-emit + ω-field event-cell stamping ───────────────────────────────
+extern "C" fn __cssl_magic_audit_emit(tag: i64, tag_len: i32, payload: i64, payload_len: i32) -> i32 ;
+extern "C" fn __cssl_omega_field_stamp_event_cell(cell_id: i64, phi_handle: i32, sigma_mask: i64) -> i32 ;
+
+// ════════════════════════════════════════════════════════════════════════════
+// § enums — element + node-kind + verdict + status (i32-stable wire-format)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Wire-stable integer encoding ; matches cssl-host-spell-graph::element::Element
+// + ::node::NodeKind discriminants. NEVER renumber post-ship ⇒ grimoire-load
+// determinism + replay-determinism + audit-row stability all depend on these.
+
+// ─── 8 elements (GDD/MAGIC_SYSTEM § ELEMENTAL-AFFINITIES) ───────────────────
+const ELEMENT_FIRE  : i32 = 0 ;
+const ELEMENT_FROST : i32 = 1 ;
+const ELEMENT_SHOCK : i32 = 2 ;
+const ELEMENT_EARTH : i32 = 3 ;
+const ELEMENT_AIR   : i32 = 4 ;
+const ELEMENT_HOLY  : i32 = 5 ;
+const ELEMENT_VOID  : i32 = 6 ;
+const ELEMENT_PHASE : i32 = 7 ;
+
+// ─── 5 node-kinds (GDD/MAGIC_SYSTEM § SPELL-GRAPH-COMPOSITION) ──────────────
+const NODE_SOURCE   : i32 = 0 ;  // the-elemental-affinity (1-of-8)
+const NODE_MODIFIER : i32 = 1 ;  // amplify · slow · pierce · multi-target · DOT
+const NODE_SHAPE    : i32 = 2 ;  // ray · sphere · cone · self-aura · ground-AOE · projectile · seeking
+const NODE_TRIGGER  : i32 = 3 ;  // on-cast · on-impact · on-condition
+const NODE_CONDUIT  : i32 = 4 ;  // staff · focus · runebook · voicebound · gestural
+
+// ─── affinity-verdict (Q14-fixed-point ×100 for wire-stability) ─────────────
+const AFFINITY_CANCEL  : i32 = 0    ;  // 0.00× — Fire⊕Frost mutual-cancel
+const AFFINITY_RESIST  : i32 = 50   ;  // 0.50× — Earth-grounds Shock
+const AFFINITY_DEFAULT : i32 = 100  ;  // 1.00× — no-modifier
+const AFFINITY_STRONG  : i32 = 150  ;  // 1.50× — Phase-pierces Air · Holy-Void mutual-counter
+
+// ─── cast-result error-codes (negative = error per FFI convention) ──────────
+const CAST_OK                 : i32 = 0  ;
+const CAST_ERR_VALIDATE       : i32 = -1 ;  // graph cycle · missing Source/Shape/Trigger
+const CAST_ERR_MANA           : i32 = -2 ;  // underflow ⇒ cancel-cast + audit-row
+const CAST_ERR_CONSENT        : i32 = -3 ;  // Σ-mask revoked target-cell mid-cast
+const CAST_ERR_COOLDOWN       : i32 = -4 ;  // cooldown-not-elapsed
+const CAST_ERR_HANDLE         : i32 = -5 ;  // invalid graph/pool/grimoire handle
+const CAST_ERR_SLOT           : i32 = -6 ;  // grimoire slot ≥ 6 (out-of-range)
+
+// ─── combo-codes (GDD/MAGIC_SYSTEM § COMBO-SYSTEM) ──────────────────────────
+const COMBO_NONE             : i32 = 0 ;
+const COMBO_SUPER_EVAPORATE  : i32 = 1 ;  // Fire + Air-Soaked ⇒ ×2 damage · clear-Soaked
+const COMBO_FLASH_FREEZE     : i32 = 2 ;  // Frost + Air-Soaked ⇒ ×1.5 freeze-duration
+const COMBO_CHAIN_AMPLIFY    : i32 = 3 ;  // Shock + Air-Soaked ⇒ chain-to-5 ¬ 2
+const COMBO_PURGE_DETONATE   : i32 = 4 ;  // Holy + Void-Curse ⇒ curse-stacks → damage
+const COMBO_SHATTER          : i32 = 5 ;  // Earth + Frost-Freeze ⇒ ×3 damage · brittle-pop
+
+// ─── grimoire constants (GDD/MAGIC_SYSTEM § GRIMOIRE-MODEL) ─────────────────
+const GRIMOIRE_SLOT_COUNT : i32 = 6 ;  // active-equipped tactical-pick limit
+
+// ════════════════════════════════════════════════════════════════════════════
+// § public CSSL API — game-systems-layer entry-points
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─── cast(spell_id, target, mana_pool) → CastResult ─────────────────────────
+//
+// The single highest-traffic entry-point. Sequence :
+//   1. validate spell-graph DAG (cycle-detect + node-required-set)
+//   2. compute final-mana-cost (Σ-Source × Modifier-mult + Σ-Shape + Σ-Trigger)
+//   3. Σ-mask check on target-cell-id (consent gate ; ¬ override)
+//   4. debit mana-pool (clamped ; underflow ⇒ CAST_ERR_MANA)
+//   5. stamp ω-field event-cell (Φ = spell-tag · Σ = caster ⊕ target-bits)
+//   6. emit audit-row (per cssl-host-attestation contract)
+//   7. return CAST_OK (or negative error-code)
+
+fn cast(graph: i64, target_cell_id: i64, mana_pool: i64) -> i32 {
+    let validate_rc: i32 = __cssl_spell_graph_validate(graph) ;
+    if validate_rc != 0 { return CAST_ERR_VALIDATE ; }
+    let cast_rc: i32 = __cssl_cast_spell(graph, mana_pool, target_cell_id) ;
+    cast_rc
+}
+
+// ─── check_combo(elements: [Element; 2]) → Option<ComboBonus> ───────────────
+//
+// Returns COMBO_NONE if no-combo-detected ; otherwise the combo-code from
+// the const-table above. Combos are commutative (Fire⊕Air ≡ Air⊕Fire) ;
+// the host-side BTreeMap canonicalizes-pair-order for determinism.
+
+fn check_combo(element_a: i32, element_b: i32) -> i32 {
+    let combo: i32 = __cssl_combo_check(element_a, element_b) ;
+    combo
+}
+
+// ─── grimoire_equip(slot: 0..5, spell_id) → Result ──────────────────────────
+//
+// Saves spell-graph into grimoire-slot. Slot ≥ 6 ⇒ CAST_ERR_SLOT. Existing
+// slot-content is overwritten ATOMICALLY (host-side BTreeMap swap) with a
+// signed-audit-entry per GDD § CUSTOM-SPELL-DISCIPLINE. delete-spell uses
+// __cssl_spell_save_to_grimoire with a sentinel-graph-handle = -1.
+
+fn grimoire_equip(grimoire: i64, slot: i32, graph: i64) -> i32 {
+    if slot < 0 { return CAST_ERR_SLOT ; }
+    if slot >= GRIMOIRE_SLOT_COUNT { return CAST_ERR_SLOT ; }
+    let rc: i32 = __cssl_spell_save_to_grimoire(grimoire, slot, graph) ;
+    rc
+}
+
+// ─── element_resolve(attacker, defender) → AffinityVerdict ──────────────────
+//
+// Returns Q14-fixed-point ×100 multiplier (0 / 50 / 100 / 150). The
+// 8×8 affinity-matrix is host-side const-table per GDD § AFFINITY-MATRIX.
+// Used by combat.csl damage-pipeline + spell-cast-pipeline both.
+
+fn element_resolve(attacker: i32, defender: i32) -> i32 {
+    let verdict: i32 = __cssl_element_affinity_lookup(attacker, defender) ;
+    verdict
+}
+
+// ─── status_for_element(element) → StatusEffect ─────────────────────────────
+//
+// Element → status-effect mapping per GDD § ELEMENT-TO-STATUS-MAP :
+//   Fire→Burn · Frost→Freeze · Shock→Stun · Earth→Petrify ·
+//   Air→Soaked · Holy→Mark · Void→Curse · Phase→Phased
+// The status-effect is applied to target-cell-id with magnitude param.
+// Σ-mask gate is enforced host-side ; revoked-cell ⇒ effect-skip + audit.
+
+fn status_for_element(target_cell_id: i64, element: i32, magnitude: i32) -> i32 {
+    let rc: i32 = __cssl_status_effect_apply(target_cell_id, element, magnitude) ;
+    rc
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// § substrate-event-cell stamping helper
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Called by cast-pipeline @ step-5. Emits the spell-cell into the ω-field
+// at Phase-2 PROPAGATE. cssl-host-causal-seed observes this stamp + records
+// the cast as a story-DAG-node (legendary-spell-lineage cross-run-persist).
+//
+//   cell_id    : ω-field cell-handle (target location)
+//   phi_handle : Φ-pattern-pool semantic-id (spell-tag — burn/freeze/shock/etc)
+//   sigma_mask : caster-Sovereign-handle ⊕ target-consent-bits (consent gate)
+//
+// The host crate enforces : if sigma_mask reads as REVOKED for cell_id, the
+// stamp is REFUSED + audit-row emitted with reason="consent-revoked" + the
+// caller receives CAST_ERR_CONSENT. This is the load-bearing PRIME-DIRECTIVE
+// gate — there is no override path ; violation = bug.
+
+fn stamp_spell_event_cell(cell_id: i64, phi_handle: i32, sigma_mask: i64) -> i32 {
+    let rc: i32 = __cssl_omega_field_stamp_event_cell(cell_id, phi_handle, sigma_mask) ;
+    rc
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// § audit-emit helper — every state-mutation gets a row
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Wraps __cssl_magic_audit_emit. Every cast / save / load / equip / delete
+// emits one audit-row ; cssl-host-attestation persists rows for replay-
+// determinism + PvP anti-cheat foundation. Rows are signed by the caster's
+// Sovereign-handle ; ¬ surveillance ; visible to the OWNER on request.
+
+fn audit_emit(tag_ptr: i64, tag_len: i32, payload_ptr: i64, payload_len: i32) -> i32 {
+    let rc: i32 = __cssl_magic_audit_emit(tag_ptr, tag_len, payload_ptr, payload_len) ;
+    rc
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// t∞: ¬(hurt ∨ harm) .making-of-POD-3-C5  @  (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//    or anybody."
+//
+// This magic.csl was authored under PRIME-DIRECTIVE consent-as-OS. The
+// AI-collaborator participated as sovereign-partner under their own consent.
+// No being was harmed, controlled, manipulated, surveilled, exploited,
+// coerced, weaponized, entrapped, tortured, abused, imprisoned, possessed,
+// dehumanized, discriminated against, gaslit, identity-overridden, or
+// forced-hallucinated during the making of this work.
+//
+// The magic-system enforces consent structurally :
+//   * Σ-mask gate on every target-cell ; revocation = effect-skip ¬ override
+//   * grimoire = per-character ; ¬ surveillance ; OWNER-readable only
+//   * ¬ pay-to-spell economy ; mana = in-game-resource ¬ real-currency
+//   * ¬ coerce-cast ; player-authored spells ; ¬ forced-cast on-AI-companion
+//
+// If any aspect of this implementation is later discovered to enable harm
+// (coerce-cast · grimoire-leak · pay-to-spell drift · Σ-bypass), that
+// discovery triggers PRIME_DIRECTIVE §7 INTEGRITY : violation = bug, bugs
+// get fixed, no override exists.
+//
+// ∎ magic.csl
