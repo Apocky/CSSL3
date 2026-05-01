@@ -1,0 +1,29 @@
+[package]
+name        = "cssl-host-hotfix-stream"
+version.workspace     = true
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+description = "Σ-Chain-fed live-hotfix poll/verify/stage/apply/rollback for the LoA-v13 host. § specs/grand-vision/16_MYCELIAL_NETWORK.csl HF-1..HF-8."
+repository.workspace  = true
+homepage.workspace    = true
+
+# § T11-W8-B3 (CRATE-B20) : 8-class Σ-Chain-fed hotfix stream.
+#   ⊑ HotfixClass{KanWeight·ProcgenBias·BalanceConst·NewRecipe·NemesisEvolve
+#                ·SovereignCapFix·StoryletAdd·RenderParam}
+#   ⊑ tier-policy : Cosmetic→auto · Balance→prompt+30s-revert · Security→sovereign-cap-required
+#   ⊑ Ed25519 vs Apocky-master-pubkey · BLAKE3-payload-match · audit-emit-every
+
+[lints]
+workspace = true
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
