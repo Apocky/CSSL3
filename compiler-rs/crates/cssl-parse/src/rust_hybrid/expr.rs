@@ -1230,4 +1230,192 @@ mod tests {
             panic!("expected Assign");
         }
     }
+
+    // ─── T11-CC-PARSER-4 : string + char + array literal parse-paths ────────
+
+    #[test]
+    fn parse_string_lit_basic() {
+        // `"hello"` → Literal{Str}.
+        let (_f, toks) = prep(r#""hello""#);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Literal(lit) => {
+                assert_eq!(lit.kind, cssl_ast::LiteralKind::Str);
+            }
+            other => panic!("expected Literal(Str), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_string_lit_escapes() {
+        // `"a\nb\tc"` — single Literal token, escapes lex atomically.
+        let (_f, toks) = prep(r#""a\nb\tc""#);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(
+            e.kind,
+            ExprKind::Literal(cssl_ast::Literal {
+                kind: cssl_ast::LiteralKind::Str,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parse_string_lit_unicode() {
+        // Multibyte UTF-8 body — `"鳥居"` (toriy gate).
+        let (_f, toks) = prep("\"鳥居\"");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(
+            e.kind,
+            ExprKind::Literal(cssl_ast::Literal {
+                kind: cssl_ast::LiteralKind::Str,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parse_string_lit_hex_unicode_escapes() {
+        // `"\x41\u{1F600}"` — both byte-hex and brace-unicode escape sequences.
+        let (_f, toks) = prep(r#""\x41\u{1F600}""#);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(
+            e.kind,
+            ExprKind::Literal(cssl_ast::Literal {
+                kind: cssl_ast::LiteralKind::Str,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parse_string_with_quote_escape() {
+        // `"a\"b"` — embedded escaped quote.
+        let (_f, toks) = prep(r#""a\"b""#);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(
+            e.kind,
+            ExprKind::Literal(cssl_ast::Literal {
+                kind: cssl_ast::LiteralKind::Str,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn parse_char_lit_ascii() {
+        // `'a'` → Literal{Char}.
+        let (_f, toks) = prep("'a'");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Literal(lit) => {
+                assert_eq!(lit.kind, cssl_ast::LiteralKind::Char);
+            }
+            other => panic!("expected Literal(Char), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_char_lit_escape() {
+        // `'\n'` — escape sequence char literal.
+        let (_f, toks) = prep(r"'\n'");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Literal(lit) => {
+                assert_eq!(lit.kind, cssl_ast::LiteralKind::Char);
+            }
+            other => panic!("expected Literal(Char), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_array_lit_basic() {
+        // `[1, 2, 3]` — array literal in `List` form.
+        let (_f, toks) = prep("[1, 2, 3]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Array(cssl_ast::ArrayExpr::List(items)) => {
+                assert_eq!(items.len(), 3);
+            }
+            other => panic!("expected Array(List, len=3), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_nested_array_lit() {
+        // `[[1, 2], [3, 4]]` — outer list of two inner lists.
+        let (_f, toks) = prep("[[1, 2], [3, 4]]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Array(cssl_ast::ArrayExpr::List(items)) => {
+                assert_eq!(items.len(), 2);
+                for inner in &items {
+                    assert!(matches!(
+                        inner.kind,
+                        ExprKind::Array(cssl_ast::ArrayExpr::List(_))
+                    ));
+                }
+            }
+            other => panic!("expected Array(List, len=2), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_array_lit_decimal_triple() {
+        // `[10, 20, 30]` — guards the comma-separated array-element path with
+        // a third element. (Stage-0 cssl-lex doesn't yet model `0x...` hex int
+        // literals, so we use plain decimals.)
+        let (_f, toks) = prep("[10, 20, 30]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Array(cssl_ast::ArrayExpr::List(items)) => {
+                assert_eq!(items.len(), 3);
+            }
+            other => panic!("expected Array(List, len=3), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_const_string_full_pipeline() {
+        // End-to-end : `const TOOL_NAME: &str = "engine.state"` parses cleanly
+        // through the full module-parser path and registers as a ConstItem.
+        let src = r#"const TOOL_NAME: &str = "engine.state""#;
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "expected zero parse errors");
+        assert_eq!(m.items.len(), 1);
+        assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
+    }
 }

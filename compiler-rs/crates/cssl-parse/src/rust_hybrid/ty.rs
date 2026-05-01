@@ -556,4 +556,56 @@ mod tests {
         let r = parse_optional_effect_row(&mut c, &mut bag).unwrap();
         assert_eq!(r.effects.len(), 2);
     }
+
+    // ─── T11-CC-PARSER-4 : array-type fixed-size + nested-array shape ────────
+
+    #[test]
+    fn parse_array_type_fixed_size() {
+        // `[i32; 16]` — inner ConstExpr length is `16`.
+        let (_f, toks) = prep("[i32; 16]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match t.kind {
+            TypeKind::Array { elem, len } => {
+                assert!(matches!(elem.kind, TypeKind::Path { .. }));
+                assert!(matches!(len.kind, cssl_ast::ExprKind::Literal(_)));
+            }
+            other => panic!("expected Array(elem, len), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_nested_array_type() {
+        // `[[i32; 2]; 3]` — outer array of length 3 of inner-array-of-2-i32.
+        let (_f, toks) = prep("[[i32; 2]; 3]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match t.kind {
+            TypeKind::Array { elem, .. } => {
+                assert!(matches!(elem.kind, TypeKind::Array { .. }));
+            }
+            other => panic!("expected Array (outer), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_str_reference_type() {
+        // `&str` — common LoA pattern for `const TOOL_NAME: &str = "..."`.
+        let (_f, toks) = prep("&str");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match t.kind {
+            TypeKind::Reference { mutable, inner } => {
+                assert!(!mutable);
+                assert!(matches!(inner.kind, TypeKind::Path { .. }));
+            }
+            other => panic!("expected &str Reference, got {other:?}"),
+        }
+    }
 }

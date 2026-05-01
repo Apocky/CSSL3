@@ -172,13 +172,22 @@ enum RawToken {
     #[regex(r"[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
     IntLiteral,
 
-    #[regex(r#""(?:[^"\\\n]|\\[\\"nrt0'])*""#)]
+    /// Normal string literal `"…"` — supports common escapes (`\n` `\t` `\r` `\0` `\\`
+    /// `\"` `\'`), 2-hex-digit byte escapes (`\x41`), and brace-delimited Unicode
+    /// codepoint escapes (`\u{1F600}` — 1..=6 hex digits). Body bytes that are not
+    /// `"` / `\` / `\n` are accepted as-is, so multibyte UTF-8 (e.g. `鳥居`) flows
+    /// through the regex unchanged.
+    #[regex(r#""(?:[^"\\\n]|\\[\\"nrt0']|\\x[0-9A-Fa-f][0-9A-Fa-f]|\\u\{[0-9A-Fa-f]{1,6}\})*""#)]
     StringLiteral,
 
     #[regex(r##"r#*"[^"]*"#*"##)]
     RawStringLiteral,
 
-    #[regex(r##"'(?:[^'\\\n]|\\[\\'nrt0"])'"##)]
+    /// Char literal `'c'` — single Unicode-scalar character or single escape (same
+    /// escape table as `StringLiteral` minus the closing-quote escape rule).
+    #[regex(
+        r##"'(?:[^'\\\n]|\\[\\'nrt0"]|\\x[0-9A-Fa-f][0-9A-Fa-f]|\\u\{[0-9A-Fa-f]{1,6}\})'"##
+    )]
     CharLiteral,
 
     // ─ brackets ────────────────────────────────────────────────────────────
@@ -374,6 +383,82 @@ mod tests {
         assert_eq!(
             kinds(r##"r#"raw string"#"##),
             vec![TokenKind::StringLiteral(StringFlavor::Raw), TokenKind::Eof,],
+        );
+    }
+
+    // ─── T11-CC-PARSER-4 : extended escape table ────────────────────────────
+
+    #[test]
+    fn string_literal_basic_escapes_lex_atomic() {
+        // `\n \t \\ \" \r \0 \'` — single token covering the whole quoted body.
+        let toks = lex(&mk(r#""line1\nline2\t\"quoted\"""#));
+        assert_eq!(toks[0].kind, TokenKind::StringLiteral(StringFlavor::Normal));
+        // span starts at byte 0 and ends at the byte after the trailing quote
+        assert_eq!(toks[0].span.start, 0);
+        assert!(toks[0].span.end as usize == r#""line1\nline2\t\"quoted\"""#.len());
+        assert_eq!(toks[1].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn string_literal_hex_escape_lex() {
+        // \x## byte escape — three chars `ABC`.
+        assert_eq!(
+            kinds(r#""\x41\x42\x43""#),
+            vec![
+                TokenKind::StringLiteral(StringFlavor::Normal),
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn string_literal_unicode_escape_lex() {
+        // \u{...} brace-delimited Unicode codepoint escape (1..=6 hex digits).
+        assert_eq!(
+            kinds(r#""\u{1F600}\u{0}\u{42}""#),
+            vec![
+                TokenKind::StringLiteral(StringFlavor::Normal),
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn string_literal_unicode_body_lex() {
+        // Multibyte UTF-8 in body — accepted as raw bytes by `[^"\\\n]` regex class.
+        assert_eq!(
+            kinds("\"鳥居\""),
+            vec![
+                TokenKind::StringLiteral(StringFlavor::Normal),
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn char_literal_with_escape_lex() {
+        // `'\n'` — single CharLiteral covering 4 bytes.
+        let toks = lex(&mk(r"'\n'"));
+        assert_eq!(toks[0].kind, TokenKind::CharLiteral);
+        assert_eq!(toks[0].span.end - toks[0].span.start, 4);
+        assert_eq!(toks[1].kind, TokenKind::Eof);
+    }
+
+    #[test]
+    fn char_literal_hex_escape_lex() {
+        // `'\x41'`
+        assert_eq!(
+            kinds(r"'\x41'"),
+            vec![TokenKind::CharLiteral, TokenKind::Eof],
+        );
+    }
+
+    #[test]
+    fn char_literal_unicode_escape_lex() {
+        // `'\u{1F600}'`
+        assert_eq!(
+            kinds(r"'\u{1F600}'"),
+            vec![TokenKind::CharLiteral, TokenKind::Eof],
         );
     }
 
