@@ -737,6 +737,112 @@ pub fn tool_registry() -> ToolRegistry {
         intent_recent
     );
 
+    // ─ T11-W5c-LOA-HOST-WIRE : 17 read-only probes over the wave-3γ + W4 + W5a
+    //   + W5b cssl-host-* path-deps. All tools are non-mutating ; downstream
+    //   waves will register the corresponding mutating tools individually. ─
+    reg!(
+        "replay.last_event_count",
+        "Count of events in the last loaded replay. Returns 0 if no replay loaded.",
+        false,
+        replay_last_event_count
+    );
+    reg!(
+        "audit.summarize_dir",
+        "Ingest a directory of *.log/*.jsonl audit streams and return summary text (params: dir).",
+        false,
+        audit_summarize_dir
+    );
+    reg!(
+        "stereo.config_default_text",
+        "Return the default StereoConfig (IPD = 63 mm) as pretty JSON.",
+        false,
+        stereo_config_default_text
+    );
+    reg!(
+        "golden.list_labels",
+        "List golden snapshot labels under a directory (params: dir).",
+        false,
+        golden_list_labels
+    );
+    reg!(
+        "procgen.list_room_kinds",
+        "List the 7 canonical RoomKind variants from cssl-host-procgen-rooms.",
+        false,
+        procgen_list_room_kinds
+    );
+    reg!(
+        "histogram.snapshot_text",
+        "Snapshot of any internal histogram registry (returns '<empty>' when no registry is wired).",
+        false,
+        histogram_snapshot_text
+    );
+    reg!(
+        "attestation.empty_session_text",
+        "Render an empty SessionAttestation as canonical text (no session yet).",
+        false,
+        attestation_empty_session_text
+    );
+    reg!(
+        "rt_trace.recent_events",
+        "Drain the runtime trace ring into a JSON array (returns '[]' if no ring is wired).",
+        false,
+        rt_trace_recent_events
+    );
+    reg!(
+        "spectral.bands",
+        "Return the 16 canonical band wavelengths (nm) as a JSON array.",
+        false,
+        spectral_bands
+    );
+    reg!(
+        "frame_recorder.lfrc_magic",
+        "Return the LFRC v1 magic bytes as a hex string.",
+        false,
+        frame_recorder_lfrc_magic
+    );
+    reg!(
+        "input_virtual.list_scenarios",
+        "List canonical synthetic-input scenarios (navigate_test_room · type_intent_phrase · full_qa_session).",
+        false,
+        input_virtual_list_scenarios
+    );
+    reg!(
+        "config.default_json",
+        "Return the default LoaConfig as pretty JSON.",
+        false,
+        config_default_json
+    );
+    reg!(
+        "cocreative.bias_dim",
+        "Return the BiasVector dim of the wired CocreativeOptimizer (0 if none wired).",
+        false,
+        cocreative_bias_dim
+    );
+    reg!(
+        "causal.dag_node_count",
+        "Return the node count of the wired CausalDag (0 if no DAG attached yet).",
+        false,
+        causal_dag_node_count
+    );
+    reg!(
+        "license.policy_default_text",
+        "Return the LoA-default license policy verdict for License::Unknown ('Deny: unknown not allowed').",
+        false,
+        license_policy_default_text
+    );
+    reg!(
+        "voice.audit_count",
+        "Return the count of audit events emitted by the wired VoiceSession (0 if none).",
+        false,
+        voice_audit_count
+    );
+    reg!(
+        "multiplayer.room_status",
+        "Return the multiplayer room status string ('no-room' if no room joined).",
+        false,
+        multiplayer_room_status
+    );
+
     r
 }
 
@@ -2696,6 +2802,147 @@ fn intent_recent(_state: &mut EngineState, _params: Value) -> Value {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// § T11-W5c-LOA-HOST-WIRE — 17 wired_* MCP-tool handlers
+// ═══════════════════════════════════════════════════════════════════════
+//
+// § ROLE
+//   Each handler is a thin probe over the matching `wired_*` module : it
+//   surfaces a single canonical fact about the underlying cssl-host-* crate
+//   without holding mutable state (the engine doesn't yet wire a recorder /
+//   replayer / optimizer / dag / voice-session / room ; future waves will
+//   add those + extend these probes accordingly).
+
+/// `replay.last_event_count` : count of events in the last loaded replay.
+/// Returns 0 since no replayer is wired yet.
+fn replay_last_event_count(_state: &mut EngineState, _params: Value) -> Value {
+    json!({"count": 0u64, "wired": false})
+}
+
+/// `audit.summarize_dir` : ingest dir + return summary text. Empty `dir`
+/// param yields an `{error: ...}` envelope.
+fn audit_summarize_dir(_state: &mut EngineState, params: Value) -> Value {
+    let dir = p_str(&params, "dir", "");
+    if dir.is_empty() {
+        return json!({"error": "missing 'dir' param"});
+    }
+    match crate::wired_audit::ingest_logs_dir(dir) {
+        Ok(idx) => {
+            let summary = crate::wired_audit::summarize(&idx);
+            let text = crate::wired_audit::report_text(&summary);
+            json!({"ok": true, "dir": dir, "summary_text": text})
+        }
+        Err(e) => json!({"ok": false, "error": format!("{e}"), "dir": dir}),
+    }
+}
+
+/// `stereo.config_default_text` : default StereoConfig as pretty JSON.
+fn stereo_config_default_text(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::wired_stereoscopy::default_config_json();
+    // Re-parse to embed the JSON as a structured value rather than a string.
+    let parsed: Value = serde_json::from_str(&s).unwrap_or(Value::Null);
+    json!({"config": parsed, "ipd_mm_default": 63})
+}
+
+/// `golden.list_labels` : list snapshot labels under `dir`. Missing dir → empty.
+fn golden_list_labels(_state: &mut EngineState, params: Value) -> Value {
+    let dir = p_str(&params, "dir", "");
+    if dir.is_empty() {
+        let empty: Vec<String> = Vec::new();
+        return json!({"labels": empty, "count": 0u64, "dir": ""});
+    }
+    let labels = crate::wired_golden::list_labels(dir);
+    let count = labels.len();
+    json!({"labels": labels, "count": count, "dir": dir})
+}
+
+/// `procgen.list_room_kinds` : 7 canonical RoomKind variants.
+fn procgen_list_room_kinds(_state: &mut EngineState, _params: Value) -> Value {
+    let kinds = crate::wired_procgen_rooms::all_room_kinds();
+    json!({"kinds": kinds, "count": kinds.len()})
+}
+
+/// `histogram.snapshot_text` : snapshot of any internal histogram registry.
+/// Returns the canonical "<empty>" marker since no registry is wired.
+fn histogram_snapshot_text(_state: &mut EngineState, _params: Value) -> Value {
+    let reg = crate::wired_histograms::HistogramRegistry::new();
+    let txt = crate::wired_histograms::snapshot_text(&reg);
+    json!({"snapshot": txt, "wired": false})
+}
+
+/// `attestation.empty_session_text` : render an empty SessionAttestation.
+fn attestation_empty_session_text(_state: &mut EngineState, _params: Value) -> Value {
+    let txt = crate::wired_attestation::empty_session_text();
+    json!({"text": txt})
+}
+
+/// `rt_trace.recent_events` : drain a fresh ring into JSON. Empty since no
+/// runtime ring is wired into EngineState yet.
+fn rt_trace_recent_events(_state: &mut EngineState, _params: Value) -> Value {
+    let ring = crate::wired_rt_trace::RtRing::new(8);
+    let s = crate::wired_rt_trace::drain_to_json(&ring);
+    let parsed: Value = serde_json::from_str(&s).unwrap_or(Value::Array(vec![]));
+    json!({"events": parsed, "wired": false})
+}
+
+/// `spectral.bands` : 16 canonical band wavelengths as a JSON array.
+fn spectral_bands(_state: &mut EngineState, _params: Value) -> Value {
+    let nm = &crate::wired_spectral_grader::BAND_WAVELENGTHS_NM[..];
+    json!({"band_count": nm.len(), "wavelengths_nm": nm})
+}
+
+/// `frame_recorder.lfrc_magic` : LFRC v1 magic bytes as a hex string.
+fn frame_recorder_lfrc_magic(_state: &mut EngineState, _params: Value) -> Value {
+    let hex = crate::wired_frame_recorder::lfrc_magic_hex();
+    json!({
+        "magic_hex": hex,
+        "version": crate::wired_frame_recorder::LFRC_VERSION,
+    })
+}
+
+/// `input_virtual.list_scenarios` : canonical synthetic-input scenario names.
+fn input_virtual_list_scenarios(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::wired_input_virtual::list_scenarios();
+    json!({"scenarios": s, "count": s.len()})
+}
+
+/// `config.default_json` : default LoaConfig as pretty JSON.
+fn config_default_json(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::wired_config::default_pretty_json();
+    let parsed: Value = serde_json::from_str(&s).unwrap_or(Value::Null);
+    json!({"config": parsed})
+}
+
+/// `cocreative.bias_dim` : BiasVector dim if optimizer is wired (0 otherwise).
+fn cocreative_bias_dim(_state: &mut EngineState, _params: Value) -> Value {
+    let dim = crate::wired_cocreative::optimizer_dim(None);
+    json!({"dim": dim, "wired": false})
+}
+
+/// `causal.dag_node_count` : node count of wired CausalDag (0 if not wired).
+fn causal_dag_node_count(_state: &mut EngineState, _params: Value) -> Value {
+    let n = crate::wired_causal_seed::dag_node_count(None);
+    json!({"node_count": n, "wired": false})
+}
+
+/// `license.policy_default_text` : default LoA license policy verdict for Unknown.
+fn license_policy_default_text(_state: &mut EngineState, _params: Value) -> Value {
+    let txt = crate::wired_license_attribution::policy_default_text();
+    json!({"policy_verdict": txt, "license": "Unknown"})
+}
+
+/// `voice.audit_count` : count of audio audit events emitted by VoiceSession.
+fn voice_audit_count(_state: &mut EngineState, _params: Value) -> Value {
+    let n = crate::wired_voice::audit_event_count(None);
+    json!({"count": n, "wired": false})
+}
+
+/// `multiplayer.room_status` : multiplayer room status. 'no-room' since no room joined.
+fn multiplayer_room_status(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::wired_multiplayer::room_status(None);
+    json!({"status": s, "wired": false})
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -2731,9 +2978,13 @@ mod tests {
         // + 2 spontaneous-condensation (T11-WAVE3-SPONT · world.spontaneous_seed
         //   + sense.spontaneous_recent)
         // + 2 intent-router (T11-WAVE3-INTENT · intent.translate + intent.recent)
-        // = 93 total.
+        // + 17 wave-3γ + W4 + W5a + W5b wired-* probes (T11-W5c-LOA-HOST-WIRE :
+        //   replay · audit · stereo · golden · procgen · histogram · attestation
+        //   · rt_trace · spectral · frame_recorder · input_virtual · config ·
+        //   cocreative · causal · license · voice · multiplayer)
+        // = 110 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 93, "must have exactly 93 tools");
+        assert_eq!(reg.len(), 110, "must have exactly 110 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -3160,10 +3411,11 @@ mod tests {
         // + 2 spontaneous (T11-WAVE3-SPONT · world.spontaneous_seed +
         //   sense.spontaneous_recent)
         // + 2 intent-router (T11-WAVE3-INTENT · intent.translate +
-        //   intent.recent) = 93.
-        assert_eq!(v["count"], 93);
+        //   intent.recent)
+        // + 17 wired-* probes (T11-W5c-LOA-HOST-WIRE) = 110.
+        assert_eq!(v["count"], 110);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 93);
+        assert_eq!(arr.len(), 110);
     }
 
     // § T11-WAVE3-INTENT · MCP-tool integration
