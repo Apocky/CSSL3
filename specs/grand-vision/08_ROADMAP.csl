@@ -114,23 +114,112 @@
 
 # ══════════════════════════════════════════════════════════════════
 
-§ W5+ — KAN-substrate-loa swap-in + DM/GM intelligence  ⟪ ○ deferred ⟫
+§ W5 — engine-wire-up + attestation + spectral-grader  ⟪ ◐ in-flight ⟫
 
-  § DELIVERABLES
-    KAN-substrate-loa           : trained-KAN replaces keyword-classifier
-                                  ≡ stage-1 ⊕ stage-2 hybrid then-stage-2-only
-    DM/GM intelligence-table    : per-role decision-table KAN-baked
-                                  ≡ DM-spawn-bias ; GM-prose-rhythm ; etc.
-    co-creative gradient        : closed-loop player ⟷ substrate
-                                  ≡ history-buffer N=64 ; KAN-bias-on-history
-    persistence-image-format    : §§ 18 OmegaField snapshot canonical-format
-                                  ≡ S-expr | MessagePack | custom-vote
-    Futamura-P1/P2/P3           : self-bootstrap CSSLv3-compiler
-                                  ≡ proves-stage-0-Rust-throwaway thesis
+  § W5a — current-wave  «attestation + telemetry-instrumentation»
+    attestation-emitter         : per-wave PRIME-DIRECTIVE §11 attestation block
+                                  ≡ append-only ; ¬ rewrite ; cap-gated emit
+    rt-trace                    : real-time tracer hook for ω-field ticks
+                                  ≡ scoped-timer + ring-buffer ; histogram-merge
+    spectral-grader             : 12-stage pipeline-budget grader
+                                  ≡ per-frame Quest-3 11.1ms verdict-emit
+    roadmap-update              : THIS-doc ; ledger + W5/W6/W7/W8 plan
+    others                      : DECISIONS.md slice-merge ; specs-tree audit
+
+  § W5b — engine-wire-up  «loa-host integration»
+    loa-host wire-up            : import all W3+W4 crates into loa-host runtime
+                                  ≡ replay + audit + stereoscopy + golden +
+                                    procgen-rooms + histograms + causal-seed +
+                                    cocreative + voice + multiplayer + license
+    MCP-tool registration       : 22+ MCP tools registered @ runtime
+                                  ≡ cap-gated ; sovereign-bypass-RECORDED ; ¬ silent
+    render-loop instrumentation : histogram + scoped-timer @ 12-stage gates
+                                  ≡ Phase-0..6 each timed ; Quest-3 11.1ms budget
+    window.rs input-recorder    : F-key + sensor-event → cssl-host-replay log
+                                  ≡ deterministic-replay end-to-end working
+    scene-graph procgen         : test_room-as-empty-container @ runtime
+                                  ≡ contents = procgen-rooms recipe @ intent-time
+
+  § W5c — pipe-completion  «license-emit + realtime-channel»
+    asset-fetcher license-emit  : every fetched-asset → license-attribution-HUD
+                                  ≡ default-on ; F12-toggle ; CC-BY canonical
+    cssl-edge realtime-channel  : signaling-WS → multiplayer-signaling crate
+                                  ≡ Vercel-edge → Supabase realtime → peer-WebRTC
 
   § DISCHARGE-DISCIPLINE
-    deferred-not-cancelled ; W5 dispatched once-W4-completes
-    ¬ W5-W4-interleave ; complete-W4 first
+    W5 = parallel ; W5a + W5b + W5c file-disjoint
+    ≥ 8 parallel-agents (cadence-memo) ; tight-scope ≤ 1500 LOC each
+    progressive-write ; small-batches 3-5
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W6 — KAN-substrate-loa swap-in  ⟪ ○ deferred ⟫  «paradigm-7-runtime»
+
+  § DELIVERABLES
+    KAN-classifier              : trained-KAN replaces intent_router::classify()
+                                  ≡ deterministic-keyword-table → spline-table
+                                  ≡ Σ-mask-aware ; replay-bit-equal across-hosts
+    KAN-spontaneous-seed        : KAN-driven seed-cell radiance @ NE-corner pad
+                                  ≡ replaces heuristic spontaneous-pad emission
+                                  ≡ semantic-grounding via Φ-handle binding
+    stage-0-fallback            : deterministic-keyword path ALWAYS-AVAILABLE
+                                  ≡ KAN-failure → fallback ; ¬ silent-degrade
+                                  ≡ A/B-tagged audit-rows for-comparison
+    KAN-bake-pipeline           : F4-comptime spline-table generation
+                                  ≡ training off-substrate ; bake-once-runtime-many
+    persistence-image-format    : §§ 18 OmegaField snapshot canonical-format
+                                  ≡ S-expr | MessagePack | custom-vote
+
+  § PRECONDITIONS
+    ✓ cssl-substrate-omega-field landed (W3b @ 1b4ce18 era)
+    ✓ intent-router stage-0 keyword-table landed (W3b)
+    ✓ spontaneous-pad heuristic-emission landed (W3b)
+    ○ training-corpus + KAN-trainer offline-pipeline
+    ○ Σ-mask-aware-spline encoding format-spec
+
+  § DISCHARGE-DISCIPLINE
+    non-trivial ; ¬ block-W5 ; W6 dispatched after W5b loa-host ✓
+    composition ¬ replacement ‼ stage-0 path is permanent fallback
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W7 — DM/GM intelligence  ⟪ ○ deferred ⟫  «narrow-roster-orchestrators»
+
+  § DELIVERABLES
+    DM scene-graph orchestrator : consumes causal-seed Phase-4 cohomology
+                                  ≡ event-DAG → spawn-bias → manifestation-event
+                                  ≡ ¬ generic-AGI ; scene-arbiter narrow-role
+    GM narrative-pacing ctrl    : consumes voice + cocreative crates
+                                  ≡ prose-rhythm + tempo-bias ; turn-cadence
+                                  ≡ ¬ open-dialog ; pacing-only narrow-role
+    Collaborator co-author tool : runtime player-text co-write w/ Σ-respect
+                                  ≡ delegates to companion-proxy w/ cap-gate
+    Coder runtime-mutate tool   : F4-comptime → runtime-bake of-cells
+                                  ≡ player-text → spline-table-edit → re-bake
+
+  § DISCIPLINE
+    cap-gated MCP-tools ; ¬ generic-AGI ; ¬ open-ended-conversation
+    each role narrow-task-bound (00_THESIS § COROLLARY-1)
+    re-use cssl-substrate plumbing ; ¬ new-substrate-fork
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W8 — multiplayer-shared-substrate  ⟪ ○ deferred ⟫  «ω-field-replication»
+
+  § DELIVERABLES
+    shared-ω-field              : players-in-room SHARE one ω-field instance
+                                  ≡ substrate-replication via signaling-channel
+                                  ≡ Σ-mask-merge per-cell consent-resolved
+    private-cap-set per-player  : sovereign-cap STAYS-LOCAL ; ¬ replicated
+                                  ≡ per-player consent-arch preserved
+                                  ≡ Sovereign-handle non-transferable @ runtime
+    cocreative-bias merge-vote  : per-player bias vectors → consent-gated vote
+                                  ≡ unanimous-only OR weighted-by-tenure
+                                  ≡ veto-respect ‼ any-1-veto → no-merge
+
+  § DISCIPLINE
+    ω-field-replication ¬ break per-cell-consent (§§ COROLLARY-3)
+    bias-merge ¬ override individual-veto ‼ consent-as-OS structural
 
 # ══════════════════════════════════════════════════════════════════
 
