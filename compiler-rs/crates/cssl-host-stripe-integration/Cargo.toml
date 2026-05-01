@@ -1,0 +1,22 @@
+[package]
+name                   = "cssl-host-stripe-integration"
+description            = "CSSLv3 stage0 — Stripe REST integration (cap-gated · cosmetic-only · audit-emit · idempotent · webhook-verified)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W8-D1
+# § PRIME-DIRECTIVE : ¬ pay-for-power · cosmetic-channel-only-axiom
+# § STRUCTURAL : NEVER-store-raw-card-numbers · types-have-no-card-fields
+# § HARD-CAPS : cap-gating @ every public-method · audit-emit on-success-and-failure
+# § DEPS : ureq + hmac + sha2 + subtle ABSENT-from-workspace ; M! HttpTransport-trait + HmacSha256Verifier-trait + blake3-keyed-MAC-fallback ; G1 wires real-impls
+[dependencies]
+thiserror   = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+blake3      = { workspace = true }
+
+[lints]
+workspace = true
