@@ -1,0 +1,20 @@
+[package]
+name                   = "cssl-host-attestation"
+description            = "CSSLv3 — PRIME-DIRECTIVE-aligned per-session attestation aggregator. Ingests cssl-host-audit AuditRow streams · classifies events by directive-axis (Consent · Sovereignty · Transparency · NoHarm · NoControl · NoManipulation · NoSurveillance · NoExploitation · NoCoercion) · produces SessionAttestation reports + harm-flag lists in text · pretty-JSON · CSLv3-native · short-attestation-block formats. Aggregator is FILE-DISJOINT from in-flight loa-host work ; loa-host integration deferred to wave-5b."
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_attestation"
+crate-type = ["rlib"]
+
+[dependencies]
+serde           = { workspace = true }
+serde_json      = { workspace = true }
+cssl-host-audit = { path = "../cssl-host-audit" }
+
+[lints]
+workspace = true
