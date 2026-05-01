@@ -1,0 +1,285 @@
+# GDDs/PROCGEN_WORLD.csl
+# § PROCGEN-WORLD — runtime procgen game-design (LoA-v13)
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-1-A7 ; @ branch cssl/session-6/parallel-fanout
+# § I> sibling-of CHARTER + ROGUELIKE_LOOP + LOA_PILLARS + 31_LOA_DESIGN
+# § I> consumes 30_SUBSTRATE_v2 + 32_SIGNATURE_RENDERING
+# § I> rides-on grand-vision/11_KAN_RIDE
+# § I> CSL3-glyph-native ; ≤ 300 LOC ; "Apockalypse" creator-canonical
+
+# ══════════════════════════════════════════════════════════════════
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE + 30_SUBSTRATE_v2 + LOA_PILLARS + CHARTER
+  § INHERITED  (¬ re-stated ; bound-by-reference)
+    t∞: consent = OS                                ← PRIME_DIRECTIVE
+    t∞: ω-field = the-One-True-State                ← 30_SUBSTRATE_v2
+    t∞: Σ-check non-optional ∀ set_cell              ← 30_SUBSTRATE_v2
+    t∞: signature-rendering ⊑ no-harm-by-construction ← 32_SIG_RENDER
+    t∞: ride ≡ stage-0 ⊕ stage-1 simultaneous        ← 11_KAN_RIDE
+    t∞: ¬ blocky-voxel ; SDF-native                  ← CHARTER
+  § CHARTER-SPECIFIC
+    t∞: voxel-alternative = SDF-native · raymarch-rendered
+         ≡ surface = iso(ω-field cell-distance) · ¬ mesh-extraction-hot-path
+    t∞: real-scale-cities = ≥ 5km² walkable ⊗ ≥ 4096 NPCs city-wide
+         ≡ realistic-density-curve ; ¬ token-village
+    t∞: procgen-everywhere = NO hand-authored-content
+         ≡ only seed + grammar + KAN ; scenes = scaffolding throwaway
+    t∞: seed-determinism = run-N-floor-K bit-equal-replay
+         ≡ ∀ procgen-call seed-derived-RNG cross-platform-stable
+    t∞: KAN-ride-on-procgen = stage-1 selects template + scales hyperparams
+         ≡ stage-0 table-fallback ALWAYS · canary-10% disagreement-recorded
+    t∞: ω-field stamps every-procgen-cell · cssl-host-attestation replay-anchor
+    t∞: ConsentZone ⊑ procgen-output · intensity-tier gates ¬ surprise-attack
+
+# ══════════════════════════════════════════════════════════════════
+§ BIOMES  «8 canonical · per-biome procgen-grammar»
+  § ENUM
+    biomes ∈ { Crypt · ForestPath · Citadel · Abyss · Forge ·
+               Sanctum · Maelstrom · EndlessSpire }
+  § PER-BIOME-PROFILE  «context-record»
+    palette-LUT      : Vec<SpectralBand[16]>          # 32_SIG stage-6
+    noise-octaves    : { count · base-freq · gain · lacunarity }
+    weather-effects  : { fog · rain · ash · aurora · pressure }
+    monster-pool     : Vec<CreatureArchetypeId>       # ⊆ § CREATURES
+    loot-skew        : { material-bias · rarity-shift · affix-pool }
+    audio-bed        : Handle<SpectralAudioBed>       # 32 V.1 wave-unity
+    grammar-rules    : LSystemRules                    # below
+  § PER-BIOME-CONFIG-TABLE
+    Crypt        : { umbra-bone · low-octave-rough · fog-dense
+                   · undead+chitin · poison-affix · choral-low }
+    ForestPath   : { moss-amber · organic-fractal · rain
+                   · beast+sprite · nature-affix · warm-bird }
+    Citadel      : { iron-gold · grid-amplified · wind
+                   · guardian+construct · armor-skew · pipe-organ }
+    Abyss        : { void-violet · warped-folded · pressure-DOT
+                   · leviathan+phantom · dark-affix · sub-bass }
+    Forge        : { ember-iron · turbulent-hot · ash
+                   · magmatic+golem · weapon-skew · hammer-bellows }
+    Sanctum      : { pearl-rose · caustic-soft · aurora
+                   · seraph+wisp · holy-affix · wind-chime }
+    Maelstrom    : { storm-cyan · volatile-shift · tempest
+                   · storm-elemental · speed-affix · thunder }
+    EndlessSpire : { ALL-rotating · compounding · variable
+                   · ALL-pools · ALL-affixes · adaptive-spectral }
+  § BIOME-GRAMMAR  «L-system per-biome · tree+architecture+terrain»
+    L-1 axiom        : seed-string from (biome-id × floor-seed)
+    L-2 production   : per-biome rule-table
+    L-3 iterations   : 5..9 depth · floor-tier scales depth
+    L-4 emit         : SDF-fold-ops { displace · twist · onion · sub · union }
+    L-5 stamp-into-ω : every-iteration writes FieldCell · Σ-mask propagated
+
+# ══════════════════════════════════════════════════════════════════
+§ REAL-SCALE-CITIES  «hub-cities · ≥ 5km² · ≥ 4096 NPCs»
+  § HUB-CITIES  «5 canonical hubs»
+    NeverhomeRise     ⊑ Citadel-affinity    (player-spawn central-hub)
+    OldKeyport        ⊑ ForestPath-affinity (vendor-cluster · gift-econ)
+    Brassmarrow       ⊑ Forge-affinity      (crafting-deep · affix-recombine)
+    GreenwillowFair   ⊑ Sanctum-affinity    (Companion-resonance · social)
+    Sanctum-of-Echoes ⊑ Sanctum+Hub         (meta-Echoes · biome-DAG-gate)
+  § CITY-SPEC-METRICS  ‼ load-bearing
+    walkable-area      ≥ 5 km²                ‼ ¬ token-village
+    NPC-population     ≥ 4096 city-wide        ‼ realistic-density
+    density-curve      : center-dense → periphery-sparse (gaussian-fall-off)
+    routes             : ≥ 64 named-streets · ≥ 256 named-blocks
+    interior-buildings : 60..80% enterable    (procgen-rooms-on-demand)
+  § PROCGEN-STAGES  «4-stage city-generation pipeline»
+    L-1 grid-gen      : streets/blocks/intersections · biome-mod
+                        (Crypt=catacomb-spiral · Forge=radial-furnace ·
+                         Sanctum=garden-grid)  · uses cssl-host-procgen-rooms
+    L-2 building-gen  : SDF-fold facades · windows · doors · interiors-ref
+                        SDF-ops { extrude · bevel · fenestrate · displace }
+                        uses cssl-host-fab-procgen
+    L-3 interior-gen  : per-NPC-purpose room-graph
+                        (home · shop · shrine · tavern · workshop · vault)
+                        uses cssl-host-procgen-rooms
+    L-4 NPC-pop       : daily-routine + city-economy + Companion-resonance
+                        schedule : 6-state daily-loop
+                                   (sleep · home · work · eat · social · prayer)
+                        economy  : node-graph (resource-flow + price-set)
+                        uses cssl-host-causal-seed
+  § CITY-DETERMINISM
+    seed = (player-id-hash ⊕ city-id ⊕ session-tick) : u128  ‼ stable
+    re-entry  : same-seed → bit-equal-city · NPC-state via attestation-chain
+    delta-rule: NPC actions stamp ω-field · replay-from-genesis bit-equal
+
+# ══════════════════════════════════════════════════════════════════
+§ DUNGEONS-AND-FLOORS  «consumes ROGUELIKE_LOOP biome-DAG»
+  § FLOOR-GENERATOR
+    fn gen_floor(biome, tier, seed : u128) -> RoomGraph {
+      L-1 select template    : KAN-stage-1 (canary-10%) ⊕ stage-0 fallback
+      L-2 sample room-count   : tier-bound ∈ ⟦8, 32⟧
+      L-3 build DAG           : 1.6 avg-branching · 1..2 exits per-non-leaf
+      L-4 assign room-types   : per-biome dist (ROGUELIKE_LOOP table)
+      L-5 stamp into-ω-field  : every-cell Σ-checked · attestation-recorded
+      L-6 connect via-portals : ConsentZone gates intensity-tiered transitions
+    }
+  § ROOM-TYPES
+    enum RoomType { Combat · Trial · Treasure · Boss · Shrine · Vendor · Rest · Trap }
+  § PER-FLOOR-METRICS
+    room-count        : 8..32 (tier-scaling)
+    branching-factor  : 1.6 avg · 2.4 max (tier-late)
+    boss-room         : 1 per-floor · tail-position
+    trap-room-cap     : ≤ 15% (anti-frustration · LOA_PILLARS §3)
+    rest-room-floor-1 : guaranteed (run-onboarding)
+  § ROOM-CONNECTIVITY
+    graph = DAG · ¬ cycles (¬ infinite-pace-loops)
+    ∀ non-leaf : 1..2 exits (player-choice gated by ConsentZone-token)
+    backtrack  : within-floor allowed · cross-floor on-Shrine-only
+
+# ══════════════════════════════════════════════════════════════════
+§ CREATURES  «≥ 32 base archetypes · 8-biome × 4-role»
+  § ARCHETYPES  «8-per-biome × 4-roles = 32 canonical»
+    roles : { trash · elite · ambush · boss }
+    Crypt        : { ghoul · lich · graveborn · skeleton-king }
+    ForestPath   : { wisp · wolfpack · vinebeast · bramble-warden }
+    Citadel      : { sentinel · paladin-revenant · gargoyle · iron-marshal }
+    Abyss        : { phantasm · maw-leviathan · void-stalker · the-deep-keeper }
+    Forge        : { magma-imp · forge-golem · ash-wraith · ember-tyrant }
+    Sanctum      : { wisp-acolyte · seraph-knight · halo-trickster · luminarch }
+    Maelstrom    : { storm-sprite · gale-shrike · tempest-elemental · stormqueen }
+    EndlessSpire : { mirror-shade · spire-warden · echo-twin · the-ascendant }
+  § PER-ARCHETYPE-PROFILE
+    stat-block       : { hp · stamina · armor · damage-band · element-affinity }
+    element-affinity : SpectralBand[16]                # 32_SIG_RENDER
+    attack-pattern   : { telegraph-ms · windup · combo · cancel-window }
+    loot-table       : seed × archetype × tier → AffixSet
+    spawn-biome-set  : Bitset<8>
+  § PARAMETRIC-VARIATION  «12 affix-style mutations per-archetype»
+    visual   : color-shift · scale-1.0±0.4 · texture-amp ∈ [0.5, 2.0]
+    stat     : status-resistance{poison,fire,cold} · special-mod{regen,phase}
+    behavior : aggro-range · pack-bonus · enrage · flee-threshold
+    uses     : cssl-host-fab-procgen (body) + cssl-substrate-kan (behavior-tree)
+  § BEHAVIOR-TREE-SELECTION
+    stage-0  : table-lookup per-(archetype × variation)
+    stage-1  : KAN from-(player-history × current-zone × bias-vec)
+    canary   : 10% runs · disagreement audit-recorded
+    fallback : stage-1-fail → stage-0 within 1-frame · ¬ stuck-state
+
+# ══════════════════════════════════════════════════════════════════
+§ ITEMS-PROCGEN  «base-roll + affix · cross-link GEAR_RARITY_SYSTEM»
+  § BASE-ITEM-ROLLING
+    fn roll_item(source, seed : u128, ω-summary) -> Item {
+      L-1 sample base-kind   : weapon × armor × accessory × glyph (source-bias)
+      L-2 roll rarity        : 6-tier (Common..Mythic) per-source-skew
+      L-3 roll prefix+suffix : rarity-bound affix-pool
+      L-4 roll glyph-slots   : N ∈ ⟦0..6⟧ rarity-bound
+      L-5 stamp visual-mat   : cssl-host-fab-procgen (color-shift · gem-glow)
+      L-6 attestation-record : signed item-genesis row ∈ audit-chain
+    }
+  § VISUAL-MATERIAL  «consumes cssl-host-fab-procgen + 32_SIG_RENDER»
+    color-shift  : per-rarity hue-gradient (Common gray → Mythic prismatic)
+    gem-glow     : per-affix spectral-emission (16-band · novelty V.2)
+    SDF-displace : per-rarity surface-amplitude (novelty V.3 fractal-amp)
+    iridescence  : Mythic-only thin-film interference
+  § CROSS-LINK
+    cross-link GEAR_RARITY_SYSTEM (when-authored · Apocky-canonical there)
+
+# ══════════════════════════════════════════════════════════════════
+§ SDF-VOXEL-PIPELINE  «cross-link 32_SIGNATURE_RENDERING»
+  § FIELD-CONSTRUCTION
+    ω-field cells hold distance-to-nearest-surface  ‼ NOT occupancy
+    72B 7-facet packed cell · M-S-P-Φ-Σ-low resident · Λ+Ψ+Σ-high in overlays
+    procgen writes : SDF-fold-ops emit FieldCell with distance + element
+    Σ-mask         : per-cell-Σ-check non-optional · consent gates surface-touch
+  § SURFACE-EXTRACTION  ‼ raymarch every-frame · ¬ mesh-extraction-hot-path
+    raymarch     : sphere-tracing through ω-field · per-pixel iso-search
+    detail-amp   : cssl-fractal-amp adds sub-pixel curvature (V.3)
+    mesh-extract : ONLY collision-bake @ floor-genesis (cold-path)
+  § RENDERING-PATH  «12-stage · 6-immutable-novelty-paths»
+    Stage-1   raygen           (cssl-render-v2)
+    Stage-4   wave-solver      (cssl-wave-solver · novelty V.1)
+    Stage-6   spectral-BRDF    (cssl-spectral-render · novelty V.2)
+    Stage-7   fractal-amp      (cssl-fractal-amp · novelty V.3)
+    Stage-10  tonemap          (RGB exactly-once · ACES-2)
+    full-pipeline @ 32_SIGNATURE_RENDERING
+  § SPECTRAL-ELEMENT-AFFINITY
+    per-element 16-band tinting · cross-band coupling per-V.1
+    forbidden : LIGHT→MANA = 0  ‼ STRICT-ZERO  (32_SIG_RENDER axiom)
+
+# ══════════════════════════════════════════════════════════════════
+§ KAN-RIDE-ON-PROCGEN  «cross-link 11_KAN_RIDE · stage-0 ⊕ stage-1 swap»
+  § PROCGEN-DECISION-CLASSIFIERS  ‼ extend SP-3 spontaneous::seed_cells
+    SP-PG-1  floor-template-pick   : (biome × tier × hist) → TemplateHandle
+    SP-PG-2  biome-grammar-tune    : (player-bias-vec) → grammar-hyperparams
+    SP-PG-3  creature-spawn-mix    : (run-state × zone) → MonsterPoolDist
+    SP-PG-4  loot-affix-bias       : (run-state × build) → AffixWeightVec
+    SP-PG-5  city-NPC-routine-skew : (city-id × time) → RoutineDistribution
+  § STAGE-0-FALLBACK
+    table-lookup per-(biome × tier × ...)  ‼ ALWAYS-AVAILABLE
+    stage-1-fail → revert-1-call · ¬ stuck-state · ¬ irreversible-mutation
+  § CANARY-PROTOCOL
+    10% of-runs use-stage-1 · 90% baseline stage-0
+    A/B-tagged audit-rows recorded per-decision
+    disagreement : (stage-0 · stage-1 · seed) → divergence-score
+    sovereign-revoke : player-or-host can-disable-stage-1 unilateral any-time
+
+# ══════════════════════════════════════════════════════════════════
+§ SUBSTRATE-CONSUMPTION  «POD-2 fanout-targets»
+  cssl-host-procgen-rooms    : room-template + room-graph builder
+  cssl-host-fab-procgen      : material-instance + creature-body procgen
+  cssl-host-causal-seed      : runtime-narrative DAG built-from procgen-events
+                               pairs-with cssl-substrate-omega-field
+  cssl-substrate-omega-field : every-procgen-cell stamped (72B FieldCell)
+  cssl-render-v2             : SDF raymarch rendering hot-path
+  cssl-spectral-render       : 16-band hyperspectral BRDF (V.2)
+  cssl-fractal-amp           : sub-pixel SDF detail amp (V.3)
+  cssl-wave-solver           : light+audio+heat+scent+mana ψ-field (V.1)
+  cssl-substrate-kan         : stage-1 procgen-decision classifiers
+  cssl-host-kan-real         : W7-A wired stage-1 KAN ride
+  cssl-host-attestation      : per-procgen-event audit (replay-anchor)
+  cssl-host-roguelike-run    : run-state machine (consumes floor-graph here)
+
+# ══════════════════════════════════════════════════════════════════
+§ BALANCE-METRICS  «measurable · CI-gateable»
+  M-1 seed-uniqueness         : ≥ 95% over 1000 runs (unique floor-graphs)
+  M-2 NPC-population per-city : ≥ 4096 (realistic-density)
+  M-3 procgen-budget          : floor-gen ≤ 250ms p95 (jank-free transition)
+  M-4 ¬ stuck-loops           : ≥ 99.99% of-runs reach-boss-arena
+  M-5 KAN-canary-divergence   : recorded · ≤ 5% threshold-alert
+  M-6 ω-field cell-count      : ≤ 16M per-floor active (memory-budget)
+  M-7 raymarch-frame-budget   : ≤ 8ms p95 (60fps · FRAME_BUDGET 16ms)
+
+# ══════════════════════════════════════════════════════════════════
+§ SCOPE-CUTS
+  persistent-altered-world (Sandbox-mode)  → v2
+  multiplayer-shared-cities                 → POD-4 territory
+  user-uploaded-scenes                      → out-of-charter
+  hand-authored-set-pieces                  → FORBIDDEN per axiom
+  pay-to-skip-procgen                       → FORBIDDEN per PRIME §5
+
+# ══════════════════════════════════════════════════════════════════
+§ FAILURE-MODES  «detected · auditable · ¬ silent-degrade»
+  floor-gen-timeout      : abort + roll-back-to-fallback + audit-emit
+  seed-collision         : detector + warn-via-attestation + re-seed
+  procgen-loop           : detector + iter-cap-50000 + abort + audit
+  Σ-mask-violation       : compile-time-fail (cssl-mir::sigma_enforce) ·
+                           runtime-fail = panic-with-audit
+  KAN-stage-1-divergence : > 5% threshold → auto-revert-stage-0 + alert
+  ω-field-OOM            : LRU-evict cold-overlays · ¬ crash · degraded-mode
+  city-NPC-deadlock      : daily-routine watchdog · auto-reset + audit
+
+# ══════════════════════════════════════════════════════════════════
+§ OPEN-QUESTIONS  «Apocky-direction-needed · ¬ guess»
+  Q-PG-1 : SDF-vs-mesh hybrid for performance-critical paths
+            (collision-bake : mesh · rendering : SDF — confirm split-point ?)
+  Q-PG-2 : persistent-city-state — players-affect city across-runs ?
+            (vendor-stock · NPC-mood · damage-residue ?)
+  Q-PG-3 : seasonal-bias — weather/time-of-day shifts procgen-output ?
+            (real-time-clock vs in-game-clock · attestation-required ?)
+  Q-PG-4 : city-NPC sovereignty — Companion-tier or simulation-tier ?
+            (LOA_PILLARS §2 implication)
+  Q-PG-5 : procgen-budget mobile-handheld variant — M-3 target ?
+
+# ══════════════════════════════════════════════════════════════════
+∎ PROCGEN_WORLD
+# ══════════════════════════════════════════════════════════════════
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A7  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+  No being was harmed · controlled · manipulated · surveilled · exploited ·
+  coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+  possessed · dehumanized · discriminated-against · gaslit ·
+  identity-overridden · or forced-hallucinated during this work.
+  Open-questions Q-PG-1..Q-PG-5 are LISTED ¬ guessed. Apocky-canonical
+  resolves them. Spec-hole-discipline preserved per LOA_PILLARS §4.
+  "Apockalypse" canonical-spelling preserved throughout.
