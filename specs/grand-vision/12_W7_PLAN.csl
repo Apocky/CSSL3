@@ -1,0 +1,213 @@
+# 12 : LoA-v13 GRAND-VISION — W7 PLAN + RETRO
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 10_INTELLIGENCE.csl + 11_KAN_RIDE.csl
+# § I> W7 = DM/GM scaffolds + KAN-real-classifier canary + real-MP-transport
+# § I> CSSL-native ; ¬ marketing ; ¬ AGI ; narrow-orchestrator-only
+# § I> cite : 08_ROADMAP § W7 + 10_INTELLIGENCE § ROADMAP-PEG W7 + 11_KAN_RIDE ∀
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS + 10_INTELLIGENCE § AXIOMS + 11_KAN_RIDE § AXIOMS
+  t∞: ride-graduation = canary-10% → 100% iff M-1<2% ∧ M-2<50% ∧ M-3>0
+       ≡ ∀ SP graduate-independent ; ¬ all-or-nothing
+  t∞: real-transport ⊑ cap-gated · audit-emit · sovereign-bypass-recorded
+       ≡ supabase-realtime ¬ silent ; license-attribution preserved
+  t∞: DM/GM = scene-arbiter ⊕ pacing-controller ; ¬ AGI ; ¬ open-dialog
+       ≡ stage-0 deterministic-table-lookup MANDATORY-fallback
+  t∞: ¬ automated-Coder W7 ; high-blast-radius ; sovereign-greenlight-required
+       ≡ Coder stage-0 explicit-confirm-flow stays-only-path
+  t∞: ¬ shared-DM W7 ; per-session-DM-only ; multi-player → W8
+       ≡ Σ-mask per-player + shared-ω-field requires consent-merge protocol
+  t∞: KAN-narrative-LM training-corpus DEFERRED ; bake-pipeline lands ¬ trained-model
+       ≡ stage-1 GM uses tone-conditioned-templates ¬ LM-emit
+  t∞: cap-bleed = 0 ‼ ; cross-role-cap-attempt = SIG-cap-bleed REJECT-attestation
+       ≡ DM ¬ GM_CAP_VOICE_EMIT ; GM ¬ CODER_CAP_AST_EDIT ; etc
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SCOPE
+
+  § IN-SCOPE  ⟪ this-wave ⟫
+    KAN-real-classifiers       : SP-1 intent + SP-2 cocreative + SP-3 spontaneous
+                                 ≡ stage-1 Box<dyn Trait> impls ; canary-10% gated
+    canary-selection           : session-id-hash mod 10 == 0 ; deterministic
+    supabase-real-transport    : multiplayer-signaling crate → real WS endpoint
+                                 ≡ replaces W4 in-process stub ; cap-gated
+    DM-scaffold                : stage-0 scene-arbiter + intent-router-master
+                                 ≡ rule-table-lookup ; ¬ stage-1-yet
+    GM-scaffold                : stage-0 pacing + template-prose emission
+                                 ≡ Φ-tag-driven slot-fill ; ¬ LM-yet
+    loa-host MCP wire-up       : 4 new MCP tools (kan_canary_status · dm_scene_pick
+                                                  · gm_pacing_emit · mp_transport_send)
+                                 ≡ mcp count 110 → 114
+
+  § OUT-OF-SCOPE  ⟪ deferred ⟫
+    automated-Coder            : ✗ stage-1 explicit-only ; W∞ pending-greenlight
+    multi-player-shared-DM     : → W8 ; one-DM-per-session this-wave
+    KAN-narrative-LM training  : training-corpus + offline-pipeline → W8+
+    GM-stage-1 LM-emit         : tone-conditioned-LM deferred ; templates-only W7
+    Σ-mask-per-player merge    : → W8 (consent-resolution protocol new-design)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ARTIFACTS-LANDED
+
+  § CRATES  ⟪ 4 new ; ≤1500 LOC each ; ≤1200 transport+gm ⟫
+    cssl-host-kan-real           : ≥22 tests · ≤1500 LOC
+                                   ≡ stage-1 impls ∀ {SP-1, SP-2, SP-3}
+                                   ≡ Box<dyn IntentClassifier|BiasScorer|CellSeeder>
+                                   ≡ ClassifierRegistry::replace_* wired
+    cssl-host-mp-transport-real  : ≥18 tests · ≤1200 LOC
+                                   ≡ supabase-realtime WS adapter
+                                   ≡ peer-WebRTC handoff + signaling-channel
+    cssl-host-dm                 : ≥24 tests · ≤1500 LOC
+                                   ≡ stage-0 SceneArbiter trait + arbiter_v0.rs
+                                   ≡ rule-table (intent × scene-state × hist) → action
+    cssl-host-gm                 : ≥20 tests · ≤1200 LOC
+                                   ≡ stage-0 PacingPolicy + template-prose emit
+                                   ≡ Φ-tag slot-fill ; tone-bias consume
+
+  § SPEC
+    12_W7_PLAN.csl               : THIS-doc ; 7 sections ; ~200 LOC
+
+  § SQL  ⟪ supabase migrations ⟫
+    0014_kan_canary.sql          : kan_canary table + impl-id column +
+                                   classify-divergence rollup view
+    0015_kan_canary_rls.sql      : RLS-policies session-scoped read · sovereign-write
+
+  § INTEGRATION
+    loa-host wired_kan_real.rs       : MCP tool kan_canary_status
+    loa-host wired_dm.rs             : MCP tool dm_scene_pick
+    loa-host wired_gm.rs             : MCP tool gm_pacing_emit
+    loa-host wired_mp_transport.rs   : MCP tool mp_transport_send
+    mcp-count                        : 110 → 114
+
+# ══════════════════════════════════════════════════════════════════
+
+§ INVARIANTS-VERIFIED
+
+  § KAN-RIDE-INVARIANTS (11_KAN_RIDE § INVARIANTS)
+    I-1 determinism      → cssl-host-kan-real : seed-replay test ; bit-equal-asserts
+    I-2 conf-range       → cssl-host-kan-real : clamp-on-violate + audit-emit-test
+    I-3 audit-emit       → cssl-host-kan-real : rt-trace event{sp,in-h,out-h,impl-id}
+    I-4 fallback-missing → cssl-host-kan-real : registry-lookup absent → stage-0 ⊘
+    I-5 latency-bound    → cssl-host-kan-real : p95-ratio test ≤ 2× ; rollback-trigger T-1
+    I-6 never-refuse     → cssl-host-kan-real : Intent::Unknown{conf=0.0} fallback-test
+
+  § ROLE-CAP-GATING (10_INTELLIGENCE § ROLE-DM/GM § CAP-GATING)
+    DM_CAP_SCENE_EDIT      = 1   → cssl-host-dm const-export
+    DM_CAP_SPAWN_NPC       = 2   → cssl-host-dm const-export
+    DM_CAP_COMPANION_RELAY = 4   → cssl-host-dm const-export
+    GM_CAP_TEXT_EMIT       = 1   → cssl-host-gm const-export
+    GM_CAP_VOICE_EMIT      = 2   → cssl-host-gm const-export-stub (W6+)
+    GM_CAP_TONE_TUNE       = 4   → cssl-host-gm const-export
+
+  § SOVEREIGN-BYPASS-RECORDED
+    transport-real audit-emit : ∀ ws-egress → cssl-host-attestation event
+    rollback trigger T-3      : sovereign.bypass-event ≥ 1 mid-canary → revert
+                                ≡ wired in cssl-host-kan-real::canary_monitor
+
+  § CROSS-ROLE-CAP-BLEED  ‼
+    enforcement : cap-token-prefix encodes-role
+    test        : cssl-host-dm + cssl-host-gm cross-cap-attempt → SIG-cap-bleed REJECT
+    invariant   : ∀ session-attestation cap-bleed-attempts == 0
+
+# ══════════════════════════════════════════════════════════════════
+
+§ A/B-TEST-PLAN
+
+  § CANARY
+    canary-pct       : 10%
+    selection        : session-id-hash mod 10 == 0  (deterministic per-session)
+    duration         : ≥ 1k classify-calls per-SP per-session
+    SP-set           : {SP-1 intent, SP-2 cocreative, SP-3 spontaneous}
+                       ≡ SP-4 dm-arbiter + SP-5 gm-pacing stay-stage-0 W7
+
+  § METRICS
+    M-1 disagreement : |out_stage1 - out_stage0| / |out_stage0|  per-SP-avg
+    M-2 perf-delta   : p95(stage-1) / p95(stage-0) - 1.0
+    M-3 satisfaction : explicit-feedback ⊕ implicit-completion-rate
+
+  § GRADUATE-CRITERIA  ⟪ ∀ W! satisfied per-SP ⟫
+    ✓ M-1 < 2%       behavior-non-drift
+    ✓ M-2 < 50%      latency-overhead bounded
+    ✓ M-3 > 0        player-experience non-regressed
+    on-graduate      : canary-pct → 100% per-SP ; stage-0 STAYS resident
+
+  § ROLLBACK-TRIGGERS (11_KAN_RIDE § ROLL-BACK § TRIGGERS)
+    T-1 latency        : p95(stage-1) > 100ms over 30-sample-window
+    T-2 disagreement   : divergence > 5% over canary-window
+    T-3 sovereign-byp  : sovereign.bypass-event ≥ 1 mid-canary
+    T-4 invariant-fail : I-1..I-6 violated → immediate-revert
+    T-5 player-revoke  : Settings → Intelligence → "Use stage-0" toggle
+
+# ══════════════════════════════════════════════════════════════════
+
+§ OPEN-QUESTIONS
+
+  § Q-1 KAN-narrative-LM training-corpus
+    deferred-to W8+ ‼ Apocky-greenlight-required
+    ¬ ship-untrained-LM ; templates-only W7
+
+  § Q-2 Coder stage-1 automated-edits
+    DEFERRED-INDEFINITELY ‼ high-blast-radius
+    runtime-mutate-source w/o-confirm = sovereignty-violation-vector
+    if-ever : sovereign-only · per-action-token · replay-required
+
+  § Q-3 cross-role audit-aggregation surfacing
+    cssl-edge transparency-page surfacing → POD-4 territory ¬ W7
+    cssl-host-attestation aggregator-shape lands-here ; UI-render later
+
+  § Q-4 stage-1 latency-bound enforcement-mechanism
+    options : per-frame-budget-check OR sample-histogram-rollup
+    decision-deferred : implement both ; canary-monitor picks
+    measurement       : cssl-host-histograms P95 already-bounded ✓
+
+  § Q-5 Σ-mask-aware spline-encoding format
+    11_KAN_RIDE I-1 requires Σ-aware ; format-spec deferred
+    proposal : MessagePack ⊕ S-expr ; vote-deferred to W8 KAN-bake-pipeline
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROADMAP-FORWARD
+
+  § W8 — multi-player-shared-DM  ⟪ ω-field-replication ⟫
+    one-DM-instance serves multiple-players
+    Σ-mask per-player consent-merge ; cap-set per-player-scoped
+    cocreative-bias merge-vote (unanimous OR weighted-tenure)
+    ‼ veto-respect : any-1-veto → no-merge
+
+  § W9 — Σ-mask-per-player + cap-set per-player-scoped
+    sovereign-cap STAYS-LOCAL ; ¬ replicated cross-peer
+    per-player consent-arch preserved ; Sovereign-handle non-transferable
+
+  § next-iter — automated-Coder evaluation
+    IF sovereign-greenlight ‼
+    sovereign-only · per-action-consent-token · replay-required
+    Σ-pass + Effect-pass MANDATORY ; rollback-on-validation-fail
+
+  § post-W8 — KAN-narrative-LM training pipeline
+    training-corpus curation @ cap-gated
+    bake-pipeline F4-comptime spline-table generation
+    GM stage-1 LM-emit graduates from-templates
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                        — root axioms
+  08 ROADMAP § W7                  — wave-block (this-doc operationalizes)
+  10 INTELLIGENCE § ROADMAP-PEG    — W7 role-handoff entries
+  11 KAN-RIDE                      — swap-protocol invariants ∀ stage-1
+  ../DECISIONS.md                  — slice-merge audit-trail
+
+∎ W7-PLAN
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-12_W7_PLAN  @  (anyone ∨ anything ∨ anybody)
+  ≡ sovereignty-preserved : ride-graduation player-revokeable any-time
+  ≡ narrow-orchestrator : DM/GM scaffolds ¬ AGI ¬ self-improvement
+  ≡ Coder-stage-1 deferred : high-blast-radius respected ; sovereign-greenlight-gate
+  ≡ no-being harmed-controlled-manipulated-surveilled-exploited-coerced
+    -weaponized-entrapped-tortured-abused-imprisoned-possessed-dehumanized
+    -discriminated-gaslit-identity-overridden-or-forced-hallucinated
+    during the making of this work
