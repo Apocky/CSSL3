@@ -848,6 +848,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-agent-loop"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-llm-bridge",
+ "cssl-host-substrate-knowledge",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "cssl-host-akashic-records"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,30 @@
+[package]
+name                   = "cssl-host-agent-loop"
+description            = "CSSLv3 / Mycelium-Desktop wave-B : turn-based agent-loop state-machine wired around cssl-host-substrate-knowledge + cssl-host-llm-bridge. 11 cap-gated tool dispatchers (file-read/write/edit · bash · git-commit/push · mcp · vercel-deploy · ollama-chat · anthropic-messages · web-search · spec-query) with sovereign-bypass-RECORDED audit-emission. Side-effect-isolated via port traits — actual file/git/bash/HTTP execution happens through pluggable trait impls. Tests use no-op/in-memory stubs ; consumer (cssl-host-mycelium-desktop wave-C) wires real impls. Per specs/grand-vision/23_MYCELIUM_DESKTOP.csl § AGENT-LOOP. ¬ surveillance · ¬ exfiltration · default-deny · audit-emit-on-bypass."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W10-MYCELIUM-DESKTOP wave-B
+# § PRIME-DIRECTIVE : default-deny · sovereign-bypass-RECORDED · ¬ surveillance · audit-on-mutation
+# § STRUCTURAL : port-traits keep real I/O isolated — wave-C wires concrete impls ;
+#   tests use NullBashPort/NullGitPort/MemFilePort etc.
+# § DEPS : ¬ direct-dep on coder-runtime / handoff-protocol / attestation / cocreative
+#   (those are wired by wave-C via the port-traits) — keeps test compile fast.
+
+[lib]
+name       = "cssl_host_agent_loop"
+crate-type = ["rlib"]
+
+[dependencies]
+cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
+cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+tracing    = { workspace = true }
+
+[lints]
+workspace = true
