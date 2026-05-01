@@ -194,6 +194,30 @@ const Home: NextPage = () => {
               Explore projects →
             </a>
             <a
+              href="/login"
+              style={{
+                padding: '0.75rem 1.5rem',
+                border: '1px solid #2a2a3a',
+                color: '#e6e6f0',
+                borderRadius: 4,
+                fontSize: '0.95rem',
+              }}
+            >
+              Sign in
+            </a>
+            <a
+              href="/register"
+              style={{
+                padding: '0.75rem 1.5rem',
+                border: '1px solid #2a2a3a',
+                color: '#e6e6f0',
+                borderRadius: 4,
+                fontSize: '0.95rem',
+              }}
+            >
+              Create account
+            </a>
+            <a
               href="https://github.com/Apocky"
               style={{
                 padding: '0.75rem 1.5rem',
@@ -203,7 +227,7 @@ const Home: NextPage = () => {
                 fontSize: '0.95rem',
               }}
             >
-              github.com/Apocky
+              github ↗
             </a>
           </div>
         </section>
