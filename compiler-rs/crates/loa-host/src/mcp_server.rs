@@ -61,6 +61,7 @@ use serde_json::Value;
 use cssl_rt::loa_startup::log_event;
 
 use crate::mcp_tools::{tool_registry, ToolMeta, ToolRegistry};
+use crate::spectral_bridge::Illuminant;
 
 // ───────────────────────────────────────────────────────────────────────
 // § public constants
@@ -291,6 +292,15 @@ pub struct EngineState {
     pub snapshot_queue: Vec<SnapshotRequest>,
     pub tour_progress: Option<(u32, u32)>,
     pub snapshot_count: u64,
+    /// § T11-LOA-FID-SPECTRAL : active CIE-illuminant for the spectrally-
+    /// baked material LUT. The render loop reads this each frame and rebuilds
+    /// the per-material albedo via `spectral_bridge::bake_material_lut(illum)`.
+    /// `render.set_illuminant` MCP tool mutates this ; default = D65.
+    pub illuminant: Illuminant,
+    /// § T11-LOA-FID-SPECTRAL : monotonic counter incremented every time
+    /// `illuminant` is mutated. The render loop uses this as a cheap dirty-
+    /// flag : when its observed gen != EngineState.illuminant_gen, re-bake.
+    pub illuminant_gen: u64,
 }
 
 impl Default for EngineState {
@@ -314,6 +324,8 @@ impl Default for EngineState {
             snapshot_queue: Vec::new(),
             tour_progress: None,
             snapshot_count: 0,
+            illuminant: Illuminant::default(),
+            illuminant_gen: 0,
         }
     }
 }

@@ -50,9 +50,10 @@ use crate::camera::Camera;
 use crate::ffi as host_ffi;
 use crate::geometry::{RoomGeometry, Vertex};
 use crate::gpu::GpuContext;
-use crate::material::{material_lut, Material, MATERIAL_LUT_LEN};
+use crate::material::{Material, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_lut, Pattern, PATTERN_LUT_LEN};
 use crate::snapshot::Snapshotter;
+use crate::spectral_bridge::{bake_material_lut, Illuminant};
 use crate::stokes::{mueller_lut, sun_stokes_default, MUELLER_LUT_LEN};
 use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuState, UiOverlay};
@@ -138,6 +139,10 @@ fn build_mueller_lut_wgsl() -> [MuellerWgsl; MUELLER_LUT_LEN] {
 
 impl Uniforms {
     fn new() -> Self {
+        // § T11-LOA-FID-SPECTRAL : initial bake under the default D65
+        // illuminant. The renderer-state's `current_illuminant` field tracks
+        // subsequent changes ; per-frame the materials are re-baked iff the
+        // EngineState illuminant generation has advanced.
         Self {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
             sun_dir: Vec4::new(-0.4, 0.8, -0.45, 0.0).normalize().to_array(),
@@ -146,7 +151,7 @@ impl Uniforms {
             camera_pos: [0.0, 1.7, 0.0, 0.0],
             sun_stokes: sun_stokes_default().as_array(),
             stokes_control: [0.0, 1.0, 0.0, 0.0], // mode=0 · enable=1
-            materials: material_lut(),
+            materials: bake_material_lut(Illuminant::default()),
             patterns: pattern_lut(),
             muellers: build_mueller_lut_wgsl(),
         }
@@ -233,6 +238,16 @@ pub struct Renderer {
     /// readback uses the surface texture directly when true ; otherwise
     /// the snapshot tool returns an error.
     surface_copy_src: bool,
+    /// § T11-LOA-FID-SPECTRAL : currently-active illuminant for the baked
+    /// material LUT. The render loop re-bakes the LUT when this changes.
+    pub current_illuminant: Illuminant,
+    /// § T11-LOA-FID-SPECTRAL : last-observed `EngineState.illuminant_gen`
+    /// snapshot. When the engine's gen advances past this value the
+    /// material LUT is re-baked.
+    pub last_illuminant_gen: u64,
+    /// § T11-LOA-FID-SPECTRAL : cached spectrally-baked material LUT for
+    /// the current illuminant. Avoids re-baking on every frame.
+    cached_material_lut: [Material; MATERIAL_LUT_LEN],
 }
 
 impl Renderer {
@@ -516,6 +531,9 @@ impl Renderer {
             snapshot_pending: None,
             snapshotter: Snapshotter::new(),
             surface_copy_src,
+            current_illuminant: Illuminant::default(),
+            last_illuminant_gen: 0,
+            cached_material_lut: bake_material_lut(Illuminant::default()),
         }
     }
 
@@ -536,6 +554,25 @@ impl Renderer {
     #[must_use]
     pub fn tonemap_path_active(&self) -> bool {
         self.pipeline_tonemap.is_some()
+    }
+
+    /// § T11-LOA-FID-SPECTRAL : called by the App's per-frame sync to install
+    /// a new illuminant. Re-bakes the material LUT (cached for subsequent
+    /// frames) and records a structured-event log line.
+    pub fn set_illuminant(&mut self, illum: Illuminant, gen: u64) {
+        self.current_illuminant = illum;
+        self.last_illuminant_gen = gen;
+        self.cached_material_lut = bake_material_lut(illum);
+        log_event(
+            "INFO",
+            "loa-host/render",
+            &format!(
+                "render.illuminant_changed · {} · cct={}K · gen={}",
+                illum.name(),
+                illum.cct_kelvin(),
+                gen,
+            ),
+        );
     }
 
     /// True iff the surface was configured with COPY_SRC, i.e. snapshot
@@ -710,7 +747,9 @@ impl Renderer {
             ],
             sun_stokes: sun_stokes_default().as_array(),
             stokes_control: [pol_mode as f32, 1.0, 0.0, 0.0],
-            materials: material_lut(),
+            // § T11-LOA-FID-SPECTRAL : spectrally-baked material LUT (cached
+            // ; only re-baked when `set_illuminant` mutates it).
+            materials: self.cached_material_lut,
             patterns: pattern_lut(),
             muellers: build_mueller_lut_wgsl(),
         };

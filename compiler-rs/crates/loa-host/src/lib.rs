@@ -45,6 +45,9 @@ pub mod material;
 pub mod pattern;
 pub mod room;
 pub mod stokes;
+// § T11-LOA-FID-SPECTRAL — CPU-bake bridge from cssl-spectral-render to the
+// GPU material LUT (4-illuminant cohort · per-material reference colors).
+pub mod spectral_bridge;
 
 // Input-sibling catalog
 pub mod input;
