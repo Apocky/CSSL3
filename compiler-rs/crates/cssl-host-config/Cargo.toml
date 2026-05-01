@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-host-config"
+description            = "CSSLv3 stage0 — typed runtime-config loader for the LoA host. Loads loa.config.json + applies LOA_* env-overrides + emits structured validation errors for render / network / policy parameter sections. JSON-only (serde_json) — NO toml/yaml dep."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_config"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
