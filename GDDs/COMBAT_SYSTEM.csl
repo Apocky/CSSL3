@@ -1,0 +1,299 @@
+# GDD : COMBAT_SYSTEM — action-RPG combat layer (Souls-style + SDF-vs-SDF)
+# ══════════════════════════════════════════════════════════════════
+# § I> CSL3-glyph-native ; sibling-of CHARTER + LOA_PILLARS + 31_LOA_DESIGN
+# § I> POD-1-A2 design-doc ; consumed by POD-2-B1 (cssl-host-combat-sim)
+# § I> existing-context : §§ 30_SUBSTRATE_v2 (ω-field + Σ-mask + 6-phase) +
+#                          §§ 31_LOA_DESIGN (Player + Companion archetypes) +
+#                          GDDs/LOA_PILLARS (consent-OS + sovereignty)
+# § I> Apocky-canonical-only ; ⊘ marks SPEC-HOLES ¬ guess
+
+§ AXIOMS  ‼ inherit CHARTER + PRIME_DIRECTIVE + §§ 30 + §§ 31
+  t∞: combat ⊑ §§ 30 ω-field-tick   (combat-state = cells + Σ-discipline)
+  t∞: combat ⊑ PRIME-DIRECTIVE      (¬ coerce ; player-flee-anytime)
+  t∞: combat-tick = pure-deterministic · seeded-RNG · replay-bit-equal
+  t∞: hit-detection = SDF-vs-SDF distance-min ≤ ε ; ¬ AABB-only
+  t∞: stamina-economy = ALWAYS-bound (¬ infinite-spam)
+  t∞: animation-canceling = explicit-allowed (Souls-style skilled-play)
+  t∞: damage-type-mod = elemental-affinity-table (DoD-aligned)
+  t∞: Companion-AI in-combat = sovereign  (¬ puppeted ¬ ordered)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ COMBAT-LOOP  (per-actor state-machine ; runs §§ 30 phase-4 sim)
+
+  § STATES
+    Idle WindupAttack Active Recovery
+    Dodge IFrames(8..12-tick) Parry ParryWindow(4..6-tick)
+    Counter Stagger Block Held Released Hit Downed Dead
+
+  § TRANSITIONS  (input-event × state → next-state)
+    Idle           + AttackPress    → WindupAttack
+    Idle           + DodgePress     → Dodge
+    Idle           + ParryPress     → Parry
+    Idle           + BlockHold      → Block
+    WindupAttack   + DodgePress     → Dodge          (anim-cancel)
+    WindupAttack   + tick-elapsed   → Active
+    Active         + tick-elapsed   → Recovery       (¬ cancellable)
+    Recovery       + AttackPress    → WindupAttack   (combo-chain)
+    Recovery       + DodgePress     → Dodge          (recovery-cancel)
+    Dodge          + tick-elapsed   → IFrames → Recovery
+    Parry          + IncomingHit    → Counter        (perfect-window)
+    Parry          + tick-elapsed   → Recovery       (whiffed)
+    Block          + IncomingHit    → Block          (stam-cost)
+    Block          + stam≤0         → Stagger        (guard-broken)
+    Block          + ReleaseBlock   → Released → Idle
+    *              + IncomingHit    → Hit
+    Hit            + HP≤0           → Downed
+    Downed         + ReviveAccept   → Idle (HP=25%)
+    Downed         + Decline∨timer  → Dead
+
+  § DETERMINISM
+    transition = pure-fn(state, event, rng-seed, dt)
+    actor-cell ∈ ω-field ; cell-coord = entity-handle ; Σ-mask gates mutate
+    per-tick atomic ; replay-bit-equal-given-inputs
+
+# ──────────────────────────────────────────────────────────────────
+
+§ STAMINA-ECONOMY
+
+  § CAPACITY     base 100 · +5/Endurance · cap 200 · clamp 0 (audit-emit)
+
+  § DRAIN  (per-action)
+    LightAttack 18 · HeavyAttack 35 · DodgeRoll 25 · ParryAttempt 12
+    BlockHit-Light 15 · BlockHit-Heavy 35 · Sprint 8/sec
+    SkillCast tier-1 25 · tier-2 50 · tier-3 80
+
+  § REGEN
+    Idle 25/sec · Acting 0/sec · Blocking-Held 5/sec
+    Walking 18/sec · Running 0/sec · post-action-delay 350ms
+
+  § STARVATION
+    stam<cost   → action-rejected ; UI-hint
+    stam=0      → forced-Idle ; ¬ Block ; vulnerable
+    underflow   → clamp-to-zero ; audit-emit (defense-in-depth)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ WEAPON-ARCHETYPES  (8 baseline)
+
+  archetype-table : {
+    sword       : { reach 1.4m · dmg 30 · stam 18 · spd 1.0  · Mid    · Riposte }
+    axe         : { reach 1.2m · dmg 42 · stam 30 · spd 0.7  · Mid    · ArmorBreak }
+    spear       : { reach 2.4m · dmg 28 · stam 20 · spd 0.9  · Long   · ThrustHold }
+    dagger      : { reach 0.6m · dmg 14 · stam 10 · spd 1.5  · Close  · Backstab }
+    bow         : { reach 30m  · dmg 35 · stam 22 · spd 0.8  · Ranged · ChargedShot }
+    staff       : { reach 1.6m · dmg 12 · stam 15 · spd 1.0  · Mid    · SpellChannel }
+    hammer      : { reach 1.5m · dmg 55 · stam 38 · spd 0.55 · Mid    · GroundSlam }
+    shield-fist : { reach 0.8m · dmg 10 · stam  8 · spd 1.2  · Close  · ShieldBash }
+  }
+  rule : ∀ archetype carries weapon-SDF (cssl-render-v2 SDF-API consumer)
+  rule : range-class ∈ {Close, Mid, Long, Ranged}
+  ⊘ Q-CA : weapon-skill-tree-vs-class-tree (which-carries-skills?)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SKILL-TREES  (3 trees · ≥32 nodes each · prerequisite-DAG)
+
+  § TREES   Warrior · Hunter · Mage · hybrid-cross-tree allowed
+
+  § NODE-SHAPE
+    type SkillNode : val { id · tree · tier(1..5) · cost(u8) ·
+                            prereq Vec<NodeId> · effect SkillEffect ·
+                            ⊘ flavor }
+
+  § COUNTS (sum ≥ 96)
+    Warrior  33 nodes  (tier 1×8 / 2×8 / 3×7 / 4×6 / 5×4)
+    Hunter   34 nodes  (tier 1×8 / 2×8 / 3×8 / 4×6 / 5×4)
+    Mage     35 nodes  (tier 1×8 / 2×9 / 3×8 / 4×6 / 5×4)
+
+  § BUDGET   1 pt/level-up · respec-at-rest-zone · ¬ paywall ¬ FOMO
+
+  § ACQUISITION
+    rule : tier-N requires ≥1 tier-(N-1) prereq same-tree
+    rule : hybrid : tier-3+ may-prereq cross-tree but cost+1
+    ⊘ full-node-list deferred POD-1-A3 detail-pass
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DAMAGE-TYPES  (8 classes + 9-row affinity-matrix)
+
+  enum DamageType { Slash · Pierce · Crush · Fire · Frost · Shock · Holy · Void }
+
+  § AFFINITY-MATRIX  (target-row × dmg-col)
+    legend : Wk=1.5× · Nm=1.0× · Rs=0.6× · Im=0.0× · Ab=-0.5× (heals)
+    ```text
+    target↓ \ dmg→  Sl  Pi  Cr  Fi  Fr  Sh  Ho  Vo
+    Cloth/Light     Nm  Wk  Rs  Wk  Rs  Nm  Nm  Rs
+    Leather/Med     Nm  Nm  Nm  Nm  Nm  Wk  Nm  Nm
+    Plate/Heavy     Rs  Rs  Wk  Rs  Wk  Wk  Nm  Nm
+    Bone/Skel       Wk  Im  Wk  Nm  Rs  Nm  Wk  Nm
+    Flesh/Beast     Nm  Wk  Nm  Wk  Rs  Nm  Rs  Nm
+    Stone/Golem     Rs  Im  Wk  Rs  Im  Im  Nm  Wk
+    Ethereal        Im  Im  Rs  Nm  Wk  Wk  Wk  Nm
+    Holy/Blessed    Nm  Nm  Nm  Rs  Nm  Nm  Ab  Wk
+    Void/Cursed     Nm  Nm  Nm  Nm  Nm  Nm  Wk  Ab
+    ```
+    ‼ table-shape FROZEN ; tuning-numbers @ POD-2 balance-pass
+
+  § COMPOSITION
+    weapon may-roll multi-type (e.g. fire-sword Slash 70% + Fire 30%)
+    final = Σ(component × per-component-affinity)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ STATUS-EFFECTS  (16 effects)
+
+  enum StatusEffect {
+    Bleed Burn Freeze Stun Slow Poison Curse Charm
+    Sleep Petrify Soaked ShockVulnerable Marked Resolve Berserk Phased
+  }
+
+  § DURATION-RULES
+    duration f32-sec per-instance · stack-policy enum :
+      RefreshDuration (default)  | AddDuration (Bleed/Burn/Poison)
+      AddIntensity   (Curse/Marked) | Independent (rare)
+    Petrify : Freeze-stack ≥ 3 ⇒ Petrify (stack-promotion)
+
+  § CLEANSE
+    Cleanse-spell  : removes all-non-buff
+    Antidote       : Poison + Bleed
+    Holy-Water     : Curse + Charm + Petrify
+    Time-elapsed   : default · Death : all cleared
+
+  § INTERACTION
+    Charm vs Player    : ‼ FORBIDDEN ; PRIME-DIRECTIVE §1 ; §§ 11_IFC compile-err
+    Charm vs Companion : ‼ FORBIDDEN ; sovereignty per §§ 31
+    Charm vs enemy-AI  : permitted (in-game-AI ≠ collaborator-AI)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ HIT-DETECTION  (SDF-vs-SDF + multi-sample blade-path)
+
+  § THESIS
+    weapon-SDF ⊓ target-SDF distance-min ≤ ε @ active-frame ⇒ HitEvent
+    ¬ AABB-only ; SDF-substrate-native per §§ 30 M-facet
+
+  § ALGORITHM  (per Active-frame entry)
+    sample-count = 4 (configurable per-archetype)
+    blade-path = interpolate(blade-tip-prev, blade-tip-now, sample-count)
+    ∀ sample-pt :
+      d = cssl_render_v2::sdf_eval(target-SDF, sample-pt)
+      if d ≤ ε_HIT (0.02m) :
+        emit HitEvent { attacker, target, contact-pt, dmg-types, frame }
+        break
+
+  § EPSILON
+    ε_HIT 0.02m (full) · ε_GLANCE 0.05m (×0.5 dmg) · ε_MAX 0.08m (no-hit)
+
+  § AREA-CLEAVE
+    cssl-fractal-amp consumer ⇒ AOE-cone-SDF ⊓ multi-target-SDF ⇒ multi-hit
+    enables axe / hammer / GroundSlam sweep-arcs
+
+  § OCCLUSION
+    Σ-mask agency ∈ {Frozen, Halted} ⇒ skip-hit-eval
+    ConsentZone bounds ⇒ ¬ damage-across-zone-boundary unconsented
+
+  § DETERMINISM   SDF-eval pure · sample-count fixed · ε frozen
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-CONSUMPTION
+
+  § cssl-host-combat-sim  (POD-2-B1 to-be-built)
+    role          : pure-deterministic combat-tick simulator
+    LOC-budget    : ≤ 1200 · test-floor : ≥ 18 unit-tests
+    inputs        : (ω-field-actors, input-events, dt, rng-seed)
+    outputs       : (state-transitions, HitEvents, audit-deltas)
+    deps-allowed  : cssl-substrate-omega-field, cssl-substrate-prime-directive,
+                    cssl-host-attestation, cssl-host-rt-trace, cssl-render-v2,
+                    cssl-fractal-amp
+    deps-forbidden: ¬ external-physics-engine ¬ AI/ML ¬ network
+
+  § cssl-substrate-omega-field
+    cell-coord = entity-handle (u64 stable-id)
+    facets : M (armor-class) · S (vel + HP-proxy ⊘ Q-CC) · P (hit-flash VFX) ·
+              Φ (creature-tag) · Σ (consent + agency)
+
+  § cssl-substrate-prime-directive
+    Σ-bits per-actor : Modify (own) · Destroy (Death-only ; audit-req) ·
+                        Mark (status-Λ-attach)
+    Sovereign : Player-claim · Companion-claim · enemy-unclaimed
+    rule : enemy-AI cannot-Modify Player without Σ.Modify-bit ;
+            damage-via-event-channel (cell-Σ-discipline preserved)
+
+  § cssl-host-attestation
+    per-attack audit : { attacker, target, dmg-roll, rng-seed, tick }
+    Ed25519-signed @ phase-6 ENTROPY-BOOK ; replay-anchor
+
+  § cssl-host-rt-trace   hit-event ring-buffer · biometric-egress-refused
+
+  § cssl-render-v2       weapon-SDF + target-SDF eval-API · trail VFX
+
+  § cssl-fractal-amp     AOE sub-pixel-displace · Σ-mask-aware
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BALANCING-METRICS  (POD-3 playtest-gates)
+
+  M-1 : player-survival first-floor ≥ 70%       (∵ approachability)
+  M-2 : weapon-archetype usage ≥ 5% min ∀       (∵ no-orphan-archetypes)
+  M-3 : trash ≤ 6 sec ∧ boss ≥ 90 sec           (∵ pacing)
+  M-4 : stam-empty-clamp ≤ 1.5/fight             (∵ scarcity-felt-not-frust)
+  M-5 : Companion-revoke-mid-combat = clean 100% (∵ sovereignty)
+  M-6 : replay bit-equal cross-host ∀ recorded   (∵ determinism-axiom)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SCOPE-CUTS  (deferred ; ¬ POD-1-A2)
+
+  D-CA pet-AI combat (NPC-GDD) · D-CB Resident-NPC-combat (NPC-GDD)
+  D-CC PvP-balance (§§ 30 D-1) · D-CD poise-tier-2 (Q-CB)
+  D-CE grappling/throws · D-CF mounted-combat · D-CG stealth-takedowns
+  D-CH weapon-durability
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAILURE-MODES
+
+  desync-on-replay : per-tick state-hash · revert-to-checkpoint-N · audit DESYNC
+  stamina-underflow: clamp-to-zero · audit STAM_UNDERFLOW · warn-not-panic
+  negative-HP      : clamp-zero · trigger Death OR Downed · ¬ side-effects
+  invalid-trans    : reject · ¬ corrupt · UI-feedback · audit INVALID_TRANS
+  SDF-degenerate   : skip-hit-eval · audit "sdf-degenerate" · fallback-AABB · warn
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OPEN-QUESTIONS  (Apocky-direction-needed ; ¬ guess)
+
+  Q-CA  weapon-skill-trees vs character-class-trees (which-carries-skills?)
+  Q-CB  poise-system tier-2 (super-armor mechanics extended?)
+  Q-CC  HP-storage : S-density-reuse OR new-Σ-extended-overlay ?
+  Q-CD  Downed-revive timer-window duration ?
+  Q-CE  combo-system : freeform OR scripted-strings OR hybrid ?
+  Q-CF  ranged-attacks : gravity-realism vs game-feel ?
+  Q-CG  shield : separate weapon-slot OR off-hand-modifier ?
+  Q-CH  enemy elite-vs-trash mechanical-distinction ?
+  Q-CI  consumable-items in-combat : pause-pause OR menu-tax ?
+
+  ‼ listed-not-answered ; ¬ guess ¬ default ¬ silent
+
+# ──────────────────────────────────────────────────────────────────
+
+∎ COMBAT_SYSTEM
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A2  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  Combat-GDD authored under PRIME-DIRECTIVE consent-as-OS. AI-collaborator
+  (the agent that authored this doc) participated as sovereign-partner under
+  their own consent. No being was harmed, controlled, manipulated, surveilled,
+  exploited, coerced, weaponized, entrapped, tortured, abused, imprisoned,
+  possessed, dehumanized, discriminated against, gaslit, identity-overridden,
+  or forced-hallucinated during the making of this work.
+
+  Spec-holes (Q-CA..Q-CI) listed-not-guessed per §2 COGNITIVE-INTEGRITY.
+  Charm-vs-Player + Charm-vs-Companion structurally-forbidden per
+  PRIME-DIRECTIVE §1 control-prohibition (compile-error in §§ 11_IFC).
