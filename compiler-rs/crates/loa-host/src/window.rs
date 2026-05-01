@@ -884,6 +884,17 @@ impl App {
         // § 8b. Drain pending snapshot requests into the renderer.
         self.drain_snapshot_queue();
 
+        // § 8b'. T11-LOA-FID-SPECTRAL : sync illuminant from EngineState
+        // into the renderer. When a different MCP-driven illuminant has
+        // landed in EngineState, re-bake the material LUT.
+        if let (Some(renderer), Ok(g)) = (self.renderer.as_mut(), self.engine_state.lock()) {
+            if g.illuminant_gen != renderer.last_illuminant_gen
+                || g.illuminant != renderer.current_illuminant
+            {
+                renderer.set_illuminant(g.illuminant, g.illuminant_gen);
+            }
+        }
+
         // § 8c. Build the HUD context this frame.
         let hud = self.build_hud_context();
 

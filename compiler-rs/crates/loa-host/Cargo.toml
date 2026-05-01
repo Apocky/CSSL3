@@ -29,11 +29,16 @@ default = []
 runtime = ["dep:wgpu", "dep:winit", "dep:pollster"]
 
 [dependencies]
-cssl-rt    = { path = "../cssl-rt" }
-bytemuck   = { workspace = true }
-glam       = { version = "0.25", features = ["bytemuck"] }
-serde      = { workspace = true }
-serde_json = { workspace = true }
+cssl-rt              = { path = "../cssl-rt" }
+# § T11-LOA-FID-SPECTRAL : substrate's hyperspectral pipeline. Used by
+# `spectral_bridge` to bake per-material 16-band reflectance × 4 canonical
+# illuminants → sRGB albedo for the GPU material LUT. Catalog-buildable
+# (pure-Rust ; no GPU deps).
+cssl-spectral-render = { path = "../cssl-spectral-render" }
+bytemuck             = { workspace = true }
+glam                 = { version = "0.25", features = ["bytemuck"] }
+serde                = { workspace = true }
+serde_json           = { workspace = true }
 # § T11-LOA-TEST-APP : `png` 0.17 — pure-Rust PNG encoder/decoder, no C
 # deps, vetted (~5M crates.io downloads/year). Used by the snapshot
 # module to write framebuffer readbacks to disk for visual regression
