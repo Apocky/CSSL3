@@ -12,10 +12,11 @@ name       = "cssl_asset_fetcher"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-cssl-rt     = { path = "../cssl-rt" }
-serde       = { workspace = true }
-serde_json  = { workspace = true }
-thiserror   = { workspace = true }
+cssl-rt                       = { path = "../cssl-rt" }
+cssl-host-license-attribution = { path = "../cssl-host-license-attribution" }
+serde                         = { workspace = true }
+serde_json                    = { workspace = true }
+thiserror                     = { workspace = true }
 # § parking_lot dropped in favor of std::sync::RwLock — workspace's
 # parking_lot 0.12 transitively pulls parking_lot_core 0.9.12 →
 # windows-link 0.2.1 which forces dlltool.exe on the 1.85.0-x86_64-pc-
