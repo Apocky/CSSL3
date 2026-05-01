@@ -1,0 +1,28 @@
+[package]
+name                   = "cssl-host-mp-transport-real"
+description            = "CSSLv3 — REAL `MpTransport` impl backed by ureq + Supabase REST. Replaces the ABI-shape `StubSupabaseTransport` with live HTTP traffic against the `signaling_messages` table defined by W4 migration 0004. CAP-GATED (TRANSPORT_CAP_SEND / TRANSPORT_CAP_RECV) · AUDIT-EMIT per send/poll via the local `AuditSink` trait · SOVEREIGN-BYPASS-RECORDED · 429-Backoff parses Retry-After · timeouts configurable via `SupabaseConfig`. The HTTP layer is abstracted behind an `HttpClient` trait so the production `UreqClient` can be swapped for a `MockHttpClient` in tests without touching the network."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_mp_transport_real"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+ureq       = { workspace = true }
+cssl-host-multiplayer-signaling = { path = "../cssl-host-multiplayer-signaling" }
+cssl-host-mp-transport          = { path = "../cssl-host-mp-transport" }
+# § cssl-host-attestation : path-declared for future wave-7c wire-up where
+# RealSupabaseTransport feeds AuditRows into the per-session attestation
+# aggregator. Stage-0 of this crate uses its own minimal `AuditSink` trait so
+# tests don't drag the full attestation pipeline in. The path-dep is here so
+# downstream wiring lands as a single-line addition.
+cssl-host-attestation           = { path = "../cssl-host-attestation" }
+
+[lints]
+workspace = true
