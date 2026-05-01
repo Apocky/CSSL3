@@ -250,6 +250,77 @@
 
 # ══════════════════════════════════════════════════════════════════
 
+§ ITERATE-EVERYWHERE-AXES-LEDGER  «coverage-tracker per-wave per-axis»
+
+  § AXES  ‼ 7 canonical-axes
+    LOGGING       : audit-row schema · canonical-event-stream
+    TELEMETRY     : histograms · scoped-timer · P50/P95/P99 budgets
+    TESTING       : golden-fingerprints · replay-determinism · snapshots
+    ROOMS         : procgen recipes · scene-graph · spatial-layout
+    RENDER        : stereoscopy · 12-stage-pipeline · novelty-paths
+    UI            : text-input · F-keys · license-HUD · marketplace
+    INTELLIGENCE  : intent-router · cocreative · causal-seed · KAN
+
+  § COVERAGE-TABLE  ‼ axis × wave × crate-or-branch
+    ┌─────────────┬──────────────────────────────────────────────────────┐
+    │ axis        │ touched-by                                          │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ LOGGING     │ W3γ cssl-host-audit (5-source canonical-row)       │
+    │             │ W4  cssl-host-license-attribution (audit-emit)     │
+    │             │ W5a attestation-emitter ‼ planned                  │
+    │             │ W5c asset-fetcher license-emit ‼ planned           │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ TELEMETRY   │ W3γ cssl-host-histograms (P50/P95/P99 + scoped)   │
+    │             │ W5a rt-trace + spectral-grader ‼ planned          │
+    │             │ W5b render-loop instrumentation ‼ planned         │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ TESTING     │ W3a 402 tests · 84 MCP tools                      │
+    │             │ W3b 9 crates · 93 MCP tools aggregate             │
+    │             │ W3γ cssl-host-replay (NIST-SHA256 baseline)       │
+    │             │ W3γ cssl-host-golden (FNV-1a-128 fingerprint)     │
+    │             │ W4  174 tests aggregate (causal+license+co+voice  │
+    │             │     +mp+vercel+supabase)                          │
+    │             │ W5b end-to-end deterministic-replay ‼ planned     │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ ROOMS       │ W3γ cssl-host-procgen-rooms (7 recipes Pcg32)     │
+    │             │ W5b scene-graph-procgen @ runtime ‼ planned       │
+    │             │ W7  DM scene-graph orchestrator ‼ planned         │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ RENDER      │ W3a sensory-harness (9 axes Phase-1 COLLAPSE)     │
+    │             │ W3γ cssl-host-stereoscopy (SBS+TB+anaglyph)       │
+    │             │ W5b 12-stage pipeline-instrumentation ‼ planned   │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ UI          │ W3a F1..F12 keybinding harness                    │
+    │             │ W3b cssl-text-input (history + entry)             │
+    │             │ W4  vercel marketplace gallery+detail pages       │
+    │             │ W4  cssl-host-license-attribution (HUD-runtime)   │
+    │             │ W5b window.rs input-recorder ‼ planned            │
+    │             │ W5c license-HUD runtime-active ‼ planned          │
+    ├─────────────┼──────────────────────────────────────────────────────┤
+    │ INTELLIG-   │ W3b cssl-intent-router (keyword 6-target table)   │
+    │ ENCE        │ W3b cssl-spontaneous-pad (NE-corner seed-cells)   │
+    │             │ W3b cssl-substrate-omega-field (Phase-1..6+Σ)     │
+    │             │ W4  cssl-host-causal-seed (Phase-4 cohomology)    │
+    │             │ W4  cssl-host-cocreative (momentum-SGD β=0.9)     │
+    │             │ W4  cssl-host-voice (Whisper-CPP local-only)      │
+    │             │ W6  KAN-classifier swap-in ‼ planned              │
+    │             │ W7  DM/GM/Collab/Coder orchestrators ‼ planned    │
+    └─────────────┴──────────────────────────────────────────────────────┘
+
+  § AXES-COVERAGE-SUMMARY  ‼ density-as-sovereignty
+    LOGGING       : ◐ 2/4 landed  (audit + license · attestation+emit @ W5)
+    TELEMETRY     : ◐ 1/3 landed  (histograms · rt-trace+grader @ W5a)
+    TESTING       : ✓ 5/6 landed  (replay+golden+402+93+174 ; e2e @ W5b)
+    ROOMS         : ◐ 1/3 landed  (procgen · runtime+orchestrator @ W5b/W7)
+    RENDER        : ◐ 2/3 landed  (sensory+stereo · pipeline-instr @ W5b)
+    UI            : ◐ 4/6 landed  (F-keys+text-input+market+HUD-crate ;
+                                    recorder+HUD-runtime @ W5b/W5c)
+    INTELLIGENCE  : ◐ 6/8 landed  (router+pad+ω+causal+co+voice ;
+                                    KAN+DM/GM @ W6/W7)
+    overall       : ◐ 21/33 landed  ‼ 64% coverage @ end-of-W4
+
+# ══════════════════════════════════════════════════════════════════
+
 § ANTI-PATTERNS  «what-NOT-to-do»
 
   § FORBIDDEN
@@ -291,6 +362,26 @@
   ../DECISIONS.md                 — slice-merge audit-trail
 
 ∎ ROADMAP
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PER-WAVE-ATTESTATION  «t∞: ¬ harm in-the-doing per-wave»
+
+  § W3a   t∞: ¬(hurt ∨ harm) .making-of-W3a  @ 935ca58  (sovereign-partner)
+  § W3b   t∞: ¬(hurt ∨ harm) .making-of-W3b  @ 1b4ce18  (sovereign-partner)
+  § W3γ   t∞: ¬(hurt ∨ harm) .making-of-W3γ  @ 5c5836c  (sovereign-partner)
+  § W4    t∞: ¬(hurt ∨ harm) .making-of-W4   @ 82f2496  (sovereign-partner)
+  § W5    t∞: ¬(hurt ∨ harm) .making-of-W5a  @ this-doc (sovereign-partner)
+                W5b/W5c attestation-pending @ landing
+
+§ CUMULATIVE-TALLY  «as-of @ end-of-W4 + start-of-W5a»
+  crates-landed       : 16+ host-crates ‼ (W3b-9 + W3γ-6 + W4-7 ≥ 22 incl
+                          edge+supabase)
+  MCP-tools-active    : 22+ tools ; 93 (W3b) + sensory + W4 = ≥ 200 cap-gated
+  ω-substrate-state   : Phase-1..6 canonical-tick ✓ ; Σ-mask-per-cell ✓ ;
+                          Morton+MERA-multirate ✓ ; KAN-runtime-spline-tables ◐
+  test-aggregate      : 402 (W3a) + 145 (W3γ) + 174 (W4) ≥ 721 tests-passing
+  attestation-chain   : 5 wave-attestations ✓ this-block ; ¬ harm cumulative
 
 # ──────────────────────────────────────────────────────────────────
 
