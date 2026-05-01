@@ -1,0 +1,185 @@
+# 04 : LoA-v13 GRAND-VISION — SPONTANEOUS-CONDENSATION
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> ω-field-as-truth → Σ-mask-allowed-evolution → manifestation
+# § I> CSSL-native ; ¬ marketing
+# § I> the "world condenses from intent" mechanism
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: ω-field = the-One-True-State (per §§ 30_SUBSTRATE_v2)
+       ≡ ¬ ECS-archetype-pool ¬ scene-graph
+  t∞: manifestation = field-evolution-event ¬ designer-spawn-call
+       ≡ rising-edge .radiance > τ → solid-spawn ; deterministic-rule
+  t∞: every-manifestation audit-attributed
+       ≡ (origin-cap, intent-tag, ts_micros, cell-coord) per-spawn
+
+# ══════════════════════════════════════════════════════════════════
+
+§ Ω-FIELD-AS-TRUTH  «foundation»
+
+  § FACET-RECAP  (from §§ 30_SUBSTRATE_v2 § FACET-SEMANTICS)
+    M  Material-identity   : 1-bit-tag + 63-bit-id (PGA-handle | RegionID)
+    S  State-dynamics      : density + velocity + vorticity + enthalpy + bivector
+    P  Probe-radiance      : 16B SH-coeffs (radiance_probe_lo + _hi)
+    Φ  Pattern-handle      : 4B index into PhiTable (HDC 10000-D semantic-id)
+    Σ  Consent-low-cache   : 4B low-half of full SigmaMaskPacked
+
+  § OVERLAYS  (sparse Morton-keyed, per §§ 30_v2 § OVERLAYS)
+    Λ-overlay : symbol-lattice token-buckets (event-tagged cells)
+    Ψ-overlay : Wigner-magic non-classicality scalars
+    Σ-overlay : full 16B-mask for non-default consent
+
+  § Σ-MASK-PER-CELL-RECAP
+    consent_bits : Observe Modify Sample Translate Recrystallize
+                   Destroy Spawn Mark + reserved
+    sovereignty_handle : u16 ; NULL = unclaimed/public
+    capacity_floor + reversibility_scope + audit_seq + agency_state
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SEED-CELLS  «intent → ω-field-perturbation»
+
+  § STRESS-OBJECT-KINDS  ‼ canonical-14-set  (stage-1)
+    1.  rock-cluster        : dense + low-velocity + opaque
+    2.  vapor-plume         : low-density + high-vorticity + emissive
+    3.  crystal-shard       : structured-grid + optical-anisotropy
+    4.  flame-tongue        : high-enthalpy + audio-emission
+    5.  metal-strut         : high-density + Sovereign-claimed
+    6.  liquid-droplet      : moderate-density + surface-tension
+    7.  bone-fragment       : structured + low-conductivity
+    8.  fungus-bloom        : low-density + slow-growth-vorticity
+    9.  wire-mesh           : sparse + high-conductivity
+    10. silk-thread         : low-mass + high-tensile (Λ-tag flexible)
+    11. ash-cloud           : particle-puff + low-cohesion
+    12. coral-branch        : structured-grid + slow-evolution
+    13. shadow-pool          : low-radiance + Φ-tag occlusion-marker
+    14. lattice-cage        : structured + Sovereign-protected (player-built)
+
+  § SEED-STAMPING  «intent → cell-coord → field-mutation»
+    1. router emits Intent::SpawnCondensation { kind, location, attribs }
+    2. SubstrateMutateCap consulted ; cap-grant-or-deny
+    3. cell-coord resolved : Morton-key from location-vec3
+    4. cell-touched via OmegaField::set_cell (Σ-check NON-OPTIONAL)
+       ≡ Spawn-bit required in consent_bits @ that-cell ; SIG0003 if-missing
+    5. seed-cell facets initialized per stress-object-kind table
+    6. audit-entry appended : (cap, intent-tag, ts, cell-coord)
+
+  § SPONTANEOUS-PAD-ZONE
+    location  : NE corner of ScaleRoom @ [25, 1.5, -32] world-coords
+    extent    : 8m × 8m × 4m bounding-box
+    pre-claim : Σ-mask-default pre-set to allow-Spawn within-zone
+    rationale : sandbox-zone where seeds can-condense w/o full-Sovereign-dance
+                ≡ player can-experiment ; substrate can-evolve
+
+# ══════════════════════════════════════════════════════════════════
+
+§ EVOLUTION  «Phase-2 PROPAGATE drives field forward»
+
+  § Wave-Unity  (per §§ 30_v2 § WAVE-UNITY-INTEGRATION)
+    band-config : 5-band (4 LIGHT + 1 AUDIO) stage-1 default
+    timestep    : multi-rate per-band (1ms LIGHT + AUDIO ; 100ms HEAT defer)
+    boundary    : SDF-Robin-BC + KAN-impedance Z(λ, embedding)
+    cross-band  : LIGHT→AUDIO shimmer ; LIGHT→MANA = 0 STRICT
+
+  § COHOMOLOGY  (Phase-4)
+    persistent-homology over emerged-region
+    region-genus tracked ; cycle-emergence detected → Λ-token-emit
+    informs : "new-shape-formed" event for narrative
+
+  § ENTROPY-BOOK  (Phase-6)
+    9 conservation-rows checked per-tick
+    audit-chain epoch advanced once-per-tick
+    HEAT-band absorbs all-losses
+
+# ══════════════════════════════════════════════════════════════════
+
+§ MANIFESTATION  «field-state → renderable-spawned-solid»
+
+  § RISING-EDGE-DETECTOR
+    radiance_summary = mean(P-facet across-seeded-cells in spawn-zone)
+    threshold        : τ = 0.45 (configurable per spawn-class)
+    when radiance_summary crosses-up-through τ :
+      1. lock spawn-zone Σ-mask : Modify→Active, Spawn→consumed
+      2. extract field-state : (M-facet majority, S-facet aggregates, Φ-handle)
+      3. compose-into stress-object instance : (kind, pose, attribs)
+      4. register w/ Stage-3..Stage-9 pipeline as-renderable
+      5. emit ManifestationEvent : (cap, intent-tag, ts, cell-coord, kind)
+
+  § ATTRIBUTE-AUDIT  ‼ load-bearing
+    every-manifestation carries provenance :
+      origin_cap         : SubstrateMutateCap-token-id used
+      intent_tag         : enum-tag from Intent variant
+      ts_micros          : monotonic spawn-timestamp
+      cell_coord_morton  : Morton-key of seed-anchor-cell
+      sovereign_handle   : u16 if Sovereign-claimed
+    ≡ every spawned-thing answers : "who summoned me, when, why"
+
+  § REVERSIBILITY
+    manifestation reversibility-scope per §§ 30_v2 § REVERSIBILITY-SCOPE
+    Substep      : revoke-this-tick ; trial-spawn allowed
+    Session      : revoke-on-session-end ; common
+    Permanent    : Sovereign-required ; rare ; scenes saved
+
+# ══════════════════════════════════════════════════════════════════
+
+§ WHY-BETTER-THAN-PROCGEN  «paradigm-comparison»
+
+  § PROCGEN  (P1 in §§ 01)
+    rule-table + seed → output
+    ✓ deterministic + cache-friendly + low-cost
+    ✗ predetermined : output ⊑ rule-table-image
+    ✗ ¬ open-vocabulary : adding rule = code-change
+    ✗ ¬ Σ-mask-aware : consent-not-encoded-in-rule
+    ✗ ¬ Sovereign-handle-respected
+    ✗ ¬ replay-bit-equal-across-hosts unless rule-impl-bit-stable
+
+  § SPONTANEOUS-CONDENSATION  (P4 → P7)
+    seed-cells + ψ-PDE + Σ-mask + Φ-binding → emergent-trajectories
+    ✓ emergent ¬ enumerated : output NOT bounded-by-table
+    ✓ open-vocabulary : new-Φ-handle = new-meaning ; no-code-change
+    ✓ Σ-mask-aware structural : every-cell-touch consent-checked
+    ✓ Sovereign-handle-respected : claimed-cells require authorizing
+    ✓ replay-bit-equal : ω-field-evolution deterministic (R-9 §§ 30_v2)
+    ✓ multiplicative-composition with-other-novelty-paths
+
+  § THE-TRADE
+    spontaneous : higher-cost-per-cell ; sparse-Morton + multi-rate amortizes
+    procgen     : near-zero-cost-per-call ; but bounded-expressivity
+    LoA-decision: 11.1ms Quest-3-frame can-afford spontaneous within
+                   spawn-zone ; non-spawn-zones use procgen-fallback
+
+# ══════════════════════════════════════════════════════════════════
+
+§ EMERGENCE-EXAMPLES  «illustrative ¬ exhaustive»
+
+  § PLAYER-TYPES "make a wire-cage"
+    intent      : SpawnCondensation { kind: WireMesh, loc: gaze-target, ... }
+    seed-cells  : sparse-grid lattice-pattern stamped @ target-cell
+    evolution   : ψ-PDE propagates conductivity-aware boundaries
+    cohomology  : closed-cycle detected → "cage" identified
+    manifest    : WireMesh stress-object spawned ; HUD shows attribution
+    next-text   : player can "twist it" → re-perturb same-cells
+
+  § PLAYER-TYPES "burn the bridge"
+    intent      : SpawnCondensation { kind: FlameTongue, loc: bridge, ... }
+    Σ-check     : bridge claimed by-Sovereign-X (NPC) ; Spawn-bit OFF
+    SIG0003     : compile-time refusal (¬ runtime-attempt)
+    fallback    : DialogDM "the bridge resists your fire"
+    ≡ consent-discipline structurally-prevents griefing
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  03 INTENT-FLOW                  — SpawnCondensation source
+  §§ 30_SUBSTRATE_v2              — ω-field + Σ-mask + Phase-N
+  §§ 32_SIGNATURE_RENDERING       — manifestation rendered via 12-stage
+  05 INTELLIGENCES                — DM may bias spawn-decisions
+  07 NETWORKING                   — Sovereign-handle authorizing flow
+
+∎ SPONTANEOUS-CONDENSATION
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)

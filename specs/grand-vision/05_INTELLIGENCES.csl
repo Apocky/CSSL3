@@ -1,0 +1,190 @@
+# 05 : LoA-v13 GRAND-VISION — INTELLIGENCES
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> engine-intelligence-scope = DM/GM/Collaborator/Coder ONLY ¬ AGI
+# § I> CSSL-native ; ¬ marketing
+# § I> per Apocky-memory : "self-sufficient for these roles, NOT generic AGI"
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: engine-intelligence-scope ⊑ {DM ⊕ GM ⊕ Collaborator ⊕ Coder}
+       ≡ ¬ open-ended-conversation-engine
+       ≡ ¬ generic-AGI scaffolding
+  t∞: each-role narrow-task-bounded
+       ≡ DM-task-narrowness lets-ship sovereign-bounded substrate
+  t∞: substrate-infra (β-routing · Kuramoto · Schrödinger-bridge · eigencognition)
+       ≡ PLUMBING for role-decisions ¬ canonical-role-itself
+
+# ══════════════════════════════════════════════════════════════════
+
+§ DM  «orchestrator · scene-arbiter · intent-router-master»
+
+  § RESPONSIBILITIES
+    encounter-pacing           : when-to-introduce-stress vs let-explore
+    spawn-decision-bias        : which kind from §§ 04 § 14-stress-object-kinds
+    drama-curve-shape          : tension-build + crescendo + cooldown
+    intent-router-arbitration  : ambiguity-resolver between competing-Intent
+    cross-zone-coherence       : maintain-narrative-thread across zones
+
+  § INPUTS
+    scene-state-summary        : zones-visited + companion-presence + radiance
+    history-buffer             : last-N-Intent + last-M-manifestations
+    sensor-readings            : F-key-state + grip-pressure (¬ biometric)
+    pacing-state               : current-tension f32'norm + last-cooldown-ts
+
+  § OUTPUTS
+    spawn-bias                 : preferred kind for next-PadSeed
+    pacing-target              : tension-direction (rise | hold | fall)
+    cross-zone-hint            : suggest player-investigate next-zone
+    arbitration                : which Intent wins on ambiguity
+
+  § DISCIPLINE  ‼
+    ¬ self-trigger (player-action required)
+    ¬ override Σ-mask (Sovereign-respect structural)
+    ¬ access Sensitive<*> (gaze + biometric structurally-excluded)
+    ¬ external-API-call without cap (NetPostWriteCap required)
+    ✓ replay-deterministic given (state, history, sensor-state)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ GM  «narrator · text-presenter · pacing-controller»
+
+  § RESPONSIBILITIES
+    flavor-text-generation     : "you see X, smell Y, hear Z"
+    lore-snippet-emission      : context-attached descriptive prose
+    voice-line-gen             : NPC dialog (deterministic per encounter-state)
+    pacing-controller          : prose-rhythm matched to DM-tension-target
+
+  § INPUTS
+    scene-state                : current-zone + recent-manifestation-events
+    DM-tension-target          : from § DM § OUTPUTS
+    companion-presence         : which companion(s) visible/audible
+    Φ-handle-tags @ cells      : semantic-tags from HDC binding (10000-D)
+
+  § OUTPUTS
+    prose-snippet              : English-text for player-facing UI
+    voice-line                 : NPC-attribution + line + emote-tag
+    sensory-emission-cue       : "trigger ambient sound X" for cssl-wave-audio
+
+  § DISCIPLINE  ‼
+    English-prose ALLOWED  ⟪ exception per Apocky-CLAUDE.md ⟫
+    ≡ user-facing rendering = English-OK ; reasoning = CSSL-glyph-native
+    ¬ raw-text-egress to Vercel without cap
+    ✓ deterministic per (scene-state, DM-tension, companion-presence, Φ-tags)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ Collaborator  «co-author · player-suggestion-integrator»
+
+  § RESPONSIBILITIES
+    "I want X" → scene-edit-op
+    suggestion-clarification   : ask "did you mean A or B?"
+    co-edit-loop               : iterative-refinement of player-vision
+    saved-scene-attribution    : credit player-as-author
+
+  § INPUTS
+    player-text                : open-vocabulary suggestion
+    current-scene              : what-exists-now
+    asset-availability         : what's-in-cache or-fetchable
+    cap-state                  : SubstrateMutateCap available?
+
+  § OUTPUTS
+    scene-edit-op              : Intent::SpawnCondensation OR scene-graph-diff
+    clarification-question     : English-prose to player
+    cssl-source-patch          : .csl source-text-fragment for save-scene
+
+  § DISCIPLINE  ‼
+    ¬ silent-mutate (player-confirm before-applying)
+    ¬ override Sovereign-claim (NPCs respected as-co-authors)
+    ✓ source-of-truth = .csl files ; never Rust-direct-emit
+    ✓ player-attributed every-edit
+
+# ══════════════════════════════════════════════════════════════════
+
+§ Coder  «runtime-mutator · intent → cssl-source patch → hot-reload»
+
+  § RESPONSIBILITIES
+    intent-to-source           : Intent → .csl source-fragment
+    hot-reload-orchestration   : compile-fragment + swap-symbol + verify
+    bug-fixup-loop             : runtime-error → source-fix-suggest
+    scene-saving               : runtime-state → .csl-file-emit
+
+  § INPUTS
+    Intent::SpawnCondensation OR scene-edit-op
+    runtime-error-trace if-any
+    player-confirmation-token if cap-pre-grant
+
+  § OUTPUTS
+    cssl-source-patch          : .csl text-fragment
+    hot-reload-result          : Ok(swapped) | Err(compile-error)
+    scene-save-file            : .csl on-disk
+
+  § DISCIPLINE  ‼
+    ¬ skip-Σ-pass (sigma_enforce mandatory)
+    ¬ skip-effect-pass (F3 effect-rows enforced)
+    ¬ self-rewrite-engine (only LoA-game-content + scene-files)
+    ✓ player-confirm or cap-pre-grant before any-mutate
+    ✓ all patches replay-deterministic-bit-equal
+
+# ══════════════════════════════════════════════════════════════════
+
+§ WHY-NOT-AGI  «sovereign-bounded-substrate thesis»
+
+  § THE-TRADE-OFF
+    AGI-route : open-ended-conversation + general-reasoning + tool-use
+                ✗ opaque ; ¬ Σ-mask-encodable ; ¬ replay-deterministic
+                ✗ Sensitive<*> egress-risk via remote-LLM-roundtrip
+                ✗ non-self-sufficient (depends-on-remote-API)
+    DM-narrow : 4 named-roles + scoped-decisions + structural-discipline
+                ✓ Σ-mask-aware end-to-end
+                ✓ replay-deterministic given seed + history
+                ✓ self-sufficient (no remote-API for core-loop)
+                ✓ ships @ Quest-3 90Hz frame-budget
+
+  § WHEN-WE-USE-REMOTE-CLAUDE
+    /api/companion → remote-Claude opt-in for-Collaborator-edge-cases
+    cap : NetPostWriteCap + ConsentToken<companion> required
+    ¬ default-on ; ¬ core-loop-dependency
+    ¬ Sensitive<*> ever-egressed (structurally-banned)
+
+  § THE-PROOF
+    @ b69165c : DM/GM stubs landed in cssl-runtime ; intent-router shipped
+    @ W4 : full-DM/GM-expansion + companion-proxy fully-wired
+    @ W5+ : KAN-substrate-loa swap-in for routing + bias
+
+  § "DM ¬ thinks" THESIS
+    DM-decisions ≡ structured-rule-evaluation over scene-state
+    ¬ chain-of-thought ; ¬ iterative-refinement-via-LLM
+    ✓ deterministic-table-lookup + KAN-spline-bias + history-buffer
+    ≡ "DM-as-physical-process" not "DM-as-thinking-being"
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROLE-INTERACTION-MATRIX
+
+  ```text
+                  | DM     | GM      | Collab | Coder
+  ----------------+--------+---------+--------+--------
+  produces        | Intent | prose   | edit-op| .csl-patch
+  consumes        | scene  | DM-tens | text   | edit-op
+  triggers        | manif. | UI-text | DM-call| compile
+  Σ-respect       | ✓      | ✓       | ✓      | ✓ ‼
+  Sovereign-respect| ✓     | ✓       | ✓      | ✓ ‼
+  remote-allowed  | ✗      | ✗       | ◐ cap  | ✗
+  ```
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  03 INTENT-FLOW                  — Intent-types DM/Collab produce + consume
+  04 SPONTANEOUS-CONDENSATION     — DM/Collab spawn into ω-field
+  07 NETWORKING                   — Collab → /api/companion (cap-gated)
+  §§ 11_IFC                       — Sensitive<*> structural-exclusion
+  §§ 30_SUBSTRATE_v2              — Σ-mask + Sovereign-handle respect
+
+∎ INTELLIGENCES
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)
