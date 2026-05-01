@@ -2610,6 +2610,7 @@ dependencies = [
  "cssl-host-audit",
  "cssl-host-causal-seed",
  "cssl-host-cocreative",
+ "cssl-host-coder-runtime",
  "cssl-host-config",
  "cssl-host-dm",
  "cssl-host-frame-recorder",

@@ -148,6 +148,12 @@ pub mod wired_gm;
 pub mod wired_kan_real;
 pub mod wired_mp_transport_real;
 
+// § T11-W8-CHAT-WIRE — Coder narrow-orchestrator runtime + 4 NEW MCP tools.
+//   Sandboxed AST-edit pipeline ; sovereign-required for substrate edits ;
+//   30-second auto-revert window. Stage-0 explicit-confirm-only ; ¬ stage-1
+//   (deferred-indefinitely-per-spec/10).
+pub mod wired_coder_runtime;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────

@@ -73,6 +73,12 @@ cssl-host-kan-real              = { path = "../cssl-host-kan-real" }
 cssl-host-mp-transport-real     = { path = "../cssl-host-mp-transport-real" }
 cssl-host-dm                    = { path = "../cssl-host-dm" }
 cssl-host-gm                    = { path = "../cssl-host-gm" }
+# § T11-W8-CHAT-WIRE : Coder narrow-orchestrator path-dep. Powers the
+# 4 NEW `coder.*` MCP tools (propose_edit · list_pending · approve · revert).
+# Sandboxed AST-edit runtime ; sovereign-required for substrate edits ;
+# 30-second auto-revert window. ALL stage-0 explicit-confirm-only ; ¬ stage-1
+# (deferred-indefinitely-per-spec/10).
+cssl-host-coder-runtime         = { path = "../cssl-host-coder-runtime" }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }
