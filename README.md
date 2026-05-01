@@ -137,15 +137,31 @@ Or grab the pre-built Windows binary from [Releases](https://github.com/Apocky/C
 
 ## Documentation
 
-- [`specs/`](specs/) — complete formal design in CSLv3 notation (20 documents)
+- [`specs/`](specs/) — complete formal design in CSLv3 notation (20+ documents)
 - [`DECISIONS.md`](DECISIONS.md) — every architectural decision, T1-D1 through present
 - [`PRIME_DIRECTIVE.md`](PRIME_DIRECTIVE.md) — foundational consent axiom, encoded for humans, AI agents, and compilers
 - [`examples/`](examples/) — annotated Sigil programs (Vulkan triangle, SDF autodiff, real-time audio)
+
+## Distribution scope
+
+This repository ships the **open-source compiler** — lexer, parser, AST, HIR, MIR, codegen,
+runtime, examples, specs, and lore. The compiler is the public face of the language.
+
+Other components in the broader CSSL/Sigil ecosystem (proprietary engine binaries, trained
+weights, server-side coordination services, private-tier integrations) are distributed under
+separate terms and are **not** part of this public repository.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues are labeled in the [issue tracker](https://github.com/Apocky/CSSL3/issues?q=label%3A%22good+first+issue%22).
 
+## Security
+
+To report a security vulnerability, please follow the [responsible-disclosure process in SECURITY.md](SECURITY.md). Do **not** open a public issue.
+
 ## License
 
-Apache-2.0 OR MIT
+Dual-licensed: **Apache-2.0 OR MIT** at your option. See [LICENSE.md](LICENSE.md) for full
+details and contributor terms. Trademark and attribution notices live in [NOTICE.md](NOTICE.md).
+
+© 2026 Apocky. All rights reserved where not otherwise granted by the project license.
