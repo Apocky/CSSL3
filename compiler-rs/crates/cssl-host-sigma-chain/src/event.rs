@@ -84,8 +84,31 @@ pub struct SigmaEvent {
     pub payload_blake3: [u8; 32],
     /// Privacy-tier @ emit-time. LocalOnly events MUST never egress (structural-guard).
     pub privacy_tier: PrivacyTier,
-    /// Ed25519 signature over canonical-bytes (64B).
+    /// Ed25519 signature over canonical-bytes (64B). Serialized as 2× [u8;32] pair
+    /// so serde-derive works without `serde_big_array` (workspace-pin policy : NO new deps).
+    #[serde(with = "sig_serde")]
     pub ed25519_sig: [u8; SIG_LEN],
+}
+
+mod sig_serde {
+    //! Hand-rolled (de)serialize for `[u8; 64]` as a pair of `[u8;32]`.
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(sig: &[u8; 64], ser: S) -> Result<S::Ok, S::Error> {
+        let mut hi = [0u8; 32];
+        let mut lo = [0u8; 32];
+        hi.copy_from_slice(&sig[..32]);
+        lo.copy_from_slice(&sig[32..]);
+        (hi, lo).serialize(ser)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<[u8; 64], D::Error> {
+        let (hi, lo): ([u8; 32], [u8; 32]) = Deserialize::deserialize(de)?;
+        let mut out = [0u8; 64];
+        out[..32].copy_from_slice(&hi);
+        out[32..].copy_from_slice(&lo);
+        Ok(out)
+    }
 }
 
 impl SigmaEvent {

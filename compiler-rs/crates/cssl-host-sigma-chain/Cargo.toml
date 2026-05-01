@@ -23,5 +23,11 @@ blake3        = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand          = { workspace = true }
 
+[dev-dependencies]
+serde_json    = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand          = { workspace = true }
+blake3        = { workspace = true }
+
 [lints]
 workspace = true

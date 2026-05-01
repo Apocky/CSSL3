@@ -76,10 +76,14 @@ impl SigmaLedger {
     }
 
     /// Build a snapshot (serializable cross-process / cross-machine for opt-in egress).
+    ///
+    /// Events are emitted as a Vec sorted-by-id ASC (deterministic) — JSON-friendly
+    /// since BTreeMap with byte-array keys would require string-keyed encoding.
     #[must_use]
     pub fn snapshot(&self) -> LedgerSnapshot {
+        let events: Vec<SigmaEvent> = self.events.values().cloned().collect();
         LedgerSnapshot {
-            events: self.events.clone(),
+            events,
             merkle_root: self.merkle_root(),
         }
     }
@@ -121,10 +125,12 @@ impl SigmaLedger {
 }
 
 /// Serializable snapshot of the ledger for opt-in egress / golden-file regression tests.
+///
+/// `events` is sorted-by-id ASC — caller can rebuild a `BTreeMap` if needed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerSnapshot {
-    /// All events keyed by id (BTreeMap → JSON-stable).
-    pub events: BTreeMap<EventId, SigmaEvent>,
+    /// All events sorted-by-id ASC (canonical merkle-leaf-order).
+    pub events: Vec<SigmaEvent>,
     /// Merkle-root @ snapshot-time.
     pub merkle_root: Digest,
 }
