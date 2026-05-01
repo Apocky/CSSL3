@@ -54,6 +54,15 @@ struct Pattern {
     phase:    f32,
 };
 
+// § T11-LOA-FID-STOKES : WGSL representation of a 4×4 Mueller matrix.
+// 4 rows × vec4 = 64 bytes ; matches Rust `MuellerWgsl` exactly.
+struct MuellerWgsl {
+    row0 : vec4<f32>,
+    row1 : vec4<f32>,
+    row2 : vec4<f32>,
+    row3 : vec4<f32>,
+};
+
 struct Uniforms {
     view_proj : mat4x4<f32>,
     sun_dir   : vec4<f32>,
@@ -66,8 +75,19 @@ struct Uniforms {
     // sphere-tracer can reconstruct the view ray inside cube-local space.
     // .xyz = world camera position ; .w = unused (reserved for tracer flags).
     camera_pos: vec4<f32>,
+    // § T11-LOA-FID-STOKES : sun-light Stokes vector (I, Q, U, V).
+    // Atmospheric scattering imparts a slight horizontal-Q bias.
+    sun_stokes: vec4<f32>,
+    // § T11-LOA-FID-STOKES : Stokes pipeline control word.
+    //   .x = polarization_mode (0=Intensity · 1=Q · 2=U · 3=V · 4=DOP)
+    //   .y = enable_mueller    (0/1)
+    //   .zw = reserved
+    stokes_control: vec4<f32>,
     materials : array<Material, 16>,
     patterns  : array<Pattern, 22>,
+    // § T11-LOA-FID-STOKES : per-material Mueller-matrix LUT.
+    // Each entry is 4 × vec4 = 64 bytes (16 entries = 1024 bytes).
+    muellers  : array<MuellerWgsl, 16>,
 };
 
 @group(0) @binding(0) var<uniform> u : Uniforms;
@@ -584,8 +604,87 @@ fn is_raymarch_kind(kind: u32) -> bool {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-STOKES — Mueller-apply + polarization false-color helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+// Apply a Mueller matrix to a Stokes vector. WGSL has no row/col mat4×vec4
+// helper that matches our explicit row-major layout, so we expand by hand.
+fn mueller_apply(m: MuellerWgsl, s: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(
+        dot(m.row0, s),
+        dot(m.row1, s),
+        dot(m.row2, s),
+        dot(m.row3, s),
+    );
+}
+
+// Compute degree-of-LINEAR-polarization (sqrt(Q²+U²)/I) safely.
+fn dop_linear(s: vec4<f32>) -> f32 {
+    let i_safe = max(abs(s.x), 1e-6);
+    return sqrt(s.y * s.y + s.z * s.z) / i_safe;
+}
+
+// Compute degree-of-TOTAL-polarization (sqrt(Q²+U²+V²)/I) safely.
+fn dop_total(s: vec4<f32>) -> f32 {
+    let i_safe = max(abs(s.x), 1e-6);
+    return sqrt(s.y * s.y + s.z * s.z + s.w * s.w) / i_safe;
+}
+
+// Map a signed value in [-1,1] to a red-positive / blue-negative diverging
+// false-color used by the polarization-view modes 1-3.
+fn signed_to_falsecolor(v: f32) -> vec3<f32> {
+    let pos = clamp(v, 0.0, 1.0);
+    let neg = clamp(-v, 0.0, 1.0);
+    return vec3<f32>(pos, 0.10, neg);
+}
+
+// Apply the polarization-view diagnostic. `intensity_rgb` is the standard
+// intensity-mode color (the value the renderer would produce without
+// Stokes-aware overlay). `s_out` is the post-Mueller Stokes vector.
+fn apply_polarization_view(intensity_rgb: vec3<f32>, s_out: vec4<f32>) -> vec3<f32> {
+    let mode = u32(u.stokes_control.x + 0.5);
+    if (mode == 0u) {
+        return intensity_rgb;
+    }
+    if (mode == 1u) {
+        // Q false-color : red=+H · blue=-H · normalize by I.
+        let q_norm = s_out.y / max(abs(s_out.x), 1e-6);
+        return signed_to_falsecolor(q_norm);
+    }
+    if (mode == 2u) {
+        // U false-color.
+        let u_norm = s_out.z / max(abs(s_out.x), 1e-6);
+        return signed_to_falsecolor(u_norm);
+    }
+    if (mode == 3u) {
+        // V false-color (circular).
+        let v_norm = s_out.w / max(abs(s_out.x), 1e-6);
+        return signed_to_falsecolor(v_norm);
+    }
+    if (mode == 4u) {
+        // Total degree-of-polarization (0..1) → grayscale.
+        let d = clamp(dop_total(s_out), 0.0, 1.0);
+        return vec3<f32>(d, d, d);
+    }
+    return intensity_rgb;
+}
+
+// Compute Mueller-applied Stokes for a given material id.
+// When `enable_mueller` is 0, returns the input Stokes unchanged.
+fn stokes_for_material(material_id: u32) -> vec4<f32> {
+    let s_in = u.sun_stokes;
+    let mueller_enable = u.stokes_control.y;
+    if (mueller_enable < 0.5) {
+        return s_in;
+    }
+    let m = u.muellers[material_id];
+    return mueller_apply(m, s_in);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // § Fragment shader — material LUT + procedural pattern + lighting
 // § T11-LOA-RAYMARCH : raymarch branch for pattern-IDs 16..21
+// § T11-LOA-FID-STOKES : Mueller per-material + diagnostic polarization view
 // ─────────────────────────────────────────────────────────────────────────
 
 struct FsOut {
@@ -699,7 +798,11 @@ fn fs_main(in : VsOut) -> FsOut {
         let spec = pow(n_dot_h, spec_pow) * (1.0 - m.roughness) * (0.20 + m.metallic * 0.80);
 
         let final_rgb = lit + vec3<f32>(spec) + m.emissive;
-        out_color = vec4<f32>(final_rgb, m.alpha);
+        // § T11-LOA-FID-STOKES : compute Mueller-applied Stokes and apply
+        // the diagnostic polarization view (default mode 0 = identity).
+        let s_out = stokes_for_material(in.material_id);
+        let view_rgb = apply_polarization_view(final_rgb, s_out);
+        out_color = vec4<f32>(view_rgb, m.alpha);
         out_depth = world_to_clip_depth(hit_world);
     } else {
         // ── Cube/UV branch : original path (16 textured procedurals) ──
@@ -729,7 +832,10 @@ fn fs_main(in : VsOut) -> FsOut {
         let spec = pow(n_dot_h, spec_pow) * (1.0 - m.roughness) * (0.20 + m.metallic * 0.80);
 
         let final_rgb = lit + vec3<f32>(spec) + m.emissive;
-        out_color = vec4<f32>(final_rgb, m.alpha);
+        // § T11-LOA-FID-STOKES : Mueller per-material + diagnostic view.
+        let s_out = stokes_for_material(in.material_id);
+        let view_rgb = apply_polarization_view(final_rgb, s_out);
+        out_color = vec4<f32>(view_rgb, m.alpha);
         out_depth = rasterised_depth(in.world_pos);
     }
 

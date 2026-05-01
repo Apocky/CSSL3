@@ -316,6 +316,8 @@ impl App {
             PhysicalKey::Code(KeyCode::ControlLeft) => VirtualKey::LCtrl,
             PhysicalKey::Code(KeyCode::ShiftLeft) => VirtualKey::LShift,
             PhysicalKey::Code(KeyCode::Backquote) => VirtualKey::Backtick,
+            // § T11-LOA-FID-STOKES : `P` cycles polarization-view diagnostic.
+            PhysicalKey::Code(KeyCode::KeyP) => VirtualKey::P,
             PhysicalKey::Code(KeyCode::F1) => VirtualKey::F1,
             PhysicalKey::Code(KeyCode::F2) => VirtualKey::F2,
             PhysicalKey::Code(KeyCode::F3) => VirtualKey::F3,
