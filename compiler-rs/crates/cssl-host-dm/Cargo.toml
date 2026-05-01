@@ -1,0 +1,29 @@
+[package]
+name                   = "cssl-host-dm"
+description            = "CSSLv3 stage0 — DM (Director-Master) orchestrator scaffold : scene-arbitration + intent-routing-master + cap-gated scene-edit / spawn-order / companion-prompt emission per spec/grand-vision/10_INTELLIGENCE.csl § ROLE-DM"
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W7-C-DM (cssl/session-6/parallel-fanout) : DM-orchestrator scaffold.
+# Consumes mocked IntentSummary (kept structurally compatible with
+# cssl-intent-router::Intent ; intent-router lives at loa-host/src/intent_router.rs
+# today and exposes no separate workspace crate yet · § GAP). Produces SceneEditOp
+# / SpawnOrder / NpcSpawnRequest / CompanionPrompt outputs. Cap-gated DM_CAP_*.
+# Stage-0 = heuristic decision-tree (table-lookup) · Stage-1 = KAN-bridge swap-point
+# (interface-only · stub-impl). loa-host wiring deferred — workspace-glob auto-
+# discovers this crate.
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+# § FORWARD-DEPS — wired post-scaffold per spec § SUPPORT-CRATES :
+#   cssl-host-causal-seed → DAG mutation @ scene-arbiter Stage-S4 seed-stamp
+#   cssl-host-cocreative  → BiasVector ingestion for stage-1 KAN-substrate ride
+# Wave-7 mission is the SCAFFOLD only ; integration deferred to wave-7+ wiring slice.
+
+[lints]
+workspace = true
