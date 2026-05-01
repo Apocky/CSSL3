@@ -1,0 +1,28 @@
+[package]
+name                   = "cssl-host-coherence-proof"
+description            = "CSSLv3 host — Coherence-Proof consensus-validator · deterministic recompute · tie-break Ed25519-hex-asc · ServerTick monotonic-counter timestamp-trust"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W8-C2 : cssl-host-coherence-proof
+# § I> Σ-Chain consensus-axis · 'blockchain but better' via deterministic-recompute
+# § I> trait-level decoupling : SigmaEventLike + AuditEmitter + StateSnapshotLike
+# §   ¬ depends-on cssl-host-sigma-chain (sibling W8-C1 mock-via-trait)
+# §   ¬ depends-on cssl-host-attestation (mock-via-trait audit-emit)
+# § I> #![forbid(unsafe_code)] · BTreeMap (¬ HashMap) · workspace-glob auto-discover
+
+[dependencies]
+blake3        = { workspace = true }
+ed25519-dalek = { workspace = true }
+serde         = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+serde_json    = { workspace = true }
+rand          = { workspace = true }
+
+[lints]
+workspace = true
