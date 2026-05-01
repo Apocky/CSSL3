@@ -18,6 +18,7 @@ pub mod death;
 pub mod meta_progress;
 pub mod run_share;
 pub mod dm_handoff;
+pub mod season;
 
 pub use biome_dag::{Biome, BiomeDag, BiomeDagErr};
 pub use death::{apply_death_penalty, DeathOutcome, SoftPermaCarryover};
@@ -26,6 +27,11 @@ pub use floor_count::floor_count_for;
 pub use meta_progress::{MetaErr, MetaProgress};
 pub use run_share::{RunShareReceipt, RunShareScoring, ScreenshotHandle};
 pub use run_state::{RunPhase, RunState, RunStateErr};
+pub use season::{
+    apply_seasonal_permadeath, dispatch_season_end_memorials, DeathCause,
+    MemorialImprintLike, MockMemorialDispatcher, SeasonCharacter, SeasonErr, SeasonId,
+    SeasonMetaProgress, SeasonMode, SEASON_CYCLE_DAYS,
+};
 pub use seed::{derive_rng_u32, derive_rng_u64, pin_seed, DetRng};
 
 /// § PRIME-DIRECTIVE banner ← attest structurally per global preferences.

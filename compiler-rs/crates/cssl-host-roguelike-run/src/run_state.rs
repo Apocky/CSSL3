@@ -8,6 +8,7 @@
 
 use crate::biome_dag::Biome;
 use crate::seed::pin_seed;
+use crate::season::{SeasonId, SeasonMode};
 use serde::{Deserialize, Serialize};
 
 /// § Run-phase enum — discrete states of the run-state-machine.
@@ -63,6 +64,12 @@ pub struct RunState {
     pub run_id: u64,
     /// Pinned u128 seed — immutable post-genesis.
     pub seed: u128,
+    /// § T11-W8-E1 : season-extension · Optional season-id (None = non-seasonal run).
+    #[serde(default)]
+    pub season_id: Option<SeasonId>,
+    /// § T11-W8-E1 : season-extension · mode (default Soft preserves prior behavior).
+    #[serde(default)]
+    pub season_mode: SeasonMode,
 }
 
 impl RunState {
@@ -81,7 +88,30 @@ impl RunState {
             echoes_in_run: 0,
             run_id: run_counter,
             seed: pin_seed(player_id_hash, run_counter),
+            season_id: None,
+            season_mode: SeasonMode::Soft,
         }
+    }
+
+    /// § T11-W8-E1 : Genesis with season-extension parameters.
+    ///
+    /// Convenience constructor for seasonal runs. `mode == SeasonMode::Hard`
+    /// opts the run into permadeath ; `Soft` preserves default semantics.
+    pub fn genesis_with_season(
+        player_id_hash: u64,
+        run_counter: u64,
+        season_id: SeasonId,
+        mode: SeasonMode,
+    ) -> Self {
+        let mut s = Self::genesis(player_id_hash, run_counter);
+        s.season_id = Some(season_id);
+        s.season_mode = mode;
+        s
+    }
+
+    /// § T11-W8-E1 : Is this run executing in seasonal-hard-perma mode ?
+    pub fn is_hard_perma(&self) -> bool {
+        self.season_mode == SeasonMode::Hard && self.season_id.is_some()
     }
 
     /// § Transition Hub → BiomeSelect.
