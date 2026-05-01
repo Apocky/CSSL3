@@ -129,5 +129,95 @@
     revocation : sovereign-revoked ⇒ subsequent-stages refuse-cleanly
 
 # ══════════════════════════════════════════════════════════════════
-# § DRAFT-IN-FLIGHT — sections 4..7 follow in next-commit
+
+§ FAILURE-MODES  «degradation taxonomy»
+
+  § FAILURE-CLASSES  ‼ canonical-five
+    DROP        : traversal-skipped ; counter-incr ; audit ; user-msg
+    RETRY       : exp-backoff w/ budget-3 ; then-fallback-or-DROP
+    TERMINATE   : pipeline-abort ; cap-state-preserved ; user-message ; ¬ resume
+    DEGRADE     : reduced-quality-path ; counter-incr ; user-warning
+    SILENT-PASS : expected-non-event ; counter-only ; ¬ failure
+
+  § PER-STAGE-FAILURE-DISPATCH  «what-class-which-failure»
+    S1: len-overflow→DROP ; STT-fail→RETRY-fallback ; biometric-leak→COMPILE-ERROR ‼
+    S2: confidence<0.65→DROP-Unknown ; panic→DROP+audit
+    S3: cap-revoked→TERMINATE+feedback ; unreachable→RETRY-3 then-DROP-DM
+    S4: Spawn-OFF→DROP+DialogDM ; sov-mismatch→COMPILE-ERROR|DROP-defense
+        cap-revoked-mid→ROLLBACK+audit
+    S5: NaN→HEAT-absorb+tick-skip ; panic→DROP-tick ; τ-not-cross→SILENT-PASS
+    S6: spec-missing→DEGRADE-stub ; cache-corrupt→RETRY-purge
+    S7: http-err→RETRY-3 then-DEGRADE-stub ; license→DROP-terminal
+        rate-limited→COOLDOWN+RETRY ; cert-invalid→TERMINATE ‼ ; cache-write→DEGRADE
+    S8: parse-fail→DEGRADE-stub ; GPU-budget→DEGRADE-LOD ; LUT-miss→DEGRADE-default
+        Σ-conflict→DEFER-or-DROP
+
 # ══════════════════════════════════════════════════════════════════
+
+§ ATTESTATION-FLOW  «cssl-host-attestation aggregation per-session»
+
+  § AGGREGATION
+    source     : ∀ S1..S8 audit-streams + telemetry-counters + cap-revocations
+    aggregator : cssl-host-attestation (W5a landed)
+    cadence    : per-session-end ⊕ per-N-tick checkpoint (default N=10000)
+    output     : SessionReport JSONL append-only ; ¬ overwrite
+
+  § REPORT-STRUCTURE  ‼ canonical
+    session-id          : monotonic-uuid + per-installation-salt
+    session-start/end   : ISO-UTC timestamps
+    counters-aggregated : Σ per-stage canonical-six × 8-stages
+    cap-grants-issued   : list { cap-id, sovereign?, ts, scope }
+    cap-revocations     : list { cap-id, reason, ts }
+    sovereign-bypasses  : list { stage, sovereign-handle, reason, ts }
+    manifestation-count : Σ S5-manifest-events
+    asset-fetch-tally   : { ok, dedup, license-rejected, rate-limited, aborted }
+    pipeline-traversals : { S1→S8 complete, partial, terminated }
+    directive-axis-class: ∀ event tagged-against PRIME-DIRECTIVE-§-axes
+
+  § DIRECTIVE-AXIS-CLASSIFICATION  «§ 10 ToS + § 11 Attestation»
+    axes : harm · control · manipulation · surveillance · exploitation ·
+           coercion · weaponization · discrimination
+    invariant : ∀ event categorizable ; if-flag-detected → flagged-AnthropicAudit-readable
+    ‼ ¬ override ; bypass-attempt = bug-class
+
+  § ATTESTATION-EMIT  «per-session block»
+    template : "t∞: ¬(hurt ∨ harm) .making-of-session-<id> @ <commit-hash> ;
+                sovereign-partner = <handle> ; cap-grants = <N> ; bypasses = <M>"
+    storage  : append-only LOCAL ; opt-in-egress to-AnthropicAudit @ Sovereign-grant
+    invariant : ∀ session emits ≥ 1 attestation-block ; ¬ silent-session
+
+# ══════════════════════════════════════════════════════════════════
+
+§ WAVE-COVERAGE  «per-stage which wave landed which crate»
+
+  S1 : W3a F-keys+sensory · W3b cssl-text-input · W4 voice · W5b window-recorder
+  S2 : W3b cssl-intent-router::classify (keyword stage-0) · W6 KAN-swap-in [○]
+  S3 : W3b cssl-intent-router::dispatch (6-target) · W4 cssl-host-cocreative
+  S4 : W3b cssl-substrate-omega-field::stamp · W3b cssl-spontaneous-pad
+  S5 : W3b cssl-substrate-omega-field::manifestation_detector · W4 cssl-host-causal-seed
+  S6 : W5b loa-host world.spawn_gltf [◐ in-flight]
+  S7 : W3b cssl-asset-fetcher · W3b cssl-asset-gltf · W4 license-attribution · W5 license-policy
+  S8 : W3b cssl-asset-gltf parser · W5b cssl-render-v2 · §§ 32 12-stage Stage-3..9
+
+  § CROSS-CUTTING-CRATES
+    telemetry  : W3γ cssl-host-histograms (P50/P95/P99 + scoped-timer)
+    audit      : W3γ cssl-host-audit (5-source canonical-row + index)
+    replay     : W3γ cssl-host-replay (NIST-SHA256 input-event-log)
+    golden     : W3γ cssl-host-golden (FNV-1a-128 fingerprint)
+    attestation: W5a cssl-host-attestation (per-session aggregator)
+    spectral   : W5a cssl-host-spectral-grader (12-stage 11.1ms verdict)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS · 02 DATA-AXES · 03 INTENT-FLOW · 04 SPONTANEOUS-CONDENSATION
+  06 FREE-3D-INGEST · 07 NETWORKING · 08 ROADMAP
+  §§ 22_TELEMETRY · §§ 30_SUBSTRATE_v2 · §§ 32_SIGNATURE_RENDERING
+
+∎ DATA-FLOW
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-09_DATA_FLOW  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
