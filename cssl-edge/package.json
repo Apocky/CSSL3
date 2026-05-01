@@ -14,7 +14,12 @@
     "test:sovereign": "node --import tsx tests/lib/sovereign.test.ts",
     "test:signaling": "node --import tsx tests/api/signaling.test.ts",
     "test:cap": "node --import tsx lib/cap.ts",
-    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap"
+    "test:sse": "node --import tsx lib/sse.ts",
+    "test:realtime": "node --import tsx lib/realtime.ts",
+    "test:companion-stream": "node --import tsx tests/api/companion-stream.test.ts",
+    "test:asset-recommend": "node --import tsx tests/api/asset-recommend.test.ts",
+    "test:recommended-page": "node --import tsx tests/pages/recommended.test.ts",
+    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
