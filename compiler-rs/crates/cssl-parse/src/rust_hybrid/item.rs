@@ -7,7 +7,10 @@
 //!   - `fn`        fn-item (signature + optional body + generics + where + effect-row)
 //!   - `struct`    named / tuple / unit structs
 //!   - `enum`      named-/tuple-/unit-variant enums
-//!   - `use`       `use a::b::c [as d]` single-path import (grouped + glob planned at T3.3)
+//!   - `use`       `use a::b::c [as d]`, `use a.b::*`, `use a::b.{x, y as z}` —
+//!                 dot- + double-colon-style separators, alias, glob, and group all covered.
+//!                 Resolution + scope-population is deferred to HIR / sibling
+//!                 W-CC-link-multi-source pass; parser only produces the syntactic shape.
 //!   - `const`     constant binding with type + initializer
 //!   - `type`      type alias
 //!   - `module`    nested module (inline body or declaration)
@@ -958,6 +961,175 @@ mod tests {
         let mut bag = DiagnosticBag::new();
         let it = parse_item(&mut c, &mut bag).unwrap();
         assert!(matches!(it, Item::Use(_)));
+    }
+
+    // ─ § T11-CC-PARSER-5 (W-CC-use-stmt) — comprehensive `use` coverage ─────
+    //
+    // These tests pin down every variant of `use` declaration we want to
+    // accept from CSSL source. Resolution / scope-population is deferred to
+    // HIR + the sibling W-CC-link-multi-source pass; the parser only emits
+    // a `UseTree` with the right syntactic shape.
+
+    use cssl_ast::{Item as ItemAst, UseTree};
+
+    fn parse_one_use(src: &str) -> (cssl_ast::UseItem, DiagnosticBag) {
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).expect("expected an item");
+        match it {
+            ItemAst::Use(u) => (u, bag),
+            other => panic!("expected Item::Use, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_simple_dot_path() {
+        let (u, bag) = parse_one_use("use std.gpu.vec3\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Path { path, alias } => {
+                assert_eq!(path.segments.len(), 3, "expected 3 dot-segments");
+                assert!(alias.is_none(), "expected no alias");
+            }
+            other => panic!("expected UseTree::Path, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_simple_double_colon_path() {
+        let (u, bag) = parse_one_use("use std::gpu::vec4\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Path { path, alias } => {
+                assert_eq!(path.segments.len(), 3, "expected 3 ::-segments");
+                assert!(alias.is_none());
+            }
+            other => panic!("expected UseTree::Path, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_with_alias() {
+        let (u, bag) = parse_one_use("use std.gpu.vec3 as Vec3\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Path { path, alias } => {
+                assert_eq!(path.segments.len(), 3);
+                assert!(alias.is_some(), "expected `as Vec3` alias");
+            }
+            other => panic!("expected UseTree::Path with alias, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_glob_at_end() {
+        let (u, bag) = parse_one_use("use std.io.*\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Glob { path } => {
+                assert_eq!(path.segments.len(), 2, "expected `std.io` 2-segment prefix");
+            }
+            other => panic!("expected UseTree::Glob, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_group_braces() {
+        let (u, bag) = parse_one_use("use std.collections.{HashMap, BTreeMap, Vec}\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Group { prefix, trees } => {
+                assert_eq!(prefix.segments.len(), 2);
+                assert_eq!(trees.len(), 3, "expected 3 group entries");
+                for (idx, t) in trees.iter().enumerate() {
+                    match t {
+                        UseTree::Path { path, alias } => {
+                            assert_eq!(path.segments.len(), 1, "group entry {idx} must be a single ident");
+                            assert!(alias.is_none(), "group entry {idx} must not be aliased");
+                        }
+                        other => panic!("group entry {idx} expected Path, got {:?}", other),
+                    }
+                }
+            }
+            other => panic!("expected UseTree::Group, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_group_with_alias_inside() {
+        let (u, bag) = parse_one_use("use std.io.{Read, Write as W}\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Group { trees, .. } => {
+                assert_eq!(trees.len(), 2);
+                let aliased = trees.iter().any(|t| matches!(t, UseTree::Path { alias: Some(_), .. }));
+                assert!(aliased, "expected one aliased entry inside group");
+            }
+            other => panic!("expected UseTree::Group, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_multiple_use_decls_in_same_file() {
+        let src = "\
+use std.gpu.vec3
+use std.gpu.vec4
+use std::gpu::SurfaceFormat
+use cssl.runtime.{alloc, free}
+fn main() -> i32 { 42 }\n";
+        let (_f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        assert_eq!(m.items.len(), 5, "expected 4 use + 1 fn");
+        let use_count = m.items.iter().filter(|i| matches!(i, ItemAst::Use(_))).count();
+        let fn_count = m.items.iter().filter(|i| matches!(i, ItemAst::Fn(_))).count();
+        assert_eq!(use_count, 4);
+        assert_eq!(fn_count, 1);
+    }
+
+    #[test]
+    fn parse_use_mixed_dot_and_colon() {
+        // `parse_module_path` accepts both `.` and `::` as path separators, so
+        // these should both produce the same 3-segment path.
+        let (u_dot, bag1) = parse_one_use("use std.gpu.vec3\n");
+        let (u_col, bag2) = parse_one_use("use std::gpu::vec3\n");
+        assert_eq!(bag1.error_count(), 0);
+        assert_eq!(bag2.error_count(), 0);
+        let n_dot = match u_dot.tree {
+            UseTree::Path { path, .. } => path.segments.len(),
+            _ => panic!("dot variant should be Path"),
+        };
+        let n_col = match u_col.tree {
+            UseTree::Path { path, .. } => path.segments.len(),
+            _ => panic!("colon variant should be Path"),
+        };
+        assert_eq!(n_dot, n_col);
+        assert_eq!(n_dot, 3);
+    }
+
+    #[test]
+    fn parse_use_loa_module_relative() {
+        // LoA scenes use module-relative paths into the `loa` namespace.
+        let (u, bag) = parse_one_use("use loa.scenes.test_room\n");
+        assert_eq!(bag.error_count(), 0);
+        match u.tree {
+            UseTree::Path { path, .. } => {
+                assert_eq!(path.segments.len(), 3);
+            }
+            other => panic!("expected UseTree::Path, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_use_no_semicolon_required() {
+        // CSSL convention : statements newline-terminate, no `;` required. We
+        // accept either, but parsing must succeed without a `;`.
+        let (u, bag) = parse_one_use("use std.io.Read\n");
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(u.tree, UseTree::Path { .. }));
     }
 
     #[test]
