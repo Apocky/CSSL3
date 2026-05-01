@@ -930,6 +930,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-multiplayer-signaling"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-net"
 version = "0.1.0"
 dependencies = [

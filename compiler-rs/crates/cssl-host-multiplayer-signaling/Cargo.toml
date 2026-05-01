@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-host-multiplayer-signaling"
+description            = "CSSLv3 — Pure-state-machine client-side multiplayer-signaling protocol. Defines SignalingMessage / Peer / Room data shapes + a cap-gated ClientState that consumes inbound messages and emits outbound replies. NO network transport (no reqwest/tungstenite/websocket deps) — the transport layer is wired in a downstream wave. Pairs with the Supabase tables landing in W-W4-SUPABASE-SIGNALING."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_multiplayer_signaling"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
