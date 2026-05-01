@@ -406,3 +406,198 @@ a one-liner:
 DELETE FROM public.multiplayer_rooms WHERE meta @> '{"seed": true}'::jsonb;
 -- CASCADE removes seeded peers / signals / snapshots
 ```
+
+---
+
+## Cocreative Cross-Session Learning
+
+Wave 5b adds a persistence layer for the `cssl-host-cocreative` crate's
+online-learner state. A bias-vector (θ) is updated each time the player
+gives feedback (thumbs / scalar score / comment); persisting it server-side
+means the same player picks up where they left off across sessions, devices,
+and engine restarts.
+
+This is **opt-in player learning** — strictly own-only via RLS. No cross-player
+collaborative-filtering surface lives in this schema.
+
+### Layout
+
+```
+cssl-supabase/
+  migrations/
+    0007_cocreative.sql         -- 3 tables · 2 helper functions · 1 trigger · 6 indexes
+    0008_cocreative_rls.sql     -- 8 RLS policies + service_role bypass
+    0009_cocreative_seed.sql    -- demo-player bias + 4 feedback events + 2 snapshots
+  verify-cocreative.sql         -- post-migration assertions for 0007-0009
+```
+
+### Apply
+
+Append to your existing apply pipeline; nothing in 0007-0009 modifies
+0001-0006.
+
+```bash
+psql "$SUPABASE_DB_URL" -f cssl-supabase/migrations/0007_cocreative.sql
+psql "$SUPABASE_DB_URL" -f cssl-supabase/migrations/0008_cocreative_rls.sql
+psql "$SUPABASE_DB_URL" -f cssl-supabase/migrations/0009_cocreative_seed.sql
+psql "$SUPABASE_DB_URL" -f cssl-supabase/verify-cocreative.sql
+```
+
+### Schema at a glance
+
+| Table                                   | Purpose                                                                |
+|-----------------------------------------|------------------------------------------------------------------------|
+| `public.cocreative_bias_vectors`        | Persistent θ per player (`UNIQUE(player_id)`) ; dim 1..256             |
+| `public.cocreative_feedback_events`     | Append-only supervised signal (thumbs / scalar / comment)              |
+| `public.cocreative_optimizer_snapshots` | Append-only θ checkpoints, `UNIQUE(bias_id, seq)`                      |
+
+Helpers (PL/pgSQL):
+
+| Function                                                  | Returns                                | Purpose                                                          |
+|-----------------------------------------------------------|----------------------------------------|------------------------------------------------------------------|
+| `update_bias_with_step(uuid, jsonb, bigint, real, real)`  | `timestamptz`                          | Atomic θ + bookkeeping update ; validates dim-match               |
+| `latest_snapshot_for_player(text)`                        | `SETOF cocreative_optimizer_snapshots` | Most-recent snapshot for a player (joins through bias_vectors)   |
+
+### RLS policy summary (8 policies)
+
+```
+public.cocreative_bias_vectors
+    SELECT  : own only (or service_role)
+    INSERT  : authenticated AND player_id = current_user_id()
+    UPDATE  : own only
+    DELETE  : own only
+
+public.cocreative_feedback_events
+    SELECT  : own only
+    INSERT  : own only AND bias_id (if present) belongs to caller
+    UPDATE  : DENIED (no policy = forbidden)
+    DELETE  : DENIED (no policy = forbidden ; service-role-only)
+
+public.cocreative_optimizer_snapshots
+    SELECT  : caller owns the parent bias_vector
+    INSERT  : caller owns the parent bias_vector
+    UPDATE  : DENIED (no policy = forbidden ; snapshots are append-only)
+    DELETE  : DENIED (CASCADE-only via bias_vectors deletion)
+```
+
+### Realtime channel pattern
+
+The host opens one realtime channel per player, scoped to the player's
+own bias-vector and feedback events. Cross-device sync = "another tab
+just thumbs-upped on the same player_id; pull the new event and apply
+the resulting optimizer step locally".
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+import {
+  Database, BiasVector, FeedbackEvent,
+  cocreativeChannelName,
+} from "./types";
+
+const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
+const myPlayerId = (await supabase.auth.getUser()).data.user!.id;
+
+// 1. Read-or-create the bias-vector on session boot
+let { data: bias } = await supabase
+    .from("cocreative_bias_vectors")
+    .select("*")
+    .eq("player_id", myPlayerId)
+    .maybeSingle<BiasVector>();
+if (!bias) {
+    const dim = 16;
+    const { data } = await supabase
+        .from("cocreative_bias_vectors")
+        .insert({ player_id: myPlayerId, dim, theta: Array(dim).fill(0) })
+        .select()
+        .single<BiasVector>();
+    bias = data;
+}
+
+// 2. Subscribe to cross-device feedback events
+const channel = supabase
+    .channel(cocreativeChannelName(myPlayerId))
+    .on(
+        "postgres_changes",
+        {
+            event: "INSERT",
+            schema: "public",
+            table: "cocreative_feedback_events",
+            filter: `player_id=eq.${myPlayerId}`,
+        },
+        (payload) => {
+            const ev = payload.new as FeedbackEvent;
+            applyFeedbackLocally(ev); // host runs an SGD step
+        },
+    )
+    .subscribe();
+
+// 3. Persist a step after the host runs the optimizer
+await supabase.rpc("update_bias_with_step", {
+    p_bias_id: bias!.id,
+    p_new_theta: nextTheta,
+    p_step_count: bias!.step_count + 1,
+    p_loss: stepLoss,
+    p_grad: stepGradL2,
+});
+
+// 4. Periodically snapshot for replay / rollback
+await supabase.from("cocreative_optimizer_snapshots").insert({
+    bias_id: bias!.id,
+    seq: bias!.step_count,
+    theta: nextTheta,
+    step_count: bias!.step_count,
+    last_loss: stepLoss,
+});
+```
+
+### How `cssl-host-cocreative` consumes / persists state
+
+* **Boot** — call `latest_snapshot_for_player(player_id)`. If a snapshot
+  exists, hydrate θ from it; otherwise fall back to `cocreative_bias_vectors`
+  (or initialize zeros and `INSERT`). Either way the host owns the canonical
+  in-memory θ for the session.
+* **Per feedback event** — append a row to
+  `cocreative_feedback_events`, then run one SGD step locally, then
+  call `update_bias_with_step()` to atomically write the new θ + `step_count`
+  + `last_loss` + `last_grad_l2` + `updated_at` back to the row.
+* **Periodically (every N steps)** — append a row to
+  `cocreative_optimizer_snapshots` for replay / rollback / debug.
+* **Cross-device** — the realtime channel `cocreative:{player_id}`
+  delivers feedback events from any other device the player is signed
+  in on; the host applies them locally to keep θ converged across devices.
+* **Privacy** — RLS guarantees a player can only ever see their own bias /
+  feedback / snapshots. Service-role access is reserved for admin tooling
+  (e.g. GDPR-erasure or schema migrations).
+
+### CSSL FFI surface (cssl-edge entry points, cocreative)
+
+```cssl
+@extern "cssl-edge"
+fn supabase_bias_get_or_create(player_id: str, dim: i32) -> Json
+@extern "cssl-edge"
+fn supabase_bias_update_step(bias_id: Uuid, theta: Json,
+                             step_count: i64, loss: f32, grad: f32) -> Timestamptz
+
+@extern "cssl-edge"
+fn supabase_feedback_log(player_id: str, bias_id: Uuid?, kind: str,
+                         target_label: str, scene_features: Json,
+                         score: f32?, comment_text: str?) -> i64
+
+@extern "cssl-edge"
+fn supabase_snapshot_save(bias_id: Uuid, seq: i64, theta: Json,
+                          step_count: i64, last_loss: f32?) -> i64
+@extern "cssl-edge"
+fn supabase_snapshot_latest(player_id: str) -> Json
+```
+
+### Demo data
+
+`0009_cocreative_seed.sql` inserts one bias-vector for `'demo-player'`
+(`dim=16`, zeroed θ), four feedback events (2× thumbs_up · 1× thumbs_down
+· 1× scalar_score=0.7), and two optimizer snapshots (`seq=0`, `seq=1`).
+Cleanup is a one-liner:
+
+```sql
+DELETE FROM public.cocreative_bias_vectors WHERE player_id = 'demo-player';
+-- CASCADE removes seeded feedback events + snapshots
+```
