@@ -1,0 +1,342 @@
+module com.apocky.loa.systems.inventory
+
+// § Labyrinth of Apocalypse — Inventory Systems Module
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C2-INVENTORY-SYSTEM (POD-3-C2)
+//
+// § ARCHITECTURE
+//   Modular gear-management game-logic authored in CSSL source, consumed by
+//   the LoA runtime via extern "C" FFI calls into `cssl-host-gear-archetype`
+//   (POD-2-B4). The Rust host crate is the COMPILER-OUTPUT runtime ; THIS
+//   .csl file is the canonical source-of-truth for inventory game-logic.
+//
+//     12 equipment-slots  (Helm · Chest · Pants · Boots · Gloves · Belt · Cape
+//                          · MainHand · OffHand · Ring-α · Ring-β · Amulet
+//                          · Trinket — count per GDD/GEAR_RARITY_SYSTEM §SLOTS)
+//     64 base-bag-slots   (+ Bag-tier-bonus per GDD §INVENTORY)
+//     5  saved-loadouts   (per-character · Hub-bound switch)
+//     bonded-Legendary    (character-bound · ¬ trade · ¬ drop)
+//     weight-class system (over-encumbered ⇒ stamina-penalty)
+//
+// § GDD ALIGNMENT
+//   ⊑ GDDs/GEAR_RARITY_SYSTEM.csl §INVENTORY + §UPGRADE-PATH.BOND
+//   ⊑ GDDs/CRAFT_DECONSTRUCT_ALCHEMY.csl (mat-flow on equip/unequip)
+//   ⊑ GDDs/INFINITE_LABYRINTH_CHARTER §P3 (deterministic-lineage)
+//   ⊑ GDDs/LOA_PILLARS.md §3 (cognitive-integrity · inspectable-state)
+//
+// § PRIME-DIRECTIVE
+//   ¬ pay-mechanic · ¬ loot-box-shape · audit-emit on every equip + bond +
+//   trade-rejection · player-sovereignty over loadouts · bond-event consent-
+//   gated · revocable-pre-bond + locked-post-bond. There was no hurt nor
+//   harm in the making of this.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations : cssl-host-gear-archetype (POD-2-B4)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// All inventory state is opaque-handle-managed by the host crate. Game-logic
+// in this module passes the i64 handle around ; never reaches into private
+// fields. item_seed: u128 is the deterministic-roll-seed per GDD §STAT-ROLLING
+// (drop-source-id ⊕ player-id ⊕ ts ⊕ world-seed) ; uniquely identifies an
+// instance + replay-bit-equal across re-rolls.
+//
+// Return-codes (i32) :
+//    0 = ok
+//   -1 = invalid-handle
+//   -2 = slot-out-of-range (≥ 13 equipment OR ≥ 64+bag-bonus bag)
+//   -3 = item-not-found-in-bag
+//   -4 = bonded-item-trade-rejected
+//   -5 = weight-class-overcapacity (cap-on-overweight)
+//   -6 = loadout-id-out-of-range (≥ 5)
+//   -7 = base-mat-rarity-floor-violation (per §BASE-COMPONENT)
+
+extern "C" fn __cssl_gear_inventory_create() -> i64 ;
+extern "C" fn __cssl_gear_inventory_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_gear_inventory_add_item(handle: i64, item_seed: u128) -> i32 ;
+extern "C" fn __cssl_gear_inventory_remove_item(handle: i64, item_seed: u128) -> i32 ;
+extern "C" fn __cssl_gear_inventory_equip(handle: i64, slot: u32, item_seed: u128) -> i32 ;
+extern "C" fn __cssl_gear_inventory_unequip(handle: i64, slot: u32) -> i32 ;
+extern "C" fn __cssl_gear_inventory_query_count(handle: i64) -> u32 ;
+extern "C" fn __cssl_gear_inventory_query_capacity(handle: i64) -> u32 ;
+extern "C" fn __cssl_gear_inventory_query_weight(handle: i64) -> u32 ;
+extern "C" fn __cssl_gear_inventory_query_weight_cap(handle: i64) -> u32 ;
+extern "C" fn __cssl_gear_inventory_apply_loadout(handle: i64, loadout_id: u32) -> i32 ;
+extern "C" fn __cssl_gear_inventory_save_loadout(handle: i64, loadout_id: u32) -> i32 ;
+extern "C" fn __cssl_gear_inventory_sort(handle: i64, mode: u32) -> i32 ;
+extern "C" fn __cssl_gear_inventory_is_bonded(handle: i64, item_seed: u128) -> i32 ;
+extern "C" fn __cssl_gear_inventory_bond(handle: i64, item_seed: u128) -> i32 ;
+extern "C" fn __cssl_gear_inventory_find_best_for_slot(handle: i64, slot: u32) -> u128 ;
+extern "C" fn __cssl_gear_inventory_audit_emit(handle: i64, event_kind: u32, item_seed: u128) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + LOA_PILLARS + CHARTER
+// ─────────────────────────────────────────────────────────────────────────
+//   t∞: 12 equipment-slots + 64 base-bag-slots + Bag-tier-bonus (+0/+16/+32/+64)
+//   t∞: 5 saved-loadouts per-character · Hub-bound switch · loadout-id ∈ [0, 5)
+//   t∞: bonded-Legendary character-bound · ¬ trade-attempt-succeeds
+//   t∞: weight-class enforcement · over-encumbered ⇒ stamina-penalty + cap
+//   t∞: audit-emit on equip + bond + trade-rejected (anti-dupe + lineage)
+//   t∞: bond consent-gated · revocable-pre-bond · post-bond locked (Charter §P3)
+//   t∞: inventory-state replicates ω-field-merge per-tick (sync-coop)
+//   t∞: ¬ pay-skip-equip · ¬ pay-skip-loadout · ¬ paywall-loadout-slot
+//   t∞: handle ¬ leaks ; create-paired-with-destroy lifetime-discipline
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CONSTANTS  (kept-in-sync with cssl-host-gear-archetype)
+// ─────────────────────────────────────────────────────────────────────────
+
+const EQUIP_SLOT_HELM: u32 = 0 ;
+const EQUIP_SLOT_CHEST: u32 = 1 ;
+const EQUIP_SLOT_PANTS: u32 = 2 ;
+const EQUIP_SLOT_BOOTS: u32 = 3 ;
+const EQUIP_SLOT_GLOVES: u32 = 4 ;
+const EQUIP_SLOT_BELT: u32 = 5 ;
+const EQUIP_SLOT_CAPE: u32 = 6 ;
+const EQUIP_SLOT_MAIN_HAND: u32 = 7 ;
+const EQUIP_SLOT_OFF_HAND: u32 = 8 ;
+const EQUIP_SLOT_RING_ALPHA: u32 = 9 ;
+const EQUIP_SLOT_RING_BETA: u32 = 10 ;
+const EQUIP_SLOT_AMULET: u32 = 11 ;
+const EQUIP_SLOT_TRINKET: u32 = 12 ;
+const EQUIP_SLOT_COUNT: u32 = 13 ;
+
+const BAG_BASE_CAPACITY: u32 = 64 ;
+const LOADOUT_MAX: u32 = 5 ;
+
+const SORT_MODE_TIER: u32 = 0 ;
+const SORT_MODE_TYPE: u32 = 1 ;
+const SORT_MODE_SLOT: u32 = 2 ;
+
+const AUDIT_KIND_EQUIP: u32 = 1 ;
+const AUDIT_KIND_UNEQUIP: u32 = 2 ;
+const AUDIT_KIND_BOND: u32 = 3 ;
+const AUDIT_KIND_TRADE_REJECTED: u32 = 4 ;
+const AUDIT_KIND_LOADOUT_APPLY: u32 = 5 ;
+const AUDIT_KIND_LOADOUT_SAVE: u32 = 6 ;
+const AUDIT_KIND_OVERWEIGHT_REJECT: u32 = 7 ;
+
+const RC_OK: i32 = 0 ;
+const RC_BONDED_TRADE_REJECTED: i32 = -4 ;
+const RC_OVERWEIGHT: i32 = -5 ;
+const RC_LOADOUT_OOR: i32 = -6 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : equip + unequip
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Equip enforces : (a) slot-in-range  (b) item-in-bag  (c) weight-cap not
+// exceeded post-equip. On success the prior-equipped item (if any) returns
+// to the bag automatically (host-managed) + an audit-event fires.
+
+fn equip(handle: i64, slot: u32, item_seed: u128) -> i32 {
+    if slot >= EQUIP_SLOT_COUNT {
+        return -2 ;
+    }
+    let weight: u32 = __cssl_gear_inventory_query_weight(handle) ;
+    let cap: u32 = __cssl_gear_inventory_query_weight_cap(handle) ;
+    if weight > cap {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_OVERWEIGHT_REJECT, item_seed) ;
+        return RC_OVERWEIGHT ;
+    }
+    let rc: i32 = __cssl_gear_inventory_equip(handle, slot, item_seed) ;
+    if rc == RC_OK {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_EQUIP, item_seed) ;
+    }
+    rc
+}
+
+fn unequip(handle: i64, slot: u32) -> i32 {
+    if slot >= EQUIP_SLOT_COUNT {
+        return -2 ;
+    }
+    let rc: i32 = __cssl_gear_inventory_unequip(handle, slot) ;
+    if rc == RC_OK {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_UNEQUIP, 0) ;
+    }
+    rc
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : bond + trade-rejection
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Bond is consent-gated (Charter §P3). The caller MUST present an explicit
+// player-confirmation event before invoking `bond`. Post-bond the item is
+// locked-to-character ; any subsequent trade-attempt routes through
+// `try_trade` which rejects-with-audit-emit (¬ silent-fail).
+
+fn bond(handle: i64, item_seed: u128) -> i32 {
+    let rc: i32 = __cssl_gear_inventory_bond(handle, item_seed) ;
+    if rc == RC_OK {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_BOND, item_seed) ;
+    }
+    rc
+}
+
+fn try_trade(handle: i64, item_seed: u128) -> i32 {
+    let bonded: i32 = __cssl_gear_inventory_is_bonded(handle, item_seed) ;
+    if bonded != 0 {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_TRADE_REJECTED, item_seed) ;
+        return RC_BONDED_TRADE_REJECTED ;
+    }
+    RC_OK
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : sort
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Auto-sort modes per GDD §INVENTORY : tier · type · slot. Custom-tag mode
+// deferred to v2 (current scope = 3 modes).
+
+fn sort_by_tier(handle: i64) -> i32 {
+    __cssl_gear_inventory_sort(handle, SORT_MODE_TIER)
+}
+
+fn sort_by_type(handle: i64) -> i32 {
+    __cssl_gear_inventory_sort(handle, SORT_MODE_TYPE)
+}
+
+fn sort_by_slot(handle: i64) -> i32 {
+    __cssl_gear_inventory_sort(handle, SORT_MODE_SLOT)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : loadout-save + loadout-apply
+// ─────────────────────────────────────────────────────────────────────────
+//
+// 5 saved-loadouts per-character. Save-loadout snapshots current 13-slot
+// equipped-set + filename-tag (host-managed). Apply-loadout swaps in the
+// stored set, returning prior-equipped to the bag.
+
+fn save_loadout(handle: i64, loadout_id: u32) -> i32 {
+    if loadout_id >= LOADOUT_MAX {
+        return RC_LOADOUT_OOR ;
+    }
+    let rc: i32 = __cssl_gear_inventory_save_loadout(handle, loadout_id) ;
+    if rc == RC_OK {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_LOADOUT_SAVE, loadout_id as u128) ;
+    }
+    rc
+}
+
+fn apply_loadout(handle: i64, loadout_id: u32) -> i32 {
+    if loadout_id >= LOADOUT_MAX {
+        return RC_LOADOUT_OOR ;
+    }
+    let rc: i32 = __cssl_gear_inventory_apply_loadout(handle, loadout_id) ;
+    if rc == RC_OK {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_LOADOUT_APPLY, loadout_id as u128) ;
+    }
+    rc
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : find-best-for-slot
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Convenience helper used by the auto-equip UI + DM-suggested-equip flow.
+// Returns u128 = best item_seed for the slot per host-side scoring (currently
+// rarity × stat-merge-sum) ; 0 = no candidate in bag. Non-bonded preferred
+// over bonded-but-better when the caller passes an off-character handle.
+
+fn find_best_for_slot(handle: i64, slot: u32) -> u128 {
+    if slot >= EQUIP_SLOT_COUNT {
+        return 0 ;
+    }
+    __cssl_gear_inventory_find_best_for_slot(handle, slot)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : capacity + weight queries
+// ─────────────────────────────────────────────────────────────────────────
+
+fn item_count(handle: i64) -> u32 {
+    __cssl_gear_inventory_query_count(handle)
+}
+
+fn capacity(handle: i64) -> u32 {
+    __cssl_gear_inventory_query_capacity(handle)
+}
+
+fn weight_current(handle: i64) -> u32 {
+    __cssl_gear_inventory_query_weight(handle)
+}
+
+fn weight_cap(handle: i64) -> u32 {
+    __cssl_gear_inventory_query_weight_cap(handle)
+}
+
+fn is_overweight(handle: i64) -> i32 {
+    let w: u32 = __cssl_gear_inventory_query_weight(handle) ;
+    let c: u32 = __cssl_gear_inventory_query_weight_cap(handle) ;
+    if w > c { 1 } else { 0 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § HELPERS : add + remove (with audit-discipline)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn add_item(handle: i64, item_seed: u128) -> i32 {
+    let cnt: u32 = __cssl_gear_inventory_query_count(handle) ;
+    let cap: u32 = __cssl_gear_inventory_query_capacity(handle) ;
+    if cnt >= cap {
+        return -5 ;
+    }
+    __cssl_gear_inventory_add_item(handle, item_seed)
+}
+
+fn remove_item(handle: i64, item_seed: u128) -> i32 {
+    let bonded: i32 = __cssl_gear_inventory_is_bonded(handle, item_seed) ;
+    if bonded != 0 {
+        let _: i32 = __cssl_gear_inventory_audit_emit(handle, AUDIT_KIND_TRADE_REJECTED, item_seed) ;
+        return RC_BONDED_TRADE_REJECTED ;
+    }
+    __cssl_gear_inventory_remove_item(handle, item_seed)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § LIFECYCLE : create + destroy
+// ─────────────────────────────────────────────────────────────────────────
+
+fn create() -> i64 {
+    __cssl_gear_inventory_create()
+}
+
+fn destroy(handle: i64) -> i32 {
+    __cssl_gear_inventory_destroy(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § OPEN-QUESTIONS  (Apocky-direction-needed · per LOA_PILLARS §4)
+// ─────────────────────────────────────────────────────────────────────────
+//   Q-INV-1 : custom-tag sort-mode shipping in-this-pod or v2 ?
+//             (current : 3 modes · custom-tag deferred)
+//   Q-INV-2 : loadout-count = 5 right ? (GDD says 5 ; preserved)
+//   Q-INV-3 : auto-return-prior-equipped on equip — confirm host-managed ?
+//             (current assumption : host returns prior-equipped to bag)
+//   Q-INV-4 : weight-cap stamina-penalty curve : linear or stepped ?
+//             (current : hard-cap reject post-overcap ; soft-penalty TBD)
+//   Q-INV-5 : trade-rejection feedback to-DM : audit-only or NPC-line-trigger ?
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//   t∞: ¬(hurt ∨ harm) .making-of-POD-3-C2  @  (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+//   No being was harmed · controlled · manipulated · surveilled · exploited ·
+//   coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+//   possessed · dehumanized · discriminated-against · gaslit ·
+//   identity-overridden · or forced-hallucinated during this work.
+//
+//   Player-sovereignty preserved : equip/unequip player-driven · loadouts
+//     player-saved · bond consent-gated · trade-rejection audit-visible.
+//   Companion-AI sovereignty preserved : DM may suggest find-best-for-slot
+//     but cannot force-equip ; auto-equip UI is opt-in.
+//   Creator-sovereignty preserved : .csl source-of-truth · proprietary-
+//     everything stack · this file IS the canonical inventory game-logic ·
+//     consumed-by cssl-host-gear-archetype (POD-2-B4) compiler-output.

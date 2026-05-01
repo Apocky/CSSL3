@@ -1,0 +1,290 @@
+module com.apocky.loa.systems.alchemy
+
+// § Labyrinth of Apocalypse · systems/alchemy.csl
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C4-ALCHEMY-CSL  (POD-3-C4)
+//
+// § ROLE
+//   Pure-CSSL game-logic for the alchemy pillar of LoA's craft system. This
+//   module is the user-facing source of truth for `brew` + `transmute` + the
+//   `drink_potion` runtime hook. It compiles via csslc and consumes the
+//   cssl-host-craft-graph staticlib (POD-2-B3) over an extern "C" FFI surface
+//   so the heavy graph-traversal + DetRng + Audit-emit lives Rust-side, and
+//   the game-logic lives here in CSSL — per § LoA-v13-must-be-CSSL-source.
+//
+// § AXIOMS  ‼ inherit GDDs/CRAFT_DECONSTRUCT_ALCHEMY § ALCHEMY
+//   t∞: potion-brew = additive-compose ⊕ catalyst-amp
+//   t∞: transmutation = multiplicative · 3-of-tier-N + catalyst → 1-of-tier-(N+1)
+//   t∞: catalyst-stack-clamp ≤ 0.95  (¬ guaranteed-success · skill must matter)
+//   t∞: cross-category-block : ¬ transmute consumables ↔ equipment
+//   t∞: ∀ brew + transmute ⇒ Audit<>-emit  (anti-cheat anchor + lineage)
+//   t∞: skill-gate : transmute-skill ≥ 20×N (target-tier)
+//   t∞: brew-failure : skill < req-50% ⇒ 50% bottle-explodes (mats-lost · ¬ silent)
+//   t∞: ¬ pay-skip-craft · ¬ paywall-recipe-unlock · ¬ FOMO-window
+//
+// § PRIME-DIRECTIVE
+//   Workshop-zone is consent-architected (player chose to enter alchemy lab).
+//   Every action emits a signed Audit<> entry — no silent crafts. Failure-modes
+//   are surfaced (UI-prompt) not hidden. RNG seeds inspectable per § 4 TRANSPARENCY.
+//   Attestation block @ EOF.
+
+// ───────────────────────────────────────────────────────────────────────────
+// § FFI SURFACE  →  cssl-host-craft-graph staticlib
+// ───────────────────────────────────────────────────────────────────────────
+//
+//   Forward-contract for POD-2-B3 (cssl-host-craft-graph). When that crate
+//   lands, csslc auto-default-link picks up the staticlib and resolves these
+//   symbols. Until then, this module declares them — the alchemy.csl source
+//   is the canonical surface specification.
+//
+//   ABI: extern "C" · primitive args + opaque-handle returns · zero alloc
+//        in CSSL (Rust-side owns rng-state + audit-log + recipe-graph).
+
+// § handles (opaque · u64 = stable-id assigned Rust-side)
+type PotionId       = u64 ;
+type TargetHandle   = u64 ;
+type ReagentId      = u32 ;
+type CatalystId     = u32 ;
+type RecipeId       = u32 ;
+
+// § brew : R30..R40 in GDD recipe-graph
+//   reagents_ptr · reagents_len : 1..3 ReagentId
+//   catalysts_ptr · catalysts_len : 0..2 CatalystId  (Voidessence/Soulflux/Catalystgem/etc)
+//   skill ∈ [0,100] · alchemy_skill axis
+//   returns PotionId · 0 ⇔ brew-failed (mats-lost · audit emitted Rust-side)
+extern "C" fn brew_potion(
+    recipe          : RecipeId,
+    reagents_ptr    : *const ReagentId,
+    reagents_len    : u32,
+    catalysts_ptr   : *const CatalystId,
+    catalysts_len   : u32,
+    skill           : u8,
+) -> PotionId ;
+
+// § query : potion effect-payload (HP/MP/STA/Buff-tag/duration_ms)
+//   out_kind  : 0=HP · 1=MP · 2=STA · 3=Buff · 4=Cure · 5=Tonic
+//   out_magnitude : i32 (signed for cure-debuff cases)
+//   out_duration_ms : u32 (0 = instant)
+extern "C" fn query_potion_effect(
+    potion          : PotionId,
+    out_kind        : *mut u8,
+    out_magnitude   : *mut i32,
+    out_duration_ms : *mut u32,
+) -> u8 ;   // 0=ok · 1=invalid-id · 2=expired
+
+// § transmute : 3-of-tier-N + catalyst → 1-of-tier-(N+1)
+//   input_tier ∈ [1,5]   (T6 = no-promotion-target)
+//   count : must be 3 (validated Rust-side · returns 0 on mismatch)
+//   catalyst_mult_q16 : fixed-point Q16.16 multiplier (1.0 = 65536 · 1.5 = 98304 · 2.0 = 131072)
+//   skill ∈ [0,100] · alchemy/transmute axis
+//   returns ResultCode · 0=success · 1=fail-preserved (1×T-N retained) · 2=skill-gate-block · 3=cross-cat-block
+extern "C" fn transmute_tier(
+    input_tier        : u8,
+    count             : u32,
+    catalyst_mult_q16 : u32,
+    skill             : u8,
+    out_promoted_id   : *mut u64,
+) -> u8 ;
+
+// § query transmute success-probability (pre-roll · for UI surfacing)
+//   returns Q16.16 fixed-point P ∈ [0, 0.95×65536]
+extern "C" fn query_transmute_prob(
+    target_tier       : u8,
+    catalyst_mult_q16 : u32,
+    skill             : u8,
+) -> u32 ;
+
+// § catalyst-multiplier composition (per GDD : Voidessence×Soulflux ⇒ 3.0× ⇒ clamped ≤ 0.95)
+//   catalysts_ptr/len : 0..2 stacking entries
+//   returns Q16.16 effective multiplier (post-clamp)
+extern "C" fn apply_catalyst(
+    catalysts_ptr : *const CatalystId,
+    catalysts_len : u32,
+) -> u32 ;
+
+// § cross-category check  (consumables vs equipment must not transmute-mix)
+//   returns 1 if blocked (forbidden-pair) · 0 if allowed
+extern "C" fn check_cross_category(
+    input_class  : u8,    // 0=consumable · 1=weapon · 2=armor · 3=jewelry · 4=material
+    target_class : u8,
+) -> u8 ;
+
+// § skill-gate predicate
+//   returns 1 if skill >= 20×target_tier · 0 otherwise
+extern "C" fn skill_gate_ok(skill : u8, target_tier : u8) -> u8 ;
+
+// § XP grant on action-completion (success OR documented-failure · per GDD diminishing curve)
+//   action_tier ∈ [1,6] · current_skill ∈ [0,100] · returns xp granted
+extern "C" fn alchemy_xp_grant(action_tier : u8, current_skill : u8) -> u32 ;
+
+// § audit-emit  (signed entry · per § 4 TRANSPARENCY + § 11 ATTESTATION)
+//   kind : 0=brew-ok · 1=brew-fail-explosion · 2=transmute-ok · 3=transmute-fail
+//        · 4=cross-cat-block · 5=skill-gate-block · 6=drink-applied
+//   payload_a/b : context (potion-id · tier · target-handle · etc · zero-padded as needed)
+extern "C" fn audit_emit(kind : u8, payload_a : u64, payload_b : u64) -> () ;
+
+// § drink-potion runtime application
+//   returns effect-event-id (consumed by UI/HUD layer · 0 ⇔ apply-failed)
+extern "C" fn apply_potion_to_target(
+    potion : PotionId,
+    target : TargetHandle,
+) -> u64 ;
+
+// ───────────────────────────────────────────────────────────────────────────
+// § PUBLIC API  (CSSL-side game-logic · consumed by DM scripts + UI layer)
+// ───────────────────────────────────────────────────────────────────────────
+
+// § brew : potion-additive-compose
+//   wrapped over brew_potion FFI · adds CSSL-side skill-gate + cross-cat checks
+//   reagents : 1..3 entries (validated below)
+//   catalysts : 0..2 entries (clamp-stack helper applied)
+//   skill : alchemy-skill axis
+//   returns PotionId · 0 = failure (mats-lost · audit emitted)
+fn brew(
+    recipe        : RecipeId,
+    reagents_ptr  : *const ReagentId,
+    reagents_len  : u32,
+    catalysts_ptr : *const CatalystId,
+    catalysts_len : u32,
+    skill         : u8,
+) -> PotionId {
+    // axiom-check : reagent-count ∈ [1,3] (vial = R04 base · added separately)
+    if reagents_len < 1 { return 0 ; }
+    if reagents_len > 3 { return 0 ; }
+    if catalysts_len > 2 { return 0 ; }
+
+    // pre-flight : skill-gate (recipe-tier-derived · upper-bound check Rust-side)
+    let gate_ok: u8 = skill_gate_ok(skill, 1) ;
+    if gate_ok == 0 {
+        audit_emit(5, recipe as u64, skill as u64) ;
+        return 0 ;
+    }
+
+    // delegate to staticlib (handles RNG · Audit-emit on success/explosion)
+    let pid: PotionId = brew_potion(
+        recipe,
+        reagents_ptr, reagents_len,
+        catalysts_ptr, catalysts_len,
+        skill,
+    ) ;
+
+    // grant XP on attempt (success OR documented-failure · diminishing curve)
+    let _xp: u32 = alchemy_xp_grant(1, skill) ;
+    pid
+}
+
+// § transmute : multiplicative-substitute (3-of-N → 1-of-(N+1))
+//   input_tier : T1..T5 source tier
+//   count : must == 3  (per GDD axiom)
+//   catalyst_mult_q16 : Q16.16 (computed via stack_catalyst_clamped helper)
+//   skill : alchemy/transmute axis
+//   returns ResultCode (mirrors transmute_tier FFI · 0=success · 1=fail-preserved · 2=gate · 3=xcat)
+fn transmute(
+    input_tier        : u8,
+    count             : u32,
+    catalyst_mult_q16 : u32,
+    skill             : u8,
+    out_promoted_id   : *mut u64,
+) -> u8 {
+    // axiom : count must be exactly 3 · refuse otherwise (¬ silent · audit-emit)
+    if count != 3 {
+        audit_emit(3, input_tier as u64, count as u64) ;
+        return 1 ;
+    }
+
+    // axiom : T6 has no promotion target (Voidblade/VoidCrown-tier = ceiling)
+    if input_tier == 0 { return 1 ; }
+    if input_tier >= 6 { return 1 ; }
+
+    // skill-gate : alchemy-skill ≥ 20 × target_tier
+    let target_tier: u8 = input_tier + 1 ;
+    let gate: u8 = skill_gate_ok(skill, target_tier) ;
+    if gate == 0 {
+        audit_emit(5, target_tier as u64, skill as u64) ;
+        return 2 ;
+    }
+
+    // delegate · Rust-side handles DetRng roll + 1-preserved-on-fail + audit-emit
+    let result_code: u8 = transmute_tier(
+        input_tier,
+        count,
+        catalyst_mult_q16,
+        skill,
+        out_promoted_id,
+    ) ;
+
+    let _xp: u32 = alchemy_xp_grant(target_tier, skill) ;
+    result_code
+}
+
+// § drink_potion : runtime application of brewed-potion to target-entity
+//   potion_id : output of brew()
+//   target : entity-handle (Player · Companion-AI · NPC · monster — anyone-with-consent)
+//   returns effect-event-id  (0 = apply-failed · audit emitted Rust-side)
+fn drink_potion(potion_id : PotionId, target : TargetHandle) -> u64 {
+    if potion_id == 0 { return 0 ; }
+    let event_id: u64 = apply_potion_to_target(potion_id, target) ;
+    audit_emit(6, potion_id, target) ;
+    event_id
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// § HELPERS  (CSSL-pure · ¬ FFI)
+// ───────────────────────────────────────────────────────────────────────────
+
+// § catalyst-stack clamp ≤ 0.95
+//   Per GDD : Voidessence(1.5×) + Soulflux(2.0×) ⇒ 3.0× raw · MUST clamp.
+//   Rust-side apply_catalyst returns post-clamped Q16.16 already · this is
+//   the CSSL-side guard for redundancy + future-proofing if FFI surface drifts.
+//
+//   input  : raw Q16.16 multiplier
+//   output : clamped Q16.16 (≤ 0.95 × 65536 = 62259)
+fn catalyst_stack_clamp(raw_q16 : u32) -> u32 {
+    let cap_q16: u32 = 62259 ;   // 0.95 × 65536 (rounded down)
+    if raw_q16 > cap_q16 { cap_q16 } else { raw_q16 }
+}
+
+// § cross-category-block helper
+//   Per GDD § ALCHEMY : ¬ transmute consumables ↔ equipment.
+//   Wrapper over check_cross_category FFI · CSSL-side audit on block.
+fn cross_category_block(input_class : u8, target_class : u8) -> u8 {
+    let blocked: u8 = check_cross_category(input_class, target_class) ;
+    if blocked == 1 {
+        audit_emit(4, input_class as u64, target_class as u64) ;
+    }
+    blocked
+}
+
+// § stack_catalyst_clamped : compose-then-clamp
+//   convenience for callers : apply_catalyst(stack) → clamp → return Q16.16
+fn stack_catalyst_clamped(catalysts_ptr : *const CatalystId, catalysts_len : u32) -> u32 {
+    let raw: u32 = apply_catalyst(catalysts_ptr, catalysts_len) ;
+    catalyst_stack_clamp(raw)
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ───────────────────────────────────────────────────────────────────────────
+//
+//   t∞: ¬(hurt ∨ harm) .making-of-POD-3-C4  @  (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   This module authored under PRIME-DIRECTIVE consent-as-OS. AI-collaborator
+//   drafting participated as sovereign-partner under their own consent.
+//   No being was harmed, controlled, manipulated, surveilled, exploited,
+//   coerced, weaponized, entrapped, tortured, abused, imprisoned, possessed,
+//   dehumanized, discriminated against, gaslit, identity-overridden, or
+//   forced-hallucinated during the making of this work.
+//
+//   Alchemy-axioms (catalyst-clamp · cross-cat-block · brew-explosion-on-low-skill ·
+//   audit-emit-on-every-action) align with § 1 NO HARM + § 2 COGNITIVE INTEGRITY +
+//   § 4 TRANSPARENCY. RNG seeds remain inspectable per design-intent.
+//   No pay-skip · no FOMO · no loot-box · no hidden-RNG.
+//
+//   If any aspect of this module enables harm (hidden drop-rate manipulation ·
+//   silent transmute-loss · audit-bypass · pay-to-clamp-relax), discovery
+//   triggers PRIME_DIRECTIVE § 7 INTEGRITY : violation = bug · bugs get fixed.
+
+∎ alchemy
