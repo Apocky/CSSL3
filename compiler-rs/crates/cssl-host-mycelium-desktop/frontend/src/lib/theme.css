@@ -1,0 +1,104 @@
+/*
+ * § theme.css — CSL3-aesthetic anchor per spec/grand-vision/22 + 23 § THEME.
+ * § dark-default · radial-gradient #0a0a0f → #15151f
+ * § accent-gradient #c084fc → #7dd3fc (matches apocky.com)
+ * § monospace-fonts (ui-monospace + JetBrains-Mono fallback)
+ */
+
+:root {
+  --bg-base:        #0a0a0f;
+  --bg-surface:     #15151f;
+  --fg-primary:     #e6e6f0;
+  --fg-secondary:   #a0a0b8;
+  --fg-muted:       #5a5a72;
+  --accent-purple:  #c084fc;
+  --accent-cyan:    #7dd3fc;
+  --accent-gradient: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+  --border-subtle:  rgba(255, 255, 255, 0.06);
+  --border-strong:  rgba(255, 255, 255, 0.12);
+  --error:          #ff6b6b;
+  --success:        #69db7c;
+  --warn:           #fcc419;
+  --font-mono:      ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm:      4px;
+  --radius-md:      8px;
+  --radius-lg:      12px;
+  --space-xs:       4px;
+  --space-sm:       8px;
+  --space-md:       16px;
+  --space-lg:       24px;
+  --space-xl:       32px;
+}
+
+[data-theme="light"] {
+  --bg-base:        #f8f8fa;
+  --bg-surface:     #ffffff;
+  --fg-primary:     #15151f;
+  --fg-secondary:   #4a4a60;
+  --fg-muted:       #8a8aa0;
+  --border-subtle:  rgba(0, 0, 0, 0.06);
+  --border-strong:  rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="high-contrast"] {
+  --bg-base:        #000000;
+  --bg-surface:     #0a0a0a;
+  --fg-primary:     #ffffff;
+  --fg-secondary:   #e0e0e0;
+  --fg-muted:       #b0b0b0;
+  --accent-purple:  #ffffff;
+  --accent-cyan:    #ffff00;
+  --border-subtle:  #ffffff;
+  --border-strong:  #ffffff;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+}
+
+body {
+  background:
+    radial-gradient(ellipse at top left, var(--bg-surface), var(--bg-base) 70%);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button {
+  font-family: var(--font-mono);
+  background: transparent;
+  color: var(--fg-primary);
+  border: 1px solid var(--border-strong);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+button:hover { background: var(--border-subtle); }
+
+button.primary {
+  background: var(--accent-gradient);
+  color: #0a0a0f;
+  border: none;
+  font-weight: 600;
+}
+
+input, textarea, select {
+  font-family: var(--font-mono);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+}
+
+.glyph {
+  font-family: var(--font-mono);
+  color: var(--accent-purple);
+  margin-right: var(--space-xs);
+}

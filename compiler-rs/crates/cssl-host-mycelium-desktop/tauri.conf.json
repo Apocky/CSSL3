@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mycelium",
+  "version": "0.1.0-alpha",
+  "identifier": "com.apocky.mycelium",
+  "build": {
+    "beforeDevCommand": "cd frontend && npm run dev",
+    "beforeBuildCommand": "cd frontend && npm run build",
+    "frontendDist": "frontend/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Mycelium",
+        "width": 1280,
+        "height": 800,
+        "decorations": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; connect-src 'self' http://localhost:* https://api.anthropic.com https://*.supabase.co"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["frontend/public/icon.png"],
+    "category": "DeveloperTool",
+    "shortDescription": "Mycelium · the autonomous-local-agent for Apocky's-desktop"
+  }
+}

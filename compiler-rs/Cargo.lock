@@ -1206,6 +1206,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-mycelium-desktop"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-agent-loop",
+ "cssl-host-llm-bridge",
+ "cssl-host-substrate-knowledge",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "cssl-host-net"
 version = "0.1.0"
 dependencies = [

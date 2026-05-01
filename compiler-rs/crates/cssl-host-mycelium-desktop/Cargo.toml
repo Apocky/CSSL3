@@ -1,0 +1,48 @@
+[package]
+name                   = "cssl-host-mycelium-desktop"
+description            = "CSSLv3 Mycelium · the autonomous-local-agent for Apocky's-desktop · Tauri-2.x app · 3-mode-LLM-bridge · substrate-knowledge-embedded · cap-gated · sovereign-revoke-anytime · stage-0-self-sufficient"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W10-MYCELIUM-DESKTOP wave-C1+B1+B2
+# § PRIME-DIRECTIVE : default-deny · sovereign-revoke-anytime · ¬ surveillance · audit-on-mutation
+# § STRUCTURAL : Tauri runtime is feature-gated behind `tauri-shell` ;
+#   default workspace `cargo build` does NOT pull Tauri (200+ transitive deps).
+# § Apocky-action : to enable real Tauri build, uncomment `tauri` dep below
+#   and add "dep:tauri" to the `tauri-shell` feature ; see frontend/README.md.
+
+[lib]
+name       = "cssl_host_mycelium_desktop"
+crate-type = ["rlib"]
+
+# § tauri-shell binary is opt-in via feature ; absent from default workspace build.
+[[bin]]
+name              = "mycelium-tauri-shell"
+path              = "src/bin/tauri_shell.rs"
+required-features = ["tauri-shell"]
+
+[features]
+default     = []
+# tauri-shell is the gate. The actual `tauri = { ... optional = true }` dep
+# is intentionally NOT yet declared under [dependencies] — see comment header.
+# When Apocky enables real Tauri runtime :
+#   1. add `tauri = { version = "2", optional = true }` to [dependencies]
+#   2. change this line to `tauri-shell = ["dep:tauri"]`
+# Until then, building with `--features tauri-shell` compiles the bin to a
+# clear-error-stub-main, NOT a full Tauri app — intentional scaffold posture.
+tauri-shell = []
+
+[dependencies]
+cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
+cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
+cssl-host-agent-loop          = { path = "../cssl-host-agent-loop" }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+tracing    = { workspace = true }
+
+[lints]
+workspace = true
