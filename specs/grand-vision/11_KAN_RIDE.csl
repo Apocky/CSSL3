@@ -1,0 +1,183 @@
+# 11 : LoA-v13 GRAND-VISION — KAN-RIDE (stage-0 ⊕ stage-1 swap-protocol)
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 10_INTELLIGENCE.csl ; aligns-with 01_PARADIGMS § P7
+# § I> ¬ replacement-doc ; ¬ deprecation ; stage-0 stays ; stage-1 ride-on-top
+# § I> CSSL-native ; ¬ marketing ; ¬ AGI-bridge
+
+§ AXIOMS
+  t∞: ride ≡ stage-0 ⊕ stage-1 simultaneous ; ¬ swap-then-delete
+  t∞: ∀ swap-point  W!  stage-0.iface ≡ stage-1.iface  ‼ shape-equality
+       ≡ same-input-type → same-output-type → same-determinism-contract
+  t∞: swap-mech ≡ atomic Box<dyn Trait> replace ; ¬ partial-state
+       ≡ ClassifierRegistry::replace_*(handle) → old-Box dropped @ frame-boundary
+  t∞: regression-fallback always-available  ‼
+       ≡ ∀ stage-1-handle  ∃ stage-0-source  ⊑ revert-1-call
+  t∞: sovereignty = unilateral-rollback ; player-or-host-cap can-revoke any-time
+       ≡ ¬ stage-1-lockin ; ¬ irreversible-mutation
+  t∞: ¬ online-grad-update mid-session ; KAN-splines BAKED @ comptime  ‼
+  t∞: ride ≠ self-improvement ; ride ≠ AGI-graduation ; ride = impl-swap
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SWAP-POINTS  ⟪ 5 enumerated ; ∀ disjoint ; ∀ shape-stable ⟫
+
+  § SP-1 intent_router::classify
+    input        : RawAction{kbd|gamepad|text-utt} + history-buf=8
+    output       : Intent{variant, confidence∈[0,1], payload}
+    stage-0-src  : crates/cssl-intent-router/src/heuristic.rs
+    stage-1-hdl  : ClassifierRegistry::replace_intent(Box<dyn IntentClassifier>)
+    determinism  : seed-replay bit-equal-required
+
+  § SP-2 cocreative::score
+    input        : (player-history-buffer, candidate-bias-axis)
+    output       : f32 ∈ [0,1] preference-weight
+    stage-0-src  : crates/cssl-host-cocreative/src/score_v0.rs
+    stage-1-hdl  : ClassifierRegistry::replace_cocreative(Box<dyn BiasScorer>)
+    determinism  : pure-fn ; no-RNG ; no-clock
+
+  § SP-3 spontaneous::seed_cells
+    input        : (zone-id, ω-field-summary, sovereign-cap-table)
+    output       : Vec<SeedCell{x,y,z,kind,attribs}> bounded-N
+    stage-0-src  : crates/cssl-host-spontaneous/src/seed_v0.rs
+    stage-1-hdl  : ClassifierRegistry::replace_spontaneous(Box<dyn CellSeeder>)
+    determinism  : seed-deterministic ; replay-bit-equal
+
+  § SP-4 dm::scene_arbiter
+    input        : Vec<Intent> competing + scene-state-snapshot
+    output       : ScenePick{winner-intent-id, edit-op, dispatch-target}
+    stage-0-src  : crates/cssl-host-dm/src/arbiter_v0.rs
+    stage-1-hdl  : ClassifierRegistry::replace_dm_arbiter(Box<dyn SceneArbiter>)
+    determinism  : ambiguity-broken-by table-rule ¬ random
+
+  § SP-5 gm::pacing
+    input        : (tension-vec ⊗ scene-graph-cursor ⊗ player-fatigue-est)
+    output       : PacingHint{beat-spacing, tension-target, idle-allow}
+    stage-0-src  : crates/cssl-host-gm/src/pacing_v0.rs
+    stage-1-hdl  : ClassifierRegistry::replace_gm_pacing(Box<dyn PacingPolicy>)
+    determinism  : output-stable-given input-tuple
+
+# ══════════════════════════════════════════════════════════════════
+
+§ INVARIANTS  ‼ ∀ stage-1-handle  W!  satisfy
+
+  § I-1 determinism
+    seed+input → output bit-equal across runs ; replay-anchor preserved
+    ¬ wallclock ; ¬ thread-rng ; ¬ network-roundtrip mid-classify
+
+  § I-2 confidence-range
+    ∀ confidence-out ∈ [0.0, 1.0] ; NaN-banned ; clamp-on-violate-then-audit
+
+  § I-3 audit-emit
+    ∀ classify-call → cssl-host-rt-trace event{sp-id, in-hash, out-hash, impl-id}
+    ∀ swap-event   → cssl-host-attestation kan.swap.{installed|reverted}
+
+  § I-4 fallback-on-missing-handle
+    handle-absent  ⇒  ClassifierRegistry::lookup → stage-0  ⊘  ¬ panic
+    ⊑ cold-start = pure-stage-0
+
+  § I-5 latency-bound
+    p95(stage-1) ≤ 2× p95(stage-0)  ‼ enforced @ rollback-trigger
+    ∵ ride ¬ regress-perf ; player-FPS ¬ degraded
+
+  § I-6 never-refuse
+    classify W! return-Intent ; no-classify-result-empty
+    fallback-Intent::Unknown{conf=0.0} on stage-1-error → audit-emit
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROLL-BACK PROCEDURE
+
+  § TRIGGERS  ⟪ ∃ ANY → execute ⟫
+    T-1 latency        : p95(stage-1) > 100ms over 30-sample-window
+    T-2 disagreement   : output-divergence(stage-0, stage-1) > 5% over canary-window
+    T-3 sovereign-bypass : sovereign.bypass-event recorded ≥ 1 mid-canary
+    T-4 invariant-fail : I-1..I-6 violated → immediate-revert
+    T-5 player-revoke  : Settings → Intelligence → "Use stage-0" toggled
+
+  § MECHANISM
+    ClassifierRegistry::replace_*(stage_0_box())  ≡ atomic Box swap
+    drop(old-stage-1-box) @ frame-boundary ; ¬ mid-frame mutation
+    cold-cache-warm-stage-0 always-resident ; zero-alloc revert-path
+
+  § AUDIT-EVENT
+    cssl-host-attestation::emit{
+      kind         : "kan.rollback.executed",
+      sp-id        : SwapPoint::*,
+      trigger      : T-1..T-5 enum,
+      ts           : monotonic-frame-id,
+      session-id   : current-attestation-session,
+    }
+
+  § UI SURFACE
+    Settings → Intelligence  ⟪ player-visible ⟫
+      ☐ Use stage-1 classifiers (advanced)   default = ☑ ride-on
+      ▶ View rollback-history (last-50)      ← cssl-host-attestation tail
+      ⟲ Force-revert-all-now                 ← unilateral · no-confirm-dialog
+
+# ══════════════════════════════════════════════════════════════════
+
+§ A/B-TESTING PROTOCOL
+
+  § CANARY
+    canary-pct        : 10% of-sessions ; opt-in-flag-respected
+    selection         : session-id-hash mod 10 == 0 ; deterministic per-session
+    duration          : ≥ 1k classify-calls per-SP ; W! before-graduate
+
+  § PER-SESSION ATTESTATION
+    record-on-start : { session-id, sp-id-set, impl-id-per-sp, baseline-stage-0 }
+    record-on-end   : { divergence-stats, latency-histogram, satisfaction-vec }
+
+  § METRICS
+    M-1 disagreement : |out_stage1 - out_stage0| / |out_stage0|  ← per-SP avg
+    M-2 perf-delta   : p95(stage-1) / p95(stage-0) - 1.0
+    M-3 satisfaction : player-explicit-feedback + implicit-completion-rate
+
+  § GRADUATE-CRITERIA  ⟪ ∀ W! satisfied ⟫
+    ✓ M-1 < 2%       (stage-1 close-to stage-0 ; ¬ behavior-drift)
+    ✓ M-2 < 50%      (latency-overhead bounded)
+    ✓ M-3 delta > 0  (player-experience non-regressed)
+    on-graduate      : canary-pct → 100% ; stage-0 STAYS-resident as-fallback
+
+# ══════════════════════════════════════════════════════════════════
+
+§ PARADIGM-7 ALIGNMENT  ⟪ ref 01_PARADIGMS § P7 ⟫
+
+  P7 ≡ "substrate ¬ classifier-impl ; both-stages-coexist"
+  this-doc operationalizes P7 :
+    substrate    ≡ ClassifierRegistry trait-set + iface-shape contract
+    classifier   ≡ Box<dyn Trait> impl ; swappable @ runtime
+    coexistence  ≡ stage-0 always-resident + stage-1 optionally-installed
+    ¬ monolithic-replacement ; ¬ "v2 deletes v1"
+
+  ∴ KAN-RIDE = engineering-protocol-for P7 ; ¬ new-paradigm
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ATTESTATION-PER-SESSION
+
+  § RECORD-SHAPE
+    SessionAttestation{
+      session-id        : u128,
+      classifier-impl   : map<SwapPoint, ImplId{stage-0|stage-1·hash}>,
+      rollback-events   : Vec<{sp-id, trigger, ts}>,
+      ride-duration-ms  : u64,
+    }
+
+  § AGGREGATION
+    cssl-host-attestation new-axis : "ImplementationTransparency"
+    aggregator gathers per-session-records → host-rollup
+    rollup-fields : impl-distribution + rollback-rate + canary-graduate-rate
+
+  § INVARIANT
+    ∀ classify-call AUDIT-TRACEABLE
+      ≡ rt-trace event-id ↔ session-attestation impl-id ; cross-link-mandatory
+      ≡ no-classify dark-path ; no-impl-id "(unknown)"
+    ‼ violation = bug ; W! fix ; ¬ override
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CREATOR-ATTESTATION
+  ¬ harm     ≡ swap-protocol degrades-gracefully ∀ trigger
+  sovereignty ≡ unilateral-revert preserved ∀ session-state
+  rollback   ≡ no-confirm-dialog ; player-or-host can-execute any-time
+  ‼ bound-by PRIME_DIRECTIVE ; ¬ overrideable
