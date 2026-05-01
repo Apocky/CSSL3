@@ -64,11 +64,14 @@ use crate::gpu::GpuContext;
 use crate::input::{InputState, RawEvent, VirtualKey};
 use crate::mcp_server::{
     spawn_mcp_server, CameraState as McpCamera, EngineState, McpServerConfig,
-    RenderMode as McpRenderMode, Vec3 as McpVec3,
+    RenderMode as McpRenderMode, SnapshotRequest, Vec3 as McpVec3,
 };
 use crate::movement::Camera as PlayerCamera;
 use crate::physics::RoomCollider;
 use crate::render::Renderer;
+use crate::snapshot::{
+    default_snapshot_dir, default_video_dir, BurstState, VideoState, TOUR_IDS,
+};
 use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuAction, MenuState};
 
@@ -166,6 +169,12 @@ pub struct App {
     // § MCP server handle (spawned in resumed)
     mcp_handle: Option<JoinHandle<()>>,
     mcp_port: Option<u16>,
+
+    // § T11-LOA-USERFIX : burst + video capture state machines.
+    /// In-flight burst (initially default = inactive).
+    burst: BurstState,
+    /// In-flight video record (initially default = inactive).
+    video: VideoState,
 }
 
 impl Default for App {
@@ -205,6 +214,8 @@ impl App {
             gpu_alive: false,
             mcp_handle: None,
             mcp_port: None,
+            burst: BurstState::default(),
+            video: VideoState::default(),
         }
     }
 
@@ -316,6 +327,195 @@ impl App {
         // for future pause-respecting behavior.
     }
 
+    /// § T11-LOA-USERFIX : queue a single screenshot via the existing
+    /// snapshot pipeline. The render loop drains EngineState.snapshot_queue
+    /// each frame and writes one PNG.
+    fn queue_single_screenshot(&mut self) {
+        let path = default_snapshot_dir().join(format!(
+            "snap_{:08}.png",
+            self.frame_count
+        ));
+        if let Ok(mut g) = self.engine_state.lock() {
+            g.snapshot_queue.push(SnapshotRequest { path: path.clone() });
+            g.snapshot_count += 1;
+        }
+        telem::global().record_screenshot_capture();
+        log_event(
+            "INFO",
+            "loa-host/window",
+            &format!("F12 · queued single screenshot · {}", path.display()),
+        );
+    }
+
+    /// § T11-LOA-USERFIX : start a new burst capturing `count` frames.
+    fn start_new_burst(&mut self, count: u32) {
+        let dir = self.burst.start_burst(count, 1);
+        telem::global().record_burst_capture_start(count);
+        log_event(
+            "INFO",
+            "loa-host/window",
+            &format!(
+                "F9 · burst started · count={} · dir={}",
+                count,
+                dir.display()
+            ),
+        );
+        // Mirror to EngineState so MCP read-only tools see the live burst.
+        if let Ok(mut g) = self.engine_state.lock() {
+            g.capture.burst_active = true;
+            g.capture.burst_frames_captured = 0;
+            g.capture.burst_frames_remaining = count;
+            g.capture.burst_id = self.burst.burst_id;
+        }
+    }
+
+    /// § T11-LOA-USERFIX : toggle video-record on/off.
+    fn toggle_video_record(&mut self) {
+        let now_ms = unix_ms_safe();
+        let was_recording = self.video.recording;
+        let now_recording = self.video.toggle(1, now_ms);
+        if !was_recording && now_recording {
+            log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "F8 · video record START · dir={}",
+                    self.video.output_dir.display()
+                ),
+            );
+            if let Ok(mut g) = self.engine_state.lock() {
+                g.capture.video_recording = true;
+                g.capture.video_frames_captured = 0;
+                g.capture.video_id = self.video.video_id;
+                g.capture.video_duration_ms = 0;
+            }
+        } else if was_recording && !now_recording {
+            // toggle stopped : the prior `toggle` call already wrote
+            // stop_record's frame/duration into the state — recover
+            // the values for the log + EngineState mirror.
+            let frames = self.video.frames_captured;
+            let duration = now_ms.saturating_sub(self.video.started_unix_ms);
+            log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "F8 · video record STOP · frames={} · duration_ms={} · dir={}",
+                    frames,
+                    duration,
+                    self.video.output_dir.display()
+                ),
+            );
+            if let Ok(mut g) = self.engine_state.lock() {
+                g.capture.video_recording = false;
+                g.capture.video_frames_captured = frames;
+                g.capture.video_duration_ms = duration;
+            }
+        }
+    }
+
+    /// § T11-LOA-USERFIX : run all 5 tours (F7).
+    fn queue_tour_suite(&mut self) {
+        let mut total = 0;
+        for tour_id in TOUR_IDS {
+            let tour = match crate::snapshot::tour_by_id(tour_id) {
+                Some(t) => t,
+                None => continue,
+            };
+            let dir = default_snapshot_dir().join(format!("tour_{tour_id}"));
+            if let Ok(mut g) = self.engine_state.lock() {
+                for pose in &tour {
+                    g.snapshot_queue.push(SnapshotRequest {
+                        path: dir.join(format!("{}.png", pose.name)),
+                    });
+                }
+                g.snapshot_count += tour.len() as u64;
+            }
+            total += tour.len();
+        }
+        log_event(
+            "INFO",
+            "loa-host/window",
+            &format!(
+                "F7 · 5-tour suite queued · total {} snapshots",
+                total
+            ),
+        );
+    }
+
+    /// § T11-LOA-USERFIX : per-frame burst + video tick. Pulls the next
+    /// capture path (if any) from each state machine + queues a snapshot
+    /// + records telemetry.
+    fn drain_capture_state(&mut self) {
+        // Apply pending MCP requests first.
+        let (burst_pending, video_start, video_stop, intensity_pending) = {
+            if let Ok(mut g) = self.engine_state.lock() {
+                let burst_p = g.capture.burst_pending_count.take();
+                let v_start = std::mem::take(&mut g.capture.video_start_pending);
+                let v_stop = std::mem::take(&mut g.capture.video_stop_pending);
+                let i_p = g.cfer.cfer_intensity_pending.take();
+                (burst_p, v_start, v_stop, i_p)
+            } else {
+                (None, false, false, None)
+            }
+        };
+        if let Some(count) = burst_pending {
+            if !self.burst.active {
+                self.start_new_burst(count);
+            }
+        }
+        if video_start && !self.video.recording {
+            self.toggle_video_record();
+        }
+        if video_stop && self.video.recording {
+            self.toggle_video_record();
+        }
+        if let Some(intensity) = intensity_pending {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.cfer.set_cfer_intensity(intensity);
+            }
+        }
+
+        // Tick burst.
+        if let Some(path) = self.burst.tick_capture_path() {
+            if let Ok(mut g) = self.engine_state.lock() {
+                g.snapshot_queue.push(SnapshotRequest { path });
+                g.snapshot_count += 1;
+                g.capture.burst_frames_captured = self.burst.frames_captured;
+                g.capture.burst_frames_remaining = self.burst.frames_remaining;
+                g.capture.burst_active = self.burst.active;
+            }
+            telem::global().record_screenshot_capture();
+        } else if let Ok(mut g) = self.engine_state.lock() {
+            g.capture.burst_active = self.burst.active;
+            g.capture.burst_frames_captured = self.burst.frames_captured;
+            g.capture.burst_frames_remaining = self.burst.frames_remaining;
+        }
+
+        // Tick video.
+        if let Some(path) = self.video.tick_capture_path() {
+            if let Ok(mut g) = self.engine_state.lock() {
+                g.snapshot_queue.push(SnapshotRequest { path });
+                g.snapshot_count += 1;
+                g.capture.video_frames_captured = self.video.frames_captured;
+                g.capture.video_recording = self.video.recording;
+                g.capture.video_duration_ms = unix_ms_safe()
+                    .saturating_sub(self.video.started_unix_ms);
+            }
+            telem::global().record_video_frame();
+        } else if let Ok(mut g) = self.engine_state.lock() {
+            g.capture.video_recording = self.video.recording;
+            g.capture.video_frames_captured = self.video.frames_captured;
+            if self.video.recording {
+                g.capture.video_duration_ms = unix_ms_safe()
+                    .saturating_sub(self.video.started_unix_ms);
+            }
+        }
+
+        let _ = default_video_dir(); // suppress unused-import lint when the
+                                     // video isn't recording (still imported
+                                     // by snapshot.rs).
+    }
+
     /// Apply a winit KeyEvent → input.handle_event(RawEvent::Key{...}).
     /// Returns true if the key was consumed by special handlers (F11 toggles
     /// fullscreen, Esc toggles menu) to suppress double-handling.
@@ -373,6 +573,10 @@ impl App {
             PhysicalKey::Code(KeyCode::F8) => VirtualKey::F8,
             PhysicalKey::Code(KeyCode::F9) => VirtualKey::F9,
             PhysicalKey::Code(KeyCode::F10) => VirtualKey::F10,
+            // § T11-LOA-USERFIX : F12 single-screenshot · C cfer-toggle.
+            // F11 stays special-handled (fullscreen) — it never reaches here.
+            PhysicalKey::Code(KeyCode::F12) => VirtualKey::F12,
+            PhysicalKey::Code(KeyCode::KeyC) => VirtualKey::C,
             // Menu navigation keys
             PhysicalKey::Code(KeyCode::ArrowUp) => VirtualKey::ArrowUp,
             PhysicalKey::Code(KeyCode::ArrowDown) => VirtualKey::ArrowDown,
@@ -600,6 +804,29 @@ impl App {
         // the player's location in real-time.
         let current_room = crate::room::room_label_at(self.player.pos).to_string();
 
+        // § T11-LOA-USERFIX : burst + video status badges for the HUD.
+        let burst_status = if self.burst.active {
+            // Show "captured / total". `total = captured + remaining`.
+            let total = self.burst.frames_captured + self.burst.frames_remaining;
+            Some((self.burst.frames_captured, total))
+        } else {
+            None
+        };
+        let video_status = if self.video.recording {
+            let duration_s = unix_ms_safe()
+                .saturating_sub(self.video.started_unix_ms)
+                as f32
+                / 1000.0;
+            Some((self.video.frames_captured, duration_s))
+        } else {
+            None
+        };
+        let cfer_intensity = self
+            .renderer
+            .as_ref()
+            .map(|r| r.cfer.cfer_intensity())
+            .unwrap_or(0.10);
+
         HudContext {
             frame: self.frame_count,
             fps: self.fps_smoothed,
@@ -619,6 +846,9 @@ impl App {
             tour_progress,
             snapshot_count,
             current_room,
+            burst_status,
+            video_status,
+            cfer_intensity,
         }
     }
 
@@ -857,6 +1087,51 @@ impl App {
                 self.handle_menu_action(action, event_loop);
             }
         }
+
+        // § 2b. § T11-LOA-USERFIX : direct render-mode + capture key drain.
+        //
+        // F1-F10 set both `render_mode` and the `render_mode_changed` edge ;
+        // we apply the new value to the renderer immediately (no menu
+        // round-trip required, fixing Apocky's play-test feedback that
+        // F-keys "didn't change render-mode while playing").
+        if frame.render_mode_changed {
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.set_render_mode(frame.render_mode);
+            }
+            log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "render-mode → {} (direct apply, no menu)",
+                    frame.render_mode
+                ),
+            );
+        }
+        // F12 single-screenshot.
+        if frame.screenshot_requested {
+            self.queue_single_screenshot();
+        }
+        // F9 burst-of-10 (only starts a new burst when none active).
+        if frame.burst_requested && !self.burst.active {
+            self.start_new_burst(10);
+        }
+        // F8 video toggle.
+        if frame.video_toggle_requested {
+            self.toggle_video_record();
+        }
+        // F7 5-tour suite.
+        if frame.tour_requested {
+            self.queue_tour_suite();
+        }
+        // C key cfer-atmospheric toggle.
+        if frame.cfer_toggle_pressed {
+            if let Some(renderer) = self.renderer.as_mut() {
+                let new_intensity = renderer.cfer.toggle_cfer();
+                if let Ok(mut g) = self.engine_state.lock() {
+                    g.cfer.cfer_intensity = new_intensity;
+                }
+            }
+        }
         // Keep input.paused mirror in sync with menu_open : when the menu is
         // open, the input layer's `paused` reflects that. When menu closes,
         // we leave `paused` as-is (Tab no longer toggles it directly).
@@ -946,6 +1221,11 @@ impl App {
         // (KAN-handle attach/detach + force-step flag).
         self.drain_cfer_requests();
 
+        // § 8b'''. § T11-LOA-USERFIX : tick burst/video state machines +
+        // drain MCP-pending capture commands. Each frame, the active
+        // burst or recording emits one snapshot to the queue.
+        self.drain_capture_state();
+
         // § 8c. Build the HUD context this frame.
         let hud = self.build_hud_context();
 
@@ -1013,6 +1293,17 @@ impl App {
             &format!("event-proposed · {ev:?}"),
         );
     }
+}
+
+/// § T11-LOA-USERFIX : monotonic-ish unix-ms with safe fallback to 0 on
+/// platforms where SystemTime is broken (rare). The video state machine
+/// only uses this for relative durations so any jitter is acceptable.
+fn unix_ms_safe() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 // ──────────────────────────────────────────────────────────────────────────
