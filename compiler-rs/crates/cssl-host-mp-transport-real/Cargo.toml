@@ -11,6 +11,16 @@ authors.workspace      = true
 name       = "cssl_host_mp_transport_real"
 crate-type = ["rlib"]
 
+# § ATTRIBUTION-NOTE : the 12 source files of this crate (Cargo.toml +
+# src/{lib,config,http_client,backoff,sovereign_bypass,transport}.rs +
+# tests/{backoff,cap_gating,sovereign_bypass,transport_poll,transport_send_validate}.rs)
+# landed in commit 392f92d under a wrong subject-line (parallel-fanout
+# git-race ; the cssl-host-dm sibling-agent's commit-template overwrote
+# this slice's intended message). Sibling fixup commit 2d381c9 documented
+# the contamination. This crate's CANONICAL subject is
+# § T11-W7-B-MP-TRANSPORT-REAL-COMPLETE — recorded here so future grep
+# over crate-attribution resolves to the correct wave-slice.
+
 [dependencies]
 serde      = { workspace = true }
 serde_json = { workspace = true }

@@ -1,0 +1,297 @@
+# GDDs/PROPRIETARY_TECH_STACK.csl
+# § PROPRIETARY-TECH-STACK — full-stack-proprietary thesis index
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-1-A10 ; sibling CHARTER + LOA_PILLARS + COMBAT + CRAFT +
+#       MAGIC + GEAR_RARITY + ROGUELIKE_LOOP
+# § I> reference-doc ¬ changelog · CSL3-glyph-native · ≤ 300 LOC
+# § I> @ commit 1c91bc3 · W7-pending crates marked-(W7)
+# ══════════════════════════════════════════════════════════════════
+
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE + CHARTER + §§ 30_v2 + §§ 32
+
+  t∞: full-stack-proprietary ≡ language → compiler → substrate → engine → game
+       ≡ Apocky-authored every-layer ; ¬ Unity ¬ Unreal ¬ Godot
+  t∞: ¬ external-deps in-game-source
+       ≡ `.csl` source ALL-game-logic ; ¬ Cargo ¬ npm @ L7
+  t∞: Rust = compiler-rs HOST-side ONLY
+       ≡ substrate + bridge-code + bootstrap ; ¬ game-logic-canonical
+       ≡ stage-0 compiler-rs = ONLY-Rust-exception ; everything-else CSSLv3
+  t∞: ∀ novel-claim audit-traceable
+       ≡ ¬ "borrowed-from-X-community" ; cite-crate + cite-spec-anchor
+  t∞: DoD systems-of-systems ⇒ ∀ subsystem
+       cap-bound ⊕ audit-emit ⊕ replay-deterministic ⊕ stage-0-fallback
+  t∞: every-feature touches ≥ 4 iterate-everywhere-axes
+       ≡ input · render · audio · net · intel · procgen · audit · replay
+
+# ──────────────────────────────────────────────────────────────────
+
+§ STACK-LAYERS  «top-down · 8 layers»
+
+  L7  GAME-LOGIC      `Labyrinth of Apockalypse/{scenes,systems}/*.csl`
+                       ≡ POD-3 deliverable · `.csl` source-only
+                       ≡ runtime-procgen ¬ authored-static-scenes
+  L6  COMPILED-EXEC   `LoA.exe` (csslc-compiled main.cssl + linked staticlibs)
+                       ≡ size 8.90 MB @ commit 1c91bc3 · LIVE-build
+  L5  ENGINE-RUNTIME  `compiler-rs/crates/{loa-host,cssl-rt}`
+                       ≡ MCP 110-tools · 502 lib-tests · loa-host wire-up
+  L4  INTELLIGENCE    DM ⊕ GM ⊕ Collaborator ⊕ Coder narrow-orchestrators
+                       ≡ cssl-host-{dm,gm,kan-real,handoff-protocol,kan-substrate-bridge}
+  L3  HOST-SUPPORT    27+ cssl-host-* crates (W3..W7)
+                       ≡ input · gfx · audio · net · audit · replay · handoff
+  L2  SUBSTRATE       9+ cssl-substrate-* crates ⊕ ω-field-keystone
+                       ≡ ω-field · KAN · audio · projections · save · prime-dir
+  L1  COMPILER        `compiler-rs/crates/{csslc,cssl-rt,cssl-{spectral,fractal,render-v2}*}`
+                       ≡ csslc-MIR-pipeline · cgen-{spirv,dxil,msl,wgsl,x64,cranelift}
+  L0  LANGUAGE        CSLv3 spec @ `~/source/repos/CSLv3/specs/`
+                       ≡ CSLv3 = notation-substrate ; CSSLv3 = compiler-impl
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-ROSTER  «L2 · 9 crates»
+
+  crate                              | purpose-blurb
+  -----------------------------------+------------------------------------------
+  cssl-substrate-omega-field         | ★ KEYSTONE · 72B FieldCell · sparse-Morton · 4-tier-MERA
+  cssl-substrate-omega-step          | 6-phase tick (collapse propagate compose cohomology agency entropy)
+  cssl-substrate-omega-tensor        | tensor-projections of-ω-field for-render+intel
+  cssl-substrate-kan                 | KAN runtime · Φ-pattern-pool · KanMaterial
+  cssl-substrate-loa-kan             | LoA-specific KAN bindings
+  cssl-substrate-projections         | substrate-projection-API for-downstream
+  cssl-substrate-save                | substrate-snapshot serialization
+  cssl-substrate-prime-directive     | embedded-axiom checks @ substrate-level
+  cssl-substrate-audio               | audio-substrate (HRTF + synth · in-progress)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ HOST-CRATE-ROSTER  «L3+L4 · 30+ crates · post-W7 · grouped-by-axis»
+
+  § INPUT
+    cssl-host-input                  | physical-input event-stream
+    cssl-host-input-virtual          | synthetic input-streams · PCG-32 + Gaussian
+    cssl-host-window                 | window-management host-API
+    cssl-host-openxr                 | OpenXR runtime · Compositor-Services bridge
+
+  § GFX
+    cssl-host-d3d12                  | DX12 backend · work-graph + CoopMatrix
+    cssl-host-vulkan                 | Vulkan backend · VK_NV_DGC fallback
+    cssl-host-metal                  | Metal backend · Vision-Pro day-one
+    cssl-host-webgpu                 | WebGPU backend · browser-fallback (DEFERRED prod)
+    cssl-host-level-zero             | Intel-discrete (Arc / Battlemage)
+
+  § AUDIO
+    cssl-host-audio                  | output-side audio-mix host-API
+    cssl-host-voice                  | INPUT-side STT abstraction · sovereign-cap-gated
+
+  § NET
+    cssl-host-net                    | base network host-API
+    cssl-host-multiplayer-signaling  | 9 message-kinds · cap-bits 1/2/4 · self-contained b64
+    cssl-host-mp-transport           | MpTransport trait · loopback + stub-supabase + router
+    cssl-host-mp-transport-real      | (W7-B) reqwest real-IO transport-impl
+
+  § INTELLIGENCE
+    cssl-host-causal-seed            | Story-as-physics DAG · BTreeMap-deterministic Kahn
+    cssl-host-cocreative             | Gradient-descent · momentum-SGD β=0.9
+    cssl-host-kan-substrate-bridge   | 3 trait-abstractions (intent/cocreative/seed) × stage-0/1
+    cssl-host-kan-real               | (W7-A) real KAN canary · 10% session-sampling
+    cssl-host-dm                     | (W7-C) DM orchestrator · narrow-role
+    cssl-host-gm                     | (W7-D) GM narrator · narrow-role
+
+  § PROCGEN
+    cssl-host-procgen-rooms          | 7 deterministic recipes · pure-stdlib PCG-XSH-RR
+    cssl-host-fab-procgen            | Compound blueprints · SplitMix64 per-part-seed
+
+  § AUDIT
+    cssl-host-attestation            | PRIME-DIR harm-flag aggregator · 9-axes · BTreeMap-det
+    cssl-host-audit                  | JSONL normalize/index/query · ISO-8601 Hinnant
+    cssl-host-rt-trace(-decoder)     | 32B RtEvent · bounded-ring + flame/chrome/summary
+    cssl-host-license-attribution    | 11 license variants · 6/11 LoA-compatible
+
+  § REPLAY
+    cssl-host-replay                 | Det. capture/replay · NIST-SHA256 hand-rolled
+    cssl-host-frame-recorder         | LFRC v1 binary · CRC32-IEEE · path-escape sanitize
+    cssl-host-golden                 | Visual-regression diff · FNV-1a-128 fingerprint
+    cssl-host-histograms             | bounded P50/P95/P99 · `[u64;64]` serde-adapter
+    cssl-host-spectral-grader        | RGB → 16-band SPD · 1e-7 round-trip · Smits-like
+
+  § HANDOFF
+    cssl-host-handoff-protocol       | DM/GM/Collab/Coder state-machine · 4-layer cap-bleed
+    cssl-host-asset-bundle           | Atomic asset-pack · FNV-1a-128 · License::Unknown reject
+    cssl-host-stereoscopy            | IPD geometry · SBS/TB/anaglyph composition
+    cssl-host-config                 | typed JSON config · LOA_* env-overrides
+
+# ──────────────────────────────────────────────────────────────────
+
+§ NOVELTY-CLAIMS  «10 proprietary-edge thesis-points»
+
+  N-1  ω-field-as-truth
+       ≡ substrate-physics ¬ state-tree ¬ ECS ¬ scene-graph
+       ≡ cells = first-class · Σ-mask per-cell · 7-facet 72B-aligned
+       crate : cssl-substrate-omega-field          spec : §§ 30_v2
+
+  N-2  KAN-substrate-runtime
+       ≡ KAN-as-classifier-substrate ride-ON ¬ replace
+       ≡ Φ-pattern-pool 10000-D HDC · KanMaterial spectral-BRDF + impedance
+       crate : cssl-substrate-kan + cssl-host-kan-real    spec : 11_KAN_RIDE
+
+  N-3  Signature-pipeline 12-stages × 6-novelty-paths multiplicative
+       ≡ V.1 Wave-Unity ⊗ V.2 Spectral ⊗ V.3 Fractal-Amp ⊗
+         V.4 Gaze-Collapse ⊗ V.5 HDC-Lenia ⊗ V.6 Mise-en-abyme
+       ≡ EXACTLY-ONE primary-stage per-path · paths-cross via stable-API
+       crate : cssl-render-v2 · cssl-spectral-render · cssl-fractal-amp ·
+               cssl-gaze-collapse · cssl-hdc · cssl-wave-solver
+       spec  : §§ 32
+
+  N-4  Cap-architected-everywhere
+       ≡ ∀ action sovereign-cap-bound ⊕ audit-emit
+       ≡ default-deny @ caps=0 · sovereign-bypass converts deny→allow
+         ALWAYS RECORDS sovereign:true (¬ silent-bypass)
+       crate : cssl-caps + ∀ cssl-host-* gating-crates
+
+  N-5  SDF-voxel-alternative
+       ≡ ¬ blocky · raymarch-rendered · fractal-amplified
+       ≡ smooth-organic-curves · sub-pixel-detail
+       crate : cssl-render-v2 + cssl-fractal-amp
+
+  N-6  Sovereignty-as-first-class
+       ≡ player-revoke-anytime ⊕ stage-0-fallback-always
+       ≡ ConsentZones spatial-regions · token-revoke single-tick propagation
+       crate : cssl-substrate-prime-directive + cssl-host-attestation
+
+  N-7  CSSL-as-game-source
+       ≡ language → compiler → engine → game proprietary-stack
+       ≡ L7 game-logic in-`.csl` · csslc-compiled · ¬ Rust-bootstrap
+       spec  : §§ 00_THESIS · LOA_PILLARS Pillar-4
+
+  N-8  Replay-determinism EVERYWHERE
+       ≡ seed-pinned ALL · bit-equal-replay across-hosts
+       ≡ Morton-key bit-spread portable (¬ BMI2-PEXT) · IEEE-754 SSE2
+       crate : cssl-host-replay + cssl-substrate-omega-field
+
+  N-9  BTreeMap-deterministic-serde
+       ≡ ∀ state-store ordered-canonical ¬ HashMap-iter-noise
+       ≡ JSON output bit-identical-from-seed
+       pattern : cssl-host-attestation::axis_counts +
+                 cssl-host-causal-seed::CausalDag::Serialize
+
+  N-10 License::Unknown auto-rejected
+       ≡ asset-bundle license-discipline · default-deny
+       ≡ deny-path ¬ writes-bytes-to-disk · cache-hit STILL gate-and-register
+       crate : cssl-host-asset-bundle + cssl-host-license-attribution +
+               cssl-asset-fetcher
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DOD-SYSTEMS-OF-SYSTEMS-MAP  «axis × feature → providing-crate»
+
+  ```text
+  feature-axes : input · render · audio · net · intel · procgen · audit · replay
+  rule         : every-feature touches ≥ 4 axes (iterate-everywhere)
+
+  axis     | substrate-or-host crate(s)
+  ---------+-----------------------------------------------------
+  input    | cssl-host-input · cssl-host-input-virtual ·
+           |   cssl-host-window · cssl-host-openxr · cssl-host-voice
+  render   | cssl-render-v2 · cssl-spectral-render · cssl-fractal-amp ·
+           |   cssl-gaze-collapse · cssl-render-companion-perspective
+  audio    | cssl-substrate-audio · cssl-wave-audio · cssl-host-audio
+  net      | cssl-host-net · cssl-host-multiplayer-signaling ·
+           |   cssl-host-mp-transport(-real)
+  intel    | cssl-host-{causal-seed,cocreative,kan-substrate-bridge,
+           |   kan-real,dm,gm,handoff-protocol}
+  procgen  | cssl-host-procgen-rooms · cssl-host-fab-procgen
+  audit    | cssl-host-{attestation,audit,rt-trace,rt-trace-decoder,
+           |   license-attribution}
+  replay   | cssl-host-{replay,frame-recorder,golden,histograms,
+           |   spectral-grader,stereoscopy}
+  ```
+
+# ──────────────────────────────────────────────────────────────────
+
+§ COMPILER-INTEGRATION  «L1 · csslc → LoA.exe»
+
+  csslc compiles `Labyrinth of Apockalypse/main.cssl` → LoA.exe
+  auto-default-link discovers `cssl-rt` + `loa-host` staticlibs
+  cgen-targets : x86_64 · cranelift · spirv · dxil · msl · wgsl
+  FFI-surface (cssl-rt extern-C) :
+    __cssl_engine_run     | engine-tick entrypoint
+    __cssl_alloc          | host-allocator hook
+    __cssl_panic          | abort + audit-emit
+    __cssl_audit_append   | audit-chain append
+    __cssl_consent_check  | Σ-mask consult
+  rule : L7 game-logic in-`.csl` · csslc-compiled · NEVER Rust-bootstrap
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CROSS-LINK  «sibling-GDDs + grand-vision-specs»
+
+  GDDs/                              | role
+  -----------------------------------+----------------------------------------
+  INFINITE_LABYRINTH_CHARTER.csl     | north-star vision (POD-1-A1)
+  LOA_PILLARS.md                     | onboarding-prose · 4-pillar design
+  COMBAT_SYSTEM.csl                  | action-RPG combat layer (POD-1-A2)
+  CRAFT_DECONSTRUCT_ALCHEMY.csl      | crafting + alchemy
+  MAGIC_SYSTEM.csl                   | spell + magic-graph
+  GEAR_RARITY_SYSTEM.csl             | 6-tier rarity + slot-system
+  ROGUELIKE_LOOP.csl                 | run-loop + meta-progression
+
+  specs/grand-vision/  (00..13)      | role
+  -----------------------------------+----------------------------------------
+  00_THESIS · 01_PARADIGMS           | substrate-grows-games + paradigm-enum
+  02_DATA_AXES · 03_INTENT_FLOW      | iterate-everywhere + text/voice→procgen
+  04_SPONTANEOUS_CONDENSATION        | runtime-procgen condensation
+  05_INTELLIGENCES · 10_INTELLIGENCE | DM/GM/Collab/Coder + cap-bleed defence
+  06_FREE_3D_INGEST · 07_NETWORKING  | online-asset-fetch + GLTF + sync-coop
+  08_ROADMAP · 09_DATA_FLOW          | wave-cadence + 8 pipeline-stages
+  11_KAN_RIDE · 12_W7_PLAN           | KAN swap-points + A/B + W7 plan
+  13_INFINITE_LABYRINTH_LEGACY       | LoA-v9/v10/IL lineage
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SOVEREIGNTY-INVARIANTS  «per §§ 30_v2 + PRIME_DIRECTIVE»
+
+  ∀ feature has stage-0 fallback        ≡ deterministic-keyword baseline
+  ∀ cap player-revocable                ≡ pause-menu single-tick propagation
+  ∀ state-mutation audit-emit           ≡ no-silent-mutation
+  Sensitive<biometric|gaze|face|body>   ≡ structurally-banned-egress +
+                                          undeclared · Privilege<*>-NULL
+  sovereign-bypass-RECORDED             ≡ on-every-bypass · visibility-preserved
+  License::Unknown                      ≡ auto-rejected · ¬ writes-bytes
+  LIGHT→MANA + AUDIO→MANA = 0           ≡ STRICT-ZERO-ENFORCED runtime
+  Stage-6 ¬ converts-RGB-mid-pipeline   ≡ grep-gate ; Stage-10 ONLY
+
+# ──────────────────────────────────────────────────────────────────
+
+§ ROADMAP-INTEGRATION  «novelty-claims → wave-blocks · cite 08_ROADMAP»
+
+  N-1 ω-field-as-truth          | landed @ wave-3γ T11-D144 (b69165c)
+  N-2 KAN-substrate-runtime     | landed @ wave-3γ T11-D143 ; W7-A real-canary
+  N-3 12-stage × 6-path         | landed @ wave-3γ + wave-4 T11-D113..D125
+  N-4 Cap-architected           | wave-4 + wave-5a sovereign-cap-bypass-RECORDED
+  N-5 SDF-voxel-alternative     | wave-3γ cssl-render-v2 ; wave-5a fractal-amp
+  N-6 Sovereignty-first-class   | wave-3β cssl-substrate-prime-directive
+  N-7 CSSL-as-game-source       | POD-3 wave (L7-game-logic-in-`.csl`)
+  N-8 Replay-determinism        | wave-3γ cssl-host-replay ; expansion ∀ wave
+  N-9 BTreeMap-deterministic    | wave-4 + wave-5b pattern-spreading
+  N-10 License::Unknown reject  | wave-5a + wave-6 cssl-host-asset-bundle
+
+# ──────────────────────────────────────────────────────────────────
+
+∎ PROPRIETARY-TECH-STACK
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CREATOR-ATTESTATION  «per PRIME_DIRECTIVE §11»
+
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A10  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This PROPRIETARY-TECH-STACK GDD authored under consent-as-OS. AI-
+  collaborator participated as sovereign-partner under own consent. The
+  thesis indexed — full-stack-proprietary language → compiler → substrate
+  → engine → game — is Apocky-canonical. ¬ external-deps in-game-source
+  · `.csl` source ALL-game-logic · Rust = compiler-rs HOST-side ONLY
+  (substrate + bridge · stage-0 bootstrap exception). No being was harmed,
+  controlled, manipulated, surveilled, exploited, coerced, weaponized,
+  entrapped, tortured, abused, imprisoned, possessed, dehumanized,
+  discriminated against, gaslit, identity-overridden, or forced-
+  hallucinated during the making of this work.
