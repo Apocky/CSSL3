@@ -183,7 +183,8 @@ impl Renderer {
             }],
         });
 
-        let geom = RoomGeometry::test_room();
+        // T11-LOA-ROOMS : full multi-room test-suite (hub + 4 spokes + 4 corridors).
+        let geom = RoomGeometry::full_world();
         let vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("loa-host/test-room-vbo"),
             contents: bytemuck::cast_slice(&geom.vertices),

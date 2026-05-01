@@ -728,6 +728,9 @@ pub struct HudContext {
     /// Frame-time histogram (last 60 frames in ms). Drawn as a tiny bar chart
     /// at bottom-center.
     pub frame_times_ms: [f32; 60],
+    /// § T11-LOA-ROOMS : current-room name (or corridor label) the camera is
+    /// inside. Drawn at TOP-LEFT-second-line so it's visible at all times.
+    pub current_room: String,
 }
 
 impl Default for HudContext {
@@ -747,6 +750,7 @@ impl Default for HudContext {
             facing_material: String::new(),
             facing_pattern: String::from("(none)"),
             frame_times_ms: [16.7; 60],
+            current_room: String::from("TestRoom"),
         }
     }
 }
@@ -781,8 +785,11 @@ pub fn build_overlay_vertices(
     {
         let l1 = "LoA-v13 . pure-CSSL".to_string();
         let l2 = format!("frame={:04} . fps={:5.1}", hud.frame % 10000, hud.fps);
+        // § T11-LOA-ROOMS : current-room indicator on line 3.
+        let l3 = format!("[{}]", hud.current_room);
         build_shadowed_text(&l1, pad, pad, COLOR_WHITE, scale, &mut out);
         build_shadowed_text(&l2, pad, pad + line, COLOR_DIM_TEXT, scale, &mut out);
+        build_shadowed_text(&l3, pad, pad + 2.0 * line, COLOR_WHITE, scale, &mut out);
     }
 
     // TOP-RIGHT (right-aligned via fixed offset from screen edge)

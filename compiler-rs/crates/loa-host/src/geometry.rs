@@ -53,13 +53,16 @@ use crate::material::{
     MAT_BRUSHED_STEEL, MAT_DEEP_INDIGO, MAT_DICHROIC_VIOLET, MAT_EMISSIVE_CYAN,
     MAT_GOLD_LEAF, MAT_GRADIENT_RED, MAT_HAIRY_FUR, MAT_HOLOGRAPHIC, MAT_IRIDESCENT,
     MAT_MATTE_GREY, MAT_NEON_MAGENTA, MAT_OFF_WHITE, MAT_PINK_NOISE_VOL,
-    MAT_TRANSPARENT_GLASS, MAT_VERMILLION_LACQUER, MAT_WARM_SKY,
+    MAT_TRANSPARENT_GLASS, MAT_VERMILLION_LACQUER, MAT_WARM_SKY, MATERIAL_LUT_LEN,
 };
 use crate::pattern::{
     PAT_CHECKERBOARD, PAT_CONCENTRIC_RINGS, PAT_EAN13_BARCODE, PAT_FREQUENCY_SWEEP,
-    PAT_GRADIENT_GRAYSCALE, PAT_GRID_1M, PAT_MACBETH_COLOR_CHART, PAT_PERLIN_NOISE,
-    PAT_QR_CODE_STUB, PAT_RADIAL_GRADIENT, PAT_RADIAL_SPOKES, PAT_SNELLEN_EYE_CHART,
-    PAT_SOLID, PAT_ZONEPLATE,
+    PAT_GRADIENT_GRAYSCALE, PAT_GRADIENT_HUE_WHEEL, PAT_GRID_100MM, PAT_GRID_1M,
+    PAT_MACBETH_COLOR_CHART, PAT_PERLIN_NOISE, PAT_QR_CODE_STUB, PAT_RADIAL_GRADIENT,
+    PAT_RADIAL_SPOKES, PAT_SNELLEN_EYE_CHART, PAT_SOLID, PAT_ZONEPLATE,
+};
+use crate::room::{
+    doorways, AxisAlignedBox, Corridor, Direction, Room, CORRIDOR_HEIGHT,
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -190,6 +193,34 @@ impl RoomGeometry {
         g.emit_ceiling();
         g.emit_walls();
         g.emit_plinths_and_stress();
+        g
+    }
+
+    /// § T11-LOA-ROOMS · Construct the FULL multi-room test-suite mesh
+    /// (TestRoom hub + 4 satellite rooms + 4 corridors + doorways).
+    ///
+    /// The TestRoom-hub portion is identical to `test_room()` PLUS each
+    /// of its 4 walls is rebuilt with a doorway gap. The 4 satellite
+    /// rooms each emit their own diagnostic interior and one wall with
+    /// a matching doorway. The 4 corridors emit floor + ceiling + 2
+    /// side-walls (4m wide × 8m tall × 8m long).
+    #[must_use]
+    pub fn full_world() -> Self {
+        let mut g = Self {
+            vertices: Vec::with_capacity(8192),
+            indices: Vec::with_capacity(16384),
+            plinth_count: 0,
+            transparent_index_range: None,
+        };
+        // 1. TestRoom (hub) — floor + ceiling + 4 walls (with doors) + plinths.
+        g.emit_test_room_hub();
+        // 2. Satellite rooms.
+        g.emit_material_room();
+        g.emit_pattern_room();
+        g.emit_scale_room();
+        g.emit_color_room();
+        // 3. Corridors connecting the hub to each spoke.
+        g.emit_corridors();
         g
     }
 }
@@ -634,6 +665,571 @@ impl RoomGeometry {
             self.plinth_count += 1;
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // § T11-LOA-ROOMS · Per-room emission helpers
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// TestRoom hub : the original test_room() geometry, but the 4 walls
+    /// are rebuilt with doorway gaps cut into them so the player can walk
+    /// from the hub into each of the 4 corridors.
+    fn emit_test_room_hub(&mut self) {
+        // Floor + ceiling + plinths are unchanged from the original
+        // test_room() — they don't intersect the doorways.
+        self.emit_floor();
+        self.emit_ceiling();
+        self.emit_walls_with_doorways();
+        self.emit_plinths_and_stress();
+    }
+
+    /// Re-emit TestRoom's 4 walls with a 2m × 3m doorway gap centered on
+    /// each wall. Each "wall" becomes 4 sub-quads :
+    ///   left-of-door    ·  right-of-door  ·  lintel-above-door  ·  freq-stripe
+    fn emit_walls_with_doorways(&mut self) {
+        let h = ROOM_HALF_X;
+        let top = ROOM_HEIGHT;
+        let white = [1.0, 1.0, 1.0];
+        let dh_half = crate::room::DOORWAY_WIDTH * 0.5; // door half-width = 1.0
+        let door_h = crate::room::DOORWAY_HEIGHT;       // door height = 3.0
+
+        // North wall : z=+h, inner-face normal -Z.
+        // Wall is split horizontally at x ∈ [-dh_half, dh_half] up to y=door_h.
+        // 1. Left-of-door : x ∈ [-h, -dh_half], full height
+        self.emit_quad_uv(
+            [[-dh_half, 0.0, h], [-h, 0.0, h], [-h, top, h], [-dh_half, top, h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [0.0, 0.0, -1.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_MACBETH_COLOR_CHART,
+        );
+        // 2. Right-of-door : x ∈ [dh_half, h], full height
+        self.emit_quad_uv(
+            [[h, 0.0, h], [dh_half, 0.0, h], [dh_half, top, h], [h, top, h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [0.0, 0.0, -1.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_MACBETH_COLOR_CHART,
+        );
+        // 3. Lintel above door : x ∈ [-dh_half, dh_half], y ∈ [door_h, top]
+        self.emit_quad_uv(
+            [[dh_half, door_h, h], [-dh_half, door_h, h], [-dh_half, top, h], [dh_half, top, h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [0.0, 0.0, -1.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_MACBETH_COLOR_CHART,
+        );
+
+        // South wall : z=-h, inner-face normal +Z.
+        // 1. Left-of-door : x ∈ [-h, -dh_half] (when looking from inside, left
+        //    is on +X side because we're facing -Z. Use the same "left of door"
+        //    via x-coords, winding stays CCW from inside.)
+        self.emit_quad_uv(
+            [[-h, 0.0, -h], [-dh_half, 0.0, -h], [-dh_half, top, -h], [-h, top, -h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [0.0, 0.0, 1.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_SNELLEN_EYE_CHART,
+        );
+        // 2. Right-of-door
+        self.emit_quad_uv(
+            [[dh_half, 0.0, -h], [h, 0.0, -h], [h, top, -h], [dh_half, top, -h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [0.0, 0.0, 1.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_SNELLEN_EYE_CHART,
+        );
+        // 3. Lintel
+        self.emit_quad_uv(
+            [[-dh_half, door_h, -h], [dh_half, door_h, -h], [dh_half, top, -h], [-dh_half, top, -h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [0.0, 0.0, 1.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_SNELLEN_EYE_CHART,
+        );
+
+        // East wall : x=+h, inner-face normal -X.
+        // 1. Left-of-door : z ∈ [-h, -dh_half]
+        self.emit_quad_uv(
+            [[h, 0.0, -h], [h, 0.0, -dh_half], [h, top, -dh_half], [h, top, -h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [-1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_QR_CODE_STUB,
+        );
+        // 2. Right-of-door : z ∈ [dh_half, h]
+        self.emit_quad_uv(
+            [[h, 0.0, dh_half], [h, 0.0, h], [h, top, h], [h, top, dh_half]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [-1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_QR_CODE_STUB,
+        );
+        // 3. Lintel
+        self.emit_quad_uv(
+            [[h, door_h, -dh_half], [h, door_h, dh_half], [h, top, dh_half], [h, top, -dh_half]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [-1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_QR_CODE_STUB,
+        );
+
+        // West wall : x=-h, inner-face normal +X.
+        // 1. Left-of-door : z ∈ [dh_half, h]
+        self.emit_quad_uv(
+            [[-h, 0.0, h], [-h, 0.0, dh_half], [-h, top, dh_half], [-h, top, h]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_EAN13_BARCODE,
+        );
+        // 2. Right-of-door : z ∈ [-h, -dh_half]
+        self.emit_quad_uv(
+            [[-h, 0.0, -dh_half], [-h, 0.0, -h], [-h, top, -h], [-h, top, -dh_half]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_EAN13_BARCODE,
+        );
+        // 3. Lintel
+        self.emit_quad_uv(
+            [[-h, door_h, dh_half], [-h, door_h, -dh_half], [-h, top, -dh_half], [-h, top, dh_half]],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_EAN13_BARCODE,
+        );
+
+        // Frequency-sweep stripe — accent on west wall (unchanged).
+        let inset = 0.05_f32;
+        let stripe_y0 = 0.5_f32;
+        let stripe_y1 = 1.5_f32;
+        self.emit_quad_uv(
+            [
+                [-h + inset, stripe_y0, h],
+                [-h + inset, stripe_y0, -h],
+                [-h + inset, stripe_y1, -h],
+                [-h + inset, stripe_y1, h],
+            ],
+            [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+            [1.0, 0.0, 0.0],
+            white,
+            MAT_OFF_WHITE,
+            PAT_FREQUENCY_SWEEP,
+        );
+    }
+
+    /// MaterialRoom : 30×6×30m room at z ∈ [28, 58]. Floor + ceiling + 4
+    /// walls (south wall has a 2m × 3m doorway connecting to corridor-N) +
+    /// 16 hovering material spheres in a 4×4 grid (one material per sphere).
+    fn emit_material_room(&mut self) {
+        let b = Room::MaterialRoom.bounds();
+        // Floor (off-white grid)
+        self.emit_room_floor(b, MAT_MATTE_GREY, PAT_GRID_1M);
+        // Ceiling
+        self.emit_room_ceiling(b, MAT_WARM_SKY, PAT_SOLID);
+        // 4 walls — south wall (z=28) has a doorway for corridor-N.
+        self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_SOLID, true);
+        self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
+        self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
+        self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
+
+        // 16 spheres (rendered as 1.5m-radius cubes for stage-0 — same
+        // approximation used by the diagnostic stress objects). Layout :
+        // 4 × 4 grid centered on the room, spaced 6m apart.
+        let cx = b.center()[0];
+        let cz = b.center()[2];
+        let radius = 1.5_f32;
+        let spacing = 6.0_f32;
+        let sphere_y = 3.0_f32; // hover at room-center y
+        for i in 0..4 {
+            for j in 0..4 {
+                let id = (i * 4 + j) as u32;
+                let mat = id % MATERIAL_LUT_LEN as u32;
+                let dx = (i as f32 - 1.5) * spacing;
+                let dz = (j as f32 - 1.5) * spacing;
+                let pos = [cx + dx, sphere_y, cz + dz];
+                self.emit_box(
+                    pos,
+                    [radius * 2.0, radius * 2.0, radius * 2.0],
+                    [1.0, 1.0, 1.0],
+                    mat,
+                    PAT_SOLID,
+                );
+            }
+        }
+    }
+
+    /// PatternRoom : 30×6×30m room at x ∈ [28, 58]. Floor is divided into
+    /// 16 squares (4×4) each rendering a different procedural pattern.
+    /// 4 walls — west wall (x=28) has a doorway for corridor-E.
+    fn emit_pattern_room(&mut self) {
+        let b = Room::PatternRoom.bounds();
+        // Floor : 16 quads, one per pattern. Iterate in a 4×4 grid.
+        let normal = [0.0, 1.0, 0.0];
+        let y = 0.0;
+        let xmin = b.min[0];
+        let zmin = b.min[2];
+        let lx = b.max[0] - b.min[0];
+        let lz = b.max[2] - b.min[2];
+        let dx = lx / 4.0;
+        let dz = lz / 4.0;
+        for i in 0..4 {
+            for j in 0..4 {
+                let id = (i * 4 + j) as u32;
+                let pat = id % crate::pattern::PATTERN_LUT_LEN as u32;
+                let x0 = xmin + i as f32 * dx;
+                let x1 = x0 + dx;
+                let z0 = zmin + j as f32 * dz;
+                let z1 = z0 + dz;
+                self.emit_quad_uv(
+                    [[x0, y, z0], [x0, y, z1], [x1, y, z1], [x1, y, z0]],
+                    [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]],
+                    normal,
+                    [1.0, 1.0, 1.0],
+                    MAT_MATTE_GREY,
+                    pat,
+                );
+            }
+        }
+        // Ceiling
+        self.emit_room_ceiling(b, MAT_OFF_WHITE, PAT_GRID_1M);
+        // 4 walls — west wall (x=28) has the door from corridor-E.
+        self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_SOLID, true);
+        self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+        self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+        self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+    }
+
+    /// ScaleRoom : 60×12×30m at z ∈ [-58, -28]. Long axis is X. Reference
+    /// markers at heights 1m·2m·3m·5m·10m every 5m along X. Grid floor.
+    /// 4 walls — north wall (z=-28) has a doorway for corridor-S.
+    fn emit_scale_room(&mut self) {
+        let b = Room::ScaleRoom.bounds();
+        // Floor : full 60×30 grid-1m
+        self.emit_room_floor(b, MAT_MATTE_GREY, PAT_GRID_1M);
+        // Ceiling
+        self.emit_room_ceiling(b, MAT_OFF_WHITE, PAT_SOLID);
+        // Walls — north wall (z=-28) has the door from corridor-S.
+        self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_SOLID, true);
+        self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_GRID_1M, false);
+        self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRID_1M, false);
+        self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_GRID_1M, false);
+
+        // Height-reference towers : at every 5m along X, place a column of
+        // boxes at heights 1m, 2m, 3m, 5m, 10m. Each is a 0.5m × Hm × 0.5m
+        // pillar. Z-position = b.min[2] + 5.0 (a row near the south wall).
+        let z_pos = b.min[2] + 5.0;
+        let heights = [1.0_f32, 2.0, 3.0, 5.0, 10.0];
+        let mat_palette = [
+            MAT_VERMILLION_LACQUER,
+            MAT_GOLD_LEAF,
+            MAT_BRUSHED_STEEL,
+            MAT_DICHROIC_VIOLET,
+            MAT_EMISSIVE_CYAN,
+        ];
+        let mut x_pos = b.min[0] + 5.0;
+        let mut idx = 0;
+        while x_pos < b.max[0] - 4.0 {
+            let h = heights[idx % heights.len()];
+            let mat = mat_palette[idx % mat_palette.len()];
+            self.emit_box(
+                [x_pos, h * 0.5, z_pos],
+                [0.5, h, 0.5],
+                [1.0, 1.0, 1.0],
+                mat,
+                PAT_SOLID,
+            );
+            x_pos += 5.0;
+            idx += 1;
+        }
+    }
+
+    /// ColorRoom : 30×6×30m at x ∈ [-58, -28]. Walls + floor + ceiling all
+    /// render different color-spaces : sRGB ramp on floor, linear ramp on
+    /// ceiling, gradient HSV on walls.
+    /// East wall (x=-28) has the doorway for corridor-W.
+    fn emit_color_room(&mut self) {
+        let b = Room::ColorRoom.bounds();
+        // Floor : sRGB grayscale ramp
+        self.emit_room_floor(b, MAT_MATTE_GREY, PAT_GRADIENT_GRAYSCALE);
+        // Ceiling : linear ramp (rendered as same gradient in stage-0)
+        self.emit_room_ceiling(b, MAT_OFF_WHITE, PAT_GRADIENT_HUE_WHEEL);
+        // 4 walls — east wall (x=-28) has the door from corridor-W.
+        // Each wall gets a different color gradient pattern :
+        //   N (z=+15) : hue gradient
+        //   E (x=-28) : door-side · saturation gradient
+        //   S (z=-15) : value gradient
+        //   W (x=-58) : Macbeth chart for direct comparison
+        self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRADIENT_HUE_WHEEL, true);
+        self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRADIENT_HUE_WHEEL, false);
+        self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_GRADIENT_GRAYSCALE, false);
+        self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_MACBETH_COLOR_CHART, false);
+    }
+
+    /// Emit floor for a room (a single quad covering the room footprint).
+    /// Floor normal = +Y. CCW from above.
+    fn emit_room_floor(&mut self, b: AxisAlignedBox, mat: u32, pat: u32) {
+        let xn = b.min[0];
+        let xp = b.max[0];
+        let zn = b.min[2];
+        let zp = b.max[2];
+        let y = b.min[1];
+        // CCW from above : (xn, zn) → (xn, zp) → (xp, zp) → (xp, zn).
+        self.emit_quad_uv(
+            [[xn, y, zn], [xn, y, zp], [xp, y, zp], [xp, y, zn]],
+            [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 1.0],
+            mat,
+            pat,
+        );
+    }
+
+    /// Emit ceiling for a room (a single quad). Normal = -Y. CCW from below.
+    fn emit_room_ceiling(&mut self, b: AxisAlignedBox, mat: u32, pat: u32) {
+        let xn = b.min[0];
+        let xp = b.max[0];
+        let zn = b.min[2];
+        let zp = b.max[2];
+        let y = b.max[1];
+        self.emit_quad_uv(
+            [[xn, y, zn], [xp, y, zn], [xp, y, zp], [xn, y, zp]],
+            [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+            [0.0, -1.0, 0.0],
+            [1.0, 1.0, 1.0],
+            mat,
+            pat,
+        );
+    }
+
+    /// Emit one wall of a room. If `with_door=true`, cuts a 2m × 3m gap in
+    /// the wall centered on the wall-axis (wall-x for N/S walls, wall-z for
+    /// E/W walls). Walls face INWARD (CCW from inside the room).
+    fn emit_room_wall_with_door(
+        &mut self,
+        b: AxisAlignedBox,
+        dir: Direction,
+        mat: u32,
+        pat: u32,
+        with_door: bool,
+    ) {
+        let dh_half = crate::room::DOORWAY_WIDTH * 0.5;
+        let door_h = crate::room::DOORWAY_HEIGHT;
+        let yb = b.min[1]; // floor
+        let yt = b.max[1]; // ceiling
+        let white = [1.0, 1.0, 1.0];
+
+        match dir {
+            Direction::North => {
+                // North wall : z = b.max[2], inner-normal = -Z. CCW from -Z side.
+                let z = b.max[2];
+                let xn = b.min[0];
+                let xp = b.max[0];
+                if !with_door {
+                    self.emit_quad_uv(
+                        [[xp, yb, z], [xn, yb, z], [xn, yt, z], [xp, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, -1.0],
+                        white,
+                        mat,
+                        pat,
+                    );
+                } else {
+                    // Door centered on x=cx, width 2m, height 3m.
+                    let cx = (xn + xp) * 0.5;
+                    let dxn = cx - dh_half;
+                    let dxp = cx + dh_half;
+                    // Left of door : x ∈ [xn, dxn]
+                    self.emit_quad_uv(
+                        [[dxn, yb, z], [xn, yb, z], [xn, yt, z], [dxn, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, -1.0],
+                        white, mat, pat,
+                    );
+                    // Right of door : x ∈ [dxp, xp]
+                    self.emit_quad_uv(
+                        [[xp, yb, z], [dxp, yb, z], [dxp, yt, z], [xp, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, -1.0],
+                        white, mat, pat,
+                    );
+                    // Lintel : x ∈ [dxn, dxp], y ∈ [door_h, yt]
+                    self.emit_quad_uv(
+                        [[dxp, door_h, z], [dxn, door_h, z], [dxn, yt, z], [dxp, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, -1.0],
+                        white, mat, pat,
+                    );
+                }
+            }
+            Direction::South => {
+                // South wall : z = b.min[2], inner-normal = +Z. CCW from +Z side.
+                let z = b.min[2];
+                let xn = b.min[0];
+                let xp = b.max[0];
+                if !with_door {
+                    self.emit_quad_uv(
+                        [[xn, yb, z], [xp, yb, z], [xp, yt, z], [xn, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, 1.0],
+                        white,
+                        mat,
+                        pat,
+                    );
+                } else {
+                    let cx = (xn + xp) * 0.5;
+                    let dxn = cx - dh_half;
+                    let dxp = cx + dh_half;
+                    // Left of door
+                    self.emit_quad_uv(
+                        [[xn, yb, z], [dxn, yb, z], [dxn, yt, z], [xn, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, 1.0],
+                        white, mat, pat,
+                    );
+                    // Right of door
+                    self.emit_quad_uv(
+                        [[dxp, yb, z], [xp, yb, z], [xp, yt, z], [dxp, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, 1.0],
+                        white, mat, pat,
+                    );
+                    // Lintel
+                    self.emit_quad_uv(
+                        [[dxn, door_h, z], [dxp, door_h, z], [dxp, yt, z], [dxn, yt, z]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [0.0, 0.0, 1.0],
+                        white, mat, pat,
+                    );
+                }
+            }
+            Direction::East => {
+                // East wall : x = b.max[0], inner-normal = -X. CCW from -X side.
+                let x = b.max[0];
+                let zn = b.min[2];
+                let zp = b.max[2];
+                if !with_door {
+                    self.emit_quad_uv(
+                        [[x, yb, zn], [x, yb, zp], [x, yt, zp], [x, yt, zn]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [-1.0, 0.0, 0.0],
+                        white,
+                        mat,
+                        pat,
+                    );
+                } else {
+                    let cz = (zn + zp) * 0.5;
+                    let dzn = cz - dh_half;
+                    let dzp = cz + dh_half;
+                    // Left of door (z ∈ [zn, dzn])
+                    self.emit_quad_uv(
+                        [[x, yb, zn], [x, yb, dzn], [x, yt, dzn], [x, yt, zn]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [-1.0, 0.0, 0.0],
+                        white, mat, pat,
+                    );
+                    // Right of door
+                    self.emit_quad_uv(
+                        [[x, yb, dzp], [x, yb, zp], [x, yt, zp], [x, yt, dzp]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [-1.0, 0.0, 0.0],
+                        white, mat, pat,
+                    );
+                    // Lintel
+                    self.emit_quad_uv(
+                        [[x, door_h, dzn], [x, door_h, dzp], [x, yt, dzp], [x, yt, dzn]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [-1.0, 0.0, 0.0],
+                        white, mat, pat,
+                    );
+                }
+            }
+            Direction::West => {
+                // West wall : x = b.min[0], inner-normal = +X. CCW from +X side.
+                let x = b.min[0];
+                let zn = b.min[2];
+                let zp = b.max[2];
+                if !with_door {
+                    self.emit_quad_uv(
+                        [[x, yb, zp], [x, yb, zn], [x, yt, zn], [x, yt, zp]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [1.0, 0.0, 0.0],
+                        white,
+                        mat,
+                        pat,
+                    );
+                } else {
+                    let cz = (zn + zp) * 0.5;
+                    let dzn = cz - dh_half;
+                    let dzp = cz + dh_half;
+                    // Left of door (z ∈ [dzp, zp])
+                    self.emit_quad_uv(
+                        [[x, yb, zp], [x, yb, dzp], [x, yt, dzp], [x, yt, zp]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [1.0, 0.0, 0.0],
+                        white, mat, pat,
+                    );
+                    // Right of door
+                    self.emit_quad_uv(
+                        [[x, yb, dzn], [x, yb, zn], [x, yt, zn], [x, yt, dzn]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [1.0, 0.0, 0.0],
+                        white, mat, pat,
+                    );
+                    // Lintel
+                    self.emit_quad_uv(
+                        [[x, door_h, dzp], [x, door_h, dzn], [x, yt, dzn], [x, yt, dzp]],
+                        [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                        [1.0, 0.0, 0.0],
+                        white, mat, pat,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Emit floor + ceiling + 2 side walls for each of the 4 corridors.
+    /// Corridors don't have end walls (those are the room walls with the
+    /// doorways). Each corridor is 4m wide × 8m tall × 8m long.
+    fn emit_corridors(&mut self) {
+        for c in Corridor::all() {
+            let b = c.bounds();
+            // Floor + ceiling (full corridor footprint)
+            self.emit_room_floor(b, MAT_MATTE_GREY, PAT_GRID_1M);
+            self.emit_room_ceiling(b, MAT_OFF_WHITE, PAT_GRID_1M);
+            // Side walls (the long sides of the corridor)
+            match c {
+                Corridor::North | Corridor::South => {
+                    // Corridor runs along Z ; side walls are at x=b.min[0] and
+                    // x=b.max[0] (extending the full Z range of the corridor).
+                    self.emit_room_wall_with_door(b, Direction::East, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+                    self.emit_room_wall_with_door(b, Direction::West, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+                }
+                Corridor::East | Corridor::West => {
+                    // Corridor runs along X ; side walls are at z=b.min[2] and
+                    // z=b.max[2].
+                    self.emit_room_wall_with_door(b, Direction::North, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+                    self.emit_room_wall_with_door(b, Direction::South, MAT_OFF_WHITE, PAT_GRID_100MM, false);
+                }
+            }
+        }
+        // Suppress unused-import warning when the corridor heights happen to
+        // already match ROOM_HEIGHT (8m) ; we keep the import for clarity.
+        let _ = CORRIDOR_HEIGHT;
+        let _ = doorways;
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -964,5 +1560,115 @@ mod tests {
         assert!(g.transparent_index_range.is_some());
         let (lo, hi) = g.transparent_index_range.unwrap();
         assert!(hi > lo, "transparent range must be nonempty");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // § T11-LOA-ROOMS · multi-room geometry tests
+    // ──────────────────────────────────────────────────────────────────
+
+    /// `full_world()` returns geometry strictly LARGER than `test_room()`.
+    /// (5 rooms + 4 corridors emit thousands of additional vertices.)
+    #[test]
+    fn full_world_has_more_vertices_than_test_room() {
+        let one = RoomGeometry::test_room();
+        let all = RoomGeometry::full_world();
+        assert!(
+            all.vertices.len() > one.vertices.len(),
+            "full_world ({}) must exceed test_room ({})",
+            all.vertices.len(),
+            one.vertices.len()
+        );
+    }
+
+    /// `full_world` plinth-count : the 14 TestRoom plinths are still emitted.
+    #[test]
+    fn full_world_preserves_test_room_plinth_count() {
+        let g = RoomGeometry::full_world();
+        assert_eq!(
+            g.plinth_count, 14,
+            "full_world keeps the 14 TestRoom plinths intact"
+        );
+    }
+
+    /// MaterialRoom must contribute exactly 16 cube-spheres (= 96 quads = 384 verts).
+    /// We detect them by counting boxes at y ≈ 3.0 within the MaterialRoom AABB.
+    #[test]
+    fn room_material_room_has_16_spheres() {
+        let g = RoomGeometry::full_world();
+        let mb = crate::room::Room::MaterialRoom.bounds();
+        // Each sphere is a box ; we detect the +Y face's first-vertex which
+        // lives at y = 3.0 + 1.5 = 4.5 (top of the cube). The +Y face has
+        // normal = (0,1,0). 16 spheres × 4 verts on +Y face = 64 verts.
+        let mut count = 0;
+        let mut i = 0;
+        while i < g.vertices.len() {
+            let v = g.vertices[i];
+            let inside = v.position[0] >= mb.min[0] - 2.0
+                && v.position[0] <= mb.max[0] + 2.0
+                && v.position[2] >= mb.min[2] - 2.0
+                && v.position[2] <= mb.max[2] + 2.0;
+            if inside
+                && (v.normal[1] - 1.0).abs() < 1e-3
+                && (v.position[1] - 4.5).abs() < 1e-3
+            {
+                count += 1;
+            }
+            i += 4;
+        }
+        assert_eq!(count, 16, "MaterialRoom must emit 16 hovering spheres");
+    }
+
+    /// PatternRoom floor must be tiled into 16 distinct floor quads, each
+    /// using a different pattern_id (modulo PATTERN_LUT_LEN).
+    #[test]
+    fn room_pattern_room_has_16_floor_tiles() {
+        let g = RoomGeometry::full_world();
+        let pb = crate::room::Room::PatternRoom.bounds();
+        // Find +Y-normal vertices at y=0 inside the PatternRoom bounds.
+        let mut tile_count = 0;
+        let mut i = 0;
+        while i < g.vertices.len() {
+            let v = g.vertices[i];
+            let inside = v.position[0] >= pb.min[0]
+                && v.position[0] <= pb.max[0]
+                && v.position[2] >= pb.min[2]
+                && v.position[2] <= pb.max[2];
+            if inside && (v.normal[1] - 1.0).abs() < 1e-3 && v.position[1].abs() < 1e-3 {
+                tile_count += 1;
+            }
+            i += 4;
+        }
+        assert_eq!(tile_count, 16, "PatternRoom must emit 16 floor tiles");
+    }
+
+    /// World-bounds envelope check : `full_world()`'s vertices are all
+    /// within the 120m × 12m × 120m budget computed by `world_envelope`.
+    #[test]
+    fn full_world_vertices_within_envelope() {
+        let g = RoomGeometry::full_world();
+        let env = crate::room::world_envelope();
+        for v in &g.vertices {
+            assert!(v.position[0] >= env.min[0] - 0.5);
+            assert!(v.position[0] <= env.max[0] + 0.5);
+            assert!(v.position[1] >= env.min[1] - 0.5);
+            assert!(v.position[1] <= env.max[1] + 0.5);
+            assert!(v.position[2] >= env.min[2] - 0.5);
+            assert!(v.position[2] <= env.max[2] + 0.5);
+        }
+    }
+
+    /// Bonus : verify the full_world vertex budget is reasonable. With 5
+    /// rooms + 4 corridors + doorways + plinths + 16 spheres + 12 height
+    /// markers, total vertex-count should land below 8000. (Loose upper
+    /// bound — mostly a sanity check that we're not accidentally emitting
+    /// quads in a hot loop.)
+    #[test]
+    fn geometry_emit_all_5_rooms_total_vertex_count_under_8000() {
+        let g = RoomGeometry::full_world();
+        assert!(
+            g.vertices.len() < 8000,
+            "full_world emitted {} verts (budget 8000)",
+            g.vertices.len()
+        );
     }
 }

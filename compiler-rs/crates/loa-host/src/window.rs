@@ -186,7 +186,8 @@ impl App {
             player: PlayerCamera::new(),
             render_camera: RenderCamera::default(),
             input: InputState::new(),
-            collider: RoomCollider::test_room(),
+            // T11-LOA-ROOMS : multi-room collider (TestRoom hub + 4 satellites).
+            collider: RoomCollider::full_world(),
             dm: DmRuntime::new(),
             engine_state,
             last_frame_at: None,
@@ -493,6 +494,11 @@ impl App {
             None => [16.7; 60],
         };
 
+        // § T11-LOA-ROOMS : compute the current room (or corridor label) from
+        // the camera's eye-position. Updated every frame so the HUD reflects
+        // the player's location in real-time.
+        let current_room = crate::room::room_label_at(self.player.pos).to_string();
+
         HudContext {
             frame: self.frame_count,
             fps: self.fps_smoothed,
@@ -508,6 +514,7 @@ impl App {
             facing_material: mat,
             facing_pattern: facing_pattern_name.to_string(),
             frame_times_ms,
+            current_room,
         }
     }
 

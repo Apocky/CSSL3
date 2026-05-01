@@ -271,6 +271,20 @@ pub fn tool_registry() -> ToolRegistry {
         render_spawn_stress
     );
 
+    // ─ T11-LOA-ROOMS : multi-room test-suite navigation ─
+    reg!(
+        "room.list",
+        "List the 5 diagnostic rooms (TestRoom + Material/Pattern/Scale/Color) with bounds + descriptions.",
+        false,
+        room_list
+    );
+    reg!(
+        "room.teleport",
+        "Teleport the camera to a named room (params: room_id string e.g. \"MaterialRoom\").",
+        true,
+        room_teleport
+    );
+
     r
 }
 
@@ -824,6 +838,63 @@ fn render_spawn_stress(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-ROOMS · room.list + room.teleport handlers
+// ───────────────────────────────────────────────────────────────────────
+
+fn room_list(_state: &mut EngineState, _params: Value) -> Value {
+    use crate::room::Room;
+    let mut entries = Vec::with_capacity(crate::room::ROOM_COUNT as usize);
+    for r in Room::all() {
+        let b = r.bounds();
+        entries.push(json!({
+            "id": r as u32,
+            "name": r.name(),
+            "description": r.description(),
+            "bounds_min": b.min,
+            "bounds_max": b.max,
+            "spawn_eye": r.spawn_eye_position(),
+        }));
+    }
+    json!({
+        "rooms": entries,
+        "count": crate::room::ROOM_COUNT,
+    })
+}
+
+fn room_teleport(state: &mut EngineState, params: Value) -> Value {
+    use crate::room::Room;
+    let room_id = p_str(&params, "room_id", "");
+    let Some(room) = Room::from_str(room_id) else {
+        return json!({
+            "ok": false,
+            "error": format!("unknown room_id '{room_id}'. Valid: TestRoom · MaterialRoom · PatternRoom · ScaleRoom · ColorRoom"),
+        });
+    };
+    // Snap camera state immediately so engine.state reflects the new pos
+    // for the very next read.
+    let spawn = room.spawn_eye_position();
+    let prior = state.camera.pos;
+    state.camera.pos = crate::mcp_server::Vec3::new(spawn[0], spawn[1], spawn[2]);
+    // Also raise the FFI pending-flag so the live render-loop snaps.
+    let rc = crate::ffi::__cssl_room_teleport(room as u32, 0xCAFE_BABE_DEAD_BEEF);
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "room.teleport · {} → {} ({:.2},{:.2},{:.2})",
+            room_id, room.name(), spawn[0], spawn[1], spawn[2]
+        ),
+    );
+    json!({
+        "ok": rc == 0,
+        "room_id": room.name(),
+        "from": [prior.x, prior.y, prior.z],
+        "to": spawn,
+        "rc": rc,
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Morton + FFI helpers
 // ───────────────────────────────────────────────────────────────────────
 
@@ -882,10 +953,10 @@ mod tests {
 
     #[test]
     fn tools_list_returns_24_tools() {
-        // 17 baseline (T11-LOA-HOST-3) + 7 new render-control tools
-        // (T11-LOA-RICH-RENDER) = 24 total.
+        // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
+        // + 2 multi-room (T11-LOA-ROOMS · room.list + room.teleport) = 26 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 24, "must have exactly 24 tools");
+        assert_eq!(reg.len(), 26, "must have exactly 26 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -913,6 +984,9 @@ mod tests {
             "render.set_floor_pattern",
             "render.set_material",
             "render.spawn_stress",
+            // T11-LOA-ROOMS additions :
+            "room.list",
+            "room.teleport",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -933,6 +1007,7 @@ mod tests {
             "render.list_patterns",
             "render.list_materials",
             "render.snapshot",
+            "room.list",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -956,6 +1031,7 @@ mod tests {
             "render.set_floor_pattern",
             "render.set_material",
             "render.spawn_stress",
+            "room.teleport",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
@@ -1129,10 +1205,10 @@ mod tests {
     fn tools_list_handler_count_matches_registry() {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
-        // 17 baseline + 7 render-control = 24 (T11-LOA-RICH-RENDER).
-        assert_eq!(v["count"], 24);
+        // 17 baseline + 7 render-control + 2 room (T11-LOA-ROOMS) = 26.
+        assert_eq!(v["count"], 26);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 24);
+        assert_eq!(arr.len(), 26);
     }
 
     #[test]
@@ -1160,5 +1236,50 @@ mod tests {
         );
         assert_eq!(v["accepted"], true);
         assert_eq!(v["target"], "the-glacier");
+    }
+
+    // § T11-LOA-ROOMS · MCP room.list + room.teleport tests
+    #[test]
+    fn mcp_room_list_returns_five_rooms() {
+        let mut s = EngineState::default();
+        let v = room_list(&mut s, json!({}));
+        assert_eq!(v["count"], 5);
+        let arr = v["rooms"].as_array().unwrap();
+        assert_eq!(arr.len(), 5);
+        // Spot-check each name appears.
+        let names: Vec<&str> = arr.iter().map(|r| r["name"].as_str().unwrap()).collect();
+        for required in &["TestRoom", "MaterialRoom", "PatternRoom", "ScaleRoom", "ColorRoom"] {
+            assert!(names.contains(required), "missing room {required}");
+        }
+    }
+
+    #[test]
+    fn mcp_room_teleport_snaps_camera_to_room_center() {
+        let mut s = EngineState::default();
+        let v = room_teleport(
+            &mut s,
+            json!({
+                "sovereign_cap": SOVEREIGN_CAP,
+                "room_id": "MaterialRoom",
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        // MaterialRoom center is at z=43 (spawn-eye is (0, 1.55, 43))
+        assert!((s.camera.pos.z - 43.0).abs() < 0.1);
+        assert!((s.camera.pos.y - 1.55).abs() < 0.01);
+    }
+
+    #[test]
+    fn mcp_room_teleport_rejects_unknown_room() {
+        let mut s = EngineState::default();
+        let v = room_teleport(
+            &mut s,
+            json!({
+                "sovereign_cap": SOVEREIGN_CAP,
+                "room_id": "NonExistentRoom",
+            }),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("NonExistentRoom"));
     }
 }
