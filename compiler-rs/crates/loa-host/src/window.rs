@@ -609,7 +609,11 @@ impl App {
 
         // § Special-handler keys : these don't translate to a movement axis,
         // they trigger window-side actions. Suppress further routing.
-        if pressed {
+        // § T11-WAVE3-TEXTINPUT : while the text-input is focused, we
+        // suppress F11/Esc/Tab's global behaviors so the box's own
+        // semantics (Esc=cancel, Enter=submit) take precedence.
+        let text_input_focused = self.input.text_input.focused;
+        if pressed && !text_input_focused {
             if let PhysicalKey::Code(code) = physical {
                 match code {
                     KeyCode::F11 => {
@@ -661,7 +665,13 @@ impl App {
             // F11 stays special-handled (fullscreen) — it never reaches here.
             PhysicalKey::Code(KeyCode::F12) => VirtualKey::F12,
             PhysicalKey::Code(KeyCode::KeyC) => VirtualKey::C,
-            // Menu navigation keys
+            // § T11-WAVE3-TEXTINPUT : `/` focuses the text-input box,
+            // Backspace edits the buffer. Both also act as no-ops outside
+            // the focused box.
+            PhysicalKey::Code(KeyCode::Slash) => VirtualKey::Slash,
+            PhysicalKey::Code(KeyCode::Backspace) => VirtualKey::Backspace,
+            // Menu navigation keys (also handle Enter as text-submit when
+            // text-input is focused, see InputState::handle_key).
             PhysicalKey::Code(KeyCode::ArrowUp) => VirtualKey::ArrowUp,
             PhysicalKey::Code(KeyCode::ArrowDown) => VirtualKey::ArrowDown,
             PhysicalKey::Code(KeyCode::ArrowLeft) => VirtualKey::ArrowLeft,
@@ -676,7 +686,36 @@ impl App {
         // The InputState already toggles paused on Tab-press ; we observe
         // the state-after for the cursor-grab side-effect.
         let was_paused = self.paused;
+        // § T11-WAVE3-TEXTINPUT : capture the focus state BEFORE dispatch
+        // so we know whether the focusing-`/` keypress should be absorbed
+        // (the box opens empty) or forwarded as a printable char (a `/`
+        // typed inside an already-focused box). Same logic for any other
+        // text-producing key.
+        let was_text_input_focused = self.input.text_input.focused;
         self.input.handle_event(&RawEvent::Key { vk, pressed });
+
+        // § T11-WAVE3-TEXTINPUT : if the text-input was ALREADY focused
+        // before this keypress AND the key produced printable text, emit
+        // a TypeChar event so the buffer fills.
+        //
+        // We emit chars ONLY for keys that aren't "control" inside the box.
+        // Backspace + Enter + Escape are handled directly by the
+        // VirtualKey arm. Keys that produce no text (arrow keys, F-keys,
+        // etc.) leave key.text == None.
+        if pressed && was_text_input_focused {
+            if let Some(text) = key.text.as_ref() {
+                for c in text.chars() {
+                    // Filter control chars : Backspace, Enter, Esc all
+                    // produce control codepoints in `text` on some
+                    // platforms. The InputState already rejects controls
+                    // in `type_char`, but we filter here to keep the
+                    // chars-typed counter honest.
+                    if !c.is_control() {
+                        self.input.handle_event(&RawEvent::TypeChar { c });
+                    }
+                }
+            }
+        }
 
         // Sync our pause-state mirror from the input-state's toggle.
         self.paused = self.input.paused;
@@ -911,6 +950,13 @@ impl App {
             .map(|r| r.cfer.cfer_intensity())
             .unwrap_or(0.10);
 
+        // § T11-WAVE3-TEXTINPUT : populate text-input fields for the HUD.
+        let text_input_focused = self.input.text_input.focused;
+        let text_input_buffer = self.input.text_input.buffer.clone();
+        let text_input_cursor = self.input.text_input.cursor;
+        let text_input_history: Vec<String> =
+            self.input.text_input.history.iter().cloned().collect();
+
         HudContext {
             frame: self.frame_count,
             fps: self.fps_smoothed,
@@ -933,6 +979,11 @@ impl App {
             burst_status,
             video_status,
             cfer_intensity,
+            text_input_focused,
+            text_input_buffer,
+            text_input_cursor,
+            text_input_history,
+            text_input_blink_frame: self.frame_count,
         }
     }
 
@@ -1215,6 +1266,84 @@ impl App {
                     g.cfer.cfer_intensity = new_intensity;
                 }
             }
+        }
+
+        // § T11-WAVE3-TEXTINPUT : per-frame text-input drain.
+        //
+        // 1. If a submission landed THIS frame, log it + bump telemetry.
+        // 2. If MCP queued an `inject` payload, push it through the same
+        //    submit-path the keyboard uses (focuses the box if needed,
+        //    overwrites the buffer, submits, restores prior focus).
+        // 3. Mirror the new state into EngineState so MCP read-only tools
+        //    see fresh values.
+        if let Some(submitted) = frame.text_input.submission.as_ref() {
+            let now_ms = unix_ms_safe();
+            let char_len = submitted.chars().count() as u32;
+            telem::global().record_text_input_submission(char_len);
+            log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "text-input · submit · ts={} · char_len={} · payload={:?}",
+                    now_ms, char_len, submitted
+                ),
+            );
+            // HUD echo : surface the latest submission on the bottom-left
+            // recent-event line so the user gets immediate feedback.
+            self.recent_event = format!("input: {submitted}");
+        }
+        if frame.text_input.chars_typed > 0 {
+            telem::global().record_text_input_chars(frame.text_input.chars_typed);
+        }
+        // Drain MCP `text_input.inject` if any.
+        let inject_pending = match self.engine_state.lock() {
+            Ok(mut g) => g.text_input.inject_pending.take(),
+            Err(_) => None,
+        };
+        if let Some(text) = inject_pending {
+            // Save the current focus + buffer + cursor so we can restore
+            // them after the injected submit. (Common case : the box is
+            // unfocused and we briefly focus to push through the same
+            // history-pipeline the user would.)
+            let prior_focus = self.input.text_input.focused;
+            let prior_buffer = std::mem::take(&mut self.input.text_input.buffer);
+            let prior_cursor = self.input.text_input.cursor;
+            self.input.text_input.focus();
+            self.input.text_input.buffer = text;
+            self.input.text_input.cursor = self.input.text_input.buffer.chars().count();
+            if let Some(submitted) = self.input.text_input.submit() {
+                let char_len = submitted.chars().count() as u32;
+                telem::global().record_text_input_submission(char_len);
+                log_event(
+                    "INFO",
+                    "loa-host/window",
+                    &format!(
+                        "text-input · inject-submit · char_len={} · payload={:?}",
+                        char_len, submitted
+                    ),
+                );
+                self.recent_event = format!("inject: {submitted}");
+            }
+            // Restore prior buffer + cursor + focus so a Sovereign mid-edit
+            // isn't disrupted by an MCP inject.
+            self.input.text_input.buffer = prior_buffer;
+            self.input.text_input.cursor = prior_cursor;
+            if !prior_focus {
+                self.input.text_input.unfocus();
+            }
+        }
+        // Mirror the post-frame text-input state into EngineState.
+        if let Ok(mut g) = self.engine_state.lock() {
+            g.text_input.focused = self.input.text_input.focused;
+            g.text_input.buffer = self.input.text_input.buffer.clone();
+            g.text_input.history =
+                self.input.text_input.history.iter().cloned().collect();
+            g.text_input.submissions_total = telem::global()
+                .text_input_submissions_total
+                .load(std::sync::atomic::Ordering::Relaxed);
+            g.text_input.chars_typed_total = telem::global()
+                .text_input_chars_typed_total
+                .load(std::sync::atomic::Ordering::Relaxed);
         }
         // Keep input.paused mirror in sync with menu_open : when the menu is
         // open, the input layer's `paused` reflects that. When menu closes,

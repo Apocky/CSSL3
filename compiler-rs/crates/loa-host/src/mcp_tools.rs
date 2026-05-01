@@ -466,6 +466,20 @@ pub fn tool_registry() -> ToolRegistry {
         render_stop_video
     );
 
+    // ─ T11-WAVE3-TEXTINPUT : in-game text-input box ─
+    reg!(
+        "text_input.submit_history",
+        "Return the last 5 in-game text-input submissions (oldest-first) plus the current focus + buffer.",
+        false,
+        text_input_submit_history
+    );
+    reg!(
+        "text_input.inject",
+        "Programmatically submit text as if the user typed it and pressed Enter (params: text). Pushes through the same path as a keyboard submit.",
+        true,
+        text_input_inject
+    );
+
 
     // ─ T11-LOA-SENSORY : full MCP sensory + proprioception harness ─
     // 9 axes · 25 sense.* tools · all read-only · all no-cap
@@ -2184,6 +2198,53 @@ fn render_stop_video(state: &mut EngineState, _params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-TEXTINPUT · in-game text-input box handlers
+// ───────────────────────────────────────────────────────────────────────
+
+/// `text_input.submit_history` — read-only mirror of the in-game text-input
+/// box state : focus + buffer + last 5 submissions + telemetry counters.
+fn text_input_submit_history(state: &mut EngineState, _params: Value) -> Value {
+    json!({
+        "focused": state.text_input.focused,
+        "buffer": state.text_input.buffer,
+        "history": state.text_input.history,
+        "submissions_total": state.text_input.submissions_total,
+        "chars_typed_total": state.text_input.chars_typed_total,
+    })
+}
+
+/// `text_input.inject` — programmatically submit text as if the user typed
+/// it and pressed Enter. Mutating · sovereign-cap-gated. The render loop
+/// drains `text_input.inject_pending` on the next frame and routes the
+/// payload through the same submit-path the keyboard uses.
+fn text_input_inject(state: &mut EngineState, params: Value) -> Value {
+    let Some(text) = params.get("text").and_then(Value::as_str) else {
+        return json!({"error": "missing string param 'text'"});
+    };
+    if text.is_empty() {
+        return json!({"error": "text must be non-empty"});
+    }
+    // Cap the inject at the same buffer-cap the keyboard path enforces.
+    // Use the canonical const from the input module to stay in lock-step.
+    let max = crate::input::TEXT_INPUT_MAX_BUFFER;
+    let trimmed: String = text.chars().take(max).collect();
+    state.text_input.inject_pending = Some(trimmed.clone());
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "text_input.inject · queued · char_len={}",
+            trimmed.chars().count()
+        ),
+    );
+    json!({
+        "ok": true,
+        "queued": trimmed,
+        "char_len": trimmed.chars().count(),
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § T11-LOA-SENSORY · sense.* MCP tool dispatch handlers
 // ───────────────────────────────────────────────────────────────────────
 //
@@ -2350,9 +2411,11 @@ mod tests {
         // + 32 sensory harness (T11-LOA-SENSORY · 9 axes : visual 4 · audio 3 ·
         //   spatial 3 · interoception 4 · diagnostic 4 · temporal 3 · causal 3 ·
         //   network 2 · environmental 5 · combined 1)
-        // = 84 total.
+        // + 2 text-input (T11-WAVE3-TEXTINPUT · text_input.submit_history
+        //   + text_input.inject)
+        // = 86 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 84, "must have exactly 84 tools");
+        assert_eq!(reg.len(), 86, "must have exactly 86 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -2691,6 +2754,69 @@ mod tests {
     }
 
     #[test]
+    fn text_input_submit_history_returns_focus_buffer_history() {
+        // Default state : unfocused, empty buffer, empty history.
+        let mut s = EngineState::default();
+        let v = text_input_submit_history(&mut s, json!({}));
+        assert_eq!(v["focused"], json!(false));
+        assert_eq!(v["buffer"], json!(""));
+        assert_eq!(v["history"], json!([]));
+        assert_eq!(v["submissions_total"], json!(0));
+        assert_eq!(v["chars_typed_total"], json!(0));
+        // Populate the mirror and re-query.
+        s.text_input.focused = true;
+        s.text_input.buffer = "drafting".to_string();
+        s.text_input.history = vec!["a".to_string(), "bb".to_string(), "ccc".to_string()];
+        s.text_input.submissions_total = 3;
+        s.text_input.chars_typed_total = 12;
+        let v = text_input_submit_history(&mut s, json!({}));
+        assert_eq!(v["focused"], json!(true));
+        assert_eq!(v["buffer"], json!("drafting"));
+        assert_eq!(v["history"], json!(["a", "bb", "ccc"]));
+        assert_eq!(v["submissions_total"], json!(3));
+        assert_eq!(v["chars_typed_total"], json!(12));
+    }
+
+    #[test]
+    fn text_input_inject_queues_pending_submission() {
+        let mut s = EngineState::default();
+        assert!(s.text_input.inject_pending.is_none());
+        let v = text_input_inject(
+            &mut s,
+            json!({"sovereign_cap": "0xCAFE_BABE_DEADBEEF", "text": "hello world"}),
+        );
+        assert_eq!(v["ok"], json!(true));
+        assert_eq!(v["queued"], json!("hello world"));
+        assert_eq!(v["char_len"], json!(11));
+        assert_eq!(s.text_input.inject_pending.as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn text_input_inject_rejects_empty_text() {
+        let mut s = EngineState::default();
+        let v = text_input_inject(
+            &mut s,
+            json!({"sovereign_cap": "0xCAFE_BABE_DEADBEEF", "text": ""}),
+        );
+        assert!(v.get("error").is_some());
+        assert!(s.text_input.inject_pending.is_none());
+    }
+
+    #[test]
+    fn text_input_inject_caps_at_max_buffer() {
+        let mut s = EngineState::default();
+        // 300 chars : should be truncated to 256 (TEXT_INPUT_MAX_BUFFER).
+        let payload: String = std::iter::repeat('z').take(300).collect();
+        let v = text_input_inject(
+            &mut s,
+            json!({"sovereign_cap": "0xCAFE_BABE_DEADBEEF", "text": payload}),
+        );
+        assert_eq!(v["char_len"], json!(crate::input::TEXT_INPUT_MAX_BUFFER));
+        let pending = s.text_input.inject_pending.as_ref().unwrap();
+        assert_eq!(pending.chars().count(), crate::input::TEXT_INPUT_MAX_BUFFER);
+    }
+
+    #[test]
     fn tools_list_handler_count_matches_registry() {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
@@ -2698,10 +2824,12 @@ mod tests {
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
         // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
         // + 3 cfer (T11-LOA-FID-CFER) + 4 userfix (T11-LOA-USERFIX)
-        // + 32 sensory (T11-LOA-SENSORY) = 84.
-        assert_eq!(v["count"], 84);
+        // + 32 sensory (T11-LOA-SENSORY)
+        // + 2 text-input (T11-WAVE3-TEXTINPUT · text_input.submit_history,
+        //   text_input.inject) = 86.
+        assert_eq!(v["count"], 86);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 84);
+        assert_eq!(arr.len(), 86);
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests

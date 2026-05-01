@@ -276,6 +276,14 @@ pub struct TelemetrySink {
     /// Total burst-capture sequences started (each F9 starts one burst).
     pub burst_captures_total: AtomicU64,
 
+    // § T11-WAVE3-TEXTINPUT : in-game text-input-box telemetry.
+    /// Total submissions from the in-game text-input box (Enter pressed
+    /// while focused with non-empty buffer).
+    pub text_input_submissions_total: AtomicU64,
+    /// Total chars typed into the text-input box (counts only chars that
+    /// landed in the buffer ; over-cap chars are excluded).
+    pub text_input_chars_typed_total: AtomicU64,
+
     // § Sliding-window percentile snapshots (Q14 fixed-point milliseconds)
     pub last_p50_q14: AtomicU32,
     pub last_p95_q14: AtomicU32,
@@ -367,6 +375,8 @@ impl TelemetrySink {
             // Default intensity 0.10 → Q14 = 1638.
             cfer_intensity_current_q14: AtomicU32::new(1638),
             burst_captures_total: AtomicU64::new(0),
+            text_input_submissions_total: AtomicU64::new(0),
+            text_input_chars_typed_total: AtomicU64::new(0),
             last_p50_q14: AtomicU32::new(0),
             last_p95_q14: AtomicU32::new(0),
             last_p99_q14: AtomicU32::new(0),
@@ -538,6 +548,31 @@ impl TelemetrySink {
             .store(q14, Ordering::Relaxed);
     }
 
+    /// § T11-WAVE3-TEXTINPUT : record a text-input submission. Increments
+    /// the lifetime counter and emits a JSONL event with the payload
+    /// length (NOT the payload itself — the box is a Sovereign-facing
+    /// surface and we keep submission CONTENT in the bounded MCP history,
+    /// not the bulk telemetry stream).
+    pub fn record_text_input_submission(&self, char_len: u32) {
+        self.text_input_submissions_total
+            .fetch_add(1, Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"text_input_submission\",\"char_len\":{}}}",
+            iso_utc(unix_ms()),
+            char_len,
+        );
+        self.append_jsonl(&evt);
+    }
+
+    /// § T11-WAVE3-TEXTINPUT : record a batch of chars typed during one
+    /// frame (per-frame consume_frame drains the count once).
+    pub fn record_text_input_chars(&self, count: u32) {
+        if count > 0 {
+            self.text_input_chars_typed_total
+                .fetch_add(u64::from(count), Ordering::Relaxed);
+        }
+    }
+
     /// § T11-LOA-FID-STOKES : record a per-frame Mueller-apply roll-up.
     ///
     /// Updates the per-frame snapshot counters AND the cumulative total.
@@ -630,7 +665,9 @@ impl TelemetrySink {
              \"dop_avg_per_frame\":{:.4},\"dop_max_per_frame\":{:.4},\
              \"render_mode_changes_total\":{},\"screenshot_captures_total\":{},\
              \"video_frames_recorded_total\":{},\"burst_captures_total\":{},\
-             \"cfer_intensity\":{:.4}}}",
+             \"cfer_intensity\":{:.4},\
+             \"text_input_submissions_total\":{},\
+             \"text_input_chars_typed_total\":{}}}",
             iso_utc(now),
             uptime_ms,
             frames,
@@ -656,6 +693,8 @@ impl TelemetrySink {
             self.video_frames_recorded_total.load(Ordering::Relaxed),
             self.burst_captures_total.load(Ordering::Relaxed),
             cfer_intensity,
+            self.text_input_submissions_total.load(Ordering::Relaxed),
+            self.text_input_chars_typed_total.load(Ordering::Relaxed),
         )
     }
 

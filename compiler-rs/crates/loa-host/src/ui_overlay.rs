@@ -748,6 +748,19 @@ pub struct HudContext {
     /// § T11-LOA-USERFIX : current CFER atmospheric intensity (0..1) so
     /// the bottom-right HUD can surface "fog: OFF" / "fog: 10%".
     pub cfer_intensity: f32,
+    /// § T11-WAVE3-TEXTINPUT : true while the in-game text-input box is
+    /// focused. When true the box + cursor + recent-history overlay is drawn.
+    pub text_input_focused: bool,
+    /// § T11-WAVE3-TEXTINPUT : current text-input edit buffer.
+    pub text_input_buffer: String,
+    /// § T11-WAVE3-TEXTINPUT : insert-cursor position (char index).
+    pub text_input_cursor: usize,
+    /// § T11-WAVE3-TEXTINPUT : last 5 submissions (oldest-first), drawn
+    /// stacked above the text-input box at 50% alpha.
+    pub text_input_history: Vec<String>,
+    /// § T11-WAVE3-TEXTINPUT : monotonic frame counter used for cursor
+    /// blink. Reuse hud.frame to avoid plumbing a separate timer.
+    pub text_input_blink_frame: u64,
 }
 
 impl Default for HudContext {
@@ -774,6 +787,11 @@ impl Default for HudContext {
             burst_status: None,
             video_status: None,
             cfer_intensity: 0.10,
+            text_input_focused: false,
+            text_input_buffer: String::new(),
+            text_input_cursor: 0,
+            text_input_history: Vec::new(),
+            text_input_blink_frame: 0,
         }
     }
 }
@@ -880,6 +898,13 @@ pub fn build_overlay_vertices(
 
     // CENTER : 5x5 crosshair (white outline + black halo)
     push_crosshair(sw * 0.5, sh * 0.5, &mut out);
+
+    // § T11-WAVE3-TEXTINPUT : in-game text-input box. Visible whenever the
+    // box is focused. Rendered last so it draws ON TOP of the HUD strings
+    // along the bottom edge.
+    if hud.text_input_focused {
+        push_text_input_box(sw, sh, hud, &mut out);
+    }
 
     // ─── TOP-CENTER : T11-LOA-TEST-APP capture indicators ───
     {
@@ -1012,6 +1037,123 @@ pub fn push_crosshair(cx: f32, cy: f32, out: &mut Vec<UiVertex>) {
     // White 3x1 horizontal + 1x3 vertical bars (forms a plus inside)
     push_solid_rect(out, cx - 1.5, cy - 0.5, 3.0, 1.0, COLOR_WHITE);
     push_solid_rect(out, cx - 0.5, cy - 1.5, 1.0, 3.0, COLOR_WHITE);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-TEXTINPUT — text-input box render
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Box dimensions for the in-game text-input. Centered horizontally,
+/// 100 px from the bottom of the viewport.
+pub const TEXT_INPUT_BOX_W: f32 = 800.0;
+/// Box height (60 px, room for the 16-px font + 22 px padding above + below).
+pub const TEXT_INPUT_BOX_H: f32 = 60.0;
+/// Vertical offset of the box top edge from the BOTTOM of the screen.
+/// (`100` per spec : the box's BOTTOM edge sits 100 px from the screen bottom).
+pub const TEXT_INPUT_BOTTOM_OFFSET: f32 = 100.0;
+/// Inner padding from the box border to the first glyph.
+pub const TEXT_INPUT_INNER_PAD: f32 = 12.0;
+/// Border thickness (px).
+pub const TEXT_INPUT_BORDER_PX: f32 = 2.0;
+/// Cursor blink period in frames (60-frame on, 60-frame off → 1Hz @ 60fps).
+pub const TEXT_INPUT_BLINK_PERIOD_FRAMES: u64 = 60;
+
+/// Push the in-game text-input box, cursor, and recent-history rows.
+/// Called from `build_overlay_vertices` when `hud.text_input_focused == true`.
+pub fn push_text_input_box(sw: f32, sh: f32, hud: &HudContext, out: &mut Vec<UiVertex>) {
+    let scale = TEXT_SCALE;
+    let line = LINE_HEIGHT_PX * scale;
+    let glyph_px = (CELL_W as f32) * scale;
+    let glyph_h = (CELL_H as f32) * scale;
+
+    // Box position : centered horizontally, BOTTOM edge sits 100 px from
+    // the bottom of the viewport.
+    let box_w = TEXT_INPUT_BOX_W.min(sw - 40.0);
+    let box_h = TEXT_INPUT_BOX_H;
+    let box_x = (sw - box_w) * 0.5;
+    let box_y = sh - TEXT_INPUT_BOTTOM_OFFSET - box_h;
+
+    // ── Border : 4 thin solid rects in white forming a 2-px frame ──
+    let border = TEXT_INPUT_BORDER_PX;
+    // Top edge
+    push_solid_rect(out, box_x, box_y, box_w, border, COLOR_WHITE);
+    // Bottom edge
+    push_solid_rect(out, box_x, box_y + box_h - border, box_w, border, COLOR_WHITE);
+    // Left edge
+    push_solid_rect(out, box_x, box_y, border, box_h, COLOR_WHITE);
+    // Right edge
+    push_solid_rect(out, box_x + box_w - border, box_y, border, box_h, COLOR_WHITE);
+
+    // ── Background : black 80% alpha inside the border ──
+    let bg_pad = border;
+    push_solid_rect(
+        out,
+        box_x + bg_pad,
+        box_y + bg_pad,
+        box_w - 2.0 * bg_pad,
+        box_h - 2.0 * bg_pad,
+        [0.0, 0.0, 0.0, 0.80],
+    );
+
+    // ── Buffer text : drawn at vertically centered baseline ──
+    let text_y = box_y + (box_h - glyph_h) * 0.5;
+    let text_x = box_x + TEXT_INPUT_INNER_PAD;
+    // Render the buffer text. We DON'T truncate visually here — long
+    // buffers would scroll off the right edge ; the cap (256 chars) keeps
+    // the visible-overflow bounded to a manageable amount.
+    let _ = build_shadowed_text(
+        &hud.text_input_buffer,
+        text_x,
+        text_y,
+        COLOR_WHITE,
+        scale,
+        out,
+    );
+
+    // ── Cursor : blinking white block at the cursor position ──
+    // The blink uses hud.text_input_blink_frame (= host frame counter) :
+    // 60-frame on, 60-frame off → ≈ 0.5 Hz blink @60fps.
+    let blink_on = (hud.text_input_blink_frame / TEXT_INPUT_BLINK_PERIOD_FRAMES) % 2 == 0;
+    if blink_on {
+        let cursor_chars = hud.text_input_cursor.min(hud.text_input_buffer.chars().count());
+        let cursor_x = text_x + (cursor_chars as f32) * glyph_px;
+        // 2-px-wide vertical bar matching the glyph height.
+        push_solid_rect(out, cursor_x, text_y, 2.0, glyph_h, COLOR_WHITE);
+    }
+
+    // ── History : last N submissions stacked ABOVE the box, oldest at top.
+    // Drawn at 50% alpha so the user can read prior inputs without losing
+    // focus on the active edit line.
+    let history_color: [f32; 4] = [1.0, 1.0, 1.0, 0.50];
+    // Newest history row sits just above the box (line + 4 px gap).
+    // Iterate newest-first → place each above the previous one.
+    let history_x = box_x + TEXT_INPUT_INNER_PAD;
+    let mut row_y = box_y - line - 4.0;
+    for entry in hud.text_input_history.iter().rev() {
+        if row_y < 0.0 {
+            break;
+        }
+        let _ = build_text_quads(entry, history_x, row_y, history_color, scale, out);
+        row_y -= line + 2.0;
+    }
+
+    // ── [INPUT] indicator : top-center badge so the user knows the box
+    //    has captured key-input. Drawn ONLY when focused.
+    let badge = "[INPUT]";
+    let badge_w = (badge.chars().count() as f32) * glyph_px;
+    let badge_x = (sw - badge_w) * 0.5;
+    let badge_y = box_y - line * 2.0 - 12.0;
+    if badge_y > 0.0 {
+        push_solid_rect(
+            out,
+            badge_x - 6.0,
+            badge_y - 4.0,
+            badge_w + 12.0,
+            line + 4.0,
+            [0.10, 0.30, 0.55, 0.85],
+        );
+        let _ = build_shadowed_text(badge, badge_x, badge_y, COLOR_WHITE, scale, out);
+    }
 }
 
 /// Push the menu overlay : dim layer + panel + items.
@@ -1795,5 +1937,68 @@ mod tests {
         // 12 floats : 2(pos) + 2(uv) + 4(color) + 1(kind) + 3(pad) = 12 = 48 bytes
         assert_eq!(core::mem::size_of::<UiVertex>(), 48);
         assert_eq!(UiVertex::STRIDE, 48);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-WAVE3-TEXTINPUT : text-input-box render tests
+    // ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn text_input_box_only_drawn_when_focused() {
+        let menu = MenuState::default();
+        let mut hud_unfocused = HudContext::default();
+        hud_unfocused.text_input_focused = false;
+        let baseline = build_overlay_vertices(1280, 720, &hud_unfocused, &menu);
+
+        let mut hud_focused = hud_unfocused.clone();
+        hud_focused.text_input_focused = true;
+        hud_focused.text_input_buffer = "hello".to_string();
+        hud_focused.text_input_cursor = 5;
+        let with_box = build_overlay_vertices(1280, 720, &hud_focused, &menu);
+        // Box adds : 4 border rects (24 verts) + 1 bg rect (6 verts) +
+        // glyph quads + cursor (6 verts) + INPUT badge (panel + glyphs).
+        // Conservative lower bound : 4*6 + 6 + 6 (cursor) + 6 (badge bg)
+        // + 5*6 (5-char buffer text + shadow) = 60+ extra verts.
+        assert!(
+            with_box.len() > baseline.len() + 30,
+            "focused text-input must add >30 verts : delta = {}",
+            with_box.len() - baseline.len()
+        );
+    }
+
+    #[test]
+    fn text_input_history_rows_add_more_vertices() {
+        let menu = MenuState::default();
+        let mut hud_no_history = HudContext::default();
+        hud_no_history.text_input_focused = true;
+        hud_no_history.text_input_buffer = String::new();
+        let baseline = build_overlay_vertices(1280, 720, &hud_no_history, &menu);
+
+        let mut hud_with_history = hud_no_history.clone();
+        hud_with_history.text_input_history = vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ];
+        let with_history = build_overlay_vertices(1280, 720, &hud_with_history, &menu);
+        // 3 history entries × ~ (5..6 chars × 6 verts) ≫ baseline
+        assert!(with_history.len() > baseline.len() + 30);
+    }
+
+    #[test]
+    fn text_input_cursor_blink_period_constants_are_sane() {
+        // Spec : cursor blinks. Period must be ≥ 30 frames (0.5Hz @60fps)
+        // so it's visible-but-not-distracting.
+        assert!(TEXT_INPUT_BLINK_PERIOD_FRAMES >= 30);
+        assert!(TEXT_INPUT_BLINK_PERIOD_FRAMES <= 120);
+    }
+
+    #[test]
+    fn text_input_box_dimensions_match_spec() {
+        // Spec : Box 800×60 px, centered horizontally, 100 px from bottom.
+        assert_eq!(TEXT_INPUT_BOX_W as u32, 800);
+        assert_eq!(TEXT_INPUT_BOX_H as u32, 60);
+        assert_eq!(TEXT_INPUT_BOTTOM_OFFSET as u32, 100);
+        assert_eq!(TEXT_INPUT_BORDER_PX as u32, 2);
     }
 }
