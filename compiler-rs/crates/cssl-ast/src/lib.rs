@@ -24,9 +24,9 @@ pub mod span;
 pub use cst::{
     ArrayExpr, AssocTypeDecl, AssocTypeDef, Attr, AttrArg, AttrKind, BinOp, Block, CallArg,
     CapKind, CompoundOp, ConstItem, EffectAnnotation, EffectArg, EffectItem, EffectRow, EnumItem,
-    EnumVariant, Expr, ExprKind, FieldDecl, FnItem, GenericParam, GenericParamKind, Generics,
-    HandlerItem, Ident, ImplAssocItem, ImplItem, InterfaceAssocItem, InterfaceItem, Item, Literal,
-    LiteralKind, MatchArm, Module, ModuleItem, ModulePath, Param, Pattern, PatternField,
+    EnumVariant, Expr, ExprKind, ExternFnItem, FieldDecl, FnItem, GenericParam, GenericParamKind,
+    Generics, HandlerItem, Ident, ImplAssocItem, ImplItem, InterfaceAssocItem, InterfaceItem, Item,
+    Literal, LiteralKind, MatchArm, Module, ModuleItem, ModulePath, Param, Pattern, PatternField,
     PatternKind, RefinementKind, Stmt, StmtKind, StructBody, StructFieldInit, StructItem, Type,
     TypeAliasItem, TypeKind, UnOp, UseItem, UseTree, Visibility, VisibilityKind, WhereClause,
 };

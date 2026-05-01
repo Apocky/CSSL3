@@ -30,6 +30,10 @@ pub struct HirModule {
 #[derive(Debug, Clone)]
 pub enum HirItem {
     Fn(HirFn),
+    /// `extern fn name(params) -> ret` — body-less FFI declaration. The
+    /// resolver wires `func.call` ops to this DefId so codegen marks the
+    /// callee as an external linkage import.
+    ExternFn(HirExternFn),
     Struct(HirStruct),
     Enum(HirEnum),
     Interface(HirInterface),
@@ -48,6 +52,7 @@ impl HirItem {
     pub fn span(&self) -> Span {
         match self {
             Self::Fn(i) => i.span,
+            Self::ExternFn(i) => i.span,
             Self::Struct(i) => i.span,
             Self::Enum(i) => i.span,
             Self::Interface(i) => i.span,
@@ -66,6 +71,7 @@ impl HirItem {
     pub fn def_id(&self) -> Option<DefId> {
         match self {
             Self::Fn(i) => Some(i.def),
+            Self::ExternFn(i) => Some(i.def),
             Self::Struct(i) => Some(i.def),
             Self::Enum(i) => Some(i.def),
             Self::Interface(i) => Some(i.def),
@@ -83,6 +89,7 @@ impl HirItem {
     pub fn name(&self) -> Option<Symbol> {
         match self {
             Self::Fn(i) => Some(i.name),
+            Self::ExternFn(i) => Some(i.name),
             Self::Struct(i) => Some(i.name),
             Self::Enum(i) => Some(i.name),
             Self::Interface(i) => Some(i.name),
@@ -161,6 +168,24 @@ pub struct HirFn {
     pub effect_row: Option<HirEffectRow>,
     pub where_clauses: Vec<HirWhereClause>,
     pub body: Option<HirBlock>,
+}
+
+/// `extern fn` item — body-less FFI declaration.
+///
+/// Mirrors `cst::ExternFnItem`. The downstream MIR pass synthesizes a
+/// signature-only `MirFunc` ; backend codegen marks the callee as an
+/// external linkage import so the host loader resolves it at runtime.
+#[derive(Debug, Clone)]
+pub struct HirExternFn {
+    pub span: Span,
+    pub def: DefId,
+    pub visibility: HirVisibility,
+    pub attrs: Vec<HirAttr>,
+    pub name: Symbol,
+    pub params: Vec<HirFnParam>,
+    pub return_ty: Option<HirType>,
+    /// Source-form ABI string. Stage-0 always "C".
+    pub abi: String,
 }
 
 /// `struct` item.

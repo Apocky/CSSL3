@@ -16,7 +16,8 @@
 //!       textual format.
 
 use cssl_hir::{
-    CapMap, HirCapKind, HirEffectRow, HirFn, HirItem, HirModule, HirType, HirTypeKind, Interner,
+    CapMap, HirCapKind, HirEffectRow, HirExternFn, HirFn, HirItem, HirModule, HirType, HirTypeKind,
+    Interner,
 };
 
 use crate::func::{MirFunc, MirModule};
@@ -183,6 +184,33 @@ const fn cssl_mir_cap_required_prefix() -> &'static str {
     crate::cap_runtime_check::FN_ATTR_CAP_REQUIRED_PREFIX
 }
 
+/// Lower an `extern fn` HIR declaration to a signature-only `MirFunc`.
+///
+/// § PROPERTIES
+/// - body has zero ops in entry block (signature-only ; `is_signature_only()`
+///   returns true)
+/// - `linkage = "import"` attribute marks the symbol as externally resolved
+/// - `abi = "C"` attribute records the call-convention
+/// - downstream codegen consults the linkage attribute to skip body emission
+///   and instead emit an extern symbol declaration
+#[must_use]
+pub fn lower_extern_fn_signature(ctx: &LowerCtx<'_>, f: &HirExternFn) -> MirFunc {
+    let params: Vec<MirType> = f
+        .params
+        .iter()
+        .flat_map(|p| crate::body_lower::expand_fn_param_types(ctx.interner, &p.ty))
+        .collect();
+    let results: Vec<MirType> = match &f.return_ty {
+        Some(rt) => vec![ctx.lower_type(rt)],
+        None => Vec::new(),
+    };
+    let name = ctx.interner.resolve(f.name);
+    let mut mf = MirFunc::new(name, params, results);
+    mf.attributes.push(("linkage".to_string(), "import".to_string()));
+    mf.attributes.push(("abi".to_string(), f.abi.clone()));
+    mf
+}
+
 /// Walk a `HirModule` and produce a `MirModule` with one `MirFunc` per `HirFn` item.
 /// Impl / interface / effect / handler methods are also included.
 #[must_use]
@@ -203,6 +231,7 @@ pub fn lower_module_signatures(ctx: &LowerCtx<'_>, module: &HirModule) -> MirMod
 fn lower_item_into(ctx: &LowerCtx<'_>, item: &HirItem, mir: &mut MirModule) {
     match item {
         HirItem::Fn(f) => mir.push_func(lower_function_signature(ctx, f)),
+        HirItem::ExternFn(f) => mir.push_func(lower_extern_fn_signature(ctx, f)),
         HirItem::Impl(i) => {
             for f in &i.fns {
                 mir.push_func(lower_function_signature(ctx, f));
