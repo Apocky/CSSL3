@@ -129,8 +129,28 @@ impl GpuContext {
             .find(wgpu::TextureFormat::is_srgb)
             .unwrap_or_else(|| caps.formats[0]);
 
+        // § T11-LOA-TEST-APP : add COPY_SRC if the adapter supports it on
+        // the surface, so framebuffer-readback can blit straight to a
+        // staging buffer. If the adapter rejects COPY_SRC on the surface
+        // texture (some platforms do), we fall back to RENDER_ATTACHMENT
+        // only ; the snapshotter then maintains its own offscreen target.
+        let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+        if caps.usages.contains(wgpu::TextureUsages::COPY_SRC) {
+            usage |= wgpu::TextureUsages::COPY_SRC;
+            log_event(
+                "INFO",
+                "loa-host/gpu",
+                "surface usage includes COPY_SRC — direct framebuffer readback enabled",
+            );
+        } else {
+            log_event(
+                "INFO",
+                "loa-host/gpu",
+                "surface usage WITHOUT COPY_SRC — snapshot path will use offscreen mirror",
+            );
+        }
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage,
             format: surface_format,
             width: size.width,
             height: size.height,
