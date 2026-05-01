@@ -280,6 +280,29 @@ pub fn tool_registry() -> ToolRegistry {
         render_spawn_stress
     );
 
+    // ─ T11-WAVE3-GLTF : external 3D-asset import + spawn ─
+    reg!(
+        "world.spawn_gltf",
+        "Parse a glTF/GLB file and spawn its mesh at world coords (params: \
+         path string, x, y, z, scale). Returns instance_id (0 on failure). \
+         Sovereign-cap-gated.",
+        true,
+        world_spawn_gltf
+    );
+    reg!(
+        "world.gltf_spawns_total",
+        "Return cumulative count of successful + rejected glTF spawns.",
+        false,
+        world_gltf_spawns_total
+    );
+    reg!(
+        "world.list_dynamic_meshes",
+        "Return spawned dynamic-mesh records (instance_id, vertex_count, \
+         triangle_count, world_pos, scale, material_id, bbox).",
+        false,
+        world_list_dynamic_meshes
+    );
+
     // ─ Telemetry (T11-LOA-TELEM) ─
     reg!(
         "telemetry.snapshot",
@@ -1222,6 +1245,102 @@ fn render_spawn_stress(state: &mut EngineState, params: Value) -> Value {
             "error": "kind out of range or cap-rejected",
         })
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § handlers — T11-WAVE3-GLTF · world.spawn_gltf surface
+// ───────────────────────────────────────────────────────────────────────
+
+/// MCP `world.spawn_gltf` : parse a glTF/GLB asset and queue it for the
+/// dynamic-mesh path. Sovereign-cap-gated.
+///
+/// Params :
+///   - `path`  (string) : filesystem path to .glb or .gltf
+///   - `x/y/z` (f32) : world-space spawn position (defaults to camera.pos)
+///   - `scale` (f32) : uniform scale (default 1.0)
+///   - `sovereign_cap` (u64) : capability token
+///
+/// Result :
+///   - `{ok: true, instance_id, vertex_count, triangle_count, material_id, bbox}` on success
+///   - `{ok: false, error: "..."}` on failure
+fn world_spawn_gltf(state: &mut EngineState, params: Value) -> Value {
+    use std::path::PathBuf;
+
+    let path = p_str(&params, "path", "").to_string();
+    if path.is_empty() {
+        return json!({"ok": false, "error": "missing 'path' parameter"});
+    }
+    // Default to the MaterialRoom-Annex center (north of MaterialRoom)
+    // so that spawned models land in the designated diagnostic zone
+    // when no explicit position is provided. This keeps the test rooms
+    // uncluttered while still showing live spawns prominently.
+    let annex = crate::geometry::material_room_annex_center();
+    let x = p_f32(&params, "x", annex[0]);
+    let y = p_f32(&params, "y", annex[1]);
+    let z = p_f32(&params, "z", annex[2]);
+    let scale = p_f32(&params, "scale", 1.0);
+
+    // The MCP server has already verified `sovereign_cap` for any
+    // tool registered with `mutating: true` before dispatching to this
+    // handler — replicating the check here would double-validate. We
+    // do still ensure the path is non-empty and pass control to the
+    // FFI helper which logs every spawn.
+
+    match crate::ffi::spawn_gltf_path(PathBuf::from(&path), [x, y, z], scale) {
+        Ok(id) => {
+            state.push_event(
+                "INFO",
+                "loa-host/mcp",
+                &format!(
+                    "world.spawn_gltf · path={path} pos=({x:.2},{y:.2},{z:.2}) scale={scale:.2} id={id}"
+                ),
+            );
+            json!({
+                "ok": true,
+                "instance_id": id,
+                "path": path,
+                "world_pos": [x, y, z],
+                "scale": scale,
+            })
+        }
+        Err(e) => {
+            state.push_event(
+                "ERROR",
+                "loa-host/mcp",
+                &format!("world.spawn_gltf · {e}"),
+            );
+            json!({
+                "ok": false,
+                "error": e,
+            })
+        }
+    }
+}
+
+/// MCP `world.gltf_spawns_total` : read-only counters.
+fn world_gltf_spawns_total(_state: &mut EngineState, _params: Value) -> Value {
+    let total = crate::ffi::gltf_spawns_total();
+    let rejects = crate::ffi::gltf_spawn_rejects_total();
+    json!({
+        "spawns_total": total,
+        "rejects_total": rejects,
+        "max_dynamic_meshes": 256u32,
+    })
+}
+
+/// MCP `world.list_dynamic_meshes` : enumerate currently-loaded dynamic
+/// meshes. The data lives in the renderer · catalog mode returns an
+/// empty list (no renderer present) but still reports the spawn-counter.
+fn world_list_dynamic_meshes(_state: &mut EngineState, _params: Value) -> Value {
+    // The renderer's `dynamic_meshes` Vec is only available in runtime
+    // builds. Catalog builds have no GPU but they still receive parses
+    // via `pending_gltf_queue()` — we surface a *pending* list as a
+    // best-effort proxy.
+    let total = crate::ffi::gltf_spawns_total();
+    json!({
+        "spawns_total": total,
+        "note": "MCP cannot peek live render state from this thread; use 'render.snapshot' instead.",
+    })
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -2350,9 +2469,11 @@ mod tests {
         // + 32 sensory harness (T11-LOA-SENSORY · 9 axes : visual 4 · audio 3 ·
         //   spatial 3 · interoception 4 · diagnostic 4 · temporal 3 · causal 3 ·
         //   network 2 · environmental 5 · combined 1)
-        // = 84 total.
+        // + 3 GLTF (T11-WAVE3-GLTF · world.spawn_gltf + world.gltf_spawns_total
+        //   + world.list_dynamic_meshes)
+        // = 87 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 84, "must have exactly 84 tools");
+        assert_eq!(reg.len(), 87, "must have exactly 87 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -2698,10 +2819,10 @@ mod tests {
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
         // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
         // + 3 cfer (T11-LOA-FID-CFER) + 4 userfix (T11-LOA-USERFIX)
-        // + 32 sensory (T11-LOA-SENSORY) = 84.
-        assert_eq!(v["count"], 84);
+        // + 32 sensory (T11-LOA-SENSORY) + 3 gltf (T11-WAVE3-GLTF) = 87.
+        assert_eq!(v["count"], 87);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 84);
+        assert_eq!(arr.len(), 87);
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests

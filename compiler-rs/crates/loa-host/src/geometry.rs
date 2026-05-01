@@ -252,6 +252,43 @@ pub fn plinth_positions() -> [(f32, f32); 14] {
     ]
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-GLTF · MaterialRoom-Annex marker zone
+// ──────────────────────────────────────────────────────────────────────────
+//
+// The MaterialRoom occupies x ∈ [-15, 15] · z ∈ [28, 58]. The Annex sits
+// directly NORTH of it (z > 58) and provides 4 designated landing pads
+// for spawned glTF assets. Each pad has its own (x, z) so up to 4
+// simultaneously-spawned models stay clearly separated for diagnostic
+// inspection. The pads are arranged in a 2×2 grid centered at z=70.
+
+/// Y-coordinate of the Annex floor (matches the room floor at y=0).
+pub const ANNEX_FLOOR_Y: f32 = 0.0;
+
+/// Returns the 4 (x, z) marker positions inside the MaterialRoom-Annex
+/// zone (north of the MaterialRoom). Returned in deterministic order so
+/// telemetry + golden-image tests are stable :
+///   0 : NW pad
+///   1 : NE pad
+///   2 : SW pad
+///   3 : SE pad
+#[must_use]
+pub const fn material_room_annex_marker_positions() -> [(f32, f32); 4] {
+    [
+        (-7.5, 75.0), // NW
+        (7.5, 75.0),  // NE
+        (-7.5, 65.0), // SW
+        (7.5, 65.0),  // SE
+    ]
+}
+
+/// World-space center of the MaterialRoom-Annex (drop point for the
+/// "default" spawn when no explicit position is provided).
+#[must_use]
+pub const fn material_room_annex_center() -> [f32; 3] {
+    [0.0, ANNEX_FLOOR_Y + 1.0, 70.0]
+}
+
 /// Stress-object kind id (0..13).
 ///
 /// § T11-LOA-RAYMARCH (W-LOA-raymarched-primitives) : slots 0..5 now drive

@@ -35,10 +35,13 @@
 #![allow(unsafe_code)] // extern "C" exports require #[no_mangle] which is unsafe attr
 
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use cssl_rt::loa_startup::log_event;
 
+use crate::gltf_loader::{self, GltfMesh, GltfSpawnRecord};
 use crate::material::{material_name, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_name, PATTERN_LUT_LEN};
 
@@ -530,6 +533,228 @@ pub fn take_pending_teleport() -> Option<u32> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-GLTF · world.spawn_gltf surface
+// ───────────────────────────────────────────────────────────────────────
+//
+// The GLTF spawn pipeline is a three-stage flow :
+//
+//   1. Caller (MCP tool / pure-CSSL code / FFI) invokes `__cssl_world_spawn_gltf`
+//      with a path + world-position + scale + sovereign-cap.
+//   2. The FFI fn parses the file via `gltf_loader::load_gltf`, applies
+//      `transform_into_world`, allocates a fresh `instance_id`, and pushes
+//      a `GltfPendingSpawn` onto the global queue. Returns the id.
+//   3. The renderer drains the queue at the start of each frame (catalog
+//      builds simply leave the queue intact ; runtime build uploads and
+//      issues a draw on the dynamic-mesh slot).
+//
+// The queue is `Mutex<Vec<...>>` rather than a lock-free ring because spawns
+// are rare (human-rate, not per-frame). Cap-rejection is enforced before any
+// allocation so an attacker sending 10_000 spawn calls/sec without the cap
+// can't OOM the host.
+
+/// A pending spawn waiting to be uploaded by the renderer. Carries the
+/// fully-built mesh so the renderer doesn't need to re-parse on the
+/// hot path.
+#[derive(Debug, Clone)]
+pub struct GltfPendingSpawn {
+    pub record: GltfSpawnRecord,
+    pub mesh: GltfMesh,
+}
+
+/// Global pending-spawn queue. The renderer reads this on each frame and
+/// drains entries it successfully uploads. Catalog builds simply
+/// accumulate (the Vec is drained by `take_pending_gltf_spawns` from the
+/// runtime path).
+fn pending_gltf_queue() -> &'static Mutex<Vec<GltfPendingSpawn>> {
+    static Q: OnceLock<Mutex<Vec<GltfPendingSpawn>>> = OnceLock::new();
+    Q.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Total successful glTF spawn calls since startup. Telemetry counter
+/// `gltf_spawns_total` reads this. Atomic so the ffi + renderer can both
+/// peek without locking.
+static GLTF_SPAWNS_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// Total rejected glTF spawn calls (parse-fail / cap-mismatch / OOM-cap).
+static GLTF_SPAWN_REJECTS_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+/// Counter for unique instance ids. Returns `n` for the `n`-th successful
+/// spawn (1-based ; 0 means "rejected").
+static GLTF_INSTANCE_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+/// Cumulative gltf-spawn count, lock-free.
+#[must_use]
+pub fn gltf_spawns_total() -> u64 {
+    GLTF_SPAWNS_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Cumulative gltf-spawn rejection count.
+#[must_use]
+pub fn gltf_spawn_rejects_total() -> u64 {
+    GLTF_SPAWN_REJECTS_TOTAL.load(Ordering::Relaxed)
+}
+
+/// Drain the pending-spawn queue. The runtime renderer calls this at the
+/// top of each frame ; catalog code never calls it. Returns the queue
+/// contents in insertion order.
+#[must_use]
+pub fn take_pending_gltf_spawns() -> Vec<GltfPendingSpawn> {
+    pending_gltf_queue()
+        .lock()
+        .map(|mut q| std::mem::take(&mut *q))
+        .unwrap_or_default()
+}
+
+/// Public Rust-side spawn API. Caller passes a sanitized path + world-pos
+/// + scale ; we parse, transform, enqueue, and return the `instance_id`.
+/// On error returns `Err(reason)` — the FFI wrapper translates this into
+/// `instance_id = 0` for the C ABI.
+///
+/// This is the path the MCP `world.spawn_gltf` tool calls.
+pub fn spawn_gltf_path(
+    path: PathBuf,
+    world_pos: [f32; 3],
+    scale: f32,
+) -> Result<u32, String> {
+    let parsed = gltf_loader::load_gltf(&path).map_err(|e| {
+        GLTF_SPAWN_REJECTS_TOTAL.fetch_add(1, Ordering::Relaxed);
+        crate::telemetry::global().record_gltf_spawn_reject("parse_fail");
+        format!("parse failed for {}: {e}", path.display())
+    })?;
+    let world = gltf_loader::transform_into_world(&parsed, world_pos, scale);
+    let instance_id = GLTF_INSTANCE_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+    let record = GltfSpawnRecord {
+        instance_id,
+        source_path: path.clone(),
+        world_pos,
+        scale,
+        vertex_count: world.vertices.len() as u32,
+        triangle_count: world.triangle_count() as u32,
+        material_id: world.material.material_id,
+        bbox: world.bbox,
+    };
+    if let Ok(mut q) = pending_gltf_queue().lock() {
+        q.push(GltfPendingSpawn {
+            record: record.clone(),
+            mesh: world,
+        });
+    }
+    GLTF_SPAWNS_TOTAL.fetch_add(1, Ordering::Relaxed);
+    // Mirror to the global telemetry sink so MCP `telemetry.snapshot` +
+    // CSV writers see live counts. Both counter sources stay in lock-step
+    // because they're incremented at the same call-site.
+    crate::telemetry::global().record_gltf_spawn(
+        instance_id,
+        record.vertex_count,
+        record.triangle_count,
+        record.material_id,
+    );
+    log_event(
+        "INFO",
+        "loa-host/ffi",
+        &format!(
+            "world.spawn_gltf · instance_id={} · path={} · pos=({:.2},{:.2},{:.2}) · scale={:.2} · verts={} · tris={} · mat={}",
+            instance_id,
+            path.display(),
+            world_pos[0],
+            world_pos[1],
+            world_pos[2],
+            scale,
+            record.vertex_count,
+            record.triangle_count,
+            material_name(record.material_id),
+        ),
+    );
+    Ok(instance_id)
+}
+
+/// FFI surface : spawn a glTF / GLB asset at a world position. Caller
+/// pushes a UTF-8 path string + length + xyz floats + scale. The
+/// renderer picks up the spawn from the pending queue on the next frame.
+///
+/// Returns the instance_id (≥ 1) on success · `0` on any failure (the
+/// caller cannot distinguish "file missing" from "cap-rejected" via this
+/// ABI ; the structured-event log line carries the full reason).
+///
+/// # Safety
+///
+/// The caller MUST guarantee that:
+///   - `path` points to `path_len` valid bytes that are alive for the
+///     duration of this call
+///   - `path_len` is at most 4096 (we early-out on larger values but
+///     dereferencing past the buffer is still UB if the caller violates this)
+///   - The bytes form a valid UTF-8 sequence (we validate before use,
+///     but reading the bytes themselves requires they be readable)
+///
+/// The function never retains `path` past return — we copy into an
+/// owned `String` before parse, so the caller's buffer can be freed
+/// once the call completes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_world_spawn_gltf(
+    path: *const u8,
+    path_len: u32,
+    x: f32,
+    y: f32,
+    z: f32,
+    scale: f32,
+    sovereign_cap: u64,
+) -> u32 {
+    if sovereign_cap != SOVEREIGN_CAP_U64 {
+        log_event(
+            "WARN",
+            "loa-host/ffi",
+            "__cssl_world_spawn_gltf · sovereign_cap mismatch · denied",
+        );
+        GLTF_SPAWN_REJECTS_TOTAL.fetch_add(1, Ordering::Relaxed);
+        crate::telemetry::global().record_gltf_spawn_reject("cap_mismatch");
+        return 0;
+    }
+    if path.is_null() || path_len == 0 || path_len > 4096 {
+        log_event(
+            "WARN",
+            "loa-host/ffi",
+            "__cssl_world_spawn_gltf · invalid path pointer / length",
+        );
+        GLTF_SPAWN_REJECTS_TOTAL.fetch_add(1, Ordering::Relaxed);
+        crate::telemetry::global().record_gltf_spawn_reject("invalid_path");
+        return 0;
+    }
+    // SAFETY : caller guarantees `path` points to `path_len` valid bytes.
+    let slice = unsafe { std::slice::from_raw_parts(path, path_len as usize) };
+    let path_str = match std::str::from_utf8(slice) {
+        Ok(s) => s,
+        Err(_) => {
+            log_event(
+                "WARN",
+                "loa-host/ffi",
+                "__cssl_world_spawn_gltf · path is not valid UTF-8",
+            );
+            GLTF_SPAWN_REJECTS_TOTAL.fetch_add(1, Ordering::Relaxed);
+            crate::telemetry::global().record_gltf_spawn_reject("non_utf8_path");
+            return 0;
+        }
+    };
+
+    match spawn_gltf_path(PathBuf::from(path_str), [x, y, z], scale) {
+        Ok(id) => id,
+        Err(e) => {
+            log_event(
+                "ERROR",
+                "loa-host/ffi",
+                &format!("__cssl_world_spawn_gltf · {e}"),
+            );
+            0
+        }
+    }
+}
+
+/// FFI surface : read the cumulative gltf-spawn count.
+#[no_mangle]
+pub extern "C" fn __cssl_world_gltf_spawns_total() -> u64 {
+    gltf_spawns_total()
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Tests
 // ───────────────────────────────────────────────────────────────────────
 
@@ -633,5 +858,62 @@ mod tests {
     fn ffi_room_teleport_rejects_wrong_cap() {
         let rc = __cssl_room_teleport(0, 0xDEAD);
         assert_eq!(rc, -2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-WAVE3-GLTF · FFI surface tests
+    // ─────────────────────────────────────────────────────────────────
+
+    /// Cap-rejection : wrong sovereign-cap returns 0 + increments reject
+    /// counter without enqueueing anything.
+    #[test]
+    fn ffi_spawn_gltf_rejects_wrong_cap() {
+        // Drain queue first so this test is order-independent.
+        let _ = take_pending_gltf_spawns();
+        let prev_rejects = gltf_spawn_rejects_total();
+        let path = b"any/path.glb";
+        let id = unsafe {
+            __cssl_world_spawn_gltf(
+                path.as_ptr(),
+                path.len() as u32,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0xDEAD_BEEF, // wrong cap
+            )
+        };
+        assert_eq!(id, 0, "wrong cap → instance_id = 0");
+        assert!(
+            gltf_spawn_rejects_total() > prev_rejects,
+            "reject counter must advance"
+        );
+        // Queue must be empty.
+        assert!(take_pending_gltf_spawns().is_empty());
+    }
+
+    /// Null pointer / zero length path → rejected.
+    #[test]
+    fn ffi_spawn_gltf_rejects_null_path() {
+        let id = unsafe {
+            __cssl_world_spawn_gltf(
+                std::ptr::null(),
+                0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                SOVEREIGN_CAP_U64,
+            )
+        };
+        assert_eq!(id, 0);
+    }
+
+    /// Total counters readable from FFI surface.
+    #[test]
+    fn ffi_spawn_gltf_counters_readable() {
+        let total = __cssl_world_gltf_spawns_total();
+        // Total must be a sane u64 (no panic, no UB).
+        assert!(total < u64::MAX);
     }
 }

@@ -53,6 +53,7 @@ use crate::cfer_render::{
 };
 use crate::ffi as host_ffi;
 use crate::geometry::{plinth_positions, RoomGeometry, Vertex};
+use crate::gltf_loader::GltfMesh as LoadedGltfMesh;
 use crate::gpu::GpuContext;
 use crate::material::{Material, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_lut, Pattern, PATTERN_LUT_LEN};
@@ -69,6 +70,85 @@ pub struct FrameMetrics {
     pub draw_calls: u32,
     pub vertices: u64,
     pub pipeline_switches: u32,
+}
+
+/// § T11-WAVE3-GLTF : a single dynamically-spawned mesh slot.
+///
+/// Each slot owns its own VBO + IBO + recorded metadata. The Renderer
+/// holds `Vec<DynamicMesh>` and uploads new entries by draining the
+/// pending-spawn queue from `host_ffi::take_pending_gltf_spawns`.
+///
+/// § DRAW ORDER
+///   1. Opaque static room (existing path)
+///   2. **Dynamic glTF meshes (here, opaque pipeline reused)**
+///   3. Transparent static room
+///   4. Tonemap
+///   5. CFER volumetric
+///   6. UI
+///
+/// We reuse the existing opaque pipeline + bind-group : the dynamic
+/// meshes feed the same Vertex layout + uniform buffer (material LUT +
+/// pattern LUT) so the uber-shader handles them naturally.
+pub struct DynamicMesh {
+    /// 1-based instance id matching `GltfSpawnRecord.instance_id`.
+    pub instance_id: u32,
+    /// Vertex buffer (VBO) for this mesh.
+    pub vbo: wgpu::Buffer,
+    /// Index buffer (IBO) for this mesh.
+    pub ibo: wgpu::Buffer,
+    /// Index count (each draw is a single `draw_indexed(0..index_count)`).
+    pub index_count: u32,
+    /// Vertex count (telemetry only).
+    pub vertex_count: u32,
+    /// World-space AABB (after `transform_into_world`).
+    pub bbox: ([f32; 3], [f32; 3]),
+    /// Material id assigned to this mesh (carried for diagnostics ; the
+    /// actual lookup uses each vertex's `material_id` field).
+    pub material_id: u32,
+    /// `true` when the mesh has been retained but not yet drawn (e.g.
+    /// allocated but the renderer is in catalog mode). Always `false`
+    /// once render_frame has issued the draw.
+    pub pending_first_draw: bool,
+}
+
+impl std::fmt::Debug for DynamicMesh {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DynamicMesh")
+            .field("instance_id", &self.instance_id)
+            .field("index_count", &self.index_count)
+            .field("vertex_count", &self.vertex_count)
+            .field("bbox", &self.bbox)
+            .field("material_id", &self.material_id)
+            .field("pending_first_draw", &self.pending_first_draw)
+            .finish()
+    }
+}
+
+impl DynamicMesh {
+    /// Build a new `DynamicMesh` from a parsed glTF mesh. Allocates VBO +
+    /// IBO on the GPU and records metadata for telemetry.
+    pub fn new(device: &wgpu::Device, instance_id: u32, mesh: &LoadedGltfMesh) -> Self {
+        let vbo = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("loa-host/dynamic-mesh-vbo"),
+            contents: bytemuck::cast_slice(&mesh.vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let ibo = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("loa-host/dynamic-mesh-ibo"),
+            contents: bytemuck::cast_slice(&mesh.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        Self {
+            instance_id,
+            vbo,
+            ibo,
+            index_count: mesh.indices.len() as u32,
+            vertex_count: mesh.vertices.len() as u32,
+            bbox: mesh.bbox,
+            material_id: mesh.material.material_id,
+            pending_first_draw: true,
+        }
+    }
 }
 
 /// CPU-side mirror of the WGSL `Uniforms` struct.
@@ -318,7 +398,18 @@ pub struct Renderer {
     /// Re-uploaded each frame in `render_frame` from the CPU staging
     /// buffer in `cfer.texels()`.
     cfer_texture: wgpu::Texture,
+
+    // ── § T11-WAVE3-GLTF : dynamic-mesh slots ──
+    /// One slot per spawned glTF / GLB asset. New slots are created by
+    /// `drain_pending_spawns` (called at the top of `render_frame`).
+    /// Capped at `MAX_DYNAMIC_MESHES` (256) to bound GPU memory.
+    pub dynamic_meshes: Vec<DynamicMesh>,
 }
+
+/// Hard upper bound on simultaneously-loaded dynamic meshes. Beyond
+/// this we drop new spawns + emit a WARN log line. 256 × ~12 MB worst-
+/// case = 3 GB — well within typical desktop VRAM but requires intent.
+pub const MAX_DYNAMIC_MESHES: usize = 256;
 
 impl Renderer {
     /// Embedded WGSL shader source.
@@ -629,7 +720,65 @@ impl Renderer {
             cfer_bind_group,
             cfer_uniform_buf,
             cfer_texture,
+            dynamic_meshes: Vec::new(),
         }
+    }
+
+    /// § T11-WAVE3-GLTF : drain the global pending-spawn queue, allocating
+    /// a fresh `DynamicMesh` per entry. Called at the top of `render_frame`
+    /// so newly-spawned meshes appear from the very next frame onwards.
+    /// Cap-checked against `MAX_DYNAMIC_MESHES` ; over-cap spawns are
+    /// dropped with a WARN log line.
+    pub fn drain_pending_spawns(&mut self, device: &wgpu::Device) -> u32 {
+        let pending = host_ffi::take_pending_gltf_spawns();
+        if pending.is_empty() {
+            return 0;
+        }
+        let mut uploaded: u32 = 0;
+        for spawn in pending {
+            if self.dynamic_meshes.len() >= MAX_DYNAMIC_MESHES {
+                log_event(
+                    "WARN",
+                    "loa-host/render",
+                    &format!(
+                        "drain_pending_spawns · slot full ({}); dropping instance_id={}",
+                        MAX_DYNAMIC_MESHES, spawn.record.instance_id,
+                    ),
+                );
+                continue;
+            }
+            let dm = DynamicMesh::new(device, spawn.record.instance_id, &spawn.mesh);
+            log_event(
+                "INFO",
+                "loa-host/render",
+                &format!(
+                    "drain_pending_spawns · uploaded instance_id={} verts={} tris={} bbox.lo={:?}",
+                    dm.instance_id,
+                    dm.vertex_count,
+                    spawn.mesh.triangle_count(),
+                    dm.bbox.0,
+                ),
+            );
+            self.dynamic_meshes.push(dm);
+            uploaded += 1;
+        }
+        uploaded
+    }
+
+    /// § T11-WAVE3-GLTF : count of currently-loaded dynamic meshes.
+    #[must_use]
+    pub fn dynamic_mesh_count(&self) -> usize {
+        self.dynamic_meshes.len()
+    }
+
+    /// § T11-WAVE3-GLTF : drop a previously-spawned mesh by id. Returns
+    /// `true` if the slot was found and removed. Future MCP `world.despawn`
+    /// hook calls this.
+    pub fn despawn_dynamic_mesh(&mut self, instance_id: u32) -> bool {
+        let before = self.dynamic_meshes.len();
+        self.dynamic_meshes
+            .retain(|m| m.instance_id != instance_id);
+        before != self.dynamic_meshes.len()
     }
 
     /// § T11-LOA-USERFIX : push a new render-mode (0..9) into the renderer.
@@ -1018,6 +1167,22 @@ impl Renderer {
         hud: &HudContext,
         menu: &MenuState,
     ) -> Result<FrameMetrics, wgpu::SurfaceError> {
+        // § T11-WAVE3-GLTF : drain newly-spawned glTF meshes BEFORE we
+        // acquire the surface texture. Newly-uploaded VBOs/IBOs are
+        // visible to the dynamic-mesh draw pass below from this frame
+        // onwards. Catalog builds never reach this code path.
+        let new_meshes = self.drain_pending_spawns(&gpu.device);
+        if new_meshes > 0 {
+            log_event(
+                "INFO",
+                "loa-host/render",
+                &format!(
+                    "render_frame · {new_meshes} new dynamic mesh(es) uploaded · total={}",
+                    self.dynamic_meshes.len()
+                ),
+            );
+        }
+
         let frame = match gpu.surface.get_current_texture() {
             Ok(f) => f,
             Err(e @ wgpu::SurfaceError::Lost) | Err(e @ wgpu::SurfaceError::Outdated) => {
@@ -1169,6 +1334,21 @@ impl Renderer {
                 pass.draw_indexed(0..self.index_count, 0, 0..1);
                 draw_calls += 1;
                 vertices += u64::from(self.index_count);
+            }
+
+            // § T11-WAVE3-GLTF : dynamic-mesh draws (after static opaque).
+            // Re-uses the same opaque pipeline + uniform bind-group ; only
+            // the VBO/IBO change per slot. No extra pipeline-switch is
+            // counted because we leave the same RenderPipeline bound.
+            // Each mesh contributes one draw_indexed call against its own
+            // 32-bit index buffer.
+            for dm in &mut self.dynamic_meshes {
+                pass.set_vertex_buffer(0, dm.vbo.slice(..));
+                pass.set_index_buffer(dm.ibo.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..dm.index_count, 0, 0..1);
+                draw_calls += 1;
+                vertices += u64::from(dm.index_count);
+                dm.pending_first_draw = false;
             }
         }
 
