@@ -1,0 +1,33 @@
+# § T11-W7-RD-B4 : cssl-host-gear-archetype
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-2-B4 deliverable per GDDs/GEAR_RARITY_SYSTEM.csl
+# § I> 6 rarity-tiers · 13 gear-slots · ≥24 prefixes · ≥24 suffixes
+# § I> base + prefix + suffix + glyph-slots modular composition
+# § I> stat-rolling = bounded-range per-affix · seeded-RNG · replay-bit-equal
+# § I> drop-rate-curve : Mythic ≤ 0.01% · ¬ time-gated · ¬ pay-mechanic
+# § I> upgrade-path : level-up + transmute (Common→Legendary) + bond + reroll
+# § I> ∀ drop/transmute/bond/reroll → AuditSink emit (anti-cheat anchor)
+# § I> pure-functional · stateless · NO external substrate-deps
+# § I> deterministic-by-seed (round-trip serde bit-equal · BTreeMap stat-bag)
+
+[package]
+name        = "cssl-host-gear-archetype"
+version     = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "CSSLv3 LoA-v13 modular gear archetype : base+prefix+suffix+glyph-slots · 6-rarity-tiers · seeded stat-rolling · transmute+bond+reroll (deterministic, audit-emitting, GDD-aligned)"
+repository.workspace   = true
+homepage.workspace     = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_host_gear_archetype"
+path = "src/lib.rs"
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
