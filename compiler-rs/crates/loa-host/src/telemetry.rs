@@ -247,6 +247,12 @@ pub struct TelemetrySink {
     pub mcp_calls_total: AtomicU64,
     pub dm_events_total: AtomicU64,
 
+    // § T11-LOA-FID-MAINSTREAM : per-frame fidelity counters (microseconds
+    // for the most-recent frame ; cheap overwriting writers — no rolling
+    // average, just a live last-value snapshot).
+    pub gpu_resolve_us: AtomicU64,
+    pub tonemap_us: AtomicU64,
+
     // § Sliding-window percentile snapshots (Q14 fixed-point milliseconds)
     pub last_p50_q14: AtomicU32,
     pub last_p95_q14: AtomicU32,
@@ -326,6 +332,8 @@ impl TelemetrySink {
             pipeline_switches_total: AtomicU64::new(0),
             mcp_calls_total: AtomicU64::new(0),
             dm_events_total: AtomicU64::new(0),
+            gpu_resolve_us: AtomicU64::new(0),
+            tonemap_us: AtomicU64::new(0),
             last_p50_q14: AtomicU32::new(0),
             last_p95_q14: AtomicU32::new(0),
             last_p99_q14: AtomicU32::new(0),
@@ -410,6 +418,19 @@ impl TelemetrySink {
     pub fn record_pipeline_switch(&self) {
         self.pipeline_switches_total
             .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// § T11-LOA-FID-MAINSTREAM : record the most-recent frame's GPU
+    /// MSAA-resolve elapsed time in microseconds. Live overwrite, no
+    /// histogram (the value is just for last-frame display + 1Hz CSV).
+    pub fn record_gpu_resolve_us(&self, us: u64) {
+        self.gpu_resolve_us.store(us, Ordering::Relaxed);
+    }
+
+    /// § T11-LOA-FID-MAINSTREAM : record the most-recent frame's tonemap
+    /// pass elapsed time in microseconds.
+    pub fn record_tonemap_us(&self, us: u64) {
+        self.tonemap_us.store(us, Ordering::Relaxed);
     }
 
     /// Record an MCP-tool invocation (called by the server).
@@ -502,7 +523,8 @@ impl TelemetrySink {
              \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3},\
              \"draw_calls_total\":{},\"vertices_drawn_total\":{},\
              \"pipeline_switches_total\":{},\"mcp_calls_total\":{},\
-             \"dm_events_total\":{},\"histogram\":[{}],\"log_level\":{}}}",
+             \"dm_events_total\":{},\"gpu_resolve_us\":{},\"tonemap_us\":{},\
+             \"histogram\":[{}],\"log_level\":{}}}",
             iso_utc(now),
             uptime_ms,
             frames,
@@ -515,6 +537,8 @@ impl TelemetrySink {
             self.pipeline_switches_total.load(Ordering::Relaxed),
             self.mcp_calls_total.load(Ordering::Relaxed),
             self.dm_events_total.load(Ordering::Relaxed),
+            self.gpu_resolve_us.load(Ordering::Relaxed),
+            self.tonemap_us.load(Ordering::Relaxed),
             buckets_str,
             self.log_level.load(Ordering::Relaxed),
         )
@@ -928,6 +952,20 @@ mod tests {
     fn json_escape_handles_quotes_and_newlines() {
         let s = json_escape("a\"b\nc\\d");
         assert_eq!(s, "a\\\"b\\nc\\\\d");
+    }
+
+    #[test]
+    fn fidelity_resolve_and_tonemap_us_recorded_and_serialized() {
+        // § T11-LOA-FID-MAINSTREAM : `record_gpu_resolve_us` +
+        // `record_tonemap_us` must be live-readable from `snapshot_json`.
+        let s = fresh_sink();
+        s.record_gpu_resolve_us(123);
+        s.record_tonemap_us(456);
+        assert_eq!(s.gpu_resolve_us.load(Ordering::Relaxed), 123);
+        assert_eq!(s.tonemap_us.load(Ordering::Relaxed), 456);
+        let json = s.snapshot_json();
+        assert!(json.contains("\"gpu_resolve_us\":123"));
+        assert!(json.contains("\"tonemap_us\":456"));
     }
 
     #[test]

@@ -352,6 +352,14 @@ pub fn tool_registry() -> ToolRegistry {
         room_teleport
     );
 
+    // ─ T11-LOA-FID-MAINSTREAM : graphical-fidelity probe (read-only) ─
+    reg!(
+        "render.fidelity",
+        "Returns active fidelity settings : msaa_samples · hdr_format · present_mode · aniso_max · tonemap_path.",
+        false,
+        render_fidelity
+    );
+
     r
 }
 
@@ -988,6 +996,27 @@ fn telemetry_set_log_level(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-MAINSTREAM : `render.fidelity` (read-only)
+// ───────────────────────────────────────────────────────────────────────
+
+/// Return the live graphical-fidelity settings active on the renderer.
+///
+/// In catalog mode (no GPU init), `initialized=false` + safe defaults are
+/// returned so the tool is always callable (e.g. for unit tests + tooling
+/// that introspects the registry without spinning up a window).
+fn render_fidelity(_state: &mut EngineState, _params: Value) -> Value {
+    let r = crate::fidelity::current_report();
+    json!({
+        "msaa_samples": r.msaa_samples,
+        "hdr_format": r.hdr_format,
+        "present_mode": r.present_mode,
+        "aniso_max": r.aniso_max,
+        "tonemap_path": r.tonemap_path,
+        "initialized": r.initialized,
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § handlers — T11-LOA-TEST-APP visual-data-gathering apparatus
 // ───────────────────────────────────────────────────────────────────────
 
@@ -1405,14 +1434,16 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_35_tools() {
+    fn tools_list_returns_36_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
         //   render.tour, render.diff_golden)
-        // + 2 multi-room (T11-LOA-ROOMS · room.list + room.teleport) = 35 total.
+        // + 2 multi-room (T11-LOA-ROOMS · room.list + room.teleport)
+        // + 1 fidelity probe (T11-LOA-FID-MAINSTREAM · render.fidelity)
+        // = 36 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 35, "must have exactly 35 tools");
+        assert_eq!(reg.len(), 36, "must have exactly 36 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -1454,6 +1485,8 @@ mod tests {
             // T11-LOA-ROOMS additions :
             "room.list",
             "room.teleport",
+            // T11-LOA-FID-MAINSTREAM addition :
+            "render.fidelity",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -1482,6 +1515,8 @@ mod tests {
             // T11-LOA-TEST-APP : diff_golden is read-only (just disk I/O).
             "render.diff_golden",
             "room.list",
+            // T11-LOA-FID-MAINSTREAM : fidelity probe is read-only.
+            "render.fidelity",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -1685,10 +1720,11 @@ mod tests {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
         // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus
-        // + 2 room (T11-LOA-ROOMS) = 35.
-        assert_eq!(v["count"], 35);
+        // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
+        // = 36.
+        assert_eq!(v["count"], 36);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 35);
+        assert_eq!(arr.len(), 36);
     }
 
     // § T11-LOA-TELEM telemetry handler shape tests
@@ -1909,5 +1945,51 @@ mod tests {
         );
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("NonExistentRoom"));
+    }
+
+    // § T11-LOA-FID-MAINSTREAM · MCP render.fidelity tests
+
+    /// Returns a structured object with the expected keys, even in catalog
+    /// mode (where GPU has not initialized → `initialized=false`).
+    #[test]
+    fn mcp_render_fidelity_returns_valid_struct() {
+        let mut s = EngineState::default();
+        let v = render_fidelity(&mut s, json!({}));
+        // Required keys.
+        assert!(v.get("msaa_samples").is_some());
+        assert!(v.get("hdr_format").is_some());
+        assert!(v.get("present_mode").is_some());
+        assert!(v.get("aniso_max").is_some());
+        assert!(v.get("tonemap_path").is_some());
+        assert!(v.get("initialized").is_some());
+        // Types are sane.
+        assert!(v["msaa_samples"].as_u64().is_some());
+        assert!(v["hdr_format"].as_str().is_some());
+        assert!(v["present_mode"].as_str().is_some());
+        assert!(v["aniso_max"].as_u64().is_some());
+        assert!(v["tonemap_path"].as_bool().is_some());
+        assert!(v["initialized"].as_bool().is_some());
+    }
+
+    /// When the gpu module publishes a 4xMSAA / Mailbox / Rgba16Float
+    /// fidelity report, `render.fidelity` reflects it.
+    #[test]
+    fn mcp_render_fidelity_reflects_published_report() {
+        crate::fidelity::set_report(crate::fidelity::FidelityReport {
+            msaa_samples: 4,
+            hdr_format: "Rgba16Float".to_string(),
+            present_mode: "Mailbox".to_string(),
+            aniso_max: 16,
+            tonemap_path: true,
+            initialized: true,
+        });
+        let mut s = EngineState::default();
+        let v = render_fidelity(&mut s, json!({}));
+        assert_eq!(v["msaa_samples"], 4);
+        assert_eq!(v["hdr_format"], "Rgba16Float");
+        assert_eq!(v["present_mode"], "Mailbox");
+        assert_eq!(v["aniso_max"], 16);
+        assert_eq!(v["tonemap_path"], true);
+        assert_eq!(v["initialized"], true);
     }
 }
