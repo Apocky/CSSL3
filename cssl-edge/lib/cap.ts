@@ -11,6 +11,8 @@
 //   bit 6   (0x040) · RUN_SHARE_CAP_SUBMIT   · /api/run-share/submit
 //   bit 7   (0x080) · RUN_SHARE_CAP_RECEIVE  · /api/run-share/feed
 //   bit 8   (0x100) · MP_CAP_RENDEZVOUS      · /api/mp-rendezvous/lobby
+//   bit 9   (0x200) · STRIPE_CHECKOUT_INIT   · /api/payments/stripe/checkout
+//   bit 10  (0x400) · STRIPE_REFUND_REQUEST  · /api/payments/stripe/refund-request
 //
 // Multiplayer caps + companion cap + marketplace + run-share caps share the
 // caller-supplied `cap` integer (distinct bit-spaces). Callers OR-compose.
@@ -30,6 +32,12 @@ export const MARKETPLACE_CAP_POST = 0x20;
 export const RUN_SHARE_CAP_SUBMIT = 0x40;
 export const RUN_SHARE_CAP_RECEIVE = 0x80;
 export const MP_CAP_RENDEZVOUS = 0x100;
+
+// Stripe payment cap-bits (W9 expansion). Caller supplies via header
+// `x-loa-cap` integer when initiating checkout / requesting refund.
+// DEFAULT-DENY when neither cap-bit set AND sovereign header absent.
+export const STRIPE_CHECKOUT_INIT = 0x200;
+export const STRIPE_REFUND_REQUEST = 0x400;
 
 // Cap-gate result. `ok=false` carries a reason for audit-log + 403 body.
 export interface CapDecision {

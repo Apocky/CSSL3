@@ -4,11 +4,14 @@
   "private": true,
   "description": "LoA-v13 Edge — public MCP gateway for CSSL/LoA scenes (Vercel-deployable Next.js)",
   "scripts": {
+    "prebuild": "node scripts/snapshot-specs.js",
+    "predev": "node scripts/snapshot-specs.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "check": "tsc --noEmit",
     "lint": "next lint",
+    "snapshot:specs": "node scripts/snapshot-specs.js",
     "test:health": "node --import tsx tests/api/health.test.ts",
     "test:companion": "node --import tsx tests/api/companion.test.ts",
     "test:sovereign": "node --import tsx tests/lib/sovereign.test.ts",
@@ -31,13 +34,22 @@
     "test:transparency-kan-canary": "node --import tsx tests/api/transparency-kan-canary.test.ts",
     "test:gear-share-page": "node --import tsx tests/pages/marketplace.test.tsx",
     "test:run-share-feed-page": "node --import tsx tests/pages/run-share-feed.test.tsx",
-    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page && npm run test:marketplace-list && npm run test:marketplace-post && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:transparency-kan-canary && npm run test:gear-share-page && npm run test:run-share-feed-page"
+    "test:stripe-checkout": "node --import tsx tests/api/stripe-checkout.test.ts",
+    "test:stripe-webhook": "node --import tsx tests/api/stripe-webhook.test.ts",
+    "test:stripe-refund": "node --import tsx tests/api/stripe-refund.test.ts",
+    "test:health-w9": "node --import tsx tests/api/health-w9.test.ts",
+    "test:docs-page": "node --import tsx tests/pages/docs.test.ts",
+    "test:devblog-page": "node --import tsx tests/pages/devblog.test.ts",
+    "test:press-page": "node --import tsx tests/pages/press.test.ts",
+    "test:buy-page": "node --import tsx tests/pages/buy.test.ts",
+    "test": "npm run snapshot:specs && npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page && npm run test:marketplace-list && npm run test:marketplace-post && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:transparency-kan-canary && npm run test:gear-share-page && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:devblog-page && npm run test:press-page && npm run test:buy-page"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "next": "14.2.5",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
     "@types/node": "20.14.10",
