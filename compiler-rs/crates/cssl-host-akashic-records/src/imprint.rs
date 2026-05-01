@@ -382,14 +382,14 @@ mod tests {
         let m1 = SceneMeta {
             scene_name: "ab".into(),
             location: "c".into(),
-            runeset: "".into(),
+            runeset: String::new(),
             spectral_16band_rendered: false,
             audio_loop: false,
         };
         let m2 = SceneMeta {
             scene_name: "a".into(),
             location: "bc".into(),
-            runeset: "".into(),
+            runeset: String::new(),
             spectral_16band_rendered: false,
             audio_loop: false,
         };

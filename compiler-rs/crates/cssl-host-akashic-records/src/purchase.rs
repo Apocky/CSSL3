@@ -78,13 +78,68 @@ pub enum AuditEvent {
     },
 }
 
+mod ledger_serde {
+    //! Serde-shim : convert `BTreeMap<ImprintId, _>` to `Vec<_>` for JSON-compat.
+    //! ImprintId is a transparent-newtype-u64 ; JSON-spec forbids number-map-keys.
+    //! Converting to a value-array (since `id` is already inside [`Imprint`]) keeps
+    //! deterministic iteration-order via `BTreeMap` at-rest while passing JSON.
+    use std::collections::BTreeMap;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::{AethericShards, AuthorPubkey, Imprint, ImprintId};
+
+    pub(super) fn ser_imprints<S: Serializer>(
+        m: &BTreeMap<ImprintId, Imprint>,
+        ser: S,
+    ) -> Result<S::Ok, S::Error> {
+        let v: Vec<&Imprint> = m.values().collect();
+        v.serialize(ser)
+    }
+
+    pub(super) fn de_imprints<'de, D: Deserializer<'de>>(
+        de: D,
+    ) -> Result<BTreeMap<ImprintId, Imprint>, D::Error> {
+        let v: Vec<Imprint> = Vec::deserialize(de)?;
+        Ok(v.into_iter().map(|i| (i.id, i)).collect())
+    }
+
+    pub(super) fn ser_balances<S: Serializer>(
+        m: &BTreeMap<AuthorPubkey, AethericShards>,
+        ser: S,
+    ) -> Result<S::Ok, S::Error> {
+        // Hex-string keys : AuthorPubkey serializes to hex-string, so a wrapped
+        // BTreeMap<String, _> survives JSON.
+        let mut as_str: BTreeMap<String, AethericShards> = BTreeMap::new();
+        for (k, v) in m {
+            as_str.insert(k.to_hex(), *v);
+        }
+        as_str.serialize(ser)
+    }
+
+    pub(super) fn de_balances<'de, D: Deserializer<'de>>(
+        de: D,
+    ) -> Result<BTreeMap<AuthorPubkey, AethericShards>, D::Error> {
+        let as_str: BTreeMap<String, AethericShards> = BTreeMap::deserialize(de)?;
+        let mut out = BTreeMap::new();
+        for (k, v) in as_str {
+            let pk = AuthorPubkey::from_hex(&k).map_err(serde::de::Error::custom)?;
+            out.insert(pk, v);
+        }
+        Ok(out)
+    }
+}
+
 /// Per-author balance + imprint storage + attribution ledger + audit-trail.
 ///
 /// All maps are `BTreeMap` (deterministic-iteration · per task-spec hard-cap).
+/// Maps are serialized via shim to remain JSON-compat (non-string keys).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AkashicLedger {
     next_id: u64,
+    #[serde(serialize_with = "ledger_serde::ser_balances", deserialize_with = "ledger_serde::de_balances")]
     balances: BTreeMap<AuthorPubkey, AethericShards>,
+    #[serde(serialize_with = "ledger_serde::ser_imprints", deserialize_with = "ledger_serde::de_imprints")]
     imprints: BTreeMap<ImprintId, Imprint>,
     attribution: AttributionLedger,
     config: ShardCostConfig,
