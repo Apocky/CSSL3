@@ -38,6 +38,49 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Serde adapter : `BTreeMap<Pubkey, Companion>` ↔ `Vec<(Pubkey, Companion)>`.
+///
+/// JSON requires map-keys to be strings ; `Pubkey` is a `[u8; 32]` newtype,
+/// so a direct `BTreeMap<Pubkey, _>` serialization fails. We canonicalize via
+/// `BTreeMap::iter` (already ordered) and round-trip through a Vec of pairs.
+mod pubkey_companion_map_as_vec {
+    use super::{Companion, Pubkey};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    pub(super) fn serialize<S: Serializer>(
+        m: &BTreeMap<Pubkey, Companion>,
+        ser: S,
+    ) -> Result<S::Ok, S::Error> {
+        let v: Vec<(&Pubkey, &Companion)> = m.iter().collect();
+        v.serialize(ser)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        de: D,
+    ) -> Result<BTreeMap<Pubkey, Companion>, D::Error> {
+        let v: Vec<(Pubkey, Companion)> = Vec::deserialize(de)?;
+        Ok(v.into_iter().collect())
+    }
+}
+
+/// Serde adapter : `BTreeSet<Pubkey>` ↔ `Vec<Pubkey>` (same JSON-key reason).
+mod pubkey_set_as_vec {
+    use super::Pubkey;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeSet;
+
+    pub(super) fn serialize<S: Serializer>(s: &BTreeSet<Pubkey>, ser: S) -> Result<S::Ok, S::Error> {
+        let v: Vec<&Pubkey> = s.iter().collect();
+        v.serialize(ser)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(de: D) -> Result<BTreeSet<Pubkey>, D::Error> {
+        let v: Vec<Pubkey> = Vec::deserialize(de)?;
+        Ok(v.into_iter().collect())
+    }
+}
+
 /// Errors returnable from a `Home` mutation.
 ///
 /// Variants are stable + serde-roundtrip safe so cssl-edge can echo them
@@ -88,7 +131,9 @@ impl std::error::Error for HomeError {}
 /// Public so callers can snapshot / persist via `serde_json` without going
 /// through the [`Home`] facade. Mutations should still go through `Home`
 /// methods to keep the audit-log consistent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Not `Eq` because [`DecorationSlot::transform`] holds `f32` values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HomeState {
     /// Schema version.
     pub schema_version: u32,
@@ -102,17 +147,25 @@ pub struct HomeState {
     pub mode: AccessMode,
     /// Granted cap-bits.
     pub caps: HomeCapBits,
-    /// Friend allowlist (M1 FriendOnly).
+    /// Friend allowlist (M1 FriendOnly). Serialized as Vec — see
+    /// [`pubkey_companion_map_as_vec`] for the JSON-key rationale.
+    #[serde(with = "pubkey_set_as_vec")]
     pub friends: BTreeSet<Pubkey>,
     /// Guild allowlist (M2 GuildOpen).
+    #[serde(with = "pubkey_set_as_vec")]
     pub guild: BTreeSet<Pubkey>,
     /// Currently-connected visitors.
+    #[serde(with = "pubkey_set_as_vec")]
     pub visitors: BTreeSet<Pubkey>,
     /// Decoration slots.
     pub decorations: BTreeMap<u32, DecorationSlot>,
     /// Trophies.
     pub trophies: BTreeMap<u64, Trophy>,
-    /// Companions, keyed by pubkey.
+    /// Companions, keyed by pubkey. JSON-serialized as a Vec of pairs because
+    /// `Pubkey` is a 32-byte array, not a string — so a `BTreeMap` with that
+    /// key would otherwise fail JSON serialization. The Vec is canonicalized
+    /// via `BTreeMap::iter` so order is deterministic.
+    #[serde(with = "pubkey_companion_map_as_vec")]
     pub companions: BTreeMap<Pubkey, Companion>,
     /// Portals.
     pub portals: BTreeMap<u32, Portal>,
@@ -136,7 +189,10 @@ const fn cap_for_mode(mode: AccessMode) -> u32 {
 }
 
 /// Top-level Home facade. Wraps [`HomeState`] with cap-gated mutations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Not `Eq` because the inner [`HomeState`] embeds `f32`-bearing decoration
+/// transforms — see [`HomeState`] for details.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Home {
     state: HomeState,
 }

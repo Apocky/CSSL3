@@ -50,7 +50,9 @@ impl Pubkey {
 /// This crate never reads the wall-clock — every API that needs a timestamp
 /// takes one as an argument. That keeps tests deterministic and lets the
 /// host-runtime advance time however it sees fit (frame-tick / replay / etc).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub struct Timestamp(pub u64);
 
 impl Timestamp {
