@@ -864,11 +864,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-causal-seed"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-d3d12"
 version = "0.1.0"
 dependencies = [
  "thiserror 1.0.69",
  "windows",
+]
+
+[[package]]
+name = "cssl-host-golden"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-histograms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -914,6 +938,22 @@ dependencies = [
  "smallvec",
  "thiserror 1.0.69",
  "windows",
+]
+
+[[package]]
+name = "cssl-host-procgen-rooms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-replay"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
