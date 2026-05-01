@@ -1,0 +1,34 @@
+[package]
+name                   = "cssl-host-kan-substrate-bridge"
+description            = "CSSLv3 stage0 — Trait-bridge between LoA classifiers (intent · cocreative-bias · seed-cells) and pluggable backends (heuristic stage-0 ↔ KAN-substrate stage-1+) ; trait abstractions + reference impls"
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W6-KAN-BRIDGE (cssl/session-15/W-W6-kan-bridge)
+#
+# § PURPOSE
+#   LoA's intelligence-roles (DM / GM / Collaborator / Coder per
+#   specs/grand-vision/10_INTELLIGENCE.csl) currently classify intents +
+#   score cocreative-bias features + emit spontaneous-condensation seed
+#   cells via stage-0 heuristic classifiers. Stage-1+ swaps these to
+#   KAN-substrate-driven classifiers without touching call-sites — this
+#   crate is the BRIDGE : trait-objects + a registry that lets the host
+#   pick stage-0 OR stage-1 (or any future backend) at construction time.
+#
+# § FILE-DISJOINT
+#   No imports from cssl-substrate-omega-field / cssl-substrate-kan / any
+#   intent_router / cocreative-optimizer / spontaneous-condensation crate.
+#   Stage-1 stub does NOT actually invoke KAN — it carries an opaque
+#   handle string + falls through to a stage-0 fallback when the handle
+#   is absent. Wave-7 wires this crate into the call-sites.
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
