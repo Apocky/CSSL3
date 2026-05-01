@@ -233,6 +233,7 @@ impl<'de> Deserialize<'de> for CausalDag {
 }
 
 #[cfg(test)]
+#[allow(clippy::many_single_char_names, clippy::similar_names)]
 mod tests {
     use super::*;
 

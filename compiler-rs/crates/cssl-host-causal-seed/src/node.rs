@@ -123,6 +123,12 @@ mod tests {
     }
 
     #[test]
+    fn with_ts_sets_intent_timestamp() {
+        let n = CausalNode::new(3, NodeKind::Place, "vault").with_ts(987_654_321);
+        assert_eq!(n.ts_micros_intent, 987_654_321);
+    }
+
+    #[test]
     fn all_node_kinds_distinct() {
         let kinds = [
             NodeKind::StoryBeat,

@@ -126,7 +126,13 @@ impl CausalIntegrator {
     /// state is unchanged and t_micros does NOT advance.
     pub fn step_micros(&mut self, dt_micros: u64) -> Result<(), DagErr> {
         let order = self.dag.topological_order()?;
-        let dt_secs = (dt_micros as f64 / 1_000_000.0) as f32;
+        // dt_micros : u64 → f32 seconds. Precision-loss is acceptable in this
+        // domain : story-as-physics steps are typically ≤ 1 hour-of-game-time
+        // (3.6e9 µs) which fits f32 mantissa cleanly. The intermediate f64 is
+        // for division-rounding fidelity, not for representing the full u64 range.
+        #[allow(clippy::cast_precision_loss)]
+        let dt_micros_f64 = dt_micros as f64;
+        let dt_secs = (dt_micros_f64 / 1_000_000.0) as f32;
         for n in order {
             if let Some(eff) = self.effects.get(&n) {
                 eff.apply(dt_secs, &mut self.world);
@@ -169,6 +175,7 @@ impl CausalEffect for LinearEffect {
 }
 
 #[cfg(test)]
+#[allow(clippy::many_single_char_names, clippy::similar_names)]
 mod tests {
     use super::*;
     use crate::dag::CausalDag;
@@ -241,6 +248,37 @@ mod tests {
         // State unchanged.
         assert_eq!(sim.time_micros(), pre_t);
         assert_eq!(sim.world().v, pre_v);
+    }
+
+    #[test]
+    fn out_of_bounds_effect_idx_is_silent_noop() {
+        let mut g = CausalDag::new();
+        let n = g.add_node(NodeKind::Event, "oob");
+        let mut sim = CausalIntegrator::new(g, 2);
+        // target_idx=99 > world.len()=2 → silent skip, world unchanged.
+        sim.bind_effect(n, Box::new(LinearEffect::new(99, 1000.0, "oob-effect")));
+        sim.step_micros(1_000_000).expect("step");
+        assert_eq!(sim.world().v, vec![0.0, 0.0]);
+    }
+
+    #[test]
+    fn world_vector_constructors_and_metadata() {
+        let z = WorldVector::zeros(5);
+        assert_eq!(z.len(), 5);
+        assert!(!z.is_empty());
+        assert!(z.v.iter().all(|&x| x == 0.0));
+
+        let v = WorldVector::from_vec(vec![1.0, -2.0, 3.5]);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.v, vec![1.0, -2.0, 3.5]);
+
+        let empty = WorldVector::zeros(0);
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        // LinearEffect.label exposes the configured string for trace/debug.
+        let eff = LinearEffect::new(0, 1.0, "lbl");
+        assert_eq!(eff.label(), "lbl");
     }
 
     #[test]
