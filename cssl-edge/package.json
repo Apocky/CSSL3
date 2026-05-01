@@ -19,7 +19,11 @@
     "test:companion-stream": "node --import tsx tests/api/companion-stream.test.ts",
     "test:asset-recommend": "node --import tsx tests/api/asset-recommend.test.ts",
     "test:recommended-page": "node --import tsx tests/pages/recommended.test.ts",
-    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page"
+    "test:transparency-sovcap-api": "node --import tsx tests/api/transparency-sovereign-cap.test.ts",
+    "test:transparency-bias-api": "node --import tsx tests/api/transparency-cocreative-bias.test.ts",
+    "test:transparency-index-page": "node --import tsx tests/pages/transparency-index.test.ts",
+    "test:transparency-sovcap-page": "node --import tsx tests/pages/transparency-sovereign-cap.test.ts",
+    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
