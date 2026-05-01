@@ -254,6 +254,29 @@ pub struct SnapshotRequest {
     pub path: std::path::PathBuf,
 }
 
+/// § T11-WAVE3-TEXTINPUT : in-game text-input state mirror.
+///
+/// The InputState owns the canonical TextInputState ; per-frame the host
+/// copies the focus flag + buffer + history (last 5) into this mirror so
+/// MCP tools (`text_input.submit_history` + `text_input.inject`) can read +
+/// program the box without reaching across the input-thread boundary.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TextInputMirror {
+    /// True while the box is focused (key-input routing into the box).
+    pub focused: bool,
+    /// Live edit buffer (current draft, post-frame).
+    pub buffer: String,
+    /// Last 5 submissions oldest-first.
+    pub history: Vec<String>,
+    /// Total submissions from start-of-process (matches the telemetry counter).
+    pub submissions_total: u64,
+    /// Total chars typed (post-cap) from start-of-process.
+    pub chars_typed_total: u64,
+    /// MCP-pending : submit this text on the next frame as if the user
+    /// typed it and pressed Enter. Drained by the render loop.
+    pub inject_pending: Option<String>,
+}
+
 /// § T11-LOA-USERFIX : capture-pipeline state mirror.
 ///
 /// Tracks burst + video sessions in a form that survives across MCP-tool
@@ -515,6 +538,8 @@ pub struct EngineState {
     pub cfer: CferStateMirror,
     /// § T11-LOA-USERFIX : capture (burst + video) state mirror.
     pub capture: CaptureStateMirror,
+    /// § T11-WAVE3-TEXTINPUT : in-game text-input box mirror.
+    pub text_input: TextInputMirror,
 
     // ───────────────────────────────────────────────────────────────────
     // § T11-LOA-SENSORY · sensory-harness ring-buffers
@@ -606,6 +631,7 @@ impl Default for EngineState {
                 ..Default::default()
             },
             capture: CaptureStateMirror::default(),
+            text_input: TextInputMirror::default(),
             pose_history: Vec::with_capacity(SENSE_POSE_RING_CAP),
             dm_history: Vec::with_capacity(SENSE_DM_HISTORY_CAP),
             gm_phrase_history: Vec::with_capacity(SENSE_GM_PHRASE_CAP),
