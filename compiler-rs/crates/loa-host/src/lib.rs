@@ -68,6 +68,28 @@ pub mod render;
 pub mod window;
 
 // ──────────────────────────────────────────────────────────────────────────
+// § FFI surface (T11-LOA-PURE-CSSL · pure-CSSL main.cssl entry-point)
+// ──────────────────────────────────────────────────────────────────────────
+//
+// § ROLE
+//   Pure-CSSL programs (e.g. `Labyrinth of Apocalypse/main.cssl`) declare the
+//   engine entry as `extern "C" fn __cssl_engine_run() -> i32` and call it
+//   from `fn main()`. The CSSL compiler links the loa-host staticlib (via
+//   csslc's auto-default-link mechanism), which provides this symbol. The
+//   resulting `LoA.exe` is GENUINELY the output of csslc compiling
+//   `main.cssl` — Rust is invisible at the source level (same model as a C
+//   program calling libc/syscalls).
+//
+// § STAGE-1 PATH
+//   As csslc gains capability (winit-bindings · wgpu-bindings · async-trait),
+//   per-system modules migrate from this Rust crate to .csl source. The
+//   `__cssl_engine_run` symbol stays as an ABI anchor, but its body shrinks
+//   over time until it becomes a thin shim around .csl-authored event-loop
+//   code. At full self-host the symbol disappears and main.cssl drives
+//   winit/wgpu directly via the cssl-host-* FFI surface.
+pub mod ffi;
+
+// ──────────────────────────────────────────────────────────────────────────
 // § Re-exports (the surface sibling code reaches for via `loa_host::*`)
 // ──────────────────────────────────────────────────────────────────────────
 

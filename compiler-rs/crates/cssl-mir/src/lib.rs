@@ -89,6 +89,13 @@ pub mod vec_abi;
 pub mod simd_abi;
 pub mod lower;
 pub mod monomorph;
+// § T11-LOA-PURE-CSSL (W-LOA-pure-cssl-engine) — call-result-type fixup pass.
+//   Walks the module after sig-lower + body-lower + replaces opaque
+//   `!cssl.call_result.<callee>` placeholders with the resolved scalar
+//   return type from the matching `MirFunc.results`. Required for
+//   pure-CSSL programs to call `extern fn name() -> i32` cleanly through
+//   the cranelift backend (which rejects non-scalar carrier-types).
+pub mod resolve_call_result;
 pub mod op;
 pub mod pipeline;
 pub mod print;
@@ -142,6 +149,7 @@ pub use pipeline::{
     TelemetryProbeInsertPass,
 };
 pub use print::{print_module, MlirPrinter};
+pub use resolve_call_result::resolve_call_result_types;
 pub use sigma_enforce::{
     EnforcesSigmaAtCellTouches, SigmaCellOpKind, SigmaEnforceContext, ATTR_CAPACITY_FLOOR,
     ATTR_CELL_FACET, ATTR_CONSENT_BITS, ATTR_REQUIRED_BIT, ATTR_REVERSIBILITY_SCOPE,
