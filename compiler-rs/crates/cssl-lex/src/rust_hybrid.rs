@@ -169,6 +169,31 @@ enum RawToken {
     #[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
     FloatLiteral,
 
+    /// Integer literal — three syntactic forms, all collapsing to a single
+    /// `IntLiteral` token kind:
+    ///
+    /// * decimal       `42` / `1_000_000` (with optional `'i32` style suffix)
+    /// * hexadecimal   `0xCAFE_BABE` / `0x53`
+    /// * binary        `0b1010_0110`
+    /// * octal         `0o755`
+    ///
+    /// All non-decimal forms accept ASCII case-insensitive hex digits where
+    /// applicable, an underscore separator after the first digit, and the
+    /// same `'<suffix>` type-tag as decimal literals. Distinguishing the
+    /// numeric base is the parser/sema layer's responsibility — at the lexer
+    /// level all four spellings emit `TokenKind::IntLiteral` carrying the
+    /// raw source slice so downstream stages can re-parse.
+    ///
+    /// Hex literal MUST appear as a regex *alternative* on this variant
+    /// rather than its own variant: with separate variants logos's
+    /// longest-match disambiguator would split `0x53` into `0` (decimal) +
+    /// `x53` (ident) because the decimal form is also a valid prefix. Listing
+    /// hex/bin/oct first as additional `#[regex]` lines keeps `0x...` /
+    /// `0b...` / `0o...` matched as a single token before the bare-decimal
+    /// fallback even kicks in.
+    #[regex(r"0x[0-9A-Fa-f][0-9A-Fa-f_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
+    #[regex(r"0b[01][01_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
+    #[regex(r"0o[0-7][0-7_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
     #[regex(r"[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
     IntLiteral,
 
@@ -369,6 +394,30 @@ mod tests {
         assert_eq!(kinds("42"), vec![TokenKind::IntLiteral, TokenKind::Eof]);
         assert_eq!(kinds("3.14"), vec![TokenKind::FloatLiteral, TokenKind::Eof]);
         assert_eq!(kinds("42'i32"), vec![TokenKind::IntLiteral, TokenKind::Eof],);
+    }
+
+    /// T11-CC-PARSER-9 (W-CC-array-lit) — hex / binary / octal integer
+    /// literals must lex as a *single* `IntLiteral` token. The mandelbulb
+    /// scene's `[u8 ; 13]` shader-stub array literal uses `0x53, 0x54, …`
+    /// element-syntax; before this fix `0x53` split into `0` + `x53`, which
+    /// blew up the array-literal parser one byte after the `[`.
+    #[test]
+    fn integer_non_decimal_bases_atomic() {
+        assert_eq!(kinds("0x53"), vec![TokenKind::IntLiteral, TokenKind::Eof]);
+        assert_eq!(
+            kinds("0xCAFE_BABE"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+        assert_eq!(
+            kinds("0b1010_0110"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+        assert_eq!(kinds("0o755"), vec![TokenKind::IntLiteral, TokenKind::Eof]);
+        // type-tag suffix still works on hex
+        assert_eq!(
+            kinds("0xFF'u8"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
     }
 
     #[test]
