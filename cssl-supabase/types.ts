@@ -147,6 +147,142 @@ export type CompanionLogInsert = Omit<CompanionLogRow, "id" | "created_at"> & {
   created_at?: Timestamptz;
 };
 
+// =====================================================================
+// § T11-W4-SUPABASE-SIGNALING · multiplayer signaling types
+// Appended for migrations 0004 + 0005 + 0006.
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Enums + literals (signaling)
+// ---------------------------------------------------------------------
+export type SignalingKind =
+  | "offer"
+  | "answer"
+  | "ice"
+  | "hello"
+  | "ping"
+  | "pong"
+  | "bye"
+  | "custom";
+
+/**
+ * Wildcard fan-out target — `*` broadcasts a signaling message to every
+ * peer in the room. Always paired with `to_peer` in `SignalingMessageRow`.
+ */
+export type PeerAddress = string | "*";
+
+// ---------------------------------------------------------------------
+// public.multiplayer_rooms
+// ---------------------------------------------------------------------
+export interface MultiplayerRoomRow {
+  id: Uuid;
+  code: string;
+  host_player_id: string;
+  created_at: Timestamptz;
+  expires_at: Timestamptz;
+  max_peers: number;
+  is_open: boolean;
+  meta: Jsonb;
+}
+
+export type MultiplayerRoomInsert = Omit<
+  MultiplayerRoomRow,
+  "id" | "created_at" | "expires_at" | "max_peers" | "is_open" | "meta"
+> & {
+  id?: Uuid;
+  created_at?: Timestamptz;
+  expires_at?: Timestamptz;
+  max_peers?: number;
+  is_open?: boolean;
+  meta?: Jsonb;
+};
+
+export type MultiplayerRoomUpdate = Partial<MultiplayerRoomInsert>;
+
+/** Convenience alias matching the requested public surface. */
+export type MultiplayerRoom = MultiplayerRoomRow;
+
+// ---------------------------------------------------------------------
+// public.room_peers
+// ---------------------------------------------------------------------
+export interface RoomPeerRow {
+  id: Uuid;
+  room_id: Uuid;
+  player_id: string;
+  display_name: string | null;
+  joined_at: Timestamptz;
+  last_seen_at: Timestamptz;
+  is_host: boolean;
+}
+
+export type RoomPeerInsert = Omit<
+  RoomPeerRow,
+  "id" | "joined_at" | "last_seen_at" | "is_host"
+> & {
+  id?: Uuid;
+  joined_at?: Timestamptz;
+  last_seen_at?: Timestamptz;
+  is_host?: boolean;
+};
+
+export type RoomPeerUpdate = Partial<RoomPeerInsert>;
+
+/** Convenience alias matching the requested public surface. */
+export type RoomPeer = RoomPeerRow;
+
+// ---------------------------------------------------------------------
+// public.signaling_messages
+// ---------------------------------------------------------------------
+export interface SignalingMessageRow {
+  id: number;          // bigserial maps to number (53-bit safe; consider bigint for >2^53)
+  room_id: Uuid;
+  from_peer: string;
+  to_peer: PeerAddress;
+  kind: SignalingKind;
+  payload: Jsonb;
+  created_at: Timestamptz;
+  delivered: boolean;
+}
+
+export type SignalingMessageInsert = Omit<
+  SignalingMessageRow,
+  "id" | "created_at" | "delivered"
+> & {
+  id?: number;
+  created_at?: Timestamptz;
+  delivered?: boolean;
+};
+
+export type SignalingMessageUpdate = Partial<
+  Pick<SignalingMessageRow, "delivered">
+>;
+
+/** Convenience alias matching the requested public surface. */
+export type SignalingMessage = SignalingMessageRow;
+
+// ---------------------------------------------------------------------
+// public.room_state_snapshots
+// ---------------------------------------------------------------------
+export interface RoomStateSnapshotRow {
+  id: number;
+  room_id: Uuid;
+  seq: number;
+  created_by: string;
+  state: Jsonb;
+  created_at: Timestamptz;
+}
+
+export type RoomStateSnapshotInsert = Omit<
+  RoomStateSnapshotRow,
+  "id" | "created_at"
+> & {
+  id?: number;
+  created_at?: Timestamptz;
+};
+
+/** Convenience alias matching the requested public surface. */
+export type RoomStateSnapshot = RoomStateSnapshotRow;
+
 // ---------------------------------------------------------------------
 // Supabase generated-style root type
 // ---------------------------------------------------------------------
@@ -173,6 +309,26 @@ export interface Database {
         Insert: CompanionLogInsert;
         Update: never; // RLS denies UPDATE
       };
+      multiplayer_rooms: {
+        Row: MultiplayerRoomRow;
+        Insert: MultiplayerRoomInsert;
+        Update: MultiplayerRoomUpdate;
+      };
+      room_peers: {
+        Row: RoomPeerRow;
+        Insert: RoomPeerInsert;
+        Update: RoomPeerUpdate;
+      };
+      signaling_messages: {
+        Row: SignalingMessageRow;
+        Insert: SignalingMessageInsert;
+        Update: SignalingMessageUpdate;
+      };
+      room_state_snapshots: {
+        Row: RoomStateSnapshotRow;
+        Insert: RoomStateSnapshotInsert;
+        Update: never; // snapshots are append-only
+      };
     };
     Functions: {
       scene_record_play: {
@@ -188,6 +344,22 @@ export interface Database {
           p_refusal_reason?: string | null;
         };
         Returns: Uuid;
+      };
+      gen_room_code: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      cleanup_expired_rooms: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      presence_touch: {
+        Args: { p_room: Uuid; p_player: string };
+        Returns: Timestamptz;
+      };
+      current_user_id: {
+        Args: Record<string, never>;
+        Returns: string | null;
       };
     };
     Enums: Record<string, never>;
@@ -215,4 +387,17 @@ export function screenshotPath(userId: Uuid, sceneId: Uuid, ext: "png" | "jpg" |
 
 export function audioPath(userId: Uuid, recordingId: Uuid, ext: "wav" | "mp3" | "ogg" | "webm" | "flac"): string {
   return `${userId}/${recordingId}.${ext}`;
+}
+
+// =====================================================================
+// § T11-W4-SUPABASE-SIGNALING · channel-name builders
+// =====================================================================
+/** Per-room realtime channel name (filter signaling_messages by room_id). */
+export function roomChannelName(roomId: Uuid): string {
+  return `room:${roomId}`;
+}
+
+/** Per-peer realtime channel name (subscribe to messages addressed to me). */
+export function peerChannelName(roomId: Uuid, peerId: string): string {
+  return `room:${roomId}:peer:${peerId}`;
 }
