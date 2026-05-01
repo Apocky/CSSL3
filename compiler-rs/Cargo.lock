@@ -906,6 +906,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-fab-procgen"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-procgen-rooms",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-frame-recorder"
 version = "0.1.0"
 dependencies = [
@@ -915,6 +924,14 @@ dependencies = [
 
 [[package]]
 name = "cssl-host-golden"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-handoff-protocol"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -2359,6 +2376,23 @@ name = "loa-host"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "cssl-host-attestation",
+ "cssl-host-audit",
+ "cssl-host-causal-seed",
+ "cssl-host-cocreative",
+ "cssl-host-config",
+ "cssl-host-frame-recorder",
+ "cssl-host-golden",
+ "cssl-host-histograms",
+ "cssl-host-input-virtual",
+ "cssl-host-license-attribution",
+ "cssl-host-multiplayer-signaling",
+ "cssl-host-procgen-rooms",
+ "cssl-host-replay",
+ "cssl-host-rt-trace",
+ "cssl-host-spectral-grader",
+ "cssl-host-stereoscopy",
+ "cssl-host-voice",
  "cssl-rt",
  "cssl-spectral-render",
  "cssl-substrate-loa-kan",
