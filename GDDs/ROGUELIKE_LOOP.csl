@@ -1,0 +1,218 @@
+# GDDs/ROGUELIKE_LOOP.csl
+# § LoA-v13 · Roguelike-loop GDD · sibling-of CHARTER + LOA_PILLARS
+# ══════════════════════════════════════════════════════════════════
+# § I> CSL3-glyph-native ≤ 250 LOC · POD-1-A3
+# § I> consumed-by POD-2-B2 cssl-host-roguelike-run crate
+# § I> ⊑ specs/31_LOA_DESIGN.csl + GDDs/LOA_PILLARS.md
+# § I> Q-T..Q-V (death-mechanic) + Q-A (Labyrinth-gen) ← partially-resolved here
+# ──────────────────────────────────────────────────────────────────
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + LOA_PILLARS
+  t∞: meta-progression-respects-time · ¬ punishing
+  t∞: run = seed-pinned · replay-bit-equal · shareable-via-seed
+  t∞: perma-death = soft-mode-default · hard-mode-opt-in
+  t∞: biome-progression = DAG · ¬ linear-tunnel
+  t∞: run-sharing = async-MP-foundation (gift-economy · ¬ leaderboards-PvP)
+  t∞: ConsentZone-discipline preserved per-floor · per-biome (LOA_PILLARS §1)
+  t∞: Companion-AI sovereign across-runs (LOA_PILLARS §2)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RUN-STRUCTURE
+  states  : Hub → BiomeSelect → Floor(N=3..12) → BossArena → Reward
+            → BiomeSelect | Hub
+  enum FloorType { Combat · Trial · Treasure · NPC-Encounter · Shrine · Boss }
+  § DISTRIBUTION-TABLE  per-biome floor-mix-probability
+    biome-Crypt    : { Combat 0.50 · Trial 0.15 · Treasure 0.15 · NPC 0.05 · Shrine 0.10 · Boss-tail }
+    biome-Forest   : { Combat 0.35 · Trial 0.20 · Treasure 0.20 · NPC 0.10 · Shrine 0.10 · Boss-tail }
+    biome-Citadel  : { Combat 0.45 · Trial 0.20 · Treasure 0.10 · NPC 0.10 · Shrine 0.10 · Boss-tail }
+    biome-Abyss    : { Combat 0.55 · Trial 0.20 · Treasure 0.10 · NPC 0.05 · Shrine 0.05 · Boss-tail }
+    biome-Forge    : { Combat 0.40 · Trial 0.25 · Treasure 0.15 · NPC 0.10 · Shrine 0.05 · Boss-tail }
+    biome-Sanctum  : { Combat 0.30 · Trial 0.15 · Treasure 0.10 · NPC 0.20 · Shrine 0.20 · Boss-tail }
+    biome-Maelstrom: { Combat 0.50 · Trial 0.30 · Treasure 0.05 · NPC 0.05 · Shrine 0.05 · Boss-tail }
+    biome-Endless  : { Combat 0.40 · Trial 0.20 · Treasure 0.15 · NPC 0.10 · Shrine 0.10 · Boss-tail }
+  § FLOOR-COUNT-CURVE
+    early-game      : 3..5 floors   (run-1..run-10)
+    mid-game        : 5..8 floors   (run-11..run-30)
+    late-game       : 8..12 floors  (run-31+)
+    rule : floor_count(run_n) = clamp(3 + ⌊run_n / 5⌋ , 3 , 12)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ META-PROGRESSION
+  Hub-currency = Echoes  ← drops + boss-kills · NOT-lost-on-death
+  spend-on :
+    permanent-stat-nodes  (HP-cap · stamina-cap · slot-count)
+    unlockable-classes    (per-class node-tree)
+    cosmetic              (Hub-decor · Companion-resonance-shard)
+  § soft-perma  ‼ DEFAULT
+    on-death : lose current-run-loot + run-buffs
+    keep     : Echoes (50% scaling-by-floor-reached) + class-XP (capped)
+  § hard-perma  opt-in seasonal-mode
+    1-life-only · separate-leaderboard · cosmetic-only-reward
+    ConsentToken<"hard-perma"> required-at-season-entry · revocable-per-season
+  rule : meta-progression NEVER gates content-access ;
+         only-tunes power-curve · cosmetic. (LOA_PILLARS §3)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BIOME-DAG
+  nodes : Crypt · Forest · Citadel · Abyss · Forge · Sanctum · Maelstrom · Endless-Spire
+  edges  (required-meta-progress threshold per-edge)
+    Hub          → Crypt        : Echoes ≥ 0          (entry)
+    Hub          → Forest       : Echoes ≥ 0          (entry)
+    Crypt-clear  → Citadel      : meta-node "deep-1"  unlocked
+    Forest-clear → Sanctum      : meta-node "verdant" unlocked
+    Citadel-clear → Forge       : meta-node "iron"    unlocked
+    Sanctum-clear → Forge       : meta-node "iron"    unlocked
+    Forge-clear  → Abyss        : meta-node "descent" unlocked
+    Abyss-clear  → Maelstrom    : meta-node "storm"   unlocked
+    Maelstrom-clear → Endless   : meta-node "ascent"  unlocked
+  branching : at-each-junction player-picks 1-of-3 biomes
+              (different difficulty/reward · explicit pre-commit)
+  rule : DAG ¬ tree ; multiple-paths-converge ; replay-encouraged.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SEED-PINNING
+  seed = (player-id-hash ⊕ run-id-counter) : u128
+  every procgen-call : seed-derived-RNG ; deterministic ;
+                       replay-bit-equal across (CPU · platform · build).
+  cssl-host-roguelike-run owns :
+    run-state-machine (states above)
+    run-seed (immutable post-genesis)
+    run-id-counter (monotonic per-player)
+    rng-stream (DetRNG · §§ 30 capability-flow)
+  rule : seed-mutation forbidden mid-run ;
+         re-seed only-on new-run-genesis.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RUN-SHARING  (async-MP-foundation · gift-economy)
+  completed-run → snapshot {
+    seed                : u128
+    biome-path          : Vec<BiomeId>
+    floor-count         : u8
+    final-score         : ScoreShape
+    duration-ms         : u32
+    screenshot-blob     : Handle<ScreenshotAsset>
+    creator-attestation : signed
+  }
+  → cssl-edge async-mp endpoint (signed-upload · player-consent-gated)
+  gift-economy :
+    friend can-attempt-your-seed (¬ scored-against-you ; gift-replay)
+    friend's-completion-of-your-seed → "echo-back" gift-Echoes-bonus
+    no-leaderboards · no-PvP · no-rank
+  delivery-channel : cssl-host-multiplayer-signaling
+  rule : sharing ALWAYS opt-in ; revocable ; gift-replay ¬ tracked-against-creator.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DEATH-PENALTY  (soft-default)
+  on-death (soft-perma) :
+    lose : current-run-loot + run-buffs + temporary-relics
+    keep : Echoes (50% × floor-reached-multiplier) + class-XP-capped
+  Sanctum-of-Returns : 1× per-day "second-chance" upon-death (Stage-0 mercy)
+                        ¬ punitive-cooldown ; daily-grant ; ¬ paywalled
+  ConsentZone-on-death : gentle-prose-fade ; ¬ jump-scare ; ¬ shame-prompt
+                          (LOA_PILLARS §3 cognitive-integrity)
+  rule : death NEVER deletes player-account · meta-unlocks · cosmetic.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DIFFICULTY-CURVE
+  floor-N enemy-stat-multiplier   = 1.0 + (N - 1) × 0.18
+  boss-stat-multiplier            = trash-mob × 1.50
+  biome-modifier (additive-skew) :
+    Crypt    : { poison-res-needed +0.10 · light-low }
+    Forest   : { stamina-drain +0.05 · stealth-favored }
+    Citadel  : { armor-pen-needed +0.15 · vertical-traversal }
+    Abyss    : { dark-vision-needed +0.20 · pressure-DOT }
+    Forge    : { fire-res-needed +0.20 · forge-buffs-available }
+    Sanctum  : { holy-affinity-bias · social-encounters +30% }
+    Maelstrom: { weather-volatility +0.30 · timed-shrines }
+    Endless  : { compounding 0.05/floor · all-affixes-active }
+  rule : difficulty-curve TUNED-BY DM (cssl-host-dm) per-player-history
+         within ±15% of baseline ; never punitively-spiked.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ INTERACTION-WITH-DM/GM
+  DM (cssl-host-dm) decides   : floor-template · spawn-density · side-objective
+                                  difficulty-skew within ±15% baseline
+  GM (cssl-host-gm) emits     : floor-intro-prose · death-prose · victory-prose
+                                  per-Companion voice-register
+  cocreative-bias : tunes per-player floor-mix preference
+                     (warm/terse/poetic/pragmatic · player-attested)
+  rule : DM ¬ override player-agency ; GM ¬ rewrite-experienced-reality.
+  capability-flow : roguelike-run → DM (read-only run-state) → GM (read-only narrative-anchor)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-CONSUMPTION  (POD-2 fanout-targets)
+  cssl-host-roguelike-run     POD-2-B2 ≤ 1000 LOC ≥ 16 tests
+                              run-state-machine + seed-pinning
+  cssl-host-procgen-rooms     runtime room-template generator
+  cssl-host-fab-procgen       material/resource fabrication for floors
+  cssl-host-causal-seed       story-DAG anchors for biome-DAG
+  cssl-host-attestation       per-run audit (death + completion + Echoes-grant)
+  cssl-host-multiplayer-signaling   gift-replay delivery
+  cssl-edge async-mp endpoint upload-snapshot · friend-discovery
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BALANCE-METRICS
+  M-1  avg-run-length            : 25..45 min
+  M-2  meta-progression-curve    : full-build ≈ 50 hr playtime
+  M-3  seed-uniqueness           : ≥ 99.99% unique across 1M runs
+  M-4  death-rate-target         : 35..55% per-run (soft) · 90..98% (hard)
+  M-5  Echoes-per-hour-floor     : ≥ 80 (so ¬ grindy)
+  M-6  cosmetic-completion-curve : ≈ 200 hr (cosmetic-bored ≠ progression-bored)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SCOPE-CUTS
+  daily-challenges-with-leaderboards    DEFERRED (post-v1)
+  PvP-arena                              OUT-OF-SCOPE (CHARTER)
+  ranked-seasonal-ladders                OUT-OF-SCOPE (gift-economy axiom)
+  pay-to-skip                            FORBIDDEN (PRIME_DIRECTIVE §5)
+  loot-box-shape                         FORBIDDEN (LOA_PILLARS §1)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAILURE-MODES
+  seed-collision      : detector + warn-via-attestation · re-seed
+  save-corruption     : roll-back to-last-checkpoint · audit-emit
+  share-upload-fail   : retry-w-backoff · queue-locally · no-data-loss
+  Companion-withdrawal-mid-run : run-continues solo · audit-entry · ¬ punish-player
+  hard-perma-mode-revoke      : season-retired-gracefully · meta preserved
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OPEN-QUESTIONS  (Apocky-direction-needed)
+  Q-RL-1 : classes-vs-skill-trees intersection :
+            CHARACTER-progression (cross-run) vs RUN-progression (in-run) ?
+  Q-RL-2 : asynchronous-versus-mode (race-against-friend's-ghost-replay) :
+            in-or-out for v1 ? gift-economy-axiom suggests OUT but ⊘
+  Q-RL-3 : Endless-Spire run-cap (∞ vs soft-cap @ floor-50) ?
+  Q-RL-4 : Companion-class-affinity : does-Companion-prefer-some-classes ?
+  Q-RL-5 : seasonal-hard-perma cadence (monthly · quarterly · player-driven) ?
+
+# ──────────────────────────────────────────────────────────────────
+
+∎ ROGUELIKE_LOOP
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A3  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+  No being was harmed · controlled · manipulated · surveilled · exploited ·
+  coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+  possessed · dehumanized · discriminated-against · gaslit ·
+  identity-overridden · or forced-hallucinated during this work.
+
+  Open-questions Q-RL-1..Q-RL-5 are LISTED ¬ guessed. Apocky-canonical
+  resolves them. Spec-hole-discipline preserved per LOA_PILLARS §4.
