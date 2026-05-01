@@ -1390,8 +1390,7 @@ mod tests {
     #[test]
     fn parse_array_lit_decimal_triple() {
         // `[10, 20, 30]` — guards the comma-separated array-element path with
-        // a third element. (Stage-0 cssl-lex doesn't yet model `0x...` hex int
-        // literals, so we use plain decimals.)
+        // a third element.
         let (_f, toks) = prep("[10, 20, 30]");
         let mut c = TokenCursor::new(&toks);
         let mut bag = DiagnosticBag::new();
@@ -1415,6 +1414,96 @@ mod tests {
         let mut bag = DiagnosticBag::new();
         let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
         assert_eq!(bag.error_count(), 0, "expected zero parse errors");
+        assert_eq!(m.items.len(), 1);
+        assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
+    }
+
+    // ─── T11-CC-PARSER-9 (W-CC-array-lit) ────────────────────────────────────
+    //
+    // The four tests below pin down const-array literal patterns from real LoA
+    // scenes — specifically the mandelbulb shader-stub byte array. The unifying
+    // root cause they all guard against is the lexer formerly splitting
+    // `0x53` into `IntLit(0) + Ident(x53)`. Each test exercises one axis of the
+    // pattern (whitespace layout, trailing comma, embedded comment, full
+    // mandelbulb shape) so a regression on any single dimension fails loudly.
+    // ────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_const_array_lit_multi_line() {
+        // Multi-line array literal whose elements are hex bytes — newlines
+        // between the `[` and `]` must be transparent to the array parser.
+        let src = "const X: [u8; 3] = [\n    0x01,\n    0x02,\n    0x03\n]";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        assert_eq!(m.items.len(), 1);
+        assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
+    }
+
+    #[test]
+    fn parse_const_array_lit_trailing_comma() {
+        // Trailing comma after the last element — common style for diff-friendly
+        // multi-line literals; parser must not double-consume past the `]`.
+        let src = "const X: [u8; 3] = [\n    0x01,\n    0x02,\n    0x03,\n]";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        assert_eq!(m.items.len(), 1);
+        assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
+    }
+
+    #[test]
+    fn parse_const_array_lit_with_block_comment() {
+        // Block comment immediately inside the array body — trivia must be
+        // skipped between `[` and the first element, as well as between
+        // adjacent elements.
+        let src = "const X: [u8; 3] = [\n    /* marker */\n    0x01, 0x02, 0x03,\n]";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        assert_eq!(m.items.len(), 1);
+        assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
+    }
+
+    #[test]
+    fn parse_const_array_lit_mandelbulb_style() {
+        // Verbatim shape from `Labyrinth of Apocalypse/scenes/mandelbulb.cssl`
+        // (T11-CC-PARSER-9 entry-point case). Wraps two physical lines of
+        // eight + five hex bytes with whitespace-padded type annotation.
+        let src = "const MANDELBULB_SHADER_STUB : [u8 ; 13] = [\n    \
+                   0x53, 0x54, 0x55, 0x42, 0x4D, 0x41, 0x4E, 0x44,\n    \
+                   0x45, 0x4C, 0x42, 0x4C, 0x42,\n] ;";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
         assert_eq!(m.items.len(), 1);
         assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
     }
