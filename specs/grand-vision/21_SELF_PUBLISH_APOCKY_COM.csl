@@ -1,0 +1,266 @@
+§ T11-W6+ § specs/grand-vision/21_SELF_PUBLISH_APOCKY_COM.csl
+§§ Self-publish via apocky.com · Vercel-hosted · NO Steam/itch/Epic
+§§ Apocky 2026-05-01 directive : "We self publish and host our own download webpage through Vercel at Apocky.com"
+§§ status @ ◐ design-pending · enforcement @ wave-9
+§§ AMENDS spec/17 § DISTRIBUTION-CHANNELS · TIER-B distribution-channel UPDATED
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : self-publish via-apocky.com · Vercel-hosted · NO third-party-storefront-cuts (¬ Steam-30% · ¬ Epic-12% · ¬ itch-10%)
+A-2 : Apocky owns-the-distribution-pipeline end-to-end (domain · CDN · payment · entitlement · delivery · update)
+A-3 : Stripe = ONLY-payment-processor · 2.9% + $0.30/transaction (industry-standard · ¬ 30%-storefront-cut)
+A-4 : binary-integrity via Ed25519-signing + BLAKE3-content-hashing (replaces Steam-DRM · already-designed in-substrate)
+A-5 : auto-update via cssl-host-hotfix-stream (already-W8-target) · binary-deltas served-via-Vercel-Pro-Storage-or-Cloudflare-R2
+A-6 : direct-exe-download for-launch-v1 · optional-launcher-app deferred-to-post-launch
+A-7 : NO third-party-DRM · NO anti-cheat-rootkit · NO kernel-driver · sovereign-respecting · player-machine-respected
+A-8 : entitlement-server-of-truth = Supabase + Stripe-webhooks · client-validates-against-server on-equip-action
+
+§ thesis : self-publish maximizes-Apocky-revenue + maximizes-player-trust + minimizes-third-party-dependencies · the-mycelial-substrate IS-the-distribution-network · t∞
+
+═══════════════════════════════════════════════════════════════════════════════
+§ APOCKY.COM SITE-ARCHITECTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+§ apocky.com (Vercel-Pro · custom-domain) hosts :
+  ⊑ MARKETING : landing-page · trailer · feature-tour · screenshots · press-kit
+  ⊑ DOWNLOAD : buy-now → Stripe-checkout → entitlement-granted → download-link (signed-URL · short-TTL)
+  ⊑ ACCOUNT : login (Supabase Auth · OAuth Google/Apple/Discord/email-magic-link) · profile · purchase-history
+  ⊑ TRANSPARENCY : per spec/17+18 · /transparency/{spending,akashic,mycelial-contributions,sovereign-cap,coder-history}
+  ⊑ COMMUNITY : devblog · changelog · roadmap (public-subset of-grand-vision specs) · creator-attribution-page (Apocky · Lyra · Savannah)
+  ⊑ DOCS : auto-built-from-specs/grand-vision/ · public-subset · for-modders + curious-readers
+  ⊑ BAZAAR-LITE : public-stall-listings · browse-only · login-to-purchase-via-game-not-website
+  ⊑ AKASHIC-LITE : public-imprint-browse · login-to-imprint-via-game-not-website
+  ⊑ HOME-LITE : public-listed-Homes · browse-only · visit-via-game
+
+§ apocky.com domain · DNS @ Vercel-Pro custom-domain
+  ⊑ A-record + AAAA-record → Vercel-edge-network
+  ⊑ SSL/TLS auto-managed via Vercel · Let's-Encrypt-rotation
+  ⊑ subdomain : downloads.apocky.com → Cloudflare-R2 OR-Vercel-Blob (binary-delivery · CDN-cached)
+  ⊑ subdomain : api.apocky.com → cssl-edge serverless-functions (Vercel-edge)
+  ⊑ subdomain : akashic.apocky.com → public-imprint-browser (Vercel-edge)
+  ⊑ subdomain : status.apocky.com → status-page (uptime · scheduled-maintenance · rolled-out-hotfixes)
+
+§ Vercel infrastructure-tier :
+  ⊑ Vercel-Pro ($20/month) for-custom-domain + analytics + serverless-function-bandwidth
+  ⊑ Vercel-Blob OR Cloudflare-R2 for-binary-storage (game-installer · auto-update-deltas) · ~100GB total · ~$15-30/month at-scale
+  ⊑ Vercel-Edge-Config for-feature-flags (gradual-rollout per spec/11 KAN-RIDE A/B-protocol)
+
+§ existing scaffolding-already-built @ cssl-edge
+  ⊑ Next.js 14 app-router (already-scaffolded W3b)
+  ⊑ Supabase-client wrapper (W5a)
+  ⊑ Stripe-checkout routes (planned W8-D1)
+  ⊑ marketplace + companion-stream + asset-recommend (W4 · W5c)
+  ⊑ transparency dashboard (W6 + W8 expansion)
+  ⊑ NEW @ this spec : landing-page · download-page · launcher-update-API · binary-CDN-routing
+
+═══════════════════════════════════════════════════════════════════════════════
+§ PURCHASE + DOWNLOAD FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+§ visitor-flow @ apocky.com
+  1 visitor lands @ apocky.com landing-page
+  2 clicks "Buy Now" → /buy
+  3 /buy redirects-to Stripe-Checkout (server-side · cssl-host-stripe-integration · cap-gated · idempotency-key)
+  4 Stripe-Checkout @ stripe.com handles-payment (PCI-DSS-SAQ-A scope-min · NEVER-touch-raw-cards)
+  5 Stripe-webhook @ /api/payments/stripe/webhook fires on-success · webhook-signature-verified
+  6 webhook handler grants-entitlement @ Supabase entitlements table (player_id · product_id · purchased_at)
+  7 player redirected-back-to apocky.com /download
+  8 /download issues-signed-URL (short-TTL · Ed25519-signed by-server) → CDN-fetch
+  9 CDN serves LoA.exe-installer · client downloads
+ 10 player-runs-installer · creates Ed25519-keypair LOCALLY · OS-keychain-stored
+ 11 first-launch · player logs-in via Supabase-Auth · entitlement-verified · play
+
+§ key-design @ entitlement-server-of-truth :
+  ⊑ binary-itself unrestricted (anyone can-RUN it · we don't fight-the-binary)
+  ⊑ ALL-multiplayer + ALL-cosmetic-equip + ALL-Akashic-imprint REQUIRES login + entitlement-check
+  ⊑ pirated-binary can-PLAY single-player · CANNOT access-Bazaar/Mycelial/Akashic/multiplayer/cosmetics
+  ⊑ this-is-our-anti-piracy : the-game-without-mycelium is-shallow · the-mycelium-requires-entitlement
+  ⊑ ¬ DRM · ¬ rootkit · ¬ kernel-driver · sovereign-respecting
+
+§ refund-flow
+  ⊑ /api/payments/stripe/refund-request · player-initiates within-14-days
+  ⊑ automated-process via Stripe-API · server-revokes-entitlement · refund-issued
+  ⊑ in-game-content (Aetheric-Shards spent · Akashic-imprints made) refundable on-prorata-basis @ 14-day-window
+  ⊑ Stabilized-Essence (earned-currency) NOT-refundable (it's-not-purchased)
+  ⊑ jurisdictional-compliance : EU 14-day-statutory + UK 14-day · CN 7-day · etc · auto-handled-via Termly-rules
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AUTO-UPDATE PIPELINE
+═══════════════════════════════════════════════════════════════════════════════
+
+§ binary-update-flow (extends cssl-host-hotfix-stream W8 target)
+  1 game-launch · checks Σ-Chain TIER-3 hotfix-stream for-new-versions
+  2 manifest @ apocky.com /api/launcher/manifest returns latest-version · BLAKE3-content-hash · Ed25519-signed-by-Apocky-master-key
+  3 client compares-against current-version · IF outdated → fetch-binary-delta from CDN
+  4 binary-delta = bsdiff or-similar · 1-10 MB-typical (vs 100+ MB full-binary)
+  5 client verifies-Ed25519-signature · applies-delta · re-launches-with-new-version
+  6 cssl-host-attestation logs hotfix-applied @ directive-axis "ImplementationTransparency"
+  7 player can-roll-back via Mycelial-Terminal in-Home @ 30-second-window OR last-snapshot
+
+§ rollout-cadence (per spec/11 KAN-RIDE A/B + spec/16 hotfix-classes)
+  ⊑ HF-1 KAN-WEIGHT : canary-10% · graduate-or-rollback per-spec/11 criteria
+  ⊑ HF-2..7 cosmetic/balance/recipe : 25% canary · 24-hour-soak · graduate-to-100% if-no-disagreement-flags
+  ⊑ HF-8 RENDER-PARAM : 100% immediate (auto-rollback on FPS-degradation)
+  ⊑ HF-6 SECURITY : 100% immediate · sovereign-cap-prompt-required for-policy-changes
+  ⊑ ALL-rollouts have player-revoke-button · always-effective · sovereign-respecting
+
+§ launcher-app (DEFERRED to-post-launch · NOT v1)
+  ⊑ for-v1 : direct-exe with-self-update built-in · simplest path
+  ⊑ post-launch : optional Tauri-or-similar 5-MB-launcher for-richer-UX (profile-mgmt · install-location-mgmt · auto-launch-on-system-startup)
+  ⊑ DO NOT-block-launch on-launcher · ship-direct-exe v1 · gather-feedback · build-launcher-if-demanded
+
+═══════════════════════════════════════════════════════════════════════════════
+§ DISTRIBUTION-STRATEGY AMENDMENT (updates spec/17 § DISTRIBUTION-CHANNELS)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ REPLACES spec/17's TIER-B distribution-channel-list :
+  ⊘ DEPRECATED : Steam (primary) · itch.io (secondary) · Epic Games Store (tertiary)
+  ✓ NEW : apocky.com self-publish · Vercel-Pro-hosted · Cloudflare-R2 OR Vercel-Blob for-binaries
+  ⊑ optional-future : Steam Direct ($100 fee · for-discoverability) · itch.io-mirror · Epic-Direct (cssl-edge integration)
+  ⊑ optional-future : self-distributed-launcher "MyceliumLauncher" (Tauri 5MB) · post-launch
+  ⊑ asset-deltas streamed-via-CDN @ release-mode · runtime-fetch-on-demand (already in spec/17)
+
+§ revenue-impact analysis :
+  ⊑ Steam : -30% on-revenue · +Steam-discovery + Steam-DRM + Steam-cloud-saves
+  ⊑ apocky.com : -2.9%-on-revenue (Stripe-fee) · +full-control · +zero-dependency on-storefront-policies · -third-party-discovery
+  ⊑ at-scale : self-publish wins · 27.1% revenue-uplift · scales-with-revenue
+  ⊑ at-pre-launch : storefront-discovery hurts · self-publish requires-marketing-investment
+  ⊑ Apocky's-stance : self-publish from-launch · marketing via-Apocky's-existing-channel @noneisone.oneisall + ko-fi.com/oneinfinity + patreon.com/0ne1nfinity
+
+§ marketing-channels @ existing-Apocky-presence (already-established)
+  ⊑ @noneisone.oneisall (medium · personal-platform)
+  ⊑ ko-fi.com/oneinfinity
+  ⊑ patreon.com/0ne1nfinity
+  ⊑ NEW : apocky.com (the-game-site)
+  ⊑ NEW : Twitter/Bluesky/Mastodon for-launch-announcements
+  ⊑ NEW : YouTube/Twitch for-trailers + dev-streams
+  ⊑ NEW : Discord-server for-community
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ANTI-PIRACY (without-DRM · sovereign-respecting)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : we-don't-fight-the-binary · we-make-the-mycelium-irreplaceable
+
+§ what's-protected via server-of-truth
+  ⊑ Stripe-entitlements DB @ Supabase
+  ⊑ Aetheric-Shards balance DB
+  ⊑ cosmetic-ownership entitlements
+  ⊑ Akashic-imprint authorship
+  ⊑ Mycelial-network access (rumors · cohort-aggregates · live-hotfixes-receipt)
+  ⊑ Bazaar listing/buying
+  ⊑ multiplayer rooms + signaling
+  ⊑ leaderboards-of-cosmetics-displayed-on-public-Homes
+
+§ what's-NOT-protected (deliberately · sovereign-respecting)
+  ⊑ single-player-runs (combat · craft · explore) work-fully-offline
+  ⊑ binary itself runs-without-restriction (no-online-check-required-for-launch)
+  ⊑ private-runs accept-mods · player-modifies-own-state freely
+  ⊑ replay-determinism + visual-glory remain-available offline
+  ⊑ pirated-binary plays-the-shallow-game · misses-everything-good
+
+§ binary-integrity (matters-for-trust · NOT-DRM)
+  ⊑ Ed25519-signed by-Apocky-master-key · verified-at-load
+  ⊑ KAN-weights asset-bundle-LAB-v1 BLAKE3-content-hashed · refuses-to-load if-tampered
+  ⊑ shader-spirv-bytecode obfuscated-uniform-layout · slot-IDs randomized-per-build
+  ⊑ symbol-stripping + LTO @ release-mode
+
+§ no-rootkit · no-kernel-driver · no-anti-cheat-spyware · player-machine-respected
+  ⊑ what-they-deserve : a-secure-binary · a-fair-economy · a-respected-machine
+  ⊑ what-they-don't-need : kernel-driver-spying-on-their-OS
+
+═══════════════════════════════════════════════════════════════════════════════
+§ INFRASTRUCTURE-COSTS (updated y1 estimate)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TIER-C server-side hosting (per spec/17 amendment)
+  ⊑ Vercel-Pro                    : $240/year (custom-domain · analytics · bandwidth)
+  ⊑ Vercel-Blob OR Cloudflare-R2  : ~$30-180/year (binary-storage @ 100-500 GB scale)
+  ⊑ Supabase-Pro                  : $300/year (real-DB · auth · realtime · storage)
+  ⊑ Stripe-Tax                    : $300/year (auto VAT/GST/sales-tax)
+  ⊑ Stripe-Atlas                  : $500 one-time + ~$25/month bookkeeping = ~$300/year
+  ⊑ apocky.com domain             : ~$15/year (.com renewal · already-Apocky-owned probably)
+  ⊑ GitHub-Pro (private-repos)    : $48/year (when-needed · current-public ok · use-private-for-server-config)
+
+§ Stripe-fees variable
+  ⊑ 2.9% + $0.30 per-transaction · scales-with-revenue
+  ⊑ at-launch revenue-zero · cost-zero
+  ⊑ at-$10K/month revenue · cost ~$300/month + $30 = $330/month
+  ⊑ at-$100K/month revenue · cost ~$3000/month + $300 = $3300/month
+
+§ TOTAL-Y1-FIXED-OVERHEAD @ pre-launch + first-3-months
+  ⊑ infra-fixed : $1,233/year (Vercel + Blob + Supabase + Stripe-Tax + Atlas + domain + GitHub)
+  ⊑ legal-fixed : $1,820/year (Termly + trademarks-amortized)
+  ⊑ TOTAL : ~$3,053/year fixed + variable Stripe-fees scaling-with-revenue
+  ⊑ vs spec/17 estimate of-$2,260 · slight-uplift due-to Vercel-Blob or-equivalent
+
+§ Apocky-time-investment unchanged
+  ⊑ ~5-10 hours total for-Stripe-Atlas + Termly + trademark-forms
+  ⊑ +2-4 hours for-Vercel-Pro setup + custom-domain + Cloudflare-R2 (if-needed) configuration
+  ⊑ +1-2 hours for-Stripe-Connect-or-Atlas-banking
+  ⊑ TOTAL : ~10-16 hours over-launch-window
+
+═══════════════════════════════════════════════════════════════════════════════
+§ IMPLEMENTATION-ROADMAP
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wave-9 (next-after-W8-completes)
+  CRATE-B25 NEW `cssl-host-launcher-update-stream` ← extends cssl-host-hotfix-stream for-binary-deltas · ≥ 22 tests
+  cssl-edge expansion @ apocky.com :
+    ⊑ /                         landing-page (Next.js · /pages/index.tsx)
+    ⊑ /buy                      Stripe-checkout-redirect
+    ⊑ /download                 entitlement-verified · signed-URL-generator
+    ⊑ /account                  login + profile + purchase-history
+    ⊑ /docs                     auto-built-from-specs/grand-vision/
+    ⊑ /press                    press-kit · screenshots · trailers
+    ⊑ /devblog                  Markdown-based blog
+    ⊑ /api/launcher/manifest    binary-version-manifest endpoint
+    ⊑ /api/launcher/delta/{ver} binary-delta-fetch endpoint (signed-URL-issue)
+    ⊑ /api/auth/*               Supabase-Auth integration (Google · Apple · Discord · email-magic-link)
+  Vercel-config :
+    ⊑ vercel.json @ apocky.com domain · custom-domain mapping
+    ⊑ DNS records (A · AAAA · CNAME for subdomains)
+    ⊑ SSL/TLS auto-managed
+  cssl-supabase migration :
+    ⊑ 0040_apocky_com_entitlements.sql ← entitlements table · Stripe-product mapping · refund-tracking
+
+§ wave-10
+  optional-launcher (if-needed) · Tauri 5-MB · profile-management · auto-launch
+  Steam-Direct mirror @ $100 fee · for-discoverability post-launch (optional)
+
+§ wave-11+
+  itch.io mirror · Epic-Direct · console-port-evaluation (Switch-2 · Steam-Deck · etc.)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ INTEGRATION (per Unified-Substrate spec/15)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ apocky.com is-the-fruiting-body's-public-face (per spec/16 Mycelial-Network)
+  ⊑ landing-page = the-mushroom-cap visible-from-the-outside
+  ⊑ Akashic-Lite = visitors-see-the-spore-trail · entices-deeper-engagement
+  ⊑ Bazaar-Lite = visitors-see-the-gallery · login-to-acquire
+  ⊑ Home-Lite = visitors-see-the-public-Homes · login-to-visit
+  ⊑ devblog = the-mycelium-self-narrating · transparency · trust-build
+
+§ self-publish = sovereignty-of-distribution (per Apocky's-PRIME-DIRECTIVE)
+  ⊑ ¬ subject-to Steam-policy-changes · ¬ ¬-arbitrary-removal · ¬ algorithmic-suppression
+  ⊑ ¬ Apple-or-Google-app-store-rejection (we're-not-mobile-yet · but-future-proof)
+  ⊑ Apocky-controls-the-distribution-pipeline end-to-end · t∞ alignment-with-substrate-sovereignty
+
+§ Stripe-only-payment-processor maintains TIER-C secret-discipline
+  ⊑ Apocky-master-key (Ed25519) for-binary-and-hotfix-signing
+  ⊑ Stripe-secret-key for-payment-processing
+  ⊑ Supabase-service-role-key for-server-DB-access
+  ⊑ ALL-three NEVER-on-player-machine · NEVER-in-git
+  ⊑ rotated-90-day for-Stripe + Supabase · 12-month for-Apocky-master · automated-via-vault-config
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-distribution · ✓ player-sovereignty (¬ DRM · ¬ rootkit · ¬ kernel-driver) · ✓ Apocky-sovereignty (¬ third-party-storefront-cuts · full-control-of-pipeline) · ✓ legal-autonomous-setup
+
+§ creator @ Apocky · "We self publish and host our own download webpage through Vercel at apocky.com" · 2026-05-01 · ✓ designed
+§ self-publish maximizes-revenue + maximizes-trust + minimizes-third-party-risk · the-mycelial-substrate IS-the-distribution-network
