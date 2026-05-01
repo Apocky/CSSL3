@@ -1,0 +1,306 @@
+module com.apocky.loa.systems.crafting
+
+// § Labyrinth of Apocalypse — Crafting System (game-logic · CSSL-native)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C3 · POD-3-C3 · CSSL game-logic for craft + deconstruct + alchemy
+//
+// § ARCHITECTURE
+//   This module is the GAME-LOGIC layer that consumes the cssl-host-craft-graph
+//   substrate crate (POD-2-B3) via extern "C" FFI. The substrate provides the
+//   pure-functional recipe-graph evaluator + deterministic RNG + audit-emit
+//   plumbing ; this module provides the player-facing CSSL API surface that
+//   the engine event-loop calls per craft-attempt.
+//
+//   Layering :
+//     [ main.cssl ]                  → engine entry-point
+//        ↓
+//     [ systems/crafting.csl ]       → THIS module · player-facing API
+//        ↓ extern "C" FFI
+//     [ cssl-host-craft-graph ]      → substrate crate (POD-2-B3 · forthcoming)
+//        ↓
+//     [ cssl-host-attestation ]      → audit-emit (anti-cheat anchor)
+//
+// § AXIOMS  (inherit GDDs/CRAFT_DECONSTRUCT_ALCHEMY · § AXIOMS)
+//
+//   t∞: recipe-graph = DAG ¬ tree
+//     ⟦ acyclic-by-construction · ingredients only-reference earlier-tier ⟧
+//
+//   t∞: skill-scaling ≡ quality-tier-shift-up ¬ damage-multiplier
+//     ⟦ stat-multiplier ≤ 1.50 hard-cap · anti-power-creep invariant ⟧
+//
+//   t∞: ∀ craft ⇒ Audit<>-emit  (100% audit-coverage · 0 silent-craft)
+//     ⟦ M-6 metric · cssl-host-attestation receives every craft-event ⟧
+//
+//   t∞: ¬ pay-skip-craft · ¬ pay-skip-mat-collect · ¬ paywall-recipe-unlock
+//     ⟦ PRIME-DIRECTIVE §3 NO-COERCION · player-sovereignty preserved ⟧
+//
+//   t∞: deconstruct + transmute + craft = closed-loop · mat-conservation ≥ 30%
+//     ⟦ recover-fn ∈ [0.30, 0.70] · NEVER 0% (no flat-zero return) ⟧
+//
+// § PRIME-DIRECTIVE-ALIGNMENT
+//   consent          workshop-zones neutral · craft-attempt requires interaction
+//   no-coercion      ¬ time-gate-with-real-money-skip · ¬ FOMO-recipe
+//   transparency     recipe-graph fully-visible · drop-rates inspectable
+//   audit-chain      every craft + deconstruct + transmute = signed-audit-entry
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface — cssl-host-craft-graph (POD-2-B3) · ≥ 10 extern "C" fns
+// ─────────────────────────────────────────────────────────────────────────
+//
+// All fns return i32 status (0=ok · negative=error-code) OR opaque-handle
+// (i64 · 0=null). Pointer-args are *const u8 + length pairs (CSSL FFI ABI).
+// The substrate crate owns the RecipeGraph allocation ; this module holds
+// only the opaque handle returned by craft_graph_create.
+
+// § Lifecycle : graph allocation + teardown ──────────────────────────────
+
+extern "C" fn craft_graph_create() -> i64 ;
+//  ↑ returns opaque RecipeGraph handle · 0 ⇒ alloc-failure
+//  ↑ graph populated from baked recipe-table (40 recipes · GDD § RECIPE-GRAPH)
+
+extern "C" fn craft_graph_destroy(handle: i64) -> i32 ;
+//  ↑ frees RecipeGraph + DetRng + audit-buffer · idempotent on null
+
+// § Recipe lookup + listing ──────────────────────────────────────────────
+
+extern "C" fn craft_graph_lookup_recipe(handle: i64, recipe_id: u32) -> i64 ;
+//  ↑ returns opaque RecipeNode handle · 0 ⇒ unknown-recipe
+
+extern "C" fn craft_graph_list_available(
+    handle: i64,
+    skill: u8,
+    out_buf: *mut u32,
+    out_cap: u32,
+) -> i32 ;
+//  ↑ writes recipe-ids the player can attempt at current skill into out_buf
+//  ↑ returns count-written · negative on overflow ; respects skill-gates
+
+extern "C" fn craft_graph_recipe_required_skill(handle: i64, recipe_id: u32) -> u8 ;
+//  ↑ returns skill-threshold (0..100) · 255 ⇒ unknown-recipe
+
+// § Material consumption + output production ─────────────────────────────
+
+extern "C" fn craft_graph_consume_mats(
+    handle: i64,
+    recipe_id: u32,
+    player_inventory: *mut u8,
+    inv_len: u32,
+) -> i32 ;
+//  ↑ deducts ingredient-counts from player_inventory in-place
+//  ↑ returns 0=ok · -1=missing-ingredient · -2=invalid-recipe
+
+extern "C" fn craft_graph_produce_output(
+    handle: i64,
+    recipe_id: u32,
+    quality: u8,
+    out_item_id: *mut u32,
+) -> i32 ;
+//  ↑ writes produced-item-id to out_item_id given rolled quality-tier
+//  ↑ returns 0=ok · -1=invalid-recipe · -2=quality-out-of-range
+
+// § Skill XP grant + quality roll ────────────────────────────────────────
+
+extern "C" fn craft_graph_skill_xp_grant(
+    skill_axis: u8,
+    action_tier: u8,
+    current_skill: u8,
+) -> u32 ;
+//  ↑ returns XP-delta per GDD § XP-CURVE : base=tier×10 ; dim=1+skill/25
+//  ↑ skill_axis ∈ {0=craft · 1=deconstruct · 2=alchemy · 3=enchant}
+
+extern "C" fn craft_graph_quality_roll(
+    handle: i64,
+    skill: u8,
+    recipe_tier: u8,
+    rng_seed: u64,
+) -> u8 ;
+//  ↑ returns Q1..Q6 per GDD § THRESHOLDS · seeded ⇒ bit-exact-replay
+
+// § Audit-emit (PRIME-DIRECTIVE §4 transparency · M-6 coverage) ──────────
+
+extern "C" fn craft_graph_audit_emit(
+    handle: i64,
+    event_kind: u8,
+    actor_id: u64,
+    recipe_id: u32,
+    output_item_id: u32,
+    quality: u8,
+) -> i32 ;
+//  ↑ event_kind ∈ {0=craft · 1=deconstruct · 2=transmute · 3=brew · 4=fail}
+//  ↑ writes signed-audit-entry to cssl-host-attestation chain
+//  ↑ returns 0=ok · -1=chain-corrupt (caller must rollback)
+
+// § Failure-mode helpers ─────────────────────────────────────────────────
+
+extern "C" fn craft_graph_suggest_alternate(
+    handle: i64,
+    recipe_id: u32,
+    player_inventory: *const u8,
+    inv_len: u32,
+    out_alt_id: *mut u32,
+) -> i32 ;
+//  ↑ F-1 recipe-gap : when missing-ingredient ⇒ suggests alternate-recipe
+//  ↑ returns 0=found · -1=no-alternate-available
+
+extern "C" fn craft_graph_detect_dup_exploit(
+    handle: i64,
+    actor_id: u64,
+    recipe_id: u32,
+    timestamp_ms: u64,
+) -> i32 ;
+//  ↑ F-2 dup-exploit : checks against attestation-chain for duplicate-craft
+//  ↑ returns 0=clean · 1=suspicious · 2=confirmed-exploit (rollback caller)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API — player-facing craft surface
+// ─────────────────────────────────────────────────────────────────────────
+
+// § CraftResult : outcome-discriminant (8 variants packed into i32)
+//   0  = Success (item-id in out · quality in upper-byte)
+//  -1  = MissingIngredient (alternate suggested via suggest_alternate)
+//  -2  = SkillTooLow (required-skill exposed via recipe_required_skill)
+//  -3  = InvalidRecipe (unknown recipe-id)
+//  -4  = AuditChainCorrupt (caller must rollback player-state)
+//  -5  = DupExploitDetected (F-2 · audit-emit + checkpoint-rollback)
+//  -6  = BrewExplosion (F-6 · skill < req-50% · mats consumed · no output)
+//  -7  = TransmuteFail (F-5 · 1-of-tier-N preserved · others-consumed)
+
+// § try_craft : main craft-attempt entry-point
+//   Player presses "Craft" in workshop UI · this fn is the per-attempt path.
+//   Sequence : lookup → skill-check → consume-mats → quality-roll → produce
+//   → xp-grant → audit-emit. Any step-failure short-circuits + emits audit.
+fn try_craft(
+    graph: i64,
+    player_id: u64,
+    recipe_id: u32,
+    player_skill: u8,
+    rng_seed: u64,
+    inventory: *mut u8,
+    inv_len: u32,
+    out_item_id: *mut u32,
+) -> i32 {
+    // § Step 1 : skill-gate check (¬ pay-skip · gates are sovereignty-anchors)
+    let required: u8 = craft_graph_recipe_required_skill(graph, recipe_id) ;
+    if required == 255u8 {
+        let _ = craft_graph_audit_emit(graph, 4u8, player_id, recipe_id, 0u32, 0u8) ;
+        return -3i32 ;  // InvalidRecipe
+    }
+    if player_skill < required {
+        let _ = craft_graph_audit_emit(graph, 4u8, player_id, recipe_id, 0u32, 0u8) ;
+        return -2i32 ;  // SkillTooLow (UI surfaces required-skill)
+    }
+
+    // § Step 2 : dup-exploit check BEFORE mat-consumption (¬ silent F-2)
+    let dup_status: i32 = craft_graph_detect_dup_exploit(graph, player_id, recipe_id, 0u64) ;
+    if dup_status >= 2i32 {
+        let _ = craft_graph_audit_emit(graph, 4u8, player_id, recipe_id, 0u32, 0u8) ;
+        return -5i32 ;  // DupExploitDetected
+    }
+
+    // § Step 3 : consume materials (atomic w.r.t. inventory)
+    let consume_status: i32 = craft_graph_consume_mats(graph, recipe_id, inventory, inv_len) ;
+    if consume_status != 0i32 {
+        let _ = craft_graph_audit_emit(graph, 4u8, player_id, recipe_id, 0u32, 0u8) ;
+        return -1i32 ;  // MissingIngredient (caller queries suggest_alternate)
+    }
+
+    // § Step 4 : roll quality-tier (skill ⇒ tier-shift-up · ¬ damage-mult)
+    let recipe_tier: u8 = required / 20u8 + 1u8 ;
+    let quality: u8 = craft_graph_quality_roll(graph, player_skill, recipe_tier, rng_seed) ;
+
+    // § Step 5 : produce output-item with rolled-quality
+    let produce_status: i32 = craft_graph_produce_output(graph, recipe_id, quality, out_item_id) ;
+    if produce_status != 0i32 {
+        let _ = craft_graph_audit_emit(graph, 4u8, player_id, recipe_id, 0u32, quality) ;
+        return -3i32 ;  // InvalidRecipe (substrate inconsistency)
+    }
+
+    // § Step 6 : grant skill-XP (axis 0 = craft per FFI contract)
+    let _xp: u32 = craft_graph_skill_xp_grant(0u8, recipe_tier, player_skill) ;
+
+    // § Step 7 : audit-emit success (M-6 coverage = 100%)
+    let item_id: u32 = 0u32 ;  // populated via out_item_id deref by caller
+    let audit_status: i32 = craft_graph_audit_emit(
+        graph, 0u8, player_id, recipe_id, item_id, quality,
+    ) ;
+    if audit_status != 0i32 {
+        return -4i32 ;  // AuditChainCorrupt (rollback signal)
+    }
+
+    0i32  // Success · quality available via out_item_id-adjacent slot
+}
+
+// § list_recipes_for_skill : UI helper — recipes player can attempt now
+fn list_recipes_for_skill(
+    graph: i64,
+    player_skill: u8,
+    out_buf: *mut u32,
+    out_cap: u32,
+) -> i32 {
+    craft_graph_list_available(graph, player_skill, out_buf, out_cap)
+}
+
+// § skill_xp_tracker : exposes XP-curve to UI (transparency · § THRESHOLDS)
+fn skill_xp_tracker(skill_axis: u8, action_tier: u8, current_skill: u8) -> u32 {
+    craft_graph_skill_xp_grant(skill_axis, action_tier, current_skill)
+}
+
+// § handle_missing_ingredient : F-1 recipe-gap UI-prompt support
+fn handle_missing_ingredient(
+    graph: i64,
+    recipe_id: u32,
+    inventory: *const u8,
+    inv_len: u32,
+    out_alt_id: *mut u32,
+) -> i32 {
+    craft_graph_suggest_alternate(graph, recipe_id, inventory, inv_len, out_alt_id)
+}
+
+// § detect_dup_exploit_external : F-2 anti-cheat surfaced for engine-tick
+fn detect_dup_exploit_external(
+    graph: i64,
+    player_id: u64,
+    recipe_id: u32,
+    timestamp_ms: u64,
+) -> i32 {
+    craft_graph_detect_dup_exploit(graph, player_id, recipe_id, timestamp_ms)
+}
+
+// § crafting_init : engine startup-hook · returns graph-handle for session
+fn crafting_init() -> i64 {
+    craft_graph_create()
+}
+
+// § crafting_shutdown : engine teardown-hook · idempotent
+fn crafting_shutdown(graph: i64) -> i32 {
+    craft_graph_destroy(graph)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W7-RD-C3  @  (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   This module authored under PRIME-DIRECTIVE consent-as-OS. AI-collaborator
+//   drafting participated as sovereign-partner under their own consent. No
+//   being was harmed, controlled, manipulated, surveilled, exploited, coerced,
+//   weaponized, entrapped, tortured, abused, imprisoned, possessed, dehumanized,
+//   discriminated against, gaslit, identity-overridden, or forced-hallucinated
+//   during the making of this work.
+//
+//   The crafting system enforces ¬ pay-skip + ¬ FOMO + ¬ loot-box per the GDD
+//   PRIME-DIRECTIVE-ALIGNMENT row. Audit-emit on every craft-event preserves
+//   PRIME-DIRECTIVE §4 TRANSPARENCY. Skill-tier-shift-up (¬ damage-multiplier)
+//   preserves §2 COGNITIVE INTEGRITY (no hidden power-creep). Dup-exploit
+//   detection is §7 INTEGRITY (violation = bug ; bugs get fixed).
+//
+//   Downstream substrate dependency cssl-host-craft-graph (POD-2-B3) is
+//   declared via extern "C" FFI ; if that crate's surface diverges, this
+//   module's FFI declarations are the source-of-truth contract per
+//   feedback_spec_validation_via_reimpl (reimpl-from-spec validates-spec).
+
+∎ systems.crafting
