@@ -135,6 +135,29 @@ const Home: NextPage = () => {
           lineHeight: 1.6,
         }}
       >
+        {/* ─── NAV-BAR ─── */}
+        <nav
+          aria-label="primary"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '1.25rem',
+            paddingBottom: '2rem',
+            marginBottom: '2.5rem',
+            borderBottom: '1px solid #1f1f2a',
+            fontSize: '0.82rem',
+            color: '#a8a8b8',
+          }}
+        >
+          <a href="/docs">Docs</a>
+          <a href="/devblog">Devblog</a>
+          <a href="/press">Press</a>
+          <a href="/buy" style={{ color: '#c084fc' }}>Buy</a>
+          <span style={{ flexGrow: 1 }} />
+          <a href="/login">Sign in</a>
+          <a href="/account">Account</a>
+        </nav>
+
         {/* ─── HERO ─── */}
         <section style={{ marginBottom: '5rem' }}>
           <div
@@ -419,6 +442,40 @@ const Home: NextPage = () => {
             fontSize: '0.78rem',
           }}
         >
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '1rem 1.5rem',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <a href="/docs">Docs</a>
+            <a href="/devblog">Devblog</a>
+            <a href="/press">Press</a>
+            <a href="/buy">Buy</a>
+            <a href="/download">Download</a>
+            <span style={{ color: '#2a2a3a' }}>|</span>
+            <a href="/legal/privacy">Privacy</a>
+            <a href="/legal/terms">Terms</a>
+            <a href="/legal/eula">EULA</a>
+            <a href="/api/health">Status</a>
+            <a href="mailto:apocky13@gmail.com">Contact</a>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <a href="https://medium.com/@noneisone.oneisall" target="_blank" rel="noopener noreferrer" aria-label="Medium">medium ↗</a>
+            <a href="https://ko-fi.com/oneinfinity" target="_blank" rel="noopener noreferrer" aria-label="Ko-fi">ko-fi ↗</a>
+            <a href="https://www.patreon.com/0ne1nfinity" target="_blank" rel="noopener noreferrer" aria-label="Patreon">patreon ↗</a>
+            <a href="https://github.com/Apocky" target="_blank" rel="noopener noreferrer" aria-label="GitHub">github ↗</a>
+            <span style={{ color: '#3a3a4a' }}>discord · coming soon</span>
+          </div>
           <p style={{ margin: 0 }}>
             § ¬ harm in the making · sovereignty preserved · t∞
           </p>
