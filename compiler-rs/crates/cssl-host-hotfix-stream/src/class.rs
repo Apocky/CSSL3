@@ -339,8 +339,8 @@ mod tests {
         let b = h.envelope_bytes();
         assert_eq!(a, b);
         // Mutating ts must change envelope.
-        let mut h2 = h.clone();
-        h2.ts = h.ts + 1;
+        let mut h2 = h;
+        h2.ts += 1;
         assert_ne!(a, h2.envelope_bytes());
     }
 

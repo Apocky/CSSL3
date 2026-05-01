@@ -19,7 +19,7 @@ use crate::rollback::{validate_rollback, RollbackError, RollbackOutcome};
 use crate::stage::{StageError, StagingArea};
 use crate::verify::{verify, VerifyError};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -217,7 +217,7 @@ pub struct HotfixStream<'src> {
     pub registry: ApplyRegistry,
     /// Hotfix-ids whose `confirm_keep` was received before the
     /// 30-second revert window ran out. Excluded from auto-revert.
-    confirmed_keeps: BTreeMap<HotfixId, ()>,
+    confirmed_keeps: BTreeSet<HotfixId>,
 }
 
 impl<'src> HotfixStream<'src> {
@@ -237,7 +237,7 @@ impl<'src> HotfixStream<'src> {
             audit,
             staging: StagingArea::new(),
             registry: ApplyRegistry::new(),
-            confirmed_keeps: BTreeMap::new(),
+            confirmed_keeps: BTreeSet::new(),
         }
     }
 
@@ -357,11 +357,10 @@ impl<'src> HotfixStream<'src> {
                 .ok_or_else(|| HotfixError::NotStaged(id.0.clone()))?;
             (entry.hotfix.class, entry.hotfix.payload.clone(), entry.hotfix.clone())
         };
-        let outcome: ApplyOutcome = if let Some(handler) = self.registry.get(class) {
-            handler.apply(&payload)
-        } else {
-            NoopApplyHandler.apply(&payload)
-        };
+        let outcome: ApplyOutcome = self
+            .registry
+            .get(class)
+            .map_or_else(|| NoopApplyHandler.apply(&payload), |handler| handler.apply(&payload));
         if let Some(entry) = self.staging.get_mut(id) {
             entry.state = HotfixState::Applied;
             entry.pre_apply_snapshot = Some(outcome.pre_apply_snapshot);
@@ -378,7 +377,7 @@ impl<'src> HotfixStream<'src> {
     /// Player confirms the Balance-tier hotfix should be kept past
     /// the 30-second window.
     pub fn confirm_keep(&mut self, id: &HotfixId) {
-        self.confirmed_keeps.insert(id.clone(), ());
+        self.confirmed_keeps.insert(id.clone());
     }
 
     /// Manual rollback. Applied → Reverted ; runs handler.rollback.
@@ -426,7 +425,7 @@ impl<'src> HotfixStream<'src> {
             if entry.hotfix.class.tier() != HotfixTier::Balance {
                 continue;
             }
-            if self.confirmed_keeps.contains_key(id) {
+            if self.confirmed_keeps.contains(id) {
                 continue;
             }
             if let Some(applied_at) = entry.applied_at_nanos {
@@ -439,9 +438,8 @@ impl<'src> HotfixStream<'src> {
         for id in to_revert {
             // Snapshot data for audit + handler-rollback.
             let (class, snapshot, hotfix_for_audit) = {
-                let entry = match self.staging.get(&id) {
-                    Some(e) => e,
-                    None => continue,
+                let Some(entry) = self.staging.get(&id) else {
+                    continue;
                 };
                 (
                     entry.hotfix.class,
@@ -710,7 +708,9 @@ mod tests {
         let mut s = HotfixStream::new(pk, &sigma, &clock, &audit);
         let res = s.verify_and_stage(h);
         assert!(res.is_err());
-        let kinds: Vec<_> = audit.snapshot().into_iter().map(|e| e.kind).collect();
-        assert!(kinds.contains(&AuditKind::Rejected));
+        assert!(audit
+            .snapshot()
+            .into_iter()
+            .any(|e| e.kind == AuditKind::Rejected));
     }
 }
