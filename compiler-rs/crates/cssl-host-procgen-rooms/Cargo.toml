@@ -1,0 +1,28 @@
+# § T11-WAVE3-PROCGEN-ROOMS : runtime room-recipe procedural generation
+# ══════════════════════════════════════════════════════════════════
+# § I> engine = runtime-procedural-generation per Apocky directive
+# § I> 7 RoomKind recipes : calibration / material-showcase / scale-hall /
+#       color-wheel / pattern-maze / noise-field / voronoi-plazas
+# § I> deterministic : same (seed,dims,kind,constraints) → bit-identical RoomRecipe
+# § I> NO rand crate ; PCG-32 implemented in pure stdlib (src/rng.rs)
+# § I> input  = (u64 seed, RoomDims, RoomKind, RoomConstraints)
+# § I> output = RoomRecipe { tiles, doorways, lights, seed }
+# § I> wave-4 wires recipes into loa-host (NOT in this crate)
+
+[package]
+name        = "cssl-host-procgen-rooms"
+version     = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "CSSLv3 LoA-v13 room-recipe procedural generator (deterministic, PCG-32 backed)"
+repository.workspace   = true
+homepage.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
