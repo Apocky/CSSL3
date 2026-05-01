@@ -1,0 +1,24 @@
+[package]
+name                   = "cssl-host-voice"
+description            = "CSSLv3 stage0 — voice-input ABI : cap-gated audio-capture ring + STT backend trait + audit-event ledger (no real audio-IO ; ABI-only ; voice → intent foundation)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W4-AUDIO (cssl/session-15/W-W4-audio) :
+# This crate is INPUT-side ABI-only. It is FILE-DISJOINT from the existing
+# `cssl-host-audio` crate (OUTPUT-side / WASAPI / ALSA / CoreAudio playback).
+# Per PRIME_DIRECTIVE.md § PROHIBITIONS § surveillance, microphone capture
+# MUST be cap-gated + audit-trailed — this crate defines the ABI surface
+# (ring-buffer + SttBackend trait + VoiceSession cap-checks + audit events)
+# without bundling a real audio-IO driver or STT model. A separate slice
+# (wave-5) wires loa-host to this surface ; a remote-Whisper proxy or
+# local onnx-runtime backend implements the SttBackend trait when ready.
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
