@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-host-replay"
+description            = "CSSLv3 — deterministic input + RNG-seed replay capture/playback for LoA-host (debug + test apparatus per the iterate-everywhere directive)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-WAVE3-REPLAY : standalone debug/test apparatus for capturing + replaying
+# input streams + RNG seeds.  File-disjoint from the wave-3 merge — no shared
+# files except the workspace `members = ["crates/*"]` glob (auto-picks-up the
+# new dir without an explicit edit, matching the wave-3-prelude pattern).
+#
+# § DEPENDENCIES
+#   - serde       : derive(Serialize, Deserialize) on ReplayEvent / ReplayManifest
+#   - serde_json  : JSONL line-encoding for forward-compat + human-readable replay files
+#   - NO other deps : SHA-256 is hand-rolled in `integrity.rs` (≈120 LOC) to keep the
+#     dep-graph minimal AND avoid pulling blake3/sha2 just for an integrity check.
+#     Apocky's "stdlib-heavy" directive on this slice ; matches H5-determinism
+#     ethos (every byte path observable from this crate alone).
+#
+# § INTEGRATION POSTURE
+#   - NOT yet a dep of loa-host (wave-4 task).
+#   - Standalone unit-testable : `cargo test -p cssl-host-replay` is hermetic
+#     (uses tempfile-via-stdlib · no test-harness deps).
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
