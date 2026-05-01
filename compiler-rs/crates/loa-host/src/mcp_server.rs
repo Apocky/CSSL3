@@ -254,6 +254,141 @@ pub struct SnapshotRequest {
     pub path: std::path::PathBuf,
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-SENSORY · sensory-harness ring-buffers
+// ───────────────────────────────────────────────────────────────────────
+// All caps below sized for a few seconds of @60Hz history. Per the
+// directive, the harness exposes "every possible data type and stream
+// you'd want fed back" — the ring sizes balance recall depth with the
+// memory budget of holding the structures on the EngineState mutex.
+
+/// Capacity of the body-pose history ring (60 frames ≈ 1 second @ 60Hz).
+pub const SENSE_POSE_RING_CAP: usize = 60;
+/// Capacity of the DM-history ring.
+pub const SENSE_DM_HISTORY_CAP: usize = 32;
+/// Capacity of the GM-recent-phrase ring.
+pub const SENSE_GM_PHRASE_CAP: usize = 16;
+/// Capacity of the input-history ring.
+pub const SENSE_INPUT_HISTORY_CAP: usize = 64;
+/// Capacity of the validation-error ring.
+pub const SENSE_VALIDATION_ERR_CAP: usize = 16;
+/// Capacity of the panic-event ring.
+pub const SENSE_PANIC_RING_CAP: usize = 8;
+/// Capacity of the MCP-client-tracking map (keyed by addr).
+pub const SENSE_MCP_CLIENT_CAP: usize = 16;
+/// Capacity of the recent MCP-command ring.
+pub const SENSE_MCP_CMD_CAP: usize = 32;
+/// Capacity of the framebuffer-thumbnail buffer (256×144 RGBA8 = ~144KiB).
+pub const SENSE_THUMB_W: u32 = 256;
+pub const SENSE_THUMB_H: u32 = 144;
+
+/// One body-pose sample : camera position + orientation + frame + timestamp.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PoseSample {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub pos_x: f32,
+    pub pos_y: f32,
+    pub pos_z: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
+/// One DM-state-transition record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DmHistoryEntry {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub from_state: String,
+    pub to_state: String,
+    pub tension: f32,
+    pub event_kind: Option<String>,
+}
+
+/// One GM-narrator phrase emit record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GmPhraseEntry {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub topic: String,
+    pub mood: String,
+    pub line: String,
+}
+
+/// One input-event record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputHistoryEntry {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub kind: String,
+    pub key: String,
+    pub pressed: bool,
+}
+
+/// One validation-error record (wgpu uncaptured-error or naga validation).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationErrorEntry {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub source: String,
+    pub message: String,
+}
+
+/// One MCP-client connection record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct McpClientEntry {
+    pub addr: String,
+    pub connected_ms: u64,
+    pub invocations: u64,
+}
+
+/// One MCP-tool-invocation record.
+#[derive(Debug, Clone, PartialEq)]
+pub struct McpCommandEntry {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub caller: String,
+    pub tool: String,
+    pub latency_us: u64,
+    pub success: bool,
+}
+
+/// Companion-AI proposal (T11-LOA-SENSORY surfaces these via sense.companion_proposals).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompanionProposalEntry {
+    pub frame: u64,
+    pub time_ms: u64,
+    pub kind: String,
+    pub payload: String,
+    pub authorized: bool,
+}
+
+/// § T11-LOA-SENSORY : framebuffer-thumbnail mirror.
+///
+/// The Renderer downsamples the just-presented framebuffer to a fixed-size
+/// thumbnail (256×144 RGBA8) once per N frames. The bytes live here so the
+/// MCP `sense.framebuffer_thumbnail` tool can base64-encode + return inline
+/// without spinning up a fresh GPU readback per query.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FramebufferThumbMirror {
+    pub frame: u64,
+    pub width: u32,
+    pub height: u32,
+    /// RGBA8 bytes (width*height*4). Empty when no thumbnail captured yet.
+    pub rgba: Vec<u8>,
+    /// True when an MCP client has requested a fresh capture on the next frame.
+    pub capture_pending: bool,
+    /// 16-region (4×4 grid) average colors of the most recent thumbnail.
+    /// Each region : [r, g, b] in 0..1. Populated alongside `rgba`.
+    pub regions_4x4: [[f32; 3]; 16],
+    /// Center-pixel sample : RGB + crosshair-distance + material_id.
+    /// distance is in meters (from camera to first hit) ; -1.0 if no hit.
+    pub center_rgb: [f32; 3],
+    pub center_distance: f32,
+    pub center_material_id: i32,
+    pub center_world_pos: [f32; 3],
+}
+
 /// § T11-LOA-FID-CFER : MCP-mirrored CFER state.
 ///
 /// The Renderer (held in the runtime event-loop) owns the canonical
@@ -340,6 +475,67 @@ pub struct EngineState {
     /// § T11-LOA-FID-CFER : mirror of the runtime-side CFER metrics +
     /// pending KAN handle request.
     pub cfer: CferStateMirror,
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-LOA-SENSORY · sensory-harness ring-buffers
+    // ───────────────────────────────────────────────────────────────────
+    /// Ring-buffer of body-pose samples (60 entries · 1 sec @60Hz).
+    pub pose_history: Vec<PoseSample>,
+    /// Ring-buffer of DM state transitions (32 entries).
+    pub dm_history: Vec<DmHistoryEntry>,
+    /// Ring-buffer of GM narrator phrases (16 entries).
+    pub gm_phrase_history: Vec<GmPhraseEntry>,
+    /// Ring-buffer of input events (64 entries).
+    pub input_history: Vec<InputHistoryEntry>,
+    /// Ring-buffer of validation errors captured from wgpu/naga (16 entries).
+    pub validation_errors: Vec<ValidationErrorEntry>,
+    /// Ring-buffer of panic events captured by the panic-hook (8 entries).
+    pub panic_events: Vec<ValidationErrorEntry>,
+    /// MCP-clients currently connected, keyed by addr.
+    pub mcp_clients: Vec<McpClientEntry>,
+    /// Ring-buffer of recent MCP commands (32 entries).
+    pub mcp_command_history: Vec<McpCommandEntry>,
+    /// Pending companion-AI proposals awaiting Sovereign authorization.
+    pub companion_proposals: Vec<CompanionProposalEntry>,
+    /// Mirror of the most-recent framebuffer thumbnail (256×144 RGBA8).
+    pub fb_thumb: FramebufferThumbMirror,
+    /// Compass-8 distances in meters · written by render-loop each frame.
+    /// Order : [N, NE, E, SE, S, SW, W, NW]. 50.0 if no hit within MAX_RAY_M.
+    pub compass_distances_m: [f32; 8],
+    /// Engine-load metrics (cpu%, gpu%, memory MB, etc.) · cheap once-per-second sample.
+    pub engine_load: EngineLoadMirror,
+    /// Total `sense.*` invocations since startup (per-tool counts in telemetry).
+    pub sense_invocations_total: u64,
+    /// Total `sense.framebuffer_thumbnail` invocations since startup.
+    pub sense_thumbnails_captured_total: u64,
+}
+
+/// § T11-LOA-SENSORY : engine-load (interoception) mirror.
+///
+/// The window/render loop samples coarse engine-process metrics and writes
+/// them here once per second. MCP `sense.engine_load` reads.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EngineLoadMirror {
+    /// Last sample timestamp (Unix milliseconds).
+    pub sampled_ms: u64,
+    /// Process CPU percent (0..100). 0 when unavailable.
+    pub cpu_percent: f32,
+    /// Process resident memory (megabytes). 0 when unavailable.
+    pub memory_mb: f32,
+    /// GPU resolve time (microseconds, last frame).
+    pub gpu_resolve_us: u64,
+    /// Tonemap pass time (microseconds, last frame).
+    pub tonemap_us: u64,
+    /// Last frame's draw-call count.
+    pub draw_calls: u32,
+    /// Last frame's vertex count.
+    pub vertices: u64,
+    /// Last frame's pipeline-switch count.
+    pub pipeline_switches: u32,
+    /// Last frame-time (milliseconds).
+    pub last_frame_ms: f32,
+    /// Smoothed FPS estimate.
+    pub fps_smoothed: f32,
 }
 
 impl Default for EngineState {
@@ -366,6 +562,20 @@ impl Default for EngineState {
             illuminant: Illuminant::default(),
             illuminant_gen: 0,
             cfer: CferStateMirror::default(),
+            pose_history: Vec::with_capacity(SENSE_POSE_RING_CAP),
+            dm_history: Vec::with_capacity(SENSE_DM_HISTORY_CAP),
+            gm_phrase_history: Vec::with_capacity(SENSE_GM_PHRASE_CAP),
+            input_history: Vec::with_capacity(SENSE_INPUT_HISTORY_CAP),
+            validation_errors: Vec::with_capacity(SENSE_VALIDATION_ERR_CAP),
+            panic_events: Vec::with_capacity(SENSE_PANIC_RING_CAP),
+            mcp_clients: Vec::with_capacity(SENSE_MCP_CLIENT_CAP),
+            mcp_command_history: Vec::with_capacity(SENSE_MCP_CMD_CAP),
+            companion_proposals: Vec::new(),
+            fb_thumb: FramebufferThumbMirror::default(),
+            compass_distances_m: [50.0; 8],
+            engine_load: EngineLoadMirror::default(),
+            sense_invocations_total: 0,
+            sense_thumbnails_captured_total: 0,
         }
     }
 }
@@ -382,6 +592,101 @@ impl EngineState {
             source: source.to_string(),
             message: message.to_string(),
         });
+    }
+
+    /// § T11-LOA-SENSORY : push a body-pose sample. Drops oldest if at cap.
+    pub fn push_pose_sample(&mut self, sample: PoseSample) {
+        if self.pose_history.len() >= SENSE_POSE_RING_CAP {
+            self.pose_history.remove(0);
+        }
+        self.pose_history.push(sample);
+    }
+
+    /// § T11-LOA-SENSORY : push a DM-history record. Drops oldest if at cap.
+    pub fn push_dm_history(&mut self, entry: DmHistoryEntry) {
+        if self.dm_history.len() >= SENSE_DM_HISTORY_CAP {
+            self.dm_history.remove(0);
+        }
+        self.dm_history.push(entry);
+    }
+
+    /// § T11-LOA-SENSORY : push a GM-phrase emit. Drops oldest if at cap.
+    pub fn push_gm_phrase(&mut self, entry: GmPhraseEntry) {
+        if self.gm_phrase_history.len() >= SENSE_GM_PHRASE_CAP {
+            self.gm_phrase_history.remove(0);
+        }
+        self.gm_phrase_history.push(entry);
+    }
+
+    /// § T11-LOA-SENSORY : push an input-event record. Drops oldest if at cap.
+    pub fn push_input_event(&mut self, entry: InputHistoryEntry) {
+        if self.input_history.len() >= SENSE_INPUT_HISTORY_CAP {
+            self.input_history.remove(0);
+        }
+        self.input_history.push(entry);
+    }
+
+    /// § T11-LOA-SENSORY : push a validation-error record. Drops oldest if at cap.
+    pub fn push_validation_error(&mut self, entry: ValidationErrorEntry) {
+        if self.validation_errors.len() >= SENSE_VALIDATION_ERR_CAP {
+            self.validation_errors.remove(0);
+        }
+        self.validation_errors.push(entry);
+    }
+
+    /// § T11-LOA-SENSORY : push a panic record. Drops oldest if at cap.
+    pub fn push_panic(&mut self, entry: ValidationErrorEntry) {
+        if self.panic_events.len() >= SENSE_PANIC_RING_CAP {
+            self.panic_events.remove(0);
+        }
+        self.panic_events.push(entry);
+    }
+
+    /// § T11-LOA-SENSORY : record / refresh an MCP-client connection record.
+    pub fn record_mcp_client_connect(&mut self, addr: &str, time_ms: u64) {
+        if let Some(found) = self.mcp_clients.iter_mut().find(|c| c.addr == addr) {
+            found.connected_ms = time_ms;
+            return;
+        }
+        if self.mcp_clients.len() >= SENSE_MCP_CLIENT_CAP {
+            self.mcp_clients.remove(0);
+        }
+        self.mcp_clients.push(McpClientEntry {
+            addr: addr.to_string(),
+            connected_ms: time_ms,
+            invocations: 0,
+        });
+    }
+
+    /// § T11-LOA-SENSORY : remove a disconnected MCP-client record.
+    pub fn record_mcp_client_disconnect(&mut self, addr: &str) {
+        self.mcp_clients.retain(|c| c.addr != addr);
+    }
+
+    /// § T11-LOA-SENSORY : record an MCP-tool invocation. Updates per-client
+    /// counter + appends to the recent-command ring.
+    pub fn record_mcp_command(&mut self, entry: McpCommandEntry) {
+        // Update per-client invocation count.
+        if let Some(found) = self
+            .mcp_clients
+            .iter_mut()
+            .find(|c| c.addr == entry.caller)
+        {
+            found.invocations = found.invocations.saturating_add(1);
+        }
+        if self.mcp_command_history.len() >= SENSE_MCP_CMD_CAP {
+            self.mcp_command_history.remove(0);
+        }
+        self.mcp_command_history.push(entry);
+    }
+
+    /// § T11-LOA-SENSORY : push a companion-AI proposal awaiting authorization.
+    pub fn push_companion_proposal(&mut self, entry: CompanionProposalEntry) {
+        // Cap at 32 ; oldest evicted (the SOVEREIGN can also drain explicitly).
+        if self.companion_proposals.len() >= 32 {
+            self.companion_proposals.remove(0);
+        }
+        self.companion_proposals.push(entry);
     }
 }
 
@@ -644,6 +949,14 @@ fn accept_loop(
                     "loa-host/mcp",
                     &format!("client-accepted · addr={peer}"),
                 );
+                // § T11-LOA-SENSORY : record connect into the client ring.
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                if let Ok(mut g) = state.lock() {
+                    g.record_mcp_client_connect(&peer, now_ms);
+                }
                 let st = state.clone();
                 let reg = registry.clone();
                 let _ = thread::Builder::new()
@@ -707,7 +1020,27 @@ fn client_loop(
             Ok(req) => {
                 // JSON-RPC notifications (id absent / null) get no response.
                 let is_notification = req.id.is_null();
+                let method = req.method.clone();
+                // § T11-LOA-SENSORY : measure dispatch latency + record into ring.
+                let t0 = std::time::Instant::now();
                 let resp = dispatch(&state, &registry, &req);
+                let latency_us = t0.elapsed().as_micros() as u64;
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                if let Ok(mut g) = state.lock() {
+                    let frame = g.frame_count;
+                    let success = resp.error.is_none();
+                    g.record_mcp_command(McpCommandEntry {
+                        frame,
+                        time_ms: now_ms,
+                        caller: peer.clone(),
+                        tool: method,
+                        latency_us,
+                        success,
+                    });
+                }
                 if is_notification {
                     continue;
                 }
@@ -726,6 +1059,11 @@ fn client_loop(
             break;
         }
         let _ = writer.flush();
+    }
+
+    // § T11-LOA-SENSORY : record disconnect.
+    if let Ok(mut g) = state.lock() {
+        g.record_mcp_client_disconnect(&peer);
     }
 
     log_event(
