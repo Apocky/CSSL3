@@ -212,6 +212,13 @@ impl<'a> LowerCtx<'a> {
                 mutable: *mutable,
                 inner: Box::new(self.lower_type(inner)),
             },
+            // Stage-0 : raw pointers lower as references for type-check / cap
+            // purposes. Distinct semantics (no aliasing/lifetime) flow through
+            // a future MIR-level FFI-call attribute.
+            cst::TypeKind::RawPointer { mutable, inner } => HirTypeKind::Reference {
+                mutable: *mutable,
+                inner: Box::new(self.lower_type(inner)),
+            },
             cst::TypeKind::Capability { cap, inner } => HirTypeKind::Capability {
                 cap: Self::lower_cap(*cap),
                 inner: Box::new(self.lower_type(inner)),
@@ -672,6 +679,23 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
+    /// Lower an `extern fn` body-less FFI declaration. Produces a HIR item
+    /// with a fresh DefId so callers (`func.call` lowering) resolve to the
+    /// declaration ; the absence of a body signals to MIR + codegen that
+    /// the symbol must be linked as an external import.
+    fn lower_extern_fn(&mut self, f: &cssl_ast::ExternFnItem) -> crate::item::HirExternFn {
+        crate::item::HirExternFn {
+            span: f.span,
+            def: self.def_id_for(DefKind::Fn, f.span, f.name),
+            visibility: Self::lower_visibility(f.visibility),
+            attrs: self.lower_attrs(&f.attrs),
+            name: self.intern_ident(f.name),
+            params: f.params.iter().map(|p| self.lower_fn_param(p)).collect(),
+            return_ty: f.return_ty.as_ref().map(|t| self.lower_type(t)),
+            abi: f.abi.clone(),
+        }
+    }
+
     fn lower_struct_body(&mut self, b: &cst::StructBody) -> HirStructBody {
         match b {
             cst::StructBody::Unit => HirStructBody::Unit,
@@ -913,6 +937,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_item(&mut self, i: &cst::Item) -> HirItem {
         match i {
             cst::Item::Fn(f) => HirItem::Fn(self.lower_fn(f)),
+            cst::Item::ExternFn(f) => HirItem::ExternFn(self.lower_extern_fn(f)),
             cst::Item::Struct(s) => HirItem::Struct(self.lower_struct(s)),
             cst::Item::Enum(e) => HirItem::Enum(self.lower_enum(e)),
             cst::Item::Interface(i) => HirItem::Interface(self.lower_interface(i)),
@@ -983,6 +1008,7 @@ fn build_module_scope(module: &HirModule) -> ScopeMap {
 fn resolve_item_refs(item: &mut HirItem, scope: &ScopeMap) {
     match item {
         HirItem::Fn(f) => resolve_fn_refs(f, scope),
+        HirItem::ExternFn(f) => resolve_extern_fn_refs(f, scope),
         HirItem::Struct(s) => {
             resolve_struct_body(&mut s.body, scope);
         }
@@ -1049,6 +1075,17 @@ fn resolve_fn_refs(f: &mut HirFn, scope: &ScopeMap) {
     }
     if let Some(body) = &mut f.body {
         resolve_block(body, scope);
+    }
+}
+
+/// Resolve type references inside an extern-fn declaration. Mirrors
+/// `resolve_fn_refs` but skips body resolution (no body exists).
+fn resolve_extern_fn_refs(f: &mut crate::item::HirExternFn, scope: &ScopeMap) {
+    for p in &mut f.params {
+        resolve_type(&mut p.ty, scope);
+    }
+    if let Some(rt) = &mut f.return_ty {
+        resolve_type(rt, scope);
     }
 }
 

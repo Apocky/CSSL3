@@ -96,6 +96,8 @@ fn parse_type_kind(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Typ
         }
         // `&` → reference
         TokenKind::Amp => parse_reference(cursor, bag),
+        // `*` → raw pointer (`*const T` / `*mut T`)
+        TokenKind::Star => parse_raw_pointer(cursor, bag),
         // `fn` → function type
         TokenKind::Keyword(Keyword::Fn) => parse_fn_type(cursor, bag),
         // capability keywords `iso`, `trn`, `ref`, `val`, `box`, `tag`
@@ -226,6 +228,33 @@ fn parse_reference(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Typ
     let mutable = cursor.eat(TokenKind::Keyword(Keyword::Mut)).is_some();
     let inner = parse_type(cursor, bag);
     TypeKind::Reference {
+        mutable,
+        inner: Box::new(inner),
+    }
+}
+
+/// Parse a raw-pointer type `*const T` / `*mut T`.
+///
+/// Required by `extern fn` FFI declarations whose host symbol signatures
+/// reference C-style pointers (`payload_ptr: *const u8`,
+/// `out_buf: *mut u8`). Raw pointers carry no aliasing/lifetime/cap
+/// guarantee — they exist solely to declare ABI shape. Stage-0
+/// downstream passes treat them as `Reference` for type-check purposes.
+fn parse_raw_pointer(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> TypeKind {
+    cursor.bump(); // *
+    let mutable = if cursor.eat(TokenKind::Keyword(Keyword::Mut)).is_some() {
+        true
+    } else if cursor.eat(TokenKind::Keyword(Keyword::Const)).is_some() {
+        false
+    } else {
+        bag.push(custom(
+            "expected `const` or `mut` after `*` in raw-pointer type",
+            cursor.peek().span,
+        ));
+        false
+    };
+    let inner = parse_type(cursor, bag);
+    TypeKind::RawPointer {
         mutable,
         inner: Box::new(inner),
     }

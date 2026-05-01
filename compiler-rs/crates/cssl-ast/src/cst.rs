@@ -110,6 +110,10 @@ pub enum AttrArg {
 #[derive(Debug, Clone)]
 pub enum Item {
     Fn(FnItem),
+    /// `extern fn name(params) -> ret` — body-less FFI declaration. Stage-0
+    /// implicit ABI is "C". The lowered MIR fn is signature-only ; downstream
+    /// codegen registers it as an external import the linker resolves.
+    ExternFn(ExternFnItem),
     Struct(StructItem),
     Enum(EnumItem),
     Interface(InterfaceItem),
@@ -127,6 +131,7 @@ impl Item {
     pub fn span(&self) -> Span {
         match self {
             Self::Fn(i) => i.span,
+            Self::ExternFn(i) => i.span,
             Self::Struct(i) => i.span,
             Self::Enum(i) => i.span,
             Self::Interface(i) => i.span,
@@ -155,6 +160,30 @@ pub struct FnItem {
     pub where_clauses: Vec<WhereClause>,
     /// `None` for interface-method signatures (no body); `Some(block)` for concrete fns.
     pub body: Option<Block>,
+}
+
+/// `extern fn name(params) -> ret` — body-less FFI declaration.
+///
+/// § PURPOSE
+/// Allows CSSL source to forward-declare host symbols (e.g., `__cssl_*`
+/// runtime calls + LoA scene-action thunks) so the resolver can wire
+/// `func.call` ops to external imports. Has no body, no generics, no
+/// effect-row (effects on host symbols flow through MIR-level cap checks
+/// instead of CSSL effect rows), and no where-clauses.
+///
+/// § ABI
+/// Stage-0 implicit ABI is "C". Future revisions may accept
+/// `extern "abi"` after the `extern` keyword.
+#[derive(Debug, Clone)]
+pub struct ExternFnItem {
+    pub span: Span,
+    pub attrs: Vec<Attr>,
+    pub visibility: Visibility,
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub return_ty: Option<Type>,
+    /// Source-form ABI string. Stage-0 always "C".
+    pub abi: String,
 }
 
 /// `struct Name<G> { fields }`  or tuple-struct / unit-struct variants.
@@ -443,6 +472,13 @@ pub enum TypeKind {
     Tuple { elems: Vec<Type> },
     /// `&T` / `&mut T`
     Reference { mutable: bool, inner: Box<Type> },
+    /// `*const T` / `*mut T` — C-style raw pointer (FFI surface). Distinct
+    /// from `Reference` because raw pointers carry no aliasing/lifetime/cap
+    /// guarantee — they exist solely so `extern fn` signatures can declare
+    /// the host symbol's exact ABI shape. Stage-0 lowering treats them as
+    /// equivalent to `Reference` for type-check purposes ; cap-checks etc
+    /// skip them.
+    RawPointer { mutable: bool, inner: Box<Type> },
     /// `iso<T>` / `trn<T>` / `ref<T>` / `val<T>` / `box<T>` / `tag<T>`.
     Capability { cap: CapKind, inner: Box<Type> },
     /// `fn(T1, …, Tn) -> U / ε`

@@ -258,6 +258,9 @@ pub enum Keyword {
     Interface,
     /// `impl`
     Impl,
+    /// `extern` — used in `extern fn name(params) -> ret` FFI-decl items.
+    /// Stage-0 ABI is implicit "C" ; future revisions may accept `extern "abi"`.
+    Extern,
 
     // ─ control flow ─
     /// `if`
@@ -347,6 +350,7 @@ impl Keyword {
             "enum" => Self::Enum,
             "interface" => Self::Interface,
             "impl" => Self::Impl,
+            "extern" => Self::Extern,
             "if" => Self::If,
             "else" => Self::Else,
             "match" => Self::Match,
@@ -396,6 +400,7 @@ impl Keyword {
             Self::Enum => "enum",
             Self::Interface => "interface",
             Self::Impl => "impl",
+            Self::Extern => "extern",
             Self::If => "if",
             Self::Else => "else",
             Self::Match => "match",

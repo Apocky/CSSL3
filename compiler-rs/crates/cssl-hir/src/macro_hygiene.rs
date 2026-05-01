@@ -163,9 +163,11 @@ fn walk_item(
         | HirItem::Interface(_)
         | HirItem::TypeAlias(_)
         | HirItem::Use(_)
-        | HirItem::Const(_) => {
+        | HirItem::Const(_)
+        | HirItem::ExternFn(_) => {
             // Stage-0 : only fns can be macros. Future phases may extend to
-            // tier-1 `@attr_macro` on structs (annotation-style).
+            // tier-1 `@attr_macro` on structs (annotation-style). Extern fns
+            // have no body and never define macros.
         }
     }
 }

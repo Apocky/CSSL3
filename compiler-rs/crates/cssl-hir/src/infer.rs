@@ -285,6 +285,24 @@ impl<'a> InferCtx<'a> {
                 let scheme = self.fn_signature_scheme(f);
                 self.env.register_item_scheme(f.name, f.def, scheme);
             }
+            HirItem::ExternFn(f) => {
+                // Extern fns have no generics + a fixed C ABI. Register a
+                // monomorphic Ty::Fn so callers see the signature exactly as
+                // declared.
+                let params: Vec<Ty> =
+                    f.params.iter().map(|p| self.lower_hir_type(&p.ty)).collect();
+                let return_ty = f
+                    .return_ty
+                    .as_ref()
+                    .map(|t| self.lower_hir_type(t))
+                    .unwrap_or(Ty::Unit);
+                let sig = Ty::Fn {
+                    params,
+                    return_ty: Box::new(return_ty),
+                    effect_row: Row::pure(),
+                };
+                self.env.register_item(f.name, f.def, sig);
+            }
             HirItem::Const(c) => {
                 let t = self.lower_hir_type(&c.ty);
                 self.env.register_item(c.name, c.def, t);
@@ -493,7 +511,11 @@ impl<'a> InferCtx<'a> {
                     }
                 }
             }
-            HirItem::Struct(_) | HirItem::Enum(_) | HirItem::TypeAlias(_) | HirItem::Use(_) => {
+            HirItem::Struct(_)
+            | HirItem::Enum(_)
+            | HirItem::TypeAlias(_)
+            | HirItem::Use(_)
+            | HirItem::ExternFn(_) => {
                 // No body to check beyond signature registration.
             }
         }

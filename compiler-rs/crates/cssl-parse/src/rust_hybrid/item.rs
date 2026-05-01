@@ -23,9 +23,9 @@
 
 use cssl_ast::{
     AssocTypeDecl, AssocTypeDef, Attr, Block, ConstItem, DiagnosticBag, EffectItem, EnumItem,
-    EnumVariant, FieldDecl, FnItem, HandlerItem, ImplAssocItem, ImplItem, InterfaceAssocItem,
-    InterfaceItem, Item, ModuleItem, ModulePath, Param, Span, StructBody, StructItem, Type,
-    TypeAliasItem, TypeKind, UseItem, UseTree, Visibility, VisibilityKind,
+    EnumVariant, ExternFnItem, FieldDecl, FnItem, HandlerItem, ImplAssocItem, ImplItem,
+    InterfaceAssocItem, InterfaceItem, Item, ModuleItem, ModulePath, Param, Span, StructBody,
+    StructItem, Type, TypeAliasItem, TypeKind, UseItem, UseTree, Visibility, VisibilityKind,
 };
 use cssl_lex::{BracketKind, BracketSide, Keyword, TokenKind};
 
@@ -79,6 +79,9 @@ pub fn parse_item(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Opti
         TokenKind::Keyword(Keyword::Fn) => {
             Some(Item::Fn(parse_fn_item(cursor, bag, attrs, visibility)))
         }
+        TokenKind::Keyword(Keyword::Extern) => Some(Item::ExternFn(parse_extern_fn_decl(
+            cursor, bag, attrs, visibility,
+        ))),
         TokenKind::Keyword(Keyword::Struct) => Some(Item::Struct(parse_struct_item(
             cursor, bag, attrs, visibility,
         ))),
@@ -110,8 +113,8 @@ pub fn parse_item(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Opti
         TokenKind::Eof => None,
         _ => {
             bag.push(custom(
-                "expected an item (`fn`, `struct`, `enum`, `interface`, `impl`, `effect`, \
-                 `handler`, `type`, `use`, `const`, `module`)",
+                "expected an item (`fn`, `extern fn`, `struct`, `enum`, `interface`, `impl`, \
+                 `effect`, `handler`, `type`, `use`, `const`, `module`)",
                 t.span,
             ));
             // Skip one token to make progress.
@@ -171,6 +174,55 @@ fn parse_fn_item(
         effect_row,
         where_clauses,
         body,
+    }
+}
+
+// ─ Extern Fn ────────────────────────────────────────────────────────────────
+
+/// Parse `extern fn name(params) -> ret` body-less FFI declaration.
+///
+/// § GRAMMAR (stage-0)
+///   extern-fn-decl := `extern` `fn` IDENT `(` param-list `)` (`->` TYPE)? `;`?
+///
+/// The trailing `;` is optional ; if absent, the next item-boundary
+/// terminates the declaration. No body, no generics, no effect-row, no
+/// where-clauses are accepted ; emit a parse error if any appear.
+///
+/// Stage-0 ABI is implicit "C" — future revisions will accept
+/// `extern "abi" fn name(…)`.
+fn parse_extern_fn_decl(
+    cursor: &mut TokenCursor<'_>,
+    bag: &mut DiagnosticBag,
+    attrs: Vec<Attr>,
+    visibility: Visibility,
+) -> ExternFnItem {
+    let kw = cursor.bump(); // extern
+    if cursor.eat(TokenKind::Keyword(Keyword::Fn)).is_none() {
+        bag.push(custom(
+            "expected `fn` after `extern` in extern-fn declaration",
+            cursor.peek().span,
+        ));
+    }
+    let name = parse_ident(cursor, bag, "extern fn name");
+    let params = parse_param_list(cursor, bag);
+    let return_ty = if cursor.eat(TokenKind::Arrow).is_some() {
+        Some(ty::parse_type(cursor, bag))
+    } else {
+        None
+    };
+    // Optional `;` terminator — accept either form.
+    cursor.eat(TokenKind::Semi);
+    let end = return_ty
+        .as_ref()
+        .map_or_else(|| cursor.peek().span.start.max(name.span.end), |t| t.span.end);
+    ExternFnItem {
+        span: Span::new(kw.span.source, kw.span.start, end),
+        attrs,
+        visibility,
+        name,
+        params,
+        return_ty,
+        abi: "C".to_string(),
     }
 }
 
@@ -1350,6 +1402,7 @@ fn main() -> i32 { 42 }\n";
     // used by all 47 LoA scenes — named-field structs with `pub` fields, arrays,
     // tuple structs, unit structs, generic params, and enums with C-style
     // discriminants + tuple variants + struct variants.
+    // PLUS T11-CC-PARSER-1 (W-CC-extern-fn) : extern fn declarations.
 
     #[test]
     fn parse_named_struct_basic() {
@@ -1593,5 +1646,179 @@ fn main() -> i32 { 42 }\n";
         assert!(matches!(e.variants[2].body, StructBody::Named(_)));
         assert!(e.variants[3].discriminant.is_some());
         assert_eq!(bag.error_count(), 0);
+    }
+
+    // ─ T11-CC-PARSER-1 (W-CC-extern-fn) — extern fn declarations ────────────
+
+    #[test]
+    fn parse_extern_fn_basic() {
+        let (_f, toks) = prep("extern fn write(fd : i32) -> i32");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert_eq!(e.params.len(), 1);
+            assert!(e.return_ty.is_some());
+            assert_eq!(e.abi, "C");
+        } else {
+            panic!("expected ExternFn, got {:?}", it);
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_no_args() {
+        let (_f, toks) = prep("extern fn now() -> u64");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert!(e.params.is_empty());
+            assert!(e.return_ty.is_some());
+        } else {
+            panic!("expected ExternFn");
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_no_return() {
+        let (_f, toks) = prep("extern fn yield_now()");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert!(e.params.is_empty());
+            assert!(e.return_ty.is_none());
+        } else {
+            panic!("expected ExternFn");
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_multi_line_params() {
+        // Multi-line (the lexer treats whitespace incl newlines as separators).
+        let src = "extern fn __cssl_omega_field_sample_aabb(\n\
+                   min_morton : u64,\n\
+                   max_morton : u64,\n\
+                   out_buf : *mut u8,\n\
+                   max_cells : i32\n\
+                   ) -> i32";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0, "expected zero errors");
+        if let Item::ExternFn(e) = it {
+            assert_eq!(e.params.len(), 4);
+        } else {
+            panic!("expected ExternFn");
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_pointer_types() {
+        let src = "extern fn __cssl_telemetry_emit(\
+                   event_id : u32, payload_ptr : *const u8, payload_len : i32, \
+                   out_buf : *mut u8) -> i32";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert_eq!(e.params.len(), 4);
+            // Verify pointer-types lowered to RawPointer{mutable=false} + RawPointer{mutable=true}.
+            use cssl_ast::TypeKind;
+            let p1_kind = &e.params[1].ty.kind;
+            assert!(
+                matches!(p1_kind, TypeKind::RawPointer { mutable: false, .. }),
+                "param 1 expected `*const u8`, got {:?}",
+                p1_kind
+            );
+            let p3_kind = &e.params[3].ty.kind;
+            assert!(
+                matches!(p3_kind, TypeKind::RawPointer { mutable: true, .. }),
+                "param 3 expected `*mut u8`, got {:?}",
+                p3_kind
+            );
+        } else {
+            panic!("expected ExternFn");
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_followed_by_normal_fn() {
+        // Regression : after an extern fn (with or without `;`), the next normal
+        // fn must parse cleanly without any state corruption.
+        let src = "extern fn __cssl_telemetry_emit(event_id : u32) -> i32 ; \
+                   fn main() -> i32 { 42 }";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it1 = parse_item(&mut c, &mut bag).unwrap();
+        let it2 = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(it1, Item::ExternFn(_)));
+        if let Item::Fn(f) = it2 {
+            assert_eq!(f.params.len(), 0);
+            assert!(f.body.is_some());
+        } else {
+            panic!("expected Fn after ExternFn, got {:?}", it2);
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_with_underscored_name() {
+        // The `__cssl_*` symbol naming convention used throughout LoA scenes.
+        let (_f, toks) = prep("extern fn __cssl_window_create(width : i32, height : i32) -> u64");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert_eq!(e.params.len(), 2);
+            assert!(e.return_ty.is_some());
+        } else {
+            panic!("expected ExternFn");
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_trailing_comma_in_params() {
+        // Trailing comma in param list must be tolerated.
+        let src = "extern fn __cssl_act_world_mutate(\n\
+                   target_morton : u64,\n\
+                   value : i32,\n\
+                   sovereign_cap : u64,\n\
+                   ) -> i32";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        if let Item::ExternFn(e) = it {
+            assert_eq!(e.params.len(), 3);
+        } else {
+            panic!("expected ExternFn");
+        }
+    }
+
+    #[test]
+    fn parse_extern_fn_module_acceptance() {
+        // Acceptance corpus from T11-CC-PARSER-1 prompt — must parse cleanly.
+        let src = "module loa.test_extern\n\
+                   extern fn __cssl_telemetry_emit(event_id : u32, payload_ptr : *const u8, \
+                   payload_len : i32) -> i32\n\
+                   fn main() -> i32 { 42 }";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "expected zero errors");
+        assert_eq!(m.items.len(), 2);
+        assert!(matches!(m.items[0], Item::ExternFn(_)));
+        assert!(matches!(m.items[1], Item::Fn(_)));
     }
 }

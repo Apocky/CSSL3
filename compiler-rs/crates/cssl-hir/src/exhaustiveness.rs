@@ -312,6 +312,7 @@ impl<'a> EnumTable<'a> {
             // Other item kinds (Fn / Struct / Interface / Effect / Handler /
             // TypeAlias / Use / Const / Module-without-body) carry no enums.
             HirItem::Fn(_)
+            | HirItem::ExternFn(_)
             | HirItem::Struct(_)
             | HirItem::Interface(_)
             | HirItem::Impl(_)
@@ -407,6 +408,7 @@ fn walk_item(
             }
         }
         HirItem::Enum(_)
+        | HirItem::ExternFn(_)
         | HirItem::Struct(_)
         | HirItem::TypeAlias(_)
         | HirItem::Use(_)
