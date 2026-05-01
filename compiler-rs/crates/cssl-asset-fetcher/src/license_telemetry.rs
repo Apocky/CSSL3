@@ -142,6 +142,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::similar_names)]
     fn counters_start_zero_or_monotonic() {
         // Other tests in the same binary may have run first ; assert that
         // each counter is monotonically non-decreasing across an inc_* call.
@@ -149,11 +150,14 @@ mod tests {
         let pre_rej = telemetry_assets_rejected_license_total();
         let pre_unk = telemetry_assets_unknown_license_total();
         let pre_reg = telemetry_license_records_registered_total();
-        // Counters expose u64 ; just sanity-check reads return.
-        assert!(pre_attr <= u64::MAX);
-        assert!(pre_rej <= u64::MAX);
-        assert!(pre_unk <= u64::MAX);
-        assert!(pre_reg <= u64::MAX);
+        inc_assets_with_attribution();
+        inc_assets_rejected();
+        inc_assets_unknown();
+        inc_license_records_registered();
+        assert_eq!(telemetry_assets_with_attribution_total(), pre_attr + 1);
+        assert_eq!(telemetry_assets_rejected_license_total(), pre_rej + 1);
+        assert_eq!(telemetry_assets_unknown_license_total(), pre_unk + 1);
+        assert_eq!(telemetry_license_records_registered_total(), pre_reg + 1);
     }
 
     #[test]

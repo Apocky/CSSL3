@@ -285,20 +285,27 @@ fn secs_to_iso8601(secs: u64) -> String {
 }
 
 /// Days-since-1970-01-01 → (year, month, day). Standard civil-from-days.
+#[allow(clippy::similar_names)]
 fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     // Howard Hinnant's date algorithms (public domain).
     // Convert days-since-epoch (1970-01-01) to civil date.
-    let z = days as i64 + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = (z - era * 146_097) as u64; // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
-    let yy = if m <= 2 { y + 1 } else { y };
-    (yy as u64, m, d)
+    let zd = days as i64 + 719_468;
+    let era = if zd >= 0 { zd } else { zd - 146_096 } / 146_097;
+    let day_of_era = (zd - era * 146_097) as u64; // [0, 146096]
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365; // [0, 399]
+    let y = year_of_era as i64 + era * 400;
+    let day_of_year =
+        day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100); // [0, 365]
+    let month_part = (5 * day_of_year + 2) / 153; // [0, 11]
+    let day_of_month = day_of_year - (153 * month_part + 2) / 5 + 1; // [1, 31]
+    let month = if month_part < 10 {
+        month_part + 3
+    } else {
+        month_part - 9
+    }; // [1, 12]
+    let year = if month <= 2 { y + 1 } else { y };
+    (year as u64, month, day_of_month)
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -383,7 +390,7 @@ mod tests {
         // Year must be > 2024 since this test runs in 2026+ ; cushion a bit.
         let year_str = &r.fetched_at_iso[..4];
         let year: u64 = year_str.parse().expect("4-digit year");
-        assert!(year >= 2024, "year too low: {}", year);
+        assert!(year >= 2024, "year too low: {year}");
     }
 
     #[test]

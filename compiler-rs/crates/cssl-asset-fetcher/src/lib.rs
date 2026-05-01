@@ -573,23 +573,15 @@ impl AssetFetcher {
         meta: Option<&AssetMeta>,
     ) -> FetcherResult<()> {
         // Resolve the host-license enum value.
-        let (host_license, author, source_url) = match meta {
-            Some(m) => {
+        let (host_license, author, source_url) = meta.map_or(
+            (AttributionLicense::Unknown, None, None),
+            |m| {
                 let lic = crate::license_emit::from_fetcher_license(m.license);
-                let author = if m.author.is_empty() {
-                    None
-                } else {
-                    Some(m.author.clone())
-                };
-                let url = if m.url.is_empty() {
-                    None
-                } else {
-                    Some(m.url.clone())
-                };
+                let author = (!m.author.is_empty()).then(|| m.author.clone());
+                let url = (!m.url.is_empty()).then(|| m.url.clone());
                 (lic, author, url)
-            }
-            None => (AttributionLicense::Unknown, None, None),
-        };
+            },
+        );
 
         // Track Unknown classifications regardless of whether sovereign
         // bypass admits the record — so the audit shows Unknown-volume.
@@ -701,7 +693,6 @@ impl AssetFetcher {
 
     /// Read-side handle on the per-fetcher `LicenseRegistry`. Use this for
     /// attribution-HUD content + cross-source license queries.
-    #[must_use]
     pub fn license_registry(&self) -> std::sync::RwLockReadGuard<'_, LicenseRegistry> {
         self.license_registry
             .read()
