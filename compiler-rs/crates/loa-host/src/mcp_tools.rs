@@ -64,6 +64,8 @@ use crate::material::{material_lut, material_name, MATERIAL_LUT_LEN};
 use crate::mcp_server::{
     CameraState, EngineState, Plinth, RenderMode, SnapshotRequest, Vec3, TELEMETRY_RING_CAP,
 };
+// § T11-LOA-FID-CFER : telemetry constants for the cfer_snapshot response.
+use crate::cfer_render::{TEX_COUNT, TEX_TOTAL_BYTES, TEX_X, TEX_Y, TEX_Z};
 use crate::pattern::{pattern_lut, pattern_name, PATTERN_LUT_LEN};
 use crate::snapshot::{
     decode_png, default_golden_dir, default_snapshot_dir, mae_bgra8, rgba8_to_bgra8_inplace,
@@ -350,6 +352,92 @@ pub fn tool_registry() -> ToolRegistry {
         "Teleport the camera to a named room (params: room_id string e.g. \"MaterialRoom\").",
         true,
         room_teleport
+    );
+
+    // ─ T11-LOA-FID-MAINSTREAM : graphical-fidelity probe (read-only) ─
+    reg!(
+        "render.fidelity",
+        "Returns active fidelity settings : msaa_samples · hdr_format · present_mode · aniso_max · tonemap_path.",
+        false,
+        render_fidelity
+    );
+
+    // ─ T11-LOA-FID-STOKES : Stokes IQUV polarized rendering ─
+    reg!(
+        "render.stokes_snapshot",
+        "Returns the Stokes IQUV vector at the center pixel + polarization-mode + Mueller-apply count.",
+        false,
+        render_stokes_snapshot
+    );
+    reg!(
+        "render.set_polarization_view",
+        "Set the polarization-view diagnostic mode (params: mode 0..4).",
+        true,
+        render_set_polarization_view
+    );
+    reg!(
+        "render.polarization_panels",
+        "Returns the 4 canonical polarization-diagnostic panels with expected Stokes signatures.",
+        false,
+        render_polarization_panels
+    );
+
+    // ─ T11-LOA-FID-SPECTRAL : spectral-illuminant control plane ─
+    reg!(
+        "render.set_illuminant",
+        "Bake the material LUT under a specified CIE illuminant (params: name 'D65'|'D50'|'A'|'F11'). Live re-bake.",
+        true,
+        render_set_illuminant
+    );
+    reg!(
+        "render.list_illuminants",
+        "Return the 4 canonical CIE illuminants supported by the spectral bake (D65 · D50 · A · F11).",
+        false,
+        render_list_illuminants
+    );
+    reg!(
+        "render.spectral_snapshot",
+        "Return the 16x4 baked sRGB matrix : every material under every illuminant. Used for metamerism diagnostics.",
+        false,
+        render_spectral_snapshot
+    );
+    reg!(
+        "render.spectral_zones",
+        "List the 4 zones inside the SpectralRoom (NW=D65 · NE=D50 · SW=A · SE=F11). Walk between to see metamerism.",
+        false,
+        render_spectral_zones
+    );
+    reg!(
+        "telemetry.spectral",
+        "Return spectral-bake counters (count · cumulative microseconds · illuminant-change tally · current illuminant).",
+        false,
+        telemetry_spectral
+    );
+    reg!(
+        "room.teleport_zone",
+        "Teleport into a SpectralRoom zone AND switch to that zone's illuminant atomically (params: zone string).",
+        true,
+        room_teleport_zone
+    );
+
+    // ─ T11-LOA-FID-CFER : Causal Field-Evolution Rendering volumetric pass ─
+    reg!(
+        "render.cfer_snapshot",
+        "Return CFER metrics : active Ω-field cells + step/pack µs + KAN evals + center-radiance sample.",
+        false,
+        render_cfer_snapshot
+    );
+    reg!(
+        "render.cfer_step",
+        "Force a CFER step on the next frame regardless of pause state.",
+        true,
+        render_cfer_step
+    );
+    reg!(
+        "render.cfer_set_kan_handle",
+        "Attach (sovereign_handle: u16) or detach (handle: -1) a KAN modulation handle to the CFER field.",
+        true,
+        render_cfer_set_kan_handle
     );
 
     r
@@ -988,6 +1076,27 @@ fn telemetry_set_log_level(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-MAINSTREAM : `render.fidelity` (read-only)
+// ───────────────────────────────────────────────────────────────────────
+
+/// Return the live graphical-fidelity settings active on the renderer.
+///
+/// In catalog mode (no GPU init), `initialized=false` + safe defaults are
+/// returned so the tool is always callable (e.g. for unit tests + tooling
+/// that introspects the registry without spinning up a window).
+fn render_fidelity(_state: &mut EngineState, _params: Value) -> Value {
+    let r = crate::fidelity::current_report();
+    json!({
+        "msaa_samples": r.msaa_samples,
+        "hdr_format": r.hdr_format,
+        "present_mode": r.present_mode,
+        "aniso_max": r.aniso_max,
+        "tonemap_path": r.tonemap_path,
+        "initialized": r.initialized,
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § handlers — T11-LOA-TEST-APP visual-data-gathering apparatus
 // ───────────────────────────────────────────────────────────────────────
 
@@ -1347,6 +1456,297 @@ fn room_teleport(state: &mut EngineState, params: Value) -> Value {
     })
 }
 
+// § T11-LOA-FID-STOKES — Stokes IQUV polarized-render handlers
+// ───────────────────────────────────────────────────────────────────────
+
+fn render_stokes_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    use crate::stokes::{mueller_lut, sun_stokes_default, PolarizationView, MUELLER_LUT_LEN};
+    let mode_u32 = crate::ffi::polarization_view();
+    let mode = PolarizationView::from_u32(mode_u32);
+    // The "center pixel" is approximated as the Mueller-applied sun Stokes
+    // for the material at the camera's view-direction. Stage-0 doesn't yet
+    // ray-trace from CPU side, so we report the per-material LUT by id.
+    let s_in = sun_stokes_default();
+    let lut = mueller_lut();
+    let mut entries = Vec::with_capacity(MUELLER_LUT_LEN);
+    for (id, m) in lut.iter().enumerate() {
+        let s_out = m.apply(s_in);
+        entries.push(json!({
+            "material_id": id,
+            "i": s_out.i,
+            "q": s_out.q,
+            "u": s_out.u,
+            "v": s_out.v,
+            "dop_linear": s_out.dop_linear(),
+            "dop_total": s_out.dop_total(),
+        }));
+    }
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.stokes_snapshot · mode={} ({}) · sun=(I={:.3}, Q={:.3}, U={:.3}, V={:.3})",
+            mode_u32,
+            mode.name(),
+            s_in.i,
+            s_in.q,
+            s_in.u,
+            s_in.v
+        ),
+    );
+    json!({
+        "polarization_mode": mode_u32,
+        "polarization_mode_name": mode.name(),
+        "sun_stokes": {
+            "i": s_in.i, "q": s_in.q, "u": s_in.u, "v": s_in.v,
+            "dop_linear": s_in.dop_linear(),
+            "dop_total": s_in.dop_total(),
+        },
+        "per_material_stokes": entries,
+        "mueller_apply_count_per_frame":
+            crate::telemetry::global().mueller_apply_count_per_frame.load(std::sync::atomic::Ordering::Relaxed),
+    })
+}
+
+fn render_set_polarization_view(state: &mut EngineState, params: Value) -> Value {
+    let mode = p_u32(&params, "mode", 0).min(4);
+    let prior = crate::ffi::polarization_view();
+    crate::ffi::set_polarization_view(mode);
+    let mode_name = crate::stokes::PolarizationView::from_u32(mode).name();
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.set_polarization_view · {prior} → {mode} ({mode_name})"
+        ),
+    );
+    json!({
+        "ok": true,
+        "polarization_mode": mode,
+        "polarization_mode_name": mode_name,
+        "previous": prior,
+    })
+}
+
+fn render_polarization_panels(_state: &mut EngineState, _params: Value) -> Value {
+    let panels = crate::stokes::polarization_panels();
+    let mut entries = Vec::with_capacity(panels.len());
+    for (i, p) in panels.iter().enumerate() {
+        let s = p.expected_signature;
+        entries.push(json!({
+            "panel_id": i,
+            "label": p.label,
+            "expected_stokes": {
+                "i": s.i, "q": s.q, "u": s.u, "v": s.v,
+                "dop_linear": s.dop_linear(),
+                "dop_total": s.dop_total(),
+            },
+        }));
+    }
+    json!({
+        "panels": entries,
+        "count": panels.len(),
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-SPECTRAL · render.set_illuminant + render.list_illuminants
+//   + render.spectral_snapshot + render.spectral_zones + telemetry.spectral
+//   + room.teleport_zone handlers
+// ───────────────────────────────────────────────────────────────────────
+
+fn render_set_illuminant(state: &mut EngineState, params: Value) -> Value {
+    use crate::spectral_bridge::Illuminant;
+    let name = p_str(&params, "name", "D65");
+    let Some(illum) = Illuminant::from_name(name) else {
+        return json!({
+            "ok": false,
+            "error": format!("unknown illuminant '{name}' · valid: D65 · D50 · A · F11"),
+        });
+    };
+    let prior = state.illuminant;
+    if prior != illum {
+        state.illuminant = illum;
+        state.illuminant_gen = state.illuminant_gen.saturating_add(1);
+        crate::spectral_bridge::SPECTRAL_ILLUMINANT_CHANGES
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.set_illuminant · {} → {} · cct={}K · gen={}",
+            prior.name(),
+            illum.name(),
+            illum.cct_kelvin(),
+            state.illuminant_gen,
+        ),
+    );
+    // Pre-bake one sample for the response so the operator sees the change
+    // without waiting on the renderer.
+    let sample = crate::spectral_bridge::bake_material_color(
+        crate::material::MAT_VERMILLION_LACQUER,
+        illum,
+    );
+    json!({
+        "ok": true,
+        "illuminant": illum.name(),
+        "previous": prior.name(),
+        "cct_kelvin": illum.cct_kelvin(),
+        "description": illum.description(),
+        "gen": state.illuminant_gen,
+        "vermillion_sample_srgb": sample,
+    })
+}
+
+fn render_list_illuminants(_state: &mut EngineState, _params: Value) -> Value {
+    use crate::spectral_bridge::Illuminant;
+    let entries: Vec<Value> = Illuminant::all()
+        .iter()
+        .map(|i| {
+            json!({
+                "name": i.name(),
+                "cct_kelvin": i.cct_kelvin(),
+                "description": i.description(),
+            })
+        })
+        .collect();
+    json!({
+        "illuminants": entries,
+        "count": entries.len(),
+        "default": "D65",
+    })
+}
+
+fn render_spectral_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    use crate::spectral_bridge::spectral_snapshot_all;
+    let snap = spectral_snapshot_all();
+    // Group by material id for nicer JSON shape : each material entry has a
+    // per-illuminant baked-sRGB sub-object.
+    let mut by_mat: std::collections::BTreeMap<u32, std::collections::BTreeMap<String, [f32; 3]>> =
+        std::collections::BTreeMap::new();
+    for (mat_id, illum, rgb) in &snap {
+        by_mat
+            .entry(*mat_id)
+            .or_default()
+            .insert(illum.name().to_string(), *rgb);
+    }
+    let mut materials = Vec::with_capacity(by_mat.len());
+    for (id, illums) in by_mat {
+        let illums_json: Vec<Value> = illums
+            .into_iter()
+            .map(|(n, rgb)| json!({"illuminant": n, "srgb": rgb}))
+            .collect();
+        materials.push(json!({
+            "material_id": id,
+            "name": material_name(id),
+            "baked": illums_json,
+        }));
+    }
+    json!({
+        "current_illuminant": state.illuminant.name(),
+        "materials": materials,
+        "matrix_dim": [crate::material::MATERIAL_LUT_LEN, 4],
+    })
+}
+
+fn render_spectral_zones(_state: &mut EngineState, _params: Value) -> Value {
+    use crate::spectral_bridge::spectral_zones;
+    let zones: Vec<Value> = spectral_zones()
+        .iter()
+        .map(|z| {
+            json!({
+                "index": z.index,
+                "name": z.name,
+                "spawn_xyz": z.spawn_xyz,
+                "illuminant": z.illuminant.name(),
+                "cct_kelvin": z.illuminant.cct_kelvin(),
+            })
+        })
+        .collect();
+    json!({
+        "zones": zones,
+        "count": 4,
+        "container_room": "ColorRoom",
+        "note": "Walk NW→NE→SW→SE to traverse D65→D50→A→F11 illuminants. Each zone teleport flips the bake.",
+    })
+}
+
+fn telemetry_spectral(state: &mut EngineState, _params: Value) -> Value {
+    use std::sync::atomic::Ordering;
+    let count = crate::spectral_bridge::SPECTRAL_BAKE_COUNT.load(Ordering::Relaxed);
+    let total_us = crate::spectral_bridge::SPECTRAL_BAKE_US.load(Ordering::Relaxed);
+    let changes = crate::spectral_bridge::SPECTRAL_ILLUMINANT_CHANGES.load(Ordering::Relaxed);
+    let avg_us = if changes > 0 { total_us / changes.max(1) } else { 0 };
+    json!({
+        "spectral_bake_count": count,
+        "spectral_bake_us_total": total_us,
+        "spectral_bake_us_avg_per_change": avg_us,
+        "illuminant_changes": changes,
+        "current_illuminant": state.illuminant.name(),
+        "current_illuminant_cct": state.illuminant.cct_kelvin(),
+        "current_illuminant_gen": state.illuminant_gen,
+    })
+}
+
+fn room_teleport_zone(state: &mut EngineState, params: Value) -> Value {
+    use crate::spectral_bridge::{spectral_zone_by_name, Illuminant};
+    let zone_name = p_str(&params, "zone", "D65-NW");
+    let Some(zone) = spectral_zone_by_name(zone_name) else {
+        let valid: Vec<&'static str> = crate::spectral_bridge::spectral_zones()
+            .iter()
+            .map(|z| z.name)
+            .collect();
+        return json!({
+            "ok": false,
+            "error": format!("unknown zone '{zone_name}' · valid: {valid:?}"),
+        });
+    };
+    // Atomic update : camera + illuminant in one transaction.
+    let prior_pos = state.camera.pos;
+    let prior_illum = state.illuminant;
+    state.camera.pos = crate::mcp_server::Vec3::new(
+        zone.spawn_xyz[0],
+        zone.spawn_xyz[1],
+        zone.spawn_xyz[2],
+    );
+    if prior_illum != zone.illuminant {
+        state.illuminant = zone.illuminant;
+        state.illuminant_gen = state.illuminant_gen.saturating_add(1);
+        crate::spectral_bridge::SPECTRAL_ILLUMINANT_CHANGES
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    // Also notify the FFI control-plane (Room::ColorRoom = 4) so renderer
+    // can react if needed.
+    let rc = crate::ffi::__cssl_room_teleport(crate::room::Room::ColorRoom as u32, 0xCAFE_BABE_DEAD_BEEF);
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "room.teleport_zone · {} → ({:.2},{:.2},{:.2}) · illum {} → {} · gen={}",
+            zone_name,
+            zone.spawn_xyz[0],
+            zone.spawn_xyz[1],
+            zone.spawn_xyz[2],
+            prior_illum.name(),
+            zone.illuminant.name(),
+            state.illuminant_gen,
+        ),
+    );
+    let _ = Illuminant::default(); // anchor type
+    json!({
+        "ok": rc == 0,
+        "zone": zone.name,
+        "from_pos": [prior_pos.x, prior_pos.y, prior_pos.z],
+        "to_pos": zone.spawn_xyz,
+        "illuminant_was": prior_illum.name(),
+        "illuminant_now": zone.illuminant.name(),
+        "cct_kelvin": zone.illuminant.cct_kelvin(),
+        "gen": state.illuminant_gen,
+        "rc": rc,
+    })
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // § Morton + FFI helpers
 // ───────────────────────────────────────────────────────────────────────
@@ -1395,6 +1795,90 @@ fn modify_via_ffi(morton: u64, buf: &[u8; cssl_rt::loa_stubs::FIELD_CELL_BYTES])
     }
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-CFER — Causal Field-Evolution Rendering tool handlers
+// ───────────────────────────────────────────────────────────────────────
+
+/// `render.cfer_snapshot` : read-only · returns the current CFER mirror.
+/// The renderer mirrors `cfer_render::CferMetrics` into `state.cfer` after
+/// each frame so this tool can return live values without crossing the
+/// (Send-unsafe) wgpu boundary.
+fn render_cfer_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    json!({
+        "active_cells": state.cfer.active_cells,
+        "step_us": state.cfer.step_us,
+        "pack_us": state.cfer.pack_us,
+        "kan_evals": state.cfer.kan_evals,
+        "texels_written": state.cfer.texels_written,
+        "cfer_frame_n": state.cfer.cfer_frame_n,
+        "center_radiance": {
+            "r": state.cfer.center_radiance[0],
+            "g": state.cfer.center_radiance[1],
+            "b": state.cfer.center_radiance[2],
+        },
+        "kan_handle": match state.cfer.kan_handle {
+            Some(h) => json!(h),
+            None    => json!(null),
+        },
+        "tex_dim": {
+            "x": TEX_X,
+            "y": TEX_Y,
+            "z": TEX_Z,
+            "total_texels": TEX_COUNT,
+            "total_bytes": TEX_TOTAL_BYTES,
+        },
+    })
+}
+
+/// `render.cfer_step` : sovereign-gated · forces a CFER step on the next
+/// frame even when the engine is paused.
+fn render_cfer_step(state: &mut EngineState, _params: Value) -> Value {
+    state.cfer.force_step_pending = true;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        "render.cfer_step · queued forced step",
+    );
+    json!({
+        "ok": true,
+        "force_step_pending": state.cfer.force_step_pending,
+    })
+}
+
+/// `render.cfer_set_kan_handle` : sovereign-gated · attaches a KAN
+/// sovereign-handle (u16) or detaches when `handle == -1`.
+fn render_cfer_set_kan_handle(state: &mut EngineState, params: Value) -> Value {
+    // Detach when caller passes negative or omits the field.
+    let raw = params.get("handle").and_then(Value::as_i64).unwrap_or(-1);
+    if raw < 0 {
+        state.cfer.kan_handle_pending = Some(None);
+        state.push_event(
+            "INFO",
+            "loa-host/mcp",
+            "render.cfer_set_kan_handle · detach queued",
+        );
+        return json!({ "ok": true, "action": "detach" });
+    }
+    if raw > i64::from(u16::MAX) {
+        return json!({
+            "ok": false,
+            "error": format!("handle {raw} exceeds u16 max ({})", u16::MAX),
+        });
+    }
+    let h = raw as u16;
+    state.cfer.kan_handle_pending = Some(Some(h));
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.cfer_set_kan_handle · attach queued (handle={h})"),
+    );
+    json!({
+        "ok": true,
+        "action": "attach",
+        "handle": h,
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -1405,14 +1889,23 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_35_tools() {
+    fn tools_list_returns_48_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
         //   render.tour, render.diff_golden)
-        // + 2 multi-room (T11-LOA-ROOMS · room.list + room.teleport) = 35 total.
+        // + 2 multi-room (T11-LOA-ROOMS · room.list + room.teleport)
+        // + 1 fidelity probe (T11-LOA-FID-MAINSTREAM · render.fidelity)
+        // + 3 stokes-polarized (T11-LOA-FID-STOKES : render.stokes_snapshot,
+        //   render.set_polarization_view, render.polarization_panels)
+        // + 6 spectral fidelity (T11-LOA-FID-SPECTRAL : render.set_illuminant
+        //   + render.list_illuminants + render.spectral_snapshot
+        //   + render.spectral_zones + telemetry.spectral
+        //   + room.teleport_zone)
+        // + 3 CFER (T11-LOA-FID-CFER · render.cfer_snapshot + cfer_step + cfer_set_kan_handle)
+        // = 48 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 35, "must have exactly 35 tools");
+        assert_eq!(reg.len(), 48, "must have exactly 48 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -1454,6 +1947,23 @@ mod tests {
             // T11-LOA-ROOMS additions :
             "room.list",
             "room.teleport",
+            // T11-LOA-FID-MAINSTREAM addition :
+            "render.fidelity",
+            // T11-LOA-FID-STOKES additions :
+            "render.stokes_snapshot",
+            "render.set_polarization_view",
+            "render.polarization_panels",
+            // T11-LOA-FID-SPECTRAL additions :
+            "render.set_illuminant",
+            "render.list_illuminants",
+            "render.spectral_snapshot",
+            "render.spectral_zones",
+            "telemetry.spectral",
+            "room.teleport_zone",
+            // T11-LOA-FID-CFER additions :
+            "render.cfer_snapshot",
+            "render.cfer_step",
+            "render.cfer_set_kan_handle",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -1482,6 +1992,18 @@ mod tests {
             // T11-LOA-TEST-APP : diff_golden is read-only (just disk I/O).
             "render.diff_golden",
             "room.list",
+            // T11-LOA-FID-MAINSTREAM : fidelity probe is read-only.
+            "render.fidelity",
+            // T11-LOA-FID-STOKES : query-only stokes tools are read-only.
+            "render.stokes_snapshot",
+            "render.polarization_panels",
+            // T11-LOA-FID-SPECTRAL : query-only tools are read-only.
+            "render.list_illuminants",
+            "render.spectral_snapshot",
+            "render.spectral_zones",
+            "telemetry.spectral",
+            // T11-LOA-FID-CFER : cfer_snapshot is the read-only CFER tool.
+            "render.cfer_snapshot",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -1511,6 +2033,9 @@ mod tests {
             "render.snapshot_png",
             "render.tour",
             "room.teleport",
+            // T11-LOA-FID-SPECTRAL : illuminant + zone-teleport mutate state.
+            "render.set_illuminant",
+            "room.teleport_zone",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
@@ -1685,10 +2210,134 @@ mod tests {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
         // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus
-        // + 2 room (T11-LOA-ROOMS) = 35.
-        assert_eq!(v["count"], 35);
+        // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
+        // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
+        // + 3 cfer (T11-LOA-FID-CFER) = 48.
+        assert_eq!(v["count"], 48);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 35);
+        assert_eq!(arr.len(), 48);
+    }
+
+    // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests
+    #[test]
+    fn mcp_render_set_illuminant_a_succeeds() {
+        let mut s = EngineState::default();
+        let v = render_set_illuminant(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "name": "A"}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["illuminant"], "A");
+        assert_eq!(v["previous"], "D65");
+        assert_eq!(v["cct_kelvin"], 2856);
+        assert!(s.illuminant_gen >= 1);
+    }
+
+    #[test]
+    fn mcp_render_set_illuminant_invalid_returns_error() {
+        let mut s = EngineState::default();
+        let v = render_set_illuminant(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "name": "Z99"}),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].is_string());
+    }
+
+    #[test]
+    fn mcp_render_list_illuminants_returns_4_entries() {
+        let mut s = EngineState::default();
+        let v = render_list_illuminants(&mut s, json!({}));
+        assert_eq!(v["count"], 4);
+        let arr = v["illuminants"].as_array().unwrap();
+        assert_eq!(arr.len(), 4);
+        let names: Vec<&str> = arr.iter().filter_map(|e| e["name"].as_str()).collect();
+        assert!(names.contains(&"D65"));
+        assert!(names.contains(&"D50"));
+        assert!(names.contains(&"A"));
+        assert!(names.contains(&"F11"));
+    }
+
+    #[test]
+    fn mcp_render_spectral_snapshot_returns_16_materials() {
+        let mut s = EngineState::default();
+        let v = render_spectral_snapshot(&mut s, json!({}));
+        let mats = v["materials"].as_array().unwrap();
+        assert_eq!(mats.len(), MATERIAL_LUT_LEN);
+        // First material has a baked array of 4 illuminants.
+        let first_baked = mats[0]["baked"].as_array().unwrap();
+        assert_eq!(first_baked.len(), 4);
+    }
+
+    #[test]
+    fn mcp_render_spectral_zones_returns_4_entries() {
+        let mut s = EngineState::default();
+        let v = render_spectral_zones(&mut s, json!({}));
+        assert_eq!(v["count"], 4);
+        let zones = v["zones"].as_array().unwrap();
+        assert_eq!(zones.len(), 4);
+        // Each zone has illuminant + name + spawn.
+        for z in zones {
+            assert!(z["name"].is_string());
+            assert!(z["illuminant"].is_string());
+            assert!(z["spawn_xyz"].is_array());
+        }
+    }
+
+    #[test]
+    fn mcp_telemetry_spectral_returns_counter_fields() {
+        let mut s = EngineState::default();
+        let v = telemetry_spectral(&mut s, json!({}));
+        assert!(v["spectral_bake_count"].is_u64());
+        assert!(v["current_illuminant"].is_string());
+        assert!(v["current_illuminant_cct"].is_u64());
+    }
+
+    #[test]
+    fn mcp_room_teleport_zone_d65_nw_succeeds() {
+        let mut s = EngineState::default();
+        // Start at default position so we can verify the teleport.
+        let prior_pos = s.camera.pos;
+        let v = room_teleport_zone(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "zone": "D65-NW"}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["zone"], "D65-NW");
+        // Camera must have moved to inside the ColorRoom AABB.
+        let new_pos = s.camera.pos;
+        assert!(new_pos != prior_pos);
+        assert!(new_pos.x >= -58.0 && new_pos.x <= -28.0);
+        assert!(new_pos.z >= -15.0 && new_pos.z <= 15.0);
+    }
+
+    #[test]
+    fn mcp_room_teleport_zone_unknown_returns_error() {
+        let mut s = EngineState::default();
+        let v = room_teleport_zone(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "zone": "NOPE"}),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].is_string());
+    }
+
+    #[test]
+    fn mcp_render_set_illuminant_advances_gen_only_on_change() {
+        let mut s = EngineState::default();
+        let initial_gen = s.illuminant_gen;
+        // Set to D65 (default) — no change ⇒ no gen advance.
+        let _ = render_set_illuminant(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "name": "D65"}),
+        );
+        assert_eq!(s.illuminant_gen, initial_gen);
+        // Switch to D50 — gen must advance.
+        let _ = render_set_illuminant(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "name": "D50"}),
+        );
+        assert_eq!(s.illuminant_gen, initial_gen + 1);
     }
 
     // § T11-LOA-TELEM telemetry handler shape tests
@@ -1909,5 +2558,190 @@ mod tests {
         );
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("NonExistentRoom"));
+    }
+
+    // § T11-LOA-FID-MAINSTREAM · MCP render.fidelity tests
+
+    /// Returns a structured object with the expected keys, even in catalog
+    /// mode (where GPU has not initialized → `initialized=false`).
+    #[test]
+    fn mcp_render_fidelity_returns_valid_struct() {
+        let mut s = EngineState::default();
+        let v = render_fidelity(&mut s, json!({}));
+        // Required keys.
+        assert!(v.get("msaa_samples").is_some());
+        assert!(v.get("hdr_format").is_some());
+        assert!(v.get("present_mode").is_some());
+        assert!(v.get("aniso_max").is_some());
+        assert!(v.get("tonemap_path").is_some());
+        assert!(v.get("initialized").is_some());
+        // Types are sane.
+        assert!(v["msaa_samples"].as_u64().is_some());
+        assert!(v["hdr_format"].as_str().is_some());
+        assert!(v["present_mode"].as_str().is_some());
+        assert!(v["aniso_max"].as_u64().is_some());
+        assert!(v["tonemap_path"].as_bool().is_some());
+        assert!(v["initialized"].as_bool().is_some());
+    }
+
+    /// When the gpu module publishes a 4xMSAA / Mailbox / Rgba16Float
+    /// fidelity report, `render.fidelity` reflects it.
+    #[test]
+    fn mcp_render_fidelity_reflects_published_report() {
+        crate::fidelity::set_report(crate::fidelity::FidelityReport {
+            msaa_samples: 4,
+            hdr_format: "Rgba16Float".to_string(),
+            present_mode: "Mailbox".to_string(),
+            aniso_max: 16,
+            tonemap_path: true,
+            initialized: true,
+        });
+        let mut s = EngineState::default();
+        let v = render_fidelity(&mut s, json!({}));
+        assert_eq!(v["msaa_samples"], 4);
+        assert_eq!(v["hdr_format"], "Rgba16Float");
+        assert_eq!(v["present_mode"], "Mailbox");
+        assert_eq!(v["aniso_max"], 16);
+        assert_eq!(v["tonemap_path"], true);
+        assert_eq!(v["initialized"], true);
+    }
+
+    // § T11-LOA-FID-STOKES · MCP stokes_snapshot + set_polarization_view tests
+    #[test]
+    fn mcp_render_stokes_snapshot_returns_iquv_at_center() {
+        let mut s = EngineState::default();
+        let v = render_stokes_snapshot(&mut s, json!({}));
+        // Polarization mode + name must be present.
+        assert!(v.get("polarization_mode").is_some());
+        assert!(v.get("polarization_mode_name").is_some());
+        // Sun Stokes vector must have I + Q + U + V.
+        let sun = &v["sun_stokes"];
+        assert!(sun.get("i").is_some(), "sun_stokes.i missing");
+        assert!(sun.get("q").is_some(), "sun_stokes.q missing");
+        assert!(sun.get("u").is_some(), "sun_stokes.u missing");
+        assert!(sun.get("v").is_some(), "sun_stokes.v missing");
+        // I should be 1.0, Q slightly positive (atmospheric horizontal pol).
+        let i = sun["i"].as_f64().unwrap();
+        let q = sun["q"].as_f64().unwrap();
+        assert!((i - 1.0).abs() < 1e-3, "I={i}");
+        assert!(q > 0.0, "Q should be slightly positive (atmospheric): Q={q}");
+        // Per-material array = 16 entries.
+        let mats = v["per_material_stokes"].as_array().unwrap();
+        assert_eq!(mats.len(), 16, "must have 16 per-material Stokes entries");
+        // Each entry has IQUV + dop fields.
+        for m in mats {
+            assert!(m.get("material_id").is_some());
+            assert!(m.get("i").is_some());
+            assert!(m.get("dop_linear").is_some());
+            assert!(m.get("dop_total").is_some());
+        }
+    }
+
+    #[test]
+    fn mcp_render_set_polarization_view_cycles_modes() {
+        let mut s = EngineState::default();
+        // Set to mode 2 (U).
+        let v = render_set_polarization_view(&mut s, json!({"mode": 2}));
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["polarization_mode"], 2);
+        // Setting mode > 4 clamps to 4.
+        let v2 = render_set_polarization_view(&mut s, json!({"mode": 99}));
+        assert_eq!(v2["polarization_mode"], 4);
+        // Reset to 0 for cleanliness.
+        let _ = render_set_polarization_view(&mut s, json!({"mode": 0}));
+    }
+
+    #[test]
+    fn mcp_render_polarization_panels_returns_4_panels() {
+        let mut s = EngineState::default();
+        let v = render_polarization_panels(&mut s, json!({}));
+        assert_eq!(v["count"], 4);
+        let arr = v["panels"].as_array().unwrap();
+        assert_eq!(arr.len(), 4);
+        // Each panel has a label + expected_stokes block.
+        for p in arr {
+            assert!(p.get("label").is_some());
+            assert!(p.get("expected_stokes").is_some());
+            let s = &p["expected_stokes"];
+            assert!(s.get("i").is_some());
+            assert!(s.get("q").is_some());
+            assert!(s.get("u").is_some());
+            assert!(s.get("v").is_some());
+        }
+    }
+
+    // ── § T11-LOA-FID-CFER : MCP CFER tool tests ──
+
+    #[test]
+    fn mcp_render_cfer_snapshot_returns_active_cell_count() {
+        let mut s = EngineState::default();
+        // Seed the mirror as the renderer would.
+        s.cfer.active_cells = 12345;
+        s.cfer.step_us = 250;
+        s.cfer.center_radiance = [0.1, 0.2, 0.3];
+        s.cfer.kan_handle = Some(42);
+        let v = render_cfer_snapshot(&mut s, json!({}));
+        assert_eq!(v["active_cells"], 12345);
+        assert_eq!(v["step_us"], 250);
+        assert_eq!(v["kan_handle"], 42);
+        assert!((v["center_radiance"]["r"].as_f64().unwrap() - 0.1).abs() < 1e-3);
+        assert_eq!(v["tex_dim"]["x"], 32);
+        assert_eq!(v["tex_dim"]["y"], 16);
+        assert_eq!(v["tex_dim"]["z"], 32);
+        assert_eq!(v["tex_dim"]["total_texels"], 16384);
+    }
+
+    #[test]
+    fn mcp_render_cfer_snapshot_with_no_kan_returns_null() {
+        let mut s = EngineState::default();
+        s.cfer.kan_handle = None;
+        let v = render_cfer_snapshot(&mut s, json!({}));
+        assert!(v["kan_handle"].is_null());
+    }
+
+    #[test]
+    fn mcp_render_cfer_step_queues_force_step() {
+        let mut s = EngineState::default();
+        assert!(!s.cfer.force_step_pending);
+        let v = render_cfer_step(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP}));
+        assert_eq!(v["ok"], true);
+        assert!(s.cfer.force_step_pending);
+    }
+
+    #[test]
+    fn mcp_render_cfer_set_kan_handle_attach_queues_pending() {
+        let mut s = EngineState::default();
+        let v = render_cfer_set_kan_handle(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "handle": 42}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["action"], "attach");
+        assert_eq!(v["handle"], 42);
+        assert_eq!(s.cfer.kan_handle_pending, Some(Some(42)));
+    }
+
+    #[test]
+    fn mcp_render_cfer_set_kan_handle_detach_when_negative() {
+        let mut s = EngineState::default();
+        let v = render_cfer_set_kan_handle(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "handle": -1}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["action"], "detach");
+        assert_eq!(s.cfer.kan_handle_pending, Some(None));
+    }
+
+    #[test]
+    fn mcp_render_cfer_set_kan_handle_rejects_oversized() {
+        let mut s = EngineState::default();
+        let v = render_cfer_set_kan_handle(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "handle": 70000}),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("u16"));
+        assert_eq!(s.cfer.kan_handle_pending, None);
     }
 }

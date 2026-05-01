@@ -893,6 +893,47 @@ impl RoomGeometry {
                 );
             }
         }
+
+        // § T11-LOA-FID-MAINSTREAM : 4 HDR-test emissive panels on the north
+        // wall, with intensities 1× / 4× / 16× / 64× the base unit. Each
+        // panel is a 2 m × 2 m quad at z = b.max[2] - 0.05 (slightly inside
+        // the wall to avoid z-fighting), spaced evenly across the wall. The
+        // ACES tonemap should compress the brightest panel without clipping
+        // — a striking visual confirmation that HDR is engaged.
+        //
+        // We achieve "4× / 16× / 64×" without material-LUT pollution by
+        // tinting each panel via vertex `color` (uniform multiplier in the
+        // uber-shader's `albedo = m.albedo * pat_col * in.base_color`). The
+        // base material is `MAT_EMISSIVE_CYAN` whose emissive is already
+        // ~1.6 ; multiplied by 1/4/16/64 we land at the four target stops.
+        let z_panel = b.max[2] - 0.05;
+        let y_lo = 1.0_f32;
+        let y_hi = 3.0_f32;
+        let panel_w = 2.0_f32;
+        // Spread across the 30 m-wide north wall : centers at -10, -3, +3, +10.
+        let centers = [-10.0_f32, -3.0, 3.0, 10.0];
+        let intensities = [1.0_f32, 4.0, 16.0, 64.0];
+        for (cx_p, intensity) in centers.iter().zip(intensities.iter()) {
+            let xn = cx_p - panel_w * 0.5;
+            let xp = cx_p + panel_w * 0.5;
+            // Normal points -Z (into the room) so back-face cull keeps the
+            // outside-of-room face hidden. CCW from -Z side :
+            //   (xp, y_lo, z) → (xn, y_lo, z) → (xn, y_hi, z) → (xp, y_hi, z)
+            let tint = [*intensity, *intensity, *intensity];
+            self.emit_quad_uv(
+                [
+                    [xp, y_lo, z_panel],
+                    [xn, y_lo, z_panel],
+                    [xn, y_hi, z_panel],
+                    [xp, y_hi, z_panel],
+                ],
+                [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                [0.0, 0.0, -1.0],
+                tint,
+                MAT_EMISSIVE_CYAN,
+                PAT_SOLID,
+            );
+        }
     }
 
     /// PatternRoom : 30×6×30m room at x ∈ [28, 58]. Floor is divided into
@@ -1681,6 +1722,45 @@ mod tests {
             i += 4;
         }
         assert_eq!(count, 16, "MaterialRoom must emit 16 hovering spheres");
+    }
+
+    /// § T11-LOA-FID-MAINSTREAM : MaterialRoom carries 4 emissive HDR-test
+    /// panels on the north wall (intensities 1× / 4× / 16× / 64×). The
+    /// panels are quads with normal (0, 0, -1) at z = MaterialRoom.max[2]
+    /// - 0.05 ; vertex.color encodes the intensity multiplier.
+    #[test]
+    fn room_material_room_has_four_hdr_test_panels() {
+        let g = RoomGeometry::full_world();
+        let mb = crate::room::Room::MaterialRoom.bounds();
+        let z_panel = mb.max[2] - 0.05;
+        // Each panel emits 4 verts ; we look for the unique x-tints
+        // 1.0 / 4.0 / 16.0 / 64.0.
+        use std::collections::BTreeSet;
+        let mut intensities: BTreeSet<u32> = BTreeSet::new();
+        let mut panel_quads = 0;
+        let mut i = 0;
+        while i < g.vertices.len() {
+            let v = g.vertices[i];
+            let normal_match = (v.normal[0]).abs() < 1e-3
+                && (v.normal[1]).abs() < 1e-3
+                && (v.normal[2] + 1.0).abs() < 1e-3;
+            let z_match = (v.position[2] - z_panel).abs() < 1e-3;
+            let inside_x = v.position[0] >= mb.min[0] && v.position[0] <= mb.max[0];
+            if normal_match && z_match && inside_x {
+                panel_quads += 1;
+                intensities.insert((v.color[0] * 1000.0) as u32);
+            }
+            i += 4;
+        }
+        assert_eq!(
+            panel_quads, 4,
+            "MaterialRoom must emit 4 HDR-test panels on the north wall"
+        );
+        // All four discrete intensity stops must be present (1.0, 4.0, 16.0, 64.0).
+        assert!(intensities.contains(&1000), "missing 1× panel");
+        assert!(intensities.contains(&4000), "missing 4× panel");
+        assert!(intensities.contains(&16000), "missing 16× panel");
+        assert!(intensities.contains(&64000), "missing 64× panel");
     }
 
     /// PatternRoom floor must be tiled into 16 distinct floor quads, each
