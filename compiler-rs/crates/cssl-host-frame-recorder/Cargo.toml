@@ -1,0 +1,22 @@
+[package]
+name         = "cssl-host-frame-recorder"
+version      = { workspace = true }
+edition      = "2021"
+rust-version = "1.85"
+authors      = { workspace = true }
+description  = "LoA Frame Recording Container (LFRC) — pure-rust frame-buffer accumulator + lossless on-disk format for engine render-output recording."
+license      = { workspace = true }
+repository   = { workspace = true }
+homepage     = { workspace = true }
+
+# § T11-W5b-FRAME-RECORDER : pure-stdlib + serde only.
+# NO ffmpeg / mp4 / image / png / flate2 deps — LFRC is a stage-0 magic-bytes +
+# header + per-frame raw-RGBA + footer-CRC32 container. Stage-1 may add zlib via
+# flate2 if Apocky greenlights ; stage-0 stays surgically small + audit-clean.
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

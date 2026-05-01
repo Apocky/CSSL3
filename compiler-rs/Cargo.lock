@@ -898,6 +898,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-frame-recorder"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-golden"
 version = "0.1.0"
 dependencies = [
@@ -992,6 +1000,14 @@ dependencies = [
 
 [[package]]
 name = "cssl-host-rt-trace"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-spectral-grader"
 version = "0.1.0"
 dependencies = [
  "serde",
