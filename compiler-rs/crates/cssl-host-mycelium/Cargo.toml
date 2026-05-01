@@ -1,0 +1,26 @@
+[package]
+name                   = "cssl-host-mycelium"
+description            = "CSSLv3 host — mycelial network protocol layer (spore-emit · nutrient-poll · DP-aggregate)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W8-B2 : substrate-as-mycelium · cross-user federated-learning + bias-aggregation
+# ⊑ Spore = consent-cap'd cross-user signal · BLAKE3-content-hash · Ed25519-stub-signed
+# ⊑ DP-floor 100-sample @ aggregate · Gaussian-noise σ ∝ 1/√N · ¬ per-user-egress
+# ⊑ Sensitive<biometric|gaze|face|body> structurally-stripped @ emit
+# ⊑ transport-adapter consumes upstream cssl-host-mp-transport-real (mock-trait fallback)
+
+[dependencies]
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
