@@ -719,6 +719,15 @@ pub struct HudContext {
     pub recent_event: String,
     pub mcp_port: Option<u16>,
     pub fullscreen: bool,
+    /// § T11-LOA-RICH-RENDER : material name on the plinth currently being
+    /// faced (raycast from camera forward). Empty if nothing is in front.
+    pub facing_material: String,
+    /// Pattern name on the wall the camera is currently facing. "(none)" if
+    /// the camera is not aimed at a wall.
+    pub facing_pattern: String,
+    /// Frame-time histogram (last 60 frames in ms). Drawn as a tiny bar chart
+    /// at bottom-center.
+    pub frame_times_ms: [f32; 60],
 }
 
 impl Default for HudContext {
@@ -735,6 +744,9 @@ impl Default for HudContext {
             recent_event: String::new(),
             mcp_port: Some(3001),
             fullscreen: true,
+            facing_material: String::new(),
+            facing_pattern: String::from("(none)"),
+            frame_times_ms: [16.7; 60],
         }
     }
 }
@@ -828,6 +840,52 @@ pub fn build_overlay_vertices(
 
     // CENTER : 5x5 crosshair (white outline + black halo)
     push_crosshair(sw * 0.5, sh * 0.5, &mut out);
+
+    // ─── BOTTOM-CENTER : facing info + frame-time histogram ───
+    {
+        let glyph_px = (CELL_W as f32) * scale;
+        let info = format!(
+            "facing  pat={}  mat={}",
+            if hud.facing_pattern.is_empty() {
+                "(none)"
+            } else {
+                hud.facing_pattern.as_str()
+            },
+            if hud.facing_material.is_empty() {
+                "(none)"
+            } else {
+                hud.facing_material.as_str()
+            }
+        );
+        let info_w = (info.chars().count() as f32) * glyph_px;
+        let xc = (sw - info_w) * 0.5;
+        let yc = sh - pad - 3.0 * line;
+        build_shadowed_text(&info, xc, yc, COLOR_DIM_TEXT, scale, &mut out);
+
+        // Frame-time histogram : 60 bars, 3px wide each, 30px max height,
+        // bottom-aligned 4 lines above the bottom HUD lines.
+        let bar_w = 3.0_f32;
+        let bar_gap = 0.0_f32;
+        let max_height = 28.0_f32;
+        // 50ms = full bar, 0ms = no bar (clamp).
+        let max_ms = 50.0_f32;
+        let total_w = (bar_w + bar_gap) * 60.0;
+        let hx0 = (sw - total_w) * 0.5;
+        let hy_bottom = sh - pad - 4.0 * line;
+        for (i, &dt) in hud.frame_times_ms.iter().enumerate() {
+            let h = (dt / max_ms).clamp(0.02, 1.0) * max_height;
+            let bx = hx0 + (i as f32) * (bar_w + bar_gap);
+            // Color : green if <20ms, yellow if <33ms, red otherwise.
+            let col = if dt < 20.0 {
+                [0.30, 0.85, 0.40, 0.85]
+            } else if dt < 33.0 {
+                [0.90, 0.85, 0.30, 0.85]
+            } else {
+                [0.95, 0.30, 0.30, 0.85]
+            };
+            push_solid_rect(&mut out, bx, hy_bottom - h, bar_w, h, col);
+        }
+    }
 
     // ─── MENU OVERLAY ───
     if menu.open {
