@@ -1,0 +1,40 @@
+[package]
+name                   = "cssl-host-kan-real"
+description            = "CSSLv3 — Stage-1 REAL KAN classifier crate. Replaces cssl-host-kan-substrate-bridge::Stage1*KanStub* shims with substrate-driven impls : ω-field-summary → KAN-spline-eval → typed Intent / BiasScore / SeedCell. Deterministic · audit-emitting · stage-0-fallback-retained · 10% canary-gate per spec/grand-vision/11_KAN_RIDE.csl."
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W7-A-KAN-REAL (cssl/session-6/parallel-fanout)
+#
+# § PURPOSE
+#   Wave-6 landed cssl-host-kan-substrate-bridge with TRAIT abstractions and
+#   stage-0 + stage-1-STUB impls (kan_handle = opaque-string ; mocked output).
+#   Wave-7 replaces the Stage-1 stubs with REAL substrate-driven classifiers
+#   that consume cssl-substrate-omega-field ω-field cells + cssl-substrate-kan
+#   KanNetwork spline tables and emit deterministic typed outputs.
+#
+# § FILE-DISJOINT
+#   Imports the stage-0 + trait surface from cssl-host-kan-substrate-bridge
+#   verbatim ; does NOT modify that crate. Re-exports the stage-0 fallback so
+#   `cold-start = pure-stage-0` per spec § INVARIANTS I-4.
+[lib]
+name       = "cssl_host_kan_real"
+crate-type = ["rlib"]
+# § Doctests disabled : module-level rustdoc uses CSLv3-glyph indented
+#   bullet-blocks (per Apocky CSL3-native preference) which the rustdoc
+#   parser otherwise interprets as Rust-code blocks.
+doctest    = false
+
+[dependencies]
+serde                            = { workspace = true }
+serde_json                       = { workspace = true }
+cssl-host-kan-substrate-bridge   = { path = "../cssl-host-kan-substrate-bridge" }
+cssl-substrate-kan               = { path = "../cssl-substrate-kan" }
+cssl-substrate-omega-field       = { path = "../cssl-substrate-omega-field" }
+cssl-host-attestation            = { path = "../cssl-host-attestation" }
+
+[lints]
+workspace = true
