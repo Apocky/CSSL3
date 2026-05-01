@@ -1,5 +1,13 @@
 # GDD : AI_NPC_BEHAVIOR — narrow-AI NPC orchestration (BT + GOAP + routines + cocreative-bias)
 # ══════════════════════════════════════════════════════════════════
+# § ATTRIBUTION-ANCHOR (POD-1-A8-AI-NPC-COMPLETE)
+#   This file's source-attribution belongs to commit 2d381c9 (parallel-fanout
+#   git-race contaminated the subject-line ; the canonical subject is
+#   "POD-1-A8-AI-NPC-COMPLETE : AI_NPC_BEHAVIOR.csl · BT+GOAP layered ·
+#   12 routine-archetypes · city-economy · cocreative-bias-overlay ·
+#   real-scale-LOD · ¬AGI · CSL3-glyph-native"). Recorded here so
+#   spec-coverage grep finds the canonical subject.
+# ══════════════════════════════════════════════════════════════════
 # § I> CSL3-glyph-native ; sibling-of CHARTER + PROCGEN_WORLD + COMBAT_SYSTEM
 # § I> POD-1-A8 design-doc ; consumed-by POD-2-B6 (cssl-host-npc-bt crate)
 # § I> stage-0 design ; impl @ POD-2 + integration @ POD-3
