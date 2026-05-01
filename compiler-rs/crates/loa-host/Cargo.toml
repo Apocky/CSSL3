@@ -45,6 +45,26 @@ cssl-substrate-omega-field      = { path = "../cssl-substrate-omega-field" }
 cssl-substrate-omega-step       = { path = "../cssl-substrate-omega-step" }
 cssl-substrate-loa-kan          = { path = "../cssl-substrate-loa-kan" }
 cssl-substrate-prime-directive  = { path = "../cssl-substrate-prime-directive" }
+# § T11-W5c-LOA-HOST-WIRE — wave-3γ + W4 + W5a + W5b crates wired into the
+# loa-host catalog so wrapper modules + MCP tools can re-export their
+# surfaces. All path-deps ; no version pin (workspace-managed).
+cssl-host-replay                = { path = "../cssl-host-replay" }
+cssl-host-audit                 = { path = "../cssl-host-audit" }
+cssl-host-stereoscopy           = { path = "../cssl-host-stereoscopy" }
+cssl-host-golden                = { path = "../cssl-host-golden" }
+cssl-host-procgen-rooms         = { path = "../cssl-host-procgen-rooms" }
+cssl-host-histograms            = { path = "../cssl-host-histograms" }
+cssl-host-attestation           = { path = "../cssl-host-attestation" }
+cssl-host-rt-trace              = { path = "../cssl-host-rt-trace" }
+cssl-host-spectral-grader       = { path = "../cssl-host-spectral-grader" }
+cssl-host-frame-recorder        = { path = "../cssl-host-frame-recorder" }
+cssl-host-input-virtual         = { path = "../cssl-host-input-virtual" }
+cssl-host-config                = { path = "../cssl-host-config" }
+cssl-host-cocreative            = { path = "../cssl-host-cocreative" }
+cssl-host-causal-seed           = { path = "../cssl-host-causal-seed" }
+cssl-host-license-attribution   = { path = "../cssl-host-license-attribution" }
+cssl-host-voice                 = { path = "../cssl-host-voice" }
+cssl-host-multiplayer-signaling = { path = "../cssl-host-multiplayer-signaling" }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }
