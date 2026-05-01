@@ -65,6 +65,14 @@ cssl-host-causal-seed           = { path = "../cssl-host-causal-seed" }
 cssl-host-license-attribution   = { path = "../cssl-host-license-attribution" }
 cssl-host-voice                 = { path = "../cssl-host-voice" }
 cssl-host-multiplayer-signaling = { path = "../cssl-host-multiplayer-signaling" }
+# § T11-W7-G-LOA-HOST-WIRE — wave-7 path-deps (KAN-real · DM · GM · MP-transport-real).
+#   All path-deps ; workspace-managed ; surface re-exported via `wired_*` modules
+#   so the 4 new MCP tools can probe cap-tables + canary-check without each
+#   call-site reaching across the path-dep.
+cssl-host-kan-real              = { path = "../cssl-host-kan-real" }
+cssl-host-mp-transport-real     = { path = "../cssl-host-mp-transport-real" }
+cssl-host-dm                    = { path = "../cssl-host-dm" }
+cssl-host-gm                    = { path = "../cssl-host-gm" }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }

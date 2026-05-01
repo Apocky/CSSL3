@@ -843,6 +843,37 @@ pub fn tool_registry() -> ToolRegistry {
         multiplayer_room_status
     );
 
+    // ─ T11-W7-G-LOA-HOST-WIRE : wave-7 wired-* probes (4 read-only tools).
+    //   KAN-real canary-check · DM cap-table · GM tone-axes · MP-transport
+    //   real cap-bits. All read-only ; cap-table query is observational ;
+    //   no MUTATIONS surfaced.
+    reg!(
+        "kan_real.canary_check",
+        "Return whether a given session_id (u128) is enrolled in the 10% KAN-real canary cohort \
+         (params: session_id u128). Deterministic per-session.",
+        false,
+        kan_real_canary_check
+    );
+    reg!(
+        "dm.cap_table_query",
+        "Return DM cap-table : caps bitfield + the 3 cap-bit names \
+         (DM_CAP_SCENE_EDIT · DM_CAP_SPAWN_NPC · DM_CAP_COMPANION_RELAY).",
+        false,
+        dm_cap_table_query
+    );
+    reg!(
+        "gm.tone_axes_query",
+        "Return GM tone-axes list : ['warm', 'terse', 'poetic'] + the 3 cap-bit count.",
+        false,
+        gm_tone_axes_query
+    );
+    reg!(
+        "mp_transport.real_caps_query",
+        "Return mp-transport real-Supabase cap-bits constant (TRANSPORT_CAP_BOTH = SEND|RECV).",
+        false,
+        mp_transport_real_caps_query
+    );
+
     r
 }
 
@@ -2942,6 +2973,59 @@ fn multiplayer_room_status(_state: &mut EngineState, _params: Value) -> Value {
     json!({"status": s, "wired": false})
 }
 
+// ─ T11-W7-G-LOA-HOST-WIRE : wave-7 handlers (4 read-only probes) ─
+
+/// `kan_real.canary_check` : session-id enrollment in the 10% canary cohort.
+/// Params : `{ "session_id": u128 }` (accepts JSON number OR hex/decimal string ;
+/// missing/invalid → 0 which is a valid session-id, deterministically tested).
+fn kan_real_canary_check(_state: &mut EngineState, params: Value) -> Value {
+    // serde_json's u128 acceptance is feature-gated ; accept either a number
+    // (within u64 range) or a string (parsed as decimal then hex on fallback).
+    let session_id: u128 = match params.get("session_id") {
+        Some(Value::Number(n)) => n.as_u64().map_or(0_u128, u128::from),
+        Some(Value::String(s)) => {
+            s.parse::<u128>()
+                .or_else(|_| u128::from_str_radix(s.trim_start_matches("0x"), 16))
+                .unwrap_or(0)
+        }
+        _ => 0,
+    };
+    let enrolled = crate::wired_kan_real::is_session_in_canary(session_id);
+    json!({
+        "enrolled": enrolled,
+        "intent_kind_count": crate::wired_kan_real::intent_kind_count(),
+    })
+}
+
+/// `dm.cap_table_query` : DM cap-table shape probe (3 cap-bits).
+fn dm_cap_table_query(_state: &mut EngineState, _params: Value) -> Value {
+    use crate::wired_dm::{DM_CAP_ALL, DM_CAP_COMPANION_RELAY, DM_CAP_SCENE_EDIT, DM_CAP_SPAWN_NPC};
+    json!({
+        "caps": DM_CAP_ALL,
+        "bits": [
+            {"name": "DM_CAP_SCENE_EDIT",      "value": DM_CAP_SCENE_EDIT},
+            {"name": "DM_CAP_SPAWN_NPC",       "value": DM_CAP_SPAWN_NPC},
+            {"name": "DM_CAP_COMPANION_RELAY", "value": DM_CAP_COMPANION_RELAY},
+        ],
+        "bit_count": crate::wired_dm::dm_cap_bit_count(),
+    })
+}
+
+/// `gm.tone_axes_query` : canonical GM tone-axes list + cap-bit count.
+fn gm_tone_axes_query(_state: &mut EngineState, _params: Value) -> Value {
+    json!({
+        "axes": ["warm", "terse", "poetic"],
+        "bit_count": crate::wired_gm::gm_cap_bit_count(),
+    })
+}
+
+/// `mp_transport.real_caps_query` : real-Supabase transport cap-bits constant.
+fn mp_transport_real_caps_query(_state: &mut EngineState, _params: Value) -> Value {
+    json!({
+        "caps": crate::wired_mp_transport_real::mp_transport_cap_bits(),
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -2982,9 +3066,12 @@ mod tests {
         //   replay · audit · stereo · golden · procgen · histogram · attestation
         //   · rt_trace · spectral · frame_recorder · input_virtual · config ·
         //   cocreative · causal · license · voice · multiplayer)
-        // = 110 total.
+        // + 4 wave-7 wired-* probes (T11-W7-G-LOA-HOST-WIRE :
+        //   kan_real.canary_check · dm.cap_table_query · gm.tone_axes_query
+        //   · mp_transport.real_caps_query)
+        // = 114 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 110, "must have exactly 110 tools");
+        assert_eq!(reg.len(), 114, "must have exactly 114 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -3087,6 +3174,11 @@ mod tests {
             // T11-WAVE3-INTENT additions :
             "intent.translate",
             "intent.recent",
+            // T11-W7-G-LOA-HOST-WIRE additions :
+            "kan_real.canary_check",
+            "dm.cap_table_query",
+            "gm.tone_axes_query",
+            "mp_transport.real_caps_query",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -3412,10 +3504,13 @@ mod tests {
         //   sense.spontaneous_recent)
         // + 2 intent-router (T11-WAVE3-INTENT · intent.translate +
         //   intent.recent)
-        // + 17 wired-* probes (T11-W5c-LOA-HOST-WIRE) = 110.
-        assert_eq!(v["count"], 110);
+        // + 17 wired-* probes (T11-W5c-LOA-HOST-WIRE)
+        // + 4 wave-7 wired-* probes (T11-W7-G-LOA-HOST-WIRE :
+        //   kan_real.canary_check + dm.cap_table_query + gm.tone_axes_query
+        //   + mp_transport.real_caps_query) = 114.
+        assert_eq!(v["count"], 114);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 110);
+        assert_eq!(arr.len(), 114);
     }
 
     // § T11-WAVE3-INTENT · MCP-tool integration

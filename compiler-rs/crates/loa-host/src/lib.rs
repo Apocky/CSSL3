@@ -138,6 +138,16 @@ pub mod wired_license_attribution;
 pub mod wired_voice;
 pub mod wired_multiplayer;
 
+// § T11-W7-G-LOA-HOST-WIRE — wave-7 (KAN-real · DM · GM · MP-transport-real)
+//   thin wrappers. Each wired_* module re-exports the canonical public types
+//   from one path-dep + provides a single short-form helper for MCP-tool
+//   wiring. Adds 4 modules atop the W5c block above ; no MUTATIONS surfaced
+//   yet (cap-table queries + canary-check are read-only).
+pub mod wired_dm;
+pub mod wired_gm;
+pub mod wired_kan_real;
+pub mod wired_mp_transport_real;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
