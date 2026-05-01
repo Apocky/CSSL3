@@ -49,7 +49,16 @@ pub enum VirtualKey {
     /// (Intensity → Q → U → V → DOP → Intensity). Persistent setting on the
     /// global atomic ; each press advances by one.
     P,
-    // Render-mode select (10 modes per scenes/render_pipeline.cssl design)
+    // Render-mode select (10 modes per scenes/render_pipeline.cssl design).
+    //
+    // § T11-LOA-USERFIX : F1-F10 now apply IMMEDIATELY (no menu-Enter
+    //   required). The host reads `render_mode_changed` once per frame in
+    //   the InputFrame to push the new mode into the renderer's uniforms.
+    //   F7-F10 are time-shared : F7 also runs the 5-tour suite ; F8 toggles
+    //   video record ; F9 starts a burst ; F12 single screenshot. Render-
+    //   mode 7 (Substrate) and 8 (SpectralKan) and 9 (Debug) keep their
+    //   bindings · F7 advances render mode AND requests a tour-run
+    //   (handled host-side via dedicated `tour_requested` edge).
     F1,
     F2,
     F3,
@@ -60,6 +69,12 @@ pub enum VirtualKey {
     F8,
     F9,
     F10,
+    // § T11-LOA-USERFIX : capture + atmospheric-toggle keys.
+    //   F12 → single screenshot · F11 reserved (fullscreen toggle in window.rs).
+    //   F9  → burst-of-10 · F8 → video-toggle · F7 → tour-run (5 tours).
+    //   C   → CFER atmospheric toggle (intensity 0 ↔ default).
+    F12,
+    C,
     // Menu navigation (T11-LOA-HUD : MenuState consumer reads
     // `menu_*_pressed` edges on each frame's `consume_frame()`).
     ArrowUp,
@@ -153,6 +168,23 @@ pub struct InputState {
     pub menu_left_pressed: bool,
     pub menu_right_pressed: bool,
     pub menu_enter_pressed: bool,
+    // § T11-LOA-USERFIX : single-frame edges for capture + render-mode +
+    //   CFER atmospheric toggle. All set on key-DOWN, drained by
+    //   `consume_frame()`. The host's per-frame logic acts on each ;
+    //   render_mode_changed propagates the new mode value into the renderer's
+    //   uniforms · the capture edges feed snapshot/burst/video state machines.
+    /// Set when an F1-F10 press changed `render_mode` THIS frame.
+    pub render_mode_changed: bool,
+    /// Set when F12 was pressed (single screenshot).
+    pub screenshot_requested: bool,
+    /// Set when F9 was pressed (start a 10-frame burst).
+    pub burst_requested: bool,
+    /// Set when F8 was pressed (toggle video record).
+    pub video_toggle_requested: bool,
+    /// Set when F7 was pressed (run all 5 tours).
+    pub tour_requested: bool,
+    /// Set when C was pressed (toggle CFER atmospheric pass).
+    pub cfer_toggle_pressed: bool,
     // Internal : per-key held state for axis recomputation. Not part of the
     // public API but pub(crate) for unit-tests in this module.
     pub(crate) held_w: bool,
@@ -192,6 +224,12 @@ impl InputState {
             menu_left_pressed: false,
             menu_right_pressed: false,
             menu_enter_pressed: false,
+            render_mode_changed: false,
+            screenshot_requested: false,
+            burst_requested: false,
+            video_toggle_requested: false,
+            tour_requested: false,
+            cfer_toggle_pressed: false,
             held_w: false,
             held_a: false,
             held_s: false,
@@ -299,54 +337,148 @@ impl InputState {
                     );
                 }
             }
+            // § T11-LOA-USERFIX : F1-F6 set the render-mode AND set the
+            //   `render_mode_changed` edge so the host applies it directly
+            //   to the renderer this frame (no menu round-trip needed).
+            //   F7-F10 still set their assigned modes but ALSO emit a
+            //   capture/tour edge — they're double-bound for utility.
             VirtualKey::F1 => {
-                if pressed {
+                if pressed && self.render_mode != 0 {
                     self.render_mode = 0;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F1 · render-mode → 0 Default (direct apply)",
+                    );
+                } else if pressed {
+                    self.render_mode = 0;
+                    self.render_mode_changed = true;
                 }
             }
             VirtualKey::F2 => {
                 if pressed {
                     self.render_mode = 1;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F2 · render-mode → 1 Wireframe/Albedo (direct apply)",
+                    );
                 }
             }
             VirtualKey::F3 => {
                 if pressed {
                     self.render_mode = 2;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F3 · render-mode → 2 Depth/Normals (direct apply)",
+                    );
                 }
             }
             VirtualKey::F4 => {
                 if pressed {
                     self.render_mode = 3;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F4 · render-mode → 3 Depth (direct apply)",
+                    );
                 }
             }
             VirtualKey::F5 => {
                 if pressed {
                     self.render_mode = 4;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F5 · render-mode → 4 Albedo (direct apply)",
+                    );
                 }
             }
             VirtualKey::F6 => {
                 if pressed {
                     self.render_mode = 5;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F6 · render-mode → 5 SDF (direct apply)",
+                    );
                 }
             }
             VirtualKey::F7 => {
                 if pressed {
+                    // Render-mode 6 (Compass / Steps) AND tour-request.
                     self.render_mode = 6;
+                    self.render_mode_changed = true;
+                    self.tour_requested = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F7 · render-mode → 6 Steps · tour-request fired",
+                    );
                 }
             }
             VirtualKey::F8 => {
                 if pressed {
+                    // Render-mode 7 (Substrate / WDistance) AND video-toggle.
                     self.render_mode = 7;
+                    self.render_mode_changed = true;
+                    self.video_toggle_requested = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F8 · render-mode → 7 WDistance · video-toggle fired",
+                    );
                 }
             }
             VirtualKey::F9 => {
                 if pressed {
+                    // Render-mode 8 (SpectralKan / Grid) AND burst-request.
                     self.render_mode = 8;
+                    self.render_mode_changed = true;
+                    self.burst_requested = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F9 · render-mode → 8 Grid · burst-request fired (10 frames)",
+                    );
                 }
             }
             VirtualKey::F10 => {
                 if pressed {
                     self.render_mode = 9;
+                    self.render_mode_changed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F10 · render-mode → 9 FieldVsAnalytic (direct apply)",
+                    );
+                }
+            }
+            VirtualKey::F12 => {
+                if pressed {
+                    self.screenshot_requested = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "F12 · screenshot-request fired",
+                    );
+                }
+            }
+            VirtualKey::C => {
+                if pressed {
+                    self.cfer_toggle_pressed = true;
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        "C · cfer-atmospheric-toggle fired",
+                    );
                 }
             }
             VirtualKey::ArrowUp => {
@@ -389,6 +521,7 @@ impl InputState {
             pitch_delta: self.pitch_delta,
             sprint: self.sprint,
             render_mode: self.render_mode,
+            render_mode_changed: self.render_mode_changed,
             paused: self.paused,
             debug_overlay: self.debug_overlay,
             quit_requested: self.quit_requested,
@@ -397,6 +530,11 @@ impl InputState {
             menu_left_pressed: self.menu_left_pressed,
             menu_right_pressed: self.menu_right_pressed,
             menu_enter_pressed: self.menu_enter_pressed,
+            screenshot_requested: self.screenshot_requested,
+            burst_requested: self.burst_requested,
+            video_toggle_requested: self.video_toggle_requested,
+            tour_requested: self.tour_requested,
+            cfer_toggle_pressed: self.cfer_toggle_pressed,
         };
         self.yaw_delta = 0.0;
         self.pitch_delta = 0.0;
@@ -406,6 +544,15 @@ impl InputState {
         self.menu_left_pressed = false;
         self.menu_right_pressed = false;
         self.menu_enter_pressed = false;
+        // § T11-LOA-USERFIX : capture/render-mode edges also fire once
+        //   per press — clear after consume so the host's per-frame
+        //   handler sees each event exactly once.
+        self.render_mode_changed = false;
+        self.screenshot_requested = false;
+        self.burst_requested = false;
+        self.video_toggle_requested = false;
+        self.tour_requested = false;
+        self.cfer_toggle_pressed = false;
         frame
     }
 }
@@ -423,6 +570,10 @@ pub struct InputFrame {
     pub pitch_delta: f32,
     pub sprint: bool,
     pub render_mode: u8,
+    /// § T11-LOA-USERFIX : true on the frame an F1-F10 key was pressed.
+    /// Host reads this and applies the new render_mode to the renderer's
+    /// uniforms immediately — no menu round-trip.
+    pub render_mode_changed: bool,
     pub paused: bool,
     pub debug_overlay: bool,
     pub quit_requested: bool,
@@ -431,6 +582,16 @@ pub struct InputFrame {
     pub menu_left_pressed: bool,
     pub menu_right_pressed: bool,
     pub menu_enter_pressed: bool,
+    /// § T11-LOA-USERFIX : F12 single-screenshot edge.
+    pub screenshot_requested: bool,
+    /// § T11-LOA-USERFIX : F9 burst-of-10 edge.
+    pub burst_requested: bool,
+    /// § T11-LOA-USERFIX : F8 video-toggle edge.
+    pub video_toggle_requested: bool,
+    /// § T11-LOA-USERFIX : F7 5-tour-suite edge.
+    pub tour_requested: bool,
+    /// § T11-LOA-USERFIX : C cfer-atmospheric-toggle edge.
+    pub cfer_toggle_pressed: bool,
 }
 
 impl Default for InputFrame {
@@ -445,6 +606,7 @@ impl Default for InputFrame {
             pitch_delta: 0.0,
             sprint: false,
             render_mode: 0,
+            render_mode_changed: false,
             paused: false,
             debug_overlay: false,
             quit_requested: false,
@@ -453,6 +615,11 @@ impl Default for InputFrame {
             menu_left_pressed: false,
             menu_right_pressed: false,
             menu_enter_pressed: false,
+            screenshot_requested: false,
+            burst_requested: false,
+            video_toggle_requested: false,
+            tour_requested: false,
+            cfer_toggle_pressed: false,
         }
     }
 }
@@ -625,6 +792,104 @@ mod tests {
             pressed: false,
         });
         assert!(!s.menu_down_pressed);
+    }
+
+    // ── § T11-LOA-USERFIX : direct render-mode + capture-key tests ──
+
+    #[test]
+    fn f_key_press_emits_render_mode_changed_event() {
+        // F1-F10 must set both render_mode and the edge-flag exactly
+        // once per press, then the edge clears on consume_frame.
+        let mut s = InputState::new();
+        assert!(!s.render_mode_changed);
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::F3,
+            pressed: true,
+        });
+        assert_eq!(s.render_mode, 2);
+        assert!(s.render_mode_changed);
+        let frame = s.consume_frame();
+        assert_eq!(frame.render_mode, 2);
+        assert!(frame.render_mode_changed);
+        // Edge cleared after consume.
+        assert!(!s.render_mode_changed);
+    }
+
+    #[test]
+    fn c_key_toggles_cfer_intensity_atomic() {
+        // C-key sets the cfer_toggle_pressed edge ONCE per press. Two
+        // separate presses fire the edge twice (host's logic flips a
+        // persistent intensity-on bool each time).
+        let mut s = InputState::new();
+        assert!(!s.cfer_toggle_pressed);
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::C,
+            pressed: true,
+        });
+        assert!(s.cfer_toggle_pressed);
+        let frame = s.consume_frame();
+        assert!(frame.cfer_toggle_pressed);
+        assert!(!s.cfer_toggle_pressed);
+        // Re-press → fires again
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::C,
+            pressed: true,
+        });
+        assert!(s.cfer_toggle_pressed);
+    }
+
+    #[test]
+    fn f12_sets_screenshot_requested() {
+        let mut s = InputState::new();
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::F12,
+            pressed: true,
+        });
+        assert!(s.screenshot_requested);
+        let frame = s.consume_frame();
+        assert!(frame.screenshot_requested);
+        // Edge cleared after consume.
+        assert!(!s.screenshot_requested);
+        // Burst / video / tour edges NOT set by F12.
+        assert!(!frame.burst_requested);
+        assert!(!frame.video_toggle_requested);
+        assert!(!frame.tour_requested);
+    }
+
+    #[test]
+    fn f9_starts_burst_request_and_render_mode_8() {
+        let mut s = InputState::new();
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::F9,
+            pressed: true,
+        });
+        assert!(s.burst_requested);
+        assert_eq!(s.render_mode, 8);
+        assert!(s.render_mode_changed);
+    }
+
+    #[test]
+    fn f8_toggles_video_request_and_render_mode_7() {
+        let mut s = InputState::new();
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::F8,
+            pressed: true,
+        });
+        assert!(s.video_toggle_requested);
+        assert_eq!(s.render_mode, 7);
+        assert!(s.render_mode_changed);
+    }
+
+    #[test]
+    fn f7_runs_tour_request_and_render_mode_6() {
+        let mut s = InputState::new();
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::F7,
+            pressed: true,
+        });
+        assert!(s.tour_requested);
+        assert_eq!(s.render_mode, 6);
+        assert!(s.render_mode_changed);
     }
 
     #[test]

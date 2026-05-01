@@ -254,6 +254,39 @@ pub struct SnapshotRequest {
     pub path: std::path::PathBuf,
 }
 
+/// § T11-LOA-USERFIX : capture-pipeline state mirror.
+///
+/// Tracks burst + video sessions in a form that survives across MCP-tool
+/// invocations. The render loop drains pending requests and updates the
+/// counters every frame ; MCP read-only tools query this mirror to surface
+/// progress in the HUD + telemetry.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CaptureStateMirror {
+    /// Burst : true while a burst is in progress.
+    pub burst_active: bool,
+    /// Burst : frames captured so far.
+    pub burst_frames_captured: u32,
+    /// Burst : frames remaining in the current sequence.
+    pub burst_frames_remaining: u32,
+    /// Burst : monotonic id (so MCP responses can tag each session).
+    pub burst_id: u32,
+    /// Video : true while video record is active.
+    pub video_recording: bool,
+    /// Video : frames written to disk so far in current session.
+    pub video_frames_captured: u32,
+    /// Video : monotonic id.
+    pub video_id: u32,
+    /// Video : duration of the current session in milliseconds (live tally).
+    pub video_duration_ms: u64,
+    /// MCP-pending : `Some(n)` to start a burst of n frames on next frame.
+    /// Drained by the render loop. None if no pending request.
+    pub burst_pending_count: Option<u32>,
+    /// MCP-pending : true to start video record on next frame.
+    pub video_start_pending: bool,
+    /// MCP-pending : true to stop video record on next frame.
+    pub video_stop_pending: bool,
+}
+
 /// § T11-LOA-FID-CFER : MCP-mirrored CFER state.
 ///
 /// The Renderer (held in the runtime event-loop) owns the canonical
@@ -285,6 +318,11 @@ pub struct CferStateMirror {
     pub kan_handle_pending: Option<Option<u16>>,
     /// Force a CFER step on the next frame regardless of pause state.
     pub force_step_pending: bool,
+    /// § T11-LOA-USERFIX : current atmospheric-intensity multiplier (0..1).
+    pub cfer_intensity: f32,
+    /// § T11-LOA-USERFIX : pending intensity change requested by the C-key
+    /// or MCP. Drained by the render loop on the next frame.
+    pub cfer_intensity_pending: Option<f32>,
 }
 
 /// Live, per-process engine state. Shared across the MCP server, the
@@ -340,6 +378,8 @@ pub struct EngineState {
     /// § T11-LOA-FID-CFER : mirror of the runtime-side CFER metrics +
     /// pending KAN handle request.
     pub cfer: CferStateMirror,
+    /// § T11-LOA-USERFIX : capture (burst + video) state mirror.
+    pub capture: CaptureStateMirror,
 }
 
 impl Default for EngineState {
@@ -365,7 +405,11 @@ impl Default for EngineState {
             snapshot_count: 0,
             illuminant: Illuminant::default(),
             illuminant_gen: 0,
-            cfer: CferStateMirror::default(),
+            cfer: CferStateMirror {
+                cfer_intensity: 0.10,
+                ..Default::default()
+            },
+            capture: CaptureStateMirror::default(),
         }
     }
 }

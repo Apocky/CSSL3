@@ -41,6 +41,13 @@ struct Uniforms {
     // time.z = step-count override (clamped to 1..64 ; default 32)
     // time.w = unused
     time          : vec4<f32>,
+    // § T11-LOA-USERFIX : control word.
+    //   .x = cfer_intensity (0..1) · multiplies final alpha so the host can
+    //        smoothly fade the volumetric pass ; 0 = pass disabled
+    //        (still drawn but invisible). Default 0.10.
+    //   .y = unused (reserved for future render-mode hooks).
+    //   .zw = unused.
+    control       : vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u : Uniforms;
@@ -159,6 +166,14 @@ fn fs_main(in : VsOut) -> @location(0) vec4<f32> {
         accum_a   = accum_a   + (1.0 - accum_a) * a_local;
     }
 
+    // § T11-LOA-USERFIX : multiply final alpha by the runtime
+    // `cfer_intensity` uniform. Default 0.10 → ~10× reduction in
+    // alpha so the post-tonemap haze is barely perceptible at
+    // close range, only suggesting volume far away.
+    let intensity = clamp(u.control.x, 0.0, 1.0);
+    let final_a = accum_a * intensity;
+    let final_rgb = accum_rgb * intensity;
+
     // Output is straight-alpha (the CPU-side pipeline applies ALPHA_BLENDING).
-    return vec4<f32>(accum_rgb, accum_a);
+    return vec4<f32>(final_rgb, final_a);
 }

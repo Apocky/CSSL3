@@ -440,6 +440,32 @@ pub fn tool_registry() -> ToolRegistry {
         render_cfer_set_kan_handle
     );
 
+    // ─ T11-LOA-USERFIX : atmospheric-intensity + capture controls ─
+    reg!(
+        "render.cfer_intensity",
+        "Set the CFER atmospheric-intensity multiplier (params: intensity 0..1, default 0.10). Multiplies final alpha so the host can fade the volumetric pass.",
+        true,
+        render_cfer_intensity
+    );
+    reg!(
+        "render.start_burst",
+        "Start a burst-of-N screenshot capture (params: count, frame_stride). Returns the output directory + burst id.",
+        true,
+        render_start_burst
+    );
+    reg!(
+        "render.start_video",
+        "Start video record (params: frame_stride). Each subsequent frame writes a PNG to logs/video/<id>/frame_NNNN.png until stopped.",
+        true,
+        render_start_video
+    );
+    reg!(
+        "render.stop_video",
+        "Stop the in-flight video record. Returns total frames + duration so the user can ffmpeg the directory.",
+        true,
+        render_stop_video
+    );
+
     r
 }
 
@@ -1879,6 +1905,78 @@ fn render_cfer_set_kan_handle(state: &mut EngineState, params: Value) -> Value {
     })
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-USERFIX : atmospheric-intensity + capture controls
+// ───────────────────────────────────────────────────────────────────────
+
+/// `render.cfer_intensity` : sovereign-gated · sets the CFER atmospheric
+/// intensity multiplier. Clamped to `0.0..=1.0`. The render loop drains
+/// `state.cfer.cfer_intensity_pending` on the next frame and applies it.
+fn render_cfer_intensity(state: &mut EngineState, params: Value) -> Value {
+    let intensity = p_f32(&params, "intensity", 0.10).clamp(0.0, 1.0);
+    state.cfer.cfer_intensity_pending = Some(intensity);
+    state.cfer.cfer_intensity = intensity;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.cfer_intensity · → {intensity:.4}"),
+    );
+    json!({
+        "ok": true,
+        "intensity": intensity,
+        "previous": state.cfer.cfer_intensity,
+    })
+}
+
+/// `render.start_burst` : sovereign-gated · starts a burst of `count`
+/// screenshots at `frame_stride` (every Nth frame).
+fn render_start_burst(state: &mut EngineState, params: Value) -> Value {
+    let count = p_u32(&params, "count", 10).max(1).min(1000);
+    let _frame_stride = p_u32(&params, "frame_stride", 1).max(1);
+    state.capture.burst_pending_count = Some(count);
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.start_burst · queued · count={count}"),
+    );
+    json!({
+        "ok": true,
+        "count": count,
+        "burst_id_will_be": state.capture.burst_id,
+    })
+}
+
+/// `render.start_video` : sovereign-gated · starts video record.
+fn render_start_video(state: &mut EngineState, params: Value) -> Value {
+    let _frame_stride = p_u32(&params, "frame_stride", 1).max(1);
+    state.capture.video_start_pending = true;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        "render.start_video · queued",
+    );
+    json!({
+        "ok": true,
+        "video_id_will_be": state.capture.video_id,
+    })
+}
+
+/// `render.stop_video` : sovereign-gated · stops video record.
+fn render_stop_video(state: &mut EngineState, _params: Value) -> Value {
+    state.capture.video_stop_pending = true;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        "render.stop_video · queued",
+    );
+    json!({
+        "ok": true,
+        "video_id": state.capture.video_id,
+        "frames_captured": state.capture.video_frames_captured,
+        "duration_ms": state.capture.video_duration_ms,
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -1889,7 +1987,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_48_tools() {
+    fn tools_list_returns_52_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -1903,9 +2001,11 @@ mod tests {
         //   + render.spectral_zones + telemetry.spectral
         //   + room.teleport_zone)
         // + 3 CFER (T11-LOA-FID-CFER · render.cfer_snapshot + cfer_step + cfer_set_kan_handle)
-        // = 48 total.
+        // + 4 USERFIX (T11-LOA-USERFIX · render.cfer_intensity + start_burst
+        //   + start_video + stop_video)
+        // = 52 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 48, "must have exactly 48 tools");
+        assert_eq!(reg.len(), 52, "must have exactly 52 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -1964,6 +2064,11 @@ mod tests {
             "render.cfer_snapshot",
             "render.cfer_step",
             "render.cfer_set_kan_handle",
+            // T11-LOA-USERFIX additions :
+            "render.cfer_intensity",
+            "render.start_burst",
+            "render.start_video",
+            "render.stop_video",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -2212,10 +2317,10 @@ mod tests {
         // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
         // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
-        // + 3 cfer (T11-LOA-FID-CFER) = 48.
-        assert_eq!(v["count"], 48);
+        // + 3 cfer (T11-LOA-FID-CFER) + 4 userfix (T11-LOA-USERFIX) = 52.
+        assert_eq!(v["count"], 52);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 48);
+        assert_eq!(arr.len(), 52);
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests
@@ -2743,5 +2848,86 @@ mod tests {
         assert_eq!(v["ok"], false);
         assert!(v["error"].as_str().unwrap().contains("u16"));
         assert_eq!(s.cfer.kan_handle_pending, None);
+    }
+
+    // ── § T11-LOA-USERFIX : new MCP handler tests ──
+
+    #[test]
+    fn mcp_render_cfer_intensity_setter_clamped_0_to_1() {
+        let mut s = EngineState::default();
+        // Above 1.0 clamps to 1.0
+        let v = render_cfer_intensity(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "intensity": 2.5}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["intensity"].as_f64().unwrap(), 1.0);
+        assert_eq!(s.cfer.cfer_intensity_pending, Some(1.0));
+        // Below 0 clamps to 0
+        let v = render_cfer_intensity(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "intensity": -0.5}),
+        );
+        assert_eq!(v["intensity"].as_f64().unwrap(), 0.0);
+        assert_eq!(s.cfer.cfer_intensity_pending, Some(0.0));
+        // In-range passes through
+        let v = render_cfer_intensity(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "intensity": 0.42}),
+        );
+        let intensity = v["intensity"].as_f64().unwrap();
+        assert!((intensity - 0.42).abs() < 1e-5);
+    }
+
+    #[test]
+    fn mcp_render_start_burst_returns_ok_with_count() {
+        let mut s = EngineState::default();
+        let v = render_start_burst(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "count": 10}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["count"].as_u64().unwrap(), 10);
+        assert_eq!(s.capture.burst_pending_count, Some(10));
+    }
+
+    #[test]
+    fn mcp_render_start_burst_clamps_count_to_1000_max() {
+        let mut s = EngineState::default();
+        // count > 1000 clamps
+        let v = render_start_burst(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "count": 50000}),
+        );
+        assert_eq!(v["count"].as_u64().unwrap(), 1000);
+        // count = 0 clamps to 1
+        let v = render_start_burst(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "count": 0}),
+        );
+        assert_eq!(v["count"].as_u64().unwrap(), 1);
+    }
+
+    #[test]
+    fn mcp_render_start_video_queues_pending_flag() {
+        let mut s = EngineState::default();
+        assert!(!s.capture.video_start_pending);
+        let v = render_start_video(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP}),
+        );
+        assert_eq!(v["ok"], true);
+        assert!(s.capture.video_start_pending);
+    }
+
+    #[test]
+    fn mcp_render_stop_video_queues_pending_flag() {
+        let mut s = EngineState::default();
+        let v = render_stop_video(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP}),
+        );
+        assert_eq!(v["ok"], true);
+        assert!(s.capture.video_stop_pending);
     }
 }
