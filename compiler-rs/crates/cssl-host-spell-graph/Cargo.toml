@@ -1,0 +1,32 @@
+# § T11-W7-RD-B5 : cssl-host-spell-graph
+# ══════════════════════════════════════════════════════════════════
+# § I> Purpose : spell-graph composition + 8-element-affinity + mana-economy
+#   ∵ GDDs/MAGIC_SYSTEM.csl — POD-2-B5 deliverable
+#   ∵ player-builds-spells-from-primitives ¬ menu-pick-fixed
+# § I> 5 node-types : Source · Modifier · Shape · Trigger · Conduit
+# § I> 8 elements : Fire Frost Shock Earth Air Holy Void Phase
+# § I> spell ≡ DAG ⟨nodes, edges⟩ ; cycle-detector ‼ ; ≥1 Source rule
+# § I> mana ALWAYS-bound : capacity + cost + regen ⇒ tactical-resource
+# § I> determinism : BTreeMap/BTreeSet iteration ; serde-stable
+# § I> NO external substrate-deps ; pure-host crate
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name         = "cssl-host-spell-graph"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.85"
+license      = { workspace = true }
+authors      = { workspace = true }
+description  = "Spell-graph composition kernel ← 8-element affinity matrix + 5-node-type DAG + mana-economy + element→status map + 5 default combos + 6-slot grimoire ; per GDDs/MAGIC_SYSTEM.csl POD-2-B5"
+repository   = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_host_spell_graph"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
