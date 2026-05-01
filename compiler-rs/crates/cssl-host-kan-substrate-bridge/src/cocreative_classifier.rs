@@ -16,7 +16,7 @@
 /// Object-safe : registry stores `Box<dyn CocreativeClassifier>`.
 pub trait CocreativeClassifier: Send + Sync {
     /// Stable identifier (e.g. `"stage0-dot-product"`).
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Score a single feature-vector. Higher = more aligned with the
     /// player's cocreative bias. Implementations must return `0.0` for
@@ -53,7 +53,7 @@ impl Stage0DotProductClassifier {
 }
 
 impl CocreativeClassifier for Stage0DotProductClassifier {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "stage0-dot-product"
     }
 
@@ -110,7 +110,7 @@ impl Stage1KanStubClassifier {
 }
 
 impl CocreativeClassifier for Stage1KanStubClassifier {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "stage1-kan-stub"
     }
 
@@ -154,8 +154,8 @@ mod tests {
     #[test]
     fn stage0_dim_mismatch_zero() {
         let c = Stage0DotProductClassifier::new(vec![1.0, 2.0, 3.0]);
-        assert_eq!(c.score_features(&[1.0, 1.0]), 0.0);
-        assert_eq!(c.score_features(&[1.0, 1.0, 1.0, 1.0]), 0.0);
+        assert!(c.score_features(&[1.0, 1.0]).abs() < 1e-6);
+        assert!(c.score_features(&[1.0, 1.0, 1.0, 1.0]).abs() < 1e-6);
     }
 
     #[test]
@@ -190,12 +190,12 @@ mod tests {
 
     #[test]
     fn trait_object_safe() {
-        let _v: Vec<Box<dyn CocreativeClassifier>> = vec![
+        let v: Vec<Box<dyn CocreativeClassifier>> = vec![
             Box::new(Stage0DotProductClassifier::default_dim4()),
             Box::new(Stage1KanStubClassifier::new(Box::new(
                 Stage0DotProductClassifier::default_dim4(),
             ))),
         ];
-        assert_eq!(_v.len(), 2);
+        assert_eq!(v.len(), 2);
     }
 }

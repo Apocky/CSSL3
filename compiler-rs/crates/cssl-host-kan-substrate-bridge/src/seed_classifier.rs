@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// Object-safe : registry stores `Box<dyn SeedCellClassifier>`.
 pub trait SeedCellClassifier: Send + Sync {
     /// Stable identifier (e.g. `"stage0-keyword-seed"`).
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Convert an intent (kind + flat args) into seed-cells.
     /// Implementations MUST return an empty `Vec` for unknown kinds
@@ -104,7 +104,7 @@ impl Stage0KeywordSeedClassifier {
 }
 
 impl SeedCellClassifier for Stage0KeywordSeedClassifier {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "stage0-keyword-seed"
     }
 
@@ -153,7 +153,7 @@ impl Stage1KanStubSeedClassifier {
 }
 
 impl SeedCellClassifier for Stage1KanStubSeedClassifier {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "stage1-kan-stub-seed"
     }
 
@@ -219,20 +219,20 @@ mod tests {
     fn seed_cell_bounded() {
         // Charge should clamp.
         let cell = SeedCell::new(0, 0, 0, 0, 5.0, 0);
-        assert_eq!(cell.charge, 1.0);
+        assert!((cell.charge - 1.0).abs() < 1e-6);
         let cell = SeedCell::new(0, 0, 0, 0, -5.0, 0);
-        assert_eq!(cell.charge, -1.0);
+        assert!((cell.charge - -1.0).abs() < 1e-6);
         // Coordinates are u8-typed so out-of-range is unrepresentable.
     }
 
     #[test]
     fn trait_object_safe() {
-        let _v: Vec<Box<dyn SeedCellClassifier>> = vec![
+        let v: Vec<Box<dyn SeedCellClassifier>> = vec![
             Box::new(Stage0KeywordSeedClassifier::default_table()),
             Box::new(Stage1KanStubSeedClassifier::new(Box::new(
                 Stage0KeywordSeedClassifier::default_table(),
             ))),
         ];
-        assert_eq!(_v.len(), 2);
+        assert_eq!(v.len(), 2);
     }
 }

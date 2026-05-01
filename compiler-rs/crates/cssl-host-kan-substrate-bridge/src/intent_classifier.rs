@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// without touching call-sites.
 pub trait IntentClassifier: Send + Sync {
     /// Stable identifier for this backend (e.g. `"stage0-heuristic"`).
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Classify a free-form text utterance into a typed `IntentClass`.
     ///
@@ -121,7 +121,7 @@ impl Stage0HeuristicClassifier {
 }
 
 impl IntentClassifier for Stage0HeuristicClassifier {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "stage0-heuristic"
     }
 
@@ -145,9 +145,12 @@ impl IntentClassifier for Stage0HeuristicClassifier {
         if self.rules.is_empty() {
             0.0
         } else {
-            // Aggregate confidence = mean rule-weight clamped.
+            // Aggregate confidence = mean rule-weight clamped. usize→f32
+            // precision-loss is acceptable here : rule-counts are O(10).
+            #[allow(clippy::cast_precision_loss)]
+            let n = self.rules.len() as f32;
             let total: f32 = self.rules.iter().map(|r| r.weight.clamp(0.0, 1.0)).sum();
-            (total / self.rules.len() as f32).clamp(0.0, 1.0)
+            (total / n).clamp(0.0, 1.0)
         }
     }
 }
@@ -186,7 +189,7 @@ impl Stage1KanStubClassifier {
 }
 
 impl IntentClassifier for Stage1KanStubClassifier {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "stage1-kan-stub"
     }
 
@@ -234,7 +237,7 @@ mod tests {
         let c = Stage0HeuristicClassifier::default_rules();
         let r = c.classify("zzzzzz nonsense gibberish");
         assert_eq!(r.kind, "unknown");
-        assert_eq!(r.confidence, 0.0);
+        assert!(r.confidence.abs() < 1e-6);
     }
 
     #[test]
@@ -252,7 +255,7 @@ mod tests {
         let s1 = Stage1KanStubClassifier::with_handle(stage0, String::from("kan-v0-mock"));
         let r = s1.classify("anything at all");
         assert_eq!(r.kind, "kan_mocked");
-        assert_eq!(r.confidence, 0.5);
+        assert!((r.confidence - 0.5).abs() < 1e-6);
         assert_eq!(r.args[0], (String::from("backend"), String::from("kan-mock")));
     }
 
@@ -260,13 +263,13 @@ mod tests {
     fn trait_object_safe() {
         // Compile-time check : if `IntentClassifier` is not object-safe
         // this won't compile.
-        let _v: Vec<Box<dyn IntentClassifier>> = vec![
+        let v: Vec<Box<dyn IntentClassifier>> = vec![
             Box::new(Stage0HeuristicClassifier::default_rules()),
             Box::new(Stage1KanStubClassifier::new(Box::new(
                 Stage0HeuristicClassifier::default_rules(),
             ))),
         ];
-        assert_eq!(_v.len(), 2);
+        assert_eq!(v.len(), 2);
     }
 
     #[test]
