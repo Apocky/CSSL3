@@ -630,6 +630,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-asset-fetcher"
+version = "0.1.0"
+dependencies = [
+ "cssl-rt",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-ast"
 version = "0.1.0"
 

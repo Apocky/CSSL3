@@ -1,0 +1,30 @@
+[package]
+name                   = "cssl-asset-fetcher"
+description            = "CSSLv3 stage0 — uniform asset-source abstraction (Sketchfab / PolyHaven / Kenney / Quaternius / OpenGameArt) + LRU disk-cache + license-aware filtering. Source-agnostic AssetSource trait + AssetFetcher orchestrator + FFI for CSSL programs."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_asset_fetcher"
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+cssl-rt     = { path = "../cssl-rt" }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+# § parking_lot dropped in favor of std::sync::RwLock — workspace's
+# parking_lot 0.12 transitively pulls parking_lot_core 0.9.12 →
+# windows-link 0.2.1 which forces dlltool.exe on the 1.85.0-x86_64-pc-
+# windows-gnu toolchain. std::sync::RwLock has the same `read() / write()`
+# surface for our usage and avoids the dlltool gating.
+
+[dev-dependencies]
+# tempfile-style isolation handled via env CSSL_ASSET_CACHE_DIR override + TestId
+# random suffixes — no extra crate dep required for stage-0.
+
+[lints]
+workspace = true
