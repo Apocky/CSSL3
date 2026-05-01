@@ -1,0 +1,40 @@
+# cssl-host-coder-runtime
+# ══════════════════════════════════════════════════════════════════
+# § T11-W8-F1 : automated-Coder per spec/10 ROLE-CODER (narrow-orchestrator · ¬ AGI)
+# § EXTREME-CAUTION : sandboxed AST-edit · sovereign-required · 30s-revert-window · audit-everywhere
+# § HARD-CAPS : ¬ substrate-* · ¬ specs/grand-vision/00..15 · ¬ TIER-C-secrets · rate-10/hr default
+# § PRIME-DIRECTIVE : consent + sovereignty + transparency · ¬ harm
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name         = "cssl-host-coder-runtime"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+description  = "Sandboxed AST-edit runtime for the automated-Coder agent (extreme-caution · sovereign-gated · 30s-revert)"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+blake3     = { workspace = true }
+# cssl-ast intentionally NOT depended-on at this slice : the runtime is
+# AST-shape-agnostic (operates on (path, before-blake3, after-blake3, kind))
+# so it can be reused for non-CSSL targets. AST integration is a thin adapter
+# layer added when stage1-self-host stabilizes.
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[package.metadata.cssl]
+prime_directive = "consent=OS • violation=bug • no-override-exists"
+role            = "automated-Coder · narrow-orchestrator · ¬ AGI"
+hard_caps       = "substrate-* · specs/grand-vision/00..15 · TIER-C-secrets · rate-10/hr"
+revert_window   = "30s default"
+sovereign_gated = "substrate · schema · spec edits"
+attestation     = "PRIME_DIRECTIVE.md § 11 — no hurt nor harm"
