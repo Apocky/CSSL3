@@ -1,7 +1,7 @@
 // § ledger.rs — append-only BTreeMap-backed ledger + snapshot + CoherenceProof
 // §§ BTreeMap iteration is sorted-by-key ASC ⇒ deterministic merkle-root across-machines
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -112,14 +112,14 @@ impl SigmaLedger {
         seed_ids: &[EventId],
         lineage_events: &[SigmaEvent],
     ) -> Digest {
-        let mut all: BTreeMap<EventId, ()> = BTreeMap::new();
+        let mut all: BTreeSet<EventId> = BTreeSet::new();
         for s in seed_ids {
-            all.insert(*s, ());
+            all.insert(*s);
         }
         for e in lineage_events {
-            all.insert(e.id, ());
+            all.insert(e.id);
         }
-        let sorted: Vec<EventId> = all.keys().copied().collect();
+        let sorted: Vec<EventId> = all.into_iter().collect();
         merkle_root_of(&sorted)
     }
 }

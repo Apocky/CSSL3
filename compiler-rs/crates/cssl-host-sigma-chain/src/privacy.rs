@@ -142,8 +142,7 @@ impl core::fmt::Display for EgressViolation {
             EgressViolation::LocalOnlyEvent { event_id_prefix_hex } => {
                 write!(
                     f,
-                    "egress refused : LocalOnly event {} attempted to leave TIER-1 boundary",
-                    event_id_prefix_hex
+                    "egress refused : LocalOnly event {event_id_prefix_hex} attempted to leave TIER-1 boundary"
                 )
             }
         }

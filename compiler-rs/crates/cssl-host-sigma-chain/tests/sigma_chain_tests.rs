@@ -155,11 +155,11 @@ fn sig_tamper_full_overwrite_rejected() {
         PrivacyTier::Public,
     );
     ev.ed25519_sig = [0xCD; SIG_LEN];
-    matches!(
-        verify_event(&ev),
-        VerifyOutcome::Rejected(VerifyError::SignatureInvalid)
-            | VerifyOutcome::Rejected(VerifyError::InvalidPubkey)
-    );
+    let outcome = verify_event(&ev);
+    assert!(matches!(
+        outcome,
+        VerifyOutcome::Rejected(VerifyError::SignatureInvalid | VerifyError::InvalidPubkey)
+    ));
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -181,8 +181,7 @@ fn payload_tamper_blake3_flip_detected_via_id_or_sig() {
     let outcome = verify_event(&ev);
     assert!(matches!(
         outcome,
-        VerifyOutcome::Rejected(VerifyError::IdTampered)
-            | VerifyOutcome::Rejected(VerifyError::SignatureInvalid)
+        VerifyOutcome::Rejected(VerifyError::IdTampered | VerifyError::SignatureInvalid)
     ));
 }
 
@@ -201,8 +200,7 @@ fn payload_tamper_kind_swap_detected() {
     let outcome = verify_event(&ev);
     assert!(matches!(
         outcome,
-        VerifyOutcome::Rejected(VerifyError::IdTampered)
-            | VerifyOutcome::Rejected(VerifyError::SignatureInvalid)
+        VerifyOutcome::Rejected(VerifyError::IdTampered | VerifyError::SignatureInvalid)
     ));
 }
 
@@ -547,7 +545,7 @@ fn deterministic_recompute_idempotent_with_dupes() {
     );
     let r1 = SigmaLedger::deterministic_recompute_root(&[], &[ev.clone()]);
     // Duplicate the event in input ; result must be unchanged (BTreeMap dedup).
-    let r2 = SigmaLedger::deterministic_recompute_root(&[], &[ev.clone(), ev.clone()]);
+    let r2 = SigmaLedger::deterministic_recompute_root(&[], &[ev.clone(), ev]);
     assert_eq!(r1, r2);
 }
 
@@ -696,6 +694,6 @@ fn ledger_iter_is_sorted_by_id() {
     }
     let ids = ledger.sorted_event_ids();
     let mut sorted = ids.clone();
-    sorted.sort();
+    sorted.sort_unstable();
     assert_eq!(ids, sorted);
 }

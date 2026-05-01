@@ -72,7 +72,7 @@ pub fn verify_event(event: &SigmaEvent) -> VerifyOutcome {
 pub fn verify_coherence_proof(proof: &CoherenceProof) -> VerifyOutcome {
     match verify_event(&proof.event) {
         VerifyOutcome::Verified => {}
-        rej => return rej,
+        rej @ VerifyOutcome::Rejected(_) => return rej,
     }
     if !merkle_path_verify(&proof.event.id, &proof.merkle_path, &proof.merkle_root) {
         return VerifyOutcome::Rejected(VerifyError::MerklePathInvalid);
@@ -90,7 +90,7 @@ pub fn verify_coherence_proof_with_lineage(
 ) -> VerifyOutcome {
     match verify_coherence_proof(proof) {
         VerifyOutcome::Verified => {}
-        rej => return rej,
+        rej @ VerifyOutcome::Rejected(_) => return rej,
     }
     let recomputed: Digest =
         SigmaLedger::deterministic_recompute_root(seed_ids, lineage_events);
