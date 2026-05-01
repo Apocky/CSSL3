@@ -6,7 +6,7 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 
-type ProjectStatus = 'live' | 'in-development' | 'planning' | 'open-source';
+type ProjectStatus = 'live' | 'alpha' | 'in-development' | 'planning' | 'open-source';
 
 interface Project {
   id: string;
@@ -22,9 +22,9 @@ const PROJECTS: ReadonlyArray<Project> = [
   {
     id: 'labyrinth',
     name: 'Labyrinth of Apocalypse',
-    tagline: 'Substrate-grown action-RPG · roguelike · alchemy · gear-ascension · mycelial multiverse',
-    status: 'in-development',
-    href: '/labyrinth',
+    tagline: 'Substrate-grown action-RPG · roguelike · alchemy · gear-ascension · mycelial multiverse · alpha v0.1.0 available now',
+    status: 'alpha',
+    href: '/download',
     accent: '#c084fc',
   },
   {
@@ -80,6 +80,7 @@ const SOCIAL: ReadonlyArray<{ label: string; href: string }> = [
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
   live: 'LIVE',
+  alpha: 'ALPHA · DOWNLOAD',
   'in-development': 'IN DEVELOPMENT',
   'open-source': 'OPEN SOURCE',
   planning: 'PLANNING',
@@ -87,6 +88,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 
 const STATUS_COLOR: Record<ProjectStatus, string> = {
   live: '#34d399',
+  alpha: '#fbbf24',
   'in-development': '#fbbf24',
   'open-source': '#7dd3fc',
   planning: '#9aa0a6',
@@ -227,7 +229,7 @@ const Home: NextPage = () => {
             }}
           >
             {PROJECTS.map((p) => {
-              const clickable = p.status === 'live' || p.status === 'open-source';
+              const clickable = p.status === 'live' || p.status === 'open-source' || p.status === 'alpha';
               const cardStyle: React.CSSProperties = {
                 display: 'block',
                 padding: '1.5rem',
@@ -251,7 +253,7 @@ const Home: NextPage = () => {
                       height: 8,
                       borderRadius: '50%',
                       background: STATUS_COLOR[p.status],
-                      animation: p.status === 'live' || p.status === 'in-development' ? 'pulse-spore 2.5s ease-in-out infinite' : 'none',
+                      animation: p.status === 'live' || p.status === 'in-development' || p.status === 'alpha' ? 'pulse-spore 2.5s ease-in-out infinite' : 'none',
                     }}
                   />
                   <div
