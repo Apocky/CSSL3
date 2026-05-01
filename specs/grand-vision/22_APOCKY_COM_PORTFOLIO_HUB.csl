@@ -1,0 +1,285 @@
+§ T11-W6+ § specs/grand-vision/22_APOCKY_COM_PORTFOLIO_HUB.csl
+§§ apocky.com as PORTFOLIO HUB for-all-Apocky-projects · multi-tenant · cross-project mycelium
+§§ Apocky 2026-05-01 directive : "apocky.com should be the centralized hub for all of my projects"
+§§ status @ ◐ design-pending · enforcement @ wave-9
+§§ AMENDS spec/17 + spec/21 · LoA = first-tenant · all-future-projects = additional-tenants
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : apocky.com = META-PLATFORM · all-Apocky-projects launch-from-it · cross-project-substrate
+A-2 : ONE-IDENTITY-MANY-PROJECTS · player signs-in-once · accesses-all-Apocky-properties (SSO via Supabase-Auth)
+A-3 : SHARED-SUBSTRATE @ across-projects · mycelium-extends-product-to-product · cross-project Akashic-Records
+A-4 : SINGLE-LEGAL-ENTITY · Stripe-Atlas C-Corp · ToS via-Termly · serves-ALL-projects · economies-of-scale
+A-5 : DESIGN-SYSTEM consistent-across-projects · CSL3-aesthetic-anchor · brand-recognition
+A-6 : DATA-ISOLATION per-project Supabase-instance · CROSS-IDENTITY via-hub-JWT-signing
+A-7 : Apocky's-portfolio = One-Unified-System-of-Systems writ-larger · per spec/15 + spec/16
+
+§ thesis : apocky.com is-the-fruiting-body-of-Apocky's-output · projects-are-the-mushroom-caps · the-substrate runs-beneath-all-of-them · t∞
+
+═══════════════════════════════════════════════════════════════════════════════
+§ PROJECT-PORTFOLIO (Apocky-output @ 2026-05-01)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ NOTE : portfolio audit · NOT-exhaustive · subject-to Apocky-confirmation @ launch
+§ projects below identified-from `~/source/repos/` directory + MEMORY user-profile
+
+§ FLAGSHIP @ launching-first
+  ⊑ Labyrinth of Apocalypse (LoA-v13 · CSSLv3 substrate) ← THE GAME · this-spec-tree's-target
+
+§ LANGUAGE + COMPILER (already-public · TIER-A open per spec/17)
+  ⊑ CSSL (Conscious Substrate System Language) · v3 current
+  ⊑ csslc compiler · stage-0 cranelift-object backend
+  ⊑ specs/grand-vision/* (this-very-spec-tree) · open-documentation
+
+§ SUBSTRATE + RESEARCH (potential-tenants · order-pending Apocky-confirmation)
+  ⊑ ApockyDGI / ApockyDGI v2 / ApockyDGI-v3 ← Direct Geometric Intelligence (substrate-research)
+  ⊑ DGI-Substrate ← consolidated-DGI-substrate
+  ⊑ OmniMind / Omnimindv2 ← AI/cognitive-substrate
+  ⊑ Omniverse ← multiverse/cosmology research
+  ⊑ Opus ← (?)
+  ⊑ PRISM / PRISM-UI ← (?) UI-framework or-research
+  ⊑ SigilThink / Sigilv2 ← symbolic-reasoning
+  ⊑ aegis ← protection/security-substrate
+  ⊑ cssl-kb · cssl-pga-target · cssl-site ← support-tooling for-CSSL
+
+§ PERSONAL-CHANNEL (existing-Apocky-presence)
+  ⊑ @noneisone.oneisall (medium · personal-platform)
+  ⊑ ko-fi.com/oneinfinity (support-channel)
+  ⊑ patreon.com/0ne1nfinity (subscription-channel)
+
+§ ¬ DEPRECATED but-archived
+  ⊑ DEPRECATED-The Infinite Labyrinth (C# .NET 10 · GDDs are-AUTHORITATIVE legacy-design-source)
+  ⊑ TIL/TIL2-5 (Infinite-Labyrinth iteration-history)
+  ⊑ LoA v8-v12 (legacy LoA-iterations)
+  ⊑ infinite-labyrinth/ · infiniter-labyrinth/ (Rust-attempts · iteration-history)
+
+§ at-each-project-launch : Apocky decides project-name · project-route · which-features-shared-from-hub
+
+═══════════════════════════════════════════════════════════════════════════════
+§ APOCKY.COM ARCHITECTURE (multi-tenant Vercel)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ DOMAIN-LAYOUT
+  ⊑ apocky.com (root)              ← PORTFOLIO-HUB · landing · about · projects-grid · login
+  ⊑ apocky.com/labyrinth           ← LoA project-route · marketing · download · play-now · docs
+  ⊑ apocky.com/cssl                ← CSSL language-site · docs · examples · compiler-download
+  ⊑ apocky.com/dgi (future)        ← DGI project-route (when launches)
+  ⊑ apocky.com/omnimind (future)   ← OmniMind project-route
+  ⊑ apocky.com/sigilthink (future) ← SigilThink project-route
+  ⊑ apocky.com/blog                ← unified Apocky-blog (cross-project)
+  ⊑ apocky.com/press               ← unified press-kit
+  ⊑ apocky.com/account             ← SSO + profile + cross-project entitlements
+  ⊑ apocky.com/transparency        ← cross-project transparency dashboards
+  ⊑ apocky.com/legal               ← ToS · Privacy · EULA · refund-policy (auto-jurisdictional via Termly)
+
+§ SUBDOMAIN-LAYOUT (already-spec/21 amended)
+  ⊑ downloads.apocky.com           ← binary-delivery CDN · per-project paths · /labyrinth/v1.0.0.zip · /cssl/csslc-v0.1.0.zip
+  ⊑ api.apocky.com                 ← cssl-edge serverless-functions · /api/labyrinth/* · /api/cssl/* · /api/auth/*
+  ⊑ akashic.apocky.com             ← cross-project Akashic-Records browser (per spec/18)
+  ⊑ mycelium.apocky.com            ← cross-project mycelium status + opt-in management
+  ⊑ status.apocky.com              ← uptime + scheduled-maintenance + hotfix-rollouts (cross-project)
+  ⊑ docs.apocky.com                ← auto-built docs · per-project subdirs · /docs/labyrinth · /docs/cssl
+
+§ MONOREPO STRUCTURE @ on-disk
+  ⊑ ~/source/repos/Apocky-Hub/ (NEW root) ← apocky.com Vercel-monorepo
+    ⊘ apps/
+      ⊘ hub/                  ← apocky.com root · landing · about · navigation
+      ⊘ labyrinth/            ← /labyrinth product-route (CURRENT cssl-edge migrates here)
+      ⊘ cssl/                 ← /cssl product-route (NEW · auto-built docs · examples gallery)
+      ⊘ blog/                 ← /blog · MDX-based · cross-project posts
+    ⊘ packages/
+      ⊘ ui-kit/               ← shared design-system · CSL3-aesthetic-anchor · components
+      ⊘ auth-shared/          ← Supabase-Auth client wrapper · JWT-validation
+      ⊘ stripe-shared/        ← cross-project entitlements client
+      ⊘ telemetry-shared/     ← cssl-host-attestation client wrapper
+  ⊑ apps/* are-Vercel-deployable independently OR-as-monorepo
+  ⊑ packages/* shared-code · published-internally (¬ npm-public)
+
+§ TENANT-ISOLATION PATTERN
+  ⊑ EACH-PROJECT has-own Supabase-instance (data-isolation)
+  ⊑ apocky.com hub Supabase = central-Auth + cross-project entitlements
+  ⊑ JWT issued-by-hub-Supabase · ALL-projects validate-JWT against-hub-public-key
+  ⊑ user @ hub-login → JWT-cookie · ALL-apocky-properties accept-this-JWT
+  ⊑ per-project actions still write-to per-project Supabase · audit-emit · independent-RLS
+
+§ SUPABASE-PROJECT-LAYOUT (Apocky's Oracle org)
+  ⊑ "Apocky-Hub"           ← NEW project · centralized-Auth + cross-project entitlements + Stripe-checkout
+  ⊑ "The Labyrinth" ✓ EXISTS  ← LoA-specific data · keep-as-is · LoA-route consumes-this
+  ⊑ "CSSL"                 ← future · CSSL-specific data (forum · package-registry · etc.)
+  ⊑ "DGI" / "OmniMind" / etc. ← future · per-project Supabase as-launches
+  ⊑ Apocky's-Oracle-PRO scales · 2-free + paid-additional · current-tier supports
+
+§ CRITICAL-RECOMMENDATION @ Supabase-strategy
+  Q: should "The Labyrinth" project become "Apocky-Hub" OR stay LoA-specific?
+  ⊑ OPTION-A : RENAME "The Labyrinth" → "Apocky-Hub" · use multi-schema for-tenant-separation
+              ⊘ pro : single-Supabase-project · simpler-billing · faster-cross-project-queries
+              ⊘ con : tenant-data-mixed · harder-to-isolate-on-breach · harder-to-scale-per-project
+  ⊑ OPTION-B : KEEP "The Labyrinth" as-LoA-specific · CREATE "Apocky-Hub" as-new-project · 2 free-projects-allowed
+              ⊘ pro : clean-data-isolation · per-project-rate-limits · easier-to-divest-individual-projects
+              ⊘ con : 2-projects-to-manage · cross-project-queries via-API-not-SQL
+              ⊘ RECOMMENDED : OPTION-B · clean-architecture · scales-naturally
+  ⊑ Apocky-action : 15-min @ Supabase signup-2nd-project "Apocky-Hub" · same-recommended-settings (UNCHECK auto-expose · CHECK auto-RLS) · save-keys to ~/.loa-secrets/apocky-hub-supabase.env
+
+═══════════════════════════════════════════════════════════════════════════════
+§ SHARED-IDENTITY-LAYER (Single Sign-On across-Apocky-properties)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ AUTH-PROVIDERS @ apocky.com login-page
+  ⊑ Email + magic-link (Supabase native)
+  ⊑ Google OAuth
+  ⊑ Apple OAuth
+  ⊑ Discord OAuth (gamer-aligned)
+  ⊑ GitHub OAuth (developer-aligned)
+  ⊑ Email + password (fallback · 2FA-required)
+
+§ JWT-FLOW
+  1 user logs-in @ apocky.com/account
+  2 hub-Supabase issues JWT (signed-with-hub-private-key)
+  3 JWT contains : user_id · email · email_verified · projects-entitled-to[] · issued-at · expires-at
+  4 cookie set @ .apocky.com (all-subdomains accept) · HttpOnly · Secure · SameSite=Lax
+  5 user navigates-to apocky.com/labyrinth → JWT validated · LoA-entitlement-check · grants-access
+  6 user navigates-to apocky.com/cssl → JWT validated · CSSL-public-access (no-entitlement-required)
+  7 logout @ apocky.com/account/logout → JWT-cookie cleared · all-projects revoke
+
+§ ACCOUNT-LINKING (cross-project)
+  ⊑ user signs-up via Google → email-captured · linked-to-account
+  ⊑ user later-adds-Apple-OAuth → identities-merged · same-account
+  ⊑ user can-link multiple-OAuth-providers · use-any-to-login
+  ⊑ unlinking-leaves-≥-1-provider · sovereignty-preserved
+
+§ ENTITLEMENT-SHARING (across-projects)
+  ⊑ purchases-in-LoA grant-entitlement-record @ hub-Supabase · key=(user_id, project_id, product_id)
+  ⊑ each-project queries-hub for-entitlements · validates-against-Stripe-webhook-records
+  ⊑ cosmetic-PORTABILITY @ where-makes-sense :
+    ⊘ Akashic-Shrine cosmetic earned-in-LoA could-display-in-OmniMind-Home (if-OmniMind-has-Home)
+    ⊘ Apocky-decides-per-cosmetic-class which-projects-share
+    ⊘ players-discover-cross-project-portability via-/transparency/cross-project-cosmetics
+  ⊑ separate-Stabilized-Essence per-project (each-game's-economy-is-its-own)
+  ⊑ Aetheric-Shards POSSIBLY shared-across-projects (Apocky-decision · simpler-monetization-pool)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ CROSS-PROJECT MYCELIUM (per spec/16 extension)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : the-mycelium spans-Apocky-projects · ALL-projects feed-the-substrate
+
+§ CROSS-PROJECT-AKASHIC (per spec/18 extension)
+  ⊑ akashic.apocky.com browses imprints-from-ALL-projects · player-can-filter-by-project
+  ⊑ commemorate-deeds across-products · "I survived hard-perma in LoA · I solved-puzzle-X in OmniMind"
+  ⊑ Akashic-Score = aggregate-of-deeds across-Apocky-portfolio · meta-progression beyond-single-game
+  ⊑ subject-to spec/18 monetization-axiom · cosmetic-channel-only · NEVER pay-for-power
+
+§ CROSS-PROJECT-MYCELIAL-NETWORK
+  ⊑ player's Home-pocket-dimension (per spec/16) is-shared-across-Apocky-projects
+  ⊑ portal/door @ Home leads-to ANY-Apocky-project player-has-entitlement-to
+  ⊑ Home-decorations from-LoA visible-to-Home-visitors-from-OmniMind (cross-pollination)
+  ⊑ federated-cocreative-bias (per spec/16) aggregates-across-projects · Apocky's-aesthetic learns-from-all
+
+§ CROSS-PROJECT-LIVE-HOTFIXES (per spec/16 extension)
+  ⊑ HF-7 NARRATIVE-STORYLET-ADD : new flavor-text potentially-shared-across-projects (Apocky's-voice consistent)
+  ⊑ HF-8 RENDER-PIPELINE-PARAM : shader-improvements may-apply-cross-project (cssl-render-v2 shared)
+  ⊑ Apocky-master-key signs-hotfix · auto-distributed via-Σ-Chain TIER-3 · cross-project players-receive
+
+§ INVARIANTS (¬ negotiable · t∞)
+  ⊑ player-sovereignty : opt-out-of-cross-project unilateral · per-project independent-revocation
+  ⊑ data-isolation maintained : Mycelium shares-aggregates · ¬ raw-data leaks-cross-project
+  ⊑ minor-projects-don't-burden-major-ones : cross-project-overhead is-OPT-IN · default-OFF for-tenants
+
+═══════════════════════════════════════════════════════════════════════════════
+§ DESIGN-SYSTEM (CSL3-aesthetic-anchor)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ packages/ui-kit ships-shared-React-components for-Apocky-aesthetic
+  ⊑ COLOR-PALETTE : 16-band-spectral · holographic-shimmer · void-black · spore-cream · spectral-gradient
+  ⊑ TYPOGRAPHY : monospace-for-CSL3-glyphs · sans-for-prose · system-stack-fallback for-perf
+  ⊑ COMPONENTS : Button · Card · Modal · Toast · ProgressBar · TabSwitcher · ShrineDisplay · AkashicLayer · MyceliumViz
+  ⊑ ICONS : custom-CSL3-glyph-icons (§ ∀ ∃ → ¬ W! ✓ ◐ ○ ✗ etc.)
+  ⊑ ANIMATIONS : fractal-easings · spectral-transitions · mycelium-tendril-grow
+
+§ THEME-SWITCHING per-project
+  ⊑ each-project optionally-overrides default-theme via tokens
+  ⊑ LoA : darker · ouroboroid-aesthetic · deep-burgundy + gold + spectral-glyphs
+  ⊑ CSSL site : monochrome-clean · monospace-heavy · code-first
+  ⊑ DGI : geometric · grid-aligned · stark
+  ⊑ OmniMind : dreamy · soft-gradients · cognitive-aesthetic
+  ⊑ all-themes-share base-CSL3-design-language
+
+§ ACCESSIBILITY mandatory @ ALL-projects
+  ⊑ WCAG 2.2 AA-minimum
+  ⊑ keyboard-navigable everywhere
+  ⊑ screen-reader-tagged (aria-* properly)
+  ⊑ color-contrast-pass on-all-themes
+  ⊑ animation-prefers-reduced-motion respected
+  ⊑ font-scaling responsive
+
+═══════════════════════════════════════════════════════════════════════════════
+§ INFRASTRUCTURE-SHARING (economies-of-scale)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ ONE-Stripe-Atlas C-Corp serves-ALL-projects
+  ⊑ ONE Stripe-account · multiple Stripe-products (LoA · CSSL-Pro-tier · etc.)
+  ⊑ ONE Stripe-Tax setup · auto-jurisdictional · works-for-all-products
+  ⊑ ONE Stripe-Atlas-Bookkeeping · consolidated-financials
+  ⊑ economies-of-scale : add-product = 0 incremental-legal-overhead
+
+§ ONE-Termly account serves-ALL-projects
+  ⊑ jurisdictional-auto-update across-products
+  ⊑ ToS + EULA + Privacy + Cookie consistent-across-products
+  ⊑ DPO contact unified
+
+§ ONE-Vercel-Pro account hosts-ALL-Vercel-deployed-projects
+  ⊑ apocky.com (root) · /labyrinth · /cssl · /blog @ all-deploy-from-one-monorepo
+  ⊑ subdomains downloads.apocky.com · api.apocky.com · etc. configured-once
+  ⊑ Vercel-Edge-Config feature-flags shared-across-products
+
+§ TRADEMARKS scoped @ portfolio
+  ⊑ "Apocky" (umbrella · proper-noun · personal-brand)
+  ⊑ "Labyrinth of Apocalypse" (LoA-specific · per spec/18)
+  ⊑ "CSSL" (language)
+  ⊑ "Ouroboroid" (cosmology · LoA-specific)
+  ⊑ "Σ-Chain" (substrate-tech · cross-project)
+  ⊑ "Mycelial Substrate" (substrate-tech · cross-project)
+  ⊑ "Akashic Records by Apocky" (suffix-disambiguation · cross-project)
+  ⊑ "DGI" / "OmniMind" / etc. (per-project · file-when-launches)
+
+§ DOMAIN-SOVEREIGNTY
+  ⊑ apocky.com OWNED by-Apocky · ¬ subleased · ¬ at-mercy-of-storefront
+  ⊑ DNS @ provider-of-Apocky's-choice (Cloudflare-recommended for-DNS-only-tier · free)
+  ⊑ DNSSEC enabled · domain-locked · auto-renewal
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ROADMAP (W9 ships-LoA-as-first-tenant)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wave-9 (after-W8-completes · with-apocky.com hub)
+  ⊑ migrate cssl-edge → apps/labyrinth (route at apocky.com/labyrinth)
+  ⊑ build apps/hub (apocky.com root · landing · projects-grid · about-Apocky)
+  ⊑ build packages/ui-kit (shared design-system)
+  ⊑ build packages/auth-shared (Supabase-Auth JWT-validation client)
+  ⊑ build packages/stripe-shared (cross-project entitlements)
+  ⊑ Apocky-action : signup 2nd-Supabase-project "Apocky-Hub" · save keys to ~/.loa-secrets/apocky-hub-supabase.env
+  ⊑ apocky.com domain-config @ Vercel-Pro · DNS-records · SSL-auto
+
+§ wave-10 (apocky.com/cssl as 2nd-tenant)
+  ⊑ build apps/cssl (CSSL language-site · auto-built docs · examples gallery · csslc-download)
+  ⊑ migrate compiler-cssl/ + compiler-rs/crates/csslc/ docs to-auto-built site
+
+§ wave-11+ (other-projects as-launching)
+  ⊑ DGI · OmniMind · SigilThink · etc. each-add-tenant-route as-Apocky-launches
+  ⊑ patterns-from-LoA migrate-to-each (Akashic · Mycelium · Stripe · transparency)
+
+§ wave-12+ (cross-project mycelial-richness)
+  ⊑ Akashic cross-project search · meta-progression
+  ⊑ Home pocket-dimension portals across-projects
+  ⊑ federated-cocreative-bias aggregating across-portfolio
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-portfolio-design · ✓ player-sovereignty (single-SSO with-unilateral-revoke) · ✓ Apocky-sovereignty (own-domain · own-platform · cross-product-substrate) · ✓ economies-of-scale · ✓ data-isolation-maintained
+
+§ creator @ Apocky · "apocky.com should-be-the-centralized-hub for-all-of-my-projects" · 2026-05-01 · ✓ designed
+§ apocky.com = the-fruiting-body-of-Apocky's-output · projects = mushroom-caps · substrate = mycelium beneath-them-all · One-Unified-System-of-Systems writ-larger
