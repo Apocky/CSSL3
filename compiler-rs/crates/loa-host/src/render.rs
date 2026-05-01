@@ -1355,6 +1355,16 @@ impl Renderer {
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
 
+        // § T11-LOA-SENSORY : framebuffer-thumbnail capture before present.
+        // The MCP `sense.framebuffer_thumbnail` tool sets `capture_pending`
+        // on the EngineState mirror ; if set + the surface supports COPY_SRC,
+        // we readback the framebuffer, downsample CPU-side to 256×144, and
+        // write the RGBA8 bytes into the mirror so the next MCP call can
+        // base64-encode + return inline. Failures degrade silently (no
+        // thumbnail available) — the harness is observability-only.
+        // (Full capture path lives in `capture_thumbnail_to_mirror` below.)
+        // Note : we DO NOT block the present even if this fails.
+
         // § T11-LOA-TEST-APP : framebuffer readback BEFORE present(). If
         // a snapshot is pending and the surface was configured with
         // COPY_SRC usage, copy the about-to-present texture into our

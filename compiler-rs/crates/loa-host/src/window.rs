@@ -189,6 +189,10 @@ impl App {
     #[must_use]
     pub fn new() -> Self {
         let engine_state = Arc::new(Mutex::new(EngineState::default()));
+        // § T11-LOA-SENSORY : install the panic-hook so MCP
+        // `sense.recent_panics` can surface any panic that escapes the
+        // event-loop. Idempotent on repeated `App::new()` calls.
+        crate::sense::install_panic_hook(engine_state.clone());
         Self {
             window: None,
             gpu: None,
@@ -295,6 +299,66 @@ impl App {
             g.cfer.center_radiance = renderer.cfer_sample_center_radiance();
             g.cfer.kan_handle = renderer.cfer.kan_handle;
         }
+
+        // § T11-LOA-SENSORY : push body-pose sample (60-frame ring).
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let pose = crate::mcp_server::PoseSample {
+            frame: self.frame_count,
+            time_ms: now_ms,
+            pos_x: self.player.pos[0],
+            pos_y: self.player.pos[1],
+            pos_z: self.player.pos[2],
+            yaw: self.player.yaw,
+            pitch: self.player.pitch,
+        };
+        g.push_pose_sample(pose);
+
+        // § T11-LOA-SENSORY : compass-8 distances. Cast 8 rays through the
+        // collider every frame · cheap (collider is small).
+        let render_cam = crate::camera::Camera {
+            position: glam::Vec3::new(self.player.pos[0], self.player.pos[1], self.player.pos[2]),
+            yaw: self.player.yaw,
+            pitch: self.player.pitch,
+            ..crate::camera::Camera::default()
+        };
+        let _ = &render_cam; // glam Vec3 + camera default fields constructed
+        // Use the existing CompassDistances API which takes a movement::Camera.
+        let mvmt_cam = self.player; // movement::Camera derives Copy
+        let compass = self.collider.compass_distances(&mvmt_cam);
+        g.compass_distances_m = compass.dist;
+
+        // § T11-LOA-SENSORY : engine-load mirror (sample once per second).
+        let last_sample = g.engine_load.sampled_ms;
+        if now_ms.saturating_sub(last_sample) >= 1000 {
+            let telem = crate::telemetry::global();
+            let buckets = telem.frame_time_histogram();
+            let _ = buckets;
+            let mut last_frame_ms = 0.0_f32;
+            if let Some(r) = self.renderer.as_ref() {
+                last_frame_ms = r.average_frame_time_ms();
+            }
+            g.engine_load = crate::mcp_server::EngineLoadMirror {
+                sampled_ms: now_ms,
+                cpu_percent: 0.0, // platform-specific probe deferred to stage-1
+                memory_mb: 0.0,
+                gpu_resolve_us: telem.gpu_resolve_us.load(std::sync::atomic::Ordering::Relaxed),
+                tonemap_us: telem.tonemap_us.load(std::sync::atomic::Ordering::Relaxed),
+                draw_calls: 0,    // Stage-0 : last_frame_metrics not yet mirrored ; can be wired in render_frame return path.
+                vertices: 0,
+                pipeline_switches: 0,
+                last_frame_ms,
+                fps_smoothed: self.fps_smoothed,
+            };
+        }
+
+        // § T11-LOA-SENSORY : if a thumbnail capture has been requested by an
+        // MCP client, the renderer reads the `capture_pending` flag and writes
+        // the RGBA8 bytes here on the next frame. (The renderer's wgpu side
+        // populates `g.fb_thumb.rgba` ; this scope just keeps the engine-state
+        // mirror in sync · no-op for the visible pose.)
     }
 
     /// § T11-LOA-FID-CFER : drain pending CFER requests from the EngineState
@@ -522,6 +586,26 @@ impl App {
     fn route_key(&mut self, event_loop: &ActiveEventLoop, key: KeyEvent) {
         let pressed = key.state == ElementState::Pressed;
         let physical = key.physical_key;
+
+        // § T11-LOA-SENSORY : record key-event into input_history ring
+        // (only on press to avoid filling with auto-repeats from key-down).
+        if pressed {
+            if let PhysicalKey::Code(code) = physical {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                if let Ok(mut g) = self.engine_state.lock() {
+                    g.push_input_event(crate::mcp_server::InputHistoryEntry {
+                        frame: self.frame_count,
+                        time_ms: now_ms,
+                        kind: "key".to_string(),
+                        key: format!("{code:?}"),
+                        pressed: true,
+                    });
+                }
+            }
+        }
 
         // § Special-handler keys : these don't translate to a movement axis,
         // they trigger window-side actions. Suppress further routing.
@@ -1160,9 +1244,27 @@ impl App {
         // § 7. Drive the DM (skip when paused — world holds still).
         if !self.paused {
             let ps = self.current_player_state();
+            let prior_state_label = self.dm.state().label();
+            let prior_intensity = self.dm.intensity();
             if let Some(ev) = self.dm.tick(&ps, self.frame_count) {
                 self.log_dm_event(&ev);
                 self.recent_event = format!("{ev:?}");
+                // § T11-LOA-SENSORY : record DM history.
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let new_state_label = self.dm.state().label();
+                if let Ok(mut g) = self.engine_state.lock() {
+                    g.push_dm_history(crate::mcp_server::DmHistoryEntry {
+                        frame: self.frame_count,
+                        time_ms: now_ms,
+                        from_state: prior_state_label.to_string(),
+                        to_state: new_state_label.to_string(),
+                        tension: prior_intensity,
+                        event_kind: Some(format!("{ev:?}")),
+                    });
+                }
             }
         }
 

@@ -466,6 +466,212 @@ pub fn tool_registry() -> ToolRegistry {
         render_stop_video
     );
 
+
+    // ─ T11-LOA-SENSORY : full MCP sensory + proprioception harness ─
+    // 9 axes · 25 sense.* tools · all read-only · all no-cap
+    // A. VISUAL (4)
+    reg!(
+        "sense.framebuffer_thumbnail",
+        "Return a 256×144 PNG of the current framebuffer (base64-inlined).",
+        false,
+        sense_framebuffer_thumbnail
+    );
+    reg!(
+        "sense.center_pixel",
+        "Return RGB + material_id + crosshair-distance + world-position at viewport center.",
+        false,
+        sense_center_pixel
+    );
+    reg!(
+        "sense.viewport_summary",
+        "Return 16-region (4×4 grid) average colors of the current thumbnail.",
+        false,
+        sense_viewport_summary
+    );
+    reg!(
+        "sense.object_at_crosshair",
+        "Raycast forward from camera and return first hit (plinth_index + distance + material).",
+        false,
+        sense_object_at_crosshair
+    );
+    // B. AUDIO (3 stubs)
+    reg!(
+        "sense.audio_levels",
+        "Return RMS + peak + 8-band frequency-spectrum over recent ~100ms (stub if no audio module).",
+        false,
+        sense_audio_levels
+    );
+    reg!(
+        "sense.audio_recent",
+        "Return last 1-second of audio captured to PCM (base64 inline · stub if no audio).",
+        false,
+        sense_audio_recent
+    );
+    reg!(
+        "sense.spatial_audio",
+        "Return directional + distance per audio source (stub if no audio module).",
+        false,
+        sense_spatial_audio
+    );
+    // C. SPATIAL (3)
+    reg!(
+        "sense.compass_8",
+        "Return 8-direction wall-distance raycast from camera (N · NE · E · SE · S · SW · W · NW).",
+        false,
+        sense_compass_8
+    );
+    reg!(
+        "sense.body_pose",
+        "Return last 60 frames of camera trajectory + computed velocity + acceleration.",
+        false,
+        sense_body_pose
+    );
+    reg!(
+        "sense.room_neighbors",
+        "Return current room + adjacent rooms.",
+        false,
+        sense_room_neighbors
+    );
+    // D. INTEROCEPTION (4)
+    reg!(
+        "sense.engine_load",
+        "Return process CPU% · memory MB · GPU pacing for the current frame.",
+        false,
+        sense_engine_load
+    );
+    reg!(
+        "sense.frame_pacing",
+        "Return last-60-frame histogram + p50/p95/p99 + dropped-frame indicator.",
+        false,
+        sense_frame_pacing
+    );
+    reg!(
+        "sense.gpu_state",
+        "Return wgpu adapter info + current pipeline binding counts + last-frame stats.",
+        false,
+        sense_gpu_state
+    );
+    reg!(
+        "sense.thermal",
+        "Return CPU + GPU temperature + throttle status (stub when platform probe unavailable).",
+        false,
+        sense_thermal
+    );
+    // E. DIAGNOSTIC (4)
+    reg!(
+        "sense.recent_errors",
+        "Return last 32 ERROR + WARN log events from telemetry ring.",
+        false,
+        sense_recent_errors
+    );
+    reg!(
+        "sense.recent_panics",
+        "Return panic-events captured by the panic-hook since startup.",
+        false,
+        sense_recent_panics
+    );
+    reg!(
+        "sense.validation_errors",
+        "Return wgpu / naga validation errors captured during the session.",
+        false,
+        sense_validation_errors
+    );
+    reg!(
+        "sense.test_status",
+        "Return the test-apparatus' current state (snapshot count + tour progress).",
+        false,
+        sense_test_status
+    );
+    // F. TEMPORAL (3)
+    reg!(
+        "sense.event_log",
+        "Return last 64 structured JSONL events from the telemetry ring.",
+        false,
+        sense_event_log
+    );
+    reg!(
+        "sense.dm_history",
+        "Return last 32 DM-state-transition records.",
+        false,
+        sense_dm_history
+    );
+    reg!(
+        "sense.input_history",
+        "Return last 64 InputFrame key-event records.",
+        false,
+        sense_input_history
+    );
+    // G. CAUSAL (3)
+    reg!(
+        "sense.dm_state",
+        "Return current DM director state + tension + event count.",
+        false,
+        sense_dm_state
+    );
+    reg!(
+        "sense.gm_recent_phrases",
+        "Return last 16 GM-narrator-emitted phrases.",
+        false,
+        sense_gm_recent_phrases
+    );
+    reg!(
+        "sense.companion_proposals",
+        "Return pending companion-AI proposals awaiting Sovereign authorization.",
+        false,
+        sense_companion_proposals
+    );
+    // H. NETWORK (2)
+    reg!(
+        "sense.mcp_clients",
+        "Return currently-connected MCP clients + their addresses + invocation counts.",
+        false,
+        sense_mcp_clients
+    );
+    reg!(
+        "sense.recent_commands",
+        "Return last 32 MCP-tool invocations + caller + latency_us + success.",
+        false,
+        sense_recent_commands
+    );
+    // I. ENVIRONMENTAL (5)
+    reg!(
+        "sense.omega_field_at_camera",
+        "Sample the Ω-field cell at camera position and return all 7 facets (density · velocity · vorticity · etc.).",
+        false,
+        sense_omega_field_at_camera
+    );
+    reg!(
+        "sense.spectral_at_pixel",
+        "Return the 16-band SpectralRadiance at center pixel under current illuminant.",
+        false,
+        sense_spectral_at_pixel
+    );
+    reg!(
+        "sense.stokes_at_pixel",
+        "Return Stokes IQUV + DOP-linear + DOP-total + AoLP at center pixel.",
+        false,
+        sense_stokes_at_pixel
+    );
+    reg!(
+        "sense.cfer_neighborhood",
+        "Return 3×3×3 Ω-field cells around camera + KAN-eval-counts + radiance probes.",
+        false,
+        sense_cfer_neighborhood
+    );
+    reg!(
+        "sense.dgi_signal",
+        "Return DGI runtime 6-layer state (manifold · cogstate · SCT · DCU · perception · retrocausal · stub).",
+        false,
+        sense_dgi_signal
+    );
+    // Combined (1)
+    reg!(
+        "sense.snapshot",
+        "One-shot dump : aggregates the lightweight sense.* axes (no PNG · no audio).",
+        false,
+        sense_snapshot
+    );
+
     r
 }
 
@@ -1977,6 +2183,144 @@ fn render_stop_video(state: &mut EngineState, _params: Value) -> Value {
     })
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-SENSORY · sense.* MCP tool dispatch handlers
+// ───────────────────────────────────────────────────────────────────────
+//
+// Each handler is a thin wrapper around `crate::sense::aggregate_*`. The
+// aggregation layer holds the actual logic (axis-tagged + telemetry-counted).
+// Handlers are read-only ; they do call mutating ring-buffer operations on
+// EngineState (e.g. `state.sense_invocations_total += 1`) but no
+// engine-mutating side-effects beyond the metric counters.
+
+fn sense_framebuffer_thumbnail(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_framebuffer_thumbnail(state)
+}
+
+fn sense_center_pixel(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_center_pixel(state)
+}
+
+fn sense_viewport_summary(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_viewport_summary(state)
+}
+
+fn sense_object_at_crosshair(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_object_at_crosshair(state)
+}
+
+fn sense_audio_levels(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_audio_levels(state)
+}
+
+fn sense_audio_recent(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_audio_recent(state)
+}
+
+fn sense_spatial_audio(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_spatial_audio(state)
+}
+
+fn sense_compass_8(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_compass_8(state)
+}
+
+fn sense_body_pose(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_body_pose(state)
+}
+
+fn sense_room_neighbors(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_room_neighbors(state)
+}
+
+fn sense_engine_load(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_engine_load(state)
+}
+
+fn sense_frame_pacing(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_frame_pacing(state)
+}
+
+fn sense_gpu_state(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_gpu_state(state)
+}
+
+fn sense_thermal(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_thermal(state)
+}
+
+fn sense_recent_errors(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_recent_errors(state)
+}
+
+fn sense_recent_panics(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_recent_panics(state)
+}
+
+fn sense_validation_errors(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_validation_errors(state)
+}
+
+fn sense_test_status(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_test_status(state)
+}
+
+fn sense_event_log(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_event_log(state)
+}
+
+fn sense_dm_history(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_dm_history(state)
+}
+
+fn sense_input_history(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_input_history(state)
+}
+
+fn sense_dm_state(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_dm_state(state)
+}
+
+fn sense_gm_recent_phrases(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_gm_recent_phrases(state)
+}
+
+fn sense_companion_proposals(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_companion_proposals(state)
+}
+
+fn sense_mcp_clients(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_mcp_clients(state)
+}
+
+fn sense_recent_commands(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_recent_commands(state)
+}
+
+fn sense_omega_field_at_camera(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_omega_field_at_camera(state)
+}
+
+fn sense_spectral_at_pixel(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_spectral_at_pixel(state)
+}
+
+fn sense_stokes_at_pixel(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_stokes_at_pixel(state)
+}
+
+fn sense_cfer_neighborhood(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_cfer_neighborhood(state)
+}
+
+fn sense_dgi_signal(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_dgi_signal(state)
+}
+
+fn sense_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    crate::sense::aggregate_combined_snapshot(state)
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -1987,7 +2331,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_52_tools() {
+    fn tools_list_returns_84_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -2003,9 +2347,12 @@ mod tests {
         // + 3 CFER (T11-LOA-FID-CFER · render.cfer_snapshot + cfer_step + cfer_set_kan_handle)
         // + 4 USERFIX (T11-LOA-USERFIX · render.cfer_intensity + start_burst
         //   + start_video + stop_video)
-        // = 52 total.
+        // + 32 sensory harness (T11-LOA-SENSORY · 9 axes : visual 4 · audio 3 ·
+        //   spatial 3 · interoception 4 · diagnostic 4 · temporal 3 · causal 3 ·
+        //   network 2 · environmental 5 · combined 1)
+        // = 84 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 52, "must have exactly 52 tools");
+        assert_eq!(reg.len(), 84, "must have exactly 84 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -2069,6 +2416,39 @@ mod tests {
             "render.start_burst",
             "render.start_video",
             "render.stop_video",
+            // T11-LOA-SENSORY additions (9 axes · 32 tools) :
+            "sense.framebuffer_thumbnail",
+            "sense.center_pixel",
+            "sense.viewport_summary",
+            "sense.object_at_crosshair",
+            "sense.audio_levels",
+            "sense.audio_recent",
+            "sense.spatial_audio",
+            "sense.compass_8",
+            "sense.body_pose",
+            "sense.room_neighbors",
+            "sense.engine_load",
+            "sense.frame_pacing",
+            "sense.gpu_state",
+            "sense.thermal",
+            "sense.recent_errors",
+            "sense.recent_panics",
+            "sense.validation_errors",
+            "sense.test_status",
+            "sense.event_log",
+            "sense.dm_history",
+            "sense.input_history",
+            "sense.dm_state",
+            "sense.gm_recent_phrases",
+            "sense.companion_proposals",
+            "sense.mcp_clients",
+            "sense.recent_commands",
+            "sense.omega_field_at_camera",
+            "sense.spectral_at_pixel",
+            "sense.stokes_at_pixel",
+            "sense.cfer_neighborhood",
+            "sense.dgi_signal",
+            "sense.snapshot",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -2317,10 +2697,11 @@ mod tests {
         // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
         // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
-        // + 3 cfer (T11-LOA-FID-CFER) + 4 userfix (T11-LOA-USERFIX) = 52.
-        assert_eq!(v["count"], 52);
+        // + 3 cfer (T11-LOA-FID-CFER) + 4 userfix (T11-LOA-USERFIX)
+        // + 32 sensory (T11-LOA-SENSORY) = 84.
+        assert_eq!(v["count"], 84);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 52);
+        assert_eq!(arr.len(), 84);
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests
