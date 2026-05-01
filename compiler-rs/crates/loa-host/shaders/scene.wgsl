@@ -30,7 +30,13 @@ struct Material {
     emissive:  vec3<f32>,
     metallic:  f32,
     alpha:     f32,
-    _pad:      vec3<f32>,
+    // § T11-LOA-FIX-MAT-STRIDE : trailing `_pad: vec3<f32>` removed.
+    //   WGSL forces vec3 members to 16-byte alignment, which would push
+    //   `_pad` from offset 36 to 48 and bloat the per-element stride to
+    //   64 bytes. Without it, the compiler auto-pads the struct end from
+    //   36 → 48 to satisfy struct-alignment(16), and the stride matches
+    //   the CPU `Material` (48 bytes) exactly. Crash fix : 1136 → 1392
+    //   buffer-size mismatch reported by wgpu validation.
 };
 
 struct Pattern {

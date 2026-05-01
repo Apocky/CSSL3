@@ -119,6 +119,38 @@ fn startup_run() {
             pid(),
         );
     }
+    // § T11-LOA-PANIC-HOOK : install panic-hook that captures Rust panics +
+    //   stack-trace + writes to logs/loa_runtime.log BEFORE the process dies.
+    //   Critical for diagnosing silent crashes : without this, a wgpu validation
+    //   panic prints to stderr (often invisible when running via double-click)
+    //   and atexit doesn't fire because the process aborts hard.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("<non-string panic payload>");
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let msg = format!(
+            "═══ PANIC ═══\nlocation : {location}\npayload  : {payload}\nbacktrace:\n{backtrace}",
+        );
+        log_event("FATAL", "loa_startup/panic_hook", &msg);
+        // Also stderr for double-click console visibility (if any).
+        let _ = writeln!(std::io::stderr(), "{msg}");
+        // Chain to previous hook (preserves default backtrace if RUST_BACKTRACE=1).
+        prev_hook(info);
+    }));
+    log_event(
+        "INFO",
+        "loa_startup",
+        "§ panic-hook armed · captures stack-trace to log before process dies",
+    );
     extern "C" fn shutdown_hook() {
         log_event(
             "INFO",
