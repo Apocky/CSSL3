@@ -1,0 +1,31 @@
+# § T11-W7-RD-B6-NPC-BT : cssl-host-npc-bt
+# ══════════════════════════════════════════════════════════════════
+# § I> Purpose : narrow-NPC AI runtime ← BT + GOAP + 12 routine-archetypes
+#   ⟨ GDDs/AI_NPC_BEHAVIOR.csl ⟩ ⊃ POD-2-B6 impl
+# § I> 5-tier stack : L0 perception · L1 BT · L2 GOAP · L3 routine · L4 cocreative-overlay
+# § I> ¬ AGI · ¬ self-improvement · ¬ surveillance-of-player
+# § I> Sensitive<biometric|gaze|face|body> STRUCTURALLY-banned (SIG0003)
+# § I> determinism : BTreeMap-iter sorted ; splitmix64 RNG ; replay-bit-equal
+# § I> safety : forbid(unsafe_code) · no panics in lib · all-failures via Result/Option
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name         = "cssl-host-npc-bt"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.85"
+license      = { workspace = true }
+authors      = { workspace = true }
+description  = "Narrow NPC-AI runtime ← behavior-tree + GOAP planner + 12 routine archetypes + 4-tier LOD + cocreative-bias-overlay ; ¬AGI ; Sensitive<biometric>-banned ; per GDDs/AI_NPC_BEHAVIOR.csl"
+repository   = { workspace = true }
+
+[lib]
+name = "cssl_host_npc_bt"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
