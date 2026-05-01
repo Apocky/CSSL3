@@ -30,6 +30,16 @@ runtime = ["dep:wgpu", "dep:winit", "dep:pollster"]
 
 [dependencies]
 cssl-rt    = { path = "../cssl-rt" }
+# § T11-LOA-FID-CFER : substrate-IS-renderer wiring. The CFER pipeline
+# pulls FieldCell + OmegaField + (later) per-cell KAN modulation directly
+# from the canonical substrate crates so the ω-field literally drives the
+# volumetric pass. SigmaMaskPacked is needed for the atmospheric-region
+# Modify-grant that lets per-frame perturbations write through the
+# canonical Σ-checked surface.
+cssl-substrate-omega-field      = { path = "../cssl-substrate-omega-field" }
+cssl-substrate-omega-step       = { path = "../cssl-substrate-omega-step" }
+cssl-substrate-loa-kan          = { path = "../cssl-substrate-loa-kan" }
+cssl-substrate-prime-directive  = { path = "../cssl-substrate-prime-directive" }
 bytemuck   = { workspace = true }
 glam       = { version = "0.25", features = ["bytemuck"] }
 serde      = { workspace = true }

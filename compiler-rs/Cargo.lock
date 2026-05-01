@@ -1947,6 +1947,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "cssl-rt",
+ "cssl-substrate-loa-kan",
+ "cssl-substrate-omega-field",
+ "cssl-substrate-omega-step",
+ "cssl-substrate-prime-directive",
  "glam",
  "naga",
  "png",

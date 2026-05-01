@@ -37,7 +37,11 @@ use winit::window::Window;
 use cssl_rt::loa_startup::log_event;
 
 use crate::camera::Camera;
-use crate::geometry::{RoomGeometry, Vertex};
+use crate::cfer_render::{
+    CferRenderer, CFER_WGSL, TEX_TOTAL_BYTES, TEX_X, TEX_Y, TEX_Z,
+    WORLD_MAX, WORLD_MIN,
+};
+use crate::geometry::{plinth_positions, RoomGeometry, Vertex};
 use crate::gpu::GpuContext;
 use crate::material::{material_lut, Material, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_lut, Pattern, PATTERN_LUT_LEN};
@@ -94,6 +98,42 @@ impl Uniforms {
     }
 }
 
+/// § T11-LOA-FID-CFER : CPU-side mirror of the WGSL `Uniforms` struct
+/// for the CFER volumetric raymarcher.
+///
+/// Layout (matches `cfer.wgsl::Uniforms`) :
+///   - inv_view_proj : mat4x4   (64 B)
+///   - camera_pos    : vec4     (16 B)
+///   - world_min     : vec4     (16 B)
+///   - world_max     : vec4     (16 B)
+///   - time          : vec4     (16 B)
+///   = 128 bytes total.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct CferUniforms {
+    inv_view_proj: [[f32; 4]; 4],
+    camera_pos: [f32; 4],
+    world_min: [f32; 4],
+    world_max: [f32; 4],
+    /// time.x = seconds since render start.
+    /// time.y = unused
+    /// time.z = step-count override (clamped 1..64 in shader ; 0 ⇒ default 32)
+    /// time.w = unused
+    time: [f32; 4],
+}
+
+impl CferUniforms {
+    fn new() -> Self {
+        Self {
+            inv_view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            camera_pos: [0.0, 1.7, 0.0, 0.0],
+            world_min: [WORLD_MIN[0], WORLD_MIN[1], WORLD_MIN[2], 0.0],
+            world_max: [WORLD_MAX[0], WORLD_MAX[1], WORLD_MAX[2], 0.0],
+            time: [0.0; 4],
+        }
+    }
+}
+
 /// Render pipeline + GPU resources for the test-room scene.
 pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
@@ -132,6 +172,20 @@ pub struct Renderer {
     /// readback uses the surface texture directly when true ; otherwise
     /// the snapshot tool returns an error.
     surface_copy_src: bool,
+
+    // ── § T11-LOA-FID-CFER : volumetric Ω-field pass ──
+    /// CPU-side CFER state (OmegaField + texel staging + step/pack).
+    pub cfer: CferRenderer,
+    /// Pipeline for the CFER volumetric raymarcher.
+    cfer_pipeline: wgpu::RenderPipeline,
+    /// Bind-group for cfer.wgsl (uniforms + 3D texture + sampler).
+    cfer_bind_group: wgpu::BindGroup,
+    /// Uniform buffer for cfer.wgsl.
+    cfer_uniform_buf: wgpu::Buffer,
+    /// 3D-texture holding the packed Ω-field radiance + density.
+    /// Re-uploaded each frame in `render_frame` from the CPU staging
+    /// buffer in `cfer.texels()`.
+    cfer_texture: wgpu::Texture,
 }
 
 impl Renderer {
@@ -249,6 +303,25 @@ impl Renderer {
             .config
             .usage
             .contains(wgpu::TextureUsages::COPY_SRC);
+
+        // ─── § T11-LOA-FID-CFER : CPU-side CFER state + GPU resources ───
+        let plinths_2d = plinth_positions();
+        let plinths_xz: Vec<(f32, f32)> = plinths_2d.iter().copied().collect();
+        let cfer = CferRenderer::new(&plinths_xz);
+        log_event(
+            "INFO",
+            "loa-host/render",
+            &format!(
+                "cfer · runtime renderer init · active_cells={} · world {:?}..{:?}",
+                cfer.active_cell_count(),
+                WORLD_MIN,
+                WORLD_MAX,
+            ),
+        );
+
+        let (cfer_pipeline, cfer_bind_group, cfer_uniform_buf, cfer_texture) =
+            Self::build_cfer_resources(device, &gpu.queue, gpu.surface_format, depth_format);
+
         Self {
             pipeline,
             pipeline_transparent,
@@ -269,7 +342,222 @@ impl Renderer {
             snapshot_pending: None,
             snapshotter: Snapshotter::new(),
             surface_copy_src,
+            cfer,
+            cfer_pipeline,
+            cfer_bind_group,
+            cfer_uniform_buf,
+            cfer_texture,
         }
+    }
+
+    /// § T11-LOA-FID-CFER : build the volumetric pipeline + uniform-buffer +
+    /// 3D texture + sampler + bind-group. Returns the assembled handles in
+    /// a single call so `Self::new` stays linear.
+    fn build_cfer_resources(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+        depth_format: wgpu::TextureFormat,
+    ) -> (
+        wgpu::RenderPipeline,
+        wgpu::BindGroup,
+        wgpu::Buffer,
+        wgpu::Texture,
+    ) {
+        // 1. Shader module.
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("loa-host/cfer.wgsl"),
+            source: wgpu::ShaderSource::Wgsl(CFER_WGSL.into()),
+        });
+
+        // 2. Bind-group layout : uniforms + 3D-texture + sampler.
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("loa-host/cfer-bgl"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("loa-host/cfer-pipeline-layout"),
+            bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
+        });
+
+        // 3. Pipeline : alpha-blend, depth-test against scene, NO depth-write.
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("loa-host/cfer-pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[], // full-screen triangle, no vertex buffer
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None, // full-screen tri ; no need to cull
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: depth_format,
+                // CFER reads scene-depth but DOES NOT write — atmosphere
+                // doesn't occlude future objects.
+                depth_write_enabled: false,
+                // depth_compare = Always so the volumetric tracer always
+                // fires inside the camera frustum ; the per-sample depth
+                // discrimination happens via the world-AABB ray test in
+                // the shader.
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        // 4. Uniform buffer (128 bytes).
+        let cfer_u = CferUniforms::new();
+        let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("loa-host/cfer-uniforms"),
+            contents: bytemuck::bytes_of(&cfer_u),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // 5. 3D Texture (Rgba16Float, 32×16×32) + view.
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("loa-host/cfer-3d-texture"),
+            size: wgpu::Extent3d {
+                width: TEX_X,
+                height: TEX_Y,
+                depth_or_array_layers: TEX_Z,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D3,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        // Initial upload : zeroed texture (CPU side will overwrite each frame).
+        let initial_bytes = vec![0u8; TEX_TOTAL_BYTES as usize];
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &initial_bytes,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(TEX_X * 8), // RGBA16F = 8B/texel
+                rows_per_image: Some(TEX_Y),
+            },
+            wgpu::Extent3d {
+                width: TEX_X,
+                height: TEX_Y,
+                depth_or_array_layers: TEX_Z,
+            },
+        );
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D3),
+            ..Default::default()
+        });
+
+        // 6. Sampler (linear-clamp).
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("loa-host/cfer-sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 0.0,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+
+        // 7. Bind group.
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("loa-host/cfer-bind-group"),
+            layout: &bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        log_event(
+            "INFO",
+            "loa-host/render",
+            &format!(
+                "cfer pipeline built · 3D-tex {}×{}×{} = {} bytes · alpha-blend depth-test no-write",
+                TEX_X, TEX_Y, TEX_Z, TEX_TOTAL_BYTES,
+            ),
+        );
+
+        // The texture_view was used to build the bind_group above ; the
+        // bind_group internally retains the GPU-side reference, so the
+        // view can be dropped now without breaking the binding.
+        drop(texture_view);
+
+        (pipeline, bind_group, uniform_buf, texture)
     }
 
     /// True iff the surface was configured with COPY_SRC, i.e. snapshot
@@ -525,7 +813,94 @@ impl Renderer {
             vertices += u64::from(hi - lo);
         }
 
-        // ─── Pass 3 : UI overlay ───
+        // ─── § T11-LOA-FID-CFER : Pass 3 — volumetric Ω-field ───
+        // The substrate IS the renderer here. We step the OmegaField
+        // forward, pack the active cells into the 3D-texture staging
+        // buffer, upload, then alpha-blend a full-screen volumetric pass
+        // onto the existing scene buffer.
+        let cfer_metrics = self.cfer.step_and_pack(t_secs.fract());
+
+        // Upload the freshly-packed texels.
+        let cfer_bytes = self.cfer.texels_as_rgba16f_bytes();
+        gpu.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.cfer_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &cfer_bytes,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(TEX_X * 8),
+                rows_per_image: Some(TEX_Y),
+            },
+            wgpu::Extent3d {
+                width: TEX_X,
+                height: TEX_Y,
+                depth_or_array_layers: TEX_Z,
+            },
+        );
+
+        // Update CFER uniforms (inverse view-proj for ray reconstruction).
+        let view_proj = camera.view_proj(aspect);
+        let inv_view_proj = view_proj.inverse();
+        let cfer_u = CferUniforms {
+            inv_view_proj: inv_view_proj.to_cols_array_2d(),
+            camera_pos: [
+                camera.position.x,
+                camera.position.y,
+                camera.position.z,
+                0.0,
+            ],
+            world_min: [WORLD_MIN[0], WORLD_MIN[1], WORLD_MIN[2], 0.0],
+            world_max: [WORLD_MAX[0], WORLD_MAX[1], WORLD_MAX[2], 0.0],
+            time: [t_secs, 0.0, 32.0, 0.0],
+        };
+        gpu.queue.write_buffer(
+            &self.cfer_uniform_buf,
+            0,
+            bytemuck::bytes_of(&cfer_u),
+        );
+
+        // Encode the volumetric pass.
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("loa-host/cfer-volumetric-pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_pipeline(&self.cfer_pipeline);
+            pipeline_switches += 1;
+            telem::global().record_pipeline_switch();
+            pass.set_bind_group(0, &self.cfer_bind_group, &[]);
+            pass.draw(0..3, 0..1); // full-screen triangle (no vertex buffer)
+            draw_calls += 1;
+        }
+
+        // Forward CFER metrics to telemetry as a structured ad-hoc log
+        // (the `cfer.step_and_pack` already emits a throttled INFO line ;
+        // here we surface a per-frame draw-call attribution for the
+        // global counter so cfer activity shows up in `frame_metrics`).
+        let _ = cfer_metrics;
+
+        // ─── Pass 4 : UI overlay ───
         self.ui.prepare_frame(
             &gpu.device,
             &gpu.queue,
@@ -630,6 +1005,38 @@ impl Renderer {
         let sum: f32 = self.frame_times_ms.iter().sum();
         sum / self.frame_times_ms.len() as f32
     }
+
+    /// § T11-LOA-FID-CFER : count of active cells in the Ω-field driving the
+    /// volumetric pass. MCP `render.cfer_snapshot` exposes this.
+    #[must_use]
+    pub fn cfer_active_cells(&self) -> u64 {
+        self.cfer.active_cell_count()
+    }
+
+    /// § T11-LOA-FID-CFER : last per-frame CFER metrics (step time, pack time,
+    /// active cells, KAN evals).
+    #[must_use]
+    pub fn cfer_last_metrics(&self) -> crate::cfer_render::CferMetrics {
+        self.cfer.last_metrics
+    }
+
+    /// § T11-LOA-FID-CFER : sample radiance at the world-envelope center
+    /// (rgb in 0..1).
+    #[must_use]
+    pub fn cfer_sample_center_radiance(&self) -> [f32; 3] {
+        self.cfer.sample_center_radiance()
+    }
+
+    /// § T11-LOA-FID-CFER : attach a KAN handle to the CFER field. Future
+    /// step-and-pack calls will record per-cell KAN evaluations.
+    pub fn cfer_set_kan_handle(&mut self, sovereign_handle: u16) {
+        self.cfer.attach_kan_handle(sovereign_handle);
+    }
+
+    /// § T11-LOA-FID-CFER : detach the KAN handle.
+    pub fn cfer_clear_kan_handle(&mut self) {
+        self.cfer.detach_kan_handle();
+    }
 }
 
 fn create_depth_view(
@@ -699,5 +1106,29 @@ mod tests {
         let u = Uniforms::new();
         // Default camera_pos seeds at (0, 1.7, 0) — eye-height @ room center.
         assert_eq!(u.camera_pos, [0.0, 1.7, 0.0, 0.0]);
+    }
+
+    // ── § T11-LOA-FID-CFER : volumetric-pass uniform layout ──
+
+    #[test]
+    fn cfer_uniforms_size_is_128_bytes() {
+        // 64 (mat4x4) + 16 (camera) + 16 (world_min) + 16 (world_max) + 16 (time) = 128
+        assert_eq!(core::mem::size_of::<CferUniforms>(), 128);
+    }
+
+    #[test]
+    fn cfer_uniforms_default_carries_world_envelope() {
+        let u = CferUniforms::new();
+        assert_eq!(u.world_min[0], -60.0);
+        assert_eq!(u.world_max[0], 60.0);
+        assert_eq!(u.world_min[1], 0.0);
+        assert_eq!(u.world_max[1], 12.0);
+    }
+
+    #[test]
+    fn cfer_uniforms_is_pod() {
+        let u: CferUniforms = bytemuck::Zeroable::zeroed();
+        assert_eq!(u.time, [0.0; 4]);
+        assert_eq!(u.camera_pos, [0.0; 4]);
     }
 }

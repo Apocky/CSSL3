@@ -253,6 +253,39 @@ pub struct SnapshotRequest {
     pub path: std::path::PathBuf,
 }
 
+/// § T11-LOA-FID-CFER : MCP-mirrored CFER state.
+///
+/// The Renderer (held in the runtime event-loop) owns the canonical
+/// `cfer_render::CferRenderer`. After every frame, the render loop copies
+/// the CFER metrics + center radiance into this struct on the EngineState
+/// mutex so MCP read-only tools can return live values without crossing
+/// the (Send-unsafe) wgpu boundary.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CferStateMirror {
+    /// Active dense cells in the Ω-field (sample at last frame).
+    pub active_cells: u64,
+    /// Wallclock duration of the last `evolve()` step (microseconds).
+    pub step_us: u64,
+    /// Wallclock duration of the last pack-to-3D-texture step (microseconds).
+    pub pack_us: u64,
+    /// KAN per-cell evaluations performed last step.
+    pub kan_evals: u64,
+    /// Texels written to the 3D-texture buffer last frame.
+    pub texels_written: u32,
+    /// Frame counter (CFER-side).
+    pub cfer_frame_n: u64,
+    /// Sample radiance at the world envelope center (rgb, 0..1).
+    pub center_radiance: [f32; 3],
+    /// Currently-attached KAN sovereign handle (None ⇒ no KAN attached).
+    pub kan_handle: Option<u16>,
+    /// Pending KAN-handle request that the render loop will apply on the
+    /// next frame. Cleared after application. `Some(Some(h))` ⇒ attach `h`,
+    /// `Some(None)` ⇒ detach, `None` ⇒ no pending change.
+    pub kan_handle_pending: Option<Option<u16>>,
+    /// Force a CFER step on the next frame regardless of pause state.
+    pub force_step_pending: bool,
+}
+
 /// Live, per-process engine state. Shared across the MCP server, the
 /// render loop (sibling W-LOA-host-render), and the DM/GM machine
 /// (sibling W-LOA-host-DM) via `Arc<Mutex<EngineState>>`.
@@ -276,6 +309,9 @@ pub struct SnapshotRequest {
 ///                          executing ; `None` when idle. HUD reads.
 ///   `snapshot_count`     ← total successful snapshots written this session
 ///                          (telemetry).
+///   `cfer`               ← T11-LOA-FID-CFER : mirror of the render-side
+///                          CferRenderer's metrics (read by MCP) + pending
+///                          KAN-handle request (drained by renderer).
 #[derive(Debug, Clone)]
 pub struct EngineState {
     pub frame_count: u64,
@@ -291,6 +327,9 @@ pub struct EngineState {
     pub snapshot_queue: Vec<SnapshotRequest>,
     pub tour_progress: Option<(u32, u32)>,
     pub snapshot_count: u64,
+    /// § T11-LOA-FID-CFER : mirror of the runtime-side CFER metrics +
+    /// pending KAN handle request.
+    pub cfer: CferStateMirror,
 }
 
 impl Default for EngineState {
@@ -314,6 +353,7 @@ impl Default for EngineState {
             snapshot_queue: Vec::new(),
             tour_progress: None,
             snapshot_count: 0,
+            cfer: CferStateMirror::default(),
         }
     }
 }

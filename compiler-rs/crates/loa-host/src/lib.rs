@@ -71,6 +71,13 @@ pub mod ui_overlay;
 // path is gated on the `runtime` feature inside the module).
 pub mod snapshot;
 
+// § T11-LOA-FID-CFER : substrate-IS-renderer. The CFER renderer wires
+// the canonical Ω-field into a volumetric raymarched pass. The CPU-side
+// state (OmegaField + texel staging + step-and-pack) is catalog-buildable
+// (no GPU required) ; the wgpu pipeline-builder lives in `render.rs`
+// behind the `runtime` feature.
+pub mod cfer_render;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
@@ -170,6 +177,10 @@ pub const SCENE_WGSL: &str = include_str!("../shaders/scene.wgsl");
 /// UI-overlay shader source (HUD + menu textured-quad pipeline).
 pub const UI_WGSL: &str = include_str!("../shaders/ui.wgsl");
 
+/// § T11-LOA-FID-CFER : the volumetric raymarcher shader source. Catalog-
+/// visible so naga can validate without the runtime feature.
+pub const CFER_WGSL: &str = include_str!("../shaders/cfer.wgsl");
+
 /// PRIME-DIRECTIVE attestation marker.
 pub const ATTESTATION: &str =
     "There was no hurt nor harm in the making of this, to anyone/anything/anybody.";
@@ -206,6 +217,25 @@ mod tests {
         let module = wgsl::parse_str(SCENE_WGSL).expect("scene.wgsl must parse via naga");
         let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
         validator.validate(&module).expect("scene.wgsl must validate via naga");
+    }
+
+    #[test]
+    fn cfer_wgsl_string_compiles_to_naga() {
+        // § T11-LOA-FID-CFER : the volumetric raymarcher must parse +
+        // validate via naga so the runtime build doesn't surprise us at
+        // pipeline-creation time.
+        use naga::front::wgsl;
+        use naga::valid::{Capabilities, ValidationFlags, Validator};
+        let module = wgsl::parse_str(CFER_WGSL).expect("cfer.wgsl must parse via naga");
+        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+        validator.validate(&module).expect("cfer.wgsl must validate via naga");
+    }
+
+    #[test]
+    fn cfer_module_const_matches_lib_const() {
+        // Avoid drift between the cfer_render::CFER_WGSL re-export and
+        // the lib-level constant — both reference the same shader file.
+        assert_eq!(crate::cfer_render::CFER_WGSL, CFER_WGSL);
     }
 
     #[test]
