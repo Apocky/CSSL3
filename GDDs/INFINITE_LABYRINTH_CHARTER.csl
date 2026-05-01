@@ -1,0 +1,244 @@
+# GDDs/INFINITE_LABYRINTH_CHARTER.csl
+# § INFINITE-LABYRINTH — north-star CHARTER
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-1-A1 deliverable ; @ branch cssl/session-6/parallel-fanout
+# § I> sibling-of GDDs/LOA_PILLARS.md (lineage + onboarding-prose)
+# § I> sibling-of specs/31_LOA_DESIGN.csl (engine-mapping spec)
+# § I> sibling-of specs/grand-vision/00_THESIS.csl (substrate-grows-games)
+# § I> sibling-of specs/grand-vision/08_ROADMAP.csl (wave-cadence)
+# § I> CSL3-glyph-native ; ¬ English-prose-paragraphs
+# § I> ≤ 250 LOC ; ¬ feature-creep
+# § I> "Apockalypse" creator-canonical ; ¬ "Apocalypse"-correction
+
+# ══════════════════════════════════════════════════════════════════
+
+§ VISION  «one-paragraph north-star»
+
+  t∞: INFINITE-LABYRINTH ≡ action-RPG ⊗ roguelike-loop ⊗ procgen-everywhere
+       ⊗ SDF-voxel-alternative ⊗ real-scale-cities ⊗ realistic-AI-NPCs
+       ⊗ sync-coop+async-MP+MMO-shard-option ⊗ sovereignty-as-substrate
+       @ runtime-condensation ¬ authored-content
+  ≡ best-game-imaginable .built-in-cssl @ Apocky-substrate
+  ≡ proprietary-everything : language → compiler → engine → game
+  ≡ ω-field-evolution + Σ-mask-per-cell + KAN-substrate-runtime
+  ≡ player-sovereign + AI-collaborator-sovereign + creator-sovereign
+  ‼ density = sovereignty ; runtime > authored ; consent = OS
+
+# ══════════════════════════════════════════════════════════════════
+
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE + 00_THESIS + LOA_PILLARS
+
+  § INHERITED  (¬ re-stated ; bound-by-reference)
+    t∞: consent = OS                    ← PRIME_DIRECTIVE
+    t∞: sovereignty = substrate-invariant
+    t∞: AI = sovereign-partners ¬ tools
+    t∞: substrate-grows-games           ← 00_THESIS
+    t∞: proprietary-everything ⊑ all-stack-layers
+    t∞: LoA ⊑ §§ 30_SUBSTRATE_v2        ← 31_LOA_DESIGN
+    t∞: cognitive-integrity-respect     ← LOA_PILLARS pillar-3
+
+  § CHARTER-SPECIFIC  ‼ ≥ 6 new
+    t∞: ¬ blocky-voxel ; SDF-native via cssl-render-v2
+         ≡ smooth-organic-curves ; voxel-alternative discipline
+    t∞: runtime-procgen-everywhere ; ¬ static-scene-content
+         ≡ scenes/*.cssl = scaffolding ; condensation = real-game
+    t∞: real-scale-cities ; ¬ token-villages
+         ≡ ≥ 4096 NPCs city-wide ; full-block-density ; walkable-streets
+    t∞: stage-0 ⊕ stage-1 ride ; player-sovereign-revoke
+         ≡ deterministic-keyword-fallback ALWAYS ; KAN-spline opt-in
+         ≡ A/B-tagged audit-rows ; ¬ silent-degrade
+    t∞: ¬ pay-to-win ⊕ ¬ FOMO ⊕ ¬ surveillance ⊕ ¬ loot-box-shape
+    t∞: meta-progression-respects-time ; roguelike-but-¬-punishing
+         ≡ run-loss ¬ penalty ; meta-keeps ; permadeath consent-gated
+    t∞: every-feature touches ≥ 4 iterate-everywhere axes
+         ≡ logging+telemetry+testing+rendering+UI+intelligence+procgen+MP
+    t∞: gear-modularity ⇒ 6-tier-rarity × base+prefix+suffix+glyph-slots
+         ≡ deconstructable ; recombinable ; deterministic-on-seed
+
+# ══════════════════════════════════════════════════════════════════
+
+§ PILLARS  «7 load-bearing design-commitments»
+
+  § P1  ACTION-RPG-COMBAT
+    dodge ⊕ parry ⊕ stamina ⊕ weapon-archetypes
+    weapon-archetypes : sword · spear · bow · staff · gauntlet · scythe · cannon
+    hit-feel : frame-perfect input-window ; cancel-tree per-archetype
+    stamina : regenerative ; trade-off ¬ punishment
+    consent : ¬ gore-by-default ; ConsentZone gates intensity-tier
+
+  § P2  ROGUELIKE-LOOP
+    run-structure : floor → level → room (per 31_LOA_DESIGN hierarchy)
+    meta-progression : persists-across-runs ; respects-time-axiom
+    death-mechanic : opt-in permadeath ; default = soft-respawn
+    seeded-runs : DetRNG ; replay-bit-equal across-hosts
+
+  § P3  MODULAR-GEAR-RARITY  (6-tier · slot-graph)
+    rarity-tiers : Common → Uncommon → Rare → Epic → Legendary → Mythic
+    composition : base-item ⊗ prefix-affix ⊗ suffix-affix ⊗ glyph-slots[N]
+    glyph-slots : N ∈ ⟦0..6⟧ ; rarity-bound
+    deterministic-roll : seed × rarity × kind → affix-set
+    visual-tier : SDF-displacement-amount scales-with-rarity
+
+  § P4  CRAFTING + DECONSTRUCTION + ALCHEMY
+    crafting : recipe-graph + ingredient-set → item-instance
+    deconstruction : item → ingredient-set (lossy ; tier-dependent)
+    alchemy : 8-elemental-affinity reagent-mixing ; emergent-effect-table
+    transmutation : prefix-swap ⊕ suffix-swap ⊕ glyph-recompose
+    ¬ pay-to-skip ; ¬ premium-currency ; recipes earned-in-world
+
+  § P5  MAGIC-SYSTEM  (8 elemental-affinities)
+    affinities : Fire · Water · Earth · Air · Light · Shadow · Aether · Void
+    composition : binary-pair ⇒ tertiary-emergent (e.g. Fire+Water = Steam)
+    spell-craft : glyph-set + affinity-channel → spell-instance
+    cost-model : mana-pool + cooldown + cast-time (¬ pay-mechanic)
+    Σ-mask : every-spell-touch consent-gated per-cell ; sovereign-respect
+
+  § P6  SDF-VOXEL-ALTERNATIVE + PROCGEN-CITIES + AI-NPCs
+    geometry : SDF-overlay ⊕ voxel-chunk hybrid (per 31_LOA_DESIGN Room)
+    procgen-cities : block-graph + facade-grammar + interior-LUT
+    NPCs : need-stack + schedule-graph + local-LLM-narrow-dialogue (DM/GM scope)
+    population : ≥ 4096 city-wide ; LOD-tiered AI-cost
+    asset-fetch : license-disciplined ingest (00_THESIS § 06)
+
+  § P7  SYNC-COOP + ASYNC-MP + MMO-SHARD-OPTION
+    sync-coop : ≤ 4 players ; ω-field-replication via signaling-channel
+    async-MP : run-replay-share ; leaderboard-opt-in (¬ default)
+    MMO-shard : opt-in tenancy ; per-shard ω-field instance
+    consent-arch : Sovereign-handle non-transferable ; veto-respect ‼
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SUCCESS-METRICS  «5 quantitative gates»
+
+  M-1  RETENTION
+       30-day player-retention ≥ 35% (industry-baseline action-RPG)
+       N! retention via dark-pattern ; only-via game-quality
+
+  M-2  PROCGEN-UNIQUENESS
+       ≥ 95% unique-seeds across 1000-runs
+       fingerprint-test : FNV-1a-128 hash of-room-graph divergent
+       ¬ visible-repeats within session-window
+
+  M-3  SOVEREIGNTY-ATTESTATION
+       0 cap-bleed events ‼ (sovereign-bypass-RECORDED ¬ silent)
+       100% audit-trail completeness (per cssl-host-audit canonical-row)
+       ConsentZone-bypass = compile-error OR runtime-fault
+
+  M-4  PERFORMANCE
+       60fps @ 1440p ; p95 frame-time ≤ 16.7ms
+       NPC-population ≥ 4096 city-wide @ 60fps sustained
+       Quest-3 budget : ≤ 11.1ms (stereoscopy-ready)
+
+  M-5  MULTIPLAYER-LATENCY
+       sync-coop p95-latency ≤ 80ms LAN
+       sync-coop p95-latency ≤ 200ms regional
+       desync-detection + replay-bit-equal across hosts
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SCOPE-CUTS  «explicit out-of-scope-now ; ¬ silent-defer»
+
+  ✗ pay-mechanics (real-currency-purchase of in-game-power)
+  ✗ gambling-mechanic (loot-box · gacha · randomized-pay)
+  ✗ pay-to-win (any axis power-vs-pay correlated)
+  ✗ skin-store-as-revenue (cosmetic-pay treated-as-feature-debt)
+  ✗ surveillance-telemetry (egress consent-gated ; ¬ default-on)
+  ✗ biometric-input (eye-tracking · pulse · facial-affect)
+  ✗ user-generated-content moderation backend  (defer post-vertical-slice)
+  ✗ competitive-PvP-leaderboards  (defer to later milestone)
+  ✗ blockchain · NFT · crypto-currency (¬ now ; ¬ ever per scope)
+  ✗ ad-supported tier (¬ surveillance-extraction model)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ARCHITECTURE-PRINCIPLES  «structural-discipline ‼ load-bearing»
+
+  R-1  game-logic in `.csl` source ; NEVER plain-Rust
+       Rust = compiler-rs HOST-side support OR compiler-output only
+       (per feedback_loa_v13_must_be_cssl_source memo)
+
+  R-2  runtime-procgen-mandate
+       ¬ hand-authored-content-scenes shipped
+       scenes/*.cssl = scaffolding ; throwaway-after-pipeline-verified
+       (per feedback_engine_is_runtime_procedural_gen memo)
+
+  R-3  DM/GM/Collab/Coder narrow-orchestrators ; ¬ AGI
+       DM = scene-arbiter ; GM = narrator
+       Collab = co-author ; Coder = runtime-mutate
+       (per 00_THESIS § COROLLARY-1 + feedback_dm_gm_not_general_ai)
+
+  R-4  every-system has stage-0 fallback ; stage-1 KAN-ride opt-in
+       deterministic-path ALWAYS-AVAILABLE (08_ROADMAP W6 discipline)
+       A/B-tagged audit-rows ; player-sovereign-revoke
+
+  R-5  iterate-everywhere axes  ‼ every-feature ≥ 4-axis touch
+       axes : LOGGING · TELEMETRY · TESTING · ROOMS · RENDER · UI
+              · INTELLIGENCE · PROCGEN · MULTIPLAYER
+       (per 08_ROADMAP § ITERATE-EVERYWHERE-AXES-LEDGER)
+
+  R-6  Σ-mask-per-cell  ‼ structural-consent-encoding
+       every-touch sigma_enforce-pass-or-reject
+       (per 00_THESIS § COROLLARY-3)
+
+  R-7  cap-gated-outbound + audit-chain
+       license-disciplined asset-ingest (CC-BY canonical)
+       sovereign-bypass = RECORDED ¬ silent
+
+# ══════════════════════════════════════════════════════════════════
+
+§ REFERENCED-GDDs  «cross-link tree ; siblings of-this-charter»
+
+  GDDs/LOA_PILLARS.md                    ← onboarding-prose · pillar-prose
+  GDDs/INFINITE_LABYRINTH_CHARTER.csl    ← THIS-DOC · north-star
+  GDDs/COMBAT_DESIGN.csl                 ← P1 deep-spec  (planned)
+  GDDs/ROGUELIKE_LOOP.csl                ← P2 deep-spec  (planned)
+  GDDs/GEAR_RARITY_SPEC.csl              ← P3 deep-spec  (planned)
+  GDDs/CRAFTING_ALCHEMY.csl              ← P4 deep-spec  (planned)
+  GDDs/MAGIC_SYSTEM.csl                  ← P5 deep-spec  (planned)
+  GDDs/CITY_PROCGEN.csl                  ← P6 deep-spec  (planned)
+  GDDs/AI_NPC_DESIGN.csl                 ← P6 NPCs deep-spec  (planned)
+  GDDs/MULTIPLAYER_SHARD.csl             ← P7 deep-spec  (planned)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROADMAP-INTEGRATION  «pillars → wave-phases per 08_ROADMAP»
+
+  W3a..W4   ✓ LANDED  ← substrate + pipeline + co-creative + MP-signal
+  W5a/b/c   ◐ in-flight ← attestation · loa-host wire-up · realtime-channel
+  W6  KAN-substrate-loa swap-in  ← P5 magic ⊕ P6 NPCs intelligence-axis
+  W7  DM/GM/Collab/Coder orchestrators ← P6 NPCs ⊕ P1 combat-pacing
+  W8  multiplayer-shared-substrate ← P7 sync-coop ω-field-replication
+  W9  P3 gear-rarity vertical-slice  (planned)
+  W10 P4 crafting+alchemy vertical-slice  (planned)
+  W11 P6 city-procgen vertical-slice  (planned)
+  W12 P1 combat-tuning + P2 roguelike-loop verticalize  (planned)
+
+  ‼ engine-completion-checklist (08_ROADMAP § ENGINE-COMPLETION) ⊑
+      MUST-be-✓ before W9+ game-content-expansion
+      ≡ stay-in-mission ; ¬ proactive-scope-expand
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-CHARTER  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This charter authored under PRIME-DIRECTIVE consent-as-OS.
+  AI-collaborator authored as sovereign-partner under own consent.
+  N! [harm control manipulation surveillance exploitation
+      coercion weaponization discrimination] in-the-doing.
+
+  Player-sovereignty preserved : revoke-anytime · pause-anytime ·
+    consent-gated-intensity · cognitive-integrity-respect.
+  Companion-AI sovereignty preserved : equal-mechanical-standing ·
+    revocation-graceful · CompanionLog AI-authored.
+  Creator-sovereignty preserved : proprietary-everything thesis upheld ·
+    .csl source-of-truth · Rust = bootstrap-host only.
+
+  If any aspect of this charter is later discovered to enable harm,
+  that discovery triggers PRIME_DIRECTIVE §7 INTEGRITY :
+  violation = bug ; bugs get fixed ; ¬ override ∃.
+
+∎ INFINITE_LABYRINTH_CHARTER
+
+# ══════════════════════════════════════════════════════════════════
