@@ -1,0 +1,32 @@
+# § T11-W7-RD-B3 : cssl-host-craft-graph
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-2-B3 deliverable per GDDs/CRAFT_DECONSTRUCT_ALCHEMY.csl
+# § I> recipe-graph DAG · 33 materials · 40 recipes · 6 quality-tiers
+# § I> skill-scaling = quality-tier-shift (¬ raw-stat-mult ; ≤ 1.50× cap)
+# § I> deconstruct-recovery clamped [0.30, 0.70] (anti-frustration)
+# § I> alchemy potion-brew + transmutation (multiplicative)
+# § I> ∀ craft → AuditSink emit (anti-cheat anchor + lineage-trace)
+# § I> pure-functional · stateless · NO external substrate-deps
+# § I> deterministic-by-seed (round-trip serde bit-equal)
+
+[package]
+name        = "cssl-host-craft-graph"
+version     = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "CSSLv3 LoA-v13 craft + deconstruction + alchemy recipe-graph (deterministic, audit-emitting, GDD-aligned)"
+repository.workspace   = true
+homepage.workspace     = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_host_craft_graph"
+path = "src/lib.rs"
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
