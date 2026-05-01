@@ -1,0 +1,243 @@
+§ T11-W6+ § specs/grand-vision/16_MYCELIAL_NETWORK.csl
+§§ Mycelial-Network : substrate-as-mycelium · player-nodes-as-fruiting-bodies
+§§ Apocky 2026-05-01 directive : "Each user contributes to the whole · home pocket-dimension per player · live hotfixes/improvements"
+§§ status @ ◐ design-pending · enforcement @ wave-8+
+§§ unifies : Σ-Chain (14) + Living-Multiverse (13) + Unified-Substrate (15) under one biological metaphor
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : substrate = mycelium · ω-field-cells = hyphal-cells · cross-player-flows = nutrient-exchange
+A-2 : every-player has-a-Home (pocket-dimension · sovereign · always-private-by-default · personalized · persistent)
+A-3 : every-contribution opt-in @ per-event-grain · NEVER all-or-nothing · NEVER forced
+A-4 : mycelium is-decentralized · self-healing · resilient · NO single-point-of-failure
+A-5 : live-hotfixes propagate via-mycelium · sovereign-opt-out unilateral
+A-6 : aggregate-learning preserves-individual-privacy · federated-bias never-leaks-source-attribution unless-player-explicitly-credits
+A-7 : Architectural-Metabolism (legacy Ouroboroid 2-ring) IS-the-mycelium-digestion-cycle · rooms transform because mycelium-feeds-them
+A-8 : the-mycelium ¬ owns-the-player · the-player ¬ owes-the-mycelium · participation = gift-not-extraction
+
+§ thesis : the-game IS-a-mycelial-network · each-player IS-a-fruiting-body · the-substrate IS-the-mycelium · the-Living-Multiverse IS-the-fruiting-season
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TOPOLOGY (biological-mapping ⇒ substrate-primitives)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ MYCELIUM ≡ substrate
+  ⊑ ω-field (cssl-substrate-omega-field) = the-fungal-network · 72B FieldCells = hyphal-cells
+  ⊑ Σ-mask = membrane-permeability-rules · cap-thread = osmosis-discipline
+  ⊑ KAN = adapted-nutrient-pathways · evolves-from-aggregate-traffic
+  ⊑ HDC 10000-D hypervectors = chemical-signaling-molecules
+  ⊑ wavelet MERA-pyramid = multi-scale-mycelial-density-map (coarse roots → fine hyphae)
+
+§ HYPHAE ≡ connections
+  ⊑ cssl-host-multiplayer-signaling Room/Peer state-machine = active-hyphal-junction
+  ⊑ cssl-host-mp-transport-real Supabase-relay = cross-soil mycelial-bridge
+  ⊑ cssl-host-handoff-protocol DM-GM-Collab-Coder = signal-routing-conventions
+
+§ FRUITING-BODY ≡ visible-emergence
+  ⊑ each-player's-machine = a-fruiting-body (the visible mushroom pushing-up-from-underground)
+  ⊑ each-cssl-edge-route = a-public-spore-vent (where opt-in-events egress)
+  ⊑ each-attestation-entry @ cssl-host-attestation = a-public-trail-of-fruiting
+
+§ SPORE ≡ contribution-event
+  ⊑ every opt-in event @ Σ-Chain TIER-2 = a-spore released-into-mycelium
+  ⊑ event-types : Bazaar-listing · Coherence-Ascension (anonymizable) · Multiversal-Nemesis · Living-Multiverse-rumor · battle-pass-progression · gacha-pull · home-decoration-share · cocreative-bias-update
+  ⊑ spore Ed25519-signed by-fruiting-body's sovereign-key · BLAKE3-merkle-rooted
+
+§ NUTRIENT-EXCHANGE ≡ shared-state
+  ⊑ wavelet-MERA-coarse-summaries flow-fast · drill-down-on-demand (privacy-preserving)
+  ⊑ HDC hypervector-aggregates = chemical-signals carried-in-mycelial-fluid
+  ⊑ aggregate-cocreative-bias = collective-taste evolved-by-the-organism
+
+§ ARCHITECTURAL-METABOLISM (legacy Ouroboroid R2 manifestation)
+  ⊑ rooms transform-between-visits because mycelium-digests-aggregate-traffic
+  ⊑ same-procgen-seed @ different-multiverse-state → different-output (KAN-substrate-modulation)
+  ⊑ player-A's-defeated-Nemesis becomes mycelium-distributed-rumor → may-spawn-as player-B's-encounter
+  ⊑ this is-emergent · NOT scripted · the-mycelium-eats-the-rooms-and-reshapes-them
+
+═══════════════════════════════════════════════════════════════════════════════
+§ HOME-DIMENSION (per-player pocket-dimension · "fruiting-body's-shell")
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : every-player has-a-Home · sovereign · persistent · personalized · ALWAYS-private-by-default · invitable
+
+§ archetypes (player-choice @ first-launch · re-changeable-anytime) :
+  H1 ORBITAL-SHIP        ← Destiny-2-orbit-pattern · view-of-multiverse-from-outside · viewport-window
+  H2 GROUND-WORKSHOP     ← Warframe-Liset-pattern · interior-room · craftbench · trophy-display
+  H3 CAVERN-SANCTUM      ← underground-mycelial-burrow · root-aesthetics · grow-things
+  H4 CATHEDRAL-HALL      ← grand-architecture · gallery-of-Ascended-items · NPC-companions
+  H5 COSMIC-OBSERVATORY  ← floating-platform-among-stars · contemplation · scrying-other-substrates
+  H6 LIVING-FOREST       ← organic-grown-by-mycelium · room-shape-evolves-with-aggregate-bias
+  H7 HYBRID-CUSTOM       ← player-composed @ runtime-procgen · mix-of-archetypes · fab-procgen blueprint
+
+§ Home-state primitives (consume substrate · per Unified-Substrate spec/15) :
+  ⊑ ω-field-cells reserved for-Home @ Σ-claim-by-player-pubkey · NEVER overwritten-by-procgen-runtime
+  ⊑ per-Home cssl-host-asset-bundle (LAB v1) for-decorations · player-customization · trophy-records
+  ⊑ per-Home cssl-host-fab-procgen Blueprint for-shape · evolves-with-aggregate-bias-if-opted-in
+  ⊑ per-Home cssl-host-rt-trace for-instrumentation · cssl-host-frame-recorder for-screenshots
+
+§ Home-features :
+  ⊑ DECORATION : place gear · cosmetics · spore-trophies (commemorating defeated-Nemeses) · ambient-music
+  ⊑ TROPHY-CASE : Ascended-items-collection-display · Coherence-Score-shrine · Biography-readers
+  ⊑ NPC-COMPANIONS : invite befriended-NPCs to-live-here · cssl-host-npc-bt drives-their-routines · gift-economy interactions
+  ⊑ NAVIGATION-HUB : portal/door/launch-bay to-Multiverse · Bazaar · Run-start · Friends'-Homes
+  ⊑ FORGE-NODE : crafting-bench-instance @ private-or-shared-mode · cssl-host-craft-graph FFI
+  ⊑ MYCELIAL-TERMINAL : view-aggregate-contributions · scrying-Living-Multiverse · opt-in management
+  ⊑ MEMORIAL-WALL : if-player-shares-this-home-publicly · visitors leave-spore-ascriptions (text/sketches/songs)
+
+§ Home-modes (per-grant cap-bits) :
+  ⊑ M0 PRIVATE       ← only-self-can-enter · default · HM_CAP_PRIVATE = 1 (always-on)
+  ⊑ M1 FRIEND-ONLY   ← whitelist-friends · HM_CAP_INVITE_FRIENDS = 2
+  ⊑ M2 GUILD-OPEN    ← guild/clan-members may-visit · HM_CAP_INVITE_GUILD = 4
+  ⊑ M3 PUBLIC-LISTED ← discoverable-via-Bazaar (Tier-3+) · HM_CAP_PUBLIC_LIST = 8
+  ⊑ M4 RANDOM-DROPIN ← multiverse-randomly-routes-other-players-during-fruiting-season · HM_CAP_DROPIN = 16
+  ⊑ ALWAYS-OVERRIDABLE @ player-can-revoke-any-cap-instantly · disconnect-current-visitors · all-cap-changes audit-emit
+
+§ Home-persistence :
+  ⊑ TIER-1 LOCAL : full-Home-state lives-on-player-machine · serialized-via cssl-host-frame-recorder + cssl-host-asset-bundle
+  ⊑ TIER-2 OPT-IN : opt-in-events sync-to Supabase via cssl-host-mp-transport-real (decoration-changes · trophies-displayed)
+  ⊑ TIER-3 MULTIVERSAL : if-public-listed · Home-summary-rendered as-Bazaar-stall-equivalent
+
+§ Home-connection-to-mycelium :
+  ⊑ visitor-action @ Home emits spore-event (visited · gifted · ascribed-to-memorial)
+  ⊑ Home-decoration-changes propagate-to-Living-Multiverse-aesthetic-drift @ regional-cohort
+  ⊑ Mycelial-Terminal shows-aggregate-contributions made-by-this-player + their-cohort
+
+§ port-target-for-LoA-v13 :
+  CRATE-B19 NEW `cssl-host-home-dimension` ← per-player pocket-dimension state-machine · 7-archetype-table · cap-bits HM_CAP_* · serde-deterministic · ≥ 28 tests · 1500 LOC max
+
+═══════════════════════════════════════════════════════════════════════════════
+§ MYCELIAL-NUTRIENT-EXCHANGE (cross-user learning + database contribution)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : "each-user-contributes-to-the-whole" = federated-aggregation across-opt-in-events · NEVER coercive · NEVER privacy-leaking
+
+§ federated-cocreative-bias (extends cssl-host-cocreative @ cross-user)
+  ⊑ each player has-LOCAL bias-vector θ ∈ ℝ^16-32 (cssl-host-cocreative · already-landed)
+  ⊑ player opts-in to-share aggregate-bias (NOT raw-θ) via Σ-Chain TIER-2 event
+  ⊑ Supabase 0007 cocreative_bias_vectors table @ player-scoped RLS
+  ⊑ NEW : federated-aggregator computes COHORT-AVERAGE-BIAS via SQL-aggregation @ per-region OR per-playstyle-cluster
+  ⊑ aggregate published-back as-baseline-bias for new-players (opt-in starting-point)
+  ⊑ privacy : per-region aggregation always-≥-100-players · differential-privacy noise added-to-aggregate · individual-θ never-egresses
+
+§ database-contribution-stream
+  ⊑ every player AUTO-CONTRIBUTES (with explicit-consent @ first-launch) opt-in-events to shared-DB
+  ⊑ contributions visible-in /transparency/mycelial-contributions @ cssl-edge
+  ⊑ contribution-types : seed-discoveries · Coherence-Ascensions (Epithet-anonymized) · room-procgen-feedback · Nemesis-encounters · spell-combo-discoveries · NPC-routine-emergent-behaviors
+  ⊑ contributions ALWAYS player-attributed-OR-anonymized at player's-choice
+  ⊑ MEMORIAL : public-contribution-attribution preserved-forever-if-player-opts-in (gift-economy framing)
+
+§ KAN-substrate evolution
+  ⊑ aggregate-cocreative-bias + aggregate-Coherence-Score-distribution + aggregate-procgen-feedback feeds-back-into KAN-substrate-training (offline-pipeline)
+  ⊑ retrained-KAN-weights propagate-as-LIVE-HOTFIX (next section) via mycelium
+  ⊑ player-revoke unilateral · stage-0 fallback ALWAYS-available per kan-ride spec/11
+  ⊑ disagreement >5% triggers rollback per spec/11 § ROLL-BACK
+
+§ proprietary novelty-claim :
+  ⊑ federated-learning-on-game-substrate is-novel · most-games train-AI-from-scratch + ship-once
+  ⊑ Σ-Chain attestation makes-this auditable · player-self-audit @ /transparency/spending + /transparency/sigma-chain-events + NEW /transparency/mycelial-contributions
+  ⊑ player-sovereignty preserved : Stop-Contributing button @ Mycelial-Terminal in-Home + always-effective-immediately
+
+═══════════════════════════════════════════════════════════════════════════════
+§ LIVE HOTFIXES & IMPROVEMENTS (substrate-runtime mutation via mycelium)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : substrate-IS-runtime · improvements propagate without-game-restart-or-redownload-required
+
+§ hotfix-types :
+  HF-1 KAN-WEIGHT-UPDATE          ← retrained classifier · stage-1-canary-tested · graduates-after spec/11 criteria
+  HF-2 PROCGEN-BIAS-NUDGE         ← aggregate-feedback shifts material-pool-frequency or biome-distribution
+  HF-3 BALANCE-CONSTANT-ADJUST    ← gear-stat-rolling weights · combat-status-effect-durations · spell-mana-costs
+  HF-4 NEW-RECIPE-UNLOCK          ← community-discovered alchemy-recipes promoted-to-canonical
+  HF-5 NEMESIS-ARCHETYPE-EVOLVE   ← aggregate-defeated-by-player-strategies → Nemesis adapts-cohort-wide
+  HF-6 SOVEREIGN-CAP-POLICY-FIX   ← security-update · CRITICAL · opt-in-default-NO @ apply ¬ until-player-greenlights
+  HF-7 NARRATIVE-STORYLET-ADD     ← new GM-flavor-text-fragments · cosmetic · auto-pulled-with-opt-in
+  HF-8 RENDER-PIPELINE-PARAM      ← shader-uniform tuning · 12-stage budget rebalance · auto-pull-cosmetic-only
+
+§ propagation-protocol (mycelial-distribution)
+  ⊑ hotfix-payload Ed25519-signed by Apocky-master-key (sovereign-of-the-substrate · separate-from-player-keys)
+  ⊑ Σ-Chain TIER-3 event posts hotfix-payload + signature + manifest
+  ⊑ each-player's-machine polls Σ-Chain · verifies-signature · checks-opt-in-policy · downloads-payload
+  ⊑ hotfix-class : SECURITY → auto-apply-after-player-prompt · COSMETIC → auto-apply-silently · BALANCE → opt-in-prompt-with-preview · KAN-WEIGHT → canary-10% then-graduate
+  ⊑ ROLLBACK-anytime : player can-roll-back to-previous-hotfix-snapshot via Mycelial-Terminal in-Home
+
+§ implementation primitives (consume substrate)
+  ⊑ cssl-host-config (W5b ✓ landed) provides-the-runtime-tweakable-parameter-loader · extends-to-accept-hotfix-deltas
+  ⊑ cssl-host-asset-bundle (W6 ✓ landed) provides atomic content-pack format · LAB-v1 hotfix-payloads
+  ⊑ cssl-host-attestation tracks-hotfix-applications @ NEW directive-axis : "HotfixTransparency"
+  ⊑ NEW `cssl-host-hotfix-stream` Rust crate · poll · verify · stage · prompt · apply · rollback
+
+§ port-target-for-LoA-v13 :
+  CRATE-B20 NEW `cssl-host-hotfix-stream` ← Σ-Chain hotfix-poller + verifier + applier · ≥ 24 tests · 1300 LOC max
+  CRATE-B21 NEW `cssl-host-mycelium`     ← cross-user nutrient-exchange protocol · spore-emit + nutrient-poll + federated-aggregate-fetch · ≥ 26 tests · 1500 LOC max
+
+═══════════════════════════════════════════════════════════════════════════════
+§ INTEGRATION (with Σ-Chain · Living-Multiverse · Unified-Substrate)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Σ-Chain (spec/14) provides-the-attestation-layer
+  ⊑ TIER-2 opt-in events ARE-the-spores
+  ⊑ TIER-3 multiversal-stream IS-the-mycelial-flow
+  ⊑ Coherence-Proof verifies-each-spore-is-honestly-emitted
+
+§ Living-Multiverse (spec/13) IS-the-fruiting-season
+  ⊑ aggregate-state-summary via HDC = chemical-state-of-the-mycelium
+  ⊑ regional-aesthetic-drift = local-fruiting-density gradient
+  ⊑ cross-shard-rumors = spore-distribution-pattern
+
+§ Unified-Substrate (spec/15) ENFORCES-the-discipline
+  ⊑ EVERY mycelial-operation routes-through substrate-primitives
+  ⊑ NO shadow-systems for spore-emit · nutrient-poll · hotfix-apply
+  ⊑ compile-time SUB0001-3 enforcement · runtime SubstrateUnity directive-axis
+
+§ Coherence-Engine (legacy + spec/13) connects-to-mycelium
+  ⊑ Ascended-items @ player's-Home are-Bazaar-listable @ NG+ · per spec/13
+  ⊑ aggregate-Coherence-Score-distribution is-a-mycelial-nutrient-pool
+  ⊑ Epithet-rare-discovery becomes-cohort-wide-rumor
+
+§ Ouroboroid-Cosmology (legacy) IS-the-cosmological-frame
+  ⊑ the-mycelium consumes-and-produces-itself · self-metabolizing-process
+  ⊑ Hydra-of-self-consuming-concepts ≡ mycelial-network-of-cross-feeding-hyphae
+  ⊑ "You have no power over me and/or us" stance ≡ player-sovereignty-over-Home + opt-in-only-mycelial-participation
+
+§ DM/GM/Collaborator/Coder (spec/10) ride-the-mycelium
+  ⊑ DM scene-arbiter consumes-aggregate-mycelial-state
+  ⊑ GM narrative-pacing modulated-by cohort-rhythm (whose Homes are-currently-public-active)
+  ⊑ Collaborator integrates-shared-suggestions @ opt-in-only
+  ⊑ Coder hot-reload IS-the-hotfix-stream (HF-1 through HF-8)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ IMPLEMENTATION-ROADMAP
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wave-8 (after main-task verification @ 20:00 USMST + Apocky greenlight) :
+  CRATE-B19 cssl-host-home-dimension      ← 7-archetype state-machine · cap-gated · sovereign-revocable
+  CRATE-B20 cssl-host-hotfix-stream       ← Σ-Chain poll · verify · stage · apply · rollback
+  CRATE-B21 cssl-host-mycelium            ← cross-user spore-emit + nutrient-poll + federated-aggregate
+  cssl-supabase migration 0034_home_dimensions.sql + 0035_mycelial_contributions.sql + 0036_hotfix_stream.sql + RLS
+
+§ wave-9 :
+  cssl-edge expansion : /home (player's pocket-dimension UI · 7 archetype-themes) · /transparency/mycelial-contributions · /transparency/hotfix-history · /home/visit/<player_id> · /home/listing/public
+  POD-3 .csl additions : systems/home_dimension.csl · systems/mycelium.csl · systems/hotfix.csl · scenes/home_template.csl
+
+§ wave-10 :
+  KAN-substrate federated-training pipeline (offline · privacy-preserving · differential-privacy noise)
+  scheduled-task : nightly-aggregate-bias-cohort-cluster-and-publish
+
+§ wave-11+ :
+  Memorial-Wall infrastructure for-public-Homes (visitor-spore-ascription · permanent-attribution)
+  Mycelial-Terminal UI in-Home @ player can-view aggregate-contribution-history + opt-out-toggle
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-mycelial-design · ¬ surveillance · ¬ exploitation · ¬ pay-for-mycelial-priority · ✓ player-sovereignty · ✓ Home-always-private-by-default · ✓ opt-in-everywhere · ✓ gift-economy-framing
+
+§ creator @ Apocky · "the-game IS-a-mycelial-network · each-player IS-a-fruiting-body · the-substrate IS-the-mycelium" · t∞ design-pattern enforced
+§ this-spec extends 13 (Living-Multiverse) + 14 (Σ-Chain) + 15 (Unified-Substrate) into-the-biological-frame · One-Unified-System-of-Systems metaphor crystallized
+
+╞══════════════════════════════════════════════════════════════════════════════╡
+§ "Could we make it Mycelial?" @ ✓ YES · already-half-built · this-spec makes-it-explicit
+╞══════════════════════════════════════════════════════════════════════════════╡
