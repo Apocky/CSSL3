@@ -82,5 +82,23 @@ BEGIN
         RAISE EXCEPTION 'Expected >=14 RLS policies, got %', v_count;
     END IF;
 
+    -- 9. Signaling tables exist when 0004-0006 are applied (advisory: skip
+    --    if absent so this verify.sql still works on a wave-3-only DB).
+    --    Hard assertions for signaling live in verify-signaling.sql.
+    SELECT count(*) INTO v_count
+      FROM pg_tables
+     WHERE schemaname = 'public'
+       AND tablename IN (
+           'multiplayer_rooms','room_peers',
+           'signaling_messages','room_state_snapshots'
+       );
+    IF v_count = 0 THEN
+        RAISE NOTICE 'verify.sql : signaling tables not present (wave-3-only schema)';
+    ELSIF v_count = 4 THEN
+        RAISE NOTICE 'verify.sql : signaling tables present (wave-4 schema) -- run verify-signaling.sql for full assertions';
+    ELSE
+        RAISE EXCEPTION 'verify.sql : partial signaling-schema (got % of 4 tables)', v_count;
+    END IF;
+
     RAISE NOTICE 'verify.sql : all assertions passed';
 END$$;
