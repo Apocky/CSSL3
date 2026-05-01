@@ -741,19 +741,14 @@ impl Renderer {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth_format,
-                // CFER reads scene-depth but DOES NOT write — atmosphere
-                // doesn't occlude future objects.
-                depth_write_enabled: false,
-                // depth_compare = Always so the volumetric tracer always
-                // fires inside the camera frustum ; the per-sample depth
-                // discrimination happens via the world-AABB ray test in
-                // the shader.
-                depth_compare: wgpu::CompareFunction::Always,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
+            // § T11-LOA-FIX-3 : CFER pipeline runs against non-MSAA surface
+            //   (post-tonemap order). Drop depth_stencil to match the pass's
+            //   `depth_stencil_attachment: None`. CFER's per-sample depth
+            //   discrimination happens via the world-AABB ray test in the
+            //   shader anyway — no GPU depth-test needed. When CFER moves
+            //   pre-tonemap (against MSAA-resolved HDR) reinstate proper
+            //   non-MSAA depth.
+            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -1270,14 +1265,14 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                // § T11-LOA-FIX-3 : CFER pass runs AFTER tonemap (against
+                //   non-MSAA surface). The depth view is sample_count=4 from
+                //   the MSAA scene pass · attaching it here would mismatch the
+                //   color count=1. Drop depth entirely for the volumetric pass
+                //   — minor artifact (no occlusion) but unblocks the binary.
+                //   Future slice : run CFER pre-tonemap against MSAA-resolved
+                //   HDR target with proper non-MSAA depth.
+                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
