@@ -24,10 +24,10 @@ pub use cssl_host_multiplayer_signaling::{
 /// `code` + `peers` are public fields on the underlying `Room` struct.
 #[must_use]
 pub fn room_status(room: Option<&Room>) -> String {
-    match room {
-        Some(r) => format!("room:{} peers:{}", r.code, r.peers.len()),
-        None => "no-room".to_string(),
-    }
+    room.map_or_else(
+        || "no-room".to_string(),
+        |r| format!("room:{} peers:{}", r.code, r.peers.len()),
+    )
 }
 
 #[cfg(test)]
