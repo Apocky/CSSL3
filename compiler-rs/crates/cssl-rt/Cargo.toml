@@ -26,6 +26,20 @@ crate-type = ["rlib", "staticlib"]
 # the dependency direction).
 blake3 = { workspace = true }
 rand   = { workspace = true }
+# § T11-WAVE3-HTTP : ureq blocking HTTP client backs the `__cssl_http_*`
+# FFI surface in `crate::http`. Default-features OFF so the base build is
+# plain-http only (free-asset CDN endpoints) ; the `tls` feature enables
+# rustls and turns on https:// support. The cap-bit `NET_HTTPS_ONLY`
+# rejects plain http URLs at runtime ; flipping it on without enabling
+# `tls` here means every call returns -EACCES, which is the correct
+# default-deny posture per PRIME-DIRECTIVE.
+ureq = { workspace = true }
+
+[features]
+# § Default = no TLS · stage-0 ships plain-http only · cap-bit NET_HTTPS_ONLY
+# blocks runtime-side until `tls` feature flipped on at the crate boundary.
+default = []
+tls     = ["ureq/tls"]
 
 [lints]
 workspace = true
