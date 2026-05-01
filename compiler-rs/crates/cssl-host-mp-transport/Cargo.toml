@@ -1,0 +1,20 @@
+[package]
+name                   = "cssl-host-mp-transport"
+description            = "CSSLv3 — Transport-adapter trait for cssl-host-multiplayer-signaling. Defines `MpTransport` (send / poll / caps) + a `TransportRouter` with primary/fallback semantics, plus two impls : `LoopbackTransport` (in-memory tests) and `StubSupabaseTransport` (ABI shape — captures sends, returns empty polls, never hits network). Real Supabase REST + WebSocket impls land in a downstream wave."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_mp_transport"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+cssl-host-multiplayer-signaling = { path = "../cssl-host-multiplayer-signaling" }
+
+[lints]
+workspace = true

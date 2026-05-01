@@ -973,6 +973,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-mp-transport"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-multiplayer-signaling",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-multiplayer-signaling"
 version = "0.1.0"
 dependencies = [
