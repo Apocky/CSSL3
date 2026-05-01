@@ -872,6 +872,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-golden"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-histograms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-input"
 version = "0.1.0"
 dependencies = [
@@ -898,6 +914,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-multiplayer-signaling"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-net"
 version = "0.1.0"
 dependencies = [
@@ -914,6 +938,22 @@ dependencies = [
  "smallvec",
  "thiserror 1.0.69",
  "windows",
+]
+
+[[package]]
+name = "cssl-host-procgen-rooms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-replay"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
