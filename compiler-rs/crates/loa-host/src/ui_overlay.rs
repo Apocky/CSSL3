@@ -761,6 +761,12 @@ pub struct HudContext {
     /// § T11-WAVE3-TEXTINPUT : monotonic frame counter used for cursor
     /// blink. Reuse hud.frame to avoid plumbing a separate timer.
     pub text_input_blink_frame: u64,
+
+    /// § T11-W8-CHAT-WIRE : recent chat-log entries for the HUD overlay.
+    /// 3 most-recent rows are rendered above the chat-hint pill ; older
+    /// entries fade with age. Each entry is `(role, text)`.
+    /// Empty = no chat-log lines drawn (the chat-hint pill alone is shown).
+    pub chat_log: Vec<(crate::mcp_server::ChatRole, String)>,
 }
 
 impl Default for HudContext {
@@ -792,6 +798,7 @@ impl Default for HudContext {
             text_input_cursor: 0,
             text_input_history: Vec::new(),
             text_input_blink_frame: 0,
+            chat_log: Vec::new(),
         }
     }
 }
@@ -904,11 +911,18 @@ pub fn build_overlay_vertices(
     // along the bottom edge.
     if hud.text_input_focused {
         push_text_input_box(sw, sh, hud, &mut out);
+        // § T11-W8-CHAT-WIRE : the chat-log is also drawn while the box is
+        // focused, so the player sees their conversation history WHILE typing
+        // a follow-up. Drawn above the box (text-input-history rows occupy
+        // the area immediately above the box ; chat-log sits above those).
+        push_chat_log(sw, sh, hud, &mut out);
     } else {
         // § T11-W8-CHAT-HINT : always-visible chat-prompt hint when not focused.
         // Player needs to know they CAN chat with the GM/DM. Renders a subtle
         // pill at the bottom-center inviting input.
         push_chat_hint(sw, sh, &mut out);
+        // § T11-W8-CHAT-WIRE : show last 3 chat-log entries above the hint.
+        push_chat_log(sw, sh, hud, &mut out);
     }
 
     // ─── TOP-CENTER : T11-LOA-TEST-APP capture indicators ───
@@ -1101,6 +1115,94 @@ pub fn push_chat_hint(sw: f32, sh: f32, out: &mut Vec<UiVertex>) {
     let text_y = pill_y + pad_v;
     let text_color: [f32; 4] = [0.85, 0.85, 0.95, 0.85];
     let _ = build_text_quads(label, text_x, text_y, text_color, scale, out);
+}
+
+/// § T11-W8-CHAT-WIRE : render the last 3 chat-log entries above the
+/// chat-hint pill (or above the text-input box when focused).
+///
+/// Color-by-role :
+/// - `Player` → white               (1.0, 1.0, 1.0, α)
+/// - `Gm`     → cyan                (0.55, 0.90, 1.00, α)
+/// - `Dm`     → violet              (0.85, 0.65, 1.00, α)
+/// - `Coder`  → amber               (1.00, 0.78, 0.30, α)
+/// - `System` → dim white           (0.75, 0.75, 0.80, α)
+///
+/// Alpha-fade-by-age : newest = α 1.00 ; one-back = α 0.75 ; two-back = α 0.50.
+/// Lines are right-aligned with the chat-hint pill (centered horizontally,
+/// stacked above it).
+pub fn push_chat_log(sw: f32, sh: f32, hud: &HudContext, out: &mut Vec<UiVertex>) {
+    if hud.chat_log.is_empty() {
+        return;
+    }
+    let scale = TEXT_SCALE;
+    let line = LINE_HEIGHT_PX * scale;
+    let glyph_px = (CELL_W as f32) * scale;
+    let glyph_h = (CELL_H as f32) * scale;
+
+    // Anchor : same y as the chat-hint pill (pill_y = sh - bottom_offset - pill_h),
+    // then stack 3 rows ABOVE it with a small gap.
+    let pad_v = 4.0_f32;
+    let pill_h = glyph_h + 2.0 * pad_v;
+    let pill_y = sh - TEXT_INPUT_BOTTOM_OFFSET - pill_h;
+
+    // If text-input is focused, the focused-box occupies the lower region ;
+    // shift the chat-log above the box + history rows.
+    let anchor_y = if hud.text_input_focused {
+        // Above text-input history rows : box_y - 5 history-rows.
+        let box_y = sh - TEXT_INPUT_BOTTOM_OFFSET - TEXT_INPUT_BOX_H;
+        box_y - line * (hud.text_input_history.len() as f32 + 1.0) - 16.0
+    } else {
+        pill_y - 8.0
+    };
+
+    // Take the last 3 entries (newest-last in `chat_log`).
+    let to_draw: Vec<&(crate::mcp_server::ChatRole, String)> =
+        hud.chat_log.iter().rev().take(3).collect();
+    let count = to_draw.len();
+    // Render newest at the bottom of the stack (closest to the pill) so it's
+    // visually adjacent to the input.
+    for (idx, (role, text)) in to_draw.iter().enumerate() {
+        let alpha = match idx {
+            0 => 1.00_f32,
+            1 => 0.75_f32,
+            _ => 0.50_f32,
+        };
+        let color: [f32; 4] = match role {
+            crate::mcp_server::ChatRole::Player => [1.00, 1.00, 1.00, alpha],
+            crate::mcp_server::ChatRole::Gm => [0.55, 0.90, 1.00, alpha],
+            crate::mcp_server::ChatRole::Dm => [0.85, 0.65, 1.00, alpha],
+            crate::mcp_server::ChatRole::Coder => [1.00, 0.78, 0.30, alpha],
+            crate::mcp_server::ChatRole::System => [0.75, 0.75, 0.80, alpha],
+        };
+        // Truncate so really-long responses don't run off-screen.
+        let max_chars = ((sw - 80.0) / glyph_px).max(20.0) as usize;
+        let truncated = if text.chars().count() > max_chars {
+            let mut s: String = text.chars().take(max_chars.saturating_sub(3)).collect();
+            s.push_str("...");
+            s
+        } else {
+            text.clone()
+        };
+        // Prefix the role-tag for accessibility.
+        let prefix = match role {
+            crate::mcp_server::ChatRole::Player => "you ",
+            crate::mcp_server::ChatRole::Gm => "GM  ",
+            crate::mcp_server::ChatRole::Dm => "DM  ",
+            crate::mcp_server::ChatRole::Coder => "cod ",
+            crate::mcp_server::ChatRole::System => "sys ",
+        };
+        let line_text = format!("{prefix}{truncated}");
+        // Stack rows : idx=0 (newest) sits at the bottom (closest to the pill).
+        // (count - 1 - idx) places newest at row (count-1) below older rows.
+        let row_y = anchor_y - (count as f32 - 1.0 - idx as f32) * line - line;
+        if row_y < 0.0 {
+            continue;
+        }
+        // Center horizontally w/ the pill (width is variable per row).
+        let row_w = (line_text.chars().count() as f32) * glyph_px;
+        let row_x = (sw - row_w) * 0.5;
+        let _ = build_text_quads(&line_text, row_x, row_y, color, scale, out);
+    }
 }
 
 /// Push the in-game text-input box, cursor, and recent-history rows.
