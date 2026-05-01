@@ -848,6 +848,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-akashic-records"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-akashic-shrine"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-asset-bundle"
 version = "0.1.0"
 dependencies = [
@@ -896,6 +914,27 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cssl-host-coder-runtime"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-coherence-proof"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -990,6 +1029,23 @@ dependencies = [
 
 [[package]]
 name = "cssl-host-histograms"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-historical-reconstructor"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-home-dimension"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1117,6 +1173,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-mycelium"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-host-net"
 version = "0.1.0"
 dependencies = [
@@ -1185,6 +1251,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-sigma-chain"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-spectral-grader"
 version = "0.1.0"
 dependencies = [
@@ -1206,6 +1283,16 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cssl-host-stripe-integration"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
