@@ -138,11 +138,12 @@ fn integration_sense_framebuffer_thumbnail_pending_when_no_capture() {
 }
 
 #[test]
-fn integration_tools_list_reports_84_entries() {
-    // § post-merge-wave3 : 80 (pre-userfix) + 4 USERFIX = 84.
+fn integration_tools_list_reports_93_entries() {
+    // § post-WAVE3-grand-merge : 84 (post-userfix) + 2 text-input + 3 gltf
+    // + 2 spontaneous + 2 intent-router = 93.
     let st = shared_state();
     let v = invoke(&st, "tools.list", json!({}));
-    assert_eq!(v["count"].as_u64().unwrap(), 84);
+    assert_eq!(v["count"].as_u64().unwrap(), 93);
     let tools = v["tools"].as_array().expect("array");
     let sense_tools: Vec<&Value> = tools
         .iter()

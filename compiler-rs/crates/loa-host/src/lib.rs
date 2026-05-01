@@ -107,6 +107,11 @@ pub mod gltf_loader;
 // cells crossing a critical-radiance threshold.
 pub mod spontaneous;
 
+// § T11-WAVE3-INTENT : text → typed-Intent → MCP-style dispatch router.
+// Stage-0 keyword classifier ; stage-1 swaps in the KAN runtime. Every
+// HUD text-input box submission + scripted scene call routes through here.
+pub mod intent_router;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
