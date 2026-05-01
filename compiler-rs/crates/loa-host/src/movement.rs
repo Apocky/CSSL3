@@ -79,18 +79,31 @@ impl Camera {
     }
 
     /// Forward unit-vector in world-space. Used by physics + render.
+    /// § AXIS-CONVENTION : yaw=0 → forward=(0,0,-1) i.e. -Z. This matches
+    ///   `camera::Camera` (render-side) which uses `Mat4::look_to_rh` with
+    ///   `dir=-Z` at yaw=0. Prior bug : movement-side forward was +Z which
+    ///   made pressing D move toward +X while the rendered camera's screen-
+    ///   right was -X, causing inverted strafe (Apocky play-test report).
     pub fn forward(&self) -> [f32; 3] {
         let cp = self.pitch.cos();
         [
             self.yaw.sin() * cp,
             self.pitch.sin(),
-            self.yaw.cos() * cp,
+            -self.yaw.cos() * cp,
         ]
     }
 
     /// Right unit-vector. Always horizontal (y=0) — independent of pitch.
+    /// § AXIS-CONVENTION : computed as `forward × world_up` so a press of D
+    ///   moves the player toward the screen's right side (matches the
+    ///   rendered view-matrix's right-axis). At yaw=0 right = (1, 0, 0).
     pub fn right(&self) -> [f32; 3] {
-        [self.yaw.cos(), 0.0, -self.yaw.sin()]
+        // forward × Y_up : (sin·cp, sin·p, -cos·cp) × (0, 1, 0) =
+        //   (sin·p·0 - (-cos·cp)·1, (-cos·cp)·0 - sin·cp·0, sin·cp·1 - sin·p·0)
+        //   = (cos·cp, 0, sin·cp)
+        // Drop the cp scaling on x/z (physics treats right as horizontal-only)
+        // and use cos(yaw)/sin(yaw). At yaw=0 → (1, 0, 0).
+        [self.yaw.cos(), 0.0, self.yaw.sin()]
     }
 
     /// Apply mouse-look from input-frame. Pitch is clamped to ±89°.
@@ -230,10 +243,11 @@ mod tests {
         assert_eq!(c.yaw, 0.0);
         assert_eq!(c.pitch, 0.0);
         let f = c.forward();
-        // yaw=0, pitch=0 → forward = (sin(0)·cos(0), sin(0), cos(0)·cos(0)) = (0, 0, 1)
+        // yaw=0, pitch=0 → forward = (sin(0)·cos(0), sin(0), -cos(0)·cos(0)) = (0, 0, -1)
+        // matches camera::Camera (render-side) which uses Mat4::look_to_rh with -Z fwd
         assert!((f[0] - 0.0).abs() < 1e-6);
         assert!((f[1] - 0.0).abs() < 1e-6);
-        assert!((f[2] - 1.0).abs() < 1e-6);
+        assert!((f[2] - (-1.0)).abs() < 1e-6);
     }
 
     #[test]
@@ -254,10 +268,10 @@ mod tests {
         let c = Camera::new();
         let dt = 0.1; // 100ms
         let delta = c.propose_motion(&frame_walk_forward(), dt);
-        // yaw=0 → forward = +Z. dz should be SPEED · dt = 5.0 · 0.1 = 0.5
+        // yaw=0 → forward = -Z. dz should be -SPEED · dt = -5.0 · 0.1 = -0.5
         assert!((delta[0] - 0.0).abs() < 1e-5);
         assert!((delta[1] - 0.0).abs() < 1e-5);
-        assert!((delta[2] - 0.5).abs() < 1e-5);
+        assert!((delta[2] - (-0.5)).abs() < 1e-5);
     }
 
     #[test]
@@ -266,8 +280,8 @@ mod tests {
         let mut f = frame_walk_forward();
         f.sprint = true;
         let delta = c.propose_motion(&f, 0.1);
-        // Sprint = 5.0 · 2.0 · 0.1 = 1.0
-        assert!((delta[2] - 1.0).abs() < 1e-5);
+        // Sprint = -5.0 · 2.0 · 0.1 = -1.0 (forward is -Z at yaw=0)
+        assert!((delta[2] - (-1.0)).abs() < 1e-5);
     }
 
     #[test]

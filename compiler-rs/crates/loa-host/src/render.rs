@@ -131,7 +131,12 @@ impl Renderer {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                // § T11-LOA-FIX-CULL : disabled while we audit per-face winding
+                //   against the post-strafe-fix axis convention (forward=-Z at
+                //   yaw=0). Apocky reported "seeing through/into objects" which
+                //   is the classic culling-flipped symptom. Disabled until
+                //   the rich-render-system rewrite normalises winding.
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 unclipped_depth: false,
                 conservative: false,
