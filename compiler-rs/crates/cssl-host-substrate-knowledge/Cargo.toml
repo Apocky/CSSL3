@@ -1,0 +1,24 @@
+[package]
+name                   = "cssl-host-substrate-knowledge"
+description            = "CSSLv3 / Mycelium-Desktop : build-time-embedded substrate-knowledge corpus (specs/grand-vision/*.csl + specs/3x_*.csl + specs/41_*.csl + workspace-root canon docs + ~/.claude memory). Runtime exposes O(log N) name-lookup + jaccard-similarity top-K retrieval over per-doc token-hash bags. Self-contained ; ¬ external-fetch ; ¬ network ; ¬ filesystem-at-runtime. Build.rs scrapes & shingles ; runtime ranks. Per spec/grand-vision/23_MYCELIUM_DESKTOP § SUBSTRATE-KNOWLEDGE EMBEDDING."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+build                  = "build.rs"
+
+[lib]
+name       = "cssl_host_substrate_knowledge"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+blake3     = { workspace = true }
+
+[build-dependencies]
+blake3 = { workspace = true }
+
+[lints]
+workspace = true

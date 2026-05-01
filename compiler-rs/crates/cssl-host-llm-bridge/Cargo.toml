@@ -1,0 +1,41 @@
+[package]
+name                   = "cssl-host-llm-bridge"
+description            = "CSSLv3 stage0 — three-mode LLM bridge (A=Anthropic-API · B=local-Ollama · C=substrate-templated). Cap-gated · audit-emit · API-key-redacted-in-logs · streaming SSE/NDJSON parsers · cost-counter. Powers the Mycelium-Desktop dispatcher per specs/grand-vision/23_MYCELIUM_DESKTOP.csl § THREE-MODE LLM-BRIDGE. Mode-C is the truly-self-sufficient fallback : ¬ external-dep · ¬ local-LLM-required · always-on."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W8.5-LLM-BRIDGE
+# § PRIME-DIRECTIVE : ¬ surveillance · ¬ exfiltration · API-key-redact-in-logs · cap-gated · audit-emit
+# § STRUCTURAL : Mode-C always-on (fallback) · Mode-A requires LLM_CAP_EXTERNAL_API · Mode-B requires LLM_CAP_LOCAL_OLLAMA
+# § ureq/tls feature opt-in for Mode-A (api.anthropic.com is HTTPS-only) ;
+#   Mode-B reaches localhost:11434 over plain HTTP so TLS is not required there.
+#   When `tls` feature is OFF, Mode-A returns LlmError::NotConfigured("anthropic-tls-feature-not-enabled")
+#   at make_bridge time. This is the documented fallback per task-spec.
+
+[lib]
+name       = "cssl_host_llm_bridge"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+ureq       = { workspace = true }
+thiserror  = { workspace = true }
+tracing    = { workspace = true }
+
+[features]
+# § Default = TLS-OFF. Matches the cssl-rt convention (default-no-TLS so the
+# stage-0 build does not pull rustls→ring on toolchains lacking a C compiler ;
+# the gnu toolchain in particular requires gcc.exe which is not always present).
+# Downstream consumers that need Mode-A live wire enable the `tls` feature
+# explicitly. Without `tls`, Mode-A's `make_bridge` returns
+# `LlmError::NotConfigured("anthropic-tls-feature-not-enabled")` ; Mode-B
+# (localhost) + Mode-C (templated) work in every build.
+default = []
+tls     = ["ureq/tls"]
+
+[lints]
+workspace = true
