@@ -186,3 +186,223 @@ PostgREST / Storage requests. CSSL programs never see raw keys.
 * No table stores raw player PII beyond the `auth.users` reference.
   Display names / avatars are out of scope for this schema and live in
   `auth.users.raw_user_meta_data` per Supabase convention.
+
+---
+
+## Multiplayer Signaling
+
+Wave 4 adds signaling primitives for peer-to-peer multiplayer. Real
+WebRTC media never traverses Supabase; only **discovery** (find a room)
+and **signaling** (exchange SDP offers/answers and ICE candidates) flow
+through these tables. The replicated state-snapshot table is a
+convenience for small authoritative data (lobby readiness, host-side
+authoritative scene state) — not for high-rate game-state replication.
+
+### Layout
+
+```
+cssl-supabase/
+  migrations/
+    0004_signaling.sql        -- 4 tables · 3 helper functions · indexes
+    0005_signaling_rls.sql    -- 10 policies + current_user_id() helper
+    0006_signaling_seed.sql   -- DEMO01 room · 3 peers · 4 messages
+  verify-signaling.sql        -- post-migration assertions for 0004-0006
+```
+
+### Apply
+
+Append to your existing apply pipeline; nothing in 0004-0006 modifies
+0001-0003.
+
+```bash
+# Option A: Supabase CLI (continuing from "Apply the schema" above)
+psql "$SUPABASE_DB_URL" -f cssl-supabase/migrations/0004_signaling.sql
+psql "$SUPABASE_DB_URL" -f cssl-supabase/migrations/0005_signaling_rls.sql
+psql "$SUPABASE_DB_URL" -f cssl-supabase/migrations/0006_signaling_seed.sql
+psql "$SUPABASE_DB_URL" -f cssl-supabase/verify-signaling.sql
+```
+
+### Schema at a glance
+
+| Table                          | Purpose                                                             |
+|--------------------------------|---------------------------------------------------------------------|
+| `public.multiplayer_rooms`     | Discovery rooms keyed by short shareable code (e.g. `DEMO01`)       |
+| `public.room_peers`            | Per-room peer membership and presence (`last_seen_at`)              |
+| `public.signaling_messages`    | WebRTC offer/answer/ICE envelopes (`to_peer = '*'` for broadcast)   |
+| `public.room_state_snapshots`  | Sequential authoritative state snapshots (`seq` strictly increasing) |
+
+Helpers (PL/pgSQL):
+
+| Function                              | Returns       | Purpose                                              |
+|---------------------------------------|---------------|------------------------------------------------------|
+| `gen_room_code()`                     | `text`        | Random 6-char code from a legibility-friendly alphabet |
+| `cleanup_expired_rooms()`             | `bigint`      | Deletes rows where `expires_at <= now()`             |
+| `presence_touch(p_room, p_player)`    | `timestamptz` | Refreshes `room_peers.last_seen_at` heartbeat        |
+| `current_user_id()`                   | `text`        | `auth.uid()::text`, used by RLS policies             |
+
+### RLS policy summary
+
+```
+public.multiplayer_rooms
+    SELECT  : is_open = true OR own (host) OR service_role
+    INSERT  : authenticated AND host_player_id = current_user_id()
+    UPDATE  : host only
+    DELETE  : host only
+
+public.room_peers
+    SELECT  : peer is in same room as caller (or caller is host)
+    INSERT  : authenticated AND player_id = current_user_id() AND room is open / own
+    UPDATE  : own row only
+    DELETE  : own row OR host
+
+public.signaling_messages
+    SELECT  : to_peer = current_user_id() OR to_peer = '*'  AND caller is room peer
+    INSERT  : from_peer = current_user_id() AND caller is room peer
+
+public.room_state_snapshots
+    SELECT  : caller is room peer
+    INSERT  : caller is room peer AND created_by = current_user_id()
+    UPDATE  : DENIED (no policy = forbidden)
+    DELETE  : service-role only (via parent CASCADE)
+```
+
+### Cleanup cron
+
+Rooms auto-expire after 4 hours by default; running `cleanup_expired_rooms()`
+periodically keeps the tables small. Wire it via `pg_cron` (Supabase
+managed extension):
+
+```sql
+-- once, in the SQL editor, as service-role
+SELECT cron.schedule(
+    'cssl-cleanup-expired-rooms',
+    '*/15 * * * *',                       -- every 15 minutes
+    $$ SELECT public.cleanup_expired_rooms(); $$
+);
+```
+
+If you do not have `pg_cron` available, hit the function from a cssl-edge
+endpoint on a timer, or from any external scheduler.
+
+### Realtime channel usage (clients)
+
+Supabase Realtime exposes Postgres CDC over WebSocket. A peer subscribes
+to its inbox by filtering `signaling_messages` for rows addressed to them
+or to `'*'`:
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+import { Database, peerChannelName, MultiplayerRoom, SignalingMessage } from "./types";
+
+const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// 1. Host opens a room
+const { data: code } = await supabase.rpc("gen_room_code");
+const { data: room } = await supabase
+    .from("multiplayer_rooms")
+    .insert({ code: code!, host_player_id: myPlayerId })
+    .select()
+    .single<MultiplayerRoom>();
+
+// 2. Host inserts themselves into room_peers (RLS allows host into own room)
+await supabase.from("room_peers").insert({
+    room_id: room!.id,
+    player_id: myPlayerId,
+    display_name: "host",
+    is_host: true,
+});
+
+// 3. Subscribe to inbox = "messages addressed to me OR to '*'"
+const inbox = supabase
+    .channel(peerChannelName(room!.id, myPlayerId))
+    .on(
+        "postgres_changes",
+        {
+            event: "INSERT",
+            schema: "public",
+            table: "signaling_messages",
+            filter: `room_id=eq.${room!.id}`,
+        },
+        (payload) => {
+            const msg = payload.new as SignalingMessage;
+            if (msg.to_peer === myPlayerId || msg.to_peer === "*") {
+                handleSignal(msg);
+            }
+        },
+    )
+    .subscribe();
+
+// 4. Send an offer (RLS verifies from_peer = me AND I'm a room peer)
+await supabase.from("signaling_messages").insert({
+    room_id: room!.id,
+    from_peer: myPlayerId,
+    to_peer: peerId,
+    kind: "offer",
+    payload: { type: "offer", sdp: rtcOffer.sdp },
+});
+
+// 5. Heartbeat
+setInterval(() => supabase.rpc("presence_touch", {
+    p_room: room!.id,
+    p_player: myPlayerId,
+}), 30_000);
+```
+
+### RLS notes
+
+* `current_user_id()` returns `auth.uid()::text` and is `STABLE` so PG
+  caches it within a query plan.
+* Anonymous (anon-key) clients cannot INSERT rows — every signaling
+  policy requires `auth.uid() IS NOT NULL`. Use the anon key only to
+  SELECT public room codes for "discover open rooms" UX.
+* `signaling_messages` SELECT is gated on **two** conditions: the row
+  must be addressed to you (or `'*'`), AND you must already be a member
+  of the room. This prevents a passive lurker from harvesting
+  broadcasts in a room they have not joined.
+* `room_peers` inserts allow joining a room when `is_open = true` OR
+  when you are the host. Closing a room (`UPDATE is_open = false`) is
+  the host-side gating mechanism.
+* The realtime channel itself does **not** enforce RLS automatically —
+  RLS gates the table read, but Realtime forwards every CDC event to
+  every subscribed client. The client filter in step 3 above still
+  receives only the rows it has SELECT permission on, because Realtime
+  reapplies RLS on the row before delivery.
+
+### CSSL FFI surface (cssl-edge entry points, signaling)
+
+```cssl
+@extern "cssl-edge"
+fn supabase_room_create(host_player_id: str, max_peers: i32, is_open: bool) -> Json
+@extern "cssl-edge"
+fn supabase_room_join(code: str, player_id: str, display_name: str?) -> Json
+@extern "cssl-edge"
+fn supabase_room_leave(room_id: Uuid, player_id: str) -> bool
+@extern "cssl-edge"
+fn supabase_room_close(room_id: Uuid) -> bool
+
+@extern "cssl-edge"
+fn supabase_signal_send(room_id: Uuid, from_peer: str, to_peer: str,
+                        kind: str, payload: Json) -> i64
+@extern "cssl-edge"
+fn supabase_signal_recv(room_id: Uuid, peer_id: str, since: i64) -> Json
+
+@extern "cssl-edge"
+fn supabase_state_snapshot(room_id: Uuid, seq: i64, state: Json) -> i64
+@extern "cssl-edge"
+fn supabase_state_latest(room_id: Uuid) -> Json
+
+@extern "cssl-edge"
+fn supabase_presence_touch(room_id: Uuid, player_id: str) -> Timestamptz
+```
+
+### Demo data
+
+`0006_signaling_seed.sql` inserts a single open room with code `DEMO01`,
+three peers, and four signaling messages (offer · answer · 2× ICE).
+Every seed row is tagged `meta = '{"seed": true}'::jsonb` so cleanup is
+a one-liner:
+
+```sql
+DELETE FROM public.multiplayer_rooms WHERE meta @> '{"seed": true}'::jsonb;
+-- CASCADE removes seeded peers / signals / snapshots
+```
