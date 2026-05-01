@@ -1,0 +1,60 @@
+module com.apocky.loa.main
+
+// § Labyrinth of Apocalypse v13 — pure-CSSL entry-point
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-LOA-PURE-CSSL (W-LOA-pure-cssl-engine)
+//
+// § ARCHITECTURE
+//   This is the ROOT CSSL module that compiles into LoA.exe. The user-facing
+//   source is THIS file ; csslc compiles it via the standard pipeline (lex →
+//   parse → HIR → MIR → cranelift-object → linker) and AUTOMATICALLY links :
+//
+//     * cssl-rt staticlib   → __cssl_alloc · __cssl_panic · __cssl_exit · etc.
+//     * loa-host staticlib  → __cssl_engine_run (window+input+render+DM+MCP)
+//
+//   csslc's auto-default-link mechanism (W-CSSL-default-link + this slice's
+//   loa-host extension) discovers both staticlibs in `compiler-rs/target/release/`
+//   and prepends them to the linker command. The result : a single LoA.exe
+//   that IS the output of csslc compiling main.cssl.
+//
+// § FFI SURFACE
+//   The engine FFI is a single zero-arg fn returning i32 (POSIX-main shape).
+//   When csslc gains capability (winit-bindings via cssl-host-window FFI ·
+//   wgpu-bindings via cssl-host-gpu FFI), the engine event-loop will be
+//   rewritten in pure CSSL + this fn becomes a thin shim. Until then, the
+//   FFI provides the navigatable test-room TODAY.
+//
+// § PRIME-DIRECTIVE
+//   Engine launch is consent-architected (the user double-clicked the .exe
+//   so they get the window + input + audio). Esc opens the menu (NOT exits)
+//   so the user retains agency. No telemetry leak ; no off-machine relay.
+//   Attestation : there was no hurt nor harm in the making of this.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declaration : engine entry-point
+// ─────────────────────────────────────────────────────────────────────────
+//
+// `__cssl_engine_run` opens the window at the primary monitor's native
+// resolution (borderless-fullscreen by default), captures input, runs the
+// per-frame render+DM+MCP loop until the user closes the window, then
+// returns 0 on clean exit · 1 on engine IO error · 2 on caught panic.
+//
+// Provided by the loa-host staticlib (compiler-rs/crates/loa-host/src/ffi.rs).
+
+extern "C" fn __cssl_engine_run() -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § main : the pure-CSSL entry-point
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The cssl-rt ctor (loa_startup.rs) fires BEFORE `main` runs · creates the
+// `logs/` directory + writes the startup banner to `logs/loa_runtime.log`.
+// Then `main` fires + delegates to the engine. When the engine returns
+// (window closed), `main` returns the exit code, the cssl-rt atexit-hook
+// writes the shutdown banner, and the process exits cleanly.
+
+fn main() -> i32 {
+    let exit_code: i32 = __cssl_engine_run() ;
+    exit_code
+}

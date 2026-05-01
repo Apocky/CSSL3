@@ -47,8 +47,12 @@ naga       = { workspace = true }
 workspace = true
 
 [lib]
-name = "loa_host"
-path = "src/lib.rs"
+# § T11-LOA-PURE-CSSL : staticlib added so csslc can link the engine into a
+# pure-CSSL `main.cssl` via the `__cssl_engine_run` FFI symbol. rlib stays for
+# the historical `loa-runtime` bin + downstream Rust consumers.
+name       = "loa_host"
+path       = "src/lib.rs"
+crate-type = ["staticlib", "rlib"]
 
 [[bin]]
 name = "loa-runtime"

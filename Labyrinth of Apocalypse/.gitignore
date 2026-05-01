@@ -1,0 +1,16 @@
+# § T11-LOA-PURE-CSSL — build artifacts + runtime-emitted files
+#
+# LoA.exe is the output of `csslc build main.cssl --emit=exe` and is
+# NOT canonical source ; the canonical source is main.cssl + build.sh.
+LoA.exe
+LoA.obj
+LoA.lib
+LoA.exp
+LoA.pdb
+
+# Runtime-emitted logs + telemetry from `LoA.exe` startup ctor.
+logs/
+
+# Test-driver scratch.
+_stderr.log
+_stdout.log

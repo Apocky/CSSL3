@@ -90,12 +90,20 @@ impl GpuContext {
             ),
         );
 
+        // § T11-LOA-PURE-CSSL : use the adapter's full reported limits rather
+        // than `downlevel_defaults()` (which caps surfaces at 2048×2048 — too
+        // small for native-res primary monitors). The adapter advertises the
+        // hardware's actual limits ; on modern GPUs that's 16384×16384, which
+        // covers 4K + 8K monitors with headroom. Fall back to default-limits
+        // (universal lowest-common-denominator) only if the adapter probe
+        // somehow returns inconsistent values.
+        let adapter_limits = adapter.limits();
         let (device, queue) = match adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("loa-host/device"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
+                    required_limits: adapter_limits.clone(),
                     memory_hints: wgpu::MemoryHints::Performance,
                 },
                 None,

@@ -635,6 +635,163 @@ fn staticlib_names() -> Vec<&'static str> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § discover_loa_host_staticlib — auto-default-link the LoA engine runtime
+// ───────────────────────────────────────────────────────────────────────
+//
+// § T11-LOA-PURE-CSSL (W-LOA-pure-cssl-engine)
+//
+//   Parallel mechanism to `discover_cssl_rt_staticlib` : when csslc compiles
+//   a pure-CSSL program that references the LoA engine FFI symbol
+//   `__cssl_engine_run` (provided by loa-host's `[lib] crate-type =
+//   ["staticlib", ...]`), csslc auto-discovers `loa_host.lib` /
+//   `libloa_host.a` next to the cssl-rt staticlib + injects it into
+//   `extra_libs` alongside cssl-rt. This makes `Labyrinth of Apocalypse/
+//   main.cssl` compile to a navigatable LoA.exe with one csslc invocation.
+//
+// § DISCOVERY ORDER
+//   1. `$CSSL_LOA_HOST_LIB` env override (explicit absolute path).
+//   2. Same parent-dir walk as cssl-rt (loa-host's staticlib is built into
+//      the same `target/<profile>/` directory by cargo's workspace layout).
+//
+// § OPT-OUT
+//   `$CSSL_NO_LOA_HOST=1` ⇒ skip discovery entirely. Used by the legacy
+//   hello-world tests + any binary that doesn't want the engine linked
+//   in (e.g. a future audio-only test program).
+//
+// § NAMING
+//   The staticlib filename derives from the cargo `[lib] name = "loa_host"`
+//   → MSVC emits `loa_host.lib` (no `lib` prefix), Unix emits
+//   `libloa_host.a`.
+
+/// Find the loa-host staticlib on disk. Returns `None` if discovery fails
+/// or `$CSSL_NO_LOA_HOST` is set. Honors `$CSSL_LOA_HOST_LIB` (override).
+#[must_use]
+pub fn discover_loa_host_staticlib() -> Option<PathBuf> {
+    discover_loa_host_staticlib_with(&DiscoveryEnv::from_process())
+}
+
+/// Pure-function discovery : reads from the supplied [`DiscoveryEnv`]
+/// snapshot. Side-effecting only on the filesystem (`is_file()` checks).
+///
+/// Reuses the same parent-dir-walk as cssl-rt discovery — loa-host's
+/// staticlib is built into the same `target/<profile>/` by cargo, so the
+/// candidate-dir walk is identical ; only the filename list differs.
+#[must_use]
+pub fn discover_loa_host_staticlib_with(env: &DiscoveryEnv) -> Option<PathBuf> {
+    let verbose = env.rt_verbose.as_deref().is_some_and(|s| !s.is_empty());
+
+    // Honor explicit per-engine opt-out (separate from cssl-rt's).
+    if std::env::var_os("CSSL_NO_LOA_HOST").is_some() {
+        if verbose {
+            let _ = writeln!(
+                std::io::stderr(),
+                "csslc: loa-host default-link SKIPPED ($CSSL_NO_LOA_HOST set)"
+            );
+        }
+        return None;
+    }
+
+    // § 1. Honor explicit env override.
+    if let Ok(p) = std::env::var("CSSL_LOA_HOST_LIB") {
+        if !p.is_empty() {
+            let pb = PathBuf::from(&p);
+            if pb.is_file() {
+                if verbose {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "csslc: loa-host default-link USES $CSSL_LOA_HOST_LIB={}",
+                        pb.display()
+                    );
+                }
+                return Some(pb);
+            }
+            // Override given but file doesn't exist — emit warn + fall through.
+            let _ = writeln!(
+                std::io::stderr(),
+                "csslc: warn: $CSSL_LOA_HOST_LIB='{}' not found ; falling back to auto-discovery",
+                pb.display()
+            );
+        }
+    }
+
+    // § 2. Auto-discovery. Mirror the candidate-dir walk used for cssl-rt
+    //   ; loa-host's staticlib lives in the same target/<profile>/ dir.
+    let names = loa_host_staticlib_names();
+    let mut parents: Vec<PathBuf> = Vec::new();
+
+    if let Some(exe) = env.current_exe.as_ref() {
+        if let Some(parent) = exe.parent() {
+            parents.push(parent.to_path_buf());
+        }
+    }
+    if let Some(cwd) = env.current_dir.as_ref() {
+        for profile in &["debug", "release"] {
+            parents.push(cwd.join("target").join(profile));
+            parents.push(cwd.join("compiler-rs").join("target").join(profile));
+            let mut p = cwd.as_path();
+            while let Some(parent) = p.parent() {
+                parents.push(parent.join("target").join(profile));
+                parents.push(parent.join("compiler-rs").join("target").join(profile));
+                p = parent;
+            }
+        }
+    }
+    if let Some(exe) = env.current_exe.as_ref() {
+        let mut p = exe.as_path();
+        for _ in 0..6 {
+            if let Some(parent) = p.parent() {
+                for profile in &["debug", "release"] {
+                    parents.push(parent.join(profile));
+                    parents.push(parent.join("target").join(profile));
+                }
+                p = parent;
+            } else {
+                break;
+            }
+        }
+    }
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for p in parents {
+        if !seen.iter().any(|s| s == &p) {
+            seen.push(p);
+        }
+    }
+    for parent in &seen {
+        for name in &names {
+            let candidate = parent.join(name);
+            if candidate.is_file() {
+                if verbose {
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "csslc: loa-host default-link FOUND : {}",
+                        candidate.display()
+                    );
+                }
+                return Some(candidate);
+            }
+        }
+    }
+    if verbose {
+        let _ = writeln!(
+            std::io::stderr(),
+            "csslc: loa-host default-link NOT FOUND ; tried {} candidate dir(s) × {} name(s)",
+            seen.len(),
+            names.len(),
+        );
+    }
+    None
+}
+
+/// Platform-appropriate loa-host static-lib filenames in priority order.
+fn loa_host_staticlib_names() -> Vec<&'static str> {
+    if cfg!(target_os = "windows") {
+        vec!["loa_host.lib", "libloa_host.a"]
+    } else {
+        vec!["libloa_host.a"]
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § build_command — synthesize the subprocess Command
 // ───────────────────────────────────────────────────────────────────────
 
@@ -779,13 +936,20 @@ pub fn link(
 
 /// Build the effective `extra_libs` list by prepending the auto-discovered
 /// cssl-rt staticlib (when discovery succeeds + opt-out env-var unset).
+///
+/// § T11-LOA-PURE-CSSL : ALSO auto-discovers + appends the loa-host
+/// staticlib (when `$CSSL_NO_LOA_HOST` is unset). Order matters for some
+/// linkers : cssl-rt FIRST (defines `__cssl_*` runtime symbols), loa-host
+/// SECOND (defines `__cssl_engine_run` which calls into cssl-rt). This
+/// mirrors how a Cargo workspace dependency resolves : engine ↦ runtime.
+///
 /// Public for in-process testing : `commands::build` uses [`link`] which
 /// calls this internally ; tests assert on the returned `Vec<String>` to
 /// cover the default-link / override / skip paths without spawning a real
 /// linker.
 #[must_use]
 pub fn inject_default_cssl_rt_link(extra_libs: &[String]) -> Vec<String> {
-    let mut effective: Vec<String> = Vec::with_capacity(extra_libs.len() + 1);
+    let mut effective: Vec<String> = Vec::with_capacity(extra_libs.len() + 2);
     if let Some(rt_path) = discover_cssl_rt_staticlib() {
         // For Unix-style linkers we still pass the absolute path (rust-lld /
         // gnu / darwin all accept it as a positional input). The clang/gcc/cc
@@ -802,9 +966,97 @@ pub fn inject_default_cssl_rt_link(extra_libs: &[String]) -> Vec<String> {
              (set $CSSL_RT_LIB or build cssl-rt to enable)"
         );
     }
+    // T11-LOA-PURE-CSSL : append loa-host staticlib AFTER cssl-rt so the
+    // engine can resolve cssl-rt symbols. The `$CSSL_NO_LOA_HOST=1` opt-out
+    // is honored inside discover_loa_host_staticlib so legacy hello-world
+    // gates (which DON'T link the engine) stay functional.
+    //
+    // When loa-host IS linked, we ALSO add the Windows system libraries it
+    // (transitively via winit + wgpu + rust-std) needs : ws2_32 + user32 +
+    // gdi32 + advapi32 + ntdll + bcrypt + ole32 + shell32 + dwmapi + d3d12
+    // + dxgi + opengl32. Without these the linker reports thousands of
+    // unresolved-external errors. Cargo handles this automatically for
+    // rust-binary outputs ; staticlib consumers must declare them
+    // explicitly. (Same pattern as rust-staticlib-howto in the rust book.)
     effective.extend(extra_libs.iter().cloned());
+    if let Some(loa_path) = discover_loa_host_staticlib() {
+        effective.push(loa_path.display().to_string());
+        // Append Windows-system libs only on Windows targets ; on other
+        // platforms the equivalent libs (libdl/libpthread/libGL/etc.) are
+        // typically picked up by the compiler-driver linker (clang/gcc/cc)
+        // automatically. Future stage-1 work : per-target lib auto-discovery.
+        if cfg!(target_os = "windows") {
+            for sys_lib in WINDOWS_LOA_HOST_SYS_LIBS {
+                effective.push((*sys_lib).to_string());
+            }
+        }
+    }
     effective
 }
+
+/// Windows-system libraries needed by the loa-host staticlib's transitive
+/// dependencies (rust-std + winit + wgpu + tokio-style async-runtime).
+///
+/// § DERIVATION
+///   This list is the union of `print-cargo-args -p loa-host` (build-time
+///   `cargo:rustc-link-lib=...` directives surfaced by build scripts) +
+///   the rust-std-windows core set. Recompute when adding new transitive
+///   deps that bring their own system-lib requirements (e.g. Vulkan SDK
+///   integration → vulkan-1.lib).
+///
+/// § RATIONALE PER LIB
+///   - ws2_32      : sockets (rust-std `std::net` + winsock2)
+///   - userenv     : user-profile dir lookup (`std::env::home_dir`)
+///   - ntdll       : NT-syscall imports (NtCreateFile etc.)
+///   - bcrypt      : crypto-hash entropy (rust-std + winit RNG)
+///   - user32      : window mgmt (CreateWindowExW / DestroyWindow / etc.)
+///   - gdi32       : GDI device-context primitives (winit + wgpu fallback)
+///   - opengl32    : OpenGL fallback path (wgpu's GLES backend)
+///   - kernel32    : Win32 base API (already added by MSVC default but
+///                   explicit doesn't hurt)
+///   - advapi32    : registry (used by wgpu adapter probe)
+///   - shell32     : shell-side dialogs (winit dialog facilities)
+///   - ole32       : OLE init (DPI-aware + clipboard)
+///   - dwmapi      : composition / blur (winit transparent-window paths)
+///   - d3d12       : DirectX 12 backend (wgpu)
+///   - dxgi        : DirectX adapter enumeration (wgpu)
+///   - d3dcompiler : HLSL compile (wgpu shader translation fallback)
+///   - oleaut32    : OLE automation (winit drop-target / clipboard)
+///   - imm32       : IME composition (winit text-input)
+///   - propsys     : property-system (winit window-thumbnail)
+const WINDOWS_LOA_HOST_SYS_LIBS: &[&str] = &[
+    "ws2_32.lib",
+    "userenv.lib",
+    "ntdll.lib",
+    "bcrypt.lib",
+    "user32.lib",
+    "gdi32.lib",
+    "opengl32.lib",
+    "advapi32.lib",
+    "shell32.lib",
+    "ole32.lib",
+    "oleaut32.lib",
+    "dwmapi.lib",
+    "d3d12.lib",
+    "dxgi.lib",
+    "d3dcompiler.lib",
+    "imm32.lib",
+    "propsys.lib",
+    "uuid.lib",
+    "synchronization.lib",
+    "uxtheme.lib",         // SetWindowTheme — winit dark-mode probe
+    "runtimeobject.lib",   // RoOriginateErrorW — windows_result error-info
+    "comdlg32.lib",        // common-dialog facilities (winit / wgpu fallback)
+    "comctl32.lib",        // common-controls (winit dialog facilities)
+    "msimg32.lib",         // GDI extended fns (legacy wgpu fallback)
+    "winspool.lib",        // print-spooler (winit cursor-set ICM probe)
+    "version.lib",         // version-info (wgpu adapter probe)
+    "winmm.lib",           // multimedia timer (wgpu vsync fallback)
+    "secur32.lib",         // SSPI / GSSAPI (rust-std network)
+    "credui.lib",          // credential UI (rust-std auth fallback)
+    "iphlpapi.lib",        // IP helper API (rust-std network adapter)
+    "kernel32.lib",        // already added by build_command, idempotent
+];
 
 // ───────────────────────────────────────────────────────────────────────
 // § tests — detection logic + command-shape only ; no actual linking

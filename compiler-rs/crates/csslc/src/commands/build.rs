@@ -85,6 +85,14 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     // ── MIR ───────────────────────────────────────────────────────────
     let lower_ctx = cssl_mir::LowerCtx::new(&interner);
     let mut mir_mod = cssl_mir::MirModule::new();
+    // First pass : lower extern fn signatures (no body) so the call-result
+    // fixup can find them.
+    for item in &hir_mod.items {
+        if let cssl_hir::HirItem::ExternFn(ef) = item {
+            mir_mod.push_func(cssl_mir::lower::lower_extern_fn_signature(&lower_ctx, ef));
+        }
+    }
+    // Second pass : lower regular fn signatures + bodies.
     for item in &hir_mod.items {
         if let cssl_hir::HirItem::Fn(f) = item {
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
@@ -92,6 +100,12 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
             mir_mod.push_func(mf);
         }
     }
+
+    // ── T11-LOA-PURE-CSSL : resolve opaque func.call result types from
+    //    the now-populated module signature table. Required for pure-CSSL
+    //    `extern fn name() -> i32` calls to type-check at the cranelift
+    //    backend's stage-0 scalars-only gate.
+    let _resolved = cssl_mir::resolve_call_result_types(&mut mir_mod);
 
     // ── monomorphization quartet (D38..D50) ───────────────────────────
     let mono_report = cssl_mir::auto_monomorphize(&hir_mod, &interner, Some(&file));
@@ -196,9 +210,16 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
             // The build-log surface adds a "+ cssl-rt" suffix when discovery
             // succeeded so the user can confirm the runtime is wired in.
             let rt_linked = crate::linker::discover_cssl_rt_staticlib().is_some();
+            let loa_host_linked = crate::linker::discover_loa_host_staticlib().is_some();
             match crate::linker::link(&[obj_path.clone()], &output_path, &[]) {
                 Ok(()) => {
-                    let rt_tag = if rt_linked { " + cssl-rt" } else { "" };
+                    let mut tag = String::new();
+                    if rt_linked {
+                        tag.push_str(" + cssl-rt");
+                    }
+                    if loa_host_linked {
+                        tag.push_str(" + loa-host");
+                    }
                     eprintln!(
                         "csslc: build {} → {} : {} MIR fn(s) → {} bytes (object, backend={}) → linked exe{}",
                         path.display(),
@@ -206,7 +227,7 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                         mir_fn_count,
                         bytes.len(),
                         args.backend.label(),
-                        rt_tag,
+                        tag,
                     );
                 }
                 Err(e) => {
