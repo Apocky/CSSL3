@@ -11,6 +11,20 @@
 //   purchase    ← PurchaseOutcome + AkashicLedger purchase-flow
 //   browse      ← BrowseQuery + browse-by-{scene,author,fidelity-min}
 //
+// § G1-integration-hooks (sibling-crates · W8 fanout) :
+//   - cssl-host-asset-bundle (B22 LAB-v1) : consume HighFidelity scene-snapshot
+//     + audio-loop + BLAKE3-hash · stub-flag-only here · sibling owns binary-blob
+//   - cssl-host-attestation : audit_trail() consumer · sibling emits W6+ feed
+//   - cssl-host-historical-reconstructor (B24) : calls our TtlToken issuance
+//     when player initiates 30-min-tour · respects HistoricalReconstructionTour
+//     fidelity tier · TTL-tracking lives here, deterministic-recompute in B24
+//   - cssl-host-akashic-shrine (B23) : queries our `browse()` for shrine-display
+//     + uses Imprint cosmetic-only fields for shrine-state · gameplay-isolated
+//   - cssl-edge `/api/akashic/*` (W8-D1) : Stripe-purchase → ledger.credit() →
+//     ledger.imprint() · NEVER calls Stripe directly here per landmine
+//   - Σ-Chain (spec/14) : every imprint maps-to a TIER-3 multiversal-stream
+//     event · `kind="akashic.imprint"` · BLAKE3-merkle-root @ tick
+//
 // § hard-caps :
 //   - #![forbid(unsafe_code)] · BTreeMap (¬ HashMap)
 //   - cosmetic-channel-only structural-guard
