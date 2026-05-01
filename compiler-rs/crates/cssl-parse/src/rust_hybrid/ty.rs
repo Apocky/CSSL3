@@ -233,13 +233,18 @@ fn parse_reference(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Typ
     }
 }
 
-/// Parse a raw-pointer type `*const T` / `*mut T`.
+/// Parse a raw-pointer type `*const T` / `*mut T` / `*T` (sugar for `*const T`).
 ///
 /// Required by `extern fn` FFI declarations whose host symbol signatures
 /// reference C-style pointers (`payload_ptr: *const u8`,
 /// `out_buf: *mut u8`). Raw pointers carry no aliasing/lifetime/cap
 /// guarantee — they exist solely to declare ABI shape. Stage-0
 /// downstream passes treat them as `Reference` for type-check purposes.
+///
+/// § T11-CC-PARSER-10 (W-CC-bare-ptr) : bare `*T` defaults to `*const T`,
+/// matching Rust's documented default and matching LoA-scene FFI usage
+/// (174 occurrences across 41 of 50 scenes). Explicit `const` / `mut`
+/// remain accepted unchanged.
 fn parse_raw_pointer(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> TypeKind {
     cursor.bump(); // *
     let mutable = if cursor.eat(TokenKind::Keyword(Keyword::Mut)).is_some() {
@@ -247,10 +252,7 @@ fn parse_raw_pointer(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> T
     } else if cursor.eat(TokenKind::Keyword(Keyword::Const)).is_some() {
         false
     } else {
-        bag.push(custom(
-            "expected `const` or `mut` after `*` in raw-pointer type",
-            cursor.peek().span,
-        ));
+        // Bare `*T` → default to `*const T` (Rust-compatible).
         false
     };
     let inner = parse_type(cursor, bag);
@@ -635,6 +637,110 @@ mod tests {
                 assert!(matches!(inner.kind, TypeKind::Path { .. }));
             }
             other => panic!("expected &str Reference, got {other:?}"),
+        }
+    }
+
+    // ─── T11-CC-PARSER-10 (W-CC-bare-ptr) : bare `*T` ≡ `*const T` ──────────
+
+    #[test]
+    fn parse_bare_ptr_defaults_to_const() {
+        // `*u8` — no `const` / `mut` after `*`, must default to immutable
+        // (Rust-compatible) and emit zero diagnostics.
+        let (_f, toks) = prep("*u8");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "bare `*T` should produce no errors");
+        match t.kind {
+            TypeKind::RawPointer { mutable, inner } => {
+                assert!(!mutable, "bare `*T` must default to immutable (`*const T`)");
+                assert!(matches!(inner.kind, TypeKind::Path { .. }));
+            }
+            other => panic!("expected RawPointer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_explicit_const_ptr_unchanged() {
+        // `*const u8` — explicit-const path must remain unchanged.
+        let (_f, toks) = prep("*const u8");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match t.kind {
+            TypeKind::RawPointer { mutable, inner } => {
+                assert!(!mutable);
+                assert!(matches!(inner.kind, TypeKind::Path { .. }));
+            }
+            other => panic!("expected RawPointer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_explicit_mut_ptr_unchanged() {
+        // `*mut u8` — explicit-mut path must remain unchanged.
+        let (_f, toks) = prep("*mut u8");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match t.kind {
+            TypeKind::RawPointer { mutable, inner } => {
+                assert!(mutable);
+                assert!(matches!(inner.kind, TypeKind::Path { .. }));
+            }
+            other => panic!("expected RawPointer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_bare_ptr_in_extern_fn() {
+        // `fn(*u8, usize) -> i32` — exercise bare `*T` inside a function-type
+        // parameter list, the LoA-scene FFI pattern that was failing pre-fix.
+        let (_f, toks) = prep("fn(*u8, usize) -> i32");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "bare-ptr in fn-type must not error");
+        match t.kind {
+            TypeKind::Function { params, .. } => {
+                assert_eq!(params.len(), 2);
+                match &params[0].kind {
+                    TypeKind::RawPointer { mutable, .. } => {
+                        assert!(!mutable, "bare `*u8` param defaults to const");
+                    }
+                    other => panic!("expected RawPointer param[0], got {other:?}"),
+                }
+            }
+            other => panic!("expected Function, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_nested_bare_ptr() {
+        // `*const *u8` — nested bare-ptr inside an explicit-const ptr ;
+        // outer is const-qualified, inner defaults to const.
+        let (_f, toks) = prep("*const *u8");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let t = parse_type(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match t.kind {
+            TypeKind::RawPointer { mutable, inner } => {
+                assert!(!mutable, "outer `*const` is immutable");
+                match inner.kind {
+                    TypeKind::RawPointer {
+                        mutable: inner_mut,
+                        inner: inner_inner,
+                    } => {
+                        assert!(!inner_mut, "inner bare `*u8` defaults to immutable");
+                        assert!(matches!(inner_inner.kind, TypeKind::Path { .. }));
+                    }
+                    other => panic!("expected nested RawPointer, got {other:?}"),
+                }
+            }
+            other => panic!("expected RawPointer outer, got {other:?}"),
         }
     }
 }
