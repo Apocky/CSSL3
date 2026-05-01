@@ -625,7 +625,73 @@ pub struct EngineState {
     pub sense_invocations_total: u64,
     /// Total `sense.framebuffer_thumbnail` invocations since startup.
     pub sense_thumbnails_captured_total: u64,
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-W8-CHAT-WIRE : in-game chat-log mirror
+    // ───────────────────────────────────────────────────────────────────
+    /// Recent chat-log entries (player submissions + GM/DM/Coder/System
+    /// responses). Cap = `CHAT_LOG_CAP` (8) ; oldest dropped when full.
+    /// Drawn ABOVE the chat-hint pill in the HUD overlay.
+    pub chat_log: std::collections::VecDeque<ChatLogEntry>,
 }
+
+/// § T11-W8-CHAT-WIRE : role-tag for a chat-log entry.
+///
+/// Drives the HUD overlay's color-by-role rendering :
+/// - `Player`  → white
+/// - `GM`      → cyan       (default-route · narrative-emit)
+/// - `DM`      → violet     (scene-arbitration)
+/// - `Coder`   → amber      (runtime-mutate)
+/// - `System`  → dim white  (cap-denied · routing-info · attestation)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatRole {
+    /// Player typed the line in the text-input box.
+    Player,
+    /// GameMaster narrative response.
+    Gm,
+    /// DirectorMaster scene-arbiter response.
+    Dm,
+    /// Coder runtime-mutate response.
+    Coder,
+    /// System message (cap-denied · routing-error · attestation).
+    System,
+}
+
+impl ChatRole {
+    /// Stable string label for telemetry + JSON serialization.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            ChatRole::Player => "player",
+            ChatRole::Gm => "gm",
+            ChatRole::Dm => "dm",
+            ChatRole::Coder => "coder",
+            ChatRole::System => "system",
+        }
+    }
+}
+
+/// § T11-W8-CHAT-WIRE : single row in the chat-log VecDeque.
+///
+/// Captures everything the HUD + MCP-tooling needs to display + replay a
+/// chat-line. `frame` aligns with `EngineState::frame_count` so an MCP
+/// reader can correlate to other rings.
+#[derive(Debug, Clone)]
+pub struct ChatLogEntry {
+    /// Role-tag (drives HUD color).
+    pub role: ChatRole,
+    /// The text content (player-submitted OR orchestrator-emitted).
+    pub text: String,
+    /// Frame at which the entry was pushed.
+    pub frame: u64,
+    /// Wall-clock millis-since-epoch (best-effort ; 0 if SystemTime fails).
+    pub ts_ms: u64,
+}
+
+/// Maximum chat-log entries retained. The HUD draws the most recent 3 above
+/// the chat-hint pill ; the deeper history is exposed via `chat.recent` MCP
+/// tool (queued for a follow-up wave).
+pub const CHAT_LOG_CAP: usize = 8;
 
 /// § T11-LOA-SENSORY : engine-load (interoception) mirror.
 ///
@@ -699,6 +765,7 @@ impl Default for EngineState {
             engine_load: EngineLoadMirror::default(),
             sense_invocations_total: 0,
             sense_thumbnails_captured_total: 0,
+            chat_log: std::collections::VecDeque::with_capacity(CHAT_LOG_CAP),
         }
     }
 }
@@ -714,6 +781,28 @@ impl EngineState {
             level: level.to_string(),
             source: source.to_string(),
             message: message.to_string(),
+        });
+    }
+
+    /// § T11-W8-CHAT-WIRE : push a chat-log entry. Drops oldest at cap.
+    ///
+    /// Used by `window.rs` chat-routing to surface player submissions +
+    /// GM/DM/Coder/System responses on the HUD overlay. The 3 most-recent
+    /// entries are drawn above the chat-hint pill ; deeper history is
+    /// exposed via the future `chat.recent` MCP tool.
+    pub fn push_chat_response(&mut self, role: ChatRole, text: String) {
+        if self.chat_log.len() >= CHAT_LOG_CAP {
+            self.chat_log.pop_front();
+        }
+        let ts_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.chat_log.push_back(ChatLogEntry {
+            role,
+            text,
+            frame: self.frame_count,
+            ts_ms,
         });
     }
 
