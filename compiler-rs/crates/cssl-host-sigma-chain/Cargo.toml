@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-host-sigma-chain"
+description            = "CSSLv3 host — Σ-Chain TIER-2/3 event-emit pipeline · Ed25519-signed events · BLAKE3-merkle-rooted ledger · 4 privacy-tiers (LocalOnly/Anonymized/Pseudonymous/Public) · deterministic-recompute Coherence-Proof verifier · ¬ PoW/PoS · privacy-default. Implements specs/grand-vision/14_SIGMA_CHAIN.csl POD-2 CRATE-B15."
+version.workspace      = true
+edition.workspace      = true
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W8-C1 : Σ-Chain emitter + Coherence-Proof basis (per spec/grand-vision/14)
+# §§ axioms : ¬ PoW · ¬ PoS · ¬ public-by-default · ¬ gas · ✓ Σ-mask-consent · ✓ player-local-first
+# §§ pipeline : event → privacy-strip → canonical-bytes → BLAKE3-payload-hash → Ed25519-sign → ledger-insert → BLAKE3-merkle-root
+# §§ verify : ed25519-verify(pubkey,sig) ∧ blake3-payload-match ∧ merkle-path-verify ∧ deterministic-recompute(seed,lineage)
+
+[lib]
+name       = "cssl_host_sigma_chain"
+crate-type = ["rlib"]
+
+[dependencies]
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+blake3        = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand          = { workspace = true }
+
+[lints]
+workspace = true
