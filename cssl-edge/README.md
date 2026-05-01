@@ -17,9 +17,31 @@ behavior as the implementations land.
 | POST   | `/api/intent`                       | Text → scene-graph (LLM-backed when keyed)    |
 | GET    | `/api/asset/search?q=...&license=`  | License-filtered asset search                 |
 | GET    | `/api/asset/<src>/<id>/glb`         | Cached binary proxy for a specific asset      |
-| POST   | `/api/generate/3d`                  | Neural-3D gateway; provider fan-out           |
+| POST   | `/api/generate/3d`                  | Neural-3D gateway; license-filter + audit     |
+| POST   | `/api/companion`                    | Cap-gated remote-Claude relay (stub)          |
+
+## Pages
+
+| Path                          | Purpose                                          |
+| ----------------------------- | ------------------------------------------------ |
+| `/`                           | Landing page · endpoint reference                |
+| `/marketplace?page=N`         | License-filtered asset gallery (24/page)         |
+| `/marketplace/<src>--<id>`    | Asset detail · attribution · download            |
 
 Every JSON response includes `served_by` and `ts` for tracing.
+
+### `/api/companion` contract
+
+```bash
+curl -X POST https://<deploy>/api/companion \
+  -H 'content-type: application/json' \
+  -d '{"messages":[{"role":"user","content":"hi"}],"cap":1}'
+```
+
+Cap-bit `COMPANION_REMOTE_RELAY = 0x1` is REQUIRED. Default-deny when
+`cap & 0x1 === 0`. Sovereign bypass : send `sovereign:true` AND header
+`x-loa-sovereign-cap: 0xCAFEBABEDEADBEEF`. Returns an Anthropic-Messages-API-
+shaped response — stub-only (no upstream call).
 
 ### `/api/intent` contract
 
