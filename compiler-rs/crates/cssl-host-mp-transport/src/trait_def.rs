@@ -125,7 +125,7 @@ mod tests {
     #[derive(Debug)]
     struct DummyT;
     impl MpTransport for DummyT {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "dummy"
         }
         fn send(&self, _: &SignalingMessage) -> Result<TransportResult, TransportErr> {
