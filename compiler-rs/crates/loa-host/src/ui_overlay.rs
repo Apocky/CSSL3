@@ -904,6 +904,11 @@ pub fn build_overlay_vertices(
     // along the bottom edge.
     if hud.text_input_focused {
         push_text_input_box(sw, sh, hud, &mut out);
+    } else {
+        // § T11-W8-CHAT-HINT : always-visible chat-prompt hint when not focused.
+        // Player needs to know they CAN chat with the GM/DM. Renders a subtle
+        // pill at the bottom-center inviting input.
+        push_chat_hint(sw, sh, &mut out);
     }
 
     // ─── TOP-CENTER : T11-LOA-TEST-APP capture indicators ───
@@ -1057,6 +1062,46 @@ pub const TEXT_INPUT_INNER_PAD: f32 = 12.0;
 pub const TEXT_INPUT_BORDER_PX: f32 = 2.0;
 /// Cursor blink period in frames (60-frame on, 60-frame off → 1Hz @ 60fps).
 pub const TEXT_INPUT_BLINK_PERIOD_FRAMES: u64 = 60;
+
+/// § T11-W8-CHAT-HINT : always-visible bottom-center prompt inviting the
+/// player to press `/` to chat with the GM/DM. Drawn ONLY when the
+/// text-input box is NOT focused (mutually exclusive with `push_text_input_box`).
+///
+/// Renders a compact pill : 320×28 px, bottom-center, 100 px from bottom,
+/// 50% alpha background, dim white text reading "/ chat with the GM".
+pub fn push_chat_hint(sw: f32, sh: f32, out: &mut Vec<UiVertex>) {
+    let scale = TEXT_SCALE;
+    let glyph_px = (CELL_W as f32) * scale;
+    let glyph_h = (CELL_H as f32) * scale;
+
+    let label = "/ chat with the GM";
+    let label_w = (label.chars().count() as f32) * glyph_px;
+
+    // Pill box : tight padding around the label.
+    let pad_h = 6.0_f32;
+    let pad_v = 4.0_f32;
+    let pill_w = label_w + 2.0 * pad_h;
+    let pill_h = glyph_h + 2.0 * pad_v;
+    let pill_x = (sw - pill_w) * 0.5;
+    let pill_y = sh - TEXT_INPUT_BOTTOM_OFFSET - pill_h;
+
+    // Subtle dark background pill, semi-transparent.
+    push_solid_rect(out, pill_x, pill_y, pill_w, pill_h, [0.06, 0.06, 0.10, 0.65]);
+
+    // Thin border (1 px) so it reads as an interactive surface.
+    let border = 1.0_f32;
+    let border_color: [f32; 4] = [0.45, 0.45, 0.55, 0.55];
+    push_solid_rect(out, pill_x, pill_y, pill_w, border, border_color);
+    push_solid_rect(out, pill_x, pill_y + pill_h - border, pill_w, border, border_color);
+    push_solid_rect(out, pill_x, pill_y, border, pill_h, border_color);
+    push_solid_rect(out, pill_x + pill_w - border, pill_y, border, pill_h, border_color);
+
+    // Label text : dim white, vertically centered.
+    let text_x = pill_x + pad_h;
+    let text_y = pill_y + pad_v;
+    let text_color: [f32; 4] = [0.85, 0.85, 0.95, 0.85];
+    let _ = build_text_quads(label, text_x, text_y, text_color, scale, out);
+}
 
 /// Push the in-game text-input box, cursor, and recent-history rows.
 /// Called from `build_overlay_vertices` when `hud.text_input_focused == true`.
