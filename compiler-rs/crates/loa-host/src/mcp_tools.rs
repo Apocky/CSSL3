@@ -60,7 +60,9 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
+use crate::material::{material_lut, material_name, MATERIAL_LUT_LEN};
 use crate::mcp_server::{CameraState, EngineState, Plinth, RenderMode, Vec3, TELEMETRY_RING_CAP};
+use crate::pattern::{pattern_lut, pattern_name, PATTERN_LUT_LEN};
 
 // ───────────────────────────────────────────────────────────────────────
 // § handler-fn type + registry shape
@@ -223,6 +225,50 @@ pub fn tool_registry() -> ToolRegistry {
         "Submit a CompanionProposal (forwards to companion-hook stub).",
         true,
         companion_propose
+    );
+
+    // ─ Live render-control plane (T11-LOA-RICH-RENDER) ─
+    reg!(
+        "render.list_patterns",
+        "Return all procedural-pattern names + ids in the LUT.",
+        false,
+        render_list_patterns
+    );
+    reg!(
+        "render.list_materials",
+        "Return all material names + ids in the LUT.",
+        false,
+        render_list_materials
+    );
+    reg!(
+        "render.snapshot",
+        "Return frame_count + camera_pos + active patterns/materials.",
+        false,
+        render_snapshot
+    );
+    reg!(
+        "render.set_wall_pattern",
+        "Override the procedural pattern for a wall (params: wall_id 0..3, pattern_id 0..15).",
+        true,
+        render_set_wall_pattern
+    );
+    reg!(
+        "render.set_floor_pattern",
+        "Override the procedural pattern for a floor quadrant (params: quadrant_id 0..3, pattern_id).",
+        true,
+        render_set_floor_pattern
+    );
+    reg!(
+        "render.set_material",
+        "Override the material for a quad slot (params: quad_id 0..15, material_id).",
+        true,
+        render_set_material
+    );
+    reg!(
+        "render.spawn_stress",
+        "Spawn a stress object (params: kind 0..13, x, y, z).",
+        true,
+        render_spawn_stress
     );
 
     r
@@ -594,6 +640,190 @@ fn companion_propose(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § handlers — live render control plane
+// ───────────────────────────────────────────────────────────────────────
+
+fn render_list_patterns(_state: &mut EngineState, _params: Value) -> Value {
+    let mut entries = Vec::with_capacity(PATTERN_LUT_LEN);
+    let lut = pattern_lut();
+    for id in 0..PATTERN_LUT_LEN as u32 {
+        let p = lut[id as usize];
+        entries.push(json!({
+            "id": id,
+            "name": pattern_name(id),
+            "kind": p.kind,
+            "scale": p.scale,
+            "rotation": p.rotation,
+            "phase": p.phase,
+        }));
+    }
+    json!({"patterns": entries, "count": PATTERN_LUT_LEN})
+}
+
+fn render_list_materials(_state: &mut EngineState, _params: Value) -> Value {
+    let mut entries = Vec::with_capacity(MATERIAL_LUT_LEN);
+    let lut = material_lut();
+    for id in 0..MATERIAL_LUT_LEN as u32 {
+        let m = lut[id as usize];
+        entries.push(json!({
+            "id": id,
+            "name": material_name(id),
+            "albedo": m.albedo,
+            "roughness": m.roughness,
+            "metallic": m.metallic,
+            "alpha": m.alpha,
+            "emissive": m.emissive,
+        }));
+    }
+    json!({"materials": entries, "count": MATERIAL_LUT_LEN})
+}
+
+fn render_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    // Walls 0..3 + floor quadrants 0..3 active patterns. Reads from the
+    // FFI control-plane state ; absent = "default".
+    let mut walls = Vec::with_capacity(4);
+    for w in 0..4 {
+        let p = crate::ffi::wall_pattern_override(w);
+        walls.push(json!({
+            "wall_id": w,
+            "pattern_id": p,
+            "pattern_name": p.map(pattern_name).unwrap_or("default"),
+        }));
+    }
+    let mut floors = Vec::with_capacity(4);
+    for q in 0..4 {
+        let p = crate::ffi::floor_pattern_override(q);
+        floors.push(json!({
+            "quadrant_id": q,
+            "pattern_id": p,
+            "pattern_name": p.map(pattern_name).unwrap_or("default"),
+        }));
+    }
+    json!({
+        "frame_count": state.frame_count,
+        "camera_pos": camera_pos_json(&state.camera),
+        "active_scene": state.active_scene,
+        "render_mode": state.render_mode.as_str(),
+        "walls": walls,
+        "floor_quadrants": floors,
+        "material_count": MATERIAL_LUT_LEN,
+        "pattern_count": PATTERN_LUT_LEN,
+    })
+}
+
+fn render_set_wall_pattern(state: &mut EngineState, params: Value) -> Value {
+    let wall_id = p_u32(&params, "wall_id", 0);
+    let pattern_id = p_u32(&params, "pattern_id", 0);
+    let rc = crate::ffi::__cssl_render_set_wall_pattern(
+        wall_id,
+        pattern_id,
+        // Cap-gate already enforced by mcp_server before dispatch.
+        0xCAFE_BABE_DEAD_BEEF,
+    );
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.set_wall_pattern · wall={wall_id} pattern={pattern_id} rc={rc}"),
+    );
+    if rc == 0 {
+        json!({
+            "ok": true,
+            "wall_id": wall_id,
+            "pattern_id": pattern_id,
+            "pattern_name": pattern_name(pattern_id),
+        })
+    } else {
+        json!({
+            "ok": false,
+            "error": format!("rc={rc} (out-of-range or cap-rejected)"),
+            "wall_id": wall_id,
+            "pattern_id": pattern_id,
+        })
+    }
+}
+
+fn render_set_floor_pattern(state: &mut EngineState, params: Value) -> Value {
+    let quadrant_id = p_u32(&params, "quadrant_id", 0);
+    let pattern_id = p_u32(&params, "pattern_id", 0);
+    let rc = crate::ffi::__cssl_render_set_floor_pattern(
+        quadrant_id,
+        pattern_id,
+        0xCAFE_BABE_DEAD_BEEF,
+    );
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.set_floor_pattern · q={quadrant_id} pat={pattern_id} rc={rc}"),
+    );
+    if rc == 0 {
+        json!({
+            "ok": true,
+            "quadrant_id": quadrant_id,
+            "pattern_id": pattern_id,
+            "pattern_name": pattern_name(pattern_id),
+        })
+    } else {
+        json!({
+            "ok": false,
+            "error": format!("rc={rc}"),
+            "quadrant_id": quadrant_id,
+        })
+    }
+}
+
+fn render_set_material(state: &mut EngineState, params: Value) -> Value {
+    let quad_id = p_u32(&params, "quad_id", 0);
+    let material_id = p_u32(&params, "material_id", 0);
+    let rc = crate::ffi::__cssl_render_set_material(quad_id, material_id, 0xCAFE_BABE_DEAD_BEEF);
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.set_material · quad={quad_id} mat={material_id} rc={rc}"),
+    );
+    if rc == 0 {
+        json!({
+            "ok": true,
+            "quad_id": quad_id,
+            "material_id": material_id,
+            "material_name": material_name(material_id),
+        })
+    } else {
+        json!({
+            "ok": false,
+            "error": format!("rc={rc}"),
+            "quad_id": quad_id,
+        })
+    }
+}
+
+fn render_spawn_stress(state: &mut EngineState, params: Value) -> Value {
+    let kind = p_u32(&params, "kind", 0);
+    let x = p_f32(&params, "x", state.camera.pos.x);
+    let y = p_f32(&params, "y", state.camera.pos.y);
+    let z = p_f32(&params, "z", state.camera.pos.z);
+    let id = crate::ffi::__cssl_render_spawn_stress_object(kind, x, y, z, 0xCAFE_BABE_DEAD_BEEF);
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.spawn_stress · kind={kind} id={id} at ({x:.2},{y:.2},{z:.2})"),
+    );
+    if id > 0 {
+        json!({
+            "ok": true,
+            "object_id": id,
+            "kind": kind,
+            "name": crate::geometry::stress_object_name(kind),
+            "pos": [x, y, z],
+        })
+    } else {
+        json!({
+            "ok": false,
+            "error": "kind out of range or cap-rejected",
+        })
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Morton + FFI helpers
 // ───────────────────────────────────────────────────────────────────────
 
@@ -651,9 +881,11 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_17_tools() {
+    fn tools_list_returns_24_tools() {
+        // 17 baseline (T11-LOA-HOST-3) + 7 new render-control tools
+        // (T11-LOA-RICH-RENDER) = 24 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 17, "must have exactly 17 tools");
+        assert_eq!(reg.len(), 24, "must have exactly 24 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -673,6 +905,14 @@ mod tests {
             "omega.modify",
             "companion.propose",
             "tools.list",
+            // T11-LOA-RICH-RENDER additions :
+            "render.list_patterns",
+            "render.list_materials",
+            "render.snapshot",
+            "render.set_wall_pattern",
+            "render.set_floor_pattern",
+            "render.set_material",
+            "render.spawn_stress",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -690,6 +930,9 @@ mod tests {
             "gm.dialogue",
             "omega.sample",
             "tools.list",
+            "render.list_patterns",
+            "render.list_materials",
+            "render.snapshot",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -709,10 +952,50 @@ mod tests {
             "dm.event.propose",
             "omega.modify",
             "companion.propose",
+            "render.set_wall_pattern",
+            "render.set_floor_pattern",
+            "render.set_material",
+            "render.spawn_stress",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
         }
+    }
+
+    #[test]
+    fn mcp_tool_render_set_wall_pattern_returns_ok() {
+        let mut s = EngineState::default();
+        let v = render_set_wall_pattern(
+            &mut s,
+            json!({"sovereign_cap": crate::mcp_server::SOVEREIGN_CAP, "wall_id": 0, "pattern_id": 4}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["pattern_id"], 4);
+        // Round-trip via the FFI getter (control plane state).
+        assert_eq!(crate::ffi::wall_pattern_override(0), Some(4));
+    }
+
+    #[test]
+    fn mcp_render_list_patterns_returns_at_least_12() {
+        let mut s = EngineState::default();
+        let v = render_list_patterns(&mut s, json!({}));
+        assert!(v["count"].as_u64().unwrap() >= 12);
+    }
+
+    #[test]
+    fn mcp_render_list_materials_returns_at_least_8() {
+        let mut s = EngineState::default();
+        let v = render_list_materials(&mut s, json!({}));
+        assert!(v["count"].as_u64().unwrap() >= 8);
+    }
+
+    #[test]
+    fn mcp_render_snapshot_includes_walls_and_floors() {
+        let mut s = EngineState::default();
+        let v = render_snapshot(&mut s, json!({}));
+        assert!(v["walls"].is_array());
+        assert!(v["floor_quadrants"].is_array());
+        assert_eq!(v["walls"].as_array().unwrap().len(), 4);
     }
 
     #[test]
@@ -846,9 +1129,10 @@ mod tests {
     fn tools_list_handler_count_matches_registry() {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
-        assert_eq!(v["count"], 17);
+        // 17 baseline + 7 render-control = 24 (T11-LOA-RICH-RENDER).
+        assert_eq!(v["count"], 24);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 17);
+        assert_eq!(arr.len(), 24);
     }
 
     #[test]

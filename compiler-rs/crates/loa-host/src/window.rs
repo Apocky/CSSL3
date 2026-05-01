@@ -465,6 +465,34 @@ impl App {
     /// Build the HUD context the renderer reads each frame to populate the
     /// 4-corner text + crosshair.
     fn build_hud_context(&self) -> HudContext {
+        // § T11-LOA-RICH-RENDER : facing-info — pick the wall the camera is
+        // most-aimed-at by yaw quadrant (-π..π · 4 buckets).
+        let pi = std::f32::consts::PI;
+        let yaw = self.player.yaw.rem_euclid(2.0 * pi);
+        let facing_pattern_name = if yaw < 0.25 * pi || yaw >= 1.75 * pi {
+            // Looking +X (east)
+            "QR-Code"
+        } else if yaw < 0.75 * pi {
+            // Looking +Z (north)
+            "Macbeth-ColorChart"
+        } else if yaw < 1.25 * pi {
+            // Looking -X (west)
+            "EAN-13-Barcode"
+        } else {
+            // Looking -Z (south)
+            "Snellen-EyeChart"
+        };
+
+        // Material under crosshair : fall back to "(none)" if no plinth in
+        // a forward 5m cone. Stage-0 keeps it simple.
+        let mat = String::from("(none)");
+
+        // Pull the renderer's frame-time histogram if available.
+        let frame_times_ms = match &self.renderer {
+            Some(r) => r.frame_times_ms,
+            None => [16.7; 60],
+        };
+
         HudContext {
             frame: self.frame_count,
             fps: self.fps_smoothed,
@@ -477,6 +505,9 @@ impl App {
             recent_event: self.recent_event.clone(),
             mcp_port: self.mcp_port,
             fullscreen: self.fullscreen_now,
+            facing_material: mat,
+            facing_pattern: facing_pattern_name.to_string(),
+            frame_times_ms,
         }
     }
 
