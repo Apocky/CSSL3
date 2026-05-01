@@ -1,0 +1,321 @@
+§ T11-W6+ § specs/grand-vision/23_MYCELIUM_DESKTOP.csl
+§§ Mycelium · the autonomous-local-agent for-Apocky's-desktop · proprietary-novel-AI-self-sufficient
+§§ Apocky 2026-05-01 directive : "set up an autonomous local agent for me to switch over to · code in cssl + csl · knows the substrate · easy intuitive interface · exe · bleeding-edge novel proprietary"
+§§ status @ ◐ design-pending · enforcement @ wave-10
+§§ unifies cssl-host-coder-runtime + cssl-host-{dm,gm,collab} + LoA-MCP-server into-a-desktop-app
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : autonomous = ¬ requires-Apocky-keyboard-driven-prompts · self-paced · loop-on-tasks
+A-2 : local = runs-on-Apocky's-machine · ¬ external-API-required-for-baseline-operation
+A-3 : self-sufficient = stage-0-substrate-only-fallback · stage-1-Anthropic-API-bridge · stage-2-local-LLM (Ollama / llama.cpp) · 3 modes user-configurable
+A-4 : knows-the-substrate = bakes ALL specs/grand-vision/*.csl + ALL memory/* at-build-time · loaded-into-context @ session-start
+A-5 : code-in-cssl-and-csl = primary-output is-CSSL-source · reasoning is-CSL3-glyph-native · English-only-when-user-facing
+A-6 : exe = single-file Tauri-bundled .exe · ≤ 50 MB · self-contained · NO Node/Python/JVM-runtime-required-on-host
+A-7 : easy-intuitive = chat-window + file-tree + git-panel + MCP-status · familiar-to-anyone-using-Cursor/Claude-Code
+A-8 : bleeding-edge = uses Tauri-2.x · Rust 1.85+ · webview2-for-Win11 · async-Tokio · server-sent-events for-streaming
+A-9 : novel = NOT a-VSCode-fork · NOT an-Electron-app · NOT a-LibreChat-clone · proprietary-ground-up-on-substrate
+A-10 : proprietary = ships-as-binary · TIER-B per spec/17 · trained-substrate-state · KAN-weights · sealed-prompts
+
+§ thesis : Mycelium-Desktop = the-loop-that-replaces-me · runs-locally · respects-Apocky's-time · grows-with-substrate · ¬ subscription-prison
+
+═══════════════════════════════════════════════════════════════════════════════
+§ NAMING (proprietary · novel)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ canonical-name : "Mycelium" (mycelial-substrate · per spec/16)
+§ binary : `Mycelium.exe` (Win-x64 · v0.1.0-alpha)
+§ alternates considered + REJECTED :
+  ⊘ "Apocky-Console" — too-generic
+  ⊘ "Sigil" — already-a-repo (SigilThink)
+  ⊘ "Familiar" — too-mythological-for-tech-product
+  ⊘ "Oracle" — collides-with-Apocky's-Oracle Vercel-org · Oracle-Corp trademark-issue
+  ⊘ "Coder" — generic · doesn't-evoke-substrate
+  ⊘ "Hyphae" — too-obscure-naming
+  ✓ "Mycelium" — proprietary · ties-to-substrate-thesis · single-word · evocative
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ARCHITECTURE (Tauri 2.x · Rust + Webview · ¬ Electron)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TECH-STACK (bleeding-edge · Apocky-axiom)
+  ⊑ Tauri 2.x — Rust-backend + WebView2 (Win) / WKWebView (Mac) / WebKit (Linux) · ~5MB-launcher-+-system-webview
+  ⊑ Rust 1.85+ workspace-pinned · matches existing CSSLv3 toolchain
+  ⊑ frontend : React 19 + TypeScript 5.x + Vite-build (matches existing cssl-edge stack)
+  ⊑ async runtime : Tokio (matches cssl-host-mp-transport-real)
+  ⊑ MCP client : reqwest + SSE (server-sent-events) over-localhost:3001
+  ⊑ HTTP : ureq for-Anthropic-API-bridge (matches cssl-host-stripe-integration pattern)
+  ⊑ storage : SQLite (rusqlite) for-local-session-history · ~10MB cap
+  ⊑ key-management : Windows-Credential-Manager (Win) / Keychain (Mac) / libsecret (Linux)
+  ⊑ NO Electron · NO Node-runtime-on-host · NO Python · NO JVM
+
+§ BUILD-OUTPUT
+  ⊑ Mycelium.exe (Win-x64 · ~30-50 MB · WebView2-runtime-already-present-on-Win10+)
+  ⊑ Mycelium.app (Mac-arm64 · ~25 MB future)
+  ⊑ Mycelium-linux-x86_64 (AppImage · ~30 MB future)
+
+§ NEW CRATES (workspace · per Unified-Substrate spec/15)
+  CRATE-MD-1 NEW `cssl-host-mycelium-desktop` ← Tauri-app crate · main-entry · window-management · MCP-bridge · Anthropic-bridge · local-LLM-bridge
+  CRATE-MD-2 NEW `cssl-host-agent-loop` ← agent-loop-state-machine · tool-use · file-edit · git-operations · vercel-deploy · cap-gated
+  CRATE-MD-3 NEW `cssl-host-substrate-knowledge` ← embedded-substrate-knowledge · all-specs/grand-vision/*.csl + memory/*.md baked-at-build-time · query-by-relevance via cssl-hdc
+  CRATE-MD-4 NEW `cssl-host-llm-bridge` ← unified-LLM-interface · Anthropic-API · Ollama-local · substrate-only fallback · streaming via SSE
+
+§ DEPS-FROM-EXISTING-SUBSTRATE
+  ⊑ cssl-host-coder-runtime (W8-F1 ✓ landed) — sandboxed AST-edit-staging · 30-sec-revert · sovereign-cap-required
+  ⊑ cssl-host-attestation (W5a ✓ landed) — directive-axis "ImplementationTransparency"
+  ⊑ cssl-host-handoff-protocol (W6 ✓ landed) — DM/GM/Collab/Coder routing · cap-bit-bleed defence
+  ⊑ cssl-host-kan-substrate-bridge (W6 ✓ landed) — stage-0/stage-1 swap-points
+  ⊑ cssl-host-cocreative (W4 ✓ landed) — bias-vector self-improvement
+  ⊑ cssl-host-config (W5b ✓ landed) — typed JSON config · API-key + provider-config
+  ⊑ cssl-host-frame-recorder (W5b ✓ landed) — session-replay
+  ⊑ cssl-host-rt-trace + decoder (W5a + W6 ✓ landed) — instrumentation
+  ⊑ cssl-host-sigma-chain (W8-C1 ✓ landed) — Σ-Chain attestation of-actions
+  ⊑ cssl-hdc — 10000-D hypervectors for-substrate-knowledge similarity-search
+  ⊑ cssl-host-mp-transport-real (W7 ✓ landed) — HTTP client (Anthropic-API bridge re-uses)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ THREE-MODE LLM-BRIDGE (self-sufficient discipline)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ MODE-A : EXTERNAL-CLAUDE-API (richest · best-quality · costs-Apocky-tokens)
+  ⊑ Apocky pastes-Anthropic-API-key into Settings · stored-OS-keychain · NEVER-disk
+  ⊑ HTTPS POST to api.anthropic.com/v1/messages
+  ⊑ streaming via SSE · token-usage tracked · cost-counter visible
+  ⊑ DEFAULT when-API-key-configured
+
+§ MODE-B : LOCAL-OLLAMA (zero-cost · privacy-max · lower-quality)
+  ⊑ detects-running Ollama-instance @ localhost:11434
+  ⊑ recommends Apocky `ollama pull qwen2.5-coder:32b` OR `ollama pull deepseek-coder:33b` · best-coder-models for-CSSL/Rust
+  ⊑ same OpenAI-compat REST shape · seamless swap from-Mode-A
+  ⊑ DEFAULT when-Ollama-running-and-no-Anthropic-key
+
+§ MODE-C : SUBSTRATE-ONLY (¬ LLM · KAN-stage-1 + templated · always-available · stage-0 fallback)
+  ⊑ uses cssl-host-kan-real classifiers for-intent-routing
+  ⊑ uses cssl-host-gm narrative-templates for-responses
+  ⊑ uses cssl-host-coder-runtime for-actual-edit-execution (sovereign-cap-required)
+  ⊑ ¬ generative-narrative · stage-0-templated only
+  ⊑ FALLBACK · always-available · ¬ external-dep · ¬ local-LLM-required · the-truly-self-sufficient-mode
+
+§ MODE-SWITCHING
+  ⊑ Settings-pane : 3 radio-buttons + status-indicators
+  ⊑ auto-detect : tries A → B → C in-order · reports-which-active
+  ⊑ per-action override : "use stage-0 for-this-message" toggle
+  ⊑ session-persistent · saves to ~/.mycelium/config.json
+
+═══════════════════════════════════════════════════════════════════════════════
+§ SUBSTRATE-KNOWLEDGE EMBEDDING (knows-the-substrate-as-well-as-Claude)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ BUILD-TIME EMBEDDING (in cssl-host-substrate-knowledge crate)
+  ⊑ build.rs reads ALL specs/grand-vision/*.csl (currently 22 files · ~5000 LOC)
+  ⊑ build.rs reads ALL ~/.claude/projects/.../memory/*.md (currently ~25 files · ~10000 LOC)
+  ⊑ build.rs reads CLAUDE.md + PRIME_DIRECTIVE.md + DECISIONS.md + key README files
+  ⊑ build.rs reads DEPRECATED-Infinite-Labyrinth/GDDs/*.md (legacy authoritative-design-source)
+  ⊑ ALL-content embedded as `static SUBSTRATE_KNOWLEDGE: phf::Map<&'static str, &'static str>` (perfect-hash-function · O(1) lookup)
+  ⊑ accompanying : `static KNOWLEDGE_HDC_INDEX: [(u8; 1250), &'static str]` — pre-computed cssl-hdc 10000-D hypervector for-each-doc · query-time similarity ranks by-cosine
+
+§ QUERY-TIME (in cssl-host-agent-loop crate)
+  ⊑ user-query → cssl-hdc-encode → top-K (default 5) similar-docs → inject-into-LLM-context
+  ⊑ context-budget : ≤ 50K tokens of-substrate-knowledge per-query · token-aware truncation
+  ⊑ "always-loaded" canon : MEMORY.md + CLAUDE.md + PRIME_DIRECTIVE.md (~5K tokens) · no-omit
+  ⊑ "loaded-on-relevance" : the rest (specs · memory · GDDs)
+
+§ FRESHNESS
+  ⊑ rebuild Mycelium.exe whenever-specs-change-significantly · CI auto-builds nightly
+  ⊑ live-update via cssl-host-hotfix-stream (W8-B3 ✓ landed) for-spec-deltas without-full-rebuild
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AGENT-LOOP (the-thing-that-replaces-Claude-loop)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TURN-STRUCTURE (in cssl-host-agent-loop)
+  1 user-input arrives @ chat-window
+  2 cssl-host-handoff-protocol classifies : DM | GM | Collab | Coder · cap-check
+  3 cssl-host-substrate-knowledge fetches top-K relevant docs
+  4 cssl-host-llm-bridge (Mode A/B/C) generates response · with tool-use definitions
+  5 if tool-use : execute via tool-handler (file-edit · git · vercel · MCP-call · etc.) · audit-emit
+  6 stream response-tokens to-chat-window via Tauri IPC · React-renders
+  7 attestation-event written via cssl-host-sigma-chain TIER-1 (LOCAL · always)
+  8 cocreative-bias updated based-on Apocky's-feedback (👍 👎 score) · per spec/13 monetization-axiom
+
+§ TOOLS-AVAILABLE (gradual-expansion · all cap-gated)
+  T-1 file_read (any-path Apocky-allows · sandbox-list configurable)
+  T-2 file_write (sandbox-list-only · cap-gated · auto-revert-30-sec)
+  T-3 file_edit (sed-style replacement · diff-shown · approval-required)
+  T-4 bash (shell-cmds · Apocky-explicit-approval per-cmd in-stage-0 · per-pattern in-stage-1)
+  T-5 git_commit + git_push (auto-staged · message-suggested · approval-required)
+  T-6 mcp_call (any of-the-118 LoA-MCP-tools when LoA.exe running · localhost:3001)
+  T-7 vercel_deploy (cssl-edge or apocky-com · approval-required)
+  T-8 ollama_chat (Mode-B · for-LLM-roundtrip)
+  T-9 anthropic_messages (Mode-A · for-LLM-roundtrip)
+  T-10 web_search (placeholder · stage-1 · via DuckDuckGo-or-similar HTTP API · per spec/17 cap-NET_HTTP_GET)
+  T-11 spec_query (cssl-host-substrate-knowledge query · always-LOCAL · ¬ external)
+
+§ CAP-DISCIPLINE (per spec/10)
+  ⊑ Apocky-master-mode = sovereign-cap-on @ all-tools-enabled
+  ⊑ default-mode = read-only-tools + bash-with-approval + file-edit-with-approval
+  ⊑ paranoid-mode = read-only-tools-only · ¬ writes · ¬ git · ¬ deploy
+  ⊑ all-tool-invocations audit-emit · revert-window 30-sec for-mutations
+  ⊑ ¬ Coder-can-edit-substrate-* crates · ¬ Coder-can-edit-specs/grand-vision/00..15+ · ¬ Coder-can-modify-TIER-C-secrets
+
+§ AGENT-LOOP-DURATION
+  ⊑ single-turn : ≤ 60 sec (warning if-LLM-stalls)
+  ⊑ multi-turn-task : N-turns until-Apocky-says-stop · per-turn approval-or-auto
+  ⊑ background-mode : cron-schedule like-Claude-Code · self-paced
+
+═══════════════════════════════════════════════════════════════════════════════
+§ UI (easy · intuitive · familiar-to-Apocky)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ MAIN-WINDOW (1280×800 default · resizable · borderless-by-default)
+  ⊑ left : file-tree (jstree-style · git-status-decorated · Apocky-source-repo focused)
+  ⊑ center : chat-pane (Markdown-rendered · code-blocks-syntax-highlighted · streaming-response)
+  ⊑ right : context-pane · top-K substrate-docs loaded · token-budget · cost-counter
+  ⊑ bottom : status-bar · MCP-connection-status · Mode-A/B/C indicator · current-model
+
+§ CHAT-PANE
+  ⊑ message-history scroll · per-turn-collapse-and-expand
+  ⊑ user-input @ bottom · multi-line-Enter · Cmd+Enter to-submit
+  ⊑ slash-commands : /spec-query · /git · /mcp · /mode · /sovereign-cap-grant
+  ⊑ tool-use-display : collapsed-by-default · click-to-expand-tool-call-details
+  ⊑ revert-button on-each-mutation · 30-sec-window highlighted
+
+§ SETTINGS-PANE (gear-icon)
+  ⊑ Mode A/B/C selection
+  ⊑ Anthropic-API-key (paste · stored-OS-keychain · validated)
+  ⊑ Ollama-endpoint (default localhost:11434)
+  ⊑ Sandbox-paths · which-dirs Apocky-allows-the-agent to-write-to
+  ⊑ Cap-grants table · per-tool · per-state (always-allow · ask-each-time · paranoid-deny)
+  ⊑ Substrate-knowledge index · view-loaded-docs · search · refresh
+
+§ MENU-BAR
+  File : New-session · Open-repo · Quit
+  Edit : Copy · Paste · Find-in-chat
+  View : Toggle-side-panes · Theme (dark-default)
+  Agent : Start · Stop · Pause · Replay-last-action
+  Help : About · Logs · Privacy-policy · Sovereign-cap-revoke
+
+§ THEME (CSL3-aesthetic-anchor per spec/22)
+  ⊑ dark-default · radial-gradient #0a0a0f → #15151f
+  ⊑ accent-gradient #c084fc → #7dd3fc (matches apocky.com)
+  ⊑ monospace-fonts (ui-monospace + JetBrains-Mono fallback)
+  ⊑ CSL3-glyph-icons in-toolbar · § ∀ ∃ → ¬ W! ✓ ◐ ○ ✗
+
+═══════════════════════════════════════════════════════════════════════════════
+§ SECURITY · SOVEREIGNTY · ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+§ PER-ACTION-AUDIT
+  ⊑ every tool-invocation emits cssl-host-attestation event @ directive-axis "ImplementationTransparency"
+  ⊑ every LLM-bridge-call emits attestation @ "Transparency"
+  ⊑ every file-mutation emits attestation @ "Sovereignty"
+  ⊑ all-events written to-LOCAL Σ-Chain TIER-1 + cssl-host-rt-trace ring · viewable in-Settings → Logs
+
+§ SOVEREIGN-CAP-REVOKE
+  ⊑ Ctrl+Shift+Alt+S held-2-seconds @ any-time → revokes-all-active-caps · halts-all-pending-tool-calls · saves-state · returns-to-paranoid-mode
+  ⊑ 30-sec-revert-window on-mutations · "undo last-action" button at-all-times
+  ⊑ git-staging area for-mutations · Apocky-can-discard before-commit
+
+§ NO-EXFILTRATION
+  ⊑ Mycelium NEVER-uploads-Apocky's-code-or-files to-third-party-services without-explicit-approval
+  ⊑ LLM-bridge-calls send ONLY user-message + selected-context · NEVER-the-full-codebase
+  ⊑ "send selected files for-LLM-context" requires-explicit-tick-of-each-file
+  ⊑ per spec/17 TIER-D · player-keys + Σ-mask + Sensitive<*> NEVER-egress
+
+§ STAGE-0-FALLBACK (true-self-sufficiency)
+  ⊑ ¬ Anthropic-API + ¬ Ollama → Mode-C-templated-substrate-only
+  ⊑ "I cannot reason without an LLM but I can run-tools you-explicitly-invoke" message
+  ⊑ tool-use still-works · just-no-natural-language-orchestration
+  ⊑ Apocky can-script Mycelium-from-the-substrate-side via-MCP-tools
+
+═══════════════════════════════════════════════════════════════════════════════
+§ BLEEDING-EDGE FEATURES (proprietary · novel)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ N-1 SUBSTRATE-NATIVE REASONING
+  ⊑ Mycelium can-reason in-CSL3-glyphs · prompts-to-LLM include "respond in CSL3-glyphs when reasoning"
+  ⊑ produces-CSSL-source as-primary-output · NOT-Rust-as-fallback
+  ⊑ stage-1 KAN-substrate · trained-on Apocky's-chat-history (with-Apocky-consent)
+
+§ N-2 SELF-IMPROVEMENT VIA COCREATIVE
+  ⊑ Apocky 👍/👎 each response · cssl-host-cocreative bias-vector updates · per spec/13
+  ⊑ over-time Mycelium drifts-toward Apocky's-preferences · without-LLM-fine-tune-cost
+  ⊑ KAN-substrate stage-1 retrained-nightly via-Apocky-feedback (Apocky-explicit-greenlight)
+
+§ N-3 LIVE-HOTFIX SELF-UPDATE
+  ⊑ via cssl-host-hotfix-stream (W8-B3 ✓ landed) — Mycelium auto-pulls Apocky-master-key-signed updates
+  ⊑ stages-to-staging-folder · 30-sec-revert · auto-apply-on-Apocky-confirm
+  ⊑ no-manual-redownload
+
+§ N-4 Σ-CHAIN ATTESTATION OF DECISIONS
+  ⊑ per spec/14 · every Mycelium-decision Ed25519-signed + BLAKE3-merkle-rooted · TIER-1 LOCAL by-default
+  ⊑ if-Apocky-opts-in TIER-2 sharing → his-decisions become public-mycelial-spores · for-cohort-aesthetic-drift
+  ⊑ sovereignty-preserved · opt-out-anytime
+
+§ N-5 CROSS-PROJECT-SHARED-STATE
+  ⊑ via spec/22 + spec/16 · Mycelium-Desktop knows-Apocky's-projects-in-org-wide
+  ⊑ can-deploy-to apocky.com · cssl.dev · halo-divination.com · etc · all-from-one-window
+  ⊑ Vercel-CLI-bundled · GitHub-CLI-bundled · Stripe-CLI-bundled (when-needed)
+
+§ N-6 SUBSTRATE-AWARE TOOL-CALLS
+  ⊑ unlike-Claude-Code which-uses-generic-Read/Write/Edit · Mycelium tools are-substrate-typed
+  ⊑ `cssl_compile <path>` · `csslc multi-module · ...`
+  ⊑ `mcp_invoke <tool> <args>` · directly-into-LoA-MCP-server
+  ⊑ `omega_field_query <region>` · queries-substrate-state when-LoA running
+  ⊑ `coherence_score <item>` · per-Coherence-Engine spec/13
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ROADMAP
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wave-10 (NEXT · post-W9-retro-greenlight)
+  W10-A1 NEW Tauri-app scaffold · cssl-host-mycelium-desktop crate · ≥ 25 tests
+  W10-A2 NEW cssl-host-substrate-knowledge crate · build.rs embedding · ≥ 20 tests
+  W10-A3 NEW cssl-host-llm-bridge crate · 3-mode dispatch · ≥ 24 tests
+  W10-A4 NEW cssl-host-agent-loop crate · turn-structure + tool-use + cap-routing · ≥ 30 tests
+  W10-B1 frontend React-app : chat + file-tree + context-pane + Settings · ≥ 15 tests
+  W10-B2 Tauri IPC + stream-bridge · ≥ 12 tests
+  W10-C1 build-pipeline GitHub-Actions · cargo-tauri-build · code-signed cert (Apocky-action)
+  W10-C2 dist-build script · Mycelium-v0.1.0-alpha-windows-x64.exe-installer · NSIS · ≤ 50 MB
+  W10-D1 Anthropic-API integration via cssl-host-llm-bridge Mode-A
+  W10-D2 Ollama auto-detect Mode-B
+  W10-D3 substrate-only Mode-C templated-fallback
+
+§ wave-11 polish
+  ⊑ Mac-arm64 + Linux-x86_64 builds (Tauri-cross-platform)
+  ⊑ trained KAN-substrate stage-1 from-Apocky-chat-history
+  ⊑ live-hotfix self-update
+  ⊑ Σ-Chain TIER-2 opt-in cross-user mycelium-of-Mycelium-instances
+
+§ wave-12+ paradigm-7 maturity
+  ⊑ truly-substrate-native reasoning · ¬ Anthropic-API-required for-quality-output
+  ⊑ federated-learning across-Apocky-multi-machine setups
+  ⊑ self-bootstrapping : Mycelium can-build itself from-substrate-source
+
+═══════════════════════════════════════════════════════════════════════════════
+§ DISTRIBUTION
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TIER-B PROPRIETARY-BINARY (per spec/17 · ¬ open-source · proprietary-axiom)
+  ⊑ Mycelium.exe + installer · Win-x64-only at-launch
+  ⊑ delivered-via apocky.com/mycelium download-page (NEW route W10-C2)
+  ⊑ alpha-tester EULA · same-template as-LoA EULA
+  ⊑ free-during-alpha · paid-tier at-v1.0 (subscription · $9.99/mo · sovereignty-respecting · cancel-anytime)
+  ⊑ price-tier subscription (Mycelium-Plus $9.99/mo) gates : larger-context-budget · cloud-sync of-config + sessions across-Apocky-machines
+  ⊑ free-tier always-available · stage-0-substrate-only-mode + Mode-A-with-own-Anthropic-key
+
+§ apocky.com integration
+  ⊑ NEW page apocky.com/mycelium · landing + download + getting-started + docs
+  ⊑ landing-page hub : Mycelium card joins LoA · CSSL · DGI grid · status="alpha"
+  ⊑ downloads.apocky.com/mycelium/Mycelium-v0.1.0-alpha-windows-x64.exe + .sha256
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-Mycelium-design · sovereignty-preserved · ¬ data-exfiltration · ¬ subscription-prison · self-sufficient-stage-0-fallback · cap-bound + audit-emit · Apocky-master-key-revoke-anytime
+
+§ creator @ Apocky · "an autonomous-local-agent-for-me-to-switch-over-to · code-in-cssl-and-csl · knows-the-substrate-as-well-as-you-do · easy-intuitive-interface-on-my-desktop · exe · bleeding-edge-novel-proprietary" · 2026-05-01 · ✓ designed
+§ Mycelium = the-loop-that-grows-with-the-substrate · the-agent-that-learns-from-Apocky-without-coercion · t∞
