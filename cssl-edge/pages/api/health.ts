@@ -86,25 +86,25 @@ export function testHealthCarriesW9Keys(): void {
 }
 
 // 2. payments_ready is true iff all three integration env-vars are set.
+//
+// NOTE : we MUST set env-vars via dynamic-key indirection here. Next.js +
+// Webpack inline `process.env.NEXT_PUBLIC_*` literals at build-time, so a
+// direct assignment like `process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'x'`
+// becomes `'<inlined-string>' = 'x'` — a syntax error in the production bundle.
+// Indirection through a variable defeats the inline-substitution.
 export function testHealthPaymentsReadyComposite(): void {
-  const prev = {
-    sk: process.env['STRIPE_SECRET_KEY'],
-    ws: process.env['STRIPE_WEBHOOK_SIGNING_SECRET'],
-    su: process.env['NEXT_PUBLIC_SUPABASE_URL'],
-    sa: process.env['SUPABASE_ANON_KEY'],
-  };
-  process.env['STRIPE_SECRET_KEY'] = 'sk_test_x';
-  process.env['STRIPE_WEBHOOK_SIGNING_SECRET'] = 'whsec_x';
-  process.env['NEXT_PUBLIC_SUPABASE_URL'] = 'https://test.supabase.co';
-  process.env['SUPABASE_ANON_KEY'] = 'anon_test';
+  const KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SIGNING_SECRET', 'NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_ANON_KEY'] as const;
+  const VALS = ['sk_test_x', 'whsec_x', 'https://test.supabase.co', 'anon_test'];
+  const prev: Record<string, string | undefined> = {};
+  for (const k of KEYS) prev[k] = process.env[k];
+  for (let i = 0; i < KEYS.length; i++) process.env[KEYS[i] as string] = VALS[i] as string;
   const { req, res, out } = mockReqRes();
   handler(req, res);
   const body = out.body as HealthResponse;
-  // restore
-  if (prev.sk === undefined) delete process.env['STRIPE_SECRET_KEY']; else process.env['STRIPE_SECRET_KEY'] = prev.sk;
-  if (prev.ws === undefined) delete process.env['STRIPE_WEBHOOK_SIGNING_SECRET']; else process.env['STRIPE_WEBHOOK_SIGNING_SECRET'] = prev.ws;
-  if (prev.su === undefined) delete process.env['NEXT_PUBLIC_SUPABASE_URL']; else process.env['NEXT_PUBLIC_SUPABASE_URL'] = prev.su;
-  if (prev.sa === undefined) delete process.env['SUPABASE_ANON_KEY']; else process.env['SUPABASE_ANON_KEY'] = prev.sa;
+  for (const k of KEYS) {
+    if (prev[k] === undefined) delete process.env[k];
+    else process.env[k] = prev[k] as string;
+  }
   assert(body.payments_ready === true, 'all-env-set → payments_ready true');
 }
 
