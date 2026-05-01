@@ -1,0 +1,23 @@
+# cssl-host-handoff-protocol
+# ══════════════════════════════════════════════════════════════════
+# § T11-W6-HANDOFF : DM ↔ GM ↔ Collaborator ↔ Coder narrow-orchestrator
+# handoff state-machine + cap-bit-bleed prohibition enforcement.
+# Pure state-machine + audit-event emission — NO actual AI calls.
+# Reference: specs/grand-vision/10_INTELLIGENCE.csl (LoA-v13 spec)
+# ══════════════════════════════════════════════════════════════════
+[package]
+name        = "cssl-host-handoff-protocol"
+version     = "0.1.0"
+edition     = "2021"
+rust-version = "1.85"
+license     = { workspace = true }
+authors     = { workspace = true }
+description = "DM/GM/Collaborator/Coder handoff state-machine + cap-bit-bleed enforcement for LoA narrow-orchestrators."
+repository  = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
