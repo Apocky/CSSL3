@@ -69,6 +69,7 @@ use crate::mcp_server::{
 use crate::movement::Camera as PlayerCamera;
 use crate::physics::RoomCollider;
 use crate::render::Renderer;
+use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuAction, MenuState};
 
 /// Initial windowed-mode dimensions (only used when `CSSL_LOA_WINDOW=windowed`).
@@ -793,25 +794,41 @@ impl App {
         let hud = self.build_hud_context();
 
         // § 9. Render the frame.
+        let frame_token = telem::global().frame_begin();
         if let (Some(gpu), Some(renderer), Some(window)) = (
             self.gpu.as_ref(),
             self.renderer.as_mut(),
             self.window.as_ref(),
         ) {
             match renderer.render_frame(gpu, &self.render_camera, window, &hud, &self.menu) {
-                Ok(()) | Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {}
+                Ok(metrics) => {
+                    telem::global()
+                        .frame_end(frame_token, metrics.draw_calls, metrics.vertices);
+                }
+                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                    // Surface stale ; record the frame as "happened" (zero
+                    // metrics) so the histogram still reflects wall-clock
+                    // pacing rather than going silent during a resize.
+                    telem::global().frame_end(frame_token, 0, 0);
+                }
                 Err(wgpu::SurfaceError::OutOfMemory) => {
                     log_event(
                         "ERROR",
                         "loa-host/render",
                         "surface OOM · exiting cleanly",
                     );
+                    telem::global().frame_end(frame_token, 0, 0);
                     event_loop.exit();
                 }
                 Err(e) => {
                     log_event("ERROR", "loa-host/render", &format!("frame error : {e:?}"));
+                    telem::global().frame_end(frame_token, 0, 0);
                 }
             }
+        } else {
+            // No renderer ; still close out the frame so the sink's frame
+            // counter advances at wall-clock pace (useful for headless tests).
+            telem::global().frame_end(frame_token, 0, 0);
         }
 
         // § 10. Increment + heartbeat-log every 600 frames (~10s @ 60Hz).

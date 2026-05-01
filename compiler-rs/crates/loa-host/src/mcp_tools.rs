@@ -271,6 +271,44 @@ pub fn tool_registry() -> ToolRegistry {
         render_spawn_stress
     );
 
+    // ─ Telemetry (T11-LOA-TELEM) ─
+    reg!(
+        "telemetry.snapshot",
+        "Returns frame_count + fps + p50/p95/p99 + counters + uptime.",
+        false,
+        telemetry_snapshot
+    );
+    reg!(
+        "telemetry.histogram",
+        "Returns 10-bucket frame-time histogram (counts of last 1024 frames).",
+        false,
+        telemetry_histogram
+    );
+    reg!(
+        "telemetry.gpu_info",
+        "Returns captured wgpu adapter info (name + backend + features + limits).",
+        false,
+        telemetry_gpu_info
+    );
+    reg!(
+        "telemetry.tail_events",
+        "Returns last N JSONL events from in-memory ring (params: limit).",
+        false,
+        telemetry_tail_events
+    );
+    reg!(
+        "telemetry.flush",
+        "Force-flush CSV + JSONL files. Returns success.",
+        false,
+        telemetry_flush
+    );
+    reg!(
+        "telemetry.set_log_level",
+        "Set log threshold (params: level 0=DEBUG · 1=INFO · 2=WARN · 3=ERROR).",
+        true,
+        telemetry_set_log_level
+    );
+
     r
 }
 
@@ -824,6 +862,89 @@ fn render_spawn_stress(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § handlers — telemetry (T11-LOA-TELEM)
+// ───────────────────────────────────────────────────────────────────────
+
+fn telemetry_snapshot(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::telemetry::global();
+    let raw = s.snapshot_json();
+    // The sink emits a fully-formed JSON object string ; re-parse so the
+    // JSON-RPC envelope nests it as a structured `result` rather than a
+    // string blob.
+    serde_json::from_str(&raw).unwrap_or_else(|_| json!({"error": "snapshot parse failed"}))
+}
+
+fn telemetry_histogram(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::telemetry::global();
+    let counts = s.frame_time_histogram();
+    let bounds: Vec<f32> = crate::telemetry::BUCKET_BOUNDS_MS.to_vec();
+    let mut buckets = Vec::with_capacity(crate::telemetry::BUCKET_COUNT);
+    for (i, c) in counts.iter().enumerate() {
+        let lo = if i == 0 { 0.0 } else { bounds[i - 1] };
+        let hi = if i < bounds.len() { bounds[i] } else { f32::INFINITY };
+        let hi_str = if hi.is_finite() {
+            json!(hi)
+        } else {
+            json!("inf")
+        };
+        buckets.push(json!({
+            "lo_ms": lo,
+            "hi_ms": hi_str,
+            "count": *c,
+        }));
+    }
+    json!({
+        "buckets": buckets,
+        "bucket_count": crate::telemetry::BUCKET_COUNT,
+        "ring_capacity": crate::telemetry::FRAME_RING_CAP,
+    })
+}
+
+fn telemetry_gpu_info(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::telemetry::global();
+    let raw = s.gpu_info_json();
+    if raw == "null" {
+        json!({"info": null, "captured": false})
+    } else {
+        let parsed: Value =
+            serde_json::from_str(&raw).unwrap_or_else(|_| json!({"error": "gpu_info parse failed"}));
+        json!({"info": parsed, "captured": true})
+    }
+}
+
+fn telemetry_tail_events(_state: &mut EngineState, params: Value) -> Value {
+    let limit = p_u32(&params, "limit", 32) as usize;
+    let s = crate::telemetry::global();
+    let raw = s.tail_events_json(limit);
+    let arr: Value =
+        serde_json::from_str(&raw).unwrap_or_else(|_| json!([{"error": "tail_events parse failed"}]));
+    json!({
+        "events": arr,
+        "limit": limit,
+    })
+}
+
+fn telemetry_flush(_state: &mut EngineState, _params: Value) -> Value {
+    let s = crate::telemetry::global();
+    match s.flush() {
+        Ok(_) => json!({"ok": true}),
+        Err(e) => json!({"ok": false, "error": e.to_string()}),
+    }
+}
+
+fn telemetry_set_log_level(state: &mut EngineState, params: Value) -> Value {
+    let level = p_u32(&params, "level", 1).min(3);
+    let s = crate::telemetry::global();
+    s.set_log_level(level);
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("telemetry.set_log_level · {level}"),
+    );
+    json!({"level": level, "ok": true})
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Morton + FFI helpers
 // ───────────────────────────────────────────────────────────────────────
 
@@ -881,11 +1002,11 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_24_tools() {
-        // 17 baseline (T11-LOA-HOST-3) + 7 new render-control tools
-        // (T11-LOA-RICH-RENDER) = 24 total.
+    fn tools_list_returns_30_tools() {
+        // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
+        // + 6 telemetry (T11-LOA-TELEM) = 30 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 24, "must have exactly 24 tools");
+        assert_eq!(reg.len(), 30, "must have exactly 30 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -913,6 +1034,13 @@ mod tests {
             "render.set_floor_pattern",
             "render.set_material",
             "render.spawn_stress",
+            // T11-LOA-TELEM additions :
+            "telemetry.snapshot",
+            "telemetry.histogram",
+            "telemetry.gpu_info",
+            "telemetry.tail_events",
+            "telemetry.flush",
+            "telemetry.set_log_level",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -933,6 +1061,11 @@ mod tests {
             "render.list_patterns",
             "render.list_materials",
             "render.snapshot",
+            "telemetry.snapshot",
+            "telemetry.histogram",
+            "telemetry.gpu_info",
+            "telemetry.tail_events",
+            "telemetry.flush",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -956,6 +1089,7 @@ mod tests {
             "render.set_floor_pattern",
             "render.set_material",
             "render.spawn_stress",
+            "telemetry.set_log_level",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
@@ -1129,10 +1263,39 @@ mod tests {
     fn tools_list_handler_count_matches_registry() {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
-        // 17 baseline + 7 render-control = 24 (T11-LOA-RICH-RENDER).
-        assert_eq!(v["count"], 24);
+        // 17 baseline + 7 render-control + 6 telemetry = 30 (T11-LOA-TELEM).
+        assert_eq!(v["count"], 30);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 24);
+        assert_eq!(arr.len(), 30);
+    }
+
+    // § T11-LOA-TELEM telemetry handler shape tests
+    #[test]
+    fn mcp_telemetry_snapshot_shape() {
+        let mut s = EngineState::default();
+        let v = telemetry_snapshot(&mut s, json!({}));
+        // Required fields present.
+        assert!(v.get("frame_count").is_some());
+        assert!(v.get("fps").is_some());
+        assert!(v.get("p50_ms").is_some());
+        assert!(v.get("histogram").is_some());
+    }
+
+    #[test]
+    fn mcp_telemetry_histogram_returns_10_buckets() {
+        let mut s = EngineState::default();
+        let v = telemetry_histogram(&mut s, json!({}));
+        let buckets = v["buckets"].as_array().unwrap();
+        assert_eq!(buckets.len(), 10);
+        assert_eq!(v["bucket_count"], 10);
+    }
+
+    #[test]
+    fn mcp_telemetry_set_log_level_clamps_to_3() {
+        let mut s = EngineState::default();
+        let v = telemetry_set_log_level(&mut s, json!({"level": 99, "sovereign_cap": SOVEREIGN_CAP}));
+        assert_eq!(v["level"], 3);
+        assert_eq!(v["ok"], true);
     }
 
     #[test]

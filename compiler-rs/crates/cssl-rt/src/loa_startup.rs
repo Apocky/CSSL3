@@ -28,10 +28,25 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static LOG_FILE: Mutex<Option<File>> = Mutex::new(None);
+
+/// § T11-LOA-TELEM : per-N-call rotation check. We sample the log-file size
+/// every N writes rather than every write to keep `log_event` cheap. N=1000
+/// at ~10 events/frame ≈ once-every-100-frames ≈ ~1.6Hz at 60fps.
+const ROTATION_CHECK_EVERY: u64 = 1000;
+
+/// Rotation threshold : 10MB. Beyond this, rotate into a timestamped file.
+const ROTATION_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Maximum rotated files to keep. Older ones are deleted on rotation.
+const MAX_ROTATED_FILES: usize = 5;
+
+/// Counter for rotation-check throttling.
+static LOG_EVENT_CALL_COUNT: AtomicU64 = AtomicU64::new(0);
 
 fn iso_utc_now() -> String {
     let secs = SystemTime::now()
@@ -78,6 +93,11 @@ fn open_log_file() -> std::io::Result<File> {
 
 /// Public : log a message to the runtime log file. Best-effort · silent
 /// on failure (no panic). Used by other cssl-rt modules + any host code.
+///
+/// § T11-LOA-TELEM : every `ROTATION_CHECK_EVERY` calls, the function checks
+/// the current log-file size. If it exceeds `ROTATION_BYTES`, the file is
+/// rotated into `loa_runtime_<iso-ts>.log` and a fresh handle is opened.
+/// Old rotated files beyond `MAX_ROTATED_FILES` are deleted oldest-first.
 pub fn log_event(level: &str, source: &str, msg: &str) {
     let line = format!("[{}] [{}] [{}] {}\n", iso_utc_now(), level, source, msg);
     if let Ok(mut guard) = LOG_FILE.lock() {
@@ -85,6 +105,94 @@ pub fn log_event(level: &str, source: &str, msg: &str) {
             let _ = f.write_all(line.as_bytes());
             let _ = f.flush();
         }
+    }
+    // Rotation throttle : check every Nth call.
+    let n = LOG_EVENT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    if n % ROTATION_CHECK_EVERY == 0 && n > 0 {
+        check_rotation();
+    }
+}
+
+/// Inspect the current log-file size and rotate if it exceeds `ROTATION_BYTES`.
+/// Best-effort ; silently no-ops on any error so logging itself never panics.
+fn check_rotation() {
+    let dir = log_dir();
+    let primary = dir.join("loa_runtime.log");
+    let size = match fs::metadata(&primary) {
+        Ok(m) => m.len(),
+        Err(_) => return,
+    };
+    if size < ROTATION_BYTES {
+        return;
+    }
+    // § Rotation sequence :
+    //   1. Acquire LOG_FILE lock and drop the current file handle.
+    //   2. Rename loa_runtime.log → loa_runtime_<iso-ts>.log (Windows
+    //      requires the handle be closed first).
+    //   3. Open a fresh loa_runtime.log and write a rotation banner.
+    //   4. Prune old rotations beyond MAX_ROTATED_FILES.
+    let ts = iso_utc_now().replace(':', "-"); // colons illegal in Windows filenames
+    let rotated = dir.join(format!("loa_runtime_{ts}.log"));
+    {
+        let Ok(mut guard) = LOG_FILE.lock() else {
+            return;
+        };
+        // Drop the file handle so Windows lets us rename.
+        *guard = None;
+    }
+    let _ = fs::rename(&primary, &rotated);
+    // Reopen primary log file.
+    if let Ok(f) = OpenOptions::new().create(true).append(true).open(&primary) {
+        if let Ok(mut guard) = LOG_FILE.lock() {
+            *guard = Some(f);
+        }
+    }
+    // Write a rotation banner via direct call (avoid the throttle counter
+    // recursion since this is called inside check_rotation).
+    if let Ok(mut guard) = LOG_FILE.lock() {
+        if let Some(f) = guard.as_mut() {
+            let banner = format!(
+                "[{}] [INFO] [loa_startup/rotate] § log rotated · prior file → {} · size={size}\n",
+                iso_utc_now(),
+                rotated.display(),
+            );
+            let _ = f.write_all(banner.as_bytes());
+            let _ = f.flush();
+        }
+    }
+    // Prune old rotated files (keep last MAX_ROTATED_FILES).
+    prune_rotations(&dir);
+}
+
+/// Delete old rotated log files (`loa_runtime_*.log`) keeping the most-recent
+/// `MAX_ROTATED_FILES` by mtime. Silent on any I/O error.
+fn prune_rotations(dir: &std::path::Path) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    let mut rotations: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_str()?.to_string();
+            if name.starts_with("loa_runtime_") && name.ends_with(".log") {
+                let mtime = e
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                Some((mtime, p))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if rotations.len() <= MAX_ROTATED_FILES {
+        return;
+    }
+    rotations.sort_by_key(|(t, _)| *t);
+    // Oldest-first ; delete the leading `len - MAX_ROTATED_FILES` entries.
+    let drop_count = rotations.len() - MAX_ROTATED_FILES;
+    for (_, path) in rotations.into_iter().take(drop_count) {
+        let _ = fs::remove_file(path);
     }
 }
 
@@ -236,5 +344,50 @@ mod tests {
             *guard = None;
         }
         log_event("DEBUG", "test", "no-op-message");
+    }
+
+    #[test]
+    fn rotation_thresholds_well_formed() {
+        // 10MB rotation threshold ; sanity-check the consts are non-zero
+        // and the order makes sense.
+        assert!(ROTATION_BYTES > 0);
+        assert_eq!(ROTATION_BYTES, 10 * 1024 * 1024);
+        assert!(ROTATION_CHECK_EVERY >= 100);
+        assert!(MAX_ROTATED_FILES >= 1);
+    }
+
+    #[test]
+    fn prune_rotations_keeps_most_recent_n() {
+        let dir = std::env::temp_dir().join(format!("loa-prune-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        // Synthesize 7 rotated files with ascending mtimes (via small sleeps).
+        for i in 0..7 {
+            let p = dir.join(format!("loa_runtime_2026-04-30T19-25-0{i}Z.log"));
+            let _ = std::fs::File::create(&p);
+            // Stagger mtimes a hair so sort-by-mtime is deterministic.
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        prune_rotations(&dir);
+        // After prune : at most MAX_ROTATED_FILES (5) remain.
+        let remaining = fs::read_dir(&dir).unwrap().count();
+        assert!(remaining <= MAX_ROTATED_FILES, "remaining={remaining}");
+        // Cleanup.
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_rotation_no_op_when_file_missing() {
+        // Set CSSL_LOG_DIR to a fresh dir with NO loa_runtime.log ; check
+        // shouldn't panic + shouldn't create any files.
+        let dir = std::env::temp_dir().join(format!("loa-rotchk-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        std::env::set_var("CSSL_LOG_DIR", &dir);
+        check_rotation();
+        // No files should exist (we didn't write anything).
+        let count = fs::read_dir(&dir).unwrap().count();
+        assert_eq!(count, 0);
+        // Cleanup.
+        std::env::remove_var("CSSL_LOG_DIR");
+        let _ = fs::remove_dir_all(&dir);
     }
 }
