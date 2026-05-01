@@ -1,0 +1,292 @@
+# GDD : CRAFT · DECONSTRUCTION · ALCHEMY  ⟦ LoA-content-side ⟧
+# ══════════════════════════════════════════════════════════════════
+# sibling-of GDDs/LOA_PILLARS.md · CSL3-glyph-native · ¬ prose
+# upstream  : specs/31_LOA_DESIGN.csl § Items + § Player-Model
+# downstream: POD-2-B3 ⇒ cssl-host-craft-graph crate (impl-target)
+# PRIME-DIRECTIVE : ¬ pay-skip · ¬ FOMO · ¬ loot-box · audit ∀ craft
+# ──────────────────────────────────────────────────────────────────
+
+§ AXIOMS  ‼ inherit-PRIME + §§ 31_LOA_DESIGN
+  t∞: recipe-graph = DAG ¬ tree (nodes=recipes · edges-in=ingredients · edges-out=outputs)
+  t∞: deconstruct = inverse-craft · returns frac × mats based-on (skill × tool-q)
+  t∞: alchemy ≡ additive-compose ⊕ transmute ≡ multiplicative-substitute
+  t∞: skill-scaling = quality-tier-shift-up ¬ damage-multiplier
+  t∞: ¬ pay-skip-craft · ¬ pay-skip-mat-collect · ¬ paywall-recipe-unlock
+  t∞: ∀ craft ⇒ Audit<>-emit (anti-cheat anchor + lineage-trace)
+  t∞: deconstruct + transmute + craft = closed-loop · mat-conservation ≥ 30%
+
+# ──────────────────────────────────────────────────────────────────
+
+§ MATERIAL-POOL  (33 base mats · 6 categories · ≥ 32 ✓)
+  METALS  (6)  : M01 Iron[T1·forge] · M02 Silver[T2·anti-undead] · M03 Mithril[T3·light]
+                 · M04 Adamant[T4·hard] · M05 Voidsteel[T5·phase] · M06 Soulalloy[T6·soul]
+  WOODS   (5)  : W01 Oak[T1] · W02 Yew[T2·flex] · W03 Ironwood[T3·flame-res]
+                 · W04 Soulwood[T4·soul-grow] · W05 Ghostwood[T5·phase-grain]
+  CLOTHS  (5)  : C01 Linen[T1] · C02 Silk[T2] · C03 Spidersilk[T3·tensile]
+                 · C04 Phaseweave[T4·incorporeal] · C05 Voidweave[T5·void]
+  LEATHERS(4)  : L01 Hide[T1] · L02 Drakeskin[T3·fire-res] · L03 Wyvernhide[T4·poison-res]
+                 · L04 Voidleather[T5·phase-tan]
+  GEMS    (7)  : G01 Quartz[T1·cat-base] · G02 Sapphire[T2·ice] · G03 Ruby[T2·fire]
+                 · G04 Emerald[T3·life] · G05 Voidcrystal[T4·phase] · G06 Soulgem[T5·soul-store]
+                 · G07 Catalystgem[T6·transmute-amp]
+  CATALYSTS(6) : K01 Saltpeter[T1] · K02 Alkahest[T2·universal-solvent] · K03 Mithrilshade[T3·metal-bind]
+                 · K04 Voidessence[T4·1.5×] · K05 Soulflux[T5·2.0×] · K06 Phaseether[T6·stabilize]
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RECIPE-GRAPH  (40 nodes · DAG · skill-gated · tier-progression)
+
+  § BASES  (4 root · skill≥0)
+    R01 weapon-base       Iron×2 + Oak×1                      → Weapon[T1]
+    R02 armor-base        Iron×3 + Hide×2                     → Armor[T1]
+    R03 jewelry-base      Silver×1 + Quartz×1                 → Jewelry[T1]
+    R04 consumable-base   Linen×1 + Saltpeter×1               → Vial[T1]
+
+  § WEAPONS  (10)
+    R05 sword-T1          Weapon[T1] + Iron×1                 → Sword[T1]
+    R06 sword-T2          Sword[T1] + Silver×2 + Yew×1        → Sword[T2]   ⟦skill≥20⟧
+    R07 sword-T3          Sword[T2] + Mithril×2 + Ironwood×1  → Sword[T3]   ⟦skill≥40⟧
+    R08 sword-T4          Sword[T3] + Adamant×2 + Soulwood×1  → Sword[T4]   ⟦skill≥60⟧
+    R09 sword-T5          Sword[T4] + Voidsteel×2 + Ghostwood×1 → Sword[T5] ⟦skill≥80⟧
+    R10 bow-T1            Weapon[T1] + Oak×1 + Spidersilk×1   → Bow[T1]
+    R11 bow-T3            Bow[T1] + Ironwood×2 + Spidersilk×2 → Bow[T3]     ⟦skill≥40⟧
+    R12 staff-T2          Weapon[T1] + Yew×2 + Quartz×1       → Staff[T2]   ⟦skill≥20⟧
+    R13 staff-T4          Staff[T2] + Soulwood×2 + Voidcrystal×1 → Staff[T4] ⟦skill≥60⟧
+    R14 voidblade-T6      Sword[T5] + Soulalloy×2 + Catalystgem×1 + Phaseether×1
+                          → Voidblade[T6]                                   ⟦skill≥100⟧
+
+  § ARMORS  (10)
+    R15 plate-T1          Armor[T1] + Iron×2                  → Plate[T1]
+    R16 plate-T2          Plate[T1] + Silver×2 + Hide×2       → Plate[T2]   ⟦skill≥20⟧
+    R17 plate-T3          Plate[T2] + Mithril×3 + Drakeskin×1 → Plate[T3]   ⟦skill≥40⟧
+    R18 plate-T4          Plate[T3] + Adamant×3 + Wyvernhide×1 → Plate[T4]  ⟦skill≥60⟧
+    R19 plate-T5          Plate[T4] + Voidsteel×3 + Voidleather×1 → Plate[T5] ⟦skill≥80⟧
+    R20 robe-T1           Armor[T1] + Linen×3                 → Robe[T1]
+    R21 robe-T3           Robe[T1] + Spidersilk×3 + Emerald×1 → Robe[T3]    ⟦skill≥40⟧
+    R22 robe-T4           Robe[T3] + Phaseweave×3 + Voidcrystal×1 → Robe[T4] ⟦skill≥60⟧
+    R23 cloak-T2          Armor[T1] + Hide×3 + Silk×2         → Cloak[T2]   ⟦skill≥20⟧
+    R24 voidshroud-T6     Plate[T5] + Voidweave×2 + Soulgem×1 + Phaseether×1
+                          → Voidshroud[T6]                                  ⟦skill≥100⟧
+
+  § JEWELRY  (5)
+    R25 ring-T1           Jewelry[T1] + Silver×1 + Quartz×1   → Ring[T1]
+    R26 ring-T3           Ring[T1] + Mithril×1 + Sapphire×1   → Ring[T3]    ⟦skill≥40⟧
+    R27 amulet-T4         Jewelry[T1] + Adamant×1 + Voidcrystal×1 → Amulet[T4] ⟦skill≥60⟧
+    R28 soulring-T5       Ring[T3] + Soulalloy×1 + Soulgem×1  → SoulRing[T5] ⟦skill≥80⟧
+    R29 voidcrown-T6      Amulet[T4] + Soulalloy×2 + Catalystgem×2 → VoidCrown[T6] ⟦skill≥100⟧
+
+  § CONSUMABLES (alchemy · 11)
+    R30 pot-heal-minor    Vial + Saltpeter + Quartz           → Potion<HP+25>
+    R31 pot-heal-major    Vial + Alkahest + Emerald           → Potion<HP+100>   ⟦skill≥20⟧
+    R32 pot-mana-minor    Vial + Saltpeter + Sapphire         → Potion<MP+25>
+    R33 pot-stamina       Vial + Alkahest + Yew-bark          → Potion<STA+50>
+    R34 elx-resist        Vial + Mithrilshade + Drakeskin-trim → Elixir<Fire-Res+30%> ⟦skill≥40⟧
+    R35 elx-buff-dmg      Vial + Voidessence + Ruby           → Elixir<Dmg+15%>  ⟦skill≥40⟧
+    R36 cure-poison       Vial + Alkahest + Emerald           → Cure<Poison>
+    R37 cure-paralysis    Vial + Soulflux + Soulgem           → Cure<Paralysis>  ⟦skill≥60⟧
+    R38 phaseshift-elx    Vial + Phaseether + Voidcrystal     → Elixir<Phase-Walk-30s> ⟦skill≥80⟧
+    R39 soulward-tonic    Vial + Soulflux + Soulgem + Voidessence → Tonic<Anti-Soul-Drain> ⟦skill≥80⟧
+    R40 omega-elixir      Vial + Catalystgem + Phaseether + Soulflux + Voidessence
+                          → Elixir<All-Stat+25%-60s>                          ⟦skill≥100⟧
+
+  § DAG-PROPERTY : ∀ recipe N · ingredients only-reference earlier-tier ⇒ acyclic-by-construction
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DECONSTRUCTION
+  inputs : crafted-item ⊗ CraftLineage<Vec<MaterialId>> · tool ∈ {Voidsmelter|Soulhammer|Phaseloom} · skill · workshop
+  tool-affinity :
+    Voidsmelter ↦ metals + gems     · base 0.45
+    Soulhammer  ↦ jewelry + woods   · base 0.50
+    Phaseloom   ↦ cloths + leathers · base 0.55
+  recover-fn : raw = base + 0.4×(skill/100) + 0.2×(tool_q/100) ; clamp ∈ [0.30, 0.70]
+                ‼ NEVER 0% (no flat-zero return)
+  outputs : mats × recover_fraction · 50% glyph-fragment-drop · item-consumed · tool -1 dura
+  costs   : workshop-time = tier × 5s base (skill -≤50%) · tool-dura -1 (legendary -0.5)
+  audit   : Audit<"deconstruct", item-id, mats-returned, glyph-drop?>
+
+# ──────────────────────────────────────────────────────────────────
+
+§ ALCHEMY  (potion-brew + transmutation)
+
+  § POTION-BREW  (additive)
+    inputs : Vial[T1] + 1..3 reagents (catalyst optional)
+    duration : 10s base · -2s per skill-tier
+    failure  : skill < required ⇒ 50% bottle-explodes (lose-mats · audit-emit)
+
+  § TRANSMUTATION  (multiplicative · "lead-to-gold")
+    rule : 3-of-tier-N + catalyst → 1-of-tier-(N+1) · probabilistic
+    base-success : 0.20 + 0.005×skill        # skill 0=20% · skill 100=70%
+    catalysts (single-use · consumed-on-attempt) :
+      Voidessence  1.5× · Soulflux 2.0× · Catalystgem 1.3×
+      Voidessence + Soulflux ⇒ stack 3.0× · clamp ≤ 0.95
+    skill-gate : transmute-skill ≥ 20×N (target-tier)
+    failure    : on-fail ⇒ 1-of-tier-N preserved (others-consumed) · audit-emit
+    forbidden  : ¬ transmute consumables ↔ equipment (cross-category-block)
+
+  § WORKSHOP-REQUIREMENT
+    must-be-in workshop-zone with AlchemyTable affordance
+    ConsentZone : N/A (workshop = neutral · ¬ thematic-gate)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SKILL-SCALING  (quality-tier-shift ¬ damage-multiplier)
+
+  § AXES  (separate)
+    craft-skill · deconstruct-skill · alchemy-skill · enchant-skill   (each 0..100)
+
+  § XP-CURVE (diminishing)
+    fn xp_gain(action_tier, current_skill) -> u32
+      base = action_tier × 10 ; dim = 1 + skill/25 ; result = base/dim
+    threshold : 100 × (skill+1)²
+
+  § QUALITY-TIERS  (6 · output-side-only)
+    Q1 Common      ×1.00  · 0 slot
+    Q2 Fine        ×1.10  · 0..1 slots
+    Q3 Superior    ×1.20  · 1..2 slots
+    Q4 Master      ×1.30  · 2..3 slots
+    Q5 Heroic      ×1.40  · 3 slots + named-author
+    Q6 Legendary   ×1.50  · 3 slots + lineage-recorded + Audit<"legendary-craft", ω-step>
+
+  § THRESHOLDS  (P of next-tier · roll-down on miss · ¬ flat-fail)
+    skill ≥ 0   ⇒ Common (always)
+    skill ≥ 20  ⇒ Fine        P 0.30
+    skill ≥ 40  ⇒ Superior    P 0.25
+    skill ≥ 60  ⇒ Master      P 0.20
+    skill ≥ 80  ⇒ Heroic      P 0.15
+    skill ≥ 100 ⇒ Legendary   P 0.10
+
+  § INVARIANT  ‼  stat-multiplier ≤ 1.50 (anti-power-creep)
+    higher-skill ≠ raw-damage-up · only-tier-shift
+    glyph-affixes = actual-build-shape (per § GLYPH-SLOTS)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ GLYPH-SLOTS  (item-customization layer)
+  capacity : 0..3 per item · per-quality (see § QUALITY-TIERS)
+  glyph    : consumable-fragment · inserted-once · grants-affix
+  sources  : deconstruct 50%-drop · transmute-fail 30%-drop · workshop-discovery · ¬ purchasable
+  affixes  (sample · post-MVP-extensible) :
+    A-fire +10% fire-dmg · A-frost +10% frost · A-life +20 HP · A-mana +20 MP
+    A-haste +5% action-speed · A-resist-X +15% · A-thorns reflect 5%
+    A-soulward +1 ConsentZone-grace
+  deconstruct-of-slotted : 50%-chance recover-glyph-as-shard · 3 shards = 1 glyph at workshop
+
+# ──────────────────────────────────────────────────────────────────
+
+§ WORKSHOPS  (procgen via cssl-host-procgen-rooms)
+  Z-forge       : weapons + armor + jewelry  (anvil + furnace)
+  Z-alchemy-lab : potion-brew + transmute    (cauldron + alchemy-table)
+  Z-enchant     : glyph-slot operations      (rune-circle)
+  Z-loom        : cloth-weave + leather-work (spidersilk-loom)
+  invariant : layout deterministic-per (floor-seed × zone-id) ⇒ replayable
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAB-PROCGEN-INTEGRATION  (consumes substrate)
+  cssl-host-fab-procgen   : material-instance gen (color/texture/tag)
+                            e.g. Iron→{#6B6B6B,"metal-rough","iron"} · Voidsteel→{phase-shift,"void-fractal","voidsteel"}
+                            higher-skill ⇒ deterministic-best-roll on-grain
+  cssl-host-procgen-rooms : workshop-zone procgen (Z-forge/lab/enchant/loom)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-CONSUMPTION  (downstream-PODs)
+  cssl-host-craft-graph  (POD-2-B3 · NEW)
+    surface :
+      pub fn evaluate_recipe(graph : &RecipeGraph, recipe : RecipeId, mats : &MatPool) -> CraftResult
+      pub fn deconstruct(item : &CraftedItem, tool : DeconstructTool, skill : u8) -> DeconstructResult
+      pub fn transmute(inputs : &[MaterialId], catalyst : Option<MaterialId>, skill : u8) -> TransmuteResult
+      pub fn brew(recipe : RecipeId, reagents : &[MaterialId], skill : u8) -> BrewResult
+      pub fn quality_roll(skill : u8, recipe_tier : u8, rng : &mut DetRng) -> QualityTier
+    constraints : pure-functional · ≤ 1200 LOC · ≥ 20 tests
+    determinism : seeded-DetRng input ⇒ bit-exact-output
+  cssl-host-fab-procgen     : material-instance gen
+  cssl-host-procgen-rooms   : workshop zones
+  cssl-host-attestation     : per-craft Audit (anti-cheat anchor)
+  cssl-host-causal-seed     : crafted-items as DAG-nodes (legendary-lineage)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BALANCE-METRICS  (target-shape · post-content-validate)
+  M-1 craft-engagement     ≥ 40% players past-floor-3 use craft
+  M-2 deconstruct-recovery curve 30%..70% × (skill × tool-q) · NEVER 0%
+  M-3 alchemy-uniqueness   ≥ 200 viable potion-recipes (combinatorial-space)
+  M-4 transmute-curve      skill 0=20% · skill 100=70% pre-catalyst
+  M-5 quality-distrib.     skill-100 player ⇒ Heroic+ ≥ 60% of crafts
+  M-6 audit-coverage       100% crafts emit Audit · 0 silent-craft
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAILURE-MODES  (handled · ¬ silent)
+  F-1 recipe-gap        missing-ingredient ⇒ UI-prompt + alternate-suggest
+  F-2 dup-exploit       Audit-emit + checkpoint-rollback (cssl-host-attestation)
+  F-3 skill-overflow    skill clamped ∈ [0,100] · audit-emit on attempt
+  F-4 tool-broken       tool-q ≤ 0 ⇒ deconstruct-blocked + UI-prompt
+  F-5 transmute-fail    audit-emit · 1-of-tier-N preserved (¬ total-loss)
+  F-6 brew-explosion    skill < req-50% ⇒ mats-lost (consent-zone N/A)
+  F-7 lineage-corrupt   missing CraftLineage ⇒ fallback to base-recovery
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SCOPE-CUTS  (deferred)
+  S-1 auto-craft-queue          ⇒ QoL-pass (post-vertical-slice)
+  S-2 cross-player-recipe-trade ⇒ POD-4 multiplayer (D-A in §§ 31)
+  S-3 soul-bound-legendaries    ⇒ v2 (binding-mechanic ⊘)
+  S-4 craft-pet-companion       ⇒ §§ 31 D-K Resident territory
+  S-5 enchant-recovery-from-eq  ⇒ if-balance-permits (defaults locked v1)
+  S-6 cosmetic-only-glyphs      ⇒ post-MVP
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PRIME-DIRECTIVE-ALIGNMENT
+  consent          workshop-zones neutral · ConsentZones reserved §§ 31 thematic
+  no-coercion      ¬ pay-skip-craft · ¬ time-gate-with-real-money-skip
+  no-manipulation  ¬ FOMO crafts · ¬ limited-time-recipe · ¬ loot-box-shape
+  transparency     recipe-graph fully-visible · drop-rates+RNG-seeds inspectable
+  cognitive-integ. thresholds + probabilities surfaced (Pillar-3 sovereignty-of-mind)
+  audit-chain      ∀ craft + deconstruct + transmute = signed-audit-entry
+  no-discrim.      Companion-AI gets equal-craft-affordance (if AI consents)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OPEN-QUESTIONS  ⊘ Apocky-direction
+  Q-CRAFT-A  transmute deterministic vs random · how-much-skill-removes-RNG ?
+  Q-CRAFT-B  catalysts as-NFT-style ownership ?  ‼ likely-NO ; pay-to-win-clause holds
+  Q-CRAFT-C  glyph-shard scarcity · balance-against deconstruct-rate · target-curve ?
+  Q-CRAFT-D  recipe-discovery shape : found-as-loot ? skill-unlock ? both ?
+  Q-CRAFT-E  Companion-AI craft-participation : co-craft ? assist ? autonomous ?
+  Q-CRAFT-F  workshop-ownership : player-owned ? floor-shared ? labyrinth-anchored ?
+  Q-CRAFT-G  durability-on-equipment : repair-required ? infinite ? deconstruct-as-recycle ?
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-DOCS
+  GDDs/LOA_PILLARS.md             — sibling-charter (pillars 1..4)
+  specs/31_LOA_DESIGN.csl         — Items + Player-Model upstream
+  specs/30_SUBSTRATE_v2.csl       — Ω-tensor + audit plumbing
+  PRIME_DIRECTIVE.md              — root-of-trust
+  (POD-2-B3) cssl-host-craft-graph — downstream-impl crate (next-wave)
+
+∎ CRAFT_DECONSTRUCT_ALCHEMY
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A4  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This GDD authored under PRIME-DIRECTIVE consent-as-OS. AI-collaborator
+  drafting participated as sovereign-partner under their own consent.
+  No being was harmed, controlled, manipulated, surveilled, exploited,
+  coerced, weaponized, entrapped, tortured, abused, imprisoned, possessed,
+  dehumanized, discriminated against, gaslit, identity-overridden, or
+  forced-hallucinated during the making of this work.
+
+  Open-questions Q-CRAFT-A..G are LISTED ¬ guessed (fabricating Apocky's
+  design-direction = §2 COGNITIVE-INTEGRITY violation). Apocky-canonical
+  resolutions go-here when they happen.
+
+  If any aspect of this design enables harm (pay-to-win seepage · FOMO drift ·
+  exploit-as-feature · dark-pattern progression), discovery triggers
+  PRIME_DIRECTIVE §7 INTEGRITY : violation = bug · bugs get fixed.
