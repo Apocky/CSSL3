@@ -69,6 +69,7 @@ use crate::mcp_server::{
 use crate::movement::Camera as PlayerCamera;
 use crate::physics::RoomCollider;
 use crate::render::Renderer;
+use crate::ui_overlay::{HudContext, MenuAction, MenuState};
 
 /// Initial windowed-mode dimensions (only used when `CSSL_LOA_WINDOW=windowed`).
 /// 2560×1440 = 1440p WQHD ; downsteps gracefully on smaller displays via the
@@ -147,6 +148,12 @@ pub struct App {
     cursor_currently_grabbed: bool,
     /// Window currently in borderless-fullscreen.
     fullscreen_now: bool,
+    /// Menu state-machine (T11-LOA-HUD : owns selection/screen/help-scroll).
+    pub menu: MenuState,
+    /// Recent DM/GM event-text shown on the BOTTOM-LEFT HUD line.
+    pub recent_event: String,
+    /// Smoothed FPS estimate displayed in the TOP-LEFT HUD.
+    pub fps_smoothed: f32,
     /// Initial mode selected by env-var.
     initial_mode: WindowMode,
     /// Cached window-flag : has the focus event for this window fired at
@@ -188,6 +195,9 @@ impl App {
             menu_open: false,
             cursor_currently_grabbed: false,
             fullscreen_now: false,
+            menu: MenuState::default(),
+            recent_event: String::new(),
+            fps_smoothed: 0.0,
             initial_mode: WindowMode::from_env(),
             has_been_focused: false,
             gpu_alive: false,
@@ -275,9 +285,18 @@ impl App {
                         self.toggle_fullscreen();
                         return;
                     }
-                    KeyCode::Escape => {
-                        self.toggle_menu();
-                        // Don't fall through — Esc no longer quits.
+                    KeyCode::Escape | KeyCode::Tab => {
+                        // If menu is on a sub-screen (Help), Esc/Tab pops
+                        // that screen off rather than closing the menu
+                        // entirely. Otherwise toggles open/closed.
+                        if self.menu.open
+                            && self.menu.screen != crate::ui_overlay::MenuScreen::Main
+                        {
+                            let _ = self.menu.back();
+                        } else {
+                            self.toggle_menu();
+                        }
+                        // Don't fall through — Esc/Tab open/close menu only.
                         return;
                     }
                     _ => {}
@@ -294,7 +313,6 @@ impl App {
             PhysicalKey::Code(KeyCode::Space) => VirtualKey::Space,
             PhysicalKey::Code(KeyCode::ControlLeft) => VirtualKey::LCtrl,
             PhysicalKey::Code(KeyCode::ShiftLeft) => VirtualKey::LShift,
-            PhysicalKey::Code(KeyCode::Tab) => VirtualKey::Tab,
             PhysicalKey::Code(KeyCode::Backquote) => VirtualKey::Backtick,
             PhysicalKey::Code(KeyCode::F1) => VirtualKey::F1,
             PhysicalKey::Code(KeyCode::F2) => VirtualKey::F2,
@@ -306,6 +324,14 @@ impl App {
             PhysicalKey::Code(KeyCode::F8) => VirtualKey::F8,
             PhysicalKey::Code(KeyCode::F9) => VirtualKey::F9,
             PhysicalKey::Code(KeyCode::F10) => VirtualKey::F10,
+            // Menu navigation keys
+            PhysicalKey::Code(KeyCode::ArrowUp) => VirtualKey::ArrowUp,
+            PhysicalKey::Code(KeyCode::ArrowDown) => VirtualKey::ArrowDown,
+            PhysicalKey::Code(KeyCode::ArrowLeft) => VirtualKey::ArrowLeft,
+            PhysicalKey::Code(KeyCode::ArrowRight) => VirtualKey::ArrowRight,
+            PhysicalKey::Code(KeyCode::Enter) | PhysicalKey::Code(KeyCode::NumpadEnter) => {
+                VirtualKey::Enter
+            }
             _ => VirtualKey::Other,
         };
 
@@ -340,9 +366,12 @@ impl App {
         }
     }
 
-    /// Toggle menu-open state. Esc trigger. Releases cursor when menu is up.
+    /// Toggle menu-open state. Tab/Esc trigger. Releases cursor when menu is up.
+    /// Delegates the state-machine to `MenuState::toggle` and mirrors the
+    /// resulting `open` flag onto `self.menu_open` for legacy consumers.
     fn toggle_menu(&mut self) {
-        self.menu_open = !self.menu_open;
+        self.menu.toggle();
+        self.menu_open = self.menu.open;
         log_event(
             "INFO",
             "loa-host/window",
@@ -430,6 +459,58 @@ impl App {
             stamina_deficit: 0.0,
             recent_combat_density: 0.0,
             rest_signals: 1.0,
+        }
+    }
+
+    /// Build the HUD context the renderer reads each frame to populate the
+    /// 4-corner text + crosshair.
+    fn build_hud_context(&self) -> HudContext {
+        HudContext {
+            frame: self.frame_count,
+            fps: self.fps_smoothed,
+            camera_pos: self.player.pos,
+            yaw: self.player.yaw,
+            pitch: self.player.pitch,
+            render_mode: self.input.render_mode,
+            dm_phase_label: self.dm.state().label(),
+            dm_tension: self.dm.intensity(),
+            recent_event: self.recent_event.clone(),
+            mcp_port: self.mcp_port,
+            fullscreen: self.fullscreen_now,
+        }
+    }
+
+    /// Translate a `MenuAction` returned from `MenuState::activate` into a
+    /// host-level effect.
+    fn handle_menu_action(&mut self, action: MenuAction, event_loop: &ActiveEventLoop) {
+        match action {
+            MenuAction::None => {}
+            MenuAction::Resume => {
+                // Already closed by activate() ; just refresh cursor grab.
+                self.menu_open = self.menu.open;
+                self.paused = self.menu.open;
+                self.refresh_cursor_grab();
+            }
+            MenuAction::CycleRenderMode => {
+                self.input.render_mode = self.menu.render_mode;
+                log_event(
+                    "INFO",
+                    "loa-host/window",
+                    &format!("menu · render-mode → {}", self.input.render_mode),
+                );
+            }
+            MenuAction::ToggleFullscreen => {
+                self.toggle_fullscreen();
+                self.menu.fullscreen = self.fullscreen_now;
+            }
+            MenuAction::Quit => {
+                log_event(
+                    "INFO",
+                    "loa-host/window",
+                    "menu · QUIT selected · exiting cleanly",
+                );
+                event_loop.exit();
+            }
         }
     }
 }
@@ -611,8 +692,39 @@ impl App {
         };
         self.last_frame_at = Some(now);
 
-        // § 2. Drain input frame (zeros mouse-deltas).
+        // § 2. Drain input frame (zeros mouse-deltas + menu edges).
         let frame = self.input.consume_frame();
+
+        // § 2a. Route menu nav-edges to MenuState while menu is open.
+        // Edges fire ONCE per press ; consume_frame already cleared them.
+        if self.menu.open {
+            if frame.menu_up_pressed {
+                self.menu.nav_up();
+            }
+            if frame.menu_down_pressed {
+                self.menu.nav_down();
+            }
+            if frame.menu_left_pressed {
+                self.menu.nav_left();
+            }
+            if frame.menu_right_pressed {
+                self.menu.nav_right();
+            }
+            if frame.menu_enter_pressed {
+                let action = self.menu.activate();
+                self.handle_menu_action(action, event_loop);
+            }
+        }
+        // Keep input.paused mirror in sync with menu_open : when the menu is
+        // open, the input layer's `paused` reflects that. When menu closes,
+        // we leave `paused` as-is (Tab no longer toggles it directly).
+        self.input.paused = self.menu.open;
+        self.menu_open = self.menu.open;
+        self.paused = self.menu.open;
+        // Sync menu's view of fullscreen + render_mode (so the menu UI draws
+        // with current values).
+        self.menu.fullscreen = self.fullscreen_now;
+        self.menu.render_mode = self.input.render_mode;
 
         // § 3. Apply mouse-look (always — paused player can still look).
         if !self.paused {
@@ -633,12 +745,21 @@ impl App {
             let ps = self.current_player_state();
             if let Some(ev) = self.dm.tick(&ps, self.frame_count) {
                 self.log_dm_event(&ev);
+                self.recent_event = format!("{ev:?}");
             }
         }
+
+        // § 7a. Update smoothed FPS for the HUD.
+        let inst_fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+        // EMA with 0.10 weight on new sample → ~10-frame settling.
+        self.fps_smoothed = self.fps_smoothed * 0.9 + inst_fps * 0.1;
 
         // § 8. Sync render-camera + engine-state for MCP visibility.
         self.sync_render_camera();
         self.sync_engine_state();
+
+        // § 8a. Build the HUD context this frame.
+        let hud = self.build_hud_context();
 
         // § 9. Render the frame.
         if let (Some(gpu), Some(renderer), Some(window)) = (
@@ -646,7 +767,7 @@ impl App {
             self.renderer.as_mut(),
             self.window.as_ref(),
         ) {
-            match renderer.render_frame(gpu, &self.render_camera, window) {
+            match renderer.render_frame(gpu, &self.render_camera, window, &hud, &self.menu) {
                 Ok(()) | Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {}
                 Err(wgpu::SurfaceError::OutOfMemory) => {
                     log_event(

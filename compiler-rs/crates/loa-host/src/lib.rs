@@ -56,6 +56,10 @@ pub mod dm_director;
 pub mod gm_narrator;
 pub mod dm_runtime;
 
+// UI-overlay catalog (CPU-side text/menu logic always built ; GPU pipeline
+// gated on `runtime` feature inside the module).
+pub mod ui_overlay;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
@@ -150,6 +154,9 @@ pub fn run_engine() -> std::io::Result<()> {
 // ──────────────────────────────────────────────────────────────────────────
 
 pub const SCENE_WGSL: &str = include_str!("../shaders/scene.wgsl");
+
+/// UI-overlay shader source (HUD + menu textured-quad pipeline).
+pub const UI_WGSL: &str = include_str!("../shaders/ui.wgsl");
 
 /// PRIME-DIRECTIVE attestation marker.
 pub const ATTESTATION: &str =

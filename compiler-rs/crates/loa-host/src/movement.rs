@@ -196,30 +196,15 @@ mod tests {
     fn frame_walk_forward() -> InputFrame {
         InputFrame {
             forward: 1.0,
-            right: 0.0,
-            up: 0.0,
-            yaw_delta: 0.0,
-            pitch_delta: 0.0,
-            sprint: false,
-            render_mode: 0,
-            paused: false,
-            debug_overlay: false,
-            quit_requested: false,
+            ..InputFrame::default()
         }
     }
 
     fn frame_mouse(dx: f32, dy: f32) -> InputFrame {
         InputFrame {
-            forward: 0.0,
-            right: 0.0,
-            up: 0.0,
             yaw_delta: dx,
             pitch_delta: dy,
-            sprint: false,
-            render_mode: 0,
-            paused: false,
-            debug_overlay: false,
-            quit_requested: false,
+            ..InputFrame::default()
         }
     }
 
