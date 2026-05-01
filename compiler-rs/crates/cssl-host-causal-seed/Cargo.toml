@@ -1,0 +1,26 @@
+# § T11-W4-CAUSAL : cssl-host-causal-seed
+# ══════════════════════════════════════════════════════════════════
+# § I> Purpose : story-as-physics ← causal-DAG kernel + forward-integrator
+#   ∵ paradigm-5 ⊆ procedural < combinatorial < neural < spontaneous < CAUSAL < co-creative < neuro-symbolic
+#   ⟨ specs/grand-vision/01_PARADIGMS.csl ⟩
+# § I> story-beats = force-edges ; world-state = integrated-forward
+# § I> deterministic ← HashMap iteration sorted on serialize ; no panics in lib
+# § I> NO graph-crate dep — hand-rolled DAG ; minimal serde footprint
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name         = "cssl-host-causal-seed"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.85"
+license      = { workspace = true }
+authors      = { workspace = true }
+description  = "Causal-DAG seed-kit ← story-as-physics kernel for LoA-v13 ; deterministic forward-integration of intent-driven world-vector evolution"
+repository   = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
