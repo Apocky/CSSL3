@@ -1014,6 +1014,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-combat-sim",
+ "cssl-host-craft-graph",
+ "cssl-host-dm",
+ "cssl-host-gear-archetype",
+ "cssl-host-gm",
+ "cssl-host-npc-bt",
+ "cssl-host-roguelike-run",
+ "cssl-host-spell-graph",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-kan-real"
 version = "0.1.0"
 dependencies = [

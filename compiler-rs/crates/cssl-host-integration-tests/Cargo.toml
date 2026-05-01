@@ -1,0 +1,47 @@
+# § T11-W7-RD-D1-INTEGRATION-TESTS : cssl-host-integration-tests
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-4-D1 deliverable ; e2e cross-wiring of POD-2 substrate crates
+# § I> 6 POD-2 crates : combat-sim · roguelike-run · craft-graph ·
+#                       gear-archetype · spell-graph · npc-bt
+# § I> 4 W7 crates : kan-real · mp-transport-real · dm · gm
+# § I> NO modifications to POD-2 / W7 source-crates ; wrapper-fns in
+#      src/fixtures.rs glue cross-crate type-coercions (e.g.
+#      craft-graph::Material → gear-archetype::BaseMat)
+# § I> ≥ 17 e2e tests covering combat → loot → craft → equip → cast loop
+# § I> + run-lifecycle + NPC-BT-tick + run-share-receipt determinism
+# § I> 1500 LOC max ; no panics in lib ; deterministic-replay axiom
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name                   = "cssl-host-integration-tests"
+description            = "End-to-end integration tests across the POD-2 substrate-crates : combat → loot → craft → equip → cast loop, plus run-lifecycle + NPC-BT-tick + run-share serialization. Cross-wires the 6 POD-2 crates + 4 W7 crates without modifying their sources."
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+[lib]
+name = "cssl_host_integration_tests"
+path = "src/lib.rs"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+# ─ POD-2 substrate crates (path-deps) ───────────────────────────────
+cssl-host-combat-sim     = { path = "../cssl-host-combat-sim" }
+cssl-host-roguelike-run  = { path = "../cssl-host-roguelike-run" }
+cssl-host-craft-graph    = { path = "../cssl-host-craft-graph" }
+cssl-host-gear-archetype = { path = "../cssl-host-gear-archetype" }
+cssl-host-spell-graph    = { path = "../cssl-host-spell-graph" }
+cssl-host-npc-bt         = { path = "../cssl-host-npc-bt" }
+
+# ─ W7 sibling crates (path-deps) ────────────────────────────────────
+cssl-host-dm                 = { path = "../cssl-host-dm" }
+cssl-host-gm                 = { path = "../cssl-host-gm" }
+
+[lints]
+workspace = true
