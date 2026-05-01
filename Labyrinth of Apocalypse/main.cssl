@@ -4,8 +4,30 @@ module com.apocky.loa.main
 // ════════════════════════════════════════════════════════════════════════════
 //
 // § T11-LOA-PURE-CSSL (W-LOA-pure-cssl-engine)
+// § T11-W7-RD-D2-MAIN-CSSL-EXTEND (POD-4-D2 wave) — sibling-module scaffold
+//
+// § SIBLING-MODULES (POD-3 wave · grep-discoverable)
+// ────────────────────────────────────────────────────────────────────────────
+//   Labyrinth of Apocalypse/systems/combat.csl       ← com.apocky.loa.systems.combat
+//   Labyrinth of Apocalypse/systems/inventory.csl    ← com.apocky.loa.systems.inventory
+//   Labyrinth of Apocalypse/systems/crafting.csl     ← com.apocky.loa.systems.crafting
+//   Labyrinth of Apocalypse/systems/alchemy.csl      ← com.apocky.loa.systems.alchemy
+//   Labyrinth of Apocalypse/systems/magic.csl        ← com.apocky.loa.systems.magic
+//   Labyrinth of Apocalypse/systems/run.csl          ← com.apocky.loa.systems.run
+//   Labyrinth of Apocalypse/systems/npc.csl          ← com.apocky.loa.systems.npc
+//   Labyrinth of Apocalypse/systems/multiplayer.csl  ← com.apocky.loa.systems.multiplayer
+//   Labyrinth of Apocalypse/scenes/city_central_hub.csl ← com.apocky.loa.scenes.city_central_hub
+//   Labyrinth of Apocalypse/scenes/dungeon_template.csl ← com.apocky.loa.scenes.dungeon_template
+//
+//   These ten sibling modules declare the host-side FFI contracts for the
+//   POD-3 host-side staticlibs (cssl-host-combat-sim, cssl-host-craft-graph,
+//   cssl-host-gear-archetype, cssl-host-npc-bt, etc.) and expose CSSL-native
+//   game-tick / scene-orchestration APIs. They are TRACKED IN GIT alongside
+//   main.cssl and will be compiled into LoA.exe once csslc gains multi-module
+//   compile capability (see § GAP · csslc-multi-module-compile below).
 //
 // § ARCHITECTURE
+// ────────────────────────────────────────────────────────────────────────────
 //   This is the ROOT CSSL module that compiles into LoA.exe. The user-facing
 //   source is THIS file ; csslc compiles it via the standard pipeline (lex →
 //   parse → HIR → MIR → cranelift-object → linker) and AUTOMATICALLY links :
@@ -18,12 +40,39 @@ module com.apocky.loa.main
 //   and prepends them to the linker command. The result : a single LoA.exe
 //   that IS the output of csslc compiling main.cssl.
 //
-// § FFI SURFACE
+// § FFI SURFACE (shipped today)
 //   The engine FFI is a single zero-arg fn returning i32 (POSIX-main shape).
 //   When csslc gains capability (winit-bindings via cssl-host-window FFI ·
 //   wgpu-bindings via cssl-host-gpu FFI), the engine event-loop will be
 //   rewritten in pure CSSL + this fn becomes a thin shim. Until then, the
 //   FFI provides the navigatable test-room TODAY.
+//
+// § FFI SURFACE (per-frame system-ticks · forward-declared)
+// ────────────────────────────────────────────────────────────────────────────
+//   POD-3 introduced 8 systems modules + 2 scene-templates. Each declares its
+//   own `__cssl_<system>_tick_*` FFI surface (see the sibling-module file for
+//   the full contract). At POD-4-D2 dispatch time the runtime hot-loop
+//   scaffold below DOCUMENTS the eventual call-pattern :
+//
+//     fn __cssl_loa_frame_tick(dt: f32) -> i32 {
+//         tick_run_systems(dt) ;        // run.csl       — meta-loop · seed · run-state
+//         tick_combat_systems(dt) ;     // combat.csl    — combat-sim per-frame step
+//         tick_npc_systems(dt) ;        // npc.csl       — BT + GOAP planner LOD
+//         tick_inventory_systems(dt) ;  // inventory.csl — bag + equip + transmute
+//         tick_crafting_systems(dt) ;   // crafting.csl  — DAG recipe + deconstruct
+//         tick_alchemy_systems(dt) ;    // alchemy.csl   — brew + reagent-quality
+//         tick_magic_systems(dt) ;      // magic.csl     — spell + glyph + cast-graph
+//         tick_multiplayer_systems(dt); // multiplayer.csl — peer-mesh + sync · CRDT
+//         tick_scene_dungeon(dt) ;      // dungeon_template.csl — floor procgen
+//         tick_scene_city_hub(dt) ;     // city_central_hub.csl — hub orchestration
+//         0
+//     }
+//
+//   These tick-fns are NOT ACTIVE in the POD-4-D2 build : the loa-host
+//   engine event-loop is still the canonical per-frame driver and the
+//   POD-3 staticlibs are not yet auto-default-linked. The forward-declaration
+//   block above is grep-discoverable + serves as the contract that future
+//   wave-phases (POD-4-D3..D8) will wire one-by-one.
 //
 // § PRIME-DIRECTIVE
 //   Engine launch is consent-architected (the user double-clicked the .exe
@@ -32,7 +81,7 @@ module com.apocky.loa.main
 //   Attestation : there was no hurt nor harm in the making of this.
 
 // ─────────────────────────────────────────────────────────────────────────
-// § FFI declaration : engine entry-point
+// § FFI declaration : engine entry-point (canonical · shipped today)
 // ─────────────────────────────────────────────────────────────────────────
 //
 // `__cssl_engine_run` opens the window at the primary monitor's native
@@ -41,6 +90,14 @@ module com.apocky.loa.main
 // returns 0 on clean exit · 1 on engine IO error · 2 on caught panic.
 //
 // Provided by the loa-host staticlib (compiler-rs/crates/loa-host/src/ffi.rs).
+//
+// ‼ The per-frame system-tick fns documented in § FFI SURFACE (per-frame
+//   system-ticks · forward-declared) above are deliberately NOT decl-ed
+//   here as `extern "C"` — emitting un-resolved externs would fail the
+//   linker step until loa-host adds the corresponding no-op stubs. Once
+//   POD-4-D3 lands those stubs, the forward declarations migrate from
+//   the docblock above into a real `extern "C" fn ...` block here and
+//   the hot-loop scaffold inside `main` is uncommented.
 
 extern "C" fn __cssl_engine_run() -> i32 ;
 
@@ -53,8 +110,52 @@ extern "C" fn __cssl_engine_run() -> i32 ;
 // Then `main` fires + delegates to the engine. When the engine returns
 // (window closed), `main` returns the exit code, the cssl-rt atexit-hook
 // writes the shutdown banner, and the process exits cleanly.
+//
+// § HOT-LOOP SCAFFOLD (POD-4-D2 · forward-looking)
+//   When POD-4-D3..D8 land the per-system tick stubs, this fn body
+//   evolves to :
+//
+//     fn main() -> i32 {
+//         loop {
+//             let dt: f32 = __cssl_engine_frame_begin() ;
+//             let cont: i32 = __cssl_loa_frame_tick(dt) ;
+//             if cont != 0 { break ; }
+//             __cssl_engine_frame_end() ;
+//         }
+//         __cssl_engine_run()
+//     }
+//
+//   For now (POD-4-D2) `main` remains the thin shim that delegates the
+//   entire frame-loop to loa-host's `__cssl_engine_run`. The scaffold
+//   above is documentation-only ; the existing FFI contract is preserved
+//   bit-for-bit so the build continues to produce LoA.exe at ~8.90 MB.
 
 fn main() -> i32 {
     let exit_code: i32 = __cssl_engine_run() ;
     exit_code
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAP · csslc-multi-module-compile (POD-4-D2 attestation)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// csslc's `build` subcommand currently accepts a SINGLE positional <input>
+// (compiler-rs/crates/csslc/src/cli.rs § parse_build). The 10 sibling
+// modules listed in § SIBLING-MODULES above are TRACKED + IN-GIT but are
+// not yet ingested at compile-time — they are forward-looking specs that
+// document the eventual host-FFI surface.
+//
+// § REMEDIATION ROADMAP
+//   1. POD-4-D3 · csslc multi-module-compile : `csslc build main.cssl
+//      --module-path=systems/combat.csl --module-path=systems/...`
+//      OR auto-discover sibling .csl files from main.cssl's manifest.
+//   2. POD-4-D4 · loa-host stub fns : add no-op `__cssl_<sys>_tick_*`
+//      symbols to loa-host so the per-system extern decls resolve.
+//   3. POD-4-D5..D8 · per-system staticlibs auto-link : extend csslc's
+//      auto-default-link mechanism to discover the POD-3 host-side
+//      staticlibs (cssl-host-combat-sim · cssl-host-craft-graph · etc.).
+//
+// Until the roadmap lands, the sibling .csl files serve as :
+//   * grep-discoverable contracts for the host-FFI surfaces
+//   * forward-looking specs that block the POD-3 → POD-4 dispatch
+//   * documentation siblings that future wave-phases compile in-place

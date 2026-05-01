@@ -86,6 +86,43 @@ echo "  output-exe      : ${OUTPUT_EXE}"
 echo
 
 # ─────────────────────────────────────────────────────────────────────────
+# § sibling-module banner (POD-3 wave · grep-discoverable)
+# ─────────────────────────────────────────────────────────────────────────
+#
+# These 10 .csl files are TRACKED IN GIT alongside main.cssl + declare the
+# host-side FFI contracts for the POD-3 staticlibs. They are NOT yet ingested
+# at compile-time : csslc currently accepts a SINGLE positional <input> (see
+# compiler-rs/crates/csslc/src/cli.rs § parse_build). Once POD-4-D3 lands
+# csslc multi-module-compile, this loop will evolve to feed each sibling
+# into the csslc invocation. Until then : grep-discoverable scaffolding.
+
+LOA_SIBLING_MODULES=(
+  "systems/combat.csl"
+  "systems/inventory.csl"
+  "systems/crafting.csl"
+  "systems/alchemy.csl"
+  "systems/magic.csl"
+  "systems/run.csl"
+  "systems/npc.csl"
+  "systems/multiplayer.csl"
+  "scenes/city_central_hub.csl"
+  "scenes/dungeon_template.csl"
+)
+
+echo "§ POD-3 sibling-modules (forward-declared · not-yet-compiled)"
+for SIBLING in "${LOA_SIBLING_MODULES[@]}"; do
+  SIBLING_PATH="${LOA_DIR}/${SIBLING}"
+  if [[ -f "${SIBLING_PATH}" ]]; then
+    echo "  ✓ ${SIBLING}"
+  else
+    echo "  ✗ ${SIBLING}  (MISSING — expected in git)"
+  fi
+done
+echo "  (csslc multi-module-compile lands in POD-4-D3 ; until then these"
+echo "   serve as grep-discoverable host-FFI contracts — see main.cssl)"
+echo
+
+# ─────────────────────────────────────────────────────────────────────────
 # § Step 1 : build cssl-rt + loa-host staticlibs (+ csslc binary)
 # ─────────────────────────────────────────────────────────────────────────
 

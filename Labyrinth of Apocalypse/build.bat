@@ -53,6 +53,32 @@ echo   output-exe      : %OUTPUT_EXE%
 echo.
 
 REM ─────────────────────────────────────────────────────────────────────────
+REM § sibling-module banner (POD-3 wave · grep-discoverable)
+REM ─────────────────────────────────────────────────────────────────────────
+REM
+REM These 10 .csl files are TRACKED IN GIT alongside main.cssl + declare the
+REM host-side FFI contracts for the POD-3 staticlibs. They are NOT yet ingested
+REM at compile-time : csslc currently accepts a SINGLE positional input. Once
+REM POD-4-D3 lands csslc multi-module-compile, this banner will evolve to
+REM feed each sibling into the csslc invocation. Until then : grep-discoverable
+REM scaffolding.
+
+echo § POD-3 sibling-modules ^(forward-declared · not-yet-compiled^)
+call :check_sibling "systems\combat.csl"
+call :check_sibling "systems\inventory.csl"
+call :check_sibling "systems\crafting.csl"
+call :check_sibling "systems\alchemy.csl"
+call :check_sibling "systems\magic.csl"
+call :check_sibling "systems\run.csl"
+call :check_sibling "systems\npc.csl"
+call :check_sibling "systems\multiplayer.csl"
+call :check_sibling "scenes\city_central_hub.csl"
+call :check_sibling "scenes\dungeon_template.csl"
+echo   ^(csslc multi-module-compile lands in POD-4-D3 ; until then these
+echo    serve as grep-discoverable host-FFI contracts — see main.cssl^)
+echo.
+
+REM ─────────────────────────────────────────────────────────────────────────
 REM § Step 1 : build cssl-rt + loa-host staticlibs (+ csslc binary)
 REM ─────────────────────────────────────────────────────────────────────────
 
@@ -127,3 +153,17 @@ echo            Esc opens menu · F11 toggles fullscreen · Tab pauses
 echo.
 
 endlocal
+goto :eof
+
+REM ─────────────────────────────────────────────────────────────────────────
+REM § :check_sibling — verify a POD-3 sibling .csl exists ; emit ✓/✗ banner
+REM ─────────────────────────────────────────────────────────────────────────
+
+:check_sibling
+set "SIBLING=%~1"
+if exist "%LOA_DIR%\%SIBLING%" (
+    echo   [OK] %SIBLING%
+) else (
+    echo   [MISSING] %SIBLING% ^(expected in git^)
+)
+goto :eof
