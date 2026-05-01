@@ -1,0 +1,20 @@
+[package]
+name                   = "cssl-host-rt-trace"
+description            = "CSSLv3 stage0 — bounded-memory hot-path event ring for runtime instrumentation (lock-free SPMC · O(1) push · render-loop safe · GC-free)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W5-RT-TRACE : LoA render-loop @ ≥60fps emits instrumentation events
+# (mark-begin/mark-end · counters · histograms) into a fixed-size ring.
+# Out-of-line drain by instrumentation thread or MCP query.
+# std-only · NO crossbeam · NO tokio · pre-allocated bounded memory.
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
