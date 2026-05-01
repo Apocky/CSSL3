@@ -974,6 +974,111 @@ mod tests {
         assert_eq!(p.unwrap().segments.len(), 3);
     }
 
+    // ─ § T11-CC-PARSER-6 (W-CC-module-path) — multi-segment dotted module paths ─
+    //
+    // The audit (compiler-rs/docs/loa_scene_compat_matrix.md) flagged 49/50
+    // LoA scenes failing at `module com.apocky.loa.scenes.X` (5-segment
+    // dotted paths) with an `expected an item @ 0:0` cascade. The parser
+    // machinery already supports N-segment dotted paths via
+    // `parse_module_path` (see common.rs); these tests pin down that
+    // 1/2/5-segment forms all parse cleanly, no errors, and that the
+    // path-end detection correctly hands off to subsequent items
+    // (`use`, `fn`).
+
+    #[test]
+    fn parse_module_single_segment() {
+        // Regression : `module foo` must still parse as a single-segment path.
+        let (_f, toks) = prep("module simple\n");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_optional_module_path(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        assert!(p.is_some());
+        assert_eq!(p.unwrap().segments.len(), 1);
+    }
+
+    #[test]
+    fn parse_module_two_segments() {
+        // Regression : `module loa.main` (the only currently-passing LoA
+        // file uses this 2-segment form).
+        let (_f, toks) = prep("module loa.main\n");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_optional_module_path(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        assert!(p.is_some());
+        assert_eq!(p.unwrap().segments.len(), 2);
+    }
+
+    #[test]
+    fn parse_module_five_segments() {
+        // The headline audit failure : `module com.apocky.loa.scenes.coliseum`
+        // — 49 of 50 LoA scenes use this 5-segment form.
+        let (_f, toks) = prep("module com.apocky.loa.scenes.coliseum\n");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_optional_module_path(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        let path = p.expect("expected Some(ModulePath)");
+        assert_eq!(path.segments.len(), 5, "expected 5 dotted segments");
+    }
+
+    #[test]
+    fn parse_module_followed_by_use() {
+        // Regression : path-end detection must correctly stop at the
+        // newline + `use` keyword and let the item parser pick it up.
+        let src = "\
+module com.apocky.loa.scenes.torii
+use std::option::Option
+use std::vec::Vec
+";
+        let (_f, toks) = prep(src);
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        let path = m.path.expect("expected module-path declaration");
+        assert_eq!(path.segments.len(), 5);
+        assert_eq!(m.items.len(), 2, "expected 2 use-items");
+        for it in &m.items {
+            assert!(matches!(it, Item::Use(_)), "expected Item::Use, got {it:?}");
+        }
+    }
+
+    #[test]
+    fn parse_module_followed_by_fn() {
+        // The acceptance test from the dispatch : module + fn must
+        // parse without any error.
+        let src = "\
+module com.apocky.loa.scenes.coliseum
+
+fn main() -> i32 { 42 }
+";
+        let (_f, toks) = prep(src);
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        let path = m.path.expect("expected module-path declaration");
+        assert_eq!(path.segments.len(), 5);
+        assert_eq!(m.items.len(), 1, "expected 1 fn item");
+        assert!(matches!(m.items[0], Item::Fn(_)));
+    }
+
+    #[test]
+    fn parse_module_with_underscored_segments() {
+        // Bonus : segments with underscores must work — LoA uses
+        // `test_room`, `player_input`, etc.
+        let src = "module com.apocky_corp.loa_scenes.test_room\n";
+        let (_f, toks) = prep(src);
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_optional_module_path(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0, "errors: {:?}", bag);
+        let path = p.expect("expected Some(ModulePath)");
+        assert_eq!(path.segments.len(), 4);
+    }
+
     #[test]
     fn fn_no_body() {
         let (_f, toks) = prep("fn f(x : i32) -> i32 ;");
