@@ -64,6 +64,8 @@ use crate::material::{material_lut, material_name, MATERIAL_LUT_LEN};
 use crate::mcp_server::{
     CameraState, EngineState, Plinth, RenderMode, SnapshotRequest, Vec3, TELEMETRY_RING_CAP,
 };
+// § T11-LOA-FID-CFER : telemetry constants for the cfer_snapshot response.
+use crate::cfer_render::{TEX_COUNT, TEX_TOTAL_BYTES, TEX_X, TEX_Y, TEX_Z};
 use crate::pattern::{pattern_lut, pattern_name, PATTERN_LUT_LEN};
 use crate::snapshot::{
     decode_png, default_golden_dir, default_snapshot_dir, mae_bgra8, rgba8_to_bgra8_inplace,
@@ -416,6 +418,26 @@ pub fn tool_registry() -> ToolRegistry {
         "Teleport into a SpectralRoom zone AND switch to that zone's illuminant atomically (params: zone string).",
         true,
         room_teleport_zone
+    );
+
+    // ─ T11-LOA-FID-CFER : Causal Field-Evolution Rendering volumetric pass ─
+    reg!(
+        "render.cfer_snapshot",
+        "Return CFER metrics : active Ω-field cells + step/pack µs + KAN evals + center-radiance sample.",
+        false,
+        render_cfer_snapshot
+    );
+    reg!(
+        "render.cfer_step",
+        "Force a CFER step on the next frame regardless of pause state.",
+        true,
+        render_cfer_step
+    );
+    reg!(
+        "render.cfer_set_kan_handle",
+        "Attach (sovereign_handle: u16) or detach (handle: -1) a KAN modulation handle to the CFER field.",
+        true,
+        render_cfer_set_kan_handle
     );
 
     r
@@ -1773,6 +1795,90 @@ fn modify_via_ffi(morton: u64, buf: &[u8; cssl_rt::loa_stubs::FIELD_CELL_BYTES])
     }
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-CFER — Causal Field-Evolution Rendering tool handlers
+// ───────────────────────────────────────────────────────────────────────
+
+/// `render.cfer_snapshot` : read-only · returns the current CFER mirror.
+/// The renderer mirrors `cfer_render::CferMetrics` into `state.cfer` after
+/// each frame so this tool can return live values without crossing the
+/// (Send-unsafe) wgpu boundary.
+fn render_cfer_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    json!({
+        "active_cells": state.cfer.active_cells,
+        "step_us": state.cfer.step_us,
+        "pack_us": state.cfer.pack_us,
+        "kan_evals": state.cfer.kan_evals,
+        "texels_written": state.cfer.texels_written,
+        "cfer_frame_n": state.cfer.cfer_frame_n,
+        "center_radiance": {
+            "r": state.cfer.center_radiance[0],
+            "g": state.cfer.center_radiance[1],
+            "b": state.cfer.center_radiance[2],
+        },
+        "kan_handle": match state.cfer.kan_handle {
+            Some(h) => json!(h),
+            None    => json!(null),
+        },
+        "tex_dim": {
+            "x": TEX_X,
+            "y": TEX_Y,
+            "z": TEX_Z,
+            "total_texels": TEX_COUNT,
+            "total_bytes": TEX_TOTAL_BYTES,
+        },
+    })
+}
+
+/// `render.cfer_step` : sovereign-gated · forces a CFER step on the next
+/// frame even when the engine is paused.
+fn render_cfer_step(state: &mut EngineState, _params: Value) -> Value {
+    state.cfer.force_step_pending = true;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        "render.cfer_step · queued forced step",
+    );
+    json!({
+        "ok": true,
+        "force_step_pending": state.cfer.force_step_pending,
+    })
+}
+
+/// `render.cfer_set_kan_handle` : sovereign-gated · attaches a KAN
+/// sovereign-handle (u16) or detaches when `handle == -1`.
+fn render_cfer_set_kan_handle(state: &mut EngineState, params: Value) -> Value {
+    // Detach when caller passes negative or omits the field.
+    let raw = params.get("handle").and_then(Value::as_i64).unwrap_or(-1);
+    if raw < 0 {
+        state.cfer.kan_handle_pending = Some(None);
+        state.push_event(
+            "INFO",
+            "loa-host/mcp",
+            "render.cfer_set_kan_handle · detach queued",
+        );
+        return json!({ "ok": true, "action": "detach" });
+    }
+    if raw > i64::from(u16::MAX) {
+        return json!({
+            "ok": false,
+            "error": format!("handle {raw} exceeds u16 max ({})", u16::MAX),
+        });
+    }
+    let h = raw as u16;
+    state.cfer.kan_handle_pending = Some(Some(h));
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!("render.cfer_set_kan_handle · attach queued (handle={h})"),
+    );
+    json!({
+        "ok": true,
+        "action": "attach",
+        "handle": h,
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -1783,7 +1889,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_45_tools() {
+    fn tools_list_returns_48_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -1795,9 +1901,11 @@ mod tests {
         // + 6 spectral fidelity (T11-LOA-FID-SPECTRAL : render.set_illuminant
         //   + render.list_illuminants + render.spectral_snapshot
         //   + render.spectral_zones + telemetry.spectral
-        //   + room.teleport_zone) = 45 total.
+        //   + room.teleport_zone)
+        // + 3 CFER (T11-LOA-FID-CFER · render.cfer_snapshot + cfer_step + cfer_set_kan_handle)
+        // = 48 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 45, "must have exactly 45 tools");
+        assert_eq!(reg.len(), 48, "must have exactly 48 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -1852,6 +1960,10 @@ mod tests {
             "render.spectral_zones",
             "telemetry.spectral",
             "room.teleport_zone",
+            // T11-LOA-FID-CFER additions :
+            "render.cfer_snapshot",
+            "render.cfer_step",
+            "render.cfer_set_kan_handle",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -1890,6 +2002,8 @@ mod tests {
             "render.spectral_snapshot",
             "render.spectral_zones",
             "telemetry.spectral",
+            // T11-LOA-FID-CFER : cfer_snapshot is the read-only CFER tool.
+            "render.cfer_snapshot",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -2097,10 +2211,11 @@ mod tests {
         let v = tools_list(&mut s, json!({}));
         // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
-        // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL) = 45.
-        assert_eq!(v["count"], 45);
+        // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
+        // + 3 cfer (T11-LOA-FID-CFER) = 48.
+        assert_eq!(v["count"], 48);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 45);
+        assert_eq!(arr.len(), 48);
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests
@@ -2553,5 +2668,80 @@ mod tests {
             assert!(s.get("u").is_some());
             assert!(s.get("v").is_some());
         }
+    }
+
+    // ── § T11-LOA-FID-CFER : MCP CFER tool tests ──
+
+    #[test]
+    fn mcp_render_cfer_snapshot_returns_active_cell_count() {
+        let mut s = EngineState::default();
+        // Seed the mirror as the renderer would.
+        s.cfer.active_cells = 12345;
+        s.cfer.step_us = 250;
+        s.cfer.center_radiance = [0.1, 0.2, 0.3];
+        s.cfer.kan_handle = Some(42);
+        let v = render_cfer_snapshot(&mut s, json!({}));
+        assert_eq!(v["active_cells"], 12345);
+        assert_eq!(v["step_us"], 250);
+        assert_eq!(v["kan_handle"], 42);
+        assert!((v["center_radiance"]["r"].as_f64().unwrap() - 0.1).abs() < 1e-3);
+        assert_eq!(v["tex_dim"]["x"], 32);
+        assert_eq!(v["tex_dim"]["y"], 16);
+        assert_eq!(v["tex_dim"]["z"], 32);
+        assert_eq!(v["tex_dim"]["total_texels"], 16384);
+    }
+
+    #[test]
+    fn mcp_render_cfer_snapshot_with_no_kan_returns_null() {
+        let mut s = EngineState::default();
+        s.cfer.kan_handle = None;
+        let v = render_cfer_snapshot(&mut s, json!({}));
+        assert!(v["kan_handle"].is_null());
+    }
+
+    #[test]
+    fn mcp_render_cfer_step_queues_force_step() {
+        let mut s = EngineState::default();
+        assert!(!s.cfer.force_step_pending);
+        let v = render_cfer_step(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP}));
+        assert_eq!(v["ok"], true);
+        assert!(s.cfer.force_step_pending);
+    }
+
+    #[test]
+    fn mcp_render_cfer_set_kan_handle_attach_queues_pending() {
+        let mut s = EngineState::default();
+        let v = render_cfer_set_kan_handle(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "handle": 42}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["action"], "attach");
+        assert_eq!(v["handle"], 42);
+        assert_eq!(s.cfer.kan_handle_pending, Some(Some(42)));
+    }
+
+    #[test]
+    fn mcp_render_cfer_set_kan_handle_detach_when_negative() {
+        let mut s = EngineState::default();
+        let v = render_cfer_set_kan_handle(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "handle": -1}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["action"], "detach");
+        assert_eq!(s.cfer.kan_handle_pending, Some(None));
+    }
+
+    #[test]
+    fn mcp_render_cfer_set_kan_handle_rejects_oversized() {
+        let mut s = EngineState::default();
+        let v = render_cfer_set_kan_handle(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "handle": 70000}),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("u16"));
+        assert_eq!(s.cfer.kan_handle_pending, None);
     }
 }

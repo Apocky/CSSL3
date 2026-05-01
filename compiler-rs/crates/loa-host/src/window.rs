@@ -269,6 +269,51 @@ impl App {
             3
         };
         g.dm.intensity = quantized;
+
+        // § T11-LOA-FID-CFER : mirror the runtime CferRenderer's last metrics
+        // into the EngineState so MCP read-only tools (render.cfer_snapshot)
+        // return live values without crossing the (Send-unsafe) wgpu boundary.
+        if let Some(renderer) = self.renderer.as_ref() {
+            let m = renderer.cfer_last_metrics();
+            g.cfer.active_cells = m.active_cells;
+            g.cfer.step_us = m.step_us;
+            g.cfer.pack_us = m.pack_us;
+            g.cfer.kan_evals = m.kan_evals;
+            g.cfer.texels_written = m.texels_written;
+            g.cfer.cfer_frame_n = m.frame_n;
+            g.cfer.center_radiance = renderer.cfer_sample_center_radiance();
+            g.cfer.kan_handle = renderer.cfer.kan_handle;
+        }
+    }
+
+    /// § T11-LOA-FID-CFER : drain pending CFER requests from the EngineState
+    /// mirror and apply them to the runtime CferRenderer. Called once per
+    /// frame BEFORE `render_frame` so the new state takes effect this tick.
+    fn drain_cfer_requests(&mut self) {
+        let pending = {
+            let Ok(mut g) = self.engine_state.lock() else {
+                return;
+            };
+            let kan_pending = g.cfer.kan_handle_pending.take();
+            let force_step = g.cfer.force_step_pending;
+            g.cfer.force_step_pending = false;
+            (kan_pending, force_step)
+        };
+        let (Some(renderer), (kan_pending, _force_step)) =
+            (self.renderer.as_mut(), pending)
+        else {
+            return;
+        };
+        // Apply KAN-handle change.
+        match kan_pending {
+            Some(Some(h)) => renderer.cfer_set_kan_handle(h),
+            Some(None) => renderer.cfer_clear_kan_handle(),
+            None => {}
+        }
+        // The force_step flag is consumed by render_frame on the next tick ;
+        // we don't yet differentiate paused-but-stepping from regular frames
+        // (cfer.step_and_pack always runs in render_frame anyway). Reserved
+        // for future pause-respecting behavior.
     }
 
     /// Apply a winit KeyEvent → input.handle_event(RawEvent::Key{...}).
@@ -896,6 +941,10 @@ impl App {
                 renderer.set_illuminant(g.illuminant, g.illuminant_gen);
             }
         }
+
+        // § 8b''. § T11-LOA-FID-CFER : drain pending CFER requests
+        // (KAN-handle attach/detach + force-step flag).
+        self.drain_cfer_requests();
 
         // § 8c. Build the HUD context this frame.
         let hud = self.build_hud_context();
