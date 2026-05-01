@@ -28,6 +28,24 @@ use cssl_host_license_attribution::{AssetLicenseRecord, License};
 // § Public surface
 // ════════════════════════════════════════════════════════════════════
 
+/// Convert the fetcher-internal coarse `License` enum (used in `AssetMeta`
+/// catalogs) to the host-license-attribution typed `License`.
+///
+/// The mapping is direct except for `License::Other` which routes to
+/// `Unknown` (the LoA default-policy treats this as Deny — correct since
+/// "Other" is the catalog's "unclassified / proprietary / custom" bucket).
+#[must_use]
+pub fn from_fetcher_license(l: crate::License) -> License {
+    use crate::License as F;
+    match l {
+        F::Cc0 => License::CC0,
+        F::CcBy => License::CCBY40,
+        F::CcBySa => License::CCBYSA40,
+        F::Gpl => License::GPLLike,
+        F::Other => License::Unknown,
+    }
+}
+
 /// Map a per-source license-string to the typed `License` enum.
 ///
 /// `source` selects the per-source keyword table ; `license_text = None`
