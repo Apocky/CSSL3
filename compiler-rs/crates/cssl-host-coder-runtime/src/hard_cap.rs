@@ -77,14 +77,19 @@ impl HardCapPolicy {
         }
 
         // 3. TIER-C secret globs.
+        let basename_is_dotenv = normalized
+            .rsplit('/')
+            .next()
+            .is_some_and(|f| f == ".env" || f.starts_with(".env."));
+        let supabase_credentials = normalized.contains("cssl-supabase/")
+            && normalized
+                .rsplit('/')
+                .next()
+                .is_some_and(|f| f.starts_with("credentials"));
         if normalized.contains("/.loa-secrets/")
             || normalized.starts_with(".loa-secrets/")
-            || normalized.contains("cssl-supabase/")
-                && normalized.rsplit('/').next().is_some_and(|f| f.starts_with("credentials"))
-            || normalized.ends_with(".env")
-            || normalized.rsplit('/').next().is_some_and(|f| {
-                f == ".env" || f.starts_with(".env.")
-            })
+            || supabase_credentials
+            || basename_is_dotenv
         {
             return Some(HardCapDecision::DenyTierCSecret);
         }
@@ -102,7 +107,10 @@ fn path_contains_segment(haystack: &str, needle: &str) -> bool {
 fn is_grand_vision_00_to_15(rest: &str) -> bool {
     // strip leading subdirectory junk if any (we want the file basename)
     let basename = rest.rsplit('/').next().unwrap_or(rest);
-    if !basename.ends_with(".csl") {
+    let ends_with_csl = std::path::Path::new(basename)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("csl"));
+    if !ends_with_csl {
         return false;
     }
     let mut chars = basename.chars();

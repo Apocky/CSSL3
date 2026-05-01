@@ -110,6 +110,11 @@ impl<A: ApprovalPromptHandler, L: AuditLog> CoderRuntime<A, L> {
     /// Ingest an edit-request. Performs every hard-cap check, allocates a fresh
     /// [`CoderEditId`], records it in the sandbox in Draft → Staged form, and
     /// emits audit events. Does NOT touch the real file system.
+    ///
+    /// The argument list is wide because audit-emit + sovereign + cap +
+    /// rate-limit all need first-class fields ; collapsing them into a struct
+    /// would obscure the security-critical surface.
+    #[allow(clippy::too_many_arguments)]
     pub fn submit_edit(
         &mut self,
         kind: EditKind,
@@ -124,33 +129,24 @@ impl<A: ApprovalPromptHandler, L: AuditLog> CoderRuntime<A, L> {
     ) -> Result<CoderEditId, HardCapDecision> {
         // 1. Path-glob hard-caps (substrate + spec-grand-vision + TIER-C).
         if let Some(deny) = self.policy.classify_path(&target_file) {
-            self.audit.emit(AuditEvent::hard_cap_rejected(
-                target_file.clone(),
-                deny,
-                staged_at_ms,
-            ));
+            self.audit
+                .emit(AuditEvent::hard_cap_rejected(target_file, deny, staged_at_ms));
             return Err(deny);
         }
 
         // 2. Sovereign-cap requirement for substrate/schema/spec edit-kinds.
         if kind.requires_sovereign() && !sovereign.is_held() {
             let deny = HardCapDecision::DenySovereignRequired;
-            self.audit.emit(AuditEvent::hard_cap_rejected(
-                target_file.clone(),
-                deny,
-                staged_at_ms,
-            ));
+            self.audit
+                .emit(AuditEvent::hard_cap_rejected(target_file, deny, staged_at_ms));
             return Err(deny);
         }
 
         // 3. Cap-bit requirement (CODER_CAP_AST_EDIT minimum for any submit).
         if !caps.contains(CoderCap::AST_EDIT) {
             let deny = HardCapDecision::DenySovereignRequired;
-            self.audit.emit(AuditEvent::hard_cap_rejected(
-                target_file.clone(),
-                deny,
-                staged_at_ms,
-            ));
+            self.audit
+                .emit(AuditEvent::hard_cap_rejected(target_file, deny, staged_at_ms));
             return Err(deny);
         }
 
@@ -160,11 +156,8 @@ impl<A: ApprovalPromptHandler, L: AuditLog> CoderRuntime<A, L> {
         entry.retain(|t| *t >= prune_before);
         if entry.len() >= self.policy.rate_max_per_window as usize {
             let deny = HardCapDecision::DenyRateLimit;
-            self.audit.emit(AuditEvent::hard_cap_rejected(
-                target_file.clone(),
-                deny,
-                staged_at_ms,
-            ));
+            self.audit
+                .emit(AuditEvent::hard_cap_rejected(target_file, deny, staged_at_ms));
             return Err(deny);
         }
         entry.push(staged_at_ms);
@@ -192,7 +185,10 @@ impl<A: ApprovalPromptHandler, L: AuditLog> CoderRuntime<A, L> {
     /// Run validation against the staged edit. Transitions
     /// `Staged` → `ValidationPending` → (`ValidationPassed` | `Rejected`).
     pub fn validate(&mut self, id: CoderEditId, now_ms: u64) -> ValidationOutcome {
-        let prev = self.sandbox.get(id).map(|e| e.state).unwrap_or(EditState::Rejected);
+        let prev = self
+            .sandbox
+            .get(id)
+            .map_or(EditState::Rejected, |e| e.state);
         self.sandbox.transition(id, EditState::ValidationPending);
         self.audit.emit(AuditEvent::state_transition(
             id,

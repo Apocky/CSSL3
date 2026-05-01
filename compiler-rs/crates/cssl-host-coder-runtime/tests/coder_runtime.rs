@@ -429,8 +429,8 @@ fn sandbox_iterates_in_id_order() {
         41,
     )
     .unwrap();
-    let ids: Vec<CoderEditId> = rt.sandbox().iter().map(|(k, _)| *k).collect();
-    assert_eq!(ids, vec![id1, id2]);
+    let collected: Vec<CoderEditId> = rt.sandbox().iter().map(|(k, _)| *k).collect();
+    assert_eq!(collected, vec![id1, id2]);
 }
 
 // ═══ Validation : pass + fail (2) ══════════════════════════════════
