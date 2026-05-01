@@ -1,0 +1,151 @@
+# 02 : LoA-v13 GRAND-VISION — DATA-AXES
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> data-locality-discipline : LOCAL ⊕ SUPABASE ⊕ VERCEL boundaries
+# § I> CSSL-native ; ¬ marketing ; ¬ exhaustive-API-list
+# § I> consent-as-OS encoded into-data-locality ; biometric-NEVER-egress
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: data-locality is-an-architectural-decision ¬ optimization-detail
+       ≡ where-data-lives = who-can-see-it = consent-boundary
+  t∞: cap-gated-egress ‼ ¬ default-egress
+       ≡ DEFAULT-DENY ; explicit-NET_*-cap-required for any-outbound
+  t∞: biometric-family ¬ leaves-device  ‼ structural
+       ≡ Sensitive<Biometric|Gaze|Face|Body> ⇒ TelemetryEgress refuses
+
+# ══════════════════════════════════════════════════════════════════
+
+§ LOCAL  «file-system caches + transient-state»
+
+  § WHAT-LIVES-HERE
+    asset-blobs    : GLB/PNG/WAV (binary ≥ 1MB) cached in LRU
+    .meta-sidecars : SHA256 + license + source-url + dimensions
+    audit-rings    : telemetry-ring lock-free producer-consumer (cssl-telemetry)
+    image-snapshots: ω-field saved-state (cssl-orthopersist §§ 18)
+    config         : runtime-config-bundle ; per-installation salt
+    JSONL-logs     : per-frame telemetry rotated-by-size + by-day
+
+  § WHY-LOCAL
+    ✓ blobs > 5MB ⇒ Supabase-blob-storage costs prohibitive
+    ✓ per-frame-telemetry ⇒ network-write would dominate frame-budget
+    ✓ user-sovereignty ⇒ raw-paths NEVER-egress (path-hash discipline §§ 22)
+    ✓ replay-deterministic ⇒ bit-equal-snapshots local
+
+  § DISCIPLINE
+    LRU-eviction by-mtime + by-total-size-cap (configurable, default 8GB)
+    .meta-sidecar required for-each-blob (orphans purged on next-startup)
+    rotation : JSONL-logs daily + size-cap 100MB ; gzip-archived
+    salt : per-installation ; BLAKE3-key for path-hash (§§ 22)
+
+  § WHAT-NEVER-LIVES-LOCAL
+    ✗ secret-keys plaintext (use OS-keychain via cssl-host-keychain)
+    ✗ player-PII (name/email/IP — never collected without explicit-cap)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SUPABASE  «relational + RLS-protected ¬ blob-store»
+
+  § TABLES
+    assets         : (id, sha256, source_url, license, kind, dims_json,
+                       embedding_pgvector, created_at)
+                     ≡ search-index ¬ blob-store ; blob lives @ source-url
+    scenes         : (id, owner, cssl_source_hash, created_at, parent_id)
+                     ≡ saved-compositions ; cssl-source canonical-truth
+    history        : (id, user, event_kind, event_data_json, ts)
+                     ≡ telemetry-aggregated ; ¬ raw-frame-events
+    companion_logs : (id, session_id, role, msg_hash, intent_class, ts)
+                     ≡ DM/GM/Collaborator/Coder trace
+                     ≡ ¬ raw-msg-text ; only-msg-hash + intent-class
+
+  § RLS-DISCIPLINE
+    ∀ table : Row-Level-Security enabled
+    history + companion_logs : owner-only-read ; service-role for-writes-from-edge
+    assets : public-read for community-discoverable ; owner-only-write
+    scenes : public-read if owner-marks-shared ; owner-only-write
+
+  § WHAT-NOT-IN-SUPABASE  ‼ load-bearing
+    ✗ blobs > 5 MB (assets table stores URL ¬ blob)
+    ✗ raw-frames or per-frame-telemetry (use local JSONL+rotate)
+    ✗ Sensitive<biometric|gaze|face|body> values (banned-egress structural)
+    ✗ raw-paths or PII-fields (path-hash + opaque-id only)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ VERCEL  «pure-compute edge ¬ persistent-store»
+
+  § ENDPOINTS  (path → role)
+    /api/intent           : text → typed-intent classifier (stage-0 keyword + KAN)
+    /api/asset/search     : Sketchfab/PolyHaven/Kenney search-proxy
+                            ≡ keeps API-keys server-side ; client never-sees
+    /api/neural3d         : neural-3D mesh-gen gateway (stub-stage-1 ; real-W4)
+    /api/companion        : companion-proxy → remote-Claude (DM/GM only)
+    /api/marketplace      : community-asset-listing + voting (W4)
+    /api/multiplayer      : signaling for peer-to-peer scene-sharing (W4)
+
+  § WHY-VERCEL
+    ✓ stateless-compute ; scales-to-zero ; pay-per-invocation
+    ✓ API-key-server-side discipline ; client never-holds-secret
+    ✓ rate-limit + abuse-shield via Vercel-native middleware
+    ✓ deploy-on-git-push ; CI-linked
+
+  § WHAT-NEVER-ON-VERCEL
+    ✗ persistent-state (use Supabase for durable, KV-Edge for ephemeral)
+    ✗ blobs (proxy-only ; never-cache-blob-on-edge)
+    ✗ Sensitive<biometric|gaze|face|body> processing (¬ leaves-device structural)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ READ-WRITE-PRIVILEGE  «who-can-touch-what»
+
+  § SOVEREIGN-CAP-LADDER
+    ApockyRoot          : top-level Sovereign ; can-revoke-anything
+    AnthropicAudit      : audit-only ; ¬ mutate ; for PRIME-DIRECTIVE oversight
+    PlayerInstance      : user-scoped ; can-mutate-own-scenes + own-history
+    PublicAnonymous     : read-only public-shared assets + scenes
+    DEFAULT             : DENY-all-network ; opt-in-per-cap
+
+  § CAP-GATED-NETWORK
+    NET_HTTP_GET        : read-only fetch (cap : NetGetRead)
+    NET_HTTP_POST       : write-class ; rate-limited (cap : NetPostWrite)
+    NET_HTTPS_ONLY      : ‼ default ; no-plaintext-transport
+    NET_LOCALHOST_ONLY  : dev-mode ; ¬ shipping
+    NET_BIOMETRIC_REFUSED: structural ; ¬ override
+
+  § CAP-INHERITANCE  per Σ-mask § SOVEREIGN-HANDLE
+    cell-claimed-by-Sovereign-X ⇒ mutate requires act-as-Sovereign-X
+    SIG0004 mismatch on-violation @ compile-time
+    runtime double-check Phase-5 AGENCY-VERIFY (defense-in-depth)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ DATA-FLOW-MATRIX  «source × destination × cap»
+
+  ```text
+                  | LOCAL | SUPABASE | VERCEL | EXTERNAL-FETCH
+  ----------------+-------+----------+--------+----------------
+  raw-blob        | ✓ LRU |    ✗     |   ✗    |  via Vercel-proxy + cap-gate
+  blob-meta       | ✓     |  ✓ FK    |   ✗    |  ¬ direct
+  asset-search    |   ◐   |  ✓ index | ✓ proxy|  Sketchfab/PolyHaven/Kenney
+  scene-cssl      | ✓     |  ✓ source-hash | ¬ |  user→cloud sync (cap)
+  intent-text     | ✓ JSONL |  ✗ (hash only) | ✓ classify | ¬
+  biometric       | ✓ on-device-only | ✗ STRUCTURAL-BAN | ✗ STRUCTURAL-BAN | ✗
+  audit-chain     | ✓     |  ◐ root-only | ¬ | ¬
+  ```
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  §§ 30_SUBSTRATE_v2 § Σ-MASK-PER-CELL — Σ-mask = data-locality-encoder
+  §§ 22_TELEMETRY                 — path-hash discipline
+  §§ 11_IFC                       — Sensitive<*> egress-bans
+  03 INTENT-FLOW (sibling)        — text→intent uses /api/intent
+  06 FREE-3D-INGEST (sibling)     — asset-search via /api/asset/search
+  07 NETWORKING (sibling)         — cap-gated outbound
+
+∎ DATA-AXES
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)
