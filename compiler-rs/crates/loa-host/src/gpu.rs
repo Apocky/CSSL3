@@ -19,6 +19,8 @@ use winit::window::Window;
 
 use cssl_rt::loa_startup::log_event;
 
+use crate::telemetry::{self as telem, GpuAdapterInfo};
+
 /// Bundled GPU context : instance, surface, device, queue, and config.
 ///
 /// Owns the surface lifetime via an `Arc<Window>` so the surface stays valid
@@ -89,6 +91,53 @@ impl GpuContext {
                 info.name, info.backend, info.device_type
             ),
         );
+
+        // § T11-LOA-TELEM : capture full adapter info for `telemetry.gpu_info`.
+        // Limits + features dump as a single-line summary string. Keeping this
+        // out-of-band of the wgpu Limits-struct API stability story.
+        let adapter_features = adapter.features();
+        let mut feature_names: Vec<String> = Vec::new();
+        // The Features bitflags don't expose direct iteration in older wgpu
+        // versions ; we hit the most-common bits manually so the JSON dump is
+        // useful without a hard dep on a specific wgpu Features API.
+        let probe = [
+            (wgpu::Features::TIMESTAMP_QUERY, "TIMESTAMP_QUERY"),
+            (wgpu::Features::PIPELINE_STATISTICS_QUERY, "PIPELINE_STATISTICS_QUERY"),
+            (wgpu::Features::TEXTURE_COMPRESSION_BC, "TEXTURE_COMPRESSION_BC"),
+            (wgpu::Features::TEXTURE_COMPRESSION_ETC2, "TEXTURE_COMPRESSION_ETC2"),
+            (wgpu::Features::TEXTURE_COMPRESSION_ASTC, "TEXTURE_COMPRESSION_ASTC"),
+            (wgpu::Features::INDIRECT_FIRST_INSTANCE, "INDIRECT_FIRST_INSTANCE"),
+            (wgpu::Features::SHADER_F16, "SHADER_F16"),
+            (wgpu::Features::DEPTH_CLIP_CONTROL, "DEPTH_CLIP_CONTROL"),
+            (wgpu::Features::PUSH_CONSTANTS, "PUSH_CONSTANTS"),
+        ];
+        for (flag, name) in &probe {
+            if adapter_features.contains(*flag) {
+                feature_names.push((*name).to_string());
+            }
+        }
+        let limits = adapter.limits();
+        let limits_summary = format!(
+            "max_tex_2d={},max_uniform_buf={},max_storage_buf={},max_vertex_buffers={},\
+             max_bind_groups={},max_compute_workgroup_size_x={}",
+            limits.max_texture_dimension_2d,
+            limits.max_uniform_buffer_binding_size,
+            limits.max_storage_buffer_binding_size,
+            limits.max_vertex_buffers,
+            limits.max_bind_groups,
+            limits.max_compute_workgroup_size_x,
+        );
+        let gpu_info = GpuAdapterInfo {
+            name: info.name.clone(),
+            backend: format!("{:?}", info.backend),
+            device_type: format!("{:?}", info.device_type),
+            vendor_id: info.vendor,
+            device_id: info.device,
+            driver: info.driver.clone(),
+            features: feature_names,
+            limits_summary,
+        };
+        telem::record_gpu_info(gpu_info);
 
         // § T11-LOA-PURE-CSSL : use the adapter's full reported limits rather
         // than `downlevel_defaults()` (which caps surfaces at 2048×2048 — too

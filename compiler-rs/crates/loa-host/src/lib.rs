@@ -53,6 +53,9 @@ pub mod physics;
 pub mod mcp_server;
 pub mod mcp_tools;
 
+// Telemetry-sibling catalog (T11-LOA-TELEM)
+pub mod telemetry;
+
 // DM-sibling catalog
 pub mod dm_director;
 pub mod gm_narrator;

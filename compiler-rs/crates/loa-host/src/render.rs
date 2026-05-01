@@ -41,7 +41,17 @@ use crate::geometry::{RoomGeometry, Vertex};
 use crate::gpu::GpuContext;
 use crate::material::{material_lut, Material, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_lut, Pattern, PATTERN_LUT_LEN};
+use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuState, UiOverlay};
+
+/// Per-frame metrics returned by `Renderer::render_frame`. The window
+/// driver hands these to the global telemetry sink.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FrameMetrics {
+    pub draw_calls: u32,
+    pub vertices: u64,
+    pub pipeline_switches: u32,
+}
 
 /// CPU-side mirror of the WGSL `Uniforms` struct.
 ///
@@ -321,7 +331,7 @@ impl Renderer {
         _window: &Arc<Window>,
         hud: &HudContext,
         menu: &MenuState,
-    ) -> Result<(), wgpu::SurfaceError> {
+    ) -> Result<FrameMetrics, wgpu::SurfaceError> {
         let frame = match gpu.surface.get_current_texture() {
             Ok(f) => f,
             Err(e @ wgpu::SurfaceError::Lost) | Err(e @ wgpu::SurfaceError::Outdated) => {
@@ -373,6 +383,12 @@ impl Renderer {
                 label: Some("loa-host/frame-encoder"),
             });
 
+        // Per-frame metric counters — flow into `FrameMetrics` and the
+        // global telemetry sink.
+        let mut draw_calls: u32 = 0;
+        let mut vertices: u64 = 0;
+        let mut pipeline_switches: u32 = 0;
+
         // ─── Pass 1 : opaque scene ───
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -402,6 +418,8 @@ impl Renderer {
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.pipeline);
+            pipeline_switches += 1;
+            telem::global().record_pipeline_switch();
             pass.set_bind_group(0, &self.bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buf.slice(..));
             pass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint32);
@@ -409,12 +427,18 @@ impl Renderer {
             if let Some((lo, hi)) = self.transparent_index_range {
                 if lo > 0 {
                     pass.draw_indexed(0..lo, 0, 0..1);
+                    draw_calls += 1;
+                    vertices += u64::from(lo);
                 }
                 if hi < self.index_count {
                     pass.draw_indexed(hi..self.index_count, 0, 0..1);
+                    draw_calls += 1;
+                    vertices += u64::from(self.index_count - hi);
                 }
             } else {
                 pass.draw_indexed(0..self.index_count, 0, 0..1);
+                draw_calls += 1;
+                vertices += u64::from(self.index_count);
             }
         }
 
@@ -442,10 +466,14 @@ impl Renderer {
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.pipeline_transparent);
+            pipeline_switches += 1;
+            telem::global().record_pipeline_switch();
             pass.set_bind_group(0, &self.bind_group, &[]);
             pass.set_vertex_buffer(0, self.vertex_buf.slice(..));
             pass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(lo..hi, 0, 0..1);
+            draw_calls += 1;
+            vertices += u64::from(hi - lo);
         }
 
         // ─── Pass 3 : UI overlay ───
@@ -458,6 +486,11 @@ impl Renderer {
             menu,
         );
         self.ui.encode_pass(&mut encoder, &view);
+        // UI overlay is conservatively counted as +1 draw call + +1 pipeline
+        // switch (the prepare_frame/encode_pass owns its own pipeline).
+        draw_calls += 1;
+        pipeline_switches += 1;
+        telem::global().record_pipeline_switch();
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
@@ -473,11 +506,18 @@ impl Renderer {
             log_event(
                 "INFO",
                 "loa-host/render",
-                &format!("RENDER_FRAME · n={} · t={:.1}s", self.frame_n, t_secs),
+                &format!(
+                    "RENDER_FRAME · n={} · t={:.1}s · draws={} verts={}",
+                    self.frame_n, t_secs, draw_calls, vertices
+                ),
             );
         }
         self.frame_n += 1;
-        Ok(())
+        Ok(FrameMetrics {
+            draw_calls,
+            vertices,
+            pipeline_switches,
+        })
     }
 
     /// Total number of frames presented.
