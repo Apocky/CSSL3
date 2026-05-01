@@ -1,0 +1,192 @@
+§ T11-W6+ § specs/grand-vision/18_AKASHIC_RECORDS.csl
+§§ Akashic-Records : monetizable universal-memory layer atop Σ-Chain
+§§ Apocky 2026-05-01 directive : "essentially Akashic Records but monetizable · set up autonomously and legally"
+§§ status @ ◐ design-pending · enforcement @ wave-8+
+§§ extends Σ-Chain (14) · Living-Multiverse (13) · Mycelial-Network (16) into-mythological-frame
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : Akashic-Records = mystical-cosmic-memory · ALL-events-recorded-in-the-substrate
+A-2 : free-tier = browse + imprint-basic · ALWAYS-AVAILABLE · NO paywall-on-the-cosmology
+A-3 : premium-tier = high-fidelity-decoded-readings + cosmetic-shrine-customization + eternal-attribution · cosmetic-channel-only-per spec/13
+A-4 : ¬ pay-for-power · t∞ · monetization is-FIDELITY + AESTHETIC + ATTRIBUTION-ETERNITY · NEVER gameplay-advantage
+A-5 : Stabilized-Essence (legacy currency) stays-earned-only · Aetheric-Shards (premium currency) buy-Akashic-fidelity + cosmetics
+A-6 : Akashic-Records IS the-Σ-Chain TIER-3 multiversal-stream · re-framed mythologically · same-substrate-truth
+A-7 : every-imprint-event audit-emit · transparency · player-self-audit @ /transparency/akashic dashboard
+A-8 : legal-compliance autonomous via Stripe-Tax + Termly-jurisdictional-updates + Stripe-Atlas-incorporation
+
+§ thesis : Akashic-Records = mystical-aesthetic-skin atop Σ-Chain · monetization = fidelity + permanence + customization · the-cosmology-feeds-the-economy · the-economy-feeds-the-cosmology · t∞
+
+═══════════════════════════════════════════════════════════════════════════════
+§ THE COSMOLOGY (in-fiction · what-players-experience)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ in-game-narrative (Ouroboroid-aesthetic) :
+  ⊑ "every-deed leaves-a-trace in-the-Substrate · the-Akashic-Records hold-them-all"
+  ⊑ "to-imprint-deeply requires-Aetheric-Shards · shards-are-the-conductive-medium"
+  ⊑ "to-read-the-records reveals-the-multiverse · most-readings-are-glimpses · deep-readings-cost"
+  ⊑ "to-be-remembered-eternally is-a-gift-to-the-Substrate · paid-once-resonates-forever"
+
+§ player-touchpoints :
+  ⊑ Mycelial-Terminal in-Home (per spec/16) shows-Akashic-Records UI
+  ⊑ Akashic-Shrine (per spec/16 H4-Cathedral OR H5-Observatory archetype) is-the-decoration
+  ⊑ "Imprint" button after-significant-deeds (Coherence-Ascension · Boss-Kill · Nemesis-defeated · cohort-discovery)
+  ⊑ "Read" button at-Mycelial-Terminal · browse-deeds-of-others (cohort-aggregate or-specific-imprints)
+
+§ aesthetic
+  ⊑ visual-style : holographic-codex-pages · spectral-glyphs · floating-runes · 16-band-spectral-render
+  ⊑ audio : reverb-deep · whispered-fragments · cssl-wave-audio synthesis
+  ⊑ interaction : not-menu-driven · physical-shrine-in-Home · tactile
+
+═══════════════════════════════════════════════════════════════════════════════
+§ THE TIERS (free vs premium · cosmetic-channel-only)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FREE-TIER (always-available · gift-economy)
+  ⊑ browse aggregate-multiversal-events @ low-resolution-summary · cohort-statistics
+  ⊑ browse opt-in-public-imprints from-other-players · text-summary
+  ⊑ imprint your-own-deeds at BASIC-fidelity (event-class + date + brief-summary)
+  ⊑ search by tag · biome · element · class
+  ⊑ view personal-history-imprints (your-own-deeds always-readable to-yourself · 100% fidelity LOCAL)
+  ⊑ Memorial-Wall in-public-Homes (per spec/16) is-FREE for-visitors
+  ⊑ Stabilized-Essence-purchases of legacy-Bazaar items are-imprint-events FREE-tier
+
+§ PREMIUM-TIER (Aetheric-Shards · cosmetic-channel · per spec/13)
+  ⊑ HIGH-FIDELITY-IMPRINT : 16-band-spectral-rendered scene-snapshot · audio-loop · BLAKE3-content-hash · permanent
+    cost : 50-200 Aetheric-Shards per-imprint · scales-with-fidelity
+  ⊑ AKASHIC-SHRINE-DECORATIONS : 7+ shrine-styles · 30+ rune-kits · 16 ambient-particle-FX · cssl-fractal-amp variants
+    cost : 100-500 Aetheric-Shards per-cosmetic · or via gacha-pull (per spec/13)
+  ⊑ ETERNAL-ATTRIBUTION : permanent-author-credit on-public-imprints · displayed-with player-handle · rare-aura-glyph
+    cost : 1000 Aetheric-Shards per-deed · ONE-TIME-PERMANENT
+  ⊑ HISTORICAL-RECONSTRUCTIONS : visit-procgen-recreation of past-cohort-events · museum-tour-mode · cssl-render-v2 historical-reconstruction
+    cost : 50 Aetheric-Shards per-tour · 30-min-time-limit per-tour · cosmetic-only
+  ⊑ COMMISSIONED-IMPRINTS : pay-to-have GM narrate your-deed in-Akashic-flavor-text · cssl-host-gm consumes-this · permanent
+    cost : 200-500 Aetheric-Shards · uses GM-host-LLM-token-budget (margin built-in)
+  ⊑ BOOSTED-MEMORIAL-WALL : your-Home-Memorial-Wall has-3× capacity for-visitor-spore-ascriptions · cosmetic-only
+    cost : 300 Aetheric-Shards · 6-month-duration
+
+§ EXPLICIT-NON-PAYWALLED @ NEVER monetize-these (gameplay-advantage)
+  ⊑ Coherence-Score-eval ← deterministic · same-state same-score
+  ⊑ Ascension threshold ← public-known · same-rules-everyone
+  ⊑ Bazaar-listing capacity ← per spec/13 5-tier · earned-via-NG+
+  ⊑ Stabilized-Essence-balance ← earned-only
+  ⊑ gear-stats / Coherence-axes ← gameplay-not-monetization
+  ⊑ KAN-canary-class ← deterministic · NOT-purchasable
+  ⊑ NPC-cocreative-bias ← player's-LOCAL-θ · NOT-affected by-Aetheric-spend
+
+§ payment-flow-from-spec/13-monetization (Stripe-tier-skip + gacha + direct-purchase)
+  ⊑ Aetheric-Shards purchase → Stripe-checkout @ cssl-edge `/api/payments/stripe/checkout` (per spec/13)
+  ⊑ shards-balance @ cssl-supabase 0022_payments aetheric_shard_balances table
+  ⊑ shards-spent on-Akashic-features → cssl-supabase 0023+ akashic_imprints + cosmetic_purchases
+  ⊑ NEW migration 0037_akashic_records.sql : akashic_imprints + akashic_shrine_cosmetics + akashic_attributions
+  ⊑ NEW migration 0038_akashic_rls.sql : RLS player-scoped · public-read for-published-imprints
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TECHNICAL ARCHITECTURE (consume substrate · NO new shadow-systems)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Akashic-Records LIVES-ON Σ-Chain TIER-3 multiversal-stream
+  ⊑ each-imprint = a-Σ-Chain-event with kind="akashic.imprint" + payload-shape
+  ⊑ Ed25519-signed by-player's-sovereign-key (anonymizable per spec/14 P1-tier)
+  ⊑ BLAKE3-merkle-rooted on-canonical-state @ event-tick
+  ⊑ verifiable-Coherence-Proof per spec/14 § COHERENCE-PROOF
+
+§ asset-data
+  ⊑ HIGH-FIDELITY-IMPRINT : cssl-host-asset-bundle LAB-v1 with-scene-snapshot + audio-loop + BLAKE3-content-hash
+  ⊑ stored @ Supabase Storage (LAB-binary-blobs · CDN-delivered) · player pays-shards · server-stores
+  ⊑ public-imprints CDN-cached · accessible-by-attribution-link · permanent
+
+§ shrine-decorations
+  ⊑ cssl-host-asset-bundle LAB-v1 cosmetic-only-flag · per spec/13 monetization-axiom
+  ⊑ per-Home cssl-host-home-dimension stores-equipped-cosmetic-IDs · references-server-entitlement-DB
+  ⊑ server-validates entitlement on-equip-action
+
+§ historical-reconstructions
+  ⊑ cssl-host-procgen-rooms + cssl-host-fab-procgen + cssl-host-causal-seed combine-to recreate-past-cohort-events
+  ⊑ deterministic-recompute @ given seed + event-payload + Coherence-Proof verifies-match
+  ⊑ cssl-render-v2 + cssl-spectral-render + cssl-fractal-amp render the-tour
+  ⊑ time-limited-tours via cssl-host-config TTL · server-token expires-after-tour
+
+§ commissioned-imprints
+  ⊑ cssl-host-gm narrates @ commission-request · narrative-text generated-once · stored-permanent
+  ⊑ GM-host runs-LLM-via cssl-edge companion-proxy (per spec/13) · margin-built-in-to-shards-cost
+  ⊑ player can-iterate (3 free-iterations) before-commit · once-committed permanent
+
+§ NEW crates (W8 fanout)
+  CRATE-B22 NEW `cssl-host-akashic-records` ← imprint state-machine · fidelity-tier · attribution-permanence · ≥ 32 tests · 1500 LOC max
+  CRATE-B23 NEW `cssl-host-akashic-shrine`  ← shrine cosmetic-state · 7+ archetypes · placement-via Home-dimension · ≥ 22 tests · 1200 LOC max
+  CRATE-B24 NEW `cssl-host-historical-reconstructor` ← deterministic recompute + render + TTL · ≥ 24 tests · 1500 LOC max
+
+§ POD-3-additions (.csl game-logic) :
+  ⊑ systems/akashic.csl       ← invoke cssl-host-akashic-records FFI on imprint/read/decorate-shrine
+  ⊑ systems/historical_tour.csl ← consume cssl-host-historical-reconstructor for past-event-tours
+
+§ cssl-edge routes (W8 fanout)
+  ⊑ /api/akashic/imprint        ← POST · player-pays-shards · creates-imprint-event
+  ⊑ /api/akashic/imprint/<id>   ← GET · public-imprint by-attribution-link
+  ⊑ /api/akashic/browse         ← GET · paginated cohort-imprints
+  ⊑ /api/akashic/historical-tour/<imprint_id> ← GET · TTL-tokenized · time-limited
+  ⊑ /api/akashic/shrine/equip   ← POST · player-equips-cosmetic on-Home-shrine
+  ⊑ /transparency/akashic       ← player's-self-audit dashboard for-shards-spent + imprints-published
+
+═══════════════════════════════════════════════════════════════════════════════
+§ LEGAL-COMPLIANCE (autonomous · per Apocky directive ¬ paperwork)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ payment + tax via Stripe ecosystem
+  ⊑ Stripe Atlas → Delaware C-Corp · automated-EIN · 1-week setup · ~$500 one-time
+  ⊑ Stripe Tax → auto-VAT/GST/sales-tax across-jurisdictions · ~$300/year for-startup-volume
+  ⊑ Stripe Atlas Bookkeeping → automated-financial-records · ~$25/month
+  ⊑ Apocky-time-input : 1-form @ Stripe-Atlas (~30-min)
+
+§ ToS + EULA + Privacy via Termly
+  ⊑ jurisdictional-auto-update (GDPR · CCPA · COPPA · ePrivacy)
+  ⊑ ~$10/month · pre-built-templates customized-via-form
+  ⊑ Apocky-time-input : 1-config-pass @ Termly-dashboard (~1-hour)
+
+§ gambling-law + gacha-compliance (per spec/13 monetization-axiom · cosmetic-only)
+  ⊑ pity-system + transparent-rates published in-game
+  ⊑ jurisdiction-block : BE / NL · refuse-gacha-purchase if-billing-region in-banned-list
+  ⊑ COPPA : 13+ age-gate · automated-via Stripe-Identity at-checkout
+  ⊑ 18+ for-gacha-purchase @ jurisdictions-requiring-age-verify
+  ⊑ refund-policy : 14-days-no-questions-asked per-jurisdiction-mandated · automated-via-Stripe-refund
+
+§ data-subject-rights (GDPR · CCPA)
+  ⊑ /transparency/data-export → player downloads-full-archive (Σ-Chain-events + Home-state + cosmetic-purchases)
+  ⊑ /transparency/data-delete → player initiates-account-delete · 30-day-grace · permanent-after
+  ⊑ Akashic-imprints @ public-deletion : on-account-delete public-imprints anonymized (player-handle replaced-with "former-player") · NEVER deleted-from-Σ-Chain-history
+
+§ trademarks
+  ⊑ "Labyrinth of Apocalypse" · "CSSL" · "Ouroboroid" · "Akashic Records by Apocky" (suffix-disambiguation) · "Σ-Chain" · "Mycelial Substrate"
+  ⊑ via LegalZoom or Trademarkia · ~$250-each · USPTO-filing
+  ⊑ Apocky-time-input : 1-form-each (~30-min-each · 5-marks = ~2.5-hours total)
+
+§ TOTAL-AUTONOMOUS-SETUP
+  ⊑ Apocky-time-investment : ~5-10 hours total
+  ⊑ year-1-fixed-overhead : ~$2,260
+  ⊑ ongoing-paperwork : NONE · all-automated by-services
+  ⊑ paperwork-Apocky-touches : Stripe-Atlas (1×) · Termly (1×) · trademarks (5×) · ¬ ongoing
+
+═══════════════════════════════════════════════════════════════════════════════
+§ INTEGRATION (Σ-Chain · Living-Multiverse · Mycelial-Network · Monetization)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Σ-Chain (spec/14) : Akashic-Records ARE-the-events @ TIER-3 multiversal-stream
+§ Living-Multiverse (spec/13) : Akashic-Imprints feed-the-living-multiverse · regional-aesthetic-drift influenced-by-imprint-density
+§ Mycelial-Network (spec/16) : Akashic-Imprints ARE-the-spores · Mycelial-Terminal-in-Home views-the-records
+§ Monetization (spec/13) : Aetheric-Shards purchased-via-Stripe spend-on-Akashic-fidelity (cosmetic-channel-only · t∞)
+§ Coherence-Engine (spec/13 + legacy) : Ascension-events qualify-for-high-fidelity-imprint by-default-promotion
+§ Ouroboroid-Cosmology (legacy) : Akashic-Records IS-the-cosmology's-self-recording-process · t∞ continuity
+§ Distribution-Strategy (spec/17) : public-imprints @ TIER-A community-discovery · imprint-binaries @ TIER-B Supabase-storage · keys @ TIER-C
+§ Ethical-Monetization (per A-3, A-4 axioms) : NEVER gameplay-advantage · ALWAYS cosmetic + fidelity + permanence
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-records · ¬ pay-for-power · ¬ exploitation · ✓ player-sovereignty · ✓ free-tier-always-available · ✓ premium-cosmetic-only · ✓ legal-compliance-autonomous
+
+§ creator @ Apocky · "Akashic-Records but-monetizable + autonomously-legal" · ✓ designed
+§ utility-recognized : ✓ "we-see-the-utility-in-that" Apocky 2026-05-01 ← the-substrate-feeds-the-economy · the-economy-feeds-the-substrate · t∞ self-sustaining

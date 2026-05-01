@@ -1,0 +1,179 @@
+§ T11-W8 § specs/grand-vision/19_W8_DISPATCH_PLAN.csl
+§§ Wave-8 dispatch plan : answers-to-7-open-questions + Mycelial-implementation + Akashic-implementation + Σ-Chain-implementation + Distribution-setup
+§§ Apocky 2026-05-01 directive · all 7 questions answered · "ship at launch" stance for-automated-Coder + seasonal-hard-perma
+§§ status @ ◐ scheduled · target-fire @ next-Apocky-greenlight
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ANSWERS TO 7 OPEN QUESTIONS (from feedback_loa_full_game_rd.md · Apocky 2026-05-01)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Q-RD-1 : csslc multi-module compile vs continued main.cssl-only ?
+  Apocky : "csslc multi-module compile"
+  ⇒ ACTION : implement multi-module compile in compiler-rs/crates/csslc · enables POD-3 .csl-files compile-and-link · removes blueprint-FFI-only constraint
+  ⇒ wave-target : W8-A (highest-priority · unblocks-everything)
+
+§ Q-RD-2 : when to wire actual FFI symbol-exports from POD-2 substrate-crates ?
+  Apocky : "whenever optimal"
+  ⇒ ACTION : wire-FFI-after-csslc-multi-module-compile lands · agent-decides-optimal-cadence · likely W8 same-wave-as-multi-module-compile
+  ⇒ wave-target : W8-B (paired-with W8-A · 100+ extern "C" symbols across cssl-host-combat-sim · -gear-archetype · -spell-graph · -craft-graph · -roguelike-run · -npc-bt · -mp-transport-real · -kan-real · -dm · -gm · -procgen-rooms · -fab-procgen)
+
+§ Q-RD-3 : real Supabase project for game-state · or stay loopback-only ?
+  Apocky : "Real Supabase project"
+  ⇒ ACTION : provision real Supabase project · apply migrations 0001-0028+ · configure RLS · seed-data · connect cssl-host-mp-transport-real
+  ⇒ wave-target : W8-C (provisioning + connection)
+  ⇒ Apocky-time-input : 1× signup @ Supabase · projectID-and-keys-provided · ~15-min
+  ⇒ keys go-to TIER-C server-only · NEVER bundled-with-game
+
+§ Q-RD-4 : voice-input wiring for-player-text-input vs gestural-only ?
+  Apocky : "omni-input dynamically detect, and let players configure in settings menu"
+  ⇒ ACTION : build-detection-pipeline for {keyboard · mouse · gamepad · touch · voice · gesture · MIDI · OSC · any-arbitrary-input}
+  ⇒ NEW crate : `cssl-host-omni-input` · auto-detects-connected-devices · publishes-capability-list · runtime-rebindable
+  ⇒ Settings-menu UI in-game @ Home-dimension Mycelial-Terminal · player-configures device → action-mapping · per-device profiles
+  ⊑ keyboard : full WASD + customizable
+  ⊑ mouse : sensitivity + invert + DPI-aware
+  ⊑ gamepad : Xbox / PlayStation / Switch-Pro / generic-XInput auto-detect · UI-prompts-match-detected
+  ⊑ touch : virtual-stick + gesture-zones for-mobile-future
+  ⊑ voice : cssl-host-voice (W4 ✓ landed) · STT @ cssl-host-voice → intent_router · always-opt-in
+  ⊑ gesture : webcam-via cssl-host-voice extension OR-VR-controllers via cssl-host-openxr (S11 ✓ landed)
+  ⊑ MIDI : OS-MIDI bus · player-mapped notes-to-actions
+  ⊑ OSC : network-OSC for-streaming-control-surfaces (TouchOSC etc.)
+  ⊑ Sensitive<biometric|gaze|face|body> ALWAYS-banned per F5-IFC · NO eye-tracking-input · NO face-camera-input
+  ⇒ wave-target : W8-D · NEW crate `cssl-host-omni-input` · Settings-menu UI in-cssl-edge + in-game
+
+§ Q-RD-5 : seasonal hard-perma roguelike mode · ship in v1 or defer ?
+  Apocky : "Seasonal hard-perma roguelike mode · ship in v1"
+  ⇒ ACTION : implement seasonal-hard-perma mode in cssl-host-roguelike-run · cssl-supabase season tables · season-end memorial · gift-economy-only (NO leaderboard)
+  ⇒ details :
+    ⊑ 90-day-seasons matching battle-pass cycles per spec/13
+    ⊑ hard-perma : permadeath · 1-life-per-season-per-character · meta-progression-PAUSED in-hard-perma (separate-track)
+    ⊑ memorial : season-end · all-fallen-characters Akashic-imprinted with-cause-of-death + Coherence-Score-final + Biography
+    ⊑ gift-economy : season-end-rewards = cosmetic-shrine-decorations + Memorial-Wall-feature · NO power-rewards
+    ⊑ opt-in : default OFF · player chooses-hard-perma at-character-creation · irreversible-per-character
+  ⇒ wave-target : W8-E · cssl-host-roguelike-run extension + cssl-supabase 0039_seasons.sql + UI
+
+§ Q-RD-6 : Σ-Chain integration depth · how does substrate-native-ledger interact with run-share / gear-marketplace / MMO-shard ?
+  Apocky : "essentially Akashic Records but monetizable"
+  ⇒ ACTION : reframe Σ-Chain TIER-3 multiversal-stream AS-Akashic-Records mythological layer · monetization-via-Aetheric-Shards on-fidelity + cosmetic-shrine + eternal-attribution
+  ⇒ FULL-SPEC : specs/grand-vision/18_AKASHIC_RECORDS.csl (just-landed · companion-spec)
+  ⇒ wave-target : W8-F · NEW crates cssl-host-akashic-records + cssl-host-akashic-shrine + cssl-host-historical-reconstructor
+  ⇒ legal-autonomy : Stripe-Atlas + Termly + LegalZoom-trademarks · ~$2,260/year fixed · 5-10 hours Apocky-time-total per spec/17
+
+§ Q-RD-7 : automated-Coder stage-1 ever ship ?
+  Apocky : "ship at launch, this is a primary feature"
+  ⇒ ACTION : automated-Coder stage-1 ships at-v1-launch · primary-feature
+  ⇒ EXTREME-CAUTION discipline (per spec/10 ROLE-CODER axioms) :
+    ⊑ sandboxed-execution : Coder-edits go-to-staging-branch · validation-pass-gate · player-explicit-approval-before-apply
+    ⊑ extreme cap-gating : CODER_CAP_AST_EDIT (1) · CODER_CAP_HOT_RELOAD (2) · CODER_CAP_SCHEMA_EVOLVE (4) · ALL require sovereign-cap OR explicit-per-action-consent
+    ⊑ rollback-always-available : every-Coder-edit creates-snapshot · player can-revert ANY-edit ANYTIME via Mycelial-Terminal
+    ⊑ audit-everything : every-AST-edit emits cssl-host-attestation event · directive-axis "Implementation Transparency"
+    ⊑ rate-limit : max-10 Coder-edits-per-hour @ default · player-configurable
+    ⊑ hard-cap : Coder CANNOT edit substrate-* crates · CANNOT edit specs/grand-vision/00..15+ · CANNOT modify TIER-C secrets
+    ⊑ soft-cap : Coder DOES edit `.csl` game-logic · cosmetic-tweaks · balance-suggestions @ require-confirm
+    ⊑ blast-radius @ runtime : staging-branch · 30-second-revert-window · auto-revert-on-crash
+  ⇒ wave-target : W8-G · NEW crate `cssl-host-coder-runtime` · cssl-edge `/coder` UI · cap-gated · sovereign-required for-substrate-edits
+  ⇒ scope-discipline : Coder is-AUTOMATED-MUTATION-AGENT · NOT generic-AGI · narrow-orchestrator per spec/10
+
+═══════════════════════════════════════════════════════════════════════════════
+§ NEW DIRECTIVE (Apocky 2026-05-01) : Distribution-Strategy
+═══════════════════════════════════════════════════════════════════════════════
+
+§ "what files do I actually share/sell/publicize vs what do we keep proprietary/secret/abstracted/encoded?"
+  ⇒ ACTION : full-spec landed @ specs/grand-vision/17_DISTRIBUTION_STRATEGY.csl
+  ⇒ summary :
+    ⊑ TIER-A OPEN : CSSL spec + csslc compiler + parser/lexer/MIR/cgen + examples + lore (MIT/Apache-2.0 dual)
+    ⊑ TIER-B PROPRIETARY-BINARY : LoA.exe + KAN-weights + substrate-internals (binary-only · stripped-symbols)
+    ⊑ TIER-C SERVER-ONLY : Apocky-master-key + Stripe-secret + Supabase-service-role + federated-aggregator
+    ⊑ TIER-D PER-PLAYER-PRIVATE : player-keys + Σ-mask + Home-state + Sensitive<*> (LOCAL-ONLY · structural-non-egress)
+    ⊑ TIER-E PROTOCOL : BLAKE3-encoded · Ed25519-signed · idempotent client-server-envelopes
+  ⇒ legal-autonomy : Stripe-Atlas + Termly + Stripe-Tax · ~$2,260/year + 5-10 hours Apocky-time
+  ⇒ wave-target : W8-H · TIER-A/B/C/D/E enforcement-checks + TIER-A README + LICENSE polish
+
+═══════════════════════════════════════════════════════════════════════════════
+§ WAVE-8 DISPATCH FANOUT (15 file-disjoint agents)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ POD-A : COMPILER + RUNTIME (3 agents · sequential where-needed)
+  W8-A1 csslc-multi-module       ← compiler-rs/crates/csslc multi-input + linker · 2000 LOC max · ≥ 30 tests
+  W8-A2 cssl-rt FFI exports      ← cssl-rt + loa-host export 100+ extern "C" symbols matching POD-3 .csl declarations · 1500 LOC max · ≥ 50 tests
+  W8-A3 cssl-omni-input crate    ← auto-detect kbd/mouse/gamepad/touch/voice/gesture/MIDI/OSC · runtime-rebindable · 1500 LOC max · ≥ 30 tests
+  ⇒ POD-A serial-bottleneck : A1 lands first · A2 + A3 parallel after
+
+§ POD-B : MYCELIAL + HOME (3 agents · file-disjoint)
+  W8-B1 cssl-host-home-dimension ← per-player pocket-dimension state-machine · 7-archetype · 5-modes · ≥ 28 tests
+  W8-B2 cssl-host-mycelium       ← cross-user spore-emit + nutrient-poll + federated-aggregate · ≥ 26 tests
+  W8-B3 cssl-host-hotfix-stream  ← Σ-Chain hotfix poll/verify/stage/apply/rollback · 8-class · ≥ 24 tests
+
+§ POD-C : SIGMA-CHAIN + AKASHIC (4 agents · file-disjoint)
+  W8-C1 cssl-host-sigma-chain    ← Σ-Chain TIER-2/3 emit + verify · Ed25519 + BLAKE3-merkle · ≥ 30 tests
+  W8-C2 cssl-host-coherence-proof ← consensus-validator · deterministic-recompute · ≥ 25 tests
+  W8-C3 cssl-host-akashic-records ← imprint state-machine · fidelity-tier · attribution-permanence · ≥ 32 tests
+  W8-C4 cssl-host-akashic-shrine + cssl-host-historical-reconstructor ← shrine-cosmetic + past-event-tour · ≥ 22+24 tests
+
+§ POD-D : DISTRIBUTION + INFRASTRUCTURE (3 agents · service-side)
+  W8-D1 Stripe-integration crate ← cssl-host-stripe-integration via ureq · cap-gated · audit-emit · ≥ 18 tests
+  W8-D2 supabase real-project    ← provisioning + migration apply + RLS verify · cssl-edge connect-string update · seed-data
+  W8-D3 cssl-edge expansion      ← /home + /transparency/akashic + /transparency/spending + /transparency/mycelial-contributions + /coder · 14+ routes · npm-build clean
+
+§ POD-E : SEASONAL + LEGAL + DOCS (2 agents)
+  W8-E1 cssl-host-roguelike-run season-extension + cssl-supabase 0039_seasons.sql · 90-day cycle · hard-perma · season-end memorial-imprint · ≥ 18 tests
+  W8-E2 README + LICENSE + CONTRIBUTING + ToS-template @ TIER-A polish · trademark-filing-templates @ Apocky-action
+
+§ POD-F : AUTOMATED-CODER (1 agent · primary-feature · extreme-caution)
+  W8-F1 cssl-host-coder-runtime ← AST-edit-staging · validation-gate · sovereign-required · 30-sec-revert-window · ≥ 32 tests · 1500 LOC max
+       ⊑ MUST land cssl-host-attestation directive-axis "ImplementationTransparency"
+       ⊑ MUST land /coder UI in cssl-edge + /transparency/coder-history
+       ⊑ MUST require sovereign-cap for-substrate-edits · explicit-confirm for-game-logic-edits
+
+§ POD-G : INTEGRATION + WIRE-UP + POLISH (1 agent · sequential after all-others)
+  W8-G1 loa-host wire-up         ← all 12+ NEW W8 crates wired-into mcp_tools.rs · MCP 114 → ~145+ · ≥ 40 new wired tests
+  W8-G2 LoA.exe rebuild          ← incorporate all-W8-deltas · target ≥ 9.5 MB · clean build
+  W8-G3 push origin              ← merge + push + tag-W8-COMPLETE
+
+§ POD-H : DOCS + MEMORY + ATTESTATION (1 agent · final)
+  W8-H1 specs/grand-vision/20_W8_RETRO.csl ← retrospective + cumulative-tally + open-W9-questions
+  W8-H2 memory snapshot          ← feedback_substrate_evolution_session15_wave8.md
+  W8-H3 attestation publish      ← per spec/14 + spec/16 attestation-flow
+
+═══════════════════════════════════════════════════════════════════════════════
+§ EXECUTION ORDER (W8 dispatch sequencing)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ tier-1 (PARALLEL · file-disjoint · 12 agents in-flight) :
+  ⊑ W8-A1 csslc-multi-module
+  ⊑ W8-B1 + B2 + B3 (Mycelial + Home + Hotfix-Stream)
+  ⊑ W8-C1 + C2 + C3 + C4 (Σ-Chain + Akashic)
+  ⊑ W8-D1 Stripe-integration
+  ⊑ W8-E1 Seasonal-extension
+  ⊑ W8-F1 Coder-runtime (extreme-caution)
+  ⊑ W8-H2 docs + README polish
+
+§ tier-2 (after-tier-1 lands) :
+  ⊑ W8-A2 cssl-rt FFI exports (depends-on csslc-multi-module)
+  ⊑ W8-A3 cssl-omni-input
+  ⊑ W8-D2 supabase real-project provision (Apocky 1× action @ Supabase signup · provides URL + anon-key)
+  ⊑ W8-D3 cssl-edge expansion
+
+§ tier-3 (final integration) :
+  ⊑ W8-G1 loa-host wire-up
+  ⊑ W8-G2 LoA.exe rebuild
+  ⊑ W8-G3 push origin
+  ⊑ W8-H1 W8-retro spec
+  ⊑ W8-H3 attestation publish
+
+§ ESTIMATED DURATION
+  ⊑ tier-1 : 4-6 hours wall-clock (parallel-fanout-default · 12 agents)
+  ⊑ tier-2 : 3-4 hours wall-clock
+  ⊑ tier-3 : 2-3 hours wall-clock
+  ⊑ TOTAL : ~10-13 hours wall-clock @ Apocky-cadence-rule (hours-not-weeks proven)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-W8-dispatch · ¬ pay-for-power · ¬ exploitation · ✓ player-sovereignty · ✓ Coder-extreme-caution · ✓ legal-autonomous-setup
+
+§ creator @ Apocky · 7-questions-answered · Akashic-Records-monetizable · automated-Coder-ships-at-launch · seasonal-hard-perma-v1 · omni-input-detected · real-Supabase-provisioned · csslc-multi-module-unblocks-everything
+
+╞══════════════════════════════════════════════════════════════════════════════╡
+§ AWAITING-APOCKY-GREENLIGHT @ /schedule W8-DISPATCH (15 agents · ~12 hours wall-clock)
+╞══════════════════════════════════════════════════════════════════════════════╡

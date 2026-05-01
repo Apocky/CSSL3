@@ -1,0 +1,272 @@
+§ T11-W6+ § specs/grand-vision/17_DISTRIBUTION_STRATEGY.csl
+§§ Distribution-Strategy : what's open · what's proprietary · what's server-only · what's encoded
+§§ Apocky 2026-05-01 directive : "what files do I actually share/sell/publicize vs what do we keep proprietary/secret/abstracted/encoded?"
+§§ status @ ◐ design-pending · enforcement @ wave-8+
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : the-MOAT = trained-KAN-weights + substrate-internals + render-pipeline-shaders + Coherence-Engine-eval-fn
+A-2 : the-COMMUNITY-VALUE = CSSL-language-spec + csslc-compiler + lore + .csl-examples (open · documented · forkable)
+A-3 : the-INFRASTRUCTURE = Stripe-secrets + Supabase-service-role + Apocky-master-key (NEVER on-player-machine)
+A-4 : the-PRIVATE = player's-keys + Σ-mask-state + Home-internals + Sensitive<*> (LOCAL-ONLY · NEVER egress)
+A-5 : the-PROTOCOL = Σ-Chain-envelopes + monetization-commands + KAN-canary-reports (encoded + signed · server-authoritative)
+A-6 : open-source ¬ enables-cloning · proprietary-binaries-where-it-matters protect-the-moat
+A-7 : every-distribution-decision documented · transparent-to-player · audit-emit-on-egress
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-A : OPEN-SOURCE (community + portability + platform-effect)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FILES @ public-GitHub-repo · MIT-or-Apache-2.0 dual-license · forkable
+  ⊑ specs/*.csl                        ← CSL3 language spec · 30+ canonical doc files
+  ⊑ specs/grand-vision/*.csl           ← architectural specs (00-16+ all 17 specs)
+  ⊑ compiler-cssl/                     ← CSSL self-hosted compiler-bootstrap · public
+  ⊑ compiler-rs/crates/csslc/          ← Rust stage-0 compiler binary source · public
+  ⊑ compiler-rs/crates/cssl-mir/       ← MIR layer · public
+  ⊑ compiler-rs/crates/cssl-parser/    ← parser · public
+  ⊑ compiler-rs/crates/cssl-lexer/     ← lexer · public
+  ⊑ compiler-rs/crates/cssl-cgen-cpu-cranelift/ ← cranelift backend · public
+  ⊑ examples/*.cssl                    ← simple examples (hello_triangle · sdf_shader · audio_callback)
+  ⊑ Labyrinth of Apocalypse/main.cssl  ← entry-point scaffold · public-as-tutorial
+  ⊑ specs/grand-vision/00..15+_*.csl   ← thesis · paradigms · data-axes · intent · cosmology · etc.
+  ⊑ DEPRECATED-The Infinite Labyrinth/GDDs/* ← legacy lore (already public-documentable)
+  ⊑ PRIME_DIRECTIVE.md + LICENSE.md + NOTICE.md ← project ethics · legal
+  ⊑ basic-host-stub-crates : cssl-host-replay · cssl-host-audit · cssl-host-stereoscopy (utilities · MIT)
+
+§ rationale
+  ⊑ open-CSSL-language attracts contributors · enables-community-mods (loot-recipes · cosmetic-themes)
+  ⊑ open-csslc enables port-targets (someone-else can-port CSSL to-Mac/Linux/Web)
+  ⊑ open-specs document-the-architecture · academic-citation · retention
+  ⊑ open-utilities (replay/audit/stereo) build-tooling-ecosystem · NOT the-game-itself
+  ⊑ NOTHING here-reveals proprietary-game-logic OR-trained-models OR-render-secrets
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-B : PROPRIETARY-BINARY (game · ship-as-compiled-only · NO source)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FILES @ proprietary · ship-as-binary-only · obfuscation @ release-mode
+  ⊑ LoA.exe                            ← compiled-final-game · stripped-symbols-at-release
+  ⊑ trained-KAN-weights @ proprietary-pack ← .kan-weights-v1 binary · Ed25519-signed
+  ⊑ cssl-substrate-omega-field         ← MIT-license-source PRIVATE · ship binary-only
+  ⊑ cssl-substrate-kan                 ← MIT-license-source PRIVATE · ship binary-only
+  ⊑ cssl-substrate-prime-directive     ← Σ-mask-internals · ship binary-only
+  ⊑ cssl-substrate-omega-field implementations ← ship binary-only · spec PUBLIC · IMPL PROPRIETARY
+  ⊑ render-shaders · 12-stage-pipeline @ wgsl-internals ← ship-compiled-spirv-only · NOT-readable-source
+  ⊑ Coherence-Engine evaluation-fn     ← in-substrate · ship binary-only
+  ⊑ 6-novelty-paths (Wave-Unity · Spectral · Fractal-Amp · Gaze-Collapse · HDC-Bound-Lenia · Mise-en-abyme) implementations ← ship binary-only · spec public
+
+§ obfuscation-recipe @ release-build :
+  ⊑ rustc -C strip=symbols + LTO + codegen-units=1
+  ⊑ wgsl shaders → SPIRV-bytecode + obfuscated-uniform-layout-via-slot-IDs
+  ⊑ KAN-weights = packed-blob via cssl-host-asset-bundle LAB-format · BLAKE3-content-hashed · Ed25519-signed
+  ⊑ asset-bundle interior-references via SHA256-content-IDs (¬ filenames-leak-info)
+
+§ rationale
+  ⊑ trained-models = the-actual-investment · forking-source ¬ replicates-them
+  ⊑ Coherence-Engine eval-function specifics are-the-game-feel · ship binary
+  ⊑ render-novelty-paths-impls are-the-visual-signature · ship-compiled
+  ⊑ players get-game · don't-need source · LICENSE prohibits-reverse-engineering
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-C : SERVER-ONLY (NEVER on-player-machine · cssl-edge + cssl-supabase)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FILES @ server-side-only · environment-variables · NEVER bundled-with-game
+  ⊑ APOCKY_MASTER_KEY (Ed25519 private)  ← signs hotfix-payloads per spec/16
+  ⊑ STRIPE_SECRET_KEY                    ← server-side checkout · webhooks
+  ⊑ STRIPE_WEBHOOK_SIGNING_SECRET        ← verifies inbound Stripe events
+  ⊑ SUPABASE_SERVICE_ROLE_KEY            ← server-side full-DB-access · bypass-RLS for-admin
+  ⊑ federated-learning aggregator-pipeline (Python or Rust binary) ← runs on private-server
+  ⊑ KAN training-pipeline + telemetry-aggregator
+  ⊑ anti-cheat-heuristics + ban-list
+  ⊑ CDN-secrets (CloudFront-distribution-key · etc.)
+  ⊑ certificate-private-keys for-domain-TLS
+
+§ vault @ never-in-git
+  ⊑ git-secret-scanning enabled @ pre-commit-hook · auto-rejects keys
+  ⊑ all-secrets via environment-variables (Vercel-env · Supabase-vault · GitHub-Actions-secrets)
+  ⊑ rotation-policy : 90-day rotation for-Stripe + Supabase · 12-month for-Apocky-master · ¬ shared
+
+§ rationale
+  ⊑ leaking-master-key = catastrophic (any-player can-sign-fake-hotfix)
+  ⊑ leaking-Stripe-key = financial-fraud-vector
+  ⊑ leaking-Supabase-service-role = full-DB-takeover
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-D : PER-PLAYER-PRIVATE (local-only · NEVER egress)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FILES @ player's-machine · LOCAL-ONLY · cssl-rt enforces structural-non-egress
+  ⊑ player's Ed25519-sovereign-keypair  ← generated-locally · NEVER-leaves-machine · stored OS-keychain-or-equivalent
+  ⊑ Σ-mask local-state                  ← consent-mask-per-cell · LOCAL-ONLY
+  ⊑ Home-dimension full-state           ← per spec/16 TIER-1 · ω-field-cells-reserved-for-Home
+  ⊑ Sensitive<biometric|gaze|face|body> ← F5-IFC structurally-refused @ TelemetryEgress::for_domain compile-time
+  ⊑ replay-recording (cssl-host-replay) ← NIST-SHA256-hashed · LOCAL by-default
+  ⊑ frame-recordings (cssl-host-frame-recorder) ← LFRC-format · LOCAL
+  ⊑ companion-history full-text         ← only-derivative-summaries opt-in to cssl-supabase 0004 companion_logs
+
+§ enforcement
+  ⊑ F5-IFC type-system blocks-egress @ compile-time · Sensitive<*> structural-refusal
+  ⊑ F6-observability path-hash-only · NEVER-raw-content-egresses
+  ⊑ cssl-rt OS-keychain-integration (Windows-Credential-Manager · macOS-Keychain · Linux-libsecret)
+  ⊑ runtime-audit emits Σ-Chain-egress-attempt event @ ¬ Σ-mask-allowed → halt-with-error
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-E : OBFUSCATED + ENCODED PROTOCOL (client ↔ server)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FILES @ over-the-wire · BLAKE3-encoded · Ed25519-signed · idempotent
+  ⊑ Σ-Chain-event-envelopes            ← TIER-2 → TIER-3 events per spec/14
+  ⊑ monetization-commands              ← Stripe-checkout-intent · battle-pass-tier-claim · gacha-pull-request
+  ⊑ KAN-canary disagreement-reports    ← stage-0-vs-stage-1 mismatch-events
+  ⊑ Akashic-record-imprints            ← per spec/18 · player's deeds-published-to-shared-memory
+  ⊑ federated-bias-aggregate-fetches   ← cohort-baseline-bias-distribution
+  ⊑ asset-bundle-streams               ← LAB-v1 chunks · BLAKE3-content-hashed
+  ⊑ hotfix-payloads                    ← per spec/16 HF-1..HF-8 · master-signed
+
+§ encoding-stack :
+  ⊑ TLS-1.3 transport-layer · cert-pinning per cssl-host-mp-transport-real
+  ⊑ Application-layer : BLAKE3-content-hashing · Ed25519-signature-envelopes
+  ⊑ Idempotency-keys : every-mutating-request includes UUID-v7 · server dedupes
+  ⊑ Schema-validation : all-payloads JSON-schema-validated server-side BEFORE-DB-write
+  ⊑ Anti-replay : nonce + timestamp · within ±60s server-time-window
+
+§ rationale
+  ⊑ man-in-the-middle attacker can-sniff-but-can't-forge
+  ⊑ replay-attacks blocked by-nonce + timestamp
+  ⊑ schema-bugs caught BEFORE-DB-write · prevents-malformed-state
+
+═══════════════════════════════════════════════════════════════════════════════
+§ DISTRIBUTION-CHANNELS (where-do-files-actually-LIVE)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ public-GitHub-repo @ open-source TIER-A
+  ⊑ github.com/Apocky/CSSL3 (already-existing) ← spec/csslc/parser/lexer/MIR/cgen
+  ⊑ github.com/Apocky/CSSL3-Examples (NEW) ← .cssl-examples · curated · MIT
+  ⊑ readthedocs.io OR-mdbook-site for-docs (auto-built from-specs/)
+
+§ private-game-binary @ TIER-B
+  ⊑ Steam (primary) ← anti-cheat + DRM via Steamworks · standard-distribution
+  ⊑ itch.io (secondary) ← direct-download · Apocky-curated
+  ⊑ Epic Games Store (tertiary, optional) ← reach + featured-promo
+  ⊑ self-distributed via launcher (MyceliumLauncher)? ← alternate · cssl-edge auto-update-channel · Vercel-CDN
+  ⊑ asset-deltas streamed-via-CDN @ release-mode · runtime fetch-on-demand
+
+§ infrastructure @ TIER-C
+  ⊑ Supabase (DB + Auth + Realtime + Storage) ← already-architected · production-tier
+  ⊑ Vercel (cssl-edge Next.js + API routes) ← already-deployed-stub · production-tier
+  ⊑ Stripe (payments + Stripe-Tax) ← per spec/13 monetization
+  ⊑ CloudFront-or-equivalent (CDN for-asset-deltas) ← future
+  ⊑ Apocky's private-Linux-VPS or-AWS-Lambda for-federated-learning aggregator-pipeline
+
+§ player-local-storage @ TIER-D
+  ⊑ %APPDATA%/LoA/ (Windows) · ~/Library/Application Support/LoA/ (macOS) · ~/.local/share/LoA/ (Linux)
+  ⊑ contains : Home-dimension state · player-keys (OS-keychain-prefer) · replay-files · frame-recordings · cached-asset-bundles
+
+§ over-the-wire @ TIER-E
+  ⊑ HTTPS → Vercel cssl-edge routes
+  ⊑ HTTPS + WebSocket-via-Supabase-realtime for-multiplayer-signaling
+  ⊑ HTTPS → Stripe checkout-redirects + webhooks
+  ⊑ HTTPS → CDN for-asset-bundle-streaming
+
+═══════════════════════════════════════════════════════════════════════════════
+§ LICENSING (per-tier · clarity)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TIER-A (open) :
+  ⊑ MIT-or-Apache-2.0 dual-license · permissive · attribution-required · no-warranty
+  ⊑ "Powered-by-CSSL" badge encouraged for-derivative-projects
+  ⊑ contributor-license-agreement (CLA) for-larger-PRs (joint-copyright with-Apocky)
+
+§ TIER-B (proprietary) :
+  ⊑ End-User-License-Agreement (EULA) · per-jurisdiction · auto-generated via Termly/iubenda
+  ⊑ NO-reverse-engineering clause · NO-redistribute clause · refund-rights respected (jurisdiction-mandated)
+  ⊑ in-game-content owned-by-player (Ascended-items · Home-decorations · cosmetics) · transferable @ Bazaar
+  ⊑ trained-KAN-weights are-Apocky-IP · ¬ player-owned · ¬ resellable
+
+§ TIER-C (server) :
+  ⊑ NOT-licensed-to-anyone · server-private
+  ⊑ players have-data-subject-rights (GDPR · CCPA) · export + delete on-request · always
+
+§ TIER-D (player-private) :
+  ⊑ player owns-fully · Apocky has-NO-claim · Apocky-cannot-access (cryptographic-impossibility)
+
+§ TIER-E (protocol) :
+  ⊑ documented-publicly @ open-source TIER-A specs · enables-third-party-clients (within EULA-bounds)
+  ⊑ schema-versioned · backward-compatible-where-possible
+
+═══════════════════════════════════════════════════════════════════════════════
+§ LEGAL-AUTONOMOUS-SETUP (Apocky : "I don't want paperwork")
+═══════════════════════════════════════════════════════════════════════════════
+
+§ AUTONOMOUS-PATH @ minimize-paperwork via-services-that-handle-it
+  ⊑ INCORPORATION : Stripe-Atlas (~$500 one-time) · Delaware-C-Corp · automated-EIN · 1-week
+  ⊑ ToS + EULA + Privacy : Termly OR iubenda (~$10/month) · auto-jurisdictional
+  ⊑ Tax : Stripe-Tax (auto-VAT/GST/sales-tax) + Stripe-Atlas-Bookkeeping (~$25/month)
+  ⊑ Trademarks : LegalZoom OR Trademarkia (~$250 each) for-Labyrinth-of-Apocalypse + CSSL + Ouroboroid
+  ⊑ Compliance : Termly handles-COPPA + CCPA + GDPR + ePrivacy auto-update
+  ⊑ Gambling-law (gacha) : per spec/13 monetization is-strictly-cosmetic · transparent-rates · pity-system · BE/NL-jurisdiction-block
+  ⊑ Music-licensing : ONLY CC0-or-CC-BY for-procgen-seeds · ¬ commercial-music · OR auto-cleared via Epidemic Sound API integration
+  ⊑ Payment-processor : Stripe (handles PCI-DSS-SAQ-A) · NEVER-touch-raw-card-data
+  ⊑ Hosting-compliance : Vercel + Supabase are SOC-2 + GDPR-compliant out-of-the-box
+
+§ TOTAL-AUTONOMOUS-COST @ year-1 startup
+  ⊑ Stripe-Atlas      : $500 one-time
+  ⊑ Termly+iubenda    : ~$120/year
+  ⊑ Stripe-Tax        : ~$300/year (small-revenue) · scales with revenue
+  ⊑ Trademarks (3)    : $750 one-time
+  ⊑ Domain + email    : ~$50/year
+  ⊑ Vercel-Pro        : $240/year (when-needed)
+  ⊑ Supabase-Pro      : $300/year (when-needed)
+  ⊑ Stripe-fees       : 2.9% + $0.30 per-transaction (industry-standard)
+  ⊑ TOTAL-Y1          : ~$2,260 fixed-overhead + variable revenue-share
+  ⊑ Apocky-time-investment : ~5-10 hours total (Stripe-Atlas-form · Termly-config · trademark-form · ToS-review)
+
+§ AUTONOMOUS-DEFENSE @ ¬ legal-bullshit
+  ⊑ Stripe-Atlas handles : C-Corp · EIN · banking · post-incorporation
+  ⊑ Termly handles : ToS · Privacy-Policy · Cookie-Policy · jurisdictional-updates
+  ⊑ Stripe-Tax handles : VAT/GST/sales-tax-collection-and-remittance
+  ⊑ Apocky-only-touches : Stripe-Atlas-form (1×) · Termly-config (1×) · trademark-form (3×)
+  ⊑ ALL-ELSE automated · ¬ ongoing-paperwork
+
+§ INSURANCE @ when-revenue-justifies
+  ⊑ general-liability + cyber-liability + E&O · via Hiscox or Next Insurance · ~$500-1000/year
+  ⊑ NOT-required-for-launch · add when revenue > $100K/year
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ANTI-PIRACY + ANTI-CHEAT (binary protection · server-authoritative-monetization)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ binary-protection
+  ⊑ Steam-DRM @ default · Steamworks anti-tamper-API for-launcher-only
+  ⊑ stripped-symbols + LTO @ release · lift-and-shift attackers face-recompile-effort
+  ⊑ KAN-weights Ed25519-signed · ¬ valid-without-master-pubkey-verification · refuses-to-load-if-modified
+  ⊑ asset-bundle BLAKE3-integrity · refuses-to-load-if-tampered
+
+§ server-authoritative monetization
+  ⊑ Stripe-checkout-server-side · client never-sees-Stripe-secret-key
+  ⊑ entitlement-DB @ Supabase · server-of-truth for-cosmetic-ownership · Aetheric-Shards-balance · battle-pass-tier
+  ⊑ client-shows-cosmetic-equip but server-validates-entitlement on-equip-action
+  ⊑ Σ-Chain Coherence-Proof catches client-state-divergence (¬ Coherence-Score = harm-flag · attestation-axis-EconomicTransparency)
+
+§ what's-NOT-server-authoritative @ deliberate-anti-pattern
+  ⊑ pure-gameplay (combat · crafting · spell-cast) is-CLIENT-SIDE for-latency
+  ⊑ asynchronous-validation @ server samples 1% of replay-frames · validates Coherence-Score-deterministically
+  ⊑ flagged-replay-divergence → ban-after-3-strikes per anti-cheat-policy
+  ⊑ NEVER-server-authoritative gameplay-physics (rollback-netcode-style untenable for-deep-substrate)
+
+§ what's-DELIBERATELY-OPEN @ build-community
+  ⊑ specs are-public · implementations are-private · this-asymmetry-IS-the-moat
+  ⊑ third-party-clients ALLOWED within-EULA · ¬ allowed-to-cheat · ¬ allowed-to-bypass-monetization
+  ⊑ modding-API @ TIER-A open · cosmetic-mods OK · gameplay-balance-mods limited-to-private-runs
+  ⊑ private-runs (single-player + invite-only) accept-mods · public-multiverse refuses-non-canonical-state
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-distribution · ¬ pay-for-power · ✓ player-sovereignty · ✓ open-where-it-builds-community · ✓ proprietary-where-it-protects-the-craft · ✓ legal-autonomy via-services-that-handle-paperwork
+
+§ creator @ Apocky · "the-moat is-the-trained-models · the-platform is-the-language · the-substrate is-One-Unified-System-of-Systems" · t∞ design-pattern enforced
