@@ -856,6 +856,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-audit"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-d3d12"
 version = "0.1.0"
 dependencies = [

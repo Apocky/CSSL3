@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-host-audit"
+description            = "CSSLv3 — JSONL audit-log normalizer + indexer for loa-host / cssl-rt / cssl-asset-fetcher event streams. Ingests logs/loa_runtime.log + logs/loa_telemetry.jsonl + logs/asset_fetch.jsonl + logs/intent.jsonl + logs/spontaneous.jsonl into a single canonical AuditRow schema with time/source/level/cap-aware query helpers + summary statistics."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_audit"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
