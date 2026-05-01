@@ -709,6 +709,20 @@ pub fn tool_registry() -> ToolRegistry {
         sense_snapshot
     );
 
+    // ─ T11-WAVE3-SPONT : spontaneous-condensation pipeline ─
+    reg!(
+        "world.spontaneous_seed",
+        "Sow an intent text into the Ω-field as seed-cells (params: text · optional position{x,y,z}). Substrate evolves cells; manifested ones spawn stress objects.",
+        true,
+        world_spontaneous_seed
+    );
+    reg!(
+        "sense.spontaneous_recent",
+        "Return the last 16 spontaneous-manifestation events + seeds_total + manifests_total + tracked_count.",
+        false,
+        sense_spontaneous_recent
+    );
+
     r
 }
 
@@ -2501,6 +2515,128 @@ fn sense_snapshot(state: &mut EngineState, _params: Value) -> Value {
     crate::sense::aggregate_combined_snapshot(state)
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-SPONT — spontaneous-condensation tool handlers.
+// ───────────────────────────────────────────────────────────────────────
+
+/// `world.spontaneous_seed` : sovereign-gated · sow an intent text into the
+/// Ω-field. Stamps seed-cells at the supplied origin (default = camera + 5m
+/// forward when omitted). The window-loop drains the request on the next
+/// frame + registers seeds with the manifestation detector ; subsequent
+/// frames poll for rising-edge crossings + spawn stress objects.
+///
+/// § PARAMS
+///   - `text` (String, required) : the intent text. Empty → no-op.
+///   - `position` (Object, optional) : `{x, y, z}` world-space origin.
+///     Default = camera position + a small forward offset.
+fn world_spontaneous_seed(state: &mut EngineState, params: Value) -> Value {
+    let text = p_str(&params, "text", "").to_string();
+    if text.trim().is_empty() {
+        return json!({
+            "ok": false,
+            "error": "text param is required and must be non-empty",
+        });
+    }
+    // Default origin = camera position with a 5m forward offset along yaw.
+    let cam = state.camera;
+    let yaw_cos = cam.yaw.cos();
+    let yaw_sin = cam.yaw.sin();
+    let default_x = cam.pos.x + 5.0 * yaw_sin;
+    let default_y = cam.pos.y;
+    let default_z = cam.pos.z + 5.0 * yaw_cos;
+    let position = params.get("position");
+    let (ox, oy, oz) = if let Some(p) = position {
+        (
+            p.get("x").and_then(Value::as_f64).map_or(default_x, |x| x as f32),
+            p.get("y").and_then(Value::as_f64).map_or(default_y, |y| y as f32),
+            p.get("z").and_then(Value::as_f64).map_or(default_z, |z| z as f32),
+        )
+    } else {
+        (default_x, default_y, default_z)
+    };
+    // Pre-compute the seeds-list locally so the response can describe what
+    // WILL be sown (the actual stamping happens on the next frame in the
+    // window-loop drain). This gives MCP callers immediate feedback even
+    // before the renderer applies the request.
+    let preview_seeds =
+        crate::spontaneous::intent_to_seed_cells(&text, [ox, oy, oz]);
+    let seeds_array: Vec<Value> = preview_seeds
+        .iter()
+        .map(|s| {
+            json!({
+                "kind_hint": s.kind_hint,
+                "name": crate::geometry::stress_object_name(s.kind_hint),
+                "label": s.label.as_str(),
+                "pos": [s.pos[0], s.pos[1], s.pos[2]],
+                "radiance": [s.radiance[0], s.radiance[1], s.radiance[2]],
+                "density": s.density,
+            })
+        })
+        .collect();
+    let preview_count = preview_seeds.len();
+    // Queue the request for the next frame.
+    state
+        .spontaneous
+        .sow_pending
+        .push(crate::mcp_server::SpontaneousSowRequest {
+            text: text.clone(),
+            origin: [ox, oy, oz],
+        });
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "world.spontaneous_seed · queued · text={text:?} · origin=({ox:.2},{oy:.2},{oz:.2}) · seeds={preview_count}"
+        ),
+    );
+    json!({
+        "ok": true,
+        "text": text,
+        "origin": {"x": ox, "y": oy, "z": oz},
+        "seeds_count": preview_count,
+        "seeds": seeds_array,
+        "manifestation_window_frames": crate::spontaneous::MANIFESTATION_WINDOW_FRAMES,
+    })
+}
+
+/// `sense.spontaneous_recent` : read-only · return the last 16
+/// manifestation events + cumulative counters + currently-tracked seed
+/// count. The window-loop populates the recent-events ring on each scan.
+fn sense_spontaneous_recent(state: &mut EngineState, _params: Value) -> Value {
+    let recent: Vec<Value> = state
+        .spontaneous
+        .recent_events
+        .iter()
+        .map(|e| {
+            json!({
+                "frame": e.frame,
+                "world_pos": {"x": e.world_pos[0], "y": e.world_pos[1], "z": e.world_pos[2]},
+                "kind": e.kind,
+                "kind_name": crate::geometry::stress_object_name(e.kind),
+                "radiance_mag": e.radiance_mag,
+                "density": e.density,
+                "label": e.label,
+                "spawned_object_id": e.spawned_object_id,
+            })
+        })
+        .collect();
+    state.sense_invocations_total = state.sense_invocations_total.saturating_add(1);
+    json!({
+        "events": recent,
+        "events_count": state.spontaneous.recent_events.len(),
+        "seeds_total": state.spontaneous.seeds_total,
+        "manifests_total": state.spontaneous.manifests_total,
+        "tracked_count": state.spontaneous.tracked_count,
+        "manifestation_threshold": crate::spontaneous::MANIFESTATION_THRESHOLD,
+        "manifestation_window_frames": crate::spontaneous::MANIFESTATION_WINDOW_FRAMES,
+        "spontaneous_pad_center": [
+            crate::spontaneous::SPONTANEOUS_PAD_CENTER[0],
+            crate::spontaneous::SPONTANEOUS_PAD_CENTER[1],
+            crate::spontaneous::SPONTANEOUS_PAD_CENTER[2],
+        ],
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -2511,7 +2647,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_84_tools() {
+    fn tools_list_returns_86_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -2534,9 +2670,11 @@ mod tests {
         //   + text_input.inject)
         // + 3 GLTF (T11-WAVE3-GLTF · world.spawn_gltf + world.gltf_spawns_total
         //   + world.list_dynamic_meshes)
-        // = 89 total.
+        // + 2 spontaneous-condensation (T11-WAVE3-SPONT · world.spontaneous_seed
+        //   + sense.spontaneous_recent)
+        // = 91 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 89, "must have exactly 89 tools");
+        assert_eq!(reg.len(), 91, "must have exactly 91 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -2633,6 +2771,9 @@ mod tests {
             "sense.cfer_neighborhood",
             "sense.dgi_signal",
             "sense.snapshot",
+            // T11-WAVE3-SPONT additions :
+            "world.spontaneous_seed",
+            "sense.spontaneous_recent",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -2673,6 +2814,8 @@ mod tests {
             "telemetry.spectral",
             // T11-LOA-FID-CFER : cfer_snapshot is the read-only CFER tool.
             "render.cfer_snapshot",
+            // T11-WAVE3-SPONT : sense.spontaneous_recent is read-only.
+            "sense.spontaneous_recent",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -2705,6 +2848,8 @@ mod tests {
             // T11-LOA-FID-SPECTRAL : illuminant + zone-teleport mutate state.
             "render.set_illuminant",
             "room.teleport_zone",
+            // T11-WAVE3-SPONT : world.spontaneous_seed is mutating.
+            "world.spontaneous_seed",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
@@ -2949,10 +3094,12 @@ mod tests {
         // + 2 text-input (T11-WAVE3-TEXTINPUT · text_input.submit_history,
         //   text_input.inject)
         // + 3 gltf (T11-WAVE3-GLTF · world.spawn_gltf + world.gltf_spawns_total
-        //   + world.list_dynamic_meshes) = 89.
-        assert_eq!(v["count"], 89);
+        //   + world.list_dynamic_meshes)
+        // + 2 spontaneous (T11-WAVE3-SPONT · world.spontaneous_seed +
+        //   sense.spontaneous_recent) = 91.
+        assert_eq!(v["count"], 91);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 89);
+        assert_eq!(arr.len(), 91);
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests
@@ -3561,5 +3708,81 @@ mod tests {
         );
         assert_eq!(v["ok"], true);
         assert!(s.capture.video_stop_pending);
+    }
+
+    // ── § T11-WAVE3-SPONT : MCP-tool tests ──
+
+    #[test]
+    fn mcp_world_spontaneous_seed_returns_ok_with_seeds() {
+        let mut s = EngineState::default();
+        let v = world_spontaneous_seed(
+            &mut s,
+            json!({
+                "sovereign_cap": SOVEREIGN_CAP,
+                "text": "a glass cube and a bronze sphere",
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        assert!(v["seeds_count"].as_u64().unwrap() >= 2);
+        // The pending request was queued.
+        assert_eq!(s.spontaneous.sow_pending.len(), 1);
+        assert_eq!(s.spontaneous.sow_pending[0].text, "a glass cube and a bronze sphere");
+    }
+
+    #[test]
+    fn mcp_world_spontaneous_seed_rejects_empty_text() {
+        let mut s = EngineState::default();
+        let v = world_spontaneous_seed(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "text": ""}),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(s.spontaneous.sow_pending.is_empty());
+    }
+
+    #[test]
+    fn mcp_world_spontaneous_seed_with_explicit_position() {
+        let mut s = EngineState::default();
+        let v = world_spontaneous_seed(
+            &mut s,
+            json!({
+                "sovereign_cap": SOVEREIGN_CAP,
+                "text": "a cube",
+                "position": {"x": 5.0, "y": 1.5, "z": -10.0},
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        let req = &s.spontaneous.sow_pending[0];
+        assert_eq!(req.origin, [5.0, 1.5, -10.0]);
+    }
+
+    #[test]
+    fn mcp_sense_spontaneous_recent_returns_empty_initially() {
+        let mut s = EngineState::default();
+        let v = sense_spontaneous_recent(&mut s, json!({}));
+        assert_eq!(v["events_count"].as_u64().unwrap(), 0);
+        assert_eq!(v["seeds_total"].as_u64().unwrap(), 0);
+        assert_eq!(v["manifests_total"].as_u64().unwrap(), 0);
+        // Constants exposed.
+        assert!(v["manifestation_threshold"].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn mcp_sense_spontaneous_recent_returns_pushed_events() {
+        let mut s = EngineState::default();
+        s.push_spontaneous_event(crate::mcp_server::SpontaneousManifestEntry {
+            frame: 100,
+            world_pos: [0.0, 1.5, 0.0],
+            kind: 1,
+            radiance_mag: 1.7,
+            density: 0.7,
+            label: "sphere".to_string(),
+            spawned_object_id: 42,
+        });
+        let v = sense_spontaneous_recent(&mut s, json!({}));
+        assert_eq!(v["events_count"].as_u64().unwrap(), 1);
+        assert_eq!(v["events"][0]["kind"].as_u64().unwrap(), 1);
+        assert_eq!(v["events"][0]["spawned_object_id"].as_u64().unwrap(), 42);
+        assert_eq!(v["events"][0]["label"].as_str().unwrap(), "sphere");
     }
 }
