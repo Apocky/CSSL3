@@ -356,6 +356,62 @@ pub extern "C" fn __cssl_render_palette_size() -> u32 {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-ROOMS · room enumeration + teleport FFI surface
+// ───────────────────────────────────────────────────────────────────────
+
+/// Latest "teleport requested" room id ; the renderer reads this on the
+/// next frame and snaps the camera to that room's spawn position. SENTINEL
+/// = no pending teleport.
+static TELEPORT_PENDING: AtomicU32 = AtomicU32::new(SENTINEL);
+
+/// Total number of rooms in the diagnostic test-suite. Stable contract :
+/// CSSL programs may rely on this returning 5 for the foreseeable future.
+#[no_mangle]
+pub extern "C" fn __cssl_room_count() -> u32 {
+    crate::room::ROOM_COUNT
+}
+
+/// Request a camera-teleport to room `room_id`. The pure-Rust renderer
+/// reads the pending-id on the next frame and snaps the player camera to
+/// the room's center. Returns 0 on success, -1 if `room_id` out-of-range,
+/// -2 if `sovereign_cap` mismatch.
+#[no_mangle]
+pub extern "C" fn __cssl_room_teleport(room_id: u32, sovereign_cap: u64) -> i32 {
+    if sovereign_cap != SOVEREIGN_CAP_U64 {
+        log_event(
+            "WARN",
+            "loa-host/ffi",
+            "__cssl_room_teleport · sovereign_cap mismatch · denied",
+        );
+        return -2;
+    }
+    if room_id >= crate::room::ROOM_COUNT {
+        return -1;
+    }
+    TELEPORT_PENDING.store(room_id, Ordering::Relaxed);
+    let room_name = crate::room::Room::from_u32(room_id).map_or("?", |r| r.name());
+    log_event(
+        "INFO",
+        "loa-host/ffi",
+        &format!("room.teleport · room_id={room_id} ({room_name})"),
+    );
+    0
+}
+
+/// Read + clear any pending teleport request. Returns the room id or
+/// `Option::None` if none pending. Used by the render loop / window event
+/// handler to apply the camera move.
+#[must_use]
+pub fn take_pending_teleport() -> Option<u32> {
+    let v = TELEPORT_PENDING.swap(SENTINEL, Ordering::Relaxed);
+    if v == SENTINEL {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Tests
 // ───────────────────────────────────────────────────────────────────────
 
@@ -430,5 +486,34 @@ mod tests {
         let p = v & 0xFFFF;
         assert!(m >= 8, "≥ 8 materials");
         assert!(p >= 12, "≥ 12 patterns");
+    }
+
+    // § T11-LOA-ROOMS · FFI surface tests
+    #[test]
+    fn ffi_room_count_is_five() {
+        assert_eq!(__cssl_room_count(), 5);
+    }
+
+    #[test]
+    fn ffi_room_teleport_accepts_valid_id() {
+        // Drain any prior pending teleport request so this test is order-independent.
+        let _ = take_pending_teleport();
+        let rc = __cssl_room_teleport(2, SOVEREIGN_CAP_U64); // PatternRoom
+        assert_eq!(rc, 0);
+        assert_eq!(take_pending_teleport(), Some(2));
+        // After consume, no pending request.
+        assert_eq!(take_pending_teleport(), None);
+    }
+
+    #[test]
+    fn ffi_room_teleport_rejects_out_of_range() {
+        let rc = __cssl_room_teleport(99, SOVEREIGN_CAP_U64);
+        assert_eq!(rc, -1);
+    }
+
+    #[test]
+    fn ffi_room_teleport_rejects_wrong_cap() {
+        let rc = __cssl_room_teleport(0, 0xDEAD);
+        assert_eq!(rc, -2);
     }
 }

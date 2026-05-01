@@ -43,6 +43,7 @@ pub mod camera;
 pub mod geometry;
 pub mod material;
 pub mod pattern;
+pub mod room;
 
 // Input-sibling catalog
 pub mod input;
@@ -109,6 +110,7 @@ pub mod ffi;
 
 pub use camera::Camera;
 pub use geometry::{plinth_positions, RoomGeometry, Vertex};
+pub use room::{Corridor, Direction, Doorway, Room, ROOM_COUNT};
 
 pub use mcp_server::{
     spawn_mcp_server, EngineState, McpServerConfig, RenderMode, SOVEREIGN_CAP,
