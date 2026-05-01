@@ -63,9 +63,9 @@ const PROJECTS: ReadonlyArray<Project> = [
   },
   {
     id: 'mycelium',
-    name: 'Mycelial Substrate',
-    tagline: 'Cross-product nutrient-exchange · federated learning · live hotfixes · player-Home pocket-dimensions',
-    status: 'planning',
+    name: 'Mycelium',
+    tagline: 'the autonomous-local-agent · 3-mode LLM-bridge · substrate-knowledge embedded · proprietary',
+    status: 'alpha',
     href: '/mycelium',
     accent: '#a78bfa',
   },

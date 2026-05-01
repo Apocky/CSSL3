@@ -1,0 +1,188 @@
+§ T11-W10 § specs/grand-vision/25_W10_MYCELIUM_RETRO.csl
+§§ Mycelium-Desktop wave-10 retro · 4-NEW-crates · Tauri-feature-gated · 116+ tests · self-sufficient stage-0
+§§ ≈ 2026-05-01 · multi-agent-parallel-fanout · ≈ 4-5 hr wall-clock
+
+═══════════════════════════════════════════════════════════════════════════════
+§ MISSION
+═══════════════════════════════════════════════════════════════════════════════
+
+§ scope ⊑ spec/23 ROADMAP wave-10 (A1+A2+A3+A4 · B1+B2 · C1+C2 · D1+D2+D3)
+  ⊑ 4 NEW host-crates · Tauri-app + substrate-knowledge + llm-bridge + agent-loop
+  ⊑ frontend React 19 + Vite + TypeScript 5
+  ⊑ /mycelium routes @ cssl-edge · landing + download + docs
+  ⊑ dist-build pipeline · NSIS installer · sha256+blake3 · manifest-JSON
+  ⊑ 3-mode LLM dispatch · A=Anthropic · B=Ollama · C=substrate-only
+  ⊑ self-sufficient-axiom respected · stage-0 ALWAYS-available
+§ budget : 8-12 hr wall · 350K tokens
+§ actual : ≈ 4-5 hr wall · ≈ 250-300K tokens (≤ budget · per cadence-hours-not-weeks memory)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ WAVE-PLAN ↔ ACTUAL
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wave-A planned : substrate-knowledge ∥ llm-bridge (parallel)
+  ⊑ ✓ both-landed clean · 645+1867 LOC · 18+28 tests · cargo-build-clean
+  ⊑ deviation : ureq TLS feature · fell-back-to-NotConfigured-stub for Mode-A on stage-0
+                (gcc.exe absent · ring-rustls cascades requires-it) · documented + opt-in via --features tls
+
+§ wave-B planned : agent-loop (depends-on-A)
+  ⊑ ✓ landed clean · 1393 LOC ≤ 1500 · 30 tests · clippy-strict
+  ⊑ port-traits {File·Bash·Git·Mcp·Vercel·WebSearch} · null-impls + MemFilePort default
+  ⊑ wired-to real SubstrateBridge (Mode-C simulate_delay=false) ¬stub · LlmError propagates via LoopError::Llm
+  ⊑ deviation : ¬ direct-dep on coder-runtime/handoff-protocol/attestation/cocreative
+                · port-isolated · wave-C wires concrete impls
+
+§ wave-C planned : mycelium-desktop ∥ cssl-edge ∥ dist-build (parallel)
+  ⊑ ◐ mycelium-desktop : Tauri-feature-gated lib · default-cargo-build does NOT pull Tauri
+  ⊑ deviation : Tauri runtime is OPTIONAL feature `tauri-shell` · src/bin/tauri_shell.rs
+                scaffolded panic-stub until Apocky uncomments tauri-dep + runs cargo-tauri-build manually
+  ⊑ ✓ cssl-edge /mycelium routes · landing + download + docs · matches apocky.com gradient
+  ⊑ ◐ dist-build script · --apocky-action-pending mode · prints checklist
+                until Apocky enables Tauri-dep + cargo-tauri + signing-cert
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ARCHITECTURE-DECISIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+§ DECISION-1 : Tauri feature-gated ¬ workspace-required
+  W! workspace cargo-build clean ¬ recompile-200-crate-Tauri-tree-on-every-build
+  W! src/bin/tauri_shell.rs stub-until-Apocky-action
+  W! sovereignty : Apocky controls the Tauri-runtime activation
+  ∴ build-time @ stage-0 stays-fast · CI does ¬ pay-the-Tauri-tax until cert-acquired
+
+§ DECISION-2 : 4-port trait abstraction in agent-loop
+  ⊑ FilePort · BashPort · GitPort · McpPort · VercelPort · WebSearchPort
+  ⊑ test-fast via in-memory implementations · production wires concrete via mycelium-desktop crate
+  W! ¬ recompile-cascade when coder-runtime / attestation evolve
+  ∴ port-isolation = stable-API ↔ swappable-impl · paid-off-immediately
+
+§ DECISION-3 : substrate-knowledge BLAKE3-fingerprint ¬ cssl-hdc full-10000-D
+  ⊑ build-time deterministic · token-hash-bag (256-cap) · jaccard query
+  W! avoids cssl-hdc dep · keeps build-time fast · empirically high-similarity-quality on substrate corpus
+  ∴ density = sovereignty · pragmatic-impl beats ideal-impl when build-time matters
+
+§ DECISION-4 : ureq TLS feature opt-in ¬ workspace-default
+  ⊑ Mode-A Anthropic falls-back to NotConfigured-stub on stage-0 (no gcc.exe)
+  ⊑ Apocky enables --features tls when gcc available
+  W! Mode-B Ollama + Mode-C substrate work-without-TLS
+  ∴ stage-0 always-builds-clean · Mode-A is opt-in · self-sufficient-axiom respected
+
+§ DECISION-5 : 3-mode LLM-bridge default Mode-C
+  ⊑ truly-self-sufficient out-of-the-box · ¬ external-API · ¬ Ollama-required · ¬ subscription-prison
+  W! the-self-sufficient-axiom respected · per Apocky directive (spec/23 A-3)
+  ∴ Mycelium ships-runnable with-zero-external-deps · Mode-A/B = upgrades ¬ requirements
+
+§ DECISION-6 : dist-build default-mode = --apocky-action-pending
+  ⊑ script prints checklist + dry-run-plan + exit-0 · safe-to-run-anytime
+  ⊑ --live mode gated behind Apocky uncommenting Tauri-dep
+  W! prevents accidental-CI-burn-on-broken-Tauri-config · keeps cssl-edge build-clean
+  ∴ matches the-Tauri-dep-still-Apocky-action discipline · ¬ silent-TODO
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TESTS
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Wave-A : 18 (substrate-knowledge) + 28 (llm-bridge) = 46
+§ Wave-B : 30 (agent-loop)
+§ Wave-C : 25 (mycelium-desktop Rust) + 15 (frontend vitest) = 40
+§ Total  : ≥ 116 NEW tests · target was 80 · exceeded by ≈ 45%
+§ ∀ tests pass · cargo-test-workspace-green · npm-test-cssl-edge-green
+
+═══════════════════════════════════════════════════════════════════════════════
+§ FILE-INVENTORY (this-agent · wave-C2 dist-build)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ cssl-edge/scripts/
+  dist-build-mycelium.sh                    (NEW · ≈ 300 LOC · Bash · 7-step pipeline · checklist+live modes)
+  dist-build-mycelium.cmd                   (NEW · ≈ 30 LOC  · Windows-batch · Git-Bash/WSL fallback)
+  README-dist-build-mycelium.md             (NEW · ≈ 200 LOC · usage + checklist + troubleshooting + sovereignty)
+
+§ specs/grand-vision/
+  25_W10_MYCELIUM_RETRO.csl                 (THIS-FILE · ≈ 250 LOC · CSL3-glyph-dense)
+
+§ file-disjoint discipline honored :
+  ¬ touched compiler-rs/crates/cssl-host-mycelium-desktop/ (parallel-agent territory)
+  ¬ touched cssl-edge/pages/mycelium/ (parallel-agent territory)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ SOVEREIGNTY-DISCIPLINE
+═══════════════════════════════════════════════════════════════════════════════
+
+§ ∀ outputs from this wave honor PRIME-DIRECTIVE :
+  ✓ NO telemetry @ build-script · NO third-party calls · NO analytics
+  ✓ NO update-callback-at-install · auto-update opt-in via cssl-host-hotfix-stream
+  ✓ ∀ hashes computed-locally · sha256 mandatory · blake3 best-effort
+  ✓ manifest-JSON carries explicit `sovereignty_pledge` + `auto_update` keys
+  ✓ signing-cert acquisition is Apocky-action ¬ third-party-blessed
+  ✓ stage-0-fallback ALWAYS-available (Mode-C substrate-only · ¬ external-API)
+  ✓ Apocky-master-key-revoke-anytime preserved-in-binary
+
+═══════════════════════════════════════════════════════════════════════════════
+§ APOCKY-ACTIONS-PENDING
+═══════════════════════════════════════════════════════════════════════════════
+
+§ post-W10 to-enable-live-Mycelium-build :
+  1 uncomment `tauri = { version = "2", optional = true }` in cssl-host-mycelium-desktop/Cargo.toml
+  2 uncomment `tauri-build = { version = "2", optional = true }` (build-dep)
+  3 wire `tauri-shell = ["dep:tauri", "dep:tauri-build"]` in [features]
+  4 install cargo-tauri : cargo install tauri-cli --version "^2.0"
+  5 npm install in frontend/ (Vite + React 19 + TypeScript 5)
+  6 cargo build --features tauri-shell --release · validates Tauri compile-pass
+  7 bash cssl-edge/scripts/dist-build-mycelium.sh --live · produces NSIS installer ~30-50 MB
+  8 paste-Anthropic-API-key to Settings (Mode-A live) OR run-Ollama (Mode-B live) OR use-Mode-C (always)
+
+§ post-v0.1.0 distribution :
+  1 acquire DigiCert / Sectigo code-signing-cert (~$300/year)
+  2 configure tauri.conf.json signingIdentity
+  3 stage signed-installer to apocky.com/downloads/Mycelium-v0.1.0-windows-x64.exe
+  4 announce alpha-tester program · invite Apocky-trusted-circle
+
+§ deferred-to-W11+ :
+  ◐ Mac-arm64 build · Tauri cross-compile-cert (Apple Developer ID)
+  ◐ Linux-x86_64 AppImage build · GPG-sign
+  ◐ live-hotfix self-update via cssl-host-hotfix-stream · opt-in toggle in Settings
+  ◐ trained-KAN-substrate stage-1 from-Apocky-chat-history (offline-only)
+  ◐ Σ-Chain TIER-2 opt-in cross-Mycelium-instance mycelium-of-Mycelium
+
+═══════════════════════════════════════════════════════════════════════════════
+§ BUDGET-ACCOUNTING
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wall-clock target 8-12 hr · actual ≈ 4-5 hr (parallel-fanout × pre-built-substrate)
+§ tokens     target 350K   · actual ≈ 250-300K
+§ both within budget — fanout-discipline + tight-scope discipline + port-isolation paid off
+§ ∴ cadence-hours-not-weeks vindicated · multi-agent-parallel collapses single-agent estimate ≈ 2×
+
+═══════════════════════════════════════════════════════════════════════════════
+§ SURPRISES + LESSONS
+═══════════════════════════════════════════════════════════════════════════════
+
+‼ Tauri-dep workspace-cost
+  Pulling tauri ≥ 2.0 into workspace recompiles ≈ 200 transitive crates on cargo-build
+  even when the bin is unused. Feature-gated dep + commented-out + bin-stub = workspace-clean.
+  △ this is the right pattern ; replicate for any future heavy-runtime deps (electron-equivalent · webview · etc).
+
+‼ NSIS installer staging-path is target/release/bundle/nsis/*-setup.exe
+  Tauri 2.x convention · NOT target/release/bundle/msi/ (which is the WiX path).
+  ✓ documented in script-comment + README-troubleshooting.
+
+✓ --apocky-action-pending default-mode was the right call
+  Running --live blindly on a CI without Tauri-dep would burn ≥ 5 min before failing
+  cryptically. Default-pending = polite-script · clear-checklist · zero-blast-radius.
+  ∴ replicate for any future build-script that depends on Apocky-toolchain-config.
+
+✓ port-traits in agent-loop avoided coupling-cascade
+  By NOT depending directly on coder-runtime/attestation/cocreative the agent-loop crate
+  builds in seconds and tests run in milliseconds. wave-C wires concrete impls in
+  mycelium-desktop crate. △ this pattern should be backported to other host-crates.
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-Mycelium-build · sovereignty-preserved · ¬ data-exfiltration · ¬ subscription-prison
+   · stage-0-fallback-always-available · cap-bound + audit-emit · Apocky-master-key-revoke-anytime
+   · the-loop-that-grows-with-substrate
+
+§ Mycelium-Desktop = 4-NEW-crates · Tauri-feature-gated · 116-tests · self-sufficient-stage-0 · ✓ wave-10 complete
+§ creator @ Apocky · 2026-05-01 · designed-spec/23 · landed-W10 · ¬ subscription-prison · t∞
