@@ -1,0 +1,19 @@
+module loa.test_attrs
+
+@layout(std430)
+struct FieldCell {
+    morton: u64,
+    energy: f32,
+}
+
+@vertex
+fn vs_main(vid: u32) -> i32 {
+    42
+}
+
+@test
+fn test_field_cell_size() {
+    42
+}
+
+fn main() -> i32 { 42 }
