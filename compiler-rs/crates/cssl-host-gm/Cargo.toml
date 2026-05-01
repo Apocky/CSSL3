@@ -1,0 +1,34 @@
+[package]
+name                   = "cssl-host-gm"
+description            = "CSSLv3 stage0 — GM (Game Master) narrator-pacing scaffold : template-table prose-fill + pacing-policy (stage0 + stage1-KAN-stub) + cocreative-bias-tone-tuning + cap-gated GM_CAP_* surface + audit-emit. Per spec/10_INTELLIGENCE.csl § ROLE-GM."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W7-D-GM (cssl/session-6/parallel-fanout) :
+# GM narrator-pacing scaffold. Consumes DM scene-state + player text/voice +
+# cocreative-bias. Produces narrative-text-frames + pacing-mark-events +
+# prompt-suggestion lists. Cap-gated GM_CAP_*. Stage-0 = template-table
+# prose-fill ; stage-1 = KAN-narrative-LM (interface-only · stub).
+#
+# § ROLE-SCOPE per ~/.claude/.../feedback_dm_gm_not_general_ai.md :
+# DM (orchestrator) + GM (narrator) + Collaborator (co-author) + Coder (runtime-mutate)
+# ONLY. GM = narrator role · self-sufficient for that role · NOT generic AGI.
+#
+# § DEPENDENCY DISCIPLINE :
+# - cssl-host-cocreative (path) for BiasVector tone-tuning
+# - NO direct dep on cssl-host-dm (cycle-risk @ W7-C parallel) ; mirror its
+#   SceneStateSnapshot semantics via local GmSceneInput type
+# - NO direct dep on cssl-host-attestation (avoid potential cycle) ;
+#   define own AuditSink trait
+[dependencies]
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+cssl-host-cocreative = { path = "../cssl-host-cocreative" }
+
+[lints]
+workspace = true

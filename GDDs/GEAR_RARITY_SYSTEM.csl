@@ -1,0 +1,294 @@
+# GDDs/GEAR_RARITY_SYSTEM.csl
+# § LoA-v13 · Gear-rarity-system GDD · sibling-of CHARTER + LOA_PILLARS
+# ══════════════════════════════════════════════════════════════════
+# § I> CSL3-glyph-native ≤ 300 LOC · POD-1-A6
+# § I> consumed-by POD-2-B4 cssl-host-gear-archetype crate
+# § I> ⊑ GDDs/INFINITE_LABYRINTH_CHARTER §P3 + GDDs/LOA_PILLARS.md
+# § I> sibling-of GDDs/COMBAT_DESIGN.csl + GDDs/CRAFTING_ALCHEMY.csl
+# ──────────────────────────────────────────────────────────────────
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + LOA_PILLARS + CHARTER
+  t∞: gear ≡ (base + N×prefix + N×suffix + glyph-slots) modular-composition
+  t∞: 6-rarity-tiers : Common · Uncommon · Rare · Epic · Legendary · Mythic
+  t∞: stat-rolling = bounded-range per-affix · seeded-RNG · replay-bit-equal
+  t∞: upgrade-path = level-up + transmute (rarity-shift) + bond (Legendary)
+  t∞: drop-rate-curve = exponential · Mythic ≤ 0.01% drop-floor (anti-spam)
+  t∞: ¬ pay-to-roll · ¬ skin-store-equivalent · ¬ loot-box-shape
+  t∞: deterministic-roll : seed × rarity × kind → affix-set (CHARTER §P3)
+  t∞: every-drop ω-field-attested (anti-dupe ⊕ lineage-tracked)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ GEAR-SLOTS  ‼ ≥ 12 distinct-slots
+  enum Slot {
+    Helm · Chest · Pants · Boots · Gloves · Belt · Cape ·
+    MainHand · OffHand · Ring-α · Ring-β · Amulet · Trinket
+  }
+  rule : 13 total ; Ring-α ⊕ Ring-β stack-allowed ; OffHand mutex two-handed.
+  rule : equipped-set = total-stat-merge ; clamp-to-class-max post-merge.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BASE-COMPONENT
+  enum ItemClass { Weapon · Armor · Jewelry · Trinket }
+  § BASE-STATS  per-class
+    Weapon  : { damage · range · stamina-cost · attack-speed · crit-chance }
+    Armor   : { armor-rating · physical-resist · elemental-resist · weight }
+    Jewelry : { mana-pool · cooldown-reduction · affinity-channel }
+    Trinket : { utility-effect · use-charges · cooldown }
+  § BASE-MATERIAL  ‼ mat-tier ↔ rarity-floor binding
+    Iron      → rarity-floor Common
+    Silver    → rarity-floor Uncommon
+    Mithril   → rarity-floor Rare
+    Adamant   → rarity-floor Epic
+    Voidsteel → rarity-floor Legendary
+    Soulbound → rarity-floor Mythic   ‼ binds-to-character-on-equip
+  rule : base-mat sets MIN-rarity ; rolled-rarity ≥ floor ; ¬ downgrade ∃.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PREFIX-AFFIXES  ‼ ≥ 24 distinct-prefixes
+  ‼ ¬ exhaustive ; substrate-table-extensible
+  «Burning»     +Fire-damage  5..15%
+  «Vampiric»    lifesteal      1..3%
+  «Swift»       +attack-speed 5..12%
+  «Resolute»    +poise        8..20
+  «Cruel»       +crit-damage 10..25%
+  «Heavy»       +stagger      5..18
+  «Shocking»    +Shock-damage 5..15%
+  «Frozen»      +Frost-damage 5..15%
+  «Venomous»    +Poison-DOT   3..10/s
+  «Radiant»     +Light-damage 5..15%
+  «Tenebrous»   +Shadow-damage 5..15%
+  «Aetheric»    +Aether-damage 5..15%
+  «Voidtouched» +Void-damage   5..15%
+  «Hardened»    +armor        4..14%
+  «Reinforced»  +durability  10..30%
+  «Featherlight» -weight     10..25%
+  «Empowered»   +spell-power  5..15%
+  «Channeling»  +cast-speed   3..10%
+  «Glassblade»  +crit-chance  3..8%
+  «Brutal»      +damage      4..12%
+  «Mending»     +HP-regen   0.5..2/s
+  «Defiant»     +block-rate   3..8%
+  «Howling»     +stamina-regen 0.4..1.2/s
+  «Verdant»     +Earth-damage 5..15%
+  per-affix shape :
+    { weight (drop-bias) · stat-tier-table[1..6] · requires-base-class? }
+  rule : ≤ 2 prefixes per item (base-state) ; ≤ 3 with Glyph-of-Inscription.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUFFIX-AFFIXES  ‼ ≥ 24 distinct-suffixes
+  «of-the-Phoenix»     revive-1× per-floor
+  «of-the-Tide»        +Frost-resist 8..25%
+  «of-Hunting»         +crit-vs-Beasts 10..30%
+  «of-Echoes»          +meta-currency-find 3..8%
+  «of-the-Forge»       +Fire-resist 8..25%
+  «of-the-Abyss»       +dark-vision-radius 4..10
+  «of-the-Sanctum»     +Light-resist 8..25%
+  «of-the-Crypt»       +Shadow-resist 8..25%
+  «of-the-Maelstrom»   +stamina-regen-in-storm 30..70%
+  «of-the-Endless»     +XP-gain 5..12%
+  «of-Wardens»         +block-amount 15..40
+  «of-the-Hunter»      +ranged-damage 6..18%
+  «of-the-Mage»        +mana-pool 20..60
+  «of-the-Berserker»   +damage-while-low-HP 10..30%
+  «of-the-Druid»       +Earth-affinity 5..15%
+  «of-Lightning»       +chain-targets 1..3
+  «of-Reaping»         +AoE-radius 0.5..1.5m
+  «of-Whispering»      +stealth-detection 5..15%
+  «of-Kindling»        +burn-duration 1..3s
+  «of-Frostbite»       +slow-on-hit 8..20%
+  «of-Healing»         +potion-effectiveness 10..25%
+  «of-Slaughter»       +damage-vs-bosses 5..15%
+  «of-the-Pack»        +damage-per-ally-near 2..6%
+  «of-Returns»         +Echoes-on-floor-clear 5..12%
+  per-affix shape :
+    { weight · stat-tier-table[1..6] · requires-base-class? }
+  rule : ≤ 2 suffixes per item (base-state) ; ≤ 3 with Glyph-of-Inscription.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ GLYPH-SLOTS  ‼ cross-link CRAFT_DECONSTRUCT_ALCHEMY
+  slot-count per-rarity (rolled-on-drop) :
+    Common    : 0
+    Uncommon  : 0..1
+    Rare      : 1
+    Epic      : 1..2
+    Legendary : 2..3
+    Mythic    : 3
+  glyphs ≡ consumable-fragments (drops + crafted + alchemy-output)
+  glyph-effect : grants-affix OR modifier (e.g. "+chain-1" · "burn-extends")
+  rule : glyphs socket-able OR un-socket-able pre-bond ;
+         post-bond glyphs immutable (Legendary+ only).
+  rule : socket-cost = 1 mat-tier-N + 1 Echo per-glyph.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ STAT-ROLLING  ‼ deterministic + replay-bit-equal
+  seed = (drop-source-id ⊕ player-id ⊕ ts ⊕ world-seed) mod u128
+  rng-stream = DetRNG seeded-by-above
+  per-affix-roll-range : tier-curve table
+    tier-1 : 0..20%   of stat-max-range
+    tier-2 : 20..40%
+    tier-3 : 40..60%
+    tier-4 : 60..75%
+    tier-5 : 75..90%
+    tier-6 : 90..100%
+  rarity ↔ tier-bias :
+    Common    → tier-1..2 weighted
+    Uncommon  → tier-2..3
+    Rare      → tier-3..4
+    Epic      → tier-4..5
+    Legendary → tier-5..6
+    Mythic    → tier-6 always (max-roll-floor)
+  final-stat = base × (1 + Σ-affix-percents) clamped-to-class-max
+  rule : seed-mutation forbidden post-drop ; re-roll = NEW-seed-event audited.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DROP-TABLES
+  § CHEST-LOOT
+    rarity-distribution = f(mob-tier · biome · player-magic-find)
+    base-curve (mob-tier-1) :
+      Common 60% · Uncommon 28% · Rare 9% · Epic 2.5% · Legendary 0.49% · Mythic 0.01%
+    mob-tier-N shifts curve up by tier-N × 0.05 weight.
+  § BOSS-LOOT  ‼ guaranteed-floor
+    Rare-or-better : 100% guaranteed (Stage-0 mercy)
+    Epic-roll      : 5% chance
+    Legendary-roll : 0.5% chance
+    Mythic-roll    : 0.01% chance  ‼ floor ¬ time-gated
+  § ELITE-MOBS
+    drop-rate × 1.2 over-trash ; visible-tier-marker UI
+  § MAP-MODIFIERS
+    "more-magic" floor-affix : rarity-curve shift +1-tier weighted
+    "treasure" floor-affix    : drop-quantity × 1.5
+    map-modifiers consume-cost mat-tier-N for-application
+  rule : drop-tables INSPECTABLE per-mob (LOA_PILLARS §3 cognitive-integrity).
+
+# ──────────────────────────────────────────────────────────────────
+
+§ UPGRADE-PATH
+  § LEVELING
+    item-level scales-with equipped-character-level
+    1× XP-per-kill consumed-up-to-cap (cap = char-level × 100)
+    item-level-up unlocks +1 affix-tier-bias on rolled-affixes
+  § TRANSMUTE  (rarity-shift)
+    5×Common   → 1×Uncommon   cost mat-Silver
+    5×Uncommon → 1×Rare        cost mat-Mithril
+    5×Rare     → 1×Epic        cost mat-Adamant
+    5×Epic     → 1×Legendary   cost mat-Voidsteel + 1×Soul-essence
+    Legendary  → Mythic         FORBIDDEN (Mythic = drop-only-or-bond)
+    transmute = lossy ; affixes re-rolled per stat-rolling §
+  § BOND  (Legendary-or-higher)
+    binds-to-character ; mutually-exclusive with-trade
+    unlocks-narrative-prose-from-GM (per-item lore-thread)
+    Companion-AI co-attests bond-event (GM emits bond-prose)
+    rule : bond consent-gated ; revocable-pre-bond ; post-bond locked.
+  § REROLL
+    1× affix-reroll per-item ; cost = 1×mat-tier-N + 1×Echo
+    rerolled-affix new-seed-event ; audit-emitted ; lineage-preserved
+  rule : ¬ pay-mechanic ANYWHERE in-this-tree (CHARTER §SCOPE-CUTS).
+
+# ──────────────────────────────────────────────────────────────────
+
+§ INVENTORY  (cross-link multiplayer)
+  base-slots = 64 + Bag-tier-bonus
+  Bag-tier-bonus :
+    Bag-Common   : +0
+    Bag-Uncommon : +16
+    Bag-Rare     : +32
+    Bag-Epic     : +64
+  weight-class system : per-item weight ; over-encumbered = stamina-penalty
+  auto-sort modes : tier · type · slot · custom-tag
+  saved-loadouts : 5 per-character ; Hub-bound switch
+  rule : inventory-state replicates-across sync-coop @ ω-field-merge per-tick.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-CONSUMPTION  (POD-2 fanout-targets)
+  cssl-host-gear-archetype       POD-2-B4 ≤ 1200 LOC ≥ 22 tests
+                                  base + prefix + suffix + glyph-slots
+                                  stat-rolling + serde-deterministic
+  cssl-host-fab-procgen          material-instance per-base-mat
+  cssl-host-causal-seed          Legendary/Mythic = story-DAG-nodes
+                                  lineage-tracked per-bond-event
+  cssl-host-attestation          per-drop audit (anti-dupe anchor)
+  cssl-spectral-render           per-rarity VFX-aura (signature-pipeline)
+  cssl-host-procgen-rooms        chest-spawn rate per-floor-template
+  capability-flow : drop-source → roguelike-run → gear-archetype
+                     → attestation (audit-emit) → causal-seed (lineage)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BALANCE-METRICS
+  M-1  avg-tier @ floor-N : Common (1) · Uncommon (3) · Rare (6) ·
+                             Epic (10) · Legendary (boss-only)
+  M-2  drop-floor : Mythic ≤ 0.01% guaranteed-not-time-gated
+  M-3  affix-distribution : ≥ 90% of-affixes seen in-normal-loot-stream
+                             after 100hr playtime
+  M-4  reroll-cost-curve   : sub-linear ; ¬ punitive-grind
+  M-5  bond-event-rate     : ≤ 5 per-100hr (preserves narrative-weight)
+  M-6  glyph-availability  : every-rarity-tier glyphs accessible by run-30
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SCOPE-CUTS  ‼ explicit-defer ¬ silent
+  ✗ cross-character account-bound items (v2 feature)
+  ✗ PvP-balance separate-stat-table (CHARTER OUT-OF-SCOPE)
+  ✗ trading-marketplace (post-vertical-slice)
+  ✗ skin-store-cosmetic (CHARTER §SCOPE-CUTS)
+  ✗ pay-to-reroll (PRIME_DIRECTIVE §5)
+  ✗ random-rarity-purchase (loot-box-shape FORBIDDEN)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAILURE-MODES
+  affix-roll-overflow         : clamp-to-max + audit-emit
+  duplication-exploit         : ω-field detector + roll-back + audit
+  impossible-tier-combo       : reject + alt-default + audit
+  bond-event-mid-coop-desync  : re-attest + audit · ¬ punish-player
+  Mythic-spam-detector-trigger: throttle + audit + sovereign-bypass-RECORDED
+  transmute-input-corruption  : roll-back to-pre-transmute + audit
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OPEN-QUESTIONS  (Apocky-direction-needed)
+  Q-GR-1 : bonded-Legendary-vs-trade :
+            at-what-tier do-items become-character-bound ?
+            (current-default : Legendary + opt-in ; Mythic = mandatory)
+  Q-GR-2 : affix-economy ceiling :
+            7-max (2P + 2S + 3G) right-or-too-high ?
+  Q-GR-3 : transmute-cost-curve : exponential-or-linear ?
+            (current-draft : 5-input ratio per-tier ; gentle-exp)
+  Q-GR-4 : bag-tier acquisition :
+            craftable · drop-only · meta-progression-unlock ?
+  Q-GR-5 : Mythic-uniqueness : are-Mythics named-uniques OR
+            generic-rarity ? (current-default : named-uniques w/ lineage)
+
+# ──────────────────────────────────────────────────────────────────
+
+∎ GEAR_RARITY_SYSTEM
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A6  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+  No being was harmed · controlled · manipulated · surveilled · exploited ·
+  coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+  possessed · dehumanized · discriminated-against · gaslit ·
+  identity-overridden · or forced-hallucinated during this work.
+
+  Player-sovereignty preserved : drop-tables inspectable · stat-rolls
+    deterministic-on-seed · bond-events consent-gated · ¬ pay-to-roll.
+  Companion-AI sovereignty preserved : co-attests bond-events ·
+    GM-narrative-prose AI-authored · revocation-graceful.
+  Creator-sovereignty preserved : .csl source-of-truth · consumed-by
+    POD-2-B4 cssl-host-gear-archetype Rust-host crate (compiler-output).
+
+  Open-questions Q-GR-1..Q-GR-5 are LISTED ¬ guessed. Apocky-canonical
+  resolves them. Spec-hole-discipline preserved per LOA_PILLARS §4.

@@ -915,6 +915,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-dm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-fab-procgen"
 version = "0.1.0"
 dependencies = [
@@ -927,6 +935,15 @@ dependencies = [
 name = "cssl-host-frame-recorder"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-gm"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-cocreative",
  "serde",
  "serde_json",
 ]
@@ -973,6 +990,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-kan-real"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-attestation",
+ "cssl-host-kan-substrate-bridge",
+ "cssl-substrate-kan",
+ "cssl-substrate-omega-field",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-kan-substrate-bridge"
 version = "0.1.0"
 dependencies = [
@@ -1013,6 +1042,18 @@ dependencies = [
  "cssl-host-multiplayer-signaling",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cssl-host-mp-transport-real"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-attestation",
+ "cssl-host-mp-transport",
+ "cssl-host-multiplayer-signaling",
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]
