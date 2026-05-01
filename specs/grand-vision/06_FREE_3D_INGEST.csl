@@ -1,0 +1,192 @@
+# 06 : LoA-v13 GRAND-VISION — FREE-3D-INGEST
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> license-disciplined asset-fetch pipeline
+# § I> CSSL-native ; ¬ marketing
+# § I> consent-as-OS ; license-attribution-HUD W4
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: only-licensed-content-ingest  ‼ structural
+       ≡ CC0 ✓  +  CC-BY-4.0 ✓ (with attribution-HUD)
+       ≡ CC-NC ✗  +  proprietary ✗  +  unknown-license ✗
+  t∞: cap-gated-fetch + SHA256-dedupe + LRU-cache
+       ≡ ¬ silent-network ; ¬ duplicate-storage ; ¬ unbounded-cache
+  t∞: attribution-HUD W4-mandate
+       ≡ CC-BY ingest requires-runtime-credit-display
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SOURCES  «free-3D-asset providers»
+
+  § PROVIDER-ROSTER  ‼ stage-1 canonical-set
+    Sketchfab        : api.sketchfab.com ; CC0 + CC-BY filter required
+                       ≡ search by-tag + license + downloadable-flag
+    PolyHaven        : polyhaven.com ; CC0 textures + HDRIs + 3D
+                       ≡ direct-CDN download ; no-API-key required
+    Kenney           : kenney.nl ; CC0 game-asset packs
+                       ≡ mostly-low-poly stylized ; pack-download
+    Quaternius       : quaternius.com ; CC0 character + environment
+                       ≡ low-poly + fully-rigged GLTF
+    OpenGameArt      : opengameart.org ; mixed-license search
+                       ≡ filter mandatory : CC0 / CC-BY only
+
+  § ADDITION-DISCIPLINE
+    new-source = audit-required :
+      (a) confirm-license-compatible (CC0/CC-BY only)
+      (b) confirm-API-stable (versioned-endpoint preferred)
+      (c) confirm-attribution-mechanism if CC-BY
+      (d) confirm-rate-limit-policy (cap-budget computable)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ LICENSE-DISCIPLINE  «structural-enforcement»
+
+  § ALLOWED
+    CC0              : public-domain dedication ; ¬ attribution-required
+    CC-BY-4.0        : attribution-required ; HUD-display mandatory
+    CC-BY-SA-4.0     : ◐ allowed but-share-alike-cascade ; tracked
+    Apache-2.0       : ✓ for-textures-with-NOTICE-file-handling
+    MIT              : ✓ similarly
+
+  § FORBIDDEN  ‼
+    CC-NC*           : non-commercial only ; LoA-may-monetize ⇒ refuse
+    CC-ND*           : no-derivatives ; modification-required by procgen ⇒ refuse
+    proprietary      : terms-of-use unverifiable ; refuse
+    unknown          : cannot-confirm-permission ; refuse
+    GPL-3            : viral-copyleft ; refuse for game-content
+    "free for personal use" : restriction-class ; refuse
+
+  § META-SIDECAR  «.meta companion-file per-blob»
+    fields :
+      sha256          : 32-byte content-hash
+      license_spdx    : SPDX-identifier (CC0-1.0 | CC-BY-4.0 | ...)
+      source_url      : where-fetched-from
+      author          : human-or-handle (for CC-BY attribution)
+      source_id       : provider-side-asset-id
+      fetched_at      : ISO-UTC timestamp
+      provider        : sketchfab | polyhaven | kenney | quaternius | oga
+    invariant : ∀ blob ∃ .meta-sidecar ; orphan-blob purged @ next-startup
+
+# ══════════════════════════════════════════════════════════════════
+
+§ PIPELINE  «url → renderable-DynamicMesh»
+
+  § STAGE-1 — fetch  ‼ cap-gated
+    cap          : NetGetReadCap + NetHttpsOnlyCap
+    via-Vercel   : /api/asset/search → presigned-URL → direct-CDN-fetch
+    timeout      : 30s connect + 5min total ; abort + cleanup-partial
+    rate-limit   : per-provider-budget tracked ; cap-revoke if-exceeded
+    retry        : exp-backoff 1s/2s/4s ; max-3 ; cap-permitting
+    abort        : SIGINT or cap-revocation cleanly cancels-in-flight
+
+  § STAGE-2 — SHA256-dedupe
+    compute-sha256 over downloaded-bytes
+    check cache-index : sha256 already-present?
+      yes → discard download ; reuse-existing
+      no  → proceed to stage-3
+    rationale    : same-asset across-providers/searches dedupes
+
+  § STAGE-3 — cache-LRU-write
+    location     : per-installation cache-dir (local discipline §§ 02)
+    naming       : <sha256-hex>.glb  +  <sha256-hex>.meta.json
+    LRU-policy   : evict-by-mtime when total-size > 8GB (configurable)
+    eviction-respects: pinned-blobs (e.g. test-room base-content)
+
+  § STAGE-4 — GLB-parse
+    crate        : cssl-asset-gltf (W3b landed)
+    parser       : glTF-2.0 binary container ; mesh + material extraction
+    refusal      : reject-files-with-embedded-script-extension
+                   reject-files-claiming-binary-extension-but-malformed
+                   reject-files > 100MB without explicit-cap
+
+  § STAGE-5 — material-LUT classifier
+    table-size   : 16-canonical material-classes
+    inputs       : mesh-name + material-name + texture-name + colors
+    classifier   : keyword-table stage-1 ; KAN-trained stage-2
+    classes      : metal · plastic · wood · stone · fabric · glass ·
+                   liquid · vegetation · skin · bone · crystal · ash ·
+                   wire · light-emitter · default · unknown
+    output       : KanMaterialHandle (Φ-handle indexed)
+
+  § STAGE-6 — DynamicMesh-bind
+    crate        : cssl-render-v2 (Stage-5 SDF-raymarch consumer)
+    mesh-data    : vertex-buffer + index-buffer + material-handle
+    SDF-ingest   : voxelize-into ω-field-cells with M-facet = material-handle
+                   ≡ asset becomes Σ-mask-aware substrate-content
+    Σ-mask-set   : default-Private ; player-grants-spawn-cap to-spawn-zone
+
+  § STAGE-7 — render-ready
+    routed to    : Stage-3..Stage-9 of 12-stage pipeline (§§ 32)
+    Stage-6      : KanBrdf consumes material-handle for spectral-BRDF
+    Stage-7      : FractalAmplifier optional sub-pixel-displacement
+    Stage-9      : MiseEnAbyme treats mirror-meshes specially
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ATTRIBUTION-HUD  ⟪ W4 mandate ⟫
+
+  § REQUIREMENTS
+    ∀ CC-BY-asset visible-on-screen :
+      runtime-display author + source-url + license-name in HUD-overlay
+      toggleable via dedicated-key (default F12) but DEFAULT-ON
+      persistent across-session ; revealed-on-demand
+    ∀ CC0-asset : optional-display ; not-required
+
+  § STAGE-1-FALLBACK  (not-yet-shipped)
+    log-only attribution : audit-chain entry ; HUD deferred to W4
+    user-warning at-startup : "CC-BY-attribution-display deferred to W4"
+
+# ══════════════════════════════════════════════════════════════════
+
+§ NEURAL-3D-GATEWAY  ⟪ W4 stub→real ⟫
+
+  § INTENT
+    text → mesh via remote-neural-3D-API (e.g. Meshy, Stability)
+    cap : NetPostWriteCap + NeuralGenCap + ConsentToken<neural-gen>
+    license : output-claimed-by-user; provider-ToS varies
+              ‼ require provider-ToS-compatible-with-CC-BY-or-CC0
+              ≡ refuse providers with "non-commercial" or "we-own-output"
+
+  § STAGE-1 STUB
+    /api/neural3d returns canned-asset-from-cache for-test ; ¬ real-gen
+    real-gen wired W4 with provider-vetted-list
+
+# ══════════════════════════════════════════════════════════════════
+
+§ AUDIT  «every-fetch logged»
+
+  § PER-FETCH-LOG
+    fetch_id        : monotonic counter
+    sha256          : final-bytes hash
+    provider        : provider-tag
+    license_spdx    : SPDX-identifier
+    bytes_received  : usize
+    latency_ms      : connect + transfer
+    cap_token       : NetGetReadCap-id authorizing
+    status          : Ok | LicenseRejected | Timeout | RateLimited | Aborted
+    ts_micros       : monotonic
+
+  § COUNTERS  (cssl-telemetry)
+    fetch_total     : total-attempts
+    fetch_ok        : succeeded
+    fetch_dedup     : skipped-due-to-sha256-match
+    fetch_rejected  : license-incompatible
+    fetch_aborted   : cap-revoked or timeout
+    fetch_bytes     : total-bytes-stored
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  02 DATA-AXES                    — local LRU + .meta discipline
+  04 SPONTANEOUS-CONDENSATION     — fetched-mesh becomes ω-field-content
+  07 NETWORKING                   — cap-gated outbound + Vercel proxy
+  §§ 30_SUBSTRATE_v2              — M-facet = material-handle binding
+  §§ 32_SIGNATURE_RENDERING       — Stage-5..9 consumer
+
+∎ FREE-3D-INGEST
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)
