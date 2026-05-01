@@ -1,0 +1,27 @@
+# § T11-W8-C3 : cssl-host-akashic-records
+# § Akashic-Records imprint state-machine · 5-tier fidelity · Aetheric-Shards
+# § cosmetic-channel-only-axiom (¬ pay-for-power) · per spec/grand-vision/18
+# § BLAKE3-content-hash · ETERNAL-attribution one-time-permanent · ¬ revocable
+# § stage-0 host-side · #![forbid(unsafe_code)] · BTreeMap-only
+
+[package]
+name        = "cssl-host-akashic-records"
+version     = { workspace = true }
+edition     = { workspace = true }
+rust-version = { workspace = true }
+license     = { workspace = true }
+authors     = { workspace = true }
+repository  = { workspace = true }
+homepage    = { workspace = true }
+description = "Akashic-Records imprint state-machine · 5-tier fidelity · cosmetic-only-axiom · BLAKE3-content-hash"
+publish     = false
+
+[lints]
+workspace = true
+
+[dependencies]
+blake3 = { workspace = true }
+serde  = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
