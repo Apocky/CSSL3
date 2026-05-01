@@ -2,14 +2,21 @@
 // ════════════════════════════════════════════════════════════════════════════
 //
 // § T11-LOA-RICH-RENDER (W-LOA-rich-render-overhaul)
+// § T11-LOA-RAYMARCH    (W-LOA-raymarched-primitives) — 6 SDF/fractal kinds
 //
 // § ROLE
 //   Uber-shader supporting :
 //     - Per-vertex material_id + pattern_id indirection into LUTs
-//     - 16+ procedural patterns computed analytically in the fragment shader
+//     - 16 procedural patterns computed analytically in the fragment shader
+//     - 6 RAYMARCHED SDF/fractal kinds executed by a 64-step sphere-tracer
+//       inside the cube bounding-volume (mandelbulb · sphere · torus ·
+//       gyroid · quaternion-julia · menger-sponge)
 //     - Material BRDF approximation (lambert + ambient + fresnel-flavored
 //       specular highlight + emissive)
 //     - Time-driven holographic / iridescent / dichroic effects
+//     - frag_depth output so raymarched hits depth-test correctly against
+//       surrounding geometry (cube bounding-volume passes through default
+//       projected depth)
 //
 // § VERTEX LAYOUT (see geometry.rs Vertex::desc)
 //   @location(0) position    : vec3<f32>
@@ -20,8 +27,9 @@
 //   @location(5) pattern_id  : u32         (interpolated as flat)
 //
 // § BIND GROUP 0 BINDING 0 — Uniforms (single UBO holds view-proj + sun-dir +
-//   ambient + time + 16-entry material LUT + 16-entry pattern LUT).
-//   Total size : 80 + 16 × 32 + 16 × 16 = 80 + 512 + 256 = 848 bytes
+//   ambient + time + camera-pos + 16-entry material LUT + 22-entry pattern LUT).
+//   Total size : 64 + 16 + 16 + 16 + 16 + 16 × 48 + 22 × 16
+//              = 64 + 64 + 768 + 352 = 1248 bytes
 //   (well under the 16 KiB UBO limit on every wgpu backend).
 
 struct Material {
@@ -54,8 +62,12 @@ struct Uniforms {
     // time.y = frame counter (modulo 1e6) cast to f32
     // time.zw = unused
     time      : vec4<f32>,
+    // § T11-LOA-RAYMARCH : real camera world-space position so the
+    // sphere-tracer can reconstruct the view ray inside cube-local space.
+    // .xyz = world camera position ; .w = unused (reserved for tracer flags).
+    camera_pos: vec4<f32>,
     materials : array<Material, 16>,
-    patterns  : array<Pattern, 16>,
+    patterns  : array<Pattern, 22>,
 };
 
 @group(0) @binding(0) var<uniform> u : Uniforms;
@@ -425,49 +437,304 @@ fn procedural(p: Pattern, uv: vec2<f32>, normal: vec3<f32>, view_dir: vec3<f32>,
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// § T11-LOA-RAYMARCH — Signed Distance Functions + 64-step sphere-tracer
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Raymarch pattern-IDs 16..21 sphere-trace inside the cube bounding-volume.
+// All SDFs operate in cube-LOCAL space (cube center at origin, half-extent
+// equal to STRESS_SIZE/2 = 0.4 m), so distances of ~0.001 are tight enough.
+//
+// To keep iteration counts bounded for the deepest fractals, we use 12 iters
+// for mandelbulb / 10 for julia / 4 for menger — the tracer itself caps at
+// 64 steps with a 4 m max-t (well past the 0.4 m bounding-volume diagonal).
+
+const RAYMARCH_MAX_STEPS : i32 = 64;
+const RAYMARCH_MAX_T : f32 = 4.0;
+const RAYMARCH_HIT_EPS : f32 = 0.001;
+
+const KIND_MANDELBULB : u32 = 16u;
+const KIND_SPHERE     : u32 = 17u;
+const KIND_TORUS      : u32 = 18u;
+const KIND_GYROID     : u32 = 19u;
+const KIND_JULIA      : u32 = 20u;
+const KIND_MENGER     : u32 = 21u;
+
+fn sdf_sphere(p: vec3<f32>, r: f32) -> f32 {
+    return length(p) - r;
+}
+
+fn sdf_torus(p: vec3<f32>, big_r: f32, little_r: f32) -> f32 {
+    let q = vec2<f32>(length(p.xz) - big_r, p.y);
+    return length(q) - little_r;
+}
+
+fn sdf_gyroid(p: vec3<f32>, scale: f32, thickness: f32) -> f32 {
+    let q = p * scale;
+    let g = sin(q.x) * cos(q.y) + sin(q.y) * cos(q.z) + sin(q.z) * cos(q.x);
+    return abs(g) / scale - thickness;
+}
+
+fn sdf_mandelbulb(p: vec3<f32>) -> f32 {
+    var z = p;
+    var dr = 1.0;
+    var r = 0.0;
+    let power = 8.0;
+    for (var i: i32 = 0; i < 12; i = i + 1) {
+        r = length(z);
+        if (r > 2.0) { break; }
+        let theta = acos(clamp(z.z / max(r, 1e-6), -1.0, 1.0)) * power;
+        let phi = atan2(z.y, z.x) * power;
+        let zr = pow(r, power);
+        dr = pow(r, power - 1.0) * power * dr + 1.0;
+        let st = sin(theta);
+        z = zr * vec3<f32>(st * cos(phi), st * sin(phi), cos(theta));
+        z = z + p;
+    }
+    if (r < 1e-6) { return 0.0; }
+    return 0.5 * log(r) * r / dr;
+}
+
+fn sdf_julia_quaternion(p: vec3<f32>) -> f32 {
+    // Quaternion Julia · 4D iteration projected to 3D
+    var z = vec4<f32>(p, 0.0);
+    let c = vec4<f32>(-0.2, 0.6, 0.2, 0.2);
+    var dr = 1.0;
+    for (var i: i32 = 0; i < 10; i = i + 1) {
+        let r2 = dot(z, z);
+        if (r2 > 4.0) { break; }
+        dr = 2.0 * length(z) * dr;
+        z = vec4<f32>(
+            z.x * z.x - dot(z.yzw, z.yzw),
+            2.0 * z.x * z.y,
+            2.0 * z.x * z.z,
+            2.0 * z.x * z.w,
+        ) + c;
+    }
+    let r = length(z);
+    if (dr < 1e-6) { return 0.0; }
+    return 0.5 * sqrt(r * r / max(dr * dr, 1e-12)) * log(max(r, 1e-6));
+}
+
+fn sdf_menger_sponge(p: vec3<f32>) -> f32 {
+    // Box-bound : largest cube the sponge fits inside (in cube-local space
+    // we use a 0.7-half-extent so the sponge fills most of the bounding cube).
+    var d = max(abs(p.x), max(abs(p.y), abs(p.z))) - 1.0;
+    var s = 1.0;
+    var pp = p;
+    for (var i: i32 = 0; i < 4; i = i + 1) {
+        let r = abs(fract(pp * s * 0.5 + 0.5) * 2.0 - 1.0);
+        let a = max(r.x, r.y);
+        let b = max(r.y, r.z);
+        let c = max(r.z, r.x);
+        let cube_d = (min(min(a, b), c) - 1.0 / 3.0) / s;
+        d = max(d, cube_d);
+        s = s * 3.0;
+    }
+    return d;
+}
+
+// SDF dispatcher : pick the right SDF given the raymarch kind.
+fn sdf_select(kind: u32, p: vec3<f32>, scale: f32, phase: f32) -> f32 {
+    switch kind {
+        case 16u: { return sdf_mandelbulb(p * 1.25); }
+        case 17u: { return sdf_sphere(p, scale); }
+        case 18u: { return sdf_torus(p, scale, phase); }
+        case 19u: { return sdf_gyroid(p, scale, 0.04); }
+        case 20u: { return sdf_julia_quaternion(p * 1.5); }
+        case 21u: { return sdf_menger_sponge(p * 1.0); }
+        default:  { return length(p) - 1.0; }
+    }
+}
+
+struct RaymarchHit {
+    hit : bool,
+    t   : f32,
+    pos : vec3<f32>,
+};
+
+fn raymarch(ro: vec3<f32>, rd: vec3<f32>, kind: u32, scale: f32, phase: f32) -> RaymarchHit {
+    var t : f32 = 0.0;
+    for (var i: i32 = 0; i < RAYMARCH_MAX_STEPS; i = i + 1) {
+        let p = ro + rd * t;
+        let d = sdf_select(kind, p, scale, phase);
+        if (d < RAYMARCH_HIT_EPS) {
+            return RaymarchHit(true, t, p);
+        }
+        if (t > RAYMARCH_MAX_T) { break; }
+        t = t + d;
+    }
+    return RaymarchHit(false, 0.0, vec3<f32>(0.0));
+}
+
+fn sdf_normal(p: vec3<f32>, kind: u32, scale: f32, phase: f32) -> vec3<f32> {
+    let h = 0.001;
+    let dx = sdf_select(kind, p + vec3<f32>(h, 0.0, 0.0), scale, phase)
+           - sdf_select(kind, p - vec3<f32>(h, 0.0, 0.0), scale, phase);
+    let dy = sdf_select(kind, p + vec3<f32>(0.0, h, 0.0), scale, phase)
+           - sdf_select(kind, p - vec3<f32>(0.0, h, 0.0), scale, phase);
+    let dz = sdf_select(kind, p + vec3<f32>(0.0, 0.0, h), scale, phase)
+           - sdf_select(kind, p - vec3<f32>(0.0, 0.0, h), scale, phase);
+    return normalize(vec3<f32>(dx, dy, dz));
+}
+
+// `true` iff the given pattern-kind triggers fragment-shader sphere-tracing
+// (mirror of pattern.rs::pattern_is_raymarch).
+fn is_raymarch_kind(kind: u32) -> bool {
+    return kind >= 16u && kind <= 21u;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // § Fragment shader — material LUT + procedural pattern + lighting
+// § T11-LOA-RAYMARCH : raymarch branch for pattern-IDs 16..21
 // ─────────────────────────────────────────────────────────────────────────
 
+struct FsOut {
+    @location(0) color : vec4<f32>,
+    // Manual frag_depth output : raymarched fragments overwrite the rasterised
+    // cube-bounding-volume depth with the actual SDF-hit depth ; cube fragments
+    // pass through their original projected depth.
+    @builtin(frag_depth) depth : f32,
+};
+
+// Convert a world-space position to NDC depth in [0,1] using the global
+// view_proj. Used by the raymarch branch to write a corrected frag_depth.
+fn world_to_clip_depth(world_pos: vec3<f32>) -> f32 {
+    let clip = u.view_proj * vec4<f32>(world_pos, 1.0);
+    // wgpu NDC depth ∈ [0, 1] after the OPENGL_TO_WGPU_MATRIX correction
+    // baked into camera::proj. Guard against zero-w.
+    let inv_w = 1.0 / max(clip.w, 1e-6);
+    return clamp(clip.z * inv_w, 0.0, 1.0);
+}
+
+// Reconstruct the rasteriser's projected depth for the surrounding cube
+// fragment (so cube branches don't disturb depth-test compatibility).
+fn rasterised_depth(world_pos: vec3<f32>) -> f32 {
+    return world_to_clip_depth(world_pos);
+}
+
 @fragment
-fn fs_main(in : VsOut) -> @location(0) vec4<f32> {
+fn fs_main(in : VsOut) -> FsOut {
     let m = u.materials[in.material_id];
     let p = u.patterns[in.pattern_id];
 
-    let n = normalize(in.world_normal);
-    // Rough view-dir approx : assume camera at (0,1.55,0) looking forward ;
-    // the vertex world_pos minus camera approximates view direction. The
-    // sun_dir uniform is normalized.
-    let view_dir = normalize(in.world_pos - vec3<f32>(0.0, 1.55, 0.0));
+    var out_color : vec4<f32>;
+    var out_depth : f32;
 
-    // Procedural base color — multiplies into the material albedo.
-    let pat_col = procedural(p, in.uv, n, view_dir, u.time.x);
+    // ── Raymarch branch : pattern-IDs 16..21 use SDF sphere-tracer ──
+    if (is_raymarch_kind(p.kind)) {
+        // Cube center : the cube bounding-volume is centered on the stress-
+        // object plinth's stress-object-cube center. We recover this by
+        // re-anchoring on the closest stress-object center using world_pos
+        // proximity logic ; simpler approach : encode the cube center in the
+        // SHARED INTERPOLATED quantity. Since base_color is white for all
+        // stress objects (see geometry::emit_box(... color=[1,1,1])) we can
+        // hijack base_color as a per-cube offset only if vertices carry it.
+        // Instead, since the stress-object cubes are axis-aligned with an
+        // 0.8 m edge, we anchor on the floor() of world_pos by rounding to
+        // the nearest cube-grid center : but that requires knowing the grid.
+        //
+        // Simplest correct approach : the cube is tiny (0.8 m edge) so the
+        // FRAGMENT's world_pos is at most 0.4 m from the cube center. We can
+        // get the center by projecting world_pos onto the back face of the
+        // bounding cube using the view ray :
+        //
+        //   ray_origin = camera.world_pos
+        //   ray_dir    = normalize(world_pos - camera_pos)
+        //   The cube center is approximately :
+        //     cube_center = world_pos - in.world_normal * 0.4 + ray_dir * something
+        //
+        // For a 0.8m cube, the center is along the inward-normal direction
+        // by 0.4 m from each face fragment. world_normal is already the
+        // cube-face's outward normal, so :
+        let cube_center = in.world_pos - in.world_normal * 0.4;
 
-    // Special-case : iridescent + holographic materials use the time-driven
-    // pattern functions rather than reading p.
-    var albedo = m.albedo * pat_col * in.base_color;
-    if (in.material_id == 4u) {
-        // IRIDESCENT — overlay irid color
-        let irid = pat_iridescent(in.uv, n, view_dir, u.time.x);
-        albedo = mix(albedo, irid, 0.6);
-    } else if (in.material_id == 7u) {
-        // HOLOGRAPHIC — overlay holo color
-        let holo = pat_holographic(in.uv, u.time.x);
-        albedo = mix(albedo, holo, 0.7);
+        // Ray in world space.
+        let cam = u.camera_pos.xyz;
+        let rd_world = normalize(in.world_pos - cam);
+        // In cube-local space (cube center at origin · axis-aligned), the
+        // ray origin = cam - cube_center, ray direction unchanged.
+        let ro_local = cam - cube_center;
+        let rd_local = rd_world;
+
+        let hit = raymarch(ro_local, rd_local, p.kind, p.scale, p.phase);
+        if (!hit.hit) {
+            // Miss : discard so the cube backface or scene-clear shows through.
+            discard;
+        }
+        // Hit world-space position = cube_center + hit.pos (cube-local).
+        let hit_world = cube_center + hit.pos;
+        let n_local = sdf_normal(hit.pos, p.kind, p.scale, p.phase);
+        // SDF gradient is already in cube-local axis-aligned space ;
+        // for a non-rotated cube these axes match the world axes exactly.
+        let n_world = n_local;
+
+        // Lambert + ambient on the SDF-hit surface, using material albedo.
+        let l = normalize(u.sun_dir.xyz);
+        let n_dot_l = max(dot(n_world, l), 0.0);
+        let diffuse = n_dot_l * 0.85;
+        // Material albedo + a touch of pattern-driven hue (use the hit
+        // position's normalised radius for a subtle radial tint).
+        let r_local = clamp(length(hit.pos) * 1.5, 0.0, 1.0);
+        var albedo = m.albedo * (0.7 + 0.3 * r_local) * in.base_color;
+
+        // Material-specific overlays for raymarched stress objects :
+        if (in.material_id == 4u) {
+            // IRIDESCENT (mandelbulb) : view-angle-dependent rainbow film.
+            let view_dir = -rd_world;
+            let irid = pat_iridescent(vec2<f32>(r_local, 0.5), n_world, view_dir, u.time.x);
+            albedo = mix(albedo, irid, 0.55);
+        } else if (in.material_id == 7u) {
+            // DICHROIC_VIOLET (menger) : holographic-style time shimmer.
+            let holo = pat_holographic(vec2<f32>(r_local, 0.5), u.time.x);
+            albedo = mix(albedo, holo, 0.45);
+        }
+
+        let lit = albedo * (u.ambient.xyz + diffuse);
+
+        // Fresnel-flavored specular on SDF normal.
+        let v = -rd_world;
+        let h = normalize(l + v);
+        let n_dot_h = max(dot(n_world, h), 0.0);
+        let spec_pow = mix(8.0, 128.0, 1.0 - m.roughness);
+        let spec = pow(n_dot_h, spec_pow) * (1.0 - m.roughness) * (0.20 + m.metallic * 0.80);
+
+        let final_rgb = lit + vec3<f32>(spec) + m.emissive;
+        out_color = vec4<f32>(final_rgb, m.alpha);
+        out_depth = world_to_clip_depth(hit_world);
+    } else {
+        // ── Cube/UV branch : original path (16 textured procedurals) ──
+        let n = normalize(in.world_normal);
+        let view_dir = normalize(in.world_pos - u.camera_pos.xyz);
+
+        let pat_col = procedural(p, in.uv, n, view_dir, u.time.x);
+
+        var albedo = m.albedo * pat_col * in.base_color;
+        if (in.material_id == 4u) {
+            let irid = pat_iridescent(in.uv, n, view_dir, u.time.x);
+            albedo = mix(albedo, irid, 0.6);
+        } else if (in.material_id == 7u) {
+            let holo = pat_holographic(in.uv, u.time.x);
+            albedo = mix(albedo, holo, 0.7);
+        }
+
+        let l = normalize(u.sun_dir.xyz);
+        let n_dot_l = max(dot(n, l), 0.0);
+        let diffuse = n_dot_l * 0.85;
+        let lit = albedo * (u.ambient.xyz + diffuse);
+
+        let v = -view_dir;
+        let h = normalize(l + v);
+        let n_dot_h = max(dot(n, h), 0.0);
+        let spec_pow = mix(8.0, 128.0, 1.0 - m.roughness);
+        let spec = pow(n_dot_h, spec_pow) * (1.0 - m.roughness) * (0.20 + m.metallic * 0.80);
+
+        let final_rgb = lit + vec3<f32>(spec) + m.emissive;
+        out_color = vec4<f32>(final_rgb, m.alpha);
+        out_depth = rasterised_depth(in.world_pos);
     }
 
-    // Lambert + ambient.
-    let l = normalize(u.sun_dir.xyz);
-    let n_dot_l = max(dot(n, l), 0.0);
-    let diffuse = n_dot_l * 0.85;
-    let lit = albedo * (u.ambient.xyz + diffuse);
-
-    // Fresnel-flavored specular highlight (cheap approximation).
-    let v = -view_dir;
-    let h = normalize(l + v);
-    let n_dot_h = max(dot(n, h), 0.0);
-    let spec_pow = mix(8.0, 128.0, 1.0 - m.roughness);
-    let spec = pow(n_dot_h, spec_pow) * (1.0 - m.roughness) * (0.20 + m.metallic * 0.80);
-
-    let final_rgb = lit + vec3<f32>(spec) + m.emissive;
-    return vec4<f32>(final_rgb, m.alpha);
+    var fout : FsOut;
+    fout.color = out_color;
+    fout.depth = out_depth;
+    return fout;
 }
