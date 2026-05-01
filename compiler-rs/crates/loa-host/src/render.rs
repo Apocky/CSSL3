@@ -104,6 +104,9 @@ struct Uniforms {
     /// .y = enable_mueller    (0/1)
     /// .z, .w = reserved
     stokes_control: [f32; 4],
+    /// § T11-LOA-USERFIX : direct-render-mode control word (F1-F10 direct apply).
+    /// .x = render_mode 0..9 ; .y/.z/.w reserved.
+    render_mode_ctl: [f32; 4],
     materials: [Material; MATERIAL_LUT_LEN],
     patterns: [Pattern; PATTERN_LUT_LEN],
     /// § T11-LOA-FID-STOKES : per-material Mueller-matrix LUT.
@@ -155,6 +158,7 @@ impl Uniforms {
             camera_pos: [0.0, 1.7, 0.0, 0.0],
             sun_stokes: sun_stokes_default().as_array(),
             stokes_control: [0.0, 1.0, 0.0, 0.0], // mode=0 · enable=1
+            render_mode_ctl: [0.0; 4],            // default 0 = Normal
             materials: bake_material_lut(Illuminant::default()),
             patterns: pattern_lut(),
             muellers: build_mueller_lut_wgsl(),
@@ -205,6 +209,10 @@ struct CferUniforms {
     /// time.z = step-count override (clamped 1..64 in shader ; 0 ⇒ default 32)
     /// time.w = unused
     time: [f32; 4],
+    /// § T11-LOA-USERFIX : control word.
+    /// .x = cfer_intensity (0..1) — multiplies final alpha · default 0.10.
+    /// .y/.z/.w = reserved.
+    control: [f32; 4],
 }
 
 impl CferUniforms {
@@ -215,6 +223,7 @@ impl CferUniforms {
             world_min: [WORLD_MIN[0], WORLD_MIN[1], WORLD_MIN[2], 0.0],
             world_max: [WORLD_MAX[0], WORLD_MAX[1], WORLD_MAX[2], 0.0],
             time: [0.0; 4],
+            control: [0.10, 0.0, 0.0, 0.0],
         }
     }
 }
@@ -288,6 +297,13 @@ pub struct Renderer {
     /// § T11-LOA-FID-SPECTRAL : cached spectrally-baked material LUT for
     /// the current illuminant. Avoids re-baking on every frame.
     cached_material_lut: [Material; MATERIAL_LUT_LEN],
+
+    // ── § T11-LOA-USERFIX : direct render-mode + capture state ──
+    /// Render-mode 0..9 currently active. Written by the host in
+    /// per-frame `set_render_mode(...)` — the renderer pushes this into
+    /// the scene-uniforms `render_mode_ctl` field on every frame so
+    /// F-key presses take effect immediately.
+    pub current_render_mode: u8,
 
     // ── § T11-LOA-FID-CFER : volumetric Ω-field pass ──
     /// CPU-side CFER state (OmegaField + texel staging + step/pack).
@@ -607,12 +623,34 @@ impl Renderer {
             current_illuminant: Illuminant::default(),
             last_illuminant_gen: 0,
             cached_material_lut: bake_material_lut(Illuminant::default()),
+            current_render_mode: 0,
             cfer,
             cfer_pipeline,
             cfer_bind_group,
             cfer_uniform_buf,
             cfer_texture,
         }
+    }
+
+    /// § T11-LOA-USERFIX : push a new render-mode (0..9) into the renderer.
+    /// Takes effect on the next frame's uniform write.
+    pub fn set_render_mode(&mut self, mode: u8) {
+        let clamped = mode.min(9);
+        if self.current_render_mode != clamped {
+            self.current_render_mode = clamped;
+            crate::telemetry::global().record_render_mode_change(clamped);
+            log_event(
+                "INFO",
+                "loa-host/render",
+                &format!("set_render_mode · → {clamped}"),
+            );
+        }
+    }
+
+    /// § T11-LOA-USERFIX : current render-mode (0..9).
+    #[must_use]
+    pub fn current_render_mode(&self) -> u8 {
+        self.current_render_mode
     }
 
     /// § T11-LOA-FID-MAINSTREAM : MSAA sample count active on this renderer.
@@ -1030,6 +1068,8 @@ impl Renderer {
             ],
             sun_stokes: sun_stokes_default().as_array(),
             stokes_control: [pol_mode as f32, 1.0, 0.0, 0.0],
+            // § T11-LOA-USERFIX : push the current render-mode each frame.
+            render_mode_ctl: [f32::from(self.current_render_mode), 0.0, 0.0, 0.0],
             // § T11-LOA-FID-SPECTRAL : spectrally-baked material LUT (cached
             // ; only re-baked when `set_illuminant` mutates it).
             materials: self.cached_material_lut,
@@ -1235,6 +1275,12 @@ impl Renderer {
         // Update CFER uniforms (inverse view-proj for ray reconstruction).
         let view_proj = camera.view_proj(aspect);
         let inv_view_proj = view_proj.inverse();
+        // § T11-LOA-USERFIX : pull live intensity from the CferRenderer
+        // (host writes via `cfer.set_cfer_intensity` or the C-key toggle).
+        let cfer_intensity = self.cfer.cfer_intensity();
+        // Mirror to the global telemetry sink so MCP `telemetry.snapshot`
+        // sees the live value.
+        crate::telemetry::global().record_cfer_intensity(cfer_intensity);
         let cfer_u = CferUniforms {
             inv_view_proj: inv_view_proj.to_cols_array_2d(),
             camera_pos: [
@@ -1246,6 +1292,7 @@ impl Renderer {
             world_min: [WORLD_MIN[0], WORLD_MIN[1], WORLD_MIN[2], 0.0],
             world_max: [WORLD_MAX[0], WORLD_MAX[1], WORLD_MAX[2], 0.0],
             time: [t_secs, 0.0, 32.0, 0.0],
+            control: [cfer_intensity, 0.0, 0.0, 0.0],
         };
         gpu.queue.write_buffer(
             &self.cfer_uniform_buf,
@@ -1307,6 +1354,16 @@ impl Renderer {
         telem::global().record_pipeline_switch();
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
+
+        // § T11-LOA-SENSORY : framebuffer-thumbnail capture before present.
+        // The MCP `sense.framebuffer_thumbnail` tool sets `capture_pending`
+        // on the EngineState mirror ; if set + the surface supports COPY_SRC,
+        // we readback the framebuffer, downsample CPU-side to 256×144, and
+        // write the RGBA8 bytes into the mirror so the next MCP call can
+        // base64-encode + return inline. Failures degrade silently (no
+        // thumbnail available) — the harness is observability-only.
+        // (Full capture path lives in `capture_thumbnail_to_mirror` below.)
+        // Note : we DO NOT block the present even if this fails.
 
         // § T11-LOA-TEST-APP : framebuffer readback BEFORE present(). If
         // a snapshot is pending and the surface was configured with
@@ -1574,7 +1631,9 @@ mod tests {
         // § T11-LOA-FID-STOKES : layout grew by sun_stokes (16 B) +
         // stokes_control (16 B) + 16 muellers × 64 B (1024 B).
         // Prior 1248 + 32 + 1024 = 2304 bytes total.
-        assert_eq!(core::mem::size_of::<Uniforms>(), 2304);
+        // § T11-LOA-USERFIX : added render_mode_ctl (16 B) →
+        // 2304 + 16 = 2320 bytes total.
+        assert_eq!(core::mem::size_of::<Uniforms>(), 2320);
     }
 
     #[test]
@@ -1731,9 +1790,10 @@ mod tests {
     // ── § T11-LOA-FID-CFER : volumetric-pass uniform layout ──
 
     #[test]
-    fn cfer_uniforms_size_is_128_bytes() {
-        // 64 (mat4x4) + 16 (camera) + 16 (world_min) + 16 (world_max) + 16 (time) = 128
-        assert_eq!(core::mem::size_of::<CferUniforms>(), 128);
+    fn cfer_uniforms_size_is_144_bytes() {
+        // 64 (mat4x4) + 16 (camera) + 16 (world_min) + 16 (world_max) + 16 (time)
+        // § T11-LOA-USERFIX : + 16 (control with cfer_intensity) = 144 bytes.
+        assert_eq!(core::mem::size_of::<CferUniforms>(), 144);
     }
 
     #[test]
@@ -1750,5 +1810,20 @@ mod tests {
         let u: CferUniforms = bytemuck::Zeroable::zeroed();
         assert_eq!(u.time, [0.0; 4]);
         assert_eq!(u.camera_pos, [0.0; 4]);
+        assert_eq!(u.control, [0.0; 4]);
+    }
+
+    #[test]
+    fn render_mode_ctl_default_is_zero() {
+        let u = Uniforms::new();
+        assert_eq!(u.render_mode_ctl, [0.0; 4]);
+    }
+
+    #[test]
+    fn cfer_uniforms_default_intensity_is_low() {
+        let u = CferUniforms::new();
+        // Default cfer_intensity = 0.10 → so the post-tonemap haze is subtle.
+        assert!((u.control[0] - 0.10).abs() < 1e-6);
+        assert!(u.control[0] <= 0.15);
     }
 }

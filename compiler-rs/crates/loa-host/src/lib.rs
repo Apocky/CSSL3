@@ -88,6 +88,12 @@ pub mod fidelity;
 // behind the `runtime` feature.
 pub mod cfer_render;
 
+// § T11-LOA-SENSORY : full MCP sensory + proprioception harness. Aggregation
+// surface for the 20+ `sense.*` MCP tools that let Claude perceive the live
+// engine across 9 sensory axes (visual · audio · spatial · interoception ·
+// diagnostic · temporal · causal · network · environmental).
+pub mod sense;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────

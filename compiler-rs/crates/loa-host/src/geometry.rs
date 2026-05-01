@@ -894,6 +894,57 @@ impl RoomGeometry {
             }
         }
 
+        // § T11-LOA-USERFIX : render-mode demo wall — 10 panels on the
+        // south wall (one per F1-F10 mode) so Apocky can walk past each
+        // panel and see what each render-mode does at-a-glance. Each
+        // panel uses MAT_OFF_WHITE + a unique pattern that makes the
+        // mode's effect visually distinct (Macbeth · Snellen · QR ·
+        // EAN13 · gradient · grid · zoneplate · spokes · rings ·
+        // hue-wheel). The panels are 2 m × 2 m × ~0.05 m thick and sit
+        // at z = b.min[2] + 0.05 (just inside the south wall).
+        //
+        // Layout : 10 panels along the 30 m-wide south wall, centers at
+        //   -13.5 -10.5 -7.5 -4.5 -1.5 +1.5 +4.5 +7.5 +10.5 +13.5
+        // (3 m spacing, 12 m below ceiling-line so y_lo=0.5, y_hi=2.5).
+        let z_demo = b.min[2] + 0.05;
+        let demo_y_lo = 0.5_f32;
+        let demo_y_hi = 2.5_f32;
+        let demo_w = 2.0_f32;
+        let demo_centers = [
+            -13.5_f32, -10.5, -7.5, -4.5, -1.5, 1.5, 4.5, 7.5, 10.5, 13.5,
+        ];
+        // One pattern per panel — visually distinctive across F1..F10.
+        let demo_patterns = [
+            crate::pattern::PAT_GRID_1M,
+            crate::pattern::PAT_CHECKERBOARD,
+            crate::pattern::PAT_MACBETH_COLOR_CHART,
+            crate::pattern::PAT_SNELLEN_EYE_CHART,
+            crate::pattern::PAT_QR_CODE_STUB,
+            crate::pattern::PAT_EAN13_BARCODE,
+            crate::pattern::PAT_GRADIENT_GRAYSCALE,
+            crate::pattern::PAT_GRADIENT_HUE_WHEEL,
+            crate::pattern::PAT_ZONEPLATE,
+            crate::pattern::PAT_RADIAL_SPOKES,
+        ];
+        for (cx_p, &pat) in demo_centers.iter().zip(demo_patterns.iter()) {
+            let xn = cx_p - demo_w * 0.5;
+            let xp = cx_p + demo_w * 0.5;
+            // Normal points +Z (into the room), CCW from +Z side :
+            self.emit_quad_uv(
+                [
+                    [xn, demo_y_lo, z_demo],
+                    [xp, demo_y_lo, z_demo],
+                    [xp, demo_y_hi, z_demo],
+                    [xn, demo_y_hi, z_demo],
+                ],
+                [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+                [0.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                MAT_OFF_WHITE,
+                pat,
+            );
+        }
+
         // § T11-LOA-FID-MAINSTREAM : 4 HDR-test emissive panels on the north
         // wall, with intensities 1× / 4× / 16× / 64× the base unit. Each
         // panel is a 2 m × 2 m quad at z = b.max[2] - 0.05 (slightly inside

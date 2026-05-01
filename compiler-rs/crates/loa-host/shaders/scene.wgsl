@@ -83,6 +83,22 @@ struct Uniforms {
     //   .y = enable_mueller    (0/1)
     //   .zw = reserved
     stokes_control: vec4<f32>,
+    // § T11-LOA-USERFIX : direct-render-mode control word, written by
+    // the host on every F1-F10 press (no menu round-trip).
+    //   .x = render_mode (0..9)
+    //         0 Normal (full uber-shader output, default)
+    //         1 Albedo (material.albedo only · no lighting)
+    //         2 Depth (linear depth as grayscale)
+    //         3 Normals (world_normal as RGB after 0.5*+0.5 mapping)
+    //         4 SurfType (material_id → discrete palette color)
+    //         5 SDF (raymarched surface distance · cube-local)
+    //         6 Steps (raymarch step-count heatmap)
+    //         7 WDistance (world-pos distance from camera, grayscale)
+    //         8 Grid (procedural grid overlay on top of normal output)
+    //         9 FieldVsAnalytic (substrate-vs-analytic differential · Δ)
+    //   .y = unused (reserved for sub-mode flags).
+    //   .zw = unused.
+    render_mode_ctl : vec4<f32>,
     materials : array<Material, 16>,
     patterns  : array<Pattern, 22>,
     // § T11-LOA-FID-STOKES : per-material Mueller-matrix LUT.
@@ -711,6 +727,123 @@ fn rasterised_depth(world_pos: vec3<f32>) -> f32 {
     return world_to_clip_depth(world_pos);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-LOA-USERFIX — render-mode dispatch (F1-F10 direct apply)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// `apply_render_mode_overlay` is called at the END of fs_main with the
+// computed normal-mode color + the surface info needed to derive
+// alternative visualizations. When render_mode == 0, returns the input
+// unchanged. Otherwise replaces the color with the diagnostic for the
+// selected mode. SDF/Steps modes hand off to a raymarch-side override
+// upstream (the raymarch branch handles them directly).
+
+// SurfType : map material_id 0..15 to a palette color (HSV-derived 16-color
+// wheel) so the user can immediately spot which material is on each surface.
+fn palette_for_material(material_id: u32) -> vec3<f32> {
+    let h = f32(material_id) / 16.0;
+    let h6 = h * 6.0;
+    let c = 1.0;
+    let x = c * (1.0 - abs(((h6) % 2.0) - 1.0));
+    var rgb : vec3<f32>;
+    if (h6 < 1.0) { rgb = vec3<f32>(c, x, 0.0); }
+    else if (h6 < 2.0) { rgb = vec3<f32>(x, c, 0.0); }
+    else if (h6 < 3.0) { rgb = vec3<f32>(0.0, c, x); }
+    else if (h6 < 4.0) { rgb = vec3<f32>(0.0, x, c); }
+    else if (h6 < 5.0) { rgb = vec3<f32>(x, 0.0, c); }
+    else { rgb = vec3<f32>(c, 0.0, x); }
+    return rgb;
+}
+
+// Procedural grid overlay : when render_mode == 8, multiply a 1m-grid
+// pattern onto the normal-mode color so the grid is visible on TOP of
+// scene rendering (rather than replacing it, like Albedo does).
+fn grid_overlay(world_pos: vec3<f32>, base_rgb: vec3<f32>) -> vec3<f32> {
+    let gx = abs(fract(world_pos.x) - 0.5);
+    let gz = abs(fract(world_pos.z) - 0.5);
+    let edge = 0.02;
+    if (gx > (0.5 - edge) || gz > (0.5 - edge)) {
+        return mix(base_rgb, vec3<f32>(1.0, 1.0, 0.0), 0.6);
+    }
+    return base_rgb;
+}
+
+// Apply the selected render-mode overlay. `normal_rgb` is the color the
+// uber-shader would have produced ; `albedo_only` is the un-lit albedo
+// (so Mode 1 doesn't have to recompute) ; `world_pos`, `world_normal`,
+// `material_id`, `clip_z` are the surface attributes.
+fn apply_render_mode_overlay(
+    normal_rgb : vec3<f32>,
+    albedo_only : vec3<f32>,
+    world_pos : vec3<f32>,
+    world_normal : vec3<f32>,
+    material_id : u32,
+    clip_z : f32,
+) -> vec3<f32> {
+    let mode = u32(u.render_mode_ctl.x + 0.5);
+    if (mode == 0u) {
+        // Normal : pass through.
+        return normal_rgb;
+    }
+    if (mode == 1u) {
+        // Albedo : material.albedo without lighting.
+        return albedo_only;
+    }
+    if (mode == 2u) {
+        // Depth : linear depth as grayscale (clip_z in [0,1] is already
+        // the projected depth ; remap so close=black, far=white).
+        let g = clamp(clip_z, 0.0, 1.0);
+        return vec3<f32>(g, g, g);
+    }
+    if (mode == 3u) {
+        // Normals : world_normal * 0.5 + 0.5 (RGB visualization).
+        let n = normalize(world_normal);
+        return n * 0.5 + 0.5;
+    }
+    if (mode == 4u) {
+        // SurfType : material_id → palette color.
+        return palette_for_material(material_id);
+    }
+    if (mode == 5u) {
+        // SDF : raymarch-distance visualization. For non-raymarched
+        // surfaces, the SDF is undefined ; we visualize as a "near plane"
+        // gradient based on world-pos distance from camera (proxy).
+        let cam = u.camera_pos.xyz;
+        let d = length(world_pos - cam);
+        // Modulo 2.0 for visible iso-bands.
+        let band = fract(d * 0.5);
+        return vec3<f32>(band, 1.0 - band, band * 0.5);
+    }
+    if (mode == 6u) {
+        // Steps : raymarch step-count heatmap ; fallback to a
+        // distance-derived heatmap for non-raymarched fragments.
+        let cam = u.camera_pos.xyz;
+        let d = length(world_pos - cam);
+        let g = clamp(d / 64.0, 0.0, 1.0);
+        return vec3<f32>(g, g * 0.5, 0.0);
+    }
+    if (mode == 7u) {
+        // WDistance : world-position distance from camera as grayscale.
+        let cam = u.camera_pos.xyz;
+        let d = length(world_pos - cam);
+        let g = clamp(d / 100.0, 0.0, 1.0);
+        return vec3<f32>(g, g, g);
+    }
+    if (mode == 8u) {
+        // Grid : scene-with-grid-overlay (procedural grid on top of normal).
+        return grid_overlay(world_pos, normal_rgb);
+    }
+    if (mode == 9u) {
+        // FieldVsAnalytic : difference between procedural-pattern and
+        // simple-surface-color reference. Visualizes the analytic
+        // contribution as a magnitude in red.
+        let diff = abs(normal_rgb - albedo_only);
+        let mag = clamp((diff.x + diff.y + diff.z) * 0.5, 0.0, 1.0);
+        return vec3<f32>(mag, 0.10, 0.10);
+    }
+    return normal_rgb;
+}
+
 @fragment
 fn fs_main(in : VsOut) -> FsOut {
     let m = u.materials[in.material_id];
@@ -802,7 +935,16 @@ fn fs_main(in : VsOut) -> FsOut {
         // the diagnostic polarization view (default mode 0 = identity).
         let s_out = stokes_for_material(in.material_id);
         let view_rgb = apply_polarization_view(final_rgb, s_out);
-        out_color = vec4<f32>(view_rgb, m.alpha);
+        // § T11-LOA-USERFIX : overlay the F-key render-mode diagnostic.
+        let mode_rgb = apply_render_mode_overlay(
+            view_rgb,
+            albedo,
+            hit_world,
+            n_world,
+            in.material_id,
+            world_to_clip_depth(hit_world),
+        );
+        out_color = vec4<f32>(mode_rgb, m.alpha);
         out_depth = world_to_clip_depth(hit_world);
     } else {
         // ── Cube/UV branch : original path (16 textured procedurals) ──
@@ -835,7 +977,16 @@ fn fs_main(in : VsOut) -> FsOut {
         // § T11-LOA-FID-STOKES : Mueller per-material + diagnostic view.
         let s_out = stokes_for_material(in.material_id);
         let view_rgb = apply_polarization_view(final_rgb, s_out);
-        out_color = vec4<f32>(view_rgb, m.alpha);
+        // § T11-LOA-USERFIX : overlay the F-key render-mode diagnostic.
+        let mode_rgb = apply_render_mode_overlay(
+            view_rgb,
+            albedo,
+            in.world_pos,
+            n,
+            in.material_id,
+            rasterised_depth(in.world_pos),
+        );
+        out_color = vec4<f32>(mode_rgb, m.alpha);
         out_depth = rasterised_depth(in.world_pos);
     }
 

@@ -436,6 +436,204 @@ pub fn default_golden_dir() -> PathBuf {
     PathBuf::from("golden")
 }
 
+/// § T11-LOA-USERFIX : default video output directory : `<cwd>/logs/video`.
+#[must_use]
+pub fn default_video_dir() -> PathBuf {
+    PathBuf::from("logs/video")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-LOA-USERFIX — Burst + Video state machines (catalog-buildable)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Both states are pure-CPU + held in EngineState ; the render loop reads
+// them each frame and queues snapshot requests accordingly. Test surface
+// covers : start → frame N → reset · toggle on/off · path generation.
+
+/// § T11-LOA-USERFIX : current burst-capture state.
+///
+/// When a burst is active, the host queues one snapshot per render frame
+/// until `frames_remaining` reaches zero. Burst ID is monotonic so the
+/// output directory is unique even across multiple bursts in one session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BurstState {
+    /// True while a burst is in progress.
+    pub active: bool,
+    /// Frames captured so far in the current burst.
+    pub frames_captured: u32,
+    /// Frames remaining in the current burst (decremented each tick).
+    pub frames_remaining: u32,
+    /// Frame-stride : capture every Nth frame (N=1 = every frame).
+    pub frame_stride: u32,
+    /// Tick within the current stride (counts up to frame_stride-1, then
+    /// triggers a capture and wraps to 0).
+    pub stride_tick: u32,
+    /// Output directory for the in-flight burst (e.g. `logs/snapshots/burst_<ts>`).
+    pub output_dir: PathBuf,
+    /// Monotonic burst id (0 = first burst this session).
+    pub burst_id: u32,
+}
+
+impl Default for BurstState {
+    fn default() -> Self {
+        Self {
+            active: false,
+            frames_captured: 0,
+            frames_remaining: 0,
+            frame_stride: 1,
+            stride_tick: 0,
+            output_dir: PathBuf::new(),
+            burst_id: 0,
+        }
+    }
+}
+
+impl BurstState {
+    /// Start a new burst capturing `count` frames at `frame_stride` (every Nth
+    /// frame). The output directory is named `burst_<burst_id>` rooted at
+    /// `default_snapshot_dir()`. Returns the path the burst will write to.
+    #[must_use]
+    pub fn start_burst(&mut self, count: u32, frame_stride: u32) -> PathBuf {
+        let stride = frame_stride.max(1);
+        let dir = default_snapshot_dir().join(format!("burst_{:04}", self.burst_id));
+        self.active = true;
+        self.frames_captured = 0;
+        self.frames_remaining = count;
+        self.frame_stride = stride;
+        self.stride_tick = 0;
+        self.output_dir = dir.clone();
+        self.burst_id = self.burst_id.wrapping_add(1);
+        dir
+    }
+
+    /// Return the next per-frame capture path if the host should capture
+    /// THIS frame (i.e. burst active + stride hit). Side-effects : decrements
+    /// frames_remaining + increments frames_captured + advances stride_tick.
+    /// Returns `None` if no capture is needed this tick.
+    pub fn tick_capture_path(&mut self) -> Option<PathBuf> {
+        if !self.active {
+            return None;
+        }
+        // Stride : only capture when stride_tick hits 0.
+        if self.stride_tick != 0 {
+            self.stride_tick -= 1;
+            return None;
+        }
+        // Capture this frame.
+        let frame_idx = self.frames_captured;
+        self.frames_captured += 1;
+        self.frames_remaining = self.frames_remaining.saturating_sub(1);
+        self.stride_tick = self.frame_stride.saturating_sub(1);
+        if self.frames_remaining == 0 {
+            self.active = false;
+        }
+        Some(
+            self.output_dir
+                .join(format!("frame_{frame_idx:02}.png")),
+        )
+    }
+}
+
+/// § T11-LOA-USERFIX : video-recorder state machine.
+///
+/// Each frame written goes to `<output_dir>/frame_NNNN.png` ; after F8
+/// stops the record, the host emits a structured-event log with the total
+/// frame count + duration so the user can ffmpeg later. No on-disk
+/// transcoding here — keeping it stage-0 simple.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoState {
+    /// True while video record is active.
+    pub recording: bool,
+    /// Frames captured in the in-flight session.
+    pub frames_captured: u32,
+    /// Output directory for the current video session.
+    pub output_dir: PathBuf,
+    /// Frame-stride : capture every Nth frame (N=1 = every frame).
+    pub frame_stride: u32,
+    /// Tick within the current stride.
+    pub stride_tick: u32,
+    /// Monotonic video session id.
+    pub video_id: u32,
+    /// Wall-clock unix-ms when the current session started (for duration).
+    pub started_unix_ms: u64,
+}
+
+impl Default for VideoState {
+    fn default() -> Self {
+        Self {
+            recording: false,
+            frames_captured: 0,
+            output_dir: PathBuf::new(),
+            frame_stride: 1,
+            stride_tick: 0,
+            video_id: 0,
+            started_unix_ms: 0,
+        }
+    }
+}
+
+impl VideoState {
+    /// Start a new video session. Returns the directory path. Idempotent —
+    /// if already recording, returns the current path.
+    pub fn start_record(&mut self, frame_stride: u32, now_unix_ms: u64) -> PathBuf {
+        if self.recording {
+            return self.output_dir.clone();
+        }
+        let dir = default_video_dir().join(format!("video_{:04}", self.video_id));
+        self.recording = true;
+        self.frames_captured = 0;
+        self.output_dir = dir.clone();
+        self.frame_stride = frame_stride.max(1);
+        self.stride_tick = 0;
+        self.started_unix_ms = now_unix_ms;
+        self.video_id = self.video_id.wrapping_add(1);
+        dir
+    }
+
+    /// Stop the current video session. Returns `(frames, duration_ms)` if a
+    /// session was active, or `None` if not. Idempotent.
+    pub fn stop_record(&mut self, now_unix_ms: u64) -> Option<(u32, u64)> {
+        if !self.recording {
+            return None;
+        }
+        let frames = self.frames_captured;
+        let duration = now_unix_ms.saturating_sub(self.started_unix_ms);
+        self.recording = false;
+        Some((frames, duration))
+    }
+
+    /// Toggle the record state. Returns the resulting bool (true = recording
+    /// started, false = recording stopped).
+    pub fn toggle(&mut self, frame_stride: u32, now_unix_ms: u64) -> bool {
+        if self.recording {
+            self.stop_record(now_unix_ms);
+            false
+        } else {
+            self.start_record(frame_stride, now_unix_ms);
+            true
+        }
+    }
+
+    /// Return the next per-frame capture path if the host should capture this
+    /// frame, or `None` if not recording / stride miss.
+    pub fn tick_capture_path(&mut self) -> Option<PathBuf> {
+        if !self.recording {
+            return None;
+        }
+        if self.stride_tick != 0 {
+            self.stride_tick -= 1;
+            return None;
+        }
+        let idx = self.frames_captured;
+        self.frames_captured += 1;
+        self.stride_tick = self.frame_stride.saturating_sub(1);
+        Some(
+            self.output_dir
+                .join(format!("frame_{idx:04}.png")),
+        )
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // § Runtime-only : framebuffer readback via wgpu
 // ─────────────────────────────────────────────────────────────────────────
@@ -888,5 +1086,88 @@ mod tests {
         assert!(r.is_err());
         let e = r.unwrap_err();
         assert_eq!(e.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // ── § T11-LOA-USERFIX : burst + video state-machine tests ──
+
+    #[test]
+    fn burst_state_records_10_frames_then_resets() {
+        let mut b = BurstState::default();
+        let dir = b.start_burst(10, 1);
+        assert!(b.active);
+        assert!(dir.to_string_lossy().contains("burst_"));
+        for i in 0..10 {
+            let path = b.tick_capture_path();
+            assert!(path.is_some(), "tick {i} must capture");
+            let p = path.unwrap();
+            let s = p.to_string_lossy();
+            assert!(s.contains(&format!("frame_{i:02}.png")));
+        }
+        // 11th tick : burst exhausted ; no capture.
+        assert!(!b.active);
+        assert!(b.tick_capture_path().is_none());
+    }
+
+    #[test]
+    fn burst_state_stride_skips_intermediate_frames() {
+        let mut b = BurstState::default();
+        b.start_burst(3, 5); // 3 frames, every 5th
+        // Tick 1 : captures frame 0
+        assert!(b.tick_capture_path().is_some());
+        // Ticks 2-5 : skipped
+        for _ in 0..4 {
+            assert!(b.tick_capture_path().is_none());
+        }
+        // Tick 6 : captures frame 1
+        assert!(b.tick_capture_path().is_some());
+    }
+
+    #[test]
+    fn video_state_toggles_on_off_with_frame_count() {
+        let mut v = VideoState::default();
+        // Toggle on
+        let started = v.toggle(1, 1000);
+        assert!(started);
+        assert!(v.recording);
+        // Capture 5 frames
+        for _ in 0..5 {
+            assert!(v.tick_capture_path().is_some());
+        }
+        // Toggle off
+        let stopped_started = v.toggle(1, 1500);
+        assert!(!stopped_started);
+        assert!(!v.recording);
+        // Tick after stop : no capture.
+        assert!(v.tick_capture_path().is_none());
+    }
+
+    #[test]
+    fn video_state_stop_record_returns_frame_count_and_duration() {
+        let mut v = VideoState::default();
+        v.start_record(1, 1000);
+        for _ in 0..7 {
+            v.tick_capture_path();
+        }
+        let (frames, duration) = v.stop_record(1000 + 250).expect("recording was active");
+        assert_eq!(frames, 7);
+        assert_eq!(duration, 250);
+    }
+
+    #[test]
+    fn video_state_idempotent_starts_and_stops() {
+        let mut v = VideoState::default();
+        let p1 = v.start_record(1, 1000);
+        let p2 = v.start_record(1, 2000);
+        // Both paths are the same — second start was a no-op.
+        assert_eq!(p1, p2);
+        assert!(v.recording);
+        // Two stops in a row : second is None.
+        assert!(v.stop_record(3000).is_some());
+        assert!(v.stop_record(4000).is_none());
+    }
+
+    #[test]
+    fn default_video_dir_is_logs_video() {
+        assert_eq!(default_video_dir(), PathBuf::from("logs/video"));
     }
 }

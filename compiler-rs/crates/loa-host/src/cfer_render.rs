@@ -126,21 +126,31 @@ impl CferTexel {
         a: 0.0,
     };
 
-    /// Cool-blue ambient atmosphere — matches the cool-cyan default ambient
-    /// in the existing uber-shader.
+    /// Cool-blue ambient atmosphere.
+    ///
+    /// § T11-LOA-USERFIX : alpha lowered from 0.015 → 0.002 (1/7th the
+    /// original). Apocky's play-test reported the prior value produced a
+    /// uniform gray haze that obscured diagnostic walls. The new alpha
+    /// is just enough to suggest distant atmospherics without fogging
+    /// mid-room geometry. Combined with the per-fragment
+    /// `cfer_intensity` uniform multiplier (default 0.10 in the renderer),
+    /// the effective on-screen alpha at default settings is ~0.0002 per
+    /// cell — clearly visible only at 50+m distances.
     pub const AMBIENT_COOL: CferTexel = CferTexel {
         r: 0.04,
         g: 0.08,
         b: 0.12,
-        a: 0.015,
+        a: 0.002,
     };
 
     /// Warm-amber probe — used near plinths to suggest emissive bloom.
+    /// § T11-LOA-USERFIX : alpha lowered from 0.04 → 0.008 to match the
+    /// reduced ambient floor. Plinth probes still bloom, just more subtle.
     pub const PROBE_WARM: CferTexel = CferTexel {
         r: 0.45,
         g: 0.30,
         b: 0.10,
-        a: 0.04,
+        a: 0.008,
     };
 
     /// Convert this f32-quad to a packed 8-byte half-precision quad
@@ -318,6 +328,27 @@ pub struct CferRenderer {
     /// Sigma-mask granted to atmospheric cells at init (Modify-allowed).
     /// Stored so per-frame `set_cell` calls don't re-grant on every write.
     pub atmospheric_mask: SigmaMaskPacked,
+    /// § T11-LOA-USERFIX : runtime atmospheric-intensity multiplier.
+    ///
+    /// Multiplies the FINAL alpha emitted by the volumetric pass — `0.0`
+    /// disables the pass entirely (toggleable via the C-key) ; `1.0` is
+    /// "full" (the legacy per-cell alpha values used by the texels).
+    /// Default is `0.10` so the post-tonemap haze is subtle and doesn't
+    /// obscure diagnostic surfaces. Apocky's play-test feedback :
+    /// "uniform gray fog mid-screen" was traced to this value being
+    /// implicit-1.0 in the prior frame ; explicit-0.10 default fixes it.
+    /// Range : `0.0..=1.0` (clamped on `set_cfer_intensity`).
+    pub cfer_intensity: f32,
+    /// § T11-LOA-USERFIX : prior intensity, restored when the C-key
+    /// toggles the pass back on. Lets the user disable atmospherics
+    /// entirely with a single press without losing their custom level.
+    pub cfer_intensity_prior: f32,
+    /// § T11-LOA-USERFIX : list of plinth XZ centers stamped at init.
+    /// Used by the per-frame perturb pass to fall off cell density with
+    /// distance from the nearest plinth (so close-up fog clears within
+    /// 10 m of an interesting object — the user's eye lands on geometry,
+    /// not haze).
+    pub plinth_positions_xz: Vec<(f32, f32)>,
 }
 
 impl Default for CferRenderer {
@@ -344,6 +375,11 @@ impl CferRenderer {
             frame_n: 0,
             last_metrics: CferMetrics::default(),
             atmospheric_mask: mask,
+            // § T11-LOA-USERFIX : low default intensity so the
+            // atmospheric pass is a subtle hint rather than a fog wall.
+            cfer_intensity: 0.10,
+            cfer_intensity_prior: 0.10,
+            plinth_positions_xz: Vec::new(),
         }
     }
 
@@ -366,14 +402,31 @@ impl CferRenderer {
     /// Uses `stamp_cell_bootstrap` (Σ-bypass) since this is the boot-path.
     /// Caps total stamps at `MAX_INIT_CELLS` to bound init-time.
     pub fn init_atmospheric_seed(&mut self, plinth_positions_xz: &[(f32, f32)]) {
+        // § T11-LOA-USERFIX : remember the plinth list so per-frame
+        // perturbation can fall off cell density by distance to nearest
+        // plinth (close-up regions get ZERO ambient ; far-off keeps it).
+        self.plinth_positions_xz = plinth_positions_xz.to_vec();
+
         let init_start_metric = self.field.dense_cell_count();
         let mut stamped: u32 = 0;
 
         // ─── 1. Cool-blue ambient : seed every Nth texel-center ───
+        //
+        // § T11-LOA-USERFIX : the ambient field now uses a RADIUS-FALLOFF
+        // model — cells within 10 m of any plinth are seeded with ZERO
+        // density (so close-up viewing is fog-free) ; cells in the
+        // 10–25 m band ramp up from 0 → full ; cells beyond 25 m get
+        // the full base density. Combined with the lowered per-cell
+        // alpha (0.015 → 0.002), the post-tonemap haze is barely
+        // perceptible at close range and only suggests volume at
+        // far-room distances. This addresses Apocky's play-test :
+        // "gray fog mid-screen horizontally · obscures diagnostic walls".
+        //
         // We don't seed all texels — we want SPARSE coverage so the field
         // genuinely is sparse. Seed every cell at a low-stride pattern
         // (every 4th texel-x · every 4th texel-z · y=center-only).
-        // 32/4 × 16/16 × 32/4 = 8 × 1 × 8 = 64 ambient cells.
+        // 32/4 × 16/16 × 32/4 = 8 × 1 × 8 = 64 ambient cells (some now
+        // skipped by the radius-falloff).
         let ts = texel_world_size();
         for tx in (0..TEX_X).step_by(4) {
             for tz in (0..TEX_Z).step_by(4) {
@@ -381,12 +434,27 @@ impl CferRenderer {
                 let wx = WORLD_MIN[0] + (tx as f32 + 0.5) * ts[0];
                 let wy = WORLD_MIN[1] + (ty as f32 + 0.5) * ts[1];
                 let wz = WORLD_MIN[2] + (tz as f32 + 0.5) * ts[2];
+                // Compute the closest-plinth distance in 2D (XZ).
+                let falloff =
+                    plinth_radius_falloff(wx, wz, plinth_positions_xz);
+                if falloff <= 0.0 {
+                    // Inside the plinth-clear radius : skip entirely.
+                    continue;
+                }
                 if let Some(key) = world_point_to_morton(wx, wy, wz) {
                     let mut cell = FieldCell::default();
-                    cell.density = 0.015; // very thin
+                    // § T11-LOA-USERFIX : base density lowered from 0.015
+                    // to 0.002 (matches CferTexel::AMBIENT_COOL.a). The
+                    // falloff weight (0..1) further reduces near-plinth
+                    // cells.
+                    cell.density = 0.002 * falloff;
                     // Pack a cool-blue radiance probe into the lo bits.
-                    cell.radiance_probe_lo = encode_radiance_probe(0.04, 0.08, 0.12);
-                    cell.enthalpy = 0.5;
+                    cell.radiance_probe_lo = encode_radiance_probe(
+                        0.04 * falloff,
+                        0.08 * falloff,
+                        0.12 * falloff,
+                    );
+                    cell.enthalpy = 0.5 * falloff;
                     if self.field.stamp_cell_bootstrap(key, cell).is_ok() {
                         stamped += 1;
                         if stamped >= MAX_INIT_CELLS {
@@ -471,6 +539,56 @@ impl CferRenderer {
             "loa-host/cfer",
             "cfer · KAN handle detached",
         );
+    }
+
+    /// § T11-LOA-USERFIX : set the runtime atmospheric-intensity multiplier.
+    /// `intensity` is clamped to `0.0..=1.0`. Returns the clamped value.
+    pub fn set_cfer_intensity(&mut self, intensity: f32) -> f32 {
+        let clamped = intensity.clamp(0.0, 1.0);
+        self.cfer_intensity = clamped;
+        log_event(
+            "INFO",
+            "loa-host/cfer",
+            &format!("cfer · intensity → {clamped:.4}"),
+        );
+        clamped
+    }
+
+    /// § T11-LOA-USERFIX : current intensity (read-only access).
+    #[must_use]
+    pub fn cfer_intensity(&self) -> f32 {
+        self.cfer_intensity
+    }
+
+    /// § T11-LOA-USERFIX : toggle the atmospheric pass on/off.
+    /// When ON (intensity > 0), saves the current intensity to `_prior`
+    /// and sets intensity to 0. When OFF (intensity == 0), restores from
+    /// `_prior` (or 0.10 as the canonical default). Returns the new
+    /// intensity. C-key on the host calls this.
+    pub fn toggle_cfer(&mut self) -> f32 {
+        if self.cfer_intensity > 0.0 {
+            self.cfer_intensity_prior = self.cfer_intensity;
+            self.cfer_intensity = 0.0;
+            log_event(
+                "INFO",
+                "loa-host/cfer",
+                "cfer · atmospheric-pass DISABLED via toggle",
+            );
+        } else {
+            // Restore — fall back to 0.10 default if prior was zero.
+            let restore = if self.cfer_intensity_prior > 0.0 {
+                self.cfer_intensity_prior
+            } else {
+                0.10
+            };
+            self.cfer_intensity = restore;
+            log_event(
+                "INFO",
+                "loa-host/cfer",
+                &format!("cfer · atmospheric-pass ENABLED via toggle (intensity={restore:.4})"),
+            );
+        }
+        self.cfer_intensity
     }
 
     /// One CFER tick : evolve the field, then pack the active cells into
@@ -695,6 +813,41 @@ pub fn world_point_to_morton(x: f32, y: f32, z: f32) -> Option<MortonKey> {
     MortonKey::encode(mx, my, mz).ok()
 }
 
+/// § T11-LOA-USERFIX : compute the radius-based ambient falloff at a
+/// world-XZ position relative to the closest plinth.
+///
+///   - distance ≤ 10 m : returns 0.0 (ambient cleared near interesting
+///     geometry · close-up viewing is fog-free)
+///   - 10 < distance ≤ 25 m : linear ramp 0 → 1
+///   - distance > 25 m : returns 1.0 (full ambient density)
+///
+/// When `plinths` is empty, returns 1.0 unconditionally (no falloff —
+/// the seed-time path skips this case ; tests also exercise it).
+#[must_use]
+pub fn plinth_radius_falloff(wx: f32, wz: f32, plinths: &[(f32, f32)]) -> f32 {
+    if plinths.is_empty() {
+        return 1.0;
+    }
+    // Find squared distance to the nearest plinth.
+    let mut best_d2 = f32::INFINITY;
+    for &(px, pz) in plinths {
+        let dx = wx - px;
+        let dz = wz - pz;
+        let d2 = dx * dx + dz * dz;
+        if d2 < best_d2 {
+            best_d2 = d2;
+        }
+    }
+    let d = best_d2.sqrt();
+    if d <= 10.0 {
+        0.0
+    } else if d >= 25.0 {
+        1.0
+    } else {
+        (d - 10.0) / 15.0
+    }
+}
+
 /// Microsecond clock — used for cheap step/pack timing without pulling
 /// chrono. Falls back to 0 if the platform clock is unavailable (no panic).
 fn now_us() -> u64 {
@@ -914,6 +1067,65 @@ mod tests {
         let bytes = r.texels_as_rgba16f_bytes();
         assert_eq!(bytes.len(), TEX_TOTAL_BYTES as usize);
         assert_eq!(bytes.len(), 131_072);
+    }
+
+    // ── § T11-LOA-USERFIX : intensity + falloff tests ──
+
+    #[test]
+    fn cfer_intensity_default_is_low() {
+        // Default intensity must be ≤ 0.15 so the post-tonemap haze is subtle.
+        let r = CferRenderer::new(&[]);
+        assert!(r.cfer_intensity() <= 0.15);
+        assert!(r.cfer_intensity() >= 0.0);
+    }
+
+    #[test]
+    fn cfer_set_intensity_clamps_to_unit_range() {
+        let mut r = CferRenderer::new(&[]);
+        // Above 1.0 clamps to 1.0.
+        let v = r.set_cfer_intensity(2.5);
+        assert!((v - 1.0).abs() < 1e-6);
+        // Below 0.0 clamps to 0.0.
+        let v = r.set_cfer_intensity(-0.4);
+        assert!(v.abs() < 1e-6);
+        // In range passes through.
+        let v = r.set_cfer_intensity(0.42);
+        assert!((v - 0.42).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cfer_toggle_disables_then_restores() {
+        let mut r = CferRenderer::new(&[]);
+        r.set_cfer_intensity(0.30);
+        // Toggle off
+        let v = r.toggle_cfer();
+        assert!(v.abs() < 1e-6);
+        // Toggle on (restores prior)
+        let v = r.toggle_cfer();
+        assert!((v - 0.30).abs() < 1e-6);
+    }
+
+    #[test]
+    fn plinth_radius_falloff_zero_within_10m() {
+        // Plinth at origin · query at (5, 0) → 5m → falloff = 0.
+        assert_eq!(plinth_radius_falloff(5.0, 0.0, &[(0.0, 0.0)]), 0.0);
+        // Query at (10, 0) → exactly 10m → still 0 (boundary).
+        assert_eq!(plinth_radius_falloff(10.0, 0.0, &[(0.0, 0.0)]), 0.0);
+    }
+
+    #[test]
+    fn plinth_radius_falloff_full_beyond_25m() {
+        // Query at (30, 0) → 30m → falloff = 1.
+        assert_eq!(plinth_radius_falloff(30.0, 0.0, &[(0.0, 0.0)]), 1.0);
+        // Empty plinth list → no falloff, returns 1.
+        assert_eq!(plinth_radius_falloff(0.0, 0.0, &[]), 1.0);
+    }
+
+    #[test]
+    fn plinth_radius_falloff_ramps_in_band() {
+        // 17.5m → halfway between 10 and 25 → 0.5.
+        let f = plinth_radius_falloff(17.5, 0.0, &[(0.0, 0.0)]);
+        assert!((f - 0.5).abs() < 1e-3);
     }
 
     // ── 15. sample within a populated texel returns non-zero radiance ──

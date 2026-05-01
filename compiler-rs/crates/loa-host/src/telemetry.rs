@@ -263,6 +263,19 @@ pub struct TelemetrySink {
     /// Last frame's DOP max in Q14 fixed-point.
     pub dop_max_per_frame_q14: AtomicU32,
 
+    // § T11-LOA-USERFIX : F-key + capture telemetry.
+    /// Total render-mode changes (F1-F10 presses) since startup.
+    pub render_mode_changes_total: AtomicU64,
+    /// Total single-frame screenshots captured (F12 + MCP `render.snapshot_png`).
+    pub screenshot_captures_total: AtomicU64,
+    /// Total video frames recorded (each F8 record-session adds N frames).
+    pub video_frames_recorded_total: AtomicU64,
+    /// Current CFER atmospheric intensity in Q14 fixed-point (0..16383 = 0..1).
+    /// Updated whenever the host or MCP changes the intensity.
+    pub cfer_intensity_current_q14: AtomicU32,
+    /// Total burst-capture sequences started (each F9 starts one burst).
+    pub burst_captures_total: AtomicU64,
+
     // § Sliding-window percentile snapshots (Q14 fixed-point milliseconds)
     pub last_p50_q14: AtomicU32,
     pub last_p95_q14: AtomicU32,
@@ -348,6 +361,12 @@ impl TelemetrySink {
             mueller_apply_count_per_frame: AtomicU32::new(0),
             dop_avg_per_frame_q14: AtomicU32::new(0),
             dop_max_per_frame_q14: AtomicU32::new(0),
+            render_mode_changes_total: AtomicU64::new(0),
+            screenshot_captures_total: AtomicU64::new(0),
+            video_frames_recorded_total: AtomicU64::new(0),
+            // Default intensity 0.10 → Q14 = 1638.
+            cfer_intensity_current_q14: AtomicU32::new(1638),
+            burst_captures_total: AtomicU64::new(0),
             last_p50_q14: AtomicU32::new(0),
             last_p95_q14: AtomicU32::new(0),
             last_p99_q14: AtomicU32::new(0),
@@ -473,6 +492,52 @@ impl TelemetrySink {
         self.append_jsonl(&evt);
     }
 
+    /// § T11-LOA-USERFIX : record a render-mode change (F-key direct apply
+    /// or MCP `render.set_mode`). Increments the lifetime counter ; the
+    /// caller should also append a JSONL event for the timeline.
+    pub fn record_render_mode_change(&self, new_mode: u8) {
+        self.render_mode_changes_total
+            .fetch_add(1, Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"render_mode_change\",\"new_mode\":{}}}",
+            iso_utc(unix_ms()),
+            new_mode,
+        );
+        self.append_jsonl(&evt);
+    }
+
+    /// § T11-LOA-USERFIX : record a single screenshot capture.
+    pub fn record_screenshot_capture(&self) {
+        self.screenshot_captures_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// § T11-LOA-USERFIX : record a burst-capture sequence start.
+    pub fn record_burst_capture_start(&self, frame_count: u32) {
+        self.burst_captures_total.fetch_add(1, Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"burst_capture_start\",\"frame_count\":{}}}",
+            iso_utc(unix_ms()),
+            frame_count,
+        );
+        self.append_jsonl(&evt);
+    }
+
+    /// § T11-LOA-USERFIX : record a single video-frame written to disk.
+    pub fn record_video_frame(&self) {
+        self.video_frames_recorded_total
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// § T11-LOA-USERFIX : update the live CFER intensity gauge.
+    /// `intensity` is clamped to 0..1 and stored as Q14 fixed-point.
+    pub fn record_cfer_intensity(&self, intensity: f32) {
+        let clamped = intensity.clamp(0.0, 1.0);
+        let q14 = (clamped * 16383.0) as u32;
+        self.cfer_intensity_current_q14
+            .store(q14, Ordering::Relaxed);
+    }
+
     /// § T11-LOA-FID-STOKES : record a per-frame Mueller-apply roll-up.
     ///
     /// Updates the per-frame snapshot counters AND the cumulative total.
@@ -551,6 +616,9 @@ impl TelemetrySink {
             .join(",");
         let dop_avg = q14_to_dop(self.dop_avg_per_frame_q14.load(Ordering::Relaxed));
         let dop_max = q14_to_dop(self.dop_max_per_frame_q14.load(Ordering::Relaxed));
+        let cfer_intensity = q14_to_dop(
+            self.cfer_intensity_current_q14.load(Ordering::Relaxed),
+        );
         format!(
             "{{\"ts\":\"{}\",\"uptime_ms\":{},\"frame_count\":{},\"fps\":{:.2},\
              \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3},\
@@ -559,7 +627,10 @@ impl TelemetrySink {
              \"dm_events_total\":{},\"gpu_resolve_us\":{},\"tonemap_us\":{},\
              \"histogram\":[{}],\"log_level\":{},\
              \"mueller_applies_total\":{},\"mueller_apply_count_per_frame\":{},\
-             \"dop_avg_per_frame\":{:.4},\"dop_max_per_frame\":{:.4}}}",
+             \"dop_avg_per_frame\":{:.4},\"dop_max_per_frame\":{:.4},\
+             \"render_mode_changes_total\":{},\"screenshot_captures_total\":{},\
+             \"video_frames_recorded_total\":{},\"burst_captures_total\":{},\
+             \"cfer_intensity\":{:.4}}}",
             iso_utc(now),
             uptime_ms,
             frames,
@@ -580,6 +651,11 @@ impl TelemetrySink {
             self.mueller_apply_count_per_frame.load(Ordering::Relaxed),
             dop_avg,
             dop_max,
+            self.render_mode_changes_total.load(Ordering::Relaxed),
+            self.screenshot_captures_total.load(Ordering::Relaxed),
+            self.video_frames_recorded_total.load(Ordering::Relaxed),
+            self.burst_captures_total.load(Ordering::Relaxed),
+            cfer_intensity,
         )
     }
 

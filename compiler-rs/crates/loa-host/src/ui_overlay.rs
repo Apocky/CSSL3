@@ -739,6 +739,15 @@ pub struct HudContext {
     /// § T11-LOA-ROOMS : current-room name (or corridor label) the camera is
     /// inside. Drawn at TOP-LEFT-second-line so it's visible at all times.
     pub current_room: String,
+    /// § T11-LOA-USERFIX : burst-capture status. `Some((captured, total))`
+    /// while a burst is in flight ; drives a TOP-CENTER badge.
+    pub burst_status: Option<(u32, u32)>,
+    /// § T11-LOA-USERFIX : video-record status. `Some((frames, duration_s))`
+    /// while video record is active.
+    pub video_status: Option<(u32, f32)>,
+    /// § T11-LOA-USERFIX : current CFER atmospheric intensity (0..1) so
+    /// the bottom-right HUD can surface "fog: OFF" / "fog: 10%".
+    pub cfer_intensity: f32,
 }
 
 impl Default for HudContext {
@@ -762,6 +771,9 @@ impl Default for HudContext {
             tour_progress: None,
             snapshot_count: 0,
             current_room: String::from("TestRoom"),
+            burst_status: None,
+            video_status: None,
+            cfer_intensity: 0.10,
         }
     }
 }
@@ -901,6 +913,38 @@ pub fn build_overlay_vertices(
                 lw + 12.0,
                 line + 4.0,
                 [0.10, 0.30, 0.55, 0.75],
+            );
+            build_shadowed_text(&label, xc, y_top, COLOR_WHITE, scale, &mut out);
+            y_top += line + 4.0;
+        }
+        // § T11-LOA-USERFIX : BURST badge (orange, while burst in flight).
+        if let Some((cur, total)) = hud.burst_status {
+            let label = format!("BURST  {cur}/{total}");
+            let lw = (label.chars().count() as f32) * glyph_px;
+            let xc = (sw - lw) * 0.5;
+            push_solid_rect(
+                &mut out,
+                xc - 6.0,
+                y_top - 4.0,
+                lw + 12.0,
+                line + 4.0,
+                [0.55, 0.30, 0.10, 0.85],
+            );
+            build_shadowed_text(&label, xc, y_top, COLOR_WHITE, scale, &mut out);
+            y_top += line + 4.0;
+        }
+        // § T11-LOA-USERFIX : REC badge (deep red, while video recording).
+        if let Some((frames, duration_s)) = hud.video_status {
+            let label = format!("REC  {frames}f  {duration_s:.1}s");
+            let lw = (label.chars().count() as f32) * glyph_px;
+            let xc = (sw - lw) * 0.5;
+            push_solid_rect(
+                &mut out,
+                xc - 6.0,
+                y_top - 4.0,
+                lw + 12.0,
+                line + 4.0,
+                [0.70, 0.10, 0.10, 0.92],
             );
             build_shadowed_text(&label, xc, y_top, COLOR_WHITE, scale, &mut out);
         }
@@ -1503,6 +1547,40 @@ mod tests {
         let _ = build_text_quads("A\u{2014}B", 0.0, 0.0, COLOR_WHITE, 1.0, &mut out);
         // 3 chars * 6 verts = 18 (em-dash → '?')
         assert_eq!(out.len(), 18);
+    }
+
+    #[test]
+    fn hud_shows_capture_indicator_when_burst_active() {
+        // Build HUD with burst_status set ; assert the overlay vertex
+        // stream contains at least the BURST badge's solid backing rect.
+        let menu = MenuState::default();
+        let mut hud = HudContext::default();
+        hud.burst_status = Some((3, 10));
+        let verts_with_burst = build_overlay_vertices(800, 600, &hud, &menu);
+        // Compare against a HUD without the burst badge — the extra
+        // backing rect (6 verts) + label glyphs make the with-burst
+        // stream strictly longer.
+        let mut hud_no = hud.clone();
+        hud_no.burst_status = None;
+        let verts_without = build_overlay_vertices(800, 600, &hud_no, &menu);
+        assert!(
+            verts_with_burst.len() > verts_without.len(),
+            "BURST indicator must produce additional vertices"
+        );
+        // Sanity : difference is at least 6 (the backing rect).
+        assert!(verts_with_burst.len() >= verts_without.len() + 6);
+    }
+
+    #[test]
+    fn hud_shows_capture_indicator_when_video_active() {
+        let menu = MenuState::default();
+        let mut hud = HudContext::default();
+        hud.video_status = Some((234, 3.9));
+        let with_v = build_overlay_vertices(800, 600, &hud, &menu);
+        let mut hud_no = hud.clone();
+        hud_no.video_status = None;
+        let without = build_overlay_vertices(800, 600, &hud_no, &menu);
+        assert!(with_v.len() > without.len());
     }
 
     #[test]
