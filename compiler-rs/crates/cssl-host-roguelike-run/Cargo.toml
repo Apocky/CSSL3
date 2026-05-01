@@ -1,0 +1,29 @@
+# § T11-W7-RD-B2 : cssl-host-roguelike-run
+# ══════════════════════════════════════════════════════════════════
+# § I> Purpose : run-state-machine + seed-pinning ← GDDs/ROGUELIKE_LOOP.csl
+#   states : Hub → BiomeSelect → Floor(N=3..12) → BossArena → Reward → BiomeSelect | Hub
+#   axioms : soft-perma-default · seed-replay-bit-equal · biome-DAG · gift-economy
+# § I> ⟨GDDs/ROGUELIKE_LOOP.csl⟩ ⊑ ⟨GDDs/INFINITE_LABYRINTH_CHARTER.csl⟩
+# § I> ¬ external substrate-deps ; pure-state-machine
+# § I> deterministic : BTreeMap/BTreeSet for serde-stable ordering ; no panics in lib
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name         = "cssl-host-roguelike-run"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.85"
+license      = { workspace = true }
+authors      = { workspace = true }
+description  = "Roguelike run state-machine + seed-pinning + biome-DAG + soft-perma death + meta-progression bridges ; consumes GDDs/ROGUELIKE_LOOP.csl design contract"
+repository   = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_host_roguelike_run"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }

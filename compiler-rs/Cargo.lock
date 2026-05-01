@@ -899,7 +899,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-combat-sim"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-config"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-craft-graph"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -933,6 +949,14 @@ dependencies = [
 
 [[package]]
 name = "cssl-host-frame-recorder"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-gear-archetype"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1072,6 +1096,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-npc-bt"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-openxr"
 version = "0.1.0"
 dependencies = [
@@ -1100,6 +1132,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-roguelike-run"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-rt-trace"
 version = "0.1.0"
 dependencies = [
@@ -1118,6 +1158,14 @@ dependencies = [
 
 [[package]]
 name = "cssl-host-spectral-grader"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-spell-graph"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -2448,11 +2496,15 @@ dependencies = [
  "cssl-host-causal-seed",
  "cssl-host-cocreative",
  "cssl-host-config",
+ "cssl-host-dm",
  "cssl-host-frame-recorder",
+ "cssl-host-gm",
  "cssl-host-golden",
  "cssl-host-histograms",
  "cssl-host-input-virtual",
+ "cssl-host-kan-real",
  "cssl-host-license-attribution",
+ "cssl-host-mp-transport-real",
  "cssl-host-multiplayer-signaling",
  "cssl-host-procgen-rooms",
  "cssl-host-replay",
