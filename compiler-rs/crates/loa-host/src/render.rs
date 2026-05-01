@@ -41,6 +41,7 @@ use crate::geometry::{RoomGeometry, Vertex};
 use crate::gpu::GpuContext;
 use crate::material::{material_lut, Material, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_lut, Pattern, PATTERN_LUT_LEN};
+use crate::snapshot::Snapshotter;
 use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuState, UiOverlay};
 
@@ -119,6 +120,18 @@ pub struct Renderer {
     frame_time_idx: usize,
     /// Last frame's t timestamp (for delta).
     last_frame_t: Instant,
+    /// § T11-LOA-TEST-APP : pending snapshot path. When `Some(p)`, the
+    /// renderer copies the just-presented frame to a CPU staging buffer
+    /// then writes a PNG at `p` after `submit() + present()`. Cleared
+    /// after one frame (one shot per request).
+    pub snapshot_pending: Option<std::path::PathBuf>,
+    /// § T11-LOA-TEST-APP : framebuffer-readback helper, lazily allocates
+    /// staging buffer sized for the current swap-chain.
+    snapshotter: Snapshotter,
+    /// True if the surface was configured with COPY_SRC usage. Snapshot
+    /// readback uses the surface texture directly when true ; otherwise
+    /// the snapshot tool returns an error.
+    surface_copy_src: bool,
 }
 
 impl Renderer {
@@ -199,7 +212,8 @@ impl Renderer {
             }],
         });
 
-        let geom = RoomGeometry::test_room();
+        // T11-LOA-ROOMS : full multi-room test-suite (hub + 4 spokes + 4 corridors).
+        let geom = RoomGeometry::full_world();
         let vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("loa-host/test-room-vbo"),
             contents: bytemuck::cast_slice(&geom.vertices),
@@ -231,6 +245,10 @@ impl Renderer {
         let ui = UiOverlay::new(&gpu.device, &gpu.queue, gpu.surface_format);
 
         let now = Instant::now();
+        let surface_copy_src = gpu
+            .config
+            .usage
+            .contains(wgpu::TextureUsages::COPY_SRC);
         Self {
             pipeline,
             pipeline_transparent,
@@ -248,7 +266,24 @@ impl Renderer {
             frame_times_ms: [16.7; 60],
             frame_time_idx: 0,
             last_frame_t: now,
+            snapshot_pending: None,
+            snapshotter: Snapshotter::new(),
+            surface_copy_src,
         }
+    }
+
+    /// True iff the surface was configured with COPY_SRC, i.e. snapshot
+    /// readback is supported on this adapter.
+    #[must_use]
+    pub fn snapshot_supported(&self) -> bool {
+        self.surface_copy_src
+    }
+
+    /// Request a snapshot of the next-presented frame. The path should
+    /// be sanitized by the caller (see `snapshot::sanitize_snapshot_path`).
+    /// Idempotent — replaces any prior pending request.
+    pub fn request_snapshot(&mut self, path: std::path::PathBuf) {
+        self.snapshot_pending = Some(path);
     }
 
     fn build_pipeline(
@@ -507,6 +542,55 @@ impl Renderer {
         telem::global().record_pipeline_switch();
 
         gpu.queue.submit(std::iter::once(encoder.finish()));
+
+        // § T11-LOA-TEST-APP : framebuffer readback BEFORE present(). If
+        // a snapshot is pending and the surface was configured with
+        // COPY_SRC usage, copy the about-to-present texture into our
+        // staging buffer and write the PNG. Errors are logged but do
+        // not block the present.
+        if let Some(ref out_path) = self.snapshot_pending.take() {
+            if self.surface_copy_src {
+                match self.snapshotter.readback_to_png(
+                    &gpu.device,
+                    &gpu.queue,
+                    &frame.texture,
+                    out_path,
+                ) {
+                    Ok(bytes) => {
+                        log_event(
+                            "INFO",
+                            "loa-host/render",
+                            &format!(
+                                "snapshot · wrote {} bytes to {}",
+                                bytes,
+                                out_path.display()
+                            ),
+                        );
+                    }
+                    Err(e) => {
+                        log_event(
+                            "ERROR",
+                            "loa-host/render",
+                            &format!(
+                                "snapshot · readback failed for {}: {}",
+                                out_path.display(),
+                                e
+                            ),
+                        );
+                    }
+                }
+            } else {
+                log_event(
+                    "WARN",
+                    "loa-host/render",
+                    &format!(
+                        "snapshot · surface lacks COPY_SRC, cannot capture {}",
+                        out_path.display()
+                    ),
+                );
+            }
+        }
+
         frame.present();
 
         // Telemetry : log first frame + every 600th frame after.

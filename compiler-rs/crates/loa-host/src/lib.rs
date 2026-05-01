@@ -43,6 +43,7 @@ pub mod camera;
 pub mod geometry;
 pub mod material;
 pub mod pattern;
+pub mod room;
 
 // Input-sibling catalog
 pub mod input;
@@ -64,6 +65,11 @@ pub mod dm_runtime;
 // UI-overlay catalog (CPU-side text/menu logic always built ; GPU pipeline
 // gated on `runtime` feature inside the module).
 pub mod ui_overlay;
+
+// Snapshot-sibling catalog (T11-LOA-TEST-APP : PNG encode + tour-pose
+// registry + golden-image diff are catalog-buildable ; the wgpu readback
+// path is gated on the `runtime` feature inside the module).
+pub mod snapshot;
 
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
@@ -104,6 +110,7 @@ pub mod ffi;
 
 pub use camera::Camera;
 pub use geometry::{plinth_positions, RoomGeometry, Vertex};
+pub use room::{Corridor, Direction, Doorway, Room, ROOM_COUNT};
 
 pub use mcp_server::{
     spawn_mcp_server, EngineState, McpServerConfig, RenderMode, SOVEREIGN_CAP,

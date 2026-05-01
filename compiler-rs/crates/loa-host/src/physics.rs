@@ -93,12 +93,23 @@ impl Aabb {
 ///
 /// Per scenes/test_room.cssl design : 40m × 40m × 8m room, 14 plinths
 /// at quadrant + corner + center-axis positions.
+///
+/// § T11-LOA-ROOMS extension :
+///   For multi-room mode, `interiors` holds the union of all room+corridor
+///   AABBs ; the player must be INSIDE at least one of them. The single
+///   `room` field is kept for backward-compat with `test_room()`. When the
+///   collider was built via `full_world()`, `interiors` contains every
+///   room and corridor and `room` is set to the world-envelope AABB.
 #[derive(Debug, Clone)]
 pub struct RoomCollider {
-    /// Outer room bounds. Player must stay inside (collision INVERTED).
+    /// Outer room bounds (or world-envelope for multi-room).
     pub room: Aabb,
     /// Plinth AABBs. Player must stay outside each.
     pub plinths: Vec<Aabb>,
+    /// § T11-LOA-ROOMS : disjoint interior AABBs the camera must be inside
+    /// SOME-of (multi-room mode). When empty, falls back to single-room
+    /// `room` AABB containment (test-room legacy mode).
+    pub interiors: Vec<Aabb>,
 }
 
 impl RoomCollider {
@@ -137,7 +148,87 @@ impl RoomCollider {
             mk_plinth(0.0, 10.0),
             mk_plinth(10.0, 0.0),
         ];
-        Self { room, plinths }
+        Self {
+            room,
+            plinths,
+            interiors: Vec::new(),
+        }
+    }
+
+    /// § T11-LOA-ROOMS : Construct the multi-room collider — TestRoom hub
+    /// + 4 satellite rooms + 4 corridors connecting them.
+    ///
+    /// The camera is allowed to be inside the union of all 9 boxes. Doorway
+    /// connectivity is implicit : the camera can cross from one room AABB
+    /// into a corridor AABB seamlessly because the corridor butts up
+    /// against the room wall and the wall at that section of the room is
+    /// not emitted as collidable geometry.
+    ///
+    /// The TestRoom's 14 plinths remain as obstacle AABBs ; the satellite
+    /// rooms add their own diagnostic obstacles.
+    #[must_use]
+    pub fn full_world() -> Self {
+        use crate::room::{Corridor, Room};
+        // World envelope = AABB containing every room + corridor.
+        let env = crate::room::world_envelope();
+        let world = Aabb::new([env.min[0], env.min[1], env.min[2]], [env.max[0], env.max[1], env.max[2]]);
+
+        // Per-room interior AABBs (camera must be inside SOME of these).
+        let mut interiors = Vec::with_capacity(9);
+        for r in Room::all() {
+            let b = r.bounds();
+            interiors.push(Aabb::new(b.min, b.max));
+        }
+        for c in Corridor::all() {
+            let b = c.bounds();
+            interiors.push(Aabb::new(b.min, b.max));
+        }
+
+        // Plinths : start with the TestRoom's 14 (re-used from test_room).
+        let base = Self::test_room();
+        let mut plinths = base.plinths;
+
+        // MaterialRoom : 16 hovering spheres in 4×4 grid (1.5m radius cubes).
+        let mb = Room::MaterialRoom.bounds();
+        let mcx = (mb.min[0] + mb.max[0]) * 0.5;
+        let mcz = (mb.min[2] + mb.max[2]) * 0.5;
+        let radius = 1.5_f32;
+        let spacing = 6.0_f32;
+        let sphere_y = 3.0_f32;
+        for i in 0..4 {
+            for j in 0..4 {
+                let dx = (i as f32 - 1.5) * spacing;
+                let dz = (j as f32 - 1.5) * spacing;
+                let x = mcx + dx;
+                let z = mcz + dz;
+                plinths.push(Aabb::new(
+                    [x - radius, sphere_y - radius, z - radius],
+                    [x + radius, sphere_y + radius, z + radius],
+                ));
+            }
+        }
+
+        // ScaleRoom : reference towers every 5m along X.
+        let sb = Room::ScaleRoom.bounds();
+        let z_pos = sb.min[2] + 5.0;
+        let heights = [1.0_f32, 2.0, 3.0, 5.0, 10.0];
+        let mut x_pos = sb.min[0] + 5.0;
+        let mut idx = 0;
+        while x_pos < sb.max[0] - 4.0 {
+            let h = heights[idx % heights.len()];
+            plinths.push(Aabb::new(
+                [x_pos - 0.25, 0.0, z_pos - 0.25],
+                [x_pos + 0.25, h, z_pos + 0.25],
+            ));
+            x_pos += 5.0;
+            idx += 1;
+        }
+
+        Self {
+            room: world,
+            plinths,
+            interiors,
+        }
     }
 
     /// Capsule-center at this eye-position. The capsule's center is `EYE_OFFSET`
@@ -157,17 +248,97 @@ impl RoomCollider {
     /// the bisection-precision (sub-mm).
     fn capsule_clear(&self, c: [f32; 3]) -> bool {
         const EPS: f32 = 1.0e-3;
-        // Inside-the-room test : SHRINK the room AABB by capsule radius/height
-        // (with 1mm tolerance on each side).
         let half_h = CAPSULE_HEIGHT * 0.5;
         let r = CAPSULE_RADIUS;
-        let inner = Aabb::new(
-            [self.room.min[0] + r - EPS, self.room.min[1] + half_h - EPS, self.room.min[2] + r - EPS],
-            [self.room.max[0] - r + EPS, self.room.max[1] - half_h + EPS, self.room.max[2] - r + EPS],
-        );
-        if !inner.contains(c) {
-            return false;
+
+        if self.interiors.is_empty() {
+            // Single-room mode : SHRINK the room AABB by capsule radius/height.
+            let inner = Aabb::new(
+                [self.room.min[0] + r - EPS, self.room.min[1] + half_h - EPS, self.room.min[2] + r - EPS],
+                [self.room.max[0] - r + EPS, self.room.max[1] - half_h + EPS, self.room.max[2] - r + EPS],
+            );
+            if !inner.contains(c) {
+                return false;
+            }
+        } else {
+            // § T11-LOA-ROOMS : multi-room mode. Camera is clear if its
+            // capsule-center fits inside ANY of the interior AABBs (rooms +
+            // corridors), shrunk by capsule dimensions on each axis.
+            //
+            // The capsule's HORIZONTAL projection (radius r) is the
+            // critical fit-check ; vertical fit is checked too. We use a
+            // generous 0.1m horizontal tolerance for ROOM ↔ CORRIDOR
+            // boundary crossing : the doorway gap is 2m wide, the capsule
+            // is 0.8m wide, and the rooms abut corridor-bounds with no
+            // overlap, so a tighter shrink would create dead-zones at the
+            // doorway threshold. Doorway-side interfaces are vertical
+            // planes ; the per-axis shrink at the boundary axis is
+            // skipped.
+            let mut found_inside = false;
+            for ib in &self.interiors {
+                // Determine which axes are "boundary axes" with neighboring
+                // interiors. We only shrink on axes where this AABB has no
+                // neighbor touching. Concretely : for each axis, check if
+                // any OTHER interior shares that face.
+                let mut shrink_x_min = r - EPS;
+                let mut shrink_x_max = r - EPS;
+                let mut shrink_z_min = r - EPS;
+                let mut shrink_z_max = r - EPS;
+                for jb in &self.interiors {
+                    if std::ptr::eq(ib, jb) {
+                        continue;
+                    }
+                    // Touching face on -X side ?
+                    if (jb.max[0] - ib.min[0]).abs() < 0.5
+                        && jb.max[2] > ib.min[2]
+                        && jb.min[2] < ib.max[2]
+                    {
+                        shrink_x_min = -EPS;
+                    }
+                    // Touching face on +X side ?
+                    if (jb.min[0] - ib.max[0]).abs() < 0.5
+                        && jb.max[2] > ib.min[2]
+                        && jb.min[2] < ib.max[2]
+                    {
+                        shrink_x_max = -EPS;
+                    }
+                    // Touching face on -Z side ?
+                    if (jb.max[2] - ib.min[2]).abs() < 0.5
+                        && jb.max[0] > ib.min[0]
+                        && jb.min[0] < ib.max[0]
+                    {
+                        shrink_z_min = -EPS;
+                    }
+                    // Touching face on +Z side ?
+                    if (jb.min[2] - ib.max[2]).abs() < 0.5
+                        && jb.max[0] > ib.min[0]
+                        && jb.min[0] < ib.max[0]
+                    {
+                        shrink_z_max = -EPS;
+                    }
+                }
+                let inner = Aabb::new(
+                    [
+                        ib.min[0] + shrink_x_min,
+                        ib.min[1] + half_h - EPS,
+                        ib.min[2] + shrink_z_min,
+                    ],
+                    [
+                        ib.max[0] - shrink_x_max,
+                        ib.max[1] - half_h + EPS,
+                        ib.max[2] - shrink_z_max,
+                    ],
+                );
+                if inner.contains(c) {
+                    found_inside = true;
+                    break;
+                }
+            }
+            if !found_inside {
+                return false;
+            }
         }
+
         // Not-penetrating-plinth test : EXPAND each plinth by capsule radius/half-height.
         // We TIGHTEN by 1mm here (subtract EPS instead of adding) so a capsule
         // that's exactly tangent to the plinth's expanded surface is considered
@@ -508,5 +679,48 @@ mod tests {
         // center = 0.85, exactly on the inner-room-floor. The contains-test is
         // half-open : center.y < min.y + half_h would fail. Test that y=1.56 passes.
         assert!(r.capsule_clear([0.0, 0.85 + 1e-3, 0.0]));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // § T11-LOA-ROOMS · multi-room collider tests
+    // ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn full_world_collider_constructs() {
+        let r = RoomCollider::full_world();
+        // 9 interior AABBs (5 rooms + 4 corridors).
+        assert_eq!(r.interiors.len(), 9);
+        // 14 (TestRoom plinths) + 16 (Material spheres) + 11 (Scale towers) = 41 plinths
+        assert!(r.plinths.len() >= 14 + 16);
+    }
+
+    #[test]
+    fn full_world_camera_inside_test_room_is_clear() {
+        let r = RoomCollider::full_world();
+        // TestRoom center, capsule-center at y=0.85, away from any plinth.
+        // Pick a known empty spot near origin (no plinth).
+        assert!(r.capsule_clear([3.0, 0.85, 0.0]));
+    }
+
+    #[test]
+    fn full_world_camera_inside_material_room_is_clear() {
+        let r = RoomCollider::full_world();
+        // MaterialRoom is at z ∈ [28,58], corner spot away from spheres.
+        // Spheres are centered at sphere_y=3.0 ; capsule at y=0.85 is below them.
+        assert!(r.capsule_clear([0.0, 0.85, 56.0]));
+    }
+
+    #[test]
+    fn full_world_camera_in_corridor_is_clear() {
+        let r = RoomCollider::full_world();
+        // Corridor-N runs z ∈ [20,28]. Standing inside at z=24.
+        assert!(r.capsule_clear([0.0, 0.85, 24.0]));
+    }
+
+    #[test]
+    fn full_world_camera_outside_world_is_blocked() {
+        let r = RoomCollider::full_world();
+        // Way outside the world envelope.
+        assert!(!r.capsule_clear([1000.0, 0.85, 1000.0]));
     }
 }

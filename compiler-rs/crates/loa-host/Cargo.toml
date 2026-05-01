@@ -34,6 +34,11 @@ bytemuck   = { workspace = true }
 glam       = { version = "0.25", features = ["bytemuck"] }
 serde      = { workspace = true }
 serde_json = { workspace = true }
+# § T11-LOA-TEST-APP : `png` 0.17 — pure-Rust PNG encoder/decoder, no C
+# deps, vetted (~5M crates.io downloads/year). Used by the snapshot
+# module to write framebuffer readbacks to disk for visual regression
+# testing. Catalog-buildable (no GPU needed for encode/decode itself).
+png        = "0.17"
 
 # Phase-2 (runtime) : optional deps pulled when --features runtime.
 winit      = { version = "0.30", optional = true }

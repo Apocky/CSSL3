@@ -187,7 +187,8 @@ impl App {
             player: PlayerCamera::new(),
             render_camera: RenderCamera::default(),
             input: InputState::new(),
-            collider: RoomCollider::test_room(),
+            // T11-LOA-ROOMS : multi-room collider (TestRoom hub + 4 satellites).
+            collider: RoomCollider::full_world(),
             dm: DmRuntime::new(),
             engine_state,
             last_frame_at: None,
@@ -463,6 +464,45 @@ impl App {
         }
     }
 
+    /// Drain pending snapshot requests from EngineState into the renderer.
+    /// Pulled into its own helper so `run_one_frame` stays readable.
+    fn drain_snapshot_queue(&mut self) {
+        // Take pending requests + tour-progress out of the shared state
+        // mutex quickly, hand off to renderer for later processing.
+        let drained: Vec<std::path::PathBuf> = match self.engine_state.lock() {
+            Ok(mut g) => {
+                let q = std::mem::take(&mut g.snapshot_queue);
+                q.into_iter().map(|r| r.path).collect()
+            }
+            Err(poisoned) => {
+                let mut g = poisoned.into_inner();
+                let q = std::mem::take(&mut g.snapshot_queue);
+                q.into_iter().map(|r| r.path).collect()
+            }
+        };
+        // Hand the FIRST one to the renderer ; subsequent ones are
+        // re-queued for later frames so each frame writes one PNG.
+        // (Multi-snapshot-per-frame would force expensive reconfigures.)
+        if let Some(renderer) = self.renderer.as_mut() {
+            let mut iter = drained.into_iter();
+            if let Some(first) = iter.next() {
+                renderer.request_snapshot(first);
+            }
+            // Re-enqueue the rest.
+            let rest: Vec<_> = iter.collect();
+            if !rest.is_empty() {
+                if let Ok(mut g) = self.engine_state.lock() {
+                    for p in rest {
+                        g.snapshot_queue.insert(
+                            0,
+                            crate::mcp_server::SnapshotRequest { path: p },
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// Build the HUD context the renderer reads each frame to populate the
     /// 4-corner text + crosshair.
     fn build_hud_context(&self) -> HudContext {
@@ -494,6 +534,25 @@ impl App {
             None => [16.7; 60],
         };
 
+        // § T11-LOA-TEST-APP : snapshot status pulled from renderer +
+        // engine-state for HUD. snapshot_pending = a request is queued for
+        // the very next frame ; tour_progress = MCP tour in flight ;
+        // snapshot_count = total session snapshots taken.
+        let snapshot_pending = self
+            .renderer
+            .as_ref()
+            .map(|r| r.snapshot_pending.is_some())
+            .unwrap_or(false);
+        let (tour_progress, snapshot_count) = match self.engine_state.lock() {
+            Ok(g) => (g.tour_progress, g.snapshot_count),
+            Err(_) => (None, 0),
+        };
+
+        // § T11-LOA-ROOMS : compute the current room (or corridor label) from
+        // the camera's eye-position. Updated every frame so the HUD reflects
+        // the player's location in real-time.
+        let current_room = crate::room::room_label_at(self.player.pos).to_string();
+
         HudContext {
             frame: self.frame_count,
             fps: self.fps_smoothed,
@@ -509,6 +568,10 @@ impl App {
             facing_material: mat,
             facing_pattern: facing_pattern_name.to_string(),
             frame_times_ms,
+            snapshot_pending,
+            tour_progress,
+            snapshot_count,
+            current_room,
         }
     }
 
@@ -790,7 +853,38 @@ impl App {
         self.sync_render_camera();
         self.sync_engine_state();
 
-        // § 8a. Build the HUD context this frame.
+        // § 8a. T11-LOA-TEST-APP : honor any camera teleport pushed by the
+        // MCP `camera.set` / `render.tour` tools. The MCP tool has already
+        // mutated EngineState.camera ; if it's diverged from our player
+        // by more than a small threshold, snap the player there. (Normal
+        // play is unaffected — divergence comes only from MCP teleports.)
+        if let Ok(g) = self.engine_state.lock() {
+            let cam = g.camera;
+            let dx = cam.pos.x - self.player.pos[0];
+            let dy = cam.pos.y - self.player.pos[1];
+            let dz = cam.pos.z - self.player.pos[2];
+            let dyaw = cam.yaw - self.player.yaw;
+            let dpitch = cam.pitch - self.player.pitch;
+            let dist_sq = dx * dx + dy * dy + dz * dz;
+            // 0.01m² ≈ player won't notice ; below this it's organic motion.
+            // Above, the gap is a teleport from MCP.
+            if dist_sq > 0.01
+                || dyaw.abs() > 0.001
+                || dpitch.abs() > 0.001
+            {
+                self.player.pos = [cam.pos.x, cam.pos.y, cam.pos.z];
+                self.player.yaw = cam.yaw;
+                self.player.pitch = cam.pitch;
+            }
+        }
+        // Re-sync render_camera after the teleport so this frame uses the
+        // new pose (if any).
+        self.sync_render_camera();
+
+        // § 8b. Drain pending snapshot requests into the renderer.
+        self.drain_snapshot_queue();
+
+        // § 8c. Build the HUD context this frame.
         let hud = self.build_hud_context();
 
         // § 9. Render the frame.
