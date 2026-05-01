@@ -1,0 +1,40 @@
+// _drafts/acceptance_attrs_full.cssl
+// § GOAL : exercise every attribute form mission requires.
+// § parse-only ; not codegen-clean.
+
+module loa.test_attrs
+
+@layout(std430)
+@layout(packed)
+struct FieldCell {
+    morton: u64,
+    energy: f32,
+}
+
+@vertex
+fn vs_main(vid: u32) -> i32 {
+    42
+}
+
+@fragment
+fn fs_main(bary: i32) -> i32 {
+    bary
+}
+
+@compute
+@workgroup_size(64, 1, 1)
+fn cs_step(id: u32) -> i32 {
+    0
+}
+
+@test
+fn test_field_cell_size() {
+    42
+}
+
+@vertex
+pub fn vs_with_pub(vid: u32) -> i32 {
+    vid
+}
+
+fn main() -> i32 { 42 }

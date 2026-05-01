@@ -140,9 +140,13 @@ pub fn parse_outer_attrs(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) 
 #[cfg(test)]
 mod tests {
     use super::{parse_inner, parse_outer, parse_outer_attrs};
-    use cssl_ast::{AttrKind, DiagnosticBag, SourceFile, SourceId, Surface};
+    use cssl_ast::{
+        AttrArg, AttrKind, DiagnosticBag, ExprKind, Item, LiteralKind, SourceFile, SourceId, Span,
+        StructBody, Surface, VisibilityKind,
+    };
 
     use crate::cursor::TokenCursor;
+    use crate::rust_hybrid::parse_module;
 
     fn prep(src: &str) -> (SourceFile, Vec<cssl_lex::Token>) {
         let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
@@ -187,5 +191,193 @@ mod tests {
         let mut bag = DiagnosticBag::new();
         let attrs = parse_outer_attrs(&mut c, &mut bag);
         assert_eq!(attrs.len(), 2);
+    }
+
+    // ── T11-CC-PARSER-2 mission-required tests ───────────────────────────
+    // Cover the LoA-scene attribute surface (`@vertex` / `@fragment` /
+    // `@compute` / `@layout(std430|packed)` / `@workgroup_size(x,y,z)` /
+    // `@test`) end-to-end through `parse_module`, asserting each attribute
+    // attaches to its item and is preserved in the CST `attrs` field for
+    // downstream HIR / codegen / shader-emit consumers.
+
+    fn span_text(src: &SourceFile, span: Span) -> &str {
+        src.slice(span.start, span.end).unwrap_or("")
+    }
+
+    fn first_arg_path_segment_zero<'a>(arg: &'a AttrArg, src: &'a SourceFile) -> &'a str {
+        match arg {
+            AttrArg::Positional(e) => match &e.kind {
+                ExprKind::Path(p) => p.segments.first().map_or("", |s| span_text(src, s.span)),
+                _ => "",
+            },
+            AttrArg::Named { .. } => "",
+        }
+    }
+
+    fn first_arg_int_text<'a>(arg: &'a AttrArg, src: &'a SourceFile) -> Option<&'a str> {
+        match arg {
+            AttrArg::Positional(e) => match &e.kind {
+                ExprKind::Literal(lit) if matches!(lit.kind, LiteralKind::Int) => {
+                    Some(span_text(src, lit.span))
+                }
+                _ => None,
+            },
+            AttrArg::Named { .. } => None,
+        }
+    }
+
+    #[test]
+    fn parse_at_vertex_on_fn() {
+        let src = "@vertex\nfn vs_main(vid: u32) -> i32 { 42 }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        assert_eq!(m.items.len(), 1);
+        let Item::Fn(fn_item) = &m.items[0] else {
+            panic!("expected Item::Fn");
+        };
+        assert_eq!(fn_item.attrs.len(), 1);
+        assert_eq!(fn_item.attrs[0].kind, AttrKind::Outer);
+        assert_eq!(fn_item.attrs[0].path.segments.len(), 1);
+        assert_eq!(
+            span_text(&f, fn_item.attrs[0].path.segments[0].span),
+            "vertex"
+        );
+        assert!(fn_item.attrs[0].args.is_empty());
+        assert_eq!(span_text(&f, fn_item.name.span), "vs_main");
+    }
+
+    #[test]
+    fn parse_at_layout_std430_on_struct() {
+        let src = "@layout(std430)\nstruct FieldCell {\n    morton: u64,\n    energy: f32,\n}\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        assert_eq!(m.items.len(), 1);
+        let Item::Struct(s) = &m.items[0] else {
+            panic!("expected Item::Struct");
+        };
+        assert_eq!(s.attrs.len(), 1);
+        assert_eq!(span_text(&f, s.attrs[0].path.segments[0].span), "layout");
+        assert_eq!(s.attrs[0].args.len(), 1);
+        assert_eq!(
+            first_arg_path_segment_zero(&s.attrs[0].args[0], &f),
+            "std430"
+        );
+        match &s.body {
+            StructBody::Named(fields) => assert_eq!(fields.len(), 2),
+            _ => panic!("expected Named struct body"),
+        }
+    }
+
+    #[test]
+    fn parse_multiple_attributes_stack() {
+        // Each attribute starts on its own line per the LoA shader convention.
+        let src = "@compute\n@workgroup_size(64, 1, 1)\nfn cs_step(id: u32) -> i32 { 0 }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        assert_eq!(m.items.len(), 1);
+        let Item::Fn(fn_item) = &m.items[0] else {
+            panic!("expected Item::Fn");
+        };
+        assert_eq!(
+            fn_item.attrs.len(),
+            2,
+            "expected stacked @compute + @workgroup_size"
+        );
+        assert_eq!(
+            span_text(&f, fn_item.attrs[0].path.segments[0].span),
+            "compute"
+        );
+        assert!(fn_item.attrs[0].args.is_empty());
+        assert_eq!(
+            span_text(&f, fn_item.attrs[1].path.segments[0].span),
+            "workgroup_size"
+        );
+        assert_eq!(fn_item.attrs[1].args.len(), 3);
+    }
+
+    #[test]
+    fn parse_at_test_on_fn() {
+        let src = "@test\nfn test_field_cell_size() { 42 }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        let Item::Fn(fn_item) = &m.items[0] else {
+            panic!("expected Item::Fn");
+        };
+        assert_eq!(fn_item.attrs.len(), 1);
+        assert_eq!(
+            span_text(&f, fn_item.attrs[0].path.segments[0].span),
+            "test"
+        );
+        assert!(
+            fn_item.attrs[0].args.is_empty(),
+            "@test takes no arguments"
+        );
+    }
+
+    #[test]
+    fn parse_attribute_with_int_args() {
+        let src = "@workgroup_size(64, 1, 1)\nfn cs_step(id: u32) -> i32 { 0 }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        let Item::Fn(fn_item) = &m.items[0] else {
+            panic!("expected Item::Fn");
+        };
+        assert_eq!(fn_item.attrs.len(), 1);
+        let attr = &fn_item.attrs[0];
+        assert_eq!(span_text(&f, attr.path.segments[0].span), "workgroup_size");
+        assert_eq!(attr.args.len(), 3);
+        assert_eq!(first_arg_int_text(&attr.args[0], &f), Some("64"));
+        assert_eq!(first_arg_int_text(&attr.args[1], &f), Some("1"));
+        assert_eq!(first_arg_int_text(&attr.args[2], &f), Some("1"));
+    }
+
+    #[test]
+    fn parse_at_layout_with_ident_arg() {
+        // `@layout(packed)` — single positional ident argument (no `=` value).
+        let src = "@layout(packed)\nstruct Foo {\n    morton: u64,\n}\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        let Item::Struct(s) = &m.items[0] else {
+            panic!("expected Item::Struct");
+        };
+        assert_eq!(s.attrs.len(), 1);
+        assert_eq!(s.attrs[0].args.len(), 1);
+        assert_eq!(
+            first_arg_path_segment_zero(&s.attrs[0].args[0], &f),
+            "packed"
+        );
+    }
+
+    #[test]
+    fn at_attribute_followed_by_pub_keyword() {
+        // Regression : `@vertex` must attach to the `pub fn …` that follows it
+        // (the `pub` visibility comes between `@attr` and `fn`).
+        let src = "@vertex\npub fn vs_main(vid: u32) -> i32 { vid }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0, "parse errors > 0");
+        assert_eq!(m.items.len(), 1);
+        let Item::Fn(fn_item) = &m.items[0] else {
+            panic!("expected Item::Fn");
+        };
+        assert_eq!(fn_item.attrs.len(), 1);
+        assert_eq!(
+            span_text(&f, fn_item.attrs[0].path.segments[0].span),
+            "vertex"
+        );
+        assert_eq!(fn_item.visibility.kind, VisibilityKind::Public);
     }
 }
