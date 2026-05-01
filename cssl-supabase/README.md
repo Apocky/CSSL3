@@ -601,3 +601,156 @@ Cleanup is a one-liner:
 DELETE FROM public.cocreative_bias_vectors WHERE player_id = 'demo-player';
 -- CASCADE removes seeded feedback events + snapshots
 ```
+
+---
+
+## Game-State Persistence + Sovereign-Cap Audit
+
+Wave 5c (migrations 0010–0013) adds two parallel concerns:
+
+1. **Cross-session game-state snapshots** — durable save/load for the LoA
+   DM-engine. Each snapshot is the DM scene-graph (causal-seed DAG +
+   entity bag) plus a content-hash digest of the ω-field tensor at the
+   captured moment. The full ω-field bytes are NOT inlined (they are MB-
+   to-GB scale per scene); when explicitly archived, the row carries an
+   `omega_field_url` pointing into a storage bucket. By default the field
+   is treated as regenerable from the scene-graph (deterministic seed).
+2. **Sovereign-cap transparency audit** — every time a sovereign-cap is
+   asserted (any caller: MCP companion tools, MCP render tools, the
+   `csslc` CLI), the host writes a row into `public.sovereign_cap_audit`.
+   The table is **INSERT-only**: once written, no non-service-role
+   principal can modify or delete it. This is a hard transparency
+   invariant enforced by RLS (no UPDATE / DELETE policy exists, and
+   `verify-game-state.sql` asserts the policy count is 0).
+
+| Table                         | Purpose                                                | Privacy / mutation model                      |
+|-------------------------------|--------------------------------------------------------|-----------------------------------------------|
+| `public.game_session_index`   | One row per logical play-session (start/end/counters)  | Own-only, UPDATE allowed for own row          |
+| `public.game_state_snapshots` | Append-only DM scene-graph + ω-digest captures        | Own-only, INSERT + DELETE (GDPR), no UPDATE   |
+| `public.sovereign_cap_audit`  | INSERT-only transparency log of sovereign-cap bypasses | Own-only SELECT, INSERT only, immutable       |
+
+### Helper functions (Wave 5c)
+
+* `record_snapshot(p_session, p_player, p_scene, p_digest, p_url, p_history)`
+  — atomic INSERT into `game_state_snapshots` + UPSERT/UPDATE of the
+  matching `game_session_index` row (`latest_seq`, `total_snapshots`).
+  Pass `p_session = NULL` to start a new session (a UUID is generated).
+* `latest_snapshot(p_session)` — returns the most-recent snapshot row
+  for a session (`ORDER BY seq DESC LIMIT 1`). `SETOF` for stable shape.
+* `end_session(p_session)` — sets `ended_at = now()`. Idempotent: returns
+  NULL if the session does not exist or is already ended.
+
+### Aggregate VIEW
+
+`public.sovereign_cap_audit_summary` aggregates audit rows by
+`(player_id, action_kind)`, returning `uses`, `first_use`, `last_use`.
+Used by the player-facing transparency UI. RLS on the underlying table
+propagates through the view.
+
+### Typical save/load cycle
+
+```ts
+import { createClient } from "@supabase/supabase-js";
+import { Database, Uuid } from "./types";
+
+const supabase = createClient<Database>(URL, ANON_KEY);
+
+// 1. Boot: rehydrate from latest snapshot, OR start a fresh session
+const { data: latest } = await supabase
+  .rpc("latest_snapshot", { p_session: existingSessionId });
+
+if (latest?.length === 0) {
+  // No snapshots yet — call record_snapshot with NULL p_session
+  // to obtain a freshly-generated session_id
+  const { data: newId } = await supabase.rpc("record_snapshot", {
+    p_session: null,
+    p_player: playerHandle,
+    p_scene: emptySceneGraph,
+    p_digest: sha256HexOfEmpty,
+    p_url: null,
+    p_history: [],
+  });
+}
+
+// 2. On save (every N seconds or on player command)
+await supabase.rpc("record_snapshot", {
+  p_session: sessionId,
+  p_player: playerHandle,
+  p_scene: currentSceneGraph,
+  p_digest: sha256HexOfOmegaField,
+  p_url: null,                       // or storage://omega-fields/.../seq-N.bin
+  p_history: companionHistorySoFar,
+});
+
+// 3. On quit
+await supabase.rpc("end_session", { p_session: sessionId });
+```
+
+### Sovereign-cap audit usage
+
+```ts
+// Whenever a sovereign-cap is bypassed (with explicit user attestation)
+await supabase.from("sovereign_cap_audit").insert({
+  session_id: currentSessionId,
+  player_id: playerHandle,
+  action_kind: "companion.spawn",
+  cap_bypassed_kind: "rate_limit",
+  reason: "Player explicitly overrode rate-limit (input box, attested)",
+  target_audit_event_id: jsonlAuditRowId,
+  caller_origin: "mcp:companion",
+});
+
+// Player-facing transparency panel
+const { data: summary } = await supabase
+  .from("sovereign_cap_audit_summary")
+  .select("*");
+// summary = [{ player_id, action_kind, uses, first_use, last_use }, …]
+```
+
+### CSSL FFI surface (cssl-edge entry points, game-state)
+
+```cssl
+@extern "cssl-edge"
+fn supabase_record_snapshot(session: Uuid?, player: str,
+                            scene: Json, digest: str, url: str?,
+                            history: Json) -> i64
+@extern "cssl-edge"
+fn supabase_latest_snapshot(session: Uuid) -> Json
+@extern "cssl-edge"
+fn supabase_end_session(session: Uuid) -> Timestamptz?
+
+@extern "cssl-edge"
+fn supabase_sovereign_audit_log(session: Uuid, action_kind: str,
+                                cap_bypassed_kind: str, reason: str,
+                                target_audit_event_id: str?,
+                                caller_origin: str) -> i64
+@extern "cssl-edge"
+fn supabase_sovereign_audit_summary() -> Json
+```
+
+### Demo data
+
+`0013_game_state_seed.sql` inserts one demo session
+(`session_id = 00000000-0000-0000-0000-00000000DE01`) for
+`'demo-player'` with three snapshots (`seq=0,1,2`) and two
+`sovereign_cap_audit` example rows (a `companion.spawn` with
+`rate_limit` bypass and a `render.snapshot_png` with `external_io`
+bypass). Cleanup is straightforward:
+
+```sql
+DELETE FROM public.game_state_snapshots
+ WHERE session_id = '00000000-0000-0000-0000-00000000DE01'::uuid;
+DELETE FROM public.game_session_index
+ WHERE session_id = '00000000-0000-0000-0000-00000000DE01'::uuid;
+DELETE FROM public.sovereign_cap_audit
+ WHERE session_id = '00000000-0000-0000-0000-00000000DE01'::uuid;
+```
+
+### Verification
+
+`verify-game-state.sql` asserts table presence, RLS coverage on all
+three new tables, helper-function signatures, the eight RLS policies,
+the seed rows, and — critically — the **transparency invariant**: the
+count of UPDATE/DELETE policies on `sovereign_cap_audit` must be zero.
+A non-zero count throws an exception, so any future migration that
+attempts to add a mutation policy will fail this verify on next run.
