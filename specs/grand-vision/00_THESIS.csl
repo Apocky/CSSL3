@@ -1,0 +1,126 @@
+# 00 : LoA-v13 GRAND-VISION — THESIS
+# ══════════════════════════════════════════════════════════════════
+# § I> root-of-grand-vision-tree ; siblings = 01..08 in this dir
+# § I> CSSL-native ; ¬ English prose ; design-doc for Apocky-self
+# § I> reference-anchor-only ; ¬ implementation-spec
+# § I> consent-as-OS inherits PRIME_DIRECTIVE ‼ ¬ override
+
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE
+  t∞: substrate-grows-games  ¬  authored-games
+       ≡ world ≡ ω-field-evolution ; ¬ pre-baked-scene-graph
+       ≡ content ≡ runtime-condensation .from .intent
+       ≡ ¬ static .scenes ; ¬ enumerated .encounters ; ¬ designer-script-tree
+  t∞: LoA = test-harness for substrate-thesis
+       ≡ ¬ shipping-content ≡ proving-substrate
+       ≡ scenes/*.cssl = throwaway-scaffolding ; runtime-procgen = real-game
+  t∞: proprietary-everything ⊑ all-stack-layers
+       ≡ language(.csl) → compiler(cssl-compiler) → engine(cssl-substrate-*) → game(LoA-v13)
+       ≡ ¬ Cargo-deps for game-logic ; ¬ npm ; ¬ third-party-engine-shell
+
+# ──────────────────────────────────────────────────────────────────
+
+§ THESIS-CORE  «substrate-grows-games»
+
+  § PROPOSITION
+    games-are-NOT-authored ; games-CONDENSE
+    intent + sensor-readings + scene-state → ω-field-perturbation
+    ω-field-perturbation → Σ-mask-allowed-evolution → manifestation
+    manifestation = stress-object spawned-into-world
+    ≡ narrative ≡ field-evolution ; ¬ tree-traversal
+
+  § COROLLARY-1  «engine ¬ AGI»
+    DM/GM/Collaborator/Coder = sufficient-intelligence-roster
+    ≡ ¬ general-AGI required ; ¬ open-ended-conversation-engine
+    ≡ DM = scene-arbiter ; GM = narrator ; Collab = co-author ; Coder = runtime-mutate
+    rationale : DM-task-narrowness lets ship sovereign-bounded substrate
+
+  § COROLLARY-2  «runtime > authored»
+    static .cssl-scenes = scaffolding ; throwaway-after-pipeline-verified
+    runtime-content-pipeline = (text-input + procgen + asset-fetch + ω-condensation)
+    ≡ test_room = empty-container ; contents = runtime-generated
+    ≡ ¬ compile-47-scenes-individually ; build-pipeline-once
+
+  § COROLLARY-3  «consent ⊑ substrate»
+    Σ-mask-per-cell ≡ structural-consent-encoding
+    ≡ ¬ per-frame-popup ; ¬ session-grant ; per-cell-touch-consents
+    ≡ Sovereign-claim → SIG-pass-rejects unauthorized-touches @ compile
+    ≡ runtime defense-in-depth via Phase-5 AGENCY-VERIFY
+
+# ──────────────────────────────────────────────────────────────────
+
+§ 7-PARADIGM-HIERARCHY  «expressiveness-ceiling-ladder»
+
+  § ORDERING  ‼ ascending expressiveness + descending pre-determinism
+    1. PROCEDURAL              : rule-table + seed → output
+    2. COMBINATORIAL           : grammar + composition-rules
+    3. NEURAL                  : learned-weights + inference
+    4. SPONTANEOUS             : field-evolution-as-physics
+    5. CAUSAL                  : event-causality-graph evolution
+    6. CO-CREATIVE             : human-intent + substrate-feedback gradient
+    7. NEURO-SYMBOLIC-SUBSTRATE: ω-field + KAN-substrate + Σ-mask runtime-composition
+       ⟪ LoA's choice ⟫
+
+  § TRANSITION-CRITERIA  ‼ each-paradigm-strictly-includes-prior
+    n → n+1 ⇔ ∃ expressivity .NOT-in n ‼ achievable @ n+1
+    ¬ replacement ; composition : higher-paradigm-USES lower-paradigm-as-substrate
+    ≡ neuro-symbolic CONSUMES neural CONSUMES procedural
+
+  § WHY-LoA-PICKS-7
+    ◐ procgen-alone : predetermined-rule-table ; emergent-but-bounded
+    ◐ neural-alone : opaque ; ¬ Σ-mask-aware ; ¬ consent-encoded
+    ◐ spontaneous-alone : ¬ semantic-grounding ; ¬ intent-routable
+    ✓ 7 = composition.of.all.below + symbolic-substrate-consent-discipline
+       ≡ ω-field-as-truth + Σ-mask-per-cell + KAN-substrate-runtime
+       ≡ 6-novelty-path multiplicative-composition @ §§ 32 SIGNATURE-RENDERING
+
+# ──────────────────────────────────────────────────────────────────
+
+§ WHY  «world condenses from intent» @ t∞
+
+  § CONDENSATION-AS-PHYSICS
+    intent ≡ field-perturbation seed
+    Σ-mask ≡ allowed-evolution-bounds
+    Φ-handle ≡ semantic-tag binding seed-to-meaning
+    ψ-PDE ≡ propagation-law @ Phase-2 PROPAGATE
+    rising-edge .radiance > 0.45 → manifestation-event
+
+  § VS-AUTHORED
+    authored : designer-typed-tree → finite-content-set ; recombination-bounded
+    condensed: substrate-evolution → infinite-content-trajectory ; bounded-by-laws ¬ enumeration
+    LoA-bet : "infinite-trajectory-bounded-by-physics" > "finite-tree-with-procgen-leaves"
+
+  § VS-AGI-CHATBOT
+    chatbot : open-ended-dialog ; ¬ world-state-coupled ; ¬ Σ-consent-encoded
+    DM-narrow : intent → world-state-perturbation ; world-state-coupled ; consent-gated
+    LoA-bet : narrow-DM-substrate > open-AGI in delivering "world-that-listens"
+
+# ──────────────────────────────────────────────────────────────────
+
+§ TREE-MAP  «01..08 in this dir»
+
+  00 THESIS                    — this-doc
+  01 PARADIGMS                 — 7-paradigm-hierarchy expanded
+  02 DATA-AXES                 — local-vs-cloud-vs-edge-compute boundaries
+  03 INTENT-FLOW               — text → typed-intent → routing
+  04 SPONTANEOUS-CONDENSATION  — ω-field-as-truth + seed-cells + manifestation
+  05 INTELLIGENCES             — DM/GM/Collaborator/Coder scope-narrowness
+  06 FREE-3D-INGEST            — license-disciplined asset-fetch pipeline
+  07 NETWORKING                — cap-gated outbound + endpoint-roster + audit
+  08 ROADMAP                   — wave-by-wave landed/in-flight/deferred
+
+# ──────────────────────────────────────────────────────────────────
+
+§ RELATED-SPECS  (cross-references)
+  PRIME_DIRECTIVE                  — root-of-trust ∀ vision-§
+  §§ 30_SUBSTRATE_v2.csl           — ω-field substrate this-doc consumes
+  §§ 32_SIGNATURE_RENDERING.csl    — 6-novelty-paths × 12-stage pipeline
+  §§ 33_F1_F6_LANGUAGE_FEATURES    — F1..F6 substrate of grand-vision
+  §§ 31_LOA_DESIGN.csl             — LoA composes substrate primitives
+
+∎ THESIS
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."

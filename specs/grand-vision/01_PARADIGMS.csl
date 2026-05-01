@@ -1,0 +1,168 @@
+# 01 : LoA-v13 GRAND-VISION — 7-PARADIGM-HIERARCHY
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl ; expands § 7-PARADIGM-HIERARCHY
+# § I> 7 §§ ≤25-LOC-each + § synthesis @ end
+# § I> CSSL-native ; ¬ marketing ; ¬ exhaustive-feature-list
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: 7-paradigm-set = canonical ; adding P8+ = major-version-bump
+  t∞: each-paradigm strictly-includes-prior ¬ replaces
+       ≡ composition : Pn ≡ Pn-1 ⊗ novel-capability
+  t∞: LoA-position = P7 ≡ neuro-symbolic-substrate
+
+# ══════════════════════════════════════════════════════════════════
+
+§ P1 — PROCEDURAL  «rule-table + seed → output»
+
+  § DEFINITION
+    deterministic-fn(seed) → content
+    ≡ LCG + perlin-noise + L-system + WFC + cellular-automata
+  § EXAMPLES
+    Minecraft-terrain-gen ; No-Man's-Sky-planet-gen ; Spelunky-rooms
+  § RUNTIME-COST
+    ◐ low ; tablebound + cache-friendly
+  § EXPRESSIVENESS-CEILING
+    ✗ predetermined ; ¬ surprise-beyond-rule-set ; ¬ semantic-grounding
+  § LoA-POSITION
+    ✓ used as-substrate-utility ; ¬ canonical-content-engine
+
+§ P2 — COMBINATORIAL  «grammar + composition-rules»
+
+  § DEFINITION
+    grammar G = (V, T, P, S) → derivable-content-set
+    ≡ context-free + context-sensitive + L-system + shape-grammar
+  § EXAMPLES
+    SpeedTree-foliage ; CityEngine-buildings ; Boss-Bullet-pattern-DSL
+  § RUNTIME-COST
+    ◐ moderate ; parse + derive + render
+  § EXPRESSIVENESS-CEILING
+    ◐ richer-than-P1 ; ¬ open-vocabulary ; ¬ semantic-binding
+  § LoA-POSITION
+    ✓ used in-DSL-layer (CSSL itself ≡ grammar) ; ¬ content-engine
+
+§ P3 — NEURAL  «learned-weights + inference»
+
+  § DEFINITION
+    f(x;θ) ≡ network-with-trained-weights ; gradient-descent fits θ
+    ≡ MLP + Transformer + Diffusion + GAN + KAN
+  § EXAMPLES
+    Stable-Diffusion-images ; LLM-text ; Style-GAN-faces ; AlphaFold-structures
+  § RUNTIME-COST
+    ✗ high ; matmul-bound + KV-cache + GPU-memory ; latency-trap
+  § EXPRESSIVENESS-CEILING
+    ✓ open-vocabulary ; ◐ opaque ; ✗ ¬ Σ-mask-aware ; ¬ consent-encoded
+  § LoA-POSITION
+    ✓ KAN-substrate-runtime ≡ weight-table-baked-via-F4-comptime
+       ≡ replaces matmul-MLP w/ spline-table ; deterministic + Σ-aware
+
+§ P4 — SPONTANEOUS  «field-evolution-as-physics»
+
+  § DEFINITION
+    ω-field + ψ-PDE + boundary-conditions → emergent-trajectories
+    ≡ Lattice-Boltzmann + Continuous-CA + Reaction-Diffusion
+  § EXAMPLES
+    Lenia-creatures ; reaction-diffusion-patterns ; LBM-fluids
+  § RUNTIME-COST
+    ◐ moderate ; parallel-cell-update + sparse-Morton + multi-rate
+  § EXPRESSIVENESS-CEILING
+    ✓ emergent-not-enumerated ; ◐ ¬ semantic-grounding without binding
+  § LoA-POSITION
+    ✓ Phase-2 PROPAGATE = Wave-Unity multi-rate ψ-field solver
+       ≡ §§ 30_SUBSTRATE_v2 § WAVE-UNITY-INTEGRATION
+
+§ P5 — CAUSAL  «event-causality-graph evolution»
+
+  § DEFINITION
+    DAG nodes = events ; edges = "A enables B" ; evolution-step = consistent-extension
+    ≡ counterfactual-reasoning ; intervention-vs-observation distinction
+    ≡ Pearl-do-calculus ; structural-causal-models
+  § EXAMPLES
+    Dwarf-Fortress-history-gen ; CrusaderKings-personality-causation ;
+    Caves-of-Qud-faction-history
+  § RUNTIME-COST
+    ✗ graph-blowup-risk ; pruning-required ; persistent-homology helps
+  § EXPRESSIVENESS-CEILING
+    ✓ counterfactuals + interventions ; ◐ ¬ continuous-field-coupled
+  § LoA-POSITION
+    ◐ Phase-4 COHOMOLOGY tracks region-genus + cycle-emergence
+       ≡ causal-seed deferred to W4 (§§ 08 ROADMAP)
+
+§ P6 — CO-CREATIVE  «human-intent + substrate-feedback gradient»
+
+  § DEFINITION
+    loop : (player-text ⊕ sensor-state) → substrate-perturb → field-evolve →
+           manifestation → player-perceives → re-text
+    ≡ feedback-coupled gradient ¬ one-shot-prompt
+  § EXAMPLES
+    AI-Dungeon (text-only ; ¬ field-coupled) ; Promethean-DM-systems
+  § RUNTIME-COST
+    ◐ depends-on-intent-translation latency
+  § EXPRESSIVENESS-CEILING
+    ✓ open-ended ; ◐ requires-substrate-grounding to avoid hallucination
+  § LoA-POSITION
+    ◐ co-creative-loop deferred to W4 (§§ 08 ROADMAP)
+       ≡ requires intent-router + companion-proxy + spontaneous-pad shipped
+
+§ P7 — NEURO-SYMBOLIC-SUBSTRATE  «ω-field + KAN + Σ-mask runtime-composition»
+
+  § DEFINITION
+    ω-field-as-truth ⊗ KAN-substrate-runtime ⊗ Σ-mask-per-cell ⊗
+    F1-F6-language-features ⊗ 6-novelty-paths ⊗ 12-stage-pipeline
+  § EXAMPLES
+    LoA-v13 ⟪ unique ⟫ ; ¬ shipped-precedent
+  § RUNTIME-COST
+    ◐ Quest-3 90Hz @ 11.1ms/frame proven (§§ 32 budget-composition)
+  § EXPRESSIVENESS-CEILING
+    ✓ open-vocabulary (P3) + emergent-physics (P4) + causal-aware (P5) +
+       co-creative (P6) + symbolic-grounding + consent-discipline
+  § LoA-POSITION
+    ★ canonical-choice ; thesis-of-LoA-v13
+
+# ══════════════════════════════════════════════════════════════════
+
+§ SYNTHESIS  «LoA's choice = neuro-symbolic-substrate»
+
+  § COMPOSITION-MULTIPLICATIVE  ‼
+    P7 ≡ ω-field (P4-substrate) ⊗ KAN (P3-substrate-runtime) ⊗
+          F3-effects (P1-P2-grammar) ⊗ Phase-4-cohomology (P5) ⊗
+          intent-router + companion-proxy (P6 enabling)
+    ¬ ladder-replacement ; each-rung-USED as-substrate-for-next
+
+  § WHY-NOT-PURE-NEURAL
+    ◐ matmul-bound ¬ scales to 90Hz @ Quest-3
+    ✗ opaque ; ¬ Σ-mask-encodable ; ¬ Sovereign-handle-respect
+    ✗ ¬ replay-deterministic without bit-identical-weights everywhere
+    ‼ KAN-substrate solves : spline-tables = deterministic + Σ-aware + bakeable @ comptime
+
+  § WHY-NOT-PURE-PROCEDURAL
+    ✗ predetermined ; ¬ player-intent-coupled
+    ✗ ¬ open-vocabulary ; rule-table-bound
+    ‼ co-creative-loop solves : player-text → field-perturb → emergence
+
+  § THE-LoA-WAGER
+    "neuro-symbolic-substrate is the only paradigm that simultaneously :
+     (a) honors PRIME_DIRECTIVE consent-as-OS structurally,
+     (b) ships @ Quest-3 90Hz frame-budget,
+     (c) supports open-vocabulary intent-routing,
+     (d) enables emergent-physics-narrative,
+     (e) replay-deterministic-bit-equal-across-hosts."
+
+  § FALSIFIABILITY
+    if ¬ Quest-3 90Hz attainable w/ P7 → architectural-defeat ; reconsider P3-pure
+    if ¬ replay-determinism w/ P7 → consent-audit-chain breaks ; reconsider P4-pure
+    @ b69165c : both proven ; thesis-supported
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  §§ 30_SUBSTRATE_v2.csl          — ω-field substrate (P4 + P7)
+  §§ 32_SIGNATURE_RENDERING       — 6-novelty-paths (P7-composition)
+  §§ 33_F1_F6_LANGUAGE_FEATURES   — F1..F6 (P7-bedrock)
+
+∎ PARADIGMS
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)

@@ -1,0 +1,169 @@
+# 03 : LoA-v13 GRAND-VISION — INTENT-FLOW
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> text → typed-intent → routing pipeline
+# § I> CSSL-native ; ¬ marketing
+# § I> consent-as-OS ; player-text-hash logged ¬ raw-text egress
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: intent ≡ first-class-typed-value ¬ raw-string
+       ≡ Intent : enum { MCP-tool · Spawn · Dialog · Companion · Pad-seed · Unknown }
+  t∞: classifier-stage-0 = keyword-based ; stage-1 = KAN-substrate-trained
+       ≡ progressive-replacement ; ¬ pure-LLM-roundtrip
+  t∞: Sensitive<gaze|biometric|face|body> ¬ in-classifier-features
+       ≡ structurally-excluded from feature-set ‼
+
+# ══════════════════════════════════════════════════════════════════
+
+§ TEXT  «raw input from player»
+
+  § SOURCES
+    keyboard-text-input  : runtime UI (cssl-runtime/text_input.cssl)
+    voice-via-Whisper    : DEFERRED W4 (¬ stage-1)
+    chat-with-companion  : DM/GM/Collaborator dialog (Vercel /api/companion)
+    macro-button         : pre-bound text-templates (e.g. F-keys)
+
+  § PRE-PROCESS
+    trim + normalize-whitespace + lowercase-classification-only
+    BLAKE3-hash for telemetry (raw-text NEVER egressed)
+    length-cap : 4096 chars ; longer-rejected w/ user-message
+
+# ══════════════════════════════════════════════════════════════════
+
+§ TYPED-INTENT  «classifier output»
+
+  § INTENT-VARIANTS  ‼ canonical-set
+    Intent::McpTool { tool, args }
+      ≡ "compose into MCP-tool-call" (e.g. fetch-asset, save-scene)
+    Intent::SpawnCondensation { kind, location, attribs }
+      ≡ "seed a stress-object into spontaneous-pad" (§§ 04 SPONTANEOUS)
+    Intent::DialogDM | Intent::DialogGM
+      ≡ "talk to DM (orchestrator) or GM (narrator)"
+    Intent::CompanionRequest { role, text-hash }
+      ≡ "co-author with Collaborator/Coder via /api/companion"
+    Intent::PadSeed { theme, magnitude }
+      ≡ "perturb spontaneous-pad" (NE-corner ScaleRoom, [25,1.5,-32])
+    Intent::Unknown { confidence }
+      ≡ classifier-confidence-low ; fallback-to-DM-dialog
+
+  § TYPING-DISCIPLINE
+    Intent : refinement-typed (F2 §§ 33 LANGUAGE-FEATURES)
+    @layout(soa) struct Intent { tag : u8 ; payload : IntentPayload-union }
+    Sensitive<*> structurally-excluded from IntentPayload (compile-error)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROUTING  «classifier → router → target»
+
+  § ROUTING-STAGE-0  «keyword-based»  ⟪ stage-1 impl ⟫
+    crate         : cssl-intent-router (W3b landed)
+    classifier    : keyword-table + regex-rule-set
+    confidence    : f32'norm in [0, 1] ; threshold 0.65 default
+    target-table  :
+      keyword-set                    → variant
+      ----------------------------+--------------------
+      "spawn|create|make|generate" → SpawnCondensation
+      "save|load|file|export"      → McpTool(SaveScene/LoadScene)
+      "fetch|search|find|asset"    → McpTool(SearchAsset)
+      "ask|tell me|why|what is"    → DialogDM
+      "narrate|describe|read"      → DialogGM
+      "help me write|together"     → CompanionRequest
+      "perturb|seed|condensate"    → PadSeed
+      *unmatched*                  → Unknown(confidence=0)
+
+  § ROUTING-STAGE-1  «KAN-substrate trained»  ⟪ deferred W5+ ⟫
+    crate         : cssl-substrate-kan (consumer)
+    classifier    : KAN spline-table on tokenized-text-features
+    training-data : per-installation collected ; opt-in via cap
+    invariant     : Σ-mask-aware ; replay-deterministic ; bakeable @ comptime
+
+  § ROUTING-TARGETS  «what consumes Intent»
+    McpTool         → cssl-mcp-server tool-dispatch
+    SpawnCondensation → cssl-substrate-omega-field seed-cell stamp
+                        + spontaneous-pad zone (§§ 04 SPONTANEOUS)
+    DialogDM/GM     → companion-proxy (Vercel /api/companion) + local DM/GM
+    CompanionRequest→ Vercel /api/companion → remote-Claude (cap-gated)
+    PadSeed         → spontaneous-pad direct-perturbation
+    Unknown         → fallback-to-DialogDM w/ low-confidence-flag
+
+# ══════════════════════════════════════════════════════════════════
+
+§ FEEDBACK-LOOP  «co-creative gradient»
+
+  § INPUTS  ‼ all ⟪ on-device-only ⟫
+    player-text         : current-typed-or-spoken
+    sensor-readings     : F-key-state + grip-pressure + gaze-NOT-included
+    scene-state-summary : current-zone + companion-presence + spontaneous-pad-radiance
+    history-buffer      : last-N-intents (default N=8)
+
+  § RE-CLASSIFY-ON
+    new-text-arrives    → re-run classifier with feedback-from-prev
+    sensor-state-shifts → re-evaluate confidence (e.g. stress-button held)
+    pad-radiance-rising → bias toward SpawnCondensation w/ matching-theme
+
+  § GRADIENT-FORMATION
+    intent-confidence × scene-state-coherence = co-creative-quality
+    iterate : player-text → intent → manifestation → player-perceives →
+              re-text (now-with-context-of-manifestation)
+    ≡ ¬ one-shot-prompt ; substrate-feedback gradient
+
+  § BOUNDED-AUTONOMY
+    DM ¬ self-trigger Intent (¬ initiate-from-substrate)
+       ≡ player-action required to-advance ; Σ-mask-respect
+    Coder ¬ silent-runtime-mutate ; player-confirm before applying
+       ≡ except cap-pre-grant (e.g. "auto-apply trivial-fixups")
+
+# ══════════════════════════════════════════════════════════════════
+
+§ INTENT-AUDIT  «what is logged»
+
+  § PER-INTENT-LOG-ENTRY
+    text_hash      : BLAKE3 over raw-text + per-installation salt
+    intent_variant : enum-tag only ; ¬ payload-content
+    confidence     : f32'norm
+    routing_target : target-tag ; ¬ outcome-content
+    ts_micros      : monotonic ; replay-anchor
+    sovereign_cap  : which cap-token authorized routing
+
+  § WHAT-IS-NOT-LOGGED  ‼
+    ✗ raw-text ; ✗ payload-content ; ✗ companion-msg-text
+    ✗ Sensitive<*> features ; ✗ raw-paths
+    ✓ hashes + tags + counters + monotonic-ts
+
+  § REPLAY-DETERMINISM
+    given (text_hash, salt, classifier-stage, sensor-state-snapshot, history-buffer)
+    classifier emits bit-equal Intent across-runs
+    ≡ replay-test : intent-stream-bit-equal across-restored-snapshots
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CONSENT-DISCIPLINE  «cap-gating per-routing-target»
+
+  § PER-TARGET-CAP-TABLE
+    McpTool                → cap : McpDispatchCap (default-grant)
+    SpawnCondensation      → cap : SubstrateMutateCap (per-zone-scoped)
+    DialogDM/GM            → cap : InProcessDialogCap (default-grant)
+    CompanionRequest       → cap : NetPostWriteCap + NetHttpsOnly (opt-in)
+    PadSeed                → cap : SubstrateMutateCap (zone=spontaneous-pad)
+
+  § REVOCATION
+    cap revoked-mid-session ⇒ subsequent-routing fails-cleanly
+    audit-entry : intent_variant + revocation_cause + user-message
+    ¬ silent-fail ; user-visible feedback in UI
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  04 SPONTANEOUS-CONDENSATION     — SpawnCondensation + PadSeed targets
+  05 INTELLIGENCES                — DM/GM/Collaborator/Coder routing
+  07 NETWORKING                   — /api/companion + cap-gated outbound
+  §§ 22_TELEMETRY                 — path-hash + audit-chain discipline
+  §§ 11_IFC                       — Sensitive<*> structural-exclusion
+
+∎ INTENT-FLOW
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)

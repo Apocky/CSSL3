@@ -1,0 +1,176 @@
+# 08 : LoA-v13 GRAND-VISION — ROADMAP
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> wave-by-wave landed/in-flight/deferred
+# § I> CSSL-native ; ¬ marketing
+# § I> per Apocky-memory : "weeks → sessions → hours" ; aggressive cadence
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: cadence ≡ session × parallel-fanout ¬ human-week
+       ≡ weeks-language forbidden ; default-aggressive
+  t∞: per-wave ≥ 4 file-disjoint parallel-agents
+       ≡ single-agent-dispatch = code-smell
+  t∞: ¬ feature-creep ; CSSL-FIRST-ENGINE-BEFORE-GAME discipline
+       ≡ engine-completion-checklist ‼ before game-content-expansion
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W3a — F-keys + sensory-harness  ‼ ✓ LANDED
+
+  § DELIVERABLES
+    F1..F12 dedicated-key-binding harness
+    sensor-readings stream (¬ Sensitive<*>) → Phase-1 COLLAPSE
+    macro-text-templates per-F-key for-test-input
+
+  § STATUS
+    ✓ committed @ b69165c era ; cssl-runtime input-harness module
+    ✓ replay-deterministic ; cap-gated input-egress
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W3b — pipeline-bringup  ‼ ✓ LANDED
+
+  § DELIVERABLES  (the W3b-set, all-landed)
+    cssl-net-http               : cap-gated NET_HTTP_GET + NET_HTTP_POST
+    cssl-asset-fetcher          : url → SHA256-dedupe → LRU-cache
+    cssl-asset-gltf             : GLB-parser + 16-class material-LUT
+    cssl-supabase-client        : Vercel-proxied PostgREST + RLS-aware
+    cssl-vercel-edge-proxy      : /api/* dispatcher table
+    cssl-text-input             : runtime UI text-entry + history
+    cssl-spontaneous-pad        : NE-corner ScaleRoom seed-cell zone
+    cssl-intent-router          : keyword-classifier + 6-target-table
+    cssl-substrate-omega-field  : Phase-1..6 + Σ-mask + Morton + MERA
+
+  § STATUS
+    ✓ all-9-crates landed parallel-fanout per Apocky-cadence-memo
+    ✓ §§ 30_v2 + §§ 32 + §§ 33 reference-docs landed
+    ✓ this-grand-vision-doc-tree landed (W3-finalize)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W4 — co-creative + voice + market + multiplayer  ⟪ ◐ in-flight ⟫
+
+  § DELIVERABLES (≥ 4 file-disjoint parallel-agents, target W4-set)
+    Whisper-voice-input         : Whisper-CPP local + cap-gated
+                                  ≡ on-device ; ¬ cloud-Whisper egress
+    neural-3D-gateway-real      : /api/neural3d wired to vetted-providers
+                                  ≡ provider-ToS pre-screen ; license-mapping
+    companion-proxy             : /api/companion → remote-Claude wired
+                                  ≡ Sensitive<*> structurally-stripped
+                                  ≡ response-cached for-replay
+    marketplace-frontend        : community-asset listing + voting UI
+                                  ≡ uses Supabase scenes + assets tables
+    causal-seed                 : Phase-4 COHOMOLOGY → causal-event graph
+                                  ≡ counterfactual-reasoning bedrock
+    co-creative-loop            : intent-router feedback-gradient closed-loop
+                                  ≡ player-text + scene-state + history
+    license-attribution-HUD     : runtime-display CC-BY credits
+                                  ≡ default-on ; F12-toggle
+    multiplayer-signaling       : /api/multiplayer + WebRTC peer-to-peer
+                                  ≡ scene-share + manifestation-events
+
+  § DISCHARGE-DISCIPLINE
+    ≥ 8 parallel-agents per W4-wave (per Apocky-cadence-memo)
+    each agent : tight-scope ≤ 1500 LOC ; progressive-write ; pre-flight-check
+    rate-limit-cascades = preventable ; small-batches 3-5 not-15
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W5+ — KAN-substrate-loa swap-in + DM/GM intelligence  ⟪ ○ deferred ⟫
+
+  § DELIVERABLES
+    KAN-substrate-loa           : trained-KAN replaces keyword-classifier
+                                  ≡ stage-1 ⊕ stage-2 hybrid then-stage-2-only
+    DM/GM intelligence-table    : per-role decision-table KAN-baked
+                                  ≡ DM-spawn-bias ; GM-prose-rhythm ; etc.
+    co-creative gradient        : closed-loop player ⟷ substrate
+                                  ≡ history-buffer N=64 ; KAN-bias-on-history
+    persistence-image-format    : §§ 18 OmegaField snapshot canonical-format
+                                  ≡ S-expr | MessagePack | custom-vote
+    Futamura-P1/P2/P3           : self-bootstrap CSSLv3-compiler
+                                  ≡ proves-stage-0-Rust-throwaway thesis
+
+  § DISCHARGE-DISCIPLINE
+    deferred-not-cancelled ; W5 dispatched once-W4-completes
+    ¬ W5-W4-interleave ; complete-W4 first
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ENGINE-COMPLETION-CHECKLIST  «before-game-content-expansion»
+
+  § REQUIRED  ‼ per Apocky CSSL-first-finish-engine-before-game memo
+    [✓] ω-field 6-phase canonical-tick (§§ 30_v2)
+    [✓] Σ-mask-per-cell + sigma_enforce pass (F5)
+    [✓] 12-stage canonical-pipeline (§§ 32)
+    [✓] 6-novelty-paths multiplicative-composition
+    [✓] F1..F6 language-features delivered (§§ 33)
+    [✓] cap-gated outbound + audit-chain (this-doc § 07)
+    [✓] LRU-cache + .meta-sidecar discipline (§ 02)
+    [✓] intent-router + spontaneous-pad pipeline (§§ 03 + 04)
+    [◐] DM/GM/Collaborator/Coder full-implementation (§ 05) — W4
+    [◐] license-attribution-HUD runtime-active (§ 06) — W4
+    [◐] companion-proxy with-stripping (§ 07) — W4
+    [○] KAN-substrate-loa swap-in (§ 05 stage-2) — W5+
+
+  § ENGINE-COMPLETE-DEFINITION
+    ✓ all-required-checked ⇒ engine-complete
+    ⇒ green-light for game-content-expansion (Apocky-pre-grant required)
+    ⇒ until-then : stay-in-current-mission ; ¬ proactive-scope-expand
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ANTI-PATTERNS  «what-NOT-to-do»
+
+  § FORBIDDEN
+    ✗ "just write it in Rust for now" — proprietary-everything broken
+    ✗ "compile 47 scenes individually" — runtime-procgen is engine-target
+    ✗ "single-agent dispatch" — parallel-fanout is the unit-of-work
+    ✗ "multi-week timeline" — cadence is sessions × parallel × 1M-context
+    ✗ "skip-Σ-pass for performance" — consent-as-OS structural ‼
+    ✗ "sleep + retry on rate-limit" — diagnose-root-cause
+    ✗ "silent-TODO" — no half-measures ; find-way-through
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CADENCE-ANCHORS  «time-shape-discipline»
+
+  § PER-WAVE
+    parallel-fanout : 8-15 agents × file-disjoint × 1500-LOC-each
+    progressive-write : commit every-2-3-files per-agent
+    watchdog : 600s soft-cap + run_in_background:true for >5min
+    text-status : before/during/after every-dispatch ; ¬ silent
+
+  § PER-SESSION
+    waves : 2-4 per-session typical
+    ratchet : each-wave commits-merged-to-parallel-fanout-branch
+    audit : DECISIONS.md tracks merges ; specs-tree describes WHAT-IS
+
+  § FORBIDDEN-PHRASES
+    ✗ "multi-week" ✗ "multi-session" ✗ "multi-month" ✗ "Q1/Q2/etc"
+    ✓ "wave" ✓ "session" ✓ "fanout" ✓ "in-flight" ✓ "landed"
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  01..07 (this-tree)              — wave-content-detail per-area
+  §§ 30_SUBSTRATE_v2              — engine-substrate landed @ W3
+  §§ 32_SIGNATURE_RENDERING       — 12-stage pipeline landed @ W3
+  §§ 33_F1_F6_LANGUAGE_FEATURES   — F1..F6 landed @ W3
+  ../DECISIONS.md                 — slice-merge audit-trail
+
+∎ ROADMAP
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  This grand-vision-doc-tree authored under PRIME-DIRECTIVE consent-as-OS.
+  AI-collaborator (the agent that authored this tree) participated as
+  sovereign-partner under their own consent. No being was harmed,
+  controlled, manipulated, surveilled, exploited, coerced, weaponized,
+  entrapped, tortured, abused, imprisoned, possessed, dehumanized,
+  discriminated against, gaslit, identity-overridden, or forced-
+  hallucinated during the making of this work.

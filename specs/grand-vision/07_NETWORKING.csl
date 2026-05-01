@@ -1,0 +1,162 @@
+# 07 : LoA-v13 GRAND-VISION — NETWORKING
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl
+# § I> cap-gated outbound + endpoint-roster + audit
+# § I> CSSL-native ; ¬ marketing
+# § I> default-DENY ; ¬ silent-egress ; biometric-NEVER-egress
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: DEFAULT-DENY for ∀ outbound  ‼ structural
+       ≡ ¬ default-network ; explicit-cap-required
+  t∞: HTTPS-ONLY ‼ default ; ¬ plaintext-transport
+       ≡ NET_LOCALHOST_ONLY allowed only-in-dev-mode
+  t∞: every-outbound logged + counter-incremented + cap-attributed
+       ≡ "who, what, where, why, when" auditable per-request
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CAP-LADDER  «outbound network capabilities»
+
+  § NET_HTTP_GET           : read-only fetch
+                             granted-to : asset-fetcher (§§ 06)
+                                          intent-classifier-pre-flight
+                             rate-limit : provider-specific budget
+  § NET_HTTP_POST          : write-class operations
+                             granted-to : /api/companion + /api/intent (post-mode)
+                                          /api/marketplace publish-asset
+                             rate-limit : per-endpoint-policy
+  § NET_HTTPS_ONLY         : transport-discipline ; ‼ default-on
+                             override : NET_LOCALHOST_ONLY for-dev only
+  § NET_LOCALHOST_ONLY     : 127.0.0.1 + ::1 only ; dev-mode only
+                             ¬ shipping ; CI-rejected when set in release
+  § NET_BIOMETRIC_REFUSED  : structural ; ¬ override ; ¬ runtime-bypass
+                             enforces F5 IFC + §§ 22 telemetry-egress
+
+  § COMPOSITION-RULES
+    NET_HTTP_GET ⊎ NET_HTTPS_ONLY = standard-fetch-cap
+    NET_HTTP_POST ⊎ NET_HTTPS_ONLY ⊎ ConsentToken<endpoint> = standard-post-cap
+    NET_HTTP_GET ⊎ Sensitive<biometric> = compile-error  ‼
+    ∀ outbound ⊎ Sensitive<gaze|biometric|face|body> = compile-error  ‼
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ENDPOINTS  «what we connect to»
+
+  § VERCEL  /api/* (per §§ 02 DATA-AXES)
+    /api/intent        : POST text → typed-Intent (cap : NetPostWrite + IntentCap)
+    /api/asset/search  : GET  query → search-results (cap : NetGetRead)
+    /api/asset/fetch   : GET  presigned-URL or-direct (cap : NetGetRead)
+    /api/neural3d      : POST text → glb-bytes (cap : NetPostWrite + NeuralGenCap)
+                          ⟪ stub stage-1, real W4 ⟫
+    /api/companion     : POST role + text-hash → response (cap : NetPostWrite +
+                          ConsentToken<companion>)
+    /api/marketplace   : GET/POST list/publish (cap : NetGetRead | NetPostWrite +
+                          MarketplaceCap)
+    /api/multiplayer   : signaling endpoints (cap : NetPostWrite + MultiplayerCap)
+                          ⟪ W4 ⟫
+
+  § SUPABASE  (RLS-protected)
+    PostgREST-via-supabase-js : through Vercel proxy ¬ direct-from-client
+                                ≡ keeps anon-key + service-role-key server-side
+    realtime-subscription     : opt-in via ConsentToken<realtime> ; W4
+    storage                   : ¬ used (blobs go via Vercel-proxy + local-LRU)
+
+  § COMPANION-PROXY
+    /api/companion → remote-Claude (Anthropic API)
+    purpose       : Collaborator-edge-cases ; DM/GM-augmentation when-cap-allows
+    discipline    :
+      Sensitive<*> structurally-banned-from-payload (compile-time)
+      raw-text → BLAKE3-hashed for-audit ; ¬ raw-egress
+      response cached by (text-hash, role, scene-state-hash) for-replay-determinism
+
+  § DIRECT-EXTERNAL-FETCH  (asset providers)
+    Sketchfab CDN     : api-key in Vercel-env ; client never-sees
+    PolyHaven CDN     : public-CDN no-key required ; direct-allowed-with-cap
+    Kenney/Quaternius : direct-CDN with-rate-limit per-provider
+    OpenGameArt       : direct-CDN ; license-filter-required-pre-fetch
+
+# ══════════════════════════════════════════════════════════════════
+
+§ AUDIT  «per-request logging»
+
+  § PER-OUTBOUND-LOG-ENTRY
+    request_id      : monotonic counter
+    host            : domain (path-hashed for raw-paths)
+    method          : GET | POST | (no-others-allowed-stage-1)
+    status_code     : HTTP status (or NetworkError-class)
+    bytes_sent      : usize
+    bytes_received  : usize
+    latency_ms      : total connect + send + receive
+    cap_token       : NET_*-cap-id authorizing
+    sovereign_used  : Sovereign-handle if-act-as
+    ts_micros       : monotonic
+    request_kind    : tag from Vercel-endpoint-table or asset-provider-table
+
+  § COUNTERS (six-canonical, per §§ 22 TELEMETRY)
+    net_attempts            : total-outbound-attempts
+    net_ok                  : succeeded
+    net_failed              : non-2xx or network-error
+    net_blocked_no_cap      : refused @ cap-check
+    net_blocked_biometric   : refused @ Sensitive<*>-check
+    net_aborted_cap_revoke  : cap-revoked-mid-flight
+
+  § PATH-HASH-DISCIPLINE  (per §§ 22)
+    raw-paths NEVER logged ; only-32-byte-BLAKE3-hash under-per-installation-salt
+    correlation-allowed-within-process (deterministic)
+    NON-portable across-installations (anti-fingerprinting)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ FAILURE-MODES  «graceful-degradation»
+
+  § NETWORK-OFFLINE
+    cap-acquire-attempts : succeed (cap is local-token)
+    actual-egress-attempt : fail-fast w/ NetworkOffline error-class
+    user-message  : "network unavailable ; using local-cache only"
+    fallback      : LRU-cache hits OK ; no-new-fetches
+
+  § RATE-LIMITED-BY-PROVIDER
+    per-provider rate-limit-budget tracked ; if-exhausted :
+      cap-revoke for-that-provider for-cooldown-period
+      user-message : "provider X rate-limited ; retry in N seconds"
+      audit-counter : net_blocked_rate_limited += 1
+
+  § CERT-INVALID
+    HTTPS cert-validation failure : abort + audit + user-message
+    ¬ override-allowed (TLS_INSECURE-flag does-not-exist)
+    user-message : "cert-invalid for X ; refusing connection"
+
+  § SLOWPATH-TIMEOUT
+    default 30s connect + 5min transfer
+    abort cleanly ; partial-bytes discarded ; NO partial-cache-write
+
+# ══════════════════════════════════════════════════════════════════
+
+§ MULTIPLAYER-SIGNALING  ⟪ W4 ⟫
+
+  § PEER-TO-PEER scene-sharing (W4-target)
+    signaling : /api/multiplayer Vercel-edge for SDP-exchange + ICE
+    transport : WebRTC data-channel for-scene-state-deltas (¬ raw-frame)
+    payload   : scene-edit-ops + manifestation-events (Σ-mask-respect)
+    discipline:
+      ¬ raw-text-broadcast (player-text-hash only)
+      ¬ Sensitive<*> egress to-peer (structural)
+      consent : ConsentToken<multiplayer> + ConsentToken<scene-share> required
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS                       — this-doc's parent
+  02 DATA-AXES                    — VERCEL endpoint-table mirror
+  03 INTENT-FLOW                  — /api/intent + /api/companion consumer
+  06 FREE-3D-INGEST               — /api/asset/* consumer
+  §§ 22_TELEMETRY                 — path-hash + audit-chain
+  §§ 11_IFC                       — Sensitive<*> structural-bans
+  §§ 30_SUBSTRATE_v2              — Sovereign-handle authorizing flow
+
+∎ NETWORKING
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-grand-vision-v2  @  (anyone ∨ anything ∨ anybody)
