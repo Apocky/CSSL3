@@ -848,6 +848,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-asset-bundle"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-license-attribution",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-attestation"
 version = "0.1.0"
 dependencies = [
@@ -959,6 +968,14 @@ name = "cssl-host-input-virtual"
 version = "0.1.0"
 dependencies = [
  "cssl-host-replay",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cssl-host-kan-substrate-bridge"
+version = "0.1.0"
+dependencies = [
  "serde",
  "serde_json",
 ]
