@@ -4,7 +4,68 @@
 //! IMPROVEMENTS" the substrate recognizes exactly 8 hotfix classes,
 //! grouped into three policy-tiers.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+// ────────────────────────────────────────────────────────────────
+// § fixed-array serde helpers
+// ────────────────────────────────────────────────────────────────
+//
+// `serde` only auto-derives `Serialize`/`Deserialize` for arrays up
+// to length 32 (and not at all for `[u8; 64]` in some versions).
+// Since pulling in `serde-big-array` would breach the "no new
+// external Cargo deps" hard-cap, we hand-roll byte-slice round-trip
+// for the two fixed sizes used by `Hotfix` :  `[u8; 32]` (pubkey)
+// and `[u8; 64]` (signature).
+//
+// Encoding : lower-case hex string. This is stable, human-readable
+// in the audit JSON, and avoids any structural ambiguity.
+
+mod hex_arr32 {
+    use super::{from_hex_n, to_hex, Deserialize, Deserializer, Serializer};
+    pub(super) fn serialize<S: Serializer>(bytes: &[u8; 32], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&to_hex(bytes))
+    }
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<[u8; 32], D::Error> {
+        let s = String::deserialize(d)?;
+        from_hex_n::<32, D>(&s)
+    }
+}
+
+mod hex_arr64 {
+    use super::{from_hex_n, to_hex, Deserialize, Deserializer, Serializer};
+    pub(super) fn serialize<S: Serializer>(bytes: &[u8; 64], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&to_hex(bytes))
+    }
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<[u8; 64], D::Error> {
+        let s = String::deserialize(d)?;
+        from_hex_n::<64, D>(&s)
+    }
+}
+
+fn to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+fn from_hex_n<'de, const N: usize, D: Deserializer<'de>>(s: &str) -> Result<[u8; N], D::Error> {
+    use serde::de::Error;
+    if s.len() != N * 2 {
+        return Err(D::Error::custom(format!(
+            "expected {} hex chars, got {}",
+            N * 2,
+            s.len()
+        )));
+    }
+    let mut out = [0u8; N];
+    for (i, chunk) in s.as_bytes().chunks(2).enumerate() {
+        let hex = std::str::from_utf8(chunk).map_err(D::Error::custom)?;
+        out[i] = u8::from_str_radix(hex, 16).map_err(D::Error::custom)?;
+    }
+    Ok(out)
+}
 
 /// § Stable string-id for a hotfix payload. Σ-Chain assigns these.
 ///
@@ -152,8 +213,10 @@ pub struct Hotfix {
     /// Claimed BLAKE3-256 of `payload`. Hex-encoded, lowercase.
     pub payload_blake3: String,
     /// Ed25519 signature over the canonical message `envelope_bytes`.
+    #[serde(with = "hex_arr64")]
     pub ed25519_sig: [u8; 64],
     /// Public key claimed to be the issuer (Apocky-master-key).
+    #[serde(with = "hex_arr32")]
     pub issuer_pubkey: [u8; 32],
     /// Σ-Chain timestamp (epoch nanoseconds).
     pub ts: u64,
