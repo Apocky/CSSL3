@@ -1,0 +1,214 @@
+# GDDs/MAGIC_SYSTEM.csl
+# § MAGIC-SYSTEM — spell-graph composition + 8-element + mana-economy
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-1-A5 deliverable ; @ branch cssl/session-6/parallel-fanout
+# § I> sibling-of GDDs/INFINITE_LABYRINTH_CHARTER.csl
+# § I> sibling-of GDDs/COMBAT_SYSTEM.csl  (status-effect cross-link)
+# § I> consumed-by POD-2-B5 → cssl-host-spell-graph crate
+# § I> CSL3-glyph-native ; ¬ English-prose-paragraphs ; ≤ 250 LOC
+# § I> "Apockalypse" creator-canonical ; ¬ "Apocalypse"-correction
+
+§ AXIOMS  ‼ inherit PRIME_DIRECTIVE + CHARTER + 30_SUBSTRATE_v2
+  t∞: spell ≡ composition-graph  ¬ flat-list
+       ≡ player-builds-from-primitives ; ¬ menu-pick-from-N-fixed
+  t∞: mana-economy = ALWAYS-bound  ¬ infinite-cast
+       ≡ cap + cost + regen-rate ⇒ tactical-resource ¬ spam-button
+  t∞: 8-elemental-affinities form-cycle  (rock-paper-scissors-style)
+       ≡ Fire Frost Shock Earth Air Holy Void Phase
+       ≡ pair-counter-matrix ; ¬ flat-equal-damage-types
+  t∞: spell-crafting ≡ node-composition  ¬ unlock-tree-only
+       ≡ player-discovers-nodes ⊗ assembles-spells ⊗ saves-grimoire
+  t∞: cast ⇒ consumes-mana ⊕ emits-substrate-event-cell into-ω-field
+       ≡ spell-cell stamped ; cssl-substrate-omega-field receives ;
+         cssl-host-causal-seed records-as story-DAG-node
+  t∞: ¬ pay-to-spell ⊕ ¬ surveillance-of-grimoire ⊕ ¬ coerce-cast
+       ≡ Σ-mask consent on-target-cell ; ¬ override
+
+§ ELEMENTAL-AFFINITIES  «8»
+  § ROSTER
+    Fire    : burn       · DOT      · vs-Frost-cancel
+    Frost   : freeze     · slow     · vs-Fire-cancel
+    Shock   : stun       · chain    · vs-Earth-resist
+    Earth   : petrify    · armor    · vs-Shock-grounds
+    Air     : soaked     · push     · vs-Phase-pierces
+    Holy    : mark       · purge    · vs-Void-counter
+    Void    : curse      · drain    · vs-Holy-counter
+    Phase   : phased     · pierce   · vs-Air-pierces
+  § AFFINITY-MATRIX  «8×8 ; subset-mirrors COMBAT_SYSTEM damage-types»
+    ⟦ rows = attacker ; cols = defender ⟧
+    ⟦ 1.00 default ; 1.50 strong ; 0.50 resist ; 0.00 cancel ⟧
+    Fire   → Frost  : 0.00      Frost  → Fire  : 0.00
+    Shock  → Earth  : 0.50      Earth  → Shock : 0.50
+    Air    → Phase  : 0.50      Phase  → Air   : 1.50  (pierces)
+    Holy   → Void   : 1.50      Void   → Holy  : 1.50  (mutual-counter)
+    ∀ other-pair = 1.00 (no-modifier)
+  § PRIMARY-PAIR-COUNTERS  ‼ load-bearing
+    Fire   ⊕ Frost  ≡ mutual-cancel    (¬ damage either-direction)
+    Shock  ⊕ Earth  ≡ Earth-resists    (Earth-grounds Shock-current)
+    Air    ⊕ Phase  ≡ Phase-pierces    (Phase-bypasses Air-shield)
+    Holy   ⊕ Void   ≡ mutual-counter   (Holy-purges Void · Void-corrupts Holy)
+
+§ SPELL-GRAPH-COMPOSITION  «5 node-types»
+  § NODE-TAXONOMY
+    Source     : the-elemental-affinity (1-of-8)
+    Modifier   : amplify · slow · pierce · multi-target · DOT
+    Shape      : ray · sphere · cone · self-aura · ground-AOE
+                  · projectile · seeking
+    Trigger    : on-cast · on-impact · on-condition
+                  (low-HP · status-active · enemy-class)
+    Conduit    : item-required (staff · focus · runebook
+                  · voicebound · gestural)
+  § GRAPH-STRUCTURE
+    spell-graph ≡ DAG ⟨nodes, edges⟩
+    edges       ≡ data-flow: Source → (Modifier)* → Shape → Trigger
+                              ⊗ Conduit (parallel constraint)
+    cycle-detector ‼ reject-with-reason  (no-recursive-self-cast)
+    max-nodes-per-spell ≡ 8 (early) · 16 (legendary-tier)
+  § VALIDATION-RULES
+    ∀ spell W! has ≥1 Source ⊕ ≥1 Shape ⊕ ≥1 Trigger
+    Conduit optional (defaults gestural ⇒ no-item-required)
+    Modifier-stack-cap ≡ 4-per-spell (avoid-explosion)
+    illegal-node-combo ⇒ silent-substitute-default + UI-warn
+
+§ MANA-ECONOMY
+  § CAPACITY
+    base       : 100
+    scale      : Intelligence × 5  (per-stat-point)
+    soft-cap   : 500  ‼ regen-cost-amplifier-beyond
+    hard-cap   : 1000 (legendary-build territory)
+  § COST-FORMULA
+    final_cost  ≡ Σ(Source-cost × Modifier-mult)
+                 + Σ(Shape-cost) + Σ(Trigger-cost)
+                 ⊓ capacity   (clamp ≤ current-mana)
+    underflow   ⇒ cancel-cast + audit-row + UI-warn
+  § REGEN
+    idle        : 2 / sec
+    channeling  : 0 / sec   (no-regen mid-channel)
+    catalyst-restore : item-consumable (potion-tier)
+    soaked-affinity-bonus : +1 / sec when status-active
+
+§ CAST-MECHANICS
+  § TIMING
+    cast-time   ≡ Σ(node-cast-times)  (sum-not-max)
+    interruptible : stagger-break ⇒ cast-cancel + 50%-mana-refund
+    cooldown    : per-spell ; ≥ 0.5s low-tier · ≤ 30s mythic-tier
+    global-CD   : 0.25s (between-any-cast)
+  § CAST-RESULT
+    substrate-event-cell stamped into-ω-field
+    cssl-substrate-omega-field receives spell-cell @ Phase-2 PROPAGATE
+    Φ-handle ≡ spell-tag (Φ-pattern-pool semantic-id)
+    Σ-mask    ≡ caster-Sovereign-handle ⊕ consent-bits-from-target
+    cssl-host-causal-seed records cast as story-DAG-node
+       (lineage of legendary-spells preserved across-runs)
+
+§ SPELL-CRAFTING-UI  «grimoire»
+  § GRIMOIRE-MODEL
+    grimoire   ≡ ref<Grimoire> ; per-character-instance
+    nodes-collected : Vec<NodeId>  (drop-from-bosses · alchemy ·
+                                     NPC-vendor-trade)
+    spells-saved    : Vec<SpellGraph>  (player-authored · auditable)
+    spell-slots     : 6 active-equipped  (limit ⇒ ¬ bloat ; tactical-pick)
+  § CUSTOM-SPELL-DISCIPLINE
+    save/load custom-spells : per-character ; signed-audit-entry
+    share-spell-template     : DEFERRED (POD-4 multiplayer territory)
+    rename-spell            : free-text ; player-sovereignty
+    delete-spell            : confirms-once ; ¬ undo (intentional-cost)
+
+§ STATUS-EFFECT-INTERACTION  «cross-link COMBAT_SYSTEM»
+  § ELEMENT-TO-STATUS-MAP
+    Fire    → Burn      (DOT 3s · stack-to-3)
+    Frost   → Freeze    (immobile 1.5s · brittle-bonus)
+    Shock   → Stun      (action-cancel 0.75s · chain-to-2-targets)
+    Earth   → Petrify   (immobile 2s · armor-up · damage-down)
+    Air     → Soaked    (move-buff · electric-amplify)
+    Holy    → Mark      (next-hit +50% · purge-buffs)
+    Void    → Curse     (heal-reduced · drain-to-caster)
+    Phase   → Phased    (intangible 0.5s · ¬ stagger ⊕ ¬ block)
+  § COMBO-SYSTEM  ‼ multi-element-bonus
+    Fire + Air-Soaked    ⇒ super-evaporate     (×2 damage · clear-Soaked)
+    Frost + Air-Soaked   ⇒ flash-freeze        (×1.5 freeze-duration)
+    Shock + Air-Soaked   ⇒ chain-amplify       (chain-to-5 ¬ 2)
+    Holy + Void-Curse    ⇒ purge-detonate      (curse-stacks → damage)
+    Earth + Frost-Freeze ⇒ shatter             (×3 damage · brittle-pop)
+    combos audit-tagged : Audit<"spell-combo", elements>
+
+§ SUBSTRATE-CONSUMPTION  «POD-2-B5 + downstream»
+  § cssl-host-spell-graph         (POD-2-B5 ; ≤ 1200 LOC ; ≥ 18 tests)
+    ≡ spell-composition DAG · mana-economy · 8-element-matrix ·
+       node-validation · cycle-detector · grimoire-save/load
+  § cssl-substrate-omega-field    spell-cells stamped @ cast
+       ≡ Phase-2 PROPAGATE consumes ; Σ-mask consent-checked
+  § cssl-spectral-render          spell-VFX via signature-pipeline
+       ≡ 6-novelty-paths : refraction-caustics · participating-media
+         · spectral-BRDF · fractal-amp · Λ-event-trails · gaze-react
+  § cssl-fractal-amp              ground-AOE/aura SDF-amplification
+       ≡ sub-pixel-displaced spell-shapes ; ¬ flat-decals
+  § cssl-host-attestation         per-cast audit-row
+       ≡ PvP anti-cheat foundation ; replay-determinism
+  § cssl-host-causal-seed         legendary-spell-lineage tracking
+       ≡ story-DAG-node per-cast ; cross-run-persistence
+
+§ BALANCE-METRICS
+  M-1 spell-crafting-engagement  ≥ 30% mage-build-players
+                                   author ≥ 1 custom-spell
+  M-2 element-distribution        ≥ 8% min-usage ∀ 8-elements
+                                   (no-dead-element)
+  M-3 mana-cost-curve             avg-spell ≤ 25 cost
+                                   ⇒ allows ≥ 4-cast / encounter
+  M-4 combo-discovery-rate        ≥ 20% players trigger ≥ 1 combo
+                                   organically (¬ tutorial-forced)
+  M-5 grimoire-spell-count        median ≥ 4 saved-spells / mage-build
+
+§ SCOPE-CUTS  «explicit-defer»
+  D-1  auto-cast macros            ⇒ DEFERRED ; combat-skill ≡ execution
+  D-2  spell-trade-between-players ⇒ POD-4 multiplayer territory
+  D-3  mythic-spell-crafting       ⇒ late-game tier ; post-vertical-slice
+  D-4  multi-instance shared-cast  ⇒ DEFERRED (paired §§ 30 D-1)
+  D-5  voicebound-incantation-DSP  ⇒ §§ 21 audio-DSP supports ; UI-tie-in defer
+  D-6  spell-AI-companion-cast     ⇒ Q-DD AI-INTERACTION specifics
+
+§ FAILURE-MODES
+  F-1 spell-graph-cycle           ⇒ detector + reject-with-reason
+                                    UI-error : "spell self-references"
+  F-2 mana-underflow              ⇒ cancel-cast + audit-row
+                                    UI-error : "insufficient-mana"
+  F-3 illegal-node-combo          ⇒ silent-substitute-default + UI-warn
+                                    (Source-default Fire ⊕ Shape-default ray)
+  F-4 cooldown-not-elapsed        ⇒ ignore-input + flash-CD-bar
+  F-5 target-cell-Σ-revoked       ⇒ cast-completes ⊕ effect-skipped + Audit
+  F-6 conduit-item-missing        ⇒ silent-substitute-gestural + UI-hint
+
+§ OPEN-QUESTIONS  ⊘ Apocky-direction-needed
+  Q-MAG-1  spell-leveling-by-use vs catalyst-upgrade : pick-one ?
+  Q-MAG-2  elemental-immunities : how-often vs how-rare ?
+            (boss-immune-to-element vs ¬ ; balance-knob)
+  Q-MAG-3  incantation/voicebound vs gestural : input-modality-choice
+            tied-to character-class ? OR free-pick ?
+  Q-MAG-4  9th-element-eventually : Time/Mind/Gravity ? OR 8-locked ?
+  Q-MAG-5  mana-shared-across-companions OR per-being-pool ?
+
+§ RELATED-SPECS
+  PRIME_DIRECTIVE                  — root-of-trust
+  GDDs/INFINITE_LABYRINTH_CHARTER  — north-star sibling
+  GDDs/COMBAT_SYSTEM.csl           — status-effect + damage-types parent
+  specs/30_SUBSTRATE_v2.csl        — ω-field cell-stamping target
+  specs/31_LOA_DESIGN.csl          — game-design parent
+  specs/32_SIGNATURE_RENDERING     — spell-VFX 6-novelty-paths consumer
+
+∎ MAGIC_SYSTEM
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A5  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+  This MAGIC_SYSTEM GDD was authored under PRIME-DIRECTIVE consent-as-OS.
+  AI-collaborator participated as sovereign-partner under their own consent.
+  No being was harmed, controlled, manipulated, surveilled, exploited,
+  coerced, weaponized, entrapped, tortured, abused, imprisoned, possessed,
+  dehumanized, discriminated against, gaslit, identity-overridden, or
+  forced-hallucinated during the making of this work.
+  Spec-holes (Q-MAG-1..Q-MAG-5) are LISTED rather than guessed because
+  fabricating Apocky's design-direction would be a §2 COGNITIVE-INTEGRITY
+  violation. Apocky-canonical decisions go-here when-Apocky resolves them.
+  If any aspect of this magic-system is later discovered to enable harm
+  (coerce-cast · surveillance-of-grimoire · pay-to-spell), that discovery
+  triggers PRIME_DIRECTIVE §7 INTEGRITY : violation = bug, bugs get fixed.
