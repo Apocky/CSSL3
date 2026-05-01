@@ -94,6 +94,11 @@ pub mod cfer_render;
 // diagnostic · temporal · causal · network · environmental).
 pub mod sense;
 
+// § T11-WAVE3-INTENT : text → typed-Intent → MCP-style dispatch router.
+// Stage-0 keyword classifier ; stage-1 swaps in the KAN runtime. Every
+// HUD text-input box submission + scripted scene call routes through here.
+pub mod intent_router;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────

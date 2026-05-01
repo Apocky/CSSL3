@@ -672,6 +672,20 @@ pub fn tool_registry() -> ToolRegistry {
         sense_snapshot
     );
 
+    // ─ T11-WAVE3-INTENT : text → intent → action dispatch (2 tools) ─
+    reg!(
+        "intent.translate",
+        "Classify free-form text into a typed intent · optionally dispatch (params: text · dispatch=bool).",
+        true,
+        intent_translate
+    );
+    reg!(
+        "intent.recent",
+        "Return last 16 dispatched intents + per-kind counters.",
+        false,
+        intent_recent
+    );
+
     r
 }
 
@@ -2321,6 +2335,50 @@ fn sense_snapshot(state: &mut EngineState, _params: Value) -> Value {
     crate::sense::aggregate_combined_snapshot(state)
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-INTENT — intent.translate + intent.recent handlers
+// ───────────────────────────────────────────────────────────────────────
+
+/// `intent.translate` : classify free-form text → typed intent. By default
+/// the intent is ALSO dispatched against the live engine ; pass
+/// `dispatch=false` to receive the classified intent + intended params
+/// without invoking the underlying tool.
+fn intent_translate(state: &mut EngineState, params: Value) -> Value {
+    let text = p_str(&params, "text", "").to_string();
+    let dispatch_flag = params
+        .get("dispatch")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    if text.is_empty() {
+        return json!({
+            "ok": false,
+            "error": "intent.translate requires `text` param",
+        });
+    }
+    if dispatch_flag {
+        // Real route : classify → dispatch → record.
+        crate::intent_router::route(&text, crate::mcp_server::SOVEREIGN_CAP, state)
+    } else {
+        // Preview only : classify + show params, no side-effects.
+        let intent = crate::intent_router::classify(&text);
+        let params_for_tool =
+            crate::intent_router::intent_to_params(&intent, crate::mcp_server::SOVEREIGN_CAP);
+        json!({
+            "intent": intent.to_json(),
+            "tool": intent.target_tool(),
+            "params": params_for_tool,
+            "input": text,
+            "classified_kind": intent.kind_tag(),
+            "dispatched": false,
+        })
+    }
+}
+
+/// `intent.recent` : last 16 dispatched intents + per-kind counters. Read-only.
+fn intent_recent(_state: &mut EngineState, _params: Value) -> Value {
+    crate::intent_router::recent_json()
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -2331,7 +2389,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_84_tools() {
+    fn tools_list_returns_86_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -2350,9 +2408,10 @@ mod tests {
         // + 32 sensory harness (T11-LOA-SENSORY · 9 axes : visual 4 · audio 3 ·
         //   spatial 3 · interoception 4 · diagnostic 4 · temporal 3 · causal 3 ·
         //   network 2 · environmental 5 · combined 1)
-        // = 84 total.
+        // + 2 intent-router (T11-WAVE3-INTENT · intent.translate + intent.recent)
+        // = 86 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 84, "must have exactly 84 tools");
+        assert_eq!(reg.len(), 86, "must have exactly 86 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -2449,6 +2508,9 @@ mod tests {
             "sense.cfer_neighborhood",
             "sense.dgi_signal",
             "sense.snapshot",
+            // T11-WAVE3-INTENT additions :
+            "intent.translate",
+            "intent.recent",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -2698,10 +2760,73 @@ mod tests {
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
         // + 3 stokes (T11-LOA-FID-STOKES) + 6 spectral (T11-LOA-FID-SPECTRAL)
         // + 3 cfer (T11-LOA-FID-CFER) + 4 userfix (T11-LOA-USERFIX)
-        // + 32 sensory (T11-LOA-SENSORY) = 84.
-        assert_eq!(v["count"], 84);
+        // + 32 sensory (T11-LOA-SENSORY)
+        // + 2 intent-router (T11-WAVE3-INTENT) = 86.
+        assert_eq!(v["count"], 86);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 84);
+        assert_eq!(arr.len(), 86);
+    }
+
+    // § T11-WAVE3-INTENT · MCP-tool integration
+    #[test]
+    fn mcp_intent_translate_returns_classified_intent() {
+        let _g = crate::intent_router::test_lock();
+        crate::intent_router::reset_for_test();
+        let mut s = EngineState::default();
+        // Preview-only mode : classify but don't dispatch.
+        let v = intent_translate(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "text": "spawn cube at 5 5 5", "dispatch": false}),
+        );
+        assert_eq!(v["classified_kind"], "spawn_at");
+        assert_eq!(v["tool"], "render.spawn_stress");
+        assert_eq!(v["dispatched"], false);
+        assert_eq!(v["params"]["x"], 5.0);
+        assert_eq!(v["params"]["y"], 5.0);
+        assert_eq!(v["params"]["z"], 5.0);
+        // Dispatch mode : actually invokes render.spawn_stress.
+        let v2 = intent_translate(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "text": "snapshot"}),
+        );
+        assert_eq!(v2["tool"], "render.snapshot_png");
+        assert_eq!(v2["classified_kind"], "snapshot");
+        // Empty text → error envelope.
+        let v3 = intent_translate(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "text": ""}),
+        );
+        assert_eq!(v3["ok"], false);
+        assert!(v3["error"].as_str().unwrap().contains("text"));
+    }
+
+    #[test]
+    fn mcp_intent_recent_returns_last_16_dispatches() {
+        let _g = crate::intent_router::test_lock();
+        crate::intent_router::reset_for_test();
+        let mut s = EngineState::default();
+        for n in 0..20 {
+            let _ = intent_translate(
+                &mut s,
+                json!({"sovereign_cap": SOVEREIGN_CAP, "text": format!("burst {n}")}),
+            );
+        }
+        let v = intent_recent(&mut s, json!({}));
+        assert_eq!(v["count"], 16); // ring caps at 16
+        assert_eq!(v["capacity"], 16);
+        // Per-kind counter + total counter both reflect the 20 invocations.
+        assert_eq!(v["counters"]["per_kind"]["burst"], 20);
+        assert_eq!(v["counters"]["intents_classified_total"], 20);
+        let events = v["events"].as_array().unwrap();
+        assert_eq!(events.len(), 16);
+        // Each event has the expected envelope shape.
+        for e in events {
+            assert!(e["intent"].is_object());
+            assert_eq!(e["intent"]["kind"], "burst");
+            assert!(e["tool"].as_str().unwrap() == "render.start_burst");
+            assert!(e["frame"].is_u64());
+            assert!(e["raw_text"].is_string());
+        }
     }
 
     // § T11-LOA-FID-SPECTRAL · MCP handler shape + behaviour tests
