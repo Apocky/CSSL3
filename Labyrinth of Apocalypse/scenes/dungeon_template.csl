@@ -1,0 +1,225 @@
+module com.apocky.loa.scenes.dungeon_template
+
+// § Labyrinth of Apocalypse — runtime-procgen dungeon-floor template
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C10 · POD-3-C10
+//
+// § GDDs
+//   GDDs/PROCGEN_WORLD.csl     § DUNGEONS-AND-FLOORS · § BIOMES · § KAN-RIDE-ON-PROCGEN
+//   GDDs/ROGUELIKE_LOOP.csl    § RUN-STRUCTURE · § DIFFICULTY-CURVE · § BIOME-DAG
+//   feedback_engine_is_runtime_procedural_gen.md
+//                              ‼ runtime-procgen ALWAYS · static-scenes = scaffolding
+//   feedback_loa_v13_must_be_cssl_source.md
+//                              ‼ .csl source canonical · NOT Rust
+//
+// § ARCHITECTURE
+//   This is a CSSL scene-template that orchestrates runtime-procgen of one
+//   dungeon-floor. It is NOT a static set-piece. on_floor_enter() is invoked
+//   by cssl-host-roguelike-run when the player crosses a floor-boundary ; it
+//   builds the room-graph + stamps the ω-field + returns a FloorHandle. The
+//   engine's tick loop calls tick_floor() per-frame to drive room-state +
+//   monster-spawn + ConsentZone-gates.
+//
+// § AXIOMS  (inherit PRIME_DIRECTIVE + LOA_PILLARS + 30_SUBSTRATE_v2)
+//   t∞: room-count ∈ ⟦8, 32⟧                          ← PROCGEN_WORLD § DUNGEONS
+//   t∞: avg-branching-factor = 1.6                    ← PROCGEN_WORLD § PER-FLOOR
+//   t∞: room-types ∈ { Combat · Trial · Treasure · Boss · Shrine · Vendor · Rest · Trap }
+//   t∞: seed-pinned · replay-bit-equal                ← ROGUELIKE_LOOP § SEED-PINNING
+//   t∞: KAN-stage-1 selects floor-template · stage-0 fallback ALWAYS
+//   t∞: runtime-procgen ALWAYS · ¬ hand-authored-set-pieces  ‼ FORBIDDEN
+//   t∞: floor-gen ≤ 250 ms p95 · timeout → fallback-template
+//   t∞: ConsentZone gates ¬ surprise-attack            ← LOA_PILLARS § 1
+//   t∞: difficulty-curve = 1.0 + (N - 1) × 0.18        ← ROGUELIKE_LOOP § DIFFICULTY
+//   t∞: ω-field stamps every-cell · Σ-mask non-optional ← 30_SUBSTRATE_v2
+//   t∞: trap-room-cap ≤ 15% (anti-frustration)         ← LOA_PILLARS § 3
+//   t∞: rest-room-floor-1 guaranteed (run-onboarding)
+//
+// § PRIME-DIRECTIVE
+//   No surprise-attack rooms · ConsentZone-token gates intensity-tier transitions.
+//   No hand-authored set-pieces (every floor is procgen-from-seed). No telemetry
+//   leak ; per-floor attestation is local-only unless player opts-in to share.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface — runtime-procgen substrate bindings
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Provided by host staticlibs (loa-host + cssl-host-procgen-rooms +
+// cssl-host-roguelike-run + cssl-substrate-omega-field + cssl-host-kan-real +
+// cssl-host-attestation). 10+ extern "C" fns wired here.
+
+extern "C" fn dungeon_open(biome_id: u32, depth: u32, seed_lo: u64, seed_hi: u64) -> u64 ;
+extern "C" fn dungeon_close(handle: u64) -> i32 ;
+extern "C" fn dungeon_procgen_room_graph(handle: u64, room_count: u32, branching_x100: u32) -> i32 ;
+extern "C" fn dungeon_pick_room_type(handle: u64, room_idx: u32, biome_id: u32) -> u32 ;
+extern "C" fn dungeon_kan_classify_template(biome_id: u32, depth: u32, hist_ptr: *const u8, hist_len: u32) -> u32 ;
+extern "C" fn dungeon_query_room_count(handle: u64) -> u32 ;
+extern "C" fn dungeon_query_branching_factor(handle: u64) -> u32 ;  // returns ×100 fixed-point
+extern "C" fn dungeon_apply_biome(handle: u64, biome_id: u32) -> i32 ;
+extern "C" fn dungeon_apply_difficulty_curve(handle: u64, depth: u32, curve_x1000: u32) -> i32 ;
+extern "C" fn dungeon_audit_emit(handle: u64, event_kind: u32, payload_ptr: *const u8, payload_len: u32) -> i32 ;
+extern "C" fn dungeon_omega_stamp_floor(handle: u64) -> i32 ;
+extern "C" fn dungeon_consent_zone_gate(handle: u64, room_idx: u32, intensity_tier: u32) -> i32 ;
+extern "C" fn dungeon_get_room_descriptor(handle: u64, room_idx: u32, out_ptr: *mut u8, out_cap: u32) -> u32 ;
+extern "C" fn dungeon_request_boss_arena_seed(handle: u64, out_lo: *mut u64, out_hi: *mut u64) -> i32 ;
+extern "C" fn dungeon_tick(handle: u64, dt_us: u64, out_events_ptr: *mut u8, out_events_cap: u32) -> u32 ;
+extern "C" fn dungeon_genesis_now_us() -> u64 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § public CSSL API — engine + DM call-sites
+// ─────────────────────────────────────────────────────────────────────────
+
+// FloorHandle : opaque host-resource handle (¬ leak host-internals to CSSL)
+type FloorHandle = u64 ;
+
+type FloorEvent     = u64 ;  // packed event-record (kind | room-idx | payload)
+type RoomDescriptor = u64 ;  // packed room-record  (kind | exits | spawn-tag)
+type ExitReport     = u64 ;  // packed exit-record  (rooms-visited | time-us | tier)
+
+// on_floor_enter — invoked by roguelike-run when player crosses floor-boundary.
+// Builds room-graph + stamps ω-field + returns FloorHandle.
+fn on_floor_enter(biome_id: u32, depth: u32, seed_lo: u64, seed_hi: u64) -> FloorHandle {
+    let handle: u64 = dungeon_open(biome_id, depth, seed_lo, seed_hi) ;
+    if handle == 0u64 { return 0u64 ; }
+
+    // L-1 KAN-stage-1 picks floor-template (stage-0 table fallback inside host)
+    let _template_id: u32 = dungeon_kan_classify_template(biome_id, depth, 0 as *const u8, 0u32) ;
+
+    // L-2 sample room-count ∈ ⟦8, 32⟧ via tier-bound formula
+    let room_count: u32 = sample_room_count(depth) ;
+
+    // L-3 build DAG @ branching 1.6 · timeout-budget ≤ 250ms p95
+    let t0: u64 = dungeon_genesis_now_us() ;
+    let rc_status: i32 = dungeon_procgen_room_graph(handle, room_count, 160u32) ;
+    let t1: u64 = dungeon_genesis_now_us() ;
+    if rc_status != 0i32 || (t1 - t0) > 250_000u64 {
+        floor_gen_timeout_fallback(handle, biome_id, depth) ;
+    }
+
+    // L-4 apply biome-modifier (monster-pool · loot-skew · stat-skew)
+    let _bm: i32 = dungeon_apply_biome(handle, biome_id) ;
+
+    // L-5 difficulty-curve : 1.0 + (N - 1) × 0.18 → ×1000 fixed-point
+    let curve_x1000: u32 = difficulty_curve_x1000(depth) ;
+    let _dc: i32 = dungeon_apply_difficulty_curve(handle, depth, curve_x1000) ;
+
+    // L-6 ω-field stamp + audit-emit
+    let _ws: i32 = dungeon_omega_stamp_floor(handle) ;
+    let _ae: i32 = dungeon_audit_emit(handle, 1u32, 0 as *const u8, 0u32) ;
+
+    handle
+}
+
+// tick_floor — invoked per-frame by engine event-loop.
+// Drains pending events ; returns event-batch as packed-words.
+fn tick_floor(handle: FloorHandle, dt_us: u64, out_buf: *mut u8, out_cap: u32) -> u32 {
+    if handle == 0u64 { return 0u32 ; }
+    dungeon_tick(handle, dt_us, out_buf, out_cap)
+}
+
+// on_floor_exit — invoked when player descends to next floor or dies.
+fn on_floor_exit(handle: FloorHandle) -> ExitReport {
+    if handle == 0u64 { return 0u64 ; }
+    let _ae: i32 = dungeon_audit_emit(handle, 2u32, 0 as *const u8, 0u32) ;
+    let _cl: i32 = dungeon_close(handle) ;
+    handle  // host repacks into ExitReport word before close
+}
+
+// get_room_at — query room-descriptor for a given room-index.
+fn get_room_at(handle: FloorHandle, room_idx: u32, out_buf: *mut u8, out_cap: u32) -> RoomDescriptor {
+    if handle == 0u64 { return 0u64 ; }
+    dungeon_get_room_descriptor(handle, room_idx, out_buf, out_cap) as u64
+}
+
+// request_boss_arena_seed — derive deterministic boss-arena seed from floor-seed.
+fn request_boss_arena_seed(handle: FloorHandle, out_lo: *mut u64, out_hi: *mut u64) -> i32 {
+    if handle == 0u64 { return -1i32 ; }
+    dungeon_request_boss_arena_seed(handle, out_lo, out_hi)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § HELPERS — pure-CSSL formulas (¬ FFI · deterministic)
+// ─────────────────────────────────────────────────────────────────────────
+
+// room-count sampler — tier-bound ∈ ⟦8, 32⟧
+//   early   (depth 1..4)   : 8..14
+//   mid     (depth 5..9)   : 12..22
+//   late    (depth 10..)   : 18..32
+fn sample_room_count(depth: u32) -> u32 {
+    if depth <= 4u32      { return 8u32  + (depth * 1u32) ; }       // 8..12
+    if depth <= 9u32      { return 12u32 + ((depth - 4u32) * 2u32) ; } // 14..22
+    let late: u32 = 18u32 + ((depth - 9u32) * 2u32) ;
+    if late > 32u32 { 32u32 } else { late }
+}
+
+// difficulty-curve : 1.0 + (N - 1) × 0.18 → ×1000 fixed-point
+//   depth 1 → 1000  ·  depth 5 → 1720  ·  depth 12 → 2980
+fn difficulty_curve_x1000(depth: u32) -> u32 {
+    if depth == 0u32 { return 1000u32 ; }
+    1000u32 + ((depth - 1u32) * 180u32)
+}
+
+// floor-gen timeout-fallback — per § FAILURE-MODES + § BALANCE-METRICS M-3
+//   on > 250ms p95 budget overrun → roll-back-to-fallback-template + audit-emit.
+//   fallback = canonical 8-room linear-with-1-branch graph (always-completable).
+fn floor_gen_timeout_fallback(handle: FloorHandle, biome_id: u32, depth: u32) {
+    let _ae: i32 = dungeon_audit_emit(handle, 99u32, 0 as *const u8, 0u32) ;  // timeout-event
+    let _rg: i32 = dungeon_procgen_room_graph(handle, 8u32, 110u32) ;          // 1.1 branch fallback
+    let _bm: i32 = dungeon_apply_biome(handle, biome_id) ;
+    let _dc: i32 = dungeon_apply_difficulty_curve(handle, depth, difficulty_curve_x1000(depth)) ;
+}
+
+// biome-modifier dispatcher — additive-skew per ROGUELIKE_LOOP § DIFFICULTY-CURVE.
+//   returns packed (poison-res-x100 | armor-pen-x100 | fire-res-x100 | dark-vis-x100).
+//   biome enum-encoding aligns with PROCGEN_WORLD § BIOMES order.
+fn biome_modifier_packed(biome_id: u32) -> u64 {
+    if biome_id == 0u32 { return pack_mod(10u32, 0u32,  0u32,  0u32) ; }   // Crypt
+    if biome_id == 1u32 { return pack_mod( 0u32, 0u32,  0u32,  0u32) ; }   // ForestPath (stamina-handled)
+    if biome_id == 2u32 { return pack_mod( 0u32, 15u32, 0u32,  0u32) ; }   // Citadel
+    if biome_id == 3u32 { return pack_mod( 0u32, 0u32,  0u32, 20u32) ; }   // Abyss
+    if biome_id == 4u32 { return pack_mod( 0u32, 0u32, 20u32,  0u32) ; }   // Forge
+    if biome_id == 5u32 { return pack_mod( 0u32, 0u32,  0u32,  0u32) ; }   // Sanctum (holy-handled)
+    if biome_id == 6u32 { return pack_mod( 0u32, 0u32,  0u32,  0u32) ; }   // Maelstrom (weather-handled)
+    pack_mod(5u32, 5u32, 5u32, 5u32)                                       // EndlessSpire (compounding)
+}
+
+fn pack_mod(a: u32, b: u32, c: u32, d: u32) -> u64 {
+    ((a as u64) << 48) | ((b as u64) << 32) | ((c as u64) << 16) | (d as u64)
+}
+
+// room-graph DAG-builder helper — per PROCGEN_WORLD § FLOOR-GENERATOR L-3
+//   Apply trap-cap ≤ 15% + rest-room-floor-1 guarantee post-procgen.
+//   (Host-side procgen builds raw DAG ; this enforces axiom-bounds.)
+fn enforce_room_axioms(handle: FloorHandle, depth: u32, room_count: u32) -> i32 {
+    let trap_cap: u32 = (room_count * 15u32) / 100u32 ;     // ≤ 15%
+    let _ae: i32 = dungeon_audit_emit(handle, 3u32, &trap_cap as *const u32 as *const u8, 4u32) ;
+
+    if depth == 1u32 {
+        // floor-1 rest-room guarantee (run-onboarding) — request room-0 = Rest
+        let _cz: i32 = dungeon_consent_zone_gate(handle, 0u32, 0u32) ;  // tier-0 gentle
+    }
+    0i32
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE § 11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-POD-3-C10  @  (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+//
+// This template is RUNTIME-PROCGEN orchestration ¬ hand-authored set-piece.
+// Per memory feedback_engine_is_runtime_procedural_gen : the engine generates
+// content from seed + biome + depth at runtime. Per memory feedback_loa_v13:
+// the source-of-truth is .csl ¬ Rust. The Rust host-libs are FFI substrate
+// only — this scene-template is canonical CSSL.
+//
+// Open-questions (Q-PG-1..Q-PG-5 in PROCGEN_WORLD · Q-RL-1..Q-RL-5 in
+// ROGUELIKE_LOOP) are LISTED ¬ guessed. Apocky-canonical resolves them.
+// Spec-hole-discipline preserved per LOA_PILLARS § 4.

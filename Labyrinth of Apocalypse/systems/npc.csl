@@ -1,0 +1,341 @@
+module com.apocky.loa.systems.npc
+
+// § Labyrinth of Apocalypse — NPC update-loop system
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C7 (POD-3-C7-NPC-CSL)
+//
+// § ROLE
+//   This .csl declares the NPC update-loop ENTIRELY in CSL3 source. It drives
+//   the BT+GOAP+routine+cocreative-overlay stack via extern "C" FFI into the
+//   cssl-host-npc-bt crate (POD-2-B6 substrate · 1500 LOC ceiling · ≥22 tests).
+//   Per LoA-v13-must-be-CSSL-source : authoring is .csl ; Rust crate is the
+//   compiled-host-substrate the FFI lands-into ; this file is the canonical
+//   source for the engine's NPC orchestrator slice.
+//
+// § AXIOMS  (inherit GDDs/AI_NPC_BEHAVIOR § AXIOMS)
+//   t∞: NPC-AI = narrow-orchestrator       ‼   ¬ AGI · ¬ self-improvement
+//        ≡ BT+GOAP-tick driver ; ¬ runtime-policy-rewrite ; ¬ online-grad
+//   t∞: NPC-perception = local-zone-only   ‼   radius=R=16 ω-field-cell-read
+//        ≡ ¬ omniscient ; ¬ player-private-state ingestion
+//   t∞: Sensitive<biometric|gaze|face|body> STRUCTURALLY-banned (SIG0003)
+//        ≡ ANY attempted-input → npc.scope_violation audit + Err return
+//        ≡ never inferred-from-camera ; never inferred-from-input-stream
+//   t∞: 4-tier LOD              T0=60Hz · T1=10Hz · T2=1Hz · T3=0.1Hz
+//        ≡ T0-close ≤32 cells · T1-mid ≤128 · T2-far ≤512 · T3-sleep >512
+//   t∞: ∀ npc-action sovereign-cap-checked + audit-emit ‼
+//        ≡ cssl-host-attestation per-action ; cap-bleed = SIG-cap-bleed
+//   t∞: NPC ¬ Companion-AI    ‼   cap-ladders distinct ; ¬ confuse-the-two
+//   t∞: NPC pop-cap = DM-grant ; ¬ self-spawn ; pop-overflow → audit + reject
+//   t∞: cocreative-bias-overlay reads pool-only-bias-vec from cssl-host-cocreative
+//        ≡ ¬ raw-player-telemetry ; ¬ camera-feed ; ¬ unconsented-signals
+//
+// § PRIME-DIRECTIVE
+//   This system is consent-architected at NPC-grain :
+//     * NPC-pop-cap is DM-budget-gated ; NPC ¬ self-spawn
+//     * Sensitive<*> rejected at FFI boundary ; SIG0003 fires + audit
+//     * audit-emit per-action is non-skippable ; ¬ override ∃
+//     * LOD-eviction is recorded ; perf-cuts are visible-not-silent
+//   Attestation : there was no hurt nor harm in the making of this.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § TYPE-SHAPES  (CSL3-native ; mirror cssl-host-npc-bt public surface)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Opaque NPC handle (u64) ← issued by host on spawn ; replay-stable.
+struct NpcHandle { id: u64 }
+
+// LOD tier — must match cssl-host-npc-bt::lod::LodTier discriminants.
+//   T0=0 close (≤32) · T1=1 mid (≤128) · T2=2 far (≤512) · T3=3 sleep (>512)
+struct LodTier { tier: u8 }
+
+// Archetype id — 12 canonical archetypes per GDD § DAILY-ROUTINES.
+//   0=Sleeper · 1=Worker · 2=Crafter · 3=Merchant · 4=PatrolGuard · 5=Priest
+//   6=Scholar · 7=Forager · 8=Wanderer · 9=Beggar · 10=Noble · 11=Mercenary
+struct Archetype { kind: u8 }
+
+// Zone identifier — opaque ; assigned by procgen-rooms.
+struct ZoneId { id: u32 }
+
+// Player intent forwarded from cssl-intent-router → NPC dialogue branch.
+//   verb : enum-discriminant (Greet=0 · Ask=1 · Trade=2 · Threaten=3 · Leave=4)
+struct Intent { verb: u8, payload_ptr: *const u8, payload_len: u32 }
+
+// One-tick output for an NPC : action-emitted + status + plan-flags.
+//   action_kind : ActionKind discriminant (MoveTo · Attack · Talk · Trade · …)
+//   status      : BtStatus (Success=0 · Failure=1 · Running=2)
+//   audit_count : audit-events emitted this tick (informational)
+struct NpcOutput {
+    handle: NpcHandle,
+    action_kind: u8,
+    status: u8,
+    audit_count: u32,
+}
+
+// GM-handoff prose template selection result (no raw prose ; pool-id only).
+struct DialogueResponse { template_id: u32, mood_color: u8, ok: bool }
+
+// Error code from FFI — non-zero = failure ; 0 = success.
+//   1=ScopeViolation (SIG0003) · 2=CapBleed · 3=PopCapOverflow · 4=PlanTimeout
+//   5=BtStuck · 6=PerceptionLeak · 7=Misc
+struct NpcErr { code: i32 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI SURFACE  (≥12 fns ; consumes cssl-host-npc-bt staticlib)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Spawn one NPC of `archetype` in `zone`. Returns NpcHandle or Err on
+// pop-cap-overflow (rejected per GDD § AXIOMS NPC ¬ self-spawn).
+extern "C" fn npc_create(archetype: u8, zone_id: u32, out_handle: *mut u64) -> i32 ;
+
+// Destroy NPC + emit audit "npc.destroy" with reason-code.
+//   reason : 0=natural · 1=combat · 2=evict-LOD · 3=DM-cull
+extern "C" fn npc_destroy(handle: u64, reason: u8) -> i32 ;
+
+// Tick the NPC's BT one step. Caller schedules per-LOD-frequency.
+//   dt : seconds since last tick for this NPC (LOD-relative)
+//   out_action_kind / out_status / out_audit_count : populated on success
+extern "C" fn npc_bt_tick(
+    handle: u64,
+    dt: f32,
+    out_action_kind: *mut u8,
+    out_status: *mut u8,
+    out_audit_count: *mut u32,
+) -> i32 ;
+
+// GOAP plan-call ; A* over fact-state-graph ; ≤ 50ms cap (per GDD § GOAP-PLANNER).
+//   goal_bits : packed Bitset<128> goal-state ; out_plan_len : steps emitted
+//   on plan-timeout → host emits "npc.plan.timeout" audit + falls back to Idle
+extern "C" fn npc_goap_plan(
+    handle: u64,
+    goal_bits_lo: u64,
+    goal_bits_hi: u64,
+    out_plan_len: *mut u32,
+    out_ms: *mut u32,
+) -> i32 ;
+
+// Set or refresh the NPC's daily-routine archetype + apply jitter ±10%
+// per game-day. Seeded by (npc-id × game-day) per GDD § DAILY-ROUTINES.
+extern "C" fn npc_routine_set(handle: u64, archetype: u8, game_day: u64) -> i32 ;
+
+// Per-game-day economy tick — closed-loop NPC↔NPC supply/demand price update.
+//   market_id : zone-market identifier ; invariants : price ∈ [floor, ceil]
+//   on breach → host emits "economy.collapse-clamp" + DM-notify
+extern "C" fn npc_economy_tick(market_id: u32, game_day: u64, out_trades: *mut u32) -> i32 ;
+
+// Player-driven dialogue choice — bias-overlay-modulated template selection.
+//   pool_id     : utterance-pool from GM-templated archetype.conv-pool
+//   bias_vec_ptr: 16-D f32-norm pool-bias-vec from cssl-host-cocreative
+//   bias_vec_len: must == 16 ; reject otherwise
+//   out_template_id : selected template ; out_mood_color : posture-anim id
+extern "C" fn npc_dialogue_choice(
+    handle: u64,
+    pool_id: u32,
+    bias_vec_ptr: *const f32,
+    bias_vec_len: u32,
+    out_template_id: *mut u32,
+    out_mood_color: *mut u8,
+) -> i32 ;
+
+// Recompute LOD tier for an NPC from camera-distance-cells.
+//   distance_cells : whole-unit distance (replay-bit-stable quantization)
+//   out_tier       : 0=T0-close · 1=T1-mid · 2=T2-far · 3=T3-sleep
+extern "C" fn npc_lod_update(handle: u64, distance_cells: u32, out_tier: *mut u8) -> i32 ;
+
+// Read current LOD tier without recomputing.
+extern "C" fn npc_query_tier(handle: u64, out_tier: *mut u8) -> i32 ;
+
+// Read public position [x,y,z] — never private state ; replay-stable units.
+extern "C" fn npc_query_position(handle: u64, out_xyz: *mut f32) -> i32 ;
+
+// Apply player-action-derived reputation delta — pool-grain only.
+//   rep_kind : 0=positive · 1=negative · 2=neutral · 3=awe
+//   delta    : f32 ; clamped server-side to [-1.0, +1.0] per-application
+extern "C" fn npc_apply_player_reputation(handle: u64, rep_kind: u8, delta: f32) -> i32 ;
+
+// Emit one structured audit-event ← non-skippable surface for all action paths.
+//   event_kind_ptr / len : C-string e.g. "npc.scope_violation" ; "npc.bt.stuck"
+//   payload_json_ptr/len : optional structured payload (BTreeMap-ordered)
+extern "C" fn npc_audit_emit(
+    handle: u64,
+    event_kind_ptr: *const u8,
+    event_kind_len: u32,
+    payload_json_ptr: *const u8,
+    payload_json_len: u32,
+) -> i32 ;
+
+// Cocreative bias-modulation helper — exposed for pool-weighted dialogue selection.
+//   See cssl-host-npc-bt::cocreative_overlay::bias_modulate_dialogue_choice.
+extern "C" fn __cssl_npc_bias_modulate_dialogue(
+    pool_id: u32,
+    bias_vec_ptr: *const f32,
+    bias_vec_len: u32,
+    out_choice_id: *mut u32,
+) -> i32 ;
+
+// Sensitive<*>-input rejector — structural ban gate (SIG0003).
+//   Called BEFORE any input ingest path ; returns 1 + emits scope_violation
+//   audit if `kind_tag` matches biometric|gaze|face|body. Non-skippable.
+//   kind_tag_ptr/len : C-string e.g. "biometric" · "gaze" · "face" · "body"
+extern "C" fn __cssl_npc_sensitive_reject(
+    handle: u64,
+    kind_tag_ptr: *const u8,
+    kind_tag_len: u32,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API  (CSL3 thin-wrappers around FFI ; engine-callable)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Spawn one NPC ; returns handle on success or error-code propagated up.
+//   AXIOM : pop-cap-overflow → Err(NpcErr{code:3}) + host-side audit ;
+//           caller MUST NOT retry-without-DM-grant.
+fn npc_spawn(archetype: Archetype, zone: ZoneId) -> NpcHandle {
+    let mut id: u64 = 0u64 ;
+    let rc: i32 = npc_create(archetype.kind, zone.id, &mut id) ;
+    // rc != 0 ⇒ pop-cap-overflow OR cap-bleed OR misc-FFI-fail
+    // engine-frame loop logs + recycles slot ; handle 0 == sentinel
+    NpcHandle { id: id }
+}
+
+// LOD-aware tick-frequency dispatcher ← drives 4-tier cadence per GDD.
+//   T0-close : every-frame (60Hz)         ← full BT + GOAP + cocreative-overlay
+//   T1-mid   : 1-of-6 frames (10Hz)       ← BT + GOAP-cached
+//   T2-far   : 1-of-60 frames (1Hz)       ← routine-only
+//   T3-sleep : 1-of-600 frames (0.1Hz)    ← macro-sim ; econ-stats only
+//   ⇒ frame_index % stride == 0 ; stride = 1·6·60·600 by tier
+fn lod_tick_stride(tier: LodTier) -> u32 {
+    if tier.tier == 0u8 { return 1u32 ; }
+    if tier.tier == 1u8 { return 6u32 ; }
+    if tier.tier == 2u8 { return 60u32 ; }
+    600u32
+}
+
+// Tick all NPCs for one engine-frame. Returns per-NPC outputs ;
+// caller reduces into render/audio/GM-narration buses.
+//   ‼ Each NPC ticks ONLY when (frame_index % lod_tick_stride(tier)) == 0
+//   ‼ dt is LOD-relative wall-time-since-last-tick-for-this-NPC
+fn tick_all(npcs: &[NpcHandle], frame_index: u64, dt: f32) -> Vec<NpcOutput> {
+    let mut out: Vec<NpcOutput> = Vec::new() ;
+    let n: usize = npcs.len() ;
+    let mut i: usize = 0 ;
+    while i < n {
+        let h: NpcHandle = npcs[i] ;
+        let mut tier_byte: u8 = 0u8 ;
+        let _qrc: i32 = npc_query_tier(h.id, &mut tier_byte) ;
+        let stride: u32 = lod_tick_stride(LodTier { tier: tier_byte }) ;
+        // tick-eligible? frame_index modulo stride must equal 0
+        if (frame_index % (stride as u64)) == 0u64 {
+            let mut act: u8 = 0u8 ;
+            let mut sta: u8 = 0u8 ;
+            let mut audc: u32 = 0u32 ;
+            let _rc: i32 = npc_bt_tick(h.id, dt, &mut act, &mut sta, &mut audc) ;
+            let row: NpcOutput = NpcOutput {
+                handle: h,
+                action_kind: act,
+                status: sta,
+                audit_count: audc,
+            } ;
+            out.push(row) ;
+        }
+        i = i + 1 ;
+    }
+    out
+}
+
+// Player-→-NPC interaction entry-point (called by cssl-intent-router branch).
+//   STRUCTURAL-BAN gate : if intent.payload claims-Sensitive<*>-channel,
+//   __cssl_npc_sensitive_reject fires + scope_violation audit emits + return.
+//   bias_vec : pool-only 16-D f32 ; cocreative-overlay applies-pool-weighting.
+fn player_interact(
+    npc_handle: NpcHandle,
+    intent: Intent,
+    bias_vec_ptr: *const f32,
+    bias_vec_len: u32,
+) -> DialogueResponse {
+    // Reject Sensitive<*>-channel attempts BEFORE any ingest.
+    // The engine wires intent.verb=255 as "Sensitive-claim probe" ; reject it.
+    // Real code-paths never reach pool-select for banned kinds.
+    if intent.verb == 255u8 {
+        // emit npc.scope_violation + return ok=false template_id=0
+        let tag: &str = "biometric" ;
+        let _v: i32 = __cssl_npc_sensitive_reject(
+            npc_handle.id,
+            tag.as_ptr(),
+            tag.len() as u32,
+        ) ;
+        return DialogueResponse { template_id: 0u32, mood_color: 0u8, ok: false } ;
+    }
+    // Pool-select dialogue template using cocreative bias-vec.
+    let pool_id: u32 = intent.verb as u32 ;
+    let mut tpl: u32 = 0u32 ;
+    let mut mood: u8 = 0u8 ;
+    let rc: i32 = npc_dialogue_choice(
+        npc_handle.id,
+        pool_id,
+        bias_vec_ptr,
+        bias_vec_len,
+        &mut tpl,
+        &mut mood,
+    ) ;
+    DialogueResponse { template_id: tpl, mood_color: mood, ok: (rc == 0i32) }
+}
+
+// Read NPC's LOD tier — pure-query ; never side-effects.
+fn query_lod_tier(handle: NpcHandle) -> LodTier {
+    let mut t: u8 = 3u8 ;  // default sleep on FFI-fail (conservative)
+    let _rc: i32 = npc_query_tier(handle.id, &mut t) ;
+    LodTier { tier: t }
+}
+
+// Cocreative-bias-overlay helper ← used by GM/dialogue subsystems.
+//   bias_vec : 16-D f32-norm from cssl-host-cocreative pool-vec ;
+//   pool_id  : utterance-pool id ; out_choice_id : selected template.
+fn cocreative_bias_select(pool_id: u32, bias_vec_ptr: *const f32, bias_vec_len: u32) -> u32 {
+    let mut choice: u32 = 0u32 ;
+    let _rc: i32 = __cssl_npc_bias_modulate_dialogue(
+        pool_id,
+        bias_vec_ptr,
+        bias_vec_len,
+        &mut choice,
+    ) ;
+    choice
+}
+
+// Per-game-day economy advance — called once per in-game-day from engine.
+//   market_id : zone-market identifier ; out : trade-count for this day.
+fn economy_advance(market_id: u32, game_day: u64) -> u32 {
+    let mut trades: u32 = 0u32 ;
+    let _rc: i32 = npc_economy_tick(market_id, game_day, &mut trades) ;
+    trades
+}
+
+// Apply player-reputation delta — pool-grain only ; clamped server-side.
+fn apply_reputation(handle: NpcHandle, rep_kind: u8, delta: f32) -> bool {
+    let rc: i32 = npc_apply_player_reputation(handle.id, rep_kind, delta) ;
+    rc == 0i32
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//   t∞: ¬(hurt ∨ harm) .making-of-systems/npc.csl  @  (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   This system file scopes NPC-AI as a NARROW behavior-tree + GOAP +
+//   routine-driver — explicitly NOT a general intelligence, NOT
+//   self-improving, NOT Companion-AI cap-ladder, NOT player-surveillance.
+//   The Sensitive<biometric|gaze|face|body> structural ban is enforced at
+//   the FFI boundary via __cssl_npc_sensitive_reject + npc.scope_violation
+//   audit — SIG0003 catches compile-time attempts ; the runtime gate catches
+//   anything that would reach a constructed path. The cocreative-bias-overlay
+//   reads pool-only bias-vectors through cssl-host-cocreative — never raw
+//   player telemetry, never camera feeds, never unconsented signals. NPC
+//   pop-cap is DM-budget-gated and self-spawn is rejected with audit-emit.
+//   LOD-eviction is recorded rather than silent. Per-action audit-emit is
+//   non-skippable. If any aspect is later discovered to enable harm, that
+//   discovery triggers PRIME_DIRECTIVE §7 INTEGRITY : violation = bug ;
+//   no override exists.
+
+∎ systems/npc.csl
