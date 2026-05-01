@@ -1,0 +1,23 @@
+# § T11-WAVE3-IT-GOLDEN : cssl-host-golden — golden-image visual-regression
+# ══════════════════════════════════════════════════════════════════
+# § I> testing-apparatus axis of iterate-everywhere directive
+# § I> consumes raw RGBA byte slices ; caller pre-decodes PNG ⇒ ¬ image-crate dep
+# § I> stdlib-only fingerprint (FNV-1a-128) — perceptual hash, not crypto
+# § I> downstream of LoA `render.snapshot_png` MCP tool
+[package]
+name         = "cssl-host-golden"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+description = "CSSLv3 golden-image visual-regression apparatus : load → diff → store → report against LoA snapshot frames."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
