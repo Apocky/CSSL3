@@ -344,13 +344,25 @@ fn parse_enum_item(
         {
             let v_attrs = attr::parse_outer_attrs(cursor, bag);
             let v_name = parse_ident(cursor, bag, "enum variant");
-            let body = parse_struct_body(cursor, bag);
-            let end = cursor.peek().span.start.max(v_name.span.end);
+            // Variant body : tuple `(T, U)`, struct `{ a: T }`, or unit (none).
+            // Unlike top-level structs, enum-variant unit form does NOT use `;` —
+            // separation is by `,` between variants.
+            let body = parse_enum_variant_body(cursor, bag);
+            // Optional explicit discriminant : `Variant = expr`.
+            let discriminant = if cursor.eat(TokenKind::Eq).is_some() {
+                Some(expr::parse_expr(cursor, bag))
+            } else {
+                None
+            };
+            let end = discriminant
+                .as_ref()
+                .map_or(cursor.peek().span.start.max(v_name.span.end), |e| e.span.end);
             variants.push(EnumVariant {
                 span: Span::new(v_name.span.source, v_name.span.start, end),
                 attrs: v_attrs,
                 name: v_name,
                 body,
+                discriminant,
             });
             if cursor.eat(TokenKind::Comma).is_none() {
                 break;
@@ -369,6 +381,70 @@ fn parse_enum_item(
         generics: gens,
         variants,
     }
+}
+
+/// Parse the body shape of an enum variant — tuple `(T, U)`, struct `{ a: T }`,
+/// or unit (no following bracket, possibly followed by `=` discriminant or `,`).
+fn parse_enum_variant_body(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> StructBody {
+    if cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Open)) {
+        cursor.bump(); // (
+        let mut fields = Vec::new();
+        while !cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Close))
+            && !cursor.is_eof()
+        {
+            let f_attrs = attr::parse_outer_attrs(cursor, bag);
+            let vis = parse_visibility(cursor);
+            let t = ty::parse_type(cursor, bag);
+            fields.push(FieldDecl {
+                span: Span::new(
+                    vis.span.source,
+                    vis.span.start.min(t.span.start),
+                    t.span.end,
+                ),
+                attrs: f_attrs,
+                visibility: vis,
+                name: None,
+                ty: t,
+            });
+            if cursor.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        if cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Close)) {
+            cursor.bump();
+        }
+        return StructBody::Tuple(fields);
+    }
+    if cursor.check(TokenKind::Bracket(BracketKind::Brace, BracketSide::Open)) {
+        cursor.bump(); // {
+        let mut fields = Vec::new();
+        while !cursor.check(TokenKind::Bracket(BracketKind::Brace, BracketSide::Close))
+            && !cursor.is_eof()
+        {
+            let f_attrs = attr::parse_outer_attrs(cursor, bag);
+            let vis = parse_visibility(cursor);
+            let f_name = parse_ident(cursor, bag, "field name");
+            if cursor.eat(TokenKind::Colon).is_none() {
+                bag.push(custom("expected `:` after field name", cursor.peek().span));
+            }
+            let t = ty::parse_type(cursor, bag);
+            fields.push(FieldDecl {
+                span: Span::new(f_name.span.source, f_name.span.start, t.span.end),
+                attrs: f_attrs,
+                visibility: vis,
+                name: Some(f_name),
+                ty: t,
+            });
+            if cursor.eat(TokenKind::Comma).is_none() {
+                break;
+            }
+        }
+        if cursor.check(TokenKind::Bracket(BracketKind::Brace, BracketSide::Close)) {
+            cursor.bump();
+        }
+        return StructBody::Named(fields);
+    }
+    StructBody::Unit
 }
 
 // ─ Interface / Impl ─────────────────────────────────────────────────────────
@@ -989,5 +1065,256 @@ mod tests {
         } else {
             panic!("expected Fn");
         }
+    }
+
+    // ─ Rich struct + enum coverage ──────────────────────────────────────────
+    //
+    // § T11-CC-PARSER-3 (W-CC-struct-rich) : these tests pin the surface forms
+    // used by all 47 LoA scenes — named-field structs with `pub` fields, arrays,
+    // tuple structs, unit structs, generic params, and enums with C-style
+    // discriminants + tuple variants + struct variants.
+
+    #[test]
+    fn parse_named_struct_basic() {
+        let (_f, toks) = prep(
+            "pub struct PlayerState { pub hp_q14 : i32 , pub stamina_q14 : i32 , pub level : u8 }",
+        );
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        assert_eq!(s.visibility.kind, cssl_ast::VisibilityKind::Public);
+        let fields = match s.body {
+            StructBody::Named(f) => f,
+            _ => panic!("expected Named struct"),
+        };
+        assert_eq!(fields.len(), 3);
+        assert_eq!(bag.error_count(), 0, "diagnostics : {:?}", bag);
+    }
+
+    #[test]
+    fn parse_struct_with_pub_fields() {
+        let (_f, toks) = prep("pub struct Foo { pub a : i32 , b : u8 , pub c : f32 }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        let fields = match s.body {
+            StructBody::Named(f) => f,
+            _ => panic!("expected Named"),
+        };
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].visibility.kind, cssl_ast::VisibilityKind::Public);
+        assert_eq!(
+            fields[1].visibility.kind,
+            cssl_ast::VisibilityKind::Private
+        );
+        assert_eq!(fields[2].visibility.kind, cssl_ast::VisibilityKind::Public);
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_struct_with_array_field() {
+        let (_f, toks) = prep("pub struct ActiveBranch { pub options : [BranchOption ; 8] }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        let fields = match s.body {
+            StructBody::Named(f) => f,
+            _ => panic!("expected Named"),
+        };
+        assert_eq!(fields.len(), 1);
+        assert!(matches!(fields[0].ty.kind, cssl_ast::TypeKind::Array { .. }));
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_struct_trailing_comma_ok() {
+        let (_f, toks) = prep("struct Foo { a : i32 , b : u8 , }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        match s.body {
+            StructBody::Named(fs) => assert_eq!(fs.len(), 2),
+            _ => panic!("expected Named"),
+        }
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_unit_struct() {
+        let (_f, toks) = prep("pub struct Sovereign ;");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        assert!(matches!(s.body, StructBody::Unit));
+        assert_eq!(s.visibility.kind, cssl_ast::VisibilityKind::Public);
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_tuple_struct_one_field() {
+        let (_f, toks) = prep("pub struct Q14 ( pub i32 ) ;");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        let fields = match s.body {
+            StructBody::Tuple(f) => f,
+            _ => panic!("expected Tuple"),
+        };
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].visibility.kind, cssl_ast::VisibilityKind::Public);
+        assert!(fields[0].name.is_none(), "tuple field has no name");
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_struct_with_generic_param() {
+        let (_f, toks) = prep("pub struct Foo < T > { value : T }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let s = match it {
+            Item::Struct(s) => s,
+            _ => panic!("expected Struct"),
+        };
+        assert_eq!(s.generics.params.len(), 1);
+        let fields = match s.body {
+            StructBody::Named(f) => f,
+            _ => panic!("expected Named"),
+        };
+        assert_eq!(fields.len(), 1);
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_enum_c_style() {
+        let (_f, toks) = prep("pub enum Color { Red , Green , Blue }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let e = match it {
+            Item::Enum(e) => e,
+            _ => panic!("expected Enum"),
+        };
+        assert_eq!(e.variants.len(), 3);
+        for v in &e.variants {
+            assert!(matches!(v.body, StructBody::Unit));
+            assert!(v.discriminant.is_none());
+        }
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_enum_with_discriminants() {
+        let (_f, toks) = prep(
+            "pub enum ReviewState { Pending = 0 , Approved = 1 , Refused = 2 , Expired = 3 }",
+        );
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let e = match it {
+            Item::Enum(e) => e,
+            _ => panic!("expected Enum"),
+        };
+        assert_eq!(e.variants.len(), 4);
+        for v in &e.variants {
+            assert!(
+                v.discriminant.is_some(),
+                "variant {:?} missing discriminant",
+                v.name.span
+            );
+            assert!(matches!(v.body, StructBody::Unit));
+        }
+        assert_eq!(bag.error_count(), 0, "diagnostics : {:?}", bag);
+    }
+
+    #[test]
+    fn parse_enum_tuple_variants() {
+        let (_f, toks) = prep("pub enum Result < T , E > { Ok ( T ) , Err ( E ) }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let e = match it {
+            Item::Enum(e) => e,
+            _ => panic!("expected Enum"),
+        };
+        assert_eq!(e.generics.params.len(), 2);
+        assert_eq!(e.variants.len(), 2);
+        match &e.variants[0].body {
+            StructBody::Tuple(f) => assert_eq!(f.len(), 1),
+            _ => panic!("expected Ok(T) tuple"),
+        }
+        match &e.variants[1].body {
+            StructBody::Tuple(f) => assert_eq!(f.len(), 1),
+            _ => panic!("expected Err(E) tuple"),
+        }
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_enum_struct_variants() {
+        let (_f, toks) = prep(
+            "pub enum Shape { Circle { r : f32 } , Rect { w : f32 , h : f32 } }",
+        );
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let e = match it {
+            Item::Enum(e) => e,
+            _ => panic!("expected Enum"),
+        };
+        assert_eq!(e.variants.len(), 2);
+        match &e.variants[0].body {
+            StructBody::Named(f) => assert_eq!(f.len(), 1),
+            _ => panic!("expected Circle struct-variant"),
+        }
+        match &e.variants[1].body {
+            StructBody::Named(f) => assert_eq!(f.len(), 2),
+            _ => panic!("expected Rect struct-variant"),
+        }
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_enum_mixed_variants() {
+        // Mixed unit / tuple / struct variants in the same enum.
+        let (_f, toks) =
+            prep("enum E { A , B ( i32 ) , C { x : f32 , y : f32 } , D = 7 }");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let it = parse_item(&mut c, &mut bag).unwrap();
+        let e = match it {
+            Item::Enum(e) => e,
+            _ => panic!("expected Enum"),
+        };
+        assert_eq!(e.variants.len(), 4);
+        assert!(matches!(e.variants[0].body, StructBody::Unit));
+        assert!(matches!(e.variants[1].body, StructBody::Tuple(_)));
+        assert!(matches!(e.variants[2].body, StructBody::Named(_)));
+        assert!(e.variants[3].discriminant.is_some());
+        assert_eq!(bag.error_count(), 0);
     }
 }

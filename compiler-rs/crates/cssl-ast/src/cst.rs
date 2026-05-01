@@ -191,12 +191,17 @@ pub struct EnumItem {
 }
 
 /// A single enum variant — unit, tuple, or struct form.
+///
+/// `discriminant` is `Some(_)` when an explicit value was given via `Variant = expr`
+/// (C-style enum), otherwise `None`. The expression is held un-evaluated; the elaborator
+/// resolves it to a constant integer.
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub span: Span,
     pub attrs: Vec<Attr>,
     pub name: Ident,
     pub body: StructBody,
+    pub discriminant: Option<Expr>,
 }
 
 /// `interface Name<G> { associated-items }`
