@@ -25,6 +25,7 @@
   § STATUS
     ✓ committed @ b69165c era ; cssl-runtime input-harness module
     ✓ replay-deterministic ; cap-gated input-egress
+    ✓ landed @ 935ca58  ‼ userfix + sensory-harness combined · 402 tests · 84 MCP tools · F-keys + 9 sensory axes
 
 # ══════════════════════════════════════════════════════════════════
 
@@ -45,10 +46,39 @@
     ✓ all-9-crates landed parallel-fanout per Apocky-cadence-memo
     ✓ §§ 30_v2 + §§ 32 + §§ 33 reference-docs landed
     ✓ this-grand-vision-doc-tree landed (W3-finalize)
+    ✓ landed @ 1b4ce18  ‼ 8 branches · 93 MCP tools · ω-substrate-grows-games
 
 # ══════════════════════════════════════════════════════════════════
 
-§ W4 — co-creative + voice + market + multiplayer  ⟪ ◐ in-flight ⟫
+§ W3γ — iterate-everywhere  ‼ ✓ LANDED  «coverage-axes-broadened»
+
+  § DELIVERABLES  (the W3γ-set, all-landed)
+    cssl-host-replay            : NIST-SHA256 input-event-log replay-deterministic
+    cssl-host-audit             : 5-source canonical-row parser + index + summary
+    cssl-host-stereoscopy       : IPD-geometry + SBS/TB + red-cyan-anaglyph compose
+    cssl-host-golden            : FNV-1a-128 fingerprint campaign + verdict pipeline
+    cssl-host-procgen-rooms     : Pcg32 + 7 deterministic recipes + constraint-validator
+    cssl-host-histograms        : bounded P50/P95/P99 + scoped-timer + registry
+    grand-vision-doc-v2         : 9-file structural-arch CSSL-native ≤1500 LOC
+
+  § STATUS
+    ✓ 6 host-crates landed parallel-fanout (W3-WAVE3-* branches)
+    ✓ 145 tests aggregate (replay-20 + audit-30 + stereo-18 + golden-19 +
+       procgen-rooms-36 + histograms-22)
+    ✓ landed @ 5c5836c  ‼ grand-vision-doc-v2 capstone-merge
+
+  § AXIS-COVERAGE  (which iterate-everywhere axes touched)
+    [✓] LOGGING       ← cssl-host-audit (canonical-row schema)
+    [✓] TELEMETRY     ← cssl-host-histograms (P50/P95/P99 bounded)
+    [✓] TESTING       ← cssl-host-golden (fingerprint-campaign)
+    [✓] ROOMS         ← cssl-host-procgen-rooms (7 deterministic recipes)
+    [✓] RENDER        ← cssl-host-stereoscopy (SBS + anaglyph)
+    [○] UI            ← (deferred to W5)
+    [✓] INTELLIGENCE  ← cssl-host-replay (deterministic-input-log baseline)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ W4 — co-creative + voice + market + multiplayer  ‼ ✓ LANDED
 
   § DELIVERABLES (≥ 4 file-disjoint parallel-agents, target W4-set)
     Whisper-voice-input         : Whisper-CPP local + cap-gated
@@ -73,6 +103,14 @@
     ≥ 8 parallel-agents per W4-wave (per Apocky-cadence-memo)
     each agent : tight-scope ≤ 1500 LOC ; progressive-write ; pre-flight-check
     rate-limit-cascades = preventable ; small-batches 3-5 not-15
+
+  § STATUS
+    ✓ 7 host-crates + vercel + supabase landed parallel-fanout
+    ✓ 174 tests aggregate (causal-29 + license-28 + cocreative-30 +
+       voice-23 + multiplayer-33 + vercel-11 + supabase-3-migrations)
+    ✓ landed @ 82f2496  ‼ supabase-signaling capstone : 4 tables + 12 RLS policies
+       ≡ 8 parallel branches merged : causal · license · cocreative · audio·voice
+       ≡ multiplayer · vercel · supabase · supabase-signaling
 
 # ══════════════════════════════════════════════════════════════════
 
@@ -107,10 +145,14 @@
     [✓] cap-gated outbound + audit-chain (this-doc § 07)
     [✓] LRU-cache + .meta-sidecar discipline (§ 02)
     [✓] intent-router + spontaneous-pad pipeline (§§ 03 + 04)
-    [◐] DM/GM/Collaborator/Coder full-implementation (§ 05) — W4
-    [◐] license-attribution-HUD runtime-active (§ 06) — W4
-    [◐] companion-proxy with-stripping (§ 07) — W4
-    [○] KAN-substrate-loa swap-in (§ 05 stage-2) — W5+
+    [◐] DM/GM/Collaborator/Coder full-implementation (§ 05) — W4 ⊕ W7
+         ≡ causal-seed + cocreative crates LANDED @ 82f2496 ; orchestrators @ W7
+    [✓] license-attribution-HUD runtime-active (§ 06) — W4 ✓ landed @ 82f2496
+    [✓] companion-proxy with-stripping (§ 07) — W4 ✓ landed @ 82f2496
+    [○] KAN-substrate-loa swap-in (§ 05 stage-2) — W6
+    [○] loa-host wire-up of W3+W4 crates — W5b
+    [○] DM/GM cap-gated MCP-tool orchestrators — W7
+    [○] multiplayer-shared-substrate (ω-field replication) — W8
 
   § ENGINE-COMPLETE-DEFINITION
     ✓ all-required-checked ⇒ engine-complete
