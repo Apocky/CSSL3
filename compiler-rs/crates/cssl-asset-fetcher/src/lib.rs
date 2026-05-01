@@ -88,9 +88,24 @@ use cssl_rt::loa_startup::log_event;
 use serde::{Deserialize, Serialize};
 
 pub mod cache;
+pub mod license_emit;
+pub mod license_telemetry;
 pub mod sources;
 
 pub use crate::cache::{CacheEntry, CacheError, CacheResult, LruCache};
+pub use crate::license_emit::{build_record, from_fetcher_license, map_license_string};
+pub use crate::license_telemetry::{
+    emit_license_event, telemetry_assets_rejected_license_total,
+    telemetry_assets_unknown_license_total, telemetry_assets_with_attribution_total,
+    telemetry_license_records_registered_total, LicenseEventKind,
+};
+
+// Re-export the host-attribution surface so callers can stay on the
+// asset-fetcher crate without a separate import.
+pub use cssl_host_license_attribution::{
+    AssetLicenseRecord, License as AttributionLicense, LicenseRegistry, LoaLicensePolicy,
+    PolicyDecision,
+};
 
 // ════════════════════════════════════════════════════════════════════
 // § Top-level types
@@ -323,6 +338,10 @@ pub enum FetcherError {
     /// No registered source matches the requested name.
     #[error("unknown source: {0}")]
     UnknownSource(String),
+    /// Asset's license was rejected by the active `LoaLicensePolicy`.
+    /// Payload carries the policy's reason-string.
+    #[error("license policy denied: {0}")]
+    LicenseDenied(String),
 }
 
 /// Top-level `Result` alias.
@@ -338,6 +357,20 @@ pub struct AssetFetcher {
     /// Registered sources. Order = preference-order ; `search()` queries
     /// every source in order and concatenates results.
     sources: Vec<Box<dyn AssetSource>>,
+    /// Per-fetcher license registry. Every successful fetch registers an
+    /// `AssetLicenseRecord` here ; cache-hits also register (so a fetcher
+    /// instance picks up persisted assets' license-records on first hit).
+    license_registry: RwLock<LicenseRegistry>,
+    /// Active LoA license policy. Defaults to `LoaLicensePolicy::default_policy()` :
+    ///   allow_attribution_required = true   (we ship attribution-HUD)
+    ///   allow_unknown              = false  (refuse unclassified)
+    ///   allow_proprietary          = false  (refuse non-free)
+    license_policy: RwLock<LoaLicensePolicy>,
+    /// Sovereign cap : when `true`, the fetcher bypasses the license-policy
+    /// gate and admits records regardless of `policy.evaluate()` result. The
+    /// bypass is RECORDED in the structured event (`sovereign:true`) so the
+    /// audit trail shows it happened. Defaults to `false`.
+    sovereign_bypass: std::sync::atomic::AtomicBool,
 }
 
 impl AssetFetcher {
@@ -383,6 +416,9 @@ impl AssetFetcher {
         Self {
             cache: RwLock::new(cache),
             sources,
+            license_registry: RwLock::new(LicenseRegistry::new()),
+            license_policy: RwLock::new(LoaLicensePolicy::default()),
+            sovereign_bypass: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -400,6 +436,9 @@ impl AssetFetcher {
         Ok(Self {
             cache: RwLock::new(cache),
             sources,
+            license_registry: RwLock::new(LicenseRegistry::new()),
+            license_policy: RwLock::new(LoaLicensePolicy::default()),
+            sovereign_bypass: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -434,28 +473,50 @@ impl AssetFetcher {
     /// Fetch + cache an asset by `(source, asset_id)`. Returns the local
     /// disk-path of the cached artifact. Cache-hit fast-path skips the
     /// source's `fetch()` and just touches the LRU access-time.
+    ///
+    /// Every fetch (cache-hit OR cache-miss) emits an `AssetLicenseRecord`
+    /// into the license-registry. The active `LoaLicensePolicy` is consulted
+    /// before the registration commits :
+    ///   - `Allow`                 → register record, no event
+    ///   - `AllowWithAttribution`  → register record, emit `attribution_required`
+    ///   - `Deny(reason)`          → return `LicenseDenied(reason)`, increment
+    ///                                `assets_rejected_license_total`, emit
+    ///                                `rejected_deny` event
+    /// Sovereign-bypass overrides the `Deny` arm but RECORDS the bypass in
+    /// the structured event payload (`sovereign:true`).
     pub fn fetch_or_cache(&self, source: &str, asset_id: &str) -> FetcherResult<PathBuf> {
         inc_fetch();
 
         // Cache hit fast-path.
-        {
+        let cache_hit_path = {
             let cache = self.cache.read().expect("cache RwLock poisoned");
-            if let Some(path) = cache.get_path(source, asset_id) {
-                inc_cache_hit();
-                set_cache_size(cache.size_bytes());
-                log_event(
-                    "INFO",
-                    "asset-fetcher",
-                    &format!("fetch_or_cache HIT : src={source} id={asset_id}"),
-                );
-                // Touch access-time for LRU.
-                drop(cache);
+            cache.get_path(source, asset_id)
+        };
+        if let Some(path) = cache_hit_path {
+            inc_cache_hit();
+            log_event(
+                "INFO",
+                "asset-fetcher",
+                &format!("fetch_or_cache HIT : src={source} id={asset_id}"),
+            );
+            // Re-register the license record for the cache-hit (same record
+            // shape — keeps registry consistent across reopens). Policy gate
+            // still applies ; if policy was tightened since previous fetch,
+            // a cache-hit can now Deny.
+            let sidecar_meta = self.lookup_meta(source, asset_id);
+            self.gate_and_register(source, asset_id, sidecar_meta.as_ref())?;
+            // Touch access-time for LRU + refresh cache-size gauge.
+            self.cache
+                .write()
+                .expect("cache RwLock poisoned")
+                .touch(source, asset_id);
+            set_cache_size(
                 self.cache
-                    .write()
+                    .read()
                     .expect("cache RwLock poisoned")
-                    .touch(source, asset_id);
-                return Ok(path);
-            }
+                    .size_bytes(),
+            );
+            return Ok(path);
         }
 
         // Cache miss : route to the matching source.
@@ -473,6 +534,11 @@ impl AssetFetcher {
             _ => synth_meta(source, asset_id, bytes.len() as u64),
         };
 
+        // Policy gate + register-record FIRST — if the policy denies, we
+        // do NOT write the bytes to disk. This is the contract : a denied
+        // asset never lands on the user's machine.
+        self.gate_and_register(source, asset_id, Some(&sidecar))?;
+
         let mut cache = self.cache.write().expect("cache RwLock poisoned");
         let path = cache.put(source, asset_id, &bytes, &sidecar)?;
         set_cache_size(cache.size_bytes());
@@ -488,6 +554,189 @@ impl AssetFetcher {
         );
 
         Ok(path)
+    }
+
+    /// Look up an `AssetMeta` by `(source, asset_id)` via the registered
+    /// adapters. Returns `None` if no source matches or the id is unknown.
+    fn lookup_meta(&self, source: &str, asset_id: &str) -> Option<AssetMeta> {
+        let src = self.sources.iter().find(|s| s.name() == source)?;
+        src.lookup_by_id(asset_id).ok().flatten()
+    }
+
+    /// Map an `AssetMeta` (or fallback) to the host-license-attribution
+    /// `License` + register the record under the active policy. Returns
+    /// `Err(LicenseDenied)` on policy `Deny` (unless sovereign-bypass).
+    fn gate_and_register(
+        &self,
+        source: &str,
+        asset_id: &str,
+        meta: Option<&AssetMeta>,
+    ) -> FetcherResult<()> {
+        // Resolve the host-license enum value.
+        let (host_license, author, source_url) = meta.map_or(
+            (AttributionLicense::Unknown, None, None),
+            |m| {
+                let lic = crate::license_emit::from_fetcher_license(m.license);
+                let author = (!m.author.is_empty()).then(|| m.author.clone());
+                let url = (!m.url.is_empty()).then(|| m.url.clone());
+                (lic, author, url)
+            },
+        );
+
+        // Track Unknown classifications regardless of whether sovereign
+        // bypass admits the record — so the audit shows Unknown-volume.
+        if matches!(host_license, AttributionLicense::Unknown) {
+            crate::license_telemetry::inc_assets_unknown();
+        }
+
+        let sovereign = self
+            .sovereign_bypass
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        // Evaluate the policy.
+        let decision = {
+            let policy = self.license_policy.read().expect("policy RwLock poisoned");
+            policy.evaluate(&host_license)
+        };
+
+        match decision {
+            PolicyDecision::Allow => {
+                let record = crate::license_emit::build_record(
+                    asset_id.to_string(),
+                    source.to_string(),
+                    host_license,
+                    author,
+                    source_url,
+                    None,
+                );
+                self.register_record(record);
+                crate::license_telemetry::emit_license_event(
+                    asset_id,
+                    crate::license_telemetry::LicenseEventKind::Recorded,
+                    sovereign,
+                );
+                Ok(())
+            }
+            PolicyDecision::AllowWithAttribution => {
+                crate::license_telemetry::inc_assets_with_attribution();
+                let record = crate::license_emit::build_record(
+                    asset_id.to_string(),
+                    source.to_string(),
+                    host_license,
+                    author,
+                    source_url,
+                    None,
+                );
+                self.register_record(record);
+                crate::license_telemetry::emit_license_event(
+                    asset_id,
+                    crate::license_telemetry::LicenseEventKind::AttributionRequired,
+                    sovereign,
+                );
+                Ok(())
+            }
+            PolicyDecision::Deny(reason) => {
+                if sovereign {
+                    // Sovereign bypass : record the asset anyway + emit a
+                    // `Recorded` event with `sovereign:true`.
+                    let record = crate::license_emit::build_record(
+                        asset_id.to_string(),
+                        source.to_string(),
+                        host_license,
+                        author,
+                        source_url,
+                        None,
+                    );
+                    self.register_record(record);
+                    crate::license_telemetry::emit_license_event(
+                        asset_id,
+                        crate::license_telemetry::LicenseEventKind::Recorded,
+                        true,
+                    );
+                    Ok(())
+                } else {
+                    crate::license_telemetry::inc_assets_rejected();
+                    let kind = if reason.contains("unknown") {
+                        crate::license_telemetry::LicenseEventKind::RejectedUnknown
+                    } else {
+                        crate::license_telemetry::LicenseEventKind::RejectedDeny
+                    };
+                    crate::license_telemetry::emit_license_event(asset_id, kind, false);
+                    Err(FetcherError::LicenseDenied(reason))
+                }
+            }
+        }
+    }
+
+    /// Internal register-record helper. Updates the registry + bumps the
+    /// `license_records_registered_total` counter. Conflicts are logged
+    /// (asset_id collision with different license) but NOT propagated as
+    /// a fetch-error — registry-side conflicts are diagnostic.
+    fn register_record(&self, record: AssetLicenseRecord) {
+        let mut registry = self
+            .license_registry
+            .write()
+            .expect("license_registry RwLock poisoned");
+        match registry.register(record) {
+            Ok(()) => {
+                crate::license_telemetry::inc_license_records_registered();
+            }
+            Err(e) => {
+                log_event(
+                    "WARN",
+                    "asset-fetcher",
+                    &format!("license registry conflict (non-fatal): {e}"),
+                );
+            }
+        }
+    }
+
+    /// Read-side handle on the per-fetcher `LicenseRegistry`. Use this for
+    /// attribution-HUD content + cross-source license queries.
+    pub fn license_registry(&self) -> std::sync::RwLockReadGuard<'_, LicenseRegistry> {
+        self.license_registry
+            .read()
+            .expect("license_registry RwLock poisoned")
+    }
+
+    /// Look up a single record by `asset_id`. Cloned to avoid holding the
+    /// read-lock across the caller's response path.
+    #[must_use]
+    pub fn get_license_for(&self, asset_id: &str) -> Option<AssetLicenseRecord> {
+        self.license_registry().get(asset_id).cloned()
+    }
+
+    /// Replace the active license policy. Test-only / advanced — production
+    /// callers should rely on the default policy.
+    pub fn set_license_policy(&self, policy: LoaLicensePolicy) {
+        *self
+            .license_policy
+            .write()
+            .expect("policy RwLock poisoned") = policy;
+    }
+
+    /// Snapshot of the current license policy.
+    #[must_use]
+    pub fn license_policy(&self) -> LoaLicensePolicy {
+        self.license_policy
+            .read()
+            .expect("policy RwLock poisoned")
+            .clone()
+    }
+
+    /// Toggle the sovereign-bypass flag. When `true`, policy `Deny` decisions
+    /// are RECORDED (with `sovereign:true` in the event payload) but do not
+    /// reject the fetch. Defaults to `false`. Apocky-only path.
+    pub fn set_sovereign_bypass(&self, on: bool) {
+        self.sovereign_bypass
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Read the sovereign-bypass flag.
+    #[must_use]
+    pub fn sovereign_bypass(&self) -> bool {
+        self.sovereign_bypass
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Current cache-size on disk (bytes).
