@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-host-histograms"
+description            = "CSSLv3 — Bounded-memory streaming histograms (HDR-style power-of-2 buckets + Welford-style mean/variance + percentile estimation) for frame-time and counter telemetry. Telemetry axis of the iterate-everywhere directive : O(1) record · O(buckets) total memory · serializable + mergeable."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-host-histograms is intentionally a leaf crate. The only deps are
+# serde + serde_json — both required for snapshot-serialization and the
+# JSON-Lines report-format. No other crates pulled in : keeps the runtime
+# telemetry path off the critical compile-graph and avoids transitive risk.
+serde      = { workspace = true }
+serde_json = { workspace = true }
