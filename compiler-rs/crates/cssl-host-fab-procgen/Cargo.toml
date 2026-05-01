@@ -1,0 +1,28 @@
+# § T11-W5c-FAB-PROCGEN : factor-augmented blueprint procedural generation
+# ══════════════════════════════════════════════════════════════════
+# § I> composition-grammar over cssl-host-procgen-rooms 7-recipe base
+# § I> Blueprint = Vec<BlueprintPart> + Vec<BlueprintConnection>
+# § I> StyleRules : symmetry / density-falloff / doorway-alignment / max-parts
+# § I> Composer : Blueprint → Vec<RoomRecipe> | Vec<WorldTile> (16-byte stride)
+# § I> deterministic : same seed → bit-identical Blueprint + WorldTile list
+# § I> 3 library blueprints : cathedral / maze-dungeon / color-pavilion
+# § I> wave-6 wires composer-output into loa-host (NOT in this crate)
+
+[package]
+name        = "cssl-host-fab-procgen"
+version     = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "CSSLv3 LoA-v13 factor-augmented blueprint procgen : compose RoomRecipes + style-rules → composite WorldTile list"
+repository.workspace   = true
+homepage.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+cssl-host-procgen-rooms = { path = "../cssl-host-procgen-rooms" }
