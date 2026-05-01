@@ -1,0 +1,204 @@
+§ T11-W6+ § specs/grand-vision/14_SIGMA_CHAIN.csl
+§§ Σ-Chain : substrate-native distributed-ledger · "blockchain but better"
+§§ Apocky 2026-05-01 directive : ¬ replicate blockchain · BUILD-NEW @ atop substrate-primitives
+§§ status @ ◐ design-pending · ‼ replaces "shared-multiversal-layer" implementation in Living-Multiverse spec
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : ¬ Proof-of-Work (energy-waste · ¬ ethical · ¬ Apocky-PRIME-DIRECTIVE-aligned)
+A-2 : ¬ Proof-of-Stake (plutocratic · capital-rewards-capital · ¬ sovereign-of-the-undercapitalized)
+A-3 : ¬ public-ledger-by-default (privacy-first · opt-in-transparency)
+A-4 : ¬ speculation-tokens (Stabilized-Essence stays-earned-only · Aetheric-Shards stays-cosmetic-channel)
+A-5 : ¬ smart-contract-runtime-bugs (CSSL F3-effect-system replaces Solidity at compile-time)
+A-6 : ¬ gas-fees (chain-extension is-deterministic-given state + Σ-thread · cost = server-tick)
+A-7 : ¬ majority-vote-overrides-sovereignty (player can unilaterally-roll-back-own-state)
+A-8 : ✓ deterministic-Coherence-Proof (validity = deterministic-recompute @ given state + lineage)
+A-9 : ✓ Σ-mask-consent-gated (every-transaction requires Σ-thread · default-private · ¬ permitted-without-explicit-consent)
+A-10 : ✓ player-local-first (full-substrate-state lives-on-player-machine · opt-in-only escapes)
+
+§ thesis : Σ-Chain = substrate-native-attestation-chain · NOT a "blockchain reskin" · uses substrate-primitives that already exist
+§ inverts blockchain's stack : sovereignty.first ⊃ privacy.default ⊃ transparency.opt-in ⊃ aggregate.consent
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ARCHITECTURE (3-tier · LOCAL → OPT-IN → MULTIVERSAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TIER-1 LOCAL (per-player · always-private · always-canonical)
+  ⊑ ω-field full-state @ player-machine · 72B FieldCells (M/S/P/Φ/Σ facets)
+  ⊑ Σ-mask-per-cell already-cap-threaded (SIG0001..SIG0010 enforced @ compile-time)
+  ⊑ all-state-mutations audit-emit via cssl-host-audit JSONL stream
+  ⊑ snapshots via cssl-host-frame-recorder LFRC-format · CRC32 + content-hash
+  ⊑ replay-determinism via cssl-host-replay (NIST-SHA256 hand-rolled)
+  ⊑ NO network-egress @ TIER-1 · ¬ ever-leaks-by-default
+
+§ TIER-2 OPT-IN (per-player · cap-gated · explicit-consent-per-event)
+  ⊑ player chooses-which-events-to-share · per-event-grain · NOT all-or-nothing
+  ⊑ shareable-events : Bazaar-listings · Coherence-Ascensions (anonymizable) · Multiversal-Nemesis-bounties · Living-Multiverse-rumors · battle-pass-progression · gacha-pulls
+  ⊑ NEVER-shareable : private-substrate-state · raw-FieldCell-data · biometric-derived (per F5-IFC OnDeviceOnly + Sensitive<biometric|gaze|face|body>)
+  ⊑ each opt-in-event Ed25519-signed by player's-sovereign-key-pair (key generated-locally · never-leaves-machine)
+  ⊑ each opt-in-event includes BLAKE3-merkle-root-of-canonical-state @ event-tick (verifiable but private)
+  ⊑ Σ-mask-consent-flag REQUIRED on event-payload · mismatched Σ rejects @ TIER-3
+
+§ TIER-3 MULTIVERSAL (shared · server-mediated · always-attestable)
+  ⊑ Supabase relay (cssl-supabase migrations 0010-0028+) holds opt-in event-stream
+  ⊑ event-stream is APPEND-ONLY (sovereign_cap_audit pattern · transparency-invariant)
+  ⊑ verification : ANY-node can recompute event's Coherence-Proof @ given (state + lineage + Ed25519-sig)
+  ⊑ disagreement → triggers cssl-host-attestation harm-flag · rolled-back-per-kan-ride-spec
+  ⊑ aggregate-state-summary via HDC 10000-D hypervectors (cssl-hdc) · O(1) similarity-check between players
+  ⊑ multi-resolution access via cssl-wavelet MERA-pyramid (4-tier coarsening) · players sync only-what-they-care-about
+
+§ data-flow @ event-lifecycle :
+  player-action → Σ-mask-check (cap-thread) → state-mutate (audit-emit local-JSONL) → IF-opt-in : Ed25519-sign + BLAKE3-merkle-root → cssl-host-mp-transport → Supabase-relay → other-players-poll-and-verify → Coherence-Proof-validates → cssl-host-attestation aggregates
+
+═══════════════════════════════════════════════════════════════════════════════
+§ COHERENCE-PROOF (replaces PoW/PoS)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : "validity is deterministic given state + lineage" · NOT economic-stake · NOT compute-waste
+
+§ verification-pipeline :
+  1 receive event E with (state-snapshot S · lineage-pointer L · Ed25519-sig σ)
+  2 verify σ against player's-public-key (registered @ first-opt-in)
+  3 fetch lineage-base from BLAKE3-merkle-tree-history @ pointer L
+  4 deterministically-recompute event's-effect on state-snapshot S
+  5 IF recomputed-state ≡ claimed-state-after-event → VALID
+  6 IF recomputed-state ≢ claimed-state-after-event → INVALID · harm-flag-emit · roll-back
+
+§ consensus :
+  ⊑ NO mining · NO validator-elections · NO 51%-attacks
+  ⊑ majority-of-honest-players naturally-converge-on-same-recompute-result
+  ⊑ minority-incoherent-state is-rejected-locally-by-each-honest-node (no global-fork)
+  ⊑ Coherence-Engine (legacy 13-axes) extends-naturally to chain-events (each-event has-Coherence-Score)
+  ⊑ events-with-Coherence-below-threshold flagged @ TIER-3 · rejected from authoritative-stream
+
+§ tie-breaking :
+  ⊑ for ambiguous-orderings (concurrent-events from-different-players) : break-by Ed25519-sig hex-asc · deterministic + privacy-preserving
+  ⊑ NO timestamp-trust (clock-skew-attack vector) · use server-tick + monotonic-counter @ Supabase-side
+
+§ smart-contracts (replaces Solidity)
+  ⊑ effect-system (F3) provides typed-capability programming
+  ⊑ contracts = .csl-source-files with effect-rows declared
+  ⊑ contracts type-check @ compile-time · NO runtime-bug-class (re-entrancy · integer-overflow · etc.)
+  ⊑ contract-state lives in ω-field-cells with Σ-mask-thread · same-as-game-state
+  ⊑ contract-execution = MIR-evaluation · deterministic + auditable
+  ⊑ examples : Bazaar-listing-as-contract · Battle-pass-tier-claim · Multiversal-Nemesis-bounty-payout
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ASSET-OWNERSHIP (replaces NFTs)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : "ownership = Σ-mask-claim + Ed25519-sig + BLAKE3-content-hash" · NOT a-pointer-to-an-image-on-IPFS
+
+§ asset-record-format @ cssl-host-asset-bundle (W6 ✓ landed) :
+  ⊑ BundleManifest already-has FNV-1a-128 fingerprint · License::Unknown auto-rejected
+  ⊑ EXTEND : add `pub ed25519_signature: [u8; 64]` field · sign over (asset_id · source · license_record · file_blobs-hash)
+  ⊑ EXTEND : add `pub sigma_claim: SigmaMaskPacked` (16B) · marks ownership @ Σ-overlay
+  ⊑ EXTEND : add `pub blake3_merkle_root: [u8; 32]` · enables Merkle-proof of inclusion @ multiversal-stream
+
+§ ownership-transfer :
+  ⊑ player-A signs "transfer to player-B-pubkey" with Ed25519 · emits transfer-event
+  ⊑ event includes BLAKE3-merkle-proof of asset's-current-Σ-claim
+  ⊑ player-B-machine verifies + accepts · updates local Σ-mask-claim
+  ⊑ TIER-3 multiversal-stream records transfer-event for global-attestation
+  ⊑ ¬ "minting fees" · ¬ "gas" · cost = server-tick
+
+§ asset-types (canonical for LoA-v13) :
+  ⊑ gear-items (modular base/prefix/suffix/glyph-slots · per-Coherence-Engine 13-axes)
+  ⊑ Ascended-items (with Epithet · Biography ring buffer · Ed25519-signed by-Ascender's-key)
+  ⊑ cosmetics (battle-pass + gacha-derived) — REAL-MONEY-PURCHASABLE-ONLY-COSMETICS @ via Stripe per spec/13
+  ⊑ Bazaar-listings (gallery-of-singular-artifacts per spec/13)
+  ⊑ Multiversal-Nemesis-records (cross-shard rumors)
+  ⊑ Living-Multiverse-aesthetic-drift (regional aggregate-state)
+
+§ ¬ TRANSFERABLE :
+  ⊑ Stabilized-Essence (stays-earned-only · per spec/13 monetization-axiom · t∞)
+  ⊑ Coherence-Score (computed-from-state · ¬ separately-owned)
+  ⊑ Biography (intrinsic-to-item · transfers-with-item · ¬ separately-owned)
+  ⊑ ω-field-cells (substrate-state · ¬ a-tradeable-asset)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ PRIVACY (default-private · transparency-as-option)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : "blockchain leaks privacy by default · Σ-Chain protects-it by default"
+
+§ privacy-tiers :
+  P0 LOCAL-ONLY : default · ω-field full-state never-egresses · ¬ network-call · ¬ telemetry-leak (per F6 path-hash-only)
+  P1 ANONYMIZED-OPT-IN : event-shared but player-pubkey-rotation per-event · ¬ longitudinal-tracking
+  P2 PSEUDONYMOUS-OPT-IN : event-shared with stable-pubkey · player-history-aggregable @ Bazaar-tier-system
+  P3 PUBLIC-OPT-IN : event-shared with player-handle attached · for streamers/content-creators
+
+§ NEVER-EGRESSABLE (per F5-IFC · Sensitive<biometric|gaze|face|body> · structural-refusal @ compile-time) :
+  ⊘ biometric-derived state
+  ⊘ raw-FieldCell-data outside Σ-claim-allowlist
+  ⊘ Σ-overlay full-mask
+  ⊘ companion-history full-text
+  ⊘ player-private-key
+
+§ player-self-audit-dashboard @ cssl-edge/transparency :
+  ⊑ /transparency/spending — all Stripe transactions
+  ⊑ /transparency/sovereign-cap — all sovereign-cap usage
+  ⊑ /transparency/cocreative-bias — current bias-vector + history
+  ⊑ /transparency/sigma-chain-events — all opt-in TIER-2 events emitted by-this-player @ NEW spec/14 addition
+  ⊑ unilateral revoke-future-egress · GDPR/CCPA full-export + delete-on-request
+
+═══════════════════════════════════════════════════════════════════════════════
+§ COMPARISON @ Σ-Chain vs blockchain
+═══════════════════════════════════════════════════════════════════════════════
+
+| dimension          | blockchain                    | Σ-Chain                                 |
+|---                 |---                            |---                                      |
+| consensus          | PoW (waste) / PoS (plutocrat) | Coherence-Proof (deterministic-recompute) |
+| energy             | massive                       | server-tick (game-runtime-cost-only)     |
+| privacy            | public-ledger-default         | local-private-default · opt-in-share     |
+| smart-contracts    | Solidity (runtime-bugs)       | CSSL F3 effect-system (compile-time)     |
+| asset-ownership    | NFT (IPFS-pointer + on-chain) | Ed25519-sig + Σ-claim + BLAKE3-merkle    |
+| sovereignty        | majority-vote                 | unilateral-roll-back per kan-ride        |
+| gas / fees         | required                      | none (server-tick already-paid)          |
+| forks              | global · contentious          | local · honest-nodes converge naturally  |
+| tokens             | speculation-vector            | NO speculation-token · only-cosmetic     |
+| smart-contract-bug | immutable-on-chain            | compile-error · refused @ deploy         |
+| identity           | pubkey-only                   | pubkey + Σ-claim + sovereign-cap         |
+| onboarding         | wallet + gas                  | local-first · opt-in-only · zero-cost    |
+
+§ "blockchain but better" = Σ-Chain · matches every blockchain capability that has-genuine-utility · improves on every dimension where blockchain leaks-its-design-flaws
+
+═══════════════════════════════════════════════════════════════════════════════
+§ IMPLEMENTATION-ROADMAP
+═══════════════════════════════════════════════════════════════════════════════
+
+§ POD-2-additions (host-side support crates) :
+  CRATE-B15 NEW `cssl-host-sigma-chain`        ← TIER-2/3 event-emitter · Ed25519-sign · BLAKE3-merkle-root · deterministic-recompute verification · ≥ 30 tests
+  CRATE-B16 NEW `cssl-host-coherence-proof`    ← consensus-validator · recompute-event-effect · disagreement-flag · ≥ 25 tests
+  CRATE-B17 NEW `cssl-host-asset-ownership`    ← Ed25519-transfer · Σ-claim-update · Merkle-proof-of-inclusion · ≥ 22 tests
+  CRATE-B18 NEW `cssl-host-effect-contract`    ← .csl-source-as-smart-contract · MIR-eval · effect-row-typecheck · ≥ 28 tests
+
+§ POD-4-additions :
+  cssl-supabase migrations 0029-0033 :
+    ⊑ 0029_sigma_chain_events.sql      ← APPEND-ONLY event-stream (sovereign_cap_audit pattern)
+    ⊑ 0030_player_pubkeys.sql          ← Ed25519 player-pubkey registry · self-attested · revocable
+    ⊑ 0031_asset_transfers.sql         ← transfer-events · BLAKE3-merkle-root references
+    ⊑ 0032_coherence_proofs.sql        ← recompute-results · disagreement-tracking
+    ⊑ 0033_sigma_chain_rls.sql         ← RLS for the above · player-self-write · public-read · ¬ UPDATE/DELETE
+  cssl-edge route additions :
+    ⊑ /api/sigma-chain/event/post           ← player emits opt-in event
+    ⊑ /api/sigma-chain/event/poll          ← player polls peer-events for verification
+    ⊑ /api/sigma-chain/asset/transfer      ← Ed25519-signed transfer
+    ⊑ /transparency/sigma-chain-events     ← player's own opt-in history dashboard
+
+§ POD-3-additions (.csl game-logic) :
+  ⊑ systems/sigma_chain.csl       ← invoke cssl-host-sigma-chain FFI on opt-in events
+  ⊑ systems/asset_transfer.csl    ← Ed25519-sign + Σ-claim-update on player-action
+  ⊑ systems/effect_contract.csl   ← Bazaar-listing + battle-pass-claim as effect-contracts
+
+§ wave-target : W8 (after main-task wave-7 + R&D POD-1/2/3/4 lands) · prerequisites = cssl-host-attestation + cssl-host-multiplayer-signaling + cssl-host-mp-transport-real (W7) + cssl-host-asset-bundle (W6 ✓ landed) + Coherence-Engine port (planned W7+ POD-2)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-making · ¬ surveillance · ¬ exploitation · ¬ pay-for-power · ✓ player-sovereignty · ✓ privacy-default · ✓ economic-transparency
+
+§ creator @ Apocky · Σ-Chain = blockchain-without-its-flaws · founded-in-substrate-primitives · One-Unified-System-of-Systems pattern (per spec/15)

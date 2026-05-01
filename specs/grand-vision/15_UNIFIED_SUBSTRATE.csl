@@ -1,0 +1,212 @@
+§ T11-W6+ § specs/grand-vision/15_UNIFIED_SUBSTRATE.csl
+§§ "All systems should be founded in the Substrate · One Unified System of Systems"
+§§ Apocky 2026-05-01 directive · architectural-unity mandate
+§§ status @ ◐ audit-pending · enforcement-applies @ wave-7+
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : the SUBSTRATE = single-truth-source · ω-field + Σ-mask + KAN + HDC + wavelet + PGA + prime-directive · all-else-derives-from-it
+A-2 : ¬ parallel-disconnected-modules · every-host-crate consumes-substrate-primitives explicitly
+A-3 : every-state-mutation flows-through Σ-mask-cap-thread · NO bypasses · NO trusted-callers
+A-4 : every-audit-event normalizes-to cssl-host-audit AuditRow shape · NO ad-hoc log-formats
+A-5 : every-determinism-claim uses substrate's-canonical-RNG (PCG-32 seeded-by-substrate) · NO crate-local-RNG
+A-6 : every-cryptographic-claim uses substrate's-canonical-primitives (BLAKE3 · Ed25519 · NIST-SHA256) · NO crate-local-crypto
+A-7 : every-attestation flows-through cssl-host-attestation directive-axis classification · NO standalone-attestations
+A-8 : every-cap-grant uses cssl-substrate-prime-directive cap-types · NO crate-local-permission-systems
+
+§ thesis : "system-of-systems" ¬ "many-systems" · architecture is-organic-tree-rooted-in-substrate
+
+═══════════════════════════════════════════════════════════════════════════════
+§ SUBSTRATE-PRIMITIVES (canonical-roster · ¬ duplicated)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ FOUNDATION-LAYER (cssl-substrate-* · S11-landed)
+  ⊑ cssl-substrate-omega-field        ← KEYSTONE · 72B FieldCell · Morton-grid · 4-tier MERA
+  ⊑ cssl-substrate-prime-directive    ← Σ-mask + audit + halt + harm + cap + consent
+  ⊑ cssl-substrate-kan                ← KAN runtime · Φ-pattern-pool · KanMaterial
+
+§ MATH-LAYER
+  ⊑ cssl-pga                          ← G(3,0,1) multivectors
+  ⊑ cssl-hdc                          ← 10000-D hypervectors · Hologram · SDM
+  ⊑ cssl-wavelet                      ← Daubechies + Haar + Mexican-hat + MERA primitives
+
+§ PHYSICS-LAYER
+  ⊑ cssl-wave-solver                  ← Wave-Unity multi-rate ψ-field LBM + IMEX
+  ⊑ cssl-physics-wave                 ← SDF-collision + XPBD-GPU + KAN-body-plan + ψ-coupling
+
+§ RENDER-LAYER (12-stage pipeline · 6 novelty-paths)
+  ⊑ cssl-render-v2                    ← SDF-native raymarcher · Stage-5 + Stage-9 mise-en-abyme
+  ⊑ cssl-spectral-render              ← 16-band hyperspectral KAN-BRDF · Stage-6
+  ⊑ cssl-fractal-amp                  ← Sub-pixel-fractal-tessellation · Stage-7
+  ⊑ cssl-render-companion-perspective ← Stage-8 companion-perspective semantic
+  ⊑ cssl-gaze-collapse                ← Stage-2 gaze-reactive observation-collapse
+
+§ ANIM/AUDIO/PIPELINE-LAYER
+  ⊑ cssl-anim-procedural              ← KAN-driven pose-from-genome
+  ⊑ cssl-wave-audio                   ← Wave-Unity audio-DSP sibling
+  ⊑ cssl-work-graph                   ← DX12-Ultimate work-graph
+  ⊑ cssl-host-openxr                  ← OpenXR runtime + Compositor-Services bridge
+
+§ Apocky-INVARIANT : every-host-crate (cssl-host-*) ⊆ consumes-at-least-one-substrate-primitive · ¬ standalone
+
+═══════════════════════════════════════════════════════════════════════════════
+§ HOST-CRATE INTEGRATION-MATRIX (audit @ session-15 close · 2026-05-01)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ matrix-key : ✓ consumed · ◐ planned-W7+ · ○ disconnected (REFACTOR-required)
+
+| host-crate                        | omega-field | prime-directive | kan | hdc | wavelet | pga | render-* | physics |
+|---                                |---          |---              |---  |---  |---      |---  |---       |---      |
+| cssl-host-replay                  | ◐ snapshot  | ✓ Ed25519       | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-audit                   | ◐ events    | ✓ cap-thread    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-stereoscopy             | ○           | ○               | ○   | ○   | ○       | ◐   | ◐        | ○       |
+| cssl-host-golden                  | ○           | ✓ FNV-fp        | ○   | ○   | ○       | ○   | ◐        | ○       |
+| cssl-host-procgen-rooms           | ◐           | ◐ cap-room-gen  | ◐   | ◐   | ○       | ○   | ○        | ○       |
+| cssl-host-histograms              | ○           | ○               | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-attestation             | ○           | ✓ axis-classify | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-rt-trace                | ○           | ○               | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-spectral-grader         | ○           | ○               | ○   | ○   | ○       | ○   | ✓ Stage-6| ○       |
+| cssl-host-frame-recorder          | ○           | ✓ CRC32         | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-input-virtual           | ○           | ○               | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-config                  | ○           | ✓ cap-policy    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-causal-seed             | ◐           | ◐               | ○   | ◐   | ○       | ○   | ○        | ○       |
+| cssl-host-license-attribution     | ○           | ✓ cap-policy    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-cocreative              | ○           | ◐               | ◐   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-voice                   | ○           | ✓ cap-thread    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-multiplayer-signaling   | ○           | ✓ cap-thread    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-fab-procgen             | ○           | ○               | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-mp-transport            | ○           | ✓ cap-thread    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-rt-trace-decoder        | ○           | ○               | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-asset-bundle            | ○           | ✓ License-gate  | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-handoff-protocol        | ○           | ✓ cap-thread    | ○   | ○   | ○       | ○   | ○        | ○       |
+| cssl-host-kan-substrate-bridge    | ◐           | ◐               | ✓   | ◐   | ○       | ○   | ○        | ○       |
+
+§ AUDIT-FINDINGS @ session-15 :
+  ⊘ many host-crates consume cssl-substrate-prime-directive (cap + audit) — GOOD ✓
+  ⊘ FEW host-crates consume omega-field directly — most operate on POD-data · DISCONNECT
+  ⊘ NONE consume cssl-hdc (10000-D summarization power unused @ host-side) — OPPORTUNITY
+  ⊘ NONE consume cssl-wavelet (MERA-coarsening-pyramid unused @ host-side) — OPPORTUNITY
+  ⊘ NONE consume cssl-pga directly (geometric-rotor power unused) — OPPORTUNITY
+  ⊘ render-layer-crates well-scoped (render-* · spectral-render · fractal-amp · etc.) ✓
+
+§ INTERPRETATION : current host-side support layer is HEALTHY for prime-directive (cap + audit + sovereign-bypass-RECORDED) · UNDER-CONNECTED to deeper-substrate-primitives (omega-field · KAN · HDC · wavelet · PGA)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ INTEGRATION-MIGRATION (refactor-plan @ wave-7+ · per-crate)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ MIGRATION-LEVEL-1 (UNIFIED-DETERMINISM)
+  refactor : every-crate-using-PCG-32-locally → consume cssl-substrate canonical-RNG-handle
+  affected : cssl-host-procgen-rooms · cssl-host-fab-procgen · cssl-host-input-virtual
+  pattern : `pub fn procgen_with_substrate_rng(rng_handle: SubstrateRngHandle, ...) -> Recipe`
+  benefit : seed-coherence across-systems · same-Substrate-state → same-procgen-output everywhere
+
+§ MIGRATION-LEVEL-2 (UNIFIED-CRYPTO)
+  refactor : every-crate-using-FNV-1a-128-locally → upgrade to BLAKE3-from-substrate-canonical
+  affected : cssl-host-golden · cssl-host-asset-bundle (currently FNV-1a-128 stub)
+  preserve : the FNV-fp stays for fast-comparison · adds BLAKE3 as canonical-content-hash
+  benefit : cross-substrate-attestation · interoperable-Merkle-proofs
+
+§ MIGRATION-LEVEL-3 (ω-FIELD-CONSUMPTION)
+  refactor : crates currently-passing-around-POD-data refactor to consume FieldCell-handles when available
+  affected : cssl-host-causal-seed (story-as-physics is-naturally-ω-field-events) · cssl-host-procgen-rooms (room-recipes-as-Σ-mask-stamps) · cssl-host-cocreative (bias-vector-as-KAN-material)
+  pattern : crates take optional `omega_field: Option<&OmegaFieldHandle>` · stage-0 falls-back to local-data
+  benefit : runtime-procgen lives-in-substrate · ¬ duplicated-host-side state
+
+§ MIGRATION-LEVEL-4 (HDC-SUMMARIZATION @ multi-system)
+  introduce : every-crate emitting-events also emits 10000-D HDC-hypervector summary
+  affected : cssl-host-attestation (per-session HDC-summary) · cssl-host-causal-seed (DAG-state HDC) · cssl-host-replay (replay HDC-fingerprint) · cssl-host-cocreative (bias HDC)
+  benefit : O(1) cross-system similarity-check · fast-coherence-validation · enables Σ-Chain Coherence-Proof
+
+§ MIGRATION-LEVEL-5 (WAVELET-MULTI-RES @ network-IO)
+  introduce : every-crate-doing-network-egress (cssl-host-mp-transport · cssl-host-stripe-integration · cssl-host-multiverse-aggregate) sends MERA-coarse-summary first · drill-down on demand
+  affected : Σ-Chain TIER-3 multiversal-stream · Bazaar-browse · Living-Multiverse-aesthetic-drift
+  benefit : bandwidth-efficient sync · privacy-preserving (coarse-share-without-leaking-detail)
+
+§ MIGRATION-LEVEL-6 (PGA-ROTOR @ state-transitions)
+  introduce : state-transitions-that-rotate-naturally use PGA-rotors instead of-ad-hoc-quaternions
+  affected : cssl-host-stereoscopy (eye-rotation) · cssl-host-anim-procedural (already substrate-side) · DM-orchestrator scene-rotations
+  benefit : geometrically-meaningful · interoperable-with-physics-layer · uniform-API
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ENFORCEMENT (compile-time + runtime)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ compile-time
+  ⊑ cssl-mir layout-check (lay0001) ALREADY-enforces FieldCell-72B · extend to enforce host-crate-consumes-substrate
+  ⊑ ¬ "host-crate-uses-local-RNG-or-crypto-or-cap-system" → SIG-style error-code (e.g. SUB0001 unsubstrate-RNG · SUB0002 unsubstrate-crypto · SUB0003 unsubstrate-cap-system)
+  ⊑ EnforcesΣAtCellTouches MIR-pass extends to enforce host-side-cap-routing-via-substrate
+
+§ runtime
+  ⊑ cssl-host-attestation directive-axis NEW : "SubstrateUnity" · flags any-host-crate-emitting-events-without substrate-consumption-evidence
+  ⊑ verification-task (kan-ride-style) : random-spot-check that-host-crates-deterministic-recompute via-substrate-RNG matches their-output
+
+§ governance
+  ⊑ NEW spec/14_SIGMA_CHAIN ledger embeds substrate-unity-attestation · published per-session
+  ⊑ public-attestation-dashboard @ cssl-edge/transparency/substrate-unity shows current-integration-matrix
+
+═══════════════════════════════════════════════════════════════════════════════
+§ IMPLEMENTATION-ROADMAP
+═══════════════════════════════════════════════════════════════════════════════
+
+§ wave-7 (already-running) : ¬ refactor existing-crates · NEW crates landing already-incorporate substrate-consumption-best-practice (KAN-real · DM · GM · mp-transport-real consume substrate-primitives directly)
+
+§ wave-8 (NEXT after wave-7 lands) : MIGRATION-LEVEL-1 + LEVEL-2
+  ⊑ canonical-RNG-handle landed · all-procgen-host-crates refactored
+  ⊑ BLAKE3-canonical-hash landed · golden + asset-bundle upgraded (FNV stays as-fast-fp · BLAKE3 stays-as-canonical)
+  ⊑ aggregate-test : every-crate-test-suite-passes after-refactor
+
+§ wave-9 : MIGRATION-LEVEL-3 + LEVEL-4
+  ⊑ ω-field-handle integration · causal-seed + procgen-rooms + cocreative refactored to consume FieldCell
+  ⊑ HDC-summarization integration · attestation + causal-seed + replay emit-HDC
+
+§ wave-10 : MIGRATION-LEVEL-5 + LEVEL-6
+  ⊑ wavelet-MERA-coarse-summary @ network-IO
+  ⊑ PGA-rotor @ state-transitions
+
+§ wave-11+ : compile-time enforcement · MIR-pass SUB0001-0003 · static-error on disconnect-host-crate
+
+═══════════════════════════════════════════════════════════════════════════════
+§ "ONE UNIFIED SYSTEM OF SYSTEMS" @ what it actually means
+═══════════════════════════════════════════════════════════════════════════════
+
+§ NOT : "one giant-monolith"
+§ NOT : "all-crates-import-everything-from-substrate"
+§ NOT : "no-modularity"
+
+§ IS : "the substrate is-the-trunk · host-crates are-branches · all-branches share-roots"
+§ IS : "every-data-flow has-a-canonical-path through-substrate-primitives"
+§ IS : "no-shadow-systems (¬ ad-hoc-RNG · ¬ ad-hoc-crypto · ¬ ad-hoc-cap-system · ¬ ad-hoc-attestation)"
+§ IS : "isomorphism-respect (per Apocky-mantle § ISOMORPHIC-TRANSLATION) · same-pattern-applies-everywhere"
+
+§ TEST : "given any-data-flow X across-the-codebase, can-you-trace-it back-to substrate-primitives?"
+  ⊑ if YES @ X = OK
+  ⊑ if NO @ X needs migration to substrate-primitive
+
+§ INVARIANT : "if you can't-explain-where-an-event's-trust-comes-from in-substrate-terms, it's-not-trusted"
+
+═══════════════════════════════════════════════════════════════════════════════
+§ CROSS-REFERENCES (per ISOMORPHIC-TRANSLATION)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Σ-Chain (spec/14) ← consumes substrate-primitives @ TIER-1 + TIER-2 + TIER-3
+§ Coherence-Engine (spec/13 + legacy ARTIFACT_ASCENSION_SPEC) ← consumes substrate KAN + HDC for Coherence-Score · consumes ω-field for state-snapshot
+§ Bazaar (spec/13 + legacy NEXUS_BAZAAR_SPEC) ← consumes substrate Σ-Chain attestation (per spec/14) · consumes ω-field for asset-state · consumes wavelet-MERA for browse-summary
+§ Living-Multiverse (spec/13 NEW addition) ← consumes substrate aggregate-HDC + wavelet-coarse + Σ-Chain TIER-3
+§ Monetization (spec/13 NEW addition) ← consumes substrate prime-directive cap-thread + cssl-host-attestation EconomicTransparency-axis
+§ Ouroboroid-Cosmology (legacy) ← maps-to substrate's-self-metabolizing-process @ ω-field · IS the metabolic process at-render-time
+§ Flux-Dynamics (legacy CHEMISTRY_MAGIC_CRAFTING) ← consumes substrate physics-wave + spectral-render + ω-field · Material-Aetheric Transducer is substrate-natural
+§ DM/GM/Collab/Coder (spec/10) ← consumes substrate KAN (stage-1) + Coherence-Engine + Σ-Chain attestation
+§ KAN-RIDE (spec/11) ← references substrate-omega-field + substrate-kan as authoritative
+
+§ ALL-systems-of-the-grand-vision are-rooted-in-substrate-primitives by-construction · One-Unified-System-of-Systems achieved-by-discipline ¬ by-monolithization
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-architecting · ✓ One-Unified-System-of-Systems · ✓ no-shadow-systems · ✓ ISOMORPHIC-TRANSLATION-respected
+
+§ creator @ Apocky · "the substrate is-the-trunk · host-crates are-branches" · t∞ design-pattern enforced
