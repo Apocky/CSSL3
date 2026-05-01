@@ -329,6 +329,21 @@ export interface Database {
         Insert: RoomStateSnapshotInsert;
         Update: never; // snapshots are append-only
       };
+      cocreative_bias_vectors: {
+        Row: CocreativeBiasVectorRow;
+        Insert: CocreativeBiasVectorInsert;
+        Update: CocreativeBiasVectorUpdate;
+      };
+      cocreative_feedback_events: {
+        Row: CocreativeFeedbackEventRow;
+        Insert: CocreativeFeedbackEventInsert;
+        Update: never; // feedback is append-only
+      };
+      cocreative_optimizer_snapshots: {
+        Row: CocreativeOptimizerSnapshotRow;
+        Insert: CocreativeOptimizerSnapshotInsert;
+        Update: never; // snapshots are append-only
+      };
     };
     Functions: {
       scene_record_play: {
@@ -360,6 +375,20 @@ export interface Database {
       current_user_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      update_bias_with_step: {
+        Args: {
+          p_bias_id: Uuid;
+          p_new_theta: Jsonb;
+          p_step_count: number;
+          p_loss: number;
+          p_grad: number;
+        };
+        Returns: Timestamptz;
+      };
+      latest_snapshot_for_player: {
+        Args: { p_player_id: string };
+        Returns: CocreativeOptimizerSnapshotRow[];
       };
     };
     Enums: Record<string, never>;
@@ -400,4 +429,136 @@ export function roomChannelName(roomId: Uuid): string {
 /** Per-peer realtime channel name (subscribe to messages addressed to me). */
 export function peerChannelName(roomId: Uuid, peerId: string): string {
   return `room:${roomId}:peer:${peerId}`;
+}
+
+// =====================================================================
+// § T11-W5b-SUPABASE-COCREATIVE · cocreative cross-session learning types
+// Appended for migrations 0007 + 0008 + 0009.
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// Enums + literals (cocreative)
+// ---------------------------------------------------------------------
+export type CocreativeFeedbackKind =
+  | "thumbs_up"
+  | "thumbs_down"
+  | "scalar_score"
+  | "comment";
+
+/**
+ * Bias-vector parameter array θ ∈ R^dim. Stored as `Jsonb` (a JSON array of
+ * numbers). The host crate (`cssl-host-cocreative`) deserializes this into
+ * a fixed-size f32 buffer of length `dim`.
+ */
+export type BiasTheta = number[];
+
+// ---------------------------------------------------------------------
+// public.cocreative_bias_vectors
+// ---------------------------------------------------------------------
+export interface CocreativeBiasVectorRow {
+  id: Uuid;
+  player_id: string;
+  dim: number;
+  theta: Jsonb; // BiasTheta serialized as Jsonb array
+  lr: number;
+  momentum_decay: number;
+  step_count: number;
+  last_loss: number | null;
+  last_grad_l2: number | null;
+  created_at: Timestamptz;
+  updated_at: Timestamptz;
+}
+
+export type CocreativeBiasVectorInsert = Omit<
+  CocreativeBiasVectorRow,
+  | "id"
+  | "lr"
+  | "momentum_decay"
+  | "step_count"
+  | "last_loss"
+  | "last_grad_l2"
+  | "created_at"
+  | "updated_at"
+> & {
+  id?: Uuid;
+  lr?: number;
+  momentum_decay?: number;
+  step_count?: number;
+  last_loss?: number | null;
+  last_grad_l2?: number | null;
+  created_at?: Timestamptz;
+  updated_at?: Timestamptz;
+};
+
+export type CocreativeBiasVectorUpdate = Partial<CocreativeBiasVectorInsert>;
+
+/** Convenience alias matching the requested public surface. */
+export type BiasVector = CocreativeBiasVectorRow;
+
+// ---------------------------------------------------------------------
+// public.cocreative_feedback_events
+// ---------------------------------------------------------------------
+export interface CocreativeFeedbackEventRow {
+  id: number; // bigserial
+  player_id: string;
+  bias_id: Uuid | null;
+  kind: CocreativeFeedbackKind;
+  target_label: string;
+  scene_features: Jsonb;
+  score: number | null;       // present only when kind === "scalar_score"
+  comment_text: string | null; // present only when kind === "comment"
+  recorded_at: Timestamptz;
+}
+
+export type CocreativeFeedbackEventInsert = Omit<
+  CocreativeFeedbackEventRow,
+  "id" | "recorded_at"
+> & {
+  id?: number;
+  recorded_at?: Timestamptz;
+};
+
+export type CocreativeFeedbackEventUpdate = Partial<
+  Pick<CocreativeFeedbackEventRow, "score" | "comment_text">
+>;
+
+/** Convenience alias matching the requested public surface. */
+export type FeedbackEvent = CocreativeFeedbackEventRow;
+
+// ---------------------------------------------------------------------
+// public.cocreative_optimizer_snapshots
+// ---------------------------------------------------------------------
+export interface CocreativeOptimizerSnapshotRow {
+  id: number; // bigserial
+  bias_id: Uuid;
+  seq: number;
+  theta: Jsonb; // BiasTheta serialized as Jsonb array
+  step_count: number;
+  last_loss: number | null;
+  created_at: Timestamptz;
+}
+
+export type CocreativeOptimizerSnapshotInsert = Omit<
+  CocreativeOptimizerSnapshotRow,
+  "id" | "created_at"
+> & {
+  id?: number;
+  created_at?: Timestamptz;
+};
+
+export type CocreativeOptimizerSnapshotUpdate = never; // append-only
+
+/** Convenience alias matching the requested public surface. */
+export type OptimizerSnapshot = CocreativeOptimizerSnapshotRow;
+
+// =====================================================================
+// § T11-W5b-SUPABASE-COCREATIVE · channel-name builders
+// =====================================================================
+/**
+ * Per-player realtime channel name. cssl-host-cocreative subscribes
+ * to this channel to receive cross-device updates to its bias-vector
+ * (e.g. when the player drives feedback on a second device).
+ */
+export function cocreativeChannelName(playerId: string): string {
+  return `cocreative:${playerId}`;
 }
