@@ -1,0 +1,23 @@
+[package]
+name                   = "cssl-host-cocreative"
+description            = "CSSLv3 stage0 — Co-creative bias-vector optimizer : gradient-descent on player-feedback adjusts spontaneous-condensation seed-cells (paradigm-6)"
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W4-COCREATIVE (cssl/session-15/W-W4-cocreative) : disjoint pure-math crate.
+# Sixth-paradigm "co-creative" loop — substrate adjusts toward what the player
+# likes, not what was authored. Continuous bias-vector θ ∈ ℝ^D modulates
+# spontaneous-condensation seeds. Player feedback (👍/👎/scalar) → loss →
+# finite-diff gradient → θ updated. NO ndarray/nalgebra ; Vec<f32> only.
+# loa-host integration deferred to wave-5.
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
