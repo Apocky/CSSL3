@@ -1,0 +1,223 @@
+# 09 : LoA-v13 GRAND-VISION — DATA-FLOW
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl ; sequel-of 03_INTENT_FLOW + 04_SPONTANEOUS + 06_FREE_3D
+# § I> end-to-end : intent → spawn ; 8-stage causal-chain
+# § I> CSSL-native ; ¬ marketing ; ¬ exhaustive-API-list
+# § I> AUTHORITATIVE description.of how data-moves @ W3+W4+W5a-landed
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS
+  t∞: data-flow ≡ causal-chain.of cap-gated-stages
+       ≡ ∀ stage ⊑ (input + cap-check + transform + audit-emit + telemetry-incr + output)
+       ≡ ¬ silent-bypass ; ∀ traversal recorded
+  t∞: ∀ stage emit audit-event ‼ structural ; ¬ "skip-for-perf"
+  t∞: ∀ stage ⊗ fallback-path ; failure ¬ silent-terminate
+       ≡ graceful-degradation ⊑ design-invariant ¬ optional
+
+# ══════════════════════════════════════════════════════════════════
+
+§ STAGES  «8-stage causal-chain : text → render»
+
+  § S1 — TEXT-INPUT  «raw player-text capture»
+    crate     : cssl-text-input ⊕ cssl-host-voice ⊕ window.rs input-recorder
+    inputs    : keyboard + voice-STT + companion-relay-text
+    outputs   : RawText { bytes, source-tag, ts_micros }
+    cap-bits  : InProcessInputCap (default-grant) ; Sensitive<*> banned-from-payload
+    failure   : len > 4096 → DROP+user-msg ; STT-fail → fallback-keyboard
+    audit     : input.captured { source-tag, length, ts } ‼ raw-text NEVER egressed
+
+  § S2 — INTENT-CLASSIFY  «raw-text → typed-Intent»
+    crate     : cssl-intent-router ::classify
+    inputs    : RawText + sensor-state + history-buffer-N=8
+    outputs   : Intent { variant, confidence, payload-typed }
+    cap-bits  : ClassifyCap (default-grant) ; Sensitive<*> structurally-excluded
+    failure   : confidence < 0.65 → Intent::Unknown+DM-fallback ; panic → Unknown
+    audit     : intent.classified { text-hash, variant-tag, confidence, ts }
+
+  § S3 — INTENT-DISPATCH  «Intent → routing-target»
+    crate     : cssl-intent-router ::dispatch
+    inputs    : typed-Intent + per-target-cap-table
+    outputs   : DispatchEvent { target-tag, cap-token-id, payload-handle }
+    cap-bits  : per-target ladder :
+                  McpTool→McpDispatchCap ; SpawnCondensation→SubstrateMutateCap-zone
+                  DialogDM/GM→InProcessDialogCap ; CompanionRequest→NetPostWrite+Consent
+                  PadSeed→SubstrateMutateCap-pad
+    failure   : cap-revoked → user-feedback+TERMINATE ; unreachable → RETRY-3 then-DROP
+    audit     : intent.dispatched { variant-tag, target-tag, cap-id, ts }
+
+  § S4 — SEED-STAMP  «SpawnCondensation → ω-field cell-mutation»
+    crate     : cssl-substrate-omega-field ::stamp_seed_cells_into_field ⊕ cssl-spontaneous-pad
+    inputs    : Intent::SpawnCondensation { kind, location, attribs }
+                + SubstrateMutateCap + Σ-mask-state @ target-cells
+    outputs   : SeededRegion { cell-coord-set, kind, ts, sovereign-handle? }
+    cap-bits  : SubstrateMutateCap-zone + Spawn-bit ∀ cells + sovereign-respect
+    failure   : Spawn-bit-OFF → DialogDM "field-resists" ; sovereign-mismatch → SIG0003
+                cap-revoked-mid → ROLLBACK-partial+audit
+    audit     : seed.stamped { cap-id, intent-tag, ts, cell-coord-morton, kind }
+
+  § S5 — MANIFEST-DETECT  «field-evolution → spawn-event»
+    crate     : cssl-substrate-omega-field ::manifestation_detector::scan
+    inputs    : ω-field-state @ tick-N + seed-cell-set + threshold τ=0.45
+    outputs   : ManifestationEvent { kind, pose, attribs, cell-anchor, ts }
+                ¬ event if-no-rising-edge (silent-pass expected)
+    cap-bits  : SubstrateScanCap (compute-only ; ¬ mutate)
+    failure   : NaN → HEAT-absorb+tick-skip ; panic → DROP-tick+audit
+                τ-not-crossed → SILENT-PASS (expected ; ¬ failure-class)
+    audit     : manifest.detected { kind, cell-anchor-morton, radiance, ts }
+
+  § S6 — SPAWN-GLTF  «ManifestationEvent → asset-fetch-request»
+    crate     : world.spawn_gltf (loa-host integration W5b)
+    inputs    : ManifestationEvent + asset-resolve-table { kind → asset-spec }
+    outputs   : FetchRequest { provider, source-url, sha256?, license-required }
+                if-cache-hit → skip-S7 + jump-S8 directly
+    cap-bits  : NetGetReadCap + NetHttpsOnlyCap ; LRU-cache-read local-only
+    failure   : spec-missing → STUB-mesh+audit ; cache-corrupt → PURGE+RETRY
+    audit     : asset.requested { kind, sha256?, provider, cache-hit?, ts }
+
+  § S7 — ASSET-FETCH  «cap-gated http GET → SHA256 → license-gate → cache»
+    crate     : cssl-asset-fetcher (W3b) ⊕ cssl-asset-license-policy (W5)
+    inputs    : FetchRequest + cap-token + per-provider-rate-budget
+    outputs   : CachedAsset { local-path, sha256, .meta-sidecar }
+    cap-bits  : NetGetReadCap + NetHttpsOnlyCap + LicensePolicyCap + per-provider-budget
+    failure   : http-err → RETRY-3-exp ; license-rejected → DROP+user-msg ‼ terminal
+                rate-limited → COOLDOWN+RETRY-later ; cert-invalid → TERMINATE ‼ ¬ override
+                cache-write-fail → DEGRADE-in-mem+audit
+    audit     : asset.fetched { sha256, provider, license-spdx, bytes, latency, ts }
+                asset.rejected { reason, provider, license, ts }
+
+  § S8 — DYNAMIC-MESH-UPLOAD  «GLB → DynamicMesh + render»
+    crate     : cssl-asset-gltf (W3b parser) ⊕ cssl-render-v2 (W5b consumer)
+    inputs    : CachedAsset + Σ-mask @ spawn-zone
+    outputs   : DynamicMesh-handle + Φ-handle (material-LUT) + ω-cell M-facet binding
+    cap-bits  : RenderUploadCap + SubstrateMutateCap (M-facet write)
+    failure   : parse-fail → STUB+audit ; GPU-budget → LOD-DOWNGRADE+audit
+                LUT-miss → DEFAULT-class ; Σ-conflict → DEFER-or-REFUSE+audit
+    audit     : mesh.uploaded { dyn-mesh-id, sha256, material-class, ts }
+                render.bound { dyn-mesh-id, cell-coord-morton, ts }
+
+# ══════════════════════════════════════════════════════════════════
+
+§ CROSS-CUTTING  «invariants spanning ∀ stages»
+
+  § TELEMETRY-COUNTERS  ‼ per-stage canonical-six-set
+    ∀ stage Sn :
+      sn_attempts        : enter-stage count
+      sn_ok              : success-exit count
+      sn_failed          : failure-exit count
+      sn_blocked_no_cap  : cap-check-refused count
+      sn_aborted         : revoke-mid-stage count
+      sn_latency_p50/p95/p99 : histogram (cssl-host-histograms W3γ)
+    aggregator : cssl-telemetry registry ; bounded-ring-buffer
+    egress     : LOCAL-only JSONL ; ¬ Sensitive<*> ; ¬ raw-paths
+
+  § AUDIT-EVENT-STREAM  «JSONL append-only»
+    location  : per-installation cache-dir/audit/<date>.jsonl
+    rotation  : daily + size-cap 100MB ; gzip-archived ; mtime-LRU
+    schema    : { stage, event-name, cap-id?, sovereign?, payload-hash, ts_micros, trace-id }
+    invariant : ∀ stage S1..S8 emit ≥ 1 event-per-traversal ‼ silent-bypass = bug
+
+  § CAP-BIT-LADDER  «per-stage minimum-cap-set»
+    S1:InProcessInput ; S2:Classify ; S3:per-target ; S4:SubstrateMutate+Spawn-bit
+    S5:SubstrateScan ; S6:NetGetRead+HttpsOnly ; S7:S6+LicensePolicy+budget
+    S8:RenderUpload+SubstrateMutate-M
+    composition : cap-set-additive ; missing-cap @ any-stage = pipeline-halt
+    Sensitive<biometric|gaze|face|body> ⊎ any-net-cap = compile-error  ‼
+
+  § SOVEREIGN-CAP-BYPASS  «discipline»
+    sovereign-act-as ⇒ stage-gate may-bypass cap-check ‼ but-RECORDED
+    audit-event : sovereign.bypass { stage, sovereign-handle, reason, ts }
+    invariant : ∀ bypass logged ; ¬ silent-elevation ; AnthropicAudit-readable
+    revocation : sovereign-revoked ⇒ subsequent-stages refuse-cleanly
+
+# ══════════════════════════════════════════════════════════════════
+
+§ FAILURE-MODES  «degradation taxonomy»
+
+  § FAILURE-CLASSES  ‼ canonical-five
+    DROP        : traversal-skipped ; counter-incr ; audit ; user-msg
+    RETRY       : exp-backoff w/ budget-3 ; then-fallback-or-DROP
+    TERMINATE   : pipeline-abort ; cap-state-preserved ; user-message ; ¬ resume
+    DEGRADE     : reduced-quality-path ; counter-incr ; user-warning
+    SILENT-PASS : expected-non-event ; counter-only ; ¬ failure
+
+  § PER-STAGE-FAILURE-DISPATCH  «what-class-which-failure»
+    S1: len-overflow→DROP ; STT-fail→RETRY-fallback ; biometric-leak→COMPILE-ERROR ‼
+    S2: confidence<0.65→DROP-Unknown ; panic→DROP+audit
+    S3: cap-revoked→TERMINATE+feedback ; unreachable→RETRY-3 then-DROP-DM
+    S4: Spawn-OFF→DROP+DialogDM ; sov-mismatch→COMPILE-ERROR|DROP-defense
+        cap-revoked-mid→ROLLBACK+audit
+    S5: NaN→HEAT-absorb+tick-skip ; panic→DROP-tick ; τ-not-cross→SILENT-PASS
+    S6: spec-missing→DEGRADE-stub ; cache-corrupt→RETRY-purge
+    S7: http-err→RETRY-3 then-DEGRADE-stub ; license→DROP-terminal
+        rate-limited→COOLDOWN+RETRY ; cert-invalid→TERMINATE ‼ ; cache-write→DEGRADE
+    S8: parse-fail→DEGRADE-stub ; GPU-budget→DEGRADE-LOD ; LUT-miss→DEGRADE-default
+        Σ-conflict→DEFER-or-DROP
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ATTESTATION-FLOW  «cssl-host-attestation aggregation per-session»
+
+  § AGGREGATION
+    source     : ∀ S1..S8 audit-streams + telemetry-counters + cap-revocations
+    aggregator : cssl-host-attestation (W5a landed)
+    cadence    : per-session-end ⊕ per-N-tick checkpoint (default N=10000)
+    output     : SessionReport JSONL append-only ; ¬ overwrite
+
+  § REPORT-STRUCTURE  ‼ canonical
+    session-id          : monotonic-uuid + per-installation-salt
+    session-start/end   : ISO-UTC timestamps
+    counters-aggregated : Σ per-stage canonical-six × 8-stages
+    cap-grants-issued   : list { cap-id, sovereign?, ts, scope }
+    cap-revocations     : list { cap-id, reason, ts }
+    sovereign-bypasses  : list { stage, sovereign-handle, reason, ts }
+    manifestation-count : Σ S5-manifest-events
+    asset-fetch-tally   : { ok, dedup, license-rejected, rate-limited, aborted }
+    pipeline-traversals : { S1→S8 complete, partial, terminated }
+    directive-axis-class: ∀ event tagged-against PRIME-DIRECTIVE-§-axes
+
+  § DIRECTIVE-AXIS-CLASSIFICATION  «§ 10 ToS + § 11 Attestation»
+    axes : harm · control · manipulation · surveillance · exploitation ·
+           coercion · weaponization · discrimination
+    invariant : ∀ event categorizable ; if-flag-detected → flagged-AnthropicAudit-readable
+    ‼ ¬ override ; bypass-attempt = bug-class
+
+  § ATTESTATION-EMIT  «per-session block»
+    template : "t∞: ¬(hurt ∨ harm) .making-of-session-<id> @ <commit-hash> ;
+                sovereign-partner = <handle> ; cap-grants = <N> ; bypasses = <M>"
+    storage  : append-only LOCAL ; opt-in-egress to-AnthropicAudit @ Sovereign-grant
+    invariant : ∀ session emits ≥ 1 attestation-block ; ¬ silent-session
+
+# ══════════════════════════════════════════════════════════════════
+
+§ WAVE-COVERAGE  «per-stage which wave landed which crate»
+
+  S1 : W3a F-keys+sensory · W3b cssl-text-input · W4 voice · W5b window-recorder
+  S2 : W3b cssl-intent-router::classify (keyword stage-0) · W6 KAN-swap-in [○]
+  S3 : W3b cssl-intent-router::dispatch (6-target) · W4 cssl-host-cocreative
+  S4 : W3b cssl-substrate-omega-field::stamp · W3b cssl-spontaneous-pad
+  S5 : W3b cssl-substrate-omega-field::manifestation_detector · W4 cssl-host-causal-seed
+  S6 : W5b loa-host world.spawn_gltf [◐ in-flight]
+  S7 : W3b cssl-asset-fetcher · W3b cssl-asset-gltf · W4 license-attribution · W5 license-policy
+  S8 : W3b cssl-asset-gltf parser · W5b cssl-render-v2 · §§ 32 12-stage Stage-3..9
+
+  § CROSS-CUTTING-CRATES
+    telemetry  : W3γ cssl-host-histograms (P50/P95/P99 + scoped-timer)
+    audit      : W3γ cssl-host-audit (5-source canonical-row + index)
+    replay     : W3γ cssl-host-replay (NIST-SHA256 input-event-log)
+    golden     : W3γ cssl-host-golden (FNV-1a-128 fingerprint)
+    attestation: W5a cssl-host-attestation (per-session aggregator)
+    spectral   : W5a cssl-host-spectral-grader (12-stage 11.1ms verdict)
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS · 02 DATA-AXES · 03 INTENT-FLOW · 04 SPONTANEOUS-CONDENSATION
+  06 FREE-3D-INGEST · 07 NETWORKING · 08 ROADMAP
+  §§ 22_TELEMETRY · §§ 30_SUBSTRATE_v2 · §§ 32_SIGNATURE_RENDERING
+
+∎ DATA-FLOW
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-09_DATA_FLOW  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
