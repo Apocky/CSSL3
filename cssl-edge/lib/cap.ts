@@ -2,13 +2,18 @@
 // Cap-bit constants + cap-gate predicate for /api/* routes.
 //
 // Cap-bit layout :
-//   bit 0 (0x1) · COMPANION_REMOTE_RELAY · /api/companion
-//   bit 0 (0x1) · MP_CAP_HOST_ROOM       · /api/signaling/create-room
-//   bit 1 (0x2) · MP_CAP_JOIN_ROOM       · /api/signaling/join-room
-//   bit 2 (0x4) · MP_CAP_RELAY_DATA      · /api/signaling/{post-signal,poll}
+//   bit 0   (0x001) · COMPANION_REMOTE_RELAY · /api/companion
+//   bit 0   (0x001) · MP_CAP_HOST_ROOM       · /api/signaling/create-room
+//   bit 1   (0x002) · MP_CAP_JOIN_ROOM       · /api/signaling/join-room
+//   bit 2   (0x004) · MP_CAP_RELAY_DATA      · /api/signaling/{post-signal,poll}
+//   bit 4   (0x010) · MARKETPLACE_CAP_LIST   · /api/marketplace/list
+//   bit 5   (0x020) · MARKETPLACE_CAP_POST   · /api/marketplace/post
+//   bit 6   (0x040) · RUN_SHARE_CAP_SUBMIT   · /api/run-share/submit
+//   bit 7   (0x080) · RUN_SHARE_CAP_RECEIVE  · /api/run-share/feed
+//   bit 8   (0x100) · MP_CAP_RENDEZVOUS      · /api/mp-rendezvous/lobby
 //
-// Multiplayer caps + companion cap occupy distinct bit-spaces inside the
-// caller-supplied `cap` integer. Callers OR-compose cap-bits per request.
+// Multiplayer caps + companion cap + marketplace + run-share caps share the
+// caller-supplied `cap` integer (distinct bit-spaces). Callers OR-compose.
 
 // Multiplayer signaling cap-bits.
 export const MP_CAP_HOST_ROOM = 1;
@@ -17,6 +22,14 @@ export const MP_CAP_RELAY_DATA = 4;
 
 // Companion cap-bit (mirrors CAP_COMPANION_REMOTE_RELAY in /api/companion).
 export const COMPANION_REMOTE_RELAY = 1;
+
+// Marketplace + run-share + rendezvous cap-bits (POD-4 D3 expansion).
+// Distinct bit-space from companion (0x1) and signaling (0x1/0x2/0x4).
+export const MARKETPLACE_CAP_LIST = 0x10;
+export const MARKETPLACE_CAP_POST = 0x20;
+export const RUN_SHARE_CAP_SUBMIT = 0x40;
+export const RUN_SHARE_CAP_RECEIVE = 0x80;
+export const MP_CAP_RENDEZVOUS = 0x100;
 
 // Cap-gate result. `ok=false` carries a reason for audit-log + 403 body.
 export interface CapDecision {

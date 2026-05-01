@@ -23,7 +23,15 @@
     "test:transparency-bias-api": "node --import tsx tests/api/transparency-cocreative-bias.test.ts",
     "test:transparency-index-page": "node --import tsx tests/pages/transparency-index.test.ts",
     "test:transparency-sovcap-page": "node --import tsx tests/pages/transparency-sovereign-cap.test.ts",
-    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page"
+    "test:marketplace-list": "node --import tsx tests/api/marketplace-list.test.ts",
+    "test:marketplace-post": "node --import tsx tests/api/marketplace-post.test.ts",
+    "test:run-share-submit": "node --import tsx tests/api/run-share-submit.test.ts",
+    "test:run-share-feed": "node --import tsx tests/api/run-share-feed.test.ts",
+    "test:mp-rendezvous-lobby": "node --import tsx tests/api/mp-rendezvous-lobby.test.ts",
+    "test:transparency-kan-canary": "node --import tsx tests/api/transparency-kan-canary.test.ts",
+    "test:gear-share-page": "node --import tsx tests/pages/marketplace.test.tsx",
+    "test:run-share-feed-page": "node --import tsx tests/pages/run-share-feed.test.tsx",
+    "test": "npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page && npm run test:marketplace-list && npm run test:marketplace-post && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:transparency-kan-canary && npm run test:gear-share-page && npm run test:run-share-feed-page"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
