@@ -284,6 +284,14 @@ pub struct TelemetrySink {
     /// landed in the buffer ; over-cap chars are excluded).
     pub text_input_chars_typed_total: AtomicU64,
 
+    // § T11-WAVE3-GLTF : per-spawn counters for external 3D-model imports.
+    /// Total successful glTF / GLB spawns since startup.
+    pub gltf_spawns_total: AtomicU64,
+    /// Total rejected glTF / GLB spawns (parse-fail · cap-mismatch · over-cap).
+    pub gltf_spawns_rejected_total: AtomicU64,
+    /// Total dynamic-mesh draw-calls issued (rolls up across all spawned meshes).
+    pub gltf_draws_total: AtomicU64,
+
     // § Sliding-window percentile snapshots (Q14 fixed-point milliseconds)
     pub last_p50_q14: AtomicU32,
     pub last_p95_q14: AtomicU32,
@@ -377,6 +385,11 @@ impl TelemetrySink {
             burst_captures_total: AtomicU64::new(0),
             text_input_submissions_total: AtomicU64::new(0),
             text_input_chars_typed_total: AtomicU64::new(0),
+            // § T11-WAVE3-GLTF : start at zero · ffi::spawn_gltf_path
+            // increments on every successful import.
+            gltf_spawns_total: AtomicU64::new(0),
+            gltf_spawns_rejected_total: AtomicU64::new(0),
+            gltf_draws_total: AtomicU64::new(0),
             last_p50_q14: AtomicU32::new(0),
             last_p95_q14: AtomicU32::new(0),
             last_p99_q14: AtomicU32::new(0),
@@ -537,6 +550,43 @@ impl TelemetrySink {
     pub fn record_video_frame(&self) {
         self.video_frames_recorded_total
             .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// § T11-WAVE3-GLTF : record a successful glTF / GLB spawn. Bumps
+    /// `gltf_spawns_total` and emits a JSONL event with the per-spawn
+    /// metadata so the user can audit which assets were loaded.
+    pub fn record_gltf_spawn(&self, instance_id: u32, verts: u32, tris: u32, mat_id: u32) {
+        self.gltf_spawns_total.fetch_add(1, Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"gltf_spawn\",\"instance_id\":{},\"verts\":{},\"tris\":{},\"material_id\":{}}}",
+            iso_utc(unix_ms()),
+            instance_id,
+            verts,
+            tris,
+            mat_id,
+        );
+        self.append_jsonl(&evt);
+    }
+
+    /// § T11-WAVE3-GLTF : record a rejected glTF / GLB spawn (parse fail,
+    /// cap-mismatch, OOM-cap, etc.). The `reason` is a short tag for the
+    /// telemetry event (full message lives in the structured-event log).
+    pub fn record_gltf_spawn_reject(&self, reason: &str) {
+        self.gltf_spawns_rejected_total
+            .fetch_add(1, Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"gltf_spawn_reject\",\"reason\":\"{}\"}}",
+            iso_utc(unix_ms()),
+            reason,
+        );
+        self.append_jsonl(&evt);
+    }
+
+    /// § T11-WAVE3-GLTF : record dynamic-mesh draw-calls issued this frame.
+    /// One increment per draw-indexed call against a `DynamicMesh` slot.
+    pub fn record_gltf_draws(&self, count: u32) {
+        self.gltf_draws_total
+            .fetch_add(u64::from(count), Ordering::Relaxed);
     }
 
     /// § T11-LOA-USERFIX : update the live CFER intensity gauge.

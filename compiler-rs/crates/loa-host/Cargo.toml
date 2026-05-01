@@ -54,6 +54,15 @@ serde_json                      = { workspace = true }
 # module to write framebuffer readbacks to disk for visual regression
 # testing. Catalog-buildable (no GPU needed for encode/decode itself).
 png        = "0.17"
+# § T11-WAVE3-GLTF : `gltf` 1.4 — pure-Rust glTF 2.0 importer (no native
+# deps · widely vetted). Pulls JSON + binary buffer parsing for `.glb`
+# / `.gltf` files. Used by `gltf_loader` to convert external 3D-model
+# files into the loa-host `Vertex` struct for dynamic-mesh upload.
+# `default-features = false` strips image-decoding (which would pull
+# the `image` crate that requires rust 1.88) ; `import` enables the
+# file-system reader path · `utils` enables `prim.reader(...)` for
+# attribute iteration · `names` lets us log mesh names.
+gltf       = { version = "1.4", default-features = false, features = ["import", "utils", "names"] }
 
 # Phase-2 (runtime) : optional deps pulled when --features runtime.
 winit      = { version = "0.30", optional = true }

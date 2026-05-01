@@ -94,6 +94,13 @@ pub mod cfer_render;
 // diagnostic · temporal · causal · network · environmental).
 pub mod sense;
 
+// § T11-WAVE3-GLTF : pure-Rust GLTF/GLB → loa-host Vertex translator. Parses
+// externally-authored 3D models (e.g. Stanford bunny, designer-supplied glb)
+// into the canonical Vertex struct so they can be uploaded into the dynamic-
+// mesh render path. Catalog-buildable (no GPU required for parse) ; the GPU
+// upload path lives in `render.rs` behind the `runtime` feature.
+pub mod gltf_loader;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
