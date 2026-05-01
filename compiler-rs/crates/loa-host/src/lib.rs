@@ -113,6 +113,32 @@ pub mod spontaneous;
 pub mod intent_router;
 
 // ──────────────────────────────────────────────────────────────────────────
+// § T11-W5c-LOA-HOST-WIRE — thin wrapper modules over the wave-3γ + W4 + W5a
+// + W5b cssl-host-* crates. Each wired_* module re-exports the canonical
+// public types from one path-dep + provides a single short-form helper for
+// MCP-tool wiring. wave-6 deepens the integrations ; this slice wires the
+// foundational surface so future agents can reach for `loa_host::wired_*`
+// instead of re-naming the path-deps at every call-site.
+// ──────────────────────────────────────────────────────────────────────────
+pub mod wired_replay;
+pub mod wired_audit;
+pub mod wired_stereoscopy;
+pub mod wired_golden;
+pub mod wired_procgen_rooms;
+pub mod wired_histograms;
+pub mod wired_attestation;
+pub mod wired_rt_trace;
+pub mod wired_spectral_grader;
+pub mod wired_frame_recorder;
+pub mod wired_input_virtual;
+pub mod wired_config;
+pub mod wired_cocreative;
+pub mod wired_causal_seed;
+pub mod wired_license_attribution;
+pub mod wired_voice;
+pub mod wired_multiplayer;
+
+// ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
 
