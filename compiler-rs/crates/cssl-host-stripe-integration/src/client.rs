@@ -27,6 +27,24 @@ use crate::{
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+// Helper Deserialize-only structs lifted to module-scope so the lib doesn't
+// trip clippy's `items-after-statements` lint when used inside fn bodies.
+#[derive(serde::Deserialize)]
+struct ListBody<T> {
+    data: Vec<T>,
+}
+
+#[derive(serde::Deserialize)]
+struct ErrEnv {
+    error: Option<ErrInner>,
+}
+
+#[derive(serde::Deserialize)]
+struct ErrInner {
+    code: Option<String>,
+    message: Option<String>,
+}
+
 /// § StripeClientConfig — construction-time-only ; secret-key handed in once.
 pub struct StripeClientConfig {
     pub secret_key: SecretString,
@@ -475,11 +493,7 @@ impl StripeClient {
             return Err(err);
         }
         // Stripe wraps lists in `{"data":[...]}`.
-        #[derive(serde::Deserialize)]
-        struct ListBody {
-            data: Vec<Subscription>,
-        }
-        let body: ListBody = serde_json::from_str(&resp.body)?;
+        let body: ListBody<Subscription> = serde_json::from_str(&resp.body)?;
         self.audit_emit(
             "list_subscriptions",
             AuditOutcome::Success,
@@ -499,25 +513,16 @@ fn stripe_api_error(resp: &crate::transport::HttpResponse) -> StripeError {
         };
     }
     // Best-effort parse of Stripe's `{"error":{"code":"…","message":"…"}}`.
-    #[derive(serde::Deserialize)]
-    struct ErrEnv {
-        error: Option<ErrInner>,
-    }
-    #[derive(serde::Deserialize)]
-    struct ErrInner {
-        code: Option<String>,
-        message: Option<String>,
-    }
     let parsed: Option<ErrEnv> = serde_json::from_str(&resp.body).ok();
-    let (code, message) = parsed
-        .and_then(|e| e.error)
-        .map(|i| {
+    let (code, message) = parsed.and_then(|e| e.error).map_or_else(
+        || ("unknown".to_string(), resp.body.clone()),
+        |i| {
             (
                 i.code.unwrap_or_else(|| "unknown".into()),
                 i.message.unwrap_or_else(|| resp.body.clone()),
             )
-        })
-        .unwrap_or_else(|| ("unknown".into(), resp.body.clone()));
+        },
+    );
     StripeError::ApiError {
         status: resp.status,
         code,

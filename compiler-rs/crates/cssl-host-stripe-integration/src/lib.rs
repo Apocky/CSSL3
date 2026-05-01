@@ -20,6 +20,15 @@
 
 #![forbid(unsafe_code)]
 #![doc = include_str!("../README.md")]
+// Lint-allowances : design-deliberate tradeoffs we accept in this crate.
+//   - significant_drop_tightening : we intentionally keep the Mutex held
+//     for the duration of cache-coherent compound operations (read + maybe-
+//     remove · read + insert) ; tightening would require restructuring that
+//     opens TOCTOU windows.
+//   - option_if_let_else : the `if let` form reads cleaner than `map_or`
+//     when the branch performs a side effect (s.remove(key)) on the Some-arm.
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::option_if_let_else)]
 
 // ══════════════════════════════════════════════════════════════════
 // § README inline-fallback (Cargo will-error on missing-README · use cfg)
@@ -212,7 +221,7 @@ impl MockAuditSink {
     /// Snapshot all-events recorded so-far (test-only ; takes lock).
     #[must_use]
     pub fn snapshot(&self) -> Vec<AuditEvent> {
-        self.events.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.events.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 
     /// Count events matching the given outcome.
@@ -220,7 +229,7 @@ impl MockAuditSink {
     pub fn count_outcome(&self, outcome: &AuditOutcome) -> usize {
         self.events
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .filter(|ev| &ev.outcome == outcome)
             .count()
@@ -231,7 +240,7 @@ impl AuditSink for MockAuditSink {
     fn emit(&self, event: AuditEvent) {
         self.events
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event);
     }
 }

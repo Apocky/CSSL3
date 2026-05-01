@@ -93,7 +93,7 @@ impl WebhookEventType {
     }
 
     #[must_use]
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "checkout.session.completed" => WebhookEventType::CheckoutSessionCompleted,
             "charge.refunded" => WebhookEventType::ChargeRefunded,
@@ -114,7 +114,7 @@ impl Serialize for WebhookEventType {
 impl<'de> Deserialize<'de> for WebhookEventType {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let s = String::deserialize(de)?;
-        Ok(WebhookEventType::from_str(&s))
+        Ok(WebhookEventType::parse(&s))
     }
 }
 

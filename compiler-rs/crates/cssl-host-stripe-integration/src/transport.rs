@@ -99,13 +99,13 @@ impl MockHttpTransport {
 
     /// Program a one-shot reply (consumed on first match).
     pub fn program(&self, reply: ProgrammedReply) {
-        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         s.program.push(reply);
     }
 
     /// Force the next call (and all subsequent calls) to return a network error.
     pub fn force_network_error(&self, msg: impl Into<String>) {
-        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         s.force_network_error = Some(msg.into());
     }
 
@@ -113,7 +113,7 @@ impl MockHttpTransport {
     pub fn recorded_requests(&self) -> Vec<HttpRequest> {
         self.state
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .requests
             .clone()
     }
@@ -121,7 +121,10 @@ impl MockHttpTransport {
 
 impl HttpTransport for MockHttpTransport {
     fn send(&self, req: HttpRequest) -> StripeResult<HttpResponse> {
-        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         s.requests.push(req.clone());
 
         if let Some(err) = s.force_network_error.clone() {

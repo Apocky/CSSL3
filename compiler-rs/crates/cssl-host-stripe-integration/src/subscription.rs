@@ -32,7 +32,7 @@ impl SubscriptionStatus {
     }
 
     #[must_use]
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "active" => SubscriptionStatus::Active,
             "past_due" => SubscriptionStatus::PastDue,
@@ -55,7 +55,7 @@ impl Serialize for SubscriptionStatus {
 impl<'de> Deserialize<'de> for SubscriptionStatus {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let s = String::deserialize(de)?;
-        Ok(SubscriptionStatus::from_str(&s))
+        Ok(SubscriptionStatus::parse(&s))
     }
 }
 

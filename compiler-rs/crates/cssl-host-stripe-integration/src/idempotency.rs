@@ -56,6 +56,13 @@ impl IdempotencyEntry {
     }
 }
 
+/// § IdempotencyInsertError — strongly-typed reason for insert-rejection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdempotencyInsertError {
+    /// Same key, divergent payload — caller must surface `IdempotencyConflict`.
+    Conflict,
+}
+
 /// § IdempotencyStore — BTreeMap-backed, deterministic iteration.
 #[derive(Debug, Default)]
 pub struct IdempotencyStore {
@@ -76,7 +83,7 @@ impl IdempotencyStore {
 
     /// Look up the entry by key. Returns expired entries as `None` (auto-purge).
     pub fn get(&self, key: &IdempotencyKey, now_unix: u64) -> Option<IdempotencyEntry> {
-        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(entry) = s.get(key) {
             if entry.is_expired(now_unix) {
                 s.remove(key);
@@ -90,15 +97,16 @@ impl IdempotencyStore {
     }
 
     /// Insert a new entry. If `key` already exists with a divergent
-    /// `payload_hash`, returns `Err(())` — caller maps to `IdempotencyConflict`.
-    /// If `key` exists with matching `payload_hash`, this is a no-op (idempotent).
-    pub fn insert(&self, entry: IdempotencyEntry) -> Result<(), ()> {
-        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+    /// `payload_hash`, returns `IdempotencyInsertError::Conflict` — caller
+    /// maps to `IdempotencyConflict`. If `key` exists with matching
+    /// `payload_hash`, this is a no-op (idempotent).
+    pub fn insert(&self, entry: IdempotencyEntry) -> Result<(), IdempotencyInsertError> {
+        let mut s = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(existing) = s.get(&entry.key) {
             if existing.payload_hash == entry.payload_hash {
                 return Ok(()); // matching reuse · idempotent
             }
-            return Err(()); // conflict
+            return Err(IdempotencyInsertError::Conflict); // conflict
         }
         s.insert(entry.key.clone(), entry);
         Ok(())
@@ -106,7 +114,7 @@ impl IdempotencyStore {
 
     /// Manual purge of expired entries (callers may invoke periodically).
     pub fn purge_expired(&self, now_unix: u64) -> usize {
-        let mut s = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut s = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = s.len();
         s.retain(|_, v| !v.is_expired(now_unix));
         before - s.len()
@@ -116,7 +124,7 @@ impl IdempotencyStore {
     pub fn len(&self) -> usize {
         self.state
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len()
     }
 
