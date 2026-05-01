@@ -1,0 +1,30 @@
+[package]
+name                   = "cssl-host-input-virtual"
+description            = "CSSLv3 — deterministic synthetic input event generators (key sequences · mouse paths · gestures) for headless replay-testing + future MCP test harnesses"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W5b-INPUT-VIRTUAL : disjoint companion-crate to `cssl-host-replay`. Generates
+# deterministic ReplayEvent streams (typing sessions · circle-paths · random-walks ·
+# Lissajous figures · drag-gestures · multi-intent QA scenarios) keyed by seed for
+# reproducible bit-identical playback.
+#
+# § DEPENDENCIES
+#   - serde + serde_json : transitive via cssl-host-replay (ReplayEvent is serde-derived)
+#   - cssl-host-replay   : path-direct ; ReplayEvent / ReplayEventKind are the IR
+#   - NO other deps : RNG is hand-rolled PCG-32 (matches cssl-host-procgen-rooms ethos)
+#
+# § INTEGRATION POSTURE
+#   - NOT yet a dep of loa-host (wave-6 task per the W5b directive).
+#   - Standalone unit-testable : `cargo test -p cssl-host-input-virtual` is hermetic.
+
+[dependencies]
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+cssl-host-replay = { path = "../cssl-host-replay" }
+
+[lints]
+workspace = true

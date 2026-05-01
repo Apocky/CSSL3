@@ -930,6 +930,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-input-virtual"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-replay",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-level-zero"
 version = "0.1.0"
 dependencies = [
