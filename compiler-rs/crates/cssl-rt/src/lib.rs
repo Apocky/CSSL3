@@ -33,6 +33,16 @@
 //!   __cssl_fs_last_error_kind() -> i32
 //!   __cssl_fs_last_error_os() -> i32
 //!   ```
+//!   T11-WAVE3-HTTP — http surface :
+//!   ```text
+//!   __cssl_http_get(url_ptr, url_len, out_buf, out_cap, sovereign_cap) -> i32
+//!   __cssl_http_post(url_ptr, url_len, body_ptr, body_len,
+//!                    content_type_ptr, content_type_len,
+//!                    out_buf, out_cap, sovereign_cap) -> i32
+//!   __cssl_http_caps_grant(bits: u32) -> i32
+//!   __cssl_http_caps_revoke(bits: u32) -> i32
+//!   __cssl_http_caps_current() -> u32
+//!   ```
 //!   S7-F4 (T11-D82) — net surface :
 //!   ```text
 //!   __cssl_net_socket(flags) -> i64
@@ -109,6 +119,11 @@ pub mod host_thread;
 pub mod host_time;
 pub mod host_window;
 pub mod host_xr;
+// § T11-WAVE3-HTTP — HTTP GET/POST FFI surface backed by ureq blocking.
+// Cap-gated · default-deny · sovereign-cap bypass · audit-counter +
+// JSONL-event logging via loa_startup. See `http` module docs § PRIME-
+// DIRECTIVE for the five structural safeguards.
+pub mod http;
 pub mod io;
 #[cfg(not(target_os = "windows"))]
 pub mod io_unix;
@@ -214,6 +229,18 @@ pub use host_xr::{
     XR_CAP_POSE_CONTROLLER, XR_CAP_POSE_HEAD, XR_CAP_SESSION, XR_CAP_SWAPCHAIN, XR_EYE_COUNT,
     XR_EYE_LEFT, XR_EYE_RIGHT, XR_INPUT_STATE_BYTES, XR_MAX_SESSIONS, XR_POSE_BYTES,
     XR_POSE_STREAM_BYTES,
+};
+// § T11-WAVE3-HTTP — top-level re-exports so tests + downstream code reach
+// the http surface via `cssl_rt::*`. The FFI symbols themselves are linked
+// from `crate::http` ; these re-exports cover the constants + `_impl`
+// helpers + counter accessors.
+pub use http::{
+    host_is_loopback, http_bytes_in_total, http_bytes_out_total, http_caps_current,
+    http_caps_grant_impl, http_caps_revoke_impl, http_denies_total, http_io_errors_total,
+    http_requests_total, http_timeouts_total, parse_url, reset_http_for_tests, HTTP_DEFAULT_TIMEOUT_MS,
+    HTTP_ERR_BADMSG, HTTP_ERR_INVAL, HTTP_ERR_IO, HTTP_ERR_PERM, HTTP_ERR_TIMEDOUT,
+    NET_HTTPS_ONLY, NET_HTTP_CAP_MASK, NET_HTTP_GET, NET_HTTP_POST, NET_LOCALHOST_ONLY,
+    SOVEREIGN_CAP,
 };
 // § T11-D317 (W-CSSL-rt-LoA-stubs) — re-export the LoA-stub surface so
 // downstream tests + cgen-side helpers can reach the constants/handles
