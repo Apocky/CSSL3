@@ -1,0 +1,15 @@
+[package]
+name                   = "cssl-host-license-attribution"
+description            = "CSSLv3 host — license-aware metadata + attribution-HUD strings + filter helpers for free-3D-asset ingest (CC0 · CC-BY-4.0 · etc.)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
