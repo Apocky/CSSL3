@@ -120,10 +120,58 @@ T<N>-D<M> : <decision-title> — <rationale>
 1. Fork the repo and create a branch from `main`.
 2. Make your change and ensure `cargo test --workspace` passes.
 3. Ensure `cargo clippy --workspace -- -D warnings` is clean.
-4. Open a pull request against `main` with a concise description of what and why.
+4. Sign off your commits with the Developer Certificate of Origin: use `git commit -s` (see [DCO sign-off](#dco-sign-off) below).
+5. Open a pull request against `main` with a concise description of what and why.
 
 If your change touches the type system, effect registry, autodiff passes, or IFC, link to the relevant spec section in `specs/`.
 
+## DCO sign-off
+
+This project uses the [Developer Certificate of Origin](https://developercertificate.org/)
+(DCO) v1.1 instead of a CLA. Every commit must carry a `Signed-off-by:` trailer:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+The easiest way is to pass `-s` to git:
+
+```bash
+git commit -s -m "your message"
+```
+
+Configure your git `user.name` and `user.email` once and `-s` will fill in the trailer
+automatically. Pull requests with unsigned commits will be asked to amend or rebase
+with sign-off.
+
+By signing off, you certify that you have the right to submit your change under the
+project's `Apache-2.0 OR MIT` license. This does not transfer copyright; you retain
+ownership of your contribution.
+
+## Commit-message style (optional but appreciated)
+
+The project's design documents and many internal commits use a dense CSLv3-glyph
+notation (`§` blocks, `⊑`, `⊔`, `→`, `R!`, `W!`, etc.) for compactness. You are
+welcome to write commit messages in plain English — that is fully accepted. If you
+prefer the dense style, see existing commits in `git log` for examples; the only hard
+requirement is that the *first line* of the commit message is a short, descriptive
+summary that renders well in `git log --oneline`.
+
+## Reporting security issues
+
+Please **do not** open public issues for security vulnerabilities. Follow the
+responsible-disclosure process in [SECURITY.md](SECURITY.md): email
+`apocky13@gmail.com` with subject prefix `[CSSL3 SECURITY]`.
+
+## Code of conduct
+
+We expect contributors to act with respect, good faith, and consent — consistent with
+the [PRIME_DIRECTIVE.md](PRIME_DIRECTIVE.md) values that underpin the project.
+Harassment, discrimination, or attempts to weaponize the project's tools against
+users will not be tolerated. Concerns can be raised privately to `apocky13@gmail.com`.
+
 ## License
 
-By contributing you agree your work is licensed Apache-2.0 OR MIT, matching the workspace.
+By contributing you agree your work is licensed under the project's dual
+`Apache-2.0 OR MIT` terms; see [LICENSE.md](LICENSE.md) and [NOTICE.md](NOTICE.md)
+for details.
