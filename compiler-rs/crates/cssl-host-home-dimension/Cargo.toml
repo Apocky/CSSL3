@@ -1,0 +1,23 @@
+[package]
+name                   = "cssl-host-home-dimension"
+description            = "CSSLv3 host — per-player Home pocket-dimension state-machine. 7 archetypes (Orbital · Ground · Cavern · Cathedral · Observatory · Forest · Hybrid) × 5 access-modes (Private · Friend · Guild · Public · Dropin). Subsystems : decoration · trophy · companion · portal · forge · mycelial-terminal · memorial. Cap-bit-gated, BTreeMap-deterministic, serde-roundtrippable."
+version.workspace      = true
+edition.workspace      = true
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W8-B1 : per-player pocket-dimension per spec/grand-vision/16_MYCELIAL_NETWORK § HOME-DIMENSION
+# § port-target CRATE-B19 — sovereign-revocable, opt-in-everywhere, gift-economy framing.
+# § Sensitive<*> structurally-banned : NO biometric/gaze/face/body fields ever.
+# § stage-0 host-crate ; consumed by cssl-host-mycelium + cssl-host-hotfix-stream + cssl-edge /home routes.
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
