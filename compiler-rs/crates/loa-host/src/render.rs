@@ -318,6 +318,12 @@ pub struct Renderer {
     /// Re-uploaded each frame in `render_frame` from the CPU staging
     /// buffer in `cfer.texels()`.
     cfer_texture: wgpu::Texture,
+
+    // ── § T11-WAVE3-SPONT : spontaneous-condensation pipeline ──
+    /// Manifestation detector — tracks each just-stamped seed-cell and
+    /// emits `ManifestationEvent`s when a tracked cell crosses the radiance
+    /// threshold. Polled per-frame from `window.rs` after `cfer.step_and_pack`.
+    pub spontaneous_detector: crate::spontaneous::ManifestationDetector,
 }
 
 impl Renderer {
@@ -629,6 +635,7 @@ impl Renderer {
             cfer_bind_group,
             cfer_uniform_buf,
             cfer_texture,
+            spontaneous_detector: crate::spontaneous::ManifestationDetector::new(),
         }
     }
 
@@ -1483,6 +1490,62 @@ impl Renderer {
     /// § T11-LOA-FID-CFER : detach the KAN handle.
     pub fn cfer_clear_kan_handle(&mut self) {
         self.cfer.detach_kan_handle();
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // § T11-WAVE3-SPONT : spontaneous-condensation pipeline
+    // ──────────────────────────────────────────────────────────────────
+
+    /// Sow an intent text into the CFER field at `origin`. Returns the
+    /// `SowOutcome` so the caller can log + emit a structured event.
+    ///
+    /// This is the canonical "spontaneous generation" entry-point :
+    ///   1. text → SeedCells (keyword table).
+    ///   2. seeds → Ω-field stamps (Σ-bypass at seed-time).
+    ///   3. detector registers each new seed for next-frame rising-edge poll.
+    ///
+    /// The actual stress-object spawn happens later (per-frame) when a
+    /// tracked cell's radiance crosses `MANIFESTATION_THRESHOLD`. The host
+    /// polls `scan_manifestations` to drain those events + dispatch spawn.
+    pub fn sow_spontaneous_intent(
+        &mut self,
+        text: &str,
+        origin: [f32; 3],
+        frame: u64,
+    ) -> crate::spontaneous::SowOutcome {
+        let outcome = crate::spontaneous::sow_intent(&mut self.cfer.field, text, origin);
+        self.spontaneous_detector
+            .register_seeds(&outcome.stamped, frame);
+        outcome
+    }
+
+    /// § T11-WAVE3-SPONT : per-frame manifestation-detector poll. Drains
+    /// any rising-edge ManifestationEvents the detector observed in the
+    /// just-evolved field. Caller dispatches `__cssl_render_spawn_stress_object`
+    /// for each event.
+    pub fn scan_spontaneous_manifestations(
+        &mut self,
+        frame: u64,
+    ) -> Vec<crate::spontaneous::ManifestationEvent> {
+        self.spontaneous_detector
+            .scan_rising_edges(&self.cfer.field, frame)
+    }
+
+    /// § T11-WAVE3-SPONT : recent-events ring (oldest-first). Mirrored
+    /// into EngineState by the per-frame sync so MCP `sense.spontaneous_recent`
+    /// returns live values.
+    #[must_use]
+    pub fn spontaneous_recent_events(&self) -> Vec<crate::spontaneous::ManifestationEvent> {
+        self.spontaneous_detector.recent_events_vec()
+    }
+
+    /// § T11-WAVE3-SPONT : seeds-total + manifests-total since startup.
+    #[must_use]
+    pub fn spontaneous_totals(&self) -> (u64, u64) {
+        (
+            self.spontaneous_detector.seeds_total,
+            self.spontaneous_detector.manifests_total,
+        )
     }
 }
 

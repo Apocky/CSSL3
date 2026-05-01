@@ -530,6 +530,79 @@ pub fn take_pending_teleport() -> Option<u32> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-SPONT · spontaneous-condensation FFI surface
+// ───────────────────────────────────────────────────────────────────────
+
+/// Pending intent-sow request from the FFI side. The window-loop drains
+/// these on the next frame just like the MCP-side requests.
+static SPONTANEOUS_FFI_PENDING: std::sync::Mutex<
+    Vec<(String, [f32; 3])>,
+> = std::sync::Mutex::new(Vec::new());
+
+/// Submit an intent-sow request from pure-CSSL (or a host-side test).
+/// `text` is a UTF-8 byte buffer + length. `(x, y, z)` is the world-space
+/// origin the seeds anchor to. Returns 0 on success · -1 on UTF-8 decode
+/// failure · -2 on cap-rejection · -3 on null/zero-length text.
+///
+/// The actual stamping happens on the next render frame when the window
+/// loop drains the pending list. This keeps the call lock-light + non-
+/// blocking from the FFI caller's perspective.
+///
+/// # Safety
+/// `text_ptr` must point to a valid UTF-8 byte buffer of `text_len` bytes.
+/// The caller retains ownership ; the FFI copies the bytes into a Rust
+/// `String` before returning.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_world_spontaneous_seed(
+    text_ptr: *const u8,
+    text_len: usize,
+    x: f32,
+    y: f32,
+    z: f32,
+    sovereign_cap: u64,
+) -> i32 {
+    if sovereign_cap != SOVEREIGN_CAP_U64 {
+        log_event(
+            "WARN",
+            "loa-host/ffi",
+            "__cssl_world_spontaneous_seed · sovereign_cap mismatch",
+        );
+        return -2;
+    }
+    if text_ptr.is_null() || text_len == 0 {
+        return -3;
+    }
+    // SAFETY : caller-promised UTF-8 buffer of `text_len` bytes.
+    let slice = std::slice::from_raw_parts(text_ptr, text_len);
+    let text = match std::str::from_utf8(slice) {
+        Ok(s) => s.to_string(),
+        Err(_) => return -1,
+    };
+    let origin = [x, y, z];
+    if let Ok(mut pending) = SPONTANEOUS_FFI_PENDING.lock() {
+        pending.push((text.clone(), origin));
+    }
+    log_event(
+        "INFO",
+        "loa-host/ffi",
+        &format!(
+            "world.spontaneous_seed · queued · text={text:?} · origin=({x:.2},{y:.2},{z:.2})"
+        ),
+    );
+    0
+}
+
+/// Drain pending FFI-side spontaneous-seed requests. The window-loop calls
+/// this once per frame and forwards each request into EngineState.
+#[must_use]
+pub fn take_pending_spontaneous_ffi() -> Vec<(String, [f32; 3])> {
+    match SPONTANEOUS_FFI_PENDING.lock() {
+        Ok(mut g) => std::mem::take(&mut *g),
+        Err(_) => Vec::new(),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Tests
 // ───────────────────────────────────────────────────────────────────────
 
@@ -633,5 +706,77 @@ mod tests {
     fn ffi_room_teleport_rejects_wrong_cap() {
         let rc = __cssl_room_teleport(0, 0xDEAD);
         assert_eq!(rc, -2);
+    }
+
+    // § T11-WAVE3-SPONT · FFI surface tests
+    #[test]
+    fn ffi_world_spontaneous_seed_queues_request() {
+        // Drain any prior pending seeds so this test is order-independent.
+        let _ = take_pending_spontaneous_ffi();
+        let text = b"a glass cube";
+        let rc = unsafe {
+            __cssl_world_spontaneous_seed(
+                text.as_ptr(),
+                text.len(),
+                10.0,
+                1.5,
+                -5.0,
+                SOVEREIGN_CAP_U64,
+            )
+        };
+        assert_eq!(rc, 0);
+        let pending = take_pending_spontaneous_ffi();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].0, "a glass cube");
+        assert_eq!(pending[0].1, [10.0, 1.5, -5.0]);
+    }
+
+    #[test]
+    fn ffi_world_spontaneous_seed_rejects_wrong_cap() {
+        let _ = take_pending_spontaneous_ffi();
+        let text = b"cube";
+        let rc = unsafe {
+            __cssl_world_spontaneous_seed(
+                text.as_ptr(),
+                text.len(),
+                0.0,
+                0.0,
+                0.0,
+                0xDEAD,
+            )
+        };
+        assert_eq!(rc, -2);
+        // No queue side-effect.
+        assert!(take_pending_spontaneous_ffi().is_empty());
+    }
+
+    #[test]
+    fn ffi_world_spontaneous_seed_rejects_null_or_empty() {
+        let _ = take_pending_spontaneous_ffi();
+        // Null pointer → -3.
+        let rc = unsafe {
+            __cssl_world_spontaneous_seed(
+                std::ptr::null(),
+                0,
+                0.0,
+                0.0,
+                0.0,
+                SOVEREIGN_CAP_U64,
+            )
+        };
+        assert_eq!(rc, -3);
+        // Zero-length text → -3.
+        let text = b"x";
+        let rc = unsafe {
+            __cssl_world_spontaneous_seed(
+                text.as_ptr(),
+                0,
+                0.0,
+                0.0,
+                0.0,
+                SOVEREIGN_CAP_U64,
+            )
+        };
+        assert_eq!(rc, -3);
     }
 }

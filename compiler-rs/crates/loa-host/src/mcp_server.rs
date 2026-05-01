@@ -422,6 +422,55 @@ pub struct FramebufferThumbMirror {
     pub center_world_pos: [f32; 3],
 }
 
+/// § T11-WAVE3-SPONT : one manifestation-event mirror (MCP wire-format).
+///
+/// The runtime-side `spontaneous::ManifestationEvent` is mirrored here
+/// per-frame for MCP `sense.spontaneous_recent` consumption.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpontaneousManifestEntry {
+    /// Frame the manifestation fired on.
+    pub frame: u64,
+    /// World position the cell decoded to (cell-center).
+    pub world_pos: [f32; 3],
+    /// Stress-object kind id (0..13).
+    pub kind: u32,
+    /// Radiance magnitude at detect time.
+    pub radiance_mag: f32,
+    /// Cell density at detect time.
+    pub density: f32,
+    /// Originating seed-label (the keyword that produced this seed).
+    pub label: String,
+    /// Stress-object id returned from the spawn FFI (>0 on success).
+    pub spawned_object_id: u32,
+}
+
+/// § T11-WAVE3-SPONT : MCP-mirror of the runtime `ManifestationDetector`.
+///
+/// The render loop copies the detector's recent-events ring + counters
+/// into this struct each frame so MCP read-only tools return live values.
+/// Pending requests (intent-sow) flow IN via `sow_pending`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpontaneousStateMirror {
+    /// Last 16 manifestation events (oldest-first).
+    pub recent_events: Vec<SpontaneousManifestEntry>,
+    /// Total seeds sown since startup.
+    pub seeds_total: u64,
+    /// Total manifestations dispatched since startup.
+    pub manifests_total: u64,
+    /// Tracked-but-not-yet-manifested seed count.
+    pub tracked_count: u32,
+    /// Pending `world.spontaneous_seed` requests : (text, origin).
+    /// Drained by the render loop on the next frame.
+    pub sow_pending: Vec<SpontaneousSowRequest>,
+}
+
+/// § T11-WAVE3-SPONT : one queued sow-request from MCP.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpontaneousSowRequest {
+    pub text: String,
+    pub origin: [f32; 3],
+}
+
 /// § T11-LOA-FID-CFER : MCP-mirrored CFER state.
 ///
 /// The Renderer (held in the runtime event-loop) owns the canonical
@@ -515,6 +564,9 @@ pub struct EngineState {
     pub cfer: CferStateMirror,
     /// § T11-LOA-USERFIX : capture (burst + video) state mirror.
     pub capture: CaptureStateMirror,
+    /// § T11-WAVE3-SPONT : spontaneous-condensation mirror (recent-events ring +
+    /// pending intent-sow requests + counters).
+    pub spontaneous: SpontaneousStateMirror,
 
     // ───────────────────────────────────────────────────────────────────
     // § T11-LOA-SENSORY · sensory-harness ring-buffers
@@ -606,6 +658,7 @@ impl Default for EngineState {
                 ..Default::default()
             },
             capture: CaptureStateMirror::default(),
+            spontaneous: SpontaneousStateMirror::default(),
             pose_history: Vec::with_capacity(SENSE_POSE_RING_CAP),
             dm_history: Vec::with_capacity(SENSE_DM_HISTORY_CAP),
             gm_phrase_history: Vec::with_capacity(SENSE_GM_PHRASE_CAP),
@@ -676,6 +729,17 @@ impl EngineState {
             self.validation_errors.remove(0);
         }
         self.validation_errors.push(entry);
+    }
+
+    /// § T11-WAVE3-SPONT : push one manifestation-event into the mirror's
+    /// recent-events ring (drops oldest at 16-element cap). Used by the
+    /// per-frame sync that drains `Renderer::scan_spontaneous_manifestations`.
+    pub fn push_spontaneous_event(&mut self, entry: SpontaneousManifestEntry) {
+        const CAP: usize = 16;
+        if self.spontaneous.recent_events.len() >= CAP {
+            self.spontaneous.recent_events.remove(0);
+        }
+        self.spontaneous.recent_events.push(entry);
     }
 
     /// § T11-LOA-SENSORY : push a panic record. Drops oldest if at cap.

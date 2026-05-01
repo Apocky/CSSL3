@@ -94,6 +94,12 @@ pub mod cfer_render;
 // diagnostic · temporal · causal · network · environmental).
 pub mod sense;
 
+// § T11-WAVE3-SPONT : text-seeded condensation pipeline. Converts intent
+// text → SeedCells → Ω-field stamps → manifestation events → stress-object
+// spawn. The substrate IS the source of truth ; objects are byproducts of
+// cells crossing a critical-radiance threshold.
+pub mod spontaneous;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────

@@ -391,6 +391,120 @@ impl App {
         // for future pause-respecting behavior.
     }
 
+    /// § T11-WAVE3-SPONT : drain any pending intent-sow requests from
+    /// EngineState.spontaneous.sow_pending and call into the Renderer's
+    /// `sow_spontaneous_intent`. Each sow stamps seed-cells into the
+    /// CFER field + registers them with the manifestation detector.
+    /// Logs a structured `spontaneous_seed` event per sow.
+    fn drain_spontaneous_requests(&mut self) {
+        // Drain MCP-side requests.
+        let mut drained: Vec<crate::mcp_server::SpontaneousSowRequest> = {
+            let Ok(mut g) = self.engine_state.lock() else {
+                return;
+            };
+            std::mem::take(&mut g.spontaneous.sow_pending)
+        };
+        // Drain FFI-side requests + map into the same shape.
+        for (text, origin) in crate::ffi::take_pending_spontaneous_ffi() {
+            drained.push(crate::mcp_server::SpontaneousSowRequest { text, origin });
+        }
+        if drained.is_empty() {
+            return;
+        }
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        for req in drained {
+            let outcome = renderer.sow_spontaneous_intent(
+                &req.text,
+                req.origin,
+                self.frame_count,
+            );
+            // Telemetry counter + JSONL event.
+            let n_seeds = outcome.seeds.len();
+            crate::telemetry::global().record_spontaneous_seed(n_seeds as u32);
+            log_event(
+                "INFO",
+                "loa-host/spontaneous",
+                &format!(
+                    "spontaneous_seed · text={:?} · origin=({:.2},{:.2},{:.2}) · seeds={}",
+                    req.text, req.origin[0], req.origin[1], req.origin[2], n_seeds,
+                ),
+            );
+            // Mirror counters into EngineState.
+            if let Ok(mut g) = self.engine_state.lock() {
+                let (s, m) = renderer.spontaneous_totals();
+                g.spontaneous.seeds_total = s;
+                g.spontaneous.manifests_total = m;
+                g.spontaneous.tracked_count =
+                    renderer.spontaneous_detector.tracked_count() as u32;
+            }
+        }
+    }
+
+    /// § T11-WAVE3-SPONT : poll the manifestation detector for rising-edge
+    /// events on tracked seed-cells. For each event, dispatch the
+    /// `__cssl_render_spawn_stress_object` FFI to materialize the seed
+    /// into a visible stress object at the cell's world position. Emits
+    /// a structured `spontaneous_manifest` JSONL event + mirrors into
+    /// EngineState so MCP `sense.spontaneous_recent` returns live values.
+    fn poll_spontaneous_manifestations(&mut self) {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        let events = renderer.scan_spontaneous_manifestations(self.frame_count);
+        if events.is_empty() {
+            return;
+        }
+        let mut entries = Vec::with_capacity(events.len());
+        for ev in events {
+            // Dispatch the spawn via the existing FFI.
+            let object_id = crate::ffi::__cssl_render_spawn_stress_object(
+                ev.kind,
+                ev.world_pos[0],
+                ev.world_pos[1],
+                ev.world_pos[2],
+                0xCAFE_BABE_DEAD_BEEF,
+            );
+            crate::telemetry::global().record_spontaneous_manifest(ev.kind);
+            log_event(
+                "INFO",
+                "loa-host/spontaneous",
+                &format!(
+                    "spontaneous_manifest · frame={} · kind={} ({}) · pos=({:.2},{:.2},{:.2}) · radiance_mag={:.3} · object_id={}",
+                    ev.frame,
+                    ev.kind,
+                    crate::geometry::stress_object_name(ev.kind),
+                    ev.world_pos[0],
+                    ev.world_pos[1],
+                    ev.world_pos[2],
+                    ev.radiance_mag,
+                    object_id,
+                ),
+            );
+            entries.push(crate::mcp_server::SpontaneousManifestEntry {
+                frame: ev.frame,
+                world_pos: ev.world_pos,
+                kind: ev.kind,
+                radiance_mag: ev.radiance_mag,
+                density: ev.density,
+                label: ev.label.as_str().to_string(),
+                spawned_object_id: object_id,
+            });
+        }
+        // Mirror into EngineState (recent_events ring + counters).
+        let (s, m) = renderer.spontaneous_totals();
+        let tracked = renderer.spontaneous_detector.tracked_count() as u32;
+        if let Ok(mut g) = self.engine_state.lock() {
+            for e in entries {
+                g.push_spontaneous_event(e);
+            }
+            g.spontaneous.seeds_total = s;
+            g.spontaneous.manifests_total = m;
+            g.spontaneous.tracked_count = tracked;
+        }
+    }
+
     /// § T11-LOA-USERFIX : queue a single screenshot via the existing
     /// snapshot pipeline. The render loop drains EngineState.snapshot_queue
     /// each frame and writes one PNG.
@@ -1322,6 +1436,12 @@ impl App {
         // § 8b''. § T11-LOA-FID-CFER : drain pending CFER requests
         // (KAN-handle attach/detach + force-step flag).
         self.drain_cfer_requests();
+
+        // § 8b'''. § T11-WAVE3-SPONT : drain any pending intent-sow
+        // requests + scan field for rising-edge manifestations + spawn
+        // stress-objects at manifested cells.
+        self.drain_spontaneous_requests();
+        self.poll_spontaneous_manifestations();
 
         // § 8b'''. § T11-LOA-USERFIX : tick burst/video state machines +
         // drain MCP-pending capture commands. Each frame, the active

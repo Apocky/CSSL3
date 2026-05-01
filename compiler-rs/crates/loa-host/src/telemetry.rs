@@ -276,6 +276,12 @@ pub struct TelemetrySink {
     /// Total burst-capture sequences started (each F9 starts one burst).
     pub burst_captures_total: AtomicU64,
 
+    // § T11-WAVE3-SPONT : spontaneous-condensation counters.
+    /// Total seeds sown across all `world.spontaneous_seed` invocations.
+    pub spontaneous_seeds_total: AtomicU64,
+    /// Total manifestations dispatched (each one spawns a stress object).
+    pub spontaneous_manifests_total: AtomicU64,
+
     // § Sliding-window percentile snapshots (Q14 fixed-point milliseconds)
     pub last_p50_q14: AtomicU32,
     pub last_p95_q14: AtomicU32,
@@ -367,6 +373,8 @@ impl TelemetrySink {
             // Default intensity 0.10 → Q14 = 1638.
             cfer_intensity_current_q14: AtomicU32::new(1638),
             burst_captures_total: AtomicU64::new(0),
+            spontaneous_seeds_total: AtomicU64::new(0),
+            spontaneous_manifests_total: AtomicU64::new(0),
             last_p50_q14: AtomicU32::new(0),
             last_p95_q14: AtomicU32::new(0),
             last_p99_q14: AtomicU32::new(0),
@@ -527,6 +535,33 @@ impl TelemetrySink {
     pub fn record_video_frame(&self) {
         self.video_frames_recorded_total
             .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// § T11-WAVE3-SPONT : record one `world.spontaneous_seed` invocation +
+    /// the seeds-emitted count. Increments the lifetime total + appends a
+    /// JSONL event for the timeline.
+    pub fn record_spontaneous_seed(&self, seeds_emitted: u32) {
+        self.spontaneous_seeds_total
+            .fetch_add(u64::from(seeds_emitted), Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"spontaneous_seed\",\"seeds_emitted\":{}}}",
+            iso_utc(unix_ms()),
+            seeds_emitted,
+        );
+        self.append_jsonl(&evt);
+    }
+
+    /// § T11-WAVE3-SPONT : record one manifestation (rising-edge crossing
+    /// → stress-object spawn). Increments lifetime total + JSONL event.
+    pub fn record_spontaneous_manifest(&self, kind: u32) {
+        self.spontaneous_manifests_total
+            .fetch_add(1, Ordering::Relaxed);
+        let evt = format!(
+            "{{\"ts\":\"{}\",\"kind\":\"spontaneous_manifest\",\"kind_id\":{}}}",
+            iso_utc(unix_ms()),
+            kind,
+        );
+        self.append_jsonl(&evt);
     }
 
     /// § T11-LOA-USERFIX : update the live CFER intensity gauge.
