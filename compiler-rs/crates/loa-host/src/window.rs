@@ -991,6 +991,135 @@ impl App {
         }
     }
 
+    /// § T11-W8-CHAT-WIRE : route a chat-box submission to the appropriate
+    /// narrow-orchestrator (GM · DM · Coder) based on a leading-prefix.
+    ///
+    /// § PREFIX-TABLE
+    /// - `/code <intent>` → Coder runtime-mutate (sovereign-required for substrate).
+    /// - `/dm <intent>`   → DM scene-arbiter.
+    /// - `/gm <intent>`   → GM narrator (explicit).
+    /// - default          → GM narrator.
+    ///
+    /// § CAP-DISCIPLINE
+    /// All cap-denied prompts surface as `ChatRole::System` messages in the
+    /// HUD chat-log. ALL routing audit-emits via the engine telemetry ring
+    /// (cssl-host-attestation forwarding deferred to a future wave).
+    ///
+    /// § SELF-HOSTED
+    /// ¬ external-API · stage-0 GM uses templated phrases via gm_narrator ;
+    /// stage-0 DM uses the heuristic decision-tree in cssl-host-dm ; stage-0
+    /// Coder is explicit-confirm-only @ ALL-edits.
+    fn route_chat_submission(&mut self, raw: &str) {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+
+        let (role, body, mode) = if let Some(rest) = trimmed.strip_prefix("/code ") {
+            (crate::mcp_server::ChatRole::Coder, rest.trim(), "code")
+        } else if trimmed == "/code" {
+            (crate::mcp_server::ChatRole::Coder, "", "code")
+        } else if let Some(rest) = trimmed.strip_prefix("/dm ") {
+            (crate::mcp_server::ChatRole::Dm, rest.trim(), "dm")
+        } else if trimmed == "/dm" {
+            (crate::mcp_server::ChatRole::Dm, "", "dm")
+        } else if let Some(rest) = trimmed.strip_prefix("/gm ") {
+            (crate::mcp_server::ChatRole::Gm, rest.trim(), "gm")
+        } else if trimmed == "/gm" {
+            (crate::mcp_server::ChatRole::Gm, "", "gm")
+        } else {
+            // default → GM (lowest-privilege · text-emit-only).
+            (crate::mcp_server::ChatRole::Gm, trimmed, "gm")
+        };
+
+        // ─── Route. Each branch produces a response-text that the chat-log
+        //     surfaces. Cap-denied paths emit a System message instead.
+        let response: (crate::mcp_server::ChatRole, String) = match mode {
+            "gm" => self.route_to_gm(body),
+            "dm" => self.route_to_dm(body),
+            "code" => self.route_to_coder(body),
+            _ => (
+                crate::mcp_server::ChatRole::System,
+                format!("unknown chat-mode : {mode}"),
+            ),
+        };
+
+        log_event(
+            "INFO",
+            "loa-host/chat",
+            &format!(
+                "route · prefix={} · classified-role={} · response-role={}",
+                mode,
+                role.label(),
+                response.0.label(),
+            ),
+        );
+
+        if let Ok(mut g) = self.engine_state.lock() {
+            g.push_chat_response(response.0, response.1);
+        }
+    }
+
+    /// § T11-W8-CHAT-WIRE : route a body-string to the GM narrator.
+    ///
+    /// Stage-0 : delegate to `gm_narrator::GmNarrator::describe_environment`
+    /// keyed off the camera position so the response is locally-coherent +
+    /// fully self-hosted (no external LLM).
+    fn route_to_gm(&self, body: &str) -> (crate::mcp_server::ChatRole, String) {
+        // Stage-0 templated narrator. Per spec/10 §ROLE-GM, GM_CAP_TEXT_EMIT
+        // is default-on so we don't gate this branch on a cap check.
+        let mut narrator = crate::gm_narrator::GmNarrator::new();
+        let cam = crate::gm_narrator::Vec3::new(
+            self.player.pos[0],
+            self.player.pos[1],
+            self.player.pos[2],
+        );
+        let env = narrator.describe_environment(cam, crate::gm_narrator::TimeOfDay::Dusk);
+        let text = if body.is_empty() {
+            env
+        } else {
+            format!("(re: \"{body}\") {env}")
+        };
+        (crate::mcp_server::ChatRole::Gm, text)
+    }
+
+    /// § T11-W8-CHAT-WIRE : route a body-string to the DM scene-arbiter.
+    ///
+    /// Stage-0 : DM_CAP_SCENE_EDIT is default-off → respond with a System
+    /// cap-denied message inviting the Sovereign to grant the cap via the
+    /// menu. When granted (future wave), this branch dispatches against the
+    /// `cssl-host-dm` arbiter ; for now the behavior is observational.
+    fn route_to_dm(&self, body: &str) -> (crate::mcp_server::ChatRole, String) {
+        // Stage-0 stub : DM caps default-off ; respond with cap-denial.
+        let msg = format!(
+            "DM cap denied : DM_CAP_SCENE_EDIT default-off. Grant via menu \
+             (deferred to next wave) to enable scene-arbitration. Body=\"{body}\"",
+        );
+        (crate::mcp_server::ChatRole::System, msg)
+    }
+
+    /// § T11-W8-CHAT-WIRE : route a body-string to the Coder runtime.
+    ///
+    /// Stage-0 : CODER_CAP_AST_EDIT + sovereign-bit are required ; the body
+    /// MUST be either empty (echo cap-state) or a structured intent string.
+    /// The actual edit pipeline is reachable via the 4 `coder.*` MCP tools ;
+    /// this chat-route surfaces a System message describing how to proceed.
+    fn route_to_coder(&self, body: &str) -> (crate::mcp_server::ChatRole, String) {
+        let msg = if body.is_empty() {
+            String::from(
+                "Coder runtime ready. Use MCP `coder.propose_edit` (with \
+                 sovereign-cap for substrate edits). 4 Coder tools available : \
+                 coder.propose_edit · coder.list_pending · coder.approve · coder.revert",
+            )
+        } else {
+            format!(
+                "Coder cap denied : CODER_CAP_AST_EDIT + sovereign-bit required. \
+                 Use MCP `coder.propose_edit` with sovereign_cap to submit \"{body}\"",
+            )
+        };
+        (crate::mcp_server::ChatRole::System, msg)
+    }
+
     /// Build the HUD context the renderer reads each frame to populate the
     /// 4-corner text + crosshair.
     fn build_hud_context(&self) -> HudContext {
@@ -1071,6 +1200,22 @@ impl App {
         let text_input_history: Vec<String> =
             self.input.text_input.history.iter().cloned().collect();
 
+        // § T11-W8-CHAT-WIRE : pull the chat-log out of EngineState so the
+        // overlay can render the last 3 entries above the chat-hint pill.
+        // Roles + texts are cloned ; capacity (CHAT_LOG_CAP=8) keeps this
+        // bounded.
+        let chat_log: Vec<(crate::mcp_server::ChatRole, String)> = match self
+            .engine_state
+            .lock()
+        {
+            Ok(g) => g
+                .chat_log
+                .iter()
+                .map(|e| (e.role, e.text.clone()))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
         HudContext {
             frame: self.frame_count,
             fps: self.fps_smoothed,
@@ -1098,6 +1243,7 @@ impl App {
             text_input_cursor,
             text_input_history,
             text_input_blink_frame: self.frame_count,
+            chat_log,
         }
     }
 
@@ -1405,6 +1551,17 @@ impl App {
             // HUD echo : surface the latest submission on the bottom-left
             // recent-event line so the user gets immediate feedback.
             self.recent_event = format!("input: {submitted}");
+
+            // § T11-W8-CHAT-WIRE : route chat → GM (default) · DM (/dm) · Coder (/code).
+            // Push the player's line FIRST so the chat-log shows the prompt
+            // even if routing rejects it.
+            if let Ok(mut g) = self.engine_state.lock() {
+                g.push_chat_response(
+                    crate::mcp_server::ChatRole::Player,
+                    submitted.clone(),
+                );
+            }
+            self.route_chat_submission(submitted);
         }
         if frame.text_input.chars_typed > 0 {
             telem::global().record_text_input_chars(frame.text_input.chars_typed);
@@ -1437,6 +1594,14 @@ impl App {
                     ),
                 );
                 self.recent_event = format!("inject: {submitted}");
+                // § T11-W8-CHAT-WIRE : MCP inject → same chat-router path.
+                if let Ok(mut g) = self.engine_state.lock() {
+                    g.push_chat_response(
+                        crate::mcp_server::ChatRole::Player,
+                        submitted.clone(),
+                    );
+                }
+                self.route_chat_submission(&submitted);
             }
             // Restore prior buffer + cursor + focus so a Sovereign mid-edit
             // isn't disrupted by an MCP inject.

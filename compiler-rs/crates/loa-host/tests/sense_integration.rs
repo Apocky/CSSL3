@@ -142,9 +142,11 @@ fn integration_tools_list_reports_93_entries() {
     // § post-WAVE3-grand-merge : 84 (post-userfix) + 2 text-input + 3 gltf
     // + 2 spontaneous + 2 intent-router = 93.
     // § T11-W5c-LOA-HOST-WIRE : + 17 wired-* probes = 110.
+    // § T11-W7-G-LOA-HOST-WIRE : + 4 wave-7 probes = 114.
+    // § T11-W8-CHAT-WIRE       : + 4 Coder MCP tools = 118.
     let st = shared_state();
     let v = invoke(&st, "tools.list", json!({}));
-    assert_eq!(v["count"].as_u64().unwrap(), 110);
+    assert_eq!(v["count"].as_u64().unwrap(), 118);
     let tools = v["tools"].as_array().expect("array");
     let sense_tools: Vec<&Value> = tools
         .iter()

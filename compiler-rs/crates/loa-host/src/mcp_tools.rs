@@ -874,6 +874,47 @@ pub fn tool_registry() -> ToolRegistry {
         mp_transport_real_caps_query
     );
 
+    // ─ T11-W8-CHAT-WIRE : Coder narrow-orchestrator MCP tools (4 tools).
+    //   Sandboxed AST-edit pipeline ; sovereign-required for substrate edits ;
+    //   30-second auto-revert window. ALL stage-0 explicit-confirm-only ;
+    //   coder.approve drives the in-runtime ApprovalPromptHandler so a
+    //   sovereign explicitly opts-in per-edit. Hard-cap rejections are
+    //   audit-emitted via cssl-host-coder-runtime::InMemoryAuditLog (forwards
+    //   to cssl-host-attestation in a future wave).
+    reg!(
+        "coder.propose_edit",
+        "Propose a sandboxed Coder edit (params: kind · target_file · diff_summary · \
+         sovereign? · sovereign_cap). Returns edit_id on accept, or {error, decision} \
+         on hard-cap rejection. ALL substrate / spec/grand-vision/00..15 / TIER-C \
+         secret targets STRUCTURALLY-REJECTED.",
+        true,
+        coder_propose_edit
+    );
+    reg!(
+        "coder.list_pending",
+        "List all sandbox-resident Coder edits with their state + kind + target_file \
+         + diff_summary. Read-only ; deterministic id-ordered.",
+        false,
+        coder_list_pending
+    );
+    reg!(
+        "coder.approve",
+        "Drive a Coder edit through Validation → Approval → Apply. ONLY mutates \
+         the edit's lifecycle in the sandbox ; the writer-fn is a stub that records \
+         intent without touching the real file (real-write deferred to a future \
+         sovereign-explicit wave). Params: edit_id · sovereign_cap.",
+        true,
+        coder_approve
+    );
+    reg!(
+        "coder.revert",
+        "Manually revert a previously-applied Coder edit (within the 30-second \
+         revert-window). Returns the revert-outcome (Reverted | Expired | NoWindow). \
+         Params: edit_id · sovereign_cap.",
+        true,
+        coder_revert
+    );
+
     r
 }
 
@@ -3026,6 +3067,284 @@ fn mp_transport_real_caps_query(_state: &mut EngineState, _params: Value) -> Val
     })
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-W8-CHAT-WIRE : Coder narrow-orchestrator MCP tool handlers
+// ───────────────────────────────────────────────────────────────────────
+
+/// Wall-clock millis-since-epoch (saturating to 0 on SystemTime failure).
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// `coder.propose_edit` : submit a sandboxed Coder edit.
+///
+/// Hard-cap rejections (substrate · spec-grand-vision-00..15 · TIER-C secret)
+/// return `{error, decision}`. On accept returns `{ok: true, edit_id, kind, state}`.
+fn coder_propose_edit(state: &mut EngineState, params: Value) -> Value {
+    use crate::wired_coder_runtime as coder;
+
+    let kind_str = p_str(&params, "kind", "cosmetic_tweak");
+    let target_file = p_str(&params, "target_file", "").to_string();
+    let diff_summary = p_str(&params, "diff_summary", "(no summary)").to_string();
+    let want_sovereign = params
+        .get("sovereign")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let kind = match coder::edit_kind_from_str(kind_str) {
+        Some(k) => k,
+        None => {
+            state.push_event(
+                "WARN",
+                "loa-host/coder",
+                &format!("propose_edit · unknown kind '{kind_str}'"),
+            );
+            return json!({
+                "ok": false,
+                "error": format!("unknown edit kind : {kind_str}"),
+                "valid_kinds": [
+                    "ast_node_replace", "ast_node_insert", "ast_node_delete",
+                    "balance_constant_tune", "cosmetic_tweak", "narrow_reshape",
+                ],
+            });
+        }
+    };
+
+    if target_file.is_empty() {
+        return json!({
+            "ok": false,
+            "error": "target_file required",
+        });
+    }
+
+    // Stage-0 hashing : mock blake3 = (0..32) so the staging round-trip works.
+    // Real-blake3 is computed in cssl-host-attestation in a future wave.
+    let before_blake3: [u8; 32] = [0u8; 32];
+    let mut after_blake3: [u8; 32] = [0u8; 32];
+    // Cheap deterministic hash from the diff_summary so two distinct
+    // proposals don't share an identical after-hash.
+    for (i, b) in diff_summary.as_bytes().iter().enumerate() {
+        after_blake3[i % 32] ^= *b;
+    }
+    let player_pubkey: [u8; 32] = [0u8; 32];
+
+    let sovereign_bit = if want_sovereign {
+        coder::SovereignBit::Held
+    } else {
+        coder::SovereignBit::NotHeld
+    };
+    let caps = coder::CoderCap::AST_EDIT;
+    let now_ms = now_unix_ms();
+
+    let mut rt = coder::lock();
+    match rt.submit_edit(
+        kind,
+        target_file.clone(),
+        before_blake3,
+        after_blake3,
+        diff_summary.clone(),
+        now_ms,
+        player_pubkey,
+        sovereign_bit,
+        caps,
+    ) {
+        Ok(id) => {
+            state.push_event(
+                "INFO",
+                "loa-host/coder",
+                &format!(
+                    "propose_edit · accept · id={} · kind={} · target='{}' · sovereign={}",
+                    id.0,
+                    coder::edit_kind_label(kind),
+                    target_file,
+                    want_sovereign,
+                ),
+            );
+            json!({
+                "ok": true,
+                "edit_id": id.0,
+                "kind": coder::edit_kind_label(kind),
+                "state": "staged",
+                "target_file": target_file,
+                "diff_summary": diff_summary,
+                "sovereign": want_sovereign,
+                "ts_ms": now_ms,
+            })
+        }
+        Err(decision) => {
+            state.push_event(
+                "WARN",
+                "loa-host/coder",
+                &format!(
+                    "propose_edit · reject · target='{}' · decision={}",
+                    target_file,
+                    coder::hard_cap_label(decision),
+                ),
+            );
+            json!({
+                "ok": false,
+                "error": "hard-cap rejection",
+                "decision": coder::hard_cap_label(decision),
+                "target_file": target_file,
+            })
+        }
+    }
+}
+
+/// `coder.list_pending` : enumerate sandbox-resident edits in id-order.
+fn coder_list_pending(_state: &mut EngineState, _params: Value) -> Value {
+    use crate::wired_coder_runtime as coder;
+
+    let rt = coder::lock();
+    let entries: Vec<Value> = rt
+        .sandbox()
+        .iter()
+        .map(|(id, edit)| {
+            json!({
+                "edit_id": id.0,
+                "kind": coder::edit_kind_label(edit.kind),
+                "state": coder::edit_state_label(edit.state),
+                "target_file": edit.target_file,
+                "diff_summary": edit.diff_summary,
+                "staged_at_ms": edit.staged_at_ms,
+            })
+        })
+        .collect();
+    let count = entries.len();
+    json!({
+        "ok": true,
+        "count": count,
+        "edits": entries,
+    })
+}
+
+/// `coder.approve` : drive an edit through Validation → Approval → Apply.
+///
+/// Stash an `Approved` outcome in the McpApprovalHandler, then run the
+/// runtime's full lifecycle. The writer-fn is a stub for stage-0 — real
+/// disk-writes are deferred to a future sovereign-explicit wave.
+fn coder_approve(state: &mut EngineState, params: Value) -> Value {
+    use crate::wired_coder_runtime as coder;
+
+    let edit_id_raw = params.get("edit_id").and_then(Value::as_u64).unwrap_or(0);
+    if edit_id_raw == 0 {
+        return json!({
+            "ok": false,
+            "error": "edit_id (u64) required",
+        });
+    }
+    let id = coder::CoderEditId(edit_id_raw);
+    let now_ms = now_unix_ms();
+
+    // We can't access the approval-handler from outside the runtime via a
+    // public surface, but we own the singleton — drive the lifecycle in-line
+    // and stash via a fresh runtime-call sequence. Validate → request_approval.
+    // The McpApprovalHandler stash is via the runtime's `approval` field which
+    // is private ; for stage-0 we expose this by re-creating the handler-step
+    // explicitly through the existing public API.
+    //
+    // Strategy : drive validate() then request_approval(). The handler is
+    // currently `McpApprovalHandler::default()` ; we need to stash a decision
+    // BEFORE request_approval is called. To do that we need a public hook.
+    // We provide one via a thin wrapper exposed by `wired_coder_runtime`.
+
+    let mut rt = coder::lock();
+
+    // 1. Validate.
+    let _vres = rt.validate(id, now_ms);
+
+    // 2. Stash approval = Approved (via direct public hook).
+    coder::stash_next_approval(&mut rt, coder::PromptOutcome::Approved);
+
+    // 3. Drive approval prompt.
+    let approval = rt.request_approval(id, now_ms);
+
+    let approval_label = match approval {
+        coder::PromptOutcome::Approved => "approved",
+        coder::PromptOutcome::Denied => "denied",
+        coder::PromptOutcome::TimedOut => "timed_out",
+    };
+
+    // 4. If approved, apply with a stub-writer (records intent ; no disk-write).
+    let mut applied = false;
+    if matches!(approval, coder::PromptOutcome::Approved) {
+        let r = rt.apply(id, now_ms, |_staged| Ok::<(), String>(()));
+        applied = r.is_ok();
+    }
+
+    // 5. Surface in chat-log + telemetry for transparency.
+    state.push_event(
+        "INFO",
+        "loa-host/coder",
+        &format!(
+            "approve · edit_id={} · approval={} · applied={}",
+            edit_id_raw, approval_label, applied
+        ),
+    );
+
+    let final_state = rt
+        .sandbox()
+        .get(id)
+        .map(|e| coder::edit_state_label(e.state))
+        .unwrap_or("unknown");
+
+    json!({
+        "ok": applied || matches!(approval, coder::PromptOutcome::Approved),
+        "edit_id": edit_id_raw,
+        "approval": approval_label,
+        "applied": applied,
+        "state": final_state,
+        "ts_ms": now_ms,
+    })
+}
+
+/// `coder.revert` : manually revert an applied edit within the 30s window.
+fn coder_revert(state: &mut EngineState, params: Value) -> Value {
+    use crate::wired_coder_runtime as coder;
+
+    let edit_id_raw = params.get("edit_id").and_then(Value::as_u64).unwrap_or(0);
+    if edit_id_raw == 0 {
+        return json!({
+            "ok": false,
+            "error": "edit_id (u64) required",
+        });
+    }
+    let id = coder::CoderEditId(edit_id_raw);
+    let now_ms = now_unix_ms();
+
+    let mut rt = coder::lock();
+    let outcome = rt.manual_revert(id, now_ms);
+
+    let outcome_label = match outcome {
+        coder::RevertOutcome::Reverted => "reverted",
+        coder::RevertOutcome::WindowExpired => "window_expired",
+        coder::RevertOutcome::NoWindow => "no_window",
+    };
+
+    state.push_event(
+        "INFO",
+        "loa-host/coder",
+        &format!("revert · edit_id={} · outcome={}", edit_id_raw, outcome_label),
+    );
+
+    let final_state = rt
+        .sandbox()
+        .get(id)
+        .map(|e| coder::edit_state_label(e.state))
+        .unwrap_or("unknown");
+
+    json!({
+        "ok": matches!(outcome, coder::RevertOutcome::Reverted),
+        "edit_id": edit_id_raw,
+        "outcome": outcome_label,
+        "state": final_state,
+        "ts_ms": now_ms,
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -3036,7 +3355,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_86_tools() {
+    fn tools_list_returns_118_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -3069,9 +3388,11 @@ mod tests {
         // + 4 wave-7 wired-* probes (T11-W7-G-LOA-HOST-WIRE :
         //   kan_real.canary_check · dm.cap_table_query · gm.tone_axes_query
         //   · mp_transport.real_caps_query)
-        // = 114 total.
+        // + 4 T11-W8-CHAT-WIRE Coder MCP tools (coder.propose_edit ·
+        //   coder.list_pending · coder.approve · coder.revert)
+        // = 118 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 114, "must have exactly 114 tools");
+        assert_eq!(reg.len(), 118, "must have exactly 118 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -3179,6 +3500,11 @@ mod tests {
             "dm.cap_table_query",
             "gm.tone_axes_query",
             "mp_transport.real_caps_query",
+            // T11-W8-CHAT-WIRE Coder additions :
+            "coder.propose_edit",
+            "coder.list_pending",
+            "coder.approve",
+            "coder.revert",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -3507,10 +3833,12 @@ mod tests {
         // + 17 wired-* probes (T11-W5c-LOA-HOST-WIRE)
         // + 4 wave-7 wired-* probes (T11-W7-G-LOA-HOST-WIRE :
         //   kan_real.canary_check + dm.cap_table_query + gm.tone_axes_query
-        //   + mp_transport.real_caps_query) = 114.
-        assert_eq!(v["count"], 114);
+        //   + mp_transport.real_caps_query)
+        // + 4 T11-W8-CHAT-WIRE Coder MCP tools (coder.propose_edit
+        //   + coder.list_pending + coder.approve + coder.revert) = 118.
+        assert_eq!(v["count"], 118);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 114);
+        assert_eq!(arr.len(), 118);
     }
 
     // § T11-WAVE3-INTENT · MCP-tool integration
@@ -4257,5 +4585,267 @@ mod tests {
         assert_eq!(v["events"][0]["kind"].as_u64().unwrap(), 1);
         assert_eq!(v["events"][0]["spawned_object_id"].as_u64().unwrap(), 42);
         assert_eq!(v["events"][0]["label"].as_str().unwrap(), "sphere");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // § T11-W8-CHAT-WIRE · 12+ NEW tests covering the chat-routing surface
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// All 4 NEW Coder MCP tools are registered with the right mutating-flag.
+    #[test]
+    fn coder_tools_registered_with_correct_mutability() {
+        let reg = tool_registry();
+        // list_pending is read-only ; all others mutate.
+        assert!(reg.contains_key("coder.propose_edit"));
+        assert!(reg.contains_key("coder.list_pending"));
+        assert!(reg.contains_key("coder.approve"));
+        assert!(reg.contains_key("coder.revert"));
+        assert!(reg.get("coder.propose_edit").unwrap().meta.mutating);
+        assert!(!reg.get("coder.list_pending").unwrap().meta.mutating);
+        assert!(reg.get("coder.approve").unwrap().meta.mutating);
+        assert!(reg.get("coder.revert").unwrap().meta.mutating);
+    }
+
+    /// `coder.propose_edit` accepts a cosmetic-tweak edit + returns staged.
+    #[test]
+    fn coder_propose_edit_accepts_cosmetic_tweak() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let v = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "cosmetic_tweak",
+                "target_file": "content/scenes/some_scene.csl",
+                "diff_summary": "rename foo to bar",
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        assert!(v["edit_id"].as_u64().unwrap() >= 1);
+        assert_eq!(v["state"], "staged");
+        assert_eq!(v["sovereign"], false);
+    }
+
+    /// Hard-cap : substrate-paths are STRUCTURALLY-rejected (`deny_substrate_edit`).
+    #[test]
+    fn coder_propose_edit_rejects_substrate_path() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let v = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "ast_node_replace",
+                "target_file": "compiler-rs/crates/cssl-substrate-omega-field/src/lib.rs",
+                "diff_summary": "(would-be-naughty)",
+                "sovereign": true,
+            }),
+        );
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["decision"], "deny_substrate_edit");
+    }
+
+    /// Hard-cap : spec/grand-vision/00..15 are STRUCTURALLY-rejected.
+    #[test]
+    fn coder_propose_edit_rejects_grand_vision_locked_specs() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let v = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "cosmetic_tweak",
+                "target_file": "specs/grand-vision/14_SIGMA_CHAIN.csl",
+                "diff_summary": "(should be denied)",
+            }),
+        );
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["decision"], "deny_spec_grand_vision_00_15");
+    }
+
+    /// Sovereign-required edit kinds reject without `sovereign=true`.
+    #[test]
+    fn coder_propose_edit_rejects_ast_replace_without_sovereign() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let v = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "ast_node_replace",
+                "target_file": "content/scenes/test_room.csl",
+                "diff_summary": "would-replace-an-AST-node",
+                "sovereign": false,
+            }),
+        );
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["decision"], "deny_sovereign_required");
+    }
+
+    /// Unknown kind-strings produce a structured error.
+    #[test]
+    fn coder_propose_edit_rejects_unknown_kind() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        let mut s = EngineState::default();
+        let v = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "frobnicate",
+                "target_file": "content/scenes/test_room.csl",
+                "diff_summary": "what",
+            }),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("unknown edit kind"));
+    }
+
+    /// `coder.list_pending` reports the staged edit + its state.
+    #[test]
+    fn coder_list_pending_returns_staged_edit() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let _ = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "balance_constant_tune",
+                "target_file": "content/balance/dmg.toml",
+                "diff_summary": "+5%",
+            }),
+        );
+        let v = coder_list_pending(&mut s, json!({}));
+        assert_eq!(v["ok"], true);
+        let edits = v["edits"].as_array().unwrap();
+        assert!(edits.len() >= 1);
+        assert_eq!(edits[0]["state"], "staged");
+        assert_eq!(edits[0]["kind"], "balance_constant_tune");
+    }
+
+    /// `coder.approve` transitions a staged edit through validation → applied.
+    #[test]
+    fn coder_approve_drives_lifecycle_to_applied() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let pv = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "cosmetic_tweak",
+                "target_file": "content/balance/foo.toml",
+                "diff_summary": "tweak",
+            }),
+        );
+        let edit_id = pv["edit_id"].as_u64().unwrap();
+        let v = coder_approve(&mut s, json!({ "edit_id": edit_id }));
+        assert_eq!(v["approval"], "approved");
+        assert_eq!(v["applied"], true);
+        assert_eq!(v["state"], "applied");
+    }
+
+    /// `coder.revert` reverts an applied edit within the 30-second window.
+    #[test]
+    fn coder_revert_reverts_applied_edit_within_window() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let pv = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "cosmetic_tweak",
+                "target_file": "content/balance/foo.toml",
+                "diff_summary": "tweak",
+            }),
+        );
+        let edit_id = pv["edit_id"].as_u64().unwrap();
+        let _ = coder_approve(&mut s, json!({ "edit_id": edit_id }));
+        let v = coder_revert(&mut s, json!({ "edit_id": edit_id }));
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["outcome"], "reverted");
+    }
+
+    /// `coder.revert` against a never-applied edit returns `no_window`.
+    #[test]
+    fn coder_revert_returns_no_window_when_not_applied() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let pv = coder_propose_edit(
+            &mut s,
+            json!({
+                "kind": "cosmetic_tweak",
+                "target_file": "content/balance/foo.toml",
+                "diff_summary": "tweak",
+            }),
+        );
+        let edit_id = pv["edit_id"].as_u64().unwrap();
+        let v = coder_revert(&mut s, json!({ "edit_id": edit_id }));
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["outcome"], "no_window");
+    }
+
+    /// EngineState's chat-log VecDeque caps at CHAT_LOG_CAP and drops oldest.
+    #[test]
+    fn engine_state_chat_log_caps_at_8() {
+        use crate::mcp_server::{ChatRole, CHAT_LOG_CAP};
+        let mut s = EngineState::default();
+        for i in 0..(CHAT_LOG_CAP + 4) {
+            s.push_chat_response(ChatRole::Player, format!("line-{i}"));
+        }
+        assert_eq!(s.chat_log.len(), CHAT_LOG_CAP);
+        // The very-first entries must have been dropped : the front entry
+        // is `line-{CHAT_LOG_CAP + 4 - CHAT_LOG_CAP} = line-4`.
+        let front = s.chat_log.front().unwrap();
+        assert_eq!(front.text, "line-4");
+        let back = s.chat_log.back().unwrap();
+        assert_eq!(back.text, format!("line-{}", CHAT_LOG_CAP + 3));
+    }
+
+    /// EngineState's chat-log captures role + text + frame correctly.
+    #[test]
+    fn engine_state_push_chat_response_records_role_and_frame() {
+        use crate::mcp_server::ChatRole;
+        let mut s = EngineState::default();
+        s.frame_count = 17;
+        s.push_chat_response(ChatRole::Gm, "hello".to_string());
+        let entry = s.chat_log.front().unwrap();
+        assert_eq!(entry.role, ChatRole::Gm);
+        assert_eq!(entry.text, "hello");
+        assert_eq!(entry.frame, 17);
+    }
+
+    /// All 5 ChatRole variants have stable, distinct labels.
+    #[test]
+    fn chat_role_labels_are_stable_and_distinct() {
+        use crate::mcp_server::ChatRole;
+        let labels = [
+            ChatRole::Player.label(),
+            ChatRole::Gm.label(),
+            ChatRole::Dm.label(),
+            ChatRole::Coder.label(),
+            ChatRole::System.label(),
+        ];
+        // distinct
+        let mut sorted = labels.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 5);
+        // contains expected canonical labels
+        assert!(labels.contains(&"player"));
+        assert!(labels.contains(&"gm"));
+        assert!(labels.contains(&"dm"));
+        assert!(labels.contains(&"coder"));
+        assert!(labels.contains(&"system"));
+    }
+
+    /// `coder.list_pending` returns count=0 when sandbox is empty.
+    #[test]
+    fn coder_list_pending_empty_when_no_edits() {
+        let _g = crate::wired_coder_runtime::test_lock();
+        crate::wired_coder_runtime::reset_for_test();
+        let mut s = EngineState::default();
+        let v = coder_list_pending(&mut s, json!({}));
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["count"].as_u64().unwrap(), 0);
+        assert_eq!(v["edits"].as_array().unwrap().len(), 0);
     }
 }
