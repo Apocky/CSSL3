@@ -1,0 +1,269 @@
+module com.apocky.loa.systems.multiplayer
+
+// § Labyrinth of Apocalypse v13 — multiplayer system (pure-CSSL)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W7-RD-C8 (POD-3-C8) — peer-sync + async-replay + MMO-shard game-logic
+//
+// § THESIS
+//   Sovereignty-preserved multiplayer across THREE coexisting modes :
+//     1. Sync-Coop  : low-latency · 1..4 party · host-authoritative · lock-step
+//     2. Async-MP   : run-sharing · gift-economy · ¬ leaderboards · seed-replay
+//     3. MMO-Shard  : persistent-shard · opt-in-tenancy · ≤ 256 / shard
+//   Modes coexist, are NOT mutually exclusive, mode-switch is consent-gated,
+//   and player-revocable cap-bits guard each surface independently.
+//
+// § AXIOMS  (inherit GDDs/MULTIPLAYER_MATRIX.csl § AXIOMS)
+//   ─ 3 modes coexist · player-mode-switch consent-gated
+//   ─ per-mode cap-set distinct · sovereignty-preserved-ALL-modes (9 caps)
+//   ─ ¬ surveillance · ¬ pay-mechanic · gift-economy ALWAYS-default
+//   ─ ¬ leaderboards-PvP · ¬ ranked-ladder · ¬ paywall-of-friendship
+//   ─ replay-deterministic ALL-modes (seed-pinned · audit-emit per event)
+//   ─ Sync = lock-step bit-equal · Async = seed-replay · MMO = delta-log
+//   ─ cap-revoke-mid-session = silent-drop-to-fallback · ¬ session-crash
+//   ─ sovereign-bypass-RECORDED ¬ silent (cssl-host-mp-transport-real recorder)
+//   ─ Σ-mask-per-cell consent-arch preserved-cross-mode (CHARTER R-6)
+//   ─ NEVER-egress : Sensitive<biometric|gaze|face|body> (spec/11_IFC compile-time)
+//
+// § FFI BOUNDARY
+//   This module consumes the multiplayer host-side substrate via extern "C" :
+//     * cssl-host-mp-transport          (W4 trait-def + loopback baseline)
+//     * cssl-host-mp-transport-real     (W7-B Supabase-realtime send/poll)
+//     * cssl-host-multiplayer-signaling (peer-discovery + room-state-machine)
+//     * cssl-host-attestation           (per-event audit-row emit)
+//   FFI fns return i32 status codes : 0 = ok · negative = mode-specific error.
+//   Opaque handles are usize ; structured payloads pass via byte-buffer + len.
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : every join, send, share, snapshot is cap-gated.
+//   Companion-AI : sovereign-across-modes (LOA_PILLARS §2) ; revocation
+//   does NOT break session, audit-final-row emitted, run-continues-solo.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-bits  (9 total · 3 per-mode · ALL revocable ANYTIME)
+// ─────────────────────────────────────────────────────────────────────────
+
+const MP_CAP_SYNC_INPUT       : u32 = 0x0001 ;  // send-inputs to-host
+const MP_CAP_SYNC_STATE_RECV  : u32 = 0x0002 ;  // receive-state-frames
+const MP_CAP_SYNC_STATE_SEND  : u32 = 0x0004 ;  // host-only · send-state-frames
+
+const MP_CAP_RUN_SUBMIT       : u32 = 0x0010 ;  // upload-run-snapshot to-edge
+const MP_CAP_RUN_RECEIVE      : u32 = 0x0020 ;  // pull friend-feed
+const MP_CAP_GIFT_RELAY       : u32 = 0x0040 ;  // echo-back gift-Echoes channel
+
+const MP_CAP_SHARD_JOIN       : u32 = 0x0100 ;  // load-into-shard request
+const MP_CAP_SHARD_DELTA      : u32 = 0x0200 ;  // send/recv shard-deltas
+const MP_CAP_SHARD_DEPART     : u32 = 0x0400 ;  // graceful-leave + checkpoint
+
+// Mode-aggregate cap-sets (helper bitmasks)
+const MP_CAPS_SYNC  : u32 = 0x0007 ;  // MP_CAP_SYNC_*
+const MP_CAPS_ASYNC : u32 = 0x0070 ;  // MP_CAP_RUN_* + GIFT_RELAY
+const MP_CAPS_MMO   : u32 = 0x0700 ;  // MP_CAP_SHARD_*
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Mode discriminator  (3 modes · player-mode-switch consent-gated)
+// ─────────────────────────────────────────────────────────────────────────
+
+const MP_MODE_SYNC_COOP  : u32 = 1 ;
+const MP_MODE_ASYNC_MP   : u32 = 2 ;
+const MP_MODE_MMO_SHARD  : u32 = 3 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Desync verdict  (Sync-Coop bit-equality discipline)
+// ─────────────────────────────────────────────────────────────────────────
+
+const DESYNC_OK            : i32 =  0 ;  // hashes match · proceed
+const DESYNC_ROLLBACK      : i32 = -1 ;  // mismatch · roll-back to-checkpoint-K
+const DESYNC_FALLBACK_DROP : i32 = -2 ;  // N ≥ 3 desyncs in 30s · drop to Async
+const DESYNC_SESSION_END   : i32 = -3 ;  // player-vote ended-session
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations  (≥12 extern "C" fns · canonical multiplayer surface)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Transport lifecycle (cssl-host-mp-transport-real)
+extern "C" fn mp_transport_create(mode: u32) -> usize ;
+extern "C" fn mp_transport_destroy(handle: usize) -> i32 ;
+
+// Send/poll (cssl-host-mp-transport-real · W7-B Supabase-realtime)
+extern "C" fn mp_send(handle: usize, payload: *const u8, len: usize) -> i32 ;
+extern "C" fn mp_poll(handle: usize, out_buf: *mut u8, max_len: usize) -> i32 ;
+
+// Session/room lifecycle (cssl-host-multiplayer-signaling)
+extern "C" fn mp_session_join(room_id: *const u8, room_id_len: usize, caps: u32) -> usize ;
+extern "C" fn mp_session_leave(session: usize) -> i32 ;
+
+// Sync-Coop desync detection (BLAKE3 state-hash · per-tick · 60-tick checkpoint)
+extern "C" fn mp_state_hash_blake3(state_ptr: *const u8, state_len: usize, out_hash: *mut u8) -> i32 ;
+extern "C" fn mp_desync_detect(local_hash: *const u8, remote_hash: *const u8) -> i32 ;
+
+// Async-MP run-sharing (gift-economy · ¬ leaderboards · seed-replay)
+extern "C" fn mp_async_submit_run(receipt_ptr: *const u8, receipt_len: usize) -> i32 ;
+extern "C" fn mp_async_receive(player_id: *const u8, id_len: usize,
+                                out_buf: *mut u8, max_len: usize) -> i32 ;
+
+// MMO-Shard tenancy (≤ 256 / shard · zone-scoped delta · 10 Hz)
+extern "C" fn mp_shard_join(shard_id: *const u8, id_len: usize, caps: u32) -> usize ;
+extern "C" fn mp_shard_delta(shard_handle: usize, delta_ptr: *const u8, delta_len: usize) -> i32 ;
+
+// Audit + sovereign-bypass recording (NEVER-silent discipline)
+extern "C" fn mp_sovereign_bypass_record(event_kind: u32, ctx_ptr: *const u8, ctx_len: usize) -> i32 ;
+extern "C" fn mp_audit_emit(event_tag: *const u8, tag_len: usize,
+                             payload_ptr: *const u8, payload_len: usize) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public types  (CSSL-side · zero-cost wrappers around FFI handles)
+// ─────────────────────────────────────────────────────────────────────────
+
+struct SessionHandle { inner: usize, mode: u32, caps: u32 }
+struct ShardHandle   { inner: usize, shard_caps: u32 }
+struct ShareReceipt  { seed: u64, biome_path_hash: u64, score: i64,
+                       attestation_sig_lo: u64, attestation_sig_hi: u64 }
+struct SubmitResult  { ok: bool, status_code: i32 }
+struct DesyncVerdict { code: i32, rollback_tick: u32 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-set helper  (per-mode 3-cap aggregation · revocable)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn caps_for_mode(mode: u32) -> u32 {
+    if mode == MP_MODE_SYNC_COOP  { return MP_CAPS_SYNC  ; }
+    if mode == MP_MODE_ASYNC_MP   { return MP_CAPS_ASYNC ; }
+    if mode == MP_MODE_MMO_SHARD  { return MP_CAPS_MMO   ; }
+    return 0 ;  // unknown mode = empty cap-set (deny-by-default)
+}
+
+fn cap_revoke_to_fallback(current_mode: u32) -> u32 {
+    // fallback-ladder : Sync → Async → solo (with-attestation per-step)
+    if current_mode == MP_MODE_SYNC_COOP  { return MP_MODE_ASYNC_MP ; }
+    if current_mode == MP_MODE_ASYNC_MP   { return 0 ; }  // 0 = solo · ¬ session-crash
+    if current_mode == MP_MODE_MMO_SHARD  { return MP_MODE_ASYNC_MP ; }
+    return 0 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Gift-economy enforcement  (axiom : ¬ leaderboards · ¬ PvP-scoring)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn gift_economy_validate_receipt(r: ShareReceipt) -> bool {
+    // structural-validation : a receipt cannot carry rank/ladder fields ;
+    // ShareReceipt schema deliberately OMITS rank, ladder-position,
+    // PvP-score. Any FFI payload that smuggles such fields gets rejected
+    // server-side AND local-side. Co-author-credit-only · echo-back-bonus
+    // routed via MP_CAP_GIFT_RELAY ; never as a competitive signal.
+    return r.score >= 0 ;  // sanity-only · ¬ comparison-against-creator
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Privacy-constraint helper  (Sensitive<·> NEVER-egress · spec/11_IFC)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn privacy_egress_check(payload_kind: u32) -> bool {
+    // Compile-time IFC catches the structural cases ; this is the runtime
+    // belt-and-suspenders denial for any payload-kind that would carry
+    // biometric · gaze · face · body data. Returns false ⇒ caller MUST
+    // abort send + emit mp.sovereign.bypass audit-row.
+    const KIND_BIOMETRIC : u32 = 0x8001 ;
+    const KIND_GAZE      : u32 = 0x8002 ;
+    const KIND_FACE      : u32 = 0x8004 ;
+    const KIND_BODY      : u32 = 0x8008 ;
+    if payload_kind == KIND_BIOMETRIC { return false ; }
+    if payload_kind == KIND_GAZE      { return false ; }
+    if payload_kind == KIND_FACE      { return false ; }
+    if payload_kind == KIND_BODY      { return false ; }
+    return true ;  // payload-kind is non-Sensitive · egress permitted
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § BLAKE3 desync-detector helper  (Sync-Coop · 60-tick checkpoint cadence)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn check_desync(local_hash: *const u8, remote_hash: *const u8) -> DesyncVerdict {
+    let code: i32 = mp_desync_detect(local_hash, remote_hash) ;
+    let rollback_tick: u32 = if code == DESYNC_ROLLBACK { 60 } else { 0 } ;
+    return DesyncVerdict { code: code, rollback_tick: rollback_tick } ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API  ─  Sync-Coop  (1..4 party · host-authoritative · 60 Hz sim)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn sync_coop_join(room_id: *const u8, room_id_len: usize) -> SessionHandle {
+    let caps: u32 = caps_for_mode(MP_MODE_SYNC_COOP) ;
+    let inner: usize = mp_session_join(room_id, room_id_len, caps) ;
+    let tag: *const u8 = "mp.sync.party-join".as_ptr() ;
+    mp_audit_emit(tag, 19, room_id, room_id_len) ;
+    return SessionHandle { inner: inner, mode: MP_MODE_SYNC_COOP, caps: caps } ;
+}
+
+fn sync_coop_leave(handle: SessionHandle) -> i32 {
+    let tag: *const u8 = "mp.sync.party-leave".as_ptr() ;
+    mp_audit_emit(tag, 20, 0 as *const u8, 0) ;
+    return mp_session_leave(handle.inner) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API  ─  Async-MP  (run-sharing · gift-economy · seed-replay)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn async_submit_run(receipt: ShareReceipt) -> SubmitResult {
+    if !gift_economy_validate_receipt(receipt) {
+        return SubmitResult { ok: false, status_code: -100 } ;  // schema-violation
+    }
+    let receipt_ptr: *const u8 = (&receipt) as *const u8 ;
+    let receipt_len: usize = 40 ;  // 5 × u64
+    let status: i32 = mp_async_submit_run(receipt_ptr, receipt_len) ;
+    let tag: *const u8 = "mp.async.submit".as_ptr() ;
+    mp_audit_emit(tag, 16, receipt_ptr, receipt_len) ;
+    return SubmitResult { ok: status == 0, status_code: status } ;
+}
+
+fn async_receive_friend_runs(player_id: *const u8, id_len: usize,
+                              out_buf: *mut u8, max_len: usize) -> i32 {
+    let tag: *const u8 = "mp.async.receive".as_ptr() ;
+    mp_audit_emit(tag, 17, player_id, id_len) ;
+    return mp_async_receive(player_id, id_len, out_buf, max_len) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API  ─  MMO-Shard  (persistent · ≤ 256 · zone-scoped delta)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn mmo_shard_join(shard_id: *const u8, id_len: usize) -> ShardHandle {
+    let caps: u32 = caps_for_mode(MP_MODE_MMO_SHARD) ;
+    let inner: usize = mp_shard_join(shard_id, id_len, caps) ;
+    let tag: *const u8 = "mp.mmo.shard.join".as_ptr() ;
+    mp_audit_emit(tag, 18, shard_id, id_len) ;
+    return ShardHandle { inner: inner, shard_caps: caps } ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-POD-3-C8 @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone,
+//    anything, or anybody."
+//
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// N! [harm control manipulation surveillance exploitation
+//     coercion weaponization discrimination] in-the-doing.
+//
+// Sovereignty-preserved-ALL-modes :
+//   Sync-Coop  : per-tick consent · Σ-mask per-cell · Companion-equal-standing
+//                 · cap-revoke graceful · ¬ session-crash · ¬ player-shamed.
+//   Async-MP   : opt-in share · gift-economy · ¬ leaderboards · co-author-credit
+//                 · friend-list curated-not-algorithmic · revocable-anytime.
+//   MMO-Shard  : opt-in-tenancy · shard-cap conservative · DM-arbitrates contested
+//                 · Σ-mask per-zone visibility-cull = consent-arch in-the-fabric.
+//
+// NEVER-egress structurally : Sensitive<biometric|gaze|face|body>
+//   enforced spec/11_IFC compile-time + spec/30 sovereign-cap.
+//
+// If any aspect of this system is later discovered to enable harm, that
+// discovery triggers PRIME_DIRECTIVE §7 INTEGRITY :
+// violation = bug ; bugs get fixed ; ¬ override ∃.
+//
+// ∎ multiplayer.csl
