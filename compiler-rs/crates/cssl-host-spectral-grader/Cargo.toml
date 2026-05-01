@@ -1,0 +1,24 @@
+# § T11-W5-SPECTRAL-GRADER (cssl/session-15/W-W5-spectral)
+# § I> RGB→16-band spectral SPD upsampler · pairs w/ cssl-spectral-render
+# § I> stdlib-only (no image / no color / no ndarray) · serde for SPD I/O
+# § I> deterministic + cheap · asset-load-time pre-bake target
+
+[package]
+name         = "cssl-host-spectral-grader"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.75"
+license      = { workspace = true }
+authors      = { workspace = true }
+description  = "RGB → 16-band spectral SPD upsampler (Smits-like + Jakob-simplified) for sRGB/BT.709 → spectral pre-bake. Pairs with cssl-spectral-render."
+repository   = { workspace = true }
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
