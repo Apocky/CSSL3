@@ -913,6 +913,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-license-attribution"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-metal"
 version = "0.1.0"
 dependencies = [
