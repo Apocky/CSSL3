@@ -1,0 +1,192 @@
+module com.apocky.loa.scenes.city_central_hub
+
+// § Labyrinth of Apocalypse · scene · NeverhomeRise central-hub city
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § POD-3-C9 (W-LOA-scene-runtime-procgen-city) · pure-CSSL source
+//
+// § REFERENCE
+//   GDDs/PROCGEN_WORLD.csl § REAL-SCALE-CITIES + § KAN-RIDE-ON-PROCGEN
+//   memory/feedback_engine_is_runtime_procedural_gen (FOUNDATIONAL)
+//   memory/feedback_loa_v13_must_be_cssl_source       (FOUNDATIONAL)
+//   specs/30_SUBSTRATE_v2.csl + specs/41_ENGINE_RUNTIME.csl
+//   specs/11_KAN_RIDE.csl § SP-PG-1..SP-PG-5
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + PROCGEN_WORLD
+//   t∞: runtime-procgen ALWAYS              ← scene = container ¬ static-asset
+//   t∞: ¬ static-content                    ← every cell + NPC + facade procgen
+//   t∞: ≥ 4096 NPCs sustained @ 60fps        ← realistic-density-curve
+//   t∞: 4-tier LOD (L0-near · L1-mid · L2-far · L3-impostor)
+//   t∞: KAN-ride 5-swap-points (SP-PG-1..SP-PG-5) · stage-0 ALWAYS-fallback
+//   t∞: seed = u128 (player-id ⊕ city-id ⊕ session-tick) · bit-equal-replay
+//   t∞: ω-field stamps every-procgen-cell    ← Σ-mask non-optional
+//   t∞: ConsentZone gates intensity-tier · ¬ surprise-attack
+//
+// § PRIME-DIRECTIVE
+//   This scene generates a city of sovereign procgen-NPCs at runtime. No
+//   hand-authored content · no off-machine relay · no surveillance · no
+//   coercion. Player double-clicks LoA.exe → enters hub → city assembles
+//   from seed before their eyes. Replay bit-equal from same seed.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · ≥10 extern "C" · loa-host staticlib provides bodies
+// ─────────────────────────────────────────────────────────────────────────
+//
+// All scene_* fns are hosted in compiler-rs/crates/loa-host/src/wired_*.rs ·
+// auto-linked by csslc default-link discovery. Each fn returns u32 status
+// (0 = ok · non-zero = error-code · audit-trail emitted on every call).
+
+extern "C" fn scene_open(player_id: u64, world_seed: u128, city_id: u32) -> u32 ;
+extern "C" fn scene_close(handle: u32) -> u32 ;
+extern "C" fn scene_procgen_grid(handle: u32, biome_affinity: u32) -> u32 ;
+extern "C" fn scene_procgen_buildings(handle: u32, density_tier: u32) -> u32 ;
+extern "C" fn scene_procgen_interiors(handle: u32, enterable_pct: u32) -> u32 ;
+extern "C" fn scene_procgen_npc_population(handle: u32, target_count: u32) -> u32 ;
+extern "C" fn scene_kan_classify_template(handle: u32, hist_hash: u64, zone: u32, bias: u64) -> u32 ;
+extern "C" fn scene_query_npc_count(handle: u32) -> u32 ;
+extern "C" fn scene_apply_lod(handle: u32, player_x: i32, player_y: i32, player_z: i32) -> u32 ;
+extern "C" fn scene_audit_emit(handle: u32, event_kind: u32, payload_hash: u64) -> u32 ;
+extern "C" fn scene_tick(handle: u32, dt_micros: u32) -> u32 ;
+extern "C" fn scene_query_exit_state(handle: u32) -> u32 ;
+
+// KAN-real classifier · cssl-host-kan-real wires stage-1 · stage-0 ALWAYS-on
+extern "C" fn __cssl_kan_real_classify_intent(swap_point: u32, feature_hash: u64, fallback: u32) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Scene-handle + tick-event types
+// ─────────────────────────────────────────────────────────────────────────
+
+struct SceneHandle  { id: u32 , city_id: u32 , seed_hi: u64 , seed_lo: u64 }
+struct SceneEvent   { kind: u32 , payload_hash: u64 }
+struct ExitState    { reason: u32 , npc_state_chain_root: u64 }
+
+// city_id constants · 5 canonical hubs per PROCGEN_WORLD § HUB-CITIES
+fn city_NeverhomeRise()    -> u32 { 1 }   // Citadel-affinity · player-spawn central-hub
+fn city_OldKeyport()       -> u32 { 2 }   // ForestPath-affinity · vendor-cluster
+fn city_Brassmarrow()      -> u32 { 3 }   // Forge-affinity · crafting-deep
+fn city_GreenwillowFair()  -> u32 { 4 }   // Sanctum-affinity · social
+fn city_SanctumOfEchoes()  -> u32 { 5 }   // Sanctum+Hub · meta-Echoes
+
+// KAN-ride swap-points · per PROCGEN_WORLD § PROCGEN-DECISION-CLASSIFIERS
+fn sp_pg_1_floor_template_pick()    -> u32 { 101 }
+fn sp_pg_2_biome_grammar_tune()     -> u32 { 102 }
+fn sp_pg_3_creature_spawn_mix()     -> u32 { 103 }
+fn sp_pg_4_loot_affix_bias()        -> u32 { 104 }
+fn sp_pg_5_city_npc_routine_skew()  -> u32 { 105 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API · called by loa-host scene-router on player-traversal
+// ─────────────────────────────────────────────────────────────────────────
+//
+// on_scene_enter : the 4-stage pipeline runs HERE @ runtime · ¬ pre-baked
+
+fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
+    let city: u32 = city_NeverhomeRise() ;
+    let h: u32 = scene_open(player_id, world_seed, city) ;
+
+    // L-1 grid-gen · streets+blocks+intersections · biome-grid-modifier
+    //   (Citadel-affinity = grid-amplified · radial-furnace ≢ here)
+    let _g: u32 = scene_procgen_grid(h, city) ;
+
+    // L-2 building-gen · SDF-fold facades · 256+ named-blocks
+    //   density_tier 3 = downtown-core (gaussian-fall-off origin)
+    let _b: u32 = scene_procgen_buildings(h, 3) ;
+
+    // L-3 interior-gen · per-NPC-purpose room-graph
+    //   60..80% enterable per § CITY-SPEC-METRICS · choose 70%
+    let _i: u32 = scene_procgen_interiors(h, 70) ;
+
+    // L-4 NPC-population · ≥ 4096 (M-2 balance-metric · CI-gateable)
+    let _n: u32 = scene_procgen_npc_population(h, 4096) ;
+
+    // KAN-classify city-NPC routine-skew (SP-PG-5) · stage-0 ALWAYS-fallback
+    let routine_handle: u32 = scene_kan_classify_template(
+        h,
+        0x1A2B3C4D5E6F7A8B,    // player-history feature-hash (placeholder mix)
+        city,
+        0x9C8D7E6F5A4B3C2D      // bias-vec-hash
+    ) ;
+
+    // attestation-emit : scene-genesis row in audit-chain · replay-anchor
+    let _a: u32 = scene_audit_emit(h, 1, 0xC17_5CE_E_ABCDEFu64) ;
+
+    h
+}
+
+// tick_scene : per-frame · LOD-update + KAN-canary + audit-emit
+//   ¬ Vec<SceneEvent> at FFI-boundary (CSSL stage-0 ¬ heap-vec across FFI yet) ·
+//   loa-host buffers events into ring · query via scene_tick return-code
+
+fn tick_scene(handle: u32, dt_micros: u32, px: i32, py: i32, pz: i32) -> u32 {
+    let _l: u32 = scene_apply_lod(handle, px, py, pz) ;
+    let evt_count: u32 = scene_tick(handle, dt_micros) ;
+    evt_count
+}
+
+// on_scene_exit : flush attestation-chain · returns ExitState reason-code
+
+fn on_scene_exit(handle: u32) -> u32 {
+    let _e: u32 = scene_audit_emit(handle, 2, 0xEX17_5CE_E_FEDCBA98u64) ;
+    let exit_reason: u32 = scene_query_exit_state(handle) ;
+    let _c: u32 = scene_close(handle) ;
+    exit_reason
+}
+
+// request_npc_population_density : query-handler · returns u32 NPC-count
+//   used by HUD + KAN-tuning + balance-metric M-2 verification
+
+fn request_npc_population_density(handle: u32) -> u32 {
+    scene_query_npc_count(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § KAN-classifier-handoff helper · SP-PG-1 + canary-protocol
+// ─────────────────────────────────────────────────────────────────────────
+//
+// (player-history × current-zone × bias-vec) → next-template-handle
+//   stage-1 KAN canary 10% · stage-0 table-lookup ALWAYS-fallback ·
+//   disagreement audit-recorded · sovereign-revoke any-time
+
+fn kan_select_next_template(hist_hash: u64, zone_id: u32, bias_hash: u64) -> u32 {
+    let feature_mix: u64 = hist_hash ^ bias_hash ^ (zone_id as u64) ;
+    let stage0_fallback: u32 = (zone_id ^ 0xA5A5) & 0xFF ;
+    __cssl_kan_real_classify_intent(
+        sp_pg_1_floor_template_pick(),
+        feature_mix,
+        stage0_fallback
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § LOD-tier-update · 4-tier per-frame
+// ─────────────────────────────────────────────────────────────────────────
+//
+// L0 near    (≤  32m)  full SDF raymarch + AI-tick @ 60Hz   ← player-vicinity
+// L1 mid     (≤ 128m)  reduced-march-steps + AI-tick @ 15Hz
+// L2 far     (≤ 512m)  silhouette + AI-tick @  2Hz
+// L3 imposter (> 512m)  billboard + AI-tick @  0.25Hz       ← city-edge
+
+fn lod_tier_for_distance_sq(dist_sq: u32) -> u32 {
+    if dist_sq <=    1024 { 0 }       // 32² m² · L0 near
+    else if dist_sq <= 16384 { 1 }    // 128² m² · L1 mid
+    else if dist_sq <= 262144 { 2 }   // 512² m² · L2 far
+    else { 3 }                          // > 512m · L3 impostor
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-POD-3-C9 @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone,
+//      anything, or anybody."
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// "Apockalypse" canonical-spelling preserved throughout.
+// Scene = container · contents = runtime-procgen · static-content forbidden
+// per memory feedback_engine_is_runtime_procedural_gen.
+//
+// ∎ city_central_hub.csl
