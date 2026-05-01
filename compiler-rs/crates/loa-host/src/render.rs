@@ -31,6 +31,7 @@ use cssl_rt::loa_startup::log_event;
 use crate::camera::Camera;
 use crate::geometry::{RoomGeometry, Vertex};
 use crate::gpu::GpuContext;
+use crate::ui_overlay::{HudContext, MenuState, UiOverlay};
 
 /// CPU-side mirror of the WGSL `Uniforms` struct. 144 bytes (16-byte aligned).
 #[repr(C, align(16))]
@@ -65,6 +66,8 @@ pub struct Renderer {
     depth_format: wgpu::TextureFormat,
     /// Frame counter for telemetry throttling (log every Nth frame).
     frame_n: u64,
+    /// UI overlay (HUD + menu). Pass-2 after the scene draw.
+    ui: UiOverlay,
 }
 
 impl Renderer {
@@ -198,6 +201,8 @@ impl Renderer {
         let depth_view =
             create_depth_view(device, gpu.config.width, gpu.config.height, depth_format);
 
+        let ui = UiOverlay::new(&gpu.device, &gpu.queue, gpu.surface_format);
+
         Self {
             pipeline,
             bind_group,
@@ -208,6 +213,7 @@ impl Renderer {
             depth_view,
             depth_format,
             frame_n: 0,
+            ui,
         }
     }
 
@@ -229,6 +235,8 @@ impl Renderer {
         gpu: &GpuContext,
         camera: &Camera,
         _window: &Arc<Window>,
+        hud: &HudContext,
+        menu: &MenuState,
     ) -> Result<(), wgpu::SurfaceError> {
         let frame = match gpu.surface.get_current_texture() {
             Ok(f) => f,
@@ -303,6 +311,20 @@ impl Renderer {
             pass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..self.index_count, 0, 0..1);
         }
+
+        // § UI overlay : second render pass over the same surface texture.
+        // Build the per-frame vertex stream, then encode an alpha-blended
+        // pass that LOADs (preserves) the scene color attachment.
+        self.ui.prepare_frame(
+            &gpu.device,
+            &gpu.queue,
+            gpu.config.width,
+            gpu.config.height,
+            hud,
+            menu,
+        );
+        self.ui.encode_pass(&mut encoder, &view);
+
         gpu.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
 

@@ -56,6 +56,13 @@ pub enum VirtualKey {
     F8,
     F9,
     F10,
+    // Menu navigation (T11-LOA-HUD : MenuState consumer reads
+    // `menu_*_pressed` edges on each frame's `consume_frame()`).
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
+    Enter,
     // Catch-all : keys we received but don't consume (no-op match arm)
     Other,
 }
@@ -135,6 +142,13 @@ pub struct InputState {
     pub debug_overlay: bool,
     pub quit_requested: bool,
     pub sprint: bool,
+    // Menu-navigation press-edges. Set on key-DOWN ; consumed (zeroed) on
+    // `consume_frame()`. The host's MenuState reads these once per frame.
+    pub menu_up_pressed: bool,
+    pub menu_down_pressed: bool,
+    pub menu_left_pressed: bool,
+    pub menu_right_pressed: bool,
+    pub menu_enter_pressed: bool,
     // Internal : per-key held state for axis recomputation. Not part of the
     // public API but pub(crate) for unit-tests in this module.
     pub(crate) held_w: bool,
@@ -169,6 +183,11 @@ impl InputState {
             debug_overlay: false,
             quit_requested: false,
             sprint: false,
+            menu_up_pressed: false,
+            menu_down_pressed: false,
+            menu_left_pressed: false,
+            menu_right_pressed: false,
+            menu_enter_pressed: false,
             held_w: false,
             held_a: false,
             held_s: false,
@@ -310,6 +329,31 @@ impl InputState {
                     self.render_mode = 9;
                 }
             }
+            VirtualKey::ArrowUp => {
+                if pressed {
+                    self.menu_up_pressed = true;
+                }
+            }
+            VirtualKey::ArrowDown => {
+                if pressed {
+                    self.menu_down_pressed = true;
+                }
+            }
+            VirtualKey::ArrowLeft => {
+                if pressed {
+                    self.menu_left_pressed = true;
+                }
+            }
+            VirtualKey::ArrowRight => {
+                if pressed {
+                    self.menu_right_pressed = true;
+                }
+            }
+            VirtualKey::Enter => {
+                if pressed {
+                    self.menu_enter_pressed = true;
+                }
+            }
             VirtualKey::Other => {}
         }
     }
@@ -328,9 +372,20 @@ impl InputState {
             paused: self.paused,
             debug_overlay: self.debug_overlay,
             quit_requested: self.quit_requested,
+            menu_up_pressed: self.menu_up_pressed,
+            menu_down_pressed: self.menu_down_pressed,
+            menu_left_pressed: self.menu_left_pressed,
+            menu_right_pressed: self.menu_right_pressed,
+            menu_enter_pressed: self.menu_enter_pressed,
         };
         self.yaw_delta = 0.0;
         self.pitch_delta = 0.0;
+        // Menu edges fire ONCE per press — clear after consume.
+        self.menu_up_pressed = false;
+        self.menu_down_pressed = false;
+        self.menu_left_pressed = false;
+        self.menu_right_pressed = false;
+        self.menu_enter_pressed = false;
         frame
     }
 }
@@ -351,6 +406,35 @@ pub struct InputFrame {
     pub paused: bool,
     pub debug_overlay: bool,
     pub quit_requested: bool,
+    pub menu_up_pressed: bool,
+    pub menu_down_pressed: bool,
+    pub menu_left_pressed: bool,
+    pub menu_right_pressed: bool,
+    pub menu_enter_pressed: bool,
+}
+
+impl Default for InputFrame {
+    /// Zero-valued frame — used in tests + as a base for `..Default::default()`
+    /// spread in literal constructors.
+    fn default() -> Self {
+        Self {
+            forward: 0.0,
+            right: 0.0,
+            up: 0.0,
+            yaw_delta: 0.0,
+            pitch_delta: 0.0,
+            sprint: false,
+            render_mode: 0,
+            paused: false,
+            debug_overlay: false,
+            quit_requested: false,
+            menu_up_pressed: false,
+            menu_down_pressed: false,
+            menu_left_pressed: false,
+            menu_right_pressed: false,
+            menu_enter_pressed: false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -493,6 +577,34 @@ mod tests {
         });
         assert_eq!(s.render_mode, 9);
         assert_eq!(RenderMode::from_index(s.render_mode), RenderMode::Debug);
+    }
+
+    #[test]
+    fn arrow_keys_latch_menu_press_edges() {
+        let mut s = InputState::new();
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::ArrowDown,
+            pressed: true,
+        });
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::Enter,
+            pressed: true,
+        });
+        // Latched
+        assert!(s.menu_down_pressed);
+        assert!(s.menu_enter_pressed);
+        // consume_frame drains them
+        let frame = s.consume_frame();
+        assert!(frame.menu_down_pressed);
+        assert!(frame.menu_enter_pressed);
+        assert!(!s.menu_down_pressed);
+        assert!(!s.menu_enter_pressed);
+        // Releases don't re-latch
+        s.handle_event(&RawEvent::Key {
+            vk: VirtualKey::ArrowDown,
+            pressed: false,
+        });
+        assert!(!s.menu_down_pressed);
     }
 
     #[test]
