@@ -344,6 +344,26 @@ export interface Database {
         Insert: CocreativeOptimizerSnapshotInsert;
         Update: never; // snapshots are append-only
       };
+      game_state_snapshots: {
+        Row: GameStateSnapshotRow;
+        Insert: GameStateSnapshotInsert;
+        Update: never; // append-only · DELETE allowed for GDPR erasure but not UPDATE
+      };
+      game_session_index: {
+        Row: GameSessionIndexRow;
+        Insert: GameSessionIndexInsert;
+        Update: GameSessionIndexUpdate;
+      };
+      sovereign_cap_audit: {
+        Row: SovereignCapAuditRow;
+        Insert: SovereignCapAuditInsert;
+        Update: never; // INSERT-ONLY · transparency invariant
+      };
+    };
+    Views: {
+      sovereign_cap_audit_summary: {
+        Row: SovereignCapAuditSummaryRow;
+      };
     };
     Functions: {
       scene_record_play: {
@@ -389,6 +409,25 @@ export interface Database {
       latest_snapshot_for_player: {
         Args: { p_player_id: string };
         Returns: CocreativeOptimizerSnapshotRow[];
+      };
+      record_snapshot: {
+        Args: {
+          p_session: Uuid | null;
+          p_player: string;
+          p_scene: Jsonb;
+          p_digest: string;
+          p_url: string | null;
+          p_history: Jsonb;
+        };
+        Returns: number; // bigserial id of new snapshot row
+      };
+      latest_snapshot: {
+        Args: { p_session: Uuid };
+        Returns: GameStateSnapshotRow[];
+      };
+      end_session: {
+        Args: { p_session: Uuid };
+        Returns: Timestamptz | null;
       };
     };
     Enums: Record<string, never>;
@@ -561,4 +600,178 @@ export type OptimizerSnapshot = CocreativeOptimizerSnapshotRow;
  */
 export function cocreativeChannelName(playerId: string): string {
   return `cocreative:${playerId}`;
+}
+
+// =====================================================================
+// § T11-W5c-SUPABASE-GAMESTATE · cross-session game-state types
+// Appended for migrations 0010 + 0011 + 0012 + 0013.
+// =====================================================================
+
+/**
+ * One entry in `game_state_snapshots.companion_history`. The host crate
+ * appends one of these on every sovereign-cap operation that occurred
+ * in the session up to the snapshot's `created_at`.
+ */
+export interface CompanionHistoryEntry {
+  ts: Timestamptz;
+  sovereign_handle: string;
+  op: CompanionOperation;
+  params: Jsonb | null;
+}
+
+// ---------------------------------------------------------------------
+// public.game_session_index
+// ---------------------------------------------------------------------
+export interface GameSessionIndexRow {
+  session_id: Uuid;
+  player_id: string;
+  started_at: Timestamptz;
+  ended_at: Timestamptz | null;   // NULL = active
+  latest_seq: number;
+  total_snapshots: number;
+  meta: Jsonb;
+}
+
+export type GameSessionIndexInsert = Omit<
+  GameSessionIndexRow,
+  | "session_id"
+  | "started_at"
+  | "ended_at"
+  | "latest_seq"
+  | "total_snapshots"
+  | "meta"
+> & {
+  session_id?: Uuid;
+  started_at?: Timestamptz;
+  ended_at?: Timestamptz | null;
+  latest_seq?: number;
+  total_snapshots?: number;
+  meta?: Jsonb;
+};
+
+export type GameSessionIndexUpdate = Partial<
+  Pick<GameSessionIndexRow,
+       "ended_at" | "latest_seq" | "total_snapshots" | "meta">
+>;
+
+/** Convenience alias matching the requested public surface. */
+export type GameSession = GameSessionIndexRow;
+
+// ---------------------------------------------------------------------
+// public.game_state_snapshots
+// ---------------------------------------------------------------------
+export interface GameStateSnapshotRow {
+  id: number; // bigserial
+  session_id: Uuid;
+  player_id: string;
+  seq: number;
+  scene_graph: Jsonb;
+  /** sha256-hex (64 lowercase hex chars) of the ω-field tensor at capture-time. */
+  omega_field_digest: string;
+  /** Optional pointer to the full ω-field bytes in storage; NULL = regenerable. */
+  omega_field_url: string | null;
+  /** JSONB array of CompanionHistoryEntry serialized as Jsonb. */
+  companion_history: Jsonb;
+  created_at: Timestamptz;
+}
+
+export type GameStateSnapshotInsert = Omit<
+  GameStateSnapshotRow,
+  "id" | "session_id" | "created_at" | "companion_history"
+> & {
+  id?: number;
+  session_id?: Uuid;
+  created_at?: Timestamptz;
+  companion_history?: Jsonb;
+};
+
+/** Snapshots are append-only ; UPDATE is not permitted. */
+export type GameStateSnapshotUpdate = never;
+
+/** Convenience alias matching the requested public surface. */
+export type GameStateSnapshot = GameStateSnapshotRow;
+
+// ---------------------------------------------------------------------
+// public.sovereign_cap_audit
+// ---------------------------------------------------------------------
+export type SovereignCapKind =
+  | "rate_limit"
+  | "external_io"
+  | "content_filter"
+  | "harm_check"
+  | "consent_gate"
+  | (string & {}); // open-ended
+
+export type SovereignActionKind =
+  | "companion.spawn"
+  | "companion.modify"
+  | "render.snapshot_png"
+  | "mutate_world"
+  | "force-skip-paywall"
+  | (string & {}); // open-ended
+
+export type SovereignCallerOrigin =
+  | "mcp:companion"
+  | "mcp:render.snapshot_png"
+  | "cli:csslc"
+  | "ide:lsp"
+  | (string & {}); // open-ended
+
+export interface SovereignCapAuditRow {
+  id: number; // bigserial
+  session_id: Uuid;
+  player_id: string;
+  ts: Timestamptz;
+  action_kind: SovereignActionKind;
+  cap_bypassed_kind: SovereignCapKind;
+  reason: string;
+  target_audit_event_id: string | null;
+  caller_origin: SovereignCallerOrigin;
+}
+
+export type SovereignCapAuditInsert = Omit<
+  SovereignCapAuditRow,
+  "id" | "ts" | "target_audit_event_id"
+> & {
+  id?: number;
+  ts?: Timestamptz;
+  target_audit_event_id?: string | null;
+};
+
+/** INSERT-ONLY · transparency invariant. UPDATE/DELETE prohibited. */
+export type SovereignCapAuditUpdate = never;
+
+/** Convenience alias matching the requested public surface. */
+export type SovereignCapAuditEvent = SovereignCapAuditRow;
+
+// ---------------------------------------------------------------------
+// public.sovereign_cap_audit_summary (VIEW)
+// ---------------------------------------------------------------------
+export interface SovereignCapAuditSummaryRow {
+  player_id: string;
+  action_kind: SovereignActionKind;
+  uses: number;
+  first_use: Timestamptz;
+  last_use: Timestamptz;
+}
+
+// =====================================================================
+// § T11-W5c-SUPABASE-GAMESTATE · channel-name builders
+// =====================================================================
+/**
+ * Per-session realtime channel name. The DM-engine subscribes to this
+ * channel to receive cross-device updates to game-state (e.g. when the
+ * player has the same session active on a second device).
+ */
+export function gameSessionChannelName(sessionId: Uuid): string {
+  return `gamestate:${sessionId}`;
+}
+
+/**
+ * Per-player realtime channel for sovereign-cap audit events. The
+ * transparency UI subscribes to this channel to surface new entries
+ * in real time.
+ */
+export function sovereignAuditChannelName(playerId: string): string {
+  return `sovereign-audit:${playerId}`;
 }
