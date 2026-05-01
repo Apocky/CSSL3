@@ -1,0 +1,28 @@
+{
+  "name": "cssl-edge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LoA-v13 Edge — public MCP gateway for CSSL/LoA scenes (Vercel-deployable Next.js)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "check": "tsc --noEmit",
+    "lint": "next lint",
+    "test:health": "node --import tsx tests/api/health.test.ts"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "typescript": "5.5.3"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
