@@ -166,7 +166,14 @@ enum RawToken {
     Ident,
 
     // float first so `3.14` doesn't tokenize as `3` then `.14`
-    #[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
+    //
+    // T11-CC-PARSER-11 (W-CC-numeric-suffix) — float literal accepts BOTH the
+    // existing apostrophe-form (`3.14'f32`) and the bare-suffix Rust-form
+    // (`3.14f32`, `2.718f64`). The bare-suffix alternative MUST appear in the
+    // FloatLiteral regex (not bleed into IntLiteral) because logos uses
+    // longest-match — without it, `3.14f32` would tokenize as `3.14` + `f32`
+    // (FloatLit + Ident).
+    #[regex(r"[0-9][0-9_]*\.[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*|f(?:32|64))?")]
     FloatLiteral,
 
     /// Integer literal — three syntactic forms, all collapsing to a single
@@ -191,10 +198,16 @@ enum RawToken {
     /// hex/bin/oct first as additional `#[regex]` lines keeps `0x...` /
     /// `0b...` / `0o...` matched as a single token before the bare-decimal
     /// fallback even kicks in.
-    #[regex(r"0x[0-9A-Fa-f][0-9A-Fa-f_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
-    #[regex(r"0b[01][01_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
-    #[regex(r"0o[0-7][0-7_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
-    #[regex(r"[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*)?")]
+    ///
+    /// T11-CC-PARSER-11 (W-CC-numeric-suffix) — each alternative also accepts
+    /// a bare-suffix Rust-form (`1u16`, `42i32`, `0xCAFE_BABEu64`) in addition
+    /// to the existing apostrophe-form (`42'i32`). Suffix grammar :
+    /// `[ui](8|16|32|64|128|size)`. Bare-suffix glues to the digit run as a
+    /// single token so `1u16 << 0` doesn't fuse the suffix to following ident.
+    #[regex(r"0x[0-9A-Fa-f][0-9A-Fa-f_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
+    #[regex(r"0b[01][01_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
+    #[regex(r"0o[0-7][0-7_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
+    #[regex(r"[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
     IntLiteral,
 
     /// Normal string literal `"…"` — supports common escapes (`\n` `\t` `\r` `\0` `\\`
@@ -789,5 +802,167 @@ mod tests {
         assert_eq!(toks[1].span.start, 1);
         assert_eq!(toks[1].span.end, 3);
         assert_eq!(toks[1].kind, TokenKind::Suffix(TypeSuffix::Data));
+    }
+
+    // ─── T11-CC-PARSER-11 (W-CC-numeric-suffix) ────────────────────────────────
+    //
+    // Bare-suffix typed-numeric literals (`1u16`, `42i32`, `3.14f32`,
+    // `0xCAFE_BABEu64`) lex as a SINGLE token whose span covers BOTH the digit
+    // run AND the suffix. The pre-existing apostrophe-form (`1'u16`, `42'i32`)
+    // continues to lex correctly. Critical race-condition the regex must avoid :
+    // `1u16 << 0` MUST tokenize as `IntLit(1u16) + LShift + IntLit(0)`, never as
+    // `IntLit(1) + Ident(u16) + LShift + …`. The suffix glues to the digit run
+    // by being part of the IntLiteral regex's optional tail.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lex_int_with_u16_suffix() {
+        // `1u16` → single IntLiteral covering all 4 bytes.
+        let file = mk("1u16");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2); // IntLit + Eof
+        assert_eq!(toks[0].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, 4);
+    }
+
+    #[test]
+    fn lex_int_with_i32_suffix() {
+        // `42i32` → single IntLiteral covering all 5 bytes.
+        let file = mk("42i32");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, 5);
+    }
+
+    #[test]
+    fn lex_int_hex_with_u64_suffix() {
+        // `0xCAFE_BABEu64` → single IntLiteral covering hex prefix + digits + underscore + suffix.
+        let file = mk("0xCAFE_BABEu64");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, 14);
+    }
+
+    #[test]
+    fn lex_float_with_f32_suffix() {
+        // `3.14f32` → single FloatLiteral covering all 7 bytes.
+        let file = mk("3.14f32");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].kind, TokenKind::FloatLiteral);
+        assert_eq!(toks[0].span.start, 0);
+        assert_eq!(toks[0].span.end, 7);
+    }
+
+    #[test]
+    fn lex_float_with_f64_suffix() {
+        // `2.718f64` → single FloatLiteral.
+        let file = mk("2.718f64");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].kind, TokenKind::FloatLiteral);
+        assert_eq!(toks[0].span.end, 8);
+    }
+
+    #[test]
+    fn lex_int_suffix_then_shift_does_not_fuse() {
+        // `1u16 << 0` MUST emit IntLit(1u16) + LShift + IntLit(0), never
+        // IntLit(1) + Ident(u16) + LShift + IntLit(0). The suffix is part of
+        // the IntLiteral regex tail, so it greedy-glues onto the `1` digit
+        // run and stops at the space before `<<`.
+        assert_eq!(
+            kinds("1u16 << 0"),
+            vec![
+                TokenKind::IntLiteral,
+                TokenKind::LShift,
+                TokenKind::IntLiteral,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn lex_int_suffix_then_bitor() {
+        // `0xFFu32 | 0x80u32` — guards bit-or composition with suffixes on both sides.
+        assert_eq!(
+            kinds("0xFFu32 | 0x80u32"),
+            vec![
+                TokenKind::IntLiteral,
+                TokenKind::Pipe,
+                TokenKind::IntLiteral,
+                TokenKind::Eof,
+            ],
+        );
+    }
+
+    #[test]
+    fn lex_int_underscored_hex_with_suffix() {
+        // `0xDEAD_BEEFu64` — bonus : underscored-hex with bare-suffix.
+        let file = mk("0xDEAD_BEEFu64");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[0].span.end, 14);
+    }
+
+    #[test]
+    fn lex_int_isize_usize_suffixes() {
+        // `0isize` + `0usize` — the size-variant suffixes work alongside fixed-width.
+        let file = mk("0isize 0usize");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 3); // IntLit + IntLit + Eof
+        assert_eq!(toks[0].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[0].span.end, 6);
+        assert_eq!(toks[1].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[1].span.start, 7);
+        assert_eq!(toks[1].span.end, 13);
+    }
+
+    #[test]
+    fn lex_int_i128_u128_suffixes() {
+        // `0i128` + `0u128` — 128-bit suffixes.
+        let file = mk("0i128 0u128");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 3);
+        assert_eq!(toks[0].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[0].span.end, 5);
+        assert_eq!(toks[1].kind, TokenKind::IntLiteral);
+        assert_eq!(toks[1].span.start, 6);
+        assert_eq!(toks[1].span.end, 11);
+    }
+
+    #[test]
+    fn lex_int_apostrophe_suffix_still_works() {
+        // Pre-existing `42'i32` form unaffected — apostrophe-form coexists
+        // with bare-suffix form via regex alternation.
+        assert_eq!(kinds("42'i32"), vec![TokenKind::IntLiteral, TokenKind::Eof]);
+    }
+
+    #[test]
+    fn lex_float_apostrophe_suffix_still_works() {
+        // Pre-existing apostrophe-style float suffix still emits one token.
+        let file = mk("3.14'f32");
+        let toks = lex(&file);
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].kind, TokenKind::FloatLiteral);
+        assert_eq!(toks[0].span.end, 8);
+    }
+
+    #[test]
+    fn lex_int_suffix_then_ident_separated() {
+        // `1u16 foo` — space-separated, no fusion.
+        assert_eq!(
+            kinds("1u16 foo"),
+            vec![
+                TokenKind::IntLiteral,
+                TokenKind::Ident,
+                TokenKind::Eof,
+            ],
+        );
     }
 }

@@ -1507,4 +1507,180 @@ mod tests {
         assert_eq!(m.items.len(), 1);
         assert!(matches!(m.items[0], cssl_ast::Item::Const(_)));
     }
+
+    // ─── T11-CC-PARSER-11 (W-CC-numeric-suffix) ───────────────────────────────
+    //
+    // Bare-suffix typed-numeric literals (`1u16`, `42i32`, `3.14f32`,
+    // `0xCAFE_BABEu64`) parse as a single `Literal{Int|Float}` whose span
+    // covers the digits + suffix together. Downstream HIR re-slices the span
+    // via `SourceFile::slice` to extract the suffix for type-resolution. The
+    // parser itself is unchanged — the lexer regex extension does the work.
+    //
+    // Critical invariant : `1u16 << 0` MUST parse as a `Binary{Shl}` with two
+    // IntLit operands ; the suffix must NOT bleed into the operator/rhs.
+    // ──────────────────────────────────────────────────────────────────────────
+    #[test]
+    fn parse_const_with_suffixed_int() {
+        // `const X: u16 = 1u16` end-to-end — full module parse path.
+        let src = "const X: u16 = 1u16";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        assert_eq!(m.items.len(), 1);
+        match &m.items[0] {
+            cssl_ast::Item::Const(c) => {
+                // The const value should be a Literal{Int}.
+                assert!(matches!(
+                    c.value.kind,
+                    ExprKind::Literal(cssl_ast::Literal {
+                        kind: cssl_ast::LiteralKind::Int,
+                        ..
+                    })
+                ));
+                // The literal's span must cover all 4 bytes "1u16".
+                if let ExprKind::Literal(lit) = &c.value.kind {
+                    let txt = f.slice(lit.span.start, lit.span.end).unwrap();
+                    assert_eq!(txt, "1u16");
+                }
+            }
+            other => panic!("expected ConstItem, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_suffix_then_shift() {
+        // `1u16 << 0` — the suffix MUST stick to the lhs literal ; the `<<`
+        // operator must be recognized and the rhs must parse independently.
+        let (f, toks) = prep("1u16 << 0");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Binary { op, lhs, rhs } => {
+                assert_eq!(op, BinOp::Shl);
+                // lhs must be an IntLit ; the inner Literal.span covers exactly
+                // "1u16" (4 bytes) — the lexer regex glues suffix to digit run.
+                // (The wrapping Expr.span extends to next-token start, which is
+                // why we slice via the Literal.span specifically.)
+                if let ExprKind::Literal(lit) = &lhs.kind {
+                    assert_eq!(lit.kind, cssl_ast::LiteralKind::Int);
+                    let lit_txt = f.slice(lit.span.start, lit.span.end).unwrap();
+                    assert_eq!(lit_txt, "1u16");
+                } else {
+                    panic!("expected lhs Literal(Int), got {:?}", lhs.kind);
+                }
+                // rhs must be IntLit(0).
+                assert!(matches!(
+                    rhs.kind,
+                    ExprKind::Literal(cssl_ast::Literal {
+                        kind: cssl_ast::LiteralKind::Int,
+                        ..
+                    })
+                ));
+            }
+            other => panic!("expected Binary{{Shl}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_underscored_hex_with_suffix() {
+        // `0xDEAD_BEEFu64` — bonus : underscored hex literal with bare-suffix
+        // parses as a single IntLit whose span covers all 14 bytes.
+        let (f, toks) = prep("0xDEAD_BEEFu64");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let e = parse_expr(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        match e.kind {
+            ExprKind::Literal(lit) => {
+                assert_eq!(lit.kind, cssl_ast::LiteralKind::Int);
+                let txt = f.slice(lit.span.start, lit.span.end).unwrap();
+                assert_eq!(txt, "0xDEAD_BEEFu64");
+            }
+            other => panic!("expected Literal(Int), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_const_with_suffixed_float() {
+        // `const TAU: f32 = 6.283185f32` — float-suffix end-to-end.
+        let src = "const TAU: f32 = 6.283185f32";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        assert_eq!(m.items.len(), 1);
+        match &m.items[0] {
+            cssl_ast::Item::Const(c) => {
+                if let ExprKind::Literal(lit) = &c.value.kind {
+                    assert_eq!(lit.kind, cssl_ast::LiteralKind::Float);
+                    let txt = f.slice(lit.span.start, lit.span.end).unwrap();
+                    assert_eq!(txt, "6.283185f32");
+                } else {
+                    panic!("expected Literal(Float), got {:?}", c.value.kind);
+                }
+            }
+            other => panic!("expected ConstItem, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_const_bitor_with_suffixed_hex() {
+        // `const FLAGS: u32 = 0xFF00u32 | 0x00FFu32` — bit-or composition
+        // with suffix on both sides.
+        let src = "const FLAGS: u32 = 0xFF00u32 | 0x00FFu32";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        assert_eq!(m.items.len(), 1);
+        match &m.items[0] {
+            cssl_ast::Item::Const(c) => {
+                assert!(matches!(c.value.kind, ExprKind::Binary { op: BinOp::BitOr, .. }));
+            }
+            other => panic!("expected ConstItem, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_acceptance_module_test_suffix() {
+        // The full acceptance snippet from the mission spec.
+        let src = "module com.apocky.loa.test_suffix\n\n\
+                   const KEY_A: u8 = 30u8\n\
+                   const FLAGS: u32 = 0xFF00u32 | 0x00FFu32\n\
+                   const TAU: f32 = 6.283185f32\n\n\
+                   fn main() -> i32 { 42 }";
+        let f = SourceFile::new(SourceId::first(), "<t>", src, Surface::RustHybrid);
+        let toks = cssl_lex::lex(&f);
+        let mut bag = DiagnosticBag::new();
+        let m = crate::rust_hybrid::parse_module(&f, &toks, &mut bag);
+        assert_eq!(
+            bag.error_count(),
+            0,
+            "expected zero parse errors, got: {:?}",
+            bag.iter().collect::<Vec<_>>(),
+        );
+        // 3 const items + 1 fn item = 4 total.
+        assert_eq!(m.items.len(), 4);
+    }
 }
