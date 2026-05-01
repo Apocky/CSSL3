@@ -1050,6 +1050,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-rt-trace-decoder"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-rt-trace",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-spectral-grader"
 version = "0.1.0"
 dependencies = [

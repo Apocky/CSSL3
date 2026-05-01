@@ -1,0 +1,21 @@
+[package]
+name                   = "cssl-host-rt-trace-decoder"
+description            = "CSSLv3 stage0 — trace-ring decoder · pair MarkBegin/MarkEnd · build flame-graph stacks · emit chrome-tracing JSON · summary stats over RtRing drains"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W6-RT-TRACE-DECODER : pure-analysis layer over cssl-host-rt-trace
+# (W5a). Consumes Vec<RtEvent> + LabelInterner snapshots, produces structured
+# pairs · flame-graph nodes · chrome://tracing-format documents · summary
+# statistics. NO unsafe · NO panics in library paths · NO hot-path side-effects.
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+cssl-host-rt-trace = { path = "../cssl-host-rt-trace" }
+
+[lints]
+workspace = true
