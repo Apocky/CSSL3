@@ -35,10 +35,13 @@ impl DeterministicRng {
     /// § next_open_unit — uniform in (0, 1).
     fn next_open_unit(&mut self) -> f64 {
         // 53-bit mantissa + offset away from zero so ln(0) is unreachable.
+        // Cast `u64 → f64` is exact here because we mask to 53 bits first.
         let bits = self.next_u64() >> 11; // top 53 bits
+        #[allow(clippy::cast_precision_loss)]
         let denom = (1_u64 << 53) as f64;
-        let u = (bits as f64 + 0.5) / denom; // (0,1) strictly
-        u
+        #[allow(clippy::cast_precision_loss)]
+        let numerator = bits as f64 + 0.5;
+        numerator / denom
     }
 }
 
@@ -79,7 +82,9 @@ fn extract_value(spore: &Spore) -> Option<f64> {
                     return Some(f);
                 }
             } else if let Some(i) = v.as_i64() {
-                return Some(i as f64);
+                #[allow(clippy::cast_precision_loss)]
+                let as_float = i as f64;
+                return Some(as_float);
             }
         }
     }
@@ -148,7 +153,7 @@ pub fn aggregate(
     // Future variant : weight by inverse-noise-of-emitter.
     let mut sum = 0.0_f64;
     let mut have_any_value = 0_usize;
-    for s in contributing.iter() {
+    for s in &contributing {
         if let Some(v) = extract_value(s) {
             sum += v;
             have_any_value += 1;
@@ -165,28 +170,30 @@ pub fn aggregate(
             }),
         );
     }
-    let raw_mean = sum / (have_any_value as f64);
+    #[allow(clippy::cast_precision_loss)]
+    let n_as_f = have_any_value as f64;
+    let raw_mean = sum / n_as_f;
 
     // σ proportional to 1/√N — fits the standard Laplace-DP-mean bound up
     // to a constant. We use Gaussian for symmetry around the mean ; the
     // constant 0.5 is the (sensitivity / ε) calibration knob and is the
     // single place a future spec change would touch.
-    let sigma = (0.5_f64) / (have_any_value as f64).sqrt();
+    let sigma = 0.5_f64 / n_as_f.sqrt();
 
     // Deterministic noise — seed from (region, ts_bucketed) so replay is
     // stable.  BLAKE3-XOF feeds our local DeterministicRng.
     let seed = dp_seed(region, ts_bucketed, kind.tag().as_bytes());
     let mut rng = DeterministicRng::from_seed(seed);
     // Box-Muller from two uniforms. Avoids any rand_distr dep.
-    let u1: f64 = rng.next_open_unit();
-    let u2: f64 = rng.next_open_unit();
-    let r = (-2.0_f64 * u1.ln()).sqrt();
-    let theta = 2.0_f64 * std::f64::consts::PI * u2;
-    let z0 = r * theta.cos();
-    let noise = sigma * z0;
+    let unit1: f64 = rng.next_open_unit();
+    let unit2: f64 = rng.next_open_unit();
+    let radius = (-2.0_f64 * unit1.ln()).sqrt();
+    let theta = 2.0_f64 * std::f64::consts::PI * unit2;
+    let z0 = radius * theta.cos();
+    let gaussian_noise = sigma * z0;
 
-    let noisy = raw_mean + noise;
-    if !noisy.is_finite() {
+    let dp_mean = raw_mean + gaussian_noise;
+    if !dp_mean.is_finite() {
         return (
             None,
             Some(AuditSkipEvent {
@@ -201,7 +208,9 @@ pub fn aggregate(
     // Clamp to a sane finite range : the substrate uses [-1e6, 1e6] as
     // a soft upper-bound for nudge magnitudes ; outside that we suspect
     // adversarial input and refuse rather than silently leaking.
-    let clamped = noisy.clamp(-1.0e6_f64, 1.0e6_f64) as f32;
+    #[allow(clippy::cast_possible_truncation)]
+    let clamped = dp_mean.clamp(-1.0e6_f64, 1.0e6_f64) as f32;
+    #[allow(clippy::cast_possible_truncation)]
     let sigma_f = sigma as f32;
 
     (
@@ -217,6 +226,11 @@ pub fn aggregate(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::float_cmp
+)]
 mod tests {
     use super::*;
     use crate::spore::SporeBuilder;

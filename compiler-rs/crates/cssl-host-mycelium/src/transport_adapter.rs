@@ -62,7 +62,10 @@ impl InMemoryTransport {
 
     /// § stored_count — total spores across all regions (for tests).
     pub fn stored_count(&self) -> usize {
-        self.inner.lock().unwrap().values().map(Vec::len).sum()
+        let g = self.inner.lock().unwrap();
+        let total = g.values().map(Vec::len).sum();
+        drop(g);
+        total
     }
 
     /// § all_spores — snapshot for tests + audit. Returns a deterministic
@@ -70,9 +73,10 @@ impl InMemoryTransport {
     pub fn all_spores(&self) -> Vec<Spore> {
         let g = self.inner.lock().unwrap();
         let mut out: Vec<Spore> = Vec::new();
-        for (_, v) in g.iter() {
+        for v in g.values() {
             out.extend(v.iter().cloned());
         }
+        drop(g);
         out
     }
 }
@@ -88,6 +92,7 @@ impl MyceliumTransport for InMemoryTransport {
         if !bucket.iter().any(|s| s.id == spore.id) {
             bucket.push(spore);
         }
+        drop(g);
         Ok(())
     }
 
@@ -95,7 +100,7 @@ impl MyceliumTransport for InMemoryTransport {
         let g = self.inner.lock().unwrap();
         let mut hits: Vec<Spore> = Vec::new();
         if let Some(bucket) = g.get(&query.region) {
-            for s in bucket.iter() {
+            for s in bucket {
                 if !query.matches(s) {
                     continue;
                 }
@@ -110,6 +115,7 @@ impl MyceliumTransport for InMemoryTransport {
                 }
             }
         }
+        drop(g);
         Ok(NutrientResponse {
             region: query.region,
             kind: query.kind,
@@ -174,7 +180,8 @@ mod tests {
     fn in_memory_emit_then_poll() {
         let t = InMemoryTransport::new();
         let s = mk_spore(RegionTag::new(1), 100, OptInTier::Public);
-        t.emit(s.clone()).unwrap();
+        let s_id = s.id;
+        t.emit(s).unwrap();
         let q = NutrientQuery {
             region: RegionTag::new(1),
             kind: SporeKind::BiasNudge,
@@ -184,7 +191,7 @@ mod tests {
         };
         let r = t.poll(&q).unwrap();
         assert_eq!(r.spores.len(), 1);
-        assert_eq!(r.spores[0].id, s.id);
+        assert_eq!(r.spores[0].id, s_id);
     }
 
     #[test]
@@ -192,7 +199,7 @@ mod tests {
         let t = InMemoryTransport::new();
         let s = mk_spore(RegionTag::new(1), 100, OptInTier::Public);
         t.emit(s.clone()).unwrap();
-        t.emit(s.clone()).unwrap();
+        t.emit(s).unwrap();
         assert_eq!(t.stored_count(), 1);
     }
 
@@ -236,7 +243,7 @@ mod tests {
         let inner: Arc<dyn MyceliumTransport> = Arc::new(InMemoryTransport::new());
         let a = TransportAdapter::new(inner);
         let s = mk_spore(RegionTag::new(5), 200, OptInTier::Public);
-        a.emit(s.clone()).unwrap();
+        a.emit(s).unwrap();
         assert!(a.subscribed(RegionTag::new(5)));
         let q = NutrientQuery {
             region: RegionTag::new(5),

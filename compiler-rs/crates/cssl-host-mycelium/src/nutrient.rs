@@ -25,10 +25,12 @@ impl NutrientQuery {
     /// filter? Tier filter is applied separately so callers can audit
     /// blocked-on-escalation events.
     #[must_use]
+    #[allow(clippy::suspicious_operation_groupings)]
     pub fn matches(&self, spore: &Spore) -> bool {
-        spore.region == self.region
-            && spore.kind == self.kind
-            && spore.ts >= self.since_ts
+        let region_ok = spore.region == self.region;
+        let kind_ok = spore.kind == self.kind;
+        let ts_ok = spore.ts >= self.since_ts;
+        region_ok && kind_ok && ts_ok
     }
 }
 
