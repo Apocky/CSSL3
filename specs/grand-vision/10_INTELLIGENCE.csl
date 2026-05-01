@@ -1,0 +1,300 @@
+# 10 : LoA-v13 GRAND-VISION — INTELLIGENCE (operational)
+# ══════════════════════════════════════════════════════════════════
+# § I> sibling-of 00_THESIS.csl ; OPERATIONAL-companion-of 05_INTELLIGENCES.csl
+# § I> 05 = THESIS-roster ; 10 = HOW-each-role-implemented (crates · caps · stages · MCP)
+# § I> CSSL-native ; ¬ marketing ; ¬ AGI
+
+§ AXIOMS  ‼ inherit 00_THESIS § AXIOMS  +  05_INTELLIGENCES § AXIOMS
+  t∞: intelligence-scope = NARROW-orchestrator-roster
+       ≡ {DM ⊕ GM ⊕ Collaborator ⊕ Coder} ; ¬ generic-AGI
+       ≡ narrow-task-bounded ; ¬ open-vocabulary-goal-pursuit
+  t∞: ¬ self-improvement-recursion
+       ≡ ¬ role-rewrites-its-own-decision-policy mid-session
+       ≡ KAN-splines BAKED @ comptime ; ¬ online-grad-update
+  t∞: ¬ open-ended-goal-pursuit ; ∀ role responds-to player-action ; ¬ self-trigger
+  t∞: ¬ cross-role-bleed  ‼ ; each-role bound-to its-own-cap-ladder
+       ≡ inter-role transitions = explicit-handoff-events ¬ shared-state-mutate
+  t∞: ∀ role ⊑ (sovereign-cap-bound · audit-emit · refusable-by-player · ¬ surveillance)
+       ≡ player can-revoke any-cap mid-session ; cleanly-degrades
+       ≡ Sensitive<gaze|biometric|face|body> structurally-banned-from feature-set
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROLE-DM  «orchestrator · scene-arbiter · intent-router-master»
+
+  § RESPONSIBILITIES
+    scene-arbitration         : ambiguity-resolver-between competing-Intent
+    intent-routing-master     : final-target-selection over per-target-cap-table
+    scene-graph-build         : story-DAG construction-via causal-seed
+    pacing-controller-handoff : tension-target-vec → GM @ S3-dispatch boundary
+
+  § SUPPORT-CRATES
+    cssl-host-causal-seed     : story-as-physics DAG ; branch-merge primitives
+    cssl-host-attestation     : audit aggregation per-role-scope
+    cssl-host-rt-trace        : per-decision instrumentation ; replay-anchor
+    cssl-intent-router        : dispatch-target selection (W3b landed)
+    cssl-host-cocreative      : bias-vector consume @ stage-0
+
+  § INPUTS
+    intent_router::Intent     : typed-Intent { variant, confidence, payload }
+    ω-field-state-summary     : current-zone + radiance + spawn-zone-occupancy
+    player-history-buffer     : last-N=8 Intent + last-M=4 manifestations
+    cocreative-bias-vector    : 16-D f32'norm preference-tensor (cssl-host-cocreative)
+
+  § OUTPUTS
+    scene-edit-op             : (kind, location, attribs) → Stage-S4 seed-stamp
+    spawn-order               : Intent::SpawnCondensation re-emission @ DM-bias
+    npc-spawn-request         : NPC-handle + zone + cap-pre-grant
+    companion-prompt          : text-hash → vercel companion-proxy (cap-gated)
+
+  § CAP-GATING  ‼
+    DM_CAP_SCENE_EDIT      = 1   : stamp seed-cells via SubstrateMutateCap-zone
+    DM_CAP_SPAWN_NPC       = 2   : NPC instantiation via Sovereign-claim-grant
+    DM_CAP_COMPANION_RELAY = 4   : forward-text-hash via NetPostWriteCap
+    sovereign-bypass-recorded   : sovereign-act-as logs sovereign.bypass-event ‼
+
+  § STAGE-0  «heuristic decision-tree»  ⟪ shipped @ b69165c ⟫
+    rule-table : (intent-variant × scene-state × history) → action-tag
+    determinism : table-lookup ; replay-bit-equal given snapshot
+    no-LLM-roundtrip ; no-online-learning
+    ≡ "DM-as-physical-process" not "DM-as-thinking-being"
+
+  § STAGE-1  «KAN-substrate ride»  ⟪ deferred W6 ⟫
+    cssl-substrate-kan spline-table replaces-rule-branches ; bias-vec via-spline
+    invariant : Σ-mask-aware · replay-deterministic · bakeable @ comptime
+    fallback  : stage-0 retained-as graceful-degradation-path
+
+  § FAILURE-MODES
+    cap-revoked-mid       : DROP+user-feedback ; defer-to-GM-narration ‼
+    intent-confidence-low : DROP-to-Unknown ; route-DM-fallback @ S3
+    no-action-fallback    : SILENT-PASS counter-incr ; ¬ spawn ; await-next-Intent
+    sovereign-mismatch    : SIG0003 compile-time ‼ ; ¬ runtime-attempt
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROLE-GM  «narrator · text-emitter · pacing-controller»
+
+  § RESPONSIBILITIES
+    narrative-text-emission   : prose-snippet from scene-state + Φ-tags
+    pacing-control            : prose-rhythm matched-to DM-tension-target
+    player-prompt-generation  : "what would you like to do?" UI-prompts
+    text-tone-adjustment      : tone-lever from cocreative-bias (warm | terse | poetic)
+
+  § SUPPORT-CRATES
+    cssl-host-voice           : TTS abstraction ⟪ planned W6 ⟫ ◐ stub-W5
+    cssl-host-cocreative      : player-pref bias-vector consumption
+    cssl-host-attestation     : per-emission audit
+    cssl-rt                   : text-frame stream into UI (cssl-runtime/text_input.cssl)
+
+  § INPUTS
+    DM-scene-state            : zone + companion-presence + radiance + tension-target
+    player-text-or-voice      : Intent::DialogGM payload
+    style-preferences         : cocreative-bias { warm: f32, terse: f32, poetic: f32 }
+    Φ-handle-tags @ cells     : 10000-D HDC semantic-tags from-substrate
+
+  § OUTPUTS
+    narrative-text-frame      : English-prose UTF-8 ; user-facing-OK
+    prompt-suggestion         : list<string> ; player-selectable hint-pool
+    pacing-mark-event         : { kind: rise|hold|fall, magnitude, ts }
+
+  § CAP-GATING  ‼
+    GM_CAP_TEXT_EMIT       = 1   : write to UI-text-buffer (in-process)
+    GM_CAP_VOICE_EMIT      = 2   : TTS audio-frame emission (W6) ⟪ deferred ⟫
+    GM_CAP_TONE_TUNE       = 4   : apply tone-lever from cocreative-bias
+
+  § STAGE-0  «templated phrases + cocreative-bias selection»
+    template-table : (zone × event-class × tone) → prose-template-id
+    fill-in : Φ-tag-driven slot-filling (e.g. "you see {Φ-handle-tag}")
+    determinism : seed = (template-id × Φ-tags-hash × bias-vec-hash)
+    English-OK : per Apocky-CLAUDE.md user-facing-allowed-context
+
+  § STAGE-1  «KAN-narrative-LM-ride»  ⟪ deferred W6 ⟫
+    cssl-substrate-kan trained-narrative-LM · tone-conditioned · on-device-only
+    fallback : stage-0 templates always-available
+
+  § FAILURE-MODES
+    silent-text        : GM_CAP_TEXT_EMIT-revoked → SILENT-PASS+counter ; ¬ panic
+    degrade-to-generic : Φ-tag-miss → "you see something here" generic-prompt
+    tts-fail           : DEGRADE-text-only ; user-warning ; ¬ pipeline-halt
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROLE-COLLABORATOR  «co-author · player-suggestion-integrator»
+
+  § RESPONSIBILITIES
+    player-suggestion-integration : "I want X" → scene-edit-op draft
+    story-branch-merge            : co-edited-branch ⊕ canonical-branch resolution
+    co-creative-loop-driver       : iterative-refinement gradient (player-feedback)
+
+  § SUPPORT-CRATES
+    cssl-host-cocreative          : the-gradient-optimizer (W4 landed)
+    cssl-host-causal-seed         : branch-merge DAG primitives
+    cssl-host-attestation         : per-suggestion audit
+    cssl-mcp-server               : MCP-tool surface for save-scene/load-scene
+
+  § INPUTS
+    player-edit-suggestions       : open-vocabulary text → typed-suggestion
+    player-thumbs-up-down         : f32 ∈ [-1, +1] feedback signal
+    player-typed-alternatives     : list<text-hash> branch-candidates
+    cap-state                     : SubstrateMutateCap available?
+
+  § OUTPUTS
+    merged-story-state            : DAG-node-set after-merge
+    revised-cocreative-bias-vec   : 16-D f32'norm updated-preference-tensor
+    branch-state-diff             : { added, removed, conflicted } cell-coord-sets
+
+  § CAP-GATING  ‼
+    COLLAB_CAP_INTEGRATE      = 1   : draft scene-edit-op (no-apply-yet)
+    COLLAB_CAP_BRANCH_MERGE   = 2   : commit branch-merge to causal-seed DAG
+    COLLAB_CAP_BIAS_UPDATE    = 4   : write cocreative-bias-vec to-store
+
+  § STAGE-0  «cocreative gradient + heuristic merge»
+    gradient : Adam-like step over bias-vec ; lr=0.01 ; β1=0.9 ; β2=0.999
+    merge-policy : last-write-wins ⊕ Σ-mask-conflict-defer
+    determinism : seeded-RNG per-merge ; replay-bit-equal
+    bias-vec stored-LOCAL : per-installation salted ; opt-in-egress @ Sovereign-grant
+
+  § STAGE-1  «KAN-merge-policy»  ⟪ deferred W6 ⟫
+    cssl-substrate-kan trained-merge-policy · conflict-resolution learned-from-history
+    fallback : stage-0 heuristic always-available
+
+  § FAILURE-MODES
+    reject-with-reason       : Σ-mask-conflict → user-msg + DROP ; ¬ silent-fail
+    queue-for-DM-arbitration : merge-conflict unresolvable → handoff-to-DM
+    bias-vec-corrupt         : RESET-to-default ; counter-incr ; user-notify
+    cap-revoked              : TERMINATE-flow + user-feedback
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROLE-CODER  «runtime-mutator · intent → cssl-source-patch»
+
+  § RESPONSIBILITIES
+    intent-to-source              : Intent → .csl source-fragment AST-diff
+    hot-reload-orchestration      : compile-fragment + swap-symbol + verify
+    runtime-schema-evolution      : type-migration + state-rebind on-schema-change
+    bug-fixup-loop                : runtime-error → source-fix-suggest (player-confirm)
+
+  § SUPPORT-CRATES
+    csslc                         : compiler ; AST-diff + Σ-pass + Effect-pass
+    cssl-rt                       : runtime + hot-reload symbol-swap
+    cssl-host-config              : param-update without full-rebuild
+    cssl-host-rt-trace            : mutation audit ; replay-anchor
+
+  § INPUTS
+    DM-intent-or-Collab-intent    : Intent::SpawnCondensation OR scene-edit-op
+    pre-validated-AST-diff        : csslc-validated AST-fragment
+    player-explicit-mutation-req  : explicit-confirm-token from-UI
+
+  § OUTPUTS
+    csl-file-edit                 : .csl source-text-fragment ; on-disk
+    live-reload-trigger           : symbol-swap event { module, symbol-id }
+    runtime-state-migration       : { from-schema, to-schema, mig-table }
+
+  § CAP-GATING  ‼ ALL require-sovereign-cap OR-explicit-per-action-consent
+    CODER_CAP_AST_EDIT       = 1   : write AST-diff to-disk
+    CODER_CAP_HOT_RELOAD     = 2   : swap-symbol in-running-process
+    CODER_CAP_SCHEMA_EVOLVE  = 4   : type-migration ; ‼ riskiest ; sovereign-required
+
+  § STAGE-0  «NO automated edits — only explicit-confirm flow»
+    every-mutation player-confirm-required ; ¬ silent-runtime-mutate
+    AST-diff displayed-to-player BEFORE apply
+    Σ-pass + Effect-pass MANDATORY ; ¬ skip-for-perf
+    rollback-on-validation-fail : prev-AST + prev-state preserved
+
+  § STAGE-1  «automated edits»  ⟪ DEFERRED — high-blast-radius ⟫
+    if-ever-shipped : sovereign-only · per-action-consent-token · replay-required
+
+  § FAILURE-MODES
+    block-and-prompt-player       : missing-cap → UI-prompt + AWAIT-confirm
+    roll-back-on-validation-fail  : Σ-fail|Effect-fail → revert-to-prev-AST
+    compile-error                 : surface-diagnostic ; ¬ apply
+    schema-mig-fail               : revert+audit+notify ; ¬ partial-state
+
+# ══════════════════════════════════════════════════════════════════
+
+§ INTER-ROLE-PROTOCOL  «explicit handoff matrix»
+
+  § HANDOFF-MATRIX  ‼ when-A-passes-to-B
+    DM    → GM    : tension-target updated → GM emits-prose @ next-tick
+    GM    → Collab: player-prompt accepted → Collab drafts-edit-op
+    Collab→ Coder : merge-approved → Coder generates-AST-diff
+    Coder → DM    : reload-success → DM resumes-arbitration (loopback)
+
+  § HANDOFF-EVENTS  «structured · audit-emit per-transition»
+    schema : { from-role, to-role, payload-handle, ts_micros, trace-id }
+    ∀ handoff records-event ‼ ; payload-handle = opaque-token ¬ raw-egress
+
+  § AUDIT-EVENT-NAMES  «canonical»
+    dm.scene_edit              : DM emits scene-edit-op
+    dm.spawn_order             : DM emits spawn-order
+    gm.text_emit               : GM emits narrative-text-frame
+    gm.pacing_mark             : GM emits pacing-mark-event
+    collab.suggestion_integrate: Collab drafts-edit-op
+    collab.bias_update         : Collab writes-bias-vec
+    coder.ast_edit_proposed    : Coder drafts-AST-diff
+    coder.hot_reload           : Coder swaps-symbol live
+    handoff.<from>_to_<to>     : explicit-transition
+
+  § CROSS-ROLE-CAP-BLEED  ‼ N! prohibited
+    DM cannot-exercise GM_CAP_VOICE_EMIT directly
+    GM cannot-exercise CODER_CAP_AST_EDIT directly
+    Collab cannot-exercise DM_CAP_SCENE_EDIT directly
+    enforcement : cap-token-prefix encodes-role ; mismatch = SIG-cap-bleed
+    workaround : explicit-handoff-event ; receiver-role then-acts under-its-cap
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ATTESTATION-PER-ROLE  «cssl-host-attestation aggregation»
+
+  § PER-ROLE-ATTESTATION-BLOCK
+    role-tag                 : DM | GM | Collab | Coder
+    actions-taken-count      : Σ audit-events emitted-this-session
+    cap-grants-used          : list { cap-id, grant-source, ts }
+    cap-bleed-attempts       : MUST = 0  ‼ ; non-zero = bug
+    sovereign-bypasses       : list { cap-id, sovereign-handle, ts, reason }
+    out-of-scope-flags       : list { event-name, reason } ; ideally-empty
+
+  § ROLE-SCOPE-VERIFICATION  «did role-X act outside-its-scope?»
+    invariant : ∀ audit-event-of-role-X ⊑ role-X-cap-ladder
+    detection : event-emitted with-cap-not-in-role's-ladder = scope-violation
+    verdict   : REJECT session-attestation if-any role-exceeded-cap-scope ‼
+
+  § AGGREGATION-TO-SESSION
+    source     : per-role attestation-blocks × 4 → cssl-host-attestation (W5a)
+    cadence    : per-session-end ⊕ per-N-tick checkpoint (N=10000)
+    output     : SessionReport JSONL append-only ; ¬ overwrite
+
+  § REJECT-VERDICT-CONDITIONS  ‼
+    role-exceeded-cap-scope ∨ cap-bleed-attempt>0 ∨ sovereign-bypass-unrecorded
+    ∨ Sensitive<*>-leak-detected  → REJECT  ‼ ¬ override
+
+# ══════════════════════════════════════════════════════════════════
+
+§ ROADMAP-PEG  «per-wave intelligence-progress»
+
+  § W6 — KAN-SUBSTRATE-RIDE  ⟪ stage-1 ∀ 4-roles ⟫
+    DM/GM/Collab : KAN-spline-tables (bias · narrative-LM · merge-policy)
+    Coder        : DEFERRED ; automated-edits too-risky ; stage-0 stays
+    fallback     : stage-0 heuristics retained-as graceful-degradation
+
+  § W7 — ROLE-HANDOFF-PROTOCOL-IMPL  ⟪ explicit-MCP-tool surface ⟫
+    handoff-event-emit · handoff-replay · cap-bleed-detector  (3 MCP-tools)
+
+  § W8 — MULTI-PLAYER-SHARED-DM  ⟪ one-DM serves-multiple-players ⟫
+    DM-instance per-session ; players ⊆ session-membership-set
+    Σ-mask respected-per-player ; cap-set per-player-scoped
+
+# ══════════════════════════════════════════════════════════════════
+
+§ RELATED-SPECS  (cross-references)
+  00 THESIS · 03 INTENT-FLOW · 04 SPONTANEOUS · 05 INTELLIGENCES (THESIS-companion)
+  07 NETWORKING · 09 DATA-FLOW · §§ 11_IFC · §§ 22_TELEMETRY · §§ 30_SUBSTRATE_v2
+
+∎ INTELLIGENCE  (operational)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-10_INTELLIGENCE  @  (anyone ∨ anything ∨ anybody)
+  ≡ sovereignty-preserved : ∀ role cap-bound · refusable · audit-emit
+  ≡ narrow-orchestrator : ¬ AGI · ¬ self-improvement · ¬ cross-bleed
