@@ -226,25 +226,26 @@ impl StyleRules {
         // ── doorway alignment ─────────────────────────────────────
         match self.doorway_alignment {
             DoorwayAlignmentRule::Free => {}
-            DoorwayAlignmentRule::AlignedToGrid(grid) if grid > 0.0 => {
-                for p in &bp.parts {
-                    let (x, _, z) = p.position_offset;
-                    let on_grid_x = (x / grid).round() * grid;
-                    let on_grid_z = (z / grid).round() * grid;
-                    if (x - on_grid_x).abs() > 1e-3 || (z - on_grid_z).abs() > 1e-3 {
-                        violations.push(StyleViolation {
-                            rule:    "doorway_alignment_grid".to_string(),
-                            part_id: Some(p.id),
-                            detail:  format!(
-                                "part {} pos ({x}, {z}) not on grid {grid}",
-                                p.id
-                            ),
-                        });
+            DoorwayAlignmentRule::AlignedToGrid(grid) => {
+                // § grid <= 0 is a no-op (defensive). Otherwise check every
+                //   part-offset is a multiple of `grid`.
+                if grid > 0.0 {
+                    for p in &bp.parts {
+                        let (x, _, z) = p.position_offset;
+                        let on_grid_x = (x / grid).round() * grid;
+                        let on_grid_z = (z / grid).round() * grid;
+                        if (x - on_grid_x).abs() > 1e-3 || (z - on_grid_z).abs() > 1e-3 {
+                            violations.push(StyleViolation {
+                                rule:    "doorway_alignment_grid".to_string(),
+                                part_id: Some(p.id),
+                                detail:  format!(
+                                    "part {} pos ({x}, {z}) not on grid {grid}",
+                                    p.id
+                                ),
+                            });
+                        }
                     }
                 }
-            }
-            DoorwayAlignmentRule::AlignedToGrid(_) => {
-                // grid <= 0 is a no-op (defensive).
             }
             DoorwayAlignmentRule::CenteredOnly => {
                 // All parts must sit at origin. (Useful for single-room
