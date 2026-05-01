@@ -56,9 +56,10 @@ use crate::material::{
     MAT_TRANSPARENT_GLASS, MAT_VERMILLION_LACQUER, MAT_WARM_SKY,
 };
 use crate::pattern::{
-    PAT_CHECKERBOARD, PAT_CONCENTRIC_RINGS, PAT_EAN13_BARCODE, PAT_FREQUENCY_SWEEP,
-    PAT_GRADIENT_GRAYSCALE, PAT_GRID_1M, PAT_MACBETH_COLOR_CHART, PAT_PERLIN_NOISE,
-    PAT_QR_CODE_STUB, PAT_RADIAL_GRADIENT, PAT_RADIAL_SPOKES, PAT_SNELLEN_EYE_CHART,
+    PAT_CHECKERBOARD, PAT_CONCENTRIC_RINGS, PAT_EAN13_BARCODE, PAT_FREQUENCY_SWEEP, PAT_GRID_1M,
+    PAT_MACBETH_COLOR_CHART, PAT_PERLIN_NOISE, PAT_QR_CODE_STUB, PAT_RADIAL_GRADIENT,
+    PAT_RADIAL_SPOKES, PAT_RAYMARCH_GYROID, PAT_RAYMARCH_JULIA, PAT_RAYMARCH_MANDELBULB,
+    PAT_RAYMARCH_MENGER, PAT_RAYMARCH_SPHERE, PAT_RAYMARCH_TORUS, PAT_SNELLEN_EYE_CHART,
     PAT_SOLID, PAT_ZONEPLATE,
 };
 
@@ -219,11 +220,27 @@ pub fn plinth_positions() -> [(f32, f32); 14] {
     ]
 }
 
-/// Stress-object kind id (0..13). The visual + material per id is :
-///   0 mandelbulb-fractal · 1 reflective-sphere · 2 glass-cube · 3 hairy-ball
-///   4 iridescent-torus · 5 holographic · 6 emissive-cyan-ring · 7 icosphere
-///   8 macbeth-cube · 9 zoneplate-cube · 10 matte-grey · 11 gold-leaf
-///   12 pink-noise · 13 vermillion-classic
+/// Stress-object kind id (0..13).
+///
+/// § T11-LOA-RAYMARCH (W-LOA-raymarched-primitives) : slots 0..5 now drive
+/// the fragment-shader sphere-tracer for true 3D fractal/SDF surfaces ;
+/// slots 6..13 stay cube-based with 2D-UV procedurals.
+///
+/// Slot layout :
+///   0 raymarch-mandelbulb + iridescent       (true 3D fractal)
+///   1 raymarch-sphere     + brushed-steel    (analytic baseline)
+///   2 raymarch-torus      + gold-leaf        (toroidal SDF)
+///   3 raymarch-gyroid     + emissive-cyan    (gyroid surface)
+///   4 raymarch-julia      + neon-magenta     (quaternion-Julia)
+///   5 raymarch-menger     + dichroic-violet  (menger sponge)
+///   6 vermillion-classic-cube      (kept ; was slot 13)
+///   7 holographic-cube             (kept ; was slot 5)
+///   8 transparent-glass-cube       (kept ; was slot 2)
+///   9 matte-reference-cube         (kept ; was slot 10)
+///   10 pink-noise-cube             (kept ; was slot 12)
+///   11 macbeth-cube                (kept ; was slot 8)
+///   12 zoneplate-cube              (kept ; was slot 9)
+///   13 hairy-fur-cube              (kept ; was slot 3)
 #[must_use]
 pub const fn stress_object_count() -> u32 {
     14
@@ -233,20 +250,22 @@ pub const fn stress_object_count() -> u32 {
 #[must_use]
 pub const fn stress_object_material(kind: u32) -> u32 {
     match kind {
-        0 => MAT_DEEP_INDIGO,
+        // § Raymarched (kinds 0..5)
+        0 => MAT_IRIDESCENT,
         1 => MAT_BRUSHED_STEEL,
-        2 => MAT_TRANSPARENT_GLASS,
-        3 => MAT_HAIRY_FUR,
-        4 => MAT_IRIDESCENT,
-        5 => MAT_HOLOGRAPHIC,
-        6 => MAT_EMISSIVE_CYAN,
-        7 => MAT_DICHROIC_VIOLET,
-        8 => MAT_GRADIENT_RED,
-        9 => MAT_NEON_MAGENTA,
-        10 => MAT_MATTE_GREY,
-        11 => MAT_GOLD_LEAF,
-        12 => MAT_PINK_NOISE_VOL,
-        13 => MAT_VERMILLION_LACQUER,
+        2 => MAT_GOLD_LEAF,
+        3 => MAT_EMISSIVE_CYAN,
+        4 => MAT_NEON_MAGENTA,
+        5 => MAT_DICHROIC_VIOLET,
+        // § Cube-based (kinds 6..13)
+        6 => MAT_VERMILLION_LACQUER,
+        7 => MAT_HOLOGRAPHIC,
+        8 => MAT_TRANSPARENT_GLASS,
+        9 => MAT_MATTE_GREY,
+        10 => MAT_PINK_NOISE_VOL,
+        11 => MAT_GRADIENT_RED,
+        12 => MAT_DEEP_INDIGO,
+        13 => MAT_HAIRY_FUR,
         _ => MAT_MATTE_GREY,
     }
 }
@@ -255,20 +274,22 @@ pub const fn stress_object_material(kind: u32) -> u32 {
 #[must_use]
 pub const fn stress_object_pattern(kind: u32) -> u32 {
     match kind {
-        0 => PAT_PERLIN_NOISE,
-        1 => PAT_SOLID,
-        2 => PAT_SOLID,
-        3 => PAT_RADIAL_SPOKES,
-        4 => PAT_GRADIENT_GRAYSCALE,
-        5 => PAT_QR_CODE_STUB,
+        // § Raymarched (kinds 0..5) — pattern-id triggers fragment-shader SDF tracer
+        0 => PAT_RAYMARCH_MANDELBULB,
+        1 => PAT_RAYMARCH_SPHERE,
+        2 => PAT_RAYMARCH_TORUS,
+        3 => PAT_RAYMARCH_GYROID,
+        4 => PAT_RAYMARCH_JULIA,
+        5 => PAT_RAYMARCH_MENGER,
+        // § Cube-based (kinds 6..13)
         6 => PAT_SOLID,
-        7 => PAT_CONCENTRIC_RINGS,
-        8 => PAT_MACBETH_COLOR_CHART,
-        9 => PAT_ZONEPLATE,
-        10 => PAT_GRID_1M,
-        11 => PAT_SOLID,
-        12 => PAT_PERLIN_NOISE,
-        13 => PAT_SOLID,
+        7 => PAT_QR_CODE_STUB,
+        8 => PAT_SOLID,
+        9 => PAT_GRID_1M,
+        10 => PAT_PERLIN_NOISE,
+        11 => PAT_MACBETH_COLOR_CHART,
+        12 => PAT_ZONEPLATE,
+        13 => PAT_RADIAL_SPOKES,
         _ => PAT_SOLID,
     }
 }
@@ -277,20 +298,20 @@ pub const fn stress_object_pattern(kind: u32) -> u32 {
 #[must_use]
 pub const fn stress_object_name(kind: u32) -> &'static str {
     match kind {
-        0 => "Mandelbulb",
-        1 => "Reflective-Sphere",
-        2 => "Glass-Cube",
-        3 => "Hairy-Ball",
-        4 => "Iridescent-Torus",
-        5 => "Holographic",
-        6 => "Emissive-Ring",
-        7 => "Icosphere-Subdiv",
-        8 => "Macbeth-Cube",
-        9 => "Zoneplate-Cube",
-        10 => "Matte-Reference",
-        11 => "Gold-Leaf",
-        12 => "Pink-Noise",
-        13 => "Vermillion-Classic",
+        0 => "Raymarch-Mandelbulb",
+        1 => "Raymarch-Sphere",
+        2 => "Raymarch-Torus",
+        3 => "Raymarch-Gyroid",
+        4 => "Raymarch-Julia",
+        5 => "Raymarch-Menger",
+        6 => "Vermillion-Classic",
+        7 => "Holographic",
+        8 => "Glass-Cube",
+        9 => "Matte-Reference",
+        10 => "Pink-Noise",
+        11 => "Macbeth-Cube",
+        12 => "Zoneplate-Cube",
+        13 => "Hairy-Ball",
         _ => "Unknown",
     }
 }
@@ -616,7 +637,9 @@ impl RoomGeometry {
             // Special-case kind 2 (glass cube) : keep as transparent cube ;
             // material handles alpha.
 
-            let track_transparent = kind == 2;
+            // § T11-LOA-RAYMARCH : glass-cube relocated from slot-2 to slot-8
+            // (slot-2 now hosts the raymarched torus). Update the index marker.
+            let track_transparent = kind == 8;
             let pre_idx = self.indices.len();
             self.emit_box(
                 [*x, stress_y, *z],
@@ -960,9 +983,50 @@ mod tests {
     #[test]
     fn transparent_stress_index_range_set() {
         let g = RoomGeometry::test_room();
-        // Glass cube is kind=2 → transparent_index_range should be Some.
+        // § T11-LOA-RAYMARCH : glass cube is now kind=8 (was 2) →
+        // transparent_index_range should still be Some.
         assert!(g.transparent_index_range.is_some());
         let (lo, hi) = g.transparent_index_range.unwrap();
         assert!(hi > lo, "transparent range must be nonempty");
+    }
+
+    // ─── § T11-LOA-RAYMARCH tests ────────────────────────────────────────
+
+    #[test]
+    fn geometry_assigns_6_stress_objects_to_raymarch_kinds() {
+        use crate::pattern::pattern_is_raymarch;
+        // Exactly 6 of the 14 stress slots must trigger fragment-shader
+        // raymarching. The other 8 stay cube-based with 2D-UV procedurals.
+        let total = stress_object_count();
+        let mut raymarch_count = 0u32;
+        let mut cube_count = 0u32;
+        for k in 0..total {
+            let p = stress_object_pattern(k);
+            if pattern_is_raymarch(p) {
+                raymarch_count += 1;
+            } else {
+                cube_count += 1;
+            }
+        }
+        assert_eq!(raymarch_count, 6, "exactly 6 stress objects must be raymarched");
+        assert_eq!(cube_count, 8, "exactly 8 stress objects must stay cube-based");
+        assert_eq!(raymarch_count + cube_count, total);
+    }
+
+    #[test]
+    fn geometry_raymarch_kinds_cover_all_6_sdf_types() {
+        use crate::pattern::pattern_is_raymarch;
+        // The 6 raymarched stress slots must collectively cover all 6
+        // distinct SDF kinds (mandelbulb, sphere, torus, gyroid, julia, menger)
+        // — not 6 copies of the same.
+        use std::collections::HashSet;
+        let mut bag = HashSet::new();
+        for k in 0..stress_object_count() {
+            let p = stress_object_pattern(k);
+            if pattern_is_raymarch(p) {
+                bag.insert(p);
+            }
+        }
+        assert_eq!(bag.len(), 6, "all 6 SDF kinds must be represented");
     }
 }

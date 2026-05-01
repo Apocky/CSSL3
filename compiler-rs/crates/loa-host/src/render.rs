@@ -46,13 +46,14 @@ use crate::ui_overlay::{HudContext, MenuState, UiOverlay};
 /// CPU-side mirror of the WGSL `Uniforms` struct.
 ///
 /// Layout (matches `scene.wgsl::Uniforms`) :
-///   - view_proj  : mat4x4    (64 B)
-///   - sun_dir    : vec4      (16 B)
-///   - ambient    : vec4      (16 B)
-///   - time       : vec4      (16 B)
-///   - materials  : 16 × Material (16 × 48 = 768 B)
-///   - patterns   : 16 × Pattern  (16 × 16 = 256 B)
-///   = 1136 bytes total.
+///   - view_proj  : mat4x4              (64 B)
+///   - sun_dir    : vec4                (16 B)
+///   - ambient    : vec4                (16 B)
+///   - time       : vec4                (16 B)
+///   - camera_pos : vec4                (16 B)   § T11-LOA-RAYMARCH
+///   - materials  : 16 × Material       (16 × 48 = 768 B)
+///   - patterns   : 22 × Pattern        (22 × 16 = 352 B)
+///   = 1248 bytes total.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct Uniforms {
@@ -60,6 +61,10 @@ struct Uniforms {
     sun_dir: [f32; 4],
     ambient: [f32; 4],
     time: [f32; 4],
+    /// World-space camera position (xyz) ; w reserved for tracer flags.
+    /// Read by the fragment-shader sphere-tracer to reconstruct view rays
+    /// in cube-local space for the 6 RAYMARCH_* pattern kinds.
+    camera_pos: [f32; 4],
     materials: [Material; MATERIAL_LUT_LEN],
     patterns: [Pattern; PATTERN_LUT_LEN],
 }
@@ -71,6 +76,7 @@ impl Uniforms {
             sun_dir: Vec4::new(-0.4, 0.8, -0.45, 0.0).normalize().to_array(),
             ambient: [0.18, 0.20, 0.24, 0.0],
             time: [0.0; 4],
+            camera_pos: [0.0, 1.7, 0.0, 0.0],
             materials: material_lut(),
             patterns: pattern_lut(),
         }
@@ -361,6 +367,14 @@ impl Renderer {
             sun_dir: Vec4::new(-0.4, 0.8, -0.45, 0.0).normalize().to_array(),
             ambient: [0.18, 0.20, 0.24, 0.0],
             time: [t_secs, self.frame_n as f32, 0.0, 0.0],
+            // § T11-LOA-RAYMARCH : real eye position drives the
+            // fragment-shader sphere-tracer view-ray reconstruction.
+            camera_pos: [
+                camera.position.x,
+                camera.position.y,
+                camera.position.z,
+                0.0,
+            ],
             materials: material_lut(),
             patterns: pattern_lut(),
         };
@@ -550,7 +564,16 @@ mod tests {
 
     #[test]
     fn uniforms_size_is_correct() {
-        // 64 + 16 + 16 + 16 + (16 * 48) + (16 * 16)  =  1136
-        assert_eq!(core::mem::size_of::<Uniforms>(), 1136);
+        // § T11-LOA-RAYMARCH : layout grew by camera_pos (16 B) + 6 extra
+        // pattern entries (6 × 16 = 96 B) → 1136 + 16 + 96 = 1248.
+        // 64 + 16 + 16 + 16 + 16 + (16 * 48) + (22 * 16)  =  1248
+        assert_eq!(core::mem::size_of::<Uniforms>(), 1248);
+    }
+
+    #[test]
+    fn uniforms_carries_camera_pos_field() {
+        let u = Uniforms::new();
+        // Default camera_pos seeds at (0, 1.7, 0) — eye-height @ room center.
+        assert_eq!(u.camera_pos, [0.0, 1.7, 0.0, 0.0]);
     }
 }

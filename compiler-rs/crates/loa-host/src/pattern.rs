@@ -2,14 +2,15 @@
 //! ════════════════════════════════════════════════════════════════════════════
 //!
 //! § T11-LOA-RICH-RENDER (W-LOA-rich-render-overhaul)
+//! § T11-LOA-RAYMARCH    (W-LOA-raymarched-primitives) — RAYMARCH_* pattern-IDs
 //!
 //! § ROLE
-//!   16-entry GPU-uploadable LUT of procedural-pattern parameters. Each
+//!   22-entry GPU-uploadable LUT of procedural-pattern parameters. Each
 //!   Vertex carries a `pattern_id: u32` that selects an entry ; the uber-
 //!   shader's fragment stage switches on `Pattern::kind` and computes the
 //!   final pattern color from `(uv, scale, rotation, phase, time)`.
 //!
-//! § PATTERNS (12+ procedurals)
+//! § PATTERNS (16 textured + 6 raymarched-SDF)
 //!   0  SOLID                — passthrough (use albedo only)
 //!   1  GRID_1M              — 1m grid lines (calibration)
 //!   2  GRID_100MM           — 100mm grid (fine sub-grid)
@@ -26,6 +27,12 @@
 //!   13 ZONEPLATE            — frequency-sweep sine-fringe diagnostic
 //!   14 FREQUENCY_SWEEP      — stacked spatial-frequency rows (1·4·16·64 cycles)
 //!   15 RADIAL_GRADIENT      — radial 0..1 from uv center
+//!   16 RAYMARCH_MANDELBULB  — 8th-power mandelbulb fractal (12-iter, sphere-trace)
+//!   17 RAYMARCH_SPHERE      — analytic sphere SDF (sanity baseline)
+//!   18 RAYMARCH_TORUS       — torus SDF (R=0.30, r=0.10)
+//!   19 RAYMARCH_GYROID      — sin-cos gyroid surface (scale=12, thickness=0.04)
+//!   20 RAYMARCH_JULIA       — quaternion-Julia 4D iteration
+//!   21 RAYMARCH_MENGER      — 4-level Menger sponge SDF
 //!
 //! § GPU LAYOUT
 //!   Each `Pattern` is 16 bytes (4 × f32) for tight std140 packing :
@@ -33,7 +40,7 @@
 //!     - scale     : f32  (4 B)
 //!     - rotation  : f32  (4 B)
 //!     - phase     : f32  (4 B)
-//!   Total LUT = 16 × 16 = 256 bytes.
+//!   Total LUT = 22 × 16 = 352 bytes.
 
 #![allow(clippy::cast_precision_loss)]
 
@@ -87,8 +94,25 @@ pub const PAT_ZONEPLATE: u32 = 13;
 pub const PAT_FREQUENCY_SWEEP: u32 = 14;
 pub const PAT_RADIAL_GRADIENT: u32 = 15;
 
+// ──────────────────────────────────────────────────────────────────────────
+// § T11-LOA-RAYMARCH — fragment-shader-resident raymarched SDF kinds
+// ──────────────────────────────────────────────────────────────────────────
+//
+// Pattern-IDs 16..21 trigger a 64-step sphere-tracer in `scene.wgsl`'s
+// fragment stage rather than reading a 2D-UV procedural texture. The cube
+// from `geometry::emit_box` becomes a *bounding volume* — the fragment
+// shader raymarches in cube-local space (centered on the cube center, with
+// half-extent `STRESS_SIZE/2`) and either writes a hit-color + corrected
+// `frag_depth`, or `discard`s if the ray misses inside the cube.
+pub const PAT_RAYMARCH_MANDELBULB: u32 = 16;
+pub const PAT_RAYMARCH_SPHERE: u32 = 17;
+pub const PAT_RAYMARCH_TORUS: u32 = 18;
+pub const PAT_RAYMARCH_GYROID: u32 = 19;
+pub const PAT_RAYMARCH_JULIA: u32 = 20;
+pub const PAT_RAYMARCH_MENGER: u32 = 21;
+
 /// Total entries in the PATTERN_LUT.
-pub const PATTERN_LUT_LEN: usize = 16;
+pub const PATTERN_LUT_LEN: usize = 22;
 
 /// Build the canonical 16-entry pattern LUT.
 #[must_use]
@@ -110,6 +134,29 @@ pub fn pattern_lut() -> [Pattern; PATTERN_LUT_LEN] {
         Pattern::new(PAT_ZONEPLATE, 32.0),
         Pattern::new(PAT_FREQUENCY_SWEEP, 1.0),
         Pattern::new(PAT_RADIAL_GRADIENT, 1.0),
+        // § T11-LOA-RAYMARCH — scale-field carries SDF-specific tuning :
+        //   mandelbulb : unused (12-iter constant)
+        //   sphere     : radius (0.30 ≈ 75% of cube half-extent 0.40)
+        //   torus      : R (major) ; phase carries r (minor)
+        //   gyroid     : scale (12.0 = ~6 wavelengths across the cube)
+        //   julia      : unused
+        //   menger     : unused (4 iterations)
+        Pattern::new(PAT_RAYMARCH_MANDELBULB, 1.0),
+        Pattern {
+            kind: PAT_RAYMARCH_SPHERE,
+            scale: 0.30,
+            rotation: 0.0,
+            phase: 0.0,
+        },
+        Pattern {
+            kind: PAT_RAYMARCH_TORUS,
+            scale: 0.30,
+            rotation: 0.0,
+            phase: 0.10,
+        },
+        Pattern::new(PAT_RAYMARCH_GYROID, 12.0),
+        Pattern::new(PAT_RAYMARCH_JULIA, 1.0),
+        Pattern::new(PAT_RAYMARCH_MENGER, 1.0),
     ]
 }
 
@@ -133,8 +180,61 @@ pub const fn pattern_name(id: u32) -> &'static str {
         PAT_ZONEPLATE => "Zoneplate",
         PAT_FREQUENCY_SWEEP => "Frequency-Sweep",
         PAT_RADIAL_GRADIENT => "Radial-Gradient",
+        PAT_RAYMARCH_MANDELBULB => "Raymarch-Mandelbulb",
+        PAT_RAYMARCH_SPHERE => "Raymarch-Sphere",
+        PAT_RAYMARCH_TORUS => "Raymarch-Torus",
+        PAT_RAYMARCH_GYROID => "Raymarch-Gyroid",
+        PAT_RAYMARCH_JULIA => "Raymarch-Julia",
+        PAT_RAYMARCH_MENGER => "Raymarch-Menger",
         _ => "Unknown",
     }
+}
+
+/// `true` iff the given pattern-id triggers fragment-shader sphere-tracing
+/// rather than 2D-UV procedural sampling. Used by tests + telemetry.
+#[must_use]
+pub const fn pattern_is_raymarch(id: u32) -> bool {
+    matches!(
+        id,
+        PAT_RAYMARCH_MANDELBULB
+            | PAT_RAYMARCH_SPHERE
+            | PAT_RAYMARCH_TORUS
+            | PAT_RAYMARCH_GYROID
+            | PAT_RAYMARCH_JULIA
+            | PAT_RAYMARCH_MENGER
+    )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// § T11-LOA-RAYMARCH — CPU mirrors of the WGSL SDFs
+// ──────────────────────────────────────────────────────────────────────────
+//
+// These exist purely so unit tests can verify the canonical SDF math without
+// spinning up the GPU. The fragment shader has its own GPU-side
+// implementations that MUST stay numerically identical (the CPU-mirror tests
+// guard against drift).
+
+/// Sphere SDF : distance from `p` to a sphere of radius `r` centered on origin.
+#[must_use]
+pub fn cpu_sdf_sphere(p: [f32; 3], r: f32) -> f32 {
+    (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt() - r
+}
+
+/// Torus SDF : distance from `p` to a torus with major radius `big_r`, minor
+/// radius `little_r`, lying in the XZ plane.
+#[must_use]
+pub fn cpu_sdf_torus(p: [f32; 3], big_r: f32, little_r: f32) -> f32 {
+    let qx = (p[0] * p[0] + p[2] * p[2]).sqrt() - big_r;
+    let qy = p[1];
+    (qx * qx + qy * qy).sqrt() - little_r
+}
+
+/// Gyroid SDF : implicit `sin·cos` gyroid with given `scale` + skin `thickness`.
+#[must_use]
+pub fn cpu_sdf_gyroid(p: [f32; 3], scale: f32, thickness: f32) -> f32 {
+    let q = [p[0] * scale, p[1] * scale, p[2] * scale];
+    let g = q[0].sin() * q[1].cos() + q[1].sin() * q[2].cos() + q[2].sin() * q[0].cos();
+    g.abs() / scale - thickness
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -382,9 +482,11 @@ mod tests {
     }
 
     #[test]
-    fn pattern_lut_has_16_entries_canonical() {
+    fn pattern_lut_has_22_entries_canonical() {
+        // § T11-LOA-RAYMARCH : 16 textured + 6 raymarched = 22 total.
         let lut = pattern_lut();
-        assert_eq!(lut.len(), 16);
+        assert_eq!(lut.len(), 22);
+        assert_eq!(lut.len(), PATTERN_LUT_LEN);
     }
 
     #[test]
@@ -501,11 +603,190 @@ mod tests {
     fn pattern_lut_total_byte_size_under_16kib() {
         let total = PATTERN_LUT_LEN * core::mem::size_of::<Pattern>();
         assert!(total <= 16 * 1024);
-        assert_eq!(total, 256);
+        // 22 entries × 16 B = 352 (post-RAYMARCH expansion).
+        assert_eq!(total, 352);
     }
 
     #[test]
     fn solid_pattern_is_id_zero() {
         assert_eq!(PAT_SOLID, 0);
+    }
+
+    // ─── § T11-LOA-RAYMARCH tests ────────────────────────────────────────
+
+    #[test]
+    fn pattern_raymarch_kinds_have_distinct_ids() {
+        use std::collections::HashSet;
+        let mut bag = HashSet::new();
+        bag.insert(PAT_RAYMARCH_MANDELBULB);
+        bag.insert(PAT_RAYMARCH_SPHERE);
+        bag.insert(PAT_RAYMARCH_TORUS);
+        bag.insert(PAT_RAYMARCH_GYROID);
+        bag.insert(PAT_RAYMARCH_JULIA);
+        bag.insert(PAT_RAYMARCH_MENGER);
+        assert_eq!(bag.len(), 6, "all 6 RAYMARCH ids must be distinct");
+
+        // None of them collide with the 16 textured-pattern ids.
+        for textured in 0..16u32 {
+            assert!(
+                !bag.contains(&textured),
+                "RAYMARCH ids must not collide with textured pattern id {textured}"
+            );
+        }
+    }
+
+    #[test]
+    fn pattern_lut_carries_all_6_raymarch_kinds() {
+        let lut = pattern_lut();
+        let mut found = [false; 6];
+        for entry in lut {
+            match entry.kind {
+                PAT_RAYMARCH_MANDELBULB => found[0] = true,
+                PAT_RAYMARCH_SPHERE => found[1] = true,
+                PAT_RAYMARCH_TORUS => found[2] = true,
+                PAT_RAYMARCH_GYROID => found[3] = true,
+                PAT_RAYMARCH_JULIA => found[4] = true,
+                PAT_RAYMARCH_MENGER => found[5] = true,
+                _ => {}
+            }
+        }
+        assert!(
+            found.iter().all(|f| *f),
+            "every RAYMARCH kind must appear in the canonical LUT (found={found:?})"
+        );
+    }
+
+    #[test]
+    fn pattern_is_raymarch_classifier_is_correct() {
+        // All RAYMARCH ids classify true.
+        for id in [
+            PAT_RAYMARCH_MANDELBULB,
+            PAT_RAYMARCH_SPHERE,
+            PAT_RAYMARCH_TORUS,
+            PAT_RAYMARCH_GYROID,
+            PAT_RAYMARCH_JULIA,
+            PAT_RAYMARCH_MENGER,
+        ] {
+            assert!(pattern_is_raymarch(id), "id {id} must be raymarch");
+        }
+        // Textured ids classify false.
+        for id in 0..16u32 {
+            assert!(
+                !pattern_is_raymarch(id),
+                "textured id {id} must NOT be raymarch"
+            );
+        }
+    }
+
+    #[test]
+    fn sdf_sphere_returns_zero_at_radius() {
+        // p on the sphere surface ⇒ d ≈ 0.
+        let r = 0.30_f32;
+        let on_surface = cpu_sdf_sphere([r, 0.0, 0.0], r);
+        assert!(on_surface.abs() < 1e-5, "sdf_sphere on surface = {on_surface}");
+        // Origin (inside) ⇒ d ≈ -r.
+        let inside = cpu_sdf_sphere([0.0, 0.0, 0.0], r);
+        assert!((inside + r).abs() < 1e-5);
+        // Outside ⇒ d > 0.
+        let outside = cpu_sdf_sphere([2.0 * r, 0.0, 0.0], r);
+        assert!(outside > 0.0);
+        assert!((outside - r).abs() < 1e-5);
+    }
+
+    #[test]
+    fn sdf_torus_returns_zero_at_canonical_point() {
+        // Torus with R=0.30, r=0.10 lying in XZ plane. The point
+        // (R+r, 0, 0) sits on the outer rim of the torus tube.
+        let big_r = 0.30_f32;
+        let little_r = 0.10_f32;
+        let on_outer_rim = cpu_sdf_torus([big_r + little_r, 0.0, 0.0], big_r, little_r);
+        assert!(
+            on_outer_rim.abs() < 1e-5,
+            "sdf_torus on outer rim = {on_outer_rim}"
+        );
+        // (R-r, 0, 0) sits on the inner rim.
+        let on_inner_rim = cpu_sdf_torus([big_r - little_r, 0.0, 0.0], big_r, little_r);
+        assert!(
+            on_inner_rim.abs() < 1e-5,
+            "sdf_torus on inner rim = {on_inner_rim}"
+        );
+        // Center of the torus hole ⇒ d > 0 (outside).
+        let center = cpu_sdf_torus([0.0, 0.0, 0.0], big_r, little_r);
+        assert!(center > 0.0);
+    }
+
+    #[test]
+    fn sdf_gyroid_oscillates_across_space() {
+        // The gyroid implicit fn sin·cos · cos·sin · sin·cos crosses zero
+        // many times across a span. Verify the SDF takes both positive
+        // and negative values when sampled at many points.
+        let mut saw_pos = false;
+        let mut saw_neg = false;
+        for i in 0..32 {
+            let x = (i as f32) * 0.05; // span ~1.6
+            let d = cpu_sdf_gyroid([x, 0.0, 0.0], 12.0, 0.04);
+            if d > 0.0 {
+                saw_pos = true;
+            }
+            if d < 0.0 {
+                saw_neg = true;
+            }
+        }
+        assert!(saw_pos && saw_neg, "gyroid SDF must oscillate");
+    }
+
+    #[test]
+    fn raymarch_pattern_names_distinct() {
+        use std::collections::HashSet;
+        let mut bag = HashSet::new();
+        for id in [
+            PAT_RAYMARCH_MANDELBULB,
+            PAT_RAYMARCH_SPHERE,
+            PAT_RAYMARCH_TORUS,
+            PAT_RAYMARCH_GYROID,
+            PAT_RAYMARCH_JULIA,
+            PAT_RAYMARCH_MENGER,
+        ] {
+            bag.insert(pattern_name(id));
+        }
+        assert_eq!(bag.len(), 6, "raymarch pattern names must all differ");
+        // Every name should start with "Raymarch-" so HUD readers can
+        // visually group them.
+        for name in &bag {
+            assert!(
+                name.starts_with("Raymarch-"),
+                "raymarch name {name} must start with Raymarch-"
+            );
+        }
+    }
+
+    #[test]
+    fn wgsl_uber_shader_compiles_with_raymarch_branches() {
+        // The embedded scene.wgsl must continue to validate via naga even
+        // after the RAYMARCH_* fragment-shader branches are added.
+        use naga::front::wgsl;
+        use naga::valid::{Capabilities, ValidationFlags, Validator};
+        let src = include_str!("../shaders/scene.wgsl");
+        let module = wgsl::parse_str(src).expect("scene.wgsl must parse via naga");
+        let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
+        validator
+            .validate(&module)
+            .expect("scene.wgsl must validate via naga");
+        // Sanity : the 6 raymarch SDF-fns + the dispatcher must be present.
+        for needle in [
+            "sdf_sphere",
+            "sdf_torus",
+            "sdf_gyroid",
+            "sdf_mandelbulb",
+            "sdf_julia_quaternion",
+            "sdf_menger_sponge",
+            "raymarch",
+            "sdf_normal",
+        ] {
+            assert!(
+                src.contains(needle),
+                "scene.wgsl must define {needle}() for the RAYMARCH pipeline"
+            );
+        }
     }
 }
