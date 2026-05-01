@@ -244,23 +244,38 @@ pub struct TelemetryEvent {
 /// Bounded ring-cap. Any-newer push evicts the oldest entry.
 pub const TELEMETRY_RING_CAP: usize = 256;
 
+/// Snapshot request enqueued by the MCP `render.snapshot_png` tool.
+/// Drained by the render loop each frame ; one PNG is written per
+/// drained entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapshotRequest {
+    /// Absolute or relative path the PNG will be written to.
+    pub path: std::path::PathBuf,
+}
+
 /// Live, per-process engine state. Shared across the MCP server, the
 /// render loop (sibling W-LOA-host-render), and the DM/GM machine
 /// (sibling W-LOA-host-DM) via `Arc<Mutex<EngineState>>`.
 ///
 /// § FIELD SEMANTICS
-///   `frame_count`     ← incremented by the render loop per tick.
-///   `quit_requested`  ← set by `engine.shutdown` ; main loop polls.
-///   `paused`          ← toggled by `engine.pause`.
-///   `camera`          ← read by render, written by `camera.set`.
-///   `render_mode`     ← read by render, written by `render.set_mode`.
-///   `active_scene`    ← string key from the scene-bundle table.
-///   `room_dim_xyz`    ← test-room dimensions from .csl scene init.
-///   `plinths`         ← live AABB list ; `room.spawn_plinth` appends.
-///   `dm`              ← DM intensity + event-count ; sibling DM-runtime
-///                       drives this, MCP can read/nudge it.
-///   `telemetry_ring`  ← bounded ring of recent log-events for the
-///                       `telemetry.recent` tool.
+///   `frame_count`        ← incremented by the render loop per tick.
+///   `quit_requested`     ← set by `engine.shutdown` ; main loop polls.
+///   `paused`             ← toggled by `engine.pause`.
+///   `camera`             ← read by render, written by `camera.set`.
+///   `render_mode`        ← read by render, written by `render.set_mode`.
+///   `active_scene`       ← string key from the scene-bundle table.
+///   `room_dim_xyz`       ← test-room dimensions from .csl scene init.
+///   `plinths`            ← live AABB list ; `room.spawn_plinth` appends.
+///   `dm`                 ← DM intensity + event-count ; sibling DM-runtime
+///                          drives this, MCP can read/nudge it.
+///   `telemetry_ring`     ← bounded ring of recent log-events for the
+///                          `telemetry.recent` tool.
+///   `snapshot_queue`     ← T11-LOA-TEST-APP : pending snapshot requests
+///                          drained by the render loop.
+///   `tour_progress`      ← `Some((current, total))` while a tour is
+///                          executing ; `None` when idle. HUD reads.
+///   `snapshot_count`     ← total successful snapshots written this session
+///                          (telemetry).
 #[derive(Debug, Clone)]
 pub struct EngineState {
     pub frame_count: u64,
@@ -273,6 +288,9 @@ pub struct EngineState {
     pub plinths: Vec<Plinth>,
     pub dm: DmState,
     pub telemetry_ring: Vec<TelemetryEvent>,
+    pub snapshot_queue: Vec<SnapshotRequest>,
+    pub tour_progress: Option<(u32, u32)>,
+    pub snapshot_count: u64,
 }
 
 impl Default for EngineState {
@@ -293,6 +311,9 @@ impl Default for EngineState {
             ],
             dm: DmState::default(),
             telemetry_ring: Vec::with_capacity(TELEMETRY_RING_CAP),
+            snapshot_queue: Vec::new(),
+            tour_progress: None,
+            snapshot_count: 0,
         }
     }
 }

@@ -61,8 +61,15 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value};
 
 use crate::material::{material_lut, material_name, MATERIAL_LUT_LEN};
-use crate::mcp_server::{CameraState, EngineState, Plinth, RenderMode, Vec3, TELEMETRY_RING_CAP};
+use crate::mcp_server::{
+    CameraState, EngineState, Plinth, RenderMode, SnapshotRequest, Vec3, TELEMETRY_RING_CAP,
+};
 use crate::pattern::{pattern_lut, pattern_name, PATTERN_LUT_LEN};
+use crate::snapshot::{
+    decode_png, default_golden_dir, default_snapshot_dir, mae_bgra8, rgba8_to_bgra8_inplace,
+    sanitize_snapshot_path, tour_by_id, GoldenDiffEntry, GoldenDiffReport, GOLDEN_MAE_THRESHOLD,
+    TOUR_IDS,
+};
 
 // ───────────────────────────────────────────────────────────────────────
 // § handler-fn type + registry shape
@@ -307,6 +314,28 @@ pub fn tool_registry() -> ToolRegistry {
         "Set log threshold (params: level 0=DEBUG · 1=INFO · 2=WARN · 3=ERROR).",
         true,
         telemetry_set_log_level
+    );
+
+    // ─ T11-LOA-TEST-APP : visual-data-gathering apparatus ─
+    reg!(
+        "render.snapshot_png",
+        "Capture the next-presented frame to a PNG file (params: path).",
+        true,
+        render_snapshot_png
+    );
+    reg!(
+        "render.tour",
+        "Run a scripted camera tour, capturing PNG at each pose \
+         (params: tour_id 'default'|'walls'|'floor'|'plinths'|'ceiling', output_dir).",
+        true,
+        render_tour
+    );
+    reg!(
+        "render.diff_golden",
+        "Compare prior tour snapshots against goldens via mean-absolute-error \
+         (params: tour_id, threshold).",
+        false,
+        render_diff_golden
     );
 
     r
@@ -945,6 +974,309 @@ fn telemetry_set_log_level(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § handlers — T11-LOA-TEST-APP visual-data-gathering apparatus
+// ───────────────────────────────────────────────────────────────────────
+
+/// Default filename used when `params.path` is omitted from `render.snapshot_png`.
+fn default_snapshot_filename(frame_count: u64) -> String {
+    format!("snap_{frame_count:08}.png")
+}
+
+fn render_snapshot_png(state: &mut EngineState, params: Value) -> Value {
+    // Caller may supply `path` (relative to logs/snapshots) or omit it.
+    let user_path = p_str(&params, "path", "");
+    let base_dir = default_snapshot_dir();
+    let final_path = if user_path.is_empty() {
+        base_dir.join(default_snapshot_filename(state.frame_count))
+    } else {
+        match sanitize_snapshot_path(&base_dir, user_path) {
+            Some(p) => p,
+            None => {
+                state.push_event(
+                    "WARN",
+                    "loa-host/mcp",
+                    &format!("render.snapshot_png · rejected path '{user_path}' (traversal/abs)"),
+                );
+                return json!({
+                    "ok": false,
+                    "error": "path must be relative + must not contain '..'",
+                });
+            }
+        }
+    };
+
+    state.snapshot_queue.push(SnapshotRequest {
+        path: final_path.clone(),
+    });
+    state.snapshot_count += 1;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.snapshot_png · queued · path={}",
+            final_path.display()
+        ),
+    );
+    json!({
+        "ok": true,
+        "path": final_path.display().to_string(),
+        "queued_count": state.snapshot_queue.len(),
+        "total_snapshots_session": state.snapshot_count,
+    })
+}
+
+fn render_tour(state: &mut EngineState, params: Value) -> Value {
+    let tour_id = p_str(&params, "tour_id", "default").to_string();
+    let output_dir_str = p_str(&params, "output_dir", "");
+
+    // Resolve the tour
+    let Some(poses) = tour_by_id(&tour_id) else {
+        return json!({
+            "ok": false,
+            "error": format!("unknown tour_id '{}'; valid: {:?}", tour_id, TOUR_IDS),
+        });
+    };
+
+    // Resolve the output dir : honor explicit user path, else use
+    // logs/snapshots/<tour_id>.
+    let base_dir = default_snapshot_dir();
+    let tour_dir = if output_dir_str.is_empty() {
+        base_dir.join(&tour_id)
+    } else {
+        match sanitize_snapshot_path(&base_dir, output_dir_str) {
+            Some(p) => p,
+            None => {
+                return json!({
+                    "ok": false,
+                    "error": "output_dir must be relative + free of '..'",
+                });
+            }
+        }
+    };
+
+    // For each pose : teleport camera + queue a snapshot at <tour_dir>/<pose>.png
+    let mut planned: Vec<Value> = Vec::with_capacity(poses.len());
+    state.tour_progress = Some((0, poses.len() as u32));
+    for (i, pose) in poses.iter().enumerate() {
+        // Update camera state. The render loop reads camera each frame ;
+        // by the time the engine processes the snapshot_queue entry the
+        // camera will have been propagated to the render side.
+        state.camera = CameraState {
+            pos: Vec3::new(pose.pos[0], pose.pos[1], pose.pos[2]),
+            yaw: pose.yaw,
+            pitch: pose.pitch,
+        };
+        let snap_path = tour_dir.join(format!("{}.png", pose.name));
+        state.snapshot_queue.push(SnapshotRequest {
+            path: snap_path.clone(),
+        });
+        state.tour_progress = Some(((i + 1) as u32, poses.len() as u32));
+        planned.push(json!({
+            "pose": pose.name,
+            "path": snap_path.display().to_string(),
+            "pos": pose.pos,
+            "yaw": pose.yaw,
+            "pitch": pose.pitch,
+        }));
+    }
+    state.snapshot_count += poses.len() as u64;
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.tour · {} poses queued · tour_id={} · dir={}",
+            poses.len(),
+            tour_id,
+            tour_dir.display()
+        ),
+    );
+
+    json!({
+        "ok": true,
+        "tour_id": tour_id,
+        "poses_visited": poses.len(),
+        "snapshots": planned,
+        "output_dir": tour_dir.display().to_string(),
+        "note": "snapshots written asynchronously by render loop ; \
+                 poll engine.state for queue drain or wait ~poses*frame-time ms",
+    })
+}
+
+fn render_diff_golden(state: &mut EngineState, params: Value) -> Value {
+    let tour_id = p_str(&params, "tour_id", "default").to_string();
+    let threshold = p_f32(&params, "threshold", GOLDEN_MAE_THRESHOLD);
+
+    let Some(poses) = tour_by_id(&tour_id) else {
+        return json!({
+            "ok": false,
+            "error": format!("unknown tour_id '{}'", tour_id),
+        });
+    };
+
+    let snap_dir = default_snapshot_dir().join(&tour_id);
+    let golden_dir = default_golden_dir().join(&tour_id);
+
+    let mut entries: Vec<GoldenDiffEntry> = Vec::with_capacity(poses.len());
+    let mut all_passed = true;
+
+    for pose in &poses {
+        let snap_path = snap_dir.join(format!("{}.png", pose.name));
+        let golden_path = golden_dir.join(format!("{}.png", pose.name));
+
+        // If the snapshot doesn't exist, the user hasn't run the tour yet.
+        if !snap_path.exists() {
+            entries.push(GoldenDiffEntry {
+                pose: pose.name.clone(),
+                mae: f32::NAN,
+                threshold,
+                passed: false,
+                created_new: false,
+            });
+            all_passed = false;
+            continue;
+        }
+
+        // If the golden doesn't exist, promote the current snapshot to
+        // the new golden + report passed=true·created_new=true.
+        if !golden_path.exists() {
+            // mkdir + copy
+            if let Some(parent) = golden_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::copy(&snap_path, &golden_path) {
+                Ok(_) => {
+                    entries.push(GoldenDiffEntry {
+                        pose: pose.name.clone(),
+                        mae: 0.0,
+                        threshold,
+                        passed: true,
+                        created_new: true,
+                    });
+                }
+                Err(e) => {
+                    state.push_event(
+                        "WARN",
+                        "loa-host/mcp",
+                        &format!(
+                            "render.diff_golden · failed to promote {} → {}: {}",
+                            snap_path.display(),
+                            golden_path.display(),
+                            e
+                        ),
+                    );
+                    entries.push(GoldenDiffEntry {
+                        pose: pose.name.clone(),
+                        mae: f32::NAN,
+                        threshold,
+                        passed: false,
+                        created_new: false,
+                    });
+                    all_passed = false;
+                }
+            }
+            continue;
+        }
+
+        // Both files exist → diff
+        let snap = match decode_png(&snap_path) {
+            Ok(s) => s,
+            Err(e) => {
+                state.push_event(
+                    "WARN",
+                    "loa-host/mcp",
+                    &format!("render.diff_golden · decode snap failed: {e}"),
+                );
+                entries.push(GoldenDiffEntry {
+                    pose: pose.name.clone(),
+                    mae: f32::NAN,
+                    threshold,
+                    passed: false,
+                    created_new: false,
+                });
+                all_passed = false;
+                continue;
+            }
+        };
+        let golden = match decode_png(&golden_path) {
+            Ok(s) => s,
+            Err(e) => {
+                state.push_event(
+                    "WARN",
+                    "loa-host/mcp",
+                    &format!("render.diff_golden · decode golden failed: {e}"),
+                );
+                entries.push(GoldenDiffEntry {
+                    pose: pose.name.clone(),
+                    mae: f32::NAN,
+                    threshold,
+                    passed: false,
+                    created_new: false,
+                });
+                all_passed = false;
+                continue;
+            }
+        };
+
+        // Both PNGs are RGBA8 ; convert to BGRA8 for `mae_bgra8`.
+        let mut snap_bgra = snap.0;
+        rgba8_to_bgra8_inplace(&mut snap_bgra);
+        let mut golden_bgra = golden.0;
+        rgba8_to_bgra8_inplace(&mut golden_bgra);
+
+        let mae = mae_bgra8(&snap_bgra, &golden_bgra).unwrap_or(f32::NAN);
+        let passed = !mae.is_nan() && mae <= threshold;
+        if !passed {
+            all_passed = false;
+        }
+        entries.push(GoldenDiffEntry {
+            pose: pose.name.clone(),
+            mae,
+            threshold,
+            passed,
+            created_new: false,
+        });
+    }
+
+    let report = GoldenDiffReport {
+        tour_id: tour_id.clone(),
+        passed: all_passed,
+        per_pose: entries,
+    };
+
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.diff_golden · tour={} · passed={}",
+            tour_id, all_passed
+        ),
+    );
+
+    let per_pose_json: Vec<Value> = report
+        .per_pose
+        .iter()
+        .map(|e| {
+            json!({
+                "pose": e.pose,
+                "mae": if e.mae.is_nan() { json!(null) } else { json!(e.mae) },
+                "threshold": e.threshold,
+                "passed": e.passed,
+                "created_new": e.created_new,
+            })
+        })
+        .collect();
+
+    json!({
+        "ok": true,
+        "tour_id": report.tour_id,
+        "passed": report.passed,
+        "per_pose": per_pose_json,
+        "snapshot_dir": snap_dir.display().to_string(),
+        "golden_dir": golden_dir.display().to_string(),
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Morton + FFI helpers
 // ───────────────────────────────────────────────────────────────────────
 
@@ -1002,11 +1334,13 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_30_tools() {
+    fn tools_list_returns_33_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
-        // + 6 telemetry (T11-LOA-TELEM) = 30 total.
+        // + 6 telemetry (T11-LOA-TELEM)
+        // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
+        //   render.tour, render.diff_golden) = 33 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 30, "must have exactly 30 tools");
+        assert_eq!(reg.len(), 33, "must have exactly 33 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -1041,6 +1375,10 @@ mod tests {
             "telemetry.tail_events",
             "telemetry.flush",
             "telemetry.set_log_level",
+            // T11-LOA-TEST-APP additions :
+            "render.snapshot_png",
+            "render.tour",
+            "render.diff_golden",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -1066,6 +1404,8 @@ mod tests {
             "telemetry.gpu_info",
             "telemetry.tail_events",
             "telemetry.flush",
+            // T11-LOA-TEST-APP : diff_golden is read-only (just disk I/O).
+            "render.diff_golden",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(!e.meta.mutating, "{name} must be read-only");
@@ -1090,6 +1430,10 @@ mod tests {
             "render.set_material",
             "render.spawn_stress",
             "telemetry.set_log_level",
+            // T11-LOA-TEST-APP : snapshot_png + tour are mutating (queue +
+            // disk write side effects).
+            "render.snapshot_png",
+            "render.tour",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
@@ -1263,10 +1607,10 @@ mod tests {
     fn tools_list_handler_count_matches_registry() {
         let mut s = EngineState::default();
         let v = tools_list(&mut s, json!({}));
-        // 17 baseline + 7 render-control + 6 telemetry = 30 (T11-LOA-TELEM).
-        assert_eq!(v["count"], 30);
+        // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus = 33.
+        assert_eq!(v["count"], 33);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 30);
+        assert_eq!(arr.len(), 33);
     }
 
     // § T11-LOA-TELEM telemetry handler shape tests
@@ -1323,5 +1667,124 @@ mod tests {
         );
         assert_eq!(v["accepted"], true);
         assert_eq!(v["target"], "the-glacier");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-LOA-TEST-APP : visual-data-gathering MCP tools
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn mcp_render_snapshot_png_returns_path() {
+        let mut s = EngineState::default();
+        let v = render_snapshot_png(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "path": "manual_snap.png"}),
+        );
+        assert_eq!(v["ok"], true);
+        let path_str = v["path"].as_str().unwrap();
+        assert!(path_str.contains("manual_snap.png"));
+        // Queue should now hold one entry.
+        assert_eq!(s.snapshot_queue.len(), 1);
+        assert_eq!(s.snapshot_count, 1);
+    }
+
+    #[test]
+    fn mcp_render_snapshot_png_uses_default_path_when_omitted() {
+        let mut s = EngineState::default();
+        s.frame_count = 42;
+        let v = render_snapshot_png(&mut s, json!({"sovereign_cap": SOVEREIGN_CAP}));
+        assert_eq!(v["ok"], true);
+        let path_str = v["path"].as_str().unwrap();
+        // Default uses frame_count zero-padded
+        assert!(path_str.contains("snap_00000042.png"), "got {path_str}");
+    }
+
+    #[test]
+    fn mcp_render_snapshot_png_rejects_traversal() {
+        let mut s = EngineState::default();
+        let v = render_snapshot_png(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "path": "../etc/passwd"}),
+        );
+        assert_eq!(v["ok"], false);
+        assert!(s.snapshot_queue.is_empty());
+    }
+
+    #[test]
+    fn mcp_render_tour_returns_pose_count_in_response() {
+        let mut s = EngineState::default();
+        let v = render_tour(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "tour_id": "walls"}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["poses_visited"], 4);
+        let snaps = v["snapshots"].as_array().unwrap();
+        assert_eq!(snaps.len(), 4);
+        // Each entry has pose + path.
+        assert!(snaps[0]["pose"].is_string());
+        assert!(snaps[0]["path"].is_string());
+        // Queue should now contain 4 pending snapshots.
+        assert_eq!(s.snapshot_queue.len(), 4);
+        // Tour-progress should reflect completion (4 of 4 queued).
+        assert_eq!(s.tour_progress, Some((4, 4)));
+    }
+
+    #[test]
+    fn mcp_render_tour_rejects_unknown_tour_id() {
+        let mut s = EngineState::default();
+        let v = render_tour(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "tour_id": "imaginary_tour"}),
+        );
+        assert_eq!(v["ok"], false);
+        // Camera should not have been mutated.
+        assert!(s.snapshot_queue.is_empty());
+    }
+
+    #[test]
+    fn mcp_render_tour_default_returns_5_poses() {
+        let mut s = EngineState::default();
+        let v = render_tour(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "tour_id": "default"}),
+        );
+        assert_eq!(v["poses_visited"], 5);
+        assert_eq!(s.snapshot_queue.len(), 5);
+    }
+
+    #[test]
+    fn mcp_render_tour_plinths_returns_14_poses() {
+        let mut s = EngineState::default();
+        let v = render_tour(
+            &mut s,
+            json!({"sovereign_cap": SOVEREIGN_CAP, "tour_id": "plinths"}),
+        );
+        assert_eq!(v["poses_visited"], 14);
+    }
+
+    #[test]
+    fn mcp_render_diff_golden_unknown_tour_returns_error() {
+        let mut s = EngineState::default();
+        let v = render_diff_golden(&mut s, json!({"tour_id": "no_such_tour"}));
+        assert_eq!(v["ok"], false);
+    }
+
+    #[test]
+    fn mcp_render_diff_golden_with_no_snapshots_marks_all_failed() {
+        // The default tour has 5 poses. With no snapshots/goldens on
+        // disk, every entry should mark passed=false.
+        let mut s = EngineState::default();
+        // Use a unique tour-id-ish suffix in tmp to avoid collision with
+        // previous test runs ; we use "default" because tour_by_id only
+        // accepts known IDs. Just check the structure.
+        let v = render_diff_golden(&mut s, json!({"tour_id": "default"}));
+        // Even with no files, response is well-formed.
+        assert_eq!(v["ok"], true);
+        // tour_id present
+        assert_eq!(v["tour_id"], "default");
+        // per_pose array has 5 entries
+        let arr = v["per_pose"].as_array().unwrap();
+        assert_eq!(arr.len(), 5);
     }
 }

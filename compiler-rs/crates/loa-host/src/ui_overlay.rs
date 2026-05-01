@@ -728,6 +728,14 @@ pub struct HudContext {
     /// Frame-time histogram (last 60 frames in ms). Drawn as a tiny bar chart
     /// at bottom-center.
     pub frame_times_ms: [f32; 60],
+    /// § T11-LOA-TEST-APP : snapshot pending? Drives the "📷 SNAPSHOT" indicator.
+    pub snapshot_pending: bool,
+    /// § T11-LOA-TEST-APP : tour progress `Some((current, total))` while a
+    /// scripted camera tour is in flight. Drives a top-center HUD overlay.
+    pub tour_progress: Option<(u32, u32)>,
+    /// § T11-LOA-TEST-APP : total snapshots written this session. Shown in
+    /// the bottom-right corner so the user can confirm capture is working.
+    pub snapshot_count: u64,
 }
 
 impl Default for HudContext {
@@ -747,6 +755,9 @@ impl Default for HudContext {
             facing_material: String::new(),
             facing_pattern: String::from("(none)"),
             frame_times_ms: [16.7; 60],
+            snapshot_pending: false,
+            tour_progress: None,
+            snapshot_count: 0,
         }
     }
 }
@@ -836,10 +847,57 @@ pub fn build_overlay_vertices(
         let y2 = sh - pad - line;
         build_shadowed_text(&l1, x1, y1, COLOR_WHITE, scale, &mut out);
         build_shadowed_text(&l2, x2, y2, COLOR_DIM_TEXT, scale, &mut out);
+
+        // § T11-LOA-TEST-APP : snapshot-count indicator (top-edge of the
+        // bottom-right region, only shown when at least one snapshot
+        // has been taken).
+        if hud.snapshot_count > 0 {
+            let l3 = format!("snaps . {}", hud.snapshot_count);
+            let x3 = sw - pad - (l3.chars().count() as f32) * glyph_px;
+            let y3 = sh - pad - 3.0 * line;
+            build_shadowed_text(&l3, x3, y3, COLOR_DIM_TEXT, scale, &mut out);
+        }
     }
 
     // CENTER : 5x5 crosshair (white outline + black halo)
     push_crosshair(sw * 0.5, sh * 0.5, &mut out);
+
+    // ─── TOP-CENTER : T11-LOA-TEST-APP capture indicators ───
+    {
+        let glyph_px = (CELL_W as f32) * scale;
+        let mut y_top = pad;
+        if hud.snapshot_pending {
+            // Bright red "SNAPSHOT" badge.
+            let label = "[SNAPSHOT]".to_string();
+            let lw = (label.chars().count() as f32) * glyph_px;
+            let xc = (sw - lw) * 0.5;
+            // Solid backing rect so the badge stands out against bright scenes.
+            push_solid_rect(
+                &mut out,
+                xc - 6.0,
+                y_top - 4.0,
+                lw + 12.0,
+                line + 4.0,
+                [0.55, 0.10, 0.10, 0.85],
+            );
+            build_shadowed_text(&label, xc, y_top, COLOR_WHITE, scale, &mut out);
+            y_top += line + 4.0;
+        }
+        if let Some((cur, total)) = hud.tour_progress {
+            let label = format!("TOUR  {cur}/{total}");
+            let lw = (label.chars().count() as f32) * glyph_px;
+            let xc = (sw - lw) * 0.5;
+            push_solid_rect(
+                &mut out,
+                xc - 6.0,
+                y_top - 4.0,
+                lw + 12.0,
+                line + 4.0,
+                [0.10, 0.30, 0.55, 0.75],
+            );
+            build_shadowed_text(&label, xc, y_top, COLOR_WHITE, scale, &mut out);
+        }
+    }
 
     // ─── BOTTOM-CENTER : facing info + frame-time histogram ───
     {

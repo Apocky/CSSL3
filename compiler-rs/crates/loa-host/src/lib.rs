@@ -65,6 +65,11 @@ pub mod dm_runtime;
 // gated on `runtime` feature inside the module).
 pub mod ui_overlay;
 
+// Snapshot-sibling catalog (T11-LOA-TEST-APP : PNG encode + tour-pose
+// registry + golden-image diff are catalog-buildable ; the wgpu readback
+// path is gated on the `runtime` feature inside the module).
+pub mod snapshot;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)
 // ──────────────────────────────────────────────────────────────────────────
