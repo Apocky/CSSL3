@@ -1,0 +1,24 @@
+[package]
+name                   = "cssl-host-asset-bundle"
+description            = "CSSLv3 host — asset-bundle container : manifest + material + file-blobs + FNV-1a-128 fingerprint + on-disk store. License-aware via cssl-host-license-attribution. JSON-only persistence (no LAB binary format)."
+version.workspace      = true
+edition.workspace      = true
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W6-ASSET-BUNDLE : container that pairs a fetched 3D-asset payload
+# (GLTF/GLB + PNG/HDR/KTX images) with its license-record + content-fingerprint
+# so downstream loaders can validate provenance + cache-keys without reaching
+# back to the network. Companion to cssl-asset-fetcher (wave-7 wire-up).
+#
+# Scope : NO crypto-hash. Fingerprint is FNV-1a-128 (matches cssl-host-golden's
+# stage-0 stdlib-only choice — perceptual-fingerprint, not crypto).
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+cssl-host-license-attribution = { path = "../cssl-host-license-attribution" }
+
+[lints]
+workspace = true
