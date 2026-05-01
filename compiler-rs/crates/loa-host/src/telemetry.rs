@@ -253,6 +253,16 @@ pub struct TelemetrySink {
     pub gpu_resolve_us: AtomicU64,
     pub tonemap_us: AtomicU64,
 
+    // § T11-LOA-FID-STOKES : per-frame Mueller-apply count + DOP avg/max.
+    /// Total Mueller-matrix applications across all frames since startup.
+    pub mueller_applies_total: AtomicU64,
+    /// Last frame's mueller_apply_count (snapshot, reset per frame).
+    pub mueller_apply_count_per_frame: AtomicU32,
+    /// Last frame's DOP average in Q14 fixed-point.
+    pub dop_avg_per_frame_q14: AtomicU32,
+    /// Last frame's DOP max in Q14 fixed-point.
+    pub dop_max_per_frame_q14: AtomicU32,
+
     // § Sliding-window percentile snapshots (Q14 fixed-point milliseconds)
     pub last_p50_q14: AtomicU32,
     pub last_p95_q14: AtomicU32,
@@ -334,6 +344,10 @@ impl TelemetrySink {
             dm_events_total: AtomicU64::new(0),
             gpu_resolve_us: AtomicU64::new(0),
             tonemap_us: AtomicU64::new(0),
+            mueller_applies_total: AtomicU64::new(0),
+            mueller_apply_count_per_frame: AtomicU32::new(0),
+            dop_avg_per_frame_q14: AtomicU32::new(0),
+            dop_max_per_frame_q14: AtomicU32::new(0),
             last_p50_q14: AtomicU32::new(0),
             last_p95_q14: AtomicU32::new(0),
             last_p99_q14: AtomicU32::new(0),
@@ -459,6 +473,23 @@ impl TelemetrySink {
         self.append_jsonl(&evt);
     }
 
+    /// § T11-LOA-FID-STOKES : record a per-frame Mueller-apply roll-up.
+    ///
+    /// Updates the per-frame snapshot counters AND the cumulative total.
+    /// `dop_avg_q14` + `dop_max_q14` are Q14 fixed-point representations of
+    /// the average + maximum degree-of-polarization observed during the
+    /// frame (0..16383 → 0.0..1.0).
+    pub fn record_stokes_frame(&self, applies: u32, dop_avg_q14: u32, dop_max_q14: u32) {
+        self.mueller_apply_count_per_frame
+            .store(applies, Ordering::Relaxed);
+        self.dop_avg_per_frame_q14
+            .store(dop_avg_q14, Ordering::Relaxed);
+        self.dop_max_per_frame_q14
+            .store(dop_max_q14, Ordering::Relaxed);
+        self.mueller_applies_total
+            .fetch_add(u64::from(applies), Ordering::Relaxed);
+    }
+
     /// Capture GPU adapter info (called once at GPU init).
     pub fn record_gpu_info(&self, info: GpuAdapterInfo) {
         let evt = format!(
@@ -518,13 +549,17 @@ impl TelemetrySink {
             .map(|c| c.to_string())
             .collect::<Vec<_>>()
             .join(",");
+        let dop_avg = q14_to_dop(self.dop_avg_per_frame_q14.load(Ordering::Relaxed));
+        let dop_max = q14_to_dop(self.dop_max_per_frame_q14.load(Ordering::Relaxed));
         format!(
             "{{\"ts\":\"{}\",\"uptime_ms\":{},\"frame_count\":{},\"fps\":{:.2},\
              \"p50_ms\":{:.3},\"p95_ms\":{:.3},\"p99_ms\":{:.3},\
              \"draw_calls_total\":{},\"vertices_drawn_total\":{},\
              \"pipeline_switches_total\":{},\"mcp_calls_total\":{},\
              \"dm_events_total\":{},\"gpu_resolve_us\":{},\"tonemap_us\":{},\
-             \"histogram\":[{}],\"log_level\":{}}}",
+             \"histogram\":[{}],\"log_level\":{},\
+             \"mueller_applies_total\":{},\"mueller_apply_count_per_frame\":{},\
+             \"dop_avg_per_frame\":{:.4},\"dop_max_per_frame\":{:.4}}}",
             iso_utc(now),
             uptime_ms,
             frames,
@@ -541,6 +576,10 @@ impl TelemetrySink {
             self.tonemap_us.load(Ordering::Relaxed),
             buckets_str,
             self.log_level.load(Ordering::Relaxed),
+            self.mueller_applies_total.load(Ordering::Relaxed),
+            self.mueller_apply_count_per_frame.load(Ordering::Relaxed),
+            dop_avg,
+            dop_max,
         )
     }
 
@@ -696,6 +735,12 @@ fn ms_to_q14(ms: f32) -> u32 {
 /// Convert Q14 (u32) → ms (f32).
 fn q14_to_ms(q: u32) -> f32 {
     q as f32 / Q14_SCALE
+}
+
+/// § T11-LOA-FID-STOKES : convert Q14 DOP fixed-point (0..16383 = 0.0..1.0)
+/// back to f32 in 0.0..1.0.
+fn q14_to_dop(q: u32) -> f32 {
+    (q as f32) / 16383.0
 }
 
 /// Current Unix timestamp in milliseconds.

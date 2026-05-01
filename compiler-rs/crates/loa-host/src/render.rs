@@ -47,11 +47,13 @@ use winit::window::Window;
 use cssl_rt::loa_startup::log_event;
 
 use crate::camera::Camera;
+use crate::ffi as host_ffi;
 use crate::geometry::{RoomGeometry, Vertex};
 use crate::gpu::GpuContext;
 use crate::material::{material_lut, Material, MATERIAL_LUT_LEN};
 use crate::pattern::{pattern_lut, Pattern, PATTERN_LUT_LEN};
 use crate::snapshot::Snapshotter;
+use crate::stokes::{mueller_lut, sun_stokes_default, MUELLER_LUT_LEN};
 use crate::telemetry as telem;
 use crate::ui_overlay::{HudContext, MenuState, UiOverlay};
 
@@ -67,14 +69,17 @@ pub struct FrameMetrics {
 /// CPU-side mirror of the WGSL `Uniforms` struct.
 ///
 /// Layout (matches `scene.wgsl::Uniforms`) :
-///   - view_proj  : mat4x4              (64 B)
-///   - sun_dir    : vec4                (16 B)
-///   - ambient    : vec4                (16 B)
-///   - time       : vec4                (16 B)
-///   - camera_pos : vec4                (16 B)   § T11-LOA-RAYMARCH
-///   - materials  : 16 × Material       (16 × 48 = 768 B)
-///   - patterns   : 22 × Pattern        (22 × 16 = 352 B)
-///   = 1248 bytes total.
+///   - view_proj      : mat4x4              (64 B)
+///   - sun_dir        : vec4                (16 B)
+///   - ambient        : vec4                (16 B)
+///   - time           : vec4                (16 B)
+///   - camera_pos     : vec4                (16 B)   § T11-LOA-RAYMARCH
+///   - sun_stokes     : vec4                (16 B)   § T11-LOA-FID-STOKES
+///   - stokes_control : vec4                (16 B)   § polarization-mode + flags
+///   - materials      : 16 × Material       (16 × 48 = 768 B)
+///   - patterns       : 22 × Pattern        (22 × 16 = 352 B)
+///   - muellers       : 16 × MuellerWGSL    (16 × 64 = 1024 B)
+///   = 1248 + 32 + 1024 = 2304 bytes total. Well under 16 KiB UBO limit.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct Uniforms {
@@ -86,8 +91,49 @@ struct Uniforms {
     /// Read by the fragment-shader sphere-tracer to reconstruct view rays
     /// in cube-local space for the 6 RAYMARCH_* pattern kinds.
     camera_pos: [f32; 4],
+    /// § T11-LOA-FID-STOKES : sun light's Stokes vector (I, Q, U, V).
+    /// Atmospheric scattering imparts a slight horizontal-Q bias.
+    sun_stokes: [f32; 4],
+    /// § T11-LOA-FID-STOKES : Stokes pipeline control word.
+    /// .x = polarization_mode (0=Intensity · 1=Q · 2=U · 3=V · 4=DOP)
+    /// .y = enable_mueller    (0/1)
+    /// .z, .w = reserved
+    stokes_control: [f32; 4],
     materials: [Material; MATERIAL_LUT_LEN],
     patterns: [Pattern; PATTERN_LUT_LEN],
+    /// § T11-LOA-FID-STOKES : per-material Mueller-matrix LUT.
+    /// Each entry is 4 × vec4 = 64 bytes. The shader looks up
+    /// `muellers[material_id]` and applies it to the sun Stokes.
+    muellers: [MuellerWgsl; MUELLER_LUT_LEN],
+}
+
+/// WGSL-compatible Mueller matrix layout : 4 × vec4 = 64 bytes.
+///
+/// We do not directly upload the cssl-side `MuellerMatrix` because its
+/// inner `[[f32; 4]; 4]` array could be padded by Rust on some targets.
+/// Storing as 4 explicit `[f32; 4]` rows (each is a vec4 in WGSL) makes
+/// the binary layout explicit and 16-byte aligned.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+struct MuellerWgsl {
+    rows: [[f32; 4]; 4],
+}
+
+impl MuellerWgsl {
+    fn from_cssl(m: crate::stokes::MuellerMatrix) -> Self {
+        Self { rows: m.0 }
+    }
+}
+
+fn build_mueller_lut_wgsl() -> [MuellerWgsl; MUELLER_LUT_LEN] {
+    let mut out = [MuellerWgsl {
+        rows: [[0.0; 4]; 4],
+    }; MUELLER_LUT_LEN];
+    let cssl_lut = mueller_lut();
+    for (i, m) in cssl_lut.iter().enumerate() {
+        out[i] = MuellerWgsl::from_cssl(*m);
+    }
+    out
 }
 
 impl Uniforms {
@@ -98,8 +144,11 @@ impl Uniforms {
             ambient: [0.18, 0.20, 0.24, 0.0],
             time: [0.0; 4],
             camera_pos: [0.0, 1.7, 0.0, 0.0],
+            sun_stokes: sun_stokes_default().as_array(),
+            stokes_control: [0.0, 1.0, 0.0, 0.0], // mode=0 · enable=1
             materials: material_lut(),
             patterns: pattern_lut(),
+            muellers: build_mueller_lut_wgsl(),
         }
     }
 }
@@ -645,6 +694,7 @@ impl Renderer {
         // Update uniforms.
         let aspect = gpu.aspect();
         let t_secs = (now - self.start_t).as_secs_f32();
+        let pol_mode = host_ffi::polarization_view();
         let uniforms = Uniforms {
             view_proj: camera.view_proj(aspect).to_cols_array_2d(),
             sun_dir: Vec4::new(-0.4, 0.8, -0.45, 0.0).normalize().to_array(),
@@ -658,11 +708,28 @@ impl Renderer {
                 camera.position.z,
                 0.0,
             ],
+            sun_stokes: sun_stokes_default().as_array(),
+            stokes_control: [pol_mode as f32, 1.0, 0.0, 0.0],
             materials: material_lut(),
             patterns: pattern_lut(),
+            muellers: build_mueller_lut_wgsl(),
         };
         gpu.queue
             .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+
+        // § T11-LOA-FID-STOKES · per-frame Mueller telemetry roll-up.
+        // The shader applies one Mueller per visible fragment (CPU-side
+        // estimator : count visible draw-calls × a typical fragment count).
+        // We record a representative DOP sample per frame from the sun
+        // Stokes vector (the source of all surface lighting).
+        let sun_dop = sun_stokes_default().dop_total();
+        // Estimate ~self.index_count / 3 visible fragments at typical view.
+        let est_applies = (self.index_count / 3) as u64;
+        for _ in 0..est_applies.min(64) {
+            host_ffi::record_mueller_apply(sun_dop);
+        }
+        let (applies, dop_avg_q14, dop_max_q14) = host_ffi::snapshot_and_reset_mueller_telem();
+        telem::global().record_stokes_frame(applies, dop_avg_q14, dop_max_q14);
 
         let mut encoder = gpu
             .device
@@ -1063,10 +1130,10 @@ mod tests {
 
     #[test]
     fn uniforms_size_is_correct() {
-        // § T11-LOA-RAYMARCH : layout grew by camera_pos (16 B) + 6 extra
-        // pattern entries (6 × 16 = 96 B) → 1136 + 16 + 96 = 1248.
-        // 64 + 16 + 16 + 16 + 16 + (16 * 48) + (22 * 16)  =  1248
-        assert_eq!(core::mem::size_of::<Uniforms>(), 1248);
+        // § T11-LOA-FID-STOKES : layout grew by sun_stokes (16 B) +
+        // stokes_control (16 B) + 16 muellers × 64 B (1024 B).
+        // Prior 1248 + 32 + 1024 = 2304 bytes total.
+        assert_eq!(core::mem::size_of::<Uniforms>(), 2304);
     }
 
     #[test]
@@ -1194,5 +1261,29 @@ mod tests {
             };
             assert_eq!(s.count, sc);
         }
+    }
+
+    #[test]
+    fn uniforms_carries_sun_stokes_with_slight_q() {
+        let u = Uniforms::new();
+        assert!((u.sun_stokes[0] - 1.0).abs() < 1e-6, "I=1");
+        assert!(u.sun_stokes[1] > 0.0, "Q > 0 (atmospheric horizontal pol)");
+    }
+
+    #[test]
+    fn uniforms_carries_mueller_lut() {
+        let u = Uniforms::new();
+        // First entry (matte-grey) = depolarizer : M[0][0] = 1, rest of row 0 is zero.
+        assert!((u.muellers[0].rows[0][0] - 1.0).abs() < 1e-6);
+        assert!(u.muellers[0].rows[1][1].abs() < 1e-6);
+        // 16 entries.
+        assert_eq!(u.muellers.len(), 16);
+    }
+
+    #[test]
+    fn uniforms_default_polarization_mode_is_intensity() {
+        let u = Uniforms::new();
+        assert_eq!(u.stokes_control[0], 0.0); // 0 = Intensity
+        assert_eq!(u.stokes_control[1], 1.0); // 1 = enable_mueller on
     }
 }

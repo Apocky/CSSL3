@@ -356,6 +356,124 @@ pub extern "C" fn __cssl_render_palette_size() -> u32 {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-STOKES · polarization-mode atomic toggle
+// ───────────────────────────────────────────────────────────────────────
+//
+// The polarization-mode (0..4) is a global render-state toggle. It is read
+// by the WGSL shader via the per-frame uniform-buffer write and toggled by
+// the F-key handler · the MCP `render.set_polarization_view` tool · the FFI
+// surface below. Default = 0 (Intensity · backward-compatible default).
+
+/// Polarization-mode (0..4 ; 0 = Intensity default).
+/// 0 = Intensity · 1 = Q · 2 = U · 3 = V · 4 = DOP.
+static POLARIZATION_VIEW: AtomicU32 = AtomicU32::new(0);
+
+/// Read the current polarization-mode (0..4). Lock-free from any thread.
+#[must_use]
+pub fn polarization_view() -> u32 {
+    POLARIZATION_VIEW.load(Ordering::Relaxed)
+}
+
+/// Set the polarization-mode (0..4). Out-of-range clamps to 0.
+pub fn set_polarization_view(mode: u32) {
+    POLARIZATION_VIEW.store(mode.min(4), Ordering::Relaxed);
+    log_event(
+        "INFO",
+        "loa-host/ffi",
+        &format!(
+            "polarization-view set to {} ({})",
+            mode,
+            crate::stokes::PolarizationView::from_u32(mode).name()
+        ),
+    );
+}
+
+/// Cycle the polarization-mode forward (Intensity → Q → U → V → DOP → Intensity).
+pub fn cycle_polarization_view() -> u32 {
+    let cur = POLARIZATION_VIEW.load(Ordering::Relaxed);
+    let next = crate::stokes::PolarizationView::from_u32(cur).next() as u32;
+    POLARIZATION_VIEW.store(next, Ordering::Relaxed);
+    log_event(
+        "INFO",
+        "loa-host/ffi",
+        &format!(
+            "polarization-view cycled : {} → {}",
+            crate::stokes::PolarizationView::from_u32(cur).name(),
+            crate::stokes::PolarizationView::from_u32(next).name()
+        ),
+    );
+    next
+}
+
+/// FFI surface : set polarization-mode from pure-CSSL or external code.
+/// Returns 0 on success · -1 if mode > 4 · -2 if cap-rejected.
+#[no_mangle]
+pub extern "C" fn __cssl_render_set_polarization_view(mode: u32, sovereign_cap: u64) -> i32 {
+    if sovereign_cap != SOVEREIGN_CAP_U64 {
+        return -2;
+    }
+    if mode > 4 {
+        return -1;
+    }
+    set_polarization_view(mode);
+    0
+}
+
+/// FFI surface : read the current polarization-mode (no cap required).
+#[no_mangle]
+pub extern "C" fn __cssl_render_polarization_view() -> u32 {
+    polarization_view()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-STOKES · per-frame Mueller telemetry counters
+// ───────────────────────────────────────────────────────────────────────
+//
+// `mueller_apply_count_per_frame` tracks the number of Stokes-vector
+// transformations the shader applied this frame. Updated by the renderer
+// (CPU side estimates : each visible fragment ≈ one Mueller apply).
+//
+// `dop_avg_per_frame_q14` + `dop_max_per_frame_q14` carry the average +
+// peak degree-of-polarization observed during the frame in Q14 fixed-point
+// (0..16383 representing 0.0..1.0).
+
+static MUELLER_APPLIES_THIS_FRAME: AtomicU32 = AtomicU32::new(0);
+static DOP_SUM_Q14: AtomicU32 = AtomicU32::new(0);
+static DOP_SAMPLES: AtomicU32 = AtomicU32::new(0);
+static DOP_MAX_Q14: AtomicU32 = AtomicU32::new(0);
+
+/// Record a single Mueller-matrix application + DOP sample (called per
+/// significant render path · CPU-side estimator since per-fragment data
+/// isn't read back from GPU).
+pub fn record_mueller_apply(dop: f32) {
+    MUELLER_APPLIES_THIS_FRAME.fetch_add(1, Ordering::Relaxed);
+    let q14 = (dop.clamp(0.0, 1.0) * 16383.0) as u32;
+    DOP_SUM_Q14.fetch_add(q14, Ordering::Relaxed);
+    DOP_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    let prev_max = DOP_MAX_Q14.load(Ordering::Relaxed);
+    if q14 > prev_max {
+        let _ = DOP_MAX_Q14.compare_exchange(prev_max, q14, Ordering::AcqRel, Ordering::Relaxed);
+    }
+}
+
+/// Snapshot + reset the per-frame Mueller telemetry. Returns
+/// `(applies, dop_avg_q14, dop_max_q14)`.
+pub fn snapshot_and_reset_mueller_telem() -> (u32, u32, u32) {
+    let applies = MUELLER_APPLIES_THIS_FRAME.swap(0, Ordering::AcqRel);
+    let sum = DOP_SUM_Q14.swap(0, Ordering::AcqRel);
+    let n = DOP_SAMPLES.swap(0, Ordering::AcqRel);
+    let max = DOP_MAX_Q14.swap(0, Ordering::AcqRel);
+    let avg = if n == 0 { 0 } else { sum / n };
+    (applies, avg, max)
+}
+
+/// Read the current `mueller_apply_count_per_frame` without resetting.
+#[must_use]
+pub fn mueller_apply_count_this_frame() -> u32 {
+    MUELLER_APPLIES_THIS_FRAME.load(Ordering::Relaxed)
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § T11-LOA-ROOMS · room enumeration + teleport FFI surface
 // ───────────────────────────────────────────────────────────────────────
 

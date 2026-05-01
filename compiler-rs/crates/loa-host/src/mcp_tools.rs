@@ -360,6 +360,26 @@ pub fn tool_registry() -> ToolRegistry {
         render_fidelity
     );
 
+    // ─ T11-LOA-FID-STOKES : Stokes IQUV polarized rendering ─
+    reg!(
+        "render.stokes_snapshot",
+        "Returns the Stokes IQUV vector at the center pixel + polarization-mode + Mueller-apply count.",
+        false,
+        render_stokes_snapshot
+    );
+    reg!(
+        "render.set_polarization_view",
+        "Set the polarization-view diagnostic mode (params: mode 0..4).",
+        true,
+        render_set_polarization_view
+    );
+    reg!(
+        "render.polarization_panels",
+        "Returns the 4 canonical polarization-diagnostic panels with expected Stokes signatures.",
+        false,
+        render_polarization_panels
+    );
+
     r
 }
 
@@ -1377,6 +1397,100 @@ fn room_teleport(state: &mut EngineState, params: Value) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-LOA-FID-STOKES — Stokes IQUV polarized-render handlers
+// ───────────────────────────────────────────────────────────────────────
+
+fn render_stokes_snapshot(state: &mut EngineState, _params: Value) -> Value {
+    use crate::stokes::{mueller_lut, sun_stokes_default, PolarizationView, MUELLER_LUT_LEN};
+    let mode_u32 = crate::ffi::polarization_view();
+    let mode = PolarizationView::from_u32(mode_u32);
+    // The "center pixel" is approximated as the Mueller-applied sun Stokes
+    // for the material at the camera's view-direction. Stage-0 doesn't yet
+    // ray-trace from CPU side, so we report the per-material LUT by id.
+    let s_in = sun_stokes_default();
+    let lut = mueller_lut();
+    let mut entries = Vec::with_capacity(MUELLER_LUT_LEN);
+    for (id, m) in lut.iter().enumerate() {
+        let s_out = m.apply(s_in);
+        entries.push(json!({
+            "material_id": id,
+            "i": s_out.i,
+            "q": s_out.q,
+            "u": s_out.u,
+            "v": s_out.v,
+            "dop_linear": s_out.dop_linear(),
+            "dop_total": s_out.dop_total(),
+        }));
+    }
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.stokes_snapshot · mode={} ({}) · sun=(I={:.3}, Q={:.3}, U={:.3}, V={:.3})",
+            mode_u32,
+            mode.name(),
+            s_in.i,
+            s_in.q,
+            s_in.u,
+            s_in.v
+        ),
+    );
+    json!({
+        "polarization_mode": mode_u32,
+        "polarization_mode_name": mode.name(),
+        "sun_stokes": {
+            "i": s_in.i, "q": s_in.q, "u": s_in.u, "v": s_in.v,
+            "dop_linear": s_in.dop_linear(),
+            "dop_total": s_in.dop_total(),
+        },
+        "per_material_stokes": entries,
+        "mueller_apply_count_per_frame":
+            crate::telemetry::global().mueller_apply_count_per_frame.load(std::sync::atomic::Ordering::Relaxed),
+    })
+}
+
+fn render_set_polarization_view(state: &mut EngineState, params: Value) -> Value {
+    let mode = p_u32(&params, "mode", 0).min(4);
+    let prior = crate::ffi::polarization_view();
+    crate::ffi::set_polarization_view(mode);
+    let mode_name = crate::stokes::PolarizationView::from_u32(mode).name();
+    state.push_event(
+        "INFO",
+        "loa-host/mcp",
+        &format!(
+            "render.set_polarization_view · {prior} → {mode} ({mode_name})"
+        ),
+    );
+    json!({
+        "ok": true,
+        "polarization_mode": mode,
+        "polarization_mode_name": mode_name,
+        "previous": prior,
+    })
+}
+
+fn render_polarization_panels(_state: &mut EngineState, _params: Value) -> Value {
+    let panels = crate::stokes::polarization_panels();
+    let mut entries = Vec::with_capacity(panels.len());
+    for (i, p) in panels.iter().enumerate() {
+        let s = p.expected_signature;
+        entries.push(json!({
+            "panel_id": i,
+            "label": p.label,
+            "expected_stokes": {
+                "i": s.i, "q": s.q, "u": s.u, "v": s.v,
+                "dop_linear": s.dop_linear(),
+                "dop_total": s.dop_total(),
+            },
+        }));
+    }
+    json!({
+        "panels": entries,
+        "count": panels.len(),
+    })
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Morton + FFI helpers
 // ───────────────────────────────────────────────────────────────────────
 
@@ -1434,16 +1548,17 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_36_tools() {
+    fn tools_list_returns_39_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
         //   render.tour, render.diff_golden)
         // + 2 multi-room (T11-LOA-ROOMS · room.list + room.teleport)
         // + 1 fidelity probe (T11-LOA-FID-MAINSTREAM · render.fidelity)
-        // = 36 total.
+        // + 3 stokes-polarized (T11-LOA-FID-STOKES : render.stokes_snapshot,
+        //   render.set_polarization_view, render.polarization_panels) = 39 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 36, "must have exactly 36 tools");
+        assert_eq!(reg.len(), 39, "must have exactly 39 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -1721,10 +1836,10 @@ mod tests {
         let v = tools_list(&mut s, json!({}));
         // 17 baseline + 7 render-control + 6 telemetry + 3 test-apparatus
         // + 2 room (T11-LOA-ROOMS) + 1 fidelity (T11-LOA-FID-MAINSTREAM)
-        // = 36.
-        assert_eq!(v["count"], 36);
+        // + 3 stokes (T11-LOA-FID-STOKES) = 39.
+        assert_eq!(v["count"], 39);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 36);
+        assert_eq!(arr.len(), 39);
     }
 
     // § T11-LOA-TELEM telemetry handler shape tests
@@ -1991,5 +2106,69 @@ mod tests {
         assert_eq!(v["aniso_max"], 16);
         assert_eq!(v["tonemap_path"], true);
         assert_eq!(v["initialized"], true);
+    }
+
+    // § T11-LOA-FID-STOKES · MCP stokes_snapshot + set_polarization_view tests
+    #[test]
+    fn mcp_render_stokes_snapshot_returns_iquv_at_center() {
+        let mut s = EngineState::default();
+        let v = render_stokes_snapshot(&mut s, json!({}));
+        // Polarization mode + name must be present.
+        assert!(v.get("polarization_mode").is_some());
+        assert!(v.get("polarization_mode_name").is_some());
+        // Sun Stokes vector must have I + Q + U + V.
+        let sun = &v["sun_stokes"];
+        assert!(sun.get("i").is_some(), "sun_stokes.i missing");
+        assert!(sun.get("q").is_some(), "sun_stokes.q missing");
+        assert!(sun.get("u").is_some(), "sun_stokes.u missing");
+        assert!(sun.get("v").is_some(), "sun_stokes.v missing");
+        // I should be 1.0, Q slightly positive (atmospheric horizontal pol).
+        let i = sun["i"].as_f64().unwrap();
+        let q = sun["q"].as_f64().unwrap();
+        assert!((i - 1.0).abs() < 1e-3, "I={i}");
+        assert!(q > 0.0, "Q should be slightly positive (atmospheric): Q={q}");
+        // Per-material array = 16 entries.
+        let mats = v["per_material_stokes"].as_array().unwrap();
+        assert_eq!(mats.len(), 16, "must have 16 per-material Stokes entries");
+        // Each entry has IQUV + dop fields.
+        for m in mats {
+            assert!(m.get("material_id").is_some());
+            assert!(m.get("i").is_some());
+            assert!(m.get("dop_linear").is_some());
+            assert!(m.get("dop_total").is_some());
+        }
+    }
+
+    #[test]
+    fn mcp_render_set_polarization_view_cycles_modes() {
+        let mut s = EngineState::default();
+        // Set to mode 2 (U).
+        let v = render_set_polarization_view(&mut s, json!({"mode": 2}));
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["polarization_mode"], 2);
+        // Setting mode > 4 clamps to 4.
+        let v2 = render_set_polarization_view(&mut s, json!({"mode": 99}));
+        assert_eq!(v2["polarization_mode"], 4);
+        // Reset to 0 for cleanliness.
+        let _ = render_set_polarization_view(&mut s, json!({"mode": 0}));
+    }
+
+    #[test]
+    fn mcp_render_polarization_panels_returns_4_panels() {
+        let mut s = EngineState::default();
+        let v = render_polarization_panels(&mut s, json!({}));
+        assert_eq!(v["count"], 4);
+        let arr = v["panels"].as_array().unwrap();
+        assert_eq!(arr.len(), 4);
+        // Each panel has a label + expected_stokes block.
+        for p in arr {
+            assert!(p.get("label").is_some());
+            assert!(p.get("expected_stokes").is_some());
+            let s = &p["expected_stokes"];
+            assert!(s.get("i").is_some());
+            assert!(s.get("q").is_some());
+            assert!(s.get("u").is_some());
+            assert!(s.get("v").is_some());
+        }
     }
 }

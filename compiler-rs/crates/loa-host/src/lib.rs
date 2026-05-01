@@ -44,6 +44,7 @@ pub mod geometry;
 pub mod material;
 pub mod pattern;
 pub mod room;
+pub mod stokes;
 
 // Input-sibling catalog
 pub mod input;

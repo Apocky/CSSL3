@@ -45,6 +45,10 @@ pub enum VirtualKey {
     Escape,
     Tab,
     Backtick,
+    /// § T11-LOA-FID-STOKES : `P` cycles the polarization-view mode
+    /// (Intensity → Q → U → V → DOP → Intensity). Persistent setting on the
+    /// global atomic ; each press advances by one.
+    P,
     // Render-mode select (10 modes per scenes/render_pipeline.cssl design)
     F1,
     F2,
@@ -276,6 +280,22 @@ impl InputState {
                         } else {
                             "debug-overlay · OFF"
                         },
+                    );
+                }
+            }
+            VirtualKey::P => {
+                // § T11-LOA-FID-STOKES : cycle polarization-view diagnostic
+                // mode (Intensity → Q → U → V → DOP → Intensity).
+                if pressed {
+                    let new_mode = crate::ffi::cycle_polarization_view();
+                    log_event(
+                        "INFO",
+                        "loa-host/input",
+                        &format!(
+                            "p-pressed · polarization-view → {} ({})",
+                            new_mode,
+                            crate::stokes::PolarizationView::from_u32(new_mode).name()
+                        ),
                     );
                 }
             }
