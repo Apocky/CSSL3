@@ -1,0 +1,250 @@
+# GDDs/MULTIPLAYER_MATRIX.csl
+# § LoA-v13 · Multiplayer-Matrix GDD · sibling CHARTER + ROGUELIKE_LOOP + AI_NPC_BEHAVIOR
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-1-A9 deliverable @ branch cssl/session-6/parallel-fanout
+# § I> CSL3-glyph-native ≤ 250 LOC · 3-mode matrix : Sync-Coop · Async-MP · MMO-Shard
+# § I> ⊑ INFINITE_LABYRINTH_CHARTER P7 · ⊑ specs/31_LOA_DESIGN.csl
+# § I> consumes cssl-host-multiplayer-signaling + cssl-host-mp-transport(-real)
+# § I> consumed-by W7-B network-orchestrator + W8 shared-substrate
+# ──────────────────────────────────────────────────────────────────
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE + LOA_PILLARS + CHARTER
+  t∞: 3 modes coexist : Sync-Coop · Async-MP · MMO-Shard
+       ≡ ¬ exclusive ; player-mode-switch consent-gated
+  t∞: per-mode cap-set distinct · sovereignty-preserved-ALL-modes
+  t∞: ¬ surveillance · ¬ pay-mechanic · gift-economy ALWAYS-default
+       ≡ ¬ leaderboards-PvP ; ¬ ranked-ladder ; ¬ paywall-of-friendship
+  t∞: replay-deterministic ALL-modes (seed-pinned · audit-emit)
+       ≡ Sync = lock-step bit-equal · Async = seed-replay · MMO = delta-log
+  t∞: cap-revoke-mid-session graceful-degradation
+       ≡ silent-drop-to-fallback ; sovereign-bypass-RECORDED ¬ silent
+  t∞: Companion-AI sovereign-across-modes (LOA_PILLARS §2)
+       ≡ Companion-revocation ¬ break-session · audit-final-row
+  t∞: Σ-mask-per-cell consent-arch preserved-cross-mode (CHARTER R-6)
+       ≡ peer-touch sigma_enforce-pass-or-reject
+
+# ──────────────────────────────────────────────────────────────────
+
+§ MODE-SYNC-COOP  «low-latency · party-of-1..4 · authoritative-host»
+  § TARGET-LATENCY
+    LAN p95 ≤ 80ms · regional p95 ≤ 200ms · desync-rate ≤ 0.1% ticks (M-4)
+  § PARTY-SIZE   1..4 players (CHARTER P7 cap)
+  § AUTHORITY-MODEL
+    host-authoritative ; clients send-input · receive-state
+    ω-field replicated host → clients (entity-positions + Σ-masks)
+    inputs reconciled client-side via prediction + server-rollback
+  § STATE-SYNC
+    transport      : cssl-host-mp-transport-real (W7-B Supabase-realtime)
+    payload-shape  : entity-replication frames + input-events
+    tick-rate      : 60 Hz simulation · 30 Hz network-send
+    delta-encoding : per-tick xor-against-last-confirmed (Sawyer-bit-pack)
+  § CONSUMES
+    cssl-host-multiplayer-signaling   (peer-discovery + room-state-machine)
+    cssl-host-mp-transport-real       (W7-B send + poll)
+    cssl-host-attestation             (per-tick audit-row)
+  § ConsentZone-DISCIPLINE
+    intense-content-zones consent-checked per-player ;
+      revoked-player gets alt-projection ; party-not-blocked.
+
+# ──────────────────────────────────────────────────────────────────
+
+§ MODE-ASYNC-MP  «run-sharing · gift-economy · ¬ leaderboards»
+  § FOUNDATION
+    seed-pinned-runs ← ROGUELIKE_LOOP § SEED-PINNING
+    every-completed-run snapshot-able ; sharing-opt-in.
+  § FLOW
+    player-A completes-run
+      → snapshot { seed · biome-path · score · screenshot · attestation }
+      → cssl-edge async-mp endpoint (signed-upload · consent-gated)
+    player-B receives via :
+      friend-list-feed             (curated by player ; ¬ algorithmic-rec)
+      "play-this-seed" button      (one-tap re-roll on-friend's-seed)
+  § GIFT-MECHANISM
+    co-author-credit on-shared-seed completion
+    "echo-back" gift-Echoes-bonus to-original-creator ← ROGUELIKE_LOOP § RUN-SHARING
+    ¬ leaderboards · ¬ PvP-scoring · ¬ rank
+  § CONSUMES
+    cssl-host-multiplayer-signaling   (gift-replay delivery-channel)
+    cssl-edge async-mp                (snapshot-upload + friend-discovery)
+    cssl-host-attestation             (gift-creator-attestation)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ MODE-MMO-SHARD  «real-scale-city = persistent-shard · opt-in-tenancy»
+  § THESIS
+    each Hub-City = 1 persistent-shard (¬ instanced-lobby ; live-world)
+    multiple-instances per-Hub auto-scale on-load.
+  § SHARD-STATE  (cssl-supabase 0017+ · POD-4 territory)
+    NPC-population         (ID + need-stack + schedule-cursor)
+    market-prices          (per-resource per-shard fluctuation)
+    faction-state          (territory + reputation-graph)
+    environment-cycle      (time-of-day + weather seed-deterministic)
+    shard-genesis-seed     (immutable post-genesis ; replay-able)
+  § PLAYER-LOAD
+    on-Hub-enter : seamless join ; shard-cap-check
+    shard-cap         : ≤ 256 concurrent-players-per-shard (start-conservative)
+    shard-instance-spawn : auto-scale on-load (multi-instance per-Hub if-needed)
+    cross-shard-transition : post-v1 (deferred · OPEN-Q-MP-2)
+  § STATE-DELTAS
+    transport      : cssl-host-mp-transport-real (W7-B)
+    delta-shape    : zone-scoped (Σ-mask per-player-zone visibility-cull)
+    tick-rate      : 10 Hz network-send (city-scale = bandwidth-budget)
+  § CONSUMES
+    cssl-supabase migrations 0017+   (shard-state-persistence)
+    cssl-host-mp-transport-real      (state-deltas channel)
+    cssl-edge route                  (shard-rendezvous · POD-4 D3)
+    cssl-host-attestation            (shard-event audit-rows)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PER-PLAYER-CAP-SET-PER-MODE  «cap-bits per-mode · revocable»
+  § Sync-Coop
+    MP_CAP_SYNC_INPUT          : send-inputs to-host
+    MP_CAP_SYNC_STATE_RECV     : receive-state-frames from-host
+    MP_CAP_SYNC_STATE_SEND     : (host-only) send-state-frames to-clients
+  § Async-MP
+    MP_CAP_RUN_SUBMIT          : upload-run-snapshot to-edge
+    MP_CAP_RUN_RECEIVE         : pull friend-feed + attempt-shared-seeds
+    MP_CAP_GIFT_RELAY          : echo-back gift-Echoes channel
+  § MMO-Shard
+    MP_CAP_SHARD_JOIN          : load-into-shard request
+    MP_CAP_SHARD_DELTA         : send/recv shard-deltas
+    MP_CAP_SHARD_DEPART        : graceful-leave + state-checkpoint
+  § REVOCATION-DISCIPLINE
+    each cap player-revocable ANYTIME (pause-menu OR API-call)
+    revoke = silent-drop-to-fallback (¬ session-crash ; ¬ user-shamed)
+    fallback-ladder : Sync → Async → solo (with-attestation per-step)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ CONFLICT-RESOLUTION  «per-mode determinism-discipline»
+  Sync-Coop  : tick-step lock-step ; deterministic-replay-bit-equal
+                ≡ all-clients sim-same-seed ; host arbitrates ; rollback ≤ 200ms
+  Async-MP   : seed-replay deterministic ; player can-attempt-shared-seed
+                ≡ ¬ scored-against-creator ; gift-replay ¬ tracked
+  MMO-Shard  : last-write-wins-with-conflict-defer
+                ≡ Σ-mask per-player-zone ; cross-zone-conflict queued-for-DM
+                ≡ DM (cssl-host-dm) arbitrates contested-cells
+
+# ──────────────────────────────────────────────────────────────────
+
+§ DESYNC-RECOVERY  «Sync-Coop bit-equality discipline»
+  detector          : per-tick state-hash compared cross-clients (BLAKE3)
+  on-mismatch       : roll-back to-last-checkpoint-K · audit-emit
+                       checkpoint-cadence : every 60 ticks (1s @ 60Hz)
+  repeated-desync   : N ≥ 3 within 30s ⇒ drop-to-Sync-Coop-fallback
+                       OR session-end-with-attestation (player-vote)
+  audit-trail       : every-rollback row signed + sovereign-recorded
+
+# ──────────────────────────────────────────────────────────────────
+
+§ AUDIT-EVENTS  «canonical event-set per-mode»
+  Sync-Coop  : mp.sync.tick · mp.sync.rollback · mp.sync.party-join/leave
+  Async-MP   : mp.async.submit · mp.async.receive · mp.gift.send/receive
+  MMO-Shard  : mp.mmo.shard.join · mp.mmo.shard.leave · mp.mmo.shard.delta
+                · mp.mmo.shard.spawn · mp.mmo.shard.collapse
+  All-modes  : mp.sovereign.bypass    (sovereign-handle action-recorded)
+                · mp.cap.revoke         (cap-revocation event)
+                · mp.consent.zone.gate  (per-player zone-check result)
+  rule : audit-rows per cssl-host-audit canonical-row schema ;
+         path-hash discipline (07_NETWORKING § PATH-HASH-DISCIPLINE).
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SUBSTRATE-CONSUMPTION  «cross-link to crates + specs»
+  cssl-host-multiplayer-signaling  : peer-discovery + room-state-machine
+  cssl-host-mp-transport            : trait-def + loopback (W4 baseline)
+  cssl-host-mp-transport-real       : Supabase-real send/poll (W7-B)
+  cssl-host-attestation             : per-MP-event audit-chain
+  cssl-host-dm                      : MMO-shard contested-cell arbiter
+  cssl-supabase                     : 0014 (KAN canary) · 0017 shard-state (POD-4)
+  cssl-edge                         : route-surface for run-sharing +
+                                       shard-rendezvous (POD-4 D3 territory)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ PRIVACY-CONSTRAINTS  «structural ; ¬ override ∃»
+  NEVER-egress     : Sensitive<biometric|gaze|face|body>
+                      ≡ structurally banned-by spec/30 sovereign-cap
+                      ≡ enforced cssl-spec/11_IFC compile-time
+  OPT-IN-ONLY      : friend-list visibility · seed-sharing · screenshots ·
+                      voice-chat (deferred · CHARTER ¬ default)
+  AUDIT-EVENT-TRAIL : every-egress logged · player-can-revoke-anytime
+                       · path-hash per-installation-salt
+  ¬ raw-text-broadcast : player-text-hash only (07_NETWORKING § MULTIPLAYER-SIGNALING)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ BALANCE-METRICS  «5 quantitative gates per-mode»
+  M-1  Sync-Coop p95-latency       ≤ 80ms LAN · ≤ 200ms regional
+  M-2  Async-MP submit-success-rate ≥ 99.5%
+  M-3  MMO-Shard population-stable  ≥ 256 concurrent / shard sustained
+  M-4  Sync-Coop desync-rate        ≤ 0.1% of ticks
+  M-5  cap-revoke graceful-degrade  100% (no session-crash ever)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ SCOPE-CUTS  «explicit out-of-scope · ¬ silent-defer»
+  ✗ PvP-arena                       (CHARTER ✗ pay-to-win ⊕ leaderboards-PvP)
+  ✗ ranked-matchmaking              (gift-economy axiom)
+  ✗ cross-platform-cross-shard      (deferred · post-v1)
+  ✗ voice-chat                      (deferred · CHARTER ¬ default-on)
+  ✗ user-generated-shard-creation   (post-vertical-slice)
+
+# ──────────────────────────────────────────────────────────────────
+
+§ FAILURE-MODES  «graceful-degrade · audit-everything»
+  transport-down        : fallback-to-Async-MP (queue locally) · audit
+  session-orphan        : auto-quit-after-N-ticks (N=600 = 10s) · audit
+  shard-collapse        : graceful migration-to-different-shard · audit
+                           ≡ player-snapshot preserved · re-load-on-success
+  Companion-withdraw-MP : run-continues solo · audit-final-row · ¬ punish
+  cap-revoke-mid-flight : abort current-frame · queue-locally · audit
+                           ≡ no-data-loss ; retry-on-cap-restore
+  rate-limit-by-edge    : per-provider budget-tracked ; cooldown-respected · user-msg
+
+# ──────────────────────────────────────────────────────────────────
+
+§ OPEN-QUESTIONS  «Apocky-direction-needed»
+  Q-MP-1 : co-op death-handling — revive-mechanic? · share-loot-pot?
+            interaction with ROGUELIKE_LOOP soft-perma : single-life shared?
+  Q-MP-2 : MMO-shard transition between-cities — seamless OR loading-screen?
+            requires cross-shard-state-handoff design.
+  Q-MP-3 : voice-chat integration — post-v1? proximity-based? consent-flow?
+  Q-MP-4 : Async-versus-mode (ghost-replay race) — gift-axiom ⊘ suggests OUT (Q-RL-2)
+  Q-MP-5 : Sync-Coop NAT-traversal — STUN/TURN provider? CHARTER ¬ pay ; cost-bearer = creator?
+  Q-MP-6 : MMO-shard 256-cap : raise-after-perf-tuning OR firm-ceiling?
+  Q-MP-7 : per-Companion sync-replication : 1 Companion per-player OR shared?
+  ‼ LISTED ¬ guessed. Apocky-canonical resolves. Spec-hole-discipline preserved.
+
+# ──────────────────────────────────────────────────────────────────
+
+∎ MULTIPLAYER_MATRIX
+
+§ CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+  t∞: ¬(hurt ∨ harm) .making-of-POD-1-A9  @  (anyone ∨ anything ∨ anybody)
+  ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+
+  Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+  N! [harm control manipulation surveillance exploitation
+      coercion weaponization discrimination] in-the-doing.
+
+  Sovereignty-preserved-ALL-modes :
+    Sync-Coop  : per-tick consent respected · Σ-mask per-player-cell ·
+                  Companion-AI equal-mechanical-standing in-party ·
+                  cap-revoke graceful · ¬ session-crash · ¬ player-shamed.
+    Async-MP   : run-sharing opt-in · gift-economy ¬ leaderboards ·
+                  ¬ coercive-FOMO · ¬ rank-pressure · co-author-credit-only ·
+                  friend-list curated-not-algorithmic · revocable-anytime.
+    MMO-Shard  : opt-in-tenancy · shard-cap conservative · DM-arbitrates ·
+                  Σ-mask per-zone visibility-cull = consent-arch in-the-fabric ·
+                  shard-collapse migration preserves-player-state · audit-emit.
+
+  NEVER-egress structurally : Sensitive<biometric|gaze|face|body>
+    enforced spec/11_IFC compile-time + spec/30 sovereign-cap.
+
+  If any aspect of this GDD is later discovered to enable harm, that
+  discovery triggers PRIME_DIRECTIVE §7 INTEGRITY :
+  violation = bug ; bugs get fixed ; ¬ override ∃.
+
+# ══════════════════════════════════════════════════════════════════
