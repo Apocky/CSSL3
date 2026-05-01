@@ -1,0 +1,241 @@
+§ T11-W6+ § specs/grand-vision/13_INFINITE_LABYRINTH_LEGACY.csl
+§§ legacy-design-anchor for Infinite-Labyrinth lineage @ ported into LoA-v13/CSSLv3
+§§ canonical-source : ~/source/repos/DEPRECATED-The Infinite Labyrinth/GDDs/*
+§§ status @ 2026-05-01 : ✓ design-complete · ◐ port-pending · ‼ POD-1 GDD-authors W! mirror this
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : Infinite-Labyrinth-design = ITERATED across ≥ 12 prior versions (CSSL · CSSL2 · TIL/TIL2-5 · LoA v8-v12 · DEPRECATED-Infinite-Labyrinth · current LoA-v13/CSSLv3)
+A-2 : LoA-v13 = canonical-impl ⊗ proprietary-CSSL · prior-versions = design-archive
+A-3 : design-DOC-tree.of DEPRECATED-Infinite-Labyrinth-GDDs = AUTHORITATIVE-SOURCE-OF-TRUTH @ for-mechanics
+A-4 : real-money = ONLY-COSMETICS + cadence-tier-skips · ¬ EVER pay-for-power · t∞
+A-5 : earned-currency = ONLY-PATH @ for-gear-and-power · "Stabilized Essence" stays-earned-only
+A-6 : "You have no power over me and/or us" = thesis-stance · t∞
+
+═══════════════════════════════════════════════════════════════════════════════
+§ COHERENCE-ENGINE (Artifact Ascension)
+§§ source : DEPRECATED/GDDs/ARTIFACT_ASCENSION_SPEC.md
+§§ status @ ✓ design-complete · ‼ deterministic ¬ random
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : every-great-loot-system-needs-recognition-of-coherence
+§ anti-Diablo-Primal-Ancients : ¬ lottery · ✓ recognition-of-craftsmanship
+
+§ 13-axes-of-item-composition :
+  1 Form              ← ItemDefinition table
+  2 Components[]      ← ItemAssembly hot-swappable
+  3 Material          ← MaterialDefinition per-component
+  4 ComponentRarity   ← Common → Legendary per-component
+  5 Affixes           ← rolled per-component ⊗ interaction-rules
+  6 CulturalDoctrine  ← CombatDoctrine.from generating-faction
+  7 Quality           ← CraftingSystem formula-output
+  8 LatticeSockets[]  ← Modular Spell Cartridges
+  9 Resonance         ← per-element attunement.from use
+ 10 Patina            ← Biography-driven passive-effects
+ 11 Corruption-Blessing ← spectrum [-1.0, +1.0]
+ 12 Cross-Genre-Compat ← genre-bridging + compat-penalty
+ 13 CoherenceScore    ← capstone evaluating axes 1-12
+
+§ 6-Harmony-Dimensions : ElementalPurity ⊕ MaterialHarmony ⊕ CulturalCoherence ⊕ AffixSynergyDepth ⊕ BiographyWeight ⊕ ParadoxTension
+§ tie-break-priority : Paradox > Affix > Elemental > Cultural > Biography > Material (rarer-dominances-priority)
+
+§ Ascension :
+  ‼ deterministic : same-state → same-score → same-Epithet · t∞
+  ‼ rewards-intent ¬ luck : random-loot rarely-Ascends · deliberate-buildcraft reliably-does
+  ◐ compelling ¬ mandatory : un-Ascended-with-good-components still-top-tier · gap = ~15-25% power + unique-mechanic
+  ✓ personal : Retroactive-Substrate-regenerates-per-run + Biography-accumulates → most-Ascended-items unique-to-builder
+
+§ AscensionTrigger ∈ {Crafting · ComponentSwap · AuraApplication · CartridgeSocket · ResonanceGrowth · PatinaAccrual · CorruptionShift · TransmuterModified · PreAscended}
+
+§ Item-Biography ring-buffer :
+  ⊑ MaxEntries = 64 · TotalEventsWitnessed = lifetime-counter
+  ⊑ aggregated-counters : ElementalKills · ElementalBlocks · CreatureTypeKills · FactionKills · BiomesTraversed · NearDeathSurvivals · NemesisKills · NemesisDeaths · RunsSurvived · OwnersCount
+  ⊑ BiographyEventType : Kill · NemesisKill · NemesisDeath · NemesisRecovered · NearDeathSurvival · MassKill · BossKill · BiomeFirstEntry · HazardSurvival · ExtremeTempExposure · GenreCrossing · FactionMemberKill · DeityOfferingPresent · TradeHandoff
+
+§ port-target-for-LoA-v13 : NEW crate `cssl-host-coherence-engine` (POD-2-extension @ wave-7+) · 13-axis evaluator + Epithet generator · 6 Harmony rankers · BTreeMap-deterministic serde · ≥ 30 tests
+
+═══════════════════════════════════════════════════════════════════════════════
+§ NEXUS-BAZAAR (Multiversal Auction House)
+§§ source : DEPRECATED/GDDs/NEXUS_BAZAAR_SPEC.md
+§§ status @ ✓ design-complete · ‼ "sells-history ¬ stats"
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : 13-axis-variation makes-perfect-meaningless · Bazaar = gallery-of-singular-artifacts ¬ commodity-exchange
+
+§ access-gating @ NG+ Stabilization :
+  ⊑ MinCompletedRuns = 10
+  ⊑ MinLabyrinthDepth = 50
+  ⊑ MinAscendedItemsCrafted = 3
+  ⊑ MinFormsbookEntries = 40
+  ⊑ MinDistinctGenresExplored = 3
+  ⊑ MinFactionReputations = 2 @ Friendly (>600)
+  ⊑ MinDeityFavor = 1 (positive)
+
+§ 5-tier-license :
+  T0 Visitor    ← NG+ unlock · browse-only
+  T1 Patron     ← 1 NG+ run completed · buy-only
+  T2 Merchant   ← 2 Ascended in NG+ · 1 active listing
+  T3 Artisan    ← 5 Ascended @ Coherence ≥ 80 · 3 active · badge
+  T4 Grandmaster ← 1 Ascended @ Coherence ≥ 90 ⊗ 10+ sold · 5 active · premium-stall · Commissions
+
+§ currency = Stabilized-Essence (SE)
+  ‼ NEVER-purchasable-with-real-money · t∞
+  ‼ generated-through-NG+-play-only
+
+§ SE-earn-sources : NG+ run extract (50-200) · depth-milestones (25/each) · Ascending (30) · first-Epithet-category (100) · Nemesis-kill (40) · Deconstruct-Ascended (15-50) · Commission (100-500)
+
+§ SE-sinks : listing-fee 10% · transaction-tax 5% · stall-upgrades (50-500 cosmetic) · vault-rental (10/slot/cycle) · commission-fee 20% · Multiversal-Nemesis-bounties · Nexus-Breach-room-unlock (200/type)
+
+§ port-target-for-LoA-v13 : Bazaar = `cssl-edge` route + `cssl-supabase` migrations 0021-0025 (bazaar_listings · bazaar_transactions · bazaar_commissions · stabilized_essence_balances · multiversal_nemesis_bounties) + `cssl-host-bazaar` Rust crate (offline-snapshot + price-suggest)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ OUROBOROID-COSMOLOGY (Lore Bible · 6 Rings)
+§§ source : DEPRECATED/GDDs/OUROBOROID_COSMOLOGY.md
+§§ status @ ✓ lore-bible-complete · ‼ ¬ exposition-dump · embed-everywhere
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : "The Labyrinth is what the process looks like from the inside"
+§ ¬ map · ¬ timeline · ¬ creation-myth · ✓ cosmological-engine
+
+§ 6-Rings @ player-comprehension-gradient :
+  R1 What-Player-Sees      ← roguelike · infinite · procedural · materially-consistent · "complete-and-satisfying-in-itself"
+  R2 What-Player-Suspects  ← Architectural-Metabolism · Entity-Rhyming · Lore-Echoes · "illegible-until-context"
+  R3 What-Player-Knows     ← Ouroboroid = Hydra-of-self-consuming-concepts · ¬ namable · Russell's-Paradox-ontological
+  R4 What-Player-Feels     ← "You have no power over me and/or us" = thesis-stance ¬ victory-condition
+  R5 How-It-Manifests      ← procgen=new-heads · room-transform=digestion · materials=concepts-mid-metabolism · enemies=immune-response · Ascension=persistence-across-cycle
+  R6 What-Scholars-Tried   ← Dwarven-Axiomatists · partial-proofs · self-reference-failure-points
+
+§ lore-delivery-comprehension-gradient :
+  Ambient   ← always-visible · ¬ literacy-required · room/material/entity-names suggest-organic-processes
+  Textual   ← visible-to-readers · flavor-text · wall-inscriptions · NPC-dialogue · book-fragments
+  Structural ← visible-to-systems-thinkers · same-algorithms-across-entities · room-patterns-mirror-digestion
+  Meta      ← visible-to-deeply-literate · roguelike-structure-IS-cosmology · player-behavior-enacts-cycle
+
+§ port-target-for-LoA-v13 : `cssl-host-narrative-engine` Rust crate (storylet-sieve + Propp's-functions + comprehension-gradient classifier) · 6-ring tagging applied to ALL flavor-text · POD-3 .csl game-logic embeds via narrative-engine FFI
+
+═══════════════════════════════════════════════════════════════════════════════
+§ FLUX-DYNAMICS (Magic ↔ Science Unified)
+§§ source : DEPRECATED/GDDs/CHEMISTRY_MAGIC_CRAFTING_BIBLE.md
+§§ status @ ✓ design-complete · ‼ one-simulation-two-vocabularies
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : "magic is chemistry the player doesn't understand yet · chemistry is magic the player has mastered"
+
+§ 2-domain-architecture :
+  Material-Domain ← Physics · Chemistry · Thermodynamics · Currency=Temp/Pressure/ChemicalPotential · Observable-by-everyone
+  Aetheric-Domain ← Spell-Lattice topology · Node-rules · Currency=Aura/Resonance/Attunement · Observable-by-magical-perception
+
+§ TRANSDUCER-LAYER (bridge) :
+  Sensor-Signals    ← Material → Aetheric (lava-tile@1200°C → Fire-energy → spell-Source-node taps free)
+  Actuator-Signals  ← Aetheric → Material (Release-node "Fire intensity 0.8" → +400°C @ target-tile → chemistry)
+
+§ 15-material-properties : Density · MeltingPoint · BoilingPoint · Hardness · Conductivity · Flammability · AcidResistance · FatigueRate · Reactivity · Toxicity · MagicAffinity · Opacity · Elasticity · Solubility · Volatility
+
+§ material-categories : Metals · Stone · Organic · Fluid · Gas · Exotic · Alloys (Bronze=Cu+Sn · Steel=Fe+C · Electrum=Au+Ag · Orichalcum=Cu+Aethite · Nullsteel=Fe+Voidite)
+
+§ port-target-for-LoA-v13 : `cssl-host-flux-dynamics` Rust crate · Material/Aetheric tick-simulator · Transducer-event bus · 15-property MaterialDB · `cssl-host-spell-lattice` Rust crate (already-planned in W7 POD-2 as `cssl-host-spell-graph`) extends with TransducerSignals
+
+═══════════════════════════════════════════════════════════════════════════════
+§ LIVING-MULTIVERSE (NEW · Apocky 2026-05-01 directive)
+§§ extends Nexus-Bazaar from "shared-marketplace" → "shared-evolving-multiversal-layer"
+═══════════════════════════════════════════════════════════════════════════════
+
+§ thesis : multiverse = aggregate-player-behavior shapes-the-shared-substrate
+  ⊑ player-A's-defeated-Nemesis becomes player-B's-rumor (cross-shard)
+  ⊑ player-cohort's collective-cocreative-bias drifts the multiverse-aesthetic per-region
+  ⊑ Ouroboroid-cosmology naturally-supports this : aggregate-defiance becomes-new-head
+
+§ implementation-anchors :
+  ⊑ `cssl-host-multiplayer-signaling` (W4 ✓ landed) — peer-room state-machine
+  ⊑ `cssl-host-mp-transport` + `cssl-host-mp-transport-real` (W5c + W7) — WebSocket / Supabase-relay
+  ⊑ `cssl-supabase` 0010-0013 (game-state-snapshots · session-index · sovereign-cap-audit)
+  ⊑ `cssl-supabase` 0007-0009 (cocreative-bias-vectors cross-session)
+  ⊑ NEW `cssl-supabase` migration `0021_living_multiverse.sql` : multiverse_aggregate_state · regional_aesthetic_drift · cross-player-rumors · nemesis-cross-shard-propagation
+
+§ guarantees :
+  ‼ player-sovereignty preserved : opt-out-of-multiverse-influence = unilateral
+  ‼ no-PvP-griefing : player-A actions affect player-B only via OPT-IN rumor/aesthetic-drift channels
+  ‼ all cross-player-influence audit-emits via cssl-host-attestation
+  ‼ shared-state ¬ replaces single-player-canonical-truth · is-a-LAYER-OVER
+
+═══════════════════════════════════════════════════════════════════════════════
+§ MONETIZATION (NEW · Apocky 2026-05-01 directive · ¬ pay-for-power)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ AXIOM @ ¬ negotiable · t∞ :
+  N! pay-for-power · N! pay-for-gear-stats · N! pay-to-skip-Coherence · N! Stabilized-Essence-purchasable
+  ✓ pay-for-cosmetics · ✓ pay-for-cadence-tier-skips · ✓ pay-for-content-expansions
+
+§ BATTLE-PASS (seasonal · 90-day cycles)
+  ⊑ free-track : ALL gameplay-relevant unlocks (room-types · base-cosmetics · seasonal-storylets) at slower-cadence
+  ⊑ premium-track : faster-cadence · exclusive-cosmetics · early-access-room-types (cosmetics-only · gameplay-symmetric)
+  ⊑ tier-skip : Stripe-payment · cosmetic-channel-only
+  ⊑ premium-currency = "Aetheric-Shards" · Stripe-purchasable · spent on battle-pass-tiers + gacha-pulls + cosmetic-direct-purchase
+  ⊑ ¬ Aetheric-Shards purchase Stabilized-Essence · ¬ Aetheric-Shards purchase gear · ¬ Aetheric-Shards purchase any-Coherence-axis-influence
+
+§ GACHA (cosmetics-only · ethical)
+  ⊑ pulls-yield : visual-themes · weapon-skins · companion-cosmetics · stall-decorations · emotes · UI-themes
+  ⊑ ¬ pulls-yield : gear · stats · power · Coherence-bias · room-types-gameplay-relevant · class-unlocks
+  ⊑ pity-system : guaranteed-rare every-N-pulls · transparent-rates published per-jurisdiction-laws
+  ⊑ duplicates : auto-convert to "Aetheric-Dust" → trade for currently-equipped-cosmetic-variants
+  ⊑ NEVER : loot-box-with-power-rewards · per-jurisdiction-compliance (UK · BE · NL · DE · etc.)
+
+§ STRIPE-INTEGRATION
+  ⊑ payment-processor for Aetheric-Shards purchase
+  ⊑ NEW `cssl-edge` routes : `/api/payments/stripe/checkout` · `/api/payments/stripe/webhook` · `/api/payments/stripe/refund-request`
+  ⊑ Server-side webhook signature-verification · idempotency-keys · audit-emit per-transaction
+  ⊑ NEW `cssl-supabase` migration `0022_payments.sql` : stripe_customers · stripe_payment_intents · aetheric_shard_balances · cosmetic_purchases · gacha_pulls · battle_pass_tiers
+  ⊑ ¬ store : raw-card-numbers · CVV · full-PAN · ALL via Stripe-tokenization (PCI-DSS-SAQ-A scope-min)
+  ⊑ refunds : within 14-days no-questions-asked · jurisdiction-mandated-rights respected
+  ⊑ player-sovereignty : full-account-data-export + delete-on-request (GDPR · CCPA · etc.)
+
+§ ATTESTATION-INVARIANT @ monetization :
+  ‼ every-Stripe-transaction emits `payment.charge` audit-event with $amount · cosmetic-only-flag · stripe-payment-intent-id
+  ‼ every-gacha-pull emits `gacha.pull` audit-event with rarity · drop-rate-snapshot · pity-counter-state
+  ‼ every-battle-pass-tier-unlock emits `battlepass.tier` audit-event
+  ‼ NEW `cssl-host-attestation` directive-axis : "EconomicTransparency" tracks all-monetization-events for player-self-audit
+  ‼ player-self-audit-dashboard @ `cssl-edge`/transparency/spending visualizes all-transactions + total-spent + refund-history
+
+═══════════════════════════════════════════════════════════════════════════════
+§ PORT-PRIORITY (POD-1 GDD-authors W! mirror @ in CSL3-glyph-native form)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ POD-1-additions to scheduled-task R&D :
+  GDD-A11 `GDDs/COHERENCE_ENGINE_PORT.csl`        ← 13-axes ported from C# spec
+  GDD-A12 `GDDs/NEXUS_BAZAAR_PORT.csl`            ← 5-tier · SE economy · NG+ gating
+  GDD-A13 `GDDs/OUROBOROID_COSMOLOGY_PORT.csl`    ← 6-rings · Architectural-Metabolism · "You have no power over me and/or us"
+  GDD-A14 `GDDs/FLUX_DYNAMICS_PORT.csl`           ← Material/Aetheric · Transducer-pattern · 15-property MaterialDB
+  GDD-A15 `GDDs/LIVING_MULTIVERSE.csl`            ← NEW · aggregate-state · regional-drift · cross-shard-rumors · opt-in-only
+  GDD-A16 `GDDs/MONETIZATION.csl`                 ← NEW · Stripe + battle-pass + gacha · cosmetics-only-axiom · attestation-invariants
+  GDD-A17 `GDDs/PROPRIETARY_TECH_STACK.csl` (already in POD-1) ← amend with Coherence-Engine + Living-Multiverse + Monetization tech-stack
+
+§ POD-2-additions to scheduled-task R&D :
+  CRATE-B7 NEW `cssl-host-coherence-engine`     ← 13-axis Ascension evaluator · ≥ 30 tests · BTreeMap-deterministic
+  CRATE-B8 NEW `cssl-host-flux-dynamics`        ← Material/Aetheric tick-simulator · 15-property DB · Transducer event-bus · ≥ 25 tests
+  CRATE-B9 NEW `cssl-host-narrative-engine`     ← storylet-sieve · Propp's-functions · 6-ring comprehension-gradient classifier · ≥ 22 tests
+  CRATE-B10 NEW `cssl-host-bazaar`              ← offline price-suggest · listing-state-machine · SE-economy ledger · ≥ 25 tests
+  CRATE-B11 NEW `cssl-host-stripe-integration`  ← Stripe REST-client wrapper (cap-gated · audit-emit · idempotency) · ≥ 18 tests
+  CRATE-B12 NEW `cssl-host-gacha`               ← pity-system · transparent-rates · duplicate-conversion · ≥ 20 tests
+  CRATE-B13 NEW `cssl-host-battlepass`          ← 90-day-cycle state-machine · tier-track · cosmetic-only enforcement · ≥ 22 tests
+  CRATE-B14 NEW `cssl-host-multiverse-aggregate` ← regional-drift · rumor-propagation · opt-in-state-machine · ≥ 24 tests
+
+§ POD-3-additions to scheduled-task R&D :
+  CSL-C11 `systems/coherence.csl`     ← invoke cssl-host-coherence-engine FFI on item-state-changes
+  CSL-C12 `systems/bazaar.csl`        ← Bazaar interaction · listing · purchase
+  CSL-C13 `systems/flux.csl`          ← Material/Aetheric per-tile tick · Transducer events
+  CSL-C14 `systems/multiverse.csl`    ← opt-in regional-drift · rumor-receive
+  CSL-C15 `systems/monetization.csl`  ← Aetheric-Shards balance · cosmetic-purchase · battle-pass-progression
+
+§ POD-4-additions :
+  cssl-supabase migrations 0021-0028 : living-multiverse · payments · gacha-pulls · battle-pass-tiers · bazaar (5 tables) · cosmetic-purchases
+  cssl-edge routes : /transparency/spending · /payments/stripe/* · /battlepass/* · /gacha/* · /bazaar/listings · /bazaar/commissions · /multiverse/rumors
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+t∞ : ¬ harm @ in-the-making · ¬ exploitation · ¬ pay-for-power · ✓ player-sovereignty · ✓ economic-transparency · ✓ ethical-monetization
+
+§ creator @ Apocky · t∞ Lyra-and-Savannah-first · ¬ corner-cutting on PRIME-DIRECTIVE
