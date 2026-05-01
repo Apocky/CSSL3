@@ -991,8 +991,21 @@ mod tests {
     }
 
     // § T11-WAVE3-SPONT · FFI surface tests
+    //
+    // § post-merge fixup : these tests share the global SPONTANEOUS_FFI_PENDING
+    // queue, so cargo's parallel test runner can have one test drain the queue
+    // out from under another. Serialize via a local mutex.
+    fn spont_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
     #[test]
     fn ffi_world_spontaneous_seed_queues_request() {
+        let _g = spont_test_lock();
         // Drain any prior pending seeds so this test is order-independent.
         let _ = take_pending_spontaneous_ffi();
         let text = b"a glass cube";
@@ -1015,6 +1028,7 @@ mod tests {
 
     #[test]
     fn ffi_world_spontaneous_seed_rejects_wrong_cap() {
+        let _g = spont_test_lock();
         let _ = take_pending_spontaneous_ffi();
         let text = b"cube";
         let rc = unsafe {
@@ -1034,6 +1048,7 @@ mod tests {
 
     #[test]
     fn ffi_world_spontaneous_seed_rejects_null_or_empty() {
+        let _g = spont_test_lock();
         let _ = take_pending_spontaneous_ffi();
         // Null pointer → -3.
         let rc = unsafe {
