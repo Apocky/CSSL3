@@ -22,6 +22,7 @@ use cssl_host_agent_loop::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::chat_sync_wire::ChatSyncWire;
 use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::now_unix;
@@ -40,6 +41,11 @@ pub struct MyceliumApp {
     /// Collecting audit-port. Cloned `Arc` reference is also held by the
     /// agent-loop's `audit` field so emissions land in the same sink.
     pub audit: Arc<VecAuditPort>,
+    /// § T11-W11 : chat-sync wire for federated GM/DM modulation. Default-
+    /// deny ; opt-in via `opt_in_chat_sync()`. The wire is held inside an
+    /// `Arc` so concurrent IPC invocations can observe + tick without
+    /// re-entry hazards.
+    pub chat_sync: Arc<ChatSyncWire>,
 }
 
 /// Result of a single turn — the IPC layer fans this into a
@@ -102,12 +108,42 @@ impl MyceliumApp {
         loop_.knowledge_top_k = config.knowledge_top_k;
         loop_.context_token_budget = config.context_token_budget;
 
+        // § T11-W11-MYCELIUM-CHAT-SYNC : derive a deterministic per-app
+        // pubkey-stub from the config. Stage-0 : BLAKE3 over a fixed-salt
+        // app-name + config-fingerprint. Stage-1 : real Ed25519 keypair.
+        let mut h = blake3::Hasher::new();
+        h.update(b"cssl-host-mycelium-desktop\0chat-sync-pubkey\0v1");
+        h.update(b"mycelium-desktop");
+        let mut local_pubkey = [0_u8; 32];
+        local_pubkey.copy_from_slice(h.finalize().as_bytes());
+        let chat_sync = Arc::new(ChatSyncWire::new(local_pubkey));
+
         Ok(Self {
             config,
             agent_loop: Arc::new(Mutex::new(loop_)),
             session: Arc::new(Mutex::new(Session::new(100))),
             audit,
+            chat_sync,
         })
+    }
+
+    /// § T11-W11 : opt-in to chat-sync federation. Default posture is deny ;
+    /// this method is the explicit consent-arch grant.
+    pub fn opt_in_chat_sync(&self) {
+        self.chat_sync.opt_in_emitter();
+    }
+
+    /// § T11-W11 : sovereign-revoke chat-sync federation participation.
+    /// Wipes local ring + cap-policy + federation-emitter-record + emits a
+    /// purge-request broadcast for peers to drop our patterns.
+    pub fn revoke_chat_sync(&self) {
+        self.chat_sync.sovereign_revoke(now_unix());
+    }
+
+    /// § T11-W11 : caller-driven digest-tick. Hosts that don't run a
+    /// dedicated thread call this on a periodic schedule.
+    pub fn chat_sync_tick(&self) {
+        self.chat_sync.tick_now(now_unix());
     }
 
     /// Drive a single turn end-to-end + record on the session.
@@ -146,6 +182,15 @@ impl MyceliumApp {
                 timestamp_unix: now_unix(),
             });
         }
+
+        // § T11-W11 : observe the turn-shape into the local chat-sync ring.
+        // The ring is sovereign-local ; Σ-mask gates only fire at digest-
+        // tick, so this push always succeeds (subject to bit-pack
+        // validation which is structural). Region-tag 0 is the default
+        // shard ; opt_in_tier 1 = Anonymized ; both will be wired to
+        // config-fields in a follow-up slice.
+        self.chat_sync
+            .observe_turn(user_input, &final_reply, now_unix(), 0, 1);
 
         Ok(TurnResult {
             turn_id: state.turn_id,
@@ -224,6 +269,10 @@ impl MyceliumApp {
     /// The Ctrl+Shift+Alt+S break-glass : reset cap-policy to `Paranoid`,
     /// halt-all-pending tool-calls (via `bridge.cancel`), and emit a
     /// `Sovereignty`-axis audit row.
+    ///
+    /// § T11-W11 : ALSO sovereign-revokes chat-sync federation
+    /// participation (zeroes cap-policy · purges local ring · purges
+    /// federation-emitter-record · emits purge-request broadcast).
     #[allow(clippy::significant_drop_tightening)]
     pub fn revoke_all_sovereign_caps(&self) -> Result<(), AppError> {
         let mut loop_ = self
@@ -232,6 +281,12 @@ impl MyceliumApp {
             .map_err(|_| AppError::Session("agent-loop mutex poisoned".into()))?;
         loop_.caps = ToolCaps::paranoid();
         loop_.abort("sovereign_cap_revoke_all");
+        drop(loop_);
+        // Sovereign-cap-revoke includes chat-sync federation : the player
+        // revoking ALL caps also revokes chat-pattern federation. This
+        // preserves the "break-glass" semantics : ¬ surveillance ; ¬ data-
+        // egress ; ¬ federation-tail.
+        self.chat_sync.sovereign_revoke(now_unix());
         Ok(())
     }
 

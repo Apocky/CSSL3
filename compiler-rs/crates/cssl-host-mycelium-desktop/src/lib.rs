@@ -34,12 +34,14 @@
 #![forbid(unsafe_code)]
 
 pub mod app;
+pub mod chat_sync_wire;
 pub mod commands;
 pub mod config;
 pub mod error;
 pub mod session;
 
 pub use app::{GrantMode, MyceliumApp, TurnResult};
+pub use chat_sync_wire::ChatSyncWire;
 pub use commands::{
     handle_command, IpcCommand, IpcResponse, SubstrateHit, ToolCallSummary, TurnSummary,
 };

@@ -39,6 +39,13 @@ tauri-shell = []
 cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
 cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
 cssl-host-agent-loop          = { path = "../cssl-host-agent-loop" }
+# § T11-W11-MYCELIUM-CHAT-SYNC : federate chat-pattern shapes across peers
+#   so GM/DM persona-agents can learn shape-of-good-response from federated
+#   instances WITHOUT ever observing raw player content. Σ-mask-gated.
+cssl-mycelium-chat-sync       = { path = "../cssl-mycelium-chat-sync" }
+# blake3 is needed for ChatSyncWire's local-emitter-handle derivation ;
+# the builder-side hashing is in the chat-sync crate itself.
+blake3     = { workspace = true }
 serde      = { workspace = true }
 serde_json = { workspace = true }
 thiserror  = { workspace = true }
