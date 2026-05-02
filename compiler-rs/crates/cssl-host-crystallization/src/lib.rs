@@ -47,6 +47,7 @@
 
 pub mod aspect;
 pub mod hdc;
+pub mod soa;
 pub mod spectral;
 
 use crate::aspect::AspectCurves;

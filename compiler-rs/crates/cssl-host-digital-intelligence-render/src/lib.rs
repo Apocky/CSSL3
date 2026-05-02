@@ -30,12 +30,13 @@
 //!
 //! `render_autonomous_tick` runs the full pipeline (begin → resolve →
 //! ring-push → blend → emit) without per-frame app-driver intervention.
-//! Frame budget is enforced; AdaptiveDegrader hooks (future) drop fidelity
-//! tier when over-budget.
+//! Frame budget is enforced; AdaptiveDegrader hooks (T11-W18-K) drop
+//! fidelity tier when over-budget.
 
 #![forbid(unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod profiler;
 pub mod ring;
 
 use cssl_host_alien_materialization::{
@@ -43,7 +44,13 @@ use cssl_host_alien_materialization::{
 };
 use cssl_host_crystallization::Crystal;
 
+pub use profiler::{
+    AdaptiveDegrader, FrameProfiler, FrameSample, Phase, PhaseTimer, TierAction,
+    ROLLING_WINDOW_FRAMES,
+};
 pub use ring::{BlendKind, TemporalCoherenceRing};
+
+use std::time::Instant;
 
 /// Per-mode budget targets (microseconds). Match digital_intelligence_render.csl.
 pub const BUDGET_60HZ: u32 = 16_667;
@@ -74,6 +81,10 @@ pub struct DigitalIntelligenceRenderer {
     pub fidelity_tier: u8,
     /// Sticky blend mode (host can override).
     pub blend: BlendKind,
+    /// Optional wall-clock profiler (T11-W18-K). None = zero overhead.
+    /// Some = each tick records phase µs + consults AdaptiveDegrader for
+    /// tier-adjustments.
+    pub profiler: Option<FrameProfiler>,
 }
 
 impl DigitalIntelligenceRenderer {
@@ -83,13 +94,24 @@ impl DigitalIntelligenceRenderer {
             frame_n: 0,
             fidelity_tier: 0,
             blend: BlendKind::EaseOut,
+            profiler: None,
         }
+    }
+
+    /// Builder : attach a `FrameProfiler` for wall-clock measurement and
+    /// AdaptiveDegrader-driven tier adjustment. Returns `self` for chaining.
+    pub fn with_profiler(mut self, profiler: FrameProfiler) -> Self {
+        self.profiler = Some(profiler);
+        self
     }
 
     /// Resize the working pixel-field to a new dimension. Preserves
     /// fidelity tier ; resets the ring (since dimensions changed).
     pub fn resize(&mut self, width: u32, height: u32) {
         self.ring = TemporalCoherenceRing::new(width, height);
+        if let Some(p) = &mut self.profiler {
+            p.degrader.reset();
+        }
     }
 
     /// One autonomous tick : resolve substrate-resonance → ring-push →
@@ -97,6 +119,10 @@ impl DigitalIntelligenceRenderer {
     ///
     /// `budget_micros` is advisory ; if the inner tick estimates it would
     /// exceed budget at current fidelity, it raises tier (lowers quality).
+    ///
+    /// When a `FrameProfiler` is attached, wall-clock µs for each phase
+    /// (ray-walk · spectral-project · ring-blend · total) are recorded and
+    /// the AdaptiveDegrader's recommendation is applied to fidelity_tier.
     pub fn tick(
         &mut self,
         observer: ObserverCoord,
@@ -104,8 +130,9 @@ impl DigitalIntelligenceRenderer {
         budget_micros: u32,
     ) -> FrameOutput {
         // Stage-0 micro-tick estimate : pixel-count × per-pixel-cost-tier.
-        // (For real perf-enforcement we'd time-stamp via std::time, but
-        // that's runtime-only — the catalog build keeps this pure-pcounting.)
+        // Used for the est_micros field returned to the caller (kept for
+        // backwards-compat). Wall-clock measurement, when profiler is
+        // attached, is the SOURCE OF TRUTH for AdaptiveDegrader decisions.
         let pixel_count = self.ring.width * self.ring.height;
         let pixel_cost_at_tier = match self.fidelity_tier {
             0 => 8u32, // 8 ray-samples
@@ -117,22 +144,71 @@ impl DigitalIntelligenceRenderer {
         };
         let est_micros = (pixel_count * pixel_cost_at_tier) / 64;
 
-        if est_micros > budget_micros && self.fidelity_tier < 7 {
-            self.fidelity_tier += 1;
-        } else if est_micros < (budget_micros / 2) && self.fidelity_tier > 0 {
-            self.fidelity_tier -= 1;
+        // Begin profiler-frame if attached. The wall-clock measurement runs
+        // in parallel with the legacy estimate-based degrader so existing
+        // callers continue to see degrader-behaviour even without profiler.
+        if let Some(p) = &mut self.profiler {
+            p.begin_frame(self.fidelity_tier);
+        }
+        let tick_start = Instant::now();
+
+        // Legacy estimate-based degrade (kept so default-no-profiler callers
+        // still see auto-degrade behaviour).
+        if self.profiler.is_none() {
+            if est_micros > budget_micros && self.fidelity_tier < 7 {
+                self.fidelity_tier += 1;
+            } else if est_micros < (budget_micros / 2) && self.fidelity_tier > 0 {
+                self.fidelity_tier -= 1;
+            }
         }
 
-        // Resolve into a fresh pixel-field.
+        // ─── Phase: ray-walk + crystal-near + spectral-project (combined) ───
+        // The materialize_into_pixel_field call internally does ray-walk +
+        // crystal-near-LRU + spectral-project. Stage-0 records the total wall
+        // for that fused operation under RayWalk and apportions an estimate
+        // to SpectralProject (~25% of the materialize cost is the LUT step).
+        let phase_start = Instant::now();
         let mut fresh = PixelField::new(self.ring.width, self.ring.height);
         let resonance = materialize_into_pixel_field(observer, crystals, &mut fresh);
+        let materialize_dur = phase_start.elapsed();
 
-        // Push into the ring (oldest evicted).
+        // ─── Phase: ring-push + temporal-blend ───
+        let blend_start = Instant::now();
         self.ring.push(fresh);
-
-        // Blend across ring → display frame.
         let blend = self.blend;
         let _display = self.ring.blended(blend);
+        let blend_dur = blend_start.elapsed();
+
+        // ─── Commit profiler-sample if attached + apply degrader-action ───
+        if let Some(p) = &mut self.profiler {
+            // Apportion materialize → 75% ray-walk · 25% spectral-project.
+            let mat_micros: u128 = materialize_dur.as_micros();
+            let ray_micros = (mat_micros * 75 / 100).min(u128::from(u32::MAX)) as u32;
+            let spec_micros =
+                (mat_micros - mat_micros * 75 / 100).min(u128::from(u32::MAX)) as u32;
+            let blend_micros = blend_dur.as_micros().min(u128::from(u32::MAX)) as u32;
+            let total_micros =
+                tick_start.elapsed().as_micros().min(u128::from(u32::MAX)) as u32;
+
+            p.record_phase_micros(Phase::RayWalk, ray_micros);
+            p.record_phase_micros(Phase::SpectralProject, spec_micros);
+            p.record_phase_micros(Phase::RingBlend, blend_micros);
+            p.record_phase_micros(Phase::Total, total_micros);
+            let action = p.commit_frame();
+            match action {
+                TierAction::Degrade => {
+                    if self.fidelity_tier < 7 {
+                        self.fidelity_tier += 1;
+                    }
+                }
+                TierAction::Recover => {
+                    if self.fidelity_tier > 0 {
+                        self.fidelity_tier -= 1;
+                    }
+                }
+                TierAction::Hold => {}
+            }
+        }
 
         self.frame_n = self.frame_n.wrapping_add(1);
 
@@ -206,5 +282,26 @@ mod tests {
         r.resize(16, 16);
         assert_eq!(r.ring.width, 16);
         assert_eq!(r.ring.height, 16);
+    }
+
+    #[test]
+    fn profiler_attached_via_builder() {
+        let r = DigitalIntelligenceRenderer::new(8, 8)
+            .with_profiler(FrameProfiler::for_144hz());
+        assert!(r.profiler.is_some());
+        assert_eq!(r.profiler.as_ref().unwrap().budget_micros, BUDGET_144HZ);
+    }
+
+    #[test]
+    fn profiler_records_per_tick() {
+        let mut r = DigitalIntelligenceRenderer::new(8, 8)
+            .with_profiler(FrameProfiler::for_144hz());
+        let crystal = Crystal::allocate(CrystalClass::Object, 1, WorldPos::new(0, 0, 1500));
+        for _ in 0..3 {
+            r.tick(day_observer(), &[crystal.clone()], BUDGET_144HZ);
+        }
+        let p = r.profiler.as_ref().unwrap();
+        assert_eq!(p.frames_observed, 3);
+        assert_eq!(p.window.len(), 3);
     }
 }

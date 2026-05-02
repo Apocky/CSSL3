@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-host-quantum-hdc"
+description            = "CSSLv3 — Quantum ℂ-amplitude HDC. 256-component complex hypervectors with per-component (amplitude, phase). Bind = complex-multiplication. Bundle = vector-sum + renormalize. Permute = phase-rotation. Permits interference patterns + coherent/decoherent bundles + standing-wave substrate-resonance signatures. Deterministic complex-arithmetic on silicon SIMD-FMA. Anchor : Labyrinth of Apocalypse/systems/quantum_hdc.csl."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-host-quantum-hdc — depends only on blake3 for deterministic seed
+# derivation. No SIMD intrinsics at this slice — std rustc auto-vectorizes
+# the per-component f32 loops (256 components × 2 fields = 2048 bytes per
+# vector, comfortably under L1). AVX-512 FMA dispatch lands in a follow-up
+# perf slice once measured throughput shows it matters.
+blake3 = { workspace = true }
