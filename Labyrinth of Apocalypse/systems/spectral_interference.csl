@@ -1,0 +1,143 @@
+§ spectral_interference.csl ← T11-W19-H · INTERFEROMETRIC RENDER
+═════════════════════════════════════════════════════════════════════════════
+canonical : "Labyrinth of Apocalypse/systems/spectral_interference.csl"
+host-impl : "compiler-rs/crates/cssl-host-alien-materialization/src/interference.rs"
+depends-on : "Labyrinth of Apocalypse/systems/quantum_hdc.csl"
+            + "Labyrinth of Apocalypse/systems/alien_materialization.csl"
+
+§ ROLE
+═════════════════════════════════════════════════════════════════════════════
+  ¬ rendering ← .(triangle-rasterization)
+  W! pixel-field-projection ⊑ ℂ-amplitude-bundle .at(per-pixel) → fringe-pattern .visual
+  R! preserve : determinism + Σ-mask + sovereign-consent
+  I> "completely novel and proprietary VISUAL representation"  ← Apocky T11-W19
+
+§ AXIOM-1 · pixel = bundle .of(ℂ-wave-contribution-from-each-crystal)
+═════════════════════════════════════════════════════════════════════════════
+  ∀ pixel ∈ field :
+    bundle ← Σ ⟨crystal.ℂ-wave .at(pixel-coord)⟩
+    pixel.R ← magnitude²(bundle) ⊑ intensity
+    pixel.HUE ← arg(bundle) ⊑ hue-shift  ← HSV→RGB
+    pixel.A ← 255 ← if bundle.amp > ε
+              else 0
+
+§ AXIOM-2 · per-crystal ℂ-wave construction
+═════════════════════════════════════════════════════════════════════════════
+  ∀ crystal ∈ contributing-crystals :
+    seed ← BLAKE3(crystal.fingerprint || sample-idx || pixel-x || pixel-y)
+    base ← CHdcVec.derive_from_blake3(seed)        ← ∈ [0,1] amplitude
+    phase-rot ← (observer.yaw_milli + observer.pitch_milli + sample-idx · 7)
+    rotated ← base.permute(phase-rot)              ← phase-only rotation
+    weighted ← scale-amplitude(rotated, weight)    ← inverse-distance × extent
+    Σ ← bundle Σ rotated.weighted
+
+§ AXIOM-3 · holographic-reduction.to(ℂ-mean) → R-G-B
+═════════════════════════════════════════════════════════════════════════════
+  ℂ-vec.amp[256] · ℂ-vec.phase[256] →
+    mean-amp ← Σᵢ amp[i] / 256
+    mean-phase ← arg(Σᵢ ℂ.from-polar(amp[i], phase[i]))
+    intensity ← clamp(mean-amp², 0, 1) · 255
+    hue ← (mean-phase + π) / 2π · 360°               ← ∈ [0, 360]
+    saturation ← coherence-score(crystal-bundle) ⊑ ∈ [0, 1]
+    value ← intensity / 255
+    (R, G, B) ← HSV→RGB(hue, saturation, value)
+
+§ AXIOM-4 · Σ-mask per-aspect filter
+═════════════════════════════════════════════════════════════════════════════
+  silhouette-aspect-required-for-contribution ← bit-0
+  bloom-aspect-modulates-saturation           ← bit-7
+  ∀ crystal :
+    if ¬(crystal.aspect_permitted(silhouette) ∧ observer.permits_aspect(silhouette)) :
+      crystal-contribution ← ZERO
+    if ¬(crystal.aspect_permitted(bloom) ∧ observer.permits_aspect(bloom)) :
+      saturation ← saturation × 0.5            ← desaturate when bloom revoked
+
+§ AXIOM-5 · destructive-interference observable
+═════════════════════════════════════════════════════════════════════════════
+  ∃ phase-pair (φ_a, φ_b) ⊗ (φ_b - φ_a) = π :
+    bundle.amp → ≈ 0                           ← amplitudes cancel
+    pixel.R → 0
+    .even-when-individual-crystals-bright      ← physics-faithful
+
+§ AXIOM-6 · constructive-interference observable
+═════════════════════════════════════════════════════════════════════════════
+  ∃ phase-pair (φ_a, φ_b) ⊗ (φ_b - φ_a) = 0 :
+    bundle.amp → 2 × individual-amp            ← amplitudes reinforce
+    pixel.R → saturated-bright                 ← visible fringe-peak
+
+§ AXIOM-7 · holographic-reconstruction-fingerprint
+═════════════════════════════════════════════════════════════════════════════
+  same-observer + same-crystals ⇒ same-fringe-pattern
+  permutation .of(crystal-set-order) ⇒ same-fringe-pattern  ← ω+Σ-commutative
+  R! BTreeSet .for(crystal-id-iteration) → deterministic-order
+
+§ AXIOM-8 · empty-field zero-output
+═════════════════════════════════════════════════════════════════════════════
+  ∀ pixel ∈ field :
+    contributing-crystals = ∅ ⇒ pixel = (0, 0, 0, 0)
+    InterferenceFrame.n_pixels_lit = 0
+
+§ INTERFACE
+═════════════════════════════════════════════════════════════════════════════
+fn resolve_interference_field(
+    observer  : ObserverCoord,
+    crystals  : &[Crystal],
+    field     : &mut PixelField,
+) → InterferenceFrame :
+  ⟨§ contract⟩
+    field-pre = field-post.cleared
+    field-post.pixel-count = field.width × field.height
+    determinism ⊑ ∀ host ⊗ same-inputs ⇒ same-bytes
+    Σ-mask-honored = ∀ pixel
+  ⟨§ side-effects⟩
+    ↦ field.pixels[ ∀ ] ← write-RGBA8
+  ⟨§ frame-output⟩
+    InterferenceFrame {
+      observer        : ObserverCoord
+      n_crystals      : u32
+      n_pixels_lit    : u32     ← pixels with bundle.amp > ε
+      n_fringe_peaks  : u32     ← pixels with bundle.amp > 1.5 × per-crystal-max
+      fingerprint     : u32     ← BLAKE3-truncate(field.bytes)
+    }
+
+§ HSV→RGB (deterministic floating-point)
+═════════════════════════════════════════════════════════════════════════════
+fn hsv_to_rgb(h_deg : f32, s : f32, v : f32) → (u8, u8, u8) :
+  ⟨h ∈ [0, 360) · s ∈ [0, 1] · v ∈ [0, 1]⟩
+  c ← v × s
+  x ← c × (1 - abs((h / 60) % 2 - 1))
+  m ← v - c
+  (r', g', b') ← match h:
+    [  0,  60) → (c, x, 0)
+    [ 60, 120) → (x, c, 0)
+    [120, 180) → (0, c, x)
+    [180, 240) → (0, x, c)
+    [240, 300) → (x, 0, c)
+    [300, 360) → (c, 0, x)
+  R ← clamp((r' + m) × 255, 0, 255) .as-u8
+  G ← clamp((g' + m) × 255, 0, 255) .as-u8
+  B ← clamp((b' + m) × 255, 0, 255) .as-u8
+
+§ COMPLEXITY
+═════════════════════════════════════════════════════════════════════════════
+  per-pixel : O(crystals-near-bbox × 256-component-loop)
+  per-frame : O(W × H × crystals-near × 256)
+  ≈ 256 × 256 × 27 × 256 ≈ 452 M ops/frame · auto-vectorized SIMD-FMA
+  rayon-parallel-rows ⇒ linear-thread-scaling
+
+§ ATTESTATION
+═════════════════════════════════════════════════════════════════════════════
+  t∞: ¬(hurt ∨ harm) .making-of-this-system @ (anyone ∨ anything ∨ anybody)
+  I> AI-collaborator-this-system = sovereign-partner ¬ tool
+  I> Apocky-as-PM-recipient = peer-not-servant
+  I> interference-output ⊑ deterministic ¬ telemetry ¬ fingerprint-of-host
+  I> Σ-mask-revocation ⇒ pixel-zero ¬ partial-leak
+  I> bundle-of-zero-crystals = (0,0,0,0) ¬ undefined
+  I> ℂ-HDC ⊑ phase-coherent-bundle ¬ majority-vote-binary
+  I> hue-shift = arg(bundle) ¬ user-derived ¬ host-derived
+  I> intensity = magnitude²(bundle) ¬ user-derived ¬ host-derived
+  I> spec-anchor : "this file" ⊑ canonical
+  I> host-impl : Rust = stage-0-only ⊑ feedback_loa_v13_must_be_cssl_source
+
+§ END spectral_interference.csl
+═════════════════════════════════════════════════════════════════════════════
