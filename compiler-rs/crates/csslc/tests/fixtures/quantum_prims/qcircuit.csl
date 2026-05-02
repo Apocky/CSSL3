@@ -1,0 +1,23 @@
+// § T11-W19-G · composite quantum-circuit fixture using all 4 primitives.
+//
+// Exercises `qbind` + `qsuperpose` + `qentangle` + `qmeasure` together in
+// one fn body, validating that the recognizer fires per-call and the
+// result types compose under csslc's type-check pipeline.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W19-G @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.qcircuit
+
+extern "C" fn cssl_quantum_qbind(a: u64, b: u64) -> u64 ;
+extern "C" fn cssl_quantum_qsuperpose(a: u64, b: u64, alpha: f32) -> u64 ;
+extern "C" fn cssl_quantum_qentangle(a: u64, b: u64) -> u64 ;
+extern "C" fn cssl_quantum_qmeasure(state: u64) -> i32 ;
+
+pub fn run_circuit(a: u64, b: u64, c: u64) -> i32 {
+    let bound: u64 = qbind(a, b) ;
+    let entangled: u64 = qentangle(bound, c) ;
+    let mixed: u64 = qsuperpose(bound, entangled, 0.5f32) ;
+    let basis: i32 = qmeasure(mixed) ;
+    basis
+}

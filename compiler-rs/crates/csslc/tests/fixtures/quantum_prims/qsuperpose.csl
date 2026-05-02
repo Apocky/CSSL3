@@ -1,0 +1,17 @@
+// § T11-W19-G · quantum-circuit primitive `qsuperpose` fixture
+//
+// Exercises the `qsuperpose(a, b, alpha)` recognizer : a single-segment
+// path-callee with two u64 handles plus a f32 alpha argument lowers to
+// `func.call @cssl_quantum_qsuperpose` with `MirType::Int(I64)` result.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W19-G @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.qsuperpose
+
+extern "C" fn cssl_quantum_qsuperpose(a: u64, b: u64, alpha: f32) -> u64 ;
+
+pub fn run_superpose(a: u64, b: u64, alpha: f32) -> u64 {
+    let h: u64 = qsuperpose(a, b, alpha) ;
+    h
+}
