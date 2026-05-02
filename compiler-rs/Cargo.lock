@@ -1814,6 +1814,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-substrate-resonance-gpu"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cssl-host-alien-materialization",
+ "cssl-host-crystallization",
+ "naga",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
 name = "cssl-host-voice"
 version = "0.1.0"
 dependencies = [
