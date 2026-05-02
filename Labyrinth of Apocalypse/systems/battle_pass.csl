@@ -1,0 +1,201 @@
+module com.apocky.loa.systems.battle_pass
+
+// § Labyrinth of Apocalypse · system · seasonal-pass · cosmetic-only · ¬ FOMO
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-9 (W13-9-BATTLE-PASS · cssl/session-13/W13-9)
+//
+// § REFERENCE
+//   memory/feedback_loa_genre_fluid_fps_looter_shooter      ‼ FOUNDATIONAL · battle-pass-system rules
+//   memory/feedback_distribution_akashic_w8_plan            ← cosmetic-channel-only monetization
+//   memory/feedback_infinite_labyrinth_legacy_design        ← Battle-Pass legacy reference (cosmetic-axiom)
+//   GDDs/LOA_PILLARS.csl § 3 ¬ pay-for-power
+//   systems/economy.csl                                     ← gift-economy · cosmetic-shop pattern
+//   systems/run.csl + systems/coherence_engine.csl          ← XP-source procgen-earned
+//   compiler-rs/crates/cssl-host-battle-pass/                ← Rust serde-stable mirror (42 unit-tests)
+//   cssl-supabase/migrations/0032_battle_pass.sql           ← schema mirror · 4 tables · 8 RLS policies
+//   cssl-edge/pages/api/battle-pass/{progress,unlock,redeem}.ts ← edge endpoints · cap-gated
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS · ¬ pay-for-power axiom
+//   t∞: 2 tracks (Free + Premium) BOTH cosmetic-only · ¬ stat-affixes ¬ XP-boost ¬ exclusive-power
+//   t∞: Free track ALWAYS-included · 100% accessible without-payment
+//   t∞: Premium track Stripe-purchase · cosmetic-only · faster-cosmetic-pull but-NOT-exclusive-power
+//   t∞: Free + Premium ATTAINABLE-SIMULTANEOUSLY when player-pays-for-Premium
+//   t∞: 100 tiers per-season (1-100) · XP-curve early-fast · later-tiers gradual (anti-grind)
+//   t∞: ¬ FOMO · expired-rewards re-purchasable post-season at gift-cost (gift-economy)
+//   t∞: ¬ scarcity-exclusive · eventually-attainable
+//   t∞: pause-able · player-can-pause-progression-tracking with-Σ-cap
+//   t∞: cancel-and-refund · 14-day-window for-Premium (pro-rated)
+//   t∞: track-state Σ-mask-gated · others-only-see-via aggregate-k-anon (k≥5)
+//   t∞: mycelium-federate progress only with-explicit-cap-grant (¬ leaderboard-by-default)
+//   t∞: 60-90 days per-season (configurable)
+//   t∞: new-season starts → prior-season-archives but rewards-still-attainable
+//   t∞: ¬ resetting-progress · accumulate-across-seasons
+//
+// § PRIME-DIRECTIVE
+//   The battle-pass is a cosmetic-only seasonal track. Stripe purchase buys the
+//   Premium track ONLY, which is SAME-PARITY cosmetic catalog as Free (faster-pull
+//   but never-exclusive-power). No FOMO mechanism : if you miss a season, every
+//   reward returns at gift-cost (Echo-shards, NOT Stripe) post-archive. Players
+//   may pause progression-tracking AT WILL (sovereign-revocable). The 14-day
+//   refund window pro-rates by full-days-elapsed. Cross-player progress visibility
+//   is default-DENY ; opt-in only, k-anon floor=5 even then. ¬ surveillance ·
+//   ¬ coercion · ¬ pay-for-power · sovereign-revocable always.
+//
+// § ANTI-FOMO MECHANISMS  ‼ structural
+//   1. Expired-rewards re-purchasable post-season at gift-cost (Echo-shards, NOT Stripe).
+//   2. ¬ scarcity-exclusive · every cosmetic eventually attainable.
+//   3. ¬ resetting-progress · cumulative-XP accumulates across-seasons.
+//   4. Free track ALWAYS-included · paywall absent.
+//   5. XP-curve early-fast (anti-grind) · late-gradual (¬ punishment).
+//   6. Pause-able : sovereign-revocable progression-tracking.
+//   7. Re-purchase gate : re_purchasable_after timestamp gate per-reward (DB-enforced).
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-battle-pass body
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_bp_session_open(player_id_hash: u64, season_id: u32) -> i64 ;
+extern "C" fn __cssl_bp_session_close(handle: i64) -> i32 ;
+
+// Progression
+extern "C" fn __cssl_bp_query_tier(handle: i64) -> u32 ;
+extern "C" fn __cssl_bp_query_cumulative_xp(handle: i64) -> u64 ;
+extern "C" fn __cssl_bp_query_xp_to_next_tier(handle: i64) -> u64 ;
+extern "C" fn __cssl_bp_query_is_premium(handle: i64) -> u32 ;
+extern "C" fn __cssl_bp_query_is_paused(handle: i64) -> u32 ;
+extern "C" fn __cssl_bp_award_xp(handle: i64, delta_xp: u64) -> i32 ;
+extern "C" fn __cssl_bp_pause(handle: i64, now_unix_s: i64) -> i32 ;
+extern "C" fn __cssl_bp_resume(handle: i64) -> i32 ;
+
+// Premium-track lifecycle (Stripe-driven via cssl-edge endpoints)
+extern "C" fn __cssl_bp_premium_unlock(handle: i64, stripe_session_id_hash: u64) -> i32 ;
+extern "C" fn __cssl_bp_premium_revoke(handle: i64) -> i32 ;
+
+// Refund (14-day pro-rated window)
+extern "C" fn __cssl_bp_refund_pro_rate_cents(handle: i64, now_unix_s: i64) -> u64 ;
+extern "C" fn __cssl_bp_refund_is_within_window(handle: i64, now_unix_s: i64) -> u32 ;
+
+// Reward catalog
+extern "C" fn __cssl_bp_reward_query_kind(season_id: u32, tier: u32, track_code: u32) -> u32 ;
+extern "C" fn __cssl_bp_reward_is_re_purchasable_at(season_id: u32, tier: u32, track_code: u32, now_unix_s: i64) -> u32 ;
+extern "C" fn __cssl_bp_redeem(handle: i64, tier: u32, track_code: u32) -> i32 ;
+
+// Mycelium federation (default-DENY)
+extern "C" fn __cssl_bp_mycelium_default_decision() -> u32 ;
+extern "C" fn __cssl_bp_mycelium_k_anon_decision(bucket_size: u32) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Track constants
+// ─────────────────────────────────────────────────────────────────────────
+const TRACK_FREE                 : u32 = 0 ;
+const TRACK_PREMIUM              : u32 = 1 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Reward kinds (mirror cssl_host_battle_pass::RewardKind)
+// ─────────────────────────────────────────────────────────────────────────
+const REWARD_KIND_SKIN                 : u32 = 0 ;
+const REWARD_KIND_WEAPON_SKIN          : u32 = 1 ;
+const REWARD_KIND_PET_COSMETIC         : u32 = 2 ;
+const REWARD_KIND_HOME_DECOR           : u32 = 3 ;
+const REWARD_KIND_EMOTE                : u32 = 4 ;
+const REWARD_KIND_MYCELIAL_BLOOM       : u32 = 5 ;
+const REWARD_KIND_MEMORIAL_AURA        : u32 = 6 ;
+const REWARD_KIND_ECHO_SHARD_GIFT_POUCH: u32 = 7 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Tier + season constants
+// ─────────────────────────────────────────────────────────────────────────
+const MIN_TIER                   : u32 = 1   ;
+const MAX_TIER                   : u32 = 100 ;
+const SEASON_DURATION_MIN_DAYS   : u32 = 60  ;
+const SEASON_DURATION_MAX_DAYS   : u32 = 90  ;
+const REFUND_WINDOW_DAYS         : u32 = 14  ;
+const MYCELIUM_K_ANON_FLOOR      : u32 = 5   ;
+
+// XP-curve regime constants (mirror cssl_host_battle_pass::xp)
+const REGIME_1_END               : u32 = 30   ;  // tiers 1..=30 = 1_000 XP each
+const REGIME_2_END               : u32 = 70   ;  // tiers 31..=70 = 2_500 XP each
+const XP_PER_TIER_REGIME_1       : u64 = 1_000;
+const XP_PER_TIER_REGIME_2       : u64 = 2_500;
+const XP_PER_TIER_REGIME_3       : u64 = 5_000;  // tiers 71..=99 = 5_000 XP each
+
+// Federation decision codes
+const FED_ALLOW_AGGREGATE_KANON  : u32 = 0 ;
+const FED_ALLOW_PER_FRIEND       : u32 = 1 ;
+const FED_ALLOW_OPT_IN_LB        : u32 = 2 ;
+const FED_DENY_DEFAULT           : u32 = 0xFFFF_FF00 ;
+const FED_DENY_K_ANON_FLOOR      : u32 = 0xFFFF_FF01 ;
+const FED_DENY_PLAYER_OPT_OUT    : u32 = 0xFFFF_FF02 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PRIME-DIRECTIVE attestations  ‼ structural · const-evaluable
+// ─────────────────────────────────────────────────────────────────────────
+
+// Attestation : Free + Premium tracks BOTH cosmetic-only · structural-parity.
+const ATTEST_COSMETIC_PARITY     : str = "Free + Premium tracks BOTH cosmetic-only · ¬ pay-for-power · ¬ XP-boost · ¬ exclusive-power" ;
+
+// Attestation : Free track unconditionally-included.
+const ATTEST_FREE_ALWAYS_INCLUDED: bool = true ;
+
+// Attestation : Mycelium-federation default-DENY.
+const ATTEST_MYCELIUM_DEFAULT_DENY: bool = true ;
+
+// Attestation : All 7 anti-FOMO mechanisms structural.
+const ATTEST_ANTI_FOMO_COUNT     : u32 = 7 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Test enumeration ‼ ≥ 10 attestations · mirror cssl-host-battle-pass tests
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. xp_curve_is_monotone_non_decreasing       ✓ early-fast-late-gradual ¬ FOMO
+//   2. cumulative_xp_at_tier_max_finite          ✓ no overflow · 275_000 total at tier-100
+//   3. tier_for_cumulative_xp_inverse_roundtrip  ✓ deterministic XP→tier inversion
+//   4. season_constructs_within_60_to_90_days    ✓ duration-window enforced
+//   5. season_rejects_out_of_range_durations     ✓ <60d + >90d both rejected
+//   6. all_reward_kinds_are_cosmetic             ✓ ¬ stat-affix · ¬ XP-boost
+//   7. reward_becomes_re_purchasable_post_season ✓ ¬ FOMO core mechanism
+//   8. premium_lock_denied_redemption            ✓ premium-track gated by purchase
+//   9. premium_unlocked_after_purchase           ✓ Stripe-bridge upgrades flag
+//  10. double_claim_denied                       ✓ tier-level UNIQUE per (player, season, tier)
+//  11. tier_not_reached_denied                   ✓ progression-gate enforced
+//  12. pause_blocks_xp_award                     ✓ sovereign-pause silently-no-op
+//  13. resume_unblocks_xp                        ✓ sovereign-resume reactivates
+//  14. xp_to_next_tier_decreases_with_award      ✓ progression-display correctness
+//  15. refund_full_at_day_0                      ✓ 14-day window day-0 = full
+//  16. refund_pro_rated_at_day_7                 ✓ ~50% pro-rate at midpoint
+//  17. refund_pro_rated_at_day_13                ✓ minimal-but-non-zero @ d-13
+//  18. refund_zero_at_day_14                     ✓ window-closes inclusive
+//  19. refund_zero_after_day_14                  ✓ post-window refund = 0
+//  20. is_within_window_boundary                 ✓ window-edge predicate
+//  21. clock_skew_treats_negative_as_full_refund ✓ kindness invariant
+//  22. default_federation_decision_is_deny       ✓ mycelium-default-DENY core
+//  23. aggregate_below_k_anon_floor_denied       ✓ k≥5 floor enforced
+//  24. aggregate_at_or_above_floor_allowed       ✓ k-anon contract honored
+//  25. parity_attestation_mentions_both_tracks   ✓ Free+Premium parity surfaced
+//  26. rules_constants_locked_to_prime_directive ✓ COSMETIC_ONLY=true · 14d=14d
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Integration-points
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   systems/economy.csl                  ← Echo-shards = post-season gift-cost currency
+//   systems/run.csl + coherence_engine   ← XP-source : runs · coherence-bond · gift-deeds
+//   systems/inventory.csl                ← redeemed-cosmetics land here
+//   systems/akashic.csl                  ← season-archive permanence
+//   systems/multiplayer.csl              ← mycelium-federation transport (default-DENY)
+//   GDDs/HOME_DIMENSION.csl              ← home_decor rewards hang here
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § Anti-patterns ‼ structurally-banned
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   ✗ Premium-only weapon · stat-affix · XP-boost · exclusive-power
+//   ✗ Limited-time-only with no re-purchase path
+//   ✗ Cross-player progression visibility without explicit cap-grant
+//   ✗ Resetting accumulated XP at season-rollover
+//   ✗ Locking Free track behind any payment-shape
+//   ✗ Pay-to-skip-tiers (Stripe buys Premium-track-toggle ONLY · NOT XP)
+//   ✗ FOMO-language in UI (stub-mode-aware client must surface re-purchase availability)
+
+// END · § T11-W13-9 · cssl-host-battle-pass spec

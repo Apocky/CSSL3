@@ -77,6 +77,15 @@ export const CONTENT_CAP_CHAIN_ANCHOR = 0x800000;
 export const CONTENT_CAP_AGGREGATE_READ = 0x1000000;
 export const CONTENT_CAP_CURATE_ANY = CONTENT_CAP_CURATE_A | CONTENT_CAP_CURATE_B;
 
+// Battle-pass cap-bits (W13-9). Default-DENY when none set ; sovereign-bypass
+// recorded. Cosmetic-only · ¬ pay-for-power · ¬ FOMO + sovereign-revocable.
+//   bit 25 (0x2000000)  · BATTLE_PASS_PROGRESS · /api/battle-pass/progress
+//   bit 26 (0x4000000)  · BATTLE_PASS_UNLOCK   · /api/battle-pass/unlock (Premium purchase)
+//   bit 27 (0x8000000)  · BATTLE_PASS_REDEEM   · /api/battle-pass/redeem (claim reward)
+export const BATTLE_PASS_PROGRESS = 0x2000000;
+export const BATTLE_PASS_UNLOCK = 0x4000000;
+export const BATTLE_PASS_REDEEM = 0x8000000;
+
 // Cap-gate result. `ok=false` carries a reason for audit-log + 403 body.
 export interface CapDecision {
   ok: boolean;
