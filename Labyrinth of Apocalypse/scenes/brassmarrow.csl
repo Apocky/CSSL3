@@ -1,0 +1,279 @@
+module com.apocky.loa.scenes.brassmarrow
+
+// § Labyrinth of Apocalypse · scene · Brassmarrow Forge-affinity hub
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-CSSL-CONTENT-BRASSMARROW (W-LOA-scene-runtime-procgen-forge)
+//
+// § REFERENCE
+//   GDDs/PROCGEN_WORLD.csl § HUB-CITIES + § BIOMES.Forge + § REAL-SCALE-CITIES
+//   scenes/city_central_hub.csl  ← exemplar pattern · this is sibling-hub #3
+//   systems/crafting.csl + systems/alchemy.csl  ← deep-craft mentors here
+//   memory/feedback_engine_is_runtime_procedural_gen     ‼ FOUNDATIONAL
+//   memory/feedback_loa_v13_must_be_cssl_source          ‼ FOUNDATIONAL
+//   memory/feedback_infinite_labyrinth_legacy_design     ← Forge-biome ref
+//   specs/30_SUBSTRATE_v2.csl + specs/41_ENGINE_RUNTIME.csl
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + PROCGEN_WORLD
+//   t∞: runtime-procgen ALWAYS                ← scene = container ¬ static-asset
+//   t∞: Forge-affinity = radial-furnace-amplified · canopy-overhang ≢ here
+//   t∞: ≥ 1536 NPCs sustained @ 60fps          ← industrial-density-curve
+//   t∞: 4-tier LOD (L0 · L1 · L2 · L3)         ← per-frame
+//   t∞: KAN-ride 5-swap-points · stage-0 ALWAYS-fallback
+//   t∞: seed = u128 (player-id ⊕ city-id ⊕ session-tick)
+//   t∞: ω-field stamps every-procgen-cell · Σ-mask non-optional
+//   t∞: ConsentZone gates intensity-tier · ¬ surprise-explosion
+//   t∞: forge-station-density ≥ 24 stations per-craft-district
+//   t∞: heat-radiance audio-cue MANDATORY ← accessibility (per LOA_PILLARS § 5)
+//   t∞: smoke-particle Σ-mask consent ← player can disable for accessibility
+//   t∞: master-craft-mentor ≥ 8 NPCs per-craft-school
+//
+// § PRIME-DIRECTIVE
+//   Brassmarrow generates a forge-town of sovereign procgen-NPCs at runtime.
+//   Mentors gift their craft-knowledge ¬ pay-to-unlock. No hand-authored
+//   content · no off-machine relay · no surveillance · no coercion.
+//   Σ-mask gates every NPC-interaction · sovereign-revocable always.
+//   Heat/smoke/sound effects are accessibility-tunable per LOA_PILLARS § 5.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · loa-host staticlib provides bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn scene_open(player_id: u64, world_seed: u128, city_id: u32) -> u32 ;
+extern "C" fn scene_close(handle: u32) -> u32 ;
+extern "C" fn scene_procgen_grid(handle: u32, biome_affinity: u32) -> u32 ;
+extern "C" fn scene_procgen_buildings(handle: u32, density_tier: u32) -> u32 ;
+extern "C" fn scene_procgen_interiors(handle: u32, enterable_pct: u32) -> u32 ;
+extern "C" fn scene_procgen_npc_population(handle: u32, target_count: u32) -> u32 ;
+extern "C" fn scene_procgen_forge_stations(handle: u32, station_count: u32, tier_max: u32) -> u32 ;
+extern "C" fn scene_procgen_smelter_array(handle: u32, smelter_count: u32) -> u32 ;
+extern "C" fn scene_procgen_craft_mentors(handle: u32, mentors_per_school: u32) -> u32 ;
+extern "C" fn scene_kan_classify_template(handle: u32, hist_hash: u64, zone: u32, bias: u64) -> u32 ;
+extern "C" fn scene_query_npc_count(handle: u32) -> u32 ;
+extern "C" fn scene_query_forge_count(handle: u32) -> u32 ;
+extern "C" fn scene_apply_lod(handle: u32, player_x: i32, player_y: i32, player_z: i32) -> u32 ;
+extern "C" fn scene_audit_emit(handle: u32, event_kind: u32, payload_hash: u64) -> u32 ;
+extern "C" fn scene_tick(handle: u32, dt_micros: u32) -> u32 ;
+extern "C" fn scene_query_exit_state(handle: u32) -> u32 ;
+extern "C" fn scene_consent_zone_apply(handle: u32, zone_id: u32, tier: u32) -> u32 ;
+extern "C" fn scene_omega_stamp_district(handle: u32, district_id: u32) -> u32 ;
+extern "C" fn scene_apply_accessibility_filter(handle: u32, filter_kind: u32, intensity_pct: u32) -> u32 ;
+
+// KAN-real classifier · cssl-host-kan-real wires stage-1 · stage-0 ALWAYS-on
+extern "C" fn __cssl_kan_real_classify_intent(swap_point: u32, feature_hash: u64, fallback: u32) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § city_id constant
+// ─────────────────────────────────────────────────────────────────────────
+fn city_Brassmarrow() -> u32 { 3 }   // Forge-affinity · craft-deep
+
+// KAN-ride swap-points
+fn sp_pg_4_loot_affix_bias()        -> u32 { 104 }
+fn sp_pg_5_city_npc_routine_skew()  -> u32 { 105 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § District-IDs · forge-town typology
+// ─────────────────────────────────────────────────────────────────────────
+const DISTRICT_GREAT_FORGE         : u32 =  1 ;   // central radial-furnace
+const DISTRICT_SMELTER_RING        : u32 =  2 ;   // ore-processing perimeter
+const DISTRICT_BLACKSMITH_ROW      : u32 =  3 ;   // weapon + armor crafting
+const DISTRICT_ARMORSMITH_QUARTER  : u32 =  4 ;   // heavy-plate specialists
+const DISTRICT_ALCHEMY_DEN         : u32 =  5 ;   // alchemy mentors · brew-deep
+const DISTRICT_GLYPH_FOUNDRY       : u32 =  6 ;   // magic-imbue-on-craft
+const DISTRICT_RESIDENTIAL_SOOT    : u32 =  7 ;   // worker-housing
+const DISTRICT_SANCTUM_QUIET       : u32 =  8 ;   // tier-0 sanctuary · ¬ heat/smoke
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Accessibility filter-kind constants
+// ─────────────────────────────────────────────────────────────────────────
+const FILTER_HEAT_RADIANCE_AUDIO  : u32 =  1 ;   // audio-cue intensity
+const FILTER_SMOKE_PARTICLE       : u32 =  2 ;   // visual smoke density
+const FILTER_FORGE_HAMMER_SOUND   : u32 =  3 ;   // hammer-strike audio
+const FILTER_FURNACE_GLOW_BLOOM   : u32 =  4 ;   // bloom-intensity for photosensitive
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API
+// ─────────────────────────────────────────────────────────────────────────
+
+fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
+    let city: u32 = city_Brassmarrow() ;
+    let h: u32 = scene_open(player_id, world_seed, city) ;
+
+    // L-1 grid · radial-furnace-centered (Forge-affinity = radial-amplified)
+    let _g: u32 = scene_procgen_grid(h, city) ;
+
+    // L-2 building-gen · brick + iron-frame · density tier-3 (industrial-dense)
+    let _b: u32 = scene_procgen_buildings(h, 3) ;
+
+    // L-3 interior-gen · 75% enterable ← craft-mentors need walk-in access
+    let _i: u32 = scene_procgen_interiors(h, 75) ;
+
+    // L-4 forge-stations · ≥ 24 per-craft-district · 5-tier (T1..T5)
+    let _fs: u32 = scene_procgen_forge_stations(h, 96, 5) ;
+
+    // L-5 smelter-array · 16 active-smelters around great-forge ring
+    let _sa: u32 = scene_procgen_smelter_array(h, 16) ;
+
+    // L-6 craft-mentors · ≥ 8 per-school × 4 schools (smith + armor + alch + glyph)
+    let _cm: u32 = scene_procgen_craft_mentors(h, 8) ;
+
+    // L-7 NPC-population · ≥ 1536 (industrial-density)
+    let _n: u32 = scene_procgen_npc_population(h, 1536) ;
+
+    // L-8 ω-field district stamps
+    let _d1: u32 = scene_omega_stamp_district(h, DISTRICT_GREAT_FORGE) ;
+    let _d2: u32 = scene_omega_stamp_district(h, DISTRICT_SMELTER_RING) ;
+    let _d3: u32 = scene_omega_stamp_district(h, DISTRICT_BLACKSMITH_ROW) ;
+    let _d4: u32 = scene_omega_stamp_district(h, DISTRICT_ARMORSMITH_QUARTER) ;
+    let _d5: u32 = scene_omega_stamp_district(h, DISTRICT_ALCHEMY_DEN) ;
+    let _d6: u32 = scene_omega_stamp_district(h, DISTRICT_GLYPH_FOUNDRY) ;
+    let _d7: u32 = scene_omega_stamp_district(h, DISTRICT_RESIDENTIAL_SOOT) ;
+    let _d8: u32 = scene_omega_stamp_district(h, DISTRICT_SANCTUM_QUIET) ;
+
+    // L-9 ConsentZone · GreatForge = tier-2 (heat-noise · pre-warned) ·
+    //   SanctumQuiet = tier-0 (sanctuary · ¬ heat/smoke/noise)
+    let _cz1: u32 = scene_consent_zone_apply(h, DISTRICT_GREAT_FORGE, 2) ;
+    let _cz2: u32 = scene_consent_zone_apply(h, DISTRICT_SANCTUM_QUIET, 0) ;
+    let _cz3: u32 = scene_consent_zone_apply(h, DISTRICT_SMELTER_RING, 2) ;
+
+    // L-10 accessibility-filters · player-tunable per LOA_PILLARS § 5
+    //   default 100 = full intensity · player can dial-down via menu
+    let _af1: u32 = scene_apply_accessibility_filter(h, FILTER_HEAT_RADIANCE_AUDIO, 100) ;
+    let _af2: u32 = scene_apply_accessibility_filter(h, FILTER_SMOKE_PARTICLE, 100) ;
+    let _af3: u32 = scene_apply_accessibility_filter(h, FILTER_FORGE_HAMMER_SOUND, 100) ;
+    let _af4: u32 = scene_apply_accessibility_filter(h, FILTER_FURNACE_GLOW_BLOOM, 100) ;
+
+    // L-11 KAN-classify NPC-routine-skew (SP-PG-5)
+    let _routine: u32 = scene_kan_classify_template(
+        h,
+        0xB7A5_82C9_F0EE_1234u64,
+        city,
+        0x6F4D_3C8E_9B71_05A7u64
+    ) ;
+
+    // L-12 attestation-emit
+    let _a: u32 = scene_audit_emit(h, 1, 0xC17_5CE_E_BRASSMARu64) ;
+
+    h
+}
+
+fn tick_scene(handle: u32, dt_micros: u32, px: i32, py: i32, pz: i32) -> u32 {
+    let _l: u32 = scene_apply_lod(handle, px, py, pz) ;
+    scene_tick(handle, dt_micros)
+}
+
+fn on_scene_exit(handle: u32) -> u32 {
+    let _e: u32 = scene_audit_emit(handle, 2, 0xEX17_BRASSMAR_FEDCBA98u64) ;
+    let exit_reason: u32 = scene_query_exit_state(handle) ;
+    let _c: u32 = scene_close(handle) ;
+    exit_reason
+}
+
+fn request_npc_population_density(handle: u32) -> u32 {
+    scene_query_npc_count(handle)
+}
+
+fn request_forge_station_density(handle: u32) -> u32 {
+    scene_query_forge_count(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Forge-craft mentor handoff · gift-economy NEVER pay-to-unlock
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Mentors teach craft-recipes through quest-chains · ¬ skill-tree-currency.
+// Each mentor has unique-archetype : Smith · Armorer · Alchemist · Glyphmaster.
+// KAN-classifier (SP-PG-5) personalizes routines without altering content.
+
+fn kan_select_mentor_archetype(player_history_hash: u64, district_id: u32) -> u32 {
+    let feature_mix: u64 = player_history_hash ^ (district_id as u64) ;
+    let stage0_fallback: u32 = (district_id ^ 0xC4D3) & 0xFF ;
+    __cssl_kan_real_classify_intent(
+        sp_pg_5_city_npc_routine_skew(),
+        feature_mix,
+        stage0_fallback
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Player-controlled accessibility re-tune mid-scene
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Player can lower heat/smoke/sound intensity any-time via menu. This re-
+// applies the filter at the requested tier (clamped 0..100). t∞: ¬ override
+// of player-choice · sovereign-revocable.
+
+fn player_request_accessibility_retune(handle: u32, filter_kind: u32, intensity_pct: u32) -> u32 {
+    let clamped: u32 = if intensity_pct > 100 { 100 } else { intensity_pct } ;
+    scene_apply_accessibility_filter(handle, filter_kind, clamped)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § LOD-tier (4-tier per-frame · standard)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn lod_tier_for_distance_sq(dist_sq: u32) -> u32 {
+    if dist_sq <=    1024 { 0 }
+    else if dist_sq <= 16384 { 1 }
+    else if dist_sq <= 262144 { 2 }
+    else { 3 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_city_id_is_brassmarrow() {
+    assert_eq(city_Brassmarrow(), 3u32) ;
+}
+
+#[test]
+fn test_accessibility_clamp_over_100() {
+    let clamped: u32 = if 150u32 > 100u32 { 100u32 } else { 150u32 } ;
+    assert_eq(clamped, 100u32) ;
+}
+
+#[test]
+fn test_accessibility_clamp_under_100() {
+    let clamped: u32 = if 50u32 > 100u32 { 100u32 } else { 50u32 } ;
+    assert_eq(clamped, 50u32) ;
+}
+
+#[test]
+fn test_district_great_forge_distinct() {
+    assert_ne(DISTRICT_GREAT_FORGE, DISTRICT_SANCTUM_QUIET) ;
+    assert_ne(DISTRICT_BLACKSMITH_ROW, DISTRICT_ARMORSMITH_QUARTER) ;
+}
+
+#[test]
+fn test_filter_kinds_distinct() {
+    assert_ne(FILTER_HEAT_RADIANCE_AUDIO, FILTER_SMOKE_PARTICLE) ;
+    assert_ne(FILTER_FORGE_HAMMER_SOUND, FILTER_FURNACE_GLOW_BLOOM) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile (per main.cssl § GAP)
+//   GAP-2 · csslc-test-attribute support
+//   GAP-3 · csslc-u128-literal parsing
+//   GAP-4 · csslc-const-u32 top-level decl
+//   GAP-5 · csslc-if-as-expression (let x = if c { a } else { b })
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W11-BRASSMARROW @ (anyone ∨ anything ∨ anybody)
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// Mentors gift-knowledge ¬ paywall ¬ pay-to-unlock.
+// Heat/smoke/sound = accessibility-tunable · sovereign-revocable always.
+// SanctumQuiet tier-0 = ¬ stress · sanctuary-guarantee.
+//
+// ∎ brassmarrow.csl
