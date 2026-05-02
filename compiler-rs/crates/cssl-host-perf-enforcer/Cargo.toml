@@ -1,0 +1,24 @@
+[package]
+name                   = "cssl-host-perf-enforcer"
+description            = "CSSLv3 stage-0 — perf-budget enforcer for the LoA-v13 host. Compounds W12-12 polish_audit (which CODIFIED budgets) by ENFORCING them at CI + runtime. Zero-dep · pure-Rust · catalog-buildable. Provides : (a) frame-bench harness asserting ≤8.33ms hot-path (configurable 60/120/144Hz), (b) zero-allocation verifier wrapping global allocator on hot path (test-builds), (c) regression-baseline detector flagging >5% drift from prior bench, (d) adaptive-degradation tier table that auto-reduces LOD/effect-tier when frame-time trends up, (e) telemetry-event emitters for analytics-aggregator integration."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_perf_enforcer"
+crate-type = ["rlib"]
+
+[features]
+# Default = catalog-only · pure-Rust · zero-alloc tracker disabled (no global
+# allocator hook). Enable `perf-bench` to flip on the bench harness +
+# allocation verifier in test builds.
+default     = []
+perf-bench  = []
+
+[dependencies]
+
+[lints]
+workspace = true
