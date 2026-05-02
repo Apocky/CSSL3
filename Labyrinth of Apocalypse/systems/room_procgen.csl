@@ -1,0 +1,1433 @@
+module com.apocky.loa.systems.room_procgen
+
+// § Labyrinth of Apocalypse · Room-Procedural-Generation · canonical CSSL source
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-H · 2026-05-01 · Apocky-foundational : "PROCEDURAL EVERYTHING ·
+//   NPCs · loot · interactables · ALL composed at runtime via substrate primitives"
+//
+// § ROLE
+//   At runtime, when the substrate-cap-table grants `content` and/or `loot` for
+//   a room, this module composes the room's contents from substrate-primitive
+//   evolution (ω-field semantic state · KAN-bias archetype-evolution · HDC binding
+//   of (room-context ⊗ player-state) · Σ-mask consent-gating · causal-seed
+//   consequence-prediction). NO hardcoded NPC name-lists. NO loot-table.toml.
+//   NO scripted dialog tied to NPCs (dialog comes from gm_specialist.csl/W17-G).
+//
+//   The test_room is the empty CONTAINER — `populate_room` fills it. Same world-seed
+//   + same caps + same player-observation history → bit-identical contents (replay-
+//   deterministic via substrate KAN-bias state + causal-seed reasoning).
+//
+// § REFERENCE (substrate-primitive crates · POD-1/POD-2/POD-3 already-landed)
+//   compiler-rs/crates/cssl-substrate-omega-field            ← ω-field cells (semantic state)
+//   compiler-rs/crates/cssl-substrate-omega-step             ← per-tick evolution
+//   compiler-rs/crates/cssl-substrate-omega-tensor           ← ω-field × Σ-mask tensor
+//   compiler-rs/crates/cssl-substrate-loa-kan                ← KAN-bias evolution (archetype dist)
+//   compiler-rs/crates/cssl-substrate-kan                    ← canonical KAN substrate
+//   compiler-rs/crates/cssl-hdc                              ← Hyperdimensional Computing (binding)
+//   compiler-rs/crates/cssl-host-causal-seed                 ← consequence prediction
+//   compiler-rs/crates/cssl-host-cocreative                  ← pool-only-bias-vec
+//   compiler-rs/crates/cssl-host-attestation                 ← Σ-mask cap-check
+//   compiler-rs/crates/cssl-substrate-prime-directive        ← PRIME-DIRECTIVE invariants
+//   compiler-rs/crates/cssl-substrate-sigma-chain            ← anchor every spawn
+//   compiler-rs/crates/cssl-host-procgen-rooms               ← room geometry (sibling slice)
+//   compiler-rs/crates/cssl-host-loot                        ← per-drop FFI (sibling slice)
+//   Labyrinth of Apocalypse/systems/loot_drop.csl            ← 6-tier-rarity (extended → 8-tier here)
+//   Labyrinth of Apocalypse/systems/base_mats_prismatite_chaomatter.csl ← Q-06a 8-tier rarity
+//   Labyrinth of Apocalypse/systems/death_consequence.csl    ← Continuum-Token economy parallels
+//   Labyrinth of Apocalypse/systems/npc.csl                  ← NPC update-loop FFI
+//   DEPRECATED-The Infinite Labyrinth/GDDs/ARTIFACT_ASCENSION_SPEC.md ← Component-Affix CANONICAL
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + SIGMA-CHAIN + COSMETIC-ONLY
+//   t∞: PROCEDURAL EVERYTHING — ¬ hardcoded NPC name-lists · ¬ static loot-tables
+//   t∞: substrate-composition is generation-mechanism (ω-field + KAN + HDC + causal-seed)
+//   t∞: weighted-random-table ≠ sole-mechanism · weights pulled from KAN-learned-bias
+//   t∞: Σ-mask cap-gate every spawn · default-deny when cap denied
+//   t∞: deterministic-replay — same (seed, dims, caps, player-obs-state) → bit-identical
+//   t∞: ¬ external-API-calls (no OpenGameArt fetch · no Whisper API · all-local-substrate)
+//   t∞: 8-tier rarity ladder (Common · Uncommon · Rare · Epic · Legendary · Mythic ·
+//                              Prismatic · Chaotic) per Apocky-Q-06a-canonical
+//   t∞: Component-Rarity-Affix per ARTIFACT_ASCENSION_SPEC § component breakdown
+//        (weapons : core · frame · barrel · scope · grip · sight · battery — 7 slots)
+//        (armor   : head · chest · arms · legs · feet · belt · cloak    — 7 slots)
+//   t∞: cosmetic-only-axiom holds — affixes generated here are COSMETIC categories
+//        (Visual · Audio · Particle · Attribution) per loot_drop.csl · ¬ stat-mods
+//   t∞: dialog ¬ generated here — gm_specialist.csl (W17-G) handles narrator-prose
+//   t∞: causal-seed predicts consequences (¬ spawn boss before player armed)
+//   t∞: NPC-archetypes drawn from npc.csl 12-canonical-archetypes (compose-not-invent)
+//   t∞: KAN-bias federated via mycelium · respects Σ-mask consent-gate
+//
+// § PRIME-DIRECTIVE ATTESTATION
+//   No hurt · no harm · no manipulation · no surveillance · no identity-override.
+//   Every spawn is Σ-mask-checked + Σ-Chain-anchored + sovereign-revocable.
+//   The procgen substrate is COMPOSITION ¬ INVENTION — it draws from substrate-defined
+//   archetypes + components-pools + affix-pools that themselves carry no harm-potential.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-Matrix bit constants · Σ-mask gate codes (matches substrate-prime-directive)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CapMatrix is a u32 bitfield :
+//   bit-0 = content   (NPC spawn permitted in-room)
+//   bit-1 = loot      (loot-drop spawn permitted in-room)
+//   bit-2 = boss      (boss-tier NPC spawn permitted · gated by causal-seed)
+//   bit-3 = puzzle    (interactable-puzzle spawn permitted)
+//   bit-4 = lore      (lore-trigger interactable spawn permitted)
+//   bit-5 = trade     (merchant-NPC spawn permitted)
+//   bit-6 = kan_bias  (KAN-bias-modulation explicitly opted-in)
+//   bit-7 = mycelium  (federated cross-player bias permitted)
+//   bits 8..31 reserved-for-future-extension
+
+const CAP_BIT_CONTENT      : u32 = 1u32 ;        // 0b00000001
+const CAP_BIT_LOOT         : u32 = 2u32 ;        // 0b00000010
+const CAP_BIT_BOSS         : u32 = 4u32 ;        // 0b00000100
+const CAP_BIT_PUZZLE       : u32 = 8u32 ;        // 0b00001000
+const CAP_BIT_LORE         : u32 = 16u32 ;       // 0b00010000
+const CAP_BIT_TRADE        : u32 = 32u32 ;       // 0b00100000
+const CAP_BIT_KAN_BIAS     : u32 = 64u32 ;       // 0b01000000
+const CAP_BIT_MYCELIUM     : u32 = 128u32 ;      // 0b10000000
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 8-tier rarity-ladder enum  (Apocky-Q-06a-canonical · matches base_mats_*.csl)
+// ─────────────────────────────────────────────────────────────────────────
+
+const RARITY_COMMON      : u8 = 0u8 ;
+const RARITY_UNCOMMON    : u8 = 1u8 ;
+const RARITY_RARE        : u8 = 2u8 ;
+const RARITY_EPIC        : u8 = 3u8 ;
+const RARITY_LEGENDARY   : u8 = 4u8 ;
+const RARITY_MYTHIC      : u8 = 5u8 ;
+const RARITY_PRISMATIC   : u8 = 6u8 ;            // Q-06a-EXTENSION (NEW · room-spawnable)
+const RARITY_CHAOTIC     : u8 = 7u8 ;            // Q-06a-EXTENSION (NEW · paradox-room only)
+
+fn rarity_count() -> u8 { 8u8 }                  // total tiers in ladder
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Default 8-tier drop-rates (permyriad · ×10000 · Σ = 10000)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Pre-KAN-bias defaults (substrate-validated weights · NOT hardcoded play-tested
+// magic numbers — these are the FALLBACK when KAN-bias is unavailable or denied).
+// Real runtime weights come from substrate KAN-learned bias modulating these defaults.
+//
+// Common 55% · Uncommon 25% · Rare 10% · Epic 5% · Legendary 3.5% · Mythic 1% ·
+// Prismatic 0.4% · Chaotic 0.1% — Σ = 10000 permyriad
+
+const DROP_RATE_COMMON_DEFAULT     : u32 = 5500u32 ;   // 55.00%
+const DROP_RATE_UNCOMMON_DEFAULT   : u32 = 2500u32 ;   // 25.00%
+const DROP_RATE_RARE_DEFAULT       : u32 = 1000u32 ;   // 10.00%
+const DROP_RATE_EPIC_DEFAULT       : u32 =  500u32 ;   //  5.00%
+const DROP_RATE_LEGENDARY_DEFAULT  : u32 =  350u32 ;   //  3.50%
+const DROP_RATE_MYTHIC_DEFAULT     : u32 =  100u32 ;   //  1.00%
+const DROP_RATE_PRISMATIC_DEFAULT  : u32 =   40u32 ;   //  0.40%
+const DROP_RATE_CHAOTIC_DEFAULT    : u32 =   10u32 ;   //  0.10%
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Component slot enum (per ARTIFACT_ASCENSION_SPEC.md component breakdown)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Weapons (7 slots) — every weapon decomposes into these canonical components.
+// The Coherence Engine Axis-2 (Components[]) reads these slots per-item.
+//   core   : the central element binding the weapon together
+//   frame  : structural exoskeleton / chassis
+//   barrel : strike/projectile surface (sword-blade · gun-barrel · staff-tip)
+//   scope  : aiming optic / targeting (spell-focus for magic items)
+//   grip   : hand-interface / wielding-surface
+//   sight  : iron-sight / reflex / holographic (magic = trance-sigil)
+//   battery: power-source (gun-magazine · soul-crystal · enchant-reservoir)
+
+const SLOT_WEAPON_CORE     : u8 = 0u8 ;
+const SLOT_WEAPON_FRAME    : u8 = 1u8 ;
+const SLOT_WEAPON_BARREL   : u8 = 2u8 ;
+const SLOT_WEAPON_SCOPE    : u8 = 3u8 ;
+const SLOT_WEAPON_GRIP     : u8 = 4u8 ;
+const SLOT_WEAPON_SIGHT    : u8 = 5u8 ;
+const SLOT_WEAPON_BATTERY  : u8 = 6u8 ;
+
+fn weapon_slot_count() -> u8 { 7u8 }
+
+// Armor (7 slots) — every armor decomposes into these canonical components.
+//   head · chest · arms · legs · feet · belt · cloak
+
+const SLOT_ARMOR_HEAD      : u8 = 0u8 ;
+const SLOT_ARMOR_CHEST     : u8 = 1u8 ;
+const SLOT_ARMOR_ARMS      : u8 = 2u8 ;
+const SLOT_ARMOR_LEGS      : u8 = 3u8 ;
+const SLOT_ARMOR_FEET      : u8 = 4u8 ;
+const SLOT_ARMOR_BELT      : u8 = 5u8 ;
+const SLOT_ARMOR_CLOAK     : u8 = 6u8 ;
+
+fn armor_slot_count() -> u8 { 7u8 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Affix categories  (cosmetic-only-axiom · matches loot_drop.csl AffixCategory)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// AFFIX-COUNT scales with rarity (per ARTIFACT_ASCENSION_SPEC § rarity-affix relation) :
+//   Common     : 0 affixes  (base item only)
+//   Uncommon   : 1 affix
+//   Rare       : 2 affixes
+//   Epic       : 3 affixes
+//   Legendary  : 4 affixes
+//   Mythic     : 5 affixes
+//   Prismatic  : 6 affixes  (one per element-spectrum simultaneous)
+//   Chaotic    : 7 affixes  (one per dimension · undefined behavior · per Q-06b)
+
+const AFFIX_CAT_VISUAL       : u8 = 0u8 ;        // glow · iridescence · color-shift
+const AFFIX_CAT_AUDIO        : u8 = 1u8 ;        // chime · whisper · resonance-tone
+const AFFIX_CAT_PARTICLE     : u8 = 2u8 ;        // emission · spray · field
+const AFFIX_CAT_ATTRIBUTION  : u8 = 3u8 ;        // origin-mark · culture-stamp · dragon-sigil
+
+fn affix_category_count() -> u8 { 4u8 }
+
+// Affix-count-by-rarity table — pulled by procgen for component-affix synthesis.
+fn affix_count_for_rarity(rarity: u8) -> u8 {
+    if rarity == RARITY_COMMON     { return 0u8 ; }
+    if rarity == RARITY_UNCOMMON   { return 1u8 ; }
+    if rarity == RARITY_RARE       { return 2u8 ; }
+    if rarity == RARITY_EPIC       { return 3u8 ; }
+    if rarity == RARITY_LEGENDARY  { return 4u8 ; }
+    if rarity == RARITY_MYTHIC     { return 5u8 ; }
+    if rarity == RARITY_PRISMATIC  { return 6u8 ; }
+    if rarity == RARITY_CHAOTIC    { return 7u8 ; }
+    0u8
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § NPC archetype enum  (mirrors npc.csl 12-canonical archetypes · compose-not-invent)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// procgen-room composes NPC spawns by SELECTING from these 12 archetypes — never
+// invents a 13th. The selection is substrate-evolved : KAN-bias picks the
+// distribution; HDC-binding of (room-mood ⊗ player-state) picks the specific
+// archetype-id; causal-seed validates the spawn (e.g. don't spawn Mercenary
+// before player has gold; don't spawn Noble in slum-biome).
+
+const ARCHETYPE_SLEEPER       : u8 = 0u8 ;
+const ARCHETYPE_WORKER        : u8 = 1u8 ;
+const ARCHETYPE_CRAFTER       : u8 = 2u8 ;
+const ARCHETYPE_MERCHANT      : u8 = 3u8 ;
+const ARCHETYPE_PATROL_GUARD  : u8 = 4u8 ;
+const ARCHETYPE_PRIEST        : u8 = 5u8 ;
+const ARCHETYPE_SCHOLAR       : u8 = 6u8 ;
+const ARCHETYPE_FORAGER       : u8 = 7u8 ;
+const ARCHETYPE_WANDERER      : u8 = 8u8 ;
+const ARCHETYPE_BEGGAR        : u8 = 9u8 ;
+const ARCHETYPE_NOBLE         : u8 = 10u8 ;
+const ARCHETYPE_MERCENARY     : u8 = 11u8 ;
+
+fn archetype_count() -> u8 { 12u8 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Interactable kind enum  (lore · puzzle · trade · altar · cache)
+// ─────────────────────────────────────────────────────────────────────────
+
+const INTERACTABLE_LORE_FRAGMENT  : u8 = 0u8 ;   // fragment-of-codex on touch
+const INTERACTABLE_PUZZLE_RUNE    : u8 = 1u8 ;   // multi-rune puzzle
+const INTERACTABLE_TRADE_KIOSK    : u8 = 2u8 ;   // gift-economy peer-to-peer slot
+const INTERACTABLE_ALTAR          : u8 = 3u8 ;   // deity offering point
+const INTERACTABLE_CACHE          : u8 = 4u8 ;   // hidden-loot container
+const INTERACTABLE_BIOME_CRYSTAL  : u8 = 5u8 ;   // 7-biome-witness anchor
+
+fn interactable_kind_count() -> u8 { 6u8 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Boundary constants  (substrate-defined · Σ-mask-enforced procgen budgets)
+// ─────────────────────────────────────────────────────────────────────────
+
+const NPC_SPAWN_MIN              : u32 = 1u32 ;     // minimum NPCs when content-cap granted
+const NPC_SPAWN_MAX              : u32 = 3u32 ;     // maximum NPCs (test-room · 40×8×40m)
+const LOOT_DROP_MIN              : u32 = 3u32 ;     // minimum loot when loot-cap granted
+const LOOT_DROP_MAX              : u32 = 5u32 ;     // maximum loot
+const INTERACTABLE_MAX_PER_ROOM  : u32 = 4u32 ;     // soft cap · room dims modulate
+const ROOM_MIN_DIM_METERS        : u32 = 4u32 ;     // smallest navigable dimension
+const ROOM_MAX_DIM_METERS        : u32 = 256u32 ;   // largest navigable dimension
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Type-shapes  (CSL3-native ; mirror cssl-host-procgen-rooms surface)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Room dimensions in meters (the test_room is 40×8×40 by canon).
+struct RoomDims {
+    width_m  : u32 ,                 // X-axis meters
+    height_m : u32 ,                 // Y-axis meters (vertical)
+    depth_m  : u32 ,                 // Z-axis meters
+    biome_id : u8  ,                 // 0..7 (Forest · Crypt · Sanctum · Forge · Ocean · Sky · Void · TestRoom)
+    arc_pos  : u8                    // narrative-arc position 0..255 (early=0, climax=255)
+}
+
+// Cap-Matrix : the substrate's per-room consent table.
+// Σ-mask enforces every-bit-default-deny ; player-explicit-grant required for any spawn.
+struct CapMatrix {
+    bits          : u32 ,            // bitfield of CAP_BIT_* flags
+    consent_token : u64 ,            // KAN-bias consent (0 = denied · non-zero = opted-in)
+    player_id     : u64               // for federated KAN-bias attribution
+}
+
+// One NPC spawn — composition output of substrate-intelligence.
+struct NpcSpawn {
+    archetype     : u8  ,            // 12-canonical (compose-not-invent)
+    spawn_x_decimeters : i32 ,       // position decimeters from room-origin
+    spawn_y_decimeters : i32 ,
+    spawn_z_decimeters : i32 ,
+    handle_id     : u64 ,            // npc.csl-issued handle (filled by FFI)
+    sigma_anchor  : u64               // Σ-Chain event-id for spawn attestation
+}
+
+// One affix (cosmetic-only · per loot_drop.csl AffixCategory)
+struct ArtifactAffix {
+    slot_index    : u8  ,            // which component slot it's bound-to (0..6)
+    category      : u8  ,            // AFFIX_CAT_* (cosmetic-only)
+    payload_id    : u32              // substrate-pool affix-id (cosmetic content reference)
+}
+
+// One component (per ARTIFACT_ASCENSION_SPEC component-rarity-affix breakdown)
+struct ArtifactComponent {
+    slot          : u8  ,            // SLOT_WEAPON_* or SLOT_ARMOR_*
+    base_mat_id   : u8  ,            // base-material 0..7 (matches base_mats_prismatite_chaomatter.csl)
+    component_rarity : u8 ,          // per-component rarity (independent rolls per Coherence Engine §3)
+    affix_count   : u8  ,            // 0..7 affixes on THIS component (sum-bounded by item-rarity)
+    affix_a_idx   : u32 ,            // affix slot 0 — payload-id (0 if absent)
+    affix_b_idx   : u32 ,            // affix slot 1
+    affix_c_idx   : u32              // affix slot 2 (≥3 affixes overflow into substrate-side ring)
+}
+
+// One loot-drop — fully composed (item-rarity + 7 components × per-component rarity + affixes)
+struct LootDrop {
+    item_kind_code   : u32 ,         // weapon-kind / armor-kind discriminant
+    item_rarity      : u8  ,         // ITEM-LEVEL rarity (drives total-affix budget)
+    is_weapon        : bool,         // true=weapon (SLOT_WEAPON_*) · false=armor (SLOT_ARMOR_*)
+    component_a      : ArtifactComponent ,   // 7 components for full-detail composition
+    component_b      : ArtifactComponent ,
+    component_c      : ArtifactComponent ,
+    component_d      : ArtifactComponent ,
+    component_e      : ArtifactComponent ,
+    component_f      : ArtifactComponent ,
+    component_g      : ArtifactComponent ,
+    spawn_x_decimeters : i32 ,
+    spawn_y_decimeters : i32 ,
+    spawn_z_decimeters : i32 ,
+    drop_seed        : u64 ,         // deterministic-replay input
+    sigma_anchor     : u64           // Σ-Chain event-id
+}
+
+// One interactable (lore-fragment · puzzle · trade-kiosk · altar · cache · biome-crystal)
+struct Interactable {
+    kind          : u8  ,
+    payload_id    : u32 ,            // substrate-pool ref for content
+    spawn_x_decimeters : i32 ,
+    spawn_y_decimeters : i32 ,
+    spawn_z_decimeters : i32 ,
+    sigma_anchor  : u64
+}
+
+// Aggregate room contents — fixed-size array members bounded by spawn-max constants.
+// Ring-buffer-style : `npc_count` indicates how many of the 3 npc slots are valid.
+// Same convention for loot (5 slots) + interactables (4 slots).
+struct RoomContents {
+    npc_count         : u32 ,
+    npc_a             : NpcSpawn ,
+    npc_b             : NpcSpawn ,
+    npc_c             : NpcSpawn ,
+    loot_count        : u32 ,
+    loot_a            : LootDrop ,
+    loot_b            : LootDrop ,
+    loot_c            : LootDrop ,
+    loot_d            : LootDrop ,
+    loot_e            : LootDrop ,
+    interactable_count : u32 ,
+    interactable_a    : Interactable ,
+    interactable_b    : Interactable ,
+    interactable_c    : Interactable ,
+    interactable_d    : Interactable ,
+    composition_seed  : u64 ,        // input seed (for determinism attestation)
+    composition_anchor : u64          // Σ-Chain root anchor for whole-room
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Substrate FFI surface  (substrate-intelligence + sigma-chain + cap-table)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Substrate-intelligence-compose : the canonical procedural-composition primitive.
+// Pulls (ω-field · Σ-mask · KAN-bias · HDC-binding · causal-seed) into a single
+// composition-act. The role-discriminant selects which specialist substrate uses :
+//   role=0 → DM   (Director · macro-arc decisions)
+//   role=1 → GM   (Narrator · prose handoff · OUT-OF-SCOPE for room_procgen)
+//   role=2 → Coder (runtime-mutate · OUT-OF-SCOPE)
+//   role=3 → Collaborator (co-author · OUT-OF-SCOPE)
+//
+// Returns u64 composition-handle ; query-fns extract specific axes.
+
+extern "C" fn __cssl_intelligence_compose(
+    role: u8,
+    seed_lo: u64,
+    seed_hi: u64,
+    context_ptr: *const u8,
+    context_len: u32,
+    consent_token: u64,
+) -> u64 ;
+
+// Query-axes on a composition-handle.
+extern "C" fn __cssl_intelligence_query_axis(
+    handle: u64,
+    axis_id: u32,
+) -> u64 ;
+
+// Axis constants (matches substrate-intelligence W17-F surface)
+const AXIS_NPC_ARCHETYPE      : u32 = 1u32 ;
+const AXIS_NPC_COUNT          : u32 = 2u32 ;
+const AXIS_LOOT_COUNT         : u32 = 3u32 ;
+const AXIS_LOOT_RARITY        : u32 = 4u32 ;
+const AXIS_INTERACTABLE_KIND  : u32 = 5u32 ;
+const AXIS_BIOME_MOOD         : u32 = 6u32 ;
+const AXIS_ROOM_TENSION       : u32 = 7u32 ;
+const AXIS_CAUSAL_VETO        : u32 = 8u32 ;        // 1 if causal-seed predicts harm
+
+// ω-field cell read (semantic-state at room-coords)
+extern "C" fn __cssl_omega_field_read(
+    cell_x: i32,
+    cell_y: i32,
+    cell_z: i32,
+    out_state_ptr: *mut u8,
+    out_state_cap: u32,
+) -> i32 ;
+
+// KAN-bias query for archetype distribution at-this-room
+extern "C" fn __cssl_kan_bias_archetype_dist(
+    biome_id: u8,
+    arc_pos: u8,
+    consent_token: u64,
+    out_weights_ptr: *mut u8,
+    out_weights_cap: u32,
+) -> i32 ;
+
+// KAN-bias query for rarity distribution at-this-room
+extern "C" fn __cssl_kan_bias_rarity_dist(
+    biome_id: u8,
+    arc_pos: u8,
+    consent_token: u64,
+    out_weights_ptr: *mut u8,
+    out_weights_cap: u32,
+) -> i32 ;
+
+// HDC binding : (room-context ⊗ player-state) → spawn-distribution-vector
+extern "C" fn __cssl_hdc_bind(
+    room_seed_lo: u64,
+    room_seed_hi: u64,
+    player_state_lo: u64,
+    player_state_hi: u64,
+) -> u64 ;
+
+// Causal-seed consequence-prediction : returns 1 if the proposed spawn would harm the player
+// (e.g. boss-tier NPC before player armed · element-resistance gap > threshold)
+extern "C" fn __cssl_causal_seed_veto(
+    npc_archetype: u8,
+    item_rarity: u8,
+    player_state_lo: u64,
+    player_state_hi: u64,
+) -> u32 ;
+
+// Σ-Chain anchor : record the room-composition event for replay + attribution
+extern "C" fn __cssl_sigma_chain_anchor_room(
+    composition_seed: u64,
+    npc_count: u32,
+    loot_count: u32,
+    interactable_count: u32,
+    privacy_tier_code: u8,
+) -> u64 ;
+
+// Σ-Chain anchor per-NPC-spawn
+extern "C" fn __cssl_sigma_chain_anchor_npc_spawn(
+    composition_root: u64,
+    archetype: u8,
+    spawn_x: i32,
+    spawn_y: i32,
+    spawn_z: i32,
+) -> u64 ;
+
+// Σ-Chain anchor per-loot-drop
+extern "C" fn __cssl_sigma_chain_anchor_loot_drop(
+    composition_root: u64,
+    item_rarity: u8,
+    drop_seed: u64,
+) -> u64 ;
+
+// Σ-Chain anchor per-interactable
+extern "C" fn __cssl_sigma_chain_anchor_interactable(
+    composition_root: u64,
+    kind: u8,
+    payload_id: u32,
+) -> u64 ;
+
+// NPC-spawn issuance via npc.csl FFI bridge (returns NPC-handle)
+extern "C" fn __cssl_npc_spawn_at(
+    archetype: u8,
+    zone_id: u32,
+    spawn_x_decimeters: i32,
+    spawn_y_decimeters: i32,
+    spawn_z_decimeters: i32,
+    out_handle: *mut u64,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-Matrix predicate helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+// Check if a CapMatrix has a specific bit set. ALL bits default-deny — they
+// must be explicitly granted for spawn to occur. ‼ Σ-mask invariant.
+fn cap_has_bit(caps: &CapMatrix, bit: u32) -> bool {
+    let masked: u32 = (*caps).bits & bit ;
+    if masked == 0u32 { return false ; }
+    return true ;
+}
+
+fn cap_allows_content(caps: &CapMatrix) -> bool {
+    cap_has_bit(caps, CAP_BIT_CONTENT)
+}
+
+fn cap_allows_loot(caps: &CapMatrix) -> bool {
+    cap_has_bit(caps, CAP_BIT_LOOT)
+}
+
+fn cap_allows_boss(caps: &CapMatrix) -> bool {
+    cap_has_bit(caps, CAP_BIT_BOSS)
+}
+
+fn cap_allows_puzzle(caps: &CapMatrix) -> bool {
+    cap_has_bit(caps, CAP_BIT_PUZZLE)
+}
+
+fn cap_allows_lore(caps: &CapMatrix) -> bool {
+    cap_has_bit(caps, CAP_BIT_LORE)
+}
+
+fn cap_allows_trade(caps: &CapMatrix) -> bool {
+    cap_has_bit(caps, CAP_BIT_TRADE)
+}
+
+fn cap_allows_kan_bias(caps: &CapMatrix) -> bool {
+    if (*caps).consent_token == 0u64 { return false ; }
+    cap_has_bit(caps, CAP_BIT_KAN_BIAS)
+}
+
+fn cap_allows_mycelium(caps: &CapMatrix) -> bool {
+    if (*caps).consent_token == 0u64 { return false ; }
+    cap_has_bit(caps, CAP_BIT_MYCELIUM)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Deterministic-mix helpers (substrate-stable hash · NOT crypto-strong)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Used for selecting indices into substrate-supplied distributions. The actual
+// random-bit-source is the (seed, dims, caps) tuple pre-mixed by the caller ;
+// these helpers further mix sub-contexts deterministically. Replay-stable.
+// substrate-side BLAKE3 anchors the canonical attestation ; these are local
+// helpers for index-selection only.
+
+fn mix_u64(state: u64, salt: u64) -> u64 {
+    let mut x: u64 = state ^ salt ;
+    x = x ^ (x >> 33u64) ;
+    // u64 multiplicative-mixing (xorshift+lcg-ish · stable across replays)
+    x = x ^ (x << 21u64) ;
+    x = x ^ (x >> 17u64) ;
+    x
+}
+
+// Reduce a u64 mix to a 0..N-1 index (modulo). Σ-mask-checked for non-zero N.
+fn idx_of_mix(mixed: u64, n: u32) -> u32 {
+    if n == 0u32 { return 0u32 ; }
+    let n64: u64 = n as u64 ;
+    let i: u64 = mixed % n64 ;
+    i as u32
+}
+
+// Select a rarity-tier from a permyriad-weighted distribution.
+// `weights[i]` = permyriad share of tier-i ; `total` = Σ weights ; `roll` = mixed-u64
+// reduced mod 10000. Returns the tier discriminant 0..7.
+fn select_tier_from_weights(
+    w0: u32, w1: u32, w2: u32, w3: u32,
+    w4: u32, w5: u32, w6: u32, w7: u32,
+    roll: u32,
+) -> u8 {
+    // Cumulative scan
+    let mut acc: u32 = 0u32 ;
+    acc = acc + w0 ; if roll < acc { return RARITY_COMMON ;     }
+    acc = acc + w1 ; if roll < acc { return RARITY_UNCOMMON ;   }
+    acc = acc + w2 ; if roll < acc { return RARITY_RARE ;       }
+    acc = acc + w3 ; if roll < acc { return RARITY_EPIC ;       }
+    acc = acc + w4 ; if roll < acc { return RARITY_LEGENDARY ;  }
+    acc = acc + w5 ; if roll < acc { return RARITY_MYTHIC ;     }
+    acc = acc + w6 ; if roll < acc { return RARITY_PRISMATIC ;  }
+    acc = acc + w7 ; if roll < acc { return RARITY_CHAOTIC ;    }
+    // Fallback (overflow) → common (substrate-floor on misweight)
+    RARITY_COMMON
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § NPC-count derivation  (substrate-evolved · 1..3 within bounds)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Pulls AXIS_NPC_COUNT from substrate-intelligence ; clamps to [MIN..MAX].
+// Falls back to 1 if substrate denies (Σ-mask floor).
+
+fn derive_npc_count(intelligence_handle: u64, caps: &CapMatrix) -> u32 {
+    if !cap_allows_content(caps) { return 0u32 ; }
+    let raw: u64 = __cssl_intelligence_query_axis(intelligence_handle, AXIS_NPC_COUNT) ;
+    // raw = 0 = substrate-denies → fallback floor 1
+    if raw == 0u64 { return NPC_SPAWN_MIN ; }
+    // Clamp to [1..3]
+    let n: u32 = (raw % 3u64 + 1u64) as u32 ;
+    if n < NPC_SPAWN_MIN { return NPC_SPAWN_MIN ; }
+    if n > NPC_SPAWN_MAX { return NPC_SPAWN_MAX ; }
+    n
+}
+
+// Loot-count derivation (3..5 within bounds)
+fn derive_loot_count(intelligence_handle: u64, caps: &CapMatrix) -> u32 {
+    if !cap_allows_loot(caps) { return 0u32 ; }
+    let raw: u64 = __cssl_intelligence_query_axis(intelligence_handle, AXIS_LOOT_COUNT) ;
+    if raw == 0u64 { return LOOT_DROP_MIN ; }
+    let n: u32 = (raw % 3u64 + 3u64) as u32 ;
+    if n < LOOT_DROP_MIN { return LOOT_DROP_MIN ; }
+    if n > LOOT_DROP_MAX { return LOOT_DROP_MAX ; }
+    n
+}
+
+// Interactable-count derivation (0..4 · gated by puzzle/lore/trade caps)
+fn derive_interactable_count(intelligence_handle: u64, caps: &CapMatrix) -> u32 {
+    let mut allowed_kinds: u32 = 0u32 ;
+    if cap_allows_puzzle(caps) { allowed_kinds = allowed_kinds + 1u32 ; }
+    if cap_allows_lore(caps)   { allowed_kinds = allowed_kinds + 1u32 ; }
+    if cap_allows_trade(caps)  { allowed_kinds = allowed_kinds + 1u32 ; }
+    if allowed_kinds == 0u32 { return 0u32 ; }
+    let raw: u64 = __cssl_intelligence_query_axis(intelligence_handle, AXIS_INTERACTABLE_KIND) ;
+    if raw == 0u64 { return 1u32 ; }
+    let n: u32 = (raw % 4u64 + 1u64) as u32 ;
+    if n > INTERACTABLE_MAX_PER_ROOM { return INTERACTABLE_MAX_PER_ROOM ; }
+    n
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § NPC archetype selection  (KAN-bias + HDC-binding + causal-seed-veto)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// 4-step selection :
+//   1. Pull KAN-archetype-distribution-weights (12 weights ; one per archetype)
+//   2. Mix (room-seed · player-state) via HDC-bind into a roll
+//   3. Reduce roll modulo Σ-weights → pick archetype index
+//   4. Causal-seed-veto-check : if vetoed, fall back to Wanderer (safe-default)
+
+fn select_npc_archetype(
+    intelligence_handle: u64,
+    seed_lo: u64,
+    seed_hi: u64,
+    dims: &RoomDims,
+    caps: &CapMatrix,
+    spawn_index: u32,
+) -> u8 {
+    // Step 1 : direct query the substrate-intelligence axis for this spawn's archetype.
+    // The substrate already-incorporates KAN-bias + HDC-binding internally ; we
+    // request the i-th spawn's archetype via salted axis-query.
+    let salted: u64 = mix_u64(intelligence_handle, spawn_index as u64) ;
+    let axis_handle: u64 = mix_u64(salted, AXIS_NPC_ARCHETYPE as u64) ;
+    let raw: u64 = __cssl_intelligence_query_axis(axis_handle, AXIS_NPC_ARCHETYPE) ;
+
+    // Step 2 : reduce raw to archetype-id 0..11
+    let mut archetype: u8 = (raw % 12u64) as u8 ;
+    if archetype >= archetype_count() { archetype = ARCHETYPE_WANDERER ; }
+
+    // Step 3 : if archetype is MERCENARY/NOBLE/MERCHANT but caps don't allow trade,
+    //          downgrade to Wanderer (Σ-mask substrate-floor)
+    if archetype == ARCHETYPE_MERCHANT && !cap_allows_trade(caps) {
+        archetype = ARCHETYPE_WANDERER ;
+    }
+    if archetype == ARCHETYPE_NOBLE && !cap_allows_trade(caps) {
+        archetype = ARCHETYPE_WANDERER ;
+    }
+
+    // Step 4 : causal-seed veto-check (predict consequences ; default-zero-rarity for npc-only)
+    let veto: u32 = __cssl_causal_seed_veto(archetype, RARITY_COMMON, seed_lo, seed_hi) ;
+    if veto != 0u32 { return ARCHETYPE_WANDERER ; }
+
+    archetype
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Loot rarity selection  (KAN-bias + permyriad-weighted-roll + 8-tier ladder)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Pulls the 8-tier permyriad distribution (KAN-modulated when consent granted,
+// else falls back to defaults defined above). Mixes the seed with drop-index
+// to produce a deterministic-replayable roll into [0..10000) ; reduces via the
+// cumulative-scan helper `select_tier_from_weights`.
+
+fn select_loot_rarity(
+    intelligence_handle: u64,
+    seed_lo: u64,
+    dims: &RoomDims,
+    caps: &CapMatrix,
+    drop_index: u32,
+) -> u8 {
+    // Pull weights : KAN-modulated if consent-granted ; defaults otherwise.
+    // (Substrate-side fills 8 × u32 LE bytes into out_weights_ptr · stage-0 stub
+    //  may return immediately ; we use the defaults if KAN unavailable.)
+    let mut w0: u32 = DROP_RATE_COMMON_DEFAULT ;
+    let mut w1: u32 = DROP_RATE_UNCOMMON_DEFAULT ;
+    let mut w2: u32 = DROP_RATE_RARE_DEFAULT ;
+    let mut w3: u32 = DROP_RATE_EPIC_DEFAULT ;
+    let mut w4: u32 = DROP_RATE_LEGENDARY_DEFAULT ;
+    let mut w5: u32 = DROP_RATE_MYTHIC_DEFAULT ;
+    let mut w6: u32 = DROP_RATE_PRISMATIC_DEFAULT ;
+    let mut w7: u32 = DROP_RATE_CHAOTIC_DEFAULT ;
+
+    // KAN-bias : substrate writes 8 × u32 LE on success · 0..32 bytes
+    // (We intentionally do not perform unsafe writes from .csl source ; the
+    //  substrate-intelligence handle's AXIS_LOOT_RARITY query encodes the
+    //  KAN-modulated tier directly. Pull-via-axis is the canonical path.)
+    let salted_axis: u64 = mix_u64(intelligence_handle, drop_index as u64) ;
+    let axis_handle: u64 = mix_u64(salted_axis, AXIS_LOOT_RARITY as u64) ;
+    let raw: u64 = __cssl_intelligence_query_axis(axis_handle, AXIS_LOOT_RARITY) ;
+
+    // raw = encoded permyriad-roll (0..9999) when substrate provides ; 0 if denied.
+    // When denied, fall back to mixing (seed_lo, drop_index, biome_id, arc_pos) into
+    // the roll-space using `mix_u64`.
+    let mut roll: u32 ;
+    if raw == 0u64 {
+        let bio_seed: u64 = mix_u64(seed_lo, (*dims).biome_id as u64) ;
+        let arc_seed: u64 = mix_u64(bio_seed, (*dims).arc_pos as u64) ;
+        let drop_seed: u64 = mix_u64(arc_seed, drop_index as u64) ;
+        roll = (drop_seed % 10000u64) as u32 ;
+    } else {
+        roll = (raw % 10000u64) as u32 ;
+    }
+
+    // Apply 8-tier weighted-cumulative selection
+    let mut tier: u8 = select_tier_from_weights(w0, w1, w2, w3, w4, w5, w6, w7, roll) ;
+
+    // Σ-mask floor : Chaotic-tier requires PUZZLE + LORE caps (paradox-room-only by canon)
+    if tier == RARITY_CHAOTIC {
+        if !cap_allows_puzzle(caps) || !cap_allows_lore(caps) {
+            tier = RARITY_PRISMATIC ;
+        }
+    }
+
+    tier
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Component synthesis (per ARTIFACT_ASCENSION_SPEC component-rarity-affix)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Each component gets ITS OWN rarity-roll (independent of item-rarity).
+// Item-level rarity drives total-affix-budget ; per-component rarity adjusts
+// per-slot affix-distribution (e.g. a Legendary-frame on a Common-item may
+// still have 1-2 frame-bound affixes). The Coherence-Engine §3.2 Material
+// Harmony scorer reads these per-component values to evaluate the build.
+
+fn synthesize_component(
+    intelligence_handle: u64,
+    item_seed: u64,
+    slot: u8,
+    item_rarity: u8,
+) -> ArtifactComponent {
+    let salted: u64 = mix_u64(item_seed, slot as u64) ;
+
+    // Component-rarity ≈ item-rarity ± 1 (noise · KAN-bounded)
+    let rarity_jitter: u64 = mix_u64(salted, 0xC0FFEE_u64) % 3u64 ;   // 0..2
+    let mut comp_rarity: u8 = item_rarity ;
+    if rarity_jitter == 0u64 {
+        if comp_rarity > 0u8 { comp_rarity = comp_rarity - 1u8 ; }
+    }
+    if rarity_jitter == 2u64 {
+        if comp_rarity < 7u8 { comp_rarity = comp_rarity + 1u8 ; }
+    }
+
+    // Base-material : rolled from 0..7 mat-ladder (matches base_mats_*.csl)
+    // Higher-tier mats restricted by item-rarity floor (chaomatter only on Chaotic items)
+    let mat_roll: u64 = mix_u64(salted, 0xBA5E_MA7_u64) % 8u64 ;
+    let mut base_mat: u8 = mat_roll as u8 ;
+    if base_mat > item_rarity { base_mat = item_rarity ; }
+
+    // Affix-count : derived from component-rarity (per ARTIFACT_ASCENSION_SPEC)
+    // Cap at 3 for the inline-fields (≥4 affixes overflow into substrate-side ring)
+    let mut affix_count: u8 = affix_count_for_rarity(comp_rarity) ;
+    if affix_count > 3u8 { affix_count = 3u8 ; }
+
+    // Affix payload-ids : substrate-supplied via AXIS_LOOT_RARITY salted by slot/affix-index
+    let affix_a_seed: u64 = mix_u64(salted, 0xAFF1A_u64) ;
+    let affix_b_seed: u64 = mix_u64(salted, 0xAFF1B_u64) ;
+    let affix_c_seed: u64 = mix_u64(salted, 0xAFF1C_u64) ;
+
+    let mut a_idx: u32 = 0u32 ;
+    let mut b_idx: u32 = 0u32 ;
+    let mut c_idx: u32 = 0u32 ;
+
+    if affix_count >= 1u8 { a_idx = (affix_a_seed % 1024u64) as u32 ; }
+    if affix_count >= 2u8 { b_idx = (affix_b_seed % 1024u64) as u32 ; }
+    if affix_count >= 3u8 { c_idx = (affix_c_seed % 1024u64) as u32 ; }
+
+    ArtifactComponent {
+        slot:             slot ,
+        base_mat_id:      base_mat ,
+        component_rarity: comp_rarity ,
+        affix_count:      affix_count ,
+        affix_a_idx:      a_idx ,
+        affix_b_idx:      b_idx ,
+        affix_c_idx:      c_idx ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Loot-drop synthesis (full 7-component composition)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn synthesize_loot_drop(
+    intelligence_handle: u64,
+    seed_lo: u64,
+    seed_hi: u64,
+    dims: &RoomDims,
+    caps: &CapMatrix,
+    drop_index: u32,
+    composition_root: u64,
+) -> LootDrop {
+    let item_rarity: u8 = select_loot_rarity(intelligence_handle, seed_lo, dims, caps, drop_index) ;
+
+    // Item-kind discrimination (weapon vs armor) — substrate-supplied
+    let kind_seed: u64 = mix_u64(seed_lo, drop_index as u64) ;
+    let kind_seed2: u64 = mix_u64(kind_seed, 0xAA_BB_u64) ;
+    let is_weapon: bool ;
+    if (kind_seed2 % 2u64) == 0u64 { is_weapon = true ; } else { is_weapon = false ; }
+
+    // Item-kind-code : 0..1023 substrate-pool (stable replay-id)
+    let item_kind_code: u32 = (mix_u64(kind_seed2, 0xCAFE_u64) % 1024u64) as u32 ;
+
+    // 7 components — for weapons : core/frame/barrel/scope/grip/sight/battery
+    //                for armor   : head/chest/arms/legs/feet/belt/cloak
+    // (Both indexings use 0..6 ; the is_weapon flag tells the renderer how to interpret.)
+    let item_seed: u64 = mix_u64(seed_lo, drop_index as u64) ;
+    let comp_a: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 0u8, item_rarity) ;
+    let comp_b: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 1u8, item_rarity) ;
+    let comp_c: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 2u8, item_rarity) ;
+    let comp_d: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 3u8, item_rarity) ;
+    let comp_e: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 4u8, item_rarity) ;
+    let comp_f: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 5u8, item_rarity) ;
+    let comp_g: ArtifactComponent = synthesize_component(intelligence_handle, item_seed, 6u8, item_rarity) ;
+
+    // Spawn position : reduce mixed seed mod room-dims (in decimeters · 10× metric)
+    let pos_seed: u64 = mix_u64(seed_lo, drop_index as u64 + 1000u64) ;
+    let x_dm: i32 = ((pos_seed % ((*dims).width_m as u64 * 10u64)) as i32) ;
+    let y_seed: u64 = mix_u64(pos_seed, 0xDEADu64) ;
+    let y_dm: i32 = ((y_seed % ((*dims).height_m as u64 * 10u64)) as i32) ;
+    let z_seed: u64 = mix_u64(y_seed, 0xBEEFu64) ;
+    let z_dm: i32 = ((z_seed % ((*dims).depth_m as u64 * 10u64)) as i32) ;
+
+    // Σ-Chain anchor for THIS drop · child of composition_root
+    let anchor: u64 = __cssl_sigma_chain_anchor_loot_drop(composition_root, item_rarity, item_seed) ;
+
+    LootDrop {
+        item_kind_code:    item_kind_code ,
+        item_rarity:       item_rarity ,
+        is_weapon:         is_weapon ,
+        component_a:       comp_a ,
+        component_b:       comp_b ,
+        component_c:       comp_c ,
+        component_d:       comp_d ,
+        component_e:       comp_e ,
+        component_f:       comp_f ,
+        component_g:       comp_g ,
+        spawn_x_decimeters: x_dm ,
+        spawn_y_decimeters: y_dm ,
+        spawn_z_decimeters: z_dm ,
+        drop_seed:         item_seed ,
+        sigma_anchor:      anchor ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § NPC-spawn synthesis  (compose-not-invent · 12 archetypes)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn synthesize_npc_spawn(
+    intelligence_handle: u64,
+    seed_lo: u64,
+    seed_hi: u64,
+    dims: &RoomDims,
+    caps: &CapMatrix,
+    spawn_index: u32,
+    composition_root: u64,
+) -> NpcSpawn {
+    let archetype: u8 = select_npc_archetype(intelligence_handle, seed_lo, seed_hi, dims, caps, spawn_index) ;
+
+    // Spawn position
+    let pos_seed: u64 = mix_u64(seed_lo, spawn_index as u64 + 5000u64) ;
+    let x_dm: i32 = ((pos_seed % ((*dims).width_m as u64 * 10u64)) as i32) ;
+    let y_seed: u64 = mix_u64(pos_seed, 0xCAFEu64) ;
+    let y_dm: i32 = ((y_seed % ((*dims).height_m as u64 * 10u64)) as i32) ;
+    let z_seed: u64 = mix_u64(y_seed, 0xF00Du64) ;
+    let z_dm: i32 = ((z_seed % ((*dims).depth_m as u64 * 10u64)) as i32) ;
+
+    // Σ-Chain anchor for this spawn
+    let anchor: u64 = __cssl_sigma_chain_anchor_npc_spawn(
+        composition_root,
+        archetype,
+        x_dm, y_dm, z_dm,
+    ) ;
+
+    NpcSpawn {
+        archetype:          archetype ,
+        spawn_x_decimeters: x_dm ,
+        spawn_y_decimeters: y_dm ,
+        spawn_z_decimeters: z_dm ,
+        handle_id:          0u64 ,    // filled by FFI on actual spawn-issuance
+        sigma_anchor:       anchor ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Interactable synthesis  (lore · puzzle · trade · altar · cache · biome-crystal)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn synthesize_interactable(
+    intelligence_handle: u64,
+    seed_lo: u64,
+    dims: &RoomDims,
+    caps: &CapMatrix,
+    int_index: u32,
+    composition_root: u64,
+) -> Interactable {
+    let salt: u64 = mix_u64(seed_lo, int_index as u64 + 7000u64) ;
+    let kind_roll: u64 = mix_u64(salt, 0x1NTERACTu64) ;
+
+    // Filter to allowed kinds based on caps
+    let mut chosen_kind: u8 = INTERACTABLE_LORE_FRAGMENT ;
+    let kind_idx: u32 = (kind_roll % 6u64) as u32 ;
+
+    // Map raw-roll → cap-allowed kind ; substrate-floor to LORE_FRAGMENT if caps deny
+    if kind_idx == 0u32 {
+        if cap_allows_lore(caps) { chosen_kind = INTERACTABLE_LORE_FRAGMENT ; }
+    } else if kind_idx == 1u32 {
+        if cap_allows_puzzle(caps) { chosen_kind = INTERACTABLE_PUZZLE_RUNE ; }
+        else if cap_allows_lore(caps) { chosen_kind = INTERACTABLE_LORE_FRAGMENT ; }
+    } else if kind_idx == 2u32 {
+        if cap_allows_trade(caps) { chosen_kind = INTERACTABLE_TRADE_KIOSK ; }
+        else if cap_allows_lore(caps) { chosen_kind = INTERACTABLE_LORE_FRAGMENT ; }
+    } else if kind_idx == 3u32 {
+        if cap_allows_lore(caps) { chosen_kind = INTERACTABLE_ALTAR ; }
+    } else if kind_idx == 4u32 {
+        if cap_allows_loot(caps) { chosen_kind = INTERACTABLE_CACHE ; }
+        else if cap_allows_lore(caps) { chosen_kind = INTERACTABLE_LORE_FRAGMENT ; }
+    } else {
+        if cap_allows_lore(caps) { chosen_kind = INTERACTABLE_BIOME_CRYSTAL ; }
+    }
+
+    let payload_id: u32 = (mix_u64(salt, 0xPAY10ADu64) % 4096u64) as u32 ;
+
+    // Spawn position
+    let x_dm: i32 = ((mix_u64(salt, 0x0xPOSXu64) % ((*dims).width_m as u64 * 10u64)) as i32) ;
+    let y_dm: i32 = ((mix_u64(salt, 0x0xPOSYu64) % ((*dims).height_m as u64 * 10u64)) as i32) ;
+    let z_dm: i32 = ((mix_u64(salt, 0x0xPOSZu64) % ((*dims).depth_m as u64 * 10u64)) as i32) ;
+
+    let anchor: u64 = __cssl_sigma_chain_anchor_interactable(composition_root, chosen_kind, payload_id) ;
+
+    Interactable {
+        kind:               chosen_kind ,
+        payload_id:         payload_id ,
+        spawn_x_decimeters: x_dm ,
+        spawn_y_decimeters: y_dm ,
+        spawn_z_decimeters: z_dm ,
+        sigma_anchor:       anchor ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Empty-room helpers (used when caps deny everything)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn empty_npc_spawn() -> NpcSpawn {
+    NpcSpawn {
+        archetype:          ARCHETYPE_WANDERER ,
+        spawn_x_decimeters: 0i32 ,
+        spawn_y_decimeters: 0i32 ,
+        spawn_z_decimeters: 0i32 ,
+        handle_id:          0u64 ,
+        sigma_anchor:       0u64 ,
+    }
+}
+
+fn empty_component() -> ArtifactComponent {
+    ArtifactComponent {
+        slot:             0u8 ,
+        base_mat_id:      0u8 ,
+        component_rarity: RARITY_COMMON ,
+        affix_count:      0u8 ,
+        affix_a_idx:      0u32 ,
+        affix_b_idx:      0u32 ,
+        affix_c_idx:      0u32 ,
+    }
+}
+
+fn empty_loot_drop() -> LootDrop {
+    let zero_comp: ArtifactComponent = empty_component() ;
+    LootDrop {
+        item_kind_code:    0u32 ,
+        item_rarity:       RARITY_COMMON ,
+        is_weapon:         false ,
+        component_a:       zero_comp ,
+        component_b:       zero_comp ,
+        component_c:       zero_comp ,
+        component_d:       zero_comp ,
+        component_e:       zero_comp ,
+        component_f:       zero_comp ,
+        component_g:       zero_comp ,
+        spawn_x_decimeters: 0i32 ,
+        spawn_y_decimeters: 0i32 ,
+        spawn_z_decimeters: 0i32 ,
+        drop_seed:         0u64 ,
+        sigma_anchor:      0u64 ,
+    }
+}
+
+fn empty_interactable() -> Interactable {
+    Interactable {
+        kind:               INTERACTABLE_LORE_FRAGMENT ,
+        payload_id:         0u32 ,
+        spawn_x_decimeters: 0i32 ,
+        spawn_y_decimeters: 0i32 ,
+        spawn_z_decimeters: 0i32 ,
+        sigma_anchor:       0u64 ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API · `populate_room`  (canonical entry-point)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Compose a room's contents from substrate primitives. Pure-CSSL — every spawn
+// is substrate-evolved (¬ hardcoded · ¬ external-API · ¬ play-tested-magic-numbers).
+//
+// Determinism :
+//   - same (seed, dims, caps, player-state) → bit-identical RoomContents
+//   - substrate-intelligence handle is derived from (seed_lo, seed_hi · NOT system-time)
+//   - all index-selection mixed via deterministic `mix_u64` ; no live-clock reads
+//
+// Σ-mask invariants :
+//   - if !cap_allows_content : npc_count = 0
+//   - if !cap_allows_loot    : loot_count = 0
+//   - if neither             : RoomContents.* = empty placeholders
+//   - causal-seed-veto on every NPC spawn (predicts harm-potential)
+//   - Σ-Chain anchor every spawn (sovereign-revocable via "forget-myself")
+//
+// Rate-limit safety : caller responsible for not invoking per-frame ; canonical
+// invocation is once-per-room-enter (or on caps-bit change).
+
+fn populate_room(seed_lo: u64, seed_hi: u64, dims: RoomDims, caps: CapMatrix) -> RoomContents {
+    // ─────────────────────────────────────────────────────────────────
+    // Step 1 · acquire substrate-intelligence composition handle
+    // ─────────────────────────────────────────────────────────────────
+    //
+    // role=0 (DM) — Director's macro-arc decisions about what should appear here.
+    // context_ptr = 0 (placeholder · stage-0 substrate doesn't need extra context).
+
+    let context_null: *const u8 = 0 as *const u8 ;
+    let role_dm: u8 = 0u8 ;
+    let intelligence_handle: u64 = __cssl_intelligence_compose(
+        role_dm,
+        seed_lo,
+        seed_hi,
+        context_null,
+        0u32,
+        caps.consent_token,
+    ) ;
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 2 · derive counts (substrate-evolved · clamped to bounds)
+    // ─────────────────────────────────────────────────────────────────
+
+    let npc_count: u32         = derive_npc_count(intelligence_handle, &caps) ;
+    let loot_count: u32        = derive_loot_count(intelligence_handle, &caps) ;
+    let interactable_count: u32 = derive_interactable_count(intelligence_handle, &caps) ;
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 3 · Σ-Chain anchor the WHOLE-ROOM composition (root anchor)
+    // ─────────────────────────────────────────────────────────────────
+
+    let composition_seed: u64 = mix_u64(seed_lo, seed_hi) ;
+    let composition_root: u64 = __cssl_sigma_chain_anchor_room(
+        composition_seed,
+        npc_count,
+        loot_count,
+        interactable_count,
+        2u8,    // PRIVACY_PSEUDONYMOUS · matches loot_drop.csl Akashic-feed friendly
+    ) ;
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 4 · synthesize NPC spawns (1..3 when content-cap granted)
+    // ─────────────────────────────────────────────────────────────────
+
+    let mut npc_a: NpcSpawn = empty_npc_spawn() ;
+    let mut npc_b: NpcSpawn = empty_npc_spawn() ;
+    let mut npc_c: NpcSpawn = empty_npc_spawn() ;
+
+    if npc_count >= 1u32 {
+        npc_a = synthesize_npc_spawn(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 0u32, composition_root) ;
+    }
+    if npc_count >= 2u32 {
+        npc_b = synthesize_npc_spawn(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 1u32, composition_root) ;
+    }
+    if npc_count >= 3u32 {
+        npc_c = synthesize_npc_spawn(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 2u32, composition_root) ;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 5 · synthesize loot drops (3..5 when loot-cap granted)
+    // ─────────────────────────────────────────────────────────────────
+
+    let mut loot_a: LootDrop = empty_loot_drop() ;
+    let mut loot_b: LootDrop = empty_loot_drop() ;
+    let mut loot_c: LootDrop = empty_loot_drop() ;
+    let mut loot_d: LootDrop = empty_loot_drop() ;
+    let mut loot_e: LootDrop = empty_loot_drop() ;
+
+    if loot_count >= 1u32 {
+        loot_a = synthesize_loot_drop(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 0u32, composition_root) ;
+    }
+    if loot_count >= 2u32 {
+        loot_b = synthesize_loot_drop(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 1u32, composition_root) ;
+    }
+    if loot_count >= 3u32 {
+        loot_c = synthesize_loot_drop(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 2u32, composition_root) ;
+    }
+    if loot_count >= 4u32 {
+        loot_d = synthesize_loot_drop(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 3u32, composition_root) ;
+    }
+    if loot_count >= 5u32 {
+        loot_e = synthesize_loot_drop(intelligence_handle, seed_lo, seed_hi, &dims, &caps, 4u32, composition_root) ;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 6 · synthesize interactables (0..4 cap-gated)
+    // ─────────────────────────────────────────────────────────────────
+
+    let mut int_a: Interactable = empty_interactable() ;
+    let mut int_b: Interactable = empty_interactable() ;
+    let mut int_c: Interactable = empty_interactable() ;
+    let mut int_d: Interactable = empty_interactable() ;
+
+    if interactable_count >= 1u32 {
+        int_a = synthesize_interactable(intelligence_handle, seed_lo, &dims, &caps, 0u32, composition_root) ;
+    }
+    if interactable_count >= 2u32 {
+        int_b = synthesize_interactable(intelligence_handle, seed_lo, &dims, &caps, 1u32, composition_root) ;
+    }
+    if interactable_count >= 3u32 {
+        int_c = synthesize_interactable(intelligence_handle, seed_lo, &dims, &caps, 2u32, composition_root) ;
+    }
+    if interactable_count >= 4u32 {
+        int_d = synthesize_interactable(intelligence_handle, seed_lo, &dims, &caps, 3u32, composition_root) ;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Step 7 · assemble + return (caller wires NPC-handle issuance via npc.csl)
+    // ─────────────────────────────────────────────────────────────────
+
+    RoomContents {
+        npc_count:           npc_count ,
+        npc_a:               npc_a ,
+        npc_b:               npc_b ,
+        npc_c:               npc_c ,
+        loot_count:          loot_count ,
+        loot_a:              loot_a ,
+        loot_b:              loot_b ,
+        loot_c:              loot_c ,
+        loot_d:              loot_d ,
+        loot_e:              loot_e ,
+        interactable_count:  interactable_count ,
+        interactable_a:      int_a ,
+        interactable_b:      int_b ,
+        interactable_c:      int_c ,
+        interactable_d:      int_d ,
+        composition_seed:    composition_seed ,
+        composition_anchor:  composition_root ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Empty-RoomContents helper (cap-deny default · used in tests + fallback)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn empty_room_contents() -> RoomContents {
+    let zero_npc: NpcSpawn = empty_npc_spawn() ;
+    let zero_loot: LootDrop = empty_loot_drop() ;
+    let zero_int: Interactable = empty_interactable() ;
+    RoomContents {
+        npc_count:           0u32 ,
+        npc_a:               zero_npc ,
+        npc_b:               zero_npc ,
+        npc_c:               zero_npc ,
+        loot_count:          0u32 ,
+        loot_a:              zero_loot ,
+        loot_b:              zero_loot ,
+        loot_c:              zero_loot ,
+        loot_d:              zero_loot ,
+        loot_e:              zero_loot ,
+        interactable_count:  0u32 ,
+        interactable_a:      zero_int ,
+        interactable_b:      zero_int ,
+        interactable_c:      zero_int ,
+        interactable_d:      zero_int ,
+        composition_seed:    0u64 ,
+        composition_anchor:  0u64 ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (≥3 mandatory · this file ships 12)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t01_rarity_codes_distinct() -> i32 {
+    if RARITY_COMMON     != 0u8 { return 1 ; }
+    if RARITY_UNCOMMON   != 1u8 { return 2 ; }
+    if RARITY_RARE       != 2u8 { return 3 ; }
+    if RARITY_EPIC       != 3u8 { return 4 ; }
+    if RARITY_LEGENDARY  != 4u8 { return 5 ; }
+    if RARITY_MYTHIC     != 5u8 { return 6 ; }
+    if RARITY_PRISMATIC  != 6u8 { return 7 ; }
+    if RARITY_CHAOTIC    != 7u8 { return 8 ; }
+    0
+}
+
+#[test]
+fn t02_default_drop_rates_sum_permyriad_full() -> i32 {
+    let sum: u32 = DROP_RATE_COMMON_DEFAULT
+        + DROP_RATE_UNCOMMON_DEFAULT
+        + DROP_RATE_RARE_DEFAULT
+        + DROP_RATE_EPIC_DEFAULT
+        + DROP_RATE_LEGENDARY_DEFAULT
+        + DROP_RATE_MYTHIC_DEFAULT
+        + DROP_RATE_PRISMATIC_DEFAULT
+        + DROP_RATE_CHAOTIC_DEFAULT ;
+    if sum != 10000u32 { return 1 ; }
+    0
+}
+
+#[test]
+fn t03_cap_bits_distinct_powers_of_two() -> i32 {
+    if CAP_BIT_CONTENT  != 1u32   { return 1 ; }
+    if CAP_BIT_LOOT     != 2u32   { return 2 ; }
+    if CAP_BIT_BOSS     != 4u32   { return 3 ; }
+    if CAP_BIT_PUZZLE   != 8u32   { return 4 ; }
+    if CAP_BIT_LORE     != 16u32  { return 5 ; }
+    if CAP_BIT_TRADE    != 32u32  { return 6 ; }
+    if CAP_BIT_KAN_BIAS != 64u32  { return 7 ; }
+    if CAP_BIT_MYCELIUM != 128u32 { return 8 ; }
+    0
+}
+
+#[test]
+fn t04_archetype_count_canonical_twelve() -> i32 {
+    // 12 canonical archetypes — compose-not-invent · matches npc.csl
+    if archetype_count() != 12u8 { return 1 ; }
+    if ARCHETYPE_SLEEPER      != 0u8  { return 2 ; }
+    if ARCHETYPE_MERCENARY    != 11u8 { return 3 ; }
+    0
+}
+
+#[test]
+fn t05_weapon_armor_slot_count_seven() -> i32 {
+    // Per ARTIFACT_ASCENSION_SPEC : 7 component slots per item
+    if weapon_slot_count() != 7u8 { return 1 ; }
+    if armor_slot_count()  != 7u8 { return 2 ; }
+    0
+}
+
+#[test]
+fn t06_affix_count_for_rarity_canonical() -> i32 {
+    // Affix-count-by-rarity must monotonically increase from Common (0) to Chaotic (7)
+    if affix_count_for_rarity(RARITY_COMMON)     != 0u8 { return 1 ; }
+    if affix_count_for_rarity(RARITY_UNCOMMON)   != 1u8 { return 2 ; }
+    if affix_count_for_rarity(RARITY_RARE)       != 2u8 { return 3 ; }
+    if affix_count_for_rarity(RARITY_EPIC)       != 3u8 { return 4 ; }
+    if affix_count_for_rarity(RARITY_LEGENDARY)  != 4u8 { return 5 ; }
+    if affix_count_for_rarity(RARITY_MYTHIC)     != 5u8 { return 6 ; }
+    if affix_count_for_rarity(RARITY_PRISMATIC)  != 6u8 { return 7 ; }
+    if affix_count_for_rarity(RARITY_CHAOTIC)    != 7u8 { return 8 ; }
+    0
+}
+
+#[test]
+fn t07_npc_spawn_bounds() -> i32 {
+    // Min/Max spawn bounds match Apocky-canonical per-room budget
+    if NPC_SPAWN_MIN != 1u32  { return 1 ; }
+    if NPC_SPAWN_MAX != 3u32  { return 2 ; }
+    if LOOT_DROP_MIN != 3u32  { return 3 ; }
+    if LOOT_DROP_MAX != 5u32  { return 4 ; }
+    if NPC_SPAWN_MIN  > NPC_SPAWN_MAX { return 5 ; }
+    if LOOT_DROP_MIN  > LOOT_DROP_MAX { return 6 ; }
+    0
+}
+
+#[test]
+fn t08_select_tier_canonical_coverage() -> i32 {
+    // roll=0 → Common (always)
+    let t0: u8 = select_tier_from_weights(
+        DROP_RATE_COMMON_DEFAULT,
+        DROP_RATE_UNCOMMON_DEFAULT,
+        DROP_RATE_RARE_DEFAULT,
+        DROP_RATE_EPIC_DEFAULT,
+        DROP_RATE_LEGENDARY_DEFAULT,
+        DROP_RATE_MYTHIC_DEFAULT,
+        DROP_RATE_PRISMATIC_DEFAULT,
+        DROP_RATE_CHAOTIC_DEFAULT,
+        0u32,
+    ) ;
+    if t0 != RARITY_COMMON { return 1 ; }
+
+    // roll=9999 → Chaotic (last bucket)
+    let tlast: u8 = select_tier_from_weights(
+        DROP_RATE_COMMON_DEFAULT,
+        DROP_RATE_UNCOMMON_DEFAULT,
+        DROP_RATE_RARE_DEFAULT,
+        DROP_RATE_EPIC_DEFAULT,
+        DROP_RATE_LEGENDARY_DEFAULT,
+        DROP_RATE_MYTHIC_DEFAULT,
+        DROP_RATE_PRISMATIC_DEFAULT,
+        DROP_RATE_CHAOTIC_DEFAULT,
+        9999u32,
+    ) ;
+    if tlast != RARITY_CHAOTIC { return 2 ; }
+
+    // roll=5499 → boundary between Common (0..5499) and Uncommon (5500..)
+    let t_boundary: u8 = select_tier_from_weights(
+        DROP_RATE_COMMON_DEFAULT,
+        DROP_RATE_UNCOMMON_DEFAULT,
+        DROP_RATE_RARE_DEFAULT,
+        DROP_RATE_EPIC_DEFAULT,
+        DROP_RATE_LEGENDARY_DEFAULT,
+        DROP_RATE_MYTHIC_DEFAULT,
+        DROP_RATE_PRISMATIC_DEFAULT,
+        DROP_RATE_CHAOTIC_DEFAULT,
+        5499u32,
+    ) ;
+    if t_boundary != RARITY_COMMON { return 3 ; }
+
+    // roll=5500 → boundary into Uncommon
+    let t_uncommon: u8 = select_tier_from_weights(
+        DROP_RATE_COMMON_DEFAULT,
+        DROP_RATE_UNCOMMON_DEFAULT,
+        DROP_RATE_RARE_DEFAULT,
+        DROP_RATE_EPIC_DEFAULT,
+        DROP_RATE_LEGENDARY_DEFAULT,
+        DROP_RATE_MYTHIC_DEFAULT,
+        DROP_RATE_PRISMATIC_DEFAULT,
+        DROP_RATE_CHAOTIC_DEFAULT,
+        5500u32,
+    ) ;
+    if t_uncommon != RARITY_UNCOMMON { return 4 ; }
+
+    0
+}
+
+#[test]
+fn t09_mix_u64_deterministic() -> i32 {
+    // Same input → same output (replay-stable)
+    let a: u64 = mix_u64(0xCAFE_BABE_DEAD_BEEFu64, 0x1234_5678_ABCD_EF01u64) ;
+    let b: u64 = mix_u64(0xCAFE_BABE_DEAD_BEEFu64, 0x1234_5678_ABCD_EF01u64) ;
+    if a != b { return 1 ; }
+
+    // Different salts → different outputs (avalanche)
+    let c: u64 = mix_u64(0xCAFE_BABE_DEAD_BEEFu64, 0x1234_5678_ABCD_EF02u64) ;
+    if a == c { return 2 ; }
+
+    0
+}
+
+#[test]
+fn t10_idx_of_mix_zero_n_safe() -> i32 {
+    // n=0 must not divide-by-zero · returns 0 by canon
+    let i: u32 = idx_of_mix(0xCAFEu64, 0u32) ;
+    if i != 0u32 { return 1 ; }
+
+    // n=1 always returns 0
+    let i1: u32 = idx_of_mix(0xCAFEu64, 1u32) ;
+    if i1 != 0u32 { return 2 ; }
+
+    // n=12 returns 0..11 (archetype-count safety)
+    let i12: u32 = idx_of_mix(0xCAFEu64, 12u32) ;
+    if i12 >= 12u32 { return 3 ; }
+
+    0
+}
+
+#[test]
+fn t11_axis_constants_distinct() -> i32 {
+    if AXIS_NPC_ARCHETYPE     == AXIS_LOOT_RARITY    { return 1 ; }
+    if AXIS_NPC_COUNT         == AXIS_LOOT_COUNT     { return 2 ; }
+    if AXIS_INTERACTABLE_KIND == AXIS_NPC_ARCHETYPE  { return 3 ; }
+    if AXIS_BIOME_MOOD        == AXIS_ROOM_TENSION   { return 4 ; }
+    if AXIS_CAUSAL_VETO       == AXIS_NPC_COUNT      { return 5 ; }
+    0
+}
+
+#[test]
+fn t12_empty_room_contents_canonical_zeros() -> i32 {
+    let r: RoomContents = empty_room_contents() ;
+    if r.npc_count          != 0u32 { return 1 ; }
+    if r.loot_count         != 0u32 { return 2 ; }
+    if r.interactable_count != 0u32 { return 3 ; }
+    if r.composition_seed   != 0u64 { return 4 ; }
+    if r.composition_anchor != 0u64 { return 5 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · cssl-substrate-intelligence (W17-F) · forward-decl referenced here ·
+//           extern "C" __cssl_intelligence_compose + __cssl_intelligence_query_axis
+//           expected to land in next wave. STAGE-0 stub returns zero (graceful
+//           fallback : substrate fills with default permyriad weights).
+//
+//   GAP-2 · cssl-host-room-procgen (THIS slice host-shim) · stage-0-bootstrap
+//           Rust shim provides the FFI bodies until csslc can compile this .csl
+//           directly to native. See compiler-rs/crates/cssl-host-room-procgen/.
+//
+//   GAP-3 · KAN-bias-modulated permyriad weights pulled-via-axis (handle path) ·
+//           the alternate path of writing to *mut u8 buffer was rejected because
+//           .csl unsafe-write semantics are stage-1+. Axis-query path is canonical.
+//
+//   GAP-4 · gm_specialist.csl (W17-G) · dialog-prose authored separately. This
+//           file emits archetype-discriminants only ; gm_specialist composes
+//           greeting-prose from (archetype ⊗ player-state ⊗ biome-mood).
+//
+//   GAP-5 · interactable.kind=BIOME_CRYSTAL · 7-biome-witness anchor for
+//           Prismatite generation per base_mats_*.csl. THIS file routes the
+//           Σ-Chain anchor ; the witness-tracking lives in base_mats_*.csl.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME-DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W17-H @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+// room_procgen.csl is the canonical PROCEDURAL-EVERYTHING substrate-composition
+// module. NO hardcoded NPC name-lists. NO loot-table.toml. NO scripted dialog
+// tied to NPCs (gm_specialist.csl handles narrator-prose). Every spawn is
+// substrate-evolved (ω-field × Σ-mask × KAN-bias × HDC-binding × causal-seed)
+// and Σ-Chain-anchored for sovereign-revocability.
+//
+// Σ-mask invariants : every cap-bit defaults-deny ; player-explicit-grant required.
+// COSMETIC-ONLY-AXIOM : affix categories are Visual/Audio/Particle/Attribution ·
+// NO stat-mods · pay-for-power structurally impossible.
+// 8-tier rarity ladder respected per Apocky-Q-06a-canonical.
+// Component-Rarity-Affix per ARTIFACT_ASCENSION_SPEC.md component breakdown.
+// Replay-determinism : same (seed, dims, caps, player-state) → bit-identical RoomContents.
+// Causal-seed veto-check predicts harm-potential before spawn-issuance.
+// ¬ external-API-calls · ¬ cross-vendor-dependencies · all-local-substrate.
+//
+// The substrate composes. The labyrinth populates. The choice is the player's.
+//
+// ∎ room_procgen.csl
