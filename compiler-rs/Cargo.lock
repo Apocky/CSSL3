@@ -1155,6 +1155,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-alien-materialization"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-crystallization",
+]
+
+[[package]]
 name = "cssl-host-asset-bundle"
 version = "0.1.0"
 dependencies = [
@@ -1235,6 +1243,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-combat-loop"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-crystallization",
+]
+
+[[package]]
 name = "cssl-host-combat-sim"
 version = "0.1.0"
 dependencies = [
@@ -1259,11 +1275,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-crystallization"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
 name = "cssl-host-d3d12"
 version = "0.1.0"
 dependencies = [
  "thiserror 1.0.69",
  "windows 0.58.0",
+]
+
+[[package]]
+name = "cssl-host-digital-intelligence-render"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-alien-materialization",
+ "cssl-host-crystallization",
 ]
 
 [[package]]
@@ -4016,12 +4047,15 @@ dependencies = [
  "bytemuck",
  "cssl-content-moderation",
  "cssl-content-rating",
+ "cssl-host-alien-materialization",
  "cssl-host-attestation",
  "cssl-host-audit",
  "cssl-host-causal-seed",
  "cssl-host-cocreative",
  "cssl-host-coder-runtime",
  "cssl-host-config",
+ "cssl-host-crystallization",
+ "cssl-host-digital-intelligence-render",
  "cssl-host-dm",
  "cssl-host-fps-feel",
  "cssl-host-frame-recorder",

@@ -62,7 +62,10 @@ members = ["crates/*"]
 #     geometry + IPD-aware projection + SBS / TB / red-cyan-anaglyph image
 #     composition + serializable StereoCaptureManifest. NO image-crate dep ;
 #     accepts raw RGBA byte slices. loa-host wiring lands wave-4.
-exclude  = ["crates/cssl-playground", "crates/cssl-self-authoring-kan", "crates/cssl-content-subscription", "crates/cssl-content-rating", "crates/cssl-substrate-audio", "crates/cssl-test-coordinator"]
+# § T11-W18-D-COMBAT-LOOP : sibling-agent crates mid-build with src/ but no
+# Cargo.toml yet ; excluded so workspace-glob does not block parallel-fanout
+# commit-gate. When sibling Cargo.toml lands, integrator drops these.
+exclude  = ["crates/cssl-playground", "crates/cssl-self-authoring-kan", "crates/cssl-content-subscription", "crates/cssl-content-rating", "crates/cssl-substrate-audio", "crates/cssl-test-coordinator", "crates/cssl-host-intent-translation", "crates/cssl-host-room-procgen", "crates/cssl-host-substrate-resonance-gpu"]
 
 [workspace.package]
 version      = "0.1.0"
