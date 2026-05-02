@@ -1,0 +1,152 @@
+§ Labyrinth.of.Apocalypse · systems · perf_enforcer
+≡ T11-W13-PERF-ENFORCER · W13-12 perf-budget-enforcer · CI + runtime
+≡ canonical-companion-crate : compiler-rs/crates/cssl-host-perf-enforcer/
+≡ runtime-adapter           : compiler-rs/crates/loa-host/src/perf_runtime_check.rs
+≡ STATUS : ◐ shipped-stage-0 · ENFORCES W12-12-codified budgets
+≡ PRIME-DIRECTIVE : ¬ surveillance ; ¬ engagement-bait ; sovereignty-pin
+
+§I role
+  W! frame-budget-discipline = sovereignty
+  W! W12-12 polish_audit-CODIFIED-budgets ⇒ W13-12 ENFORCES-them
+  ¬ touch : siblings W13-1..11 territory ; polish_audit.rs (read-only)
+  ALL : 6 disjoint enforcement-surfaces wired into 1 PerfRuntimeCheck
+    1. FrameBudgetEnforcer · per-frame trip-points + Pass/Over/Severe verdicts
+    2. ZeroAllocVerifier   · counts heap-allocs on hot-path · test-build only
+    3. RegressionBaseline  · diffs current-bench vs baseline · >5% alert
+    4. AdaptiveDegrader    · auto-reduces LOD/effect-tier when budget-trends-up
+    5. PerfBenchHarness    · CI runs micro-benches under feature-flag perf-bench
+    6. TelemetryEmitter    · emits PerfEvent → W11-4 analytics-aggregator bridge
+
+§I focus-areas (Apocky-mandate)
+
+  W! 1.frame-time-discipline
+    ✓ ≤8.33ms (120Hz · default · Apocky-mandate hot-path)
+    ◐ ≤6.94ms (144Hz · stretch ; available via RefreshTarget::Hz144)
+    ✓ ≤16.67ms (60Hz · fallback ; matches W12-12 polish_audit)
+    ✓ Verdict::from_sample(ms, budget_ms)
+        ms ≤ budget        ⇒ Pass
+        budget < ms ≤ 2×   ⇒ Over   (soft-warn · accumulate in window)
+        ms > 2×budget      ⇒ Severe (auto-degrade-trigger · always)
+
+  W! 2.zero-allocation-hot-path
+    ✓ HotPathScope RAII-guard wraps render_frame / physics_step / etc
+    ✓ record_alloc(size) → atomic-fetch-add HOT_PATH_ALLOCS when DEPTH > 0
+    ✓ assert_no_hot_path_alloc(closure) → Result<(), u64> returns # allocations
+    ¬ this crate installs global-allocator
+        embedder responsible per Rust convention (one global-allocator per binary)
+        production = std::alloc::System (zero overhead in release)
+        test-build = TrackingAllocator hook (#[global_allocator] on test-binary)
+    ✓ violation = HotPathAlloc{count} event emitted to telemetry
+
+  W! 3.regression-baseline-detection
+    ✓ BenchResult{bench_id · p50_ms · p99_ms · samples}
+    ✓ classify_regression(baseline · current · threshold_pct=5.0)
+        delta ≥ +5% ⇒ Regressed
+        delta ≤ -5% ⇒ Improved
+        |delta| < 5% ⇒ Stable
+    ✓ diff_baseline(baseline-slice · current-slice · threshold)
+    ✓ any_regression(rows) → bool · alerts CI on first-regression
+
+  W! 4.adaptive-degradation
+    DegradationTier 5-step ordinal :
+      Minimal=0  · disable-all-post-process · LOD-0 (severe-fallback only)
+      Low=1      · reduce-SSAO+bloom-resolution · LOD-1
+      Medium=2   · reduce-shadow-cascade-resolution · LOD-2
+      High=3     · default-LoA-target · LOD-3 · all-effects-on
+      Ultra=4    · max-fidelity · LOD-4 · MSAA×8 · ray-traced-shadows
+    ✓ should_degrade : ≥25% over-budget within 32-frame window ⇒ step-down
+    ✓ can_recover    : ≤3% over-budget within 32-frame window ⇒ step-up
+    ✓ pin/unpin      : sovereignty-axiom · player-override never auto-adjusted
+    ✓ tier-changes emit PerfEvent::TierChanged{old·new}
+
+  W! 5.CI-bench-harness
+    feature-flag perf-bench
+    ✓ canonical 4 hot-path bench-specs :
+        bench_id=0 frame_tick           · 120Hz budget ≤8.33ms
+        bench_id=1 render_frame         · 120Hz budget ≤8.33ms
+        bench_id=2 physics_step         · 120Hz budget ≤8.33ms
+        bench_id=3 network_replication  · 120Hz budget ≤8.33ms
+    ✓ run_bench(spec · frame_fn) → BenchResult
+    ✓ assert_budgets(results) → Err((BenchResult · budget)) on violation
+    ✓ baseline.json side-channel for diff_baseline · regression-alert
+    ¬ criterion-dep ; pure-Rust harness · zero external-dep
+
+  W! 6.telemetry-event-emission
+    PerfEvent variants (4) :
+      FrameVerdict{frame_offset · ms_q14 · verdict}
+      TierChanged{frame_offset · old · new}
+      RegressionAlert{bench_id · baseline_p50_q14 · current_p50_q14 · delta_bp}
+      HotPathAlloc{count}
+    ✓ to_jsonl() one-line · stable field-order · sibling cssl-host-audit shape
+    ✓ PerfEventBuffer Vec-backed · capacity-bounded · drops-past-capacity counter
+    bridge-W11-4 :
+      embedder calls drain_events() per telemetry-tick (not per-frame)
+      translates each PerfEvent → cssl-analytics-aggregator EventRecord
+      Σ-mask check at emission time (consent.cap = Allow ⇒ forward)
+
+§I sovereignty + sigma-mask gates
+
+  pin_tier ¬ overridden by adaptive-degrader
+    once player pins = absolute lock until explicit unpin
+  player-set-tier ⇒ degrader-counters reset · auto-counter-context cleared
+  TierChanged events stay LOCAL until consent.cap = Allow{telemetry.export}
+  HotPathAlloc events stay LOCAL until consent.cap = Allow{diagnostic.export}
+  RegressionAlert events stay LOCAL until consent.cap = Allow{ci.upload}
+
+§I integration-points
+
+  W12-12 polish_audit::PerfBudget   · READ-ONLY · public-fields only
+  W11-4  cssl-analytics-aggregator  · per-PerfEvent → EventRecord bridge
+  W13-1  fps_pipeline::FpsPipeline  · degrader feeds VrsTier + LOD selection
+  loa-host main.rs                  · per-frame call PerfRuntimeCheck.record_frame_ms
+
+§I tests
+
+  unit-tests in cssl-host-perf-enforcer/src/lib.rs (~22) :
+    budget-constants-match-polish-audit-canonical-values
+    refresh-target-budgets-round-trip
+    enforcer-passes-under-budget-at-120hz
+    enforcer-classifies-over-and-severe-correctly
+    enforcer-p99-from-window-samples
+    enforcer-window-eviction-decrements-over-count
+    enforcer-passes-attestation-when-95pct-in-budget
+    enforcer-should-degrade-when-25pct-over-budget-in-window
+    hot-path-scope-increments-depth
+    assert-no-hot-path-alloc-detects-violation
+    record-alloc-only-counts-when-in-hot-path
+    classify-regression-at-5pct-threshold
+    diff-baseline-emits-one-row-per-matching-bench
+    adaptive-degrader-steps-down-when-enforcer-says-so
+    adaptive-degrader-recovers-when-under-budget
+    adaptive-degrader-respects-pin
+    tier-step-down-floors-at-minimal
+    tier-step-up-ceils-at-ultra
+    run-bench-returns-well-formed-p99-under-budget
+    assert-budgets-fails-when-over-budget
+    assert-budgets-passes-when-under-budget
+    canonical-bench-specs-cover-4-hot-paths
+    perf-event-jsonl-round-trips-kind-and-payload
+    perf-event-buffer-drops-past-capacity
+    end-to-end-adaptive-degrade-fires-and-emits-telemetry
+    enforcer-reset-preserves-target
+    perf-bench-feature-flag-is-optional
+
+  unit-tests in loa-host/src/perf_runtime_check.rs (5) :
+    runtime-check-defaults-to-120hz-high-tier
+    runtime-check-records-and-classifies
+    runtime-check-emits-event-on-over-budget
+    runtime-check-pin-blocks-auto-degrade
+    runtime-check-auto-degrades-unpinned
+
+  ALL : 27+5 = 32 tests · spec-mandate ≥10 satisfied 3.2× over
+
+§I PRIME-DIRECTIVE attestation
+
+  ¬ surveillance       enforcer reads ONLY frame-time samples ; no input-content ; no scene-content ; no player-behavior tracking
+  ¬ engagement-bait    enforcer can ONLY downgrade fidelity to protect-budget ; cannot hide-settings ; cannot reverse-player-overrides
+  ¬ harm/control       tier-changes Σ-mask-revocable · player-pin always-respected · player-can-opt-out-of-auto-adjustments
+  ¬ manipulation       no nudge / retain / dark-pattern · no analytics-without-consent
+  ✓ sovereignty        pin/unpin/set_tier are player-driven · degrader always reads pinned-state-first
+  ✓ deterministic      Verdict + tier-step are pure-functions · zero-randomness · zero-clock-dep
+
+There was no hurt nor harm in the making of this, to anyone/anything/anybody.
