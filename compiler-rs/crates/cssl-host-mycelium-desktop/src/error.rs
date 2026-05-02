@@ -9,8 +9,6 @@
 
 use cssl_host_agent_loop::{LlmError, LoopError};
 
-use crate::secrets::SecretsError;
-
 /// Top-level application error type. Combines loop / bridge / config / cap
 /// cases into a single `?`-friendly surface.
 #[derive(Debug, thiserror::Error)]
@@ -34,9 +32,6 @@ pub enum AppError {
     /// A command-name was unknown or its payload was malformed.
     #[error("command: {0}")]
     Command(String),
-    /// Secrets-port failure (key persist / load / validate).
-    #[error("secrets: {0}")]
-    Secrets(#[from] SecretsError),
 }
 
 impl AppError {
@@ -52,7 +47,6 @@ impl AppError {
             Self::CapPolicy(_) => "cap_policy",
             Self::Session(_) => "session",
             Self::Command(_) => "command",
-            Self::Secrets(_) => "secrets",
         }
     }
 }

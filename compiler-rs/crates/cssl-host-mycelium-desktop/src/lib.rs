@@ -38,7 +38,6 @@ pub mod chat_sync_wire;
 pub mod commands;
 pub mod config;
 pub mod error;
-pub mod secrets;
 pub mod session;
 
 pub use app::{GrantMode, MyceliumApp, TurnResult};
@@ -48,10 +47,6 @@ pub use commands::{
 };
 pub use config::{load_from_path, save_to_path, AppConfig, UiTheme};
 pub use error::{AppError, ConfigError};
-pub use secrets::{
-    anthropic_env_path, has_anthropic_key, load_anthropic_key, mask_key, save_anthropic_key,
-    SecretsError, ANTHROPIC_ENV_FILE, ANTHROPIC_KEY_VAR, SECRETS_SUBDIR,
-};
 pub use session::{Session, SessionSnapshot, StoredTurn};
 
 // Re-export upstream types that surface in our public API.

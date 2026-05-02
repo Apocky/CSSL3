@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use crate::app::{parse_tool_name, GrantMode, MyceliumApp};
 use crate::config::AppConfig;
 use crate::error::AppError;
-use crate::secrets;
 
 /// IPC command surface — one variant per UI action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,19 +70,6 @@ pub enum IpcCommand {
     GetConfig,
     /// Total embedded substrate-doc count.
     GetSubstrateDocCount,
-    /// Persist the Anthropic API key to `~/.loa-secrets/anthropic.env`.
-    /// The plaintext key NEVER round-trips back to JS — the host returns
-    /// the masked form on subsequent loads.
-    SaveAnthropicKey {
-        /// The user-supplied key. Never logged in plaintext.
-        key: String,
-    },
-    /// Read the persisted Anthropic API key — but return the MASKED form
-    /// (`sk-...XXXX`) to JS, never the plaintext. JS state holds only the
-    /// indicator, never the secret.
-    LoadAnthropicKeyMasked,
-    /// Boolean indicator : is `~/.loa-secrets/anthropic.env` present + non-empty?
-    HasAnthropicKey,
 }
 
 /// IPC response surface — one variant per `IpcCommand`.
@@ -143,23 +129,6 @@ pub enum IpcResponse {
     SubstrateDocCount {
         /// Count.
         count: usize,
-    },
-    /// `SaveAnthropicKey` succeeded — the key is now persisted on-disk.
-    AnthropicKeySaved {
-        /// Masked form for UI display only. The plaintext NEVER lives in
-        /// JS state.
-        masked: String,
-    },
-    /// Result of `LoadAnthropicKeyMasked` — `Some(masked)` when configured,
-    /// `None` when the env-file is absent or the key-line is empty.
-    AnthropicKeyMasked {
-        /// Masked form (`sk-...XXXX`) or `None` if not configured.
-        masked: Option<String>,
-    },
-    /// Result of `HasAnthropicKey`.
-    AnthropicKeyConfigured {
-        /// `true` iff `~/.loa-secrets/anthropic.env` has a non-empty key.
-        present: bool,
     },
     /// Error variant — flat shape so the frontend can branch on `code`.
     Error {
@@ -289,33 +258,6 @@ pub fn handle_command(app: &mut MyceliumApp, cmd: IpcCommand) -> IpcResponse {
         },
         IpcCommand::GetSubstrateDocCount => IpcResponse::SubstrateDocCount {
             count: cssl_host_substrate_knowledge::doc_count(),
-        },
-        IpcCommand::SaveAnthropicKey { key } => match secrets::save_anthropic_key(&key) {
-            Ok(()) => {
-                // Hot-reload the key into the running bridge config so
-                // subsequent turns can use it without an app-restart. Stage-0
-                // reconstructs the bridge in-place via update_config — but
-                // since LlmConfig.anthropic_api_key is `#[serde(skip)]`
-                // upstream, we must call the explicit `inject_anthropic_key`
-                // path so the running agent-loop sees the new key.
-                if let Err(e) = app.inject_anthropic_key(&key) {
-                    return to_error(&e);
-                }
-                IpcResponse::AnthropicKeySaved {
-                    masked: secrets::mask_key(&key),
-                }
-            }
-            Err(e) => to_error(&AppError::from(e)),
-        },
-        IpcCommand::LoadAnthropicKeyMasked => match secrets::load_anthropic_key() {
-            Ok(Some(k)) => IpcResponse::AnthropicKeyMasked {
-                masked: Some(secrets::mask_key(&k)),
-            },
-            Ok(None) => IpcResponse::AnthropicKeyMasked { masked: None },
-            Err(e) => to_error(&AppError::from(e)),
-        },
-        IpcCommand::HasAnthropicKey => IpcResponse::AnthropicKeyConfigured {
-            present: secrets::has_anthropic_key(),
         },
     }
 }

@@ -1,8 +1,6 @@
 // § Chat.tsx — message list + streaming reply + slash-command handling.
 // § per spec/grand-vision/23 § CHAT-PANE.
-// § T11-W17-C : show a banner when the Anthropic API key is not configured ;
-//   we check on-mount via `has_anthropic_key`.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import * as ipc from "../lib/ipc";
 import { parseSlash, SLASH_HELP } from "../lib/slash";
 import type { IpcResponse } from "../lib/types";
@@ -20,15 +18,6 @@ export default function Chat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [busy, setBusy] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [keyConfigured, setKeyConfigured] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    void ipc.hasAnthropicKey().then((resp) => {
-      if (resp.type === "anthropic_key_configured") {
-        setKeyConfigured(resp.present);
-      }
-    });
-  }, []);
 
   async function onSend() {
     const text = input.trim();
@@ -106,22 +95,6 @@ export default function Chat() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <h2 style={{ margin: 0, marginBottom: "var(--space-md)" }}>Chat</h2>
-      {keyConfigured === false && (
-        <div
-          data-testid="anthropic-key-banner"
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--accent-purple)",
-            color: "var(--fg-secondary)",
-            padding: "var(--space-sm) var(--space-md)",
-            marginBottom: "var(--space-md)",
-            borderRadius: "var(--radius-sm)",
-            fontSize: 13,
-          }}
-        >
-          Configure your Anthropic API key in <strong>Settings</strong> to chat with the GM.
-        </div>
-      )}
       {showHelp && (
         <div
           style={{

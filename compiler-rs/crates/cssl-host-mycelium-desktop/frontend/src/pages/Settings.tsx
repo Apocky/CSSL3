@@ -1,9 +1,6 @@
 // § Settings.tsx — Mode A/B/C selector + API-key paste + Ollama-endpoint
 //   + sandbox-paths + cap-grants table.
 // § per spec/grand-vision/23 § SETTINGS-PANE.
-// § T11-W17-C : Anthropic key persisted to ~/.loa-secrets/anthropic.env
-//   via host-side commands ; the plaintext NEVER lives in this component's
-//   state — only the masked indicator from the host.
 import { useEffect, useState } from "react";
 import * as ipc from "../lib/ipc";
 import type { AppConfig, LlmMode, ToolName } from "../lib/types";
@@ -11,12 +8,7 @@ import { TOOL_NAMES } from "../lib/types";
 
 export default function Settings() {
   const [config, setConfig] = useState<AppConfig | null>(null);
-  // § T11-W17-C : ephemeral input — cleared immediately after save so the
-  //   plaintext does not persist in React state. The masked indicator is
-  //   the canonical UI source-of-truth for "is a key configured".
   const [apiKey, setApiKey] = useState("");
-  const [keyMasked, setKeyMasked] = useState<string | null>(null);
-  const [keySaving, setKeySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
@@ -24,9 +16,6 @@ export default function Settings() {
     void ipc.getConfig().then((resp) => {
       if (resp.type === "config") setConfig(resp.config);
       else if (resp.type === "error") setError(resp.message);
-    });
-    void ipc.loadAnthropicKeyMasked().then((resp) => {
-      if (resp.type === "anthropic_key_masked") setKeyMasked(resp.masked);
     });
   }, []);
 
@@ -36,23 +25,6 @@ export default function Settings() {
     const resp = await ipc.updateConfig(config);
     if (resp.type === "config_updated") {
       setSavedMsg("Config saved.");
-    } else if (resp.type === "error") {
-      setError(resp.message);
-    }
-  }
-
-  async function onSaveAnthropicKey() {
-    const key = apiKey.trim();
-    if (!key) return;
-    setError(null);
-    setKeySaving(true);
-    const resp = await ipc.saveAnthropicKey(key);
-    setKeySaving(false);
-    // § Always wipe the input so the plaintext doesn't linger in React state.
-    setApiKey("");
-    if (resp.type === "anthropic_key_saved") {
-      setKeyMasked(resp.masked);
-      setSavedMsg("Anthropic API key saved.");
     } else if (resp.type === "error") {
       setError(resp.message);
     }
@@ -95,50 +67,15 @@ export default function Settings() {
         </select>
       </fieldset>
 
-      <fieldset style={{ marginBottom: "var(--space-md)" }} data-testid="anthropic-key-section">
-        <legend>Anthropic API key</legend>
-        <div
-          style={{
-            color: keyMasked ? "var(--success)" : "var(--fg-muted)",
-            marginBottom: "var(--space-sm)",
-            fontSize: 13,
-          }}
-          data-testid="anthropic-key-status"
-        >
-          {keyMasked
-            ? `✓ configured (${keyMasked})`
-            : "✗ not configured"}
-        </div>
-        <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-            style={{ flex: 1 }}
-            autoComplete="off"
-            spellCheck={false}
-            data-testid="anthropic-key-input"
-          />
-          <button
-            onClick={onSaveAnthropicKey}
-            disabled={keySaving || apiKey.trim().length === 0}
-            className="primary"
-            data-testid="anthropic-key-save"
-          >
-            {keySaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-        <p
-          style={{
-            color: "var(--fg-muted)",
-            fontSize: 12,
-            marginTop: "var(--space-sm)",
-          }}
-        >
-          Stored locally at <code>~/.loa-secrets/anthropic.env</code>. Never
-          sent anywhere except <code>api.anthropic.com</code>.
-        </p>
+      <fieldset style={{ marginBottom: "var(--space-md)" }}>
+        <legend>Anthropic API key (kept in OS keychain ; never persisted in JSON)</legend>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="sk-ant-..."
+          style={{ width: "100%" }}
+        />
       </fieldset>
 
       <fieldset style={{ marginBottom: "var(--space-md)" }}>

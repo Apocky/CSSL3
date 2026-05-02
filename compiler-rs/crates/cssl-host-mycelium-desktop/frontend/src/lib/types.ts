@@ -66,10 +66,7 @@ export type IpcCommand =
   | { type: "query_substrate"; query: string; top_k: number }
   | { type: "update_config"; config: AppConfig }
   | { type: "get_config" }
-  | { type: "get_substrate_doc_count" }
-  | { type: "save_anthropic_key"; key: string }
-  | { type: "load_anthropic_key_masked" }
-  | { type: "has_anthropic_key" };
+  | { type: "get_substrate_doc_count" };
 
 /* ─────────────── IpcResponse (commands.rs) ─────────────── */
 
@@ -92,9 +89,6 @@ export type IpcResponse =
   | { type: "config_updated" }
   | { type: "config"; config: AppConfig }
   | { type: "substrate_doc_count"; count: number }
-  | { type: "anthropic_key_saved"; masked: string }
-  | { type: "anthropic_key_masked"; masked: string | null }
-  | { type: "anthropic_key_configured"; present: boolean }
   | { type: "error"; message: string; code: string };
 
 /* ─────────────── tool-name helpers ─────────────── */

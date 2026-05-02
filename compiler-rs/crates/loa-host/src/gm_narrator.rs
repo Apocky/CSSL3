@@ -25,25 +25,6 @@
 //!   the same phrase. This keeps the runtime free of `rand` thread-locals
 //!   and aligns with the CSSL replay-determinism contract — a recorded
 //!   input stream replays bit-identically.
-//!
-//! § DUAL-MODE LIVE-LLM DISPATCH (T11-W17-B)
-//!   When the host wires a `gm_live::LiveBridgeHandle` via `set_live_bridge`,
-//!   `describe_environment` + `generate_dialogue` + `respond_in_persona`
-//!   first attempt a live-LLM call (cap-gated through the bridge's own
-//!   construction-time check). On ANY failure — cap-denied, network
-//!   error, timeout, or empty response — the narrator transparently falls
-//!   back to the xorshift pool draw below.
-//!
-//!   The fallback is structurally identical to the no-live-bridge path so
-//!   the replay-determinism contract is preserved : same input + same
-//!   cap-state → same output. When the cap is granted at runtime the
-//!   LLM-emitted text is non-deterministic by design, but the host's
-//!   replay-recorder (cssl-host-replay) captures the LLM-output text in
-//!   the input stream so a recorded run still replays bit-identically.
-//!
-//!   The 32-deep anti-repeat ring protects both modes : LLM responses are
-//!   hashed + skipped (re-tried once) if they collide with a recent
-//!   pool-or-LLM-emitted line.
 
 use cssl_rt::loa_startup::log_event;
 
@@ -618,32 +599,9 @@ pub enum Mood {
 }
 
 /// GM narrator — procedural environment-description + dialogue generator.
+#[derive(Debug)]
 pub struct GmNarrator {
     ring: AntiRepeatRing,
-    /// § T11-W17-B-GM-LIVE — optional live-LLM bridge. None → pure-pools mode
-    /// (existing pre-W17-B behavior, replay-deterministic). Some(...) →
-    /// dual-mode dispatch : live-call first ; xorshift pools on any error.
-    live: Option<crate::gm_live::LiveBridgeHandle>,
-    /// Per-call timeout for the live bridge. Defaults to 5s.
-    live_timeout: std::time::Duration,
-    /// Last-known environment description, used to enrich live-dialogue
-    /// prompts so the LLM has scene context. None until the first
-    /// `describe_environment` call.
-    last_env: Option<String>,
-}
-
-impl std::fmt::Debug for GmNarrator {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GmNarrator")
-            .field("ring", &self.ring)
-            .field(
-                "live",
-                &self.live.as_ref().map(|h| h.name()).unwrap_or("<none>"),
-            )
-            .field("live_timeout", &self.live_timeout)
-            .field("last_env", &self.last_env)
-            .finish()
-    }
 }
 
 impl Default for GmNarrator {
@@ -661,140 +619,13 @@ impl GmNarrator {
         );
         Self {
             ring: AntiRepeatRing::new(),
-            live: None,
-            live_timeout: crate::gm_live::DEFAULT_TIMEOUT,
-            last_env: None,
-        }
-    }
-
-    /// § T11-W17-B-GM-LIVE — wire the live-LLM bridge handle. Pass `None`
-    /// to revert to pure-pools mode.
-    pub fn set_live_bridge(&mut self, live: Option<crate::gm_live::LiveBridgeHandle>) {
-        let label = live.as_ref().map(|h| h.name()).unwrap_or("<none>");
-        log_event(
-            "INFO",
-            "loa-host/gm",
-            &format!("set_live_bridge · {}", label),
-        );
-        self.live = live;
-    }
-
-    /// § T11-W17-B-GM-LIVE — override the per-call timeout for the live
-    /// bridge. Defaults to 5s.
-    pub fn set_live_timeout(&mut self, timeout: std::time::Duration) {
-        self.live_timeout = timeout;
-    }
-
-    /// True iff a live-bridge is wired AND reports `is_available()` true.
-    /// Cheap ; called on every dialogue-draw to decide the dispatch path.
-    fn live_ready(&self) -> bool {
-        match &self.live {
-            Some(h) => h.is_available(),
-            None => false,
-        }
-    }
-
-    /// Try the live-bridge ; on success register the response in the
-    /// anti-repeat ring + return Some(text). On any error, log + return
-    /// None (caller falls through to the xorshift pool draw).
-    ///
-    /// § The anti-repeat ring is shared with the pool-draw path so a
-    /// chatty-LLM cannot loop on identical responses. If the LLM returns
-    /// a phrase whose hash is in the ring, we still emit it (LLM
-    /// generations are typically unique enough that the collision is
-    /// rare ; failing soft beats double-roundtripping the API call).
-    fn try_live_dialogue(
-        &mut self,
-        ctx: &crate::gm_live::DialoguePromptContext,
-    ) -> Option<String> {
-        let live = self.live.as_ref()?.clone();
-        if !live.is_available() {
-            return None;
-        }
-        let (system, user) = ctx.render();
-        match live.ask(&system, &user, self.live_timeout) {
-            Ok(text) => {
-                let trimmed = text.trim().to_string();
-                if trimmed.is_empty() {
-                    log_event(
-                        "WARN",
-                        "loa-host/gm",
-                        "live bridge returned empty text · falling back to pools",
-                    );
-                    return None;
-                }
-                let h = fnv1a_64(&trimmed);
-                self.ring.push(h);
-                let log_msg = format!(
-                    "live-dialogue · bridge={} · archetype={} · topic={:?} · text={}",
-                    live.name(),
-                    ctx.archetype.label(),
-                    ctx.topic,
-                    trimmed,
-                );
-                log_event("DEBUG", "loa-host/gm", &log_msg);
-                Some(trimmed)
-            }
-            Err(e) => {
-                log_event(
-                    "DEBUG",
-                    "loa-host/gm",
-                    &format!(
-                        "live bridge failed ({}) · falling back to pools",
-                        e
-                    ),
-                );
-                None
-            }
-        }
-    }
-
-    /// Try the live-bridge for an environment description. Same fall-back
-    /// contract as `try_live_dialogue`.
-    fn try_live_environment(
-        &mut self,
-        ctx: &crate::gm_live::EnvironmentPromptContext,
-    ) -> Option<String> {
-        let live = self.live.as_ref()?.clone();
-        if !live.is_available() {
-            return None;
-        }
-        let (system, user) = ctx.render();
-        match live.ask(&system, &user, self.live_timeout) {
-            Ok(text) => {
-                let trimmed = text.trim().to_string();
-                if trimmed.is_empty() {
-                    return None;
-                }
-                let h = fnv1a_64(&trimmed);
-                self.ring.push(h);
-                Some(trimmed)
-            }
-            Err(_) => None,
         }
     }
 
     /// Procedurally describe the neighborhood at `camera_pos` for the given
     /// `time_of_day`. Mixes from the Environment / Weather / Architecture
     /// pools with a seeded PRNG.
-    ///
-    /// § T11-W17-B-GM-LIVE — when a live bridge is wired, this attempts
-    /// an LLM call first ; on any error falls back to the pool mix below.
     pub fn describe_environment(&mut self, camera_pos: Vec3, time_of_day: TimeOfDay) -> String {
-        // Live-LLM path (cap-gated · default-deny · fall-back-on-error).
-        if self.live_ready() {
-            let ctx = crate::gm_live::EnvironmentPromptContext {
-                camera_pos: (camera_pos.x, camera_pos.y, camera_pos.z),
-                time_of_day,
-                locale_hint: None,
-            };
-            if let Some(text) = self.try_live_environment(&ctx) {
-                self.last_env = Some(text.clone());
-                return text;
-            }
-        }
-
-        // Pool-draw fallback (existing pre-W17-B behavior · replay-deterministic).
         let seed = mix_pos_seed(camera_pos, time_of_day as u32);
         // 3 sentence description : env + weather + architecture
         let env = self.draw_phrase_seeded(PhraseTopic::Environment, seed);
@@ -806,7 +637,6 @@ impl GmNarrator {
             camera_pos.x, camera_pos.y, camera_pos.z, time_of_day, env,
         );
         log_event("DEBUG", "loa-host/gm", &msg);
-        self.last_env = Some(combined.clone());
         combined
     }
 
@@ -823,35 +653,6 @@ impl GmNarrator {
         mood: Mood,
         topic: PhraseTopic,
     ) -> String {
-        // § T11-W17-B-GM-LIVE — live-LLM path first when wired + available.
-        if self.live_ready() {
-            let env = self
-                .last_env
-                .clone()
-                .unwrap_or_else(|| "An ancient corridor stretches before you.".into());
-            let ctx = crate::gm_live::DialoguePromptContext {
-                archetype,
-                mood,
-                topic,
-                environment: env,
-                player_utterance: None,
-                persona_flavor: None,
-            };
-            if let Some(text) = self.try_live_dialogue(&ctx) {
-                let log_msg = format!(
-                    "dialogue (live) · npc={} · archetype={} · mood={:?} · topic={:?} · text={}",
-                    npc_id,
-                    archetype.label(),
-                    mood,
-                    topic,
-                    text,
-                );
-                log_event("DEBUG", "loa-host/gm", &log_msg);
-                return text;
-            }
-        }
-
-        // Pool-draw fallback — existing pre-W17-B behavior, replay-deterministic.
         let arch_prefs = ARCHETYPE_PREFERENCES[archetype as usize];
         let mood_byte = mood as u32;
         let seed = npc_id
@@ -901,38 +702,6 @@ impl GmNarrator {
         seed: u64,
     ) -> crate::gm_persona::ComposedResponse {
         use crate::gm_persona::{decorate_with_persona, fnv1a_64 as persona_fnv, GmMemoryEntry};
-
-        // § T11-W17-B-GM-LIVE — when a live bridge is wired + available,
-        // use it for the base phrase and let `decorate_with_persona`
-        // still apply the persona × dm-micro-phase decoration. This
-        // means the LLM provides the substance, the persona shapes the
-        // surface — same downstream contract.
-        let live_phrase: Option<String> = if self.live_ready() {
-            let env = self
-                .last_env
-                .clone()
-                .unwrap_or_else(|| "An ancient corridor stretches before you.".into());
-            let archetype = persona.archetype_bias;
-            // Map dm_micro_phase → mood roughly. Real persona deepening
-            // can refine this mapping in a future slice.
-            let mood = match dm_micro_phase {
-                crate::dm_director::DmState::Calm => Mood::Calm,
-                crate::dm_director::DmState::Buildup => Mood::Anxious,
-                crate::dm_director::DmState::Climax => Mood::Hostile,
-                crate::dm_director::DmState::Relief => Mood::Reverent,
-            };
-            let ctx = crate::gm_live::DialoguePromptContext {
-                archetype,
-                mood,
-                topic: topic_hint,
-                environment: env,
-                player_utterance: Some(player_text.to_string()),
-                persona_flavor: Some(archetype.label().to_string()),
-            };
-            self.try_live_dialogue(&ctx)
-        } else {
-            None
-        };
 
         // 1. Pick a topic — start from hint, but bias toward the
         //    persona's archetype-prefs and avoid topics used in recent
@@ -989,15 +758,8 @@ impl GmNarrator {
             _ => topic,
         };
 
-        // 3. Draw a base-phrase. § T11-W17-B-GM-LIVE — when the live-LLM
-        //    bridge succeeded above, use that text as the base ; otherwise
-        //    draw from the chosen topic's pool. The decoration step below
-        //    runs identically in both modes — persona × dm-micro-phase
-        //    flavor stays consistent regardless of base-phrase source.
-        let base_phrase = match live_phrase {
-            Some(t) => t,
-            None => self.draw_phrase_seeded(topic, r2),
-        };
+        // 3. Draw a base-phrase from the chosen topic.
+        let base_phrase = self.draw_phrase_seeded(topic, r2);
 
         // 4. Decorate with persona × dm-micro-phase.
         let mut composed = decorate_with_persona(&base_phrase, persona, dm_micro_phase, seed);
@@ -1168,125 +930,5 @@ mod tests {
         assert_eq!(a, b);
         let c = fnv1a_64("hello worlz");
         assert_ne!(a, c);
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // § T11-W17-B-GM-LIVE — dual-mode dispatch tests
-    // ─────────────────────────────────────────────────────────────────
-
-    /// When NO live bridge is wired, gm_narrator falls back to the pool
-    /// draw — same pre-W17-B behavior, replay-deterministic.
-    #[test]
-    fn gm_no_live_bridge_uses_pool_draw() {
-        let mut g = GmNarrator::new();
-        assert!(!g.live_ready(), "no bridge → not ready");
-        let s = g.generate_dialogue(7, Archetype::Sage, Mood::Calm, PhraseTopic::LoreHistory);
-        // Pool draws are non-empty + come from the static phrase pools.
-        assert!(!s.is_empty());
-        // Verify the result IS a known pool phrase (i.e., live-path didn't
-        // synthesize an external string).
-        let known: Vec<&'static str> = PHRASE_POOLS.iter().flatten().copied().collect();
-        assert!(
-            known.iter().any(|k| s == *k),
-            "pool-mode result must come from PHRASE_POOLS"
-        );
-    }
-
-    /// When a live bridge is wired AND returns a canned phrase, the
-    /// narrator emits THAT text and skips the pool draw entirely.
-    #[test]
-    fn gm_live_bridge_cap_granted_returns_llm_text_and_skips_pool() {
-        use crate::gm_live::MockLiveBridge;
-        use std::sync::Arc;
-
-        let llm_text = "The lamps lean north tonight, traveler — heed them.".to_string();
-        let bridge = Arc::new(MockLiveBridge::new(vec![llm_text.clone()]));
-        let mut g = GmNarrator::new();
-        g.set_live_bridge(Some(bridge.clone()));
-        assert!(g.live_ready(), "bridge wired + available → ready");
-
-        let s = g.generate_dialogue(7, Archetype::Sage, Mood::Calm, PhraseTopic::LoreHistory);
-        assert_eq!(s, llm_text, "live-mode must return the bridge's response");
-
-        // Confirm the bridge was actually called once.
-        assert_eq!(bridge.call_count(), 1);
-    }
-
-    /// When the live bridge is wired but returns CapDenied (mid-call),
-    /// the narrator falls back to the pool draw transparently.
-    #[test]
-    fn gm_live_bridge_cap_denied_falls_back_to_pool() {
-        use crate::gm_live::MockLiveBridge;
-        use std::sync::Arc;
-
-        let bridge = Arc::new(MockLiveBridge::cap_denied("EXTERNAL_API"));
-        let mut g = GmNarrator::new();
-        g.set_live_bridge(Some(bridge.clone()));
-        assert!(g.live_ready());
-
-        let s = g.generate_dialogue(7, Archetype::Sage, Mood::Calm, PhraseTopic::LoreHistory);
-        assert!(!s.is_empty(), "cap-denied → pool fallback non-empty");
-
-        // Result must come from the static pool — verifies the fallback
-        // path (not a residual mock response).
-        let known: Vec<&'static str> = PHRASE_POOLS.iter().flatten().copied().collect();
-        assert!(
-            known.iter().any(|k| s == *k),
-            "cap-deny fallback must come from PHRASE_POOLS"
-        );
-        // The bridge was attempted exactly once (the deny path doesn't retry).
-        assert_eq!(bridge.call_count(), 1);
-    }
-
-    /// When the live bridge returns empty text, the narrator falls back to
-    /// the pool draw rather than emitting an empty line.
-    #[test]
-    fn gm_live_empty_text_falls_back_to_pool() {
-        use crate::gm_live::MockLiveBridge;
-        use std::sync::Arc;
-
-        let bridge = Arc::new(MockLiveBridge::new(vec!["".into()]));
-        let mut g = GmNarrator::new();
-        g.set_live_bridge(Some(bridge.clone()));
-
-        let s = g.generate_dialogue(1, Archetype::Bard, Mood::Calm, PhraseTopic::Joke);
-        assert!(!s.is_empty(), "empty live → pool fallback non-empty");
-        let known: Vec<&'static str> = PHRASE_POOLS.iter().flatten().copied().collect();
-        assert!(known.iter().any(|k| s == *k));
-    }
-
-    /// `describe_environment` likewise dispatches through the live path
-    /// when wired.
-    #[test]
-    fn gm_describe_environment_uses_live_when_wired() {
-        use crate::gm_live::MockLiveBridge;
-        use std::sync::Arc;
-
-        let env_text = "A vast atrium opens before you, lit by amber lamps.".to_string();
-        let bridge = Arc::new(MockLiveBridge::new(vec![env_text.clone()]));
-        let mut g = GmNarrator::new();
-        g.set_live_bridge(Some(bridge.clone()));
-
-        let s = g.describe_environment(Vec3::new(1.0, 2.0, 3.0), TimeOfDay::Dusk);
-        assert_eq!(s, env_text);
-        assert_eq!(bridge.call_count(), 1);
-    }
-
-    /// After `set_live_bridge(None)`, the narrator returns to pool-only.
-    #[test]
-    fn gm_unset_live_bridge_returns_to_pool_mode() {
-        use crate::gm_live::MockLiveBridge;
-        use std::sync::Arc;
-
-        let bridge = Arc::new(MockLiveBridge::new(vec!["x".into()]));
-        let mut g = GmNarrator::new();
-        g.set_live_bridge(Some(bridge));
-        assert!(g.live_ready());
-        g.set_live_bridge(None);
-        assert!(!g.live_ready());
-        let s = g.generate_dialogue(1, Archetype::Hermit, Mood::Calm, PhraseTopic::Silence);
-        assert!(!s.is_empty());
-        let known: Vec<&'static str> = PHRASE_POOLS.iter().flatten().copied().collect();
-        assert!(known.iter().any(|k| s == *k));
     }
 }
