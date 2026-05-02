@@ -127,6 +127,14 @@ pub struct SubstrateComposePipeline {
     height: u32,
     /// Surface format remembered so `ensure_size` doesn't re-fetch it.
     target_format: wgpu::TextureFormat,
+    /// § T11-W18-N · true iff the bind-group was rebuilt around an external
+    /// `TextureView` (the GPU compute-shader output) rather than the local
+    /// 256×256 CPU upload texture. While `true`, callers should NOT invoke
+    /// `upload(queue, bytes)` — the bind-group's texture view points at the
+    /// GPU compute-shader output instead, so CPU uploads would be a no-op
+    /// at best and waste bandwidth. Reset to `false` by `ensure_size` (which
+    /// reallocates the local texture + rebuilds the bind-group around it).
+    use_gpu_view: bool,
 }
 
 impl SubstrateComposePipeline {
@@ -310,7 +318,66 @@ impl SubstrateComposePipeline {
             width: COMPOSE_TEX_W,
             height: COMPOSE_TEX_H,
             target_format,
+            use_gpu_view: false,
         }
+    }
+
+    /// § T11-W18-N · Rebuild the bind-group so it samples the supplied
+    /// external `wgpu::TextureView` (e.g., the 1440p substrate-resonance
+    /// compute-shader output) instead of the local 256×256 CPU-upload
+    /// texture. Idempotent (cheap; rebuilds the bind-group once per call —
+    /// callers should invoke this once after the GPU pipeline binds its
+    /// output, not every frame).
+    ///
+    /// While the external view is bound, the local texture upload path
+    /// (`upload(queue, bytes)`) is dormant — the bind-group's texture
+    /// binding points at `external_view`. Call `ensure_size` (which
+    /// reallocates the local texture and rebuilds the bind-group around it)
+    /// to revert to the CPU-upload path.
+    ///
+    /// SAFETY : the caller must keep `external_view`'s underlying texture
+    /// alive for as long as this pipeline issues render-passes ; typically
+    /// this is the substrate-resonance GPU crate's `output_view` whose
+    /// lifetime is bound to the long-lived `SubstrateRenderState::gpu`
+    /// field on the host.
+    pub fn bind_external_view(
+        &mut self,
+        device: &wgpu::Device,
+        external_view: &wgpu::TextureView,
+    ) {
+        self.bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("loa-host/substrate-compose-bg (external GPU view)"),
+            layout: &self.bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(external_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.uniform_buf.as_entire_binding(),
+                },
+            ],
+        });
+        self.use_gpu_view = true;
+        log_event(
+            "INFO",
+            "loa-host/substrate-compose",
+            "bind_external_view · sampling GPU compute-shader output (CPU upload path dormant)",
+        );
+    }
+
+    /// § T11-W18-N · True iff the bind-group is currently sampling an
+    /// external GPU `TextureView` (set by `bind_external_view`). False when
+    /// the local CPU-upload texture is bound (the default after `new` or
+    /// after `ensure_size`).
+    #[must_use]
+    pub fn is_external_view_bound(&self) -> bool {
+        self.use_gpu_view
     }
 
     /// Re-allocate the texture if the host changed the substrate pixel-field
@@ -356,6 +423,10 @@ impl SubstrateComposePipeline {
         });
         self.width = w;
         self.height = h;
+        // § T11-W18-N · reverting bind-group to local CPU-upload texture
+        // invalidates any prior external-view binding. CPU upload path is
+        // active again until `bind_external_view` is called.
+        self.use_gpu_view = false;
         log_event(
             "INFO",
             "loa-host/substrate-compose",
@@ -366,7 +437,17 @@ impl SubstrateComposePipeline {
     /// Upload the substrate pixel-field bytes to the GPU texture. `bytes`
     /// must be `width * height * 4` long (RGBA8). Short payloads are
     /// truncated to the texture extent ; over-long payloads are clipped.
+    ///
+    /// § T11-W18-N · No-op when the bind-group is sampling an external
+    /// `TextureView` (set by `bind_external_view`) — the local CPU-upload
+    /// texture is no longer the bind-group's source, so writing to it would
+    /// waste bandwidth without affecting the rendered overlay. Caller can
+    /// query `is_external_view_bound()` to decide whether to skip the CPU
+    /// path altogether.
     pub fn upload(&self, queue: &wgpu::Queue, bytes: &[u8]) {
+        if self.use_gpu_view {
+            return;
+        }
         let needed = (self.width as usize) * (self.height as usize) * 4;
         let n = bytes.len().min(needed);
         if n == 0 {
@@ -569,5 +650,66 @@ mod tests {
         // Tweak overlay strength + record a no-op pass into a throwaway view.
         p.set_overlay_strength(&queue, 0.25);
         assert!((p.overlay_strength() - 0.25).abs() < 1e-6);
+    }
+
+    /// § T11-W18-N · `bind_external_view` rebuilds the bind-group around a
+    /// caller-supplied `TextureView` and flips `is_external_view_bound`.
+    /// Marked `#[ignore]` because constructing a real `TextureView` requires
+    /// a GPU device.
+    #[test]
+    #[ignore]
+    fn bind_external_view_rebinds_bind_group_and_sets_flag() {
+        let instance = wgpu::Instance::default();
+        let adapter = pollster::block_on(instance.request_adapter(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            },
+        ))
+        .expect("adapter required");
+        let (device, _queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("loa-host/substrate-compose-bind-external-test"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        ))
+        .expect("device required");
+        let mut p = SubstrateComposePipeline::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb);
+        assert!(!p.is_external_view_bound(), "freshly-constructed pipeline must default to CPU-upload path");
+
+        // Allocate a 1440p Rgba8Unorm texture · stand-in for the GPU
+        // compute-shader output. TEXTURE_BINDING usage is required so the
+        // resulting view is bind-group-compatible.
+        let ext_tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("loa-host/substrate-compose-bind-external-test-tex"),
+            size: wgpu::Extent3d {
+                width: 2560,
+                height: 1440,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let ext_view = ext_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        p.bind_external_view(&device, &ext_view);
+        assert!(p.is_external_view_bound(), "after bind_external_view the GPU-view flag must be set");
+
+        // ensure_size at the existing dimensions is a no-op (does not flip the flag).
+        p.ensure_size(&device, COMPOSE_TEX_W, COMPOSE_TEX_H);
+        assert!(p.is_external_view_bound(), "no-op ensure_size must NOT clear the GPU-view flag");
+
+        // ensure_size to a different resolution reallocates the local
+        // texture + rebuilds the bind-group around it · CPU path is back.
+        p.ensure_size(&device, 512, 512);
+        assert!(!p.is_external_view_bound(), "ensure_size with new dims must revert to CPU-upload path");
     }
 }

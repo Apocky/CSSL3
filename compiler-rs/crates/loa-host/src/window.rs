@@ -1994,15 +1994,36 @@ impl App {
             };
         }
 
-        // § 8e. T11-W18-A-COMPOSITE — push the just-ticked substrate pixel
-        // field to the compose-pipeline texture so the next render_frame
-        // alpha-blends it over the conventional 3D scene. The substrate
-        // tick happens above (§ 8d) ; this is the GPU-upload bridge that
-        // makes the COMPLETELY NEW VISUAL REPRESENTATION VISIBLE on screen.
+        // § 8e. T11-W18-A+N-COMPOSITE — bridge the just-ticked substrate
+        // output to the compose pipeline so the next `render_frame` alpha-
+        // blends it over the conventional 3D scene. Two paths :
+        //
+        //   • GPU active (W18-N) :  the 1440p substrate-resonance compute
+        //                           shader has already written its output
+        //                           texture this frame (inside `tick_gpu`).
+        //                           We rebind the compose bind-group ONCE
+        //                           to sample that texture directly · all
+        //                           subsequent frames re-use the same
+        //                           bind-group (no per-frame work). The
+        //                           CPU 256×256 upload is SKIPPED.
+        //   • GPU inactive (CPU-only fallback) :
+        //                           the legacy 256×256 PixelField is
+        //                           uploaded each frame as before.
         if let (Some(gpu), Some(renderer)) = (self.gpu.as_ref(), self.renderer.as_mut()) {
-            let display = self.substrate.current_display();
-            let bytes = display.as_bytes_owned();
-            renderer.upload_substrate_pixels(gpu, &bytes, display.width, display.height);
+            if self.substrate.is_gpu_active() {
+                if !renderer.is_substrate_gpu_view_bound() {
+                    if let Some(gpu_view) = self.substrate.gpu_output_view() {
+                        renderer.bind_substrate_gpu_view(gpu, gpu_view);
+                    }
+                }
+                // GPU path active · CPU upload is short-circuited inside
+                // SubstrateComposePipeline::upload, so we skip it entirely
+                // here to avoid unnecessary CPU→bytes work too.
+            } else {
+                let display = self.substrate.current_display();
+                let bytes = display.as_bytes_owned();
+                renderer.upload_substrate_pixels(gpu, &bytes, display.width, display.height);
+            }
         }
 
         // § 9. Render the frame.
