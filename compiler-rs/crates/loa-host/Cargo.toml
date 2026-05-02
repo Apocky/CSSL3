@@ -35,6 +35,15 @@ cssl-rt                         = { path = "../cssl-rt" }
 #   NO phrase-pools · used by gm_narrator (replaces xorshift32 phrase-pool
 #   lookup with novel 8-axis substrate-resonance morphological synthesis).
 cssl-host-substrate-intelligence = { path = "../cssl-host-substrate-intelligence" }
+# § T11-W17-PARADIGM-SHIFT · Substrate-Resonance Pixel Field rendering.
+#   The COMPLETELY NOVEL VISUAL REPRESENTATION : every pixel is computed by
+#   walking observer-rays through the ω-field, accumulating HDC-resonance
+#   contributions from nearby crystals, and projecting through the 4-illuminant
+#   spectral-LUT. NO triangle-rasterization. NO meshes. NO textures. NO BRDF.
+#   See loa-host/src/substrate_render.rs for the runtime entry-point.
+cssl-host-crystallization              = { path = "../cssl-host-crystallization" }
+cssl-host-alien-materialization        = { path = "../cssl-host-alien-materialization" }
+cssl-host-digital-intelligence-render  = { path = "../cssl-host-digital-intelligence-render" }
 # § T11-LOA-FID-SPECTRAL : substrate's hyperspectral pipeline. Used by
 # `spectral_bridge` to bake per-material 16-band reflectance × 4 canonical
 # illuminants → sRGB albedo for the GPU material LUT. Catalog-buildable

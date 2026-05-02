@@ -180,6 +180,22 @@ pub struct App {
     /// movement-aug · loot · mycelium-heartbeat · content). Constructed at
     /// App-start ; mutated per-frame via `crate::tick_wired_systems`.
     pub wired: crate::LoaSubsystems,
+
+    /// § T11-W17-PARADIGM-SHIFT — Substrate-Resonance Pixel Field renderer.
+    ///
+    /// COMPLETELY NEW GRAPHICS PARADIGM (Apocky-greenlit 2026-05-02). Owns
+    /// 5 procgen test crystals + a `DigitalIntelligenceRenderer`. Each
+    /// frame, `App::redraw_requested` calls `substrate.tick(observer)` and
+    /// the substrate-resonance pixel-field is advanced by one frame :
+    ///   - per-pixel observer-ray walk
+    ///   - HDC-resonance accumulation from nearby crystals
+    ///   - 4-illuminant spectral-LUT projection to sRGB
+    ///   - Σ-mask filtering (sovereign-respecting)
+    ///   - temporal-coherence ring-buffer (depth 3)
+    /// The resulting `PixelField` is uploaded as a wgpu texture overlay
+    /// (TODO W18-N · for now telemetry-only · the runtime can introspect
+    /// via `substrate.current_display()`).
+    pub substrate: crate::substrate_render::SubstrateRenderState,
 }
 
 impl Default for App {
@@ -221,6 +237,7 @@ impl App {
             initial_mode: WindowMode::from_env(),
             has_been_focused: false,
             gpu_alive: false,
+            substrate: crate::substrate_render::SubstrateRenderState::new(),
             mcp_handle: None,
             mcp_port: None,
             burst: BurstState::default(),
@@ -1909,6 +1926,37 @@ impl App {
 
         // § 8c. Build the HUD context this frame.
         let hud = self.build_hud_context();
+
+        // § 8d. Substrate-Resonance Pixel Field tick.
+        //
+        // T11-W17-PARADIGM-SHIFT · COMPLETELY NEW GRAPHICS PARADIGM. Each
+        // frame the substrate-resonance pixel-field advances by one tick :
+        //   per-pixel observer-ray walk → HDC-resonance accumulation →
+        //   4-illuminant spectral-LUT projection → Σ-mask filter →
+        //   temporal-coherence ring-buffer blend → display PixelField
+        //
+        // The ticking happens BEFORE the conventional wgpu render-frame so
+        // the substrate's per-frame fingerprint can be referenced by the
+        // wgpu pass for future overlay-compositing (W18+).
+        //
+        // Observer-coord is derived from the current player camera. Σ-mask
+        // is permissive at stage-0 (all 8 aspects granted) ; per-aspect
+        // revoke is wired through cap-grants in W18+.
+        {
+            let cam = &self.render_camera;
+            let yaw_milli = ((cam.yaw * 1000.0) as i64).rem_euclid(1000) as u32;
+            let pitch_milli = ((cam.pitch * 1000.0) as i64).rem_euclid(1000) as u32;
+            let observer = self.substrate.observer_for(
+                (cam.position.x * 1000.0) as i32,
+                (cam.position.y * 1000.0) as i32,
+                (cam.position.z * 1000.0) as i32,
+                yaw_milli,
+                pitch_milli,
+                self.frame_count,
+                0xFFFF_FFFF,
+            );
+            let _frame_out = self.substrate.tick(observer);
+        }
 
         // § 9. Render the frame.
         let frame_token = telem::global().frame_begin();

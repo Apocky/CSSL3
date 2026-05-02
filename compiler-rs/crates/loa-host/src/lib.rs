@@ -167,6 +167,26 @@ pub mod spontaneous;
 // HUD text-input box submission + scripted scene call routes through here.
 pub mod intent_router;
 
+// § T11-W17-PARADIGM-SHIFT — Substrate-Resonance Pixel Field renderer.
+//
+// The COMPLETELY NOVEL VISUAL REPRESENTATION (Apocky-greenlit 2026-05-02).
+// Owns a live `DigitalIntelligenceRenderer` + 5 test crystals procedurally
+// allocated at host-init. Each frame, the host calls `tick(observer)` and
+// the substrate-resonance pixel field is advanced :
+//
+//   - per-pixel observer-ray walk through the ω-field
+//   - HDC-resonance accumulation from nearby crystals
+//   - 4-illuminant spectral-LUT projection to sRGB
+//   - per-observer Σ-mask filtering (sovereign-respecting)
+//   - temporal-coherence ring-buffer (depth 3 · 5 blend modes)
+//
+// NO mesh data. NO texture atlases. NO BRDF. NO scene-graph. The substrate
+// IS the source-of-truth, queried per-pixel-per-frame.
+//
+// Canonical-impl in `Labyrinth of Apocalypse/systems/{crystallization,
+// alien_materialization, digital_intelligence_render}.csl`.
+pub mod substrate_render;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § T11-W5c-LOA-HOST-WIRE — thin wrapper modules over the wave-3γ + W4 + W5a
 // + W5b cssl-host-* crates. Each wired_* module re-exports the canonical
