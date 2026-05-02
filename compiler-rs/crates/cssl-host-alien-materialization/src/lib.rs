@@ -98,8 +98,13 @@ pub mod ray;
 // § T11-W18-B-PERF : uniform-grid spatial-index. crystals_near() now O((r/cell)^3)
 // instead of O(N). pixel_field consumes this when scenes have ≥1 crystal.
 pub mod spatial_index;
+// § T11-W19-H-INTERFERE : ℂ-amplitude interferometric pixel-field — second
+// pipeline alongside `pixel_field::resolve_substrate_resonance`. Canonical
+// at `Labyrinth of Apocalypse/systems/spectral_interference.csl`.
+pub mod interference;
 
 use cssl_host_crystallization::Crystal;
+pub use interference::{resolve_interference_field, InterferenceFrame};
 pub use observer::ObserverCoord;
 pub use pixel_field::{PixelField, ResonanceFrame};
 
