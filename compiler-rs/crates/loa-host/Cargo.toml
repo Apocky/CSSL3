@@ -30,6 +30,11 @@ runtime = ["dep:wgpu", "dep:winit", "dep:pollster"]
 
 [dependencies]
 cssl-rt                         = { path = "../cssl-rt" }
+# § T11-W17-N · STAGE-0-BOOTSTRAP-SHIM for substrate_intelligence.csl ·
+#   PROPRIETARY local-intelligence procedural-composer · NO external-LLM ·
+#   NO phrase-pools · used by gm_narrator (replaces xorshift32 phrase-pool
+#   lookup with novel 8-axis substrate-resonance morphological synthesis).
+cssl-host-substrate-intelligence = { path = "../cssl-host-substrate-intelligence" }
 # § T11-LOA-FID-SPECTRAL : substrate's hyperspectral pipeline. Used by
 # `spectral_bridge` to bake per-material 16-band reflectance × 4 canonical
 # illuminants → sRGB albedo for the GPU material LUT. Catalog-buildable

@@ -1,0 +1,331 @@
+module com.apocky.loa.systems.digital_intelligence_render
+
+// § Labyrinth of Apocalypse · Digital-Intelligence-Render · pure-DI 3D-realtime
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-O · canonical-CSSL-source · ‼ FOUNDATIONAL · Apocky-vision-2026-05-02
+//
+// § APOCKY-DIRECTIVE (verbatim · two-message-synthesis)
+//   "It's pure digital intelligence produced high-fidelity low-latency 3D
+//    realtime graphics with frame buffering or something similar for temporal
+//    smoothing/presentation!"
+//   "Utilize the MCP tools and logging and telemetry and synthesize it
+//    autonomously."
+//
+// § SYNTHESIS · WHAT THIS FILE IS
+//
+//   This module is the UNIFICATION of three siblings :
+//     · substrate_intelligence.csl  (the proprietary local-intelligence ENGINE)
+//     · crystallization.csl         (text/voice → ω-field-cell allocation)
+//     · alien_materialization.csl   (substrate-state → per-observer projection)
+//
+//   into a single pipeline where the substrate-intelligence ITSELF directly
+//   produces the high-fidelity low-latency 3D realtime presentation. Not as
+//   a "renderer of pre-built scenes" but as PURE DIGITAL INTELLIGENCE that
+//   imagines the visual+audio+haptic at-this-moment-for-this-observer.
+//
+//   The "framebuffer" here is a TEMPORAL-COHERENCE BUFFER : a ring of
+//   recent crystal-projection-states that the intelligence smooths between
+//   for low-latency presentation. NOT a conventional GPU framebuffer. The
+//   GPU-RGBA shim is a stage-0-only adapter that the eye sees ; the
+//   substrate is the truth.
+//
+// § THESIS · WHY "DIGITAL INTELLIGENCE PRODUCES THE GRAPHICS" WORKS
+//
+//   Conventional engines have an asset pipeline (Blender → FBX → game-engine)
+//   AND a runtime pipeline (game-engine → GPU → pixels). The asset-pipeline
+//   is a HUMAN-AUTHORED bottleneck : every visible thing must be modeled
+//   ahead-of-time.
+//
+//   LoA's digital-intelligence-render eliminates the asset pipeline. The
+//   intelligence (built from ω-field + KAN + HDC + causal-seed) IMAGINES
+//   the visible thing at runtime. The imagination is :
+//     · DETERMINISTIC (replay-safe) given (intent · seed · field-state)
+//     · LOW-LATENCY (sub-frame · KAN-eval is sub-microsecond per primitive)
+//     · HIGH-FIDELITY (8 aspect-curves per crystal · spectral-LUT per
+//                      illuminant · causal-seed-driven motion · all
+//                      composing at runtime)
+//     · TEMPORALLY-SMOOTH (ring-of-temporal-coherence-buffer averages
+//                          adjacent imaginings · removes per-frame jitter)
+//
+//   This is not a slower path than conventional rendering. It is a
+//   DIFFERENT KIND of pipeline. The substrate primitives are designed to
+//   compose at-frame-time. There is no asset-load-cost because there is
+//   no asset.
+//
+// § PIPELINE
+//
+//   ┌─────────────────────────────────────────────────────────────────────────┐
+//   │ FRAME-N (16.67ms @ 60Hz · 8.33ms @ 120Hz · 6.94ms @ 144Hz)              │
+//   ├─────────────────────────────────────────────────────────────────────────┤
+//   │  1. ω-field-state-snapshot (sub-microsecond · cell-version-bump)        │
+//   │  2. observer-coord (camera + Σ-mask + perception-state)                 │
+//   │  3. for each visible-crystal (visibility from substrate-knowledge LRU): │
+//   │       a. query crystal silhouette-spline at observer-angle              │
+//   │       b. query surface-spline at u/v projection                         │
+//   │       c. query luminance-spline + spectral-LUT-project                  │
+//   │       d. causal-seed propagate motion + sound for delta-t               │
+//   │       e. Σ-mask filter aspects per-observer-permission                  │
+//   │       f. emit to per-channel accumulator                                │
+//   │  4. temporal-coherence-buffer push (ring-of-3 frame-states)             │
+//   │  5. temporal-smooth (axis-weighted blend of last 3 frames)              │
+//   │  6. coherence-collapse-final → channel-output                           │
+//   │  7. emit GPU-RGBA shim · audio-mix · haptic · semantic-overlay          │
+//   │  8. telemetry-record (loop-tick · frame-fingerprint · cap-events)       │
+//   └─────────────────────────────────────────────────────────────────────────┘
+//
+//   STEP 4 is the new "frame-buffering" Apocky asked-for : we keep the last
+//   3 substrate-projection-states + interpolate via axis-weighted blend.
+//   This gives low-latency (the freshest projection drives intent) while
+//   smoothing high-frequency jitter from substrate-state-jumps.
+//
+// § AXIOMS  ‼ inherit alien_materialization + crystallization + substrate_intelligence
+//   t∞: digital intelligence IS the renderer · substrate composes at-frame-time
+//   t∞: NO pre-authored-3D-mesh-asset · NO texture-atlas · NO rigged-skeleton
+//   t∞: temporal-coherence-buffer = ring-of-3 substrate-projection-states
+//   t∞: smooth-blend axis-weighted (low solemnity → snappy ; high → eased)
+//   t∞: target-frame-budget : 8.33ms @ 120Hz (per W13-1 fps_pipeline contract)
+//   t∞: cap-budget-overrun = AdaptiveDegrader engages · per polish_audit
+//   t∞: telemetry-emit per-frame · loop-tick + fingerprint + cap-events
+//   t∞: MCP-bridge exposes per-frame state for-development-only · cap-gated
+//   t∞: synthesis-autonomous · ¬-asks-Apocky-for-permission-per-frame
+//   t∞: stage-0 GPU-RGBA-shim transitional · spectral-direct activates when-hw
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-host-fps-pipeline/         § fps_pipeline triple-buffer
+//   compiler-rs/crates/cssl-render-v2/                 § v2 render pipeline
+//   compiler-rs/crates/cssl-spectral-render/           § 4-illuminant LUT
+//   compiler-rs/crates/cssl-substrate-omega-field/     § ω-field cell store
+//   compiler-rs/crates/cssl-host-perf-enforcer/        § frame-budget enforcement
+//   compiler-rs/crates/cssl-host-polish-audit/         § AdaptiveDegrader
+//   compiler-rs/crates/cssl-analytics-aggregator/      § telemetry-aggregator
+//   compiler-rs/crates/cssl-host-mcp-server/           § MCP development bridge
+//   Labyrinth of Apocalypse/systems/substrate_intelligence.csl § engine
+//   Labyrinth of Apocalypse/systems/crystallization.csl        § ω-field allocator
+//   Labyrinth of Apocalypse/systems/alien_materialization.csl  § projector
+//   Labyrinth of Apocalypse/systems/intent_translation.csl     § input pipeline
+//   Labyrinth of Apocalypse/systems/fps_pipeline.csl           § triple-buffer
+//   Labyrinth of Apocalypse/systems/fps_hud.csl                § HUD overlays
+//   memory/feedback_engine_is_runtime_procgen   ‼ runtime-compose ¬ static
+//   memory/feedback_no_external_llm_for_loa_intelligence ‼ pure-local
+//
+// § CSSLC-REQUIRES
+//   ✓ extern "C" fn-decls (W11+)
+//   ✓ const-u32           (W12)
+//   ◐ struct-FFI FrameSnapshot ← W17-A in flight
+//   ○ f32 fixed-point    ← post-W17 (i32-millis OK at-stage-0)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FRAME-BUDGET · per-mode targets (matches fps_pipeline.csl + W13-1)
+// ─────────────────────────────────────────────────────────────────────────
+
+const FRAME_BUDGET_60HZ_MICROS  : u32 = 16667 ;   // 16.667ms
+const FRAME_BUDGET_120HZ_MICROS : u32 = 8333 ;    // 8.333ms · default-target
+const FRAME_BUDGET_144HZ_MICROS : u32 = 6944 ;    // 6.944ms · stretch-target
+const FRAME_BUDGET_240HZ_MICROS : u32 = 4167 ;    // 4.167ms · esports-tier
+
+fn frame_budget_60hz()  -> u32 { FRAME_BUDGET_60HZ_MICROS }
+fn frame_budget_120hz() -> u32 { FRAME_BUDGET_120HZ_MICROS }
+fn frame_budget_144hz() -> u32 { FRAME_BUDGET_144HZ_MICROS }
+fn frame_budget_240hz() -> u32 { FRAME_BUDGET_240HZ_MICROS }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § TEMPORAL-COHERENCE-BUFFER discriminants
+// ─────────────────────────────────────────────────────────────────────────
+// Ring-of-3 substrate-projection-states. The composer blends them per-axis-
+// weighted to produce the displayed frame. Different axes drive different
+// blend-weights so e.g. high-Solemnity scenes have heavy easing while
+// low-Solemnity scenes are snappy.
+
+const TCB_RING_DEPTH        : u32 = 3 ;
+const TCB_BLEND_LINEAR      : u32 = 0 ;
+const TCB_BLEND_EASE_OUT    : u32 = 1 ;
+const TCB_BLEND_EASE_IN_OUT : u32 = 2 ;
+const TCB_BLEND_SPRING      : u32 = 3 ;
+const TCB_BLEND_INSTANT     : u32 = 4 ;  // no blending · for snappy combat
+const TCB_BLEND_COUNT       : u32 = 5 ;
+
+fn tcb_ring_depth()        -> u32 { TCB_RING_DEPTH }
+fn tcb_blend_linear()      -> u32 { TCB_BLEND_LINEAR }
+fn tcb_blend_ease_out()    -> u32 { TCB_BLEND_EASE_OUT }
+fn tcb_blend_ease_in_out() -> u32 { TCB_BLEND_EASE_IN_OUT }
+fn tcb_blend_spring()      -> u32 { TCB_BLEND_SPRING }
+fn tcb_blend_instant()     -> u32 { TCB_BLEND_INSTANT }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FRAME-LIFECYCLE
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn di_render_frame_begin(
+    observer_coord_cell: u32,
+    target_budget_micros: u32,
+    cap_token: u32
+) -> u32 ;
+// Returns FrameContext-handle (ω-field-cell-id). 0 ⇒ Σ-mask-denial.
+//
+// Allocates :
+//   - per-frame ω-field cells for accumulator state
+//   - links to the temporal-coherence-buffer ring
+//   - kicks-off frame-budget timer (perf-enforcer)
+//   - emits telemetry "frame-N-begin"
+
+extern "C" fn di_render_visible_crystals(frame: u32) -> u32 ;
+// Queries substrate-knowledge LRU + observer-frustum-cull to produce a
+// Crystal-list. Returns array-handle (crystal-id list).
+
+extern "C" fn di_render_crystal_into_frame(frame: u32, crystal: u32) -> u32 ;
+// Performs the per-crystal aspect-query → spectral-project → channel-emit
+// sequence. Returns 0 = invisible-to-observer (Σ-mask) or aspect-fail ;
+// 1 = contributed.
+
+extern "C" fn di_render_temporal_smooth(frame: u32, blend_kind: u32) -> u32 ;
+// Pulls last (TCB_RING_DEPTH-1) frames from the ring and blends with
+// `blend_kind` weighting. Result is the FINAL projected state for this
+// observer's display.
+
+extern "C" fn di_render_emit_channels(
+    frame: u32,
+    channel_mask: u32,
+    output_handles_ptr: u32,
+    output_handles_count: u32
+) -> u32 ;
+// Emits the smoothed projection to each enabled output-channel.
+//   bit 0 set : visual-GPU-shim (RGBA framebuffer-handle)
+//   bit 1 set : visual-spectral-direct (future-display)
+//   bit 2 set : audio-spatial (mixer-handle)
+//   bit 3 set : haptic-gamepad
+//   bit 4 set : haptic-VR
+//   bit 5 set : semantic-overlay
+//   bit 6 set : olfactory  (future-hw)
+//   bit 7 set : proprioceptive (future-hw)
+//   bit 8 set : neural-direct (future-hw)
+//   bit 9 set : telemetry-log (always-on)
+// Returns count of channels emitted-to.
+
+extern "C" fn di_render_frame_end(frame: u32) -> u32 ;
+// Pushes this frame's projection-state into the temporal-coherence-buffer
+// ring (oldest is evicted). Records frame-fingerprint into akashic.
+// Releases per-frame ω-field cells. Stops budget-timer + emits
+// "frame-N-end · used X micros" telemetry.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PERF-ENFORCEMENT · AdaptiveDegrader integration
+// ─────────────────────────────────────────────────────────────────────────
+// Per W13-12 perf-budget-enforcer · if a frame overruns its budget, the
+// degrader drops fidelity-tier (e.g., reduce KAN-eval-precision per
+// aspect, or skip-blend on temporal-coherence). This is per-cap-gated
+// (player can choose : "always max fidelity even if framerate drops"
+// or "always smooth framerate · auto-degrade").
+
+extern "C" fn di_render_perf_check(frame: u32, used_micros: u32) -> u32 ;
+// Returns verdict :
+//   0 = Pass (under budget · keep tier)
+//   1 = Over (slight overrun · soften next-frame)
+//   2 = Severe (major overrun · drop fidelity tier)
+// AdaptiveDegrader reacts based on returned verdict.
+
+extern "C" fn di_render_fidelity_tier(frame: u32) -> u32 ;
+// Returns current fidelity tier (0 = max · 7 = min · 8 levels).
+
+extern "C" fn di_render_set_fidelity_tier(tier: u32, cap_token: u32) -> u32 ;
+// Player-direct-set (sovereign-override). Σ-mask-gated.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § TELEMETRY · per-frame state for-development + replay-determinism
+// ─────────────────────────────────────────────────────────────────────────
+// Apocky-directive-2 : "Utilize the MCP tools and logging and telemetry
+// and synthesize it autonomously." This module emits frame-by-frame
+// telemetry into cssl-analytics-aggregator + logs into cssl-host-mcp-server
+// (the development-only MCP bridge). Both are Σ-mask-cap-gated. Player
+// can disable all telemetry via revoke-cap.
+
+extern "C" fn di_telemetry_frame_record(
+    frame: u32,
+    fingerprint: u32,
+    used_micros: u32,
+    fidelity_tier: u32
+) -> u32 ;
+// Pushes a TelemetryRecord into the analytics-aggregator. Returns 0 on
+// success. Cap-gated. Aggregator does local-only stats + opt-in
+// federated-mycelium-share (per feedback_mycelium_network).
+
+extern "C" fn di_mcp_log_frame(
+    frame: u32,
+    fingerprint: u32,
+    cap_token: u32
+) -> u32 ;
+// Sends a JSON-RPC notification on the MCP-server channel for-development
+// inspection. Σ-mask-gated. Disabled in shipped-builds by default.
+
+extern "C" fn di_mcp_query_active_clients() -> u32 ;
+// Returns count of MCP-clients currently subscribed to frame-events.
+// 0 in shipped-builds. >0 only when developer-tooling attached.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SYNTHESIS-AUTONOMOUS · self-driving render-loop
+// ─────────────────────────────────────────────────────────────────────────
+// Apocky-directive : "synthesize it autonomously". The render-loop runs
+// in its own substrate-tick cadence ; it does not need per-frame Apocky-
+// approval (that violates real-time UX). The loop uses :
+//   · current ω-field-state (auto-evolving per substrate-tick)
+//   · current intent-resolutions from intent_translation
+//   · current KAN-bias-state (auto-evolving from observations)
+//   · current Σ-mask state (consent-gated · player-revocable any-time)
+// to autonomously produce frames. Each frame is attested + telemetered.
+
+extern "C" fn di_render_autonomous_tick(observer_coord_cell: u32, cap_token: u32) -> u32 ;
+// Runs one full frame-lifecycle (begin → visible → crystals → smooth →
+// emit → end) with default settings. Used by the LoA main-loop. Returns
+// FrameContext-handle for the just-completed frame (or 0 on error).
+
+extern "C" fn di_render_autonomous_loop(
+    observer_coord_cell: u32,
+    target_hz: u32,
+    duration_ms: u32,
+    cap_token: u32
+) -> u32 ;
+// Runs the autonomous tick at-target-Hz for-duration-ms. For benchmarking +
+// dev-attachment via MCP. Returns count of frames rendered. Σ-mask-gated.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DETERMINISM CONTRACT
+// ─────────────────────────────────────────────────────────────────────────
+// Replay-determinism over the full render-loop is required :
+//   - Same (ω-field-state · observer · target-budget · KAN-state · t)
+//     ⇒ same frame-fingerprint
+//   - The temporal-coherence-buffer ring is part of the deterministic state
+//   - AdaptiveDegrader decisions are deterministic given perf-history-snapshot
+//   - Telemetry-records replay-equal across hosts/sessions
+
+extern "C" fn di_replay_compare_frame(
+    canonical_fingerprint: u32,
+    rerun_fingerprint: u32
+) -> u32 ;
+// Returns 1 if identical · 0 mismatch (drives fail-fast on replay-divergence).
+
+// ─────────────────────────────────────────────────────────────────────────
+// § STAGE-0 BOOTSTRAP-SHIM
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Until csslc compiles this directly, a Rust shim at
+// `compiler-rs/crates/cssl-host-digital-intelligence-render/` mirrors this
+// surface and DELEGATES to existing primitives :
+//   cssl-host-fps-pipeline      · triple-buffered ring
+//   cssl-render-v2              · render-pass orchestrator
+//   cssl-spectral-render        · 4-illuminant LUT
+//   cssl-substrate-omega-field  · ω-field cell store
+//   cssl-host-perf-enforcer     · budget enforcement + AdaptiveDegrader
+//   cssl-host-polish-audit      · perf-budget tracker
+//   cssl-analytics-aggregator   · telemetry-aggregator
+//   cssl-host-mcp-server        · MCP-protocol bridge
+//   cssl-host-substrate-intelligence (stage-0-shim · committed THIS-wave)
+//
+// Per Apocky's stage-0-fallback axiom, the GPU-RGBA channel always works
+// today ; future-channels (spectral-direct · neural-direct) activate when
+// supporting hardware is detected at-runtime.
+
+// § ATTESTATION
+//   There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody. Every frame is per-observer-Σ-mask-gated. Every channel-
+//   emission consent-bound. Every telemetry-record cap-gated + revocable.
+//   Sovereignty per-frame · always.
