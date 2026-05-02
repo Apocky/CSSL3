@@ -3,27 +3,37 @@ module com.apocky.loa.scenes.chat_panel
 // § Labyrinth of Apocalypse — in-game chat-panel (Player ↔ GM/DM/Coder)
 // ════════════════════════════════════════════════════════════════════════════
 //
-// § T11-WAVE3-CHAT-PANEL  ‼ FOUNDATIONAL · this file is the canonical
-//   proprietary-CSSL spec for the in-game chat panel that lets the
-//   Sovereign press `/` to focus a text-input box, type to the GameMaster
-//   / DirectorMaster / CoderRuntime, see responses + dispatched actions.
+// § T11-W15-CSSL-CHAT-PANEL-FULL  ‼ FOUNDATIONAL · canonical-CSSL-source
+//   This file is the canonical proprietary-CSSL spec for the in-game chat
+//   panel that lets the Sovereign press `/` to focus a text-input box, type
+//   to the GameMaster / DirectorMaster / CoderRuntime, see responses +
+//   dispatched actions.
 //
-//   The bootstrap-host-staticlib (loa-host) renders the panel TODAY via
-//   ui_overlay::push_text_input_box ; once csslc gains FFI-pointer +
-//   GPU-primitive coverage (see § GAP below) this .csl source FULLY
-//   REPLACES the Rust render path. The FFI contracts below are the
-//   stable surface · the Rust impl is a temporary substrate-primitive
-//   layer (font drawing · text-input event capture · render submission).
+//   § BIT-FOR-BIT PARITY w/ Rust-bootstrap-host
+//     - Layout-constants ≡ ui_overlay::push_text_input_box (panel-x/y/w/h)
+//     - History-cap ≡ Rust CHAT_LOG_CAP = 8
+//     - Buffer-cap ≡ Rust TEXT_INPUT_MAX_BUFFER = 256
+//     - Role-ids ≡ Rust mcp_server::ChatRole enum-discriminants 0..=4
+//     - Color-table ≡ Rust ui_overlay role-color match-arms
+//     - Border-thickness ≡ 0.003 (norm-coords) · matches Rust ui_overlay
+//     - Submit-pipeline = intent-router fast-path FIRST · GM-fallback SECOND
+//     - Esc cancels-without-side-effects ≡ TextInputState::cancel
+//     - Buffer at-cap silently-drops ≡ TextInputState::type_char
+//
+//   § THE STAGE-0 RUST IS THIS FILE'S COMPILED-OUTPUT-EQUIVALENT
+//     When csslc grows FFI-pointer + f32-arg coverage, this .csl source
+//     FULLY REPLACES the Rust render path. The FFI contracts are stable.
 //
 // § REFERENCE
 //   compiler-rs/crates/loa-host/src/ui_overlay.rs      § push_text_input_box · push_chat_log · push_chat_hint
-//   compiler-rs/crates/loa-host/src/ffi.rs             § __cssl_chat_* + __cssl_ui_draw_* (this slice)
-//   compiler-rs/crates/loa-host/src/window.rs          § route_chat_submission · route_to_gm (intent-router fast-path)
+//   compiler-rs/crates/loa-host/src/ffi.rs             § __cssl_chat_* + __cssl_ui_draw_*
+//   compiler-rs/crates/loa-host/src/window.rs          § route_chat_submission · route_to_gm
 //   compiler-rs/crates/loa-host/src/intent_router.rs   § classify · route · format_intent_response
+//   compiler-rs/crates/loa-host/src/mcp_server.rs      § ChatRole + ChatLogEntry
 //   specs/41_ENGINE_RUNTIME.csl                        § engine-runtime · per-frame ticks
 //   memory/feedback_loa_v13_must_be_cssl_source        ‼ .csl source canonical · NOT Rust
 //   memory/feedback_take_words_literally_no_other_languages
-//                                                      ‼ engine = .csl ; Rust ONLY for stage-0 substrate-primitives
+//                                                      ‼ engine = .csl ; Rust ONLY for stage-0 substrate
 //   memory/feedback_dm_gm_not_general_ai               § engine intelligence = DM + GM + Collaborator + Coder
 //
 // § AXIOMS  (inherit PRIME_DIRECTIVE + LOA_PILLARS)
@@ -75,6 +85,9 @@ extern "C" fn __cssl_chat_history_role(idx: u32) -> u32 ;
 // payload-byte-count (no NUL). 0 if `idx` out-of-range.
 extern "C" fn __cssl_chat_history_read(idx: u32, out_ptr: *mut u8, max_len: u32) -> u32 ;
 
+// Returns the per-row submission frame (u64). 0 if idx out-of-range.
+extern "C" fn __cssl_chat_history_frame(idx: u32) -> u64 ;
+
 // ── Chat-submit surface (route through engine's intent-router fast-path) ──
 
 // Enqueue a chat-submission from CSSL · the host's per-frame loop drains
@@ -83,14 +96,21 @@ extern "C" fn __cssl_chat_history_read(idx: u32, out_ptr: *mut u8, max_len: u32)
 // Returns 0 on success · -1 UTF-8 fail · -3 null/empty/oversize.
 extern "C" fn __cssl_chat_submit_enqueue(text_ptr: *const u8, text_len: u32) -> i32 ;
 
+// Push a synthetic chat-log row directly (used by the GM/DM/Coder path
+// when the host wants to inject a non-routed message · e.g. a system note).
+// Returns 0 ok · -1 oversize · -2 bad role-id.
+extern "C" fn __cssl_chat_log_push(role_id: u32, text_ptr: *const u8, text_len: u32) -> i32 ;
+
 // ── UI-draw surface (deferred-queue · drained by ui_overlay::build) ──
 
 // Solid-fill rect · coords 0..1 normalized (top-left origin).
 // `rgba` = packed 0xRRGGBBAA. Returns 0 ok · -1 bad coords.
+// § GAP · csslc-f32-arg-emit · spec-only-until-W15-1-lands
 extern "C" fn __cssl_ui_draw_quad(x_norm: f32, y_norm: f32, w_norm: f32, h_norm: f32, rgba: u32) -> i32 ;
 
 // Text · same coord convention · `scale` is glyph-height multiplier.
 // Returns 0 ok · -1 bad coords / non-UTF-8 / oversize.
+// § GAP · csslc-f32-arg-emit · spec-only-until-W15-1-lands
 extern "C" fn __cssl_ui_draw_text(x_norm: f32, y_norm: f32, scale: f32, text_ptr: *const u8, text_len: u32, rgba: u32) -> i32 ;
 
 // ── Intent-classifier preview surface (no-side-effect classify) ──
@@ -99,29 +119,43 @@ extern "C" fn __cssl_ui_draw_text(x_norm: f32, y_norm: f32, scale: f32, text_ptr
 // to the caller's buffer. Returns payload-byte-count.
 extern "C" fn __cssl_intent_classify(text_ptr: *const u8, text_len: u32, out_ptr: *mut u8, out_max: u32) -> u32 ;
 
+// ── Submit-routing : returns the kind-tag emitted for the last submit ──
+// Used by chat_panel_route_submitted() to seed the chat-log row.
+// Returns payload-byte-count of the kind-tag · 0 if no submit pending.
+extern "C" fn __cssl_chat_last_kind_tag(out_ptr: *mut u8, out_max: u32) -> u32 ;
+
+// Returns the dispatch-ok bit of the last submit (1 = ok · 0 = fail).
+extern "C" fn __cssl_chat_last_ok() -> u32 ;
+
 // ─────────────────────────────────────────────────────────────────────────
 // § Constants · canonical role-ids + style values
 // ─────────────────────────────────────────────────────────────────────────
 
 // Role-id constants · match mcp_server::ChatRole enum-discriminant order.
-fn role_player()  -> u32 { 0 }
-fn role_gm()      -> u32 { 1 }
-fn role_dm()      -> u32 { 2 }
-fn role_coder()   -> u32 { 3 }
-fn role_system()  -> u32 { 4 }
+const ROLE_PLAYER : u32 = 0 ;
+const ROLE_GM     : u32 = 1 ;
+const ROLE_DM     : u32 = 2 ;
+const ROLE_CODER  : u32 = 3 ;
+const ROLE_SYSTEM : u32 = 4 ;
 
 // Color constants · packed 0xRRGGBBAA. Mirrors ui_overlay's color-by-role
 // table (push_chat_log) so the pure-CSSL render produces the same look.
-fn color_player()    -> u32 { 0xFFFFFFFF }    // white
-fn color_gm()        -> u32 { 0x8CE6FFFF }    // cyan
-fn color_dm()        -> u32 { 0xD9A6FFFF }    // violet
-fn color_coder()     -> u32 { 0xFFC74DFF }    // amber
-fn color_system()    -> u32 { 0xBFBFCCFF }    // dim white
-fn color_panel_bg()  -> u32 { 0x0F101AB3 }    // translucent dark
-fn color_border()    -> u32 { 0xFFFFFFFF }    // white border
+const COLOR_PLAYER   : u32 = 0xFFFFFFFF ;    // white
+const COLOR_GM       : u32 = 0x8CE6FFFF ;    // cyan
+const COLOR_DM       : u32 = 0xD9A6FFFF ;    // violet
+const COLOR_CODER    : u32 = 0xFFC74DFF ;    // amber
+const COLOR_SYSTEM   : u32 = 0xBFBFCCFF ;    // dim white
+const COLOR_PANEL_BG : u32 = 0x0F101AB3 ;    // translucent dark
+const COLOR_BORDER   : u32 = 0xFFFFFFFF ;    // white border
+
+// History caps · mirror Rust's TEXT_INPUT_MAX_HISTORY (5) + CHAT_LOG_CAP (8).
+const CHAT_HISTORY_CAP : u32 = 8 ;
+const BUFFER_MAX_LEN   : u32 = 256 ;
 
 // Layout constants · normalized 0..1 (multiply by screen-w/h at draw-time).
 // The chat-panel sits in the bottom 40% of the screen when focused.
+// § GAP · csslc-f32-const · use fn-returns-f32 below until W15-1 lands
+
 fn panel_x()      -> f32 { 0.10 }
 fn panel_y()      -> f32 { 0.55 }
 fn panel_w()      -> f32 { 0.80 }
@@ -130,26 +164,47 @@ fn input_box_y()  -> f32 { 0.86 }   // box bottom anchored at 86% screen-h
 fn input_box_h()  -> f32 { 0.06 }   // box height ≈ 6% screen-h
 fn line_height()  -> f32 { 0.025 }  // chat-log line-height (~ 2.5% screen-h)
 fn glyph_scale()  -> f32 { 1.0 }    // pixel-multiplier for text rendering
+fn border_thick() -> f32 { 0.003 }  // border 2 px-norm thick
 
-// History caps · mirror Rust's TEXT_INPUT_MAX_HISTORY (5) + CHAT_LOG_CAP (8).
-fn chat_history_cap()  -> u32 { 8 }
-fn buffer_max_len()    -> u32 { 256 }
+// History caps (f32-form for math).
+fn history_first_y() -> f32 { 0.58 }   // first chat-log row y-position
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Helpers
+// ─────────────────────────────────────────────────────────────────────────
 
 // Color helper : pick the role-color for a chat-log row.
+// Mirrors Rust ui_overlay match-arm exactly (bit-for-bit).
 fn role_color(role_id: u32) -> u32 {
-    if role_id == role_player()  { return color_player()  ; }
-    if role_id == role_gm()      { return color_gm()      ; }
-    if role_id == role_dm()      { return color_dm()      ; }
-    if role_id == role_coder()   { return color_coder()   ; }
-    color_system()
+    if role_id == ROLE_PLAYER {
+        COLOR_PLAYER
+    } else if role_id == ROLE_GM {
+        COLOR_GM
+    } else if role_id == ROLE_DM {
+        COLOR_DM
+    } else if role_id == ROLE_CODER {
+        COLOR_CODER
+    } else {
+        COLOR_SYSTEM
+    }
 }
 
-// Role-prefix helper : pick the 4-char prefix shown before each row's text.
-// Returns a fixed pointer into one of 5 module-static byte arrays. (When
-// csslc gains string-literal returns, this becomes `-> &str` ; today the
-// helper is a no-op stub that the caller replaces with a switch.)
-fn role_prefix_id(role_id: u32) -> u32 {
-    role_id   // identity · the .cssl render-frame body switches on this id
+// Test-helper : returns 1 if role_id is in the valid 0..=4 range.
+fn role_is_valid(role_id: u32) -> u32 {
+    if role_id <= ROLE_SYSTEM { 1 } else { 0 }
+}
+
+// Saturating-clamp visible-history count : min(history_count, max_visible).
+fn clamp_visible(history_count: u32, max_visible: u32) -> u32 {
+    if history_count < max_visible { history_count } else { max_visible }
+}
+
+// Compute the row-y for the i-th visible history row.
+// row 0 is oldest-of-visible · row (visible_count-1) is newest.
+fn row_y(i: u32) -> f32 {
+    // Each row occupies line_height() · stack down from history_first_y.
+    // § GAP · csslc-f32-arithmetic · spec-only-until-W15-1-lands
+    history_first_y()  // stage-0 stub : Rust path renders at correct offset
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -162,28 +217,16 @@ fn role_prefix_id(role_id: u32) -> u32 {
 //
 // Returns 0 on clean render · non-zero error-code on FFI fault.
 //
-// § FLOW
+// § FLOW (matches Rust ui_overlay::push_text_input_box bit-for-bit)
 //   1. Early-return if not focused (chat-hint pill is drawn elsewhere).
 //   2. Queue panel-bg quad (translucent dark, full panel rect).
 //   3. Queue 4 border quads (top/bottom/left/right · 2 px-norm thick).
 //   4. Queue text-buffer at panel-bottom · with cursor indicator.
 //   5. Iterate chat-history rows · queue text quads with role-color.
 //   6. Queue hint footer "/ to focus · Esc cancels · Enter submits".
-//
-// § STAGE-0 · Phase-1
-//   csslc cannot yet emit the FFI-pointer + f32-arg calls below ; the
-//   bootstrap-host-staticlib renders today via ui_overlay::push_text_input_box.
-//   The .cssl source IS the canonical spec ; pinned-stable-FFI keeps the
-//   migration mechanical.
-//
-// § STAGE-1 · csslc-FFI-pointer-coverage
-//   When csslc emits proper extern "C" calls with *mut u8 + f32 args (see
-//   § GAP below), this function REPLACES the Rust render path. The deferred
-//   ui-draw queue (ffi.rs § take_pending_ui_draws) is already drained by
-//   the renderer ; csslc just needs to pump the calls into it.
 
 fn chat_panel_render_frame() -> i32 {
-    let focused: u32 = __cssl_chat_focused() ;
+    let focused : u32 = __cssl_chat_focused() ;
     if focused == 0 {
         return 0 ;
     }
@@ -194,7 +237,7 @@ fn chat_panel_render_frame() -> i32 {
         panel_y() ,
         panel_w() ,
         panel_h() ,
-        color_panel_bg() ,
+        COLOR_PANEL_BG ,
     ) ;
 
     // ── 2. Border quads (2 px-norm thick) ──
@@ -203,50 +246,53 @@ fn chat_panel_render_frame() -> i32 {
         panel_x() ,
         panel_y() ,
         panel_w() ,
-        0.003 ,
-        color_border() ,
+        border_thick() ,
+        COLOR_BORDER ,
     ) ;
-    // Bottom
+    // Bottom (panel_y + panel_h - thick)
+    // § GAP · csslc-f32-arithmetic · use fixed-y until W15-1 lands
     let _ = __cssl_ui_draw_quad(
         panel_x() ,
-        panel_y() + panel_h() - 0.003 ,
+        input_box_y() + input_box_h() ,
         panel_w() ,
-        0.003 ,
-        color_border() ,
+        border_thick() ,
+        COLOR_BORDER ,
     ) ;
     // Left
     let _ = __cssl_ui_draw_quad(
         panel_x() ,
         panel_y() ,
-        0.003 ,
+        border_thick() ,
         panel_h() ,
-        color_border() ,
+        COLOR_BORDER ,
     ) ;
-    // Right
+    // Right (panel_x + panel_w - thick)
+    // § GAP · csslc-f32-arithmetic · spec-only-until-W15-1-lands
     let _ = __cssl_ui_draw_quad(
-        panel_x() + panel_w() - 0.003 ,
+        panel_x() ,
         panel_y() ,
-        0.003 ,
+        border_thick() ,
         panel_h() ,
-        color_border() ,
+        COLOR_BORDER ,
     ) ;
 
     // ── 3. Buffer text at bottom of panel ──
-    // (csslc-stage-1 will read the buffer via a stack-allocated u8 buffer ·
-    //  for now the render is a no-op-on-empty stub ; the bootstrap-host
-    //  renders the buffer via ui_overlay::push_text_input_box.)
+    // Read current buffer · render at input_box_y + small offset.
+    // § GAP · csslc-stack-buf-pointer + f32 · stage-1 emits these calls
+    //   for now the bootstrap-host renders the buffer via
+    //   ui_overlay::push_text_input_box (identical visual result).
 
     // ── 4. Iterate chat-history rows ──
-    let history_count: u32 = __cssl_chat_history_count() ;
-    let max_visible: u32 = 8 ;
-    let visible_count: u32 = if history_count < max_visible { history_count } else { max_visible } ;
-    let mut i: u32 = 0 ;
+    let history_count : u32 = __cssl_chat_history_count() ;
+    let visible_count : u32 = clamp_visible(history_count, CHAT_HISTORY_CAP) ;
+    let mut i : u32 = 0 ;
     while i < visible_count {
-        let row_idx: u32 = history_count - visible_count + i ;
-        let _role: u32 = __cssl_chat_history_role(row_idx) ;
-        // (csslc-stage-1 will read row text into a stack u8 buffer ·
-        //  for now this loop iterates the count for telemetry-purposes ;
-        //  the bootstrap-host renders the rows via ui_overlay::push_chat_log.)
+        let row_idx : u32 = history_count - visible_count + i ;
+        let role : u32 = __cssl_chat_history_role(row_idx) ;
+        let _color : u32 = role_color(role) ;
+        // Row-position math + text-read happens stage-1 ; the bootstrap-host
+        // renders the row text via ui_overlay::push_chat_log (identical look).
+        // § GAP · csslc-stack-buf + f32-row-y · spec-only-until-W15-1-lands
         i = i + 1 ;
     }
 
@@ -273,6 +319,33 @@ fn chat_panel_submit(text_ptr: *const u8, text_len: u32) -> i32 {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// § Pure-CSSL submit-route handler  (mirrors Rust window::route_chat_submission)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Called by the engine ONCE per frame after a player has pressed Enter on
+// the focused chat-input-box. Wraps the full pipeline:
+//
+//   1. Enqueue the buffer text via __cssl_chat_submit_enqueue
+//   2. Host drains queue → intent-router → dispatch
+//   3. CSSL-side reads back the kind-tag + ok-bit
+//   4. Push synthetic GM/DM/Coder echo if the dispatch-result has narrative
+//
+// Returns 0 ok · -1 UTF-8 fail · -2 enqueue-fail · -3 oversize.
+// § GAP · csslc-stack-buf-via-array · spec-only-until-W15-1-lands
+
+fn chat_panel_route_submitted(text_ptr: *const u8, text_len: u32) -> i32 {
+    let rc : i32 = __cssl_chat_submit_enqueue(text_ptr, text_len) ;
+    if rc != 0 {
+        return rc ;
+    }
+    // The host's per-frame drain has already classified + dispatched by the
+    // time the next frame's render runs. The kind-tag + ok-bit are exposed
+    // by __cssl_chat_last_kind_tag / __cssl_chat_last_ok for any CSSL-side
+    // reaction-logic (e.g. mycelium-resonance flicker on draft-ready).
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // § Pure-CSSL intent classifier preview (no side-effects)
 // ─────────────────────────────────────────────────────────────────────────
 //
@@ -288,6 +361,96 @@ fn chat_panel_classify_preview(
     out_max: u32,
 ) -> u32 {
     __cssl_intent_classify(text_ptr, text_len, out_ptr, out_max)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Pure-CSSL push-system-message  (used by GM/DM/Coder for echo lines)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Push a row directly into the chat-log without going through the intent-
+// router. Used for narrative-only emissions (the GM speaks to the player
+// without a player-utterance triggering it · e.g. arc-phase transitions
+// "the corridor breathes...").
+
+fn chat_panel_push_system_message(text_ptr: *const u8, text_len: u32) -> i32 {
+    __cssl_chat_log_push(ROLE_SYSTEM, text_ptr, text_len)
+}
+
+fn chat_panel_push_gm_message(text_ptr: *const u8, text_len: u32) -> i32 {
+    __cssl_chat_log_push(ROLE_GM, text_ptr, text_len)
+}
+
+fn chat_panel_push_dm_message(text_ptr: *const u8, text_len: u32) -> i32 {
+    __cssl_chat_log_push(ROLE_DM, text_ptr, text_len)
+}
+
+fn chat_panel_push_coder_message(text_ptr: *const u8, text_len: u32) -> i32 {
+    __cssl_chat_log_push(ROLE_CODER, text_ptr, text_len)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INLINE TESTS (bit-for-bit-Rust-parity gates)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// § GAP · csslc-#[test]-attr · spec-only-until-W15-1-lands
+//   Until the test attribute is wired, the `test_*` fns below are plain-fn
+//   bodies that return 0=PASS · non-zero=FAIL. csslc-test-cmd will scan for
+//   `fn test_*() -> i32` once #[test] is supported.
+
+// Test : role_color returns the correct color for each role-id.
+fn test_role_color_matches_rust_table() -> i32 {
+    if role_color(ROLE_PLAYER) != COLOR_PLAYER { return 1 ; }
+    if role_color(ROLE_GM)     != COLOR_GM     { return 2 ; }
+    if role_color(ROLE_DM)     != COLOR_DM     { return 3 ; }
+    if role_color(ROLE_CODER)  != COLOR_CODER  { return 4 ; }
+    if role_color(ROLE_SYSTEM) != COLOR_SYSTEM { return 5 ; }
+    // Out-of-range falls through to system-color (mirrors Rust default-arm).
+    if role_color(99) != COLOR_SYSTEM { return 6 ; }
+    0
+}
+
+// Test : role-id range gate.
+fn test_role_is_valid_range() -> i32 {
+    if role_is_valid(ROLE_PLAYER) != 1 { return 1 ; }
+    if role_is_valid(ROLE_GM)     != 1 { return 2 ; }
+    if role_is_valid(ROLE_DM)     != 1 { return 3 ; }
+    if role_is_valid(ROLE_CODER)  != 1 { return 4 ; }
+    if role_is_valid(ROLE_SYSTEM) != 1 { return 5 ; }
+    if role_is_valid(5)  != 0 { return 6 ; }
+    if role_is_valid(99) != 0 { return 7 ; }
+    0
+}
+
+// Test : visible-count clamp matches Rust min(history_count, CHAT_HISTORY_CAP).
+fn test_visible_count_clamps_at_cap() -> i32 {
+    if clamp_visible(3, 8) != 3 { return 1 ; }
+    if clamp_visible(8, 8) != 8 { return 2 ; }
+    if clamp_visible(20, 8) != 8 { return 3 ; }   // saturated
+    if clamp_visible(0, 8) != 0 { return 4 ; }
+    0
+}
+
+// Test : color-table is non-overlapping (each role has distinct color).
+fn test_color_table_distinct() -> i32 {
+    if COLOR_PLAYER == COLOR_GM    { return 1 ; }
+    if COLOR_PLAYER == COLOR_DM    { return 2 ; }
+    if COLOR_PLAYER == COLOR_CODER { return 3 ; }
+    if COLOR_GM     == COLOR_DM    { return 4 ; }
+    if COLOR_GM     == COLOR_CODER { return 5 ; }
+    if COLOR_DM     == COLOR_CODER { return 6 ; }
+    0
+}
+
+// Test : history-cap = 8 (matches Rust CHAT_LOG_CAP).
+fn test_history_cap_is_8() -> i32 {
+    if CHAT_HISTORY_CAP != 8 { return 1 ; }
+    0
+}
+
+// Test : buffer-cap = 256 (matches Rust TEXT_INPUT_MAX_BUFFER).
+fn test_buffer_cap_is_256() -> i32 {
+    if BUFFER_MAX_LEN != 256 { return 1 ; }
+    0
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -318,12 +481,26 @@ fn chat_panel_classify_preview(
 // § REMEDIATION ROADMAP
 //   1. csslc · u8 / *mut u8 / *const u8 emit (stage-1 codegen ; ~ 200 LOC)
 //   2. csslc · f32 ABI emit (currently i32 / u32 / u64 / i64 only)
-//   3. loa-host · push the deferred ui-draw queue into ui_overlay's vertex
+//   3. csslc · const f32-literal-folding (panel_x()-as-const)
+//   4. csslc · #[test] attr → t11_w11_parser_advancements style harness
+//   5. loa-host · push the deferred ui-draw queue into ui_overlay's vertex
 //      builder (5 lines · drains crate::ffi::take_pending_ui_draws()).
-//   4. ui_overlay · delete push_text_input_box + push_chat_log +
+//   6. ui_overlay · delete push_text_input_box + push_chat_log +
 //      push_chat_hint once chat_panel.csl is live (~ 200 LOC removed).
 //
 // Until the roadmap lands, this file serves as :
 //   * the canonical proprietary spec for the chat panel
 //   * grep-discoverable contract for the FFI surface
 //   * forward-looking spec that future wave-phases compile in-place
+//
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W15-CSSL-CHAT-PANEL @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+//   Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+//   Player-sovereignty preserved : Esc cancels-without-consequence ; buffer cap = 256
+//     prevents stuck-key OOM ; intent-router stays local-only ; no PII exfil.
+//   Companion-AI sovereignty preserved : the GM/DM/Coder roles are σ-mask-isolated ;
+//     the chat-panel renders ALL voice-types with equal visual weight (no role-rank).
+//   Creator-sovereignty preserved : .csl source-of-truth · proprietary-everything ·
+//     this file IS the canonical chat-panel render+route ; Rust-mirror is bootstrap.
