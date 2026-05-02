@@ -1,0 +1,33 @@
+# § T11-W13-GACHA : cssl-host-gacha
+# ══════════════════════════════════════════════════════════════════
+# § I> Purpose : transparency-first gacha-system · pity-floor · sovereign-7d-refund
+#   ⊑ ¬ pay-for-power axiom (cosmetic-only)
+#   ⊑ ALL drop-rates publicly disclosed via banner schema
+#   ⊑ guaranteed-Mythic by 90 pulls (publicly-known threshold)
+#   ⊑ NO predatory-pattern (¬ near-miss · ¬ FOMO · ¬ countdown · ¬ social-comparison)
+#   ⊑ Σ-Chain-anchor every-pull for-attribution-immutable-history
+# § I> ¬ external substrate-deps ; pure-state-machine (deterministic via DetRng-seed)
+# § I> deterministic : BTreeMap for serde-stable ordering ; no panics in lib
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name         = "cssl-host-gacha"
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.85"
+license      = { workspace = true }
+authors      = { workspace = true }
+description  = "Transparency-first gacha system : pity-system + sovereign-7d-refund + ¬ predatory-pattern + cosmetic-only-axiom + Σ-Chain-anchor every-pull"
+repository   = { workspace = true }
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_host_gacha"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+blake3     = { workspace = true }
+thiserror  = { workspace = true }
