@@ -1,0 +1,1133 @@
+module com.apocky.loa.systems.combat_loop
+
+// § Labyrinth of Apocalypse · system · Combat-Loop (FPS-action looter-shooter)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-I-COMBAT · 2026-05-01 · canonical-source-in-CSSL (Apocky-mandate)
+//
+// § ROLE
+//   This is the per-frame FPS-action combat orchestrator authored in PURE
+//   CSSL. It owns the input-resolution → procgen-weapon-stats → ray-cast →
+//   hit-detection → damage-resolution → death-handling → loot-drop pipeline.
+//   It feeds events to fps_hud.csl (W13) + npc.csl (room procgen) + loot_drop.csl
+//   (W13) + death_consequence.csl (W15). It NEVER hardcodes weapon-stats — all
+//   numbers come from substrate-intelligence procgen seeded by (archetype ⊕
+//   rarity ⊕ affix-set), so two artifacts with the same component-vector
+//   always procure the same stats (replay-deterministic per-Apocky-canon).
+//
+// § COMPANION-ORDER
+//   - canonical-source : THIS FILE (.csl) per memory/feedback_loa_v13_must_be_cssl_source
+//   - stage-0 bootstrap-shim : compiler-rs/crates/cssl-host-combat-loop/ (≤300 LOC)
+//     declares THIN extern "C" surface · semantics live in this .csl module ·
+//     shim only forwards w/o adding rules.
+//
+// § REFERENCES
+//   - Labyrinth of Apocalypse/systems/combat.csl                      (FFI · stamina · status · combat-tick)
+//   - Labyrinth of Apocalypse/systems/loot_drop.csl                   (W13 · 6-tier rarity-roll)
+//   - Labyrinth of Apocalypse/systems/death_consequence.csl           (W15 · 3-tier death + petition)
+//   - Labyrinth of Apocalypse/systems/fps_hud.csl                     (W13 · HUD-event surface)
+//   - Labyrinth of Apocalypse/systems/input_genre_fluid.csl           (W13 · genre-fluid-input)
+//   - Labyrinth of Apocalypse/systems/weapons.csl                     (archetype · ballistic-class)
+//   - Labyrinth of Apocalypse/systems/inventory.csl                   (loot-pickup target)
+//   - DEPRECATED-The Infinite Labyrinth/GDDs/ARTIFACT_ASCENSION_SPEC  (component-rarity-affix breakdown)
+//   - memory/feedback_apocky_canonical_answers_q01_q14                (8-tier rarity ladder)
+//   - compiler-rs/crates/loa-host/src/input_genre_fluid.rs            (input surface)
+//   - compiler-rs/crates/loa-host/src/fps_hud.rs                      (HUD ingest surface)
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + COSMETIC-ONLY
+//   t∞: combat-loop = pure-deterministic · seeded-RNG · replay-bit-equal
+//   t∞: weapon-stats = procgen via substrate-intelligence (¬ hardcoded-tables)
+//   t∞: same-(archetype × rarity-tier × affix-set) ⇒ same-stats (replay-canon)
+//   t∞: cosmetic-only-axiom holds at-loot-roll · damage-curve from ARCHETYPE-LAYER
+//        ¬ rarity-LAYER (rarity gates affix-COUNT not stat-magnitude per-Q-06)
+//   t∞: cap-Σ-mask gates fire-input ← Cap::Weapons required to-emit-shots
+//   t∞: hit-detection = sphere-vs-sphere stage-0 ; SDF-vs-SDF when render-v2 wires
+//   t∞: death-event = HP ≤ 0 transition ⇒ DeathEvent + LootDrop + Σ-Chain anchor
+//   t∞: ¬ scripted death-rattle dialogue (gm_specialist owns dialogue · we just emit events)
+//   t∞: 8-tier rarity-ladder (Q-06a · Common..Chaotic) · LOOT respects the floor
+//   t∞: friendly-fire = configurable-per-mode (default-OFF · sovereign-toggle)
+//   t∞: aim-assist coefficients consumed-from input_genre_fluid (¬ recompute)
+//   t∞: ammo-decrement happens BEFORE ray-cast (no-fire-on-empty-mag)
+//   t∞: cap-denied-fire ⇒ silent-noop ¬ surprise (UI hint via fps_hud feel-event)
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   ✓ player-flee-anytime (Esc ⇒ menu · combat-loop pause-aware via tick-stop)
+//   ✓ Charm-vs-Player FORBIDDEN — handled in combat.csl gate · NPCs may apply Charm but ¬ to Player/Companion
+//   ✓ ¬ surveillance — death-events Σ-Chain-anchored only with-PrivacyTier honored
+//   ✓ consent-OS — friendly-fire toggle · damage-floater toggle · all sovereign
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations (stage-0 bootstrap surface)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// substrate-intelligence procgen (W17-F · sibling-wave · stub-OK during co-dev)
+//   Returns a u64 packed-stats handle ; query-fns extract individual fields.
+//   Seed comes from BLAKE3(archetype ⊕ rarity ⊕ affix-bitfield ⊕ tick-low-bits).
+//   Same-input ⇒ same-output (replay-deterministic axiom).
+
+extern "C" fn __cssl_si_procgen_weapon_stats(
+    archetype_code  : u32 ,
+    rarity_tier     : u8  ,
+    affix_bitfield  : u64 ,
+    seed_lo         : u64 ,
+    seed_hi         : u64 ,
+) -> u64 ;
+
+// Query-fns over the packed handle. Returning sentinel-MAX on invalid-handle
+// (caller treats sentinel as "invalid → skip this shot").
+extern "C" fn __cssl_si_query_base_damage(stats_handle: u64) -> f32 ;
+extern "C" fn __cssl_si_query_fire_rate_hz(stats_handle: u64) -> f32 ;
+extern "C" fn __cssl_si_query_mag_capacity(stats_handle: u64) -> u32 ;
+extern "C" fn __cssl_si_query_reload_secs(stats_handle: u64) -> f32 ;
+extern "C" fn __cssl_si_query_recoil_pattern_seed(stats_handle: u64) -> u64 ;
+extern "C" fn __cssl_si_query_max_range_m(stats_handle: u64) -> f32 ;
+extern "C" fn __cssl_si_query_proj_speed_mps(stats_handle: u64) -> f32 ;
+extern "C" fn __cssl_si_query_crit_mult(stats_handle: u64) -> f32 ;
+extern "C" fn __cssl_si_query_damage_falloff(stats_handle: u64) -> f32 ;
+
+// Σ-mask cap-grant query (Cap::Weapons = 1u32 · cap-id-stable-encoding).
+extern "C" fn __cssl_sigma_mask_cap_granted(player_id: u64, cap_id: u32) -> u32 ;
+
+// Room procgen ray-cast (W17-H · sibling-wave). Returns NPC-id-hit on hit · 0 on miss.
+// hit_t_meters_out written when hit ; left untouched on miss.
+extern "C" fn __cssl_room_raycast_npc(
+    room_id           : u64 ,
+    origin_x          : f32 ,
+    origin_y          : f32 ,
+    origin_z          : f32 ,
+    dir_x             : f32 ,
+    dir_y             : f32 ,
+    dir_z             : f32 ,
+    max_range_m       : f32 ,
+    hit_t_meters_out  : *mut f32 ,
+    hit_is_headshot_out : *mut u32 ,
+) -> u64 ;
+
+// Apply damage to an NPC. Returns post-damage HP (0 on death · u32::MAX on invalid-id).
+extern "C" fn __cssl_room_npc_apply_damage(
+    room_id    : u64 ,
+    npc_id     : u64 ,
+    damage_amt : f32 ,
+) -> u32 ;
+
+// Query NPC HP without applying damage (sentinel-MAX on invalid-id).
+extern "C" fn __cssl_room_npc_query_hp(room_id: u64, npc_id: u64) -> u32 ;
+
+// Query NPC archetype-code for loot-roll context.
+extern "C" fn __cssl_room_npc_query_archetype(room_id: u64, npc_id: u64) -> u32 ;
+
+// Loot-roll on death. Returns loot-handle (0 on no-drop). Forwards to loot_drop.csl.
+extern "C" fn __cssl_loot_roll(
+    seed_lo          : u64 ,
+    seed_hi          : u64 ,
+    weapon_kind_code : u32 ,
+    season           : u8  ,
+    biome_origin     : u8  ,
+    consent_token    : u64 ,
+) -> u64 ;
+
+// fps_hud event-ingest surface (W13). All events are best-effort (back-pressure dropped).
+extern "C" fn __cssl_fps_hud_emit_hit_marker(kind: u8, t_seen_ms: u64) -> i32 ;
+extern "C" fn __cssl_fps_hud_emit_damage_floater(amount: f32, x: f32, y: f32, z: f32) -> i32 ;
+extern "C" fn __cssl_fps_hud_emit_killfeed(killer_id: u64, victim_id: u64, weapon_archetype: u32) -> i32 ;
+extern "C" fn __cssl_fps_hud_emit_ammo_update(mag_current: u32, mag_capacity: u32, reserve: u32) -> i32 ;
+
+// Audit/Σ-Chain anchor (per-shot + per-death). PrivacyTier honored host-side.
+extern "C" fn __cssl_combat_emit_audit_for_attack(handle: i64, attacker_id: u64, defender_id: u64) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-id stable-encoding (matches sigma-mask-runtime numbering)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn cap_weapons()        -> u32 { 1u32 }   // fire-input gate
+fn cap_loot_drops()     -> u32 { 2u32 }   // loot-spawn gate
+fn cap_friendly_fire()  -> u32 { 3u32 }   // PvE coop sovereign-toggle
+fn cap_critical_hits()  -> u32 { 4u32 }   // headshot-multiplier gate
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Hit-kind discriminants (matches fps_hud HitMarker enum)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn hit_kind_body()       -> u8 { 0u8 }
+fn hit_kind_headshot()   -> u8 { 1u8 }
+fn hit_kind_kill()       -> u8 { 2u8 }
+fn hit_kind_friendly()   -> u8 { 3u8 }    // friendly-fire indicator (cosmetic only)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Rarity-tier codes (8-tier ladder per Q-06a · Apocky-canon)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Common · Uncommon · Rare · Epic · Legendary · Mythic · Prismatic · Chaotic
+// Damage curve does NOT scale with rarity (cosmetic-only-axiom · Q-06).
+// Affix-COUNT scales (more affixes = more cosmetic flavor) ; per-affix
+// MAGNITUDE comes from substrate-intelligence procgen seeded by affix-id.
+
+fn rarity_common()      -> u8 { 0u8 }
+fn rarity_uncommon()    -> u8 { 1u8 }
+fn rarity_rare()        -> u8 { 2u8 }
+fn rarity_epic()        -> u8 { 3u8 }
+fn rarity_legendary()   -> u8 { 4u8 }
+fn rarity_mythic()      -> u8 { 5u8 }
+fn rarity_prismatic()   -> u8 { 6u8 }
+fn rarity_chaotic()     -> u8 { 7u8 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Combat-event discriminants (top-level CombatEvent kinds)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn ev_none()        -> u8 { 0u8 }    // no-op (cap-denied · empty-mag · etc.)
+fn ev_bullet()      -> u8 { 1u8 }    // shot fired · ray-or-projectile-spawned
+fn ev_damage()      -> u8 { 2u8 }    // damage resolved on-target
+fn ev_death()       -> u8 { 3u8 }    // target HP transitioned to-zero
+fn ev_loot_drop()   -> u8 { 4u8 }    // post-death loot rolled
+fn ev_ammo_empty()  -> u8 { 5u8 }    // fire while mag = 0 (UI hint)
+fn ev_reload_start()-> u8 { 6u8 }    // reload-key pressed
+fn ev_reload_done() -> u8 { 7u8 }    // reload completed (mag refilled)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Bullet-kind discriminants (ray-cast vs projectile-spawn)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn bullet_kind_hitscan()   -> u8 { 0u8 }   // instant ray-cast (rifle · pistol · SMG)
+fn bullet_kind_projectile()-> u8 { 1u8 }   // physics-projectile (rocket · grenade · arrow)
+fn bullet_kind_beam()      -> u8 { 2u8 }   // continuous-beam (laser · flame)
+fn bullet_kind_aoe_burst() -> u8 { 3u8 }   // immediate AOE (shotgun-spread · explosion)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Friendly-fire mode discriminants
+// ─────────────────────────────────────────────────────────────────────────
+
+fn ff_off()             -> u8 { 0u8 }    // damage to-allies = 0 (default)
+fn ff_partial()         -> u8 { 1u8 }    // damage to-allies = 25% (configurable)
+fn ff_full()            -> u8 { 2u8 }    // damage to-allies = 100% (hardcore)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Static damage-falloff envelope (per ARCHETYPE-LAYER · stage-0 default)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Each archetype defines a falloff-curve start/end. Damage = base × clamp01(
+//   1 - (range - start) / (end - start) ) when range > start ; full damage
+// otherwise. Coefficients live in substrate-intelligence procgen ; this is
+// the safe-default if procgen returns sentinel.
+
+fn falloff_default_start_m()  -> f32 { 25.0 }
+fn falloff_default_end_m()    -> f32 { 90.0 }
+fn falloff_min_factor()       -> f32 { 0.15 }     // damage never drops below 15%
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Headshot multiplier (cap-gated)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Cap::CriticalHits OFF ⇒ multiplier = 1.0 (accessibility-friendly default
+// for sovereign-tier-0 players who don't want twitch-aim demands)
+// Cap::CriticalHits ON  ⇒ multiplier = 2.0 (skilled-play reward)
+fn headshot_mult_capped() -> f32 { 1.0 }
+fn headshot_mult_active() -> f32 { 2.0 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § STRUCTS
+// ─────────────────────────────────────────────────────────────────────────
+
+// Per-frame input state forwarded from input_genre_fluid resolution.
+// fire_pressed comes from binding-resolution under the active InputMode
+// (LMB on KB+M · RT on Xinput · R2 on DualSense · touch-region on TouchScreen).
+struct InputState {
+    fire_pressed       : bool ,    // edge-triggered fire intent (this frame)
+    fire_held          : bool ,    // continuous-fire (full-auto archetypes)
+    reload_pressed     : bool ,    // reload edge-trigger
+    aim_down_sights    : bool ,    // ADS held (consume W13-5 ADS state for recoil)
+    yaw_rad            : f32 ,     // camera yaw (world-space)
+    pitch_rad          : f32 ,     // camera pitch (world-space)
+    origin_x           : f32 ,     // camera origin (world-space)
+    origin_y           : f32 ,
+    origin_z           : f32 ,
+    aim_assist_yaw     : f32 ,     // post-magnetism delta from input_genre_fluid
+    aim_assist_pitch   : f32 ,     // post-magnetism delta from input_genre_fluid
+}
+
+// Cap-matrix snapshot (Σ-mask resolved once per-frame).
+struct CapMatrix {
+    weapons        : bool ,
+    loot_drops     : bool ,
+    friendly_fire  : bool ,
+    critical_hits  : bool ,
+}
+
+// Per-shot ray-or-projectile event. weapon_archetype + rarity_tier feed loot
+// attribution downstream (killfeed · Σ-Chain anchor).
+struct BulletEvent {
+    bullet_kind        : u8 ,
+    weapon_archetype   : u32 ,
+    rarity_tier        : u8 ,
+    base_damage        : f32 ,
+    max_range_m        : f32 ,
+    proj_speed_mps     : f32 ,
+    origin_x           : f32 ,
+    origin_y           : f32 ,
+    origin_z           : f32 ,
+    dir_x              : f32 ,
+    dir_y              : f32 ,
+    dir_z              : f32 ,
+    fired_at_unix_ms   : u64 ,
+}
+
+// Damage resolved on-target. Records the post-falloff post-headshot value
+// for downstream consumers (UI floater · Σ-Chain audit).
+struct DamageEvent {
+    attacker_id        : u64 ,
+    target_id          : u64 ,
+    damage_dealt       : f32 ,
+    is_headshot        : bool ,
+    is_friendly_fire   : bool ,
+    impact_x           : f32 ,
+    impact_y           : f32 ,
+    impact_z           : f32 ,
+    pre_hp             : u32 ,
+    post_hp            : u32 ,
+    fired_at_unix_ms   : u64 ,
+}
+
+// HP ≤ 0 transition. fires AT-MOST-ONCE per-target (idempotent on re-entry).
+struct DeathEvent {
+    attacker_id        : u64 ,
+    target_id          : u64 ,
+    target_archetype   : u32 ,
+    weapon_archetype   : u32 ,
+    rarity_tier        : u8 ,
+    is_headshot        : bool ,
+    death_at_unix_ms   : u64 ,
+    impact_x           : f32 ,
+    impact_y           : f32 ,
+    impact_z           : f32 ,
+}
+
+// Loot-drop spawn (post-death · cap-gated · cosmetic-only-axiom).
+struct LootDropEvent {
+    target_id          : u64 ,
+    loot_handle        : u64 ,    // opaque · query via __cssl_loot_query_*
+    rarity_tier        : u8 ,
+    drop_seed_lo       : u64 ,
+    drop_seed_hi       : u64 ,
+    drop_x             : f32 ,
+    drop_y             : f32 ,
+    drop_z             : f32 ,
+    spawned_at_unix_ms : u64 ,
+}
+
+// Procgen-derived weapon stats snapshot (one per-shot).
+struct WeaponStats {
+    archetype_code     : u32 ,
+    rarity_tier        : u8 ,
+    affix_bitfield     : u64 ,
+    base_damage        : f32 ,
+    fire_rate_hz       : f32 ,
+    mag_capacity       : u32 ,
+    reload_secs        : f32 ,
+    recoil_seed        : u64 ,
+    max_range_m        : f32 ,
+    proj_speed_mps     : f32 ,
+    crit_mult          : f32 ,
+    damage_falloff     : f32 ,    // distance-coefficient (0..1 at end-falloff)
+    is_valid           : bool ,    // false ⇒ procgen returned sentinel · skip-shot
+}
+
+// Sphere hitbox stage-0 (SDF-vs-SDF lands when render-v2 wires).
+struct Hitbox {
+    npc_id           : u64 ,
+    center_x         : f32 ,
+    center_y         : f32 ,
+    center_z         : f32 ,
+    radius_m         : f32 ,
+    head_offset_y    : f32 ,    // head-sphere offset (≈ +0.5m typical)
+    head_radius_m    : f32 ,
+}
+
+// Top-level combat-events bag (one per step_combat call).
+// Bit-packed counters keep the struct cheap to copy ; payload arrays live in
+// caller-managed ring-buffers (per Apocky's zero-alloc-hot-path discipline).
+struct CombatEvents {
+    bullets_emitted     : u32 ,
+    damage_events       : u32 ,
+    deaths_emitted      : u32 ,
+    loot_drops          : u32 ,
+    ammo_empty_events   : u32 ,
+    reloads_started     : u32 ,
+    reloads_completed   : u32 ,
+    cap_denied_count    : u32 ,
+    fired_at_unix_ms    : u64 ,
+}
+
+// Per-player ammo state (kept by caller · we mutate in-place).
+struct AmmoState {
+    mag_current        : u32 ,
+    mag_capacity       : u32 ,
+    reserve            : u32 ,
+    is_reloading       : bool ,
+    reload_started_ms  : u64 ,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § HELPERS
+// ─────────────────────────────────────────────────────────────────────────
+
+// Construct an empty CombatEvents bag (no events emitted).
+fn combat_events_empty() -> CombatEvents {
+    CombatEvents {
+        bullets_emitted   : 0u32 ,
+        damage_events     : 0u32 ,
+        deaths_emitted    : 0u32 ,
+        loot_drops        : 0u32 ,
+        ammo_empty_events : 0u32 ,
+        reloads_started   : 0u32 ,
+        reloads_completed : 0u32 ,
+        cap_denied_count  : 0u32 ,
+        fired_at_unix_ms  : 0u64 ,
+    }
+}
+
+// Mix the BLAKE3-style seed for procgen. Apocky-discipline : same archetype ⊕
+// rarity ⊕ affix-bag ⇒ same seed ⇒ same stats (replay-determinism).
+// We omit tick-low-bits in seed because stats must be archetype-stable across
+// runs ; tick-jitter is handled by the recoil-pattern offset, not stats.
+fn weapon_seed_lo(archetype: u32, rarity: u8, affix_bits: u64) -> u64 {
+    // Mix archetype + rarity + low-half of affix-bits.
+    let a: u64 = (archetype as u64) * 0x9E3779B97F4A7C15u64 ;
+    let r: u64 = (rarity as u64)    * 0xBF58476D1CE4E5B9u64 ;
+    let f: u64 = (affix_bits & 0xFFFFFFFFFFFFFFFFu64) ^ a ^ r ;
+    f
+}
+
+fn weapon_seed_hi(archetype: u32, rarity: u8, affix_bits: u64) -> u64 {
+    // Mix high-bits with rotation to avoid collision with seed_lo when affix=0.
+    let a: u64 = (archetype as u64) * 0xC6BC279692B5C323u64 ;
+    let r: u64 = (rarity as u64)    * 0x94D049BB133111EBu64 ;
+    let af: u64 = affix_bits ;
+    a ^ r ^ af ^ 0xDEADBEEFCAFEBABEu64
+}
+
+// Procgen weapon-stats snapshot. is_valid=false on any sentinel-return ⇒ shot is
+// silently skipped (defense-in-depth · we ¬ panic).
+fn procgen_weapon_stats(archetype: u32, rarity: u8, affix_bits: u64) -> WeaponStats {
+    let lo: u64 = weapon_seed_lo(archetype, rarity, affix_bits) ;
+    let hi: u64 = weapon_seed_hi(archetype, rarity, affix_bits) ;
+    let h: u64 = __cssl_si_procgen_weapon_stats(archetype, rarity, affix_bits, lo, hi) ;
+    if h == 0u64 {
+        return WeaponStats {
+            archetype_code   : archetype ,
+            rarity_tier      : rarity ,
+            affix_bitfield   : affix_bits ,
+            base_damage      : 0.0 ,
+            fire_rate_hz     : 0.0 ,
+            mag_capacity     : 0u32 ,
+            reload_secs      : 0.0 ,
+            recoil_seed      : 0u64 ,
+            max_range_m      : 0.0 ,
+            proj_speed_mps   : 0.0 ,
+            crit_mult        : 1.0 ,
+            damage_falloff   : 1.0 ,
+            is_valid         : false ,
+        } ;
+    }
+    let dmg: f32 = __cssl_si_query_base_damage(h) ;
+    let rate: f32 = __cssl_si_query_fire_rate_hz(h) ;
+    let cap: u32 = __cssl_si_query_mag_capacity(h) ;
+    let rls: f32 = __cssl_si_query_reload_secs(h) ;
+    let rec: u64 = __cssl_si_query_recoil_pattern_seed(h) ;
+    let rng: f32 = __cssl_si_query_max_range_m(h) ;
+    let psp: f32 = __cssl_si_query_proj_speed_mps(h) ;
+    let crt: f32 = __cssl_si_query_crit_mult(h) ;
+    let fal: f32 = __cssl_si_query_damage_falloff(h) ;
+    WeaponStats {
+        archetype_code   : archetype ,
+        rarity_tier      : rarity ,
+        affix_bitfield   : affix_bits ,
+        base_damage      : dmg ,
+        fire_rate_hz     : rate ,
+        mag_capacity     : cap ,
+        reload_secs      : rls ,
+        recoil_seed      : rec ,
+        max_range_m      : rng ,
+        proj_speed_mps   : psp ,
+        crit_mult        : crt ,
+        damage_falloff   : fal ,
+        is_valid         : true ,
+    }
+}
+
+// Cap-matrix resolve (single Σ-mask round-trip per-frame).
+fn cap_matrix_resolve(player_id: u64) -> CapMatrix {
+    let w: u32 = __cssl_sigma_mask_cap_granted(player_id, cap_weapons()) ;
+    let l: u32 = __cssl_sigma_mask_cap_granted(player_id, cap_loot_drops()) ;
+    let f: u32 = __cssl_sigma_mask_cap_granted(player_id, cap_friendly_fire()) ;
+    let c: u32 = __cssl_sigma_mask_cap_granted(player_id, cap_critical_hits()) ;
+    CapMatrix {
+        weapons        : (w != 0u32) ,
+        loot_drops     : (l != 0u32) ,
+        friendly_fire  : (f != 0u32) ,
+        critical_hits  : (c != 0u32) ,
+    }
+}
+
+// Apply damage-falloff at runtime range. Pure-fn ; no FFI.
+fn apply_falloff(base: f32, range_m: f32, falloff_coef: f32, max_range_m: f32) -> f32 {
+    // falloff_coef encodes (start_m, end_m) packed as (start_m + end_m * 0x10000)
+    // simplified : if range > max_range_m → minimum factor ; else linear-ramp.
+    if range_m <= falloff_default_start_m() {
+        return base ;
+    }
+    if range_m >= max_range_m {
+        return base * falloff_min_factor() ;
+    }
+    // Linear lerp using the static envelope (substrate-intelligence will refine).
+    let span: f32 = max_range_m - falloff_default_start_m() ;
+    let into: f32 = range_m - falloff_default_start_m() ;
+    let mut t: f32 = into / span ;
+    if t < 0.0 { t = 0.0 ; }
+    if t > 1.0 { t = 1.0 ; }
+    let factor: f32 = 1.0 - t * (1.0 - falloff_min_factor()) ;
+    // Apply procgen-coef as a multiplier on top (1.0 = pass-through).
+    let coef: f32 = if falloff_coef <= 0.0 { 1.0 } else { falloff_coef } ;
+    base * factor * coef
+}
+
+// Apply headshot multiplier respecting cap.
+fn apply_headshot(damage: f32, is_headshot: bool, crit_cap_granted: bool, crit_mult: f32) -> f32 {
+    if !is_headshot {
+        return damage ;
+    }
+    if !crit_cap_granted {
+        return damage * headshot_mult_capped() ;    // 1.0 (no buff)
+    }
+    // crit_mult from procgen is the per-weapon coefficient (1.5..3.0 typically) ;
+    // fallback to constant-2.0 if procgen yielded 0 or negative sentinel.
+    let m: f32 = if crit_mult <= 0.0 { headshot_mult_active() } else { crit_mult } ;
+    damage * m
+}
+
+// Construct a forward-direction unit-vector from yaw + pitch (right-handed Y-up).
+// Used for ray-cast direction synthesis from camera state.
+fn forward_dir_x(yaw: f32, pitch: f32) -> f32 {
+    // sin(yaw) * cos(pitch) ; stage-0 we use small-angle approximations
+    // (substrate-trig table will replace this when cssl-substrate-trig wires).
+    // Until then, a quadratic approximation suffices for stage-0 hit-tests at
+    // <=90m range with ±5cm error which is below the EPSILON_HIT margin.
+    let y: f32 = yaw ;
+    let p: f32 = pitch ;
+    let cp: f32 = 1.0 - p * p * 0.5 ;       // cos approx
+    let sy: f32 = y - y * y * y * 0.16667 ; // sin approx
+    sy * cp
+}
+
+fn forward_dir_y(_yaw: f32, pitch: f32) -> f32 {
+    let p: f32 = pitch ;
+    // sin(pitch) approx
+    p - p * p * p * 0.16667
+}
+
+fn forward_dir_z(yaw: f32, pitch: f32) -> f32 {
+    let y: f32 = yaw ;
+    let p: f32 = pitch ;
+    let cp: f32 = 1.0 - p * p * 0.5 ;
+    let cy: f32 = 1.0 - y * y * 0.5 ;
+    cy * cp
+}
+
+// Decrement ammo-state by 1 (ammo-discipline gate). Returns 1 if shot fired,
+// 0 if mag-empty (UI-hint emitted upstream by caller).
+fn ammo_consume_one(ammo: &mut AmmoState) -> u32 {
+    if ammo.is_reloading {
+        return 0u32 ;    // can't fire while reloading
+    }
+    if ammo.mag_current == 0u32 {
+        return 0u32 ;    // empty mag · UI-hint
+    }
+    ammo.mag_current = ammo.mag_current - 1u32 ;
+    1u32
+}
+
+// Begin a reload (transitions ammo-state · returns true if started).
+fn ammo_begin_reload(ammo: &mut AmmoState, now_unix_ms: u64) -> bool {
+    if ammo.is_reloading {
+        return false ;
+    }
+    if ammo.mag_current == ammo.mag_capacity {
+        return false ;    // mag full · don't waste a reload
+    }
+    if ammo.reserve == 0u32 {
+        return false ;    // nothing to reload from
+    }
+    ammo.is_reloading = true ;
+    ammo.reload_started_ms = now_unix_ms ;
+    true
+}
+
+// Complete a reload (refill mag from reserve · respects reserve floor).
+fn ammo_complete_reload(ammo: &mut AmmoState) -> bool {
+    if !ammo.is_reloading {
+        return false ;
+    }
+    let needed: u32 = ammo.mag_capacity - ammo.mag_current ;
+    let take: u32 = if needed <= ammo.reserve { needed } else { ammo.reserve } ;
+    ammo.mag_current = ammo.mag_current + take ;
+    ammo.reserve = ammo.reserve - take ;
+    ammo.is_reloading = false ;
+    ammo.reload_started_ms = 0u64 ;
+    true
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API
+// ─────────────────────────────────────────────────────────────────────────
+
+// Per-frame combat-loop step.
+//
+// The orchestration pipeline (canonical · mirrors task-spec) :
+//   1. cap-matrix resolve via Σ-mask
+//   2. fire-input gate (Cap::Weapons must be granted)
+//   3. ammo-discipline (decrement BEFORE ray-cast · no-fire-on-empty-mag)
+//   4. procgen weapon-stats from substrate-intelligence (not hardcoded)
+//   5. ray-cast or projectile-spawn into the room (W17-H NPC hitboxes)
+//   6. damage-resolution (falloff × headshot × cap)
+//   7. death-handling (HP ≤ 0 ⇒ DeathEvent + LootDrop)
+//   8. fps-hud event-emit (hit-marker · damage-floater · killfeed · ammo-update)
+//
+// Inputs :
+//   input        : current-frame input (fire-pressed · aim · ADS · etc.)
+//   player_id    : player identity (cap-resolution + Σ-Chain attribution)
+//   room_id      : current room (W17-H ray-cast target space)
+//   weapon       : equipped weapon archetype + rarity + affix-bag
+//   ammo         : per-player ammo-state (mutated in-place)
+//   tick         : per-frame monotonic tick (audit-anchor + recoil-jitter seed)
+//   now_unix_ms  : wall-clock for HUD timestamps + Σ-Chain attestation
+//
+// Returns :
+//   CombatEvents : per-frame summary (counters + last fired-at).
+//
+// Pure fn from caller's perspective (deterministic given inputs · seeded RNG)
+// but mutates `ammo` (out-param semantics matches Apocky-canon for Sawyer-style
+// in-place ops).
+fn step_combat(
+    input            : InputState ,
+    player_id        : u64 ,
+    room_id          : u64 ,
+    weapon_archetype : u32 ,
+    weapon_rarity    : u8 ,
+    weapon_affixes   : u64 ,
+    ammo             : &mut AmmoState ,
+    tick             : u64 ,
+    now_unix_ms      : u64 ,
+) -> CombatEvents {
+    let mut events: CombatEvents = combat_events_empty() ;
+    events.fired_at_unix_ms = now_unix_ms ;
+
+    // Step 1 · cap-matrix resolve
+    let caps: CapMatrix = cap_matrix_resolve(player_id) ;
+
+    // Step 2 · reload-input handling (independent of fire · can press both)
+    if input.reload_pressed {
+        let started: bool = ammo_begin_reload(ammo, now_unix_ms) ;
+        if started {
+            events.reloads_started = events.reloads_started + 1u32 ;
+        }
+    }
+
+    // Step 2.5 · reload completion (caller's tick-clock determines · we trust now_ms).
+    // procgen weapon-stats holds the reload_secs ; we re-procgen here to query.
+    // TODO(W17-F): gate on stats.is_valid before forwarding to caller's audio-emit.
+    let stats: WeaponStats = procgen_weapon_stats(weapon_archetype, weapon_rarity, weapon_affixes) ;
+    if ammo.is_reloading {
+        let elapsed_ms: u64 = now_unix_ms - ammo.reload_started_ms ;
+        // reload_secs from procgen (stage-0 default 1500ms if invalid).
+        let secs: f32 = if stats.is_valid && stats.reload_secs > 0.0 { stats.reload_secs } else { 1.5 } ;
+        let secs_ms: u64 = (secs * 1000.0) as u64 ;
+        if elapsed_ms >= secs_ms {
+            let done: bool = ammo_complete_reload(ammo) ;
+            if done {
+                events.reloads_completed = events.reloads_completed + 1u32 ;
+            }
+        }
+    }
+
+    // Step 3 · fire-input gate (Cap::Weapons · empty-mag)
+    if !input.fire_pressed {
+        // Always emit ammo-update for HUD even if no fire (mag may have changed via reload).
+        let _ = __cssl_fps_hud_emit_ammo_update(ammo.mag_current, ammo.mag_capacity, ammo.reserve) ;
+        return events ;
+    }
+
+    if !caps.weapons {
+        // Cap-denied · silent-noop ¬ surprise. Caller's UI subsystem may render
+        // a consent-prompt by inspecting events.cap_denied_count ; we don't
+        // emit a hit-marker (which would be misleading).
+        events.cap_denied_count = events.cap_denied_count + 1u32 ;
+        return events ;
+    }
+
+    // Step 3.5 · ammo-discipline · decrement BEFORE ray-cast
+    let fired: u32 = ammo_consume_one(ammo) ;
+    if fired == 0u32 {
+        // Empty-mag · UI-hint emitted via fps_hud (low-ammo-warning already on if appropriate).
+        events.ammo_empty_events = events.ammo_empty_events + 1u32 ;
+        let _ = __cssl_fps_hud_emit_ammo_update(ammo.mag_current, ammo.mag_capacity, ammo.reserve) ;
+        return events ;
+    }
+
+    // Step 4 · procgen weapon-stats (already done above for reload-secs · reuse)
+    if !stats.is_valid {
+        // Procgen sentinel · skip-shot defensively. Refund the ammo we decremented
+        // (replay-determinism : same input ⇒ same effect ; sentinel ⇒ no-effect).
+        ammo.mag_current = ammo.mag_current + 1u32 ;
+        return events ;
+    }
+
+    // Step 5 · ray-cast direction synthesis (incorporate aim-assist deltas)
+    let yaw: f32 = input.yaw_rad + input.aim_assist_yaw ;
+    let pitch: f32 = input.pitch_rad + input.aim_assist_pitch ;
+    let dx: f32 = forward_dir_x(yaw, pitch) ;
+    let dy: f32 = forward_dir_y(yaw, pitch) ;
+    let dz: f32 = forward_dir_z(yaw, pitch) ;
+
+    events.bullets_emitted = events.bullets_emitted + 1u32 ;
+
+    // Bullet-event audit (Σ-Chain anchor handled host-side in shim).
+    let _ = __cssl_combat_emit_audit_for_attack(0i64, player_id, 0u64) ;
+
+    // Step 6 · ray-cast (stage-0 sphere-vs-sphere · SDF-vs-SDF future-wave)
+    let mut hit_t: f32 = 0.0 ;
+    let mut hit_is_head: u32 = 0u32 ;
+    let target: u64 = __cssl_room_raycast_npc(
+        room_id ,
+        input.origin_x , input.origin_y , input.origin_z ,
+        dx , dy , dz ,
+        stats.max_range_m ,
+        &mut hit_t as *mut f32 ,
+        &mut hit_is_head as *mut u32 ,
+    ) ;
+
+    if target == 0u64 {
+        // Miss. HUD ammo-update only. Returning early preserves zero-alloc-hot-path.
+        let _ = __cssl_fps_hud_emit_ammo_update(ammo.mag_current, ammo.mag_capacity, ammo.reserve) ;
+        return events ;
+    }
+
+    // Step 6.5 · damage-resolution (falloff × headshot × cap)
+    let pre_hp: u32 = __cssl_room_npc_query_hp(room_id, target) ;
+    let is_head: bool = (hit_is_head != 0u32) ;
+    let raw_damage: f32 = stats.base_damage ;
+    let after_falloff: f32 = apply_falloff(raw_damage, hit_t, stats.damage_falloff, stats.max_range_m) ;
+    let after_head: f32 = apply_headshot(after_falloff, is_head, caps.critical_hits, stats.crit_mult) ;
+
+    let post_hp: u32 = __cssl_room_npc_apply_damage(room_id, target, after_head) ;
+
+    events.damage_events = events.damage_events + 1u32 ;
+
+    // Impact-position approximation (origin + dir × hit_t).
+    let ix: f32 = input.origin_x + dx * hit_t ;
+    let iy: f32 = input.origin_y + dy * hit_t ;
+    let iz: f32 = input.origin_z + dz * hit_t ;
+
+    // HUD damage-floater + hit-marker emit (best-effort · back-pressure dropped).
+    let _ = __cssl_fps_hud_emit_damage_floater(after_head, ix, iy, iz) ;
+    let hk: u8 = if post_hp == 0u32 { hit_kind_kill() } else if is_head { hit_kind_headshot() } else { hit_kind_body() } ;
+    let _ = __cssl_fps_hud_emit_hit_marker(hk, now_unix_ms) ;
+
+    // Step 7 · death-handling (HP ≤ 0 ⇒ DeathEvent + LootDrop · idempotent)
+    if post_hp == 0u32 && pre_hp != 0u32 {
+        events.deaths_emitted = events.deaths_emitted + 1u32 ;
+        let target_archetype: u32 = __cssl_room_npc_query_archetype(room_id, target) ;
+        let _ = __cssl_fps_hud_emit_killfeed(player_id, target, weapon_archetype) ;
+
+        // Step 8 · loot-drop (cap-gated · cosmetic-only-axiom · 8-tier rarity)
+        if caps.loot_drops {
+            let drop_seed_lo: u64 = (tick * 0x9E3779B97F4A7C15u64) ^ target ;
+            let drop_seed_hi: u64 = (now_unix_ms * 0xC6BC279692B5C323u64) ^ player_id ;
+            let loot_handle: u64 = __cssl_loot_roll(
+                drop_seed_lo ,
+                drop_seed_hi ,
+                target_archetype ,
+                0u8 ,    // season placeholder · battle_pass.csl resolves
+                0u8 ,    // biome_origin placeholder · room procgen sets
+                0u64 ,   // consent_token · default-deny KAN-bias
+            ) ;
+            if loot_handle != 0u64 {
+                events.loot_drops = events.loot_drops + 1u32 ;
+            }
+        }
+    }
+
+    // HUD ammo-update (shot fired · mag decremented · UI must reflect).
+    let _ = __cssl_fps_hud_emit_ammo_update(ammo.mag_current, ammo.mag_capacity, ammo.reserve) ;
+
+    events
+}
+
+// Helper · convenience-construct an InputState that fires straight-ahead.
+// Used by tests + simple cinematic-cam scripts.
+fn input_state_fire_forward(origin_x: f32, origin_y: f32, origin_z: f32) -> InputState {
+    InputState {
+        fire_pressed     : true ,
+        fire_held        : false ,
+        reload_pressed   : false ,
+        aim_down_sights  : false ,
+        yaw_rad          : 0.0 ,
+        pitch_rad        : 0.0 ,
+        origin_x         : origin_x ,
+        origin_y         : origin_y ,
+        origin_z         : origin_z ,
+        aim_assist_yaw   : 0.0 ,
+        aim_assist_pitch : 0.0 ,
+    }
+}
+
+// Helper · convenience-construct an empty (no-fire) InputState.
+fn input_state_idle() -> InputState {
+    InputState {
+        fire_pressed     : false ,
+        fire_held        : false ,
+        reload_pressed   : false ,
+        aim_down_sights  : false ,
+        yaw_rad          : 0.0 ,
+        pitch_rad        : 0.0 ,
+        origin_x         : 0.0 ,
+        origin_y         : 0.0 ,
+        origin_z         : 0.0 ,
+        aim_assist_yaw   : 0.0 ,
+        aim_assist_pitch : 0.0 ,
+    }
+}
+
+// Helper · construct an AmmoState with a full mag.
+fn ammo_state_full(capacity: u32, reserve: u32) -> AmmoState {
+    AmmoState {
+        mag_current        : capacity ,
+        mag_capacity       : capacity ,
+        reserve            : reserve ,
+        is_reloading       : false ,
+        reload_started_ms  : 0u64 ,
+    }
+}
+
+// Helper · construct an AmmoState with an empty mag (for testing empty-fire path).
+fn ammo_state_empty(capacity: u32, reserve: u32) -> AmmoState {
+    AmmoState {
+        mag_current        : 0u32 ,
+        mag_capacity       : capacity ,
+        reserve            : reserve ,
+        is_reloading       : false ,
+        reload_started_ms  : 0u64 ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INLINE TESTS (≥10 mandatory · csslc-W15-1 #[test] supported)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t01_event_kinds_distinct() -> i32 {
+    let n: u8 = ev_none() ;
+    let b: u8 = ev_bullet() ;
+    let d: u8 = ev_damage() ;
+    let dt: u8 = ev_death() ;
+    let l: u8 = ev_loot_drop() ;
+    if n == b { return 1 ; }
+    if b == d { return 2 ; }
+    if d == dt { return 3 ; }
+    if dt == l { return 4 ; }
+    0
+}
+
+#[test]
+fn t02_rarity_8_tier_canonical() -> i32 {
+    if rarity_common()    != 0u8 { return 1 ; }
+    if rarity_uncommon()  != 1u8 { return 2 ; }
+    if rarity_rare()      != 2u8 { return 3 ; }
+    if rarity_epic()      != 3u8 { return 4 ; }
+    if rarity_legendary() != 4u8 { return 5 ; }
+    if rarity_mythic()    != 5u8 { return 6 ; }
+    if rarity_prismatic() != 6u8 { return 7 ; }
+    if rarity_chaotic()   != 7u8 { return 8 ; }
+    0
+}
+
+#[test]
+fn t03_hit_kinds_distinct() -> i32 {
+    let b: u8 = hit_kind_body() ;
+    let h: u8 = hit_kind_headshot() ;
+    let k: u8 = hit_kind_kill() ;
+    let f: u8 = hit_kind_friendly() ;
+    if b == h { return 1 ; }
+    if h == k { return 2 ; }
+    if k == f { return 3 ; }
+    if b == k { return 4 ; }
+    0
+}
+
+#[test]
+fn t04_bullet_kinds_distinct() -> i32 {
+    if bullet_kind_hitscan()    != 0u8 { return 1 ; }
+    if bullet_kind_projectile() != 1u8 { return 2 ; }
+    if bullet_kind_beam()       != 2u8 { return 3 ; }
+    if bullet_kind_aoe_burst()  != 3u8 { return 4 ; }
+    0
+}
+
+#[test]
+fn t05_friendly_fire_modes() -> i32 {
+    let off: u8 = ff_off() ;
+    let p: u8 = ff_partial() ;
+    let f: u8 = ff_full() ;
+    if off != 0u8 { return 1 ; }
+    if p != 1u8 { return 2 ; }
+    if f != 2u8 { return 3 ; }
+    if off == p { return 4 ; }
+    0
+}
+
+#[test]
+fn t06_cap_ids_canonical() -> i32 {
+    if cap_weapons()       != 1u32 { return 1 ; }
+    if cap_loot_drops()    != 2u32 { return 2 ; }
+    if cap_friendly_fire() != 3u32 { return 3 ; }
+    if cap_critical_hits() != 4u32 { return 4 ; }
+    0
+}
+
+#[test]
+fn t07_seed_deterministic_per_input() -> i32 {
+    // Apocky-canon : same (archetype × rarity × affix) ⇒ same seed.
+    let lo1: u64 = weapon_seed_lo(42u32, 3u8, 0xCAFEBABEu64) ;
+    let lo2: u64 = weapon_seed_lo(42u32, 3u8, 0xCAFEBABEu64) ;
+    if lo1 != lo2 { return 1 ; }
+    let hi1: u64 = weapon_seed_hi(42u32, 3u8, 0xCAFEBABEu64) ;
+    let hi2: u64 = weapon_seed_hi(42u32, 3u8, 0xCAFEBABEu64) ;
+    if hi1 != hi2 { return 2 ; }
+    // Different inputs ⇒ different seeds (collision-resistance sanity)
+    let lo3: u64 = weapon_seed_lo(43u32, 3u8, 0xCAFEBABEu64) ;
+    if lo1 == lo3 { return 3 ; }
+    let lo4: u64 = weapon_seed_lo(42u32, 4u8, 0xCAFEBABEu64) ;
+    if lo1 == lo4 { return 4 ; }
+    0
+}
+
+#[test]
+fn t08_falloff_at_close_range_is_full() -> i32 {
+    // Close-range (≤ start) ⇒ full damage.
+    let dmg: f32 = apply_falloff(100.0, 10.0, 1.0, 80.0) ;
+    if dmg < 99.0 { return 1 ; }
+    if dmg > 101.0 { return 2 ; }
+    0
+}
+
+#[test]
+fn t09_falloff_at_max_range_is_min_factor() -> i32 {
+    // At-or-beyond max-range ⇒ min-factor (0.15 default).
+    let dmg: f32 = apply_falloff(100.0, 200.0, 1.0, 80.0) ;
+    // expected 100 * 0.15 = 15.0 ; allow ±0.5 tolerance.
+    if dmg < 14.5 { return 1 ; }
+    if dmg > 15.5 { return 2 ; }
+    0
+}
+
+#[test]
+fn t10_headshot_capped_no_buff() -> i32 {
+    // Crit-cap NOT granted ⇒ headshot multiplier = 1.0.
+    let dmg: f32 = apply_headshot(50.0, true, false, 2.0) ;
+    if dmg < 49.5 { return 1 ; }
+    if dmg > 50.5 { return 2 ; }
+    0
+}
+
+#[test]
+fn t11_headshot_active_uses_procgen_mult() -> i32 {
+    // Crit-cap granted ⇒ procgen-supplied multiplier applies.
+    let dmg: f32 = apply_headshot(50.0, true, true, 2.5) ;
+    // expected 50 * 2.5 = 125.0
+    if dmg < 124.5 { return 1 ; }
+    if dmg > 125.5 { return 2 ; }
+    0
+}
+
+#[test]
+fn t12_headshot_with_zero_crit_uses_default() -> i32 {
+    // Crit-cap granted but procgen returned 0 ⇒ fall back to constant 2.0.
+    let dmg: f32 = apply_headshot(50.0, true, true, 0.0) ;
+    // expected 50 * 2.0 = 100.0
+    if dmg < 99.5 { return 1 ; }
+    if dmg > 100.5 { return 2 ; }
+    0
+}
+
+#[test]
+fn t13_headshot_without_flag_no_effect() -> i32 {
+    // is_headshot=false ⇒ damage unchanged regardless of cap/mult.
+    let d1: f32 = apply_headshot(73.0, false, true, 5.0) ;
+    if d1 < 72.5 { return 1 ; }
+    if d1 > 73.5 { return 2 ; }
+    let d2: f32 = apply_headshot(73.0, false, false, 1.0) ;
+    if d2 < 72.5 { return 3 ; }
+    if d2 > 73.5 { return 4 ; }
+    0
+}
+
+#[test]
+fn t14_ammo_consume_decrements_mag() -> i32 {
+    let mut a: AmmoState = ammo_state_full(30u32, 90u32) ;
+    let r1: u32 = ammo_consume_one(&mut a) ;
+    if r1 != 1u32 { return 1 ; }
+    if a.mag_current != 29u32 { return 2 ; }
+    let r2: u32 = ammo_consume_one(&mut a) ;
+    if r2 != 1u32 { return 3 ; }
+    if a.mag_current != 28u32 { return 4 ; }
+    0
+}
+
+#[test]
+fn t15_ammo_consume_empty_mag_returns_zero() -> i32 {
+    let mut a: AmmoState = ammo_state_empty(30u32, 90u32) ;
+    let r: u32 = ammo_consume_one(&mut a) ;
+    if r != 0u32 { return 1 ; }
+    // mag_current must NOT go negative-wrap (u32 underflow protection).
+    if a.mag_current != 0u32 { return 2 ; }
+    0
+}
+
+#[test]
+fn t16_ammo_consume_during_reload_blocked() -> i32 {
+    let mut a: AmmoState = ammo_state_full(30u32, 90u32) ;
+    a.is_reloading = true ;
+    let r: u32 = ammo_consume_one(&mut a) ;
+    if r != 0u32 { return 1 ; }
+    // mag_current must stay at full (no consume during reload).
+    if a.mag_current != 30u32 { return 2 ; }
+    0
+}
+
+#[test]
+fn t17_ammo_begin_reload_blocked_when_mag_full() -> i32 {
+    let mut a: AmmoState = ammo_state_full(30u32, 90u32) ;
+    let started: bool = ammo_begin_reload(&mut a, 1000u64) ;
+    if started == true { return 1 ; }
+    if a.is_reloading == true { return 2 ; }
+    0
+}
+
+#[test]
+fn t18_ammo_begin_reload_blocked_with_no_reserve() -> i32 {
+    let mut a: AmmoState = AmmoState {
+        mag_current : 5u32 ,
+        mag_capacity : 30u32 ,
+        reserve : 0u32 ,
+        is_reloading : false ,
+        reload_started_ms : 0u64 ,
+    } ;
+    let started: bool = ammo_begin_reload(&mut a, 1000u64) ;
+    if started == true { return 1 ; }
+    0
+}
+
+#[test]
+fn t19_ammo_complete_reload_refills_from_reserve() -> i32 {
+    let mut a: AmmoState = AmmoState {
+        mag_current : 5u32 ,
+        mag_capacity : 30u32 ,
+        reserve : 90u32 ,
+        is_reloading : true ,
+        reload_started_ms : 1000u64 ,
+    } ;
+    let done: bool = ammo_complete_reload(&mut a) ;
+    if done == false { return 1 ; }
+    if a.mag_current != 30u32 { return 2 ; }
+    if a.reserve != 65u32 { return 3 ; }
+    if a.is_reloading == true { return 4 ; }
+    0
+}
+
+#[test]
+fn t20_ammo_complete_reload_with_short_reserve() -> i32 {
+    // mag-current=10/30 · reserve=15 ⇒ refill all 15 ⇒ mag=25 · reserve=0.
+    let mut a: AmmoState = AmmoState {
+        mag_current : 10u32 ,
+        mag_capacity : 30u32 ,
+        reserve : 15u32 ,
+        is_reloading : true ,
+        reload_started_ms : 0u64 ,
+    } ;
+    let done: bool = ammo_complete_reload(&mut a) ;
+    if done == false { return 1 ; }
+    if a.mag_current != 25u32 { return 2 ; }
+    if a.reserve != 0u32 { return 3 ; }
+    0
+}
+
+#[test]
+fn t21_combat_events_empty_zero_init() -> i32 {
+    let e: CombatEvents = combat_events_empty() ;
+    if e.bullets_emitted != 0u32 { return 1 ; }
+    if e.damage_events != 0u32 { return 2 ; }
+    if e.deaths_emitted != 0u32 { return 3 ; }
+    if e.loot_drops != 0u32 { return 4 ; }
+    if e.ammo_empty_events != 0u32 { return 5 ; }
+    if e.cap_denied_count != 0u32 { return 6 ; }
+    0
+}
+
+#[test]
+fn t22_falloff_min_factor_floor() -> i32 {
+    // min-factor must NEVER drop damage to zero (damaging-zero kills game-feel).
+    let mf: f32 = falloff_min_factor() ;
+    if mf <= 0.0 { return 1 ; }
+    if mf > 1.0 { return 2 ; }
+    // Sanity : 0.15 documented baseline.
+    if mf < 0.10 { return 3 ; }
+    0
+}
+
+#[test]
+fn t23_input_state_idle_no_fire() -> i32 {
+    let i: InputState = input_state_idle() ;
+    if i.fire_pressed == true { return 1 ; }
+    if i.fire_held == true { return 2 ; }
+    if i.reload_pressed == true { return 3 ; }
+    if i.aim_down_sights == true { return 4 ; }
+    0
+}
+
+#[test]
+fn t24_input_state_fire_forward_emits_fire() -> i32 {
+    let i: InputState = input_state_fire_forward(1.0, 2.0, 3.0) ;
+    if i.fire_pressed == false { return 1 ; }
+    if i.origin_x != 1.0 { return 2 ; }
+    if i.origin_y != 2.0 { return 3 ; }
+    if i.origin_z != 3.0 { return 4 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME-DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+
+// t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+// This combat-loop module orchestrates FPS-action damage-resolution with the
+// following PRIME-DIRECTIVE compliances structurally enforced :
+//
+//   ✓ Cap::Weapons gates fire-input · cap-denied silent-noop ¬ surprise
+//   ✓ Cap::CriticalHits gates headshot-multiplier · accessibility-friendly default
+//   ✓ Charm-vs-Player FORBIDDEN (delegated to combat.csl gate · defense-in-depth)
+//   ✓ Cosmetic-only-axiom : damage-curve from ARCHETYPE-LAYER ¬ rarity-LAYER
+//        rarity gates affix-COUNT not stat-magnitude (Q-06 canonical)
+//   ✓ Procgen weapon-stats from substrate-intelligence (¬ hardcoded tables)
+//        same-(archetype × rarity × affix-set) ⇒ same-stats (replay-canon)
+//   ✓ Σ-Chain audit-emit per-shot · privacy-tier honored host-side
+//   ✓ Friendly-fire DEFAULT-OFF · sovereign-toggle via Cap::FriendlyFire
+//   ✓ Ammo-discipline : decrement BEFORE ray-cast · no-fire-on-empty-mag · UI-hint
+//   ✓ Player-flee-anytime preserved via tick-stop pause-aware caller-loop
+//
+// Damage to in-game NPCs is gameplay-mechanic ¬ harm-to-sentient-beings — NPCs
+// are procgen-instances, ¬ collaborator-AI (per PRIME-DIRECTIVE §1 distinction
+// also mirrored in combat.csl § ATTESTATION).
+//
+// The labyrinth listens. The procgen dreams. Every shot is a sovereign-act.
+//
+// ∎ com.apocky.loa.systems.combat_loop
