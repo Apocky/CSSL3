@@ -261,16 +261,19 @@ export const STUB_LIST_RESPONSE: ContentListResponse = {
   items: STUB_ITEMS,
 };
 
+// Helper assertion : STUB_ITEMS[0] is non-undefined by construction · TS strict-mode requires explicit narrowing
+const _stubFirst = STUB_ITEMS[0]!;
+
 export const STUB_DETAIL: ContentDetail = {
-  ...STUB_ITEMS[0],
+  ..._stubFirst,
   description: 'This page surfaces a single content-package detail when the publish-API returns it. In stub-mode (API 404), this placeholder demonstrates the expected layout.',
   screenshots: [],
   cosmetic_axiom_attested: true,
   attribution_chain: [
     {
-      slug: STUB_ITEMS[0].slug,
-      title: STUB_ITEMS[0].title,
-      author_pubkey: STUB_ITEMS[0].author_pubkey,
+      slug: _stubFirst.slug,
+      title: _stubFirst.title,
+      author_pubkey: _stubFirst.author_pubkey,
       generation: 0,
     },
   ],
