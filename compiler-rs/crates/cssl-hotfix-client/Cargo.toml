@@ -1,0 +1,37 @@
+[package]
+name        = "cssl-hotfix-client"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "§ T11-W11 — LoA.exe-side hotfix poll/download/stage/apply/rollback. apocky.com manifest-of-truth + mycelium-byte-CDN client. Σ-mask-default-deny · sovereign-revocable."
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W11-HOTFIX-INFRA-CLIENT (NEW · greenfield · runtime-side companion to cssl-hotfix)
+#   ⊑ HotfixClient = poll-loop + manifest-fetch + bundle-download + verify
+#                  + Σ-mask-gate + apply + rollback-on-failure
+#   ⊑ ManifestSource trait : trait-object so tests use stub-server,
+#     production wires HTTP via a sibling out-of-tree adapter.
+#   ⊑ BundleSource trait : same shape — production wires HTTP +
+#     mycelium-peer fall-through, tests use in-memory map.
+#   ⊑ TelemetrySink trait : emits hotfix.checked / .downloaded /
+#     .applied / .rolled_back ; tests use MockTelemetrySink.
+#   ⊑ NO async runtime dep — `poll_once` is sync ; engine integrator
+#     is responsible for choosing thread / async wrapping.
+
+[lints]
+workspace = true
+
+[dependencies]
+cssl-hotfix = { path = "../cssl-hotfix" }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+ed25519-dalek = { workspace = true }
+blake3      = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+rand       = { workspace = true }
