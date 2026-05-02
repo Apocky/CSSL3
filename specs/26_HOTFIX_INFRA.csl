@@ -1,0 +1,177 @@
+§ T11-W11 · 26_HOTFIX_INFRA.csl · architectural blueprint
+═══════════════════════════════════════════════════════════════════════════════
+
+§ THESIS
+  apocky.com = manifest-of-truth
+  mycelium-peers = byte-CDN
+  LoA.exe = polling-verifier-applier-roller-back
+  Ed25519 = canonical signing
+  Σ-mask = per-user opt-in matrix · default-deny except security.patch
+  9 channels × 5 cap-keys × N-1 + N-2 rollback × ¬ DRM
+
+§ AXIOMS  [PRIME_DIRECTIVE encoded]
+  N! [harm control surveillance manipulation exploitation
+      coercion weaponization discrimination] in-the-doing
+  ✓ sovereign-revocable ANY-time · pinned-version-stays-pinned-forever
+  ✓ Σ-mask-default-deny except security.patch (cap-D · default-on)
+  ✓ rollback-ALWAYS-available · N-1 + N-2 preserved on-disk
+  ✓ verify-before-apply · cap-role.of.signer ≡ channel.required_cap()
+  ✓ cosmetic-only-axiom : update ¬ change pay-for-power balance unilaterally
+  ✗ ¬ DRM · ¬ rootkit · ¬ anti-cheat-spyware
+
+§ COMPONENTS  [crate · file · purpose]
+
+  ⟨crate cssl-hotfix⟩  W11-A1
+    ⊑ bundle.rs       — `.csslfix` 80-byte header + payload + 64-byte sig
+    ⊑ channel.rs      — 9-channel enum + ChannelClass + required_cap mapping
+    ⊑ cap.rs          — 5 cap-roles + 32-byte Ed25519 pubkey carrier
+    ⊑ manifest.rs     — apocky.com manifest JSON + canonical-bytes-for-signing
+    ⊑ sigma.rs        — Σ-mask SigmaPolicy default-deny
+    ⊑ sign.rs         — Ed25519 sign_bundle + sign_manifest
+    ⊑ verify.rs       — verify_bundle + verify_manifest + check_not_revoked
+    ⊑ apply.rs        — atomic apply + rollback + history-pruning
+    ⊑ tests : 46
+
+  ⟨crate cssl-hotfix-client⟩  W11-A2
+    ⊑ client.rs       — HotfixClient + poll_once + rollback_channel
+    ⊑ sources.rs      — ManifestSource + BundleSource traits + mocks
+    ⊑ telemetry.rs    — HotfixEvent + TelemetrySink trait + mock
+    ⊑ tests : 12
+
+  ⟨file loa-host/src/wired_hotfix.rs⟩  W11-A3
+    ⊑ LoaHostTelemetrySink (env-gated stderr)
+    ⊑ build_client(install_dir, cap_keys, manifest_src, bundle_src)
+    ⊑ start_hotfix_loop(client) — std::thread worker · 5min interval
+
+  ⟨cssl-edge endpoints⟩  W11-A4
+    ⊑ GET  /api/hotfix/manifest?channel=<n>
+    ⊑ GET  /api/hotfix/download?channel=<c>&version=<v> · Range supported
+    ⊑ POST /api/hotfix/status   · client posts apply/failed/rolled_back
+    ⊑ POST /api/hotfix/revoke   · admin-only · marks (channel, version)
+
+  ⟨SQL migration 0025_hotfix.sql⟩  W11-A4
+    ⊑ hotfix_manifest_versions   · authoritative version table
+    ⊑ hotfix_apply_status        · fleet-wide counters (anonymous)
+    ⊑ hotfix_user_status         · per-user (Σ-mask-gated · self-row only)
+    ⊑ hotfix_revocations         · audit trail (INSERT-only)
+    ⊑ bump_hotfix_apply_status() · counter-increment helper
+    ⊑ RLS : default-deny · service_role bypass · self-row-reads only
+
+§ 9 UPDATE-CHANNELS (stable IDs · matches cssl-hotfix::Channel)
+
+  ┌─────┬───────────────────┬──────────┬─────────────────────────┬─────────────┐
+  │ ID  │ name              │ cap-key  │ apply-boundary          │ default-on? │
+  ├─────┼───────────────────┼──────────┼─────────────────────────┼─────────────┤
+  │  1  │ loa.binary        │ cap-A    │ RestartRequired         │ ✗ off       │
+  │  2  │ cssl.bundle       │ cap-B    │ NextFrameBoundary       │ ✗ off       │
+  │  3  │ kan.weights       │ cap-C    │ AtomicHotSwap           │ ✗ off       │
+  │  4  │ balance.config    │ cap-C    │ SceneTransition         │ ✗ off       │
+  │  5  │ recipe.book       │ cap-E    │ SceneTransition         │ ✗ off       │
+  │  6  │ nemesis.bestiary  │ cap-E    │ SceneTransition         │ ✗ off       │
+  │  7  │ security.patch    │ cap-D    │ Immediate               │ ✓ ON        │
+  │  8  │ storylet.content  │ cap-E    │ SceneTransition         │ ✗ off       │
+  │  9  │ render.pipeline   │ cap-E    │ SceneTransition         │ ✗ off       │
+  └─────┴───────────────────┴──────────┴─────────────────────────┴─────────────┘
+
+§ BUNDLE BINARY LAYOUT  [80-byte header · then payload · then 64-byte sig]
+
+  offset  size  field            notes
+  ──────  ────  ───────────────  ──────────────────────────────────────────
+  0       4     magic            "CSFX" = 0x43 0x53 0x46 0x58
+  4       2     format_version   u16 LE · current = 1 · BREAKING bumps this
+  6       1     channel          u8 · Channel discriminant 1..=9
+  7       1     cap_role         u8 · CapRole discriminant 1..=5
+  8       2     ver_major        u16 LE · semver
+  10      2     ver_minor        u16 LE
+  12      2     ver_patch        u16 LE
+  14      2     reserved_a       u16 LE · MUST be 0
+  16      8     timestamp_ns     u64 LE · build wall-clock
+  24      8     payload_size     u64 LE
+  32      32    payload_blake3   raw BLAKE3-256 of payload bytes
+  64      16    reserved_b       16 bytes · MUST be all-zero
+  ──────  ────  ───────────────  ──────────────────────────────────────────
+  80      N     payload          payload_size bytes
+  80+N    64    ed25519_sig      Ed25519 signature over header || payload
+
+  Total file size = 80 + payload_size + 64.
+
+§ APPLY-FLOW  [atomic · numbered]
+
+  1. client receives manifest from /api/hotfix/manifest
+  2. verify_manifest : Ed25519 sig against compiled-in cap-keys
+  3. for each Channel where SigmaPolicy.allows_download :
+       a. read installed-version meta from <dir>/<channel>/current.meta
+       b. if revoked-list contains (channel, installed-version) → schedule rollback
+       c. if manifest's current_version > installed → schedule update
+  4. for each scheduled update :
+       a. fetch bundle bytes from /api/hotfix/download or mycelium peer
+       b. parse + verify_bundle (header + signature + cap-role-matches-channel)
+       c. if consent ≡ PromptBeforeApply → emit PromptPending event
+       d. else → apply_bundle :
+            i.   write payload to <dir>/<channel>/.staged.payload
+            ii.  write meta to    <dir>/<channel>/.staged.meta
+            iii. if current exists, snapshot to .history/<channel>/<old>.payload
+            iv.  rename .staged.payload → current     (atomic)
+            v.   rename .staged.meta    → current.meta
+            vi.  prune .history to N-1 + N-2
+       e. emit Applied event ; store snapshot for future rollback
+  5. emit cumulative PollReport
+
+§ ROLLBACK-FLOW  [atomic · numbered]
+
+  1. read .snapshots/<channel>.json → AppliedSnapshot
+  2. read prior-payload-path from snapshot
+  3. rename current → .history/<channel>/<failed>.failed.payload (forensics)
+  4. rename current.meta → .history/<channel>/<failed>.failed.meta
+  5. rename .history/<channel>/<prior>.payload → current
+  6. rewrite current.meta with prior version + restored blake3
+  7. emit RolledBack telemetry event
+
+§ Σ-MASK CONSENT MATRIX  [per-channel · default · override-anytime]
+
+  channel              default     override-options
+  ─────────────────────────────────────────────────────────────────────
+  loa.binary           Off         AutoApply / Prompt / Pinned
+  cssl.bundle          Off         AutoApply / Prompt / Pinned
+  kan.weights          Off         AutoApply / Prompt / Pinned
+  balance.config       Off         AutoApply / Prompt / Pinned
+  recipe.book          Off         AutoApply / Prompt / Pinned
+  nemesis.bestiary     Off         AutoApply / Prompt / Pinned
+  security.patch       AutoApply   Prompt / Pinned (NEVER coercive-on)
+  storylet.content     Off         AutoApply / Prompt / Pinned
+  render.pipeline      Off         AutoApply / Prompt / Pinned
+
+§ TELEMETRY EVENTS  [emitted by HotfixClient · sink-side honours opt-in]
+
+  Checked       — manifest fetched + verified
+  Downloaded    — bundle bytes fetched + verified
+  Applied       — apply succeeded
+  RolledBack    — apply failed → reverted (or revoked-list match)
+  Skipped       — Σ-mask deny / pinned / already-current
+  Revoked       — locally-installed version was on revocation list
+  ApplyFailed   — apply failed with reason ; sink may forward to /api/hotfix/status
+
+§ MYCELIUM-FEDERATION  (peer-to-peer byte CDN · ¬ trust-other-peer)
+
+  apocky.com remains the manifest-of-truth.
+  Mycelium peers serve bundle BYTES once verified by the verifier-of-record.
+  Verifier checks cap-key-on-file even when bytes came from a peer ; therefore
+  a malicious peer cannot mutate the apply outcome. Mycelium reduces apocky.com
+  bandwidth, latency, and provides offline-tolerance — but is NOT the source of
+  truth for which version IS the canonical-current.
+
+§ NON-GOALS / GUARDRAILS
+
+  ✗ silent binary push (default-deny stops this · cap-D security-patch is the
+    SOLE always-on channel and Apocky personally signs every cap-D bundle)
+  ✗ telemetry of which user is on which version (only aggregate counters
+    unless user explicitly opts in via Σ-mask consent for fleet-monitor)
+  ✗ DRM / anti-cheat / rootkit (banned · cosmetic-only-axiom)
+  ✗ pay-for-power update (any update changing balance.config requires
+    cap-C signature + Apocky's public-record release-note acknowledging
+    the change ; community-veto via spec/13 anti-pay-for-power axiom)
+
+§ ATTESTATION
+  ¬ harm · sovereign-revocable · Σ-mask-default-deny · rollback-atomic
+  ¬ DRM · ¬ rootkit · cap-key-restricted · cosmetic-only-axiom-holds
+  No hurt nor harm in the making of this, to anyone, anything, or anybody.

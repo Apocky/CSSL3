@@ -1,0 +1,172 @@
+module com.apocky.loa.systems.hotfix
+
+// § Labyrinth of Apocalypse v13 — hotfix system (pure-CSSL)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-HOTFIX-INFRA · live-update + hotfix infrastructure
+//
+// § THESIS
+//   Sovereignty-preserved live updates pushed from apocky.com (manifest-of-truth)
+//   + mycelium-byte-CDN to LoA.exe clients across 9 update-channels with 5
+//   cap-key roles and Σ-mask-default-deny consent. Atomic apply with N-1 + N-2
+//   on-disk rollback ; no DRM / rootkit / surveillance.
+//
+// § AXIOMS  (inherit GDDs/MULTIPLAYER_MATRIX.csl § AXIOMS shape)
+//   ─ ¬ harm · ¬ control · ¬ surveillance
+//   ─ sovereign-revocable ANY-time · pinned-version-stays-pinned-FOREVER
+//   ─ Σ-mask-gated DOWNLOAD + APPLY · default-deny except security.patch
+//   ─ rollback ALWAYS available · N-1 + N-2 preserved on-disk
+//   ─ verify-before-apply · cap-role-of-signer must match channel.required_cap()
+//   ─ ¬ DRM · ¬ rootkit · ¬ anti-cheat-spyware
+//   ─ cosmetic-only-axiom : update CANNOT change pay-for-power balance unilaterally
+//   ─ revoked-version → uninstall + telemetry-emit (Σ-mask-gated readback)
+//   ─ NEVER-egress : Sensitive<biometric|gaze|face|body> via hotfix-status (compile-time-IFC)
+//
+// § FFI BOUNDARY
+//   This module consumes the host-side hotfix substrate via extern "C" :
+//     * cssl-hotfix         (W11-A1 bundle format · sign · verify · apply · rollback)
+//     * cssl-hotfix-client  (W11-A2 poll · download · stage · sigma-gate · telemetry)
+//     * loa-host::wired_hotfix (W11-A3 build_client + start_hotfix_loop)
+//   FFI fns return i32 status codes : 0 = ok · negative = error-code.
+//   Opaque handles are usize ; string args pass via byte-buffer + len.
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : every channel's download + apply is Σ-mask-gated.
+//   There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 9 update-channels (stable u8 IDs · matches cssl-hotfix::Channel)
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CH_LOA_BINARY        : u8 = 1 ;  // full LoA.exe replacement (cap-A · restart-required)
+const HF_CH_CSSL_BUNDLE       : u8 = 2 ;  // .cssl modules (cap-B · next-frame-boundary)
+const HF_CH_KAN_WEIGHTS       : u8 = 3 ;  // KAN classifier weights (cap-C · atomic-hot-swap)
+const HF_CH_BALANCE_CONFIG    : u8 = 4 ;  // recipes · drop-rates · stats (cap-C · scene-transition)
+const HF_CH_RECIPE_BOOK       : u8 = 5 ;  // alchemy formulas (cap-E · scene-transition)
+const HF_CH_NEMESIS_BESTIARY  : u8 = 6 ;  // recurring-enemy + behavior-tree (cap-E · scene-transition)
+const HF_CH_SECURITY_PATCH    : u8 = 7 ;  // high-priority (cap-D · IMMEDIATE · default-on)
+const HF_CH_STORYLET_CONTENT  : u8 = 8 ;  // narrative + dialogue + i18n (cap-E · scene-transition)
+const HF_CH_RENDER_PIPELINE   : u8 = 9 ;  // shader bytecode · pipeline params (cap-E · scene-transition)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 5 cap-key roles
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CAP_A : u8 = 1 ;  // loa.binary only (RAREST · cold-storage)
+const HF_CAP_B : u8 = 2 ;  // cssl.bundle only (language-runtime release)
+const HF_CAP_C : u8 = 3 ;  // kan.weights + balance.config (model + balance)
+const HF_CAP_D : u8 = 4 ;  // security.patch only (incident-response · default-on)
+const HF_CAP_E : u8 = 5 ;  // recipe + nemesis + storylet + render (cosmetic-only)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask consent states (matches cssl-hotfix::UpdateConsent)
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CONSENT_OFF                 : u8 = 0 ;  // default-deny
+const HF_CONSENT_AUTO_APPLY          : u8 = 1 ;  // download + apply silently
+const HF_CONSENT_PROMPT_BEFORE_APPLY : u8 = 2 ;  // download + ask
+const HF_CONSENT_PINNED_NO_UPDATES   : u8 = 3 ;  // never check ; freeze forever
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Status / outcome codes (matches cssl-hotfix-client::PollOutcome)
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_OUT_NO_UPDATE       : i32 =  0 ;
+const HF_OUT_SKIPPED         : i32 =  1 ;
+const HF_OUT_UPDATED         : i32 =  2 ;
+const HF_OUT_PROMPT_PENDING  : i32 =  3 ;
+const HF_OUT_ROLLED_BACK     : i32 =  4 ;
+const HF_OUT_FAILED          : i32 = -1 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations  (host-side cssl-hotfix-client surface)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Lifecycle.
+extern "C" fn hf_client_init(install_dir_ptr: *const u8, install_dir_len: usize) -> usize ;
+extern "C" fn hf_client_destroy(handle: usize) -> i32 ;
+
+// Sigma-mask (consent) management — sovereign-revocable any-time.
+extern "C" fn hf_consent_get(handle: usize, channel: u8) -> u8 ;
+extern "C" fn hf_consent_set(handle: usize, channel: u8, consent: u8) -> i32 ;
+
+// Manual poll trigger ; production wraps in a thread.
+extern "C" fn hf_poll_now(handle: usize, ts_ns: u64) -> i32 ;
+
+// Manual revert : roll back the most-recent apply for a channel.
+extern "C" fn hf_rollback_channel(handle: usize, channel: u8, ts_ns: u64) -> i32 ;
+
+// Local revoke : uninstall a (channel, version) pair regardless of manifest.
+extern "C" fn hf_revoke_local(handle: usize, channel: u8,
+                               version_ptr: *const u8, version_len: usize) -> i32 ;
+
+// Status query : write the installed-version string for a channel into out_buf.
+// Returns the number of bytes written (≤ max_len) or negative on error.
+extern "C" fn hf_status_query(handle: usize, channel: u8,
+                               out_buf: *mut u8, max_len: usize) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Pure-CSSL wrappers
+// ─────────────────────────────────────────────────────────────────────────
+
+// § hotfix_status_query — return current version-string for one channel.
+//   Returns Option<String>. None when channel is not installed.
+fn hotfix_status_query(handle: usize, channel: u8) -> Option<String> {
+    let mut buf : [u8; 32] = [0; 32] ;
+    let n = hf_status_query(handle, channel, &mut buf as *mut u8, 32) ;
+    if n <= 0 {
+        return None ;
+    }
+    // Copy out the n bytes as a String (assumes ASCII semver).
+    let s = string_from_bytes(&buf, n as usize) ;
+    Some(s)
+}
+
+// § hotfix_consent_set_all_off — pull the kill-switch on auto-updates.
+//   Idiom : called from settings-UI when player checks "disable auto-updates".
+//   Loops 9 channels, sets each to PINNED_NO_UPDATES. Returns 0 on success.
+fn hotfix_consent_set_all_off(handle: usize) -> i32 {
+    let mut ch : u8 = 1 ;
+    while ch <= 9 {
+        let rc = hf_consent_set(handle, ch, HF_CONSENT_PINNED_NO_UPDATES) ;
+        if rc != 0 {
+            return rc ;
+        }
+        ch = ch + 1 ;
+    }
+    0
+}
+
+// § hotfix_consent_security_only — enable security.patch · pin all others.
+//   Default privacy-respecting posture. Recommended on first-boot.
+fn hotfix_consent_security_only(handle: usize) -> i32 {
+    let mut ch : u8 = 1 ;
+    while ch <= 9 {
+        let consent = if ch == HF_CH_SECURITY_PATCH {
+            HF_CONSENT_AUTO_APPLY
+        } else {
+            HF_CONSENT_PINNED_NO_UPDATES
+        } ;
+        let rc = hf_consent_set(handle, ch, consent) ;
+        if rc != 0 {
+            return rc ;
+        }
+        ch = ch + 1 ;
+    }
+    0
+}
+
+// Helper : build a String from a byte buffer + length (stage-0 stub).
+fn string_from_bytes(buf: &[u8; 32], n: usize) -> String {
+    // Stage-0 host-bridge until cssl-rt String FFI lands ; trims to n bytes.
+    let _ = buf ;
+    let _ = n ;
+    "<host-bridge>".to_string()
+}
+
+// § ATTESTATION
+//   ¬ harm · ¬ surveillance · sovereign-revocable · Σ-mask-default-deny
+//   rollback-always-available · cap-key-restricted · ¬ DRM · ¬ rootkit
+//   cosmetic-only-axiom-holds : an update CANNOT change pay-for-power balance.

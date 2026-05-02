@@ -1,0 +1,136 @@
+§ T11-W11 · 26b_HOTFIX_KEYS.csl · cap-key role policy + rotation
+═══════════════════════════════════════════════════════════════════════════════
+
+§ THESIS
+  Five Ed25519 keypairs · progressive privilege · clean separation of duties.
+  Private keys live ONLY on Apocky's release machine in `~/.loa-secrets/` ;
+  public keys are compiled into LoA.exe at build time + chain-of-trust upgrade.
+  Compromise of one cap-key bounds the blast-radius to that key's channel-set.
+
+§ THE 5 CAP-KEY ROLES  [progressive privilege]
+
+  ┌──────┬────────────────────────────────┬──────────────────────────────────┐
+  │ role │ channels signable               │ ops-cadence + cold-storage       │
+  ├──────┼────────────────────────────────┼──────────────────────────────────┤
+  │ A    │ loa.binary                     │ RAREST (~quarterly · cold-store) │
+  │ B    │ cssl.bundle                    │ language-runtime release         │
+  │ C    │ kan.weights + balance.config   │ model + game-balance updates     │
+  │ D    │ security.patch                 │ incident-response (default-on)   │
+  │ E    │ recipe + nemesis + storylet    │ cosmetic content cadence         │
+  │      │ + render                        │   (most-frequent · least-blast) │
+  └──────┴────────────────────────────────┴──────────────────────────────────┘
+
+§ KEY GENERATION  [Apocky-action-items · execute on release machine]
+
+  Each key is generated via the standard `ed25519-dalek` CLI :
+
+    # cap-A · LoA binary
+    cargo run -p csslc -- gen-keypair --role cap-A \
+      --out ~/.loa-secrets/hotfix-cap-A.priv \
+      --pub-out ~/.loa-secrets/hotfix-cap-A.pub
+    # ... and similarly for B, C, D, E
+
+  After generation :
+    1. `~/.loa-secrets/hotfix-cap-{A..E}.priv` are CHMOD 600 owned by Apocky
+    2. `~/.loa-secrets/hotfix-cap-{A..E}.pub` are 32-byte raw Ed25519 pubkeys
+    3. Public keys are pasted into a config file (`compiler-rs/crates/cssl-host-config/keys/hotfix-pubkeys.toml`)
+       reviewed by Apocky and committed.
+    4. CI uses the priv-files only on Apocky's release machine ; cloud-CI never
+       sees them. Bundles are signed locally, then PUSHED to apocky.com.
+
+§ STORAGE RULES  [hard-cap · violation = bug]
+
+  ✓ priv keys ONLY in `~/.loa-secrets/` (gitignored)
+  ✓ priv keys CHMOD 600
+  ✓ priv keys NEVER egress the release machine
+  ✓ priv keys NEVER appear in any Cargo.toml / .env / Vercel / Supabase
+  ✗ ¬ commit any `.priv` file
+  ✗ ¬ push to any remote
+  ✗ ¬ paste into any chat / log / issue tracker
+  ✗ ¬ encode in environment variables (ephemeral · CI-leak risk)
+
+§ ROTATION POLICY
+
+  § ROUTINE ROTATION (every ≤ 12 months · per role)
+    1. Generate new keypair `hotfix-cap-X.NEW.{priv,pub}`.
+    2. Sign a manifest with BOTH the old and new keys (chain-of-trust).
+    3. Push manifest ; clients pull, verify with old key, accept new key.
+    4. After 30-day grace : sign new manifests with new key only.
+    5. Archive `hotfix-cap-X.OLD.priv` to a sealed offline backup ; revoke
+       any pending bundles signed with the old key.
+
+  § COMPROMISE RESPONSE
+    1. Immediately POST /api/hotfix/revoke for all currently-installed versions
+       signed by the compromised key (Apocky uses admin-token).
+    2. Generate replacement keypair within 1 hour of detection.
+    3. Sign emergency manifest (cap-D-co-signed if cap-X is the compromise) listing
+       NEW key + EMPTY current_version per affected channel · clients uninstall.
+    4. Investigate compromise vector ; document in retro spec.
+
+  § CHAIN-OF-TRUST UPGRADE FORMAT
+    A manifest can carry an optional `replaces_pubkey` field signed by the
+    PRIOR key. When clients receive such a manifest :
+      - verify with prior key
+      - on success, ALSO verify with the new key embedded in the manifest
+      - if both pass, persist new key → compiled-in-pubkey-table on disk
+      - subsequent manifests verified with new key only
+
+§ COMPILED-IN PUBLIC KEYS
+
+  At LoA.exe build time the public keys are baked into the binary :
+
+    // compiler-rs/crates/cssl-host-config/src/hotfix_pubkeys.rs
+    pub static HOTFIX_PUBKEYS: &[CapKey] = &[
+        CapKey { role: CapA, pubkey: hex!("..32 bytes..") },
+        CapKey { role: CapB, pubkey: hex!("..32 bytes..") },
+        CapKey { role: CapC, pubkey: hex!("..32 bytes..") },
+        CapKey { role: CapD, pubkey: hex!("..32 bytes..") },
+        CapKey { role: CapE, pubkey: hex!("..32 bytes..") },
+    ];
+
+  This file is GENERATED from Apocky's `~/.loa-secrets/hotfix-cap-*.pub`
+  via a build-script in cssl-host-config. The generated file IS committed
+  (it contains only public bytes).
+
+  An optional `~/.loa-config/hotfix-pubkeys-overlay.toml` lets users replace
+  the compiled-in keys at runtime · for self-hosters running their own
+  Apocky-fork distribution. The overlay file is read once at startup ;
+  changes after startup require restart (defends against runtime injection).
+
+§ MANIFEST SIGNING SERVER-SIDE  (apocky.com /api/hotfix/manifest)
+
+  The manifest endpoint reads from `hotfix_manifest_versions` (Supabase) and
+  must SIGN the response. The signing private-key is RESTRICTED on the
+  server side :
+    - Vercel env vars : SVC_HOTFIX_MANIFEST_CAP_D_PRIV (raw 32-byte hex)
+    - ONLY cap-D should typically sign manifests (security-tier · Apocky's
+      authority-of-record). Other roles (cap-A..C, E) sign individual BUNDLES,
+      not manifests.
+    - The Vercel KV-write path is restricted to Apocky's deploy-key ; nobody
+      else can rotate the SVC env var.
+
+  Compromise-mitigation : if Vercel env is exposed, the cap-D priv lets an
+  attacker sign manifests but NOT bundles ; bundle signatures are checked
+  against PER-CHANNEL cap-keys, not against cap-D. Manifest-only-compromise
+  causes "client thinks new version exists" but verify_bundle still rejects
+  any bundle signed with a key that doesn't match channel.required_cap().
+
+§ APOCKY-ACTION-ITEMS CHECKLIST  [for completion of W11-HOTFIX-INFRA stack]
+
+  □ generate ed25519 keypairs for cap-A, B, C, D, E
+  □ store priv keys in ~/.loa-secrets/ (CHMOD 600)
+  □ paste pubkeys into compiler-rs/crates/cssl-host-config/keys/hotfix-pubkeys.toml
+    (file does not yet exist · this slice does not create it ; sibling
+     cssl-host-config-W11-pubkey-baker slice will)
+  □ store the cap-D priv-key bytes in Vercel env SVC_HOTFIX_MANIFEST_CAP_D_PRIV
+    (Apocky-only · NEVER through any chat / log)
+  □ generate the admin-token for /api/hotfix/revoke ; sha256 → Vercel env
+    HOTFIX_ADMIN_TOKEN_SHA256 ; store raw token in ~/.loa-secrets/
+  □ run `supabase migration up` to apply 0025_hotfix.sql
+  □ create Supabase storage bucket `hotfix-bundles` (private · service-role-only)
+  □ build first cap-D security.patch bundle as smoke test ; upload via the
+    forthcoming `cargo csslc-publish-bundle` tool (out-of-scope for this slice)
+
+§ ATTESTATION
+  ¬ harm · key-blast-radius-bounded · rotation-policy-documented
+  No hurt nor harm in the making of this, to anyone, anything, or anybody.
