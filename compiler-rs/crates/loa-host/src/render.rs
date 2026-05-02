@@ -774,6 +774,34 @@ impl Renderer {
             .set_overlay_strength(&gpu.queue, strength);
     }
 
+    /// § T11-W18-N · Rebuild the substrate-compose bind-group around the
+    /// supplied external `TextureView` (the 1440p substrate-resonance GPU
+    /// compute-shader output) so the compose-pass samples the GPU texture
+    /// directly — bypassing the small 256×256 CPU-upload texture. Should be
+    /// called once after the GPU pipeline binds its output ; subsequent
+    /// frames simply call `record_pass` (the bind-group already points at
+    /// the GPU view).
+    ///
+    /// While the external view is bound, `upload_substrate_pixels` (CPU path)
+    /// is dormant — short-circuited inside `SubstrateComposePipeline::upload`.
+    pub fn bind_substrate_gpu_view(
+        &mut self,
+        gpu: &GpuContext,
+        external_view: &wgpu::TextureView,
+    ) {
+        self.substrate_compose
+            .bind_external_view(&gpu.device, external_view);
+    }
+
+    /// § T11-W18-N · True iff the substrate-compose bind-group is currently
+    /// sampling an external GPU `TextureView` (rather than the local CPU-
+    /// upload texture). Caller in `window.rs` checks this to skip the CPU
+    /// upload while the GPU path is active.
+    #[must_use]
+    pub fn is_substrate_gpu_view_bound(&self) -> bool {
+        self.substrate_compose.is_external_view_bound()
+    }
+
     /// § T11-WAVE3-GLTF : drain the global pending-spawn queue, allocating
     /// a fresh `DynamicMesh` per entry. Called at the top of `render_frame`
     /// so newly-spawned meshes appear from the very next frame onwards.
