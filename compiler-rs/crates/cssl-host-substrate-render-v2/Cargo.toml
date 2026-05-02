@@ -1,0 +1,45 @@
+[package]
+name                   = "cssl-host-substrate-render-v2"
+description            = "§ T11-W18-L6-V2 · raw-compute substrate-render · 1 compute-dispatch / frame · NO render-pipeline · NO vertex-shader · NO fragment-shader · NO rasterization · per-pixel ω-field-resonance writes RGBA8 storage-texture → swapchain-blit · zero wgpu-pipeline-overhead beyond compute"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_substrate_render_v2"
+
+# § FEATURES
+#   `default = []` — buffer-pack reuse + WGSL-source + naga-validation are
+#   always built. No GPU-driver pull at default. Compute-only-pipeline-builds
+#   + WGSL-naga-validates tests pass without wgpu installed.
+#   `runtime` — adds wgpu/pollster so the `RendererV2` host wrapper can be
+#   constructed. Enable in callers (e.g. `loa-host`) that actually dispatch
+#   compute work + present to a winit surface.
+[features]
+default = []
+runtime = ["dep:wgpu", "dep:pollster"]
+
+[dependencies]
+# Buffer-pack from W18-G is reused verbatim — same Crystal[]→GpuCrystal[]
+# pack, same ObserverCoord→GpuObserver pack. v2 only changes the OUTPUT
+# stage : compute writes the storage-texture that's then blitted to the
+# swapchain (no render-pass, no fragment-shader, no rasterization).
+cssl-host-crystallization              = { path = "../cssl-host-crystallization" }
+cssl-host-alien-materialization        = { path = "../cssl-host-alien-materialization" }
+cssl-host-substrate-resonance-gpu      = { path = "../cssl-host-substrate-resonance-gpu" }
+
+# Buffer-pack + naga shader-validation are always-built. wgpu 23 + naga 23
+# are workspace-pinned to share the same internal naga.
+naga     = { workspace = true }
+bytemuck = { workspace = true }
+
+# Optional runtime-only deps (gated behind the `runtime` feature). Mirrors
+# the W18-G pattern — callers opting into `runtime` already have the right
+# backend feature-set on their wgpu pull.
+wgpu     = { workspace = true, optional = true }
+pollster = { version = "0.3", optional = true }
+
+[lints]
+workspace = true

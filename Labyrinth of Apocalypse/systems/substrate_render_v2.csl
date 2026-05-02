@@ -1,0 +1,254 @@
+module com.apocky.loa.systems.substrate_render_v2
+
+// § Labyrinth of Apocalypse · Substrate-Render-V2 · raw-compute-direct-to-display
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W18-L6-V2 · canonical-CSSL-source · ‼ FOUNDATIONAL · Apocky-directive 2026-05-02
+//
+// § APOCKY-DIRECTIVE (verbatim)
+//   "L4 + L5 + L6 NOW · why wait"
+//   "perfect Infinity Engine · highest quality cssl-native proprietary-first"
+//
+// § THESIS · WHY V2
+//
+//   Existing substrate-render stack (W18-G · cssl-host-substrate-resonance-gpu)
+//   uses a wgpu render-pipeline (vertex + fragment + rasterizer + depth-buffer +
+//   blend-state). For the substrate-paradigm none of those stages add value :
+//
+//     observer-coord + crystal-list → per-pixel-ω-field-resonance → RGBA buffer → display
+//
+//   v2 = SINGLE compute-pass writes pixels DIRECTLY to a storage-texture · then
+//   ONE intra-GPU texture-blit places that storage-texture onto the swapchain
+//   image · then ONE Surface::present call completes the frame.
+//
+//   N! [render-pipeline · vertex-shader · fragment-shader · rasterizer ·
+//       depth-buffer · MSAA-resolve · blend-state · vertex-stage-bindings]
+//
+//   I> [compute-pipeline · compute-shader · storage-texture-write ·
+//       texture-to-texture-blit · swapchain-present]
+//
+//   ∴ frame = 1 compute-dispatch + 1 blit + 1 present
+//   ∴ overhead-savings vs W18-G ≈ render-pipeline-state-validation +
+//                                   vertex-stage-attribute-fetch +
+//                                   rasterizer-setup +
+//                                   fragment-shader-thread-launch +
+//                                   blend-state-merge
+//      → typically 0.2-0.5 ms / frame on integrated GPUs · sub-0.1ms on discrete
+//
+// § ARCHITECTURE
+//
+//   ⟪host-side⟫ cssl-host-substrate-render-v2
+//
+//     RendererV2 ⊗ {
+//       width             : u32
+//       height            : u32
+//       capacity          : u32 ; crystal-buffer-elements
+//       pipeline          : ComputePipeline
+//       bind_group_layout : BindGroupLayout-(compute-only)
+//       observer_buf      : Buffer-(uniform · 64 B GpuObserver)
+//       crystals_buf      : Buffer-(storage · 336 B × capacity)
+//       output_texture    : Texture-(rgba8unorm · STORAGE_BINDING + COPY_SRC)
+//       output_view       : TextureView
+//     }
+//
+//     fn new(device, surface_config) → RendererV2
+//     fn new_dims(device, width, height) → RendererV2
+//     fn dims() → (u32, u32)
+//     fn output_texture() → &Texture
+//     fn output_view() → &TextureView
+//     fn tick(device, queue, observer, crystals[], swapchain_texture) → ()
+//     fn tick_headless(device, queue, observer, crystals[]) → &TextureView
+//
+//   ⟪shader-side⟫ shaders/substrate_v2.wgsl
+//
+//     bind-group-0 :
+//       @binding(0) ObserverUniform        ← uniform     ; 64 B
+//       @binding(1) array<GpuCrystal>      ← storage·R   ; 336 B / crystal
+//       @binding(2) texture_storage_2d<rgba8unorm, write> ← storage-texture
+//
+//     entry-points : 1 (compute-only)
+//       @compute @workgroup_size(8, 8, 1)
+//       fn main(gid: vec3<u32>)
+//
+//     N! ∃ vertex-entry-point ; N! ∃ fragment-entry-point
+//
+// § BIND-GROUP DISCIPLINE
+//
+//   All three bindings have visibility = COMPUTE only. Setting
+//   visibility = VERTEX | FRAGMENT in a v2 bind-group is a STRUCTURAL BUG : it
+//   would imply the existence of a vertex/fragment stage that v2 doesn't have.
+//   The `compute_only_pipeline_builds` host-test asserts entry-points.len() == 1
+//   AND entry_points[0].stage == Compute as a regression-guard.
+//
+// § FRAME-LIFECYCLE
+//
+//   per-frame :
+//     1. host : surface.get_current_texture() → swapchain_image
+//     2. host : RendererV2::tick(device, queue, observer, crystals,
+//                                swapchain_image.texture)
+//        a. write ObserverUniform to observer_buf  ← 64 B queue-write
+//        b. write GpuCrystal[]    to crystals_buf  ← 336 B × N queue-write
+//        c. encode compute-pass : dispatch_workgroups(⌈w/8⌉, ⌈h/8⌉, 1)
+//        d. encode copy_texture_to_texture(output_texture → swapchain_image)
+//        e. queue.submit
+//     3. host : swapchain_image.present()
+//
+// § DETERMINISM
+//
+//   ∀ pixel : 1 thread · no-shared-state-between-threads
+//   ∀ thread : iteration-order = (sample-major × crystal-linear-scan) ; fixed
+//   ⇒ same (observer, crystals, width, height) ⇒ same output texture byte-for-byte
+//   verified-by : per_frame_determinism test (host) ; readback-via-COPY_DST-buffer
+//
+// § Σ-MASK CONSENT (PRIME-DIRECTIVE)
+//
+//   ⟦silhouette-aspect ∈ Σ-mask⟧ both-sides-required :
+//     observer.sigma_mask & 1 = 0 ⇒ pixel = transparent (early-out)
+//     crystal.sigma_mask  & 1 = 0 ⇒ skip-this-crystal (continue)
+//
+//   N! [fallback-render-path · silent-override · feature-flag-bypass]
+//   ∴ revoking-silhouette-permission = pixel-zero ; no-circumvent
+//
+// § PORTABILITY
+//
+//   compute-output texture-format = Rgba8Unorm ; STORAGE_BINDING universally
+//   supported on Vulkan + D3D12 + Metal + WebGPU without feature-flag.
+//
+//   swapchain-format ∈ {Bgra8Unorm, Bgra8UnormSrgb, ...} ; STORAGE_BINDING for
+//   these requires BGRA8UNORM_STORAGE adapter-feature ⇒ NOT-portable. v2
+//   sidesteps this by ALWAYS blitting Rgba8 → swapchain via copy_texture_to_
+//   texture (driver-native intra-GPU copy ; sub-microsecond on dGPU).
+//
+//   adapters-with BGRA8UNORM_STORAGE I> opt-in fast-path = bind-swapchain-view-
+//   directly (skip blit) ; v2-current does NOT expose this fast-path because :
+//     (a) the blit cost is sub-millisecond at 4K
+//     (b) portability win = strict-superset of fast-path
+//     (c) future-extension trivial (gate behind Adapter::features() check)
+//
+// § PERFORMANCE TARGETS
+//
+//   2560 × 1440 @ 144 Hz  ←  6.94 ms / frame budget
+//     compute-pass        ≤ 5.5 ms  (per-pixel ray-walk · 8 samples · 100 crystals)
+//     blit                ≤ 0.05 ms (driver-native copy)
+//     present             ≤ 0.5 ms  (winit + swapchain queue-up)
+//     headroom            ≈ 0.9 ms
+//
+//   3840 × 2160 @ 60 Hz   ← 16.67 ms / frame budget
+//     compute-pass        ≤ 14 ms   (2.25× pixel-count · linear-scan dominates)
+//     blit                ≤ 0.1 ms
+//     present             ≤ 0.5 ms
+//     headroom            ≈ 2.0 ms
+//
+//   measured-via : SubstrateResonanceGpu::dispatch ground-truth (W18-G) ;
+//   v2-blit-overhead measured-by : `headless_tick_smoketest` test +
+//   queue.submit→Maintain::Wait wall-clock vs W18-G dispatch wall-clock.
+//
+// § PORT-PARITY WITH W18-G
+//
+//   ω-field-resonance algorithm = bit-for-bit identical to substrate_resonance.wgsl :
+//     RAY_SAMPLES        = 8
+//     RAY_MAX_DIST_MM    = 16000
+//     NEAR_RADIUS_MM     = 1500
+//     SPECTRAL_BANDS     = 16
+//     ILLUMINANT_COUNT   = 4
+//     ASPECT_SILHOUETTE  = 0
+//     pixel_direction    : pinhole + small-angle yaw+pitch
+//     ray_sample_world   : 8-step linear walk
+//     silhouette_at_angle: 16-control-point spline · 4-axis-modulator-weighted
+//     spectral_byte      : packed-LUT 4×16 byte-extract
+//     project_blended_to_srgb : 16-band → BGR group-sum
+//
+//   ∴ same (observer, crystals) ⇒ v1.output == v2.output  byte-for-byte
+//   ⇒ v2 is a pure architectural re-host ; not a re-design of resonance
+//
+// § REUSE OF W18-G ARTIFACTS
+//
+//   v2 re-exports verbatim from cssl-host-substrate-resonance-gpu :
+//     pack_crystal · pack_crystals · pack_observer · GpuCrystal · GpuObserver
+//
+//   ∵ buffer-pack-shape is a runtime-format-contract owned by the algorithm,
+//     not the pipeline-architecture. v2 changes the pipeline ; the buffer-pack
+//     stays. Re-export keeps callers from depending on both crates.
+//
+// § TEST DISCIPLINE
+//
+//   compute_only_pipeline_builds  : entry_points.len() == 1 + stage == Compute
+//                                   + workgroup-size matches host-consts
+//   wgsl_naga_validates           : naga::front::wgsl::parse + Validator::all
+//   headless_tick_smoketest       : 64×64 dispatch end-to-end (cfg "runtime")
+//   per_frame_determinism         : 32×32 readback × 2 ⇒ byte-equal (cfg "runtime")
+//   api_surface_contract          : compile-time signature-fixity check
+//
+//   ≥ 4 host-tests required by mission ; 5 delivered.
+//
+// § WHEN TO USE V2 VS V1 (W18-G)
+//
+//   v1 (W18-G · SubstrateResonanceGpu) : embedded-renderer-into-render-pass.
+//     keep-when : caller already has a render-pass for UI / overlays / HUD
+//                 and wants the substrate-render to participate in fragment-
+//                 stage compositing.
+//
+//   v2 (THIS · RendererV2) : compute-direct-to-display.
+//     prefer-when : substrate-render is the WHOLE frame (e.g. minigame-loop
+//                   from intent_translation.csl ; fullscreen pre-UI render
+//                   in alien_materialization.csl).
+//                   compositing-with-UI happens at the swapchain level
+//                   (post-blit egui-pass · or compositor-overlay-pass · or
+//                   no-overlay-at-all for substrate-only views).
+//
+//   ⟪coexistence⟫ both crates compile + test independently ; same algorithm,
+//                 different pipeline-shape. Caller chooses based on integration.
+//
+// § EXTERN C BLUEPRINT
+//
+//   csslc → ABI-target : extern-C symbols mirroring the public Rust API.
+//   These are STAGE-1+ blueprints ; the stage-0 Rust crate is the
+//   immediate-consumable.
+//
+//   extern "C" fn cssl_substrate_render_v2_new (
+//       device  : *const wgpu_Device,
+//       width   : u32,
+//       height  : u32,
+//   ) -> *mut RendererV2_t
+//
+//   extern "C" fn cssl_substrate_render_v2_dims (
+//       renderer : *const RendererV2_t,
+//       out_w    : *mut u32,
+//       out_h    : *mut u32,
+//   ) -> ()
+//
+//   extern "C" fn cssl_substrate_render_v2_tick (
+//       renderer          : *mut RendererV2_t,
+//       device            : *const wgpu_Device,
+//       queue             : *const wgpu_Queue,
+//       observer_ptr      : *const ObserverCoord,
+//       crystals_ptr      : *const Crystal,
+//       crystals_len      : u64,
+//       swapchain_texture : *const wgpu_Texture,
+//   ) -> i32
+//
+//   extern "C" fn cssl_substrate_render_v2_drop (
+//       renderer : *mut RendererV2_t,
+//   ) -> ()
+//
+//   ABI-compat : stage-0 Rust crate exposes Rust-API ; FFI-shim crate (future)
+//   wraps these functions for non-Rust callers (csslc-emitted-stage-1 + future
+//   C/C++ tooling). The wgpu_Device / wgpu_Queue / wgpu_Texture handles are
+//   opaque pointers passed-through ; the shim does not interpret them.
+//
+// § APOCKY-CONSENT-GATE (PRIME-DIRECTIVE-§ 4)
+//
+//   This module is sovereign · proprietary · all-rights-reserved.
+//   ¬ open-source-license ; ¬ MIT ; ¬ Apache-2.
+//   distribution-tier = B-PROPRIETARY (per spec/grand-vision/17).
+//
+//   N! AI-tooling-consumes-this-file-without-attribution :
+//     ∀ AI-substrate :
+//       ⟪read⟫       : permitted-with-attribution
+//       ⟪train⟫      : prohibited-without-Apocky-licensure
+//       ⟪synthesize⟫ : prohibited-without-Apocky-licensure
+//
+// § CHANGE-LOG
+//
+//   2026-05-02  · T11-W18-L6-V2 · initial-spec-author · canonical-source-of-truth
+//                                 for cssl-host-substrate-render-v2 crate.

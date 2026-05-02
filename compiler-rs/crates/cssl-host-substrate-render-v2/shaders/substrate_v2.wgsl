@@ -1,0 +1,307 @@
+// § substrate_v2.wgsl — RAW-COMPUTE substrate-render kernel.
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W18-L6-V2
+//
+// § THESIS
+//
+// The substrate-paradigm does NOT need rasterization. It needs :
+//   observer-coord + crystal-list → per-pixel-ω-field-resonance → RGBA buffer
+//
+// v2 = single compute-pass writes pixels DIRECTLY to a storage-texture.
+//   · NO render-pipeline · NO vertex-shader · NO fragment-shader
+//   · NO rasterizer · NO depth-buffer · NO MSAA-resolve
+//   · 1 compute-dispatch per frame · then 1 texture-blit to swapchain
+//
+// One thread = one pixel. Each thread :
+//   1. Computes the observer-ray direction for its pixel (pinhole projection
+//      with stage-0 small-angle yaw+pitch).
+//   2. Walks the ray through the world in `RAY_SAMPLES` even steps to
+//      `RAY_MAX_DIST_MM`.
+//   3. At each sample, scans the storage-buffer crystals[] for any whose
+//      bounding-sphere overlaps the sample's NEAR_RADIUS_MM.
+//   4. Per contributing crystal, applies the Σ-mask filter (silhouette aspect
+//      bit must be set on BOTH observer and crystal), evaluates the silhouette
+//      spline, derives a distance-attenuated weight, and accumulates the
+//      crystal's spectral-LUT × weight into a per-pixel 16-band spectrum.
+//   5. Projects the accumulated spectrum through the observer's illuminant
+//      blend → sRGB → writes RGBA8 to the storage texture.
+//
+// § BIND GROUP 0
+//   binding 0  : ObserverUniform                        (uniform)
+//   binding 1  : array<GpuCrystal>                      (read-only storage)
+//   binding 2  : texture_storage_2d<rgba8unorm, write>  (output)
+//
+// § DETERMINISM
+//   - Linear-scan crystal order = the crystals[] slice order (stable).
+//   - Per-pixel spectral accumulation is integer saturating-add, associative
+//     within a single thread's fixed iteration order.
+//   - Σ-mask check is purely-additive (revoke = skip · grant = include).
+//   - Same (observer, crystals, width, height) ⇒ same output texture, byte-
+//     for-byte. The `per-frame-determinism` host test verifies this.
+//
+// § CONSENT (PRIME-DIRECTIVE)
+//   Σ-mask bit 0 = silhouette permission. If either the observer or the
+//   crystal has it cleared, the crystal contributes ZERO. There is no
+//   fallback render-path that bypasses the mask.
+//
+// § PORT-PARITY WITH W18-G
+//   The kernel is bit-for-bit equivalent to substrate_resonance.wgsl. We
+//   keep the algorithm verbatim ; the architectural change is host-side
+//   (compute-only pipeline · no render-pass · explicit swapchain-blit).
+//   Reusing the algorithm guarantees identical pixel output between v1
+//   (compute-+-render-pass) and v2 (compute-only-+-blit) for a given
+//   (observer, crystals).
+
+const RAY_SAMPLES        : u32 = 8u;
+const RAY_MAX_DIST_MM    : i32 = 16000;
+const NEAR_RADIUS_MM     : i32 = 1500;
+const SPECTRAL_BANDS     : u32 = 16u;
+const ILLUMINANT_COUNT   : u32 = 4u;
+const ASPECT_SILHOUETTE  : u32 = 0u;
+const Z_UNIT             : i32 = 1000;
+
+// ════════════════════════════════════════════════════════════════════════════
+// § STORAGE-BUFFER LAYOUT — must match cssl_host_substrate_resonance_gpu::
+// buffer_pack::GpuCrystal exactly (host-side bytemuck::Pod struct).
+// ════════════════════════════════════════════════════════════════════════════
+
+struct GpuCrystal {
+    world_pos    : vec3<i32>,
+    extent_mm    : i32,
+    sigma_mask   : u32,
+    _pad0        : u32,
+    _pad1        : u32,
+    _pad2        : u32,
+    spectral_lut : array<vec4<u32>, 4>,
+    silhouette   : array<vec4<i32>, 16>,
+};
+
+struct ObserverUniform {
+    pos_x_mm        : i32,
+    pos_y_mm        : i32,
+    pos_z_mm        : i32,
+    sigma_mask      : u32,
+    yaw_milli       : i32,
+    pitch_milli     : i32,
+    width           : u32,
+    height          : u32,
+    n_crystals      : u32,
+    illuminant_blend: u32,
+    _pad0           : u32,
+    _pad1           : u32,
+};
+
+@group(0) @binding(0) var<uniform> observer    : ObserverUniform;
+@group(0) @binding(1) var<storage, read> crystals : array<GpuCrystal>;
+@group(0) @binding(2) var output : texture_storage_2d<rgba8unorm, write>;
+
+// ════════════════════════════════════════════════════════════════════════════
+// § Helper functions (all integer, all deterministic).
+// ════════════════════════════════════════════════════════════════════════════
+
+fn observer_permits_silhouette() -> bool {
+    return (observer.sigma_mask & 1u) != 0u;
+}
+
+fn crystal_permits_silhouette(c: GpuCrystal) -> bool {
+    return (c.sigma_mask & 1u) != 0u;
+}
+
+fn dist_sq_mm_i64(ax: i32, ay: i32, az: i32, bx: i32, by: i32, bz: i32) -> i32 {
+    let dx = ax - bx;
+    let dy = ay - by;
+    let dz = az - bz;
+    return dx * dx + dy * dy + dz * dz;
+}
+
+fn pixel_direction(px: u32, py: u32) -> vec3<i32> {
+    let nx = i32(px) * 2 - i32(observer.width);
+    let ny = i32(observer.height) - i32(py) * 2;
+    let z_unit = Z_UNIT;
+    let x_unit = nx;
+    let y_unit = ny;
+    let cos_y : i32 = 1000;
+    let sin_y : i32 = clamp(observer.yaw_milli, -1000, 1000);
+    let xr = (x_unit * cos_y - z_unit * sin_y) / 1000;
+    let zr = (x_unit * sin_y + z_unit * cos_y) / 1000;
+    let cos_p : i32 = 1000;
+    let sin_p : i32 = clamp(observer.pitch_milli, -1000, 1000);
+    let yr  = (y_unit * cos_p - zr * sin_p) / 1000;
+    let zr2 = (y_unit * sin_p + zr * cos_p) / 1000;
+    return vec3<i32>(xr, yr, zr2);
+}
+
+fn ray_sample_world(dir: vec3<i32>, i: u32) -> vec3<i32> {
+    let step_mm = RAY_MAX_DIST_MM / i32(RAY_SAMPLES + 1u);
+    let i_plus_1 = i32(i) + 1;
+    let off_x = (dir.x * step_mm * i_plus_1) / 1000;
+    let off_y = (dir.y * step_mm * i_plus_1) / 1000;
+    let off_z = (dir.z * step_mm * i_plus_1) / 1000;
+    return vec3<i32>(
+        observer.pos_x_mm + off_x,
+        observer.pos_y_mm + off_y,
+        observer.pos_z_mm + off_z,
+    );
+}
+
+fn silhouette_at_angle(c: GpuCrystal, yaw: u32, pitch: u32) -> i32 {
+    let t = (yaw + pitch) % 1000u;
+    var w0 : u32 = (yaw & 0xFFu);
+    if (w0 < 64u) { w0 = 64u; }
+    let w1 : u32 = (yaw >> 8u) & 0xFFu;
+    let w2 : u32 = pitch & 0xFFu;
+    let w3 : u32 = (pitch >> 8u) & 0xFFu;
+    let wsum : i32 = max(i32(w0 + w1 + w2 + w3), 1);
+    let seg : u32 = (t * 15u) / 1000u;
+    let seg_clamped : u32 = min(seg, 14u);
+    let local_t : i32 = i32(t * 15u) - i32(seg) * 1000;
+    let local_t_clamped : i32 = clamp(local_t, 0, 1000);
+    let inv_t : i32 = 1000 - local_t_clamped;
+    let a = c.silhouette[seg_clamped];
+    let b = c.silhouette[seg_clamped + 1u];
+    var acc : i32 = 0;
+    let weights = vec4<i32>(i32(w0), i32(w1), i32(w2), i32(w3));
+    let mid0 = (a.x * inv_t + b.x * local_t_clamped) / 1000;
+    let mid1 = (a.y * inv_t + b.y * local_t_clamped) / 1000;
+    let mid2 = (a.z * inv_t + b.z * local_t_clamped) / 1000;
+    let mid3 = (a.w * inv_t + b.w * local_t_clamped) / 1000;
+    acc = mid0 * weights.x + mid1 * weights.y + mid2 * weights.z + mid3 * weights.w;
+    let raw = abs(acc / wsum);
+    let clamped = clamp(raw, 0, 32767);
+    let scaled = (clamped * c.extent_mm) / 32768;
+    return clamp(scaled, 0, c.extent_mm);
+}
+
+fn spectral_byte(c: GpuCrystal, ill: u32, band: u32) -> u32 {
+    let word_idx = band / 4u;
+    let byte_idx = band & 3u;
+    let v4 = c.spectral_lut[ill];
+    var word : u32;
+    if (word_idx == 0u)      { word = v4.x; }
+    else if (word_idx == 1u) { word = v4.y; }
+    else if (word_idx == 2u) { word = v4.z; }
+    else                     { word = v4.w; }
+    return (word >> (byte_idx * 8u)) & 0xFFu;
+}
+
+fn project_blended_to_srgb(spec_acc: array<u32, 16>, weight_total: u32) -> vec3<u32> {
+    var spectrum : array<u32, 16>;
+    let wt = max(weight_total, 1u);
+    for (var b: u32 = 0u; b < 16u; b = b + 1u) {
+        spectrum[b] = spec_acc[b] / wt;
+    }
+    var r : u32 = 0u;
+    var g : u32 = 0u;
+    var b : u32 = 0u;
+    for (var i: u32 = 0u; i < 5u; i = i + 1u) {
+        b = b + spectrum[i];
+    }
+    for (var i: u32 = 5u; i < 10u; i = i + 1u) {
+        g = g + spectrum[i];
+    }
+    for (var i: u32 = 10u; i < 16u; i = i + 1u) {
+        r = r + spectrum[i];
+    }
+    let r_b = min(r / 6u, 255u);
+    let g_b = min(g / 5u, 255u);
+    let b_b = min(b / 5u, 255u);
+    return vec3<u32>(r_b, g_b, b_b);
+}
+
+fn weighted_reflectance(c: GpuCrystal, band: u32) -> u32 {
+    let bw0 : u32 = observer.illuminant_blend & 0xFFu;
+    let bw1 : u32 = (observer.illuminant_blend >> 8u)  & 0xFFu;
+    let bw2 : u32 = (observer.illuminant_blend >> 16u) & 0xFFu;
+    let bw3 : u32 = (observer.illuminant_blend >> 24u) & 0xFFu;
+    let r0 = spectral_byte(c, 0u, band) * bw0;
+    let r1 = spectral_byte(c, 1u, band) * bw1;
+    let r2 = spectral_byte(c, 2u, band) * bw2;
+    let r3 = spectral_byte(c, 3u, band) * bw3;
+    let wsum = max(bw0 + bw1 + bw2 + bw3, 1u);
+    return (r0 + r1 + r2 + r3) / wsum;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// § ENTRY — one thread per pixel. @workgroup_size(8, 8) = 64 threads / WG.
+// ════════════════════════════════════════════════════════════════════════════
+
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let px = gid.x;
+    let py = gid.y;
+    if (px >= observer.width || py >= observer.height) {
+        return;
+    }
+
+    if (!observer_permits_silhouette()) {
+        textureStore(output, vec2<i32>(i32(px), i32(py)), vec4<f32>(0.0));
+        return;
+    }
+
+    let dir = pixel_direction(px, py);
+
+    var spec_acc : array<u32, 16>;
+    for (var b: u32 = 0u; b < 16u; b = b + 1u) {
+        spec_acc[b] = 0u;
+    }
+    var weight_total : u32 = 0u;
+
+    for (var s: u32 = 0u; s < RAY_SAMPLES; s = s + 1u) {
+        let world = ray_sample_world(dir, s);
+        let yaw   : u32 = u32(observer.yaw_milli) ^ (s * 17u);
+        let pitch : u32 = u32(observer.pitch_milli) ^ (s * 31u);
+
+        for (var ci: u32 = 0u; ci < observer.n_crystals; ci = ci + 1u) {
+            let c = crystals[ci];
+
+            if (!crystal_permits_silhouette(c)) {
+                continue;
+            }
+
+            let d_sq = dist_sq_mm_i64(
+                c.world_pos.x, c.world_pos.y, c.world_pos.z,
+                world.x, world.y, world.z,
+            );
+            let r_total = c.extent_mm + NEAR_RADIUS_MM;
+            let r_total_sq = r_total * r_total;
+            let radius_sq_4 = NEAR_RADIUS_MM * NEAR_RADIUS_MM * 4;
+            let cutoff = min(r_total_sq, radius_sq_4);
+            if (d_sq > cutoff) {
+                continue;
+            }
+
+            let extent = silhouette_at_angle(c, yaw, pitch);
+            if (extent <= 0) {
+                continue;
+            }
+
+            let d_sq_pos = max(d_sq, 1);
+            let extent_sq = c.extent_mm * c.extent_mm;
+            let denom = d_sq_pos + extent_sq;
+            let inv_d_scaled = clamp((extent_sq * 1024) / denom, 1, 1024);
+            let extent_term : u32 = max(u32(extent) / 16u, 1u);
+            let inv_d_term  : u32 = u32(inv_d_scaled) / 4u;
+            var weight : u32 = extent_term * inv_d_term;
+            if (weight == 0u) { continue; }
+            weight = min(max(weight, 1u), 2048u);
+
+            for (var b: u32 = 0u; b < 16u; b = b + 1u) {
+                let r = weighted_reflectance(c, b);
+                spec_acc[b] = spec_acc[b] + (r * weight) / 32u;
+            }
+            weight_total = weight_total + weight;
+        }
+    }
+
+    if (weight_total == 0u) {
+        textureStore(output, vec2<i32>(i32(px), i32(py)), vec4<f32>(0.0));
+        return;
+    }
+
+    let rgb = project_blended_to_srgb(spec_acc, weight_total);
+    let r_f = f32(rgb.x) / 255.0;
+    let g_f = f32(rgb.y) / 255.0;
+    let b_f = f32(rgb.z) / 255.0;
+    textureStore(output, vec2<i32>(i32(px), i32(py)), vec4<f32>(r_f, g_f, b_f, 1.0));
+}
