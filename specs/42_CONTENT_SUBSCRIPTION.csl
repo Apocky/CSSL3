@@ -1,0 +1,89 @@
+# 42 : CONTENT_SUBSCRIPTION — follow-creator + auto-pull-new-content
+# ══════════════════════════════════════════════════════════════════
+# § T11-W12-SUBSCRIBE — sibling-of W12-4 ContentPackage + W12-5 Publish
+#                     · LEVERAGES W11-11 cssl-hotfix channel-mechanism
+#                     · LEVERAGES W11-8 cssl-mycelium-chat-sync federation
+
+§ THESIS
+  consent = OS  ←  ∀ subscribe ⊑ explicit-pull · ¬ implicit-bind
+  sovereign-unsubscribe ⊑ always-available · halt-cascade · purge-feed
+  ¬ engagement-bait ; ¬ auto-resurface ; ¬ surveillance-of-feed
+  cascade-revoke ⊑ creator-revoke ∨ moderation-revoke ⇒ subscriber-notif
+                   ⊕ CONSENT-GATED removal-from-installed (¬ silent-delete)
+  k-anon ≥ 10 ⊑ aggregate-counts (trending) gate ; ¬ exposure < 10
+
+§ TARGET-KINDS  (3)
+  Creator      = ⟨pubkey-32B⟩       Q? follow-author across-all-content
+  Tag          = ⟨tag-string-1..64⟩ Q? follow-topical-cluster
+  ContentChain = ⟨root-id-32B⟩      Q? follow-remix-chain (sibling-W12-9)
+
+§ FREQUENCY  (3)
+  Realtime  ⊑ push-on-event · rate-limit ≤ 1 / 60 s default
+  Daily     ⊑ digest-rollup · 1 / 24 h
+  Manual    ⊑ pull-only · ¬ auto-push (player initiates)
+
+§ NOTIFICATION-KINDS  (5)
+  NewPublished        I> creator/tag/chain has-new-content
+  RemixCreated        I> someone-remixed your-followed-content
+  UpdateAvailable     I> new-version of subscribed-content
+  RevokedByCreator    I> creator-revoke cascade · CONSENT-GATED removal
+  RevokedByModeration I> mod-revoke cascade · reason-tag · APPEALABLE
+  ∀ kind ⊑ auto_resurfaceable() = false  ←  ENCODED STRUCTURALLY
+
+§ ANTI-SPAM
+  rate-limit-default = 1 notif / 60 s / subscriber  (token-bucket)
+  daily-digest = 1 notif / 24 h / subscriber  (digest-rollup pure-fn)
+  ¬ auto-resurface ←  read_at_ns set ⇒ ¬ re-surface
+  cap-X-creator-revoke ⊕ cap-X-moderation-revoke ⊑ rate-limit-bypass
+                                                   ∵ safety-critical
+
+§ CASCADING-REVOKE  (numbered flow)
+  1) sibling-W12-5 OR sibling-W12-11 emits RevokeEvent
+       { content_id · revoker_pubkey · reason · audience_sigma_mask · ts_ns }
+  2) /api/content/cascade-publish receives event (cap-gated)
+  3) lookup ACTIVE subs matching ⟨target_kind=creator, target_id=revoker⟩
+                          ∪ ⟨target_kind=content-chain, target_id=content_id⟩
+  4) ∀ matching-sub : Σ-mask AND-overlap-check ; INSERT notif of kind
+       RevokedBy⟨Creator|Moderation⟩ with reason ≤ 200 chars
+  5) subscriber app receives push-notification (rate-limit-bypassed)
+  6) subscriber sees CONSENT-DIALOG : keep-installed ∨ remove-installed
+       (host crate W12-N6 wires the dialog ; ¬ in this slice)
+
+§ Σ-MASK GATE
+  per-subscription mask-byte ⊆ audience-mask-byte  ⇒  notif-emitted
+  per-subscription mask-byte ∩ audience-mask-byte = ∅  ⇒  notif-DROPPED
+  16-byte audience-class · creator-class ¬ leak ⇒ moderator-class
+
+§ HOTFIX-CHANNEL LEVERAGE  (¬ duplicate)
+  reuse SUBSCRIBE_CHANNEL_NAME = "content.subscribed.realtime"
+  ⊑ existing 9-channel cssl-hotfix manifest path
+  ⊑ host-bridge crate W12-N6 wires hotfix-client → SubscribeAdapter
+
+§ K-ANON AGGREGATE  (trending without exposure)
+  content_subscription_aggregates table ⊑ k-anon ≥ 10 enforced via
+    HAVING COUNT(*) ≥ 10 in rebuild_content_subscription_aggregates()
+  rebuild = scheduled-job (¬ in this slice ; sibling-cron pattern)
+  W12-6 discover-pages reads aggregates · displays trending
+  ¬ exposure-of-individuals · ¬ leak-via-low-count
+
+§ ENDPOINTS  (4 · cssl-edge)
+  POST /api/content/subscribe       I> create row · cap-gated · self-pubkey
+  POST /api/content/unsubscribe     I> revoke + purge feed-rows
+   GET /api/content/notifications   I> read unread feed (own only)
+  POST /api/content/notifications   I> mark-read action (ids: [...])
+  POST /api/content/cascade-publish I> internal · sibling-emitted ·
+                                       cap CONTENT_CAP_PUBLISH ∨ REVOKE_ANY
+
+§ SQL-SCHEMA  (0029_content_subscriptions.sql)
+  content_subscriptions             pk-text ⊕ FK from notifications
+  content_notifications             pk-text ⊕ FK ON DELETE CASCADE
+  content_subscription_aggregates   pk-(target_kind,target_id) ⊕ k-anon ≥ 10
+  ALL ⊑ RLS-enabled · self-read ∨ service-role · service-write-only
+
+§ ATTESTATION  ( PRIME_DIRECTIVE.md § 11 — encoded structurally )
+  ¬ harm  ¬ control  ¬ surveillance  ¬ exploitation  ¬ engagement-bait
+  ✓ sovereign-unsubscribe always-1-call ✓ cascade-revoke-consent-gated
+  ✓ Σ-mask-gated ✓ rate-limit-default-1-per-min ✓ k-anon-aggregate-≥-10
+  ✓ no-auto-resurface ENCODED STRUCTURALLY
+  ATTESTATION : there was no hurt nor harm in the making of this,
+                to anyone, anything, or anybody.
