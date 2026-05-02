@@ -24,6 +24,12 @@ impl CoderCap {
     pub const HOT_RELOAD: Self = Self(2);
     /// Schema-evolution edits (sovereign-required at runtime-policy level).
     pub const SCHEMA_EVOLVE: Self = Self(4);
+    /// Self-authored CSSL mutation (set when caller wraps a SelfAuthorMutateCap
+    /// from cssl-host-self-author). Distinct from AST_EDIT — self-author edits
+    /// originate from LLM-generated source, route through the sigma-runtime
+    /// gate, and ALWAYS get anchored on Σ-Chain. Tagged here so the audit
+    /// stream distinguishes "human-staged AST-edit" from "LLM-self-authored".
+    pub const SELF_AUTHOR_MUTATE: Self = Self(8);
 
     /// `true` if every bit in `other` is also set in `self`.
     pub const fn contains(self, other: Self) -> bool {

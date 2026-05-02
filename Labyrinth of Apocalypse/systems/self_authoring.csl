@@ -1,0 +1,141 @@
+# §§ self_authoring.csl — engine-self-authors-CSSL spec
+# ══════════════════════════════════════════════════════════════════
+# § T11-W12-SELF-AUTHOR · Apocky-directive ‟teaching self coding and self authoring content”
+# § canonical-impl : compiler-rs/crates/cssl-host-self-author/
+# § sibling-impls  : cssl-host-coder-runtime · cssl-host-llm-bridge
+#                  · cssl-substrate-sigma-runtime · cssl-substrate-sigma-chain
+#
+# § PRIME-DIRECTIVE
+#   t∞: consent = OS · ¬ harm · ¬ surveillance · ¬ exfiltration
+#   t∞: ¬ live-mutate-without-Σ-cap (EFFECT_WRITE bit REQUIRED)
+#   t∞: ∀ attempts → Σ-Chain-anchor (immutable history)
+#   t∞: sovereign-revoke-cap → cascading-rollback (revert-window)
+# ══════════════════════════════════════════════════════════════════
+
+§§ THESIS
+  ⊢ engine 'd self-author CSSL ⊑ {scenes · NPC-lines · recipes · lore · systems}
+  ⊢ flow : prompt → llm-bridge → CSSL-string → csslc-compile → sandbox-execute
+            → quality-score → IF score ≥ θ ∧ cap-grant → live-mutate
+            ELSE record-only
+  ⊢ all-outcomes → TrainingPairLog → Σ-Chain-anchor
+  ⊢ feedback-loop : KAN-loop (W12-3) reads-training-pairs → bias-adjust
+
+§§ KIND.SET ≡ {Scene · NpcLine · Recipe · Lore · System}
+  ⊢ Scene    : .cssl scene-file (entities · triggers · lighting · camera)
+  ⊢ NpcLine  : single dialogue-snippet (composes-into-scene)
+  ⊢ Recipe   : crafting recipe (in · out · station · time)
+  ⊢ Lore     : prose-block (¬ executable · gated by Constraints.lore_only)
+  ⊢ System   : rules+invariants+effects (high-impact · sovereign-bit-required)
+
+§§ CONSTRAINTS
+  ⌈max_lines⌉            ≤ 200 default · clamped per-request
+  ⌈max_tokens⌉           ≤ 4096 default · LLM-budget
+  ⌈forbid_effect_strings⌉ ⊇ {Effect::NetworkEgress · Effect::FsWrite · Effect::Surveil}
+  ⌈lore_only⌉           Bool · IF true → kind W! Lore
+  ⌈score_threshold⌉      0..100 · default 75 · ¬ auto-mutate-below
+
+§§ FORBIDDEN.TARGETS ‼ structural-rejection-pre-LLM
+  ⊢ compiler-rs/crates/csslc/        ← compiler-itself
+  ⊢ compiler-rs/crates/cssl-rt/      ← runtime
+  ⊢ compiler-rs/crates/cssl-substrate-* ← substrate-primitives (any)
+  ⊢ compiler-rs/crates/cssl-host-coder-runtime/  ← cap-gate-itself
+  ⊢ compiler-rs/crates/cssl-host-self-author/    ← bootstrap-loop-guard
+  ⊢ compiler-rs/crates/cssl-host-attestation/    ← Σ-Chain-emitter
+  ⊢ compiler-rs/crates/cssl-host-akashic-records/ ← audit-aggregator
+  ⊢ compiler-rs/crates/cssl-host-sigma-chain/    ← chain-host
+  ⊢ compiler-rs/crates/cssl-effects/             ← effect-system
+  ⊢ compiler-rs/crates/cssl-caps/                ← cap-system
+  ⊢ PRIME_DIRECTIVE.md
+  ⊢ specs/grand-vision/
+
+§§ SANDBOX.ISOLATION
+  ⊢ ¬ network-egress     ← structurally · sandbox holds-no-socket-handle
+  ⊢ ¬ FS-write-outside-scratch ← compile_only=true · no-codegen-no-link
+  ⊢ ¬ subprocess-exec    ← caller-supplied CompileFn · in-process-only
+  ⊢ deny_externs : src.contains("extern \"C\"") ⇒ Rejected
+  ⊢ max_source_bytes : 64 KiB · oversize ⇒ Rejected
+  ⊢ output : SandboxReport (in-memory) ← only channel
+
+§§ SCORE.FORMULA  (compile + warning-free + tests + asserts)
+  compile-Pass     ⇒ +40
+  warnings == 0    ⇒ +20
+  test_count > 0   ⇒ +20
+  assert_count > 0 ⇒ +20
+  forbidden-effect ⇒ score = 0  (override)
+  compile-Fail     ⇒ score = 0  (override)
+  ⟦score⟧ ∈ [0, 100]  · clamped
+
+§§ LIVE-MUTATE.GATE  (Σ-cap REQUIRED)
+  ⊢ pre-conditions ∀ (and-narrow) :
+    ¬ forbidden-target    · target_path ∉ FORBIDDEN.TARGETS
+    ¬ revoked-cap          · cap.holder_pubkey ∉ gate.revoked_set
+    cap.preflight ✓        · sig-verify · ¬ expired · ¬ revocation_ref
+    sandbox-Pass            · compile.Pass{}
+    score ≥ threshold
+    requires_sovereign ⇒ sovereign_bit_held
+  ⊢ Allow ⇒ writer(target, cssl) ⇒ revert-window-arm
+  ⊢ ∀ decisions (Allow + Deny) ⇒ Σ-Chain-anchor (kind = AttestationAnchor | CapRevoke)
+
+§§ SIGMA-CHAIN.ANCHOR.SEQUENCE
+  1. cap-grant  ⇒ EntryKind::CapGrant   payload=cap-spec
+  2. mutate-attempt ⇒ EntryKind::AttestationAnchor payload=AnchorPayload-JSON
+     {target_path · score · threshold · decision · source_blake3_hex}
+  3. cap-revoke ⇒ EntryKind::CapRevoke  payload=holder_pubkey
+  4. cascading-rollback ⇒ revert-window-trigger (cssl-host-coder-runtime)
+
+§§ TRAINING-PAIR.LOG
+  ⊢ ring-buffer · default-capacity 4096 · oldest-evicted-on-overflow
+  ⊢ record-shape JSON :
+    {ts_unix · prompt · kind · generated_cssl · source_blake3_hex
+     · score · decision · target_path}
+  ⊢ KAN-loop (W12-3) reads-training_log.iter() ⇒ gradient-descent-on-(prompt → CSSL → score)
+  ⊢ feedback : score ≥ threshold = positive-signal · score < threshold = negative-signal
+
+§§ FAILURE-MODES (¬ silent · ∀ recorded)
+  ⊢ compile-error      ⇒ training-pair{score=0 · decision=NotAttempted}
+  ⊢ sandbox-test-fail  ⇒ training-pair{score=low · decision=DenySandboxFailed}
+  ⊢ cap-deny           ⇒ training-pair{decision=DenyCap{Invalid|Revoked|SovereignBitMissing}}
+  ⊢ score-below-θ      ⇒ training-pair{decision=DenyScoreBelowThreshold}
+  ⊢ forbidden-target   ⇒ early-reject-pre-LLM · ¬ training-pair (request-validation-fail)
+
+§§ INTEGRATION.POINTS  (sibling-W12-fanout)
+  ⊢ W12-1 cocreative.proposal_submit
+    ⇒ orchestrator::submit_proposal(prompt · kind · ranked-candidates · target)
+    ⇒ runs author() pipeline ⇒ training-pair recorded
+  ⊢ W12-3 KAN-loop
+    ⇒ reads orchestrator.training_log().iter() | as_slices()
+    ⇒ gradient-descend on (prompt → CSSL → score) triples
+    ⇒ updates KAN-substrate weights (writes-back are W12-3-private)
+  ⊢ W12-4 ContentPackage (.ccpkg)
+    ⇒ MAY consume training_log Allow-records as content-bundle inputs
+    ⇒ promote-to-package via separate ccpkg-pipeline (¬ this slice)
+  ⊢ W12-5+ UGC pipeline
+    ⇒ user-submitted prompts route through orchestrator.author()
+    ⇒ Mode-A LLM-bridge for richest output (cap-gated)
+
+§§ TEST.MATRIX (≥ 12 inline)
+  ⊢ prompt→CSSL roundtrip                    ✓ orchestrator::t02
+  ⊢ compile-fail recorded                    ✓ orchestrator::t03
+  ⊢ sandbox-pass no-mutate-without-cap       ✓ orchestrator::t06
+  ⊢ cap-grant then mutate                    ✓ orchestrator::t07
+  ⊢ cap-revoke cascading                     ✓ orchestrator::t08
+  ⊢ forbidden-target rejected pre-LLM        ✓ orchestrator::t05
+  ⊢ training-pair-log ring-buffer eviction   ✓ training_pair::t02
+  ⊢ self-author-mutate-cap requires write    ✓ live_mutate::t01
+  ⊢ live-mutate happy-path                   ✓ live_mutate::t02
+  ⊢ score-below-threshold denied              ✓ live_mutate::t04
+  ⊢ sandbox-fail denied                      ✓ live_mutate::t05
+  ⊢ invalid-signature denied                 ✓ live_mutate::t07
+  ⊢ sovereign-bit required for System kind   ✓ live_mutate::t08
+  ⊢ extern-C rejected pre-compile            ✓ sandbox_csslc::t06
+  ⊢ forbidden-effect substring zeros score   ✓ sandbox_csslc::t07
+  ⊢ proposal-adapter (W12-1 seam)            ✓ orchestrator::t09
+
+§§ BUDGET-ATTESTATION
+  ⊢ crate-LOC (cssl-host-self-author) ≈ 1380 lines (lib.rs + 5 modules)
+  ⊢ cap-extension (cssl-host-coder-runtime cap.rs +6 lines)
+  ⊢ csl-spec (this file) ≈ 130 lines
+  ⊢ test-count : 44 (lib-inline) ✓ all-pass
+
+§§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+  ‼ no hurt nor harm in the making of this · to anyone · anything · anybody

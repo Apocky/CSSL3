@@ -1,0 +1,47 @@
+# cssl-host-self-author
+# ══════════════════════════════════════════════════════════════════
+# § T11-W12-SELF-AUTHOR : engine self-authoring of CSSL source from GM-prompts
+# § PRIME-DIRECTIVE : ¬ live-mutate-without-Σ-cap · sandbox-no-egress · all-attempts-anchored
+# § HARD-CAPS : ¬ self-modify-substrate-primitives (csslc · cssl-rt · sigma-runtime · sigma-chain)
+# § FLOW : SelfAuthorRequest → llm-bridge → CSSL-string → csslc-compile → sandbox-execute → quality-score
+#          → IF score ≥ threshold AND cap-grant → live-mutate via cssl-host-coder-runtime
+#          → ALL outcomes → TrainingPairLog → Σ-Chain anchor
+# § SAFETY : forbidden-targets rejected pre-compile · score-threshold default 75 · sovereign-revoke-cascades
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name                   = "cssl-host-self-author"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+description  = "Engine self-authoring runtime · prompt→CSSL→csslc→sandbox→score→cap-gated-mutate · all anchored on Σ-Chain · feeds W12-3 KAN-loop training-pairs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+blake3     = { workspace = true }
+thiserror  = { workspace = true }
+ed25519-dalek = { workspace = true }
+# Sibling-crate deps — composition-over-reimplementation.
+cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
+cssl-host-coder-runtime       = { path = "../cssl-host-coder-runtime" }
+cssl-substrate-sigma-runtime  = { path = "../cssl-substrate-sigma-runtime" }
+cssl-substrate-sigma-chain    = { path = "../cssl-substrate-sigma-chain" }
+
+[dev-dependencies]
+rand = { workspace = true }
+
+[package.metadata.cssl]
+prime_directive   = "consent=OS · ¬ live-mutate-without-cap · all-anchored-on-Σ-Chain"
+role              = "self-authoring · prompt→CSSL→sandbox-test→cap-gated-mutate"
+hard_caps         = "csslc · cssl-rt · sigma-runtime · sigma-chain are FORBIDDEN-targets"
+score_threshold   = "75/100 default · ¬ auto-mutate below"
+sandbox_isolation = "¬ network-egress · ¬ FS-write outside scratch · enforced structurally"
+attestation       = "PRIME_DIRECTIVE.md § 11 — no hurt nor harm"
