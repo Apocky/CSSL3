@@ -1,0 +1,41 @@
+[package]
+name                   = "cssl-host-voice-asr"
+description            = "CSSLv3 stage0 — LOCAL voice ASR pipeline : Σ-mask cap-gated capture-handle ABI + deterministic mock phoneme-stream + Windows-SAPI scaffold (no cloud · no external API · no Anthropic/OpenAI/Whisper-cloud)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W18-VOICE-ASR (cssl/session-11/T11-W18-VOICE) :
+# Apocky-vision (verbatim 2026-05-02) : "I want to be able to describe things
+# in text or voice and they crystalize from the substrate". This crate is the
+# voice-input front-half of `Labyrinth of Apocalypse/systems/intent_translation.csl`.
+#
+# § DISJOINT FROM `cssl-host-voice` :
+#   - cssl-host-voice = generic ABI-only audio-ring + SttBackend trait
+#   - cssl-host-voice-asr = ACTUAL phoneme-stream extractor matching the
+#     intent_translation.csl extern "C" surface (voice_capture_start /
+#     voice_capture_phoneme_count / voice_capture_phoneme_at /
+#     voice_capture_finalize). Stage-0 mock-mode default · SAPI scaffold gated.
+#
+# § PRIME-DIRECTIVE alignment :
+#   - LOCAL-only (no network call · no cloud-ASR · no Anthropic/OpenAI)
+#   - Σ-mask cap-token gates start (cap_token=0 → deny → handle 0)
+#   - sovereign-revocable per spec § ATTESTATION
+#   - deterministic mock-mode = same-input-same-output (replay contract)
+#
+# § FFI surface :
+#   `unsafe extern "C"` exports match `intent_translation.csl` decls.
+#   Body is safe-Rust ; the `unsafe` is on the FFI ABI declaration only
+#   (caller-promise · we only read u32 args, return u32). Allowed under
+#   the per-crate forbid(unsafe_code) workspace policy by opt-out below.
+
+[dependencies]
+# § stage-0 mock-mode requires no deps. SAPI scaffold compile-stubs to
+# u32-typed stand-ins so the windows-crate feature surface stays minimal.
+# When real SAPI wire-up lands a sibling slice will add `windows = { workspace = true, features = ["Win32_Media_Speech", ...] }` ; for now
+# the surface is a documented placeholder.
+
+[lints]
+workspace = true
