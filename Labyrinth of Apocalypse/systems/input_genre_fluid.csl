@@ -1,0 +1,113 @@
+§ Labyrinth.of.Apocalypse · systems · input_genre_fluid
+≡ T11-W13-INPUT-GENRE-FLUID · W13-11 multi-source input + accessibility + aim-assist
+≡ canonical-companion : compiler-rs/crates/loa-host/src/input_genre_fluid.rs
+≡ sibling-coupling : input.rs (W11-1 · ¬ rewrite) + genre_fluid_camera.rs (W13-4)
+≡ STATUS : ◐ shipped-stage-0 · accessibility-first
+≡ PRIME-DIRECTIVE : ¬ harm/control/manipulation/surveillance ; consent-OS
+                  : sovereign-cap on aim-assist · ¬ default-on (anti-bullying)
+
+§I role
+  W! action-RPG W! seamless-input-fluidity ← KB+M ↔ controller ↔ touch
+  ¬ force-rebind-on-mode-switch ; LAST-source-wins · 500ms-grace
+  W! accessibility-first ← remappable EVERY action · OS-integration
+  W! sovereign-cap-aim-assist ← anti-bullying-axiom · ¬ pay-to-aim-better
+  ¬ ALL : input_genre_fluid ⊆ catalog-only-Rust ⊑ no-runtime-deps
+
+§I input-modes (4 mutually-exclusive)
+  W! 1.KeyboardMouse        · WASD + mouse-aim · default-PC
+  W! 2.GamepadXinput        · standard-Xbox · LeftStick + RightStick + auto-aim-assist (toggleable)
+  W! 3.GamepadDualSense     · PS5 · adaptive-trigger-aware · haptic-feedback channel
+  W! 4.TouchScreen          · mobile/tablet · virtual-stick + tap-to-act · UI-prompts shift
+
+§I auto-detection
+  W! source-tag per-event ← {Keyboard, Mouse, GamepadXinput, GamepadDualSense, Touch}
+  W! last-input-source becomes-active · grace-window = 500ms
+  W! grace-prevents-thrashing ← rapid-source-switch held until silent-period elapses
+  W! UI-prompt-strings shift atomically when active-mode changes
+    KB+M  : "press F to interact" · "WASD to move"
+    Pad   : "press X to interact" · "left-stick to move"
+    Touch : "tap to interact"     · "drag-stick to move"
+  ✓ deterministic ← timestamp-driven · replay-bit-equal across input-source change
+
+§I per-mode bindings (genre-fluid · matches camera-mode W13-4)
+  W! Fps-mode + KB+M
+    · move = WASD · aim = mouse-delta · jump = Space · crouch = LCtrl · sprint = LShift
+    · interact = F · ADS = RMB-hold · fire = LMB · reload = R
+  W! Fps-mode + Gamepad
+    · move = LeftStick · aim = RightStick + auto-aim-assist (toggleable · sovereign-cap)
+    · jump = A/Cross · crouch = B/Circle · sprint = LeftStickClick
+    · interact = X/Square · ADS = LT/L2-hold · fire = RT/R2 · reload = Y/Triangle
+  W! ThirdPerson-mode + KB+M
+    · move = WASD · cam = mouse-orbit · sprint = LShift
+  W! Isometric-mode + KB+M
+    · move = click-to-move + edge-scroll · aim = mouse-cursor
+  W! TopDown-mode + Gamepad
+    · move = LeftStick · cursor = RightStick · fire-direction = RightStick
+
+§I accessibility (5+ features · OS-integration)
+  W! remappable EVERY action
+    · per-action-binding-table · save/load JSON ← cap-anonymous-share-allowed
+    · ¬ require account ← local-config first-class
+  W! hold-to-toggle per-action
+    · crouch-toggle · ADS-toggle · sprint-toggle ← per-action-config (independent)
+  W! OS-integration sticky/slow/bounce keys
+    · sticky-keys ← single-key-press = modifier-stays-down (Win/Mac/Linux supported)
+    · slow-keys   ← min-press-duration before key-registers
+    · bounce-keys ← debounce repeat-fires within window
+  W! mouse-acceleration toggle · DPI-tunable
+    · raw-input-mode (no-OS-accel) · DPI 100..6400
+  W! visual-input-prompts ← localizable string-keys ← ¬ hardcoded (WCAG)
+  W! haptic-channel (DualSense + Switch + future)
+    · cap-rumble-strength 0..1 · per-event-class
+
+§I aim-assist (5-tier · sovereign-cap · anti-bullying-axiom)
+  W! tier 0 = OFF      · zero-magnetism · zero-friction · default
+  W! tier 1 = LIGHT    · 0.10 magnetism · 0.05 friction · subtle ← accessibility-default
+  W! tier 2 = MODERATE · 0.20 magnetism · 0.10 friction · controller-default
+  W! tier 3 = STRONG   · 0.35 magnetism · 0.20 friction · low-vision-cap
+  W! tier 4 = MAX      · 0.50 magnetism · 0.30 friction · sovereign-only-grant
+  W! sovereign-cap-flow
+    · mode-3+ requires SovereignAttest ← cap-table-entry "input.aim_assist.high"
+    · mode-4 requires explicit consent-prompt + reason-reason-tag
+    · ¬ pay-tier ← cosmetic-only-axiom ; ALL tiers freely-available to caps-granted players
+    · anti-bullying : in PvP-context, server clamps tier ≤ player-class-cap (no pay-to-win)
+  ✓ deterministic ← magnetism applied to aim-vector pre-physics · replay-bit-equal
+
+§I integration-points
+  W! consume RawEvent from input.rs (W11-1 · existing TextInputState preserved)
+  W! emit ActiveInputMode → ui_overlay (UI-prompt-shift)
+  W! emit AimAssistVector → camera + weapon (additive to RawAim · pre-recoil)
+  W! emit BindingMap → settings + cssl-host-config (persist + share)
+  W! consume CameraMode from genre_fluid_camera.rs (W13-4 · per-mode-binding-set)
+  ¬ touch input.rs internals · TextInputState · VirtualKey enum
+  ¬ touch render · network · physics
+
+§I prime-directive-compliance
+  ✓ ¬ surveillance ← bindings-share is OPT-IN-anonymous · no telemetry-by-default
+  ✓ ¬ manipulation ← aim-assist tier ≥ 3 requires explicit-consent + reason-tag
+  ✓ ¬ exploitation ← anti-bullying server-clamp prevents pay-to-aim-better
+  ✓ sovereignty ← ALL bindings remappable · ALL accessibility-features toggleable
+  ✓ consent-OS ← OS-sticky/slow/bounce-keys honored ← respect-platform-accessibility
+
+§I tests (≥10 · inline-Rust)
+  ✓ input-mode-default-keyboard-mouse
+  ✓ auto-detect-switches-on-gamepad-event
+  ✓ 500ms-grace-prevents-thrash
+  ✓ binding-roundtrip JSON serialize/deserialize
+  ✓ ui-prompt-shift atomic-on-mode-change
+  ✓ aim-assist-tier-clamp 0..4
+  ✓ aim-assist-sovereign-cap-deny tier-3-without-cap
+  ✓ aim-assist-magnetism-determinism per-tier
+  ✓ accessibility-os-integration-toggles
+  ✓ remap-binding-roundtrip
+  ✓ genre-fluid-camera-mode-affects-binding-set
+  ✓ touch-mode-virtual-stick-deltas
+
+§I scope-fence (W13-11)
+  ¬ siblings W13-1..10,12 territory
+  ¬ rewrite TextInputState/VirtualKey · EXTEND only
+  ¬ pull winit/wgpu deps · catalog-only
+  W! ≤1500 LOC · INCREMENTAL commits
+
+§I PRIME-DIRECTIVE attestation
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
