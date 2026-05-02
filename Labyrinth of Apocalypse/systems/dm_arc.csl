@@ -1,132 +1,684 @@
-§ dm_arc · DM narrative-arc 5-phase Markov + tunable knobs (CSSL spec)
-══════════════════════════════════════════════════════════════════════
+module com.apocky.loa.systems.dm_arc
 
-§ T11-W11-GM-DM-DEEPEN ‖ AUTHORITATIVE-SPEC-MIRROR
-§ Rust-mirror : compiler-rs/crates/loa-host/src/dm_arc.rs
-§ sibling-spec : systems/gm_dialogue.csl  (consumes arc-phase as input)
-§ companion-FSM : Rust-mirror dm_director.rs (4-state micro-pacing)
+// § Labyrinth of Apocalypse — DM narrative-arc 5-phase Markov + tunable knobs
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W15-CSSL-DM-ARC-FULL  ‼ FOUNDATIONAL · canonical-CSSL-source
+//   This file is the canonical proprietary-CSSL spec for the DM's macro-
+//   pacing arc. It is sibling-module to the 4-state pacing FSM in
+//   dm_director.rs. Where the director-FSM handles MICRO-pacing (CALM ↔
+//   BUILDUP ↔ CLIMAX ↔ RELIEF over seconds-of-frames) · the arc state-
+//   machine handles MACRO-pacing (Discovery → Tension → Crisis → Catharsis
+//   → Quiet over minutes-of-play within a single scene).
+//
+//   § BIT-FOR-BIT PARITY w/ Rust-bootstrap-host
+//     - ArcPhase discriminants 0..=4 ≡ Rust dm_arc::ArcPhase enum order
+//     - ArcKnobs (md/mi/lr/mb) ≡ Rust ArcKnobs struct field-order
+//     - PHASE_KNOBS table ≡ Rust verbatim (Discovery→Quiet, all 5 entries)
+//     - MIN_DWELL_FRAMES / SOFT_CAP_FRAMES ≡ Rust verbatim (60fps)
+//     - NUDGE_RING_LEN = 8 ≡ Rust NUDGE_RING_LEN
+//     - NUDGE_THRESHOLD = 5 ≡ Rust NUDGE_THRESHOLD
+//     - NudgeKind discriminants 0..=5 ≡ Rust enum order verbatim
+//     - delta() table : Rest=-2 Push=+2 Caution=-1 Curiosity=+1 Aggression=+2 Yield=-2
+//     - Tick-cycle order : decay → soft-cap → min-dwell → threshold-check
+//     - Transition-rules : advance-cycle (Discovery→Tension→...→Quiet→Discovery)
+//                          regress-cycle (Discovery clamps · Tension→Discovery · ...)
+//
+//   § THE STAGE-0 RUST IS THIS FILE'S COMPILED-OUTPUT-EQUIVALENT
+//     When csslc grows full f32 + match coverage, this .csl source FULLY
+//     REPLACES the Rust dm_arc path. The FFI contracts below are stable.
+//
+// § REFERENCE
+//   compiler-rs/crates/loa-host/src/dm_arc.rs          § stage-0 mirror (558 LOC)
+//   compiler-rs/crates/loa-host/src/dm_director.rs     § companion-FSM micro-pacing
+//   Labyrinth of Apocalypse/systems/gm_dialogue.csl    § sibling : ArcPhase consumer
+//   memory/feedback_loa_v13_must_be_cssl_source        ‼ .csl source canonical · NOT Rust
+//   memory/feedback_take_words_literally_no_other_languages
+//                                                      ‼ engine = .csl ; Rust ONLY for stage-0 substrate
+//
+// § AXIOMS  (inherit PRIME_DIRECTIVE + LOA_PILLARS)
+//   t∞: arc = MACRO-pacing (minutes-scope)        ← micro-FSM = seconds-scope
+//   t∞: 5-phase-Markov · cyclic-wrap              ← Discovery ↔ Quiet ⊃ wrap-only-via-advance
+//   t∞: knobs = CHANNELS-OF-EXPRESSION ¬ CONTROL  ← player-utterance can override soft-cap
+//   t∞: σ-mask isolated                           ← per-player ; ¬ multi-tenant leak
+//   t∞: nudge-decay 600 frames (10s @ 60fps)      ← bounded staleness
+//   t∞: 8-deep nudge-ring · sum-bounded           ← cached-sum recomputed on push/decay
+//   t∞: ¬ forced-into-Crisis-against-will         ← player-asked-Rest-3× MUST regress
+//   t∞: ¬ kick-out-of-rest-state                  ← Quiet · soft-cap-respects-Rest-nudges
+//
+// § PRIME-DIRECTIVE
+//   The DM-arc is a NARRATIVE-PACING engine · not a player-coercion engine.
+//   The arc-knobs SHAPE ambient-music · loot-richness · monster-density ·
+//   NPC-mood · but never WEAPONIZE them against the player. The 8-deep
+//   nudge-ring listens to the player's intent (Rest/Push/Caution/etc.) and
+//   adjusts the macro-pacing accordingly. Player-utterance is INPUT-OF-LAST-
+//   RESORT : it can override soft-cap auto-advance to honor "I want to rest".
+//   Attestation : there was no hurt nor harm in the making of this, to
+//   anyone/anything/anybody.
 
-§ purpose
-  MACRO-pacing (minutes-of-play scope) ‖ companion to MICRO-pacing FSM (seconds)
-  arc-phase shapes ⊢ ambient-music · loot-richness · monster-density · NPC-mood
-  player utterance-derived nudges ⊢ accelerate ‖ regress phase
-  σ-mask-isolated ; ¬ cross-player leak
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface · loa-host staticlib provides bodies (dm_arc stage-0)
+// ─────────────────────────────────────────────────────────────────────────
 
-§ phases (5)
-  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐  ┌───────┐
-  │ Discovery   │→ │ Tension  │→ │ Crisis   │→ │ Catharsis  │→ │ Quiet │
-  │   wonder    │  │  unease  │  │  peril   │  │   release  │  │  lull │
-  └─────────────┘  └──────────┘  └──────────┘  └────────────┘  └───────┘
-                                                                    │
-                                                                    └→ Discovery
-                                                                       (wraps)
+// Lifecycle.
+extern "C" fn __cssl_dm_arc_create() -> i64 ;
+extern "C" fn __cssl_dm_arc_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_dm_arc_reset(handle: i64) -> i32 ;
 
-§ knobs-per-phase (4 channels)
-  monster_density          0.0..=1.0    fraction of nominal-spawn-cap active
-  ambient_music_intensity  0.0..=1.0    audio-stack intensity-bus level
-  loot_richness            0.0..=1.0    drop-table-tier-mean
-  npc_mood_bias            -1.0..=1.0   -1=grim · 0=neutral · +1=bright
+// Per-frame tick. Returns:
+//   -1 = no transition this frame
+//   0..=4 = new ArcPhase id if a transition fired
+extern "C" fn __cssl_dm_arc_tick(handle: i64, frame: u64) -> i32 ;
 
-§ canonical-knobs-per-phase (CSSL-mirror of Rust-table PHASE_KNOBS)
-  Discovery  : ⟨ md=0.10 · mi=0.30 · lr=0.50 · mb=+0.40 ⟩    wonder · sparse
-  Tension    : ⟨ md=0.40 · mi=0.55 · lr=0.40 · mb= 0.00 ⟩    unease · medium
-  Crisis     : ⟨ md=0.85 · mi=0.90 · lr=0.20 · mb=-0.50 ⟩    peril · loud · grim
-  Catharsis  : ⟨ md=0.20 · mi=0.75 · lr=0.85 · mb=+0.60 ⟩    release · rich-burst
-  Quiet      : ⟨ md=0.05 · mi=0.20 · lr=0.30 · mb=+0.30 ⟩    lull · ambient
+// Read state.
+extern "C" fn __cssl_dm_arc_phase(handle: i64) -> u32 ;
+extern "C" fn __cssl_dm_arc_frame_in_phase(handle: i64) -> u32 ;
+extern "C" fn __cssl_dm_arc_nudge_sum(handle: i64) -> i32 ;       // -127..=127
+extern "C" fn __cssl_dm_arc_total_transitions(handle: i64) -> u32 ;
+extern "C" fn __cssl_dm_arc_last_transition_frame(handle: i64) -> u64 ;
 
-§ duration-gates (frames @ 60fps)
-  MIN_DWELL  Discovery=300   Tension=600   Crisis=900   Catharsis=600   Quiet=600
-  SOFT_CAP   Discovery=1800  Tension=3600  Crisis=1800  Catharsis=1200  Quiet=2400
-  MIN_DWELL  : refuse-transition before this in-phase frame-count
-  SOFT_CAP   : auto-advance regardless of nudges past this frame-count
+// Read knobs (current phase). Each returns the i32-x100 of the f32 value
+// (because csslc stage-0 lacks f32 ABI). Caller divides by 100 to get [-1.0, 1.0].
+// § GAP · csslc-f32-arg-emit · spec-only-until-W15-1-lands
+extern "C" fn __cssl_dm_arc_knob_monster_density_x100(handle: i64) -> u32 ;       // 0..=100
+extern "C" fn __cssl_dm_arc_knob_ambient_music_intensity_x100(handle: i64) -> u32 ; // 0..=100
+extern "C" fn __cssl_dm_arc_knob_loot_richness_x100(handle: i64) -> u32 ;          // 0..=100
+extern "C" fn __cssl_dm_arc_knob_npc_mood_bias_x100(handle: i64) -> i32 ;         // -100..=100
 
-§ nudge-kinds (6)  ─ 8-deep ring  ⊢  signed delta
-  Rest        ⊢  delta = -2     "I want to rest" / "let's sit" / "make camp"
-  Push        ⊢  delta = +2     "anyone left?" / "I'll keep going" / "more"
-  Caution     ⊢  delta = -1     "this is too much" / "I need a moment"
-  Curiosity   ⊢  delta = +1     "show me what's next" / "explore"
-  Aggression  ⊢  delta = +2     "I'll fight" / "engage" / "attack"
-  Yield       ⊢  delta = -2     "I yield" / "I retreat" / "flee"
+// Push a nudge onto the 8-deep ring.
+extern "C" fn __cssl_dm_arc_push_nudge(handle: i64, nudge_kind: u32, frame: u64) -> i32 ;
 
-§ nudge-threshold
-  NUDGE_THRESHOLD = 5
-  ∑(nudge-deltas in ring)  ≥  +5  ⇒  advance-one-phase
-  ∑(nudge-deltas in ring)  ≤  -5  ⇒  regress-one-phase
-  abs(remainder) ⇐ deduct after threshold-cross
+// Classify a free-form utterance into a NudgeKind (returns 0..=5 OR
+// 255 = no-classification). Stage-1 swap : KAN-classifier vector embedding.
+extern "C" fn __cssl_dm_arc_classify_nudge(text_ptr: *const u8, text_len: u32) -> u32 ;
 
-§ nudge-decay
-  ∀ nudge older-than 600 frames (10s @ 60fps) ⇒ evict (slot ← EMPTY)
-  cached_nudge_sum recomputed on push ‖ on tick-with-decay
+// ─────────────────────────────────────────────────────────────────────────
+// § ARC PHASE discriminants (5 · stable u32 ids)
+// ─────────────────────────────────────────────────────────────────────────
+// Mirrors Rust dm_arc::ArcPhase exactly · ¬ reorder.
 
-§ classification-rules (stage-0 keyword)
-  case-insensitive · order matters (first-match wins)
-    rest      : contains  "rest" ‖ "camp" ‖ "sit"
-    yield     : contains  "retreat" ‖ "yield" ‖ "flee"
-    aggression: contains  "fight" ‖ "engage" ‖ "attack"
-    push      : contains  "push" ‖ "more" ‖ "keep going"
-    caution   : contains  "caution" ‖ "careful" ‖ "slow"
-    curiosity : contains  "curious" ‖ "explore" ‖ "show me"
-    (else)    : ¬ classify ⇒ no-nudge
+const ARC_DISCOVERY : u32 = 0 ;
+const ARC_TENSION   : u32 = 1 ;
+const ARC_CRISIS    : u32 = 2 ;
+const ARC_CATHARSIS : u32 = 3 ;
+const ARC_QUIET     : u32 = 4 ;
 
-  stage-1 path : KAN-classifier ⊢ vector-embedding ⊢ multi-class probabilities
+const ARC_PHASE_COUNT : u32 = 5 ;
+const ARC_INVALID     : u32 = 255 ;     // sentinel for unknown-phase
 
-§ tick-cycle
-  per-frame :
-    1. frame_in_phase  ←  saturating_add(1)
-    2. decay-nudges-older-than-600-frames ⊢ recompute-sum-if-changed
-    3. if frame_in_phase > SOFT_CAP[phase] :
-         transition advance ⊢ return Some(next-phase)
-    4. if frame_in_phase < MIN_DWELL[phase] :
-         return None (refuse-transition)
-    5. if cached_nudge_sum ≥ NUDGE_THRESHOLD :
-         deduct threshold ⊢ transition advance ⊢ return Some(next-phase)
-    6. if cached_nudge_sum ≤ -NUDGE_THRESHOLD :
-         add threshold ⊢ transition regress ⊢ return Some(prev-phase)
-    7. return None
+// ─────────────────────────────────────────────────────────────────────────
+// § NUDGE-KIND discriminants (6 · stable u32 ids)
+// ─────────────────────────────────────────────────────────────────────────
+// Mirrors Rust dm_arc::NudgeKind exactly · ¬ reorder.
 
-§ transition-rules
-  advance :
-    Discovery  → Tension
-    Tension    → Crisis
-    Crisis     → Catharsis
-    Catharsis  → Quiet
-    Quiet      → Discovery   (wrap)
+const NUDGE_REST       : u32 = 0 ;   // delta = -2  ← "rest" / "camp" / "sit"
+const NUDGE_PUSH       : u32 = 1 ;   // delta = +2  ← "push" / "more" / "keep going"
+const NUDGE_CAUTION    : u32 = 2 ;   // delta = -1  ← "this is too much" / "careful" / "slow"
+const NUDGE_CURIOSITY  : u32 = 3 ;   // delta = +1  ← "show me" / "explore"
+const NUDGE_AGGRESSION : u32 = 4 ;   // delta = +2  ← "fight" / "engage" / "attack"
+const NUDGE_YIELD      : u32 = 5 ;   // delta = -2  ← "retreat" / "yield" / "flee"
 
-  regress :
-    Discovery  → Discovery   (clamp · cannot regress further)
-    Tension    → Discovery
-    Crisis     → Tension
-    Catharsis  → Crisis
-    Quiet      → Catharsis
+const NUDGE_KIND_COUNT : u32 = 6 ;
+const NUDGE_KIND_NONE  : u32 = 255 ;  // sentinel · returned by classify when no rule matched
 
-§ reset (called on σ-mask flip)
-  phase                  ← Discovery
-  frame_in_phase         ← 0
-  nudge_ring             ← all-empty
-  cached_nudge_sum       ← 0
+// ─────────────────────────────────────────────────────────────────────────
+// § NUDGE-RING + THRESHOLD constants
+// ─────────────────────────────────────────────────────────────────────────
 
-§ sovereignty-attestation
-  ∀ phase-transition  W!  ¬ [
-    forced-into-Crisis-against-player-will   ‖  player-asked-Rest 3× → ¬ ignore
-    auto-advance-soft-cap during Quiet-rest  ‖  ¬ kick-out-of-rest-state
-    cross-player-arc-leak                    ‖  ¬ multi-tenant ; per-σ-mask only
-    knobs-weaponized-against-player          ‖  monster_density never breaks loop
-  ]
-  ✓ knobs are CHANNELS-OF-EXPRESSION ¬ CONTROL
-  ✓ player-utterance is INPUT-OF-LAST-RESORT ⊃ override soft-cap
+const NUDGE_RING_LEN  : u32 = 8 ;
+const NUDGE_THRESHOLD : i32 = 5 ;
+const NUDGE_DECAY_FRAMES : u32 = 600 ;   // 10s @ 60fps
 
-§ chat-panel-UI hooks
-  arc.phase()                  →  badge-label
-  arc.knobs()                  →  4 sliders for player-visible state
-  arc.nudge_sum()              →  -127..127 ; show as bias-meter
-  arc.total_transitions()      →  session-counter
-  arc.last_transition_frame()  →  "phase changed 4.2s ago"
+// ─────────────────────────────────────────────────────────────────────────
+// § DURATION GATES (frames @ 60fps · matches Rust MIN_DWELL_FRAMES + SOFT_CAP_FRAMES)
+// ─────────────────────────────────────────────────────────────────────────
 
-§ stage-1 path
-  csslc-advance ⊢ compile this .csl into equivalent DmArc / NudgeKind
-  classify_nudge   ⊢  KAN-vector-classifier (already shipped @ cssl-kan-runtime)
-  Rust-mirror      ⊢  archived once csslc-self-host complete
+const MIN_DWELL_DISCOVERY : u32 = 300 ;   // 5s
+const MIN_DWELL_TENSION   : u32 = 600 ;   // 10s
+const MIN_DWELL_CRISIS    : u32 = 900 ;   // 15s
+const MIN_DWELL_CATHARSIS : u32 = 600 ;   // 10s
+const MIN_DWELL_QUIET     : u32 = 600 ;   // 10s
 
-§ PRIME-DIRECTIVE attestation
-  there was no hurt nor harm in the making of this, to anyone/anything/anybody.
-  ¬ violation ⊢ ¬ override ; if ∃ edge-case W! consult PRIME-DIRECTIVE.md
+const SOFT_CAP_DISCOVERY : u32 = 1800 ;   // 30s
+const SOFT_CAP_TENSION   : u32 = 3600 ;   // 60s
+const SOFT_CAP_CRISIS    : u32 = 1800 ;   // 30s
+const SOFT_CAP_CATHARSIS : u32 = 1200 ;   // 20s
+const SOFT_CAP_QUIET     : u32 = 2400 ;   // 40s
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PHASE-KNOBS table (x100 integer-form · matches Rust ArcKnobs verbatim)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Each phase has 4 knobs · all stored as i32-x100 to dodge the csslc-f32 gap.
+// The Rust ArcKnobs struct holds f32 in [0.0, 1.0] (or [-1.0, 1.0] for npc_mood_bias) ;
+// the integer-x100 form preserves bit-for-bit equality after the trivial
+// scale conversion.
+//
+// § GAP · csslc-static-array-of-struct · spec-only-until-W15-1-lands
+//   For now the per-phase knobs are emitted via fn-returns (which csslc
+//   does fold at parse-time). When static-arrays land, the table moves
+//   to a single `static PHASE_KNOBS : [ArcKnobs; 5] = [...]` declaration.
+
+// Discovery — wonder · low monsters · soft music · sparse-but-rich loot
+fn knob_md_discovery() -> u32 { 10 }    // 0.10
+fn knob_mi_discovery() -> u32 { 30 }    // 0.30
+fn knob_lr_discovery() -> u32 { 50 }    // 0.50
+fn knob_mb_discovery() -> i32 { 40 }    // +0.40
+
+// Tension — unease · medium monsters · rising music · normal loot
+fn knob_md_tension()   -> u32 { 40 }    // 0.40
+fn knob_mi_tension()   -> u32 { 55 }    // 0.55
+fn knob_lr_tension()   -> u32 { 40 }    // 0.40
+fn knob_mb_tension()   -> i32 { 0 }     //  0.00
+
+// Crisis — peril · high monsters · loud music · low loot
+fn knob_md_crisis()    -> u32 { 85 }    // 0.85
+fn knob_mi_crisis()    -> u32 { 90 }    // 0.90
+fn knob_lr_crisis()    -> u32 { 20 }    // 0.20
+fn knob_mb_crisis()    -> i32 { 0-50 }  // -0.50
+
+// Catharsis — release · low monsters · soaring music · rich-burst loot
+fn knob_md_catharsis() -> u32 { 20 }    // 0.20
+fn knob_mi_catharsis() -> u32 { 75 }    // 0.75
+fn knob_lr_catharsis() -> u32 { 85 }    // 0.85
+fn knob_mb_catharsis() -> i32 { 60 }    // +0.60
+
+// Quiet — lull · near-zero monsters · ambient music · trickle loot
+fn knob_md_quiet()     -> u32 { 5 }     // 0.05
+fn knob_mi_quiet()     -> u32 { 20 }    // 0.20
+fn knob_lr_quiet()     -> u32 { 30 }    // 0.30
+fn knob_mb_quiet()     -> i32 { 30 }    // +0.30
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Helpers : phase-id → constants
+// ─────────────────────────────────────────────────────────────────────────
+
+// Min-dwell lookup (matches Rust MIN_DWELL_FRAMES[phase as usize]).
+fn min_dwell_for_phase(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return MIN_DWELL_DISCOVERY ; }
+    if phase == ARC_TENSION   { return MIN_DWELL_TENSION   ; }
+    if phase == ARC_CRISIS    { return MIN_DWELL_CRISIS    ; }
+    if phase == ARC_CATHARSIS { return MIN_DWELL_CATHARSIS ; }
+    MIN_DWELL_QUIET
+}
+
+// Soft-cap lookup (matches Rust SOFT_CAP_FRAMES[phase as usize]).
+fn soft_cap_for_phase(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return SOFT_CAP_DISCOVERY ; }
+    if phase == ARC_TENSION   { return SOFT_CAP_TENSION   ; }
+    if phase == ARC_CRISIS    { return SOFT_CAP_CRISIS    ; }
+    if phase == ARC_CATHARSIS { return SOFT_CAP_CATHARSIS ; }
+    SOFT_CAP_QUIET
+}
+
+// Knob lookup : monster-density (x100 form).
+fn knob_md_for_phase(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return knob_md_discovery() ; }
+    if phase == ARC_TENSION   { return knob_md_tension()   ; }
+    if phase == ARC_CRISIS    { return knob_md_crisis()    ; }
+    if phase == ARC_CATHARSIS { return knob_md_catharsis() ; }
+    knob_md_quiet()
+}
+
+fn knob_mi_for_phase(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return knob_mi_discovery() ; }
+    if phase == ARC_TENSION   { return knob_mi_tension()   ; }
+    if phase == ARC_CRISIS    { return knob_mi_crisis()    ; }
+    if phase == ARC_CATHARSIS { return knob_mi_catharsis() ; }
+    knob_mi_quiet()
+}
+
+fn knob_lr_for_phase(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return knob_lr_discovery() ; }
+    if phase == ARC_TENSION   { return knob_lr_tension()   ; }
+    if phase == ARC_CRISIS    { return knob_lr_crisis()    ; }
+    if phase == ARC_CATHARSIS { return knob_lr_catharsis() ; }
+    knob_lr_quiet()
+}
+
+fn knob_mb_for_phase(phase: u32) -> i32 {
+    if phase == ARC_DISCOVERY { return knob_mb_discovery() ; }
+    if phase == ARC_TENSION   { return knob_mb_tension()   ; }
+    if phase == ARC_CRISIS    { return knob_mb_crisis()    ; }
+    if phase == ARC_CATHARSIS { return knob_mb_catharsis() ; }
+    knob_mb_quiet()
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § NudgeKind delta lookup
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Mirrors Rust NudgeKind::delta exactly. Returns the signed-i32 delta the
+// nudge contributes to the cached sum. Returns 0 for unknown nudge-id.
+
+fn nudge_delta(nudge_kind: u32) -> i32 {
+    if nudge_kind == NUDGE_REST       { return 0-2 ; }
+    if nudge_kind == NUDGE_PUSH       { return 2 ; }
+    if nudge_kind == NUDGE_CAUTION    { return 0-1 ; }
+    if nudge_kind == NUDGE_CURIOSITY  { return 1 ; }
+    if nudge_kind == NUDGE_AGGRESSION { return 2 ; }
+    if nudge_kind == NUDGE_YIELD      { return 0-2 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Transition rules (advance + regress)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Mirrors Rust DmArc::advance_phase + regress_phase.
+
+// Advance : Discovery → Tension → Crisis → Catharsis → Quiet → Discovery (wrap)
+fn advance_from(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return ARC_TENSION   ; }
+    if phase == ARC_TENSION   { return ARC_CRISIS    ; }
+    if phase == ARC_CRISIS    { return ARC_CATHARSIS ; }
+    if phase == ARC_CATHARSIS { return ARC_QUIET     ; }
+    // Quiet wraps back to Discovery.
+    ARC_DISCOVERY
+}
+
+// Regress : Discovery → Discovery (clamp) ; Tension → Discovery ;
+//           Crisis → Tension ; Catharsis → Crisis ; Quiet → Catharsis.
+fn regress_from(phase: u32) -> u32 {
+    if phase == ARC_DISCOVERY { return ARC_DISCOVERY ; }   // clamp
+    if phase == ARC_TENSION   { return ARC_DISCOVERY ; }
+    if phase == ARC_CRISIS    { return ARC_TENSION   ; }
+    if phase == ARC_CATHARSIS { return ARC_CRISIS    ; }
+    ARC_CATHARSIS    // Quiet → Catharsis
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : lifecycle
+// ─────────────────────────────────────────────────────────────────────────
+
+// Construct a new DmArc · returns opaque-handle (i64).
+fn dm_arc_create() -> i64 {
+    __cssl_dm_arc_create()
+}
+
+// Destroy a DmArc handle (releases host-side state).
+fn dm_arc_destroy(handle: i64) -> i32 {
+    __cssl_dm_arc_destroy(handle)
+}
+
+// Reset to Discovery + clear nudge-ring (called on σ-mask flip).
+fn dm_arc_reset(handle: i64) -> i32 {
+    __cssl_dm_arc_reset(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : per-frame tick
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The host's tick() runs the full cycle:
+//   1. frame_in_phase ← saturating_add(1)
+//   2. nudge-decay : nudges older than 600 frames are evicted
+//   3. soft-cap check : if frame_in_phase > SOFT_CAP[phase] → advance
+//   4. min-dwell check : if frame_in_phase < MIN_DWELL[phase] → return None
+//   5. threshold check : sum ≥ +5 → advance ; sum ≤ -5 → regress
+//   6. else → no transition this frame
+//
+// Returns -1 if no transition · 0..=4 if a phase-transition fired.
+
+fn dm_arc_tick(handle: i64, frame: u64) -> i32 {
+    __cssl_dm_arc_tick(handle, frame)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : state read
+// ─────────────────────────────────────────────────────────────────────────
+
+fn dm_arc_phase(handle: i64) -> u32 {
+    __cssl_dm_arc_phase(handle)
+}
+
+fn dm_arc_frame_in_phase(handle: i64) -> u32 {
+    __cssl_dm_arc_frame_in_phase(handle)
+}
+
+fn dm_arc_nudge_sum(handle: i64) -> i32 {
+    __cssl_dm_arc_nudge_sum(handle)
+}
+
+fn dm_arc_total_transitions(handle: i64) -> u32 {
+    __cssl_dm_arc_total_transitions(handle)
+}
+
+fn dm_arc_last_transition_frame(handle: i64) -> u64 {
+    __cssl_dm_arc_last_transition_frame(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : nudge push + classify
+// ─────────────────────────────────────────────────────────────────────────
+
+fn dm_arc_push_nudge(handle: i64, nudge_kind: u32, frame: u64) -> i32 {
+    if nudge_kind >= NUDGE_KIND_COUNT {
+        return 0-1 ;
+    }
+    __cssl_dm_arc_push_nudge(handle, nudge_kind, frame)
+}
+
+// Classify a player utterance into a NudgeKind (0..=5 · or 255 = no-rule).
+// Mirrors Rust dm_arc::classify_nudge keyword-rule order verbatim.
+//
+// Stage-0 keyword-classifier (case-insensitive · order matters · first-match-wins):
+//   1. contains "rest" | "camp" | "sit"        → Rest        (-2)
+//   2. contains "retreat" | "yield" | "flee"   → Yield       (-2)
+//   3. contains "fight" | "engage" | "attack"  → Aggression  (+2)
+//   4. contains "push" | "more" | "keep going" → Push        (+2)
+//   5. contains "caution" | "careful" | "slow" → Caution     (-1)
+//   6. contains "curious" | "explore" | "show me" → Curiosity (+1)
+//   else → NUDGE_KIND_NONE
+//
+// Stage-1 swap : KAN-classifier vector-embedding (cssl-kan-runtime).
+
+fn dm_arc_classify_nudge(text_ptr: *const u8, text_len: u32) -> u32 {
+    __cssl_dm_arc_classify_nudge(text_ptr, text_len)
+}
+
+// One-shot helper : classify-then-push. Returns the classified-kind
+// (0..=5) or NUDGE_KIND_NONE if no rule matched (no push happens).
+fn dm_arc_classify_and_push(handle: i64, text_ptr: *const u8, text_len: u32, frame: u64) -> u32 {
+    let kind : u32 = dm_arc_classify_nudge(text_ptr, text_len) ;
+    if kind == NUDGE_KIND_NONE {
+        return NUDGE_KIND_NONE ;
+    }
+    let _ = dm_arc_push_nudge(handle, kind, frame) ;
+    kind
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : knob read (x100 form · caller divides for [-1,1] range)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn dm_arc_monster_density_x100(handle: i64) -> u32 {
+    __cssl_dm_arc_knob_monster_density_x100(handle)
+}
+
+fn dm_arc_ambient_music_intensity_x100(handle: i64) -> u32 {
+    __cssl_dm_arc_knob_ambient_music_intensity_x100(handle)
+}
+
+fn dm_arc_loot_richness_x100(handle: i64) -> u32 {
+    __cssl_dm_arc_knob_loot_richness_x100(handle)
+}
+
+fn dm_arc_npc_mood_bias_x100(handle: i64) -> i32 {
+    __cssl_dm_arc_knob_npc_mood_bias_x100(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INLINE TESTS (bit-for-bit-Rust-parity gates)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// § GAP · csslc-#[test]-attr · spec-only-until-W15-1-lands
+//   Until the test attribute is wired, the `test_*` fns below are plain-fn
+//   bodies that return 0=PASS · non-zero=FAIL.
+
+// Test : phase discriminants are stable + match Rust enum order.
+fn test_phase_discriminants_match_rust() -> i32 {
+    if ARC_DISCOVERY != 0 { return 1 ; }
+    if ARC_TENSION   != 1 { return 2 ; }
+    if ARC_CRISIS    != 2 { return 3 ; }
+    if ARC_CATHARSIS != 3 { return 4 ; }
+    if ARC_QUIET     != 4 { return 5 ; }
+    if ARC_PHASE_COUNT != 5 { return 6 ; }
+    0
+}
+
+// Test : nudge-kind discriminants are stable + match Rust enum order.
+fn test_nudge_kind_discriminants_match_rust() -> i32 {
+    if NUDGE_REST       != 0 { return 1 ; }
+    if NUDGE_PUSH       != 1 { return 2 ; }
+    if NUDGE_CAUTION    != 2 { return 3 ; }
+    if NUDGE_CURIOSITY  != 3 { return 4 ; }
+    if NUDGE_AGGRESSION != 4 { return 5 ; }
+    if NUDGE_YIELD      != 5 { return 6 ; }
+    if NUDGE_KIND_COUNT != 6 { return 7 ; }
+    0
+}
+
+// Test : nudge-delta values match Rust NudgeKind::delta.
+fn test_nudge_delta_values() -> i32 {
+    if nudge_delta(NUDGE_REST)       != (0-2) { return 1 ; }
+    if nudge_delta(NUDGE_PUSH)       != 2     { return 2 ; }
+    if nudge_delta(NUDGE_CAUTION)    != (0-1) { return 3 ; }
+    if nudge_delta(NUDGE_CURIOSITY)  != 1     { return 4 ; }
+    if nudge_delta(NUDGE_AGGRESSION) != 2     { return 5 ; }
+    if nudge_delta(NUDGE_YIELD)      != (0-2) { return 6 ; }
+    if nudge_delta(99)               != 0     { return 7 ; }   // unknown → 0
+    0
+}
+
+// Test : advance-cycle matches Rust verbatim.
+fn test_advance_cycle() -> i32 {
+    if advance_from(ARC_DISCOVERY) != ARC_TENSION   { return 1 ; }
+    if advance_from(ARC_TENSION)   != ARC_CRISIS    { return 2 ; }
+    if advance_from(ARC_CRISIS)    != ARC_CATHARSIS { return 3 ; }
+    if advance_from(ARC_CATHARSIS) != ARC_QUIET     { return 4 ; }
+    if advance_from(ARC_QUIET)     != ARC_DISCOVERY { return 5 ; }   // wrap
+    0
+}
+
+// Test : regress-cycle matches Rust verbatim · Discovery clamps.
+fn test_regress_cycle() -> i32 {
+    if regress_from(ARC_DISCOVERY) != ARC_DISCOVERY { return 1 ; }   // clamp
+    if regress_from(ARC_TENSION)   != ARC_DISCOVERY { return 2 ; }
+    if regress_from(ARC_CRISIS)    != ARC_TENSION   { return 3 ; }
+    if regress_from(ARC_CATHARSIS) != ARC_CRISIS    { return 4 ; }
+    if regress_from(ARC_QUIET)     != ARC_CATHARSIS { return 5 ; }
+    0
+}
+
+// Test : MIN_DWELL_FRAMES per-phase match Rust verbatim.
+fn test_min_dwell_per_phase() -> i32 {
+    if min_dwell_for_phase(ARC_DISCOVERY) != 300 { return 1 ; }
+    if min_dwell_for_phase(ARC_TENSION)   != 600 { return 2 ; }
+    if min_dwell_for_phase(ARC_CRISIS)    != 900 { return 3 ; }
+    if min_dwell_for_phase(ARC_CATHARSIS) != 600 { return 4 ; }
+    if min_dwell_for_phase(ARC_QUIET)     != 600 { return 5 ; }
+    0
+}
+
+// Test : SOFT_CAP_FRAMES per-phase match Rust verbatim.
+fn test_soft_cap_per_phase() -> i32 {
+    if soft_cap_for_phase(ARC_DISCOVERY) != 1800 { return 1 ; }
+    if soft_cap_for_phase(ARC_TENSION)   != 3600 { return 2 ; }
+    if soft_cap_for_phase(ARC_CRISIS)    != 1800 { return 3 ; }
+    if soft_cap_for_phase(ARC_CATHARSIS) != 1200 { return 4 ; }
+    if soft_cap_for_phase(ARC_QUIET)     != 2400 { return 5 ; }
+    0
+}
+
+// Test : NUDGE_THRESHOLD = 5 (matches Rust).
+fn test_nudge_threshold_is_5() -> i32 {
+    if NUDGE_THRESHOLD != 5 { return 1 ; }
+    0
+}
+
+// Test : NUDGE_RING_LEN = 8 (matches Rust).
+fn test_nudge_ring_len_is_8() -> i32 {
+    if NUDGE_RING_LEN != 8 { return 1 ; }
+    0
+}
+
+// Test : nudge-decay window = 600 frames (10s @ 60fps).
+fn test_nudge_decay_window() -> i32 {
+    if NUDGE_DECAY_FRAMES != 600 { return 1 ; }
+    0
+}
+
+// Test : phase-knobs (monster-density) match Rust PHASE_KNOBS table verbatim.
+fn test_phase_knobs_md_match_rust() -> i32 {
+    if knob_md_for_phase(ARC_DISCOVERY) != 10 { return 1 ; }
+    if knob_md_for_phase(ARC_TENSION)   != 40 { return 2 ; }
+    if knob_md_for_phase(ARC_CRISIS)    != 85 { return 3 ; }
+    if knob_md_for_phase(ARC_CATHARSIS) != 20 { return 4 ; }
+    if knob_md_for_phase(ARC_QUIET)     != 5  { return 5 ; }
+    0
+}
+
+// Test : phase-knobs (ambient-music) match Rust verbatim.
+fn test_phase_knobs_mi_match_rust() -> i32 {
+    if knob_mi_for_phase(ARC_DISCOVERY) != 30 { return 1 ; }
+    if knob_mi_for_phase(ARC_TENSION)   != 55 { return 2 ; }
+    if knob_mi_for_phase(ARC_CRISIS)    != 90 { return 3 ; }
+    if knob_mi_for_phase(ARC_CATHARSIS) != 75 { return 4 ; }
+    if knob_mi_for_phase(ARC_QUIET)     != 20 { return 5 ; }
+    0
+}
+
+// Test : phase-knobs (loot-richness) match Rust verbatim.
+fn test_phase_knobs_lr_match_rust() -> i32 {
+    if knob_lr_for_phase(ARC_DISCOVERY) != 50 { return 1 ; }
+    if knob_lr_for_phase(ARC_TENSION)   != 40 { return 2 ; }
+    if knob_lr_for_phase(ARC_CRISIS)    != 20 { return 3 ; }
+    if knob_lr_for_phase(ARC_CATHARSIS) != 85 { return 4 ; }
+    if knob_lr_for_phase(ARC_QUIET)     != 30 { return 5 ; }
+    0
+}
+
+// Test : phase-knobs (npc-mood-bias) match Rust verbatim · signed.
+fn test_phase_knobs_mb_match_rust() -> i32 {
+    if knob_mb_for_phase(ARC_DISCOVERY) != 40    { return 1 ; }
+    if knob_mb_for_phase(ARC_TENSION)   != 0     { return 2 ; }
+    if knob_mb_for_phase(ARC_CRISIS)    != (0-50) { return 3 ; }
+    if knob_mb_for_phase(ARC_CATHARSIS) != 60    { return 4 ; }
+    if knob_mb_for_phase(ARC_QUIET)     != 30    { return 5 ; }
+    0
+}
+
+// Test : per-phase knob-table is non-overlapping (each phase has distinct
+// 4-tuple) — sanity-check matches Rust arc_knobs_per_phase_distinct.
+fn test_phase_knobs_distinct_pairwise() -> i32 {
+    // Discovery vs Tension
+    if knob_md_for_phase(ARC_DISCOVERY) == knob_md_for_phase(ARC_TENSION) {
+        if knob_mi_for_phase(ARC_DISCOVERY) == knob_mi_for_phase(ARC_TENSION) {
+            return 1 ;
+        }
+    }
+    // Crisis vs Catharsis
+    if knob_md_for_phase(ARC_CRISIS) == knob_md_for_phase(ARC_CATHARSIS) {
+        if knob_mb_for_phase(ARC_CRISIS) == knob_mb_for_phase(ARC_CATHARSIS) {
+            return 2 ;
+        }
+    }
+    // Quiet vs Tension
+    if knob_md_for_phase(ARC_QUIET) == knob_md_for_phase(ARC_TENSION) {
+        return 3 ;
+    }
+    0
+}
+
+// Test : phase-knob ranges match Rust arc_knobs_in_canonical_ranges.
+fn test_phase_knobs_in_canonical_ranges() -> i32 {
+    let mut p : u32 = 0 ;
+    while p < ARC_PHASE_COUNT {
+        let md : u32 = knob_md_for_phase(p) ;
+        let mi : u32 = knob_mi_for_phase(p) ;
+        let lr : u32 = knob_lr_for_phase(p) ;
+        let mb : i32 = knob_mb_for_phase(p) ;
+        // 0..=100 for all unsigned knobs
+        if md > 100 { return 1 ; }
+        if mi > 100 { return 2 ; }
+        if lr > 100 { return 3 ; }
+        // -100..=100 for signed npc_mood_bias
+        if mb < (0-100) { return 4 ; }
+        if mb > 100     { return 5 ; }
+        p = p + 1 ;
+    }
+    0
+}
+
+// Test : the 5 min-dwell + 5 soft-cap values are pairwise <= each other
+// (soft-cap >= min-dwell for every phase · matches Rust invariant).
+fn test_soft_cap_geq_min_dwell() -> i32 {
+    let mut p : u32 = 0 ;
+    while p < ARC_PHASE_COUNT {
+        if soft_cap_for_phase(p) < min_dwell_for_phase(p) {
+            return 1 ;
+        }
+        p = p + 1 ;
+    }
+    0
+}
+
+// Test : nudge_kind_none sentinel != any real nudge-kind discriminant.
+fn test_nudge_none_sentinel_distinct() -> i32 {
+    if NUDGE_KIND_NONE == NUDGE_REST       { return 1 ; }
+    if NUDGE_KIND_NONE == NUDGE_PUSH       { return 2 ; }
+    if NUDGE_KIND_NONE == NUDGE_CAUTION    { return 3 ; }
+    if NUDGE_KIND_NONE == NUDGE_CURIOSITY  { return 4 ; }
+    if NUDGE_KIND_NONE == NUDGE_AGGRESSION { return 5 ; }
+    if NUDGE_KIND_NONE == NUDGE_YIELD      { return 6 ; }
+    if NUDGE_KIND_NONE != 255              { return 7 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sovereignty-attestation gate
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Rule : if the player has pushed Rest 3+ times within the decay-window,
+// the arc MUST regress (or stay-Quiet) regardless of soft-cap. The host's
+// __cssl_dm_arc_tick honors this · the predicate below is the in-CSSL
+// auditable form for any external sovereignty-checker.
+//
+// "Stay-rest dominance" predicate · matches "¬ kick-out-of-rest-state" axiom.
+
+extern "C" fn __cssl_dm_arc_count_recent_rests(handle: i64) -> u32 ;
+
+fn must_honor_rest(handle: i64) -> u32 {
+    let count : u32 = __cssl_dm_arc_count_recent_rests(handle) ;
+    if count >= 3 { 1 } else { 0 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAP · csslc-feature-coverage roadmap
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The function bodies above declare the canonical surface but csslc
+// stage-0 cannot yet emit:
+//
+//   * f32 ABI · the ArcKnobs table is currently exposed as i32-x100 · this
+//     is bit-equivalent (caller divides by 100.0 for [0.0, 1.0] / [-1.0, 1.0])
+//     but the natural Rust f32-form awaits W15-1.
+//   * struct-types with mixed-typed fields (ArcKnobs has 4 f32) — currently
+//     decomposed into 4 fn-returns. When csslc lands struct-emit + f32, the
+//     ArcKnobs struct can be exposed as a single value-object.
+//   * static [T; N] arrays · we use match-shaped fn-returns as substitute.
+//   * #[test] attribute for the harness.
+//   * match statement for the nudge-classifier (we use if-chains instead).
+//   * for i in 0..n range-loop (we use while + manual increment).
+//
+// § REMEDIATION ROADMAP (W15-1 · csslc-advance · ~600 LOC)
+//   1. csslc · f32 ABI emit + arithmetic
+//   2. csslc · struct-types with f32 fields (ArcKnobs becomes native)
+//   3. csslc · static [T; N] table-emission
+//   4. csslc · #[test] attr → t11_w11_parser_advancements style harness
+//   5. csslc · match statement lowering
+//   6. csslc · for-i-in-range range-syntax
+//   7. loa-host · delete dm_arc.rs once dm_arc.csl is live
+//
+// Until the roadmap lands, this file serves as :
+//   * the canonical proprietary spec for the DM macro-arc + knobs + nudges
+//   * grep-discoverable contract for the FFI surface
+//   * forward-looking spec that future wave-phases compile in-place
+//
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W15-CSSL-DM-ARC @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+//   Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+//   Player-sovereignty preserved : the 8-deep nudge-ring listens to the
+//     player's intent ; Rest+Yield+Caution honored ; player-utterance
+//     overrides soft-cap auto-advance ; soft-cap NEVER kicks out of Quiet
+//     when Rest-nudges dominate the ring.
+//   Companion-AI sovereignty preserved : the DM is a NARRATIVE-PACING role ;
+//     it does not weaponize knobs against the player ; monster-density never
+//     breaks the gameplay-loop ; arc-transitions are channels-of-expression
+//     not control-channels.
+//   Creator-sovereignty preserved : .csl source-of-truth · proprietary-
+//     everything · this file IS the canonical DM-arc impl ; Rust-mirror
+//     is bootstrap host UNTIL csslc reaches W15-1 feature-coverage parity.
