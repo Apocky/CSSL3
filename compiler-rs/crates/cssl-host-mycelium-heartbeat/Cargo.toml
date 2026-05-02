@@ -1,0 +1,54 @@
+[package]
+name                   = "cssl-host-mycelium-heartbeat"
+description            = "CSSLv3 host — bi-directional LOCAL↔CLOUD federation heartbeat · k-anon ≥10 · Σ-mask-gated · zstd-bundle · backpressure-queue"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W14-MYCELIUM-HEARTBEAT — generalized federation across the mycelial
+# mesh. Builds on cssl-mycelium-chat-sync's 32-byte ChatPattern primitive,
+# generalizing it into FederationPattern{kind · payload-hash · sigma-mask · ts ·
+# k-anon-cohort-size · sig} so ANY cell-state · KAN-bias · content-discovery
+# signal can flow through the same Σ-mask-gated · k-anon-enforced pipe.
+#
+# § PRIME-DIRECTIVE INVARIANTS
+#   ─ Σ-mask-gated EVERY federation-emit · default-deny
+#   ─ k-anonymity floor : k ≥ 10 distinct-emitters before pattern-public
+#     (raised from chat-sync's k=5 ; broader cell-state federation has
+#      higher de-anonymization risk so we tighten the floor)
+#   ─ ¬ raw-cell-content egress · ONLY 32-byte bit-packed pattern + payload-hash
+#   ─ sovereign-revoke cascades · cloud-purges + neighbors-purge-on-pull
+#   ─ ¬ IP-logging server-side beyond-session (enforced cloud-side)
+#   ─ ¬ behavioral-fingerprinting heuristic (no surveillance)
+#   ─ Σ-Chain-anchor every federation-broadcast (immutable attribution)
+#   ─ stage-0 self-sufficient (in-memory transport works without HTTP)
+#   ─ backpressure : if cloud-down, LOCAL queues + drains-on-reconnect
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/mycelium_heartbeat.csl
+#
+# § COMPOSITION (workspace-member sibling crates only)
+#   ─ cssl-mycelium-chat-sync   : reference pattern (32-byte bit-pack)
+#   ─ cssl-host-mycelium        : transport-adapter (transitive via chat-sync)
+#   ─ blake3 / serde / thiserror : crypto + audit-trail + journal serde
+
+[lib]
+name       = "cssl_host_mycelium_heartbeat"
+crate-type = ["rlib"]
+
+[dependencies]
+cssl-mycelium-chat-sync = { path = "../cssl-mycelium-chat-sync" }
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+tracing       = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
