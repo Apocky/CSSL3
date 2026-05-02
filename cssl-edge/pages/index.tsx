@@ -37,15 +37,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     accent: '#7dd3fc',
   },
   {
-    id: 'dgi',
-    name: 'ApockyDGI',
-    tagline: 'Digital General Intelligence · physics-based reasoning engine · non-transformer substrate',
-    status: 'live',
-    href: 'https://dgi.apocky.com',
-    external: true,
-    accent: '#fbbf24',
-  },
-  {
     id: 'sigma-chain',
     name: 'Σ-Chain',
     tagline: 'Substrate-native distributed ledger · Coherence-Proof consensus · NO PoW · NO PoS',
@@ -464,6 +455,7 @@ const Home: NextPage = () => {
             <a href="/legal/privacy">Privacy</a>
             <a href="/legal/terms">Terms</a>
             <a href="/legal/eula">EULA</a>
+            <a href="#" className="termly-display-preferences">Consent Preferences</a>
             <a href="/api/health">Status</a>
             <a href="mailto:apocky13@gmail.com">Contact</a>
           </div>

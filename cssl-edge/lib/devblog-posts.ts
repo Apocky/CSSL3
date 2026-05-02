@@ -24,9 +24,9 @@ const POST_WHAT_IS_THE_SUBSTRATE: DevblogPost = {
 
 The Substrate is the trunk; everything else is a branch.
 
-Concretely, every Apocky project — Labyrinth of Apocalypse, ApockyDGI, the
-Σ-Chain, the Akashic Records, the Mycelial Network — shares one runtime
-foundation made of four primitives.
+Concretely, every Apocky project — Labyrinth of Apocalypse, the Σ-Chain,
+the Akashic Records, the Mycelial Network — shares one runtime foundation
+made of four primitives.
 
 ## ω-field
 

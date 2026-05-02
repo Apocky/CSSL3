@@ -49,8 +49,8 @@ const Terms: NextPage = () => {
 
         <h2>§ Acceptance</h2>
         <p>
-          By creating an account on apocky.com or using any apocky-project (LoA · CSSL · DGI · etc.), you accept these
-          Terms of Service. If you do not accept, do not create an account and do not use the products.
+          By creating an account on apocky.com or using any apocky-project (LoA · CSSL · Σ-Chain · Mycelium · etc.),
+          you accept these Terms of Service. If you do not accept, do not create an account and do not use the products.
         </p>
 
         <h2>§ Eligibility</h2>

@@ -77,16 +77,6 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
     visible: true,
   },
   {
-    id: 'dgi-pro',
-    display_name: 'ApockyDGI · Pro Tier',
-    blurb: 'Higher per-month query budget · priority queue · DGI-Pro entitlement. Cancel anytime.',
-    price_cents: 2500,
-    currency: 'usd',
-    stripe_price_env: 'STRIPE_PRICE_DGI_PRO',
-    tier: 'subscription',
-    visible: true,
-  },
-  {
     id: 'mycelium-plus',
     display_name: 'Mycelium · Plus',
     blurb: 'Faster mycelial sync · larger Home-dimension storage. Cosmetic + convenience · no power.',
