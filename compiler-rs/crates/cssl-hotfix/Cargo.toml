@@ -1,0 +1,40 @@
+[package]
+name        = "cssl-hotfix"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "§ T11-W11 — `.csslfix` bundle format · 9-channel signing/verification/apply/rollback. apocky.com manifest-of-truth · mycelium-CDN-bytes · Ed25519 + cap-A..cap-E key-roles · Σ-mask-default-deny."
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W11-HOTFIX-INFRA (NEW · greenfield)
+#   ⊑ 9 update-channels : loa.binary · cssl.bundle · kan.weights · balance.config
+#                       · recipe.book · nemesis.bestiary · security.patch
+#                       · storylet.content · render.pipeline
+#   ⊑ Bundle = header(magic + version + class + ts + size + sha256)
+#            + payload + Ed25519-signature(header + payload)
+#   ⊑ Manifest = JSON · per-channel { current-version · sha256 · cap-signer
+#                                   · sig · effective-from · revoke-list }
+#   ⊑ apocky.com = entitlement-truth · mycelium = byte-CDN · client = verifier-of-record
+#   ⊑ Rollback = atomic · N-1 + N-2 preserved on disk · failure → instant revert
+#   ⊑ Σ-mask = default-deny except security.patch (cap-D)
+#   ⊑ Distinct from `cssl-host-hotfix-stream` :
+#         that crate = Σ-Chain feed-receiver (8 in-game classes)
+#         this crate = bundle-format + apocky.com manifest infra (9 channels)
+#         the two compose : feed → manifest → bundle pipeline.
+
+[lints]
+workspace = true
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+rand       = { workspace = true }
