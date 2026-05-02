@@ -1,0 +1,66 @@
+[package]
+name                   = "cssl-host-playtest-agent"
+description            = "§ T11-W12-10 — Auto-PlayTest-Agent : sandboxed-engine-instance · scripted-GM-driver · Fun/Balance/Safety/Polish scoring · cosmetic-axiom attestation · KAN-bias QualitySignal emit · Σ-Chain anchor of report-hash · sovereign-revoke (creator-decline) · k-anon-aggregate ≥ 10 across-content · NO surveillance · NO content-leak outside-sandbox"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W12-10-PLAYTEST-AGENT (NEW · greenfield · sibling-of cssl-content-rating + cssl-self-authoring-kan)
+#
+# § ROLE
+#   Automated-GM playthrough of user-submitted ContentPackage. Drives a SCRIPTED
+#   GM-agent via existing cssl-host-llm-bridge (Mode-C/B/A with-fallback) for
+#   decision-making. Exercises NPCs · recipes · scenes · arc-phases. Records
+#   crash/softlock/determinism/fun/balance/safety/cosmetic-attest. Emits
+#   PlayTestReport + QualitySignal-stream → KAN-bias-loop sibling-W12-3.
+#
+# § SOVEREIGNTY-INVARIANTS
+#   ─ playtest sandboxed : ¬ content leaks outside this crate's session
+#   ─ Σ-Chain anchors completion + report-hash : author cannot fake-passing
+#   ─ creator-can-decline auto-playtest at-cost-of-NOT-being-published-on-trending
+#   ─ aggregate-results k-anon ≥ 10 across-content ; individual-test ¬ surfaced
+#
+# § SCORING (0..100 each · weighted-aggregate)
+#   Fun     = 40% (intent-diversity · novelty · pacing)
+#   Balance = 30% (encounter-difficulty curve · resource-availability)
+#   Safety  = 20% (sovereign-violations · PRIME-DIRECTIVE breaches)
+#   Polish  = 10% (no-crashes · no-softlocks · clean-determinism)
+#   default min_total = 60 for Published · min_safety = 95 REQUIRED (no-tolerance)
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/auto_playtest.csl
+# § COMPOUNDS WITH : W12-3 KAN-bias-loop · W12-7 rating-aggregate · W11-6 gm_persona/dm_arc
+#
+# § DEPENDENCY DISCIPLINE
+#   ─ cssl-host-llm-bridge (path) for Mode-C/B/A decision-making
+#   ─ blake3 + ed25519-dalek for Σ-Chain anchor + signature
+#   ─ NO direct dep on cssl-host-gm/dm/coder (W11-6 territory) ; we just-read-from
+#   ─ NO surveillance / network calls ; sandbox-isolated session
+
+[lib]
+name       = "cssl_host_playtest_agent"
+crate-type = ["rlib"]
+# § doctest = false — module + item docs are CSLv3-glyph prose (§ ◐ ✓ etc.),
+# not runnable code. Doctest-parser interprets 4-space-indented bullet lists
+# under `//!` as code-blocks ; gating off here matches sibling W12 crates'
+# CSLv3-doc style.
+doctest    = false
+
+[dependencies]
+serde                = { workspace = true }
+serde_json           = { workspace = true }
+blake3               = { workspace = true }
+ed25519-dalek        = { workspace = true }
+rand                 = { workspace = true }
+thiserror            = { workspace = true }
+cssl-host-llm-bridge = { path = "../cssl-host-llm-bridge" }
+
+[dev-dependencies]
+serde_json    = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand          = { workspace = true }
+blake3        = { workspace = true }
+
+[lints]
+workspace = true
