@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-host-substrate-intelligence"
+description            = "§ T11-W17-N · STAGE-0-BOOTSTRAP-SHIM for substrate_intelligence.csl · PROPRIETARY local-intelligence · ¬ external-LLM · ¬ phrase-pools · NOVEL procedural composition via 8-axis substrate-resonance + morphological synthesis · canonical-impl in Labyrinth of Apocalypse/systems/substrate_intelligence.csl"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § STAGE-0-BOOTSTRAP-SHIM
+# Canonical-implementation lives in Labyrinth of Apocalypse/systems/substrate_intelligence.csl
+# This Rust crate is a thin bootstrap shim that mirrors the .csl public surface
+# until csslc compiles the .csl directly into LoA.exe object code.
+#
+# § PROPRIETARY local intelligence — ¬ Anthropic-API · ¬ OpenAI · ¬ external-LLM
+# § PROCEDURAL EVERYTHING       — substrate primitives compose meaning at runtime
+# § NO phrase-pool tables       — composition via morphological synthesis on 8 axes
+
+[lib]
+name = "cssl_host_substrate_intelligence"
+
+[dependencies]
+# Substrate primitives we delegate-to for composition
+blake3     = { workspace = true }
+
+[lints]
+workspace = true
