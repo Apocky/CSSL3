@@ -1,0 +1,432 @@
+module com.apocky.loa.systems.alien_materialization
+
+// § Labyrinth of Apocalypse · Alien-Materialization · ¬"rendering"
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-M · canonical-CSSL-source · ‼ FOUNDATIONAL · Apocky-vision-2026-05-02
+//
+// § APOCKY-DIRECTIVE (verbatim)
+//   "I want to be able to describe things in text or voice and they crystalize
+//    from the substrate novel and exotic rendering techniques OR SOMETHING EVEN
+//    MORE ALIEN THAN 'RENDERING' ENTIRELY!"
+//
+// § THESIS · WHY "RENDERING" IS WRONG
+//
+//   Conventional rendering (since 1960s) has these load-bearing assumptions :
+//     1. The world is meshes (vertex+index buffers)
+//     2. Surfaces have textures (albedo · normal · specular maps)
+//     3. Lighting is pixel-shading (per-pixel BRDF evaluation)
+//     4. Time is keyframes-interpolated (rigged-skeletal animation)
+//     5. Sound is sample-playback (pre-recorded WAV/OGG triggered by events)
+//     6. The output is RGBA-pixels in a screen-buffer
+//
+//   ALL of these are ARTIFICIAL CONSTRAINTS imposed by 1990s GPU economics.
+//   Modern hardware (compute-shaders · ray-traced · variable-rate) and the
+//   SUBSTRATE WE'VE BUILT (ω-field · HDC · KAN · spectral · causal-seed)
+//   make every one of those assumptions obsolete.
+//
+//   LoA materialization is built on FUNDAMENTALLY-DIFFERENT primitives :
+//
+//   1. THE WORLD IS THE ω-FIELD.
+//      Cells in the field ARE the things ; their state ARE their properties.
+//      No mesh-asset is canonical. The cell-state is.
+//
+//   2. SURFACES ARE KAN-SPLINES (learned-evaluable).
+//      No texture-atlas. The surface evaluates per-(u,v) via the spline ;
+//      the spline-shape evolved from akashic-records of similar-context.
+//
+//   3. APPEARANCE IS SPECTRAL-PROJECTION (not pixel-shading).
+//      4-illuminant cohort LUTs synthesize the visible spectrum directly
+//      (cssl-spectral-render). No BRDF evaluation. No microfacet model.
+//      The spectrum IS the appearance ; observer-color is its projection.
+//
+//   4. ANIMATION IS CAUSAL-SEED PROPAGATION.
+//      No keyframes. No rigged skeletons. The causal-seed integrator
+//      propagates effects across cells over time according to the
+//      crystal's MOTION-aspect KAN-spline. Reactive · not pre-authored.
+//
+//   5. SOUND IS SUBSTRATE-EMISSION (audio-spectrum from KAN-curve).
+//      No WAV files. No FMOD/Wwise. The cssl-substrate-audio module
+//      synthesizes acoustic spectrum from the SOUND-aspect KAN-spline
+//      at-emission-time.
+//
+//   6. PERCEPTION IS Σ-MASK-PROJECTION.
+//      The output is NOT a pre-determined RGBA-pixel. It's the perceivable
+//      content this observer is consent-permitted to receive. Different
+//      observers (different consent-state) perceive different things from
+//      the same ω-field cell-state. Privacy + sovereignty by-default.
+//
+// § HOW THIS IS "MORE ALIEN THAN RENDERING"
+//
+//   - There is NO scene graph. There is the ω-field.
+//   - There is NO mesh. There is the silhouette-aspect KAN-spline.
+//   - There is NO texture. There is the spectral-projection LUT.
+//   - There is NO animation rig. There is the causal-seed propagation.
+//   - There is NO sound asset. There is the audio-aspect KAN-spline.
+//   - There is NO renderer. There is the perception-projection.
+//   - There are NO assets to load. The substrate IS the world.
+//
+//   The pipeline is :
+//
+//     ω-field-state  ──→  binding-tree query  ──→
+//                                      ↓
+//                         observer-coordinate (frame·angle·t·Σ)
+//                                      ↓
+//                  Σ-mask perception filter (per-observer)
+//                                      ↓
+//          aspect-evaluation (KAN-splines per crystal)
+//                                      ↓
+//              spectral-projection (4-illuminant LUT)
+//                                      ↓
+//                     coherence collapse
+//                                      ↓
+//                 GPU-output (RGBA-pixels) ← stage-0-shim only
+//                 (eventually : photonic-direct · neural-implant ·
+//                  adaptive-eyetrack-projection · spatial-VRR · etc.)
+//
+// § AXIOMS  ‼ inherit substrate_intelligence + crystallization
+//   t∞: NO mesh-asset canonical · ω-field-state canonical
+//   t∞: NO texture-atlas canonical · spectral-LUT canonical
+//   t∞: NO BRDF-eval · spectral-projection
+//   t∞: NO rigged-skeleton · causal-seed propagation
+//   t∞: NO sample-playback · KAN-audio-synthesis
+//   t∞: PER-OBSERVER perception via Σ-mask · privacy-by-default
+//   t∞: deterministic same-(field-state · observer · t) ⇒ same-output
+//   t∞: stage-0 RGBA-pixel-shim emits to-conventional-display · transitional
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-spectral-render/         § 4-illuminant LUT
+//   compiler-rs/crates/cssl-host-spectral-grader/    § per-frame grader
+//   compiler-rs/crates/cssl-render-v2/               § v2 render pipeline
+//   compiler-rs/crates/cssl-substrate-audio/         § audio-emission
+//   compiler-rs/crates/cssl-host-causal-seed/        § motion propagator
+//   compiler-rs/crates/cssl-substrate-omega-field/   § ω-field cell-store
+//   Labyrinth of Apocalypse/systems/crystallization.csl § Crystal model
+//   Labyrinth of Apocalypse/systems/intent_translation.csl § input pipeline
+//   Labyrinth of Apocalypse/systems/substrate_intelligence.csl § dispatch
+//
+// § CSSLC-REQUIRES
+//   ✓ extern "C" fn-decls (W11+)
+//   ✓ const-u32           (W12)
+//   ◐ struct-FFI ObserverCoord ← W17-A in flight
+//   ○ f32 fixed-point exchange ← post-W17 (use i32-fixed-point at-stage-0)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § OBSERVER-COORD · perceiver state at materialization-time
+// ─────────────────────────────────────────────────────────────────────────
+// Every materialization is OBSERVER-CENTRIC. The same Crystal yields
+// different perceivable form for different observers (sovereignty + privacy).
+// The ObserverCoord packs all the relevant viewer-state for projection.
+//
+// Components (each a u32 in the stage-0 packed layout) :
+//   - position_x_mm / position_y_mm / position_z_mm  : world-coord in mm
+//   - facing_yaw_milli / facing_pitch_milli          : view-direction
+//   - frame_t_milli                                  : world-time at this frame
+//   - sigma_mask_token                               : observer's consent-state
+//   - perception_field_id                            : which substrate-instance
+//   - audio_listen_field_id                          : audio-instance handle
+
+// ─────────────────────────────────────────────────────────────────────────
+// § OUTPUT-CHANNEL discriminants
+// ─────────────────────────────────────────────────────────────────────────
+// The materialization can target multiple output-channels concurrently.
+// Conventional GPU-RGBA is just ONE of these. LoA's substrate-native
+// channels include audio · haptic · semantic-overlay-text · etc.
+
+const CHANNEL_VISUAL_GPU         : u32 = 0 ;  // stage-0 RGBA-pixel-shim · transitional
+const CHANNEL_VISUAL_SPECTRAL    : u32 = 1 ;  // direct spectral-emit (future-display)
+const CHANNEL_AUDIO_SPATIAL      : u32 = 2 ;  // 3D-positional audio
+const CHANNEL_HAPTIC_GAMEPAD     : u32 = 3 ;  // gamepad-rumble + adaptive-trigger
+const CHANNEL_HAPTIC_VR          : u32 = 4 ;  // VR-controller haptics (HOAS-spatial)
+const CHANNEL_SEMANTIC_OVERLAY   : u32 = 5 ;  // text/symbol overlay (CC · descriptive)
+const CHANNEL_OLFACTORY          : u32 = 6 ;  // future-hardware · scent-emit
+const CHANNEL_PROPRIOCEPTIVE     : u32 = 7 ;  // future-hardware · vibration-suit
+const CHANNEL_NEURAL_DIRECT      : u32 = 8 ;  // future-hardware · BCI-direct
+const CHANNEL_TELEMETRY_LOG      : u32 = 9 ;  // attestation/replay-record
+const CHANNEL_COUNT              : u32 = 10 ;
+const CHANNEL_INVALID            : u32 = 255;
+
+fn channel_visual_gpu()       -> u32 { CHANNEL_VISUAL_GPU }
+fn channel_visual_spectral()  -> u32 { CHANNEL_VISUAL_SPECTRAL }
+fn channel_audio_spatial()    -> u32 { CHANNEL_AUDIO_SPATIAL }
+fn channel_haptic_gamepad()   -> u32 { CHANNEL_HAPTIC_GAMEPAD }
+fn channel_haptic_vr()        -> u32 { CHANNEL_HAPTIC_VR }
+fn channel_semantic_overlay() -> u32 { CHANNEL_SEMANTIC_OVERLAY }
+fn channel_olfactory()        -> u32 { CHANNEL_OLFACTORY }
+fn channel_proprioceptive()   -> u32 { CHANNEL_PROPRIOCEPTIVE }
+fn channel_neural_direct()    -> u32 { CHANNEL_NEURAL_DIRECT }
+fn channel_telemetry_log()    -> u32 { CHANNEL_TELEMETRY_LOG }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CHANNEL-CAPABILITY query · which channels are connected this session
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn channel_available(channel: u32) -> u32 ;
+// 1 if hardware/runtime-supports this channel for current observer · 0 else.
+
+extern "C" fn channel_observer_consents(channel: u32, sigma_mask_token: u32) -> u32 ;
+// 1 if observer has Σ-mask permission to receive this channel · 0 denies.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PERCEPTION-FRAME · per-observer per-tick materialization-output
+// ─────────────────────────────────────────────────────────────────────────
+// The PerceptionFrame is the result of materializing all visible Crystals
+// from one observer's perspective on one tick. It carries multi-channel
+// output payloads. The conventional-engine equivalent would be "the rendered
+// frame buffer + the spatial-audio mix" but here it's an ω-field-cell.
+
+extern "C" fn perception_frame_begin(observer_coord_cell: u32) -> u32 ;
+// Returns PerceptionFrame-handle (ω-field-cell-id). 0 ⇒ Σ-mask-denial.
+
+extern "C" fn perception_frame_materialize_crystal(
+    frame: u32,
+    crystal: u32
+) -> u32 ;
+// Adds the crystal's contribution to all enabled channels in this frame.
+// Returns 0 if crystal not visible to this observer (Σ-mask) ; 1 otherwise.
+
+extern "C" fn perception_frame_emit_to_channel(
+    frame: u32,
+    channel: u32,
+    output_handle: u32
+) -> u32 ;
+// Emits accumulated channel-payload to the given output-handle (e.g.,
+// CHANNEL_VISUAL_GPU + framebuffer-handle ; CHANNEL_AUDIO_SPATIAL +
+// audio-mixer-handle). Returns 0 on success.
+
+extern "C" fn perception_frame_end(frame: u32) -> u32 ;
+// Finalizes + frees frame ω-field-cells. Akashic gets a frame-fingerprint
+// for replay-determinism audit. Returns 0 on success.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § VISUAL-CHANNEL · spectral-projection-replaces-pixel-shading
+// ─────────────────────────────────────────────────────────────────────────
+// The visual channel is built from per-aspect KAN-evaluations + spectral-
+// LUT projection. NOT a triangle-rasterization pipeline.
+//
+// For each visible Crystal at frame-time t with observer at coord :
+//   1. Query crystal silhouette-spline → contour at observer-angle
+//   2. Query crystal surface-spline   → local-relief over (u,v) field
+//   3. Query crystal luminance-spline → spectrum per wavelength
+//   4. Project spectrum through 4-illuminant LUT for current scene-light
+//   5. Convolve with observer-Σ-mask filter (privacy-overlay)
+//   6. Compose into perception-frame
+//
+// The conventional-stage-0-shim CHANNEL_VISUAL_GPU rasterizes the silhouette+
+// surface into a triangle-mesh JIT and pipelines through wgpu/d3d12. This
+// is a TRANSITIONAL fallback ; the real CHANNEL_VISUAL_SPECTRAL emits
+// spectra directly when supported by future-display hardware.
+
+extern "C" fn visual_query_silhouette_at_angle(
+    crystal: u32,
+    angle_yaw_milli: u32,
+    angle_pitch_milli: u32
+) -> u32 ;
+// Returns silhouette-contour-cell-id (sequence of points · planar-projected).
+
+extern "C" fn visual_query_surface_at_uv(
+    crystal: u32,
+    u_milli: u32,
+    v_milli: u32
+) -> u32 ;
+// Returns local-relief value (signed fixed-point micrometers).
+
+extern "C" fn visual_query_luminance_spectrum(
+    crystal: u32,
+    illuminant_id: u32
+) -> u32 ;
+// Returns spectrum-cell-id (16-band wavelength × intensity).
+
+extern "C" fn visual_compose_to_pixel_shim(
+    frame: u32,
+    silhouette: u32,
+    surface: u32,
+    spectrum: u32,
+    framebuffer_handle: u32
+) -> u32 ;
+// Stage-0 transitional · rasterizes onto conventional RGBA-framebuffer.
+// Future-channel CHANNEL_VISUAL_SPECTRAL replaces this.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AUDIO-CHANNEL · KAN-spline-synthesis-replaces-sample-playback
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn audio_query_emission_spectrum(
+    crystal: u32,
+    phase_milli: u32
+) -> u32 ;
+// Returns audio-spectrum-cell-id consumed by cssl-substrate-audio.
+// 16-band Bark-spaced + ADSR envelope + position from crystal's anchor.
+
+extern "C" fn audio_compose_to_mixer_shim(
+    frame: u32,
+    spectrum: u32,
+    listener_coord: u32,
+    mixer_handle: u32
+) -> u32 ;
+// Stage-0 transitional · feeds spectrum + position into platform-mixer.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § HAPTIC-CHANNEL · effect-propagation from causal-seed
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn haptic_query_envelope(
+    crystal: u32,
+    phase_milli: u32,
+    distance_mm: u32
+) -> u32 ;
+// Returns haptic-envelope-cell-id (intensity·duration·frequency). Falloff
+// over distance is causal-seed-driven (effect-propagation through field).
+
+extern "C" fn haptic_compose_to_gamepad_shim(
+    frame: u32,
+    envelope: u32,
+    gamepad_handle: u32
+) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SEMANTIC-OVERLAY · accessible · captioning · descriptive-audio
+// ─────────────────────────────────────────────────────────────────────────
+// Per the LoA accessibility-axiom · every materialized form has a semantic-
+// description channel. CC + descriptive-audio derived from gm_specialist
+// generated DIALOG referencing crystal binding-tree attributes.
+
+extern "C" fn semantic_query_caption(crystal: u32, observer_lang: u32) -> u32 ;
+// Returns caption-text-cell-id (UTF-8 in cssl-string-pool).
+
+extern "C" fn semantic_compose_to_overlay_shim(
+    frame: u32,
+    caption: u32,
+    overlay_handle: u32
+) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § COHERENCE-COLLAPSE · the projection step
+// ─────────────────────────────────────────────────────────────────────────
+// "Coherence-collapse" is the final step that converts the substrate-state
+// queries into a concrete perceivable output. The name borrows from quantum-
+// mechanics intentionally : the substrate-state is a multi-aspect field ;
+// observation collapses it to a specific perceivable form for THIS observer.
+//
+// Physics-of-this-engine :
+//   - Until observed, a Crystal is just ω-field-cells + KAN-splines
+//   - Observation queries the splines at observer-coord ⇒ specific-form
+//   - Different observers ⇒ different forms (Σ-mask filters)
+//   - Same observer ⇒ deterministic same-form (replay invariant)
+//
+// This is structurally-different from rendering. Rendering EVALUATES a fixed
+// scene. Coherence-collapse SAMPLES a substrate-field per-observer.
+
+extern "C" fn coherence_collapse(
+    frame: u32,
+    crystal: u32,
+    channel_mask: u32
+) -> u32 ;
+// Performs the per-observer projection across all bits set in channel_mask.
+// Returns aggregated-output-cell-id. Stage-0 emits to enabled-channels.
+
+extern "C" fn coherence_collapse_fingerprint(frame: u32) -> u32 ;
+// BLAKE3-truncated-u32 of (observer-coord || crystal-fingerprints ||
+// channel-outputs). Replay-equality on this hash.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-MASK PERCEPTION-FILTER · per-observer privacy
+// ─────────────────────────────────────────────────────────────────────────
+// Different observers (different Σ-cap states) perceive different things.
+// E.g., a player without "violence-content" cap sees combat as abstracted-
+// energy-discharge instead of blood. This is enforced AT THE SUBSTRATE
+// LEVEL · not in client-side post-processing. The non-permitted facets
+// are simply NOT EVALUATED. No bypass possible.
+
+extern "C" fn perception_filter_apply(
+    crystal: u32,
+    aspect: u32,
+    sigma_mask_token: u32
+) -> u32 ;
+// Returns 1 if this observer's Σ-mask permits this aspect of the crystal,
+// 0 otherwise. The materialization-pipeline elides denied aspects.
+
+extern "C" fn perception_filter_explain(
+    crystal: u32,
+    aspect: u32,
+    sigma_mask_token: u32
+) -> u32 ;
+// Returns explanation-text-cell-id (UTF-8) when filtering occurs. The
+// observer can opt-in to the missing aspect via their own Σ-mask change
+// (sovereignty axiom · per-observer-choice).
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PROCEDURAL-EFFECT API · co-author at-runtime
+// ─────────────────────────────────────────────────────────────────────────
+// Apocky's vision allows live re-shaping of materialization. The collaborator
+// role can attach effect-modifiers to crystals at-runtime. These are
+// composed into the materialization without re-allocation of the crystal.
+
+extern "C" fn effect_apply_temporal_shift(
+    crystal: u32,
+    shift_milli: u32
+) -> u32 ;
+// Time-warps the crystal's animation (e.g., "freeze it" "slow it" "echo").
+
+extern "C" fn effect_apply_spectral_remap(
+    crystal: u32,
+    remap_lut_cell: u32
+) -> u32 ;
+// Re-projects luminance through a different spectral-LUT.
+// (e.g., "nightvision" "thermal" "x-ray")
+
+extern "C" fn effect_apply_silhouette_modulate(
+    crystal: u32,
+    modulation_spline: u32
+) -> u32 ;
+// Modulates the silhouette-spline at-eval-time via additive composition.
+// (e.g., "shimmer" "fracture" "dissolve")
+
+extern "C" fn effect_remove(effect_handle: u32) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DETERMINISM CONTRACT
+// ─────────────────────────────────────────────────────────────────────────
+// Replay-determinism over materialization is a hard requirement :
+//   - Same (ω-field-state · observer-coord · channel-mask) ⇒ same output
+//   - Frame-fingerprint hash equality ⇒ identical pixel-stream
+//   - Akashic frame-records enable bit-replay across hosts/sessions
+
+extern "C" fn frame_replay_compare(
+    canonical_fingerprint: u32,
+    rerun_fingerprint: u32
+) -> u32 ;
+// 1 if equal · 0 if mismatch · drives fail-fast on replay-divergence.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CSSLC-GAPS to close
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. ObserverCoord struct-FFI ← W17-A in flight (current : 8 separate args)
+//   2. f32-fixed-point native ← post-W17 (i32-millis works · less precise)
+//   3. SIMD-eval primitives in csslc ← post-W17 (KAN-batch-eval optimization)
+//   4. GPU-side compute-shader emit ← post-W17 (currently CPU-eval)
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § STAGE-0 BOOTSTRAP-SHIM
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Until csslc compiles this directly, a Rust shim at `compiler-rs/crates/
+// cssl-host-alien-materialization/` mirrors this surface. The shim
+// DELEGATES to existing primitives :
+//   cssl-spectral-render        · 4-illuminant LUT projection
+//   cssl-substrate-audio        · audio-spectrum synthesis + mix
+//   cssl-host-causal-seed       · effect propagation
+//   cssl-substrate-omega-field  · ω-field cell access
+//   cssl-substrate-kan          · spline evaluation
+//   cssl-render-v2              · stage-0 RGBA-shim emission
+//
+// Per Apocky's "stage-0 fallback ALWAYS-available" axiom, the GPU-RGBA
+// channel always works ; future-channels (spectral-direct · neural-direct)
+// activate when supporting hardware is detected at runtime.
+
+// § ATTESTATION
+//   There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody. Every materialization is per-observer-Σ-mask-gated. Every
+//   channel-emission consent-bound. Sovereign-revocability honored
+//   per-frame.

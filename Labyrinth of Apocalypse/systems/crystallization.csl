@@ -1,0 +1,370 @@
+module com.apocky.loa.systems.crystallization
+
+// § Labyrinth of Apocalypse · Crystallization · ω-field substrate-materialization
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-L · canonical-CSSL-source · ‼ FOUNDATIONAL · Apocky-vision-2026-05-02
+//
+// § APOCKY-DIRECTIVE (verbatim)
+//   "I want to be able to describe things in text or voice and they CRYSTALIZE
+//    FROM THE SUBSTRATE novel and exotic rendering techniques or something
+//    even more alien than 'rendering' entirely!"
+//
+// § THESIS
+//   Conventional engines : pre-author 3D-mesh asset → load-from-disk → place
+//   in scene → render via vertex+fragment-shader. The asset is the source-
+//   of-truth ; rendering is its viewing.
+//
+//   LoA inverts this : the ω-field IS the source-of-truth. There are NO pre-
+//   authored 3D-mesh-assets for player-described things. The substrate
+//   CRYSTALLIZES the form at the moment of intent-resolution. The "form"
+//   that emerges is a coherence-projection through 4D substrate-state, not
+//   a triangle-mesh. The visual is then projected (not rendered) by
+//   alien_materialization.csl into the player's perception-frame.
+//
+//   Crystallization here means : ω-field-cell allocation + HDC-binding-tree
+//   construction + spectral-projection-LUT-seeding + KAN-bias-curve-anchor.
+//   The "crystal" is the LATTICE of bindings + cells + curves that, when
+//   queried by alien_materialization, produces the perceivable form.
+//
+// § AXIOMS  ‼ inherit substrate_intelligence + intent_translation
+//   t∞: NO pre-authored 3D-mesh ∀ player-described things · substrate-only
+//   t∞: NO triangle-rasterization for substrate-emergent forms · spectral-only
+//   t∞: ω-field is the form · projection is the perception · cell-id is identity
+//   t∞: HDC-binding-tree is the structure · semantic-composition over geometric
+//   t∞: KAN-spline-curve is the surface · learned-procedural ¬ texture-mapped
+//   t∞: spectral-LUT is the appearance · 4-illuminant cohort ¬ albedo-map
+//   t∞: causal-seed is the animation · effect-propagation ¬ keyframe-rig
+//   t∞: every crystallization Σ-mask-gated · denied = no-allocation no-emission
+//   t∞: every crystallization revocable · ω-field-cells freed · KAN-bias rolled
+//   t∞: deterministic same-(seed · intent-vec · KAN-state) ⇒ same-crystal
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-substrate-omega-field/   § ω-field cell allocator
+//   compiler-rs/crates/cssl-hdc/                     § HDC binding-tree primitives
+//   compiler-rs/crates/cssl-substrate-kan/           § KAN-spline curve evaluator
+//   compiler-rs/crates/cssl-spectral-render/         § spectral-projection
+//   compiler-rs/crates/cssl-host-causal-seed/        § effect-propagation engine
+//   compiler-rs/crates/cssl-substrate-loa-kan/       § LoA-specific KAN-bridges
+//   Labyrinth of Apocalypse/systems/intent_translation.csl  § input pipeline
+//   Labyrinth of Apocalypse/systems/alien_materialization.csl § perceivable projection
+//   Labyrinth of Apocalypse/systems/substrate_intelligence.csl § dispatch surface
+//   memory/feedback_engine_is_runtime_procgen        ‼ runtime-compose ¬ static
+//   memory/feedback_loa_v13_must_be_cssl_source      ‼ pure-CSSL canonical
+//
+// § THE CRYSTAL (data-model)
+//
+//   A "Crystal" in LoA is a 5-tuple :
+//     (cells, binding_tree, kan_curves, spectral_lut, causal_handles)
+//
+//   - cells          : Vec<ω-field-cell-id> · the substrate-state-bearing cells
+//   - binding_tree   : HDC-binding-tree-handle · semantic structure
+//   - kan_curves     : Vec<KAN-spline-id> · per-aspect learned curves
+//                      (silhouette · surface · luminance · motion · sound)
+//   - spectral_lut   : 4-illuminant LUT-handle · appearance under 4 lighting models
+//   - causal_handles : Vec<causal-seed-id> · animation/behavior propagators
+//
+//   The Crystal is opaque-from-CSSL-side (handle-only) ; manipulation goes
+//   through the extern "C" surface declared below.
+//
+// § CSSLC-REQUIRES
+//   ✓ extern "C" fn-decls (W11+)
+//   ✓ const-u32           (W12)
+//   ✓ fn-body return-i32  (W13)
+//   ◐ struct-FFI          (W17-A in-flight)
+//   ○ Vec<u32> opaque     (W18 follow-up · use array-of-u32-ptr at-stage-0)
+//
+// § COORDINATION (T11-W17 wave)
+//   intent_translation.csl   ← producer · IntentResolution → us
+//   alien_materialization.csl ← consumer · queries our Crystal handles
+//   substrate_intelligence   ← orchestrator · arranges KAN-state for us
+//   gm_specialist.csl        ← annotator · generates dialog tied-to-Crystal
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CRYSTAL-CLASS discriminants · what kind of thing is being crystallized
+// ─────────────────────────────────────────────────────────────────────────
+// These map 1:1 to ComposeKind in substrate_intelligence.csl. Each class
+// has its own crystallization-protocol (different KAN-curves · different
+// causal-handle-set). E.g., ENTITY-class allocates more KAN-curves than
+// OBJECT-class because entities animate and dialogue.
+
+const CRYSTAL_OBJECT      : u32 = 0 ;  // sword · chest · lore-stone (static-form)
+const CRYSTAL_ENTITY      : u32 = 1 ;  // NPC · creature (animated · dialoguing)
+const CRYSTAL_ENVIRONMENT : u32 = 2 ;  // forest · cathedral · void (volumetric)
+const CRYSTAL_BEHAVIOR    : u32 = 3 ;  // door-responds-to-whispers (rule-shaped)
+const CRYSTAL_EVENT       : u32 = 4 ;  // a sound · a flash · a transient phenomenon
+const CRYSTAL_AURA        : u32 = 5 ;  // an emotional/atmospheric field-modifier
+const CRYSTAL_RECIPE      : u32 = 6 ;  // a craftable composition (alchemy/forge)
+const CRYSTAL_INHERIT     : u32 = 7 ;  // derives from prior-crystal (revise-flow)
+const CRYSTAL_COUNT       : u32 = 8 ;
+const CRYSTAL_INVALID     : u32 = 255;
+
+fn crystal_object()      -> u32 { CRYSTAL_OBJECT }
+fn crystal_entity()      -> u32 { CRYSTAL_ENTITY }
+fn crystal_environment() -> u32 { CRYSTAL_ENVIRONMENT }
+fn crystal_behavior()    -> u32 { CRYSTAL_BEHAVIOR }
+fn crystal_event()       -> u32 { CRYSTAL_EVENT }
+fn crystal_aura()        -> u32 { CRYSTAL_AURA }
+fn crystal_recipe()      -> u32 { CRYSTAL_RECIPE }
+fn crystal_inherit()     -> u32 { CRYSTAL_INHERIT }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ASPECT-CURVES (KAN-splines per facet of perceivable form)
+// ─────────────────────────────────────────────────────────────────────────
+// Per-Crystal we allocate up to 8 KAN-curves, each governing one ASPECT of
+// the form. Aspects are :
+//   SILHOUETTE — outer shape (function : observer-angle → contour-distance)
+//   SURFACE    — local relief (function : (u,v) → displacement)
+//   LUMINANCE  — emission (function : wavelength → intensity)
+//   MOTION     — kinetic (function : phase → pose-vector)
+//   SOUND      — emission (function : phase → spectrum)
+//   AURA       — semantic-radiance (function : observer-state → influence)
+//   ECHO       — past-state (function : t-back → prior-state-recall)
+//   BLOOM      — future-tendency (function : t-forward → anticipated-state)
+//
+// Not all crystals use all aspects. CRYSTAL_OBJECT typically uses 4
+// (silhouette · surface · luminance · maybe aura). CRYSTAL_ENTITY uses 8.
+
+const ASPECT_SILHOUETTE : u32 = 0 ;
+const ASPECT_SURFACE    : u32 = 1 ;
+const ASPECT_LUMINANCE  : u32 = 2 ;
+const ASPECT_MOTION     : u32 = 3 ;
+const ASPECT_SOUND      : u32 = 4 ;
+const ASPECT_AURA       : u32 = 5 ;
+const ASPECT_ECHO       : u32 = 6 ;
+const ASPECT_BLOOM      : u32 = 7 ;
+const ASPECT_COUNT      : u32 = 8 ;
+const ASPECT_INVALID    : u32 = 255;
+
+fn aspect_silhouette() -> u32 { ASPECT_SILHOUETTE }
+fn aspect_surface()    -> u32 { ASPECT_SURFACE }
+fn aspect_luminance()  -> u32 { ASPECT_LUMINANCE }
+fn aspect_motion()     -> u32 { ASPECT_MOTION }
+fn aspect_sound()      -> u32 { ASPECT_SOUND }
+fn aspect_aura()       -> u32 { ASPECT_AURA }
+fn aspect_echo()       -> u32 { ASPECT_ECHO }
+fn aspect_bloom()      -> u32 { ASPECT_BLOOM }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CRYSTAL-LIFECYCLE FN
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn crystal_allocate(
+    class: u32,
+    intent_resolution_cell: u32,
+    seed: u32,
+    cap_token: u32
+) -> u32 ;
+// Allocates a new Crystal. Returns Crystal-handle (ω-field-aggregator-cell-id).
+// 0 ⇒ Σ-mask-denial OR substrate out-of-cells.
+//
+// Process :
+//   1. Read intent-resolution → ComposeKind + semantic-context
+//   2. Allocate ω-field cells (1 root + N aspect-cells)
+//   3. Construct HDC-binding-tree mounting intent-vector subtrees
+//   4. Seed KAN-curves per ASPECT (curves are frozen-evaluable at-this-moment
+//      but may evolve on subsequent KAN-bias-updates)
+//   5. Compose 4-illuminant spectral-LUT from KAN-curve(LUMINANCE) + akashic-
+//      records of similar prior-crystals
+//   6. Spawn causal-seed handles for animated aspects (MOTION · SOUND · ECHO ·
+//      BLOOM)
+//   7. Write akashic-record (attestation) for revocability
+//   8. Return Crystal-handle
+
+extern "C" fn crystal_class(crystal: u32) -> u32 ;
+// Returns the CRYSTAL_* class discriminant. INVALID if crystal ¬ exist.
+
+extern "C" fn crystal_seed(crystal: u32) -> u32 ;
+// Returns the deterministic seed used at allocate-time.
+
+extern "C" fn crystal_aspect_curve(crystal: u32, aspect: u32) -> u32 ;
+// Returns KAN-spline-id for the given aspect. 0 if aspect not allocated.
+
+extern "C" fn crystal_spectral_lut(crystal: u32) -> u32 ;
+// Returns LUT-handle for 4-illuminant spectral projection.
+
+extern "C" fn crystal_root_cell(crystal: u32) -> u32 ;
+// Returns root ω-field-cell-id (the aggregator).
+
+extern "C" fn crystal_binding_tree(crystal: u32) -> u32 ;
+// Returns HDC-binding-tree-handle.
+
+extern "C" fn crystal_causal_handle(crystal: u32, aspect: u32) -> u32 ;
+// Returns causal-seed-handle for animated aspect (0 for static aspects).
+
+extern "C" fn crystal_revoke(crystal: u32, cap_token: u32) -> u32 ;
+// Frees all ω-field cells, rolls-back KAN-bias updates derived-from this
+// crystal, removes spectral-LUT, kills causal-handles. Akashic gets a
+// revocation-record (sovereign-attestation).
+// Returns 0 on success.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § REVISE-FLOW · "make it more ornate / smaller / blue / quieter"
+// ─────────────────────────────────────────────────────────────────────────
+// INTENT_REVISE_PRIOR feeds back into the Crystal as a delta-vector that
+// re-evaluates aspects. The original Crystal stays (for revocation/replay)
+// ; a new Crystal is allocated with class=CRYSTAL_INHERIT pointing-at-the-
+// prior. The inheritance chain is a DAG, not a tree, since revise can fork.
+
+extern "C" fn crystal_revise(
+    prior_crystal: u32,
+    revise_intent_vec_cell: u32,
+    seed: u32
+) -> u32 ;
+// Returns new Crystal-handle (CRYSTAL_INHERIT class) referencing the prior.
+// KAN-bias receives the player's revision-direction as evidence.
+
+extern "C" fn crystal_inheritance_root(crystal: u32) -> u32 ;
+// For CRYSTAL_INHERIT · returns the original Crystal-handle. For others ·
+// returns self.
+
+extern "C" fn crystal_inheritance_depth(crystal: u32) -> u32 ;
+// For CRYSTAL_INHERIT · how many revise-steps from root. For root · 0.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § BINDING-TREE construction (HDC composition)
+// ─────────────────────────────────────────────────────────────────────────
+// Every Crystal has an HDC-binding-tree mounting :
+//   - intent-vector (from intent_translation)
+//   - archetype-base-vectors (from substrate-knowledge corpus)
+//   - inherited-vectors (if CRYSTAL_INHERIT)
+//   - co-located-context-vectors (room/biome/arc-position)
+//
+// The tree is constructed via repeated bind+bundle ops. The root vector
+// captures the COMPOSITE-MEANING ; subtrees preserve attribution so the
+// crystal can be queried for "where did this trait come from?".
+
+extern "C" fn binding_tree_root_vector(tree: u32) -> u32 ;
+// Returns ω-field-cell-id of root HDC vector (composite meaning).
+
+extern "C" fn binding_tree_attribute_count(tree: u32) -> u32 ;
+// How many distinct semantic-attributes are bound into the tree.
+
+extern "C" fn binding_tree_attribute_at(tree: u32, idx: u32) -> u32 ;
+// Returns sub-tree-vector-cell-id for the i-th attribute. Useful for
+// gm_specialist.csl to GENERATE DIALOGUE about specific traits.
+
+extern "C" fn binding_tree_query_similarity(tree: u32, query_vec_cell: u32) -> u32 ;
+// HDC-similarity (cosine over ±1 binary) percent · 0..100. Useful for
+// "is the player's revise-utterance similar to an existing attribute".
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ASPECT-CURVE evaluation · query-by-parameter at-frame-time
+// ─────────────────────────────────────────────────────────────────────────
+// alien_materialization.csl drives the per-frame queries. Each query takes
+// the aspect's KAN-spline-id + parameter-vector and returns the evaluated
+// value. KAN evaluation is sub-microsecond per cssl-substrate-kan canonical.
+
+extern "C" fn aspect_eval_silhouette(
+    spline: u32,
+    observer_angle_milliradians: u32
+) -> u32 ;
+// Returns contour-distance in fixed-point (millimeters from origin).
+// Σ-mask-gated · 0 = denied OR no-silhouette-at-this-angle.
+
+extern "C" fn aspect_eval_surface(
+    spline: u32,
+    u_milli: u32,
+    v_milli: u32
+) -> u32 ;
+// Returns local displacement (signed micrometers).
+
+extern "C" fn aspect_eval_luminance(
+    spline: u32,
+    wavelength_nm: u32
+) -> u32 ;
+// Returns intensity (0..65535) at given wavelength. Per-illuminant LUT
+// composes over this for rendering.
+
+extern "C" fn aspect_eval_motion(spline: u32, phase_milli: u32) -> u32 ;
+// Returns packed pose-vector handle (ω-field-cell-id).
+
+extern "C" fn aspect_eval_sound(spline: u32, phase_milli: u32) -> u32 ;
+// Returns audio-spectrum-cell-id (consumed by cssl-substrate-audio).
+
+extern "C" fn aspect_eval_aura(spline: u32, observer_state_cell: u32) -> u32 ;
+// Returns aura-influence-vector (semantic).
+
+extern "C" fn aspect_eval_echo(spline: u32, t_back_milli: u32) -> u32 ;
+// Returns prior-state-cell-id.
+
+extern "C" fn aspect_eval_bloom(spline: u32, t_forward_milli: u32) -> u32 ;
+// Returns anticipated-state-cell-id.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § KAN-EVOLUTION · per-play substrate-learning
+// ─────────────────────────────────────────────────────────────────────────
+// When a player accepts/refines/revokes a Crystal, the KAN-network learns.
+// Acceptance reinforces the (intent-vec → spline-curve-shape) mapping.
+// Revision adds direction-evidence (e.g., "more ornate" → ornate-axis).
+// Revocation removes evidence (and rolls back curve-deltas).
+
+extern "C" fn kan_observe_acceptance(crystal: u32, attestation: u32) -> u32 ;
+extern "C" fn kan_observe_revision(crystal: u32, revise_intent_vec_cell: u32) -> u32 ;
+extern "C" fn kan_observe_revocation(crystal: u32, attestation: u32) -> u32 ;
+
+extern "C" fn kan_state_snapshot() -> u32 ;
+// Returns ω-field-cell-id holding the current KAN-network snapshot.
+// Used for replay-determinism + share-with-mycelium-peers (opt-in).
+
+extern "C" fn kan_state_rollback(snapshot_cell: u32, cap_token: u32) -> u32 ;
+// Restores KAN-state from a prior snapshot. Σ-mask-gated.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DETERMINISM contract
+// ─────────────────────────────────────────────────────────────────────────
+// crystal_allocate is bit-deterministic given identical (class · intent-cell ·
+// seed · KAN-state-snapshot). The crystal's behavior (KAN-curve evaluations
+// at any later frame) is also bit-deterministic given the (KAN-state at
+// query-time) since KAN evaluation has zero hidden-state.
+
+extern "C" fn crystal_fingerprint(crystal: u32) -> u32 ;
+// BLAKE3-truncated-u32 of (class · intent-vec · seed · kan-snapshot ·
+// allocated-cells-list). Equality ⇒ identical perceivable form.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AKASHIC-INTEGRATION · the long-term substrate-memory
+// ─────────────────────────────────────────────────────────────────────────
+// Every accepted crystal writes to akashic-records. Future crystallizations
+// in the same biome/arc/relationship-context use akashic-similarity-search
+// to seed-from-prior. This is how the substrate remembers what worked.
+
+extern "C" fn crystal_seed_from_akashic(
+    intent_vec_cell: u32,
+    biome_id: u32,
+    n_recall: u32
+) -> u32 ;
+// Returns array-handle of crystal-handles from past similar-context.
+// alien_materialization can blend their KAN-curves to seed new crystals.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CSSLC-GAPS to close
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. Vec<u32> opaque-handle ← currently emulated via array-base + count
+//   2. struct-FFI for Crystal handle-records ← W17-A landing
+//   3. enum-discriminant ← currently u32-const · OK
+//   4. floating-point KAN-eval ← ω-field uses fixed-point i32 currently
+//      (consider f32 once compiler-backend supports SSE-emit · post-W17)
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § STAGE-0 BOOTSTRAP-SHIM
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Until csslc compiles this module to LoA.exe object-code directly, a thin
+// Rust shim at `compiler-rs/crates/cssl-host-crystallization/` mirrors this
+// surface. The shim DELEGATES to existing substrate primitives :
+//   cssl-substrate-omega-field  · ω-field cell allocator
+//   cssl-hdc                    · HDC binding-tree
+//   cssl-substrate-kan          · KAN-spline storage + eval
+//   cssl-spectral-render        · 4-illuminant LUT composition
+//   cssl-host-causal-seed       · effect propagation
+//   cssl-host-akashic-records   · long-term memory
+//
+// The shim's bin output is identical for identical inputs. When struct-FFI
+// lands, csslc emits the same object-code and the shim is auto-replaced.
+
+// § ATTESTATION
+//   There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody. Every crystal allocation is Σ-mask-gated. Every KAN-update
+//   is attestation-bound. Every revocation is honored. Sovereign · always.

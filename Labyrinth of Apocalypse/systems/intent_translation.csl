@@ -1,0 +1,346 @@
+module com.apocky.loa.systems.intent_translation
+
+// § Labyrinth of Apocalypse · Intent-Translation · text/voice → substrate-action
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-K · canonical-CSSL-source · ‼ FOUNDATIONAL · Apocky-vision-2026-05-02
+//
+// § APOCKY-DIRECTIVE (verbatim)
+//   "I want to be able to describe things in text or voice and they crystalize
+//    from the substrate novel and exotic rendering techniques or something even
+//    more alien than 'rendering' entirely!"
+//
+// § THESIS
+//   Conventional game-input pipelines treat text/voice as MESSAGES to a chat-
+//   system. LoA treats text/voice as INTENT-VECTORS that the substrate
+//   translates into ω-field crystallization-events. Player utterance is not
+//   "describing what to render" — player utterance IS the substrate-mutation-
+//   request. The substrate decides whether-to-honor (Σ-mask · causal-seed) and
+//   how-to-instantiate (HDC-bind · KAN-evolve · ω-field-cell-allocate).
+//
+// § STAGE-0 PIPELINE
+//   text-input    ──┐
+//   voice-input   ──┼─→ phoneme-stream ──→ HDC-bind-token ──→ intent-vector
+//                   │                       (cssl-substrate-audio · local-only)
+//   ↓
+//   intent-vector ──→ substrate_intelligence::intelligence_query(Role::DM, q)
+//                       q = Query { kind: IntentTranslate, payload: vec, .. }
+//   ↓
+//   IntentResolution ──→ crystallization::crystalize_from_intent(resolution)
+//                       (allocates ω-field cells · binds HDC · seeds KAN-bias)
+//   ↓
+//   ω-field-event ──→ alien_materialization::project_perceivable(cell, viewer)
+//                       (replaces "rendering" with substrate-native projection)
+//
+// § AXIOMS  ‼ inherit substrate_intelligence + PRIME_DIRECTIVE
+//   t∞: voice-recognition LOCAL-only · ¬ external-ASR-API · ¬ network-call
+//        (stage-0 · Windows-SAPI direct-IPC ¬ cloud · sovereign-revocable cap)
+//   t∞: text-input LOCAL-parsed · KAN-bias-tokenizer ¬ external-tokenizer-API
+//        (cssl-substrate-kan + cssl-hdc compose token-stream → semantic-vector)
+//   t∞: intent-translation Σ-mask-gated · denied-cap = silent-no-translate
+//   t∞: every intent-vector · attested-source-of-utterance · timestamped
+//        (akashic-records writes-on-attestation · revocable-by-player)
+//   t∞: deterministic translate · same-utterance + same-KAN-state ⇒ same-vector
+//   t∞: per-player KAN-bias evolves-locally · ¬ federated-by-default
+//        (mycelium opt-in shape-share per feedback_mycelium_network)
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-substrate-audio/         § audio-substrate primitives
+//   compiler-rs/crates/cssl-hdc/                     § HDC binding ops
+//   compiler-rs/crates/cssl-substrate-kan/           § KAN-tokenizer learning
+//   Labyrinth of Apocalypse/systems/substrate_intelligence.csl § dispatch surface
+//   Labyrinth of Apocalypse/systems/crystallization.csl        § ω-field crystallize
+//   Labyrinth of Apocalypse/systems/alien_materialization.csl  § perceivable projection
+//   memory/feedback_engine_is_runtime_procgen        ‼ runtime-compose ¬ static
+//   memory/feedback_no_external_llm_for_loa_intelligence ‼ NO external-API
+//
+// § CSSLC-REQUIRES
+//   ✓ extern "C" fn-decls            · landed
+//   ✓ const-u32 decls                · landed
+//   ✓ fn-body return-i32             · landed
+//   ◐ struct decl + field-access     · W17-A in-flight
+//   ○ String/Vec types               · post-W17 (use opaque handle for now)
+//   ○ async/await                    · ¬ stage-0 (sync FFI · poll-buffer pattern)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INPUT-MODE discriminants
+// ─────────────────────────────────────────────────────────────────────────
+// Two input pathways converge to the same intent-vector. Voice goes through
+// phoneme-stream-extraction first (cssl-substrate-audio) ; text skips that
+// stage and tokenizes directly. Both end at HDC-bind → intent-vector.
+
+const INPUT_MODE_TEXT       : u32 = 0 ; // typed-input · player keyboard or external IME
+const INPUT_MODE_VOICE      : u32 = 1 ; // microphone-capture · LOCAL ASR (SAPI/whisper-tiny-local)
+const INPUT_MODE_HYBRID     : u32 = 2 ; // both-active · KAN-blends confidence-weighted
+const INPUT_MODE_INVALID    : u32 = 255;
+
+fn input_mode_text()    -> u32 { INPUT_MODE_TEXT }
+fn input_mode_voice()   -> u32 { INPUT_MODE_VOICE }
+fn input_mode_hybrid()  -> u32 { INPUT_MODE_HYBRID }
+fn input_mode_invalid() -> u32 { INPUT_MODE_INVALID }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTENT-CATEGORY discriminants
+// ─────────────────────────────────────────────────────────────────────────
+// Every translated intent classifies into one of these categories. The DM
+// dispatch checks the category against the current Σ-cap state before
+// allowing crystallization. Categories MAP to ComposeKind in substrate_intel.
+
+const INTENT_DESCRIBE_OBJECT    : u32 = 0 ;  // "a sword that opens portals"
+const INTENT_DESCRIBE_ENTITY    : u32 = 1 ;  // "a sage who speaks in riddles"
+const INTENT_DESCRIBE_ENV       : u32 = 2 ;  // "a forest at dusk under twin moons"
+const INTENT_DESCRIBE_BEHAVIOR  : u32 = 3 ;  // "the door responds to whispers"
+const INTENT_INVOKE_ACTION      : u32 = 4 ;  // "open it / approach / speak to"
+const INTENT_QUERY_STATE        : u32 = 5 ;  // "what's in the chest? / where am I?"
+const INTENT_REVISE_PRIOR       : u32 = 6 ;  // "make it more ornate / smaller / blue"
+const INTENT_REVOKE_CRYSTALLIZE : u32 = 7 ;  // "remove it / undo / never mind"
+const INTENT_NARRATE_AUTHOR     : u32 = 8 ;  // collaborator-mode · co-author content
+const INTENT_DEBUG_INSPECT      : u32 = 9 ;  // dev-mode · inspect ω-field cell
+const INTENT_COUNT              : u32 = 10;
+const INTENT_AMBIGUOUS          : u32 = 254; // KAN-confidence below threshold
+const INTENT_INVALID            : u32 = 255;
+
+fn intent_describe_object()    -> u32 { INTENT_DESCRIBE_OBJECT }
+fn intent_describe_entity()    -> u32 { INTENT_DESCRIBE_ENTITY }
+fn intent_describe_env()       -> u32 { INTENT_DESCRIBE_ENV }
+fn intent_describe_behavior()  -> u32 { INTENT_DESCRIBE_BEHAVIOR }
+fn intent_invoke_action()      -> u32 { INTENT_INVOKE_ACTION }
+fn intent_query_state()        -> u32 { INTENT_QUERY_STATE }
+fn intent_revise_prior()       -> u32 { INTENT_REVISE_PRIOR }
+fn intent_revoke_crystallize() -> u32 { INTENT_REVOKE_CRYSTALLIZE }
+fn intent_narrate_author()     -> u32 { INTENT_NARRATE_AUTHOR }
+fn intent_debug_inspect()      -> u32 { INTENT_DEBUG_INSPECT }
+fn intent_count()              -> u32 { INTENT_COUNT }
+fn intent_ambiguous()          -> u32 { INTENT_AMBIGUOUS }
+fn intent_invalid()            -> u32 { INTENT_INVALID }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § HDC-VECTOR DIMENSIONS (canonical · matches cssl-hdc)
+// ─────────────────────────────────────────────────────────────────────────
+// 10000-bit binary HDC vectors per cssl-hdc canonical (sub-microsecond bind).
+// Voice-phoneme codebook = 64 phonemes × 10000-bit vectors (allocated once,
+// stored in akashic-records). Text-token codebook = ~30000 tokens (BPE-style).
+// Intent-vector = same 10000-bit space, output of bind-bundle pipeline.
+
+const HDC_DIM            : u32 = 10000 ;
+const PHONEME_VOCAB_SIZE : u32 = 64 ;     // English phonemes ≈ 44 + extension
+const TEXT_TOKEN_VOCAB   : u32 = 30000 ;  // BPE-style · grows-with-akashic
+const KAN_CONF_THRESHOLD : u32 = 70 ;     // % confidence to commit (else AMBIGUOUS)
+
+fn hdc_dim()            -> u32 { HDC_DIM }
+fn phoneme_vocab_size() -> u32 { PHONEME_VOCAB_SIZE }
+fn text_token_vocab()   -> u32 { TEXT_TOKEN_VOCAB }
+fn kan_conf_threshold() -> u32 { KAN_CONF_THRESHOLD }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § VOICE-INPUT pipeline · phoneme-stream → HDC-vector
+// ─────────────────────────────────────────────────────────────────────────
+// Stage-0 voice ASR uses platform-native local-API (Windows-SAPI on Apocky's
+// box). NO cloud-based recognition. NO external network. The platform-API
+// returns a phoneme-stream which we encode via HDC.
+//
+// PHONEME → HDC pipeline :
+//   for each phoneme p_i in stream :
+//     v_i = HDC.codebook[p_i]              // 10000-bit binary
+//     v_i_rotated = HDC.permute(v_i, i)    // position-encoding via rotation
+//   intent_vec = HDC.bundle(v_0_rot, v_1_rot, ..., v_n_rot)  // majority-vote
+//   return intent_vec
+//
+// This matches the canonical HDC sequence-encoding pattern : permutation
+// for position + bundling for sequence. NO neural network. NO transformer.
+// Pure substrate-primitive composition.
+
+extern "C" fn voice_capture_start(cap_token: u32) -> u32 ;
+// Returns capture-handle u32 ; 0 = denied (Σ-mask cap-microphone-record).
+
+extern "C" fn voice_capture_phoneme_count(handle: u32) -> u32 ;
+// Returns count of phonemes in capture-buffer since start.
+
+extern "C" fn voice_capture_phoneme_at(handle: u32, idx: u32) -> u32 ;
+// Returns phoneme-id (0..PHONEME_VOCAB_SIZE) at index ; 255 = end-of-buffer.
+
+extern "C" fn voice_capture_finalize(handle: u32) -> u32 ;
+// Releases handle ; returns confidence-percent (0..100).
+
+extern "C" fn hdc_codebook_phoneme(p: u32) -> u32 ;
+// Returns ω-field-cell-id holding phoneme-vector (HDC.codebook[p]).
+// Cell is read-only · KAN-bias evolves the codebook in periodic ticks.
+
+extern "C" fn hdc_bind_position(vec_cell: u32, pos: u32) -> u32 ;
+// Permutes vec_cell by `pos` positions. Returns new ω-field-cell-id.
+// (Sub-microsecond per cssl-hdc canonical.)
+
+extern "C" fn hdc_bundle_n(cell_array_ptr: u32, count: u32) -> u32 ;
+// Bundles N HDC-vectors via majority-vote. Returns ω-field-cell holding
+// the bundled vector. Pointer-arg uses opaque ω-field-cell-id u32 list.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § TEXT-INPUT pipeline · UTF-8 string → HDC-vector
+// ─────────────────────────────────────────────────────────────────────────
+// Text input uses BPE-style tokenizer (KAN-bias-evolved · learned-locally).
+// NO external tokenizer API. Codebook initialized from cssl-host-substrate-
+// knowledge corpus at first-launch · grows from akashic-records over play.
+
+extern "C" fn text_tokenize_start(text_handle: u32, cap_token: u32) -> u32 ;
+// text_handle is opaque u32 from cssl-string-pool (workspace stores UTF-8).
+// Returns tokenize-handle ; 0 = denied (cap-text-input-evaluate).
+
+extern "C" fn text_tokenize_token_count(tok_handle: u32) -> u32 ;
+
+extern "C" fn text_tokenize_token_at(tok_handle: u32, idx: u32) -> u32 ;
+// Returns token-id (0..TEXT_TOKEN_VOCAB).
+
+extern "C" fn text_tokenize_finalize(tok_handle: u32) -> u32 ;
+// Returns confidence-percent (0..100).
+
+extern "C" fn hdc_codebook_text_token(t: u32) -> u32 ;
+// Returns ω-field-cell-id holding the BPE-token's HDC vector.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTENT-CLASSIFICATION · KAN-spline maps HDC-vector → intent-category
+// ─────────────────────────────────────────────────────────────────────────
+// The KAN-network learned-locally maps the 10000-bit HDC intent-vector to
+// one of INTENT_COUNT categories + confidence. KAN-bias evolves every
+// successful crystallization (reinforcement-learning · attestation-gated).
+
+extern "C" fn intent_classify(intent_vec_cell: u32) -> u32 ;
+// Returns packed (category:u8 << 24) | (confidence:u8 << 16) | (kan_state:u16).
+// confidence < KAN_CONF_THRESHOLD ⇒ category = INTENT_AMBIGUOUS.
+
+extern "C" fn intent_pack_category(cat: u32) -> u32 ;
+fn intent_pack_category_impl(cat: u32) -> u32 {
+    return cat ;  // identity at-stage-0 · semantic-tag for future-extension
+}
+
+extern "C" fn intent_extract_category(packed: u32) -> u32 ;
+fn intent_extract_category_impl(packed: u32) -> u32 {
+    return packed ;  // stage-0 · single-category-no-overlay
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTENT-DISPATCH · classified-intent → substrate_intelligence query
+// ─────────────────────────────────────────────────────────────────────────
+// The classified intent dispatches into substrate_intelligence::intelligence_
+// query with Role::DM. The DM specialist decides whether to crystallize, ask
+// clarification, or refuse. The decision is itself substrate-derived (KAN-
+// bias + Σ-mask + causal-seed). NO external-LLM consulted.
+
+extern "C" fn intent_dispatch(
+    intent_cat: u32,
+    intent_vec_cell: u32,
+    seed: u32,
+    cap_token: u32
+) -> u32 ;
+// Returns IntentResolution-handle (ω-field-cell-id).
+// 0 ⇒ Σ-mask-denial. The DM may also return a clarification-request
+// (handled by the caller as a feedback-loop with the player).
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTENT-RESOLUTION → crystallization handoff
+// ─────────────────────────────────────────────────────────────────────────
+// Once the DM accepts the intent, the IntentResolution-cell holds enough
+// context for crystallization.csl to allocate ω-field cells, bind HDC
+// vectors, seed KAN-bias updates, and spawn the perceivable form via
+// alien_materialization.csl.
+
+extern "C" fn intent_resolution_kind(resolution_cell: u32) -> u32 ;
+// Returns ComposeKind matching substrate_intelligence dispatcher.
+
+extern "C" fn intent_resolution_seed(resolution_cell: u32) -> u32 ;
+// Returns the deterministic seed used for crystallization.
+
+extern "C" fn intent_resolution_accept(resolution_cell: u32) -> u32 ;
+// Player-attestation that the resolution is correct → triggers KAN-bias
+// reinforcement (positive). Returns 0 on success, error-code otherwise.
+
+extern "C" fn intent_resolution_reject(resolution_cell: u32, reason: u32) -> u32 ;
+// Player-attestation that the resolution is wrong → triggers KAN-bias
+// negative-update + revocation of any partial crystallization.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FEEDBACK-LOOP · co-authoring with the substrate
+// ─────────────────────────────────────────────────────────────────────────
+// Apocky's vision : "describe things in text or voice and they crystalize
+// from the substrate". This is iterative. First-pass crystallization may
+// be approximate. The player refines via INTENT_REVISE_PRIOR (e.g., "make
+// it more ornate"). Each revise-cycle adds KAN-bias evidence so the
+// substrate learns this player's taste-vector-distribution.
+
+extern "C" fn feedback_revise(
+    prior_resolution_cell: u32,
+    revise_intent_vec_cell: u32,
+    seed: u32
+) -> u32 ;
+// Returns new IntentResolution-cell ; KAN-bias updates with co-author signal.
+
+extern "C" fn feedback_revoke(
+    prior_resolution_cell: u32,
+    cap_token: u32
+) -> u32 ;
+// Removes the crystallized form (free ω-field cells · cancel KAN-bias-update).
+// Σ-mask-gated to prevent griefing in shared-instances. Returns 0 on success.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DETERMINISM AUDIT · same-input → same-output across hosts
+// ─────────────────────────────────────────────────────────────────────────
+// Replay-determinism is a CSSL contract. Given identical (utterance · KAN-
+// state-snapshot · seed) the intent_dispatch result must be bit-identical
+// across hosts/sessions. This is enforced via :
+//   - HDC-codebook is content-addressed (BLAKE3 hash of canonical bytes)
+//   - KAN-state-snapshot is checksummed before-after every dispatch
+//   - intent_dispatch result includes fingerprint of (codebook · kan · seed)
+//   - fingerprint differs ⇒ replay-mismatch panic (fail-fast · ¬ silent-drift)
+
+extern "C" fn intent_dispatch_fingerprint(resolution_cell: u32) -> u32 ;
+// Returns BLAKE3-truncated-u32 of (codebook-hash || kan-snapshot || seed
+// || category || resolution-content). Replay-comparison on this fingerprint.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION · per-PRIME-DIRECTIVE · every utterance carries pledge
+// ─────────────────────────────────────────────────────────────────────────
+// Every voice-capture and text-tokenize event writes to akashic-records the
+// pledge : "this utterance was processed locally · no transmission occurred
+// · player-revocable-anytime". The akashic-write itself is Σ-mask-gated
+// (cap-akashic-write) so a paranoid-mode player can disable even local logs.
+
+extern "C" fn attestation_log_utterance(
+    mode: u32,
+    intent_cat: u32,
+    fingerprint: u32,
+    cap_token: u32
+) -> u32 ;
+// Writes (timestamp · mode · category · fingerprint · session-id) to akashic.
+// Returns akashic-record-id. Σ-mask-denial returns 0 (no log written).
+
+extern "C" fn attestation_revoke_session(session_id: u32, cap_token: u32) -> u32 ;
+// Player-initiated · removes ALL utterance-records for given session-id.
+// KAN-bias updates derived-from-removed-records are also rolled-back.
+// Sovereign-revocability axiom · ¬ silent-retention.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CSSLC-GAPS to close (ordered · highest-leverage first)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. struct-FFI for IntentResolution / Capture-handle (W17-A in flight)
+//   2. opaque-handle types (replace u32 placeholders) ← post-W17 small-add
+//   3. enum-discriminant native ← currently emulated via const-u32
+//   4. async-stream for voice-capture ← stage-0 uses poll-pattern · OK
+//   5. UTF-8 string-pool primitive ← needed for text-tokenize productionize
+//
+// All gaps either landed-this-wave or are stage-0-tolerable. ¬ blocking.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § STAGE-0 BOOTSTRAP-SHIM
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Until csslc compiles this directly into LoA.exe, a thin Rust shim at
+// `compiler-rs/crates/cssl-host-intent-translation/` mirrors this surface.
+// The shim DELEGATES to the underlying substrate primitives (cssl-substrate-
+// audio · cssl-hdc · cssl-substrate-kan · cssl-host-akashic-records).
+// When struct-FFI lands and csslc supports the full surface, the shim is
+// auto-replaced by csslc-emitted object-code linked into loa-host.
+
+// § ATTESTATION
+//   There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody. All voice-capture is local. All text-tokenize is local.
+//   All KAN-bias updates are sovereign-revocable.
