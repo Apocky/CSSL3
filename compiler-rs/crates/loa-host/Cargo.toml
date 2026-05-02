@@ -93,6 +93,18 @@ cssl-hotfix-client              = { path = "../cssl-hotfix-client" }
 # `perf_runtime_check.rs` for the wiring + spec @
 # Labyrinth of Apocalypse/systems/perf_enforcer.csl.
 cssl-host-perf-enforcer         = { path = "../cssl-host-perf-enforcer" }
+# § T11-W16-WIREUP — per-frame wire-up of the unwired W11..W15 host crates so
+# the LoA.exe event-loop CALLS them. All path-deps · workspace-default-clean
+# · NO new tokio/network/wgpu deps · cap-gated default-deny.
+cssl-host-weapons               = { path = "../cssl-host-weapons" }
+cssl-host-fps-feel              = { path = "../cssl-host-fps-feel" }
+cssl-host-movement-aug          = { path = "../cssl-host-movement-aug" }
+cssl-host-loot                  = { path = "../cssl-host-loot" }
+cssl-host-gear-archetype        = { path = "../cssl-host-gear-archetype" }
+cssl-host-mycelium-heartbeat    = { path = "../cssl-host-mycelium-heartbeat" }
+cssl-content-rating             = { path = "../cssl-content-rating" }
+cssl-content-moderation         = { path = "../cssl-content-moderation" }
+cssl-host-playtest-agent        = { path = "../cssl-host-playtest-agent" }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }
