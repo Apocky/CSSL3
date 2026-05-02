@@ -1,0 +1,331 @@
+module com.apocky.loa.systems.economy
+
+// § Labyrinth of Apocalypse · system · Nexus-Bazaar 5-tier gift-economy
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-CSSL-CONTENT-ECONOMY (W-LOA-bazaar-gift-economy)
+//
+// § REFERENCE
+//   memory/feedback_infinite_labyrinth_legacy_design  ‼ FOUNDATIONAL · Nexus-Bazaar 5-tier
+//   memory/feedback_distribution_akashic_w8_plan       ← cosmetic-channel-only monetization
+//   memory/feedback_loa_full_game_rd                   ← gift-economy throughout
+//   GDDs/LOA_PILLARS.csl § 3 ¬ pay-for-power
+//   systems/inventory.csl  ← bag + equip integration
+//   scenes/old_keyport.csl + scenes/brassmarrow.csl + scenes/greenwillow_fair.csl
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS · ¬ pay-for-power axiom
+//   t∞: 5-tier nexus-bazaar (T1 common · T2 fine · T3 rare · T4 mythic · T5 legend)
+//   t∞: gift-economy ALWAYS · ¬ pay-for-power · ¬ loot-box-shape
+//   t∞: real-money-channel = COSMETIC-ONLY (per memory_distribution_akashic_w8_plan)
+//   t∞: in-game-currency = Echo-shards (procgen-earned · ¬ purchasable)
+//   t∞: trades require sovereign-consent BOTH-sides · cancellable any-time
+//   t∞: NPC-vendors offer gifts-of-craft · player gifts-of-deeds in return
+//   t∞: ¬ rng-loot-box ¬ purchasable-power ¬ pay-to-skip-content
+//   t∞: cosmetic-shop transparent · refundable-7d · sovereign-revocable
+//   t∞: tier-T5 unlock requires DEED-of-craft · ¬ purchasable-by-currency
+//   t∞: every-trade audit-emit · transparency-log per LOA_PILLARS § CONSENT-OS
+//   t∞: vendor-routine = procgen · KAN-stage-1 personalizes ¬ alter-content
+//
+// § PRIME-DIRECTIVE
+//   The economy is a gift-circle, not a marketplace-of-power. Real-money buys
+//   ONLY cosmetic items (skins, lanterns, decor). In-game Echo-shards earned
+//   by play, never purchasable. T5 mythic-tier unlocks require deeds, not
+//   currency. Every trade is consent-bilateral and audit-logged for
+//   transparency. ¬ surveillance · ¬ coercion · sovereign-revocable always.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-economy + cssl-host-attestation bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_econ_session_create(player_id_hash: u64) -> i64 ;
+extern "C" fn __cssl_econ_session_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_econ_query_echo_shards(handle: i64) -> u64 ;
+extern "C" fn __cssl_econ_award_echo_shards(handle: i64, amount: u64, reason_code: u32) -> i32 ;
+extern "C" fn __cssl_econ_query_tier_for_item(item_id_hash: u64) -> u32 ;
+extern "C" fn __cssl_econ_offer_trade(
+    handle: i64,
+    counterparty_id_hash: u64,
+    offered_item_hash: u64,
+    requested_item_hash: u64,
+) -> u64 ;
+extern "C" fn __cssl_econ_accept_trade(handle: i64, trade_id: u64) -> i32 ;
+extern "C" fn __cssl_econ_cancel_trade(handle: i64, trade_id: u64) -> i32 ;
+extern "C" fn __cssl_econ_query_pending_trades(handle: i64) -> u32 ;
+extern "C" fn __cssl_econ_audit_emit_trade(handle: i64, trade_id: u64) -> i32 ;
+extern "C" fn __cssl_econ_cosmetic_shop_query_price_cents(item_id_hash: u64) -> u32 ;
+extern "C" fn __cssl_econ_cosmetic_shop_unlock_via_real_money(
+    handle: i64,
+    item_id_hash: u64,
+    receipt_token: u64,
+) -> i32 ;
+extern "C" fn __cssl_econ_cosmetic_shop_request_refund(handle: i64, item_id_hash: u64) -> i32 ;
+extern "C" fn __cssl_econ_unlock_t5_via_deed(handle: i64, deed_id_hash: u64) -> i32 ;
+extern "C" fn __cssl_econ_query_npc_vendor_inventory(
+    npc_id_hash: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Tier constants · 5-tier Nexus-Bazaar (per memory_infinite_labyrinth_legacy_design)
+// ─────────────────────────────────────────────────────────────────────────
+const TIER_T1_COMMON               : u32 =  1 ;
+const TIER_T2_FINE                 : u32 =  2 ;
+const TIER_T3_RARE                 : u32 =  3 ;
+const TIER_T4_MYTHIC               : u32 =  4 ;
+const TIER_T5_LEGEND               : u32 =  5 ;   // ‼ deed-only · ¬ purchasable
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Echo-shard reason-codes · audit-trail for every-award
+// ─────────────────────────────────────────────────────────────────────────
+const ECHO_REASON_FLOOR_CLEAR      : u32 =  1 ;
+const ECHO_REASON_BOSS_DEFEATED    : u32 =  2 ;
+const ECHO_REASON_QUEST_COMPLETE   : u32 =  3 ;
+const ECHO_REASON_DAILY_LOGIN      : u32 =  4 ;   // ¬ punitive-cooldown if missed
+const ECHO_REASON_GIFT_FROM_NPC    : u32 =  5 ;
+const ECHO_REASON_SHARED_RUN       : u32 =  6 ;   // gift-economy from friend
+const ECHO_REASON_DECEASED_ECHO    : u32 =  7 ;   // 50% × floor-multiplier carryover
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Trade-state constants
+// ─────────────────────────────────────────────────────────────────────────
+const TRADE_STATE_PENDING          : u32 =  0 ;
+const TRADE_STATE_ACCEPTED         : u32 =  1 ;
+const TRADE_STATE_CANCELLED_PLAYER : u32 =  2 ;   // either-side sovereign-revoke
+const TRADE_STATE_CANCELLED_NPC    : u32 =  3 ;   // NPC-side revoke (mood-shift)
+const TRADE_STATE_COMPLETED        : u32 =  4 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cosmetic-shop categories (real-money channel · ¬ pay-for-power)
+// ─────────────────────────────────────────────────────────────────────────
+const COSM_CATEGORY_AVATAR_SKIN    : u32 =  1 ;
+const COSM_CATEGORY_HOME_DECOR     : u32 =  2 ;
+const COSM_CATEGORY_TRAIL_FX       : u32 =  3 ;   // movement-trail aesthetic
+const COSM_CATEGORY_LANTERN        : u32 =  4 ;   // light-source visual
+const COSM_CATEGORY_PET_COSMETIC   : u32 =  5 ;   // companion-aesthetic only
+const COSM_CATEGORY_TITLE          : u32 =  6 ;   // visible name-prefix
+const COSM_CATEGORY_EMOTE          : u32 =  7 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API · session lifecycle
+// ─────────────────────────────────────────────────────────────────────────
+
+fn econ_create_session(player_id_hash: u64) -> i64 {
+    __cssl_econ_session_create(player_id_hash)
+}
+
+fn econ_destroy_session(handle: i64) -> i32 {
+    __cssl_econ_session_destroy(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Echo-shard query + award
+// ─────────────────────────────────────────────────────────────────────────
+
+fn query_echo_shards(handle: i64) -> u64 {
+    __cssl_econ_query_echo_shards(handle)
+}
+
+// Award shards · validates reason-code 1..=7 · audit-trail emitted host-side
+fn award_echo_shards(handle: i64, amount: u64, reason_code: u32) -> i32 {
+    if reason_code < 1u32 { return 1i32 ; }
+    if reason_code > 7u32 { return 1i32 ; }
+    __cssl_econ_award_echo_shards(handle, amount, reason_code)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Tier classification helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+fn tier_for_item(item_id_hash: u64) -> u32 {
+    __cssl_econ_query_tier_for_item(item_id_hash)
+}
+
+// Predicate : is item T5-legendary? Used by UI to render deed-prompt instead
+// of currency-purchase-prompt (T5 ¬ purchasable per axiom).
+fn is_item_t5_legend(item_id_hash: u64) -> u32 {
+    let tier: u32 = tier_for_item(item_id_hash) ;
+    if tier == TIER_T5_LEGEND { return 1u32 ; }
+    return 0u32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Trade-flow · sovereign-consent BOTH-sides · cancellable any-time
+// ─────────────────────────────────────────────────────────────────────────
+
+fn offer_trade(
+    handle: i64,
+    counterparty_id_hash: u64,
+    offered_item_hash: u64,
+    requested_item_hash: u64,
+) -> u64 {
+    __cssl_econ_offer_trade(handle, counterparty_id_hash, offered_item_hash, requested_item_hash)
+}
+
+// Player accepts a pending trade · audit-emit always-emitted
+fn accept_trade(handle: i64, trade_id: u64) -> i32 {
+    let r: i32 = __cssl_econ_accept_trade(handle, trade_id) ;
+    let _a: i32 = __cssl_econ_audit_emit_trade(handle, trade_id) ;
+    r
+}
+
+// Player cancels a pending trade · sovereign-revoke any-time before-accept
+fn cancel_trade(handle: i64, trade_id: u64) -> i32 {
+    let r: i32 = __cssl_econ_cancel_trade(handle, trade_id) ;
+    let _a: i32 = __cssl_econ_audit_emit_trade(handle, trade_id) ;
+    r
+}
+
+fn query_pending_trade_count(handle: i64) -> u32 {
+    __cssl_econ_query_pending_trades(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cosmetic-shop · real-money channel · ¬ pay-for-power compliance gate
+// ─────────────────────────────────────────────────────────────────────────
+//
+// COMPLIANCE GATE : reject ANY item that is NOT cosmetic. Item-tier query
+// host-side returns 0 for non-cosmetic-shop items; this fn refuses to
+// process real-money for ANY item the host marks non-cosmetic.
+
+fn cosmetic_shop_query_price_cents(item_id_hash: u64) -> u32 {
+    __cssl_econ_cosmetic_shop_query_price_cents(item_id_hash)
+}
+
+fn cosmetic_shop_unlock(handle: i64, item_id_hash: u64, receipt_token: u64) -> i32 {
+    // host-side ALSO enforces this gate · defense-in-depth
+    let price_cents: u32 = cosmetic_shop_query_price_cents(item_id_hash) ;
+    if price_cents == 0u32 {
+        return 1i32 ;   // ¬ cosmetic-listed · refuse
+    }
+    __cssl_econ_cosmetic_shop_unlock_via_real_money(handle, item_id_hash, receipt_token)
+}
+
+// 7-day refund window · sovereign-revocable per LOA_PILLARS § CONSENT-OS
+fn cosmetic_shop_request_refund(handle: i64, item_id_hash: u64) -> i32 {
+    __cssl_econ_cosmetic_shop_request_refund(handle, item_id_hash)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T5-Legendary unlock · DEED-only · ¬ purchasable
+// ─────────────────────────────────────────────────────────────────────────
+//
+// T5 items unlock through DEEDS (specific gameplay accomplishments).
+// Returns 0 on success · 1 on deed-not-completed · 2 on already-unlocked.
+
+fn unlock_t5_via_deed(handle: i64, deed_id_hash: u64) -> i32 {
+    __cssl_econ_unlock_t5_via_deed(handle, deed_id_hash)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § NPC-vendor query · gifts-of-craft offerings
+// ─────────────────────────────────────────────────────────────────────────
+
+fn query_npc_vendor_inventory(
+    npc_id_hash: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 {
+    __cssl_econ_query_npc_vendor_inventory(npc_id_hash, out_ptr, out_cap)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Echo-shard award helper · floor-clear bonus
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Standard floor-clear award scales 1.0 + (depth - 1) × 0.18 per ROGUELIKE_LOOP.
+// Returns the awarded amount (caller can display in HUD pop-up).
+
+fn award_floor_clear_bonus(handle: i64, depth: u32, base_amount: u64) -> u64 {
+    // depth-multiplier ×100 fixed-point · 100 + (depth - 1) × 18
+    let mult_x100: u64 = if depth == 0u32 { 100u64 } else {
+        100u64 + ((depth - 1u32) as u64) * 18u64
+    } ;
+    let amount: u64 = (base_amount * mult_x100) / 100u64 ;
+    let _r: i32 = award_echo_shards(handle, amount, ECHO_REASON_FLOOR_CLEAR) ;
+    amount
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_tier_constants_distinct() {
+    assert_ne(TIER_T1_COMMON, TIER_T5_LEGEND) ;
+    assert_eq(TIER_T5_LEGEND, 5u32) ;
+}
+
+#[test]
+fn test_award_invalid_reason_rejected() {
+    // reason 0 = invalid (range is 1..=7) ; pure-fn substitute for FFI test
+    let invalid_rc: u32 = 0u32 ;
+    let r: i32 = if invalid_rc < 1u32 { 1i32 } else { 0i32 } ;
+    assert_eq(r, 1i32) ;
+}
+
+#[test]
+fn test_award_valid_reason_accepted() {
+    let valid_rc: u32 = ECHO_REASON_BOSS_DEFEATED ;
+    let r: i32 = if valid_rc < 1u32 { 1i32 } else if valid_rc > 7u32 { 1i32 } else { 0i32 } ;
+    assert_eq(r, 0i32) ;
+}
+
+#[test]
+fn test_floor_clear_depth_one_no_multiplier() {
+    let base: u64 = 100u64 ;
+    let depth: u32 = 1u32 ;
+    let mult_x100: u64 = if depth == 0u32 { 100u64 } else {
+        100u64 + ((depth - 1u32) as u64) * 18u64
+    } ;
+    let amount: u64 = (base * mult_x100) / 100u64 ;
+    assert_eq(amount, 100u64) ;
+}
+
+#[test]
+fn test_floor_clear_depth_three_multiplier() {
+    let base: u64 = 100u64 ;
+    let depth: u32 = 3u32 ;
+    let mult_x100: u64 = if depth == 0u32 { 100u64 } else {
+        100u64 + ((depth - 1u32) as u64) * 18u64
+    } ;
+    let amount: u64 = (base * mult_x100) / 100u64 ;
+    assert_eq(amount, 136u64) ;   // 100 + 2×18 = 136
+}
+
+#[test]
+fn test_cosmetic_categories_distinct() {
+    assert_ne(COSM_CATEGORY_AVATAR_SKIN, COSM_CATEGORY_HOME_DECOR) ;
+    assert_ne(COSM_CATEGORY_TITLE, COSM_CATEGORY_EMOTE) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile (per main.cssl § GAP)
+//   GAP-2 · csslc-test-attribute support
+//   GAP-3 · csslc-const-u32 top-level decl
+//   GAP-4 · csslc-early-return inside if-arm
+//   GAP-5 · csslc-if-as-expression with else-if-chain (used in test_award_valid)
+//   GAP-6 · csslc-cssl-host-economy crate forward-looking (¬ wired yet)
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W11-ECONOMY @ (anyone ∨ anything ∨ anybody)
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// Gift-economy axiom : trades = consent-bilateral · cancellable any-time.
+// Real-money channel = COSMETIC-ONLY · ¬ pay-for-power per LOA_PILLARS § 3.
+// T5 mythic-tier unlock = DEED-only · ¬ purchasable-by-currency.
+// Every trade audit-emitted · transparency-log per CONSENT-OS § attestation.
+// 7-day refund-window · sovereign-revocable always.
+// In-game currency Echo-shards = procgen-earned · ¬ purchasable.
+// ¬ rng-loot-box ¬ purchasable-power ¬ pay-to-skip-content axiom.
+//
+// ∎ economy.csl

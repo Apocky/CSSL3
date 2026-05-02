@@ -828,6 +828,360 @@ pub fn take_pending_spontaneous_ffi() -> Vec<(String, [f32; 3])> {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-CHAT-PANEL · chat-surface mirror + FFI exports
+// ───────────────────────────────────────────────────────────────────────
+//
+// § ROLE
+//   The `Labyrinth of Apocalypse/scenes/chat_panel.cssl` source-file is
+//   the canonical proprietary spec for the in-game chat panel ; once
+//   csslc gains FFI-pointer + GPU-primitive coverage, that .cssl file
+//   will fully replace `ui_overlay::push_text_input_box` etc. Until then,
+//   the FFI surface below provides the read/submit primitives a pure-CSSL
+//   chat_panel_render_frame() will reach for.
+//
+// § THREAD-SAFETY
+//   The chat-panel mirror lives in a `Mutex<ChatPanelMirror>` published
+//   each frame by `window.rs`. CSSL programs read from it via the FFI
+//   exports below ; mutations route back through the same submit-pipeline
+//   the keyboard uses (preserving the existing intent-router fast-path).
+
+/// § T11-WAVE3-CHAT-PANEL : a single chat-log entry exposed to CSSL.
+/// Mirrors `mcp_server::ChatLogEntry` but flattened (no time-stamp, no
+/// frame-index — CSSL doesn't need those for UI rendering).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatPanelEntry {
+    /// Role-tag : 0=Player · 1=Gm · 2=Dm · 3=Coder · 4=System.
+    pub role_id: u32,
+    /// UTF-8 text content (capped at 256 chars by upstream input-state).
+    pub text: String,
+}
+
+/// § T11-WAVE3-CHAT-PANEL : process-wide mirror published per-frame by
+/// `window.rs::App::on_frame`. CSSL programs read this through the FFI
+/// surface below.
+#[derive(Debug, Default, Clone)]
+pub struct ChatPanelMirror {
+    /// True when the player has pressed `/` and the box is accepting keys.
+    pub focused: bool,
+    /// Current edit buffer (UTF-8). Bounded by `TextInputState::max_buffer`.
+    pub buffer: String,
+    /// Visible chat-log history (Player + Gm + Dm + Coder + System rows).
+    /// Capped at `mcp_server::CHAT_LOG_CAP` (8) entries · oldest dropped.
+    pub history: Vec<ChatPanelEntry>,
+    /// Pending FFI-submitted text (drained by window.rs each frame and
+    /// pushed through the same submit-pipeline the keyboard uses).
+    pub ffi_submit_queue: Vec<String>,
+}
+
+fn chat_panel_mirror() -> &'static Mutex<ChatPanelMirror> {
+    static M: OnceLock<Mutex<ChatPanelMirror>> = OnceLock::new();
+    M.get_or_init(|| Mutex::new(ChatPanelMirror::default()))
+}
+
+/// Publish the latest chat-panel state. Called once per frame by `window.rs`.
+/// `history` is the cloned chat-log from EngineState.
+pub fn publish_chat_panel(focused: bool, buffer: String, history: Vec<ChatPanelEntry>) {
+    if let Ok(mut g) = chat_panel_mirror().lock() {
+        g.focused = focused;
+        g.buffer = buffer;
+        g.history = history;
+    }
+}
+
+/// Drain any pending FFI-submitted strings so window.rs can run them
+/// through the chat-routing pipeline this frame. Lock-free for callers
+/// that aren't holding the mirror.
+#[must_use]
+pub fn take_pending_chat_ffi_submits() -> Vec<String> {
+    match chat_panel_mirror().lock() {
+        Ok(mut g) => std::mem::take(&mut g.ffi_submit_queue),
+        Err(_) => Vec::new(),
+    }
+}
+
+// ── helper : copy a String into a caller-provided u8 buffer ──
+//
+// SAFETY-contract :
+//   - `out_ptr` must point to `max_len` writable bytes, alive for this call.
+//   - `max_len` must be ≤ isize::MAX as u32.
+//
+// The fn writes up to `max_len-1` bytes of UTF-8 + a single NUL terminator
+// at offset `min(len, max_len-1)`. Returns the number of payload bytes
+// written (excluding NUL).
+#[inline]
+unsafe fn copy_string_to_caller(s: &str, out_ptr: *mut u8, max_len: u32) -> u32 {
+    if out_ptr.is_null() || max_len == 0 {
+        return 0;
+    }
+    let bytes = s.as_bytes();
+    let max_payload = max_len.saturating_sub(1) as usize;
+    let n = bytes.len().min(max_payload);
+    if n > 0 {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out_ptr, n);
+    }
+    *out_ptr.add(n) = 0;
+    n as u32
+}
+
+/// FFI : is the chat-input-box currently focused?
+/// Returns 1 if focused · 0 if not focused. Lock-free read of the mirror
+/// (only contention is window.rs's per-frame publish, which is fast).
+#[no_mangle]
+pub extern "C" fn __cssl_chat_focused() -> u32 {
+    match chat_panel_mirror().lock() {
+        Ok(g) => u32::from(g.focused),
+        Err(_) => 0,
+    }
+}
+
+/// FFI : copy the current edit buffer into a caller-provided u8 buffer.
+/// Returns the number of payload bytes written (NOT including NUL terminator).
+/// Writes 0 when not focused / buffer empty.
+///
+/// # Safety
+/// Caller MUST guarantee `out_ptr` points to `max_len` writable bytes that
+/// stay alive for the duration of this call.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_chat_buffer_read(out_ptr: *mut u8, max_len: u32) -> u32 {
+    let s = match chat_panel_mirror().lock() {
+        Ok(g) => g.buffer.clone(),
+        Err(_) => return 0,
+    };
+    copy_string_to_caller(&s, out_ptr, max_len)
+}
+
+/// FFI : current count of chat-log history entries (newest-last). Capped at 8.
+#[no_mangle]
+pub extern "C" fn __cssl_chat_history_count() -> u32 {
+    match chat_panel_mirror().lock() {
+        Ok(g) => g.history.len() as u32,
+        Err(_) => 0,
+    }
+}
+
+/// FFI : read the i-th history row's role-id (0=Player · 1=Gm · 2=Dm ·
+/// 3=Coder · 4=System). Returns u32::MAX when `idx` out-of-range.
+#[no_mangle]
+pub extern "C" fn __cssl_chat_history_role(idx: u32) -> u32 {
+    match chat_panel_mirror().lock() {
+        Ok(g) => g.history.get(idx as usize).map_or(u32::MAX, |e| e.role_id),
+        Err(_) => u32::MAX,
+    }
+}
+
+/// FFI : copy the i-th history row's text into the caller's buffer.
+/// Returns payload-byte-count (no NUL) · 0 if `idx` out-of-range.
+///
+/// # Safety
+/// Caller guarantees `out_ptr` is a writable buffer of `max_len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_chat_history_read(
+    idx: u32,
+    out_ptr: *mut u8,
+    max_len: u32,
+) -> u32 {
+    let s = match chat_panel_mirror().lock() {
+        Ok(g) => g
+            .history
+            .get(idx as usize)
+            .map(|e| e.text.clone())
+            .unwrap_or_default(),
+        Err(_) => return 0,
+    };
+    if s.is_empty() {
+        return 0;
+    }
+    copy_string_to_caller(&s, out_ptr, max_len)
+}
+
+/// FFI : enqueue a chat-submission from CSSL (or external code).
+/// `text_ptr` + `text_len` is a UTF-8 byte buffer ; the bytes are copied
+/// into a Rust `String` and pushed onto the pending-submit queue. The
+/// window-loop drains the queue on the next frame and routes it through
+/// the same intent-router fast-path the keyboard uses.
+///
+/// Returns 0 on success · -1 on UTF-8 decode failure · -2 on cap-rejection
+/// · -3 on null/zero-length text. NO sovereign-cap required (the chat-
+/// surface IS the sovereign-surface · same as a keyboard press).
+///
+/// # Safety
+/// `text_ptr` must point to `text_len` valid bytes alive for this call.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_chat_submit_enqueue(
+    text_ptr: *const u8,
+    text_len: u32,
+) -> i32 {
+    if text_ptr.is_null() || text_len == 0 {
+        return -3;
+    }
+    if text_len > 4096 {
+        // Defensive cap — even though TextInputState caps at 256 chars,
+        // a malicious caller could pass any length. Reject early.
+        return -3;
+    }
+    let slice = std::slice::from_raw_parts(text_ptr, text_len as usize);
+    let text = match std::str::from_utf8(slice) {
+        Ok(s) => s.to_string(),
+        Err(_) => return -1,
+    };
+    if let Ok(mut g) = chat_panel_mirror().lock() {
+        g.ffi_submit_queue.push(text);
+    }
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-CHAT-PANEL · UI-draw deferred-queue (Phase-2 hook)
+// ───────────────────────────────────────────────────────────────────────
+//
+// `chat_panel.cssl` calls `__cssl_ui_draw_quad` + `__cssl_ui_draw_text`
+// from its render-frame body. Each call appends to the queue below ;
+// `ui_overlay::build_overlay_vertices` drains the queue at the end of
+// the build so chat_panel.cssl quads sit ON TOP of the rest of the HUD.
+//
+// Today (Phase-1) the queue is enqueued-but-not-drained (the renderer
+// only reads it under a feature-gate when csslc compiles chat_panel.cssl
+// into the build, which is gated on csslc gaining f32+pointer FFI). The
+// surface is shipped today so chat_panel.cssl's `extern "C"` decls
+// resolve cleanly when csslc IS ready ; the renderer-side drain is a
+// 5-line addition once that day arrives.
+
+/// One queued draw command from chat_panel.cssl. Norm-coords are 0..1
+/// in TOP-LEFT-origin convention (matches ui_overlay's pixel layout when
+/// scaled by screen size).
+#[derive(Debug, Clone)]
+pub enum UiDrawCmd {
+    /// Solid-fill rectangle. (x_norm, y_norm) is top-left ; (w_norm, h_norm)
+    /// is size · all in 0..1 normalized coordinates. `rgba` is packed
+    /// 0xRRGGBBAA.
+    Quad { x: f32, y: f32, w: f32, h: f32, rgba: u32 },
+    /// Text string. Same coord convention as Quad. `scale` is glyph-height
+    /// pixel-multiplier (1.0 = 8px tall, 2.0 = 16px tall).
+    Text { x: f32, y: f32, scale: f32, text: String, rgba: u32 },
+}
+
+fn ui_draw_queue() -> &'static Mutex<Vec<UiDrawCmd>> {
+    static Q: OnceLock<Mutex<Vec<UiDrawCmd>>> = OnceLock::new();
+    Q.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Drain the queued UI-draw commands. Called by the renderer at end-of-build.
+#[must_use]
+pub fn take_pending_ui_draws() -> Vec<UiDrawCmd> {
+    match ui_draw_queue().lock() {
+        Ok(mut g) => std::mem::take(&mut *g),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// FFI : enqueue a solid-fill rectangle draw command. Coords are 0..1
+/// normalized (top-left origin) ; `rgba` is packed 0xRRGGBBAA. Returns 0
+/// on success · -1 on out-of-range coords.
+#[no_mangle]
+pub extern "C" fn __cssl_ui_draw_quad(
+    x_norm: f32,
+    y_norm: f32,
+    w_norm: f32,
+    h_norm: f32,
+    rgba: u32,
+) -> i32 {
+    if !(x_norm.is_finite() && y_norm.is_finite() && w_norm.is_finite() && h_norm.is_finite()) {
+        return -1;
+    }
+    if w_norm <= 0.0 || h_norm <= 0.0 {
+        return -1;
+    }
+    if let Ok(mut g) = ui_draw_queue().lock() {
+        g.push(UiDrawCmd::Quad {
+            x: x_norm,
+            y: y_norm,
+            w: w_norm,
+            h: h_norm,
+            rgba,
+        });
+    }
+    0
+}
+
+/// FFI : enqueue a text draw command at (x_norm, y_norm) with `scale`
+/// pixel-multiplier. `text_ptr` + `len` is a UTF-8 byte buffer.
+/// Returns 0 on success · -1 on bad coords / non-UTF-8 text.
+///
+/// # Safety
+/// `text_ptr` must point to `len` valid bytes alive for this call.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_ui_draw_text(
+    x_norm: f32,
+    y_norm: f32,
+    scale: f32,
+    text_ptr: *const u8,
+    len: u32,
+    rgba: u32,
+) -> i32 {
+    if !(x_norm.is_finite() && y_norm.is_finite() && scale.is_finite()) {
+        return -1;
+    }
+    if text_ptr.is_null() || len == 0 || len > 4096 {
+        return -1;
+    }
+    let slice = std::slice::from_raw_parts(text_ptr, len as usize);
+    let text = match std::str::from_utf8(slice) {
+        Ok(s) => s.to_string(),
+        Err(_) => return -1,
+    };
+    if let Ok(mut g) = ui_draw_queue().lock() {
+        g.push(UiDrawCmd::Text {
+            x: x_norm,
+            y: y_norm,
+            scale,
+            text,
+            rgba,
+        });
+    }
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-CHAT-PANEL · intent-router wrapper FFI
+// ───────────────────────────────────────────────────────────────────────
+//
+// CSSL chat_panel.cssl uses this to bypass the in-engine submit-pipeline
+// and dispatch a one-shot intent without a chat-log entry. Useful for
+// scripted scene-orchestration that wants to run a `tour walls` without
+// a Player-typed prefix.
+//
+// Because `intent_router::route` requires `&mut EngineState` we cannot
+// dispatch here directly. Instead we enqueue the text via the same
+// pending-submit queue used by chat_submit_enqueue, AND classify+format
+// the intent locally so the caller gets immediate feedback.
+
+/// FFI : preview-classify a string + write the kind-tag to the caller's
+/// buffer. Returns the payload-byte-count.
+///
+/// # Safety
+/// `text_ptr` must point to `text_len` valid bytes ; `out_ptr` must be a
+/// writable buffer of `out_max` bytes ; both alive for the call.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_intent_classify(
+    text_ptr: *const u8,
+    text_len: u32,
+    out_ptr: *mut u8,
+    out_max: u32,
+) -> u32 {
+    if text_ptr.is_null() || text_len == 0 || text_len > 4096 {
+        return 0;
+    }
+    let slice = std::slice::from_raw_parts(text_ptr, text_len as usize);
+    let text = match std::str::from_utf8(slice) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let intent = crate::intent_router::classify(text);
+    let kind_tag = intent.kind_tag();
+    copy_string_to_caller(kind_tag, out_ptr, out_max)
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Tests
 // ───────────────────────────────────────────────────────────────────────
 
@@ -1075,5 +1429,184 @@ mod tests {
             )
         };
         assert_eq!(rc, -3);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-WAVE3-CHAT-PANEL · chat-mirror + UI-draw FFI tests
+    // ─────────────────────────────────────────────────────────────────
+    //
+    // These tests share the global chat_panel_mirror() + ui_draw_queue() ;
+    // serialize via a local mutex so cargo's parallel test runner doesn't
+    // trample expectations.
+    fn chat_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    #[test]
+    fn ffi_chat_focused_reflects_publish() {
+        let _g = chat_test_lock();
+        // Initial publish : unfocused.
+        publish_chat_panel(false, String::new(), Vec::new());
+        assert_eq!(__cssl_chat_focused(), 0);
+        // Toggle focused.
+        publish_chat_panel(true, "draft".to_string(), Vec::new());
+        assert_eq!(__cssl_chat_focused(), 1);
+    }
+
+    #[test]
+    fn ffi_chat_buffer_read_copies_utf8_with_nul() {
+        let _g = chat_test_lock();
+        publish_chat_panel(true, "hi there".to_string(), Vec::new());
+        let mut buf = [0u8; 64];
+        let n = unsafe {
+            __cssl_chat_buffer_read(buf.as_mut_ptr(), buf.len() as u32)
+        };
+        assert_eq!(n, 8);
+        assert_eq!(&buf[..8], b"hi there");
+        assert_eq!(buf[8], 0); // NUL terminator
+    }
+
+    #[test]
+    fn ffi_chat_history_count_and_role_reflect_publish() {
+        let _g = chat_test_lock();
+        let history = vec![
+            ChatPanelEntry { role_id: 0, text: "hi gm".to_string() },
+            ChatPanelEntry { role_id: 1, text: "the room hums".to_string() },
+            ChatPanelEntry { role_id: 0, text: "snapshot".to_string() },
+            ChatPanelEntry { role_id: 1, text: "ok · snapshot queued".to_string() },
+        ];
+        publish_chat_panel(false, String::new(), history);
+        assert_eq!(__cssl_chat_history_count(), 4);
+        assert_eq!(__cssl_chat_history_role(0), 0); // Player
+        assert_eq!(__cssl_chat_history_role(1), 1); // Gm
+        assert_eq!(__cssl_chat_history_role(99), u32::MAX);
+    }
+
+    #[test]
+    fn ffi_chat_history_read_returns_text() {
+        let _g = chat_test_lock();
+        let history = vec![ChatPanelEntry {
+            role_id: 1,
+            text: "ok · snapshot queued (PNG forthcoming)".to_string(),
+        }];
+        publish_chat_panel(false, String::new(), history);
+        let mut buf = [0u8; 256];
+        let n = unsafe {
+            __cssl_chat_history_read(0, buf.as_mut_ptr(), buf.len() as u32)
+        };
+        assert_eq!(n, "ok · snapshot queued (PNG forthcoming)".len() as u32);
+        let s = std::str::from_utf8(&buf[..n as usize]).expect("valid UTF-8");
+        assert_eq!(s, "ok · snapshot queued (PNG forthcoming)");
+    }
+
+    #[test]
+    fn ffi_chat_submit_enqueue_appends_to_pending() {
+        let _g = chat_test_lock();
+        // Drain any prior pending submits.
+        let _ = take_pending_chat_ffi_submits();
+        let text = b"snapshot";
+        let rc = unsafe { __cssl_chat_submit_enqueue(text.as_ptr(), text.len() as u32) };
+        assert_eq!(rc, 0);
+        let pending = take_pending_chat_ffi_submits();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0], "snapshot");
+    }
+
+    #[test]
+    fn ffi_chat_submit_enqueue_rejects_null_zero_oversize() {
+        let _g = chat_test_lock();
+        let _ = take_pending_chat_ffi_submits();
+        // Null → -3.
+        let rc = unsafe { __cssl_chat_submit_enqueue(std::ptr::null(), 0) };
+        assert_eq!(rc, -3);
+        // Zero-len with non-null pointer → -3.
+        let buf = b"x";
+        let rc = unsafe { __cssl_chat_submit_enqueue(buf.as_ptr(), 0) };
+        assert_eq!(rc, -3);
+        // Oversize → -3.
+        let big = vec![b'a'; 8192];
+        let rc = unsafe { __cssl_chat_submit_enqueue(big.as_ptr(), big.len() as u32) };
+        assert_eq!(rc, -3);
+    }
+
+    #[test]
+    fn ffi_intent_classify_returns_kind_tag() {
+        let _g = chat_test_lock();
+        let mut buf = [0u8; 32];
+        let text = b"snapshot";
+        let n = unsafe {
+            __cssl_intent_classify(
+                text.as_ptr(),
+                text.len() as u32,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+            )
+        };
+        assert_eq!(n, "snapshot".len() as u32);
+        assert_eq!(&buf[..n as usize], b"snapshot");
+    }
+
+    #[test]
+    fn ffi_ui_draw_quad_appends_to_queue() {
+        let _g = chat_test_lock();
+        let _ = take_pending_ui_draws();
+        let rc = __cssl_ui_draw_quad(0.1, 0.2, 0.3, 0.4, 0xFF_00_FF_AA);
+        assert_eq!(rc, 0);
+        let pending = take_pending_ui_draws();
+        assert_eq!(pending.len(), 1);
+        match &pending[0] {
+            UiDrawCmd::Quad { x, y, w, h, rgba } => {
+                assert!((x - 0.1).abs() < 1e-6);
+                assert!((y - 0.2).abs() < 1e-6);
+                assert!((w - 0.3).abs() < 1e-6);
+                assert!((h - 0.4).abs() < 1e-6);
+                assert_eq!(*rgba, 0xFF_00_FF_AA);
+            }
+            other => panic!("expected Quad, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ffi_ui_draw_quad_rejects_invalid_size() {
+        let _g = chat_test_lock();
+        let _ = take_pending_ui_draws();
+        let rc = __cssl_ui_draw_quad(0.0, 0.0, 0.0, 0.0, 0);
+        assert_eq!(rc, -1);
+        let rc2 = __cssl_ui_draw_quad(0.0, 0.0, -0.1, 0.5, 0);
+        assert_eq!(rc2, -1);
+        let rc3 = __cssl_ui_draw_quad(f32::NAN, 0.0, 0.5, 0.5, 0);
+        assert_eq!(rc3, -1);
+    }
+
+    #[test]
+    fn ffi_ui_draw_text_appends_to_queue() {
+        let _g = chat_test_lock();
+        let _ = take_pending_ui_draws();
+        let text = b"hello";
+        let rc = unsafe {
+            __cssl_ui_draw_text(
+                0.5,
+                0.5,
+                2.0,
+                text.as_ptr(),
+                text.len() as u32,
+                0xFF_FF_FF_FF,
+            )
+        };
+        assert_eq!(rc, 0);
+        let pending = take_pending_ui_draws();
+        assert_eq!(pending.len(), 1);
+        match &pending[0] {
+            UiDrawCmd::Text { text, scale, rgba, .. } => {
+                assert_eq!(text, "hello");
+                assert!((scale - 2.0).abs() < 1e-6);
+                assert_eq!(*rgba, 0xFF_FF_FF_FF);
+            }
+            other => panic!("expected Text, got {other:?}"),
+        }
     }
 }

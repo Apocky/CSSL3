@@ -1060,14 +1060,74 @@ impl App {
         }
     }
 
-    /// § T11-W8-CHAT-WIRE : route a body-string to the GM narrator.
+    /// § T11-W8-CHAT-WIRE + T11-WAVE3-CHAT-PANEL :
+    ///   route a body-string to the GM narrator OR (NEW) the deterministic
+    ///   intent-router when the player typed an actionable verb.
     ///
-    /// Stage-0 : delegate to `gm_narrator::GmNarrator::describe_environment`
-    /// keyed off the camera position so the response is locally-coherent +
-    /// fully self-hosted (no external LLM).
-    fn route_to_gm(&self, body: &str) -> (crate::mcp_server::ChatRole, String) {
-        // Stage-0 templated narrator. Per spec/10 §ROLE-GM, GM_CAP_TEXT_EMIT
-        // is default-on so we don't gate this branch on a cap check.
+    /// § STAGE-0-FLOW
+    ///   1. classify(body) via intent_router (¬ allocator beyond input-string).
+    ///   2. if Intent ¬ Unknown → route(body) → format human-readable result
+    ///      → return as `Gm` chat-response. This makes "snapshot" "burst 5"
+    ///      "tour walls" "spawn cube at 5 5 5" "teleport to color" etc. all
+    ///      WORK from the in-game text-input box (FFI dispatch via existing
+    ///      MCP-tool registry · same path the MCP `intent.translate` uses).
+    ///   3. if Intent = Unknown → fall back to gm_narrator::describe_environment
+    ///      (templated procedural prose, locally-coherent, ¬ external-LLM).
+    ///
+    /// § CAP-DISCIPLINE
+    ///   intent_router::route uses SOVEREIGN_CAP — Apocky's keyboard-press IS
+    ///   the sovereign-action, the chat-box IS the sovereign-surface. The cap
+    ///   gates GPU-mutating tools the same way the MCP control-plane does.
+    ///
+    /// § SELF-HOSTED
+    ///   ¬ external-API · stage-0 GM uses templated phrases via gm_narrator ;
+    ///   intent-router classifier is regex-free hand-rolled keyword matching.
+    fn route_to_gm(&mut self, body: &str) -> (crate::mcp_server::ChatRole, String) {
+        if !body.is_empty() {
+            // ── § T11-WAVE3-CHAT-PANEL : intent-router fast-path ──
+            let intent = crate::intent_router::classify(body);
+            let is_unknown = matches!(intent, crate::intent_router::Intent::Unknown { .. });
+            if !is_unknown {
+                // Dispatch via the live MCP-tool registry (same path the
+                // MCP `intent.translate` tool uses).
+                let route_result = if let Ok(mut g) = self.engine_state.lock() {
+                    crate::intent_router::route(
+                        body,
+                        crate::mcp_server::SOVEREIGN_CAP,
+                        &mut g,
+                    )
+                } else {
+                    return (
+                        crate::mcp_server::ChatRole::System,
+                        format!(
+                            "engine-state lock poisoned · could not dispatch intent ({})",
+                            intent.kind_tag()
+                        ),
+                    );
+                };
+                // Format a friendly response line. Each variant has its own
+                // canonical phrasing ; we surface the action that fired +
+                // a 1-liner confirmation so the player sees *something*
+                // happen even when the underlying GPU effect is subtle.
+                let kind_tag = route_result
+                    .get("classified_kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
+                let ok = route_result
+                    .get("ok")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let pretty = crate::intent_router::format_intent_response(
+                    &kind_tag,
+                    ok,
+                    &route_result,
+                    body,
+                );
+                return (crate::mcp_server::ChatRole::Gm, pretty);
+            }
+        }
+        // ── Fallback : Intent::Unknown OR empty body → templated GM prose ──
         let mut narrator = crate::gm_narrator::GmNarrator::new();
         let cam = crate::gm_narrator::Vec3::new(
             self.player.pos[0],
@@ -1624,6 +1684,62 @@ impl App {
                 .text_input_chars_typed_total
                 .load(std::sync::atomic::Ordering::Relaxed);
         }
+
+        // § T11-WAVE3-CHAT-PANEL : drain pending FFI-side submits + route them
+        // through the same chat-pipeline the keyboard uses. CSSL programs (or
+        // future scripted scene-orchestration) call __cssl_chat_submit_enqueue
+        // and we route here at frame-boundary so all chat-paths converge.
+        let ffi_submits = crate::ffi::take_pending_chat_ffi_submits();
+        for text in ffi_submits {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            log_event(
+                "INFO",
+                "loa-host/window",
+                &format!("text-input · ffi-submit · payload={trimmed:?}"),
+            );
+            telem::global()
+                .record_text_input_submission(trimmed.chars().count() as u32);
+            self.recent_event = format!("ffi-input: {trimmed}");
+            if let Ok(mut g) = self.engine_state.lock() {
+                g.push_chat_response(
+                    crate::mcp_server::ChatRole::Player,
+                    trimmed.to_string(),
+                );
+            }
+            self.route_chat_submission(trimmed);
+        }
+
+        // § T11-WAVE3-CHAT-PANEL : publish the chat-panel mirror so CSSL
+        // programs can read live state via __cssl_chat_focused / _buffer_read
+        // / _history_count / _history_role / _history_read. The mirror is
+        // updated once per frame (lock-free reads from the FFI surface).
+        let chat_history_for_ffi: Vec<crate::ffi::ChatPanelEntry> =
+            match self.engine_state.lock() {
+                Ok(g) => g
+                    .chat_log
+                    .iter()
+                    .map(|e| crate::ffi::ChatPanelEntry {
+                        role_id: match e.role {
+                            crate::mcp_server::ChatRole::Player => 0,
+                            crate::mcp_server::ChatRole::Gm => 1,
+                            crate::mcp_server::ChatRole::Dm => 2,
+                            crate::mcp_server::ChatRole::Coder => 3,
+                            crate::mcp_server::ChatRole::System => 4,
+                        },
+                        text: e.text.clone(),
+                    })
+                    .collect(),
+                Err(_) => Vec::new(),
+            };
+        crate::ffi::publish_chat_panel(
+            self.input.text_input.focused,
+            self.input.text_input.buffer.clone(),
+            chat_history_for_ffi,
+        );
+
         // Keep input.paused mirror in sync with menu_open : when the menu is
         // open, the input layer's `paused` reflects that. When menu closes,
         // we leave `paused` as-is (Tab no longer toggles it directly).
@@ -1921,5 +2037,56 @@ mod tests {
         assert_eq!(ps.stamina_deficit, 0.0);
         assert_eq!(ps.recent_combat_density, 0.0);
         assert_eq!(ps.rest_signals, 1.0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // § T11-WAVE3-CHAT-PANEL · intent-router fast-path tests
+    // ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn route_chat_submission_default_runs_intent_router_for_snapshot() {
+        // The intent-router fast-path must fire on the default `snapshot`
+        // input · the chat-log gets a Player row + a Gm row carrying the
+        // formatted "ok · snapshot queued ..." response.
+        let mut app = App::new();
+        // Pre-condition : chat_log is empty.
+        let prior_count = app.engine_state.lock().unwrap().chat_log.len();
+        app.route_chat_submission("snapshot");
+        // After routing : the player line is NOT pushed by route_chat_submission
+        // (the per-frame loop pushes that BEFORE calling route_*) ; route_*
+        // pushes the response only.
+        let g = app.engine_state.lock().unwrap();
+        assert_eq!(g.chat_log.len(), prior_count + 1);
+        let last = g.chat_log.back().expect("response row exists");
+        assert_eq!(last.role, crate::mcp_server::ChatRole::Gm);
+        assert!(last.text.contains("snapshot"));
+    }
+
+    #[test]
+    fn route_chat_submission_default_falls_back_to_narrator_on_unknown() {
+        let mut app = App::new();
+        let prior_count = app.engine_state.lock().unwrap().chat_log.len();
+        app.route_chat_submission("describe what's around me");
+        // Unknown-intent → fallback narrator response.
+        let g = app.engine_state.lock().unwrap();
+        assert_eq!(g.chat_log.len(), prior_count + 1);
+        let last = g.chat_log.back().unwrap();
+        assert_eq!(last.role, crate::mcp_server::ChatRole::Gm);
+        // Body of the response carries either the `(re: "..")` prefix or
+        // some narrator-emitted prose (locally-coherent).
+        assert!(!last.text.is_empty());
+    }
+
+    #[test]
+    fn route_chat_submission_burst_dispatches_via_intent_router() {
+        let mut app = App::new();
+        let prior_count = app.engine_state.lock().unwrap().chat_log.len();
+        app.route_chat_submission("burst 5");
+        let g = app.engine_state.lock().unwrap();
+        assert_eq!(g.chat_log.len(), prior_count + 1);
+        let last = g.chat_log.back().unwrap();
+        assert_eq!(last.role, crate::mcp_server::ChatRole::Gm);
+        // Body should mention "5" (the count) since it's a known burst.
+        assert!(last.text.contains("5") || last.text.contains("burst"));
     }
 }

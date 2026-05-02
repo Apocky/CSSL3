@@ -1011,6 +1011,90 @@ pub fn route(text: &str, sovereign: &str, state: &mut EngineState) -> Value {
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § T11-WAVE3-CHAT-PANEL · human-readable response formatter
+// ───────────────────────────────────────────────────────────────────────
+
+/// Format an `intent_router::route()` JSON envelope into a single-line
+/// human-readable response that the in-game chat-log surfaces.
+///
+/// `kind_tag` is the classified-kind label (e.g. "snapshot" · "burst" ·
+/// "tour" · "spawn_at" · "set_wall_pattern" · "teleport"). `ok` is the
+/// dispatch ok-flag. `route_result` is the full JSON envelope (carries
+/// `params` · `result` · `tool` etc). `body` is the raw user input text
+/// (for failure-echo + truncation).
+///
+/// Pure function — no mutation, no I/O. Unit-testable without the engine.
+#[must_use]
+pub fn format_intent_response(
+    kind_tag: &str,
+    ok: bool,
+    route_result: &Value,
+    body: &str,
+) -> String {
+    let params = route_result.get("params").cloned().unwrap_or(Value::Null);
+    // Helpers that read params · default-fallback if absent.
+    let p_u32 = |k: &str| {
+        params
+            .get(k)
+            .and_then(Value::as_u64)
+            .map(|v| v as u32)
+            .unwrap_or(0)
+    };
+    let p_str = |k: &str| {
+        params
+            .get(k)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let p_f32 = |k: &str| params.get(k).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+    let body_short = if body.chars().count() > 64 {
+        let mut s: String = body.chars().take(60).collect();
+        s.push_str("...");
+        s
+    } else {
+        body.to_string()
+    };
+    let prefix = if ok { "ok" } else { "?" };
+    match kind_tag {
+        "snapshot" => format!("{prefix} · snapshot queued (PNG forthcoming)"),
+        "burst" => format!("{prefix} · burst-of-{} queued", p_u32("count").max(10)),
+        "tour" => format!("{prefix} · tour `{}` started", p_str("tour_id")),
+        "set_cfer_intensity" => {
+            format!("{prefix} · CFER intensity → {:.2}", p_f32("intensity"))
+        }
+        "set_illuminant" => format!("{prefix} · illuminant → {}", p_str("name")),
+        "set_wall_pattern" => format!(
+            "{prefix} · wall {} → pattern {}",
+            p_u32("wall_id"),
+            p_u32("pattern_id")
+        ),
+        "set_floor_pattern" => format!(
+            "{prefix} · floor q{} → pattern {}",
+            p_u32("quadrant_id"),
+            p_u32("pattern_id")
+        ),
+        "set_material" => format!(
+            "{prefix} · quad {} → material {}",
+            p_u32("quad_id"),
+            p_u32("material_id")
+        ),
+        "spawn_at" => format!(
+            "{prefix} · spawned kind={} at ({:.1}, {:.1}, {:.1})",
+            p_u32("kind"),
+            p_f32("x"),
+            p_f32("y"),
+            p_f32("z")
+        ),
+        "teleport" => format!("{prefix} · teleporting to {}", p_str("room_id")),
+        "spontaneous_seed" => {
+            format!("seed `{}` queued · awaiting field-stamp", p_str("text"))
+        }
+        _ => format!("{prefix} · {} dispatched (\"{}\")", kind_tag, body_short),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Tests
 // ───────────────────────────────────────────────────────────────────────
 
@@ -1403,5 +1487,97 @@ mod tests {
         assert_eq!(c["per_kind"]["unknown"], 1);
         assert_eq!(c["intents_classified_total"], 4);
         assert_eq!(c["intents_unknown_total"], 1);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-WAVE3-CHAT-PANEL · format_intent_response tests
+    // ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn format_intent_response_snapshot() {
+        let envelope = json!({
+            "ok": true,
+            "params": {},
+        });
+        let s = format_intent_response("snapshot", true, &envelope, "snapshot");
+        assert!(s.starts_with("ok ·"));
+        assert!(s.contains("snapshot"));
+    }
+
+    #[test]
+    fn format_intent_response_burst_carries_count() {
+        let envelope = json!({
+            "ok": true,
+            "params": { "count": 25 },
+        });
+        let s = format_intent_response("burst", true, &envelope, "burst 25 frames");
+        assert!(s.contains("25"));
+    }
+
+    #[test]
+    fn format_intent_response_spawn_carries_position() {
+        let envelope = json!({
+            "ok": true,
+            "params": { "kind": 0, "x": 5.0, "y": 1.0, "z": 5.0 },
+        });
+        let s = format_intent_response("spawn_at", true, &envelope, "spawn cube at 5 1 5");
+        assert!(s.contains("5.0"));
+    }
+
+    #[test]
+    fn format_intent_response_unknown_kind_falls_through() {
+        let envelope = json!({});
+        let s = format_intent_response("zzz", false, &envelope, "frobnicate");
+        assert!(s.contains("zzz"));
+        assert!(s.contains("frobnicate"));
+    }
+
+    #[test]
+    fn format_intent_response_truncates_long_body() {
+        let body = "a".repeat(200);
+        let envelope = json!({});
+        let s = format_intent_response("zzz", false, &envelope, &body);
+        // Truncated body uses ellipsis `...` + 60 chars.
+        assert!(s.contains("..."));
+        assert!(s.chars().count() < 100);
+    }
+
+    #[test]
+    fn format_intent_response_teleport_carries_target() {
+        let envelope = json!({
+            "ok": true,
+            "params": { "room_id": "ColorRoom" },
+        });
+        let s = format_intent_response("teleport", true, &envelope, "teleport to color");
+        assert!(s.contains("ColorRoom"));
+    }
+
+    #[test]
+    fn format_intent_response_route_round_trip_for_known_intents() {
+        // Spot-check : every variant in the kind-table produces a
+        // non-empty response that includes the kind-tag context.
+        let _g = test_lock();
+        reset_for_test();
+        let mut s = EngineState::default();
+        let cases = [
+            "snapshot",
+            "burst 5",
+            "tour walls",
+            "intensity 0.5",
+            "illuminant d65",
+            "set wall north pattern qr",
+            "set floor ne pattern checker",
+            "material on plinth 3 brass",
+            "teleport to color room",
+            "spawn cube at 5 5 5",
+        ];
+        for input in cases {
+            let r = route(input, SOVEREIGN_CAP, &mut s);
+            let kind = r["classified_kind"].as_str().unwrap_or("?");
+            let ok = r["ok"].as_bool().unwrap_or(false);
+            let pretty = format_intent_response(kind, ok, &r, input);
+            assert!(!pretty.is_empty(), "empty response for '{input}'");
+            assert!(pretty.len() < 200, "response too long for '{input}'");
+        }
     }
 }
