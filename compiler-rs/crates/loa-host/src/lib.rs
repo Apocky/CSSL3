@@ -55,6 +55,12 @@ pub mod spectral_bridge;
 
 // Input-sibling catalog
 pub mod input;
+// § T11-W13-INPUT-GENRE-FLUID (W13-11) — multi-source input router :
+//   4 modes {KeyboardMouse · GamepadXinput · GamepadDualSense · TouchScreen}
+//   · 500ms-grace last-source-wins · remappable EVERY action · OS-sticky/slow/
+//   bounce-keys · 5-tier aim-assist with sovereign-cap on tier ≥ 3 · anti-
+//   bullying PvP server-clamp. EXTEND-only — does not touch input.rs internals.
+pub mod input_genre_fluid;
 pub mod movement;
 pub mod physics;
 
@@ -78,11 +84,30 @@ pub mod dm_arc;
 // gated on `runtime` feature inside the module).
 pub mod ui_overlay;
 
+// § T11-W13-FPS-HUD (W13-7) — FPS-grade HUD-element suite : crosshair +
+// ammo + radar + objective + damage-floaters + health/shield + score-team +
+// reload + hit-marker + killfeed. Extends ui_overlay's textured-quad pipeline
+// without re-rolling the bitmap-font / vertex layout. Catalog-only ; pure CPU.
+pub mod fps_hud;
+
 // § T11-W12-POLISH (W12-12 Engine-Polish-Pass) — catalog-buildable polish
 // audit + accessibility tunables + perf-budget tracker + WCAG color-contrast
 // audit + loading-spinner + render-mode-flash + JSONL audit-report. Pure-CPU,
 // zero new path-deps.
 pub mod polish_audit;
+
+// § T11-W13-FPS-PIPELINE (W13-1 FPS-render-pipeline + perf-rebuild) — catalog-
+// buildable FPS render-pipeline orchestrator. Triple-buffered ring of frame
+// slots · pre-allocated cmd-buffer pool · uniform staging · instance buffer
+// · GPU-driven culling plan · variable-rate-shading tier table · mailbox
+// frame-pacing · per-frame metrics emitter. ALL fields pre-allocated at
+// construct time ; zero per-frame heap allocation on the hot path.
+//
+// LoA expanding to action-FPS looter-shooter ⇒ frame-budget = sovereignty.
+// Targets ≤8.33ms (120Hz) · stretch ≤6.94ms (144Hz) · sub-frame input-latency.
+// Catalog-only · no wgpu / winit deps ; the Renderer owns one of these and
+// steps it inside `render_frame`. Spec @ Labyrinth of Apocalypse/systems/fps_pipeline.csl.
+pub mod fps_pipeline;
 
 // Snapshot-sibling catalog (T11-LOA-TEST-APP : PNG encode + tour-pose
 // registry + golden-image diff are catalog-buildable ; the wgpu readback

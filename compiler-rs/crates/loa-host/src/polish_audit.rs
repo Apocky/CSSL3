@@ -655,6 +655,11 @@ impl RenderModeFlash {
 pub const FRAME_BUDGET_60HZ_MS: f32 = 16.667;
 /// 120Hz frame budget = 8.3333 ms.
 pub const FRAME_BUDGET_120HZ_MS: f32 = 8.333;
+/// § T11-W13-FPS-PIPELINE : 144Hz stretch frame budget = 6.944 ms.
+/// LoA expanding to action-FPS looter-shooter ⇒ stretch target for high-refresh
+/// monitors. PerfBudget tracks miss-counts at this threshold for fleet-level
+/// attestation alongside the existing 60/120Hz surfaces.
+pub const FRAME_BUDGET_144HZ_MS: f32 = 6.944;
 /// Sustained allocation-on-hot-path threshold (ms wasted per frame).
 /// >0.5ms cumulative allocation per frame → flag as a perf issue.
 pub const ALLOC_HOT_PATH_THRESHOLD_MS: f32 = 0.5;
@@ -680,6 +685,10 @@ pub struct PerfBudget {
     pub over_60hz_count: u32,
     /// Frames that exceeded the 120Hz budget since reset.
     pub over_120hz_count: u32,
+    /// § T11-W13-FPS-PIPELINE : frames that exceeded the 144Hz stretch budget.
+    /// Counted alongside 60/120Hz so fleet-level attestation has a high-refresh
+    /// surface without breaking the existing API.
+    pub over_144hz_count: u32,
     /// Total frames recorded since reset.
     pub total_frames: u32,
 }
@@ -692,6 +701,7 @@ impl Default for PerfBudget {
             valid_count: 0,
             over_60hz_count: 0,
             over_120hz_count: 0,
+            over_144hz_count: 0,
             total_frames: 0,
         }
     }
@@ -719,6 +729,10 @@ impl PerfBudget {
         }
         if ms > FRAME_BUDGET_120HZ_MS {
             self.over_120hz_count = self.over_120hz_count.saturating_add(1);
+        }
+        // § T11-W13-FPS-PIPELINE : 144Hz stretch-budget miss-counter.
+        if ms > FRAME_BUDGET_144HZ_MS {
+            self.over_144hz_count = self.over_144hz_count.saturating_add(1);
         }
     }
 
@@ -774,6 +788,31 @@ impl PerfBudget {
         let pass_count = self.total_frames - self.over_60hz_count;
         // ≥ 95% pass-rate over total session
         (pass_count as f32 / self.total_frames as f32) >= 0.95
+    }
+
+    /// § T11-W13-FPS-PIPELINE : 120Hz fleet-level pass-rate attestation.
+    /// True when 95%+ of recent frames stayed under the 120Hz budget.
+    #[must_use]
+    pub fn passes_120hz_attestation(&self) -> bool {
+        if self.total_frames == 0 {
+            return true;
+        }
+        let pass_count = self.total_frames - self.over_120hz_count;
+        (pass_count as f32 / self.total_frames as f32) >= 0.95
+    }
+
+    /// § T11-W13-FPS-PIPELINE : 144Hz stretch fleet-level pass-rate attestation.
+    /// True when 90%+ of recent frames stayed under the 144Hz budget.
+    /// Threshold lowered to 90% (vs 95% for 60/120Hz) because 144Hz is a
+    /// stretch target — frames that miss 144Hz but hit 120Hz still meet
+    /// the action-FPS playability bar.
+    #[must_use]
+    pub fn passes_144hz_attestation(&self) -> bool {
+        if self.total_frames == 0 {
+            return true;
+        }
+        let pass_count = self.total_frames - self.over_144hz_count;
+        (pass_count as f32 / self.total_frames as f32) >= 0.90
     }
 
     /// Reset all counters + ring (e.g. after toggling a setting).
