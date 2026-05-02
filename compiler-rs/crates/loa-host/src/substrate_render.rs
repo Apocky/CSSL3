@@ -45,6 +45,14 @@ use cssl_rt::loa_startup::log_event;
 pub const DEFAULT_SUBSTRATE_W: u32 = 256;
 pub const DEFAULT_SUBSTRATE_H: u32 = 256;
 
+/// § T11-W18-G-INTEGRATE — GPU-path resolution. 2560×1440 = 1440p WQHD ; 56×
+/// more pixels than the CPU default. The GPU compute-shader (8×8 workgroups)
+/// dispatches `(320, 180, 1)` work-groups at this resolution, which fits the
+/// 6.94 ms / 144 Hz frame budget on Apocky's HighPerformance adapter while
+/// the CPU rayon implementation cannot.
+pub const GPU_SUBSTRATE_W: u32 = 2560;
+pub const GPU_SUBSTRATE_H: u32 = 1440;
+
 /// Number of test crystals procedurally-allocated at startup. They're
 /// arranged in a small ring around the test-room center so the player can
 /// see substrate-resonance pixels regardless of where they look first.
@@ -56,6 +64,16 @@ pub struct SubstrateRenderState {
     pub crystals: Vec<Crystal>,
     /// How many frames have ticked since init (for diagnostics).
     pub frame_count: u64,
+
+    /// § T11-W18-G-INTEGRATE — Optional GPU compute-shader path. When `Some`,
+    /// `tick_gpu(device, queue, observer)` dispatches the WGSL compute-shader
+    /// at 1440p ; the output `wgpu::TextureView` is sampleable via
+    /// `gpu_output_view()` for the next render-pass to consume. The CPU
+    /// pixel-field still ticks for compatibility with the existing
+    /// `substrate_compose` upload pipeline. When `None`, only the CPU path
+    /// runs (unchanged behaviour for callers that never opt in).
+    #[cfg(feature = "runtime")]
+    pub gpu: Option<cssl_host_substrate_resonance_gpu::SubstrateResonanceGpu>,
 }
 
 impl Default for SubstrateRenderState {
@@ -90,7 +108,65 @@ impl SubstrateRenderState {
             renderer: DigitalIntelligenceRenderer::new(DEFAULT_SUBSTRATE_W, DEFAULT_SUBSTRATE_H),
             crystals,
             frame_count: 0,
+            #[cfg(feature = "runtime")]
+            gpu: None,
         }
+    }
+
+    /// § T11-W18-G-INTEGRATE — Construct a SubstrateRenderState with the GPU
+    /// compute-shader path activated at 1440p (2560×1440). The CPU
+    /// pixel-field still runs at `DEFAULT_SUBSTRATE_W × DEFAULT_SUBSTRATE_H`
+    /// for the existing `substrate_compose` upload pipeline ; the GPU
+    /// compute-shader runs each frame at 1440p and exposes its
+    /// `wgpu::TextureView` for the future render-pass that will sample it
+    /// directly (W18-N).
+    ///
+    /// Falls back to the CPU-only path silently if the GPU pipeline cannot
+    /// be created (e.g., adapter does not advertise compute-shader support
+    /// for the requested format) — caller can detect via
+    /// `is_gpu_active()`.
+    #[cfg(feature = "runtime")]
+    pub fn new_gpu(device: &wgpu::Device, width: u32, height: u32) -> Self {
+        let mut s = Self::new();
+        // Construct the compute-pipeline. `SubstrateResonanceGpu::new` is
+        // infallible (panics on shader compile errors only) ; if it does
+        // panic the device is fundamentally broken and we should fall back.
+        let gpu = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            cssl_host_substrate_resonance_gpu::SubstrateResonanceGpu::new(device, width, height)
+        }));
+        match gpu {
+            Ok(g) => {
+                s.gpu = Some(g);
+                log_event(
+                    "INFO",
+                    "loa-host/substrate-render",
+                    &format!(
+                        "GPU-path active · {}×{} compute-shader · target = 1440p144 (6.94 ms budget)",
+                        width, height
+                    ),
+                );
+            }
+            Err(_) => {
+                log_event(
+                    "WARN",
+                    "loa-host/substrate-render",
+                    "GPU-path init panicked · falling back to CPU-only path",
+                );
+            }
+        }
+        s
+    }
+
+    /// § T11-W18-G-INTEGRATE — true iff the GPU compute-shader path is wired.
+    #[cfg(feature = "runtime")]
+    #[must_use]
+    pub fn is_gpu_active(&self) -> bool {
+        self.gpu.is_some()
+    }
+    #[cfg(not(feature = "runtime"))]
+    #[must_use]
+    pub fn is_gpu_active(&self) -> bool {
+        false
     }
 
     /// Advance the substrate-render pipeline by one frame. Returns the
@@ -123,6 +199,54 @@ impl SubstrateRenderState {
     /// this to a wgpu texture for display.
     pub fn current_display(&self) -> PixelField {
         self.renderer.current_display()
+    }
+
+    /// § T11-W18-G-INTEGRATE — Advance both the CPU pixel-field AND the GPU
+    /// compute-shader by one frame. The CPU path produces the small-format
+    /// `PixelField` for the existing `substrate_compose` upload pipeline ;
+    /// the GPU path produces a 1440p `wgpu::TextureView` accessible via
+    /// `gpu_output_view()` for the next render-pass that samples it
+    /// directly (wired in W18-N).
+    ///
+    /// Falls through to plain `tick(observer)` (CPU only) when the GPU path
+    /// is not active — caller can call this unconditionally.
+    #[cfg(feature = "runtime")]
+    pub fn tick_gpu(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        observer: ObserverCoord,
+    ) -> FrameOutput {
+        // CPU path always runs (cheap at 256×256 ; keeps substrate_compose
+        // upload functional until W18-N rewires render to sample GPU output).
+        let out = self.tick(observer);
+        // GPU path runs in parallel so the 1440p compute-shader is exercised
+        // each frame.
+        if let Some(gpu) = self.gpu.as_mut() {
+            let _view = gpu.dispatch(device, queue, observer, &self.crystals);
+            // The view borrow is bounded by self.gpu so we can't return it here ;
+            // callers fetch it via `gpu_output_view()` after this call.
+        }
+        out
+    }
+
+    /// § T11-W18-G-INTEGRATE — Borrow the most-recent GPU compute-shader
+    /// output texture-view. Returns `None` when the GPU path is not active
+    /// (CPU-only mode). The view is `rgba8unorm` ; bind it as a sampled
+    /// texture in the next render-pass to display the 1440p substrate field.
+    #[cfg(feature = "runtime")]
+    #[must_use]
+    pub fn gpu_output_view(&self) -> Option<&wgpu::TextureView> {
+        self.gpu.as_ref().map(|g| g.output_view())
+    }
+
+    /// § T11-W18-G-INTEGRATE — Borrow the GPU output texture itself (for
+    /// callers that need to copy it, layer-bind it, or alias it as a
+    /// different format). Returns `None` when the GPU path is not active.
+    #[cfg(feature = "runtime")]
+    #[must_use]
+    pub fn gpu_output_texture(&self) -> Option<&wgpu::Texture> {
+        self.gpu.as_ref().map(|g| g.output_texture())
     }
 
     /// Set the global substrate-blend mode. Useful for combat (snap to
@@ -208,6 +332,37 @@ mod tests {
         let n0 = s.crystals.len();
         let _h = s.spawn_crystal(CrystalClass::Event, 0xDEAD_BEEF, WorldPos::new(0, 0, 1000));
         assert_eq!(s.crystals.len(), n0 + 1);
+    }
+
+    /// § T11-W18-G-INTEGRATE — GPU constructor smoke-test. Ignored by default
+    /// because it requires a wgpu adapter ; runs on Apocky's box but skips
+    /// gracefully on CI runners without a GPU.
+    #[cfg(feature = "runtime")]
+    #[test]
+    #[ignore]
+    fn new_gpu_constructs_at_1440p_when_adapter_available() {
+        let Some((_inst, _adapter, device, _queue)) =
+            cssl_host_substrate_resonance_gpu::try_headless_device()
+        else {
+            eprintln!("no GPU adapter available · ignored");
+            return;
+        };
+        let s = SubstrateRenderState::new_gpu(&device, GPU_SUBSTRATE_W, GPU_SUBSTRATE_H);
+        assert!(s.is_gpu_active(), "GPU path should be active when adapter present");
+        assert_eq!(s.crystals.len(), STARTUP_CRYSTAL_COUNT);
+        assert!(s.gpu_output_view().is_some());
+        assert!(s.gpu_output_texture().is_some());
+        let tex = s.gpu_output_texture().unwrap();
+        assert_eq!(tex.size().width, GPU_SUBSTRATE_W);
+        assert_eq!(tex.size().height, GPU_SUBSTRATE_H);
+    }
+
+    /// § T11-W18-G-INTEGRATE — `is_gpu_active` defaults to `false` for the
+    /// CPU-only constructor. This test runs everywhere (no GPU required).
+    #[test]
+    fn cpu_only_path_reports_gpu_inactive() {
+        let s = SubstrateRenderState::new();
+        assert!(!s.is_gpu_active());
     }
 
     #[test]

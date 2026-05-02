@@ -1420,6 +1420,27 @@ impl ApplicationHandler for App {
         // § Try to bring up the GPU. On failure we keep the window open + log.
         if let Some(gpu) = GpuContext::new(window.clone()) {
             let renderer = Renderer::new(&gpu);
+            // § T11-W18-G-INTEGRATE — Now that we have a wgpu Device, swap the
+            // CPU-only SubstrateRenderState for one with the 1440p GPU
+            // compute-shader path activated. The CPU pixel-field continues
+            // running in parallel so the existing substrate_compose upload
+            // pipeline keeps working ; the GPU compute-shader produces the
+            // 1440p144 texture-view exposed via `substrate.gpu_output_view()`.
+            //
+            // Falls back to the existing CPU-only state silently if compute
+            // pipeline construction fails (caller checks `is_gpu_active()`).
+            self.substrate = crate::substrate_render::SubstrateRenderState::new_gpu(
+                &gpu.device,
+                crate::substrate_render::GPU_SUBSTRATE_W,
+                crate::substrate_render::GPU_SUBSTRATE_H,
+            );
+            if !self.substrate.is_gpu_active() {
+                log_event(
+                    "WARN",
+                    "loa-host/window",
+                    "GPU substrate-resonance compute path failed to init · CPU-only fallback active",
+                );
+            }
             self.gpu = Some(gpu);
             self.renderer = Some(renderer);
             self.gpu_alive = true;
@@ -1955,7 +1976,22 @@ impl App {
                 self.frame_count,
                 0xFFFF_FFFF,
             );
-            let _frame_out = self.substrate.tick(observer);
+            // § T11-W18-G-INTEGRATE — Prefer the GPU compute-shader path when
+            // active (1440p144). Falls back to the CPU-only `tick` when the
+            // GPU substrate-resonance pipeline is not wired (no GpuContext
+            // yet, or compute-pipeline construction failed). The CPU
+            // pixel-field still ticks inside `tick_gpu` so the existing
+            // `substrate_compose` upload pipeline keeps producing visible
+            // output until W18-N rewires render to sample the GPU texture.
+            let _frame_out = if self.substrate.is_gpu_active() {
+                if let Some(gpu) = self.gpu.as_ref() {
+                    self.substrate.tick_gpu(&gpu.device, &gpu.queue, observer)
+                } else {
+                    self.substrate.tick(observer)
+                }
+            } else {
+                self.substrate.tick(observer)
+            };
         }
 
         // § 8e. T11-W18-A-COMPOSITE — push the just-ticked substrate pixel

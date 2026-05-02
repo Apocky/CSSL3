@@ -26,7 +26,12 @@ authors.workspace      = true
 
 [features]
 default = []
-runtime = ["dep:wgpu", "dep:winit", "dep:pollster"]
+runtime = [
+    "dep:wgpu",
+    "dep:winit",
+    "dep:pollster",
+    "cssl-host-substrate-resonance-gpu/runtime",
+]
 
 [dependencies]
 cssl-rt                         = { path = "../cssl-rt" }
@@ -44,6 +49,12 @@ cssl-host-substrate-intelligence = { path = "../cssl-host-substrate-intelligence
 cssl-host-crystallization              = { path = "../cssl-host-crystallization" }
 cssl-host-alien-materialization        = { path = "../cssl-host-alien-materialization" }
 cssl-host-digital-intelligence-render  = { path = "../cssl-host-digital-intelligence-render" }
+# § T11-W18-G-INTEGRATE · GPU compute-shader port of resolve_substrate_resonance.
+#   Default-feature build is buffer-pack + WGSL-source only (no wgpu pull).
+#   The `runtime` feature on loa-host activates the inner crate's `runtime`
+#   feature so `SubstrateResonanceGpu::dispatch` is callable. 1440p144 path :
+#   substrate_render::SubstrateRenderState::new_gpu(device, queue, w, h).
+cssl-host-substrate-resonance-gpu      = { path = "../cssl-host-substrate-resonance-gpu" }
 # § T11-LOA-FID-SPECTRAL : substrate's hyperspectral pipeline. Used by
 # `spectral_bridge` to bake per-material 16-band reflectance × 4 canonical
 # illuminants → sRGB albedo for the GPU material LUT. Catalog-buildable

@@ -4140,6 +4140,7 @@ dependencies = [
  "cssl-host-spectral-grader",
  "cssl-host-stereoscopy",
  "cssl-host-substrate-intelligence",
+ "cssl-host-substrate-resonance-gpu",
  "cssl-host-voice",
  "cssl-host-weapons",
  "cssl-hotfix",
