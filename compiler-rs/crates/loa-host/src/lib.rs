@@ -65,6 +65,10 @@ pub mod telemetry;
 pub mod dm_director;
 pub mod gm_narrator;
 pub mod dm_runtime;
+// § T11-W11-GM-DM-DEEPEN — persona-state + narrative-arc state machine.
+//   Sibling modules to gm_narrator + dm_director ; no cross-crate deps.
+pub mod gm_persona;
+pub mod dm_arc;
 
 // UI-overlay catalog (CPU-side text/menu logic always built ; GPU pipeline
 // gated on `runtime` feature inside the module).
