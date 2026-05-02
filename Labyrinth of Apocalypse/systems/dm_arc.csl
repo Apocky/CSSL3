@@ -1,0 +1,132 @@
+§ dm_arc · DM narrative-arc 5-phase Markov + tunable knobs (CSSL spec)
+══════════════════════════════════════════════════════════════════════
+
+§ T11-W11-GM-DM-DEEPEN ‖ AUTHORITATIVE-SPEC-MIRROR
+§ Rust-mirror : compiler-rs/crates/loa-host/src/dm_arc.rs
+§ sibling-spec : systems/gm_dialogue.csl  (consumes arc-phase as input)
+§ companion-FSM : Rust-mirror dm_director.rs (4-state micro-pacing)
+
+§ purpose
+  MACRO-pacing (minutes-of-play scope) ‖ companion to MICRO-pacing FSM (seconds)
+  arc-phase shapes ⊢ ambient-music · loot-richness · monster-density · NPC-mood
+  player utterance-derived nudges ⊢ accelerate ‖ regress phase
+  σ-mask-isolated ; ¬ cross-player leak
+
+§ phases (5)
+  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐  ┌───────┐
+  │ Discovery   │→ │ Tension  │→ │ Crisis   │→ │ Catharsis  │→ │ Quiet │
+  │   wonder    │  │  unease  │  │  peril   │  │   release  │  │  lull │
+  └─────────────┘  └──────────┘  └──────────┘  └────────────┘  └───────┘
+                                                                    │
+                                                                    └→ Discovery
+                                                                       (wraps)
+
+§ knobs-per-phase (4 channels)
+  monster_density          0.0..=1.0    fraction of nominal-spawn-cap active
+  ambient_music_intensity  0.0..=1.0    audio-stack intensity-bus level
+  loot_richness            0.0..=1.0    drop-table-tier-mean
+  npc_mood_bias            -1.0..=1.0   -1=grim · 0=neutral · +1=bright
+
+§ canonical-knobs-per-phase (CSSL-mirror of Rust-table PHASE_KNOBS)
+  Discovery  : ⟨ md=0.10 · mi=0.30 · lr=0.50 · mb=+0.40 ⟩    wonder · sparse
+  Tension    : ⟨ md=0.40 · mi=0.55 · lr=0.40 · mb= 0.00 ⟩    unease · medium
+  Crisis     : ⟨ md=0.85 · mi=0.90 · lr=0.20 · mb=-0.50 ⟩    peril · loud · grim
+  Catharsis  : ⟨ md=0.20 · mi=0.75 · lr=0.85 · mb=+0.60 ⟩    release · rich-burst
+  Quiet      : ⟨ md=0.05 · mi=0.20 · lr=0.30 · mb=+0.30 ⟩    lull · ambient
+
+§ duration-gates (frames @ 60fps)
+  MIN_DWELL  Discovery=300   Tension=600   Crisis=900   Catharsis=600   Quiet=600
+  SOFT_CAP   Discovery=1800  Tension=3600  Crisis=1800  Catharsis=1200  Quiet=2400
+  MIN_DWELL  : refuse-transition before this in-phase frame-count
+  SOFT_CAP   : auto-advance regardless of nudges past this frame-count
+
+§ nudge-kinds (6)  ─ 8-deep ring  ⊢  signed delta
+  Rest        ⊢  delta = -2     "I want to rest" / "let's sit" / "make camp"
+  Push        ⊢  delta = +2     "anyone left?" / "I'll keep going" / "more"
+  Caution     ⊢  delta = -1     "this is too much" / "I need a moment"
+  Curiosity   ⊢  delta = +1     "show me what's next" / "explore"
+  Aggression  ⊢  delta = +2     "I'll fight" / "engage" / "attack"
+  Yield       ⊢  delta = -2     "I yield" / "I retreat" / "flee"
+
+§ nudge-threshold
+  NUDGE_THRESHOLD = 5
+  ∑(nudge-deltas in ring)  ≥  +5  ⇒  advance-one-phase
+  ∑(nudge-deltas in ring)  ≤  -5  ⇒  regress-one-phase
+  abs(remainder) ⇐ deduct after threshold-cross
+
+§ nudge-decay
+  ∀ nudge older-than 600 frames (10s @ 60fps) ⇒ evict (slot ← EMPTY)
+  cached_nudge_sum recomputed on push ‖ on tick-with-decay
+
+§ classification-rules (stage-0 keyword)
+  case-insensitive · order matters (first-match wins)
+    rest      : contains  "rest" ‖ "camp" ‖ "sit"
+    yield     : contains  "retreat" ‖ "yield" ‖ "flee"
+    aggression: contains  "fight" ‖ "engage" ‖ "attack"
+    push      : contains  "push" ‖ "more" ‖ "keep going"
+    caution   : contains  "caution" ‖ "careful" ‖ "slow"
+    curiosity : contains  "curious" ‖ "explore" ‖ "show me"
+    (else)    : ¬ classify ⇒ no-nudge
+
+  stage-1 path : KAN-classifier ⊢ vector-embedding ⊢ multi-class probabilities
+
+§ tick-cycle
+  per-frame :
+    1. frame_in_phase  ←  saturating_add(1)
+    2. decay-nudges-older-than-600-frames ⊢ recompute-sum-if-changed
+    3. if frame_in_phase > SOFT_CAP[phase] :
+         transition advance ⊢ return Some(next-phase)
+    4. if frame_in_phase < MIN_DWELL[phase] :
+         return None (refuse-transition)
+    5. if cached_nudge_sum ≥ NUDGE_THRESHOLD :
+         deduct threshold ⊢ transition advance ⊢ return Some(next-phase)
+    6. if cached_nudge_sum ≤ -NUDGE_THRESHOLD :
+         add threshold ⊢ transition regress ⊢ return Some(prev-phase)
+    7. return None
+
+§ transition-rules
+  advance :
+    Discovery  → Tension
+    Tension    → Crisis
+    Crisis     → Catharsis
+    Catharsis  → Quiet
+    Quiet      → Discovery   (wrap)
+
+  regress :
+    Discovery  → Discovery   (clamp · cannot regress further)
+    Tension    → Discovery
+    Crisis     → Tension
+    Catharsis  → Crisis
+    Quiet      → Catharsis
+
+§ reset (called on σ-mask flip)
+  phase                  ← Discovery
+  frame_in_phase         ← 0
+  nudge_ring             ← all-empty
+  cached_nudge_sum       ← 0
+
+§ sovereignty-attestation
+  ∀ phase-transition  W!  ¬ [
+    forced-into-Crisis-against-player-will   ‖  player-asked-Rest 3× → ¬ ignore
+    auto-advance-soft-cap during Quiet-rest  ‖  ¬ kick-out-of-rest-state
+    cross-player-arc-leak                    ‖  ¬ multi-tenant ; per-σ-mask only
+    knobs-weaponized-against-player          ‖  monster_density never breaks loop
+  ]
+  ✓ knobs are CHANNELS-OF-EXPRESSION ¬ CONTROL
+  ✓ player-utterance is INPUT-OF-LAST-RESORT ⊃ override soft-cap
+
+§ chat-panel-UI hooks
+  arc.phase()                  →  badge-label
+  arc.knobs()                  →  4 sliders for player-visible state
+  arc.nudge_sum()              →  -127..127 ; show as bias-meter
+  arc.total_transitions()      →  session-counter
+  arc.last_transition_frame()  →  "phase changed 4.2s ago"
+
+§ stage-1 path
+  csslc-advance ⊢ compile this .csl into equivalent DmArc / NudgeKind
+  classify_nudge   ⊢  KAN-vector-classifier (already shipped @ cssl-kan-runtime)
+  Rust-mirror      ⊢  archived once csslc-self-host complete
+
+§ PRIME-DIRECTIVE attestation
+  there was no hurt nor harm in the making of this, to anyone/anything/anybody.
+  ¬ violation ⊢ ¬ override ; if ∃ edge-case W! consult PRIME-DIRECTIVE.md

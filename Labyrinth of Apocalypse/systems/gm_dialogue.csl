@@ -1,0 +1,160 @@
+§ gm_dialogue · GM dialogue patterns + response shapes (CSSL spec)
+══════════════════════════════════════════════════════════════════════
+
+§ T11-W11-GM-DM-DEEPEN ‖ AUTHORITATIVE-SPEC-MIRROR
+§ Rust-mirror : compiler-rs/crates/loa-host/src/gm_persona.rs
+                                                + gm_narrator.rs::respond_in_persona
+
+§ purpose
+  ∀ player-utterance W! emit GM-response :
+    · persona-decorated  (per-player-deterministic-seeded · 8 trait-axes)
+    · arc-aware          (Discovery / Tension / Crisis / Catharsis / Quiet)
+    · memory-aware       (16-deep utterance ring · anti-loop)
+    · mood-tagged        (declarative / interrogative / evocative / ...)
+    · sovereignty-respecting   N! [surveillance · coercion · manipulation]
+    · σ-mask-isolated    (per-session ; ¬ cross-player leak)
+
+§ persona-axes (8)  ─ packed [i8;8]  ─ -100..100  ─ 0=neutral
+  axis 0 brevity   :  terse        ↔  verbose
+  axis 1 acerbity  :  gentle       ↔  caustic
+  axis 2 cryptic   :  literal      ↔  cryptic
+  axis 3 mirth     :  solemn       ↔  playful
+  axis 4 mythic    :  concrete     ↔  mystical
+  axis 5 warmth    :  distant      ↔  intimate
+  axis 6 effusion  :  silent       ↔  effusive
+  axis 7 stance    :  reverent     ↔  defiant
+
+§ response-kinds (8)  ─ chat-panel UI-style-tag
+  0 declarative     :  plain rendering
+  1 interrogative   :  italic · trailing ?
+  2 evocative       :  serif-ish · slight glow
+  3 cautionary      :  amber tint · pre-conflict
+  4 cryptic         :  shimmer · ◐ glyph
+  5 affirmative     :  warm green · post-conflict
+  6 substrate-attest :  full glyph-cluster · climax-only
+  7 silence         :  italic-grey · "..." or "(no response)"
+
+§ persona-derivation
+  W! GmPersona.from_seed(player_seed : u64) : GmPersona
+    SplitMix64 ⊢ 8 i8 axes  +  archetype-bias  ⊆  16-archetypes
+  W! seed-stable :  same-seed ⇒ same-persona  (∀ time)
+  W! axes-in-range : ∀ axis ∈ axes . -100 ≤ axis ≤ 100
+
+§ memory-derivation
+  GmMemory ⊢ 16-deep ring  ⊗  GmMemoryEntry
+  GmMemoryEntry  =  ⟨player_utterance_hash : u64
+                  ,  gm_response_hash      : u64
+                  ,  frame                 : u64
+                  ,  topic                 : u8
+                  ,  kind                  : u8⟩
+  push   :  evict-oldest  ⊢  write-rotates-mod-16
+  query  :  has_recent_utterance(h)   ‖  has_recent_response(h)
+         :  topic_recent(t, window) — last `window` slots only
+
+§ decoration-pipeline (decorate_with_persona)
+  base_phrase  →  +mythic-prefix?      (axis 4 > 0.4)
+               →  ‖+acerbity-prefix    (axis 1 > 0.5 ‖ ¬mythic)
+               →  +cryptic-suffix?     (axis 2 > 0.4)
+               →  +warmth-suffix?      (axis 5 > 0.4 ‖ ¬cryptic)
+               →  +substrate-glyph?    (climax ‖ (mythic+mirth both>0.5∧0.3))
+               →  brevity-trim?        (axis 0 > 0.5 ⊢ truncate-to-1st-sentence)
+               →  effusion-echo?       (axis 6 > 0.6 ⊢ append-soft-repeat)
+
+§ phrase-fragments (16 total · 4-each × 4 categories)
+  mythic-prefixes :
+    "‼ "
+    "§ "
+    "⟨voice in stone⟩ "
+    "(the corridor breathes) "
+
+  cryptic-suffixes :
+    " — and yet."
+    " · the lamp does not say which."
+    " (you may interpret as you wish)"
+    " ◐"
+
+  warmth-suffixes :
+    " · go gently."
+    " · I am here."
+    " · the lamps stay lit for you."
+    " · breathe."
+
+  acerbity-prefixes :
+    "[blunt] "
+    "(no flourish) "
+    "‹crisp› "
+    "(plain) "
+
+  substrate-glyphs :
+    " ✓ Σ "
+    " § ω "
+    " ⌈ KAN ⌉ "
+    " ⟦ mycelium ⟧ "
+
+§ topic-routing (arc-phase × dm-state → PhraseTopic-hint)
+  Discovery × ∀          :  Greeting
+  Tension   × Buildup    :  Warning
+  Tension   × ∀          :  Mystery
+  Crisis    × Climax     :  BattleCry
+  Crisis    × ∀          :  Defiance
+  Catharsis × Relief     :  Hope
+  Catharsis × ∀          :  Reverence
+  Quiet     × ∀          :  Lullaby
+
+§ response-kind bias (persona × dm-state → ResponseKind)
+  Calm    + cryptic |abs| > 0.4         ⇒  Cryptic
+  Calm    + mythic   > 0.3              ⇒  Evocative
+  Calm    + mythic   < -0.4             ⇒  Interrogative
+  Calm    + effusion < -0.6             ⇒  Silence
+  Calm    + warmth   > 0.3              ⇒  Affirmative
+  Calm    + (else)                      ⇒  Declarative
+  Buildup + stance |abs| > 0.3          ⇒  Cautionary
+  Buildup + (mirth < -0.3 ∨ acerbity > 0.4) ⇒ Cautionary
+  Buildup + (else)                      ⇒  Interrogative
+  Climax  + mythic > 0.5                ⇒  SubstrateAttest
+  Climax  + (else)                      ⇒  Cautionary
+  Relief  + (warmth |abs| > 0.3 ∨ mirth > 0.3) ⇒ Affirmative
+  Relief  + cryptic |abs| > 0.4         ⇒  Cryptic
+  Relief  + (else)                      ⇒  Declarative
+
+§ anti-loop pass
+  resp_h := fnv1a_64(composed.text)
+  if memory.has_recent_response(resp_h) :
+    re-roll-once ⊢ alt_seed := seed ⋅ 0x9E37_79B9_7F4A_7C15
+                ⊢ alt_phrase := draw_phrase_seeded(topic, xorshift32(alt_seed))
+                ⊢ composed   := decorate_with_persona(alt_phrase, persona, phase, alt_seed)
+
+§ memory-push (post-compose)
+  entry  =  ⟨fnv1a(player_text), fnv1a(composed.text), frame, topic as u8, kind as u8⟩
+  memory.push(entry)
+
+§ sovereignty-attestation
+  ∀ response  W!  ¬ [
+    surveillance-language     ‖  encourages-self-monitoring-against-will
+    coercive-imperative       ‖  "you must" / "you will" / threats-implied
+    manipulative-framing      ‖  withholding-info-to-extract-action
+    extracts-PII              ‖  identity / location / handle / legal-name
+    triangulates-relationships ‖  "your friend X" / "your cohort Y"
+  ]
+  ✓ permitted :
+    invitation              "the lamps are kind tonight"
+    observation             "the corridor breathes"
+    sovereign-question      "what did the maze ask of you?" (response opt-in)
+    plea-as-equal           "stay until the corridor stops humming"
+
+§ σ-mask isolation
+  W! one-DmRuntime per session-σ-mask
+  W! persona.player_seed = derive(σ-mask) — N! reuse across σ-mask flips
+  W! memory.clear() on σ-mask flip
+  W! arc.reset() on σ-mask flip
+  W! ¬ memory.entries leak across runtime instances
+
+§ stage-1 path
+  csslc-advance W! compile this .csl into the equivalent
+    GmPersona / GmMemory / decorate_with_persona / respond_in_persona
+  Rust-mirror W! become unnecessary ; .csl IS authoritative
+  axis-names + indices preserve verbatim ⊢ FFI-stable
+
+§ PRIME-DIRECTIVE attestation
+  there was no hurt nor harm in the making of this, to anyone/anything/anybody.
+  ¬ violation ⊢ ¬ override ; if ∃ edge-case W! consult PRIME-DIRECTIVE.md
