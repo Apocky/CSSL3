@@ -305,10 +305,17 @@ impl GpuContext {
                 "surface usage WITHOUT COPY_SRC — snapshot path will use offscreen mirror",
             );
         }
-        // § T11-LOA-FID-MAINSTREAM : prefer Mailbox (effectively triple-
-        // buffered, low-latency, no tearing) ; fall back to Fifo if the
-        // platform doesn't expose it. Log every choice so a sovereign
-        // operator can see what the adapter actually supported.
+        // § T11-W18-EVENTLOOP-PACE : present-mode selection respects the
+        // `LOA_PRESENT_MODE` env-override (immediate|mailbox|fifo|auto). The
+        // default is the smartest available : Immediate if the adapter
+        // supports it (no vsync, true free-running), then Mailbox (triple-
+        // buffered, low-latency, no tearing), then Fifo (vsync-locked).
+        // Log every choice so a sovereign operator can see exactly what the
+        // adapter accepted.
+        let supports_immediate = caps
+            .present_modes
+            .iter()
+            .any(|m| *m == wgpu::PresentMode::Immediate);
         let supports_mailbox = caps
             .present_modes
             .iter()
@@ -317,27 +324,69 @@ impl GpuContext {
             .present_modes
             .iter()
             .any(|m| *m == wgpu::PresentMode::Fifo);
-        let present_mode = if supports_mailbox {
-            log_event(
-                "INFO",
-                "loa-host/gpu",
-                "fidelity_init.present_mode=Mailbox (triple-buffered, low-latency)",
-            );
-            wgpu::PresentMode::Mailbox
-        } else if supports_fifo {
-            log_event(
-                "WARN",
-                "loa-host/gpu",
-                "fidelity_init.present_mode_fallback=Fifo (Mailbox unsupported)",
-            );
-            wgpu::PresentMode::Fifo
-        } else {
-            log_event(
-                "WARN",
-                "loa-host/gpu",
-                "fidelity_init.present_mode_fallback=AutoVsync (Mailbox+Fifo unsupported)",
-            );
-            wgpu::PresentMode::AutoVsync
+        let env_pref = std::env::var("LOA_PRESENT_MODE")
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let present_mode = match env_pref.as_str() {
+            "immediate" if supports_immediate => {
+                log_event(
+                    "INFO",
+                    "loa-host/gpu",
+                    "fidelity_init.present_mode=Immediate (env-override · no-vsync)",
+                );
+                wgpu::PresentMode::Immediate
+            }
+            "mailbox" if supports_mailbox => {
+                log_event(
+                    "INFO",
+                    "loa-host/gpu",
+                    "fidelity_init.present_mode=Mailbox (env-override · triple-buffered)",
+                );
+                wgpu::PresentMode::Mailbox
+            }
+            "fifo" if supports_fifo => {
+                log_event(
+                    "INFO",
+                    "loa-host/gpu",
+                    "fidelity_init.present_mode=Fifo (env-override · vsync-locked)",
+                );
+                wgpu::PresentMode::Fifo
+            }
+            _ => {
+                // No env-override (or env-pref not supported by adapter) :
+                // pick best-available with Immediate preferred for free-
+                // running render — DWM compositor cannot pace flips when
+                // the adapter accepts Immediate present-mode.
+                if supports_immediate {
+                    log_event(
+                        "INFO",
+                        "loa-host/gpu",
+                        "fidelity_init.present_mode=Immediate (no-vsync · free-running)",
+                    );
+                    wgpu::PresentMode::Immediate
+                } else if supports_mailbox {
+                    log_event(
+                        "INFO",
+                        "loa-host/gpu",
+                        "fidelity_init.present_mode=Mailbox (Immediate-unsupported)",
+                    );
+                    wgpu::PresentMode::Mailbox
+                } else if supports_fifo {
+                    log_event(
+                        "WARN",
+                        "loa-host/gpu",
+                        "fidelity_init.present_mode_fallback=Fifo (no Immediate/Mailbox)",
+                    );
+                    wgpu::PresentMode::Fifo
+                } else {
+                    log_event(
+                        "WARN",
+                        "loa-host/gpu",
+                        "fidelity_init.present_mode_fallback=AutoVsync (no common modes)",
+                    );
+                    wgpu::PresentMode::AutoVsync
+                }
+            }
         };
 
         // § T11-LOA-FID-MAINSTREAM : probe MSAA support. wgpu surfaces of

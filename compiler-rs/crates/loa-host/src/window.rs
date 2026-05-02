@@ -18,9 +18,12 @@
 //! § ENV CONTROLS
 //!   `CSSL_LOA_WINDOW=windowed`    → 2560×1440 windowed mode (no fullscreen)
 //!   `CSSL_LOA_WINDOW=borderless`  → borderless-fullscreen (default)
-//!   `CSSL_LOA_WINDOW=exclusive`   → exclusive-fullscreen at native res
+//!   `CSSL_LOA_WINDOW=exclusive`   → exclusive-fullscreen at highest-Hz video mode
 //!   `CSSL_LOA_NO_GRAB=1`          → don't grab the cursor (debugging)
 //!   `CSSL_LOA_NO_MCP=1`           → skip MCP server bind (offline mode)
+//!   `LOA_FRAME_PACE=poll`         → free-running render loop (default)
+//!   `LOA_FRAME_PACE=wait`         → block until next event (legacy 60Hz)
+//!   `LOA_FRAME_PACE=wait-until`   → block until 1ms-budget · then drive redraw
 //!
 //! § INPUT MAPPING
 //!   WASD      → walk + strafe
@@ -53,6 +56,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::monitor::{MonitorHandle, VideoModeHandle};
 use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
 use cssl_rt::loa_startup::log_event;
@@ -181,6 +185,11 @@ pub struct App {
     /// App-start ; mutated per-frame via `crate::tick_wired_systems`.
     pub wired: crate::LoaSubsystems,
 
+    /// § T11-W18-EVENTLOOP-PACE — chosen frame-pace mode (LOA_FRAME_PACE).
+    /// Default = Poll (free-running). `about_to_wait` consults this each
+    /// iteration so WaitUntil refreshes its deadline.
+    frame_pace: FramePace,
+
     /// § T11-W17-PARADIGM-SHIFT — Substrate-Resonance Pixel Field renderer.
     ///
     /// COMPLETELY NEW GRAPHICS PARADIGM (Apocky-greenlit 2026-05-02). Owns
@@ -238,6 +247,7 @@ impl App {
             has_been_focused: false,
             gpu_alive: false,
             substrate: crate::substrate_render::SubstrateRenderState::new(),
+            frame_pace: FramePace::from_env(),
             mcp_handle: None,
             mcp_port: None,
             burst: BurstState::default(),
@@ -1387,10 +1397,35 @@ impl ApplicationHandler for App {
                 self.fullscreen_now = false;
             }
             WindowMode::Exclusive => {
-                // Exclusive-fullscreen requires a VideoMode handle ; on
-                // platforms without one we fall back to Borderless.
-                attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
-                self.fullscreen_now = true;
+                // § T11-W18-EVENTLOOP-PACE : pick the highest-Hz VideoMode
+                // on the primary monitor and use Fullscreen::Exclusive.
+                // DWM-bypassed at the OS level → no compositor-tick floor.
+                let chosen = event_loop
+                    .primary_monitor()
+                    .and_then(|m| pick_highest_hz_video_mode(&m));
+                if let Some(vm) = chosen {
+                    log_event(
+                        "INFO",
+                        "loa-host/window",
+                        &format!(
+                            "fullscreen=Exclusive · video-mode={}x{} @ {}mHz · DWM-bypassed",
+                            vm.size().width,
+                            vm.size().height,
+                            vm.refresh_rate_millihertz(),
+                        ),
+                    );
+                    attrs = attrs.with_fullscreen(Some(Fullscreen::Exclusive(vm)));
+                    self.fullscreen_now = true;
+                } else {
+                    log_event(
+                        "WARN",
+                        "loa-host/window",
+                        "Exclusive requested but no VideoMode available · \
+                         falling back to Borderless (DWM-comp owns flip-pacing)",
+                    );
+                    attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
+                    self.fullscreen_now = true;
+                }
             }
         }
 
@@ -1514,9 +1549,19 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // § T11-W18-EVENTLOOP-PACE : keep the redraw-pump primed every loop
+        // iteration regardless of pace mode. With ControlFlow::Poll this
+        // gives a free-running render loop ; with Wait/WaitUntil it still
+        // requests a redraw so the next event delivers RedrawRequested.
         if let Some(w) = self.window.as_ref() {
             w.request_redraw();
+        }
+        // For WaitUntil pace, refresh the 1ms budget each iteration so we
+        // don't idle longer than the operator's chosen ceiling.
+        if matches!(self.frame_pace, FramePace::WaitUntil) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1);
+            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
         }
     }
 }
@@ -2036,6 +2081,83 @@ fn unix_ms_safe() -> u64 {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// § Video-mode selection — highest refresh-rate at largest matching size
+// ──────────────────────────────────────────────────────────────────────────
+
+/// § T11-W18-EVENTLOOP-PACE : pick the best VideoMode on the given monitor
+/// for exclusive-fullscreen. Strategy : highest refresh-rate ; ties broken
+/// by largest pixel area. Returns `None` if the monitor reports no modes
+/// (some virtual displays / RDP sessions).
+fn pick_highest_hz_video_mode(monitor: &MonitorHandle) -> Option<VideoModeHandle> {
+    monitor
+        .video_modes()
+        .max_by_key(|m| {
+            // Tuple sort : refresh rate first (mHz), area as tiebreaker, then
+            // bit depth as final tiebreaker. All u32 — winit guarantees these.
+            let area = u64::from(m.size().width) * u64::from(m.size().height);
+            (m.refresh_rate_millihertz(), area, u32::from(m.bit_depth()))
+        })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// § Frame-pace selection — LOA_FRAME_PACE env-var
+// ──────────────────────────────────────────────────────────────────────────
+
+/// § T11-W18-EVENTLOOP-PACE : run-time selection of the winit `ControlFlow`
+/// pacing mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FramePace {
+    /// `ControlFlow::Poll` — free-running event loop, no blocking. Default.
+    Poll,
+    /// `ControlFlow::Wait` — block until a window event arrives. Legacy 60Hz
+    /// path (DWM-comp delivers RedrawRequested at compositor tick).
+    Wait,
+    /// `ControlFlow::WaitUntil` with a 1ms budget — block briefly between
+    /// frames to reduce CPU pressure while remaining ahead of the display.
+    WaitUntil,
+}
+
+impl FramePace {
+    /// Parse the `LOA_FRAME_PACE` env-var. Default = Poll (free-running).
+    fn from_env() -> Self {
+        match std::env::var("LOA_FRAME_PACE")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "wait" => Self::Wait,
+            "wait-until" | "waituntil" | "wait_until" => Self::WaitUntil,
+            _ => Self::Poll,
+        }
+    }
+
+    /// Apply this pace to the given event-loop. WaitUntil is set lazily on
+    /// each iteration via `about_to_wait` (see App::about_to_wait).
+    fn apply(self, event_loop: &EventLoop<()>) {
+        match self {
+            Self::Poll => event_loop.set_control_flow(ControlFlow::Poll),
+            Self::Wait => event_loop.set_control_flow(ControlFlow::Wait),
+            Self::WaitUntil => {
+                // The actual deadline is refreshed in `about_to_wait` each
+                // iteration ; this initial setting is a 1ms placeholder so
+                // the first wake happens promptly.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1);
+                event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+            }
+        }
+    }
+
+    /// Human-readable label for telemetry.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Poll => "Poll(free-running)",
+            Self::Wait => "Wait(legacy-60Hz)",
+            Self::WaitUntil => "WaitUntil(1ms-budget)",
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // § run — top-level entry from `run_engine`
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -2054,8 +2176,19 @@ pub fn run() -> std::io::Result<()> {
             return Ok(());
         }
     };
-    event_loop.set_control_flow(ControlFlow::Poll);
+    // § T11-W18-EVENTLOOP-PACE : honor the operator-override.
+    let pace = FramePace::from_env();
+    pace.apply(&event_loop);
+    log_event(
+        "INFO",
+        "loa-host/window",
+        &format!(
+            "event-loop control-flow = {} · LOA_FRAME_PACE-overridable",
+            pace.label(),
+        ),
+    );
     let mut app = App::new();
+    app.frame_pace = pace;
     if let Err(e) = event_loop.run_app(&mut app) {
         log_event(
             "ERROR",
