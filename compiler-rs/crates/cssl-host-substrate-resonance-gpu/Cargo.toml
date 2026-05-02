@@ -1,0 +1,42 @@
+[package]
+name                   = "cssl-host-substrate-resonance-gpu"
+description            = "§ T11-W18-G · GPU compute-shader port of cssl-host-alien-materialization::pixel_field::resolve_substrate_resonance · 2560×1440 @ 144Hz target · 6.94 ms frame budget · per-pixel parallel ray-walk through ω-field with bytemuck-Pod storage-buffer crystal-pack + WGSL spectral-LUT projection + Σ-mask consent filter"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_substrate_resonance_gpu"
+
+# § FEATURES
+#   `default = []` — buffer-pack + WGSL-source + naga-validation are always
+#   built. No GPU-driver pull at default. Tests that only exercise the
+#   buffer-pack + naga validation pass without wgpu installed.
+#   `runtime` — adds wgpu/pollster so the `SubstrateResonanceGpu` host
+#   wrapper can be constructed. Enable in callers that actually dispatch
+#   compute work. Mirrors the `loa-host` runtime-feature pattern.
+[features]
+default = []
+runtime = ["dep:wgpu", "dep:pollster"]
+
+[dependencies]
+# Substrate sources for the algorithm being ported.
+cssl-host-crystallization              = { path = "../cssl-host-crystallization" }
+cssl-host-alien-materialization        = { path = "../cssl-host-alien-materialization" }
+
+# Buffer-pack + naga shader-validation are always-built. wgpu 23 + naga 23
+# are workspace-pinned to share the same internal naga.
+naga     = { workspace = true }
+bytemuck = { workspace = true }
+
+# Optional runtime-only deps (gated behind the `runtime` feature). The
+# default workspace `wgpu` features are inherited ; we don't need to override
+# default-features here because callers that opt into `runtime` (e.g.
+# loa-host) already pull the right backend feature-set.
+wgpu     = { workspace = true, optional = true }
+pollster = { version = "0.3", optional = true }
+
+[lints]
+workspace = true

@@ -377,6 +377,13 @@ pub mod render;
 #[cfg(feature = "runtime")]
 pub mod window;
 
+// § T11-W18-A-COMPOSITE — wgpu-compositing pass that uploads the substrate
+// pixel-field to a 256×256 RGBA8 texture and alpha-blends it over the
+// conventional 3D scene each frame. Owned by `Renderer` ; recorded after
+// the CFER volumetric pass and before the UI overlay.
+#[cfg(feature = "runtime")]
+pub mod substrate_compose;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § FFI surface (T11-LOA-PURE-CSSL · pure-CSSL main.cssl entry-point)
 // ──────────────────────────────────────────────────────────────────────────

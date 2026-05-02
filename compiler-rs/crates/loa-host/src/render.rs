@@ -410,6 +410,14 @@ pub struct Renderer {
     /// emits `ManifestationEvent`s when a tracked cell crosses the radiance
     /// threshold. Polled per-frame from `window.rs` after `cfer.step_and_pack`.
     pub spontaneous_detector: crate::spontaneous::ManifestationDetector,
+
+    // ── § T11-W18-A-COMPOSITE : substrate-compose pass ──
+    /// Wgpu pipeline that uploads the Substrate-Resonance Pixel Field to a
+    /// 256×256 RGBA8 texture and alpha-blends it over the conventional
+    /// scene buffer (after CFER · before UI). The host pushes substrate
+    /// bytes once per frame via `upload_substrate_pixels` ; the pass is
+    /// recorded automatically inside `render_frame`.
+    pub substrate_compose: crate::substrate_compose::SubstrateComposePipeline,
 }
 
 /// Hard upper bound on simultaneously-loaded dynamic meshes. Beyond
@@ -691,6 +699,11 @@ impl Renderer {
         let (cfer_pipeline, cfer_bind_group, cfer_uniform_buf, cfer_texture) =
             Self::build_cfer_resources(device, &gpu.queue, gpu.surface_format, depth_format);
 
+        // § T11-W18-A-COMPOSITE : substrate-compose pipeline targets the
+        // surface format (writes after tonemap, before UI).
+        let substrate_compose =
+            crate::substrate_compose::SubstrateComposePipeline::new(device, gpu.surface_format);
+
         Self {
             pipeline,
             pipeline_transparent,
@@ -728,7 +741,37 @@ impl Renderer {
             cfer_texture,
             dynamic_meshes: Vec::new(),
             spontaneous_detector: crate::spontaneous::ManifestationDetector::new(),
+            substrate_compose,
         }
+    }
+
+    /// § T11-W18-A-COMPOSITE : push the latest Substrate-Resonance Pixel
+    /// Field bytes to the compose-pipeline texture. `bytes` must be RGBA8
+    /// at the substrate field's native resolution (256×256 default). Called
+    /// once per frame by `window.rs` after `substrate.tick(observer)`,
+    /// BEFORE `render_frame`. Idempotent on empty payloads.
+    pub fn upload_substrate_pixels(
+        &mut self,
+        gpu: &GpuContext,
+        bytes: &[u8],
+        width: u32,
+        height: u32,
+    ) {
+        if width == 0 || height == 0 || bytes.is_empty() {
+            return;
+        }
+        // Reallocate the texture if the host changed the substrate
+        // resolution (matches `substrate_render::DEFAULT_SUBSTRATE_*`).
+        self.substrate_compose
+            .ensure_size(&gpu.device, width, height);
+        self.substrate_compose.upload(&gpu.queue, bytes);
+    }
+
+    /// § T11-W18-A-COMPOSITE : tweak the substrate-overlay alpha at runtime.
+    /// 0.0 = invisible · 1.0 = scene-suppressing · default 0.50.
+    pub fn set_substrate_overlay_strength(&mut self, gpu: &GpuContext, strength: f32) {
+        self.substrate_compose
+            .set_overlay_strength(&gpu.queue, strength);
     }
 
     /// § T11-WAVE3-GLTF : drain the global pending-spawn queue, allocating
@@ -1523,6 +1566,18 @@ impl Renderer {
         // here we surface a per-frame draw-call attribution for the
         // global counter so cfer activity shows up in `frame_metrics`).
         let _ = cfer_metrics;
+
+        // ─── Pass 3.5 : T11-W18-A-COMPOSITE — Substrate-Resonance Pixel
+        //                Field overlay. Alpha-blends the 256×256 substrate
+        //                texture (uploaded each frame by the host via
+        //                `upload_substrate_pixels`) over the surface so
+        //                the conventional 3D scene AND the substrate
+        //                pixel-field are both visible. Pre-CFER scene + CFER
+        //                fragments show through where substrate alpha < 1.
+        self.substrate_compose.record_pass(&mut encoder, &view);
+        draw_calls += 1;
+        pipeline_switches += 1;
+        telem::global().record_pipeline_switch();
 
         // ─── Pass 4 : UI overlay ───
         self.ui.prepare_frame(
