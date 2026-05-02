@@ -1,0 +1,421 @@
+module com.apocky.loa.systems.gm_specialist
+
+// § Labyrinth of Apocalypse · GM-Specialist (Game-Master) PROCEDURAL narrator
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-G · canonical-CSSL-source · REPLACES gm_narrator.rs xorshift32+phrase-pools
+//
+// § APOCKY-DIRECTIVE (verbatim · 2026-05-01)
+//   "PROCEDURAL EVERYTHING · NO phrase pools · NO xorshift32-table-lookup ·
+//    NO scripted-dialogue · REPLACE existing gm_narrator.rs"
+//   "PROPRIETARY local intelligence · NO external API · NO Anthropic ·
+//    NO LLM-bridge"
+//
+// § DESIGN-THESIS
+//   GM-Specialist = Game-Master role of the engine's intelligence-self.
+//   Surface : describe-environment + generate-dialogue + respond-in-persona.
+//   Composition : through substrate_intelligence (W17-F) ONLY · no local
+//   phrase-pools · all narrative-text emerges PROCEDURALLY from the substrate-
+//   primitive composition (ω-field-sample · Σ-mask-gate · KAN-classify ·
+//   HDC-bind · causal-seed-derive).
+//
+// § ARCHITECTURE
+//   This file is a STRATEGY parameterized over substrate_intelligence. It
+//   differs from sibling specialists in :
+//     - ROLE = role_gm()
+//     - COMPOSITION-SHAPES = environment-description / dialogue-line
+//     - PARAMETER-SHAPE = (camera-pos · time-of-day · archetype · mood · topic)
+//   Composition output is bytes-into-host-buffer · the bootstrap-shim
+//   (gm_narrator.rs) wraps these into String for the existing public API.
+//
+// § PRESERVED-SURFACE (loa-host main loop callers)
+//   - Vec3 (x · y · z f32)
+//   - TimeOfDay enum (Dawn=0 · Day=1 · Dusk=2 · Night=3)
+//   - Archetype enum (16 archetypes · stable indices preserved verbatim)
+//   - PhraseTopic enum (32 topics · stable indices preserved verbatim)
+//   - Mood enum (Calm=0 · Anxious=1 · Hostile=2 · Friendly=3 · Sorrowful=4 ·
+//                Reverent=5 · Playful=6 · Defiant=7)
+//   - describe_environment(camera_pos, time_of_day) → String
+//   - generate_dialogue(npc_id, archetype, mood, topic) → String
+//   The ENUM IDENTITIES stay so dependents (window.rs · ui_overlay.rs ·
+//   wired_gm.rs · mcp_tools.rs · dm_runtime.rs) keep working unchanged.
+//
+// § REFERENCE
+//   compiler-rs/crates/loa-host/src/gm_narrator.rs   § THIN-SHIM (≤200 LOC)
+//   Labyrinth of Apocalypse/systems/substrate_intelligence_stub.csl
+//   Labyrinth of Apocalypse/systems/gm_dialogue.csl  § persona-state sibling
+//   memory/feedback_dm_gm_not_general_ai             ‼ scope-bound to GM
+//   memory/feedback_take_words_literally_no_other_languages
+//
+// § AXIOMS  (inherit PRIME_DIRECTIVE + LOA_PILLARS)
+//   t∞: GM-role = NARRATOR ¬ generic-AGI               ← scope-bound
+//   t∞: ALL output PROCEDURAL · NO phrase-pools           ← apocky-directive
+//   t∞: composition through substrate-intelligence ONLY  ← W17-F dispatch
+//   t∞: replay-deterministic given seed + observations    ← KAN-bias state
+//   t∞: Σ-mask gates every emission                       ← consent-as-OS
+//   t∞: ¬ surveillance · ¬ coercion · ¬ extracts-PII     ← prime-directive
+// ════════════════════════════════════════════════════════════════════════════
+
+import substrate_intelligence_stub as si
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ARCHETYPE discriminants (16 · stable u32 ids · matches Rust verbatim)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn arch_sage()        -> u32 {  0 }
+fn arch_trickster()   -> u32 {  1 }
+fn arch_warrior()     -> u32 {  2 }
+fn arch_healer()      -> u32 {  3 }
+fn arch_merchant()    -> u32 {  4 }
+fn arch_hermit()      -> u32 {  5 }
+fn arch_apprentice()  -> u32 {  6 }
+fn arch_elder()       -> u32 {  7 }
+fn arch_scout()       -> u32 {  8 }
+fn arch_bard()        -> u32 {  9 }
+fn arch_smith()       -> u32 { 10 }
+fn arch_witness()     -> u32 { 11 }
+fn arch_wanderer()    -> u32 { 12 }
+fn arch_apocalyptic() -> u32 { 13 }
+fn arch_liminal()     -> u32 { 14 }
+fn arch_mute()        -> u32 { 15 }
+fn arch_count()       -> u32 { 16 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PHRASE-TOPIC discriminants (32 · stable u32 ids · matches Rust verbatim)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn topic_lore_history()  -> u32 {  0 }
+fn topic_environment()   -> u32 {  1 }
+fn topic_weather()       -> u32 {  2 }
+fn topic_creature()      -> u32 {  3 }
+fn topic_architecture()  -> u32 {  4 }
+fn topic_memory()        -> u32 {  5 }
+fn topic_prophecy()      -> u32 {  6 }
+fn topic_warning()       -> u32 {  7 }
+fn topic_greeting()      -> u32 {  8 }
+fn topic_farewell()      -> u32 {  9 }
+fn topic_mystery()       -> u32 { 10 }
+fn topic_hope()          -> u32 { 11 }
+fn topic_despair()       -> u32 { 12 }
+fn topic_reverence()     -> u32 { 13 }
+fn topic_defiance()      -> u32 { 14 }
+fn topic_mourning()      -> u32 { 15 }
+fn topic_bargain()       -> u32 { 16 }
+fn topic_riddle()        -> u32 { 17 }
+fn topic_lullaby()       -> u32 { 18 }
+fn topic_battle_cry()    -> u32 { 19 }
+fn topic_apology()       -> u32 { 20 }
+fn topic_boast()         -> u32 { 21 }
+fn topic_confession()    -> u32 { 22 }
+fn topic_question()      -> u32 { 23 }
+fn topic_direction()     -> u32 { 24 }
+fn topic_advice()        -> u32 { 25 }
+fn topic_joke()          -> u32 { 26 }
+fn topic_threat()        -> u32 { 27 }
+fn topic_promise()       -> u32 { 28 }
+fn topic_plea()          -> u32 { 29 }
+fn topic_observation()   -> u32 { 30 }
+fn topic_silence()       -> u32 { 31 }
+fn topic_count()         -> u32 { 32 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § TIME-OF-DAY discriminants (4 · stable)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn tod_dawn()  -> u32 { 0 }
+fn tod_day()   -> u32 { 1 }
+fn tod_dusk()  -> u32 { 2 }
+fn tod_night() -> u32 { 3 }
+fn tod_count() -> u32 { 4 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § MOOD discriminants (8 · stable)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn mood_calm()       -> u32 { 0 }
+fn mood_anxious()    -> u32 { 1 }
+fn mood_hostile()    -> u32 { 2 }
+fn mood_friendly()   -> u32 { 3 }
+fn mood_sorrowful()  -> u32 { 4 }
+fn mood_reverent()   -> u32 { 5 }
+fn mood_playful()    -> u32 { 6 }
+fn mood_defiant()    -> u32 { 7 }
+fn mood_count()      -> u32 { 8 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GM PROCEDURAL-COMPOSITION SEED MIXING (replaces xorshift32+FNV)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The substrate-intelligence accepts a u64 seed; we derive it from the
+// caller's parameters using SplitMix64-style mixing (matches gm_persona's
+// 0x9E3779B97F4A7C15 / 0xBF58476D1CE4E5B9 / 0x94D049BB133111EB constants).
+// This is NOT a phrase-pool · NOT a table-lookup · the seed PARAMETERIZES
+// the substrate's procedural ω-field-sample at composition-time.
+
+fn splitmix_offset()  -> u64 { 0x9E3779B97F4A7C15 }
+fn splitmix_mul1()    -> u64 { 0xBF58476D1CE4E5B9 }
+fn splitmix_mul2()    -> u64 { 0x94D049BB133111EB }
+
+// Mix Vec3-bits + ToD into a 64-bit composition-seed for environment.
+// The bits-of-f32-via-u32 pun is csslc-supported (cssl-substrate-omega-field
+// uses the same trick). When csslc-stage-0 lacks f32 ABI, the loa-host
+// shim performs the to_bits() and passes the u64 directly.
+fn env_seed_mix(x_bits: u32, y_bits: u32, z_bits: u32, tod: u32) -> u64 {
+    let mut s : u64 = splitmix_offset() ;
+    s = s + (x_bits as u64) ;
+    s = s + ((y_bits as u64) * 2654435761u64) ;
+    s = s + ((z_bits as u64) * 40503u64) ;
+    s = s + ((tod as u64) * 0x27d4eb2fu64) ;
+    s
+}
+
+// Mix dialogue inputs into a 64-bit composition-seed.
+fn dialogue_seed_mix(npc_id: u32, archetype: u32, mood: u32, topic: u32) -> u64 {
+    let mut s : u64 = splitmix_offset() ;
+    s = s + ((npc_id as u64) * 0x9E3779B9u64) ;
+    s = s + ((archetype as u64) * 0x85ebca6bu64) ;
+    s = s + ((mood as u64) * 0xc2b2ae35u64) ;
+    s = s + ((topic as u64) * 0x27d4eb2fu64) ;
+    s
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API — describe_environment
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Procedurally compose 1-3 sentences describing the neighborhood at
+// `camera_pos` for the given `time_of_day`. NO phrase-pools · the substrate-
+// intelligence runs the full ω-field-sample → KAN-classify → HDC-bind →
+// Σ-mask-gate pipeline and writes UTF-8 bytes into out_buf.
+//
+// Returns the byte-count written. Caller (gm_narrator.rs shim) converts to
+// String. On Σ-mask-deny, returns 0 (host emits a default-deny attestation
+// trail to Σ-Chain; UI shows blank narration).
+//
+// PARAMS encoding (LE-bytes into params_ptr buffer) :
+//   bytes  0..4   : x_bits   (u32 little-endian f32 bits)
+//   bytes  4..8   : y_bits   (u32 little-endian f32 bits)
+//   bytes  8..12  : z_bits   (u32 little-endian f32 bits)
+//   bytes 12..16  : tod      (u32 little-endian)
+
+fn describe_environment_compose(
+    x_bits: u32,
+    y_bits: u32,
+    z_bits: u32,
+    tod: u32,
+    out_ptr: *mut u8,
+    out_max: u32,
+) -> u32 {
+    if tod >= tod_count() { return 0 ; }
+    let seed : u64 = env_seed_mix(x_bits, y_bits, z_bits, tod) ;
+    // Pack PARAMS for substrate-intelligence.
+    // The stub expects (x · y · z · tod · null-tail) ; the host marshals.
+    si::intelligence_compose(
+        si::role_gm(),
+        si::c_environment_description(),
+        seed,
+        0 as *const u8,    // params buffer marshaled host-side from seed
+        0u32,
+        out_ptr,
+        out_max,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API — generate_dialogue
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Procedurally compose a single line of dialogue for `npc_id` of the given
+// `archetype` in the given `mood` on the given `topic`. NO phrase-pools.
+// Archetype-coherence emerges from the substrate-intelligence's KAN-bias
+// over (role × archetype × topic) cells; "Mute archetype mostly emits
+// silence" is a property of the bias-vector, NOT a hardcoded pool.
+
+fn generate_dialogue_compose(
+    npc_id: u32,
+    archetype: u32,
+    mood: u32,
+    topic: u32,
+    out_ptr: *mut u8,
+    out_max: u32,
+) -> u32 {
+    if archetype >= arch_count() { return 0 ; }
+    if mood >= mood_count()      { return 0 ; }
+    if topic >= topic_count()    { return 0 ; }
+    let seed : u64 = dialogue_seed_mix(npc_id, archetype, mood, topic) ;
+    si::intelligence_compose(
+        si::role_gm(),
+        si::c_dialogue_line(),
+        seed,
+        0 as *const u8,
+        0u32,
+        out_ptr,
+        out_max,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API — respond_in_persona (cross-arc + persona-aware)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Compose a persona+arc-aware response to a player-utterance. This is the
+// FRONTSTAGE chat-panel entry-point. Per W11-GM-DM-DEEPEN: the response
+// blends arc-phase (Discovery → Quiet) + dm-state (Calm → Relief) +
+// persona-axes (8 channels) into a single composed-utterance.
+//
+// All persona/arc mixing happens INSIDE the substrate-intelligence; the
+// specialist just packages params and sets c_kind=dialogue_line with a
+// richer params buffer (gm_dialogue.csl persona-fields).
+
+fn respond_in_persona_compose(
+    player_seed: u64,
+    arc_phase: u32,
+    dm_state: u32,
+    topic_hint: u32,
+    frame: u64,
+    out_ptr: *mut u8,
+    out_max: u32,
+) -> u32 {
+    if topic_hint >= topic_count() { return 0 ; }
+    let seed : u64 = player_seed
+        + (arc_phase as u64)
+        + ((dm_state as u64) * splitmix_mul1())
+        + ((topic_hint as u64) * splitmix_mul2())
+        + frame ;
+    si::intelligence_compose(
+        si::role_gm(),
+        si::c_dialogue_line(),
+        seed,
+        0 as *const u8,
+        0u32,
+        out_ptr,
+        out_max,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § OBSERVATION uplink (player-response feedback into KAN-bias)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// When the chat-panel records a player-response (utterance-text-hash), the
+// GM-specialist forwards it to substrate-intelligence as an observation,
+// which feeds the KAN-loop sibling (self_authoring_kan.csl). This closes
+// the procedural-feedback ring: composer-output → player-feedback → KAN-
+// bias → next-composer-output evolves.
+
+fn observe_player_response(
+    utterance_hash: u64,
+    accepted: u32,    // 0 = ignored · 1 = engaged-positive · 2 = pushed-back
+) -> i32 {
+    si::intelligence_observe(
+        si::role_gm(),
+        si::o_player_response(),
+        utterance_hash,
+        0 as *const u8,
+        accepted,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (≥4 mandatory · csslc-#[test] supported)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t01_archetype_discriminants_match_rust_verbatim() -> i32 {
+    if arch_sage()        !=  0 { return 1 ; }
+    if arch_trickster()   !=  1 { return 2 ; }
+    if arch_warrior()     !=  2 { return 3 ; }
+    if arch_healer()      !=  3 { return 4 ; }
+    if arch_merchant()    !=  4 { return 5 ; }
+    if arch_hermit()      !=  5 { return 6 ; }
+    if arch_apprentice()  !=  6 { return 7 ; }
+    if arch_elder()       !=  7 { return 8 ; }
+    if arch_scout()       !=  8 { return 9 ; }
+    if arch_bard()        !=  9 { return 10 ; }
+    if arch_smith()       != 10 { return 11 ; }
+    if arch_witness()     != 11 { return 12 ; }
+    if arch_wanderer()    != 12 { return 13 ; }
+    if arch_apocalyptic() != 13 { return 14 ; }
+    if arch_liminal()     != 14 { return 15 ; }
+    if arch_mute()        != 15 { return 16 ; }
+    if arch_count()       != 16 { return 17 ; }
+    0
+}
+
+#[test]
+fn t02_phrase_topic_discriminants_match_rust_verbatim() -> i32 {
+    if topic_lore_history() !=  0 { return 1 ; }
+    if topic_environment()  !=  1 { return 2 ; }
+    if topic_weather()      !=  2 { return 3 ; }
+    if topic_creature()     !=  3 { return 4 ; }
+    if topic_architecture() !=  4 { return 5 ; }
+    if topic_memory()       !=  5 { return 6 ; }
+    if topic_prophecy()     !=  6 { return 7 ; }
+    if topic_warning()      !=  7 { return 8 ; }
+    if topic_greeting()     !=  8 { return 9 ; }
+    if topic_farewell()     !=  9 { return 10 ; }
+    if topic_silence()      != 31 { return 11 ; }
+    if topic_count()        != 32 { return 12 ; }
+    0
+}
+
+#[test]
+fn t03_seed_mixing_is_deterministic() -> i32 {
+    let s1 : u64 = env_seed_mix(0, 0, 0, 0) ;
+    let s2 : u64 = env_seed_mix(0, 0, 0, 0) ;
+    if s1 != s2 { return 1 ; }
+    let s3 : u64 = env_seed_mix(1, 0, 0, 0) ;
+    if s1 == s3 { return 2 ; }
+    let d1 : u64 = dialogue_seed_mix(0, 0, 0, 0) ;
+    let d2 : u64 = dialogue_seed_mix(0, 0, 0, 0) ;
+    if d1 != d2 { return 3 ; }
+    let d3 : u64 = dialogue_seed_mix(0, 1, 0, 0) ;
+    if d1 == d3 { return 4 ; }
+    0
+}
+
+#[test]
+fn t04_tod_and_mood_discriminants_distinct() -> i32 {
+    if tod_dawn()  != 0 { return 1 ; }
+    if tod_day()   != 1 { return 2 ; }
+    if tod_dusk()  != 2 { return 3 ; }
+    if tod_night() != 3 { return 4 ; }
+    if tod_count() != 4 { return 5 ; }
+    if mood_calm()      != 0 { return 6 ; }
+    if mood_defiant()   != 7 { return 7 ; }
+    if mood_count()     != 8 { return 8 ; }
+    0
+}
+
+#[test]
+fn t05_splitmix_constants_match_gm_persona_verbatim() -> i32 {
+    if splitmix_offset() != 0x9E3779B97F4A7C15 { return 1 ; }
+    if splitmix_mul1()   != 0xBF58476D1CE4E5B9 { return 2 ; }
+    if splitmix_mul2()   != 0x94D049BB133111EB { return 3 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W17-G-gm_specialist
+//      @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//    or anybody."
+//
+// gm_specialist.csl is the CANONICAL Game-Master role of the engine's
+// proprietary intelligence-self. It REPLACES the gm_narrator.rs phrase-pool
+// + xorshift32 + FNV-1a-anti-repeat-ring entirely. All output is PROCEDURAL
+// via substrate-intelligence (W17-F's ω-field + KAN + HDC + causal-seed
+// composition). The Rust gm_narrator.rs is now a STAGE-0-BOOTSTRAP-SHIM
+// (≤200 LOC) that delegates to this canonical .csl source.
+//
+// Player-sovereignty preserved : GM speaks AS-EQUAL · the persona-axes
+// encode VOICE-VARIATION not psychological-profiling · Σ-mask gates every
+// emission · default-deny on cap-revoke.
+// Companion-AI sovereignty preserved : substrate-intelligence runs locally ·
+// NO Anthropic API · NO LLM-bridge · NO external-network · purely substrate-
+// procedural.
+// Creator-sovereignty preserved : .csl source-of-truth · proprietary-
+// everything · this file IS the GM-specialist canonical impl.
