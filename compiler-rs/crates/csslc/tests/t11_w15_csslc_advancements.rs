@@ -110,6 +110,16 @@ fn t11_w15_testattr_hash_test_followed_by_at_attr() {
 }
 
 #[test]
+fn t11_w15_badhex_namespace_prefix_recovery() {
+    // § GAP-W15-C : the lexer's strict-hex regex consumed the longest valid-
+    //   hex prefix and emitted `BRASSMARu64` as a separate Ident, breaking
+    //   call-args parse. Post-W15 a recovery regex variant lexes the entire
+    //   `0x...BRASSMARu64` as a single IntLiteral so the parser doesn't
+    //   cascade.
+    assert_check_succeeds("badhex_recovery.csl");
+}
+
+#[test]
 fn t11_w15_testattr_does_not_break_inner_attrs() {
     // § Negative : the `#![..]` inner-attr form MUST still parse correctly
     //   (different from `#[..]` outer by the `!` between `#` and `[`).

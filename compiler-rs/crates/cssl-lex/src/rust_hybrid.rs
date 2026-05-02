@@ -95,6 +95,11 @@ fn promote(raw: RawToken, text: &str) -> TokenKind {
     match raw {
         RawToken::Ident => Keyword::from_word(text).map_or(TokenKind::Ident, TokenKind::Keyword),
         RawToken::IntLiteral => TokenKind::IntLiteral,
+        // § T11-W15-CSSLC-BADHEX : malformed hex (namespace-prefix-style hash
+        //   anchors like `0xAKA_T8AG_FEDCBA98u64`) collapse to IntLiteral so the
+        //   parser sees a normal-shape literal ; the source-text retains the
+        //   typo for downstream warnings + diagnostics.
+        RawToken::MalformedHexLiteral => TokenKind::IntLiteral,
         RawToken::FloatLiteral => TokenKind::FloatLiteral,
         RawToken::StringLiteral => TokenKind::StringLiteral(StringFlavor::Normal),
         RawToken::RawStringLiteral => TokenKind::StringLiteral(StringFlavor::Raw),
@@ -209,6 +214,28 @@ enum RawToken {
     #[regex(r"0o[0-7][0-7_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
     #[regex(r"[0-9][0-9_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
     IntLiteral,
+
+    /// § T11-W15-CSSLC-BADHEX : RECOVERY-form for "namespace-prefix hex" literals
+    ///   that real-world LoA source uses as readable hash-anchors :
+    ///     0xAKA_T8AG_OWN_5E5F0001u64    ← `AKA` + `T8AG` + `OWN` are NOT hex digits
+    ///     0xC17_5CE_E_BRASSMARu64       ← `BRASSMAR` is NOT hex digits
+    ///     0xEX17_5CE_E_FEDCBA98u64      ← `EX` is NOT hex digits (typo)
+    ///
+    /// Without this variant, the lexer split `0xC17_5CE_E_B` (the longest valid-
+    /// hex prefix) into IntLiteral + `RASSMARu64` (Ident) and the parser
+    /// cascaded "expected `)` to close call args". With this variant, the
+    /// ENTIRE string `0xC17_5CE_E_BRASSMARu64` lexes as a single
+    /// `MalformedHexLiteral` token ; the lexer-finalize step rewrites it to
+    /// `IntLiteral` (so the parser sees a normal int).
+    ///
+    /// Regex DISJOINT from the strict hex variant — this one REQUIRES at least
+    /// one non-hex letter (G-Z / g-z) in the body to fire, so the strict
+    /// variant always wins for well-formed hex literals.
+    ///
+    /// Pattern : `0x` + hex-prefix + at-least-one-non-hex-letter +
+    ///           tail-of-mixed-alphanumeric + optional-suffix.
+    #[regex(r"0x[0-9A-Fa-f][0-9A-Fa-f_]*[G-Zg-z][0-9A-Za-z_]*(?:'[A-Za-z_][A-Za-z0-9_]*|[ui](?:8|16|32|64|128|size))?")]
+    MalformedHexLiteral,
 
     /// Normal string literal `"…"` — supports common escapes (`\n` `\t` `\r` `\0` `\\`
     /// `\"` `\'`), 2-hex-digit byte escapes (`\x41`), and brace-delimited Unicode
@@ -430,6 +457,69 @@ mod tests {
         assert_eq!(
             kinds("0xFF'u8"),
             vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+    }
+
+    // ─── § T11-W15-CSSLC-BADHEX : malformed-hex recovery ────────────────────
+
+    #[test]
+    fn malformed_hex_namespace_prefix_collapses_to_int_literal() {
+        // `0xC17_5CE_E_BRASSMARu64` — `BRASSMAR` contains non-hex letters.
+        // Pre-W15 : split into `0xC17_5CE_E_B` IntLiteral + `RASSMARu64` Ident,
+        // breaking call-args parse. Post-W15 : single IntLiteral token.
+        assert_eq!(
+            kinds("0xC17_5CE_E_BRASSMARu64"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+    }
+
+    #[test]
+    fn malformed_hex_aka_prefix_collapses_to_int_literal() {
+        // `0xAKA_T8AG_OWN_5E5F0001u64` — `AKA` / `T8AG` / `OWN` non-hex.
+        assert_eq!(
+            kinds("0xAKA_T8AG_OWN_5E5F0001u64"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+    }
+
+    #[test]
+    fn malformed_hex_ex_typo_collapses_to_int_literal() {
+        // `0xEX17_5CE_E_FEDCBA98u64` — `EX` is invalid hex (typo for `E_X`).
+        assert_eq!(
+            kinds("0xEX17_5CE_E_FEDCBA98u64"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+    }
+
+    #[test]
+    fn well_formed_hex_still_uses_strict_variant() {
+        // Validate the recovery variant doesn't shadow well-formed hex —
+        // strict variant must still win when the body is valid.
+        assert_eq!(
+            kinds("0xDEAD_BEEFu64"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+        assert_eq!(
+            kinds("0xCAFE_BABE'u32"),
+            vec![TokenKind::IntLiteral, TokenKind::Eof],
+        );
+    }
+
+    #[test]
+    fn malformed_hex_inside_call_args_round_trip() {
+        // End-to-end shape : `f(0xAKA_FF, 1)` — the call-args parser must see
+        // 5 tokens : `f`, `(`, IntLit, `,`, IntLit, `)`.
+        assert_eq!(
+            kinds("f(0xAKA_FF, 1)"),
+            vec![
+                TokenKind::Ident,
+                TokenKind::Bracket(BracketKind::Paren, BracketSide::Open),
+                TokenKind::IntLiteral,
+                TokenKind::Comma,
+                TokenKind::IntLiteral,
+                TokenKind::Bracket(BracketKind::Paren, BracketSide::Close),
+                TokenKind::Eof,
+            ],
         );
     }
 

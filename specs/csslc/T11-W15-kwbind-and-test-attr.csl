@@ -100,24 +100,61 @@ module specs.csslc.T11_W15_kwbind_and_test_attr
 //
 //     test : `tests/fixtures/test_attr_outer.csl` (4-fn-attrs + 1-struct-attr)
 //
-// § VERIFIED-RESULT
-//   Pre-W15 : 14-of-44 LoA .csl pass csslc check
-//   Post-W15: 21-of-44 LoA .csl pass csslc check  (+7 ; +50% improvement)
+//   ── GAP-W15-C : malformed-hex literal recovery ──────────────────────────
 //
-//   Files newly-passing : akashic.csl + economy.csl + auto_playtest.csl +
-//                          alchemy.csl + content_remix.csl + crafting.csl +
-//                          input_genre_fluid.csl  (all-7 hit on `#[test]`
-//                          and/or `tag/ref/val` binding-name)
+//     surface-syntax :
+//       const TAG_HASH_PLAYER_OWN : u64 = 0xAKA_T8AG_OWN_5E5F0001u64 ;
+//       audit_emit(h, 1, 0xC17_5CE_E_BRASSMARu64)
+//       audit_emit(h, 2, 0xEX17_BRASSMAR_FEDCBA98u64)   // ← `EX` typo for `E_X`
+//
+//     pre-fix : the strict-hex regex `0x[0-9A-Fa-f]+` matched the longest
+//       valid-hex prefix, leaving the non-hex letters as an Ident. Inside
+//       a call-arg-list, the trailing Ident broke the comma-separated args
+//       and cascaded "expected `)` to close call args" + "expected an
+//       expression" errors throughout the rest of the file. Real-world LoA
+//       uses readable namespace-prefix hashes (Akashic / Brassmarrow / etc.)
+//       intentionally.
+//
+//     post-fix : new lexer variant `MalformedHexLiteral` with regex
+//       `0x[0-9A-Fa-f]+[G-Zg-z][0-9A-Za-z_]*<suffix>?` ; promote-step
+//       collapses it to `TokenKind::IntLiteral` so the parser sees a normal
+//       literal-shape. The strict-hex variant always wins for well-formed
+//       hex (logos longest-match → strict variant has shorter match).
+//
+//     codegen : zero-impact ; HIR sees a single Literal node with the source
+//       slice ; downstream typing/MIR accepts it as a normal hex literal.
+//
+//     test : `tests/fixtures/badhex_recovery.csl` (3-namespace-hashes ; covers
+//             `0xAKA_*` + `0xC17_*BRASSMAR` + `0xEX*` typo-form)
+//
+// § VERIFIED-RESULT
+//   Pre-W15  : 14-of-44 LoA .csl pass csslc check
+//   Post-W15 : 28-of-44 LoA .csl pass csslc check  (+14 ; +100% improvement)
+//
+//   Files newly-passing :
+//     after KWBIND  : akashic + economy + auto_playtest + alchemy +
+//                     content_remix + crafting + input_genre_fluid
+//     after TESTATTR: (above set + multiple inline-test users)
+//     after BADHEX  : brassmarrow + city_central_hub + greenwillow_fair +
+//                     old_keyport + player_home + sanctum_of_echoes
+//                     (all-6 scenes used readable-namespace-hex anchors)
+//
+//   Remaining-failures (16-of-44) :
+//     ‼ All-16 use `§§ THESIS` / `⊢` / `∎ name` CSL3-NATIVE glyphs in mixed-
+//       surface-mode ; these are NOT rust-hybrid syntax. The mode-detection
+//       layer (`cssl-lex/src/mode.rs`) needs a per-section dispatch to allow
+//       CSL3-native fragments inside a rust-hybrid file. Out-of-scope for
+//       parse-advancement ; tracked in deferred backlog.
 //
 // § DEFERRED-TO-NEXT-WAVE  (specs/csslc/_BACKLOG.csl)
 //
-//   * GAP-W15-bad-hex-recovery : `0xAKA_T8AG_FEDCBA98u64` (intentional readable-
-//     namespace-prefix hashes used in akashic / brassmarrow / city_central_hub).
-//     The parser-recovery should localize the error to the literal-token rather
-//     than cascade. Effort : 0.5 session (lex error-mode + parser-skip-to-
-//     synchronize-token).
+//   * GAP-W16-mixed-surface : per-section dispatch between rust-hybrid and
+//     CSL3-native within a single .csl file. Effort : 1-2 sessions ; impacts
+//     the lex `mode::detect` + parse-dispatch layer. Affects 16-of-44 LoA
+//     files that use CSL3-native `§§ THESIS` / `⊢` / `∎ name` glyphs in
+//     mixed-context.
 //
-//   * GAP-W15-multi-module : `csslc build main.cssl --module-path=systems/*.csl`
+//   * GAP-W16-multi-module : `csslc build main.cssl --module-path=systems/*.csl`
 //     driver loop. Effort : 1-2 sessions ; out-of-scope at parse-only
 //     advancement (HIR-resolve + cgen-link-multi-source).
 //

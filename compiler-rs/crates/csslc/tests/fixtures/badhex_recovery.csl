@@ -1,0 +1,35 @@
+module com.apocky.test.badhex
+
+// § T11-W15-CSSLC-BADHEX · fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT
+//   Real-world LoA hash anchors use namespace-prefix-style readability hacks
+//   inside hex literals : `0xAKA_T8AG_FEDCBA98u64` (Akashic-Records),
+//   `0xC17_5CE_E_BRASSMARu64` (Brassmarrow scene). These are not strict-
+//   valid-hex but the lexer recovery-form collapses them to a single
+//   IntLiteral so the parser doesn't cascade.
+//
+//   Pre-W15 : `0xC17_5CE_E_BRASSMARu64` split into IntLiteral + Ident,
+//             broke call-args parse with "expected `)` to close call args".
+//   Post-W15 : single IntLiteral token ; downstream typing accepts it as a
+//              normal-shape literal (HIR + MIR + codegen happy).
+
+extern "C" fn record_anchor(handle: i64, hash: u64) -> i32 ;
+extern "C" fn audit_emit(handle: u32, kind: u32, hash: u64) -> u32 ;
+
+const TAG_HASH_PLAYER_OWN : u64 = 0xAKA_T8AG_OWN_5E5F0001u64 ;
+const TAG_HASH_BRASSMAR : u64 = 0xC17_5CE_E_BRASSMARu64 ;
+
+fn use_namespace_hex(handle: i64) -> i32 {
+    record_anchor(handle, TAG_HASH_PLAYER_OWN)
+}
+
+fn use_inline_hex(h: u32) -> u32 {
+    audit_emit(h, 1, 0xC17_5CE_E_BRASSMARu64)
+}
+
+fn use_typo_hex(h: u32) -> u32 {
+    // `EX` is invalid hex (typo for `E_X`) ; recovery-form still parses.
+    audit_emit(h, 2, 0xEX17_BRASSMAR_FEDCBA98u64)
+}
