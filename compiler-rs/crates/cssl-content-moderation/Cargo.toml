@@ -1,0 +1,42 @@
+[package]
+name                   = "cssl-content-moderation"
+description            = "CSSLv3 host — community content-moderation · cap-required · k-anon · ¬ shadowban · sovereign-revocable"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W12-MODERATION — community-flag system that respects PRIME-DIRECTIVE
+# absolutely. ¬ shadowban EVER · ¬ algorithmic-suppression · transparency
+# at every stage · sovereign-revocable.
+#
+# § PRIME-DIRECTIVE INVARIANTS
+#   ─ Σ-mask cap-gate @ flag-emit AND @ curator-decision (defense-in-depth)
+#   ─ k-anon thresholds (T1..T6) enforced @ Rust-substrate AND @ DB-RLS
+#   ─ ¬ shadowban : ALL flag-effects transparent-to-author
+#   ─ ¬ algorithmic-suppression : curator-decision is the ONLY suppression
+#   ─ author-appeal ALWAYS-available · 30-day-window · auto-restore @ 7d
+#   ─ flagger-revocable ANYTIME · author sovereign-revocable ANYTIME
+#   ─ curator-decision REQUIRES Σ-Chain-anchor (immutable record)
+#   ─ deterministic record-pack/unpack ⟶ replay-stable
+#   ─ stage-0 self-sufficient (in-memory · works without Supabase)
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/content_moderation.csl
+
+[lib]
+name       = "cssl_content_moderation"
+crate-type = ["rlib"]
+
+[dependencies]
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+tracing       = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

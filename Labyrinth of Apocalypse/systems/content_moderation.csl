@@ -1,0 +1,282 @@
+module com.apocky.loa.systems.content_moderation
+
+// § Labyrinth of Apocalypse v13 — community content-moderation (pure-CSSL)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// § T11-W12-MODERATION (POD-3-W12-11) — community-flag · cap-required · k-anon
+//
+// § THESIS
+//   Community-driven content-flag system that respects PRIME-DIRECTIVE
+//   absolutely : ¬ shadowban EVER · ¬ algorithmic-suppression · ¬ time-decay
+//   penalty · transparency-at-every-stage · sovereign-revocable. Flags are
+//   first-class records anchored on Σ-Chain when curator-decisions land.
+//   Authors see ALL flags filed against their content (k-anon-aggregated
+//   below threshold · individual-flagger-pubkey hidden until quorum).
+//
+//   "Community-flagging without surveillance · curation without suppression ·
+//    review without secrecy."
+//
+// § AXIOMS  (inherit PRIME_DIRECTIVE + spec/14_SIGMA_CHAIN + GDDs/COMMUNITY)
+//   ─ Σ-mask cap-gate @ flag-emit AND @ curator-decision (defense-in-depth)
+//   ─ k-anon thresholds : single-flag-private · ≥3-aggregate-visible-to-author
+//     · ≥10-distinct-flaggers + severity-weight ≥ 75 ⟶ "needs-review"
+//   ─ ¬ shadowban EVER · ALL flag-effects transparent-to-author
+//   ─ ¬ algorithmic-suppression · curator-decision is the ONLY suppression-path
+//   ─ author-appeal ALWAYS-available · 30-day-window · auto-restore @ 7-days-no-decision
+//   ─ flagger-revocable ANYTIME · own-flag-revoke @ any-stage
+//   ─ author-revocable ANYTIME · sovereign-revoke even-during-review
+//   ─ curator-decision REQUIRES Σ-Chain-anchor (immutable-decision-record)
+//   ─ ≥ 3 distinct-curators (cap-curator-class) for appeal-quorum
+//   ─ ¬ "engagement-bait" deflation · ¬ time-decay · ¬ down-rank w/o decision
+//
+// § FLAG-RECORD BIT-PACK (32 bytes · LE)
+//   ┌───────────┬────────┬────────────────────────────────────────────────┐
+//   │ offset    │ bytes  │ field                                          │
+//   ├───────────┼────────┼────────────────────────────────────────────────┤
+//   │  0..8     │   8    │ flagger_pubkey_hash    (BLAKE3-trunc · u64 LE) │
+//   │  8..12    │   4    │ content_id             (u32 LE · short-id)    │
+//   │ 12        │   1    │ flag_kind              (FlagKind disc · u8)    │
+//   │ 13        │   1    │ severity               (0..=100 · u8)          │
+//   │ 14        │   1    │ sigma_mask             (Σ-cap-bits · u8)       │
+//   │ 15        │   1    │ reserved               (must be 0)             │
+//   │ 16..20    │   4    │ ts                     (epoch-seconds · u32 LE)│
+//   │ 20..28    │   8    │ rationale_short        (BLAKE3-trunc · u64 LE) │
+//   │ 28..32    │   4    │ sig_trunc              (Ed25519-trunc · u32 LE)│
+//   └───────────┴────────┴────────────────────────────────────────────────┘
+//   Wire-stable. flagger_pubkey_hash is non-recoverable-to-pubkey ; full
+//   pubkey lives ONLY in the flagger's private record + RLS-row.
+//
+// § FLAG-KINDS (8 · narrow-taxonomy · PRIME-DIRECTIVE-reviewed)
+//   0 : prime-directive-violation    (§§ harm/control/manipulation/coercion)
+//   1 : harm-toward-others            (§ 1 prohibitions · severity-weighted)
+//   2 : surveillance-mechanism        (§ 2 transparency · §  COGNITIVE-INTEGRITY)
+//   3 : pay-for-power-leak            (§ cosmetic-only-axiom violation)
+//   4 : attribution-fraud             (§  remix-chain · stolen-credit)
+//   5 : prohibited-content            (§§ 17-prohibitions hard-list)
+//   6 : spam                          (low-severity · auto-aggregated)
+//   7 : other                         (rationale REQUIRED · curator-discretion)
+//
+// § Σ-CAP BITS (per-flagger · per-curator · ALL revocable ANYTIME)
+//   bit 0 : MOD_CAP_FLAG_SUBMIT       — flagger-cap (community-default-ON)
+//   bit 1 : MOD_CAP_APPEAL            — author-cap (always-ON for content-author)
+//   bit 2 : MOD_CAP_CURATE_A          — community-elected-curator (time-limited)
+//   bit 3 : MOD_CAP_CURATE_B          — substrate-team-appointed (rare · public)
+//   bit 4 : MOD_CAP_CHAIN_ANCHOR      — curator-decision Σ-Chain-write
+//   bit 5 : MOD_CAP_AGGREGATE_READ    — author transparency-read
+//   bits 6..7 : reserved (must be 0)
+//
+// § K-ANON THRESHOLDS (numbered · enforced @ Rust-substrate AND @ DB-RLS)
+//   T1 : SINGLE-FLAG-PRIVATE       — 1 flag visible only-to-flagger + admin (RLS)
+//   T2 : AUTHOR-AGGREGATE-FLOOR    — author sees aggregate-summary @ ≥ 3 flags
+//   T3 : NEEDS-REVIEW-THRESHOLD    — ≥ 10 distinct-flaggers AND
+//                                    severity-weighted-score ≥ 75
+//                                    ⟶ "needs-review" flag (NOT hidden)
+//   T4 : APPEAL-QUORUM             — ≥ 3 distinct curators with cap-curator
+//   T5 : AUTO-RESTORE-WINDOW       — 7 days no-decision ⟶ auto-restore
+//   T6 : APPEAL-WINDOW             — 30 days from any curator-decision
+//
+// § SOVEREIGNTY GUARANTEES (5+ ways NO-shadowban enforced)
+//   1. ALL flag-counts in moderation_aggregates are AUTHOR-VISIBLE @ T2
+//   2. ALL curator-decisions are Σ-Chain-anchored (immutable · public-anchor-hash)
+//   3. needs-review flag visible-to-author @ creation (no hidden state)
+//   4. ¬ feed-position-mutation w/o explicit curator-decision-row
+//   5. ¬ time-decay coefficient in any moderation_aggregate query
+//   6. transparency-endpoint /api/content/moderation/transparency/:slug
+//      surfaces full Σ-mask-aggregate to author + appeal-history
+//   7. author-sovereign-revoke wins UNCONDITIONALLY (even mid-review)
+//
+// § FFI BOUNDARY
+//   This module consumes the moderation host-side substrate via extern "C" :
+//     * cssl-content-moderation       (T11-W12-11 ; FlagRecord · Aggregate · Decision)
+//     * cssl-substrate-sigma-runtime  (T11-W11-16 ; cap-gating)
+//     * cssl-substrate-sigma-chain    (T11-W11-17 ; decision anchoring)
+//     * cssl-host-attestation         (T11-W7-G   ; per-flag audit-row emit)
+//   FFI fns return i32 status codes : 0 = ok · negative = err-kind.
+//   FlagRecord blobs pass via 32-byte fixed buffers.
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : flagger AND author BOTH consent-grant via cap-bits.
+//   No-secret-state : every flag/decision/appeal AUTHOR-visible.
+//   Sovereign-revoke trumps moderator-action ALWAYS.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-bits  (Σ-mask · ALL revocable ANYTIME)
+// ─────────────────────────────────────────────────────────────────────────
+
+const MOD_CAP_FLAG_SUBMIT       : u8 = 0x01 ;  // flagger-cap (default-ON)
+const MOD_CAP_APPEAL            : u8 = 0x02 ;  // author-cap (always-ON)
+const MOD_CAP_CURATE_A          : u8 = 0x04 ;  // community-elected
+const MOD_CAP_CURATE_B          : u8 = 0x08 ;  // substrate-team
+const MOD_CAP_CHAIN_ANCHOR      : u8 = 0x10 ;  // Σ-Chain-write
+const MOD_CAP_AGGREGATE_READ    : u8 = 0x20 ;  // author-transparency-read
+
+// reserved (bits 6..7)
+const MOD_CAPS_RESERVED_MASK    : u8 = 0xC0 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FlagKind — 8 · narrow-taxonomy
+// ─────────────────────────────────────────────────────────────────────────
+
+enum FlagKind : u8 {
+  PrimeDirectiveViolation = 0 ,
+  HarmTowardOthers        = 1 ,
+  SurveillanceMechanism   = 2 ,
+  PayForPowerLeak         = 3 ,
+  AttributionFraud        = 4 ,
+  ProhibitedContent       = 5 ,
+  Spam                    = 6 ,
+  Other                   = 7 ,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DecisionKind — curator-rendered verdict
+// ─────────────────────────────────────────────────────────────────────────
+
+enum DecisionKind : u8 {
+  FlagDismissed           = 0 ,  // flags determined unfounded · content stays
+  FlagUpheld              = 1 ,  // content stays w/ public-warning
+  ContentRestricted       = 2 ,  // age-gate / locale-gate (NOT removed)
+  ContentRemoved          = 3 ,  // hard-remove · author-appeal-allowed
+  AppealAccepted          = 4 ,  // prior-decision reversed
+  AppealRejected          = 5 ,  // prior-decision sustained
+  SovereignRevoked        = 6 ,  // author-revoke @ any-stage (terminal)
+  AutoRestored            = 7 ,  // 7-day-no-decision auto-restore
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § K-Anon Thresholds  (constants · enforced everywhere)
+// ─────────────────────────────────────────────────────────────────────────
+
+const K_AUTHOR_AGGREGATE_FLOOR  : u32 = 3   ;   // T2 author sees aggregate
+const K_NEEDS_REVIEW_DISTINCT   : u32 = 10  ;   // T3 distinct-flaggers
+const K_NEEDS_REVIEW_WEIGHTED   : u32 = 75  ;   // T3 severity-weighted-score
+const K_APPEAL_CURATOR_QUORUM   : u32 = 3   ;   // T4 distinct curators
+const T_AUTO_RESTORE_DAYS       : u32 = 7   ;   // T5 days no-decision
+const T_APPEAL_WINDOW_DAYS      : u32 = 30  ;   // T6 days appeal-window
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FlagRecord — 32-byte bit-packed wire-stable record
+// ─────────────────────────────────────────────────────────────────────────
+
+struct FlagRecord {
+  raw : [u8 ; 32] ,
+}
+
+// Constructor (FFI) :
+//   flag_record_pack(flagger_pubkey, content_id, kind, severity, sigma_mask,
+//                     ts, rationale_short_hash, sig_trunc) -> FlagRecord
+extern "C" fn flag_record_pack (
+  flagger_pubkey_hash : u64 ,
+  content_id          : u32 ,
+  kind                : u8  ,    // FlagKind disc
+  severity            : u8  ,    // 0..=100
+  sigma_mask          : u8  ,    // Σ-cap-bits
+  ts                  : u32 ,    // epoch-seconds
+  rationale_short     : u64 ,    // BLAKE3-trunc of rationale-text
+  sig_trunc           : u32 ,    // Ed25519 signature trunc
+) -> FlagRecord ;
+
+// Accessors :
+extern "C" fn flag_record_kind     ( r : &FlagRecord ) -> u8 ;
+extern "C" fn flag_record_severity ( r : &FlagRecord ) -> u8 ;
+extern "C" fn flag_record_ts       ( r : &FlagRecord ) -> u32 ;
+extern "C" fn flag_record_pubkey_h ( r : &FlagRecord ) -> u64 ;
+extern "C" fn flag_record_content  ( r : &FlagRecord ) -> u32 ;
+extern "C" fn flag_record_mask     ( r : &FlagRecord ) -> u8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ModerationAggregate — k-anon-aware author-visible summary
+// ─────────────────────────────────────────────────────────────────────────
+
+struct ModerationAggregate {
+  content_id            : u32 ,
+  total_flags           : u32 ,
+  distinct_flaggers     : u32 ,
+  severity_weighted     : u32 ,    // sum(severity * 1) · clamped
+  per_kind_counts       : [u32 ; 8] ,    // FlagKind histogram
+  needs_review          : bool ,
+  visible_to_author     : bool ,    // T2 floor
+  last_flag_ts          : u32 ,
+}
+
+// FFI : aggregate_compute (host enforces k-anon @ build-time)
+extern "C" fn aggregate_compute (
+  flags     : *const FlagRecord ,
+  count     : u32 ,
+  out       : *mut ModerationAggregate ,
+) -> i32 ;
+
+// FFI : aggregate_visible_to_author (T2 floor enforced)
+extern "C" fn aggregate_visible_to_author ( agg : &ModerationAggregate ) -> bool ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CuratorDecision — Σ-Chain-anchored verdict
+// ─────────────────────────────────────────────────────────────────────────
+
+struct CuratorDecision {
+  decision_id         : u64 ,
+  content_id          : u32 ,
+  curator_pubkey_hash : u64 ,
+  cap_class           : u8 ,    // CURATE_A or CURATE_B
+  kind                : u8 ,    // DecisionKind disc
+  decided_at          : u32 ,    // epoch-seconds
+  sigma_chain_anchor  : [u8 ; 32] ,    // BLAKE3 of Σ-Chain anchor-block
+  rationale           : [u8 ; 64] ,    // public · author-visible
+  signature           : [u8 ; 64] ,    // Ed25519 over canonical-bytes
+}
+
+// FFI : decision_anchor (writes to Σ-Chain · returns anchor-hash)
+extern "C" fn decision_anchor (
+  decision : &CuratorDecision ,
+  out_anchor : *mut [u8 ; 32] ,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Appeal — author-side · 30-day-window · auto-restore @ 7-days-no-decision
+// ─────────────────────────────────────────────────────────────────────────
+
+struct Appeal {
+  appeal_id           : u64 ,
+  content_id          : u32 ,
+  author_pubkey_hash  : u64 ,
+  filed_at            : u32 ,
+  decision_id_appealed : u64 ,    // 0 if appealing flag-state directly
+  rationale           : [u8 ; 128] ,
+  signature           : [u8 ; 64] ,
+  curator_quorum_reached : bool ,
+  resolved_at         : u32 ,    // 0 = unresolved
+  resolution_kind     : u8 ,    // DecisionKind disc · 7=AutoRestored
+}
+
+// FFI : appeal_file (validates 30-day-window @ filing)
+extern "C" fn appeal_file ( a : &Appeal ) -> i32 ;
+
+// FFI : appeal_auto_restore_check (T5 7-day-no-decision)
+extern "C" fn appeal_auto_restore_check (
+  a   : &Appeal ,
+  now : u32 ,
+) -> bool ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SovereignRevoke — author-side terminal-action ANY-STAGE
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn sovereign_revoke (
+  content_id        : u32 ,
+  author_pubkey_hash : u64 ,
+  signature         : [u8 ; 64] ,
+  ts                : u32 ,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Transparency-endpoint surface (HTTP-edge consumes via FFI)
+// ─────────────────────────────────────────────────────────────────────────
+
+// /api/content/moderation/flag       — POST · cap-flagger · sig-verified
+// /api/content/moderation/appeal     — POST · cap-author · sig-verified
+// /api/content/moderation/decision   — POST · cap-curator · Σ-Chain-anchored
+// /api/content/moderation/transparency/:slug — GET · author full-history
+
+// ─── END · cssl-content-moderation spec ─────────────────────────────────
