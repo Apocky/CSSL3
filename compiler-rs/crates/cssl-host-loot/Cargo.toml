@@ -1,0 +1,51 @@
+[package]
+name                   = "cssl-host-loot"
+description            = "§ T11-W13-LOOT — 6-tier rarity loot-drop · COSMETIC-ONLY-AXIOM (¬ stat-affixes · ¬ pay-for-power · ¬ tier-gates power) · KAN-bias-aware · Σ-mask-gated default-deny · Σ-Chain-anchored drop-events · attest_no_pay_for_power structurally-true · extends cssl-host-gear-archetype rarity-ladder."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W13-LOOT-CRATE (NEW · greenfield · sibling-of cssl-host-gear-archetype + cssl-host-sigma-chain + cssl-host-kan-real)
+#
+# § PRIME-DIRECTIVE INVARIANTS (encoded structurally)
+#   ─ COSMETIC-ONLY-AXIOM : LootAffix is sum-type with NO stat-modifying variant.
+#                            attest_no_pay_for_power(item) returns true ∀ shipped items.
+#                            DPS-tier IDENTICAL across rarities ; rarity ONLY-affects-cosmetic-richness.
+#   ─ ¬ pay-for-tier-skip : LootRoll has NO purchase-pathway · only KAN-bias + drop-context.
+#                            Tier-skip purchase rejected at construction (PayForPowerError).
+#   ─ KAN-bias-Σ-mask-gated : per-player KAN-bias-vector default-deny ; player explicit opt-in
+#                              via consent-token. Bias-update-cap prevents runaway-amplification.
+#   ─ Σ-Chain anchor every drop : LootDropEvent → SigmaEvent (kind=LootDrop) ; immutable-history ·
+#                                  sovereign-revocable via Σ-Chain forget-myself axiom.
+#   ─ Public drop-rates : DropRateDistribution::PUBLIC is canonical · no-hidden-rates.
+#                          Common 60% · Uncommon 25% · Rare 10% · Epic 4% · Legendary 0.9% · Mythic 0.1%
+#
+# § AXIOMS (t∞)
+#   t∞: looting = fashion-show ¬ power-curve
+#   t∞: ¬ "+10% damage" affix · ¬ "+5% reload-speed" affix · ¬ "+15% accuracy" affix
+#   t∞: rarity gates COSMETIC-RICHNESS only · ¬ stats · ¬ tier-gates power
+#   t∞: KAN-bias respects Σ-mask · default-deny · player-opts-in
+#   t∞: Σ-Chain-anchored drop-events · sovereign-revocable · immutable-otherwise
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/loot_drop.csl
+
+[lib]
+name       = "cssl_host_loot"
+crate-type = ["rlib"]
+
+[dependencies]
+cssl-host-gear-archetype = { path = "../cssl-host-gear-archetype" }
+cssl-host-sigma-chain    = { path = "../cssl-host-sigma-chain" }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+blake3        = { workspace = true }
+ed25519-dalek = { workspace = true }
+
+[dev-dependencies]
+rand          = { workspace = true }
+serde_json    = { workspace = true }
+
+[lints]
+workspace = true

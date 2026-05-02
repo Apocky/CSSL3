@@ -86,6 +86,13 @@ cssl-host-coder-runtime         = { path = "../cssl-host-coder-runtime" }
 #   main.rs (sibling-agent-territory).
 cssl-hotfix                     = { path = "../cssl-hotfix" }
 cssl-hotfix-client              = { path = "../cssl-hotfix-client" }
+# § T11-W13-PERF-ENFORCER (W13-12 perf-budget-enforcer) — runtime side reads
+# polish_audit::PerfBudget snapshots into FrameBudgetEnforcer + AdaptiveDegrader,
+# emits PerfEvent records into the analytics-aggregator (W11-4) bridge. The
+# enforcer crate is zero-dep · file-disjoint from polish_audit (W12-12). See
+# `perf_runtime_check.rs` for the wiring + spec @
+# Labyrinth of Apocalypse/systems/perf_enforcer.csl.
+cssl-host-perf-enforcer         = { path = "../cssl-host-perf-enforcer" }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }
