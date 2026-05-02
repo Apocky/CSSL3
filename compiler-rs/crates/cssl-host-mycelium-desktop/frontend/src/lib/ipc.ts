@@ -104,6 +104,30 @@ export async function getSubstrateDocCount(): Promise<IpcResponse> {
   return send({ type: "get_substrate_doc_count" });
 }
 
+/**
+ * § T11-W17-C : persist the Anthropic API key to `~/.loa-secrets/anthropic.env`.
+ * The plaintext key is sent ONCE over the IPC bridge and is NEVER returned
+ * by the host — subsequent reads return only the masked indicator.
+ */
+export async function saveAnthropicKey(key: string): Promise<IpcResponse> {
+  return send({ type: "save_anthropic_key", key });
+}
+
+/**
+ * § T11-W17-C : read the masked indicator (`sk-...XXXX`) for the persisted key.
+ * The host NEVER returns the plaintext to JS.
+ */
+export async function loadAnthropicKeyMasked(): Promise<IpcResponse> {
+  return send({ type: "load_anthropic_key_masked" });
+}
+
+/**
+ * § T11-W17-C : boolean — is `~/.loa-secrets/anthropic.env` configured?
+ */
+export async function hasAnthropicKey(): Promise<IpcResponse> {
+  return send({ type: "has_anthropic_key" });
+}
+
 /* ─────────────── response narrowing helpers ─────────────── */
 
 export function isError(
