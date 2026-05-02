@@ -96,6 +96,15 @@ pub mod fps_hud;
 // zero new path-deps.
 pub mod polish_audit;
 
+// § T11-W13-PERF-ENFORCER (W13-12 perf-budget-enforcer) — runtime adapter
+// that bridges polish_audit::PerfBudget (W12-12) into the new
+// cssl-host-perf-enforcer crate. File-disjoint from polish_audit ; only
+// reads its public surface. Exposes PerfRuntimeCheck which the engine
+// main-loop calls per frame to classify Pass/Over/Severe verdicts, fire
+// the AdaptiveDegrader, and emit PerfEvent records into the W11-4
+// analytics-aggregator bridge.
+pub mod perf_runtime_check;
+
 // § T11-W13-FPS-PIPELINE (W13-1 FPS-render-pipeline + perf-rebuild) — catalog-
 // buildable FPS render-pipeline orchestrator. Triple-buffered ring of frame
 // slots · pre-allocated cmd-buffer pool · uniform staging · instance buffer
@@ -108,6 +117,13 @@ pub mod polish_audit;
 // Catalog-only · no wgpu / winit deps ; the Renderer owns one of these and
 // steps it inside `render_frame`. Spec @ Labyrinth of Apocalypse/systems/fps_pipeline.csl.
 pub mod fps_pipeline;
+
+// § T11-W13-FPS-PIPELINE-WIRE — thin MCP-style accessor over fps_pipeline.
+//   default_pipeline() / stretch_144hz_pipeline() / legacy_60hz_pipeline()
+//   constructors · summary_line() / metrics_jsonl() telemetry helpers ·
+//   re-exports the full fps_pipeline surface so wired_* call-sites stay
+//   short. Catalog-only ; pure-CPU ; ¬ deps.
+pub mod wired_fps_pipeline;
 
 // Snapshot-sibling catalog (T11-LOA-TEST-APP : PNG encode + tour-pose
 // registry + golden-image diff are catalog-buildable ; the wgpu readback
