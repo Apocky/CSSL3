@@ -74,6 +74,12 @@ pub mod dm_arc;
 // gated on `runtime` feature inside the module).
 pub mod ui_overlay;
 
+// § T11-W12-POLISH (W12-12 Engine-Polish-Pass) — catalog-buildable polish
+// audit + accessibility tunables + perf-budget tracker + WCAG color-contrast
+// audit + loading-spinner + render-mode-flash + JSONL audit-report. Pure-CPU,
+// zero new path-deps.
+pub mod polish_audit;
+
 // Snapshot-sibling catalog (T11-LOA-TEST-APP : PNG encode + tour-pose
 // registry + golden-image diff are catalog-buildable ; the wgpu readback
 // path is gated on the `runtime` feature inside the module).
@@ -157,6 +163,16 @@ pub mod wired_mp_transport_real;
 //   30-second auto-revert window. Stage-0 explicit-confirm-only ; ¬ stage-1
 //   (deferred-indefinitely-per-spec/10).
 pub mod wired_coder_runtime;
+
+// § T11-W12-COCREATIVE-BRIDGE — bi-directional Claude ↔ in-game-GM bridge.
+//   8 NEW `cocreative.*` MCP tools that let an external Claude (running as
+//   MCP-client) talk to the in-game GM (cssl-host-llm-bridge running inside
+//   LoA.exe MCP-server). Round-trip pipeline : context_read → proposal_submit
+//   → proposal_evaluate → iterate → draft_ready (Σ-Chain attestation) ; the
+//   session_log_drain feeds KAN-training pairs for sibling W12-3.
+//   ALL tools default-deny via the per-session `CocreativeCap` ; player
+//   explicitly grants the cap (sovereign-revocable, σ-mask-isolated).
+pub mod cocreative_loop;
 
 // ──────────────────────────────────────────────────────────────────────────
 // § Runtime-only modules (feature `runtime`)

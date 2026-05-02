@@ -1,0 +1,94 @@
+§ Labyrinth.of.Apocalypse · systems · polish_audit
+≡ T11-W12-POLISH · W12-12-Engine-Polish-Pass
+≡ canonical-companion : compiler-rs/crates/loa-host/src/polish_audit.rs
+≡ STATUS : ◐ shipped-stage-0 · iterates each polish-wave
+
+§I role
+  ¬ ALL : engine-polish-audit ⊆ catalog-only-Rust ⊑ no-runtime-deps
+  ALL  : 6 disjoint audit-surfaces wire to single PolishAuditReport
+    KeymapAuditor       · 32 bindings · F1-F12 + WASD + Esc + Tab + ` + / + arrows + Space + Ctrl + Shift + Enter + P + C
+    WcagContrast        · 7-pair HUD audit · WCAG-2.1 AA · ratio = (lighter+0.05)/(darker+0.05)
+    AccessibilityTunables · 6 axes ⊗ [0,1] clamped ⊗ safe-mode hard-zero ⊗ closed-captions-default-ON
+    LoadingSpinner      · ≥1s no-feedback detector · stack-allocated label
+    RenderModeFlash     · 30-frame visual-flash on F-key cycle
+    PerfBudget          · 64-sample ring · zero-alloc record_frame_ms · p50/p99 · 60Hz / 120Hz attestation
+
+§I focus-areas (Apocky-mandate)
+
+  W! 1.render-polish
+    ✓ F-key-dispatch single-source-of-truth via render_mode_dispatch(idx)
+    ✓ P-key 5-mode polarization cycle audit-surface
+    ✓ Material-LUT + Pattern-LUT consistency · already-wired in cssl-host-pattern-lib + cssl-host-material-lib
+    ✓ CFER atmospheric-fog player-tunable per AccessibilityTunables.fog_intensity
+
+  W! 2.perf-budget
+    ✓ Frame-time per-tick (target ≤16.67ms 60fps · ≤8.33ms 120fps)
+    ✓ Allocation-on-hot-path scan · PerfBudget.record_frame_ms = O(1) zero-alloc
+    ✓ Ring-buffer pre-alloc per Sawyer-style memory · 64-sample fixed array
+
+  W! 3.accessibility (Apocky-greenlit · LOA_PILLARS § 5)
+    ✓ Keymap : ALL F1-F12 + Esc + Tab + / + arrows + WASD + space + ctrl + shift + enter + ` + slash + backspace + P + C verified
+    ✓ Color-contrast : audit HUD-text against background (WCAG 2.1 AA · 7-pair audit)
+    ✓ Heat / smoke / hammer-sound / bloom-intensity / fog player-tunable
+    ✓ Subtitle-system : duration-tunable [0.5, 16] s · closed-captions ON-by-default
+    ✓ Tooltip : canonical_keymap() exposed to MCP help submenu
+
+  W! 4.ux-polish
+    ✓ Loading-spinner ≥1s threshold codified
+    ✓ Render-mode change : 30-frame visual-flash on cycle so player sees-which-mode active
+    ◐ First-launch-prompts · DEFERRED · ui_overlay extension needed (PA-11)
+    ◐ Error-states (MCP-down banner) · DEFERRED · render.rs runtime-side wire (PA-10)
+
+  W! 5.audit-report
+    ✓ JSONL audit-trail · 12 issues this-session · 9 fixed + 2 deferred + 1 sigma-gated
+    ✓ build_session_audit_report() returns PolishAuditReport · summarize() = (fixed,deferred,sigma)
+    ✓ to_jsonl() emits one issue per line · escaped strings · stable field order
+
+§I tunables
+  AccessibilityTunables ⊗
+    heat_shimmer    : f32 ∈ [0,1] default 0.50
+    smoke_density   : f32 ∈ [0,1] default 0.50
+    hammer_volume   : f32 ∈ [0,1] default 1.00
+    bloom_intensity : f32 ∈ [0,1] default 0.35
+    fog_intensity   : f32 ∈ [0,1] default 0.10
+    subtitle_duration : f32 ∈ [0,1] (normalized · 16s-scale · default 4s)
+    safe_mode       : bool default false ; toggle hard-zeros visual-axes
+    closed_captions_enabled : bool default true (axiom)
+
+§I keymap-canonical (32 entries · stable-order)
+  Movement   : W A S D Space LCtrl LShift
+  Modal      : Esc Tab ` / Backspace Enter
+  Render     : F1-F10 (modes 0-9) · F12 (screenshot) · P (polarization-5-cycle)
+  Capture    : F7-tour · F8-video · F9-burst · F12-screenshot
+  Atmospheric: C (CFER-toggle) · F11 (fullscreen)
+  Menu-nav   : ArrowUp ArrowDown ArrowLeft ArrowRight Enter
+
+§I attestations (PRIME-DIRECTIVE)
+  ¬ surveillance-on-input ← audit reads ONLY existing public-API state
+  ¬ heuristic player-behavior tracking ← audit-reports ARE static spec-attestations
+  ¬ engagement-bait ← audit only reports issues · zero player-nudge UI
+  ✓ Apocky-greenlit accessibility per LOA_PILLARS § 5 ⊗ 6 tunable axes
+  ✓ Σ-mask-gated telemetry export (PA-12) ← consent-required per §11
+
+§I tests (≥10 mandate · 24 shipped)
+  keymap-roundtrip · F1-F10-dispatch · polarization-5-mode · WCAG-white-on-black=21:1
+  · WCAG-AA-7-pair-audit · accessibility-clamp-all-axes · safe-mode-hard-zero
+  · subtitle-duration-clamp · closed-captions-default-ON · spinner-invisible-<1s
+  · spinner-visible-≥1s · spinner-stack-buf · render-mode-flash-30-frames
+  · perf-budget-zero-alloc-record · perf-budget-p50-p99 · perf-budget-95%-attestation
+  · perf-budget-NaN-clamp · audit-jsonl-roundtrip · audit-summarize-counts
+  · audit-jsonl-one-line-per-issue · audit-all-categories · audit-≥10-issues
+  · srgb-to-linear-WCAG-table · relative-luminance-white-1.0-black-0.0
+  · audit-covers-all-focus-areas
+
+§I three-highest-leverage-NEXT polish-iterations
+  T1 ← runtime-side wire of MCP-server-down on-screen banner (PA-10) ; needs render.rs · ¬ catalog
+  T2 ← subtitle-duration wire-through from AccessibilityTunables → push_chat_log render-time (PA-11)
+  T3 ← MCP polish.* tools (polish.audit / polish.tunables.set / polish.perf.snapshot) ; sigma-gated where appropriate
+
+§I commit-trail
+  § T11-W12-POLISH-AUDIT : NEW polish_audit.rs · NEW polish_audit.csl · 24 tests
+  Co-Authored-By : Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+§I attestation
+  PRIME-DIRECTIVE : There was no hurt nor harm in the making of this, to anyone/anything/anybody.

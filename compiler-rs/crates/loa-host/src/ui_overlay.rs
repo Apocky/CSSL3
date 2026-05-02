@@ -1791,6 +1791,89 @@ mod gpu_pipeline {
 pub use gpu_pipeline::UiOverlay;
 
 // ─────────────────────────────────────────────────────────────────────────
+// § T11-W12-POLISH · first-launch onboarding prompt + accessibility hint
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Catalog-buildable extension. Renders a short 4-line onboarding prompt
+// in the top-center of the screen ON THE FIRST FRAME the engine is
+// active. Player dismisses with any keypress · prompt stays for ≤8 s
+// before auto-dismissing. Keymap reminders ALSO surface as part of the
+// `nav_help` accessibility audit-row.
+
+/// Number of frames the first-launch prompt stays visible (≤8 s @ 60 fps).
+pub const FIRST_LAUNCH_PROMPT_FRAMES: u32 = 480;
+
+/// Render the canonical first-launch onboarding prompt at the top-center
+/// of the screen. ` show ` is true while frames remain in the prompt
+/// budget (decreasing from FIRST_LAUNCH_PROMPT_FRAMES → 0). Dismissed by
+/// any input event ; the host clears `frames_remaining` to 0 on the
+/// first input and the prompt vanishes the next frame.
+///
+/// 4 lines centered :
+///   "WELCOME · LABYRINTH OF APOCALYPSE"
+///   "press / to chat with the GM"
+///   "Esc opens menu · Tab pauses · F1-F10 cycle render modes"
+///   "(this prompt auto-dismisses in 8 s · or press any key)"
+///
+/// Returns the number of vertices appended to `out`.
+pub fn push_first_launch_prompt(
+    sw: f32,
+    _sh: f32,
+    frames_remaining: u32,
+    out: &mut Vec<UiVertex>,
+) -> usize {
+    if frames_remaining == 0 {
+        return 0;
+    }
+    let starting_len = out.len();
+    let scale = TEXT_SCALE;
+    let line = LINE_HEIGHT_PX * scale;
+    let glyph_px = (CELL_W as f32) * scale;
+    let pad = 12.0_f32;
+    // Compute fade alpha : starts at 1.0, smooth-ends with 30-frame ramp.
+    let alpha = if frames_remaining >= 30 {
+        1.0
+    } else {
+        (frames_remaining as f32) / 30.0
+    };
+    let lines: [&str; 4] = [
+        "WELCOME . LABYRINTH OF APOCALYPSE",
+        "press / to chat with the GM",
+        "Esc opens menu . Tab pauses . F1-F10 cycle render modes",
+        "(this prompt auto-dismisses in 8 s . or press any key)",
+    ];
+    // Width = max line × glyph-px ; centered horizontally, 80 px from top.
+    let max_chars = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+    let max_w = (max_chars as f32) * glyph_px;
+    let panel_w = max_w + pad * 4.0;
+    let panel_h = line * (lines.len() as f32) + pad * 2.0;
+    let panel_x = (sw - panel_w) * 0.5;
+    let panel_y = 80.0_f32;
+    // Background panel
+    push_solid_rect(out, panel_x, panel_y, panel_w, panel_h, [
+        COLOR_PANEL[0],
+        COLOR_PANEL[1],
+        COLOR_PANEL[2],
+        COLOR_PANEL[3] * alpha,
+    ]);
+    // Lines
+    for (i, line_text) in lines.iter().enumerate() {
+        let lw = (line_text.chars().count() as f32) * glyph_px;
+        let lx = panel_x + (panel_w - lw) * 0.5;
+        let ly = panel_y + pad + line * (i as f32);
+        let color: [f32; 4] = if i == 0 {
+            [1.0, 0.85, 0.20, alpha]
+        } else if i == 3 {
+            [0.65, 0.65, 0.75, alpha * 0.85]
+        } else {
+            [0.95, 0.95, 1.0, alpha]
+        };
+        build_shadowed_text(line_text, lx, ly, color, scale, out);
+    }
+    out.len() - starting_len
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // § Tests (always compiled — exercise pure-CPU paths)
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -2147,5 +2230,49 @@ mod tests {
         assert_eq!(TEXT_INPUT_BOX_H as u32, 60);
         assert_eq!(TEXT_INPUT_BOTTOM_OFFSET as u32, 100);
         assert_eq!(TEXT_INPUT_BORDER_PX as u32, 2);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-W12-POLISH : first-launch prompt tests
+    // ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn first_launch_prompt_emits_vertices_when_active() {
+        let mut out = Vec::new();
+        let n = push_first_launch_prompt(1280.0, 720.0, FIRST_LAUNCH_PROMPT_FRAMES, &mut out);
+        // 4 lines × shadow+text glyphs + 1 panel rect → many verts.
+        assert!(n > 100);
+        assert_eq!(out.len(), n);
+    }
+
+    #[test]
+    fn first_launch_prompt_zero_frames_no_op() {
+        let mut out = Vec::new();
+        let n = push_first_launch_prompt(1280.0, 720.0, 0, &mut out);
+        assert_eq!(n, 0);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn first_launch_prompt_fade_alpha_under_30_frames() {
+        // The prompt must fade smoothly during the last 30 frames so it
+        // doesn't pop off-screen abruptly.
+        let mut out_full = Vec::new();
+        let _ = push_first_launch_prompt(1280.0, 720.0, 30, &mut out_full);
+        let mut out_half = Vec::new();
+        let _ = push_first_launch_prompt(1280.0, 720.0, 15, &mut out_half);
+        // Both produce vertices ; the panel rect alpha is in the
+        // first 6 verts (panel kind=1.0 verts).
+        assert!(!out_full.is_empty());
+        assert!(!out_half.is_empty());
+        // Find first kind=1 vert (panel) ; the alpha should differ between full and half.
+        let panel_full = out_full.iter().find(|v| v.kind == 1.0).unwrap();
+        let panel_half = out_half.iter().find(|v| v.kind == 1.0).unwrap();
+        assert!(
+            panel_full.color[3] > panel_half.color[3],
+            "fade should reduce alpha : full={}, half={}",
+            panel_full.color[3],
+            panel_half.color[3]
+        );
     }
 }
