@@ -144,6 +144,17 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     // ── MIR ───────────────────────────────────────────────────────────
     let lower_ctx = cssl_mir::LowerCtx::new(&interner);
     let mut mir_mod = cssl_mir::MirModule::new();
+    // T11-W17-A · stage-0 struct-FFI codegen — populate the struct-layout
+    // side-table BEFORE fn signatures so the cgen-cpu signature builder can
+    // resolve `Opaque("RunHandle")` / `Opaque("!cssl.struct.RunHandle")`
+    // operands to a scalar / pointer ABI class. Same iteration order as the
+    // signature passes so source-order is preserved.
+    for item in &hir_mod.items {
+        if let cssl_hir::HirItem::Struct(s) = item {
+            let layout = cssl_mir::lower::build_struct_layout(&lower_ctx, s);
+            mir_mod.add_struct_layout(layout);
+        }
+    }
     // First pass : lower extern fn signatures (no body) so the call-result
     // fixup can find them.
     for item in &hir_mod.items {

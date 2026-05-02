@@ -2159,6 +2159,17 @@ fn mir_type_to_cl_with_layouts(
 /// Helper for `mir_type_to_cl_with_layouts`. Stripped down from the full
 /// abi-classification matrix because stage-0 only emits one register-sized
 /// scalar OR a single pointer per slot.
+///
+/// § OPAQUE-NAME FORMS RECOGNIZED
+///   The MIR opaque-tag for a struct can land in two forms depending on
+///   which lowering path produced it :
+///     - `"!cssl.struct.<name>"`   — explicit struct-construction op tag
+///       (`body_lower::lower_struct` produces this for inline struct exprs)
+///     - `"<name>"`                 — bare path-resolved type
+///       (`lower::LowerCtx::lower_type` produces this for fn-signature
+///       slots that name a struct via its identifier)
+///   Both must resolve correctly so fn signatures + body construction
+///   converge on the same ABI class.
 #[inline]
 fn resolve_struct_opaque(
     opaque_name: &str,
@@ -2166,8 +2177,12 @@ fn resolve_struct_opaque(
     layouts: Option<&BTreeMap<String, MirStructLayout>>,
 ) -> Option<cranelift_codegen::ir::Type> {
     let table = layouts?;
-    let struct_name = opaque_name.strip_prefix("!cssl.struct.")?;
-    let layout = table.get(struct_name)?;
+    // Try both forms : explicit "!cssl.struct.<name>" tag + bare "<name>"
+    // path-resolved opaque. Whichever one matches the layout-table wins.
+    let candidate = opaque_name
+        .strip_prefix("!cssl.struct.")
+        .unwrap_or(opaque_name);
+    let layout = table.get(candidate)?;
     Some(match layout.abi_class()? {
         StructAbiClass::ScalarI8 => cl_types::I8,
         StructAbiClass::ScalarI16 => cl_types::I16,

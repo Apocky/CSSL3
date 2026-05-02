@@ -1,0 +1,24 @@
+// § T11-W17-A · stage-0 struct-FFI signature-only fixture
+//
+// This is the minimum-viable shape that exercises ONLY the signature-side
+// of struct-FFI codegen. The fn body is a passthrough (no inline struct
+// construction) which keeps the test focused on the param/return ABI
+// lowering work that landed in W17-A.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W17-A @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.runhandle_sig
+
+extern "C" fn __cssl_run_destroy(handle: u64) -> i32 ;
+
+pub struct RunHandle { raw: u64 }
+
+// Signature-only : the fn body does NOT construct or destructure RunHandle ;
+// it just consumes the handle (which is already i64-shaped at the ABI). The
+// W17-A work means this fn signature compiles to (i64) -> i32.
+pub fn end_run(handle: RunHandle) -> i32 {
+    let raw: u64 = 0u64 ;
+    let rc: i32 = __cssl_run_destroy(raw) ;
+    rc
+}

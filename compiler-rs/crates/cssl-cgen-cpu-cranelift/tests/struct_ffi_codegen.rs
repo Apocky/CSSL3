@@ -229,6 +229,38 @@ fn struct_ffi_multiple_structs_in_one_module() {
 // § Test 7 — empty / 0-byte struct gracefully rejected
 // ─────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────
+// § Test 8 — bare-name opaque (`Opaque("RunHandle")`) also resolves
+// ─────────────────────────────────────────────────────────────────────────
+//
+// This is the form produced by `lower::LowerCtx::lower_type` when a fn
+// signature names a struct via its identifier ; the explicit `!cssl.struct.`
+// tag is reserved for body-lowering's inline-struct-construction op.
+// Both must resolve to the same ABI class.
+
+#[test]
+fn struct_ffi_bare_name_opaque_resolves() {
+    let mut module = MirModule::new();
+    module.add_struct_layout(MirStructLayout::new(
+        "RunHandle",
+        vec![MirType::Int(IntWidth::I64)],
+        8,
+        8,
+    ));
+    // Note : Opaque("RunHandle") not Opaque("!cssl.struct.RunHandle").
+    let mut f = MirFunc::new(
+        "consume_via_bare_name",
+        vec![MirType::Opaque("RunHandle".to_string())],
+        vec![],
+    );
+    f.push_op(MirOp::std("func.return"));
+    module.push_func(f);
+
+    let bytes = emit_object_module(&module)
+        .expect("bare-name opaque struct must resolve via layout table");
+    assert!(!bytes.is_empty());
+}
+
 #[test]
 fn struct_ffi_zero_byte_struct_rejected() {
     let mut module = MirModule::new();

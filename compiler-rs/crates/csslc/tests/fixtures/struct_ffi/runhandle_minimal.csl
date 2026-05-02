@@ -1,0 +1,24 @@
+// § T11-W17-A · stage-0 struct-FFI codegen end-to-end fixture
+//
+// This is the minimum-viable shape of LoA's RunHandle FFI surface :
+//   - a newtype-u64 struct
+//   - an extern fn taking u64 → u64 (the FFI shim)
+//   - a public fn returning the struct (validates struct-FFI lowering)
+//
+// On stage-0 csslc with W17-A advancement, this should compile to an
+// object file without the legacy "non-scalar MIR type" error.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W17-A @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.runhandle
+
+extern "C" fn __cssl_run_create(player_id_hash: u64, run_counter: u64) -> u64 ;
+
+pub struct RunHandle { raw: u64 }
+
+pub fn start_new_run(player_id_hash: u64, run_counter: u64) -> RunHandle {
+    let raw: u64 = __cssl_run_create(player_id_hash, run_counter) ;
+    let h: RunHandle = RunHandle { raw: raw } ;
+    h
+}

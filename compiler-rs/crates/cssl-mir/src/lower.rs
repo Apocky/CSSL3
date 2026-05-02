@@ -277,13 +277,18 @@ fn lower_item_into(ctx: &LowerCtx<'_>, item: &HirItem, mir: &mut MirModule) {
 /// § BEHAVIOR
 ///   - Named-fields struct  → records each field's MIR-lowered type.
 ///   - Tuple-fields struct  → same shape, positional.
-///   - Unit struct          → `Some(empty-fields)` so the codegen sees a known
+///   - Unit struct          → empty-fields ; codegen sees a known
 ///     0-byte layout (rejected by ABI-class).
 ///
 /// § DETERMINISM
 ///   The struct name is resolved via the interner ; field order matches the
 ///   HIR declaration order (which already mirrors source order).
-fn lower_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> Option<MirStructLayout> {
+///
+/// § T11-W17-A · pub-exposed for `csslc::commands::build` — the build
+/// pipeline calls this directly because it constructs `MirModule`
+/// item-by-item rather than going through `lower_module_signatures`.
+#[must_use]
+pub fn build_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> MirStructLayout {
     let name = ctx.interner.resolve(s.name);
     let fields: Vec<MirType> = match &s.body {
         HirStructBody::Unit => Vec::new(),
@@ -292,7 +297,14 @@ fn lower_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> Option<MirStructLay
         }
     };
     let (size, align) = MirStructLayout::compute_size_align(&fields);
-    Some(MirStructLayout::new(name, fields, size, align))
+    MirStructLayout::new(name, fields, size, align)
+}
+
+/// § Wrapper to keep the prior internal contract (`Option<MirStructLayout>`)
+/// for `lower_module_signatures` ; never returns `None` today.
+#[must_use]
+fn lower_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> Option<MirStructLayout> {
+    Some(build_struct_layout(ctx, s))
 }
 
 #[cfg(test)]
