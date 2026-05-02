@@ -66,6 +66,65 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
         return ExitCode::from(exit_code::USER_ERROR);
     }
 
+    // § T11-W15-CSSLC-MULTI-MODULE : auxiliary modules — each `--module-path=…`
+    //   path goes through the SAME lex → parse → HIR-lower passes ; their
+    //   HIR fns are concatenated into a separate vec for the MIR-lower step
+    //   below. The interner stays per-main-module ; auxiliary-module names
+    //   are looked-up in their own per-file interner ; cross-module symbol
+    //   resolution at MIR-level is fname-string-based so name-collisions
+    //   surface as link-time errors.
+    //
+    //   Auxiliary file IDs start at SourceId::first()+1 so spans + diags
+    //   don't collide ; the diag-emitter prefixes the path so user can tell
+    //   which file an error came from.
+    let mut aux_files: Vec<SourceFile> = Vec::new();
+    let mut aux_hirs: Vec<(cssl_hir::HirModule, cssl_hir::Interner)> = Vec::new();
+    for (idx, aux_path) in args.module_paths.iter().enumerate() {
+        let aux_src = match std::fs::read_to_string(aux_path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!(
+                    "csslc: cannot read aux-module '{}' ({}) — skipping",
+                    aux_path.display(),
+                    e
+                );
+                return ExitCode::from(exit_code::USER_ERROR);
+            }
+        };
+        // SourceId(0) is synthetic-sentinel ; main file is SourceId::first()=1 ;
+        // aux files start at 2+idx.
+        let aux_id = SourceId(idx as u32 + 2);
+        let aux_file = SourceFile::new(
+            aux_id,
+            aux_path.display().to_string(),
+            &aux_src,
+            Surface::RustHybrid,
+        );
+        let aux_tokens = cssl_lex::lex(&aux_file);
+        let (aux_cst, aux_parse_bag) = cssl_parse::parse(&aux_file, &aux_tokens);
+        let n_perr = diag::emit_diagnostics(aux_path, &aux_parse_bag);
+        if n_perr > 0 {
+            eprintln!(
+                "csslc: aux-module '{}' parse failed — {} error(s)",
+                aux_path.display(),
+                n_perr
+            );
+            return ExitCode::from(exit_code::USER_ERROR);
+        }
+        let (aux_hir, aux_interner, aux_lower_bag) = cssl_hir::lower_module(&aux_file, &aux_cst);
+        let n_lerr = diag::emit_diagnostics(aux_path, &aux_lower_bag);
+        if n_lerr > 0 {
+            eprintln!(
+                "csslc: aux-module '{}' HIR-lower failed — {} error(s)",
+                aux_path.display(),
+                n_lerr
+            );
+            return ExitCode::from(exit_code::USER_ERROR);
+        }
+        aux_files.push(aux_file);
+        aux_hirs.push((aux_hir, aux_interner));
+    }
+
     // ── walkers (semantics) ───────────────────────────────────────────
     let ad_report = cssl_hir::check_ad_legality(&hir_mod, &interner);
     if !ad_report.diagnostics.is_empty() {
@@ -98,6 +157,31 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
             let mut mf = cssl_mir::lower_function_signature(&lower_ctx, f);
             cssl_mir::lower_fn_body(&interner, Some(&file), f, &mut mf);
             mir_mod.push_func(mf);
+        }
+    }
+
+    // § T11-W15-CSSLC-MULTI-MODULE : aux-module MIR-lower
+    //   Each auxiliary HIR module goes through extern-then-regular-fn
+    //   lower passes mirroring the main module's pipeline. The aux modules
+    //   share the same `MirModule` so the linker sees one object with all
+    //   symbols. Per-aux-module interners stay isolated to avoid name-arena
+    //   collision ; symbol resolution at the MIR level is fname-string-based.
+    for ((aux_hir, aux_interner), aux_file) in aux_hirs.iter().zip(aux_files.iter()) {
+        let aux_lower_ctx = cssl_mir::LowerCtx::new(aux_interner);
+        for item in &aux_hir.items {
+            if let cssl_hir::HirItem::ExternFn(ef) = item {
+                mir_mod.push_func(cssl_mir::lower::lower_extern_fn_signature(
+                    &aux_lower_ctx,
+                    ef,
+                ));
+            }
+        }
+        for item in &aux_hir.items {
+            if let cssl_hir::HirItem::Fn(f) = item {
+                let mut mf = cssl_mir::lower_function_signature(&aux_lower_ctx, f);
+                cssl_mir::lower_fn_body(aux_interner, Some(aux_file), f, &mut mf);
+                mir_mod.push_func(mf);
+            }
         }
     }
 
@@ -380,6 +464,7 @@ mod tests {
             emit: EmitMode::Object,
             opt_level: 0,
             backend: Backend::Cranelift,
+            module_paths: Vec::new(),
         }
     }
 
@@ -392,6 +477,7 @@ mod tests {
             emit: EmitMode::Object,
             opt_level: 0,
             backend: Backend::NativeX64,
+            module_paths: Vec::new(),
         }
     }
 
@@ -438,6 +524,7 @@ mod tests {
             emit: EmitMode::Mlir,
             opt_level: 0,
             backend: Backend::Cranelift,
+            module_paths: Vec::new(),
         };
         let code = run_with_source(Path::new("hello.cssl"), src, &args);
         let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
@@ -459,6 +546,7 @@ mod tests {
             emit: EmitMode::Mlir,
             opt_level: 0,
             backend: Backend::Cranelift,
+            module_paths: Vec::new(),
         };
         let p = resolve_output_path(&args, &args.input);
         assert_eq!(p, PathBuf::from("hello.mlir"));
@@ -473,6 +561,7 @@ mod tests {
             emit: EmitMode::Object,
             opt_level: 0,
             backend: Backend::Cranelift,
+            module_paths: Vec::new(),
         };
         let p = resolve_output_path(&args, &args.input);
         let ext = p.extension().unwrap().to_str().unwrap();
@@ -627,6 +716,77 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-W15-CSSLC-MULTI-MODULE — multi-module compile dispatch
+    // ───────────────────────────────────────────────────────────────────
+
+    /// Verify the auxiliary `--module-path` parses + lowers + adds its MIR
+    /// fns to the same module as the main input. The build pipeline must
+    /// produce a single object containing symbols from BOTH files.
+    #[test]
+    fn build_with_module_path_compiles_aux_module_into_same_object() {
+        let main_src = "module com.apocky.test.multi.main\n\
+                        extern \"C\" fn aux_helper(x: u32) -> u32 ;\n\
+                        fn main() -> i32 {\n\
+                            let _r: u32 = aux_helper(42u32) ;\n\
+                            0i32\n\
+                        }\n";
+        let aux_src = "module com.apocky.test.multi.aux\n\
+                       fn aux_helper(x: u32) -> u32 {\n\
+                           x * 2u32\n\
+                       }\n";
+        // Write the auxiliary to a temp file so the build pipeline reads it
+        // through the normal aux-module path-IO path.
+        let aux_path =
+            std::env::temp_dir().join(format!("csslc_w15_aux_{}.csl", std::process::id()));
+        std::fs::write(&aux_path, aux_src).unwrap();
+
+        let tmp_out =
+            std::env::temp_dir().join(format!("csslc_w15_multi_{}.obj", std::process::id()));
+        let args = BuildArgs {
+            input: PathBuf::from("test_main.cssl"),
+            output: Some(tmp_out.clone()),
+            target: None,
+            emit: EmitMode::Object,
+            opt_level: 0,
+            backend: Backend::Cranelift,
+            module_paths: vec![aux_path.clone()],
+        };
+
+        let code = run_with_source(Path::new("test_main.cssl"), main_src, &args);
+        let ok: ExitCode = ExitCode::from(exit_code::SUCCESS);
+        assert_eq!(
+            format!("{code:?}"),
+            format!("{ok:?}"),
+            "multi-module build with --module-path MUST succeed"
+        );
+        assert!(tmp_out.exists(), "object output should exist");
+        let written = std::fs::read(&tmp_out).unwrap();
+        assert!(!written.is_empty(), "object bytes should be non-empty");
+
+        // Cleanup.
+        let _ = std::fs::remove_file(&aux_path);
+        let _ = std::fs::remove_file(&tmp_out);
+    }
+
+    #[test]
+    fn build_with_missing_module_path_returns_user_error() {
+        // Auxiliary path that doesn't exist must fail the build.
+        let main_src = "module com.test\nfn main() -> i32 { 0i32 }\n";
+        let args = BuildArgs {
+            input: PathBuf::from("test_main.cssl"),
+            output: Some(std::env::temp_dir().join("csslc_w15_bad.obj")),
+            target: None,
+            emit: EmitMode::Object,
+            opt_level: 0,
+            backend: Backend::Cranelift,
+            module_paths: vec![PathBuf::from("/nonexistent/aux.csl")],
+        };
+        let code = run_with_source(Path::new("test_main.cssl"), main_src, &args);
+        let err: ExitCode = ExitCode::from(exit_code::USER_ERROR);
+        assert_eq!(format!("{code:?}"), format!("{err:?}"));
     }
 
     /// The `is_native_x64_backend_not_yet_landed` helper recognizes the

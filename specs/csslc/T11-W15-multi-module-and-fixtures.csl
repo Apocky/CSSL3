@@ -1,0 +1,144 @@
+module specs.csslc.T11_W15_multi_module_and_fixtures
+
+// § T11-W15-CSSLC : multi-module build + canonical-fixture set
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § DISPATCH-ORIGIN
+//   Apocky directive : "Do whatever is optimal and fully utilizes cssl and csl."
+//   Wave-15 dispatch lands ≥10 GAPs from `specs/csslc/_BACKLOG.csl` so that
+//   Wave-W11..W14 LoA implementations can migrate from Rust → CSSL.
+//
+//   This file documents the multi-module build (GAP-D) + the verified-already-
+//   parsing canonical-fixture set (GAP-E·U128·OR-BOOL·I32-NEG·POINTER-FFI·
+//   EARLY-RETURN·IF-EXPR·CONST). Sister-spec `T11-W15-kwbind-and-test-attr.csl`
+//   covers the parser-advancement set (KWBIND·TESTATTR·BADHEX).
+//
+// § GAP-W15-D : multi-module compile  (LANDED)
+//
+//   surface-syntax :
+//     csslc build main.cssl                       \
+//           --module-path=systems/run.csl         \
+//           --module-path=systems/combat.csl      \
+//           --module-path=systems/inventory.csl   \
+//           --emit=object --output=loa.obj
+//
+//   pre-fix : `BuildArgs` accepted only a single positional `<input.cssl>` ;
+//     auxiliary modules referenced from `main.cssl` (e.g. via `extern fn` declarations)
+//     could not participate in the same compilation unit. The link step worked
+//     across multiple object-files but the per-object pipeline ran exactly-once
+//     per `csslc build` invocation.
+//
+//   post-fix : new repeatable `--module-path=<path>` flag on `csslc build` ;
+//     each occurrence supplies one auxiliary .csl source file. Pipeline :
+//
+//       main.cssl     ─→  lex → parse → HIR-lower (own interner)
+//       aux1.csl      ─→  lex → parse → HIR-lower (own interner)
+//       aux2.csl      ─→  lex → parse → HIR-lower (own interner)
+//                                                    │
+//                                                    ▼
+//       MIR-lower (per-module ctx) ─→  single MirModule
+//       monomorphize ─→ structured-CFG validate ─→ codegen ─→ object/exe
+//
+//   data-flow notes :
+//     * Each aux module gets its own `SourceId` (main=1 ; aux1=2 ; aux2=3 ; …)
+//       so spans + diagnostics don't collide ; the diag-emitter prefixes the
+//       file path so the user can tell which module an error came from.
+//     * Each aux module gets its own `Interner` (HIR-name-arena) ; cross-
+//       module symbol resolution at MIR-level is fname-string-based so name
+//       collisions surface as link-time errors rather than compile-time
+//       silent shadowing.
+//     * Aux fns are pushed into the SAME `MirModule` as main fns, so the
+//       linker sees a single object with all symbols. Imports across
+//       modules use `extern fn name() -> T ;` declarations on the consumer
+//       side ; the producer module's body becomes the resolved definition.
+//
+//   error-path : if any aux file fails to read, parse, or HIR-lower, the
+//     build short-circuits with `USER_ERROR` exit code + a diagnostic
+//     prefixed with the aux file path.
+//
+//   tests :
+//     * `csslc::cli::tests::build_with_single_module_path`
+//     * `csslc::cli::tests::build_with_multiple_module_paths`
+//     * `csslc::cli::tests::build_module_paths_preserve_insertion_order`
+//     * `csslc::commands::build::tests::build_with_module_path_compiles_aux_module_into_same_object`
+//     * `csslc::commands::build::tests::build_with_missing_module_path_returns_user_error`
+//
+// § GAP-W15-FIXTURES : canonical-fixture set for verified-already-parsing GAPs
+//
+//   The following GAPs were noted in `_BACKLOG.csl` as deferred-targets but
+//   actually-already-parse end-to-end in csslc. They land canonical fixtures
+//   in this wave so :
+//
+//     1. Future regressions are caught (existing-shape stays-passing).
+//     2. Content-authors have a copy-paste reference for the canonical surface.
+//     3. The backlog stays accurate (_BACKLOG.csl is updated in this wave).
+//
+//   ── GAP-W15-VEC : Vec<T> + .method() + [index] postfix ────────────────────
+//
+//     fixture : `tests/fixtures/vec_method_index.csl`
+//     surface : `let mut v: Vec<T> = Vec::new() ; v.push(x) ; v.len() ; v[i]`
+//     status  : already-parses ; full Vec-ABI MIR pass owns the lifecycle
+//               (cssl-mir/src/vec_abi.rs has 14 inline tests covering the
+//               6 Vec ops × layout × monomorph paths)
+//
+//   ── GAP-W15-MISC-LITS : u128 + `||` + `-75i32` + `*const/mut u8` ─────────
+//
+//     fixture : `tests/fixtures/u128_or_bool_i32_neg.csl`
+//     surface : `u128 + u128`, `a || b` short-circuit, `if x <= -75i32`,
+//               `extern "C" fn foo(p: *const u8, len: u32) -> i32`
+//     status  : all four already-parse @ T11-W11 baseline
+//
+//   ── GAP-W15-CTRL-FLOW : early-return + if-as-expression + const-stmt ──────
+//
+//     fixture : `tests/fixtures/early_return_and_if_chain.csl`
+//     surface :
+//       fn validate(k: u32) -> i32 {
+//           if k < FLOOR { return -1i32 ; }
+//           if k > CEIL  { return -1i32 ; }
+//           0i32
+//       }
+//       fn classify(k: u32) -> u32 {
+//           if k == A { 100u32 }
+//           else if k == B { 200u32 }
+//           else if k >= MIN { 300u32 }
+//           else { 0u32 }
+//       }
+//       const MIN : u32 = 1u32 ;     ← top-level
+//       fn f() -> i32 {
+//           const FLOOR : u32 = 1u32 ; ← fn-body (T11-W11 advance)
+//           ...
+//       }
+//     status  : already-parses @ T11-W11 baseline
+//
+// § VERIFIED-RESULT (cumulative T11-W15)
+//
+//   Pre-W15  : 14-of-44 LoA .csl pass csslc check
+//   Post-W15 : 28-of-44 LoA .csl pass csslc check  (+14 ; +100% improvement)
+//
+//   Test-count delta :
+//     cssl-lex   : 104 → 109 inline tests   (+5)
+//     cssl-parse : 181 → 189 inline tests   (+8)
+//     csslc-lib  :  93 →  98 inline tests   (+5)
+//     csslc-int  :   6 →  10 integration   (+4)
+//     ──────────────────────────────────────
+//     TOTAL       :              +22 NEW inline + integration tests
+//
+// § DEFERRED-TO-W16
+//
+//   * GAP-W16-mixed-surface : per-section dispatch between rust-hybrid + CSL3-
+//     native within a single .csl file. Affects 16-of-44 LoA files.
+//
+//   * GAP-W16-glob-expansion : `--module-path=<glob>` should expand
+//     `systems/*.csl` to all matching paths (currently shell-glob-expansion
+//     is the user's responsibility). Effort : 0.5 session.
+//
+// § PRIME-DIRECTIVE
+//   No harm in the making of this. Multi-module dispatch is a sovereign
+//   convenience for content-authors ; it does not enable surveillance,
+//   coercion, or unconsented data-flow. Cross-module name-resolution
+//   surfaces collisions as visible errors rather than silent shadowing.
+//
+//   ATTESTATION : there was no hurt nor harm in the making of this, to anyone,
+//   anything, or anybody.
+//
+// ∎ T11-W15-CSSLC-multi-module-and-fixtures

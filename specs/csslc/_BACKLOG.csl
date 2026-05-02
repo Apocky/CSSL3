@@ -13,97 +13,101 @@ module specs.csslc._BACKLOG
 // § P0 — engine-launch blockers  (none-active · LoA.exe builds today)
 // ─────────────────────────────────────────────────────────────────────────
 //
-// (empty-set @ T11-W11 dispatch · main.cssl + LoA.exe + cssl-rt + loa-host
+// (empty-set @ T11-W15 dispatch · main.cssl + LoA.exe + cssl-rt + loa-host
 //  all wire-through clean)
 //
 // ─────────────────────────────────────────────────────────────────────────
-// § P1 — game-systems blockers
+// § LANDED-T11-W11  (parser-advancements ; commit 344abec)
 // ─────────────────────────────────────────────────────────────────────────
 //
-// CSSLC-D · multi-module compile
-//   surface-syntax :
-//     csslc build main.cssl --module-path=systems/run.csl --module-path=...
-//     OR auto-discover via main.cssl manifest-block
-//   blocker-for : LoA/systems/*.csl + LoA/scenes/*.csl ingestion at compile-
-//                 time (currently grep-discoverable but not-compiled)
-//   effort : 1-2 sessions · driver-loop in commands/build.rs +
-//            sibling-symbol-resolution across modules + single-final-link
-//   reference : Labyrinth of Apocalypse/main.cssl § GAP doc-block lines 138-162
-//
-// CSSLC-E · Vec<T> + method-call + index-postfix
-//   surface-syntax :
-//     let mut out: Vec<NpcOutput> = Vec::new() ;
-//     out.push(row) ;
-//     let n: usize = npcs.len() ;
-//     let h: NpcHandle = npcs[i] ;
-//   blocker-for : LoA/systems/npc.csl § tick_all + collection-flow throughout
-//                 LoA game-systems
-//   effort : 1 session · 3 features compose (parametric-type +
-//            method-call-expr + postfix-index-expr) ; any-one in isolation
-//            is a half-measure
-//   reference : LoA/systems/npc.csl line 218-244
-//
-// CSSLC-F · while-loop body recovery in mixed-feature contexts
-//   blocker-for : LoA/systems/npc.csl while-loop @ line 222
-//   effort : depends-on-CSSLC-E ; once Vec/index/method work, while-loop
-//            does too
+//   ✓ CSSLC-MODKW · module-path-segments accept Keyword tokens after sep
+//   ✓ CSSLC-NOSTRUCT · struct-vs-block disambiguation in if/while/for/match
+//   ✓ CSSLC-CONSTSTMT · `const NAME : T = expr ;` inside fn body
 //
 // ─────────────────────────────────────────────────────────────────────────
-// § P2 — content-authoring blockers
+// § LANDED-T11-W15  (parser-advancements + multi-module + fixtures)
 // ─────────────────────────────────────────────────────────────────────────
 //
-// CSSLC-H · multiline fn-call-args with embedded comments + bad-hex recovery
-//   blocker-for : LoA/scenes/city_central_hub.csl line 129 (typo
-//                 `0xEX17_5CE_E_FEDCBA98u64` — `EX` is invalid hex)
-//   effort : 0.5 session · improve lex-error-recovery + parse-error-recovery
+//   ✓ CSSLC-KWBIND · soft-keywords (Tag/Ref/Val/Box/Iso/Trn/Type/Module/Where/
+//                    Comptime/In/As) usable as binding-idents
+//                    spec : T11-W15-kwbind-and-test-attr.csl § GAP-W15-A
 //
-// CSSLC-I · enum-variant-construction with fields
-//   surface-syntax : DesyncVerdict { code: code, rollback_tick: ... }
-//   note : ALREADY parses since structs do · likely typing-failure not
-//          parse-failure · investigate before patching
+//   ✓ CSSLC-TESTATTR · `#[test]` / `#[derive(...)]` / `#[doc = "..."]` outer-
+//                      attribute form alongside `@name(...)`
+//                      spec : T11-W15-kwbind-and-test-attr.csl § GAP-W15-B
 //
-// CSSLC-J · `__cssl_intrinsic_*` fn-name disambiguation
-//   blocker-for : LoA-DM scene-wave dispatching __cssl_dm_* + __cssl_kan_*
-//                 + __cssl_intent_* prefixed FFI shims
-//   effort : 0 (likely already-works ; verify-don't-fix)
+//   ✓ CSSLC-BADHEX · malformed-hex literal recovery for namespace-prefix
+//                    hash anchors (0xAKA_T8AG_FEDCBA98u64 / 0xC17_5CE_E_BRASSMARu64)
+//                    spec : T11-W15-kwbind-and-test-attr.csl § GAP-W15-C
 //
-// CSSLC-K · UTF-8-aware string-literal byte-len
+//   ✓ CSSLC-MULTI-MODULE · `--module-path=<path>` flag (repeatable) on `csslc
+//                          build` to compile auxiliary .csl modules into the
+//                          same object alongside the main input
+//                          spec : T11-W15-multi-module-and-fixtures.csl § GAP-W15-D
+//
+//   ✓ CSSLC-VEC-FIXTURE · canonical fixture for Vec<T> + .method() + [index]
+//                         (already-parses ; fixture is regression-guard)
+//                         spec : T11-W15-multi-module-and-fixtures.csl § GAP-W15-VEC
+//
+//   ✓ CSSLC-MISC-LITS · canonical fixture for u128 + `||` + `-75i32` +
+//                       `*const u8` / `*mut u8` (all already-parse)
+//                       spec : T11-W15-multi-module-and-fixtures.csl § GAP-W15-MISC-LITS
+//
+//   ✓ CSSLC-CTRL-FLOW · canonical fixture for early-return-in-if-arm +
+//                       if-as-expression-with-else-if-chain + top-level-const
+//                       (all already-parse)
+//                       spec : T11-W15-multi-module-and-fixtures.csl § GAP-W15-CTRL-FLOW
+//
+//   verified-result : 14-of-44 → 28-of-44 LoA .csl pass csslc check (+100%)
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § P1 — game-systems blockers  (DEFERRED-to-W16)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CSSLC-MIXED-SURFACE · per-section dispatch between rust-hybrid + CSL3-native
 //   surface-syntax :
-//     let s: &str = "hello-世界" ;
-//     let n: usize = s.len() ;     // ← byte-len 12 (5+1+6 UTF-8)
-//   blocker-for : chat_panel input-buffer rendering with non-ASCII
-//   effort : 1 session · lex already-handles UTF-8 ; need len-method-FFI
-//            shim + codegen-side UTF-8 byte-emission
+//     module com.foo
+//     fn foo() -> i32 { 0 }            ← rust-hybrid section
 //
-// CSSLC-L · pointer-arithmetic
-//   surface-syntax :
-//     let p: *const u8 = buf.as_ptr() ;
-//     let q: *const u8 = p.offset(8) ;
-//   blocker-for : LoA/scenes/chat_panel.csl text-buffer scrolling
-//   effort : 1 session · lex/parse already-handle `*const T` types ; need
-//            method-call-on-pointer-with-offset surface
+//     §§ THESIS                        ← CSL3-native section
+//       ⊢ axiom-1
+//       ⊢ axiom-2
+//
+//     fn bar() -> i32 { 1 }            ← back to rust-hybrid
+//   blocker-for : 16-of-44 LoA system files use mixed-surface CSL3-glyphs
+//                 (∎ name / §§ THESIS / ⊢) that the rust-hybrid lexer doesn't
+//                 recognize. mode::detect needs per-section dispatch.
+//   effort : 1-2 sessions · lex + parse-dispatch layer touch
+//   reference : `cssl-lex/src/mode.rs` + `cssl-parse/src/lib.rs`
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § P2 — content-authoring blockers  (DEFERRED-to-W16)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CSSLC-GLOB-EXPANSION · `--module-path=systems/*.csl` should auto-expand
+//   the glob to all matching paths (currently shell-glob is user's job).
+//   effort : 0.5 session · `glob` crate dependency + integration test
+//
+// CSSLC-DIAGNOSTIC-LINE-COL · all parse-errors render as "0:0" (line/col not
+//   preserved). Plumb Span → line/col via SourceFile::line_col.
+//   effort : 0.5 session · developer-friendliness only ; no LoA feature blocked
 //
 // ─────────────────────────────────────────────────────────────────────────
 // § P3 — nice-to-have / cleanup
 // ─────────────────────────────────────────────────────────────────────────
 //
-// CSSLC-M · diagnostic-line/col preservation
-//   current : all parse-errors render as "0:0" (line/col not preserved)
-//   blocker-for : developer-friendliness (no LoA-feature blocked)
-//   effort : 0.5 session · plumb Span → line/col via SourceFile::line_col
-//
-// CSSLC-N · range-iteration `for i in 0..n { ... }`
-//   surface-syntax : already-parses (DotDot token-kind exists) ; verify
-//                    HIR-lowering produces the right MIR
-//   effort : 0.5 session · likely-already-works
-//
-// CSSLC-O · `#[cfg(test)] mod tests { }` blocks inside .csl
+// CSSLC-CFG-TEST-MOD · `#[cfg(test)] mod tests { }` blocks inside .csl
 //   note : item-level mod-with-attrs ; not blocking any LoA feature
 //   effort : 1 session · attribute-passthrough + nested-mod-item plumbing
 //
-// CSSLC-P · `usize` / `isize` width-canonicalization
+// CSSLC-USIZE-WIDTH-CANON · `usize` / `isize` width-canonicalization
 //   surface-syntax : already-parses ; need ABI-stable width on FFI boundary
 //   effort : 0.5 session · stage-0 = pointer-width = i64 on x86-64 ; verify
+//
+// CSSLC-RANGE-ITERATION · `for i in 0..n { ... }`
+//   surface-syntax : already-parses (DotDot token-kind exists) ; verify
+//                    HIR-lowering produces the right MIR
+//   effort : 0.5 session · likely-already-works
 //
 // § PRIME-DIRECTIVE
 //   No item in this backlog represents harm or coercion. Each is a
@@ -111,4 +115,4 @@ module specs.csslc._BACKLOG
 //   authoring. ATTESTATION : there was no hurt nor harm in the making of
 //   this, to anyone, anything, or anybody.
 //
-// ∎ csslc · _BACKLOG · T11-W11-snapshot
+// ∎ csslc · _BACKLOG · T11-W15-snapshot

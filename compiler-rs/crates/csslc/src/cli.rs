@@ -43,6 +43,14 @@ pub struct BuildArgs {
     /// (preserves S6-A5 behavior). [`Backend::NativeX64`] dispatches to
     /// `cssl-cgen-cpu-x64` (S7-G axis).
     pub backend: Backend,
+    /// § T11-W15-CSSLC-MULTI-MODULE : auxiliary module-path source files.
+    /// Each `--module-path=<glob>` flag supplies an additional .csl file (or
+    /// glob expanding to several) that the build pipeline parses as a
+    /// sibling-module of the main input. Auxiliary modules go through the
+    /// SAME lex → parse → HIR-lower → MIR-lower passes ; their MIR fns are
+    /// pushed into the same `MirModule` so the linker sees a single object
+    /// with all symbols resolved.
+    pub module_paths: Vec<PathBuf>,
 }
 
 /// `check` subcommand args.
@@ -258,6 +266,7 @@ fn parse_build(args: &[String]) -> Result<BuildArgs, String> {
     let mut emit: Option<EmitMode> = None;
     let mut opt_level: u8 = 0;
     let mut backend: Option<Backend> = None;
+    let mut module_paths: Vec<PathBuf> = Vec::new();
 
     let mut i = 0;
     while i < args.len() {
@@ -293,6 +302,21 @@ fn parse_build(args: &[String]) -> Result<BuildArgs, String> {
                 let v = s.trim_start_matches("--backend=");
                 backend = Some(Backend::parse(v)?);
             }
+            // § T11-W15-CSSLC-MULTI-MODULE : `--module-path=<path>` flag
+            // (repeatable). Each occurrence appends one auxiliary .csl file
+            // to the build's module-set. Globs are not yet expanded — caller
+            // must pass each path explicitly (shell-glob-expansion is the
+            // user's job) — but the surface accepts repeated flags so a
+            // build script can do
+            //   csslc build main.cssl \
+            //         --module-path=systems/run.csl \
+            //         --module-path=systems/combat.csl \
+            //         --module-path=systems/inventory.csl
+            // and have all four sources participate in a single build.
+            s if s.starts_with("--module-path=") => {
+                let v = s.trim_start_matches("--module-path=");
+                module_paths.push(PathBuf::from(v));
+            }
             s if s.starts_with('-') => {
                 return Err(format!("unknown flag '{s}' for 'build' subcommand"));
             }
@@ -319,6 +343,7 @@ fn parse_build(args: &[String]) -> Result<BuildArgs, String> {
         emit: emit.unwrap_or_else(EmitMode::default_for_build),
         opt_level,
         backend: backend.unwrap_or_else(Backend::default_for_build),
+        module_paths,
     })
 }
 
@@ -472,6 +497,73 @@ mod tests {
                 assert_eq!(args.opt_level, 0);
                 // S7-G6 : default backend preserves S6-A5 behavior.
                 assert_eq!(args.backend, Backend::Cranelift);
+                // T11-W15 : default module_paths is empty.
+                assert!(args.module_paths.is_empty());
+            }
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
+    // ── § T11-W15-CSSLC-MULTI-MODULE — `--module-path=<path>` parsing ────────
+
+    #[test]
+    fn build_with_single_module_path() {
+        let cmd = parse(&argv(&[
+            "build",
+            "main.cssl",
+            "--module-path=systems/run.csl",
+        ]))
+        .unwrap();
+        match cmd {
+            Command::Build(args) => {
+                assert_eq!(args.module_paths.len(), 1);
+                assert_eq!(args.module_paths[0], PathBuf::from("systems/run.csl"));
+            }
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_with_multiple_module_paths() {
+        let cmd = parse(&argv(&[
+            "build",
+            "main.cssl",
+            "--module-path=systems/run.csl",
+            "--module-path=systems/combat.csl",
+            "--module-path=systems/inventory.csl",
+        ]))
+        .unwrap();
+        match cmd {
+            Command::Build(args) => {
+                assert_eq!(args.module_paths.len(), 3);
+                assert_eq!(args.module_paths[0], PathBuf::from("systems/run.csl"));
+                assert_eq!(args.module_paths[1], PathBuf::from("systems/combat.csl"));
+                assert_eq!(args.module_paths[2], PathBuf::from("systems/inventory.csl"));
+            }
+            other => panic!("expected Build, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_module_paths_preserve_insertion_order() {
+        // Order matters at the link-pass level (sym-table insertion uses
+        // declared order on collision-tiebreak).
+        let cmd = parse(&argv(&[
+            "build",
+            "main.cssl",
+            "--module-path=z.csl",
+            "--module-path=a.csl",
+            "--module-path=m.csl",
+        ]))
+        .unwrap();
+        match cmd {
+            Command::Build(args) => {
+                let names: Vec<String> = args
+                    .module_paths
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect();
+                assert_eq!(names, vec!["z.csl", "a.csl", "m.csl"]);
             }
             other => panic!("expected Build, got {other:?}"),
         }
