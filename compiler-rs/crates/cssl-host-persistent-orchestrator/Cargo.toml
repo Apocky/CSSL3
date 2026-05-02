@@ -1,0 +1,65 @@
+# cssl-host-persistent-orchestrator
+# ══════════════════════════════════════════════════════════════════
+# § T11-W14-LOCAL-PERSISTENT-ORCHESTRATOR
+#   24/7 desktop-daemon driving LoA Infinity-Engine offline so
+#   self-author + KAN-loop + playtest + mycelium-sync continue to
+#   run while Apocky is asleep. Cap-gated · journal-replay-resilient ·
+#   throttle-on-busy · Σ-Chain-anchored every cycle.
+#
+# § PRIME-DIRECTIVE alignment
+#   - § 0  consent = OS  : every mutation requires Σ-cap (default-deny)
+#   - § 1  no-harm       : no auto-mutate of forbidden targets ;
+#                          no network egress without cap-grant
+#   - § 4  transparency  : journal records every cycle decision
+#   - § 5  revocability  : sovereign-pause + sovereign-resume + cap-revoke
+#   - § 7  integrity     : Σ-Chain anchor at every cycle-completion
+#   - § 11 attestation   : ATTESTATION constant baked into audit-stream
+#
+# § STAGE-0 SELF-SUFFICIENT
+#   Compiler-toolchain + cargo-only build. ¬ tauri ¬ tokio ¬ network
+#   in default workspace build.
+#
+# § COMPOSITION
+#   This crate intentionally does NOT depend on cssl-host-self-author
+#   or cssl-host-playtest-agent directly — those crates pull heavy
+#   LLM-bridge deps. Instead, the orchestrator defines minimal traits
+#   (SelfAuthorDriver / PlaytestDriver) so any sibling crate can
+#   register itself as a driver. Default builds use stub drivers that
+#   record-only ; live-mode requires Apocky-cap to swap in real drivers.
+#
+# § DEPS (deliberately lean — workspace-members only)
+#   - cssl-host-substrate-knowledge : pull open-questions for prompts
+#   - cssl-mycelium-chat-sync       : federate chat-pattern shapes
+#   - blake3 / serde / thiserror    : audit-trail + journal serde
+#
+# § KAN-LOOP NOTE
+#   `cssl-self-authoring-kan` is workspace-EXCLUDED (still proving green) so
+#   we cannot path-dep it without breaking the workspace gate. The
+#   orchestrator therefore defines internal QualitySignal + Reservoir
+#   trait-abstractions ; when KAN re-joins the workspace, a thin adapter
+#   crate can wire `kan::tick` to `KanTickSink::tick`.
+# ══════════════════════════════════════════════════════════════════
+
+[package]
+name                   = "cssl-host-persistent-orchestrator"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+description = "24/7 local daemon driving LoA Infinity-Engine offline · cap-gated · journal-replay-resilient · throttle-on-busy · Σ-Chain-anchored every cycle"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+blake3     = { workspace = true }
+thiserror  = { workspace = true }
+
+# Composed-with — workspace-member sibling crates only (kan/audio/etc are excluded).
+cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
+cssl-mycelium-chat-sync       = { path = "../cssl-mycelium-chat-sync" }
