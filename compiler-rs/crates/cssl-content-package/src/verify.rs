@@ -210,7 +210,8 @@ mod tests {
     #[test]
     fn verify_tampered_manifest_rejected() {
         let (mut bundle, _, _) = make_bundle(AuthorCapClass::Creator);
-        bundle.manifest_bytes[bundle.manifest_bytes.len() - 2] ^= 0x01;
+        let off = bundle.manifest_bytes.len() - 2;
+        bundle.manifest_bytes[off] ^= 0x01;
         let r = verify_bundle(&bundle);
         // Could fail at JSON-deserialise, blake3, or signature — any of those
         // is a valid rejection.

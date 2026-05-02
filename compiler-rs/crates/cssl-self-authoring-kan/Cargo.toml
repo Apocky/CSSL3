@@ -1,0 +1,75 @@
+[package]
+name         = "cssl-self-authoring-kan"
+description  = "CSSLv3 / T11-W12-KAN-LOOP · Self-Authoring-KAN-Loop · ingests QualitySignal stream from sibling-agents (training-pair-log · GM-accept · player-rating · playtest-score · remix-fork) → Q14 fixed-point KAN-weight-bias-deltas → TemplateBiasMap drives procgen template-priority-shifts so substrate self-improves over training-iterations. Anti-poisoning : k-anon-floor + reservoir-N=4096 + Σ-mask inspector + sovereign-revoke-cascading + Σ-Chain-anchor every 1024 bias-updates. Cite : Labyrinth of Apocalypse/systems/self_authoring_kan.csl ; PRIME_DIRECTIVE.md § 0 + § 5 + § 7 ; specs/grand-vision/14_SIGMA_CHAIN.csl ; specs/grand-vision/15_UNIFIED_SUBSTRATE.csl."
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.75"
+license      = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+authors      = ["Apocky <apocky13@gmail.com>"]
+
+# § Standalone package : NOT a workspace member (parent compiler-rs/Cargo.toml
+# explicitly excludes this dir to keep parallel-fanout-W12 sibling-agents
+# disjoint until each crate proves itself clean). Build via:
+#     cargo check --manifest-path crates/cssl-self-authoring-kan/Cargo.toml
+[lib]
+name       = "cssl_self_authoring_kan"
+crate-type = ["rlib"]
+
+[dependencies]
+# § Σ-runtime gate · cap-witness · audit-ring (BiasInspector reads via mask).
+cssl-substrate-sigma-runtime = { path = "../cssl-substrate-sigma-runtime" }
+# § event-stream taxonomy · ConsentCap defs · LUT names. We use the existing
+# EventKind enum to map QualitySignal → analytics-pipeline events ; this keeps
+# W12-3 inside the analytics-aggregator-defined wire-format already-in-use by
+# W11-4 sibling-extension.
+cssl-analytics-aggregator    = { path = "../cssl-analytics-aggregator" }
+# § BLAKE3 anchor-checkpoint hash (every 1024 bias-updates ⇒ Σ-Chain anchor).
+blake3                       = ">=1.5"
+# § typed-error reporting for poisoning-rejected / k-anon-floor / sovereign-revoke-failure.
+thiserror                    = "1"
+
+[dev-dependencies]
+# § rand : test-only signal-generation for poisoning-attack fixtures.
+rand = "0.8"
+
+[lints.clippy]
+all      = { level = "deny", priority = -1 }
+# § Pedantic at warn-level mirrors compiler-rs/Cargo.toml workspace baseline ;
+# the per-lint allows below match the workspace allowances so this standalone
+# crate behaves identically to a workspace-member during sibling-fanout review.
+pedantic = { level = "warn", priority = -1 }
+nursery  = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+must_use_candidate      = "allow"
+missing_const_for_fn    = "allow"
+too_many_lines          = "allow"
+doc_markdown            = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss          = "allow"
+cast_lossless           = "allow"
+cast_possible_wrap      = "allow"
+default_trait_access    = "allow"
+unreadable_literal      = "allow"
+derive_partial_eq_without_eq = "allow"
+needless_pass_by_value  = "allow"
+needless_pass_by_ref_mut = "allow"
+or_fun_call             = "allow"
+use_self                = "allow"
+needless_lifetimes      = "allow"
+similar_names           = "allow"
+match_same_arms         = "allow"
+too_long_first_doc_paragraph = "allow"
+items_after_statements  = "allow"
+needless_range_loop     = "allow"
+uninlined_format_args   = "allow"
+map_unwrap_or           = "allow"
+struct_excessive_bools  = "allow"
+single_match_else       = "allow"
+inline_always           = "allow"
+return_self_not_must_use = "allow"
+
+[lints.rust]
+rust_2018_idioms = "warn"
+unreachable_pub  = "warn"

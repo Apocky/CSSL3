@@ -68,7 +68,7 @@ impl AuthorCapClass {
 
     /// Parse from canonical name.
     #[must_use]
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_canonical(s: &str) -> Option<Self> {
         match s {
             "cap-X-creator" => Some(Self::Creator),
             "cap-X-curator" => Some(Self::Curator),
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn name_roundtrip() {
         for c in AUTHOR_CAP_CLASSES {
-            assert_eq!(AuthorCapClass::from_str(c.as_str()), Some(c));
+            assert_eq!(AuthorCapClass::parse_canonical(c.as_str()), Some(c));
         }
     }
 

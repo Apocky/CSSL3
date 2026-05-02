@@ -35,9 +35,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// § The 5 license tiers from spec/grand-vision/17_DISTRIBUTION.csl.
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum LicenseTier {
     /// A: open · MIT/AGPL/CC-licensed · freely fork-able.
@@ -50,6 +48,20 @@ pub enum LicenseTier {
     Private = 4,
     /// E: protocol · spec-only · implementations-must-conform.
     Protocol = 5,
+}
+
+impl Serialize for LicenseTier {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for LicenseTier {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let s = String::deserialize(d)?;
+        Self::parse_canonical(&s).ok_or_else(|| D::Error::custom(format!("unknown license tier '{s}'")))
+    }
 }
 
 impl LicenseTier {
@@ -67,7 +79,7 @@ impl LicenseTier {
 
     /// Parse from `TIER-A` … `TIER-E`.
     #[must_use]
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_canonical(s: &str) -> Option<Self> {
         match s {
             "TIER-A" => Some(Self::Open),
             "TIER-B" => Some(Self::Proprietary),
@@ -353,7 +365,7 @@ mod tests {
             LicenseTier::Private,
             LicenseTier::Protocol,
         ] {
-            assert_eq!(LicenseTier::from_str(tier.as_str()), Some(tier));
+            assert_eq!(LicenseTier::parse_canonical(tier.as_str()), Some(tier));
         }
     }
 

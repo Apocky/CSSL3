@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[serde(rename_all = "kebab-case")]
 #[repr(u8)]
 pub enum ContentKind {
     /// (1) `.cssl` scene source + optional GLTF/asset payloads.

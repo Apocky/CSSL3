@@ -179,7 +179,7 @@ pub fn archive_unpack(bytes: &[u8]) -> Result<Vec<ArchiveEntry>, ArchiveError> {
         cursor = cursor_end;
         if let Some(prev) = &prev_path {
             if prev.as_str() >= path.as_str() {
-                return Err(ArchiveError::EntriesNotSorted(prev.clone(), path.clone()));
+                return Err(ArchiveError::EntriesNotSorted(prev.clone(), path));
             }
         }
         prev_path = Some(path.clone());
@@ -215,7 +215,7 @@ mod tests {
         vec![
             ArchiveEntry {
                 path: "scenes/main.cssl".to_string(),
-                content: b"§ scene main\n  ¬ harm".to_vec(),
+                content: "§ scene main\n  ¬ harm".as_bytes().to_vec(),
             },
             ArchiveEntry {
                 path: "assets/torch.gltf".to_string(),
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn empty_path_rejected() {
         let bad = vec![ArchiveEntry {
-            path: "".to_string(),
+            path: String::new(),
             content: vec![],
         }];
         assert!(matches!(archive_pack(&bad), Err(ArchiveError::IllegalPath(_))));

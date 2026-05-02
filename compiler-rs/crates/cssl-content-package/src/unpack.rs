@@ -75,10 +75,16 @@ pub fn unpack_bundle(bundle: &Bundle) -> Result<UnpackedContent, UnpackError> {
     })
 }
 
-/// Is the path a CSSL source file ? (`.cssl` or `.csl` extension.)
+/// Is the path a CSSL source file ? (`.cssl` or `.csl` extension, case-insensitive.)
 #[must_use]
 fn is_cssl_path(p: &str) -> bool {
-    p.ends_with(".cssl") || p.ends_with(".csl")
+    std::path::Path::new(p)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| {
+            let lo = e.to_ascii_lowercase();
+            lo == "cssl" || lo == "csl"
+        })
 }
 
 #[cfg(test)]
@@ -117,7 +123,7 @@ mod tests {
         let entries = vec![
             ArchiveEntry {
                 path: "scenes/main.cssl".to_string(),
-                content: b"§ scene main\n  ¬ harm".to_vec(),
+                content: "§ scene main\n  ¬ harm".as_bytes().to_vec(),
             },
             ArchiveEntry {
                 path: "assets/torch.gltf".to_string(),
@@ -151,7 +157,8 @@ mod tests {
     #[test]
     fn unpack_tampered_bundle_rejected() {
         let mut bundle = build_signed_bundle();
-        bundle.archive_bytes[bundle.archive_bytes.len() - 1] ^= 0xFF;
+        let last = bundle.archive_bytes.len() - 1;
+        bundle.archive_bytes[last] ^= 0xFF;
         assert!(unpack_bundle(&bundle).is_err());
     }
 
@@ -162,7 +169,7 @@ mod tests {
         let manifest = fixture_manifest(pubkey);
         let entries = vec![ArchiveEntry {
             path: "core.csl".to_string(),
-            content: b"§ S T11".to_vec(),
+            content: "§ S T11".as_bytes().to_vec(),
         }];
         let archive = archive_pack(&entries).unwrap();
         let bundle = sign_bundle(

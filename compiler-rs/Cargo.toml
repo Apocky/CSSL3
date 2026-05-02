@@ -62,7 +62,7 @@ members = ["crates/*"]
 #     geometry + IPD-aware projection + SBS / TB / red-cyan-anaglyph image
 #     composition + serializable StereoCaptureManifest. NO image-crate dep ;
 #     accepts raw RGBA byte slices. loa-host wiring lands wave-4.
-exclude  = ["crates/cssl-playground", "crates/cssl-self-authoring-kan", "crates/cssl-content-package", "crates/cssl-content-subscription", "crates/cssl-content-rating", "crates/cssl-substrate-audio", "crates/cssl-test-coordinator", "crates/cssl-host-playtest-agent"]
+exclude  = ["crates/cssl-playground", "crates/cssl-self-authoring-kan", "crates/cssl-content-subscription", "crates/cssl-content-rating", "crates/cssl-substrate-audio", "crates/cssl-test-coordinator"]
 
 [workspace.package]
 version      = "0.1.0"

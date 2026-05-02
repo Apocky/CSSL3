@@ -483,12 +483,12 @@ mod tests {
     #[test]
     fn signed_bytes_excludes_signature_and_anchor() {
         let manifest = b"{}".to_vec();
-        let archive = vec![];
-        let combined = manifest.clone();
+        let archive: Vec<u8> = vec![];
+        let combined = manifest.as_slice();
         let header = BundleHeader {
-            blake3_payload: blake3::hash(&combined).into(),
+            blake3_payload: blake3::hash(combined).into(),
             total_size: combined.len() as u64,
-            ..fixture_header(&combined)
+            ..fixture_header(combined)
         };
         let bundle = Bundle {
             header,
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn payload_bytes_excludes_header() {
         let manifest = b"abc".to_vec();
-        let archive = vec![1, 2];
+        let archive = vec![1u8, 2];
         let bundle = Bundle {
             header: fixture_header(&[]),
             manifest_bytes: manifest.clone(),
@@ -514,9 +514,10 @@ mod tests {
             sigma_chain_anchor: [0u8; ANCHOR_BYTES],
         };
         let p = bundle.payload_bytes();
-        assert_eq!(p.len(), manifest.len() + archive.len());
-        assert_eq!(&p[..manifest.len()], &manifest[..]);
-        assert_eq!(&p[manifest.len()..], &archive[..]);
+        let mlen = manifest.len();
+        assert_eq!(p.len(), mlen + archive.len());
+        assert_eq!(&p[..mlen], &manifest[..]);
+        assert_eq!(&p[mlen..], &archive[..]);
     }
 
     #[test]

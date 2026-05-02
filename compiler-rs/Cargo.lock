@@ -772,6 +772,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-content-moderation"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "cssl-content-package"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-content-remix"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-effects"
 version = "0.1.0"
 dependencies = [
@@ -1256,6 +1291,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-playtest-agent"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-llm-bridge",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-host-procgen-rooms"
 version = "0.1.0"
 dependencies = [
@@ -1294,6 +1342,22 @@ dependencies = [
  "cssl-host-rt-trace",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cssl-host-self-author"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-coder-runtime",
+ "cssl-host-llm-bridge",
+ "cssl-substrate-sigma-chain",
+ "cssl-substrate-sigma-runtime",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1688,14 +1752,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cssl-substrate-audio"
-version = "0.1.0"
-dependencies = [
- "smallvec",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "cssl-substrate-kan"
 version = "0.1.0"
 dependencies = [
@@ -1801,14 +1857,6 @@ dependencies = [
  "ed25519-dalek",
  "rand",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "cssl-test-coordinator"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

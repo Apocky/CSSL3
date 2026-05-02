@@ -1,0 +1,6 @@
+# § standalone-package per parent compiler-rs/Cargo.toml exclude-list :
+# this crate is built via `cargo check --manifest-path` not via workspace ;
+# its target/ dir lives inside the crate dir and must NOT bleed into the
+# tracked tree. Cargo.lock is committed (R16 reproducibility) per parent
+# .gitignore policy ; only target/ is ignored.
+target/
