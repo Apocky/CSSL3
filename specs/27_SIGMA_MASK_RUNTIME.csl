@@ -1,0 +1,299 @@
+# 27 : Σ-MASK RUNTIME — canonical runtime gate-fn + cap-grant + audit-ring
+# ══════════════════════════════════════════════════════════════════════════
+# § I> module = com.apocky.cssl.specs.sigma_runtime
+# § I> reimpl-from-spec validateable (§§ 23_TESTING)
+# § I> implements §§ PRIME_DIRECTIVE § 0 + § 5 + § 7 + § 11 @ runtime
+# § I> sibling-crate : compiler-rs/crates/cssl-substrate-sigma-runtime
+# § I> ¬-conflate : SigmaMask (runtime 19 B) ≠ SigmaMaskPacked (cell 16 B)
+# § I> integrates : grand-vision/14_SIGMA_CHAIN + 15_UNIFIED_SUBSTRATE
+# § I> consent-as-OS : every-evaluate consults Σ-mask · zero-trust-bypass
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE
+  t∞: every-cell-Σ-masked
+       ≡ ∀ data-bearing-record carries SigmaMask
+       ≡ SigmaMask ≡ runtime-gate-record (audience + effect + TTL + revocation)
+  t∞: default-deny-all
+       ≡ ¬ implicit-allow ; ¬ trusted-caller-bypass
+       ≡ evaluate ≡ explicit-Σ-mask-consult
+  t∞: sovereign-revocable
+       ≡ revoke(mask, ts) → revoked_at = ts
+       ≡ revoke + cascade-propagate ⊑ children
+       ≡ revocation = monotone-not-reversible
+  t∞: tamper-detect
+       ≡ BLAKE3-128-keyed checksum truncated-low-24
+       ≡ in-memory-tamper ⇒ DenyTampered
+  t∞: cap-attestation
+       ≡ ATTESTED-mask ⇒ cap-witness Ed25519-required
+       ≡ cap-pre-flight {pubkey-valid → ¬revoked → ¬expired → sig-verifies}
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ Σ-MASK-BIT-LAYOUT  (runtime · 19 B packed · little-endian)
+
+  § THESIS
+    SigmaMask ≡ runtime-gate-record-shape
+    ¬ "SigmaMaskPacked" (per-cell · 16 B · already-spec @ §§ 30_SUBSTRATE_v2)
+    ≡ aggregator + chat-sync + hotfix + akashic gate-input
+    ≡ 19 B packed std430-aligned ¬ silent-padding-bytes
+
+  § BYTE-LAYOUT  ‼ frozen via @layout(packed,le) refinement
+    ```text
+    offset | bytes | field            | semantic
+    -------+-------+------------------+-----------------------------------------
+      0    |   2   | audience_class   | u16 bitset · 16 audience-class slots
+      2    |   4   | effect_caps      | u32 bitset · 32 effect-bit slots
+      6    |   1   | k_anon_thresh    | u8 · 0=no-aggregate · else floor
+      7    |   4   | ttl_seconds      | u32 · 0=no-TTL · else auto-revoke
+     11    |   4   | revoked_at       | u32 · 0=active · else revocation-ts
+     15    |   1   | flags            | u8 · PROPAGATE/INHERIT/OVERRIDE/ATTESTED
+     16    |   3   | checksum_low24   | u24 · BLAKE3-128 truncated low 24 bits
+    -------+-------+------------------+-----------------------------------------
+                  19 B total · no padding · no alignment-holes
+    ```
+    invariant : core::mem::size_of::<SigmaMask>() ≥ 32  (carries created_at u64
+                alongside · NOT in 19 B canonical packed-form · re-hashed-into-
+                checksum so birth-time-distinguishable)
+
+  § AUDIENCE-CLASS-BITS  (u16 · 16 slots)
+    bit  0 : SELF       — holder-only
+    bit  1 : CIRCLE     — trusted circle (consented-peers)
+    bit  2 : PUBLIC     — anyone
+    bit  3 : ADMIN      — operator / moderator / sovereign-delegate
+    bit  4 : SYSTEM     — substrate-level processes (non-human)
+    bit  5 : DERIVED    — analytics output · k-anon-required
+    bits 6..=15        : RESERVED-FOR-EXTENSION
+
+  § EFFECT-CAP-BITS  (u32 · 32 slots)
+    bit  0 : READ       — observe / read scalar
+    bit  1 : WRITE      — mutate / write scalar
+    bit  2 : DERIVE     — aggregate (analytics summary)
+    bit  3 : BROADCAST  — publish to audience
+    bit  4 : PURGE      — GDPR-forget
+    bit  5 : LOG        — append to audit-trail
+    bits 6..=31        : RESERVED-FOR-EXTENSION
+
+  § FLAGS  (u8 · 8 slots)
+    bit  0 : PROPAGATE  — children inherit a strictly-tighter mask
+    bit  1 : INHERIT    — this mask was derived from a parent
+    bit  2 : OVERRIDE   — sovereign-explicit override (parent loses)
+    bit  3 : ATTESTED   — mask carries SovereignCap attestation
+    bits 4..=7         : RESERVED-FOR-EXTENSION
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ SOVEREIGN-CAP  (Ed25519-keyed grant-witness)
+
+  § THESIS
+    SovereignCap ≡ cryptographic-witness-of-consent
+    ≡ Ed25519-signed by issuing-sovereign over canonical-bytes
+    ≡ holder-pubkey ¬= signing-pubkey (issuer ≠ holder in general)
+    ≡ ¬ bearer-token (separate session-bind required by caller)
+
+  § STRUCT-LAYOUT
+    ```rust
+    pub struct SovereignCap {
+        holder_pubkey   : [u8; 32]            ,  // Ed25519 PK of cap-holder
+        grants          : u32                 ,  // OR-combined EFFECT_*
+        audience_class  : u16                 ,  // OR-combined AUDIENCE_*
+        expires_at      : u64                 ,  // sec-since-epoch · 0=never
+        revocation_ref  : Option<[u8; 32]>    ,  // BLAKE3 of on-chain revoke-record
+        signature       : [u8; 64]            ,  // Ed25519 sig over canonical-bytes
+    }
+    ```
+
+  § CANONICAL-SIGNING-BYTES  ‼ frozen
+    ```text
+    [  0..=31] CAP_SIGNING_DOMAIN  = "cssl.sigma-runtime.cap.sign.v01\0"
+    [ 32..=63] holder_pubkey       (32 B)
+    [ 64..=67] grants              (u32 LE)
+    [ 68..=69] audience_class      (u16 LE)
+    [ 70..=77] expires_at          (u64 LE)
+    [    78  ] revocation_present  (u8 · 1 = revoked · 0 = active)
+    [ 79..=110] revocation_ref     (32 B · zero when ¬ present)
+    ```
+    domain-separation = cross-protocol replay-immune
+
+  § PRE-FLIGHT-CHAIN  (canonical order)
+    1. verify_holder_pubkey()    ⇒ MalformedPublicKey if off-curve
+    2. is_revoked()              ⇒ Revoked if revocation_ref.is_some()
+    3. is_expired(now)           ⇒ Expired if now ≥ expires_at
+    4. verify_signature(iss-pk)  ⇒ SignatureVerifyFailed otherwise
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ EVALUATOR-FLOW  (the canonical gate-fn)
+
+  § ENTRY
+    fn evaluate(
+        mask                  : &SigmaMask          ,
+        cap_witness           : Option<&SovereignCap>,
+        audience              : u16                 ,
+        requested_effect      : u32                 ,
+        aggregation_k         : Option<u32>         ,
+        now_seconds           : u64                 ,
+        issuing_sovereign_pk  : Option<&[u8; 32]>   ,
+    ) -> AccessDecision
+
+  § DECISION-VARIANTS  (6 canonical · ≡ AccessDecision enum)
+    1. Allow              { audit_ref }
+    2. Deny               { reason, audit_ref }
+    3. NeedsKAnonymity    { current_k, required_k, audit_ref }
+    4. NeedsCap           { required_audience, required_effects, audit_ref }
+    5. Revoked            { revoked_at, audit_ref }
+    6. Expired            { expired_at, audit_ref }
+
+  § ALGORITHM  (early-return · zero-alloc-on-success)
+    step  0 : checksum-validate(mask)            ⇒ Deny(Tampered) if ¬
+    step  1 : mask.is_revoked()                  ⇒ Revoked if true
+    step  2 : mask.is_expired(now)               ⇒ Expired if true
+    step  3 : mask.allows_audience(audience)     ⇒ Deny(AudienceMismatch) if ¬
+    step  4 : mask.permits_effect(effect)        ⇒ Deny(EffectNotPermitted) if ¬
+    step  5 : ATTESTED                           ⇒ cap-required ⇒ {
+                cap.covers_audience(audience)    ⇒ Deny(CapAudienceMismatch) if ¬
+                cap.permits_effect(effect)       ⇒ Deny(CapEffectNotGranted) if ¬
+                cap.preflight(iss_pk, now)       ⇒ Deny(CapPreflightFailed) if ¬
+              }
+    step  6 : DERIVED ∧ k_anon_thresh > 0        ⇒
+                aggregation_k < k_anon_thresh    ⇒ NeedsKAnonymity
+    step  7 : ⇒ Allow
+
+  § AUDIT-EMIT
+    ∀ branch ⇒ audit_ring.push(AuditEntry { … }) ⇒ audit_ref returned
+    ≡ exactly-one entry per evaluate call
+    ≡ ¬ silent-skip even on success path
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ COMPOSITION-RULES  (parent PROPAGATE ⇒ child INHERIT-tighter)
+
+  § AND-NARROW (permission axes)
+    audience_class    = parent.audience_class & child.audience_class
+    effect_caps       = parent.effect_caps    & child.effect_caps
+
+  § MAX-STRICTER (floor axes)
+    k_anon_thresh     = max(parent.k_anon_thresh, child.k_anon_thresh)
+
+  § MIN-SOONER (time axes)
+    ttl_seconds       = min-effective(parent.ttl, child.ttl)
+                        ≡ 0 = no-TTL = ∞ ; both-0 ⇒ 0 ; one-0 ⇒ other
+
+  § CASCADE-REVOKE (sovereignty axis)
+    revoked_at        = parent.revoked != 0 ? parent.revoked_at : child.revoked_at
+    ≡ root-revoke ⇒ subtree-revoke @ next-compose
+
+  § FLAG-PROPAGATION
+    flags             = (parent.flags & PROPAGATE) | child.flags | INHERIT
+
+  § LOOSENING-FORBIDDEN
+    ∀ child ¬ OVERRIDE ⇒ {
+        child.audience_class ⊆ parent.audience_class
+        child.effect_caps    ⊆ parent.effect_caps
+        child.k_anon_thresh  ≥ parent.k_anon_thresh
+        child.expires_at     ≤ parent.expires_at
+    } ⇒ else CompositionError::LooseningForbidden { dim }
+
+  § OVERRIDE-INTERACTION
+    child.has_flag(OVERRIDE) ⇒ AND-narrowing-applies + loosening-error-suppressed
+    ≡ override may NEVER LOOSEN — narrowing remains monotone-tighter
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ AUDIT-RING  (bounded · pre-allocated · zero-alloc hot-path)
+
+  § STRUCT
+    AUDIT_RING_DEFAULT_CAPACITY = 8192 entries
+    entry-size                  = 32 B packed
+    pre-alloc                   = 256 KiB / ring at default capacity
+    head-index                  = next-write slot · modulo capacity
+    total_written               = u64 monotone counter
+    wrap_count                  = u64 (oldest-overwrite-events)
+
+  § ENTRY-LAYOUT  (32 B packed · LE)
+    ```text
+    offset | bytes | field            | semantic
+    -------+-------+------------------+--------------------------------------
+      0    |   8   | timestamp_us     | u64 microseconds-since-epoch
+      8    |   8   | actor_hash_lo    | u64 low half of BLAKE3(actor-id)
+     16    |   8   | subject_hash_lo  | u64 low half of BLAKE3(subject-id)
+     24    |   1   | decision_tag     | DecisionTag::as_u8()
+     25    |   3   | effect_bit_le24  | u24 effect-cap bit (low 24 of u32)
+     28    |   1   | k_anon_tag       | u8 (k-anon-floor encountered)
+     29    |   3   | audit_seq_lo24   | u24 monotone audit-seq low 24 bits
+    -------+-------+------------------+--------------------------------------
+                  32 B total
+    ```
+
+  § DECISION-TAG-VALUES  ‼ ABI-frozen
+    GrantIssued = 0 · Revoked = 1 · Allow = 2 · Deny = 3
+    NeedsKAnon  = 4 · NeedsCap = 5 · Expired = 6 · Tampered = 7
+
+  § DRAIN-SEMANTICS
+    ring.drain(&mut dst[..N]) → usize ≤ N
+    ≡ caller-provided buffer · zero-allocation
+    ≡ oldest-first within drain-window
+    ≡ on-wrap : oldest-overwritten · wrap_count++
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ ATTESTATION-PROPERTIES  (PRIME_DIRECTIVE § 11 alignment)
+
+  prop 1 : every-evaluate-emits-audit-entry
+           ∀ call evaluate(…) ⇒ exactly-one ring.push
+           ≡ test : 100 evaluates → 100 entries
+
+  prop 2 : checksum-tamper-detect
+           bit-flip ⇒ verify_checksum() == false ⇒ Deny(Tampered)
+           ≡ test : mutate audience_class · ¬ rehash · evaluate ⇒ Tampered
+
+  prop 3 : cascade-revoke-on-compose
+           parent.revoke(t) ⇒ ∀ child compose @ t' > t ⇒ child.is_revoked()
+           ≡ test : revoke parent · compose · evaluate child ⇒ Revoked
+
+  prop 4 : monotone-narrow-composition
+           composed.audience_class ⊆ parent.audience_class
+           composed.effect_caps    ⊆ parent.effect_caps
+           composed.k_anon_thresh  ≥ parent.k_anon_thresh
+           composed.expires_at     ≤ parent.expires_at
+           ≡ test : 4-axis loosening attempts ⇒ LooseningForbidden
+
+  prop 5 : signature-tamper-detect
+           sig-bytes-modified ⇒ verify_signature ⇒ SignatureVerifyFailed
+           ≡ test : flip 1 bit in cap.signature · evaluate ⇒ Deny(CapPreflightFailed)
+
+  prop 6 : revocation-monotone-not-reversible
+           ∀ mask : revoke(t1) ⇒ ¬ ∃ unrevoke()
+           ≡ public mutation surface : new + revoke only
+
+  prop 7 : zero-allocation-hot-path
+           evaluate-success-path : 0 heap-allocations
+           ≡ test : 1000 concurrent evaluates · ring captures all 1000
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ INTEGRATION-MATRIX  (which sibling-crates SHOULD-gate-through)
+
+  cssl-host-substrate-knowledge   ⇒ knowledge-graph queries (read = audience-gated)
+  cssl-analytics-aggregator       ⇒ analytics rollups (k-anon-floor enforced)
+  cssl-mycelium-chat-sync         ⇒ chat broadcast (audience-class enforced)
+  cssl-host-akashic-records       ⇒ Akashic write (sovereignty-cap required)
+  cssl-host-akashic-shrine        ⇒ Shrine read (PROPAGATE inheritance from Akashic)
+  cssl-host-coder-runtime         ⇒ runtime-mutation (ATTESTED + cap-witness)
+  cssl-host-hotfix-stream         ⇒ live patch (sovereignty + k-anon hybrid)
+  cssl-substrate-prime-directive  ⇒ runtime hand-off from cell-Σ-mask to runtime-Σ-mask
+  cssl-host-attestation           ⇒ attestation-record sealing
+  cssl-host-audit                 ⇒ JSONL pipe consumes ring.drain() output
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ FORBIDDEN-COMPOSITIONS  (PRIME_DIRECTIVE § 0 · § 5)
+
+  ¬ trusted-caller-bypass        ← no #[allow_skip_sigma] / no test-bypass-prod
+  ¬ silent-allow-on-failure      ← evaluator never returns Allow on error-path
+  ¬ amend-revocation             ← revoke is monotone ; no `unrevoke` API
+  ¬ widen-on-compose             ← AND-narrow only ; LooseningForbidden raised
+  ¬ skip-audit-on-success        ← ring.push fires unconditionally
+  ¬ duplicate-cap-bind           ← cap holds-pubkey ; session-bind is caller-side
+  ¬ relax-checksum-on-test       ← #[cfg(test)] does NOT bypass checksum
+
+# ══════════════════════════════════════════════════════════════════════════
+# § END · 27_SIGMA_MASK_RUNTIME.csl · @ T11-W11-SIGMA-RUNTIME · canonical
