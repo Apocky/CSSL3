@@ -1,0 +1,40 @@
+# § cssl-host-config/keys/hotfix-pubkeys.toml
+# § T11-W14 · 2026-05-01 · canonical Ed25519 public keys for-hotfix-bundle-verification
+#
+# Generated via openssl genpkey -algorithm Ed25519 on Apocky's release-machine.
+# Private keys live ONLY in ~/.loa-secrets/hotfix-cap-{A..E}.priv (CHMOD 600).
+# This file contains ONLY public-bytes · safe-to-commit (32-byte raw Ed25519).
+#
+# § Cap-key roles (per specs/26b_HOTFIX_KEYS.csl)
+#   cap-A : loa.binary                          [rarest · cold-storage · ~quarterly]
+#   cap-B : cssl.bundle                         [language-runtime release]
+#   cap-C : kan.weights + balance.config        [model + balance updates]
+#   cap-D : security.patch                      [incident-response · default-on]
+#   cap-E : recipe + nemesis + storylet + render [cosmetic content · most-frequent]
+
+[cap_a]
+role = "cap-A"
+channels = ["loa.binary"]
+pubkey_hex = "dd89d79992ab87d33a107a5f8074f3ccca56dcb9c35be5e5c3b09837bffffc13"
+
+[cap_b]
+role = "cap-B"
+channels = ["cssl.bundle"]
+pubkey_hex = "a8a2242b0b08a41861b897c9dd49d8ded0befcc61d50077cb56291c5acf04f0e"
+
+[cap_c]
+role = "cap-C"
+channels = ["kan.weights", "balance.config"]
+pubkey_hex = "222f0adaf20a00b485af04ac293bf0533309378e98374acfade076df402eceb7"
+
+[cap_d]
+role = "cap-D"
+channels = ["security.patch"]
+# cap-D ALSO signs server-side manifests · the priv-key bytes live in
+# Vercel env SVC_HOTFIX_MANIFEST_CAP_D_PRIV (¬ commit · ¬ paste-here).
+pubkey_hex = "2c5d04665ed9cecfe13325cb9cd5b2bb1ff6a895be084ed9d6958770be33be88"
+
+[cap_e]
+role = "cap-E"
+channels = ["recipe.book", "nemesis.bestiary", "storylet.content", "render.pipeline"]
+pubkey_hex = "b1611596d7aeb40b09eb4e5abb16b8be224694ef9b5ab2d3127e20756fcb563c"

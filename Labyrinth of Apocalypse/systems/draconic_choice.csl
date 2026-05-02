@@ -1,0 +1,277 @@
+module com.apocky.loa.systems.draconic_choice
+
+// § Labyrinth of Apocalypse · Draconic-Archetype Sovereign-Choice
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-Q-12-RESOLVE · Apocky-canonical 2026-05-01
+//
+// § APOCKY-CANONICAL (verbatim)
+//   Q-12 : "Sovereign choice."
+//
+// § DESIGN THESIS
+//   The 6 Draconic-Archetypes describe distinct cognitive substrates · BUT
+//   no archetype is FORCED-TO any role. Player or Apocky chooses each cell
+//   of the 6 × 4 binding-matrix · revocation = 1-step · audit-emitted +
+//   Σ-Chain-anchored. Default = ALL-cells-denied (Σ-mask default-deny).
+//   Fallback = Phantasia (archetype_id = 0) if-no-cap-set-for-active-role.
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + 00_CHARTER
+//   t∞: 6 archetypes × 4 roles = 24-cell binding-matrix · sovereign-revocable
+//   t∞: NO-canonical-mapping forced @ archetype ↔ role
+//   t∞: archetype-binding = consent-token (per S-09 · informed+granular+revocable)
+//   t∞: default = ALL-cells = denied (Σ-mask default-deny)
+//   t∞: fallback = Phantasia (archetype_id = 0) if-no-cap-set-for-active-role
+//   t∞: revocation = 1-step-propagate · ¬ are-you-sure-nag
+//   t∞: Σ-Chain anchor every binding-grant + every revocation
+//   t∞: ¬ archetype-locks-content · ¬ pay-to-unlock-archetype · ¬ FOMO-binding
+//
+// § REFERENCE
+//   spec : specs/infinity-engine/00_CHARTER.md § 16.7
+//   wire : compiler-rs/crates/loa-host/src/wired_dm.rs · DM_ARCHETYPE_FALLBACK
+//   wire : compiler-rs/crates/loa-host/src/wired_gm.rs · GM_ARCHETYPE_FALLBACK
+//   wire : compiler-rs/crates/loa-host/src/wired_cocreative.rs · COCREATIVE_*
+//   wire : compiler-rs/crates/loa-host/src/wired_coder_runtime.rs · CODER_*
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 6 archetypes · canonical ordering (archetype_id 0..5)
+// ─────────────────────────────────────────────────────────────────────────
+
+// archetype_id = 0 · Phantasia · imagination-substrate · DEFAULT-FALLBACK
+fn archetype_phantasia()    -> u8 { 0 }
+// archetype_id = 1 · EbonyMimic · mirror-amplifier · reflects-bias
+fn archetype_ebony_mimic()  -> u8 { 1 }
+// archetype_id = 2 · Phoenix · rebirth-cycler · resurrects-discarded
+fn archetype_phoenix()      -> u8 { 2 }
+// archetype_id = 3 · Octarine · 8th-color · novelty-substrate
+fn archetype_octarine()     -> u8 { 3 }
+// archetype_id = 4 · Paradox · contradiction-holder · two-truths-simultaneous
+fn archetype_paradox()      -> u8 { 4 }
+// archetype_id = 5 · Fossil · deep-time · slow-cognition · weight-of-history
+fn archetype_fossil()       -> u8 { 5 }
+
+fn archetype_count()        -> u8 { 6 }
+fn archetype_fallback()     -> u8 { 0 }   // Phantasia per Q-12
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 4 roles · canonical ordering (role_id 0..3)
+// ─────────────────────────────────────────────────────────────────────────
+
+// role_id = 0 · DM · Director-Master · scene-arbiter
+fn role_dm()                -> u8 { 0 }
+// role_id = 1 · GM · Game-Master · narrator-pacer
+fn role_gm()                -> u8 { 1 }
+// role_id = 2 · Collaborator · co-author · feedback-optimizer
+fn role_collaborator()      -> u8 { 2 }
+// role_id = 3 · Coder · runtime-mutate · sandboxed-AST-edit
+fn role_coder()             -> u8 { 3 }
+
+fn role_count()             -> u8 { 4 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Binding-matrix · 24 cells (6 archetypes × 4 roles)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Each cell encodes : (archetype_id, role_id) → granted : bool
+// Storage : 24-bit bitset (u32 with 8 reserved bits for-future-extension)
+// Index : cell_id = archetype_id × ROLE_COUNT + role_id  ∈ [0, 24)
+
+fn binding_matrix_cell_count() -> u32 { 24 }
+fn binding_matrix_default()    -> u32 { 0  }   // Σ-mask default-deny
+
+// Cell-index resolver · out-of-range inputs collapse to cell-0 (Phantasia/DM)
+fn cell_id(archetype_id: u8, role_id: u8) -> u32 {
+    if archetype_id >= 6u8 { return 0u32 ; }   // out-of-range archetype
+    if role_id >= 4u8      { return 0u32 ; }   // out-of-range role
+    let a: u32 = archetype_id as u32 ;
+    let r: u32 = role_id as u32 ;
+    a * 4u32 + r
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ArchetypeBindingCap · explicit-affirmative-consent gate
+// ─────────────────────────────────────────────────────────────────────────
+//   Required to-grant a (archetype, role) cell · sovereign-revocable any-time
+
+struct ArchetypeBindingCap {
+    archetype_id     : u8 ,    // 0..5
+    role_id          : u8 ,    // 0..3
+    granted_at_unix  : u64,    // when explicit-cap-grant happened
+    consent_token    : u64,    // proof-of-deliberate-affirmation (¬ zero)
+    revoked_at_unix  : u64     // 0 = active · else timestamp-of-revocation
+}
+
+// PetitionRecord-equivalent for archetype-binding events · Σ-Chain-anchored
+struct BindingEvent {
+    binding_id         : u64,    // BLAKE3-hash truncated of (player · archetype · role · ts)
+    player_pubkey_hash : u64,
+    archetype_id       : u8 ,
+    role_id            : u8 ,
+    op_kind            : u8 ,    // 0 = grant · 1 = revoke
+    ts_unix            : u64,
+    sigma_chain_anchor : u64,    // Σ-Chain-event-id for-attestation
+    biography_recorded : bool    // permanent-biography-trace
+}
+
+// op_kind discriminants
+fn op_kind_grant()  -> u8 { 0 }
+fn op_kind_revoke() -> u8 { 1 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Resolve-active-archetype-for-role · Phantasia-fallback
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Sovereign-choice resolution algorithm (per Q-12 default-fallback) :
+//   1. If session has an archetype bound to role_id → return that archetype.
+//   2. Else → return Phantasia (archetype_id = 0).
+//
+// Called by wired_dm/gm/cocreative/coder_runtime to translate
+// player-or-Apocky's chosen-archetype into the role's active archetype.
+//
+// Out-of-range role_id collapses to fallback per Q-12 default-fallback.
+
+fn resolve_archetype_for_role(active_archetype_for_role: u8, role_id: u8) -> u8 {
+    if role_id >= 4u8 { return 0u8 ; }   // fallback per Q-12 default-fallback
+    if active_archetype_for_role >= 6u8 { return 0u8 ; }   // out-of-range fallback
+    active_archetype_for_role
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface · loa-host bridges to-this CSSL canonical-source
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_draconic_session_create(player_pubkey_hash: u64) -> i64 ;
+extern "C" fn __cssl_draconic_session_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_draconic_grant_binding(
+    handle: i64,
+    archetype_id: u8,
+    role_id: u8,
+    consent_token: u64
+) -> i32 ;
+extern "C" fn __cssl_draconic_revoke_binding(handle: i64, archetype_id: u8, role_id: u8) -> i32 ;
+extern "C" fn __cssl_draconic_query_binding(handle: i64, archetype_id: u8, role_id: u8) -> u32 ;
+extern "C" fn __cssl_draconic_active_archetype_for_role(handle: i64, role_id: u8) -> u8 ;
+extern "C" fn __cssl_draconic_audit_emit_binding(
+    handle: i64,
+    archetype_id: u8,
+    role_id: u8,
+    op_kind: u8
+) -> i32 ;
+extern "C" fn __cssl_draconic_sigma_anchor(
+    handle: i64,
+    archetype_id: u8,
+    role_id: u8,
+    op_kind: u8,
+    out_anchor_id_buf: *mut u8,
+    out_anchor_id_cap: u64
+) -> i64 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (≥10 mandatory · csslc-W15-1 #[test] supported)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t01_archetype_count_is_six() -> i32 {
+    if archetype_count() == 6u8 { 0 } else { 1 }
+}
+
+#[test]
+fn t02_role_count_is_four() -> i32 {
+    if role_count() == 4u8 { 0 } else { 1 }
+}
+
+#[test]
+fn t03_archetype_fallback_is_phantasia() -> i32 {
+    if archetype_fallback() == 0u8 { 0 } else { 1 }
+}
+
+#[test]
+fn t04_archetype_constants_distinct() -> i32 {
+    if archetype_phantasia() == archetype_ebony_mimic() { return 1 ; }
+    if archetype_ebony_mimic() == archetype_phoenix()   { return 2 ; }
+    if archetype_phoenix() == archetype_octarine()      { return 3 ; }
+    if archetype_octarine() == archetype_paradox()      { return 4 ; }
+    if archetype_paradox() == archetype_fossil()        { return 5 ; }
+    0
+}
+
+#[test]
+fn t05_role_constants_distinct() -> i32 {
+    if role_dm() == role_gm()                { return 1 ; }
+    if role_gm() == role_collaborator()      { return 2 ; }
+    if role_collaborator() == role_coder()   { return 3 ; }
+    if role_dm() == role_coder()             { return 4 ; }
+    0
+}
+
+#[test]
+fn t06_binding_matrix_has_24_cells() -> i32 {
+    let n: u32 = (archetype_count() as u32) * (role_count() as u32) ;
+    if n != 24u32                           { return 1 ; }
+    if binding_matrix_cell_count() != 24u32 { return 2 ; }
+    0
+}
+
+#[test]
+fn t07_default_binding_matrix_all_denied() -> i32 {
+    // Σ-mask default-deny : all 24 cells denied at-session-start
+    if binding_matrix_default() == 0u32 { 0 } else { 1 }
+}
+
+#[test]
+fn t08_cell_id_phantasia_dm_is_zero() -> i32 {
+    let cid: u32 = cell_id(archetype_phantasia(), role_dm()) ;
+    if cid == 0u32 { 0 } else { 1 }
+}
+
+#[test]
+fn t09_cell_id_fossil_coder_is_max() -> i32 {
+    let cid: u32 = cell_id(archetype_fossil(), role_coder()) ;
+    // 5 × 4 + 3 = 23 (last cell of binding-matrix)
+    if cid == 23u32 { 0 } else { 1 }
+}
+
+#[test]
+fn t10_cell_id_out_of_range_falls_back_to_zero() -> i32 {
+    let cid_a: u32 = cell_id(99u8, role_dm()) ;
+    if cid_a != 0u32 { return 1 ; }
+    let cid_r: u32 = cell_id(archetype_phantasia(), 99u8) ;
+    if cid_r != 0u32 { return 2 ; }
+    0
+}
+
+#[test]
+fn t11_op_kind_distinct_canonical() -> i32 {
+    if op_kind_grant() == op_kind_revoke() { return 1 ; }
+    if op_kind_grant() != 0u8              { return 2 ; }
+    if op_kind_revoke() != 1u8             { return 3 ; }
+    0
+}
+
+#[test]
+fn t12_resolve_archetype_falls_back_for_out_of_range() -> i32 {
+    // out-of-range role_id ⇒ fallback Phantasia
+    let r1: u8 = resolve_archetype_for_role(2u8, 99u8) ;
+    if r1 != 0u8 { return 1 ; }
+    // out-of-range archetype ⇒ fallback Phantasia
+    let r2: u8 = resolve_archetype_for_role(99u8, role_dm()) ;
+    if r2 != 0u8 { return 2 ; }
+    // valid input passes-through
+    let r3: u8 = resolve_archetype_for_role(archetype_phoenix(), role_gm()) ;
+    if r3 != 2u8 { return 3 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME-DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+// Q-12 sovereign-choice mechanism upholds S-01 consent-as-OS, S-04 ¬override,
+// S-15 ¬AI-deceive-AI. NO archetype-locked content · NO pay-to-unlock ·
+// 1-step-revocation · Σ-Chain audit-trail every grant + revoke. Phantasia
+// default-fallback ensures game playable even with all-cells-denied
+// (zero-cap state degrades-gracefully ¬ lockout).
+//
+// The sovereign chooses. The substrate listens. No archetype is forced.
