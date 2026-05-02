@@ -45,6 +45,45 @@ pub const COMPOSE_TEX_H: u32 = 256;
 /// by this scalar so the conventional scene shows through equally.
 pub const DEFAULT_OVERLAY_STRENGTH: f32 = 0.50;
 
+/// Default AMOLED black-threshold (≈ 10/255 = 0.039). Sub-threshold alpha
+/// emits pure (0,0,0,0) so AMOLED/OLED/HDR-pitch-black panels keep pixels
+/// fully off · maximum contrast + power savings + zero black-leakage.
+pub const DEFAULT_AMOLED_BLACK_THRESHOLD: f32 = 0.04;
+
+/// Default contrast S-curve strength (0 = linear · 1 = strong S-curve).
+/// 0.35 tuned for AMOLED-pop : substrate-pixels stand out against pure
+/// black void without crushing legitimate mid-tones.
+pub const DEFAULT_AMOLED_CONTRAST: f32 = 0.35;
+
+/// Display-profile discriminant (substrate-canon · matches `compose_ctl.w`).
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayProfile {
+    /// AMOLED · pitch-black emit-nothing · highest contrast (DEFAULT)
+    Amoled = 0,
+    /// OLED · near-pitch-black · slight gray-lift OK
+    Oled = 1,
+    /// IPS LCD · backlit · blacks are gray · lift-blacks-allowed
+    IpsLcd = 2,
+    /// VA LCD · good contrast · between IPS + OLED
+    VaLcd = 3,
+    /// HDR external · 1000+ nit peak · wider gamut
+    HdrExt = 4,
+}
+
+impl DisplayProfile {
+    /// Per-profile (black_threshold, contrast) tuned defaults.
+    pub fn defaults(self) -> (f32, f32) {
+        match self {
+            Self::Amoled => (DEFAULT_AMOLED_BLACK_THRESHOLD, DEFAULT_AMOLED_CONTRAST),
+            Self::Oled => (0.03, 0.30),
+            Self::IpsLcd => (0.0, 0.15), // do NOT crush blacks · IPS already gray
+            Self::VaLcd => (0.02, 0.25),
+            Self::HdrExt => (0.05, 0.40), // can afford strong S-curve
+        }
+    }
+}
+
 /// Embedded WGSL source for the compose shader.
 pub const SUBSTRATE_COMPOSE_WGSL: &str = include_str!("../shaders/substrate_compose.wgsl");
 
@@ -76,6 +115,12 @@ pub struct SubstrateComposePipeline {
     /// Cached overlay strength so `set_overlay_strength` only re-uploads
     /// the uniform when it actually changes.
     overlay_strength: f32,
+    /// AMOLED-aware black-threshold · sub-threshold alpha emits true (0,0,0,0).
+    black_threshold: f32,
+    /// Contrast S-curve strength (0 = linear · 1 = strong).
+    contrast: f32,
+    /// Cached display-profile-id (matches compose_ctl.w in shader).
+    display_profile: DisplayProfile,
     /// Cached texture dimensions. Re-allocated by `ensure_size` if the
     /// host ever resizes the substrate pixel-field at runtime.
     width: u32,
@@ -123,7 +168,12 @@ impl SubstrateComposePipeline {
         });
 
         let uniforms = ComposeUniforms {
-            compose_ctl: [DEFAULT_OVERLAY_STRENGTH, 0.0, 0.0, 0.0],
+            compose_ctl: [
+                DEFAULT_OVERLAY_STRENGTH,
+                DEFAULT_AMOLED_BLACK_THRESHOLD,
+                DEFAULT_AMOLED_CONTRAST,
+                DisplayProfile::Amoled as u32 as f32,
+            ],
         };
         let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("loa-host/substrate-compose-uniforms"),
@@ -254,6 +304,9 @@ impl SubstrateComposePipeline {
             bind_group,
             pipeline,
             overlay_strength: DEFAULT_OVERLAY_STRENGTH,
+            black_threshold: DEFAULT_AMOLED_BLACK_THRESHOLD,
+            contrast: DEFAULT_AMOLED_CONTRAST,
+            display_profile: DisplayProfile::Amoled,
             width: COMPOSE_TEX_W,
             height: COMPOSE_TEX_H,
             target_format,
@@ -348,15 +401,71 @@ impl SubstrateComposePipeline {
             return;
         }
         self.overlay_strength = s;
-        let uniforms = ComposeUniforms {
-            compose_ctl: [s, 0.0, 0.0, 0.0],
-        };
-        queue.write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+        self.write_uniforms(queue);
         log_event(
             "DEBUG",
             "loa-host/substrate-compose",
             &format!("overlay-strength · {s:.3}"),
         );
+    }
+
+    /// Adopt a `DisplayProfile`. Updates `black_threshold` + `contrast` to
+    /// the profile's tuned defaults · re-uploads uniform on change. Call
+    /// once at startup after detecting the panel + on monitor-change.
+    pub fn set_display_profile(&mut self, queue: &wgpu::Queue, profile: DisplayProfile) {
+        if self.display_profile == profile {
+            return;
+        }
+        let (bt, ct) = profile.defaults();
+        self.display_profile = profile;
+        self.black_threshold = bt;
+        self.contrast = ct;
+        self.write_uniforms(queue);
+        log_event(
+            "INFO",
+            "loa-host/substrate-compose",
+            &format!(
+                "display-profile · {profile:?} · black_thresh={bt:.3} · contrast={ct:.3}"
+            ),
+        );
+    }
+
+    /// Tweak black-threshold (AMOLED-aware true-black gate).
+    pub fn set_black_threshold(&mut self, queue: &wgpu::Queue, threshold: f32) {
+        let t = threshold.clamp(0.0, 1.0);
+        if (t - self.black_threshold).abs() < f32::EPSILON {
+            return;
+        }
+        self.black_threshold = t;
+        self.write_uniforms(queue);
+    }
+
+    /// Tweak contrast S-curve strength.
+    pub fn set_contrast(&mut self, queue: &wgpu::Queue, contrast: f32) {
+        let c = contrast.clamp(0.0, 1.0);
+        if (c - self.contrast).abs() < f32::EPSILON {
+            return;
+        }
+        self.contrast = c;
+        self.write_uniforms(queue);
+    }
+
+    fn write_uniforms(&self, queue: &wgpu::Queue) {
+        let uniforms = ComposeUniforms {
+            compose_ctl: [
+                self.overlay_strength,
+                self.black_threshold,
+                self.contrast,
+                self.display_profile as u32 as f32,
+            ],
+        };
+        queue.write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+    }
+
+    /// Current display-profile.
+    #[must_use]
+    pub fn display_profile(&self) -> DisplayProfile {
+        self.display_profile
     }
 
     /// Current overlay strength.

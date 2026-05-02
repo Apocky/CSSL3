@@ -27,7 +27,15 @@
 @group(0) @binding(1) var substrate_sampler : sampler;
 
 struct ComposeUniforms {
-    // x = overlay strength (0..1) · y = unused · z = unused · w = unused
+    // x = overlay strength (0..1)
+    // y = AMOLED black-threshold : alpha below this → emit pure (0,0,0,0)
+    //     Default 0.04 (≈ 10/255). Crucial on AMOLED/OLED/HDR-pitch-black
+    //     displays where any non-zero RGB lights the pixel + costs power.
+    // z = contrast S-curve strength (0 = linear · 1 = strong S-curve)
+    //     Default 0.35. Pumps mid-tones · keeps black true-black + crushes
+    //     near-black noise so substrate-pixels POP on dark backgrounds.
+    // w = display-profile-id : 0 = AMOLED · 1 = OLED · 2 = IPS · 3 = VA · 4 = HDR-EXT
+    //     Reserved for future per-profile gamut adjustment.
     compose_ctl : vec4<f32>,
 };
 
@@ -49,12 +57,35 @@ fn vs_main(@builtin(vertex_index) vid : u32) -> VsOut {
     return out;
 }
 
+// AMOLED-aware S-curve : pushes mid-tones up · keeps black at zero
+// emission (no leakage). `c` ∈ [0,1] is contrast strength. Identity at c=0.
+fn amoled_s_curve(x : f32, c : f32) -> f32 {
+    let cx = clamp(x, 0.0, 1.0);
+    // smoothstep gives a clean S-curve through (0,0)..(1,1) ; mix with
+    // identity controls strength. Pure pitch-black at x=0 ALWAYS preserved.
+    let s = cx * cx * (3.0 - 2.0 * cx);
+    return mix(cx, s, clamp(c, 0.0, 1.0));
+}
+
 @fragment
 fn fs_main(in : VsOut) -> @location(0) vec4<f32> {
     let sample = textureSample(substrate_tex, substrate_sampler, in.uv);
-    // PixelField is RGBA8 ; alpha encodes per-pixel substrate-confidence.
-    // Scale by the host-driven overlay strength (default 0.50 in `new`).
-    let strength = clamp(u.compose_ctl.x, 0.0, 1.0);
+    let strength      = clamp(u.compose_ctl.x, 0.0, 1.0);
+    let black_thresh  = clamp(u.compose_ctl.y, 0.0, 1.0);
+    let contrast      = clamp(u.compose_ctl.z, 0.0, 1.0);
+
+    // § AMOLED true-black gate : sub-threshold alpha → emit nothing at all.
+    //   On AMOLED/OLED any non-zero RGB lights the pixel. Sub-threshold
+    //   substrate-confidence is treated as background · pure (0,0,0,0).
+    if (sample.a < black_thresh) {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    // § S-curve contrast per channel : substrate-pixels POP on pitch-black.
+    let r = amoled_s_curve(sample.r, contrast);
+    let g = amoled_s_curve(sample.g, contrast);
+    let b = amoled_s_curve(sample.b, contrast);
+
     let a = sample.a * strength;
-    return vec4<f32>(sample.rgb, a);
+    return vec4<f32>(r, g, b, a);
 }
