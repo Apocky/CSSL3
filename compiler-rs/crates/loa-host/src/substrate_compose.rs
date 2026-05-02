@@ -41,14 +41,22 @@ pub const COMPOSE_TEX_W: u32 = 256;
 /// Default substrate-pixel-field height (matches `substrate_render::DEFAULT_SUBSTRATE_H`).
 pub const COMPOSE_TEX_H: u32 = 256;
 
-/// Default overlay strength : 50 %. The shader multiplies sampled alpha
-/// by this scalar so the conventional scene shows through equally.
-pub const DEFAULT_OVERLAY_STRENGTH: f32 = 0.50;
+/// § T11-W18-PARADIGM-FOREST (Apocky-pivot 2026-05-02) · the SUBSTRATE-RESONANCE
+/// pixel-field is the PRIMARY visual representation · NOT a 50% overlay over
+/// conventional rendering. Set to 1.0 so ω-field cells dominate the screen ·
+/// the conventional scene-pass + cfer-raymarcher + tonemap are infrastructure
+/// that the substrate-pixels OBSCURE · NOT a peer that gets-half-the-pixels.
+/// Operator can dim via `set_overlay_strength` if they want to see the
+/// conventional layer for debugging.
+pub const DEFAULT_OVERLAY_STRENGTH: f32 = 1.0;
 
-/// Default AMOLED black-threshold (≈ 10/255 = 0.039). Sub-threshold alpha
-/// emits pure (0,0,0,0) so AMOLED/OLED/HDR-pitch-black panels keep pixels
-/// fully off · maximum contrast + power savings + zero black-leakage.
-pub const DEFAULT_AMOLED_BLACK_THRESHOLD: f32 = 0.04;
+/// § T11-W18-PARADIGM-FOREST · sub-threshold alpha → pure (0,0,0,0) so AMOLED
+/// preserves true-black void · BUT we want substrate-pixels to dominate ·
+/// lowered 0.04 → 0.005 (≈ 1/255) so almost-every substrate-resonance
+/// emission lights · only fully-zero alpha is suppressed. Crystal-emergent
+/// fringes · interference patterns · spectral fringes all visible against
+/// the pitch-black AMOLED void.
+pub const DEFAULT_AMOLED_BLACK_THRESHOLD: f32 = 0.005;
 
 /// Default contrast S-curve strength (0 = linear · 1 = strong S-curve).
 /// 0.35 tuned for AMOLED-pop : substrate-pixels stand out against pure
