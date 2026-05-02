@@ -1,0 +1,17 @@
+// § T11-W19-G · quantum-circuit primitive `qmeasure` fixture
+//
+// Exercises the `qmeasure(state)` recognizer : a single-segment
+// path-callee with one u64 handle argument lowers to `func.call @
+// cssl_quantum_qmeasure` with `MirType::Int(I32)` result (basis index).
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W19-G @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.qmeasure
+
+extern "C" fn cssl_quantum_qmeasure(state: u64) -> i32 ;
+
+pub fn run_measure(state: u64) -> i32 {
+    let basis: i32 = qmeasure(state) ;
+    basis
+}

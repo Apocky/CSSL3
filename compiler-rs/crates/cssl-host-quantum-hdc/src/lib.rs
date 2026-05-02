@@ -106,7 +106,13 @@
 //!     for follow-up slices — they require a consumer to motivate
 //!     the dimensional-cost.
 
-#![forbid(unsafe_code)]
+// § T11-W19-G : `forbid` relaxed to `deny` so the `ffi` module can host
+//   `extern "C" fn` declarations (which `forbid` treats as unsafe-context).
+//   The module itself contains no `unsafe` blocks ; the deny still fires
+//   if a future contributor introduces one. PRIME-DIRECTIVE alignment
+//   preserved : pure compute, no I/O, no telemetry, registry-bounded
+//   handle table only.
+#![deny(unsafe_code)]
 #![doc(html_root_url = "https://cssl.dev/api/cssl-host-quantum-hdc/")]
 // ℂ-HDC similarity / coherence values are intrinsically lossy float
 // computations (sum-of-products, atan2, sqrt). The cast / float lints
@@ -125,9 +131,17 @@
 
 pub mod complex;
 pub mod cvec;
+// § T11-W19-G : extern "C" FFI shim for csslc-compiled `.csl` source.
+//   Hosts the canonical symbol surface for `qbind` / `qsuperpose` /
+//   `qmeasure` / `qentangle` quantum-circuit primitives.
+pub mod ffi;
 
 pub use complex::{wrap_phase, C32};
 pub use cvec::{bundle, interfere, CHdcVec, CHDC_DIM};
+pub use ffi::{
+    cssl_quantum_qbind, cssl_quantum_qentangle, cssl_quantum_qmeasure,
+    cssl_quantum_qsuperpose, intern_vec, lookup_vec, registry_len,
+};
 
 /// § Sentinel — re-exported so consumers can verify they linked the
 ///   stage-0 quantum-HDC scaffold at runtime.
