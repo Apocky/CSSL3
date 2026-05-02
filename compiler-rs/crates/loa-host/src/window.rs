@@ -88,25 +88,35 @@ pub const INITIAL_HEIGHT: u32 = 1440;
 /// Run-time selection of the window's display mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WindowMode {
-    /// Borderless fullscreen at primary monitor's native resolution. Default.
+    /// Borderless fullscreen at primary monitor's native resolution. Was
+    /// the default until T11-W18-FULLSCREEN-EXCLUSIVE — DWM compositor caps
+    /// borderless at 60Hz regardless of present-mode, so we now default to
+    /// `Exclusive` to bypass DWM and reach 120/144Hz on high-refresh panels.
     Borderless,
     /// Windowed at INITIAL_WIDTH × INITIAL_HEIGHT.
     Windowed,
-    /// Exclusive fullscreen at primary monitor's native resolution.
+    /// True-fullscreen-exclusive at primary monitor's native resolution +
+    /// highest available refresh-rate. Bypasses DWM compositor → uncapped
+    /// frame-pacing on the GPU. T11-W18-FULLSCREEN-EXCLUSIVE default.
     Exclusive,
 }
 
 impl WindowMode {
-    /// Parse the `CSSL_LOA_WINDOW` env-var. Default = Borderless.
+    /// Parse the `CSSL_LOA_WINDOW` env-var. Default = Exclusive
+    /// (T11-W18-FULLSCREEN-EXCLUSIVE — bypass DWM 60Hz cap on Windows).
+    /// `LOA_WINDOW_MODE` is accepted as an alias for compat with the
+    /// W18-FULLSCREEN-EXCLUSIVE mission spec.
     fn from_env() -> Self {
-        match std::env::var("CSSL_LOA_WINDOW")
+        let raw = std::env::var("CSSL_LOA_WINDOW")
+            .or_else(|_| std::env::var("LOA_WINDOW_MODE"))
             .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
+            .to_ascii_lowercase();
+        match raw.as_str() {
             "windowed" => Self::Windowed,
+            "borderless" => Self::Borderless,
             "exclusive" => Self::Exclusive,
-            _ => Self::Borderless,
+            // Empty / unrecognized → new default = Exclusive.
+            _ => Self::Exclusive,
         }
     }
 }
@@ -1387,8 +1397,12 @@ impl ApplicationHandler for App {
                 self.fullscreen_now = false;
             }
             WindowMode::Exclusive => {
-                // Exclusive-fullscreen requires a VideoMode handle ; on
-                // platforms without one we fall back to Borderless.
+                // T11-W18-FULLSCREEN-EXCLUSIVE — true-fullscreen-exclusive
+                // requires a `VideoMode` handle, which winit only exposes
+                // AFTER the window+monitor pair is materialized. We open
+                // borderless first so the swapchain can size itself, then
+                // promote to `Fullscreen::Exclusive(video_mode)` below
+                // (search for "T11-W18-FULLSCREEN-EXCLUSIVE · promote-now").
                 attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
                 self.fullscreen_now = true;
             }
@@ -1454,6 +1468,70 @@ impl ApplicationHandler for App {
                 detected_profile, monitor_info.hdr_peak_nits
             ),
         );
+
+        // § T11-W18-FULLSCREEN-EXCLUSIVE · promote-now ----------------------
+        // If Exclusive was requested, query the panel's available
+        // `VideoMode`s and pick the one with the highest (size, refresh-Hz)
+        // tuple. Promote the already-borderless window to true-fullscreen-
+        // exclusive via `set_fullscreen(Fullscreen::Exclusive(vm))` so the
+        // GPU bypasses DWM compositor (which otherwise pins frame-rate to
+        // 60Hz on borderless on Windows regardless of present-mode).
+        if matches!(self.initial_mode, WindowMode::Exclusive) {
+            if let Some(monitor) = window.current_monitor() {
+                let chosen: Option<winit::monitor::VideoModeHandle> = monitor
+                    .video_modes()
+                    .max_by_key(|vm| {
+                        let s = vm.size();
+                        // Sort priority : pixel-area > refresh-rate-mHz >
+                        // bit-depth. Native panel-resolution always wins.
+                        (
+                            (s.width as u64) * (s.height as u64),
+                            vm.refresh_rate_millihertz() as u64,
+                            vm.bit_depth() as u64,
+                        )
+                    });
+                match chosen {
+                    Some(vm) => {
+                        let s = vm.size();
+                        let hz = (vm.refresh_rate_millihertz() / 1000).max(1);
+                        log_event(
+                            "INFO",
+                            "loa-host/window",
+                            &format!(
+                                "fullscreen-exclusive · selecting VideoMode · {}x{} @ {}Hz · bit_depth={}",
+                                s.width, s.height, hz, vm.bit_depth()
+                            ),
+                        );
+                        window.set_fullscreen(Some(Fullscreen::Exclusive(vm)));
+                        // Confirm post-promote that the swap took.
+                        log_event(
+                            "INFO",
+                            "loa-host/window",
+                            &format!(
+                                "fullscreen-exclusive · ACTIVE · DWM-bypass-attempted · panel {}x{} @ {}Hz",
+                                s.width, s.height, hz
+                            ),
+                        );
+                    }
+                    None => {
+                        log_event(
+                            "WARN",
+                            "loa-host/window",
+                            "fullscreen-exclusive · no VideoMode enumerated · staying borderless",
+                        );
+                        self.initial_mode = WindowMode::Borderless;
+                    }
+                }
+            } else {
+                log_event(
+                    "WARN",
+                    "loa-host/window",
+                    "fullscreen-exclusive · current_monitor() unavailable · staying borderless",
+                );
+                self.initial_mode = WindowMode::Borderless;
+            }
+        }
+        // § /T11-W18-FULLSCREEN-EXCLUSIVE · promote-now ---------------------
 
         // CPU is capped to ≤ 512x512 (perf safety) ; GPU runs at native.
         let (cpu_w, cpu_h, gpu_w, gpu_h) = if monitor_info.width > 0 && monitor_info.height > 0 {
@@ -2216,17 +2294,76 @@ mod tests {
         assert!(app.engine_state.lock().is_ok());
     }
 
-    #[test]
-    fn window_mode_default_is_borderless() {
-        std::env::remove_var("CSSL_LOA_WINDOW");
-        assert_eq!(WindowMode::from_env(), WindowMode::Borderless);
+    /// T11-W18-FULLSCREEN-EXCLUSIVE — env-var-based tests share PROCESS-GLOBAL
+    /// state. Cargo runs tests in parallel by default, so any concurrent
+    /// `set_var` / `remove_var` from another test would race against the
+    /// reads here. We serialize all `from_env()` cases through a single
+    /// `Mutex<()>` and run them sequentially within ONE `#[test]` to keep
+    /// the cases atomic with respect to env-var manipulation.
+    fn env_lock() -> &'static std::sync::Mutex<()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
     }
 
     #[test]
-    fn window_mode_windowed_via_env() {
+    fn window_mode_from_env_cases() {
+        // Acquire the env-mutex for the duration of every case so no other
+        // test (present or future) can race us mid-assert.
+        let _g = env_lock().lock().unwrap();
+
+        // Helper : reset both vars between cases.
+        let reset = || {
+            std::env::remove_var("CSSL_LOA_WINDOW");
+            std::env::remove_var("LOA_WINDOW_MODE");
+        };
+
+        // Case 1 : default = Exclusive (T11-W18-FULLSCREEN-EXCLUSIVE).
+        // No env-var set → bypasses DWM 60Hz compositor cap.
+        reset();
+        assert_eq!(
+            WindowMode::from_env(),
+            WindowMode::Exclusive,
+            "default with no env-var must be Exclusive"
+        );
+
+        // Case 2 : explicit `windowed`.
+        reset();
         std::env::set_var("CSSL_LOA_WINDOW", "windowed");
         assert_eq!(WindowMode::from_env(), WindowMode::Windowed);
-        std::env::remove_var("CSSL_LOA_WINDOW");
+
+        // Case 3 : explicit `borderless` (opt-out of new default).
+        reset();
+        std::env::set_var("CSSL_LOA_WINDOW", "borderless");
+        assert_eq!(WindowMode::from_env(), WindowMode::Borderless);
+
+        // Case 4 : explicit `exclusive`.
+        reset();
+        std::env::set_var("CSSL_LOA_WINDOW", "exclusive");
+        assert_eq!(WindowMode::from_env(), WindowMode::Exclusive);
+
+        // Case 5 : `LOA_WINDOW_MODE` alias from the W18 mission spec.
+        reset();
+        std::env::set_var("LOA_WINDOW_MODE", "borderless");
+        assert_eq!(WindowMode::from_env(), WindowMode::Borderless);
+
+        // Case 6 : `CSSL_LOA_WINDOW` wins over `LOA_WINDOW_MODE` alias when
+        // both are set (canonical name takes priority).
+        reset();
+        std::env::set_var("CSSL_LOA_WINDOW", "windowed");
+        std::env::set_var("LOA_WINDOW_MODE", "borderless");
+        assert_eq!(
+            WindowMode::from_env(),
+            WindowMode::Windowed,
+            "canonical CSSL_LOA_WINDOW must take priority over LOA_WINDOW_MODE alias"
+        );
+
+        // Case 7 : unrecognized value → falls back to new default = Exclusive.
+        reset();
+        std::env::set_var("CSSL_LOA_WINDOW", "garbage-not-a-mode");
+        assert_eq!(WindowMode::from_env(), WindowMode::Exclusive);
+
+        // Always leave the env clean for any later test that might read it.
+        reset();
     }
 
     #[test]
