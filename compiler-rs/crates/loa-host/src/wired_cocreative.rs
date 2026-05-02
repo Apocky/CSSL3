@@ -26,6 +26,18 @@ pub fn optimizer_dim(opt: Option<&CocreativeOptimizer>) -> usize {
     opt.map_or(0, |o| o.bias_vector().dim())
 }
 
+// § T11-W11-GM-DM-DEEPEN ------------------------------------------------
+// Convert a persona-axes byte-vector into a co-author bias-vector seed.
+
+#[must_use]
+pub fn persona_axes_to_bias_seed(axes: [i8; 8]) -> [f32; 8] {
+    let mut out = [0.0_f32; 8];
+    for (i, &a) in axes.iter().enumerate() {
+        out[i] = f32::from(a) / 100.0;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,5 +51,24 @@ mod tests {
     fn fresh_optimizer_dim_matches_constructor() {
         let opt = CocreativeOptimizer::new(16, DEFAULT_LR);
         assert_eq!(optimizer_dim(Some(&opt)), 16);
+    }
+
+    // § T11-W11-GM-DM-DEEPEN
+    #[test]
+    fn persona_axes_to_bias_seed_normalizes() {
+        let axes = [100i8, -100, 50, -50, 0, 25, -75, 10];
+        let seed = persona_axes_to_bias_seed(axes);
+        assert!((seed[0] - 1.0).abs() < 1e-6);
+        assert!((seed[1] - (-1.0)).abs() < 1e-6);
+        assert!((seed[2] - 0.5).abs() < 1e-6);
+        assert!((seed[4] - 0.0).abs() < 1e-6);
+        assert!((seed[5] - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn persona_axes_zero_yields_zero_seed() {
+        let axes = [0i8; 8];
+        let seed = persona_axes_to_bias_seed(axes);
+        assert_eq!(seed, [0.0_f32; 8]);
     }
 }

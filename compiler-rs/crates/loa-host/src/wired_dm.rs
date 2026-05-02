@@ -33,6 +33,25 @@ pub fn dm_cap_bit_count() -> u32 {
     n
 }
 
+// § T11-W11-GM-DM-DEEPEN ------------------------------------------------
+// Thin helpers that bridge the new local DmArc with the canonical
+// cssl-host-dm cap-table. Read-only — no caps granted.
+
+/// Translate a 5-phase arc-byte into its canonical label.
+#[must_use]
+pub fn arc_phase_label_from_byte(b: u8) -> &'static str {
+    match crate::dm_arc::ArcPhase::from_index(b) {
+        Some(p) => p.label(),
+        None => "unknown",
+    }
+}
+
+/// Convenience : count of arc-phases defined locally · always 5.
+#[must_use]
+pub fn arc_phase_count() -> u32 {
+    crate::dm_arc::ARC_PHASE_COUNT as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,5 +66,21 @@ mod tests {
         // SCENE_EDIT=1 · SPAWN_NPC=2 · COMPANION_RELAY=4.
         assert_eq!(DM_CAP_SCENE_EDIT | DM_CAP_SPAWN_NPC | DM_CAP_COMPANION_RELAY, 7);
         assert_eq!(DM_CAP_ALL, 7);
+    }
+
+    // § T11-W11-GM-DM-DEEPEN
+    #[test]
+    fn arc_phase_count_is_five() {
+        assert_eq!(arc_phase_count(), 5);
+    }
+
+    #[test]
+    fn arc_phase_labels_canonical() {
+        assert_eq!(arc_phase_label_from_byte(0), "Discovery");
+        assert_eq!(arc_phase_label_from_byte(1), "Tension");
+        assert_eq!(arc_phase_label_from_byte(2), "Crisis");
+        assert_eq!(arc_phase_label_from_byte(3), "Catharsis");
+        assert_eq!(arc_phase_label_from_byte(4), "Quiet");
+        assert_eq!(arc_phase_label_from_byte(99), "unknown");
     }
 }

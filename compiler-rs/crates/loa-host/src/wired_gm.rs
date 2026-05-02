@@ -35,6 +35,36 @@ pub fn gm_cap_bit_count() -> u32 {
     n
 }
 
+// § T11-W11-GM-DM-DEEPEN ------------------------------------------------
+// Thin helpers that bridge the local GmPersona + ResponseKind with the
+// canonical cssl-host-gm cap-table. Read-only — no caps granted.
+
+#[must_use]
+pub fn persona_axis_count() -> u32 {
+    crate::gm_persona::PERSONA_AXIS_COUNT as u32
+}
+
+#[must_use]
+pub fn response_kind_count() -> u32 {
+    8
+}
+
+#[must_use]
+pub fn response_kind_label_from_byte(b: u8) -> &'static str {
+    use crate::gm_persona::ResponseKind;
+    match b {
+        0 => ResponseKind::Declarative.label(),
+        1 => ResponseKind::Interrogative.label(),
+        2 => ResponseKind::Evocative.label(),
+        3 => ResponseKind::Cautionary.label(),
+        4 => ResponseKind::Cryptic.label(),
+        5 => ResponseKind::Affirmative.label(),
+        6 => ResponseKind::SubstrateAttest.label(),
+        7 => ResponseKind::Silence.label(),
+        _ => "unknown",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,5 +78,24 @@ mod tests {
     fn cap_bits_are_disjoint_powers_of_two() {
         // TEXT_EMIT=1 · VOICE_EMIT=2 · TONE_TUNE=4.
         assert_eq!(GM_CAP_TEXT_EMIT | GM_CAP_VOICE_EMIT | GM_CAP_TONE_TUNE, 7);
+    }
+
+    // § T11-W11-GM-DM-DEEPEN
+    #[test]
+    fn persona_axis_count_is_eight() {
+        assert_eq!(persona_axis_count(), 8);
+    }
+
+    #[test]
+    fn response_kind_count_is_eight() {
+        assert_eq!(response_kind_count(), 8);
+    }
+
+    #[test]
+    fn response_kind_labels_canonical() {
+        assert_eq!(response_kind_label_from_byte(0), "declarative");
+        assert_eq!(response_kind_label_from_byte(6), "substrate-attest");
+        assert_eq!(response_kind_label_from_byte(7), "silence");
+        assert_eq!(response_kind_label_from_byte(255), "unknown");
     }
 }
