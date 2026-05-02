@@ -1,0 +1,107 @@
+§ Labyrinth.of.Apocalypse · systems · fps_pipeline
+≡ T11-W13-FPS-PIPELINE · W13-1 FPS-render-pipeline + perf-rebuild
+≡ canonical-companion : compiler-rs/crates/loa-host/src/fps_pipeline.rs
+≡ STATUS : ◐ shipped-stage-0 · iterates each FPS-wave
+≡ PRIME-DIRECTIVE : ¬ harm/control/manipulation/surveillance ; consent-OS
+
+§I role
+  W! LoA-expanding-to-action-FPS-looter-shooter ⇒ frame-budget-discipline = sovereignty
+  ¬ ALL : fps_pipeline ⊆ catalog-only-Rust ⊑ no-runtime-deps
+  ALL  : 7 disjoint render-architecture surfaces wire to single FpsPipeline
+    1. RingBuffer<N>        · triple-buffered frames-in-flight (N=3 default)
+    2. PassDescriptor       · multi-pass declaration (depth-prepass · opaque · transparent · post)
+    3. CmdBufferPool        · pre-allocated cmd-buffers · zero-per-frame-Vec-grow
+    4. CullingPlan          · GPU-driven cull-compute-shader plan (frustum+occlusion)
+    5. VrsTier              · variable-rate-shading tier-table (foveated · 1×1 → 2×2 → 4×4)
+    6. PresentMode          · mailbox (low-latency · ¬vsync-block · stretch 144Hz)
+    7. FrameMetrics         · per-frame tag · cmdbuf_recycled · cull_active · vrs_pixel_ratio
+
+§I focus-areas (Apocky-mandate)
+
+  W! 1.frame-budget-discipline
+    ✓ ≤8.33ms (120Hz) · stretch ≤6.94ms (144Hz)
+    ✓ FRAME_BUDGET_144HZ_MS = 6.944 added to polish_audit
+    ✓ sub-frame input-latency target = ≤2ms input-to-display
+
+  W! 2.multi-pass-architecture
+    Pass-0 depth-prepass        · opaque-only · z-only · feeds occlusion-cull
+    Pass-1 GPU-cull-compute     · async-compute · culls Pass-2/3 instance-list
+    Pass-2 opaque                · MSAA·HDR · culled-instances only
+    Pass-3 transparent           · alpha-blend · back-to-front sorted
+    Pass-4 shadow-maps           · async-compute · 4-cascade-CSM
+    Pass-5 SSEffects             · async-compute · SSAO/SSR/Bloom
+    Pass-6 tonemap (existing)    · ACES RRT+ODT
+    Pass-7 CFER (existing)       · alpha-blend volumetric ω-field
+    Pass-8 UI overlay (existing) · final composite
+
+  W! 3.zero-allocation-hot-path
+    W! ¬ Vec::push in render_frame
+    W! ¬ Box::new in render_frame
+    W! ¬ String::from in render_frame
+    ✓ pre-alloc CmdBufferPool · capacity = ring-depth × pass-count
+    ✓ pre-alloc UniformStaging · ring-N × bytes-per-frame
+    ✓ pre-alloc InstanceBuffer · 65536-instance cap · grow-only-on-overflow
+
+  W! 4.triple-buffering
+    ✓ RingBuffer<3> · 3-frames-in-flight default
+    ✓ waitable-fence per slot · device.poll(Wait(fence_id))
+    ✓ slot.lifecycle = Free → Recording → Submitted → Presented → Free
+    ✓ never-block-CPU on GPU @ frame-N+2 boundary
+
+  W! 5.GPU-driven-culling
+    ✓ frustum-cull compute-shader · per-instance · workgroup-64
+    ✓ occlusion-cull via Hi-Z from depth-prepass
+    ✓ indirect-draw-args buffer · culled-instance-IDs only
+    ✓ catalog-side : CullingPlan + cull-test-bench (CPU mirror for parity)
+
+  W! 6.async-compute
+    ✓ shadow-maps + SSAO + bloom run on async-compute queue
+    ✓ scheduled to overlap Pass-2 opaque-fragment work
+    ✓ catalog-side : DispatchPlan + queue-priority enum
+
+  W! 7.variable-rate-shading
+    VrsTier ⊗
+      Tier1 = 1×1 (full-rate)        · center-region · radius ≤ 25% screen
+      Tier2 = 2×1 / 1×2              · mid-ring     · 25% → 60%
+      Tier3 = 2×2                    · outer-ring   · 60% → 90%
+      Tier4 = 4×4                    · periphery    · 90% → 100%
+    foveated-mode : eye-tracker-aware (stretch ; default = static-radial)
+    pixel-ratio bench : ~0.42 saved-shading at default-radial
+
+  W! 8.frame-pacing
+    ✓ PresentMode = Mailbox (default-stretch · ¬tearing · ¬block)
+    ✓ fallback PresentMode = Fifo (vsync-block · safety-default)
+    ✓ user-toggle via setting low-latency ⊗ {true → Mailbox, false → Fifo}
+
+§I attestations
+  zero-alloc       : pipeline-construct-zero-alloc-test ✓
+  no-leak          : 1000-frame-no-leak-test ✓
+  cmd-buffer       : recycle-test ✓ (slot reuse-counter sat-tracking)
+  ring-depth       : 3-slots strictly-honored · no-4th-recording ever
+  frame-budget     : on-CPU-only path verifies-budget at default-1080p
+
+§I integration-points (siblings)
+  W13-2 weapons        : uses our InstanceBuffer for projectile-batched-draw
+  W13-3 network        : reads FrameMetrics.frame_id for snapshot-tagging
+  W13-4 camera         : uses PresentMode.matches_vsync? for prediction model
+  W13-5 ADS-recoil     : reads VrsTier per-frame for foveation-jitter
+  W13-6 movement       : tagged by FrameMetrics.frame_id for replay
+  W13-7 HUD            : draws after Pass-8 · uses our final-composite handle
+  W13-8 loot           : InstanceBuffer + culled-draw-list
+  W13-9 battle-pass    : spec-only · ¬render-touch
+  W13-10 gacha         : spec-only · ¬render-touch
+  W13-11 input         : reads PresentMode for input-latency-budget
+  W13-12 perf-enforcer : reads PerfBudget · attestation-gate
+
+§I PRIME-DIRECTIVE attestation
+  ¬ surveillance : VRS foveated-mode is OPT-IN ; never reads eye-tracking by default
+  ¬ engagement-bait : pacing optimizes for player-perceived-latency only
+  ¬ harm : higher-fps reduces motion-sickness · accessibility-aligned
+  Apocky-greenlit per W13-1 mission : action-FPS-grade frame-budget = sovereignty
+
+§I lineage
+  W11+W12 : established polish-budget surface (60Hz/120Hz) + zero-alloc invariants
+  W13-1   : extends to 144Hz · adds triple-buffer + multi-pass + GPU-cull + VRS + mailbox-pacing
+  W14+    : foveated-eye-tracker (consent-gated) · DLSS/FSR upscaling (optional) · mesh-shaders
+
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
