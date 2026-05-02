@@ -37,8 +37,8 @@ pub mod transparency;
 
 pub use banner::{Banner, BannerErr, DropRateTable, Rarity};
 pub use pity::{PityCounter, PityErr, PITY_THRESHOLD};
-pub use pull::{PullErr, PullMode, PullOutcome, PullRequest, PullResult};
-pub use refund::{RefundErr, RefundOutcome, RefundRequest, RefundWindow, REFUND_WINDOW_SECS};
+pub use pull::{run_pull, PullErr, PullMode, PullOutcome, PullRequest, PullResult};
+pub use refund::{run_refund, RefundErr, RefundOutcome, RefundRequest, RefundWindow, REFUND_WINDOW_SECS};
 pub use rng::{DetRng, derive_seed_from_pubkey};
 pub use sigma_anchor::{SigmaAnchor, SigmaAnchorErr, SIGMA_ANCHOR_VERSION};
 pub use transparency::{
