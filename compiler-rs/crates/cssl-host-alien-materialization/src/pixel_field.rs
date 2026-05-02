@@ -9,11 +9,15 @@
 
 use cssl_host_crystallization::aspect::{aspect_idx, silhouette_at_angle};
 use cssl_host_crystallization::hdc::{bundle, HdcVec256};
-use cssl_host_crystallization::spectral::{project_to_srgb, IlluminantBlend, SpectralLut};
+use cssl_host_crystallization::spectral::{project_to_srgb, SpectralLut};
 use cssl_host_crystallization::Crystal;
 
+// § T11-W18-B-PERF : rayon for per-row data-parallel pixel work.
+use rayon::prelude::*;
+
 use crate::observer::ObserverCoord;
-use crate::ray::{crystals_near, pixel_direction, walk_ray, RAY_SAMPLES};
+use crate::ray::{pixel_direction, walk_ray, RAY_SAMPLES};
+use crate::spatial_index::UniformGrid;
 
 /// A 2D grid of RGBA pixels. Stored as a flat Vec<[u8; 4]> for direct
 /// upload to wgpu textures (or any native framebuffer).
@@ -80,9 +84,136 @@ pub struct ResonanceFrame {
     pub fingerprint: u32,
 }
 
+/// Sphere-radius (mm) for the per-sample crystal-near query. Tuned so that
+/// at the canonical 8-sample × 16m ray-walk, every meaningful contribution
+/// is captured without inflating the per-cell crystal count.
+const NEAR_RADIUS_MM: i32 = 1500;
+
+/// Per-pixel kernel : compute one pixel's RGBA + per-pixel reduce-tuple
+/// `(was_lit, hdc_word_for_fingerprint)` from `(observer, crystals, grid,
+/// width, height, px, py)`. Pure function : no shared mutable state. This
+/// is the unit of parallel work — invoked once per pixel by the rayon
+/// par-chunks-mut row driver.
+///
+/// Replay-determinism : every input is by-value or shared-immutable ;
+/// crystals_near_grid is set-equivalent to brute-force ; spectral / HDC
+/// accumulation order is over a stable-sorted set of crystal-indices ;
+/// the reduce step combines per-pixel words via wrapping_add (associative
+/// + commutative) so the row-then-reduce shape is order-independent.
+#[inline]
+fn compute_pixel(
+    observer: ObserverCoord,
+    crystals: &[Crystal],
+    grid: &UniformGrid,
+    width: u32,
+    height: u32,
+    px: u32,
+    py: u32,
+) -> ([u8; 4], u32, u64) {
+    // 1. Compute observer-ray direction for this pixel.
+    let (dx, dy, dz) = pixel_direction(observer, px, py, width, height);
+
+    // 2. Walk the ray, collecting contributions from crystals.
+    let samples = walk_ray(observer, dx, dy, dz);
+
+    // 3. Per-pixel resonance accumulator (HDC bundle + spectrum).
+    let mut hdc_inputs: [HdcVec256; RAY_SAMPLES] = [HdcVec256::ZERO; RAY_SAMPLES];
+    let mut hdc_count = 0usize;
+    let mut spec_acc: [u32; 16] = [0; 16];
+    let mut weight_total: u32 = 0;
+
+    for (sample_idx, sample) in samples.iter().enumerate() {
+        // § T11-W18-B-PERF : grid-query replaces O(N) brute-force linear-
+        // scan with O((r/cell)^3 × avg-crystals-per-cell). At 1000-crystal
+        // scenes this is the dominant frame-time win.
+        let near = grid.crystals_near_grid(crystals, sample.world, NEAR_RADIUS_MM);
+        for ci in near {
+            let crystal = &crystals[ci];
+
+            // Σ-mask check : observer must permit the silhouette
+            // aspect for the crystal to contribute at all.
+            if !observer.permits_aspect(aspect_idx::SILHOUETTE) {
+                continue;
+            }
+            if !crystal.aspect_permitted(aspect_idx::SILHOUETTE) {
+                continue;
+            }
+
+            // Silhouette extent at this observer-angle.
+            let yaw = observer.yaw_milli ^ ((sample_idx as u32) * 17);
+            let pitch = observer.pitch_milli ^ ((sample_idx as u32) * 31);
+            let extent = silhouette_at_angle(&crystal.curves, yaw, pitch, crystal.extent_mm);
+            if extent <= 0 {
+                continue;
+            }
+
+            // Distance attenuation : closer crystals contribute more.
+            let d_sq = crystal.dist_sq_mm(sample.world).max(1);
+            let extent_sq = (crystal.extent_mm as i64) * (crystal.extent_mm as i64);
+            let inv_d_scaled =
+                (extent_sq.saturating_mul(1024) / (d_sq + extent_sq)).clamp(1, 1024) as u32;
+            let weight = ((extent as u32 / 16).max(1))
+                .saturating_mul(inv_d_scaled / 4)
+                .max(1)
+                .min(2048);
+
+            if weight == 0 {
+                continue;
+            }
+
+            // HDC: bind the crystal vector with sample-position permutation.
+            let perm = crystal.hdc.permute(sample_idx as u32 * 7);
+            if hdc_count < RAY_SAMPLES {
+                hdc_inputs[hdc_count] = perm;
+                hdc_count += 1;
+            }
+
+            // Spectral accumulation : add weighted reflectance.
+            let lut: &SpectralLut = &crystal.spectral;
+            for band in 0..16 {
+                spec_acc[band] = spec_acc[band]
+                    .saturating_add((lut.data[0][band] as u32) * weight / 32);
+            }
+            weight_total = weight_total.saturating_add(weight);
+        }
+    }
+
+    if weight_total == 0 {
+        // No contributions. Pixel transparent.
+        return ([0, 0, 0, 0], 0, 0);
+    }
+
+    // 4. Bundle HDC inputs for the pixel's resonance vector.
+    let hdc_acc = if hdc_count > 0 {
+        bundle(&hdc_inputs[..hdc_count])
+    } else {
+        HdcVec256::ZERO
+    };
+
+    // 5. Build synthetic SpectralLut + project to sRGB.
+    let mut synth_lut = SpectralLut {
+        data: [[0u8; 16]; 4],
+    };
+    for band in 0..16 {
+        synth_lut.data[0][band] = (spec_acc[band] / weight_total.max(1)).min(255) as u8;
+        synth_lut.data[1][band] = synth_lut.data[0][band] / 3;
+        synth_lut.data[2][band] = synth_lut.data[0][band] / 4;
+        synth_lut.data[3][band] = synth_lut.data[0][band] / 5;
+    }
+    let rgb = project_to_srgb(&synth_lut, observer.illuminant_blend);
+    ([rgb[0], rgb[1], rgb[2], 255], 1, hdc_acc.words[0])
+}
+
 /// The substrate-resonance pixel-field algorithm. Walks each pixel's ray
 /// through the ω-field, accumulates contributions from nearby crystals,
 /// and projects the accumulated spectrum into sRGB.
+///
+/// § T11-W18-B-PERF : pixel rows execute in parallel via rayon
+/// par_chunks_mut. Replay-determinism preserved : per-row work is pure
+/// fn-of-(observer, crystals, grid, py, px), per-row writes go to a
+/// disjoint mutable slice, and the cross-row reduction (n_lit, fp_acc)
+/// uses associative+commutative wrapping_add. The crystal grid is built
+/// once before the parallel-loop and shared by `&UniformGrid` (Sync).
 ///
 /// This is the actual paradigm-shift implementation. Each pixel is a
 /// substrate-query, not a rasterized triangle.
@@ -93,125 +224,41 @@ pub fn resolve_substrate_resonance(
 ) -> ResonanceFrame {
     field.clear();
 
-    // Sphere-radius (mm) for the per-sample crystal-near query.
-    const NEAR_RADIUS_MM: i32 = 1500;
+    let width = field.width;
+    let height = field.height;
 
-    let mut n_pixels_lit: u32 = 0;
-    let mut fp_acc: u64 = 0;
+    // § T11-W18-B-PERF : build spatial-index once per frame. Build cost is
+    // O(C) BTreeMap inserts + ≪ frame_time at C ≤ 10k crystals.
+    let grid = UniformGrid::build(crystals);
 
-    // We accumulate per-pixel into a u32 spectrum buffer (16 bands) before
-    // collapsing to sRGB. Stage-0 reuses a stack array per pixel to avoid
-    // a per-pixel alloc.
-    for py in 0..field.height {
-        for px in 0..field.width {
-            // 1. Compute observer-ray direction for this pixel.
-            let (dx, dy, dz) = pixel_direction(observer, px, py, field.width, field.height);
-
-            // 2. Walk the ray, collecting contributions from crystals.
-            let samples = walk_ray(observer, dx, dy, dz);
-
-            // 3. Per-pixel resonance accumulator (HDC bundle + spectrum).
-            let mut hdc_acc = HdcVec256::ZERO;
-            let mut hdc_inputs: [HdcVec256; RAY_SAMPLES] = [HdcVec256::ZERO; RAY_SAMPLES];
-            let mut hdc_count = 0usize;
-            let mut spec_acc: [u32; 16] = [0; 16];
-            let mut weight_total: u32 = 0;
-
-            for (sample_idx, sample) in samples.iter().enumerate() {
-                for ci in crystals_near(crystals, sample.world, NEAR_RADIUS_MM) {
-                    let crystal = &crystals[ci];
-
-                    // Σ-mask check : observer must permit the silhouette
-                    // aspect for the crystal to contribute at all.
-                    if !observer.permits_aspect(aspect_idx::SILHOUETTE) {
-                        continue;
-                    }
-                    if !crystal.aspect_permitted(aspect_idx::SILHOUETTE) {
-                        continue;
-                    }
-
-                    // Silhouette extent at this observer-angle.
-                    let yaw = observer.yaw_milli ^ ((sample_idx as u32) * 17);
-                    let pitch = observer.pitch_milli ^ ((sample_idx as u32) * 31);
-                    let extent =
-                        silhouette_at_angle(&crystal.curves, yaw, pitch, crystal.extent_mm);
-                    if extent <= 0 {
-                        continue;
-                    }
-
-                    // Distance attenuation : closer crystals contribute more.
-                    // Stage-0 uses a piecewise-linear inverse-square fall-off
-                    // expressed in mm so we never integer-truncate to zero
-                    // for in-range crystals.
-                    let d_sq = crystal.dist_sq_mm(sample.world).max(1);
-                    // inv_d_scaled : 1.0 at touching · ~1/16 at extent_mm radius.
-                    let extent_sq = (crystal.extent_mm as i64) * (crystal.extent_mm as i64);
-                    let inv_d_scaled =
-                        (extent_sq.saturating_mul(1024) / (d_sq + extent_sq)).clamp(1, 1024) as u32;
-                    let weight = ((extent as u32 / 16).max(1)).saturating_mul(inv_d_scaled / 4).max(1).min(2048);
-
-                    if weight == 0 {
-                        continue;
-                    }
-
-                    // HDC: bind the crystal vector with sample-position
-                    // permutation, then bundle.
-                    let perm = crystal.hdc.permute(sample_idx as u32 * 7);
-                    if hdc_count < RAY_SAMPLES {
-                        hdc_inputs[hdc_count] = perm;
-                        hdc_count += 1;
-                    }
-
-                    // Spectral accumulation : add weighted reflectance.
-                    let lut: &SpectralLut = &crystal.spectral;
-                    for band in 0..16 {
-                        // Weighted sum across illuminants (use day-blend
-                        // weights pre-applied later in project_to_srgb).
-                        // For accumulation we use the canonical sun-band as
-                        // the reference; final projection composes the full
-                        // illuminant blend.
-                        spec_acc[band] = spec_acc[band]
-                            .saturating_add((lut.data[0][band] as u32) * weight / 32);
-                    }
-                    weight_total = weight_total.saturating_add(weight);
-                }
+    // Parallelize over pixel-rows. Each row gets a disjoint &mut slice of
+    // `field.pixels` (chunk-size = width). Within a row we walk px in
+    // ascending order so the per-row write-pattern is identical to the
+    // single-thread version. Cross-row order is rayon-internal, but since
+    // every row writes a disjoint slice and the reduction is associative
+    // there is no data-race nor order-sensitivity.
+    let (n_pixels_lit, fp_acc) = field
+        .pixels
+        .par_chunks_mut(width as usize)
+        .enumerate()
+        .map(|(py_idx, row)| {
+            let mut row_lit: u32 = 0;
+            let mut row_fp: u64 = 0;
+            let py = py_idx as u32;
+            for (px_idx, pixel_slot) in row.iter_mut().enumerate() {
+                let px = px_idx as u32;
+                let (rgba, lit, fp_word) =
+                    compute_pixel(observer, crystals, &grid, width, height, px, py);
+                *pixel_slot = rgba;
+                row_lit = row_lit.saturating_add(lit);
+                row_fp = row_fp.wrapping_add(fp_word);
             }
-
-            if weight_total == 0 {
-                // No contributions. Leave the pixel transparent (alpha = 0).
-                continue;
-            }
-
-            // 4. Bundle the HDC inputs to get the pixel's resonance vector.
-            //    (Currently used only for fingerprinting + debug; future:
-            //    the bundled HDC can drive aura-overlay channels.)
-            if hdc_count > 0 {
-                hdc_acc = bundle(&hdc_inputs[..hdc_count]);
-            }
-            fp_acc = fp_acc.wrapping_add(hdc_acc.words[0]);
-
-            // 5. Build a synthetic SpectralLut from spec_acc to feed into
-            //    project_to_srgb. We populate only the sun-illuminant column
-            //    since spec_acc was a single-illuminant accumulation.
-            let mut synth_lut = SpectralLut {
-                data: [[0u8; 16]; 4],
-            };
-            for band in 0..16 {
-                synth_lut.data[0][band] = (spec_acc[band] / weight_total.max(1)).min(255) as u8;
-                synth_lut.data[1][band] = synth_lut.data[0][band] / 3;
-                synth_lut.data[2][band] = synth_lut.data[0][band] / 4;
-                synth_lut.data[3][band] = synth_lut.data[0][band] / 5;
-            }
-
-            // 6. Project to sRGB through the observer's illuminant blend.
-            let rgb = project_to_srgb(&synth_lut, observer.illuminant_blend);
-
-            // 7. Write pixel (alpha = 255 marks "lit by substrate").
-            let idx = field.pixel_index(px, py);
-            field.pixels[idx] = [rgb[0], rgb[1], rgb[2], 255];
-            n_pixels_lit = n_pixels_lit.saturating_add(1);
-        }
-    }
+            (row_lit, row_fp)
+        })
+        .reduce(
+            || (0u32, 0u64),
+            |a, b| (a.0.saturating_add(b.0), a.1.wrapping_add(b.1)),
+        );
 
     ResonanceFrame {
         observer,
@@ -224,6 +271,7 @@ pub fn resolve_substrate_resonance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cssl_host_crystallization::spectral::IlluminantBlend;
     use cssl_host_crystallization::{CrystalClass, WorldPos};
 
     fn day_observer_at_origin() -> ObserverCoord {
