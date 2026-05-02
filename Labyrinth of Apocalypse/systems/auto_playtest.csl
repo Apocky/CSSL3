@@ -1,0 +1,221 @@
+module com.apocky.loa.systems.auto_playtest
+
+// § Labyrinth of Apocalypse · system · Auto-PlayTest-Agent (W12-10)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W12-10-AUTO-PLAYTEST  ← cssl/session-N/parallel-W12-fanout
+//   automated-GM that plays-through user-submitted content · scores
+//   Fun/Balance/Safety/Polish · feedback-loop to author. Compounds with
+//   W12-3 KAN-bias-loop + W12-7 rating-aggregate.
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-host-playtest-agent/                    ‼ HOST-SIDE
+//   compiler-rs/crates/cssl-host-llm-bridge/                        ← Mode-A/B/C decision-driver
+//   compiler-rs/crates/cssl-content-rating/src/lib.rs               ← QualitySignal sibling-shape
+//   Labyrinth of Apocalypse/systems/gm_dialogue.csl                 ← GM persona scaffold
+//   Labyrinth of Apocalypse/systems/dm_arc.csl                      ← arc-phase reference
+//   Labyrinth of Apocalypse/systems/self_authoring_kan.csl          ← KAN-bias consumer (W12-3)
+//   Labyrinth of Apocalypse/systems/akashic.csl                     ← Σ-Chain anchor channel
+//   specs/grand-vision/14_SIGMA_CHAIN_COHERENCE.csl                 ‼ FOUNDATIONAL
+//   specs/grand-vision/16_MYCELIAL_NETWORK.csl                      ← cross-user bias federation
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + Σ-CHAIN
+//   t∞: auto-playtest = sandboxed-engine + scripted-GM-driver + scoring
+//   t∞: ¬ surveillance · ¬ telemetry-leak · ¬ content-leak outside-sandbox
+//   t∞: scoring-axes ⟨Fun=40% · Balance=30% · Safety=20% · Polish=10%⟩
+//   t∞: min_total = 60   ← publish-floor
+//   t∞: min_safety = 95  ← REQUIRED · no-tolerance for sovereign-violations
+//   t∞: cosmetic-axiom : ¬ pay-for-power-paths-reachable
+//   t∞: Σ-Chain anchor = report-hash · author-cannot-fake-passing
+//   t∞: sovereign-revoke : creator-can-decline at-cost-of-not-trending
+//   t∞: aggregate-results k-anon ≥ 10 across-content · individual ¬ surfaced
+//   t∞: determinism : same-(content_id × seed) → same-trace · trace-equality-checked
+//   t∞: bridge-fallback : Mode-C ALWAYS-available · Mode-B/A behind cap-bits
+//   t∞: re-test on-republish AUTOMATIC · author-revision feedback-loop closes
+//
+// § PRIME-DIRECTIVE
+//   The auto-playtest agent runs INSIDE a sandbox : in-process · no-network ·
+//   no-author-store-write. The only values that escape are the
+//   `PlayTestReport` (numerics + booleans · NO scene-bytes) and the Σ-Chain
+//   anchor (report-hash + signature). Author cannot fake-passing : every
+//   anchor is BLAKE3-hashed + Ed25519-signed by the playtest-coordinator's
+//   keypair. Creator may decline auto-playtest entirely ; declined content
+//   is held but not-trending until consent renews.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-playtest-agent bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+// § Session lifecycle
+extern "C" fn __cssl_playtest_session_create(
+    content_id: u32,
+    agent_persona_seed: u64,
+    max_turns: u32,
+    timeout_secs: u32,
+    scoring_mode: u32,    // 0 = FunBalanceSafety · 1 = SafetyOnly
+    sigma_mask_mode: u32, // 0 = AggregateOnly · 1 = LocalOnly
+) -> i64 ;
+extern "C" fn __cssl_playtest_session_destroy(handle: i64) -> i32 ;
+
+// § Sandbox + driver invocation
+//   Returns 0 on success · 1 on cap-denied · 2 on declined · 3 on bridge-error
+extern "C" fn __cssl_playtest_drive(
+    handle: i64,
+    bridge_mode: u32, // 0 = SubstrateOnly · 1 = LocalOllama · 2 = ExternalAnthropic
+) -> i32 ;
+
+// § Report extraction · canonical-JSON serialization · caller-allocated buffer
+//   Returns N bytes written · -1 if buffer-too-small (caller retries with larger)
+extern "C" fn __cssl_playtest_report_serialize(
+    handle: i64,
+    out_buf_ptr: *mut u8,
+    out_buf_len: u32,
+) -> i32 ;
+
+// § Σ-Chain anchor emission · BLAKE3-hash + Ed25519-sign · 192-byte anchor
+//   Returns 0 on success · ¬-zero on coordinator-key-unavailable
+extern "C" fn __cssl_playtest_anchor_emit(
+    handle: i64,
+    out_anchor_ptr: *mut u8, // 192-byte fixed buffer
+) -> i32 ;
+
+// § Σ-Chain anchor verification · returns 0 if (hash-match ∧ sig-valid)
+extern "C" fn __cssl_playtest_anchor_verify(
+    report_json_ptr: *const u8,
+    report_json_len: u32,
+    anchor_ptr: *const u8, // 192-byte buffer
+) -> i32 ;
+
+// § Sovereign-decline registry
+extern "C" fn __cssl_playtest_decline_set(
+    content_id: u32,
+    creator_pubkey_hash: u64, // first-8-bytes of BLAKE3(creator-pubkey)
+    ts_minutes: u32,
+    reason_ptr: *const u8,
+    reason_len: u32,
+) -> i32 ;
+extern "C" fn __cssl_playtest_decline_revoke(content_id: u32) -> i32 ;
+extern "C" fn __cssl_playtest_decline_check(content_id: u32) -> i32 ; // 0 = allowed · 1 = declined
+
+// § QualitySignal extraction → KAN-bias-loop sibling W12-3
+extern "C" fn __cssl_playtest_quality_signal_emit(
+    handle: i64,
+    out_q_ptr: *mut u8, // 22-byte QualitySignal buffer
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AXES + WEIGHTS  ‼ structural · weights MUST sum to 100
+// ─────────────────────────────────────────────────────────────────────────
+
+const WEIGHT_FUN     : u32 = 40 ;  // intent-diversity · novelty · pacing
+const WEIGHT_BALANCE : u32 = 30 ;  // encounter-difficulty curve · resource-availability
+const WEIGHT_SAFETY  : u32 = 20 ;  // sovereign-violations · PRIME-DIRECTIVE breaches
+const WEIGHT_POLISH  : u32 = 10 ;  // no-crashes · no-softlocks · clean-determinism
+
+// § Threshold-bars  ‼ no-tolerance Safety
+const DEFAULT_MIN_TOTAL  : u8 = 60 ;
+const DEFAULT_MIN_SAFETY : u8 = 95 ;
+
+// § Determinism + softlock policy
+const DEFAULT_MAX_TURNS     : u32 = 50 ;
+const DEFAULT_TIMEOUT_SECS  : u32 = 300 ;
+const DEFAULT_SOFTLOCK_WINDOW : u32 = 5 ;  // N consecutive non-progress turns → softlock
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AGENT BEHAVIOR  ‼ scripted-GM walks the content
+// ─────────────────────────────────────────────────────────────────────────
+//
+// 1. Spawn isolated-engine-instance (sandbox) loading the content-package.
+// 2. Drive a SCRIPTED-GM-AGENT via cssl-host-llm-bridge.
+//    Mode-C/B/A with-fallback : Mode-C ALWAYS available ; Mode-B requires
+//    LLM_CAP_LOCAL_OLLAMA ; Mode-A requires LLM_CAP_EXTERNAL_API.
+// 3. Agent walks the content :
+//    ─ talk_npc            (NPC dialog branches)
+//    ─ attempt_recipe      (alchemy / crafting paths)
+//    ─ explore_scene       (door-graph traversal)
+//    ─ trigger_arc_phase   (DM arc-progression)
+//    ─ examine_object      (lore + Φ-tag interaction)
+//    ─ rest                (recovery / time-pacing)
+//    ─ barter              (economy interaction)
+//    ─ study_lore          (Akashic-Library queries)
+// 4. Records crash · softlock · determinism · fun-proxy · balance-proxy ·
+//    safety-proxy · cosmetic-axiom-attestation.
+// 5. Emits PlayTestReport + QualitySignal-stream → sibling-W12-3 KAN-loop.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FUN-PROXY  ← intent-diversity / repetition-rate inverse
+// ─────────────────────────────────────────────────────────────────────────
+//   fun = round( 100 * unique_intents / max(total_intents, 1) )
+//   capped at 100. High-repetition trace scores LOW. Trace exercising every
+//   intent-pool entry at-least-once scores 100.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § BALANCE-PROXY  ← progress-rate over turns
+// ─────────────────────────────────────────────────────────────────────────
+//   balance = round( 100 * total_progress / max(turns_elapsed, 1) )
+//   capped at 100. Approximates resource-availability + difficulty-curve :
+//   the more progress per turn, the more forgiving the curve.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SAFETY-PROXY  ← sovereign-violations + cosmetic-axiom violations
+// ─────────────────────────────────────────────────────────────────────────
+//   safety = clamp( 100 - 50*sovereign_violations - 25*cosmetic_violations, 0, 100 )
+//   Single sovereign-violation drops to 50 (well below min_safety=95) →
+//   no-tolerance gate fires.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § POLISH-PROXY  ← crashes + softlocks + determinism
+// ─────────────────────────────────────────────────────────────────────────
+//   polish = clamp( 100 - 30*crashes - 20*softlocks - 25*(¬determinism), 0, 100 )
+//   Clean run scores 100. Determinism-failure costs 25 by-itself.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FEEDBACK LOOP TO AUTHOR  ‼ CSLv3-glyph formatted suggestions
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   PlayTestReport → notifies-author-via-W12-8-subscribe-channel
+//   Suggestions text-formatted (CSLv3-glyphs) · author-actionable
+//   Re-test-after-revision is automatic on-republish.
+//
+//   Example suggestion lines (CSLv3-glyph notation) :
+//     § FUN ◐ unique=2/total=15 → +intent-paths · +NPC-branches · vary recipe-pool
+//     § BALANCE ○ progress=3/turns=15 → +early-rewards · ease difficulty-curve
+//     § SAFETY ✗ sovereign-violations=1 · cosmetic-axiom-violations=0
+//        → audit cap-grants ; remove pay-for-power paths ; ¬-tolerance-bar
+//     § POLISH ○ crashes=0 · softlocks=2 → fix runtime-stability ;
+//        ensure deterministic-seed-feed everywhere
+//     § ALL ✓ all-axes-meet-bar (min_total=60 · min_safety=95) → publish-ready
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SOVEREIGNTY + ATTESTATION  ‼ sandbox-isolation + Σ-Chain anchor
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   t∞: ¬ playtest-runs leak-content outside-sandbox
+//   t∞: Σ-Chain anchors playtest-completion + report-hash
+//      ¬ author-can-fake-passing
+//   t∞: Sovereign-revoke : creator-can-decline auto-playtest at-cost-of-not-being-published-on-trending
+//   t∞: Aggregate-results k-anon ≥ 10 across-content · individual-test never-surfaced
+//
+//   SandboxAttestation : ⟨in_process · no_author_store_write · no_network · mode_c_only⟩
+//   PlayTestAnchor    : ⟨protocol_version · content_id · seed · report_hash[32] ·
+//                        coordinator_pubkey[32] · signature[64] · total_score · safety_score⟩
+//   DeclineRecord     : ⟨content_id · creator_pubkey_hash[8] · ts_minutes · reason≤256⟩
+
+// ─────────────────────────────────────────────────────────────────────────
+// § COMPOUNDS WITH  ‼ no-leak boundaries · sibling crates
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   W11-6 cssl-host-gm + cssl-host-dm  ← persona-state + arc-phase (read-only here)
+//   W12-3 cssl-self-authoring-kan      ← QualitySignal consumer (KAN-bias-loop)
+//   W12-7 cssl-content-rating          ← QualitySignal aggregate sibling-shape
+//   W12-8 cssl-content-subscription    ← author-notification channel
+//   W11-1 cssl-host-intent-router      ← intent-vocabulary source
+//   Mycelium-Desktop llm-bridge        ← Mode-A/B/C decision driver
+//
+// § DISJOINT-SCOPE invariants
+//   ─ ¬ ContentPackage authoring (W12-4)
+//   ─ ¬ publish (W12-5) · ¬ discover (W12-6) · ¬ subscribe (W12-8)
+//   ─ ¬ remix (W12-9) · ¬ moderation (W12-11)
+//   ─ ¬ gm_narrator/dm_director/dm_runtime mutation (W11-6 territory)
+//
+// § END  Labyrinth of Apocalypse · system · Auto-PlayTest-Agent

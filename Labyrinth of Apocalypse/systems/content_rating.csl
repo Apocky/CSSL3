@@ -1,0 +1,233 @@
+module com.apocky.loa.systems.content_rating
+
+// § Labyrinth of Apocalypse v13 — content-rating substrate (pure-CSSL)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// § T11-W12-7-RATING (POD-3-W12) — sovereign-cap-gated content rating + review
+//
+// § THESIS
+//   Players rate fellow-creators' user-authored CSSL content (`.ccpkg`
+//   bundles from W12-4) with stars + a 16-bit positive-tag bitset and
+//   optional ≤ 240-byte free-text review. Per-rater rows are sovereign-
+//   revocable ANYTIME. Aggregates are k-anonymized : single-content
+//   visibility requires ≥ 5 distinct raters ; trending-rank influence
+//   requires ≥ 10. The Quality-Signal distilled from each aggregate flows
+//   into the sibling W12-3 self-authoring KAN-bias-loop, closing the
+//   cocreative-bias loop without ever leaking per-rater detail to the KAN.
+//
+//   "Rate fellow creators ; the substrate learns SHAPE-of-good-content
+//    without ever observing per-player taste-fingerprints."
+//
+// § AXIOMS  (inherit GDDs/UGC_AXIS.csl + spec/grand-vision/16_MYCELIAL)
+//   ─ Author cannot-modify ratings · only the rater can revoke or edit
+//   ─ k-anon ≥ 5 distinct raters BEFORE single-content aggregate publishes
+//   ─ k-anon ≥ 10 distinct raters BEFORE trending-rank influence
+//   ─ Σ-mask cap-gate at submit AND at aggregate-contribution
+//   ─ ¬ surveillance · ¬ scroll-tracking · ¬ time-on-card
+//   ─ ¬ paid-promotion · cosmetic-axiom (Stripe never sways rank)
+//   ─ Withdrawn-sentinel (stars=0) preserves audit-row · drops aggregate
+//   ─ Quality-Signal → KAN-bias-loop receives ONLY post-k-floor aggregate
+//
+// § FFI BOUNDARY
+//   The substrate consumes the rating-host crate via extern "C" :
+//     * cssl-content-rating       (T11-W12-7 ; Rating + Review + Store)
+//     * cssl-self-authoring-kan   (T11-W12-3 ; QualitySignal consumer)
+//     * cssl-content-package      (T11-W12-4 ; .ccpkg author-pubkey lookup)
+//   Status codes : 0 = ok · negative = err-kind.
+//   Bit-packed Rating buffer is 24 bytes ; Review is variable ≤ 512 bytes.
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-rating.
+//   Consent-as-OS : opt-in is the consent-grant ; revocation is unilateral
+//   and the substrate forgets in the same tick.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-bits  (Σ-mask · ALL revocable ANYTIME · 8-bit local-mask)
+// ─────────────────────────────────────────────────────────────────────────
+
+const CAP_RATE                    : u8 = 0x01 ;  // permission-to-submit-rating
+const CAP_AGGREGATE_PUBLIC        : u8 = 0x02 ;  // row contributes to public-aggregate
+const CAP_REVIEW_BODY             : u8 = 0x04 ;  // permission-to-leave-text-review
+const CAP_RESERVED_MASK           : u8 = 0xF0 ;  // reserved · MUST be zero
+
+// Edge-route cap-bits (32-bit caller-mask · /api/content/{rate,review,aggregate})
+const ROUTE_CAP_RATE              : u32 = 0x10000  ;  // /api/content/rate
+const ROUTE_CAP_REVIEW            : u32 = 0x20000  ;  // /api/content/review
+const ROUTE_CAP_AGGREGATE_PUBLIC  : u32 = 0x40000  ;  // public-row contribution
+
+// ─────────────────────────────────────────────────────────────────────────
+// § k-anonymity floors  (substrate-invariant · DO NOT lower)
+// ─────────────────────────────────────────────────────────────────────────
+
+const K_FLOOR_SINGLE     : u32 = 5 ;   // distinct raters → content-page aggregate
+const K_FLOOR_TRENDING   : u32 = 10 ;  // distinct raters → trending-rank eligible
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Tag bitset (16 player-selectable axes ; canonical bit-position-stable)
+// ─────────────────────────────────────────────────────────────────────────
+
+const TAG_FUN                  : u16 = 1 << 0 ;
+const TAG_BALANCED             : u16 = 1 << 1 ;
+const TAG_CREATIVE             : u16 = 1 << 2 ;
+const TAG_ACCESSIBLE           : u16 = 1 << 3 ;
+const TAG_SOVEREIGN_RESPECTFUL : u16 = 1 << 4 ;
+const TAG_REMIX_WORTHY         : u16 = 1 << 5 ;
+const TAG_DOCUMENTATION_CLEAR  : u16 = 1 << 6 ;
+const TAG_RUNTIME_STABLE       : u16 = 1 << 7 ;
+const TAG_AUDIO_QUALITY        : u16 = 1 << 8 ;
+const TAG_VISUAL_POLISH        : u16 = 1 << 9 ;
+const TAG_NARRATIVE_DEPTH      : u16 = 1 << 10 ;
+const TAG_EDUCATIONAL          : u16 = 1 << 11 ;
+const TAG_WELCOMING            : u16 = 1 << 12 ;
+const TAG_NOVEL                : u16 = 1 << 13 ;
+const TAG_MEDITATIVE           : u16 = 1 << 14 ;
+const TAG_TENSE                : u16 = 1 << 15 ;
+
+const TAG_TOTAL : u32 = 16 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Rating record (24-byte fixed bit-pack · little-endian)
+// ─────────────────────────────────────────────────────────────────────────
+
+struct Rating {
+  rater_pubkey_hash      : u64 ,  // BLAKE3-trunc(pubkey) · ¬ recoverable
+  content_id             : u32 ,  // .ccpkg id (W12-4)
+  stars                  : u8  ,  // 0..=5  (0 = withdrawn-sentinel)
+  tags_bitset            : u16 ,  // 16-bit positive-tag bitset
+  sigma_mask             : u8  ,  // CAP_RATE [+ CAP_AGGREGATE_PUBLIC] [+ CAP_REVIEW_BODY]
+  ts_minutes_since_epoch : u32 ,  // quantized timestamp (bucketed-retention friendly)
+  weight_q8              : u8  ,  // KAN-bias weight · default 200
+  // 3 bytes reserved (zero) → total 24 bytes
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Review record (variable ≤ 512 bytes · body+sig+meta)
+// ─────────────────────────────────────────────────────────────────────────
+
+struct Review {
+  rater_pubkey_hash      : u64 ,
+  content_id             : u32 ,
+  stars                  : u8  ,  // 1..=5  (revoke = delete row, not stars=0)
+  body                   : str ,  // ≤ 240 utf-8 bytes
+  tags_bitset            : u16 ,
+  sigma_mask             : u8  ,  // CAP_REVIEW_BODY MUST be set
+  ts_minutes_since_epoch : u32 ,
+  sig                    : Bytes64 ,  // Ed25519 signature
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AggregateView  (k-anon-enforced shape · ¬ leak below floor)
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AggregateVisibility {
+  Hidden     = 0 ,  // < K_FLOOR_SINGLE
+  Visible    = 1 ,  // ≥ K_FLOOR_SINGLE
+  Trending   = 2 ,  // ≥ K_FLOOR_TRENDING
+}
+
+struct AggregateView {
+  content_id             : u32 ,
+  distinct_rater_count   : u32 ,
+  mean_stars_q8          : u8  ,  // 0 when Hidden ; mean*51 otherwise
+  tag_counts             : u32 [TAG_TOTAL] ,  // all-zero when Hidden
+  visibility             : AggregateVisibility ,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § QualitySignal  → cssl-self-authoring-kan (W12-3 sibling) bias-loop
+// ─────────────────────────────────────────────────────────────────────────
+
+struct QualitySignal {
+  content_id             : u32 ,
+  distinct_rater_count   : u32 ,
+  stars_q8               : u8  ,
+  remix_worthy_count     : u32 ,
+  runtime_stable_q8      : u8  ,
+  welcoming_q8           : u8  ,
+  warning_count          : u32 ,  // low-star + ¬ runtime-stable → recalibrate
+}
+
+// Strong-positive heuristic : 5★ + ≥1 remix-worthy → amplify-source-axes
+fn quality_is_strong_positive(s : QualitySignal) → bool {
+  return s.stars_q8 >= 230 && s.remix_worthy_count > 0 ;
+}
+
+// Recalibrate heuristic : ≥3 warnings → KAN should re-weight content-axes
+fn quality_needs_recalibration(s : QualitySignal) → bool {
+  return s.warning_count >= 3 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface  (extern "C" · loa-host registers · 0 = ok · neg = err)
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn cssl_rating_submit(
+  rater_pubkey_hash      : u64 ,
+  content_id             : u32 ,
+  stars                  : u8  ,
+  tags_bitset            : u16 ,
+  sigma_mask             : u8  ,
+  ts_minutes_since_epoch : u32 ,
+  weight_q8              : u8  ,
+) → i32 ;
+
+extern "C" fn cssl_rating_revoke(
+  rater_pubkey_hash      : u64 ,
+  content_id             : u32 ,
+  sigma_mask             : u8  ,
+  ts_minutes_since_epoch : u32 ,
+) → i32 ;
+
+extern "C" fn cssl_rating_aggregate(
+  content_id             : u32 ,
+  out                    : * AggregateView ,
+) → i32 ;
+
+extern "C" fn cssl_rating_quality_signal(
+  content_id             : u32 ,
+  out                    : * QualitySignal ,
+) → i32 ;
+
+extern "C" fn cssl_review_submit(
+  rater_pubkey_hash      : u64 ,
+  content_id             : u32 ,
+  stars                  : u8  ,
+  body_ptr               : * u8 ,
+  body_len               : u32 ,
+  tags_bitset            : u16 ,
+  sigma_mask             : u8  ,
+  ts_minutes_since_epoch : u32 ,
+  sig_ptr                : * u8 ,  // 64 bytes Ed25519
+) → i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sovereign-revoke flow  (canonical 4-step)
+// ─────────────────────────────────────────────────────────────────────────
+
+// 1. Rater POSTs /api/content/rate { stars=0, … } OR calls cssl_rating_revoke
+// 2. Host writes withdrawn-sentinel row : stars=0 · tags_bitset=0
+// 3. AggregateView lazily recomputes on next read · count drops
+// 4. Below-floor aggregate flips to Hidden ; KAN-bridge stops emitting
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Edge-route shapes  (cssl-edge/pages/api/content/*)
+// ─────────────────────────────────────────────────────────────────────────
+
+// POST /api/content/rate     · cap = ROUTE_CAP_RATE             · default-deny
+// POST /api/content/review   · cap = ROUTE_CAP_REVIEW           · default-deny
+// GET  /api/content/aggregate?content_id=<u32>                  · public-read
+//   ↑ aggregate is NOT cap-gated ; visibility-tier IS the gate (Hidden = no detail)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PRIME-DIRECTIVE INVARIANTS (compiler-enforced @ stage-1)
+// ─────────────────────────────────────────────────────────────────────────
+
+// SUB0001 : Author principal MUST NOT update any column on content_ratings
+//           except via ratable-row insert (RLS-enforced @ Supabase 0028).
+// SUB0002 : QualitySignal emit MUST require visibility ≠ Hidden.
+//           Below-k-floor leak = compile-error.
+// SUB0003 : Trending-rank queries MUST gate on visibility = Trending.
+//           Sub-K_FLOOR_TRENDING content has zero rank-influence.
+// SUB0004 : Pay-for-rank is a compile-error : Stripe-state MUST NOT
+//           modify aggregate ordering or visibility tier.

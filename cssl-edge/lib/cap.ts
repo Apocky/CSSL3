@@ -45,6 +45,38 @@ export const STRIPE_REFUND_REQUEST = 0x400;
 export const CONTENT_CAP_PUBLISH = 0x800;
 export const CONTENT_CAP_REVOKE_ANY = 0x1000;
 
+// UGC content-remix cap-bits (W12-9). Creators present `CONTENT_CAP_REMIX`
+// to /api/content/remix/init when forking another creator's content.
+// `CONTENT_CAP_TIP` is presented to /api/content/tip when sending a gift.
+// Both are creator-class caps · default-deny when absent + ¬ sovereign.
+export const CONTENT_CAP_REMIX = 0x2000;
+export const CONTENT_CAP_TIP = 0x4000;
+
+// UGC content-rating cap-bits (W12-7). Raters present these to
+// /api/content/{rate,review,aggregate}. The DB-side k-anon-floor
+// (5 raters single · 10 raters trending) gates aggregate exposure.
+//   bit 16 (0x10000) · CONTENT_CAP_RATE             · /api/content/rate
+//   bit 17 (0x20000) · CONTENT_CAP_REVIEW_BODY      · /api/content/review
+//   bit 18 (0x40000) · CONTENT_CAP_AGGREGATE_PUBLIC · row contributes to public aggregate
+export const CONTENT_CAP_RATE = 0x10000;
+export const CONTENT_CAP_REVIEW_BODY = 0x20000;
+export const CONTENT_CAP_AGGREGATE_PUBLIC = 0x40000;
+
+// Content-moderation cap-bits (W12-11). Σ-mask · revocable ANYTIME.
+//   bit 19 (0x80000)  · CONTENT_CAP_FLAG          · /api/content/moderation/flag
+//   bit 20 (0x100000) · CONTENT_CAP_APPEAL        · /api/content/moderation/appeal
+//   bit 21 (0x200000) · CONTENT_CAP_CURATE_A      · community-elected curator
+//   bit 22 (0x400000) · CONTENT_CAP_CURATE_B      · substrate-team curator
+//   bit 23 (0x800000) · CONTENT_CAP_CHAIN_ANCHOR  · curator Σ-Chain-write
+//   bit 24 (0x1000000)· CONTENT_CAP_AGGREGATE_READ· author-transparency-read
+export const CONTENT_CAP_FLAG = 0x80000;
+export const CONTENT_CAP_APPEAL = 0x100000;
+export const CONTENT_CAP_CURATE_A = 0x200000;
+export const CONTENT_CAP_CURATE_B = 0x400000;
+export const CONTENT_CAP_CHAIN_ANCHOR = 0x800000;
+export const CONTENT_CAP_AGGREGATE_READ = 0x1000000;
+export const CONTENT_CAP_CURATE_ANY = CONTENT_CAP_CURATE_A | CONTENT_CAP_CURATE_B;
+
 // Cap-gate result. `ok=false` carries a reason for audit-log + 403 body.
 export interface CapDecision {
   ok: boolean;
