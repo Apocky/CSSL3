@@ -15,6 +15,8 @@ export default function Document() {
           html, body { background-color: #0a0a0f; color: #e6e6f0; }
           html { color-scheme: dark; }
         `}</style>
+        {/* Termly resource-blocker · auto-blocks tracking-cookies until consent */}
+        <script src="https://app.termly.io/resource-blocker/cff27b66-fa74-4275-b18b-c019f8cc372f?autoBlock=on" />
       </Head>
       <body style={{ backgroundColor: '#0a0a0f', color: '#e6e6f0', margin: 0 }}>
         <Main />
