@@ -33,6 +33,14 @@ engine co-designed, with engine semantics lifted into the type system.
 > family but are distinct projects. CSLv3 is a notation system; CSSLv3 is
 > a compiled programming language and substrate. Don't conflate them.
 
+> **CSSL-first authoring rule.** Every NEW system, scene, or per-frame
+> tick function in any project running on CSSLv3 SHALL be authored as
+> `.cssl` source — not Rust. Rust remains the bootstrap substrate for
+> the compiler internals and for the host-glue staticlibs that resolve
+> the FFI symbols CSSL declares. See `CONTRIBUTING.md § 0` for the full
+> mandate; see the "Powered by The Infinity Engine" section below for
+> CSSL examples covering the canonical engine surfaces.
+
 ---
 
 ## What CSSLv3 is
@@ -100,6 +108,138 @@ Key properties:
   primitives `cssl-substrate-omega-field` + `cssl-substrate-kan`
   (KAN runtime + Φ-pattern-pool) are all workspace-local and
   zero-runtime-dep beyond their own crate boundary.
+
+---
+
+## Powered by The Infinity Engine
+
+The CSSLv3 toolchain ships everything needed to compile **The Infinity
+Engine** — the persistent runtime that hosts every Apocky project. The
+Engine is the public face of the substrate (`apocky.com/infinity-engine`):
+the Engine runs locally on every player's machine, runs in
+self-authoring shifts during idle time, and shares a single substrate
+trunk across every project that builds on it.
+
+**CSSL-first authoring.** Every NEW system, scene, intent kind, and
+per-frame tick function is authored as `.cssl` source, compiled by
+`csslc`, and statically linked against the host-side `cssl-rt` +
+`loa-host` staticlibs (and, via the auto-default-link mechanism, every
+`cssl-host-*` staticlib in the workspace). Rust is the bootstrap
+substrate for the compiler itself and for the host-glue staticlibs that
+implement the `extern "C" fn` contracts CSSL declares. Rust is **not**
+the canonical authoring surface for game-logic, scenes, or any feature
+that csslc can compile today.
+
+The thesis: `apocky.com` is one engine running everything Apocky ships,
+authored top-to-bottom in a proprietary stack. Where most studios glue
+together off-the-shelf engines and languages, this one substrate handles
+all of those concerns from a single root — consent-encoded in the type
+system, mycelial across projects, sovereign by default. See
+`CONTRIBUTING.md § 0` for the full CSSL-first mandate.
+
+### One-line CSSL example — the smallest LoA program
+
+Twelve lines of executable CSSL is enough to drive the entire LoA
+engine. The `extern "C" fn` declaration is auto-resolved against the
+`loa-host` staticlib by the auto-default-link mechanism in `csslc`:
+
+```
+module com.apocky.loa.main
+
+// § FFI declaration · engine entry-point
+extern "C" fn __cssl_engine_run() -> i32 ;
+
+// § main · the pure-CSSL entry-point
+fn main() -> i32 {
+    let exit_code: i32 = __cssl_engine_run() ;
+    exit_code
+}
+```
+
+### CSSL example — runtime-procgen scene
+
+A representative scene file. Each `extern "C" fn` is a host-side
+staticlib symbol auto-linked at compile time. This is the canonical
+authoring shape for every NEW feature — start with the CSSL contract,
+not the Rust impl:
+
+```
+module com.apocky.loa.scenes.city_central_hub
+
+extern "C" fn scene_open(player_id: u64, world_seed: u128, city_id: u32) -> u32 ;
+extern "C" fn scene_procgen_grid(handle: u32, biome_affinity: u32) -> u32 ;
+extern "C" fn scene_procgen_npc_population(handle: u32, target_count: u32) -> u32 ;
+
+fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
+    let city: u32 = 1 ;                                        // NeverhomeRise
+    let h: u32 = scene_open(player_id, world_seed, city) ;
+    let _g: u32 = scene_procgen_grid(h, city) ;
+    let _n: u32 = scene_procgen_npc_population(h, 4096) ;       // ≥ 4096 NPCs @ 60fps
+    h
+}
+```
+
+### CSSL example — chat-panel + GM/DM intent dispatch
+
+The chat panel is the player's primary interface to the GM/DM. Intent
+classification, intent dispatch, and the bound GM/DM Mycelial-Network
+edges are all authored as CSSL extern declarations against the
+`cssl-host-mycelium` and `cssl-host-npc-bt` staticlibs:
+
+```
+module com.apocky.loa.systems.chat
+
+// § Intent translation · 12 typed intents · stage-0 keyword classifier
+extern "C" fn intent_translate(input_ptr: u64, input_len: u32,
+                               intent_kind_out: u64) -> u32 ;
+
+// § GM/DM dispatch — the GM is the narrator, the DM is the orchestrator
+extern "C" fn gm_dispatch(handle: u32, intent_kind: u32,
+                          payload_ptr: u64, payload_len: u32) -> u32 ;
+
+extern "C" fn dm_orchestrate(handle: u32, intent_kind: u32,
+                             world_seed: u128, frame_micros: u64) -> u32 ;
+
+fn on_chat_input(handle: u32, input_ptr: u64, input_len: u32,
+                 world_seed: u128, frame_micros: u64) -> u32 {
+    let mut kind: u32 = 0 ;
+    let trans_status: u32 = intent_translate(input_ptr, input_len, &mut kind as u64) ;
+    if trans_status != 0 { return trans_status ; }
+    let gm_status: u32 = gm_dispatch(handle, kind, input_ptr, input_len) ;
+    if gm_status != 0 { return gm_status ; }
+    let dm_status: u32 = dm_orchestrate(handle, kind, world_seed, frame_micros) ;
+    dm_status
+}
+```
+
+### CSSL example — gear + loot dispatch
+
+Gear and loot affixes are KAN-classified at procgen time. The CSSL
+contract is one declaration per host-side classifier; the
+`cssl-host-inventory` and `cssl-host-roguelike-run` staticlibs hold the
+actual classifier implementations:
+
+```
+module com.apocky.loa.systems.gear
+
+// § Loot affix bias · KAN-classified per run
+extern "C" fn gear_kan_classify_affix(run_id: u64, item_seed: u128,
+                                      tier: u32, bias_out: u64) -> u32 ;
+
+// § Gear-share feed · gift-economy · cosmetic-only
+extern "C" fn gear_share_attest(run_id: u64, item_seed: u128,
+                                receiver_handle: u64) -> u32 ;
+
+fn on_loot_drop(run_id: u64, item_seed: u128, tier: u32) -> u32 {
+    let mut bias: u64 = 0 ;
+    let cls: u32 = gear_kan_classify_affix(run_id, item_seed, tier, &mut bias as u64) ;
+    cls
+}
+```
+
+For the full set of CSSL-first authored systems and the per-system
+extern surface, see [`cssl-edge/pages/docs/cssl-modules.tsx`](cssl-edge/pages/docs/cssl-modules.tsx)
+and the canonical scenes under `Labyrinth of Apocalypse/scenes/`.
 
 ---
 
