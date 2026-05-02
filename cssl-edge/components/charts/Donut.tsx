@@ -67,7 +67,7 @@ export default function Donut(props: DonutProps) {
     const active = segments.filter((s) => s.value > 0);
     if (active.length === 1) {
       // ⊑ single-segment ≡ full ring · stroke trick
-      const s = active[0];
+      const s = active[0]!;
       out.push({ d: '', color: s.color, label: s.label, pct: 100 });
       return out;
     }
@@ -111,10 +111,11 @@ export default function Donut(props: DonutProps) {
   }
 
   // ⊑ single-segment full-ring fallback rendered as <circle stroke>
-  if (paths.length === 1 && paths[0].d === '') {
+  const first = paths[0];
+  if (paths.length === 1 && first && first.d === '') {
     return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel ?? `donut · ${paths[0].label} · 100%`} style={style}>
-        <circle cx={cx} cy={cy} r={rOuter - thickness / 2} fill="none" stroke={paths[0].color} strokeWidth={thickness} />
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel ?? `donut · ${first.label} · 100%`} style={style}>
+        <circle cx={cx} cy={cy} r={rOuter - thickness / 2} fill="none" stroke={first.color} strokeWidth={thickness} />
         {centerLabel && (
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize="0.85rem" fill="#cdd6e4">
             {centerLabel}

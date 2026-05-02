@@ -33,7 +33,8 @@ function buildPath(values: number[], width: number, height: number, yMin: number
   let out = '';
   for (let i = 0; i < values.length; i++) {
     const x = i * step;
-    const norm = (values[i] - yMin) / range;
+    const v = values[i] ?? 0;
+    const norm = (v - yMin) / range;
     const y = height - norm * height;
     out += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)},${y.toFixed(1)} `;
   }
@@ -77,7 +78,8 @@ export default function Sparkline(props: SparklineProps) {
     const lastIdx = values.length - 1;
     const step = values.length > 1 ? width / (values.length - 1) : 0;
     const lx = lastIdx * step;
-    const ly = height - ((values[lastIdx] - mn) / (mx - mn || 1)) * height;
+    const lastV = values[lastIdx] ?? 0;
+    const ly = height - ((lastV - mn) / (mx - mn || 1)) * height;
     return { path: p, fillPath: fp, lastX: lx, lastY: ly, dMin: mn, dMax: mx };
   }, [values, width, height, yMinProp, yMaxProp]);
 

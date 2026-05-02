@@ -22,6 +22,7 @@ const NAV: Array<{ href: string; label: string; glyph: string }> = [
   { href: '/admin', label: 'Home', glyph: '§' },
   { href: '/admin/chat', label: 'Chat', glyph: '✶' },
   { href: '/admin/tasks', label: 'Tasks', glyph: '◐' },
+  { href: '/admin/analytics', label: 'Analytics', glyph: '∂' },
   { href: '/admin/mcp', label: 'MCP', glyph: '⊑' },
   { href: '/admin/logs', label: 'Logs', glyph: '✓' },
 ];

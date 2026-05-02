@@ -31,12 +31,14 @@ function bandPath(
   // ⊑ top-edge L→R
   for (let i = 0; i < n; i++) {
     const x = i * step;
-    out += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)},${topYs[i].toFixed(1)} `;
+    const y = topYs[i] ?? 0;
+    out += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)},${y.toFixed(1)} `;
   }
   // ⊑ bottom-edge R→L
   for (let i = n - 1; i >= 0; i--) {
     const x = i * step;
-    out += `L ${x.toFixed(1)},${bottomYs[i].toFixed(1)} `;
+    const y = bottomYs[i] ?? 0;
+    out += `L ${x.toFixed(1)},${y.toFixed(1)} `;
   }
   return `${out.trimEnd()} Z`;
 }
@@ -62,14 +64,17 @@ export default function StackedArea(props: StackedAreaProps) {
     const sums = new Float32Array(n);
     if (normalized) {
       for (const s of series) {
-        for (let i = 0; i < n; i++) sums[i] += Math.max(0, s.values[i]);
+        for (let i = 0; i < n; i++) {
+          const cur = sums[i] ?? 0;
+          sums[i] = cur + Math.max(0, s.values[i] ?? 0);
+        }
       }
     } else {
       // ⊑ y-domain = max-stack
       let mx = 0;
       for (let i = 0; i < n; i++) {
         let total = 0;
-        for (const s of series) total += Math.max(0, s.values[i]);
+        for (const s of series) total += Math.max(0, s.values[i] ?? 0);
         if (total > mx) mx = total;
       }
       for (let i = 0; i < n; i++) sums[i] = mx || 1;
@@ -83,20 +88,20 @@ export default function StackedArea(props: StackedAreaProps) {
     for (const s of series) {
       // ⊑ cumTop = cumBottom + s.values  (in % or absolute)
       for (let i = 0; i < n; i++) {
-        const v = Math.max(0, s.values[i]);
-        cumTop[i] = cumBottom[i] + v;
+        const v = Math.max(0, s.values[i] ?? 0);
+        cumTop[i] = (cumBottom[i] ?? 0) + v;
       }
       // ⊑ map y-axis : top of band = cumTop ; bottom = cumBottom · invert (svg y-down)
-      const topYs = new Array(n);
-      const bottomYs = new Array(n);
+      const topYs: number[] = new Array(n);
+      const bottomYs: number[] = new Array(n);
       for (let i = 0; i < n; i++) {
         const denom = sums[i] || 1;
-        topYs[i] = height - (cumTop[i] / denom) * height;
-        bottomYs[i] = height - (cumBottom[i] / denom) * height;
+        topYs[i] = height - ((cumTop[i] ?? 0) / denom) * height;
+        bottomYs[i] = height - ((cumBottom[i] ?? 0) / denom) * height;
       }
       out.push({ d: bandPath(topYs, bottomYs, width), color: s.color, label: s.label });
       // ⊑ shift bottom up
-      for (let i = 0; i < n; i++) cumBottom[i] = cumTop[i];
+      for (let i = 0; i < n; i++) cumBottom[i] = cumTop[i] ?? 0;
     }
     return { paths: out, totalCount: n };
   }, [series, width, height, normalized]);
