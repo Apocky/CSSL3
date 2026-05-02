@@ -249,6 +249,81 @@ impl SubstrateRenderState {
         self.gpu.as_ref().map(|g| g.output_texture())
     }
 
+    /// § T11-W18-DISPLAY — Resize BOTH the CPU pixel-field AND (when active)
+    /// the GPU compute-shader output texture. The CPU resolution is
+    /// caller-clamped (≤ 512 × 512 by `display_detect::compute_substrate_dims`)
+    /// so the per-frame ray-walk stays inside the 120 Hz CPU budget ; the
+    /// GPU runs at native panel resolution.
+    ///
+    /// Idempotent when both dims already match. The GPU path rebuilds its
+    /// compute-pipeline + storage-texture from scratch (no in-place resize
+    /// API on `SubstrateResonanceGpu`) ; this is rare (monitor-change only)
+    /// so the cost is amortised across many subsequent frames.
+    pub fn resize(&mut self, cpu_w: u32, cpu_h: u32) {
+        if cpu_w == 0 || cpu_h == 0 {
+            return;
+        }
+        // CPU pixel-field — DigitalIntelligenceRenderer.resize re-allocates
+        // the temporal-coherence ring at the new resolution.
+        let (cur_w, cur_h) = (self.renderer.ring.width, self.renderer.ring.height);
+        if cur_w != cpu_w || cur_h != cpu_h {
+            self.renderer.resize(cpu_w, cpu_h);
+            log_event(
+                "INFO",
+                "loa-host/substrate-render",
+                &format!(
+                    "cpu-resize · {}×{} → {}×{}",
+                    cur_w, cur_h, cpu_w, cpu_h
+                ),
+            );
+        }
+    }
+
+    /// § T11-W18-DISPLAY — Resize the GPU compute-shader output texture to
+    /// the panel's native pixel-resolution. No-op if the GPU path is not
+    /// active or the dims already match. Rebuilds the compute-pipeline +
+    /// output-storage-texture from scratch (no in-place resize API on
+    /// `SubstrateResonanceGpu`).
+    #[cfg(feature = "runtime")]
+    pub fn resize_gpu(&mut self, device: &wgpu::Device, gpu_w: u32, gpu_h: u32) {
+        if gpu_w == 0 || gpu_h == 0 {
+            return;
+        }
+        let Some(gpu) = self.gpu.as_ref() else {
+            return;
+        };
+        let (cur_w, cur_h) = gpu.dims();
+        if cur_w == gpu_w && cur_h == gpu_h {
+            return;
+        }
+        // Tear down + rebuild. SubstrateResonanceGpu::new is infallible
+        // (panics on shader-compile only) but we still wrap in catch_unwind
+        // so a misbehaving driver doesn't crash the whole runtime.
+        let new_gpu = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            cssl_host_substrate_resonance_gpu::SubstrateResonanceGpu::new(device, gpu_w, gpu_h)
+        }));
+        match new_gpu {
+            Ok(g) => {
+                self.gpu = Some(g);
+                log_event(
+                    "INFO",
+                    "loa-host/substrate-render",
+                    &format!(
+                        "gpu-resize · {}×{} → {}×{}",
+                        cur_w, cur_h, gpu_w, gpu_h
+                    ),
+                );
+            }
+            Err(_) => {
+                log_event(
+                    "WARN",
+                    "loa-host/substrate-render",
+                    "gpu-resize panicked · keeping previous compute-pipeline",
+                );
+            }
+        }
+    }
+
     /// Set the global substrate-blend mode. Useful for combat (snap to
     /// `BlendKind::Instant`) vs cinematic (`Spring`).
     pub fn set_blend(&mut self, blend: BlendKind) {
@@ -363,6 +438,35 @@ mod tests {
     fn cpu_only_path_reports_gpu_inactive() {
         let s = SubstrateRenderState::new();
         assert!(!s.is_gpu_active());
+    }
+
+    /// § T11-W18-DISPLAY — `resize` mutates the CPU pixel-field dims
+    /// in place (no GPU required). Exercises the auto-resize path that
+    /// fires on `WindowEvent::Resized` in `window.rs`.
+    #[test]
+    fn resize_updates_cpu_pixel_field_dims() {
+        let mut s = SubstrateRenderState::new();
+        // Default = DEFAULT_SUBSTRATE_W × DEFAULT_SUBSTRATE_H = 256×256.
+        assert_eq!(s.renderer.ring.width, DEFAULT_SUBSTRATE_W);
+        assert_eq!(s.renderer.ring.height, DEFAULT_SUBSTRATE_H);
+        // Resize to 384×384 — capped by display_detect to MAX_CPU_SUBSTRATE.
+        s.resize(384, 384);
+        assert_eq!(s.renderer.ring.width, 384);
+        assert_eq!(s.renderer.ring.height, 384);
+        // Idempotent on repeated call with same dims.
+        s.resize(384, 384);
+        assert_eq!(s.renderer.ring.width, 384);
+    }
+
+    /// § T11-W18-DISPLAY — `resize(0, 0)` is a guarded no-op.
+    #[test]
+    fn resize_zero_dims_is_noop() {
+        let mut s = SubstrateRenderState::new();
+        let w0 = s.renderer.ring.width;
+        let h0 = s.renderer.ring.height;
+        s.resize(0, 0);
+        assert_eq!(s.renderer.ring.width, w0);
+        assert_eq!(s.renderer.ring.height, h0);
     }
 
     #[test]

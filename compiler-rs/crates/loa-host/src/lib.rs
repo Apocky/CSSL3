@@ -384,6 +384,13 @@ pub mod window;
 #[cfg(feature = "runtime")]
 pub mod substrate_compose;
 
+// § T11-W18-DISPLAY — auto-detect monitor characteristics + map → DisplayProfile
+// (substrate_compose's pitch-black-friendly contrast/threshold knobs). Pure-
+// CPU heuristic ; runs catalog-mode tests too. Window.rs invokes
+// `display_detect::detect_profile` once on `resumed` + on monitor-change.
+#[cfg(feature = "runtime")]
+pub mod display_detect;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § FFI surface (T11-LOA-PURE-CSSL · pure-CSSL main.cssl entry-point)
 // ──────────────────────────────────────────────────────────────────────────

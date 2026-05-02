@@ -1417,23 +1417,70 @@ impl ApplicationHandler for App {
             ),
         );
 
-        // § Try to bring up the GPU. On failure we keep the window open + log.
-        if let Some(gpu) = GpuContext::new(window.clone()) {
-            let renderer = Renderer::new(&gpu);
-            // § T11-W18-G-INTEGRATE — Now that we have a wgpu Device, swap the
-            // CPU-only SubstrateRenderState for one with the 1440p GPU
-            // compute-shader path activated. The CPU pixel-field continues
-            // running in parallel so the existing substrate_compose upload
-            // pipeline keeps working ; the GPU compute-shader produces the
-            // 1440p144 texture-view exposed via `substrate.gpu_output_view()`.
-            //
-            // Falls back to the existing CPU-only state silently if compute
-            // pipeline construction fails (caller checks `is_gpu_active()`).
-            self.substrate = crate::substrate_render::SubstrateRenderState::new_gpu(
-                &gpu.device,
+        // § T11-W18-DISPLAY — query primary monitor for panel-size +
+        // refresh-rate so we can auto-detect a DisplayProfile + size the
+        // substrate compute-shader to native panel pixel-resolution.
+        let mut monitor_info = crate::display_detect::MonitorInfo::default();
+        if let Some(monitor) = event_loop.primary_monitor() {
+            let m_size = monitor.size();
+            monitor_info.width = m_size.width;
+            monitor_info.height = m_size.height;
+            monitor_info.refresh_hz = monitor
+                .refresh_rate_millihertz()
+                .map(|m| (m / 1000).max(1))
+                .unwrap_or(60);
+            log_event(
+                "INFO",
+                "loa-host/window",
+                &format!(
+                    "primary-monitor · {}x{} @ {}Hz",
+                    monitor_info.width, monitor_info.height, monitor_info.refresh_hz
+                ),
+            );
+        } else {
+            log_event(
+                "WARN",
+                "loa-host/window",
+                "primary-monitor unavailable · using conservative defaults",
+            );
+        }
+        monitor_info.hdr_peak_nits = crate::display_detect::read_env_hdr_nits();
+        let detected_profile = crate::display_detect::detect_profile(monitor_info);
+        log_event(
+            "INFO",
+            "loa-host/window",
+            &format!(
+                "display-profile · detected = {:?} · hdr_nits_hint={}",
+                detected_profile, monitor_info.hdr_peak_nits
+            ),
+        );
+
+        // CPU is capped to ≤ 512x512 (perf safety) ; GPU runs at native.
+        let (cpu_w, cpu_h, gpu_w, gpu_h) = if monitor_info.width > 0 && monitor_info.height > 0 {
+            crate::display_detect::compute_substrate_dims(monitor_info.width, monitor_info.height)
+        } else {
+            (
+                crate::substrate_render::DEFAULT_SUBSTRATE_W,
+                crate::substrate_render::DEFAULT_SUBSTRATE_H,
                 crate::substrate_render::GPU_SUBSTRATE_W,
                 crate::substrate_render::GPU_SUBSTRATE_H,
+            )
+        };
+
+        // § Try to bring up the GPU. On failure we keep the window open + log.
+        if let Some(gpu) = GpuContext::new(window.clone()) {
+            let mut renderer = Renderer::new(&gpu);
+            // § T11-W18-G-INTEGRATE — Now that we have a wgpu Device, swap
+            // the CPU-only SubstrateRenderState for one with the GPU
+            // compute-shader path activated AT NATIVE PANEL RESOLUTION.
+            // CPU pixel-field continues in parallel (capped <= 512x512) so
+            // the existing substrate_compose upload pipeline keeps working.
+            self.substrate = crate::substrate_render::SubstrateRenderState::new_gpu(
+                &gpu.device,
+                gpu_w,
+                gpu_h,
             );
+            self.substrate.resize(cpu_w, cpu_h);
             if !self.substrate.is_gpu_active() {
                 log_event(
                     "WARN",
@@ -1441,6 +1488,12 @@ impl ApplicationHandler for App {
                     "GPU substrate-resonance compute path failed to init · CPU-only fallback active",
                 );
             }
+            // § T11-W18-DISPLAY — propagate detected profile to substrate-
+            // compose so AMOLED-true-black + S-curve contrast is dialed in
+            // for THIS panel from the very first frame.
+            renderer
+                .substrate_compose
+                .set_display_profile(&gpu.queue, detected_profile);
             self.gpu = Some(gpu);
             self.renderer = Some(renderer);
             self.gpu_alive = true;
@@ -1487,6 +1540,12 @@ impl ApplicationHandler for App {
                 if let (Some(gpu), Some(renderer)) = (self.gpu.as_mut(), self.renderer.as_mut()) {
                     gpu.resize(size.width, size.height);
                     renderer.resize(gpu);
+                    // § T11-W18-DISPLAY — auto-resize substrate pixel-field +
+                    // GPU compute-shader to match the new window/panel size.
+                    let (cpu_w, cpu_h, gpu_w, gpu_h) =
+                        crate::display_detect::compute_substrate_dims(size.width, size.height);
+                    self.substrate.resize(cpu_w, cpu_h);
+                    self.substrate.resize_gpu(&gpu.device, gpu_w, gpu_h);
                 }
             }
 
