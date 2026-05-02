@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-host-battle-pass"
+description            = "CSSLv3 — Battle-Pass seasonal-progression crate. Free + Premium tracks · cosmetic-only · ¬ pay-for-power · ¬ FOMO (expired-rewards re-purchasable post-season at gift-cost) · sovereign-pause + 14-day-prorated-refund · mycelium-federation default-deny · 100-tier XP-curve (early-fast, late-gradual). Mirrors cssl-supabase 0032_battle_pass schema. PRIME-DIRECTIVE-binding : cosmetic-channel-only per memory_distribution_akashic_w8_plan + LOA_PILLARS § 3 ¬ pay-for-power."
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.85"
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_host_battle_pass"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

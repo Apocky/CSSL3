@@ -1,0 +1,76 @@
+§ Labyrinth.of.Apocalypse · systems · fps_feel
+≡ T11-W13-FPS-FEEL · W13-5 ADS + recoil-state-machine + accuracy-bloom + crosshair-state
+≡ canonical-companion : compiler-rs/crates/cssl-host-fps-feel/
+≡ STATUS : ◐ shipped-stage-0 · iterates each FPS-wave
+≡ PRIME-DIRECTIVE : ¬ harm/control/manipulation/surveillance ; consent-OS
+
+§I role
+  W! LoA-action-FPS-looter-shooter ⇒ FPS-feel = sovereignty.of.the.trigger
+  ¬ ALL : fps-feel ⊆ catalog-only-Rust ⊑ no-runtime-deps
+  ALL  : 4 disjoint feel-surfaces wire to single FpsFeelTick
+    1. AdsState           · aim-down-sights zoom + speed-mod
+    2. RecoilStateMachine · per-archetype kick + recovery-curve
+    3. AccuracyBloom      · sustained-fire cone-growth + grace-recovery
+    4. CrosshairState     · 4-way-pip + hit-flash + cosmetic-skin
+
+§I focus-areas (Apocky-mandate)
+
+  W! 1.ADS-zoom-curve
+    ✓ fov 90→55 over 150ms · cubic-ease (3t² - 2t³)
+    ✓ press-hold-toggle · player-config in-skin-not-mechanic
+    ✓ movement-while-ADS reduces walk-speed × 0.6
+    ✓ ADS-spread < hipfire-spread (cone tighter on aim-down)
+    ✓ ADS-zoom-roundtrip bit-equal across replay
+
+  W! 2.recoil-state-machine
+    ✓ 8 archetypes : Pistol·Smg·Rifle·Lmg·Shotgun·Sniper·Bow·Launcher
+    ✓ per-archetype RecoilPattern : vertical-rise + horizontal-jitter
+    ✓ recovery-curve : returns-to-zero @ 300ms after-fire-stop
+    ✓ pull-down-counter : skill-floor-not-ceiling ; player-input subtracts kick
+    ✓ deterministic-per-seed : replay-bit-equal
+    ✓ Cosmetic-only-axiom : pattern = mechanic ; visual-tracer-skin overrides allowed
+      ¬ pay-to-reduce-recoil ; ALL skins same kick-pattern
+
+  W! 3.accuracy-bloom
+    ✓ cone-of-fire grows linearly per-shot · max-bloom @ N-shots
+    ✓ recovery-grace = 200ms after fire-stop · then exponential-decay
+    ✓ hipfire-bloom-max > ADS-bloom-max (lenient-on-aim-down axiom)
+    ✓ deterministic ; bloom-state checkpointable per WeaponState
+
+  W! 4.crosshair-state
+    ✓ 4-way-pip expand-with-bloom · pixels = bloom-radians × screen-px
+    ✓ hit-feedback : color → red 80ms → revert
+    ✓ during-ADS : hidden ; replaced-by-scope-overlay (companion crate)
+    ✓ cosmetic-only customization : pip-color · pip-thickness · center-dot
+      ¬ pay-to-aim-better ; pip-radius = bloom-radius regardless-of-skin
+
+§I integration-points
+  W! consume from cssl-host-weapons : WeaponArchetype + RecoilEvent
+  W! emit AdsZoomFovOverride → cssl-host-camera (W13-4) consumes-only
+  W! emit AccuracyConeRadiansOverride → cssl-host-weapons (W13-2) tightens-spread
+  W! emit CrosshairBloomPx → cssl-host-hud (W13-7) renders-only
+  W! consume PlayerInput.aim_pressed + .aim_held + .firing from cssl-host-input (W13-11)
+  ¬ touch render · network · movement (per W13-5 scope-fence)
+
+§I cosmetic-only-axiom (re-iterated)
+  W! recoil-PATTERN frozen-mechanic ∀ archetype
+  W! ADS-zoom-CURVE frozen ∀ player
+  W! bloom-MAX frozen ∀ archetype
+  ✓ visual-skin overrides allowed :
+    · tracer-color · muzzle-flash-VFX · scope-reticle-art · pip-color/thickness/dot
+  ¬ ALL : skin-changes affect-DPS ⊕ skin-changes affect-recoil-curve ⊕ skin-affect-bloom
+
+§I tests (≥10 inline)
+  W! ADS-zoom-roundtrip (90→55→90 deterministic)
+  W! recoil-pattern-deterministic-per-seed (same-seed → same-kick)
+  W! recoil-recovery-300ms (zero @ t=300ms post-stop)
+  W! bloom-grows-with-fire (monotonic-increase up-to-max)
+  W! bloom-recovery-200ms-grace (no-decay during grace)
+  W! bloom-exp-decay-after-grace (returns-to-zero in finite-time)
+  W! crosshair-bloom-tracks-cone (pip-radius = f(bloom))
+  W! hit-feedback-flash-80ms (red @ t=0..80 ; revert @ t=80+)
+  W! ADS-spread-tighter-than-hipfire (∀ archetype)
+  W! cosmetic-skin-no-mechanic-effect (all-skins same-kick-pattern)
+  W! pull-down-counter-cancels-kick (skill-floor demonstrable)
+
+§I budget : ≤1500 LOC catalog-side · ≤35min wallclock
