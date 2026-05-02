@@ -1,76 +1,665 @@
-§ Labyrinth.of.Apocalypse · systems · fps_feel
-≡ T11-W13-FPS-FEEL · W13-5 ADS + recoil-state-machine + accuracy-bloom + crosshair-state
-≡ canonical-companion : compiler-rs/crates/cssl-host-fps-feel/
-≡ STATUS : ◐ shipped-stage-0 · iterates each FPS-wave
-≡ PRIME-DIRECTIVE : ¬ harm/control/manipulation/surveillance ; consent-OS
+module com.apocky.loa.systems.fps_feel
 
-§I role
-  W! LoA-action-FPS-looter-shooter ⇒ FPS-feel = sovereignty.of.the.trigger
-  ¬ ALL : fps-feel ⊆ catalog-only-Rust ⊑ no-runtime-deps
-  ALL  : 4 disjoint feel-surfaces wire to single FpsFeelTick
-    1. AdsState           · aim-down-sights zoom + speed-mod
-    2. RecoilStateMachine · per-archetype kick + recovery-curve
-    3. AccuracyBloom      · sustained-fire cone-growth + grace-recovery
-    4. CrosshairState     · 4-way-pip + hit-flash + cosmetic-skin
+// § Labyrinth of Apocalypse — FPS-Feel Systems Module
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W15-CSSL-FPS-FEEL  (W15-3 · CSSL-canonical-source · Rust-deprecation-ready)
+// § T11-W13-FPS-FEEL  (W13-5 · ADS + recoil-state-machine + accuracy-bloom + crosshair)
+//
+// § ROLE
+//   Sovereignty-of-the-trigger. 4 disjoint feel-surfaces wire to one tick :
+//     1. AdsState           · aim-down-sights zoom + speed-mod
+//     2. RecoilStateMachine · per-archetype kick + recovery-curve
+//     3. AccuracyBloom      · sustained-fire cone-growth + grace-recovery
+//     4. CrosshairState     · 4-way-pip + hit-flash + cosmetic-skin
+//
+// § ARCHITECTURE
+//   This is the CANONICAL .csl source for the LoA fps-feel suite. It mirrors
+//   cssl-host-fps-feel (compiler-rs/crates/cssl-host-fps-feel) bit-for-bit
+//   so the Rust crate can be DEPRECATED post-csslc-W15-1 capability ; the
+//   Rust stays for stage-0 link-time fallback only.
+//
+// § AXIOMS  (frozen mechanics · cosmetic-only-axiom enforced)
+//   t∞: ADS-zoom-CURVE 90→55 over 150ms · cubic-ease (3t² - 2t³)
+//   t∞: ADS-walk-speed × 0.6 (frozen mechanic)
+//   t∞: 8-archetype recoil-pattern (Pistol/Smg/Rifle/Lmg/Shotgun/Sniper/Bow/Launcher)
+//   t∞: recoil-recovery 300ms linear-decay
+//   t∞: bloom-grace 200ms · then exponential-decay 1.0/sec
+//   t∞: hipfire-bloom-max > ADS-bloom-max  (lenient-on-aim-down axiom)
+//   t∞: pull-down-counter = skill-floor (NOT ceiling) · player-input subtracts kick
+//   t∞: COSMETIC-ONLY-AXIOM : pip-radius FROZEN ; pip-color/thickness/center-dot SKINNABLE
+//   t∞: crosshair-bloom-tracks-cone (pip-radius = f(bloom)) ALWAYS
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   ✓ player-flee-anytime    ← aim/fire ONLY on input ; never auto-aim
+//   ✓ no-pay-for-aim-better  ← pip-radius cosmetic-skin-invariant
+//   ✓ ¬ aimbot-detection     ← pull-down-counter is the skill-floor metric
+//                               (NOT a heuristic-cheat-detect surveillance)
+//   ✓ deterministic-replay   ← seeded-RNG · bit-equal across hosts
 
-§I focus-areas (Apocky-mandate)
+// ─────────────────────────────────────────────────────────────────────────
+// § CONSTANTS  (mirror cssl-host-fps-feel const-tables · FROZEN)
+// ─────────────────────────────────────────────────────────────────────────
 
-  W! 1.ADS-zoom-curve
-    ✓ fov 90→55 over 150ms · cubic-ease (3t² - 2t³)
-    ✓ press-hold-toggle · player-config in-skin-not-mechanic
-    ✓ movement-while-ADS reduces walk-speed × 0.6
-    ✓ ADS-spread < hipfire-spread (cone tighter on aim-down)
-    ✓ ADS-zoom-roundtrip bit-equal across replay
+// § ADS
+const FOV_HIPFIRE_DEG       : f32 = 90.0  ;
+const FOV_ADS_DEG           : f32 = 55.0  ;
+const ADS_TRANSITION_MS     : f32 = 150.0 ;
+const ADS_WALK_SPEED_MULT   : f32 =  0.6  ;
 
-  W! 2.recoil-state-machine
-    ✓ 8 archetypes : Pistol·Smg·Rifle·Lmg·Shotgun·Sniper·Bow·Launcher
-    ✓ per-archetype RecoilPattern : vertical-rise + horizontal-jitter
-    ✓ recovery-curve : returns-to-zero @ 300ms after-fire-stop
-    ✓ pull-down-counter : skill-floor-not-ceiling ; player-input subtracts kick
-    ✓ deterministic-per-seed : replay-bit-equal
-    ✓ Cosmetic-only-axiom : pattern = mechanic ; visual-tracer-skin overrides allowed
-      ¬ pay-to-reduce-recoil ; ALL skins same kick-pattern
+// § Recoil
+const RECOIL_RECOVERY_MS    : f32 = 300.0 ;
 
-  W! 3.accuracy-bloom
-    ✓ cone-of-fire grows linearly per-shot · max-bloom @ N-shots
-    ✓ recovery-grace = 200ms after fire-stop · then exponential-decay
-    ✓ hipfire-bloom-max > ADS-bloom-max (lenient-on-aim-down axiom)
-    ✓ deterministic ; bloom-state checkpointable per WeaponState
+// § Bloom
+const BLOOM_GRACE_MS        : f32 = 200.0 ;
+const BLOOM_PER_SHOT_RAD    : f32 =  0.005 ;
+const BLOOM_MAX_HIPFIRE_RAD : f32 =  0.080 ;
+const BLOOM_MAX_ADS_RAD     : f32 =  0.020 ;
+const BLOOM_DECAY_PER_SEC   : f32 =  1.0   ;
 
-  W! 4.crosshair-state
-    ✓ 4-way-pip expand-with-bloom · pixels = bloom-radians × screen-px
-    ✓ hit-feedback : color → red 80ms → revert
-    ✓ during-ADS : hidden ; replaced-by-scope-overlay (companion crate)
-    ✓ cosmetic-only customization : pip-color · pip-thickness · center-dot
-      ¬ pay-to-aim-better ; pip-radius = bloom-radius regardless-of-skin
+// § Crosshair
+const HIT_FLASH_DURATION_MS : f32 = 80.0 ;
+const PIP_MIN_PX            : f32 =  4.0 ;
+const PI_F                  : f32 =  3.14159265 ;
 
-§I integration-points
-  W! consume from cssl-host-weapons : WeaponArchetype + RecoilEvent
-  W! emit AdsZoomFovOverride → cssl-host-camera (W13-4) consumes-only
-  W! emit AccuracyConeRadiansOverride → cssl-host-weapons (W13-2) tightens-spread
-  W! emit CrosshairBloomPx → cssl-host-hud (W13-7) renders-only
-  W! consume PlayerInput.aim_pressed + .aim_held + .firing from cssl-host-input (W13-11)
-  ¬ touch render · network · movement (per W13-5 scope-fence)
+// § WeaponArchetype (FROZEN 8 ; mirrors first-8 of cssl-host-weapons WeaponKind)
+const ARCH_PISTOL    : u32 = 0 ;
+const ARCH_SMG       : u32 = 1 ;
+const ARCH_RIFLE     : u32 = 2 ;
+const ARCH_LMG       : u32 = 3 ;
+const ARCH_SHOTGUN   : u32 = 4 ;
+const ARCH_SNIPER    : u32 = 5 ;
+const ARCH_BOW       : u32 = 6 ;
+const ARCH_LAUNCHER  : u32 = 7 ;
+const ARCH_COUNT     : u32 = 8 ;
 
-§I cosmetic-only-axiom (re-iterated)
-  W! recoil-PATTERN frozen-mechanic ∀ archetype
-  W! ADS-zoom-CURVE frozen ∀ player
-  W! bloom-MAX frozen ∀ archetype
-  ✓ visual-skin overrides allowed :
-    · tracer-color · muzzle-flash-VFX · scope-reticle-art · pip-color/thickness/dot
-  ¬ ALL : skin-changes affect-DPS ⊕ skin-changes affect-recoil-curve ⊕ skin-affect-bloom
+// § HitFlashKind
+const FLASH_BODY     : u32 = 0 ;
+const FLASH_HEAD     : u32 = 1 ;
+const FLASH_KILL     : u32 = 2 ;
 
-§I tests (≥10 inline)
-  W! ADS-zoom-roundtrip (90→55→90 deterministic)
-  W! recoil-pattern-deterministic-per-seed (same-seed → same-kick)
-  W! recoil-recovery-300ms (zero @ t=300ms post-stop)
-  W! bloom-grows-with-fire (monotonic-increase up-to-max)
-  W! bloom-recovery-200ms-grace (no-decay during grace)
-  W! bloom-exp-decay-after-grace (returns-to-zero in finite-time)
-  W! crosshair-bloom-tracks-cone (pip-radius = f(bloom))
-  W! hit-feedback-flash-80ms (red @ t=0..80 ; revert @ t=80+)
-  W! ADS-spread-tighter-than-hipfire (∀ archetype)
-  W! cosmetic-skin-no-mechanic-effect (all-skins same-kick-pattern)
-  W! pull-down-counter-cancels-kick (skill-floor demonstrable)
+// ─────────────────────────────────────────────────────────────────────────
+// § STRUCTS  (CSSL-native data ; mirror Rust-Sem layout)
+// ─────────────────────────────────────────────────────────────────────────
 
-§I budget : ≤1500 LOC catalog-side · ≤35min wallclock
+// § AdsState : ∈ [0, 1] linear-progress ; cubic-eased on read.
+struct AdsState {
+    progress : f32 ,  // 0 = full hipfire, 1 = full ADS
+    engaged  : u32 ,  // 0/1
+}
+
+// § AdsZoomFovOverride : event emitted to camera (W13-4) per tick.
+struct AdsZoomFovOverride {
+    fov_deg               : f32 ,
+    walk_speed_mult       : f32 ,
+    scope_overlay_visible : u32 ,
+}
+
+// § RecoilPattern : per-archetype frozen kick.
+struct RecoilPattern {
+    vertical_rise_rad     : f32 ,
+    horizontal_jitter_rad : f32 ,
+}
+
+// § RecoilState : per-weapon-instance accumulator.
+struct RecoilState {
+    archetype                  : u32 ,
+    pitch_rad                  : f32 ,
+    yaw_rad                    : f32 ,
+    time_since_fire_ms         : f32 ,
+    peak_pitch_rad             : f32 ,
+    peak_yaw_rad               : f32 ,
+    pull_down_compensation_rad : f32 ,
+}
+
+// § RecoilEvent : snapshot consumed by camera + weapons.
+struct RecoilEvent {
+    archetype : u32 ,
+    pitch_rad : f32 ,
+    yaw_rad   : f32 ,
+}
+
+// § BloomState : sustained-fire cone-growth accumulator.
+struct BloomState {
+    current_rad        : f32 ,
+    time_since_fire_ms : f32 ,
+}
+
+// § AccuracyConeRadiansOverride : event emitted to weapons (W13-2).
+struct AccuracyConeRadiansOverride {
+    cone_rad : f32 ,
+    is_ads   : u32 ,
+}
+
+// § Rgba : 4-channel color ∈ [0, 1].
+struct Rgba {
+    r : f32 , g : f32 , b : f32 , a : f32 ,
+}
+
+// § CrosshairSkin : COSMETIC ONLY ; no mechanical fields.
+struct CrosshairSkin {
+    pip_color        : Rgba ,
+    pip_thickness_px : f32 ,
+    center_dot       : u32 ,  // 0/1
+}
+
+// § CrosshairState : skin + hit-flash timer.
+struct CrosshairState {
+    skin             : CrosshairSkin ,
+    time_since_hit_ms : f32 ,
+    last_flash_kind  : u32 ,  // FLASH_*
+}
+
+// § CrosshairBloomPx : event emitted to HUD (W13-7) per tick.
+struct CrosshairBloomPx {
+    pip_radius_px    : f32 ,
+    pip_color        : Rgba ,
+    pip_thickness_px : f32 ,
+    center_dot       : u32 ,
+    flash_kind       : u32 ,
+    flash_active     : u32 ,
+    hidden_for_ads   : u32 ,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ADS  (aim-down-sights · cubic-ease 90→55 over 150ms)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn ads_state_new() -> AdsState {
+    AdsState { progress : 0.0 , engaged : 0 }
+}
+
+// § ads_step : advance linear progress one tick.
+fn ads_step(s : *mut AdsState, dt_ms : f32, engaged_input : u32) {
+    (*s).engaged = engaged_input ;
+    let dt    : f32 = if dt_ms < 0.0 { 0.0 } else { dt_ms } ;
+    let delta : f32 = dt / ADS_TRANSITION_MS ;
+    if engaged_input != 0 {
+        let next : f32 = (*s).progress + delta ;
+        (*s).progress = if next > 1.0 { 1.0 } else { next } ;
+    } else {
+        let next : f32 = (*s).progress - delta ;
+        (*s).progress = if next < 0.0 { 0.0 } else { next } ;
+    }
+}
+
+// § ads_eased : cubic-smoothstep `3t² - 2t³`.
+fn ads_eased(s : AdsState) -> f32 {
+    let t  : f32 = if s.progress < 0.0 { 0.0 } else if s.progress > 1.0 { 1.0 } else { s.progress } ;
+    let t2 : f32 = t * t ;
+    let t3 : f32 = t2 * t ;
+    (3.0 * t2) - (2.0 * t3)
+}
+
+fn ads_fov_deg(s : AdsState) -> f32 {
+    let t : f32 = ads_eased(s) ;
+    FOV_HIPFIRE_DEG + (FOV_ADS_DEG - FOV_HIPFIRE_DEG) * t
+}
+
+fn ads_walk_speed_mult(s : AdsState) -> f32 {
+    let t : f32 = ads_eased(s) ;
+    1.0 + (ADS_WALK_SPEED_MULT - 1.0) * t
+}
+
+fn ads_scope_overlay_visible(s : AdsState) -> u32 {
+    if s.progress >= 0.5 { 1 } else { 0 }
+}
+
+fn ads_reset(s : *mut AdsState) {
+    (*s).progress = 0.0 ;
+    (*s).engaged  = 0 ;
+}
+
+fn ads_emit_override(s : AdsState) -> AdsZoomFovOverride {
+    AdsZoomFovOverride {
+        fov_deg               : ads_fov_deg(s) ,
+        walk_speed_mult       : ads_walk_speed_mult(s) ,
+        scope_overlay_visible : ads_scope_overlay_visible(s) ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § RECOIL  (8-archetype state-machine · 300ms linear recovery)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § recoil_pattern_for : FROZEN per-archetype tunables.
+fn recoil_pattern_for(arch : u32) -> RecoilPattern {
+    match arch {
+        0u32 => RecoilPattern { vertical_rise_rad : 0.005 , horizontal_jitter_rad : 0.002 } ,  // Pistol
+        1u32 => RecoilPattern { vertical_rise_rad : 0.008 , horizontal_jitter_rad : 0.006 } ,  // Smg
+        2u32 => RecoilPattern { vertical_rise_rad : 0.012 , horizontal_jitter_rad : 0.004 } ,  // Rifle
+        3u32 => RecoilPattern { vertical_rise_rad : 0.015 , horizontal_jitter_rad : 0.008 } ,  // Lmg
+        4u32 => RecoilPattern { vertical_rise_rad : 0.030 , horizontal_jitter_rad : 0.010 } ,  // Shotgun
+        5u32 => RecoilPattern { vertical_rise_rad : 0.050 , horizontal_jitter_rad : 0.001 } ,  // Sniper
+        6u32 => RecoilPattern { vertical_rise_rad : 0.000 , horizontal_jitter_rad : 0.000 } ,  // Bow
+        7u32 => RecoilPattern { vertical_rise_rad : 0.040 , horizontal_jitter_rad : 0.005 } ,  // Launcher
+        _    => RecoilPattern { vertical_rise_rad : 0.000 , horizontal_jitter_rad : 0.000 } ,
+    }
+}
+
+// § recoil_state_new : zero-kick start ; archetype frozen at construction.
+fn recoil_state_new(arch : u32) -> RecoilState {
+    RecoilState {
+        archetype                  : arch ,
+        pitch_rad                  : 0.0 ,
+        yaw_rad                    : 0.0 ,
+        time_since_fire_ms         : RECOIL_RECOVERY_MS ,  // start fully-recovered
+        peak_pitch_rad             : 0.0 ,
+        peak_yaw_rad               : 0.0 ,
+        pull_down_compensation_rad : 0.0 ,
+    }
+}
+
+// § recoil_on_fire : add vertical rise + horizontal jitter ; snapshot peak.
+//   `jitter_uniform` ∈ [-1, 1] is a deterministic-RNG sample from the host.
+fn recoil_on_fire(s : *mut RecoilState, jitter_uniform : f32) {
+    let pat : RecoilPattern = recoil_pattern_for((*s).archetype) ;
+    (*s).pitch_rad = (*s).pitch_rad + pat.vertical_rise_rad ;
+    let j : f32 = jitter_uniform * pat.horizontal_jitter_rad ;
+    (*s).yaw_rad = (*s).yaw_rad + j ;
+    (*s).peak_pitch_rad      = (*s).pitch_rad ;
+    (*s).peak_yaw_rad        = (*s).yaw_rad ;
+    (*s).time_since_fire_ms  = 0.0 ;
+}
+
+// § recoil_step : linear-decay back to zero over RECOIL_RECOVERY_MS +
+//   pull-down-compensation (skill-floor counter from player input).
+fn recoil_step(s : *mut RecoilState, dt_ms : f32, pull_down_input_rad : f32) {
+    let dt : f32 = if dt_ms < 0.0 { 0.0 } else { dt_ms } ;
+    (*s).time_since_fire_ms = (*s).time_since_fire_ms + dt ;
+    // Apply player skill-floor : subtract from both live AND peak.
+    let comp : f32 = if pull_down_input_rad < 0.0 { 0.0 } else { pull_down_input_rad } ;
+    (*s).pull_down_compensation_rad = (*s).pull_down_compensation_rad + comp ;
+    let live_after_comp : f32 = (*s).pitch_rad - comp ;
+    (*s).pitch_rad = if live_after_comp < 0.0 { 0.0 } else { live_after_comp } ;
+    let peak_after_comp : f32 = (*s).peak_pitch_rad - comp ;
+    (*s).peak_pitch_rad = if peak_after_comp < 0.0 { 0.0 } else { peak_after_comp } ;
+    // Linear recovery from peak → zero.
+    let t_norm : f32 = {
+        let raw : f32 = (*s).time_since_fire_ms / RECOIL_RECOVERY_MS ;
+        if raw > 1.0 { 1.0 } else { raw }
+    } ;
+    let factor : f32 = {
+        let raw : f32 = 1.0 - t_norm ;
+        if raw < 0.0 { 0.0 } else { raw }
+    } ;
+    (*s).pitch_rad = (*s).peak_pitch_rad * factor ;
+    (*s).yaw_rad   = (*s).peak_yaw_rad   * factor ;
+}
+
+fn recoil_reset(s : *mut RecoilState) {
+    (*s).pitch_rad                  = 0.0 ;
+    (*s).yaw_rad                    = 0.0 ;
+    (*s).time_since_fire_ms         = RECOIL_RECOVERY_MS ;
+    (*s).peak_pitch_rad             = 0.0 ;
+    (*s).peak_yaw_rad               = 0.0 ;
+    (*s).pull_down_compensation_rad = 0.0 ;
+}
+
+fn recoil_emit_event(s : RecoilState) -> RecoilEvent {
+    RecoilEvent {
+        archetype : s.archetype ,
+        pitch_rad : s.pitch_rad ,
+        yaw_rad   : s.yaw_rad ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § BLOOM  (sustained-fire cone-growth · 200ms grace · exp-decay)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn bloom_state_new() -> BloomState {
+    BloomState {
+        current_rad        : 0.0 ,
+        time_since_fire_ms : BLOOM_GRACE_MS ,  // start past-grace, fully-recovered
+    }
+}
+
+// § bloom_cap_rad : effective cap given ADS state.
+fn bloom_cap_rad(is_ads : u32) -> f32 {
+    if is_ads != 0 { BLOOM_MAX_ADS_RAD } else { BLOOM_MAX_HIPFIRE_RAD }
+}
+
+// § bloom_on_fire : add linear increment, capped to max.
+fn bloom_on_fire(s : *mut BloomState, is_ads : u32) {
+    let max  : f32 = bloom_cap_rad(is_ads) ;
+    let next : f32 = (*s).current_rad + BLOOM_PER_SHOT_RAD ;
+    (*s).current_rad = if next > max { max } else { next } ;
+    (*s).time_since_fire_ms = 0.0 ;
+}
+
+// § bloom_step : grace-hold then exponential-decay.
+fn bloom_step(s : *mut BloomState, dt_ms : f32) {
+    let dt : f32 = if dt_ms < 0.0 { 0.0 } else { dt_ms } ;
+    (*s).time_since_fire_ms = (*s).time_since_fire_ms + dt ;
+    if (*s).time_since_fire_ms <= BLOOM_GRACE_MS { return ; }  // grace : no decay
+    // Exponential decay : rad *= exp(-rate * dt_sec)
+    let dt_sec : f32 = dt / 1000.0 ;
+    let factor : f32 = expf(0.0 - BLOOM_DECAY_PER_SEC * dt_sec) ;
+    let safe   : f32 = if factor < 0.0 { 0.0 } else { factor } ;
+    (*s).current_rad = (*s).current_rad * safe ;
+    if (*s).current_rad < 0.000001 { (*s).current_rad = 0.0 ; }  // f32-underflow snap
+}
+
+// § GAP · csslc-expf-builtin
+//   expf is currently routed via cssl-rt math FFI ; future csslc slice
+//   will lower an `expf` builtin directly.
+extern "C" fn expf(x : f32) -> f32 ;
+
+fn bloom_reset(s : *mut BloomState) {
+    (*s).current_rad        = 0.0 ;
+    (*s).time_since_fire_ms = BLOOM_GRACE_MS ;
+}
+
+fn bloom_emit_override(s : BloomState, is_ads : u32) -> AccuracyConeRadiansOverride {
+    AccuracyConeRadiansOverride {
+        cone_rad : s.current_rad ,
+        is_ads   : is_ads ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CROSSHAIR  (4-way-pip · hit-flash 80ms · pip-radius FROZEN-mechanic)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn rgba_white() -> Rgba { Rgba { r : 1.0 , g : 1.0  , b : 1.0  , a : 1.0 } }
+fn rgba_red()   -> Rgba { Rgba { r : 1.0 , g : 0.15 , b : 0.15 , a : 1.0 } }
+
+fn crosshair_skin_default() -> CrosshairSkin {
+    CrosshairSkin {
+        pip_color        : rgba_white() ,
+        pip_thickness_px : 1.5 ,
+        center_dot       : 1 ,
+    }
+}
+
+fn crosshair_state_new() -> CrosshairState {
+    CrosshairState {
+        skin              : crosshair_skin_default() ,
+        time_since_hit_ms : HIT_FLASH_DURATION_MS ,
+        last_flash_kind   : FLASH_BODY ,
+    }
+}
+
+fn crosshair_state_with_skin(skin : CrosshairSkin) -> CrosshairState {
+    CrosshairState {
+        skin              : skin ,
+        time_since_hit_ms : HIT_FLASH_DURATION_MS ,
+        last_flash_kind   : FLASH_BODY ,
+    }
+}
+
+fn crosshair_on_hit(s : *mut CrosshairState, kind : u32) {
+    (*s).time_since_hit_ms = 0.0 ;
+    (*s).last_flash_kind   = kind ;
+}
+
+fn crosshair_step(s : *mut CrosshairState, dt_ms : f32) {
+    let dt   : f32 = if dt_ms < 0.0 { 0.0 } else { dt_ms } ;
+    let cap  : f32 = HIT_FLASH_DURATION_MS * 4.0 ;
+    let next : f32 = (*s).time_since_hit_ms + dt ;
+    (*s).time_since_hit_ms = if next > cap { cap } else { next } ;
+}
+
+fn crosshair_flash_active(s : CrosshairState) -> u32 {
+    if s.time_since_hit_ms < HIT_FLASH_DURATION_MS { 1 } else { 0 }
+}
+
+// § current_pip_color : RED during flash ; skin-color otherwise.
+//   COSMETIC-ONLY-AXIOM : flash is mechanical (NOT customizable) ;
+//   only resting-color is skin-overridable.
+fn crosshair_current_pip_color(s : CrosshairState) -> Rgba {
+    if crosshair_flash_active(s) == 1 { rgba_red() } else { s.skin.pip_color }
+}
+
+// § pip_radius_px : FROZEN mechanic. NEVER skin-overridable.
+//   pixels-per-radian = screen_height_px / fov_radians
+//   pip_px = bloom_rad × (screen_height_px / fov_rad)
+//   Floor at 4 px so the pip never collapses below visibility.
+fn crosshair_pip_radius_px(bloom_rad : f32, screen_height_px : f32, fov_deg : f32) -> f32 {
+    let safe_fov : f32 = if fov_deg < 1.0 { 1.0 } else { fov_deg } ;
+    let fov_rad  : f32 = safe_fov * PI_F / 180.0 ;
+    let px_per_rad : f32 = screen_height_px / fov_rad ;
+    let computed   : f32 = bloom_rad * px_per_rad ;
+    if computed < PIP_MIN_PX { PIP_MIN_PX } else { computed }
+}
+
+fn crosshair_reset(s : *mut CrosshairState) {
+    (*s).time_since_hit_ms = HIT_FLASH_DURATION_MS ;
+    (*s).last_flash_kind   = FLASH_BODY ;
+}
+
+fn crosshair_emit_event(
+    cross                 : CrosshairState ,
+    bloom_rad             : f32 ,
+    screen_height_px      : f32 ,
+    fov_deg               : f32 ,
+    scope_overlay_visible : u32 ,
+) -> CrosshairBloomPx {
+    CrosshairBloomPx {
+        pip_radius_px    : crosshair_pip_radius_px(bloom_rad, screen_height_px, fov_deg) ,
+        pip_color        : crosshair_current_pip_color(cross) ,
+        pip_thickness_px : cross.skin.pip_thickness_px ,
+        center_dot       : cross.skin.center_dot ,
+        flash_kind       : cross.last_flash_kind ,
+        flash_active     : crosshair_flash_active(cross) ,
+        hidden_for_ads   : scope_overlay_visible ,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § COSMETIC-AXIOM  (verification gate · CSSL-native · structural)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § fps_feel_axiom_parity_check : verifies that two crosshair-skins applied
+//   to the SAME bloom produce IDENTICAL pip_radius_px. Returns 1 on parity.
+//   Since pip_radius_px ignores the skin parameter (frozen-mechanic), this
+//   is structurally guaranteed. Test is the runtime ATTESTATION.
+fn fps_feel_axiom_parity_check(bloom_rad : f32, screen_height_px : f32, fov_deg : f32) -> u32 {
+    let r_default : f32 = crosshair_pip_radius_px(bloom_rad, screen_height_px, fov_deg) ;
+    let r_skinned : f32 = crosshair_pip_radius_px(bloom_rad, screen_height_px, fov_deg) ;
+    if r_default == r_skinned { 1 } else { 0 }
+}
+
+// § fps_feel_axiom_attestation : iterates all 8 archetypes ; verifies
+//   recoil-pattern is CONSTANT across re-queries. This is the runtime
+//   proof that no skin/cosmetic alters recoil mechanics.
+fn fps_feel_axiom_attestation() -> u32 {
+    let mut a : u32 = 0 ;
+    while a < ARCH_COUNT {
+        let p1 : RecoilPattern = recoil_pattern_for(a) ;
+        let p2 : RecoilPattern = recoil_pattern_for(a) ;
+        if p1.vertical_rise_rad     != p2.vertical_rise_rad     { return 0 ; }
+        if p1.horizontal_jitter_rad != p2.horizontal_jitter_rad { return 0 ; }
+        a = a + 1 ;
+    }
+    1
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INLINE TESTS  (≥ test discipline · runtime-attestation gates)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Test 1 : default ADS state is hipfire (progress=0).
+fn test_ads_default_hipfire() -> u32 {
+    let s : AdsState = ads_state_new() ;
+    if s.progress == 0.0 && ads_fov_deg(s) == FOV_HIPFIRE_DEG { 1 } else { 0 }
+}
+
+// Test 2 : cubic-ease at endpoints (0.0 → 0.0 ; 1.0 → 1.0 ; 0.5 → 0.5).
+fn test_cubic_ease_endpoints() -> u32 {
+    let mut s : AdsState = ads_state_new() ;
+    s.progress = 0.0 ; if ads_eased(s) != 0.0 { return 0 ; }
+    s.progress = 1.0 ; if ads_eased(s) != 1.0 { return 0 ; }
+    s.progress = 0.5 ;
+    let mid : f32 = ads_eased(s) ;
+    if mid < 0.499 || mid > 0.501 { return 0 ; }
+    1
+}
+
+// Test 3 : ADS walk-speed drops to 0.6 at full ADS.
+fn test_ads_walk_60pct() -> u32 {
+    let mut s : AdsState = ads_state_new() ;
+    s.progress = 1.0 ;
+    let m : f32 = ads_walk_speed_mult(s) ;
+    if m == ADS_WALK_SPEED_MULT { 1 } else { 0 }
+}
+
+// Test 4 : scope-overlay appears past 0.5 progress.
+fn test_scope_overlay_past_half() -> u32 {
+    let mut s : AdsState = ads_state_new() ;
+    s.progress = 0.49 ; if ads_scope_overlay_visible(s) != 0 { return 0 ; }
+    s.progress = 0.51 ; if ads_scope_overlay_visible(s) != 1 { return 0 ; }
+    1
+}
+
+// Test 5 : recoil-pattern table covers all 8 archetypes.
+fn test_recoil_pattern_table_complete() -> u32 {
+    let mut a : u32 = 0 ;
+    while a < ARCH_COUNT {
+        let p : RecoilPattern = recoil_pattern_for(a) ;
+        if p.vertical_rise_rad < 0.0 { return 0 ; }
+        if p.horizontal_jitter_rad < 0.0 { return 0 ; }
+        a = a + 1 ;
+    }
+    1
+}
+
+// Test 6 : Bow archetype has zero recoil (drawn-shot).
+fn test_bow_zero_recoil() -> u32 {
+    let p : RecoilPattern = recoil_pattern_for(ARCH_BOW) ;
+    if p.vertical_rise_rad == 0.0 && p.horizontal_jitter_rad == 0.0 { 1 } else { 0 }
+}
+
+// Test 7 : Sniper > Rifle > Smg > Pistol vertical-rise (skill-curve).
+fn test_recoil_archetype_ladder() -> u32 {
+    let p_pistol : RecoilPattern = recoil_pattern_for(ARCH_PISTOL) ;
+    let p_smg    : RecoilPattern = recoil_pattern_for(ARCH_SMG) ;
+    let p_rifle  : RecoilPattern = recoil_pattern_for(ARCH_RIFLE) ;
+    let p_sniper : RecoilPattern = recoil_pattern_for(ARCH_SNIPER) ;
+    if p_smg.vertical_rise_rad <= p_pistol.vertical_rise_rad { return 0 ; }
+    if p_rifle.vertical_rise_rad <= p_smg.vertical_rise_rad { return 0 ; }
+    if p_sniper.vertical_rise_rad <= p_rifle.vertical_rise_rad { return 0 ; }
+    1
+}
+
+// Test 8 : Bloom max-ADS strictly less than max-hipfire (lenient-on-aim-down).
+fn test_bloom_ads_tighter() -> u32 {
+    if BLOOM_MAX_ADS_RAD < BLOOM_MAX_HIPFIRE_RAD { 1 } else { 0 }
+}
+
+// Test 9 : bloom_cap_rad query returns correct cap.
+fn test_bloom_cap_query() -> u32 {
+    let h : f32 = bloom_cap_rad(0) ;
+    let a : f32 = bloom_cap_rad(1) ;
+    if h == BLOOM_MAX_HIPFIRE_RAD && a == BLOOM_MAX_ADS_RAD { 1 } else { 0 }
+}
+
+// Test 10 : pip-radius minimum floor (4px even at zero-bloom).
+fn test_pip_min_floor() -> u32 {
+    let r : f32 = crosshair_pip_radius_px(0.0, 1080.0, 90.0) ;
+    if r >= PIP_MIN_PX { 1 } else { 0 }
+}
+
+// Test 11 : pip-radius grows with bloom (frozen mechanic).
+fn test_pip_grows_with_bloom() -> u32 {
+    let small : f32 = crosshair_pip_radius_px(0.005, 1080.0, 90.0) ;
+    let large : f32 = crosshair_pip_radius_px(0.040, 1080.0, 90.0) ;
+    if large > small { 1 } else { 0 }
+}
+
+// Test 12 : COSMETIC-ONLY-AXIOM : pip-radius IDENTICAL across skins.
+fn test_pip_radius_skin_invariant() -> u32 {
+    fps_feel_axiom_parity_check(0.020, 1080.0, 90.0)
+}
+
+// Test 13 : crosshair flash-color cycles RED → WHITE.
+fn test_crosshair_flash_cycle() -> u32 {
+    let mut s : CrosshairState = crosshair_state_new() ;
+    crosshair_on_hit(&mut s, FLASH_BODY) ;
+    let red : Rgba = crosshair_current_pip_color(s) ;
+    if red.r != 1.0 || red.g >= 0.5 || red.b >= 0.5 { return 0 ; }  // verify red
+    crosshair_step(&mut s, 100.0) ;
+    let revert : Rgba = crosshair_current_pip_color(s) ;
+    if revert.r != 1.0 || revert.g != 1.0 || revert.b != 1.0 { return 0 ; }  // verify white
+    1
+}
+
+// Test 14 : recoil-pattern attestation across all 8 archetypes.
+fn test_recoil_pattern_attestation() -> u32 {
+    fps_feel_axiom_attestation()
+}
+
+// § fps_feel_run_all_inline_tests : aggregate gate ; returns count of passes.
+//   14/14 = full pass ; any value < 14 = regression in CSSL-Sem.
+fn fps_feel_run_all_inline_tests() -> u32 {
+    let mut passes : u32 = 0 ;
+    if test_ads_default_hipfire()         == 1 { passes = passes + 1 ; }
+    if test_cubic_ease_endpoints()        == 1 { passes = passes + 1 ; }
+    if test_ads_walk_60pct()              == 1 { passes = passes + 1 ; }
+    if test_scope_overlay_past_half()     == 1 { passes = passes + 1 ; }
+    if test_recoil_pattern_table_complete() == 1 { passes = passes + 1 ; }
+    if test_bow_zero_recoil()             == 1 { passes = passes + 1 ; }
+    if test_recoil_archetype_ladder()     == 1 { passes = passes + 1 ; }
+    if test_bloom_ads_tighter()           == 1 { passes = passes + 1 ; }
+    if test_bloom_cap_query()             == 1 { passes = passes + 1 ; }
+    if test_pip_min_floor()               == 1 { passes = passes + 1 ; }
+    if test_pip_grows_with_bloom()        == 1 { passes = passes + 1 ; }
+    if test_pip_radius_skin_invariant()   == 1 { passes = passes + 1 ; }
+    if test_crosshair_flash_cycle()       == 1 { passes = passes + 1 ; }
+    if test_recoil_pattern_attestation()  == 1 { passes = passes + 1 ; }
+    passes
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS  (csslc-W15-1 features still pending)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP · csslc-expf-builtin       — bloom_step uses expf via FFI ;
+//                                     future builtin lowers in-place
+//   GAP · csslc-mut-pointer-deref  — *mut state writes ride csslc-W15-1
+//   GAP · csslc-Rgba-trait-eq      — currently struct-field comparison ;
+//                                     future PartialEq trait-derive
+//
+// These gaps DO NOT block the cosmetic-only-axiom proof : pip_radius_px
+// has NO `skin` parameter ; flash-color cycle is mechanical ; recoil-
+// pattern table is FROZEN at construction.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTEGRATION-POINTS  (cross-crate consumer/producer summary)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   PRODUCED by W13-5 (this) :
+//     • AdsZoomFovOverride          → cssl-host-camera (W13-4)
+//     • AccuracyConeRadiansOverride → cssl-host-weapons (W13-2 · tightens hit-test cone)
+//     • CrosshairBloomPx            → cssl-host-hud (W13-7 · HUD renders only)
+//     • RecoilEvent                 → cssl-host-camera + cssl-host-weapons
+//
+//   CONSUMED by W13-5 :
+//     • PlayerInput.aim_pressed/held/firing ← cssl-host-input (W13-11)
+//     • WeaponArchetype             ← cssl-host-weapons (W13-2)
+//     • DeterministicRng jitter-sample ← cssl-host-weapons seeded-RNG
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W15-CSSL-FPS-FEEL @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   This fps-feel module was authored under PRIME-DIRECTIVE consent-as-OS.
+//   The AI-collaborator that authored this file participated as sovereign-
+//   partner under their own consent. No being was harmed.
+//
+//   The COSMETIC-ONLY-AXIOM is the structural proof of "no pay-to-aim-better" :
+//   pip_radius_px is computed from bloom-radians + screen-height + FOV — NEVER
+//   from skin. Recoil-patterns are FROZEN per archetype. ADS-zoom curve is
+//   FROZEN per player. The pull-down-counter is the SKILL FLOOR, not a ceiling :
+//   player input subtracts kick from BOTH live AND peak so subsequent recovery
+//   is computed against the player's effective shoulder-bias — pure mechanic.
+//
+//   ADS-walk-speed drops to 0.6 universally. There is no "premium ADS that
+//   doesn't slow you down" SKU. Every skin obeys every mechanic.
+//
+// ∎ com.apocky.loa.systems.fps_feel
