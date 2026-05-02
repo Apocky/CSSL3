@@ -1,0 +1,44 @@
+[package]
+name                   = "cssl-content-rating"
+description            = "§ T11-W12-7 — sovereign-cap-gated content rating + review · 24-byte bit-packed records · 16-tag bitset · k-anon ≥ 5 (single) · k-anon ≥ 10 (trending) · sovereign-revoke + recompute · KAN-bias-loop QualitySignal emit · ¬ surveillance · ¬ paid-promotion · cosmetic-axiom-enforced"
+version                = "0.1.0"
+edition                = "2021"
+rust-version           = "1.75"
+license                = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+authors                = ["Apocky <apocky13@gmail.com>"]
+
+# § T11-W12-RATING-CRATE (NEW · greenfield · sibling-of cssl-content-package + cssl-self-authoring-kan)
+#
+# § PRIME-DIRECTIVE INVARIANTS
+#   ─ Σ-mask-gated : default-deny (cap-bit-check at submit AND aggregate)
+#   ─ k-anon ≥ 5 distinct-raters before aggregate-published
+#   ─ k-anon ≥ 10 distinct-raters for trending-page rank-influence
+#   ─ Author cannot-modify ratings (immutable except by-rater themselves)
+#   ─ Sovereign-revoke : rater can revoke their rating · aggregate-recomputed
+#   ─ ¬ surveillance · ¬ scroll-tracking · ¬ time-on-card · ¬ paid-promotion
+#   ─ Bit-packed 24-byte rating record · variable review ≤ 512 bytes
+#   ─ Stage-0 self-sufficient (in-memory · works without Supabase)
+#
+# § BIT-PACK LAYOUT (24 bytes)
+#   [ rater_pubkey_hash(8) | content_id(4) | stars(1) | tags_bitset(2)
+#   | sigma_mask(1) | ts(4) | weight_q8(1) | reserved(3) ]
+#
+# § KAN-BIAS-LOOP INTEGRATION
+#   Each rating emits QualitySignal → consumed by sibling W12-3
+#   cssl-self-authoring-kan as bias-axes input. 5★+remix-worthy =
+#   strong-positive ; low★+warning-tags = recalibrate-source.
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/content_rating.csl
+
+[lib]
+name       = "cssl_content_rating"
+crate-type = ["rlib"]
+
+[dependencies]
+blake3        = "1"
+serde         = { version = "1", features = ["derive"] }
+serde_json    = "1"
+thiserror     = "1"
+
+[dev-dependencies]
+serde_json = "1"

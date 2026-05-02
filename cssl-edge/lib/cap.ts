@@ -39,6 +39,12 @@ export const MP_CAP_RENDEZVOUS = 0x100;
 export const STRIPE_CHECKOUT_INIT = 0x200;
 export const STRIPE_REFUND_REQUEST = 0x400;
 
+// UGC content-publish cap-bits (W12-5). Creators present `CONTENT_CAP_PUBLISH`
+// to /api/content/publish/* ; moderators present `CONTENT_CAP_REVOKE_ANY` to
+// /api/content/publish/revoke when revoking content they did not author.
+export const CONTENT_CAP_PUBLISH = 0x800;
+export const CONTENT_CAP_REVOKE_ANY = 0x1000;
+
 // Cap-gate result. `ok=false` carries a reason for audit-log + 403 body.
 export interface CapDecision {
   ok: boolean;
