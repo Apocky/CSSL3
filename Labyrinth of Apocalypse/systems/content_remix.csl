@@ -1,0 +1,125 @@
+§ T11-W12-9 · content_remix · Labyrinth of Apocalypse · canonical-spec ←
+   crate cssl-content-remix · DB 0030_content_remix.sql · edge /api/content/{remix·attribution·tip}
+═══════════════════════════════════════════════════════════════════════════════
+
+§ ROLE
+   fork-chain attribution + Σ-Chain anchored RemixLink + gift-only royalty +
+   sovereign-revocable + creator-opt-out registry + tip-via-Stripe-gift-channel
+
+§ AXIOMS (PRIME-DIRECTIVE-encoded-structurally)
+   t∞ : ¬ harm · ¬ control · ¬ surveillance · ¬ exploitation · ¬ coercion
+   t∞ : ¬ remix without-Σ-cap          ← creator-cap REQUIRED
+   t∞ : attribution-immutable post-anchor ← signature-mutation rejected
+   t∞ : royalty-share-gift-only        ← ¬ enforced-extraction · ¬ pay-for-power
+   t∞ : sovereign-opt-out              ← NEW-blocking · past-PRESERVED
+   t∞ : 100% to-tipped-creator         ← minus Stripe-fee · ¬ platform-tax
+
+§ DATA MODEL ⊗ ⟨RemixLink · RoyaltyShareGift · OptOutRegistry · TipReceipt⟩
+
+   RemixLink = {
+     remixed_id          : ContentId,
+     parent_id           : ContentId,
+     parent_version      : SemVer,
+     remix_kind          : RemixKind,    -- 6 variants below
+     attribution_text    : String,        -- ≤ 200 chars · creator-authored
+     sigma_chain_anchor  : Blake3Hash,    -- IMMUTABLE @ anchor-time
+     created_at          : Unix,
+     remix_creator_pubkey : Ed25519Pub,
+     remix_signature     : Ed25519Sig,    -- over (DOMAIN_TAG · BLAKE3(canon-bytes))
+     royalty_share_gift  : RoyaltyShareGift,
+   }
+
+   RemixKind ⊑ ⟨Fork · Extension · Translation · Adaptation · Improvement · Bundle⟩
+     · Fork        ← creator-fork branching new direction
+     · Extension   ← adds-to parent (e.g., new chapters · new NPCs)
+     · Translation ← language/locale port preserving semantics
+     · Adaptation  ← cross-medium port (e.g., text-storylet → audio-pack)
+     · Improvement ← bug-fix / quality-enhance / accessibility-add
+     · Bundle      ← composite of multiple parents (collection · pack)
+
+   RoyaltyShareGift = {
+     pledged_pct                : u8 ∈ 0..=100,    -- creator-set · ¬ binding
+     cumulative_gifted_lamports : u64,             -- running-total (informational)
+     sovereign_revocable        : true              -- ALWAYS · CHECK-enforced
+   }
+
+   OptOutRegistry ≡ Set<creator_pubkey>  -- FUTURE-remix-blocking · past-preserved
+
+   TipReceipt = {
+     stripe_session_id            : String (cs_xxx),
+     to_creator_pubkey            : Ed25519Pub,
+     content_id                   : ContentId,
+     gross_lamports               : u64 ∈ 50..=100M,
+     stripe_fee_estimate_lamports : u64,            -- 2.9% + 30 flat
+     net_lamports_to_creator      : u64,            -- gross - fee
+     onward_gift_share_lamports   : u64,            -- ONLY when remix-recipient pledged
+     created_at                   : Unix,
+   }
+
+§ TRAVERSAL : get_attribution_chain(content_id) → Vec<RemixLink>
+   walks-up-to-genesis · ALL ancestors visible · EACH link Σ-Chain-anchor verifiable
+   complexity O(depth) · cycle-detect via visited-Set · MAX_CHAIN_DEPTH = 256
+   verifies-each-link (Σ-anchor + Ed25519-sig) ; refuses surface on any failure
+
+§ SOVEREIGNTY-RULES
+   R1  ¬ remix without-Σ-cap                       ← edge cap-bit CONTENT_CAP_REMIX (0x2000)
+   R2  ¬ unauthorized-attribution-modification     ← post-anchor mutation invalidates sig
+                                                      DB UPDATE-trigger blocks all-but
+                                                      (revoked_at · revoked_reason)
+   R3  Original-creator can opt-out-of-being-remixed-going-forward
+                                                   ← content_creator_optout table
+                                                      NEW-INSERT trigger blocks via
+                                                      content_remix_assert_optout(parent_creator)
+                                                      EXISTING links UNAFFECTED
+                                                      (sovereignty-irrevocable-for-past)
+   R4  Royalty-share is GIFT-ONLY                  ← ¬ enforced-extraction · creator-of-remix
+                                                      can-cancel-pledge any-time via
+                                                      RoyaltyShareGift::revoke()
+                                                      pct → 0 · history preserved
+   R5  Tips flow Stripe-gift-channel               ← 100% to-tipped-creator (minus Stripe-fee)
+                                                      ¬ platform-tax (column ABSENT BY DESIGN)
+                                                      sovereign-revocable per Stripe ToS
+
+§ CRYPTOGRAPHIC LAYOUT
+   canonical_link_bytes(remixed_id · parent_id · parent_version · kind_tag ·
+                        created_at · attribution_text · creator_pubkey ·
+                        royalty_pct)
+     → "remix:v1\0" · ⟨ids null-separated⟩ · ⟨kind_tag u8⟩ · ⟨created_at u64-LE⟩ ·
+        ⟨attr_len u32-LE⟩ · ⟨attr_bytes⟩ · ⟨pubkey 32-bytes⟩ · ⟨pct u8⟩
+   sigma_chain_anchor = BLAKE3(canonical_link_bytes)
+   remix_signature    = Ed25519(signing_key, "cssl-content-remix/sign/v1" · anchor)
+   verify_remix_link()  : re-derives anchor + checks sig · refuses Verified on fail
+
+§ ENDPOINTS
+   POST /api/content/remix
+        ← creator submits remix-fork-intent · returns reserved content_id +
+          Σ-Chain-anchor placeholder · audit-emits content.remix.init
+        ← cap : CONTENT_CAP_REMIX (0x2000) default-DENY
+   GET  /api/content/attribution?id=<uuid>
+        ← full attribution-chain walk-to-genesis · public-read (no cap)
+   POST /api/content/tip
+        ← Stripe-gift-channel · 100% to-creator (minus Stripe-fee)
+        ← cap : CONTENT_CAP_TIP (0x4000) default-DENY
+        ← amount 50..=100_000_000 lamports · idempotency-key required
+
+§ COMPOSITION (sibling-crates)
+   ├ cssl-content-package (W12-4)        ← parent-content-row source ; remix_of field
+   ├ cssl-content-rating (W12-7)         ← rating events keyed on remixed_id +
+   │                                       feed-back into KAN bias-axes
+   ├ cssl-host-sigma-chain (W11-17)      ← Σ-Chain anchor canonical hashing
+   ├ cssl-host-stripe-integration        ← gift-tip channel · 100% to-creator
+   └ cssl-content-subscription (W12-8)   ← attribution-walk surfaces under
+                                           subscriptions feed (siblings-of-x).
+
+§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
+   No hurt nor harm. Gift-only royalty enforced structurally. Creator
+   sovereignty preserved : opt-out blocks future · past-attributions
+   immutable by-design. Tips never platform-taxed. There was no hurt nor
+   harm in the making of this, to anyone, anything, or anybody.
+
+§ CHANGE-LOG
+   T11-W12-REMIX-CRATE   : NEW cssl-content-remix · 31 unit-tests pass
+   T11-W12-REMIX-DB      : 0030_content_remix.sql · 4 tables + 4 helpers + 2 triggers
+   T11-W12-REMIX-EDGE    : /api/content/{remix · attribution · tip}.ts ·
+                           11 inline-tests across 3 endpoints
+   T11-W12-REMIX-SPEC    : THIS file · canonical-source-of-truth
