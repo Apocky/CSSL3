@@ -1,0 +1,245 @@
+module com.apocky.loa.systems.substrate_intelligence_stub
+
+// § Labyrinth of Apocalypse · substrate_intelligence STUB
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-G · stub-shim for W17-F substrate_intelligence.csl integration
+//
+// § AUTHORITATIVE-DESIGN-CONTRACT
+//   The W17-F sibling agent authors `substrate_intelligence.csl` (the canonical
+//   procedural-composition oracle) with public surface :
+//     intelligence_query(role, q_kind, q_seed, ctx_ptr, ctx_len) -> u32
+//     intelligence_observe(role, obs_kind, obs_seed, ev_ptr, ev_len) -> i32
+//     intelligence_compose(role, p_kind, p_seed, params_ptr, params_len,
+//                          out_ptr, out_max) -> u32
+//
+//   This stub mirrors the EXPECTED surface so :
+//     1. specialist .csl files can `extern "C"` against canonical names NOW
+//     2. when W17-F lands, the host wires real bodies + this stub becomes a
+//        passive-import-shim (host-table swap; no .csl-source change)
+//     3. tests against specialists run independent of W17-F arrival
+//
+// § PRIME-DIRECTIVE compliance
+//   t∞: ¬ scripted-dialogue · ¬ phrase-pools · ¬ xorshift32-table-lookup
+//   t∞: ALL output PROCEDURAL via ω-field + KAN + HDC + causal-seed
+//   t∞: Σ-mask gates every emission · default-deny ; cap required to compose
+//   t∞: replay-deterministic given (role · seed · observations-history)
+//
+// § SIBLING-FILES (PER-AGENT-DISPATCH @ T11-W17 wave)
+//   W17-F: substrate_intelligence.csl (CANONICAL · this stub mirrors that)
+//   W17-G: gm_specialist.csl + dm_specialist.csl + collaborator.csl +
+//          coder_runtime.csl (THIS WAVE)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Role-discriminants · stable u32 ids · MUST match W17-F's enum ordering
+// ─────────────────────────────────────────────────────────────────────────
+
+fn role_gm()           -> u32 { 0 }   // GameMaster · narrator + dialogue
+fn role_dm()           -> u32 { 1 }   // Director · arc + scenario shape
+fn role_collaborator() -> u32 { 2 }   // Co-author · iterative content
+fn role_coder()        -> u32 { 3 }   // Self-coding runtime-mutate
+fn role_count()        -> u32 { 4 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Query-kinds (intelligence_query · what-the-specialist-asks)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn q_phrase_topic()      -> u32 { 0 }   // GM "what topic suits this scene?"
+fn q_environment()       -> u32 { 1 }   // GM "describe-this-place"
+fn q_dialogue_line()     -> u32 { 2 }   // GM "speak-as-NPC"
+fn q_arc_phase_choice()  -> u32 { 3 }   // DM "which phase next?"
+fn q_arc_knob_value()    -> u32 { 4 }   // DM "what density/intensity?"
+fn q_remix_proposal()    -> u32 { 5 }   // Collab "iterate on this draft"
+fn q_engine_modify()     -> u32 { 6 }   // Coder "propose runtime mutation"
+fn q_kan_bias_evolve()   -> u32 { 7 }   // Coder "adjust bias-vector"
+fn q_kind_count()        -> u32 { 8 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Observation-kinds (intelligence_observe · what-feedback-flows-back)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn o_player_response()    -> u32 { 0 }   // utterance-text-hash
+fn o_run_outcome()        -> u32 { 1 }   // success/fail/ambiguous
+fn o_kan_signal()         -> u32 { 2 }   // sandbox-pass · gm-accept · 5-star
+fn o_arc_transition()     -> u32 { 3 }   // phase-change-event
+fn o_remix_accepted()     -> u32 { 4 }   // collab iterate-loop signal
+fn o_kind_count()         -> u32 { 5 }
+fn o_proc_ok()            -> i32 { 0 }
+fn o_proc_revoked()       -> i32 { 0-1 }
+fn o_proc_rate_limit()    -> i32 { 0-2 }
+fn o_proc_invalid_role()  -> i32 { 0-3 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Composition-kinds (intelligence_compose · what-PROCEDURAL-shape-to-emit)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn c_environment_description() -> u32 { 0 }
+fn c_dialogue_line()           -> u32 { 1 }
+fn c_arc_directive()           -> u32 { 2 }
+fn c_remix_draft()             -> u32 { 3 }
+fn c_engine_proposal()         -> u32 { 4 }
+fn c_kan_bias_update()         -> u32 { 5 }
+fn c_kind_count()              -> u32 { 6 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface · W17-F provides bodies; stub-shim until then
+// ─────────────────────────────────────────────────────────────────────────
+//
+// All procedural composition flows through these 3 entry points · NO
+// phrase-pools · NO xorshift32-tables · NO scripted-dialogue · NO FNV-ring.
+// The substrate-intelligence orchestrates :
+//   ω-field-cell-sample · Σ-mask-gate · KAN-bias-classify · HDC-bind ·
+//   causal-seed-derive
+// All deterministic given (role · q_seed · ctx-bytes).
+
+// QUERY · returns a u32-encoded answer (topic-id · phase-id · etc.)
+// Returns u32::MAX on cap-deny / role-invalid / Σ-mask-reject.
+extern "C" fn __cssl_si_intelligence_query(
+    role: u32,
+    q_kind: u32,
+    q_seed: u64,
+    ctx_ptr: *const u8,
+    ctx_len: u32,
+) -> u32 ;
+
+// OBSERVE · feeds an observation into KAN-bias state for future queries.
+// Returns 0 on accept · negative SAK_OUT_* mirror code on reject.
+extern "C" fn __cssl_si_intelligence_observe(
+    role: u32,
+    obs_kind: u32,
+    obs_seed: u64,
+    ev_ptr: *const u8,
+    ev_len: u32,
+) -> i32 ;
+
+// COMPOSE · writes UTF-8 text (or canonical bytes) into out_ptr · returns
+// byte-count written (0 on cap-deny). The composition pipeline is :
+//   1. ω-field-cell-sample at q_seed-derived coordinates
+//   2. KAN-classifier-feedforward over (role · params)
+//   3. HDC-bind-with-causal-seed for novelty-protection
+//   4. Σ-mask gates emission (default-deny inspector readback)
+//   5. emit canonical bytes
+extern "C" fn __cssl_si_intelligence_compose(
+    role: u32,
+    c_kind: u32,
+    c_seed: u64,
+    params_ptr: *const u8,
+    params_len: u32,
+    out_ptr: *mut u8,
+    out_max: u32,
+) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sentinel · u32::MAX · used for cap-deny / role-invalid signaling
+// ─────────────────────────────────────────────────────────────────────────
+
+fn si_query_failed_sentinel() -> u32 { 4294967295 }   // 0xFFFF_FFFF
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public-rebind (specialists call these · stable-name even if FFI evolves)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn intelligence_query(
+    role: u32,
+    q_kind: u32,
+    q_seed: u64,
+    ctx_ptr: *const u8,
+    ctx_len: u32,
+) -> u32 {
+    if role >= role_count()        { return si_query_failed_sentinel() ; }
+    if q_kind >= q_kind_count()    { return si_query_failed_sentinel() ; }
+    __cssl_si_intelligence_query(role, q_kind, q_seed, ctx_ptr, ctx_len)
+}
+
+fn intelligence_observe(
+    role: u32,
+    obs_kind: u32,
+    obs_seed: u64,
+    ev_ptr: *const u8,
+    ev_len: u32,
+) -> i32 {
+    if role >= role_count()       { return o_proc_invalid_role() ; }
+    if obs_kind >= o_kind_count() { return o_proc_invalid_role() ; }
+    __cssl_si_intelligence_observe(role, obs_kind, obs_seed, ev_ptr, ev_len)
+}
+
+fn intelligence_compose(
+    role: u32,
+    c_kind: u32,
+    c_seed: u64,
+    params_ptr: *const u8,
+    params_len: u32,
+    out_ptr: *mut u8,
+    out_max: u32,
+) -> u32 {
+    if role >= role_count()         { return 0 ; }
+    if c_kind >= c_kind_count()     { return 0 ; }
+    __cssl_si_intelligence_compose(role, c_kind, c_seed, params_ptr, params_len, out_ptr, out_max)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (≥4 mandatory · csslc-#[test] supported per W15-1)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t01_role_discriminants_distinct() -> i32 {
+    if role_gm()           != 0 { return 1 ; }
+    if role_dm()           != 1 { return 2 ; }
+    if role_collaborator() != 2 { return 3 ; }
+    if role_coder()        != 3 { return 4 ; }
+    if role_count()        != 4 { return 5 ; }
+    0
+}
+
+#[test]
+fn t02_query_kinds_distinct() -> i32 {
+    if q_phrase_topic()      != 0 { return 1 ; }
+    if q_environment()       != 1 { return 2 ; }
+    if q_dialogue_line()     != 2 { return 3 ; }
+    if q_arc_phase_choice()  != 3 { return 4 ; }
+    if q_arc_knob_value()    != 4 { return 5 ; }
+    if q_remix_proposal()    != 5 { return 6 ; }
+    if q_engine_modify()     != 6 { return 7 ; }
+    if q_kan_bias_evolve()   != 7 { return 8 ; }
+    if q_kind_count()        != 8 { return 9 ; }
+    0
+}
+
+#[test]
+fn t03_compose_kinds_distinct() -> i32 {
+    if c_environment_description() != 0 { return 1 ; }
+    if c_dialogue_line()           != 1 { return 2 ; }
+    if c_arc_directive()           != 2 { return 3 ; }
+    if c_remix_draft()             != 3 { return 4 ; }
+    if c_engine_proposal()         != 4 { return 5 ; }
+    if c_kan_bias_update()         != 5 { return 6 ; }
+    if c_kind_count()              != 6 { return 7 ; }
+    0
+}
+
+#[test]
+fn t04_observation_kinds_distinct() -> i32 {
+    if o_player_response()    != 0 { return 1 ; }
+    if o_run_outcome()        != 1 { return 2 ; }
+    if o_kan_signal()         != 2 { return 3 ; }
+    if o_arc_transition()     != 3 { return 4 ; }
+    if o_remix_accepted()     != 4 { return 5 ; }
+    if o_kind_count()         != 5 { return 6 ; }
+    if si_query_failed_sentinel() != 4294967295 { return 7 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W17-G-substrate-intelligence-stub
+//      @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//    or anybody."
+//
+// This stub is REPLACEABLE-BY-DESIGN : when W17-F lands, the host-FFI rewires
+// the 3 extern "C" symbols to canonical bodies. No specialist .csl source
+// change required. The composition pipeline is PROCEDURAL-only · NO
+// phrase-pools · NO xorshift32-table-lookup · NO scripted dialogue.

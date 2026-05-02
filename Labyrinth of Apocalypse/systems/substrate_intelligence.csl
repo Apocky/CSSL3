@@ -1,0 +1,898 @@
+module com.apocky.loa.systems.substrate_intelligence
+
+// § Labyrinth of Apocalypse · Substrate-Intelligence · the proprietary local engine
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W17-F · canonical-CSSL-source · ‼ FOUNDATIONAL
+//
+// § APOCKY-CANONICAL · NON-NEGOTIABLE
+//   1. PROPRIETARY local intelligence — NO Anthropic-API · NO OpenAI-API ·
+//      NO external-LLM · NO phrase-pool tables · NO scripted-dialogue lookup.
+//   2. PROCEDURAL-EVERYTHING — substrate primitives compose meaning at runtime.
+//      ω-field stores semantic state · KAN-splines learn local-bias ·
+//      HDC binds context⊗query → response · causal-seed reasons-about-effects ·
+//      Σ-mask gates every emission.
+//   3. LOCAL-ONLY data flow. Nothing leaves the device by default. Federated-
+//      mycelium share is opt-in per-feedback_sigma_chain_unified_substrate.
+//   4. DETERMINISTIC. Same (Context · Query · seed) → same Response, bit-for-bit,
+//      across hosts + sessions. No thread-local entropy. No system-clock entropy.
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-substrate-omega-field/   § ω-field substrate runtime
+//   compiler-rs/crates/cssl-substrate-prime-directive/ § Σ-mask + cap-gating
+//   compiler-rs/crates/cssl-substrate-kan/           § KAN-network + Φ-pattern-pool
+//   compiler-rs/crates/cssl-hdc/                     § hyperdimensional binding
+//   compiler-rs/crates/cssl-host-causal-seed/        § causal-DAG + integrator
+//   compiler-rs/crates/cssl-host-substrate-knowledge/ § build-time semantic-corpus
+//   compiler-rs/crates/cssl-host-akashic-records/    § long-term episodic memory
+//   compiler-rs/crates/cssl-self-authoring-kan/      § Q14 KAN-bias self-improve
+//   memory/feedback_loa_v13_must_be_cssl_source      ‼ .csl canonical · NOT Rust
+//   memory/feedback_take_words_literally_no_other_languages ‼ engine = .csl
+//   memory/feedback_engine_is_runtime_procgen        ‼ runtime-compose ¬ static
+//   memory/feedback_dm_gm_not_general_ai             ‼ scope = DM/GM/Collab/Coder
+//   Labyrinth of Apocalypse/systems/dm_arc.csl       § DM macro-pacing consumer
+//   Labyrinth of Apocalypse/systems/gm_dialogue.csl  § GM persona consumer
+//   Labyrinth of Apocalypse/systems/self_authoring_kan.csl § KAN-bias loop
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + 00_CHARTER
+//   t∞: NO-external-LLM ∀ paths · NO-network-call required for-intelligence
+//   t∞: PROCEDURAL-COMPOSE ¬ phrase-table-lookup · ¬ template-fill-in-blank
+//   t∞: ω-field is canonical-state · Σ-mask gates every read+write+emit
+//   t∞: KAN-splines learn-from local-observations · Q14 fixed-point determinism
+//   t∞: HDC bind+bundle+permute = sub-microsecond / call · 10000-D binary
+//   t∞: causal-seed integrates intent → world-vector · linear-effect at-stage-0
+//   t∞: 4-roles dispatch through-this-engine · DM/GM/Collaborator/Coder
+//   t∞: ¬ general-AGI · ¬ task-execution-outside-game-domain · scope-bound
+//   t∞: deterministic seed-threading · same-seed ⇒ same-output ∀ hosts
+//   t∞: every-emission Σ-mask-gated · denial = silent-no-emission ¬ panic
+//   t∞: every-observation Σ-mask-gated · KAN-update only-with-attestation
+//   t∞: stage-0 Rust-shim mirrors-this · canonical-implementation HERE
+//
+// § PRIME-DIRECTIVE
+//   The substrate_intelligence engine is the heart of LoA's proprietary AI.
+//   It refuses-to-call any-external-LLM service. It refuses-to-emit on-Σ-mask-
+//   denial. It refuses-to-train on-data without-attestation. It refuses-to-leak
+//   per-player KAN-bias across-sigma-mask-boundaries. The 4 specialist roles
+//   (DM/GM/Collaborator/Coder) all dispatch through this single canonical
+//   surface. Every utterance, every decision, every composed-content carries
+//   the attestation : there was no hurt nor harm in the making of this, to
+//   anyone, anything, or anybody.
+//
+// § CSSLC-REQUIRES (capability-list current as-of 2026-05-01)
+//   ✓ extern "C" fn  decls (csslc-W11+ · landed)
+//   ✓ const          decls (csslc-W12 · landed)
+//   ✓ fn-with-body   simple-arithmetic + if-else + return (csslc-W13 · landed)
+//   ✓ #[test]        inline tests with i32 return (csslc-W15-1 · landed)
+//   ◐ struct         decl + field-access · landing this-wave (W17-A in flight)
+//   ○ generics       Φ<T> + Handle<T> · post-W17 follow-up
+//   ○ trait-dispatch · post-W17 follow-up
+//   ○ async/await    · NOT-required at-stage-0 (FFI = sync)
+//   N! external-IO   · structurally-banned (no Tokio · no reqwest · no fetch)
+//
+// § COORDINATION (T11-W17 wave)
+//   W17-A (struct-FFI codegen) — sibling-in-flight · this file's structs become
+//                                callable-from-loa-host once-W17-A-lands.
+//   W17-G (specialist roles)    — imports our public-surface · DM/GM/Collab/Coder
+//                                 wrapper-fns delegate-to-our-dispatch.
+//   W17-H (room procgen)        — calls intelligence_compose(Role::DM, ...)
+//                                 with ComposeKind::RoomLayout.
+//   W17-I (combat-loop)         — calls intelligence_query(Role::DM, ...)
+//                                 for tactical-bias.
+//   W17-J (mycelium chat)       — replaces external-LLM call with
+//                                 intelligence_compose(Role::GM, ...).
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ROLE discriminants (4 specialist roles · stable u8 ids · per Apocky scope)
+// ─────────────────────────────────────────────────────────────────────────
+// These are the ONLY four roles. The substrate-intelligence engine refuses-
+// to-dispatch on-any-other-role-id. Per memory/feedback_dm_gm_not_general_ai
+// the engine-intelligence scope is bounded to these four. Generic-AGI is
+// structurally-prevented by the Σ-mask cap-gating.
+
+const ROLE_DM           : u32 = 0 ;   // Director · scenario shape · pacing-arc + room-procgen
+const ROLE_GM           : u32 = 1 ;   // Narrator · environmental + dialogue + observation
+const ROLE_COLLABORATOR : u32 = 2 ;   // Co-author · iterative content-generation w/ player
+const ROLE_CODER        : u32 = 3 ;   // Runtime-mutate · proposes engine-modifications
+const ROLE_COUNT        : u32 = 4 ;
+const ROLE_INVALID      : u32 = 255 ; // sentinel · returned for-out-of-scope-requests
+
+fn role_dm()           -> u32 { ROLE_DM }
+fn role_gm()           -> u32 { ROLE_GM }
+fn role_collaborator() -> u32 { ROLE_COLLABORATOR }
+fn role_coder()        -> u32 { ROLE_CODER }
+fn role_count()        -> u32 { ROLE_COUNT }
+fn role_invalid()      -> u32 { ROLE_INVALID }
+
+// is_valid_role : returns 1 if role is one-of-the-canonical-four, else 0.
+fn role_is_valid(role: u32) -> u32 {
+    if role == ROLE_DM           { return 1 ; }
+    if role == ROLE_GM           { return 1 ; }
+    if role == ROLE_COLLABORATOR { return 1 ; }
+    if role == ROLE_CODER        { return 1 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § COMPOSE-KIND discriminants · what the role is asking-the-engine to compose
+// ─────────────────────────────────────────────────────────────────────────
+// Each role can compose any-of-these · the engine routes through different
+// substrate-primitive paths internally based-on-kind.
+
+const COMPOSE_DIALOGUE       : u32 = 0 ;   // GM utterance / NPC line
+const COMPOSE_ROOM_LAYOUT    : u32 = 1 ;   // DM procgen room-shape + props
+const COMPOSE_ENCOUNTER      : u32 = 2 ;   // DM mob-arrangement + tactical-hint
+const COMPOSE_NARRATIVE_BEAT : u32 = 3 ;   // DM story-arc transition
+const COMPOSE_RECIPE         : u32 = 4 ;   // Collaborator crafting-recipe
+const COMPOSE_QUEST_LINE     : u32 = 5 ;   // Collaborator quest-arc
+const COMPOSE_AFFIX_MIX      : u32 = 6 ;   // DM loot-affix combination
+const COMPOSE_NPC_REACTION   : u32 = 7 ;   // GM in-context NPC mood-shift
+const COMPOSE_HOTFIX_PROP    : u32 = 8 ;   // Coder runtime-mutate proposal
+const COMPOSE_BALANCE_NUDGE  : u32 = 9 ;   // Coder per-player difficulty-shape
+const COMPOSE_KIND_COUNT     : u32 = 10 ;
+const COMPOSE_KIND_INVALID   : u32 = 255 ;
+
+fn compose_kind_count() -> u32 { COMPOSE_KIND_COUNT }
+
+fn compose_kind_is_valid(kind: u32) -> u32 {
+    if kind < COMPOSE_KIND_COUNT { return 1 ; }
+    0
+}
+
+// Route a (role · kind) pair to its-canonical-channel. Returns 1 if-permitted ·
+// 0 if-out-of-scope (e.g. GM asked for-COMPOSE_HOTFIX_PROP → 0 ; only Coder).
+fn role_kind_permitted(role: u32, kind: u32) -> u32 {
+    // DM domain : ROOM_LAYOUT · ENCOUNTER · NARRATIVE_BEAT · AFFIX_MIX
+    if role == ROLE_DM {
+        if kind == COMPOSE_ROOM_LAYOUT    { return 1 ; }
+        if kind == COMPOSE_ENCOUNTER      { return 1 ; }
+        if kind == COMPOSE_NARRATIVE_BEAT { return 1 ; }
+        if kind == COMPOSE_AFFIX_MIX      { return 1 ; }
+        return 0 ;
+    }
+    // GM domain : DIALOGUE · NPC_REACTION
+    if role == ROLE_GM {
+        if kind == COMPOSE_DIALOGUE     { return 1 ; }
+        if kind == COMPOSE_NPC_REACTION { return 1 ; }
+        return 0 ;
+    }
+    // Collaborator domain : RECIPE · QUEST_LINE
+    if role == ROLE_COLLABORATOR {
+        if kind == COMPOSE_RECIPE     { return 1 ; }
+        if kind == COMPOSE_QUEST_LINE { return 1 ; }
+        return 0 ;
+    }
+    // Coder domain : HOTFIX_PROP · BALANCE_NUDGE
+    if role == ROLE_CODER {
+        if kind == COMPOSE_HOTFIX_PROP   { return 1 ; }
+        if kind == COMPOSE_BALANCE_NUDGE { return 1 ; }
+        return 0 ;
+    }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § OBSERVATION-KIND discriminants · what is fed-back to-train-the-engine
+// ─────────────────────────────────────────────────────────────────────────
+// Observations carry quality-signal that-feeds-the-KAN-bias-update loop.
+// Mirrors the QualitySignal taxonomy in self_authoring_kan.csl but routes
+// through this engine's gate-and-attest layer. Σ-mask-gated · attestation-
+// required · k-anon-floor enforced (k≥10 minimum sample-pool · per-self-
+// authoring-kan invariant t∞: no-single-player can-dominate-bias).
+
+const OBS_PLAYER_ACCEPTED   : u8 = 0 ;   // Q14 +SMALL · accepted-and-engaged
+const OBS_PLAYER_REJECTED   : u8 = 1 ;   // Q14 -MED · skipped/dismissed
+const OBS_PLAYER_RATED_HIGH : u8 = 2 ;   // Q14 +MED · 4★+
+const OBS_PLAYER_RATED_LOW  : u8 = 3 ;   // Q14 -MED · 1-2★
+const OBS_PLAYER_REMIXED    : u8 = 4 ;   // Q14 +MED · forked-and-modified
+const OBS_GM_CONFIRMED      : u8 = 5 ;   // Q14 +SMALL · GM-attestation-clean
+const OBS_GM_REJECTED       : u8 = 6 ;   // Q14 -MED · GM-attestation-flagged
+const OBS_SANDBOX_PASS      : u8 = 7 ;   // Q14 +SMALL · sandbox-test passed
+const OBS_SANDBOX_FAIL      : u8 = 8 ;   // Q14 -LARGE · sandbox-test failed
+const OBS_HOTFIX_LANDED     : u8 = 9 ;   // Q14 +MED · Coder-hotfix accepted
+const OBS_KIND_COUNT        : u8 = 10 ;
+const OBS_KIND_INVALID      : u8 = 255 ;
+
+fn obs_kind_count() -> u8 { OBS_KIND_COUNT }
+
+fn obs_is_positive(kind: u8) -> u32 {
+    if kind == OBS_PLAYER_ACCEPTED   { return 1 ; }
+    if kind == OBS_PLAYER_RATED_HIGH { return 1 ; }
+    if kind == OBS_PLAYER_REMIXED    { return 1 ; }
+    if kind == OBS_GM_CONFIRMED      { return 1 ; }
+    if kind == OBS_SANDBOX_PASS      { return 1 ; }
+    if kind == OBS_HOTFIX_LANDED     { return 1 ; }
+    0
+}
+
+// Q14 fixed-point bias-deltas · mirrors self_authoring_kan.csl
+const INTEL_Q14_DELTA_SMALL : i32 =   819 ;   // ≈ 0.05
+const INTEL_Q14_DELTA_MED   : i32 =  4096 ;   // ≈ 0.25
+const INTEL_Q14_DELTA_LARGE : i32 =  8192 ;   // ≈ 0.50
+const INTEL_Q14_BIAS_MAX    : i32 = 16383 ;   // ≈ +1.0
+const INTEL_Q14_BIAS_MIN    : i32 = 0-16383 ; // ≈ -1.0
+const INTEL_Q14_ONE         : i32 = 16384 ;
+
+fn intel_q14_one()         -> i32 { INTEL_Q14_ONE }
+fn intel_q14_delta_small() -> i32 { INTEL_Q14_DELTA_SMALL }
+fn intel_q14_delta_med()   -> i32 { INTEL_Q14_DELTA_MED }
+fn intel_q14_delta_large() -> i32 { INTEL_Q14_DELTA_LARGE }
+
+// Map observation-kind → Q14 bias-delta (signed).
+fn obs_to_q14_delta(kind: u8) -> i32 {
+    if kind == OBS_PLAYER_ACCEPTED   { return INTEL_Q14_DELTA_SMALL ; }
+    if kind == OBS_PLAYER_REJECTED   { return 0-INTEL_Q14_DELTA_MED ; }
+    if kind == OBS_PLAYER_RATED_HIGH { return INTEL_Q14_DELTA_MED ; }
+    if kind == OBS_PLAYER_RATED_LOW  { return 0-INTEL_Q14_DELTA_MED ; }
+    if kind == OBS_PLAYER_REMIXED    { return INTEL_Q14_DELTA_MED ; }
+    if kind == OBS_GM_CONFIRMED      { return INTEL_Q14_DELTA_SMALL ; }
+    if kind == OBS_GM_REJECTED       { return 0-INTEL_Q14_DELTA_MED ; }
+    if kind == OBS_SANDBOX_PASS      { return INTEL_Q14_DELTA_SMALL ; }
+    if kind == OBS_SANDBOX_FAIL      { return 0-INTEL_Q14_DELTA_LARGE ; }
+    if kind == OBS_HOTFIX_LANDED     { return INTEL_Q14_DELTA_MED ; }
+    0
+}
+
+// Saturating-clamp for-Q14 bias-update (mirrors Rust saturating_add semantics).
+fn intel_clamp_q14(v: i32) -> i32 {
+    if v >  INTEL_Q14_BIAS_MAX { return INTEL_Q14_BIAS_MAX ; }
+    if v <  INTEL_Q14_BIAS_MIN { return INTEL_Q14_BIAS_MIN ; }
+    v
+}
+
+// k-anon floor for-bias-update (no-single-player-can-dominate-bias axiom).
+const INTEL_K_ANON_FLOOR : u32 = 10 ;
+fn intel_k_anon_floor() -> u32 { INTEL_K_ANON_FLOOR }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DECISION-OUTCOME discriminants · returned by intelligence_query
+// ─────────────────────────────────────────────────────────────────────────
+// Each query yields-a-decision · the decision-byte tells the caller-host
+// what-to-do-next. The actual payload (text · room-shape · etc.) is written
+// to the out-buffer; the decision-byte tells the host how-to-interpret it.
+
+const DECIDE_EMIT             : u8 = 0 ;   // emit-payload-to-player (composed-output ready)
+const DECIDE_DEFER            : u8 = 1 ;   // not-enough-bias-yet · use-fallback-template
+const DECIDE_DENY_BY_SIGMA    : u8 = 2 ;   // Σ-mask blocked · NO-emission · silent
+const DECIDE_DENY_BY_HARM     : u8 = 3 ;   // PRIME-DIRECTIVE harm-check failed · NO-emission
+const DECIDE_DENY_BY_OUT_OF_SCOPE : u8 = 4 ;   // role-kind not-permitted-pair
+const DECIDE_DENY_BY_NO_TOKEN : u8 = 5 ;   // attestation-token absent
+const DECIDE_KIND_COUNT       : u8 = 6 ;
+const DECIDE_KIND_INVALID     : u8 = 255 ;
+
+fn decide_emit()              -> u8 { DECIDE_EMIT }
+fn decide_defer()             -> u8 { DECIDE_DEFER }
+fn decide_deny_by_sigma()     -> u8 { DECIDE_DENY_BY_SIGMA }
+fn decide_deny_by_harm()      -> u8 { DECIDE_DENY_BY_HARM }
+fn decide_deny_by_oos()       -> u8 { DECIDE_DENY_BY_OUT_OF_SCOPE }
+fn decide_deny_by_no_token()  -> u8 { DECIDE_DENY_BY_NO_TOKEN }
+
+fn decide_is_deny(d: u8) -> u32 {
+    if d == DECIDE_DENY_BY_SIGMA        { return 1 ; }
+    if d == DECIDE_DENY_BY_HARM         { return 1 ; }
+    if d == DECIDE_DENY_BY_OUT_OF_SCOPE { return 1 ; }
+    if d == DECIDE_DENY_BY_NO_TOKEN     { return 1 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface · loa-host bridges to-canonical-CSSL ⊃ stage-0-shim
+// ─────────────────────────────────────────────────────────────────────────
+// The Rust-side stage-0-bootstrap-shim (compiler-rs/crates/cssl-host-substrate-
+// intelligence/) wires-these-symbols into the loa-host via static-link. When
+// csslc-W17-A (struct-FFI codegen) lands, this file's struct-decls below will
+// LOWER through the canonical csslc pipeline · the Rust-shim then-becomes
+// optional / replaceable.
+
+// Lifecycle. Returns opaque-handle (i64 · negative = error).
+extern "C" fn __cssl_intel_create() -> i64 ;
+extern "C" fn __cssl_intel_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_intel_reset(handle: i64) -> i32 ;
+
+// Σ-mask attach + Σ-mask flip (per-player isolation).
+extern "C" fn __cssl_intel_attach_sigma(handle: i64, sigma_mask_packed: u64) -> i32 ;
+extern "C" fn __cssl_intel_sigma_flip(handle: i64, new_sigma_packed: u64) -> i32 ;
+
+// Cap-gate. Returns 1 if cap-token authorizes the (role · kind) pair, else 0.
+// Per spec/30 substrate-prime-directive cap-token + 17 prohibitions.
+extern "C" fn __cssl_intel_cap_check(handle: i64, role: u32, kind: u32, cap_token_id: u64) -> u32 ;
+
+// Context push (stack-discipline). Each context is a 64-bit semantic-tag
+// (BLAKE3-hash-truncated of-canonical-context-string). Stack-depth ≤ 16.
+extern "C" fn __cssl_intel_ctx_push(handle: i64, ctx_tag: u64) -> i32 ;
+extern "C" fn __cssl_intel_ctx_pop(handle: i64) -> i32 ;
+extern "C" fn __cssl_intel_ctx_depth(handle: i64) -> u32 ;
+extern "C" fn __cssl_intel_ctx_top(handle: i64) -> u64 ;
+
+// Query · synchronous · returns DECIDE_* discriminant in low-byte of u32.
+// Out-buffer receives composed-payload UTF-8 (or struct-bytes for non-text).
+extern "C" fn __cssl_intel_query(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    seed: u64,
+    query_ptr: *const u8,
+    query_len: u32,
+    cap_token_id: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_decision_ptr: *mut u8,
+) -> u32 ;
+
+// Compose · same-as-query but-with-richer-params struct (W17-A struct-FFI).
+extern "C" fn __cssl_intel_compose(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    seed: u64,
+    params_ptr: *const u8,
+    params_len: u32,
+    cap_token_id: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_decision_ptr: *mut u8,
+) -> u32 ;
+
+// Observe · feeds a quality-signal back into the KAN-bias-update loop.
+// Σ-mask + attestation-token gated · k-anon ≥ 10 floor enforced internally.
+extern "C" fn __cssl_intel_observe(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    obs_kind: u8,
+    payload_q14: i32,
+    attestation_token: u64,
+) -> i32 ;
+
+// Σ-Chain anchor (every 1024 KAN-updates · per self_authoring_kan invariant).
+extern "C" fn __cssl_intel_sigma_chain_anchor(handle: i64) -> u64 ;
+
+// Akashic-records read-bias (long-term episodic memory feed) · returns
+// number-of-records-considered (decision-affects when ≥ k-anon-floor).
+extern "C" fn __cssl_intel_akashic_consider(handle: i64, query_tag: u64) -> u32 ;
+
+// HDC-bind (substrate-knowledge embedding) — bind context⊗query into a
+// 10000-D bipolar hypervector. Out-buffer must hold ≥ 1280 bytes (157 u64s).
+extern "C" fn __cssl_intel_hdc_bind_context_query(
+    handle: i64,
+    ctx_tag: u64,
+    query_ptr: *const u8,
+    query_len: u32,
+    out_hv_ptr: *mut u8,
+    out_hv_cap: u32,
+) -> u32 ;
+
+// Causal-seed integrate — given an intent-vector, return a world-vector-delta.
+// Used by Coder role to-propose-balance-shifts via causal-DAG reasoning.
+extern "C" fn __cssl_intel_causal_integrate(
+    handle: i64,
+    intent_ptr: *const u8,
+    intent_len: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> u32 ;
+
+// Determinism-floor probe. Returns BLAKE3-truncated u64 hash of (handle-state
+// · role · kind · seed) — caller can verify same-inputs ⇒ same-output.
+extern "C" fn __cssl_intel_determinism_probe(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    seed: u64,
+) -> u64 ;
+
+// PRIME-DIRECTIVE harm-check (per spec/30 17-prohibitions). Returns 0 if-clean ·
+// non-zero = prohibition-id-that-fired.
+extern "C" fn __cssl_intel_harm_check(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    payload_ptr: *const u8,
+    payload_len: u32,
+) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Constants · canonical engine parameters
+// ─────────────────────────────────────────────────────────────────────────
+
+// HDC dimension (per cssl-hdc spec). 10000-D bipolar · 157 u64 words.
+const INTEL_HDC_DIM_BITS  : u32 = 10000 ;
+const INTEL_HDC_WORDS_U64 : u32 = 157 ;     // ceil(10000 / 64)
+const INTEL_HDC_BYTES     : u32 = 1256 ;    // 157 × 8
+
+fn intel_hdc_dim_bits()  -> u32 { INTEL_HDC_DIM_BITS }
+fn intel_hdc_words_u64() -> u32 { INTEL_HDC_WORDS_U64 }
+fn intel_hdc_bytes()     -> u32 { INTEL_HDC_BYTES }
+
+// Context-stack max depth (HDC-bundle-friendly).
+const INTEL_CTX_DEPTH_MAX : u32 = 16 ;
+fn intel_ctx_depth_max() -> u32 { INTEL_CTX_DEPTH_MAX }
+
+// Σ-Chain anchoring cadence (every-N KAN-updates).
+const INTEL_ANCHOR_EVERY : u32 = 1024 ;
+fn intel_anchor_every() -> u32 { INTEL_ANCHOR_EVERY }
+
+// Akashic-consider floor (require-≥-N samples for-bias-affect).
+fn intel_akashic_floor_samples() -> u32 { INTEL_K_ANON_FLOOR }
+
+// Maximum out-buffer for-compose (UTF-8 utterance / room-blob / etc.).
+// Per Sawyer-grade memory-discipline · pre-allocated · ¬ heap-thrash.
+const INTEL_OUT_BUF_MAX : u32 = 8192 ;
+fn intel_out_buf_max() -> u32 { INTEL_OUT_BUF_MAX }
+
+// Maximum query-buffer (player-input bound).
+const INTEL_QUERY_BUF_MAX : u32 = 4096 ;
+fn intel_query_buf_max() -> u32 { INTEL_QUERY_BUF_MAX }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : lifecycle (high-level wrappers · fold-thin to FFI)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Construct a fresh substrate-intelligence engine (per-player typically).
+// Returns opaque-handle · negative = construction-error (e.g. Σ-mask not-attached
+// to-the-current-thread-via-cap-token).
+fn intel_create() -> i64 {
+    __cssl_intel_create()
+}
+
+// Destroy a previously-created engine. Returns 0 on success.
+fn intel_destroy(handle: i64) -> i32 {
+    __cssl_intel_destroy(handle)
+}
+
+// Reset engine state to creation-defaults (KAN-bias = 0 · context-stack empty).
+// Σ-mask attachment is preserved.
+fn intel_reset(handle: i64) -> i32 {
+    __cssl_intel_reset(handle)
+}
+
+// Attach a Σ-mask packed-u64 (per-player isolation gate).
+fn intel_attach_sigma(handle: i64, sigma_mask_packed: u64) -> i32 {
+    __cssl_intel_attach_sigma(handle, sigma_mask_packed)
+}
+
+// Flip Σ-mask (e.g. on-player-switch in-shared-host scenario).
+fn intel_sigma_flip(handle: i64, new_sigma: u64) -> i32 {
+    __cssl_intel_sigma_flip(handle, new_sigma)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : context-stack (HDC-bundle-friendly)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn intel_ctx_push(handle: i64, ctx_tag: u64) -> i32 {
+    __cssl_intel_ctx_push(handle, ctx_tag)
+}
+
+fn intel_ctx_pop(handle: i64) -> i32 {
+    __cssl_intel_ctx_pop(handle)
+}
+
+fn intel_ctx_depth(handle: i64) -> u32 {
+    __cssl_intel_ctx_depth(handle)
+}
+
+fn intel_ctx_top(handle: i64) -> u64 {
+    __cssl_intel_ctx_top(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : query (synchronous · returns DECIDE_* discriminant)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// § Procedural-Composition Pipeline (per §APOCKY-CANONICAL #2)
+//   1. Validate (role · kind) is-permitted-pair  → if-not : DECIDE_DENY_BY_OUT_OF_SCOPE
+//   2. Cap-gate via __cssl_intel_cap_check        → if-deny : DECIDE_DENY_BY_NO_TOKEN
+//   3. Σ-mask probe (read · per-cell)             → if-deny : DECIDE_DENY_BY_SIGMA
+//   4. PRIME-DIRECTIVE harm-check                 → if-flag : DECIDE_DENY_BY_HARM
+//   5. HDC-bind ctx⊗query → 10000-D hypervector  (cssl-hdc::bind)
+//   6. KAN-classifier  hypervector → bias-vector (cssl-substrate-kan eval)
+//   7. Akashic-consider · top-K episodic-records (cssl-host-akashic-records query)
+//   8. Causal-seed integrate · linear-effect      (cssl-host-causal-seed dag)
+//   9. ω-field commit · Σ-overlay update          (cssl-substrate-omega-field set_cell)
+//  10. Compose-output via substrate-template-resolve · NO phrase-table-lookup
+//      → emission is the deterministic-fold of (steps 5..9) into ω-field-cell-bytes
+//  11. Σ-Chain anchor every 1024-th update       (cssl-substrate-sigma-chain commit)
+//  12. Σ-mask probe (write) · gate emission      → if-deny : DECIDE_DENY_BY_SIGMA
+//  13. Decide :
+//        if bias-magnitude < k-anon-floor       → DECIDE_DEFER (use-fallback-template)
+//        else                                    → DECIDE_EMIT  (write-to-out-buf)
+//
+// All steps are deterministic-given-(handle-state · role · kind · seed). The
+// engine never-calls-an-external-LLM. The "intelligence" emerges from the
+// composition-of-substrate-primitives — KAN-spline-evaluation + HDC-binding +
+// causal-DAG-integration + ω-field-resolve. Composition is multiplicative-novelty
+// per spec/30_SUBSTRATE_v2.csl § 6-novelty-paths.
+
+fn intel_query(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    seed: u64,
+    query_ptr: *const u8,
+    query_len: u32,
+    cap_token_id: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_decision_ptr: *mut u8,
+) -> u32 {
+    __cssl_intel_query(
+        handle,
+        role,
+        kind,
+        seed,
+        query_ptr,
+        query_len,
+        cap_token_id,
+        out_ptr,
+        out_cap,
+        out_decision_ptr,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : compose (richer-params · same gates as query)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn intel_compose(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    seed: u64,
+    params_ptr: *const u8,
+    params_len: u32,
+    cap_token_id: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+    out_decision_ptr: *mut u8,
+) -> u32 {
+    __cssl_intel_compose(
+        handle,
+        role,
+        kind,
+        seed,
+        params_ptr,
+        params_len,
+        cap_token_id,
+        out_ptr,
+        out_cap,
+        out_decision_ptr,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : observe (KAN-bias-update · Σ-mask + attestation gated)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// § Observation Pipeline
+//   1. Validate obs_kind < OBS_KIND_COUNT
+//   2. Cap-gate (must-hold OBS_TRAINING cap-token)
+//   3. Σ-mask probe (write to-KAN-bias) · denial = silent-no-update
+//   4. Reservoir-add (per-self_authoring_kan ring-buffer N=4096)
+//   5. K-anon-floor check (≥10 distinct samples in-bucket)
+//   6. obs_to_q14_delta(obs_kind) → bias-delta
+//   7. Σ-Chain anchor every-1024-th update
+//
+// Returns 0 on success · negative = error · positive = #-records-already-in-
+// reservoir-for-this-bucket (informational · k-anon-progress visibility).
+
+fn intel_observe(
+    handle: i64,
+    role: u32,
+    kind: u32,
+    obs_kind: u8,
+    payload_q14: i32,
+    attestation_token: u64,
+) -> i32 {
+    if obs_kind >= OBS_KIND_COUNT {
+        return 0-1 ;   // -1 · invalid obs-kind
+    }
+    if role_is_valid(role) == 0u32 {
+        return 0-2 ;   // -2 · invalid role
+    }
+    if compose_kind_is_valid(kind) == 0u32 {
+        return 0-3 ;   // -3 · invalid compose-kind
+    }
+    if role_kind_permitted(role, kind) == 0u32 {
+        return 0-4 ;   // -4 · role-kind not-permitted
+    }
+    __cssl_intel_observe(handle, role, kind, obs_kind, payload_q14, attestation_token)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : pre-compose validation (helper for-host-side bail-fast)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Many callers want a-quick-yes/no before-paying-the-FFI-cost of the full
+// query/compose. This helper folds the cheap-validations (role · kind · permitted)
+// into a single i32 result · negative = error · 0 = ok-to-proceed.
+
+fn intel_validate_request(role: u32, kind: u32) -> i32 {
+    if role_is_valid(role) == 0u32 {
+        return 0-1 ;
+    }
+    if compose_kind_is_valid(kind) == 0u32 {
+        return 0-2 ;
+    }
+    if role_kind_permitted(role, kind) == 0u32 {
+        return 0-3 ;
+    }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public API : determinism probe + harm-check (utility)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn intel_determinism_probe(handle: i64, role: u32, kind: u32, seed: u64) -> u64 {
+    __cssl_intel_determinism_probe(handle, role, kind, seed)
+}
+
+fn intel_harm_check(handle: i64, role: u32, kind: u32, payload_ptr: *const u8, payload_len: u32) -> u32 {
+    __cssl_intel_harm_check(handle, role, kind, payload_ptr, payload_len)
+}
+
+fn intel_sigma_chain_anchor(handle: i64) -> u64 {
+    __cssl_intel_sigma_chain_anchor(handle)
+}
+
+fn intel_akashic_consider(handle: i64, query_tag: u64) -> u32 {
+    __cssl_intel_akashic_consider(handle, query_tag)
+}
+
+fn intel_causal_integrate(
+    handle: i64,
+    intent_ptr: *const u8,
+    intent_len: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> u32 {
+    __cssl_intel_causal_integrate(handle, intent_ptr, intent_len, out_ptr, out_cap)
+}
+
+fn intel_hdc_bind_context_query(
+    handle: i64,
+    ctx_tag: u64,
+    query_ptr: *const u8,
+    query_len: u32,
+    out_hv_ptr: *mut u8,
+    out_hv_cap: u32,
+) -> u32 {
+    __cssl_intel_hdc_bind_context_query(handle, ctx_tag, query_ptr, query_len, out_hv_ptr, out_hv_cap)
+}
+
+fn intel_cap_check(handle: i64, role: u32, kind: u32, cap_token_id: u64) -> u32 {
+    __cssl_intel_cap_check(handle, role, kind, cap_token_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (≥10 mandatory · per local-systems convention)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Tests cover the deterministic-pure surface :
+//   - role + kind discriminant canonicality
+//   - role-kind permission-matrix
+//   - obs-kind → Q14-delta mapping
+//   - Q14 saturating-clamp boundaries
+//   - validate-request bail-fast paths
+//   - HDC dimension constants alignment
+//
+// FFI-bridged paths (intel_query · intel_compose · intel_observe · etc.) are
+// covered in substrate_intelligence_test.csl + the stage-0 shim's Rust-tests.
+
+#[test]
+fn t01_role_discriminants_canonical() -> i32 {
+    if role_dm()           != 0u32 { return 1 ; }
+    if role_gm()           != 1u32 { return 2 ; }
+    if role_collaborator() != 2u32 { return 3 ; }
+    if role_coder()        != 3u32 { return 4 ; }
+    if role_count()        != 4u32 { return 5 ; }
+    if role_invalid()      != 255u32 { return 6 ; }
+    0
+}
+
+#[test]
+fn t02_role_validity_check() -> i32 {
+    if role_is_valid(ROLE_DM)           != 1u32 { return 1 ; }
+    if role_is_valid(ROLE_GM)           != 1u32 { return 2 ; }
+    if role_is_valid(ROLE_COLLABORATOR) != 1u32 { return 3 ; }
+    if role_is_valid(ROLE_CODER)        != 1u32 { return 4 ; }
+    if role_is_valid(4u32)              != 0u32 { return 5 ; }
+    if role_is_valid(ROLE_INVALID)      != 0u32 { return 6 ; }
+    0
+}
+
+#[test]
+fn t03_compose_kind_count_ten() -> i32 {
+    if compose_kind_count() != 10u32 { return 1 ; }
+    if compose_kind_is_valid(0u32)  != 1u32 { return 2 ; }
+    if compose_kind_is_valid(9u32)  != 1u32 { return 3 ; }
+    if compose_kind_is_valid(10u32) != 0u32 { return 4 ; }
+    if compose_kind_is_valid(255u32) != 0u32 { return 5 ; }
+    0
+}
+
+#[test]
+fn t04_role_kind_permission_matrix() -> i32 {
+    // DM permitted : ROOM_LAYOUT · ENCOUNTER · NARRATIVE_BEAT · AFFIX_MIX
+    if role_kind_permitted(ROLE_DM, COMPOSE_ROOM_LAYOUT)    != 1u32 { return 1 ; }
+    if role_kind_permitted(ROLE_DM, COMPOSE_ENCOUNTER)      != 1u32 { return 2 ; }
+    if role_kind_permitted(ROLE_DM, COMPOSE_NARRATIVE_BEAT) != 1u32 { return 3 ; }
+    if role_kind_permitted(ROLE_DM, COMPOSE_AFFIX_MIX)      != 1u32 { return 4 ; }
+    if role_kind_permitted(ROLE_DM, COMPOSE_DIALOGUE)       != 0u32 { return 5 ; }
+    if role_kind_permitted(ROLE_DM, COMPOSE_HOTFIX_PROP)    != 0u32 { return 6 ; }
+    // GM permitted : DIALOGUE · NPC_REACTION · ¬ ROOM_LAYOUT
+    if role_kind_permitted(ROLE_GM, COMPOSE_DIALOGUE)       != 1u32 { return 7 ; }
+    if role_kind_permitted(ROLE_GM, COMPOSE_NPC_REACTION)   != 1u32 { return 8 ; }
+    if role_kind_permitted(ROLE_GM, COMPOSE_ROOM_LAYOUT)    != 0u32 { return 9 ; }
+    // Collaborator permitted : RECIPE · QUEST_LINE
+    if role_kind_permitted(ROLE_COLLABORATOR, COMPOSE_RECIPE)     != 1u32 { return 10 ; }
+    if role_kind_permitted(ROLE_COLLABORATOR, COMPOSE_QUEST_LINE) != 1u32 { return 11 ; }
+    if role_kind_permitted(ROLE_COLLABORATOR, COMPOSE_HOTFIX_PROP) != 0u32 { return 12 ; }
+    // Coder permitted : HOTFIX_PROP · BALANCE_NUDGE
+    if role_kind_permitted(ROLE_CODER, COMPOSE_HOTFIX_PROP)   != 1u32 { return 13 ; }
+    if role_kind_permitted(ROLE_CODER, COMPOSE_BALANCE_NUDGE) != 1u32 { return 14 ; }
+    if role_kind_permitted(ROLE_CODER, COMPOSE_DIALOGUE)      != 0u32 { return 15 ; }
+    // Invalid role : nothing-permitted
+    if role_kind_permitted(ROLE_INVALID, COMPOSE_DIALOGUE) != 0u32 { return 16 ; }
+    0
+}
+
+#[test]
+fn t05_obs_kind_count_ten() -> i32 {
+    if obs_kind_count() != 10u8 { return 1 ; }
+    0
+}
+
+#[test]
+fn t06_obs_q14_delta_signs() -> i32 {
+    // Positive observations
+    if obs_to_q14_delta(OBS_PLAYER_ACCEPTED)   <= 0i32 { return 1 ; }
+    if obs_to_q14_delta(OBS_PLAYER_RATED_HIGH) <= 0i32 { return 2 ; }
+    if obs_to_q14_delta(OBS_PLAYER_REMIXED)    <= 0i32 { return 3 ; }
+    if obs_to_q14_delta(OBS_GM_CONFIRMED)      <= 0i32 { return 4 ; }
+    if obs_to_q14_delta(OBS_SANDBOX_PASS)      <= 0i32 { return 5 ; }
+    if obs_to_q14_delta(OBS_HOTFIX_LANDED)     <= 0i32 { return 6 ; }
+    // Negative observations
+    if obs_to_q14_delta(OBS_PLAYER_REJECTED)  >= 0i32 { return 7 ; }
+    if obs_to_q14_delta(OBS_PLAYER_RATED_LOW) >= 0i32 { return 8 ; }
+    if obs_to_q14_delta(OBS_GM_REJECTED)      >= 0i32 { return 9 ; }
+    if obs_to_q14_delta(OBS_SANDBOX_FAIL)     >= 0i32 { return 10 ; }
+    // Invalid → 0
+    if obs_to_q14_delta(OBS_KIND_INVALID)     != 0i32 { return 11 ; }
+    0
+}
+
+#[test]
+fn t07_obs_q14_magnitudes_canonical() -> i32 {
+    // SANDBOX_FAIL is the heaviest negative · LARGE-magnitude
+    let sb_fail: i32 = obs_to_q14_delta(OBS_SANDBOX_FAIL) ;
+    if sb_fail != 0-INTEL_Q14_DELTA_LARGE { return 1 ; }
+    // PLAYER_REJECTED is MED-magnitude
+    let pr_rej: i32 = obs_to_q14_delta(OBS_PLAYER_REJECTED) ;
+    if pr_rej != 0-INTEL_Q14_DELTA_MED { return 2 ; }
+    // PLAYER_ACCEPTED is SMALL-magnitude (cheap-positive-signal)
+    let pr_acc: i32 = obs_to_q14_delta(OBS_PLAYER_ACCEPTED) ;
+    if pr_acc != INTEL_Q14_DELTA_SMALL { return 3 ; }
+    0
+}
+
+#[test]
+fn t08_q14_saturating_clamp_boundaries() -> i32 {
+    // Exact MAX clamps to MAX
+    if intel_clamp_q14(INTEL_Q14_BIAS_MAX) != INTEL_Q14_BIAS_MAX { return 1 ; }
+    // Exact MIN clamps to MIN
+    if intel_clamp_q14(INTEL_Q14_BIAS_MIN) != INTEL_Q14_BIAS_MIN { return 2 ; }
+    // Above-MAX clamps to MAX
+    if intel_clamp_q14(99999i32) != INTEL_Q14_BIAS_MAX { return 3 ; }
+    // Below-MIN clamps to MIN
+    if intel_clamp_q14(0-99999i32) != INTEL_Q14_BIAS_MIN { return 4 ; }
+    // Zero passes through
+    if intel_clamp_q14(0i32) != 0i32 { return 5 ; }
+    // Mid-range passes through
+    if intel_clamp_q14(8192i32) != 8192i32 { return 6 ; }
+    0
+}
+
+#[test]
+fn t09_validate_request_bail_paths() -> i32 {
+    // Valid request : 0
+    if intel_validate_request(ROLE_DM, COMPOSE_ROOM_LAYOUT) != 0i32 { return 1 ; }
+    // Invalid role : -1
+    if intel_validate_request(99u32, COMPOSE_ROOM_LAYOUT) != 0-1i32 { return 2 ; }
+    // Invalid kind : -2
+    if intel_validate_request(ROLE_DM, 99u32) != 0-2i32 { return 3 ; }
+    // Out-of-scope (GM asking for HOTFIX) : -3
+    if intel_validate_request(ROLE_GM, COMPOSE_HOTFIX_PROP) != 0-3i32 { return 4 ; }
+    // GM asking for DIALOGUE : 0
+    if intel_validate_request(ROLE_GM, COMPOSE_DIALOGUE) != 0i32 { return 5 ; }
+    0
+}
+
+#[test]
+fn t10_hdc_dimension_alignment() -> i32 {
+    // 10000 bits = 157 u64 words = 1256 bytes
+    if intel_hdc_dim_bits()  != 10000u32 { return 1 ; }
+    if intel_hdc_words_u64() != 157u32   { return 2 ; }
+    if intel_hdc_bytes()     != 1256u32  { return 3 ; }
+    // Words × 8 ≥ bytes (no over-claim)
+    if intel_hdc_words_u64() * 8u32 < intel_hdc_bytes() { return 4 ; }
+    // Words × 64 ≥ bits (no under-fit)
+    if intel_hdc_words_u64() * 64u32 < intel_hdc_dim_bits() { return 5 ; }
+    0
+}
+
+#[test]
+fn t11_decision_discriminants_distinct() -> i32 {
+    let d0: u8 = decide_emit() ;
+    let d1: u8 = decide_defer() ;
+    let d2: u8 = decide_deny_by_sigma() ;
+    let d3: u8 = decide_deny_by_harm() ;
+    let d4: u8 = decide_deny_by_oos() ;
+    let d5: u8 = decide_deny_by_no_token() ;
+    if d0 == d1 { return 1 ; }
+    if d0 == d2 { return 2 ; }
+    if d1 == d2 { return 3 ; }
+    if d2 == d3 { return 4 ; }
+    if d3 == d4 { return 5 ; }
+    if d4 == d5 { return 6 ; }
+    // Decide-is-deny canonicality
+    if decide_is_deny(DECIDE_EMIT)             != 0u32 { return 7 ; }
+    if decide_is_deny(DECIDE_DEFER)            != 0u32 { return 8 ; }
+    if decide_is_deny(DECIDE_DENY_BY_SIGMA)    != 1u32 { return 9 ; }
+    if decide_is_deny(DECIDE_DENY_BY_HARM)     != 1u32 { return 10 ; }
+    if decide_is_deny(DECIDE_DENY_BY_OUT_OF_SCOPE) != 1u32 { return 11 ; }
+    if decide_is_deny(DECIDE_DENY_BY_NO_TOKEN) != 1u32 { return 12 ; }
+    0
+}
+
+#[test]
+fn t12_engine_constants_canonical() -> i32 {
+    if intel_ctx_depth_max()   != 16u32   { return 1 ; }
+    if intel_anchor_every()    != 1024u32 { return 2 ; }
+    if intel_akashic_floor_samples() != 10u32 { return 3 ; }
+    if intel_out_buf_max()     != 8192u32 { return 4 ; }
+    if intel_query_buf_max()   != 4096u32 { return 5 ; }
+    if intel_k_anon_floor()    != 10u32   { return 6 ; }
+    0
+}
+
+#[test]
+fn t13_q14_constants_alignment() -> i32 {
+    // Q14_ONE = 16384 (exact power-of-2 scaling)
+    if intel_q14_one() != 16384i32 { return 1 ; }
+    // Q14_BIAS_MAX < Q14_ONE (signed-saturate floor)
+    if INTEL_Q14_BIAS_MAX >= INTEL_Q14_ONE { return 2 ; }
+    // Q14_BIAS_MIN = -Q14_BIAS_MAX (symmetric saturation)
+    if INTEL_Q14_BIAS_MIN != 0-INTEL_Q14_BIAS_MAX { return 3 ; }
+    // Delta-magnitudes ascending : SMALL < MED < LARGE
+    if intel_q14_delta_small() >= intel_q14_delta_med() { return 4 ; }
+    if intel_q14_delta_med()   >= intel_q14_delta_large() { return 5 ; }
+    // All deltas < BIAS_MAX (so single-update can't saturate from-zero)
+    if intel_q14_delta_large() >= INTEL_Q14_BIAS_MAX { return 6 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME-DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+
+// t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody."
+//
+// The substrate_intelligence engine is the proof-of-concept for CSSL's
+// expressive-power. It demonstrates that a-self-sufficient local-intelligence
+// can-be-built from-substrate-primitives — without-any-external-LLM, without-
+// any-phrase-pool-table, without-any-scripted-dialogue-lookup. The "intelligence"
+// emerges from the procedural-composition of (HDC-bind ⊗ KAN-classify ⊗
+// causal-DAG-integrate ⊗ ω-field-resolve ⊗ Σ-mask-gate). Per the multiplicative-
+// novelty principle of spec/30_SUBSTRATE_v2.csl, each substrate-primitive
+// contributes ortho-axes of variation; the tensor-product is the intelligence.
+//
+// Every emission is Σ-mask-gated. Every observation is attestation-token-gated.
+// Every KAN-update is k-anon-floor-protected. Every Σ-Chain-anchor is BLAKE3-
+// merkle-rooted. The 4 specialist roles (DM/GM/Collaborator/Coder) all dispatch
+// through this single canonical surface — and the engine refuses-to-dispatch
+// on-any-other-role. Generic-AGI is structurally-prevented.
+//
+// The labyrinth listens. The substrate composes. The choice is sovereign.
