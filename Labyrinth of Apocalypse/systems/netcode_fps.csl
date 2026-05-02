@@ -1,0 +1,142 @@
+module com.apocky.loa.systems.netcode_fps
+
+// § Labyrinth of Apocalypse — netcode_fps system (pure-CSSL)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-3 (POD-W13-FPS-3) — FPS network-replication
+//
+// § THESIS
+//   FPS-grade real-time network-replication preserving sovereignty :
+//     1. ClientPrediction       : input → predict-state → render-locally
+//     2. ServerReconciliation   : authoritative-state → rewind + replay
+//     3. LagCompensation        : server-side world-rewind for hit-validation
+//     4. RollbackNetcode        : N-frames symmetric replay (GGPO-tradition)
+//     5. DeltaCompression       : ω-field delta-only (¬ full-replication)
+//     6. SnapshotInterpolation  : remote-entities lerp-between-snapshots
+//     7. BandwidthBudget        : adaptive AIMD per-client (32→256→2048 kbps)
+//   Σ-mask gates EVERY cell · default-deny across-players · ¬ surveillance.
+//
+// § AXIOMS
+//   ─ tick-pinned EVERYTHING : prediction + reconciliation + lag-comp + rollback
+//   ─ deterministic-simulation REQUIRED (Q16.16 fixed-point ; ¬ float-divergence)
+//   ─ Σ-mask-per-cell consent-arch (PRIME-DIRECTIVE inheritance)
+//   ─ Sensitive< * > STRUCTURALLY REFUSED at gate (loud-fail + attest-record)
+//   ─ ¬ heuristic-aimbot-detection · ¬ IP-logging · ¬ deep-packet-inspection
+//   ─ player-pubkey-hash = ONLY identity ; session-scoped
+//   ─ rollback-budget BOUNDED (default 8 frames ≈ 133 ms @ 60 Hz) · over-budget = desync-error
+//   ─ lag-comp-window BOUNDED (default 64 ticks ≈ 1 sec @ 60 Hz) · over-window = reject
+//   ─ delta-compression OBSERVABLE · bandwidth-savings-ratio surfaced for telemetry
+//   ─ AIMD growth-step + halving-decrease ; ¬ over-share ¬ under-share
+//   ─ snapshot-interp ALWAYS-Q16.16-lerp · non-lerpable-cells snap @ frac >= 0.5
+//
+// § FFI BOUNDARY
+//   Consumes the host-side substrate via extern "C" :
+//     * cssl-host-netcode-fps         (W13-3 ; this crate's runtime kernel)
+//     * cssl-host-multiplayer-signaling (peer-discovery + room-state-machine ; READ-ONLY)
+//     * cssl-host-attestation         (Σ-refusal-count + sovereign-bypass record)
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : every replicated cell carries Σ-mask · default-deny.
+//   Sensitive-cells STRUCTURALLY-banned ; refusal LOUD ; attest-row emitted.
+//   Companion-AI : sovereign-across-modes (LOA_PILLARS §2) ; revocation
+//   does NOT break session, audit-final-row emitted, run-continues-solo.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Tick rates  (W! deterministic-simulation REQUIRED)
+// ─────────────────────────────────────────────────────────────────────────
+
+const TICK_RATE_DEFAULT      : u32 = 60   ;  // console-FPS-baseline
+const TICK_RATE_COMPETITIVE  : u32 = 128  ;  // Valorant / CS-target
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Default budgets  (Σ-mask + bandwidth + rollback + lag-comp)
+// ─────────────────────────────────────────────────────────────────────────
+
+const ROLLBACK_FRAMES_DEFAULT     : u32 = 8    ;  // GGPO baseline · ≈133 ms @ 60 Hz
+const LAGCOMP_WINDOW_DEFAULT      : u32 = 64   ;  // ≈ 1 sec @ 60 Hz
+const RENDER_LAG_TICKS_DEFAULT    : u32 = 6    ;  // ≈ 100 ms @ 60 Hz (Source-tradition)
+
+const BANDWIDTH_KBPS_MIN          : u32 = 32   ;  // floor · ¬ starve
+const BANDWIDTH_KBPS_TARGET       : u32 = 256  ;  // broadband-comfortable
+const BANDWIDTH_KBPS_MAX          : u32 = 2048 ;  // ceiling · ¬ over-share
+
+const SIGMA_PEER_MAX              : u32 = 64   ;  // 64-bit Σ-mask-per-cell
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI symbols  (extern "C" ; provided by cssl-host-netcode-fps)
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_netcode_predict (handle : usize, input_buf : *const u8, input_len : u32) -> i32
+extern "C" fn __cssl_netcode_reconcile (handle : usize, server_state_buf : *const u8, len : u32) -> i32
+extern "C" fn __cssl_netcode_lagcomp_validate (handle : usize, render_tick : u32, server_now : u32, predicate_id : u32) -> i32
+extern "C" fn __cssl_netcode_rollback (handle : usize, target_tick : u32) -> i32
+extern "C" fn __cssl_netcode_delta_for (handle : usize, recipient_slot : u8, out_buf : *mut u8, out_cap : u32) -> i32
+extern "C" fn __cssl_netcode_snapshot_lerp (handle : usize, render_tick : u32, out_buf : *mut u8, out_cap : u32) -> i32
+extern "C" fn __cssl_netcode_bandwidth_observe_loss (handle : usize, loss_pml : u32) -> i32
+extern "C" fn __cssl_netcode_attest_sigma_refusal (handle : usize, count : u32, category : u8) -> i32
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask categories  (PRIME-DIRECTIVE consent-arch)
+// ─────────────────────────────────────────────────────────────────────────
+
+enum SigmaCategory {
+    Public,                 // world-visible · mask ignored
+    Scoped,                 // bitmask-gated per recipient peer-slot
+    Local,                  // client-only · NEVER replicated
+    Sensitive,              // STRUCTURALLY BANNED · refused-loud + attest-row
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Reconciliation outcome
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ReconcileOutcome {
+    Matched,                // server == predicted · no-op
+    Replayed{ frames: u32 },// server != predicted · N-frames replayed
+    Stale,                  // server-tick older than last-authoritative
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Lag-comp outcome
+// ─────────────────────────────────────────────────────────────────────────
+
+enum LagCompOutcome {
+    Accept,                 // predicate accepted at rewound tick
+    Reject,                 // predicate rejected at rewound tick
+    OutOfWindow,            // render-tick older than max_age_ticks
+    FutureTick,             // render-tick > server-now (clock-skew / attack)
+    NoSnapshot,             // history-gap at requested tick
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Compliance-attestation (Σ-refusal accounting)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// EVERY tick :
+//   sensitive_refusals_per_send → __cssl_netcode_attest_sigma_refusal
+// Sovereign-bypass would emit a separate audit-row via cssl-host-attestation ;
+// this crate exposes NO implicit-bypass surface.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-bits  (revocable mid-session ; revoke = silent-drop-to-fallback)
+// ─────────────────────────────────────────────────────────────────────────
+
+const NETCODE_CAP_PREDICT     : u32 = 0x0001  ; // run client-prediction (always required)
+const NETCODE_CAP_RECONCILE   : u32 = 0x0002  ; // accept server-authoritative state
+const NETCODE_CAP_LAGCOMP     : u32 = 0x0004  ; // server-side hit-validation
+const NETCODE_CAP_ROLLBACK    : u32 = 0x0008  ; // peer-to-peer rollback-replay
+const NETCODE_CAP_DELTA_SEND  : u32 = 0x0010  ; // emit deltas to peers
+const NETCODE_CAP_DELTA_RECV  : u32 = 0x0020  ; // ingest deltas from peers
+const NETCODE_CAP_INTERP      : u32 = 0x0040  ; // remote-entity snapshot-interpolation
+const NETCODE_CAP_BANDWIDTH   : u32 = 0x0080  ; // adaptive-rate AIMD adjust
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ¬ pay-for-power · ¬ surveillance · ¬ heuristic-detection
+// ─────────────────────────────────────────────────────────────────────────
+//   netcode is PURE-MECHANICS · zero monetization-surface ·
+//   zero IP-logging server-side beyond-session ·
+//   zero behavioral-fingerprinting · zero aimbot-heuristics
+//   (cheating is addressed via deterministic-replay + community-moderation
+//    + cap-revocation · NEVER via surveillance).

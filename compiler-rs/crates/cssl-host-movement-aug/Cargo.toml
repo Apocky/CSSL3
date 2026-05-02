@@ -1,0 +1,35 @@
+# § T11-W13-M6 : cssl-host-movement-aug
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-2 deliverable per Labyrinth/systems/movement_aug.csl  (W13-6)
+# § I> Apex/Titanfall-style fluid traversal · sprint+slide+jump-pack+parkour
+# § I> COSMETIC-ONLY-AXIOM : mechanics-identical-across-skins ;
+#      affixes mutate visual-trail/audio-cue ONLY · ¬ pay-for-power
+# § I> sprint = 1.6× walk · stamina-budget 5s/3s · sovereign-cap toggles infinite
+# § I> slide = crouch-while-sprint · 1s · friction-decel · momentum-preserve
+# § I> jump-pack = double-jump (2 free) · 30%-air-control · directional-boost
+# § I> parkour = wall-run-2s · auto-mantle · slide-jump combo
+# § I> genre-shift : FPS-locked / Third-momentum-arrow / Iso-grid-snap
+# § I> pure-deterministic ; fixed-step tick ; replay-bit-equal ; #![forbid(unsafe_code)]
+# § I> NO substrate-deps ; serde-only ; FFI-friendly Copy types
+
+[package]
+name                   = "cssl-host-movement-aug"
+description            = "CSSLv3 LoA-v13 movement-augmentations substrate : sprint + slide + jump-pack + parkour · Apex/Titanfall-style fluid traversal · cosmetic-only-axiom mechanics-identical-across-skins · stamina-budget · double-jump · 30%-air-control · wall-run · auto-mantle · slide-jump-combo · genre-shift FPS/Third/Iso · pure-deterministic seeded-RNG (W13-6)"
+version                = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+[lib]
+name = "cssl_host_movement_aug"
+path = "src/lib.rs"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
