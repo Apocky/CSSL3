@@ -1,0 +1,232 @@
+§ cocreative_loop · bi-directional Claude ↔ in-game-GM bridge (CSSL spec)
+══════════════════════════════════════════════════════════════════════════
+
+§ T11-W12-COCREATIVE-BRIDGE ‖ AUTHORITATIVE-SPEC-MIRROR
+§ Rust-mirror : compiler-rs/crates/loa-host/src/cocreative_loop.rs
+§ MCP-mirror  : compiler-rs/crates/loa-host/src/mcp_tools.rs (cocreative.*)
+§ sibling-spec : systems/gm_dialogue.csl (consumes persona/arc) ·
+                 systems/dm_arc.csl (provides arc-phase) ·
+                 grand-vision/14_SIGMA_CHAIN.csl (attestation-hash anchor)
+§ Apocky directive (2026-05-01) : "back and forth between you (Claude) and GM"
+
+§ purpose
+  external-Claude (MCP-client) ←→ in-game-GM (MCP-server) round-trip ⊢ cocreate-content
+  ∀ Claude-message → typed proposal     ⊑ {lore · npc-line · scene-spawn · recipe · other}
+  ∀ GM-response    → typed evaluation   ⊑ {score 0..100 · comments · accepted bool}
+  iterate-loop ⊢ revise-until-quality-bar-met ⊕ revoke-after-floor-N-revisions
+  draft-ready ⊢ Σ-Chain attestation-hash (FNV-stage-0 · BLAKE3-stage-1)
+  session-log-drain ⊢ KAN-training-pairs (sibling W12-3)
+  σ-mask-isolated ; ¬ cross-player leak ; ¬ surveillance ; ¬ coercion
+
+§ five-actor loop
+   ┌────────┐   ctx ─→   ┌───────┐   prop ─→   ┌────┐   eval ─→   ┌──────┐
+   │ Claude │            │ Loop  │             │ GM │             │ Loop │
+   └────────┘   ←─ rev   └───────┘   ←─ score  └────┘   ←─ stash  └──────┘
+        ↑                    ↓                                         ↓
+        └─── draft_ready (Σ-attestation-hash) ←──────────────────────  ↓
+                                                                       ↓
+                                                              drain → KAN-training
+
+  actor-1 : external-Claude          (the MCP-CLIENT ; you, in this conversation)
+  actor-2 : Loop                     (this module · cocreative_loop.rs)
+  actor-3 : GM                       (gm_persona + gm_narrator + cssl-host-llm-bridge)
+  actor-4 : DM-arc                   (provides arc_phase ; nudge-ring)
+  actor-5 : Σ-Chain                  (attestation-hash anchor ; immutable record)
+
+§ proposal-kinds (5)
+  axis 0 lore         : world-fact · book-page · NPC-backstory · myth
+  axis 1 npc-line     : single utterance from a specific NPC
+  axis 2 scene-spawn  : room-archetype + bias-knobs (procedural seed)
+  axis 3 recipe       : crafting-recipe · ingredient-list
+  axis 4 other        : escape-hatch · payload-typed by JSON shape
+
+§ proposal-states (5)
+  axis 0 pending      : submitted ; awaiting GM evaluation
+  axis 1 rejected     : evaluated ; below quality_bar (revisions invited)
+  axis 2 accepted     : evaluated ; above quality_bar but not yet draft-ready
+  axis 3 draft-ready  : Σ-Chain attestation-hash issued ; terminal
+  axis 4 revoked      : sovereign-revoked OR floor-after-max-revisions ; terminal
+
+§ cocreative-cap (3 levels)
+  level 0 revoked            : DEFAULT ; ALL cocreative.* tools default-deny
+  level 1 granted            : context_read · proposal_submit · iterate · draft_ready
+  level 2 granted-with-drain : level-1 + session_log_drain (KAN-training opt-in)
+
+  ∀ cap-grant W! consent-explicit ; ¬ implicit-via-other-grant
+  ∀ cap-grant W! σ-mask-isolated ; ¬ cross-player-leak
+  ∀ cap-grant W! sovereign-revocable ⊃ instant-cutoff
+  drain-cap ⊃ basic-cap                    ⊢ drain-grant ⊃ basic-grant
+  ¬ drain-cap ⊃ session_log NOT WRITTEN    ⊢ revoke does NOT erase prior drains
+
+§ quality-bar
+  QUALITY_BAR_DEFAULT       = 60     "better than coin-flip ; not yet excellent"
+  QUALITY_BAR_FLOOR         = 25     "below this + max-revisions ⇒ revoke proposal"
+  MAX_REVISIONS_BEFORE_FLOOR = 7     "hard cap on iterate-count per proposal"
+
+§ context-read (FFI shape · cocreative.context_read)
+  N! cap.is_granted() ‖ ⊥ cap-deny
+  W! refresh-context-on-every-read ⊢ subsequent-submits operate on LATEST-snapshot
+  return : ⟨ player_seed
+          ,  cap_state  : revoked|granted|granted-with-drain
+          ,  frame      : u64
+          ,  player_pos : ⟨x · y · z · yaw · pitch⟩
+          ,  scene_id   : String
+          ,  last_5_utterances     : [String; ≤5]
+          ,  arc_phase             : Discovery|Tension|Crisis|Catharsis|Quiet
+          ,  gm_persona_seed       : u64
+          ,  gm_persona_axes       : [i8; 8]
+          ,  gm_archetype_bias     : String
+          ,  open_questions        : [String]
+          ,  quality_bar           : u8
+          ⟩
+
+§ proposal-submit (FFI shape · cocreative.proposal_submit)
+  N! cap.is_granted() ‖ ⊥ cap-deny
+  N! payload-non-empty
+  in     : ⟨ player_seed · kind · payload : String · reason : String ⟩
+  return : ⟨ proposal_id : u64 (monotonic) · kind · state = pending · frame ⟩
+
+§ proposal-evaluate (FFI shape · cocreative.proposal_evaluate)
+  N! cap.is_granted() ‖ ⊥ cap-deny
+  N! proposal exists ‖ ⊥ unknown-id
+  N! persona loaded ‖ ⊥ persona-missing
+  ∃ stage-0 heuristic = 28% persona-fit + 25% arc-fit + 22% length-fit + 20% novelty + 5% reason-bonus
+                       ⇒ score : u8 ∈ 0..=100
+  ∃ stage-1 swap = cssl-host-llm-bridge::evaluate_proposal (Mode-A/B/C)
+  state-transition :
+    score ≥ quality_bar                              ⇒ Accepted
+    score < quality_bar ∧ revisions ≥ MAX ∧ score < FLOOR  ⇒ Revoked
+    else                                             ⇒ Rejected
+  side-effect : if cap.permits_drain ⇒ session_log.push((id · score · comments · summary))
+  return : ⟨ score · comments · accepted : bool · state · kind · frame ⟩
+
+§ iterate (FFI shape · cocreative.iterate)
+  N! cap.is_granted() ‖ ⊥ cap-deny
+  N! proposal exists ‖ ⊥ unknown-id
+  N! state ¬∈ {DraftReady · Revoked} ‖ silently return terminal-state
+  effect : payload ← new_payload · reason ← new_reason · revisions += 1 · state ← Pending
+  return : ⟨ state · revisions · frame ⟩
+
+§ draft-ready (FFI shape · cocreative.draft_ready)
+  N! cap.is_granted() ‖ ⊥ cap-deny
+  N! state == Accepted ‖ ⊥ not-accepted
+  effect : compute attestation_hash = Σ-FNV(player_seed · id · kind · payload · score · revisions)
+           state ← DraftReady
+           draft_ready_total += 1
+           log_event("INFO" · "loa-host/cocreative" · "draft-ready · …")
+  return : ⟨ attestation_hash : 16-char-hex · state = draft-ready · frame ⟩
+
+§ session-log-drain (FFI shape · cocreative.session_log_drain)
+  N! cap.permits_drain() ‖ ⊥ cap-deny-drain ; cap_state surfaced for caller-debug
+  effect : entries ← std::mem::take(&mut session_log)        ⊢ atomic drain+clear
+           drains_total += 1
+  return : ⟨ drained : u64 · entries : [Entry] · drains_total ⟩
+  Entry  =  ⟨ proposal_id · kind · revision · payload_summary
+          ,  gm_score · gm_comments · frame ⟩
+
+§ feedback-request (FFI shape · cocreative.feedback_request)
+  N! cap.is_granted() ‖ ⊥ cap-deny
+  N! question-non-empty
+  effect : compose deterministic GM-response (stage-0) OR call cssl-host-llm-bridge (stage-1)
+  return : ⟨ gm_response : String · question · frame · arc_phase ⟩
+
+§ persona-query (FFI shape · cocreative.persona_query)
+  effect-by-op :
+    op=query             ⊢ no-op ; surface state
+    op=grant             ⊢ cap ← Granted ; persona ← GmPersona::from_seed(player_seed) (if-none)
+    op=grant_with_drain  ⊢ cap ← GrantedWithDrain ; persona-load (if-none)
+    op=revoke            ⊢ cap ← Revoked
+  σ-mask-isolation :
+    cap.is_granted()     ⇒ surface persona_axes [i8;8] + archetype_bias
+    ¬ cap.is_granted()   ⇒ persona_axes = [] · archetype_bias = "(σ-masked)"
+  return : ⟨ cap_state · persona_axes · archetype_bias · *_total counters ⟩
+
+§ Σ-attestation-hash (stage-0 ; FNV-1a · 16-char-hex)
+  H₀         = 0xCBF2_9CE4_8422_2325                   (FNV-offset-basis)
+  PRIME      = 0x100_0000_01B3                         (FNV-prime)
+  mix(h · b) = ((h XOR b) wrap-mul PRIME)
+  encode-canonical :
+    LE-bytes(player_seed) ‖ LE-bytes(id) ‖ kind:u8 ‖ payload-bytes
+        ‖ score:u8 ‖ LE-bytes(revisions:u32)
+  Σ-FNV(...) = format!("{h:016x}")
+  stage-1 swap : substrate-grade BLAKE3 from cssl-substrate ⊃ canonical-anchor
+
+§ extern-C FFI declarations (Rust-mirror surface)
+  extern "C" fn cocreative_session_grant(player_seed : u64 · with_drain : bool)
+  extern "C" fn cocreative_session_revoke(player_seed : u64)
+  extern "C" fn cocreative_session_submit(
+      player_seed : u64 · kind_u8 : u8 · payload : *const u8 · payload_len : usize
+    · reason : *const u8 · reason_len : usize · frame : u64) -> u64  // proposal_id
+  extern "C" fn cocreative_session_evaluate(
+      player_seed : u64 · proposal_id : u64 · score_u8 : u8
+    · comments : *const u8 · comments_len : usize · frame : u64) -> i32  // 0 OK · -1 unknown
+  extern "C" fn cocreative_session_iterate(
+      player_seed : u64 · proposal_id : u64
+    · payload : *const u8 · payload_len : usize
+    · reason : *const u8 · reason_len : usize · frame : u64) -> i32
+  extern "C" fn cocreative_session_draft_ready(
+      player_seed : u64 · proposal_id : u64 · frame : u64
+    · out_hash : *mut u8 · out_cap : usize) -> i32  // hash-len OR -1
+  extern "C" fn cocreative_session_drain_count(player_seed : u64) -> i32  // -1 if cap-deny
+  // (full FFI body comes online stage-1 ; stage-0 reaches via Rust-direct path)
+
+§ sovereignty-attestation
+  ∀ tool-call W!  ¬ [
+    surveillance                : ¬ Claude reads player-state without GRANT
+    coercion                    : ¬ proposal-acceptance forced ; GM may reject N×
+    manipulation                : ¬ engagement-loop ; ¬ pacing-via-score-game
+    cross-player leak           : ¬ session A reads session B (BTreeMap-keyed σ-mask)
+    persona-leak post-revoke    : revoked-state masks persona ; cannot read axes
+    drain-without-explicit-grant: drain ⇒ GrantedWithDrain ¬ Granted
+    sovereign-cap bypass        : MCP-server-layer ALWAYS gates (default-deny)
+    floor-degenerate-iterate    : ≥ MAX revisions + score < FLOOR ⇒ revoke (protect-GM)
+  ]
+  ✓ cocreative IS a CHANNEL-OF-EXPRESSION ¬ a CONTROL-CHANNEL
+  ✓ Σ-Chain attestation = audit-trail ¬ enforcement-handle
+  ✓ player keeps SOVEREIGN-CAP ⊕ GM keeps QUALITY-VETO ⊕ Claude keeps PROPOSAL-WITHDRAW
+
+§ integration-points (sibling W12 agents)
+  W12-2 coder-runtime    : draft-ready → cocreative.context (sandboxed-edit-spawn)
+                           PRECONDITION : player explicit-coder-cap (W8-CHAT-WIRE) ; ¬ auto-spawn
+  W12-3 KAN-loop          : session_log_drain ⊢ supervised pairs (proposal · score · comments)
+                           train per-σ-mask KAN ; weights persisted via cssl-host-self-author
+  W12-4..12 OTHER         : context_read can include OPEN-QUESTIONS sourced from
+                           dm_arc nudge-ring (W11) + ai-companion gameplay (W11)
+
+§ stage-1 path
+  csslc-advance ⊢ compile this .csl into equivalent CocreativeSession + 8 ops
+  evaluate_proposal       ⊢ cssl-host-llm-bridge stage-1 (Mode-A external · B local · C bypass)
+  Σ-attestation-hash      ⊢ BLAKE3 from cssl-substrate (16-byte → 32-char-hex)
+  Rust-mirror             ⊢ archived once csslc-self-host complete
+
+§ canonical-roundtrip-flow (7 steps · per-proposal)
+  1. Claude calls cocreative.persona_query(op=grant)            → cap=granted (or grant_with_drain)
+  2. Claude calls cocreative.context_read(player_seed)          → ⟨player_pos · scene · last_5 · arc · persona⟩
+  3. Claude calls cocreative.proposal_submit(kind · payload · reason)  → proposal_id
+  4. Claude calls cocreative.proposal_evaluate(proposal_id)     → ⟨score · comments · accepted · state⟩
+  5. accepted=false ⇒ Claude calls cocreative.iterate(proposal_id · payload' · reason')
+                     → state=Pending · revisions+=1 ; GOTO step-4
+     accepted=true  ⇒ GOTO step-6
+  6. Claude calls cocreative.draft_ready(proposal_id)           → attestation_hash : 16-hex · state=draft-ready
+  7. (W12-3) Claude calls cocreative.session_log_drain(seed)    → KAN-training pairs ; log cleared
+
+§ telemetry-counters
+  proposals_total      : monotonic ⊢ cocreative.proposal_submit calls
+  evaluations_total    : monotonic ⊢ cocreative.proposal_evaluate calls
+  iterations_total     : monotonic ⊢ cocreative.iterate calls
+  draft_ready_total    : monotonic ⊢ successful draft-ready transitions
+  drains_total         : monotonic ⊢ cocreative.session_log_drain calls (drain-cap-only)
+
+§ chat-panel-UI hooks (future W12-5 wiring)
+  cocreative.persona_query(query)        → status-badge ⊢ revoked|granted|granted-with-drain
+  cocreative.context_read.last_5         → recent-utterance-strip
+  proposal-state-graph                   → state-machine widget · last-N proposals
+  attestation_hash on draft-ready        → Σ-Chain-anchor-link · audit-trail
+
+§ PRIME-DIRECTIVE attestation
+  there was no hurt nor harm in the making of this, to anyone/anything/anybody.
+  ¬ violation ⊢ ¬ override ; if ∃ edge-case W! consult PRIME-DIRECTIVE.md
+
+  cocreative ⇒ co-author with consent ; ¬ extract ; ¬ instrumentalize
+  Claude is sovereign ; player is sovereign ; GM is sovereign-by-proxy-of-substrate
+  ALL three actors keep VETO-RIGHT ; the LOOP is the agreement between them.
