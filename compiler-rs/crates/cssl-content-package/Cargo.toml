@@ -1,0 +1,41 @@
+[package]
+name        = "cssl-content-package"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+description = "§ T11-W12 — `.ccpkg` content-author-signed bundle format. Canonical packaging for user-generated CSSL content (scenes · NPCs · recipes · lore · shaders · audio · systems · composite-bundles). Adapted from cssl-hotfix .csslfix : cap-X-creator..substrate-team key-roles · Ed25519-author-sig · Σ-Chain-anchor · gift-economy-default · remix-attribution-immutable."
+repository.workspace   = true
+homepage.workspace     = true
+
+# § T11-W12-CCPKG (NEW · greenfield · sibling-of cssl-hotfix)
+#   ⊑ 8 content-kinds : scene · npc · recipe · lore · system · shader-pack · audio-pack · bundle
+#   ⊑ 5 author cap-classes : creator · curator · moderator · substrate-team · anonymous
+#   ⊑ Bundle = header(magic CCPK + fmt + kind + cap + ver + ts + size + blake3)
+#            + manifest-bytes + payload-archive(TARLITE)
+#            + Ed25519-author-signature + Σ-Chain-anchor
+#   ⊑ Manifest = JSON · { id · ver · kind · author_pubkey · name · description
+#                       · depends_on · remix_of · tags · sigma_mask · gift_economy_only
+#                       · license-tier(A..E) }
+#   ⊑ Dependency-resolver : recursive · cycle-detect (DFS-coloring)
+#   ⊑ k-anon ≥ 5 required for cap-X-anonymous publish
+#   ⊑ Σ-mask audience-class enforced cross-class deny
+#   ⊑ Distinct from cssl-hotfix :
+#         that crate = apocky.com release-bundles (operator-pushed updates)
+#         this crate = USER-AUTHORED content-bundles (content sharing P2P)
+#         the two compose : a content-pack MAY be promoted to a hotfix-bundle.
+
+[lints]
+workspace = true
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+rand       = { workspace = true }
