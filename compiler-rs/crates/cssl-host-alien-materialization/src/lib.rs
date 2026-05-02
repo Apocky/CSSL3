@@ -95,6 +95,9 @@
 pub mod observer;
 pub mod pixel_field;
 pub mod ray;
+// § T11-W18-B-PERF : uniform-grid spatial-index. crystals_near() now O((r/cell)^3)
+// instead of O(N). pixel_field consumes this when scenes have ≥1 crystal.
+pub mod spatial_index;
 
 use cssl_host_crystallization::Crystal;
 pub use observer::ObserverCoord;

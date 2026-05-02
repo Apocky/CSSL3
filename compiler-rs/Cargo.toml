@@ -202,6 +202,10 @@ toml        = "0.8"
 # ─ concurrency ─
 parking_lot = "0.12"
 crossbeam   = "0.8"
+# § T11-W18-B-PERF : rayon for data-parallel pixel-row work in
+# cssl-host-alien-materialization. Determinism preserved via
+# chunk-disjoint mutable slices + associative reductions.
+rayon       = "1.10"
 # ─ HTTP client (T11-WAVE3-HTTP : cssl-rt http GET/POST FFI) ─
 # § ureq pinned to 2.10 lower-bound for blocking-only API stability. Default-features
 # disabled so consumers opt into TLS via the `tls` feature on the consuming crate ;

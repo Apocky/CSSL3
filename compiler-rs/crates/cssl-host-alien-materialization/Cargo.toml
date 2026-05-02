@@ -13,6 +13,9 @@ name = "cssl_host_alien_materialization"
 [dependencies]
 cssl-host-crystallization = { path = "../cssl-host-crystallization" }
 blake3 = { workspace = true }
+# § T11-W18-B-PERF : rayon for pixel-row data-parallelism. Determinism
+# preserved via chunk-disjoint mutable slices + associative reductions.
+rayon  = { workspace = true }
 
 [lints]
 workspace = true
