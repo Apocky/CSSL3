@@ -105,7 +105,7 @@ pub struct PredatoryPatternAttestation {
     pub crate_version: String,
     pub spec_anchor: String,
     /// Human-readable list, ordered for stable display.
-    pub disclosed_attestations: Vec<&'static str>,
+    pub disclosed_attestations: Vec<String>,
 }
 
 impl PredatoryPatternAttestation {
@@ -117,7 +117,7 @@ impl PredatoryPatternAttestation {
             flags: AttestationFlags::all_upheld(),
             crate_version: crate::VERSION.to_string(),
             spec_anchor: crate::SPEC_ANCHOR.to_string(),
-            disclosed_attestations: vec![
+            disclosed_attestations: [
                 "¬ pay-for-power (cosmetic-only-axiom)",
                 "¬ near-miss-animation",
                 "¬ countdown-FOMO",
@@ -128,7 +128,10 @@ impl PredatoryPatternAttestation {
                 "¬ in-game-grind-loop for-pull-currency",
                 "transparency-mandate (drop-rates + pity publicly-disclosed)",
                 "sovereign-revocable (7d full-refund · player-pubkey-tied)",
-            ],
+            ]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
         }
     }
 }
