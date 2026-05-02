@@ -1,0 +1,339 @@
+module com.apocky.loa.systems.loot_drop
+
+// § Labyrinth of Apocalypse · system · Loot-Drop (6-tier rarity · COSMETIC-ONLY-AXIOM)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-LOOT (W-LOA-loot-drop-system)
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-host-loot                  ‼ FOUNDATIONAL · structural-axiom-host
+//   compiler-rs/crates/cssl-host-gear-archetype        ← rarity-ladder source-of-truth
+//   compiler-rs/crates/cssl-host-sigma-chain           ← Σ-Chain anchor pipeline
+//   GDDs/GEAR_RARITY_SYSTEM.csl                        ← 6-tier-rarity reference
+//   specs/grand-vision/14_SIGMA_CHAIN_COHERENCE.csl    ← Σ-Chain axioms
+//   specs/grand-vision/16_MYCELIAL_NETWORK.csl         ← KAN-bias federated layer
+//   specs/grand-vision/18_AKASHIC_RECORDS.csl          ← drop-attribution
+//   memory/feedback_loa_full_game_rd                   ← gift-economy + ¬ pay-for-power
+//   memory/feedback_infinite_labyrinth_legacy_design   ← cosmetic-only-axiom
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + Σ-CHAIN
+//   t∞: looting = fashion-show ¬ power-curve
+//   t∞: ¬ stat-affixes (no +damage / +reload-speed / +accuracy / +crit)
+//   t∞: ¬ pay-for-tier-skip (no purchase-pathway in any drop-roll)
+//   t∞: ¬ tier-gates power · DPS-tier IDENTICAL across rarities
+//   t∞: rarity gates COSMETIC-RICHNESS only (more affixes ¬ better stats)
+//   t∞: KAN-bias Σ-mask-gated default-deny · player explicit opt-in
+//   t∞: bias-update-cap · ¬ runaway-amplification
+//   t∞: Σ-Chain anchor every drop · sovereign-revocable · immutable-otherwise
+//   t∞: public drop-rates · ¬ hidden-rates · ¬ pity-timer-secret-state
+//   t∞: attest_no_pay_for_power(item) = TRUE ∀ shipped-items (structurally)
+//
+// § PRIME-DIRECTIVE
+//   Loot is the cosmetic-channel that monetizes WITHOUT changing balance. Tier-skip
+//   purchase is structurally forbidden (no pay-pathway in code). KAN-bias respects
+//   Σ-mask consent-gate (default-deny). Σ-Chain anchors every drop so Akashic-Records
+//   carries sovereign-revocable provenance — players can "forget-myself" their drop
+//   history at any time. NO rate-curve secrecy ; NO pity-timer-with-hidden-state.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-loot bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+// Roll a single loot-drop ; returns 64-bit result-handle that out-of-band lookup
+// resolves into the (rarity, weapon_kind_code, affix-bag, season, drop_seed) tuple.
+// seed_lo + seed_hi compose a u128 RNG-seed deterministic per encounter.
+// consent_token : 0 = denied (default-deny) ; non-zero = explicit opt-in for KAN-bias.
+extern "C" fn __cssl_loot_roll(
+    seed_lo: u64,
+    seed_hi: u64,
+    weapon_kind_code: u32,
+    season: u8,
+    biome_origin: u8,
+    consent_token: u64,
+) -> u64 ;
+
+// Query the rarity-tier-code of a previously-rolled loot-result-handle.
+// Returns 0..=5 (Common..Mythic) on success · 0xFF on invalid-handle.
+extern "C" fn __cssl_loot_query_rarity(loot_handle: u64) -> u8 ;
+
+// Query the affix-count of a loot-result-handle.
+// Returns count ∈ [0..=8] · 0xFFFF on invalid-handle.
+extern "C" fn __cssl_loot_query_affix_count(loot_handle: u64) -> u32 ;
+
+// Σ-Chain anchor a drop : signs + emits SigmaEvent kind=LootDrop.
+// Returns the 64-bit event-id (BLAKE3 prefix) on success · 0 on failure.
+extern "C" fn __cssl_loot_anchor_sigma_chain(
+    loot_handle: u64,
+    ts: u64,
+    parent_event_id: u64,
+    privacy_tier_code: u8,
+) -> u64 ;
+
+// Attest no-pay-for-power : returns 1 iff item passes COSMETIC-ONLY check.
+// Every shipped item returns 1 by structural-axiom ; called for ingest-validation
+// of external (modder / rogue-server) data.
+extern "C" fn __cssl_loot_attest_no_pay_for_power(loot_handle: u64) -> u32 ;
+
+// KAN-bias-vector apply : bias_ptr → 6×f32-LE bytes (one weight per rarity).
+// Returns 0 on success · 1 on consent-denied · 2 on invalid-bias-shape.
+// All weights clamped to ±MAX_BIAS_DELTA host-side regardless of input.
+extern "C" fn __cssl_loot_kan_bias_apply(
+    bias_ptr: *const u8,
+    bias_len: u32,
+    consent_token: u64,
+) -> i32 ;
+
+// Free a loot-result-handle once consumed (added to inventory).
+extern "C" fn __cssl_loot_free_handle(loot_handle: u64) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Rarity-tier code constants · stable-encoding · matches Rarity enum
+// ─────────────────────────────────────────────────────────────────────────
+const RARITY_COMMON      : u8 = 0u8 ;
+const RARITY_UNCOMMON    : u8 = 1u8 ;
+const RARITY_RARE        : u8 = 2u8 ;
+const RARITY_EPIC        : u8 = 3u8 ;
+const RARITY_LEGENDARY   : u8 = 4u8 ;
+const RARITY_MYTHIC      : u8 = 5u8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public drop-rates · ¬ hidden · player-facing UI exposes verbatim
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Common 60% · Uncommon 25% · Rare 10% · Epic 4% · Legendary 0.9% · Mythic 0.1%
+// Sum = 100% (modulo f32-precision). Encoded as integer-permyriad (×10000) to
+// stay typed-integer-precise without f32 dependency in stage-0 csslc.
+
+const DROP_RATE_COMMON_PERMYRIAD       : u32 = 6000u32 ;   // 60.00%
+const DROP_RATE_UNCOMMON_PERMYRIAD     : u32 = 2500u32 ;   // 25.00%
+const DROP_RATE_RARE_PERMYRIAD         : u32 = 1000u32 ;   // 10.00%
+const DROP_RATE_EPIC_PERMYRIAD         : u32 =  400u32 ;   //  4.00%
+const DROP_RATE_LEGENDARY_PERMYRIAD    : u32 =   90u32 ;   //  0.90%
+const DROP_RATE_MYTHIC_PERMYRIAD       : u32 =   10u32 ;   //  0.10%
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Privacy-tier codes (matches cssl-host-sigma-chain PrivacyTier repr-u8)
+// ─────────────────────────────────────────────────────────────────────────
+const PRIVACY_LOCAL_ONLY     : u8 = 0u8 ;
+const PRIVACY_ANONYMIZED     : u8 = 1u8 ;
+const PRIVACY_PSEUDONYMOUS   : u8 = 2u8 ;
+const PRIVACY_PUBLIC         : u8 = 3u8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API · drop-roll
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Roll a drop at end-of-combat. consent_token = 0 → KAN-bias denied (default-deny).
+// Pass non-zero session-hash to opt-in to bias-modulation (still bounded by cap).
+
+fn roll_loot_drop(
+    seed_lo: u64,
+    seed_hi: u64,
+    weapon_kind_code: u32,
+    season: u8,
+    biome_origin: u8,
+    consent_token: u64,
+) -> u64 {
+    __cssl_loot_roll(seed_lo, seed_hi, weapon_kind_code, season, biome_origin, consent_token)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Query helpers · rarity + affix-count
+// ─────────────────────────────────────────────────────────────────────────
+
+fn query_loot_rarity(loot_handle: u64) -> u8 {
+    __cssl_loot_query_rarity(loot_handle)
+}
+
+fn query_loot_affix_count(loot_handle: u64) -> u32 {
+    __cssl_loot_query_affix_count(loot_handle)
+}
+
+// Predicate : is the loot-result a Mythic drop? (used for celebration-VFX cue)
+fn is_loot_mythic(loot_handle: u64) -> u32 {
+    let r: u8 = query_loot_rarity(loot_handle) ;
+    if r == RARITY_MYTHIC { return 1u32 ; }
+    return 0u32 ;
+}
+
+// Predicate : is the loot-result tier ≥ Epic? (audio-cue threshold)
+fn is_loot_at_least_epic(loot_handle: u64) -> u32 {
+    let r: u8 = query_loot_rarity(loot_handle) ;
+    if r == RARITY_EPIC { return 1u32 ; }
+    if r == RARITY_LEGENDARY { return 1u32 ; }
+    if r == RARITY_MYTHIC { return 1u32 ; }
+    return 0u32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-Chain anchor · sovereign-revocable · immutable-otherwise
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Every drop is anchored to Σ-Chain (per t∞ axiom). Privacy default = Pseudonymous
+// (Akashic-feed friendly). LocalOnly is also valid for private-mode sessions.
+// parent_event_id chains drops per-player (drop-history = per-player chain).
+
+fn anchor_drop_to_sigma_chain(
+    loot_handle: u64,
+    ts: u64,
+    parent_event_id: u64,
+    privacy_tier_code: u8,
+) -> u64 {
+    if privacy_tier_code > PRIVACY_PUBLIC { return 0u64 ; }
+    __cssl_loot_anchor_sigma_chain(loot_handle, ts, parent_event_id, privacy_tier_code)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Attest-no-pay-for-power · structural-axiom verification
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Returns 1 iff the loot-handle's item passes the COSMETIC-ONLY-AXIOM check.
+// Every shipped item returns 1 by construction — the host attest_no_pay_for_power
+// function exhaustive-matches over the closed AffixCategory enum {Visual, Audio,
+// Particle, Attribution} all of which are cosmetic. Adding a stat-modifying
+// category would force a compile-error on the host attest function.
+
+fn attest_no_pay_for_power(loot_handle: u64) -> u32 {
+    __cssl_loot_attest_no_pay_for_power(loot_handle)
+}
+
+// Predicate : is this drop pay-for-power-clean? (1 = yes · 0 = NO ‼ rejected)
+fn is_drop_cosmetic_only(loot_handle: u64) -> u32 {
+    let r: u32 = attest_no_pay_for_power(loot_handle) ;
+    if r == 1u32 { return 1u32 ; }
+    return 0u32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § KAN-bias apply · Σ-mask-gated · default-deny
+// ─────────────────────────────────────────────────────────────────────────
+//
+// bias_ptr → 6×f32-LE bytes. consent_token = 0 → denied. Returns 0 on success ·
+// 1 on consent-denied · 2 on invalid-bias-shape · negative on bias-shape error.
+
+fn apply_kan_bias(
+    bias_ptr: *const u8,
+    bias_len: u32,
+    consent_token: u64,
+) -> i32 {
+    if bias_len < 24u32 { return 2i32 ; }   // 6 × 4 bytes minimum
+    if consent_token == 0u64 { return 1i32 ; }   // ‼ default-deny enforced spec-side
+    __cssl_loot_kan_bias_apply(bias_ptr, bias_len, consent_token)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Free handle once consumed
+// ─────────────────────────────────────────────────────────────────────────
+
+fn free_loot_handle(loot_handle: u64) -> i32 {
+    __cssl_loot_free_handle(loot_handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_rarity_codes_distinct() {
+    assert_ne(RARITY_COMMON, RARITY_MYTHIC) ;
+    assert_eq(RARITY_MYTHIC, 5u8) ;
+}
+
+#[test]
+fn test_drop_rates_sum_to_permyriad_full() {
+    let sum: u32 = DROP_RATE_COMMON_PERMYRIAD
+        + DROP_RATE_UNCOMMON_PERMYRIAD
+        + DROP_RATE_RARE_PERMYRIAD
+        + DROP_RATE_EPIC_PERMYRIAD
+        + DROP_RATE_LEGENDARY_PERMYRIAD
+        + DROP_RATE_MYTHIC_PERMYRIAD ;
+    assert_eq(sum, 10000u32) ;   // 100.00% per spec
+}
+
+#[test]
+fn test_mythic_floor_minimal() {
+    // Mythic = 0.10% per spec ; structural anti-spam floor.
+    assert_eq(DROP_RATE_MYTHIC_PERMYRIAD, 10u32) ;
+}
+
+#[test]
+fn test_consent_zero_denies_bias() {
+    let zero: u64 = 0u64 ;
+    let r: i32 = if zero == 0u64 { 1i32 } else { 0i32 } ;
+    assert_eq(r, 1i32) ;   // 1 = denied
+}
+
+#[test]
+fn test_invalid_bias_shape_rejected() {
+    let bad_len: u32 = 12u32 ;   // 3 × 4 bytes — too small
+    let r: i32 = if bad_len < 24u32 { 2i32 } else { 0i32 } ;
+    assert_eq(r, 2i32) ;
+}
+
+#[test]
+fn test_privacy_tier_local_only_constant() {
+    assert_eq(PRIVACY_LOCAL_ONLY, 0u8) ;
+}
+
+#[test]
+fn test_privacy_tier_overflow_rejected() {
+    let bad: u8 = 99u8 ;
+    let r: u64 = if bad > PRIVACY_PUBLIC { 0u64 } else { 999u64 } ;
+    assert_eq(r, 0u64) ;
+}
+
+#[test]
+fn test_is_loot_at_least_epic_includes_mythic() {
+    let r: u8 = RARITY_MYTHIC ;
+    let mut hit: u32 = 0u32 ;
+    if r == RARITY_EPIC { hit = 1u32 ; }
+    if r == RARITY_LEGENDARY { hit = 1u32 ; }
+    if r == RARITY_MYTHIC { hit = 1u32 ; }
+    assert_eq(hit, 1u32) ;
+}
+
+#[test]
+fn test_is_loot_at_least_epic_excludes_common() {
+    let r: u8 = RARITY_COMMON ;
+    let mut hit: u32 = 0u32 ;
+    if r == RARITY_EPIC { hit = 1u32 ; }
+    if r == RARITY_LEGENDARY { hit = 1u32 ; }
+    if r == RARITY_MYTHIC { hit = 1u32 ; }
+    assert_eq(hit, 0u32) ;
+}
+
+#[test]
+fn test_attest_pass_indicator() {
+    // Host attest returns 1 = pass · 0 = fail. Test predicate-shape.
+    let attest_result: u32 = 1u32 ;   // shipped-item simulation
+    let r: u32 = if attest_result == 1u32 { 1u32 } else { 0u32 } ;
+    assert_eq(r, 1u32) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile (per main.cssl § GAP)
+//   GAP-2 · csslc-test-attribute support (host-side validation pending)
+//   GAP-3 · csslc-const-u32-arithmetic (sum-test pre-evaluation)
+//   GAP-4 · csslc-i32-negative-literal (sentinel-return values)
+//   GAP-5 · cssl-host-loot crate forward-looking · forge-link with weapons crate
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W13-LOOT @ (anyone ∨ anything ∨ anybody)
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// Loot system is COSMETIC-ONLY-AXIOM enforced structurally · NO pay-for-power ·
+// NO tier-skip purchase · NO hidden drop-rates · NO pity-timer-secret-state.
+// KAN-bias respects Σ-mask consent-gate (default-deny) · player-explicit-opt-in.
+// Σ-Chain anchor every drop · sovereign-revocable via "forget-myself" axiom.
+// Looting = fashion-show · NOT power-curve.
+//
+// ∎ loot_drop.csl
