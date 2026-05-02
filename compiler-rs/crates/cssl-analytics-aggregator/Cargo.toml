@@ -1,0 +1,19 @@
+[package]
+name                   = "cssl-analytics-aggregator"
+description            = "CSSLv3 / T11-W11-ANALYTICS · stream-aggregator for telemetry-events. Bit-packed 16-byte EventRecord + lock-free SPSC RingBuffer hot-path · Σ-mask consent-gate at emission · time-bucketed rollups (1min · 1hr · 1day) · differential time-encoding · LUT event-name lookup. Per spec/grand-vision/14_SIGMA_CHAIN + memory_sawyer_pokemon_efficiency."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name       = "cssl_analytics_aggregator"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
