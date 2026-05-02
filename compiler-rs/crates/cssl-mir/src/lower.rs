@@ -16,11 +16,11 @@
 //!       textual format.
 
 use cssl_hir::{
-    CapMap, HirCapKind, HirEffectRow, HirExternFn, HirFn, HirItem, HirModule, HirType, HirTypeKind,
-    Interner,
+    CapMap, HirCapKind, HirEffectRow, HirExternFn, HirFn, HirItem, HirModule, HirStruct,
+    HirStructBody, HirType, HirTypeKind, Interner,
 };
 
-use crate::func::{MirFunc, MirModule};
+use crate::func::{MirFunc, MirModule, MirStructLayout};
 use crate::value::{FloatWidth, IntWidth, MirType};
 
 /// Lowering context — holds references to the HIR + interner so `lower_*` methods
@@ -259,9 +259,40 @@ fn lower_item_into(ctx: &LowerCtx<'_>, item: &HirItem, mir: &mut MirModule) {
                 }
             }
         }
-        // struct / enum / type-alias / use / const don't emit MIR fns at stage-0.
+        // T11-W17-A · stage-0 struct-FFI codegen — populate MirModule.struct_layouts
+        // so the cgen-cpu-cranelift signature builder can resolve
+        // `MirType::Opaque("!cssl.struct.<name>")` to a scalar / pointer ABI.
+        HirItem::Struct(s) => {
+            if let Some(layout) = lower_struct_layout(ctx, s) {
+                mir.add_struct_layout(layout);
+            }
+        }
+        // enum / type-alias / use / const don't emit MIR fns at stage-0.
         _ => {}
     }
+}
+
+/// Build a `MirStructLayout` for a struct that participates in FFI signatures.
+///
+/// § BEHAVIOR
+///   - Named-fields struct  → records each field's MIR-lowered type.
+///   - Tuple-fields struct  → same shape, positional.
+///   - Unit struct          → `Some(empty-fields)` so the codegen sees a known
+///     0-byte layout (rejected by ABI-class).
+///
+/// § DETERMINISM
+///   The struct name is resolved via the interner ; field order matches the
+///   HIR declaration order (which already mirrors source order).
+fn lower_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> Option<MirStructLayout> {
+    let name = ctx.interner.resolve(s.name);
+    let fields: Vec<MirType> = match &s.body {
+        HirStructBody::Unit => Vec::new(),
+        HirStructBody::Tuple(decls) | HirStructBody::Named(decls) => {
+            decls.iter().map(|d| ctx.lower_type(&d.ty)).collect()
+        }
+    };
+    let (size, align) = MirStructLayout::compute_size_align(&fields);
+    Some(MirStructLayout::new(name, fields, size, align))
 }
 
 #[cfg(test)]
@@ -339,5 +370,52 @@ mod tests {
         });
         let mf = lower_function_signature(&ctx, f.unwrap());
         assert_eq!(mf.name, "noop");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § STRUCT-FFI lowering tests  (T11-W17-A)
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lower_newtype_struct_records_8b_layout() {
+        // The actual LoA case : `pub struct RunHandle { raw: u64 }`.
+        let (hir, interner) = hir_from("struct RunHandle { raw : u64 }");
+        let ctx = LowerCtx::new(&interner);
+        let mir = lower_module_signatures(&ctx, &hir);
+        let layout = mir
+            .find_struct_layout("RunHandle")
+            .expect("RunHandle layout populated");
+        assert_eq!(layout.size_bytes, 8);
+        assert_eq!(layout.align_bytes, 8);
+        assert_eq!(layout.fields.len(), 1);
+        assert_eq!(layout.fields[0], MirType::Int(IntWidth::I64));
+    }
+
+    #[test]
+    fn lower_multi_field_struct_records_aggregate_layout() {
+        // ShareReceipt-like : 16B / align 8.
+        let src = "struct ShareReceipt { receipt_id_lo : u64 , receipt_id_hi : u64 }";
+        let (hir, interner) = hir_from(src);
+        let ctx = LowerCtx::new(&interner);
+        let mir = lower_module_signatures(&ctx, &hir);
+        let layout = mir
+            .find_struct_layout("ShareReceipt")
+            .expect("ShareReceipt layout populated");
+        assert_eq!(layout.size_bytes, 16);
+        assert_eq!(layout.align_bytes, 8);
+    }
+
+    #[test]
+    fn lower_module_with_struct_and_fn_records_both() {
+        let src = "
+            struct RunHandle { raw : u64 }
+            fn make_run() -> RunHandle { RunHandle { raw : 0 } }
+        ";
+        let (hir, interner) = hir_from(src);
+        let ctx = LowerCtx::new(&interner);
+        let mir = lower_module_signatures(&ctx, &hir);
+        // Both signature + struct landed.
+        assert!(mir.find_func("make_run").is_some());
+        assert!(mir.find_struct_layout("RunHandle").is_some());
     }
 }
