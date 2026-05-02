@@ -1,0 +1,28 @@
+module com.apocky.test.const_stmt_in_fn_body
+
+// § T11-W11-CSSLC-CONSTSTMT · fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT
+//   `const NAME : type = expr ;` inside a fn body is accepted + lowered
+//   to the same StmtKind::Let shape as a regular let. Real-world LoA usage
+//   is in privacy-egress-check style guards where stable kind-bits are
+//   declared inline as compile-time constants for readability.
+
+fn privacy_egress_check(payload_kind: u32) -> bool {
+    const KIND_BIOMETRIC : u32 = 0x8001 ;
+    const KIND_GAZE      : u32 = 0x8002 ;
+    const KIND_FACE      : u32 = 0x8004 ;
+    const KIND_BODY      : u32 = 0x8008 ;
+    if payload_kind == KIND_BIOMETRIC { return false ; }
+    if payload_kind == KIND_GAZE      { return false ; }
+    if payload_kind == KIND_FACE      { return false ; }
+    if payload_kind == KIND_BODY      { return false ; }
+    true
+}
+
+fn main() -> i32 {
+    let ok_a: bool = privacy_egress_check(0x1234) ;
+    let ok_b: bool = privacy_egress_check(0x8001) ;
+    if ok_a { 0 } else if ok_b { 0 } else { 1 }
+}

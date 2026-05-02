@@ -38,6 +38,13 @@ pub fn parse_ident(
 /// module-declarations and CSLv3-native `foo.bar.baz` paths converge on the same
 /// `ModulePath` node.
 ///
+/// § T11-CSSLC-MODKW (T11-W11) : keyword-tokens are accepted as segment names.
+///   ∵ Real-world LoA modules use names like `loa.systems.run`, `loa.systems.fn`,
+///   etc. where the trailing segment collides with a Rust-hybrid keyword. The
+///   per-segment-keyword-tolerance only applies AFTER a `.`/`::` separator
+///   (i.e. never on the first segment) — so `module fn` is still rejected as
+///   it should be, but `module com.apocky.loa.systems.run` is accepted.
+///
 /// § DO NOT use in expression / pattern contexts : `.` is field-access there,
 /// not a path separator. Use [`parse_colon_path`] instead.
 pub fn parse_module_path(
@@ -45,17 +52,30 @@ pub fn parse_module_path(
     bag: &mut DiagnosticBag,
     context: &'static str,
 ) -> ModulePath {
-    parse_path_with_seps(cursor, bag, context, true)
+    parse_path_with_seps(cursor, bag, context, true, true)
 }
 
 /// Parse a `::`-only path — used in expression + pattern contexts where `.` means
-/// field-access.
+/// field-access. Keyword-segments NOT accepted here (those make sense only at
+/// module-decl + use-path scope).
 pub fn parse_colon_path(
     cursor: &mut TokenCursor<'_>,
     bag: &mut DiagnosticBag,
     context: &'static str,
 ) -> ModulePath {
-    parse_path_with_seps(cursor, bag, context, false)
+    parse_path_with_seps(cursor, bag, context, false, false)
+}
+
+/// `next_is_path_segment` answers : may this token become a path-segment after
+/// a `.` / `::` separator?
+///
+/// First-segment is always strict-Ident (an item-level keyword always wins
+/// when it appears at the head of a token stream — that's how `fn foo()` /
+/// `struct S` etc. parse). Subsequent segments tolerate any `Keyword` so
+/// real-world module names like `loa.systems.run` (where `run` collides with
+/// the `Keyword::Run` macro-prefix) parse cleanly.
+fn token_can_act_as_path_segment(kind: TokenKind, allow_keyword: bool) -> bool {
+    matches!(kind, TokenKind::Ident) || (allow_keyword && matches!(kind, TokenKind::Keyword(_)))
 }
 
 fn parse_path_with_seps(
@@ -63,6 +83,7 @@ fn parse_path_with_seps(
     bag: &mut DiagnosticBag,
     context: &'static str,
     accept_dot: bool,
+    accept_keyword_after_sep: bool,
 ) -> ModulePath {
     let first = parse_ident(cursor, bag, context);
     let mut segments = vec![first];
@@ -71,14 +92,18 @@ fn parse_path_with_seps(
         let is_sep =
             sep.kind == TokenKind::ColonColon || (accept_dot && sep.kind == TokenKind::Dot);
         if is_sep {
-            // Only consume the separator if the *next* token is an identifier — otherwise
-            // this `.` / `::` belongs to a higher-level construct (field-access, method call,
-            // etc.) that must keep the separator.
+            // Only consume the separator if the *next* token can act as a
+            // path-segment — otherwise this `.` / `::` belongs to a higher-
+            // level construct (field-access, method call, etc.) and must
+            // remain on the cursor for the caller.
             let peek2 = cursor.peek2();
-            if peek2.kind == TokenKind::Ident {
+            if token_can_act_as_path_segment(peek2.kind, accept_keyword_after_sep) {
                 cursor.bump();
-                let segment = parse_ident(cursor, bag, context);
-                segments.push(segment);
+                let segment_tok = cursor.peek();
+                cursor.bump();
+                segments.push(Ident {
+                    span: segment_tok.span,
+                });
                 continue;
             }
         }
@@ -185,6 +210,61 @@ mod tests {
         let mut bag = DiagnosticBag::new();
         let p = parse_module_path(&mut c, &mut bag, "path");
         // `::` not followed by ident is left for the caller.
+        assert_eq!(p.segments.len(), 1);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // § T11-CSSLC-MODKW (T11-W11) — keyword-as-path-segment-after-separator
+    // ───────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_module_path_accepts_keyword_segment_after_dot() {
+        // Real-world LoA module : `com.apocky.loa.systems.run` ; `run` is
+        // `Keyword::Run`. Pre-W11 this stopped at `systems` + the trailing
+        // `.run` left a dangling `Dot` on the cursor.
+        let (_f, toks) = lex_rust("com.apocky.loa.systems.run");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_module_path(&mut c, &mut bag, "module path with keyword tail");
+        assert_eq!(p.segments.len(), 5, "all 5 segments must parse");
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_module_path_accepts_multiple_keyword_segments() {
+        // Defensive : a path where multiple segments collide with keywords.
+        // `loa.fn.struct.run` is a synthetic stress case.
+        let (_f, toks) = lex_rust("loa.fn.struct.run");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_module_path(&mut c, &mut bag, "path with kw segs");
+        assert_eq!(p.segments.len(), 4);
+        assert_eq!(bag.error_count(), 0);
+    }
+
+    #[test]
+    fn parse_module_path_rejects_keyword_first_segment() {
+        // First segment is parsed via `parse_ident` which strict-requires
+        // `TokenKind::Ident`. A bare `fn` head must produce a diagnostic.
+        let (_f, toks) = lex_rust("fn");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let _p = parse_module_path(&mut c, &mut bag, "path");
+        assert!(bag.error_count() >= 1, "first-seg-as-keyword must error");
+    }
+
+    #[test]
+    fn parse_colon_path_does_not_accept_keyword_segment() {
+        // `parse_colon_path` is used in expression / pattern contexts where
+        // accepting keyword-segments would break disambiguation. Keyword
+        // tokens here remain separate tokens for the caller.
+        let (_f, toks) = lex_rust("Foo::run");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = super::parse_colon_path(&mut c, &mut bag, "expr path");
+        // We expect only `Foo` to be consumed as a segment ; `::run` is left
+        // for the caller (because expression-path-rules don't accept a
+        // keyword second-segment).
         assert_eq!(p.segments.len(), 1);
     }
 

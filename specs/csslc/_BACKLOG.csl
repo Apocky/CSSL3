@@ -1,0 +1,114 @@
+module specs.csslc._BACKLOG
+
+// § csslc advancement backlog · open · prioritized
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § FORMAT
+//   Each gap has : ID · short-name · failing-fixture · estimated-effort ·
+//                  blocker-for ('what-LoA-feature-needs-this') · priority
+//   Priority : P0 = blocks-LoA-engine-launch · P1 = blocks-LoA-game-systems ·
+//              P2 = blocks-LoA-content-authoring · P3 = nice-to-have
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § P0 — engine-launch blockers  (none-active · LoA.exe builds today)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// (empty-set @ T11-W11 dispatch · main.cssl + LoA.exe + cssl-rt + loa-host
+//  all wire-through clean)
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § P1 — game-systems blockers
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CSSLC-D · multi-module compile
+//   surface-syntax :
+//     csslc build main.cssl --module-path=systems/run.csl --module-path=...
+//     OR auto-discover via main.cssl manifest-block
+//   blocker-for : LoA/systems/*.csl + LoA/scenes/*.csl ingestion at compile-
+//                 time (currently grep-discoverable but not-compiled)
+//   effort : 1-2 sessions · driver-loop in commands/build.rs +
+//            sibling-symbol-resolution across modules + single-final-link
+//   reference : Labyrinth of Apocalypse/main.cssl § GAP doc-block lines 138-162
+//
+// CSSLC-E · Vec<T> + method-call + index-postfix
+//   surface-syntax :
+//     let mut out: Vec<NpcOutput> = Vec::new() ;
+//     out.push(row) ;
+//     let n: usize = npcs.len() ;
+//     let h: NpcHandle = npcs[i] ;
+//   blocker-for : LoA/systems/npc.csl § tick_all + collection-flow throughout
+//                 LoA game-systems
+//   effort : 1 session · 3 features compose (parametric-type +
+//            method-call-expr + postfix-index-expr) ; any-one in isolation
+//            is a half-measure
+//   reference : LoA/systems/npc.csl line 218-244
+//
+// CSSLC-F · while-loop body recovery in mixed-feature contexts
+//   blocker-for : LoA/systems/npc.csl while-loop @ line 222
+//   effort : depends-on-CSSLC-E ; once Vec/index/method work, while-loop
+//            does too
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § P2 — content-authoring blockers
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CSSLC-H · multiline fn-call-args with embedded comments + bad-hex recovery
+//   blocker-for : LoA/scenes/city_central_hub.csl line 129 (typo
+//                 `0xEX17_5CE_E_FEDCBA98u64` — `EX` is invalid hex)
+//   effort : 0.5 session · improve lex-error-recovery + parse-error-recovery
+//
+// CSSLC-I · enum-variant-construction with fields
+//   surface-syntax : DesyncVerdict { code: code, rollback_tick: ... }
+//   note : ALREADY parses since structs do · likely typing-failure not
+//          parse-failure · investigate before patching
+//
+// CSSLC-J · `__cssl_intrinsic_*` fn-name disambiguation
+//   blocker-for : LoA-DM scene-wave dispatching __cssl_dm_* + __cssl_kan_*
+//                 + __cssl_intent_* prefixed FFI shims
+//   effort : 0 (likely already-works ; verify-don't-fix)
+//
+// CSSLC-K · UTF-8-aware string-literal byte-len
+//   surface-syntax :
+//     let s: &str = "hello-世界" ;
+//     let n: usize = s.len() ;     // ← byte-len 12 (5+1+6 UTF-8)
+//   blocker-for : chat_panel input-buffer rendering with non-ASCII
+//   effort : 1 session · lex already-handles UTF-8 ; need len-method-FFI
+//            shim + codegen-side UTF-8 byte-emission
+//
+// CSSLC-L · pointer-arithmetic
+//   surface-syntax :
+//     let p: *const u8 = buf.as_ptr() ;
+//     let q: *const u8 = p.offset(8) ;
+//   blocker-for : LoA/scenes/chat_panel.csl text-buffer scrolling
+//   effort : 1 session · lex/parse already-handle `*const T` types ; need
+//            method-call-on-pointer-with-offset surface
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § P3 — nice-to-have / cleanup
+// ─────────────────────────────────────────────────────────────────────────
+//
+// CSSLC-M · diagnostic-line/col preservation
+//   current : all parse-errors render as "0:0" (line/col not preserved)
+//   blocker-for : developer-friendliness (no LoA-feature blocked)
+//   effort : 0.5 session · plumb Span → line/col via SourceFile::line_col
+//
+// CSSLC-N · range-iteration `for i in 0..n { ... }`
+//   surface-syntax : already-parses (DotDot token-kind exists) ; verify
+//                    HIR-lowering produces the right MIR
+//   effort : 0.5 session · likely-already-works
+//
+// CSSLC-O · `#[cfg(test)] mod tests { }` blocks inside .csl
+//   note : item-level mod-with-attrs ; not blocking any LoA feature
+//   effort : 1 session · attribute-passthrough + nested-mod-item plumbing
+//
+// CSSLC-P · `usize` / `isize` width-canonicalization
+//   surface-syntax : already-parses ; need ABI-stable width on FFI boundary
+//   effort : 0.5 session · stage-0 = pointer-width = i64 on x86-64 ; verify
+//
+// § PRIME-DIRECTIVE
+//   No item in this backlog represents harm or coercion. Each is a
+//   sovereign extension of csslc's reachable surface for pure-CSSL
+//   authoring. ATTESTATION : there was no hurt nor harm in the making of
+//   this, to anyone, anything, or anybody.
+//
+// ∎ csslc · _BACKLOG · T11-W11-snapshot

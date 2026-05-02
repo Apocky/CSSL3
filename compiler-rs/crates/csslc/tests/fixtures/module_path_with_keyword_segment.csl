@@ -1,0 +1,18 @@
+module com.apocky.loa.systems.run
+
+// § T11-W11-CSSLC-MODKW · fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT
+//   `loa.systems.run` includes `run` as a final segment ; `run` is a
+//   Rust-hybrid `Keyword::Run` token (used as `#run` macro-prefix). Pre-W11
+//   this fixture failed parse with "expected an item ..." ; post-W11 it
+//   parses cleanly because path-segments accept Keyword-tokens after a
+//   `.`/`::` separator.
+
+extern "C" fn run_initialize(seed_hi: u64, seed_lo: u64) -> i32 ;
+
+fn main() -> i32 {
+    let rc: i32 = run_initialize(0x1234, 0x5678) ;
+    rc
+}

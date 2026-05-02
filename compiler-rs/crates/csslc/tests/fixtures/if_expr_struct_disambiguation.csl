@@ -1,0 +1,42 @@
+module com.apocky.test.if_expr_struct_disambiguation
+
+// § T11-W11-CSSLC-NOSTRUCT · fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT
+//   `if x > a { a } else { x }` parses as `if (x > a) { a } else { x }`
+//   ¬ `if (x > (a { a })) ...`. Pre-W11 the parser greedily-accepted
+//   `a { a }` as a struct-constructor in the cond position because
+//   `looks_like_struct_body` peek-ahead said "next is Ident `}`"
+//   matches struct-empty-body.
+//   Post-W11 the parser sets `Restriction::NoStructLiteral` for the
+//   duration of cond-parse so `a { ... }` is forced-back to a Path-then-
+//   Block read.
+
+fn clamp_min(x: u32, lo: u32) -> u32 {
+    if x < lo { lo } else { x }
+}
+
+fn clamp_max(x: u32, hi: u32) -> u32 {
+    if x > hi { hi } else { x }
+}
+
+fn select_three_way(x: i32, lo: i32, hi: i32) -> i32 {
+    if x < lo { lo }
+    else if x > hi { hi }
+    else { x }
+}
+
+fn while_with_cond_compare(start: u32, target: u32) -> u32 {
+    let mut n: u32 = start ;
+    while n < target { n = n + 1 ; }
+    n
+}
+
+fn main() -> i32 {
+    let a: u32 = clamp_min(5, 10) ;
+    let b: u32 = clamp_max(20, 15) ;
+    let c: i32 = select_three_way(7, 0, 10) ;
+    let d: u32 = while_with_cond_compare(0, 3) ;
+    (a + b + d) as i32 + c
+}

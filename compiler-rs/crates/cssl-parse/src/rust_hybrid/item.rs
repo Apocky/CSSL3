@@ -46,9 +46,18 @@ pub fn parse_optional_module_path(
     // Disambiguate: `module ident;` as top-level decl vs `module ident { … }` as item.
     // File-head form has no following `{` — if we see `{` after the ident path, this is
     // a nested module *item*, not a file-level path declaration.
+    //
+    // § T11-CSSLC-MODKW : trailing path-segments may be keyword-tokens (e.g.
+    //   `module com.apocky.loa.systems.run` where `run` is the `Run` keyword).
+    //   The lookahead loop now accepts any non-`{` non-`;` token-kind after a
+    //   separator, mirroring the `parse_module_path` accept-keyword-after-sep
+    //   behavior (see `cssl-parse/common.rs § token_can_act_as_path_segment`).
     let mut lookahead = cursor.clone();
     lookahead.bump(); // module
-    while lookahead.peek().kind == TokenKind::Ident {
+    let is_segment_token = |k: TokenKind| {
+        matches!(k, TokenKind::Ident) || matches!(k, TokenKind::Keyword(_))
+    };
+    while is_segment_token(lookahead.peek().kind) {
         lookahead.bump();
         if !matches!(
             lookahead.peek().kind,

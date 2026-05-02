@@ -327,13 +327,24 @@ fn parse_reference_prefix(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag)
     }
 }
 
-fn in_context_forbidding_struct_brace(_cursor: &TokenCursor<'_>) -> bool {
-    // Minimal implementation : we don't attempt to detect `if`-scrutinee context here.
-    // The caller of `parse_expr` in `if` / `while` / `for` headers uses a dedicated
-    // `parse_expr_no_struct` (not yet extracted). For T3.2 we keep this permissive ;
-    // the formatter path compensates by requiring explicit parentheses around struct
-    // constructors in control-flow heads (see §§ 09 FORMATTING).
-    false
+fn in_context_forbidding_struct_brace(cursor: &TokenCursor<'_>) -> bool {
+    // § T11-CSSLC-NOSTRUCT (T11-W11)
+    //   Replaces the always-false stub. Returns true iff the active cursor
+    //   restrictions include `Restriction::NoStructLiteral`. The flag is
+    //   set by `parse_if_expr` / `parse_while_expr` / `parse_for_expr` /
+    //   `parse_match_expr` for the duration of cond / scrutinee parsing.
+    //
+    //   Without this guard, real-world LoA bodies like
+    //     fn f(x: u32) -> u32 {
+    //         let a: u32 = 5 ;
+    //         if x > a { a } else { x }     // ← was wrongly parsed as
+    //                                       //    if x > (a { a }) ...
+    //     }
+    //   produced "expected `{`, found `else`" because the parser greedily
+    //   accepted `a { a }` as a struct-constructor before the if-body
+    //   could even start. The bit is now consulted by the path-prefix
+    //   parse-prefix dispatch in [`parse_prefix`].
+    cursor.restricts(crate::cursor::Restriction::NoStructLiteral)
 }
 
 /// Peek-ahead check : distinguish `x { ... }` struct-constructor from `x { ... }`
@@ -484,7 +495,12 @@ fn parse_array_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Ex
 
 fn parse_if_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> ExprKind {
     cursor.bump(); // if
+    // § T11-CSSLC-NOSTRUCT : forbid struct-literal during cond-parse so
+    //   `if x > a { a } else { x }` reads as `if (x > a) { a } else { x }`
+    //   instead of the older buggy `if (x > (a { a })) ...`.
+    let snap = cursor.push_restriction(crate::cursor::Restriction::NoStructLiteral);
     let cond = parse_expr(cursor, bag);
+    cursor.pop_restrictions(snap);
     let then_branch = parse_block(cursor, bag);
     let else_branch = if cursor.eat(TokenKind::Keyword(Keyword::Else)).is_some() {
         // `else if` chains or plain `else { … }`
@@ -512,7 +528,10 @@ fn parse_if_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> ExprK
 
 fn parse_match_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> ExprKind {
     cursor.bump(); // match
+    // § T11-CSSLC-NOSTRUCT : same struct-vs-block disambiguation as if/while/for.
+    let snap = cursor.push_restriction(crate::cursor::Restriction::NoStructLiteral);
     let scrutinee = parse_expr(cursor, bag);
+    cursor.pop_restrictions(snap);
     expect(
         cursor,
         bag,
@@ -560,7 +579,12 @@ fn parse_for_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Expr
     cursor.bump(); // for
     let pat_node = pat::parse_pattern(cursor, bag);
     expect(cursor, bag, TokenKind::Keyword(Keyword::In), "for-in");
+    // § T11-CSSLC-NOSTRUCT : forbid struct-literal during iterable-parse so
+    //   `for x in v.iter() { ... }` doesn't try to consume `iter()` `{ ... }`
+    //   as a struct-constructor.
+    let snap = cursor.push_restriction(crate::cursor::Restriction::NoStructLiteral);
     let iter = parse_expr(cursor, bag);
+    cursor.pop_restrictions(snap);
     let body = parse_block(cursor, bag);
     ExprKind::For {
         pat: pat_node,
@@ -571,7 +595,10 @@ fn parse_for_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Expr
 
 fn parse_while_expr(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> ExprKind {
     cursor.bump(); // while
+    // § T11-CSSLC-NOSTRUCT : same struct-vs-block disambiguation.
+    let snap = cursor.push_restriction(crate::cursor::Restriction::NoStructLiteral);
     let cond = parse_expr(cursor, bag);
+    cursor.pop_restrictions(snap);
     let body = parse_block(cursor, bag);
     ExprKind::While {
         cond: Box::new(cond),
@@ -932,6 +959,25 @@ pub fn parse_block(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Blo
             stmts.push(s);
             continue;
         }
+        // § T11-CSSLC-CONSTSTMT (T11-W11) : `const NAME : type = expr ;`
+        //   inside a fn body. Lowered to the same `StmtKind::Let` shape as a
+        //   regular `let` since stage-0 HIR doesn't yet differentiate
+        //   compile-time-evaluatable bindings from runtime-bindings — the
+        //   `const` keyword serves as documentation + a future hook for
+        //   the staged-check pass to verify the RHS is comptime-pure.
+        //
+        //   Real-world LoA usage (multiplayer.csl `privacy_egress_check`) :
+        //     const KIND_BIOMETRIC : u32 = 0x8001 ;
+        //     const KIND_GAZE      : u32 = 0x8002 ;
+        //     ...
+        //
+        //   The shape is identical to `let : Ty = expr ;` plus the `mut`
+        //   flag is forced to `false` (a const-stmt CANNOT be `mut`).
+        if cursor.check(TokenKind::Keyword(Keyword::Const)) {
+            let s = parse_const_stmt(cursor, bag);
+            stmts.push(s);
+            continue;
+        }
         // Otherwise : expression-statement ; last expression without `;` becomes trailing.
         let e = parse_expr(cursor, bag);
         if cursor.eat(TokenKind::Semi).is_some() {
@@ -967,6 +1013,47 @@ pub fn parse_block(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Blo
         span: Span::new(open.source, open.start, close_span.end),
         stmts,
         trailing,
+    }
+}
+
+/// § T11-CSSLC-CONSTSTMT — parse `const NAME : type = expr ;` inside a fn body.
+///   Lowers to the same `StmtKind::Let { pat: Binding { mutable: false }, ty,
+///   value }` shape as `let NAME : type = expr ;`. The compile-time-evaluatable
+///   property is informational at stage-0 (a future staged-check pass enforces
+///   "RHS is comptime-pure" + warns on non-const-foldable RHS).
+fn parse_const_stmt(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Stmt {
+    let kw = cursor.bump(); // const
+    let name = parse_ident(cursor, bag, "const-stmt name");
+    let pat_node = Pattern {
+        span: name.span,
+        kind: PatternKind::Binding {
+            mutable: false,
+            name,
+        },
+    };
+    let ty_node = if cursor.eat(TokenKind::Colon).is_some() {
+        Some(ty::parse_type(cursor, bag))
+    } else {
+        // const-stmt without an annotation is unusual but legal at stage-0 ;
+        // the type-checker will infer from the RHS.
+        None
+    };
+    let value = if cursor.eat(TokenKind::Eq).is_some() {
+        Some(parse_expr(cursor, bag))
+    } else {
+        None
+    };
+    let end = cursor.peek().span.start;
+    let trailing_semi = cursor.eat(TokenKind::Semi);
+    let span_end = trailing_semi.map_or(end, |s| s.end);
+    Stmt {
+        span: Span::new(kw.span.source, kw.span.start, span_end),
+        kind: StmtKind::Let {
+            attrs: Vec::new(),
+            pat: pat_node,
+            ty: ty_node,
+            value,
+        },
     }
 }
 

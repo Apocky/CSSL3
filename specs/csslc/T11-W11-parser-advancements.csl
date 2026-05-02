@@ -1,0 +1,136 @@
+module specs.csslc.T11_W11
+
+// § T11-W11 — csslc parser-advancements (LoA pure-CSSL unblock)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § DISPATCH-ORIGIN
+//   Apocky directive : "If cssl needs to be advanced in *ANY* capacity to
+//   accommodate either the Substrate, the LoA, or anything else, do so.
+//   Scope is not an issue."
+//   Sibling agent authoring `Labyrinth of Apocalypse/scenes/chat_panel.cssl`
+//   in pure-CSSL ; this slice removes parser-side blockers for the broader
+//   LoA pure-CSSL authoring effort.
+//
+// § GAP-AUDIT (pre-W11 baseline @ commit 32ad7df)
+//   sweep ⟦ LoA/systems/*.csl + LoA/scenes/*.csl ⟧
+//   ↦ 7-of-10 fail-parse · 3-of-10 OK
+//   diagnostic-categories :
+//     * "expected an item ..." @ module-decl  ← keyword-collision-segment
+//     * "expected `)` to close call args"     ← bad-hex-source-typo (¬gap)
+//     * "expected `{`, found `else`"          ← struct-vs-block ambiguity
+//     * "expected an expression"              ← const-stmt in fn-body
+//     * "expected a pattern"                  ← Vec<T> + indexing (¬this-W)
+//
+// § LANDED-THIS-WAVE
+//
+//   ── Feature 1 : module-decl path-segments accept Keyword-tokens ──────────
+//
+//     surface-syntax :
+//       module com.apocky.loa.systems.run     ← 'run' is Keyword::Run
+//       module com.apocky.loa.systems.fn      ← 'fn'  is Keyword::Fn  (¬yet)
+//
+//     pre-fix : `parse_module_path` strict-required `Ident` for every
+//       segment ; collision-with-keyword surfaced as "expected an item ..."
+//       at the next-line item-parse boundary.
+//
+//     post-fix : `parse_path_with_seps` accepts `Keyword(_)` tokens AFTER a
+//       separator (`.` or `::`) when the `accept_keyword_after_sep` flag is
+//       set. The flag is set in [`parse_module_path`] (used by module-decl +
+//       use-decl) and cleared in [`parse_colon_path`] (expression contexts
+//       where keyword-as-segment would break parser-disambiguation).
+//
+//     codegen : zero-impact ; ModulePath::segments stays Vec<Ident> + the
+//       Ident::span points at the keyword's source-span. HIR-lower treats
+//       it as a regular ident (module-paths are name-only at stage-0).
+//
+//     test : `tests/fixtures/module_path_with_keyword_segment.csl`
+//       module com.apocky.loa.systems.run
+//       fn main() -> i32 { 0 }
+//       ↦ csslc check : OK
+//
+//   ── Feature 2 : struct-vs-block disambiguation in if/while/for/match ─────
+//
+//     surface-syntax :
+//       fn f(x: u32) -> u32 {
+//           let a: u32 = 5 ;
+//           if x > a { a } else { x }   // ← was : if x > (a { a }) ...
+//       }
+//
+//     pre-fix : `looks_like_struct_body` saw `a { a }` — peek-ahead found
+//       `Ident `}`` (matches struct-empty-body shape) → wrongly accepted
+//       as struct-constructor. The if-body never started → "expected `{`,
+//       found `else`" surfaced one line later.
+//
+//     post-fix : new `Restriction::NoStructLiteral` bit on `TokenCursor`,
+//       set via `cursor.push_restriction(...)` (RAII-style snapshot pair :
+//       push returns the prior bits, pop restores). All four control-flow
+//       parsers (`parse_if_expr` / `parse_while_expr` / `parse_for_expr` /
+//       `parse_match_expr`) push the bit before parsing cond/iter/scrutinee
+//       and pop it before parsing the body block. The parse-prefix
+//       struct-constructor path-prefix already-had a `looks_like_struct_body`
+//       guard ; it now also consults `in_context_forbidding_struct_brace`
+//       which checks the bit.
+//
+//     codegen : zero-impact ; the only-difference is which expr-shape the
+//       parser produces (Path-then-Block vs Struct-Constructor).
+//
+//     test : `tests/fixtures/if_expr_struct_disambiguation.csl`
+//
+//   ── Feature 3 : `const NAME : type = expr ;` inside fn body ──────────────
+//
+//     surface-syntax :
+//       fn privacy_egress_check(payload_kind: u32) -> bool {
+//           const KIND_BIOMETRIC : u32 = 0x8001 ;
+//           const KIND_GAZE      : u32 = 0x8002 ;
+//           ...
+//       }
+//
+//     pre-fix : `parse_block` only-recognized `let` as a binding-stmt
+//       keyword ; `const` started an item-parse → "expected an expression"
+//       (the item parsers reject `const` mid-block).
+//
+//     post-fix : `parse_block` now-also-checks `Keyword::Const` and routes
+//       to a new `parse_const_stmt` that lowers to the same `StmtKind::Let`
+//       shape as a regular let (with `mutable: false` forced + the const
+//       keyword's span-start preserved for diagnostics).
+//
+//     staged-check (deferred) : at stage-1, a new `comptime_check` walker
+//       will verify the RHS is comptime-pure (no FFI calls + no mutable
+//       refs) + warn on non-foldable RHS. At stage-0 the lowering is
+//       identical to a `let` so the existing typing/MIR/codegen all-work.
+//
+//     test : `tests/fixtures/const_stmt_in_fn_body.csl`
+//
+// § DEFERRED-TO-BACKLOG  (specs/csslc/_BACKLOG.csl)
+//
+//   * GAP-D : multi-module compile  — `csslc build main.cssl --module-path=...`
+//     current-blocker : driver loop + sibling-symbol resolution + single-link
+//     scope : ~2-4 sessions worth of work · NEXT-WAVE-CANDIDATE
+//
+//   * GAP-E : `Vec<T>` type + method-syntax `out.push(row)` + indexing `v[i]`
+//     current-blocker : these are 3 features that compose (parametric type,
+//     dot-method-call-expr, postfix-index-expr) ; any-one in isolation is a
+//     half-measure
+//
+//   * GAP-F : while-loop body parsing in real-LoA contexts (combinations
+//     of GAP-E) — will land naturally once GAP-E does
+//
+//   * GAP-G : enum-variant-construction (e.g. `DesyncVerdict { code: 0, ...}`)
+//     these ALREADY parse since structs do — likely a typing-failure
+//     downstream not a parse-failure
+//
+//   * GAP-H : multiline fn-call-args with embedded comments + bad hex literal
+//     recovery (city_central_hub.csl line 129 `0xEX17_5CE_E_FEDCBA98u64` —
+//     the `EX` is invalid hex but the parser-recovery should localize the
+//     error rather than cascade)
+//
+// § PRIME-DIRECTIVE
+//   No harm in the making of this. Parser advancements respect sovereign-
+//   AI-as-partner ; gaps were identified by reproducing real-LoA-source
+//   failure paths ; fixes preserve all existing behavior bit-for-bit
+//   (existing-passing-source still-passes ; new-source now-also-passes).
+//
+//   ATTESTATION : there was no hurt nor harm in the making of this, to
+//   anyone, anything, or anybody.
+//
+// ∎ T11-W11-CSSLC-parser-advancements
