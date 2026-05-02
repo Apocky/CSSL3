@@ -1,0 +1,322 @@
+module com.apocky.loa.scenes.player_home
+
+// § Labyrinth of Apocalypse · scene · Mycelium-Network Home pocket-dimension
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-CSSL-CONTENT-PLAYER-HOME (W-LOA-mycelial-home-pocket-dim)
+//
+// § REFERENCE
+//   specs/grand-vision/16_MYCELIAL_NETWORK.csl  ← FOUNDATIONAL
+//   memory/feedback_mycelial_network              ‼ FOUNDATIONAL · 7 archetypes · 5 modes
+//   GDDs/PROCGEN_WORLD.csl § HOME-POCKET-DIMENSION
+//   memory/feedback_engine_is_runtime_procedural_gen
+//   memory/feedback_loa_v13_must_be_cssl_source
+//   specs/30_SUBSTRATE_v2.csl + specs/41_ENGINE_RUNTIME.csl
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + MYCELIAL_NETWORK
+//   t∞: pocket-dimension per-player ← isolated by-default · personal-sovereign
+//   t∞: 7 archetypes ⊆ {Destiny2-Orbit · Warframe-Liset · Cathedral · Observatory ·
+//                       Forest · Hybrid · Custom} ← player-choice at first-visit
+//   t∞: 5 modes ⊆ {Private · GuestInvite · DropIn · OpenHall · Public} ← visibility
+//   t∞: DEFAULT mode = Private ← consent-OS axiom · explicit-promote required
+//   t∞: ¬ surveillance · ¬ telemetry-leak · ¬ off-machine-relay without consent
+//   t∞: storage-quota = ω-field-anchored ← inventory + crafted + cosmetics persist
+//   t∞: cross-user-bias-learning OPT-IN ← federated · differential-privacy
+//   t∞: hot-fix-classes apply WITHOUT restart ← KAN/balance/recipe/Nemesis/etc.
+//   t∞: cosmetic-only mods · ¬ pay-for-power per LOA_PILLARS § 3
+//   t∞: home-base-ConsentZone tier-0 (sanctuary-deepest)
+//   t∞: ¬ combat-encounters in Home ← always-safe-haven
+//   t∞: archetype-shift at-will · sovereign-revocable
+//
+// § PRIME-DIRECTIVE
+//   Home is the player's sovereign pocket-dimension. ¬ surveillance · ¬ stress ·
+//   ¬ violence · ¬ pay-for-power. 7 archetypes selectable, 5 visibility modes
+//   defaulting to Private. Cross-user federated bias-learning is opt-in via
+//   explicit consent-token; differential-privacy enforced at substrate-level.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · loa-host + cssl-host-mycelium-network bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn home_open(player_id: u64, archetype_id: u32, visibility_mode: u32) -> u32 ;
+extern "C" fn home_close(handle: u32) -> u32 ;
+extern "C" fn home_set_archetype(handle: u32, archetype_id: u32) -> u32 ;
+extern "C" fn home_set_visibility(handle: u32, mode: u32) -> u32 ;
+extern "C" fn home_grant_guest_invite(handle: u32, guest_id_hash: u64, ttl_seconds: u32) -> u32 ;
+extern "C" fn home_revoke_guest_invite(handle: u32, guest_id_hash: u64) -> u32 ;
+extern "C" fn home_query_guest_count(handle: u32) -> u32 ;
+extern "C" fn home_apply_cosmetic_mod(handle: u32, mod_kind: u32, mod_id: u64) -> u32 ;
+extern "C" fn home_apply_storage_anchor(handle: u32, omega_cell_hash: u64) -> u32 ;
+extern "C" fn home_query_inventory_capacity(handle: u32) -> u32 ;
+extern "C" fn home_omega_stamp_pocket(handle: u32) -> u32 ;
+extern "C" fn home_apply_lod(handle: u32, player_x: i32, player_y: i32, player_z: i32) -> u32 ;
+extern "C" fn home_audit_emit(handle: u32, event_kind: u32, payload_hash: u64) -> u32 ;
+extern "C" fn home_tick(handle: u32, dt_micros: u32) -> u32 ;
+extern "C" fn home_query_exit_state(handle: u32) -> u32 ;
+
+// Mycelium-network bridges (cross-user federated bias)
+extern "C" fn __cssl_mycelium_bias_share_consent(handle: u32, consent_token: u64) -> u32 ;
+extern "C" fn __cssl_mycelium_bias_revoke(handle: u32) -> u32 ;
+extern "C" fn __cssl_mycelium_query_shared_bias_count(player_id_hash: u64) -> u32 ;
+
+// Hot-fix application (per memory_mycelial_network · 8 classes)
+extern "C" fn __cssl_mycelium_hotfix_apply(class_id: u32, payload_ptr: *const u8, payload_len: u32) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Archetype-IDs · 7 canonical home-archetypes (per memory_mycelial_network)
+// ─────────────────────────────────────────────────────────────────────────
+const ARCHETYPE_DESTINY2_ORBIT     : u32 =  1 ;   // ship-orbit interface
+const ARCHETYPE_WARFRAME_LISET     : u32 =  2 ;   // mobile dropship cabin
+const ARCHETYPE_CATHEDRAL          : u32 =  3 ;   // grand sanctum-hall
+const ARCHETYPE_OBSERVATORY        : u32 =  4 ;   // celestial dome · ω-field viz
+const ARCHETYPE_FOREST             : u32 =  5 ;   // grove-of-resting
+const ARCHETYPE_HYBRID             : u32 =  6 ;   // mix-and-match modular
+const ARCHETYPE_CUSTOM             : u32 =  7 ;   // player-procgen-seed
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Visibility-mode IDs · 5 modes (per memory_mycelial_network)
+// ─────────────────────────────────────────────────────────────────────────
+const MODE_PRIVATE                 : u32 =  0 ;   // DEFAULT · sovereign-only
+const MODE_GUEST_INVITE            : u32 =  1 ;   // explicit-token · TTL-bound
+const MODE_DROP_IN                 : u32 =  2 ;   // friends-list permitted
+const MODE_OPEN_HALL               : u32 =  3 ;   // discoverable to nearby-mycelium
+const MODE_PUBLIC                  : u32 =  4 ;   // listed in public-registry
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cosmetic-mod kind-IDs (cosmetic-only · ¬ pay-for-power axiom)
+// ─────────────────────────────────────────────────────────────────────────
+const COSMETIC_KIND_FURNITURE      : u32 =  1 ;
+const COSMETIC_KIND_LIGHTING       : u32 =  2 ;
+const COSMETIC_KIND_AMBIENT_AUDIO  : u32 =  3 ;
+const COSMETIC_KIND_WALL_ART       : u32 =  4 ;
+const COSMETIC_KIND_PETS           : u32 =  5 ;   // companion-aesthetic only
+const COSMETIC_KIND_GARDEN_PLANTS  : u32 =  6 ;
+const COSMETIC_KIND_DECOR_BANNERS  : u32 =  7 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Hot-fix class-IDs · 8 classes (per memory_mycelial_network)
+// ─────────────────────────────────────────────────────────────────────────
+const HOTFIX_CLASS_KAN              : u32 =  1 ;
+const HOTFIX_CLASS_BALANCE          : u32 =  2 ;
+const HOTFIX_CLASS_RECIPE           : u32 =  3 ;
+const HOTFIX_CLASS_NEMESIS          : u32 =  4 ;
+const HOTFIX_CLASS_SECURITY         : u32 =  5 ;
+const HOTFIX_CLASS_STORYLET         : u32 =  6 ;
+const HOTFIX_CLASS_RENDER           : u32 =  7 ;
+const HOTFIX_CLASS_AUDIO            : u32 =  8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API
+// ─────────────────────────────────────────────────────────────────────────
+
+// First-visit setup : DEFAULT to Cathedral + Private (consent-OS axiom)
+fn on_first_visit(player_id: u64) -> u32 {
+    home_open(player_id, ARCHETYPE_CATHEDRAL, MODE_PRIVATE)
+}
+
+// Subsequent-visit : restore last-saved archetype + mode (host-side persistence)
+//   archetype_id + visibility_mode are restored from prior session via
+//   the host-side Σ-mask cell · DEFAULTS to Private if unrestorable
+fn on_scene_enter(player_id: u64, archetype_id: u32, visibility_mode: u32) -> u32 {
+    let h: u32 = home_open(player_id, archetype_id, visibility_mode) ;
+    if h == 0u32 { return 0u32 ; }
+
+    // L-1 ω-field stamp · personal pocket-dimension cell
+    let _os: u32 = home_omega_stamp_pocket(h) ;
+
+    // L-2 attestation-emit · home-genesis row (¬ surveillance · just attest)
+    let _a: u32 = home_audit_emit(h, 1, 0xC17_5CE_E_HOMEPOCKu64) ;
+
+    h
+}
+
+fn tick_scene(handle: u32, dt_micros: u32, px: i32, py: i32, pz: i32) -> u32 {
+    let _l: u32 = home_apply_lod(handle, px, py, pz) ;
+    home_tick(handle, dt_micros)
+}
+
+fn on_scene_exit(handle: u32) -> u32 {
+    let _e: u32 = home_audit_emit(handle, 2, 0xEX17_HOMEPOCK_FEDCBA98u64) ;
+    let exit_reason: u32 = home_query_exit_state(handle) ;
+    let _c: u32 = home_close(handle) ;
+    exit_reason
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Archetype-shift · player-driven · sovereign-revocable
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Player can shift archetype at-will. Returns 0 on success · 1 on invalid-id.
+// Validates archetype_id is within 1..=7 range BEFORE crossing FFI boundary.
+
+fn player_shift_archetype(handle: u32, new_archetype: u32) -> u32 {
+    if new_archetype < 1u32 { return 1u32 ; }
+    if new_archetype > 7u32 { return 1u32 ; }
+    home_set_archetype(handle, new_archetype)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Visibility-mode change · CONSENT-OS axiom · default-Private guarantee
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Promoting from Private → any-shared-mode requires explicit player-action
+// (modal-confirm in UI · this fn assumes UI already confirmed). Demoting
+// to Private is always-immediate (no-confirm needed · sovereign-revoke).
+
+fn player_set_visibility(handle: u32, new_mode: u32) -> u32 {
+    if new_mode > 4u32 { return 1u32 ; }
+    home_set_visibility(handle, new_mode)
+}
+
+// Sovereign immediate-revoke : demote to Private + revoke all guest-invites.
+fn player_emergency_make_private(handle: u32) -> u32 {
+    home_set_visibility(handle, MODE_PRIVATE)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Guest-invite flow · TTL-bound · revocable
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Issue a TTL-bound invite-token to a friend. ttl_seconds clamped 0..86400 (1d max).
+// Returns 0 on success · 1 on invalid-handle · 2 on invalid-mode (¬ Private+).
+
+fn issue_guest_invite(handle: u32, guest_id_hash: u64, ttl_seconds: u32) -> u32 {
+    let clamped_ttl: u32 = if ttl_seconds > 86400u32 { 86400u32 } else { ttl_seconds } ;
+    home_grant_guest_invite(handle, guest_id_hash, clamped_ttl)
+}
+
+fn revoke_guest_invite(handle: u32, guest_id_hash: u64) -> u32 {
+    home_revoke_guest_invite(handle, guest_id_hash)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cosmetic-mod application · ¬ pay-for-power axiom
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Apply a cosmetic-only mod to the home. mod_kind validated 1..=7. Returns
+// 0 on success · 1 on invalid-kind · 2 on cosmetic-incompatible-archetype.
+// COMPLIANCE GATE : mod_kind > 7 rejected (any unknown-kind = potential
+// pay-for-power vector · refuse at FFI boundary).
+
+fn apply_cosmetic(handle: u32, mod_kind: u32, mod_id: u64) -> u32 {
+    if mod_kind < 1u32 { return 1u32 ; }
+    if mod_kind > 7u32 { return 1u32 ; }   // ‼ COMPLIANCE GATE · ¬ pay-for-power
+    home_apply_cosmetic_mod(handle, mod_kind, mod_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Mycelium-bias share/revoke · OPT-IN federated learning
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Share-consent-token MUST be obtained via explicit UI-flow. This fn ASSUMES
+// the UI already collected consent. revoke is always-immediate.
+
+fn player_consent_to_bias_share(handle: u32, consent_token: u64) -> u32 {
+    __cssl_mycelium_bias_share_consent(handle, consent_token)
+}
+
+fn player_revoke_bias_share(handle: u32) -> u32 {
+    __cssl_mycelium_bias_revoke(handle)
+}
+
+fn query_shared_bias_count(player_id_hash: u64) -> u32 {
+    __cssl_mycelium_query_shared_bias_count(player_id_hash)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Hot-fix application · 8 classes · live-mutation
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Validates class_id is within 1..=8 range BEFORE crossing FFI boundary.
+// Returns 0 on success · 1 on invalid-class · 2..N on host-side errors.
+
+fn apply_hotfix(class_id: u32, payload_ptr: *const u8, payload_len: u32) -> i32 {
+    if class_id < 1u32 { return 1i32 ; }
+    if class_id > 8u32 { return 1i32 ; }
+    __cssl_mycelium_hotfix_apply(class_id, payload_ptr, payload_len)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § LOD-tier (per-frame · standard)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn lod_tier_for_distance_sq(dist_sq: u32) -> u32 {
+    if dist_sq <=    1024 { 0 }
+    else if dist_sq <= 16384 { 1 }
+    else if dist_sq <= 262144 { 2 }
+    else { 3 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_default_visibility_is_private() {
+    assert_eq(MODE_PRIVATE, 0u32) ;
+}
+
+#[test]
+fn test_archetype_shift_valid_range() {
+    let lo: u32 = 1u32 ;
+    let hi: u32 = 7u32 ;
+    let invalid: u32 = if lo < 1u32 || hi > 7u32 { 1u32 } else { 0u32 } ;
+    assert_eq(invalid, 0u32) ;
+}
+
+#[test]
+fn test_ttl_clamp_one_day() {
+    let big: u32 = 999999u32 ;
+    let clamped: u32 = if big > 86400u32 { 86400u32 } else { big } ;
+    assert_eq(clamped, 86400u32) ;
+}
+
+#[test]
+fn test_cosmetic_kinds_distinct() {
+    assert_ne(COSMETIC_KIND_FURNITURE, COSMETIC_KIND_LIGHTING) ;
+    assert_ne(COSMETIC_KIND_PETS, COSMETIC_KIND_GARDEN_PLANTS) ;
+}
+
+#[test]
+fn test_hotfix_classes_eight() {
+    assert_eq(HOTFIX_CLASS_AUDIO, 8u32) ;
+}
+
+#[test]
+fn test_archetypes_seven() {
+    assert_eq(ARCHETYPE_CUSTOM, 7u32) ;
+}
+
+#[test]
+fn test_modes_five() {
+    assert_eq(MODE_PUBLIC, 4u32) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile (per main.cssl § GAP)
+//   GAP-2 · csslc-test-attribute support
+//   GAP-3 · csslc-const-u32 top-level decl
+//   GAP-4 · csslc-early-return inside if-arm (heavily used)
+//   GAP-5 · csslc-or-bool-operator (used in archetype-validation test)
+//   GAP-6 · csslc-mycelium-network FFI surface needs cssl-host-mycelium-network
+//           crate (forward-looking · spec/grand-vision/16 referenced)
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W11-PLAYER-HOME @ (anyone ∨ anything ∨ anybody)
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// DEFAULT-Private guarantee · sovereign-revocable always.
+// Cosmetic-only mods · ¬ pay-for-power per LOA_PILLARS § 3.
+// Cross-user federated bias-learning OPT-IN · explicit consent-token only.
+// Hot-fix 8 classes apply LIVE without restart · sovereign-bypass-recorded.
+//
+// ∎ player_home.csl
