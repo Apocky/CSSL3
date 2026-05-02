@@ -49,7 +49,7 @@
     ⊑ POST /api/hotfix/status   · client posts apply/failed/rolled_back
     ⊑ POST /api/hotfix/revoke   · admin-only · marks (channel, version)
 
-  ⟨SQL migration 0025_hotfix.sql⟩  W11-A4
+  ⟨SQL migration 0026_hotfix.sql⟩  W11-A4   // renumbered 0025→0026 ← collision with 0025_akashic.sql
     ⊑ hotfix_manifest_versions   · authoritative version table
     ⊑ hotfix_apply_status        · fleet-wide counters (anonymous)
     ⊑ hotfix_user_status         · per-user (Σ-mask-gated · self-row only)

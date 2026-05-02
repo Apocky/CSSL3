@@ -1,5 +1,5 @@
 -- =====================================================================
--- § T11-W11-HOTFIX-INFRA · 0025_hotfix.sql
+-- § T11-W11-HOTFIX-INFRA · 0026_hotfix.sql (renumbered 0025→0026 ← collision with 0025_akashic.sql)
 -- Live-update infrastructure schema. Stores per-channel manifest
 -- versions, fleet-wide apply rollups, and per-user (Σ-mask-gated)
 -- status rows. ALL tables RLS-policied · default-deny-everything.

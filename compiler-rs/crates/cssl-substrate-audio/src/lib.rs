@@ -89,17 +89,17 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(rustdoc::private_intra_doc_links)]
 
-pub mod hrtf;
-pub mod synth;
-// pub mod reverb;     // W-S-AUD-1 rate-limit-truncated · file not yet authored · pending post-CSSL-greenlight
+// pub mod hrtf;        // W-T11-W11-AGGR · src/hrtf.rs orphaned during cross-branch shuffle · pending re-author
+// pub mod synth;       // W-T11-W11-AGGR · src/synth.rs orphaned during cross-branch shuffle · pending re-author
+// pub mod reverb;      // W-S-AUD-1 rate-limit-truncated · file not yet authored · pending post-CSSL-greenlight
 // pub mod spatializer; // W-S-AUD-1 rate-limit-truncated · file not yet authored · pending post-CSSL-greenlight
 
-pub use hrtf::{EarChannel, HrtfConfig, HrtfImpulseSet, HrtfSpatializer};
+// pub use hrtf::{EarChannel, HrtfConfig, HrtfImpulseSet, HrtfSpatializer};   // pending W-T11-W11-AGGR re-author
 // pub use reverb::{ConvolutionReverb, FdnReverb, ReverbConfig};   // pending W-S-AUD-1
 // pub use spatializer::{Listener3D, OcclusionAabb, RoomGeometry, SoundSource3D, Spatializer3D};   // pending W-S-AUD-1
-pub use synth::{
-    Adsr, AdsrStage, KanSynth, Lfo, LfoTarget, Oscillator, OscillatorWaveform, SynthVoice,
-};
+// pub use synth::{
+//     Adsr, AdsrStage, KanSynth, Lfo, LfoTarget, Oscillator, OscillatorWaveform, SynthVoice,
+// };  // pending W-T11-W11-AGGR re-author of synth.rs
 
 /// Speed of sound in air at 20 °C, sea level (m/s).
 pub const SPEED_OF_SOUND_MPS: f32 = 343.0;

@@ -1785,6 +1785,12 @@ dependencies = [
 [[package]]
 name = "cssl-substrate-sigma-runtime"
 version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "thiserror 1.0.69",
+]
 
 [[package]]
 name = "cssl-telemetry"

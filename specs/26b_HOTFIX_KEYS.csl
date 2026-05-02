@@ -126,7 +126,7 @@
     (Apocky-only · NEVER through any chat / log)
   □ generate the admin-token for /api/hotfix/revoke ; sha256 → Vercel env
     HOTFIX_ADMIN_TOKEN_SHA256 ; store raw token in ~/.loa-secrets/
-  □ run `supabase migration up` to apply 0025_hotfix.sql
+  □ run `supabase migration up` to apply 0026_hotfix.sql
   □ create Supabase storage bucket `hotfix-bundles` (private · service-role-only)
   □ build first cap-D security.patch bundle as smoke test ; upload via the
     forthcoming `cargo csslc-publish-bundle` tool (out-of-scope for this slice)
