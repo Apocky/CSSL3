@@ -110,6 +110,33 @@ fn t11_w15_testattr_hash_test_followed_by_at_attr() {
 }
 
 #[test]
+fn t11_w15_vec_method_index_compose_end_to_end() {
+    // § GAP-E (verified-already-parsing) : Vec<T> + .push() + .len() + [i]
+    //   compose end-to-end. The Vec-ABI MIR pass owns the full lifecycle ;
+    //   this fixture is the surface-syntax canonical-form for content-author
+    //   reference.
+    assert_check_succeeds("vec_method_index.csl");
+}
+
+#[test]
+fn t11_w15_misc_literals_u128_or_neg_pointer() {
+    // § GAP-U128 + GAP-OR-BOOL + GAP-I32-NEG + GAP-POINTER-FFI (verified-
+    //   already-parsing) : u128 arithmetic / `||` short-circuit / `x <= -75i32`
+    //   negative-literal-comparison / `*const u8` + `*mut u8` raw-pointer
+    //   types in extern "C" fn signatures.
+    assert_check_succeeds("u128_or_bool_i32_neg.csl");
+}
+
+#[test]
+fn t11_w15_early_return_if_expr_const() {
+    // § GAP-EARLY-RETURN + GAP-IF-EXPR + GAP-CONST (verified-already-parsing) :
+    //   `if X { return Y ; }` early-return / `if A { x } else if B { y } else
+    //   { z }` if-as-expression-with-else-if-chain / top-level `const NAME : T
+    //   = expr ;` + fn-body `const NAME : T = expr ;`.
+    assert_check_succeeds("early_return_and_if_chain.csl");
+}
+
+#[test]
 fn t11_w15_badhex_namespace_prefix_recovery() {
     // § GAP-W15-C : the lexer's strict-hex regex consumed the longest valid-
     //   hex prefix and emitted `BRASSMARu64` as a separate Ident, breaking

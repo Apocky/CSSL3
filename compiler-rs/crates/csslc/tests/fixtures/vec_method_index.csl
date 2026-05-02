@@ -1,0 +1,38 @@
+module com.apocky.test.vec_method_index
+
+// § T11-W15-CSSLC-VEC-FIXTURE · canonical fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT (verified-already-parsing @ T11-W15)
+//   Vec<T> + .method-call + [index] postfix all-parse end-to-end. The Vec-
+//   ABI MIR pass (cssl-mir/src/vec_abi.rs) lowers `Vec::new()` to alloc +
+//   zero-init layout · `.push()` to growth+store · `.len()` to field-load
+//   at offset 8 · `[i]` to bounds-checked-load.
+//
+//   Per `_BACKLOG.csl § GAP-E` this fixture proves the surface compose ;
+//   typing/MIR pass lifecycle is owned by `vec_abi::tests`.
+
+extern "C" fn produce_handle() -> u64 ;
+
+struct Item { id: u64, weight: u32 }
+
+fn collect_items(n: usize) -> Vec<Item> {
+    let mut out: Vec<Item> = Vec::new() ;
+    let mut i: usize = 0 ;
+    while i < n {
+        let h: u64 = produce_handle() ;
+        let row: Item = Item { id: h, weight: 0u32 } ;
+        out.push(row) ;
+        i = i + 1 ;
+    }
+    out
+}
+
+fn first_id(items: Vec<Item>) -> u64 {
+    let n: usize = items.len() ;
+    if n == 0 {
+        return 0u64 ;
+    }
+    let first: Item = items[0] ;
+    first.id
+}

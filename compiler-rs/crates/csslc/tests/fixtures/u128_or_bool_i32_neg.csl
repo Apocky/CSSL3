@@ -1,0 +1,39 @@
+module com.apocky.test.misc_lits
+
+// § T11-W15-CSSLC misc-literals · canonical fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT (verified-already-parsing @ T11-W15)
+//   * u128 literal parsing + arithmetic              (GAP-U128)
+//   * `||` short-circuit boolean operator            (GAP-OR-BOOL)
+//   * i32 comparison with negative literal           (GAP-I32-NEG)
+//   * raw pointer types in extern "C"                (GAP-POINTER-FFI)
+
+extern "C" fn read_buf(p: *const u8, len: u32) -> i32 ;
+extern "C" fn write_buf(p: *mut u8, len: u32) -> i32 ;
+
+fn u128_arith(a: u128, b: u128) -> u128 {
+    a + b
+}
+
+fn or_short_circuit(a: bool, b: bool) -> bool {
+    a || b
+}
+
+fn i32_neg_compare(x: i32) -> u32 {
+    if x <= -75i32 {
+        1u32
+    } else if x >= 75i32 {
+        2u32
+    } else {
+        0u32
+    }
+}
+
+fn pointer_ffi_call(buf: *const u8, len: u32) -> i32 {
+    read_buf(buf, len)
+}
+
+fn pointer_mut_ffi_call(buf: *mut u8, len: u32) -> i32 {
+    write_buf(buf, len)
+}

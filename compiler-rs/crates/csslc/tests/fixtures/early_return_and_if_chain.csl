@@ -1,0 +1,49 @@
+module com.apocky.test.early_ret_if
+
+// § T11-W15-CSSLC early-return + if-expr + top-level-const · canonical fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT (verified-already-parsing @ T11-W15)
+//   * early-return inside if-arm                     (GAP-EARLY-RETURN)
+//   * if-as-expression + else-if chain               (GAP-IF-EXPR)
+//   * top-level + fn-body `const NAME : T = expr ;`  (GAP-CONST · landed-W11)
+
+const REC_KIND_PLAYER_DEATH : u32 = 3u32 ;
+const REC_KIND_BOSS_VICTORY : u32 = 2u32 ;
+const REC_MIN_VALID : u32 = 1u32 ;
+const REC_MAX_VALID : u32 = 11u32 ;
+
+fn validate_record_kind(k: u32) -> i32 {
+    if k < REC_MIN_VALID {
+        return -1i32 ;
+    }
+    if k > REC_MAX_VALID {
+        return -1i32 ;
+    }
+    0i32
+}
+
+fn classify_record(k: u32) -> u32 {
+    if k == REC_KIND_PLAYER_DEATH {
+        100u32
+    } else if k == REC_KIND_BOSS_VICTORY {
+        200u32
+    } else if k >= REC_MIN_VALID {
+        300u32
+    } else {
+        0u32
+    }
+}
+
+fn validate_with_const_in_body() -> i32 {
+    const FLOOR : u32 = 1u32 ;
+    const CEIL : u32 = 11u32 ;
+    let kind: u32 = 5u32 ;
+    if kind < FLOOR {
+        return -1i32 ;
+    }
+    if kind > CEIL {
+        return -1i32 ;
+    }
+    0i32
+}
