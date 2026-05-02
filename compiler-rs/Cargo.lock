@@ -625,6 +625,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-analytics-aggregator"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-anim"
 version = "0.1.0"
 dependencies = [
@@ -1209,9 +1217,11 @@ dependencies = [
 name = "cssl-host-mycelium-desktop"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "cssl-host-agent-loop",
  "cssl-host-llm-bridge",
  "cssl-host-substrate-knowledge",
+ "cssl-mycelium-chat-sync",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -1382,6 +1392,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-hotfix"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-hotfix-client"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-hotfix",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-ifc"
 version = "0.1.0"
 dependencies = [
@@ -1493,6 +1528,18 @@ name = "cssl-mlir-bridge"
 version = "0.1.0"
 dependencies = [
  "cssl-mir",
+]
+
+[[package]]
+name = "cssl-mycelium-chat-sync"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-mycelium",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -1722,6 +1769,22 @@ dependencies = [
  "cssl-telemetry",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "cssl-substrate-sigma-chain"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "ed25519-dalek",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-substrate-sigma-runtime"
+version = "0.1.0"
 
 [[package]]
 name = "cssl-telemetry"
@@ -2673,6 +2736,8 @@ dependencies = [
  "cssl-host-spectral-grader",
  "cssl-host-stereoscopy",
  "cssl-host-voice",
+ "cssl-hotfix",
+ "cssl-hotfix-client",
  "cssl-rt",
  "cssl-spectral-render",
  "cssl-substrate-loa-kan",

@@ -1,0 +1,315 @@
+module com.apocky.loa.systems.mycelium_chat
+
+// § Labyrinth of Apocalypse v13 — mycelial chat-pattern federation (pure-CSSL)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-MYCELIUM-CHAT-SYNC (POD-3-W11) — federate chat-pattern shapes
+//
+// § THESIS
+//   GM/DM persona-agents learn shape-of-good-response from federated
+//   peers WITHOUT ever observing raw player content. The mycelial network
+//   carries ANONYMIZED pattern-shape signals (intent · response · arc-phase)
+//   gated through Σ-mask cap-policy with k-anonymity-≥-5 enforcement.
+//
+//   "The GM in player-A's session can learn from patterns observed across
+//    the federated mycelium without ever seeing player-B's content."
+//
+// § AXIOMS  (inherit GDDs/MULTIPLAYER_MATRIX.csl + spec/16_MYCELIAL_NETWORK)
+//   ─ Σ-mask-gates @ TWO points (emit-side · ingest-side · defense-in-depth)
+//   ─ k-anonymity floor : k ≥ 5 distinct-emitters before pattern-public
+//   ─ ¬ raw-chat-text egress · ONLY pattern-shape (32-byte bit-pack)
+//   ─ emitter_handle = BLAKE3-trunc(pubkey) · ¬ recoverable-to-pubkey
+//   ─ player-revocable ANYTIME · revoke = zero-cap + purge-ring + purge-fed +
+//     broadcast-purge-request
+//   ─ deterministic federation-blake3 ⟶ replay-stable persona-modulation
+//   ─ ¬ surveillance · ¬ profiling · ¬ per-user-egress
+//   ─ aggregate-of-≥-5 minimum @ federation-public-set
+//
+// § FFI BOUNDARY
+//   This module consumes the chat-sync host-side substrate via extern "C" :
+//     * cssl-mycelium-chat-sync   (T11-W11 ; ChatPattern · Federation · Sync)
+//     * cssl-host-mycelium        (T11-W8-B2 ; transport-adapter · privacy)
+//     * cssl-host-attestation     (T11-W7-G ; per-event audit-row emit)
+//   FFI fns return i32 status codes : 0 = ok · negative = err-kind.
+//   ChatPattern blobs pass via 32-byte fixed buffers ; pubkey via 32-byte
+//   buffers ; aggregated-shapes via (intent · phase) → out-shape lookup.
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : opt_in_chat_sync IS the consent-grant ; without it,
+//   patterns sit in local-ring forever and never federate.
+//   Sovereign-revoke is break-glass : zero-cap · purge · broadcast-purge.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-bits  (Σ-mask · ALL revocable ANYTIME)
+// ─────────────────────────────────────────────────────────────────────────
+
+const CHAT_CAP_EMIT_ALLOWED          : u8 = 0x01 ;  // emitter opted-in
+const CHAT_CAP_FEDERATION_INGEST     : u8 = 0x02 ;  // pattern allowed-into-fed
+const CHAT_CAP_PURGE_ON_REVOKE       : u8 = 0x04 ;  // peer-purge-propagation
+const CHAT_CAP_REPLAY_DETERMINISTIC  : u8 = 0x08 ;  // replay-safe-modulation
+
+// ALL bits required to federate ; missing-any = drop-at-emit.
+const CHAT_CAPS_ALL : u8 = 0x0F ;
+
+// Reserved bits (bits 4..7) MUST be zero ; non-zero = malformed-tampered.
+const CHAT_CAPS_RESERVED_MASK : u8 = 0xF0 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Pattern-shape enums  (stage-0 narrow taxonomy ; PRIME-DIRECTIVE-reviewed)
+// ─────────────────────────────────────────────────────────────────────────
+
+// IntentKind : narrow taxonomy of chat-intent shapes.
+const INTENT_QUESTION       : u8 = 0 ;
+const INTENT_COMMAND        : u8 = 1 ;
+const INTENT_REFLECTION     : u8 = 2 ;
+const INTENT_WORLDBUILDING  : u8 = 3 ;
+const INTENT_COMBAT         : u8 = 4 ;
+const INTENT_EXPLORATION    : u8 = 5 ;
+const INTENT_CRAFTING       : u8 = 6 ;
+const INTENT_SOCIAL         : u8 = 7 ;
+const INTENT_META           : u8 = 8 ;
+const INTENT_UNKNOWN        : u8 = 255 ;
+
+// ResponseShape : the SHAPE of a good GM/DM response, never the content.
+const SHAPE_SHORT_DIRECT       : u8 = 0 ;
+const SHAPE_SCENIC_NARRATIVE   : u8 = 1 ;
+const SHAPE_DIALOGUE_DRIVEN    : u8 = 2 ;
+const SHAPE_BULLETED_OPTIONS   : u8 = 3 ;
+const SHAPE_QUESTION_BACK      : u8 = 4 ;
+const SHAPE_AMBIENT_HINT       : u8 = 5 ;
+const SHAPE_MECHANICAL_READOUT : u8 = 6 ;
+const SHAPE_STORYBEAT_PUNCH    : u8 = 7 ;
+const SHAPE_UNKNOWN            : u8 = 255 ;
+
+// ArcPhase : narrative-arc position discriminator.
+const PHASE_SETUP          : u8 = 0 ;
+const PHASE_RISING_ACTION  : u8 = 1 ;
+const PHASE_CLIMAX         : u8 = 2 ;
+const PHASE_FALLING        : u8 = 3 ;
+const PHASE_DENOUEMENT     : u8 = 4 ;
+const PHASE_INTERLUDE      : u8 = 5 ;
+const PHASE_UNKNOWN        : u8 = 255 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Federation k-anonymity floor
+// ─────────────────────────────────────────────────────────────────────────
+
+// MINIMUM distinct-emitter count before a pattern_id is visible to readers.
+// k ≥ 5 enforced ; lower values clamped to k=2 (privacy-floor invariant).
+const CHAT_K_ANONYMITY_FLOOR : u32 = 5 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI status codes
+// ─────────────────────────────────────────────────────────────────────────
+
+const FFI_OK                  : i32 =  0 ;
+const FFI_ERR_INVALID_ARG     : i32 = -1 ;
+const FFI_ERR_CAP_DENIED      : i32 = -2 ;
+const FFI_ERR_MALFORMED       : i32 = -3 ;
+const FFI_ERR_K_ANON_NOT_MET  : i32 = -4 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ChatPattern bit-pack layout (LE · 32 bytes)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   ┌───────────┬────────┬────────────────────────────────────────────────┐
+//   │ offset    │ bytes  │ field                                          │
+//   ├───────────┼────────┼────────────────────────────────────────────────┤
+//   │  0..4     │   4    │ pattern_id            (BLAKE3-trunc · u32 LE)  │
+//   │  4        │   1    │ intent_kind           (IntentKind disc · u8)   │
+//   │  5        │   1    │ response_shape        (ResponseShape disc · u8)│
+//   │  6        │   1    │ arc_phase             (ArcPhase disc · u8)     │
+//   │  7        │   1    │ confidence_q8         (0..=255 ↦ 0.0..=1.0)    │
+//   │  8..12    │   4    │ ts_bucketed           (epoch/60s · u32 LE)     │
+//   │ 12..14    │   2    │ region_tag            (u16 LE)                 │
+//   │ 14        │   1    │ opt_in_tier           (0..=3 · u8)             │
+//   │ 15        │   1    │ cap_flags             (Σ-mask gates · u8)      │
+//   │ 16..24    │   8    │ emitter_handle        (BLAKE3-trunc · u64 LE)  │
+//   │ 24..32    │   8    │ co_signer_set_hash    (BLAKE3-trunc · u64 LE)  │
+//   └───────────┴────────┴────────────────────────────────────────────────┘
+//
+// pattern_id = BLAKE3("pattern_id\0v1" ‖ intent ‖ shape ‖ phase) ⟶ trunc4
+//   ⊑ same-shape across-emitters collide ⟶ k-anon counting works
+// emitter_handle = BLAKE3("emitter_handle\0v1" ‖ pubkey) ⟶ trunc8
+//   ⊑ ¬ recoverable to pubkey
+// co_signer_set_hash = BLAKE3 over sorted-set ⟶ order-independent
+
+const CHAT_PATTERN_SIZE : usize = 32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : federation-read (GM/DM persona consumes)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Returns count of patterns currently above the k-anonymity floor.
+extern "C" fn __cssl_mycelium_chat_federation_count() -> u32 ;
+
+// Writes the deterministic 32-byte federation-digest into `out`.
+// Used by replay-tests + sovereign-attestation. Digest is BLAKE3 over the
+// public-set sorted by pattern_id ⟶ replay-stable per-snapshot.
+extern "C" fn __cssl_mycelium_chat_federation_blake3(out: *mut u8) -> i32 ;
+
+// Lookup the dominant response-shape for (intent, phase). Writes the most-
+// frequently-observed shape + observation-count + mean-confidence-q8 into
+// the out-pointers. Returns FFI_ERR_K_ANON_NOT_MET if no public-pattern
+// matches (i.e. < k_floor distinct emitters for this intent/phase pair).
+extern "C" fn __cssl_mycelium_chat_federation_lookup_shape(
+    intent       : u8,
+    phase        : u8,
+    out_shape    : *mut u8,
+    out_count    : *mut u32,
+    out_conf_q8  : *mut u8,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : observe + tick (chat-input handler drives)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Push a 32-byte raw ChatPattern into the local ring. Validation runs on
+// the pattern's bit-pack ; invalid patterns return FFI_ERR_MALFORMED.
+//
+// SOVEREIGN BOUNDARY : the local ring NEVER leaves the local machine. The
+// Σ-mask gate fires at digest-tick (not at observe-time) ; observe-time is
+// always allowed (the pattern hasn't crossed any boundary yet).
+extern "C" fn __cssl_mycelium_chat_observe(
+    pattern_bytes : *const u8,    // length = CHAT_PATTERN_SIZE
+) -> i32 ;
+
+// Drive a single digest-tick. Drains the local ring, applies Σ-mask cap-
+// gates, broadcasts a ChatPatternDifferential to peers if any survive.
+// `now_unix` is wall-clock seconds ; ts-bucketed to /60 in the diff.
+extern "C" fn __cssl_mycelium_chat_tick(now_unix: u64) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : sovereign-revoke (break-glass)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Sovereign-revoke for `emitter_handle`. Performs ALL of :
+//   1. zero cap-policy   (outgoing-zero next-tick)
+//   2. purge local ring  (defense-in-depth)
+//   3. purge local federation-emitter-record
+//   4. broadcast PurgeRequest to peers
+//   5. bump revoke-stat counter
+//
+// This is the "right to be forgotten" surface. After revoke, the emitter
+// contributes ZERO to any aggregated-shape from this point forward.
+// Idempotent : repeated calls are no-ops after the first.
+extern "C" fn __cssl_mycelium_chat_revoke(
+    emitter_handle : u64,
+    ts_unix        : u64,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : opt-in (consent-arch grant)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Grant an emitter the Σ-mask flags for chat-sync federation. Idempotent.
+// Default-deny posture : without this call, ticks emit zero patterns.
+//
+// `cap_flags` should be CHAT_CAPS_ALL for a full-grant. Granting a subset
+// leaves the emitter capable of LOCAL observation only.
+extern "C" fn __cssl_mycelium_chat_grant_emitter(
+    emitter_handle : u64,
+    cap_flags      : u8,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GM/DM persona-modulator integration pattern
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Per-turn modulation flow (CSSL pseudocode) :
+//
+//   fn gm_persona_modulate_response(
+//       intent : u8,
+//       phase  : u8,
+//       persona_seed : u64,
+//   ) -> u8 {
+//       let mut out_shape : u8 = SHAPE_UNKNOWN ;
+//       let mut out_count : u32 = 0 ;
+//       let mut out_conf_q8 : u8 = 0 ;
+//
+//       let rc = __cssl_mycelium_chat_federation_lookup_shape(
+//           intent, phase,
+//           &mut out_shape, &mut out_count, &mut out_conf_q8,
+//       ) ;
+//
+//       if rc == FFI_ERR_K_ANON_NOT_MET {
+//           // No federated wisdom yet ; fall back to persona-default.
+//           return gm_persona_default_shape(intent, phase, persona_seed) ;
+//       }
+//
+//       // Replay-deterministic : combine persona-seed + federation-digest
+//       // into a stable modulation factor. Same snapshot + same seed →
+//       // same shape. No surveillance ; no per-user attribution.
+//       let mut fed_digest : [u8; 32] = [0; 32] ;
+//       __cssl_mycelium_chat_federation_blake3(&mut fed_digest as *mut u8) ;
+//       let modulation = blend_seed_and_digest(persona_seed, fed_digest) ;
+//
+//       // Confidence-gated : low-confidence federation-shapes ¬ override
+//       // persona-default ; high-confidence DO override.
+//       if out_conf_q8 < 128 {
+//           return gm_persona_default_shape(intent, phase, persona_seed) ;
+//       }
+//       return out_shape ;
+//   }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Audit-axis tagging  (per-event audit-row schema)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Emit-side audit-row tag. Used by the audit-port to discriminate.
+const AUDIT_TAG_OBSERVE     : &str = "chat-sync.observe" ;
+const AUDIT_TAG_TICK_EMIT   : &str = "chat-sync.tick.emit" ;
+const AUDIT_TAG_TICK_DROP   : &str = "chat-sync.tick.drop-cap-denied" ;
+const AUDIT_TAG_INGEST_OK   : &str = "chat-sync.ingest.ok" ;
+const AUDIT_TAG_INGEST_DENY : &str = "chat-sync.ingest.cap-denied" ;
+const AUDIT_TAG_REVOKE      : &str = "chat-sync.revoke" ;
+const AUDIT_TAG_PURGE_RECV  : &str = "chat-sync.purge.received" ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sovereign-revoke flow  (break-glass · ¬ surveillance · "right to be forgotten")
+// ─────────────────────────────────────────────────────────────────────────
+//
+// User-flow steps :
+//   1. User invokes break-glass UI (Ctrl+Shift+Alt+S in Mycelium Desktop).
+//   2. Host calls `__cssl_mycelium_chat_revoke(my_handle, now_unix)`.
+//   3. Service zeros the cap-policy for `my_handle`        (step 1 of 5).
+//   4. Service purges local ChatPatternRing                (step 2 of 5).
+//   5. Service purges local federation-emitter-record      (step 3 of 5).
+//   6. Service broadcasts PurgeRequest{handle, ts_unix}    (step 4 of 5).
+//   7. Each peer that receives the PurgeRequest applies it locally :
+//        a. peer-side `__cssl_mycelium_chat_handle_purge` drops the
+//           emitter from EVERY public-set bucket
+//        b. patterns whose distinct-emitter-count drops below k_floor
+//           transition staged ; no longer visible to GM/DM modulation
+//   8. Service bumps revoke-stat counter                   (step 5 of 5).
+//
+// After revoke, the emitter contributes ZERO to any aggregated-shape from
+// this point forward. The audit-row at step 1 is the immutable record of
+// the revoke event ; the broadcast at step 6 is best-effort (peers may be
+// offline at revoke-time ; they apply the purge on next-poll-cycle).
+//
+// IDEMPOTENCY : repeated revoke calls are no-ops after the first ; safe to
+// retry across crash-recovery + replay.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Compliance attestation
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Σ-mask gates appear at TWO points :
+//   - emit-side  : MyceliumChatSync::tick (host-side · `cap_flags & CAP_EMIT_ALLOWED`)
+//   - ingest-side : ChatPatternFederation::ingest (host-side · `cap_flags & CAP_FEDERATION_INGEST`)
+//
+// k-anonymity floor enforced @ ChatPatternFederation::snapshot_public ;
+// patterns below k_floor never reach `out_shape` in `lookup_shape`.
+//
+// Determinism : `federation_blake3` is replay-stable per-snapshot. A GM/DM
+// persona seeded with `(persona_seed, federation_blake3)` yields identical
+// modulation across replays.
+//
+// ¬ raw-chat-text egress : ChatPattern is a 32-byte fixed-shape blob.
+// pattern_id is content-addressable over (intent · response · phase) ;
+// emitter_handle is a non-recoverable BLAKE3-trunc of pubkey.
+//
+// Attestation : there was no hurt nor harm in the making of this.
