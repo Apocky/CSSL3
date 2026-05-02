@@ -26,6 +26,7 @@ use crate::chat_sync_wire::ChatSyncWire;
 use crate::config::AppConfig;
 use crate::error::AppError;
 use crate::now_unix;
+use crate::secrets;
 use crate::session::{Session, SessionSnapshot, StoredTurn};
 
 /// Top-level Mycelium application. Owns the agent-loop, session, audit
@@ -80,8 +81,30 @@ impl MyceliumApp {
     /// Construct a fresh app from validated config. Builds the LLM bridge,
     /// derives the cap-policy, wires null tool-handlers + a collecting
     /// audit-port, and primes a 100-turn session-buffer.
-    pub fn new(config: AppConfig) -> Result<Self, AppError> {
+    ///
+    /// § T11-W17-C : if the config's `anthropic_api_key` is unset, attempt
+    /// to load it from `~/.loa-secrets/anthropic.env`. This makes the
+    /// Settings-flow round-trip work : Apocky pastes a key → save_to_disk
+    /// → next app-launch picks it up automatically.
+    pub fn new(mut config: AppConfig) -> Result<Self, AppError> {
         config.validate()?;
+
+        // § T11-W17-C : disk-fallback for Anthropic key. The runtime
+        // priority is :
+        //   1. config.llm.anthropic_api_key (set by host code path)
+        //   2. ~/.loa-secrets/anthropic.env  (Settings-UI-saved)
+        //   3. ANTHROPIC_API_KEY env-var     (legacy / CI)
+        // Unsupplied case stays as `None` — Mode-A bridge construction
+        // surfaces `LlmError::NotConfigured` which the UI banner handles.
+        if config.llm.anthropic_api_key.as_deref().unwrap_or("").is_empty() {
+            if let Ok(Some(disk_key)) = secrets::load_anthropic_key() {
+                config.llm.anthropic_api_key = Some(disk_key);
+            } else if let Ok(env_key) = std::env::var("ANTHROPIC_API_KEY") {
+                if !env_key.is_empty() {
+                    config.llm.anthropic_api_key = Some(env_key);
+                }
+            }
+        }
 
         // Cap-bits are deterministically derived from the cap-mode.
         // Mode-A requires EXTERNAL_API ; Mode-B requires LOCAL_OLLAMA ;
@@ -287,6 +310,49 @@ impl MyceliumApp {
         // preserves the "break-glass" semantics : ¬ surveillance ; ¬ data-
         // egress ; ¬ federation-tail.
         self.chat_sync.sovereign_revoke(now_unix());
+        Ok(())
+    }
+
+    /// § T11-W17-C : inject a freshly-saved Anthropic key into the running
+    /// bridge config + rebuild the bridge in-place. Called by the IPC
+    /// `SaveAnthropicKey` handler after the disk-write succeeds, so the
+    /// next turn picks up the new key WITHOUT requiring an app-restart.
+    ///
+    /// § Sovereignty
+    ///   - The plaintext key is held in `LlmConfig.anthropic_api_key` which
+    ///     is `#[serde(skip)]` upstream, so it never leaks via JSON
+    ///     persistence paths.
+    ///   - The bridge is rebuilt only when the new key differs from the
+    ///     current one, to avoid spurious bridge-churn when the same key is
+    ///     re-saved.
+    #[allow(clippy::significant_drop_tightening)]
+    pub fn inject_anthropic_key(&mut self, key: &str) -> Result<(), AppError> {
+        let already = self
+            .config
+            .llm
+            .anthropic_api_key
+            .as_deref()
+            .map(|s| s == key)
+            .unwrap_or(false);
+        if already {
+            return Ok(());
+        }
+        self.config.llm.anthropic_api_key = Some(key.to_string());
+
+        // Only rebuild the bridge if Mode-A is active — Mode-B/C do not
+        // consume the key, so the rebuild would be wasted work.
+        if matches!(self.config.llm.mode, LlmMode::ExternalAnthropic) {
+            let bridge_caps = match self.config.caps {
+                cssl_host_agent_loop::CapMode::SovereignMaster => CapBits::all(),
+                _ => CapBits(CapBits::EXTERNAL_API),
+            };
+            let new_bridge = make_bridge(&self.config.llm, bridge_caps)?;
+            let mut loop_ = self
+                .agent_loop
+                .lock()
+                .map_err(|_| AppError::Session("agent-loop mutex poisoned".into()))?;
+            loop_.bridge = new_bridge;
+        }
         Ok(())
     }
 

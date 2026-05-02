@@ -48,6 +48,13 @@ pub mod geometry;
 pub mod material;
 pub mod pattern;
 pub mod room;
+// § T11-W17-D-ROOM-POPULATE — runtime-procgen content for the test-room.
+//   Populates the empty TestRoom with deterministic NPC archetypes + loot
+//   drops + interactables when content/loot caps are granted ; default-deny
+//   posture. Reuses 8-tier Rarity enum + 16-archetype enum from sibling
+//   substrate crates ; spawn-positions PRNG-keyed by world-seed for
+//   replay-bit-equality. Spec @ T11-W17-D · feedback_engine_is_runtime_procgen.
+pub mod room_populate;
 pub mod stokes;
 // § T11-LOA-FID-SPECTRAL — CPU-bake bridge from cssl-spectral-render to the
 // GPU material LUT (4-illuminant cohort · per-material reference colors).
@@ -74,6 +81,9 @@ pub mod telemetry;
 // DM-sibling catalog
 pub mod dm_director;
 pub mod gm_narrator;
+// § T11-W17-B-GM-LIVE — live-LLM dialog wire for gm_narrator. Cap-gated +
+//   default-deny ; falls back to xorshift pools on any error.
+pub mod gm_live;
 pub mod dm_runtime;
 // § T11-W11-GM-DM-DEEPEN — persona-state + narrative-arc state machine.
 //   Sibling modules to gm_narrator + dm_director ; no cross-crate deps.
@@ -226,6 +236,13 @@ pub mod wired_weapons;
 pub mod wired_fps_feel;
 pub mod wired_movement_aug;
 pub mod wired_loot;
+// § T11-W17-E-COMBAT-LOOP — fire-press → ray-cast → damage → kill → loot
+//   end-to-end orchestrator. Sits on top of `wired_weapons`, `wired_loot`,
+//   and the existing `cssl-host-weapons::cast_hitscan` ray-caster. Defines
+//   a minimal `NpcHitbox` (sphere-proxy ; W17-D's `room_populate.rs` may
+//   wrap or reuse this struct). Cap-gated default-deny — `CombatCaps`
+//   `allow_fire` is the Σ-cap-gate.
+pub mod combat_loop;
 pub mod wired_mycelium_heartbeat;
 pub mod wired_content;
 
@@ -243,6 +260,17 @@ pub struct LoaSubsystems {
     pub loot: wired_loot::LootState,
     pub mycelium: wired_mycelium_heartbeat::MyceliumHeartbeatState,
     pub content: wired_content::ContentState,
+    /// § T11-W17-E-COMBAT-LOOP : default-starter loadout (mag/reload/cooldown).
+    pub combat_loadout: combat_loop::StarterLoadout,
+    /// § T11-W17-E-COMBAT-LOOP : sustained combat-loop counters.
+    pub combat_stats: combat_loop::CombatLoopStats,
+    /// § T11-W17-E-COMBAT-LOOP : reusable per-frame events bag (allocs reused).
+    pub combat_events: combat_loop::CombatEvents,
+    /// § T11-W17-E-COMBAT-LOOP : shadow hitbox-vec derived from W17-D's
+    /// `RoomContents::npcs`. We store HP / alive here (rather than mutate
+    /// W17-D's `NpcSpawn`) so the cross-agent contract stays clean — ids
+    /// align by index and the host re-syncs on world-reload.
+    pub combat_npcs: Vec<combat_loop::NpcHitbox>,
 }
 
 impl Default for LoaSubsystems {
@@ -264,6 +292,23 @@ impl LoaSubsystems {
             loot: wired_loot::LootState::new(),
             mycelium: wired_mycelium_heartbeat::MyceliumHeartbeatState::new(svc),
             content: wired_content::ContentState::new(),
+            combat_loadout: combat_loop::StarterLoadout::new_starter(),
+            combat_stats: combat_loop::CombatLoopStats::default(),
+            combat_events: combat_loop::CombatEvents::default(),
+            combat_npcs: Vec::new(),
+        }
+    }
+
+    /// § T11-W17-E-COMBAT-LOOP : rebuild the combat-shadow `NpcHitbox` list
+    /// from the latest `RoomContents`. Called by the host on world-reload
+    /// (or on cap-toggle that changes the spawn-set). NPC ids are
+    /// 1-indexed by NpcSpawn position in the Vec ; 0 reserved for "none".
+    pub fn rebuild_combat_npcs(&mut self, npcs: &[room_populate::NpcSpawn]) {
+        self.combat_npcs.clear();
+        self.combat_npcs.reserve(npcs.len());
+        for (i, n) in npcs.iter().enumerate() {
+            let id = (i as u64).saturating_add(1);
+            self.combat_npcs.push(combat_loop::NpcHitbox::new(id, n.position));
         }
     }
 }
@@ -282,6 +327,22 @@ pub struct WiredFrameInput {
     pub allow_mycelium_emit: bool,
     pub now_unix: u64,
     pub content: wired_content::ContentIngest,
+    /// § T11-W17-E-COMBAT-LOOP : LMB / gamepad-RT fire-press EDGE for the
+    /// combat-loop. The host populates this from a sibling `App.fire_pressed`
+    /// bool that the winit MouseInput handler raises on left-button-down.
+    pub fire_pressed: bool,
+    /// § T11-W17-E-COMBAT-LOOP : 3D camera-origin (world-space) — used as
+    /// the hitscan ray start. The host fills from `App.player.position`.
+    pub camera_origin_3d: [f32; 3],
+    /// § T11-W17-E-COMBAT-LOOP : 3D camera-forward (world-space unit-ish
+    /// vector) — hitscan ray direction. The host fills from `App.player`
+    /// yaw/pitch trig once per frame.
+    pub camera_forward_3d: [f32; 3],
+    /// § T11-W17-E-COMBAT-LOOP : Σ-cap-gate for the combat fire path.
+    /// Default-deny ; mirrored from the same `weapons` cap as
+    /// `wired_weapons` but kept distinct so the integrator can revoke
+    /// combat-fire while keeping the passive accuracy-tick alive.
+    pub allow_combat_fire: bool,
 }
 
 /// § tick_wired_systems — single-call entry-point invoked once per frame
@@ -321,6 +382,33 @@ pub fn tick_wired_systems(
         input.allow_mycelium_emit,
     );
     wired_content::tick(&mut sys.content, dt_ms, input.content.clone());
+
+    // § T11-W17-E-COMBAT-LOOP — drive the fire→hit→damage→kill→loot chain.
+    // Σ-cap-gating : `allow_combat_fire` is the single gate ; default-deny.
+    let combat_input = combat_loop::CombatInput {
+        fire_pressed: input.fire_pressed,
+        camera_origin: input.camera_origin_3d,
+        camera_dir: input.camera_forward_3d,
+        dt_ms,
+    };
+    let combat_caps = combat_loop::CombatCaps {
+        allow_fire: input.allow_combat_fire,
+    };
+    combat_loop::step_combat(
+        combat_input,
+        combat_caps,
+        &mut sys.combat_npcs,
+        &mut sys.weapons,
+        &mut sys.combat_loadout,
+        &mut sys.combat_stats,
+        &mut sys.combat_events,
+    );
+    // The renderer / HUD owner reads `sys.combat_events` directly — host-side
+    // wiring pipes hit_kinds → fps_hud HitMarker · kill_events → Killfeed ·
+    // loot_events → next-frame `wired_loot::LootEvent` (cap re-stamped from
+    // SOVEREIGN_CAP). Decoupling this from `WiredFrameOutputs` keeps the
+    // outputs struct small + lets the host process events synchronously.
+
     WiredFrameOutputs {
         movement_proposed: proposed,
         loot_dropped: dropped,
@@ -386,6 +474,11 @@ pub mod ffi;
 pub use camera::Camera;
 pub use geometry::{plinth_positions, RoomGeometry, Vertex};
 pub use room::{Corridor, Direction, Doorway, Room, ROOM_COUNT};
+// § T11-W17-D-ROOM-POPULATE — public surface for runtime-procgen content.
+pub use room_populate::{
+    populate_room, populate_test_room, CapState, Interactable, InteractableKind, LootDrop,
+    NpcSpawn, RoomContents,
+};
 
 pub use mcp_server::{
     spawn_mcp_server, EngineState, McpServerConfig, RenderMode, SOVEREIGN_CAP,

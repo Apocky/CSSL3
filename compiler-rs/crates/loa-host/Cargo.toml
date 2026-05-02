@@ -79,6 +79,10 @@ cssl-host-gm                    = { path = "../cssl-host-gm" }
 # 30-second auto-revert window. ALL stage-0 explicit-confirm-only ; ¬ stage-1
 # (deferred-indefinitely-per-spec/10).
 cssl-host-coder-runtime         = { path = "../cssl-host-coder-runtime" }
+# § T11-W17-B-GM-LIVE : three-mode LLM bridge for gm_narrator's live-dialog
+#   path. Cap-gated · default-deny · falls back to xorshift pools on cap-deny
+#   or any error. See `src/gm_live.rs` for the dual-mode dispatch surface.
+cssl-host-llm-bridge            = { path = "../cssl-host-llm-bridge" }
 # § T11-W11-HOTFIX-INFRA : live-update infrastructure (NEW Wave 11).
 #   apocky.com manifest-of-truth + mycelium-byte-CDN + 9 channels +
 #   5 cap-keys + Σ-mask-default-deny. The `wired_hotfix` module exposes
