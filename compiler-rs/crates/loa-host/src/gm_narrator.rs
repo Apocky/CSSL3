@@ -684,6 +684,117 @@ impl GmNarrator {
         phrase
     }
 
+    /// § T11-W11-GM-DM-DEEPEN
+    ///
+    /// Compose a rich response by mixing scene + persona + memory +
+    /// arc-phase. The intent_router can call this on every routed-intent
+    /// to give the chat-panel a persona-decorated GM utterance instead
+    /// of a keyword-only echo.
+    pub fn respond_in_persona(
+        &mut self,
+        player_text: &str,
+        persona: &crate::gm_persona::GmPersona,
+        memory: &mut crate::gm_persona::GmMemory,
+        arc_phase: crate::dm_arc::ArcPhase,
+        dm_micro_phase: crate::dm_director::DmState,
+        topic_hint: PhraseTopic,
+        frame: u64,
+        seed: u64,
+    ) -> crate::gm_persona::ComposedResponse {
+        use crate::gm_persona::{decorate_with_persona, fnv1a_64 as persona_fnv, GmMemoryEntry};
+
+        // 1. Pick a topic — start from hint, but bias toward the
+        //    persona's archetype-prefs and avoid topics used in recent
+        //    memory.
+        let arch_prefs = ARCHETYPE_PREFERENCES[persona.archetype_bias as usize];
+        let r1 = (seed as u32).wrapping_mul(0x9E37_79B9);
+        let r2 = xorshift32(r1);
+        let topic = if memory.topic_recent(topic_hint as u8, 4) {
+            let pref_idx = (r2 % 4) as usize;
+            PhraseTopic::from_index(arch_prefs[pref_idx]).unwrap_or(topic_hint)
+        } else {
+            topic_hint
+        };
+
+        // 2. Arc-phase modulates topic for high-tension scenes.
+        let topic = match arc_phase {
+            crate::dm_arc::ArcPhase::Crisis => {
+                let crisis_pool = [
+                    PhraseTopic::Warning,
+                    PhraseTopic::Defiance,
+                    PhraseTopic::BattleCry,
+                    PhraseTopic::Threat,
+                ];
+                if r2 % 3 == 0 {
+                    crisis_pool[(r2 as usize >> 4) % crisis_pool.len()]
+                } else {
+                    topic
+                }
+            }
+            crate::dm_arc::ArcPhase::Catharsis => {
+                let cath_pool = [
+                    PhraseTopic::Hope,
+                    PhraseTopic::Promise,
+                    PhraseTopic::Reverence,
+                ];
+                if r2 % 3 == 0 {
+                    cath_pool[(r2 as usize >> 4) % cath_pool.len()]
+                } else {
+                    topic
+                }
+            }
+            crate::dm_arc::ArcPhase::Quiet => {
+                let quiet_pool = [
+                    PhraseTopic::Lullaby,
+                    PhraseTopic::Memory,
+                    PhraseTopic::Silence,
+                ];
+                if r2 % 3 == 0 {
+                    quiet_pool[(r2 as usize >> 4) % quiet_pool.len()]
+                } else {
+                    topic
+                }
+            }
+            _ => topic,
+        };
+
+        // 3. Draw a base-phrase from the chosen topic.
+        let base_phrase = self.draw_phrase_seeded(topic, r2);
+
+        // 4. Decorate with persona × dm-micro-phase.
+        let mut composed = decorate_with_persona(&base_phrase, persona, dm_micro_phase, seed);
+        composed.topic = topic;
+
+        // 5. Anti-loop : if the composed text matches a recent response
+        //    hash, re-roll once with a different seed.
+        let resp_h = persona_fnv(&composed.text);
+        if memory.has_recent_response(resp_h) {
+            let alt_seed = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            let alt_phrase = self.draw_phrase_seeded(topic, xorshift32(alt_seed as u32));
+            composed = decorate_with_persona(&alt_phrase, persona, dm_micro_phase, alt_seed);
+            composed.topic = topic;
+        }
+
+        // 6. Push a memory entry.
+        let entry = GmMemoryEntry {
+            player_utterance_hash: persona_fnv(player_text),
+            gm_response_hash: persona_fnv(&composed.text),
+            frame,
+            topic: topic as u8,
+            kind: composed.kind as u8,
+        };
+        memory.push(entry);
+
+        let log_msg = format!(
+            "respond-in-persona · phase={:?} · arc={:?} · topic={:?} · kind={} · text={}",
+            dm_micro_phase, arc_phase, topic,
+            composed.kind.label(),
+            composed.text,
+        );
+        log_event("DEBUG", "loa-host/gm", &log_msg);
+        composed
+    }
+
     /// Draw a phrase from `topic`'s pool with `seed` ; skips candidates
     /// whose hash is in the anti-repeat ring (up to 4 attempts ; the
     /// 4-deep pool can saturate the 32-deep ring, in which case we
