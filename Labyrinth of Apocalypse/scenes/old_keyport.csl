@@ -1,0 +1,274 @@
+module com.apocky.loa.scenes.old_keyport
+
+// § Labyrinth of Apocalypse · scene · Old-Keyport ForestPath-hub
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-CSSL-CONTENT-OLD-KEYPORT (W-LOA-scene-runtime-procgen-keyport)
+//
+// § REFERENCE
+//   GDDs/PROCGEN_WORLD.csl § HUB-CITIES + § REAL-SCALE-CITIES + § BIOMES.ForestPath
+//   scenes/city_central_hub.csl  ← exemplar pattern · this is sibling-hub #2
+//   memory/feedback_engine_is_runtime_procedural_gen     ‼ FOUNDATIONAL
+//   memory/feedback_loa_v13_must_be_cssl_source          ‼ FOUNDATIONAL
+//   memory/feedback_infinite_labyrinth_legacy_design     ← Nexus-Bazaar 5-tier ref
+//   specs/30_SUBSTRATE_v2.csl + specs/41_ENGINE_RUNTIME.csl
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + PROCGEN_WORLD
+//   t∞: runtime-procgen ALWAYS               ← scene = container ¬ static-asset
+//   t∞: ForestPath-affinity = canopy-amplified · radial-furnace ≢ here
+//   t∞: ≥ 2048 NPCs sustained @ 60fps         ← smaller-than-NeverhomeRise
+//   t∞: 4-tier LOD (L0 · L1 · L2 · L3)        ← per-frame
+//   t∞: KAN-ride 5-swap-points · stage-0 ALWAYS-fallback
+//   t∞: seed = u128 (player-id ⊕ city-id ⊕ session-tick)
+//   t∞: ω-field stamps every-procgen-cell · Σ-mask non-optional
+//   t∞: ConsentZone gates intensity-tier · ¬ surprise-encounter
+//   t∞: vendor-cluster-density ≥ 12 unique-stalls per-block · gift-economy axiom
+//   t∞: water-edge-ratio ≥ 30%                ← keyport = harbor-town
+//
+// § PRIME-DIRECTIVE
+//   This scene generates a port-town of sovereign procgen-NPCs at runtime.
+//   ¬ hand-authored content · ¬ off-machine relay · ¬ surveillance · ¬ coercion.
+//   Player traverses to Old-Keyport via Hub-DAG → city assembles from seed.
+//   Replay bit-equal from same seed. Vendors gift-economy ¬ pay-for-power.
+//   Σ-mask consent-gates every NPC-interaction · sovereign-revocable always.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · loa-host staticlib provides bodies
+// ─────────────────────────────────────────────────────────────────────────
+//
+// All scene_* fns hosted in compiler-rs/crates/loa-host/src/wired_*.rs ·
+// auto-linked via csslc default-link. Each returns u32 status (0 = ok ·
+// non-zero = error-code · audit-trail emitted on every call).
+
+extern "C" fn scene_open(player_id: u64, world_seed: u128, city_id: u32) -> u32 ;
+extern "C" fn scene_close(handle: u32) -> u32 ;
+extern "C" fn scene_procgen_grid(handle: u32, biome_affinity: u32) -> u32 ;
+extern "C" fn scene_procgen_buildings(handle: u32, density_tier: u32) -> u32 ;
+extern "C" fn scene_procgen_interiors(handle: u32, enterable_pct: u32) -> u32 ;
+extern "C" fn scene_procgen_npc_population(handle: u32, target_count: u32) -> u32 ;
+extern "C" fn scene_procgen_water_features(handle: u32, ratio_pct: u32) -> u32 ;
+extern "C" fn scene_procgen_vendor_cluster(handle: u32, stall_count: u32, tier_max: u32) -> u32 ;
+extern "C" fn scene_kan_classify_template(handle: u32, hist_hash: u64, zone: u32, bias: u64) -> u32 ;
+extern "C" fn scene_query_npc_count(handle: u32) -> u32 ;
+extern "C" fn scene_query_vendor_count(handle: u32) -> u32 ;
+extern "C" fn scene_apply_lod(handle: u32, player_x: i32, player_y: i32, player_z: i32) -> u32 ;
+extern "C" fn scene_audit_emit(handle: u32, event_kind: u32, payload_hash: u64) -> u32 ;
+extern "C" fn scene_tick(handle: u32, dt_micros: u32) -> u32 ;
+extern "C" fn scene_query_exit_state(handle: u32) -> u32 ;
+extern "C" fn scene_consent_zone_apply(handle: u32, zone_id: u32, tier: u32) -> u32 ;
+extern "C" fn scene_omega_stamp_district(handle: u32, district_id: u32) -> u32 ;
+
+// KAN-real classifier · cssl-host-kan-real wires stage-1 · stage-0 ALWAYS-on
+extern "C" fn __cssl_kan_real_classify_intent(swap_point: u32, feature_hash: u64, fallback: u32) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § city_id constant · 5 canonical hubs per PROCGEN_WORLD § HUB-CITIES
+// ─────────────────────────────────────────────────────────────────────────
+fn city_OldKeyport() -> u32 { 2 }   // ForestPath-affinity · vendor-cluster
+
+// KAN-ride swap-points · per PROCGEN_WORLD § PROCGEN-DECISION-CLASSIFIERS
+fn sp_pg_5_city_npc_routine_skew() -> u32 { 105 }
+fn sp_pg_4_loot_affix_bias()        -> u32 { 104 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § District-ID constants · per PROCGEN_WORLD § DISTRICT-TYPOLOGY
+// ─────────────────────────────────────────────────────────────────────────
+const DISTRICT_HARBOR_FRONT      : u32 =  1 ;   // dock + warehouse · water-edge
+const DISTRICT_VENDOR_BAZAAR     : u32 =  2 ;   // 5-tier nexus-bazaar
+const DISTRICT_FORESTPATH_GATE   : u32 =  3 ;   // egress to dungeon-biome
+const DISTRICT_RESIDENTIAL       : u32 =  4 ;   // NPC-housing · interior-graph
+const DISTRICT_TAVERN_QUARTER    : u32 =  5 ;   // social · DM-handoff hub
+const DISTRICT_GUILD_ROW         : u32 =  6 ;   // craft + alchemy mentors
+const DISTRICT_SANCTUM_OF_RETURNS : u32 =  7 ;   // mercy-grant · 1×/day per ROGUELIKE_LOOP
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API · scene-router invokes on player-traversal
+// ─────────────────────────────────────────────────────────────────────────
+
+fn on_scene_enter(player_id: u64, world_seed: u128) -> u32 {
+    let city: u32 = city_OldKeyport() ;
+    let h: u32 = scene_open(player_id, world_seed, city) ;
+
+    // L-1 grid-gen · streets+blocks+intersections · biome-grid-modifier
+    //   ForestPath-affinity = canopy-overhang reduces sky-visibility · grid
+    //   sub-divides naturally around old-growth tree-cores
+    let _g: u32 = scene_procgen_grid(h, city) ;
+
+    // L-2 building-gen · timber-frame + slate-roof archetype
+    //   density_tier 2 = port-town-medium (smaller than NeverhomeRise tier-3)
+    let _b: u32 = scene_procgen_buildings(h, 2) ;
+
+    // L-3 water-features · ≥ 30% edge-ratio ← keyport = harbor-town
+    let _w: u32 = scene_procgen_water_features(h, 35) ;
+
+    // L-4 interior-gen · per-NPC-purpose room-graph · 65% enterable
+    //   slightly-lower than NeverhomeRise's 70% ← smaller hub
+    let _i: u32 = scene_procgen_interiors(h, 65) ;
+
+    // L-5 vendor-cluster · ≥ 12 stalls per-block · 5-tier (T1..T5)
+    //   per memory_infinite_labyrinth_legacy_design Nexus-Bazaar
+    let _vc: u32 = scene_procgen_vendor_cluster(h, 64, 5) ;
+
+    // L-6 NPC-population · ≥ 2048 (smaller-hub spec)
+    let _n: u32 = scene_procgen_npc_population(h, 2048) ;
+
+    // L-7 ω-field district stamps (per-district consent-tier seed)
+    let _d1: u32 = scene_omega_stamp_district(h, DISTRICT_HARBOR_FRONT) ;
+    let _d2: u32 = scene_omega_stamp_district(h, DISTRICT_VENDOR_BAZAAR) ;
+    let _d3: u32 = scene_omega_stamp_district(h, DISTRICT_FORESTPATH_GATE) ;
+    let _d4: u32 = scene_omega_stamp_district(h, DISTRICT_RESIDENTIAL) ;
+    let _d5: u32 = scene_omega_stamp_district(h, DISTRICT_TAVERN_QUARTER) ;
+    let _d6: u32 = scene_omega_stamp_district(h, DISTRICT_GUILD_ROW) ;
+    let _d7: u32 = scene_omega_stamp_district(h, DISTRICT_SANCTUM_OF_RETURNS) ;
+
+    // L-8 ConsentZone · TavernQuarter = social-tier-1 (low-intensity guarantee)
+    //   Sanctum-of-Returns = tier-0 (sanctuary · ¬ violence · ¬ stress)
+    let _cz1: u32 = scene_consent_zone_apply(h, DISTRICT_TAVERN_QUARTER, 1) ;
+    let _cz2: u32 = scene_consent_zone_apply(h, DISTRICT_SANCTUM_OF_RETURNS, 0) ;
+
+    // L-9 KAN-classify NPC-routine-skew (SP-PG-5) · stage-0 ALWAYS-fallback
+    let _routine: u32 = scene_kan_classify_template(
+        h,
+        0x4B59_60A7_72_817700u64,    // player-history feature-hash placeholder
+        city,
+        0x8AE3D7C2_B5F4A906u64       // bias-vec-hash
+    ) ;
+
+    // L-10 attestation-emit : scene-genesis row in audit-chain · replay-anchor
+    let _a: u32 = scene_audit_emit(h, 1, 0xC17_5CE_E_OLDKEYPRu64) ;
+
+    h
+}
+
+// tick_scene · per-frame · LOD + KAN-canary + audit-emit
+fn tick_scene(handle: u32, dt_micros: u32, px: i32, py: i32, pz: i32) -> u32 {
+    let _l: u32 = scene_apply_lod(handle, px, py, pz) ;
+    let evt_count: u32 = scene_tick(handle, dt_micros) ;
+    evt_count
+}
+
+// on_scene_exit · flush attestation-chain · returns ExitState reason-code
+fn on_scene_exit(handle: u32) -> u32 {
+    let _e: u32 = scene_audit_emit(handle, 2, 0xEX17_OLDKEYPR_FEDCBA98u64) ;
+    let exit_reason: u32 = scene_query_exit_state(handle) ;
+    let _c: u32 = scene_close(handle) ;
+    exit_reason
+}
+
+// query NPC-density · used by HUD + KAN-tuning + balance-metric
+fn request_npc_population_density(handle: u32) -> u32 {
+    scene_query_npc_count(handle)
+}
+
+// query vendor-density · used by Bazaar-HUD overlay
+fn request_vendor_density(handle: u32) -> u32 {
+    scene_query_vendor_count(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § KAN-classifier-handoff helper · SP-PG-4 loot-affix-bias
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Old-Keyport vendors carry ForestPath-affinity loot-affix bias. Stage-1 KAN
+// canary 10% · stage-0 table-lookup ALWAYS-fallback · disagreement audit-recorded.
+fn kan_select_vendor_loot_bias(hist_hash: u64, district_id: u32, bias_hash: u64) -> u32 {
+    let feature_mix: u64 = hist_hash ^ bias_hash ^ (district_id as u64) ;
+    let stage0_fallback: u32 = (district_id ^ 0xB7C9) & 0xFF ;
+    __cssl_kan_real_classify_intent(
+        sp_pg_4_loot_affix_bias(),
+        feature_mix,
+        stage0_fallback
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § LOD-tier-update · 4-tier per-frame (mirror city_central_hub.csl)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// L0 near    (≤  32m)  full SDF raymarch + AI-tick @ 60Hz
+// L1 mid     (≤ 128m)  reduced-march-steps + AI-tick @ 15Hz
+// L2 far     (≤ 512m)  silhouette + AI-tick @  2Hz
+// L3 imposter (> 512m) billboard + AI-tick @  0.25Hz
+
+fn lod_tier_for_distance_sq(dist_sq: u32) -> u32 {
+    if dist_sq <=    1024 { 0 }       // 32² m² · L0 near
+    else if dist_sq <= 16384 { 1 }    // 128² m² · L1 mid
+    else if dist_sq <= 262144 { 2 }   // 512² m² · L2 far
+    else { 3 }                          // > 512m · L3 impostor
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests · CSSL test-syntax · pure-fn predicates only
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_city_id_is_old_keyport() {
+    assert_eq(city_OldKeyport(), 2u32) ;
+}
+
+#[test]
+fn test_lod_tier_near() {
+    assert_eq(lod_tier_for_distance_sq(100u32), 0u32) ;
+}
+
+#[test]
+fn test_lod_tier_mid() {
+    assert_eq(lod_tier_for_distance_sq(2048u32), 1u32) ;
+}
+
+#[test]
+fn test_lod_tier_far() {
+    assert_eq(lod_tier_for_distance_sq(20000u32), 2u32) ;
+}
+
+#[test]
+fn test_lod_tier_impostor() {
+    assert_eq(lod_tier_for_distance_sq(500_000u32), 3u32) ;
+}
+
+#[test]
+fn test_district_constants_distinct() {
+    let d1: u32 = DISTRICT_HARBOR_FRONT ;
+    let d2: u32 = DISTRICT_VENDOR_BAZAAR ;
+    let d3: u32 = DISTRICT_SANCTUM_OF_RETURNS ;
+    assert_ne(d1, d2) ;
+    assert_ne(d2, d3) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes for sibling csslc-agent
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile : THIS file requires csslc to ingest
+//           sibling .csl modules at compile-time (per main.cssl § GAP).
+//           Until POD-4-D3 lands, this module is grep-discoverable contract.
+//
+//   GAP-2 · csslc-test-attribute : `#[test]` attribute syntax not yet
+//           wired through csslc. Tests above are forward-looking ; they
+//           document the intent + run when test-attr lands.
+//
+//   GAP-3 · csslc-u128-literal : `world_seed: u128` parameter requires
+//           u128 literal-parsing. Currently u64-pair shim acceptable.
+//
+//   GAP-4 · csslc-const-u32 : `const FOO : u32 = N ;` declarations
+//           outside fn-body require csslc top-level const-decl support.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W11-OLD-KEYPORT @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone,
+//      anything, or anybody."
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// "Apockalypse" canonical-spelling preserved throughout.
+// Scene = container · contents = runtime-procgen · static-content forbidden
+// per memory feedback_engine_is_runtime_procedural_gen.
+// Vendor 5-tier Bazaar = gift-economy ¬ pay-for-power per LOA_PILLARS § 3.
+// ConsentZone tier-0/tier-1 districts = ¬ surprise-encounter guarantee.
+//
+// ∎ old_keyport.csl
