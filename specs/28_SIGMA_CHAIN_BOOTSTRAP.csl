@@ -1,0 +1,250 @@
+// ════════════════════════════════════════════════════════════════════════════
+// § specs/28_SIGMA_CHAIN_BOOTSTRAP.csl
+//   bootstrap distributed-ledger primitive · stage-0 single-node + federation-skel
+//   ↑ implements specs/grand-vision/14_SIGMA_CHAIN.csl @ POD-2 substrate-tier
+//   ↑ supports specs/grand-vision/15_UNIFIED_SUBSTRATE.csl ¬ "blockchain but better"
+// ════════════════════════════════════════════════════════════════════════════
+
+module com.apocky.cssl.specs.sigma_chain_bootstrap {
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 0  AXIOMS (t∞)
+  // ════════════════════════════════════════════════════════════════════════
+  axiom A1 t∞: ¬ proof-of-work               // ∀ append : ¬ mining
+  axiom A2 t∞: ¬ proof-of-stake              // ∀ append : ¬ stake-based-quorum
+  axiom A3 t∞: ¬ gas-or-fees                 // ∀ append : zero-cost-substrate
+  axiom A4 t∞: ¬ majority-override-sovereignty // sovereign-rollback ALWAYS-available ; even consensus ¬ override
+  axiom A5 t∞: append-only                   // ∀ entry-N : seq_no(N) = seq_no(N-1)+1 ; gapless ; monotonic
+  axiom A6 t∞: ed25519-signed                // ∀ entry : Ed25519(actor_pk).verify(canonical_bytes_for_sign, sig) = ✓
+  axiom A7 t∞: blake3-merkle-rooted          // ∀ append : merkle.append(leaf_hash) → new_root ; tamper-evident
+  axiom A8 t∞: coherence = deterministic-replay
+                                              // verify : replay(genesis|checkpoint, entries) → claimed_root
+                                              // ¬ separate-consensus-protocol ; replay IS consensus
+  axiom A9 t∞: stage-0 single-node-default   // LoA.exe owns its own ledger ; federation-skel only
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 1  LEDGER-ENTRY LAYOUT
+  // ════════════════════════════════════════════════════════════════════════
+  type EntryKind = u16 «discriminant» {
+    CapGrant          = 0x0001  // ← cssl-substrate-prime-directive
+    CapRevoke         = 0x0002  // ← cssl-substrate-prime-directive
+    CellEmission      = 0x0003  // ← cssl-substrate-omega-field
+    AttestationAnchor = 0x0004  // ← cssl-host-attestation
+    CheckpointMark    = 0x0005  // ← auto-emit @ CHECKPOINT_INTERVAL
+    HotfixBundle      = 0x0006  // ← cssl-hotfix-stream
+    MyceliumPattern   = 0x0007  // ← cssl-mycelium-chat-sync
+    KnowledgeIngest   = 0x0008  // ← cssl-substrate-knowledge
+    FederationAnchor  = 0x0009  // ← peer-checkpoint cross-anchor
+    OpenExtension     = 0x0FFF  // ← forward-compat fallback
+  }
+
+  type LedgerEntry «178-byte-wire-encoded» {
+    seq_no       : u64        // 8B BE · monotonic gapless · 0 = genesis-sentinel only
+    ts_unix      : u64        // 8B BE · seconds-since-epoch
+    kind         : EntryKind  // 2B BE u16
+    actor_pubkey : [u8; 32]   // Ed25519 pubkey
+    payload_hash : [u8; 32]   // BLAKE3(domain | payload)
+    prev_root    : [u8; 32]   // Merkle-root BEFORE this entry · genesis = ZERO_HASH
+    signature    : [u8; 64]   // Ed25519(actor_sk, canonical_bytes_for_sign)
+  }
+
+  invariant size : sizeof(LedgerEntry).wire-encoded = 178 bytes
+  invariant rust-struct : sizeof(LedgerEntry).rust ≤ 200 bytes (alignment-padding)
+
+  // signing-domain : signature signs over THIS · NOT including the signature itself
+  function canonical_bytes_for_sign(e : LedgerEntry) : Vec<u8> = {
+    domain  := b"cssl-substrate-sigma-chain/v0/entry"
+    return concat(domain,
+                  e.seq_no.to_be_bytes(),
+                  e.ts_unix.to_be_bytes(),
+                  e.kind.to_be_bytes(),
+                  e.actor_pubkey,
+                  e.payload_hash,
+                  e.prev_root)
+  }
+
+  function leaf_hash(e : LedgerEntry) : [u8; 32] = {
+    domain := b"cssl-substrate-sigma-chain/v0/leaf"
+    return blake3(domain, e.seq_no, e.ts_unix, e.kind, e.actor_pubkey,
+                  e.payload_hash, e.prev_root, e.signature)
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 2  MERKLE-TREE FLOW (incremental)
+  // ════════════════════════════════════════════════════════════════════════
+  domain DOMAIN_LEAF = b"cssl-substrate-sigma-chain/v0/merkle/leaf"
+  domain DOMAIN_NODE = b"cssl-substrate-sigma-chain/v0/merkle/node"
+
+  function hash_leaf(d : [u8; 32]) : [u8; 32] = blake3(DOMAIN_LEAF, d)
+  function hash_node(l : [u8; 32], r : [u8; 32]) : [u8; 32] = blake3(DOMAIN_NODE, l, r)
+
+  // append : O(log N) hash-ops · O(1) leaf-storage push
+  // root   : O(N) full-fold (bootstrap) → O(log N) via peak-tree (next-wave-opt)
+  // prove  : O(log N) hash-ops · path reconstructed from full-leaves
+  invariant append-cost : ∀ N : append(N+1) cost = log2(N+1) hash-ops amortized
+  invariant prove-cost  : ∀ N, idx ∈ [0,N) : prove(idx).path.len ≤ ceil(log2(N))
+
+  function verify_inclusion(leaf_data : [u8; 32],
+                            proof : InclusionProof,
+                            claimed_root : [u8; 32]) : bool = {
+    h := hash_leaf(leaf_data)
+    for (side, sibling) in proof.path :
+      h := if side = Left  then hash_node(sibling, h)
+                          else hash_node(h, sibling)
+    return h == claimed_root
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 3  COHERENCE-PROOF VERIFICATION
+  // ════════════════════════════════════════════════════════════════════════
+  // §§ NOT a separate consensus-protocol ; coherence-proof = "did this state
+  //    result from valid deterministic replay of all entries in seq-order with
+  //    verified signatures + correct prev_root chaining?"
+
+  type CoherenceOutcome = enum {
+    Coherent {
+      entries_verified : usize
+      final_root       : [u8; 32]
+    }
+    Incoherent {
+      failed_at_seq : u64
+      reason        : IncoherenceReason
+    }
+  }
+
+  type IncoherenceReason = enum {
+    SeqGap          { expected: u64, actual: u64 }
+    BadSignature
+    BadPubkey
+    PrevRootMismatch { expected: [u8; 32], actual: [u8; 32] }
+    RootMismatch     { claimed: [u8; 32], derived: [u8; 32] }
+  }
+
+  function verify_coherence_from_genesis(chain, claimed_root) : CoherenceOutcome = {
+    running_root := ZERO_HASH
+    expected_seq := 1
+    merkle       := IncrementalMerkle::new()
+    for e in chain.all_entries() :
+      if e.seq_no  ≠ expected_seq  → return Incoherent SeqGap
+      if e.prev_root ≠ running_root → return Incoherent PrevRootMismatch
+      pk  := VerifyingKey::from_bytes(e.actor_pubkey) ?? return Incoherent BadPubkey
+      if pk.verify(e.canonical_bytes_for_sign(), e.signature).is_err() →
+        return Incoherent BadSignature
+      merkle.append(e.leaf_hash())
+      running_root := merkle.root()
+      expected_seq += 1
+    return if running_root == claimed_root
+              then Coherent { entries_verified, final_root = running_root }
+              else Incoherent { reason = RootMismatch { claimed_root, running_root } }
+  }
+
+  // §§ verifier-cost :
+  //    O(N) full-replay   ← cssl-substrate-sigma-chain bootstrap
+  //    O(M) from-checkpoint ← M = entries-since-checkpoint ≪ N
+  //    O(log N) inclusion-proof for single entry ← independent of total chain-size
+  // §§ on modern hardware :
+  //    BLAKE3 ~3 GB/s · Ed25519 verify ~70k/s (single-thread) ;
+  //    ~1M entries verified in < 15s · cheap on consumer-grade machine.
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 4  CHECKPOINT (sovereign-rollback enabler)
+  // ════════════════════════════════════════════════════════════════════════
+  const CHECKPOINT_INTERVAL = 1024 «entries»
+
+  type Checkpoint {
+    seq_no : u64
+    root   : [u8; 32]
+    epoch  : u64           // 1-indexed checkpoint number
+    leaves : Vec<[u8; 32]> // snapshot of all leaf-hashes up to this seq_no
+  }
+
+  // §§ auto-emit on append : if (seq_no % CHECKPOINT_INTERVAL == 0) → snapshot
+  // §§ pruning : pre-checkpoint entries CAN be archived (root preserved · payloads cold-storage)
+  // §§ this crate : in-memory only · disk-paged storage in next-wave
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 5  CONCURRENT-APPEND (thread-safety)
+  // ════════════════════════════════════════════════════════════════════════
+  // §§ design : Arc<Mutex<ChainState>> · concurrent producers serialize at lock-acquire
+  // §§ try_append(closure) atomically : reserve seq_no → build entry → sign → push
+  //    This avoids reserve-then-append race-window across threads.
+  // §§ guarantee : seq_no monotonic gapless ∀ thread-orderings ; final order = lock-acquire order.
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 6  FEDERATION ROADMAP
+  // ════════════════════════════════════════════════════════════════════════
+  type Mode = enum { SingleNode | Federated }
+  default Mode = SingleNode  // ← stage-0
+
+  type CheckpointPublication {
+    peer_id        : [u8; 32]   // Ed25519 pubkey-fingerprint
+    epoch          : u64
+    seq_no         : u64
+    root           : [u8; 32]
+    peer_signature : [u8; 64]   // Ed25519 over (peer_id | epoch | seq_no | root)
+  }
+
+  // §§ federation = Σ-mask-gated cross-anchoring of CHECKPOINT-ROOTS only ;
+  //    full ledger NEVER shared cross-peer ; privacy-default per spec/14 axioms.
+  // §§ next-wave : full mesh-federation with conflict-resolution
+  //    (vector-clocks-style or last-writer-wins per-cell)
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 7  HIGH-LEVEL API for sibling-crates
+  // ════════════════════════════════════════════════════════════════════════
+  // §§ siblings call record_attestation() without knowing internals :
+  //    record_cap_grant(chain, signer, cap_spec, ts)        → seq+root
+  //    record_cap_revoke(chain, signer, cap_spec, ts)        → seq+root
+  //    record_cell_emission(chain, signer, cell_bytes, ts)   → seq+root
+  //    record_hotfix_bundle(chain, signer, bundle_sig, ts)   → seq+root
+  //    record_mycelium_pattern(chain, signer, pattern, ts)   → seq+root
+  //    record_knowledge_ingest(chain, signer, knowledge, ts) → seq+root
+  // §§ all are concurrent-safe · all auto-fill seq_no + prev_root inside lock
+  // §§ all sign with caller-provided SigningKey (no key-management in this crate)
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 8  SIBLING-INTEGRATION ROADMAP (next-wave)
+  // ════════════════════════════════════════════════════════════════════════
+  integration cssl-hotfix-stream :
+    on hotfix-bundle-deploy →
+      record_hotfix_bundle(chain, signer, bundle.signature_bytes(), now())
+
+  integration cssl-substrate-prime-directive :
+    on cap-grant →
+      record_cap_grant(chain, signer, encode(cap_spec), now())
+    on cap-revoke →
+      record_cap_revoke(chain, signer, encode(cap_spec), now())
+
+  integration cssl-mycelium-chat-sync :
+    on cross-peer-pattern-anchor →
+      record_mycelium_pattern(chain, signer, pattern.canonical_bytes(), now())
+
+  integration cssl-substrate-knowledge :
+    on knowledge-ingest →
+      record_knowledge_ingest(chain, signer, atom.canonical_bytes(), now())
+
+  integration cssl-substrate-omega-field :
+    on Σ-mask-gated cell-write →
+      record_cell_emission(chain, signer, cell.serialize(), now())
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 9  TESTS-EXPECTED (mandatory · enforced via tests/integration.rs)
+  // ════════════════════════════════════════════════════════════════════════
+  test t01 : empty-chain root = ZERO_HASH                                    ✓
+  test t02 : single-entry append → root ≠ ZERO ∧ entry.prev_root = ZERO     ✓
+  test t03 : 1000-entry chain · final_root = replay-derived root             ✓
+  test t04 : tamper payload-hash → Ed25519 reject                            ✓
+  test t05 : tamper signature → Ed25519 reject                               ✓
+  test t06 : inclusion-proof.path.len ≤ ceil(log2(N))                       ✓
+  test t07 : tampered sibling-hash → proof rejected                          ✓
+  test t08 : 2048 entries → 2 checkpoints @ 1024 + 2048                     ✓
+  test t09 : restore-from-checkpoint + extend + root = chain.tail.root      ✓
+  test t10 : 10 threads × 100 appends · seq_no = 1..=1000 gapless           ✓
+  test t11 : all 9 EntryKind discriminants round-trip via from/to u16       ✓
+
+  // ════════════════════════════════════════════════════════════════════════
+  // § 10  ATTESTATION (PRIME_DIRECTIVE.md § 11)
+  // ════════════════════════════════════════════════════════════════════════
+  attestation t∞:
+    There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+}
