@@ -915,6 +915,75 @@ pub fn tool_registry() -> ToolRegistry {
         coder_revert
     );
 
+    // ─ T11-W12-COCREATIVE-BRIDGE : bi-directional Claude ↔ in-game-GM bridge
+    //   8 NEW `cocreative.*` MCP tools. ALL are mutating + sovereign-cap-gated
+    //   AND require the per-session CocreativeCap to be Granted (default-deny).
+    //   The grant flow runs through `cocreative.persona_query` (consent-gated).
+    //   Tools are mutating because they touch the cocreative-session map.
+    reg!(
+        "cocreative.context_read",
+        "Return GM observation-context : {player_pos, scene_id, last_5_utterances, \
+         arc_phase, gm_persona_seed, open_questions[]} for an external Claude to read \
+         before submitting proposals. Cap-required. Params: player_seed (u64) · sovereign_cap.",
+        true,
+        cocreative_context_read
+    );
+    reg!(
+        "cocreative.proposal_submit",
+        "POST a content-proposal to GM : params {kind: lore|npc-line|scene-spawn|recipe|other, \
+         payload: String, reason: String}. Returns proposal_id (u64). Cap-required.",
+        true,
+        cocreative_proposal_submit
+    );
+    reg!(
+        "cocreative.proposal_evaluate",
+        "GM evaluates a proposal · returns {score: 0..100, comments: String, accepted: bool, \
+         state}. Stage-0 stand-in for cssl-host-llm-bridge ; deterministic heuristic. \
+         Cap-required. Params: proposal_id · player_seed · sovereign_cap.",
+        true,
+        cocreative_proposal_evaluate
+    );
+    reg!(
+        "cocreative.feedback_request",
+        "Ask the GM a specific question · returns GM-response (one-shot). \
+         Cap-required. Params: player_seed · question : String · sovereign_cap.",
+        true,
+        cocreative_feedback_request
+    );
+    reg!(
+        "cocreative.iterate",
+        "Submit a revision · re-evaluate-loop. Resets state to Pending + bumps \
+         revision count + replaces payload+reason. Cap-required. \
+         Params: player_seed · proposal_id · payload · reason · sovereign_cap.",
+        true,
+        cocreative_iterate
+    );
+    reg!(
+        "cocreative.draft_ready",
+        "Mark Accepted-state proposal as draft-ready · returns Σ-Chain attestation hash. \
+         Only accepted proposals may transition. Cap-required. \
+         Params: player_seed · proposal_id · sovereign_cap.",
+        true,
+        cocreative_draft_ready
+    );
+    reg!(
+        "cocreative.session_log_drain",
+        "Drain (and clear) the session-log of (proposal, score, comments) tuples — \
+         for KAN-training-pairs (sibling W12-3). Requires CocreativeCap::GrantedWithDrain \
+         (NOT just Granted ; drain is a STRICTLY-OPT-IN extra grant). \
+         Params: player_seed · sovereign_cap.",
+        true,
+        cocreative_session_log_drain
+    );
+    reg!(
+        "cocreative.persona_query",
+        "Inspect/grant/revoke the per-session GmPersona axes — consent-gated · σ-mask-isolated. \
+         Params: player_seed · op ('query'|'grant'|'grant_with_drain'|'revoke') · sovereign_cap. \
+         Returns {cap_state, persona_axes : [i8; 8] (when granted), archetype_bias}.",
+        true,
+        cocreative_persona_query
+    );
+
     r
 }
 
@@ -3345,6 +3414,437 @@ fn coder_revert(state: &mut EngineState, params: Value) -> Value {
     })
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// § T11-W12-COCREATIVE-BRIDGE — 8 cocreative.* handlers
+// ───────────────────────────────────────────────────────────────────────
+//
+// All 8 handlers share a common shape :
+//   1. Extract `player_seed` (u64) — keys the σ-mask-isolated session.
+//   2. Cap-check via `cocreative_loop::with_session`.
+//   3. Perform the op + return JSON.
+//
+// `sovereign_cap` gating happens in the dispatcher (mcp_server::dispatch)
+// before the handler is even called ; the handlers add the per-session
+// CocreativeCap layer ON TOP. Default-deny end-to-end.
+
+fn p_u64(v: &Value, key: &str, default: u64) -> u64 {
+    v.get(key)
+        .and_then(Value::as_u64)
+        .unwrap_or(default)
+}
+
+fn p_string(v: &Value, key: &str, default: &str) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or(default)
+        .to_string()
+}
+
+/// Convert a CocreativeSession's runtime state into a JSON envelope.
+/// Used by both `context_read` + `persona_query` (different field-subsets).
+fn cocreative_cap_denied_response(player_seed: u64) -> Value {
+    json!({
+        "ok": false,
+        "error": "cocreative-cap-denied",
+        "player_seed": player_seed,
+        "hint": "call cocreative.persona_query with op='grant' to enable cocreative tools",
+    })
+}
+
+/// `cocreative.context_read` — return GM observation-context for Claude.
+fn cocreative_context_read(state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    if player_seed == 0 {
+        return json!({
+            "ok": false,
+            "error": "player_seed (u64, non-zero) required",
+        });
+    }
+
+    // Snapshot the live engine fields so we don't hold both mutexes.
+    let camera_pos = camera_pos_json(&state.camera);
+    let scene_id = state.active_scene.clone();
+    let frame = state.frame_count;
+    let mut last_5: Vec<String> = state
+        .text_input
+        .history
+        .iter()
+        .rev()
+        .take(5)
+        .cloned()
+        .collect();
+    last_5.reverse();
+    // Open-questions stub : in the full integration this comes from the
+    // dm_arc nudge-ring + GM unanswered-question queue. Stage-0 emits an
+    // empty list ; sibling W11 deepens.
+    let open_questions: Vec<String> = Vec::new();
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.is_granted() {
+            return cocreative_cap_denied_response(player_seed);
+        }
+        // Refresh context on every read so subsequent submits operate
+        // on the LATEST snapshot of the world. Arc-phase stage-0 default
+        // is Discovery ; sibling W11 wires the live arc state-machine.
+        s.refresh_context(
+            last_5.clone(),
+            crate::dm_arc::ArcPhase::Discovery,
+            open_questions.clone(),
+        );
+        let persona_axes: Vec<i8> = s
+            .persona
+            .as_ref()
+            .map(|p| p.axes.to_vec())
+            .unwrap_or_default();
+        let archetype_bias = s
+            .persona
+            .as_ref()
+            .map(|p| p.archetype_bias.label())
+            .unwrap_or("none");
+        json!({
+            "ok": true,
+            "player_seed": player_seed,
+            "cap_state": s.cap.label(),
+            "frame": frame,
+            "player_pos": camera_pos,
+            "scene_id": scene_id,
+            "last_5_utterances": last_5,
+            "arc_phase": s.arc_phase.label(),
+            "gm_persona_seed": player_seed,
+            "gm_persona_axes": persona_axes,
+            "gm_archetype_bias": archetype_bias,
+            "open_questions": open_questions,
+            "quality_bar": s.quality_bar,
+        })
+    })
+}
+
+/// `cocreative.proposal_submit` — POST a content-proposal to GM.
+fn cocreative_proposal_submit(state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    if player_seed == 0 {
+        return json!({"ok": false, "error": "player_seed required"});
+    }
+    let kind_str = p_string(&params, "kind", "other");
+    let kind = cc::ProposalKind::from_label(&kind_str);
+    let payload = p_string(&params, "payload", "");
+    let reason = p_string(&params, "reason", "");
+    if payload.is_empty() {
+        return json!({"ok": false, "error": "payload required"});
+    }
+    let frame = state.frame_count;
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.is_granted() {
+            return cocreative_cap_denied_response(player_seed);
+        }
+        let id = s.submit(kind, payload.clone(), reason.clone(), frame);
+        json!({
+            "ok": true,
+            "player_seed": player_seed,
+            "proposal_id": id,
+            "kind": kind.label(),
+            "state": cc::ProposalState::Pending.label(),
+            "frame": frame,
+        })
+    })
+}
+
+/// `cocreative.proposal_evaluate` — GM evaluates a proposal · returns
+/// {score, comments, accepted, state}.
+fn cocreative_proposal_evaluate(state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    let proposal_id = p_u64(&params, "proposal_id", 0);
+    if player_seed == 0 || proposal_id == 0 {
+        return json!({
+            "ok": false,
+            "error": "player_seed + proposal_id required",
+        });
+    }
+    let frame = state.frame_count;
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.is_granted() {
+            return cocreative_cap_denied_response(player_seed);
+        }
+        let Some(p) = s.proposals.get(&proposal_id) else {
+            return json!({
+                "ok": false,
+                "error": "unknown proposal_id",
+                "proposal_id": proposal_id,
+            });
+        };
+        let kind = p.kind;
+        let payload = p.payload.clone();
+        let reason = p.reason.clone();
+        let arc_phase = s.arc_phase;
+        let persona = match s.persona.as_ref() {
+            Some(p) => *p,
+            None => {
+                return json!({
+                    "ok": false,
+                    "error": "persona missing — re-grant cap to load",
+                });
+            }
+        };
+        let (score, comments) =
+            cc::gm_evaluate_heuristic(&persona, arc_phase, kind, &payload, &reason);
+        let res = s.evaluate(proposal_id, score, comments.clone(), frame);
+        let (st, accepted) = res.unwrap_or((cc::ProposalState::Rejected, false));
+        json!({
+            "ok": true,
+            "player_seed": player_seed,
+            "proposal_id": proposal_id,
+            "score": score,
+            "comments": comments,
+            "accepted": accepted,
+            "state": st.label(),
+            "kind": kind.label(),
+            "frame": frame,
+        })
+    })
+}
+
+/// `cocreative.feedback_request` — ask GM a specific question · one-shot.
+fn cocreative_feedback_request(state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    let question = p_string(&params, "question", "");
+    if player_seed == 0 {
+        return json!({"ok": false, "error": "player_seed required"});
+    }
+    if question.is_empty() {
+        return json!({"ok": false, "error": "question required"});
+    }
+    let frame = state.frame_count;
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.is_granted() {
+            return cocreative_cap_denied_response(player_seed);
+        }
+        // Stage-0 stand-in : compose a deterministic GM-response from persona +
+        // arc-phase + question-prefix. Sibling W11 wires gm_narrator's
+        // `respond_in_persona` directly. The response shape matches what
+        // cssl-host-llm-bridge will return in stage-1.
+        let persona_summary = s
+            .persona
+            .as_ref()
+            .map(|p| format!("axes={:?} · archetype={}", p.axes, p.archetype_bias.label()))
+            .unwrap_or_else(|| "no-persona".to_string());
+        let response = format!(
+            "[stage-0 GM · phase={}] On '{}' : the substrate listens (persona-{}). \
+             Stage-1 swap : cssl-host-llm-bridge::respond_in_persona.",
+            s.arc_phase.label(),
+            question,
+            persona_summary
+        );
+        json!({
+            "ok": true,
+            "player_seed": player_seed,
+            "question": question,
+            "gm_response": response,
+            "frame": frame,
+            "arc_phase": s.arc_phase.label(),
+        })
+    })
+}
+
+/// `cocreative.iterate` — submit a revision · re-evaluate-loop.
+fn cocreative_iterate(state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    let proposal_id = p_u64(&params, "proposal_id", 0);
+    if player_seed == 0 || proposal_id == 0 {
+        return json!({
+            "ok": false,
+            "error": "player_seed + proposal_id required",
+        });
+    }
+    let payload = p_string(&params, "payload", "");
+    let reason = p_string(&params, "reason", "");
+    if payload.is_empty() {
+        return json!({"ok": false, "error": "payload required"});
+    }
+    let frame = state.frame_count;
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.is_granted() {
+            return cocreative_cap_denied_response(player_seed);
+        }
+        let Some(st) = s.iterate(proposal_id, payload.clone(), reason.clone(), frame) else {
+            return json!({
+                "ok": false,
+                "error": "unknown proposal_id",
+                "proposal_id": proposal_id,
+            });
+        };
+        // If the iterate returned a terminal state (DraftReady · Revoked),
+        // surface that so callers know the loop has closed.
+        let p = match s.proposals.get(&proposal_id) {
+            Some(p) => p,
+            None => {
+                return json!({
+                    "ok": false,
+                    "error": "proposal vanished post-iterate",
+                });
+            }
+        };
+        json!({
+            "ok": !matches!(st, cc::ProposalState::DraftReady | cc::ProposalState::Revoked),
+            "player_seed": player_seed,
+            "proposal_id": proposal_id,
+            "state": st.label(),
+            "revisions": p.revisions,
+            "frame": frame,
+        })
+    })
+}
+
+/// `cocreative.draft_ready` — mark Accepted-state proposal as draft-ready.
+fn cocreative_draft_ready(state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    let proposal_id = p_u64(&params, "proposal_id", 0);
+    if player_seed == 0 || proposal_id == 0 {
+        return json!({
+            "ok": false,
+            "error": "player_seed + proposal_id required",
+        });
+    }
+    let frame = state.frame_count;
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.is_granted() {
+            return cocreative_cap_denied_response(player_seed);
+        }
+        match s.draft_ready(proposal_id, frame) {
+            Some(hash) => json!({
+                "ok": true,
+                "player_seed": player_seed,
+                "proposal_id": proposal_id,
+                "attestation_hash": hash,
+                "state": cc::ProposalState::DraftReady.label(),
+                "frame": frame,
+            }),
+            None => json!({
+                "ok": false,
+                "error": "proposal not in Accepted state OR unknown id",
+                "proposal_id": proposal_id,
+            }),
+        }
+    })
+}
+
+/// `cocreative.session_log_drain` — drain (and clear) session-log entries.
+/// Cap-gated : requires `CocreativeCap::GrantedWithDrain`.
+fn cocreative_session_log_drain(_state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    if player_seed == 0 {
+        return json!({"ok": false, "error": "player_seed required"});
+    }
+
+    cc::with_session(player_seed, |s| {
+        if !s.cap.permits_drain() {
+            return json!({
+                "ok": false,
+                "error": "cap-denied · drain requires CocreativeCap::GrantedWithDrain",
+                "cap_state": s.cap.label(),
+                "hint": "call cocreative.persona_query with op='grant_with_drain' to enable",
+            });
+        }
+        let entries = s.drain_session_log();
+        let arr: Vec<Value> = entries
+            .iter()
+            .map(|e| {
+                json!({
+                    "proposal_id": e.proposal_id,
+                    "kind": e.kind.label(),
+                    "revision": e.revision,
+                    "payload_summary": e.payload_summary,
+                    "gm_score": e.gm_score,
+                    "gm_comments": e.gm_comments,
+                    "frame": e.frame,
+                })
+            })
+            .collect();
+        json!({
+            "ok": true,
+            "player_seed": player_seed,
+            "drained": arr.len(),
+            "entries": arr,
+            "drains_total": s.drains_total,
+        })
+    })
+}
+
+/// `cocreative.persona_query` — inspect/grant/revoke the per-session
+/// CocreativeCap + GmPersona axes. THIS is the consent-gate flow.
+///
+/// op=
+///   "query"             : read-only · returns cap_state + axes if granted
+///   "grant"             : flip cap → Granted (loads persona on first call)
+///   "grant_with_drain"  : flip cap → GrantedWithDrain (adds drain eligibility)
+///   "revoke"            : flip cap → Revoked
+fn cocreative_persona_query(_state: &mut EngineState, params: Value) -> Value {
+    use crate::cocreative_loop as cc;
+
+    let player_seed = p_u64(&params, "player_seed", 0);
+    if player_seed == 0 {
+        return json!({"ok": false, "error": "player_seed required"});
+    }
+    let op = p_string(&params, "op", "query");
+
+    cc::with_session(player_seed, |s| {
+        match op.as_str() {
+            "grant" => s.grant(false),
+            "grant_with_drain" => s.grant(true),
+            "revoke" => s.revoke(),
+            "query" => {} // no-op
+            other => {
+                return json!({
+                    "ok": false,
+                    "error": format!("unknown op '{other}' · expected grant|grant_with_drain|revoke|query"),
+                });
+            }
+        }
+        // Persona-axes are only surfaced when the cap is granted (Σ-mask
+        // isolation : revoked-state cannot leak persona).
+        let (axes, archetype) = if s.cap.is_granted() {
+            let p = s.persona.as_ref();
+            (
+                p.map(|p| p.axes.to_vec()).unwrap_or_default(),
+                p.map(|p| p.archetype_bias.label()).unwrap_or("none"),
+            )
+        } else {
+            (Vec::new(), "(σ-masked)")
+        };
+        json!({
+            "ok": true,
+            "player_seed": player_seed,
+            "op": op,
+            "cap_state": s.cap.label(),
+            "persona_axes": axes,
+            "archetype_bias": archetype,
+            "proposals_total": s.proposals_total,
+            "evaluations_total": s.evaluations_total,
+            "iterations_total": s.iterations_total,
+            "draft_ready_total": s.draft_ready_total,
+            "drains_total": s.drains_total,
+        })
+    })
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // § TESTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -3355,7 +3855,7 @@ mod tests {
     use crate::mcp_server::SOVEREIGN_CAP;
 
     #[test]
-    fn tools_list_returns_118_tools() {
+    fn tools_list_returns_126_tools() {
         // 17 baseline (T11-LOA-HOST-3) + 7 render-control (T11-LOA-RICH-RENDER)
         // + 6 telemetry (T11-LOA-TELEM)
         // + 3 visual-data-gathering (T11-LOA-TEST-APP : render.snapshot_png,
@@ -3390,9 +3890,12 @@ mod tests {
         //   · mp_transport.real_caps_query)
         // + 4 T11-W8-CHAT-WIRE Coder MCP tools (coder.propose_edit ·
         //   coder.list_pending · coder.approve · coder.revert)
-        // = 118 total.
+        // + 8 T11-W12-COCREATIVE-BRIDGE tools (cocreative.context_read ·
+        //   proposal_submit · proposal_evaluate · feedback_request · iterate ·
+        //   draft_ready · session_log_drain · persona_query)
+        // = 126 total.
         let reg = tool_registry();
-        assert_eq!(reg.len(), 118, "must have exactly 118 tools");
+        assert_eq!(reg.len(), 126, "must have exactly 126 tools");
         // Spot-check a representative slice.
         for required in &[
             "engine.state",
@@ -3505,6 +4008,15 @@ mod tests {
             "coder.list_pending",
             "coder.approve",
             "coder.revert",
+            // T11-W12-COCREATIVE-BRIDGE additions :
+            "cocreative.context_read",
+            "cocreative.proposal_submit",
+            "cocreative.proposal_evaluate",
+            "cocreative.feedback_request",
+            "cocreative.iterate",
+            "cocreative.draft_ready",
+            "cocreative.session_log_drain",
+            "cocreative.persona_query",
         ] {
             assert!(reg.contains_key(*required), "missing {required}");
         }
@@ -3581,6 +4093,16 @@ mod tests {
             "room.teleport_zone",
             // T11-WAVE3-SPONT : world.spontaneous_seed is mutating.
             "world.spontaneous_seed",
+            // T11-W12-COCREATIVE-BRIDGE : all cocreative.* are mutating
+            // (default-deny + cocreative-cap layered on sovereign-cap).
+            "cocreative.context_read",
+            "cocreative.proposal_submit",
+            "cocreative.proposal_evaluate",
+            "cocreative.feedback_request",
+            "cocreative.iterate",
+            "cocreative.draft_ready",
+            "cocreative.session_log_drain",
+            "cocreative.persona_query",
         ] {
             let e = reg.get(*name).unwrap();
             assert!(e.meta.mutating, "{name} must be mutating");
@@ -3835,10 +4357,12 @@ mod tests {
         //   kan_real.canary_check + dm.cap_table_query + gm.tone_axes_query
         //   + mp_transport.real_caps_query)
         // + 4 T11-W8-CHAT-WIRE Coder MCP tools (coder.propose_edit
-        //   + coder.list_pending + coder.approve + coder.revert) = 118.
-        assert_eq!(v["count"], 118);
+        //   + coder.list_pending + coder.approve + coder.revert)
+        // + 8 T11-W12-COCREATIVE-BRIDGE tools (cocreative.* round-trip
+        //   pipeline) = 126.
+        assert_eq!(v["count"], 126);
         let arr = v["tools"].as_array().unwrap();
-        assert_eq!(arr.len(), 118);
+        assert_eq!(arr.len(), 126);
     }
 
     // § T11-WAVE3-INTENT · MCP-tool integration
@@ -4847,5 +5371,307 @@ mod tests {
         assert_eq!(v["ok"], true);
         assert_eq!(v["count"].as_u64().unwrap(), 0);
         assert_eq!(v["edits"].as_array().unwrap().len(), 0);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-W12-COCREATIVE-BRIDGE tests
+    // ───────────────────────────────────────────────────────────────────
+    //
+    // The cocreative_loop singleton is process-global ; tests that mutate it
+    // must use unique `player_seed` values per test so they don't interfere.
+    // Each test below picks a constant in the COC_*  range.
+
+    const COC_SEED_A: u64 = 0x0C0C_0001_AAAA_AAAA;
+    const COC_SEED_B: u64 = 0x0C0C_0002_BBBB_BBBB;
+    const COC_SEED_C: u64 = 0x0C0C_0003_CCCC_CCCC;
+    const COC_SEED_D: u64 = 0x0C0C_0004_DDDD_DDDD;
+    const COC_SEED_E: u64 = 0x0C0C_0005_EEEE_EEEE;
+    const COC_SEED_F: u64 = 0x0C0C_0006_FFFF_FFFF;
+    const COC_SEED_G: u64 = 0x0C0C_0007_1111_1111;
+    const COC_SEED_H: u64 = 0x0C0C_0008_2222_2222;
+    const COC_SEED_I: u64 = 0x0C0C_0009_3333_3333;
+    const COC_SEED_J: u64 = 0x0C0C_000A_4444_4444;
+    const COC_SEED_K: u64 = 0x0C0C_000B_5555_5555;
+    const COC_SEED_L: u64 = 0x0C0C_000C_6666_6666;
+
+    fn coc_grant(player_seed: u64, with_drain: bool) {
+        crate::cocreative_loop::with_session(player_seed, |s| {
+            s.grant(with_drain);
+        });
+    }
+
+    /// `cocreative.context_read` denies-by-default (cap = Revoked).
+    #[test]
+    fn cocreative_context_read_denies_without_cap() {
+        let mut s = EngineState::default();
+        let v = cocreative_context_read(&mut s, json!({"player_seed": COC_SEED_A}));
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["error"], "cocreative-cap-denied");
+    }
+
+    /// `cocreative.context_read` returns the expected JSON-shape after grant.
+    #[test]
+    fn cocreative_context_read_shape_after_grant() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_B, false);
+        let v = cocreative_context_read(&mut s, json!({"player_seed": COC_SEED_B}));
+        assert_eq!(v["ok"], true);
+        assert!(v["player_pos"].is_object());
+        assert!(v["scene_id"].is_string());
+        assert!(v["last_5_utterances"].is_array());
+        assert!(v["arc_phase"].is_string());
+        assert_eq!(v["gm_persona_seed"].as_u64(), Some(COC_SEED_B));
+        assert!(v["gm_persona_axes"].is_array());
+        assert_eq!(v["gm_persona_axes"].as_array().unwrap().len(), 8);
+        assert!(v["open_questions"].is_array());
+        assert_eq!(v["cap_state"], "granted");
+    }
+
+    /// `cocreative.proposal_submit` round-trips and assigns an id.
+    #[test]
+    fn cocreative_proposal_submit_round_trip() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_C, false);
+        let v = cocreative_proposal_submit(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_C,
+                "kind": "lore",
+                "payload": "The labyrinth was first dreamed by a sleeping cartographer who could not stop drawing.",
+                "reason": "Discovery-phase lore expansion.",
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        assert!(v["proposal_id"].as_u64().unwrap() >= 1);
+        assert_eq!(v["kind"], "lore");
+        assert_eq!(v["state"], "pending");
+    }
+
+    /// `cocreative.proposal_evaluate` against a freshly-submitted proposal
+    /// returns a score and either an Accepted or Rejected state.
+    #[test]
+    fn cocreative_proposal_evaluate_returns_score_and_state() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_D, false);
+        let pv = cocreative_proposal_submit(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_D,
+                "kind": "lore",
+                "payload": "Seven chapels nest the spiral; each remembers a different rain.",
+                "reason": "Discovery-flavor mythic descriptor.",
+            }),
+        );
+        let id = pv["proposal_id"].as_u64().unwrap();
+        let v = cocreative_proposal_evaluate(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_D,
+                "proposal_id": id,
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        let score = v["score"].as_u64().unwrap();
+        assert!(score <= 100);
+        assert!(v["accepted"].is_boolean());
+        let st = v["state"].as_str().unwrap();
+        assert!(matches!(st, "accepted" | "rejected"));
+    }
+
+    /// `cocreative.iterate` resets state to Pending + bumps revisions.
+    #[test]
+    fn cocreative_iterate_bumps_revision_and_resets_state() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_E, false);
+        let pv = cocreative_proposal_submit(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_E,
+                "kind": "npc-line",
+                "payload": "Wait.",
+                "reason": "tension",
+            }),
+        );
+        let id = pv["proposal_id"].as_u64().unwrap();
+        let _ = cocreative_proposal_evaluate(
+            &mut s,
+            json!({"player_seed": COC_SEED_E, "proposal_id": id}),
+        );
+        let it = cocreative_iterate(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_E,
+                "proposal_id": id,
+                "payload": "Wait — the door listens before opening.",
+                "reason": "longer NPC-line ; more atmospheric",
+            }),
+        );
+        assert_eq!(it["ok"], true);
+        assert_eq!(it["state"], "pending");
+        assert_eq!(it["revisions"].as_u64().unwrap(), 1);
+    }
+
+    /// `cocreative.draft_ready` only succeeds from the Accepted state.
+    #[test]
+    fn cocreative_draft_ready_requires_accepted_state() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_F, false);
+        // Force an Accepted state by directly grant + evaluate with a high
+        // score via the heuristic-known sweet spot (long Lore in Discovery).
+        let pv = cocreative_proposal_submit(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_F,
+                "kind": "lore",
+                "payload": "The labyrinth's grammar predates speech; corridors agree on tense before agreeing on direction. Even silence flows in lines, and the lines remember the syntax of every step the wanderer has not yet thought to take. Walls listen, columns whisper, lamp-lit hours are conjugated in the language of patience.",
+                "reason": "long Discovery-phase lore expansion with mythic flavor and unusual letters covering the alphabet entropy bucket.",
+            }),
+        );
+        let id = pv["proposal_id"].as_u64().unwrap();
+        // Try draft_ready BEFORE evaluation : must fail.
+        let bad = cocreative_draft_ready(
+            &mut s,
+            json!({"player_seed": COC_SEED_F, "proposal_id": id}),
+        );
+        assert_eq!(bad["ok"], false);
+        // Evaluate.
+        let _ = cocreative_proposal_evaluate(
+            &mut s,
+            json!({"player_seed": COC_SEED_F, "proposal_id": id}),
+        );
+        // If accepted, draft_ready succeeds. Otherwise we force-evaluate a
+        // direct accepted state via the loop module.
+        crate::cocreative_loop::with_session(COC_SEED_F, |sess| {
+            // Force into Accepted regardless of heuristic outcome to keep
+            // this test deterministic.
+            let _ = sess.evaluate(id, 95, "force-accept".into(), 5);
+        });
+        let good = cocreative_draft_ready(
+            &mut s,
+            json!({"player_seed": COC_SEED_F, "proposal_id": id}),
+        );
+        assert_eq!(good["ok"], true);
+        assert_eq!(good["state"], "draft-ready");
+        let hash = good["attestation_hash"].as_str().unwrap();
+        assert_eq!(hash.len(), 16);
+    }
+
+    /// `cocreative.session_log_drain` denies without `GrantedWithDrain` cap.
+    #[test]
+    fn cocreative_session_log_drain_denies_without_drain_cap() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_G, false); // basic Granted, no drain
+        let v =
+            cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_G}));
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("drain"));
+    }
+
+    /// `cocreative.session_log_drain` clears entries after read with the cap.
+    #[test]
+    fn cocreative_session_log_drain_clears_entries() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_H, true); // GrantedWithDrain
+        // Submit + evaluate two proposals so the log has entries.
+        for i in 0..2 {
+            let pv = cocreative_proposal_submit(
+                &mut s,
+                json!({
+                    "player_seed": COC_SEED_H,
+                    "kind": "lore",
+                    "payload": format!("entry-{i} payload longer than the floor for length-fit"),
+                    "reason": format!("entry-{i} reason with enough tokens to register a small bonus"),
+                }),
+            );
+            let id = pv["proposal_id"].as_u64().unwrap();
+            let _ = cocreative_proposal_evaluate(
+                &mut s,
+                json!({"player_seed": COC_SEED_H, "proposal_id": id}),
+            );
+        }
+        let drain1 =
+            cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_H}));
+        assert_eq!(drain1["ok"], true);
+        assert!(drain1["drained"].as_u64().unwrap() >= 2);
+        // Second drain returns empty (already cleared).
+        let drain2 =
+            cocreative_session_log_drain(&mut s, json!({"player_seed": COC_SEED_H}));
+        assert_eq!(drain2["ok"], true);
+        assert_eq!(drain2["drained"].as_u64().unwrap(), 0);
+    }
+
+    /// `cocreative.persona_query` op='grant' flips cap + loads persona.
+    #[test]
+    fn cocreative_persona_query_grant_loads_persona() {
+        let mut s = EngineState::default();
+        let v = cocreative_persona_query(
+            &mut s,
+            json!({"player_seed": COC_SEED_I, "op": "grant"}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["cap_state"], "granted");
+        assert!(v["persona_axes"].is_array());
+        assert_eq!(v["persona_axes"].as_array().unwrap().len(), 8);
+    }
+
+    /// `cocreative.persona_query` op='revoke' flips cap back + masks axes.
+    #[test]
+    fn cocreative_persona_query_revoke_masks_axes() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_J, true);
+        let v = cocreative_persona_query(
+            &mut s,
+            json!({"player_seed": COC_SEED_J, "op": "revoke"}),
+        );
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["cap_state"], "revoked");
+        assert_eq!(v["persona_axes"].as_array().unwrap().len(), 0);
+        assert_eq!(v["archetype_bias"], "(σ-masked)");
+    }
+
+    /// `cocreative.feedback_request` returns a stage-0 GM-response.
+    #[test]
+    fn cocreative_feedback_request_returns_gm_response() {
+        let mut s = EngineState::default();
+        coc_grant(COC_SEED_K, false);
+        let v = cocreative_feedback_request(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_K,
+                "question": "Should the next chapter be set in the Crystal Atrium?",
+            }),
+        );
+        assert_eq!(v["ok"], true);
+        let resp = v["gm_response"].as_str().unwrap();
+        assert!(resp.contains("Crystal Atrium"));
+        assert!(resp.contains("stage-0"));
+        assert!(v["arc_phase"].is_string());
+    }
+
+    /// Cap-deny short-circuits proposal_submit too.
+    #[test]
+    fn cocreative_proposal_submit_denies_without_cap() {
+        let mut s = EngineState::default();
+        // No grant for COC_SEED_L : default-deny.
+        let v = cocreative_proposal_submit(
+            &mut s,
+            json!({
+                "player_seed": COC_SEED_L,
+                "kind": "npc-line",
+                "payload": "hello",
+                "reason": "test",
+            }),
+        );
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["error"], "cocreative-cap-denied");
+    }
+
+    /// player_seed=0 is rejected at the parameter-validation layer.
+    #[test]
+    fn cocreative_context_read_rejects_zero_seed() {
+        let mut s = EngineState::default();
+        let v = cocreative_context_read(&mut s, json!({"player_seed": 0}));
+        assert_eq!(v["ok"], false);
+        assert!(v["error"].as_str().unwrap().contains("player_seed"));
     }
 }

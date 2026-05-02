@@ -1,0 +1,244 @@
+module com.apocky.loa.systems.self_authoring_kan
+
+// § Labyrinth of Apocalypse v13 — self-authoring-KAN-loop (pure-CSSL)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W12-KAN-LOOP · self-authoring-KAN-loop (substrate self-improves)
+//
+// § THESIS
+//   Quality-signals from sibling-agents (training-pair-log W12-2 ·
+//   playtest-scoring W12-10 · player-rating W12-7 · GM-accept · sandbox-pass ·
+//   remix-fork) feed into a KAN-classifier that adapts its bias-vector and
+//   feeds-back into the procgen-template-priority-map so the substrate
+//   self-improves over training-iterations WITHOUT a-single-player being
+//   able to dominate-the-bias.
+//
+//   ┌────────────────────────────────────────────────────────────────────┐
+//   │  sibling-agents ──QualitySignal──▶ Reservoir(N=4096)               │
+//   │                                            │                       │
+//   │                                  k-anon ≥ 10 floor                 │
+//   │                                            ▼                       │
+//   │                                  KanBiasUpdate (Q14 deltas)        │
+//   │                                            │                       │
+//   │                                            ▼                       │
+//   │                                  TemplateBiasMap (sparse)          │
+//   │                                            │                       │
+//   │                                            ▼                       │
+//   │                          procgen-template-priority-shift           │
+//   │                                            │                       │
+//   │            every 1024 updates ⇒ Σ-Chain-anchor (rollback-safe)     │
+//   └────────────────────────────────────────────────────────────────────┘
+//
+// § AXIOMS  (inherit GDDs/MULTIPLAYER_MATRIX.csl § AXIOMS shape)
+//   ─ ¬ harm · ¬ control · ¬ surveillance · ¬ manipulation
+//   ─ no-single-player can dominate-bias  (k-anon-floor enforcement)
+//   ─ sovereign-revoke ANY-time → cascades through bias-state recompute
+//   ─ Σ-mask-default-deny inspector readback (admin-cap-required)
+//   ─ reservoir-sampling = uniform-random eviction · ¬ bursty-domination
+//   ─ Q14 fixed-point arithmetic · saturating-clamp · ¬ runaway-amplification
+//   ─ Σ-Chain-anchor every 1024 updates · BLAKE3-128 hash · rollback-safe
+//   ─ poisoning-rejected ⇒ audit-ring-emit · ¬ silent-drop
+//   ─ NEVER-egress : Sensitive<biometric|gaze|face|body> via inspector
+//
+// § FFI BOUNDARY
+//   This module consumes the host-side self-authoring-KAN-loop substrate via
+//   extern "C" :
+//     * cssl-self-authoring-kan (T11-W12-3 · QualitySignal · Reservoir · TemplateBiasMap · loop-tick · BiasInspector · AnchorRing)
+//     * cssl-substrate-sigma-runtime (W11-16 · Σ-mask-gate-fn for inspector)
+//     * cssl-analytics-aggregator (W11-4 · upstream signal-source via EventKind taxonomy)
+//   FFI fns return i32 status codes : 0 = ok · negative = error-code.
+//   Opaque handles are usize ; bias-cells pass via (template_id u32 · archetype u8 · q14 i16) tuple.
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : every signal-ingest is consent-cap-gated.
+//   Sovereign-revocable : sovereign-revoke-cascading recomputes-from-remaining.
+//   There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Q14 fixed-point constants (mirror cssl-self-authoring-kan)
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_BIAS_Q14_MAX  : i16 =  16383 ;  // ≈ +1.0
+const SAK_BIAS_Q14_MIN  : i16 = -16383 ;  // ≈ -1.0
+const SAK_BIAS_Q14_ONE  : i32 =  16384 ;  // exact 1.0 scaling factor
+const SAK_Q14_DELTA_SMALL : i16 =   819 ;  // 0.05 (sandbox-pass · cheap signal)
+const SAK_Q14_DELTA_MED   : i16 =  4096 ;  // 0.25 (gm-reject · remix-forked · 5★ · 1★)
+const SAK_Q14_DELTA_LARGE : i16 =  8192 ;  // 0.50 (sandbox-fail · heavy signal)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § QualitySignal taxonomy (10 variants · stable u8 IDs)
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_SIG_SANDBOX_PASS    : u8 = 0 ;  // +SMALL · const
+const SAK_SIG_SANDBOX_FAIL    : u8 = 1 ;  // -LARGE · const
+const SAK_SIG_GM_ACCEPT       : u8 = 2 ;  // +(score × MED ÷ Q14_ONE) · payload Q14
+const SAK_SIG_GM_REJECT       : u8 = 3 ;  // -MED · payload reason-code
+const SAK_SIG_PLAYER_LIKE     : u8 = 4 ;  // +(weight × MED ÷ Q14_ONE) · payload Q14
+const SAK_SIG_PLAYER_DISLIKE  : u8 = 5 ;  // -(weight × MED ÷ Q14_ONE) · payload Q14
+const SAK_SIG_REMIX_FORKED    : u8 = 6 ;  // +MED · const
+const SAK_SIG_RATING_5_STAR   : u8 = 7 ;  // +MED · const
+const SAK_SIG_RATING_1_STAR   : u8 = 8 ;  // -MED · const
+const SAK_SIG_PLAYTEST_PASS   : u8 = 9 ;  // +(score × MED ÷ Q14_ONE) · payload Q14
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Archetype taxonomy (8 canonical · stable u8 IDs · LUT-driven)
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_ARCH_WARRIOR   : u8 = 0 ;  // melee-focused · proximity-combat templates
+const SAK_ARCH_MAGE      : u8 = 1 ;  // ranged-magic · spell-rich templates
+const SAK_ARCH_ROGUE     : u8 = 2 ;  // stealth · ambush + utility templates
+const SAK_ARCH_RANGER    : u8 = 3 ;  // ranged-physical · exploration + bow templates
+const SAK_ARCH_SUPPORT   : u8 = 4 ;  // healing/buff · party-oriented templates
+const SAK_ARCH_EXPLORER  : u8 = 5 ;  // puzzle/lore · narrative + secret templates
+const SAK_ARCH_DIPLOMAT  : u8 = 6 ;  // social · dialogue + faction templates
+const SAK_ARCH_ENGINEER  : u8 = 7 ;  // craft/automation · recipe + machine templates
+const SAK_ARCH_COUNT     : u8 = 8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Reservoir + k-anon constants
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_RESERVOIR_CAPACITY    : u32 = 4096 ;  // hold-N most-recent signals
+const SAK_K_ANON_FLOOR_DEFAULT  : u32 =   10 ;  // distinct-fingerprints required
+const SAK_PER_CELL_RATE_LIMIT   : u32 =   64 ;  // anti-poisoning : per-(player·cell)
+const SAK_K_ANON_FLOOR_MIN      : u32 =    2 ;  // never-below (defeats k-anon)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-Chain anchor cadence
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_ANCHOR_EVERY_N_UPDATES : u64 = 1024 ;  // every 1024 successful updates
+const SAK_ANCHOR_RING_CAPACITY   : u32 =   64 ;  // 64 × 1024 = 65k replay-history
+const SAK_ANCHOR_HASH_BYTES      : u32 =   16 ;  // BLAKE3-128 truncated
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask audience + effect for inspector
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_INSPECTOR_AUDIENCE  : u16 = 0x0008 ;  // AUDIENCE_ADMIN bit (per cssl-substrate-sigma-runtime mask.rs)
+const SAK_INSPECTOR_EFFECT    : u32 = 0x0001 ;  // EFFECT_READ bit
+const SAK_INSPECTOR_K_ANON    : u8  = 10 ;       // matches SAK_K_ANON_FLOOR_DEFAULT
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Status / outcome codes (matches LoopTickError numeric mapping)
+// ─────────────────────────────────────────────────────────────────────────
+
+const SAK_OUT_OK                  : i32 =   0 ;
+const SAK_OUT_INGEST_REVOKED      : i32 =  -1 ;  // source-player on revocation-set
+const SAK_OUT_INGEST_RATE_LIMIT   : i32 =  -2 ;  // anti-poisoning : per-cell-rate-limit
+const SAK_OUT_INGEST_BAD_ARCHETYPE: i32 =  -3 ;  // archetype-id out-of-range
+const SAK_OUT_KANON_NOT_MET       : i32 =  -4 ;  // cell does not meet k-anon-floor
+const SAK_OUT_BIAS_OUT_OF_RANGE   : i32 =  -5 ;  // Q14 delta outside ±MAX
+const SAK_OUT_ANCHOR_MISSING      : i32 =  -6 ;  // rollback-target seq evicted
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface (declarations) — CONSUMED by host-side cssl-self-authoring-kan
+// ─────────────────────────────────────────────────────────────────────────
+
+// Construct a fresh self-authoring-KAN-loop. Returns opaque handle.
+extern "C" fn sak_loop_new(
+  created_at_frame   : u32 ,
+  created_at_seconds : u64 ,
+  k_anon_floor       : u32   // 0 = use SAK_K_ANON_FLOOR_DEFAULT
+) -> usize ;
+
+// Destroy a loop handle. Idempotent.
+extern "C" fn sak_loop_drop( handle : usize ) -> i32 ;
+
+// Ingest a signal. Returns 0 = ok · negative = SAK_OUT_INGEST_*.
+extern "C" fn sak_loop_ingest_signal(
+  handle        : usize ,
+  template_id   : u32   ,
+  archetype_id  : u8    ,
+  signal_tag    : u8    ,  // SAK_SIG_*
+  signal_payload: u16   ,  // variant-specific (Q14 score · u8 reason-code · etc.)
+  player_handle : u32   ,
+  frame_offset  : u16
+) -> i32 ;
+
+// Drive a single tick. Returns the number of priority-shifts applied this tick.
+extern "C" fn sak_loop_tick(
+  handle      : usize ,
+  dt_seconds  : f64   ,
+  now_seconds : u64
+) -> u32 ;
+
+// Sovereign-revoke all contributions from a player. Cascades through
+// bias-map-recompute. Returns count-of-records-scrubbed.
+extern "C" fn sak_loop_sovereign_revoke(
+  handle        : usize ,
+  player_handle : u32   ,
+  now_seconds   : u64
+) -> u32 ;
+
+// Rollback to a prior anchor. Returns 0 = ok · SAK_OUT_ANCHOR_MISSING = evicted.
+extern "C" fn sak_loop_rollback_to_anchor(
+  handle      : usize ,
+  anchor_seq  : u64   ,
+  now_seconds : u64
+) -> i32 ;
+
+// Read a single (template · archetype) bias-cell through Σ-runtime gate.
+// Returns the Q14 bias on success ; out_status receives 0 = ok or negative
+// = SAK_OUT_KANON_NOT_MET / etc.
+extern "C" fn sak_inspector_read_cell(
+  handle           : usize       ,
+  sigma_mask_ptr   : *const u8   ,  // 19 B packed Σ-mask
+  sigma_cap_ptr    : *const u8   ,  // optional ; nullptr = no cap
+  sigma_cap_len    : u32         ,
+  template_id      : u32         ,
+  archetype_id     : u8          ,
+  now_seconds      : u64         ,
+  issuing_pk_ptr   : *const u8   ,  // 32 B Ed25519 PK (optional)
+  out_status       : *mut i32    ,
+  out_q14_bias     : *mut i16
+) -> i32 ;
+
+// Drain LoopStats into a caller-supplied buffer (zero-alloc · stack-only).
+extern "C" fn sak_loop_drain_stats(
+  handle          : usize ,
+  out_tick_count  : *mut u64 ,
+  out_updates     : *mut u64 ,
+  out_skipped     : *mut u64 ,
+  out_rejected    : *mut u64 ,
+  out_anchors     : *mut u64
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Integration-points (sibling-W12 agents)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//  W12-2 (training-pair-log)
+//    - On compile-pass : sak_loop_ingest_signal(SAK_SIG_SANDBOX_PASS, ...)
+//    - On compile-fail : sak_loop_ingest_signal(SAK_SIG_SANDBOX_FAIL, ...)
+//
+//  W12-7 (rating-pipeline)
+//    - On 5-star    : sak_loop_ingest_signal(SAK_SIG_RATING_5_STAR, ...)
+//    - On 1-star    : sak_loop_ingest_signal(SAK_SIG_RATING_1_STAR, ...)
+//    - On like      : sak_loop_ingest_signal(SAK_SIG_PLAYER_LIKE, weight_q14, ...)
+//    - On dislike   : sak_loop_ingest_signal(SAK_SIG_PLAYER_DISLIKE, weight_q14, ...)
+//
+//  W12-10 (playtest-scorer)
+//    - On gm-accept : sak_loop_ingest_signal(SAK_SIG_GM_ACCEPT, score_q14, ...)
+//    - On gm-reject : sak_loop_ingest_signal(SAK_SIG_GM_REJECT, reason_code, ...)
+//    - On playtest-pass : sak_loop_ingest_signal(SAK_SIG_PLAYTEST_PASS, score_q14, ...)
+//
+//  procgen-template-selector (downstream consumer)
+//    - On scene-build : sak_inspector_read_cell(template_id, archetype_id) → Q14 bias
+//      → adjust template-priority for selection-RNG.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Anti-poisoning attestation
+// ─────────────────────────────────────────────────────────────────────────
+//   1. Reservoir-sampling : uniform-random FIFO-eviction · ¬ bursty-domination
+//   2. K-anon-floor       : ≥ 10 distinct fingerprints required-per-cell
+//   3. Per-cell-rate-limit: ≤ 64 contributions per (player · template · archetype)
+//   4. Sovereign-revoke   : cascading recompute-from-remaining
+//   5. Σ-mask inspector   : default-deny per-row · admin-cap-required
+//   6. Σ-Chain-anchor     : every 1024 updates · BLAKE3-128 hash · rollback-safe
+//   7. Q14 saturating-clamp : ¬ runaway-amplification
+
+// END
