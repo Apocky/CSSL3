@@ -41,13 +41,20 @@
     "test:docs-page": "node --import tsx tests/pages/docs.test.ts",
     "test:devblog-page": "node --import tsx tests/pages/devblog.test.ts",
     "test:press-page": "node --import tsx tests/pages/press.test.ts",
+    "test:infinity-engine-page": "node --import tsx tests/pages/infinity-engine.test.ts",
     "test:buy-page": "node --import tsx tests/pages/buy.test.ts",
     "test:admin-analytics": "node --import tsx tests/admin-analytics.test.ts",
     "test:akashic-telemetry": "node --import tsx tests/akashic/akashic-telemetry.test.ts",
     "test:content-page": "node --import tsx tests/pages/content.test.ts",
     "test:content-publish-lib": "node --import tsx lib/content-publish.ts",
     "test:content-publish": "node --import tsx tests/api/content/publish.test.ts",
-    "test": "npm run snapshot:specs && npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page && npm run test:marketplace-list && npm run test:marketplace-post && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:transparency-kan-canary && npm run test:gear-share-page && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:devblog-page && npm run test:press-page && npm run test:buy-page && npm run test:admin-analytics && npm run test:akashic-telemetry && npm run test:content-page && npm run test:content-publish-lib && npm run test:content-publish"
+    "test:engine-status-lib": "node --import tsx lib/engine-status.ts",
+    "test:engine-status": "node --import tsx tests/engine-status.test.ts",
+    "test:cron-auth-lib": "node --import tsx lib/cron-auth.ts",
+    "test:cron-auth": "node --import tsx tests/cron/cron-auth.test.ts",
+    "test:cron-endpoints": "node --import tsx tests/cron/cron-endpoints.test.ts",
+    "test:cron-pgcron-migration": "node --import tsx tests/cron/pgcron-migration.test.ts",
+    "test": "npm run snapshot:specs && npm run test:health && npm run test:companion && npm run test:sovereign && npm run test:signaling && npm run test:cap && npm run test:sse && npm run test:realtime && npm run test:companion-stream && npm run test:asset-recommend && npm run test:recommended-page && npm run test:transparency-sovcap-api && npm run test:transparency-bias-api && npm run test:transparency-index-page && npm run test:transparency-sovcap-page && npm run test:marketplace-list && npm run test:marketplace-post && npm run test:run-share-submit && npm run test:run-share-feed && npm run test:mp-rendezvous-lobby && npm run test:transparency-kan-canary && npm run test:gear-share-page && npm run test:run-share-feed-page && npm run test:stripe-checkout && npm run test:stripe-webhook && npm run test:stripe-refund && npm run test:health-w9 && npm run test:docs-page && npm run test:devblog-page && npm run test:press-page && npm run test:infinity-engine-page && npm run test:buy-page && npm run test:admin-analytics && npm run test:akashic-telemetry && npm run test:content-page && npm run test:content-publish-lib && npm run test:content-publish && npm run test:engine-status-lib && npm run test:engine-status && npm run test:cron-auth-lib && npm run test:cron-auth && npm run test:cron-endpoints && npm run test:cron-pgcron-migration"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
