@@ -4,7 +4,7 @@
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
-import { APOCKY_CHANNELS, AUTH_PROVIDERS, PROFILE_LINKABLE } from '../lib/auth';
+import { APOCKY_CHANNELS, AUTH_PROVIDERS, PROFILE_LINKABLE, getAuthClient, persistSessionToCookie } from '../lib/auth';
 
 interface MeResponse {
   user: {
@@ -28,18 +28,58 @@ const Account: NextPage = () => {
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((j: MeResponse) => {
+    let cancelled = false;
+    (async () => {
+      // First : if we have a Supabase client AND a localStorage session, mirror to cookie
+      // so server-side /api/auth/me can resolve us. This handles the post-magic-link case.
+      const client = getAuthClient();
+      if (client) {
+        try {
+          const { data } = await client.auth.getSession();
+          if (data?.session?.access_token) {
+            persistSessionToCookie(
+              data.session.access_token,
+              data.session.refresh_token ?? undefined,
+            );
+          }
+        } catch {
+          // ignore · server-side fetch will report null
+        }
+      }
+      // Then : ask server who we are
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        const j: MeResponse = await res.json();
+        if (cancelled) return;
         setMe(j);
         setStubMode(!!j.stub);
+
+        // If server says null but client has a session, fall back to client-side identity
+        if (!j.user && client) {
+          const { data } = await client.auth.getUser();
+          if (cancelled) return;
+          if (data?.user?.email) {
+            setMe({
+              user: {
+                id: data.user.id,
+                email: data.user.email,
+                provider: data.user.app_metadata?.provider ?? 'email',
+                createdAt: data.user.created_at ?? new Date().toISOString(),
+              },
+            });
+          }
+        }
         setLoading(false);
-      })
-      .catch(() => {
+      } catch {
+        if (cancelled) return;
         setLoading(false);
         setStubMode(true);
         setMe({ user: null, stub: true });
-      });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
     try {
       const stored = JSON.parse(localStorage.getItem('apocky-profile-links') ?? '{}');
       setProfileLinks(stored);

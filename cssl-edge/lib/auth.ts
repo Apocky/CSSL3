@@ -19,10 +19,29 @@ export function getAuthClient(): SupabaseClient | null {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: false,
+      // detectSessionInUrl=true so magic-link callback URL hash gets parsed into a session
+      // automatically when the client mounts on /account or /auth/callback.
+      // Using implicit flow (default) for OTP magic-link · PKCE only for OAuth providers.
+      detectSessionInUrl: true,
+      flowType: 'implicit',
     },
   });
   return cachedClient;
+}
+
+// Persist Supabase session into a server-readable cookie so /api/auth/me
+// (server-side) can resolve the user. Idempotent · safe to call multiple times.
+// Called from /account and /auth/callback after a successful sign-in.
+export function persistSessionToCookie(accessToken: string, refreshToken?: string): void {
+  if (typeof document === 'undefined') return;
+  // 7-day cookie · HttpOnly cannot be set from client-side · so this is readable
+  // by JS on apocky.com. /api/auth/me reads it for-server-side validation.
+  const maxAge = 7 * 24 * 60 * 60;
+  const secure = location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `sb-access-token=${encodeURIComponent(accessToken)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+  if (refreshToken) {
+    document.cookie = `sb-refresh-token=${encodeURIComponent(refreshToken)}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+  }
 }
 
 /** Auth-provider configuration · what's available · what's required to enable. */

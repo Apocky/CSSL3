@@ -100,9 +100,11 @@ const Home: NextPage = () => {
       <Head>
         <title>Apocky · Substrate-Native Systems</title>
         <meta name="description" content="Apocky's portfolio · proprietary substrate · games · languages · intelligence engines · One Unified System of Systems" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="author" content="Apocky" />
         <meta name="theme-color" content="#0a0a0f" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta property="og:title" content="Apocky · Substrate-Native Systems" />
         <meta property="og:description" content="Substrate-native games · languages · intelligence engines. Mycelial. Sovereign. Open where it matters." />
         <meta property="og:type" content="website" />
@@ -111,13 +113,16 @@ const Home: NextPage = () => {
         <link rel="canonical" href="https://apocky.com" />
         <style>{`
           * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; }
+          html { margin: 0; padding: 0; background-color: #0a0a0f; min-height: 100%; }
+          body { margin: 0; padding: 0; background-color: #0a0a0f; }
           body {
-            background: radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%);
+            background-image: radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%);
             color: #e6e6f0;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
             min-height: 100vh;
+            min-height: 100dvh;
             -webkit-font-smoothing: antialiased;
+            -webkit-text-size-adjust: 100%;
           }
           a { color: inherit; text-decoration: none; }
           a:hover { opacity: 0.85; }

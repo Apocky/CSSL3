@@ -21,7 +21,7 @@ const Login: NextPage = () => {
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, redirectTo: `${location.origin}/account` }),
+        body: JSON.stringify({ email, redirectTo: `${location.origin}/auth/callback` }),
       });
       const json = await res.json();
       if (json.stub) setStubMode(true);
@@ -39,7 +39,7 @@ const Login: NextPage = () => {
       const res = await fetch('/api/auth/oauth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, redirectTo: `${location.origin}/account` }),
+        body: JSON.stringify({ provider, redirectTo: `${location.origin}/auth/callback` }),
       });
       const json = await res.json();
       if (json.stub) {
