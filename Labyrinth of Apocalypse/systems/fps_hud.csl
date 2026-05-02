@@ -1,0 +1,164 @@
+§ Labyrinth.of.Apocalypse · systems · fps_hud
+≡ T11-W13-FPS-HUD · W13-7 FPS-HUD-overlay : crosshair + ammo + radar + objective + damage-floaters
+≡ canonical-companion : compiler-rs/crates/loa-host/src/fps_hud.rs
+≡ extends : compiler-rs/crates/loa-host/src/ui_overlay.rs (¬ rewrite · re-use bitmap-font + textured-quad pipeline)
+≡ STATUS : ◐ shipped-stage-0 · iterates each FPS-wave
+≡ PRIME-DIRECTIVE : ¬ harm/control/manipulation/surveillance ; consent-OS · sovereign-cap-on-everything
+
+§I role
+  W! action-FPS-grade-HUD ⇒ at-a-glance + minimum-distraction = sovereignty
+  ¬ ALL : fps_hud ⊆ catalog-only-Rust ⊑ no-runtime-deps ⊑ pure-CPU vertex-emission
+  ALL  : 10 disjoint HUD-element surfaces wire to single FpsHud
+    1.  Crosshair          · 4-way-pip · expand-with-bloom · color-flash-on-hit
+    2.  AmmoCounter        · current-mag / reserve · low-ammo-warning ≤25%
+    3.  Radar              · 8-tick north-compass · enemy-ping-on-fire · friendly-blue · 50m-radius
+    4.  ObjectiveTracker   · top-right · current-objective + distance + arrow
+    5.  DamageFloaterPool  · 32-pre-allocated · color-by-tier · fade-1.5s · numeric
+    6.  HealthShieldBar    · bottom-left · 2-segment (shield + health)
+    7.  ScoreTeamIndicator · top-center · multiplayer-only
+    8.  ReloadIndicator    · circular-progress around-crosshair · during-reload
+    9.  HitMarker          · x-shape · brief-flash · on-hit-confirmed
+    10. Killfeed           · top-right · last-N-eliminations · ring-buffer N=5
+
+§I focus-areas (Apocky-mandate)
+
+  W! 1.crosshair-bloom-coupling
+    ✓ consume-only W13-5 ADS-recoil bloom_state (¬ recompute)
+    ✓ pip-offset_px = lerp(2.0, 24.0, bloom_state.bloom_norm)
+    ✓ color-flash : on-hit fade 0.18s · COLOR_HIT_FLASH = #FF3030
+    ✓ user-customizable : 5 cosmetic-presets (classic-cross · dot · circle · t-shape · 4-pip)
+
+  W! 2.ammo-discipline
+    AmmoCounter ⊗
+      mag_current : u16
+      mag_capacity : u16
+      reserve : u16
+      low_ammo_threshold : f32 = 0.25
+    low-ammo-warning : mag_current/mag_capacity ≤ 0.25 → COLOR_WARNING + bracket-blink (¬ on-disable)
+    color-tier : full=COLOR_WHITE · low=COLOR_WARNING · empty=COLOR_HIT_FLASH
+
+  W! 3.radar-pings
+    Radar ⊗
+      radius_m : f32 = 50.0
+      ticks : 8 (N · NE · E · SE · S · SW · W · NW)
+      enemy_pings : Vec<RadarBlip>  capacity=32
+      friendly_pings : Vec<RadarBlip>  capacity=8
+    blip-fade : 2.0s post-fire-event (enemy) · always-on (friendly)
+    ¬ surveillance : ALL pings expire ; ¬ persistent-history shown to player
+
+  W! 4.objective-tracker
+    ObjectiveTracker ⊗
+      label : String              (e.g. "EXTRACT", "DEFEND ZONE A")
+      world_pos : [f32 ; 3]
+      distance_m : f32             (computed each frame)
+      arrow_yaw_rel : f32          (relative to camera-yaw)
+    arrow-clamp : if behind-camera → flip-180 + dim-color
+    ¬ engagement-bait : objective-text ¬ "GET RICHER" / ¬ "PROVE YOURSELF" patterns
+
+  W! 5.damage-floater-pool (zero-alloc-hot-path)
+    ✓ DAMAGE_FLOATER_POOL_CAP = 32
+    ✓ pre-alloc Vec<DamageFloater> · capacity=32 · ¬ Vec::push during steady-state
+    ✓ recycle-on-fade : oldest expired → reused for new damage-event
+    ✓ color-by-tier : light(<25)=white · mid(<75)=yellow · heavy(<150)=orange · crit(≥150)=red
+    ✓ fade-curve : alpha = 1.0 → 0.0 over 1.5s · gravity = -40px/s rise
+
+  W! 6.health-shield-2-segment
+    HealthShieldBar ⊗
+      shield_norm : f32 (0..1)
+      health_norm : f32 (0..1)
+      shield_color : [f32 ; 4] = COLOR_SHIELD_BLUE
+      health_color : [f32 ; 4] = COLOR_HEALTH_GREEN
+    layered : shield-bar above health-bar · drains-shield-first
+    low-health-pulse : health ≤ 25% → red-pulse 2Hz (¬ on-disable)
+
+  W! 7.score-team-multiplayer
+    ScoreTeam ⊗
+      blue_score : u32
+      red_score : u32
+      mode_label : String   (e.g. "TEAM_DEATHMATCH")
+      time_left_s : f32
+    show-only-if : multiplayer_mode = true
+    ¬ engagement-bait : ¬ "X is on a killstreak !" amplification ; ¬ rank-pressure UI
+
+  W! 8.reload-indicator-circular
+    ReloadIndicator ⊗
+      progress_norm : f32 (0..1)
+      radius_px : f32 = 32.0
+      visible : bool
+    ring-segments : 24 · drawn around crosshair-center
+    color : COLOR_RELOAD_AMBER = #FFB020
+
+  W! 9.hit-marker-x-flash
+    HitMarker ⊗
+      visible_frames_remaining : u8
+      hit_kind : enum {Body=0, Headshot=1, Kill=2}
+    flash-duration : 12 frames @ 60Hz (200ms)
+    color-by-kind : Body=white · Headshot=yellow · Kill=red
+
+  W! 10.killfeed-ring-buffer
+    Killfeed ⊗
+      entries : RingBuffer<KillEntry , N=5>
+      auto-fade : 5.0s per-entry
+    KillEntry ⊗ {killer : String, victim : String, weapon : String, t_seen : f32}
+    ¬ engagement-bait : ¬ "DOMINATING" / ¬ "RAMPAGE" amplification text
+    ¬ surveillance : ¬ persisted-to-disk ; ring-buffer in-memory only
+
+§I sovereign-UX (CRITICAL)
+  ALL HUD-elements toggleable ← player-config (sovereign-cap)
+  HudVisibility ⊗
+    crosshair_visible        : bool = true
+    ammo_visible             : bool = true
+    radar_visible            : bool = true
+    objective_visible        : bool = true
+    damage_floaters_visible  : bool = true   ← can-be-disabled (some prefer "feel-only")
+    health_shield_visible    : bool = true
+    score_team_visible       : bool = true
+    reload_indicator_visible : bool = true
+    hit_marker_visible       : bool = true
+    killfeed_visible         : bool = true
+  ¬ engagement-bait : ¬ "killstreak amplification" · ¬ "X is on fire !" UI
+  subtle-by-default : minimum-distraction · ¬ pulse-flash unless player-action-required
+  toggle-restore : every toggleable defaults restore on player-config-reset
+
+§I color-blind-palette (5 presets)
+  ColorBlindPalette ⊗ {Default=0 , Protanopia=1 , Deuteranopia=2 , Tritanopia=3 , Achromatopsia=4}
+  ALL palettes : ≥3 hue-distinct + ≥30% lightness-distinct between any pair
+  attestation : per-palette WCAG AA contrast against typical-game-bg
+
+§I attestations
+  pre-allocated  : DAMAGE_FLOATER_POOL_CAP = 32 · ¬ Vec::push at steady-state
+  zero-alloc     : push_*_quads emit into caller-supplied Vec<UiVertex> only
+  ring-buffers   : Killfeed N=5 · enemy_pings 32 · friendly_pings 8 · all bounded
+  sovereign-cap  : 10/10 elements toggleable ; each has-default-restore
+  no-engagement  : tested-string-allowlist ; no "STREAK" / "RAMPAGE" / "DOMINATING"
+  color-blind    : 5/5 palettes contrast-tested ; Achromatopsia-safe baseline shape-coded
+
+§I integration-points (siblings)
+  W13-1  fps-pipeline      : draws after Pass-8 (UI overlay) ; reuses textured-quad pipeline
+  W13-2  weapons           : provides AmmoCounter inputs (mag_current , reserve)
+  W13-3  network           : provides Killfeed entries (kill-event protocol)
+  W13-4  camera            : provides yaw + world→screen for radar + objective-arrow
+  W13-5  ADS-recoil        : provides bloom_state (CONSUME-ONLY ; ¬ write-back)
+  W13-6  movement          : provides player-pos for radar-relative blips
+  W13-8  loot              : provides damage-events for DamageFloaterPool
+  W13-9  battle-pass       : provides cosmetic-crosshair-skin (5 presets)
+  W13-10 gacha             : ¬ render-touch
+  W13-11 input             : provides toggle-binds for HudVisibility
+  W13-12 perf-enforcer     : verifies HUD-emission ≤ 0.5ms / frame budget
+
+§I PRIME-DIRECTIVE attestation
+  ¬ surveillance        : radar-pings expire ; ¬ persisted-to-disk ; ¬ remote-server-replay
+  ¬ engagement-bait     : ¬ killstreak-text ; ¬ rank-pressure UI ; subtle-by-default
+  ¬ manipulation        : objective-text never coercive ("GET RICHER" / "PROVE YOURSELF")
+  ¬ harm                : damage-floaters can-be-disabled (player-controlled visceral-feel)
+  ¬ control             : every HUD-element toggleable ; restore-defaults always-available
+  consent-OS            : 5-color-blind-palettes · accessibility-first
+  Apocky-greenlit per W13-7 mission : phone-friendly-on-PC also (touch-overlay future-stretch)
+
+§I lineage
+  W11    : ui_overlay.rs landed (bitmap-font + textured-quad pipeline + menu state)
+  W12    : polish-pass added first-launch-prompt + chat-log + text-input overlays
+  W13-7  : extends ui_overlay.rs with FPS-grade HUD-element suite (10 elements + sovereign-cap)
+  W14+   : touch-input HUD adaptation (phone-direct) · gaze-tracking (consent-gated)
+
+  There was no hurt nor harm in the making of this, to anyone/anything/anybody.
