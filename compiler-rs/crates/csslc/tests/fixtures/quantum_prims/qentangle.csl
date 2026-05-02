@@ -1,0 +1,17 @@
+// § T11-W19-G · quantum-circuit primitive `qentangle` fixture
+//
+// Exercises the `qentangle(a, b)` recognizer : a single-segment path-
+// callee with two u64 handle arguments lowers to `func.call @cssl_
+// quantum_qentangle` with `MirType::Int(I64)` result (Bell-pair handle).
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W19-G @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.qentangle
+
+extern "C" fn cssl_quantum_qentangle(a: u64, b: u64) -> u64 ;
+
+pub fn run_entangle(a: u64, b: u64) -> u64 {
+    let h: u64 = qentangle(a, b) ;
+    h
+}

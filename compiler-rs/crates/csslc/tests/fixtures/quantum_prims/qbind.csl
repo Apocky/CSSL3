@@ -1,0 +1,18 @@
+// § T11-W19-G · quantum-circuit primitive `qbind` fixture
+//
+// Exercises the `qbind(a, b)` recognizer : a single-segment path-callee
+// with two u64 handle arguments lowers to `func.call @cssl_quantum_qbind`
+// with `MirType::Int(I64)` result type. The extern "C" symbol is provided
+// at link time by `cssl-host-quantum-hdc::ffi::cssl_quantum_qbind`.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W19-G @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.qbind
+
+extern "C" fn cssl_quantum_qbind(a: u64, b: u64) -> u64 ;
+
+pub fn run_bind(a: u64, b: u64) -> u64 {
+    let h: u64 = qbind(a, b) ;
+    h
+}

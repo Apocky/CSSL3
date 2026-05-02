@@ -2350,7 +2350,7 @@ fn lower_call(
     }
 
     // Extract call-target name if it's a path.
-    let target = match &callee.kind {
+    let mut target = match &callee.kind {
         HirExprKind::Path { segments, .. } => segments
             .iter()
             .map(|s| ctx.interner.resolve(*s))
@@ -2362,6 +2362,31 @@ fn lower_call(
             "cssl.call_indirect".to_string()
         }
     };
+
+    // § T11-W19-G — quantum-circuit primitive rewrite. Single-segment path
+    //   callees named `qbind` / `qsuperpose` / `qmeasure` / `qentangle` are
+    //   rewritten in-place to the canonical `cssl_quantum_*` extern "C"
+    //   symbol that `cssl-host-quantum-hdc::ffi` exposes. The arity-checked
+    //   target name is what flows into `func.call @callee` below ;
+    //   `infer_intrinsic_result_type` then assigns the deterministic
+    //   result-type (u64 handle for vector-returning, u32 basis-index for
+    //   `qmeasure`). See `cssl-host-quantum-hdc/src/ffi.rs` for the FFI
+    //   contract + Apocky-directive reference.
+    if matches!(
+        target.as_str(),
+        "qbind" | "qsuperpose" | "qmeasure" | "qentangle"
+    ) {
+        let mangled = match (target.as_str(), args.len()) {
+            ("qbind", 2) => "cssl_quantum_qbind",
+            ("qsuperpose", 3) => "cssl_quantum_qsuperpose",
+            ("qmeasure", 1) => "cssl_quantum_qmeasure",
+            ("qentangle", 2) => "cssl_quantum_qentangle",
+            _ => "",
+        };
+        if !mangled.is_empty() {
+            target = mangled.to_string();
+        }
+    }
 
     // § T11-D35 : vec-length fast path — `length(p)` where `p` is a scalarized
     //   vec-param. Emit `sqrt(p0*p0 + p1*p1 + ... + pN*pN)` as scalar MIR ops so
@@ -4891,7 +4916,27 @@ fn lower_call_arg(ctx: &mut BodyLowerCtx<'_>, arg: &HirCallArg) -> Option<(Value
 /// Known math-intrinsic callees whose result-type equals the first operand's
 /// type (scalar-unary + scalar-binary math). Returns `None` for user-defined
 /// or unknown callees — caller falls back to the opaque-result-type stub.
+///
+/// § T11-W19-G — extended to recognize the mangled quantum-primitive
+///   FFI symbols `cssl_quantum_qbind` / `cssl_quantum_qsuperpose` /
+///   `cssl_quantum_qmeasure` / `cssl_quantum_qentangle`. These ABI shapes
+///   are independent of operand types : the q-prims pass `u64` handles
+///   in / `u64` handles or `u32` basis-indices out, so the result type
+///   is fixed by the symbol itself rather than by the first operand.
 fn infer_intrinsic_result_type(callee: &str, operand_tys: &[MirType]) -> Option<MirType> {
+    // § T11-W19-G : quantum-primitive results are determined by the
+    //   symbol, not the operand types. `qmeasure` returns a 32-bit
+    //   basis-index ; the other three return a 64-bit opaque handle
+    //   into the `cssl-host-quantum-hdc::ffi` registry.
+    match callee {
+        "cssl_quantum_qbind" | "cssl_quantum_qsuperpose" | "cssl_quantum_qentangle" => {
+            return Some(MirType::Int(IntWidth::I64));
+        }
+        "cssl_quantum_qmeasure" => {
+            return Some(MirType::Int(IntWidth::I32));
+        }
+        _ => {}
+    }
     if operand_tys.is_empty() {
         return None;
     }
