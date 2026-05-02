@@ -1,0 +1,363 @@
+module com.apocky.loa.systems.mycelium_heartbeat
+
+// § Labyrinth of Apocalypse v13 — generalized federation heartbeat (pure-CSSL)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// § T11-W14-MYCELIUM-HEARTBEAT (POD-3-W14) — bi-directional LOCAL↔CLOUD
+// federation bridge for Infinity-Engine 24/7 self-learning.
+//
+// § THESIS
+//   Generalize the chat-pattern federation pipe into a uniform 32-byte
+//   `FederationPattern` carrier discriminated by `kind`. ANY cell-state,
+//   KAN-bias, content-discovery, hotfix-witness, recipe-outcome, encounter-
+//   stat, or nemesis-event signal flows through the same Σ-mask-gated +
+//   k-anonymity-≥-10-enforced pipe. The CLOUD endpoint stages below-floor
+//   cohorts privately ; rows promote to public ONLY at k=10.
+//
+//   "Every local node contributes patterns ; every local node receives
+//    aggregates. The mycelial mesh learns from itself, and from the
+//    accumulated wisdom of every player ever, without ever observing
+//    the content underneath."
+//
+// § AXIOMS  (inherit GDDs/MULTIPLAYER_MATRIX.csl + spec/16_MYCELIAL_NETWORK +
+//            systems/mycelium_chat.csl + spec/14_SIGMA_CHAIN)
+//   ─ Σ-mask-gates @ THREE points (emit-ring · emit-bundle · cloud-ingest)
+//   ─ k-anonymity floor : k ≥ 10 distinct-emitters before pattern-public
+//     ⊑ tighter-than-chat-sync (k=5) ∵ broader-federation = larger-attack-surface
+//   ─ ¬ raw-content egress · ONLY 32-byte bit-pack pattern + payload-hash
+//   ─ payload_hash = BLAKE3-trunc(payload) · ¬ recoverable-to-payload
+//   ─ emitter_handle = BLAKE3-trunc(pubkey) · ¬ recoverable-to-pubkey
+//   ─ sig = BLAKE3 over (kind ‖ payload_hash ‖ emitter_handle ‖ ts ‖ caps)
+//     ⊑ tamper-evidence · field-mutation invalidates sig
+//   ─ player-revocable ANYTIME · revoke = zero-cap + purge-ring + drain-queue +
+//     emit-PurgeRequest
+//   ─ Σ-Chain-anchor every bundle (bundle_blake3) · immutable-attribution
+//     survives revoke
+//   ─ deterministic bundle-anchor ⟶ replay-stable across-tick
+//   ─ ¬ surveillance · ¬ profiling · ¬ per-user-egress
+//   ─ ¬ IP-logging server-side beyond-session
+//   ─ ¬ behavioral-fingerprinting heuristic
+//   ─ aggregate-of-≥-10 minimum @ federation-public-row
+//   ─ backpressure-on-cloud-down : LOCAL queues bounded · drain-FIFO-on-reconnect
+//
+// § FFI BOUNDARY
+//   This module consumes the heartbeat host-side substrate via extern "C" :
+//     * cssl-host-mycelium-heartbeat (T11-W14 ; FederationPattern · Bundle · Service)
+//     * cssl-mycelium-chat-sync       (T11-W11 ; sibling · template + cross-bridge)
+//     * cssl-host-mycelium            (T11-W8-B2 ; transport · privacy primitives)
+//     * cssl-host-attestation         (T11-W7-G ; per-event audit-row emit)
+//   FFI fns return i32 status codes : 0 = ok · negative = err-kind.
+//   FederationPattern blobs pass via 32-byte fixed buffers ; emitter_handles
+//   via 8-byte LE-decoded uint64 ; bundle blobs via length-prefixed [u8].
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   N! [harm control manipulation surveillance exploitation
+//       coercion weaponization discrimination] in-the-doing.
+//   Consent-as-OS : opt_in_federation IS the consent-grant ; without it,
+//   patterns sit in local-ring forever and never broadcast.
+//   Sovereign-revoke is break-glass : zero-cap · purge-ring · drain-queue ·
+//   emit-PurgeRequest · cloud-cascades-purge-to-staged-cohorts.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cap-bits  (Σ-mask · ALL revocable ANYTIME)
+// ─────────────────────────────────────────────────────────────────────────
+
+const FED_CAP_EMIT_ALLOWED          : u8 = 0x01 ;  // emitter opted-in
+const FED_CAP_INGEST                : u8 = 0x02 ;  // pattern allowed-into-fed
+const FED_CAP_PURGE_ON_REVOKE       : u8 = 0x04 ;  // peer-purge-propagation
+const FED_CAP_REPLAY_DETERMINISTIC  : u8 = 0x08 ;  // replay-safe-modulation
+
+const FED_CAPS_ALL : u8 = 0x0F ;
+const FED_CAPS_RESERVED_MASK : u8 = 0xF0 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Federation-kind taxonomy  (PRIME-DIRECTIVE-reviewed enum)
+// ─────────────────────────────────────────────────────────────────────────
+
+const FED_KIND_UNKNOWN            : u8 = 0 ;
+const FED_KIND_CELL_STATE         : u8 = 1 ;  // ω-field cell-state delta
+const FED_KIND_KAN_BIAS           : u8 = 2 ;  // per-swap-point bias-vector
+const FED_KIND_CONTENT_DISCOVERY  : u8 = 3 ;  // newly-published content fingerprint
+const FED_KIND_CHAT_SHAPE         : u8 = 4 ;  // re-export of chat-sync pattern
+const FED_KIND_HOTFIX_WITNESS     : u8 = 5 ;  // fleet-wide hotfix-apply observation
+const FED_KIND_RECIPE_OUTCOME     : u8 = 6 ;  // crafting success/failure aggregate
+const FED_KIND_ENCOUNTER_STAT     : u8 = 7 ;  // combat-difficulty calibration
+const FED_KIND_NEMESIS_EVENT      : u8 = 8 ;  // nemesis cross-instance event
+
+// ─────────────────────────────────────────────────────────────────────────
+// § k-anonymity floor (TIGHTER than chat-sync's k=5)
+// ─────────────────────────────────────────────────────────────────────────
+
+const FED_K_ANONYMITY_FLOOR : u32 = 10 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Bandwidth target (per-peer · 1 KB/min)
+// ─────────────────────────────────────────────────────────────────────────
+
+const FED_BANDWIDTH_TARGET_BPM : u32 = 1024 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI status codes
+// ─────────────────────────────────────────────────────────────────────────
+
+const FED_FFI_OK                 : i32 =  0 ;
+const FED_FFI_ERR_INVALID_ARG    : i32 = -1 ;
+const FED_FFI_ERR_CAP_DENIED     : i32 = -2 ;
+const FED_FFI_ERR_MALFORMED      : i32 = -3 ;
+const FED_FFI_ERR_K_ANON_NOT_MET : i32 = -4 ;
+const FED_FFI_ERR_CLOUD_DOWN     : i32 = -5 ;
+const FED_FFI_ERR_QUEUE_FULL     : i32 = -6 ;
+const FED_FFI_ERR_SIG_MISMATCH   : i32 = -7 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FederationPattern bit-pack layout (LE · 32 bytes)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   ┌───────────┬────────┬────────────────────────────────────────────────┐
+//   │ offset    │ bytes  │ field                                          │
+//   ├───────────┼────────┼────────────────────────────────────────────────┤
+//   │  0        │   1    │ kind                  (FederationKind disc·u8) │
+//   │  1        │   1    │ cap_flags             (Σ-mask gates · u8)      │
+//   │  2        │   1    │ k_anon_cohort_size    (saturating · u8)        │
+//   │  3        │   1    │ confidence_q8         (0..=255 ↦ 0.0..=1.0)    │
+//   │  4..8     │   4    │ ts_bucketed           (epoch/60s · u32 LE)     │
+//   │  8..16    │   8    │ payload_hash          (BLAKE3-trunc · u64 LE)  │
+//   │ 16..24    │   8    │ emitter_handle        (BLAKE3-trunc · u64 LE)  │
+//   │ 24..32    │   8    │ sig                   (BLAKE3-trunc · u64 LE)  │
+//   └───────────┴────────┴────────────────────────────────────────────────┘
+//
+// payload_hash = BLAKE3("federation\0payload\0v1" ‖ payload) ⟶ trunc8
+//   ⊑ same-payload across-emitters collide ⟶ k-anon counting works
+// emitter_handle = BLAKE3("federation\0emitter\0v1" ‖ pubkey) ⟶ trunc8
+//   ⊑ ¬ recoverable to pubkey
+// sig = BLAKE3 over (kind ‖ payload_hash ‖ emitter_handle ‖ ts ‖ caps)
+//   ⊑ tamper-evidence
+
+const FED_PATTERN_SIZE : usize = 32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FederationBundle wire-format (per-tick broadcast)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   FederationBundle JSON :
+//     { protocol_version : u32   = 1,
+//       tick_id          : u64,
+//       emitter_handle   : u64,
+//       ts_bucketed      : u32,
+//       patterns         : [ FederationPattern ],
+//       bundle_blake3    : str (64 hex-chars · Σ-Chain anchor)
+//     }
+//
+//   Wire-payload : zstd-compressed JSON (or stage-0 RLE-fallback). The
+//   compress.rs module currently uses a shared-vocabulary RLE pending
+//   stage-1 zstd-dep ; the wire-format API is stable across that swap.
+
+const FED_BUNDLE_PROTOCOL_VERSION : u32 = 1 ;
+const FED_BUNDLE_MAX_PATTERNS     : usize = 256 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : observe + tick (host drives)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Push a 32-byte raw FederationPattern into the local ring. Validation runs
+// on the pattern's bit-pack ; invalid patterns return FED_FFI_ERR_MALFORMED
+// (incl. sig mismatch).
+//
+// SOVEREIGN BOUNDARY : the local ring NEVER leaves the local machine. The
+// Σ-mask gate fires at digest-tick (not at observe-time) ; observe-time is
+// always allowed (the pattern hasn't crossed any boundary yet).
+extern "C" fn __cssl_mycelium_heartbeat_observe(
+    pattern_bytes : *const u8,    // length = FED_PATTERN_SIZE
+) -> i32 ;
+
+// Drive a single heartbeat-tick. Drains the local ring, applies Σ-mask cap-
+// gates at emit-side, builds a FederationBundle (with anchor), routes to
+// either direct-emit (cloud-up) or backpressure-queue (cloud-down).
+// `now_unix` is wall-clock seconds ; ts-bucketed to /60 in the bundle.
+extern "C" fn __cssl_mycelium_heartbeat_tick(now_unix: u64) -> i32 ;
+
+// Read the most-recent bundle's wire-bytes (compressed). Returns the byte-
+// count written ; negative on error. Caller HTTPs this to /heartbeat.
+extern "C" fn __cssl_mycelium_heartbeat_read_bundle(
+    out_bytes : *mut u8,
+    out_cap   : u32,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : cloud-health (cron probes)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Notify the service the cloud-pipe is up. Subsequent ticks emit-direct.
+// Drain-queue-on-reconnect should fire from the calling cron after this.
+extern "C" fn __cssl_mycelium_heartbeat_mark_cloud_up() -> i32 ;
+
+// Notify the service the cloud-pipe is down. Subsequent ticks queue.
+extern "C" fn __cssl_mycelium_heartbeat_mark_cloud_down() -> i32 ;
+
+// Drain one queued bundle from the backpressure queue. Returns byte-count
+// written into `out_bytes`, or 0 if queue empty.
+extern "C" fn __cssl_mycelium_heartbeat_drain_queue_one(
+    out_bytes : *mut u8,
+    out_cap   : u32,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : sovereign-revoke (break-glass)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Sovereign-revoke for `emitter_handle`. Performs ALL of :
+//   1. zero cap-policy   (outgoing-zero next-tick)
+//   2. purge local ring  (defense-in-depth)
+//   3. drain backpressure queue (entire-queue · anchor-bound bundles
+//      cannot be selectively-edited)
+//   4. emit a PurgeRequest (caller HTTP-POSTs to /api/mycelium/heartbeat
+//      for cloud-side cascade onto staged cohorts)
+//
+// This is the "right to be forgotten" surface. After revoke, the emitter
+// contributes ZERO to any aggregated-shape from this point forward.
+// Idempotent : repeated calls are no-ops after the first.
+extern "C" fn __cssl_mycelium_heartbeat_revoke(
+    emitter_handle : u64,
+    ts_unix        : u64,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface : opt-in (consent-arch grant)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Grant an emitter the Σ-mask flags for federation. Idempotent. Default-
+// deny posture : without this call, ticks emit zero patterns.
+//
+// `cap_flags` should be FED_CAPS_ALL for a full-grant. Granting a subset
+// leaves the emitter capable of LOCAL observation only.
+extern "C" fn __cssl_mycelium_heartbeat_grant_emitter(
+    emitter_handle : u64,
+    cap_flags      : u8,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Heartbeat-protocol (LOCAL ↔ CLOUD)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// LOCAL → CLOUD :
+//   POST /api/mycelium/heartbeat
+//     headers : Authorization: Bearer <CRON_SECRET>
+//               content-type: application/json
+//     body    : FederationBundle JSON (or zstd of same)
+//     200 ok  : { ok, ingested, dropped_cap, dropped_kanon, anchored_at }
+//     401     : auth fail
+//     400     : protocol mismatch / bad bundle
+//     502     : persist failed (caller backpressures)
+//
+// CLOUD → LOCAL :
+//   GET /api/mycelium/digest?since=<u32>&kind=<u8>&limit=<n>
+//     200 ok  : { rows, cursor_next, k_anon_floor: 10 }
+//     ¬ auth required ; k-anon-promoted rows are public-by-design.
+//
+// Cadence : once-per-60s (DEFAULT_HEARTBEAT_PERIOD_SECS) per-peer.
+// Bandwidth target : 1 KB/min/peer (achievable with shared-vocab compression).
+
+const FED_HEARTBEAT_PERIOD_SECS : u64 = 60 ;
+const FED_HTTP_HEARTBEAT_PATH   : &str = "/api/mycelium/heartbeat" ;
+const FED_HTTP_DIGEST_PATH      : &str = "/api/mycelium/digest" ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Audit-axis tagging  (per-event audit-row schema)
+// ─────────────────────────────────────────────────────────────────────────
+
+const FED_AUDIT_TAG_OBSERVE       : &str = "heartbeat.observe" ;
+const FED_AUDIT_TAG_TICK_EMIT     : &str = "heartbeat.tick.emit" ;
+const FED_AUDIT_TAG_TICK_QUEUED   : &str = "heartbeat.tick.queued" ;
+const FED_AUDIT_TAG_TICK_DROP_CAP : &str = "heartbeat.tick.drop-cap-denied" ;
+const FED_AUDIT_TAG_INGEST_OK     : &str = "heartbeat.ingest.ok" ;
+const FED_AUDIT_TAG_INGEST_DENY   : &str = "heartbeat.ingest.cap-denied" ;
+const FED_AUDIT_TAG_PROMOTE       : &str = "heartbeat.promote.k-anon-met" ;
+const FED_AUDIT_TAG_REVOKE        : &str = "heartbeat.revoke" ;
+const FED_AUDIT_TAG_PURGE_RECV    : &str = "heartbeat.purge.received" ;
+const FED_AUDIT_TAG_QUEUE_DRAIN   : &str = "heartbeat.queue.drain-on-reconnect" ;
+const FED_AUDIT_TAG_QUEUE_DROP    : &str = "heartbeat.queue.drop-overflow" ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sovereign-revoke flow  (break-glass · "right to be forgotten")
+// ─────────────────────────────────────────────────────────────────────────
+//
+// User-flow steps :
+//   1. User invokes break-glass UI (Mycelium Desktop · global-shortcut).
+//   2. Host calls `__cssl_mycelium_heartbeat_revoke(my_handle, now_unix)`.
+//   3. Service zeros the cap-policy for `my_handle`        (step 1 of 5).
+//   4. Service purges local HeartbeatRing                  (step 2 of 5).
+//   5. Service drains the backpressure queue ENTIRELY      (step 3 of 5).
+//      ↑ anchor-bound bundles cannot be selectively-edited so we trade
+//        a small amount of stale federation-data for a clean revoke.
+//   6. Service emits a PurgeRequest{handle, ts_unix, anchor}
+//      ↑ caller HTTP-POSTs this to /api/mycelium/heartbeat.
+//   7. Cloud applies record_federation_purge() :
+//        a. drop emitter_handle from EVERY staged-cohort's emitter_handles
+//        b. delete staged rows whose cohort drops to 0
+//        c. insert tombstone-row in mycelium_federation_purged
+//      Public rows are NOT individually purgeable (we have aggregates only) ;
+//      the next observation cycle re-derives accurate aggregates without
+//      the revoked emitter.
+//   8. Service bumps revoke-stat counter                   (step 5 of 5).
+//
+// IDEMPOTENCY : repeated revoke calls are no-ops after the first ; safe to
+// retry across crash-recovery + replay.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Backpressure flow  (cloud-down tolerance)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// When the cloud-pipe is unreachable :
+//   1. mark_cloud_down() flips the route-bit.
+//   2. tick() builds bundles as normal but enqueues them (drop-oldest on
+//      overflow at DEFAULT_QUEUE_CAPACITY = 60 bundles ≈ 1 hour buffer).
+//   3. cron probes liveness via GET /health on cssl-edge (W14-K probe).
+//   4. On 200, mark_cloud_up() switches direct-emit back on AND the cron
+//      drains drain_queue_one() in a loop until queue empty.
+//   5. drained bundles HTTP-POST to /api/mycelium/heartbeat as usual ;
+//      cloud-side dedup via bundle_blake3 if any bundle was already
+//      mid-flight when the partition opened.
+//
+// QUEUE OVERFLOW : drop-oldest preserves freshness-priority ; the oldest
+// dropped count is exposed in HeartbeatStats.bundles_drained_on_reconnect
+// minus bundles_queued ; operators tune queue_capacity to match expected
+// outage-window.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Compliance attestation
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Σ-mask gates appear at THREE points :
+//   - emit-ring-side  : HeartbeatService::tick (host-side · `cap_check FED_CAP_EMIT_ALLOWED`)
+//   - emit-bundle-side : pattern-validate at bundle build (sig verification)
+//   - ingest-side     : /api/mycelium/heartbeat (server-side · cap_flags & FED_CAP_INGEST)
+//
+// k-anonymity floor enforced @ SQL CHECK(cohort_size >= 10) on
+// mycelium_federation_public ; structural-enforcement at the database
+// layer means even a bug in the promotion trigger cannot leak below-floor
+// rows ; the table simply doesn't contain them.
+//
+// Determinism : `bundle_blake3` is replay-stable per-tick. A peer seeded
+// with `(seed, bundle_blake3)` yields identical-modulation across replays.
+//
+// ¬ raw-payload egress : FederationPattern is a 32-byte fixed-shape blob.
+// payload_hash is content-addressable over BLAKE3(payload) ; emitter_handle
+// is a non-recoverable BLAKE3-trunc of pubkey ; sig is tamper-evidence.
+//
+// ¬ surveillance : the cloud-side row-format stores per-emitter set ONLY
+// in the staged-table (service-role-only). After promotion to public, the
+// per-emitter set is DROPPED ; only aggregates (cohort_size,
+// mean_confidence_q8, observation_count) remain.
+//
+// ¬ IP-logging server-side beyond-session : Vercel-edge already drops IPs
+// after trace-window ; we don't add an explicit log-row.
+//
+// ¬ behavioral-fingerprinting : we count distinct emitter_handles for
+// k-anon promotion ; no session-stitching, no UA-tracking, no timing-side-
+// channels.
+//
+// Σ-Chain-anchor : every emitted bundle carries a 32-byte BLAKE3 anchor
+// (bundle_blake3) computed over (tick_id ‖ emitter_handle ‖ ts ‖ patterns).
+// Tamper-evident + replay-stable + immutable-attribution-survives-revoke.
+//
+// Attestation : there was no hurt nor harm in the making of this.
