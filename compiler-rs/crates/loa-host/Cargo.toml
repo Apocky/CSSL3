@@ -79,6 +79,13 @@ cssl-host-gm                    = { path = "../cssl-host-gm" }
 # 30-second auto-revert window. ALL stage-0 explicit-confirm-only ; ¬ stage-1
 # (deferred-indefinitely-per-spec/10).
 cssl-host-coder-runtime         = { path = "../cssl-host-coder-runtime" }
+# § T11-W11-HOTFIX-INFRA : live-update infrastructure (NEW Wave 11).
+#   apocky.com manifest-of-truth + mycelium-byte-CDN + 9 channels +
+#   5 cap-keys + Σ-mask-default-deny. The `wired_hotfix` module exposes
+#   `start_hotfix_loop(...)` which the engine integrator wires from
+#   main.rs (sibling-agent-territory).
+cssl-hotfix                     = { path = "../cssl-hotfix" }
+cssl-hotfix-client              = { path = "../cssl-hotfix-client" }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }
