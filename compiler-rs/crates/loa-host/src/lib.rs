@@ -209,6 +209,133 @@ pub mod wired_mp_transport_real;
 //   (deferred-indefinitely-per-spec/10).
 pub mod wired_coder_runtime;
 
+// § T11-W16-WIREUP — per-frame integration of the W11..W15 host crates that
+//   should-execute-each-frame OR on-event. Each `wired_*` module owns a
+//   per-frame `tick(state, dt_ms, input)` + persistent state held by the
+//   App. Cap-gated default-deny ; ¬ break existing event-loop shape.
+//   Wired crates :
+//     - cssl-host-weapons             (W13-2 · 16 WeaponKinds · hitscan + projectile)
+//     - cssl-host-fps-feel            (W13-5 · ADS + recoil + bloom + crosshair)
+//     - cssl-host-movement-aug        (W13-6 · sprint + slide + jump-pack + parkour)
+//     - cssl-host-loot                (W13-8 · 8-tier rarity loot-drop on combat-end)
+//     - cssl-host-mycelium-heartbeat  (W14-L · 60s mycelium-federate)
+//     - cssl-content-rating           (W12-7 · rating ingest)
+//     - cssl-content-moderation       (W12-11 · flag-handling)
+//     - cssl-host-playtest-agent      (W12-10 · automated-GM playtests)
+pub mod wired_weapons;
+pub mod wired_fps_feel;
+pub mod wired_movement_aug;
+pub mod wired_loot;
+pub mod wired_mycelium_heartbeat;
+pub mod wired_content;
+
+/// § LoaSubsystems — aggregator owned by App that holds per-frame state for
+/// every wave-W11..W15 host crate that the event-loop calls. Constructed once
+/// at App startup ; mutated per-frame via the `tick_*` family below.
+///
+/// Σ-cap-gating discipline : the corresponding `tick_*` helpers all take
+/// the gate-bools from a single `WiredFrameInput` so a sovereign-revoke
+/// (zero the bools) is a one-line guarantee.
+pub struct LoaSubsystems {
+    pub weapons: wired_weapons::WeaponsState,
+    pub fps_feel: wired_fps_feel::FpsFeelState,
+    pub movement_aug: wired_movement_aug::MovementAugState,
+    pub loot: wired_loot::LootState,
+    pub mycelium: wired_mycelium_heartbeat::MyceliumHeartbeatState,
+    pub content: wired_content::ContentState,
+}
+
+impl Default for LoaSubsystems {
+    fn default() -> Self {
+        Self::new(0xCAFE_BABE_DEADBEEF_u64)
+    }
+}
+
+impl LoaSubsystems {
+    /// Construct with a `node_handle` used by the mycelium-heartbeat
+    /// service for its emitter-id. Test-friendly default exists.
+    #[must_use]
+    pub fn new(node_handle: u64) -> Self {
+        let svc = wired_mycelium_heartbeat::MyceliumHeartbeatState::build_default_service(node_handle);
+        Self {
+            weapons: wired_weapons::WeaponsState::new(),
+            fps_feel: wired_fps_feel::FpsFeelState::default(),
+            movement_aug: wired_movement_aug::MovementAugState::default(),
+            loot: wired_loot::LootState::new(),
+            mycelium: wired_mycelium_heartbeat::MyceliumHeartbeatState::new(svc),
+            content: wired_content::ContentState::new(),
+        }
+    }
+}
+
+/// § WiredFrameInput — the bundled per-frame inputs for the wired-systems
+/// suite. Default = all-zero, all-caps-denied (sovereign-revoke posture).
+#[derive(Debug, Clone, Default)]
+pub struct WiredFrameInput {
+    pub weapons: wired_weapons::WeaponInput,
+    pub fps_feel: wired_fps_feel::FpsFeelInputCapped,
+    pub movement: wired_movement_aug::MovementIntentCapped,
+    pub camera_forward_xz: [f32; 2],
+    pub camera_right_xz: [f32; 2],
+    pub world_hints: wired_movement_aug::WorldHints,
+    pub loot: wired_loot::LootEvent,
+    pub allow_mycelium_emit: bool,
+    pub now_unix: u64,
+    pub content: wired_content::ContentIngest,
+}
+
+/// § tick_wired_systems — single-call entry-point invoked once per frame
+/// from the event-loop. Drives all wired subsystems in canonical order.
+///
+/// Order :
+///   1. weapons       (accuracy-recovery + projectile-step)
+///   2. fps_feel      (ADS + recoil + bloom + crosshair)
+///   3. movement_aug  (sprint/slide/jump-pack/parkour state-machine)
+///   4. loot          (combat-end-driven drop)
+///   5. mycelium      (60s federation accumulator · cap-gated emit)
+///   6. content       (rating/flag/quality-signal ingest)
+///
+/// Σ-cap-gating : every mutation gates internally on `WiredFrameInput`'s
+/// `allow_*` fields. Default-deny ; an empty `WiredFrameInput::default()`
+/// produces NO mutations beyond passive state-decay.
+pub fn tick_wired_systems(
+    sys: &mut LoaSubsystems,
+    dt_ms: f32,
+    input: &WiredFrameInput,
+) -> WiredFrameOutputs {
+    wired_weapons::tick(&mut sys.weapons, dt_ms, input.weapons);
+    wired_fps_feel::tick(&mut sys.fps_feel, dt_ms, input.fps_feel);
+    let proposed = wired_movement_aug::tick(
+        &mut sys.movement_aug,
+        dt_ms,
+        input.movement,
+        input.camera_forward_xz,
+        input.camera_right_xz,
+        input.world_hints,
+    );
+    let dropped = wired_loot::tick(&mut sys.loot, dt_ms, input.loot);
+    let bundle = wired_mycelium_heartbeat::tick(
+        &mut sys.mycelium,
+        dt_ms,
+        input.now_unix,
+        input.allow_mycelium_emit,
+    );
+    wired_content::tick(&mut sys.content, dt_ms, input.content.clone());
+    WiredFrameOutputs {
+        movement_proposed: proposed,
+        loot_dropped: dropped,
+        mycelium_bundle: bundle,
+    }
+}
+
+/// § WiredFrameOutputs — the side-effects the host can read THIS FRAME.
+/// All fields are optional ; cap-denied ticks produce empty outputs.
+pub struct WiredFrameOutputs {
+    pub movement_proposed: wired_movement_aug::ProposedMotion,
+    pub loot_dropped: Option<wired_loot::LootItem>,
+    pub mycelium_bundle: Option<wired_mycelium_heartbeat::FederationBundle>,
+}
+
 // § T11-W12-COCREATIVE-BRIDGE — bi-directional Claude ↔ in-game-GM bridge.
 //   8 NEW `cocreative.*` MCP tools that let an external Claude (running as
 //   MCP-client) talk to the in-game GM (cssl-host-llm-bridge running inside
@@ -418,6 +545,77 @@ mod tests {
     /// White-point passes at ~80 % display brightness, leaving headroom
     /// for highlights — verifies that the in-shader curve coefficients
     /// AND the CPU-side reference helper are in agreement.
+    // § T11-W16-WIREUP : integration tests for the per-frame wired-systems
+    //   tick. Validate that all 6 subsystems run + cap-gating is enforced
+    //   end-to-end + frame-counters advance as expected.
+
+    #[test]
+    fn wired_systems_constructs_with_default() {
+        let sys = LoaSubsystems::default();
+        assert_eq!(sys.weapons.shots_fired, 0);
+        assert_eq!(sys.fps_feel.frame_count, 0);
+        assert_eq!(sys.movement_aug.frame_count, 0);
+        assert_eq!(sys.loot.drops_produced, 0);
+        assert_eq!(sys.mycelium.bundles_emitted, 0);
+        assert_eq!(sys.content.ratings_accepted, 0);
+    }
+
+    #[test]
+    fn tick_wired_systems_default_input_is_no_op() {
+        // Empty WiredFrameInput = all caps off. No mutations except
+        // passive frame-counters.
+        let mut sys = LoaSubsystems::default();
+        let input = WiredFrameInput::default();
+        let _ = tick_wired_systems(&mut sys, 16.6, &input);
+        // Cap-denied : no shots, no drops, no bundles, no ratings.
+        assert_eq!(sys.weapons.shots_fired, 0);
+        assert_eq!(sys.loot.drops_produced, 0);
+        assert_eq!(sys.mycelium.bundles_emitted, 0);
+        assert_eq!(sys.content.ratings_accepted, 0);
+        // Frame-counter on fps_feel + movement_aug DOES advance even with
+        // empty input (passive decay tick).
+        assert_eq!(sys.fps_feel.frame_count, 1);
+        assert_eq!(sys.movement_aug.frame_count, 1);
+    }
+
+    #[test]
+    fn tick_wired_systems_with_caps_produces_visible_effects() {
+        let mut sys = LoaSubsystems::default();
+        sys.mycelium.set_period_ms(50.0); // tiny period so test crosses it
+        let input = WiredFrameInput {
+            weapons: wired_weapons::WeaponInput {
+                fired_this_frame: true,
+                allow_fire: true,
+                allow_step: true,
+            },
+            fps_feel: wired_fps_feel::FpsFeelInputCapped {
+                firing: true,
+                allow_fire: true,
+                ..Default::default()
+            },
+            loot: wired_loot::LootEvent {
+                combat_ended: true,
+                allow_drop: true,
+                seed_lo: 0xDEAD,
+                seed_hi: 0xBEEF,
+            },
+            allow_mycelium_emit: true,
+            now_unix: 1_700_000_000,
+            world_hints: wired_movement_aug::WorldHints::ground(),
+            ..Default::default()
+        };
+        // Single frame with 100ms dt to push past the mycelium period.
+        let outputs = tick_wired_systems(&mut sys, 100.0, &input);
+        // Weapons : fired with cap → shots_fired = 1.
+        assert_eq!(sys.weapons.shots_fired, 1);
+        // Loot : combat-ended + allow_drop → an item dropped.
+        assert!(outputs.loot_dropped.is_some());
+        assert_eq!(sys.loot.drops_produced, 1);
+        // Frame counters advanced.
+        assert_eq!(sys.fps_feel.frame_count, 1);
+        assert_eq!(sys.movement_aug.frame_count, 1);
+    }
+
     #[test]
     fn aces_tonemap_known_input_output() {
         // Reference CPU implementation (matches WGSL `aces_rrt_odt`).

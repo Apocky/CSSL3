@@ -175,6 +175,11 @@ pub struct App {
     burst: BurstState,
     /// In-flight video record (initially default = inactive).
     video: VideoState,
+
+    /// § T11-W16-WIREUP — wired-systems aggregator (weapons · fps-feel ·
+    /// movement-aug · loot · mycelium-heartbeat · content). Constructed at
+    /// App-start ; mutated per-frame via `crate::tick_wired_systems`.
+    pub wired: crate::LoaSubsystems,
 }
 
 impl Default for App {
@@ -220,6 +225,8 @@ impl App {
             mcp_port: None,
             burst: BurstState::default(),
             video: VideoState::default(),
+            // § T11-W16-WIREUP : default-deny posture · all caps off.
+            wired: crate::LoaSubsystems::default(),
         }
     }
 
@@ -1790,6 +1797,48 @@ impl App {
                     });
                 }
             }
+        }
+
+        // § 7b. § T11-W16-WIREUP : per-frame wired-systems tick.
+        //   Drives weapons · fps-feel · movement-aug · loot · mycelium ·
+        //   content. Cap-gated default-deny ; an empty WiredFrameInput
+        //   produces NO mutations beyond passive state-decay.
+        if !self.paused {
+            let dt_ms = (dt * 1000.0).clamp(1.0, 100.0);
+            // Build the per-frame input bundle from current player + frame
+            // edges. Caps are zero by default ; the integrator mints them
+            // from SOVEREIGN_CAP / per-system cap-tables.
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let yaw_cos = self.player.yaw.cos();
+            let yaw_sin = self.player.yaw.sin();
+            let mut wired_input = crate::WiredFrameInput {
+                camera_forward_xz: [yaw_sin, yaw_cos],
+                camera_right_xz: [yaw_cos, -yaw_sin],
+                world_hints: crate::wired_movement_aug::WorldHints::ground(),
+                now_unix,
+                ..Default::default()
+            };
+            // § movement-aug : pull intent from the input frame ; caps are
+            // OFF by default — the user enables sprint/slide/jump-pack via
+            // the menu (sovereign-revocable accessibility). Until that menu
+            // hook lands, we still tick movement-aug with walking baseline.
+            wired_input.movement.forward = frame.forward;
+            wired_input.movement.right = frame.right;
+            wired_input.movement.sprint_held = frame.sprint;
+            // § fps-feel : aim-held / firing routed from generic edges
+            // (mouse-buttons would feed here in a future wave). Both caps
+            // off by default → cap-gated path is a no-op.
+            wired_input.fps_feel.aim_held = false;
+            wired_input.fps_feel.firing = false;
+            // § weapons : firing edge gated by the same fps-feel firing
+            // signal. allow_step is on so existing-projectiles continue
+            // their ballistic flight even when fire-cap is off.
+            wired_input.weapons.fired_this_frame = wired_input.fps_feel.firing;
+            wired_input.weapons.allow_step = true;
+            let _outputs = crate::tick_wired_systems(&mut self.wired, dt_ms, &wired_input);
         }
 
         // § 7a. Update smoothed FPS for the HUD.
