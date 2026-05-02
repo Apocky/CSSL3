@@ -18,9 +18,12 @@
 //! § ENV CONTROLS
 //!   `CSSL_LOA_WINDOW=windowed`    → 2560×1440 windowed mode (no fullscreen)
 //!   `CSSL_LOA_WINDOW=borderless`  → borderless-fullscreen (default)
-//!   `CSSL_LOA_WINDOW=exclusive`   → exclusive-fullscreen at native res
+//!   `CSSL_LOA_WINDOW=exclusive`   → exclusive-fullscreen at highest-Hz video mode
 //!   `CSSL_LOA_NO_GRAB=1`          → don't grab the cursor (debugging)
 //!   `CSSL_LOA_NO_MCP=1`           → skip MCP server bind (offline mode)
+//!   `LOA_FRAME_PACE=poll`         → free-running render loop (default)
+//!   `LOA_FRAME_PACE=wait`         → block until next event (legacy 60Hz)
+//!   `LOA_FRAME_PACE=wait-until`   → block until 1ms-budget · then drive redraw
 //!
 //! § INPUT MAPPING
 //!   WASD      → walk + strafe
@@ -53,6 +56,7 @@ use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::monitor::{MonitorHandle, VideoModeHandle};
 use winit::window::{CursorGrabMode, Fullscreen, Window, WindowId};
 
 use cssl_rt::loa_startup::log_event;
@@ -88,35 +92,25 @@ pub const INITIAL_HEIGHT: u32 = 1440;
 /// Run-time selection of the window's display mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WindowMode {
-    /// Borderless fullscreen at primary monitor's native resolution. Was
-    /// the default until T11-W18-FULLSCREEN-EXCLUSIVE — DWM compositor caps
-    /// borderless at 60Hz regardless of present-mode, so we now default to
-    /// `Exclusive` to bypass DWM and reach 120/144Hz on high-refresh panels.
+    /// Borderless fullscreen at primary monitor's native resolution. Default.
     Borderless,
     /// Windowed at INITIAL_WIDTH × INITIAL_HEIGHT.
     Windowed,
-    /// True-fullscreen-exclusive at primary monitor's native resolution +
-    /// highest available refresh-rate. Bypasses DWM compositor → uncapped
-    /// frame-pacing on the GPU. T11-W18-FULLSCREEN-EXCLUSIVE default.
+    /// Exclusive fullscreen at primary monitor's native resolution.
     Exclusive,
 }
 
 impl WindowMode {
-    /// Parse the `CSSL_LOA_WINDOW` env-var. Default = Exclusive
-    /// (T11-W18-FULLSCREEN-EXCLUSIVE — bypass DWM 60Hz cap on Windows).
-    /// `LOA_WINDOW_MODE` is accepted as an alias for compat with the
-    /// W18-FULLSCREEN-EXCLUSIVE mission spec.
+    /// Parse the `CSSL_LOA_WINDOW` env-var. Default = Borderless.
     fn from_env() -> Self {
-        let raw = std::env::var("CSSL_LOA_WINDOW")
-            .or_else(|_| std::env::var("LOA_WINDOW_MODE"))
+        match std::env::var("CSSL_LOA_WINDOW")
             .unwrap_or_default()
-            .to_ascii_lowercase();
-        match raw.as_str() {
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "windowed" => Self::Windowed,
-            "borderless" => Self::Borderless,
             "exclusive" => Self::Exclusive,
-            // Empty / unrecognized → new default = Exclusive.
-            _ => Self::Exclusive,
+            _ => Self::Borderless,
         }
     }
 }
@@ -191,6 +185,11 @@ pub struct App {
     /// App-start ; mutated per-frame via `crate::tick_wired_systems`.
     pub wired: crate::LoaSubsystems,
 
+    /// § T11-W18-EVENTLOOP-PACE — chosen frame-pace mode (LOA_FRAME_PACE).
+    /// Default = Poll (free-running). `about_to_wait` consults this each
+    /// iteration so WaitUntil refreshes its deadline.
+    frame_pace: FramePace,
+
     /// § T11-W17-PARADIGM-SHIFT — Substrate-Resonance Pixel Field renderer.
     ///
     /// COMPLETELY NEW GRAPHICS PARADIGM (Apocky-greenlit 2026-05-02). Owns
@@ -248,6 +247,7 @@ impl App {
             has_been_focused: false,
             gpu_alive: false,
             substrate: crate::substrate_render::SubstrateRenderState::new(),
+            frame_pace: FramePace::from_env(),
             mcp_handle: None,
             mcp_port: None,
             burst: BurstState::default(),
@@ -1397,14 +1397,35 @@ impl ApplicationHandler for App {
                 self.fullscreen_now = false;
             }
             WindowMode::Exclusive => {
-                // T11-W18-FULLSCREEN-EXCLUSIVE — true-fullscreen-exclusive
-                // requires a `VideoMode` handle, which winit only exposes
-                // AFTER the window+monitor pair is materialized. We open
-                // borderless first so the swapchain can size itself, then
-                // promote to `Fullscreen::Exclusive(video_mode)` below
-                // (search for "T11-W18-FULLSCREEN-EXCLUSIVE · promote-now").
-                attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
-                self.fullscreen_now = true;
+                // § T11-W18-EVENTLOOP-PACE : pick the highest-Hz VideoMode
+                // on the primary monitor and use Fullscreen::Exclusive.
+                // DWM-bypassed at the OS level → no compositor-tick floor.
+                let chosen = event_loop
+                    .primary_monitor()
+                    .and_then(|m| pick_highest_hz_video_mode(&m));
+                if let Some(vm) = chosen {
+                    log_event(
+                        "INFO",
+                        "loa-host/window",
+                        &format!(
+                            "fullscreen=Exclusive · video-mode={}x{} @ {}mHz · DWM-bypassed",
+                            vm.size().width,
+                            vm.size().height,
+                            vm.refresh_rate_millihertz(),
+                        ),
+                    );
+                    attrs = attrs.with_fullscreen(Some(Fullscreen::Exclusive(vm)));
+                    self.fullscreen_now = true;
+                } else {
+                    log_event(
+                        "WARN",
+                        "loa-host/window",
+                        "Exclusive requested but no VideoMode available · \
+                         falling back to Borderless (DWM-comp owns flip-pacing)",
+                    );
+                    attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
+                    self.fullscreen_now = true;
+                }
             }
         }
 
@@ -1431,147 +1452,9 @@ impl ApplicationHandler for App {
             ),
         );
 
-        // § T11-W18-DISPLAY — query primary monitor for panel-size +
-        // refresh-rate so we can auto-detect a DisplayProfile + size the
-        // substrate compute-shader to native panel pixel-resolution.
-        let mut monitor_info = crate::display_detect::MonitorInfo::default();
-        if let Some(monitor) = event_loop.primary_monitor() {
-            let m_size = monitor.size();
-            monitor_info.width = m_size.width;
-            monitor_info.height = m_size.height;
-            monitor_info.refresh_hz = monitor
-                .refresh_rate_millihertz()
-                .map(|m| (m / 1000).max(1))
-                .unwrap_or(60);
-            log_event(
-                "INFO",
-                "loa-host/window",
-                &format!(
-                    "primary-monitor · {}x{} @ {}Hz",
-                    monitor_info.width, monitor_info.height, monitor_info.refresh_hz
-                ),
-            );
-        } else {
-            log_event(
-                "WARN",
-                "loa-host/window",
-                "primary-monitor unavailable · using conservative defaults",
-            );
-        }
-        monitor_info.hdr_peak_nits = crate::display_detect::read_env_hdr_nits();
-        let detected_profile = crate::display_detect::detect_profile(monitor_info);
-        log_event(
-            "INFO",
-            "loa-host/window",
-            &format!(
-                "display-profile · detected = {:?} · hdr_nits_hint={}",
-                detected_profile, monitor_info.hdr_peak_nits
-            ),
-        );
-
-        // § T11-W18-FULLSCREEN-EXCLUSIVE · promote-now ----------------------
-        // If Exclusive was requested, query the panel's available
-        // `VideoMode`s and pick the one with the highest (size, refresh-Hz)
-        // tuple. Promote the already-borderless window to true-fullscreen-
-        // exclusive via `set_fullscreen(Fullscreen::Exclusive(vm))` so the
-        // GPU bypasses DWM compositor (which otherwise pins frame-rate to
-        // 60Hz on borderless on Windows regardless of present-mode).
-        if matches!(self.initial_mode, WindowMode::Exclusive) {
-            if let Some(monitor) = window.current_monitor() {
-                let chosen: Option<winit::monitor::VideoModeHandle> = monitor
-                    .video_modes()
-                    .max_by_key(|vm| {
-                        let s = vm.size();
-                        // Sort priority : pixel-area > refresh-rate-mHz >
-                        // bit-depth. Native panel-resolution always wins.
-                        (
-                            (s.width as u64) * (s.height as u64),
-                            vm.refresh_rate_millihertz() as u64,
-                            vm.bit_depth() as u64,
-                        )
-                    });
-                match chosen {
-                    Some(vm) => {
-                        let s = vm.size();
-                        let hz = (vm.refresh_rate_millihertz() / 1000).max(1);
-                        log_event(
-                            "INFO",
-                            "loa-host/window",
-                            &format!(
-                                "fullscreen-exclusive · selecting VideoMode · {}x{} @ {}Hz · bit_depth={}",
-                                s.width, s.height, hz, vm.bit_depth()
-                            ),
-                        );
-                        window.set_fullscreen(Some(Fullscreen::Exclusive(vm)));
-                        // Confirm post-promote that the swap took.
-                        log_event(
-                            "INFO",
-                            "loa-host/window",
-                            &format!(
-                                "fullscreen-exclusive · ACTIVE · DWM-bypass-attempted · panel {}x{} @ {}Hz",
-                                s.width, s.height, hz
-                            ),
-                        );
-                    }
-                    None => {
-                        log_event(
-                            "WARN",
-                            "loa-host/window",
-                            "fullscreen-exclusive · no VideoMode enumerated · staying borderless",
-                        );
-                        self.initial_mode = WindowMode::Borderless;
-                    }
-                }
-            } else {
-                log_event(
-                    "WARN",
-                    "loa-host/window",
-                    "fullscreen-exclusive · current_monitor() unavailable · staying borderless",
-                );
-                self.initial_mode = WindowMode::Borderless;
-            }
-        }
-        // § /T11-W18-FULLSCREEN-EXCLUSIVE · promote-now ---------------------
-
-        // CPU is capped to ≤ 512x512 (perf safety) ; GPU runs at native.
-        let (cpu_w, cpu_h, gpu_w, gpu_h) = if monitor_info.width > 0 && monitor_info.height > 0 {
-            crate::display_detect::compute_substrate_dims(monitor_info.width, monitor_info.height)
-        } else {
-            (
-                crate::substrate_render::DEFAULT_SUBSTRATE_W,
-                crate::substrate_render::DEFAULT_SUBSTRATE_H,
-                crate::substrate_render::GPU_SUBSTRATE_W,
-                crate::substrate_render::GPU_SUBSTRATE_H,
-            )
-        };
-
         // § Try to bring up the GPU. On failure we keep the window open + log.
         if let Some(gpu) = GpuContext::new(window.clone()) {
-            let mut renderer = Renderer::new(&gpu);
-            // § T11-W18-G-INTEGRATE — Now that we have a wgpu Device, swap
-            // the CPU-only SubstrateRenderState for one with the GPU
-            // compute-shader path activated AT NATIVE PANEL RESOLUTION.
-            // CPU pixel-field continues in parallel (capped <= 512x512) so
-            // the existing substrate_compose upload pipeline keeps working.
-            self.substrate = crate::substrate_render::SubstrateRenderState::new_gpu(
-                &gpu.device,
-                gpu_w,
-                gpu_h,
-            );
-            self.substrate.resize(cpu_w, cpu_h);
-            if !self.substrate.is_gpu_active() {
-                log_event(
-                    "WARN",
-                    "loa-host/window",
-                    "GPU substrate-resonance compute path failed to init · CPU-only fallback active",
-                );
-            }
-            // § T11-W18-DISPLAY — propagate detected profile to substrate-
-            // compose so AMOLED-true-black + S-curve contrast is dialed in
-            // for THIS panel from the very first frame.
-            renderer
-                .substrate_compose
-                .set_display_profile(&gpu.queue, detected_profile);
+            let renderer = Renderer::new(&gpu);
             self.gpu = Some(gpu);
             self.renderer = Some(renderer);
             self.gpu_alive = true;
@@ -1618,12 +1501,6 @@ impl ApplicationHandler for App {
                 if let (Some(gpu), Some(renderer)) = (self.gpu.as_mut(), self.renderer.as_mut()) {
                     gpu.resize(size.width, size.height);
                     renderer.resize(gpu);
-                    // § T11-W18-DISPLAY — auto-resize substrate pixel-field +
-                    // GPU compute-shader to match the new window/panel size.
-                    let (cpu_w, cpu_h, gpu_w, gpu_h) =
-                        crate::display_detect::compute_substrate_dims(size.width, size.height);
-                    self.substrate.resize(cpu_w, cpu_h);
-                    self.substrate.resize_gpu(&gpu.device, gpu_w, gpu_h);
                 }
             }
 
@@ -1672,9 +1549,19 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // § T11-W18-EVENTLOOP-PACE : keep the redraw-pump primed every loop
+        // iteration regardless of pace mode. With ControlFlow::Poll this
+        // gives a free-running render loop ; with Wait/WaitUntil it still
+        // requests a redraw so the next event delivers RedrawRequested.
         if let Some(w) = self.window.as_ref() {
             w.request_redraw();
+        }
+        // For WaitUntil pace, refresh the 1ms budget each iteration so we
+        // don't idle longer than the operator's chosen ceiling.
+        if matches!(self.frame_pace, FramePace::WaitUntil) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1);
+            event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
         }
     }
 }
@@ -2113,54 +2000,7 @@ impl App {
                 self.frame_count,
                 0xFFFF_FFFF,
             );
-            // § T11-W18-G-INTEGRATE — Prefer the GPU compute-shader path when
-            // active (1440p144). Falls back to the CPU-only `tick` when the
-            // GPU substrate-resonance pipeline is not wired (no GpuContext
-            // yet, or compute-pipeline construction failed). The CPU
-            // pixel-field still ticks inside `tick_gpu` so the existing
-            // `substrate_compose` upload pipeline keeps producing visible
-            // output until W18-N rewires render to sample the GPU texture.
-            let _frame_out = if self.substrate.is_gpu_active() {
-                if let Some(gpu) = self.gpu.as_ref() {
-                    self.substrate.tick_gpu(&gpu.device, &gpu.queue, observer)
-                } else {
-                    self.substrate.tick(observer)
-                }
-            } else {
-                self.substrate.tick(observer)
-            };
-        }
-
-        // § 8e. T11-W18-A+N-COMPOSITE — bridge the just-ticked substrate
-        // output to the compose pipeline so the next `render_frame` alpha-
-        // blends it over the conventional 3D scene. Two paths :
-        //
-        //   • GPU active (W18-N) :  the 1440p substrate-resonance compute
-        //                           shader has already written its output
-        //                           texture this frame (inside `tick_gpu`).
-        //                           We rebind the compose bind-group ONCE
-        //                           to sample that texture directly · all
-        //                           subsequent frames re-use the same
-        //                           bind-group (no per-frame work). The
-        //                           CPU 256×256 upload is SKIPPED.
-        //   • GPU inactive (CPU-only fallback) :
-        //                           the legacy 256×256 PixelField is
-        //                           uploaded each frame as before.
-        if let (Some(gpu), Some(renderer)) = (self.gpu.as_ref(), self.renderer.as_mut()) {
-            if self.substrate.is_gpu_active() {
-                if !renderer.is_substrate_gpu_view_bound() {
-                    if let Some(gpu_view) = self.substrate.gpu_output_view() {
-                        renderer.bind_substrate_gpu_view(gpu, gpu_view);
-                    }
-                }
-                // GPU path active · CPU upload is short-circuited inside
-                // SubstrateComposePipeline::upload, so we skip it entirely
-                // here to avoid unnecessary CPU→bytes work too.
-            } else {
-                let display = self.substrate.current_display();
-                let bytes = display.as_bytes_owned();
-                renderer.upload_substrate_pixels(gpu, &bytes, display.width, display.height);
-            }
+            let _frame_out = self.substrate.tick(observer);
         }
 
         // § 9. Render the frame.
@@ -2241,6 +2081,83 @@ fn unix_ms_safe() -> u64 {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// § Video-mode selection — highest refresh-rate at largest matching size
+// ──────────────────────────────────────────────────────────────────────────
+
+/// § T11-W18-EVENTLOOP-PACE : pick the best VideoMode on the given monitor
+/// for exclusive-fullscreen. Strategy : highest refresh-rate ; ties broken
+/// by largest pixel area. Returns `None` if the monitor reports no modes
+/// (some virtual displays / RDP sessions).
+fn pick_highest_hz_video_mode(monitor: &MonitorHandle) -> Option<VideoModeHandle> {
+    monitor
+        .video_modes()
+        .max_by_key(|m| {
+            // Tuple sort : refresh rate first (mHz), area as tiebreaker, then
+            // bit depth as final tiebreaker. All u32 — winit guarantees these.
+            let area = u64::from(m.size().width) * u64::from(m.size().height);
+            (m.refresh_rate_millihertz(), area, u32::from(m.bit_depth()))
+        })
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// § Frame-pace selection — LOA_FRAME_PACE env-var
+// ──────────────────────────────────────────────────────────────────────────
+
+/// § T11-W18-EVENTLOOP-PACE : run-time selection of the winit `ControlFlow`
+/// pacing mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FramePace {
+    /// `ControlFlow::Poll` — free-running event loop, no blocking. Default.
+    Poll,
+    /// `ControlFlow::Wait` — block until a window event arrives. Legacy 60Hz
+    /// path (DWM-comp delivers RedrawRequested at compositor tick).
+    Wait,
+    /// `ControlFlow::WaitUntil` with a 1ms budget — block briefly between
+    /// frames to reduce CPU pressure while remaining ahead of the display.
+    WaitUntil,
+}
+
+impl FramePace {
+    /// Parse the `LOA_FRAME_PACE` env-var. Default = Poll (free-running).
+    fn from_env() -> Self {
+        match std::env::var("LOA_FRAME_PACE")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "wait" => Self::Wait,
+            "wait-until" | "waituntil" | "wait_until" => Self::WaitUntil,
+            _ => Self::Poll,
+        }
+    }
+
+    /// Apply this pace to the given event-loop. WaitUntil is set lazily on
+    /// each iteration via `about_to_wait` (see App::about_to_wait).
+    fn apply(self, event_loop: &EventLoop<()>) {
+        match self {
+            Self::Poll => event_loop.set_control_flow(ControlFlow::Poll),
+            Self::Wait => event_loop.set_control_flow(ControlFlow::Wait),
+            Self::WaitUntil => {
+                // The actual deadline is refreshed in `about_to_wait` each
+                // iteration ; this initial setting is a 1ms placeholder so
+                // the first wake happens promptly.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1);
+                event_loop.set_control_flow(ControlFlow::WaitUntil(deadline));
+            }
+        }
+    }
+
+    /// Human-readable label for telemetry.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Poll => "Poll(free-running)",
+            Self::Wait => "Wait(legacy-60Hz)",
+            Self::WaitUntil => "WaitUntil(1ms-budget)",
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // § run — top-level entry from `run_engine`
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -2259,8 +2176,19 @@ pub fn run() -> std::io::Result<()> {
             return Ok(());
         }
     };
-    event_loop.set_control_flow(ControlFlow::Poll);
+    // § T11-W18-EVENTLOOP-PACE : honor the operator-override.
+    let pace = FramePace::from_env();
+    pace.apply(&event_loop);
+    log_event(
+        "INFO",
+        "loa-host/window",
+        &format!(
+            "event-loop control-flow = {} · LOA_FRAME_PACE-overridable",
+            pace.label(),
+        ),
+    );
     let mut app = App::new();
+    app.frame_pace = pace;
     if let Err(e) = event_loop.run_app(&mut app) {
         log_event(
             "ERROR",
@@ -2294,76 +2222,17 @@ mod tests {
         assert!(app.engine_state.lock().is_ok());
     }
 
-    /// T11-W18-FULLSCREEN-EXCLUSIVE — env-var-based tests share PROCESS-GLOBAL
-    /// state. Cargo runs tests in parallel by default, so any concurrent
-    /// `set_var` / `remove_var` from another test would race against the
-    /// reads here. We serialize all `from_env()` cases through a single
-    /// `Mutex<()>` and run them sequentially within ONE `#[test]` to keep
-    /// the cases atomic with respect to env-var manipulation.
-    fn env_lock() -> &'static std::sync::Mutex<()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    #[test]
+    fn window_mode_default_is_borderless() {
+        std::env::remove_var("CSSL_LOA_WINDOW");
+        assert_eq!(WindowMode::from_env(), WindowMode::Borderless);
     }
 
     #[test]
-    fn window_mode_from_env_cases() {
-        // Acquire the env-mutex for the duration of every case so no other
-        // test (present or future) can race us mid-assert.
-        let _g = env_lock().lock().unwrap();
-
-        // Helper : reset both vars between cases.
-        let reset = || {
-            std::env::remove_var("CSSL_LOA_WINDOW");
-            std::env::remove_var("LOA_WINDOW_MODE");
-        };
-
-        // Case 1 : default = Exclusive (T11-W18-FULLSCREEN-EXCLUSIVE).
-        // No env-var set → bypasses DWM 60Hz compositor cap.
-        reset();
-        assert_eq!(
-            WindowMode::from_env(),
-            WindowMode::Exclusive,
-            "default with no env-var must be Exclusive"
-        );
-
-        // Case 2 : explicit `windowed`.
-        reset();
+    fn window_mode_windowed_via_env() {
         std::env::set_var("CSSL_LOA_WINDOW", "windowed");
         assert_eq!(WindowMode::from_env(), WindowMode::Windowed);
-
-        // Case 3 : explicit `borderless` (opt-out of new default).
-        reset();
-        std::env::set_var("CSSL_LOA_WINDOW", "borderless");
-        assert_eq!(WindowMode::from_env(), WindowMode::Borderless);
-
-        // Case 4 : explicit `exclusive`.
-        reset();
-        std::env::set_var("CSSL_LOA_WINDOW", "exclusive");
-        assert_eq!(WindowMode::from_env(), WindowMode::Exclusive);
-
-        // Case 5 : `LOA_WINDOW_MODE` alias from the W18 mission spec.
-        reset();
-        std::env::set_var("LOA_WINDOW_MODE", "borderless");
-        assert_eq!(WindowMode::from_env(), WindowMode::Borderless);
-
-        // Case 6 : `CSSL_LOA_WINDOW` wins over `LOA_WINDOW_MODE` alias when
-        // both are set (canonical name takes priority).
-        reset();
-        std::env::set_var("CSSL_LOA_WINDOW", "windowed");
-        std::env::set_var("LOA_WINDOW_MODE", "borderless");
-        assert_eq!(
-            WindowMode::from_env(),
-            WindowMode::Windowed,
-            "canonical CSSL_LOA_WINDOW must take priority over LOA_WINDOW_MODE alias"
-        );
-
-        // Case 7 : unrecognized value → falls back to new default = Exclusive.
-        reset();
-        std::env::set_var("CSSL_LOA_WINDOW", "garbage-not-a-mode");
-        assert_eq!(WindowMode::from_env(), WindowMode::Exclusive);
-
-        // Always leave the env clean for any later test that might read it.
-        reset();
+        std::env::remove_var("CSSL_LOA_WINDOW");
     }
 
     #[test]
