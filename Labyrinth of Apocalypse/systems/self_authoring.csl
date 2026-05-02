@@ -1,16 +1,20 @@
-# §§ self_authoring.csl — engine-self-authors-CSSL spec
-# ══════════════════════════════════════════════════════════════════
-# § T11-W12-SELF-AUTHOR · Apocky-directive ‟teaching self coding and self authoring content”
-# § canonical-impl : compiler-rs/crates/cssl-host-self-author/
-# § sibling-impls  : cssl-host-coder-runtime · cssl-host-llm-bridge
-#                  · cssl-substrate-sigma-runtime · cssl-substrate-sigma-chain
+module com.apocky.loa.systems.self_authoring
+
+# §§ self_authoring.csl — engine-self-authors-CSSL · FULL-IMPLEMENTATION
+# ══════════════════════════════════════════════════════════════════════════
+# § T11-W15-CSSL-SELF-IMPROVE-SELF-AUTHOR · canonical-source ←→ Rust-mirror bit-for-bit
+# § Apocky-directive : "teaching self coding and self authoring content"
+# § Rust-mirror : compiler-rs/crates/cssl-host-self-author/  (44 inline-tests)
+# § sibling-impls : cssl-host-coder-runtime · cssl-host-llm-bridge ·
+#                   cssl-substrate-sigma-runtime · cssl-substrate-sigma-chain
 #
 # § PRIME-DIRECTIVE
 #   t∞: consent = OS · ¬ harm · ¬ surveillance · ¬ exfiltration
 #   t∞: ¬ live-mutate-without-Σ-cap (EFFECT_WRITE bit REQUIRED)
 #   t∞: ∀ attempts → Σ-Chain-anchor (immutable history)
 #   t∞: sovereign-revoke-cap → cascading-rollback (revert-window)
-# ══════════════════════════════════════════════════════════════════
+#   t∞: ¬ self-modify-substrate-primitives ‼ structural-rejection
+# ══════════════════════════════════════════════════════════════════════════
 
 §§ THESIS
   ⊢ engine 'd self-author CSSL ⊑ {scenes · NPC-lines · recipes · lore · systems}
@@ -20,122 +24,521 @@
   ⊢ all-outcomes → TrainingPairLog → Σ-Chain-anchor
   ⊢ feedback-loop : KAN-loop (W12-3) reads-training-pairs → bias-adjust
 
-§§ KIND.SET ≡ {Scene · NpcLine · Recipe · Lore · System}
-  ⊢ Scene    : .cssl scene-file (entities · triggers · lighting · camera)
-  ⊢ NpcLine  : single dialogue-snippet (composes-into-scene)
-  ⊢ Recipe   : crafting recipe (in · out · station · time)
-  ⊢ Lore     : prose-block (¬ executable · gated by Constraints.lore_only)
-  ⊢ System   : rules+invariants+effects (high-impact · sovereign-bit-required)
+# ──────────────────────────────────────────────────────────────────────────
+# § PUBLIC CONSTANTS — mirror cssl-host-self-author/src/lib.rs
+# ──────────────────────────────────────────────────────────────────────────
 
-§§ CONSTRAINTS
-  ⌈max_lines⌉            ≤ 200 default · clamped per-request
-  ⌈max_tokens⌉           ≤ 4096 default · LLM-budget
-  ⌈forbid_effect_strings⌉ ⊇ {Effect::NetworkEgress · Effect::FsWrite · Effect::Surveil}
-  ⌈lore_only⌉           Bool · IF true → kind W! Lore
-  ⌈score_threshold⌉      0..100 · default 75 · ¬ auto-mutate-below
+const SA_DEFAULT_SCORE_THRESHOLD     : u8     = 75 ;
+const SA_DEFAULT_TRAINING_RING_CAP   : u32    = 4096 ;
+const SA_MAX_PROMPT_BYTES            : u32    = 16384 ;     // 16 KiB
+const SA_MAX_EXAMPLES                : u32    = 8 ;
+const SA_MAX_EXAMPLE_BYTES           : u32    = 4096 ;      // 4 KiB
+const SA_MAX_SOURCE_BYTES            : u32    = 65536 ;     // 64 KiB
 
-§§ FORBIDDEN.TARGETS ‼ structural-rejection-pre-LLM
-  ⊢ compiler-rs/crates/csslc/        ← compiler-itself
-  ⊢ compiler-rs/crates/cssl-rt/      ← runtime
-  ⊢ compiler-rs/crates/cssl-substrate-* ← substrate-primitives (any)
-  ⊢ compiler-rs/crates/cssl-host-coder-runtime/  ← cap-gate-itself
-  ⊢ compiler-rs/crates/cssl-host-self-author/    ← bootstrap-loop-guard
-  ⊢ compiler-rs/crates/cssl-host-attestation/    ← Σ-Chain-emitter
-  ⊢ compiler-rs/crates/cssl-host-akashic-records/ ← audit-aggregator
-  ⊢ compiler-rs/crates/cssl-host-sigma-chain/    ← chain-host
-  ⊢ compiler-rs/crates/cssl-effects/             ← effect-system
-  ⊢ compiler-rs/crates/cssl-caps/                ← cap-system
-  ⊢ PRIME_DIRECTIVE.md
-  ⊢ specs/grand-vision/
+# § sandbox-config defaults (mirror SandboxConfig::default)
+const SA_SANDBOX_COMPILE_ONLY        : bool   = true ;
+const SA_SANDBOX_MAX_DIAGNOSTICS     : u32    = 64 ;
+const SA_SANDBOX_DENY_EXTERNS        : bool   = true ;
 
-§§ SANDBOX.ISOLATION
-  ⊢ ¬ network-egress     ← structurally · sandbox holds-no-socket-handle
-  ⊢ ¬ FS-write-outside-scratch ← compile_only=true · no-codegen-no-link
-  ⊢ ¬ subprocess-exec    ← caller-supplied CompileFn · in-process-only
-  ⊢ deny_externs : src.contains("extern \"C\"") ⇒ Rejected
-  ⊢ max_source_bytes : 64 KiB · oversize ⇒ Rejected
-  ⊢ output : SandboxReport (in-memory) ← only channel
+# ──────────────────────────────────────────────────────────────────────────
+# § SelfAuthorKind  ⊑ 5-variants  ←→ Rust enum SelfAuthorKind
+# ──────────────────────────────────────────────────────────────────────────
 
-§§ SCORE.FORMULA  (compile + warning-free + tests + asserts)
-  compile-Pass     ⇒ +40
-  warnings == 0    ⇒ +20
-  test_count > 0   ⇒ +20
-  assert_count > 0 ⇒ +20
-  forbidden-effect ⇒ score = 0  (override)
-  compile-Fail     ⇒ score = 0  (override)
-  ⟦score⟧ ∈ [0, 100]  · clamped
+const KIND_SCENE     : u8 = 0 ;  // .cssl scene-file (entities · triggers · lighting · camera)
+const KIND_NPC_LINE  : u8 = 1 ;  // single dialogue-snippet (composes-into-scene)
+const KIND_RECIPE    : u8 = 2 ;  // crafting recipe (in · out · station · time)
+const KIND_LORE      : u8 = 3 ;  // prose-block (¬ executable · gated by Constraints.lore_only)
+const KIND_SYSTEM    : u8 = 4 ;  // rules+invariants+effects (high-impact · sovereign-bit-required)
+const KIND_COUNT     : u8 = 5 ;
 
-§§ LIVE-MUTATE.GATE  (Σ-cap REQUIRED)
-  ⊢ pre-conditions ∀ (and-narrow) :
-    ¬ forbidden-target    · target_path ∉ FORBIDDEN.TARGETS
-    ¬ revoked-cap          · cap.holder_pubkey ∉ gate.revoked_set
-    cap.preflight ✓        · sig-verify · ¬ expired · ¬ revocation_ref
-    sandbox-Pass            · compile.Pass{}
-    score ≥ threshold
-    requires_sovereign ⇒ sovereign_bit_held
-  ⊢ Allow ⇒ writer(target, cssl) ⇒ revert-window-arm
-  ⊢ ∀ decisions (Allow + Deny) ⇒ Σ-Chain-anchor (kind = AttestationAnchor | CapRevoke)
+# § kind-tag stable-string lookup (mirror SelfAuthorKind::as_str)
+fn kind_as_str ( k : u8 ) -> Str
+  | k == KIND_SCENE     -> "scene"
+  | k == KIND_NPC_LINE  -> "npc_line"
+  | k == KIND_RECIPE    -> "recipe"
+  | k == KIND_LORE      -> "lore"
+  | k == KIND_SYSTEM    -> "system"
+  | _                   -> "unknown"
 
-§§ SIGMA-CHAIN.ANCHOR.SEQUENCE
-  1. cap-grant  ⇒ EntryKind::CapGrant   payload=cap-spec
-  2. mutate-attempt ⇒ EntryKind::AttestationAnchor payload=AnchorPayload-JSON
-     {target_path · score · threshold · decision · source_blake3_hex}
-  3. cap-revoke ⇒ EntryKind::CapRevoke  payload=holder_pubkey
-  4. cascading-rollback ⇒ revert-window-trigger (cssl-host-coder-runtime)
+# § sovereign-bit requirement (mirror SelfAuthorKind::requires_sovereign)
+fn kind_requires_sovereign ( k : u8 ) -> bool
+  return k == KIND_SYSTEM
 
-§§ TRAINING-PAIR.LOG
-  ⊢ ring-buffer · default-capacity 4096 · oldest-evicted-on-overflow
-  ⊢ record-shape JSON :
-    {ts_unix · prompt · kind · generated_cssl · source_blake3_hex
-     · score · decision · target_path}
-  ⊢ KAN-loop (W12-3) reads-training_log.iter() ⇒ gradient-descent-on-(prompt → CSSL → score)
-  ⊢ feedback : score ≥ threshold = positive-signal · score < threshold = negative-signal
+# ──────────────────────────────────────────────────────────────────────────
+# § FORBIDDEN.TARGETS ‼ structural-rejection-pre-LLM (12 prefixes)
+# ──────────────────────────────────────────────────────────────────────────
+# §§ matched as path-prefix (case-sensitive · zero-allocation)
+# §§ list mirrors compiler-rs/crates/cssl-host-self-author/src/forbidden.rs
 
-§§ FAILURE-MODES (¬ silent · ∀ recorded)
-  ⊢ compile-error      ⇒ training-pair{score=0 · decision=NotAttempted}
-  ⊢ sandbox-test-fail  ⇒ training-pair{score=low · decision=DenySandboxFailed}
-  ⊢ cap-deny           ⇒ training-pair{decision=DenyCap{Invalid|Revoked|SovereignBitMissing}}
-  ⊢ score-below-θ      ⇒ training-pair{decision=DenyScoreBelowThreshold}
-  ⊢ forbidden-target   ⇒ early-reject-pre-LLM · ¬ training-pair (request-validation-fail)
+const FORBIDDEN_TARGETS_COUNT : u8 = 12 ;
 
-§§ INTEGRATION.POINTS  (sibling-W12-fanout)
-  ⊢ W12-1 cocreative.proposal_submit
-    ⇒ orchestrator::submit_proposal(prompt · kind · ranked-candidates · target)
-    ⇒ runs author() pipeline ⇒ training-pair recorded
-  ⊢ W12-3 KAN-loop
-    ⇒ reads orchestrator.training_log().iter() | as_slices()
-    ⇒ gradient-descend on (prompt → CSSL → score) triples
-    ⇒ updates KAN-substrate weights (writes-back are W12-3-private)
-  ⊢ W12-4 ContentPackage (.ccpkg)
-    ⇒ MAY consume training_log Allow-records as content-bundle inputs
-    ⇒ promote-to-package via separate ccpkg-pipeline (¬ this slice)
-  ⊢ W12-5+ UGC pipeline
-    ⇒ user-submitted prompts route through orchestrator.author()
-    ⇒ Mode-A LLM-bridge for richest output (cap-gated)
+const FORBIDDEN_TARGET_0  : Str = "compiler-rs/crates/csslc/" ;
+const FORBIDDEN_TARGET_1  : Str = "compiler-rs/crates/cssl-rt/" ;
+const FORBIDDEN_TARGET_2  : Str = "compiler-rs/crates/cssl-substrate-" ;       // glob-prefix : ALL substrate-tier crates
+const FORBIDDEN_TARGET_3  : Str = "compiler-rs/crates/cssl-host-coder-runtime/" ;
+const FORBIDDEN_TARGET_4  : Str = "compiler-rs/crates/cssl-host-self-author/" ;  // bootstrap-loop guard
+const FORBIDDEN_TARGET_5  : Str = "compiler-rs/crates/cssl-host-attestation/" ;
+const FORBIDDEN_TARGET_6  : Str = "compiler-rs/crates/cssl-host-akashic-records/" ;
+const FORBIDDEN_TARGET_7  : Str = "compiler-rs/crates/cssl-host-sigma-chain/" ;
+const FORBIDDEN_TARGET_8  : Str = "compiler-rs/crates/cssl-effects/" ;
+const FORBIDDEN_TARGET_9  : Str = "compiler-rs/crates/cssl-caps/" ;
+const FORBIDDEN_TARGET_10 : Str = "PRIME_DIRECTIVE.md" ;
+const FORBIDDEN_TARGET_11 : Str = "specs/grand-vision/" ;
 
-§§ TEST.MATRIX (≥ 12 inline)
-  ⊢ prompt→CSSL roundtrip                    ✓ orchestrator::t02
-  ⊢ compile-fail recorded                    ✓ orchestrator::t03
-  ⊢ sandbox-pass no-mutate-without-cap       ✓ orchestrator::t06
-  ⊢ cap-grant then mutate                    ✓ orchestrator::t07
-  ⊢ cap-revoke cascading                     ✓ orchestrator::t08
-  ⊢ forbidden-target rejected pre-LLM        ✓ orchestrator::t05
-  ⊢ training-pair-log ring-buffer eviction   ✓ training_pair::t02
-  ⊢ self-author-mutate-cap requires write    ✓ live_mutate::t01
-  ⊢ live-mutate happy-path                   ✓ live_mutate::t02
-  ⊢ score-below-threshold denied              ✓ live_mutate::t04
-  ⊢ sandbox-fail denied                      ✓ live_mutate::t05
-  ⊢ invalid-signature denied                 ✓ live_mutate::t07
-  ⊢ sovereign-bit required for System kind   ✓ live_mutate::t08
-  ⊢ extern-C rejected pre-compile            ✓ sandbox_csslc::t06
-  ⊢ forbidden-effect substring zeros score   ✓ sandbox_csslc::t07
-  ⊢ proposal-adapter (W12-1 seam)            ✓ orchestrator::t09
+fn is_forbidden_target ( path : Str ) -> bool
+  | path 'p starts-with FORBIDDEN_TARGET_0   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_1   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_2   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_3   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_4   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_5   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_6   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_7   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_8   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_9   -> true
+  | path 'p starts-with FORBIDDEN_TARGET_10  -> true
+  | path 'p starts-with FORBIDDEN_TARGET_11  -> true
+  | _                                        -> false
 
-§§ BUDGET-ATTESTATION
-  ⊢ crate-LOC (cssl-host-self-author) ≈ 1380 lines (lib.rs + 5 modules)
-  ⊢ cap-extension (cssl-host-coder-runtime cap.rs +6 lines)
-  ⊢ csl-spec (this file) ≈ 130 lines
-  ⊢ test-count : 44 (lib-inline) ✓ all-pass
+# ──────────────────────────────────────────────────────────────────────────
+# § Constraints  ←→ Rust struct Constraints
+# ──────────────────────────────────────────────────────────────────────────
 
-§§ ATTESTATION (PRIME_DIRECTIVE.md § 11)
-  ‼ no hurt nor harm in the making of this · to anyone · anything · anybody
+struct Constraints
+  max_lines              : u32                # default 200
+  max_tokens             : u32                # default 4096
+  forbid_effect_strings  : Vec<Str>          # substrings rejected in generated CSSL
+  lore_only              : bool                # if true → kind W! Lore
+  score_threshold        : u8                  # 0..100 · auto-mutate floor
+
+fn constraints_default ( ) -> Constraints
+  return Constraints {
+    max_lines:             200 ,
+    max_tokens:             4096 ,
+    forbid_effect_strings: [ "Effect::NetworkEgress" , "Effect::FsWrite" , "Effect::Surveil" ] ,
+    lore_only:             false ,
+    score_threshold:       SA_DEFAULT_SCORE_THRESHOLD
+  }
+
+# ──────────────────────────────────────────────────────────────────────────
+# § SelfAuthorRequest  ←→ Rust struct SelfAuthorRequest
+# ──────────────────────────────────────────────────────────────────────────
+
+struct SelfAuthorRequest
+  prompt        : Str
+  kind          : u8                          # KIND_*
+  examples      : Vec<Str>                    # ≤ SA_MAX_EXAMPLES
+  constraints   : Constraints
+  target_path   : Str                          # may be empty (record-only)
+
+# § validation-error codes (mirror RequestError)
+const REQ_ERR_OK                            : i32 =  0 ;
+const REQ_ERR_PROMPT_EMPTY                  : i32 = -1 ;
+const REQ_ERR_PROMPT_TOO_LARGE              : i32 = -2 ;
+const REQ_ERR_TOO_MANY_EXAMPLES             : i32 = -3 ;
+const REQ_ERR_EXAMPLE_TOO_LARGE             : i32 = -4 ;
+const REQ_ERR_LORE_ONLY_VIOLATED            : i32 = -5 ;
+const REQ_ERR_FORBIDDEN_TARGET              : i32 = -6 ;
+
+fn validate_request ( req : SelfAuthorRequest ) -> i32
+  | req.prompt 'p is-empty                              -> REQ_ERR_PROMPT_EMPTY
+  | req.prompt 'p len > SA_MAX_PROMPT_BYTES             -> REQ_ERR_PROMPT_TOO_LARGE
+  | req.examples 'p len > SA_MAX_EXAMPLES               -> REQ_ERR_TOO_MANY_EXAMPLES
+  | ∃ e ∈ req.examples ⊗ e 'p len > SA_MAX_EXAMPLE_BYTES -> REQ_ERR_EXAMPLE_TOO_LARGE
+  | req.constraints.lore_only ∧ req.kind ≠ KIND_LORE    -> REQ_ERR_LORE_ONLY_VIOLATED
+  | req.target_path 'p ¬ is-empty ∧ is_forbidden_target(req.target_path) -> REQ_ERR_FORBIDDEN_TARGET
+  | _                                                   -> REQ_ERR_OK
+
+# ──────────────────────────────────────────────────────────────────────────
+# § SANDBOX.ISOLATION  ←→ Rust Sandbox / SandboxConfig / SandboxReport
+# ──────────────────────────────────────────────────────────────────────────
+# §§ sandbox holds-zero-handle · only output channel = SandboxReport (in-memory)
+# §§ ¬ network-egress (no socket-handle structurally)
+# §§ ¬ FS-write outside scratch (compile_only=true · no codegen / no link)
+# §§ ¬ subprocess-exec (caller-supplied CompileFn · in-process-only)
+
+struct SandboxConfig
+  compile_only      : bool                    # default true
+  max_source_bytes  : u32                     # default 64 KiB
+  max_diagnostics   : u32                     # default 64
+  deny_externs      : bool                    # default true
+
+# § CompileOutcome — 3 variants
+const COMPILE_PASS      : u8 = 0 ;   # payload : warnings : u32
+const COMPILE_FAIL      : u8 = 1 ;   # payload : errors   : Vec<Str>
+const COMPILE_REJECTED  : u8 = 2 ;   # payload : reason   : Str
+
+struct InlineTestReport
+  test_count                 : u32           # count of `#[test]` blocks
+  assert_count               : u32           # count of assert! / assert_eq!
+  forbidden_effect_matched   : bool           # any forbid-effect substring matched
+
+struct SandboxReport
+  compile_kind     : u8                      # COMPILE_*
+  warnings         : u32                     # valid when COMPILE_PASS
+  errors_first     : Str                     # first error-string when COMPILE_FAIL
+  reject_reason    : Str                     # when COMPILE_REJECTED
+  tests            : InlineTestReport
+  source_blake3    : Bytes<32>               # canonical-id for Σ-Chain-anchor
+
+# § quality-score formula (mirror SandboxReport::quality_score)
+fn quality_score ( r : SandboxReport ) -> u8
+  | r.compile_kind ≠ COMPILE_PASS            -> 0u8
+  | r.tests.forbidden_effect_matched         -> 0u8
+  | _ -> {
+      let mut s : u32 = 40 ;                  # compile-pass = 40
+      s += if r.warnings == 0 then 20 else 0 ;
+      s += if r.tests.test_count > 0 then 20 else 0 ;
+      s += if r.tests.assert_count > 0 then 20 else 0 ;
+      ⟦ s 'p min 100 ⟧ as u8
+    }
+
+# § sandbox.run — pre-LLM gate + size-check + extern-deny + compile + heuristics
+fn sandbox_run ( cfg : SandboxConfig , forbid : Vec<Str> , source : Str , compile_fn : fn(Str)→u8 ) -> SandboxReport
+  let blake : Bytes<32> = blake3(source 'p bytes) ;
+  | source 'p len > cfg.max_source_bytes -> SandboxReport {
+      compile_kind: COMPILE_REJECTED ,
+      warnings: 0 ,
+      errors_first: "" ,
+      reject_reason: "source-too-large" ,
+      tests: InlineTestReport { test_count: 0 , assert_count: 0 , forbidden_effect_matched: false } ,
+      source_blake3: blake
+    }
+  | cfg.deny_externs ∧ source 'p contains "extern \"C\"" -> SandboxReport {
+      compile_kind: COMPILE_REJECTED ,
+      warnings: 0 ,
+      errors_first: "" ,
+      reject_reason: "extern-C-block-rejected" ,
+      tests: InlineTestReport { test_count: 0 , assert_count: 0 , forbidden_effect_matched: false } ,
+      source_blake3: blake
+    }
+  | _ -> {
+      let kind   = compile_fn(source) ;
+      let tc     = source 'p count-substrings "#[test]" ;
+      let ac     = source 'p count-substrings "assert!" + source 'p count-substrings "assert_eq!" ;
+      let fem    = ∃ s ∈ forbid ⊗ source 'p contains s ;
+      SandboxReport {
+        compile_kind: kind ,
+        warnings: 0 ,
+        errors_first: "" ,
+        reject_reason: "" ,
+        tests: InlineTestReport { test_count: tc , assert_count: ac , forbidden_effect_matched: fem } ,
+        source_blake3: blake
+      }
+    }
+
+# ──────────────────────────────────────────────────────────────────────────
+# § LIVE-MUTATE.GATE — Σ-cap REQUIRED  ←→ Rust LiveMutateGate / LiveMutateDecision
+# ──────────────────────────────────────────────────────────────────────────
+
+const DECISION_ALLOW                       : u8 = 0 ;
+const DECISION_DENY_SCORE_BELOW_THRESHOLD  : u8 = 1 ;
+const DECISION_DENY_SANDBOX_FAILED         : u8 = 2 ;
+const DECISION_DENY_FORBIDDEN_TARGET       : u8 = 3 ;
+const DECISION_DENY_CAP_INVALID            : u8 = 4 ;
+const DECISION_DENY_CAP_REVOKED            : u8 = 5 ;
+const DECISION_DENY_SOVEREIGN_BIT_MISSING  : u8 = 6 ;
+const DECISION_NOT_ATTEMPTED               : u8 = 7 ;  # record-only path
+
+fn decision_as_str ( d : u8 ) -> Str
+  | d == DECISION_ALLOW                       -> "allow"
+  | d == DECISION_DENY_SCORE_BELOW_THRESHOLD  -> "deny_score_below_threshold"
+  | d == DECISION_DENY_SANDBOX_FAILED         -> "deny_sandbox_failed"
+  | d == DECISION_DENY_FORBIDDEN_TARGET       -> "deny_forbidden_target"
+  | d == DECISION_DENY_CAP_INVALID            -> "deny_cap_invalid"
+  | d == DECISION_DENY_CAP_REVOKED            -> "deny_cap_revoked"
+  | d == DECISION_DENY_SOVEREIGN_BIT_MISSING  -> "deny_sovereign_bit_missing"
+  | d == DECISION_NOT_ATTEMPTED               -> "not_attempted"
+  | _                                          -> "unknown"
+
+struct MutateContext
+  target_path           : Str
+  score                 : u8
+  threshold             : u8
+  requires_sovereign    : bool
+  sovereign_bit_held    : bool
+  now_unix              : u64
+  issuing_sovereign_pk  : Bytes<32>
+  source_blake3         : Bytes<32>
+
+# § the AND-narrow gate — order matters (cheap-first · cap-last)
+fn decide_mutate ( ctx : MutateContext , cap : SovereignCap , revoked_set : Set<Bytes<32>> , compile_passed : bool ) -> u8
+  | is_forbidden_target(ctx.target_path)           -> DECISION_DENY_FORBIDDEN_TARGET
+  | cap.holder_pubkey ∈ revoked_set                -> DECISION_DENY_CAP_REVOKED
+  | ¬ cap_preflight_ok(cap , ctx.issuing_sovereign_pk , ctx.now_unix) -> DECISION_DENY_CAP_INVALID
+  | ¬ compile_passed                                -> DECISION_DENY_SANDBOX_FAILED
+  | ctx.score < ctx.threshold                      -> DECISION_DENY_SCORE_BELOW_THRESHOLD
+  | ctx.requires_sovereign ∧ ¬ ctx.sovereign_bit_held -> DECISION_DENY_SOVEREIGN_BIT_MISSING
+  | _                                                -> DECISION_ALLOW
+
+# ──────────────────────────────────────────────────────────────────────────
+# § SIGMA-CHAIN.ANCHOR.SEQUENCE  (every-attempt anchored)
+# ──────────────────────────────────────────────────────────────────────────
+
+const ENTRY_KIND_CAP_GRANT          : u8 = 1 ;
+const ENTRY_KIND_ATTESTATION_ANCHOR : u8 = 2 ;
+const ENTRY_KIND_CAP_REVOKE         : u8 = 3 ;
+
+struct AnchorPayload
+  target_path        : Str
+  score              : u8
+  threshold          : u8
+  decision           : Str
+  source_blake3_hex  : Str
+
+fn anchor_payload_from_decision ( d : u8 , ctx : MutateContext ) -> AnchorPayload
+  return AnchorPayload {
+    target_path:       ctx.target_path ,
+    score:             ctx.score ,
+    threshold:         ctx.threshold ,
+    decision:          decision_as_str(d) ,
+    source_blake3_hex: ctx.source_blake3 'p hex
+  }
+
+# ──────────────────────────────────────────────────────────────────────────
+# § TRAINING-PAIR.LOG  ←→ Rust TrainingPairLog (VecDeque ring)
+# ──────────────────────────────────────────────────────────────────────────
+
+struct TrainingPairRecord
+  ts_unix            : u64
+  prompt             : Str
+  kind               : u8                       # KIND_*
+  generated_cssl     : Str
+  source_blake3_hex  : Str                      # 64-char-hex
+  score              : u8
+  decision           : u8                       # DECISION_*
+  target_path        : Str
+
+struct TrainingPairLog
+  capacity   : u32                              # default 4096
+  records    : Ring<TrainingPairRecord>         # FIFO · oldest-evicted-on-overflow
+
+fn training_pair_push ( log : TrainingPairLog , rec : TrainingPairRecord ) -> Maybe<TrainingPairRecord>
+  | log.records 'p len == log.capacity -> {
+      let evicted = log.records 'p pop-front ;
+      log.records 'p push-back rec ;
+      Some(evicted)
+    }
+  | _ -> {
+      log.records 'p push-back rec ;
+      None
+    }
+
+# ──────────────────────────────────────────────────────────────────────────
+# § ORCHESTRATOR  ←→ Rust SelfAuthorOrchestrator
+# ──────────────────────────────────────────────────────────────────────────
+
+struct OrchestratorConfig
+  llm_caps               : u32                  # cssl-host-llm-bridge CapBits
+  sandbox_cfg            : SandboxConfig
+  default_threshold      : u8
+  training_log_capacity  : u32
+
+struct AuthorOutcome
+  generated_cssl         : Str
+  sandbox_report         : SandboxReport
+  score                  : u8
+  mutate_decision        : u8                   # DECISION_*
+  sigma_chain_seq        : Maybe<u64>
+  training_record_index  : u32
+
+# § canonical 8-step pipeline (record-only path)
+fn orchestrator_author ( cfg : OrchestratorConfig , log : TrainingPairLog , req : SelfAuthorRequest , now : u64 , compile_fn : fn(Str)→u8 ) -> Result<AuthorOutcome , i32>
+  let v = validate_request(req) ;
+  | v ≠ REQ_ERR_OK -> Err(v)
+  | _ -> {
+      let cssl   = llm_bridge_chat(req.prompt , req.kind , req.examples , req.constraints) ;
+      let report = sandbox_run(cfg.sandbox_cfg , req.constraints.forbid_effect_strings , cssl , compile_fn) ;
+      let score  = quality_score(report) ;
+      let rec    = TrainingPairRecord {
+        ts_unix:           now ,
+        prompt:            req.prompt ,
+        kind:              req.kind ,
+        generated_cssl:    cssl ,
+        source_blake3_hex: report.source_blake3 'p hex ,
+        score:             score ,
+        decision:          DECISION_NOT_ATTEMPTED ,
+        target_path:       req.target_path
+      } ;
+      let idx    = log.records 'p len ;
+      training_pair_push(log , rec) ;
+      Ok(AuthorOutcome {
+        generated_cssl:         cssl ,
+        sandbox_report:         report ,
+        score:                  score ,
+        mutate_decision:        DECISION_NOT_ATTEMPTED ,
+        sigma_chain_seq:        None ,
+        training_record_index:  idx
+      })
+    }
+
+# §§ FAILURE-MODES (¬ silent · ∀ recorded)
+#   compile-error      ⇒ training-pair{score=0 · decision=NotAttempted}
+#   sandbox-test-fail  ⇒ training-pair{score=low · decision=DenySandboxFailed}
+#   cap-deny           ⇒ training-pair{decision=DenyCap{Invalid|Revoked|SovereignBitMissing}}
+#   score-below-θ      ⇒ training-pair{decision=DenyScoreBelowThreshold}
+#   forbidden-target   ⇒ early-reject-pre-LLM · ¬ training-pair (request-validation-fail)
+# §§ INTEGRATION.POINTS (sibling-W12-fanout)
+#   W12-1 cocreative.proposal_submit ⇒ orchestrator::submit_proposal · author() · training-pair
+#   W12-3 KAN-loop ⇒ reads training_log().iter() · gradient-descend on (prompt → CSSL → score)
+#   W12-4 ContentPackage (.ccpkg) ⇒ MAY consume training_log Allow-records as content-bundle inputs
+
+# ──────────────────────────────────────────────────────────────────────────
+# § FFI BOUNDARY (Rust-mirror)
+# ──────────────────────────────────────────────────────────────────────────
+
+extern "C" fn cssl_self_author_orchestrator_new( cfg_handle : u32 ) -> usize ;
+extern "C" fn cssl_self_author_orchestrator_drop( handle : usize ) -> i32 ;
+extern "C" fn cssl_self_author_validate( prompt_ptr : *const u8 , prompt_len : usize , kind : u8 , target_ptr : *const u8 , target_len : usize ) -> i32 ;
+extern "C" fn cssl_self_author_run( handle : usize , prompt_ptr : *const u8 , prompt_len : usize , kind : u8 , target_ptr : *const u8 , target_len : usize , now_unix : u64 , out_score : *mut u8 , out_decision : *mut u8 ) -> i32 ;
+extern "C" fn cssl_self_author_training_log_len( handle : usize ) -> u32 ;
+extern "C" fn cssl_self_author_training_log_drain( handle : usize , out_buf : *mut u8 , out_cap : usize ) -> i32 ;
+extern "C" fn cssl_self_author_revoke_cap( handle : usize , holder_pk_ptr : *const u8 , now_unix : u64 ) -> i32 ;
+
+# ──────────────────────────────────────────────────────────────────────────
+# § INLINE TESTS (≥ 12)
+# ──────────────────────────────────────────────────────────────────────────
+
+#[test] fn t01_kind_as_str_stable ( ) {
+  assert_eq!( kind_as_str(KIND_SCENE)    , "scene"    ) ;
+  assert_eq!( kind_as_str(KIND_NPC_LINE) , "npc_line" ) ;
+  assert_eq!( kind_as_str(KIND_RECIPE)   , "recipe"   ) ;
+  assert_eq!( kind_as_str(KIND_LORE)     , "lore"     ) ;
+  assert_eq!( kind_as_str(KIND_SYSTEM)   , "system"   ) ;
+}
+
+#[test] fn t02_system_requires_sovereign ( ) {
+  assert!( kind_requires_sovereign(KIND_SYSTEM) ) ;
+  assert!( ¬ kind_requires_sovereign(KIND_SCENE) ) ;
+  assert!( ¬ kind_requires_sovereign(KIND_LORE) ) ;
+}
+
+#[test] fn t03_validate_empty_prompt_rejected ( ) {
+  let req = SelfAuthorRequest { prompt: "" , kind: KIND_SCENE , examples: [] , constraints: constraints_default() , target_path: "" } ;
+  assert_eq!( validate_request(req) , REQ_ERR_PROMPT_EMPTY ) ;
+}
+
+#[test] fn t04_validate_too_large_prompt_rejected ( ) {
+  let huge = "x" 'p repeat (SA_MAX_PROMPT_BYTES + 1) ;
+  let req = SelfAuthorRequest { prompt: huge , kind: KIND_SCENE , examples: [] , constraints: constraints_default() , target_path: "" } ;
+  assert_eq!( validate_request(req) , REQ_ERR_PROMPT_TOO_LARGE ) ;
+}
+
+#[test] fn t05_validate_too_many_examples_rejected ( ) {
+  let exes = [ "e" ] 'p repeat (SA_MAX_EXAMPLES + 1) ;
+  let req = SelfAuthorRequest { prompt: "p" , kind: KIND_SCENE , examples: exes , constraints: constraints_default() , target_path: "" } ;
+  assert_eq!( validate_request(req) , REQ_ERR_TOO_MANY_EXAMPLES ) ;
+}
+
+#[test] fn t06_validate_lore_only_violation ( ) {
+  let cs = Constraints { max_lines: 200 , max_tokens: 4096 , forbid_effect_strings: [] , lore_only: true , score_threshold: 75 } ;
+  let req = SelfAuthorRequest { prompt: "p" , kind: KIND_SCENE , examples: [] , constraints: cs , target_path: "" } ;
+  assert_eq!( validate_request(req) , REQ_ERR_LORE_ONLY_VIOLATED ) ;
+}
+
+#[test] fn t07_validate_happy_path ( ) {
+  let req = SelfAuthorRequest { prompt: "p" , kind: KIND_SCENE , examples: [] , constraints: constraints_default() , target_path: "" } ;
+  assert_eq!( validate_request(req) , REQ_ERR_OK ) ;
+}
+
+#[test] fn t08_forbidden_target_compiler_rejected ( ) {
+  assert!( is_forbidden_target("compiler-rs/crates/csslc/src/lib.rs") ) ;
+  assert!( is_forbidden_target("compiler-rs/crates/cssl-rt/src/lib.rs") ) ;
+}
+
+#[test] fn t09_forbidden_target_substrate_glob_rejected ( ) {
+  assert!( is_forbidden_target("compiler-rs/crates/cssl-substrate-sigma-runtime/src/lib.rs") ) ;
+  assert!( is_forbidden_target("compiler-rs/crates/cssl-substrate-sigma-chain/src/entry.rs") ) ;
+  assert!( is_forbidden_target("compiler-rs/crates/cssl-substrate-omega-field/src/cell.rs") ) ;
+}
+
+#[test] fn t10_forbidden_target_self_rejected ( ) {
+  assert!( is_forbidden_target("compiler-rs/crates/cssl-host-self-author/src/orchestrator.rs") ) ;
+}
+
+#[test] fn t11_forbidden_target_prime_directive_rejected ( ) {
+  assert!( is_forbidden_target("PRIME_DIRECTIVE.md") ) ;
+}
+
+#[test] fn t12_loa_scenes_allowed ( ) {
+  assert!( ¬ is_forbidden_target("Labyrinth of Apocalypse/scenes/test_room.cssl") ) ;
+  assert!( ¬ is_forbidden_target("Labyrinth of Apocalypse/systems/economy.csl") ) ;
+  assert!( ¬ is_forbidden_target("authored/scenes/forest_clearing.cssl") ) ;
+}
+
+#[test] fn t13_quality_score_pass_no_tests_60 ( ) {
+  let r = SandboxReport {
+    compile_kind: COMPILE_PASS , warnings: 0 , errors_first: "" , reject_reason: "" ,
+    tests: InlineTestReport { test_count: 0 , assert_count: 0 , forbidden_effect_matched: false } ,
+    source_blake3: [0u8 ; 32]
+  } ;
+  assert_eq!( quality_score(r) , 60u8 ) ;
+}
+
+#[test] fn t14_quality_score_full_100 ( ) {
+  let r = SandboxReport {
+    compile_kind: COMPILE_PASS , warnings: 0 , errors_first: "" , reject_reason: "" ,
+    tests: InlineTestReport { test_count: 1 , assert_count: 1 , forbidden_effect_matched: false } ,
+    source_blake3: [0u8 ; 32]
+  } ;
+  assert_eq!( quality_score(r) , 100u8 ) ;
+}
+
+#[test] fn t15_quality_score_compile_fail_zero ( ) {
+  let r = SandboxReport {
+    compile_kind: COMPILE_FAIL , warnings: 0 , errors_first: "E001" , reject_reason: "" ,
+    tests: InlineTestReport { test_count: 0 , assert_count: 0 , forbidden_effect_matched: false } ,
+    source_blake3: [0u8 ; 32]
+  } ;
+  assert_eq!( quality_score(r) , 0u8 ) ;
+}
+
+#[test] fn t16_quality_score_warnings_drop_to_80 ( ) {
+  let r = SandboxReport {
+    compile_kind: COMPILE_PASS , warnings: 3 , errors_first: "" , reject_reason: "" ,
+    tests: InlineTestReport { test_count: 1 , assert_count: 1 , forbidden_effect_matched: false } ,
+    source_blake3: [0u8 ; 32]
+  } ;
+  assert_eq!( quality_score(r) , 80u8 ) ;
+}
+
+#[test] fn t17_quality_score_forbidden_effect_zeros ( ) {
+  let r = SandboxReport {
+    compile_kind: COMPILE_PASS , warnings: 0 , errors_first: "" , reject_reason: "" ,
+    tests: InlineTestReport { test_count: 5 , assert_count: 5 , forbidden_effect_matched: true } ,
+    source_blake3: [0u8 ; 32]
+  } ;
+  assert_eq!( quality_score(r) , 0u8 ) ;
+}
+
+#[test] fn t18_decision_strings_stable ( ) {
+  assert_eq!( decision_as_str(DECISION_ALLOW) , "allow" ) ;
+  assert_eq!( decision_as_str(DECISION_DENY_SCORE_BELOW_THRESHOLD) , "deny_score_below_threshold" ) ;
+  assert_eq!( decision_as_str(DECISION_DENY_SANDBOX_FAILED) , "deny_sandbox_failed" ) ;
+  assert_eq!( decision_as_str(DECISION_DENY_FORBIDDEN_TARGET) , "deny_forbidden_target" ) ;
+  assert_eq!( decision_as_str(DECISION_DENY_CAP_REVOKED) , "deny_cap_revoked" ) ;
+  assert_eq!( decision_as_str(DECISION_DENY_SOVEREIGN_BIT_MISSING) , "deny_sovereign_bit_missing" ) ;
+  assert_eq!( decision_as_str(DECISION_NOT_ATTEMPTED) , "not_attempted" ) ;
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+# § BUDGET-ATTESTATION
+# ──────────────────────────────────────────────────────────────────────────
+#   ⊢ csl-spec (this file) ≈ 480 LOC
+#   ⊢ Rust-mirror crate cssl-host-self-author ≈ 1380 LOC + 44 tests
+#   ⊢ inline-tests : 18  (target ≥ 10 · ✓)
+#   ⊢ forbidden-targets : 12  (mirror Rust FORBIDDEN_TARGETS slice ✓)
+#   ⊢ kinds : 5  (Scene · NpcLine · Recipe · Lore · System ✓)
+#   ⊢ decisions : 8  (Allow + 6 Deny + NotAttempted ✓)
+
+# ──────────────────────────────────────────────────────────────────────────
+# § ATTESTATION (PRIME_DIRECTIVE.md § 11)
+# ──────────────────────────────────────────────────────────────────────────
+#   ‼ no hurt nor harm in the making of this · to anyone · anything · anybody
+#   ⊢ ¬ live-mutate-without-Σ-cap (EFFECT_WRITE bit REQUIRED)
+#   ⊢ ∀ attempts → Σ-Chain-anchor (immutable history)
+#   ⊢ sovereign-revoke → cascading-rollback (revert-window)
+#   ⊢ self-author IS a CHANNEL-OF-EXPRESSION ¬ a CONTROL-CHANNEL
+#   ⊢ structural-rejection-pre-LLM ⊃ zero-LLM-cost-on-self-modify-attempts
+
+# END
