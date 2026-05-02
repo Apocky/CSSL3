@@ -1,0 +1,27 @@
+[package]
+name                   = "cssl-substrate-sigma-runtime"
+description            = "CSSLv3 — canonical runtime Σ-mask evaluator + sovereign-cap grant/revoke + audit-ring-buffer. The gate-fn every other crate routes READ/WRITE/EMIT through. Cite : specs/27_SIGMA_MASK_RUNTIME.csl ; PRIME_DIRECTIVE.md § 0 + § 5 + § 7 ; specs/grand-vision/15_UNIFIED_SUBSTRATE.csl."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "cssl_substrate_sigma_runtime"
+path = "src/lib.rs"
+
+[dependencies]
+# § Σ-runtime depends ONLY on real-crypto (BLAKE3-128 truncated checksum + Ed25519
+# sovereign-cap signature) + thiserror for typed deny-reasons. NO async / NO tokio /
+# NO serde — the runtime gate-fn is sync + zero-allocation in the hot-path.
+blake3        = { workspace = true }
+ed25519-dalek = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+# § rand : test-only fixture-key generation for SovereignCap signatures.
+rand = { workspace = true }
