@@ -1,108 +1,121 @@
-// apocky.com/docs · index of grand-vision specs
-// SSG · reads SPECS from build-time snapshot · zero runtime fs.
+// apocky.com/docs · table-of-contents landing page
+// Replaces prior auto-snapshot listing · now drives /docs/<slug> pages.
+// Specs auto-snapshot still surfaced via inline section linking to specs/grand-vision/*.csl.
 
 import type { NextPage, GetStaticProps } from 'next';
-import Head from 'next/head';
+import DocsLayout from '@/components/DocsLayout';
+import { DOC_PAGES, getDocSections, statusBadge } from '@/lib/docs-content';
 import { SPECS } from '@/lib/specs-snapshot';
 
 interface DocsIndexProps {
-  entries: ReadonlyArray<{ slug: string; title: string }>;
+  specEntries: ReadonlyArray<{ slug: string; title: string }>;
 }
 
-const DocsIndex: NextPage<DocsIndexProps> = ({ entries }) => {
+const DocsIndex: NextPage<DocsIndexProps> = ({ specEntries }) => {
+  const sections = getDocSections();
   return (
-    <>
-      <Head>
-        <title>Docs · grand-vision specs · Apocky</title>
-        <meta name="description" content="CSL3-glyph-native architecture specs for the Substrate, Σ-Chain, Mycelial Network, Akashic Records, distribution strategy, and the apocky.com portfolio hub." />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#0a0a0f" />
-        <link rel="canonical" href="https://apocky.com/docs" />
-        <style>{`
-          * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; }
-          body {
-            background: radial-gradient(ellipse at top, #15151f 0%, #0a0a0f 50%, #050507 100%);
-            color: #e6e6f0;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            min-height: 100vh;
-            -webkit-font-smoothing: antialiased;
-          }
-          a { color: inherit; text-decoration: none; }
-          a:hover { opacity: 0.85; }
-        `}</style>
-      </Head>
-      <main
-        style={{
-          maxWidth: 880,
-          margin: '0 auto',
-          padding: '4rem 1.5rem 6rem',
-          lineHeight: 1.65,
-        }}
-      >
-        <a href="/" style={{ fontSize: '0.85rem', color: '#7a7a8c', display: 'inline-block', marginBottom: '2rem' }}>
-          ← apocky.com
-        </a>
+    <DocsLayout
+      activeSlug=""
+      title="Docs · Apocky"
+      description="Documentation for Labyrinth of Apocalypse · the CSSL language · the Substrate · sovereignty model · mycelium network · keyboard reference · troubleshooting."
+    >
+      <h1 className="docs-h1">Apocky Docs</h1>
+      <p className="docs-blurb">
+        § How to use the apps · what the language does · how the substrate works.
+        Density = sovereignty · {DOC_PAGES.length} pages.
+      </p>
 
-        <h1
-          style={{
-            fontSize: 'clamp(1.75rem, 4vw, 2.5rem)',
-            margin: 0,
-            fontWeight: 700,
-            letterSpacing: '-0.02em',
-            backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c084fc 60%, #7dd3fc 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
-        >
-          Grand-Vision Specs
-        </h1>
-        <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.95rem' }}>
-          § CSL3-glyph-native architecture specs · density = sovereignty · {entries.length} documents
+      <p className="docs-p">
+        These docs cover the substrate-native systems shipped under apocky.com today —
+        primarily Labyrinth of Apocalypse (the first tenant), the CSSL language used to
+        author it, and the Substrate primitives all Apocky projects share. Pick a topic
+        from the sidebar or the sections below.
+      </p>
+
+      <p className="docs-p">
+        Status legend ·{' '}
+        <span style={{ color: '#34d399' }}>✓ available now</span> ·{' '}
+        <span style={{ color: '#fbbf24' }}>◐ in progress</span> ·{' '}
+        <span style={{ color: '#9aa0a6' }}>○ coming soon</span> ·{' '}
+        <span style={{ color: '#f472b6' }}>‼ subject to change</span>.
+      </p>
+
+      {sections.map((s) => (
+        <section key={s.name} style={{ marginTop: '2rem' }}>
+          <h2 className="docs-h2">§ {s.name}</h2>
+          <div style={{ display: 'grid', gap: '0.6rem' }}>
+            {s.pages.map((p) => {
+              const badge = statusBadge(p.status);
+              return (
+                <a
+                  key={p.slug}
+                  href={`/docs/${p.slug}`}
+                  style={{
+                    display: 'block',
+                    padding: '0.8rem 1rem',
+                    background: 'rgba(20, 20, 30, 0.5)',
+                    border: '1px solid #1f1f2a',
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.55rem', flexWrap: 'wrap' }}>
+                    <span style={{ color: badge.color, fontWeight: 700 }}>{badge.glyph}</span>
+                    <span style={{ fontWeight: 600, color: '#e6e6f0' }}>{p.title}</span>
+                    <span
+                      className="docs-status-badge"
+                      style={{ background: badge.color + '22', color: badge.color, border: `1px solid ${badge.color}33` }}
+                    >
+                      {badge.label}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#a8a8b8', marginTop: '0.3rem' }}>{p.blurb}</div>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      <section style={{ marginTop: '3rem' }}>
+        <h2 className="docs-h2">§ Grand-Vision Specs</h2>
+        <p className="docs-p">
+          The CSL3-glyph-native architecture specs that drive every Apocky project. Auto-snapshotted from{' '}
+          <code className="docs-ic">specs/grand-vision/*.csl</code> at build-time. {specEntries.length} documents.
         </p>
-
-        <section style={{ marginTop: '2.5rem', display: 'grid', gap: '0.75rem' }}>
-          {entries.map((e) => (
+        <div style={{ display: 'grid', gap: '0.55rem', marginTop: '1rem' }}>
+          {specEntries.map((e) => (
             <a
               key={e.slug}
               href={`/docs/${e.slug}`}
               style={{
                 display: 'block',
-                padding: '1rem 1.2rem',
-                background: 'rgba(20, 20, 30, 0.5)',
+                padding: '0.65rem 0.9rem',
+                background: 'rgba(20, 20, 30, 0.4)',
                 border: '1px solid #1f1f2a',
-                borderRadius: 6,
+                borderRadius: 4,
               }}
             >
               <div style={{ fontSize: '0.7rem', color: '#7a7a8c', letterSpacing: '0.1em' }}>{e.slug}</div>
-              <div style={{ fontSize: '0.95rem', color: '#cdd6e4', marginTop: '0.25rem' }}>{e.title}</div>
+              <div style={{ fontSize: '0.9rem', color: '#cdd6e4', marginTop: '0.2rem' }}>{e.title}</div>
             </a>
           ))}
-        </section>
+        </div>
+      </section>
 
-        <footer
-          style={{
-            marginTop: '4rem',
-            paddingTop: '2.5rem',
-            borderTop: '1px solid #1f1f2a',
-            color: '#5a5a6a',
-            fontSize: '0.78rem',
-          }}
-        >
-          <p style={{ margin: 0 }}>§ ¬ harm in the making · sovereignty preserved · t∞</p>
-          <p style={{ margin: '0.4rem 0 0' }}>
-            Specs auto-snapshot from <code style={{ color: '#a78bfa' }}>specs/grand-vision/*.csl</code> at build-time.
-          </p>
-        </footer>
-      </main>
-    </>
+      <footer className="docs-footer">
+        <p style={{ margin: 0 }}>§ ¬ harm in the making · sovereignty preserved · t∞</p>
+        <p style={{ margin: '0.4rem 0 0' }}>
+          Source: <code className="docs-ic">cssl-edge/lib/docs-content.ts</code> · static-site-generated.
+        </p>
+      </footer>
+    </DocsLayout>
   );
 };
 
 export const getStaticProps: GetStaticProps<DocsIndexProps> = async () => {
   return {
     props: {
-      entries: SPECS.map((s) => ({ slug: s.slug, title: s.title })),
+      specEntries: SPECS.map((s) => ({ slug: s.slug, title: s.title })),
     },
   };
 };
