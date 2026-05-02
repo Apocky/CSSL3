@@ -1536,6 +1536,7 @@ dependencies = [
  "blake3",
  "cssl-host-agent-loop",
  "cssl-host-llm-bridge",
+ "cssl-host-substrate-intelligence",
  "cssl-host-substrate-knowledge",
  "cssl-mycelium-chat-sync",
  "serde",
@@ -1721,6 +1722,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-host-substrate-intelligence"
+version = "0.1.0"
+dependencies = [
+ "blake3",
 ]
 
 [[package]]
@@ -4036,6 +4044,7 @@ dependencies = [
  "cssl-host-rt-trace",
  "cssl-host-spectral-grader",
  "cssl-host-stereoscopy",
+ "cssl-host-substrate-intelligence",
  "cssl-host-voice",
  "cssl-host-weapons",
  "cssl-hotfix",

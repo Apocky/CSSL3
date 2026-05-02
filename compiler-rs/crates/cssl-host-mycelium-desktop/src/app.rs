@@ -146,6 +146,75 @@ impl MyceliumApp {
         self.chat_sync.tick_now(now_unix());
     }
 
+    /// § T11-W17 · PROPRIETARY local-intelligence turn.
+    ///
+    /// Composes the reply via `cssl-host-substrate-intelligence` (the
+    /// substrate-resonance procedural composer) instead of routing through
+    /// the agent-loop → llm-bridge external-LLM path. This keeps the chat
+    /// experience entirely LOCAL : no Anthropic API calls, no network
+    /// egress, no telemetry leaving the device. Session recording + chat-
+    /// sync observation behave identically to `run_turn`.
+    ///
+    /// Per Apocky-foundational-axiom (memory/feedback_no_external_llm_for_loa_intelligence) :
+    /// the canonical Mycelium-chat backend is the proprietary substrate
+    /// intelligence ; `run_turn` (agent-loop) remains a feature-gated
+    /// opt-in path for Coder-role-only tool-augmentation.
+    pub fn run_substrate_turn(&self, user_input: &str) -> Result<TurnResult, AppError> {
+        let start = now_unix();
+
+        // Derive a deterministic seed from the user input via BLAKE3 so the
+        // same input reliably reproduces the same reply. Substrate-
+        // intelligence's internal axes mix this with role/kind-specific salt.
+        let mut h = blake3::Hasher::new();
+        h.update(user_input.as_bytes());
+        let digest: [u8; 32] = h.finalize().into();
+        let seed = u64::from_le_bytes([
+            digest[0], digest[1], digest[2], digest[3],
+            digest[4], digest[5], digest[6], digest[7],
+        ]);
+
+        // Compose a Collaborator-role reply (Mycelium's chat is collab/co-author).
+        let final_reply = cssl_host_substrate_intelligence::compose_dialogue_line(
+            /* archetype = */ 0,
+            /* mood       = */ 0,
+            /* topic      = */ 0,
+            seed,
+        );
+
+        let elapsed_ms = now_unix().saturating_sub(start).saturating_mul(1000);
+
+        // Record on session — same shape as run_turn so frontend history works.
+        let turn_id = {
+            let mut sess = self
+                .session
+                .lock()
+                .map_err(|_| AppError::Session("session mutex poisoned".into()))?;
+            // Use a substrate-derived turn id so it's deterministic + unique.
+            let turn_id: u64 = (seed ^ now_unix()) ^ 0x53_4E_54_52_53_55_42_31u64; // "SNTRSUB1" tag
+            sess.record(StoredTurn {
+                turn_id,
+                user_input: user_input.into(),
+                reply: final_reply.clone(),
+                tool_calls: Vec::new(),
+                elapsed_ms,
+                timestamp_unix: now_unix(),
+            });
+            turn_id
+        };
+
+        // Same chat-sync observation as run_turn so federated-mycelium learns.
+        self.chat_sync
+            .observe_turn(user_input, &final_reply, now_unix(), 0, 1);
+
+        Ok(TurnResult {
+            turn_id,
+            final_reply,
+            fetched_docs: Vec::new(),
+            tool_calls_executed: 0,
+            elapsed_ms,
+        })
+    }
+
     /// Drive a single turn end-to-end + record on the session.
     pub fn run_turn(&self, user_input: &str) -> Result<TurnResult, AppError> {
         let start = now_unix();

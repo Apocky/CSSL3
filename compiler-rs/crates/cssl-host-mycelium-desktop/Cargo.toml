@@ -32,6 +32,10 @@ tauri-shell = ["dep:tauri"]
 
 [dependencies]
 cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
+# § T11-W17 · PROPRIETARY local-intelligence backend for chat. Replaces the
+#   external-LLM call-path with substrate-resonance procedural composition.
+#   Per Apocky-foundational-axiom (memory/feedback_no_external_llm_for_loa_intelligence).
+cssl-host-substrate-intelligence = { path = "../cssl-host-substrate-intelligence" }
 cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
 cssl-host-agent-loop          = { path = "../cssl-host-agent-loop" }
 # § T11-W14 · Tauri 2.x desktop-shell · feature-gated (¬ pulled by default workspace build).

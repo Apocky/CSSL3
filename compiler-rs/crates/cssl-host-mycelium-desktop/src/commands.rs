@@ -181,15 +181,22 @@ pub fn handle_command(app: &mut MyceliumApp, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::StartSession => IpcResponse::SessionStarted {
             session_id: app.get_session().id,
         },
-        IpcCommand::SendMessage { content } => match app.run_turn(&content) {
-            Ok(turn) => IpcResponse::MessageReply {
-                turn_id: turn.turn_id,
-                content: turn.final_reply,
-                tool_calls: Vec::new(),
-                elapsed_ms: turn.elapsed_ms,
-            },
-            Err(e) => to_error(&e),
-        },
+        IpcCommand::SendMessage { content } => {
+            // § T11-W17 · canonical chat-path = PROPRIETARY local intelligence
+            //   (substrate_intelligence.csl, stage-0-shim cssl-host-substrate-
+            //    intelligence). NO Anthropic API. NO LLM-bridge. NO network.
+            //   Per Apocky-foundational-axiom (memory/feedback_no_external_
+            //    llm_for_loa_intelligence).
+            match app.run_substrate_turn(&content) {
+                Ok(turn) => IpcResponse::MessageReply {
+                    turn_id: turn.turn_id,
+                    content: turn.final_reply,
+                    tool_calls: Vec::new(),
+                    elapsed_ms: turn.elapsed_ms,
+                },
+                Err(e) => to_error(&e),
+            }
+        }
         IpcCommand::Cancel => match app.cancel_current_turn() {
             Ok(()) => IpcResponse::Cancelled,
             Err(e) => to_error(&e),
