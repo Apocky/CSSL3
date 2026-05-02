@@ -1,0 +1,18 @@
+[package]
+name                   = "cssl-host-alien-materialization"
+description            = "§ T11-W17-M · COMPLETELY NOVEL VISUAL REPRESENTATION · Substrate-Resonance Pixel Field · pixel = HDC-resonance integral over observer-ray through ω-field · color = 4-illuminant spectral-LUT projection · per-observer Σ-mask filter · NO triangle-rasterization · NO meshes · NO texture-atlases · NO BRDF · canonical-impl in Labyrinth of Apocalypse/systems/alien_materialization.csl"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_alien_materialization"
+
+[dependencies]
+cssl-host-crystallization = { path = "../cssl-host-crystallization" }
+blake3 = { workspace = true }
+
+[lints]
+workspace = true

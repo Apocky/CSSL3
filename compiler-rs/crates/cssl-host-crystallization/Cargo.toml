@@ -1,0 +1,17 @@
+[package]
+name                   = "cssl-host-crystallization"
+description            = "§ T11-W17-L · STAGE-0-BOOTSTRAP-SHIM for crystallization.csl · Crystal allocation + 8-aspect KAN-style splines + 4-illuminant spectral-LUT + 256-bit HDC binding-tree · canonical-impl in Labyrinth of Apocalypse/systems/crystallization.csl"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_crystallization"
+
+[dependencies]
+blake3 = { workspace = true }
+
+[lints]
+workspace = true
