@@ -1,0 +1,41 @@
+[package]
+name        = "cssl-content-subscription"
+version     = "0.1.0"
+edition     = "2021"
+rust-version = "1.75"
+license     = "AGPL-3.0-or-later OR LicenseRef-Commercial"
+authors     = ["Apocky <apocky13@gmail.com>"]
+description = "§ T11-W12-SUBSCRIBE — follow-creator + auto-pull-new-content. Reuses cssl-hotfix channel-mechanism (content.subscribed.realtime) + cssl-mycelium-chat-sync federation-broadcast. Sovereign-unsubscribe + cascading-creator-revoke + Σ-mask-gated. Anti-spam : ≤1 notif/min default · daily-digest rollup · ¬ engagement-bait · ¬ auto-resurface."
+publish     = false
+
+# § T11-W12-SUBSCRIBE (NEW · greenfield · sibling W12-N · excluded from workspace-glob
+#                     in line w/ cssl-content-package + cssl-substrate-audio pattern)
+#   ⊑ Subscription { id · subscriber_pubkey · target_kind · target_id ·
+#                     sigma_mask · frequency · created_at · revoked_at NULLABLE }
+#   ⊑ 3 target-kinds : Creator · Tag · ContentChain
+#   ⊑ 5 notification-kinds : NewPublished · RemixCreated · UpdateAvailable
+#                          · RevokedByCreator · RevokedByModeration
+#   ⊑ 3 frequencies : Realtime · Daily · Manual
+#   ⊑ Cascading-revoke : creator-revoke OR moderation-revoke → emits
+#       RevokedByCreator/Moderation notif → subscribers' installed-list
+#       gets remove-with-consent (Σ-mask gate enforced).
+#   ⊑ Anti-spam : token-bucket per-subscriber · 1 notif/min default ·
+#       daily-digest rollup · NEVER auto-resurface old content.
+#   ⊑ Distinct from cssl-hotfix :
+#         that crate = apocky.com release-bundles (operator-pushed)
+#         this crate = subscriber-pulled creator-content (user-authored)
+#         the two compose : content.subscribed.realtime is a hotfix-channel
+#                           name handled by SubscribeAdapter in this crate.
+
+[lib]
+name = "cssl_content_subscription"
+path = "src/lib.rs"
+
+[dependencies]
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+thiserror   = "1"
+blake3      = ">=1.5"
+
+[dev-dependencies]
+serde_json = "1"

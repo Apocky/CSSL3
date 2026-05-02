@@ -1,0 +1,48 @@
+[package]
+name                   = "cssl-content-remix"
+description            = "§ T11-W12-9 — fork-chain attribution · Σ-Chain-anchored · gift-only royalty-share · sovereign-revocable · 6 RemixKind · attribution-chain traversal walks-to-genesis · ¬ enforced-extraction · ¬ pay-for-power · 100% gift-tip-via-Stripe (minus stripe-fee)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W12-REMIX-CRATE (NEW · greenfield · sibling-of cssl-content-package + cssl-content-rating + cssl-host-sigma-chain + cssl-host-stripe-integration)
+#
+# § PRIME-DIRECTIVE INVARIANTS (encoded structurally)
+#   ─ ¬ remix without-Σ-cap : creator-cap REQUIRED at-fork-init
+#   ─ Attribution-immutable : RemixLink Ed25519-signed · Σ-Chain-anchored ·
+#                             post-anchor mutation rejected (signature-recompute fails)
+#   ─ Original-creator opt-out : NEW remixes blocked when opt_out=true ;
+#                                EXISTING remixes preserved (sovereignty-irrevocable)
+#   ─ Royalty-share = GIFT-ONLY : RoyaltyShareGift.pledged_pct creator-set ·
+#                                 ¬ enforced-extraction · sovereign_revocable always-true
+#   ─ Tips flow Stripe-gift-channel : 100% to-tipped-creator (minus Stripe-fee) ·
+#                                     ¬ platform-tax · ¬ pay-for-power
+#
+# § REMIX-CHAIN traversal :
+#   get_attribution_chain(content_id) → Vec<RemixLink> walks-up-to-genesis ·
+#   ALL ancestors visible · EACH-link Σ-Chain-anchor verifiable ·
+#   complexity O(depth) with cycle-detect via visited-set
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/content_remix.csl
+# § DB migration : cssl-supabase/migrations/0030_content_remix.sql
+# § Edge endpoints : cssl-edge/pages/api/content/{remix,attribution,tip}.ts
+
+[lib]
+name       = "cssl_content_remix"
+crate-type = ["rlib"]
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+
+[dev-dependencies]
+rand       = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
