@@ -85,6 +85,15 @@ switch ($Action) {
 
         New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
+        # § DEFENSIVE-CLEANUP : unregister-first wipes any stale path/args/principal/trigger
+        #   ∵ Register-ScheduledTask -Force has corner-cases where Action stays cached
+        $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if ($null -ne $existing) {
+            Write-Host "→ removing stale task entry (clean re-register)" -ForegroundColor Gray
+            try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
+            Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+
         $Action_ = New-ScheduledTaskAction `
             -Execute $DaemonPath `
             -WorkingDirectory $WorkDir
@@ -109,10 +118,23 @@ switch ($Action) {
             -Action $Action_ `
             -Trigger $Trigger `
             -Settings $Settings `
-            -Principal $Principal `
-            -Force | Out-Null
+            -Principal $Principal | Out-Null
 
-        Write-Host "✓ $TaskName registered" -ForegroundColor Green
+        # § VERIFY : read-back the registered action to confirm correct path
+        $registered = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if ($null -eq $registered) {
+            Write-Host "✗ register failed · task not found after Register-ScheduledTask" -ForegroundColor Red
+            exit 1
+        }
+        $regAction = $registered.Actions[0]
+        if ($regAction.Execute -ne $DaemonPath) {
+            Write-Host "✗ verify failed · expected $DaemonPath but registered $($regAction.Execute)" -ForegroundColor Red
+            exit 1
+        }
+
+        Write-Host "✓ $TaskName registered + verified" -ForegroundColor Green
+        Write-Host "  Execute : $($regAction.Execute)" -ForegroundColor Gray
+        Write-Host "  WorkDir : $($regAction.WorkingDirectory)" -ForegroundColor Gray
         Write-Host "  starts at next login OR via -Action start" -ForegroundColor Gray
         Show-Status
         exit 0
