@@ -1263,6 +1263,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-combat-loop"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-crystallization",
+]
+
+[[package]]
 name = "cssl-host-combat-sim"
 version = "0.1.0"
 dependencies = [
@@ -1517,6 +1525,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-many-worlds"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
 name = "cssl-host-metal"
 version = "0.1.0"
 dependencies = [
@@ -1602,6 +1617,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-nd-substrate"
+version = "0.1.0"
+dependencies = [
+ "smallvec",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-host-net"
 version = "0.1.0"
 dependencies = [
@@ -1671,6 +1694,13 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cssl-host-quantum-hdc"
+version = "0.1.0"
+dependencies = [
+ "blake3",
 ]
 
 [[package]]

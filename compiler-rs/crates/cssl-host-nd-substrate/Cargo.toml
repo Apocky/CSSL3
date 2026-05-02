@@ -1,0 +1,31 @@
+[package]
+name                   = "cssl-host-nd-substrate"
+description            = "CSSLv3 — N-dimensional ω-field substrate. 3D is a CONVENTION not a constraint : lift cell storage to N axes where each axis is a SEMANTIC DIMENSION (axis 0..2 spatial · axis 3 temporal · axis 4 mood · axis 5 arc · axis 6 causality · axis 7 archetype-affinity). Conventional 3D-perception is a DimensionalLens projection. Crystals can have N-D extents · players can navigate non-spatial dimensions · the lens itself is a substrate-state. Stage-0 N=8 ; const-generic so N can grow. Cite : T11-W19-B-NDSUBSTRATE."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W19-B · DIMENSIONALLY-EXPANSIVE+QUANTUM substrate
+# § PRIME-DIRECTIVE : the dimensional-lens is consent-gated ; observer chooses
+#   which axes are exposed ; non-consensual projection is structurally-rejected
+#   via DimensionalLens::with_consent().
+# § STAGE-0 : HashMap-based sparse storage ; chunk-tile + Morton-cascade are
+#   stage-1 graduations once profiled-pressure justifies them.
+
+[lib]
+name       = "cssl_host_nd_substrate"
+crate-type = ["rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# § thiserror — consent-violation + axis-out-of-range typed errors.
+thiserror = { workspace = true }
+# § smallvec — short axis-permutation lists pre-allocated on stack.
+smallvec  = { workspace = true }
+
+[dev-dependencies]
+# § stage-0 tests are pure ; no extra dev-deps required.

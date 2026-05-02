@@ -1,0 +1,17 @@
+[package]
+name                   = "cssl-host-many-worlds"
+description            = "§ T11-W19-E · STAGE-0-BOOTSTRAP-SHIM for many_worlds.csl · branching temporal-ring · superposition of N pasts × K candidate-futures · measurement-collapse via amplitude × similarity-to-observation · canonical-impl in Labyrinth of Apocalypse/systems/many_worlds.csl"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_many_worlds"
+
+[dependencies]
+blake3 = { workspace = true }
+
+[lints]
+workspace = true

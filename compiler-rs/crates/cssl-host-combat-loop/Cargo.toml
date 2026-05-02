@@ -1,0 +1,49 @@
+# § T11-W18-D-COMBAT : cssl-host-combat-loop
+# ══════════════════════════════════════════════════════════════════════════
+# § ROLE
+#   STAGE-0-BOOTSTRAP-SHIM for `Labyrinth of Apocalypse/systems/combat_loop.csl`.
+#   Per Apocky's foundational discipline (memory/feedback_loa_v13_must_be_cssl_source +
+#   feedback_take_words_literally_no_other_languages), the canonical-source-of-truth
+#   for combat-loop semantics is the .csl module. This Rust crate is a THIN shim
+#   that mirrors+forwards spec semantics until cssl-cgen-cpu-cranelift consumes
+#   the .csl module directly.
+#
+# § THESIS
+#   Where a conventional FPS engine has hardcoded weapon-tables (Destiny-Foundry,
+#   Borderlands-loot-pool, COD-loadout), LoA derives every weapon-stats from a
+#   BLAKE3-seeded procgen of (archetype × rarity × affix-set). Two artifacts with
+#   the same component-vector ALWAYS produce the same stats — replay-deterministic
+#   per-Apocky-canon. Rarity gates affix-COUNT, not stat-magnitude (cosmetic-only
+#   axiom · Q-06).
+#
+# § DEPS
+#   - cssl-host-crystallization : Crystal struct provides bounding-spheres
+#     (world_pos + extent_mm) for ray-cast hit detection (sphere-vs-sphere
+#     stage-0 ; SDF-vs-SDF when render-v2 wires).
+#   - blake3 : deterministic seed-derivation for procgen weapon-stats
+#     (replaces hardcoded weapon-tables per spec axiom).
+#
+# § ATTESTATION
+#   t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+# ══════════════════════════════════════════════════════════════════════════
+
+[package]
+name                   = "cssl-host-combat-loop"
+description            = "§ T11-W18-D · STAGE-0-BOOTSTRAP-SHIM for combat_loop.csl · weapons-cap → ray-cast → damage → death → loot · 8-tier rarity (Q-06a) · BLAKE3-seeded procgen weapon-stats (cosmetic-only-axiom honored) · canonical-impl in Labyrinth of Apocalypse/systems/combat_loop.csl"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+[lib]
+name = "cssl_host_combat_loop"
+
+[dependencies]
+cssl-host-crystallization = { path = "../cssl-host-crystallization" }
+blake3                    = { workspace = true }
+
+[lints]
+workspace = true

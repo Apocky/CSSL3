@@ -1,0 +1,18 @@
+[package]
+name                   = "cssl-host-intent-translation"
+description            = "§ T11-W18-C · STAGE-0-BOOTSTRAP-SHIM for intent_translation.csl · text/voice → BLAKE3-tokenize → HDC-bind → IntentCategory classify → IntentResolution → crystal-spawn-params · PROPRIETARY local-only · NO external LLM · canonical-impl in Labyrinth of Apocalypse/systems/intent_translation.csl"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_intent_translation"
+
+[dependencies]
+blake3                    = { workspace = true }
+cssl-host-crystallization = { path = "../cssl-host-crystallization" }
+
+[lints]
+workspace = true

@@ -1,0 +1,246 @@
+module com.apocky.loa.systems.many_worlds
+
+// § Labyrinth of Apocalypse · Many-Worlds Branching Temporal-Ring
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W19-E · canonical-CSSL-source · ‼ FOUNDATIONAL · "QUANTUM · push silicon with CSSL"
+//
+// § APOCKY-DIRECTIVE
+//   "QUANTUM · push silicon with CSSL"
+//   - exotic upgrade : conventional temporal-ring (depth=3 · linear-past) →
+//     superposition K candidate-futures + N candidate-pasts · weighted by
+//     amplitude · player observation collapses wave-function to one timeline
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-host-digital-intelligence-render/src/ring.rs
+//     ← linear-depth-3 ring · this module GENERALIZES that into superposition
+//   Labyrinth of Apocalypse/systems/digital_intelligence_render.csl
+//     ← parent pipeline · many-worlds plugs into the temporal-coherence stage
+//   Labyrinth of Apocalypse/systems/akashic.csl
+//     ← past-superposition store can persist via Akashic-Records (Σ-Chain)
+//   compiler-rs/crates/cssl-host-many-worlds/
+//     ← Rust host-impl of THIS module (replay-deterministic · zero-dep)
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS
+//   t∞: replay-deterministic · same (seed · intent · observation) → same branch
+//   t∞: amplitude-conservation · Σ |a|² normalized to 1 after every fork
+//   t∞: no observation-without-collapse · measure() is the ONLY collapse-API
+//   t∞: rewind preserves coherence · past-branches always re-derivable
+//   t∞: no quantum-bullshit · math is classical · semantics borrow many-worlds
+//   t∞: branching narratives genuinely co-exist before player-decision
+//   t∞: K-ahead-frames pre-rendered in parallel · collapse picks closest-match
+//   t∞: Akashic-Records OPT-IN persistence of past-superposition · Σ-mask-gated
+//
+// § THESIS
+//
+//   The conventional temporal-ring (cssl-host-digital-intelligence-render
+//   TemporalCoherenceRing depth=3) stores 3 LINEAR past-frames + blends
+//   them. Good for jitter-removal but assumes ONE timeline.
+//
+//   ManyWorldsRing extends it : the present is one branch ; the past is a
+//   SUPERPOSITION of N coherent past-branches ; the future is a
+//   SUPERPOSITION of K candidate-future-branches that the engine pre-renders
+//   in parallel. Player observation collapses to one timeline via measure().
+//
+// § WHAT THIS UNLOCKS
+//
+//   1. BRANCHING NARRATIVES that genuinely co-exist before player-decision.
+//      Engine renders all K candidate-futures concurrently ; when player
+//      input arrives, COLLAPSE to the closest-matching branch.
+//
+//   2. AKASHIC RECORDS as past-superposition store. Rewinding picks one
+//      past-branch by amplitude × seed (not the linear last-frame).
+//
+//   3. "WHAT IF" replay-mode where player rewinds + explores a different
+//      past-branch. Sovereign-respecting · player can fork their own arc.
+//
+//   4. PREDICTIVE PROCGEN : K-ahead-frames render in parallel (different
+//      possible inputs) ; collapse picks the one matching the actual input.
+//      Net effect : input-to-display latency → zero (work pre-done in
+//      rejected branches).
+//
+// § DETERMINISM AXIOM
+//
+//   Despite the quantum-flavored language, the math is CLASSICAL +
+//   REPLAY-DETERMINISTIC. The "amplitude" is a deterministic scalar weight ;
+//   "phase" is a deterministic seed-mod that drives narrative-divergence.
+//   Given the same (seed · intent · observation) tuple the same branch
+//   collapses every time. This is the LoA replay axiom.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-many-worlds bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+// Construct a fresh ManyWorldsRing. Returns opaque handle (Rust Box ptr).
+extern "C" fn __cssl_mw_ring_create(
+    max_past: u32,
+    max_futures: u32,
+) -> i64 ;
+
+extern "C" fn __cssl_mw_ring_destroy(handle: i64) -> i32 ;
+
+// Set the present-state from a 16-byte axes-blob + narrative_seed + tick.
+extern "C" fn __cssl_mw_ring_set_present(
+    handle: i64,
+    axes_ptr: *const i16,    // length 8
+    narrative_seed: u64,
+    intent_hash: u32,
+    tick: u32,
+) -> i32 ;
+
+// Branch the present into K candidate-futures driven by intent_seed.
+// Returns the number of branches actually added (clamped by max_futures).
+extern "C" fn __cssl_mw_ring_branch(
+    handle: i64,
+    intent_seed: u64,
+    k: u32,
+) -> i32 ;
+
+// Branch with intent-bias : axes_ptr is an 8-element overlay ; strength
+// in [0,1] blends the perturbation toward that overlay.
+extern "C" fn __cssl_mw_ring_branch_with_intent(
+    handle: i64,
+    intent_seed: u64,
+    intent_axes_ptr: *const i16, // length 8
+    strength: f32,
+    k: u32,
+) -> i32 ;
+
+// Collapse to the future-branch closest to observation. Returns the chosen
+// timeline_id, or 0 if there were no futures.
+extern "C" fn __cssl_mw_ring_measure(
+    handle: i64,
+    observation_axes_ptr: *const i16, // length 8
+    observation_seed: u64,
+    observation_intent: u32,
+    observation_tick: u32,
+) -> u32 ;
+
+// Rewind to the n-th most-recent past-branch. n=0 = newest. Returns the
+// chosen timeline_id, or 0 if past is shorter than n+1.
+extern "C" fn __cssl_mw_ring_rewind(
+    handle: i64,
+    n_past: u32,
+) -> u32 ;
+
+// Weighted-seed rewind : sample a past-branch by deterministic seed × |a|².
+extern "C" fn __cssl_mw_ring_rewind_weighted(
+    handle: i64,
+    seed: u64,
+) -> u32 ;
+
+// Inspect : current present axes (writes 8 i16 to out_ptr).
+extern "C" fn __cssl_mw_ring_present_axes(
+    handle: i64,
+    out_ptr: *mut i16, // length 8
+) -> i32 ;
+
+// Inspect : Σ probability of futures (Born-rule analogue · should ≈1.0).
+extern "C" fn __cssl_mw_ring_future_p_sum(handle: i64) -> f32 ;
+
+// Inspect : current past-branch count.
+extern "C" fn __cssl_mw_ring_past_count(handle: i64) -> u32 ;
+
+// Inspect : current future-branch count.
+extern "C" fn __cssl_mw_ring_future_count(handle: i64) -> u32 ;
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Type-aliases · semantic-clarity for callers
+// ─────────────────────────────────────────────────────────────────────────
+
+type TimelineId    = u32 ;
+type Amplitude     = f32 ;     // |a| in [0, 1]
+type Phase         = f32 ;     // [0, 2π)
+type IntentSeed    = u64 ;
+type NarrativeSeed = u64 ;
+type Tick          = u32 ;
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FrameState · 32-byte primitive · replay-stable
+// ─────────────────────────────────────────────────────────────────────────
+//   pixel_axes (8 × i16) compressed substrate-axes :
+//     0 : Solemnity   1 : Dynamism    2 : Mood       3 : Tension
+//     4 : Wonder      5 : Threat      6 : Coherence  7 : Urgency
+//   narrative_seed : drives storylet/GM/NPC-mood per-branch
+//   intent_hash    : input-intent that produced this branch
+//   tick           : monotonic at branch-creation
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PIPELINE · many-worlds-tick (called by digital_intelligence_render)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   ┌─────────────────────────────────────────────────────────────────────┐
+//   │ FRAME-N · MANY-WORLDS-AWARE PIPELINE                                │
+//   ├─────────────────────────────────────────────────────────────────────┤
+//   │  1. predict-input-intents → intent_seed + (optional) intent-axes   │
+//   │  2. branch(present, intent_seed, K=4)                              │
+//   │       → 4 candidate-futures stored in ring.futures                 │
+//   │  3. for each future-branch :                                        │
+//   │       a. spawn parallel render-job (worker-thread per branch)      │
+//   │       b. each job produces a frame-state (axes/seed/intent/tick)   │
+//   │  4. await player-input (latest poll) → observation-frame-state     │
+//   │  5. measure(ring, observation) → collapsed-future becomes present  │
+//   │  6. archive prior-present to past-superposition                    │
+//   │  7. emit collapsed frame-state to digital_intelligence_render      │
+//   │  8. (optional) Akashic-Records persist past-superposition snapshot │
+//   └─────────────────────────────────────────────────────────────────────┘
+//
+// § COLLAPSE FUNCTION
+//
+//   For each candidate-future :
+//     score = |amplitude| × max(0, IP(branch.frame_state, observation))
+//   The branch with highest score wins. Tie-break = ascending timeline_id.
+//   Falls back to amplitude-only when no IP-signal exists.
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// § REWIND MODES
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   N-Back(n)         : pick n-th most-recent · conventional undo
+//   MaxAmplitude      : pick the most-likely-to-have-actually-happened
+//                       past-branch (when past has been re-superposed)
+//   WeightedSeed(s)   : sample by deterministic seed × |a|²
+//                       · "what if I'd done X differently" mode
+//                       · replay-deterministic
+//   ByTimelineId(id)  : address a specific past-branch · Akashic-bookmark
+//
+// § AKASHIC INTEGRATION (FUTURE-WORK)
+//
+//   Past-superposition snapshots can persist to Akashic-Records (Σ-Chain
+//   shared-memory · BLAKE3+Ed25519+Σ-mask consent-gating). Each archived
+//   past-branch becomes a record kind=AKASHIC_PAST_BRANCH with payload =
+//   (axes/seed/intent/tick/amplitude/phase). Sovereign-revoke cascades
+//   purge from Akashic on demand. Cross-game-state interop allows other
+//   apocky.com portfolio-projects to read public past-branches under
+//   appropriate Σ-mask gating.
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INVARIANTS (enforced in Rust impl + asserted in tests)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   I1 : Σ probability(futures)  ≈ 1.0  after branch+normalize
+//   I2 : Σ probability(past)     ≈ 1.0  after archive+normalize
+//   I3 : present.amplitude       == 1.0 (collapsed branch is certain)
+//   I4 : timeline_id monotonic   (never reused once issued)
+//   I5 : measure() deterministic given (seed · intent · observation)
+//   I6 : rewind() promotes past → present + archives prior-present to past
+//   I7 : replay-determinism : same construction across hosts → byte-identical
+//   I8 : eviction at max-capacity preserves invariants
+//
+// § TEST-SURFACE (integration · 16+ tests landed)
+//
+//   - ring_full_lifecycle_branch_measure_rewind
+//   - replay_determinism_across_hosts
+//   - amplitude_conservation_across_branch_cycles
+//   - weighted_seed_rewind_replayable
+//   - fan_out_n_respects_max_futures_cap
+//   - measure_returns_none_when_no_futures
+//   - rewind_n_too_far_returns_none
+//   - timeline_ids_are_monotonic
+//   - external_normalize_amplitudes_idempotent
+//   - branch_present + measure + rewind unit tests in src/*.rs

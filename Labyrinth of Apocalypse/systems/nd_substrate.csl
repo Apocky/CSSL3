@@ -1,0 +1,192 @@
+module com.apocky.loa.systems.nd_substrate
+
+// § Labyrinth of Apocalypse · system · N-dimensional substrate + dimensional-lens
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W19-B-NDSUBSTRATE  ←  DIMENSIONALLY-EXPANSIVE + QUANTUM substrate
+// § Apocky-directive : "DIMENSIONALLY EXPANSIVE and QUANTUM enough · push the silicon"
+//
+// § REFERENCE
+//   memory/feedback_engine_is_runtime_procgen          ← procgen + lens-driven render
+//   memory/feedback_substrate_evolution_complete       ← ω-field 3D baseline
+//   memory/feedback_sigma_chain_unified_substrate      ← substrate-sovereign primitives
+//   memory/feedback_mycelial_network                   ← biological metaphor
+//   memory/feedback_dm_gm_not_general_ai               ← lens-as-narrator-tool
+//   compiler-rs/crates/cssl-host-nd-substrate/         ← stage-0 Rust impl
+//   compiler-rs/crates/cssl-substrate-omega-field/     ← 3D ancestor
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + SUBSTRATE_v2
+//
+//   t∞: 3D = CONVENTION ¬ constraint
+//        ← substrate stores N axes ; 3D = lens-projection-of-N
+//
+//   t∞: axis ≡ semantic-dimension ¬ pure-spatial
+//        stage-0 N=8 :
+//          axis 0 = spatial-X
+//          axis 1 = spatial-Y
+//          axis 2 = spatial-Z
+//          axis 3 = TEMPORAL          (now ↔ then · Δt-discrete)
+//          axis 4 = MOOD              (joy ↔ melancholy · -100..+100)
+//          axis 5 = ARC               (origin ↔ apex · narrative-progression)
+//          axis 6 = CAUSALITY         (cause ↔ effect · directed-edge weight)
+//          axis 7 = ARCHETYPE         (analytic ↔ embodied · modal-affinity)
+//
+//   t∞: const-generic N ⇒ N-bumps non-breaking
+//        ← stage-1 may add { aesthetic · ritual · trust · fluency · dialect · ... }
+//
+//   t∞: crystal-extents ∈ ⟦stage-0-N⟧
+//        crystal-handle MAY span hyper-rectangle (lo, hi) any-axes
+//        ← obsidian-crystal might exist :
+//             · spatial 2×2×2 cube
+//             · 3 mood-bands (rage · melancholy · awe)
+//             · 1 temporal-tick (now-only)
+//        ⇒ visible-at 24 cell-positions in 7-D hyper-volume
+//
+//   t∞: dimensional-lens = OBSERVER-WINDOW
+//        DimensionalLens : { source_axes · target_axes[3] · consent }
+//        target_axes[3] = which 3 N-axes promote-to renderer's X/Y/Z
+//        N → 3 projection ; preserves non-promoted axes via carry-coord
+//
+//   t∞: lens-projection consent-gated  ‼  PRIME-DIRECTIVE
+//        default-deny ; observer MUST consent before project()
+//        consent-state ∈ { Unconsented · Consented{at_tick} · Revoked }
+//        Revoked = permanent ; build new-lens to project-again
+//        ← substrate refuses silent re-enable of revoked lens
+//
+//   t∞: lens-rotation = consent-preserving
+//        SwapTargets{a,b}        ← swap two slot-positions
+//        PromoteSource{slot,new} ← replace target-axis with another source-axis
+//        rotation ¬ bypass consent ; only re-shapes already-consented lens
+//
+//   t∞: player-navigation NOT spatial-only
+//        player-coord ∈ NdCoord<8>
+//        actions modify ANY-axis :
+//          { walk-spatial · drift-mood · advance-arc · speed-temporal ... }
+//        ⇒ "walk through more melancholic until you arrive at a place"
+//
+//   t∞: distance-metrics axis-subset-aware
+//        squared_distance_along(other, &[0,1,2])     = spatial-only
+//        squared_distance_along(other, &[MOOD])      = mood-only
+//        squared_distance_along(other, &[ARC,CAUS])  = narrative-only
+//        ⇒ proximity ≠ singular ; observer chooses metric
+//
+//   t∞: axes signed-i32  ←  before-origin temporal · below-baseline mood
+//        substrate refuses silent rollover ; checked_add/sub returns Overflow
+//
+//   t∞: stage-0 storage = sparse-HashMap
+//        stage-1 graduation = chunk-tile + Morton-cascade once profiled
+//        const-generic surface stable across graduations
+//
+//   t∞: ω-field 3D-cells = STAGE0_N=8 cells with axes 3..7 = 0
+//        ⇒ 3D-only worlds are a SPECIAL-CASE of N-D substrate
+//
+// § INVARIANTS
+//   inv: ∀ lens ∈ DimensionalLens . target_axes ⊆ source_axes
+//   inv: ∀ lens . target_axes are pairwise-distinct (¬ duplicate-target)
+//   inv: ∀ axis ∈ source_axes . axis < N
+//   inv: ∀ insert_extent(lo, hi) . ∀i . lo[i] ≤ hi[i]
+//   inv: ∀ insert_extent . total-cell-count ≤ 1_000_000  (substrate-discipline)
+//   inv: revoked-lens ¬ project ¬ re-consent  (permanent)
+//
+// § TYPES
+//
+//   type NdCoord<const N: usize> = struct {
+//     axes: [i32; N]
+//   }
+//   ← origin() = all-zeros
+//   ← from_axes([i32; N]) ; get/set bounds-checked
+//   ← checked_add/checked_sub : refuse-overflow
+//   ← manhattan : u64 ; chebyshev : u32
+//   ← squared_distance_along(&[u8]) → u64  ← per-axis-subset metric
+//   ← select_axes::<M>([u8; M]) → NdCoord<M>  ← project-to-arbitrary-N′
+//
+//   type DimensionalLens = struct {
+//     source_axes: Vec<u8>      ← N-D superset observer knows-about
+//     target_axes: [u8; 3]      ← which 3 promote to renderer X/Y/Z
+//     source_n:    usize        ← arity-bound
+//     consent:     ConsentState
+//   }
+//   ← with_consent(src, tgt, n, tick)  ←  pre-consented at tick
+//   ← unconsented(src, tgt, n)         ←  pre-staged ; consent() to activate
+//   ← consent(tick)                    ←  grant on unconsented lens
+//   ← revoke()                         ←  permanent
+//   ← project_to_3d::<N>(coord) → [i32;3]
+//   ← unproject_from_3d::<N>([i32;3]) → NdCoord<N>  (non-target axes = 0)
+//   ← merge_3d_into::<N>(carry, [i32;3]) → NdCoord<N>  ← preserve carry
+//   ← apply(LensRotation) → ()
+//
+//   type LensRotation = enum {
+//     SwapTargets   { a: u8, b: u8 }
+//     PromoteSource { slot: u8, new_axis: u8 }
+//   }
+//
+//   type NdField<T, const N: usize> = struct {
+//     cells: HashMap<NdCoord<N>, T>
+//   }
+//   ← insert / get / remove / iter / clear / len
+//   ← insert_extent(&lo, &hi, &payload) → cell-count-written
+//   ← query_visible_through_lens(&lens) → Vec<([i32;3], &T)>
+//   ← query_box_through_lens(&lens, lo, hi) → Vec<([i32;3], &T)>
+//
+// § CANONICAL LENSES (stage-0)
+//
+//   spatial_xyz_for_stage0     ← target [0,1,2]   ← conventional 3D-renderer
+//   mood_temporal_for_stage0   ← target [4,5,3]   ← emotional-landscape
+//   causal_arc_for_stage0      ← target [6,5,3]   ← narrative-debugger
+//
+// § HOST-CRATE
+//   compiler-rs/crates/cssl-host-nd-substrate
+//   - lib.rs   : crate-root · STAGE0_N=8 · axis::* canonical indices
+//   - coord.rs : NdCoord<N> + arithmetic + bounds + select_axes
+//   - lens.rs  : DimensionalLens + ConsentState + LensRotation + canonical-lenses
+//   - field.rs : NdField<T,N> sparse-store + insert_extent + lens-aware queries
+//   - tests/   : 39 unit + 8 integration ; all passing
+//
+// § INTERPLAY  with-other-systems
+//
+//   coherence_engine.csl :
+//     13 coherence-axes are ORTHOGONAL to spatial — consider them axes 8..20 in
+//     stage-1 N=21 substrate. T11-W19-B authors stage-0 N=8 ; coherence-axes
+//     remain in their own field today, but the path to unification is open.
+//
+//   ω-field 3D :
+//     existing 3D ω-field cells lift to N=8 by setting axes 3..7 = 0. Stage-0
+//     spatial_xyz_for_stage0 lens is the bridge.
+//
+//   home_dimension.csl :
+//     player-Home ≡ pocket-NdField with player-controlled lens. Player can
+//     rotate to mood-temporal lens to "see how the home feels right now".
+//
+//   gm_specialist.csl :
+//     GM may construct narrative-debugger lens (causal_arc) to inspect what
+//     caused what at which arc-point ; consent-gated by player-attestation.
+//
+// § FUTURE  ← stage-1 + beyond
+//
+//   { stage-1 graduations :
+//     · chunk-tile + Morton-cascade for dense-region storage
+//     · GPU-residency : stream subset of N to renderer-friendly buffer
+//     · learned-projection : KAN-as-lens replaces hand-picked target_axes }
+//
+//   { N-bumps  ←  add semantic dimensions as game-design surfaces them :
+//     · aesthetic    (kitsch ↔ sublime)
+//     · ritual       (mundane ↔ sacred)
+//     · trust        (stranger ↔ kin)
+//     · fluency      (foreign ↔ native)
+//     · dialect      (formal ↔ vernacular)
+//     · attestation  (rumor ↔ proof)
+//     ... bounded only by what game-mechanics make distinct + measurable }
+//
+//   { quantum-superposition  ←  cells may carry probability-amplitudes ;
+//     project-to-3d collapses-to-classical via Σ-mask measurement-event }
+//
+// § PRIME-DIRECTIVE  ‼ structurally-encoded
+//
+//   t∞: lens default-deny  ←  Unconsented refuses project()
+//   t∞: revoke permanent   ←  silent re-enable = bug
+//   t∞: bounds enforced    ←  AxisOutOfRange on any out-of-range index
+//   t∞: overflow refused   ←  checked_add/sub instead of wrap
+//   t∞: extent-cap 1M cells ← refuse-absurd-extent
+//   t∞: consent auditable  ←  Consented{at_tick} records observer-tick
+//
+// § END  com.apocky.loa.systems.nd_substrate
