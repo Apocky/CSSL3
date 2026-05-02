@@ -1,0 +1,269 @@
+§ T11-W12 · 30_CONTENT_PACKAGE.csl · architectural blueprint
+═══════════════════════════════════════════════════════════════════════════════
+
+§ THESIS
+  `.ccpkg` = canonical packaging-format for user-authored CSSL content
+  scenes · NPCs · recipes · lore · systems · shader-packs · audio-packs · bundles
+  Ed25519 author-signature · Σ-Chain anchor · gift-economy-default
+  remix-attribution-immutable · k-anon-≥-5 anonymous-publish
+  8 content-kinds × 5 cap-classes × DAG-resolve × cycle-detect × ¬ pay-for-power
+
+§ AXIOMS  [PRIME_DIRECTIVE encoded]
+  N! [harm control surveillance manipulation exploitation
+      coercion weaponization discrimination] in-the-doing
+  ✓ sovereign-author-revocable ← creator-owns-key ← Ed25519
+  ✓ Σ-mask audience-class lattice : creator → curator → moderator
+                                  → substrate-team   ⊥ anonymous (quarantined)
+  ✓ gift-economy-default ; in-game-power-kinds CANNOT opt-out
+  ✓ cosmetic-only-axiom : Lore / ShaderPack / AudioPack MAY opt-in
+                          to monetisation under TIER-B+ license
+  ✓ remix-attribution-IMMUTABLE in signed manifest
+  ✓ k-anon ≥ 5 ENFORCED for cap-X-anonymous publish
+  ✗ ¬ pay-for-power · ¬ DRM · ¬ rootkit · ¬ surveillance
+
+§ DISTINCTION  [cssl-hotfix vs cssl-content-package]
+  ⟨cssl-hotfix⟩      apocky.com → operator-pushed releases
+                     cap-A..cap-E in `~/.loa-secrets/` on substrate-team-machine
+                     binary updates · KAN weights · balance config
+  ⟨cssl-content-package⟩  user-authored content sharing
+                     cap-X-creator..substrate-team = audience-class Σ-mask
+                     scenes · NPCs · recipes · lore · shader-packs · audio
+                     ANY creator's Ed25519-keypair signs (not gated to ops team)
+
+§ COMPOSE
+  community-promoted .ccpkg → re-signed by substrate-team-cap-D in cssl-hotfix
+                            → pushed via /api/hotfix/download as recipe.book /
+                              nemesis.bestiary / storylet.content / render.pipeline
+                              channel update for the entire fleet
+
+§ COMPONENTS  [crate · file · purpose]
+
+  ⟨crate cssl-content-package⟩  W12-4
+    ⊑ header.rs    — `.ccpkg` 80-byte header (magic CCPK · fmt · kind · cap
+                     · ver · ts · size · blake3 · rsv) + Bundle struct (header
+                     + manifest + archive + sig + Σ-anchor)
+    ⊑ kind.rs      — 8 ContentKind enum (scene / npc / recipe / lore / system
+                     / shader-pack / audio-pack / bundle) · `kebab-case` wire
+    ⊑ cap.rs       — 5 AuthorCapClass enum (creator / curator / moderator
+                     / substrate-team / anonymous) + propagation lattice
+                     + K_ANON_MIN = 5
+    ⊑ archive.rs   — TARLITE pure-Rust archive (magic TLIT · entry-count
+                     · N×{path_len · path · content_len · content})
+                     deterministic-pack (lex-sort) · path-traversal-defense
+    ⊑ manifest.rs  — 12-field Manifest schema · LicenseTier (TIER-A..E)
+                     · Dependency · RemixAttribution · cosmetic-only-axiom
+    ⊑ sign.rs      — sign_bundle(archive · manifest · cap-class · anchor
+                     · key · ver · ts) → Bundle
+                     gates : manifest-validate · cap-can-sign-kind
+                           · author_pubkey-matches-signing-key · BLAKE3-recompute
+    ⊑ verify.rs    — verify_bundle (kind · size · BLAKE3 · ed25519-sig)
+                     + verify_anchor_against (Σ-Chain digest)
+                     + verify_audience_class (propagation lattice)
+                     + verify_k_anon (≥ 5 cohort)
+    ⊑ unpack.rs    — unpack_bundle(bundle) → UnpackedContent {
+                       manifest · cssl_sources · assets
+                     }  ← GATED by VerifyOk type-token
+    ⊑ resolver.rs  — DFS-3-coloring cycle-detect
+                     package_dependencies_resolve(root, registry) →
+                       Vec<RequiredPackage> in topological order
+                     remix_chain_walk(root, registry) → upstream attribution
+    ⊑ tests : 90 inline (8 archive · 8 cap · 11 header · 5 kind ·
+                          14 manifest · 5 sign · 4 unpack · 13 verify ·
+                          12 resolver)
+
+§ BUNDLE BINARY LAYOUT  [80-byte header · then payload · then sig + anchor]
+
+  offset  size  field             notes
+  ──────  ────  ────────────────  ──────────────────────────────────────────
+  0       4     magic             "CCPK" = 0x43 0x43 0x50 0x4B
+  4       2     format_version    u16 LE · current = 1 · BREAKING bumps this
+  6       1     content_kind      u8 · ContentKind 1..=8
+  7       1     author_cap_class  u8 · AuthorCapClass 1..=5
+  8       2     ver_major         u16 LE · semver
+  10      2     ver_minor         u16 LE
+  12      2     ver_patch         u16 LE
+  14      2     reserved_a        u16 LE · MUST be 0
+  16      8     created_ts_ns     u64 LE · build wall-clock (epoch ns)
+  24      8     total_size        u64 LE · bytes of (manifest + archive)
+  32      32    blake3_payload    BLAKE3-256 of (manifest_bytes || archive_bytes)
+  64      16    reserved_b        16 bytes · MUST be all-zero · future-use
+  ──────  ────  ────────────────  ──────────────────────────────────────────
+  80      4     manifest_size     u32 LE · length of manifest_bytes
+  84      M     manifest_bytes    JSON Manifest
+  84+M    A     archive_bytes     TARLITE payload-archive
+  +A      64    ed25519_sig       Ed25519 over (header || mfst_size || mfst || archive)
+  +64     32    sigma_chain_anchor BLAKE3-32 of Σ-Chain commit attesting
+
+  Total = 80 + 4 + M + A + 64 + 32
+
+§ 8 CONTENT-KINDS  [stable IDs · matches cssl-content-package::ContentKind]
+
+  ┌─────┬─────────────────┬──────────────────────────────────────┬──────────┐
+  │ ID  │ name            │ payload                              │ in-power │
+  ├─────┼─────────────────┼──────────────────────────────────────┼──────────┤
+  │  1  │ scene           │ .cssl source · GLTF assets · meta    │ ✓ yes    │
+  │  2  │ npc             │ behavior-tree · stat-block · sprites │ ✓ yes    │
+  │  3  │ recipe          │ alchemy/craft formula · drop-tables  │ ✓ yes    │
+  │  4  │ lore            │ narrative · dialogue · localization  │ ✗ no     │
+  │  5  │ system          │ rule-mod · physics-tweak · weather   │ ✓ yes    │
+  │  6  │ shader-pack     │ WGSL/HLSL/MSL · bind-params          │ ✗ no     │
+  │  7  │ audio-pack      │ SFX · stems · spatial-audio tags     │ ✗ no     │
+  │  8  │ bundle          │ N×nested .ccpkg (composite)          │ ✓ yes    │
+  └─────┴─────────────────┴──────────────────────────────────────┴──────────┘
+
+  in-power column = grants_in_game_power(kind). gift_economy_only=false
+  REJECTED for in-power kinds at validate time. Cosmetic kinds may opt-in
+  to TIER-B+ monetisation under the cosmetic-only-axiom.
+
+§ 5 AUTHOR CAP-CLASSES  [Σ-mask audience-class · propagation lattice]
+
+  ┌─────┬──────────────────────┬──────────────────────────────────────────┐
+  │ ID  │ name                 │ description                              │
+  ├─────┼──────────────────────┼──────────────────────────────────────────┤
+  │  1  │ cap-X-creator        │ verified author · self-publish           │
+  │  2  │ cap-X-curator        │ creator + ≥ N upvotes from creators      │
+  │  3  │ cap-X-moderator      │ appointed community-mod · co-sign        │
+  │  4  │ cap-X-substrate-team │ Apocky / core team · re-sign as hotfix   │
+  │  5  │ cap-X-anonymous      │ k-anon ≥ 5 cohort signature              │
+  └─────┴──────────────────────┴──────────────────────────────────────────┘
+
+  PROPAGATION LATTICE :
+    SubstrateTeam  ≥  Moderator  ≥  Curator  ≥  Creator      (downward-flow allowed)
+    Anonymous (quarantined band)  ↔  Anonymous-only          (no-cross-band)
+
+  bundle-class.can_propagate_to(viewer-class) = (bundle ≥ viewer) ∧ ¬ Anonymous
+                                              ∨ (Anonymous = Anonymous)
+
+§ MANIFEST SCHEMA  [12 fields]
+
+  {
+    "id"                : String           // globally-unique slug
+    "version"           : String           // semver "M.m.p"
+    "kind"              : ContentKind      // 1 of 8
+    "author_pubkey"     : String[64-hex]   // Ed25519 pubkey
+    "name"              : String           // display
+    "description"       : String           // markdown
+    "depends_on"        : [Dependency]     // recursive cross-package deps
+    "remix_of"          : RemixAttribution? // upstream attribution chain
+    "tags"              : [String]         // discovery
+    "sigma_mask"        : u64              // bit-packed audience-class flags
+    "gift_economy_only" : bool=true        // pay-for-power BAN for in-power kinds
+    "license"           : LicenseTier      // TIER-A..E
+  }
+
+  Dependency = { id : String, version : String }
+
+  RemixAttribution = {
+    id          : String  // upstream package id
+    version     : String  // upstream package version
+    attribution : String  // creator-handle · license-credit
+  }                       // IMMUTABLE in signed manifest
+
+§ 5 LICENSE TIERS  [from spec/grand-vision/17_DISTRIBUTION.csl]
+
+  TIER-A · Open         · MIT/AGPL/CC · freely fork-able
+  TIER-B · Proprietary  · all-rights-reserved · cosmetic-only-monetisable
+  TIER-C · Server       · gameplay-services protected · client open
+  TIER-D · Private      · personal-use only · not-for-distribution
+  TIER-E · Protocol     · spec-only · implementations must conform
+
+§ DEPENDENCY RESOLVER  [DFS-3-coloring · O(V+E)]
+
+  algorithm dfs_visit(dep, registry, color, order, seen)
+    key = (dep.id, dep.version)
+    match color[key]
+      | Gray   → ResolveError::Cycle(key) ← back-edge detected
+      | Black  → return Ok(()) ← already resolved
+      | White  → continue
+    color[key] = Gray
+    manifest = registry.lookup(key) ?? ResolveError::Missing(key)
+    ∀ child ∈ manifest.depends_on : dfs_visit(child, …)
+    color[key] = Black
+    if seen.insert(key) : order.push(RequiredPackage{ key })
+
+  package_dependencies_resolve(root, registry) =
+    color[root] = Gray
+    ∀ dep ∈ root.depends_on : dfs_visit(dep, …)
+    color[root] = Black
+    return order ← topologically-sorted (deps-before-dependents)
+
+  remix_chain_walk(root, registry) =
+    chain = []
+    visited = {}
+    cur = root
+    while cur.remix_of = Some(remix) :
+      key = (remix.id, remix.version)
+      visited.contains(key) → ResolveError::Cycle  ← infinite-loop guard
+      visited.insert(key)
+      chain.push(key)
+      cur = registry.lookup(key) ?? Missing
+    return chain ← deepest-first
+
+§ SIBLING INTEGRATION
+
+  W12-5 publish-pipeline : consumes Bundle ← verify_bundle(b)? + audience-check
+                                          → push to mycelium / apocky.com
+  W12-6 discover         : reads Manifest ← filters by kind / tags / license
+                                          + queries author_pubkey reputation
+  W12-9 remix-attribution : checks remix_of-chain via remix_chain_walk
+                            ← cycle-detect shared with package resolver
+
+§ PRIME_DIRECTIVE ATTESTATION  [encoded structurally]
+
+  ✓ ¬ harm                      : verify_bundle refuses unpack on tamper
+  ✓ ¬ control                   : sovereign-creator owns the Ed25519 key
+  ✓ ¬ surveillance              : no telemetry in this crate · pure data
+  ✓ ¬ exploitation              : gift_economy_only DEFAULT TRUE for in-power
+  ✓ ¬ coercion                  : audience-class Σ-mask = consent-arch
+  ✓ ¬ weaponization             : k-anon ≥ 5 enforced for anonymous publish
+  ✓ remix-attribution-IMMUTABLE  : signed-manifest covers remix_of chain
+  ✓ default-deny                : cross-class propagation refused without
+                                  explicit re-signature by higher cap-class
+  ✓ Σ-Chain anchor              : every bundle binds to a chain commit
+
+§ TEST MATRIX
+
+  archive   :  8  pack-unpack-roundtrip · empty · bad-magic · ../-rejected
+                  · backslash-rejected · leading-/-rejected · ./-rejected
+                  · duplicate-rejected · deterministic-pack ·
+                  out-of-order-rejected · empty-path-rejected
+  cap       :  8  caps-const · name-roundtrip · k-anon-min-5 · k-anon-cohort
+                  · substrate→creator · creator-X→substrate · anonymous-quarantine
+                  · all-can-sign-all · serde-roundtrip
+  header    : 11  size-80 · roundtrip · bad-magic-CCPK · bad-fmt-version ·
+                  unknown-kind · unknown-cap · reserved-a · reserved-b ·
+                  too-short · full-bundle-roundtrip · truncation · signed-bytes ·
+                  payload-bytes · manifest-size-exceeds-total
+  kind      :  5  const-distinct · name-roundtrip · unknown-none ·
+                  composite-only-bundle · serde-roundtrip
+  manifest  : 14  json-roundtrip · canonical-deterministic · empty-id ·
+                  empty-ver · empty-name · pay-for-power-scene · -npc ·
+                  cosmetic-lore · -shader · -audio · license-tier-roundtrip ·
+                  remix-attribution-serde · field-count-12 · pubkey-hex ·
+                  default-gift-true · pubkey-short-rejected
+  sign      :  5  roundtrip-verifies-raw-ed25519 · pubkey-mismatch-rejected ·
+                  invalid-manifest-rejected · empty-archive · anonymous-cap
+  unpack    :  4  roundtrip · tamper-rejected · csl-extension · empty-archive
+  verify    : 13  roundtrip · tamper-archive · tamper-manifest · tamper-sig ·
+                  kind-mismatch · anchor-match · anchor-mismatch · audience-creator
+                  · audience-creator→substrate-denied · substrate→creator-allowed ·
+                  audience-anonymous-quarantined · k-anon-cohort · size-mismatch
+  resolver  : 12  no-deps · linear-chain · diamond-dedup · missing · cycle ·
+                  self-cycle · root-self-cycle · remix-walks-back ·
+                  remix-no-remix · remix-cycle · remix-missing
+
+  Σ tests = 90 inline · 0 ignored · cargo-clippy clean · cargo-build green
+
+§ TRACEABILITY
+
+  T11-W12-CCPKG-SCAFFOLD          : crate skeleton + lib + kind + cap
+  T11-W12-CCPKG-HEADER-ARCHIVE    : 80B header + TARLITE archive format
+  T11-W12-CCPKG-MANIFEST-SIGN-VERIFY  : 12-field schema + Ed25519 + 5 audit gates
+  T11-W12-CCPKG-UNPACK-RESOLVER   : verify-gated surface + DFS-cycle-detect
+  T11-W12-CCPKG-CLIPPY-WORKSPACE  : remove from exclude · workspace-build green
+
+  spec : specs/30_CONTENT_PACKAGE.csl  ← THIS FILE
+  crate : compiler-rs/crates/cssl-content-package/
+
+§ END
+═══════════════════════════════════════════════════════════════════════════════
