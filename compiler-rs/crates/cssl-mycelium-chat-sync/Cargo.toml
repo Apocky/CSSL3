@@ -1,0 +1,45 @@
+[package]
+name                   = "cssl-mycelium-chat-sync"
+description            = "CSSLv3 host — mycelial chat-pattern federation · k-anonymous · Σ-mask-gated · sovereign-revoke · GM/DM cross-instance learning"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W11-MYCELIUM-CHAT-SYNC — federate chat-pattern signals across the
+# mycelial-network so GM/DM persona-agents can learn shape-of-good-response
+# WITHOUT ever observing raw player content.
+#
+# § PRIME-DIRECTIVE INVARIANTS
+#   ─ Σ-mask-gated · default-deny (cap-bit-check at emission AND ingestion)
+#   ─ k-anonymity floor : k ≥ 5 distinct-emitters before pattern-accept
+#   ─ ¬ raw-chat-text egress · ONLY pattern-shape (intent-kind · response-shape · arc-phase)
+#   ─ player-revocable · revoke-cap → outgoing-zero + request-purge from peers
+#   ─ deterministic federation-snapshot → same persona-seed → same modulation (replay-safe)
+#   ─ stage-0 self-sufficient (in-memory transport works without Supabase)
+#
+# § PARENT spec : Labyrinth of Apocalypse/systems/mycelium_chat.csl
+
+[lib]
+name       = "cssl_mycelium_chat_sync"
+crate-type = ["rlib"]
+
+[dependencies]
+cssl-host-mycelium = { path = "../cssl-host-mycelium" }
+blake3        = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+tracing       = { workspace = true }
+# § parking_lot + crossbeam dropped in favor of std::sync — workspace's
+# parking_lot 0.12 + crossbeam 0.8 transitively pull crates that force
+# dlltool.exe on the Windows-GNU toolchain (see cssl-asset-fetcher
+# Cargo.toml for the full diagnosis). std::sync::RwLock + Mutex<VecDeque>
+# preserve the SPSC-style semantics with the same lock-acquisition cost.
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
