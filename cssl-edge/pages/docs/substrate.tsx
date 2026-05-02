@@ -3,6 +3,7 @@
 import type { NextPage } from 'next';
 import DocsLayout from '@/components/DocsLayout';
 import Callout from '@/components/Callout';
+import CodeBlock from '@/components/CodeBlock';
 import PrevNextNav from '@/components/PrevNextNav';
 
 const Page: NextPage = () => {
@@ -102,6 +103,73 @@ const Page: NextPage = () => {
         substrate crates have shipped with the keystone <code className="docs-ic">cssl-substrate-omega-field</code>{' '}
         crate. The substrate is real today, not a future promise.
       </p>
+
+      <h2 className="docs-h2">§ Authored in CSSL · the substrate surface</h2>
+      <p className="docs-p">
+        The substrate primitives are surfaced to game-logic through CSSL <code className="docs-ic">extern "C"</code>{' '}
+        declarations against the host-side <code className="docs-ic">cssl-host-*</code> staticlibs. Below is the
+        canonical CSSL surface a scene author writes against — every primitive (ω-field cell, Σ-mask gate,
+        KAN classifier, HDC bind/unbind) is one CSSL function call away:
+      </p>
+
+      <CodeBlock lang="cssl" caption="The four primitives in one scene-tick · CSSL-authored">{`module com.apocky.loa.systems.substrate_demo
+
+// § ω-field · address a cell, read its value
+extern "C" fn omega_field_read(handle: u32, x: i32, y: i32, z: i32, out: u64) -> u32 ;
+extern "C" fn omega_field_write(handle: u32, x: i32, y: i32, z: i32, value: u64) -> u32 ;
+
+// § Σ-mask · check sovereign-cap before a cross-process emit
+extern "C" fn sigma_mask_check(handle: u32, cell_addr: u64, observer: u64) -> u32 ;
+
+// § KAN · classify an affix template at a substrate "swap point" (SP-PG-1..5)
+extern "C" fn kan_classify_swap_point(handle: u32, swap_id: u32,
+                                      hist_hash: u64, bias_out: u64) -> u32 ;
+
+// § HDC · bind a tag to a cell-payload, broadcast over the mycelium edge
+extern "C" fn hdc_bind_emit(handle: u32, cell_addr: u64,
+                            tag_ptr: u64, tag_len: u32) -> u32 ;
+
+fn substrate_tick(handle: u32, observer: u64) -> u32 {
+    let cell_x: i32 = 12 ;
+    let cell_y: i32 = 0 ;
+    let cell_z: i32 = -7 ;
+
+    // 1. Σ-mask gate FIRST — substrate refuses cross-observer reads without cap
+    let cell_addr: u64 = pack_addr(cell_x, cell_y, cell_z) ;
+    let mask_status: u32 = sigma_mask_check(handle, cell_addr, observer) ;
+    if mask_status != 0 { return 128 ; }    // 128.. = sovereign-cap denied
+
+    // 2. ω-field read — only after Σ-mask grants cap
+    let mut value: u64 = 0 ;
+    let read_status: u32 = omega_field_read(handle, cell_x, cell_y, cell_z, &mut value as u64) ;
+    if read_status != 0 { return read_status ; }
+
+    // 3. KAN-driven swap-point bias for procgen affixes (SP-PG-4 = loot-affix)
+    let mut bias: u64 = 0 ;
+    let kan_status: u32 = kan_classify_swap_point(handle, 4, value, &mut bias as u64) ;
+    if kan_status != 0 { return kan_status ; }
+
+    // 4. HDC tag-broadcast — substrate talks to itself via mycelium edges
+    let tag: u64 = bias ;
+    let tag_len: u32 = 8 ;
+    hdc_bind_emit(handle, cell_addr, &tag as u64, tag_len)
+}
+
+fn pack_addr(x: i32, y: i32, z: i32) -> u64 {
+    let xu: u64 = (x as u64) & 0xfffff ;
+    let yu: u64 = (y as u64) & 0xfffff ;
+    let zu: u64 = (z as u64) & 0xfffff ;
+    (xu << 40) | (yu << 20) | zu
+}`}</CodeBlock>
+
+      <Callout kind="note" title="CSSL-first authoring">
+        Every scene, every system, every per-frame tick in the Engine is authored this way: a CSSL{' '}
+        <code className="docs-ic">extern "C"</code> declaration, an in-CSSL orchestration function, and the
+        host-side staticlib resolves the symbol at compile time via csslc's auto-default-link mechanism. Rust
+        is the bootstrap host for the compiler internals, never the canonical authoring surface for the
+        substrate-using game-logic above. See <a href="/docs/cssl-language" style={{ color: '#7dd3fc' }}>/docs/cssl-language</a>{' '}
+        and <code className="docs-ic">CONTRIBUTING.md § 0</code>.
+      </Callout>
 
       <h2 className="docs-h2">§ Where to read more</h2>
       <ul className="docs-ul">

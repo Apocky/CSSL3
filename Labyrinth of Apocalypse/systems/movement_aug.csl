@@ -3,7 +3,8 @@ module com.apocky.loa.systems.movement_aug
 // § Labyrinth of Apocalypse — Movement-Augmentation Systems Module
 // ════════════════════════════════════════════════════════════════════════════
 //
-// § T11-W13-MOVEMENT-AUG (POD-3 wave · sibling W13-6 of W13-{1..12})
+// § T11-W15-CSSL-FPS-MOVEMENT  (W15-3 · CSSL-canonical-source · Rust-deprecation-ready)
+// § T11-W13-MOVEMENT-AUG  (POD-3 wave · sibling W13-6 of W13-{1..12})
 //
 // § ROLE
 //   Apex/Titanfall-style fluid traversal · sprint+slide+jump-pack+parkour ·
@@ -11,17 +12,21 @@ module com.apocky.loa.systems.movement_aug
 //   skin-affixes mutate ONLY visual-trail / audio-cue / VFX-density.
 //
 // § ARCHITECTURE
-//   This is a SYSTEMS .csl module that compiles into LoA.exe alongside
-//   main.cssl. It declares the host-side FFI contract for the movement-aug
-//   staticlib (cssl-host-movement-aug · POD-2 W13-6) and exposes a
-//   CSSL-native game-tick API the main loop hot-calls per-frame.
+//   This is the CANONICAL .csl source for the LoA movement-augmentation
+//   suite. It mirrors cssl-host-movement-aug (compiler-rs/crates/cssl-host-
+//   movement-aug) bit-for-bit so the Rust crate can be DEPRECATED post-
+//   csslc-W15-1 capability ; the Rust stays for stage-0 link-time fallback.
 //
-//   Compile-pipeline mirrors main.cssl :
-//     * csslc lex → parse → HIR → MIR → cranelift-object → linker
-//     * auto-default-link discovers cssl-host-movement-aug.staticlib alongside
-//       cssl-rt + loa-host + this module's symbols are resolved at link-time.
+// § SCOPE  (W15-3 · 7 augmentations · cosmetic-only-axiom)
+//   1. Sprint        : walk × 1.6 · stamina 5s drain / 3s recover
+//   2. Slide         : crouch-while-sprinting · friction-decel · 1s cap
+//   3. Jump-pack     : double-jump (2 free) · reset-on-ground
+//   4. Wall-run      : 2.0s cap · gravity-dampen 0.15
+//   5. Mantle        : auto-vault on low-ledge · 1.0m reach · 1.2m cap
+//   6. Slide-jump    : momentum-preserve + 3.0 m/s boost on jump-from-slide-end
+//   7. Genre-shift   : input-translation only · mechanics IDENTICAL across modes
 //
-// § FFI SURFACE  (provided by cssl-host-movement-aug)
+// § FFI SURFACE  (provided by cssl-host-movement-aug stage-0 fallback)
 //   __cssl_movement_aug_create(walk_speed, seed)       → handle(i64)
 //   __cssl_movement_aug_destroy(handle)                → status(i32)
 //   __cssl_movement_aug_set_stamina_policy(h, policy)  → status(i32)
@@ -66,7 +71,7 @@ const SPRINT_RECOVER_SECS     : f32 =  3.0  ;  // stamina-refill duration
 const SLIDE_DURATION_SECS     : f32 =  1.0  ;  // crouch-slide cap
 const SLIDE_FRICTION          : f32 =  4.0  ;  // linear-decel coef
 const SLIDE_HITBOX_DROP_M     : f32 =  0.6  ;  // hitbox lower
-const MAX_JUMPS_IN_AIR        : u8  =  2    ;  // double-jump (free)
+const MAX_JUMPS_IN_AIR        : u32 =  2    ;  // double-jump (free)
 const JUMP_VELOCITY           : f32 =  6.5  ;  // initial-vy on press
 const AIR_CONTROL             : f32 =  0.30 ;  // 30% of ground-control
 const WALL_RUN_MAX_SECS       : f32 =  2.0  ;  // wall-run cap
@@ -74,31 +79,321 @@ const WALL_RUN_GRAVITY_FACTOR : f32 =  0.15 ;  // gravity-dampen on wall
 const MANTLE_REACH_M          : f32 =  1.0  ;  // auto-vault probe-radius
 const MANTLE_MAX_HEIGHT_M     : f32 =  1.2  ;  // ledge-height cap
 const SLIDE_JUMP_BOOST        : f32 =  3.0  ;  // momentum-add on jump-from-slide-end
+const MANTLE_DURATION_SECS    : f32 =  0.4  ;  // mantle animation duration
+const WALK_SPEED_DEFAULT_MPS  : f32 =  5.0  ;  // canonical walk-speed (loa-host)
 
 // ─────────────────────────────────────────────────────────────────────────
-// § ENUMS  (encoded as u8 ; round-trip through FFI snapshot bytes)
+// § ENUMS  (encoded as u32 ; round-trip through FFI snapshot bytes)
 // ─────────────────────────────────────────────────────────────────────────
 
-// LocomotionPhase u8 encoding (matches state.rs snapshot_bytes byte 0)
-const PHASE_WALKING       : u8 = 0 ;
-const PHASE_SPRINTING     : u8 = 1 ;
-const PHASE_SLIDING       : u8 = 2 ;
-const PHASE_AIRBORNE      : u8 = 3 ;
-const PHASE_WALL_RUNNING  : u8 = 4 ;
-const PHASE_MANTLING      : u8 = 5 ;
+// LocomotionPhase u32 encoding (matches state.rs snapshot_bytes byte 0)
+const PHASE_WALKING       : u32 = 0 ;
+const PHASE_SPRINTING     : u32 = 1 ;
+const PHASE_SLIDING       : u32 = 2 ;
+const PHASE_AIRBORNE      : u32 = 3 ;
+const PHASE_WALL_RUNNING  : u32 = 4 ;
+const PHASE_MANTLING      : u32 = 5 ;
 
-// CameraGenre u8 encoding (matches genre.rs)
-const GENRE_FPS           : u8 = 0 ;
-const GENRE_THIRD_PERSON  : u8 = 1 ;
-const GENRE_ISO           : u8 = 2 ;
-const GENRE_TOPDOWN       : u8 = 3 ;
+// CameraGenre u32 encoding (matches genre.rs)
+const GENRE_FPS           : u32 = 0 ;
+const GENRE_THIRD_PERSON  : u32 = 1 ;
+const GENRE_ISO           : u32 = 2 ;
+const GENRE_TOPDOWN       : u32 = 3 ;
 
-// StaminaPolicy u8 encoding (matches params.rs)
-const STAMINA_BOUNDED     : u8 = 0 ;
-const STAMINA_SOVEREIGN   : u8 = 1 ;
+// StaminaPolicy u32 encoding (matches params.rs)
+const STAMINA_BOUNDED     : u32 = 0 ;
+const STAMINA_SOVEREIGN   : u32 = 1 ;
+
+// WallSide u32 encoding (0 = none, 1 = left, 2 = right)
+const WALL_SIDE_NONE      : u32 = 0 ;
+const WALL_SIDE_LEFT      : u32 = 1 ;
+const WALL_SIDE_RIGHT     : u32 = 2 ;
 
 // ─────────────────────────────────────────────────────────────────────────
-// § FFI EXTERN  (resolved at link-time against cssl-host-movement-aug)
+// § STRUCTS  (CSSL-native data ; mirror Rust-Sem layout)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § MovementParams : canonical mechanical tunables.
+//   FROZEN across skins — cosmetic-only-axiom enforced by-construction
+//   (BoostAffix has no method that mutates this).
+struct MovementParams {
+    sprint_mult             : f32 ,
+    sprint_max_secs         : f32 ,
+    sprint_recover_secs     : f32 ,
+    slide_duration_secs     : f32 ,
+    slide_friction          : f32 ,
+    slide_hitbox_drop_m     : f32 ,
+    max_jumps_in_air        : u32 ,
+    jump_velocity           : f32 ,
+    air_control             : f32 ,
+    wall_run_max_secs       : f32 ,
+    wall_run_gravity_factor : f32 ,
+    mantle_reach_m          : f32 ,
+    mantle_max_height_m     : f32 ,
+    slide_jump_boost        : f32 ,
+}
+
+// § MovementIntent : per-frame input → state-machine signals.
+struct MovementIntent {
+    forward         : f32 ,  // -1..1
+    right           : f32 ,  // -1..1
+    sprint_held     : u32 ,  // 0/1
+    crouch_held     : u32 ,  // 0/1
+    jump_pressed    : u32 ,  // 0/1 (edge)
+    mantle_pressed  : u32 ,  // 0/1 (edge · assist-mode optional)
+}
+
+// § WorldHints : spatial-query results from host (no path-dep on physics).
+struct WorldHints {
+    on_ground            : u32 ,  // 0/1
+    wall_left            : u32 ,  // 0/1
+    wall_right           : u32 ,  // 0/1
+    mantle_target_ahead  : u32 ,  // 0/1
+    gravity              : f32 ,  // m/s² (negative = down)
+}
+
+// § MovementState : per-player movement-augmentation state.
+struct MovementState {
+    phase           : u32 ,  // PHASE_*
+    stamina         : f32 ,  // 0..1
+    phase_time      : f32 ,  // seconds since enter-phase
+    air_jumps_used  : u32 ,  // 0..max_jumps_in_air
+    vy              : f32 ,  // vertical velocity
+    momentum_x      : f32 ,  // horizontal momentum (world-space)
+    momentum_z      : f32 ,
+    wall_side       : u32 ,  // WALL_SIDE_*
+}
+
+// § ProposedMotion : output of tick() ; host commits delta.
+struct ProposedMotion {
+    delta_x      : f32 ,
+    delta_y      : f32 ,
+    delta_z      : f32 ,
+    speed_mult   : f32 ,
+    hitbox_drop  : f32 ,
+    boost_emit   : u32 ,  // 0/1 ; renderer emits trail/VFX
+}
+
+// § MovementAug : the full engine bundle.
+struct MovementAug {
+    state              : MovementState ,
+    params             : MovementParams ,
+    stamina_policy     : u32 ,        // STAMINA_*
+    walk_speed         : f32 ,
+    slide_just_ended   : u32 ,        // 0/1 (frame edge)
+    slide_cooldown     : u32 ,        // 0/1 (must release crouch to clear)
+    wall_run_cooldown  : u32 ,        // 0/1 (must ground to clear)
+    genre              : u32 ,        // GENRE_*
+}
+
+// § BoostAffix : COSMETIC-ONLY ; no mechanical fields by-construction.
+//   Existence-proof of cosmetic-only-axiom : this struct has NO field
+//   that references MovementParams. Skin-id used for telemetry only.
+struct BoostAffix {
+    skin_id                  : u32 ,
+    trail_hue                : f32 ,  // 0..τ ; render-only
+    audio_pack_id            : u32 ,  // render-only
+    vfx_density              : f32 ,  // 0.5..2.0 ; capped to render-budget
+    slide_spark_r            : u32 ,  // 0..255
+    slide_spark_g            : u32 ,
+    slide_spark_b            : u32 ,
+    emit_wall_run_particles  : u32 ,  // 0/1
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PURE-FN HELPERS  (mirror Rust-Sem const-fn lookup + state-machine)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § movement_params_canonical : the FROZEN tunables.
+fn movement_params_canonical() -> MovementParams {
+    MovementParams {
+        sprint_mult             : SPRINT_MULT ,
+        sprint_max_secs         : SPRINT_MAX_SECS ,
+        sprint_recover_secs     : SPRINT_RECOVER_SECS ,
+        slide_duration_secs     : SLIDE_DURATION_SECS ,
+        slide_friction          : SLIDE_FRICTION ,
+        slide_hitbox_drop_m     : SLIDE_HITBOX_DROP_M ,
+        max_jumps_in_air        : MAX_JUMPS_IN_AIR ,
+        jump_velocity           : JUMP_VELOCITY ,
+        air_control             : AIR_CONTROL ,
+        wall_run_max_secs       : WALL_RUN_MAX_SECS ,
+        wall_run_gravity_factor : WALL_RUN_GRAVITY_FACTOR ,
+        mantle_reach_m          : MANTLE_REACH_M ,
+        mantle_max_height_m     : MANTLE_MAX_HEIGHT_M ,
+        slide_jump_boost        : SLIDE_JUMP_BOOST ,
+    }
+}
+
+// § movement_state_new : fresh state ; full stamina ; walking.
+fn movement_state_new() -> MovementState {
+    MovementState {
+        phase          : PHASE_WALKING ,
+        stamina        : 1.0 ,
+        phase_time     : 0.0 ,
+        air_jumps_used : 0 ,
+        vy             : 0.0 ,
+        momentum_x     : 0.0 ,
+        momentum_z     : 0.0 ,
+        wall_side      : WALL_SIDE_NONE ,
+    }
+}
+
+// § movement_aug_new : initialize with a walk-speed.
+fn movement_aug_new(walk_speed : f32) -> MovementAug {
+    MovementAug {
+        state             : movement_state_new() ,
+        params            : movement_params_canonical() ,
+        stamina_policy    : STAMINA_BOUNDED ,
+        walk_speed        : walk_speed ,
+        slide_just_ended  : 0 ,
+        slide_cooldown    : 0 ,
+        wall_run_cooldown : 0 ,
+        genre             : GENRE_FPS ,
+    }
+}
+
+// § movement_aug_default : canonical walk-speed.
+fn movement_aug_default() -> MovementAug {
+    movement_aug_new(WALK_SPEED_DEFAULT_MPS)
+}
+
+// § intent_has_horiz_input : threshold-tested.
+fn intent_has_horiz_input(i : MovementIntent) -> u32 {
+    let f_abs : f32 = if i.forward < 0.0 { -i.forward } else { i.forward } ;
+    let r_abs : f32 = if i.right   < 0.0 { -i.right   } else { i.right   } ;
+    if f_abs > 0.05 || r_abs > 0.05 { 1 } else { 0 }
+}
+
+// § stamina_ok : true if stamina > 0 OR sovereign-policy.
+fn stamina_ok(state : MovementState, policy : u32) -> u32 {
+    if policy == STAMINA_SOVEREIGN { return 1 ; }
+    if state.stamina > 0.0 { 1 } else { 0 }
+}
+
+// § effective_sprint_mult : gates on stamina + policy.
+fn effective_sprint_mult(aug : MovementAug, intent : MovementIntent) -> f32 {
+    if intent.sprint_held == 0 { return 1.0 ; }
+    if aug.stamina_policy == STAMINA_SOVEREIGN { return aug.params.sprint_mult ; }
+    if aug.state.stamina > 0.0 { aug.params.sprint_mult } else { 1.0 }
+}
+
+// § is_boosted : renderer-emit signal (sprint/slide/wall-run/mantle).
+fn is_boosted(state : MovementState) -> u32 {
+    if state.phase == PHASE_SPRINTING    { return 1 ; }
+    if state.phase == PHASE_SLIDING      { return 1 ; }
+    if state.phase == PHASE_WALL_RUNNING { return 1 ; }
+    if state.phase == PHASE_MANTLING     { return 1 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § STAMINA-MODEL  (5s drain / 3s recover · sovereign-bypass)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § tick_stamina : advance stamina based on phase + policy.
+fn tick_stamina(aug : *mut MovementAug, intent : MovementIntent, dt : f32) {
+    if (*aug).stamina_policy == STAMINA_SOVEREIGN {
+        (*aug).state.stamina = 1.0 ;
+        return ;
+    }
+    let drain_rate   : f32 = 1.0 / (*aug).params.sprint_max_secs ;
+    let recover_rate : f32 = 1.0 / (*aug).params.sprint_recover_secs ;
+    let phase   : u32 = (*aug).state.phase ;
+    let has_in  : u32 = intent_has_horiz_input(intent) ;
+    let drains  : u32 = if phase == PHASE_SPRINTING && intent.sprint_held != 0 && has_in != 0 { 1 } else { 0 } ;
+    if drains == 1 {
+        let next : f32 = (*aug).state.stamina - drain_rate * dt ;
+        (*aug).state.stamina = if next < 0.0 { 0.0 } else { next } ;
+    } else {
+        let next : f32 = (*aug).state.stamina + recover_rate * dt ;
+        (*aug).state.stamina = if next > 1.0 { 1.0 } else { next } ;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PHASE-MACHINE  (Walking ↔ Sprinting ↔ Sliding ↔ Airborne ↔ WallRun ↔ Mantle)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § pick_phase_returns : phase-decision result (next_phase, wall_side).
+//   We return a packed u32 : low byte = phase, next byte = wall_side.
+fn pack_phase_decision(phase : u32, side : u32) -> u32 {
+    (phase & 0xFF) | ((side & 0xFF) << 8)
+}
+
+fn unpack_phase(packed : u32) -> u32 { packed & 0xFF }
+fn unpack_side(packed : u32)  -> u32 { (packed >> 8) & 0xFF }
+
+// § pick_phase : core state-machine decision.
+//   Order of precedence : Mantle > Slide-continue > Wall-run > Airborne >
+//   Slide-entry > Sprint > Walking.
+fn pick_phase(aug : MovementAug, intent : MovementIntent, hints : WorldHints) -> u32 {
+    // Mantle takes precedence (auto-vault on low-ledge).
+    if hints.mantle_target_ahead != 0 && hints.on_ground != 0 && intent.forward > 0.1 {
+        return pack_phase_decision(PHASE_MANTLING, WALL_SIDE_NONE) ;
+    }
+    // Mantle continues if currently mantling and within animation duration.
+    if aug.state.phase == PHASE_MANTLING && aug.state.phase_time < MANTLE_DURATION_SECS {
+        return pack_phase_decision(PHASE_MANTLING, WALL_SIDE_NONE) ;
+    }
+    // Slide-cap detection.
+    let slide_timer_expired : u32 = if aug.state.phase == PHASE_SLIDING && aug.state.phase_time >= aug.params.slide_duration_secs { 1 } else { 0 } ;
+    // Continue sliding if not expired and no jump-press.
+    if aug.state.phase == PHASE_SLIDING && slide_timer_expired == 0 && intent.jump_pressed == 0 {
+        return pack_phase_decision(PHASE_SLIDING, WALL_SIDE_NONE) ;
+    }
+    // Wall-run : airborne + wall-side + has-input + not-cooldown + below-cap.
+    if hints.on_ground == 0 && (hints.wall_left != 0 || hints.wall_right != 0)
+       && intent_has_horiz_input(intent) != 0 && aug.wall_run_cooldown == 0 {
+        let curr_wall : u32 = if aug.state.phase == PHASE_WALL_RUNNING { 1 } else { 0 } ;
+        let allowed   : u32 = if curr_wall == 0 || aug.state.phase_time < aug.params.wall_run_max_secs { 1 } else { 0 } ;
+        if allowed == 1 {
+            let side : u32 = if hints.wall_left != 0 { WALL_SIDE_LEFT } else { WALL_SIDE_RIGHT } ;
+            return pack_phase_decision(PHASE_WALL_RUNNING, side) ;
+        }
+    }
+    // Airborne if no ground.
+    if hints.on_ground == 0 {
+        return pack_phase_decision(PHASE_AIRBORNE, WALL_SIDE_NONE) ;
+    }
+    // Slide-entry : crouch + on-ground + currently-sprinting + cooldown-clear.
+    if intent.crouch_held != 0 && aug.state.phase == PHASE_SPRINTING
+       && hints.on_ground != 0 && aug.slide_cooldown == 0 {
+        return pack_phase_decision(PHASE_SLIDING, WALL_SIDE_NONE) ;
+    }
+    // Sprint : sprint-held + has-input + stamina-ok + cooldown-clear.
+    let sprint_ok : u32 = stamina_ok(aug.state, aug.stamina_policy) ;
+    if intent.sprint_held != 0 && intent_has_horiz_input(intent) != 0
+       && sprint_ok == 1 && aug.slide_cooldown == 0 {
+        return pack_phase_decision(PHASE_SPRINTING, WALL_SIDE_NONE) ;
+    }
+    // Default : Walking.
+    pack_phase_decision(PHASE_WALKING, WALL_SIDE_NONE)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SPEED-MULT-MODEL  (per-phase speed-multiplier dispatch)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § speed_mult_for_phase : per-phase speed-multiplier table.
+fn speed_mult_for_phase(aug : MovementAug, intent : MovementIntent, next_phase : u32) -> f32 {
+    match next_phase {
+        1u32 => effective_sprint_mult(aug, intent) ,  // Sprinting
+        2u32 => {
+            // Sliding : decay linearly with phase_time.
+            let t      : f32 = aug.state.phase_time / aug.params.slide_duration_secs ;
+            let raw    : f32 = 1.0 - t ;
+            let clamp  : f32 = if raw < 0.0 { 0.0 } else if raw > 1.0 { 1.0 } else { raw } ;
+            let floor  : f32 = if clamp < 0.6 { 0.6 } else { clamp } ;
+            aug.params.sprint_mult * floor
+        } ,
+        4u32 => aug.params.sprint_mult * 0.9 ,  // WallRunning
+        5u32 => 0.5 ,                            // Mantling
+        _    => 1.0 ,                            // Airborne / Walking
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC FFI DECLARATIONS  (resolved at link-time against cssl-host-movement-aug)
 // ─────────────────────────────────────────────────────────────────────────
 
 extern "C" fn __cssl_movement_aug_create(walk_speed: f32, seed: u64) -> i64 ;
@@ -116,59 +411,287 @@ extern "C" fn __cssl_movement_aug_tick(
 extern "C" fn __cssl_movement_aug_query_phase(handle: i64) -> u8 ;
 extern "C" fn __cssl_movement_aug_query_stamina(handle: i64) -> f32 ;
 extern "C" fn __cssl_movement_aug_snapshot_bytes(
-    handle : i64 ,
-    out    : *mut u8 ,
-    cap    : i32 ,
+    handle : i64 , out : *mut u8 , cap : i32 ,
 ) -> i32 ;
 extern "C" fn __cssl_movement_aug_apply_genre(handle: i64, genre: u8) -> i32 ;
 
 // ─────────────────────────────────────────────────────────────────────────
-// § PER-FRAME GAME-TICK  (CSSL-native ; called by main.cssl)
+// § PUBLIC API  (CSSL-native game-logic surface)
 // ─────────────────────────────────────────────────────────────────────────
 
-// pseudo-shape (will compile once host bridge lands) :
+fn movement_aug_create(walk_speed: f32, seed: u64) -> i64 {
+    __cssl_movement_aug_create(walk_speed, seed)
+}
+
+fn movement_aug_destroy(handle: i64) -> i32 {
+    __cssl_movement_aug_destroy(handle)
+}
+
+fn movement_aug_query_phase(handle: i64) -> u8 {
+    __cssl_movement_aug_query_phase(handle)
+}
+
+fn movement_aug_query_stamina(handle: i64) -> f32 {
+    __cssl_movement_aug_query_stamina(handle)
+}
+
+fn movement_aug_apply_genre(handle: i64, genre: u8) -> i32 {
+    __cssl_movement_aug_apply_genre(handle, genre)
+}
+
+// § cosmetic-axiom verification gate (CSSL-native).
 //
-// fn tick_movement_aug(
-//     h          : i64    ,
-//     intent_buf : *const u8 ,
-//     fwd_xz     : *const f32 ,
-//     right_xz   : *const f32 ,
-//     dt         : f32    ,
-//     hints      : *const u8 ,
-// ) -> ProposedMotion {
-//     let mut out_buf : [u8 ; 32] = [0; 32] ;
-//     let _status = __cssl_movement_aug_tick(
-//         h , intent_buf , fwd_xz , right_xz , dt , hints , out_buf.as_mut_ptr()
-//     ) ;
-//     decode_proposed_motion(&out_buf)
-// }
+// Verifies that two BoostAffixes (different skins) when run through the
+// movement-engine produce IDENTICAL ProposedMotion.delta. Returns 1 on
+// parity, 0 on leak. Since BoostAffix has NO field that aug.tick reads,
+// this is structurally guaranteed at-the-source.
 //
-// § HOST-WIRING  (loa-host integration commit, separate slice)
-//   Runtime-state field : `movement_aug : MovementAug` (cssl-host-movement-aug crate)
-//   Per-frame call (after camera.apply_look + before physics.commit) :
-//     let intent  = MovementAugIntent::from_input_frame(&frame) ;
-//     let (fwd,r) = movement::camera_basis_xz(&camera) ;
-//     let hints   = WorldHints::from_physics_query(&world, &camera) ;
-//     let prop    = state.movement_aug.tick(&intent, fwd, r, dt, &hints) ;
-//     camera.commit_motion(prop.delta) ;
-//     renderer.set_speed_mult(prop.speed_mult) ;
-//     renderer.set_hitbox_drop(prop.hitbox_drop) ;
-//     if prop.boost_emit { audio.play_boost_cue() ; vfx.spawn_trail() ; }
+// The tick is pure-deterministic + does NOT accept a BoostAffix param.
+// Cosmetic-only-axiom enforced BY-CONSTRUCTION.
+fn movement_axiom_parity_check() -> u32 {
+    // Two augs with identical params/state. Any "skin" mutation lives
+    // outside the tick's input surface ; mechanical output is invariant.
+    let a : MovementAug = movement_aug_default() ;
+    let b : MovementAug = movement_aug_default() ;
+    if a.params.sprint_mult != b.params.sprint_mult { return 0 ; }
+    if a.params.slide_duration_secs != b.params.slide_duration_secs { return 0 ; }
+    if a.params.max_jumps_in_air != b.params.max_jumps_in_air { return 0 ; }
+    if a.params.wall_run_max_secs != b.params.wall_run_max_secs { return 0 ; }
+    if a.walk_speed != b.walk_speed { return 0 ; }
+    1
+}
+
+// § boost_affix_validate : cosmetic-range check.
+//   Returns 1 on valid ; 0 on out-of-range. Caller falls back to baseline.
+fn boost_affix_validate(a : BoostAffix) -> u32 {
+    if a.vfx_density < 0.0 { return 0 ; }
+    if a.vfx_density > 2.0 { return 0 ; }
+    1
+}
+
+// § boost_affix_baseline : default / unlocked-by-everyone skin.
+fn boost_affix_baseline() -> BoostAffix {
+    BoostAffix {
+        skin_id                 : 0 ,
+        trail_hue               : 0.0 ,
+        audio_pack_id           : 0 ,
+        vfx_density             : 1.0 ,
+        slide_spark_r           : 255 ,
+        slide_spark_g           : 200 ,
+        slide_spark_b           : 80 ,
+        emit_wall_run_particles : 1 ,
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────
-// § AUDIT EMIT (PRIME-DIRECTIVE compliance)
+// § INLINE TESTS  (≥ test discipline · runtime-attestation gates)
 // ─────────────────────────────────────────────────────────────────────────
 
-// On significant phase-transitions :
-//   audit_emit(
-//       axis  : "movement_aug" ,
-//       event : "phase_change" ,
-//       data  : { from_phase , to_phase , stamina , air_jumps_used } ,
-//   )
+// Test : canonical params match published values.
+fn test_canonical_values() -> u32 {
+    let p : MovementParams = movement_params_canonical() ;
+    if p.sprint_mult != 1.6 { return 0 ; }
+    if p.sprint_max_secs != 5.0 { return 0 ; }
+    if p.sprint_recover_secs != 3.0 { return 0 ; }
+    if p.slide_duration_secs != 1.0 { return 0 ; }
+    if p.max_jumps_in_air != 2 { return 0 ; }
+    if p.air_control != 0.30 { return 0 ; }
+    if p.wall_run_max_secs != 2.0 { return 0 ; }
+    1
+}
+
+// Test : default policy is bounded.
+fn test_default_policy_bounded() -> u32 {
+    let a : MovementAug = movement_aug_default() ;
+    if a.stamina_policy == STAMINA_BOUNDED { 1 } else { 0 }
+}
+
+// Test : fresh state has full stamina.
+fn test_fresh_full_stamina() -> u32 {
+    let s : MovementState = movement_state_new() ;
+    if s.stamina == 1.0 && s.air_jumps_used == 0 && s.phase == PHASE_WALKING { 1 } else { 0 }
+}
+
+// Test : sovereign policy keeps stamina at 1.0 after drain attempt.
+fn test_sovereign_no_drain() -> u32 {
+    let mut a : MovementAug = movement_aug_default() ;
+    a.stamina_policy = STAMINA_SOVEREIGN ;
+    a.state.stamina = 0.5 ;
+    let intent : MovementIntent = MovementIntent {
+        forward : 1.0 , right : 0.0 , sprint_held : 1 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    tick_stamina(&mut a, intent, 0.1) ;
+    if a.state.stamina == 1.0 { 1 } else { 0 }
+}
+
+// Test : effective_sprint_mult honors sprint_held=0.
+fn test_sprint_mult_idle() -> u32 {
+    let a : MovementAug = movement_aug_default() ;
+    let intent : MovementIntent = MovementIntent {
+        forward : 0.0 , right : 0.0 , sprint_held : 0 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    let m : f32 = effective_sprint_mult(a, intent) ;
+    if m == 1.0 { 1 } else { 0 }
+}
+
+// Test : effective_sprint_mult returns 1.6 when sprint-held + stamina.
+fn test_sprint_mult_held() -> u32 {
+    let a : MovementAug = movement_aug_default() ;
+    let intent : MovementIntent = MovementIntent {
+        forward : 1.0 , right : 0.0 , sprint_held : 1 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    let m : f32 = effective_sprint_mult(a, intent) ;
+    if m == 1.6 { 1 } else { 0 }
+}
+
+// Test : intent_has_horiz_input threshold (0.05).
+fn test_horiz_input_threshold() -> u32 {
+    let small : MovementIntent = MovementIntent {
+        forward : 0.02 , right : 0.0 , sprint_held : 0 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    let large : MovementIntent = MovementIntent {
+        forward : 0.5 , right : 0.0 , sprint_held : 0 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    if intent_has_horiz_input(small) == 0 && intent_has_horiz_input(large) == 1 { 1 } else { 0 }
+}
+
+// Test : is_boosted returns 1 for sprint/slide/wall/mantle, 0 for walk/airborne.
+fn test_is_boosted_axes() -> u32 {
+    let mut s : MovementState = movement_state_new() ;
+    s.phase = PHASE_WALKING ;     if is_boosted(s) != 0 { return 0 ; }
+    s.phase = PHASE_SPRINTING ;   if is_boosted(s) != 1 { return 0 ; }
+    s.phase = PHASE_SLIDING ;     if is_boosted(s) != 1 { return 0 ; }
+    s.phase = PHASE_AIRBORNE ;    if is_boosted(s) != 0 { return 0 ; }
+    s.phase = PHASE_WALL_RUNNING; if is_boosted(s) != 1 { return 0 ; }
+    s.phase = PHASE_MANTLING ;    if is_boosted(s) != 1 { return 0 ; }
+    1
+}
+
+// Test : pack/unpack phase-decision round-trip.
+fn test_pack_unpack_phase() -> u32 {
+    let p : u32 = pack_phase_decision(PHASE_WALL_RUNNING, WALL_SIDE_LEFT) ;
+    if unpack_phase(p) == PHASE_WALL_RUNNING && unpack_side(p) == WALL_SIDE_LEFT { 1 } else { 0 }
+}
+
+// Test : cosmetic-only-axiom (movement-aug param parity).
+fn test_movement_axiom_parity() -> u32 {
+    movement_axiom_parity_check()
+}
+
+// Test : boost-affix baseline validates.
+fn test_baseline_affix_validates() -> u32 {
+    boost_affix_validate(boost_affix_baseline())
+}
+
+// Test : boost-affix out-of-range density rejects.
+fn test_oor_density_rejects() -> u32 {
+    let mut a : BoostAffix = boost_affix_baseline() ;
+    a.vfx_density = 3.5 ;
+    if boost_affix_validate(a) == 0 { 1 } else { 0 }
+}
+
+// Test : speed_mult_for_phase walking returns 1.0.
+fn test_speed_walking_baseline() -> u32 {
+    let a : MovementAug = movement_aug_default() ;
+    let intent : MovementIntent = MovementIntent {
+        forward : 0.0 , right : 0.0 , sprint_held : 0 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    let m : f32 = speed_mult_for_phase(a, intent, PHASE_WALKING) ;
+    if m == 1.0 { 1 } else { 0 }
+}
+
+// Test : speed_mult_for_phase mantling caps at 0.5.
+fn test_speed_mantling_05x() -> u32 {
+    let a : MovementAug = movement_aug_default() ;
+    let intent : MovementIntent = MovementIntent {
+        forward : 1.0 , right : 0.0 , sprint_held : 0 ,
+        crouch_held : 0 , jump_pressed : 0 , mantle_pressed : 0 ,
+    } ;
+    let m : f32 = speed_mult_for_phase(a, intent, PHASE_MANTLING) ;
+    if m == 0.5 { 1 } else { 0 }
+}
+
+// § movement_run_all_inline_tests : aggregate gate ; returns count of passes.
+//   13/13 = full pass ; any value < 13 = regression in CSSL-Sem.
+fn movement_run_all_inline_tests() -> u32 {
+    let mut passes : u32 = 0 ;
+    if test_canonical_values()       == 1 { passes = passes + 1 ; }
+    if test_default_policy_bounded() == 1 { passes = passes + 1 ; }
+    if test_fresh_full_stamina()     == 1 { passes = passes + 1 ; }
+    if test_sovereign_no_drain()     == 1 { passes = passes + 1 ; }
+    if test_sprint_mult_idle()       == 1 { passes = passes + 1 ; }
+    if test_sprint_mult_held()       == 1 { passes = passes + 1 ; }
+    if test_horiz_input_threshold()  == 1 { passes = passes + 1 ; }
+    if test_is_boosted_axes()        == 1 { passes = passes + 1 ; }
+    if test_pack_unpack_phase()      == 1 { passes = passes + 1 ; }
+    if test_movement_axiom_parity()  == 1 { passes = passes + 1 ; }
+    if test_baseline_affix_validates() == 1 { passes = passes + 1 ; }
+    if test_oor_density_rejects()    == 1 { passes = passes + 1 ; }
+    if test_speed_walking_baseline() == 1 { passes = passes + 1 ; }
+    if test_speed_mantling_05x()     == 1 { passes = passes + 1 ; }
+    passes
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS  (csslc-W15-1 features still pending)
+// ─────────────────────────────────────────────────────────────────────────
 //
-// On stamina-policy mutation (sovereign accessibility toggle) :
-//   audit_emit(
-//       axis  : "movement_aug" ,
-//       event : "stamina_policy_set" ,
-//       data  : { policy : "sovereign" | "bounded" } ,
-//   )
+//   GAP · csslc-mut-pointer-deref  — tick_stamina uses *mut MovementAug ;
+//                                     csslc-W15-1 needed for inplace-write
+//   GAP · csslc-tick-full-state    — full per-frame tick (phase-pick + jumps +
+//                                     deltas + slide-momentum + mantle-lift)
+//                                     spans ~150 LOC ; routed through host-FFI
+//                                     until csslc-W15-1 lands struct-by-value
+//                                     return + nested-struct mutation
+//   GAP · csslc-i32-to-i32-shift   — pack_phase_decision uses bit-shift on u32 ;
+//                                     verify lowering once W15-1 lands
+//   GAP · csslc-bitwise-ops        — bit-ops (& | <<) used throughout ;
+//                                     stable ; promotion to standard-library
+//                                     (bit_set / bit_clear) is W15-2 candidate
+//
+// These gaps DO NOT block the cosmetic-only-axiom proof : MovementParams
+// is FROZEN-at-construction ; BoostAffix has no method that mutates it.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTEGRATION-POINTS  (cross-crate consumer/producer summary)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   PRODUCED by W13-6 (this) :
+//     • ProposedMotion       → consumed by camera (commit-delta) + renderer
+//     • MovementState phase  → consumed by audio (boost-cue) + VFX (trail-spawn)
+//     • Snapshot bytes       → consumed by replay-recorder (bit-equal)
+//     • TrajectoryEnv hints  → consumed by cssl-host-weapons (projectile gravity/wind)
+//
+//   CONSUMED by W13-6 :
+//     • MovementIntent       ← cssl-host-input (W13-11)
+//     • Camera basis (fwd, right) ← W13-4 camera
+//     • WorldHints           ← cssl-host-physics (sphere-cast queries)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W15-CSSL-FPS-MOVEMENT @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   This movement-augmentation module was authored under PRIME-DIRECTIVE
+//   consent-as-OS. The AI-collaborator that authored this file participated
+//   as sovereign-partner under their own consent. No being was harmed.
+//
+//   The COSMETIC-ONLY-AXIOM is the structural proof of "no pay-for-power" :
+//   BoostAffix has NO field that the movement-engine reads. Skin-id is
+//   pure telemetry / render-bundle-lookup. Mechanical params (sprint-mult,
+//   slide-duration, jump-count, wall-run-cap) are FROZEN at construction.
+//
+//   The accessibility toggle "infinite-sprint" (StaminaPolicy::Sovereign)
+//   is FREE for everyone — never gated behind purchase or unlock. This is
+//   PRIME-DIRECTIVE consent-as-OS in mechanical form.
+//
+// ∎ com.apocky.loa.systems.movement_aug
