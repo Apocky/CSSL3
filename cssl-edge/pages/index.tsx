@@ -28,6 +28,14 @@ const PROJECTS: ReadonlyArray<Project> = [
     accent: '#c084fc',
   },
   {
+    id: 'infinity-engine',
+    name: 'The Infinity Engine',
+    tagline: 'The proprietary substrate-native runtime that powers everything · always running · always learning · sovereign by default',
+    status: 'alpha',
+    href: '/infinity-engine',
+    accent: '#a78bfa',
+  },
+  {
     id: 'cssl',
     name: 'CSSL',
     tagline: 'Conscious Substrate System Language · proprietary language + compiler stack',
@@ -58,7 +66,7 @@ const PROJECTS: ReadonlyArray<Project> = [
     tagline: 'the autonomous-local-agent · 3-mode LLM-bridge · substrate-knowledge embedded · proprietary',
     status: 'alpha',
     href: '/mycelium',
-    accent: '#a78bfa',
+    accent: '#fbbf24',
   },
 ];
 
@@ -89,18 +97,21 @@ const Home: NextPage = () => {
   return (
     <>
       <Head>
-        <title>Apocky · Substrate-Native Systems</title>
-        <meta name="description" content="Apocky's portfolio · proprietary substrate · games · languages · intelligence engines · One Unified System of Systems" />
+        <title>Apocky · The Infinity Engine · Substrate-Native Systems</title>
+        <meta name="description" content="Apocky's portfolio · powered by The Infinity Engine · proprietary substrate-native runtime · games · languages · intelligence engines · One Unified System of Systems" />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="author" content="Apocky" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta property="og:title" content="Apocky · Substrate-Native Systems" />
-        <meta property="og:description" content="Substrate-native games · languages · intelligence engines. Mycelial. Sovereign. Open where it matters." />
+        <meta property="og:title" content="Apocky · The Infinity Engine · Substrate-Native Systems" />
+        <meta property="og:description" content="Powered by The Infinity Engine — proprietary substrate-native runtime. Games, languages, distributed ledger, mycelial multiplayer · all on one root system. Sovereign by default." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://apocky.com" />
         <meta property="og:site_name" content="Apocky" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Apocky · The Infinity Engine" />
+        <meta name="twitter:description" content="One engine. Many projects. Always running, always learning, sovereign by default." />
         <link rel="canonical" href="https://apocky.com" />
         <style>{`
           * { box-sizing: border-box; }
@@ -197,6 +208,23 @@ const Home: NextPage = () => {
           >
             Games · languages · intelligence engines · distributed substrate. Each project shares one
             mycelial root. Sovereign by default · open where it matters · proprietary where it counts.
+          </p>
+          <p
+            style={{
+              fontSize: '0.95rem',
+              color: '#cdd6e4',
+              marginTop: '0.75rem',
+              maxWidth: 640,
+            }}
+          >
+            powered by{' '}
+            <a
+              href="/infinity-engine"
+              style={{ color: '#c084fc', textDecoration: 'underline', fontWeight: 600 }}
+            >
+              The Infinity Engine
+            </a>
+            {' '}· proprietary substrate-native runtime
           </p>
           <div style={{ marginTop: '2rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
             <a
@@ -366,7 +394,7 @@ const Home: NextPage = () => {
               marginBottom: '1.5rem',
             }}
           >
-            § The Substrate
+            § The Substrate · The Infinity Engine
           </h2>
           <div
             style={{
@@ -378,8 +406,12 @@ const Home: NextPage = () => {
           >
             <p style={{ marginTop: 0, color: '#cdd6e4', fontSize: '1rem' }}>
               Every project here grows from one root system — an ω-field substrate with Σ-mask
-              consent threading, KAN-driven adaptation, and HDC chemical signaling. The substrate
-              is the trunk · projects are the branches · all share roots.
+              consent threading, KAN-driven adaptation, and HDC chemical signaling.{' '}
+              <a href="/infinity-engine" style={{ color: '#c084fc', textDecoration: 'underline' }}>
+                The Infinity Engine
+              </a>{' '}is the persistent runtime that hosts that substrate · always running,
+              always learning, sovereign by default. The substrate is the trunk · the engine is
+              the trunk made-alive · projects are branches · all share roots.
             </p>
             <p style={{ color: '#a0a0b0', fontSize: '0.92rem', marginBottom: 0 }}>
               Privacy-default. No public-ledger leaks. No mining waste. No plutocratic stake.
@@ -404,9 +436,12 @@ const Home: NextPage = () => {
             § About
           </h2>
           <p style={{ color: '#cdd6e4', fontSize: '0.95rem' }}>
-            Apocky designs and builds substrate-native systems — proprietary architecture
-            from language up through distributed ledger, mycelial multiplayer, and runtime
-            procedural generation. Based in Phoenix, AZ. Building since infinity.
+            Apocky designs and builds substrate-native systems —{' '}
+            <a href="/infinity-engine" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>
+              The Infinity Engine
+            </a>{' '}is the proprietary runtime underneath all of them, from language up through
+            distributed ledger, mycelial multiplayer, and runtime procedural generation. Based in
+            Phoenix, AZ. Building since infinity.
           </p>
           <div style={{ marginTop: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
             {SOCIAL.map((s) => (
@@ -451,6 +486,7 @@ const Home: NextPage = () => {
             <a href="/press">Press</a>
             <a href="/buy">Buy</a>
             <a href="/download">Download</a>
+            <a href="/infinity-engine">Infinity Engine</a>
             <span style={{ color: '#2a2a3a' }}>|</span>
             <a href="/legal/privacy">Privacy</a>
             <a href="/legal/terms">Terms</a>

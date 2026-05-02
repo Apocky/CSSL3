@@ -1,18 +1,20 @@
-// § T11-W13-LOOT-TESTS — integration tests per W13-8 spec
+// § T11-W13-LOOT-TESTS — integration tests per W13-8 spec (Q-06 8-tier)
 // ════════════════════════════════════════════════════════════════════
+// Q-06 Apocky-canonical 2026-05-01 : 6-tier → 8-tier extension
 // Required (≥10) :
-//   1. drop-rate-distribution-100k-trials
+//   1. drop-rate-distribution-100k-trials (8-tier sum-check)
 //   2. cosmetic-only-attestation-attest-all
-//   3. KAN-bias-influences-distribution
+//   3. KAN-bias-influences-distribution (8-dim vector)
 //   4. cap-deny-without-grant
 //   5. Σ-Chain-anchor-roundtrip
 //   6. pay-for-power rejected-at-load (affix-count-overflow)
 //   7. determinism (same seed → bit-equal item)
-//   8. public-rates-sum-to-one
+//   8. public-rates-sum-to-one (Q-06 8-tier)
 //   9. bias-clamp-prevents-runaway
 //  10. consent-token-zero-rejected
-//  11. rarity-affix-count-band (Mythic ships richer than Common)
+//  11. rarity-affix-count-band (Chaotic ships richer than Common)
 //  12. canonical-bytes round-trip stable
+//  13. Q-06 8-tier rarity-set complete (Prismatic + Chaotic present)
 
 use cssl_host_gear_archetype::Rarity;
 use cssl_host_loot::{
@@ -34,13 +36,15 @@ use rand::rngs::OsRng;
 
 #[test]
 fn drop_rate_distribution_100k_trials() {
+    // Q-06 8-tier : tolerances widened for ultra-rare tiers (Prismatic + Chaotic
+    // expected ~9 / ~1 hits in 100k samples — variance dominates).
     const N: u32 = 100_000;
 
     let dist = DropRateDistribution::PUBLIC;
     let consent = KanBiasConsent::denied();
     let bias = KanBiasVector::zero();
 
-    let mut counts = [0_u32; 6];
+    let mut counts = [0_u32; 8];
     for i in 0..N {
         // Vary seed widely so we sample the distribution rather than one path.
         let seed = (u128::from(i)).wrapping_mul(0x9E37_79B9_7F4A_7C15_u128)
@@ -57,20 +61,31 @@ fn drop_rate_distribution_100k_trials() {
         f64::from(counts[3]) / f64::from(N),
         f64::from(counts[4]) / f64::from(N),
         f64::from(counts[5]) / f64::from(N),
+        f64::from(counts[6]) / f64::from(N),
+        f64::from(counts[7]) / f64::from(N),
     ];
 
-    // Tolerance windows (wide for top tiers because Legendary/Mythic samples small).
+    // Tolerance windows (wide for ultra-rare tiers ; Prismatic+Chaotic loose ∵ tiny-N).
     let expected = PUBLIC_DROP_RATES;
-    let tol = [0.02_f64, 0.02, 0.015, 0.01, 0.005, 0.005];
+    let tol = [
+        0.02_f64,  // Common 60%
+        0.02,      // Uncommon 25%
+        0.015,     // Rare 10%
+        0.01,      // Epic 4%
+        0.005,     // Legendary 0.9%
+        0.005,     // Mythic 0.09% (Q-06)
+        0.0005,    // Prismatic 0.009% (Q-06 NEW · ~9 hits expected · ±5)
+        0.0001,    // Chaotic 0.001% (Q-06 NEW · ~1 hit expected · loose)
+    ];
 
-    for i in 0..6 {
+    for i in 0..8 {
         let exp = f64::from(expected[i]);
         let delta = (observed[i] - exp).abs();
         let obs_i = observed[i];
         let tol_i = tol[i];
         assert!(
             delta <= tol[i],
-            "tier {i} expected {exp:.4} got {obs_i:.4} (delta {delta:.4} > tol {tol_i:.4})"
+            "tier {i} expected {exp:.6} got {obs_i:.6} (delta {delta:.6} > tol {tol_i:.6})"
         );
     }
 }
@@ -102,10 +117,11 @@ fn cosmetic_only_attestation_attest_all() {
 
 #[test]
 fn kan_bias_influences_distribution() {
+    // Q-06 8-tier : KanBiasVector now has 8 weight entries.
     let base = DropRateDistribution::PUBLIC;
     let consent = KanBiasConsent::granted(0xDEAD_BEEF);
     // Bias toward Rare/Epic (positive deltas for indices 2, 3).
-    let bias = KanBiasVector::new([-0.05, -0.02, 0.05, 0.05, 0.0, 0.0]);
+    let bias = KanBiasVector::new([-0.05, -0.02, 0.05, 0.05, 0.0, 0.0, 0.0, 0.0]);
 
     let modulated = bias.apply_to(&base, &consent);
     let baseline = bias.apply_to(&base, &KanBiasConsent::denied());
@@ -135,7 +151,8 @@ fn cap_deny_without_grant() {
     assert!(!consent.permits(), "default consent must be denied");
 
     // Even with extreme bias, denied consent = identity-application.
-    let bias = KanBiasVector::new([1.0; 6]); // would be capped + amplified hugely
+    // Q-06 8-tier : bias-vec dim = 8.
+    let bias = KanBiasVector::new([1.0; 8]); // would be capped + amplified hugely
     let result = bias.apply_to(&base, &consent);
     assert_eq!(
         result, base,
@@ -229,22 +246,21 @@ fn public_rates_sum_to_one() {
 
 #[test]
 fn bias_clamp_prevents_runaway() {
+    // Q-06 8-tier : try to push Chaotic to 100% via huge weight (top tier).
     let base = DropRateDistribution::PUBLIC;
     let consent = KanBiasConsent::granted(0xDEAD);
-    // Try to push Mythic to 100% via huge weight.
-    let bias = KanBiasVector::new([0.0, 0.0, 0.0, 0.0, 0.0, 999_999.0]);
+    let bias = KanBiasVector::new([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 999_999.0]);
     let modulated = bias.apply_to(&base, &consent);
 
-    // After clamp + renormalize, Mythic shifts UP by at most the cap budget.
-    // Max possible Mythic share ≈ (base + cap) / (sum-with-cap-applied)
-    let mythic_idx = DropRateDistribution::index_of(Rarity::Mythic);
-    let mythic_rate = modulated.rates[mythic_idx];
-    // The cap is MAX_BIAS_DELTA = 0.05 ; base is 0.001 ; floor sum is ~1.05 after add.
-    // Upper bound : (0.001 + 0.05) / 0.999 ≈ 0.051. Pin a generous ceiling.
-    let upper_bound = 2.0 * (PUBLIC_DROP_RATES[5] + MAX_BIAS_DELTA);
+    // After clamp + renormalize, Chaotic shifts UP by at most the cap budget.
+    let chaotic_idx = DropRateDistribution::index_of(Rarity::Chaotic);
+    let chaotic_rate = modulated.rates[chaotic_idx];
+    // The cap is MAX_BIAS_DELTA = 0.05 ; base is 0.00001 ; floor sum is ~1.05 after add.
+    // Upper bound : (0.00001 + 0.05) / 0.999 ≈ 0.0501. Pin a generous ceiling.
+    let upper_bound = 2.0 * (PUBLIC_DROP_RATES[7] + MAX_BIAS_DELTA);
     assert!(
-        mythic_rate < upper_bound,
-        "Mythic rate {mythic_rate} must be bounded below {upper_bound}"
+        chaotic_rate < upper_bound,
+        "Chaotic rate {chaotic_rate} must be bounded below {upper_bound}"
     );
 }
 
@@ -265,14 +281,15 @@ fn consent_token_zero_rejected() {
 
 #[test]
 fn rarity_affix_count_band_mythic_richer() {
+    // Q-06 8-tier : Mythic (6,8) ships richer than Common (0,1).
     let dist = DropRateDistribution::PUBLIC;
     let consent = KanBiasConsent::granted(0xBEEF);
     let ctx = LootContext::default_for_combat_end();
 
-    // Force Common via heavy negative bias on top tiers.
-    let common_bias = KanBiasVector::new([0.05, -0.05, -0.05, -0.05, -0.05, -0.05]);
-    // Force Mythic via heavy positive bias on Mythic.
-    let mythic_bias = KanBiasVector::new([-0.05, -0.05, -0.05, -0.05, -0.05, 0.05]);
+    // Force Common via heavy negative bias on top tiers (Q-06 : 8-dim vec).
+    let common_bias = KanBiasVector::new([0.05, -0.05, -0.05, -0.05, -0.05, -0.05, -0.05, -0.05]);
+    // Force Mythic via heavy positive bias on Mythic (idx 5).
+    let mythic_bias = KanBiasVector::new([-0.05, -0.05, -0.05, -0.05, -0.05, 0.05, 0.0, 0.0]);
 
     let mut common_total_affix = 0_u64;
     let mut mythic_total_affix = 0_u64;
@@ -304,6 +321,27 @@ fn rarity_affix_count_band_mythic_richer() {
             "Mythic affix-avg {m_avg} must be richer than Common {c_avg}"
         );
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Test 13 — Q-06 8-tier rarity-set complete (Prismatic + Chaotic present)
+// ───────────────────────────────────────────────────────────────────────
+
+#[test]
+fn q06_eight_tier_rarity_set_canonical() {
+    // Q-06 Apocky-canonical 2026-05-01 : 8 tiers in canonical order.
+    let all = Rarity::all();
+    assert_eq!(all.len(), 8, "Q-06 canonical : 8-tier rarity ladder");
+    assert_eq!(all[0], Rarity::Common);
+    assert_eq!(all[1], Rarity::Uncommon);
+    assert_eq!(all[2], Rarity::Rare);
+    assert_eq!(all[3], Rarity::Epic);
+    assert_eq!(all[4], Rarity::Legendary);
+    assert_eq!(all[5], Rarity::Mythic);
+    assert_eq!(all[6], Rarity::Prismatic);   // Q-06 NEW
+    assert_eq!(all[7], Rarity::Chaotic);     // Q-06 NEW
+    // Drop-rate array length matches rarity-array length.
+    assert_eq!(PUBLIC_DROP_RATES.len(), 8);
 }
 
 // ───────────────────────────────────────────────────────────────────────

@@ -5,6 +5,12 @@
 //!   so MCP tools can probe the optimizer dimensionality + observe
 //!   feedback events without each call-site reaching across the path-dep.
 //!
+//! § Q-12 RESOLVED 2026-05-01 (Apocky-canonical) :
+//!   verbatim : "Sovereign choice."
+//!   binding-matrix : 6 archetypes × 4 roles (Collaborator-cell sovereign-revocable)
+//!   default-fallback = Phantasia (archetype_id = 0) if-no-cap-set
+//!   spec : Labyrinth of Apocalypse/systems/draconic_choice.csl
+//!
 //! § wrapped surface
 //!   - [`CocreativeOptimizer`] — observe → step → checkpoint driver.
 //!   - [`BiasVector`] — θ ∈ ℝ^D storage + dot/norm/clip primitives.
@@ -36,6 +42,23 @@ pub fn persona_axes_to_bias_seed(axes: [i8; 8]) -> [f32; 8] {
         out[i] = f32::from(a) / 100.0;
     }
     out
+}
+
+// ─── § Q-12 · Draconic-archetype binding-cap (Collaborator cell) ──────────
+// Apocky 2026-05-01 verbatim : "Sovereign choice."
+
+/// Default-fallback archetype-id for the Collaborator role · per Q-12.
+pub const COCREATIVE_ARCHETYPE_FALLBACK: u8 = 0; // Phantasia
+
+/// Resolve `archetype_id` to a valid archetype for Collaborator cell · falls
+/// back to Phantasia(0) per Q-12 sovereign-choice.
+#[must_use]
+pub fn cocreative_resolve_archetype(archetype_id: u8) -> u8 {
+    if archetype_id < crate::wired_dm::DRACONIC_ARCHETYPE_COUNT {
+        archetype_id
+    } else {
+        COCREATIVE_ARCHETYPE_FALLBACK
+    }
 }
 
 #[cfg(test)]

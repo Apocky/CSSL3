@@ -125,6 +125,7 @@ pub fn sample_rarity_with_bias(
 
 /// Cosmetic-richness band : `(min_affix_count, max_affix_count)` per rarity.
 /// Higher rarities ship MORE affixes — the **only** thing rarity buys you.
+/// Q-06 Apocky-canonical 2026-05-01 : extended to 8 tiers.
 #[must_use]
 const fn rarity_affix_count_band(r: Rarity) -> (u8, u8) {
     match r {
@@ -134,6 +135,8 @@ const fn rarity_affix_count_band(r: Rarity) -> (u8, u8) {
         Rarity::Epic => (3, 4),
         Rarity::Legendary => (4, 6),
         Rarity::Mythic => (6, 8),
+        Rarity::Prismatic => (8, 10), // Q-06 NEW · multi-element-resonance
+        Rarity::Chaotic => (10, 12),  // Q-06 NEW · Σ-mask wildcard pool
     }
 }
 

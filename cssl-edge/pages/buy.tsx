@@ -5,12 +5,13 @@
 import type { NextPage, GetStaticProps } from 'next';
 import Head from 'next/head';
 import { useState } from 'react';
-import { PRODUCT_CATALOG, type ProductDescriptor } from '@/lib/stripe';
+import { PRODUCT_CATALOG, COSMETIC_LAUNCH_PAUSED, type ProductDescriptor } from '@/lib/stripe';
 import { STRIPE_CHECKOUT_INIT } from '@/lib/cap';
 
 interface BuyProps {
   products: ReadonlyArray<ProductDescriptor>;
   stripe_configured: boolean;
+  cosmetic_launch_paused: boolean;
 }
 
 interface CheckoutResponseShape {
@@ -20,7 +21,7 @@ interface CheckoutResponseShape {
   error?: string;
 }
 
-const Buy: NextPage<BuyProps> = ({ products, stripe_configured }) => {
+const Buy: NextPage<BuyProps> = ({ products, stripe_configured, cosmetic_launch_paused }) => {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -111,6 +112,25 @@ const Buy: NextPage<BuyProps> = ({ products, stripe_configured }) => {
         <p style={{ color: '#a8a8b8', marginTop: '0.5rem', fontSize: '0.95rem' }}>
           § Cosmetic-channel-only monetization. Zero pay-for-power. 14-day no-questions refund. Sovereignty respected.
         </p>
+
+        {cosmetic_launch_paused ? (
+          <div
+            style={{
+              marginTop: '1.5rem',
+              padding: '0.9rem 1.1rem',
+              background: 'rgba(192, 132, 252, 0.08)',
+              border: '1px solid rgba(192, 132, 252, 0.4)',
+              borderRadius: 6,
+              fontSize: '0.85rem',
+              color: '#c084fc',
+            }}
+          >
+            <strong>§ cosmetics phase-2 · main game first</strong> — the cosmetic store is held until LoA's main game ships.
+            Alpha is{' '}
+            <a href="/download" style={{ color: '#7dd3fc', textDecoration: 'underline' }}>free at /download</a>{' '}
+            and the support pathway today.
+          </div>
+        ) : null}
 
         {!stripe_configured ? (
           <div
@@ -264,6 +284,7 @@ export const getStaticProps: GetStaticProps<BuyProps> = async () => {
     props: {
       products: PRODUCT_CATALOG.filter((p) => p.visible),
       stripe_configured: typeof process.env['STRIPE_SECRET_KEY'] === 'string' && process.env['STRIPE_SECRET_KEY'].length > 0,
+      cosmetic_launch_paused: COSMETIC_LAUNCH_PAUSED,
     },
   };
 };

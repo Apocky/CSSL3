@@ -1,4 +1,5 @@
-// § T11-W13-LOOT : cssl-host-loot — 6-tier rarity loot-drop · COSMETIC-ONLY-AXIOM
+// § T11-W13-LOOT : cssl-host-loot — 8-tier rarity loot-drop · COSMETIC-ONLY-AXIOM
+// §§ Q-06 APPLIED 2026-05-01 : 6-tier → 8-tier extension (Apocky-canonical)
 // §§ spec : Labyrinth of Apocalypse/systems/loot_drop.csl
 // §§ thesis : "looting = fashion-show ¬ power-curve" · rarity gates aesthetic-richness ¬ stats
 // §§ axioms (t∞) :
@@ -8,13 +9,15 @@
 //     A-4 ✓ KAN-bias Σ-mask-gated default-deny (player opt-in explicit)
 //     A-5 ✓ KAN-bias-update-cap (no runaway amplification)
 //     A-6 ✓ Σ-Chain anchor every drop (sovereign-revocable + immutable-history)
-//     A-7 ✓ public drop-rates : Common 60 · Uncommon 25 · Rare 10 · Epic 4 · Legendary 0.9 · Mythic 0.1
+//     A-7 ✓ public drop-rates (Q-06 8-tier · sums to 100.000%) :
+//          Common 60 · Uncommon 25 · Rare 10 · Epic 4
+//          Legendary 0.9 · Mythic 0.09 · Prismatic 0.009 · Chaotic 0.001
 //
 // §§ scope this crate :
 //     - LootAffix sum-type (Visual · Audio · Particle · Attribution) — NO stat-variant
 //     - LootItem with Rarity-tier from cssl-host-gear-archetype + cosmetic-affix bag
-//     - DropRateDistribution::PUBLIC canonical 6-tier curve
-//     - KanBiasVector + Σ-mask consent-gated apply
+//     - DropRateDistribution::PUBLIC canonical 8-tier curve (Q-06)
+//     - KanBiasVector + Σ-mask consent-gated apply (8-dim per-rarity)
 //     - LootRoll : KAN-bias rolls rarity → affix-rolls within-rarity-pool
 //     - LootDropEvent → cssl-host-sigma-chain SigmaEvent anchor (kind=LootDrop)
 //     - attest_no_pay_for_power(item) structural-attestation
@@ -26,25 +29,28 @@
 #![allow(clippy::module_name_repetitions)]
 //! # cssl-host-loot
 //!
-//! 6-tier rarity loot-drop with **COSMETIC-ONLY-AXIOM** structurally enforced.
+//! 8-tier rarity loot-drop with **COSMETIC-ONLY-AXIOM** structurally enforced.
+//! Q-06 Apocky-canonical 2026-05-01 : 6-tier → 8-tier extension.
 //!
 //! ## Axiom : looting = fashion-show, not power-curve
 //!
 //! Rarity gates **aesthetic richness only** — never stats, never DPS, never
-//! reload-speed. Per-tier DPS is identical across the 6 rarities ; rarity
+//! reload-speed. Per-tier DPS is identical across the 8 rarities ; rarity
 //! buys you tracer-color, muzzle-flash, particle-effects, and creator-attribution
 //! — nothing that changes balance.
 //!
-//! ### Public drop-rates (W13-8 spec)
+//! ### Public drop-rates (Q-06 8-tier · sums to 100.000%)
 //!
-//! | Rarity      | Rate    |
-//! |-------------|---------|
-//! | Common      | 60%     |
-//! | Uncommon    | 25%     |
-//! | Rare        | 10%     |
-//! | Epic        | 4%      |
-//! | Legendary   | 0.9%    |
-//! | Mythic      | 0.1%    |
+//! | Rarity      | Rate     |
+//! |-------------|----------|
+//! | Common      | 60.000%  |
+//! | Uncommon    | 25.000%  |
+//! | Rare        | 10.000%  |
+//! | Epic        |  4.000%  |
+//! | Legendary   |  0.900%  |
+//! | Mythic      |  0.090%  |
+//! | Prismatic   |  0.009%  |
+//! | Chaotic     |  0.001%  |
 //!
 //! These rates are PUBLIC ; player-facing UI exposes them verbatim. No hidden
 //! pity-timers, no manipulated drop-tables, no tier-skip purchase pathway.

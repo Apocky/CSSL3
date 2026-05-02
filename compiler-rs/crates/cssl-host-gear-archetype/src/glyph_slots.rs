@@ -1,17 +1,19 @@
-//! § GlyphSlots — per-rarity glyph-socket count per GDD § GLYPH-SLOTS.
+//! § GlyphSlots — per-rarity glyph-socket count (Q-06 8-tier canonical).
 //!
-//! slot-count rolled-on-drop :
+//! slot-count rolled-on-drop (Apocky-canonical 2026-05-01) :
 //!   Common    : 0
 //!   Uncommon  : 0..1
 //!   Rare      : 1
 //!   Epic      : 1..2
 //!   Legendary : 2..3
-//!   Mythic    : 3
+//!   Mythic    : 3..4   (Q-06 extended-from-3 single)
+//!   Prismatic : 4..5   (NEW · Apocky-Q-06)
+//!   Chaotic   : 5..6   (NEW · Apocky-Q-06)
 //!
 //! `glyph_slots_for_rarity(r)` returns the deterministic slot-count given the
-//! rarity-tier. Variable-band rarities (Uncommon · Epic · Legendary) resolve
-//! to the upper-bound here ; lower-bound paths roll via `roll_glyph_slots(seed,
-//! r)` which uses the seed's parity to break ties (deterministic + replayable).
+//! rarity-tier. Variable-band rarities resolve to the upper-bound here ;
+//! lower-bound paths roll via `roll_glyph_slots(seed, r)` which uses the
+//! seed's parity to break ties (deterministic + replayable).
 
 // Per-rarity match-arms with identical bodies are intentional (GDD § GLYPH-SLOTS
 // slot-count table) — preserved for tier-by-tier readability.
@@ -84,8 +86,9 @@ impl Default for GlyphSlot {
 // § glyph_slots_for_rarity  — deterministic upper-bound resolver
 // ───────────────────────────────────────────────────────────────────────
 
-/// Per-rarity glyph-slot count. Variable bands (Uncommon · Epic · Legendary)
-/// return the upper-bound ; use `roll_glyph_slots(seed, r)` for seeded-roll.
+/// Per-rarity glyph-slot count (Q-06 8-tier canonical · upper-bound).
+/// Variable bands resolve to upper-bound ; use `roll_glyph_slots(seed, r)`
+/// for seeded-roll within `[lower, upper]` band.
 #[must_use]
 pub const fn glyph_slots_for_rarity(r: Rarity) -> u8 {
     match r {
@@ -94,12 +97,14 @@ pub const fn glyph_slots_for_rarity(r: Rarity) -> u8 {
         Rarity::Rare => 1,
         Rarity::Epic => 2,       // 1..2 upper-bound
         Rarity::Legendary => 3,  // 2..3 upper-bound
-        Rarity::Mythic => 3,
+        Rarity::Mythic => 4,     // 3..4 upper-bound (Q-06 extended)
+        Rarity::Prismatic => 5,  // 4..5 upper-bound (Q-06 NEW)
+        Rarity::Chaotic => 6,    // 5..6 upper-bound (Q-06 NEW)
     }
 }
 
-/// Per-rarity glyph-slot lower-bound. Pair with `glyph_slots_for_rarity` for the
-/// closed-range `[lower, upper]` inclusive.
+/// Per-rarity glyph-slot lower-bound (Q-06 8-tier canonical).
+/// Pair with `glyph_slots_for_rarity` for the closed-range `[lower, upper]`.
 #[must_use]
 pub const fn glyph_slots_lower_bound(r: Rarity) -> u8 {
     match r {
@@ -108,7 +113,9 @@ pub const fn glyph_slots_lower_bound(r: Rarity) -> u8 {
         Rarity::Rare => 1,
         Rarity::Epic => 1,
         Rarity::Legendary => 2,
-        Rarity::Mythic => 3,
+        Rarity::Mythic => 3,     // Q-06 extended-from-fixed-3 to 3..4 band
+        Rarity::Prismatic => 4,  // Q-06 NEW
+        Rarity::Chaotic => 5,    // Q-06 NEW
     }
 }
 

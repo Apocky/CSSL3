@@ -2,6 +2,14 @@
 // ══════════════════════════════════════════════════════════════════
 // § T11-W14-LOCAL-PERSISTENT-ORCHESTRATOR
 //
+// § Q-09 · post-csslc-W15-1 · migrate-to-pure-CSSL
+//   Apocky 2026-05-01 verbatim : "B."
+//   resolution : stage-0 = Rust (this crate · LANDED) ; stage-1 = pure-CSSL
+//   migration-trigger : csslc-W15-1 supports orchestrator-required features :
+//     timer-effect · journal-effect · Σ-cap-effect · crash-replay · BLAKE3-anchor
+//   discipline : ¬ premature-migration · atomic-replace · keep-Rust-fallback
+//   per spec/infinity-engine/00_CHARTER.md § 16.6
+//
 // § PURPOSE
 //   24/7 desktop-daemon that drives the LoA Infinity-Engine offline so
 //   self-author + KAN-loop + auto-playtest + mycelium-sync continue to

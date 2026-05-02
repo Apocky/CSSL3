@@ -1,30 +1,43 @@
-//! § distribution — public 6-tier drop-rate curve
+//! § distribution — public 8-tier drop-rate curve (Q-06 Apocky-canonical 2026-05-01)
 //!
-//! Per W13-8 spec, drop-rates are PUBLIC (not hidden). The curve is :
+//! Per Q-06 spec, drop-rates are PUBLIC (not hidden). The 8-tier curve is :
 //!
-//! | Rarity      | Rate    |
-//! |-------------|---------|
-//! | Common      | 0.60    |
-//! | Uncommon    | 0.25    |
-//! | Rare        | 0.10    |
-//! | Epic        | 0.04    |
-//! | Legendary   | 0.009   |
-//! | Mythic      | 0.001   |
+//! | Rarity      | Rate     |
+//! |-------------|----------|
+//! | Common      | 0.60     |
+//! | Uncommon    | 0.25     |
+//! | Rare        | 0.10     |
+//! | Epic        | 0.04     |
+//! | Legendary   | 0.009    |
+//! | Mythic      | 0.0009   |
+//! | Prismatic   | 0.00009  |
+//! | Chaotic     | 0.00001  |
 //!
-//! Sums to 1.0. Index order matches [`cssl_host_gear_archetype::Rarity::all`]
-//! so distribution-vec aligns with rarity-vec.
+//! Sums to 1.0 (within f32 1e-4 tolerance). Index order matches
+//! [`cssl_host_gear_archetype::Rarity::all`] so distribution-vec aligns with
+//! rarity-vec.
 
 use cssl_host_gear_archetype::Rarity;
 use serde::{Deserialize, Serialize};
 
-/// Public per-rarity drop-rates per W13-8. Sums to 1.0 (modulo f32-precision).
+/// Public per-rarity drop-rates per Q-06 (Apocky 2026-05-01). Sums to 1.0
+/// (modulo f32-precision).
 ///
-/// Index order : `[Common, Uncommon, Rare, Epic, Legendary, Mythic]` matching
-/// [`Rarity::all`].
-pub const PUBLIC_DROP_RATES: [f32; 6] = [0.60, 0.25, 0.10, 0.04, 0.009, 0.001];
+/// Index order : `[Common, Uncommon, Rare, Epic, Legendary, Mythic, Prismatic, Chaotic]`
+/// matching [`Rarity::all`].
+pub const PUBLIC_DROP_RATES: [f32; 8] = [
+    0.60,    // Common    60.000%
+    0.25,    // Uncommon  25.000%
+    0.10,    // Rare      10.000%
+    0.04,    // Epic       4.000%
+    0.009,   // Legendary  0.900%
+    0.0009,  // Mythic     0.090%  (Q-06)
+    0.00009, // Prismatic  0.009%  (Q-06 NEW)
+    0.00001, // Chaotic    0.001%  (Q-06 NEW)
+];
 
 // ───────────────────────────────────────────────────────────────────────
-// § DropRateDistribution
+// § DropRateDistribution (Q-06 8-tier)
 // ───────────────────────────────────────────────────────────────────────
 
 /// Per-rarity drop-rate distribution. The default and only canonical
@@ -33,12 +46,12 @@ pub const PUBLIC_DROP_RATES: [f32; 6] = [0.60, 0.25, 0.10, 0.04, 0.009, 0.001];
 /// (see [`crate::roll`]) — it never replaces the publicly-disclosed rates.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct DropRateDistribution {
-    /// Per-rarity rates indexed by [`Rarity::all`] order.
-    pub rates: [f32; 6],
+    /// Per-rarity rates indexed by [`Rarity::all`] order (8-tier per Q-06).
+    pub rates: [f32; 8],
 }
 
 impl DropRateDistribution {
-    /// Public canonical distribution per W13-8 spec.
+    /// Public canonical distribution per Q-06 spec (8-tier).
     pub const PUBLIC: DropRateDistribution = DropRateDistribution { rates: PUBLIC_DROP_RATES };
 
     /// Returns the drop-rate for the given rarity.

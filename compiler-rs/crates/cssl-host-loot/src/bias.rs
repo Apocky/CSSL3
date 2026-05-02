@@ -24,7 +24,8 @@ use serde::{Deserialize, Serialize};
 use crate::distribution::DropRateDistribution;
 
 /// Dimensionality of the KAN-bias vector — one bias-weight per rarity tier.
-pub const BIAS_DIM: usize = 6;
+/// Q-06 Apocky-canonical 2026-05-01 : 6 → 8 (Mythic/Prismatic/Chaotic added).
+pub const BIAS_DIM: usize = 8;
 
 /// Hard-cap on per-rarity bias-delta to prevent runaway amplification.
 /// Bias `v[i]` is clamped to `[-MAX_BIAS_DELTA, +MAX_BIAS_DELTA]` BEFORE

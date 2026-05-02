@@ -7,23 +7,26 @@
 //!
 //! `gear ≡ (base + N×prefix + N×suffix + glyph-slots) modular-composition`
 //!
-//! - **6 rarity tiers** : Common · Uncommon · Rare · Epic · Legendary · Mythic
+//! - **8 rarity tiers** (Q-06 Apocky-canonical 2026-05-01) :
+//!   Common · Uncommon · Rare · Epic · Legendary · Mythic · Prismatic · Chaotic
 //! - **13 gear slots** : Helm · Chest · Pants · Boots · Gloves · Belt · Cape ·
 //!   MainHand · OffHand · RingA · RingB · Amulet · Trinket
 //! - **24 prefixes** + **24 suffixes** (per GDD enumerations)
-//! - **glyph-slots 0..3 per-rarity** (Common 0 · Mythic 3)
+//! - **glyph-slots 0..6 per-rarity** (Common 0 · Chaotic 5..6)
 //!
 //! ## Determinism
 //!
 //! Stat-rolling uses a SplitMix64 `DetRng` keyed on `seed: u128`. Same seed +
 //! same base + same rarity ⇒ bit-identical Gear (round-trip serde-stable).
 //!
-//! ## Upgrade paths
+//! ## Upgrade paths (Q-06 8-tier)
 //!
 //! - `level_up(g, xp)` : XP → item-level
 //! - `transmute(g, target_rarity, mat_cost)` : 5×N → 1×(N+1) tier-shift ;
-//!   Legendary→Mythic FORBIDDEN
-//! - `bond(g, player_id)` : Legendary+ binds-to-character
+//!   Legendary→Mythic FORBIDDEN · Mythic→Prismatic FORBIDDEN ·
+//!   Prismatic→Chaotic FORBIDDEN (drop-only-or-bond ladder)
+//! - `bond(g, player_id)` : Legendary+ binds-to-character (incl. Mythic+
+//!   Prismatic + Chaotic per Q-06)
 //! - `reroll_affix(g, target, seed)` : 1× per affix-slot
 //!
 //! ## Audit

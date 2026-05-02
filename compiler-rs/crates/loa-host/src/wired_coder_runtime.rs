@@ -7,6 +7,12 @@
 //!   and 30-second-auto-revertable — see `cssl-host-coder-runtime` crate
 //!   docs for the full state-machine.
 //!
+//! § Q-12 RESOLVED 2026-05-01 (Apocky-canonical) :
+//!   verbatim : "Sovereign choice."
+//!   binding-matrix : 6 archetypes × 4 roles (Coder-cell sovereign-revocable)
+//!   default-fallback = Phantasia (archetype_id = 0) if-no-cap-set
+//!   spec : Labyrinth of Apocalypse/systems/draconic_choice.csl
+//!
 //! § wrapped surface
 //!   - [`CoderRuntime`] — top-level runtime facade.
 //!   - [`CoderCap`] / [`SovereignBit`] — cap-bit gate.
@@ -202,6 +208,23 @@ pub fn hard_cap_label(d: HardCapDecision) -> &'static str {
         HardCapDecision::DenyTierCSecret => "deny_tier_c_secret",
         HardCapDecision::DenyRateLimit => "deny_rate_limit",
         HardCapDecision::DenySovereignRequired => "deny_sovereign_required",
+    }
+}
+
+// ─── § Q-12 · Draconic-archetype binding-cap (Coder cell) ─────────────────
+// Apocky 2026-05-01 verbatim : "Sovereign choice."
+
+/// Default-fallback archetype-id for the Coder role · per Q-12.
+pub const CODER_ARCHETYPE_FALLBACK: u8 = 0; // Phantasia
+
+/// Resolve `archetype_id` to a valid archetype for Coder cell · falls back to
+/// Phantasia(0) per Q-12 sovereign-choice.
+#[must_use]
+pub fn coder_resolve_archetype(archetype_id: u8) -> u8 {
+    if archetype_id < crate::wired_dm::DRACONIC_ARCHETYPE_COUNT {
+        archetype_id
+    } else {
+        CODER_ARCHETYPE_FALLBACK
     }
 }
 

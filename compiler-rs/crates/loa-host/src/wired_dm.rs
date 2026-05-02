@@ -11,6 +11,14 @@
 //!   - [`DmCapTable`] + [`DM_CAP_SCENE_EDIT`] / [`DM_CAP_SPAWN_NPC`] /
 //!     [`DM_CAP_COMPANION_RELAY`] — the 3 cap-bits.
 //!
+//! § Q-12 RESOLVED 2026-05-01 (Apocky-canonical) :
+//!   verbatim : "Sovereign choice."
+//!   binding-matrix : 6 archetypes × 4 roles = 24-cell sovereign-revocable
+//!   archetypes : Phantasia(0) · EbonyMimic(1) · Phoenix(2) · Octarine(3)
+//!                · Paradox(4) · Fossil(5)
+//!   default-fallback = Phantasia (archetype_id = 0) if-no-cap-set
+//!   spec : Labyrinth of Apocalypse/systems/draconic_choice.csl
+//!
 //! § ATTESTATION ¬ harm — wrapper is a re-export shim ; no caps granted ;
 //!   surface is read-only (cap-table query is observational).
 
@@ -52,6 +60,41 @@ pub fn arc_phase_count() -> u32 {
     crate::dm_arc::ARC_PHASE_COUNT as u32
 }
 
+// ─── § Q-12 · Draconic-archetype binding-cap ──────────────────────────────
+// Apocky 2026-05-01 verbatim : "Sovereign choice."
+//
+// `archetype_id` is the 6-archetype ordinal :
+//   0 = Phantasia (default-fallback) · 1 = EbonyMimic · 2 = Phoenix
+//   3 = Octarine · 4 = Paradox · 5 = Fossil
+// Out-of-range u8 ⇒ Phantasia fallback.
+
+/// Default-fallback archetype-id for the DM role · per Q-12.
+pub const DM_ARCHETYPE_FALLBACK: u8 = 0; // Phantasia
+
+/// Total archetype-count per Q-12 (canonical 6).
+pub const DRACONIC_ARCHETYPE_COUNT: u8 = 6;
+
+/// Archetype label resolver · Phantasia for any out-of-range id.
+#[must_use]
+pub fn archetype_label_from_byte(b: u8) -> &'static str {
+    match b {
+        0 => "Phantasia",
+        1 => "EbonyMimic",
+        2 => "Phoenix",
+        3 => "Octarine",
+        4 => "Paradox",
+        5 => "Fossil",
+        _ => "Phantasia", // fallback per Q-12
+    }
+}
+
+/// Resolve `archetype_id` to a valid archetype · falls back to Phantasia(0)
+/// per Q-12 sovereign-choice + default-fallback discipline.
+#[must_use]
+pub fn dm_resolve_archetype(archetype_id: u8) -> u8 {
+    if archetype_id < DRACONIC_ARCHETYPE_COUNT { archetype_id } else { DM_ARCHETYPE_FALLBACK }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +125,30 @@ mod tests {
         assert_eq!(arc_phase_label_from_byte(3), "Catharsis");
         assert_eq!(arc_phase_label_from_byte(4), "Quiet");
         assert_eq!(arc_phase_label_from_byte(99), "unknown");
+    }
+
+    // § Q-12 · Draconic-archetype binding-cap tests
+    #[test]
+    fn archetype_count_is_six() {
+        assert_eq!(DRACONIC_ARCHETYPE_COUNT, 6);
+    }
+
+    #[test]
+    fn archetype_labels_canonical() {
+        assert_eq!(archetype_label_from_byte(0), "Phantasia");
+        assert_eq!(archetype_label_from_byte(1), "EbonyMimic");
+        assert_eq!(archetype_label_from_byte(2), "Phoenix");
+        assert_eq!(archetype_label_from_byte(3), "Octarine");
+        assert_eq!(archetype_label_from_byte(4), "Paradox");
+        assert_eq!(archetype_label_from_byte(5), "Fossil");
+        assert_eq!(archetype_label_from_byte(99), "Phantasia"); // fallback
+    }
+
+    #[test]
+    fn dm_resolve_archetype_falls_back_to_phantasia() {
+        assert_eq!(dm_resolve_archetype(0), 0);
+        assert_eq!(dm_resolve_archetype(5), 5);
+        assert_eq!(dm_resolve_archetype(6), DM_ARCHETYPE_FALLBACK); // out-of-range
+        assert_eq!(dm_resolve_archetype(255), DM_ARCHETYPE_FALLBACK);
     }
 }

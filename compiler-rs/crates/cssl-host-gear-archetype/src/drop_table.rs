@@ -1,10 +1,13 @@
-//! § DropTable — per-context drop-distribution per GDD § DROP-TABLES.
+//! § DropTable — per-context drop-distribution (Q-06 8-tier canonical).
 //!
 //! `DropContext{mob_tier, biome, magic_find}` modulates the base-curve.
-//!   base-curve mob-tier-1 : Common 60% · Uncommon 28% · Rare 9% · Epic 2.5%
-//!                            · Legendary 0.49% · Mythic 0.01%
+//!   base-curve mob-tier-1 (Apocky-Q-06 2026-05-01) :
+//!     Common 60% · Uncommon 25% · Rare 10% · Epic 4%
+//!     · Legendary 0.9% · Mythic 0.09% · Prismatic 0.009% · Chaotic 0.001%
 //!   mob-tier-N : shifts curve up by tier-N × 0.05 weight (per GDD).
 //!   magic_find : multiplies non-Common probabilities ; renormalizes.
+//!
+//! Per-tier anti-spam floors preserved (Mythic 0.0009 · Prismatic 0.00009 · Chaotic 0.00001).
 //!
 //! `roll_drop(ctx, seed) -> Option<Gear>` returns `None` if the roll-fraction
 //! lands above the cumulative distribution (no-drop) — but for non-empty
@@ -79,20 +82,20 @@ impl DropContext {
 // § distribution_for_context  — per-rarity probabilities (sum to 1.0)
 // ───────────────────────────────────────────────────────────────────────
 
-/// Compute per-rarity drop-probabilities for the given context.
-/// Returns `[Common, Uncommon, Rare, Epic, Legendary, Mythic]` summing to ~1.0.
+/// Compute per-rarity drop-probabilities for the given context (Q-06 8-tier).
+/// Returns `[Common, Uncommon, Rare, Epic, Legendary, Mythic, Prismatic, Chaotic]`
+/// summing to ~1.0.
 ///
 /// Algorithm :
 ///   1. Start with base-curve floors.
-///   2. Apply `mob_tier × 0.05` upshift : each Mythic+/Legendary/etc. tier
-///      gets +0.05 × (mob_tier - 1) weight, subtracted from Common.
+///   2. Apply `mob_tier × 0.05` upshift : higher-tier mobs shift curve up.
 ///   3. Apply `magic_find` : multiply non-Common rarities by (1 + magic_find).
 ///   4. Renormalize so Σ = 1.0.
-///   5. Mythic-floor preserved : Mythic ≥ rarity_drop_floor(Mythic).
+///   5. Per-tier floors preserved (Mythic 0.0009 · Prismatic 0.00009 · Chaotic 0.00001).
 #[must_use]
-pub fn distribution_for_context(ctx: &DropContext) -> [f32; 6] {
+pub fn distribution_for_context(ctx: &DropContext) -> [f32; 8] {
     let rarities = Rarity::all();
-    let mut probs = [0.0f32; 6];
+    let mut probs = [0.0f32; 8];
     for (i, r) in rarities.iter().enumerate() {
         probs[i] = rarity_drop_floor(*r);
     }
@@ -125,11 +128,23 @@ pub fn distribution_for_context(ctx: &DropContext) -> [f32; 6] {
             *v /= sum;
         }
     }
-    // Mythic-floor : ensure >= 0.0001 (anti-spam invariant ; floor-not-time-gated).
-    if probs[5] < 0.0001 {
-        let deficit = 0.0001 - probs[5];
-        probs[5] = 0.0001;
-        // Take deficit from Common.
+    // Per-tier anti-spam floors (Q-06 8-tier · take deficit from Common).
+    // Mythic floor : 0.0009 (= 0.09%).
+    if probs[5] < 0.0009 {
+        let deficit = 0.0009 - probs[5];
+        probs[5] = 0.0009;
+        probs[0] = (probs[0] - deficit).max(0.0);
+    }
+    // Prismatic floor : 0.00009 (= 0.009%).
+    if probs[6] < 0.00009 {
+        let deficit = 0.00009 - probs[6];
+        probs[6] = 0.00009;
+        probs[0] = (probs[0] - deficit).max(0.0);
+    }
+    // Chaotic floor : 0.00001 (= 0.001%).
+    if probs[7] < 0.00001 {
+        let deficit = 0.00001 - probs[7];
+        probs[7] = 0.00001;
         probs[0] = (probs[0] - deficit).max(0.0);
     }
     probs
@@ -161,6 +176,10 @@ pub fn sample_rarity(ctx: &DropContext, seed: u128) -> Rarity {
 
 /// Pick a default base-material whose rarity-floor ≤ rolled-rarity.
 /// Prefers exact-floor match : Mythic→Soulbound · Legendary→Voidsteel · etc.
+///
+/// Q-06 8-tier extension : Prismatic + Chaotic both fall back to Soulbound
+/// because BaseMat is currently fixed at 6 tiers (cssl-host-craft-graph
+/// METALS pool). Future-extension : add Prismatite + Chaomatter base-mats.
 #[must_use]
 pub fn default_base_for_rarity(r: Rarity) -> BaseMat {
     match r {
@@ -170,6 +189,8 @@ pub fn default_base_for_rarity(r: Rarity) -> BaseMat {
         Rarity::Epic => BaseMat::Adamant,
         Rarity::Legendary => BaseMat::Voidsteel,
         Rarity::Mythic => BaseMat::Soulbound,
+        Rarity::Prismatic => BaseMat::Soulbound, // Q-06 fallback (NEW-mat TODO)
+        Rarity::Chaotic => BaseMat::Soulbound,   // Q-06 fallback (NEW-mat TODO)
     }
 }
 

@@ -24,7 +24,8 @@ behavior as the implementations land.
 
 | Path                          | Purpose                                          |
 | ----------------------------- | ------------------------------------------------ |
-| `/`                           | Landing page · endpoint reference                |
+| `/`                           | Apocky portfolio hub · powered by The Infinity Engine |
+| `/infinity-engine`            | Canonical overview of The Infinity Engine        |
 | `/marketplace?page=N`         | License-filtered asset gallery (24/page)         |
 | `/marketplace/<src>--<id>`    | Asset detail · attribution · download            |
 

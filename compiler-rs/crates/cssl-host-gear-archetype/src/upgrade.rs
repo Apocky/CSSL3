@@ -1,9 +1,12 @@
-//! § Upgrade-paths per GDD § UPGRADE-PATH.
+//! § Upgrade-paths per GDD § UPGRADE-PATH (Q-06 8-tier extension).
 //!
 //!   level-up  : XP → item-level + tier-bias-bump
 //!   transmute : 5×N → 1×(N+1) ; lossy ; affixes re-rolled
-//!                Legendary→Mythic FORBIDDEN (Mythic = drop-only-or-bond)
+//!                Legendary→Mythic    FORBIDDEN (drop-only-or-bond)
+//!                Mythic→Prismatic    FORBIDDEN (Q-06 · drop-only-or-bond)
+//!                Prismatic→Chaotic   FORBIDDEN (Q-06 · drop-only-or-bond)
 //!   bond      : Legendary+ binds-to-character ; revocable-pre-bond ; immutable-post
+//!                Q-06 : Mythic + Prismatic + Chaotic also bond-eligible
 //!   reroll    : 1× per-affix-slot ; cost = 1×mat-tier-N + 1×Echo
 //!
 //! All four emit audit-events via the optional `AuditSink`.
@@ -54,25 +57,32 @@ pub enum TransmuteResult {
     InsufficientMaterial,
 }
 
-/// Attempt a rarity-shift transmute. `mat_cost` ≥ required-tier per GDD :
-///   Common→Uncommon : 1 Silver
-///   Uncommon→Rare   : 1 Mithril
-///   Rare→Epic       : 1 Adamant
-///   Epic→Legendary  : 1 Voidsteel  (+ 1 Soul-essence — caller-tracked)
-///   Legendary→Mythic: FORBIDDEN
+/// Attempt a rarity-shift transmute. `mat_cost` ≥ required-tier per GDD.
+///
+/// Q-06 8-tier transmute-table :
+///   Common→Uncommon  : 1 Silver
+///   Uncommon→Rare    : 1 Mithril
+///   Rare→Epic        : 1 Adamant
+///   Epic→Legendary   : 1 Voidsteel  (+ 1 Soul-essence — caller-tracked)
+///   Legendary→Mythic : FORBIDDEN (drop-only-or-bond)
+///   Mythic→Prismatic : FORBIDDEN (Q-06 · drop-only-or-bond)
+///   Prismatic→Chaotic: FORBIDDEN (Q-06 · drop-only-or-bond)
 ///
 /// On success : new-seed = old-seed XOR rarity-ordinal-shift ; affixes re-rolled.
 /// Audit-emitted with old-rarity + new-rarity.
 #[must_use]
 pub fn transmute(g: Gear, target_rarity: Rarity, mat_cost: u8, sink: &dyn AuditSink) -> TransmuteResult {
-    if g.rarity == Rarity::Mythic {
+    // Already at top of ladder (Chaotic) → no upgrade-path.
+    if g.rarity == Rarity::Chaotic {
         sink.emit(
             AuditEvent::bare("gear.transmute_rejected")
-                .with("reason", "already_mythic")
+                .with("reason", "already_chaotic")
                 .with("rarity", g.rarity.name()),
         );
         return TransmuteResult::AlreadyMaxRarity;
     }
+    // § Q-06 · drop-only-or-bond ladder : Legendary→Mythic, Mythic→Prismatic,
+    // Prismatic→Chaotic all FORBIDDEN. Audit + reject.
     if g.rarity == Rarity::Legendary && target_rarity == Rarity::Mythic {
         sink.emit(
             AuditEvent::bare("gear.transmute_rejected")
@@ -82,7 +92,45 @@ pub fn transmute(g: Gear, target_rarity: Rarity, mat_cost: u8, sink: &dyn AuditS
         );
         return TransmuteResult::ForbiddenMythicTransmute;
     }
+    if g.rarity == Rarity::Mythic && target_rarity == Rarity::Prismatic {
+        sink.emit(
+            AuditEvent::bare("gear.transmute_rejected")
+                .with("reason", "forbidden_mythic_to_prismatic")
+                .with("from", g.rarity.name())
+                .with("to", target_rarity.name()),
+        );
+        return TransmuteResult::ForbiddenMythicTransmute;
+    }
+    if g.rarity == Rarity::Prismatic && target_rarity == Rarity::Chaotic {
+        sink.emit(
+            AuditEvent::bare("gear.transmute_rejected")
+                .with("reason", "forbidden_prismatic_to_chaotic")
+                .with("from", g.rarity.name())
+                .with("to", target_rarity.name()),
+        );
+        return TransmuteResult::ForbiddenMythicTransmute;
+    }
+    // Drop-only-tier from ANY current : reject (Mythic+ all drop-only-or-bond).
+    if target_rarity.is_drop_only() {
+        sink.emit(
+            AuditEvent::bare("gear.transmute_rejected")
+                .with("reason", "forbidden_target_drop_only_tier")
+                .with("from", g.rarity.name())
+                .with("to", target_rarity.name()),
+        );
+        return TransmuteResult::ForbiddenMythicTransmute;
+    }
+    // Mythic / Prismatic source rarities have no transmute up-ladder.
+    if g.rarity == Rarity::Mythic || g.rarity == Rarity::Prismatic {
+        sink.emit(
+            AuditEvent::bare("gear.transmute_rejected")
+                .with("reason", "drop_only_source_no_transmute")
+                .with("rarity", g.rarity.name()),
+        );
+        return TransmuteResult::AlreadyMaxRarity;
+    }
     // Tier-step : target must be exactly +1 above current.
+    // Common→Uncommon · Uncommon→Rare · Rare→Epic · Epic→Legendary only.
     let next = match g.rarity {
         Rarity::Common => Rarity::Uncommon,
         Rarity::Uncommon => Rarity::Rare,
@@ -138,6 +186,8 @@ fn next_mat_for_rarity(r: Rarity) -> BaseMat {
         Rarity::Epic => BaseMat::Adamant,
         Rarity::Legendary => BaseMat::Voidsteel,
         Rarity::Mythic => BaseMat::Soulbound,
+        Rarity::Prismatic => BaseMat::Soulbound, // Q-06 fallback (NEW-mat TODO)
+        Rarity::Chaotic => BaseMat::Soulbound,   // Q-06 fallback (NEW-mat TODO)
     }
 }
 

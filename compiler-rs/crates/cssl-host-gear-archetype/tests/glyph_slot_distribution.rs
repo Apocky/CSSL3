@@ -1,4 +1,8 @@
-//! § glyph_slot_distribution tests — per-rarity counts match GDD § GLYPH-SLOTS.
+//! § glyph_slot_distribution tests — Q-06 8-tier glyph-slot table.
+//!
+//! Apocky-canonical 2026-05-01 :
+//!   Common 0 · Uncommon 0..1 · Rare 1 · Epic 1..2 · Legendary 2..3
+//!   · Mythic 3..4 · Prismatic 4..5 · Chaotic 5..6
 
 use cssl_host_gear_archetype::{
     glyph_slots_for_rarity, glyph_slots_lower_bound, roll_glyph_slots, Rarity,
@@ -6,7 +10,7 @@ use cssl_host_gear_archetype::{
 
 #[test]
 fn glyph_slot_bounds_per_rarity() {
-    // Common 0 ; Uncommon 0..1 ; Rare 1 ; Epic 1..2 ; Legendary 2..3 ; Mythic 3.
+    // Q-06 8-tier canonical glyph-slot table.
     assert_eq!(glyph_slots_lower_bound(Rarity::Common), 0);
     assert_eq!(glyph_slots_for_rarity(Rarity::Common), 0);
 
@@ -22,8 +26,17 @@ fn glyph_slot_bounds_per_rarity() {
     assert_eq!(glyph_slots_lower_bound(Rarity::Legendary), 2);
     assert_eq!(glyph_slots_for_rarity(Rarity::Legendary), 3);
 
+    // Q-06 : Mythic extended-from-3 to 3..4 band.
     assert_eq!(glyph_slots_lower_bound(Rarity::Mythic), 3);
-    assert_eq!(glyph_slots_for_rarity(Rarity::Mythic), 3);
+    assert_eq!(glyph_slots_for_rarity(Rarity::Mythic), 4);
+
+    // Q-06 NEW : Prismatic 4..5.
+    assert_eq!(glyph_slots_lower_bound(Rarity::Prismatic), 4);
+    assert_eq!(glyph_slots_for_rarity(Rarity::Prismatic), 5);
+
+    // Q-06 NEW : Chaotic 5..6.
+    assert_eq!(glyph_slots_lower_bound(Rarity::Chaotic), 5);
+    assert_eq!(glyph_slots_for_rarity(Rarity::Chaotic), 6);
 }
 
 #[test]

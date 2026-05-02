@@ -7,12 +7,16 @@ use cssl_host_gear_archetype::{
 
 #[test]
 fn distribution_sums_to_unity_after_renorm() {
+    // Q-06 8-tier : distribution returns [f32; 8] summing to ~1.0.
     let ctx = DropContext { mob_tier: 1, biome: Biome::Dungeon, magic_find: 0.0 };
     let probs = distribution_for_context(&ctx);
+    assert_eq!(probs.len(), 8, "Q-06 8-tier distribution");
     let sum: f32 = probs.iter().sum();
     assert!((sum - 1.0).abs() < 1e-3, "distribution sum {sum} not near 1");
-    // Mythic floor preserved.
-    assert!(probs[5] >= 0.0001, "mythic floor lost ({})", probs[5]);
+    // Per-tier anti-spam floors (Q-06).
+    assert!(probs[5] >= 0.0009, "mythic floor lost ({})", probs[5]);
+    assert!(probs[6] >= 0.00009, "prismatic floor lost ({})", probs[6]);
+    assert!(probs[7] >= 0.00001, "chaotic floor lost ({})", probs[7]);
 }
 
 #[test]
@@ -48,6 +52,7 @@ fn sample_rarity_deterministic_and_roll_drop_emits_gear() {
         g.rarity
     );
     // Roll an explicit Common+ to ensure the path doesn't panic on any rarity.
+    // Q-06 : exhaustive 8-tier match must include Prismatic + Chaotic.
     for seed in 0u128..20 {
         let g = roll_drop(&ctx, seed, Some(GearSlot::Helm)).expect("drop helm");
         assert!(matches!(
@@ -58,6 +63,8 @@ fn sample_rarity_deterministic_and_roll_drop_emits_gear() {
                 | Rarity::Epic
                 | Rarity::Legendary
                 | Rarity::Mythic
+                | Rarity::Prismatic
+                | Rarity::Chaotic
         ));
     }
 }

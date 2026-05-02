@@ -15,8 +15,17 @@ module com.apocky.loa.systems.economy
 //
 // § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS · ¬ pay-for-power axiom
 //   t∞: 5-tier nexus-bazaar (T1 common · T2 fine · T3 rare · T4 mythic · T5 legend)
+//        ‼ economy-tiers ≠ gear-rarity-ladder
+//        ‼ gear-rarity-ladder = 8-tier (Q-06 Apocky-canonical 2026-05-01) :
+//          Common · Uncommon · Rare · Epic · Legendary · Mythic · Prismatic · Chaotic
+//          drop-curve : 60/25/10/4/0.9/0.09/0.009/0.001 (Σ = 100%)
+//          per ⌈specs/infinity-engine/18_GEAR_MODULARITY_CANONICAL⌉ § 2.4
+//          per ⌈compiler-rs/crates/cssl-host-gear-archetype/src/rarity.rs⌉
 //   t∞: gift-economy ALWAYS · ¬ pay-for-power · ¬ loot-box-shape
 //   t∞: real-money-channel = COSMETIC-ONLY (per memory_distribution_akashic_w8_plan)
+//   t∞: real-money-channel PAUSED until-main-game-ships (Q-07 Apocky 2026-05-01)
+//        ‼ cosmetic-product-listings visible:false until-greenlight
+//        ‼ Stripe-infrastructure preserved · /buy banner = "cosmetics phase-2"
 //   t∞: in-game-currency = Echo-shards (procgen-earned · ¬ purchasable)
 //   t∞: trades require sovereign-consent BOTH-sides · cancellable any-time
 //   t∞: NPC-vendors offer gifts-of-craft · player gifts-of-deeds in return

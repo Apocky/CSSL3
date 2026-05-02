@@ -7,6 +7,13 @@
 // All product-ids resolve through PRODUCT_CATALOG. Cosmetic-channel-only
 // monetization-axiom (per spec/grand-vision/13_INFINITE_LABYRINTH_LEGACY.csl)
 // — no pay-for-power · no DRM · no anti-cheat.
+//
+// § Q-07 RESOLVED 2026-05-01 (Apocky-canonical) :
+//   verbatim : "Hold on cosmetics, main game first."
+//   COSMETIC_LAUNCH_PAUSED = true ; cosmetic-products visible:false
+//   alpha-free product remains visible (main-game pathway)
+//   Stripe-infrastructure preserved · /buy banner notifies users
+//   resume-trigger : Apocky greenlights "main-game-shipped"
 
 import Stripe from 'stripe';
 
@@ -50,10 +57,18 @@ export interface ProductDescriptor {
   // env-var name carrying the Stripe price-id (price_xxxx)
   stripe_price_env: string;
   // monetization tier — cosmetic-only-axiom enforced at code-review
-  tier: 'alpha-free' | 'cosmetic' | 'subscription';
+  // 'continuation' = paid-resurrection-tokens for Tier-2 Hardcore-Permadeath
+  // (per Q-02 + Apocky's "monetize continuations" caveat · 2026-05-01)
+  // continuation is NOT pay-for-power : it grants restoration of state-at-death,
+  // never new stats/gear/XP. Rate-limited ≤5 per character-lifetime.
+  tier: 'alpha-free' | 'cosmetic' | 'subscription' | 'continuation';
   // shows on /buy regardless of stub-mode
   visible: boolean;
 }
+
+// § Q-07 PAUSE-FLAG · cosmetic-launch held until-main-game-ships
+// Apocky 2026-05-01 : "Hold on cosmetics, main game first."
+export const COSMETIC_LAUNCH_PAUSED = true;
 
 export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
   {
@@ -64,7 +79,7 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
     currency: 'usd',
     stripe_price_env: 'STRIPE_PRICE_LOA_ALPHA',
     tier: 'alpha-free',
-    visible: true,
+    visible: true, // alpha stays visible (main-game pathway · Q-07-aligned)
   },
   {
     id: 'loa-cosmetic-mycelial-bloom',
@@ -74,7 +89,7 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
     currency: 'usd',
     stripe_price_env: 'STRIPE_PRICE_COSMETIC_MYCELIAL',
     tier: 'cosmetic',
-    visible: true,
+    visible: false, // § Q-07 paused · re-enable post main-game-ship
   },
   {
     id: 'mycelium-plus',
@@ -84,7 +99,43 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
     currency: 'usd',
     stripe_price_env: 'STRIPE_PRICE_MYCELIUM_PLUS',
     tier: 'subscription',
-    visible: true,
+    visible: false, // § Q-07 paused · re-enable post main-game-ship
+  },
+
+  // § Q-02 Continuation-Tokens (Apocky-canonical 2026-05-01 · "monetize
+  //   continuations · pay to resurrect instantaneously and wholly").
+  // Cosmetic-only-axiom intact : these grant RESTORATION of state-at-death,
+  // never new stats/gear/XP. Rate-limited ≤5 per character-lifetime.
+  // visible:false until Hardcore-Permadeath tier ships with the main game.
+  {
+    id: 'loa-continuum-token-single',
+    display_name: 'Continuum-Token · Single',
+    blurb: 'Petition the substrate to undo a phase-shift. One Hardcore-Permadeath resurrection · instantaneous and whole. Rate-limited ≤5 per character-lifetime.',
+    price_cents: 499, // $4.99
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_CONTINUUM_TOKEN_SINGLE',
+    tier: 'continuation',
+    visible: false, // ships with Hardcore-tier launch
+  },
+  {
+    id: 'loa-continuum-token-3pack',
+    display_name: 'Continuum-Token · 3-pack',
+    blurb: 'Three petition-tokens · ~20% bundle savings. Tokens are gift-economy-transferable to friends. No expiry · no FOMO.',
+    price_cents: 1199, // $11.99 · ~20% bundle savings vs 3 × 499
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_CONTINUUM_TOKEN_3PACK',
+    tier: 'continuation',
+    visible: false, // ships with Hardcore-tier launch
+  },
+  {
+    id: 'loa-continuum-token-10pack',
+    display_name: 'Continuum-Token · 10-pack',
+    blurb: 'Ten petition-tokens · ~30% bundle savings. Tokens transferable peer-to-peer. The substrate keeps every petition Σ-Chain-anchored · biography-transparent.',
+    price_cents: 3499, // $34.99 · ~30% bundle savings vs 10 × 499
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_CONTINUUM_TOKEN_10PACK',
+    tier: 'continuation',
+    visible: false, // ships with Hardcore-tier launch
   },
 ];
 

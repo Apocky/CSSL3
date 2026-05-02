@@ -26,19 +26,16 @@ required-features = ["tauri-shell"]
 
 [features]
 default     = []
-# tauri-shell is the gate. The actual `tauri = { ... optional = true }` dep
-# is intentionally NOT yet declared under [dependencies] — see comment header.
-# When Apocky enables real Tauri runtime :
-#   1. add `tauri = { version = "2", optional = true }` to [dependencies]
-#   2. change this line to `tauri-shell = ["dep:tauri"]`
-# Until then, building with `--features tauri-shell` compiles the bin to a
-# clear-error-stub-main, NOT a full Tauri app — intentional scaffold posture.
-tauri-shell = []
+# § T11-W14 · Apocky-greenlit Tauri activation (2026-05-01) · enables real Tauri runtime.
+# Building with `--features tauri-shell` now compiles the full Tauri 2.x app.
+tauri-shell = ["dep:tauri"]
 
 [dependencies]
 cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
 cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
 cssl-host-agent-loop          = { path = "../cssl-host-agent-loop" }
+# § T11-W14 · Tauri 2.x desktop-shell · feature-gated (¬ pulled by default workspace build).
+tauri = { version = "2", optional = true }
 # § T11-W11-MYCELIUM-CHAT-SYNC : federate chat-pattern shapes across peers
 #   so GM/DM persona-agents can learn shape-of-good-response from federated
 #   instances WITHOUT ever observing raw player content. Σ-mask-gated.

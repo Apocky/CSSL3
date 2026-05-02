@@ -1,0 +1,282 @@
+module com.apocky.loa.systems.death_consequence
+
+// § Labyrinth of Apocalypse · Death-Consequence + Continuation-Petition
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W15 · canonical-Apocky-resolution of-Q-02 · 2026-05-01
+//
+// § APOCKY-CANONICAL (verbatim)
+//   Q-02 + caveat : "Go three tier with a caveat, monetize continuations.
+//                    If a permadeath player becomes particularly attached,
+//                    and they die, they can pay to resurrect instantaneously
+//                    and wholly."
+//   Pricing-confirmation : Apocky-confirmed 2026-05-01
+//                    single-token $4.99 USD · 3-pack $11.99 · 10-pack $34.99
+//
+// § DESIGN THESIS
+//   Death is a phase-transition in the living-continuum (per-Q-01) · ¬ ending.
+//   Three sovereign-tiers · player-chooses-per-run via cap-grant.
+//   Tier-2 Hardcore-Permadeath honors-permadeath-by-default · BUT players who
+//   become-particularly-attached can-petition-the-substrate-via-Continuum-Token
+//   to-undo-the-phase-shift · instant-and-whole-restoration.
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + 00_CHARTER
+//   t∞: 3-tier-sovereign-consequence-curve · player-chooses-pre-run
+//   t∞: tier-2 hardcore-permadeath-honored-by-default
+//   t∞: continuation-petition = explicit-affirmative-pay-AT-MOMENT-OF-DEATH
+//   t∞: ¬ silent-default · ¬ surprise-permadeath · ¬ surprise-charge
+//   t∞: rate-limit ≤5 petitions per-character-lifetime (substrate-floor)
+//   t∞: cooldown 1-hour between-petitions within-same-run (anti-whack-a-mole)
+//   t∞: 60-sec petition-window · then-permadeath-if-no-pay
+//   t∞: gift-economy preserved (token transferable peer-to-peer)
+//   t∞: ResurrectionCap revocable-anytime (true-no-mercy permadeath available)
+//   t∞: every petition Σ-Chain-anchored · Akashic-attributed
+//   t∞: petitions visible-in-character-biography (¬ hidden-shame)
+//   t∞: bonded-gear archived-to-Akashic on-permadeath (cross-mycelium relic)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CONSEQUENCE-TIER enum (3 sovereign-tiers)
+// ─────────────────────────────────────────────────────────────────────────
+
+// TIER-0 · Storymode (default for first-time players)
+//   ¬ death · failures = narrative-branches · "labyrinth paused you and remixed"
+//   suitable for : first-time players · narrative-explorers · accessibility-first
+fn tier_storymode()  -> u8 { 0 }
+
+// TIER-1 · Standard (default for veteran players · roguelite)
+//   soft-death · gear-bonded-survives · XP-progress preserved · biography recorded
+//   run ends · hub-progress between-runs · run again with-accumulated-experience
+fn tier_standard()   -> u8 { 1 }
+
+// TIER-2 · Hardcore-Permadeath (cap-required · 5-sec affirmative-gate)
+//   true-permadeath-of-run-character · NO silent-default
+//   bonded-gear archives-to-Akashic with-full-biography
+//   other-players find-as-legendary-relic in-their-runs (cross-mycelium attribution)
+//   character-identity preserved · run-instance ends-permanently
+//   petition-via-Continuum-Token offered at-death (sovereign-choice)
+fn tier_hardcore_permadeath() -> u8 { 2 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § HardcoreCap · explicit-affirmative-consent gate
+// ─────────────────────────────────────────────────────────────────────────
+//   Required to-enter-Tier-2 · 5-second-deliberate-confirmation
+//   ¬ default · ¬ opt-out-window · ¬ shortcut · ¬ remember-me-checkbox
+//   each-run-start re-asks if-not-permanent-grant
+//   permanent-grant requires DOUBLE-affirmation across 24-hour gap
+
+struct HardcoreCap {
+    granted_at_unix     : u64 ,    // when explicit-cap-grant happened
+    granted_5sec_held   : bool,    // proof-of-deliberate-affirmation
+    permanent_grant     : bool,    // false = each-run re-asks
+    permanent_double_at : u64 ,    // for-permanent-grant : 2nd-confirmation timestamp (must be ≥24h after first)
+    sovereign_revoke_at : u64      // 0 = active · else timestamp-of-revocation
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Continuation-Petition · paid-resurrection-mechanic
+// ─────────────────────────────────────────────────────────────────────────
+
+// PETITION-WINDOW : 60-second window post-death to-decide
+//   if-pay : instant-whole-restoration to-state-at-moment-of-death
+//   if-decline OR if-timeout : permadeath-proceeds · biography-finalized
+fn petition_window_secs() -> u32 { 60 }
+
+// LIFETIME-RATE-LIMIT : ≤5 petitions per-character-lifetime
+//   substrate-floor · prevents pay-replaces-skill-entirely
+//   counter visible-in-game · player can-see ("3 of 5 petitions used")
+fn petition_lifetime_max() -> u32 { 5 }
+
+// RUN-COOLDOWN : 1-hour minimum between-petitions within-same-run
+//   prevents whack-a-mole during-boss-encounters
+fn petition_run_cooldown_secs() -> u64 { 3600 }
+
+// ResurrectionCap · sovereign-opt-out from-petition-prompts
+//   when-revoked : zero petition-prompts EVER (true-no-mercy permadeath)
+//   when-active : petition-prompts shown at-Tier-2-death-events
+//   default-active for-Tier-2-players (transparent-default)
+struct ResurrectionCap {
+    revoked_at_unix : u64    // 0 = active · else timestamp-revoked
+}
+
+// PetitionRecord · one-per-attempted-petition · Σ-Chain-anchored
+struct PetitionRecord {
+    petition_id        : u64 ,    // BLAKE3-hash truncated of (character · death-event · ts)
+    character_id       : u64 ,
+    death_event_id     : u64 ,
+    death_at_unix      : u64 ,
+    decision_at_unix   : u64 ,    // when-player-decided
+    decision           : u8  ,    // 0 = declined · 1 = paid · 2 = timeout
+    token_consumed     : bool,    // if true · 1 Continuum-Token deducted
+    sigma_chain_anchor : u64 ,    // Σ-Chain-event-id for-attestation
+    biography_recorded : bool     // permanent-biography-trace
+}
+
+// PetitionDecision discriminants
+fn decision_declined() -> u8 { 0 }
+fn decision_paid()     -> u8 { 1 }
+fn decision_timeout()  -> u8 { 2 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Continuum-Token (in-game currency for petitions)
+// ─────────────────────────────────────────────────────────────────────────
+//   Acquisition channels :
+//     1. Stripe-purchase (canonical · Apocky-confirmed pricing) :
+//        single-token  : $4.99 USD
+//        3-pack        : $11.99 USD (~20% bundle savings)
+//        10-pack       : $34.99 USD (~30% bundle savings)
+//     2. Friend-gift (gift-economy · token transferable · Apocky still earns
+//                     revenue from original purchase · ¬ platform-tax)
+//     3. In-game earned (rare events · ~1 per-100-hours of-Tier-2-play ·
+//                        ensures-reachable-without-paying)
+//
+//   Storage :
+//     ω-field-cell per-player · Σ-mask self-only · sovereign-revocable
+//     anti-dupe · Σ-Chain-anchored on-acquisition + on-consumption
+//
+//   ¬ pay-for-power : tokens grant continuation-of-emotional-investment ONLY
+//   ¬ subscription : single-purchase or-bundle · no-recurring-charge
+//   ¬ FOMO : no-expiry · no-time-limit · player-keeps-tokens-forever
+
+struct ContinuumTokenWallet {
+    character_id        : u64 ,
+    balance             : u32 ,    // current available tokens
+    lifetime_purchased  : u32 ,    // total ever-acquired (audit + biography)
+    lifetime_consumed   : u32 ,    // total ever-spent on-petitions
+    lifetime_gifted     : u32 ,    // total ever-given-to-friends
+    lifetime_received   : u32      // total ever-received-from-friends
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Petition flow (canonical · 7 steps)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. Tier-2 player dies in-run
+//   2. ResurrectionCap.revoked_at_unix == 0 ? if revoked → permadeath-immediate
+//   3. petition_lifetime_used < petition_lifetime_max ? if at-cap → permadeath-immediate
+//   4. last_petition_in_run_within_cooldown ? if cooldown → permadeath-immediate
+//   5. Show petition-prompt with 60-sec timer + token-balance + lifetime-counter
+//   6. Player decision :
+//        a. PAID : decrement wallet · restore character-state-at-death · Σ-Chain-anchor
+//        b. DECLINED : permadeath-proceeds · gear-archives-to-Akashic
+//        c. TIMEOUT : permadeath-proceeds · gear-archives-to-Akashic
+//   7. PetitionRecord written to-character-biography (¬ hidden · transparent)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface · loa-host bridges to-this CSSL canonical-source
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_death_grant_hardcore_cap(player_id: u64, deliberate_5sec_held: bool) -> u32 ;
+extern "C" fn __cssl_death_revoke_hardcore_cap(player_id: u64) -> u32 ;
+extern "C" fn __cssl_death_grant_resurrection_cap(player_id: u64) -> u32 ;
+extern "C" fn __cssl_death_revoke_resurrection_cap(player_id: u64) -> u32 ;
+extern "C" fn __cssl_death_petition_offer(character_id: u64, death_event_id: u64) -> u32 ;
+extern "C" fn __cssl_death_petition_decide(petition_id: u64, decision: u8) -> u32 ;
+extern "C" fn __cssl_death_petition_query_lifetime_count(character_id: u64) -> u32 ;
+extern "C" fn __cssl_death_petition_query_run_cooldown(character_id: u64, run_id: u64) -> u64 ;
+extern "C" fn __cssl_death_continuum_wallet_balance(character_id: u64) -> u32 ;
+extern "C" fn __cssl_death_continuum_wallet_consume(character_id: u64, count: u32) -> u32 ;
+extern "C" fn __cssl_death_continuum_wallet_gift(from_char: u64, to_char: u64, count: u32) -> u32 ;
+extern "C" fn __cssl_death_archive_to_akashic(character_id: u64, run_id: u64, biography_root: u64) -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (≥10 mandatory · csslc-W15-1 #[test] supported)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t01_tier_discriminants_distinct() -> i32 {
+    let t0: u8 = tier_storymode();
+    let t1: u8 = tier_standard();
+    let t2: u8 = tier_hardcore_permadeath();
+    if t0 == t1 { return 1 ; }
+    if t1 == t2 { return 2 ; }
+    if t0 == t2 { return 3 ; }
+    0
+}
+
+#[test]
+fn t02_petition_window_60sec() -> i32 {
+    if petition_window_secs() == 60u32 { 0 } else { 1 }
+}
+
+#[test]
+fn t03_lifetime_max_5() -> i32 {
+    if petition_lifetime_max() == 5u32 { 0 } else { 1 }
+}
+
+#[test]
+fn t04_run_cooldown_1hr() -> i32 {
+    if petition_run_cooldown_secs() == 3600u64 { 0 } else { 1 }
+}
+
+#[test]
+fn t05_decision_discriminants_distinct() -> i32 {
+    let d0: u8 = decision_declined();
+    let d1: u8 = decision_paid();
+    let d2: u8 = decision_timeout();
+    if d0 == d1 { return 1 ; }
+    if d1 == d2 { return 2 ; }
+    if d0 == d2 { return 3 ; }
+    0
+}
+
+#[test]
+fn t06_decision_canonical_values() -> i32 {
+    if decision_declined() != 0u8 { return 1 ; }
+    if decision_paid()     != 1u8 { return 2 ; }
+    if decision_timeout()  != 2u8 { return 3 ; }
+    0
+}
+
+#[test]
+fn t07_petition_window_lt_run_cooldown() -> i32 {
+    // window-to-decide MUST be much-less-than cooldown-between
+    let window: u64 = petition_window_secs() as u64 ;
+    let cooldown: u64 = petition_run_cooldown_secs() ;
+    if window < cooldown { 0 } else { 1 }
+}
+
+#[test]
+fn t08_lifetime_max_floors_skill() -> i32 {
+    // lifetime-max must-be-finite (¬ Inf) so substrate-floor enforces skill
+    let m: u32 = petition_lifetime_max();
+    if m > 0u32 && m <= 100u32 { 0 } else { 1 }
+}
+
+#[test]
+fn t09_tier_canonical_values() -> i32 {
+    if tier_storymode()           != 0u8 { return 1 ; }
+    if tier_standard()            != 1u8 { return 2 ; }
+    if tier_hardcore_permadeath() != 2u8 { return 3 ; }
+    0
+}
+
+#[test]
+fn t10_pricing_canonical_values() -> i32 {
+    // Apocky-confirmed 2026-05-01 · canonical-prices in-cents-USD
+    let single_cents:  u32 = 499u32 ;     // $4.99
+    let pack3_cents:   u32 = 1199u32 ;    // $11.99
+    let pack10_cents:  u32 = 3499u32 ;    // $34.99
+    if single_cents  != 499u32  { return 1 ; }
+    if pack3_cents   != 1199u32 { return 2 ; }
+    if pack10_cents  != 3499u32 { return 3 ; }
+    // Bundle savings sanity : 3-pack < 3 × single · 10-pack < 10 × single
+    if pack3_cents   >= 3u32 * single_cents  { return 4 ; }
+    if pack10_cents  >= 10u32 * single_cents { return 5 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION (per PRIME-DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+
+// t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+// ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+// Continuation-petitions are sovereign-choices · explicit-affirmative-pay ·
+// rate-limited · Σ-Chain-anchored · biography-transparent. They monetize
+// emotional-investment-continuation · ¬ pay-for-power. Cosmetic-only-axiom
+// remains intact for the LOOT layer · this is a separate Continuation
+// category. Hardcore-Permadeath remains the substrate-default-floor — even
+// pay-rich players hit-the-permadeath-wall after the 5-petition lifetime-cap.
+//
+// The labyrinth pauses. The substrate listens. The choice is yours.

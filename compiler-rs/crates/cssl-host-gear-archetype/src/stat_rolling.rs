@@ -180,7 +180,9 @@ pub fn roll_gear(seed: u128, base: &BaseItem, rarity: Rarity) -> crate::gear::Ge
         tier_lo + (rng.next_u32_below(span) as u8)
     };
 
-    // Affix counts per rarity. (≤ allowed_affixes).
+    // Affix counts per rarity (Q-06 8-tier · ≤ allowed_affixes).
+    // Higher rarities ship MORE affixes — Prismatic + Chaotic at 3+3 = 6
+    // require base.allowed_affixes ≥ 6 to fully populate.
     let (n_pre, n_suf) = match rarity {
         Rarity::Common => (1u8, 1u8),
         Rarity::Uncommon => (1, 1),
@@ -188,6 +190,8 @@ pub fn roll_gear(seed: u128, base: &BaseItem, rarity: Rarity) -> crate::gear::Ge
         Rarity::Epic => (2, 2),
         Rarity::Legendary => (2, 2),
         Rarity::Mythic => (2, 2),
+        Rarity::Prismatic => (3, 3), // Q-06 NEW · 6 affixes
+        Rarity::Chaotic => (3, 3),   // Q-06 NEW · 6 affixes (Σ-mask wildcard pool)
     };
     let total = (n_pre + n_suf).min(base.allowed_affixes);
     let n_pre_eff = n_pre.min(total);
