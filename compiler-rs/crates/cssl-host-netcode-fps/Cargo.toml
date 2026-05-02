@@ -1,0 +1,35 @@
+[package]
+name                   = "cssl-host-netcode-fps"
+description            = "CSSLv3 — FPS network-replication kernel : client-prediction + server-reconciliation + lag-compensation + rollback-netcode + ω-field delta-compression + snapshot-interpolation + adaptive-bandwidth. Pure-state-machine ; no transport (Supabase-realtime / WebRTC wire-up lives elsewhere). Σ-mask gates EVERY replicated cell ; default-deny across-players. Pairs with cssl-host-multiplayer-signaling (room/peer state) ; consumes weapon/movement events as opaque tick-tagged payloads. Quake/Valve-tradition FPS-netcode + GGPO-tradition fighting-game-rollback unified under PRIME-DIRECTIVE consent-arch."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W13-3 (cssl/session-6/parallel-fanout) — netcode-FPS crate.
+#
+#   Sits ABOVE cssl-host-multiplayer-signaling (READ-ONLY · room/peer membership)
+#   and BELOW the gameplay-event producers (W13-2 weapons / W13-6 movement /
+#   W13-11 input). Authoritative client-side prediction + server-side
+#   reconciliation + lag-compensation + rollback ; all transport-agnostic.
+#
+#   PRIME-DIRECTIVE attestation :
+#     ─ Σ-mask gates per-cell · default-deny across-players (consent-as-OS)
+#     ─ ¬ surveillance · ¬ heuristic-aimbot-detection · ¬ IP-logging
+#     ─ player-pubkey-hash only as identity · session-scoped
+#     ─ sovereign-bypass RECORDED via attestation hook (¬ silent)
+#     ─ NEVER-egress : Sensitive<biometric|gaze|face|body> structurally-banned
+#
+#   Pure-state-machine : no transport-deps (no tokio / no quinn / no tungstenite).
+#   Inputs = typed events ; outputs = state-transitions + outbound deltas.
+[lib]
+name       = "cssl_host_netcode_fps"
+crate-type = ["rlib"]
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
