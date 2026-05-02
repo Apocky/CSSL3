@@ -45,6 +45,7 @@
 #![forbid(unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod animate;
 pub mod aspect;
 pub mod hdc;
 pub mod soa;
