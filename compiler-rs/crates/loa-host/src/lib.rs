@@ -40,6 +40,10 @@
 
 // Render-sibling catalog
 pub mod camera;
+// § T11-W13-CAMERA (W13-4) — genre-fluid camera : 4-mode perspective-switch
+//   {FpsLocked, ThirdPersonOverShoulder, Isometric, TopDown} · cubic-ease-300ms
+//   · same-world-state · sovereign-revocable · ¬ forced-cap.
+pub mod genre_fluid_camera;
 pub mod geometry;
 pub mod material;
 pub mod pattern;
