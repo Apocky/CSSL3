@@ -1,0 +1,36 @@
+# § T11-W13-W5 : cssl-host-fps-feel
+# ══════════════════════════════════════════════════════════════════
+# § I> POD-2 deliverable per Labyrinth/systems/fps_feel.csl  (W13-5)
+# § I> ADS (aim-down-sights) zoom + speed-modifier
+# § I> per-archetype recoil-state-machine (vertical-rise + horizontal-jitter + recovery)
+# § I> accuracy-bloom : sustained-fire cone-growth · 200ms grace + exp-decay
+# § I> crosshair-state : 4-way-pip + hit-flash 80ms + cosmetic-skin overlay
+# § I> COSMETIC-ONLY-AXIOM : recoil-PATTERN + zoom-CURVE + bloom-MAX frozen
+#       ; visuals-only customizable (tracer-color · pip-color · scope-reticle-art)
+# § I> NO substrate-deps ; serde + serde_json only ; FFI-friendly Copy types
+# § I> deterministic ; seeded-RNG ; replay-bit-equal ; #![forbid(unsafe_code)]
+# § I> integration : consumes weapons WeaponArchetype + RecoilEvent ;
+#       emits AdsZoomFovOverride (camera) + AccuracyConeRadiansOverride (weapons)
+#       + CrosshairBloomPx (hud)
+
+[package]
+name                   = "cssl-host-fps-feel"
+description            = "CSSLv3 LoA-v13 FPS-feel substrate : ADS-zoom + recoil-state-machine + accuracy-bloom + crosshair-state · cosmetic-only-axiom · deterministic · replay-bit-equal · 8 weapon-archetypes · 150ms zoom-curve · 300ms recoil-recovery · 200ms bloom-grace · 80ms hit-flash (W13-5)"
+version                = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+
+[lib]
+name = "cssl_host_fps_feel"
+path = "src/lib.rs"
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
