@@ -35,7 +35,7 @@ function Run-Step {
     param(
         [string]$Title,
         [string]$Script,
-        [string[]]$Args = @(),
+        [string[]]$StepArgs = @(),
         [switch]$Skip
     )
     Write-Host ""
@@ -50,7 +50,7 @@ function Run-Step {
         Write-Host "→ user-skipped" -ForegroundColor Yellow
         return
     }
-    & "$ScriptDir\$Script" @Args
+    & "$ScriptDir\$Script" @StepArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "✗ step failed (exit $LASTEXITCODE) · stopping" -ForegroundColor Red
         exit $LASTEXITCODE
@@ -73,9 +73,9 @@ Write-Host "    6. Deploy apocky.com (Vercel + CF-purge)" -ForegroundColor Gray
 Write-Host ""
 
 Run-Step -Title "STEP 1/6 · Rebuild LoA.exe + dist-zip" -Script "4_rebuild_loa.ps1" -Skip:$SkipLoaRebuild
-Run-Step -Title "STEP 2/6 · Build Mycelium-Desktop NSIS-installer" -Script "2_install_mycelium.ps1" -Args @('-Action', 'build') -Skip:$SkipMyceliumBuild
-Run-Step -Title "STEP 3/6 · Install Mycelium-Desktop (NSIS)" -Script "2_install_mycelium.ps1" -Args @('-Action', 'install', '-Silent') -Skip:$SkipMyceliumInstall
-Run-Step -Title "STEP 4/6 · Register loa-orchestrator-daemon (Task Scheduler · ADMIN-required)" -Script "1_install_daemon.ps1" -Args @('-Action', 'register') -Skip:$SkipDaemonRegister
+Run-Step -Title "STEP 2/6 · Build Mycelium-Desktop NSIS-installer" -Script "2_install_mycelium.ps1" -StepArgs @('-Action', 'build') -Skip:$SkipMyceliumBuild
+Run-Step -Title "STEP 3/6 · Install Mycelium-Desktop (NSIS)" -Script "2_install_mycelium.ps1" -StepArgs @('-Action', 'install', '-Silent') -Skip:$SkipMyceliumInstall
+Run-Step -Title "STEP 4/6 · Register loa-orchestrator-daemon (Task Scheduler · ADMIN-required)" -Script "1_install_daemon.ps1" -StepArgs @('-Action', 'register') -Skip:$SkipDaemonRegister
 Run-Step -Title "STEP 5/6 · Grant Σ-caps (default-deny stays unless you opt-in)" -Script "3_grant_caps.ps1" -Skip:$SkipCapsGrant
 Run-Step -Title "STEP 6/6 · Deploy apocky.com (Vercel + Cloudflare-purge)" -Script "5_deploy_apocky_com.ps1" -Skip:$SkipDeploy
 
