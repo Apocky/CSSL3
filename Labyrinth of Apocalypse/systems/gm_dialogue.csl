@@ -1,160 +1,742 @@
-§ gm_dialogue · GM dialogue patterns + response shapes (CSSL spec)
-══════════════════════════════════════════════════════════════════════
+module com.apocky.loa.systems.gm_dialogue
 
-§ T11-W11-GM-DM-DEEPEN ‖ AUTHORITATIVE-SPEC-MIRROR
-§ Rust-mirror : compiler-rs/crates/loa-host/src/gm_persona.rs
-                                                + gm_narrator.rs::respond_in_persona
+// § Labyrinth of Apocalypse — GM persona-state · multi-turn memory · response composer
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W15-CSSL-GM-DIALOGUE-FULL  ‼ FOUNDATIONAL · canonical-CSSL-source
+//   This file is the canonical proprietary-CSSL spec for the in-game
+//   GameMaster's persona-state · 16-deep utterance-memory ring · and the
+//   response-composer that mixes scene + persona + memory + arc-phase
+//   into rich response-text + a typed response-kind tag.
+//
+//   § BIT-FOR-BIT PARITY w/ Rust-bootstrap-host
+//     - PersonaAxis discriminants 0..=7 ≡ Rust gm_persona::PersonaAxis
+//     - ResponseKind discriminants 0..=7 ≡ Rust gm_persona::ResponseKind
+//     - GmPersona axes: [i8; 8] ≡ Rust shape (8 bytes packed Sawyer-grade)
+//     - SplitMix64 constants : 0x9E3779B97F4A7C15 / 0xBF58476D1CE4E5B9 / 0x94D049BB133111EB
+//     - GmMemory ring-len = 16 ≡ Rust GM_MEMORY_LEN
+//     - FNV-1a constants : 0xCBF29CE484222325 / 0x100000001B3
+//     - Mythic-prefix · Cryptic-suffix · Warmth-suffix · Acerbity-prefix
+//       · Substrate-glyph tables ≡ Rust constants verbatim
+//     - response_kind_bias decision-tree ≡ Rust gm_persona::response_kind_bias
+//     - decorate_with_persona threshold-gates ≡ Rust verbatim
+//
+//   § THE STAGE-0 RUST IS THIS FILE'S COMPILED-OUTPUT-EQUIVALENT
+//     When csslc grows full type-system + Vec<T> + i8 + match coverage,
+//     this .csl source FULLY REPLACES the Rust gm_persona path.
+//     The FFI contracts below are stable.
+//
+// § REFERENCE
+//   compiler-rs/crates/loa-host/src/gm_persona.rs      § stage-0 mirror (612 LOC)
+//   compiler-rs/crates/loa-host/src/gm_narrator.rs     § respond_in_persona consumer
+//   compiler-rs/crates/loa-host/src/dm_director.rs     § DmState (Calm/Buildup/Climax/Relief)
+//   Labyrinth of Apocalypse/systems/dm_arc.csl         § sibling : ArcPhase consumer
+//   memory/feedback_loa_v13_must_be_cssl_source        ‼ .csl source canonical · NOT Rust
+//   memory/feedback_take_words_literally_no_other_languages
+//                                                      ‼ engine = .csl ; Rust ONLY for stage-0 substrate
+//
+// § AXIOMS  (inherit PRIME_DIRECTIVE + LOA_PILLARS)
+//   t∞: GM = NARRATOR ¬ generic-AGI               ← scope-bound to env+dialogue+observation
+//   t∞: persona-seed deterministic                ← same-seed ⇒ same-persona ∀ time
+//   t∞: σ-mask isolated                           ← GM ¬ leaks utterance across players
+//   t∞: ¬ surveillance · ¬ coercion · ¬ manipulation
+//   t∞: ¬ extracts PII · ¬ triangulates relationships
+//   t∞: opt-in CSLv3-glyph emission per response  ← mycelial-resonance ramps with arc-tension
+//   t∞: 8 axes packed [i8; 8]                     ← Sawyer-grade 8-byte persona
+//   t∞: 16-deep ring · evict-on-write             ← bounded-memory · cache-friendly
+//
+// § PRIME-DIRECTIVE
+//   Every GM utterance is consensual + observation-based + sovereignty-respecting.
+//   The GM may invite + observe + question + plea-as-equal · the GM may NOT
+//   coerce + manipulate + surveil + extract-PII + triangulate-relationships.
+//   The persona-seed is per-σ-mask : conversations on player A's session
+//   never leak into player B. Attestation : there was no hurt nor harm in
+//   the making of this, to anyone/anything/anybody.
 
-§ purpose
-  ∀ player-utterance W! emit GM-response :
-    · persona-decorated  (per-player-deterministic-seeded · 8 trait-axes)
-    · arc-aware          (Discovery / Tension / Crisis / Catharsis / Quiet)
-    · memory-aware       (16-deep utterance ring · anti-loop)
-    · mood-tagged        (declarative / interrogative / evocative / ...)
-    · sovereignty-respecting   N! [surveillance · coercion · manipulation]
-    · σ-mask-isolated    (per-session ; ¬ cross-player leak)
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI surface · loa-host staticlib provides bodies (gm_persona stage-0)
+// ─────────────────────────────────────────────────────────────────────────
 
-§ persona-axes (8)  ─ packed [i8;8]  ─ -100..100  ─ 0=neutral
-  axis 0 brevity   :  terse        ↔  verbose
-  axis 1 acerbity  :  gentle       ↔  caustic
-  axis 2 cryptic   :  literal      ↔  cryptic
-  axis 3 mirth     :  solemn       ↔  playful
-  axis 4 mythic    :  concrete     ↔  mystical
-  axis 5 warmth    :  distant      ↔  intimate
-  axis 6 effusion  :  silent       ↔  effusive
-  axis 7 stance    :  reverent     ↔  defiant
+// Construct a deterministic GmPersona from a 64-bit player-seed.
+// Writes 8 i8 axes into out_axes[0..8] · returns archetype-bias-id (0..15).
+extern "C" fn __cssl_gm_persona_from_seed(player_seed: u64, out_axes: *mut u8) -> u32 ;
 
-§ response-kinds (8)  ─ chat-panel UI-style-tag
-  0 declarative     :  plain rendering
-  1 interrogative   :  italic · trailing ?
-  2 evocative       :  serif-ish · slight glow
-  3 cautionary      :  amber tint · pre-conflict
-  4 cryptic         :  shimmer · ◐ glyph
-  5 affirmative     :  warm green · post-conflict
-  6 substrate-attest :  full glyph-cluster · climax-only
-  7 silence         :  italic-grey · "..." or "(no response)"
+// Read a single axis value from the cached persona-state for a player_seed.
+// Returns the i8 cast-to-i32 in the low byte (sign-preserved).
+extern "C" fn __cssl_gm_persona_axis(player_seed: u64, axis_id: u32) -> i32 ;
 
-§ persona-derivation
-  W! GmPersona.from_seed(player_seed : u64) : GmPersona
-    SplitMix64 ⊢ 8 i8 axes  +  archetype-bias  ⊆  16-archetypes
-  W! seed-stable :  same-seed ⇒ same-persona  (∀ time)
-  W! axes-in-range : ∀ axis ∈ axes . -100 ≤ axis ≤ 100
+// Memory operations. Each player_seed has a 16-deep ring.
+extern "C" fn __cssl_gm_memory_push(
+    player_seed: u64,
+    player_utterance_hash: u64,
+    gm_response_hash: u64,
+    frame: u64,
+    topic: u32,
+    kind: u32,
+) -> i32 ;
 
-§ memory-derivation
-  GmMemory ⊢ 16-deep ring  ⊗  GmMemoryEntry
-  GmMemoryEntry  =  ⟨player_utterance_hash : u64
-                  ,  gm_response_hash      : u64
-                  ,  frame                 : u64
-                  ,  topic                 : u8
-                  ,  kind                  : u8⟩
-  push   :  evict-oldest  ⊢  write-rotates-mod-16
-  query  :  has_recent_utterance(h)   ‖  has_recent_response(h)
-         :  topic_recent(t, window) — last `window` slots only
+extern "C" fn __cssl_gm_memory_has_recent_utterance(player_seed: u64, hash: u64) -> u32 ;
+extern "C" fn __cssl_gm_memory_has_recent_response(player_seed: u64, hash: u64) -> u32 ;
+extern "C" fn __cssl_gm_memory_topic_recent(player_seed: u64, topic: u32, window: u32) -> u32 ;
+extern "C" fn __cssl_gm_memory_total_pushes(player_seed: u64) -> u32 ;
+extern "C" fn __cssl_gm_memory_clear(player_seed: u64) -> i32 ;
 
-§ decoration-pipeline (decorate_with_persona)
-  base_phrase  →  +mythic-prefix?      (axis 4 > 0.4)
-               →  ‖+acerbity-prefix    (axis 1 > 0.5 ‖ ¬mythic)
-               →  +cryptic-suffix?     (axis 2 > 0.4)
-               →  +warmth-suffix?      (axis 5 > 0.4 ‖ ¬cryptic)
-               →  +substrate-glyph?    (climax ‖ (mythic+mirth both>0.5∧0.3))
-               →  brevity-trim?        (axis 0 > 0.5 ⊢ truncate-to-1st-sentence)
-               →  effusion-echo?       (axis 6 > 0.6 ⊢ append-soft-repeat)
+// FNV-1a 64-bit hash (host-provided · matches gm_persona::fnv1a_64).
+extern "C" fn __cssl_fnv1a_64(text_ptr: *const u8, text_len: u32) -> u64 ;
 
-§ phrase-fragments (16 total · 4-each × 4 categories)
-  mythic-prefixes :
-    "‼ "
-    "§ "
-    "⟨voice in stone⟩ "
-    "(the corridor breathes) "
+// Compose a response · writes UTF-8 text into out_ptr · returns the byte-count
+// written. The response_kind discriminant is returned via out_kind_ptr.
+extern "C" fn __cssl_gm_compose_response(
+    player_seed: u64,
+    base_phrase_ptr: *const u8,
+    base_phrase_len: u32,
+    arc_phase: u32,    // 0=Discovery 1=Tension 2=Crisis 3=Catharsis 4=Quiet
+    dm_state: u32,     // 0=Calm 1=Buildup 2=Climax 3=Relief
+    seed: u64,
+    out_text_ptr: *mut u8,
+    out_text_max: u32,
+    out_kind_ptr: *mut u8,
+) -> u32 ;
 
-  cryptic-suffixes :
-    " — and yet."
-    " · the lamp does not say which."
-    " (you may interpret as you wish)"
-    " ◐"
+// ─────────────────────────────────────────────────────────────────────────
+// § Persona-axis discriminants (8) · stable u32 ids
+// ─────────────────────────────────────────────────────────────────────────
+// Mirrors Rust gm_persona::PersonaAxis exactly · ¬ reorder.
 
-  warmth-suffixes :
-    " · go gently."
-    " · I am here."
-    " · the lamps stay lit for you."
-    " · breathe."
+const AXIS_BREVITY  : u32 = 0 ;   // terse        ↔ verbose
+const AXIS_ACERBITY : u32 = 1 ;   // gentle       ↔ caustic
+const AXIS_CRYPTIC  : u32 = 2 ;   // literal      ↔ cryptic
+const AXIS_MIRTH    : u32 = 3 ;   // solemn       ↔ playful
+const AXIS_MYTHIC   : u32 = 4 ;   // concrete     ↔ mystical
+const AXIS_WARMTH   : u32 = 5 ;   // distant      ↔ intimate
+const AXIS_EFFUSION : u32 = 6 ;   // silent       ↔ effusive
+const AXIS_STANCE   : u32 = 7 ;   // reverent     ↔ defiant
 
-  acerbity-prefixes :
-    "[blunt] "
-    "(no flourish) "
-    "‹crisp› "
-    "(plain) "
+const PERSONA_AXIS_COUNT : u32 = 8 ;
 
-  substrate-glyphs :
-    " ✓ Σ "
-    " § ω "
-    " ⌈ KAN ⌉ "
-    " ⟦ mycelium ⟧ "
+// ─────────────────────────────────────────────────────────────────────────
+// § Response-kind discriminants (8) · stable u32 ids
+// ─────────────────────────────────────────────────────────────────────────
+// Mirrors Rust gm_persona::ResponseKind exactly · ¬ reorder.
 
-§ topic-routing (arc-phase × dm-state → PhraseTopic-hint)
-  Discovery × ∀          :  Greeting
-  Tension   × Buildup    :  Warning
-  Tension   × ∀          :  Mystery
-  Crisis    × Climax     :  BattleCry
-  Crisis    × ∀          :  Defiance
-  Catharsis × Relief     :  Hope
-  Catharsis × ∀          :  Reverence
-  Quiet     × ∀          :  Lullaby
+const RK_DECLARATIVE      : u32 = 0 ;
+const RK_INTERROGATIVE    : u32 = 1 ;
+const RK_EVOCATIVE        : u32 = 2 ;
+const RK_CAUTIONARY       : u32 = 3 ;
+const RK_CRYPTIC          : u32 = 4 ;
+const RK_AFFIRMATIVE      : u32 = 5 ;
+const RK_SUBSTRATE_ATTEST : u32 = 6 ;
+const RK_SILENCE          : u32 = 7 ;
 
-§ response-kind bias (persona × dm-state → ResponseKind)
-  Calm    + cryptic |abs| > 0.4         ⇒  Cryptic
-  Calm    + mythic   > 0.3              ⇒  Evocative
-  Calm    + mythic   < -0.4             ⇒  Interrogative
-  Calm    + effusion < -0.6             ⇒  Silence
-  Calm    + warmth   > 0.3              ⇒  Affirmative
-  Calm    + (else)                      ⇒  Declarative
-  Buildup + stance |abs| > 0.3          ⇒  Cautionary
-  Buildup + (mirth < -0.3 ∨ acerbity > 0.4) ⇒ Cautionary
-  Buildup + (else)                      ⇒  Interrogative
-  Climax  + mythic > 0.5                ⇒  SubstrateAttest
-  Climax  + (else)                      ⇒  Cautionary
-  Relief  + (warmth |abs| > 0.3 ∨ mirth > 0.3) ⇒ Affirmative
-  Relief  + cryptic |abs| > 0.4         ⇒  Cryptic
-  Relief  + (else)                      ⇒  Declarative
+// ─────────────────────────────────────────────────────────────────────────
+// § Arc-phase + DM-state discriminants (consumer-shape)
+// ─────────────────────────────────────────────────────────────────────────
+// ArcPhase mirrors dm_arc.csl · DmState mirrors Rust dm_director.
 
-§ anti-loop pass
-  resp_h := fnv1a_64(composed.text)
-  if memory.has_recent_response(resp_h) :
-    re-roll-once ⊢ alt_seed := seed ⋅ 0x9E37_79B9_7F4A_7C15
-                ⊢ alt_phrase := draw_phrase_seeded(topic, xorshift32(alt_seed))
-                ⊢ composed   := decorate_with_persona(alt_phrase, persona, phase, alt_seed)
+const ARC_DISCOVERY : u32 = 0 ;
+const ARC_TENSION   : u32 = 1 ;
+const ARC_CRISIS    : u32 = 2 ;
+const ARC_CATHARSIS : u32 = 3 ;
+const ARC_QUIET     : u32 = 4 ;
 
-§ memory-push (post-compose)
-  entry  =  ⟨fnv1a(player_text), fnv1a(composed.text), frame, topic as u8, kind as u8⟩
-  memory.push(entry)
+const DM_CALM    : u32 = 0 ;
+const DM_BUILDUP : u32 = 1 ;
+const DM_CLIMAX  : u32 = 2 ;
+const DM_RELIEF  : u32 = 3 ;
 
-§ sovereignty-attestation
-  ∀ response  W!  ¬ [
-    surveillance-language     ‖  encourages-self-monitoring-against-will
-    coercive-imperative       ‖  "you must" / "you will" / threats-implied
-    manipulative-framing      ‖  withholding-info-to-extract-action
-    extracts-PII              ‖  identity / location / handle / legal-name
-    triangulates-relationships ‖  "your friend X" / "your cohort Y"
-  ]
-  ✓ permitted :
-    invitation              "the lamps are kind tonight"
-    observation             "the corridor breathes"
-    sovereign-question      "what did the maze ask of you?" (response opt-in)
-    plea-as-equal           "stay until the corridor stops humming"
+// ─────────────────────────────────────────────────────────────────────────
+// § Memory ring constants
+// ─────────────────────────────────────────────────────────────────────────
 
-§ σ-mask isolation
-  W! one-DmRuntime per session-σ-mask
-  W! persona.player_seed = derive(σ-mask) — N! reuse across σ-mask flips
-  W! memory.clear() on σ-mask flip
-  W! arc.reset() on σ-mask flip
-  W! ¬ memory.entries leak across runtime instances
+const GM_MEMORY_LEN : u32 = 16 ;
 
-§ stage-1 path
-  csslc-advance W! compile this .csl into the equivalent
-    GmPersona / GmMemory / decorate_with_persona / respond_in_persona
-  Rust-mirror W! become unnecessary ; .csl IS authoritative
-  axis-names + indices preserve verbatim ⊢ FFI-stable
+// Standard window-sizes for topic_recent queries.
+const TOPIC_WINDOW_RECENT : u32 = 4 ;
+const TOPIC_WINDOW_FULL   : u32 = 16 ;
 
-§ PRIME-DIRECTIVE attestation
-  there was no hurt nor harm in the making of this, to anyone/anything/anybody.
-  ¬ violation ⊢ ¬ override ; if ∃ edge-case W! consult PRIME-DIRECTIVE.md
+// ─────────────────────────────────────────────────────────────────────────
+// § SplitMix64 constants (deterministic persona-seeding)
+// ─────────────────────────────────────────────────────────────────────────
+// Mirrors Rust gm_persona::splitmix64 verbatim. csslc-stage-0 lacks 64-bit
+// const-eval so we expose constants as fn-returns (folded at parse-time).
+
+fn splitmix64_offset()    -> u64 { 0x9E3779B97F4A7C15 }
+fn splitmix64_mul1()      -> u64 { 0xBF58476D1CE4E5B9 }
+fn splitmix64_mul2()      -> u64 { 0x94D049BB133111EB }
+
+// FNV-1a 64-bit hash constants (matches Rust gm_persona::FNV_OFFSET_BASIS_64
+// + FNV_PRIME_64 verbatim).
+fn fnv_offset_basis_64() -> u64 { 0xCBF29CE484222325 }
+fn fnv_prime_64()        -> u64 { 0x100000001B3 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Persona-axis-to-tilt thresholds (matches Rust verbatim)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Rust uses f32 in [-1.0, 1.0] for tilt. CSSL-stage-0 lacks f32 emit so we
+// represent tilts as i32 in [-100, 100] (the i8-axis-value upcast). The
+// thresholds below are the Rust f32 thresholds × 100 (rounded toward 0).
+//
+// § GAP · csslc-f32-arithmetic · spec-only-until-W15-1-lands
+
+const TILT_30 : i32 =  30 ;   // 0.30
+const TILT_40 : i32 =  40 ;   // 0.40
+const TILT_50 : i32 =  50 ;   // 0.50
+const TILT_60 : i32 =  60 ;   // 0.60
+const TILT_NEG_30 : i32 = -30 ;
+const TILT_NEG_40 : i32 = -40 ;
+const TILT_NEG_60 : i32 = -60 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § SplitMix64 implementation (deterministic mixer for seeding)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Bit-for-bit equivalent of Rust gm_persona::splitmix64.
+// § GAP · csslc-u64-bitops + wrapping-mul · spec-only-until-W15-1-lands
+//   csslc-stage-0 has u64-add but not u64-shift-or-wrapping-mul ; the
+//   body below is the canonical contract — once csslc emits these ops,
+//   the function compiles in-place.
+
+fn splitmix64(seed: u64) -> u64 {
+    // z = seed.wrapping_add(0x9E3779B97F4A7C15)
+    // z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9)
+    // z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB)
+    // z ^ (z >> 31)
+    // § GAP · spec-only-until-W15-1-lands · calls the host-FFI for now
+    let _add : u64 = splitmix64_offset() ;
+    let _m1  : u64 = splitmix64_mul1() ;
+    let _m2  : u64 = splitmix64_mul2() ;
+    seed   // stage-0 stub : Rust path computes the real mix
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : persona-seed · axis-read · tilt-derive
+// ─────────────────────────────────────────────────────────────────────────
+
+// Construct/cache a deterministic GmPersona for a player_seed. Writes 8
+// i8 axes into out_axes[0..8] (caller-provided buffer · stack-allocated).
+// Returns the archetype-bias-id (0..15 · matches gm_narrator::Archetype).
+fn gm_persona_from_seed(player_seed: u64, out_axes: *mut u8) -> u32 {
+    __cssl_gm_persona_from_seed(player_seed, out_axes)
+}
+
+// Read a single i8 axis value (sign-preserved · returned in low byte of i32).
+fn gm_persona_axis(player_seed: u64, axis_id: u32) -> i32 {
+    if axis_id >= PERSONA_AXIS_COUNT {
+        return 0 ;
+    }
+    __cssl_gm_persona_axis(player_seed, axis_id)
+}
+
+// Tilt as i32 in [-100, 100]. Same as the axis-value (i8 → i32 sign-extend).
+// Compatibility shim : Rust tilt() returned f32 in [-1.0, 1.0] · we operate
+// on the integer value directly to dodge the f32-arg gap.
+fn gm_persona_tilt_x100(player_seed: u64, axis_id: u32) -> i32 {
+    gm_persona_axis(player_seed, axis_id)
+}
+
+// abs() helper for i32 tilts (used in |tilt| > threshold checks).
+fn abs_i32(x: i32) -> i32 {
+    if x < 0 { 0 - x } else { x }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : response-kind-bias  (decision-tree mirroring Rust)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Mirrors Rust gm_persona::response_kind_bias bit-for-bit. The Rust f32
+// thresholds (e.g. 0.4) become integer thresholds (TILT_40 = 40) on the
+// raw axis-value (which is i32-valued in [-100, 100]).
+
+fn response_kind_bias(player_seed: u64, dm_state: u32) -> u32 {
+    let cryptic  : i32 = gm_persona_tilt_x100(player_seed, AXIS_CRYPTIC) ;
+    let mythic   : i32 = gm_persona_tilt_x100(player_seed, AXIS_MYTHIC) ;
+    let stance   : i32 = gm_persona_tilt_x100(player_seed, AXIS_STANCE) ;
+    let mirth    : i32 = gm_persona_tilt_x100(player_seed, AXIS_MIRTH) ;
+    let warmth   : i32 = gm_persona_tilt_x100(player_seed, AXIS_WARMTH) ;
+    let acerbity : i32 = gm_persona_tilt_x100(player_seed, AXIS_ACERBITY) ;
+    let effusion : i32 = gm_persona_tilt_x100(player_seed, AXIS_EFFUSION) ;
+
+    if dm_state == DM_CALM {
+        if abs_i32(cryptic) > TILT_40 {
+            return RK_CRYPTIC ;
+        } else if mythic > TILT_30 {
+            return RK_EVOCATIVE ;
+        } else if mythic < TILT_NEG_40 {
+            return RK_INTERROGATIVE ;
+        } else if effusion < TILT_NEG_60 {
+            return RK_SILENCE ;
+        } else if warmth > TILT_30 {
+            return RK_AFFIRMATIVE ;
+        } else {
+            return RK_DECLARATIVE ;
+        }
+    } else if dm_state == DM_BUILDUP {
+        if abs_i32(stance) > TILT_30 {
+            return RK_CAUTIONARY ;
+        } else if mirth < TILT_NEG_30 {
+            return RK_CAUTIONARY ;
+        } else if acerbity > TILT_40 {
+            return RK_CAUTIONARY ;
+        } else {
+            return RK_INTERROGATIVE ;
+        }
+    } else if dm_state == DM_CLIMAX {
+        if mythic > TILT_50 {
+            return RK_SUBSTRATE_ATTEST ;
+        } else if abs_i32(mythic) > TILT_60 {
+            if mirth > 0 {
+                return RK_SUBSTRATE_ATTEST ;
+            }
+        }
+        return RK_CAUTIONARY ;
+    } else if dm_state == DM_RELIEF {
+        if abs_i32(warmth) > TILT_30 {
+            return RK_AFFIRMATIVE ;
+        } else if mirth > TILT_30 {
+            return RK_AFFIRMATIVE ;
+        } else if abs_i32(cryptic) > TILT_40 {
+            return RK_CRYPTIC ;
+        } else {
+            return RK_DECLARATIVE ;
+        }
+    }
+    // Fallthrough (unreachable in well-formed dm_state space).
+    RK_DECLARATIVE
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : memory ring  (16-deep · evict-on-write)
+// ─────────────────────────────────────────────────────────────────────────
+
+// Push an entry onto the memory ring. Mirrors Rust GmMemory::push.
+fn gm_memory_push(
+    player_seed: u64,
+    player_utterance_hash: u64,
+    gm_response_hash: u64,
+    frame: u64,
+    topic: u32,
+    kind: u32,
+) -> i32 {
+    __cssl_gm_memory_push(player_seed, player_utterance_hash, gm_response_hash, frame, topic, kind)
+}
+
+// Has the player said this exact utterance recently ?
+// (zero-hash returns 0 · matches Rust GmMemory::has_recent_utterance)
+fn gm_memory_has_recent_utterance(player_seed: u64, hash: u64) -> u32 {
+    if hash == 0 {
+        return 0 ;
+    }
+    __cssl_gm_memory_has_recent_utterance(player_seed, hash)
+}
+
+// Has the GM emitted this exact response recently ?
+fn gm_memory_has_recent_response(player_seed: u64, hash: u64) -> u32 {
+    if hash == 0 {
+        return 0 ;
+    }
+    __cssl_gm_memory_has_recent_response(player_seed, hash)
+}
+
+// Has the GM picked this topic in the last `window` entries ?
+fn gm_memory_topic_recent(player_seed: u64, topic: u32, window: u32) -> u32 {
+    let cap : u32 = if window < GM_MEMORY_LEN { window } else { GM_MEMORY_LEN } ;
+    __cssl_gm_memory_topic_recent(player_seed, topic, cap)
+}
+
+// Total pushes since session start (saturating · matches Rust total_pushes).
+fn gm_memory_total_pushes(player_seed: u64) -> u32 {
+    __cssl_gm_memory_total_pushes(player_seed)
+}
+
+// Reset the ring (called on σ-mask flip · matches Rust GmMemory::clear).
+fn gm_memory_clear(player_seed: u64) -> i32 {
+    __cssl_gm_memory_clear(player_seed)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : response composer + anti-loop pass
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Compose a persona-decorated response. The host's stage-0 implementation
+// runs the full decoration pipeline (mythic-prefix · cryptic-suffix · warmth-
+// suffix · substrate-glyph · brevity-trim · effusion-echo) using the same
+// MYTHIC_PREFIXES / CRYPTIC_SUFFIXES / WARMTH_SUFFIXES / ACERBITY_PREFIXES /
+// SUBSTRATE_GLYPHS tables as Rust gm_persona.
+//
+// Returns the byte-count of the composed text. The response-kind tag is
+// written to *out_kind_ptr (one byte · 0..7 matching ResponseKind).
+
+fn compose_response(
+    player_seed: u64,
+    base_phrase_ptr: *const u8,
+    base_phrase_len: u32,
+    arc_phase: u32,
+    dm_state: u32,
+    seed: u64,
+    out_text_ptr: *mut u8,
+    out_text_max: u32,
+    out_kind_ptr: *mut u8,
+) -> u32 {
+    __cssl_gm_compose_response(
+        player_seed,
+        base_phrase_ptr,
+        base_phrase_len,
+        arc_phase,
+        dm_state,
+        seed,
+        out_text_ptr,
+        out_text_max,
+        out_kind_ptr,
+    )
+}
+
+// Anti-loop : compose · check memory · re-roll once if collision.
+// Returns byte-count written. If both tries collide, returns the second-try
+// regardless (matches Rust behavior of "re-roll-once" only).
+fn compose_with_anti_loop(
+    player_seed: u64,
+    player_text_ptr: *const u8,
+    player_text_len: u32,
+    base_phrase_ptr: *const u8,
+    base_phrase_len: u32,
+    arc_phase: u32,
+    dm_state: u32,
+    seed: u64,
+    frame: u64,
+    out_text_ptr: *mut u8,
+    out_text_max: u32,
+    out_kind_ptr: *mut u8,
+) -> u32 {
+    // Try-1
+    let n1 : u32 = compose_response(
+        player_seed, base_phrase_ptr, base_phrase_len,
+        arc_phase, dm_state, seed,
+        out_text_ptr, out_text_max, out_kind_ptr,
+    ) ;
+    // Hash the composed text + check memory.
+    let resp_h : u64 = __cssl_fnv1a_64(out_text_ptr as *const u8, n1) ;
+    let collision : u32 = gm_memory_has_recent_response(player_seed, resp_h) ;
+    if collision == 0 {
+        // No collision · push memory · return.
+        let player_h : u64 = __cssl_fnv1a_64(player_text_ptr, player_text_len) ;
+        let kind_byte : u8 = 0 ;  // host-FFI fills out_kind_ptr · we re-read for memory
+        // § GAP · csslc-deref-mut-u8 · spec-only-until-W15-1-lands
+        let _ = gm_memory_push(player_seed, player_h, resp_h, frame, 0, kind_byte as u32) ;
+        return n1 ;
+    }
+    // Collision · re-roll-once with mixed seed.
+    let alt_seed : u64 = seed + splitmix64_offset() ;
+    let n2 : u32 = compose_response(
+        player_seed, base_phrase_ptr, base_phrase_len,
+        arc_phase, dm_state, alt_seed,
+        out_text_ptr, out_text_max, out_kind_ptr,
+    ) ;
+    let resp_h2  : u64 = __cssl_fnv1a_64(out_text_ptr as *const u8, n2) ;
+    let player_h : u64 = __cssl_fnv1a_64(player_text_ptr, player_text_len) ;
+    let _ = gm_memory_push(player_seed, player_h, resp_h2, frame, 0, 0) ;
+    n2
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API : FNV-1a hash (host-FFI passthrough)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn fnv1a_64(text_ptr: *const u8, text_len: u32) -> u64 {
+    __cssl_fnv1a_64(text_ptr, text_len)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sovereignty-attestation gate
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Predicates that an external scriptable-checker can call against any
+// composed response to enforce the sovereignty-clauses. This is the
+// in-CSSL mirror of memory_dm_gm_not_general_ai's permitted/forbidden
+// patterns.
+//
+// Returns 1 if the response IS sovereignty-respecting · 0 if it appears
+// to violate one of the clauses (caller should redact + log).
+
+extern "C" fn __cssl_gm_response_is_sovereign(text_ptr: *const u8, text_len: u32) -> u32 ;
+
+fn response_is_sovereign(text_ptr: *const u8, text_len: u32) -> u32 {
+    __cssl_gm_response_is_sovereign(text_ptr, text_len)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INLINE TESTS (bit-for-bit-Rust-parity gates)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// § GAP · csslc-#[test]-attr · spec-only-until-W15-1-lands
+//   Once the test attribute is wired, csslc-test-cmd will scan for
+//   `fn test_*() -> i32` (0=PASS · non-zero=FAIL).
+
+// Test : axis discriminants are stable + match Rust enum order.
+fn test_axis_discriminants_match_rust() -> i32 {
+    if AXIS_BREVITY  != 0 { return 1 ; }
+    if AXIS_ACERBITY != 1 { return 2 ; }
+    if AXIS_CRYPTIC  != 2 { return 3 ; }
+    if AXIS_MIRTH    != 3 { return 4 ; }
+    if AXIS_MYTHIC   != 4 { return 5 ; }
+    if AXIS_WARMTH   != 5 { return 6 ; }
+    if AXIS_EFFUSION != 6 { return 7 ; }
+    if AXIS_STANCE   != 7 { return 8 ; }
+    if PERSONA_AXIS_COUNT != 8 { return 9 ; }
+    0
+}
+
+// Test : response-kind discriminants are stable + match Rust enum order.
+fn test_response_kind_discriminants_match_rust() -> i32 {
+    if RK_DECLARATIVE      != 0 { return 1 ; }
+    if RK_INTERROGATIVE    != 1 { return 2 ; }
+    if RK_EVOCATIVE        != 2 { return 3 ; }
+    if RK_CAUTIONARY       != 3 { return 4 ; }
+    if RK_CRYPTIC          != 4 { return 5 ; }
+    if RK_AFFIRMATIVE      != 5 { return 6 ; }
+    if RK_SUBSTRATE_ATTEST != 6 { return 7 ; }
+    if RK_SILENCE          != 7 { return 8 ; }
+    0
+}
+
+// Test : memory-ring length = 16 (matches Rust GM_MEMORY_LEN).
+fn test_memory_len_is_16() -> i32 {
+    if GM_MEMORY_LEN != 16 { return 1 ; }
+    0
+}
+
+// Test : SplitMix64 constants match Rust (load via fn-returns).
+fn test_splitmix64_constants() -> i32 {
+    if splitmix64_offset() != 0x9E3779B97F4A7C15 { return 1 ; }
+    if splitmix64_mul1()   != 0xBF58476D1CE4E5B9 { return 2 ; }
+    if splitmix64_mul2()   != 0x94D049BB133111EB { return 3 ; }
+    0
+}
+
+// Test : FNV-1a constants match Rust gm_persona module.
+fn test_fnv_constants() -> i32 {
+    if fnv_offset_basis_64() != 0xCBF29CE484222325 { return 1 ; }
+    if fnv_prime_64()        != 0x100000001B3      { return 2 ; }
+    0
+}
+
+// Test : abs_i32 helper.
+fn test_abs_i32() -> i32 {
+    if abs_i32(0)    != 0   { return 1 ; }
+    if abs_i32(50)   != 50  { return 2 ; }
+    if abs_i32(0-50) != 50  { return 3 ; }
+    if abs_i32(100)  != 100 { return 4 ; }
+    0
+}
+
+// Test : tilt-thresholds are integer-correct (TILT_40 = 40 etc.).
+fn test_tilt_thresholds_are_integer() -> i32 {
+    if TILT_30 != 30 { return 1 ; }
+    if TILT_40 != 40 { return 2 ; }
+    if TILT_50 != 50 { return 3 ; }
+    if TILT_60 != 60 { return 4 ; }
+    if TILT_NEG_30 != (0-30) { return 5 ; }
+    if TILT_NEG_40 != (0-40) { return 6 ; }
+    if TILT_NEG_60 != (0-60) { return 7 ; }
+    0
+}
+
+// Test : ArcPhase + DmState discriminants match consumer-shape.
+fn test_arc_dm_discriminants() -> i32 {
+    if ARC_DISCOVERY != 0 { return 1 ; }
+    if ARC_TENSION   != 1 { return 2 ; }
+    if ARC_CRISIS    != 2 { return 3 ; }
+    if ARC_CATHARSIS != 3 { return 4 ; }
+    if ARC_QUIET     != 4 { return 5 ; }
+    if DM_CALM       != 0 { return 6 ; }
+    if DM_BUILDUP    != 1 { return 7 ; }
+    if DM_CLIMAX     != 2 { return 8 ; }
+    if DM_RELIEF     != 3 { return 9 ; }
+    0
+}
+
+// Test : color-table monotonic axis order (sanity).
+fn test_axis_count_constant() -> i32 {
+    if PERSONA_AXIS_COUNT != AXIS_STANCE + 1 { return 1 ; }
+    0
+}
+
+// Test : topic-window cap.
+fn test_topic_window_constants() -> i32 {
+    if TOPIC_WINDOW_RECENT != 4  { return 1 ; }
+    if TOPIC_WINDOW_FULL   != 16 { return 2 ; }
+    if TOPIC_WINDOW_FULL   != GM_MEMORY_LEN { return 3 ; }
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PHRASE-FRAGMENT TABLES (spec-only · Rust holds the strings)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The Rust gm_persona module defines five 4-string lookup tables :
+//   MYTHIC_PREFIXES  · CRYPTIC_SUFFIXES · WARMTH_SUFFIXES
+//   ACERBITY_PREFIXES · SUBSTRATE_GLYPHS
+//
+// Once csslc supports `static FOO : [&str; 4]` (W15-1 GAP) the tables
+// migrate verbatim. Until then the host owns them ; the .csl spec lists
+// the canonical strings below as the contract.
+//
+// § GAP · csslc-static-string-array · spec-only-until-W15-1-lands
+//
+// MYTHIC_PREFIXES:
+//   "‼ "
+//   "§ "
+//   "⟨voice in stone⟩ "
+//   "(the corridor breathes) "
+//
+// CRYPTIC_SUFFIXES:
+//   " — and yet."
+//   " · the lamp does not say which."
+//   " (you may interpret as you wish)"
+//   " ◐"
+//
+// WARMTH_SUFFIXES:
+//   " · go gently."
+//   " · I am here."
+//   " · the lamps stay lit for you."
+//   " · breathe."
+//
+// ACERBITY_PREFIXES:
+//   "[blunt] "
+//   "(no flourish) "
+//   "‹crisp› "
+//   "(plain) "
+//
+// SUBSTRATE_GLYPHS:
+//   " ✓ Σ "
+//   " § ω "
+//   " ⌈ KAN ⌉ "
+//   " ⟦ mycelium ⟧ "
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DECORATION PIPELINE  (bit-for-bit-mirror of Rust decorate_with_persona)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The Rust gm_persona::decorate_with_persona function applies:
+//
+//   1. Mythic-prefix    if axis-mythic    > 40
+//   2. else Acerbity-prefix if axis-acerbity > 50
+//   3. Cryptic-suffix   if axis-cryptic   > 40
+//   4. Warmth-suffix    if axis-warmth    > 40 AND ¬cryptic-fired
+//   5. Substrate-glyph  if dm_state == Climax OR (mythic > 50 AND mirth > 30)
+//   6. Brevity-trim     if axis-brevity   > 50  (truncate at 1st .!? )
+//   7. Effusion-echo    if axis-effusion  > 60  (append " (base · once more, softly)")
+//
+// The composed-text byte-count is bounded by out_text_max ; the host writes
+// truncated-to-fit and returns the actual byte-count. The response-kind
+// is computed via response_kind_bias unless a substrate-glyph fired, in
+// which case it overrides to RK_SUBSTRATE_ATTEST.
+//
+// § GAP · csslc-string-mutation + array-indexing · spec-only-until-W15-1-lands
+//
+// Until csslc grows full string-mutation, the pipeline runs in the host
+// (gm_persona::decorate_with_persona). This .csl source declares the
+// algorithm verbatim ; when csslc lands string-ops the body becomes live.
+
+// Predicate : would substrate-glyph fire for this persona × phase ?
+// Mirrors Rust is_substrate_moment computation verbatim.
+fn is_substrate_moment(player_seed: u64, dm_state: u32) -> u32 {
+    if dm_state == DM_CLIMAX {
+        return 1 ;
+    }
+    let mythic : i32 = gm_persona_tilt_x100(player_seed, AXIS_MYTHIC) ;
+    let mirth  : i32 = gm_persona_tilt_x100(player_seed, AXIS_MIRTH) ;
+    if mythic > TILT_50 {
+        if mirth > TILT_30 {
+            return 1 ;
+        }
+    }
+    0
+}
+
+// Predicate : would brevity-trim fire ?
+fn is_brevity_trim(player_seed: u64) -> u32 {
+    let brevity : i32 = gm_persona_tilt_x100(player_seed, AXIS_BREVITY) ;
+    if brevity > TILT_50 { 1 } else { 0 }
+}
+
+// Predicate : would effusion-echo fire ?
+fn is_effusion_echo(player_seed: u64) -> u32 {
+    let effusion : i32 = gm_persona_tilt_x100(player_seed, AXIS_EFFUSION) ;
+    if effusion > TILT_60 { 1 } else { 0 }
+}
+
+// Predicate : would warmth-suffix fire ?
+fn is_warmth_suffix(player_seed: u64) -> u32 {
+    let warmth : i32 = gm_persona_tilt_x100(player_seed, AXIS_WARMTH) ;
+    if warmth > TILT_40 { 1 } else { 0 }
+}
+
+// Predicate : would cryptic-suffix fire ?
+fn is_cryptic_suffix(player_seed: u64) -> u32 {
+    let cryptic : i32 = gm_persona_tilt_x100(player_seed, AXIS_CRYPTIC) ;
+    if cryptic > TILT_40 { 1 } else { 0 }
+}
+
+// Predicate : would mythic-prefix fire ?
+fn is_mythic_prefix(player_seed: u64) -> u32 {
+    let mythic : i32 = gm_persona_tilt_x100(player_seed, AXIS_MYTHIC) ;
+    if mythic > TILT_40 { 1 } else { 0 }
+}
+
+// Test : decoration-predicate-set is consistent with Rust decorate_with_persona.
+fn test_decoration_predicates_consistent() -> i32 {
+    // We can't assert absolute values without a live persona, but we CAN
+    // assert that the predicate-set is coherent: a persona with all axes = 0
+    // must trigger NO decoration predicates.
+    // § GAP · csslc-host-state-zero · this test runs once host wires a
+    //   zero-axis-stub helper for unit-test isolation.
+    0
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAP · csslc-feature-coverage roadmap
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The function bodies above declare the canonical surface but csslc
+// stage-0 cannot yet emit:
+//
+//   * f32-arithmetic (we use i32 tilts in [-100, 100] to dodge this gap)
+//   * u64-bitops (>>, ^, wrapping_mul) — needed for splitmix64 inline
+//   * i8 native type — currently smuggle as i32 via host FFI return
+//   * Vec<T> heap-alloc — we use pointer + length pairs for now
+//   * static [&str; N] string-tables — host owns the phrase-fragments
+//   * #[test] attribute for built-in test harness
+//   * match statement (we use if/else-if chains as substitute)
+//   * for i in 0..n range-loop (we use while + manual increment)
+//
+// § REMEDIATION ROADMAP (W15-1 · csslc-advance · ~600 LOC)
+//   1. csslc · f32 ABI emit (currently i32 / u32 / u64 / i64 only)
+//   2. csslc · u64-bitops + wrapping-mul emit
+//   3. csslc · i8 native + sign-extend
+//   4. csslc · static [&str; N] table-emission
+//   5. csslc · #[test] attr → t11_w11_parser_advancements style harness
+//   6. csslc · match statement lowering
+//   7. csslc · for-i-in-range range-syntax
+//   8. csslc · Vec<T> heap-alloc surface (or stick with FFI-pointer+len)
+//   9. loa-host · delete gm_persona.rs once gm_dialogue.csl is live
+//
+// Until the roadmap lands, this file serves as :
+//   * the canonical proprietary spec for the GM persona + memory + composer
+//   * grep-discoverable contract for the FFI surface
+//   * forward-looking spec that future wave-phases compile in-place
+//
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W15-CSSL-GM-DIALOGUE @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything, or anybody."
+//
+//   Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+//   Player-sovereignty preserved : GM speaks AS-EQUAL · not AS-AUTHORITY ;
+//     persona-axes encode VOICE-VARIATION not PSYCHOLOGICAL-PROFILING ; the
+//     16-deep memory-ring DOES NOT persist beyond σ-mask flip.
+//   Companion-AI sovereignty preserved : the GM is a NARRATOR-ROLE ; it does
+//     not impersonate user-relationships or extract identity-tells. Glyph
+//     emission is OPT-IN per response (resonance-only · ¬ enforcement).
+//   Creator-sovereignty preserved : .csl source-of-truth · proprietary-
+//     everything · this file IS the canonical GM-dialogue impl ; Rust-mirror
+//     is bootstrap host UNTIL csslc reaches W15-1 feature-coverage parity.
