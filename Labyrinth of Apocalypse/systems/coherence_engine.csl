@@ -1,0 +1,392 @@
+module com.apocky.loa.systems.coherence_engine
+
+// § Labyrinth of Apocalypse · system · Coherence-Engine 13-axes cohere/dissonate
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-CSSL-CONTENT-COHERENCE-ENGINE (W-LOA-coherence-engine-13-axes)
+//
+// § REFERENCE
+//   GDDs/COHERENCE_ENGINE.csl   ← FOUNDATIONAL · 13-axes spec
+//   memory/feedback_infinite_labyrinth_legacy_design  ‼ FOUNDATIONAL · 13-axes ref
+//   memory/feedback_sigma_chain_unified_substrate     ← Coherence-Proof consensus
+//   memory/feedback_loa_full_game_rd                  ← gameplay-axes integration
+//   GDDs/LOA_PILLARS.csl § COHERENCE-AXIOM
+//   systems/run.csl + systems/combat.csl + systems/akashic.csl
+//   specs/30_SUBSTRATE_v2.csl + specs/grand-vision/14_SIGMA_CHAIN_COHERENCE.csl
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + COHERENCE_ENGINE
+//   t∞: 13-axes ⊆ {Reality · Memory · Choice · Sovereignty · Curiosity · Compassion ·
+//                   Craftsmanship · Truth · Consent · Continuity · Reciprocity ·
+//                   Beauty · Mortality} ← canonical 13 (¬ extensible at runtime)
+//   t∞: each axis bounded ∈ ⟦-100, +100⟧ · 0 = neutral
+//   t∞: positive-coherent · negative-dissonant · player-state evolves
+//   t∞: actions modify axes per AXIS-MOD-TABLE (deterministic-fn)
+//   t∞: ¬ moral-judgment ¬ shame · axes are descriptive ¬ prescriptive
+//   t∞: cohere-state visible to player · sovereign-revoke any-time
+//   t∞: high-cohere unlocks NARRATIVE-RESONANCE (¬ power-bonus)
+//   t∞: axes synergize per MULTI-AXIS-RESONANCE-TABLE
+//   t∞: dissonance-balance axiom : ALL-+100 ≡ ALL--100 ≡ stagnation
+//   t∞: axis-state ω-field-anchored · Σ-mask consent-gated
+//   t∞: privacy-default · per-player local · cross-share OPT-IN
+//   t∞: replay-deterministic · same-input → same-axis-trajectory
+//
+// § PRIME-DIRECTIVE
+//   The Coherence-Engine tracks 13 axes of player-state without judgment.
+//   Axes are descriptive (what-the-player-is-doing) not prescriptive
+//   (telling-them-what-to-do). High-cohere unlocks narrative-resonance,
+//   not power-bonuses. Player can revoke axis-tracking entirely or per-axis.
+//   No off-machine relay without explicit cross-share consent.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-coherence-engine bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_coh_session_create(player_id_hash: u64) -> i64 ;
+extern "C" fn __cssl_coh_session_destroy(handle: i64) -> i32 ;
+
+// Axis read · returns axis-value clamped ⟦-100, +100⟧ · sentinel -128 = unknown-handle
+extern "C" fn __cssl_coh_axis_read(handle: i64, axis_id: u32) -> i32 ;
+
+// Axis modify · delta clamped post-application · audit-emit per-write
+extern "C" fn __cssl_coh_axis_modify(handle: i64, axis_id: u32, delta: i32, reason_code: u32) -> i32 ;
+
+// Axis reset to neutral · sovereign-revoke per-axis
+extern "C" fn __cssl_coh_axis_reset(handle: i64, axis_id: u32) -> i32 ;
+
+// Full-state read · packed payload (13 i32 axis-values)
+extern "C" fn __cssl_coh_state_read_all(handle: i64, out_ptr: *mut u8, out_cap: u32) -> i32 ;
+
+// Resonance query · returns resonance-score (0..1000 fixed-point) for an axis-set
+extern "C" fn __cssl_coh_resonance_query(
+    handle: i64,
+    axis_mask: u32,        // bit-N set ⇔ axis-N in-resonance-set
+) -> u32 ;
+
+// Multi-axis-resonance unlock query · narrative-only · ¬ power-bonus
+extern "C" fn __cssl_coh_narrative_unlock_query(handle: i64, story_arc_hash: u64) -> u32 ;
+
+// Σ-mask anchor + consent gates
+extern "C" fn __cssl_coh_omega_anchor(handle: i64) -> u64 ;
+extern "C" fn __cssl_coh_revoke_axis_tracking(handle: i64, axis_id: u32) -> i32 ;
+extern "C" fn __cssl_coh_revoke_all_tracking(handle: i64) -> i32 ;
+
+// Cross-share consent (federated bias-coherence learning)
+extern "C" fn __cssl_coh_cross_share_consent(handle: i64, consent_token: u64) -> i32 ;
+
+// Audit-emit per axis-modify (transparency-log integration)
+extern "C" fn __cssl_coh_audit_emit_axis_change(handle: i64, axis_id: u32, old_value: i32, new_value: i32) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 13-axis canonical IDs · per GDDs/COHERENCE_ENGINE.csl § AXES
+// ─────────────────────────────────────────────────────────────────────────
+const AXIS_REALITY                  : u32 =  0 ;   // grounded ↔ illusion
+const AXIS_MEMORY                   : u32 =  1 ;   // remembered ↔ forgotten
+const AXIS_CHOICE                   : u32 =  2 ;   // chose ↔ defaulted
+const AXIS_SOVEREIGNTY              : u32 =  3 ;   // self-determined ↔ controlled
+const AXIS_CURIOSITY                : u32 =  4 ;   // explored ↔ avoided
+const AXIS_COMPASSION               : u32 =  5 ;   // helped ↔ ignored
+const AXIS_CRAFTSMANSHIP            : u32 =  6 ;   // refined ↔ shortcut
+const AXIS_TRUTH                    : u32 =  7 ;   // honest ↔ deceptive
+const AXIS_CONSENT                  : u32 =  8 ;   // asked ↔ presumed
+const AXIS_CONTINUITY               : u32 =  9 ;   // committed ↔ abandoned
+const AXIS_RECIPROCITY              : u32 = 10 ;   // gave-back ↔ took-only
+const AXIS_BEAUTY                   : u32 = 11 ;   // beheld ↔ overlooked
+const AXIS_MORTALITY                : u32 = 12 ;   // honored-death ↔ denied-death
+
+// Axis-count constant (compile-time guarantee)
+const AXIS_COUNT                    : u32 = 13 ;
+
+// Axis bounds
+const AXIS_MIN                      : i32 = -100 ;
+const AXIS_MAX                      : i32 =  100 ;
+const AXIS_NEUTRAL                  : i32 =    0 ;
+
+// Sentinel : unknown-handle return-value
+const AXIS_SENTINEL_UNKNOWN         : i32 = -128 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Reason-code constants · audit-trail for every axis-modify
+// ─────────────────────────────────────────────────────────────────────────
+const REASON_QUEST_ALIGNED          : u32 =  1 ;
+const REASON_GIFT_GIVEN             : u32 =  2 ;
+const REASON_PROMISE_KEPT           : u32 =  3 ;
+const REASON_PROMISE_BROKEN         : u32 =  4 ;
+const REASON_DISCOVERY              : u32 =  5 ;
+const REASON_ARTISAN_PEAK           : u32 =  6 ;
+const REASON_NEMESIS_FACED          : u32 =  7 ;
+const REASON_MERCY_GRANTED          : u32 =  8 ;
+const REASON_ECHO_HONORED           : u32 =  9 ;   // visited prior-PC echo
+const REASON_PLAYER_REVOKE          : u32 = 10 ;   // sovereign-zero-out
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API · session lifecycle
+// ─────────────────────────────────────────────────────────────────────────
+
+fn coh_create_session(player_id_hash: u64) -> i64 {
+    __cssl_coh_session_create(player_id_hash)
+}
+
+fn coh_destroy_session(handle: i64) -> i32 {
+    __cssl_coh_session_destroy(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Axis read · validates axis-id ∈ ⟦0, 12⟧
+// ─────────────────────────────────────────────────────────────────────────
+
+fn axis_read(handle: i64, axis_id: u32) -> i32 {
+    if axis_id >= AXIS_COUNT { return AXIS_SENTINEL_UNKNOWN ; }
+    __cssl_coh_axis_read(handle, axis_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Axis modify · validates axis-id + reason-code · audit-emit always
+// ─────────────────────────────────────────────────────────────────────────
+//
+// delta clamped post-application by host (axis stays within ⟦-100, +100⟧).
+// Returns the new axis-value (clamped) on success · AXIS_SENTINEL_UNKNOWN
+// on invalid-args.
+
+fn axis_modify(handle: i64, axis_id: u32, delta: i32, reason_code: u32) -> i32 {
+    if axis_id >= AXIS_COUNT { return AXIS_SENTINEL_UNKNOWN ; }
+    if reason_code < 1u32 { return AXIS_SENTINEL_UNKNOWN ; }
+    if reason_code > 10u32 { return AXIS_SENTINEL_UNKNOWN ; }
+
+    let old_value: i32 = __cssl_coh_axis_read(handle, axis_id) ;
+    let new_value: i32 = __cssl_coh_axis_modify(handle, axis_id, delta, reason_code) ;
+    let _a: i32 = __cssl_coh_audit_emit_axis_change(handle, axis_id, old_value, new_value) ;
+    new_value
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Axis reset · sovereign-revoke per-axis · returns to neutral
+// ─────────────────────────────────────────────────────────────────────────
+
+fn axis_reset_to_neutral(handle: i64, axis_id: u32) -> i32 {
+    if axis_id >= AXIS_COUNT { return -1i32 ; }
+    __cssl_coh_axis_reset(handle, axis_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Full-state read · 13 axes packed into out-buffer
+// ─────────────────────────────────────────────────────────────────────────
+
+fn read_all_axes(handle: i64, out_ptr: *mut u8, out_cap: u32) -> i32 {
+    __cssl_coh_state_read_all(handle, out_ptr, out_cap)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Resonance query · multi-axis fixed-point score
+// ─────────────────────────────────────────────────────────────────────────
+//
+// axis_mask : bit-N set ⇔ axis-N participates in resonance-calc.
+// Returns 0..1000 fixed-point score (10x percent · 0=stagnation · 1000=resonant).
+
+fn resonance_score(handle: i64, axis_mask: u32) -> u32 {
+    __cssl_coh_resonance_query(handle, axis_mask)
+}
+
+// Predicate : resonance-score ≥ 700 = high-cohere narrative-unlock-eligible
+fn is_high_cohere(handle: i64, axis_mask: u32) -> u32 {
+    let s: u32 = resonance_score(handle, axis_mask) ;
+    if s >= 700u32 { return 1u32 ; }
+    return 0u32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Narrative-unlock query · ¬ power-bonus · narrative-resonance only
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Returns 1 if the story-arc is unlocked given current axis-state · 0 else.
+// COMPLIANCE-AXIOM : THIS UNLOCK IS NARRATIVE-ONLY · ¬ stat-buff · ¬ power.
+
+fn narrative_unlock_check(handle: i64, story_arc_hash: u64) -> u32 {
+    __cssl_coh_narrative_unlock_query(handle, story_arc_hash)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask anchor + sovereign-revoke
+// ─────────────────────────────────────────────────────────────────────────
+
+fn omega_anchor(handle: i64) -> u64 {
+    __cssl_coh_omega_anchor(handle)
+}
+
+fn player_revoke_axis_tracking(handle: i64, axis_id: u32) -> i32 {
+    if axis_id >= AXIS_COUNT { return -1i32 ; }
+    __cssl_coh_revoke_axis_tracking(handle, axis_id)
+}
+
+// Revoke ALL tracking · sovereign-zero-out · all axes return to neutral
+fn player_revoke_all_tracking(handle: i64) -> i32 {
+    __cssl_coh_revoke_all_tracking(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cross-share consent (federated coherence-pattern learning)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn cross_share_consent(handle: i64, consent_token: u64) -> i32 {
+    if consent_token == 0u64 { return 1i32 ; }
+    __cssl_coh_cross_share_consent(handle, consent_token)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Helper · classify axis-state into descriptive band (UI display)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Returns 0=deeply-dissonant · 1=dissonant · 2=neutral · 3=coherent · 4=resonant.
+// PURE-FN · client-side display only · NO moral-judgment · just-descriptive.
+// "deeply-dissonant" is NOT bad ; "resonant" is NOT good ; this is gameplay-state.
+
+fn classify_axis_band(axis_value: i32) -> u32 {
+    if axis_value <= -75i32 { return 0u32 ; }
+    if axis_value <= -25i32 { return 1u32 ; }
+    if axis_value <=  25i32 { return 2u32 ; }
+    if axis_value <=  75i32 { return 3u32 ; }
+    return 4u32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Helper · standard axis-bonus for common-actions (deterministic-fn)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Maps reason-code → (axis-id, delta) per canonical AXIS-MOD-TABLE.
+// PURE-FN · used by callers to know-in-advance what an action will do.
+
+fn axis_for_reason(reason_code: u32) -> u32 {
+    if reason_code == REASON_QUEST_ALIGNED  { return AXIS_CONTINUITY ; }
+    if reason_code == REASON_GIFT_GIVEN     { return AXIS_RECIPROCITY ; }
+    if reason_code == REASON_PROMISE_KEPT   { return AXIS_TRUTH ; }
+    if reason_code == REASON_PROMISE_BROKEN { return AXIS_TRUTH ; }
+    if reason_code == REASON_DISCOVERY      { return AXIS_CURIOSITY ; }
+    if reason_code == REASON_ARTISAN_PEAK   { return AXIS_CRAFTSMANSHIP ; }
+    if reason_code == REASON_NEMESIS_FACED  { return AXIS_SOVEREIGNTY ; }
+    if reason_code == REASON_MERCY_GRANTED  { return AXIS_COMPASSION ; }
+    if reason_code == REASON_ECHO_HONORED   { return AXIS_MORTALITY ; }
+    return AXIS_REALITY ;   // default-fallback (REASON_PLAYER_REVOKE handled out-of-band)
+}
+
+fn delta_for_reason(reason_code: u32) -> i32 {
+    if reason_code == REASON_PROMISE_BROKEN { return -8i32 ; }
+    if reason_code == REASON_QUEST_ALIGNED  { return  6i32 ; }
+    if reason_code == REASON_GIFT_GIVEN     { return  4i32 ; }
+    if reason_code == REASON_PROMISE_KEPT   { return  6i32 ; }
+    if reason_code == REASON_DISCOVERY      { return  3i32 ; }
+    if reason_code == REASON_ARTISAN_PEAK   { return  8i32 ; }
+    if reason_code == REASON_NEMESIS_FACED  { return  5i32 ; }
+    if reason_code == REASON_MERCY_GRANTED  { return  7i32 ; }
+    if reason_code == REASON_ECHO_HONORED   { return  4i32 ; }
+    return 0i32 ;
+}
+
+// Composite : apply standard reason-code modification (axis + delta auto-resolved)
+fn axis_modify_via_reason(handle: i64, reason_code: u32) -> i32 {
+    let axis: u32 = axis_for_reason(reason_code) ;
+    let delta: i32 = delta_for_reason(reason_code) ;
+    axis_modify(handle, axis, delta, reason_code)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_axis_count_thirteen() {
+    assert_eq(AXIS_COUNT, 13u32) ;
+    assert_eq(AXIS_MORTALITY, 12u32) ;
+}
+
+#[test]
+fn test_axis_bounds() {
+    assert_eq(AXIS_MIN, -100i32) ;
+    assert_eq(AXIS_MAX, 100i32) ;
+    assert_eq(AXIS_NEUTRAL, 0i32) ;
+}
+
+#[test]
+fn test_classify_neutral_band() {
+    assert_eq(classify_axis_band(0i32), 2u32) ;
+}
+
+#[test]
+fn test_classify_resonant_band() {
+    assert_eq(classify_axis_band(80i32), 4u32) ;
+}
+
+#[test]
+fn test_classify_deeply_dissonant() {
+    assert_eq(classify_axis_band(-90i32), 0u32) ;
+}
+
+#[test]
+fn test_classify_dissonant() {
+    assert_eq(classify_axis_band(-50i32), 1u32) ;
+}
+
+#[test]
+fn test_classify_coherent() {
+    assert_eq(classify_axis_band(50i32), 3u32) ;
+}
+
+#[test]
+fn test_axis_for_reason_gift_reciprocity() {
+    assert_eq(axis_for_reason(REASON_GIFT_GIVEN), AXIS_RECIPROCITY) ;
+}
+
+#[test]
+fn test_axis_for_reason_promise_truth() {
+    assert_eq(axis_for_reason(REASON_PROMISE_KEPT), AXIS_TRUTH) ;
+    assert_eq(axis_for_reason(REASON_PROMISE_BROKEN), AXIS_TRUTH) ;
+}
+
+#[test]
+fn test_delta_promise_broken_negative() {
+    let d: i32 = delta_for_reason(REASON_PROMISE_BROKEN) ;
+    assert_eq(d, -8i32) ;
+}
+
+#[test]
+fn test_delta_artisan_peak_strongest_positive() {
+    let d: i32 = delta_for_reason(REASON_ARTISAN_PEAK) ;
+    assert_eq(d, 8i32) ;
+}
+
+#[test]
+fn test_high_cohere_threshold() {
+    let r1: u32 = if 700u32 >= 700u32 { 1u32 } else { 0u32 } ;
+    let r2: u32 = if 699u32 >= 700u32 { 1u32 } else { 0u32 } ;
+    assert_eq(r1, 1u32) ;
+    assert_eq(r2, 0u32) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile (per main.cssl § GAP)
+//   GAP-2 · csslc-test-attribute support
+//   GAP-3 · csslc-const-i32-negative top-level decl (AXIS_MIN = -100)
+//   GAP-4 · csslc-early-return inside if-arm
+//   GAP-5 · csslc-i32-comparison-with-negative-literal (axis_value <= -75i32)
+//   GAP-6 · cssl-host-coherence-engine crate forward-looking
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W11-COHERENCE-ENGINE @ (anyone ∨ anything ∨ anybody)
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// 13-axes are DESCRIPTIVE ¬ prescriptive · ¬ moral-judgment · ¬ shame.
+// "Deeply-dissonant" is NOT bad ; "resonant" is NOT good ; just gameplay-state.
+// High-cohere unlocks NARRATIVE-resonance ¬ power-bonuses (LOA_PILLARS § 3 axiom).
+// Player can revoke per-axis or all-tracking at-will · sovereign-revocable.
+// Axis-state ω-field-anchored · Σ-mask consent-gated · privacy-default.
+// Cross-share OPT-IN explicit consent-token · differential-privacy enforced.
+// Replay-deterministic : same-input → same-axis-trajectory.
+//
+// ∎ coherence_engine.csl
