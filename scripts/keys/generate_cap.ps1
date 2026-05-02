@@ -1,4 +1,4 @@
-# § scripts/keys/generate_cap.ps1 · Generate Ed25519 cap-keypair
+﻿# § scripts/keys/generate_cap.ps1 · Generate Ed25519 cap-keypair
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

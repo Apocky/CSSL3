@@ -1,4 +1,4 @@
-# § scripts/git/wave_status.ps1 · Survey W11..W16 commits across-branches
+﻿# § scripts/git/wave_status.ps1 · Survey W11..W16 commits across-branches
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

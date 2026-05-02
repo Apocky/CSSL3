@@ -1,4 +1,4 @@
-# § scripts/git/sync.ps1 · Pull + push current branch · auto-handles upstream-not-set
+﻿# § scripts/git/sync.ps1 · Pull + push current branch · auto-handles upstream-not-set
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Wraps `git pull` + `git push` so you don't need to remember the long branch-name

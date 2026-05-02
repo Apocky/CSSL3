@@ -1,4 +1,4 @@
-# § scripts/setup/3_grant_caps.ps1 · Grant Σ-caps for-the-engine-systems-to-actually-DO-things
+﻿# § scripts/setup/3_grant_caps.ps1 · Grant Σ-caps for-the-engine-systems-to-actually-DO-things
 # ════════════════════════════════════════════════════════════════════════════
 #
 # By default ALL caps are DENY. The W16 wire-up calls 6 systems per-frame BUT

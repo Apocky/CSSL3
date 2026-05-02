@@ -1,4 +1,4 @@
-# § scripts/dev/csslc_check_all.ps1 · Run csslc check on every .csl file · pass/fail report
+﻿# § scripts/dev/csslc_check_all.ps1 · Run csslc check on every .csl file · pass/fail report
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

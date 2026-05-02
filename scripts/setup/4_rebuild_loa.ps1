@@ -1,4 +1,4 @@
-# § scripts/setup/4_rebuild_loa.ps1 · Rebuild LoA.exe + dist-zip + sha256
+﻿# § scripts/setup/4_rebuild_loa.ps1 · Rebuild LoA.exe + dist-zip + sha256
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

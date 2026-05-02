@@ -1,4 +1,4 @@
-# § scripts/setup/6_full_setup.ps1 · ONE-CLICK full Infinity-Engine setup
+﻿# § scripts/setup/6_full_setup.ps1 · ONE-CLICK full Infinity-Engine setup
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Runs all setup-scripts in canonical order with prompts at gating-points.

@@ -1,4 +1,4 @@
-# § scripts/setup/1_install_daemon.ps1 · Register Windows-Task-Scheduler for loa-orchestrator-daemon
+﻿# § scripts/setup/1_install_daemon.ps1 · Register Windows-Task-Scheduler for loa-orchestrator-daemon
 # ════════════════════════════════════════════════════════════════════════════
 #
 # § T11-W16 · The Infinity Engine · 24/7 local daemon registration

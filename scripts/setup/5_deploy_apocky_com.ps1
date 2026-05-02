@@ -1,4 +1,4 @@
-# § scripts/setup/5_deploy_apocky_com.ps1 · Vercel-deploy + alias + CF-purge
+﻿# § scripts/setup/5_deploy_apocky_com.ps1 · Vercel-deploy + alias + CF-purge
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

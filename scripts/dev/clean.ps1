@@ -1,4 +1,4 @@
-# § scripts/dev/clean.ps1 · Wipe build artifacts for fresh-rebuild
+﻿# § scripts/dev/clean.ps1 · Wipe build artifacts for fresh-rebuild
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

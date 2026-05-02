@@ -1,4 +1,4 @@
-# § scripts/db/supabase.ps1 · Apocky-Hub Supabase utilities
+﻿# § scripts/db/supabase.ps1 · Apocky-Hub Supabase utilities
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

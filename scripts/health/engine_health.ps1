@@ -1,4 +1,4 @@
-# § scripts/health/engine_health.ps1 · Comprehensive engine + cloud health check
+﻿# § scripts/health/engine_health.ps1 · Comprehensive engine + cloud health check
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Reports every status point in one place:

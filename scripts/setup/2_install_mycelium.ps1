@@ -1,4 +1,4 @@
-# § scripts/setup/2_install_mycelium.ps1 · Install Mycelium-Desktop NSIS bundle
+﻿# § scripts/setup/2_install_mycelium.ps1 · Install Mycelium-Desktop NSIS bundle
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:

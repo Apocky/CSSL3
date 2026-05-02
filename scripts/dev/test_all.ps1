@@ -1,4 +1,4 @@
-# § scripts/dev/test_all.ps1 · Run every test-suite across the repo
+﻿# § scripts/dev/test_all.ps1 · Run every test-suite across the repo
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Usage:
