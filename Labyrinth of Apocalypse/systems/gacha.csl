@@ -1,0 +1,230 @@
+module com.apocky.loa.systems.gacha
+
+// § Labyrinth of Apocalypse · system · transparency-first gacha
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-GACHA · transparency-mandate + pity-system + sovereign-7d-refund
+//
+// § REFERENCE
+//   memory/feedback_distribution_akashic_w8_plan       ← cosmetic-channel-only monetization
+//   memory/feedback_loa_full_game_rd                   ← gift-economy throughout
+//   memory/feedback_infinite_labyrinth_legacy_design   ← Battle-Pass · Gacha · cosmetic-only-axiom
+//   GDDs/LOA_PILLARS.csl § 3 ¬ pay-for-power
+//   systems/economy.csl                                ← Nexus-Bazaar 5-tier sibling
+//   systems/inventory.csl                              ← cosmetic-handle integration
+//   compiler-rs/crates/cssl-host-gacha                 ← Rust host-implementation
+//   cssl-supabase/migrations/0033_gacha.sql            ← persistent backing
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS · ¬ pay-for-power axiom
+//   t∞: ALL drop-rates publicly-disclosed BEFORE pull (transparency-mandate)
+//   t∞: pity-threshold publicly-known (default 90 · guaranteed-Mythic)
+//   t∞: cosmetic-only-axiom strict (¬ stat-buff · ¬ XP-multiplier · ¬ progression-shortcut)
+//   t∞: 7-day full-refund window (sovereign-revocable · automated-API · no-questions-asked)
+//   t∞: Σ-Chain-anchor every-pull AND every-refund (immutable-attribution)
+//   t∞: pull-currency only via Stripe-purchase OR gift-from-friend (¬ grind-loop)
+//   t∞: ¬ near-miss-animation ¬ countdown-FOMO ¬ exclusive-cosmetic ¬ loss-aversion
+//   t∞: ¬ social-comparison ("X just won!") ¬ celebrity-endorsement
+//   t∞: drop-rate sum-invariant : sum-over-rarities = 100_000 bps (100.0%)
+//   t∞: player-pubkey-tied · banner-id-scoped · pull-index-monotonic
+//   t∞: banner-not-disclosed ⇒ ¬ pullable (transparency-precondition)
+//
+// § PRIME-DIRECTIVE
+//   Gacha is a TRANSPARENT cosmetic-shop · NOT a predatory loop. Every drop-rate
+//   is publicly disclosed · the pity-threshold is publicly-known · refunds are
+//   sovereign-revocable for 7 days · no FOMO · no exclusive-cosmetic · no
+//   social-comparison · no celebrity-endorsement · no in-game grind-loop for
+//   pull-currency. Σ-Chain anchors every pull AND every refund for immutable
+//   attribution. The TEN ¬ predatory-pattern attestations are structurally-
+//   encoded in cssl_host_gacha::AttestationFlags::all_upheld() and verified
+//   at runtime.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-gacha-bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_gacha_pull(
+    player_pubkey_ptr  : *const u8,
+    player_pubkey_len  : u64,
+    banner_id_ptr      : *const u8,
+    banner_id_len      : u64,
+    starting_pull_idx  : u64,
+    mode_tag           : u32,    // 0=single · 1=ten · 2=hundred
+    pity_in_serialized : *const u8,
+    pity_in_len        : u64,
+    out_result_buf     : *mut u8,
+    out_result_cap     : u64
+) -> i64 ;
+
+extern "C" fn __cssl_gacha_refund(
+    player_pubkey_ptr  : *const u8,
+    player_pubkey_len  : u64,
+    pull_id_ptr        : *const u8,
+    pull_id_len        : u64,
+    cosmetic_ptr       : *const u8,
+    cosmetic_len       : u64,
+    rarity_tag         : u32,
+    pull_ts_epoch_secs : u64,
+    now_epoch_secs     : u64,
+    pity_after_ptr     : *const u8,
+    pity_after_len     : u64,
+    out_result_buf     : *mut u8,
+    out_result_cap     : u64
+) -> i64 ;
+
+extern "C" fn __cssl_gacha_sigma_anchor(
+    kind_tag           : u32,    // 0=pull · 1=refund
+    pubkey_ptr         : *const u8,
+    pubkey_len         : u64,
+    banner_id_ptr      : *const u8,
+    banner_id_len      : u64,
+    pull_id_ptr        : *const u8,
+    pull_id_len        : u64,
+    ts_epoch_secs      : u64,
+    payload_ptr        : *const u8,
+    payload_len        : u64,
+    out_anchor_id_buf  : *mut u8,    // 32 hex-char anchor-id
+    out_anchor_id_cap  : u64
+) -> i64 ;
+
+extern "C" fn __cssl_gacha_attestations_count() -> u32 ;
+extern "C" fn __cssl_gacha_pity_threshold() -> u32 ;
+extern "C" fn __cssl_gacha_refund_window_secs() -> u64 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Constants · publicly-disclosed
+// ─────────────────────────────────────────────────────────────────────────
+
+// Drop-rates in basis-points (1 bp = 0.01%) · sum = 100_000 (100.0%).
+const DROP_RATE_COMMON_BPS    : u32 = 60_000  ;  // 60.0%
+const DROP_RATE_UNCOMMON_BPS  : u32 = 25_000  ;  // 25.0%
+const DROP_RATE_RARE_BPS      : u32 = 10_000  ;  // 10.0%
+const DROP_RATE_EPIC_BPS      : u32 = 4_000   ;  // 4.0%
+const DROP_RATE_LEGENDARY_BPS : u32 = 900     ;  // 0.9%
+const DROP_RATE_MYTHIC_BPS    : u32 = 100     ;  // 0.1%
+const DROP_RATE_TOTAL_BPS     : u32 = 100_000 ;  // 100.0%
+
+const PITY_THRESHOLD          : u32 = 90      ;  // guaranteed-Mythic-by-pulls
+const REFUND_WINDOW_SECS      : u64 = 604_800 ;  // 7 days
+const ATTESTATIONS_COUNT      : u32 = 10      ;  // ¬ predatory-pattern
+
+// Pull-mode totals (publicly-disclosed · base + bonus).
+const SINGLE_TOTAL_ROLLS      : u32 = 1   ;
+const TEN_PULL_BASE_ROLLS     : u32 = 10  ;
+const TEN_PULL_BONUS_ROLLS    : u32 = 1   ;
+const TEN_PULL_TOTAL_ROLLS    : u32 = 11  ;
+const HUNDRED_PULL_BASE       : u32 = 100 ;
+const HUNDRED_PULL_BONUS      : u32 = 11  ;
+const HUNDRED_PULL_TOTAL      : u32 = 111 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PRIME-DIRECTIVE attestations · structurally-encoded · ALL must hold
+// ─────────────────────────────────────────────────────────────────────────
+
+// 10 attestations · enumerated for human-audit · MUST equal ATTESTATIONS_COUNT.
+const ATTEST_NO_PAY_FOR_POWER       : str = "¬ pay-for-power (cosmetic-only-axiom)";
+const ATTEST_NO_NEAR_MISS_ANIM      : str = "¬ near-miss-animation";
+const ATTEST_NO_COUNTDOWN_FOMO      : str = "¬ countdown-FOMO";
+const ATTEST_NO_EXCLUSIVE_COSMETIC  : str = "¬ exclusive-cosmetic-AT-ALL";
+const ATTEST_NO_LOSS_AVERSION       : str = "¬ loss-aversion-framing";
+const ATTEST_NO_SOCIAL_COMPARISON   : str = "¬ social-comparison";
+const ATTEST_NO_CELEBRITY_ENDORSE   : str = "¬ celebrity-endorsement";
+const ATTEST_NO_INGAME_GRIND_LOOP   : str = "¬ in-game-grind-loop for pull-currency";
+const ATTEST_TRANSPARENCY_MANDATE   : str = "transparency-mandate (rates + pity disclosed BEFORE pull)";
+const ATTEST_SOVEREIGN_REVOCABLE    : str = "sovereign-revocable (7d full-refund · pubkey-tied)";
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Banner-disclosure routine · invariant ⇒ banner_disclosed_at != null
+// ─────────────────────────────────────────────────────────────────────────
+
+routine banner_publicly_disclosed_or_die ⊑ ¬ pullable-without-disclosure
+  W! disclosed_at != null
+  W! drop_rate_table.sum-bps = DROP_RATE_TOTAL_BPS
+  W! pity_threshold = PITY_THRESHOLD
+  W! category = "cosmetic"
+  ∴ banner-may-be-pulled
+  ¬ ⇒ ✗ TRANSPARENCY-PRECONDITION-UNMET
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Pull-flow · transparency-first · pity-aware · sigma-anchored
+// ─────────────────────────────────────────────────────────────────────────
+
+routine player_pulls_banner ⊑ cosmetic-only ⊑ pity-aware ⊑ sigma-anchored
+  W! attestations.upheld_count = ATTESTATIONS_COUNT
+  W! banner_publicly_disclosed_or_die
+  W! pity_in.threshold = banner.pity_threshold
+  W! player.pull_currency_balance ≥ mode.cost
+  W! player.pubkey ¬= empty
+  ∴ for-each-roll-in-mode :
+      seed = blake3-keyed-MAC ⟨ pubkey ‖ banner_id ‖ pull_index ⟩
+      rng  = DetRng.from_seed seed
+      roll_bps = rng.next_u32_below DROP_RATE_TOTAL_BPS
+      rarity = if pity_in.should_force_mythic then Mythic
+               else map_roll_to_rarity roll_bps banner.drop_rate_table
+      cosmetic_handle = "cosmetic:<rarity>:<banner_id>:<bucket>"
+      pity_out = if rarity = Mythic then PityCounter.reset
+                 else pity_in.tick_non_mythic
+      sigma_anchor = blake3 ⟨ "pull" ‖ pubkey ‖ banner_id ‖ pull_id ‖ ts ‖ payload ⟩[..16]
+      record_gacha_pull (pubkey, banner_id, outcome, sigma_anchor, ...)
+  ✓ player-receives-cosmetic-only-handle
+  ✓ pity-counter-updated
+  ✓ sigma-anchor-recorded
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Refund-flow · 7-day-window · sovereign-revocable · automated
+// ─────────────────────────────────────────────────────────────────────────
+
+routine player_refunds_pull ⊑ sovereign-revocable ⊑ no-questions-asked
+  W! now - pull.pulled_at ≤ REFUND_WINDOW_SECS  // 7 days
+  W! pull.player_pubkey = caller.pubkey
+  W! pull.refunded_at = null
+  ∴ pity_after_refund = if pull.rarity = Mythic then pity.tick_non_mythic
+                        else pity.rollback_pulls 1
+  ∴ remove-cosmetic-from-inventory (pull.cosmetic_handle)
+  ∴ refund-pull-currency (pull.cost)
+  ∴ sigma_refund_anchor = blake3 ⟨ "refund" ‖ pubkey ‖ banner ‖ pull_id ‖ ts ‖ payload ⟩[..16]
+  ∴ record_gacha_refund (pull_id, refund_amount, sigma_refund_anchor)
+  ✓ pull-cancelled
+  ✓ cosmetic-removed
+  ✓ pull-currency-restored
+  ✓ sigma-refund-anchor-recorded
+  ¬ refund-window-expired ⇒ ✗ WINDOW-EXPIRED
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Pull-currency acquisition · stripe OR gift ONLY (¬ grind-loop)
+// ─────────────────────────────────────────────────────────────────────────
+
+routine player_acquires_pull_currency ⊑ ¬ grind-loop
+  ∃ source ∈ { Stripe-purchase, Gift-from-friend }
+  ¬ source = grind-loop
+  ¬ source = achievement-reward
+  ¬ source = daily-login
+  ¬ source = playtime-bonus
+  W! amount > 0
+  ∴ insert gacha_currency_grants (player_pubkey, amount, source, source_ref)
+  ✓ currency-granted
+  ✗ source-not-in-allowed-set ⇒ STRUCTURAL-CHECK-VIOLATION
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Verification points · CI-checked
+// ─────────────────────────────────────────────────────────────────────────
+
+verify drop_rate_sum_is_100_pct
+  W! DROP_RATE_COMMON_BPS + DROP_RATE_UNCOMMON_BPS + DROP_RATE_RARE_BPS
+   + DROP_RATE_EPIC_BPS + DROP_RATE_LEGENDARY_BPS + DROP_RATE_MYTHIC_BPS
+   = DROP_RATE_TOTAL_BPS
+
+verify pity_threshold_is_publicly_90
+  W! PITY_THRESHOLD = 90
+
+verify refund_window_is_7_days
+  W! REFUND_WINDOW_SECS = 7 * 24 * 60 * 60
+
+verify attestations_count_is_at_least_10
+  W! ATTESTATIONS_COUNT ≥ 10
+
+verify cosmetic_only_handle_prefix
+  W! ∀ pull-outcome : cosmetic_handle.starts_with "cosmetic:"
+
+verify sigma_anchor_present_every_pull
+  W! ∀ row ∈ gacha_pulls : row.sigma_anchor_id ¬= null
+  W! row.sigma_anchor_id matches /^[0-9a-f]{32}$/
