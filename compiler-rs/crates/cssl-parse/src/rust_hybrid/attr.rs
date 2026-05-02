@@ -16,13 +16,35 @@ use crate::cursor::TokenCursor;
 use crate::error::custom;
 use crate::rust_hybrid::expr;
 
-/// Parse an outer attribute `@name(args)`. Returns `None` if the current token is not `@`.
+/// Parse an outer attribute. Two forms accepted :
+///   1. `@name(args)`        — CSLv3-native sigil-form
+///   2. `#[name]` / `#[name(args)]` / `#[name = expr]` — Rust-hybrid bracket-form
+///      (matches `#[test]` / `#[derive(...)]` / `#[cfg(target = "x")]`)
+///
+/// § T11-W15-CSSLC-TESTATTR : real-world LoA source uses `#[test]` for inline-
+///   test functions per Rust conventions ; the `@` form is reserved for CSLv3-
+///   native effect/handler decorators. Both surface forms produce the same
+///   `AttrKind::Outer` AST node.
+///
+/// Returns `None` if the current token is neither `@` nor `#[` (a `#` followed
+/// by `!` is the inner-attr form `#![...]` ; that's handled by `parse_inner`).
 #[must_use]
 pub fn parse_outer(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Option<Attr> {
-    let at = cursor.peek();
-    if at.kind != TokenKind::At {
-        return None;
+    let head = cursor.peek();
+    if head.kind == TokenKind::At {
+        return parse_outer_at(cursor, bag);
     }
+    if head.kind == TokenKind::Hash
+        && cursor.peek2().kind == TokenKind::Bracket(BracketKind::Square, BracketSide::Open)
+    {
+        return parse_outer_hash(cursor, bag);
+    }
+    None
+}
+
+/// Parse `@name(args)` outer-attribute form.
+fn parse_outer_at(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Option<Attr> {
+    let at = cursor.peek();
     cursor.bump();
     let path = parse_module_path(cursor, bag, "attribute name");
     let args = if cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Open)) {
@@ -33,6 +55,46 @@ pub fn parse_outer(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Opt
     let end = args.last().map_or(path.span.end, |a| attr_arg_span(a).end);
     Some(Attr {
         span: Span::new(at.span.source, at.span.start, end),
+        kind: AttrKind::Outer,
+        path,
+        args,
+    })
+}
+
+/// § T11-W15-CSSLC-TESTATTR : Parse `#[name]` outer-attribute form.
+///
+/// Forms accepted :
+///   `#[test]`                   — bare name
+///   `#[derive(Foo, Bar)]`       — name + arg-list
+///   `#[cfg(target = "linux")]`  — name + key=value-list
+///   `#[doc = "..."]`            — name = expr
+///
+/// Reuses `parse_attr_args` for the arg-list shape ; the AST node is identical
+/// to the `@`-form so HIR/MIR don't need to know which surface was used.
+fn parse_outer_hash(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Option<Attr> {
+    let hash = cursor.peek();
+    cursor.bump(); // #
+    cursor.bump(); // [
+    let path = parse_module_path(cursor, bag, "attribute name");
+    let args = if cursor.check(TokenKind::Eq) {
+        cursor.bump();
+        let e = expr::parse_expr(cursor, bag);
+        vec![AttrArg::Positional(e)]
+    } else if cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Open)) {
+        parse_attr_args(cursor, bag)
+    } else {
+        Vec::new()
+    };
+    let close = cursor.peek();
+    let end = if close.kind == TokenKind::Bracket(BracketKind::Square, BracketSide::Close) {
+        cursor.bump();
+        close.span.end
+    } else {
+        bag.push(custom("expected `]` to close outer attribute", close.span));
+        args.last().map_or(path.span.end, |a| attr_arg_span(a).end)
+    };
+    Some(Attr {
+        span: Span::new(hash.span.source, hash.span.start, end),
         kind: AttrKind::Outer,
         path,
         args,
@@ -191,6 +253,77 @@ mod tests {
         let mut bag = DiagnosticBag::new();
         let attrs = parse_outer_attrs(&mut c, &mut bag);
         assert_eq!(attrs.len(), 2);
+    }
+
+    // ── § T11-W15-CSSLC-TESTATTR : `#[name]` outer-attribute form ─────────────
+
+    #[test]
+    fn parse_hash_test_attr_bare() {
+        // `#[test]` — bare-name form ; most-common case (rust-style inline test).
+        let (_f, toks) = prep("#[test]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let a = parse_outer(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        assert_eq!(a.kind, AttrKind::Outer);
+        assert_eq!(a.path.segments.len(), 1);
+        assert!(a.args.is_empty());
+    }
+
+    #[test]
+    fn parse_hash_attr_with_args() {
+        // `#[derive(Foo, Bar)]` — name + paren-arg-list.
+        let (_f, toks) = prep("#[derive(Foo, Bar)]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let a = parse_outer(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        assert_eq!(a.kind, AttrKind::Outer);
+        assert_eq!(a.args.len(), 2);
+    }
+
+    #[test]
+    fn parse_hash_attr_with_eq_value() {
+        // `#[doc = "summary"]` — name = value form.
+        let (_f, toks) = prep("#[doc = \"summary\"]");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let a = parse_outer(&mut c, &mut bag).unwrap();
+        assert_eq!(bag.error_count(), 0);
+        assert_eq!(a.kind, AttrKind::Outer);
+        assert_eq!(a.args.len(), 1);
+    }
+
+    #[test]
+    fn parse_hash_test_attr_followed_by_fn_in_module() {
+        // End-to-end : `#[test] fn foo() { 0 }` parses as fn-item with attached attr.
+        let src = "#[test]\nfn t1() -> u32 { 0u32 }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert_eq!(m.items.len(), 1);
+        if let Item::Fn(fn_item) = &m.items[0] {
+            assert_eq!(fn_item.attrs.len(), 1);
+            assert_eq!(fn_item.attrs[0].kind, AttrKind::Outer);
+        } else {
+            panic!("expected fn item");
+        }
+    }
+
+    #[test]
+    fn parse_mixed_at_and_hash_attrs() {
+        // Both surface-forms can co-exist on the same item.
+        let src = "@vertex\n#[test]\nfn shader() -> i32 { 0 }\n";
+        let (f, toks) = prep(src);
+        let mut bag = DiagnosticBag::new();
+        let m = parse_module(&f, &toks, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        if let Item::Fn(fn_item) = &m.items[0] {
+            assert_eq!(fn_item.attrs.len(), 2);
+        } else {
+            panic!("expected fn item");
+        }
     }
 
     // ── T11-CC-PARSER-2 mission-required tests ───────────────────────────

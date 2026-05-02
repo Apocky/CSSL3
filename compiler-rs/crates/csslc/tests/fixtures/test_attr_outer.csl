@@ -1,0 +1,33 @@
+module com.apocky.test.attr
+
+// § T11-W15-CSSLC-TESTATTR · fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT
+//   `#[test]` outer-attribute parses identically to `@test` ; the AST node
+//   is `AttrKind::Outer` with the path-segment "test" + zero-args. Multiple
+//   `#[..]` attrs may stack on the same item.
+
+#[test]
+fn t1() -> u32 {
+    1u32
+}
+
+#[test]
+fn t2() -> u32 {
+    2u32
+}
+
+#[derive(Foo, Bar)]
+struct WithDerive { x: u32, y: u32 }
+
+#[doc = "summary string for documentation"]
+fn documented() -> u32 {
+    0u32
+}
+
+@vertex
+#[test]
+fn mixed_attrs() -> u32 {
+    42u32
+}

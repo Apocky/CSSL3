@@ -29,7 +29,7 @@ use cssl_ast::{
 };
 use cssl_lex::{BracketKind, BracketSide, Keyword, TokenKind};
 
-use crate::common::{parse_ident, parse_module_path};
+use crate::common::{parse_binding_ident, parse_ident, parse_module_path};
 use crate::cursor::TokenCursor;
 use crate::error::custom;
 use crate::rust_hybrid::{attr, expr, generics, pat, ty};
@@ -389,7 +389,8 @@ fn parse_struct_body(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> S
         {
             let f_attrs = attr::parse_outer_attrs(cursor, bag);
             let vis = parse_visibility(cursor);
-            let name = parse_ident(cursor, bag, "field name");
+            // § T11-W15-CSSLC-KWBIND : accept soft-keywords as struct field name
+            let name = parse_binding_ident(cursor, bag, "field name");
             if cursor.eat(TokenKind::Colon).is_none() {
                 bag.push(custom("expected `:` after field name", cursor.peek().span));
             }
@@ -954,7 +955,9 @@ fn parse_const_item(
     visibility: Visibility,
 ) -> ConstItem {
     let kw = cursor.bump(); // const
-    let name = parse_ident(cursor, bag, "const name");
+    // § T11-W15-CSSLC-KWBIND : accept soft-keywords as const-item name
+    //   (e.g. `const TAG_HASH : u64 = 0xCAFE_BABEu64 ;` if a soft-keyword follows).
+    let name = parse_binding_ident(cursor, bag, "const name");
     if cursor.eat(TokenKind::Colon).is_none() {
         bag.push(custom("expected `:` after const name", cursor.peek().span));
     }

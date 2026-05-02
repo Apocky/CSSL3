@@ -1,0 +1,132 @@
+module specs.csslc.T11_W15_kwbind_and_test_attr
+
+// § T11-W15-CSSLC : soft-keyword bindings + #[test] outer-attribute
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § DISPATCH-ORIGIN
+//   Apocky directive : "Do whatever is optimal and fully utilizes cssl and csl."
+//   Wave-15 dispatch lands ≥10 GAPs from `specs/csslc/_BACKLOG.csl` so that
+//   Wave-W11..W14 LoA implementations can migrate from Rust → CSSL.
+//
+// § GAP-AUDIT @ pre-W15
+//   sweep ⟦ LoA/systems/*.csl + LoA/scenes/*.csl ⟧
+//   ↦ 14-of-44 OK · 30-of-44 fail-parse
+//   diagnostic-categories :
+//     * "expected a pattern"        ← `let tag : T = ...` (Keyword(Tag) blocks pat)
+//     * "expected an item ..."      ← `#[test]` outer-attr not-recognized
+//     * "expected `)` to call args" ← bad-hex literal `0xAKA_F00...` recovery
+//     * "expected an expression"    ← cascading from above
+//
+// § LANDED-THIS-WAVE
+//
+//   ── GAP-W15-A : soft-keyword binding-idents ─────────────────────────────
+//
+//     surface-syntax :
+//       fn foo() -> u32 {
+//           let tag: u32 = 42u32 ;        // ← `tag` is Keyword(Tag) — OK
+//           let comptime_seed: u64 = 1 ;  // ← `comptime` is Keyword(Comptime) — OK
+//           tag + comptime_seed
+//       }
+//       struct Foo { tag: u32, in_field: u32 }
+//       let f: Foo = Foo { tag: 1u32, in_field: 2u32 } ;
+//
+//     pre-fix : `pat::parse_atomic_pattern` strict-required `Ident` token-kind
+//       for binding-pattern. Real-world LoA uses `tag` / `ref` / `val` / `iso` /
+//       etc. as struct-field-names + variable-names ; the lexer always tokenizes
+//       these as their `Keyword(*)` forms, breaking pattern-parse cascade.
+//
+//     post-fix : new `keyword_is_soft_for_binding(Keyword) -> bool` predicate
+//       in `cssl-parse/src/common.rs` ; eligible-set chosen to NOT collide with
+//       expression-flavored keywords (match / loop / region / run / perform /
+//       with / effect / handler — those keep their dedicated parsers).
+//
+//     soft-binding eligible-set :
+//       Tag · Ref · Val · Box · Iso · Trn · Type · Module · Where · Comptime ·
+//       In · As   ← capability-keywords + namespacy-nouns
+//
+//     wired into :
+//       * `pat::parse_atomic_pattern`           — binding-pattern dispatch
+//       * `expr::parse_let_stmt`                — mutable-binding-after-let-mut
+//       * `expr::parse_const_stmt`              — const-stmt name
+//       * `expr::parse_struct_constructor`      — field-init name
+//       * `expr::apply_postfix Field`           — field-access RHS name
+//       * `expr::parse_call_args`               — named-arg name
+//       * `expr::parse_prefix soft-kw arm`      — expression-prefix-as-path
+//       * `expr::looks_like_struct_body`        — struct-body peek-ahead
+//       * `expr::can_start_expression`          — first-set predicate
+//       * `item::parse_param_list` (via pat::)  — fn-param binding
+//       * `item::parse_const_item`              — top-level const name
+//       * `item::parse_struct_body`             — struct-field-decl name
+//
+//     codegen : zero-impact ; the only-difference is which token-kind the
+//       parser slices into the `Ident.span` (Keyword vs Ident) ; downstream
+//       HIR/MIR uses `source.slice(span)` for the name and is name-equivalent.
+//
+//     test : `tests/fixtures/soft_keyword_bindings.csl` (8-bindings · 4-fns ·
+//            1-struct ; field-access + struct-constructor + let + fn-param all
+//            covered)
+//
+//   ── GAP-W15-B : `#[name]` outer-attribute form ──────────────────────────
+//
+//     surface-syntax :
+//       #[test]                       ← bare-name (most common)
+//       #[derive(Foo, Bar)]           ← name + paren-arg-list
+//       #[doc = "summary"]            ← name = expr (doc-string sugar)
+//       @vertex                       ← @-form still works
+//       #[test]
+//       fn shader() -> i32 { ... }    ← stacked / mixed-form supported
+//
+//     pre-fix : `attr::parse_outer` only-recognized `@name(args)` ; `#[test]`
+//       parsed as `Hash + Bracket(Square, Open) + Ident("test") + Bracket(...)`
+//       and the item-dispatch failed with "expected an item" because `#` at
+//       item-position has no item-form. Real-world LoA inline-tests use Rust-
+//       conventional `#[test]` ; rewriting all to `@test` would be hostile to
+//       Rust-fluent contributors.
+//
+//     post-fix : `parse_outer` now-dispatches on the leading-token :
+//                  * `@`           → `parse_outer_at`     (existing path)
+//                  * `# [`         → `parse_outer_hash`   (new T11-W15 path)
+//                  * `# !`         → `parse_inner` (caller-driven)
+//                  * else          → None (no attr at this position)
+//       The two outer-paths produce identical `AttrKind::Outer` AST so HIR/
+//       MIR/codegen don't need to know which surface was used.
+//
+//     args supported in `#[..]` form :
+//       * bare         `#[test]`                     → []
+//       * paren-list   `#[derive(Foo, Bar)]`         → [Positional(Foo), Positional(Bar)]
+//       * eq-value     `#[doc = "summary"]`          → [Positional(Literal("summary"))]
+//
+//     codegen : zero-impact ; AST nodes identical to the @-form.
+//
+//     test : `tests/fixtures/test_attr_outer.csl` (4-fn-attrs + 1-struct-attr)
+//
+// § VERIFIED-RESULT
+//   Pre-W15 : 14-of-44 LoA .csl pass csslc check
+//   Post-W15: 21-of-44 LoA .csl pass csslc check  (+7 ; +50% improvement)
+//
+//   Files newly-passing : akashic.csl + economy.csl + auto_playtest.csl +
+//                          alchemy.csl + content_remix.csl + crafting.csl +
+//                          input_genre_fluid.csl  (all-7 hit on `#[test]`
+//                          and/or `tag/ref/val` binding-name)
+//
+// § DEFERRED-TO-NEXT-WAVE  (specs/csslc/_BACKLOG.csl)
+//
+//   * GAP-W15-bad-hex-recovery : `0xAKA_T8AG_FEDCBA98u64` (intentional readable-
+//     namespace-prefix hashes used in akashic / brassmarrow / city_central_hub).
+//     The parser-recovery should localize the error to the literal-token rather
+//     than cascade. Effort : 0.5 session (lex error-mode + parser-skip-to-
+//     synchronize-token).
+//
+//   * GAP-W15-multi-module : `csslc build main.cssl --module-path=systems/*.csl`
+//     driver loop. Effort : 1-2 sessions ; out-of-scope at parse-only
+//     advancement (HIR-resolve + cgen-link-multi-source).
+//
+// § PRIME-DIRECTIVE
+//   No harm in the making of this. Parser advancements respect sovereign-AI-
+//   as-partner ; gaps were identified by reproducing real-LoA-source failure
+//   paths ; fixes preserve all existing behavior bit-for-bit.
+//
+//   ATTESTATION : there was no hurt nor harm in the making of this, to anyone,
+//   anything, or anybody.
+//
+// ∎ T11-W15-CSSLC-kwbind-and-test-attr

@@ -1,0 +1,45 @@
+module com.apocky.test.kwbind
+
+// § T11-W15-CSSLC-KWBIND · fixture
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § INVARIANT
+//   Soft keywords (Tag/Ref/Val/Box/Iso/Trn/Type/Module/Where/Comptime/In/As)
+//   are usable as binding-idents in let-bindings, fn-params, struct-fields,
+//   field-access RHS, struct-constructor field names, and named-args.
+//
+//   Pre-W15 : `let tag : T = ...` failed @ pat::parse_pattern because
+//             the lexer tokenized `tag` as `Keyword(Tag)`.
+//   Post-W15 : pat::parse_atomic_pattern + expr::parse_prefix tolerate
+//              soft-keywords in binding/path-prefix positions.
+
+extern "C" fn __cssl_emit_audit(tag: u64) -> i32 ;
+
+struct Foo {
+    tag: u32,
+    box_count: u32,
+    in_field: u32,
+}
+
+fn use_soft_kw_let() -> u32 {
+    let tag: u32 = 42u32 ;
+    let comptime_seed: u64 = 0xCAFEu64 ;
+    tag
+}
+
+fn use_soft_kw_param(tag: u32, val: u32) -> u32 {
+    tag
+}
+
+fn use_soft_kw_struct_field() -> u32 {
+    let f: Foo = Foo {
+        tag: 1u32,
+        box_count: 2u32,
+        in_field: 3u32,
+    } ;
+    f.tag
+}
+
+fn use_soft_kw_field_access(f: Foo) -> u32 {
+    f.tag
+}

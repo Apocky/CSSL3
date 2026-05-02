@@ -32,7 +32,7 @@ use cssl_ast::{
 };
 use cssl_lex::{BracketKind, BracketSide, Keyword, TokenKind};
 
-use crate::common::{expect, parse_colon_path, parse_ident};
+use crate::common::{expect, parse_binding_ident, parse_colon_path, parse_ident};
 use crate::cursor::TokenCursor;
 use crate::error::custom;
 use crate::rust_hybrid::{attr, pat, ty};
@@ -220,7 +220,10 @@ fn parse_prefix(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Expr {
             })
         }
 
-        // ── Paths + self ──────────────────────────────────────────────────────
+        // ── Paths + self + soft-keyword-as-binding ────────────────────────────
+        // § T11-W15-CSSLC-KWBIND : a Keyword token usable as a binding-ident
+        //   appearing in expression-position is a path-prefix referencing the
+        //   binding by name. Lifts `tag` / `region` / `ref` / etc. into Path.
         TokenKind::Ident | TokenKind::Keyword(Keyword::SelfValue | Keyword::SelfType) => {
             let path = if matches!(
                 t.kind,
@@ -248,6 +251,11 @@ fn parse_prefix(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Expr {
                 ExprKind::Path(path)
             }
         }
+        // (soft-keyword expression-prefix dispatch is BELOW the control-flow
+        //  / lambda / etc. arms ; see the post-control-flow soft-kw arm —
+        //  the soft-binding set is now disjoint from expression-flavored
+        //  keywords so the position no longer matters semantically, but the
+        //  later placement keeps the prefix-dispatch ordering stable.)
 
         // ── Block / parenthesized / tuple / array ─────────────────────────────
         TokenKind::Bracket(BracketKind::Brace, BracketSide::Open) => {
@@ -287,6 +295,22 @@ fn parse_prefix(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Expr {
             cursor.bump();
             let path = parse_colon_path(cursor, bag, "section reference");
             ExprKind::SectionRef { path }
+        }
+
+        // § T11-W15-CSSLC-KWBIND : soft-keyword in expression-position is a
+        //   single-segment path referring to a binding/parameter named with a
+        //   soft-keyword. Placed AFTER control-flow arms so `match` / `loop` /
+        //   `region` / etc. dispatch to their dedicated parsers first ; only
+        //   "true soft" keywords (Tag / Iso / Trn / Ref / Val / Box / Type /
+        //   Module / Where / Comptime / In / As) reach this arm — the
+        //   control-flow keywords have already-been-consumed above.
+        TokenKind::Keyword(k) if crate::common::keyword_is_soft_for_binding(k) => {
+            let tok = cursor.bump();
+            let path = ModulePath {
+                span: tok.span,
+                segments: vec![Ident { span: tok.span }],
+            };
+            ExprKind::Path(path)
         }
 
         _ => {
@@ -350,6 +374,9 @@ fn in_context_forbidding_struct_brace(cursor: &TokenCursor<'_>) -> bool {
 /// Peek-ahead check : distinguish `x { ... }` struct-constructor from `x { ... }`
 /// match-scrutinee-followed-by-match-body. Requires the token after `{` to match
 /// the struct-body shape (`ident :` / `ident ,` / `ident }` / `..` / `}`).
+///
+/// § T11-W15-CSSLC-KWBIND : also recognize soft-keyword as the field-name token
+///   so `Foo { tag : 1 }` (where `tag` is `Keyword(Tag)`) parses cleanly.
 fn looks_like_struct_body(cursor: &TokenCursor<'_>) -> bool {
     let mut lookahead = cursor.clone();
     lookahead.bump(); // {
@@ -359,6 +386,13 @@ fn looks_like_struct_body(cursor: &TokenCursor<'_>) -> bool {
         TokenKind::Bracket(BracketKind::Brace, BracketSide::Close) | TokenKind::DotDot => true,
         // `ident [:| ,| }]` — struct-field shape.
         TokenKind::Ident => matches!(
+            lookahead.peek2().kind,
+            TokenKind::Colon
+                | TokenKind::Comma
+                | TokenKind::Bracket(BracketKind::Brace, BracketSide::Close)
+        ),
+        // § T11-W15-CSSLC-KWBIND : soft-keyword as struct field-name.
+        TokenKind::Keyword(k) if crate::common::keyword_is_soft_for_binding(k) => matches!(
             lookahead.peek2().kind,
             TokenKind::Colon
                 | TokenKind::Comma
@@ -386,7 +420,8 @@ fn parse_struct_constructor(
             spread = Some(Box::new(base));
             break;
         }
-        let name = parse_ident(cursor, bag, "field name");
+        // § T11-W15-CSSLC-KWBIND : accept soft-keywords as struct-constructor field name
+        let name = parse_binding_ident(cursor, bag, "field name");
         let value = if cursor.eat(TokenKind::Colon).is_some() {
             Some(parse_expr(cursor, bag))
         } else {
@@ -743,7 +778,10 @@ fn apply_postfix(
     match op {
         PostfixOp::Field => {
             cursor.bump(); // .
-            let name = parse_ident(cursor, bag, "field name");
+            // § T11-W15-CSSLC-KWBIND : accept soft-keywords as field-access name
+            //   (e.g. `obj.tag` / `obj.run` / `npc_handle.id` — id is plain ident,
+            //   tag is Keyword(Tag) which we tolerate in this position).
+            let name = parse_binding_ident(cursor, bag, "field name");
             let span = Span::new(lhs.span.source, lhs.span.start, name.span.end);
             Expr {
                 span,
@@ -878,8 +916,12 @@ fn parse_call_args(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Vec
     while !cursor.check(TokenKind::Bracket(BracketKind::Paren, BracketSide::Close))
         && !cursor.is_eof()
     {
-        if cursor.peek().kind == TokenKind::Ident && cursor.peek2().kind == TokenKind::Eq {
-            let name = parse_ident(cursor, bag, "named arg");
+        // § T11-W15-CSSLC-KWBIND : accept soft-keywords as named-arg names
+        let peek_kind = cursor.peek().kind;
+        let is_binding_ident = matches!(peek_kind, TokenKind::Ident)
+            || matches!(peek_kind, TokenKind::Keyword(k) if crate::common::keyword_is_soft_for_binding(k));
+        if is_binding_ident && cursor.peek2().kind == TokenKind::Eq {
+            let name = parse_binding_ident(cursor, bag, "named arg");
             cursor.bump(); // =
             let value = parse_expr(cursor, bag);
             args.push(CallArg::Named { name, value });
@@ -1023,7 +1065,8 @@ pub fn parse_block(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Blo
 ///   "RHS is comptime-pure" + warns on non-const-foldable RHS).
 fn parse_const_stmt(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Stmt {
     let kw = cursor.bump(); // const
-    let name = parse_ident(cursor, bag, "const-stmt name");
+    // § T11-W15-CSSLC-KWBIND : accept soft-keywords as const-stmt name
+    let name = parse_binding_ident(cursor, bag, "const-stmt name");
     let pat_node = Pattern {
         span: name.span,
         kind: PatternKind::Binding {
@@ -1062,7 +1105,8 @@ fn parse_let_stmt(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Stmt
     let mutable = cursor.eat(TokenKind::Keyword(Keyword::Mut)).is_some();
     let pat_node = if mutable {
         // Re-wrap as `Binding { mutable: true, … }` — simplest path : parse an ident.
-        let name = parse_ident(cursor, bag, "mutable binding name");
+        // § T11-W15-CSSLC-KWBIND : accept soft-keywords as mutable binding name.
+        let name = parse_binding_ident(cursor, bag, "mutable binding name");
         Pattern {
             span: name.span,
             kind: PatternKind::Binding {
@@ -1100,7 +1144,14 @@ fn parse_let_stmt(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -> Stmt
 
 // ─ Heuristics ───────────────────────────────────────────────────────────────
 
-const fn can_start_expression(kind: TokenKind) -> bool {
+fn can_start_expression(kind: TokenKind) -> bool {
+    // § T11-W15-CSSLC-KWBIND : soft-keywords (Tag/Ref/Region/etc.) can also start
+    //   an expression because they may appear as binding-name references.
+    if let TokenKind::Keyword(k) = kind {
+        if crate::common::keyword_is_soft_for_binding(k) {
+            return true;
+        }
+    }
     matches!(
         kind,
         TokenKind::IntLiteral

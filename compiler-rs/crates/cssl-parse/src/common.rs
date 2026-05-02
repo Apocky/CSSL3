@@ -6,7 +6,7 @@
 //!   the stream doesn't match.
 
 use cssl_ast::{DiagnosticBag, Ident, ModulePath, Span};
-use cssl_lex::TokenKind;
+use cssl_lex::{Keyword, TokenKind};
 
 use crate::cursor::TokenCursor;
 use crate::error::{expected_any, expected_one};
@@ -28,6 +28,86 @@ pub fn parse_ident(
             span: Span::new(t.span.source, t.span.start, t.span.start),
         }
     }
+}
+
+/// § T11-W15-CSSLC-KWBIND : "soft keywords" — Pony-6-capability + namespacy-noun
+///   keywords that real-world LoA source uses as variable / parameter / field names.
+///   Eligible-set : tag · ref · val · box · iso · trn · type · module · where ·
+///                  comptime · in · as.
+///
+///   `let tag : T = ...` previously failed @ pat::parse_pattern because the lexer
+///   tokenized `tag` as `Keyword(Tag)` and the pattern parser only-accepted `Ident`.
+///   The fix : in binding-position (let-bindings + fn-params + struct-field-names +
+///   const/static-names + use-aliases + struct-constructor-field-names + field-
+///   access-rhs-names + named-call-arg-names + expression-prefix-as-path) we
+///   accept these "soft" keywords as plain identifiers — span points at the
+///   keyword's source-bytes ; downstream HIR/MIR takes the slice as a regular
+///   identifier name.
+///
+///   Hard keywords (always rejected here) : fn · let · const · mut · pub · use ·
+///   struct · enum · interface · impl · extern · if · else · while · for · return ·
+///   break · continue · true · false · self · Self — these collide with grammar
+///   boundaries.
+///
+///   Expression-flavored keywords (also EXCLUDED from soft-binding) : match · loop ·
+///   region · run · perform · with · effect · handler — these only-mean-themselves
+///   at expression-prefix position, so allowing them as binding-names would fork the
+///   grammar without enabling any real-world LoA source pattern. Future-LoA can
+///   re-name `region`/`run`-bindings to `region_id`/`run_idx` etc.
+#[must_use]
+pub const fn keyword_is_soft_for_binding(kw: Keyword) -> bool {
+    matches!(
+        kw,
+        Keyword::Tag
+            | Keyword::Ref
+            | Keyword::Val
+            | Keyword::Box
+            | Keyword::Iso
+            | Keyword::Trn
+            | Keyword::Type
+            | Keyword::Module
+            | Keyword::Where
+            | Keyword::Comptime
+            | Keyword::In
+            | Keyword::As
+    )
+}
+
+/// Consume an identifier token OR a "soft keyword" usable as a binding-ident.
+/// On mismatch, push a diagnostic and return a zero-width `Ident`.
+///
+/// § T11-W15-CSSLC-KWBIND : Used at let-binding / fn-param / struct-field-name /
+///   const-stmt-name / use-alias positions. Hard keywords still rejected.
+pub fn parse_binding_ident(
+    cursor: &mut TokenCursor<'_>,
+    bag: &mut DiagnosticBag,
+    context: &'static str,
+) -> Ident {
+    let t = cursor.peek();
+    match t.kind {
+        TokenKind::Ident => {
+            cursor.bump();
+            Ident { span: t.span }
+        }
+        TokenKind::Keyword(k) if keyword_is_soft_for_binding(k) => {
+            cursor.bump();
+            Ident { span: t.span }
+        }
+        _ => {
+            bag.push(expected_one(TokenKind::Ident, t.kind, t.span, context));
+            Ident {
+                span: Span::new(t.span.source, t.span.start, t.span.start),
+            }
+        }
+    }
+}
+
+/// Predicate : peek the cursor — does the current token look like a binding-ident?
+/// (Either a regular `Ident` or a soft-keyword that's usable as a binding name.)
+#[must_use]
+pub fn token_is_binding_ident(kind: TokenKind) -> bool {
+    matches!(kind, TokenKind::Ident)
+        || matches!(kind, TokenKind::Keyword(k) if keyword_is_soft_for_binding(k))
 }
 
 /// Parse a `::`-separated path (`foo::bar::baz`) or a `.`-separated path

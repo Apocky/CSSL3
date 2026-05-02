@@ -17,7 +17,7 @@ use cssl_ast::{
 };
 use cssl_lex::{BracketKind, BracketSide, Keyword, TokenKind};
 
-use crate::common::{parse_colon_path, parse_ident};
+use crate::common::{keyword_is_soft_for_binding, parse_colon_path, parse_ident};
 use crate::cursor::TokenCursor;
 use crate::error::custom;
 
@@ -127,6 +127,19 @@ fn parse_atomic_pattern(cursor: &mut TokenCursor<'_>, bag: &mut DiagnosticBag) -
         }
         // path → variant / struct / binding
         TokenKind::Ident => parse_path_pattern(cursor, bag),
+        // § T11-W15-CSSLC-KWBIND : soft-keywords as binding-idents
+        //   `let tag : T = ...` / `let region : usize = ...` / etc. — the lexer
+        //   tokenizes `tag` / `region` / `ref` / etc. as Keyword(*) but in
+        //   pattern (binding) position we treat them as plain identifiers.
+        //   Span points at the keyword's source-bytes ; downstream HIR/MIR
+        //   takes the slice as a regular identifier name.
+        TokenKind::Keyword(k) if keyword_is_soft_for_binding(k) => {
+            cursor.bump();
+            PatternKind::Binding {
+                mutable: false,
+                name: Ident { span: start.span },
+            }
+        }
         _ => {
             bag.push(custom("expected a pattern", start.span));
             cursor.bump();
@@ -315,6 +328,45 @@ mod tests {
         let mut bag = DiagnosticBag::new();
         let p = parse_pattern(&mut c, &mut bag);
         assert!(matches!(p.kind, PatternKind::Variant { .. }));
+    }
+
+    // ── § T11-W15-CSSLC-KWBIND : soft-keyword as binding-pattern ──────────────
+
+    #[test]
+    fn soft_kw_tag_as_binding_pattern() {
+        // `tag` lexes as Keyword(Tag) ; in pattern position should be Binding.
+        let (_f, toks) = prep("tag");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_pattern(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(
+            p.kind,
+            PatternKind::Binding { mutable: false, .. }
+        ));
+    }
+
+    #[test]
+    fn soft_kw_box_as_binding_pattern() {
+        let (_f, toks) = prep("box");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let p = parse_pattern(&mut c, &mut bag);
+        assert_eq!(bag.error_count(), 0);
+        assert!(matches!(
+            p.kind,
+            PatternKind::Binding { mutable: false, .. }
+        ));
+    }
+
+    #[test]
+    fn hard_kw_fn_still_rejected_as_binding() {
+        // `fn` is NOT a soft keyword — must still error in pattern position.
+        let (_f, toks) = prep("fn");
+        let mut c = TokenCursor::new(&toks);
+        let mut bag = DiagnosticBag::new();
+        let _ = parse_pattern(&mut c, &mut bag);
+        assert!(bag.error_count() >= 1, "fn must still be rejected");
     }
 
     #[test]
