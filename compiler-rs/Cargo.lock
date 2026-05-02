@@ -1019,6 +1019,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-content-rating"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-content-remix"
 version = "0.1.0"
 dependencies = [
@@ -3996,6 +4006,8 @@ name = "loa-host"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "cssl-content-moderation",
+ "cssl-content-rating",
  "cssl-host-attestation",
  "cssl-host-audit",
  "cssl-host-causal-seed",
@@ -4003,22 +4015,29 @@ dependencies = [
  "cssl-host-coder-runtime",
  "cssl-host-config",
  "cssl-host-dm",
+ "cssl-host-fps-feel",
  "cssl-host-frame-recorder",
+ "cssl-host-gear-archetype",
  "cssl-host-gm",
  "cssl-host-golden",
  "cssl-host-histograms",
  "cssl-host-input-virtual",
  "cssl-host-kan-real",
  "cssl-host-license-attribution",
+ "cssl-host-loot",
+ "cssl-host-movement-aug",
  "cssl-host-mp-transport-real",
  "cssl-host-multiplayer-signaling",
+ "cssl-host-mycelium-heartbeat",
  "cssl-host-perf-enforcer",
+ "cssl-host-playtest-agent",
  "cssl-host-procgen-rooms",
  "cssl-host-replay",
  "cssl-host-rt-trace",
  "cssl-host-spectral-grader",
  "cssl-host-stereoscopy",
  "cssl-host-voice",
+ "cssl-host-weapons",
  "cssl-hotfix",
  "cssl-hotfix-client",
  "cssl-rt",

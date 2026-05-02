@@ -54,6 +54,15 @@ description = "24/7 local daemon driving LoA Infinity-Engine offline · cap-gate
 [lints]
 workspace = true
 
+# § T11-W16 · bin-target loa-orchestrator-daemon
+# Wires PersistentOrchestrator<NoopDriver,...> + cycle-scheduler into a
+# headless-daemon executable for Windows-Task-Scheduler at-login.
+# Stage-0 uses NoopDriver across all 4 driver-slots (records-only) ;
+# Stage-1 swaps real-drivers when KAN-loop + LLM-bridge re-join workspace.
+[[bin]]
+name = "loa-orchestrator-daemon"
+path = "src/bin/loa_orchestrator_daemon.rs"
+
 [dependencies]
 serde      = { workspace = true }
 serde_json = { workspace = true }

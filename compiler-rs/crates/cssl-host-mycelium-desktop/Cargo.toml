@@ -35,7 +35,7 @@ cssl-host-substrate-knowledge = { path = "../cssl-host-substrate-knowledge" }
 cssl-host-llm-bridge          = { path = "../cssl-host-llm-bridge" }
 cssl-host-agent-loop          = { path = "../cssl-host-agent-loop" }
 # § T11-W14 · Tauri 2.x desktop-shell · feature-gated (¬ pulled by default workspace build).
-tauri = { version = "2", optional = true }
+tauri = { version = "2", optional = true , features = [] }
 # § T11-W11-MYCELIUM-CHAT-SYNC : federate chat-pattern shapes across peers
 #   so GM/DM persona-agents can learn shape-of-good-response from federated
 #   instances WITHOUT ever observing raw player content. Σ-mask-gated.
