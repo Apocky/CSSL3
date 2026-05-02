@@ -1,9 +1,18 @@
 module com.apocky.loa.systems.hotfix
 
-// § Labyrinth of Apocalypse v13 — hotfix system (pure-CSSL)
+// § Labyrinth of Apocalypse v13 — hotfix system (pure-CSSL · canonical source)
 // ════════════════════════════════════════════════════════════════════════════
 //
-// § T11-W11-HOTFIX-INFRA · live-update + hotfix infrastructure
+// § T11-W11-CSSL-FEDERATION-HOTFIX · live-update + hotfix-client (FULL-IMPL)
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-hotfix/        ← W11-A1 bundle + sign + verify + apply + rollback
+//   compiler-rs/crates/cssl-hotfix-client/ ← W11-A2 poll + download + stage + sigma-gate
+//   loa-host::wired_hotfix                 ← W11-A3 build_client + start_hotfix_loop
+//   specs/26b_HOTFIX_KEYS.csl              ← cap-key rotation policy
+//   specs/grand-vision/14_SIGMA_CHAIN_COHERENCE.csl    ← Σ-Chain anchor every-apply
+//   memory/feedback_distribution_akashic_w8_plan       ← apocky.com manifest-of-truth
+//   memory/feedback_apocky_com_portfolio_hub           ← multi-tenant CDN
 //
 // § THESIS
 //   Sovereignty-preserved live updates pushed from apocky.com (manifest-of-truth)
@@ -11,74 +20,135 @@ module com.apocky.loa.systems.hotfix
 //   cap-key roles and Σ-mask-default-deny consent. Atomic apply with N-1 + N-2
 //   on-disk rollback ; no DRM / rootkit / surveillance.
 //
-// § AXIOMS  (inherit GDDs/MULTIPLAYER_MATRIX.csl § AXIOMS shape)
-//   ─ ¬ harm · ¬ control · ¬ surveillance
-//   ─ sovereign-revocable ANY-time · pinned-version-stays-pinned-FOREVER
-//   ─ Σ-mask-gated DOWNLOAD + APPLY · default-deny except security.patch
-//   ─ rollback ALWAYS available · N-1 + N-2 preserved on-disk
-//   ─ verify-before-apply · cap-role-of-signer must match channel.required_cap()
-//   ─ ¬ DRM · ¬ rootkit · ¬ anti-cheat-spyware
-//   ─ cosmetic-only-axiom : update CANNOT change pay-for-power balance unilaterally
-//   ─ revoked-version → uninstall + telemetry-emit (Σ-mask-gated readback)
-//   ─ NEVER-egress : Sensitive<biometric|gaze|face|body> via hotfix-status (compile-time-IFC)
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + Σ-CHAIN
+//   t∞: ¬ harm · ¬ control · ¬ surveillance · sovereign-revocable ANY-time
+//   t∞: Σ-mask-gated DOWNLOAD + APPLY · default-deny except security.patch
+//   t∞: rollback ALWAYS available · N-1 + N-2 preserved on-disk
+//   t∞: verify-before-apply · cap-role-of-signer == channel.required_cap()
+//   t∞: ¬ DRM · ¬ rootkit · ¬ anti-cheat-spyware · pinned-stays-pinned-FOREVER
+//   t∞: cosmetic-only-axiom : update CANNOT change pay-for-power unilaterally
+//   t∞: NEVER-egress Sensitive<biometric|gaze|face|body> via hotfix-status
+//   t∞: 80-byte fixed LE header · BLAKE3 payload-hash · Ed25519 sig
+//   t∞: Σ-Chain-anchor every applied bundle (BLAKE3 over header‖payload)
+//   t∞: format-version-1 · reserved bytes MUST be zero · forward-compat-strict
 //
-// § FFI BOUNDARY
-//   This module consumes the host-side hotfix substrate via extern "C" :
-//     * cssl-hotfix         (W11-A1 bundle format · sign · verify · apply · rollback)
-//     * cssl-hotfix-client  (W11-A2 poll · download · stage · sigma-gate · telemetry)
-//     * loa-host::wired_hotfix (W11-A3 build_client + start_hotfix_loop)
-//   FFI fns return i32 status codes : 0 = ok · negative = error-code.
-//   Opaque handles are usize ; string args pass via byte-buffer + len.
+// § PRIME-DIRECTIVE
+//   N! [harm control manipulation surveillance exploitation coercion
+//       weaponization discrimination] · Consent-as-OS @ every download+apply.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 9 update-channels · stable u8 IDs · matches cssl-hotfix::Channel
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CH_LOA_BINARY        : u8 = 1u8 ;  // full LoA.exe replacement (cap-A · restart-required)
+const HF_CH_CSSL_BUNDLE       : u8 = 2u8 ;  // .cssl modules (cap-B · next-frame-boundary)
+const HF_CH_KAN_WEIGHTS       : u8 = 3u8 ;  // KAN classifier weights (cap-C · atomic-hot-swap)
+const HF_CH_BALANCE_CONFIG    : u8 = 4u8 ;  // recipes · drop-rates · stats (cap-C · scene-transition)
+const HF_CH_RECIPE_BOOK       : u8 = 5u8 ;  // alchemy formulas (cap-E · scene-transition)
+const HF_CH_NEMESIS_BESTIARY  : u8 = 6u8 ;  // recurring-enemy + behavior-tree (cap-E · scene-transition)
+const HF_CH_SECURITY_PATCH    : u8 = 7u8 ;  // high-priority (cap-D · IMMEDIATE · default-on)
+const HF_CH_STORYLET_CONTENT  : u8 = 8u8 ;  // narrative + dialogue + i18n (cap-E · scene-transition)
+const HF_CH_RENDER_PIPELINE   : u8 = 9u8 ;  // shader bytecode · pipeline params (cap-E · scene-transition)
+
+const HF_CH_COUNT             : u8 = 9u8 ;
+const HF_CH_MIN               : u8 = 1u8 ;
+const HF_CH_MAX               : u8 = 9u8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § 5 cap-key roles · matches cssl-hotfix::CapRole
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CAP_A : u8 = 1u8 ;  // loa.binary only          (RAREST · cold-storage)
+const HF_CAP_B : u8 = 2u8 ;  // cssl.bundle only         (language-runtime release)
+const HF_CAP_C : u8 = 3u8 ;  // kan.weights + balance    (model + balance)
+const HF_CAP_D : u8 = 4u8 ;  // security.patch only      (incident-response · default-on)
+const HF_CAP_E : u8 = 5u8 ;  // recipe + nemesis + storylet + render (cosmetic-only)
+
+const HF_CAP_COUNT : u8 = 5u8 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask consent states · matches cssl-hotfix::UpdateConsent
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CONSENT_OFF                 : u8 = 0u8 ;  // default-deny
+const HF_CONSENT_AUTO_APPLY          : u8 = 1u8 ;  // download + apply silently
+const HF_CONSENT_PROMPT_BEFORE_APPLY : u8 = 2u8 ;  // download + ask
+const HF_CONSENT_PINNED_NO_UPDATES   : u8 = 3u8 ;  // never check ; freeze forever
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Quiescent-apply class · drives apply scheduler
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_CLASS_RESTART_REQUIRED   : u8 = 0u8 ;  // loa.binary
+const HF_CLASS_NEXT_FRAME_BOUNDARY: u8 = 1u8 ;  // cssl.bundle
+const HF_CLASS_ATOMIC_HOT_SWAP    : u8 = 2u8 ;  // kan.weights
+const HF_CLASS_SCENE_TRANSITION   : u8 = 3u8 ;  // balance + recipe + nemesis + storylet + render
+const HF_CLASS_IMMEDIATE          : u8 = 4u8 ;  // security.patch
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Status / outcome codes · matches cssl-hotfix-client::PollOutcome
+// ─────────────────────────────────────────────────────────────────────────
+
+const HF_OUT_NO_UPDATE       : i32 =  0i32 ;
+const HF_OUT_SKIPPED         : i32 =  1i32 ;
+const HF_OUT_UPDATED         : i32 =  2i32 ;
+const HF_OUT_PROMPT_PENDING  : i32 =  3i32 ;
+const HF_OUT_ROLLED_BACK     : i32 =  4i32 ;
+const HF_OUT_FAILED          : i32 = -1i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Bundle binary-format · matches cssl-hotfix::bundle (HEADER_BYTES = 80 LE)
+// ─────────────────────────────────────────────────────────────────────────
 //
-// § PRIME-DIRECTIVE COMPLIANCE
-//   N! [harm control manipulation surveillance exploitation
-//       coercion weaponization discrimination] in-the-doing.
-//   Consent-as-OS : every channel's download + apply is Σ-mask-gated.
-//   There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+//   ┌────────┬──────┬──────────────────────────────────────────────────────┐
+//   │ offset │ size │ field (all LE · fixed)                               │
+//   ├────────┼──────┼──────────────────────────────────────────────────────┤
+//   │  0     │   4  │ magic = "CSFX" = 0x43 0x53 0x46 0x58                 │
+//   │  4     │   2  │ format_version (u16 LE · current = 1)                │
+//   │  6     │   1  │ channel        (Channel disc · u8 ∈ 1..=9)           │
+//   │  7     │   1  │ cap_role       (CapRole disc · u8 ∈ 1..=5)           │
+//   │  8     │   2  │ ver_major      (u16 LE)                              │
+//   │ 10     │   2  │ ver_minor      (u16 LE)                              │
+//   │ 12     │   2  │ ver_patch      (u16 LE)                              │
+//   │ 14     │   2  │ reserved_a     (u16 LE · MUST be 0)                  │
+//   │ 16     │   8  │ timestamp_ns   (u64 LE · build wall-clock epoch ns)  │
+//   │ 24     │   8  │ payload_size   (u64 LE · bytes of payload)           │
+//   │ 32     │  32  │ payload_blake3 (raw BLAKE3-256 of payload)           │
+//   │ 64     │  16  │ reserved_b     (16 bytes · MUST be all-zero)         │
+//   ├────────┼──────┼──────────────────────────────────────────────────────┤
+//   │ 80     │ N    │ payload (N = payload_size bytes)                     │
+//   │ 80+N   │ 64   │ ed25519_sig over (header‖payload)                    │
+//   └────────┴──────┴──────────────────────────────────────────────────────┘
+//
+//   Total file = 80 + payload_size + 64.
+
+const HF_BUNDLE_MAGIC_0    : u8 = 0x43u8 ;  // 'C'
+const HF_BUNDLE_MAGIC_1    : u8 = 0x53u8 ;  // 'S'
+const HF_BUNDLE_MAGIC_2    : u8 = 0x46u8 ;  // 'F'
+const HF_BUNDLE_MAGIC_3    : u8 = 0x58u8 ;  // 'X'
+
+const HF_BUNDLE_FORMAT_VERSION : u16   = 1u16 ;
+const HF_BUNDLE_HEADER_BYTES   : usize = 80usize ;
+const HF_BUNDLE_SIG_BYTES      : usize = 64usize ;
+const HF_BLAKE3_HASH_BYTES     : usize = 32usize ;
 
 // ─────────────────────────────────────────────────────────────────────────
-// § 9 update-channels (stable u8 IDs · matches cssl-hotfix::Channel)
+// § Parse-error codes · matches cssl-hotfix::BundleParseError
 // ─────────────────────────────────────────────────────────────────────────
 
-const HF_CH_LOA_BINARY        : u8 = 1 ;  // full LoA.exe replacement (cap-A · restart-required)
-const HF_CH_CSSL_BUNDLE       : u8 = 2 ;  // .cssl modules (cap-B · next-frame-boundary)
-const HF_CH_KAN_WEIGHTS       : u8 = 3 ;  // KAN classifier weights (cap-C · atomic-hot-swap)
-const HF_CH_BALANCE_CONFIG    : u8 = 4 ;  // recipes · drop-rates · stats (cap-C · scene-transition)
-const HF_CH_RECIPE_BOOK       : u8 = 5 ;  // alchemy formulas (cap-E · scene-transition)
-const HF_CH_NEMESIS_BESTIARY  : u8 = 6 ;  // recurring-enemy + behavior-tree (cap-E · scene-transition)
-const HF_CH_SECURITY_PATCH    : u8 = 7 ;  // high-priority (cap-D · IMMEDIATE · default-on)
-const HF_CH_STORYLET_CONTENT  : u8 = 8 ;  // narrative + dialogue + i18n (cap-E · scene-transition)
-const HF_CH_RENDER_PIPELINE   : u8 = 9 ;  // shader bytecode · pipeline params (cap-E · scene-transition)
-
-// ─────────────────────────────────────────────────────────────────────────
-// § 5 cap-key roles
-// ─────────────────────────────────────────────────────────────────────────
-
-const HF_CAP_A : u8 = 1 ;  // loa.binary only (RAREST · cold-storage)
-const HF_CAP_B : u8 = 2 ;  // cssl.bundle only (language-runtime release)
-const HF_CAP_C : u8 = 3 ;  // kan.weights + balance.config (model + balance)
-const HF_CAP_D : u8 = 4 ;  // security.patch only (incident-response · default-on)
-const HF_CAP_E : u8 = 5 ;  // recipe + nemesis + storylet + render (cosmetic-only)
-
-// ─────────────────────────────────────────────────────────────────────────
-// § Σ-mask consent states (matches cssl-hotfix::UpdateConsent)
-// ─────────────────────────────────────────────────────────────────────────
-
-const HF_CONSENT_OFF                 : u8 = 0 ;  // default-deny
-const HF_CONSENT_AUTO_APPLY          : u8 = 1 ;  // download + apply silently
-const HF_CONSENT_PROMPT_BEFORE_APPLY : u8 = 2 ;  // download + ask
-const HF_CONSENT_PINNED_NO_UPDATES   : u8 = 3 ;  // never check ; freeze forever
-
-// ─────────────────────────────────────────────────────────────────────────
-// § Status / outcome codes (matches cssl-hotfix-client::PollOutcome)
-// ─────────────────────────────────────────────────────────────────────────
-
-const HF_OUT_NO_UPDATE       : i32 =  0 ;
-const HF_OUT_SKIPPED         : i32 =  1 ;
-const HF_OUT_UPDATED         : i32 =  2 ;
-const HF_OUT_PROMPT_PENDING  : i32 =  3 ;
-const HF_OUT_ROLLED_BACK     : i32 =  4 ;
-const HF_OUT_FAILED          : i32 = -1 ;
+const HF_ERR_OK                 : i32 =  0i32 ;
+const HF_ERR_TOO_SHORT          : i32 = -1i32 ;
+const HF_ERR_BAD_MAGIC          : i32 = -2i32 ;
+const HF_ERR_BAD_FORMAT_VERSION : i32 = -3i32 ;
+const HF_ERR_UNKNOWN_CHANNEL    : i32 = -4i32 ;
+const HF_ERR_UNKNOWN_CAP        : i32 = -5i32 ;
+const HF_ERR_RESERVED_NON_ZERO  : i32 = -6i32 ;
+const HF_ERR_PAYLOAD_OVERFLOW   : i32 = -7i32 ;
+const HF_ERR_VERIFY_FAILED      : i32 = -8i32 ;
+const HF_ERR_CAP_MISMATCH       : i32 = -9i32 ;
+const HF_ERR_CONSENT_DENIED     : i32 = -10i32 ;
+const HF_ERR_REVOKED            : i32 = -11i32 ;
+const HF_ERR_FETCH_FAILED       : i32 = -12i32 ;
 
 // ─────────────────────────────────────────────────────────────────────────
 // § FFI declarations  (host-side cssl-hotfix-client surface)
@@ -102,60 +172,382 @@ extern "C" fn hf_rollback_channel(handle: usize, channel: u8, ts_ns: u64) -> i32
 extern "C" fn hf_revoke_local(handle: usize, channel: u8,
                                version_ptr: *const u8, version_len: usize) -> i32 ;
 
-// Status query : write the installed-version string for a channel into out_buf.
-// Returns the number of bytes written (≤ max_len) or negative on error.
+// Status query : write the installed-version string into out_buf · ASCII semver.
 extern "C" fn hf_status_query(handle: usize, channel: u8,
                                out_buf: *mut u8, max_len: usize) -> i32 ;
 
+// Bundle parse + verify (separated from apply for explicit two-phase flow).
+extern "C" fn hf_bundle_parse_header(bundle_ptr: *const u8, bundle_len: usize,
+                                     out_channel: *mut u8, out_cap_role: *mut u8) -> i32 ;
+extern "C" fn hf_bundle_verify(handle: usize, bundle_ptr: *const u8, bundle_len: usize) -> i32 ;
+extern "C" fn hf_bundle_apply(handle: usize, bundle_ptr: *const u8, bundle_len: usize,
+                               ts_ns: u64) -> i32 ;
+
+// Σ-Chain anchor read for the most-recent apply per channel.
+extern "C" fn hf_sigma_chain_anchor(handle: usize, channel: u8,
+                                     out_anchor_ptr: *mut u8) -> i32 ;
+
 // ─────────────────────────────────────────────────────────────────────────
-// § Pure-CSSL wrappers
+// § Channel → required cap-role mapping  (compile-time enforced)
 // ─────────────────────────────────────────────────────────────────────────
 
-// § hotfix_status_query — return current version-string for one channel.
-//   Returns Option<String>. None when channel is not installed.
+fn channel_required_cap(channel: u8) -> u8 {
+    if channel == HF_CH_LOA_BINARY {
+        HF_CAP_A
+    } else { if channel == HF_CH_CSSL_BUNDLE {
+        HF_CAP_B
+    } else { if channel == HF_CH_KAN_WEIGHTS {
+        HF_CAP_C
+    } else { if channel == HF_CH_BALANCE_CONFIG {
+        HF_CAP_C
+    } else { if channel == HF_CH_SECURITY_PATCH {
+        HF_CAP_D
+    } else { if channel == HF_CH_RECIPE_BOOK {
+        HF_CAP_E
+    } else { if channel == HF_CH_NEMESIS_BESTIARY {
+        HF_CAP_E
+    } else { if channel == HF_CH_STORYLET_CONTENT {
+        HF_CAP_E
+    } else { if channel == HF_CH_RENDER_PIPELINE {
+        HF_CAP_E
+    } else {
+        0u8  // unknown channel · invalid
+    } } } } } } } } }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Channel → quiescent-apply class
+// ─────────────────────────────────────────────────────────────────────────
+
+fn channel_class(channel: u8) -> u8 {
+    if channel == HF_CH_LOA_BINARY {
+        HF_CLASS_RESTART_REQUIRED
+    } else { if channel == HF_CH_CSSL_BUNDLE {
+        HF_CLASS_NEXT_FRAME_BOUNDARY
+    } else { if channel == HF_CH_KAN_WEIGHTS {
+        HF_CLASS_ATOMIC_HOT_SWAP
+    } else { if channel == HF_CH_SECURITY_PATCH {
+        HF_CLASS_IMMEDIATE
+    } else {
+        // balance · recipe · nemesis · storylet · render
+        HF_CLASS_SCENE_TRANSITION
+    } } } }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Default consent · ONLY security.patch is on by default
+// ─────────────────────────────────────────────────────────────────────────
+
+fn default_consent_for(channel: u8) -> u8 {
+    if channel == HF_CH_SECURITY_PATCH {
+        HF_CONSENT_AUTO_APPLY
+    } else {
+        HF_CONSENT_OFF
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Channel-id validation
+// ─────────────────────────────────────────────────────────────────────────
+
+fn channel_is_valid(channel: u8) -> bool {
+    channel >= HF_CH_MIN && channel <= HF_CH_MAX
+}
+
+fn cap_is_valid(cap: u8) -> bool {
+    cap >= HF_CAP_A && cap <= HF_CAP_E
+}
+
+fn consent_is_valid(consent: u8) -> bool {
+    consent <= HF_CONSENT_PINNED_NO_UPDATES
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Bundle-header decoders · pure-CSSL bit-pack readers
+// ─────────────────────────────────────────────────────────────────────────
+
+// Read u16 LE from a 2-byte slice.
+fn read_u16_le(buf: &[u8], off: usize) -> u16 {
+    let lo: u16 = buf[off] as u16 ;
+    let hi: u16 = buf[off + 1usize] as u16 ;
+    lo | (hi << 8u16)
+}
+
+// Read u32 LE from a 4-byte slice.
+fn read_u32_le(buf: &[u8], off: usize) -> u32 {
+    let b0: u32 = buf[off + 0usize] as u32 ;
+    let b1: u32 = buf[off + 1usize] as u32 ;
+    let b2: u32 = buf[off + 2usize] as u32 ;
+    let b3: u32 = buf[off + 3usize] as u32 ;
+    b0 | (b1 << 8u32) | (b2 << 16u32) | (b3 << 24u32)
+}
+
+// Read u64 LE from an 8-byte slice (delegates to host-builtin where vectorized).
+extern "C" fn __cssl_read_u64_le(buf_ptr: *const u8, off: usize) -> u64 ;
+
+// Validate magic-bytes ; returns true iff buf[0..4] == "CSFX".
+fn check_magic(buf: &[u8]) -> bool {
+    if buf.len() < 4usize {
+        return false ;
+    }
+    buf[0usize] == HF_BUNDLE_MAGIC_0 &&
+    buf[1usize] == HF_BUNDLE_MAGIC_1 &&
+    buf[2usize] == HF_BUNDLE_MAGIC_2 &&
+    buf[3usize] == HF_BUNDLE_MAGIC_3
+}
+
+// Validate reserved_a (offset 14, 2 bytes) is all-zero.
+fn check_reserved_a(buf: &[u8]) -> bool {
+    if buf.len() < 16usize {
+        return false ;
+    }
+    buf[14usize] == 0u8 && buf[15usize] == 0u8
+}
+
+// Validate reserved_b (offset 64, 16 bytes) is all-zero.
+fn check_reserved_b(buf: &[u8]) -> bool {
+    if buf.len() < 80usize {
+        return false ;
+    }
+    let mut i: usize = 64usize ;
+    while i < 80usize {
+        if buf[i] != 0u8 {
+            return false ;
+        }
+        i = i + 1usize ;
+    }
+    true
+}
+
+// Header-byte parse · returns HF_ERR_OK iff well-formed.
+fn parse_header_validate(buf: &[u8]) -> i32 {
+    if buf.len() < HF_BUNDLE_HEADER_BYTES {
+        return HF_ERR_TOO_SHORT ;
+    }
+    if !check_magic(buf) {
+        return HF_ERR_BAD_MAGIC ;
+    }
+    let fmt_ver: u16 = read_u16_le(buf, 4usize) ;
+    if fmt_ver != HF_BUNDLE_FORMAT_VERSION {
+        return HF_ERR_BAD_FORMAT_VERSION ;
+    }
+    let channel: u8 = buf[6usize] ;
+    if !channel_is_valid(channel) {
+        return HF_ERR_UNKNOWN_CHANNEL ;
+    }
+    let cap: u8 = buf[7usize] ;
+    if !cap_is_valid(cap) {
+        return HF_ERR_UNKNOWN_CAP ;
+    }
+    if !check_reserved_a(buf) {
+        return HF_ERR_RESERVED_NON_ZERO ;
+    }
+    if !check_reserved_b(buf) {
+        return HF_ERR_RESERVED_NON_ZERO ;
+    }
+    HF_ERR_OK
+}
+
+// Cross-check : channel-required-cap MUST equal header.cap_role.
+fn check_cap_matches_channel(channel: u8, header_cap: u8) -> bool {
+    let required: u8 = channel_required_cap(channel) ;
+    required != 0u8 && required == header_cap
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Pure-CSSL high-level wrappers · idiomatic-call surface
+// ─────────────────────────────────────────────────────────────────────────
+
+// § hotfix_status_query — return current installed-version string for a channel.
+//   None when channel is not yet installed.
 fn hotfix_status_query(handle: usize, channel: u8) -> Option<String> {
-    let mut buf : [u8; 32] = [0; 32] ;
-    let n = hf_status_query(handle, channel, &mut buf as *mut u8, 32) ;
-    if n <= 0 {
+    let mut buf : [u8; 32] = [0u8; 32] ;
+    let n = hf_status_query(handle, channel, &mut buf as *mut u8, 32usize) ;
+    if n <= 0i32 {
         return None ;
     }
-    // Copy out the n bytes as a String (assumes ASCII semver).
-    let s = string_from_bytes(&buf, n as usize) ;
-    Some(s)
+    Some(string_from_bytes(&buf, n as usize))
 }
 
 // § hotfix_consent_set_all_off — pull the kill-switch on auto-updates.
 //   Idiom : called from settings-UI when player checks "disable auto-updates".
-//   Loops 9 channels, sets each to PINNED_NO_UPDATES. Returns 0 on success.
 fn hotfix_consent_set_all_off(handle: usize) -> i32 {
-    let mut ch : u8 = 1 ;
-    while ch <= 9 {
+    let mut ch : u8 = HF_CH_MIN ;
+    while ch <= HF_CH_MAX {
         let rc = hf_consent_set(handle, ch, HF_CONSENT_PINNED_NO_UPDATES) ;
-        if rc != 0 {
+        if rc != 0i32 {
             return rc ;
         }
-        ch = ch + 1 ;
+        ch = ch + 1u8 ;
     }
-    0
+    0i32
 }
 
 // § hotfix_consent_security_only — enable security.patch · pin all others.
 //   Default privacy-respecting posture. Recommended on first-boot.
 fn hotfix_consent_security_only(handle: usize) -> i32 {
-    let mut ch : u8 = 1 ;
-    while ch <= 9 {
-        let consent = if ch == HF_CH_SECURITY_PATCH {
+    let mut ch : u8 = HF_CH_MIN ;
+    while ch <= HF_CH_MAX {
+        let consent: u8 = if ch == HF_CH_SECURITY_PATCH {
             HF_CONSENT_AUTO_APPLY
         } else {
             HF_CONSENT_PINNED_NO_UPDATES
         } ;
         let rc = hf_consent_set(handle, ch, consent) ;
-        if rc != 0 {
+        if rc != 0i32 {
             return rc ;
         }
-        ch = ch + 1 ;
+        ch = ch + 1u8 ;
     }
-    0
+    0i32
+}
+
+// § hotfix_consent_full_auto — opt-in to all 9 channels (advanced users).
+//   Idempotent. Reversible via hotfix_consent_set_all_off.
+fn hotfix_consent_full_auto(handle: usize) -> i32 {
+    let mut ch : u8 = HF_CH_MIN ;
+    while ch <= HF_CH_MAX {
+        let rc = hf_consent_set(handle, ch, HF_CONSENT_AUTO_APPLY) ;
+        if rc != 0i32 {
+            return rc ;
+        }
+        ch = ch + 1u8 ;
+    }
+    0i32
+}
+
+// § hotfix_consent_prompt_for_content — recommended balanced posture.
+//   security.patch auto · cosmetic-channels (cap-E) prompt · power-channels off.
+fn hotfix_consent_prompt_for_content(handle: usize) -> i32 {
+    // security.patch always-on
+    let rc = hf_consent_set(handle, HF_CH_SECURITY_PATCH, HF_CONSENT_AUTO_APPLY) ;
+    if rc != 0i32 { return rc ; }
+
+    // cosmetic-only channels (cap-E) → prompt
+    let mut idx : u8 = 0u8 ;
+    while idx < 4u8 {
+        let ch: u8 = if idx == 0u8 { HF_CH_RECIPE_BOOK }
+                else { if idx == 1u8 { HF_CH_NEMESIS_BESTIARY }
+                else { if idx == 2u8 { HF_CH_STORYLET_CONTENT }
+                else { HF_CH_RENDER_PIPELINE } } } ;
+        let r2 = hf_consent_set(handle, ch, HF_CONSENT_PROMPT_BEFORE_APPLY) ;
+        if r2 != 0i32 { return r2 ; }
+        idx = idx + 1u8 ;
+    }
+
+    // power-channels (cap-A · cap-B · cap-C) → pinned (manual-only)
+    let r3 = hf_consent_set(handle, HF_CH_LOA_BINARY,    HF_CONSENT_PINNED_NO_UPDATES) ;
+    if r3 != 0i32 { return r3 ; }
+    let r4 = hf_consent_set(handle, HF_CH_CSSL_BUNDLE,   HF_CONSENT_PINNED_NO_UPDATES) ;
+    if r4 != 0i32 { return r4 ; }
+    let r5 = hf_consent_set(handle, HF_CH_KAN_WEIGHTS,   HF_CONSENT_PINNED_NO_UPDATES) ;
+    if r5 != 0i32 { return r5 ; }
+    let r6 = hf_consent_set(handle, HF_CH_BALANCE_CONFIG, HF_CONSENT_PINNED_NO_UPDATES) ;
+    if r6 != 0i32 { return r6 ; }
+
+    0i32
+}
+
+// § hotfix_rollback_all — emergency rollback every-channel to N-1.
+//   Stops at first error · returns the channel-id that failed (or 0 = all-rolled).
+fn hotfix_rollback_all(handle: usize, ts_ns: u64) -> u8 {
+    let mut ch : u8 = HF_CH_MIN ;
+    while ch <= HF_CH_MAX {
+        let rc = hf_rollback_channel(handle, ch, ts_ns) ;
+        if rc != 0i32 {
+            return ch ;
+        }
+        ch = ch + 1u8 ;
+    }
+    0u8
+}
+
+// § hotfix_can_apply — preflight gate · returns true iff channel + cap match
+//   AND consent permits silent-apply.
+fn hotfix_can_apply(channel: u8, header_cap: u8, consent: u8) -> bool {
+    if !channel_is_valid(channel) {
+        return false ;
+    }
+    if !check_cap_matches_channel(channel, header_cap) {
+        return false ;
+    }
+    consent == HF_CONSENT_AUTO_APPLY
+}
+
+// § hotfix_should_prompt — true iff consent is PROMPT_BEFORE_APPLY.
+fn hotfix_should_prompt(consent: u8) -> bool {
+    consent == HF_CONSENT_PROMPT_BEFORE_APPLY
+}
+
+// § hotfix_is_pinned — true iff consent is PINNED_NO_UPDATES.
+fn hotfix_is_pinned(consent: u8) -> bool {
+    consent == HF_CONSENT_PINNED_NO_UPDATES
+}
+
+// § hotfix_is_off — true iff consent is OFF (default-deny).
+fn hotfix_is_off(consent: u8) -> bool {
+    consent == HF_CONSENT_OFF
+}
+
+// § hotfix_full_apply_flow — orchestrate parse → verify → apply with all gates.
+//   Returns HF_OUT_* outcome code. Caller passes raw bundle bytes.
+fn hotfix_full_apply_flow(
+    handle: usize,
+    bundle_ptr: *const u8,
+    bundle_len: usize,
+    ts_ns: u64,
+) -> i32 {
+    // 1. Parse header → recover channel + cap-role.
+    let mut header_channel : u8 = 0u8 ;
+    let mut header_cap     : u8 = 0u8 ;
+    let parse_rc = hf_bundle_parse_header(
+        bundle_ptr, bundle_len,
+        &mut header_channel as *mut u8,
+        &mut header_cap as *mut u8,
+    ) ;
+    if parse_rc != HF_ERR_OK {
+        return HF_OUT_FAILED ;
+    }
+
+    // 2. Cross-check channel ↔ cap-role.
+    if !check_cap_matches_channel(header_channel, header_cap) {
+        return HF_OUT_FAILED ;
+    }
+
+    // 3. Σ-mask consent gate.
+    let consent: u8 = hf_consent_get(handle, header_channel) ;
+    if hotfix_is_off(consent) {
+        return HF_OUT_SKIPPED ;
+    }
+    if hotfix_is_pinned(consent) {
+        return HF_OUT_SKIPPED ;
+    }
+
+    // 4. Verify signature (Ed25519 over header‖payload).
+    let verify_rc = hf_bundle_verify(handle, bundle_ptr, bundle_len) ;
+    if verify_rc != HF_ERR_OK {
+        return HF_OUT_FAILED ;
+    }
+
+    // 5. If prompt-before-apply, defer to UI.
+    if hotfix_should_prompt(consent) {
+        return HF_OUT_PROMPT_PENDING ;
+    }
+
+    // 6. Atomic apply (writes payload + bumps current.meta · keeps N-1 + N-2).
+    let apply_rc = hf_bundle_apply(handle, bundle_ptr, bundle_len, ts_ns) ;
+    if apply_rc != HF_ERR_OK {
+        return HF_OUT_FAILED ;
+    }
+
+    HF_OUT_UPDATED
+}
+
+// § hotfix_get_anchor — fetch the 32-byte Σ-Chain anchor for the most-recent
+//   apply on a given channel · returns true iff written.
+fn hotfix_get_anchor(handle: usize, channel: u8, anchor_out: &mut [u8; 32]) -> bool {
+    let rc = hf_sigma_chain_anchor(handle, channel, anchor_out as *mut u8) ;
+    rc == HF_ERR_OK
 }
 
 // Helper : build a String from a byte buffer + length (stage-0 stub).
@@ -166,7 +558,182 @@ fn string_from_bytes(buf: &[u8; 32], n: usize) -> String {
     "<host-bridge>".to_string()
 }
 
-// § ATTESTATION
-//   ¬ harm · ¬ surveillance · sovereign-revocable · Σ-mask-default-deny
-//   rollback-always-available · cap-key-restricted · ¬ DRM · ¬ rootkit
-//   cosmetic-only-axiom-holds : an update CANNOT change pay-for-power balance.
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests · channel + cap + consent + parse-validation
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_channel_count_is_nine() {
+    assert_eq(HF_CH_COUNT, 9u8) ;
+    assert_eq(HF_CH_MAX,   9u8) ;
+}
+
+#[test]
+fn test_cap_count_is_five() {
+    assert_eq(HF_CAP_COUNT, 5u8) ;
+}
+
+#[test]
+fn test_required_cap_for_loa_binary_is_a() {
+    assert_eq(channel_required_cap(HF_CH_LOA_BINARY), HF_CAP_A) ;
+}
+
+#[test]
+fn test_required_cap_for_cssl_bundle_is_b() {
+    assert_eq(channel_required_cap(HF_CH_CSSL_BUNDLE), HF_CAP_B) ;
+}
+
+#[test]
+fn test_required_cap_for_kan_and_balance_is_c() {
+    assert_eq(channel_required_cap(HF_CH_KAN_WEIGHTS),    HF_CAP_C) ;
+    assert_eq(channel_required_cap(HF_CH_BALANCE_CONFIG), HF_CAP_C) ;
+}
+
+#[test]
+fn test_required_cap_for_security_patch_is_d() {
+    assert_eq(channel_required_cap(HF_CH_SECURITY_PATCH), HF_CAP_D) ;
+}
+
+#[test]
+fn test_required_cap_for_cosmetic_is_e() {
+    assert_eq(channel_required_cap(HF_CH_RECIPE_BOOK),     HF_CAP_E) ;
+    assert_eq(channel_required_cap(HF_CH_NEMESIS_BESTIARY), HF_CAP_E) ;
+    assert_eq(channel_required_cap(HF_CH_STORYLET_CONTENT), HF_CAP_E) ;
+    assert_eq(channel_required_cap(HF_CH_RENDER_PIPELINE), HF_CAP_E) ;
+}
+
+#[test]
+fn test_required_cap_for_unknown_channel_is_zero() {
+    assert_eq(channel_required_cap(99u8), 0u8) ;
+    assert_eq(channel_required_cap(0u8), 0u8) ;
+}
+
+#[test]
+fn test_default_consent_only_security_is_auto() {
+    assert_eq(default_consent_for(HF_CH_SECURITY_PATCH), HF_CONSENT_AUTO_APPLY) ;
+    assert_eq(default_consent_for(HF_CH_LOA_BINARY),     HF_CONSENT_OFF) ;
+    assert_eq(default_consent_for(HF_CH_RECIPE_BOOK),    HF_CONSENT_OFF) ;
+    assert_eq(default_consent_for(HF_CH_KAN_WEIGHTS),    HF_CONSENT_OFF) ;
+}
+
+#[test]
+fn test_class_for_security_is_immediate() {
+    assert_eq(channel_class(HF_CH_SECURITY_PATCH), HF_CLASS_IMMEDIATE) ;
+}
+
+#[test]
+fn test_class_for_loa_binary_is_restart() {
+    assert_eq(channel_class(HF_CH_LOA_BINARY), HF_CLASS_RESTART_REQUIRED) ;
+}
+
+#[test]
+fn test_class_for_kan_is_atomic_hot_swap() {
+    assert_eq(channel_class(HF_CH_KAN_WEIGHTS), HF_CLASS_ATOMIC_HOT_SWAP) ;
+}
+
+#[test]
+fn test_class_for_cosmetic_is_scene_transition() {
+    assert_eq(channel_class(HF_CH_RECIPE_BOOK),     HF_CLASS_SCENE_TRANSITION) ;
+    assert_eq(channel_class(HF_CH_BALANCE_CONFIG),  HF_CLASS_SCENE_TRANSITION) ;
+    assert_eq(channel_class(HF_CH_STORYLET_CONTENT), HF_CLASS_SCENE_TRANSITION) ;
+}
+
+#[test]
+fn test_check_cap_matches_channel_passes_when_match() {
+    let ok: bool = check_cap_matches_channel(HF_CH_SECURITY_PATCH, HF_CAP_D) ;
+    assert_eq(ok, true) ;
+}
+
+#[test]
+fn test_check_cap_matches_channel_fails_on_mismatch() {
+    // Forging a cap-A signature for security.patch must FAIL even if Ed25519
+    // would otherwise accept (this defends against escalation forgeries).
+    let bad: bool = check_cap_matches_channel(HF_CH_SECURITY_PATCH, HF_CAP_A) ;
+    assert_eq(bad, false) ;
+}
+
+#[test]
+fn test_consent_states_distinct() {
+    assert_eq(HF_CONSENT_OFF,                 0u8) ;
+    assert_eq(HF_CONSENT_AUTO_APPLY,          1u8) ;
+    assert_eq(HF_CONSENT_PROMPT_BEFORE_APPLY, 2u8) ;
+    assert_eq(HF_CONSENT_PINNED_NO_UPDATES,   3u8) ;
+}
+
+#[test]
+fn test_outcome_codes_distinct() {
+    assert_eq(HF_OUT_NO_UPDATE,      0i32) ;
+    assert_eq(HF_OUT_SKIPPED,        1i32) ;
+    assert_eq(HF_OUT_UPDATED,        2i32) ;
+    assert_eq(HF_OUT_PROMPT_PENDING, 3i32) ;
+    assert_eq(HF_OUT_ROLLED_BACK,    4i32) ;
+    assert_eq(HF_OUT_FAILED,        -1i32) ;
+}
+
+#[test]
+fn test_bundle_magic_is_csfx_ascii() {
+    assert_eq(HF_BUNDLE_MAGIC_0, 0x43u8) ;  // 'C'
+    assert_eq(HF_BUNDLE_MAGIC_1, 0x53u8) ;  // 'S'
+    assert_eq(HF_BUNDLE_MAGIC_2, 0x46u8) ;  // 'F'
+    assert_eq(HF_BUNDLE_MAGIC_3, 0x58u8) ;  // 'X'
+}
+
+#[test]
+fn test_bundle_header_size_is_eighty() {
+    assert_eq(HF_BUNDLE_HEADER_BYTES, 80usize) ;
+    assert_eq(HF_BUNDLE_SIG_BYTES,    64usize) ;
+}
+
+#[test]
+fn test_bundle_format_version_is_one() {
+    assert_eq(HF_BUNDLE_FORMAT_VERSION, 1u16) ;
+}
+
+#[test]
+fn test_channel_validity_range() {
+    assert_eq(channel_is_valid(0u8),   false) ;
+    assert_eq(channel_is_valid(1u8),   true) ;
+    assert_eq(channel_is_valid(9u8),   true) ;
+    assert_eq(channel_is_valid(10u8),  false) ;
+    assert_eq(channel_is_valid(255u8), false) ;
+}
+
+#[test]
+fn test_can_apply_only_when_consent_is_auto_apply() {
+    let ok: bool = hotfix_can_apply(HF_CH_SECURITY_PATCH, HF_CAP_D, HF_CONSENT_AUTO_APPLY) ;
+    assert_eq(ok, true) ;
+    let pinned: bool = hotfix_can_apply(HF_CH_SECURITY_PATCH, HF_CAP_D, HF_CONSENT_PINNED_NO_UPDATES) ;
+    assert_eq(pinned, false) ;
+    let off: bool = hotfix_can_apply(HF_CH_SECURITY_PATCH, HF_CAP_D, HF_CONSENT_OFF) ;
+    assert_eq(off, false) ;
+    let prompt: bool = hotfix_can_apply(HF_CH_SECURITY_PATCH, HF_CAP_D, HF_CONSENT_PROMPT_BEFORE_APPLY) ;
+    assert_eq(prompt, false) ;
+}
+
+#[test]
+fn test_should_prompt_only_for_prompt_consent() {
+    assert_eq(hotfix_should_prompt(HF_CONSENT_PROMPT_BEFORE_APPLY), true) ;
+    assert_eq(hotfix_should_prompt(HF_CONSENT_AUTO_APPLY),          false) ;
+    assert_eq(hotfix_should_prompt(HF_CONSENT_OFF),                 false) ;
+}
+
+#[test]
+fn test_read_u16_le_decodes_correctly() {
+    let buf : [u8; 4] = [0x34u8, 0x12u8, 0xFFu8, 0x00u8] ;
+    assert_eq(read_u16_le(&buf, 0usize), 0x1234u16) ;
+    assert_eq(read_u16_le(&buf, 2usize), 0x00FFu16) ;
+}
+
+#[test]
+fn test_read_u32_le_decodes_correctly() {
+    let buf : [u8; 4] = [0x78u8, 0x56u8, 0x34u8, 0x12u8] ;
+    assert_eq(read_u32_le(&buf, 0usize), 0x12345678u32) ;
+}
+
+// § ATTESTATION (PRIME_DIRECTIVE.md § 11) — encoded structurally
+//   Every apply verifies Ed25519 ↔ cap-key for target-channel · mismatch
+//   refuses-mutation. N-1 + N-2 preserved for atomic-rollback. Σ-mask default-
+//   deny means opt-in required. Σ-Chain anchors every-bundle for tamper-evident
+//   immutable-attribution. cap-A..cap-E progressive-privilege : leaked cosmetic-
+//   key CANNOT push executable. cosmetic-only-axiom holds. ¬ DRM · ¬ rootkit ·
+//   ¬ surveillance. There was no hurt nor harm in the making of this.
