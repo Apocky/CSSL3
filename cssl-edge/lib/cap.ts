@@ -86,6 +86,14 @@ export const BATTLE_PASS_PROGRESS = 0x2000000;
 export const BATTLE_PASS_UNLOCK = 0x4000000;
 export const BATTLE_PASS_REDEEM = 0x8000000;
 
+// Gacha cap-bits (W13-10). Transparency-mandate · cosmetic-only · sovereign-7d-refund.
+//   bit 28 (0x10000000) · GACHA_CAP_PULL    · /api/gacha/pull
+//   bit 29 (0x20000000) · GACHA_CAP_HISTORY · /api/gacha/history
+//   bit 30 (0x40000000) · GACHA_CAP_REFUND  · /api/gacha/refund
+export const GACHA_CAP_PULL = 0x10000000;
+export const GACHA_CAP_HISTORY = 0x20000000;
+export const GACHA_CAP_REFUND = 0x40000000;
+
 // Cap-gate result. `ok=false` carries a reason for audit-log + 403 body.
 export interface CapDecision {
   ok: boolean;
