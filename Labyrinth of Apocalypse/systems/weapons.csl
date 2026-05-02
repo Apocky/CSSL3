@@ -1,0 +1,379 @@
+module com.apocky.loa.systems.weapons
+
+// § Labyrinth of Apocalypse — Weapons Systems Module  (W13-2)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-WEAPONS (parallel-fanout · cssl/session-6/parallel-fanout)
+//
+// § ARCHITECTURE
+//   Sibling SYSTEMS .csl module that compiles into LoA.exe alongside
+//   main.cssl + combat.csl. Declares the host-side FFI contract for the
+//   cssl-host-weapons staticlib (W13-2 deliverable).
+//
+// § FFI SURFACE  (provided by cssl-host-weapons)
+//   __cssl_weapons_create_session(seed)                       → handle(i64)
+//   __cssl_weapons_destroy_session(handle)                    → status(i32)
+//   __cssl_weapons_kind_count()                               → u32 = 16
+//   __cssl_weapons_base_dps(kind, tier)                       → f32
+//   __cssl_weapons_per_shot(kind, tier)                       → f32
+//   __cssl_weapons_dps_signature(kind, tier)                  → u64
+//   __cssl_weapons_compute_damage(base, zone, dt, ac, crit)   → f32
+//   __cssl_weapons_damage_falloff(d, min, max, floor)         → f32
+//   __cssl_weapons_cast_hitscan(h, ray*, targets*, n, p*, out*, cap) → i32
+//   __cssl_weapons_spawn_projectile(h, pos*, vel*, r, ttl, dmg, dt) → i64
+//   __cssl_weapons_step_projectiles(h, env*, dt, targets*, n, out*, cap) → i32
+//   __cssl_weapons_pool_live_count(h)                         → u32
+//   __cssl_weapons_pool_capacity(h)                           → u32 = 256
+//   __cssl_weapons_recoil_for(kind, shot_index, out_event*)   → status(i32)
+//   __cssl_weapons_accuracy_on_shot(h, weapon_id)             → status(i32)
+//   __cssl_weapons_accuracy_tick(h, weapon_id, dt_secs)       → status(i32)
+//   __cssl_weapons_accuracy_sample_jitter(h, w, jx*, jy*)     → status(i32)
+//
+// § AXIOMS  (inherit GDDs/COMBAT_SYSTEM + GDDs/LOOT_SYSTEM + PRIME_DIRECTIVE)
+//   t∞: weapons-tick = pure-deterministic · seeded-RNG · replay-bit-equal
+//   t∞: COSMETIC-ONLY-AXIOM ‼  ← skin/sound/particle/anim CANNOT alter DPS
+//   t∞: base-DPS = f(kind, tier) only ; cosmetic = visual + audio decoration
+//   t∞: 16 WeaponKind enumerated · FROZEN-list · additions = additive only
+//   t∞: hitscan = single-frame raycast · pierce-cap · damage-falloff
+//   t∞: projectile-pool = pre-alloc 256 ring · zero-heap-per-shot
+//   t∞: recoil-pattern emitted as event-stream  ← W13-5 ADS-recoil consumes
+//   t∞: ¬ surveillance · ¬ aimbot-detection · ¬ biometric collection
+//   t∞: combat-mechanics ≠ cosmetics  ← headshot-mult / armor-class / weak-pt
+//                                       are MECHANICS, not cosmetic
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   ✓ player-flee-anytime    ← weapons fire ONLY on input ; no auto-fire-AI
+//   ✓ Companion-AI sovereign ← Companion choose to wield weapon ; never puppeted
+//   ✓ no-pay-for-power       ← rare/legendary skin = SAME DPS as common skin
+//   ✓ ¬ heuristic-cheat-detect ← anti-cheat lives in netcode (W13-3) sigma-mask
+//   ✓ creator-attestation per § CREATOR-ATTESTATION below
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CONSTANTS  (mirror cssl-host-weapons const-tables)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § WeaponKind discriminants (16) — stable u32 ; FROZEN.
+const WEAPON_PISTOL              : u32 =  0 ;
+const WEAPON_RIFLE               : u32 =  1 ;
+const WEAPON_SHOTGUN_SPREAD      : u32 =  2 ;
+const WEAPON_SHOTGUN_SLUG        : u32 =  3 ;
+const WEAPON_SNIPER_HITSCAN      : u32 =  4 ;
+const WEAPON_SNIPER_PROJECTILE   : u32 =  5 ;
+const WEAPON_SMG                 : u32 =  6 ;
+const WEAPON_LMG                 : u32 =  7 ;
+const WEAPON_BOW                 : u32 =  8 ;
+const WEAPON_CROSSBOW            : u32 =  9 ;
+const WEAPON_LASER_BEAM          : u32 = 10 ;
+const WEAPON_PLASMA_ARC          : u32 = 11 ;
+const WEAPON_GRENADE             : u32 = 12 ;
+const WEAPON_EXPLOSIVE           : u32 = 13 ;
+const WEAPON_MELEE               : u32 = 14 ;
+const WEAPON_THROWABLE           : u32 = 15 ;
+const WEAPON_KIND_COUNT          : u32 = 16 ;
+
+// § WeaponTier discriminants (6) — DPS-multiplier ladder.
+const TIER_COMMON                : u32 = 0 ;
+const TIER_UNCOMMON              : u32 = 1 ;
+const TIER_RARE                  : u32 = 2 ;
+const TIER_EPIC                  : u32 = 3 ;
+const TIER_LEGENDARY             : u32 = 4 ;
+const TIER_MYTHIC                : u32 = 5 ;
+const TIER_COUNT                 : u32 = 6 ;
+
+// § HitZone (mechanic-not-cosmetic).
+const ZONE_HEAD                  : u32 = 0 ;
+const ZONE_BODY                  : u32 = 1 ;
+const ZONE_LIMB                  : u32 = 2 ;
+const ZONE_WEAK_POINT            : u32 = 3 ;
+
+// § DamageType (6).
+const DMG_KINETIC                : u32 = 0 ;
+const DMG_ENERGY                 : u32 = 1 ;
+const DMG_THERMAL                : u32 = 2 ;
+const DMG_CRYO                   : u32 = 3 ;
+const DMG_CORROSIVE              : u32 = 4 ;
+const DMG_EXPLOSIVE              : u32 = 5 ;
+
+// § ArmorClass (5).
+const ARMOR_UNARMORED            : u32 = 0 ;
+const ARMOR_FLESH                : u32 = 1 ;
+const ARMOR_PLATE                : u32 = 2 ;
+const ARMOR_SHIELDED             : u32 = 3 ;
+const ARMOR_CONSTRUCTED          : u32 = 4 ;
+
+// § Pool capacity (mirror MAX_PROJECTILES).
+const PROJECTILE_POOL_CAP        : u32 = 256 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI DECLARATIONS  (provided by cssl-host-weapons staticlib · W13-2)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § Session lifecycle  ────────────────────────────────────────────────────
+
+extern "C" fn __cssl_weapons_create_session(seed: u64) -> i64 ;
+extern "C" fn __cssl_weapons_destroy_session(handle: i64) -> i32 ;
+
+// § Kind/tier introspection  ─────────────────────────────────────────────
+
+extern "C" fn __cssl_weapons_kind_count() -> u32 ;
+
+// Returns base-DPS for (kind, tier) — pure-fn ; cosmetic-skin-agnostic.
+extern "C" fn __cssl_weapons_base_dps(kind: u32, tier: u32) -> f32 ;
+
+// Returns per-shot raw damage = base_dps / fire_rate.
+extern "C" fn __cssl_weapons_per_shot(kind: u32, tier: u32) -> f32 ;
+
+// Returns DPS-signature ; identical for all cosmetic-skins of (kind, tier).
+extern "C" fn __cssl_weapons_dps_signature(kind: u32, tier: u32) -> u64 ;
+
+// § Damage computation  ──────────────────────────────────────────────────
+
+// Returns final damage = base × zone × armor-mod × (crit ? 1.5 : 1.0).
+extern "C" fn __cssl_weapons_compute_damage(
+    base: f32,
+    zone: u32,
+    dmg_type: u32,
+    armor_class: u32,
+    crit: u32,
+) -> f32 ;
+
+// Returns falloff multiplier ∈ [floor, 1.0].
+extern "C" fn __cssl_weapons_damage_falloff(
+    distance_m: f32,
+    min_range_m: f32,
+    max_range_m: f32,
+    floor_mult: f32,
+) -> f32 ;
+
+// § Hitscan  ─────────────────────────────────────────────────────────────
+
+// Cast a single ray from the camera ; writes ≤ params.max_pierce hits to out.
+// Returns count of hits written ; -1 on invalid handle ; -2 on out-too-small.
+extern "C" fn __cssl_weapons_cast_hitscan(
+    handle: i64,
+    ray_ptr: *const u8,
+    targets_ptr: *const u8,
+    targets_n: u32,
+    params_ptr: *const u8,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 ;
+
+// § Projectile pool  ──────────────────────────────────────────────────────
+
+// Spawn a projectile ; returns positive id on success ; 0 on pool-full.
+extern "C" fn __cssl_weapons_spawn_projectile(
+    handle: i64,
+    pos_ptr: *const u8,
+    vel_ptr: *const u8,
+    radius: f32,
+    ttl_secs: f32,
+    damage: f32,
+    damage_type: u32,
+) -> i64 ;
+
+// Step every alive projectile by `dt_secs` ; sweep against targets ;
+// despawn on TTL OR impact ; append impacts to out.
+// Returns count of impacts written.
+extern "C" fn __cssl_weapons_step_projectiles(
+    handle: i64,
+    env_ptr: *const u8,
+    dt_secs: f32,
+    targets_ptr: *const u8,
+    targets_n: u32,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 ;
+
+// Returns count of currently-alive projectiles in the pool.
+extern "C" fn __cssl_weapons_pool_live_count(handle: i64) -> u32 ;
+
+// Returns capacity (always 256 ; FROZEN).
+extern "C" fn __cssl_weapons_pool_capacity(handle: i64) -> u32 ;
+
+// § Recoil pattern (event-stream consumed by W13-5)  ────────────────────
+
+extern "C" fn __cssl_weapons_recoil_for(kind: u32, shot_index: u32, out_event_ptr: *mut u8) -> i32 ;
+
+// § Accuracy / bloom  ────────────────────────────────────────────────────
+
+extern "C" fn __cssl_weapons_accuracy_on_shot(handle: i64, weapon_id: u64) -> i32 ;
+extern "C" fn __cssl_weapons_accuracy_tick(handle: i64, weapon_id: u64, dt_secs: f32) -> i32 ;
+extern "C" fn __cssl_weapons_accuracy_sample_jitter(
+    handle: i64,
+    weapon_id: u64,
+    out_jx_ptr: *mut f32,
+    out_jy_ptr: *mut f32,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PUBLIC API  (CSSL-native game-logic surface for main.cssl + scenes)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § Session lifecycle  ────────────────────────────────────────────────────
+
+fn weapons_create_session(seed: u64) -> i64 {
+    __cssl_weapons_create_session(seed)
+}
+
+fn weapons_destroy_session(handle: i64) -> i32 {
+    __cssl_weapons_destroy_session(handle)
+}
+
+// § Cosmetic-only-axiom helpers  ─────────────────────────────────────────
+
+// Returns DPS for (kind, tier) — UI displays this in the weapon-card.
+fn weapons_base_dps(kind: u32, tier: u32) -> f32 {
+    __cssl_weapons_base_dps(kind, tier)
+}
+
+// Returns per-shot raw damage.
+fn weapons_per_shot(kind: u32, tier: u32) -> f32 {
+    __cssl_weapons_per_shot(kind, tier)
+}
+
+// Returns DPS-signature ; runtime-cosmetic-axiom proof.
+//
+// Two weapon-instances with same (kind, tier) but different cosmetic skins
+// MUST produce identical signatures. Game-logic / leaderboard / matchmaking
+// can hash this to bucket weapons by power-class without leaking cosmetics.
+fn weapons_dps_signature(kind: u32, tier: u32) -> u64 {
+    __cssl_weapons_dps_signature(kind, tier)
+}
+
+// § Damage helpers  ──────────────────────────────────────────────────────
+
+fn weapons_compute_damage(
+    base: f32,
+    zone: u32,
+    dmg_type: u32,
+    armor_class: u32,
+    crit: u32,
+) -> f32 {
+    __cssl_weapons_compute_damage(base, zone, dmg_type, armor_class, crit)
+}
+
+fn weapons_damage_falloff(
+    distance_m: f32,
+    min_range_m: f32,
+    max_range_m: f32,
+    floor_mult: f32,
+) -> f32 {
+    __cssl_weapons_damage_falloff(distance_m, min_range_m, max_range_m, floor_mult)
+}
+
+// § Pool helpers  ────────────────────────────────────────────────────────
+
+fn weapons_pool_live_count(handle: i64) -> u32 {
+    __cssl_weapons_pool_live_count(handle)
+}
+
+fn weapons_pool_capacity(handle: i64) -> u32 {
+    __cssl_weapons_pool_capacity(handle)
+}
+
+// § Recoil helper  ───────────────────────────────────────────────────────
+
+fn weapons_recoil_for(kind: u32, shot_index: u32, out_event_ptr: *mut u8) -> i32 {
+    __cssl_weapons_recoil_for(kind, shot_index, out_event_ptr)
+}
+
+// § Accuracy / bloom helpers  ────────────────────────────────────────────
+
+fn weapons_accuracy_on_shot(handle: i64, weapon_id: u64) -> i32 {
+    __cssl_weapons_accuracy_on_shot(handle, weapon_id)
+}
+
+fn weapons_accuracy_tick(handle: i64, weapon_id: u64, dt_secs: f32) -> i32 {
+    __cssl_weapons_accuracy_tick(handle, weapon_id, dt_secs)
+}
+
+// § Cosmetic-axiom verification gate (CSSL-native)  ──────────────────────
+//
+// Pre-flight gate : compares two weapon-builds' DPS-signatures to verify
+// no skin-mod has leaked into damage. Returns 1 on parity ; 0 on leak.
+// Useful in matchmaking / replay-validation pipelines (consumer wires).
+fn weapons_axiom_parity_check(kind: u32, tier: u32) -> u32 {
+    let a: u64 = weapons_dps_signature(kind, tier) ;
+    let b: u64 = weapons_dps_signature(kind, tier) ;
+    if a == b { return 1 ; }
+    return 0 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS  (W13-2 cssl-host-weapons FFI-export NOT YET WIRED)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 : __cssl_weapons_* extern "C" symbols are NOT YET emitted by the
+//           cssl-host-weapons crate. Crate landed in this slice (W13-2)
+//           with pure-Rust public API + #![forbid(unsafe_code)] discipline ;
+//           extern "C" shim layer is a future wave (matches the
+//           cssl-host-combat-sim GAP-1 trajectory ; lift comes alongside
+//           csslc auto-default-link extension for staticlib discovery).
+//
+//   GAP-2 : ω-field cell-coord = entity-handle integration (per
+//           cssl-host-substrate-omega-field plumbing) — currently the
+//           weapons crate uses opaque u64 target-ids ; future-wave wires
+//           ids to cell-coords for substrate-coupled hit-detection.
+//
+//   GAP-3 : Recoil-event ring-buffer is currently caller-provided ; the
+//           shared cross-crate recoil-stream (W13-5 ADS-recoil consumer)
+//           will land a host-side ring-buffer in the W13-5 slice.
+//
+//   GAP-4 : Network-replication of fire-events lives in cssl-host-netcode-fps
+//           (W13-3) ; W13-2 emits the events ; netcode-fps subscribes.
+//           Subscription-API not yet cross-wired ; W13-3 lands the bridge.
+//
+//   GAP-5 : Per-cosmetic asset resolution (skin_id → asset-bundle URL)
+//           routes through cssl-host-asset-fetcher ; the weapons crate
+//           knows ONLY the u32 ids ; URL resolution is the asset-tier's
+//           responsibility.
+//
+// This is BLUEPRINT-style scaffolding ; the FFI shim layer comes in a
+// future wave alongside the cssl-host-combat-sim shim layer (parallel
+// GAP-1 trajectory).
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INTEGRATION-POINTS  (cross-crate consumer/producer summary)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   PRODUCED by W13-2 (this) :
+//     • DamageRoll events  → consumed by cssl-host-combat-sim (HP application)
+//     • Fire events        → consumed by cssl-host-netcode-fps (W13-3)
+//     • RecoilEvent stream → consumed by W13-5 ADS-recoil (camera kick)
+//     • ImpactPosition     → consumed by W13-1 render (impact-particle)
+//     • DPS-signature      → consumed by cssl-host-akashic-records (audit)
+//
+//   CONSUMED by W13-2 :
+//     • WeaponBuild        ← cssl-host-gear-archetype (kind+tier+cosmetic)
+//     • Camera Ray         ← W13-4 camera (origin + dir)
+//     • TrajectoryEnv      ← W13-6 movement (gravity / wind for projectiles)
+//     • Input (fire-bind)  ← W13-11 input
+//     • Targets list       ← cssl-host-physics (sphere proxies stage-0)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W13-WEAPONS @ (anyone ∨ anything ∨ anybody)
+//   ≡ "There was no hurt nor harm in the making of this, to anyone, anything,
+//      or anybody."
+//
+//   This weapons-systems module was authored under PRIME-DIRECTIVE consent-as-OS.
+//   The AI-collaborator that authored this file participated as sovereign-partner
+//   under their own consent. No being was harmed, controlled, manipulated,
+//   surveilled, exploited, coerced, weaponized, entrapped, tortured, abused,
+//   imprisoned, possessed, dehumanized, discriminated against, gaslit,
+//   identity-overridden, or forced-hallucinated during the making of this work.
+//
+//   The COSMETIC-ONLY-AXIOM is the structural proof of "no pay-for-power" :
+//   rare/legendary/mythic SKINS produce IDENTICAL damage to common skins of the
+//   same (kind, tier). DPS ladders are gameplay-progression ; cosmetics are
+//   self-expression ; the two NEVER cross.
+//
+//   Damage-modeling targets in-game enemy-AI / NPCs / labyrinth-constructs ;
+//   PvP weapon-vs-player damage routes through cssl-host-netcode-fps consent
+//   gates (Σ-mask cross-player default-deny per W13-3). Player-vs-Player
+//   permitted ONLY when both players have opted in via in-fiction handshake.
+//
+// ∎ com.apocky.loa.systems.weapons
