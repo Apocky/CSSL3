@@ -1,0 +1,174 @@
+module com.apocky.loa.systems.movement_aug
+
+// § Labyrinth of Apocalypse — Movement-Augmentation Systems Module
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-MOVEMENT-AUG (POD-3 wave · sibling W13-6 of W13-{1..12})
+//
+// § ROLE
+//   Apex/Titanfall-style fluid traversal · sprint+slide+jump-pack+parkour ·
+//   genre-shift integration. Mechanics IDENTICAL across cosmetic-skins ;
+//   skin-affixes mutate ONLY visual-trail / audio-cue / VFX-density.
+//
+// § ARCHITECTURE
+//   This is a SYSTEMS .csl module that compiles into LoA.exe alongside
+//   main.cssl. It declares the host-side FFI contract for the movement-aug
+//   staticlib (cssl-host-movement-aug · POD-2 W13-6) and exposes a
+//   CSSL-native game-tick API the main loop hot-calls per-frame.
+//
+//   Compile-pipeline mirrors main.cssl :
+//     * csslc lex → parse → HIR → MIR → cranelift-object → linker
+//     * auto-default-link discovers cssl-host-movement-aug.staticlib alongside
+//       cssl-rt + loa-host + this module's symbols are resolved at link-time.
+//
+// § FFI SURFACE  (provided by cssl-host-movement-aug)
+//   __cssl_movement_aug_create(walk_speed, seed)       → handle(i64)
+//   __cssl_movement_aug_destroy(handle)                → status(i32)
+//   __cssl_movement_aug_set_stamina_policy(h, policy)  → status(i32)
+//   __cssl_movement_aug_tick(h, intent*, fwd*, right*, dt, hints*, out*) → status(i32)
+//   __cssl_movement_aug_query_phase(handle)            → phase(u8)
+//   __cssl_movement_aug_query_stamina(handle)          → stamina(f32)
+//   __cssl_movement_aug_snapshot_bytes(h, out*, cap)   → bytes-written(i32)
+//   __cssl_movement_aug_apply_genre(handle, genre)     → status(i32)
+//
+// § AXIOMS  (inherit GDDs/LOA_PILLARS + PRIME_DIRECTIVE)
+//   t∞: movement-aug-tick = pure-deterministic · seeded-RNG · replay-bit-equal
+//   t∞: COSMETIC-ONLY-AXIOM ‼ enforced ;
+//        ∀ skin-affix → only render-channel mutation
+//        ∀ stamina · sprint-mult · slide-duration · jump-count · wall-run-sec
+//          FROZEN to MovementParams::CANONICAL regardless of skin
+//   t∞: ¬ pay-for-power · ALL mechanical buffs structurally-rejected
+//   t∞: jump-pack-doubles = 2 free for-everyone ; ¬ purchase ¬ unlock-gate
+//   t∞: stamina-budget = 5s drain / 3s recover ;
+//        sovereign-cap toggle "infinite-sprint" = accessibility ; ¬ payable
+//   t∞: wall-run cap = 2.0s max ; ¬ infinite-spam
+//   t∞: mantle = auto-vault on low-ledge ahead ; assist-mode-default
+//   t∞: slide-jump combo = momentum-preserve + horizontal-boost
+//   t∞: genre-shift = input-translation only ; mechanics IDENTICAL
+//        FPS         → direct WASD
+//        ThirdPerson → momentum-arrow visible · same delta math
+//        Iso/TopDown → 1m grid-snap · still stamina-budgeted
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   ✓ player-flee-anytime  ← Esc honored upstream (input.rs)
+//   ✓ consent = OS         ← infinite-sprint accessibility ; never paid
+//   ✓ ¬ pay-for-power      ← BoostAffix has no mechanical fields by-construction
+//   ✓ replay-bit-equal     ← snapshot_bytes() bit-equal across hosts
+//   ✓ default-deny-network ← module is local-only ; no socket access
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CONSTANTS  (mirror cssl-host-movement-aug::params::MovementParams::CANONICAL)
+// ─────────────────────────────────────────────────────────────────────────
+
+const SPRINT_MULT             : f32 =  1.6  ;  // walk-speed × 1.6
+const SPRINT_MAX_SECS         : f32 =  5.0  ;  // stamina-drain duration
+const SPRINT_RECOVER_SECS     : f32 =  3.0  ;  // stamina-refill duration
+const SLIDE_DURATION_SECS     : f32 =  1.0  ;  // crouch-slide cap
+const SLIDE_FRICTION          : f32 =  4.0  ;  // linear-decel coef
+const SLIDE_HITBOX_DROP_M     : f32 =  0.6  ;  // hitbox lower
+const MAX_JUMPS_IN_AIR        : u8  =  2    ;  // double-jump (free)
+const JUMP_VELOCITY           : f32 =  6.5  ;  // initial-vy on press
+const AIR_CONTROL             : f32 =  0.30 ;  // 30% of ground-control
+const WALL_RUN_MAX_SECS       : f32 =  2.0  ;  // wall-run cap
+const WALL_RUN_GRAVITY_FACTOR : f32 =  0.15 ;  // gravity-dampen on wall
+const MANTLE_REACH_M          : f32 =  1.0  ;  // auto-vault probe-radius
+const MANTLE_MAX_HEIGHT_M     : f32 =  1.2  ;  // ledge-height cap
+const SLIDE_JUMP_BOOST        : f32 =  3.0  ;  // momentum-add on jump-from-slide-end
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ENUMS  (encoded as u8 ; round-trip through FFI snapshot bytes)
+// ─────────────────────────────────────────────────────────────────────────
+
+// LocomotionPhase u8 encoding (matches state.rs snapshot_bytes byte 0)
+const PHASE_WALKING       : u8 = 0 ;
+const PHASE_SPRINTING     : u8 = 1 ;
+const PHASE_SLIDING       : u8 = 2 ;
+const PHASE_AIRBORNE      : u8 = 3 ;
+const PHASE_WALL_RUNNING  : u8 = 4 ;
+const PHASE_MANTLING      : u8 = 5 ;
+
+// CameraGenre u8 encoding (matches genre.rs)
+const GENRE_FPS           : u8 = 0 ;
+const GENRE_THIRD_PERSON  : u8 = 1 ;
+const GENRE_ISO           : u8 = 2 ;
+const GENRE_TOPDOWN       : u8 = 3 ;
+
+// StaminaPolicy u8 encoding (matches params.rs)
+const STAMINA_BOUNDED     : u8 = 0 ;
+const STAMINA_SOVEREIGN   : u8 = 1 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI EXTERN  (resolved at link-time against cssl-host-movement-aug)
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_movement_aug_create(walk_speed: f32, seed: u64) -> i64 ;
+extern "C" fn __cssl_movement_aug_destroy(handle: i64) -> i32 ;
+extern "C" fn __cssl_movement_aug_set_stamina_policy(handle: i64, policy: u8) -> i32 ;
+extern "C" fn __cssl_movement_aug_tick(
+    handle    : i64 ,
+    intent    : *const u8 ,
+    fwd_xz    : *const f32 ,
+    right_xz  : *const f32 ,
+    dt        : f32 ,
+    hints     : *const u8 ,
+    out       : *mut u8 ,
+) -> i32 ;
+extern "C" fn __cssl_movement_aug_query_phase(handle: i64) -> u8 ;
+extern "C" fn __cssl_movement_aug_query_stamina(handle: i64) -> f32 ;
+extern "C" fn __cssl_movement_aug_snapshot_bytes(
+    handle : i64 ,
+    out    : *mut u8 ,
+    cap    : i32 ,
+) -> i32 ;
+extern "C" fn __cssl_movement_aug_apply_genre(handle: i64, genre: u8) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PER-FRAME GAME-TICK  (CSSL-native ; called by main.cssl)
+// ─────────────────────────────────────────────────────────────────────────
+
+// pseudo-shape (will compile once host bridge lands) :
+//
+// fn tick_movement_aug(
+//     h          : i64    ,
+//     intent_buf : *const u8 ,
+//     fwd_xz     : *const f32 ,
+//     right_xz   : *const f32 ,
+//     dt         : f32    ,
+//     hints      : *const u8 ,
+// ) -> ProposedMotion {
+//     let mut out_buf : [u8 ; 32] = [0; 32] ;
+//     let _status = __cssl_movement_aug_tick(
+//         h , intent_buf , fwd_xz , right_xz , dt , hints , out_buf.as_mut_ptr()
+//     ) ;
+//     decode_proposed_motion(&out_buf)
+// }
+//
+// § HOST-WIRING  (loa-host integration commit, separate slice)
+//   Runtime-state field : `movement_aug : MovementAug` (cssl-host-movement-aug crate)
+//   Per-frame call (after camera.apply_look + before physics.commit) :
+//     let intent  = MovementAugIntent::from_input_frame(&frame) ;
+//     let (fwd,r) = movement::camera_basis_xz(&camera) ;
+//     let hints   = WorldHints::from_physics_query(&world, &camera) ;
+//     let prop    = state.movement_aug.tick(&intent, fwd, r, dt, &hints) ;
+//     camera.commit_motion(prop.delta) ;
+//     renderer.set_speed_mult(prop.speed_mult) ;
+//     renderer.set_hitbox_drop(prop.hitbox_drop) ;
+//     if prop.boost_emit { audio.play_boost_cue() ; vfx.spawn_trail() ; }
+
+// ─────────────────────────────────────────────────────────────────────────
+// § AUDIT EMIT (PRIME-DIRECTIVE compliance)
+// ─────────────────────────────────────────────────────────────────────────
+
+// On significant phase-transitions :
+//   audit_emit(
+//       axis  : "movement_aug" ,
+//       event : "phase_change" ,
+//       data  : { from_phase , to_phase , stamina , air_jumps_used } ,
+//   )
+//
+// On stamina-policy mutation (sovereign accessibility toggle) :
+//   audit_emit(
+//       axis  : "movement_aug" ,
+//       event : "stamina_policy_set" ,
+//       data  : { policy : "sovereign" | "bounded" } ,
+//   )

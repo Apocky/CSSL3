@@ -200,6 +200,68 @@ impl Default for MovementParams {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// § T11-W13-MOVEMENT-AUG : sprint + slide + jump-pack + parkour.
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Apex/Titanfall-style fluid traversal lives in the path-DEP-FREE sister
+// crate `cssl-host-movement-aug`. Here we only define light SHIM helpers
+// so this module can produce the camera-basis vectors + intent struct that
+// the augmentation engine ingests, WITHOUT taking a path-dep on the new
+// crate (loa-host already has 30+ deps).
+//
+// The integration commit will add `cssl-host-movement-aug = { path = ... }`
+// to Cargo.toml and a `MovementAugBridge` field on the runtime state.
+// Until that integration lands, the helpers below are call-site-ready and
+// match the exact signatures of `cssl_host_movement_aug::MovementAug::tick`.
+
+/// Camera basis projected to the horizontal plane, ready to feed
+/// `MovementAug::tick(.., forward_xz, right_xz, ..)`.
+///
+/// Returns `(forward_xz, right_xz)` where each is a 2-element [x, z] pair.
+/// Y components are dropped (movement-aug operates on the floor plane).
+#[must_use]
+pub fn camera_basis_xz(camera: &Camera) -> ([f32; 2], [f32; 2]) {
+    let f = camera.forward();
+    let r = camera.right();
+    let f_mag = f[0].hypot(f[2]).max(1.0e-6);
+    let r_mag = r[0].hypot(r[2]).max(1.0e-6);
+    (
+        [f[0] / f_mag, f[2] / f_mag],
+        [r[0] / r_mag, r[2] / r_mag],
+    )
+}
+
+/// Light shim for the movement-aug intent struct (kept type-compatible with
+/// `cssl_host_movement_aug::MovementIntent` field-by-field). Construct from
+/// an `InputFrame` ; the host's main loop then passes this to the aug-engine.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct MovementAugIntent {
+    pub forward: f32,
+    pub right: f32,
+    pub sprint_held: bool,
+    pub crouch_held: bool,
+    pub jump_pressed: bool,
+    pub mantle_pressed: bool,
+}
+
+impl MovementAugIntent {
+    /// Project an `InputFrame` into the augmentation engine's intent shape.
+    #[must_use]
+    pub fn from_input_frame(frame: &crate::input::InputFrame) -> Self {
+        Self {
+            forward: frame.forward,
+            right: frame.right,
+            sprint_held: frame.sprint,
+            crouch_held: frame.crouch_held,
+            jump_pressed: frame.jump_pressed,
+            // Auto-mantle is the default ; the dedicated press is reserved
+            // for an accessibility-input wave that doesn't exist yet.
+            mantle_pressed: false,
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp, clippy::suboptimal_flops, clippy::imprecise_flops)]
 mod tests {
@@ -294,5 +356,41 @@ mod tests {
         // 200000 px·sensitivity = 200000 · 0.0025 = 500 rad → many tau-wraps.
         c.apply_look(&frame_mouse(200_000.0, 0.0));
         assert!(c.yaw.abs() < std::f32::consts::TAU + 1e-3);
+    }
+
+    // § T11-W13-MOVEMENT-AUG shim coverage ──────────────────────────────────
+
+    #[test]
+    fn camera_basis_xz_at_yaw_zero() {
+        let c = Camera::new();
+        let (fwd, right) = camera_basis_xz(&c);
+        // yaw=0, pitch=0 → forward = (0, 0, -1) ; right = (1, 0, 0)
+        assert!(fwd[0].abs() < 1e-6);
+        assert!((fwd[1] - (-1.0)).abs() < 1e-6);
+        assert!((right[0] - 1.0).abs() < 1e-6);
+        assert!(right[1].abs() < 1e-6);
+    }
+
+    #[test]
+    fn movement_aug_intent_propagates_input_frame_flags() {
+        let mut frame = InputFrame::default();
+        frame.forward = 1.0;
+        frame.right = -0.5;
+        frame.sprint = true;
+        frame.crouch_held = true;
+        frame.jump_pressed = true;
+        let intent = MovementAugIntent::from_input_frame(&frame);
+        assert!((intent.forward - 1.0).abs() < 1e-6);
+        assert!((intent.right - (-0.5)).abs() < 1e-6);
+        assert!(intent.sprint_held);
+        assert!(intent.crouch_held);
+        assert!(intent.jump_pressed);
+        assert!(!intent.mantle_pressed);
+    }
+
+    #[test]
+    fn movement_aug_intent_default_idle() {
+        let intent = MovementAugIntent::from_input_frame(&InputFrame::default());
+        assert_eq!(intent, MovementAugIntent::default());
     }
 }

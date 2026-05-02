@@ -410,6 +410,11 @@ pub struct InputState {
     pub tour_requested: bool,
     /// Set when C was pressed (toggle CFER atmospheric pass).
     pub cfer_toggle_pressed: bool,
+    /// § T11-W13-MOVEMENT-AUG : Space-press EDGE — set true on key-DOWN of
+    /// the Space key, drained by `consume_frame()`. The movement-aug engine
+    /// consumes this for double-jump + slide-jump edges (NOT the held_space
+    /// state, which drives the vertical axis for fly-mode).
+    pub jump_pressed_edge: bool,
     /// § T11-WAVE3-TEXTINPUT : in-game text-input box state. While
     /// `text_input.focused` is true, all key events route here and the
     /// camera/menu layer is suspended.
@@ -459,6 +464,7 @@ impl InputState {
             video_toggle_requested: false,
             tour_requested: false,
             cfer_toggle_pressed: false,
+            jump_pressed_edge: false,
             text_input: TextInputState::new(),
             held_w: false,
             held_a: false,
@@ -575,6 +581,11 @@ impl InputState {
                 self.recompute_axes();
             }
             VirtualKey::Space => {
+                // § T11-W13-MOVEMENT-AUG : detect rising-edge for jump
+                // (movement-aug consumes ; held_space still drives `up` axis).
+                if pressed && !self.held_space {
+                    self.jump_pressed_edge = true;
+                }
                 self.held_space = pressed;
                 self.recompute_axes();
             }
@@ -851,6 +862,11 @@ impl InputState {
             video_toggle_requested: self.video_toggle_requested,
             tour_requested: self.tour_requested,
             cfer_toggle_pressed: self.cfer_toggle_pressed,
+            // § T11-W13-MOVEMENT-AUG :
+            //   crouch_held mirrors LCtrl (the existing crouch key) ;
+            //   jump_pressed is the per-frame Space-press EDGE (not held).
+            crouch_held: self.held_lctrl,
+            jump_pressed: self.jump_pressed_edge,
             text_input,
         };
         self.yaw_delta = 0.0;
@@ -870,6 +886,8 @@ impl InputState {
         self.video_toggle_requested = false;
         self.tour_requested = false;
         self.cfer_toggle_pressed = false;
+        // § T11-W13-MOVEMENT-AUG : jump-edge fires once per Space-press.
+        self.jump_pressed_edge = false;
         frame
     }
 }
@@ -909,6 +927,12 @@ pub struct InputFrame {
     pub tour_requested: bool,
     /// § T11-LOA-USERFIX : C cfer-atmospheric-toggle edge.
     pub cfer_toggle_pressed: bool,
+    /// § T11-W13-MOVEMENT-AUG : crouch held (C / LCtrl). Slides if crouch
+    /// pressed while sprinting & grounded ; otherwise crouches the hitbox.
+    pub crouch_held: bool,
+    /// § T11-W13-MOVEMENT-AUG : jump pressed edge (Space). Consumed by the
+    /// movement-augmentation engine for double-jumps + slide-jump combos.
+    pub jump_pressed: bool,
     /// § T11-WAVE3-TEXTINPUT : per-frame text-input snapshot
     /// (focus state + any submission).
     pub text_input: TextInputFrame,
@@ -940,6 +964,8 @@ impl Default for InputFrame {
             video_toggle_requested: false,
             tour_requested: false,
             cfer_toggle_pressed: false,
+            crouch_held: false,
+            jump_pressed: false,
             text_input: TextInputFrame::default(),
         }
     }
