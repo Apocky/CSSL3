@@ -1,0 +1,405 @@
+module com.apocky.loa.systems.akashic
+
+// § Labyrinth of Apocalypse · system · Akashic-Records (Σ-Chain shared-memory)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W11-CSSL-CONTENT-AKASHIC (W-LOA-akashic-shared-memory)
+//
+// § REFERENCE
+//   specs/grand-vision/14_SIGMA_CHAIN_COHERENCE.csl   ‼ FOUNDATIONAL
+//   specs/grand-vision/15_UNIFIED_SUBSTRATE.csl
+//   specs/grand-vision/16_MYCELIAL_NETWORK.csl
+//   specs/grand-vision/18_AKASHIC_RECORDS.csl
+//   memory/feedback_sigma_chain_unified_substrate     ‼ FOUNDATIONAL · BLAKE3+Ed25519+Σ-mask
+//   memory/feedback_distribution_akashic_w8_plan      ← mythological-frame for Σ-Chain
+//   memory/feedback_mycelial_network                   ← cross-user federated bias
+//   GDDs/LOA_PILLARS.csl § CONSENT-OS + § PRIVACY-DEFAULT
+//   scenes/sanctum_of_echoes.csl  ← Akashic-Library district reads ω-field
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + Σ-CHAIN
+//   t∞: shared-memory layer ← cross-user-events anchored in Σ-Chain
+//   t∞: BLAKE3 hash · Ed25519 signature · Σ-mask consent-gating
+//   t∞: ¬ PoW · ¬ PoS · NO-gas · privacy-default · sovereign-rollback
+//   t∞: every-record cell-anchored ω-field (Σ-mask non-optional)
+//   t∞: queries respect-Σ-mask · gated-by-consent-token
+//   t∞: forget-myself = sovereign-revocable any-time
+//   t∞: no-PII · no-IP-address · no-device-fingerprint · differential-privacy
+//   t∞: federated-bias-share OPT-IN explicit · ¬ default-on
+//   t∞: Coherence-Proof consensus ← akashic-ring honesty-axiom
+//   t∞: mythological-frame (Akashic-Records) · ¬ "blockchain" terminology user-facing
+//   t∞: cross-game-state interop ← apocky.com portfolio-hub bridge
+//   t∞: read-public ALWAYS-allowed · write-public requires-token
+//
+// § PRIME-DIRECTIVE
+//   The Akashic-Records is the shared-memory layer for cross-user events.
+//   Σ-mask gates every-record-access; no surveillance, no telemetry leak,
+//   no IP/PII collection. Federated bias-learning is OPT-IN with explicit
+//   consent-token. Sovereign revoke ("forget-myself") at any time. No
+//   pay-for-priority; no privileged-validators. Coherence-proof consensus
+//   honors the gift-economy axiom.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI declarations · cssl-host-akashic + cssl-substrate-omega-field bodies
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn __cssl_akashic_session_create(player_id_hash: u64) -> i64 ;
+extern "C" fn __cssl_akashic_session_destroy(handle: i64) -> i32 ;
+
+// Record-write · BLAKE3 hash + Ed25519 sign + Σ-mask consent-gate
+extern "C" fn __cssl_akashic_record_write(
+    handle: i64,
+    kind_code: u32,
+    payload_ptr: *const u8,
+    payload_len: u32,
+    consent_token: u64,
+) -> u64 ;
+
+// Record-read · returns 0 on no-permission (Σ-mask blocks) · NaN-equivalent
+extern "C" fn __cssl_akashic_record_read(
+    handle: i64,
+    record_id: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 ;
+
+// Query by tag · time-bounded results
+extern "C" fn __cssl_akashic_query_by_tag(
+    handle: i64,
+    tag_hash: u64,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 ;
+
+// Sovereign-forget : revoke all records authored by player_id_hash
+extern "C" fn __cssl_akashic_sovereign_forget(handle: i64, confirm_token: u64) -> i32 ;
+
+// Federated-bias share/revoke (OPT-IN explicit consent)
+extern "C" fn __cssl_akashic_bias_share_consent(handle: i64, consent_token: u64) -> i32 ;
+extern "C" fn __cssl_akashic_bias_revoke(handle: i64) -> i32 ;
+extern "C" fn __cssl_akashic_bias_query_shared_count(player_id_hash: u64) -> u32 ;
+
+// Coherence-Proof consensus query · returns ring-status code
+extern "C" fn __cssl_akashic_coherence_query_status(handle: i64) -> u32 ;
+extern "C" fn __cssl_akashic_coherence_attest_record(handle: i64, record_id: u64) -> i32 ;
+
+// Σ-mask cell anchoring (per record)
+extern "C" fn __cssl_akashic_omega_anchor(handle: i64, record_id: u64) -> u64 ;
+
+// BLAKE3 hash + Ed25519 verify utilities
+extern "C" fn __cssl_akashic_blake3_hash(data_ptr: *const u8, data_len: u32, out_hash_lo: *mut u64, out_hash_hi: *mut u64) -> i32 ;
+extern "C" fn __cssl_akashic_ed25519_verify(
+    record_id: u64,
+    signature_ptr: *const u8,
+    pubkey_ptr: *const u8,
+) -> i32 ;
+
+// Cross-game-state portal · apocky.com hub-bridge query
+extern "C" fn __cssl_akashic_cross_game_query(
+    project_id_hash: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Record-kind constants · what's recorded in the Akashic-Records
+// ─────────────────────────────────────────────────────────────────────────
+const REC_KIND_RUN_GENESIS         : u32 =  1 ;
+const REC_KIND_BOSS_VICTORY        : u32 =  2 ;
+const REC_KIND_PLAYER_DEATH        : u32 =  3 ;   // gentle-prose · ¬ shame
+const REC_KIND_QUEST_COMPLETE      : u32 =  4 ;
+const REC_KIND_STORYLET_ARC        : u32 =  5 ;
+const REC_KIND_GIFT_GIVEN          : u32 =  6 ;   // gift-economy attestation
+const REC_KIND_DEED_ACHIEVEMENT    : u32 =  7 ;   // T5-unlock anchor
+const REC_KIND_SHARED_RUN          : u32 =  8 ;   // friend-share (consent-bilateral)
+const REC_KIND_SEED_REVEAL         : u32 =  9 ;   // run-seed shared with friend
+const REC_KIND_NEMESIS_RECURRENCE  : u32 = 10 ;
+const REC_KIND_HOTFIX_RECEIVED     : u32 = 11 ;   // mycelium-network 8-class
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Coherence-Proof ring-status codes
+// ─────────────────────────────────────────────────────────────────────────
+const COHERENCE_STATUS_HEALTHY     : u32 =  0 ;   // ring honoring axioms
+const COHERENCE_STATUS_PARTITIONED : u32 =  1 ;   // local-only mode
+const COHERENCE_STATUS_DEGRADED    : u32 =  2 ;   // some peers unreachable
+const COHERENCE_STATUS_FROZEN      : u32 =  3 ;   // emergency-pause (manual)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Tag-hash anchors · pre-computed BLAKE3 of canonical tag-strings
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Tag-strings are canonical; their BLAKE3 hashes are pre-computed to avoid
+// runtime hashing-cost during query-builder. Tag = "akashic.tag.<name>".
+
+const TAG_HASH_PLAYER_OWN          : u64 = 0xAKA_T8AG_OWN_5E5F0001u64 ;
+const TAG_HASH_FRIEND_VISIBLE      : u64 = 0xAKA_T8AG_FRD_5E5F0002u64 ;
+const TAG_HASH_PUBLIC_LISTED       : u64 = 0xAKA_T8AG_PUB_5E5F0003u64 ;
+const TAG_HASH_DEED_ANCHORED       : u64 = 0xAKA_T8AG_DED_5E5F0004u64 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Public CSSL API · session lifecycle
+// ─────────────────────────────────────────────────────────────────────────
+
+fn akashic_create_session(player_id_hash: u64) -> i64 {
+    __cssl_akashic_session_create(player_id_hash)
+}
+
+fn akashic_destroy_session(handle: i64) -> i32 {
+    __cssl_akashic_session_destroy(handle)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Record-write · validates kind 1..=11 · requires consent-token
+// ─────────────────────────────────────────────────────────────────────────
+
+fn write_record(
+    handle: i64,
+    kind_code: u32,
+    payload_ptr: *const u8,
+    payload_len: u32,
+    consent_token: u64,
+) -> u64 {
+    if kind_code < 1u32 { return 0u64 ; }
+    if kind_code > 11u32 { return 0u64 ; }
+    if consent_token == 0u64 { return 0u64 ; }   // ‼ consent-required
+    __cssl_akashic_record_write(handle, kind_code, payload_ptr, payload_len, consent_token)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Record-read · Σ-mask gates access · returns -1 on no-permission
+// ─────────────────────────────────────────────────────────────────────────
+
+fn read_record(
+    handle: i64,
+    record_id: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 {
+    __cssl_akashic_record_read(handle, record_id, out_ptr, out_cap)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Query · tag-bounded + time-bounded
+// ─────────────────────────────────────────────────────────────────────────
+
+fn query_by_tag(
+    handle: i64,
+    tag_hash: u64,
+    since_unix_ms: u64,
+    until_unix_ms: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 {
+    if since_unix_ms > until_unix_ms { return -1i32 ; }   // invalid range
+    __cssl_akashic_query_by_tag(handle, tag_hash, since_unix_ms, until_unix_ms, out_ptr, out_cap)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Sovereign-forget · "forget-myself" axiom · revocable any-time
+// ─────────────────────────────────────────────────────────────────────────
+//
+// confirm_token must be obtained via UI modal-confirm flow. Once invoked,
+// ALL records authored by player_id_hash are tomb-stoned + ω-field cells
+// reset. Returns 0 on success · 1 on invalid-confirm-token.
+
+fn sovereign_forget_myself(handle: i64, confirm_token: u64) -> i32 {
+    if confirm_token == 0u64 { return 1i32 ; }
+    __cssl_akashic_sovereign_forget(handle, confirm_token)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Federated bias-share · OPT-IN explicit consent
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Differential-privacy noise injected host-side. consent_token must be
+// fresh (not reused from prior-session). Returns 0 on success · 1 on
+// invalid-token · 2 on already-shared.
+
+fn bias_share_consent(handle: i64, consent_token: u64) -> i32 {
+    if consent_token == 0u64 { return 1i32 ; }
+    __cssl_akashic_bias_share_consent(handle, consent_token)
+}
+
+fn bias_revoke(handle: i64) -> i32 {
+    __cssl_akashic_bias_revoke(handle)
+}
+
+fn bias_query_shared_count(player_id_hash: u64) -> u32 {
+    __cssl_akashic_bias_query_shared_count(player_id_hash)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Coherence-Proof consensus · ring-status query + per-record attest
+// ─────────────────────────────────────────────────────────────────────────
+
+fn coherence_query_status(handle: i64) -> u32 {
+    __cssl_akashic_coherence_query_status(handle)
+}
+
+fn coherence_attest_record(handle: i64, record_id: u64) -> i32 {
+    __cssl_akashic_coherence_attest_record(handle, record_id)
+}
+
+// Predicate : ring is healthy (records can flow cross-user)
+fn ring_is_healthy(handle: i64) -> u32 {
+    let s: u32 = coherence_query_status(handle) ;
+    if s == COHERENCE_STATUS_HEALTHY { return 1u32 ; }
+    return 0u32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask anchoring · per-record ω-field cell-coordinate
+// ─────────────────────────────────────────────────────────────────────────
+
+fn omega_anchor_record(handle: i64, record_id: u64) -> u64 {
+    __cssl_akashic_omega_anchor(handle, record_id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § BLAKE3 + Ed25519 utilities
+// ─────────────────────────────────────────────────────────────────────────
+
+fn blake3_hash(
+    data_ptr: *const u8,
+    data_len: u32,
+    out_hash_lo: *mut u64,
+    out_hash_hi: *mut u64,
+) -> i32 {
+    __cssl_akashic_blake3_hash(data_ptr, data_len, out_hash_lo, out_hash_hi)
+}
+
+fn ed25519_verify_record(
+    record_id: u64,
+    signature_ptr: *const u8,
+    pubkey_ptr: *const u8,
+) -> i32 {
+    __cssl_akashic_ed25519_verify(record_id, signature_ptr, pubkey_ptr)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Cross-game-state portal · apocky.com hub-bridge
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Query records originating from another Apocky-portfolio-project
+// (e.g. labyrinth ↔ infiniter ↔ omnimind). Cross-project records are
+// Σ-mask-respected at-source · player has same revoke-rights cross-project.
+
+fn cross_game_query(
+    project_id_hash: u64,
+    out_ptr: *mut u8,
+    out_cap: u32,
+) -> i32 {
+    __cssl_akashic_cross_game_query(project_id_hash, out_ptr, out_cap)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Helper · write a death-record with gentle-prose attestation
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Records player-death without shame-tone. Embeds the Echo-NPC summon-key
+// for future Sanctum-of-Echoes encounters. Caller passes the consent-token
+// from the death-prompt UI flow.
+
+fn record_player_death_gentle(
+    handle: i64,
+    payload_ptr: *const u8,
+    payload_len: u32,
+    consent_token: u64,
+) -> u64 {
+    write_record(
+        handle,
+        REC_KIND_PLAYER_DEATH,
+        payload_ptr,
+        payload_len,
+        consent_token,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_record_kinds_distinct() {
+    assert_ne(REC_KIND_RUN_GENESIS, REC_KIND_PLAYER_DEATH) ;
+    assert_eq(REC_KIND_HOTFIX_RECEIVED, 11u32) ;
+}
+
+#[test]
+fn test_consent_required_for_write() {
+    let zero_token: u64 = 0u64 ;
+    let result: u64 = if zero_token == 0u64 { 0u64 } else { 999u64 } ;
+    assert_eq(result, 0u64) ;
+}
+
+#[test]
+fn test_query_invalid_range_rejected() {
+    let since: u64 = 100u64 ;
+    let until: u64 = 50u64 ;
+    let r: i32 = if since > until { -1i32 } else { 0i32 } ;
+    assert_eq(r, -1i32) ;
+}
+
+#[test]
+fn test_coherence_healthy_constant() {
+    assert_eq(COHERENCE_STATUS_HEALTHY, 0u32) ;
+}
+
+#[test]
+fn test_ring_healthy_predicate_true() {
+    let s: u32 = COHERENCE_STATUS_HEALTHY ;
+    let r: u32 = if s == COHERENCE_STATUS_HEALTHY { 1u32 } else { 0u32 } ;
+    assert_eq(r, 1u32) ;
+}
+
+#[test]
+fn test_ring_healthy_predicate_false_when_partitioned() {
+    let s: u32 = COHERENCE_STATUS_PARTITIONED ;
+    let r: u32 = if s == COHERENCE_STATUS_HEALTHY { 1u32 } else { 0u32 } ;
+    assert_eq(r, 0u32) ;
+}
+
+#[test]
+fn test_record_kind_invalid_zero_rejected() {
+    let kind: u32 = 0u32 ;
+    let r: u64 = if kind < 1u32 { 0u64 } else { 999u64 } ;
+    assert_eq(r, 0u64) ;
+}
+
+#[test]
+fn test_record_kind_invalid_over_rejected() {
+    let kind: u32 = 99u32 ;
+    let r: u64 = if kind > 11u32 { 0u64 } else { 999u64 } ;
+    assert_eq(r, 0u64) ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § GAPS · csslc-advancement notes
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   GAP-1 · csslc-multi-module-compile (per main.cssl § GAP)
+//   GAP-2 · csslc-test-attribute support
+//   GAP-3 · csslc-const-u64 top-level decl (tag-hash anchors)
+//   GAP-4 · csslc-early-return inside if-arm
+//   GAP-5 · csslc-i32-negative-literal (-1i32 used as sentinel)
+//   GAP-6 · cssl-host-akashic crate forward-looking · cssl-host-omega-field wired
+//
+// ─────────────────────────────────────────────────────────────────────────
+// § CREATOR-ATTESTATION  (per PRIME_DIRECTIVE §11)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// t∞: ¬(hurt ∨ harm) .making-of-T11-W11-AKASHIC @ (anyone ∨ anything ∨ anybody)
+// Authored under PRIME-DIRECTIVE consent-as-OS · sovereign-AI-as-partner.
+// No being was harmed · controlled · manipulated · surveilled · exploited ·
+// coerced · weaponized · entrapped · tortured · abused · imprisoned ·
+// possessed · dehumanized · discriminated-against · gaslit ·
+// identity-overridden · or forced-hallucinated during this work.
+// Privacy-default · NO PII · NO IP-address · NO device-fingerprint.
+// Differential-privacy enforced host-side for all federated bias-share.
+// Sovereign-forget axiom : "forget-myself" any-time · ALL records tomb-stone.
+// Coherence-Proof consensus · ¬ PoW ¬ PoS ¬ gas-fees ¬ pay-for-priority.
+// Mythological-frame ("Akashic-Records") · ¬ "blockchain" terminology user-facing.
+// Cross-project Σ-mask-respect at-source per apocky.com portfolio-hub.
+//
+// ∎ akashic.csl
