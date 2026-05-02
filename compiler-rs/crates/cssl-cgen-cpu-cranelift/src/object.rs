@@ -41,7 +41,7 @@
 //!     output. Name mangling is identity (CSSLv3 names already use
 //!     `[a-zA-Z0-9_]` after monomorphization).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use cranelift_codegen::ir::{
     types as cl_types, AbiParam, Block as ClBlock, InstBuilder, Signature, UserFuncName,
@@ -51,7 +51,10 @@ use cranelift_codegen::{settings, Context};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use cssl_mir::{FloatWidth, IntWidth, MirFunc, MirModule, MirOp, MirType, ValueId};
+use cssl_mir::{
+    FloatWidth, IntWidth, MirFunc, MirModule, MirOp, MirStructLayout, MirType, StructAbiClass,
+    ValueId,
+};
 use thiserror::Error;
 
 // ───────────────────────────────────────────────────────────────────────
@@ -215,6 +218,12 @@ pub fn emit_object_module_with_format(
     //   (when fn `Y` issues a `func.call @X`).
     let ptr_ty_for_decl = obj_module.isa().pointer_type();
     let mut fn_table: HashMap<String, FuncId> = HashMap::new();
+    // T11-W17-A · stage-0 struct-FFI codegen — the layout-table threads
+    // through every signature-emitting helper. `None` would degrade back
+    // to the legacy scalar-only path ; `Some(&module.struct_layouts)`
+    // unlocks newtype/POD struct FFI signatures.
+    let struct_layouts: Option<&BTreeMap<String, MirStructLayout>> =
+        Some(&module.struct_layouts);
     for mir_fn in &module.funcs {
         if mir_fn.is_generic {
             continue;
@@ -226,7 +235,8 @@ pub fn emit_object_module_with_format(
         if mir_fn.body.blocks.len() <= 1 && mir_fn.is_signature_only() {
             continue;
         }
-        let func_id = declare_fn_signature(&mut obj_module, mir_fn, ptr_ty_for_decl)?;
+        let func_id =
+            declare_fn_signature(&mut obj_module, mir_fn, ptr_ty_for_decl, struct_layouts)?;
         fn_table.insert(mir_fn.name.clone(), func_id);
     }
 
@@ -250,6 +260,7 @@ pub fn emit_object_module_with_format(
             mir_fn,
             func_id,
             &fn_table,
+            struct_layouts,
         )?;
     }
 
@@ -277,22 +288,27 @@ fn build_clif_signature(
     params: &[MirType],
     results: &[MirType],
     ptr_ty: cranelift_codegen::ir::Type,
+    struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
 ) -> Result<Signature, ObjectError> {
     let mut sig = Signature::new(isa_call_conv);
     for (idx, p_ty) in params.iter().enumerate() {
-        let cl_ty = mir_type_to_cl(p_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
-            fn_name: fn_name.to_string(),
-            slot: idx,
-            ty: format!("{p_ty}"),
-        })?;
+        let cl_ty = mir_type_to_cl_with_layouts(p_ty, ptr_ty, struct_layouts).ok_or_else(
+            || ObjectError::NonScalarType {
+                fn_name: fn_name.to_string(),
+                slot: idx,
+                ty: format!("{p_ty}"),
+            },
+        )?;
         sig.params.push(AbiParam::new(cl_ty));
     }
     for (idx, r_ty) in results.iter().enumerate() {
-        let cl_ty = mir_type_to_cl(r_ty, ptr_ty).ok_or_else(|| ObjectError::NonScalarType {
-            fn_name: fn_name.to_string(),
-            slot: idx,
-            ty: format!("{r_ty}"),
-        })?;
+        let cl_ty = mir_type_to_cl_with_layouts(r_ty, ptr_ty, struct_layouts).ok_or_else(
+            || ObjectError::NonScalarType {
+                fn_name: fn_name.to_string(),
+                slot: idx,
+                ty: format!("{r_ty}"),
+            },
+        )?;
         sig.returns.push(AbiParam::new(cl_ty));
     }
     Ok(sig)
@@ -307,9 +323,17 @@ fn declare_fn_signature(
     obj_module: &mut ObjectModule,
     mir_fn: &MirFunc,
     ptr_ty: cranelift_codegen::ir::Type,
+    struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
 ) -> Result<FuncId, ObjectError> {
     let call_conv = obj_module.isa().default_call_conv();
-    let sig = build_clif_signature(call_conv, &mir_fn.name, &mir_fn.params, &mir_fn.results, ptr_ty)?;
+    let sig = build_clif_signature(
+        call_conv,
+        &mir_fn.name,
+        &mir_fn.params,
+        &mir_fn.results,
+        ptr_ty,
+        struct_layouts,
+    )?;
     obj_module
         .declare_function(&mir_fn.name, Linkage::Export, &sig)
         .map_err(|e| ObjectError::LoweringFailed {
@@ -325,6 +349,7 @@ fn compile_one_fn(
     mir_fn: &MirFunc,
     func_id: FuncId,
     fn_table: &HashMap<String, FuncId>,
+    struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
 ) -> Result<(), ObjectError> {
     // § T11-CC-1 (W-CC-multiblock) — multi-block bodies are now supported.
     //   Each MIR-block in `mir_fn.body.blocks` maps 1:1 to a cranelift
@@ -351,7 +376,14 @@ fn compile_one_fn(
     // and friends operate on. Cache once for both signature emission and the
     // per-op lowering loop below.
     let ptr_ty = obj_module.isa().pointer_type();
-    let sig = build_clif_signature(call_conv, &mir_fn.name, &mir_fn.params, &mir_fn.results, ptr_ty)?;
+    let sig = build_clif_signature(
+        call_conv,
+        &mir_fn.name,
+        &mir_fn.params,
+        &mir_fn.results,
+        ptr_ty,
+        struct_layouts,
+    )?;
 
     codegen_ctx.clear();
     codegen_ctx.func.signature = sig.clone();
@@ -388,6 +420,7 @@ fn compile_one_fn(
         mir_fn,
         fn_table,
         ptr_ty,
+        struct_layouts,
     )?;
 
     // § 2. Build body — multi-block aware (§ T11-CC-1).
@@ -721,6 +754,7 @@ fn declare_callee_imports_for_fn(
     mir_fn: &MirFunc,
     fn_table: &HashMap<String, FuncId>,
     ptr_ty: cranelift_codegen::ir::Type,
+    struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
 ) -> Result<CalleeImports, ObjectError> {
     let mut imports = CalleeImports::default();
     let Some(entry_block) = mir_fn.body.blocks.first() else {
@@ -786,7 +820,14 @@ fn declare_callee_imports_for_fn(
         let result_tys: Vec<MirType> =
             op.results.iter().map(|r| r.ty.clone()).collect();
 
-        let sig = build_clif_signature(call_conv, callee, &param_tys, &result_tys, ptr_ty)?;
+        let sig = build_clif_signature(
+            call_conv,
+            callee,
+            &param_tys,
+            &result_tys,
+            ptr_ty,
+            struct_layouts,
+        )?;
         let extern_id = obj_module
             .declare_function(callee, Linkage::Import, &sig)
             .map_err(|e| ObjectError::LoweringFailed {
@@ -2067,11 +2108,38 @@ fn mir_type_to_cl(
     t: &MirType,
     ptr_ty: cranelift_codegen::ir::Type,
 ) -> Option<cranelift_codegen::ir::Type> {
+    // Internal-body call sites still use scalar-only lowering ; struct-FFI
+    // codepath always goes through `mir_type_to_cl_with_layouts`.
+    mir_type_to_cl_with_layouts(t, ptr_ty, None)
+}
+
+/// § T11-W17-A · stage-0 struct-FFI codegen
+///
+/// Map a MIR type to a cranelift `Type` for ABI-boundary lowering. Identical
+/// to `mir_type_to_cl` for scalar types ; `MirType::Opaque("!cssl.struct.X")`
+/// is resolved against the supplied layout-table :
+///   - 1B  → I8     (newtype-byte struct)
+///   - 2B  → I16    (newtype-u16 struct)
+///   - ≤4B → I32    (small POD struct)
+///   - ≤8B → I64    (newtype-u64 RunHandle case · LoA-systems primary)
+///   - >8B → ptr_ty (Win-x64 / SysV >2-word ABI normal-rule)
+///
+/// Returns `None` if :
+///   - layouts is `None` (caller declined struct resolution)
+///   - the named struct is missing from the table
+///   - the layout has zero bytes (empty struct)
+fn mir_type_to_cl_with_layouts(
+    t: &MirType,
+    ptr_ty: cranelift_codegen::ir::Type,
+    layouts: Option<&BTreeMap<String, MirStructLayout>>,
+) -> Option<cranelift_codegen::ir::Type> {
     match t {
         MirType::Int(IntWidth::I32) => Some(cl_types::I32),
         MirType::Int(IntWidth::I64) => Some(cl_types::I64),
         MirType::Int(IntWidth::I16) => Some(cl_types::I16),
         MirType::Int(IntWidth::I8) => Some(cl_types::I8),
+        MirType::Int(IntWidth::I1) => Some(cl_types::I8), // align with Bool below
+        MirType::Int(IntWidth::Index) => Some(cl_types::I64),
         MirType::Float(FloatWidth::F32) => Some(cl_types::F32),
         MirType::Float(FloatWidth::F64) => Some(cl_types::F64),
         MirType::Bool => Some(cl_types::I8),
@@ -2079,8 +2147,34 @@ fn mir_type_to_cl(
         //   pointer type. Tied to S6-A3's "ISA = host" assumption ;
         //   cross-compilation will revisit when target-triple resolution lands.
         MirType::Ptr | MirType::Handle => Some(ptr_ty),
+        // T11-W17-A — struct-FFI : resolve `!cssl.struct.<name>` opaque to
+        // the appropriate ABI scalar / pointer width.
+        MirType::Opaque(s) => resolve_struct_opaque(s, ptr_ty, layouts),
         _ => None,
     }
+}
+
+/// Stage-0 ABI-class → cranelift `Type` mapping for a struct.
+///
+/// Helper for `mir_type_to_cl_with_layouts`. Stripped down from the full
+/// abi-classification matrix because stage-0 only emits one register-sized
+/// scalar OR a single pointer per slot.
+#[inline]
+fn resolve_struct_opaque(
+    opaque_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+    layouts: Option<&BTreeMap<String, MirStructLayout>>,
+) -> Option<cranelift_codegen::ir::Type> {
+    let table = layouts?;
+    let struct_name = opaque_name.strip_prefix("!cssl.struct.")?;
+    let layout = table.get(struct_name)?;
+    Some(match layout.abi_class()? {
+        StructAbiClass::ScalarI8 => cl_types::I8,
+        StructAbiClass::ScalarI16 => cl_types::I16,
+        StructAbiClass::ScalarI32 => cl_types::I32,
+        StructAbiClass::ScalarI64 => cl_types::I64,
+        StructAbiClass::PointerByRef => ptr_ty,
+    })
 }
 
 // ───────────────────────────────────────────────────────────────────────
