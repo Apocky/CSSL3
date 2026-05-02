@@ -1,0 +1,226 @@
+module com.apocky.loa.systems.genre_fluid_camera
+
+// § Labyrinth of Apocalypse — Genre-Fluid Camera Module
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W13-CAMERA (W13-4) · genre-fluid-camera + perspective-switch
+//
+// § ARCHITECTURE
+//   .csl source-of-truth for the 4-mode camera-system. Compiles into LoA.exe
+//   alongside main.cssl. Declares the host-side FFI contract for the
+//   genre-fluid-camera module + exposes a CSSL-native per-frame API the
+//   main loop calls each tick.
+//
+//   Compile-pipeline mirrors main.cssl :
+//     * csslc lex → parse → HIR → MIR → cranelift-object → linker
+//     * auto-default-link discovers loa-host staticlib + this module's
+//       symbols are resolved at link-time
+//
+// § ROLE-IN-W13
+//   W13 is the action-RPG-genre wave. W13-4 owns SOLELY :
+//     ⟨ camera-modes · transition-curve · same-world attestation ·
+//       sovereign-cap · DM-orchestration consent-gate ⟩
+//   W13-4 does NOT touch :
+//     ⟨ render(W13-1) · weapons(W13-2) · network(W13-3) ·
+//       ADS-recoil(W13-5) · movement(W13-6) · HUD(W13-7) ·
+//       loot(W13-8) · BP(W13-9) · gacha(W13-10) ·
+//       input(W13-11) · perf(W13-12) ⟩
+//   W13-5 may READ `mode() == FpsLocked` to gate ADS ; ¬ write.
+//
+// § FFI SURFACE  (provided by loa-host::genre_fluid_camera)
+//   __cssl_camera_create()                        → handle(i64)
+//   __cssl_camera_destroy(handle)                 → status(i32)
+//   __cssl_camera_request_switch(h, target, src)  → accepted(i32)
+//   __cssl_camera_tick(h, dt_ms)                  → status(i32)
+//   __cssl_camera_query_mode(h)                   → mode_u8(i32)
+//   __cssl_camera_query_target(h)                 → target_u8(i32)  // -1 ⇔ none
+//   __cssl_camera_is_transitioning(h)             → bool(i32)
+//   __cssl_camera_revoke_sovereign(h)             → status(i32)
+//   __cssl_camera_grant_sovereign(h)              → status(i32)
+//   __cssl_camera_world_state_invariant(h)        → bool(i32)
+//   __cssl_camera_set_focus(h, x, y, z)           → status(i32)
+//   __cssl_camera_set_orient(h, yaw, pitch)       → status(i32)
+//   __cssl_camera_effective_fov(h)                → fov_rad(f32)
+//
+// § AXIOMS  (inherit GDDs/LOA_PILLARS + PRIME_DIRECTIVE)
+//   t∞: 4-modes · {FpsLocked=0, ThirdPersonOverShoulder=1, Isometric=2, TopDown=3}
+//   t∞: transition = cubic-ease · 3t²-2t³ · 300ms-default · player-tunable
+//   t∞: same-world-state ← only-camera-pose mutates · ω-field invariant
+//   t∞: sovereign-revocable ← player-cap ALWAYS-honored · ¬ override
+//   t∞: ¬ forced-against-consent · DM/scene-prompt → player-confirms
+//   t∞: ALWAYS player-revertable ← prior-mode preserved on cap-revoke
+//   t∞: 4 transition-sources · {PlayerToggle, DmOrchestrated,
+//                                ScenePromptConfirmed, SovereignRevoke}
+//   t∞: orthographic-projection : Isometric + TopDown
+//   t∞: perspective-projection  : FpsLocked(90°) + ThirdPersonOverShoulder(80°)
+//
+// § PRIME-DIRECTIVE COMPLIANCE
+//   ✓ player-toggle ALWAYS-accepted ← sovereign-substrate-axiom
+//   ✓ DM-orchestrated rejected when sovereign-revoked
+//   ✓ scene-prompt rejected when sovereign-revoked
+//   ✓ same-world-state attestation flag emitted per-tick
+//   ✓ camera-internals NEVER mutate ω-field during transition
+//
+// § INTEGRATION-POINTS (read-only from W13-4 perspective)
+//   - W13-1 (render) : reads `current_camera()` + `effective_fov()` +
+//     `effective_proj()` ; chooses persp-vs-ortho per `is_orthographic()`
+//   - W13-5 (ADS-recoil) : reads `mode() == FpsLocked` to gate ADS-eligibility
+//   - W13-6 (movement) : reads `mode()` to scale movement-feel per-pose
+//   - W13-11 (input) : binds keys → `request_mode_switch(target, PlayerToggle)`
+//   - W13-7 (HUD) : reads `mode()` to swap HUD-layout (FPS-crosshair vs iso-grid)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────
+
+// § Transition timing
+const TRANSITION_MS_DEFAULT  : u32 = 300 ;        // smooth-lerp duration
+const TRANSITION_MS_MIN      : u32 = 0   ;        // 0 ⇔ instant-snap
+const TRANSITION_MS_MAX      : u32 = 5000 ;       // 5s upper-bound · sanity
+
+// § Per-mode FOV (degrees)
+const FOV_FPS_DEG            : f32 = 90.0 ;
+const FOV_THIRD_DEG          : f32 = 80.0 ;
+// Iso + TopDown : orthographic · FOV irrelevant
+
+// § Per-mode pose offsets (world-space)
+const FPS_EYE_HEIGHT         : f32 = 1.7 ;        // standing eye-height
+const THIRD_SHOULDER_BACK    : f32 = 3.5 ;        // camera back-from-player
+const THIRD_SHOULDER_RIGHT   : f32 = 0.7 ;        // over-shoulder offset
+const THIRD_SHOULDER_UP      : f32 = 1.9 ;        // shoulder-cam height
+const ISO_HEIGHT             : f32 = 12.0 ;
+const ISO_BACK               : f32 = 12.0 ;
+const ISO_PITCH_DEG          : f32 = -35.264 ;    // arctan(1/√2) true-iso
+const ISO_YAW_DEG            : f32 =  45.0 ;
+const ISO_ORTHO_HALF         : f32 =  8.0 ;       // ortho-half-height
+const TOPDOWN_HEIGHT         : f32 = 18.0 ;
+const TOPDOWN_ORTHO_HALF     : f32 = 10.0 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ENUMS  (stable u8 discriminants for FFI + Σ-Chain attestation)
+// ─────────────────────────────────────────────────────────────────────────
+
+enum CameraMode : u8 {
+    FpsLocked                = 0 ,
+    ThirdPersonOverShoulder  = 1 ,
+    Isometric                = 2 ,
+    TopDown                  = 3 ,
+}
+
+enum TransitionSource : u8 {
+    PlayerToggle             = 0 ,    // ALWAYS-honored
+    DmOrchestrated           = 1 ,    // cinematic · player-revertable
+    ScenePromptConfirmed     = 2 ,    // requires-confirm-before-shift
+    SovereignRevoke          = 3 ,    // restore-prior · instant-snap
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § FFI extern-C surface
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" {
+    fn __cssl_camera_create() -> i64 ;
+    fn __cssl_camera_destroy(h : i64) -> i32 ;
+    fn __cssl_camera_request_switch(h : i64 , target : u8 , source : u8) -> i32 ;
+    fn __cssl_camera_tick(h : i64 , dt_ms : u32) -> i32 ;
+    fn __cssl_camera_query_mode(h : i64) -> i32 ;
+    fn __cssl_camera_query_target(h : i64) -> i32 ;
+    fn __cssl_camera_is_transitioning(h : i64) -> i32 ;
+    fn __cssl_camera_revoke_sovereign(h : i64) -> i32 ;
+    fn __cssl_camera_grant_sovereign(h : i64) -> i32 ;
+    fn __cssl_camera_world_state_invariant(h : i64) -> i32 ;
+    fn __cssl_camera_set_focus(h : i64 , x : f32 , y : f32 , z : f32) -> i32 ;
+    fn __cssl_camera_set_orient(h : i64 , yaw : f32 , pitch : f32) -> i32 ;
+    fn __cssl_camera_effective_fov(h : i64) -> f32 ;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § API  (CSSL-native wrappers — game-tick calls these per-frame)
+// ─────────────────────────────────────────────────────────────────────────
+
+// § cssl-host-camera-handle ← opaque ; lifecycle = create() …  destroy()
+struct CameraHandle {
+    inner : i64 ,
+}
+
+fn camera_create() -> CameraHandle {
+    CameraHandle { inner : __cssl_camera_create() }
+}
+
+fn camera_destroy(h : CameraHandle) -> i32 {
+    __cssl_camera_destroy(h.inner)
+}
+
+// § Player-initiated toggle → ALWAYS-accepted · sovereign-axiom
+fn camera_player_toggle(h : &CameraHandle , target : CameraMode) -> bool {
+    __cssl_camera_request_switch(h.inner , target as u8 , TransitionSource::PlayerToggle as u8) != 0
+}
+
+// § DM-orchestrated cinematic shift → accepted IF sovereign-enabled · player-revertable
+fn camera_dm_orchestrate(h : &CameraHandle , target : CameraMode) -> bool {
+    __cssl_camera_request_switch(h.inner , target as u8 , TransitionSource::DmOrchestrated as u8) != 0
+}
+
+// § Scene-prompt → caller MUST have already shown player-confirm UI before invoking
+fn camera_scene_prompt_confirmed(h : &CameraHandle , target : CameraMode) -> bool {
+    __cssl_camera_request_switch(h.inner , target as u8 , TransitionSource::ScenePromptConfirmed as u8) != 0
+}
+
+// § Sovereign-revoke ← player-cap toggle · ALWAYS-instant-snap · restore-prior-mode
+fn camera_revoke_sovereign(h : &CameraHandle) -> i32 {
+    __cssl_camera_revoke_sovereign(h.inner)
+}
+
+fn camera_grant_sovereign(h : &CameraHandle) -> i32 {
+    __cssl_camera_grant_sovereign(h.inner)
+}
+
+// § Per-frame tick (called from main game-loop) ; advances any in-flight transition
+fn camera_tick(h : &CameraHandle , dt_ms : u32) -> i32 {
+    __cssl_camera_tick(h.inner , dt_ms)
+}
+
+// § Player tracking  (called from movement system per-frame)
+fn camera_set_focus(h : &CameraHandle , x : f32 , y : f32 , z : f32) -> i32 {
+    __cssl_camera_set_focus(h.inner , x , y , z)
+}
+
+fn camera_set_orient(h : &CameraHandle , yaw : f32 , pitch : f32) -> i32 {
+    __cssl_camera_set_orient(h.inner , yaw , pitch)
+}
+
+// § Same-world-state attestation ← read once-per-frame · audit-emit if false
+fn camera_world_state_invariant(h : &CameraHandle) -> bool {
+    __cssl_camera_world_state_invariant(h.inner) != 0
+}
+
+// § Query helpers
+fn camera_current_mode(h : &CameraHandle) -> CameraMode {
+    let m : i32 = __cssl_camera_query_mode(h.inner) ;
+    // Stage-0 : 0..=3 maps directly. Out-of-range defaults to FpsLocked.
+    match m {
+        0 => CameraMode::FpsLocked ,
+        1 => CameraMode::ThirdPersonOverShoulder ,
+        2 => CameraMode::Isometric ,
+        3 => CameraMode::TopDown ,
+        _ => CameraMode::FpsLocked ,
+    }
+}
+
+fn camera_effective_fov(h : &CameraHandle) -> f32 {
+    __cssl_camera_effective_fov(h.inner)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ATTESTATION  (Σ-Chain audit-trail anchor)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Per-tick the engine emits a `camera_tick` audit-record :
+//   ⟨ tick-id · current-mode · target-mode · transition-progress ·
+//     world-state-invariant · last-source · sovereign-enabled ⟩
+// Σ-Chain-anchored Ed25519-signed at phase-6 ENTROPY-BOOK alongside other
+// systems. Allows replay-validation that camera ¬ violated same-world-state.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § END genre_fluid_camera.csl
+// ─────────────────────────────────────────────────────────────────────────
