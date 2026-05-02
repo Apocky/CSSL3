@@ -81,18 +81,20 @@ function decodePattern(raw: number[]): DecodedPattern | null {
   for (const b of raw) {
     if (typeof b !== 'number' || b < 0 || b > 255) return null;
   }
+  // After length+type validation, all indices 0..PATTERN_SIZE-1 are defined.
+  // Use non-null-assertion under noUncheckedIndexedAccess.
   // LE u32
   const ts_bucketed =
-    raw[4] | (raw[5] << 8) | (raw[6] << 16) | (raw[7] << 24);
+    raw[4]! | (raw[5]! << 8) | (raw[6]! << 16) | (raw[7]! << 24);
   const payload_hash = leU64(raw, 8);
   const emitter_handle = leU64(raw, 16);
   const sig = leU64(raw, 24);
   const raw_hex = raw.map((b) => b.toString(16).padStart(2, '0')).join('');
   return {
-    kind: raw[0],
-    cap_flags: raw[1],
-    cohort_size: raw[2],
-    confidence_q8: raw[3],
+    kind: raw[0]!,
+    cap_flags: raw[1]!,
+    cohort_size: raw[2]!,
+    confidence_q8: raw[3]!,
     ts_bucketed: ts_bucketed >>> 0,
     payload_hash,
     emitter_handle,
@@ -104,7 +106,7 @@ function decodePattern(raw: number[]): DecodedPattern | null {
 function leU64(raw: number[], offset: number): bigint {
   let n = 0n;
   for (let i = 7; i >= 0; i--) {
-    n = (n << 8n) | BigInt(raw[offset + i]);
+    n = (n << 8n) | BigInt(raw[offset + i]!);
   }
   return n;
 }

@@ -105,9 +105,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   // Stub-mode (no Stripe configured) → return product-shape envelope so the
   // client knows what would have been charged. Mirrors checkout.ts pattern.
   const stripeSecret = typeof process.env['STRIPE_SECRET_KEY'] === 'string' ? process.env['STRIPE_SECRET_KEY'] : '';
-  const stripeBpPrice = typeof process.env[`STRIPE_PRICE_BATTLE_PASS_S${seasonId}`] === 'string'
-    ? process.env[`STRIPE_PRICE_BATTLE_PASS_S${seasonId}`]
-    : '';
+  const stripeBpPrice = process.env[`STRIPE_PRICE_BATTLE_PASS_S${seasonId}`] ?? '';
 
   if (stripeSecret.length === 0 || stripeBpPrice.length === 0) {
     logEvent(auditEvent('battle-pass.unlock.stub', BATTLE_PASS_UNLOCK, sovereign, 'ok', {

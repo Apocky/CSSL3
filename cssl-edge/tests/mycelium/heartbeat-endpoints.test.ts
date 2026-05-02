@@ -162,7 +162,7 @@ async function testHeartbeatRejectsOversize(): Promise<void> {
 async function testHeartbeatCapDeniedDropsButReturns200(): Promise<void> {
   await withSecret('topsecret', async () => {
     const bundle = mkBundle(1) as { patterns: { raw: number[] }[] };
-    bundle.patterns[0].raw[1] = 0x00; // strip cap_flags → ingest denied
+    bundle.patterns[0]!.raw[1] = 0x00; // strip cap_flags → ingest denied
     const { req, res, out } = mockReqRes('POST', bundle, {
       authorization: 'Bearer topsecret',
     });
