@@ -64,14 +64,13 @@ pub const ARTICLES: &[&str] = &[
 /// Sentence-end punctuation (axis-weighted).
 pub const PUNCT_ENDINGS: &[&str] = &[".", ".", ".", "...", "!", "?", "—"];
 
-/// Build a stem from indices into the inventory.
-/// Returns the assembled string, capped by `max_chars`.
+/// Build a stem from indices into the inventory. Reserved : the composer
+/// assembles stems directly via `push_stem`, but this signature stays as
+/// documentation of the morpheme-pack contract.
+#[allow(dead_code)]
 pub fn make_stem(onset_idx: u8, nucleus_idx: u8, coda_idx: u8) -> &'static str {
-    // We don't allocate: we return three slices the caller concatenates.
-    // For convenience this just returns the onset and lets the caller
-    // append nucleus + coda. In practice the composer assembles directly.
     let _ = (onset_idx, nucleus_idx, coda_idx);
-    "" // unused — see Composer::push_stem instead
+    ""
 }
 
 #[cfg(test)]

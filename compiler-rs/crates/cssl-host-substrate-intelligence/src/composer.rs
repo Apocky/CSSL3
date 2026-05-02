@@ -13,8 +13,14 @@ use crate::{ComposeKind, Role};
 
 /// Streaming morpheme composer.
 pub struct Composer<'a> {
+    /// Reserved for role-specific behavior in future iterations.
+    #[allow(dead_code)]
     role: Role,
+    /// Reserved for kind-specific behavior in future iterations.
+    #[allow(dead_code)]
     kind: ComposeKind,
+    /// Reserved for seed-tracing in future iterations.
+    #[allow(dead_code)]
     seed: u64,
     axes: &'a SubstrateAxes,
     /// Counter that walks the entropy reserve as morphemes consume it.
@@ -52,7 +58,9 @@ impl<'a> Composer<'a> {
         ((z ^ (z >> 31)) as u32) ^ blend
     }
 
-    /// Sample an index into a slice of length `n`.
+    /// Sample an index into a slice of length `n`. Reserved for future axis-
+    /// agnostic picks ; current composition uses `pick_weighted` exclusively.
+    #[allow(dead_code)]
     fn pick<T>(&mut self, slice: &[T]) -> usize {
         (self.next_u32() as usize) % slice.len().max(1)
     }
