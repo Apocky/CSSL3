@@ -1869,6 +1869,24 @@ fn lower_one_op(
             ptr_ty,
             block_map,
         ),
+        // § T11-W19-α-CSSLC-FIX6 — scf.match → cranelift br_table.
+        //   Each region is one arm ; arm-index in source order matches the
+        //   enum variant's discriminant for unit-only enums (the only
+        //   shape stage-0 emits today). Walks each arm's ops in its own
+        //   block + captures the last result-id as the merge-block jump-
+        //   arg. Mirrors the scf.if merge-block pattern.
+        "scf.match" => lower_scf_match_in_object(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            heap_refs,
+            callee_refs,
+            fmod_refs,
+            host_ffi_refs,
+            ptr_ty,
+            block_map,
+        ),
         // § T11-D61 (S6-C2) — structured loops. Each delegates to the
         //   matching `crate::scf::lower_scf_*` helper ; the body-walker
         //   dispatcher closure re-enters `lower_one_op` so nested ops
@@ -2254,6 +2272,214 @@ fn lower_scf_if_in_object(
         },
         crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
     })
+}
+
+/// § T11-W19-α-CSSLC-FIX6 — lower `scf.match` to a cranelift `br_table`.
+///
+/// § INPUT SHAPE
+///   ```text
+///   scf.match %scrut [arm0_region, arm1_region, ..., armN_region]
+///       attribute arm_count = N+1
+///   ```
+///   `body_lower::lower_match` mints this op-shape per
+///   `crates/cssl-mir/src/body_lower.rs::lower_match`. The arm-order
+///   matches HIR source-order which (for unit-only enums) matches
+///   discriminant-order, so the scrutinee Value IS the arm-index.
+///
+/// § EMITTED CRANELIFT SHAPE
+///   ```text
+///       br_table %scrut, default_blk, [arm0_blk, arm1_blk, ..., armN_blk]
+///   arm_i_blk:
+///       <walk arm_i_region.ops via outer dispatcher>
+///       jump merge_blk(captured_last_value)
+///   default_blk:
+///       jump merge_blk(typed_zero)
+///   merge_blk(result_value):
+///       <continuation>
+///   ```
+///
+/// § STAGE-0 LIMITS
+///   - The `arm_count` attribute carries N+1 ; cranelift's `br_table`
+///     wants a JumpTable + a default-block. We allocate one extra
+///     `default_block` that jumps directly to the merge-block carrying
+///     a typed-zero. In well-formed source the discriminant is always
+///     in [0..N+1) so default-block is unreachable.
+///   - The merge-block-param-ty derives from the first arm's last-Value
+///     type. Mismatched arm-yield types coerce via `coerce_int_to_block_arg_ty`
+///     (FIX5 helper). Pointer-shaped yields fall back to host-pointer-
+///     width per FIX7 precedent.
+///   - Pattern info isn't preserved on `scf.match` regions ; this stage-0
+///     lowering ASSUMES discriminant-order alignment. A future MatchExpansion
+///     pass will enrich each arm with its pattern + then we can build a
+///     proper compare-cascade for non-unit enums + struct-variant patterns.
+///
+/// § ERRORS
+///   Returns `ObjectError::LoweringFailed` for missing-scrutinee or
+///   per-arm-walk failures bubbled up from `lower_one_op`.
+#[allow(clippy::too_many_arguments)]
+fn lower_scf_match_in_object(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    heap_refs: &HeapImports,
+    callee_refs: &CalleeImports,
+    fmod_refs: &FmodImports,
+    host_ffi_refs: &HostFfiImports,
+    ptr_ty: cranelift_codegen::ir::Type,
+    block_map: &[ClBlock],
+) -> Result<bool, ObjectError> {
+    use cranelift_codegen::ir::{InstBuilder, JumpTableData};
+
+    let scrut_id = op
+        .operands
+        .first()
+        .copied()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "scf.match missing scrutinee operand".to_string(),
+        })?;
+    let scrut_val = *value_map
+        .get(&scrut_id)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: scrut_id.0,
+        })?;
+
+    if op.regions.is_empty() {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "scf.match with zero arm-regions".to_string(),
+        });
+    }
+
+    // Coerce the scrutinee to I32 for br_table indexing. Cranelift's
+    // br_table accepts any int-width but we standardize on I32 so smaller
+    // discriminants widen consistently across enum-layout shapes.
+    let scrut_ty = builder.func.dfg.value_type(scrut_val);
+    let idx_val = if scrut_ty == cl_types::I32 {
+        scrut_val
+    } else if scrut_ty.is_int() && scrut_ty.bits() < 32 {
+        builder.ins().uextend(cl_types::I32, scrut_val)
+    } else if scrut_ty.is_int() && scrut_ty.bits() > 32 {
+        builder.ins().ireduce(cl_types::I32, scrut_val)
+    } else {
+        scrut_val
+    };
+
+    // § Allocate one block per arm + a default-block + a merge-block.
+    let arm_blocks: Vec<cranelift_codegen::ir::Block> =
+        op.regions.iter().map(|_| builder.create_block()).collect();
+    let default_block = builder.create_block();
+    let merge_block = builder.create_block();
+    // Result type : derive from the scf.match op's result-ty when typed,
+    // else fall back to host-pointer-width (FIX7 precedent). Stage-0
+    // body_lower mints `MirType::None` for the result — fall back to I32
+    // since the only consumers today are unit-enum→u32 helpers.
+    let merge_param_ty = op
+        .results
+        .first()
+        .and_then(|r| mir_type_to_cl(&r.ty, ptr_ty))
+        .unwrap_or(cl_types::I32);
+    builder.append_block_param(merge_block, merge_param_ty);
+
+    // § Build + emit the br_table.
+    let mut jt_data = JumpTableData::new(
+        builder.func.dfg.block_call(default_block, &[]),
+        &arm_blocks
+            .iter()
+            .map(|blk| builder.func.dfg.block_call(*blk, &[]))
+            .collect::<Vec<_>>(),
+    );
+    let _ = &mut jt_data; // silence unused-mut on certain cranelift versions
+    let jt = builder.func.create_jump_table(jt_data);
+    builder.ins().br_table(idx_val, jt);
+
+    // § Lower each arm-region into its own block.
+    for (arm_idx, region) in op.regions.iter().enumerate() {
+        let arm_block = arm_blocks[arm_idx];
+        builder.switch_to_block(arm_block);
+        builder.seal_block(arm_block);
+        let mut last_result: Option<cranelift_codegen::ir::Value> = None;
+        let mut terminated = false;
+        if let Some(entry) = region.blocks.first() {
+            for arm_op in &entry.ops {
+                if arm_op.name == "scf.yield" {
+                    if let Some(&yid) = arm_op.operands.first() {
+                        if let Some(&v) = value_map.get(&yid) {
+                            last_result = Some(v);
+                        }
+                    }
+                    break;
+                }
+                let was_term = lower_one_op(
+                    arm_op,
+                    builder,
+                    value_map,
+                    fn_name,
+                    heap_refs,
+                    callee_refs,
+                    fmod_refs,
+                    host_ffi_refs,
+                    ptr_ty,
+                    block_map,
+                )?;
+                if was_term {
+                    terminated = true;
+                    break;
+                }
+                // Capture the LAST op's first result as the arm's
+                // value-yield. body_lower doesn't emit explicit
+                // scf.yield in scf.match arms (per lower_match) — the
+                // arm-body's tail expression's result is the value.
+                if let Some(r) = arm_op.results.first() {
+                    if let Some(&v) = value_map.get(&r.id) {
+                        last_result = Some(v);
+                    }
+                }
+            }
+        }
+        if !terminated {
+            let arg = match last_result {
+                Some(v) => coerce_int_to_block_arg_ty(builder, v, merge_param_ty),
+                None => {
+                    // No captured value — emit a typed zero so cranelift
+                    // accepts the merge-jump.
+                    if merge_param_ty == cl_types::F32 {
+                        builder.ins().f32const(0.0_f32)
+                    } else if merge_param_ty == cl_types::F64 {
+                        builder.ins().f64const(0.0_f64)
+                    } else {
+                        builder.ins().iconst(merge_param_ty, 0)
+                    }
+                }
+            };
+            builder.ins().jump(merge_block, &[arg]);
+        }
+    }
+
+    // § Default-block : unreachable in well-formed source, but cranelift
+    //   needs a terminator. Jump to merge with a typed zero.
+    builder.switch_to_block(default_block);
+    builder.seal_block(default_block);
+    let zero = if merge_param_ty == cl_types::F32 {
+        builder.ins().f32const(0.0_f32)
+    } else if merge_param_ty == cl_types::F64 {
+        builder.ins().f64const(0.0_f64)
+    } else {
+        builder.ins().iconst(merge_param_ty, 0)
+    };
+    builder.ins().jump(merge_block, &[zero]);
+
+    // § Switch to merge-block + bind the result-id.
+    builder.switch_to_block(merge_block);
+    builder.seal_block(merge_block);
+    if let Some(r) = op.results.first() {
+        let merge_params = builder.block_params(merge_block);
+        let bp = *merge_params.first().expect("merge-block-param appended");
+        value_map.insert(r.id, bp);
+    }
+    Ok(false)
 }
 
 /// Adapter : delegate `scf.loop` lowering to [`crate::scf::lower_scf_loop`].
