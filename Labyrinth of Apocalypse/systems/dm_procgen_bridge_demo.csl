@@ -1,0 +1,117 @@
+// § T11-W18-DM-PROCGEN-BRIDGE · DM-specialists ↔ procgen-pipeline demo
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § ROLE
+//   Demonstrates the council → procgen flow at the .csl level. Mirrors the
+//   pure-fn API surface of `cssl-host-dm-procgen-bridge` (Rust host-side).
+//
+// § APOCKY-DIRECTIVE (verbatim · feedback_dm_gm_not_general_ai.md)
+//   "engine intelligence scope = DM (orchestrator) + GM (narrator) +
+//    Collaborator (co-author) + Coder (runtime-mutate) ONLY · self-sufficient
+//    for those roles · NOT generic AGI · reuse Cognitive-Field-Engine
+//    substrate AS PLUMBING for DM-specialist scenes"
+//
+// § PIPELINE (this demo)
+//   1. specialists each emit Decision (encoded as i32 (tag<<16)|action_id)
+//   2. role_council picks highest-tag-then-largest-encoding decision
+//   3. consensus → procgen_request (fingerprint = stable seed)
+//   4. fingerprint → crystal-count + asset-uri-id (deterministic)
+//
+// § ROLE-↔-BRACKET (mirrors cssl-host-dm-procgen-bridge::role_for_action_id)
+//   DM   id ∈ 0x1000..0x2000  → CreateEntity(dm-arc)
+//   GM   id ∈ 0x2000..0x3000  → CreateEntity(gm-narration)
+//   Coll id ∈ 0x3000..0x4000  → ModifyEntity(scene)
+//   Coder id ∈ 0x4000..0x5000 → ModifyEntity(engine)
+//
+// § DECISION-TAGS
+//   Pass=0  Question=1  ProposeAction=2
+//
+// § PRIME-DIRECTIVE §11 attestation
+//   t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+
+module loa.systems.dm_procgen_bridge_demo
+
+// ── DEMO-FN-1 · single Decision → procgen-fingerprint ─────────────────────
+//
+// Mirrors `decision_to_procgen_request` ∘ `generate`. Given an encoded
+// decision (tag<<16 | action_id) and a low-bits observer-pos hash, returns
+// the deterministic procgen-fingerprint (low 32 bits).
+//
+// Returns 0 for non-PA decisions (Pass/Question) ; matches the bridge's
+// `Option::None` sentinel.
+
+pub fn decision_to_procgen_fingerprint(decision: i32, observer_low: i32) -> i32 {
+    let tag: i32 = (decision >> 16) & 255 ;
+    if tag != 2 {
+        // Pass (0) or Question (1) → not procgen-actionable.
+        0
+    } else {
+        let action_id: i32 = decision & 65535 ;
+        // Stage-0 stand-in for BLAKE3 ; 31-multiplier preserves spread.
+        let mix: i32 = action_id * 2654435761 ;
+        let folded: i32 = mix ^ (observer_low * 13) ;
+        // Ensure non-zero (sanity-aligned with bridge's "fingerprint != 0").
+        if folded == 0 { 1 } else { folded }
+    }
+}
+
+// ── DEMO-FN-2 · 4-specialist council → procgen-fingerprint ────────────────
+//
+// Mirrors `council_to_procgen` ∘ `generate`. Picks the highest-encoded
+// decision (tag-priority then numeric) across the 4 specialists, then
+// produces a procgen-fingerprint.
+
+pub fn council_4_to_procgen(d0: i32, d1: i32, d2: i32, d3: i32, observer_low: i32) -> i32 {
+    let best01: i32 = if d0 > d1 { d0 } else { d1 } ;
+    let best23: i32 = if d2 > d3 { d2 } else { d3 } ;
+    let consensus: i32 = if best01 > best23 { best01 } else { best23 } ;
+    decision_to_procgen_fingerprint(consensus, observer_low)
+}
+
+// ── DEMO-FN-3 · end-to-end specialist → ProcgenOutput-shape ───────────────
+//
+// Mirrors `run_council_and_generate`. Given a prompt-low + role + observer
+// position, mock the specialist's decide → council → procgen flow and
+// return a packed (crystal_count<<24 | fingerprint_low_24).
+//
+// Crystal-count derivation matches procgen-pipeline's `create_crystals` :
+// `count = ((seed >> 8) & 3) + 1`  → range 1..=4.
+
+pub fn run_council_and_generate_packed(prompt_low: i32, role: i32, observer_low: i32) -> i32 {
+    // Mock specialist decide : (1+role)<<12 | (prompt_low * 31 & 4095)
+    let action_base: i32 = (role + 1) << 12 ;
+    let action_id: i32 = action_base | ((prompt_low * 31) & 4095) ;
+    let decision: i32 = (2 << 16) | action_id ;
+    let fp: i32 = decision_to_procgen_fingerprint(decision, observer_low) ;
+    let crystal_count: i32 = ((fp >> 8) & 3) + 1 ;
+    (crystal_count << 24) | (fp & 16777215)
+}
+
+// ── verification-helpers (compile-time-checkable invariants) ──────────────
+//
+// Returns 1 iff the decision-tag invariant holds : a non-zero fingerprint
+// implies the input had tag == 2 (ProposeAction).
+
+pub fn invariant_only_propose_yields_fingerprint() -> i32 {
+    let pass_decision: i32     = (0 << 16) | 4096 ;       // tag=0
+    let question_decision: i32 = (1 << 16) | 4096 ;       // tag=1
+    let propose_decision: i32  = (2 << 16) | 4096 ;       // tag=2
+    let observer: i32 = 7 ;
+    let fp_pass: i32     = decision_to_procgen_fingerprint(pass_decision, observer) ;
+    let fp_question: i32 = decision_to_procgen_fingerprint(question_decision, observer) ;
+    let fp_propose: i32  = decision_to_procgen_fingerprint(propose_decision, observer) ;
+    if fp_pass == 0 {
+        if fp_question == 0 {
+            if fp_propose != 0 { 1 } else { 0 }
+        } else { 0 }
+    } else { 0 }
+}
+
+// Returns 1 iff crystal-count is always in [1,4] ; mirrors procgen-pipeline
+// invariant `count = ((seed >> 8) & 3) + 1`.
+
+pub fn invariant_crystal_count_in_range(prompt_low: i32, role: i32) -> i32 {
+    let packed: i32 = run_council_and_generate_packed(prompt_low, role, 42) ;
+    let count: i32 = (packed >> 24) & 255 ;
+    if count >= 1 { if count <= 4 { 1 } else { 0 } } else { 0 }
+}
