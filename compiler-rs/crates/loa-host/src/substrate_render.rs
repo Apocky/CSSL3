@@ -144,6 +144,20 @@ impl SubstrateRenderState {
                 DEFAULT_SUBSTRATE_W, DEFAULT_SUBSTRATE_H, STARTUP_CRYSTAL_COUNT
             ),
         );
+        // § T11-W18-LIVE-LEARNING · load persisted KAN-bias from disk on init ·
+        //   continuous-learning carries across process-restarts.
+        let kan_path = kan_bias_persist_path();
+        let loaded = cssl_host_substrate_intelligence::kan_bias_load(&kan_path);
+        log_event(
+            "INFO",
+            "loa-host/substrate-render",
+            &format!(
+                "KAN-bias init · checksum=0x{:08x} · loaded-from-disk={} · path={}",
+                cssl_host_substrate_intelligence::kan_bias_checksum(),
+                loaded,
+                kan_path.display(),
+            ),
+        );
         Self {
             renderer: DigitalIntelligenceRenderer::new(DEFAULT_SUBSTRATE_W, DEFAULT_SUBSTRATE_H),
             crystals,
@@ -218,19 +232,26 @@ impl SubstrateRenderState {
             .tick(observer, &self.crystals, BUDGET_120HZ);
         self.frame_count = self.frame_count.wrapping_add(1);
         // Per-second telemetry (avoid per-frame log spam at 120 Hz).
+        // § T11-W18-LIVE-LEARNING · feed frame-telemetry into KAN-bias.
+        //   Per-frame · cheap (atomic-store · single BLAKE3 of 32 bytes).
+        learn_from_frame_metrics(&out);
         if self.frame_count % 120 == 0 {
             log_event(
                 "DEBUG",
                 "loa-host/substrate-render",
                 &format!(
-                    "tick · frame_n={} · pixels_lit={} · fidelity_tier={} · fingerprint={:08x} · blend={:?}",
+                    "tick · frame_n={} · pixels_lit={} · fidelity_tier={} · fingerprint={:08x} · blend={:?} · KAN-bias=0x{:08x} · obs={}",
                     out.frame_n,
                     out.resonance.n_pixels_lit,
                     out.fidelity_tier,
                     out.resonance.fingerprint,
                     out.blend_used,
+                    cssl_host_substrate_intelligence::kan_bias_checksum(),
+                    cssl_host_substrate_intelligence::observe_count(),
                 ),
             );
+            // Periodic persist (every 120 frames ≈ 1 sec at 120 Hz · cheap).
+            let _ = cssl_host_substrate_intelligence::kan_bias_persist(&kan_bias_persist_path());
         }
         out
     }
@@ -604,4 +625,42 @@ mod tests {
         assert_eq!(disp.width, DEFAULT_SUBSTRATE_W);
         assert_eq!(disp.height, DEFAULT_SUBSTRATE_H);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// § T11-W18-LIVE-LEARNING · per-frame KAN-bias feed + persist path.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Where to persist KAN-bias state across process restarts.
+/// Default `~/.loa/kan_bias.bin` · operator-overridable via `LOA_KAN_BIAS_PATH`.
+pub fn kan_bias_persist_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("LOA_KAN_BIAS_PATH") {
+        return std::path::PathBuf::from(p);
+    }
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join(".loa").join("kan_bias.bin")
+}
+
+/// Feed one frame's telemetry into the substrate-intelligence KAN-bias.
+/// Cheap · per-frame call from substrate-render tick. The 8-byte payload
+/// includes the resonance-fingerprint + pixels-lit + frame-number so each
+/// frame is a unique observation that drifts the KAN-state.
+pub fn learn_from_frame_metrics(out: &cssl_host_digital_intelligence_render::FrameOutput) {
+    let payload: [u8; 16] = {
+        let mut b = [0u8; 16];
+        b[0..4].copy_from_slice(&out.resonance.fingerprint.to_le_bytes());
+        b[4..8].copy_from_slice(&out.resonance.n_pixels_lit.to_le_bytes());
+        b[8..12].copy_from_slice(&out.elapsed_micros.to_le_bytes());
+        b[12] = out.fidelity_tier;
+        b[13] = out.blend_used as u8;
+        b
+    };
+    cssl_host_substrate_intelligence::observe(
+        cssl_host_substrate_intelligence::Role::Coder, // self-coder feedback
+        0,                                              // obs_kind 0 = render-frame
+        out.frame_n,
+        &payload,
+    );
 }
