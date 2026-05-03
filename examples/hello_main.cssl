@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/hello_main.cssl
+//
+// § PURPOSE
+//   Smallest-possible `--emit=exe` smoke-test : a `main` fn that returns
+//   exit-code 0. Validates the csslc build pipeline end-to-end :
+//     lex → parse → HIR → MIR → cranelift-object → linker → runnable .exe
+//
+//   Used by T11-W19-α-CSSLC-LINKER-RT to verify the RustcDriven linker
+//   path threads cssl-rt + rust-std into a working executable.
+//
+// § USAGE
+//   csslc build examples/hello_main.cssl --emit=exe -o /tmp/hello.exe
+//   /tmp/hello.exe ; echo $?       # → 0
+
+module com.apocky.examples.hello_main
+
+fn main() -> i32 {
+    0i32
+}

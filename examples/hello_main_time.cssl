@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/hello_main_time.cssl
+//
+// § PURPOSE
+//   `--emit=exe` smoke-test that exercises the `time::monotonic_ns()` host
+//   FFI call. Validates that the produced .exe correctly resolves the
+//   `__cssl_time_monotonic_ns` extern symbol via the cssl-rt rlib that
+//   the RustcDriven linker threads into the link.
+//
+//   The fn discards the return value — we only care that the FFI call
+//   resolves at link time + runs without crashing at execution time.
+//
+// § USAGE
+//   csslc build examples/hello_main_time.cssl --emit=exe -o /tmp/ht.exe
+//   /tmp/ht.exe ; echo $?          # → 0
+
+module com.apocky.examples.hello_main_time
+
+fn main() -> i32 {
+    let _ : u64 = time::monotonic_ns()
+    0i32
+}
