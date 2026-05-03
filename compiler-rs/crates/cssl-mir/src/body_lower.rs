@@ -2541,6 +2541,65 @@ fn lower_call(
             }
         }
     }
+    // § T11-W19-α-CSSLC-FIX19 — 2-segment Title.Title path-call enum-variant
+    //   constructor recognizer. When the callsite is `EnumName::Variant(payload)`
+    //   AND no other recognizer claimed it AND the leading segment starts with
+    //   an uppercase ASCII letter (Title-case heuristic for enum-name shape) :
+    //     - mint `cssl.path_ref` carrying the dotted-name as `path` attribute,
+    //       result-ty = the synthetic `Opaque("<EnumName>")` so cgen FIX11
+    //       resolves to the enum's discriminant scalar type
+    //     - lower payload args (consume their value-ids — even though stage-0
+    //       throws the result away — so verifier doesn't see unbound IDs)
+    //
+    //   This blocks bogus `extern fn IoError.Other(i32) -> i64` declarations
+    //   from polluting the module + supersedes the previous fall-through-to-
+    //   func.call path. Real variant→discriminant runtime semantics ride
+    //   cssl-rt host-bridge (which inspects the path_ref attribute).
+    if let HirExprKind::Path { segments, .. } = &callee.kind {
+        if segments.len() == 2 {
+            let leading = ctx.interner.resolve(segments[0]);
+            let variant = ctx.interner.resolve(segments[1]);
+            let leading_is_title = leading
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase());
+            let variant_is_title = variant
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_uppercase());
+            // Reserved namespaces : `Box::new` / `Some` / `None` / `Ok` / `Err`
+            // / `Vec::*` / `String::*` are claimed by earlier recognizers, but
+            // those resolve via path-shape so we don't double-claim. We also
+            // exclude `Self::*` / `Box::*` / `Vec::*` / `String::*` / common
+            // module-prefixes here so trait-dispatch isn't pre-empted.
+            let reserved_leading = matches!(
+                leading.as_str(),
+                "Box" | "Vec" | "String" | "Self" | "Some" | "None" | "Ok" | "Err"
+                    | "fs" | "net" | "io" | "math" | "format"
+            );
+            if leading_is_title && variant_is_title && !reserved_leading {
+                // Lower payload args (just to consume their HIR ; we discard
+                // the value-ids — stage-0 throws the payload away).
+                for arg in args {
+                    let a_expr = match arg {
+                        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+                    };
+                    let _ = lower_expr(ctx, a_expr);
+                }
+                let id = ctx.fresh_value_id();
+                let result_ty = MirType::Opaque(leading.to_string());
+                let path = format!("{leading}.{variant}");
+                ctx.ops.push(
+                    MirOp::std("cssl.path_ref")
+                        .with_result(id, result_ty.clone())
+                        .with_attribute("path", path)
+                        .with_attribute("origin", "enum_variant_ctor")
+                        .with_attribute("source_loc", format!("{span:?}")),
+                );
+                return Some((id, result_ty));
+            }
+        }
+    }
     // § W-B-RECOGNIZER — Wave-A op-emit recognizers : `vec_drop::<T>` /
     //   `vec_load_at::<T>` / `vec_store_at::<T>` / `vec_end_of`.
     //

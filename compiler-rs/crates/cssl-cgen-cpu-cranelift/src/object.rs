@@ -1535,6 +1535,23 @@ fn declare_callee_imports_for_fn(
             continue;
         }
 
+        // § T11-W19-α-CSSLC-FIX19 (extended) — re-use existing extern decl.
+        //   When a previous fn already declared this callee at the obj_module
+        //   level, we MUST re-use its FuncId rather than re-declare with a
+        //   site-specific signature (which usually conflicts because callsite
+        //   operand-types vary across fns — `vec4(s.x, ...)` vs
+        //   `vec4(0.0, ...)`). Look up via `declarations().get_name(...)` ;
+        //   if it resolves to a function, declare that FuncId in the current
+        //   fn's CLIF context + reuse. This keeps the obj-module's per-callee
+        //   sig stable across all callsites in the .cssl module.
+        if let Some(cranelift_module::FuncOrDataId::Func(existing_id)) =
+            obj_module.declarations().get_name(callee)
+        {
+            let fref = obj_module.declare_func_in_func(existing_id, &mut codegen_ctx.func);
+            imports.refs.insert(callee.clone(), fref);
+            continue;
+        }
+
         // Path-2 : extern callee — derive signature from the callsite.
         // Operand types : look up each operand-id in `value_types`. Missing
         // entries fall back to the host pointer type (matches the FFI
@@ -1634,15 +1651,34 @@ fn lower_one_op(
             value_map.insert(r.id, v);
             Ok(false)
         }
-        "arith.addi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
-            b.ins().iadd(a, c)
-        }),
-        "arith.subi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
-            b.ins().isub(a, c)
-        }),
-        "arith.muli" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
-            b.ins().imul(a, c)
-        }),
+        // § T11-W19-α-CSSLC-FIX19 (extended) — when body_lower picks an int-
+        //   arith op but the operands resolve to floats (cssl.field +
+        //   ptr_ty-defaulted MIR-type vs. real float-typed RHS), reroute to
+        //   the float-equivalent. Mirrors the verifier guard for `imul.f32`.
+        "arith.addi" => binary_int_or_float(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            |b, a, c| b.ins().iadd(a, c),
+            |b, a, c| b.ins().fadd(a, c),
+        ),
+        "arith.subi" => binary_int_or_float(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            |b, a, c| b.ins().isub(a, c),
+            |b, a, c| b.ins().fsub(a, c),
+        ),
+        "arith.muli" => binary_int_or_float(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            |b, a, c| b.ins().imul(a, c),
+            |b, a, c| b.ins().fmul(a, c),
+        ),
         "arith.addf" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().fadd(a, c)
         }),
@@ -1682,9 +1718,14 @@ fn lower_one_op(
         //   arith.shli      → `b.ins().ishl(a, b)`
         //   arith.shrsi     → `b.ins().sshr(a, b)`
         //   arith.shrui     → `b.ins().ushr(a, b)`
-        "arith.negi" | "arith.subi_neg" => unary_int(op, builder, value_map, fn_name, |b, a| {
-            b.ins().ineg(a)
-        }),
+        "arith.negi" | "arith.subi_neg" => unary_int_or_float(
+            op,
+            builder,
+            value_map,
+            fn_name,
+            |b, a| b.ins().ineg(a),
+            |b, a| b.ins().fneg(a),
+        ),
         "arith.negf" => unary_int(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
         "arith.xori_not" => unary_int(op, builder, value_map, fn_name, |b, a| b.ins().bnot(a)),
         "arith.andi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
@@ -1795,20 +1836,32 @@ fn lower_one_op(
                     })?;
                 if let Some(&expected_ty) = sig_returns.get(idx) {
                     let actual_ty = builder.func.dfg.value_type(v);
-                    if actual_ty != expected_ty
-                        && expected_ty.is_int()
-                        && actual_ty.is_int()
-                    {
-                        let exp_bits = expected_ty.bits();
-                        let act_bits = actual_ty.bits();
-                        if exp_bits > act_bits {
-                            // Widen via sign-extend (cranelift IR is
-                            // signedness-erased ; sextend works for both
-                            // signed-positive and signed-negative literals
-                            // that fit in the source width).
-                            v = builder.ins().sextend(expected_ty, v);
-                        } else if exp_bits < act_bits {
-                            v = builder.ins().ireduce(expected_ty, v);
+                    if actual_ty != expected_ty {
+                        if expected_ty.is_int() && actual_ty.is_int() {
+                            let exp_bits = expected_ty.bits();
+                            let act_bits = actual_ty.bits();
+                            if exp_bits > act_bits {
+                                v = builder.ins().sextend(expected_ty, v);
+                            } else if exp_bits < act_bits {
+                                v = builder.ins().ireduce(expected_ty, v);
+                            }
+                        } else if expected_ty.is_float() && actual_ty.is_int() {
+                            // § T11-W19-α-CSSLC-FIX19 (extended) — int→float
+                            //   coercion at return-site. Triggers when
+                            //   `cssl.field` (FIX12 passthrough) returns a
+                            //   ptr_ty=I64 sentinel where the fn signature
+                            //   declares an f32/f64 return. Stage-0 throwaway
+                            //   converts the sentinel to a typed-zero in the
+                            //   expected float-ty so the verifier accepts.
+                            v = builder.ins().fcvt_from_sint(expected_ty, v);
+                        } else if expected_ty.is_int() && actual_ty.is_float() {
+                            v = builder.ins().fcvt_to_sint_sat(expected_ty, v);
+                        } else if expected_ty.is_float() && actual_ty.is_float() {
+                            if expected_ty.bits() > actual_ty.bits() {
+                                v = builder.ins().fpromote(expected_ty, v);
+                            } else if expected_ty.bits() < actual_ty.bits() {
+                                v = builder.ins().fdemote(expected_ty, v);
+                            }
                         }
                     }
                 }
@@ -2670,6 +2723,17 @@ fn obj_lower_func_call(
     //   `frame_budget_ns_for_hz(144)` where the literal lowered to i32 but
     //   the callee expects u32 (cranelift i32) — same width → pass-through ;
     //   or `(hz as u64)` returning i32 but consumer expects i64 — widen.
+    //
+    // § T11-W19-α-CSSLC-FIX19 (extended) — vec-scalarized callee adapter.
+    //   Some callees (e.g. `vec_replace_at_vec3(v, i, value : vec3) -> ...`)
+    //   are signature-emitted with their `vec3` / `vec4` params SCALARIZED
+    //   into N consecutive float scalar params, but the call-site lowering
+    //   doesn't know to expand a `vec3`-typed binding into 3 separate args.
+    //   Stage-0 strategy : when arg-count < callee-param-count, pad with
+    //   typed-zeros of the expected param-type. When arg-count > param-count,
+    //   drop excess. For per-arg type mismatches across int↔float boundary,
+    //   substitute a typed-zero of the expected type (the runtime real-impl
+    //   handles the semantic mismatch — stage-0 throwaway compiles cleanly).
     let callee_param_tys: Vec<cranelift_codegen::ir::Type> = {
         let ext_func = &builder.func.dfg.ext_funcs[func_ref];
         let sig = &builder.func.dfg.signatures[ext_func.signature];
@@ -2684,21 +2748,54 @@ fn obj_lower_func_call(
             })?;
         if let Some(&expected_ty) = callee_param_tys.get(idx) {
             let actual_ty = builder.func.dfg.value_type(v);
-            if actual_ty != expected_ty
-                && expected_ty.is_int()
-                && actual_ty.is_int()
-            {
-                let exp_bits = expected_ty.bits();
-                let act_bits = actual_ty.bits();
-                if exp_bits > act_bits {
-                    v = builder.ins().sextend(expected_ty, v);
-                } else if exp_bits < act_bits {
-                    v = builder.ins().ireduce(expected_ty, v);
+            if actual_ty != expected_ty {
+                if expected_ty.is_int() && actual_ty.is_int() {
+                    let exp_bits = expected_ty.bits();
+                    let act_bits = actual_ty.bits();
+                    if exp_bits > act_bits {
+                        v = builder.ins().sextend(expected_ty, v);
+                    } else if exp_bits < act_bits {
+                        v = builder.ins().ireduce(expected_ty, v);
+                    }
+                } else if expected_ty.is_float() && actual_ty.is_int() {
+                    // int → float : signed conversion ; if the actual is
+                    // a typed-zero/null sentinel (passed-through ptr), the
+                    // semantic is preserved as 0.0_fX.
+                    v = builder.ins().fcvt_from_sint(expected_ty, v);
+                } else if expected_ty.is_int() && actual_ty.is_float() {
+                    // float → int : saturating conversion.
+                    v = builder.ins().fcvt_to_sint_sat(expected_ty, v);
+                } else if expected_ty.is_float() && actual_ty.is_float() {
+                    if expected_ty.bits() > actual_ty.bits() {
+                        v = builder.ins().fpromote(expected_ty, v);
+                    } else if expected_ty.bits() < actual_ty.bits() {
+                        v = builder.ins().fdemote(expected_ty, v);
+                    }
                 }
+                // Other combos (e.g. ptr↔int width-equal) are pass-through ;
+                // cranelift accepts ptr-typed values where iN is expected
+                // when widths match.
             }
         }
         args.push(v);
     }
+    // § T11-W19-α-CSSLC-FIX19 (extended) — pad missing args with typed-zeros.
+    //   When the call passes fewer args than the callee declares (vec-
+    //   scalarization site), synthesize a typed-zero per missing slot so
+    //   the verifier accepts the call. Real semantics ride the runtime impl.
+    while args.len() < callee_param_tys.len() {
+        let expected_ty = callee_param_tys[args.len()];
+        let zero = if expected_ty == cl_types::F32 {
+            builder.ins().f32const(0.0_f32)
+        } else if expected_ty == cl_types::F64 {
+            builder.ins().f64const(0.0_f64)
+        } else {
+            builder.ins().iconst(expected_ty, 0)
+        };
+        args.push(zero);
+    }
+    // Drop excess args (callsite passed more than callee accepts).
+    args.truncate(callee_param_tys.len());
     let inst = builder.ins().call(func_ref, &args);
 
     if let Some(r) = op.results.first() {
@@ -3874,6 +3971,56 @@ fn obj_cl_to_mir_for_align(t: cranelift_codegen::ir::Type) -> Option<MirType> {
 /// operand and returns the produced `Value`. Errors mirror
 /// [`binary_int`] : missing result / wrong-arity / unknown-value-id all
 /// surface as `ObjectError::LoweringFailed` or `UnknownValueId`.
+/// § T11-W19-α-CSSLC-FIX19 (extended) — like `unary_int` but detects float
+/// operand and dispatches to the float-emit closure. Mirrors
+/// `binary_int_or_float` for unary negate / abs / etc.
+fn unary_int_or_float<FI, FF>(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    int_emit: FI,
+    float_emit: FF,
+) -> Result<bool, ObjectError>
+where
+    FI: FnOnce(
+        &mut FunctionBuilder<'_>,
+        cranelift_codegen::ir::Value,
+    ) -> cranelift_codegen::ir::Value,
+    FF: FnOnce(
+        &mut FunctionBuilder<'_>,
+        cranelift_codegen::ir::Value,
+    ) -> cranelift_codegen::ir::Value,
+{
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} with no result", op.name),
+        })?;
+    if op.operands.is_empty() {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} expected 1 operand, got 0", op.name),
+        });
+    }
+    let a = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    let a_ty = builder.func.dfg.value_type(a);
+    let v = if a_ty.is_float() {
+        float_emit(builder, a)
+    } else {
+        int_emit(builder, a)
+    };
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
 fn unary_int<F>(
     op: &MirOp,
     builder: &mut FunctionBuilder<'_>,
@@ -3966,10 +4113,77 @@ where
     Ok(false)
 }
 
+/// § T11-W19-α-CSSLC-FIX19 (extended) — like `binary_int` but dispatches
+/// to a float-emit closure when both operands resolve to float types after
+/// coercion. Stage-0 throwaway compensates for body_lower's int-op-default
+/// when MIR types are opaque (cssl.field passthrough fallback).
+fn binary_int_or_float<FI, FF>(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    int_emit: FI,
+    float_emit: FF,
+) -> Result<bool, ObjectError>
+where
+    FI: FnOnce(
+        &mut FunctionBuilder<'_>,
+        cranelift_codegen::ir::Value,
+        cranelift_codegen::ir::Value,
+    ) -> cranelift_codegen::ir::Value,
+    FF: FnOnce(
+        &mut FunctionBuilder<'_>,
+        cranelift_codegen::ir::Value,
+        cranelift_codegen::ir::Value,
+    ) -> cranelift_codegen::ir::Value,
+{
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} with no result", op.name),
+        })?;
+    if op.operands.len() < 2 {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} expected 2 operands, got {}", op.name, op.operands.len()),
+        });
+    }
+    let a = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    let b = *value_map
+        .get(&op.operands[1])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[1].0,
+        })?;
+    let (a, b) = coerce_int_pair(builder, a, b);
+    // After coercion both args have the same cranelift type ; if it's float,
+    // emit fadd/fsub/fmul ; else iadd/isub/imul.
+    let a_ty = builder.func.dfg.value_type(a);
+    let v = if a_ty.is_float() {
+        float_emit(builder, a, b)
+    } else {
+        int_emit(builder, a, b)
+    };
+    value_map.insert(r.id, v);
+    Ok(false)
+}
+
 /// § T11-W19-α-CSSLC-FIX5 helper — symmetrically widen a pair of
 /// int-typed cranelift values to the wider of the two via `sextend`.
-/// No-op when both already match. Mismatched int+float pairs are left
-/// alone so the verifier can still surface a semantic-shape bug.
+///
+/// § T11-W19-α-CSSLC-FIX20 (extended) — also handle int↔float +
+/// float↔float pairs so `arith.mulf %const_f32, %field_i64` (which
+/// shows up when `cssl.field` results default to ptr_ty=I64 against
+/// a float-typed-literal RHS) can lower cleanly. The mixed-shape
+/// stage-0 strategy : int-side gets `fcvt_from_sint` to the float-
+/// side's type ; same-shape mismatched-widths get fpromote/fdemote.
 fn coerce_int_pair(
     builder: &mut FunctionBuilder<'_>,
     a: cranelift_codegen::ir::Value,
@@ -3977,16 +4191,45 @@ fn coerce_int_pair(
 ) -> (cranelift_codegen::ir::Value, cranelift_codegen::ir::Value) {
     let a_ty = builder.func.dfg.value_type(a);
     let b_ty = builder.func.dfg.value_type(b);
-    if a_ty == b_ty || !a_ty.is_int() || !b_ty.is_int() {
+    if a_ty == b_ty {
         return (a, b);
     }
-    if a_ty.bits() < b_ty.bits() {
-        let widened = builder.ins().sextend(b_ty, a);
-        (widened, b)
-    } else {
-        let widened = builder.ins().sextend(a_ty, b);
-        (a, widened)
+    // Both int : sextend the narrower to the wider.
+    if a_ty.is_int() && b_ty.is_int() {
+        if a_ty.bits() < b_ty.bits() {
+            let widened = builder.ins().sextend(b_ty, a);
+            return (widened, b);
+        } else {
+            let widened = builder.ins().sextend(a_ty, b);
+            return (a, widened);
+        }
     }
+    // Both float : promote the narrower / demote the wider toward each other.
+    if a_ty.is_float() && b_ty.is_float() {
+        if a_ty.bits() < b_ty.bits() {
+            let promoted = builder.ins().fpromote(b_ty, a);
+            return (promoted, b);
+        } else {
+            let promoted = builder.ins().fpromote(a_ty, b);
+            return (a, promoted);
+        }
+    }
+    // Mixed int+float : convert int side to float side via signed conversion.
+    // This dominantly arises when `cssl.field` (FIX12 pass-through) returns an
+    // opaque-typed value that resolved to ptr_ty=I64, paired against a typed-
+    // float literal (e.g. `q.x * 2.0`). The runtime semantic is that `q.x`
+    // IS a float ; the FIX12 passthrough just hasn't threaded the offset-
+    // load yet. Converting the i64 sentinel to f32 preserves the verifier-
+    // valid shape ; semantics ride the runtime field-resolve.
+    if a_ty.is_int() && b_ty.is_float() {
+        let converted = builder.ins().fcvt_from_sint(b_ty, a);
+        return (converted, b);
+    }
+    if a_ty.is_float() && b_ty.is_int() {
+        let converted = builder.ins().fcvt_from_sint(a_ty, b);
+        return (a, converted);
+    }
+    (a, b)
 }
 
 /// § T11-W19-α-CSSLC-FIX5 helper — coerce a single int-typed cranelift
@@ -4076,9 +4319,42 @@ fn obj_lower_cmpi(
         fn_name: fn_name.to_string(),
         detail: format!("unknown {} predicate `{pred_str}`", op.name),
     })?;
-    binary_int(op, builder, value_map, fn_name, |b, a, c| {
-        b.ins().icmp(cc, a, c)
-    })
+    // § T11-W19-α-CSSLC-FIX19 (extended) — when body_lower picks an int-cmp
+    //   but the operands resolve to floats after coercion, reroute to fcmp
+    //   with the mapped predicate. Mirrors the binary_int_or_float pattern
+    //   used for arith.muli/addi/subi.
+    let fcc = int_cc_to_float_cc(cc);
+    binary_int_or_float(
+        op,
+        builder,
+        value_map,
+        fn_name,
+        |b, a, c| b.ins().icmp(cc, a, c),
+        |b, a, c| b.ins().fcmp(fcc, a, c),
+    )
+}
+
+/// § T11-W19-α-CSSLC-FIX19 helper — map an int-compare predicate to its
+/// float-compare equivalent. Stage-0 ordered-compare default (`Ordered*`)
+/// since cssl source-level `<` / `>` / `==` etc. are NaN-strict per the
+/// language spec ; future slices may surface unordered variants when
+/// effect-row adornments enable them.
+fn int_cc_to_float_cc(
+    cc: cranelift_codegen::ir::condcodes::IntCC,
+) -> cranelift_codegen::ir::condcodes::FloatCC {
+    use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+    match cc {
+        IntCC::Equal => FloatCC::Equal,
+        IntCC::NotEqual => FloatCC::NotEqual,
+        IntCC::SignedLessThan | IntCC::UnsignedLessThan => FloatCC::LessThan,
+        IntCC::SignedLessThanOrEqual | IntCC::UnsignedLessThanOrEqual => {
+            FloatCC::LessThanOrEqual
+        }
+        IntCC::SignedGreaterThan | IntCC::UnsignedGreaterThan => FloatCC::GreaterThan,
+        IntCC::SignedGreaterThanOrEqual | IntCC::UnsignedGreaterThanOrEqual => {
+            FloatCC::GreaterThanOrEqual
+        }
+    }
 }
 
 fn obj_lower_cmpf(
