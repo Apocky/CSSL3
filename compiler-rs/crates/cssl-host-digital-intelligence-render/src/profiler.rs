@@ -3,7 +3,6 @@
 #![allow(dead_code)]
 
 use std::collections::VecDeque;
-use std::time::Duration;
 
 pub const ROLLING_WINDOW_FRAMES: usize = 144;
 
@@ -188,6 +187,7 @@ impl FrameProfiler {
 mod tests {
     use super::*;
     use std::thread::sleep;
+    use std::time::Duration;
 
     #[test]
     fn phase_timer_records_elapsed() {

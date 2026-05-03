@@ -1,0 +1,80 @@
+§ specs/47_RUNTIME_ENV_VARS · runtime-env-knobs-catalog · ¬ readme · sovereignty-respecting
+  ← LoA + dependent-crates ; all-knobs HONOR-default-fast-path
+  ← Apocky-axiom : env-disable available for ANY learning/adaptive/auto-detect
+
+§I PRESENTATION-PATH-SELECT
+  ⟦
+    LOA_RENDER_V3 = 0|1                ← ash-direct-vulkan ; default 0 = wgpu-fallback
+    LOA_RENDER_V2 = 0|1                ← v2-substrate compute ; default 0 = conventional
+    LOA_VK_PRESENT_MODE                ← IMMEDIATE|MAILBOX|FIFO|FIFO_RELAXED ; default IMMEDIATE
+    LOA_PRESENT_MODE                   ← wgpu-side present-mode-priority-override
+    LOA_FRAME_LATENCY = 0|1|2|3        ← wgpu desired_maximum_frame_latency ; default 1
+    LOA_FRAME_PACE                     ← poll|wait|wait_until ; default poll
+    LOA_DXIL_PRESENT_TEAR = 0|1        ← D3D12 ALLOW_TEARING ; default 1 (when L8 lands)
+  ⟧
+
+§I ADAPTIVE-RESOLUTION
+  ⟦
+    LOA_DYN_RES = 0|1                  ← dynamic-resolution-scaler ; default 1 (active)
+    LOA_DYN_RES_FLOOR_Q16              ← min-scale Q0.16 ; default 32_768 (0.5×)
+    LOA_DYN_RES_TARGET_US              ← per-frame-budget µs ; default 6_944 (1440p144)
+  ⟧
+
+§I DISPLAY-PROFILE
+  ⟦
+    LOA_DISPLAY_PROFILE                ← amoled|oled|ips_lcd|va_lcd|hdr_ext ; default auto-detect
+    LOA_DISPLAY_HDR_NITS               ← peak-brightness ; default 1000 (HDR10)
+  ⟧
+
+§I LIVE-LEARNING
+  ⟦
+    LOA_KAN_BIAS_PATH                  ← persistence-path ; default ~/.loa/kan_bias.bin
+    LOA_KAN_DRIFT_RATE                 ← α-fixed-point ; default 1/256 (planned : per-band)
+    LOA_KAN_DISABLE = 0|1              ← suspend-learning ; default 0 (active)
+  ⟧
+
+§I SUBSTRATE-RENDER
+  ⟦
+    LOA_SUBSTRATE_BENCH = 0|1|N        ← log gpu_dispatch_us every-N frames ; default 0 (off)
+    LOA_SUBSTRATE_PACKED = 0|1         ← 64B-packed-GpuCrystal path ; default 0 (when SoA-pack lands)
+    LOA_SUBSTRATE_CRYSTAL_OVERRIDE     ← override count 1..=128 ; default 128
+  ⟧
+
+§I OVERLAY-COMPOSE
+  ⟦
+    LOA_OVERLAY_STRENGTH               ← f32 0.0..=1.0 ; default 1.0 (substrate-PRIMARY)
+    LOA_AMOLED_BLACK_THRESHOLD         ← override per-profile black-floor ; default 0.005
+    LOA_AMOLED_SAT_BOOST               ← override saturation multiplier ; default 1.15
+  ⟧
+
+§I MNEME-AGENT-MEMORY (cssl-edge)
+  ⟦
+    MNEME_SOVEREIGN_PUBKEY_HEX         ← Ed25519 hex pubkey ; required-prod
+    MNEME_STUB_MODE = 0|1              ← bypass DB + LLM ; default 0 (live)
+    ANTHROPIC_API_KEY                  ← Claude-Sonnet for extract+verify+synthesize
+    VOYAGE_API_KEY                     ← voyage-3 for embeddings
+    SUPABASE_SERVICE_ROLE_KEY          ← Supabase admin
+    SUPABASE_URL                       ← Supabase project URL
+    NEXT_PUBLIC_SUPABASE_URL           ← inline for client
+    NEXT_PUBLIC_SUPABASE_ANON_KEY      ← inline for client
+  ⟧
+
+§I AKASHIC + Σ-CHAIN (planned · sigma-coherence-agent in flight)
+  ⟦
+    LOA_SIGMA_SIGNER_SECRET_HEX        ← Ed25519 secret hex ; required-prod
+    LOA_AKASHIC_LEDGER_URL             ← optional federated-ledger endpoint
+    LOA_SIGMA_CHAIN_PROOF_DEPTH        ← consensus depth ; default 3
+  ⟧
+
+§I OBSERVABILITY-ATTESTATION
+  ¬ surveillance · ¬ identifying-telemetry · ¬ phone-home
+  default-fast-path : every adaptive/learning system has env-disable
+  all defaults are local-first + sovereignty-respecting
+  W! ¬ remove-env-disables ← preserves user-control-axiom
+
+§I FORWARDED-DEFAULT-INVARIANTS
+  ⟦
+    LoA-runtime startup-log MUST emit selected env-values + fast-path-vs-disabled state
+    log-format : "loa-host/env · {KEY}={VALUE} · src={env|default}"
+    rationale : transparency + reproducibility + bug-report-quality
+  ⟧

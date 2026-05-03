@@ -24,8 +24,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 use crate::fps_pipeline::{
-    FpsPipeline, FrameMetrics, FrameSlot, FrameSlotState, PassKind,
-    PresentMode, VrsConfig, VrsTier,
+    FpsPipeline, FrameMetrics,
     FRAME_BUDGET_120HZ_MS, FRAME_BUDGET_144HZ_MS, FRAME_BUDGET_60HZ_MS,
 };
 
@@ -147,6 +146,9 @@ pub fn metrics_jsonl(m: &FrameMetrics) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fps_pipeline::{
+        FrameSlot, FrameSlotState, PassKind, PresentMode, VrsConfig, VrsTier,
+    };
 
     #[test]
     fn default_pipeline_uses_120hz_target() {
