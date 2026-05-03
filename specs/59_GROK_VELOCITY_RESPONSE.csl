@@ -1,0 +1,111 @@
+§ specs/59_GROK_VELOCITY_RESPONSE · revenue-first re-prioritization 2026-05-03
+  ← Grok-4 response to-velocity-correction prompt (per spec/58_DEV_VELOCITY)
+  ← validates strategic-pivot from-spec/57 · adds revenue-first 7-action ordering
+  ← canonical : C:\Users\Apocky\Downloads\grok-mcp-harness\GROK_VELOCITY_CORRECTION.md
+
+═══════════════════════════════════════════════════════════════════════════════
+§ GROK-VERDICT (validated)
+═══════════════════════════════════════════════════════════════════════════════
+
+§I 30-DAY-REVENUE-TARGETS
+  ⟦
+    floor   : $5k     (50-100 alpha-keys × $49-99 + 10-20 harness-lifetime × $99-199)
+    aim     : $6-12k  (+ 20-30 monthly-subs × $19-29 + 1-2 consulting × $500-1k)
+    stretch : $20k    (viral-X-post + warm-audience + paid-ad-boost)
+  ⟧
+  RISK : if-demo-too-broken (no-window · trace-bugs visible) → conversion-drops-hard
+  ⇒ visible-window + basic-render BEFORE demo-video
+
+═══════════════════════════════════════════════════════════════════════════════
+§ RE-PRIORITIZED 7 ACTIONS (revenue-must-precede-engine)
+═══════════════════════════════════════════════════════════════════════════════
+
+  1 · POLISH + PRODUCTIZE harness + mcp_client  (3-4 days)
+      → README sales-copy · pricing-page · 1-click install-script · basic-docs
+      → fastest cash-asset already-existing
+
+  2 · APOCKY.COM MONETIZATION-LAYER  (4-5 days)
+      → landing-page + 3-tiers (Free / $19mo early / $99-lifetime OR $999-founder)
+      → Stripe-checkout · email-capture
+      → portfolio → product-site
+
+  3 · MINIMAL-VISIBLE-DEMO + MARKETING  (3 days)
+      → even console-only "engine runs + basic-window-stub"
+      → 60-90s video + screenshots
+      → X-posts · landing-page-hero · alpha-sales-page
+      → visibility > perfection for-revenue
+
+  4 · WIRE-3-HIGHEST-LEVERAGE HARNESS-TOOLS  (2 days)
+      → csl_parse + csl_to_cssl + infinity_engine_sync
+      → makes-product-credible · early-customers can-actually-use-it
+
+  5 · LAUNCH CLOSED-ALPHA / PAID EARLY-ACCESS  (2-3 days post-1-4)
+      → 20-50 alpha-keys × $49-99 (LoA + harness combined)
+      → announce X + direct-outreach to 50-100 solo-devs
+      → 30-day-revenue-engine
+
+  6 · REAL caps_grant/check + SOVEREIGNTY-DEMO  (4 days)
+      → ¬ full-engine · enough-to-show "this-is-different" in-marketing + alpha-builds
+      → sovereignty = unique-selling-point
+
+  7 · CUT non-monetizable + 60-DAY PUBLIC MILESTONE  (1 day)
+      → announce "60-day visible 1440p144 OR pivot"
+      → urgency creates-sales + forces-focus
+
+═══════════════════════════════════════════════════════════════════════════════
+§ CUT / PARKED (Grok-explicit · ¬ touch-until-revenue)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ INDEFINITE-PARK
+  ⊑ Σ-Chain full-implementation
+  ⊑ Akashic-Records full ledger + mycelial-memory-layer
+  ⊑ Mycelial-Network federated-learning
+  ⊑ advanced engine-features (GI · particles · hair · animation · spatial-audio · streaming)
+  ⊑ full CSL dependent/refinement-types + compiler-codegen for-x86/SPIR-V beyond-current
+  ⊑ multi-platform support (keep Windows-only until-revenue-funds-it)
+  ⊑ most LoA game-content-waves (only enough-for-alpha-demo)
+  ⊑ ¬ non-revenue-tooling
+  ⊑ ¬ research-spikes
+
+§ KEEP-+-DOUBLE-DOWN (TIER-1)
+  ⊑ Grok-MCP-Harness (core-product)
+  ⊑ Core csslc stability (string.* · MirEnumLayout · multi-module)
+  ⊑ Minimal-visible-engine (window + basic D3D12 present-loop)
+  ⊑ apocky.com monetization + alpha-sales
+
+§ KEEP-BUT-SLIM (TIER-2)
+  ⊑ CSL-v3 tools (parse/generate/validate) — wire into-harness
+  ⊑ Basic sovereignty-caps (real FFI-enforcement)
+  ⊑ Infinity-Engine minimal-runtime (sync + status)
+
+§ THE-RULE
+  "If ¬-directly-help-sell-harness/alpha-keys OR ¬-help-visible-1440p-window <60 days → CUT or PARK"
+
+═══════════════════════════════════════════════════════════════════════════════
+§ STRATEGIC-FRAMING
+═══════════════════════════════════════════════════════════════════════════════
+
+§ ENGINE-BEFORE-GAME (original-discipline · per spec/56)
+  CORRECT for-long-term-moat
+  WRONG for-revenue-survival NOW
+
+§ REVENUE-FIRST (this-doc)
+  CORRECT for-survival + velocity-now
+  Engine-work-continues but only-minimum-to-support-sales (window + basic-render + caps)
+
+§ THIS-WEEK-PRIORITIES (Apocky)
+  1. Productized-harness + landing-page LIVE
+  2. Visible-window milestone (even-stub)
+  3. Alpha-sale launch
+  Everything-else SECONDARY until-$5k+-bank + paying-users-feedback
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Why : Grok-validated revenue-first-pivot · gives concrete-30-day-targets ($5-20k blended) + explicit-CUT-list + 7-revenue-first-actions
+§ How to apply : on-resume sessions · check spec/59 + spec/58 BEFORE spec/56 · revenue-first ordering applies-until $5k-bank-reached + paying-users-feedback
+§ Trade-off acknowledged : engine-completion DELAYS by-some-weeks · revenue-funds-completion AND validates-thesis with-real-users
+§ Sovereignty preserved : ¬ pay-for-power · ¬ DRM · ¬ rootkit · cosmetic-channel-only
+
+§ creator @ Apocky · revenue-first-pivot via-Grok-velocity-correction · 2026-05-03 · t∞
