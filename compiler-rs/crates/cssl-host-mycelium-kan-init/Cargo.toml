@@ -1,0 +1,43 @@
+[package]
+name                   = "cssl-host-mycelium-kan-init"
+description            = "§ T11-W18-MYCELIUM-KAN-INIT · STAGE-0-BOOTSTRAP-SHIM bridging cssl-substrate-mycelium peer-cache → cssl-host-substrate-intelligence KAN-bias load path. DEFAULT-OFF · LOA_MYCELIUM_LOAD=0 (default) loads local-only kan_bias.bin · LOA_MYCELIUM_LOAD=1 explicitly opts the user into per-startup peer-shard merge. Sovereignty-respecting · always falls back to local-only on any error · never panics · never phones home."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § STAGE-0-BOOTSTRAP-SHIM
+# This crate is a thin glue between two existing public surfaces. It does
+# NOT mutate global KAN-bias state on its own — it computes a merged peer-
+# shard suggestion + reports it back to the caller, who decides whether to
+# install it via the substrate-intelligence persistence path.
+#
+# § PROPRIETARY · OFFLINE-FIRST · NO TELEMETRY · NO PHONE-HOME
+
+[lib]
+name = "cssl_host_mycelium_kan_init"
+
+[dependencies]
+# § Existing public surfaces — DO NOT add new fns to these crates from here.
+# We consume :
+#   - kan_bias_load                : load v1 / v2 file from disk
+#   - kan_bias_for_profile         : snapshot a band as [u32; 8]
+#   - kan_bias_checksum            : process-global checksum probe
+#   - merge_kan_bias_shards        : Σ-mask-aware weighted-average merge
+#   - capsule_verify_sigma_mask    : per-capsule consent-envelope check
+#   - LocalPeerCache + KanBiasShard payload extraction
+cssl-host-substrate-intelligence = { path = "../cssl-host-substrate-intelligence" }
+cssl-substrate-mycelium          = { path = "../cssl-substrate-mycelium" }
+
+# § serde — the on-disk peer-cache format (LocalPeerCache JSON · records-vec
+# encoding). Dev-only on the mycelium side ; we lift it to a runtime dep
+# here because the load path needs to deserialize.
+serde      = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# Only needed by the integration tests below ; tests roundtrip cache files.
+
+[lints]
+workspace = true
