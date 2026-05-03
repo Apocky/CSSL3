@@ -1,0 +1,145 @@
+§ specs/50_T11_W18_CRATE_CATALOG · all-new-crates-this-wave · API-reference
+  ← consolidation pass · "consolidate knowledge" per Apocky-directive
+  ← @ HEAD 7295e1b · post-9-merges · 5 agents still flying
+  ← target-audience : future-Apocky + future-agents + onboarding-context
+
+§I NEW-CRATES-THIS-SESSION (alphabetical · all in compiler-rs/crates/)
+
+§II cssl-host-dmgm-specialists · 700-LOC · 8ad0780 ← merged
+  PURPOSE : 4 cognitive-specialist roles · NOT generic-AGI
+  ROLES   : DungeonMaster=0 · GameMaster=1 · Collaborator=2 · Coder=3
+  KAN-BANDS : each-role gets-its-own-KAN-bias-band via observe_with_profile(...)
+  API :
+    pub trait Specialist :
+      fn observe(&mut self, payload: &[u8])
+      fn decide(&self, prompt_hash: u64) -> Decision
+      fn role(&self) -> SpecialistRole
+    pub enum Decision :
+      ProposeAction { id: u32, params: Vec<u8> }
+      Question { hash: u64 }
+      Pass
+    pub fn role_council(decisions: &[Decision]) -> Decision
+      ↳ deterministic mediator · tag-rank + lex-encoding tiebreak
+  TESTS : 15/15 · clippy clean -D warnings
+  DEMO : Labyrinth/systems/dmgm_council_demo.csl · 17 fns · 1433-byte COFF
+
+§II cssl-host-procgen-pipeline · 1006-LOC · 6c9a5bf ← merged
+  PURPOSE : runtime-procgen spine ← Apocky's "engine = procgen NOT static scenes"
+  PIPELINE : IntentInput → parse_intent → IntentSemantic → ProcgenRequest →
+             generate (BLAKE3-deterministic) → ProcgenOutput → asset_fetch_stub
+  API :
+    pub fn parse_intent(input: &IntentInput) -> Result<IntentSemantic, ParseErr>
+      ↳ regex-driven keyword-grammar baseline · LLM-bridge slot for F1 follow-on
+    pub fn generate(req: &ProcgenRequest) -> ProcgenOutput
+      ↳ BLAKE3-fingerprint-seeded · Fibonacci-disc crystal placement · pure-fn
+    pub fn asset_fetch_stub(uri: &str) -> Result<Vec<u8>, FetchErr>
+      ↳ returns empty Vec · F2 follow-on wires real HTTP
+  FOLLOW-ONS : F1 LLM-bridge · F2 HTTP-fetch (ureq) · F3 GLTF (gltf-rs) · F4 ω-field-write
+  TESTS : 19/19 · serde JSON round-trip · replay-determinism intact
+  DEMO : Labyrinth/systems/procgen_demo.csl · 3 MIR fns · 364-byte COFF
+
+§II cssl-host-substrate-render-v3-d3d12 · 1267 + 683 = 1950-LOC · 2443088 + 865aaa9 ← both merged
+  PURPOSE : D3D12 + DXIL sibling of L7-ash-direct-vulkan
+  FEATURES-GATES : default · runtime · present (mirrors v3-vulkan)
+  API (foundation) :
+    pub struct DxilArtifact · DXBC_CONTAINER_MAGIC · FRAMES_IN_FLIGHT=3
+    pub struct D3D12SubstrateRenderer
+    pub fn try_new(artifact, extent) -> Self ← headless construction
+    pub fn try_new_with_swapchain<W: HasWindowHandle>(window, dxil, dims) -> Self ← Win32-only
+    pub fn dispatch_with_present(observer, &[Crystal]) ← advances-ring
+  API (PRESENT-slice add) :
+    pub fn validate_dxil_container(bytes) ← strict DXBC magic + 32-byte min
+    pub struct RootSignatureLayout::substrate_kernel() ← b0 CBV + u0/u1 UAVs
+    pub fn substrate_kernel_dispatch_grid(w, h) ← TILE_X/Y=8 ceil-div
+    pub enum BackBufferState {Present, CopyDest} ← monotonic flip()
+    pub fn build_root_signature() / build_pipeline() ← stubs · honest reports false
+    pub enum PresentError { ..., RootSignatureCreate, ResourceCreate, PresentFailed, DxilValidation }
+  HONEST-DEFERRAL : real D3D12SerializeRootSignature + CreateComputePipelineState +
+    IDXGISwapChain1 + Present calls are SCAFFOLD-ONLY until cssl-cgen-gpu-dxil emits
+  ENV-KNOBS : LOA_DXIL_PRESENT_TEAR=0|1 (default 1)
+  TESTS : 24/24 (8 base + 8 PRESENT + 3-feature-gate) · clippy -D warnings clean
+
+§II cssl-host-substrate-render-v2/packed.rs · 475-LOC · 1127709 ← merged
+  PURPOSE : 64-byte packed GpuCrystalPacked struct · 5.6× memory-reduction
+  LAYOUT (64B EXACT · const-eval size-check) :
+    world_pos x/y/z i32                 12B (lossless)
+    extent_mm_u16 + sigma_mask_u8 + flags_u8  4B
+    spectral_quad[4] u32                16B (16 bands · pre-blended w/ illuminant)
+    silhouette_quant[32] i8             32B (16 ctrl-pts × 2-axis quant)
+                                  TOTAL 64B (Pod/Zeroable safe)
+  API :
+    pub struct GpuCrystalPacked
+    pub fn pack_crystal_packed(c: &Crystal) -> GpuCrystalPacked
+    pub fn pack_crystals_packed(crystals: &[Crystal]) -> Vec<GpuCrystalPacked>
+    pub fn packed_path_enabled() -> bool ← env-toggle LOA_SUBSTRATE_PACKED
+  WGSL : substrate_v2.wgsl scaffold-only ; existing 352B path FULLY-PRESERVED
+  ENV-KNOBS : LOA_SUBSTRATE_PACKED (case-insensitive 1/true/on)
+  FUTURE-WIRE : flip binding(1) once visual-delta is sub-perceptual
+  TESTS : 13/13
+
+§II cssl-host-substrate-intelligence (KAN-multiband) · b7b4329 ← merged
+  PURPOSE : 5-band per-DisplayProfile KAN-bias accumulator · LIVE-LEARNING
+  STATIC : KAN_BIAS_MULTIBAND : [[AtomicU32; 8]; 5] (5 bands × 8 axes)
+  API (NEW) :
+    pub fn observe_with_profile(digest: &[u8], profile_id: u8) -> i32
+      ↳ profile_id ∈ {0..=4} matches Amoled/Oled/IpsLcd/VaLcd/HdrExt
+    pub fn kan_bias_for_profile(pid: u8) -> [u32; 8]
+  API (preserved) : observe(role,kind,seed,ev) routes to band-2 (IpsLcd neutral)
+  DRIFT-RATE :
+    Amoled/Oled : α=1/128 (2× faster · pitch-black panels · subtle bias-shift)
+    IpsLcd/VaLcd/HdrExt : α=1/256 unchanged
+  PERSISTENCE : format-version 0x01 → 0x02 · v1-back-compat-read
+    v1 : 32 raw bytes → loaded into band-2 only
+    v2 : 0x02 header + 5×8×u32 LE = 161 bytes
+  TESTS : 25/25 (9 new + 16 pre-existing)
+
+§II cssl-substrate-mycelium · 651-LOC · 0b19c43f ← merged
+  PURPOSE : mycelium-network federation primitives · OFFLINE-FIRST scaffold
+  TYPES :
+    MyceliumPeer { peer_id, public_key, last_synced_at, capabilities }
+    PeerCapsuleRecord { kind, payload, sigma_mask, ts_us, signer }
+    PeerCapsuleKind {KanBiasShard=0 OmegaFieldPatch=1 SigmaMaskUpdate=2 RecipeUnlock=3 HotfixClass=4}
+    LocalPeerCache (BTreeMap-backed deterministic-serde · LRU-bounded)
+  API :
+    pub fn merge_kan_bias_shards(local: [u32;8], peers: &[[u32;8]]) -> [u32;8]
+      ↳ Σ-mask-aware weighted-avg · saturating-arith · NO-truth-claim
+    pub fn capsule_verify_sigma_mask(record, expected_mask) -> bool
+      ↳ strict-equality · refuses both subset + superset
+    pub fn cache_evict_lru(cache) · pub fn cache_stats(cache) -> CacheStats
+    pub fn peer_add · peer_remove · clear (sovereign-revoke)
+  PRIVACY : 60-line module-rustdoc · 3-layer opt-out
+    default-off · per-capsule Σ-refusal · hard-wipe
+    NO DHT-discovery · NO phone-home · purely-local · explicit-peer-add only
+  TESTS : 15/15 · BTreeMap-deterministic-iter
+
+§I FLYING-AGENTS (when these land · update this catalog) :
+  - csslc-strings (a6747ba0) · cssl-cgen-cpu-cranelift extension
+  - sigma-coherence (ac20f915) · cssl-substrate-coherence-proof NEW crate
+  - dm-procgen-bridge (aa4ec5b1) · cssl-host-dm-procgen-bridge NEW crate
+  - specialist-persist (a0889d9d) · cssl-host-dmgm-specialists extension
+  - mycelium-kan-init (a5edbd3f) · cssl-host-mycelium-kan-init NEW crate
+
+§I CONSOLIDATION-PATTERNS-OBSERVED-ACROSS-CRATES
+  ⟦
+    1. BLAKE3-fingerprint everywhere : substrate-intelligence · procgen · mycelium-pending · substrate-coherence-proof-pending
+    2. AtomicU32 for live-learning state : kan-bias-multiband · could extract to common helper
+    3. BTreeMap-deterministic-serde : mycelium · could extract trait
+    4. file-format-version-byte 0x01/0x02 + back-compat-read : substrate-intelligence · specialist-persist-pending · could-template
+    5. env-var-disable per adaptive system : LOA_DYN_RES · LOA_KAN_DISABLE · LOA_MYCELIUM_LOAD · LOA_PROCGEN_ACTIVE · pattern is SOVEREIGNTY-RESPECTING
+    6. Sigma-mask-aware operations : mycelium-merge · coherence-proof-pending · procgen-fingerprint
+  ⟧
+
+§I FUTURE-CONSOLIDATION-OPPORTUNITY
+  ⟦
+    cssl-host-substrate-common ← extract :
+      blake3-helper-fns
+      AtomicU32-array-helpers
+      file-format-version-trait + back-compat-iterator
+      env-var-disable-pattern
+      Σ-mask-helper
+    DEFER until ≥ 4 more crates land using these patterns ; premature-abstraction
+    ¬ trying-to-do-now (¬ break-existing-callers)
+  ⟧
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · sovereignty-respecting throughout ;
+  every crate's adaptive-system has env-disable · default-off-when-uncertain
