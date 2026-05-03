@@ -72,6 +72,7 @@ pub mod capability;
 pub mod diff_shader;
 pub mod emit;
 pub mod module;
+pub mod substrate_kernel;
 pub mod target;
 
 pub use binary_emit::{emit_module_binary, BinaryEmitError};
@@ -84,6 +85,10 @@ pub use diff_shader::{
 };
 pub use emit::{emit_module, SpirvEmitError};
 pub use module::{SpirvModule, SpirvSection};
+pub use substrate_kernel::{
+    emit_substrate_kernel_spirv, emit_substrate_kernel_spirv_bytes, SubstrateKernelEmitError,
+    SubstrateKernelSpec,
+};
 pub use target::{AddressingModel, ExecutionModel, MemoryModel, SpirvTargetEnv};
 
 /// Crate version exposed for scaffold verification.

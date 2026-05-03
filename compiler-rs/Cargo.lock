@@ -991,6 +991,7 @@ name = "cssl-cgen-gpu-spirv"
 version = "0.1.0"
 dependencies = [
  "cssl-autodiff",
+ "cssl-cgen-spirv",
  "cssl-mir",
  "rspirv",
  "thiserror 1.0.69",
@@ -1825,6 +1826,15 @@ dependencies = [
  "naga",
  "pollster",
  "wgpu",
+]
+
+[[package]]
+name = "cssl-host-substrate-render-v3"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "cssl-cgen-gpu-spirv",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
