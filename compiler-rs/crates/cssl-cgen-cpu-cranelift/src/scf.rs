@@ -303,14 +303,27 @@ where
         })?;
 
     // § 3. Determine result type (None when scf.if is statement-only).
+    //
+    // § T11-W19-α-CSSLC-FIX7 — non-scalar yield fallback via PointerByRef.
+    //   Pre-FIX7 a non-scalar yield-ty surfaced as `NonScalarYield` and
+    //   blocked stdlib/{window,input,fs,net}.cssl + stdlib/time.cssl's
+    //   `Result<T,E>`-yielding scf.if arms. Mirrors the FIX4 enum/Result
+    //   PointerByRef classification : when a yield-ty doesn't fit a
+    //   cranelift scalar, the merge-block-param widens to host-pointer-
+    //   width I64 (x86_64 stage-0 single-host) and arm-yields are
+    //   coerced (via emit_terminating_jump's int-coerce or sextend on
+    //   smaller-than-ptr-width yields). Pointer-shaped MIR carriers
+    //   (e.g. Result<...> hidden-pointer ABI) already fit this width
+    //   directly per the cgen-side resolve_aggregate_opaque table.
     let result_ty = op.results.first().map(|r| &r.ty);
     let merge_param_ty = match result_ty {
-        Some(ty) if !matches!(ty, MirType::None) => {
-            Some(mir_to_cl(ty).ok_or_else(|| ScfError::NonScalarYield {
-                fn_name: fn_name.to_string(),
-                ty: format!("{ty}"),
-            })?)
-        }
+        Some(ty) if !matches!(ty, MirType::None) => Some(mir_to_cl(ty).unwrap_or_else(|| {
+            // Non-scalar yield → host-pointer-width I64 fallback.
+            // The arm-yield coercion in `emit_terminating_jump` widens
+            // any narrower int-Value to match this merge-param width ;
+            // already-pointer-shaped Values flow through unchanged.
+            cranelift_codegen::ir::types::I64
+        })),
         _ => None,
     };
 
