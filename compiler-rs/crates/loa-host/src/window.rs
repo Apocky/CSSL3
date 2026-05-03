@@ -205,6 +205,14 @@ pub struct App {
     /// (TODO W18-N · for now telemetry-only · the runtime can introspect
     /// via `substrate.current_display()`).
     pub substrate: crate::substrate_render::SubstrateRenderState,
+
+    /// § T11-W18-L6 · COMPUTE-ONLY substrate render-stack · zero render-pipeline.
+    /// When set (and `LOA_RENDER_V2` env-var ≠ "0"), the per-frame render block
+    /// uses `RendererV2::tick` instead of the conventional `renderer.render_frame`.
+    /// One compute-dispatch per frame · output blits to swapchain · NO scene-pass ·
+    /// NO cfer · NO tonemap · NO compose-pass. Pure substrate-paradigm visual.
+    #[cfg(feature = "runtime")]
+    pub render_v2: Option<cssl_host_substrate_render_v2::RendererV2>,
 }
 
 impl Default for App {
@@ -247,6 +255,8 @@ impl App {
             has_been_focused: false,
             gpu_alive: false,
             substrate: crate::substrate_render::SubstrateRenderState::new(),
+            #[cfg(feature = "runtime")]
+            render_v2: None,
             frame_pace: FramePace::from_env(),
             mcp_handle: None,
             mcp_port: None,
@@ -1455,6 +1465,25 @@ impl ApplicationHandler for App {
         // § Try to bring up the GPU. On failure we keep the window open + log.
         if let Some(gpu) = GpuContext::new(window.clone()) {
             let renderer = Renderer::new(&gpu);
+
+            // § T11-W18-L6 · build the COMPUTE-ONLY substrate render path
+            //   (RendererV2) sized to the current surface. Per-frame logic
+            //   in window-loop branches LOA_RENDER_V2-aware.
+            let surface_w = gpu.config.width;
+            let surface_h = gpu.config.height;
+            let v2 = cssl_host_substrate_render_v2::RendererV2::new(&gpu.device, &gpu.config);
+            log_event(
+                "INFO",
+                "loa-host/render-v2",
+                &format!(
+                    "compute-only substrate render-stack ARMED · {}×{} · LOA_RENDER_V2={} · zero-render-pipeline",
+                    surface_w,
+                    surface_h,
+                    std::env::var("LOA_RENDER_V2").unwrap_or_else(|_| "1(default)".into()),
+                ),
+            );
+            self.render_v2 = Some(v2);
+
             self.gpu = Some(gpu);
             self.renderer = Some(renderer);
             self.gpu_alive = true;
@@ -2003,7 +2032,70 @@ impl App {
             let _frame_out = self.substrate.tick(observer);
         }
 
-        // § 9. Render the frame.
+        // § 8f. T11-W18-L6 · COMPUTE-ONLY substrate render-stack default-path.
+        //   When `LOA_RENDER_V2 ≠ "0"` (default ON) and `render_v2` is wired,
+        //   we replace the entire conventional 4-pass scene+cfer+tonemap+
+        //   compose render with a single compute-dispatch + swapchain-blit.
+        //   ZERO render-pipeline overhead · pure substrate-paradigm visual.
+        let v2_enabled = std::env::var("LOA_RENDER_V2").map_or(true, |v| v != "0");
+        if v2_enabled {
+            if let (Some(gpu), Some(window), Some(v2)) = (
+                self.gpu.as_ref(),
+                self.window.as_ref(),
+                self.render_v2.as_mut(),
+            ) {
+                let _ = window;
+                let frame_token = telem::global().frame_begin();
+                match gpu.surface.get_current_texture() {
+                    Ok(surface_tex) => {
+                        // Build observer for v2 from current camera.
+                        let cam = &self.render_camera;
+                        let yaw_milli = ((cam.yaw * 1000.0) as i64).rem_euclid(1000) as u32;
+                        let pitch_milli = ((cam.pitch * 1000.0) as i64).rem_euclid(1000) as u32;
+                        let observer = self.substrate.observer_for(
+                            (cam.position.x * 1000.0) as i32,
+                            (cam.position.y * 1000.0) as i32,
+                            (cam.position.z * 1000.0) as i32,
+                            yaw_milli,
+                            pitch_milli,
+                            self.frame_count,
+                            0xFFFF_FFFF,
+                        );
+                        // Resize v2 if surface dims changed (e.g., monitor change).
+                        let (sw, sh) = (surface_tex.texture.width(), surface_tex.texture.height());
+                        let (vw, vh) = v2.dims();
+                        if sw != vw || sh != vh {
+                            // Recreate v2 with new dims.
+                            *v2 = cssl_host_substrate_render_v2::RendererV2::new_dims(
+                                &gpu.device, sw, sh,
+                            );
+                        }
+                        v2.tick(
+                            &gpu.device,
+                            &gpu.queue,
+                            observer,
+                            &self.substrate.crystals,
+                            &surface_tex.texture,
+                        );
+                        surface_tex.present();
+                        telem::global().frame_end(frame_token, 1, 0);
+                    }
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        telem::global().frame_end(frame_token, 0, 0);
+                    }
+                    Err(e) => {
+                        log_event("ERROR", "loa-host/render-v2", &format!("surface error : {e:?}"));
+                        telem::global().frame_end(frame_token, 0, 0);
+                    }
+                }
+                // Skip the conventional render-frame path entirely.
+                self.frame_count = self.frame_count.wrapping_add(1);
+                return;
+            }
+        }
+
+        // § 9. Render the frame (conventional 4-pass path · used when
+        //   LOA_RENDER_V2=0 or v2 not yet initialized).
         let frame_token = telem::global().frame_begin();
         if let (Some(gpu), Some(renderer), Some(window)) = (
             self.gpu.as_ref(),

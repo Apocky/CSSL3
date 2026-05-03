@@ -23,6 +23,10 @@ cssl-ast                = { path = "../cssl-ast" }
 cssl-autodiff           = { path = "../cssl-autodiff" }
 cssl-cgen-cpu-cranelift = { path = "../cssl-cgen-cpu-cranelift" }
 cssl-cgen-cpu-x64       = { path = "../cssl-cgen-cpu-x64" }
+# § T11-W18-L4-CSSL-GPU : real --emit=wgsl path. Replaces the
+#   stage-0 placeholder with a real MIR → WGSL emission via the
+#   pre-existing emit_wgsl() entry-point.
+cssl-cgen-gpu-wgsl      = { path = "../cssl-cgen-gpu-wgsl" }
 cssl-hir                = { path = "../cssl-hir" }
 cssl-lex                = { path = "../cssl-lex" }
 cssl-mir                = { path = "../cssl-mir" }

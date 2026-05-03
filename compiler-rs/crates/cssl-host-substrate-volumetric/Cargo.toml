@@ -1,0 +1,39 @@
+[package]
+name                   = "cssl-host-substrate-volumetric"
+description            = "§ T11-W18-L5 · VOXEL-CLOUD paradigm · DIRECT volumetric rendering of ω-field cells as 3D point-cloud · NOT 2D pixel-integral · each ω-field cell → one glowing splat at world (x,y,z) emitting per-illuminant spectral radiance · scene = sparse VOLUMETRIC voxel-cloud the player WALKS THROUGH · crystals = dense cell-clusters · vertex-billboard cloud with phase-coherent crystal-contribution · wgpu compute-shader voxelization + RGBA8 splat emit"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_substrate_volumetric"
+
+# § FEATURES
+#   `default = []` — voxelization + WGSL-source + naga-validation are always
+#   built. No GPU-driver pull at default. Tests that only exercise the
+#   voxel-cloud build + naga validation pass without wgpu installed.
+#   `runtime` — adds wgpu/pollster so the `VolumetricVoxelCloud` host wrapper
+#   can be constructed. Mirrors the W18-G `runtime` feature pattern.
+[features]
+default = []
+runtime = ["dep:wgpu", "dep:pollster"]
+
+[dependencies]
+# § Substrate sources : crystals + ω-field cell access.
+cssl-host-crystallization              = { path = "../cssl-host-crystallization" }
+cssl-host-alien-materialization        = { path = "../cssl-host-alien-materialization" }
+cssl-substrate-omega-field             = { path = "../cssl-substrate-omega-field" }
+
+# § Always-built : voxel-cloud-buffer-pack + WGSL-source + naga-validation.
+naga     = { workspace = true }
+bytemuck = { workspace = true }
+blake3   = { workspace = true }
+
+# § Optional runtime-only deps. Mirror W18-G feature gating.
+wgpu     = { workspace = true, optional = true }
+pollster = { version = "0.3", optional = true }
+
+[lints]
+workspace = true

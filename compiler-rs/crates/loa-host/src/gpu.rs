@@ -278,11 +278,16 @@ impl GpuContext {
         };
 
         let caps = surface.get_capabilities(&adapter);
+        // § T11-W18-L6 · prefer Rgba8UnormSrgb so substrate-render-v2's
+        //   Rgba8Unorm compute-output is copy-compatible (formats may only
+        //   differ in srgb-ness · channel-order MUST match per wgpu validator).
+        //   Fallback to any srgb format · then any format.
         let surface_format = caps
             .formats
             .iter()
             .copied()
-            .find(wgpu::TextureFormat::is_srgb)
+            .find(|f| *f == wgpu::TextureFormat::Rgba8UnormSrgb)
+            .or_else(|| caps.formats.iter().copied().find(wgpu::TextureFormat::is_srgb))
             .unwrap_or_else(|| caps.formats[0]);
 
         // § T11-LOA-TEST-APP : add COPY_SRC if the adapter supports it on
@@ -291,6 +296,16 @@ impl GpuContext {
         // texture (some platforms do), we fall back to RENDER_ATTACHMENT
         // only ; the snapshotter then maintains its own offscreen target.
         let mut usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
+        // § T11-W18-L6 · COPY_DST so substrate-render-v2 can blit its
+        //   compute-output directly into the swapchain image.
+        if caps.usages.contains(wgpu::TextureUsages::COPY_DST) {
+            usage |= wgpu::TextureUsages::COPY_DST;
+            log_event(
+                "INFO",
+                "loa-host/gpu",
+                "surface usage includes COPY_DST — substrate-v2 direct-blit enabled",
+            );
+        }
         if caps.usages.contains(wgpu::TextureUsages::COPY_SRC) {
             usage |= wgpu::TextureUsages::COPY_SRC;
             log_event(

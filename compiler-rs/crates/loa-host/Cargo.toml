@@ -31,6 +31,7 @@ runtime = [
     "dep:winit",
     "dep:pollster",
     "cssl-host-substrate-resonance-gpu/runtime",
+    "cssl-host-substrate-render-v2/runtime",
 ]
 
 [dependencies]
@@ -55,6 +56,10 @@ cssl-host-digital-intelligence-render  = { path = "../cssl-host-digital-intellig
 #   feature so `SubstrateResonanceGpu::dispatch` is callable. 1440p144 path :
 #   substrate_render::SubstrateRenderState::new_gpu(device, queue, w, h).
 cssl-host-substrate-resonance-gpu      = { path = "../cssl-host-substrate-resonance-gpu" }
+# § T11-W18-L6 · COMPUTE-ONLY substrate render path · zero render-pipeline ·
+#   wired-as-default when LOA_RENDER_V2=1 (default) replacing the conventional
+#   scene + cfer + tonemap + compose 4-pass stack with a single compute-dispatch.
+cssl-host-substrate-render-v2          = { path = "../cssl-host-substrate-render-v2" }
 # § T11-LOA-FID-SPECTRAL : substrate's hyperspectral pipeline. Used by
 # `spectral_bridge` to bake per-material 16-band reflectance × 4 canonical
 # illuminants → sRGB albedo for the GPU material LUT. Catalog-buildable

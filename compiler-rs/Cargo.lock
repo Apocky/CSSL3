@@ -1815,12 +1815,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-substrate-render-v2"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cssl-host-alien-materialization",
+ "cssl-host-crystallization",
+ "cssl-host-substrate-resonance-gpu",
+ "naga",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
 name = "cssl-host-substrate-resonance-gpu"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "cssl-host-alien-materialization",
  "cssl-host-crystallization",
+ "naga",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
+name = "cssl-host-substrate-volumetric"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "bytemuck",
+ "cssl-host-alien-materialization",
+ "cssl-host-crystallization",
+ "cssl-substrate-omega-field",
  "naga",
  "pollster",
  "wgpu",
@@ -2349,6 +2376,7 @@ dependencies = [
  "cssl-autodiff",
  "cssl-cgen-cpu-cranelift",
  "cssl-cgen-cpu-x64",
+ "cssl-cgen-gpu-wgsl",
  "cssl-hir",
  "cssl-lex",
  "cssl-mir",
@@ -4144,6 +4172,7 @@ dependencies = [
  "cssl-host-spectral-grader",
  "cssl-host-stereoscopy",
  "cssl-host-substrate-intelligence",
+ "cssl-host-substrate-render-v2",
  "cssl-host-substrate-resonance-gpu",
  "cssl-host-voice",
  "cssl-host-weapons",

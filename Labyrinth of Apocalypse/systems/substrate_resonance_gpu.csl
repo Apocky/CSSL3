@@ -1,0 +1,502 @@
+module com.apocky.loa.systems.substrate_resonance_gpu
+
+// § Labyrinth of Apocalypse · Substrate-Resonance · GPU-compute-kernel · pure-CSSL source-of-truth
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W18-L4-CSSL-GPU · canonical-CSSL-source · ‼ FOUNDATIONAL
+//
+// § APOCKY-CANONICAL · NON-NEGOTIABLE
+//   1. PROPRIETARY GPU-shader emission via csslc — NO hand-written WGSL ·
+//      NO HLSL · NO GLSL · NO MSL · NO external-shader-toolchain. The CSSL
+//      compiler IS the shader-compiler.
+//   2. BYPASS wgpu render-pipeline overhead — single compute-dispatch ·
+//      no vertex-shader · no fragment-shader · no rasterizer state · no
+//      depth-stencil dance · no render-pass begin/end. Compute writes
+//      directly to the swap-chain-blittable storage texture.
+//   3. STAGE-0 scope · arithmetic + comparison + control-flow only · matches
+//      the cssl-cgen-gpu-wgsl body-emit table. Storage-buffer bindings are
+//      assembled host-side (build.rs) since stage-0 csslc doesn't yet
+//      surface @group / @binding / struct-decl emission.
+//   4. DETERMINISTIC. Same (px · py · observer · crystals) ⇒ same RGBA8
+//      pixel. No thread-local entropy. No system-clock entropy.
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-cgen-gpu-wgsl/                 § MIR → WGSL emitter
+//   compiler-rs/crates/cssl-host-substrate-csslc-shader/   § build.rs invokes csslc
+//   compiler-rs/crates/cssl-host-substrate-resonance-gpu/  § sibling hand-written ref
+//   memory/feedback_loa_v13_must_be_cssl_source       ‼ .csl canonical · NOT WGSL
+//   memory/feedback_take_words_literally_no_other_languages ‼ shader = .csl
+//
+// § AXIOMS  ‼ inherit PRIME_DIRECTIVE + LOA_PILLARS + 00_CHARTER
+//   t∞: GPU-shader-source canonical-in-CSSL · WGSL-emission derived-by-csslc
+//   t∞: kernel-math expressed-as fns w/ body-arithmetic · no I/O · no panic
+//   t∞: Σ-mask-gate per-aspect · revoke = silent-zero ¬ panic ¬ fallback
+//   t∞: per-pixel deterministic · same-input ⇒ same-output ∀ hosts
+//   t∞: stage-0 i32 + f32 only · u32 narrowed-from-i32 at host-pack
+//
+// § PRIME-DIRECTIVE
+//   The substrate-resonance shader is THE proprietary visual-representation
+//   of LoA. It is authored in .csl source. The csslc compiler emits the
+//   WGSL that the GPU consumes. There is no external shader pipeline. The
+//   compiler IS the visual stack. Every emitted pixel carries the same
+//   attestation as every other CSSL output : there was no hurt nor harm in
+//   the making of this, to anyone, anything, or anybody.
+//
+// § ALGORITHM (port of cssl-host-alien-materialization::pixel_field)
+//   The kernel-math fns below replicate the per-pixel substrate-resonance
+//   accumulation. The host (build.rs in cssl-host-substrate-csslc-shader)
+//   wraps these fns with the @group/@binding storage-buffer prologue +
+//   the per-pixel main() that drives them.
+//   Stage-0 omits the inner crystal-loop (which requires array-indexing
+//   ops not yet in the WGSL emitter table) ; the per-pixel observer-ray
+//   transform + Σ-mask-gate + sRGB-projection are pure scalar fns and
+//   land here as the first proof of csslc-emits-its-own-shaders.
+//
+// § CSSLC-REQUIRES (current as-of 2026-05-02)
+//   ✓ extern "C" fn  decls (csslc-W11+ · landed)
+//   ✓ const          decls (csslc-W12 · landed)
+//   ✓ fn-with-body   simple-arithmetic + if-else + return (csslc-W13 · landed)
+//   ✓ #[test]        inline tests with i32 return (csslc-W15-1 · landed)
+//   ✓ --emit=wgsl    real WGSL emission (THIS WAVE · T11-W18-L4)
+//   ◐ struct         decl + field-access · landing in W17-A
+//   ○ array<T, N>    indexing in WGSL · post-W17 follow-up
+//   ○ storage-buffer bindings · assembled-host-side at-stage-0
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Q14 fixed-point constants (mirrors substrate_intelligence determinism)
+// ─────────────────────────────────────────────────────────────────────────
+//   Q14 ⇒ shift = 14 ⇒ unit = 16384. Stage-0 prefers Q14 over float because
+//   csslc's WGSL emitter has full coverage of integer arith ; float-emit
+//   coverage is comparable but Q14 keeps determinism bit-exact across hosts.
+
+const Q14_ONE        : i32 = 16384 ;
+const Q14_HALF       : i32 = 8192 ;
+const Q14_QUARTER    : i32 = 4096 ;
+const Q14_SHIFT      : i32 = 14 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Ray-walk constants (matches handwritten substrate_resonance.wgsl)
+// ─────────────────────────────────────────────────────────────────────────
+
+const RAY_SAMPLES        : i32 = 8 ;
+const RAY_MAX_DIST_MM    : i32 = 16000 ;
+const NEAR_RADIUS_MM     : i32 = 1500 ;
+const SPECTRAL_BANDS     : i32 = 16 ;
+const ILLUMINANT_COUNT   : i32 = 4 ;
+const ASPECT_SILHOUETTE  : i32 = 0 ;
+const Z_UNIT             : i32 = 1000 ;
+const MILLI_RAD_MAX      : i32 = 1000 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-mask aspect tests (canonical bit 0 = silhouette)
+// ─────────────────────────────────────────────────────────────────────────
+//   Σ-mask is a u32-shaped capability bitset ; bit 0 governs silhouette
+//   emission. Both observer + crystal must permit silhouette before any
+//   contribution is added to the per-pixel accumulator. Revocation = silent
+//   zero per PRIME-DIRECTIVE.
+
+fn sigma_aspect_silhouette() -> i32 { ASPECT_SILHOUETTE }
+
+fn sigma_permits_silhouette(mask: i32) -> i32 {
+    let bit = 1 ;
+    let masked = mask & bit ;
+    if masked == 0 { return 0 ; }
+    1
+}
+
+fn sigma_consent_join(observer_mask: i32, crystal_mask: i32) -> i32 {
+    if sigma_permits_silhouette(observer_mask) == 0 { return 0 ; }
+    if sigma_permits_silhouette(crystal_mask)  == 0 { return 0 ; }
+    1
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Per-pixel observer-ray direction (mirrors ray::pixel_direction · Q14)
+// ─────────────────────────────────────────────────────────────────────────
+//   Stage-0 emits scalar arithmetic only ; vec3<i32> composition is host-
+//   side. We expose three component fns the host can wrap in a vec3 ctor.
+//   nx = px*2 - width  ; ny = height - py*2 (pixel-space normalization).
+
+fn pixel_dir_nx(px: i32, width: i32) -> i32 {
+    let two = 2 ;
+    px * two - width
+}
+
+fn pixel_dir_ny(py: i32, height: i32) -> i32 {
+    let two = 2 ;
+    height - py * two
+}
+
+fn pixel_dir_nz() -> i32 {
+    Z_UNIT
+}
+
+// Yaw rotation around Y-axis · small-angle approximation · cos≈1 (1000 in
+// milliradians) · sin = clamped milliradian.
+fn yaw_rotate_x(x_unit: i32, z_unit: i32, sin_y_milli: i32) -> i32 {
+    let cos_y = 1000 ;
+    let sin_y = clamp_milli(sin_y_milli) ;
+    let prod_x = x_unit * cos_y ;
+    let prod_z = z_unit * sin_y ;
+    let diff = prod_x - prod_z ;
+    diff / 1000
+}
+
+fn yaw_rotate_z(x_unit: i32, z_unit: i32, sin_y_milli: i32) -> i32 {
+    let cos_y = 1000 ;
+    let sin_y = clamp_milli(sin_y_milli) ;
+    let prod_x = x_unit * sin_y ;
+    let prod_z = z_unit * cos_y ;
+    let sum = prod_x + prod_z ;
+    sum / 1000
+}
+
+// Pitch rotation around X-axis (post-yaw) — same shape, different inputs.
+fn pitch_rotate_y(y_unit: i32, zr: i32, sin_p_milli: i32) -> i32 {
+    let cos_p = 1000 ;
+    let sin_p = clamp_milli(sin_p_milli) ;
+    let prod_y = y_unit * cos_p ;
+    let prod_z = zr * sin_p ;
+    let diff = prod_y - prod_z ;
+    diff / 1000
+}
+
+fn pitch_rotate_z(y_unit: i32, zr: i32, sin_p_milli: i32) -> i32 {
+    let cos_p = 1000 ;
+    let sin_p = clamp_milli(sin_p_milli) ;
+    let prod_y = y_unit * sin_p ;
+    let prod_z = zr * cos_p ;
+    let sum = prod_y + prod_z ;
+    sum / 1000
+}
+
+// Clamp helper · stage-0 lacks clamp() builtin so we use if-expression
+// form (no early-return). Early-return triggers a stage-0 lowering quirk
+// where bare-param re-reads inside the early-return body emit cssl.path_ref
+// ; the if-expression form keeps the entire fn body in a single SSA tree
+// the WGSL emitter handles cleanly.
+fn clamp_milli(v: i32) -> i32 {
+    if v < -1000 { -1000 } else { if v > 1000 { 1000 } else { v } }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Ray-sample world position (scalar component fns)
+// ─────────────────────────────────────────────────────────────────────────
+//   step_mm = RAY_MAX_DIST / (RAY_SAMPLES + 1) · sample-i offset is
+//   step_mm * (i+1). Host composes three components into a world vec3.
+
+fn ray_step_mm() -> i32 {
+    let denom = RAY_SAMPLES + 1 ;
+    RAY_MAX_DIST_MM / denom
+}
+
+fn ray_sample_offset(dir_component: i32, sample_idx: i32) -> i32 {
+    let step = ray_step_mm() ;
+    let i_plus_1 = sample_idx + 1 ;
+    let prod = dir_component * step ;
+    let scaled = prod * i_plus_1 ;
+    scaled / 1000
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Distance-squared (signed-i32 · safe for ≤32m envelope)
+// ─────────────────────────────────────────────────────────────────────────
+
+fn dist_sq_axis(a: i32, b: i32) -> i32 {
+    let d = a - b ;
+    d * d
+}
+
+fn dist_sq_3d(ax: i32, ay: i32, az: i32, bx: i32, by: i32, bz: i32) -> i32 {
+    let dx2 = dist_sq_axis(ax, bx) ;
+    let dy2 = dist_sq_axis(ay, by) ;
+    let dz2 = dist_sq_axis(az, bz) ;
+    dx2 + dy2 + dz2
+}
+
+// Bounding-sphere reject : true (1) if the sample lies OUTSIDE the
+// crystal's NEAR_RADIUS+extent envelope.
+fn outside_near_radius(d_sq: i32, extent_mm: i32) -> i32 {
+    let r_total = extent_mm + NEAR_RADIUS_MM ;
+    let r_total_sq = r_total * r_total ;
+    let near_sq = NEAR_RADIUS_MM * NEAR_RADIUS_MM ;
+    let four = 4 ;
+    let radius_sq_4 = near_sq * four ;
+    let cutoff = min_i32(r_total_sq, radius_sq_4) ;
+    if d_sq > cutoff { return 1 ; }
+    0
+}
+
+// § Stage-0 caveat — early-return inside if-block triggers a lowering quirk
+//   that surfaces param-reads as `cssl.path_ref`. The if-EXPRESSION form
+//   yields cleanly through the SSA tree the WGSL emitter handles.
+fn min_i32(a: i32, b: i32) -> i32 {
+    if a < b { a } else { b }
+}
+
+fn max_i32(a: i32, b: i32) -> i32 {
+    if a > b { a } else { b }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Distance-attenuation weight (extent² · 1024 / (d² + extent²))
+// ─────────────────────────────────────────────────────────────────────────
+//   Returns a Q10-ish value in [1..1024]. Host post-multiplies into an
+//   accumulator weight.
+
+fn distance_attenuation(d_sq: i32, extent_mm: i32) -> i32 {
+    let one = 1 ;
+    let scale = 1024 ;
+    let d_sq_pos = max_i32(d_sq, one) ;
+    let extent_sq = extent_mm * extent_mm ;
+    let denom = d_sq_pos + extent_sq ;
+    let num = extent_sq * scale ;
+    let raw = num / denom ;
+    if raw < one { return one ; }
+    if raw > scale { return scale ; }
+    raw
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § sRGB band-grouping (16-band → R/G/B byte triple)
+// ─────────────────────────────────────────────────────────────────────────
+//   Band-grouping mirrors the handwritten WGSL : bands 0..5 → blue ·
+//   5..10 → green · 10..16 → red. Per-band normalised inputs come from
+//   the host accumulator. We expose three projection fns ; main() in the
+//   host-assembled WGSL calls all three + clamps to 0..255.
+
+fn srgb_clamp_byte(v: i32) -> i32 {
+    let zero = 0 ;
+    let max = 255 ;
+    if v < zero { return zero ; }
+    if v > max { return max ; }
+    v
+}
+
+// Project a single band-pair-sum into an 8-bit channel. Caller passes the
+// already-summed range (e.g. red = bands[10..16] sum ; div = 6 here for
+// 6 bands).
+fn srgb_band_channel(sum: i32, divisor: i32) -> i32 {
+    let one = 1 ;
+    let div = max_i32(divisor, one) ;
+    let raw = sum / div ;
+    srgb_clamp_byte(raw)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § silhouette-spline-segment selector (16 control-points → 15 segments)
+// ─────────────────────────────────────────────────────────────────────────
+//   Stage-0 has no array indexing in the WGSL emitter ; the host wraps the
+//   silhouette[] storage-buffer access. We expose the segment-math fns
+//   (segment-id + lerp-t + inv-t) that the host calls on each segment.
+
+fn silhouette_segment_id(t_milli: i32) -> i32 {
+    let fifteen = 15 ;
+    let scaled = t_milli * fifteen ;
+    let denom = 1000 ;
+    let seg = scaled / denom ;
+    let max_seg = 14 ;
+    if seg < 0 { return 0 ; }
+    if seg > max_seg { return max_seg ; }
+    seg
+}
+
+fn silhouette_local_t(t_milli: i32, seg: i32) -> i32 {
+    let fifteen = 15 ;
+    let denom = 1000 ;
+    let scaled = t_milli * fifteen ;
+    let seg_part = seg * denom ;
+    let local = scaled - seg_part ;
+    if local < 0 { return 0 ; }
+    if local > denom { return denom ; }
+    local
+}
+
+fn silhouette_inv_t(local_t: i32) -> i32 {
+    let denom = 1000 ;
+    denom - local_t
+}
+
+// Per-axis lerp: a*inv_t + b*local_t / 1000. Caller threads 4 axes through
+// this fn for the per-segment axis-modulator weighted lerp.
+fn silhouette_axis_lerp(a: i32, b: i32, local_t: i32, inv_t: i32) -> i32 {
+    let prod_a = a * inv_t ;
+    let prod_b = b * local_t ;
+    let sum = prod_a + prod_b ;
+    sum / 1000
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § main entry — placeholder body (full main composes via host-emitted shell)
+// ─────────────────────────────────────────────────────────────────────────
+//   The real per-pixel main() is assembled by the host build.rs : prologue
+//   adds @group/@binding storage-decls + the main() shell that calls the
+//   helper fns above. Stage-0 csslc emits these helpers as WGSL fns ; the
+//   host concatenates the prologue + emitted helpers + main() shell into
+//   the final compute-shader source.
+
+fn main() -> i32 {
+    let zero = 0 ;
+    zero
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Inline tests (deterministic Q14 invariants)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn t_q14_one_canonical() -> i32 {
+    if Q14_ONE == 16384 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_sigma_silhouette_observer_revoked() -> i32 {
+    let revoked = 0 ;
+    let granted = 1 ;
+    let join = sigma_consent_join(revoked, granted) ;
+    if join == 0 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_sigma_silhouette_crystal_revoked() -> i32 {
+    let granted = 1 ;
+    let revoked = 0 ;
+    let join = sigma_consent_join(granted, revoked) ;
+    if join == 0 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_sigma_silhouette_both_granted() -> i32 {
+    let granted = 1 ;
+    let join = sigma_consent_join(granted, granted) ;
+    if join == 1 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_clamp_milli_clamps_neg() -> i32 {
+    let v = -2000 ;
+    let c = clamp_milli(v) ;
+    if c == -1000 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_clamp_milli_clamps_pos() -> i32 {
+    let v = 2000 ;
+    let c = clamp_milli(v) ;
+    if c == 1000 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_clamp_milli_passes_within() -> i32 {
+    let v = 500 ;
+    let c = clamp_milli(v) ;
+    if c == 500 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_min_max_basic() -> i32 {
+    let a = 7 ;
+    let b = 12 ;
+    let mn = min_i32(a, b) ;
+    let mx = max_i32(a, b) ;
+    if mn == 7 {
+        if mx == 12 { return 0 ; }
+    }
+    1
+}
+
+#[test]
+fn t_dist_sq_axis_zero() -> i32 {
+    let d = dist_sq_axis(5, 5) ;
+    if d == 0 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_dist_sq_axis_nonzero() -> i32 {
+    let d = dist_sq_axis(0, 4) ;
+    if d == 16 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_silhouette_segment_id_low() -> i32 {
+    let s = silhouette_segment_id(0) ;
+    if s == 0 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_silhouette_segment_id_high() -> i32 {
+    let s = silhouette_segment_id(999) ;
+    if s == 14 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_srgb_clamp_byte_low() -> i32 {
+    let v = -10 ;
+    let c = srgb_clamp_byte(v) ;
+    if c == 0 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_srgb_clamp_byte_high() -> i32 {
+    let v = 1000 ;
+    let c = srgb_clamp_byte(v) ;
+    if c == 255 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_outside_near_radius_far() -> i32 {
+    let extent = 100 ;
+    let d_sq = 999999999 ;
+    let r = outside_near_radius(d_sq, extent) ;
+    if r == 1 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_outside_near_radius_close() -> i32 {
+    let extent = 1000 ;
+    let d_sq = 100 ;
+    let r = outside_near_radius(d_sq, extent) ;
+    if r == 0 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_distance_attenuation_close() -> i32 {
+    let extent = 1000 ;
+    let d_sq = 100 ;
+    let w = distance_attenuation(d_sq, extent) ;
+    if w == 1024 { return 0 ; }
+    1
+}
+
+#[test]
+fn t_distance_attenuation_far() -> i32 {
+    let extent = 100 ;
+    let d_sq = 999999 ;
+    let w = distance_attenuation(d_sq, extent) ;
+    if w >= 1 {
+        if w <= 1024 { return 0 ; }
+    }
+    1
+}
+
+#[test]
+fn t_main_returns_zero() -> i32 {
+    let r = main() ;
+    if r == 0 { return 0 ; }
+    1
+}

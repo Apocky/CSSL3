@@ -334,6 +334,114 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
             // Best-effort cleanup of the intermediate object on success.
             let _ = std::fs::remove_file(&obj_path);
         }
+        EmitMode::Wgsl => {
+            // § T11-W18-L4-CSSL-GPU — real WGSL emission via cssl-cgen-gpu-wgsl.
+            //
+            // The structured-CFG validator above writes the D5 marker on
+            // success, so emit_wgsl() will accept the module. Entry-point
+            // resolution : prefer a fn named "main" if present ; else fall
+            // back to the first MIR fn. This matches the canonical
+            // single-entry-point WGSL convention without burdening callers
+            // with an extra CLI flag.
+            //
+            // § path_ref → arith.constant pre-pass. Stage-0 csslc lowers
+            //   bare-const-name uses to `cssl.path_ref` placeholders ; the
+            //   WGSL emit table doesn't carry a top-level const-decl form
+            //   yet, so we inline-resolve every path_ref whose name matches
+            //   a top-level `const NAME : T = <integer-literal>;` decl into
+            //   a `arith.constant value="<text>"` op. This unblocks emission
+            //   for the substrate-resonance kernel without surfacing const
+            //   decls into the cgen-gpu-wgsl crate.
+            //
+            // Future slices wire `--entry=<name>` + `--stage={vertex|fragment|
+            // compute}` flags ; stage-0 hard-codes compute-default since the
+            // T11-W18-L4 mission is the substrate-resonance compute kernel.
+            use cssl_cgen_gpu_wgsl::{emit_wgsl, WgslTargetProfile};
+
+            // ── path_ref pre-resolution ────────────────────────────────
+            // Build name → literal-text + MirType from the HIR consts.
+            let mut const_table: std::collections::HashMap<String, (String, cssl_mir::MirType)> =
+                std::collections::HashMap::new();
+            for item in &hir_mod.items {
+                if let cssl_hir::HirItem::Const(c) = item {
+                    let name = interner.resolve(c.name);
+                    if let cssl_hir::HirExprKind::Literal(lit) = &c.value.kind {
+                        if matches!(
+                            lit.kind,
+                            cssl_hir::HirLiteralKind::Int | cssl_hir::HirLiteralKind::Float
+                        ) {
+                            // Slice the original source to get the literal text.
+                            if let Some(text) =
+                                file.slice(lit.span.start, lit.span.end)
+                            {
+                                let ty = match lit.kind {
+                                    cssl_hir::HirLiteralKind::Int => {
+                                        cssl_mir::MirType::Int(cssl_mir::IntWidth::I32)
+                                    }
+                                    cssl_hir::HirLiteralKind::Float => {
+                                        cssl_mir::MirType::Float(cssl_mir::FloatWidth::F32)
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                const_table.insert(name, (text.to_string(), ty));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Walk MIR fns + rewrite path_ref ops whose `path` attribute
+            // matches a known const into a fresh `arith.constant` op of
+            // the const's literal text. Preserves result-id so downstream
+            // operands keep referring to it.
+            for mf in &mut mir_mod.funcs {
+                rewrite_path_ref_to_constant(&mut mf.body, &const_table);
+            }
+
+            let entry_name: String = mir_mod
+                .funcs
+                .iter()
+                .find(|f| f.name == "main")
+                .map(|f| f.name.clone())
+                .or_else(|| mir_mod.funcs.first().map(|f| f.name.clone()))
+                .unwrap_or_else(|| "main".to_string());
+
+            // Use a naga-compatible compute profile (no f16 enable directive,
+            // since naga 23 still has gaps there). Stage-0 default is good
+            // enough for substrate-resonance ; later slices add `--feature=…`
+            // CLI knobs.
+            let profile = {
+                let mut p = WgslTargetProfile::compute_default();
+                p.features.clear();
+                p
+            };
+
+            match emit_wgsl(&mir_mod, &profile, &entry_name) {
+                Ok(module) => {
+                    let text = module.render();
+                    if let Err(e) = std::fs::write(&output_path, &text) {
+                        eprintln!(
+                            "csslc: error: cannot write output '{}' ({})",
+                            output_path.display(),
+                            e
+                        );
+                        return ExitCode::from(exit_code::USER_ERROR);
+                    }
+                    eprintln!(
+                        "csslc: build {} → {} : {} MIR fn(s) → {} bytes (wgsl, entry={})",
+                        path.display(),
+                        output_path.display(),
+                        mir_fn_count,
+                        text.len(),
+                        entry_name,
+                    );
+                }
+                Err(e) => {
+                    eprintln!("csslc: WGSL emit error [{}]: {}", e.code(), e);
+                    return ExitCode::from(exit_code::USER_ERROR);
+                }
+            }
+        }
         _ => {
             let placeholder = format!(
                 "// CSSLv3 stage-0 build artifact (placeholder — non-object emit mode).\n\
@@ -346,7 +454,7 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
                  // target        : {}\n\
                  //\n\
                  // Real backend emission for {} lands in a later phase\n\
-                 // (SPIR-V → S6-D1 ; DXIL → S6-D2 ; MSL → S6-D3 ; WGSL → S6-D4).\n",
+                 // (SPIR-V → S6-D1 ; DXIL → S6-D2 ; MSL → S6-D3).\n",
                 path.display(),
                 mode_label,
                 mir_fn_count,
@@ -456,6 +564,55 @@ fn emit_cpu_object_bytes(
 #[must_use]
 pub fn is_native_x64_backend_not_yet_landed(err_msg: &str) -> bool {
     err_msg.starts_with("native-x64 backend not yet landed")
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-W18-L4-CSSL-GPU — path_ref → arith.constant rewriter
+// ───────────────────────────────────────────────────────────────────────
+
+/// Rewrite `cssl.path_ref` ops in a region (recursively descending into
+/// nested regions) when the `path` attribute matches a known top-level
+/// const decl. The rewrite produces an `arith.constant` op with the same
+/// `result-id` so downstream operands continue to reference the value.
+///
+/// Path-refs whose name does NOT appear in `const_table` are left alone —
+/// the WGSL emitter will surface them as `WGSL0008: unsupported op`, which
+/// is the correct stage-0 diagnostic until the path-ref → call-site
+/// resolver lands.
+fn rewrite_path_ref_to_constant(
+    region: &mut cssl_mir::MirRegion,
+    const_table: &std::collections::HashMap<String, (String, cssl_mir::MirType)>,
+) {
+    for block in &mut region.blocks {
+        for op in &mut block.ops {
+            if op.name == "cssl.path_ref" {
+                let path_attr = op
+                    .attributes
+                    .iter()
+                    .find(|(k, _)| k == "path")
+                    .map(|(_, v)| v.clone());
+                if let Some(name) = path_attr {
+                    if let Some((value_text, ty)) = const_table.get(&name) {
+                        // Mutate in place : retarget the op to arith.constant
+                        // with the literal text + override the result-type to
+                        // the const's static type (path_ref had Opaque).
+                        op.name = "arith.constant".into();
+                        op.attributes.retain(|(k, _)| k != "path");
+                        // Replace any existing `value` attr (rare but defensive).
+                        op.attributes.retain(|(k, _)| k != "value");
+                        op.attributes.push(("value".into(), value_text.clone()));
+                        if let Some(r) = op.results.first_mut() {
+                            r.ty = ty.clone();
+                        }
+                    }
+                }
+            }
+            // Recurse into nested regions (scf.if / scf.for / etc.).
+            for sub in &mut op.regions {
+                rewrite_path_ref_to_constant(sub, const_table);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

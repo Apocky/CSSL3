@@ -295,7 +295,17 @@ fn walk_op(ctx: &mut Ctx, op: &MirOp) -> Result<(), BodyEmitError> {
 
         // § Integer arithmetic ──────────────────────────────────────────
         "arith.addi" => emit_int_binop(ctx, op, "+")?,
-        "arith.subi" | "arith.subi_neg" => emit_int_binop(ctx, op, "-")?,
+        "arith.subi" => emit_int_binop(ctx, op, "-")?,
+        // § T11-W18-L4-CSSL-GPU — `arith.subi_neg` is the UNARY form lowered
+        //   from HIR `-x` for non-float operands (see cssl-mir::body_lower::
+        //   lower_unary). Pre-fix it was wrongly aliased to `subi` causing
+        //   `WGSL0005: expects 2 operand(s) ; got 1`. Treat it as unary `-`.
+        "arith.subi_neg" => emit_unary(ctx, op, "-", "i32")?,
+        // § Bitwise NOT lowering — HirUnOp::BitNot lowers to `arith.xori_not`
+        //   carrying a single operand. Emit as WGSL bitwise-NOT `~v`. (Bool
+        //   negation goes through `arith.xori` w/ true ; that path is binary
+        //   and stays in the binop family.)
+        "arith.xori_not" => emit_unary(ctx, op, "~", "i32")?,
         "arith.muli" => emit_int_binop(ctx, op, "*")?,
         "arith.divsi" => emit_int_binop(ctx, op, "/")?,
         "arith.remsi" => emit_int_binop(ctx, op, "%")?,

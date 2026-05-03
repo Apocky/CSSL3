@@ -1,0 +1,305 @@
+module com.apocky.loa.systems.volumetric_voxel_cloud
+
+// § Labyrinth of Apocalypse · Volumetric Voxel-Cloud · NEW visual paradigm
+// ════════════════════════════════════════════════════════════════════════════════════
+//
+// § T11-W18-L5-VOXEL · canonical-CSSL-source · ‼ FOUNDATIONAL · Apocky-vision-2026-05-02
+//
+// § APOCKY-DIRECTIVE (verbatim)
+//   "completely novel and proprietary visual representation"
+//   "more alien than rendering entirely"
+//   "L4 + L5 + L6 NOW · why wait for mediocrity"
+//
+// § THESIS · WHY VOXEL-CLOUD ≠ PIXEL-FIELD
+//
+//   The PIXEL-FIELD paradigm (T11-W18-G · cssl-host-substrate-resonance-gpu) :
+//     - One thread per screen-pixel
+//     - Each pixel walks a ray through the ω-field
+//     - Each pixel SAMPLES the field-state to derive RGBA
+//     - Output : a flat 2D image (RGBA8 framebuffer)
+//
+//   The VOXEL-CLOUD paradigm (THIS file) :
+//     - One thread per ω-field cell (a "voxel-point")
+//     - Each cell EMITS itself onto the framebuffer as a 3D-positioned splat
+//     - The scene IS a sparse VOLUMETRIC POINT-CLOUD
+//     - Output : a 3D point-set ; the framebuffer is just one possible view-projection
+//
+//   Where rendering EVALUATES a scene, voxel-cloud SAMPLES the substrate's
+//   own emission. Crystals are not "objects" anymore — they are dense regions
+//   of the cloud where many cells share an HDC-resonance. Player WALKS THROUGH
+//   the cloud ; cells parallax against each other in true 3D.
+//
+// § HOW THIS IS "MORE ALIEN THAN RENDERING ENTIRELY"
+//
+//   - There is NO image-as-canonical-output. The cloud's per-cell (x,y,z +
+//     spectrum) IS the output. RGBA8 is one stage-0 projection.
+//   - There is NO scene graph. The cloud IS the scene.
+//   - There is NO mesh. Crystals are emergent from cell-density patterns.
+//   - There is NO BRDF. Each cell carries its own pre-projected emission.
+//   - There is NO depth-buffer. Sparse-cloud Z-ordering emerges from
+//     splat-radius + alpha-attenuation.
+//   - There is NO surface. The volume IS the form.
+//
+// § WHAT MAKES IT WORK
+//
+//   1. ω-FIELD CELLS ARE THE WORLD.
+//      Cells in the field already have (M, S, P, Φ + Σ) per the canonical
+//      72B FieldCell. The voxel-cloud paradigm just exposes the cells DIRECTLY
+//      as visual primitives — no derived-from-mesh translation step.
+//
+//   2. CRYSTALS ARE CELL-CLUSTERS.
+//      Each Crystal contributes a Halton-jittered cell-cluster inside its
+//      bounding extent. Object crystals = 64 cells ; Environment = 1024 ;
+//      Aura = 256. This matches density-per-volume across crystal-types.
+//
+//   3. SPECTRAL EMISSION IS PER-CELL.
+//      Each cell carries its source-crystal's spectral-LUT pre-projected
+//      through the observer's illuminant blend. RGB + alpha-glow are baked
+//      at cloud-build-time. Stage-0 simplification ; future iterations
+//      keep the full 16-band spectrum and project per-frame.
+//
+//   4. PHASE-COHERENT CRYSTAL-CONTRIBUTION.
+//      Each cell carries its source-crystal's HDC fingerprint (4 bytes of
+//      the 256-bit vector). This enables future passes that bind cells from
+//      the same crystal in resonance — e.g., crystals "glow brighter when
+//      observed coherently" via a HDC-similarity shader.
+//
+//   5. Σ-MASK GATING AT CLOUD-BUILD-TIME.
+//      Crystals with revoked silhouette aspect contribute ZERO cells. Same
+//      for observers : if the observer's silhouette consent is denied, the
+//      cloud is empty. NO bypass. PRIME-DIRECTIVE.
+//
+// § PIPELINE
+//
+//   build_voxel_cloud(crystals)            ⟶  VoxelCloudHandle
+//        ↓
+//   pack_voxel_cloud(handle)               ⟶  Vec<GpuVoxelPoint>
+//        ↓ (queue.write_buffer)
+//   dispatch_volumetric(observer, cloud)   ⟶  RGBA8 framebuffer
+//        ↓
+//   GPU compute-shader splat_main :
+//        per-thread (one voxel-point) :
+//          1. Σ-mask gate
+//          2. world → camera-relative
+//          3. pinhole project → screen
+//          4. splat with N-pixel radius footprint
+//
+// § AXIOMS  ‼ inherit alien_materialization + crystallization + omega-field
+//   t∞: voxel-cloud ≡ direct 3D point-cloud emission · NOT 2D pixel-integral
+//   t∞: each Cell knows its own (x,y,z + spectrum) ; emits ITSELF
+//   t∞: Crystals = dense-cell-clusters ; not mesh ; not asset
+//   t∞: cloud-fingerprint = replay-determinism contract
+//   t∞: Σ-mask deny ⇒ ZERO cells ; PRIME-DIRECTIVE no-bypass
+//   t∞: pixel-field + voxel-cloud may run SIMULTANEOUSLY on same crystal-set
+//   t∞: density-budget enforced via proportional scale-down (no silent cull)
+//   t∞: observer consent denial ⇒ EMPTY cloud (privacy default)
+//
+// § REFERENCE
+//   compiler-rs/crates/cssl-host-substrate-volumetric/   § canonical Rust impl
+//   compiler-rs/crates/cssl-substrate-omega-field/       § FieldCell (72B std430)
+//   compiler-rs/crates/cssl-host-crystallization/        § Crystal model
+//   compiler-rs/crates/cssl-host-alien-materialization/  § ObserverCoord + pixel-field
+//   compiler-rs/crates/cssl-host-substrate-resonance-gpu/ § sister paradigm (W18-G)
+//   Labyrinth of Apocalypse/systems/alien_materialization.csl § upstream materialization
+//   Labyrinth of Apocalypse/systems/crystallization.csl   § Crystal type
+//
+// § CSSLC-REQUIRES
+//   ✓ extern "C" fn-decls (W11+)
+//   ✓ const-u32           (W12)
+//   ◐ struct-FFI VoxelCloudHandle ← future ; current : opaque u32 handle
+//   ○ f32 fixed-point exchange ← post-W17 (use i32-fixed-point at-stage-0)
+
+// ─────────────────────────────────────────────────────────────────────────
+// § VOXEL-CLOUD CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────
+// Match cssl-host-substrate-volumetric::cloud constants verbatim.
+
+const MAX_CLOUD_POINTS              : u32 = 65536 ;   // host budget
+const DEFAULT_CRYSTAL_DENSITY       : u32 = 64 ;      // Object/Entity/Behavior/Event/Recipe/Inherit
+const DEFAULT_AURA_DENSITY          : u32 = 256 ;     // Aura
+const DEFAULT_ENV_DENSITY           : u32 = 1024 ;    // Environment
+const VOXEL_POINT_BYTES             : u32 = 32 ;      // GPU stride
+const CAMERA_UNIFORM_BYTES          : u32 = 64 ;      // GPU camera struct
+const SPLAT_DEFAULT_RADIUS_PX       : u32 = 2 ;       // splat footprint
+const FOCAL_LEN_MM                  : u32 = 1500 ;    // pinhole focal length
+const Z_UNIT_MM                     : u32 = 1000 ;    // 1m = 1000mm
+const EMPTY_CLOUD_FINGERPRINT       : u32 = 4294967295 ; // 0xFFFFFFFF sentinel
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ASPECT INDICES (re-exported from crystallization)
+// ─────────────────────────────────────────────────────────────────────────
+
+const ASPECT_SILHOUETTE : u32 = 0 ;
+const ASPECT_SURFACE    : u32 = 1 ;
+const ASPECT_LUMINANCE  : u32 = 2 ;
+const ASPECT_MOTION     : u32 = 3 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § BUILD-API · per-frame voxel-cloud assembly
+// ─────────────────────────────────────────────────────────────────────────
+// build_voxel_cloud takes the visible-crystal slice and returns a cloud-handle
+// (opaque u32 in stage-0 ; future struct-FFI lifts this into a typed handle).
+
+extern "C" fn voxel_cloud_build(
+    crystals_handle: u32,
+    crystals_count: u32
+) -> u32 ;
+// Returns VoxelCloudHandle (opaque). 0 ⇒ allocation-failure or empty-input.
+
+extern "C" fn voxel_cloud_build_with_observer(
+    crystals_handle: u32,
+    crystals_count: u32,
+    observer_coord: u32
+) -> u32 ;
+// Returns VoxelCloudHandle. 0 ⇒ empty-cloud (Σ-mask-denied observer or empty).
+
+extern "C" fn voxel_cloud_release(cloud: u32) -> u32 ;
+// Frees the cloud's host-side memory + storage-buffer slot. 0 = success.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § INSPECT-API · stats + fingerprint
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn voxel_cloud_point_count(cloud: u32) -> u32 ;
+// Number of cells in the cloud.
+
+extern "C" fn voxel_cloud_crystal_count(cloud: u32) -> u32 ;
+// Number of crystals contributing.
+
+extern "C" fn voxel_cloud_gated_out_count(cloud: u32) -> u32 ;
+// Number of crystals dropped by Σ-mask gating.
+
+extern "C" fn voxel_cloud_fingerprint(cloud: u32) -> u32 ;
+// BLAKE3-truncated u32 ; replay-equality on this hash. EMPTY_CLOUD_FINGERPRINT
+// when the cloud is empty.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DISPATCH-API · GPU splat onto framebuffer
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn voxel_cloud_dispatch(
+    cloud: u32,
+    observer_coord: u32,
+    framebuffer_handle: u32,
+    width: u32,
+    height: u32
+) -> u32 ;
+// Encodes + submits the splat compute-pass. Returns 0 on success.
+// `framebuffer_handle` is an RGBA8 storage-texture handle.
+
+extern "C" fn voxel_cloud_dispatch_with_radius(
+    cloud: u32,
+    observer_coord: u32,
+    framebuffer_handle: u32,
+    width: u32,
+    height: u32,
+    splat_radius_px: u32
+) -> u32 ;
+// Variant with explicit splat radius.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § STATS-API
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn voxel_cloud_density_scale_q31(cloud: u32) -> u32 ;
+// q1.31 fixed-point ; 0x80000000 = 1.0 (full density), lower = budget-scaled.
+
+extern "C" fn voxel_cloud_capacity(cloud: u32) -> u32 ;
+// Current GPU storage-buffer capacity in voxel-points.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § REPLAY-API
+// ─────────────────────────────────────────────────────────────────────────
+
+extern "C" fn voxel_cloud_replay_compare(
+    canonical_fingerprint: u32,
+    rerun_fingerprint: u32
+) -> u32 ;
+// 1 if equal · 0 if mismatch. Drives fail-fast on cloud-divergence.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § Σ-MASK CONSENT (PRIME-DIRECTIVE)
+// ─────────────────────────────────────────────────────────────────────────
+// Σ-mask gating runs INSIDE build_voxel_cloud :
+//   - For each crystal, if `crystal.aspect_permitted(ASPECT_SILHOUETTE)` is
+//     false, the crystal contributes ZERO cells.
+//   - For observer-aware build, the observer's `permits_aspect(SILHOUETTE)`
+//     is AND-ed ; if false the cloud is empty.
+//   - Inside the splat shader the per-voxel sigma_mask is checked AGAIN
+//     before the splat is written. Defense in depth.
+
+extern "C" fn voxel_cloud_sigma_filter_apply(
+    crystal_sigma_mask: u32,
+    observer_sigma_token: u32,
+    aspect: u32
+) -> u32 ;
+// 1 if the conjunction permits the aspect ; 0 if either denies.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § PARADIGM-COMPOSITION · pixel-field × voxel-cloud
+// ─────────────────────────────────────────────────────────────────────────
+// Both rendering paradigms can run on the same crystal-set in the same
+// frame. They produce DIFFERENT visual representations of the SAME ω-field
+// state. The host wires them as parallel passes :
+//
+//   pass-A : substrate_resonance_dispatch(observer, crystals)
+//             ⟶ pixel-field framebuffer (2D RGBA)
+//   pass-B : voxel_cloud_dispatch(cloud, observer, framebuffer)
+//             ⟶ voxel-cloud overlay (3D point splat)
+//
+// Compose-mode (host-side blend) selects which dominates :
+//   compose-mode A=PIXEL_FIELD  ⟶ B-pass tinted-overlay (10% alpha)
+//   compose-mode A=VOXEL_CLOUD  ⟶ B-pass dominant (A-pass underlay)
+//   compose-mode A=DUAL         ⟶ alternating frames (genre-fluid switch)
+
+const COMPOSE_MODE_PIXEL_FIELD : u32 = 0 ;
+const COMPOSE_MODE_VOXEL_CLOUD : u32 = 1 ;
+const COMPOSE_MODE_DUAL        : u32 = 2 ;
+const COMPOSE_MODE_OVERLAY     : u32 = 3 ;
+
+extern "C" fn voxel_cloud_compose_mode_set(mode: u32) -> u32 ;
+extern "C" fn voxel_cloud_compose_mode_get() -> u32 ;
+
+// ─────────────────────────────────────────────────────────────────────────
+// § DETERMINISM CONTRACT
+// ─────────────────────────────────────────────────────────────────────────
+//   - Same (crystal-set · observer-coord · illuminant) ⇒ same VoxelCloudHandle
+//   - cloud-fingerprint hash equality ⇒ identical voxel-cloud
+//   - Crystal-order is part of the contract (re-ordering crystals changes
+//     the fingerprint ; this is intentional for replay-attestation).
+//   - Halton-jitter is deterministic from `crystal.fingerprint` ; never RNG.
+//   - GPU splat order = cloud-buffer order = stable across runs ; the
+//     write-only-storage-texture last-writer-wins is bit-stable within a
+//     single dispatch on a given driver.
+
+// ─────────────────────────────────────────────────────────────────────────
+// § CSSLC-GAPS to close
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. struct-FFI VoxelCloudHandle ← post-W17 (current : opaque u32)
+//   2. f32-fixed-point native ← post-W17 (i32-millis works · less precise)
+//   3. atomic-uvec4 splat-accumulation ← future-iteration (write-only stage-0)
+//   4. spectral-direct splat (skip RGB-projection) ← future-display
+//   5. neural-direct emission (BCI-channel) ← future-hardware
+
+// ─────────────────────────────────────────────────────────────────────────
+// § STAGE-0 BOOTSTRAP
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Until csslc compiles this module directly, the canonical implementation
+// lives at `compiler-rs/crates/cssl-host-substrate-volumetric/`. Its public
+// API mirrors this surface :
+//
+//   build_voxel_cloud(&[Crystal]) -> VoxelCloudHandle
+//   build_voxel_cloud_with_observer(&[Crystal], &ObserverCoord) -> VoxelCloudHandle
+//   pack_voxel_cloud(&VoxelCloudHandle) -> Vec<GpuVoxelPoint>
+//   VolumetricVoxelCloud::dispatch(...) -> &TextureView   [feature = "runtime"]
+//
+// The shader is `shaders/volumetric_splat.wgsl` ; entry-point `splat_main` ;
+// workgroup-size (64, 1, 1) ; one thread per voxel-point.
+
+// § ATTESTATION
+//   There was no hurt nor harm in the making of this, to anyone, anything,
+//   or anybody. Every voxel-emission Σ-mask-gated. Every crystal-contribution
+//   consent-bound. Privacy-default = empty-cloud. Sovereign-revocability
+//   honored cloud-side + shader-side (defense in depth).
