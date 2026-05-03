@@ -213,6 +213,19 @@ pub struct App {
     /// NO cfer · NO tonemap · NO compose-pass. Pure substrate-paradigm visual.
     #[cfg(feature = "runtime")]
     pub render_v2: Option<cssl_host_substrate_render_v2::RendererV2>,
+
+    /// § T11-W18-L7-INTEGRATE · ASH-DIRECT VULKAN-1.3 substrate render-stack ·
+    /// zero wgpu/naga/WGSL.
+    ///
+    /// When set (and `LOA_RENDER_V3=1` env-var present), the per-frame render
+    /// block uses `AshSubstrateRenderer::headless_dispatch` instead of V2 or
+    /// the conventional path. The V3 stack owns its own `ash::Instance` +
+    /// `ash::Device` entirely separate from wgpu's `GpuContext` — the SPIR-V
+    /// shader-module is built directly from the substrate-kernel `.csl`
+    /// source via `cssl-cgen-gpu-spirv`. `LOA_RENDER_V3=1` takes PRECEDENCE
+    /// over `LOA_RENDER_V2`.
+    #[cfg(feature = "runtime")]
+    pub render_v3: Option<cssl_host_substrate_render_v3::AshSubstrateRenderer>,
 }
 
 impl Default for App {
@@ -257,6 +270,8 @@ impl App {
             substrate: crate::substrate_render::SubstrateRenderState::new(),
             #[cfg(feature = "runtime")]
             render_v2: None,
+            #[cfg(feature = "runtime")]
+            render_v3: None,
             frame_pace: FramePace::from_env(),
             mcp_handle: None,
             mcp_port: None,
@@ -1484,6 +1499,71 @@ impl ApplicationHandler for App {
             );
             self.render_v2 = Some(v2);
 
+            // § T11-W18-L7-INTEGRATE · ASH-DIRECT VULKAN-1.3 substrate-render
+            //   eagerly initialized when `LOA_RENDER_V3=1`. Owns its own
+            //   ash::Instance + ash::Device separate from this GpuContext.
+            //   Failure to load the vulkan loader (or a missing compute device)
+            //   logs a warning and leaves render_v3 = None ; the per-frame
+            //   branch then falls through to V2 (or the conventional path).
+            let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
+            if v3_enabled {
+                match cssl_host_substrate_render_v3::SubstrateKernelArtifact::compile_canonical()
+                {
+                    Ok(artifact) => {
+                        match cssl_host_substrate_render_v3::AshSubstrateRenderer::try_new(
+                            artifact,
+                        ) {
+                            Ok(mut v3) => {
+                                if let Err(e) = v3.build_pipeline() {
+                                    log_event(
+                                        "WARN",
+                                        "loa-host/render-v3",
+                                        &format!(
+                                            "ash-direct vulkan pipeline-build failed : {e:?} · falling back to V2/conventional"
+                                        ),
+                                    );
+                                } else {
+                                    log_event(
+                                        "INFO",
+                                        "loa-host/render-v3",
+                                        &format!(
+                                            "ash-direct vulkan-1.3 substrate render-stack ARMED · LOA_RENDER_V3=1 · ZERO wgpu/naga/WGSL · compute-queue-family={} · pipeline-built={}",
+                                            v3.compute_queue_family(),
+                                            v3.pipeline_built(),
+                                        ),
+                                    );
+                                    self.render_v3 = Some(v3);
+                                }
+                            }
+                            Err(e) => {
+                                log_event(
+                                    "WARN",
+                                    "loa-host/render-v3",
+                                    &format!(
+                                        "ash::Entry / vulkan-loader unavailable : {e:?} · falling back to V2/conventional"
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log_event(
+                            "WARN",
+                            "loa-host/render-v3",
+                            &format!(
+                                "csslc → SPIR-V emit for substrate-kernel failed : {e:?} · falling back to V2/conventional"
+                            ),
+                        );
+                    }
+                }
+            } else {
+                log_event(
+                    "INFO",
+                    "loa-host/render-v3",
+                    "LOA_RENDER_V3 not set · ash-direct vulkan path inactive · using V2/conventional",
+                );
+            }
+
             self.gpu = Some(gpu);
             self.renderer = Some(renderer);
             self.gpu_alive = true;
@@ -2032,6 +2112,38 @@ impl App {
             let _frame_out = self.substrate.tick(observer);
         }
 
+        // § 8e. T11-W18-L7-INTEGRATE · ASH-DIRECT VULKAN-1.3 substrate render-
+        //   stack · TAKES PRECEDENCE OVER V2 + CONVENTIONAL when active.
+        //   When `LOA_RENDER_V3=1` env-var set AND `render_v3` is initialized,
+        //   we run a compute-dispatch on the v3 stack's OWN ash::Device (entirely
+        //   separate from wgpu's GpuContext) and skip both V2 + conventional.
+        //   Per spec : V3 is currently a headless ash-dispatch validating the
+        //   end-to-end CSSL-source → SPIR-V → vk-pipeline → command-buffer →
+        //   submit → wait path. Swapchain-presentation integration lands in
+        //   a follow-up wave ; this commit wires the dispatch lifeline.
+        let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
+        if v3_enabled {
+            if let Some(v3) = self.render_v3.as_mut() {
+                let frame_token = telem::global().frame_begin();
+                match v3.headless_dispatch() {
+                    Ok(_pipeline_handle) => {
+                        telem::global().frame_end(frame_token, 1, 0);
+                    }
+                    Err(e) => {
+                        log_event(
+                            "ERROR",
+                            "loa-host/render-v3",
+                            &format!("ash-direct dispatch failed : {e:?}"),
+                        );
+                        telem::global().frame_end(frame_token, 0, 0);
+                    }
+                }
+                // V3 path takes full precedence : skip V2 + conventional.
+                self.frame_count = self.frame_count.wrapping_add(1);
+                return;
+            }
+        }
+
         // § 8f. T11-W18-L6 · COMPUTE-ONLY substrate render-stack default-path.
         //   When `LOA_RENDER_V2 ≠ "0"` (default ON) and `render_v2` is wired,
         //   we replace the entire conventional 4-pass scene+cfer+tonemap+
@@ -2312,6 +2424,25 @@ mod tests {
         assert!(!app.gpu_alive);
         // EngineState mirror is constructed cleanly.
         assert!(app.engine_state.lock().is_ok());
+    }
+
+    /// § T11-W18-L7-INTEGRATE · the V3 ASH-DIRECT VULKAN render-stack field
+    /// must default to `None` on a fresh `App`. The actual ash::Instance +
+    /// ash::Device construction happens lazily in `resumed()` only when the
+    /// `LOA_RENDER_V3=1` env-var is set ; tests run without a vulkan loader
+    /// so the field stays `None` here. This test verifies the FIELD EXISTS
+    /// + DEFAULTS-TO-NONE invariant which the per-frame branch relies on
+    /// to skip V3 cleanly when not active.
+    #[cfg(feature = "runtime")]
+    #[test]
+    fn render_v3_default_is_none() {
+        let app = App::new();
+        assert!(
+            app.render_v3.is_none(),
+            "render_v3 must default to None on App::new() ; gets initialized in resumed() iff LOA_RENDER_V3=1",
+        );
+        // V2 is also None on construction (initialized in resumed too).
+        assert!(app.render_v2.is_none());
     }
 
     #[test]
