@@ -35,6 +35,21 @@ rand   = { workspace = true }
 # default-deny posture per PRIME-DIRECTIVE.
 ureq = { workspace = true }
 
+# § T11-W19-β-RT-DELEG-WINDOW : delegate cssl-rt::host_window to the real
+# Win32 backend. The cssl-host-window crate gates its windows-rs dep on
+# target_os = "windows" itself ; on non-Windows this dep contributes only
+# the cross-platform error/event/raw-handle types + LoaderMissing returns.
+cssl-host-window = { path = "../cssl-host-window" }
+# § T11-W19-β-RT-DELEG-INPUT : delegate cssl-rt::host_input to the real
+# Win32 raw-input + XInput backend (Linux evdev + macOS IOKit cfg-gated
+# inside cssl-host-input itself ; the active backend is selected by
+# target_os).
+cssl-host-input = { path = "../cssl-host-input" }
+# § T11-W19-β-RT-DELEG-GPU : delegate cssl-rt::host_gpu to the real
+# D3D12 + DXGI 1.6 backend on Windows. On non-Windows targets the
+# downstream calls return LoaderMissing per cssl-host-d3d12 precedent.
+cssl-host-d3d12 = { path = "../cssl-host-d3d12" }
+
 [features]
 # § Default = no TLS · stage-0 ships plain-http only · cap-bit NET_HTTPS_ONLY
 # blocks runtime-side until `tls` feature flipped on at the crate boundary.

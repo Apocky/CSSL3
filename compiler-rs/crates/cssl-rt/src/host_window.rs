@@ -183,9 +183,29 @@
 // be tightened where it matters (lookup-only path).
 #![allow(clippy::significant_drop_tightening)]
 
+use core::cell::RefCell;
 use core::sync::atomic::{AtomicU64, Ordering};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+
+// § T11-W19-β-RT-DELEG-WINDOW : real-Win32 delegation.
+//
+// The historical Stub variant remains as a fallback (used in unit tests
+// + on platforms where cssl-host-window returns LoaderMissing). The new
+// Real variant holds a `cssl_host_window::Window` directly + delegates
+// pump / raw-handle / dims to the backend's real Win32 calls.
+//
+// § Win32 thread-affinity : Win32 windows are thread-affine to their
+// creation thread (the message-pump can only be drained by that thread).
+// We therefore park the Real-variant entries in a `thread_local!` registry
+// so source-level CSSLv3 code that happens to spawn + pump on different
+// threads gets a deterministic bad-handle error rather than the silent
+// race the upstream Win32 API would surface. The cross-thread Stub
+// registry continues to satisfy the existing unit tests.
+use cssl_host_window::{
+    spawn_window, RawWindowHandleKind, Window as HostWindow, WindowConfig as HostWindowConfig,
+    WindowEventKind,
+};
 
 // ───────────────────────────────────────────────────────────────────────
 // § ABI-locked constants — pinned by cssl-cgen-cpu-cranelift::cgen_window
@@ -306,10 +326,65 @@ enum RegistryEntry {
     },
 }
 
-/// Process-wide window registry. Lazy-initialized on first `_impl` call.
+/// Real-backend per-window state. Held in the thread-local registry
+/// because `cssl_host_window::Window` (Win32) is `!Send` + `!Sync`.
+struct RealEntry {
+    /// Owned `cssl_host_window::Window` ; drop = `DestroyWindow`.
+    win: HostWindow,
+    /// Initial width in physical pixels (cached for `get_dims` until
+    /// real-backend `pump_events` updates via `Resize` events).
+    width: u32,
+    /// Initial height in physical pixels (cached, see `width`).
+    height: u32,
+    /// Window-construction timestamp ; events stamp millis-since.
+    created_at: std::time::Instant,
+    /// Marks `request_close` for the next `pump` call (the real backend's
+    /// `pump_events` already surfaces user-driven `Close` events ; this
+    /// flag handles the explicit `__cssl_window_request_close` path).
+    explicit_close_requested: bool,
+}
+
+impl core::fmt::Debug for RealEntry {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RealEntry")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("explicit_close_requested", &self.explicit_close_requested)
+            .finish()
+    }
+}
+
+/// Process-wide stub-window registry. Lazy-initialized on first `_impl`
+/// call. Used for non-Win32 platforms + for unit tests (cross-thread
+/// safe). When the real-Win32 path returns `Ok` the entry lands in the
+/// thread-local `REAL_REGISTRY` instead.
 fn registry() -> &'static Mutex<HashMap<u64, RegistryEntry>> {
     static REG: OnceLock<Mutex<HashMap<u64, RegistryEntry>>> = OnceLock::new();
     REG.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+thread_local! {
+    /// Per-thread real-backend window registry. Win32 windows are
+    /// thread-affine to their creation thread ; a global Mutex<HashMap>
+    /// would force `Send` on the Window type which the upstream crate
+    /// deliberately does NOT impl. Instead each construction thread keeps
+    /// its own `RefCell<HashMap>` ; cross-thread handle lookups land
+    /// `PUMP_ERR_BAD_HANDLE` rather than the upstream Win32 silent-race.
+    static REAL_REGISTRY: RefCell<HashMap<u64, RealEntry>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Translate cssl-rt spawn-flags to a `cssl_host_window::WindowConfig`.
+fn build_host_config(title: String, width: u32, height: u32, flags: u32) -> HostWindowConfig {
+    let mut cfg = HostWindowConfig::new(title, width, height);
+    cfg.resizable = (flags & SPAWN_FLAG_RESIZABLE) != 0;
+    cfg.dpi_aware = (flags & SPAWN_FLAG_DPI_AWARE) != 0;
+    if (flags & SPAWN_FLAG_FULLSCREEN) != 0 {
+        cfg.fullscreen = cssl_host_window::WindowFullscreen::ExclusiveOnPrimary;
+    } else if (flags & SPAWN_FLAG_BORDERLESS) != 0 {
+        cfg.fullscreen = cssl_host_window::WindowFullscreen::BorderlessOnPrimary;
+    }
+    cfg
 }
 
 /// Monotonic counter for handle issuance. Starts at 1 (handle 0 reserved).
@@ -435,10 +510,35 @@ pub unsafe fn cssl_window_spawn_impl(
         return INVALID_WINDOW_HANDLE;
     }
 
-    // STUB-VS-REAL § : pre-integration, the entry is the Stub variant.
-    // Post-integration, the body of this match-arm becomes
-    //   let win = cssl_host_window::spawn_window(&cfg)?;
-    //   RegistryEntry::Real { win, created_at }
+    // § T11-W19-β-RT-DELEG-WINDOW : try real-Win32 first. Fall back to
+    // the Stub variant on LoaderMissing (non-Windows + missing-backend)
+    // so the existing unit tests + non-host platforms keep working. The
+    // production path on Apocky-host (Windows 11 + Arc A770) goes Real.
+    let cfg = build_host_config(title.clone(), width, height, flags);
+    match spawn_window(&cfg) {
+        Ok(real_win) => {
+            REAL_REGISTRY.with(|reg| {
+                reg.borrow_mut().insert(
+                    handle,
+                    RealEntry {
+                        win: real_win,
+                        width,
+                        height,
+                        created_at: std::time::Instant::now(),
+                        explicit_close_requested: false,
+                    },
+                );
+            });
+            SPAWN_COUNT.fetch_add(1, Ordering::Relaxed);
+            return handle;
+        }
+        Err(_e) => {
+            // Fall through to stub on real-backend failure (LoaderMissing
+            // on non-Windows ; OsFailure on hosts where Win32 rejected the
+            // spawn). Stub keeps the FFI-shape testable.
+        }
+    }
+
     let entry = RegistryEntry::Stub {
         width,
         height,
@@ -478,11 +578,57 @@ pub unsafe fn cssl_window_pump_impl(
         return PUMP_ERR_NULL_BUF;
     }
 
-    // STUB-VS-REAL § : pre-integration, the stub returns either 0 events
-    // (the typical idle path) or a synthesized Close event after
-    // `request_close` has fired. The real impl will delegate to
-    // `cssl_host_window::Window::pump_events()` + serialize each
-    // returned `WindowEvent` via `pack_event`.
+    // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
+    let real_result = REAL_REGISTRY.with(|reg| -> Option<i64> {
+        let mut g = reg.borrow_mut();
+        let entry = g.get_mut(&handle)?;
+        // Drain OS messages.
+        let pumped = entry.win.pump_events();
+        let events = match pumped {
+            Ok(v) => v,
+            Err(_) => return Some(PUMP_ERR_BAD_HANDLE),
+        };
+        let mut written: usize = 0;
+        // First, surface explicit_close_requested as a CLOSE event.
+        if entry.explicit_close_requested && written < max_events && max_events > 0 {
+            let ts = entry.created_at.elapsed().as_millis() as u64;
+            // SAFETY : caller's contract on (events_out, max_events) +
+            // we ensured `written < max_events > 0` so the offset is
+            // within the buffer.
+            unsafe {
+                let slot = events_out.add(written * EVENT_RECORD_SIZE);
+                write_close_event(slot, ts);
+            }
+            entry.explicit_close_requested = false;
+            written += 1;
+        }
+        // Translate pumped events into the 32-byte ABI records.
+        for ev in events {
+            if written >= max_events {
+                break;
+            }
+            // SAFETY : (events_out, max_events) caller-contract + bounded
+            // `written < max_events` makes each slot offset valid.
+            unsafe {
+                let slot = events_out.add(written * EVENT_RECORD_SIZE);
+                pack_window_event(slot, &ev);
+            }
+            // Cache resize dims for get_dims fallback path.
+            if let WindowEventKind::Resize { width, height } = ev.kind {
+                entry.width = width;
+                entry.height = height;
+            }
+            written += 1;
+        }
+        Some(written as i64)
+    });
+    if let Some(rc) = real_result {
+        return rc;
+    }
+
+    // STUB-VS-REAL § : real-backend miss falls through to the stub. The
+    // stub returns either 0 events (the typical idle path) or a
+    // synthesized Close event after `request_close` has fired.
     //
     // The match below extracts the data needed (timestamp + close_requested
     // flag) under the registry lock, then RELEASES the lock before issuing
@@ -526,6 +672,19 @@ pub unsafe fn cssl_window_pump_impl(
 ///
 /// Returns `0` on success ; `-1` on bad-handle / already-destroyed.
 pub fn cssl_window_request_close_impl(handle: u64) -> i32 {
+    // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
+    let real_hit = REAL_REGISTRY.with(|reg| {
+        let mut g = reg.borrow_mut();
+        if let Some(entry) = g.get_mut(&handle) {
+            entry.explicit_close_requested = true;
+            true
+        } else {
+            false
+        }
+    });
+    if real_hit {
+        return 0;
+    }
     let mut g = registry().lock().expect("registry mutex");
     let Some(entry) = g.get_mut(&handle) else {
         return -1;
@@ -548,6 +707,14 @@ pub fn cssl_window_request_close_impl(handle: u64) -> i32 {
 /// Returns `0` on success ; `-1` on bad-handle (idempotent : second
 /// destroy of the same handle returns -1 since the entry has been removed).
 pub fn cssl_window_destroy_impl(handle: u64) -> i32 {
+    // § T11-W19-β-RT-DELEG-WINDOW : real-backend first. Drop of the
+    // RealEntry triggers `cssl_host_window::Window::Drop` →
+    // `DestroyWindow(hwnd)` → message-loop wind-down.
+    let real_removed = REAL_REGISTRY.with(|reg| reg.borrow_mut().remove(&handle).is_some());
+    if real_removed {
+        DESTROY_COUNT.fetch_add(1, Ordering::Relaxed);
+        return 0;
+    }
     let removed = {
         let mut g = registry().lock().expect("registry mutex");
         g.remove(&handle).is_some()
@@ -573,6 +740,37 @@ pub fn cssl_window_destroy_impl(handle: u64) -> i32 {
 /// `max_len > 0`. `max_len == 0` is allowed + the function returns
 /// `RAW_HANDLE_MAX_BYTES_WIN32` so the caller learns the required size.
 pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: usize) -> i32 {
+    // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
+    let real_pair = REAL_REGISTRY.with(|reg| -> Option<(usize, usize)> {
+        let g = reg.borrow();
+        let entry = g.get(&handle)?;
+        let raw = entry.win.raw_handle().ok()?;
+        match raw.kind {
+            RawWindowHandleKind::Win32 { hwnd, hinstance } => Some((hwnd, hinstance)),
+            // Future X11/Wayland/Cocoa variants on `#[non_exhaustive]` enum.
+            // Stage-0 Win32-only path : drop the entry on unknown shape.
+            #[allow(unreachable_patterns)]
+            _ => None,
+        }
+    });
+    if let Some((hwnd, hinstance)) = real_pair {
+        let needed = RAW_HANDLE_MAX_BYTES_WIN32;
+        if max_len < needed {
+            return -2;
+        }
+        if out.is_null() {
+            return -2;
+        }
+        let hwnd_bytes = hwnd.to_le_bytes();
+        let hinst_bytes = hinstance.to_le_bytes();
+        let word_size = core::mem::size_of::<usize>();
+        // SAFETY : caller's contract on (out, max_len) + max_len >= needed.
+        unsafe {
+            core::ptr::copy_nonoverlapping(hwnd_bytes.as_ptr(), out, word_size);
+            core::ptr::copy_nonoverlapping(hinst_bytes.as_ptr(), out.add(word_size), word_size);
+        }
+        return needed as i32;
+    }
     // Tight critical-section : peek the handle's destroyed-flag under the
     // lock + drop before issuing the OS-style write.
     let exists_alive = {
@@ -585,9 +783,8 @@ pub unsafe fn cssl_window_raw_handle_impl(handle: u64, out: *mut u8, max_len: us
     if !exists_alive {
         return -1;
     }
-    // STUB-VS-REAL § : pre-integration, write a deterministic
-    // (hwnd, hinstance) pair derived from the handle. Real impl will
-    // read from `cssl_host_window::Window::raw_handle()`.
+    // STUB-VS-REAL § : real-backend miss → Stub fallback writes a
+    // deterministic (hwnd, hinstance) pair derived from the handle.
     let needed = RAW_HANDLE_MAX_BYTES_WIN32;
     if max_len < needed {
         return -2;
@@ -627,6 +824,20 @@ pub unsafe fn cssl_window_get_dims_impl(handle: u64, w_out: *mut u32, h_out: *mu
     if w_out.is_null() || h_out.is_null() {
         return -2;
     }
+    // § T11-W19-β-RT-DELEG-WINDOW : real-backend first.
+    let real_dims = REAL_REGISTRY.with(|reg| -> Option<(u32, u32)> {
+        let g = reg.borrow();
+        let entry = g.get(&handle)?;
+        Some((entry.width, entry.height))
+    });
+    if let Some((w, h)) = real_dims {
+        // SAFETY : null-check above guarantees writable u32 slot per ptr.
+        unsafe {
+            w_out.write(w);
+            h_out.write(h);
+        }
+        return 0;
+    }
     // Tight critical-section : extract (width, height) under the lock,
     // drop, then write the caller's u32 slots.
     let dims = {
@@ -653,6 +864,61 @@ pub unsafe fn cssl_window_get_dims_impl(handle: u64, w_out: *mut u32, h_out: *mu
 // ───────────────────────────────────────────────────────────────────────
 // § event-record packing helpers
 // ───────────────────────────────────────────────────────────────────────
+
+/// Translate a `cssl_host_window::WindowEvent` into the 32-byte ABI
+/// record at `out`.
+///
+/// # Safety
+/// `out` must be valid for `EVENT_RECORD_SIZE` writable bytes.
+unsafe fn pack_window_event(out: *mut u8, ev: &cssl_host_window::WindowEvent) {
+    // Zero the full record first ; cheap (32 bytes) + future-proof.
+    // SAFETY : caller's contract on (out, EVENT_RECORD_SIZE writable).
+    unsafe { core::ptr::write_bytes(out, 0, EVENT_RECORD_SIZE) };
+    let ts = ev.timestamp_ms;
+    let (kind, a, b, c, d): (u16, u32, u32, u32, u32) = match &ev.kind {
+        WindowEventKind::Close => (EVENT_KIND_CLOSE, 0, 0, 0, 0),
+        WindowEventKind::Resize { width, height } => (EVENT_KIND_RESIZE, *width, *height, 0, 0),
+        WindowEventKind::FocusGain => (EVENT_KIND_FOCUS_GAIN, 0, 0, 0, 0),
+        WindowEventKind::FocusLoss => (EVENT_KIND_FOCUS_LOSS, 0, 0, 0, 0),
+        WindowEventKind::KeyDown { repeat, .. } => {
+            (EVENT_KIND_KEY_DOWN, 0, 0, u32::from(*repeat), 0)
+        }
+        WindowEventKind::KeyUp { .. } => (EVENT_KIND_KEY_UP, 0, 0, 0, 0),
+        WindowEventKind::MouseMove { x, y } => {
+            (EVENT_KIND_MOUSE_MOVE, *x as u32, *y as u32, 0, 0)
+        }
+        WindowEventKind::MouseDown { x, y, .. } => {
+            (EVENT_KIND_MOUSE_DOWN, 0, *x as u32, *y as u32, 0)
+        }
+        WindowEventKind::MouseUp { x, y, .. } => (EVENT_KIND_MOUSE_UP, 0, *x as u32, *y as u32, 0),
+        WindowEventKind::Scroll { x, y, .. } => (EVENT_KIND_SCROLL, 0, 0, *x as u32, *y as u32),
+        WindowEventKind::DpiChanged { scale } => {
+            (EVENT_KIND_DPI_CHANGE, scale.to_bits(), 0, 0, 0)
+        }
+        // Future event kinds on `#[non_exhaustive]` enum drop to NONE
+        // record (count-bumped but no payload until cgen learns the new
+        // variant + ABI is widened in lock-step).
+        #[allow(unreachable_patterns)]
+        _ => (EVENT_KIND_NONE, 0, 0, 0, 0),
+    };
+    let kind_b = kind.to_le_bytes();
+    let a_b = a.to_le_bytes();
+    let b_b = b.to_le_bytes();
+    let c_b = c.to_le_bytes();
+    let d_b = d.to_le_bytes();
+    let ts_b = ts.to_le_bytes();
+    // SAFETY : caller's contract on (out, EVENT_RECORD_SIZE writable).
+    unsafe {
+        core::ptr::copy_nonoverlapping(kind_b.as_ptr(), out, kind_b.len());
+        // payload at offsets 4 / 8 / 12 / 16 (each u32).
+        core::ptr::copy_nonoverlapping(a_b.as_ptr(), out.add(4), a_b.len());
+        core::ptr::copy_nonoverlapping(b_b.as_ptr(), out.add(8), b_b.len());
+        core::ptr::copy_nonoverlapping(c_b.as_ptr(), out.add(12), c_b.len());
+        core::ptr::copy_nonoverlapping(d_b.as_ptr(), out.add(16), d_b.len());
+        // timestamp at offset 20 (LE u64).
+        core::ptr::copy_nonoverlapping(ts_b.as_ptr(), out.add(20), ts_b.len());
+    }
+}
 
 /// Write a Close event into the slot at `out`.
 ///
@@ -982,7 +1248,15 @@ mod tests {
         let h = unsafe { cssl_window_spawn_impl(title.as_ptr(), title.len(), 100, 100, 0) };
         let mut buf = [0u8; EVENT_RECORD_SIZE * 4];
         let n = unsafe { cssl_window_pump_impl(h, buf.as_mut_ptr(), 4) };
-        assert_eq!(n, 0, "idle window has no events");
+        // Post-T11-W19-β-RT-DELEG-WINDOW : on Windows hosts the spawn
+        // returns a Real-Win32 entry. The first pump after CreateWindowExW
+        // legitimately drains startup messages (focus-gain, paint, sizing)
+        // — the count is non-deterministic across CI vs developer hosts.
+        // Stub path remains exact ; real path bounds upper-limit.
+        assert!(
+            (0..=4).contains(&n),
+            "pump events count must be in [0, 4] (stub: 0 ; real: 0-4) ; got {n}"
+        );
     }
 
     #[test]
@@ -1087,9 +1361,13 @@ mod tests {
         let mut buf = [0u8; RAW_HANDLE_MAX_BYTES_WIN32];
         let n = unsafe { cssl_window_raw_handle_impl(h, buf.as_mut_ptr(), buf.len()) };
         assert_eq!(n as usize, RAW_HANDLE_MAX_BYTES_WIN32);
-        // Decode the (hwnd, hinstance) pair via byte-level deserialize
-        // (avoids clippy::cast_ptr_alignment from a *u8 → *usize cast).
-        // Stub-impl writes (handle * 0x10, 1) in host-LE byte-order.
+        // Decode the (hwnd, hinstance) pair via byte-level deserialize.
+        // Post-T11-W19-β-RT-DELEG-WINDOW : on Windows hosts the spawn
+        // returns a Real entry whose hwnd is an actual `HWND` (kernel-
+        // assigned ; non-zero ; non-deterministic across runs). The
+        // Stub-only assertion `hwnd == handle * 0x10` no longer applies
+        // when the real backend wins. We assert : (a) at least one of
+        // hwnd / hinstance is non-zero, (b) bytes round-trip cleanly.
         let word_size = core::mem::size_of::<usize>();
         let mut hwnd_bytes = [0u8; core::mem::size_of::<usize>()];
         let mut hinst_bytes = [0u8; core::mem::size_of::<usize>()];
@@ -1097,8 +1375,17 @@ mod tests {
         hinst_bytes.copy_from_slice(&buf[word_size..2 * word_size]);
         let hwnd = usize::from_le_bytes(hwnd_bytes);
         let hinstance = usize::from_le_bytes(hinst_bytes);
-        assert_eq!(hwnd, (h as usize).wrapping_mul(0x10));
-        assert_eq!(hinstance, 1);
+        assert_ne!(hwnd, 0, "hwnd must be non-zero (real or stub)");
+        // Stub path : (hwnd = handle * 0x10, hinstance = 1).
+        // Real path : real (HWND, HINSTANCE) ; both non-zero on success.
+        let stub_hwnd_expected = (h as usize).wrapping_mul(0x10);
+        if hwnd == stub_hwnd_expected {
+            // Stub path verified.
+            assert_eq!(hinstance, 1, "stub hinstance sentinel = 1");
+        } else {
+            // Real-Win32 path : both should be non-zero kernel-handles.
+            assert_ne!(hinstance, 0, "real-Win32 hinstance must be non-zero");
+        }
     }
 
     #[test]

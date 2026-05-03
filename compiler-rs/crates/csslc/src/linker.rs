@@ -1026,6 +1026,44 @@ pub fn build_command(
             // Tolerate duplicate `main` from libmingw32.a's startup glue.
             cmd.arg("-C").arg("link-arg=-Wl,--allow-multiple-definition");
             cmd.arg("-L").arg(deps_dir);
+            // § T11-W19-β-RT-DELEG-WINDOW : forward `cargo:rustc-link-search`
+            // directives recorded by sibling-crate build-scripts (notably
+            // windows_x86_64_gnu's prebuilt-import-lib registration). When
+            // we drive rustc directly, those build-script outputs are NOT
+            // re-played — so libwindows.0.52.0.a is linker-invisible without
+            // this scan. The `target/<profile>/build/*/output` files have
+            // already been written by the cssl-rt rlib build that pulled
+            // these deps in transitively ; we read them + forward each
+            // `=native=<path>` line as an extra `-L` arg.
+            if let Some(target_profile_dir) = deps_dir.parent() {
+                let build_dir = target_profile_dir.join("build");
+                if let Ok(rd) = std::fs::read_dir(&build_dir) {
+                    let mut seen: Vec<PathBuf> = Vec::new();
+                    for entry in rd.flatten() {
+                        let output_path = entry.path().join("output");
+                        if let Ok(content) = std::fs::read_to_string(&output_path) {
+                            for line in content.lines() {
+                                // cargo:rustc-link-search=native=<path>
+                                // cargo:rustc-link-search=<path>
+                                let prefix1 = "cargo:rustc-link-search=native=";
+                                let prefix2 = "cargo:rustc-link-search=";
+                                let path_str = if let Some(rest) = line.strip_prefix(prefix1) {
+                                    Some(rest)
+                                } else {
+                                    line.strip_prefix(prefix2)
+                                };
+                                if let Some(path_str) = path_str {
+                                    let p = PathBuf::from(path_str);
+                                    if p.is_dir() && !seen.iter().any(|s| s == &p) {
+                                        seen.push(p.clone());
+                                        cmd.arg("-L").arg(&p);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             cmd.arg("--extern").arg(format!(
                 "cssl_rt={}",
                 cssl_rt_rlib.display()
