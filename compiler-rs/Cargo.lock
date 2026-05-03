@@ -2265,6 +2265,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-substrate-mycelium"
+version = "0.1.0"
+dependencies = [
+ "cssl-substrate-omega-field",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-substrate-omega-field"
 version = "0.1.0"
 dependencies = [

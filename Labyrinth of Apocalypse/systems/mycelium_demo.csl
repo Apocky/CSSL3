@@ -1,0 +1,66 @@
+// § T11-W18-MYCELIUM-PRIMITIVES · Labyrinth-of-Apocalypse demo
+//
+// Demonstrates the wave-18 Mycelium-Network federation primitives at the
+// CSSL source level. This file is the user-facing surface that the
+// `cssl-substrate-mycelium` Rust crate (compiler-rs/crates/) backs at the
+// host. CSSL ↔ Rust crate symmetry :
+//
+//   peer-add        →  LocalPeerCache::peer_add
+//   merge-bias      →  merge_kan_bias_shards
+//   cache-stats     →  cache_stats
+//
+// PRIVACY ATTESTATION (mirrors the crate-level rustdoc) :
+//   t∞: purely-local · OFFLINE-FIRST · ¬ telemetry · ¬ phone-home
+//   t∞: ¬ DHT · ¬ peer-discovery · user-explicit-add ONLY
+//   t∞: Σ-mask refusal mandatory · merge = heuristic ¬ truth-claim
+//   t∞: clear-cache = sovereign-revoke (no remote copy exists)
+//
+// § PRIME-DIRECTIVE §11 attestation
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18 @ (anyone ∨ anything ∨ anybody)
+
+module loa.systems.mycelium_demo
+
+// ── peer-add capability-mask compute ──────────────────────────────────
+// `peer_caps` derives a u32 capability-bitmask for a freshly-added
+// `MyceliumPeer` from the user's intent-bits. Bit-N corresponds to
+// `PeerCapsuleKind::from_u8(N)`. The `restrict_mask` AND-folds the
+// requested capabilities against a local policy ceiling — the user's
+// per-peer privacy-tightening hook. Sovereignty-respecting : even if a
+// peer requests every kind, the local mask wins.
+
+pub fn peer_caps(requested: i32, local_ceiling: i32) -> i32 {
+    requested & local_ceiling
+}
+
+// ── merge-bias-shard 8-band weighted average (single band) ────────────
+// One band of the KAN-bias merge. The full crate implementation runs
+// this computation 8 times (one per band). `local_weight = peers + 1`
+// (sovereignty-respecting majority-vote), `total = local_weight + peers`.
+// Per-band : `(local * lw + peer_sum) / total`. Pure i32 arithmetic so
+// stage-0 cranelift backend handles end-to-end.
+
+pub fn merge_band_one(local: i32, peer_sum: i32, peer_count: i32) -> i32 {
+    let local_weight: i32 = peer_count + 1 ;
+    let total_weight: i32 = local_weight + peer_count ;
+    (local * local_weight + peer_sum) / total_weight
+}
+
+// ── cache-stats oldest-ts compare ─────────────────────────────────────
+// Returns the older of two record-ts microsecond timestamps. Used by
+// the Rust crate's `cache_stats` when computing `oldest_us` over the
+// records vector. Pure compare-select ; stresses arith.cmpi + select.
+
+pub fn ts_min(a: i32, b: i32) -> i32 {
+    if a < b { a } else { b }
+}
+
+// ── sigma-mask-verify-equal ───────────────────────────────────────────
+// Bitwise-equality check. Mirrors `capsule_verify_sigma_mask` : the
+// only mask-comparison policy this crate ships is exact-equality. A
+// peer offering a superset-mask (privacy-loose) is rejected ; a peer
+// offering a subset-mask (consent-erosion) is rejected. Returns 1 on
+// match · 0 on mismatch.
+
+pub fn sigma_mask_verify_equal(record_mask: i32, expected_mask: i32) -> i32 {
+    if record_mask == expected_mask { 1 } else { 0 }
+}

@@ -1,0 +1,28 @@
+[package]
+name                   = "cssl-substrate-mycelium"
+description            = "CSSLv3 — Mycelium-Network federation primitives : MyceliumPeer + PeerCapsuleRecord + LocalPeerCache. PURELY-LOCAL · OFFLINE-FIRST · NO TELEMETRY · NO PHONE-HOME · NO PEER-DISCOVERY (DHT or other). Foundation for cross-user federated bias-learning per spec/grand-vision/16 § Mycelial-Network. Cite : T11-W18-MYCELIUM-PRIMITIVES."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# § cssl-substrate-mycelium consumes only Σ-mask validation surface from
+# omega-field (capsules carry sigma_mask : u64 ; verify-against-expected).
+# We import omega-field for symmetry with sibling federation crates ; concrete
+# Σ-mask integration is a thin u64-mask-bitwise check (no FieldCell dep yet).
+cssl-substrate-omega-field = { path = "../cssl-substrate-omega-field", default-features = false }
+
+# § serde — capsule-record + LocalPeerCache deterministic-serde for snapshot
+# round-trip. BTreeMap-backed indices preserve iteration-order across
+# replay-determinism boundary (see Apocky memory § BTreeMap-deterministic-serde).
+serde = { workspace = true }
+
+[dev-dependencies]
+# § serde_json — capsule + cache roundtrip tests. Dev-only ; the runtime
+# never depends on JSON encoding.
+serde_json = { workspace = true }
