@@ -1857,6 +1857,17 @@ fn lower_one_op(
         //   outer dispatch level means the parent region terminator leaked,
         //   which we treat as a no-op here. D5 (StructuredCfgValidator) will
         //   reject bare top-level scf.yield in a future slice.
+        // § T11-W19-α-CSSLC-FIX8 — `cssl.struct` constructor lowering.
+        //   body_lower::lower_struct_expr mints this op for `Foo { f1 : v1, ... }`.
+        //   Stage-0 ABI :
+        //     - Scalar-class struct (single field, ≤8B newtype) : the first
+        //       operand IS the result value (newtype passthrough). Mirrors
+        //       the FIX4 StructAbiClass::ScalarI{8,16,32,64} resolution path.
+        //     - Pointer-class struct (>8B or multi-field) : alloc a
+        //       cranelift stack-slot, memref.store each field at its offset,
+        //       result = stack_addr (host-pointer-width). Matches the FIX4
+        //       PointerByRef + cgen-side mir_type_to_cl_with_layouts table.
+        "cssl.struct" => obj_lower_cssl_struct(op, builder, value_map, fn_name, ptr_ty),
         "scf.if" => lower_scf_if_in_object(
             op,
             builder,
@@ -2272,6 +2283,103 @@ fn lower_scf_if_in_object(
         },
         crate::scf::BackendOrScfError::Backend(obj_err) => obj_err,
     })
+}
+
+/// § T11-W19-α-CSSLC-FIX8 — lower `cssl.struct` constructor to scalar-
+/// passthrough OR stack-slot + per-field-store, depending on ABI class.
+///
+/// § STAGE-0 SHAPE
+///   `body_lower::lower_struct_expr` mints :
+///   ```text
+///   cssl.struct %f0, %f1, ..., %fN
+///       result-ty = !cssl.struct.<Name>
+///       attribute struct_name = "<Name>"
+///       attribute field_count = N
+///   ```
+///
+/// § ABI DISPATCH (stage-0)
+///   - **Scalar class** (single ≤8B operand) : pass the first operand
+///     through unchanged ; the result-Value IS the inner field-Value.
+///     Matches the FIX4 `StructAbiClass::ScalarI{8,16,32,64}` resolution
+///     in `mir_type_to_cl_with_layouts` so signature- and body-side
+///     converge on the same Value-shape.
+///     This covers stdlib newtype handles : `File { handle : i64 }`,
+///     `ThreadHandle { handle : i64 }`, `MutexHandle { handle : i64 }`,
+///     `EntityId { idx : u32 }`, etc. — the dominant stage-0 case.
+///   - **Pointer class** (multi-field or >8B) : alloc a cranelift stack-
+///     slot of size = sum-of-field-sizes (rounded to 8B), per-field-store
+///     each operand at its offset, result = `stack_addr` (host-pointer
+///     width). Mirrors the FIX4 `PointerByRef` resolution.
+///
+/// § ERRORS
+///   Returns `ObjectError::LoweringFailed` on missing operands or
+///   missing result-id.
+fn obj_lower_cssl_struct(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind};
+
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.struct with no result".to_string(),
+        })?;
+
+    // Scalar class : single operand, pass-through.
+    if op.operands.len() == 1 {
+        let v = *value_map
+            .get(&op.operands[0])
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: op.operands[0].0,
+            })?;
+        value_map.insert(r.id, v);
+        return Ok(false);
+    }
+
+    // Empty / unit class : no operands — emit a typed zero of host-ptr
+    // width as a stand-in (matches the unit-struct ABI sentinel ; the
+    // FIX4 abi_class returns None for size=0 which the resolver maps to
+    // pointer-by-ref ; we feed a zero pointer here for void-shape).
+    if op.operands.is_empty() {
+        let zero = builder.ins().iconst(ptr_ty, 0);
+        value_map.insert(r.id, zero);
+        return Ok(false);
+    }
+
+    // Pointer class : multi-field — alloc stack-slot + per-field-store +
+    // bind result to stack_addr. Stage-0 sizes each field at 8B (host-
+    // ptr-width worst-case) ; over-allocation is fine for stack-slot
+    // ABI compliance + the bytes are private to this fn frame.
+    let field_count = u32::try_from(op.operands.len()).unwrap_or(1);
+    let slot_bytes = field_count.saturating_mul(8);
+    let slot = builder.create_sized_stack_slot(StackSlotData::new(
+        StackSlotKind::ExplicitSlot,
+        slot_bytes,
+        // align_log2 = 3 (8-byte alignment) — matches host-ptr alignment.
+        3,
+    ));
+    for (i, vid) in op.operands.iter().enumerate() {
+        let v = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        let offset = i32::try_from(i)
+            .unwrap_or(0)
+            .saturating_mul(8);
+        builder.ins().stack_store(v, slot, offset);
+    }
+    let addr = builder.ins().stack_addr(ptr_ty, slot, 0);
+    value_map.insert(r.id, addr);
+    Ok(false)
 }
 
 /// § T11-W19-α-CSSLC-FIX6 — lower `scf.match` to a cranelift `br_table`.
