@@ -1644,6 +1644,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-mycelium-kan-init"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-substrate-intelligence",
+ "cssl-substrate-mycelium",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cssl-host-nd-substrate"
 version = "0.1.0"
 dependencies = [
