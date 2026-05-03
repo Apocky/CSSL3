@@ -1,0 +1,105 @@
+§ specs/49_INTEGRATION_ARCHITECTURE · how-newly-landed-crates-wire-together
+  ← post wave-2/3-partial merge · 8 streams shipped · 3 still flying
+  ← @ HEAD bdcc97a · branch cssl/session-11/T11-W18-L8-DXIL-DIRECT
+
+§I LANDED-CRATES-INTEGRATION-MAP
+  ⟦
+    cssl-host-procgen-pipeline    ← parse_intent + generate + asset_fetch_stub
+    cssl-host-dmgm-specialists    ← DM/GM/Collaborator/Coder + role_council
+    cssl-substrate-mycelium       ← LocalPeerCache + merge_kan_bias_shards
+    cssl-host-substrate-intelligence (multiband) ← KAN_BIAS_MULTIBAND[5][8] · observe_with_profile
+    cssl-host-substrate-render-v3-d3d12 ← D3D12+DXIL foundation (empty-DXIL stub)
+    cssl-host-substrate-render-v2/packed ← 64B GpuCrystalPacked scaffold
+    loa-host (KAN-WIRED) ← profile_id from env · learn_from_frame_metrics → multiband band
+  ⟧
+
+§I FLOW-DIAGRAM (intended-runtime · wave-4-dispatch-target)
+  ⟦
+    user-input (text|voice)
+        ↓
+    IntentInput
+        ↓
+    parse_intent → IntentSemantic
+        ↓
+    Specialist-Council {DM · GM · Collaborator · Coder}
+        ↓ (role_council mediates conflicting Decisions)
+    consensus-Decision
+        ↓ (if ProposeAction)
+    ProcgenRequest {observer_pos · budget_ms}
+        ↓
+    generate → ProcgenOutput {crystals · asset_uris · fingerprint}
+        ↓
+    substrate-render (substrate_render::tick) ← currently fed by hard-coded crystals
+        ↓ (per-frame · GPU-or-CPU substrate-resonance)
+    DigitalIntelligenceRenderer FrameOutput
+        ↓
+    learn_from_frame_metrics (KAN-multiband-WIRED) ← evolves KAN-bias band per profile
+        ↓
+    (every-N-frames) kan_bias_persist
+        ↓
+    (future) Mycelium-merge → cross-user-federated-bias
+        ↓
+    (future) Σ-Chain-coherence-proof signs the bias-shard
+        ↓
+    (future) Akashic-Records ledger entry
+  ⟧
+
+§I WAVE-4-INTEGRATION-DISPATCH-TARGETS
+  ⟦
+    1. dm-procgen-bridge ← Specialist::decide → ProcgenRequest builder · pure-fn
+       ↳ observer_pos from substrate-render · budget from frame-pace
+       ↳ generate() output applied as Crystal-vector update
+       ↳ NO substrate_render touches · just exposes a converter API
+    2. mycelium-kan-init ← startup wires LocalPeerCache::load_from_disk
+       ↳ merge_kan_bias_shards(local, peer_shards) at kan_bias_load time
+       ↳ default-empty-cache means zero-impact · explicit-add-peer to enable
+       ↳ env-toggle LOA_MYCELIUM_LOAD=0 to fully-disable
+    3. procgen-substrate-emit ← Crystal-output → substrate_render.crystals.push
+       ↳ only when LOA_PROCGEN_ACTIVE=1 (default-off · sovereignty)
+       ↳ caps at 128 crystals · existing concentric-shell preserved
+       ↳ new crystals respect Shell::for_index distribution
+    4. specialist-context-persistent ← serialize SpecialistContext to ~/.loa/specialists.bin
+       ↳ recent_observations ring + kan_band_id + role
+       ↳ load on init · so specialist learning carries across restart
+    5. integration-smoke-test ← LoA.exe with LOA_QUICK_QUIT=600 + LOA_PROCGEN_ACTIVE=1 +
+       LOA_DISPLAY_PROFILE=amoled · 5-second smoke run · log-pump verify
+  ⟧
+
+§I CONSTRAINTS-PRESERVED-DURING-INTEGRATION
+  ⟦
+    sovereignty : every wire has env-disable
+    transparency : startup-banner shows all 16+ env-knobs · src={env|default}
+    no-half-measures : integration crates COMPILE + TEST · stub-mode-aware
+    ¬ break-existing-shipping-LoA.exe : new pipelines opt-in via env
+    1500-LOC-tight-scope : one crate-pair-bridge per agent
+    PROGRESSIVE-WRITE : commit at each level
+  ⟧
+
+§I OPEN-QUESTIONS
+  ⟦
+    Q1 : ProcgenOutput.asset_uris currently empty · when do we wire HTTP-fetch?
+        → defer to F2 slice (post-base wiring)
+    Q2 : Mycelium peer-discovery is OUT-OF-SCOPE · explicit user-add only?
+        → YES · sovereignty-axiom · no-DHT · no-broadcast
+    Q3 : Σ-Chain-Coherence-Proof signs WHAT · bias-shards or just observations?
+        → defer until sigma-coherence agent lands its primitive
+    Q4 : DM-Specialist needs LLM intelligence at some point · when?
+        → after foundation wires · F1 slice (per procgen retro)
+    Q5 : L8-DXIL-real-shader-emit · which kernel · WGSL→DXIL or DXIL-direct?
+        → defer until L8-DXIL-PRESENT lands
+    Q6 : Akashic-Records is mythological-frame for Σ-Chain · single ledger or per-realm?
+        → per-realm (per-user · per-tenant) with optional federation hooks
+  ⟧
+
+§I METRICS (measured · post-bdcc97a)
+  ⟦
+    repos/CSSLv3 stage-0 host crates : ~150 (in compiler-rs/crates/)
+    new crates this session-wave : 5 {procgen-pipeline · mycelium · dmgm-specialists · v3-d3d12 · coherence-proof-flying}
+    new specs this session : 4 {46_PROGRESS · 47_ENV_VARS · 48_GRAND_VISION · 49_INTEGRATION}
+    LoA.exe build time : ~14s (catalog-only) · wgpu+winit pulled at runtime feature
+    streams merged this session : 8 + 3 flying = 11 total
+    cadence : sessions-not-quarters confirmed · ~4 hours/wave
+  ⟧
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · sovereignty-respecting integration ;
+  every new wire has env-disable + default-off-when-uncertain
