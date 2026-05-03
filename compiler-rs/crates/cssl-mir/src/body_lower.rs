@@ -2835,6 +2835,19 @@ fn lower_call(
     if let Some(result) = try_lower_net_call(ctx, callee, args, span) {
         return Some(result);
     }
+    // § T11-W19-α-CSSLC-FIX3 — host-FFI body_lower recognizers for the six
+    //   non-fs/net domains. Mirrors the fs/net 2-segment-path pattern but
+    //   emits `MirOp::std("cssl.<domain>.<verb>")` rather than typed
+    //   `CsslOp::*` variants — the new domains predate the typed-CsslOp
+    //   migration ; cgen dispatch keys off raw op-name strings (per
+    //   FIX2 `is_host_ffi_op` + `host_ffi_sig_and_symbol`). Each
+    //   recognizer returns `Some(_)` when the callee is a 2-segment path
+    //   matching its first-segment + verb-arity ; falls through to the
+    //   generic `func.call` path otherwise. See specs/24_HOST_FFI.csl
+    //   § ABI-STABLE-SYMBOLS for the canonical verb-list per domain.
+    if let Some(result) = try_lower_time_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -4980,6 +4993,121 @@ fn try_lower_net_close(
             .with_attribute("source_loc", format!("{span:?}")),
     );
     Some((result_id, result_ty))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § T11-W19-α-CSSLC-FIX3 — host-FFI recognizers for time / window / input /
+//   gpu / audio / thread (+ mutex + atomic).
+//
+//   Each recognizer fires on a 2-segment path `<domain>::<verb>` whose
+//   first segment matches a canonical domain-name. When the verb +
+//   arity match a per-domain LUT entry, the call lowers to
+//   `MirOp::std("cssl.<domain>.<verb>")` carrying :
+//     - `<domain>_effect` : "true"     // effect-row marker (per spec/04)
+//     - `family`          : "<domain>"
+//     - `op`              : "<verb>"
+//     - `source_loc`      : original span
+//
+//   Result-types match the cgen `*_RETURN_TY` / contract LUT in
+//   `cssl-cgen-cpu-cranelift::cgen_<domain>` (see `host_ffi_sig_and_symbol`
+//   in object.rs for the dispatch — FIX2 commit 7599553).
+//
+//   Stage-0 representation : the op-names are STRUCTURAL only ; full
+//   `MirEffectRow` threading on the parent fn is deferred (mirrors fs/net
+//   T11-D76 / T11-D82 staging). Downstream cap + audit walkers iterate on
+//   the `<domain>_effect = true` attribute.
+//
+//   ‼ PRIME-DIRECTIVE attestation : the `caps_required` attribute on the
+//     surveillance-adjacent verbs (input::keyboard.state /
+//     input::mouse.delta / audio::stream_read) is the stage-0 marker
+//     downstream cap-walkers consume to verify the host has granted the
+//     matching `*_CAP_*` bit before allowing the call to fire.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Dispatch a `time::*` callee to the matching `try_lower_time_*` helper.
+///
+/// Returns `Some(_)` if `callee` is a 2-segment path of the form
+/// `time::<verb>` with the canonical arity for that verb ; otherwise
+/// returns `None` so the caller falls through to the regular
+/// `func.call` path. Verb / arity / return-type mirror
+/// `cssl-cgen-cpu-cranelift::cgen_time::TIME_OP_CONTRACT_TABLE`.
+fn try_lower_time_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 || ctx.interner.resolve(segments[0]) != "time" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    match (op.as_str(), args.len()) {
+        ("monotonic_ns", 0) => Some(emit_time_op(
+            ctx,
+            "cssl.time.monotonic_ns",
+            "monotonic_ns",
+            &[],
+            MirType::Int(IntWidth::I64),
+            span,
+        )),
+        ("wall_unix_ns", 0) => Some(emit_time_op(
+            ctx,
+            "cssl.time.wall_unix_ns",
+            "wall_unix_ns",
+            &[],
+            MirType::Int(IntWidth::I64),
+            span,
+        )),
+        ("sleep_ns", 1) => {
+            let (ns_id, _) = lower_call_arg(ctx, &args[0])?;
+            Some(emit_time_op(
+                ctx,
+                "cssl.time.sleep_ns",
+                "sleep_ns",
+                &[ns_id],
+                MirType::Int(IntWidth::I32),
+                span,
+            ))
+        }
+        ("deadline_until", 1) => {
+            let (dl_id, _) = lower_call_arg(ctx, &args[0])?;
+            Some(emit_time_op(
+                ctx,
+                "cssl.time.deadline_until",
+                "deadline_until",
+                &[dl_id],
+                MirType::Int(IntWidth::I32),
+                span,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Internal helper : emit a `cssl.time.<verb>` op with canonical attribute set.
+fn emit_time_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op_name: &str,
+    verb: &str,
+    operands: &[ValueId],
+    result_ty: MirType,
+    span: Span,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    let mut op = MirOp::std(op_name)
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("time_effect", "true")
+        .with_attribute("family", "time")
+        .with_attribute("op", verb)
+        .with_attribute("source_loc", format!("{span:?}"));
+    for &id in operands {
+        op = op.with_operand(id);
+    }
+    ctx.ops.push(op);
+    (result_id, result_ty)
 }
 
 /// Helper : lower a HirCallArg into a (ValueId, MirType) pair. Used by the
@@ -7387,6 +7515,72 @@ mod tests {
         let op = find_op(&f, "cssl.net.socket").expect("net::socket should lower");
         let loc = attr(op, "source_loc").expect("source_loc missing");
         assert!(!loc.is_empty());
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // § T11-W19-α-CSSLC-FIX3 — host-FFI body_lower recognizers tests.
+    //
+    //   Verify that 2-segment paths `<domain>::<verb>` lower to the
+    //   matching `cssl.<domain>.<verb>` op carrying the canonical
+    //   `<domain>_effect` marker. Mirrors the fs / net test corpus
+    //   shape (§ T11-D76 / T11-D82).
+    // ───────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lower_time_monotonic_ns_emits_cssl_time_monotonic_ns() {
+        let (f, _) = lower_one("fn f() -> i64 { time::monotonic_ns() }");
+        let op = find_op(&f, "cssl.time.monotonic_ns")
+            .expect("time::monotonic_ns should lower to cssl.time.monotonic_ns");
+        assert_eq!(op.operands.len(), 0);
+        assert_eq!(op.results.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "time_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("time"));
+        assert_eq!(attr(op, "op"), Some("monotonic_ns"));
+    }
+
+    #[test]
+    fn lower_time_wall_unix_ns_emits_cssl_time_wall_unix_ns() {
+        let (f, _) = lower_one("fn f() -> i64 { time::wall_unix_ns() }");
+        let op = find_op(&f, "cssl.time.wall_unix_ns")
+            .expect("time::wall_unix_ns should lower");
+        assert_eq!(op.operands.len(), 0);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "time_effect"), Some("true"));
+        assert_eq!(attr(op, "op"), Some("wall_unix_ns"));
+    }
+
+    #[test]
+    fn lower_time_sleep_ns_emits_cssl_time_sleep_ns() {
+        let (f, _) = lower_one("fn f(ns : i64) -> i32 { time::sleep_ns(ns) }");
+        let op = find_op(&f, "cssl.time.sleep_ns").expect("time::sleep_ns should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("sleep_ns"));
+    }
+
+    #[test]
+    fn lower_time_deadline_until_emits_cssl_time_deadline_until() {
+        let (f, _) = lower_one("fn f(d : i64) -> i32 { time::deadline_until(d) }");
+        let op = find_op(&f, "cssl.time.deadline_until")
+            .expect("time::deadline_until should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("deadline_until"));
+    }
+
+    #[test]
+    fn lower_time_wrong_arity_falls_through_to_func_call() {
+        // `time::sleep_ns()` with 0 args doesn't match (expects 1 arg).
+        let (f, _) = lower_one("fn f() -> i32 { time::sleep_ns() }");
+        assert!(find_op(&f, "cssl.time.sleep_ns").is_none());
+    }
+
+    #[test]
+    fn lower_non_time_path_is_not_claimed() {
+        // `foo::monotonic_ns()` is NOT `time::monotonic_ns()`.
+        let (f, _) = lower_one("fn f() -> i64 { foo::monotonic_ns() }");
+        assert!(find_op(&f, "cssl.time.monotonic_ns").is_none());
     }
 
     // ───────────────────────────────────────────────────────────────────
