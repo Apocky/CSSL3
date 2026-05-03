@@ -130,7 +130,9 @@ pub use effect_row_check::{
     parse_effect_row, EffectRowValidatorPass, EFFECT_ROW_VALIDATOR_PASS_NAME,
     EFFROW0000_SUMMARY, EFFROW0001_MISSING_EFFECT, EFFROW0002_UNRESOLVED_CALLEE,
 };
-pub use func::{MirFunc, MirModule, MirStructLayout, StructAbiClass};
+pub use func::{
+    EnumAbiClass, MirEnumLayout, MirFunc, MirModule, MirStructLayout, StructAbiClass,
+};
 pub use layout_check::{
     assert_struct_align, assert_struct_size, check_layouts, inject_layout_obligations,
     ComputedLayout, LayoutCode, LayoutDiagnostic, LayoutEntry, LayoutReport,

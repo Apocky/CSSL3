@@ -122,12 +122,18 @@ impl MirStructLayout {
     }
 
     /// Stage-0 ABI classification : how does this struct cross an FFI boundary?
-    /// `None` → unknown layout (caller should reject) ; otherwise the canonical
-    /// scalar-width-or-pointer choice.
+    /// `None` → unknown EMPTY-fields layout (caller should reject) ; otherwise
+    /// canonical scalar-width-or-pointer choice.
+    ///
+    /// § T11-W19-α-CSSLC-FIX4 — non-empty fields with size=0 (unrecognized
+    /// aggregate like `[u8; 32]`) fall back to `PointerByRef`.
     #[must_use]
     pub fn abi_class(&self) -> Option<StructAbiClass> {
         if self.size_bytes == 0 {
-            return None;
+            if self.fields.is_empty() {
+                return None;
+            }
+            return Some(StructAbiClass::PointerByRef);
         }
         Some(match self.size_bytes {
             1 => StructAbiClass::ScalarI8,
@@ -151,6 +157,65 @@ pub enum StructAbiClass {
     /// Pass / return as `i64` register-value (covers newtype-u64 case).
     ScalarI64,
     /// Pass as host-pointer-to-struct (Win-x64 / SysV >2-word rule).
+    PointerByRef,
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// § ENUM-FFI ABI TABLE  (T11-W19-α-CSSLC-FIX4-ENUM · stage-0 enum-FFI codegen)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// § PURPOSE
+//   Stage-0 cgen needs to recognize unit-only (C-like) enums at fn-FFI
+//   boundaries so cgen can lower the enum-name to a discriminant scalar.
+//   Without this, Opaque("IoError") / Opaque("NetError") / etc. surface as
+//   "non-scalar MIR type" rejections in `build_clif_signature`.
+//
+// § STAGE-0 SCOPE
+//   Unit-only enums → i8 (≤256 variants) or i16/i32 for larger.
+// § DEFERRED
+//   Mixed-payload enums fall back to PointerByRef (FIX3 territory for
+//   real construction/destruction).
+
+/// One entry in the per-module enum-layout side-table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirEnumLayout {
+    pub name: String,
+    pub variant_count: u32,
+    pub is_unit_only: bool,
+}
+
+impl MirEnumLayout {
+    #[must_use]
+    pub fn new(name: impl Into<String>, variant_count: u32, is_unit_only: bool) -> Self {
+        Self {
+            name: name.into(),
+            variant_count,
+            is_unit_only,
+        }
+    }
+
+    /// Stage-0 ABI classification.
+    #[must_use]
+    pub fn abi_class(&self) -> Option<EnumAbiClass> {
+        if !self.is_unit_only {
+            return Some(EnumAbiClass::PointerByRef);
+        }
+        Some(if self.variant_count <= 256 {
+            EnumAbiClass::ScalarI8
+        } else if self.variant_count <= 65_536 {
+            EnumAbiClass::ScalarI16
+        } else {
+            EnumAbiClass::ScalarI32
+        })
+    }
+}
+
+/// Stage-0 enum-FFI ABI choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EnumAbiClass {
+    ScalarI8,
+    ScalarI16,
+    ScalarI32,
     PointerByRef,
 }
 
@@ -243,11 +308,9 @@ pub struct MirModule {
     pub attributes: Vec<(String, String)>,
     /// Struct-name → layout mapping for FFI-crossing structs.
     /// T11-W17-A · stage-0 struct-FFI codegen support.
-    /// Deterministic ordering via BTreeMap (Σ-mask repeatable codegen).
-    /// Populated by `cssl_mir::lower::lower_module_signatures` from HIR
-    /// `HirItem::Struct` entries ; consumed by cgen-cpu-cranelift's
-    /// `mir_type_to_cl` to resolve `Opaque("!cssl.struct.<name>")`.
     pub struct_layouts: BTreeMap<String, MirStructLayout>,
+    /// Enum-name → layout mapping. T11-W19-α-CSSLC-FIX4-ENUM.
+    pub enum_layouts: BTreeMap<String, MirEnumLayout>,
 }
 
 impl MirModule {
@@ -265,6 +328,7 @@ impl MirModule {
             funcs: Vec::new(),
             attributes: Vec::new(),
             struct_layouts: BTreeMap::new(),
+            enum_layouts: BTreeMap::new(),
         }
     }
 
@@ -286,12 +350,21 @@ impl MirModule {
         self.struct_layouts.insert(layout.name.clone(), layout);
     }
 
-    /// Look up a struct's layout by name. Used by cgen-cpu-cranelift +
-    /// cgen-cpu-x64 to resolve `MirType::Opaque("!cssl.struct.<name>")`
-    /// during signature emission.
+    /// Look up a struct's layout by name.
     #[must_use]
     pub fn find_struct_layout(&self, name: &str) -> Option<&MirStructLayout> {
         self.struct_layouts.get(name)
+    }
+
+    /// Register an enum-FFI layout. T11-W19-α-CSSLC-FIX4-ENUM.
+    pub fn add_enum_layout(&mut self, layout: MirEnumLayout) {
+        self.enum_layouts.insert(layout.name.clone(), layout);
+    }
+
+    /// Look up an enum's layout by name.
+    #[must_use]
+    pub fn find_enum_layout(&self, name: &str) -> Option<&MirEnumLayout> {
+        self.enum_layouts.get(name)
     }
 }
 

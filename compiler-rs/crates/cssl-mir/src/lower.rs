@@ -16,11 +16,11 @@
 //!       textual format.
 
 use cssl_hir::{
-    CapMap, HirCapKind, HirEffectRow, HirExternFn, HirFn, HirItem, HirModule, HirStruct,
+    CapMap, HirCapKind, HirEffectRow, HirEnum, HirExternFn, HirFn, HirItem, HirModule, HirStruct,
     HirStructBody, HirType, HirTypeKind, Interner,
 };
 
-use crate::func::{MirFunc, MirModule, MirStructLayout};
+use crate::func::{MirEnumLayout, MirFunc, MirModule, MirStructLayout};
 use crate::value::{FloatWidth, IntWidth, MirType};
 
 /// Lowering context — holds references to the HIR + interner so `lower_*` methods
@@ -267,7 +267,11 @@ fn lower_item_into(ctx: &LowerCtx<'_>, item: &HirItem, mir: &mut MirModule) {
                 mir.add_struct_layout(layout);
             }
         }
-        // enum / type-alias / use / const don't emit MIR fns at stage-0.
+        // T11-W19-α-CSSLC-FIX4-ENUM · stage-0 enum-FFI codegen.
+        HirItem::Enum(e) => {
+            mir.add_enum_layout(build_enum_layout(ctx, e));
+        }
+        // type-alias / use / const don't emit MIR fns at stage-0.
         _ => {}
     }
 }
@@ -305,6 +309,19 @@ pub fn build_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> MirStructLayout
 #[must_use]
 fn lower_struct_layout(ctx: &LowerCtx<'_>, s: &HirStruct) -> Option<MirStructLayout> {
     Some(build_struct_layout(ctx, s))
+}
+
+/// Build a `MirEnumLayout` for an enum that participates in FFI signatures.
+/// T11-W19-α-CSSLC-FIX4-ENUM · pub-exposed for `csslc::commands::build`.
+#[must_use]
+pub fn build_enum_layout(ctx: &LowerCtx<'_>, e: &HirEnum) -> MirEnumLayout {
+    let name = ctx.interner.resolve(e.name);
+    let is_unit_only = e
+        .variants
+        .iter()
+        .all(|v| matches!(v.body, HirStructBody::Unit));
+    let variant_count = u32::try_from(e.variants.len()).unwrap_or(u32::MAX);
+    MirEnumLayout::new(name, variant_count, is_unit_only)
 }
 
 #[cfg(test)]

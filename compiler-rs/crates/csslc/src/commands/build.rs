@@ -155,6 +155,13 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
             mir_mod.add_struct_layout(layout);
         }
     }
+    // T11-W19-α-CSSLC-FIX4-ENUM · stage-0 enum-FFI codegen.
+    for item in &hir_mod.items {
+        if let cssl_hir::HirItem::Enum(e) = item {
+            let layout = cssl_mir::lower::build_enum_layout(&lower_ctx, e);
+            mir_mod.add_enum_layout(layout);
+        }
+    }
     // First pass : lower extern fn signatures (no body) so the call-result
     // fixup can find them.
     for item in &hir_mod.items {
@@ -179,6 +186,20 @@ pub fn run_with_source(path: &Path, source: &str, args: &BuildArgs) -> ExitCode 
     //   collision ; symbol resolution at the MIR level is fname-string-based.
     for ((aux_hir, aux_interner), aux_file) in aux_hirs.iter().zip(aux_files.iter()) {
         let aux_lower_ctx = cssl_mir::LowerCtx::new(aux_interner);
+        // T11-W17-A · aux struct-FFI layouts.
+        for item in &aux_hir.items {
+            if let cssl_hir::HirItem::Struct(s) = item {
+                let layout = cssl_mir::lower::build_struct_layout(&aux_lower_ctx, s);
+                mir_mod.add_struct_layout(layout);
+            }
+        }
+        // T11-W19-α-CSSLC-FIX4-ENUM · aux enum-FFI layouts.
+        for item in &aux_hir.items {
+            if let cssl_hir::HirItem::Enum(e) = item {
+                let layout = cssl_mir::lower::build_enum_layout(&aux_lower_ctx, e);
+                mir_mod.add_enum_layout(layout);
+            }
+        }
         for item in &aux_hir.items {
             if let cssl_hir::HirItem::ExternFn(ef) = item {
                 mir_mod.push_func(cssl_mir::lower::lower_extern_fn_signature(

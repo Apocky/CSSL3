@@ -52,8 +52,8 @@ use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use cssl_mir::{
-    FloatWidth, IntWidth, MirFunc, MirModule, MirOp, MirStructLayout, MirType, StructAbiClass,
-    ValueId,
+    EnumAbiClass, FloatWidth, IntWidth, MirEnumLayout, MirFunc, MirModule, MirOp, MirStructLayout,
+    MirType, StructAbiClass, ValueId,
 };
 use thiserror::Error;
 
@@ -224,28 +224,33 @@ pub fn emit_object_module_with_format(
     // unlocks newtype/POD struct FFI signatures.
     let struct_layouts: Option<&BTreeMap<String, MirStructLayout>> =
         Some(&module.struct_layouts);
+    // T11-W19-α-CSSLC-FIX4-ENUM · enum-layout side-table threaded through
+    // every signature-emitting helper. Unit-only enum opaques resolve to
+    // a discriminant scalar via `resolve_enum_opaque`.
+    let enum_layouts: Option<&BTreeMap<String, MirEnumLayout>> = Some(&module.enum_layouts);
     for mir_fn in &module.funcs {
         if mir_fn.is_generic {
             continue;
         }
-        // § Extern declaration : a single empty entry block + no other blocks
-        // is the canonical "extern fn" shape (interface-method / FFI decl).
-        // Multi-block all-empty bodies are MALFORMED MIR — fall through so
-        // pass-2's `compile_one_fn` can surface `MultiBlockBody`.
         if mir_fn.body.blocks.len() <= 1 && mir_fn.is_signature_only() {
             continue;
         }
-        let func_id =
-            declare_fn_signature(&mut obj_module, mir_fn, ptr_ty_for_decl, struct_layouts)?;
+        let func_id = declare_fn_signature(
+            &mut obj_module,
+            mir_fn,
+            ptr_ty_for_decl,
+            struct_layouts,
+            enum_layouts,
+        )?;
         fn_table.insert(mir_fn.name.clone(), func_id);
     }
 
     for mir_fn in &module.funcs {
         if mir_fn.is_generic {
-            continue; // skip unspecialized generic fns
+            continue;
         }
         if mir_fn.body.blocks.len() <= 1 && mir_fn.is_signature_only() {
-            continue; // extern decl ; no body to define ; resolved as import on use.
+            continue;
         }
         let func_id = *fn_table
             .get(&mir_fn.name)
@@ -261,6 +266,7 @@ pub fn emit_object_module_with_format(
             func_id,
             &fn_table,
             struct_layouts,
+            enum_layouts,
         )?;
     }
 
@@ -289,26 +295,29 @@ fn build_clif_signature(
     results: &[MirType],
     ptr_ty: cranelift_codegen::ir::Type,
     struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
 ) -> Result<Signature, ObjectError> {
     let mut sig = Signature::new(isa_call_conv);
     for (idx, p_ty) in params.iter().enumerate() {
-        let cl_ty = mir_type_to_cl_with_layouts(p_ty, ptr_ty, struct_layouts).ok_or_else(
-            || ObjectError::NonScalarType {
-                fn_name: fn_name.to_string(),
-                slot: idx,
-                ty: format!("{p_ty}"),
-            },
-        )?;
+        let cl_ty =
+            mir_type_to_cl_with_layouts(p_ty, ptr_ty, struct_layouts, enum_layouts).ok_or_else(
+                || ObjectError::NonScalarType {
+                    fn_name: fn_name.to_string(),
+                    slot: idx,
+                    ty: format!("{p_ty}"),
+                },
+            )?;
         sig.params.push(AbiParam::new(cl_ty));
     }
     for (idx, r_ty) in results.iter().enumerate() {
-        let cl_ty = mir_type_to_cl_with_layouts(r_ty, ptr_ty, struct_layouts).ok_or_else(
-            || ObjectError::NonScalarType {
-                fn_name: fn_name.to_string(),
-                slot: idx,
-                ty: format!("{r_ty}"),
-            },
-        )?;
+        let cl_ty =
+            mir_type_to_cl_with_layouts(r_ty, ptr_ty, struct_layouts, enum_layouts).ok_or_else(
+                || ObjectError::NonScalarType {
+                    fn_name: fn_name.to_string(),
+                    slot: idx,
+                    ty: format!("{r_ty}"),
+                },
+            )?;
         sig.returns.push(AbiParam::new(cl_ty));
     }
     Ok(sig)
@@ -324,6 +333,7 @@ fn declare_fn_signature(
     mir_fn: &MirFunc,
     ptr_ty: cranelift_codegen::ir::Type,
     struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
 ) -> Result<FuncId, ObjectError> {
     let call_conv = obj_module.isa().default_call_conv();
     let sig = build_clif_signature(
@@ -333,6 +343,7 @@ fn declare_fn_signature(
         &mir_fn.results,
         ptr_ty,
         struct_layouts,
+        enum_layouts,
     )?;
     obj_module
         .declare_function(&mir_fn.name, Linkage::Export, &sig)
@@ -350,6 +361,7 @@ fn compile_one_fn(
     func_id: FuncId,
     fn_table: &HashMap<String, FuncId>,
     struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
 ) -> Result<(), ObjectError> {
     // § T11-CC-1 (W-CC-multiblock) — multi-block bodies are now supported.
     //   Each MIR-block in `mir_fn.body.blocks` maps 1:1 to a cranelift
@@ -383,6 +395,7 @@ fn compile_one_fn(
         &mir_fn.results,
         ptr_ty,
         struct_layouts,
+        enum_layouts,
     )?;
 
     codegen_ctx.clear();
@@ -421,6 +434,7 @@ fn compile_one_fn(
         fn_table,
         ptr_ty,
         struct_layouts,
+        enum_layouts,
     )?;
 
     // § T11-W18-CSSLC-ADVANCE2 — pre-scan body for `arith.remf` ; declare
@@ -1471,6 +1485,7 @@ fn declare_callee_imports_for_fn(
     fn_table: &HashMap<String, FuncId>,
     ptr_ty: cranelift_codegen::ir::Type,
     struct_layouts: Option<&BTreeMap<String, MirStructLayout>>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
 ) -> Result<CalleeImports, ObjectError> {
     let mut imports = CalleeImports::default();
     let Some(entry_block) = mir_fn.body.blocks.first() else {
@@ -1543,6 +1558,7 @@ fn declare_callee_imports_for_fn(
             &result_tys,
             ptr_ty,
             struct_layouts,
+            enum_layouts,
         )?;
         let extern_id = obj_module
             .declare_function(callee, Linkage::Import, &sig)
@@ -2987,7 +3003,7 @@ fn mir_type_to_cl(
 ) -> Option<cranelift_codegen::ir::Type> {
     // Internal-body call sites still use scalar-only lowering ; struct-FFI
     // codepath always goes through `mir_type_to_cl_with_layouts`.
-    mir_type_to_cl_with_layouts(t, ptr_ty, None)
+    mir_type_to_cl_with_layouts(t, ptr_ty, None, None)
 }
 
 /// § T11-W17-A · stage-0 struct-FFI codegen
@@ -3009,6 +3025,7 @@ fn mir_type_to_cl_with_layouts(
     t: &MirType,
     ptr_ty: cranelift_codegen::ir::Type,
     layouts: Option<&BTreeMap<String, MirStructLayout>>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
 ) -> Option<cranelift_codegen::ir::Type> {
     match t {
         MirType::Int(IntWidth::I32) => Some(cl_types::I32),
@@ -3020,13 +3037,9 @@ fn mir_type_to_cl_with_layouts(
         MirType::Float(FloatWidth::F32) => Some(cl_types::F32),
         MirType::Float(FloatWidth::F64) => Some(cl_types::F64),
         MirType::Bool => Some(cl_types::I8),
-        // T11-D57 (S6-B1) — `!cssl.ptr` lowers to the active ISA's host
-        //   pointer type. Tied to S6-A3's "ISA = host" assumption ;
-        //   cross-compilation will revisit when target-triple resolution lands.
         MirType::Ptr | MirType::Handle => Some(ptr_ty),
-        // T11-W17-A — struct-FFI : resolve `!cssl.struct.<name>` opaque to
-        // the appropriate ABI scalar / pointer width.
-        MirType::Opaque(s) => resolve_struct_opaque(s, ptr_ty, layouts),
+        // T11-W17-A struct-FFI + T11-W19-α-CSSLC-FIX4 enum/Result/str/Vec.
+        MirType::Opaque(s) => resolve_aggregate_opaque(s, ptr_ty, layouts, enum_layouts),
         _ => None,
     }
 }
@@ -3067,6 +3080,82 @@ fn resolve_struct_opaque(
         StructAbiClass::ScalarI64 => cl_types::I64,
         StructAbiClass::PointerByRef => ptr_ty,
     })
+}
+
+/// § T11-W19-α-CSSLC-FIX4 · stage-0 enum-opaque resolution.
+///
+/// Helper for `resolve_aggregate_opaque`. Looks up the bare enum-name in
+/// the enum-layout side-table ; unit-only enums lower to their discriminant
+/// scalar-width, mixed-payload enums fall back to `PointerByRef`.
+#[inline]
+fn resolve_enum_opaque(
+    opaque_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
+) -> Option<cranelift_codegen::ir::Type> {
+    let table = enum_layouts?;
+    let layout = table.get(opaque_name)?;
+    Some(match layout.abi_class()? {
+        EnumAbiClass::ScalarI8 => cl_types::I8,
+        EnumAbiClass::ScalarI16 => cl_types::I16,
+        EnumAbiClass::ScalarI32 => cl_types::I32,
+        EnumAbiClass::PointerByRef => ptr_ty,
+    })
+}
+
+/// § T11-W19-α-CSSLC-FIX4 · stage-0 aggregate-opaque resolution.
+///
+/// Tries each opaque-resolution path in order :
+///   1. struct-FFI table         (T11-W17-A)
+///   2. enum-FFI table           (FIX4-ENUM ; unit-only → discriminant scalar)
+///   3. `Result<...>` opaque      (FIX4-RESULT ; PointerByRef fallback)
+///   4. `&str` / `str` / `StrSlice` / `!cssl.string` opaque (FIX4-STR)
+///   5. `Vec` / `String` / generic-collection opaque (FIX4-COLL)
+///   6. `!cssl.call_result.*` opaque (FIX4-CR ; ptr fallback for unresolved)
+///
+/// Returns `None` only when no path matches — preserving the existing
+/// `ObjectError::NonScalarType` rejection at the caller.
+#[inline]
+fn resolve_aggregate_opaque(
+    opaque_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+    layouts: Option<&BTreeMap<String, MirStructLayout>>,
+    enum_layouts: Option<&BTreeMap<String, MirEnumLayout>>,
+) -> Option<cranelift_codegen::ir::Type> {
+    if let Some(t) = resolve_struct_opaque(opaque_name, ptr_ty, layouts) {
+        return Some(t);
+    }
+    if let Some(t) = resolve_enum_opaque(opaque_name, ptr_ty, enum_layouts) {
+        return Some(t);
+    }
+    // FIX4-RESULT : Result<T, E> — PointerByRef hidden-pointer fallback.
+    if opaque_name == "Result"
+        || opaque_name.starts_with("Result<")
+        || opaque_name.starts_with("!cssl.result.")
+    {
+        return Some(ptr_ty);
+    }
+    // FIX4-STR : &str / str / StrSlice / !cssl.string — host-pointer.
+    if matches!(
+        opaque_name,
+        "str" | "&str" | "StrSlice" | "!cssl.str" | "!cssl.string"
+    ) {
+        return Some(ptr_ty);
+    }
+    // FIX4-COLL : Vec / String / Box / Option / Arc / Rc — host-pointer.
+    if matches!(
+        opaque_name,
+        "Vec" | "String" | "Box" | "Option" | "Arc" | "Rc"
+    ) {
+        return Some(ptr_ty);
+    }
+    // FIX4-CR : `!cssl.call_result.<callee>` body-lower placeholder that
+    // `resolve_call_result_types` couldn't resolve (synthetic sibling
+    // callee with no MirFunc match). Stage-0 fallback = host-pointer.
+    if opaque_name.starts_with("!cssl.call_result.") {
+        return Some(ptr_ty);
+    }
+    None
 }
 
 // ───────────────────────────────────────────────────────────────────────
