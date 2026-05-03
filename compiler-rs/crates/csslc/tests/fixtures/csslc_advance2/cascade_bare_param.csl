@@ -1,0 +1,22 @@
+// § T11-W18-CSSLC-ADVANCE2 · if/else cascade with bare-param yields
+//
+// Pre-A2 : every branch sub-context started with EMPTY param_vars, so
+// bare-ident yields like `x`, `y`, `z` routed through lower_path's
+// "single-segment unresolved" fallback and emitted cssl.path_ref ops
+// carrying MirType::Opaque(!cssl.unresolved.<name>). Codegen then rejected
+// the unresolved type. Post-A2 : sub_ctx clones param_vars (alongside
+// local_vars + vec_param_vars), and the bare-ident yields resolve cleanly
+// against the enclosing fn's params.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.cascade_bare_param
+
+pub fn pick3(c1: bool, c2: bool, x: i32, y: i32, z: i32) -> i32 {
+    if c1 { x } else if c2 { y } else { z }
+}
+
+pub fn pick_one_level(c: bool, a: i32, b: i32) -> i32 {
+    if c { a } else { b }
+}

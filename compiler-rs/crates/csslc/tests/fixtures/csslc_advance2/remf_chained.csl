@@ -1,0 +1,21 @@
+// § T11-W18-CSSLC-ADVANCE2 · chained float-remainder fixture
+//
+// Composite : multiple `arith.remf` ops in the same fn share a single
+// libm import (the FmodImports pre-scan dedupes by width). Mixed widths
+// in one module exercise both fmodf + fmod imports declared in the same
+// object module.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.remf_chained
+
+pub fn rem_chain(a: f32, b: f32, c: f32) -> f32 {
+    (a % b) % c
+}
+
+pub fn rem_mixed_widths(x32: f32, y32: f32, x64: f64, y64: f64) -> f64 {
+    let r32: f32 = x32 % y32 ;
+    let r64: f64 = x64 % y64 ;
+    r64
+}

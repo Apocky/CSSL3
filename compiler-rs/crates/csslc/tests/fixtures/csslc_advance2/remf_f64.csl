@@ -1,0 +1,14 @@
+// § T11-W18-CSSLC-ADVANCE2 · float-remainder f64 fixture
+//
+// Same shape as remf_f32 but at f64 width — exercises the `fmod` (no `f`
+// suffix) libm symbol path. Both widths share the FmodImports plumbing
+// but declare distinct cranelift FuncRefs ; this fixture pins the f64 arm.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.remf_f64
+
+pub fn rem_pos64(a: f64, b: f64) -> f64 {
+    a % b
+}

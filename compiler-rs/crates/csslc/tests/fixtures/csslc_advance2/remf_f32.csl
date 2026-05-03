@@ -1,0 +1,19 @@
+// § T11-W18-CSSLC-ADVANCE2 · float-remainder f32 fixture
+//
+// Pre-A2 : `f32 % f32` lowered to `arith.remf` and the cgen-cpu-cranelift
+// emit subset rejected with "MIR op `arith.remf` ; not in stage-0 object-
+// emit subset". Post-A2 it resolves through a libm `fmodf` callout
+// declared by `declare_fmod_imports_for_fn`.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.remf_f32
+
+pub fn rem_pos(a: f32, b: f32) -> f32 {
+    a % b
+}
+
+pub fn rem_neg(a: f32, b: f32) -> f32 {
+    (-a) % b
+}
