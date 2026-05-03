@@ -215,17 +215,30 @@ pub struct App {
     pub render_v2: Option<cssl_host_substrate_render_v2::RendererV2>,
 
     /// § T11-W18-L7-INTEGRATE · ASH-DIRECT VULKAN-1.3 substrate render-stack ·
-    /// zero wgpu/naga/WGSL.
-    ///
-    /// When set (and `LOA_RENDER_V3=1` env-var present), the per-frame render
-    /// block uses `AshSubstrateRenderer::headless_dispatch` instead of V2 or
-    /// the conventional path. The V3 stack owns its own `ash::Instance` +
-    /// `ash::Device` entirely separate from wgpu's `GpuContext` — the SPIR-V
-    /// shader-module is built directly from the substrate-kernel `.csl`
-    /// source via `cssl-cgen-gpu-spirv`. `LOA_RENDER_V3=1` takes PRECEDENCE
-    /// over `LOA_RENDER_V2`.
+    /// zero wgpu/naga/WGSL · headless fallback when the swapchain present-path
+    /// is unavailable (e.g. surface creation fails). The headless path runs
+    /// `AshSubstrateRenderer::headless_dispatch` per frame ; output is private,
+    /// no pixels reach the screen — this is a smoke-test path, not a present
+    /// path. The PRIMARY path is `render_v3_present` below.
     #[cfg(feature = "runtime")]
     pub render_v3: Option<cssl_host_substrate_render_v3::AshSubstrateRenderer>,
+
+    /// § T11-W18-L7-PRESENT · ASH-DIRECT VULKAN-1.3 substrate render-stack
+    /// with VkSwapchainKHR-backed PIXELS-ON-SCREEN.
+    ///
+    /// When set (and `LOA_RENDER_V3=1` env-var present), the per-frame render
+    /// block uses `AshSwapchainPresenter::dispatch_with_present` to write the
+    /// substrate-kernel output DIRECTLY into the swapchain image and present
+    /// per frame. The V3 stack owns its own `ash::Instance` + `ash::Device` +
+    /// `VkSurfaceKHR` + `VkSwapchainKHR` entirely separate from wgpu's
+    /// `GpuContext`. The SPIR-V shader-module is built directly from the
+    /// substrate-kernel `.csl` source via `cssl-cgen-gpu-spirv`.
+    /// `LOA_RENDER_V3=1` takes PRECEDENCE over `LOA_RENDER_V2` when this
+    /// field is `Some`. Falls back to `render_v3` (headless) when surface
+    /// creation fails (driver-level failure-mode kept observable in logs).
+    #[cfg(feature = "runtime")]
+    pub render_v3_present:
+        Option<cssl_host_substrate_render_v3::AshSwapchainPresenter>,
 }
 
 impl Default for App {
@@ -272,6 +285,8 @@ impl App {
             render_v2: None,
             #[cfg(feature = "runtime")]
             render_v3: None,
+            #[cfg(feature = "runtime")]
+            render_v3_present: None,
             frame_pace: FramePace::from_env(),
             mcp_handle: None,
             mcp_port: None,
@@ -1499,50 +1514,88 @@ impl ApplicationHandler for App {
             );
             self.render_v2 = Some(v2);
 
-            // § T11-W18-L7-INTEGRATE · ASH-DIRECT VULKAN-1.3 substrate-render
+            // § T11-W18-L7-PRESENT · ASH-DIRECT VULKAN-1.3 substrate-render
             //   eagerly initialized when `LOA_RENDER_V3=1`. Owns its own
-            //   ash::Instance + ash::Device separate from this GpuContext.
-            //   Failure to load the vulkan loader (or a missing compute device)
-            //   logs a warning and leaves render_v3 = None ; the per-frame
-            //   branch then falls through to V2 (or the conventional path).
+            //   ash::Instance + ash::Device + VkSurfaceKHR + VkSwapchainKHR
+            //   entirely separate from this GpuContext. The PRIMARY path is
+            //   the swapchain-present `AshSwapchainPresenter` — the kernel
+            //   writes pixels directly to the swapchain image, no
+            //   vkCmdCopyImage hop. If surface/swapchain creation fails
+            //   (driver-level), we fall back to the headless
+            //   `AshSubstrateRenderer` which exercises the same dispatch path
+            //   on a private GPU image — no pixels but the V3 stack still
+            //   validates end-to-end. Final fallback : V2 / conventional.
             let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
             if v3_enabled {
                 match cssl_host_substrate_render_v3::SubstrateKernelArtifact::compile_canonical()
                 {
                     Ok(artifact) => {
-                        match cssl_host_substrate_render_v3::AshSubstrateRenderer::try_new(
-                            artifact,
+                        // § Try the swapchain-present path first.
+                        let initial_extent = (surface_w, surface_h);
+                        match cssl_host_substrate_render_v3::AshSwapchainPresenter::try_new_with_swapchain(
+                            window.as_ref(),
+                            artifact.clone(),
+                            initial_extent,
                         ) {
-                            Ok(mut v3) => {
-                                if let Err(e) = v3.build_pipeline() {
-                                    log_event(
-                                        "WARN",
-                                        "loa-host/render-v3",
-                                        &format!(
-                                            "ash-direct vulkan pipeline-build failed : {e:?} · falling back to V2/conventional"
-                                        ),
-                                    );
-                                } else {
-                                    log_event(
-                                        "INFO",
-                                        "loa-host/render-v3",
-                                        &format!(
-                                            "ash-direct vulkan-1.3 substrate render-stack ARMED · LOA_RENDER_V3=1 · ZERO wgpu/naga/WGSL · compute-queue-family={} · pipeline-built={}",
-                                            v3.compute_queue_family(),
-                                            v3.pipeline_built(),
-                                        ),
-                                    );
-                                    self.render_v3 = Some(v3);
-                                }
+                            Ok(present) => {
+                                let (w, h) = present.extent();
+                                log_event(
+                                    "INFO",
+                                    "loa-host/render-v3",
+                                    &format!(
+                                        "ash-direct vulkan-1.3 substrate render-stack ARMED w/ SWAPCHAIN PRESENT · LOA_RENDER_V3=1 · ZERO wgpu/naga/WGSL · compute+present-queue-family={} · swapchain={}x{} · images={} · pixels-on-screen=YES",
+                                        present.queue_family(),
+                                        w,
+                                        h,
+                                        present.image_count(),
+                                    ),
+                                );
+                                self.render_v3_present = Some(present);
                             }
                             Err(e) => {
                                 log_event(
                                     "WARN",
                                     "loa-host/render-v3",
                                     &format!(
-                                        "ash::Entry / vulkan-loader unavailable : {e:?} · falling back to V2/conventional"
+                                        "swapchain-present init failed : {e:?} · falling back to headless V3 dispatch"
                                     ),
                                 );
+                                // § Fallback : headless V3 (the L7-INTEGRATE path) so
+                                //   the V3 dispatch lifeline still gets exercised.
+                                match cssl_host_substrate_render_v3::AshSubstrateRenderer::try_new(
+                                    artifact,
+                                ) {
+                                    Ok(mut v3) => {
+                                        if let Err(e) = v3.build_pipeline() {
+                                            log_event(
+                                                "WARN",
+                                                "loa-host/render-v3",
+                                                &format!(
+                                                    "ash-direct vulkan pipeline-build failed : {e:?} · falling back to V2/conventional"
+                                                ),
+                                            );
+                                        } else {
+                                            log_event(
+                                                "INFO",
+                                                "loa-host/render-v3",
+                                                &format!(
+                                                    "ash-direct vulkan-1.3 HEADLESS render-stack ARMED · pipeline-built={} · pixels-on-screen=NO (swapchain unavailable)",
+                                                    v3.pipeline_built(),
+                                                ),
+                                            );
+                                            self.render_v3 = Some(v3);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log_event(
+                                            "WARN",
+                                            "loa-host/render-v3",
+                                            &format!(
+                                                "ash::Entry / vulkan-loader unavailable : {e:?} · falling back to V2/conventional"
+                                            ),
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -2112,17 +2165,53 @@ impl App {
             let _frame_out = self.substrate.tick(observer);
         }
 
-        // § 8e. T11-W18-L7-INTEGRATE · ASH-DIRECT VULKAN-1.3 substrate render-
+        // § 8e. T11-W18-L7-PRESENT · ASH-DIRECT VULKAN-1.3 substrate render-
         //   stack · TAKES PRECEDENCE OVER V2 + CONVENTIONAL when active.
-        //   When `LOA_RENDER_V3=1` env-var set AND `render_v3` is initialized,
-        //   we run a compute-dispatch on the v3 stack's OWN ash::Device (entirely
-        //   separate from wgpu's GpuContext) and skip both V2 + conventional.
-        //   Per spec : V3 is currently a headless ash-dispatch validating the
-        //   end-to-end CSSL-source → SPIR-V → vk-pipeline → command-buffer →
-        //   submit → wait path. Swapchain-presentation integration lands in
-        //   a follow-up wave ; this commit wires the dispatch lifeline.
+        //   When `LOA_RENDER_V3=1` env-var set AND `render_v3_present` is
+        //   initialized (PRIMARY path), we run a compute-dispatch + present
+        //   on the v3 stack's OWN ash::Device with VkSwapchainKHR — pixels go
+        //   directly to the screen via VK_KHR_win32_surface + VK_KHR_swapchain,
+        //   ZERO wgpu involvement. When `render_v3` is initialized instead
+        //   (FALLBACK : swapchain creation errored at startup) we still
+        //   exercise the headless dispatch lifeline so the V3 stack validates
+        //   end-to-end ; no pixels reach the screen on that fallback.
         let v3_enabled = std::env::var("LOA_RENDER_V3").map_or(false, |v| v == "1");
         if v3_enabled {
+            // § Primary : swapchain-present path.
+            if let Some(present) = self.render_v3_present.as_mut() {
+                let frame_token = telem::global().frame_begin();
+                // Build observer for v3-present from current camera.
+                let cam = &self.render_camera;
+                let yaw_milli = ((cam.yaw * 1000.0) as i64).rem_euclid(1000) as u32;
+                let observer = cssl_host_substrate_render_v3::ObserverCoord {
+                    world_x: (cam.position.x * 1000.0) as i32,
+                    world_y: (cam.position.y * 1000.0) as i32,
+                    world_z: (cam.position.z * 1000.0) as i32,
+                    yaw_milli,
+                };
+                // § For now we pass an empty crystal slice — the canonical
+                //   substrate-kernel `.csl` body is empty so the binding is
+                //   inert. When the kernel body lands the observer-tick
+                //   self.substrate.crystals goes here directly.
+                let crystals: &[cssl_host_substrate_render_v3::Crystal] = &[];
+                match present.dispatch_with_present(observer, crystals) {
+                    Ok(()) => {
+                        telem::global().frame_end(frame_token, 1, 0);
+                    }
+                    Err(e) => {
+                        log_event(
+                            "ERROR",
+                            "loa-host/render-v3",
+                            &format!("ash-direct dispatch_with_present failed : {e:?}"),
+                        );
+                        telem::global().frame_end(frame_token, 0, 0);
+                    }
+                }
+                self.frame_count = self.frame_count.wrapping_add(1);
+                return;
+            }
+            // § Fallback : headless V3 dispatch (no pixels, but the V3 stack
+            //   gets exercised so logs still confirm the dispatch lifeline).
             if let Some(v3) = self.render_v3.as_mut() {
                 let frame_token = telem::global().frame_begin();
                 match v3.headless_dispatch() {
@@ -2138,7 +2227,6 @@ impl App {
                         telem::global().frame_end(frame_token, 0, 0);
                     }
                 }
-                // V3 path takes full precedence : skip V2 + conventional.
                 self.frame_count = self.frame_count.wrapping_add(1);
                 return;
             }
@@ -2426,20 +2514,26 @@ mod tests {
         assert!(app.engine_state.lock().is_ok());
     }
 
-    /// § T11-W18-L7-INTEGRATE · the V3 ASH-DIRECT VULKAN render-stack field
-    /// must default to `None` on a fresh `App`. The actual ash::Instance +
-    /// ash::Device construction happens lazily in `resumed()` only when the
-    /// `LOA_RENDER_V3=1` env-var is set ; tests run without a vulkan loader
-    /// so the field stays `None` here. This test verifies the FIELD EXISTS
-    /// + DEFAULTS-TO-NONE invariant which the per-frame branch relies on
-    /// to skip V3 cleanly when not active.
+    /// § T11-W18-L7-PRESENT · BOTH V3 fields default to `None` on a fresh
+    /// `App`. The PRIMARY `render_v3_present` is the swapchain-backed path
+    /// that puts pixels on screen ; the FALLBACK `render_v3` is the headless
+    /// path that exercises the same dispatch on a private GPU image when
+    /// surface creation fails. Both initialize lazily in `resumed()` only
+    /// when `LOA_RENDER_V3=1` is set ; tests run without a vulkan loader so
+    /// both stay `None` here. This test verifies the FIELDS EXIST +
+    /// DEFAULT-TO-NONE invariant which the per-frame branch relies on to
+    /// skip V3 cleanly when not active.
     #[cfg(feature = "runtime")]
     #[test]
     fn render_v3_default_is_none() {
         let app = App::new();
         assert!(
             app.render_v3.is_none(),
-            "render_v3 must default to None on App::new() ; gets initialized in resumed() iff LOA_RENDER_V3=1",
+            "render_v3 must default to None on App::new() ; gets initialized in resumed() iff LOA_RENDER_V3=1 AND surface-creation fails",
+        );
+        assert!(
+            app.render_v3_present.is_none(),
+            "render_v3_present must default to None on App::new() ; gets initialized in resumed() iff LOA_RENDER_V3=1 AND surface creation succeeds",
         );
         // V2 is also None on construction (initialized in resumed too).
         assert!(app.render_v2.is_none());
