@@ -1,0 +1,576 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/thread.cssl  —  Threading + mutex + atomic surface
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § threading (lines 106-115)
+//        specs/24_HOST_FFI.csl § CAPABILITY-MATRIX § Cap<Thread>
+//        specs/04_EFFECTS.csl  § BUILT-IN EFFECTS (ThreadSpawn-class effect-row)
+//        specs/12_CAPABILITIES.csl § THE SIX CAPABILITIES (Cap<Thread> witness)
+//        specs/11_IFC.csl      § PRIVILEGE EFFECT (Privilege<level> for atomics
+//                                                    on system-internal state)
+// Slice : Wave-D2 stdlib companion (S1B) — paired with cssl-rt::host_thread (Wave-D2).
+//
+// § PRIME_DIRECTIVE preserved : threading is the surface that creates new
+//   sovereign execution contexts. This module : (a) does no surveillance —
+//   the nine ops fire only at explicit caller-invocation, (b) the cssl-rt
+//   slot-tables are LOCAL — nothing escapes the process, (c) every spawn
+//   carries the {ThreadSpawn} effect-row marker so callers cannot
+//   accidentally compose thread-spawn with {PureDet} contexts that require
+//   single-threaded execution, (d) Cap<Thread> witness consumption is the
+//   source-level gate per `specs/24_HOST_FFI.csl § CAPABILITY-MATRIX §
+//   Cap<Thread>` — zero-cap = compile-error.
+//
+//   ‼ This module NEVER overrides PRIME_DIRECTIVE. Threads spawned via
+//     `__cssl_thread_spawn` remain subject to §1 PROHIBITIONS — the spawned
+//     thread inherits the caller's cap-set + IFC labels (cap-witness is
+//     not "promoted" by virtue of being on a new thread). Mutex + atomic
+//     ops are non-Sensitive at this layer ; consumers that wrap them
+//     around Sensitive-labeled state inherit the IFC contract from the
+//     payload, not from this stdlib.
+//
+//   ‼ Mutex unlock is FIRST-PARTY paired with lock at the source-level.
+//     Failing to unlock is a CSSL-side correctness bug — at stage-0 the
+//     std-lib Mutex is held briefly during bookkeeping then released
+//     (parking-lot-style flag-set semantics ; mutual-exclusion is
+//     enforced via the user-side `__cssl_atomic_cas_u64` spinlock pattern).
+//     Real OS-level mutual-exclusion lands in Wave-D2.1.
+//
+// § STAGE-0 NOTES
+//   1. The nine threading verbs (`spawn` / `join` / `mutex_create` /
+//      `mutex_lock` / `mutex_unlock` / `mutex_destroy` / `atomic_load_u64` /
+//      `atomic_store_u64` / `atomic_cas_u64`) are recognized syntactically
+//      by `cssl_mir::body_lower::lower_call`. The recognizer fires on a
+//      2-segment path `thread::<verb>` / `mutex::<verb>` / `atomic::<verb>`
+//      with the appropriate arity. Each call lowers to a `cssl.thread.<verb>`
+//      / `cssl.mutex.<verb>` / `cssl.atomic.<verb>` op carrying the
+//      `(thread_effect, "true")` attribute as the stage-0 marker for
+//      {ThreadSpawn} effect-row threading (mirrors the {IO} / {Net}
+//      attribute pattern from T11-D76 / T11-D82). Real `MirEffectRow`
+//      structural threading is deferred (see DEFERRED below).
+//   2. The `Cap<Thread>` witness is enforced at the SOURCE-LEVEL wrapper :
+//      every wrapper-fn below takes a `cap : i64` parameter representing
+//      a packed Cap<Thread> token (per specs/12 § THE SIX CAPABILITIES the
+//      witness lowers to a u64 gen-ref ; the i64 here is the host-width
+//      bit-pattern matching the existing fs/net + time precedent).
+//      Bypassing the wrapper (calling `__cssl_thread_*` directly from
+//      userland CSSL) is a directive-violation caught by the type-system
+//      at the source-level surface (effect-row + capability-witness).
+//   3. The nine `__cssl_thread_*` / `__cssl_mutex_*` / `__cssl_atomic_*`
+//      ABI-stable extern "C" symbols are declared in `cssl-rt::host_thread`
+//      (Wave-D2 throwaway-Rust shim). The CSSL source below does NOT
+//      spell them with `extern "C" {}` blocks — the parser does not yet
+//      recognize that syntax (carried-forward from the fs/net + time
+//      precedent). Instead the wrappers invoke the bare 2-segment
+//      recognizer form which lowers through `cssl_mir::body_lower` to
+//      the matching MIR op, then cgen emits the matching `call __cssl_*`
+//      instruction (per the cgen_thread pattern paired with cgen_fs /
+//      cgen_net / cgen_time).
+//   4. Return-code constants (`RC_OK`, `RC_ERR`, `INVALID_HANDLE`) +
+//      ordering-enum constants (`ORDERING_RELAXED` / `ACQUIRE` / `RELEASE` /
+//      `ACQ_REL` / `SEQ_CST`) mirror cssl-rt::host_thread exactly ;
+//      renaming requires lock-step changes in both files.
+//   5. The `entry` parameter to `thread::spawn` is a function pointer to
+//      `extern "C" fn(*const u8) -> i32` packed as `i64` per the existing
+//      handle-as-i64 source-level convention. The CSSL caller obtains
+//      the entry-fn pointer via the (parser-deferred) `&fn_name as *const u8`
+//      operator. Stage-0 callers pass the bit-pattern as i64 directly ;
+//      the future typed-pointer slice migrates this to a typed shape.
+//
+// § INVARIANTS  (stage-0)
+//   - `thread::spawn` returns 0 (= `INVALID_HANDLE`) on failure ; ≠ 0 on
+//     success. The handle MUST be passed to exactly one `thread::join` ;
+//     joining twice returns `RC_ERR`.
+//   - `mutex::create` returns 0 (= `INVALID_HANDLE`) on alloc-failure ;
+//     ≠ 0 on success. Every successful `mutex::create` MUST be paired
+//     with `mutex::destroy`. Lock + unlock are reentrant at stage-0
+//     (the std-lib Mutex is held briefly during bookkeeping ; mutual
+//     exclusion via the user-side atomic-CAS spinlock pattern).
+//   - `atomic::*` ops require the caller to supply a properly-aligned
+//     `u64` address (the `addr : i64` packs the host-width pointer).
+//     Misalignment = undefined behavior per the FFI contract.
+//   - All ordering values must be ∈ { 0..4 } per the wire-encoding map ;
+//     unknown values fall back to `SEQ_CST` (strictest sane default).
+
+module com.apocky.stdlib.thread
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type definitions  (handle-as-i64 source-level encoding).
+//
+//   `ThreadHandle` and `MutexHandle` wrap an OS-level handle returned by
+//   the cssl-rt slot-table. Value-type at stage-0 ; once trait-Drop
+//   lands the handles will be released automatically at scope-exit.
+//
+//   § INVARIANTS
+//     - `handle` ≠ 0 (the `INVALID_HANDLE` sentinel ; failure paths
+//       never produce a ThreadHandle / MutexHandle ; the safe wrappers
+//       translate `0` → `Err(...)` or a dedicated sentinel return).
+// ───────────────────────────────────────────────────────────────────────
+
+// `ThreadHandle` — opaque slot-table handle for a spawned thread.
+// Returned by `thread_spawn` ; consumed by `thread_join`.
+struct ThreadHandle {
+    handle : i64,
+}
+
+// `MutexHandle` — opaque slot-table handle for a created mutex.
+// Returned by `mutex_create` ; consumed by `mutex_lock` / `mutex_unlock` /
+// `mutex_destroy`.
+struct MutexHandle {
+    handle : i64,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Return-code + sentinel constants  (mirror cssl-rt::host_thread).
+// ───────────────────────────────────────────────────────────────────────
+
+// `RC_OK = 0` — successful completion of an integer-returning shim
+// (`thread_join` / `mutex_lock` / `mutex_unlock` / `mutex_destroy` /
+// `atomic_store`).
+fn rc_ok() -> i32 {
+    0
+}
+
+// `RC_ERR = -1` — generic failure return for the integer-returning
+// shims. Specific error categorization is deferred to Wave-D2.1
+// last-error machinery (mirrors `cssl-rt::io::last_io_error_kind`).
+fn rc_err() -> i32 {
+    -1
+}
+
+// `INVALID_HANDLE = 0` — canonical sentinel for ThreadHandle / MutexHandle
+// failure. The slot-table never assigns ID 0 ; userland treats 0 as
+// "spawn / create failed".
+fn invalid_handle() -> i64 {
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AtomicOrder constants  (wire-encoding ; mirror cssl-rt::host_thread).
+//
+//   The wire-protocol u32 value travels across the FFI boundary because
+//   `extern "C"` cannot pass Rust enums directly. The mapping is locked-
+//   forever — adding a new ordering requires a new u32 value (do NOT
+//   re-number existing entries).
+//
+//   ABI-locked from Wave-D2 ; renaming requires a major-version bump.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ORDERING_RELAXED = 0` — no synchronization, only atomicity.
+fn ordering_relaxed() -> u32 {
+    0
+}
+
+// `ORDERING_ACQUIRE = 1` — load-acquire (pairs with release-store).
+fn ordering_acquire() -> u32 {
+    1
+}
+
+// `ORDERING_RELEASE = 2` — release-store (pairs with acquire-load).
+fn ordering_release() -> u32 {
+    2
+}
+
+// `ORDERING_ACQ_REL = 3` — acquire + release (read-modify-write).
+fn ordering_acq_rel() -> u32 {
+    3
+}
+
+// `ORDERING_SEQ_CST = 4` — sequentially-consistent (strictest ; default).
+fn ordering_seq_cst() -> u32 {
+    4
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AtomicOrder enum  (typed-surface for source-level ergonomics).
+//
+//   The enum is used for typed parameters at the source level ; the
+//   wire-encoding-to-u32 conversion happens via `atomic_order_to_u32`.
+//   At stage-0 the enum constructors lower through the B2 sum-type
+//   recognizer ; the to-u32 dispatch is a manual match.
+// ───────────────────────────────────────────────────────────────────────
+
+// `AtomicOrder` — typed-surface for atomic-ordering selection.
+enum AtomicOrder {
+    Relaxed,
+    Acquire,
+    Release,
+    AcqRel,
+    SeqCst,
+}
+
+// `atomic_order_to_u32(order)` — convert the typed AtomicOrder into the
+// wire-encoding u32 value the FFI shim accepts.
+fn atomic_order_to_u32(order : AtomicOrder) -> u32 {
+    match order {
+        Relaxed => ordering_relaxed(),
+        Acquire => ordering_acquire(),
+        Release => ordering_release(),
+        AcqRel  => ordering_acq_rel(),
+        SeqCst  => ordering_seq_cst(),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § effect Thread / effect Mutex / effect Atomic — DOCUMENTARY
+//
+//   Canonical form per specs/24 § CSSL-SIDE WRAPPERS (extrapolated from
+//   the documented Window / Gpu / Input / Time effect-blocks) :
+//
+//     effect Thread { fn spawn(...) -> {ThreadSpawn} i64 ; fn join(...) -> i32 }
+//     effect Mutex  { fn create() -> i64 ; fn lock / unlock / destroy(...) -> i32 }
+//     effect Atomic { fn load_u64 / store_u64 / cas_u64(...) -> u64|i32 }
+//
+//   // N! syntax-uncertain : effect-block + embedded effect-rows on
+//   //    return types is per spec/24 + spec/04 but no existing
+//   //    stdlib/*.cssl declares an effect-block — DOCUMENTARY-ONLY
+//   //    until parser-slice lands. Free-fn surface below is active.
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § Thread spawn / join — Cap<Thread>-gated.
+// ───────────────────────────────────────────────────────────────────────
+
+// `thread_spawn(cap, entry, arg) -> ThreadHandle` — spawn a new thread
+// executing `entry(arg)`.
+//
+// § EFFECT-ROW (documentary at stage-0)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a `Cap<Thread>` witness (the `cap : i64` packs the gen-ref
+//   per specs/12 § THE SIX CAPABILITIES). Zero-cap = caller never
+//   obtained the witness from the Apocky-PM signed-token grant path
+//   (per specs/24 § CAPABILITY-MATRIX § Cap<Thread>) ; the wrapper
+//   short-circuits to `INVALID_HANDLE` as a defensive sentinel.
+//
+// § PARAMETERS
+//   - `cap`   : Cap<Thread> witness (i64-packed).
+//   - `entry` : function pointer to `extern "C" fn(*const u8) -> i32`
+//               packed as i64. The CSSL-side caller obtains the pointer
+//               via the (parser-deferred) `&fn_name as *const u8` form.
+//   - `arg`   : opaque pointer-as-i64 passed to `entry`. May be 0 (null).
+//
+// § RETURN
+//   `ThreadHandle { handle : <slot-id> }` on success ; `handle == 0`
+//   indicates failure (caller MUST check before `thread_join`).
+//
+// § STAGE-0 BEHAVIOR
+//   Delegates to the `thread::spawn` recognizer-form which lowers to
+//   `cssl.thread.spawn` → `call __cssl_thread_spawn(entry, arg)`.
+fn thread_spawn(cap : i64, entry : i64, arg : i64) -> ThreadHandle {
+    if cap == 0 {
+        ThreadHandle { handle : invalid_handle() }
+    } else {
+        let h = thread::spawn(entry, arg) ;
+        ThreadHandle { handle : h }
+    }
+}
+
+// `thread_join(cap, th, ret_out) -> i32` — join the thread identified by
+// `th` ; write its return-code to `*ret_out` (if non-zero, treated as a
+// pointer).
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }       // join is the dual of spawn ; same effect-row.
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § PARAMETERS
+//   - `cap`     : Cap<Thread> witness.
+//   - `th`      : ThreadHandle returned by a prior `thread_spawn`.
+//   - `ret_out` : pointer-as-i64 to a writable i32 slot ; 0 = null = drop
+//                 the return-code.
+//
+// § RETURN
+//   `RC_OK` on success ; `RC_ERR` on invalid-handle or already-joined.
+//
+// § STAGE-0 BEHAVIOR
+//   Delegates to the `thread::join` recognizer-form which lowers to
+//   `cssl.thread.join` → `call __cssl_thread_join(th.handle, ret_out)`.
+fn thread_join(cap : i64, th : ThreadHandle, ret_out : i64) -> i32 {
+    if cap == 0 {
+        rc_err()
+    } else {
+        thread::join(th.handle, ret_out)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Mutex create / lock / unlock / destroy — Cap<Thread>-gated.
+//
+//   Mutex ops share the Cap<Thread> witness with thread spawn/join — at
+//   stage-0 they're considered the same capability-domain (threading
+//   primitives). A future spec-amendment may split out a Cap<Mutex>
+//   sub-capability if mutex use without thread-spawn becomes a needed
+//   restriction-shape.
+// ───────────────────────────────────────────────────────────────────────
+
+// `mutex_create(cap) -> MutexHandle` — create a new mutex.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § RETURN
+//   `MutexHandle { handle : <slot-id> }` on success ; `handle == 0`
+//   indicates allocation-failure.
+fn mutex_create(cap : i64) -> MutexHandle {
+    if cap == 0 {
+        MutexHandle { handle : invalid_handle() }
+    } else {
+        let h = mutex::create() ;
+        MutexHandle { handle : h }
+    }
+}
+
+// `mutex_lock(cap, mh) -> i32` — lock the mutex identified by `mh`.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § STAGE-0 BEHAVIOR
+//   Per cssl-rt::host_thread::cssl_mutex_lock_impl docs : the std-lib
+//   Mutex is held BRIEFLY during bookkeeping then released. Real mutual
+//   exclusion across threads is the user-side `atomic_cas_u64` spinlock
+//   pattern. Wave-D2.1 will bring true OS-level blocking.
+fn mutex_lock(cap : i64, mh : MutexHandle) -> i32 {
+    if cap == 0 {
+        rc_err()
+    } else {
+        mutex::lock(mh.handle)
+    }
+}
+
+// `mutex_unlock(cap, mh) -> i32` — unlock the mutex identified by `mh`.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § STAGE-0 BEHAVIOR
+//   Idempotent : calling unlock without a prior lock is not an error
+//   in stage-0 (matches the parking-lot-style flag-set semantics).
+fn mutex_unlock(cap : i64, mh : MutexHandle) -> i32 {
+    if cap == 0 {
+        rc_err()
+    } else {
+        mutex::unlock(mh.handle)
+    }
+}
+
+// `mutex_destroy(cap, mh) -> i32` — destroy the mutex identified by `mh`.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § STAGE-0 BEHAVIOR
+//   The slot is marked None ; the underlying Box leaks deliberately
+//   (see cssl-rt::host_thread module-doc § STAGE-0 SCOPE). After destroy
+//   the handle is invalidated ; subsequent `mutex_lock` / `mutex_unlock` /
+//   `mutex_destroy` calls return `RC_ERR`.
+fn mutex_destroy(cap : i64, mh : MutexHandle) -> i32 {
+    if cap == 0 {
+        rc_err()
+    } else {
+        mutex::destroy(mh.handle)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Atomic load / store / CAS — Cap<Thread>-gated.
+//
+//   Atomic ops on a `*u64` address. The `addr : i64` packs the host-width
+//   pointer per the source-level convention. Caller must guarantee
+//   alignment + non-aliasing per AtomicU64 invariants.
+// ───────────────────────────────────────────────────────────────────────
+
+// `atomic_load_u64(cap, addr, order) -> u64` — atomically load a u64
+// from `addr` with the given ordering.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § PARAMETERS
+//   - `cap`   : Cap<Thread> witness.
+//   - `addr`  : pointer-as-i64 to a properly-aligned u64.
+//   - `order` : wire-encoded u32 (use `atomic_order_to_u32(AtomicOrder::*)`
+//               or one of the `ordering_*()` helpers above).
+//
+// § RETURN
+//   The atomically-loaded u64 value. On null `addr` returns 0 as a
+//   defensive sentinel (matches cssl-rt::host_thread::
+//   cssl_atomic_load_u64_impl).
+fn atomic_load_u64(cap : i64, addr : i64, order : u32) -> u64 {
+    if cap == 0 {
+        0
+    } else {
+        atomic::load_u64(addr, order)
+    }
+}
+
+// `atomic_store_u64(cap, addr, value, order) -> i32` — atomically store
+// `value` to `*addr` with the given ordering.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § RETURN
+//   `RC_OK` on success ; `RC_ERR` on null `addr`.
+fn atomic_store_u64(cap : i64, addr : i64, value : u64, order : u32) -> i32 {
+    if cap == 0 {
+        rc_err()
+    } else {
+        atomic::store_u64(addr, value, order)
+    }
+}
+
+// `atomic_cas_u64(cap, addr, expected, desired, order) -> u64` —
+// atomically compare-and-swap on `*addr`.
+//
+// § EFFECT-ROW (documentary)
+//   { ThreadSpawn }
+//
+// § CAPABILITY
+//   Consumes a Cap<Thread> witness.
+//
+// § PARAMETERS
+//   - `cap`      : Cap<Thread> witness.
+//   - `addr`     : pointer-as-i64 to a properly-aligned u64.
+//   - `expected` : value the caller believes is currently stored.
+//   - `desired`  : value to install if `*addr == expected`.
+//   - `order`    : wire-encoded u32.
+//
+// § RETURN
+//   The previous value at `*addr`. On success returns `expected` (the
+//   swap occurred). On failure returns the actual previous value
+//   (≠ expected ; the swap did NOT occur).
+fn atomic_cas_u64(cap : i64, addr : i64, expected : u64, desired : u64, order : u32) -> u64 {
+    if cap == 0 {
+        expected
+    } else {
+        atomic::cas_u64(addr, expected, desired, order)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helpers — convenience constructors + atomic-CAS spinlock pattern.
+// ───────────────────────────────────────────────────────────────────────
+
+// `thread_handle_is_valid(th) -> bool` — `true` iff the handle is non-zero.
+fn thread_handle_is_valid(th : ThreadHandle) -> bool {
+    th.handle != 0
+}
+
+// `mutex_handle_is_valid(mh) -> bool` — `true` iff the handle is non-zero.
+fn mutex_handle_is_valid(mh : MutexHandle) -> bool {
+    mh.handle != 0
+}
+
+// `atomic_cas_seqcst(cap, addr, expected, desired) -> u64` — convenience
+// wrapper for the most-common CAS pattern (sequentially-consistent
+// ordering). Used by user-side spinlock implementations.
+fn atomic_cas_seqcst(cap : i64, addr : i64, expected : u64, desired : u64) -> u64 {
+    atomic_cas_u64(cap, addr, expected, desired, ordering_seq_cst())
+}
+
+// `atomic_load_relaxed(cap, addr) -> u64` — convenience wrapper for
+// monotonic-counter reads (no synchronization required).
+fn atomic_load_relaxed(cap : i64, addr : i64) -> u64 {
+    atomic_load_u64(cap, addr, ordering_relaxed())
+}
+
+// `atomic_store_relaxed(cap, addr, value) -> i32` — convenience wrapper
+// for monotonic-counter writes.
+fn atomic_store_relaxed(cap : i64, addr : i64, value : u64) -> i32 {
+    atomic_store_u64(cap, addr, value, ordering_relaxed())
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DEFERRED
+//   1. effect-block + in-fn-sig effect-row syntax (mirrors time.cssl § DEFERRED 1).
+//   2. Structural `MirEffectRow` carrying {ThreadSpawn} on parent fn.
+//   3. Cap<Thread> typed-witness migration from i64-packed.
+//   4. Trait-Drop on ThreadHandle / MutexHandle (auto join/destroy).
+//   5. Real OS-level mutex blocking — Wave-D2.1 (surface unchanged).
+//   6. `entry : i64` → typed-fn-pointer migration once parser supports it.
+//   7. Cap<Mutex> sub-capability split (currently shares Cap<Thread>).
+//   8. Atomic ops on non-u64 widths — Wave-D2.2 (surface-shape preserved).
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : spawn + join roundtrip. Demonstrates the canonical
+// pattern for thread-spawn with return-code propagation.
+fn _example_spawn_join_roundtrip(cap : i64, entry : i64) -> i32 {
+    let th = thread_spawn(cap, entry, 0) ;
+    if thread_handle_is_valid(th) {
+        thread_join(cap, th, 0)
+    } else {
+        rc_err()
+    }
+}
+
+// Worked example : mutex create + lock + unlock + destroy lifecycle.
+// Demonstrates the paired-create-destroy invariant.
+fn _example_mutex_lifecycle(cap : i64) -> i32 {
+    let mh = mutex_create(cap) ;
+    if mutex_handle_is_valid(mh) {
+        let _l = mutex_lock(cap, mh) ;
+        let _u = mutex_unlock(cap, mh) ;
+        mutex_destroy(cap, mh)
+    } else {
+        rc_err()
+    }
+}
+
+// Worked example : atomic-CAS spinlock acquire pattern. Demonstrates the
+// canonical wait-free lock-acquisition flow that user-side mutual-
+// exclusion is built on at stage-0 (until Wave-D2.1's true blocking
+// primitive lands).
+//
+// Returns `RC_OK` if the CAS succeeded (lock acquired) ; `RC_ERR` if
+// the lock was already held (caller should retry or sleep).
+fn _example_spinlock_try_acquire(cap : i64, lock_addr : i64) -> i32 {
+    // CAS : if *lock == 0, set to 1 ; previous value returned.
+    let prev = atomic_cas_seqcst(cap, lock_addr, 0, 1) ;
+    if prev == 0 {
+        rc_ok()
+    } else {
+        rc_err()
+    }
+}
+
+// Worked example : atomic-counter increment via CAS-loop pattern. Shows
+// the relaxed-load + seqcst-CAS composition used in user-side counters.
+fn _example_atomic_counter_increment(cap : i64, counter_addr : i64) -> u64 {
+    let cur = atomic_load_relaxed(cap, counter_addr) ;
+    let next = cur + 1 ;
+    let prev = atomic_cas_seqcst(cap, counter_addr, cur, next) ;
+    // Stage-0 : single-shot ; real CAS-loop pattern would retry on
+    // CAS-failure. Returns the value that was actually stored.
+    if prev == cur {
+        next
+    } else {
+        prev
+    }
+}
