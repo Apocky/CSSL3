@@ -1,0 +1,110 @@
+§ specs/46_T11_W18_PROGRESS · t11-w18-progress-retro · ¬ readme · ¬ user-facing
+  ← session-11 · wave-18 · running-progress · merged-streams + flying-streams
+  ← branch : cssl/session-11/T11-W18-L8-DXIL-DIRECT
+  ← HEAD @ session-resume : d8c8075 ← will-advance
+
+§I T11-W18-MERGED-STREAMS ← @ d8c8075
+  ⟦
+    bf104a5 § MNEME-COMPLETE ← 22-files · cssl-edge/lib/mneme/* · 8-API-routes ·
+            6-prompts · sigma + store + pipelines · 40/40-tests · stub-mode-aware
+    baad1c8 § CSSLC-SCALAR-ARITH-COMPLETION ← 10-arith-ops + cmpf-tag-fix ·
+            float-aware lower_unary · 10-e2e + scalar_math_demo.csl
+    66b9d5d § MERGE-MNEME+CSSLC-SCALAR ← 44-files · 7258+-ins · zero-conflicts
+    c59e8e8 § FPS-CAP-FIX ← 2-bottleneck-remediation per fps-cap-hunt-diagnosis
+            ⟪ gpu.rs : desired_maximum_frame_latency 2→1 + LOA_FRAME_LATENCY env
+            ⟪ v3 lib.rs : FRAMES_IN_FLIGHT 2→3 (triple-buffer · CPU-GPU-pipeline-depth+1)
+    61da3a6 § CRYSTAL128 ← STARTUP_CRYSTAL_COUNT 32→128 · concentric-shell-density
+            ⟪ Inner/Middle/Outer (16/48/64) · sqrt-radial Halton-2D
+            ⟪ amp_mod 1.5×/1.0×/0.6× · WGSL MAX_CRYSTALS=128 + EARLY_EXIT_AMP
+    f3774d6 § MERGE-CRYSTAL128
+    9de1833 § L9-AMOLED-DEEP ← DisplayProfile auto-detect + per-profile contrast LUT
+            ⟪ Amoled 0.003+sat-1.15+snap · Oled 0.008+sat-1.08
+            ⟪ IpsLcd 0.020+neutral · VaLcd 0.012+sat-1.05+cool-tilt
+            ⟪ HdrExt 0.0001 + Rec.2020 + HDR10-PQ-1000-nit
+            ⟪ 25-tests · DXGI color-space-12 + EDID-mfg + LOA_DISPLAY_PROFILE env
+    f60a53d § MERGE-AMOLED-L9
+    ea46116 § DYNRES-SCALER ← Q0.16 fixed-point adaptive resolution-scaler
+            ⟪ EMA frame-time · floor 0.5× · cap 1.0× · TARGET_FRAME_US_144HZ=6_944
+            ⟪ Lerp ~3.3%/frame ⇒ 30-frame convergence
+            ⟪ LOA_DYN_RES=0 env-disable · 372-LOC dynamic_resolution.rs NEW
+            ‼ AGENT-DIED disk-full · SALVAGED from CSSLv3-wt-dynres
+    db0a0a0 § MERGE-DYNRES ← conflict-resolved (crystal-128 bench-hook + dynres before-dispatch)
+    847db36 § CSSLC-ADVANCE2 ← arith.remf libm + if/else-cascade-bare-ident-yield
+            ⟪ 4-progressive-commits ↦ FmodImports + sub-ctx param/local-vars
+            ⟪ +14-e2e + 7-fixtures + 3-cascade-regression-tests
+    d8c8075 § MERGE-CSSLC-ADVANCE2
+  ⟧
+
+§I T11-W18-WAVE-2-FLYING ← @ now ← 5-isolated-worktree-agents
+  ⟦
+    a4f6a5ee § L8-DXIL-FOUNDATION ← cssl-host-substrate-render-v3-d3d12 NEW-CRATE
+             ⟪ D3D12 + DXIL · sibling of v3-vulkan · DXGI_SWAP_EFFECT_FLIP_DISCARD
+             ⟪ DXGI_PRESENT_ALLOW_TEARING · LOA_DXIL_PRESENT_TEAR=0 env
+             ⟪ FRAMES_IN_FLIGHT=3 from-start · windows = "0.58" features
+             ⟪ 6+-tests · empty-DXIL-stub matching v3-vulkan-pattern
+    a8a44f42 § KAN-MULTIBAND ← 5-band-per-DisplayProfile substrate-intelligence
+             ⟪ static KAN_BIAS_MULTIBAND : [[AtomicU32; 8]; 5] (5×8 axes)
+             ⟪ Amoled/Oled drift-rate α=1/128 (2× faster · pitch-black reveals bias quicker)
+             ⟪ IpsLcd/VaLcd/HdrExt α=1/256 unchanged
+             ⟪ format-version 0x01→0x02 · back-compat-read · profile_id ∈ {0..=4}
+             ⟪ 8+-tests · backward-compat · drift-rate-per-profile · roundtrip
+    a6747ba0 § CSSLC-STRINGS ← string-literal codegen → .data section
+             ⟪ StringPool intern · module.declare_data + define_data + null-term
+             ⟪ arith.constant @str_id → declare_data_in_func + load-address
+             ⟪ 6+-e2e (basic + in_call + concat) · string_literal_demo.csl
+             ⟪ if already-works @ mir → detect-different-gap (struct-rich OR module-path)
+    ad2fbb5c § SOA-PACK ← GpuCrystal 352B→64B (5.6× memory-reduction)
+             ⟪ field-audit : world_pos i16×3=6B · extent_mm u16=2B · phase_seed u16=2B
+             ⟪ amp_re/amp_im pack-via-u32 · dir i8×3=3B · padding-to-64B
+             ⟪ LOA_SUBSTRATE_PACKED=1 env-toggle · WGSL bit-extract unpack
+             ⟪ 6+-tests · pack-roundtrip + 64B-size + WGSL-alignment-validates
+    ac20f915 § SIGMA-COHERENCE ← Σ-Chain Coherence-Proof primitive
+             ⟪ NEW cssl-substrate-coherence-proof crate
+             ⟪ pub struct CoherenceProof { sigma_mask · omega_digest · pubkey · sig-ed25519 }
+             ⟪ prove + verify + rejection_reason · BLAKE3 + ed25519-dalek-2.1 (signer feature)
+             ⟪ 8+-tests + sigma_chain_demo.csl in Labyrinth-of-Apocalypse/systems/
+  ⟧
+
+§I T11-W18-DELTA-METRICS ← code-mass-since-d8c8075-baseline
+  ⟦
+    crystal-count 32 → 128 (4×)                              ✓-shipped
+    GpuCrystal-bytes 352B → 64B (5.6× compress)              ◐-flying
+    FRAMES_IN_FLIGHT 2 → 3 (triple-buffer · pipeline-depth+1) ✓-shipped
+    desired_maximum_frame_latency 2 → 1 (wgpu)               ✓-shipped
+    DisplayProfile-bands 1 → 5 (per-profile-LUT + auto-detect) ✓-shipped
+    KAN-bias-bands 1 → 5 (per-DisplayProfile)                 ◐-flying
+    arith-codegen-coverage : remi/remf/remu lower → 100%      ✓-shipped
+    Σ-Chain-primitive : prove + verify in substrate-pure      ◐-flying
+    L7-ash-direct ≥ visible-on-screen                          ✓-shipped (T11-W18-L7-PRESENT-MERGE)
+    L8-D3D12-DXIL-direct foundation-scaffold                   ◐-flying
+  ⟧
+
+§I T11-W18-DISK-INCIDENT ← retro-note-only
+  ⟦
+    @-mid-session : C:\ filled to 953G/953G · 0-bytes-free
+    cause : 115 stale CSSLv3-wt-* + 25 .claude/worktrees/agent-* dirs (~88GB+30GB)
+    impact :
+      ‼ dynres-agent died disk-full mid-build (work salvaged from worktree)
+      ‼ csslc-advance2 body_lower.rs truncated 0-bytes once (restored via git checkout)
+      ‼ crystal-128 WGSL truncated 0-bytes once (restored via git checkout)
+    fix : bulk-rm 111 CSSLv3-wt + 25 agent-worktrees + git-prune metadata
+    result : 130G-free recovered · ALL agent work landed cleanly
+    lesson : auto-cleanup-on-agent-completion would prevent recurrence
+  ⟧
+
+§I T11-W18-NEXT-AFTER-WAVE-2 ← future-waves
+  ⟦
+    L9 → GPU-ISA exploration (vendor-bytecode prep)
+    L10 → MMIO + bare-metal-OS (long-term)
+    Σ-Chain consensus protocol (after Coherence-Proof primitive lands)
+    Akashic-Records ledger (binds MNEME memories to Σ-Chain ledger)
+    Mycelium-Network federation hooks (cross-user bias-learning)
+    csslc-advance generics + traits (large-scope · split-into-sub-waves)
+    Substrate-render WGSL workgroup-shared 64B-packed-crystal cache (after SoA-pack lands)
+  ⟧
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · ¬ identifying-telemetry
+  user-sovereignty-respecting fast-paths : env-disable available for
+    LOA_DYN_RES + LOA_DISPLAY_PROFILE + LOA_FRAME_LATENCY + LOA_RENDER_V3
+    + LOA_VK_PRESENT_MODE + LOA_SUBSTRATE_BENCH + LOA_SUBSTRATE_PACKED
+    + LOA_FRAME_PACE + LOA_KAN_BIAS_PATH (next : LOA_DXIL_PRESENT_TEAR)
