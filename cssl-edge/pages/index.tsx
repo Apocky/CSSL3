@@ -75,6 +75,8 @@ const SOCIAL: ReadonlyArray<{ label: string; href: string }> = [
   { label: 'ko-fi.com/oneinfinity', href: 'https://ko-fi.com/oneinfinity' },
   { label: 'patreon.com/0ne1nfinity', href: 'https://www.patreon.com/0ne1nfinity' },
   { label: 'github.com/Apocky', href: 'https://github.com/Apocky' },
+  { label: 'apocky.tumblr.com', href: 'https://apocky.tumblr.com' },
+  { label: 'etsy: FancyIndividual', href: 'https://www.etsy.com/shop/FancyIndividual' },
 ];
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -481,6 +483,7 @@ const Home: NextPage = () => {
               marginBottom: '1.25rem',
             }}
           >
+            <a href="/store">Store</a>
             <a href="/docs">Docs</a>
             <a href="/devblog">Devblog</a>
             <a href="/press">Press</a>
@@ -504,8 +507,10 @@ const Home: NextPage = () => {
             }}
           >
             <a href="https://medium.com/@noneisone.oneisall" target="_blank" rel="noopener noreferrer" aria-label="Medium">medium ↗</a>
+            <a href="https://apocky.tumblr.com" target="_blank" rel="noopener noreferrer" aria-label="Tumblr">tumblr ↗</a>
             <a href="https://ko-fi.com/oneinfinity" target="_blank" rel="noopener noreferrer" aria-label="Ko-fi">ko-fi ↗</a>
             <a href="https://www.patreon.com/0ne1nfinity" target="_blank" rel="noopener noreferrer" aria-label="Patreon">patreon ↗</a>
+            <a href="https://www.etsy.com/shop/FancyIndividual" target="_blank" rel="noopener noreferrer" aria-label="Etsy · FancyIndividual">etsy: FancyIndividual ↗</a>
             <a href="https://github.com/Apocky" target="_blank" rel="noopener noreferrer" aria-label="GitHub">github ↗</a>
             <span style={{ color: '#3a3a4a' }}>discord · coming soon</span>
           </div>
