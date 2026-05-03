@@ -4,20 +4,31 @@
   ← LoA-v10/08_AESTHETIC : "never Minecraft × Caves of Qud × programmer-art"
   ← @ HEAD eaa0871 · post-16-merges · 4 agents in flight
 
+§I CORRECTION (Apocky 2026-05-03)
+  ‼ I previously over-narrowed to "Renaissance" aesthetic ; that was a v10-spec
+    quote mistakenly elevated. ACTUAL VISION = LIVING-MULTIVERSE · CROSS-GENRE ·
+    PROCGEN-EVERYTHING · GENRE-FLUID. Renaissance is ONE possible aesthetic-axis
+    the engine can render · ¬ THE only one. Player-traversed reality varies
+    across (cyberpunk · solarpunk · dieselpunk · steampunk · bio-punk · cosmic-horror ·
+    fantasy-medieval · post-apocalyptic · vaporwave · noir · ukiyo-e · art-nouveau ·
+    Renaissance-manuscript · etc.) AS the player crosses genre-axes.
+  W! the ENGINE renders ALL genres ; the SUBSTRATE is genre-agnostic ; aesthetic
+    is procgen-output of axes-state · NOT hard-coded to one period
+
 §I HARD-RULES (binding-on-all-future-work)
   ⟦
     R! ¬ blocky-voxel ← rendering MUST be smooth-SDF · raymarched
-    R! ¬ rasterization ← no triangles · no meshes · no BRDF
+    R! ¬ rasterization-as-PRIMARY ← compute-shader + raymarched is canonical path
     R! ¬ Minecraft-aesthetic ← cube-stacks forbidden
     R! ¬ programmer-art ← only designer-quality output
     R! ¬ texture-painted-on-cube ← textures are field-data not surface-applied
-    R! ¬ HUD-overlay ← UI is world-anchored (illuminated-manuscript-style)
+    R! ¬ hard-coded-period ← engine renders ALL genres procedurally
     W! raymarched-SDF · continuous-detail-at-any-distance
-    W! Renaissance + Illuminated-Codex aesthetic-target
-    W! "Hollow-Knight × Hades × Transistor × Renaissance-manuscript"
+    W! cross-genre · multiverse · genre-fluid camera + input
+    W! procgen-EVERYTHING (per Apocky-foundational-memory)
     W! cascade-propagation for light + sound (axiom-7)
-    W! Notan 60-25-15 value-composition discipline
-    W! 4-font designer-curated typography-stack
+    W! 13-axes-Coherence-Engine drives aesthetic-shift between worlds
+    W! per-genre-aesthetic emerges from observer-axis-state · NOT static-bake
   ⟧
 
 §I CURRENT-STATE-COMPLIANT (already-correct)
@@ -70,7 +81,7 @@
     KAN splines · radiance cascades · operad theory
   ⟧
 
-§I AESTHETIC-TARGETS (per LoA-v10/08_AESTHETIC §0)
+§I AESTHETIC-TARGETS (general · genre-fluid)
   ⟦
     look.is.simulation.OUTPUT (not painted-on)
     raymarched.SDF.continuous-detail (no LOD-popping)
@@ -78,9 +89,11 @@
     material.boundaries.are.SDF.intersections (no UV-seams)
     token-lattice.renders.via.density-aware-raymarching
     MERA.cells.map.directly.to.raymarcher-acceleration-structure
-    UI.world-anchored : codex = in-world-book · menus = illuminated-manuscript-pages
-    typography.designer-curated.4-font.stack
-    composition.Notan.60-25-15.value-structure
+    UI.world-anchored (not modal-popup)
+    typography.designer-curated · genre-appropriate per-realm
+    composition.depends-on-active-realm-aesthetic-axes
+    cross-realm-traversal smoothly-shifts-aesthetic-vector ¬ hard-cut
+    13-axes-Coherence-Engine state modulates per-pixel-color via field-data
   ⟧
 
 §I COURSE-CORRECTIONS (binding for in-flight + future agents)

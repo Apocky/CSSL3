@@ -1,0 +1,103 @@
+§ specs/54_LOCAL_LLM_PROPRIETARY · use-existing-llm-bridge · NO paid-API
+  ← Apocky 2026-05-03 directive : "Connect a local llm or something proprietary
+    if we need to but not something that relies on credits or me paying more money"
+  ← @ HEAD 2b2f1db · STOP dispatching paid-API agents
+
+§I CRITICAL-CONSTRAINT (binding-on-all-future-work)
+  R! ¬ paid-API agent dispatch (Anthropic/OpenAI/etc.) ← burns Apocky-credit
+  R! ¬ external-LLM that requires Apocky-payment
+  R! ¬ assume-credits-available
+  W! local-LLM via Ollama (Mode-B · localhost:11434 · ZERO-COST)
+  W! proprietary substrate-templated-stub (Mode-C · ALWAYS-AVAILABLE · ZERO-COST)
+  W! KAN-substrate-procedural-composer (existing · pure-substrate intelligence)
+
+§I EXISTING-INFRASTRUCTURE (already-shipped · per memory MYCELIUM-DESKTOP wave T11-W10)
+  ⟦
+    cssl-host-llm-bridge   ← 3-mode trait + factory
+       Mode-A : Anthropic API (PAID · ¬ use)
+       Mode-B : Ollama localhost:11434 (LOCAL · FREE)
+       Mode-C : substrate-templated-stub (PROPRIETARY · ALWAYS-ON · FREE)
+    cssl-host-substrate-knowledge ← knowledge-graph for KAN-bias
+    cssl-host-agent-loop  ← agent-loop scaffold
+    cssl-host-mycelium-desktop ← Tauri desktop app surface
+    cssl-host-substrate-intelligence ← KAN-bias procedural-composer
+       (¬ external-LLM · ¬ phrase-pools · pure-substrate-resonance synthesis)
+  ⟧
+
+§I LlmBridge-TRAIT (contract)
+  ⟦
+    pub trait LlmBridge: Send + Sync {
+        fn name(&self) -> &'static str ;
+        fn mode(&self) -> LlmMode ;
+        fn chat(&self, messages: &[LlmMessage]) -> Result<String, LlmError> ;
+        fn chat_stream(...) ;
+        fn cancel(&self) ;
+    }
+  ⟧
+
+§I MODE-B OLLAMA-WIRE
+  ⟦
+    Apocky must run-locally : `ollama serve` + `ollama pull llama3.2` (or similar)
+    LoA reads LOA_LLM_MODE=local · LOA_LLM_MODEL=llama3.2 (defaults)
+    Mode-B bridge sends HTTP to localhost:11434/api/chat
+    NO Anthropic-API-call · NO credit-consumption · ENTIRELY-LOCAL
+    privacy-respecting · models stay-on-Apocky's-machine
+    NO surveillance · NO phone-home
+  ⟧
+
+§I MODE-C SUBSTRATE-TEMPLATED-STUB
+  ⟦
+    NO LLM required at all
+    pure-Rust templated responses + KAN-bias procedural-composer
+    cssl-host-substrate-intelligence has 8-axis morphological synthesis
+    Mode-C falls-back when Ollama unavailable
+    ALWAYS-ON guaranteed-availability
+    zero-cost · zero-network · zero-credit-burn
+    proprietary to Apocky's substrate-substrate-resonance system
+  ⟧
+
+§I WIRE-PLAN (solo-work · ¬ paid-agent-dispatch)
+  ⟦
+    1. procgen-pipeline.parse_intent currently regex-baseline (no LLM)
+       → enhance with optional LlmBridge::chat call
+       → LOA_LLM_MODE=substrate (default · Mode-C · proprietary)
+       → LOA_LLM_MODE=local · forwards to Ollama (Apocky-controlled · FREE)
+       → LOA_LLM_MODE=anthropic FORBIDDEN-by-default · explicit-cap-bit-required-twin-key
+    2. spontaneous-seed enrichment :
+       text → LlmBridge.chat → enriched-IntentSemantic → seed-cells-richer
+       Mode-C provides templates · Mode-B uses Ollama if running
+    3. DM/GM-specialist Decision-augmentation :
+       run_council_and_generate could optionally consult LlmBridge for
+       narrative-suggestion · Mode-C synthesizes from substrate-resonance ·
+       Mode-B uses Ollama if running
+    4. KEEP CURRENT FLOWS WORKING :
+       all features must work without ANY LLM (Mode-C is default · ALWAYS-ON)
+       Ollama-mode is OPTIONAL enhancement
+  ⟧
+
+§I IMMEDIATE-ACTION (this-session)
+  ⟦
+    1. ✓ STOP dispatching paid-API agents
+    2. ✓ Document this in spec/54 (this file)
+    3. ◐ Audit existing llm-bridge to confirm Mode-B + Mode-C work
+    4. ◐ Write a thin loa-host wire that uses LlmBridge::chat for procgen-enrichment
+    5. ◐ Default to Mode-C ; allow LOA_LLM_MODE=local for Ollama
+    6. ‼ ¬ ANY Anthropic-mode-default · ¬ ANY agent-dispatch using Mode-A
+  ⟧
+
+§I MULTIVERSE-CROSS-GENRE-VISION-RESTATEMENT (per Apocky 2026-05-03 reminder)
+  Living-Multiverse · cross-genre · genre-fluid · procgen-EVERYTHING
+  Aesthetic axes (procedural per-realm · NOT hard-coded) :
+    cyberpunk · solarpunk · dieselpunk · steampunk · bio-punk · cosmic-horror
+    fantasy-medieval · post-apocalyptic · vaporwave · noir · ukiyo-e
+    art-nouveau · renaissance-manuscript · gothic · brutalist · art-deco
+    weird-west · space-opera · isekai · grimdark · cottage-core · dreampunk
+    ... [open-set · genre-axis is procgen-output not enum]
+  Camera : genre-fluid (Fps · ThirdPerson · Iso · TopDown · cubic-ease-300ms)
+  Input : genre-fluid (KB-Mouse · Gamepad · Touch · Voice)
+  13-axes Coherence-Engine drives realm-aesthetic-shift
+  Substrate is genre-AGNOSTIC · realm-state shifts per-pixel-color via field-data
+  ¬ blocky-voxel · ¬ Minecraft · ¬ rasterization-as-PRIMARY (raymarched-SDF)
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · zero-cost-paths-default ·
+  Apocky's-credit is sovereign · my work must NEVER burn it without explicit-greenlight
