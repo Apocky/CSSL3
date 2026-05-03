@@ -187,8 +187,8 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
   // ─── TIER-2 · apocky.com Early-Access (per spec/57+59) ────────────────
   {
     id: 'apocky-early-access',
-    display_name: 'apocky.com · Early-Access',
-    blurb: 'Watch the Infinity Engine + CSSL stack come together in real-time. Private alpha builds. Private Discord. Spec-retro feed. Cancel anytime.',
+    display_name: 'Infinity Engine · Builder',
+    blurb: 'The buy-in tier. Alpha-build access · Sovereign MCP Harness license · Builder Discord · spec-retro feed · closed-alpha LoA keys when shipped. Cancel anytime · ¬ DRM.',
     price_cents: 1900, // $19/mo
     currency: 'usd',
     stripe_price_env: 'STRIPE_PRICE_EARLY_ACCESS',
@@ -197,8 +197,8 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
   },
   {
     id: 'apocky-studio',
-    display_name: 'apocky.com · Studio',
-    blurb: 'Everything in Early-Access · plus 1hr/month private 1:1 with Apocky · custom-tool development quarterly · Studio-only Discord channel.',
+    display_name: 'Infinity Engine · Studio',
+    blurb: 'Everything in Builder · plus 1hr/month private 1:1 with Apocky · custom-tool development quarterly · Studio Discord channel · roadmap input. For studios building bespoke engines.',
     price_cents: 9900, // $99/mo
     currency: 'usd',
     stripe_price_env: 'STRIPE_PRICE_APOCKY_STUDIO',
@@ -207,8 +207,8 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
   },
   {
     id: 'apocky-lifetime',
-    display_name: 'apocky.com · Lifetime',
-    blurb: 'Early+Studio benefits forever · pre-launch only · 50 seats. The patron tier.',
+    display_name: 'Infinity Engine · Founder',
+    blurb: 'Builder + Studio benefits forever · 50 founder seats · names in attestation. The patron tier · t∞.',
     price_cents: 99900, // $999 one-time
     currency: 'usd',
     stripe_price_env: 'STRIPE_PRICE_APOCKY_LIFETIME',
