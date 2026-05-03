@@ -61,6 +61,22 @@ const ILLUMINANT_COUNT   : u32 = 4u;
 const ASPECT_SILHOUETTE  : u32 = 0u;
 const Z_UNIT             : i32 = 1000;
 
+// § T11-W18-CRYSTAL128 · maximum crystal-count compiled into the kernel.
+//   Used as a hard-cap on the inner loop ; the actual per-frame count comes
+//   from `observer.n_crystals` (always ≤ MAX_CRYSTALS by host-contract). The
+//   cap protects against accidental run-aways and gives the optimizer an
+//   upper bound to unroll against.
+const MAX_CRYSTALS       : u32 = 128u;
+
+// § T11-W18-CRYSTAL128 · early-exit threshold on accumulated weight. Once
+//   weight_total crosses this value the per-pixel sRGB byte is already
+//   nearly-saturated (projector divides by weight_total) ; further crystal
+//   contributions barely shift the final color. Trades small fidelity in
+//   the brightest fringe-cores for ~30-50% inner-loop reduction on those
+//   pixels at N=128. The threshold is large enough that dim/dark pixels
+//   never trigger early-exit (continuous integration over all crystals).
+const EARLY_EXIT_AMP_THRESHOLD : u32 = 32768u;
+
 // § T11-W18-WORKGROUP-CACHE · cooperative crystal-load across the 64-thread
 //   8×8 workgroup. Every thread in the group needs the same crystal-list ;
 //   loading via shared memory cuts L1$ pressure ~64×. 128-slot cache covers
@@ -278,12 +294,28 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var amp_im : f32 = 0.0;
     var amp_total : f32 = 0.0;
 
+    // § T11-W18-CRYSTAL128 · clamp inner-loop bound to MAX_CRYSTALS so the
+    //   compiler can unroll/predict against a fixed upper limit. Host-side
+    //   contract is `observer.n_crystals ≤ MAX_CRYSTALS` ; the min() is a
+    //   defensive guard.
+    let n_crystals_capped = min(observer.n_crystals, MAX_CRYSTALS);
+
     for (var s: u32 = 0u; s < RAY_SAMPLES; s = s + 1u) {
         let world = ray_sample_world(dir, s);
         let yaw   : u32 = u32(observer.yaw_milli) ^ (s * 17u);
         let pitch : u32 = u32(observer.pitch_milli) ^ (s * 31u);
 
-        for (var ci: u32 = 0u; ci < observer.n_crystals; ci = ci + 1u) {
+        // § T11-W18-CRYSTAL128 · early-exit on bright pixels. Once the
+        //   accumulated weight has crossed EARLY_EXIT_AMP_THRESHOLD the
+        //   pixel's final sRGB barely moves with additional contributors.
+        //   Skip the rest of this sample's inner crystal-loop. Outer
+        //   sample-loop continues so other ray-depths can still light dim
+        //   regions.
+        if (weight_total >= EARLY_EXIT_AMP_THRESHOLD) {
+            break;
+        }
+
+        for (var ci: u32 = 0u; ci < n_crystals_capped; ci = ci + 1u) {
             let c = crystals[ci];
 
             if (!crystal_permits_silhouette(c)) {

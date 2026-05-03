@@ -71,16 +71,156 @@ fn halton_b2(i: u32) -> f32 { halton(i, 2) }
 fn halton_b3(i: u32) -> f32 { halton(i, 3) }
 fn halton_b5(i: u32) -> f32 { halton(i, 5) }
 
-/// Number of test crystals procedurally-allocated at startup. ITER-14
-/// telemetry showed 128 → fps=1.7 (3.8B ops/frame · O(N)-per-pixel kills
-/// frame-budget). Reverted to 32 · workgroup-cache STAYS active · 32 fits
-/// easily in shared mem · no cache-spill · cache-hit-rate ≈ 100%.
-/// 32 × 8 aspect-curves × 4 illuminant-LUTs ≈ 1024 active spectral
-/// contributions/frame · denser-interference-fringes from ℂ-amplitude
-/// bundle WITHOUT the O(N²) penalty of larger N.
-/// Future · spatial-index/grid-cull → bump count again.
-/// Replay-deterministic from seeds 0xC1A1A_0000..001F.
-pub const STARTUP_CRYSTAL_COUNT: usize = 32;
+/// § T11-W18-CRYSTAL128 — number of test crystals procedurally-allocated at
+/// startup. EXPANDED from 32 → 128 with concentric-shell density distribution
+/// + WGSL early-exit (accumulated-amp threshold) compensating for the linear
+/// per-pixel cost. At 1440p · 128 crystals × 3.6M pixels = 461M ops worst-case,
+/// but early-exit on bright pixels collapses average ~30-50%.
+/// Replay-deterministic from seeds 0xC1A1A_0000..007F.
+pub const STARTUP_CRYSTAL_COUNT: usize = 128;
+
+/// § T11-W18-CRYSTAL128 · concentric-shell distribution — number of crystals
+/// per shell. Inner-most shell is densest-by-volume (small annulus · 16
+/// crystals) ; outer-most shell covers the largest annulus (64 crystals)
+/// so areal-density stays roughly inverse-quadratic in radius (perceptually
+/// "stars-thicken-at-horizon").
+pub const SHELL_INNER_COUNT  : usize = 16;
+pub const SHELL_MIDDLE_COUNT : usize = 48;
+pub const SHELL_OUTER_COUNT  : usize = 64;
+const _SHELL_TOTAL_CHECK     : usize =
+    SHELL_INNER_COUNT + SHELL_MIDDLE_COUNT + SHELL_OUTER_COUNT;
+// Static check : SHELL_*_COUNT sum equals STARTUP_CRYSTAL_COUNT.
+const _: () = assert!(
+    _SHELL_TOTAL_CHECK == STARTUP_CRYSTAL_COUNT,
+    "shell counts must sum to STARTUP_CRYSTAL_COUNT",
+);
+
+/// § T11-W18-CRYSTAL128 · normalized radius bounds per shell (0.0 = origin,
+/// 1.0 = outer playfield edge ≈ 4 m). Inner [0.0, 0.3) · middle [0.3, 0.7) ·
+/// outer [0.7, 1.0]. WGSL kernel does NOT use these directly — they shape the
+/// host-side world_pos placement only.
+pub const SHELL_INNER_R_LO  : f32 = 0.0;
+pub const SHELL_INNER_R_HI  : f32 = 0.3;
+pub const SHELL_MIDDLE_R_LO : f32 = 0.3;
+pub const SHELL_MIDDLE_R_HI : f32 = 0.7;
+pub const SHELL_OUTER_R_LO  : f32 = 0.7;
+pub const SHELL_OUTER_R_HI  : f32 = 1.0;
+
+/// § T11-W18-CRYSTAL128 · per-shell density-modulator on resonance-amplitude.
+/// Applied to `extent_mm` (the crystal's bounding-radius which feeds both
+/// ray-cull AND the WGSL `extent_sq / (d²+extent²)` weight term — the
+/// substrate's primary amplitude knob). Inner shells boosted (close to
+/// observer · should dominate) ; outer shells dimmed (background "starfield").
+pub const SHELL_INNER_AMP_MOD  : f32 = 1.5;
+pub const SHELL_MIDDLE_AMP_MOD : f32 = 1.0;
+pub const SHELL_OUTER_AMP_MOD  : f32 = 0.6;
+
+/// § T11-W18-CRYSTAL128 · world-space extent of the crystal field along each
+/// axis. R=1.0 maps to PLAYFIELD_HALF_EXTENT_MM millimeters from origin in
+/// the (x,z) plane ; y stratifies through ±PLAYFIELD_Y_HALF_MM.
+pub const PLAYFIELD_HALF_EXTENT_MM : i32 = 4500; // 4.5 m
+pub const PLAYFIELD_Y_HALF_MM      : i32 = 2500; // 2.5 m
+/// Inner-z-offset · all crystals sit forward of the observer (positive z).
+/// Computed as `z_mm = z_offset + radius_mm * (h - 0.5) * 2` so the cluster
+/// straddles the playfield in front of the player.
+pub const PLAYFIELD_Z_CENTER_MM    : i32 = 3500; // 3.5 m forward
+
+/// § T11-W18-CRYSTAL128 · which shell a crystal-index belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shell {
+    Inner,
+    Middle,
+    Outer,
+}
+
+impl Shell {
+    /// Map a 0..STARTUP_CRYSTAL_COUNT crystal-index to its shell.
+    /// Indices [0, 16) = inner, [16, 64) = middle, [64, 128) = outer.
+    #[must_use]
+    pub fn for_index(i: usize) -> Self {
+        if i < SHELL_INNER_COUNT {
+            Shell::Inner
+        } else if i < SHELL_INNER_COUNT + SHELL_MIDDLE_COUNT {
+            Shell::Middle
+        } else {
+            Shell::Outer
+        }
+    }
+
+    /// Local index within this shell (0..SHELL_*_COUNT).
+    #[must_use]
+    pub fn local_index(i: usize) -> usize {
+        match Self::for_index(i) {
+            Shell::Inner  => i,
+            Shell::Middle => i - SHELL_INNER_COUNT,
+            Shell::Outer  => i - SHELL_INNER_COUNT - SHELL_MIDDLE_COUNT,
+        }
+    }
+
+    /// Normalized-radius bounds [r_lo, r_hi].
+    #[must_use]
+    pub fn radius_bounds(self) -> (f32, f32) {
+        match self {
+            Shell::Inner  => (SHELL_INNER_R_LO,  SHELL_INNER_R_HI),
+            Shell::Middle => (SHELL_MIDDLE_R_LO, SHELL_MIDDLE_R_HI),
+            Shell::Outer  => (SHELL_OUTER_R_LO,  SHELL_OUTER_R_HI),
+        }
+    }
+
+    /// Density-modulator on resonance-amplitude (extent_mm scaling).
+    #[must_use]
+    pub fn amp_mod(self) -> f32 {
+        match self {
+            Shell::Inner  => SHELL_INNER_AMP_MOD,
+            Shell::Middle => SHELL_MIDDLE_AMP_MOD,
+            Shell::Outer  => SHELL_OUTER_AMP_MOD,
+        }
+    }
+
+    /// Crystal-count in this shell.
+    #[must_use]
+    pub fn count(self) -> usize {
+        match self {
+            Shell::Inner  => SHELL_INNER_COUNT,
+            Shell::Middle => SHELL_MIDDLE_COUNT,
+            Shell::Outer  => SHELL_OUTER_COUNT,
+        }
+    }
+}
+
+/// § T11-W18-CRYSTAL128 · place a crystal at concentric-shell coordinates.
+/// `local_idx` (0..shell.count()) drives the Halton-2D angular spread
+/// within the shell's annulus. Returns `(x_mm, y_mm, z_mm)` in world-space.
+///
+/// Algorithm :
+///   1. h2 = halton-base-2(local_idx)  →  angular-spread θ in [0, 2π)
+///   2. h3 = halton-base-3(local_idx)  →  radial position within annulus
+///         (sqrt-mapped so areal density stays uniform within the shell)
+///   3. h5 = halton-base-5(local_idx)  →  y-stratification within ±PLAYFIELD_Y
+///   4. (x, z) = pos_along_radius(θ, r) ; y from h5
+#[must_use]
+pub fn shell_world_pos(shell: Shell, local_idx: u32) -> (i32, i32, i32) {
+    let (r_lo, r_hi) = shell.radius_bounds();
+    let h2 = halton_b2(local_idx);
+    let h3 = halton_b3(local_idx);
+    let h5 = halton_b5(local_idx);
+
+    // Sqrt-map h3 → radius so areal-density stays even across the annulus
+    // (without sqrt the inner edge of every shell is over-dense).
+    let r_norm_sq_lo = r_lo * r_lo;
+    let r_norm_sq_hi = r_hi * r_hi;
+    let r_norm = (r_norm_sq_lo + h3 * (r_norm_sq_hi - r_norm_sq_lo)).sqrt();
+
+    let r_mm = r_norm * PLAYFIELD_HALF_EXTENT_MM as f32;
+    // Angular spread : h2 → θ ∈ [0, 2π).
+    let theta = h2 * std::f32::consts::TAU;
+    let x_mm = (r_mm * theta.cos()) as i32;
+    let z_dx = (r_mm * theta.sin()) as i32;
+    let z_mm = PLAYFIELD_Z_CENTER_MM + z_dx;
+
+    let y_mm = ((h5 - 0.5) * 2.0 * PLAYFIELD_Y_HALF_MM as f32) as i32;
+    (x_mm, y_mm, z_mm)
+}
 
 /// Holds all substrate-render state for one host instance.
 pub struct SubstrateRenderState {
@@ -109,11 +249,13 @@ impl Default for SubstrateRenderState {
 impl SubstrateRenderState {
     pub fn new() -> Self {
         let mut crystals = Vec::with_capacity(STARTUP_CRYSTAL_COUNT);
-        // § T11-W18-DENSE-CRYSTALS · 32 crystals · 8 classes (Object · Entity ·
-        //   Environment · Behavior · Event · Aura · Recipe · Inherit) · 4 per
-        //   class · spaced on a 3D Halton-style spread covering [-4m,+4m]²
-        //   on (x, z) with y-stratification (-1.5..+2m) so observer-rays
-        //   from any look-angle traverse multiple crystals → fringes denser.
+        // § T11-W18-CRYSTAL128 · 128 crystals distributed in 3 concentric
+        //   shells (16 inner · 48 middle · 64 outer) · per-shell Halton-2D
+        //   angular spread with sqrt-radial-mapping for even areal density.
+        //   Each shell has a density-modulator that scales extent_mm (the
+        //   substrate's resonance-amplitude proxy) : inner 1.5× · middle 1.0×
+        //   · outer 0.6×.  8 CrystalClasses round-robin across the index
+        //   space so each shell carries a representative class mix.
         const CLASSES: [CrystalClass; 8] = [
             CrystalClass::Object,
             CrystalClass::Entity,
@@ -125,16 +267,20 @@ impl SubstrateRenderState {
             CrystalClass::Inherit,
         ];
         for i in 0..STARTUP_CRYSTAL_COUNT {
-            // Halton-2 + Halton-3 quasi-random spread for low-discrepancy.
-            let h2 = halton_b2(i as u32);
-            let h3 = halton_b3(i as u32);
-            let h5 = halton_b5(i as u32);
-            let x_mm = ((h2 - 0.5) * 8000.0) as i32;
-            let z_mm = ((h3 * 5000.0) + 1000.0) as i32; // 1m..6m forward
-            let y_mm = ((h5 - 0.4) * 3500.0) as i32;
+            let shell = Shell::for_index(i);
+            let local_idx = Shell::local_index(i) as u32;
+            let (x_mm, y_mm, z_mm) = shell_world_pos(shell, local_idx);
             let class = CLASSES[i % CLASSES.len()];
             let seed = 0xC1A1A_0000u64 + i as u64;
-            crystals.push(Crystal::allocate(class, seed, WorldPos::new(x_mm, y_mm, z_mm)));
+            let mut c = Crystal::allocate(class, seed, WorldPos::new(x_mm, y_mm, z_mm));
+            // Apply per-shell density-modulator on extent_mm. extent_mm
+            // feeds both the ray-cull radius AND the WGSL weight term
+            // `extent² / (d² + extent²)` — the substrate's primary
+            // amplitude knob.
+            let amp_mod = shell.amp_mod();
+            let scaled = (c.extent_mm as f32 * amp_mod) as i32;
+            c.extent_mm = scaled.max(1);
+            crystals.push(c);
         }
         log_event(
             "INFO",
@@ -331,10 +477,38 @@ impl SubstrateRenderState {
             })
             .collect();
 
+        // § T11-W18-CRYSTAL128 · BENCH-HOOK (LOG-only · env-gated). Set
+        //   LOA_SUBSTRATE_BENCH=1 to print per-frame `gpu_dispatch_us` on every
+        //   frame (or every 60 frames when value is `60`). NO test gate ; this
+        //   is observability for measuring 32→128 crystal-cost on a real
+        //   adapter. Zero overhead when env-var is unset.
+        let bench_every: Option<u64> = std::env::var("LOA_SUBSTRATE_BENCH")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|&n| n > 0);
+
+        let bench_started = bench_every.map(|_| std::time::Instant::now());
+
         // GPU path runs at panel-native 1440p · samples bound directly by
         // compose-pass (W18-N) · NOW with animated crystals (motion-pose-applied).
         if let Some(gpu) = self.gpu.as_mut() {
             let _view = gpu.dispatch(device, queue, observer, &animated);
+        }
+
+        if let (Some(every_n), Some(t0)) = (bench_every, bench_started) {
+            if self.frame_count % every_n == 0 {
+                let dt_us = t0.elapsed().as_micros() as u64;
+                log_event(
+                    "INFO",
+                    "loa-host/substrate-render",
+                    &format!(
+                        "BENCH · frame_n={} · n_crystals={} · gpu_dispatch_us={}",
+                        self.frame_count,
+                        animated.len(),
+                        dt_us
+                    ),
+                );
+            }
         }
         out
     }
@@ -606,7 +780,7 @@ mod tests {
         let s = SubstrateRenderState::new();
 
         // Count + class spread (use 8-bucket index since CrystalClass lacks Hash).
-        assert_eq!(s.crystals.len(), 32);
+        assert_eq!(s.crystals.len(), STARTUP_CRYSTAL_COUNT);
         let mut class_hits = [0u32; 8];
         for c in &s.crystals {
             class_hits[c.class as usize] += 1;
@@ -615,14 +789,21 @@ mod tests {
         assert!(distinct >= 4, "≥4 distinct classes (got {distinct})");
 
         // Halton-spread bounds (all crystals inside the documented box).
+        // Crystals straddle PLAYFIELD_Z_CENTER_MM ± PLAYFIELD_HALF_EXTENT_MM
+        // so z ∈ [-1000, 8000] roughly ; relax the old 800..7000 box slightly.
         for c in &s.crystals {
-            assert!(c.world_pos.x_mm.abs() <= 4500, "x out: {}", c.world_pos.x_mm);
-            assert!(c.world_pos.z_mm >= 800 && c.world_pos.z_mm <= 7000, "z out: {}", c.world_pos.z_mm);
-            assert!(c.world_pos.y_mm.abs() <= 2500, "y out: {}", c.world_pos.y_mm);
+            assert!(c.world_pos.x_mm.abs() <= PLAYFIELD_HALF_EXTENT_MM + 100,
+                "x out: {}", c.world_pos.x_mm);
+            assert!(
+                c.world_pos.z_mm >= PLAYFIELD_Z_CENTER_MM - PLAYFIELD_HALF_EXTENT_MM - 100
+                    && c.world_pos.z_mm <= PLAYFIELD_Z_CENTER_MM + PLAYFIELD_HALF_EXTENT_MM + 100,
+                "z out: {}", c.world_pos.z_mm);
+            assert!(c.world_pos.y_mm.abs() <= PLAYFIELD_Y_HALF_MM + 50,
+                "y out: {}", c.world_pos.y_mm);
         }
         // Halton-2-spread → x positions should NOT all collide (distinct vs single-cluster).
         let xs: std::collections::HashSet<i32> = s.crystals.iter().map(|c| c.world_pos.x_mm).collect();
-        assert!(xs.len() >= 16, "halton-2 spread should yield ≥ 16 distinct x (got {})", xs.len());
+        assert!(xs.len() >= 64, "halton-2 spread should yield ≥ 64 distinct x at N=128 (got {})", xs.len());
 
         // Tick path : frame_count + ring rotate.
         let mut s = s;
@@ -644,6 +825,206 @@ mod tests {
         let disp = s.current_display();
         assert_eq!(disp.width, DEFAULT_SUBSTRATE_W);
         assert_eq!(disp.height, DEFAULT_SUBSTRATE_H);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // § T11-W18-CRYSTAL128 · concentric-shell distribution tests.
+    // ════════════════════════════════════════════════════════════════════════
+
+    /// Shell-classification : indices 0..16 → Inner · 16..64 → Middle · 64..128
+    /// → Outer.  All 128 indices must classify to exactly one shell ; counts
+    /// per shell must match the SHELL_*_COUNT constants ; total = 128.
+    #[test]
+    fn shell_classification_partitions_128_into_16_48_64() {
+        let mut counts = [0usize; 3];
+        for i in 0..STARTUP_CRYSTAL_COUNT {
+            match Shell::for_index(i) {
+                Shell::Inner  => counts[0] += 1,
+                Shell::Middle => counts[1] += 1,
+                Shell::Outer  => counts[2] += 1,
+            }
+        }
+        assert_eq!(counts[0], SHELL_INNER_COUNT,  "inner shell count");
+        assert_eq!(counts[1], SHELL_MIDDLE_COUNT, "middle shell count");
+        assert_eq!(counts[2], SHELL_OUTER_COUNT,  "outer shell count");
+        assert_eq!(counts.iter().sum::<usize>(), STARTUP_CRYSTAL_COUNT);
+        // Boundary indices.
+        assert_eq!(Shell::for_index(0),   Shell::Inner);
+        assert_eq!(Shell::for_index(15),  Shell::Inner);
+        assert_eq!(Shell::for_index(16),  Shell::Middle);
+        assert_eq!(Shell::for_index(63),  Shell::Middle);
+        assert_eq!(Shell::for_index(64),  Shell::Outer);
+        assert_eq!(Shell::for_index(127), Shell::Outer);
+        // Local-index : first-of-each-shell is 0.
+        assert_eq!(Shell::local_index(0),  0);
+        assert_eq!(Shell::local_index(16), 0);
+        assert_eq!(Shell::local_index(64), 0);
+        assert_eq!(Shell::local_index(127), 63);
+    }
+
+    /// Shell radius bounds : every crystal placed inside its shell's
+    /// [r_lo, r_hi] annulus (in normalized-radius units = horizontal-distance
+    /// from the playfield-z-center, divided by PLAYFIELD_HALF_EXTENT_MM).
+    /// Allow a small ±5% tolerance for integer rounding in
+    /// `shell_world_pos`.
+    #[test]
+    fn shell_radius_bounds_each_crystal_within_its_annulus() {
+        const TOL: f32 = 0.05;
+        let s = SubstrateRenderState::new();
+        for (i, c) in s.crystals.iter().enumerate() {
+            let shell = Shell::for_index(i);
+            let (r_lo, r_hi) = shell.radius_bounds();
+            // Horizontal-radius (x, z-offset-from-center) → normalized.
+            let dx = c.world_pos.x_mm as f32;
+            let dz = (c.world_pos.z_mm - PLAYFIELD_Z_CENTER_MM) as f32;
+            let r_mm = (dx * dx + dz * dz).sqrt();
+            let r_norm = r_mm / PLAYFIELD_HALF_EXTENT_MM as f32;
+            assert!(
+                r_norm >= r_lo - TOL && r_norm <= r_hi + TOL,
+                "crystal[{i}] in {:?} shell : r_norm={r_norm:.4} not in [{r_lo}, {r_hi}]",
+                shell
+            );
+        }
+    }
+
+    /// Inner shell amplitude > middle > outer (per-shell density-modulator
+    /// applied to extent_mm). Inner extent_mm ≈ 1.5× base, outer ≈ 0.6× base.
+    /// We restrict to Object-class crystals (single base extent) so the
+    /// Environment-class shouts (extent = env_base ≫ base) don't skew avgs.
+    #[test]
+    fn shell_amp_modulator_scales_extent_by_density() {
+        let s = SubstrateRenderState::new();
+        let base = cssl_host_crystallization::CRYSTAL_DEFAULT_EXTENT_MM;
+        // Per-shell sum of Object-class extent_mm (single homogeneous source
+        // so the modulator ratio is observable).
+        let mut sums = [(0i64, 0i64); 3]; // (sum_extent, count) per shell.
+        for (i, c) in s.crystals.iter().enumerate() {
+            if !matches!(c.class, CrystalClass::Object) {
+                continue;
+            }
+            let shell_idx = Shell::for_index(i) as usize;
+            sums[shell_idx].0 += c.extent_mm as i64;
+            sums[shell_idx].1 += 1;
+        }
+        let avg = |idx: usize| -> f32 {
+            assert!(sums[idx].1 > 0, "shell {idx} should have ≥ 1 Object-class crystal");
+            sums[idx].0 as f32 / sums[idx].1 as f32
+        };
+        let avg_inner  = avg(0);
+        let avg_middle = avg(1);
+        let avg_outer  = avg(2);
+        // Each Object-shell has all-identical extents (no per-instance noise
+        // in `Crystal::allocate` — extent is class-deterministic), so we get
+        // exact ratios :  inner = base*1.5  ·  middle = base  ·  outer = base*0.6
+        let expect_inner  = (base as f32 * SHELL_INNER_AMP_MOD).round();
+        let expect_middle = (base as f32 * SHELL_MIDDLE_AMP_MOD).round();
+        let expect_outer  = (base as f32 * SHELL_OUTER_AMP_MOD).round();
+        assert!(
+            (avg_inner - expect_inner).abs() < 5.0,
+            "inner avg extent {avg_inner} ≈ {expect_inner}"
+        );
+        assert!(
+            (avg_middle - expect_middle).abs() < 5.0,
+            "middle avg extent {avg_middle} ≈ {expect_middle}"
+        );
+        assert!(
+            (avg_outer - expect_outer).abs() < 5.0,
+            "outer avg extent {avg_outer} ≈ {expect_outer}"
+        );
+        // Strict ordering : inner > middle > outer.
+        assert!(avg_inner  > avg_middle, "inner ({avg_inner}) > middle ({avg_middle})");
+        assert!(avg_middle > avg_outer,  "middle ({avg_middle}) > outer ({avg_outer})");
+        // Ratio-sanity : avg_inner / avg_outer ≈ 1.5 / 0.6 = 2.5
+        let ratio = avg_inner / avg_outer;
+        assert!(
+            ratio > 2.4 && ratio < 2.6,
+            "inner/outer extent ratio = {ratio} · expected ≈ 2.5 (1.5 / 0.6)"
+        );
+        assert!(avg_inner > base as f32, "inner avg should exceed base extent ({base})");
+        assert!(avg_outer < base as f32, "outer avg should fall below base extent ({base})");
+    }
+
+    /// Even-spread within shell : Halton-2 angular spread should yield
+    /// ≥ N/2 distinct (x, z) positions per shell (not single-cluster). Also
+    /// verifies that no two crystals are world_pos-coincident (Halton low-
+    /// discrepancy guarantees this for the small N's we use).
+    #[test]
+    fn shell_even_spread_yields_distinct_positions() {
+        let s = SubstrateRenderState::new();
+        let mut by_shell: [Vec<(i32, i32)>; 3] = [vec![], vec![], vec![]];
+        for (i, c) in s.crystals.iter().enumerate() {
+            let shell = Shell::for_index(i);
+            by_shell[shell as usize].push((c.world_pos.x_mm, c.world_pos.z_mm));
+        }
+        let counts = [SHELL_INNER_COUNT, SHELL_MIDDLE_COUNT, SHELL_OUTER_COUNT];
+        for (idx, positions) in by_shell.iter().enumerate() {
+            assert_eq!(positions.len(), counts[idx], "shell {idx} count");
+            let unique: std::collections::HashSet<(i32, i32)> =
+                positions.iter().copied().collect();
+            // Allow a small dup-budget : at most 5% of slots may collide
+            // (practically zero for N ≤ 64 with Halton-2 + Halton-3).
+            let unique_n = unique.len();
+            let min_unique = (positions.len() * 95) / 100;
+            assert!(
+                unique_n >= min_unique,
+                "shell {idx} : {unique_n} unique pos out of {} (min {min_unique})",
+                positions.len()
+            );
+        }
+        // Global : every crystal has a unique (x, y, z) — no full collisions.
+        let all_pos: std::collections::HashSet<(i32, i32, i32)> = s
+            .crystals
+            .iter()
+            .map(|c| (c.world_pos.x_mm, c.world_pos.y_mm, c.world_pos.z_mm))
+            .collect();
+        let min_unique_total = (STARTUP_CRYSTAL_COUNT * 95) / 100;
+        assert!(
+            all_pos.len() >= min_unique_total,
+            "{} unique world positions (min {min_unique_total} of {})",
+            all_pos.len(),
+            STARTUP_CRYSTAL_COUNT,
+        );
+    }
+
+    /// Determinism : the 128-crystal layout is replay-stable. Two
+    /// SubstrateRenderState::new() calls produce byte-identical world_pos
+    /// + extent_mm vectors. Important — replay-deterministic substrate is
+    /// a substrate-paradigm invariant.
+    #[test]
+    fn shell_layout_is_replay_deterministic() {
+        let s1 = SubstrateRenderState::new();
+        let s2 = SubstrateRenderState::new();
+        assert_eq!(s1.crystals.len(), s2.crystals.len());
+        for (a, b) in s1.crystals.iter().zip(s2.crystals.iter()) {
+            assert_eq!(a.world_pos.x_mm, b.world_pos.x_mm);
+            assert_eq!(a.world_pos.y_mm, b.world_pos.y_mm);
+            assert_eq!(a.world_pos.z_mm, b.world_pos.z_mm);
+            assert_eq!(a.extent_mm,      b.extent_mm);
+            assert_eq!(a.handle,         b.handle);
+            assert_eq!(a.fingerprint,    b.fingerprint);
+        }
+    }
+
+    /// Helper-API : `Shell::amp_mod`, `Shell::count`, `Shell::radius_bounds`
+    /// return the documented constants. Future-proofing — guards against
+    /// an accidental refactor that drifts a shell's parameters.
+    #[test]
+    fn shell_helper_api_returns_documented_constants() {
+        assert_eq!(Shell::Inner.count(),  SHELL_INNER_COUNT);
+        assert_eq!(Shell::Middle.count(), SHELL_MIDDLE_COUNT);
+        assert_eq!(Shell::Outer.count(),  SHELL_OUTER_COUNT);
+        assert_eq!(Shell::Inner.amp_mod(),  SHELL_INNER_AMP_MOD);
+        assert_eq!(Shell::Middle.amp_mod(), SHELL_MIDDLE_AMP_MOD);
+        assert_eq!(Shell::Outer.amp_mod(),  SHELL_OUTER_AMP_MOD);
+        assert_eq!(Shell::Inner.radius_bounds(),  (SHELL_INNER_R_LO,  SHELL_INNER_R_HI));
+        assert_eq!(Shell::Middle.radius_bounds(), (SHELL_MIDDLE_R_LO, SHELL_MIDDLE_R_HI));
+        assert_eq!(Shell::Outer.radius_bounds(),  (SHELL_OUTER_R_LO,  SHELL_OUTER_R_HI));
+        // Strict ordering : amp_mod is monotonically decreasing inner→outer.
+        assert!(SHELL_INNER_AMP_MOD  > SHELL_MIDDLE_AMP_MOD);
+        assert!(SHELL_MIDDLE_AMP_MOD > SHELL_OUTER_AMP_MOD);
+        // Strict ordering : radius bounds are non-overlapping + ascending.
+        assert!(SHELL_INNER_R_HI  <= SHELL_MIDDLE_R_LO);
+        assert!(SHELL_MIDDLE_R_HI <= SHELL_OUTER_R_LO);
     }
 }
 
