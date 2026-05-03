@@ -1,0 +1,65 @@
+[package]
+name                   = "cssl-host-substrate-render-v3-d3d12"
+description            = "§ T11-W18-L8-DXIL-FOUNDATION · d3d12-direct + DXIL substrate-render · csslc emits DXIL bytes directly · ZERO ash · ZERO Vulkan · ZERO d3d12-rs vendor-wrapper · windows-rs raw FFI ID3D12Device::CreateComputePipelineState consumes substrate_v2_kernel.csl DXIL bytes · one ID3D12GraphicsCommandList::Dispatch per frame · proprietary-everything stack from .csl source to D3D12 PSO · Windows-only host · companion to v3 (vulkan)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_substrate_render_v3_d3d12"
+
+# § T11-W18-L8 — feature gates
+#   `default = []` — pure DXIL artifact + bytes-shape verification builds
+#   without pulling the windows-rs Direct3D12/DXGI surface. Tests #1, #2
+#   always run on any host (incl. non-Windows CI) since the artifact path
+#   is windows-loader-free.
+#   `runtime` — pulls `windows = "0.58"` Win32_Graphics_Direct3D12 + DXGI
+#   for the d3d12-direct path (headless · no swapchain). Tests #3, #4 only
+#   run with `--features runtime` AND a Windows host with a D3D12 driver.
+#   `present` — adds the swapchain (DXGI_SWAP_EFFECT_FLIP_DISCARD +
+#   DXGI_PRESENT_ALLOW_TEARING) and pulls `raw-window-handle` so callers
+#   can hand us a Win32 HWND for IDXGISwapChain1 creation. Implies
+#   `runtime`. Tests #5..#8 (swapchain present-path) only run with
+#   `--features present` AND a Windows host + a windowed display.
+[features]
+default = []
+runtime = []
+present = ["runtime", "dep:raw-window-handle"]
+
+[dependencies]
+# § T11-W18-L8 : the DXIL emit path will live in `cssl-cgen-gpu-dxil` once
+# the canonical DXIL backend lands. For the FOUNDATION slice the host
+# accepts an opaque `&[u8]` DXIL blob ; tests pass an empty-body stub
+# matching the v3-vulkan layered-construction pattern. NO d3d12-rs vendor
+# wrapper · NO windows-rs feature creep · NO naga · NO HLSL.
+thiserror = { workspace = true }
+
+# § raw-window-handle 0.6 — present-path only. Default + runtime builds
+# do not pull a window-system dependency. Mirrors the v3-vulkan pattern.
+raw-window-handle = { version = "0.6", optional = true }
+
+# § windows-rs 0.58 — target-gated to Windows hosts only. Non-Windows
+# builds skip the dep entirely so the workspace `cargo check --workspace`
+# stays green on Linux + macOS CI runners. The feature-set is the minimum
+# needed for D3D12 + DXGI 1.6 swapchain + tearing-aware Present :
+#   - Win32_Foundation         : HWND + HRESULT + RECT + LUID
+#   - Win32_Graphics_Direct3D  : D3D12_SHADER_BYTECODE + D3D_FEATURE_LEVEL
+#   - Win32_Graphics_Direct3D12: ID3D12Device + queue + list + PSO + fence
+#   - Win32_Graphics_Dxgi      : IDXGIFactory6 + IDXGISwapChain1 + Adapter
+#   - Win32_Graphics_Dxgi_Common: DXGI_FORMAT + DXGI_SAMPLE_DESC + scaling
+#   - Win32_System_Threading   : CreateEventW + WaitForSingleObject (fence)
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Security",
+    "Win32_System_Threading",
+] }
+
+[lints]
+workspace = true
