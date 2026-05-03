@@ -1,0 +1,465 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/window.cssl  —  Host-window FFI surface
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § window
+//          (six __cssl_window_* extern "C" symbols ; ABI-frozen)
+//        specs/24_HOST_FFI.csl § CSSL-SIDE WRAPPERS § Window
+//        specs/04_EFFECTS.csl § effect-row syntax
+//        specs/12_CAPABILITIES.csl § Cap<X> witness
+//        specs/11_IFC.csl § Sensitive<Behavioral>
+//        compiler-rs/crates/cssl-rt/src/host_window.rs
+// Slice : T11-W11-S2A · stdlib host-FFI window-wrappers.
+//
+// § PRIME_DIRECTIVE preserved : window surface is user's visible presence.
+//   (a) NO surveillance — events fire only on direct user-action.
+//   (b) Close-button structurally observable via WindowEvent::Close
+//       (no silent default-suppress per PRIME_DIRECTIVE § 1 § entrapment).
+//   (c) Key + mouse-delta + scroll = Sensitive<Behavioral> per spec/24
+//       § IFC-LABELS — never egress cross-process.
+//   (d) Every window-fn consumes Cap<Window> witness ; no override.
+//   ‼ ¬ override ; ¬ surveillance ; ¬ harm.
+//
+// § STAGE-0 NOTES
+//   1. Six verbs (spawn / pump / request_close / destroy / raw_handle /
+//      get_dims) lower to __cssl_window_<verb> via cssl_mir 2-segment
+//      path recognizer `window::<verb>` — mirrors net::<verb> from T11-D82.
+//   2. Window.handle = i64 carrying cssl-rt registry handle (u64 fits
+//      in 63 bits at reasonable spawn counts ; INVALID_WINDOW_HANDLE = 0).
+//   3. Cap<Window> witness : spec/24 canonical form `cap : Cap<Window>` ;
+//      stage-0 degrades to `cap : i32` (non-zero = granted) until Cap<X>
+//      generic type-constructor lands in cssl_parse.  // N!
+//      Migration is mechanical : flip the param type once parser lands.
+//   4. Event-record packing is fixed 32-byte ABI per cssl-rt
+//      EVENT_RECORD_SIZE. WindowEvent enum ordinals mirror
+//      cssl-rt::host_window::EVENT_KIND_* exactly — pinned via
+//      event_kind_* const-fns below ; drift = silent decode bug.
+//   5. 1440p (2560 × 1440) = Apocky canonical LoA + apocky.com target.
+//   6. Drop integration deferred ; callers invoke window::destroy(w, cap)
+//      explicitly until trait-Drop lands.
+//
+// § INVARIANTS
+//   - Window.handle ≠ 0 for valid values
+//   - Every spawn must pair with destroy
+//   - Event-kind ordinals LOCKED from this slice forward (major-version
+//     bump to rename per spec/24 § DESIGN-PRINCIPLES P1)
+
+module com.apocky.std.window
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type definitions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Window` wraps an OS-level window handle (cssl-rt registry index).
+//
+// § INVARIANTS
+//   - `handle` ≠ 0 (0 = INVALID_WINDOW_HANDLE sentinel)
+//   - `width`  > 0
+//   - `height` > 0
+//   - the OS window is alive until `window::destroy(w, cap)` is invoked
+struct Window {
+    handle : i64,
+    width  : u32,
+    height : u32,
+}
+
+// `RawHandle` carries the platform-specific OS-handle blob written by
+// `__cssl_window_raw_handle`.
+//
+// § PER-PLATFORM PAYLOAD
+//   - Win32   : kind = 1 ; ptr = HWND ; secondary = HINSTANCE
+//   - Cocoa   : kind = 2 ; ptr = NSView* ; secondary = 0
+//   - Wayland : kind = 3 ; ptr = wl_surface* ; secondary = wl_display*
+//   - X11     : kind = 4 ; ptr = xcb_window_t ; secondary = xcb_connection_t*
+//   - kind = 0 = unknown / not-yet-extracted
+struct RawHandle {
+    kind      : u32,
+    ptr       : i64,
+    secondary : i64,
+}
+
+// `WindowEvent` enumerates the 12 event-kinds produced by `window::pump`.
+//
+// § ORDINAL-LOCK
+//   The discriminant ordinals MUST match cssl-rt::host_window::EVENT_KIND_*
+//   exactly. Drift = silent decode bug. The values are pinned by the
+//   `event_kind_*` constant fns below.
+//
+// § IFC-LABEL  (per spec/24 § IFC-LABELS)
+//   - Close / Resize / Focus / Blur / DpiChange : Public
+//   - KeyDown / KeyUp / MouseMove / MouseButton / Scroll :
+//       Sensitive<Behavioral> (NEVER egresses cross-process)
+enum WindowEvent {
+    Close,
+    Resize { w : u32, h : u32 },
+    Focus,
+    Blur,
+    KeyDown { key : u32, mods : u32 },
+    KeyUp { key : u32, mods : u32 },
+    MouseMove { x : i32, y : i32 },
+    MouseButton { btn : u8, down : bool, x : i32, y : i32, mods : u32 },
+    Scroll { dx : i32, dy : i32 },
+    DpiChange { scale_bits : u32 },
+}
+
+// `WindowError` discriminants matching cssl-rt failure paths.
+enum WindowError {
+    InvalidArgs,        // bad title / zero dims / unknown spawn flag
+    BadHandle,          // handle == 0 OR not in registry OR destroyed
+    BufferTooSmall,     // raw_handle out-buffer < required platform size
+    Destroyed,          // op on a window post-destroy
+    CapDenied,          // Cap<Window> witness missing / revoked
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Spawn-flag bit constants (mirror cssl-rt::host_window::SPAWN_FLAG_*).
+//
+//   ‼ ABI-locked : these values are pinned by both the runtime + the
+//   cssl-cgen-cpu-cranelift::cgen_window codegen path. Renaming or
+//   reordering requires a major-version bump per spec/24 § P1.
+// ───────────────────────────────────────────────────────────────────────
+
+fn spawn_flag_resizable() -> u32 {
+    1
+}
+
+fn spawn_flag_fullscreen() -> u32 {
+    2
+}
+
+fn spawn_flag_dpi_aware() -> u32 {
+    4
+}
+
+fn spawn_flag_borderless() -> u32 {
+    8
+}
+
+// VSYNC bit (0x10) reserved for the GPU swapchain layer ; window-spawn
+// ignores it but accepts it in the bitset. Apocky-LoA convention :
+// callers OR this bit when the swapchain should default to VSYNC ON.
+fn spawn_flag_vsync() -> u32 {
+    16
+}
+
+// Mask of all recognized spawn-flag bits. Source-level code can validate
+// a user-supplied bitset by `flags & !spawn_flag_mask() == 0`.
+fn spawn_flag_mask() -> u32 {
+    31  // 1 | 2 | 4 | 8 | 16
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Event-kind ordinals (LOCKED by cssl-rt::host_window::EVENT_KIND_*).
+// ───────────────────────────────────────────────────────────────────────
+
+fn event_kind_none() -> u32 {
+    0
+}
+
+fn event_kind_close() -> u32 {
+    1
+}
+
+fn event_kind_resize() -> u32 {
+    2
+}
+
+fn event_kind_focus_gain() -> u32 {
+    3
+}
+
+fn event_kind_focus_loss() -> u32 {
+    4
+}
+
+fn event_kind_key_down() -> u32 {
+    5
+}
+
+fn event_kind_key_up() -> u32 {
+    6
+}
+
+fn event_kind_mouse_move() -> u32 {
+    7
+}
+
+fn event_kind_mouse_down() -> u32 {
+    8
+}
+
+fn event_kind_mouse_up() -> u32 {
+    9
+}
+
+fn event_kind_scroll() -> u32 {
+    10
+}
+
+fn event_kind_dpi_change() -> u32 {
+    11
+}
+
+// Event-record fixed-size in bytes. ABI-locked from Wave-D3 forward
+// (cssl-rt::host_window::EVENT_RECORD_SIZE). Drift breaks event decode.
+fn event_record_size() -> u32 {
+    32
+}
+
+// RawHandle blob max bytes on 64-bit Win32 = 2 × sizeof(usize) = 16.
+fn raw_handle_max_bytes_win32() -> u32 {
+    16
+}
+
+// Sentinel : INVALID_WINDOW_HANDLE = 0.
+fn invalid_window_handle() -> i64 {
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Display target constants (Apocky-host canonical resolutions).
+//
+//   1440p (2560 × 1440) is the LoA + portfolio canonical target — every
+//   downstream LoA scene + apocky.com app validates pixel-perfect at
+//   these dims. 1080p (1920 × 1080) provided as the fallback for laptop
+//   displays.
+// ───────────────────────────────────────────────────────────────────────
+
+fn target_width_1440p() -> u32 {
+    2560
+}
+
+fn target_height_1440p() -> u32 {
+    1440
+}
+
+fn target_width_1080p() -> u32 {
+    1920
+}
+
+fn target_height_1080p() -> u32 {
+    1080
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Pump-error sentinels (mirror cssl-rt::host_window::PUMP_ERR_*).
+// ───────────────────────────────────────────────────────────────────────
+
+fn pump_err_bad_handle() -> i64 {
+    -1
+}
+
+fn pump_err_null_buf() -> i64 {
+    -2
+}
+
+fn pump_err_destroyed() -> i64 {
+    -3
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § window::spawn  →  __cssl_window_spawn
+//
+//   § SPEC-CANONICAL  fn spawn(title : str, w : u32, h : u32, flags : u32,
+//                              cap : Cap<Window>)
+//                          -> Result<Window, WindowError> / {WindowSpawn}
+//   § STAGE-0         `cap : i32` until Cap<X> lands in parser  // N!
+//   § ABI             __cssl_window_spawn(title.ptr, title.len, w, h, flags)
+//                       -> u64  (handle ; 0 = error)
+// ───────────────────────────────────────────────────────────────────────
+fn window_spawn(title : &str, w : u32, h : u32, flags : u32, cap : i32) -> Result<Window, WindowError> {
+    if cap == 0 {
+        Err(WindowError::CapDenied)
+    } else {
+        let h_handle = window::__cssl_window_spawn(title, w, h, flags) ;
+        if h_handle == 0 {
+            Err(WindowError::InvalidArgs)
+        } else {
+            Ok(Window { handle : h_handle, width : w, height : h })
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § window::pump  →  __cssl_window_pump
+//
+//   § SPEC-CANONICAL  fn pump(self : &mut Window, cap : Cap<Window>)
+//                          -> Vec<WindowEvent>
+//                          / {WindowPump, Sensitive<Behavioral>}
+//   § STAGE-0         value-out style ; mut-borrow deferred
+//   § IFC             key + mouse + scroll = Sensitive<Behavioral> per
+//                     spec/24 § IFC-LABELS — counters only ; bytes do NOT
+//                     egress cross-process
+//   § ALLOC           Vec backing buffer allocates once (size = max ×
+//                     sizeof WindowEvent) via cssl.heap.alloc ;
+//                     per-event unpack is zero-alloc
+fn window_pump(w : Window, max : u32, cap : i32) -> Vec<WindowEvent> {
+    if cap == 0 {
+        vec_new::<WindowEvent>()
+    } else {
+        // Stage-0 : routes through cssl-rt's __cssl_window_pump via the
+        // 2-segment path recognizer. Real per-event unpack lives in the
+        // deferred-ABI slice once typed-memref-load lands ; for now the
+        // recognizer fills a Vec with the right shape.
+        let _r = window::__cssl_window_pump(w.handle, max) ;
+        vec_new::<WindowEvent>()
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § window::request_close  →  __cssl_window_request_close
+// ───────────────────────────────────────────────────────────────────────
+
+// `window::request_close(w, cap)` — send a close-request to the OS window.
+//   {Window} effect ; idempotent per cssl-rt::host_window.
+fn window_request_close(w : Window, cap : i32) -> Result<(), WindowError> {
+    if cap == 0 {
+        Err(WindowError::CapDenied)
+    } else {
+        let r = window::__cssl_window_request_close(w.handle) ;
+        if r == 0 {
+            Ok(())
+        } else {
+            Err(WindowError::BadHandle)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § window::destroy  →  __cssl_window_destroy  (CONSUMES Window iso)
+// ───────────────────────────────────────────────────────────────────────
+
+// `window::destroy(w, cap)` — tear down OS window + remove from registry.
+//   Window is iso-shaped (spec/12) ; destroy consumes the value. Stage-0 :
+//   value-out shape signals consumption ; borrow-checker enforces post-land.
+fn window_destroy(w : Window, cap : i32) -> Result<(), WindowError> {
+    if cap == 0 {
+        Err(WindowError::CapDenied)
+    } else {
+        let r = window::__cssl_window_destroy(w.handle) ;
+        if r == 0 {
+            Ok(())
+        } else {
+            Err(WindowError::BadHandle)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § window::raw_handle  →  __cssl_window_raw_handle
+// ───────────────────────────────────────────────────────────────────────
+
+// `window::raw_handle(w, cap)` — extract platform-specific OS handle.
+//   {Window} read-only effect ; caller dispatches on `kind` field.
+fn window_raw_handle(w : Window, cap : i32) -> Result<RawHandle, WindowError> {
+    if cap == 0 {
+        Err(WindowError::CapDenied)
+    } else {
+        // Stage-0 : routes through cssl-rt's __cssl_window_raw_handle
+        // which writes 16 bytes (2 × usize) on 64-bit Win32. The
+        // returned RawHandle here uses kind=1 (Win32) as the default
+        // ; cross-platform dispatch lands in a follow-up slice.
+        let p = window::__cssl_window_raw_handle(w.handle) ;
+        if p == 0 {
+            Err(WindowError::BadHandle)
+        } else {
+            Ok(RawHandle { kind : 1, ptr : p, secondary : 0 })
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § window::get_dims  →  __cssl_window_get_dims
+// ───────────────────────────────────────────────────────────────────────
+
+// `window::get_dims(w, cap)` — read current dimensions (physical pixels).
+//   {Window} read-only effect ; logical-pixel reads via future helper.
+fn window_get_dims(w : Window, cap : i32) -> Result<Window, WindowError> {
+    if cap == 0 {
+        Err(WindowError::CapDenied)
+    } else {
+        let r = window::__cssl_window_get_dims(w.handle) ;
+        if r == 0 {
+            // Cached on the source-side Window struct ; cssl-rt update
+            // path threads through the registry. Stage-0 returns the
+            // cached fields ; once the FFI returns the (w, h) pair
+            // structurally this fn refreshes them.
+            Ok(w)
+        } else {
+            Err(WindowError::BadHandle)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Convenience constructors.
+// ───────────────────────────────────────────────────────────────────────
+
+// `window::spawn_1440p(title, cap)` — open a 2560 × 1440 resizable +
+// DPI-aware window. The Apocky-host canonical entry-point for LoA +
+// apocky.com apps.
+fn window_spawn_1440p(title : &str, cap : i32) -> Result<Window, WindowError> {
+    window_spawn(title, 2560, 1440, 5, cap)  // RESIZABLE | DPI_AWARE
+}
+
+// `window::spawn_1080p(title, cap)` — open a 1920 × 1080 resizable +
+// DPI-aware window. Laptop-friendly fallback.
+fn window_spawn_1080p(title : &str, cap : i32) -> Result<Window, WindowError> {
+    window_spawn(title, 1920, 1080, 5, cap)
+}
+
+// `window::spawn_fullscreen_1440p(title, cap)` — open a fullscreen
+// window at 2560 × 1440. Note : on Win32 the OS may rescale to the
+// monitor's native resolution.
+fn window_spawn_fullscreen_1440p(title : &str, cap : i32) -> Result<Window, WindowError> {
+    window_spawn(title, 2560, 1440, 6, cap)  // FULLSCREEN | DPI_AWARE
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (documentation + test fixtures).
+//
+//   These exercise the full effect-row + cap-witness + Result discipline
+//   per spec/24 § ATTESTATION. They compile under stage-0 monomorph +
+//   document the canonical call-shapes.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : open a 1440p window + immediately request close.
+fn _example_window_spawn_close(cap : i32) -> Result<(), WindowError> {
+    let w_res = window_spawn_1440p("Apocky-LoA", cap) ;
+    match w_res {
+        Ok(w) => {
+            let _ = window_request_close(w, cap) ;
+            window_destroy(w, cap)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// Worked example : open a 1080p resizable window, return the handle for
+// the caller to drive the event-loop.
+fn _example_window_spawn_resizable(cap : i32) -> Result<Window, WindowError> {
+    window_spawn("Apocky-Hub", 1920, 1080, 1, cap)  // RESIZABLE
+}
+
+// Worked example : confirm the 1440p constants are the Apocky canonical
+// values (2560 × 1440). Used by the cssl-test harness to lock the values.
+fn _example_target_1440p_is_2560_by_1440() -> bool {
+    let w = target_width_1440p() ;
+    let h = target_height_1440p() ;
+    if w == 2560 {
+        if h == 1440 {
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+// Worked example : the spawn-flag mask covers all five recognized bits
+// (resizable | fullscreen | dpi_aware | borderless | vsync = 31).
+fn _example_spawn_flag_mask_is_31() -> bool {
+    spawn_flag_mask() == 31
+}
