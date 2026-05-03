@@ -457,6 +457,47 @@ use cssl_rt::loa_startup::log_event;
 // § run_engine — main entry from the loa-runtime binary
 // ──────────────────────────────────────────────────────────────────────────
 
+/// § T11-W18-STARTUP-BANNER · transparency-axiom : log every env-var-knob
+/// at startup so user can see what's active, what's default, what was
+/// overridden. Ties to PRIME-DIRECTIVE §4 TRANSPARENCY + §11 ATTESTATION.
+/// Format : "loa-host/env · KEY=VALUE · src={env|default}".
+fn log_startup_banner() {
+    // Each entry : (env-var-name, default-shown, semantic-description).
+    let knobs: &[(&str, &str, &str)] = &[
+        ("LOA_RENDER_V3", "0", "ash-direct-vulkan path"),
+        ("LOA_RENDER_V2", "0", "v2-substrate compute path"),
+        ("LOA_VK_PRESENT_MODE", "IMMEDIATE", "vulkan present-mode"),
+        ("LOA_FRAME_LATENCY", "1", "wgpu desired_maximum_frame_latency"),
+        ("LOA_FRAME_PACE", "poll", "winit event-loop control-flow"),
+        ("LOA_DYN_RES", "1", "adaptive resolution-scaler"),
+        ("LOA_DYN_RES_FLOOR_Q16", "32768", "min scale Q0.16 (0.5×)"),
+        ("LOA_DYN_RES_TARGET_US", "6944", "frame-budget µs (1440p144)"),
+        ("LOA_DISPLAY_PROFILE", "<auto-detect>", "display-class override"),
+        ("LOA_DISPLAY_HDR_NITS", "1000", "HDR peak nits"),
+        ("LOA_KAN_BIAS_PATH", "~/.loa/kan_bias.bin", "KAN-bias persist path"),
+        ("LOA_KAN_DISABLE", "0", "suspend learning"),
+        ("LOA_SUBSTRATE_BENCH", "0", "log gpu_dispatch_us every-N frames"),
+        ("LOA_SUBSTRATE_PACKED", "0", "64B-packed-GpuCrystal path"),
+        ("LOA_DXIL_PRESENT_TEAR", "1", "D3D12 ALLOW_TEARING (when L8 lands)"),
+    ];
+    for &(key, default, _semantic) in knobs {
+        let (val, src) = match std::env::var(key) {
+            Ok(v) => (v, "env"),
+            Err(_) => (default.to_string(), "default"),
+        };
+        log_event(
+            "INFO",
+            "loa-host/env",
+            &format!("{key}={val} · src={src}"),
+        );
+    }
+    log_event(
+        "INFO",
+        "loa-host/banner",
+        "§ T11-W18 · 128-crystals · 5-DisplayProfile-bands · KAN-multiband-active · adaptive-res · low-latency-present · sovereignty-respecting-defaults",
+    );
+}
+
 /// Open winit + wgpu, run the test-room render loop until window-close.
 /// Catalog-mode (no `runtime` feature) returns Ok(()) after logging.
 pub fn run_engine() -> std::io::Result<()> {
@@ -465,6 +506,7 @@ pub fn run_engine() -> std::io::Result<()> {
         "loa-host/lib",
         "run_engine entry · stage-0 host starting",
     );
+    log_startup_banner();
     #[cfg(feature = "runtime")]
     let r = window::run();
     #[cfg(not(feature = "runtime"))]

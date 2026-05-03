@@ -1,0 +1,115 @@
+§ specs/48_GRAND_VISION_PROGRESS · perfect-substrate + perfect-engine assessment
+  ← Apocky-question : "How close to perfect Substrate + Infinity Engine?"
+  ← Generated 2026-05-02 · session-11 · wave-18 mid-flight
+  ← Branch HEAD @ assessment : c021504 (after 9 merges + 6 agents flying)
+
+§I HONEST-ASSESSMENT
+  ⟦
+    Substrate         : ◐ ≈ 70% (foundational primitives strong · advanced wiring gaps)
+    Infinity-Engine   : ○ ≈ 25-30% (kernel runs · game-loop / procgen / specialists missing)
+    Σ-Chain           : ○ ≈ 15% (Coherence-Proof primitive flying · consensus + ledger missing)
+    Mycelium-Network  : ○ ≈ 10% (federation primitives flying · peer-discovery + sync missing)
+    apocky.com Hub    : ○ ≈ 35% (multi-tenant scaffold + Stripe live · LoA-tenant + cross-project not wired)
+    LoA-the-Game      : ○ ≈ 20% (substrate-renders to screen · DM/GM cognitive specialists flying · NO game-loop · NO scenes · NO content)
+  ⟧
+
+§I SUBSTRATE-DETAIL
+  ✓ ω-field-as-truth ⊑ cssl-substrate-omega-field
+  ✓ Σ-mask-per-cell ⊑ cssl-substrate-omega-field
+  ✓ KAN-substrate-runtime ⊑ cssl-substrate-kan-* · cssl-host-substrate-intelligence
+  ✓ HDC-resonance-pixel-field ⊑ cssl-host-substrate-resonance-gpu · substrate-render-v2/v3
+  ✓ ℂ-amp + phase-coherent-interference ⊑ substrate_v2.wgsl
+  ✓ Crystal-128-concentric-shell ⊑ loa-host/substrate_render.rs · 3-shells {16/48/64}
+  ✓ ash-direct-vulkan (L7) ⊑ cssl-host-substrate-render-v3
+  ✓ DisplayProfile-5-auto-detect ⊑ loa-host/display_profile.rs
+  ✓ KAN-multiband-5-band ⊑ cssl-host-substrate-intelligence (b7b4329 merged)
+  ✓ KAN-multiband-WIRED-into-render ⊑ loa-host/substrate_render.rs (c021504)
+  ✓ LIVE-LEARNING-per-frame-evolution ⊑ KAN-bias drift α per profile
+  ✓ Adaptive-resolution-Q0.16 ⊑ loa-host/dynamic_resolution.rs
+  ✓ AMOLED-deep-HDR10-5-profile-LUTs ⊑ substrate_compose.wgsl + display_profile.rs
+  ✓ FRAMES_IN_FLIGHT=3 + low-latency ⊑ v3 + wgpu (c59e8e8)
+  ◐ SoA-64B-pack ⊑ cssl-host-substrate-render-v2/packed.rs (1127709 merged · scaffold-only · WGSL-wire pending future-wave)
+  ◐ L8-D3D12-DXIL-foundation ⊑ cssl-host-substrate-render-v3-d3d12 (2443088 merged · empty-DXIL-stub · L8-PRESENT slice flying)
+  ◐ Σ-Chain-Coherence-Proof ⊑ cssl-substrate-coherence-proof (sigma-coherence agent flying)
+  ◐ csslc-string-literal-codegen ⊑ cssl-cgen-cpu-cranelift (csslc-strings agent flying)
+  ○ L8-DXIL-real-shader-emit ← deferred future-slice
+  ○ L9-vendor-ISA ← long-term
+  ○ L10-bare-metal-OS ← far-future
+  ○ Substrate-WGSL-workgroup-cache-64B-packed ← needs SoA-pack to ship FIRST
+  ○ Σ-Chain-consensus-protocol ← needs Coherence-Proof to land FIRST
+
+§I INFINITY-ENGINE-DETAIL
+  ✓ LoA.exe-pixels-on-screen ⊑ working
+  ✓ MNEME-agent-memory-subsystem ⊑ cssl-edge/lib/mneme + 8-API-routes (bf104a5)
+  ✓ csslc-foundations-100%-arith ⊑ scalar + remf + remi + remu (847db36)
+  ✓ if-else-cascade-bare-ident-yields ⊑ csslc-advance2 (847db36)
+  ◐ csslc-string-literal-codegen ⊑ flying
+  ◐ procgen-pipeline-foundation ⊑ cssl-host-procgen-pipeline (flying)
+  ◐ DM/GM-cognitive-specialists ⊑ cssl-host-dmgm-specialists (flying)
+  ◐ Mycelium-federation-primitives ⊑ cssl-substrate-mycelium (flying)
+  ○ Voice-input-pipeline ← not-started
+  ○ Real-LLM-intent-translation ← procgen-foundation will gate it
+  ○ Real-HTTP-asset-fetch ← procgen-foundation will gate it
+  ○ GLTF-parser ← procgen-foundation will gate it
+  ○ Akashic-Records-ledger ← needs Σ-Chain to land FIRST
+  ○ Game-loop-runtime ← not-started
+  ○ Scenes-cssl-runtime-load ← not-started (per Apocky · runtime-procgen replaces static)
+  ○ Battle-Pass · Gacha · Stripe-game-purchases ← not-started
+  ○ Living-Multiverse · Nexus-Bazaar ← not-started
+
+§I PORTFOLIO-HUB-DETAIL (apocky.com)
+  ✓ Vercel-Pro multi-tenant scaffold ⊑ cssl-edge
+  ✓ /docs · /devblog · /press ⊑ cssl-edge (W9-polish)
+  ✓ Stripe-checkout-wire (stub-mode-aware) ⊑ cssl-edge
+  ✓ 0022_payments migration ⊑ supabase-migrations
+  ✓ MNEME-API live ⊑ /api/mneme/*
+  ◐ apocky-hub Supabase-2 setup ← Apocky-action pending (signup + ~/.loa-secrets/apocky-hub-supabase.env)
+  ○ apps/labyrinth + apps/cssl + apps/blog ← not-started
+  ○ Single-SSO via hub-Supabase JWT ← not-started
+  ○ Cross-project-mycelium ← needs primitives to land FIRST
+
+§I PATH-TO-PERFECT-SUBSTRATE (≤ 5 sessions estimated · per memory cadence-hours-not-weeks)
+  ⟦
+    1. Land 6 wave-2/3 in-flight agents · merge · ship LoA.exe
+    2. Wire SoA-pack to actual WGSL binding · A/B telemetry
+    3. Land Σ-Chain-consensus-protocol on top of Coherence-Proof
+    4. Land Akashic-Records-ledger bridging MNEME + Σ-Chain
+    5. Land Mycelium-peer-sync + capability-handshake
+    6. Land L8-DXIL real shader emit · L8-DXIL-PSO-COMPILE
+    7. Mycelium-WGSL-workgroup-cache-64B-packed (needs SoA in)
+  ⟧
+
+§I PATH-TO-PERFECT-INFINITY-ENGINE (≤ 8 sessions estimated)
+  ⟦
+    1. Land procgen-pipeline · then enhance with LLM-intent + GLTF-fetch
+    2. Land DM/GM-specialists · then wire to procgen for game-loop
+    3. Voice-input-pipeline (whisper-rs OR cloud-API)
+    4. Game-loop runtime · scene-graph from procgen
+    5. Save/load via MNEME persist
+    6. Battle-Pass scaffold · Gacha · Stripe-purchases
+    7. Living-Multiverse · Nexus-Bazaar 5-tier
+    8. apocky.com tenant for LoA · self-publish flow
+  ⟧
+
+§I MULTIPLIER-EFFECTS (compounding-acceleration)
+  ⟦
+    Substrate-as-trunk axiom : every host-crate compiles atop substrate-primitives
+       ↳ once substrate is ~90% complete, host-crates fall like dominoes
+    1M-context-window axiom : 8-15+ parallel agents per wave is now-reality
+       ↳ each session can land 5-10 streams not 1-2
+    Cadence-hours-not-weeks : per memory · default AGGRESSIVE estimates
+       ↳ "perfect substrate" is sessions-not-quarters
+    Density-equals-sovereignty : CSLv3-native specs reduce session-prep
+       ↳ specs ARE the engine-foundation-doc
+  ⟧
+
+§I REALISM-CHECKS
+  ¬ overclaim "complete" until shipped + tested
+  ¬ skip integration · scaffold-only ≠ wired
+  ¬ defer-issues · no-half-measures axiom
+  ¬ optimistic-estimates · use sessions-as-units · not days
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · sovereignty-respecting throughout
+  every adaptive system has env-disable
+  every learned-bias is local-first
+  no telemetry phones-home without explicit-consent
