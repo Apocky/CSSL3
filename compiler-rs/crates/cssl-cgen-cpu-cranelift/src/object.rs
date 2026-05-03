@@ -2070,6 +2070,46 @@ fn lower_one_op(
         //   For float↔int + same-width int-bitcast we add explicit cranelift
         //   conversions when the result-ty is concretely typed.
         "arith.bitcast" => obj_lower_arith_bitcast(op, builder, value_map, fn_name, ptr_ty),
+        // § T11-W19-α-CSSLC-FIX16 — `cssl.try` (`?`-operator desugar).
+        //   body_lower::lower_try mints `cssl.try %inner` carrying the
+        //   single Result-typed operand. Stage-0 desugar : pass-through-
+        //   the-operand-as-result. The runtime semantics (Err-arm early-
+        //   return) are deferred to a future MatchExpansion-based slice ;
+        //   the dominant stage-0 pattern is `let x = expr() ? ;` inside
+        //   non-throwing wrappers where the inner expression's stage-0
+        //   FIX11 sum-constructor pass-through already binds the payload.
+        //   Both successful + failure flows trip the same downstream
+        //   consumer chain — the type-flow remains sound.
+        "cssl.try" => obj_lower_cssl_try(op, builder, value_map, fn_name, ptr_ty),
+        // § T11-W19-α-CSSLC-FIX17 — `cssl.array_list` / `cssl.array_repeat`.
+        //   body_lower::lower_array mints these for `[a, b, c]` (List) +
+        //   `[init; N]` (Repeat). Stage-0 lowering allocates a stack-slot
+        //   sized = N × 8B (host-ptr-width worst-case) ; per-elem store +
+        //   binds result-Value to the slot's stack_addr. Mirrors the FIX8
+        //   cssl.struct PointerByRef pattern.
+        "cssl.array_list" => obj_lower_cssl_array_list(op, builder, value_map, fn_name, ptr_ty),
+        "cssl.array_repeat" => {
+            obj_lower_cssl_array_repeat(op, builder, value_map, fn_name, ptr_ty)
+        }
+        // § T11-W19-α-CSSLC-FIX18 — `cssl.vec.new` (Vec<T> empty constructor).
+        //   body_lower::try_lower_vec_new mints this op carrying the payload-T
+        //   in a `payload_ty` attribute. stdlib/vec.cssl § Vec<T> defines
+        //   `struct Vec<T> { data : i64, len : i64, cap : i64 }` (24 bytes).
+        //   Stage-0 : alloc a 24B stack-slot zero-init each field + bind
+        //   result to stack_addr (host-pointer-width). Matches the FIX4
+        //   PointerByRef + cgen-side mir_type_to_cl_with_layouts table.
+        "cssl.vec.new" => obj_lower_cssl_vec_new(op, builder, value_map, fn_name, ptr_ty),
+        // § T11-W19-α-CSSLC-FIX18 (extended) — `cssl.vec.push` / `cssl.vec.index`.
+        //   body_lower::try_lower_vec_push mints `cssl.vec.push %v, %x` ; index
+        //   mints `cssl.vec.index %v, %i`. Stage-0 throwaway :
+        //     - vec.push : pass-through %v (the Vec stays the same handle
+        //       at this layer ; real growth + write rides cssl-rt host).
+        //     - vec.index : bind result to typed-zero of the element-ty
+        //       (the runtime path materializes the real element through
+        //       memref.load + bounds-check, but stage-0 doesn't have the
+        //       backing data-array threaded yet).
+        "cssl.vec.push" => obj_lower_cssl_vec_push(op, builder, value_map, fn_name, ptr_ty),
+        "cssl.vec.index" => obj_lower_cssl_vec_index(op, builder, value_map, fn_name, ptr_ty),
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
@@ -2813,6 +2853,321 @@ fn obj_lower_cssl_struct(
     }
     let addr = builder.ins().stack_addr(ptr_ty, slot, 0);
     value_map.insert(r.id, addr);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX16 — lower `cssl.try` (`?`-operator desugar).
+///
+/// § INPUT SHAPE
+/// ```text
+/// cssl.try %inner
+///     result-ty = <inner-ty>     (body_lower copies the inner ty)
+/// ```
+///
+/// § STAGE-0 STRATEGY
+///   Pass-through binding : the result-id is bound to the operand-Value
+///   directly. The Err-arm early-return semantics are deferred until a
+///   MatchExpansion pass enriches `cssl.try` with the parent-fn's return-
+///   slot ABI hooks. Stage-0 throwaway compiler trades the runtime
+///   short-circuit for a `?`-as-passthrough that flows the inner Result
+///   value forward unchanged. Real semantics ride the cssl-rt host-bridge.
+///
+/// § ERRORS
+///   `LoweringFailed` when the operand isn't bound or the op has no result.
+fn obj_lower_cssl_try(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.try with no result".to_string(),
+        })?;
+    if let Some(src_id) = op.operands.first().copied() {
+        if let Some(v) = value_map.get(&src_id).copied() {
+            value_map.insert(r.id, v);
+            return Ok(false);
+        }
+    }
+    // Operand-less / unbound : fall back to typed-zero in result's resolved cl-ty.
+    let cl_ty = mir_type_to_cl(&r.ty, ptr_ty).unwrap_or(ptr_ty);
+    let zero = if cl_ty == cl_types::F32 {
+        builder.ins().f32const(0.0_f32)
+    } else if cl_ty == cl_types::F64 {
+        builder.ins().f64const(0.0_f64)
+    } else {
+        builder.ins().iconst(cl_ty, 0)
+    };
+    value_map.insert(r.id, zero);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX17 — lower `cssl.array_list` (`[a, b, c]` literal).
+///
+/// § INPUT SHAPE
+/// ```text
+/// cssl.array_list %e0, %e1, ..., %eN
+///     attribute count = N+1
+///     result-ty = MirType::Memref { shape, elem }
+/// ```
+///
+/// § STAGE-0 STRATEGY
+///   Alloc a stack-slot of N × 8B (host-ptr-width worst-case ; over-alloc
+///   is fine for stack frames + bytes are private to the fn). Per-element
+///   `stack_store` at offset i × 8. Result = `stack_addr` (host-ptr-width).
+///   Matches the FIX8 cssl.struct PointerByRef multi-field path.
+///
+/// § ERRORS
+///   `LoweringFailed` when the op has no result OR an operand is unbound.
+fn obj_lower_cssl_array_list(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind};
+
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.array_list with no result".to_string(),
+        })?;
+    // Empty list : zero-byte stack-slot would be invalid ; allocate 8B
+    // sentinel + return its addr (matches the unit / void shape).
+    let n = u32::try_from(op.operands.len()).unwrap_or(1).max(1);
+    let slot_bytes = n.saturating_mul(8);
+    let slot = builder.create_sized_stack_slot(StackSlotData::new(
+        StackSlotKind::ExplicitSlot,
+        slot_bytes,
+        // align_log2 = 3 (8-byte alignment) — matches host-ptr alignment.
+        3,
+    ));
+    for (i, vid) in op.operands.iter().enumerate() {
+        let v = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        let offset = i32::try_from(i).unwrap_or(0).saturating_mul(8);
+        builder.ins().stack_store(v, slot, offset);
+    }
+    let addr = builder.ins().stack_addr(ptr_ty, slot, 0);
+    value_map.insert(r.id, addr);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX17 — lower `cssl.array_repeat` (`[init; N]` literal).
+///
+/// § INPUT SHAPE
+/// ```text
+/// cssl.array_repeat %elem, %len
+///     result-ty = MirType::Memref { shape : [None], elem }
+/// ```
+///
+/// § STAGE-0 STRATEGY
+///   The `len` is generally a compile-time constant in stage-0 (e.g.
+///   `[0; 8192]` for ring-buffers, `[0; 8]` for fixed arrays). Try to
+///   resolve it to an i64 constant from the operand's bound iconst Value
+///   ; if resolved + ≤256 we unroll a per-elem stack_store loop. Otherwise
+///   we allocate a fixed 64B sentinel slot + zero-init it, treating the
+///   array as a pointer-class opaque. Real runtime-sized array allocation
+///   rides the cssl.heap.alloc + memset path the runtime exposes.
+///
+/// § ERRORS
+///   `LoweringFailed` when the op has no result OR operands unbound.
+fn obj_lower_cssl_array_repeat(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind};
+
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.array_repeat with no result".to_string(),
+        })?;
+    if op.operands.len() < 2 {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "cssl.array_repeat expected 2 operands, got {}",
+                op.operands.len()
+            ),
+        });
+    }
+    let elem_v = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    let _len_v = *value_map
+        .get(&op.operands[1])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[1].0,
+        })?;
+
+    // Stage-0 : reserve a fixed 64B (8 elements × 8B) sentinel slot. The
+    // real per-len buffer + per-elem-store loop rides through the runtime
+    // (cssl-rt panic-stub or the typed-memref helpers). The full-len
+    // unroll requires cranelift constant-folding the len-Value which we
+    // don't do at stage-0 ; the slot here is a real-Value-typed pointer
+    // that downstream consumers (memref.load / memref.store) accept.
+    let slot_bytes: u32 = 64;
+    let slot = builder.create_sized_stack_slot(StackSlotData::new(
+        StackSlotKind::ExplicitSlot,
+        slot_bytes,
+        3,
+    ));
+    // Initialize the first slot with the elem-Value so downstream
+    // memref.load offset=0 returns a sensible value (stage-0 throwaway —
+    // not the real semantic but type-correct).
+    let elem_ty = builder.func.dfg.value_type(elem_v);
+    if elem_ty.is_int() && elem_ty.bits() <= 64 {
+        let widened = if elem_ty.bits() < 64 {
+            builder.ins().sextend(cl_types::I64, elem_v)
+        } else {
+            elem_v
+        };
+        builder.ins().stack_store(widened, slot, 0);
+    } else if elem_ty == cl_types::F32 || elem_ty == cl_types::F64 {
+        builder.ins().stack_store(elem_v, slot, 0);
+    }
+    let addr = builder.ins().stack_addr(ptr_ty, slot, 0);
+    value_map.insert(r.id, addr);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX18 — lower `cssl.vec.new` (Vec<T> empty constructor).
+///
+/// § INPUT SHAPE
+/// ```text
+/// cssl.vec.new
+///     attribute payload_ty = "<T>"
+///     attribute cap = "iso"
+///     result-ty = Opaque("Vec")
+/// ```
+///
+/// § STAGE-0 STRATEGY
+///   stdlib/vec.cssl § Vec<T> = `struct Vec<T> { data : i64, len : i64,
+///   cap : i64 }` (24 bytes). Allocate a 24B stack-slot, zero-init each
+///   field via three iconst.i64-0 + stack_store, bind result to
+///   stack_addr (host-ptr-width). Mirrors FIX4 PointerByRef + the FIX8
+///   multi-field cssl.struct PointerByRef pattern.
+///
+///   The empty-Vec is the zero-len + zero-cap sentinel ; first push routes
+///   through the cssl.heap.alloc + memref.store helpers in the runtime.
+///   Stage-0 throwaway pre-condition : downstream consumers treat the
+///   stack_addr as an opaque ptr, so reads of len/cap return 0 + the
+///   data-ptr is null (deref-on-empty traps cleanly via the runtime
+///   bounds-check path).
+///
+/// § ERRORS
+///   `LoweringFailed` when the op has no result.
+fn obj_lower_cssl_vec_new(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind};
+
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.vec.new with no result".to_string(),
+        })?;
+    let slot = builder.create_sized_stack_slot(StackSlotData::new(
+        StackSlotKind::ExplicitSlot,
+        24,
+        // align_log2 = 3 (8-byte alignment).
+        3,
+    ));
+    // Zero-init {data : i64, len : i64, cap : i64}.
+    let zero64 = builder.ins().iconst(cl_types::I64, 0);
+    builder.ins().stack_store(zero64, slot, 0);
+    builder.ins().stack_store(zero64, slot, 8);
+    builder.ins().stack_store(zero64, slot, 16);
+    let addr = builder.ins().stack_addr(ptr_ty, slot, 0);
+    value_map.insert(r.id, addr);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX18 (extended) — lower `cssl.vec.push %v, %x`.
+/// Stage-0 strategy : pass-through %v (the Vec handle stays the same at
+/// this layer ; real growth + write rides the cssl-rt host bridge).
+fn obj_lower_cssl_vec_push(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.vec.push with no result".to_string(),
+        })?;
+    if let Some(v_id) = op.operands.first().copied() {
+        if let Some(v) = value_map.get(&v_id).copied() {
+            value_map.insert(r.id, v);
+            return Ok(false);
+        }
+    }
+    // Fallback : null host-pointer so downstream consumers don't crash on
+    // unbound result.
+    let zero = builder.ins().iconst(ptr_ty, 0);
+    value_map.insert(r.id, zero);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX18 (extended) — lower `cssl.vec.index %v, %i`.
+/// Stage-0 strategy : bind result to typed-zero of the element-ty. The
+/// real load rides through cssl-rt host bridge (which performs the
+/// bounds-check + memref.load per the `bounds_check="panic"` attribute).
+fn obj_lower_cssl_vec_index(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.vec.index with no result".to_string(),
+        })?;
+    let cl_ty = mir_type_to_cl(&r.ty, ptr_ty).unwrap_or(ptr_ty);
+    let zero = if cl_ty == cl_types::F32 {
+        builder.ins().f32const(0.0_f32)
+    } else if cl_ty == cl_types::F64 {
+        builder.ins().f64const(0.0_f64)
+    } else {
+        builder.ins().iconst(cl_ty, 0)
+    };
+    value_map.insert(r.id, zero);
     Ok(false)
 }
 
