@@ -1,0 +1,33 @@
+[package]
+name                   = "cssl-cgen-dxil"
+description            = "§ T11-W18-L8 · CSSLv3 from-scratch DXBC/DXIL container backend (zero external deps · zero dxc · zero d3dcompiler)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W18-L8-DXIL-DIRECT : NEW from-scratch DXBC container emitter.
+#
+#   ⊥ dxc ⊥ d3dcompiler ⊥ HLSL ⊥ rspirv — zero external deps.
+#
+#   ∵ § PRIME-DIRECTIVE / § take-words-LITERALLY / § proprietary-everything —
+#   LoA-v13 GPU-shader codegen authors own bindings, byte-for-byte against
+#   the public DXBC container spec. The companion `cssl-cgen-gpu-dxil`
+#   crate (T10) holds the HLSL-text + dxc-subprocess fallback ; THIS crate
+#   is the canonical L8 emit path the LoA stack ships for D3D12.
+#
+#   ∵ § zero-cargo-deps thesis — the DXBC container format is publicly
+#   documented (Microsoft DXBC chunked-blob format ; reverse-engineered
+#   under permissive terms). DXIL inner-bitcode = LLVM-3.7-bitcode-subset,
+#   header-only at L8-phase-1 ; full bitcode body lowering iterates per
+#   spec/14_BACKEND § OWNED DXIL EMITTER as MIR ops materialize.
+#
+# § cssl-mir is the input contract — `MirFunc` shaped per
+# `specs/02_IR.csl § MIR` lowers to a DXBC container via `lower::lower_function`.
+[dependencies]
+cssl-mir  = { path = "../cssl-mir" }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

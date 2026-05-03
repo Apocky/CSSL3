@@ -1,6 +1,6 @@
 [package]
 name                   = "cssl-cgen-gpu-dxil"
-description            = "CSSLv3 stage0 — DXIL emitter via DirectXShaderCompiler shim"
+description            = "CSSLv3 stage0 — DXIL emitter via DirectXShaderCompiler shim + § T11-W18-L8 from-scratch DXBC orchestrator"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -8,8 +8,15 @@ license.workspace      = true
 authors.workspace      = true
 
 [dependencies]
-cssl-mir  = { path = "../cssl-mir" }
-thiserror = { workspace = true }
+cssl-mir       = { path = "../cssl-mir" }
+# § T11-W18-L8 : pair with cssl-cgen-dxil (from-scratch · proprietary · zero
+# external dep) for the substrate-kernel emit path. The substrate-kernel
+# module composes a MirFunc-shaped substrate-kernel + drives `lower_function`
+# to emit a canonical DXBC container with embedded DXIL bitcode consumable
+# by D3D12 CreateComputePipelineState directly (no dxc · no HLSL-text · no
+# d3dcompiler in the chain).
+cssl-cgen-dxil = { path = "../cssl-cgen-dxil" }
+thiserror      = { workspace = true }
 
 [lints]
 workspace = true

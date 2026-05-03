@@ -1,0 +1,85 @@
+§ T11-W18-L8 · substrate_v2_dxil.csl
+═══════════════════════════════════════════════════════════════════════════
+§ I> proprietary-everything · CSSL = source-of-truth · csslc emits DXIL-DXBC
+§ I> ZERO dxc · ZERO d3dcompiler · ZERO HLSL-text · D3D12-direct dispatch
+§ I> consent-default ← Σ-mask gate before per-pixel write
+§ I> deterministic ← single-thread-per-pixel · linear-scan · pure-fn
+═══════════════════════════════════════════════════════════════════════════
+
+§ DECLARATION · substrate-kernel = pure-compute-pipeline · DXIL-target
+  kernel «substrate_v2_main_dxil» :
+    stage         : ⟦Compute⟧
+    workgroup     : ⟨8, 8, 1⟩
+    entry         : "main"
+    backend-emit  : ⟦DXIL-SM6.6⟧ ⊕ ⟦D3D12⟧
+    container     : ⟦DXBC⟧             ← Microsoft-DXBC chunk-format
+    no-dxc        : ✓
+    no-hlsl       : ✓
+    no-d3dcompiler: ✓
+    no-spirv      : ✓                  ← L8 sibling of L7 SPIR-V path
+
+§ INPUTS · resource-bindings · D3D12-root-signature-shape
+  ⟦root-param=0, register=b0, space=0⟧ observer    : CBV⟨GpuObserver⟩
+  ⟦root-param=1, register=t0, space=0⟧ crystals    : SRV⟨GpuCrystal[]⟩
+  ⟦root-param=2, register=u0, space=0⟧ output-img  : UAV⟨RWTexture2D⟨RGBA8Unorm⟩⟩
+
+§ ω-FIELD · per-pixel ray-walk (substrate-resonance · DXIL-form)
+  ∀ pixel ⟨x, y⟩ ∈ ⟨observer.width, observer.height⟩ :
+    ray = make-ray(observer, x, y)            ← from-camera
+    accum-rgba = ⟨0, 0, 0, 0⟩
+    ∀ crystal ∈ crystals :
+      Σ-mask-check(crystal, observer)         W! consent-gate
+      ⌐(σ-passes) → continue                  ← skip-revoked
+      contribution = resonance(crystal, ray)  ← ω-field projection
+      accum-rgba += contribution
+    write(output-img, ⟨x, y⟩, accum-rgba)
+
+§ DETERMINISM · invariants
+  ✓ single-thread-per-pixel · no-shared-memory
+  ✓ linear-crystal-scan · fixed-iteration-order
+  ✓ same-input ⇒ same-output · byte-for-byte
+  ✓ no-rng · no-time · no-frame-counter
+
+§ DXBC-CONTAINER · canonical chunk-layout
+  header :
+    magic       = "DXBC"               ← 4 bytes
+    hash        = 16-byte container-fingerprint   ← deterministic
+    version     = ⟨1, 0⟩
+    container-size = total-bytes
+    chunk-count = N
+  chunks :
+    SFI0  : feature-flags · SM6.6 + 16-bit + dynamic-resources
+    ISG1  : input-signature (compute = empty · DXIL-required-marker)
+    OSG1  : output-signature (compute = empty)
+    PSV0  : pipeline-state-validation stub
+    DXIL  : DXIL-program-header + bitcode-body
+              ⟦version=1.6 · shader-model=cs_6_6 · entry="main"⟧
+
+§ D3D12-DISPATCH · host-side (cssl-host-substrate-render-v4-dxil)
+  d3d12-pipeline =
+    D3D12CreateDevice(adapter)
+    → CreateRootSignature(root-param table)
+    → CreateComputePipelineState(dxbc-bytecode)
+    → CreateCommandQueue(COMPUTE)
+    → CreateCommandAllocator + CreateCommandList
+  d3d12-frame =
+    SetComputeRootSignature
+    → SetPipelineState
+    → SetComputeRootCBV(b0) ⊕ SetComputeRootSRV(t0) ⊕ SetComputeRootDescriptorTable(u0)
+    → Dispatch(⌈w/8⌉, ⌈h/8⌉, 1)
+    → CopyResource(internal → swapchain-back-buffer)
+    → ExecuteCommandLists ⊕ Present
+  ¬ wgpu · ¬ naga · ¬ HLSL-text · ¬ dxc-subprocess
+
+§ SPEC-LINKAGE
+  ⊑ specs/07_CODEGEN.csl § GPU BACKEND § DXIL emission invariants
+  ⊑ specs/10_HW.csl § D3D12 BASELINE § feature-level-12_2
+  ⊑ specs/14_BACKEND.csl § OWNED DXIL EMITTER § L8-proprietary-stack
+  ⊑ specs/30_SUBSTRATE_v2.csl § ω-FIELD-AS-TRUTH § per-pixel resolve
+  ⊑ Microsoft DXBC container format § public reverse-engineered spec
+
+§ SOVEREIGNTY · CSSL = source-of-truth
+  this-file = canonical-artifact
+  csslc → DXBC binary (cssl-cgen-dxil from-scratch · zero external-dep)
+  windows-D3D12 call → d3d12-pipeline (cssl-host-substrate-render-v4-dxil)
+  N! Rust source of substrate-kernel-shape ; only host-glue + tests

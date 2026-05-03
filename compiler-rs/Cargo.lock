@@ -971,9 +971,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-cgen-dxil"
+version = "0.1.0"
+dependencies = [
+ "cssl-mir",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-cgen-gpu-dxil"
 version = "0.1.0"
 dependencies = [
+ "cssl-cgen-dxil",
  "cssl-mir",
  "thiserror 1.0.69",
 ]
@@ -1835,6 +1844,15 @@ dependencies = [
  "ash",
  "cssl-cgen-gpu-spirv",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "cssl-host-substrate-render-v4-dxil"
+version = "0.1.0"
+dependencies = [
+ "cssl-cgen-gpu-dxil",
+ "thiserror 1.0.69",
+ "windows 0.58.0",
 ]
 
 [[package]]

@@ -67,11 +67,15 @@
 pub mod dxc;
 pub mod emit;
 pub mod hlsl;
+pub mod substrate_kernel;
 pub mod target;
 
 pub use dxc::{DxcCliInvoker, DxcInvocation, DxcOutcome};
 pub use emit::{emit_hlsl, validate_and_emit_hlsl, DxilError};
 pub use hlsl::{HlslBinaryOp, HlslBodyStmt, HlslExpr, HlslModule, HlslStatement, HlslUnaryOp};
+pub use substrate_kernel::{
+    emit_substrate_kernel_dxil, SubstrateKernelDxilEmitError, SubstrateKernelDxilSpec,
+};
 pub use target::{DxilTargetProfile, HlslProfile, RootSignatureVersion, ShaderModel, ShaderStage};
 
 use cssl_mir::MirModule;

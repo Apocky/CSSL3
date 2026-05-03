@@ -1,0 +1,48 @@
+[package]
+name                   = "cssl-host-substrate-render-v4-dxil"
+description            = "§ T11-W18-L8-DXIL-DIRECT · D3D12-direct substrate-render · csslc emits DXBC binary directly · ZERO wgpu · ZERO ash · ZERO Vulkan · ZERO SPIR-V on this path · D3D12CreateComputePipelineState consumes substrate_v2_dxil.csl DXBC bytes · one Dispatch per frame · proprietary-everything stack from .csl source to D3D12 pipeline"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_substrate_render_v4_dxil"
+
+# § T11-W18-L8 — feature gates
+#   `default = []` — pure DXBC emit + binary-shape verification builds
+#   without pulling the windows-rs D3D12 surface. Tests #1, #2 always run.
+#   `runtime` — pulls `windows-rs` Direct3D12/Dxgi for the D3D12-direct path.
+#   Tests #3, #4 only run with `--features runtime` AND a Windows-with-
+#   D3D12 host present. Mirrors the v3 ash/runtime gating pattern.
+[features]
+default = []
+runtime = ["dep:windows"]
+
+[dependencies]
+# § T11-W18-L8 : the DXBC emit path lives entirely in `cssl-cgen-gpu-dxil`
+# (the orchestrator) which itself drives the from-scratch `cssl-cgen-dxil`
+# backend. `cssl-host-substrate-render-v4-dxil` consumes the emitted
+# Vec<u8> bytes and feeds them directly into D3D12CreateComputePipelineState
+# via windows-rs. No naga · no HLSL · no dxc · no d3dcompiler · no wgpu ·
+# no ash · no Vulkan · no SPIR-V in this dependency tree.
+cssl-cgen-gpu-dxil = { path = "../cssl-cgen-gpu-dxil" }
+thiserror          = { workspace = true }
+
+# § windows-rs 0.58 = D3D12 + DXGI bindings. Optional behind `runtime` feature
+# so the default build (and the DXBC-shape tests) lands on any CI runner with
+# no Windows D3D12 host. Mirrors the v3 ash/pollster gating pattern.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Security",
+    "Win32_System_Threading",
+] }
+
+[lints]
+workspace = true
