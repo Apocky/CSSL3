@@ -145,6 +145,17 @@ cssl-host-mycelium-heartbeat    = { path = "../cssl-host-mycelium-heartbeat" }
 cssl-content-rating             = { path = "../cssl-content-rating" }
 cssl-content-moderation         = { path = "../cssl-content-moderation" }
 cssl-host-playtest-agent        = { path = "../cssl-host-playtest-agent" }
+# § T11-W18-LOA-CONTENT-WIRE — wire procgen + DM-procgen-bridge + DM/GM
+#   specialists + mycelium-KAN-init into the loa-host frame loop. The
+#   `content_pipeline` module owns 4 default Specialist trait-objects +
+#   per-frame `tick_once(observer, frame_n)` that emits ProcgenOutput.
+#   Default-OFF (LOA_CONTENT_PIPELINE=0). When env=1, substrate_render
+#   replaces shell-seed crystals with procgen-derived crystals (cap 128).
+cssl-host-procgen-pipeline      = { path = "../cssl-host-procgen-pipeline" }
+cssl-host-dm-procgen-bridge     = { path = "../cssl-host-dm-procgen-bridge" }
+cssl-host-dmgm-specialists      = { path = "../cssl-host-dmgm-specialists" }
+cssl-host-mycelium-kan-init     = { path = "../cssl-host-mycelium-kan-init" }
+blake3                          = { workspace = true }
 bytemuck                        = { workspace = true }
 glam                            = { version = "0.25", features = ["bytemuck"] }
 serde                           = { workspace = true }

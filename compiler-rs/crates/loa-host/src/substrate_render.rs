@@ -264,7 +264,23 @@ pub struct SubstrateRenderState {
     /// `observe_with_profile` calls to the correct KAN-bias band so each
     /// display-class accumulates its own learning history independently.
     pub profile_id: u8,
+
+    /// § T11-W18-LOA-CONTENT-WIRE · DMGM-specialist council + procgen
+    /// pipeline driver. Always constructed (4 specialist trait-objects ;
+    /// cheap). The `tick_once` it produces is gated by `LOA_CONTENT_PIPELINE=1`
+    /// internally, so this field's presence has zero effect when the
+    /// env-knob is unset (default-OFF) — the shell-seed crystal-128 array
+    /// is preserved exactly. When env=1, every `CONTENT_PIPELINE_REFRESH_EVERY`
+    /// frames the crystal-array is REPLACED with procgen-derived crystals.
+    pub content_pipeline: crate::content_pipeline::LoaContentPipeline,
 }
+
+/// § T11-W18-LOA-CONTENT-WIRE · cadence at which `tick` polls the content-
+/// pipeline for a refreshed crystal-array. 120 frames ≈ 1 second at 120 Hz.
+/// Smaller values produce more visual churn ; larger values quiet the
+/// scene. Tuned conservatively so the in-game KAN-bias has time to settle
+/// between procgen-events.
+pub const CONTENT_PIPELINE_REFRESH_EVERY: u64 = 120;
 
 impl Default for SubstrateRenderState {
     fn default() -> Self {
@@ -341,6 +357,7 @@ impl SubstrateRenderState {
             native_gpu_h: GPU_SUBSTRATE_H,
             last_tick_instant: None,
             profile_id: profile_id_from_env(),
+            content_pipeline: crate::content_pipeline::LoaContentPipeline::new(),
         }
     }
 
@@ -405,10 +422,65 @@ impl SubstrateRenderState {
         false
     }
 
+    /// § T11-W18-LOA-CONTENT-WIRE · poll the DMGM-content-pipeline for fresh
+    /// crystals every `CONTENT_PIPELINE_REFRESH_EVERY` frames.
+    ///
+    /// § GATING-LAYERS (compose top-down)
+    ///   1. `LOA_CONTENT_PIPELINE != "1"` → pipeline returns None ; we
+    ///      KEEP the current crystals (shell-seed unchanged).
+    ///   2. Frame-cadence : only every Nth frame ; in-between frames are
+    ///      no-ops (return-early).
+    ///   3. Empty result : if the council mediated to Pass/Question, the
+    ///      pipeline returns Some(empty) ; we DON'T replace (would erase
+    ///      the world otherwise).
+    ///   4. Cap : `tick_once` already capped at PIPELINE_CRYSTAL_CAP=128.
+    ///
+    /// § PROCEDURE
+    ///   - convert alien-materialization observer (i32 mm + yaw/pitch) to
+    ///     procgen-pipeline observer (f32 metres) ;
+    ///   - call `content_pipeline.tick_once(obs_pos, frame_count)` ;
+    ///   - on Some(non-empty), REPLACE `self.crystals`.
+    fn refresh_crystals_from_pipeline_if_due(&mut self, observer: ObserverCoord) {
+        // § Cadence — quick out for in-between frames. We use frame_count
+        // BEFORE its increment in tick(), so frame 0 counts as "due" too
+        // (initial procgen-population at startup if env enables).
+        if self.frame_count % CONTENT_PIPELINE_REFRESH_EVERY != 0 {
+            return;
+        }
+        let obs_pos = observer_to_procgen_coord(observer);
+        let new_crystals = self.content_pipeline.tick_once(obs_pos, self.frame_count);
+        // None = pipeline disabled (LOA_CONTENT_PIPELINE != "1") ; keep shell-seed.
+        let Some(crystals) = new_crystals else {
+            return;
+        };
+        // Empty = council mediated to Pass/Question this frame ; keep
+        // current crystals so we never empty the world by accident.
+        if crystals.is_empty() {
+            return;
+        }
+        // § REPLACE · cap-respected (already capped inside tick_once).
+        self.crystals = crystals;
+        log_event(
+            "INFO",
+            "loa-host/content-pipeline",
+            &format!(
+                "frame={} · replaced shell-seed with {} procgen-crystals · prompt_hash=0x{:016x}",
+                self.frame_count,
+                self.crystals.len(),
+                self.content_pipeline.last_prompt_hash,
+            ),
+        );
+    }
+
     /// Advance the substrate-render pipeline by one frame. Returns the
     /// frame's `FrameOutput` (resonance metadata + budget + fidelity).
     /// The current pixel-field is accessed via `current_display`.
     pub fn tick(&mut self, observer: ObserverCoord) -> FrameOutput {
+        // § T11-W18-LOA-CONTENT-WIRE · every CONTENT_PIPELINE_REFRESH_EVERY
+        //   frames, ask the DMGM-council for a fresh procgen crystal-array.
+        //   The pipeline gates internally on LOA_CONTENT_PIPELINE=1 (default
+        //   OFF) so this is a zero-cost env-read when disabled.
+        self.refresh_crystals_from_pipeline_if_due(observer);
         let out = self
             .renderer
             .tick(observer, &self.crystals, BUDGET_120HZ);
@@ -486,6 +558,9 @@ impl SubstrateRenderState {
         queue: &wgpu::Queue,
         observer: ObserverCoord,
     ) -> FrameOutput {
+        // § T11-W18-LOA-CONTENT-WIRE · same content-pipeline refresh path
+        //   as the CPU tick(). Default-OFF env gate is checked inside.
+        self.refresh_crystals_from_pipeline_if_due(observer);
         // § T11-W18-OPTIMIZE-GPU-ACTIVE (telemetry-driven · post-iter1) ──
         //   When GPU path is wired (compose-pass binds GPU view directly per
         //   W18-N), CPU substrate-tick at 512×512 burns ~262k pixel-ops PER
@@ -1180,4 +1255,19 @@ pub fn learn_from_frame_metrics(
     // § T11-W18-KAN-MULTIBAND-WIRE : route to per-DisplayProfile band.
     //   Bounds : profile_id clamped to 0..=4 inside `observe_with_profile`.
     cssl_host_substrate_intelligence::observe_with_profile(&payload, profile_id);
+}
+
+/// § T11-W18-LOA-CONTENT-WIRE · Convert the alien-materialization
+/// observer-coordinate (i32 mm + yaw/pitch/frame_t/Σ-mask) into the
+/// procgen-pipeline's slim (f32 metres) coord. We DROP the yaw/pitch
+/// because procgen-pipeline's emit-plane is already observer-relative ;
+/// orientation is implicit via the spec's "in front of the player".
+fn observer_to_procgen_coord(
+    obs: ObserverCoord,
+) -> cssl_host_procgen_pipeline::ObserverCoord {
+    cssl_host_procgen_pipeline::ObserverCoord {
+        x: obs.x_mm as f32 / 1000.0,
+        y: obs.y_mm as f32 / 1000.0,
+        z: obs.z_mm as f32 / 1000.0,
+    }
 }
