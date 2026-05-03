@@ -62,6 +62,12 @@ pub fn lower_op(op: &MirOp) -> Option<Vec<ClifInsn>> {
         "arith.subf" => lower_binary(op, "fsub"),
         "arith.mulf" => lower_binary(op, "fmul"),
         "arith.divf" => lower_binary(op, "fdiv"),
+        // § T11-W18-CSSLC-ADVANCE2 — float remainder lowers to a libm call.
+        //   Cranelift has no `frem` instruction ; the canonical IEEE-754 fmod
+        //   path is `fmodf` (f32) / `fmod` (f64). Textual CLIF mirrors what
+        //   the object emitter does : a `call %fmod[f]` against an extern.
+        //   Result-width drives symbol selection via `lower_remf`.
+        "arith.remf" => lower_remf(op),
         "arith.negf" => lower_unary(op, "fneg"),
         "arith.cmpi" => lower_cmp(op, "icmp"),
         "arith.cmpf" => lower_cmp(op, "fcmp"),
@@ -211,6 +217,32 @@ fn lower_select(op: &MirOp) -> Option<Vec<ClifInsn>> {
     ))])
 }
 
+/// Lower `arith.remf` to a libm fmod callout. The output CLIF shape is :
+///   `%r = call %fmodf(%a, %b)`   (when result is f32)
+///   `%r = call %fmod(%a, %b)`    (when result is f64)
+/// The actual extern declaration is handled by the object backend's pre-scan
+/// (`declare_fmod_imports_for_fn`) ; this textual lowering produces the same
+/// shape clif-util prints when reading an object module that imports fmod.
+fn lower_remf(op: &MirOp) -> Option<Vec<ClifInsn>> {
+    use cssl_mir::{FloatWidth, MirType};
+    let r = op.results.first()?;
+    let MirType::Float(w) = &r.ty else {
+        return None;
+    };
+    let symbol = match w {
+        FloatWidth::F64 => "fmod",
+        FloatWidth::F32 | FloatWidth::F16 | FloatWidth::Bf16 => "fmodf",
+    };
+    let (a, b) = (op.operands.first()?, op.operands.get(1)?);
+    Some(vec![ClifInsn::new(format!(
+        "    {} = call %{}({}, {})",
+        format_value(r.id),
+        symbol,
+        format_value(*a),
+        format_value(*b),
+    ))])
+}
+
 /// Lower `func.call` : emits a call to a named fn. Callee is in the `callee`
 /// attribute. CLIF shape : `%r = call %callee(args)`.
 fn lower_call(op: &MirOp) -> Option<Vec<ClifInsn>> {
@@ -311,6 +343,28 @@ mod tests {
             .with_result(ValueId(8), MirType::Float(FloatWidth::F32));
         let insns = lower_op(&op).unwrap();
         assert_eq!(insns[0].text, "    v8 = fneg v7");
+    }
+
+    // § T11-W18-CSSLC-ADVANCE2 — `arith.remf` lowers to a libm call.
+
+    #[test]
+    fn lower_remf_f32_emits_fmodf_call() {
+        let op = MirOp::std("arith.remf")
+            .with_operand(ValueId(0))
+            .with_operand(ValueId(1))
+            .with_result(ValueId(2), MirType::Float(FloatWidth::F32));
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    v2 = call %fmodf(v0, v1)");
+    }
+
+    #[test]
+    fn lower_remf_f64_emits_fmod_call() {
+        let op = MirOp::std("arith.remf")
+            .with_operand(ValueId(3))
+            .with_operand(ValueId(4))
+            .with_result(ValueId(5), MirType::Float(FloatWidth::F64));
+        let insns = lower_op(&op).unwrap();
+        assert_eq!(insns[0].text, "    v5 = call %fmod(v3, v4)");
     }
 
     #[test]
