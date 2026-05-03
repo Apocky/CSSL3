@@ -277,7 +277,23 @@ fn window_spawn(title : &str, w : u32, h : u32, flags : u32, cap : i32) -> Resul
     if cap == 0 {
         Err(WindowError::CapDenied)
     } else {
-        let h_handle = window::__cssl_window_spawn(title, w, h, flags) ;
+        // § T11-W19-β-LIVE-PUMP  (2026-05-03)
+        //   Use the recognized 2-segment `window::spawn(t_ptr, t_len, w, h,
+        //   flags)` form rather than the prior `window::__cssl_window_spawn`
+        //   call which the body_lower recognizer (cssl-mir 5240+) does NOT
+        //   match (it dispatches on `op == "spawn"`, not the prefixed name).
+        //
+        //   Stage-0 limitation : .cssl source cannot yet extract `&str` →
+        //   (ptr, len). We therefore pass `(0i64, 0i64, w, h, flags)` and
+        //   rely on `cssl-rt::host_window::cssl_window_spawn_impl` to
+        //   substitute a default "CSSL-Window" title (LIVE-PUMP fallback ;
+        //   PRIME-DIRECTIVE no-surveillance posture preserved). Once the
+        //   parser supports `str.as_ptr()` / `str.len()` at stage-1, this
+        //   wrapper threads the user-supplied title through.
+        let _ = title ;
+        let title_ptr : i64 = 0i64 ;
+        let title_len : i64 = 0i64 ;
+        let h_handle = window::spawn(title_ptr, title_len, w, h, flags) ;
         if h_handle == 0 {
             Err(WindowError::InvalidArgs)
         } else {
@@ -303,11 +319,19 @@ fn window_pump(w : Window, max : u32, cap : i32) -> Vec<WindowEvent> {
     if cap == 0 {
         vec_new::<WindowEvent>()
     } else {
-        // Stage-0 : routes through cssl-rt's __cssl_window_pump via the
-        // 2-segment path recognizer. Real per-event unpack lives in the
-        // deferred-ABI slice once typed-memref-load lands ; for now the
-        // recognizer fills a Vec with the right shape.
-        let _r = window::__cssl_window_pump(w.handle, max) ;
+        // § T11-W19-β-LIVE-PUMP  (2026-05-03)
+        //   Use the recognized 2-segment `window::pump(handle, events_out,
+        //   max_events)` form. Stage-0 passes `events_out=0` (null buffer ·
+        //   ABI-permitted at max_events==0) so the OS message-pump still
+        //   drains via PeekMessage/DispatchMessage but no events are
+        //   surfaced to source-level. This keeps the WNDPROC firing (which
+        //   is what matters for window visibility + WM_CLOSE handling) ;
+        //   typed per-event unpack lands once typed-memref-load is
+        //   recognized in the parser.
+        let _ = max ;
+        let events_out : i64 = 0i64 ;
+        let max_events : i64 = 0i64 ;
+        let _r = window::pump(w.handle, events_out, max_events) ;
         vec_new::<WindowEvent>()
     }
 }
@@ -322,7 +346,8 @@ fn window_request_close(w : Window, cap : i32) -> Result<(), WindowError> {
     if cap == 0 {
         Err(WindowError::CapDenied)
     } else {
-        let r = window::__cssl_window_request_close(w.handle) ;
+        // § T11-W19-β-LIVE-PUMP : use recognized `window::request_close` form.
+        let r = window::request_close(w.handle) ;
         if r == 0 {
             Ok(())
         } else {
@@ -342,7 +367,8 @@ fn window_destroy(w : Window, cap : i32) -> Result<(), WindowError> {
     if cap == 0 {
         Err(WindowError::CapDenied)
     } else {
-        let r = window::__cssl_window_destroy(w.handle) ;
+        // § T11-W19-β-LIVE-PUMP : use recognized `window::destroy` form.
+        let r = window::destroy(w.handle) ;
         if r == 0 {
             Ok(())
         } else {
@@ -361,15 +387,19 @@ fn window_raw_handle(w : Window, cap : i32) -> Result<RawHandle, WindowError> {
     if cap == 0 {
         Err(WindowError::CapDenied)
     } else {
-        // Stage-0 : routes through cssl-rt's __cssl_window_raw_handle
-        // which writes 16 bytes (2 × usize) on 64-bit Win32. The
-        // returned RawHandle here uses kind=1 (Win32) as the default
-        // ; cross-platform dispatch lands in a follow-up slice.
-        let p = window::__cssl_window_raw_handle(w.handle) ;
-        if p == 0 {
+        // § T11-W19-β-LIVE-PUMP : use recognized `window::raw_handle` form.
+        //   Stage-0 passes `(handle, 0, 0)` because the buffer-write path
+        //   isn't yet exposed via typed-memref-load ; cssl-rt returns a
+        //   non-zero result code on success which we surface as a stub
+        //   RawHandle pinned to kind=1 (Win32). Real (HWND, HINSTANCE)
+        //   extraction lands once typed-memref-load is recognized.
+        let out_buf : i64 = 0i64 ;
+        let max_len : i64 = 0i64 ;
+        let p = window::raw_handle(w.handle, out_buf, max_len) ;
+        if p < 0 {
             Err(WindowError::BadHandle)
         } else {
-            Ok(RawHandle { kind : 1, ptr : p, secondary : 0 })
+            Ok(RawHandle { kind : 1, ptr : 1, secondary : 0 })
         }
     }
 }
@@ -384,16 +414,16 @@ fn window_get_dims(w : Window, cap : i32) -> Result<Window, WindowError> {
     if cap == 0 {
         Err(WindowError::CapDenied)
     } else {
-        let r = window::__cssl_window_get_dims(w.handle) ;
-        if r == 0 {
-            // Cached on the source-side Window struct ; cssl-rt update
-            // path threads through the registry. Stage-0 returns the
-            // cached fields ; once the FFI returns the (w, h) pair
-            // structurally this fn refreshes them.
-            Ok(w)
-        } else {
-            Err(WindowError::BadHandle)
-        }
+        // § T11-W19-β-LIVE-PUMP : use recognized `window::get_dims` form.
+        //   Stage-0 passes `(handle, 0, 0)` for the out-pointers ; the
+        //   returned `r` is `-2` (null out-ptrs) by spec, but we tolerate
+        //   it as "ok-no-update" since the source-side Window struct
+        //   already caches w/h at spawn-time.
+        let w_out : i64 = 0i64 ;
+        let h_out : i64 = 0i64 ;
+        let r = window::get_dims(w.handle, w_out, h_out) ;
+        let _ = r ;
+        Ok(w)
     }
 }
 

@@ -485,8 +485,22 @@ pub unsafe fn cssl_window_spawn_impl(
     height: u32,
     flags: u32,
 ) -> u64 {
+    // § T11-W19-β-LIVE-TRACE : write directly to stderr handle to surface
+    // entry path during bring-up. Avoid eprintln! buffering issues by
+    // writing the bytes directly through a flush-on-drop handle.
+    {
+        use std::io::Write as _;
+        let mut e = std::io::stderr().lock();
+        let _ = writeln!(
+            e,
+            "[trace] cssl_window_spawn_impl called : tp={:p} tl={} w={} h={} flags={}",
+            title_ptr, title_len, width, height, flags
+        );
+        let _ = e.flush();
+    }
     // Validation gate-1 : dimensions.
     if width == 0 || height == 0 {
+        eprintln!("[trace] rejected : zero dim");
         return INVALID_WINDOW_HANDLE;
     }
     // Validation gate-2 : flag bitset.
@@ -494,10 +508,23 @@ pub unsafe fn cssl_window_spawn_impl(
         return INVALID_WINDOW_HANDLE;
     }
     // Validation gate-3 : title.
+    //
+    // § T11-W19-β-LIVE-PUMP  (2026-05-03)
+    //   Accept (null-ptr OR zero-len) by substituting a default title.
+    //   This unblocks CSSL-source-level callers that cannot easily extract
+    //   the (ptr, len) pair from a `&str` via the stage-0 stdlib surface.
+    //   The 2-segment `window::spawn(t_ptr, t_len, w, h, flags)` recognizer
+    //   in cssl_mir::body_lower expects 5 i64-shaped args ; the .cssl
+    //   wrapper-fn surface in stdlib/window.cssl can simply pass `(0i64,
+    //   0i64, w, h, flags)` and rely on this fallback.
+    //
+    //   ‼ The default title is a static ASCII string ("CSSL-Window") ;
+    //   no user-supplied bytes are read in this branch, so the
+    //   PRIME-DIRECTIVE no-surveillance posture is preserved.
     // SAFETY : caller's contract on (title_ptr, title_len).
     let title = match unsafe { read_title(title_ptr, title_len) } {
         Some(t) if !t.is_empty() => t,
-        _ => return INVALID_WINDOW_HANDLE,
+        _ => "CSSL-Window".to_string(),
     };
 
     // Issue handle. Counter starts at 1 ; never re-issues 0. The Relaxed
@@ -515,8 +542,10 @@ pub unsafe fn cssl_window_spawn_impl(
     // so the existing unit tests + non-host platforms keep working. The
     // production path on Apocky-host (Windows 11 + Arc A770) goes Real.
     let cfg = build_host_config(title.clone(), width, height, flags);
+    eprintln!("[trace] calling spawn_window cfg=({}, {}x{}, flags={:?})", title, width, height, flags);
     match spawn_window(&cfg) {
         Ok(real_win) => {
+            eprintln!("[trace] spawn_window OK · handle={}", handle);
             REAL_REGISTRY.with(|reg| {
                 reg.borrow_mut().insert(
                     handle,
@@ -532,7 +561,8 @@ pub unsafe fn cssl_window_spawn_impl(
             SPAWN_COUNT.fetch_add(1, Ordering::Relaxed);
             return handle;
         }
-        Err(_e) => {
+        Err(e) => {
+            eprintln!("[trace] spawn_window FAILED · err={:?}", e);
             // Fall through to stub on real-backend failure (LoaderMissing
             // on non-Windows ; OsFailure on hosts where Win32 rejected the
             // spawn). Stub keeps the FFI-shape testable.
