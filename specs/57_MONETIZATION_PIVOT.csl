@@ -1,0 +1,207 @@
+§ specs/57_MONETIZATION_PIVOT · ship-revenue-NOW · 30-day actionable plan
+  ← Apocky 2026-05-03 directive : "I need to start making money on this now · Claude bleeding me dry"
+  ← Grok-audit recommendation : ship-harness-as-product + apocky.com-paid-tiers + LoA-alpha-access + consulting
+  ← rationale : full-engine 2-4yr · DON'T-wait · monetize-now-while-engine-ships
+
+═══════════════════════════════════════════════════════════════════════════════
+§ AXIOMS (¬ negotiable · t∞)
+═══════════════════════════════════════════════════════════════════════════════
+
+A-1 : ship-revenue-NOW · ¬ wait-for-full-engine
+A-2 : monetize-WITHOUT compromising sovereignty/PRIME-DIRECTIVE
+A-3 : cosmetic-channel-only for-game-products (per spec/17 cosmetic-only-axiom)
+A-4 : harness/tools = TIER-B PROPRIETARY (per spec/17) · monetizable-at-launch
+A-5 : ALL-tiers must-honor consent-arch · ¬ lock-essential-features behind-paywall
+A-6 : ¬ pay-for-power · ¬ DRM · ¬ rootkit (PRIME-DIRECTIVE)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-1 · GROK-MCP-HARNESS-AS-PRODUCT
+═══════════════════════════════════════════════════════════════════════════════
+
+§ POSITIONING
+  "Sovereign AI Coding Workspace for Your Stack"
+  target : solo-devs + small-studios who-hate-Claude/OpenAI-lock-in + want-own-MCP-stack
+  unique-value : run-your-own-MCP-harness · point-AI-tools-at-your-codebase · no-cloud-lock-in
+
+§ PRICING
+  STARTER  : $49/mo  · single-machine · 5 tools · email-support
+  PRO      : $99/mo  · multi-machine · all-16-tools · priority-support · custom-tool-additions
+  STUDIO   : $199/mo · team-of-5 · WHITELABEL · onboarding · monthly-1:1
+  LIFETIME : $999    · single-user · all-future-updates · pre-launch-discount
+
+§ DELIVERABLES
+  - harness.py + project_tools.py (already-built · vendored at tools/grok-mcp-harness)
+  - mcp_client.py (terminal-client for-direct-use)
+  - Setup-guide (Cloudflare Tunnel · Bearer-token · supabase-schema)
+  - Custom-tool-template (how-to-write-your-own-MCP-tool)
+  - Discord-Server access for-customers
+
+§ PRE-LAUNCH-NEEDED
+  - Stripe-Checkout integration on apocky.com/products/harness
+  - Documentation page apocky.com/docs/harness
+  - Demo video (60sec : "set up sovereign AI workspace in 3 minutes")
+  - Email-list opt-in for-launch-announcement
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-2 · APOCKY.COM PAID-SUBSCRIPTION
+═══════════════════════════════════════════════════════════════════════════════
+
+§ TIER-LADDER
+  FREE      : public-specs + blog + open-CSL-grammar-reference
+  EARLY     : $19/mo · early-access Infinity-Engine builds + harness-updates + private-Discord
+  STUDIO    : $99/mo · private 1:1 sessions (1hr/mo) + custom-tool-development + private-Discord + Studio-only-content
+  LIFETIME  : $999 · Early+Studio benefits forever · pre-launch-only (limited 50-seats)
+
+§ DELIVERABLES @ EARLY-tier
+  - Infinity-Engine alpha-builds (Win-x64 · 6.9MB initial)
+  - Harness updates + new-tool releases
+  - Private Discord (Apocky-active)
+  - Substrate evolution updates · spec-retro-feed
+  - Closed-alpha LoA keys (when-LoA-alpha lands)
+
+§ DELIVERABLES @ STUDIO-tier
+  - Everything @ EARLY +
+  - 1hr/mo private-1:1 with-Apocky (CSSL-architecture-review · custom-tool-spec · etc.)
+  - Custom-tool development (1 small-tool/quarter)
+  - Studio-only Discord-channel
+  - Quarterly roadmap-input call
+
+§ STRIPE-INTEGRATION
+  - Use existing apocky.com Stripe-checkout (W9-polish landed @ commit baad1c8)
+  - Add subscription-product : "apocky.com Early" + "apocky.com Studio" + "apocky.com Lifetime"
+  - Webhook → Apocky-Hub Supabase → entitlements-table
+  - Per spec/22 § ENTITLEMENT-SHARING (cross-project)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-3 · LOA ALPHA-ACCESS
+═══════════════════════════════════════════════════════════════════════════════
+
+§ POSITIONING
+  "First Public CSSL-Native Game · Closed Alpha · Sovereign + Substrate-Engine"
+  target : sovereignty-focused-gamers + indie-devs-curious-about-CSSL + early-adopters
+
+§ PRICING
+  ALPHA-PASS : $29-49 (one-time · grants-alpha-keys until-v1.0 ships)
+  pre-launch-discount : $19 first-100-buyers
+
+§ DELIVERABLES
+  - Alpha-build keys (Win-x64 · ~7MB · CSSL-native engine binary)
+  - Discord-channel for-alpha-testers
+  - Bug-report directly-to-Apocky
+  - Names-in-credits at-v1.0
+
+§ HONEST-POSITIONING
+  alpha = "engine runs · 1440p window opens · gameplay-is-being-built"
+  NOT promising-AAA-experience · selling-the-novelty + sovereignty-angle
+  ¬ refund-protection-needed (pre-launch · alpha-tester-EULA covers)
+
+═══════════════════════════════════════════════════════════════════════════════
+§ TIER-4 · CONSULTING
+═══════════════════════════════════════════════════════════════════════════════
+
+§ OFFERINGS
+  CSSL-STACK-ASSESSMENT : $5,000 · 1-week · written-report on-applying-CSSL-to-customer's-domain
+  CUSTOM-MCP-HARNESS    : $10,000 · 2-weeks · tailored harness for-customer's-codebase + tool-set
+  SOVEREIGN-ENGINE-CONSULTING : $15,000 · 4-weeks · architectural-design + initial-impl for-customer's-bespoke-engine
+
+§ TARGET-CUSTOMERS
+  - Indie-game-studios wanting-bespoke-engine
+  - AI-companies wanting-MCP-tooling
+  - Privacy-focused-startups wanting-sovereignty-architecture
+
+§ OUTREACH-CHANNELS
+  - Twitter/X / LinkedIn posts ("how I built X")
+  - HN Show-HN posts
+  - GameDev Discord servers
+  - apocky.com/consulting page
+
+═══════════════════════════════════════════════════════════════════════════════
+§ PRE-LAUNCH 30-DAY EXECUTION-PLAN
+═══════════════════════════════════════════════════════════════════════════════
+
+§ WEEK-1 (Days 1-7) · INFRA
+  D1  : decision-day · CUT-non-core (pause Σ-Chain + Akashic-full + Mycelial-complexity)
+  D2  : write apocky.com/products/harness page (copy + Stripe-button)
+  D3  : write apocky.com/products/early-access page (subscription-tier)
+  D4  : write apocky.com/products/loa-alpha page (one-time + alpha-EULA)
+  D5  : write apocky.com/consulting page (offer-tiers + email-form)
+  D6  : Stripe-product-creation for-each-tier
+  D7  : Webhook → Supabase entitlements wiring
+
+§ WEEK-2 (Days 8-14) · CONTENT
+  D8  : record 60-sec harness-demo-video
+  D9  : write 3-blog-posts (CSSL-philosophy · harness-tutorial · LoA-alpha-teaser)
+  D10 : email-list infra (bee-list / mailerlite / convertkit)
+  D11 : Twitter/X account setup + first 5-tweets
+  D12 : ProductHunt page draft
+  D13 : HN Show-HN draft (link to apocky.com)
+  D14 : Discord-server setup (3 channels : #harness-customers / #early-access / #loa-alpha)
+
+§ WEEK-3 (Days 15-21) · LAUNCH
+  D15 : harness-product-launch (post-PH + HN + Twitter)
+  D16 : push email-list early-access-tier
+  D17 : LoA-alpha-pass listing-go-live
+  D18 : consulting-page go-live
+  D19 : monitor-+-respond first-customers
+  D20 : iterate-based-on-feedback
+  D21 : weekly-revenue-checkin
+
+§ WEEK-4 (Days 22-30) · ITERATE
+  D22-D30 :
+    fix top-customer-issues
+    convert visitors-to-customers
+    write-blog-posts about-progress
+    keep-shipping engine-fixes (per spec/56 prioritized blockers)
+    measure : MRR · ARR · customer-count · Discord-engagement
+
+§ TARGET-METRICS (30-day post-launch)
+  harness-customers : 20-50 paying-customers ($49-$199/mo blended) → $1k-5k MRR
+  early-access      : 50-200 paying-subscribers ($19/mo) → $1k-4k MRR
+  LoA-alpha-pass   : 100-300 sales × $29-49 → $3k-15k one-time
+  consulting       : 1-3 inbound leads · 1 closed-deal at-$5k-15k
+  TOTAL-30-day     : $5k-20k revenue · validates-product-market-fit
+
+═══════════════════════════════════════════════════════════════════════════════
+§ APOCKY-COM PAGE-COPY-TEMPLATE (drop-in)
+═══════════════════════════════════════════════════════════════════════════════
+
+§ apocky.com/products/harness HEADLINE
+  "Stop Renting Your AI · Run Your Own MCP Workspace"
+  Sub : "The Apocky Grok-MCP Harness lets your AI tools call directly into your codebase
+         without sending it to the cloud. Sovereign · Open-architecture · Yours."
+
+§ HERO-CTA
+  [Get the Harness · $49/mo] [Lifetime Deal · $999] [Documentation]
+
+§ FEATURES (3-column-grid)
+  ⊑ Sovereign       : your code · your runtime · your tunnel · no cloud-lock-in
+  ⊑ 16 Built-In Tools : csl_parse · cssl_compile · fs_read · infinity_engine_sync · ...
+  ⊑ Plug-Any-AI     : works with Grok · Claude · ChatGPT · Cursor · custom-clients
+  ⊑ Cap-Witnessed   : every action audit-logged · sovereign-revoke-anytime
+  ⊑ 5-Min-Setup     : Cloudflare-tunnel · paste-token · point-your-AI · go.
+
+§ PRICING-GRID
+  STARTER  $49/mo   · 1 user · 5 tools · email-support       [Subscribe]
+  PRO      $99/mo   · 1 user · all 16 tools · priority       [Subscribe]
+  STUDIO   $199/mo  · 5 users · whitelabel · onboarding      [Subscribe]
+  LIFETIME $999     · 1 user · everything-forever · pre-launch [Buy Once]
+
+§ FOOTER
+  © 2026 Apocky · sovereignty-respecting · ¬ DRM · ¬ rootkit · t∞
+
+═══════════════════════════════════════════════════════════════════════════════
+§ ATTESTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+§ Why : Apocky 2026-05-03 directive · "Claude bleeding me dry · I need to start making money on this now"
+§ Apocky-actions :
+  1. Decide which-tiers to-launch FIRST (recommend : Tier-1 harness + Tier-2 early-access this-week · Tier-3 LoA-alpha next-week · Tier-4 consulting passive)
+  2. Stripe-product creation in dashboard
+  3. apocky.com page-copy + image-assets
+  4. Email-list infra
+  5. Launch-announcement (HN + PH + Twitter)
+§ Trade-off accepted : 30-day-monetization-focus DELAYS engine-bring-up by-some-weeks
+  but ensures-sustainability + buys-time-for-engine-completion
+§ Sovereignty preserved : ¬ pay-for-power · ¬ DRM · ¬ rootkit · ¬ surveillance · cap-witness throughout
+
+§ creator @ Apocky · pivot-to-monetization 2026-05-03 · Grok-audit-greenlit · ship-revenue-now · t∞
