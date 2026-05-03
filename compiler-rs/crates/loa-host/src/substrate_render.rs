@@ -439,6 +439,27 @@ impl SubstrateRenderState {
             );
             // Periodic persist (every 120 frames ≈ 1 sec at 120 Hz · cheap).
             let _ = cssl_host_substrate_intelligence::kan_bias_persist(&kan_bias_persist_path());
+            // § T11-W18-KAN-BAND-TRACE : env-gated per-band checksum-trace.
+            //   LOA_KAN_BAND_TRACE=1 logs each of the 5 band's checksum every
+            //   120 frames so user can verify multiband-learning is working.
+            //   Default off · zero overhead when env-var unset.
+            if std::env::var("LOA_KAN_BAND_TRACE").ok().as_deref() == Some("1") {
+                let mut bands_summary = String::with_capacity(80);
+                for pid in 0u8..=4 {
+                    let band = cssl_host_substrate_intelligence::kan_bias_for_profile(pid);
+                    let mut acc: u32 = 0;
+                    for w in band {
+                        acc = acc.wrapping_mul(0x9E37_79B9).wrapping_add(w);
+                    }
+                    use std::fmt::Write;
+                    let _ = write!(&mut bands_summary, " band{pid}=0x{acc:08x}");
+                }
+                log_event(
+                    "DEBUG",
+                    "loa-host/kan-band-trace",
+                    &format!("frame_n={} ·{}", out.frame_n, bands_summary),
+                );
+            }
         }
         out
     }

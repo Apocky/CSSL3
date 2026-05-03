@@ -480,6 +480,8 @@ fn log_startup_banner() {
         ("LOA_SUBSTRATE_PACKED", "0", "64B-packed-GpuCrystal path"),
         ("LOA_DXIL_PRESENT_TEAR", "1", "D3D12 ALLOW_TEARING (when L8 lands)"),
         ("LOA_QUICK_QUIT", "0", "auto-quit after N frames (smoke-test)"),
+        ("LOA_KAN_BAND_TRACE", "0", "log per-band KAN-checksums every 120 frames"),
+        ("LOA_MYCELIUM_LOAD", "0", "load + merge peer-bias-shards from cache"),
     ];
     for &(key, default, _semantic) in knobs {
         let (val, src) = match std::env::var(key) {
