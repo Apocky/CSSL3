@@ -3128,6 +3128,23 @@ fn resolve_aggregate_opaque(
     if let Some(t) = resolve_enum_opaque(opaque_name, ptr_ty, enum_layouts) {
         return Some(t);
     }
+    // § T11-W19-α-CSSLC-FIX9 — bare scalar-name Opaque fallback.
+    //   The HIR-lower scalar table (cssl_mir::lower::lower_type) recognizes
+    //   the canonical scalar names per spec/03 § BASE-TYPES, but defensive
+    //   resolution here catches any straggler-Opaque whose name is a known
+    //   scalar (e.g. literals like `usize` flowing through a non-canonical
+    //   lowering path that produced a bare-name Opaque). Mirror the
+    //   FIX9 lower-side table 1:1 so both layers converge.
+    match opaque_name {
+        "i8" | "u8" => return Some(cl_types::I8),
+        "i16" | "u16" => return Some(cl_types::I16),
+        "i32" | "u32" | "char" => return Some(cl_types::I32),
+        "i64" | "u64" | "isize" | "usize" => return Some(cl_types::I64),
+        "f32" => return Some(cl_types::F32),
+        "f64" => return Some(cl_types::F64),
+        "bool" => return Some(cl_types::I8),
+        _ => {}
+    }
     // FIX4-RESULT : Result<T, E> — PointerByRef hidden-pointer fallback.
     if opaque_name == "Result"
         || opaque_name.starts_with("Result<")

@@ -58,10 +58,15 @@ impl<'a> LowerCtx<'a> {
                 if path.len() == 1 {
                     let name = self.interner.resolve(path[0]);
                     return match name.as_str() {
-                        "i8" => MirType::Int(IntWidth::I8),
-                        "i16" => MirType::Int(IntWidth::I16),
-                        "i32" | "u32" | "isize" | "usize" => MirType::Int(IntWidth::I32),
-                        "i64" | "u64" => MirType::Int(IntWidth::I64),
+                        // § T11-W19-α-CSSLC-FIX9 — full scalar set per spec/03 § BASE-TYPES.
+                        // u8/u16 + the i8/i16 alias map to the matching cl-type ;
+                        // usize/isize stay host-pointer-width via I64 (stage-0
+                        // single-host x86_64) ; char is the USV-invariant 32-bit form.
+                        "i8" | "u8" => MirType::Int(IntWidth::I8),
+                        "i16" | "u16" => MirType::Int(IntWidth::I16),
+                        "i32" | "u32" => MirType::Int(IntWidth::I32),
+                        "i64" | "u64" | "isize" | "usize" => MirType::Int(IntWidth::I64),
+                        "char" => MirType::Int(IntWidth::I32),
                         "f16" => MirType::Float(FloatWidth::F16),
                         "bf16" => MirType::Float(FloatWidth::Bf16),
                         "f32" => MirType::Float(FloatWidth::F32),
