@@ -1,0 +1,753 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/frame_clock.cssl  —  144 Hz frame-pacing + Q0.16 dynamic-resolution EMA
+//
+// CSSLv3 stage-0 engine module.
+// Spec : specs/04_EFFECTS.csl § BUILT-IN EFFECTS § Time + Deadline + Realtime
+//        specs/24_HOST_FFI.csl § CAPABILITY-MATRIX § Cap<Time>
+//        specs/30_SUBSTRATE_v2.csl § FRAME-CADENCE-DISCIPLINE
+// Slice : E1A — engine companion to stdlib/time.cssl (S1A, a7821ee).
+//         Ports `compiler-rs/crates/loa-host/src/dynamic_resolution.rs`
+//         (T11-W18-DYNRES-SCALER, 2026-05-02 Apocky-greenlit) into pure
+//         CSSL source. Algorithm-identical ; no Rust dependency.
+//
+// § PRIME_DIRECTIVE preserved : the frame clock is observation-only —
+//   it reads the host monotonic counter at fixed user-invoked moments
+//   (begin / end-and-pace / tick-dyn-res), sleeps the calling thread to
+//   meet a deadline, and adapts a Q0.16 render-scale parameter that the
+//   GPU pipeline consumes. NO surveillance ; NO identifying telemetry ;
+//   NO egress channel ; the spin-wait is bounded so a misbehaving QPC
+//   cannot hang the calling thread. Sovereignty-respecting :
+//     - the dyn-res floor (0.5×) is a HARD cap below which the scaler
+//       refuses to descend even under catastrophic frame-times ;
+//     - the cap (1.0×) is a HARD ceiling — no upscale-from-native is
+//       ever introduced (avoids hidden compute-budget inflation) ;
+//     - the spin-wait final-1ms is a documented latency-vs-syscall
+//       tradeoff that runs ONLY in the last millisecond of the budget,
+//       so the CPU-burn per frame is bounded at 1 ms × frame-count.
+//
+// § APOCKY-DIRECTIVE
+//   Target 1440p144 (6.944 ms / frame · per spec/30_SUBSTRATE_v2 §
+//   FRAME-CADENCE-DISCIPLINE) ; when the EMA frame-time exceeds budget,
+//   scale render-resolution down toward floor 0.5× ; when frame-time is
+//   well under budget, drift back toward cap 1.0×. Lerp toward target
+//   over ~30 frames (visually smooth · no jank).
+//
+// § PARADIGM
+//   - Q0.16 fixed-point scale (`dyn_res_q016` · 65_536 = 1.0×).
+//     ∵ Apocky preference : fixed-point math over float in the hot path
+//     (Sawyer / Pokémon-OG efficiency mindset · feedback_sawyer_*.md).
+//   - EMA on frame-ns with α ≈ 1/16 (4-frame half-life · cheap u64 shift).
+//   - Lerp toward target-scale at ~3.3 % per frame ⇒ ≈ 30 frames to
+//     converge (one quarter-second @ 144 Hz).
+//   - Spin-wait-final-1ms : sleep to (deadline − 1ms), then busy-loop
+//     until the monotonic counter passes the deadline. Reduces jitter
+//     vs a pure-syscall sleep at the cost of ≤ 1 ms CPU per frame.
+//     Bounded by `SPIN_WAIT_MAX_ITER` to prevent runaway on misbehaving
+//     QPC (defensive ; should never trigger in normal operation).
+//
+// § STAGE-0 NOTES
+//   1. Imports the free-fn surface from `stdlib/time.cssl` (S1A). The
+//      free-fns are the active call-shape until effect-block + in-fn-sig
+//      effect-row syntax lands. Each call delegates through the
+//      `time::<verb>` recognizer to the ABI-stable `__cssl_time_*`
+//      symbols in `cssl-rt::host_time` (Wave-D1).
+//   2. Cap<Time> witness is threaded as `cap_time : i64` through every
+//      timing call ; same pattern as stdlib/time.cssl callers. The
+//      FrameClock struct does NOT store the cap (witnesses are
+//      caller-managed per specs/12 § THE SIX CAPABILITIES).
+//   3. The Q0.16 dyn-res EMA is pure arithmetic — no FFI, no cap.
+//      `frame_clock_tick_dyn_res` is a non-effectful method that callers
+//      can invoke any time after `frame_clock_end_and_pace` returns the
+//      observed frame-ns. Decoupled from the timing surface so test code
+//      can drive the EMA with synthetic samples (see _example_dyn_res_*
+//      below).
+//   4. Effect-row docs (carried-forward to spec/04 + spec/24) :
+//        - `frame_clock_begin`           : { Time }
+//        - `frame_clock_end_and_pace`    : { Time, Deadline<6944us> }
+//        - `frame_clock_tick_dyn_res`    : { } (pure)
+//        - `frame_clock_render_dim_*`    : { } (pure)
+//      The Deadline<N> bound is informative at stage-0 ; the parser does
+//      not yet recognize parametric Deadline in fn-sig position.
+//
+// § INVARIANTS  (stage-0)
+//   - `target_hz > 0` ⇒ `target_frame_ns = NS_PER_SEC / target_hz` (fixed
+//     at construction ; the field caches the divisor for the hot path).
+//   - `target_hz == 0` is rejected at construction ; callers receive a
+//     defensive `target_frame_ns = 0` that disables pacing (sleep returns
+//     TIME_DEADLINE_ALREADY_PAST per the past-deadline short-circuit).
+//   - `dyn_res_q016 ∈ [DYN_RES_FLOOR_Q016, DYN_RES_CAP_Q016]` always
+//     (clamp on every update ; belt-and-braces).
+//   - `ema_frame_ns == 0` ⇔ no observation has been recorded yet ;
+//     the first `tick_dyn_res` seeds the EMA directly.
+//   - `frame_count` is monotonically non-decreasing across the lifetime
+//     of the clock (deterministic generation-counter discipline).
+
+module com.apocky.engine.frame_clock
+
+use std::time::time_monotonic_ns
+use std::time::time_sleep_ns
+use std::time::time_deadline_until
+use std::time::frame_budget_ns_for_hz
+use std::time::ms_to_ns
+
+// ───────────────────────────────────────────────────────────────────────
+// § Pacing constants  (ABI-locked from T11-W18-DYNRES-SCALER ; renaming
+//   requires lock-step changes in `dynamic_resolution.rs`).
+// ───────────────────────────────────────────────────────────────────────
+
+// Target refresh rate : 144 Hz (per spec/30 § FRAME-CADENCE-DISCIPLINE).
+fn target_hz_144() -> u32 {
+    144
+}
+
+// Per-frame budget for 144 Hz : 1_000_000_000 / 144 = 6_944_444 ns
+// (truncating ; the ~556 ns remainder is absorbed by the OS scheduler
+// quantum ; mirrors `time_budget_ns_for_hz(144)` exactly).
+fn target_frame_ns_144hz() -> u64 {
+    6_944_444
+}
+
+// 1 ms in ns — the spin-wait threshold. Sleep covers the bulk of the
+// remaining budget ; the final 1 ms is busy-looped for jitter reduction.
+fn spin_wait_threshold_ns() -> u64 {
+    1_000_000
+}
+
+// Maximum spin-wait iterations before the loop yields. Defensive bound
+// against a misbehaving QPC where the monotonic counter never advances.
+// At ~10 ns / iter on x86_64 this caps spin-time at ~5 ms even if the
+// counter is frozen ; in normal operation the loop exits within 1 ms.
+fn spin_wait_max_iter() -> u32 {
+    500_000
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Q0.16 dyn-res constants (ABI-locked from `dynamic_resolution.rs`).
+// ───────────────────────────────────────────────────────────────────────
+
+// 1.0× in Q0.16 : 65_536. Cap on the dyn-res scale (no upscale-from-native).
+fn dyn_res_q016_one() -> u32 {
+    65_536
+}
+
+// 0.5× in Q0.16 : 32_768. Floor on the dyn-res scale (720p of 1440p
+// per Apocky-spec ; below this the visual quality is unacceptable).
+fn dyn_res_floor_q016() -> u32 {
+    32_768
+}
+
+// Cap on the dyn-res scale : 1.0× (re-export for symmetry).
+fn dyn_res_cap_q016() -> u32 {
+    65_536
+}
+
+// EMA shift : α = 1 / (1 << 4) = 1/16 ⇒ ≈ 4-frame half-life.
+fn ema_shift() -> u32 {
+    4
+}
+
+// Lerp step per-frame in Q0.16 : 2_185 ≈ 0.0333 ≈ 1/30 ⇒ converges
+// toward target in ≈ 30 frames (Apocky ~30-frame convergence spec).
+fn dyn_res_lerp_step_q016() -> u32 {
+    2_185
+}
+
+// Hysteresis-up numerator + denominator : the scaler only drifts UP
+// once the EMA falls comfortably under budget (≈ 80 % · prevents the
+// scaler from thrashing around the boundary frame-to-frame).
+fn hysteresis_up_num() -> u64 {
+    80
+}
+
+fn hysteresis_up_den() -> u64 {
+    100
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type-definition.
+//
+//   `FrameClock` is the per-window/per-pipeline frame-pacing state. It
+//   is consumed-and-returned in the value-out style at stage-0 because
+//   `&mut self` mutating-borrow lowering is a separate slice ; this
+//   matches the Vec<T> + Option<T> stage-0 surface convention.
+//
+//   N! syntax-uncertain : value-out mutation is the documented stdlib
+//   pattern at stage-0. The mut-borrow migration is mechanical once the
+//   parser slice lands ; field-shape unchanged.
+// ───────────────────────────────────────────────────────────────────────
+
+// `FrameClock` — frame-pacing + dynamic-resolution EMA state.
+//
+// § FIELDS
+//   - `target_hz`        : configured target refresh rate (Hz). Zero
+//                          disables pacing (defensive sentinel for
+//                          construction with hz=0).
+//   - `target_frame_ns`  : per-frame budget (cached `NS_PER_SEC / hz`).
+//   - `last_present_ns`  : monotonic-ns reading at the most-recent
+//                          `frame_clock_begin` call. Zero before first
+//                          frame.
+//   - `frame_count`      : monotonic frame-counter (deterministic
+//                          generation-counter discipline ; never resets).
+//   - `ema_frame_ns`     : EMA of observed frame-ns (4-frame half-life).
+//                          Zero before first observation.
+//   - `dyn_res_q016`     : current Q0.16 render-scale ∈ [floor, cap].
+//   - `dyn_res_target_q016` : Q0.16 target the lerp drifts toward.
+struct FrameClock {
+    target_hz             : u32,
+    target_frame_ns       : u64,
+    last_present_ns       : u64,
+    frame_count           : u64,
+    ema_frame_ns          : u64,
+    dyn_res_q016          : u32,
+    dyn_res_target_q016   : u32,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Constructor.
+// ───────────────────────────────────────────────────────────────────────
+
+// `frame_clock_new(target_hz)` — construct a fresh FrameClock for the
+// given target refresh rate.
+//
+// § PARAMETERS
+//   - `target_hz` : target refresh rate in Hz. 0 = disabled (defensive).
+//
+// § RETURN
+//   A FrameClock with `dyn_res_q016 = dyn_res_q016_one()` (1.0× = native
+//   resolution at boot) ; first observation seeds the EMA + lerp.
+//
+// § STAGE-0 BEHAVIOR
+//   `target_frame_ns` is computed via `frame_budget_ns_for_hz(target_hz)`
+//   from stdlib/time.cssl ; for `hz == 0` the helper returns 0 which
+//   disables pacing in `frame_clock_end_and_pace`.
+fn frame_clock_new(target_hz : u32) -> FrameClock {
+    FrameClock {
+        target_hz             : target_hz,
+        target_frame_ns       : frame_budget_ns_for_hz(target_hz),
+        last_present_ns       : 0,
+        frame_count           : 0,
+        ema_frame_ns          : 0,
+        dyn_res_q016          : dyn_res_q016_one(),
+        dyn_res_target_q016   : dyn_res_q016_one(),
+    }
+}
+
+// `frame_clock_new_144hz()` — convenience constructor for the canonical
+// 1440p144 target. Equivalent to `frame_clock_new(144)`.
+fn frame_clock_new_144hz() -> FrameClock {
+    frame_clock_new(target_hz_144())
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Begin / end-and-pace surface.
+//
+//   The canonical per-frame call-shape is :
+//
+//     let now0 = frame_clock_begin(cap_time, c) ;
+//     // ... render frame work ...
+//     let pair = frame_clock_end_and_pace(cap_time, c) ;
+//     let observed_ns = pair.0 ;
+//     let c1          = pair.1 ;
+//     let c2 = frame_clock_tick_dyn_res(c1, observed_ns) ;
+//     // c2 is the new clock state ; loop.
+//
+//   N! the value-out mutation style returns (observed_ns, FrameClock) as
+//   a struct `FrameTickReport` because stage-0 tuple-shape returns are
+//   not yet recognized by the parser. The struct is the documented
+//   stdlib pattern (mirrors stdlib/iter.cssl + stdlib/result.cssl).
+// ───────────────────────────────────────────────────────────────────────
+
+// `FrameTickReport` — return shape for `frame_clock_end_and_pace`.
+//
+// § FIELDS
+//   - `observed_frame_ns` : the actual frame-ns measured between this
+//                           end-and-pace and the prior begin (after pacing).
+//   - `clock`             : the updated FrameClock with `last_present_ns`
+//                           + `frame_count` advanced. Caller threads this
+//                           into the next iteration.
+struct FrameTickReport {
+    observed_frame_ns : u64,
+    clock             : FrameClock,
+}
+
+// `frame_clock_begin(cap_time, c)` — record the start-of-frame monotonic
+// reading.
+//
+// § EFFECT-ROW (documentary)
+//   { Time }
+//
+// § CAPABILITY
+//   Consumes a `Cap<Time>` witness (i64-packed gen-ref).
+//
+// § PARAMETERS
+//   - `cap_time` : Cap<Time> witness (i64-packed).
+//   - `c`        : the current FrameClock state.
+//
+// § RETURN
+//   The updated FrameClock with `last_present_ns` set to the monotonic
+//   reading at call entry.
+//
+// § STAGE-0 BEHAVIOR
+//   Reads the monotonic-ns counter via `time_monotonic_ns(cap_time)` ;
+//   stores it in `c.last_present_ns`. Does NOT advance `frame_count` —
+//   that field advances at `end_and_pace` so a frame-count of N means
+//   "N completed frames" rather than "N started frames" (clearer
+//   semantics for telemetry consumers).
+fn frame_clock_begin(cap_time : i64, c : FrameClock) -> FrameClock {
+    let now_ns = time_monotonic_ns(cap_time) ;
+    FrameClock {
+        target_hz             : c.target_hz,
+        target_frame_ns       : c.target_frame_ns,
+        last_present_ns       : now_ns,
+        frame_count           : c.frame_count,
+        ema_frame_ns          : c.ema_frame_ns,
+        dyn_res_q016          : c.dyn_res_q016,
+        dyn_res_target_q016   : c.dyn_res_target_q016,
+    }
+}
+
+// `frame_clock_end_and_pace(cap_time, c)` — pace to the next frame
+// deadline + advance frame-counter.
+//
+// § EFFECT-ROW (documentary)
+//   { Time, Deadline<target_frame_ns> }
+//
+// § CAPABILITY
+//   Consumes a Cap<Time> witness.
+//
+// § PARAMETERS
+//   - `cap_time` : Cap<Time> witness.
+//   - `c`        : the current FrameClock state (post-`begin`).
+//
+// § RETURN
+//   `FrameTickReport { observed_frame_ns, clock }` where :
+//     - `observed_frame_ns` is the actual measured frame-ns (post-pace).
+//     - `clock` has `last_present_ns` updated to the post-pace reading
+//       and `frame_count` advanced by 1.
+//
+// § STAGE-0 BEHAVIOR
+//   Strategy : sleep up to (deadline − 1ms) via `time_deadline_until` ;
+//   then busy-loop on `time_monotonic_ns` until the deadline passes
+//   (jitter-reduction · the OS scheduler quantum is too coarse to hit a
+//   144 Hz deadline reliably with sleep alone).
+//
+//   Bounded by `spin_wait_max_iter()` to prevent runaway on misbehaving
+//   QPC (defensive ; should never trigger in normal operation).
+//
+//   When `target_frame_ns == 0` (pacing disabled) the deadline path is
+//   skipped and the function returns the elapsed-since-begin reading
+//   directly. When `last_present_ns == 0` (no prior begin) the function
+//   returns 0 as the observed-ns (defensive ; caller should call begin
+//   first).
+fn frame_clock_end_and_pace(cap_time : i64, c : FrameClock) -> FrameTickReport {
+    if c.last_present_ns == 0 {
+        // Defensive : caller skipped `begin`. Return zero-observation
+        // and leave the clock unchanged. Caller should call begin first.
+        FrameTickReport {
+            observed_frame_ns : 0,
+            clock             : c,
+        }
+    } else {
+        if c.target_frame_ns == 0 {
+            // Pacing disabled : no sleep, no spin. Return the elapsed-
+            // since-begin reading + advance frame-count.
+            let now_ns = time_monotonic_ns(cap_time) ;
+            let elapsed = if now_ns >= c.last_present_ns {
+                now_ns - c.last_present_ns
+            } else {
+                0
+            } ;
+            FrameTickReport {
+                observed_frame_ns : elapsed,
+                clock : FrameClock {
+                    target_hz             : c.target_hz,
+                    target_frame_ns       : c.target_frame_ns,
+                    last_present_ns       : now_ns,
+                    frame_count           : c.frame_count + 1,
+                    ema_frame_ns          : c.ema_frame_ns,
+                    dyn_res_q016          : c.dyn_res_q016,
+                    dyn_res_target_q016   : c.dyn_res_target_q016,
+                },
+            }
+        } else {
+            // Pacing enabled : compute deadline = last_present + budget.
+            let deadline_ns = c.last_present_ns + c.target_frame_ns ;
+            // Step 1 : coarse-sleep to (deadline − 1ms). The deadline
+            // helper short-circuits if we are already past the early-
+            // deadline (i.e. the frame work overran).
+            let early_deadline_ns = if deadline_ns > spin_wait_threshold_ns() {
+                deadline_ns - spin_wait_threshold_ns()
+            } else {
+                deadline_ns
+            } ;
+            let _r = time_deadline_until(cap_time, early_deadline_ns) ;
+            // Step 2 : busy-loop until deadline. Bounded by max-iter.
+            let final_ns = frame_clock_spin_until(cap_time, deadline_ns) ;
+            let elapsed = if final_ns >= c.last_present_ns {
+                final_ns - c.last_present_ns
+            } else {
+                0
+            } ;
+            FrameTickReport {
+                observed_frame_ns : elapsed,
+                clock : FrameClock {
+                    target_hz             : c.target_hz,
+                    target_frame_ns       : c.target_frame_ns,
+                    last_present_ns       : final_ns,
+                    frame_count           : c.frame_count + 1,
+                    ema_frame_ns          : c.ema_frame_ns,
+                    dyn_res_q016          : c.dyn_res_q016,
+                    dyn_res_target_q016   : c.dyn_res_target_q016,
+                },
+            }
+        }
+    }
+}
+
+// Helper : busy-loop until `deadline_ns` passes. Bounded by max-iter.
+//
+// § STAGE-0 BEHAVIOR
+//   Reads `time_monotonic_ns(cap_time)` in a loop ; exits when the
+//   reading reaches/exceeds `deadline_ns` OR `iter >= spin_wait_max_iter`
+//   (defensive bound). Returns the final monotonic-ns reading.
+//
+//   N! stage-0 the loop is expressed as a manual recursion-bounded
+//   iteration via a worker fn. Once `while`/`loop` are recognized in
+//   the parser at all stmt-positions the body migrates to a tight loop ;
+//   the bound semantics are unchanged.
+fn frame_clock_spin_until(cap_time : i64, deadline_ns : u64) -> u64 {
+    frame_clock_spin_step(cap_time, deadline_ns, 0)
+}
+
+// Tail-recursive worker for the spin-wait loop. `iter` is the current
+// iteration count ; recursion exits when `now >= deadline` or
+// `iter >= spin_wait_max_iter()`.
+//
+// N! stage-0 tail-recursion is a documented stdlib pattern (mirrors
+// stdlib/iter.cssl `iter_count_step`). Once `loop`/`while` lower at all
+// stmt positions the body migrates to a flat loop.
+fn frame_clock_spin_step(cap_time : i64, deadline_ns : u64, iter : u32) -> u64 {
+    let now_ns = time_monotonic_ns(cap_time) ;
+    if now_ns >= deadline_ns {
+        now_ns
+    } else {
+        if iter >= spin_wait_max_iter() {
+            // Defensive bail : misbehaving QPC. Return current reading.
+            now_ns
+        } else {
+            frame_clock_spin_step(cap_time, deadline_ns, iter + 1)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Q0.16 dynamic-resolution EMA + lerp surface.
+//
+//   Pure arithmetic ; no FFI ; no cap. Decoupled from the timing surface
+//   so test code can drive the EMA with synthetic samples.
+// ───────────────────────────────────────────────────────────────────────
+
+// `frame_clock_tick_dyn_res(c, observed_frame_ns)` — feed one frame-time
+// observation into the dyn-res EMA + advance the lerp toward target.
+//
+// § PARAMETERS
+//   - `c`                 : the current FrameClock state.
+//   - `observed_frame_ns` : the frame-time observation (post-pace).
+//
+// § RETURN
+//   The updated FrameClock with `ema_frame_ns`, `dyn_res_target_q016`,
+//   and `dyn_res_q016` advanced. Read `c.dyn_res_q016` after the call
+//   to obtain the new render-scale.
+//
+// § ALGORITHM (ports `dynamic_resolution.rs::observe_frame`)
+//   1. Update EMA :
+//        - if ema == 0 (first sample) : ema = sample (seed)
+//        - else : delta = (sample − ema) >> EMA_SHIFT ; ema = ema + delta
+//   2. Recompute target :
+//        - if ema > budget : target = budget * Q16_ONE / ema
+//          (clamped to [floor, cap]) — pixel-count scales linearly with
+//          the over-shoot.
+//        - if ema * 100 < budget * 80 (well-under hysteresis) : target = cap
+//        - otherwise (in dead-band) : target unchanged.
+//   3. Lerp current toward target by LERP_STEP_Q016 (saturating).
+//   4. Final clamp to [floor, cap] (belt-and-braces).
+fn frame_clock_tick_dyn_res(c : FrameClock, observed_frame_ns : u64) -> FrameClock {
+    // Step 1 : EMA update.
+    let next_ema = if c.ema_frame_ns == 0 {
+        observed_frame_ns
+    } else {
+        ema_step(c.ema_frame_ns, observed_frame_ns)
+    } ;
+    // Step 2 : recompute target from EMA vs budget.
+    let budget = if c.target_frame_ns == 0 {
+        // Defensive : pacing disabled ; treat target_frame_ns_144hz as
+        // the implicit budget (otherwise the ratio is meaningless).
+        target_frame_ns_144hz()
+    } else {
+        c.target_frame_ns
+    } ;
+    let next_target = recompute_dyn_res_target(
+        c.dyn_res_target_q016,
+        next_ema,
+        budget,
+    ) ;
+    // Step 3 : lerp current toward target.
+    let next_current = lerp_q016(c.dyn_res_q016, next_target) ;
+    // Step 4 : final clamp.
+    let clamped = clamp_q016(next_current) ;
+    FrameClock {
+        target_hz             : c.target_hz,
+        target_frame_ns       : c.target_frame_ns,
+        last_present_ns       : c.last_present_ns,
+        frame_count           : c.frame_count,
+        ema_frame_ns          : next_ema,
+        dyn_res_q016          : clamped,
+        dyn_res_target_q016   : next_target,
+    }
+}
+
+// EMA step : `ema = ema + (sample - ema) >> EMA_SHIFT` with safe-sub.
+//
+// § STAGE-0 BEHAVIOR
+//   Implemented in u64 with branchless absolute-delta to avoid signed-
+//   integer overflow on extreme samples. The Rust reference uses i128
+//   for delta computation ; here we partition into the two cases (sample
+//   ≥ ema) and (sample < ema) and apply the shift to the unsigned delta,
+//   then add or subtract.
+fn ema_step(prev_ema : u64, sample : u64) -> u64 {
+    if sample >= prev_ema {
+        let delta = (sample - prev_ema) >> ema_shift() ;
+        prev_ema + delta
+    } else {
+        let delta = (prev_ema - sample) >> ema_shift() ;
+        if delta >= prev_ema {
+            0
+        } else {
+            prev_ema - delta
+        }
+    }
+}
+
+// Recompute the dyn-res target from the EMA-frame-ns vs budget-ns.
+//
+// § BRANCHES
+//   - ema > budget          : ratio_q16 = budget * Q16_ONE / ema (clamp)
+//   - ema * 100 < budget * 80 : drift toward cap (well-under hysteresis)
+//   - else (dead-band)      : target unchanged
+fn recompute_dyn_res_target(prev_target : u32, ema : u64, budget : u64) -> u32 {
+    if ema > budget {
+        // Over budget : ratio = budget / ema in Q0.16. Computed via
+        // u64 throughout (budget * Q16_ONE fits in u64 for any ema > 0
+        // when budget < 2^48 — frame budgets are in the low ms range).
+        let ratio_q16 = (budget * (dyn_res_q016_one() as u64)) / ema ;
+        clamp_q016(ratio_q16 as u32)
+    } else {
+        // Hysteresis : ema * 100 < budget * 80  ⇔  well-under (drift up).
+        if (ema * hysteresis_up_den()) < (budget * hysteresis_up_num()) {
+            dyn_res_cap_q016()
+        } else {
+            // Dead-band : no change.
+            prev_target
+        }
+    }
+}
+
+// Lerp current toward target by `dyn_res_lerp_step_q016()` (saturating).
+//
+// § STAGE-0 BEHAVIOR
+//   - current < target : add step ; cap at target.
+//   - current > target : sub step ; floor at target.
+//   - current == target : no change.
+fn lerp_q016(current : u32, target : u32) -> u32 {
+    if current < target {
+        let next = saturating_add_u32(current, dyn_res_lerp_step_q016()) ;
+        if next > target {
+            target
+        } else {
+            next
+        }
+    } else {
+        if current > target {
+            let step = dyn_res_lerp_step_q016() ;
+            let next = if current >= step {
+                current - step
+            } else {
+                0
+            } ;
+            if next < target {
+                target
+            } else {
+                next
+            }
+        } else {
+            current
+        }
+    }
+}
+
+// Saturating-add for u32 : returns u32::MAX on overflow.
+fn saturating_add_u32(a : u32, b : u32) -> u32 {
+    let max_u32 : u32 = 4294967295 ;
+    if a > max_u32 - b {
+        max_u32
+    } else {
+        a + b
+    }
+}
+
+// Clamp a Q0.16 value to [floor, cap].
+fn clamp_q016(v : u32) -> u32 {
+    if v < dyn_res_floor_q016() {
+        dyn_res_floor_q016()
+    } else {
+        if v > dyn_res_cap_q016() {
+            dyn_res_cap_q016()
+        } else {
+            v
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Render-dimension helpers — pure Q0.16 multiplication + 8-multiple snap.
+//
+//   Mirrors `dynamic_resolution.rs::render_dims` : (native * scale +
+//   half) / Q16_ONE rounded ; both axes snapped to a multiple of 8 to
+//   match the substrate-resonance compute-shader 8×8 workgroup dispatch
+//   (avoids edge-pixel underflow at the boundary).
+// ───────────────────────────────────────────────────────────────────────
+
+// `frame_clock_render_dim(c, native_dim)` — apply the current dyn-res
+// scale to a single axis of the native panel size.
+//
+// § PARAMETERS
+//   - `c`          : the current FrameClock state.
+//   - `native_dim` : the native pixel dimension (width or height).
+//
+// § RETURN
+//   The scaled dimension, snapped down to a multiple of 8 (floor 8).
+//   When `dyn_res_q016 == cap` returns `native_dim` directly (no
+//   scaling, no snap).
+fn frame_clock_render_dim(c : FrameClock, native_dim : u32) -> u32 {
+    if c.dyn_res_q016 == dyn_res_cap_q016() {
+        native_dim
+    } else {
+        let s = c.dyn_res_q016 as u64 ;
+        let n = native_dim as u64 ;
+        let one = dyn_res_q016_one() as u64 ;
+        let half = one / 2 ;
+        // Rounded scale-mult.
+        let scaled = (n * s + half) / one ;
+        // Snap to 8-pixel-multiple ; floor 8.
+        let snapped = (scaled / 8) ;
+        let final_dim = if snapped < 1 {
+            8
+        } else {
+            (snapped * 8) as u32
+        } ;
+        final_dim
+    }
+}
+
+// `frame_clock_render_width(c, native_w)` — convenience for width axis.
+fn frame_clock_render_width(c : FrameClock, native_w : u32) -> u32 {
+    frame_clock_render_dim(c, native_w)
+}
+
+// `frame_clock_render_height(c, native_h)` — convenience for height axis.
+fn frame_clock_render_height(c : FrameClock, native_h : u32) -> u32 {
+    frame_clock_render_dim(c, native_h)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DEFERRED  (carried-forward to a future spec-amendment / parser-slice)
+//
+//   1. effect-block + in-fn-sig effect-row syntax (mirrors time.cssl §
+//      DEFERRED 1) — once landed, the documentary effect-rows above
+//      become structural Time / Deadline annotations on the public surface.
+//   2. Mut-borrow lowering : `&mut FrameClock` migration drops the
+//      value-out FrameClock-return convention. The signatures shrink to
+//      `fn frame_clock_begin(cap : i64, c : &mut FrameClock)` etc.
+//   3. Realtime<Crit> composition with `frame_clock_end_and_pace` for
+//      the audio-callback frame-pacing pattern (per
+//      examples/audio_callback.cssl). Stage-0 the composition is
+//      documented but not type-checked.
+//   4. KAN-bias hooks for per-display + per-scene learning of the
+//      dyn-res lerp curve (T11-W18+ deferred · per Apocky-spec).
+//   5. Loop-form migration (manual tail-recursion → flat `while`/`loop`)
+//      once the parser recognizes those at all stmt-positions.
+//   6. f32 / fixed-point helper migration : the Rust reference exposes
+//      `scale_f32()` for telemetry/HUD ; CSSL parser does not yet
+//      type-check f32 ↔ u32 conversions in const positions, deferred.
+// ───────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+//
+//   These are not compiler tests (those live in cssl-mir + cssl-examples) ;
+//   they document the intended call-shapes for stage-0 readers + provide
+//   the inline-test surface required by the slice spec.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : construct a 144 Hz clock + read the cached budget.
+// Demonstrates the canonical construction shape.
+fn _example_construct_144hz() -> u64 {
+    let c = frame_clock_new_144hz() ;
+    c.target_frame_ns
+}
+
+// Worked example : single-frame begin → end-and-pace roundtrip.
+// Demonstrates the canonical per-frame call-shape.
+fn _example_single_frame_pace(cap_time : i64) -> u64 {
+    let c0 = frame_clock_new_144hz() ;
+    let c1 = frame_clock_begin(cap_time, c0) ;
+    // ... render frame work elided ...
+    let report = frame_clock_end_and_pace(cap_time, c1) ;
+    report.observed_frame_ns
+}
+
+// Worked example : drive the dyn-res EMA with a synthetic over-budget
+// observation. Demonstrates that an over-budget observation drives the
+// target toward the floor.
+fn _example_dyn_res_over_budget() -> u32 {
+    let c0 = frame_clock_new_144hz() ;
+    // Synthetic 13_888_888 ns ≈ 2× budget ⇒ target should lerp toward floor.
+    let c1 = frame_clock_tick_dyn_res(c0, 13_888_888) ;
+    c1.dyn_res_target_q016
+}
+
+// Worked example : drive the dyn-res EMA with a synthetic well-under
+// observation after a recovery pre-warm. Demonstrates the well-under
+// hysteresis path drifting toward cap.
+fn _example_dyn_res_well_under() -> u32 {
+    let c0 = frame_clock_new_144hz() ;
+    // First pre-warm the EMA with a low frame-time to trip the
+    // well-under hysteresis branch on the second tick.
+    let c1 = frame_clock_tick_dyn_res(c0, 1_000_000) ;
+    let c2 = frame_clock_tick_dyn_res(c1, 1_000_000) ;
+    c2.dyn_res_target_q016
+}
+
+// Worked example : 1440p native scaled by current dyn-res Q0.16.
+// Demonstrates the render-dim helper applied at boot (1.0× ⇒ pass-through).
+fn _example_render_dim_1440p_native() -> u32 {
+    let c = frame_clock_new_144hz() ;
+    frame_clock_render_width(c, 2560)
+}
+
+// Worked example : 1440p native at half-scale (manual override) ⇒
+// snapped-down 1280 (with 8-pixel-multiple rule).
+fn _example_render_dim_half_scale() -> u32 {
+    let c0 = frame_clock_new_144hz() ;
+    let c1 = FrameClock {
+        target_hz             : c0.target_hz,
+        target_frame_ns       : c0.target_frame_ns,
+        last_present_ns       : c0.last_present_ns,
+        frame_count           : c0.frame_count,
+        ema_frame_ns          : c0.ema_frame_ns,
+        dyn_res_q016          : dyn_res_floor_q016(),
+        dyn_res_target_q016   : dyn_res_floor_q016(),
+    } ;
+    frame_clock_render_width(c1, 2560)
+}
