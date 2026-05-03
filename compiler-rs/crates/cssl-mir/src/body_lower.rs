@@ -2854,6 +2854,9 @@ fn lower_call(
     if let Some(result) = try_lower_input_call(ctx, callee, args, span) {
         return Some(result);
     }
+    if let Some(result) = try_lower_gpu_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -5359,6 +5362,156 @@ fn emit_input_op(
         .with_attribute("op", verb)
         .with_attribute("caps_required", caps_required)
         .with_attribute("ifc_label", "Sensitive<Behavioral>")
+        .with_attribute("source_loc", format!("{span:?}"));
+    for &id in operands {
+        op = op.with_operand(id);
+    }
+    ctx.ops.push(op);
+    (result_id, result_ty)
+}
+
+/// Dispatch a `gpu::*` callee to the matching emit-gpu helper.
+///
+/// Returns `Some(_)` if `callee` is a 2-segment path of the form
+/// `gpu::<verb>` ; verb+arity per `cgen_gpu::GPU_*_OPERAND_COUNT` +
+/// `GpuFfiSymbolKind` enum.
+fn try_lower_gpu_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 || ctx.interner.resolve(segments[0]) != "gpu" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    // GPU result-types per cgen_gpu signatures :
+    //   device_create        → u64 device-handle (I64)
+    //   device_destroy       → i32 retcode       (I32)
+    //   swapchain_create     → u64 sc-handle     (I64)
+    //   swapchain_acquire    → u32 image_idx     (I32) [0xFFFF_FFFF = timeout]
+    //   swapchain_present    → i32 retcode       (I32)
+    //   pipeline_compile     → u64 pipeline-handle (I64)
+    //   cmd_buf_record_stub  → i64 stub-handle   (I64)
+    //   cmd_buf_submit_stub  → i32 retcode       (I32)
+    let i64ty = MirType::Int(IntWidth::I64);
+    let i32ty = MirType::Int(IntWidth::I32);
+    let collect_ids = |args: &[HirCallArg], ctx: &mut BodyLowerCtx<'_>| -> Option<Vec<ValueId>> {
+        let mut ids = Vec::with_capacity(args.len());
+        for a in args {
+            let (id, _) = lower_call_arg(ctx, a)?;
+            ids.push(id);
+        }
+        Some(ids)
+    };
+    match (op.as_str(), args.len()) {
+        ("device_create", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.device_create",
+                "device_create",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        ("device_destroy", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.device_destroy",
+                "device_destroy",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("swapchain_create", 3) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.swapchain_create",
+                "swapchain_create",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        ("swapchain_acquire", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.swapchain_acquire",
+                "swapchain_acquire",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("swapchain_present", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.swapchain_present",
+                "swapchain_present",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("pipeline_compile", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.pipeline_compile",
+                "pipeline_compile",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        ("cmd_buf_record_stub", 0) => Some(emit_gpu_op(
+            ctx,
+            "cssl.gpu.cmd_buf_record_stub",
+            "cmd_buf_record_stub",
+            &[],
+            i64ty,
+            span,
+        )),
+        ("cmd_buf_submit_stub", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_gpu_op(
+                ctx,
+                "cssl.gpu.cmd_buf_submit_stub",
+                "cmd_buf_submit_stub",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Internal helper : emit a `cssl.gpu.<verb>` op with canonical attribute set.
+fn emit_gpu_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op_name: &str,
+    verb: &str,
+    operands: &[ValueId],
+    result_ty: MirType,
+    span: Span,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    let mut op = MirOp::std(op_name)
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("gpu_effect", "true")
+        .with_attribute("family", "gpu")
+        .with_attribute("op", verb)
         .with_attribute("source_loc", format!("{span:?}"));
     for &id in operands {
         op = op.with_operand(id);
@@ -7990,6 +8143,114 @@ mod tests {
             "fn f(h : i64, o : i64, m : i64) -> i32 { foo::keyboard_state(h, o, m) }",
         );
         assert!(find_op(&f, "cssl.input.keyboard.state").is_none());
+    }
+
+    #[test]
+    fn lower_gpu_device_create_emits_cssl_gpu_device_create() {
+        let (f, _) = lower_one(
+            "fn f(a : i64, b : i64) -> i64 { gpu::device_create(a, b) }",
+        );
+        let op = find_op(&f, "cssl.gpu.device_create")
+            .expect("gpu::device_create should lower to cssl.gpu.device_create");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "gpu_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("gpu"));
+        assert_eq!(attr(op, "op"), Some("device_create"));
+    }
+
+    #[test]
+    fn lower_gpu_device_destroy_emits_cssl_gpu_device_destroy() {
+        let (f, _) = lower_one("fn f(d : i64) -> i32 { gpu::device_destroy(d) }");
+        let op = find_op(&f, "cssl.gpu.device_destroy")
+            .expect("gpu::device_destroy should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("device_destroy"));
+    }
+
+    #[test]
+    fn lower_gpu_swapchain_create_emits_cssl_gpu_swapchain_create() {
+        let (f, _) = lower_one(
+            "fn f(d : i64, w : i64, fmt : i64) -> i64 { gpu::swapchain_create(d, w, fmt) }",
+        );
+        let op = find_op(&f, "cssl.gpu.swapchain_create")
+            .expect("gpu::swapchain_create should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "op"), Some("swapchain_create"));
+    }
+
+    #[test]
+    fn lower_gpu_swapchain_acquire_emits_cssl_gpu_swapchain_acquire() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, t : i64) -> i32 { gpu::swapchain_acquire(s, t) }",
+        );
+        let op = find_op(&f, "cssl.gpu.swapchain_acquire")
+            .expect("gpu::swapchain_acquire should lower");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("swapchain_acquire"));
+    }
+
+    #[test]
+    fn lower_gpu_swapchain_present_emits_cssl_gpu_swapchain_present() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, i : i64) -> i32 { gpu::swapchain_present(s, i) }",
+        );
+        let op = find_op(&f, "cssl.gpu.swapchain_present")
+            .expect("gpu::swapchain_present should lower");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(attr(op, "op"), Some("swapchain_present"));
+    }
+
+    #[test]
+    fn lower_gpu_pipeline_compile_emits_cssl_gpu_pipeline_compile() {
+        let (f, _) = lower_one(
+            "fn f(d : i64, p : i64, l : i64, k : i64) -> i64 { \
+                gpu::pipeline_compile(d, p, l, k) \
+            }",
+        );
+        let op = find_op(&f, "cssl.gpu.pipeline_compile")
+            .expect("gpu::pipeline_compile should lower");
+        assert_eq!(op.operands.len(), 4);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "op"), Some("pipeline_compile"));
+    }
+
+    #[test]
+    fn lower_gpu_cmd_buf_record_stub_emits_cssl_gpu_cmd_buf_record_stub() {
+        let (f, _) = lower_one("fn f() -> i64 { gpu::cmd_buf_record_stub() }");
+        let op = find_op(&f, "cssl.gpu.cmd_buf_record_stub")
+            .expect("gpu::cmd_buf_record_stub should lower");
+        assert_eq!(op.operands.len(), 0);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "op"), Some("cmd_buf_record_stub"));
+    }
+
+    #[test]
+    fn lower_gpu_cmd_buf_submit_stub_emits_cssl_gpu_cmd_buf_submit_stub() {
+        let (f, _) = lower_one("fn f(c : i64) -> i32 { gpu::cmd_buf_submit_stub(c) }");
+        let op = find_op(&f, "cssl.gpu.cmd_buf_submit_stub")
+            .expect("gpu::cmd_buf_submit_stub should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("cmd_buf_submit_stub"));
+    }
+
+    #[test]
+    fn lower_gpu_wrong_arity_falls_through() {
+        // gpu::device_create() with 0 args doesn't match (expects 2).
+        let (f, _) = lower_one("fn f() -> i64 { gpu::device_create() }");
+        assert!(find_op(&f, "cssl.gpu.device_create").is_none());
+    }
+
+    #[test]
+    fn lower_non_gpu_path_is_not_claimed() {
+        let (f, _) = lower_one(
+            "fn f(a : i64, b : i64) -> i64 { foo::device_create(a, b) }",
+        );
+        assert!(find_op(&f, "cssl.gpu.device_create").is_none());
     }
 
     // ───────────────────────────────────────────────────────────────────
