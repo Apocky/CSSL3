@@ -3371,7 +3371,16 @@ fn obj_memref_effective_addr(
                 fn_name: fn_name.to_string(),
                 value_id: off_id.0,
             })?;
-        Ok(builder.ins().iadd(ptr, off))
+        // § T11-W19-α-CSSLC-FIX20 — int-arg-coercion for ptr+off iadd.
+        //   FIX5's binary_int.coerce_int_pair handles arith.addi/icmp/etc.
+        //   but obj_memref_effective_addr was emitting raw `iadd(ptr, off)`
+        //   without width-coercion. ptr is host-ptr-width (i64 on x64) ;
+        //   off can land here as i32 (an iconst literal MIR int that
+        //   defaulted to I32). Cranelift's verifier rejects mismatched
+        //   iadd-args. Mirror FIX5's symmetric widen via sextend so the
+        //   `bytes[6]` style index on a `&[u8]` param compiles cleanly.
+        let (ptr_c, off_c) = coerce_int_pair(builder, ptr, off);
+        Ok(builder.ins().iadd(ptr_c, off_c))
     } else {
         Ok(ptr)
     }
