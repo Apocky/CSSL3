@@ -115,6 +115,10 @@ pub trait DisplayProfileDeep {
     fn peak_nits(self) -> f32;
     /// True iff this profile uses Rec.2020 + PQ encoding in the shader.
     fn is_hdr(self) -> bool;
+    /// § T11-W18-KAN-MULTIBAND : map DisplayProfile → profile_id (0..=4).
+    /// Stable encoding · matches `cssl_host_substrate_intelligence::KAN_BIAS_MULTIBAND`
+    /// band-axis ordering (Amoled=0 · Oled=1 · IpsLcd=2 · VaLcd=3 · HdrExt=4).
+    fn profile_id(self) -> u8;
 }
 
 impl DisplayProfileDeep for DisplayProfile {
@@ -150,6 +154,16 @@ impl DisplayProfileDeep for DisplayProfile {
 
     fn is_hdr(self) -> bool {
         matches!(self, Self::HdrExt)
+    }
+
+    fn profile_id(self) -> u8 {
+        match self {
+            Self::Amoled => 0,
+            Self::Oled => 1,
+            Self::IpsLcd => 2,
+            Self::VaLcd => 3,
+            Self::HdrExt => 4,
+        }
     }
 }
 

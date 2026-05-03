@@ -256,6 +256,14 @@ pub struct SubstrateRenderState {
     /// `tick_gpu` so we can feed (now - prev) into the scaler EMA each
     /// subsequent frame. `None` until the first tick.
     pub last_tick_instant: Option<std::time::Instant>,
+
+    /// § T11-W18-KAN-MULTIBAND-WIRE · active DisplayProfile mapped to
+    /// profile_id (0..=4 · Amoled/Oled/IpsLcd/VaLcd/HdrExt). Captured at
+    /// construction from `LOA_DISPLAY_PROFILE` env-override (or default 2
+    /// = IpsLcd · neutral fallback) and used to route per-frame
+    /// `observe_with_profile` calls to the correct KAN-bias band so each
+    /// display-class accumulates its own learning history independently.
+    pub profile_id: u8,
 }
 
 impl Default for SubstrateRenderState {
@@ -332,6 +340,7 @@ impl SubstrateRenderState {
             native_gpu_w: GPU_SUBSTRATE_W,
             native_gpu_h: GPU_SUBSTRATE_H,
             last_tick_instant: None,
+            profile_id: profile_id_from_env(),
         }
     }
 
@@ -407,7 +416,7 @@ impl SubstrateRenderState {
         // Per-second telemetry (avoid per-frame log spam at 120 Hz).
         // § T11-W18-LIVE-LEARNING · feed frame-telemetry into KAN-bias.
         //   Per-frame · cheap (atomic-store · single BLAKE3 of 32 bytes).
-        learn_from_frame_metrics(&out);
+        learn_from_frame_metrics(&out, self.profile_id);
         if self.frame_count % 120 == 0 {
             log_event(
                 "DEBUG",
@@ -1095,11 +1104,40 @@ pub fn kan_bias_persist_path() -> std::path::PathBuf {
     std::path::PathBuf::from(home).join(".loa").join("kan_bias.bin")
 }
 
+/// § T11-W18-KAN-MULTIBAND-WIRE · Read the active DisplayProfile from the
+/// `LOA_DISPLAY_PROFILE` env-var (lower-case match) and map to profile_id
+/// (0..=4). Default 2 (IpsLcd · neutral fallback) when env-var unset or
+/// unrecognized. Sovereignty-respecting fast-path : env-var deterministic
+/// override + safe-default + zero-allocation parse.
+fn profile_id_from_env() -> u8 {
+    match std::env::var("LOA_DISPLAY_PROFILE")
+        .ok()
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("amoled") => 0,
+        Some("oled") => 1,
+        Some("ips_lcd") | Some("ips") => 2,
+        Some("va_lcd") | Some("va") => 3,
+        Some("hdr_ext") | Some("hdr") => 4,
+        _ => 2, // neutral default · IpsLcd
+    }
+}
+
 /// Feed one frame's telemetry into the substrate-intelligence KAN-bias.
 /// Cheap · per-frame call from substrate-render tick. The 8-byte payload
 /// includes the resonance-fingerprint + pixels-lit + frame-number so each
 /// frame is a unique observation that drifts the KAN-state.
-pub fn learn_from_frame_metrics(out: &cssl_host_digital_intelligence_render::FrameOutput) {
+///
+/// § T11-W18-KAN-MULTIBAND-WIRE : routes observe to the per-DisplayProfile
+/// band so AMOLED/OLED panels accumulate their own bias-history (faster
+/// drift α=1/128) separately from IPS/VA/HDR (α=1/256). The profile_id
+/// arg comes from the active DisplayProfile · default IpsLcd (id=2) for
+/// neutral fallback if profile is unknown.
+pub fn learn_from_frame_metrics(
+    out: &cssl_host_digital_intelligence_render::FrameOutput,
+    profile_id: u8,
+) {
     let payload: [u8; 16] = {
         let mut b = [0u8; 16];
         b[0..4].copy_from_slice(&out.resonance.fingerprint.to_le_bytes());
@@ -1107,12 +1145,13 @@ pub fn learn_from_frame_metrics(out: &cssl_host_digital_intelligence_render::Fra
         b[8..12].copy_from_slice(&out.elapsed_micros.to_le_bytes());
         b[12] = out.fidelity_tier;
         b[13] = out.blend_used as u8;
+        // T11-W18-KAN-MULTIBAND : pack frame_n suffix into the 16-byte digest
+        //   so unique frames produce unique observations across bands.
+        b[14] = (out.frame_n & 0xff) as u8;
+        b[15] = ((out.frame_n >> 8) & 0xff) as u8;
         b
     };
-    cssl_host_substrate_intelligence::observe(
-        cssl_host_substrate_intelligence::Role::Coder, // self-coder feedback
-        0,                                              // obs_kind 0 = render-frame
-        out.frame_n,
-        &payload,
-    );
+    // § T11-W18-KAN-MULTIBAND-WIRE : route to per-DisplayProfile band.
+    //   Bounds : profile_id clamped to 0..=4 inside `observe_with_profile`.
+    cssl_host_substrate_intelligence::observe_with_profile(&payload, profile_id);
 }
