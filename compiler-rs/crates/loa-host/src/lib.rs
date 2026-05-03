@@ -192,6 +192,13 @@ pub mod substrate_render;
 //   · honours LOA_DYN_RES=0 to disable. Wired into substrate_render::tick_gpu.
 pub mod dynamic_resolution;
 
+// § T11-W18-LOA-CONTENT-WIRE — DMGM-specialist council → procgen-pipeline →
+//   substrate_render Crystal-replacement bridge. Default-OFF env-knob
+//   (LOA_CONTENT_PIPELINE=0). When env=1, substrate_render replaces the
+//   shell-seed Crystal-128 with procgen-derived crystals (cap 128) so
+//   LoA.exe shows actual game-content instead of seed-data circles.
+pub mod content_pipeline;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § T11-W5c-LOA-HOST-WIRE — thin wrapper modules over the wave-3γ + W4 + W5a
 // + W5b cssl-host-* crates. Each wired_* module re-exports the canonical
