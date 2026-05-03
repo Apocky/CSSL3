@@ -1,0 +1,141 @@
+{
+  "_comment": "LoA content-manifest · pre-authored sources for substrate-bootstrap",
+  "_apocky_directive": "feed in pre-generated or pre-authored assets · NOT blocky-voxel · stay-true-to-LoA-vision",
+  "_aesthetic_canon": "Hollow-Knight × Hades × Transistor × Renaissance-manuscript · NEVER Minecraft",
+  "_format_version": "0x01",
+  "_attestation": "no-harm · no-surveillance · CC-licensed-sources-only · explicit-opt-in-required",
+
+  "static_cssl_scenes": {
+    "_comment": "Pre-authored CSSL scene-templates (require csslc-multi-module-compile to link)",
+    "_status": "AUTHORED · awaiting-csslc-multi-module-feature",
+    "files": [
+      "Labyrinth of Apocalypse/scenes/brassmarrow.csl",
+      "Labyrinth of Apocalypse/scenes/chat_panel.csl",
+      "Labyrinth of Apocalypse/scenes/city_central_hub.csl",
+      "Labyrinth of Apocalypse/scenes/dungeon_template.csl",
+      "Labyrinth of Apocalypse/scenes/greenwillow_fair.csl",
+      "Labyrinth of Apocalypse/scenes/old_keyport.csl",
+      "Labyrinth of Apocalypse/scenes/player_home.csl",
+      "Labyrinth of Apocalypse/scenes/sanctum_of_echoes.csl"
+    ]
+  },
+
+  "static_cssl_systems": {
+    "_comment": "Pre-authored CSSL game-systems (each declares extern-C FFI to host wired_*)",
+    "_status": "AUTHORED · awaiting-csslc-multi-module-compile",
+    "_examples": [
+      "Labyrinth of Apocalypse/systems/akashic.csl",
+      "Labyrinth of Apocalypse/systems/alchemy.csl",
+      "Labyrinth of Apocalypse/systems/battle_pass.csl",
+      "Labyrinth of Apocalypse/systems/coherence_engine.csl",
+      "Labyrinth of Apocalypse/systems/combat.csl",
+      "Labyrinth of Apocalypse/systems/cocreative_loop.csl",
+      "Labyrinth of Apocalypse/systems/content_moderation.csl",
+      "Labyrinth of Apocalypse/systems/crafting.csl"
+    ]
+  },
+
+  "cc_licensed_3d_assets": {
+    "_comment": "CC-licensed sources for online-fetch via cssl-host-procgen-pipeline asset_fetch",
+    "_status": "MANIFEST-ONLY · default-OFF · LOA_PROCGEN_FETCH_HOSTS allowlist required",
+    "khronos_gltf_sample_models": {
+      "license": "CC0 / CC-BY · per-model README in repo",
+      "base_uri": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/",
+      "_note": "input format only · gltf-meshes are CONVERTED to SDF/field-data ; never blitted",
+      "samples": [
+        {"id": "DamagedHelmet", "uri": "DamagedHelmet/glTF-Binary/DamagedHelmet.glb", "kind": "GltfBinary"},
+        {"id": "WaterBottle", "uri": "WaterBottle/glTF-Binary/WaterBottle.glb", "kind": "GltfBinary"},
+        {"id": "MetalRoughSpheres", "uri": "MetalRoughSpheres/glTF-Binary/MetalRoughSpheres.glb", "kind": "GltfBinary"},
+        {"id": "BoxAnimated", "uri": "BoxAnimated/glTF-Binary/BoxAnimated.glb", "kind": "GltfBinary"},
+        {"id": "Lantern", "uri": "Lantern/glTF-Binary/Lantern.glb", "kind": "GltfBinary"}
+      ]
+    },
+    "polyhaven_hdri": {
+      "license": "CC0",
+      "base_uri": "https://dl.polyhaven.org/file/ph-assets/HDRIs/",
+      "_note": "URI-form-only · used as illuminant-data for spectral-projection · never-as-skybox-mesh",
+      "samples": [
+        {"id": "kloofendal_43d_clear_puresky_4k", "uri": "exr/4k/kloofendal_43d_clear_puresky_4k.exr"},
+        {"id": "studio_small_03_4k", "uri": "exr/4k/studio_small_03_4k.exr"}
+      ]
+    },
+    "opengameart_cc0_textures": {
+      "license": "CC0",
+      "_status": "PLACEHOLDER · agent-asset-loader to populate",
+      "samples": []
+    },
+    "freesound_cc_audio": {
+      "license": "CC0 / CC-BY",
+      "_status": "PLACEHOLDER · F3-slice future-wave",
+      "samples": []
+    }
+  },
+
+  "generation_algorithms": {
+    "_comment": "Procgen sources implemented in cssl-host-procgen-pipeline + cssl-host-dm-procgen-bridge",
+    "fibonacci_disc": {
+      "fn": "cssl_host_procgen_pipeline::generate",
+      "_note": "smooth radial · NOT grid-snap · NOT block-aligned"
+    },
+    "halton_2d": {
+      "fn": "loa_host::substrate_render shell_world_pos",
+      "_note": "low-discrepancy quasi-random · used for crystal-128 angular spread"
+    },
+    "blake3_seeded_procgen": {
+      "fn": "cssl_host_procgen_pipeline::generate",
+      "_note": "deterministic · same-input-same-output · fingerprint-stable"
+    },
+    "splitmix64_cascade": {
+      "fn": "cssl_host_procgen_pipeline (pure-const sub-seed)",
+      "_note": "cheap · deterministic · used for variant-derivation"
+    },
+    "dm_gm_council_dispatch": {
+      "fn": "cssl_host_dm_procgen_bridge::run_council_and_generate",
+      "_note": "4 specialists vote on procgen-intent · role_council mediates · per-prompt-hash"
+    },
+    "kan_multiband_drift": {
+      "fn": "cssl_host_substrate_intelligence::observe_with_profile",
+      "_note": "5-band per-DisplayProfile drift · evolves substrate per-frame · LIVE-LEARNING"
+    }
+  },
+
+  "static_substrate_seeds": {
+    "_comment": "Default seed-data baked into LoA.exe at startup",
+    "crystal_128_concentric_shell": {
+      "count": 128,
+      "shells": {
+        "Inner": {"count": 16, "amp_mod": 1.5},
+        "Middle": {"count": 48, "amp_mod": 1.0},
+        "Outer": {"count": 64, "amp_mod": 0.6}
+      },
+      "distribution": "sqrt-radial Halton-2D",
+      "_visual_signature": "concentric multicolored rings (correct · is the substrate doing its job on its own seed)"
+    }
+  },
+
+  "loa_v10_specs_to_port": {
+    "_comment": "Source : C:/Users/Apocky/source/repos/LoA v10/specs/SUBSTRATE",
+    "_status": "PORT-IN-FLIGHT · agent-v10-spec-port",
+    "priority_files": [
+      "00_VISION/01_MASTER_SPEC.md",
+      "01_AXIOMS/00_TWELVE_AXIOMS.md",
+      "01_AXIOMS/01_WORLDLINE.md",
+      "01_AXIOMS/02_OBSERVATION_COLLAPSE.md",
+      "01_AXIOMS/03_SHEAF.md",
+      "04_WORLD/00_WORLD_LAYER.md",
+      "05_PHENOMENA/00_PHENOMENA_LAYER.md",
+      "06_AGENCY/00_AGENCY_LAYER.md",
+      "08_AESTHETIC/00_AESTHETIC_LAYER.md",
+      "10_IMPLEMENTATION/00_PHASE_PLAN.md"
+    ]
+  },
+
+  "env_var_gates": {
+    "LOA_CONTENT_PIPELINE": "0=off|1=replace-shell-seed-with-procgen-output (default 0)",
+    "LOA_ASSET_LOAD": "0=disable-all-fetch|1=enable-allowlisted (default 0)",
+    "LOA_PROCGEN_FETCH_HOSTS": "comma-separated allowlist (default empty=deny-all)",
+    "LOA_PROCGEN_FETCH_MAX_BYTES": "size-cap default 10000000 (10 MB)",
+    "LOA_PROCGEN_FETCH_OFFLINE": "1=block-all-network (default 0)",
+    "LOA_DISPLAY_PROFILE": "amoled|oled|ips_lcd|va_lcd|hdr_ext (default auto-detect)"
+  }
+}
