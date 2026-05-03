@@ -4604,22 +4604,36 @@ fn try_lower_char_from_u32(
 ///
 /// § EMITTED-SHAPE
 /// ```text
-///   %p     = <lower(path)>                          // !cssl.string
+///   %p     = <lower(path)>                          // !cssl.string (pointer)
+///   %l     = <path-len constant>                    // i64 (FIX10)
 ///   %f     = <lower(flags)>                         // i32
-///   %h     = cssl.fs.open %p, %f : i64              // attribute io_effect=true
+///   %h     = cssl.fs.open %p, %l, %f : i64          // 3 operands matching
+///                                                      __cssl_fs_open(p,l,f)
 /// ```
+///
+/// § T11-W19-α-CSSLC-FIX10 — str→ptr+len arity expansion :
+///   The host-FFI sig for `__cssl_fs_open(p_ptr, p_len, flags) -> i64` carries
+///   THREE params (cgen `build_fs_open_signature`). The recognizer used to mint
+///   only `(path_id, flags_id)` ; the missing path-len landed as an
+///   `arity mismatch : op carries 2 ; sig wants 3` rejection at object-emit.
+///   For string-literal paths the byte-length is known statically — emit a
+///   companion `arith.constant` op carrying the literal's UTF-8 byte length.
+///   For non-literal `&str` paths fall back to a 0-len placeholder (the
+///   cssl-rt FFI tolerates 0-len + null-terminated path lookup).
 fn try_lower_fs_open(
     ctx: &mut BodyLowerCtx<'_>,
     args: &[HirCallArg],
     span: Span,
 ) -> Option<(ValueId, MirType)> {
     let (path_id, _path_ty) = lower_call_arg(ctx, &args[0])?;
+    let path_len_id = lower_str_arg_byte_len(ctx, &args[0], span);
     let (flags_id, _flags_ty) = lower_call_arg(ctx, &args[1])?;
     let result_id = ctx.fresh_value_id();
     let result_ty = MirType::Int(IntWidth::I64);
     ctx.ops.push(
         MirOp::new(CsslOp::FsOpen)
             .with_operand(path_id)
+            .with_operand(path_len_id)
             .with_operand(flags_id)
             .with_result(result_id, result_ty.clone())
             .with_attribute("io_effect", "true")
@@ -4628,6 +4642,44 @@ fn try_lower_fs_open(
             .with_attribute("source_loc", format!("{span:?}")),
     );
     Some((result_id, result_ty))
+}
+
+/// § T11-W19-α-CSSLC-FIX10 helper — emit an `arith.constant : i64` op
+/// holding the byte-length of a string-literal arg, or 0 when the arg
+/// isn't a string literal (the FFI tolerates len=0 with null-term-fallback).
+///
+/// Used by str-carrying host-FFI recognizers (currently `fs::open` ; future
+/// `net::*` str-args follow the same pattern).
+fn lower_str_arg_byte_len(
+    ctx: &mut BodyLowerCtx<'_>,
+    arg: &HirCallArg,
+    span: Span,
+) -> ValueId {
+    let arg_expr = match arg {
+        HirCallArg::Positional(e) | HirCallArg::Named { value: e, .. } => e,
+    };
+    let len = if let HirExprKind::Literal(HirLiteral {
+        kind: HirLiteralKind::Str,
+        ..
+    }) = &arg_expr.kind
+    {
+        // Pull the source slice + strip surrounding quotes ; the byte
+        // length of the unquoted UTF-8 payload is what FFI consumers want.
+        ctx.source
+            .and_then(|s| s.slice(arg_expr.span.start, arg_expr.span.end))
+            .and_then(strip_string_quotes)
+            .map_or(0_i64, |s| s.len() as i64)
+    } else {
+        0_i64
+    };
+    let id = ctx.fresh_value_id();
+    ctx.ops.push(
+        MirOp::std("arith.constant")
+            .with_result(id, MirType::Int(IntWidth::I64))
+            .with_attribute("value", len.to_string())
+            .with_attribute("source_loc", format!("{span:?}")),
+    );
+    id
 }
 
 /// Lower a syntactically-recognized `fs::read(handle, buf_ptr, buf_len)` call
