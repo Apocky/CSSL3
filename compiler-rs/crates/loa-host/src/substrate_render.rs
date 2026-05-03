@@ -98,6 +98,24 @@ pub struct SubstrateRenderState {
     /// runs (unchanged behaviour for callers that never opt in).
     #[cfg(feature = "runtime")]
     pub gpu: Option<cssl_host_substrate_resonance_gpu::SubstrateResonanceGpu>,
+
+    /// § T11-W18-DYNRES-SCALER · adaptive resolution scaler. Q0.16 fixed-point.
+    /// When `tick_gpu` is called, the scaler observes wall-clock frame-time
+    /// + adjusts the GPU render-target dims toward the 1440p144 budget.
+    /// Honours `LOA_DYN_RES=0` to stay at native resolution.
+    pub dyn_res: crate::dynamic_resolution::Scaler,
+
+    /// § T11-W18-DYNRES-SCALER · panel-native dims captured at GPU init.
+    /// `tick_gpu` scales these by `dyn_res.current_scale_q16` per frame
+    /// and resizes the GPU compute-shader output when the scaled dims
+    /// drift away from the previous frame's render-dims.
+    pub native_gpu_w: u32,
+    pub native_gpu_h: u32,
+
+    /// § T11-W18-DYNRES-SCALER · tracks wall-clock at start of last
+    /// `tick_gpu` so we can feed (now - prev) into the scaler EMA each
+    /// subsequent frame. `None` until the first tick.
+    pub last_tick_instant: Option<std::time::Instant>,
 }
 
 impl Default for SubstrateRenderState {
@@ -164,6 +182,10 @@ impl SubstrateRenderState {
             frame_count: 0,
             #[cfg(feature = "runtime")]
             gpu: None,
+            dyn_res: crate::dynamic_resolution::Scaler::new(),
+            native_gpu_w: GPU_SUBSTRATE_W,
+            native_gpu_h: GPU_SUBSTRATE_H,
+            last_tick_instant: None,
         }
     }
 
@@ -182,6 +204,11 @@ impl SubstrateRenderState {
     #[cfg(feature = "runtime")]
     pub fn new_gpu(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let mut s = Self::new();
+        // Capture panel-native dims so the dyn-res scaler has a target to
+        // multiply against per frame. `width × height` here is the panel's
+        // native pixel-resolution (e.g. 2560 × 1440 for 1440p144).
+        s.native_gpu_w = width;
+        s.native_gpu_h = height;
         // Construct the compute-pipeline. `SubstrateResonanceGpu::new` is
         // infallible (panics on shader compile errors only) ; if it does
         // panic the device is fundamentally broken and we should fall back.
@@ -330,6 +357,30 @@ impl SubstrateRenderState {
                 c
             })
             .collect();
+
+        // § T11-W18-DYNRES-SCALER · feed last frame's wall-clock into the
+        //   scaler BEFORE we choose this frame's render-dims. First call
+        //   seeds `last_tick_instant` and skips the observe (no prior
+        //   sample yet).
+        let now = std::time::Instant::now();
+        if let Some(prev) = self.last_tick_instant {
+            let frame_us = now.saturating_duration_since(prev).as_micros() as u64;
+            self.dyn_res.observe_frame(frame_us);
+        }
+        self.last_tick_instant = Some(now);
+
+        // § T11-W18-DYNRES-SCALER · resize GPU output to the scaled dims
+        //   when they drift away from the current GPU dims. `render_dims`
+        //   already snaps to multiples of 8 (workgroup-aligned) so we can
+        //   feed it straight to `resize_gpu`.
+        let (target_w, target_h) =
+            self.dyn_res.render_dims(self.native_gpu_w, self.native_gpu_h);
+        if let Some(gpu) = self.gpu.as_ref() {
+            let (cur_w, cur_h) = gpu.dims();
+            if cur_w != target_w || cur_h != target_h {
+                self.resize_gpu(device, target_w, target_h);
+            }
+        }
 
         // GPU path runs at panel-native 1440p · samples bound directly by
         // compose-pass (W18-N) · NOW with animated crystals (motion-pose-applied).
