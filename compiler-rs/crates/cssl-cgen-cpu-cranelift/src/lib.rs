@@ -49,6 +49,11 @@ pub mod cgen_gpu;
 pub mod cgen_heap_dealloc;
 pub mod cgen_input;
 pub mod cgen_memref;
+// § Wave-C3 (S7-F3 / T11-D76) — fs-effect cgen helpers. Maps
+// `cssl.fs.*` MIR ops onto `__cssl_fs_*` FFI symbols + declares per-fn
+// cranelift `Signature`s + provides per-block import-need pre-scan
+// via the `FsImportSet` bitfield. Pairs with `cssl-rt::host_fs`.
+pub mod cgen_fs;
 // § Wave-C4 (S7-F4 / T11-D82) — net-effect cgen helpers parallel to Wave-C3
 // `cgen_fs`. Maps `cssl.net.*` MIR ops onto `__cssl_net_*` FFI symbols +
 // declares per-fn cranelift `Signature` + provides per-block import-need

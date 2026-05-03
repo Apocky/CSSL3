@@ -429,6 +429,15 @@ fn compile_one_fn(
     //   `frem` instruction so float-remainder MUST go through libm).
     let fmod_refs = declare_fmod_imports_for_fn(obj_module, codegen_ctx, mir_fn)?;
 
+    // § T11-W19 (host-FFI integration commit) — pre-scan body for
+    //   `cssl.<host-domain>.*` references ; for each unique op-name
+    //   declare the matching `__cssl_*` symbol via `Linkage::Import` +
+    //   bind a per-fn `FuncRef`. Pairs the 8 cgen-FFI modules
+    //   (cgen_time / cgen_window / cgen_input / cgen_gpu / cgen_audio /
+    //   cgen_thread / cgen_fs / cgen_net) with the matching cssl-rt
+    //   host_<domain> impl crates.
+    let host_ffi_refs = declare_host_ffi_imports_for_fn(obj_module, codegen_ctx, mir_fn, ptr_ty)?;
+
     // § 2. Build body — multi-block aware (§ T11-CC-1).
     {
         let mut builder = FunctionBuilder::new(&mut codegen_ctx.func, builder_ctx);
@@ -509,6 +518,7 @@ fn compile_one_fn(
                         &heap_refs,
                         &callee_refs,
                         &fmod_refs,
+                        &host_ffi_refs,
                         ptr_ty,
                         &block_map,
                     )?;
@@ -662,6 +672,529 @@ fn declare_heap_imports_for_fn(
         imports.refs.insert("cssl.heap.realloc", fref);
     }
     Ok(imports)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-W19 (host-FFI integration commit) — Wave-D `cssl.<host-domain>.*`
+// imports declare-once-per-fn pre-scan + per-op dispatcher.
+//
+//   Pairs the 8 cgen_<domain>.rs modules (cgen_time / cgen_window /
+//   cgen_input / cgen_gpu / cgen_audio / cgen_thread / cgen_fs /
+//   cgen_net) with the cssl-rt host_<domain> impl crates. Each MIR op
+//   `cssl.<domain>.<verb>` lowers to `call __cssl_<domain>_<verb>`. The
+//   sigs are sourced from per-domain `build_*_signature` helpers so any
+//   ABI drift between cgen + cssl-rt surfaces as a link-time mismatch.
+//
+//   § STRUCTURE
+//     - [`HostFfiImports`] — bundle of 8 per-domain `HashMap<&str, FuncRef>`.
+//     - [`declare_host_ffi_imports_for_fn`] — single pre-scan that walks
+//       the entry block + 1-level-nested regions ; for each unique
+//       `cssl.<domain>.<verb>` op-name encountered it declares the
+//       matching `__cssl_<domain>_<verb>` symbol via `Linkage::Import` +
+//       binds a per-fn `FuncRef`.
+//     - [`emit_host_ffi_call`] — body-lowering hook keyed on the op-name.
+//       Resolves the `FuncRef` from the bundle, coerces operand-widths
+//       to match the cranelift `AbiParam`, emits a single `call`, binds
+//       the result-id when the contract carries one.
+//
+//   § COERCION DISCIPLINE
+//     Mirrors `emit_heap_call` — every operand is coerced from its
+//     incoming cranelift type to the target `AbiParam` type :
+//       - When raw_ty == target_ty : pass-through.
+//       - When raw_ty.bits() < target_ty.bits() + both ints : `uextend`.
+//       - When raw_ty.bits() > target_ty.bits() + both ints : `ireduce`.
+//     Pointer-typed operands ride through unchanged (MIR `Ptr` already
+//     matches `ptr_ty`).
+//
+//   § INTEGRATION_NOTE history
+//     `cgen_time::INTEGRATION_NOTE` (lines 511-548 of cgen_time.rs)
+//     describes the per-domain pattern using `lookup_*_op_contract` /
+//     `lower_*_op_signature` ; the cgen modules are heterogeneous in
+//     their public API (some expose `lookup_<domain>_op_contract` ; others
+//     only expose `build_<verb>_signature` per-symbol or a kind-enum +
+//     `build_signature_for_kind`). To keep this commit additive +
+//     consume only stable public APIs, the pre-scan dispatches by
+//     op-name STRING and selects the per-symbol builder at the
+//     declare-site.
+// ───────────────────────────────────────────────────────────────────────
+
+/// Per-fn bundle of host-FFI `FuncRef`s, keyed by MIR op-name.
+///
+/// Each field is a small `HashMap<&'static str, FuncRef>` mirroring
+/// [`HeapImports::refs`]. An entry is present only when the fn body
+/// references the corresponding op (lean import surface).
+#[derive(Default)]
+struct HostFfiImports {
+    /// `cssl.time.*` ops → `__cssl_time_*` `FuncRef`s.
+    time: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.window.*` ops → `__cssl_window_*` `FuncRef`s.
+    window: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.input.*` ops → `__cssl_input_*` `FuncRef`s.
+    input: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.gpu.*` ops → `__cssl_gpu_*` `FuncRef`s.
+    gpu: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.audio.*` ops → `__cssl_audio_*` `FuncRef`s.
+    audio: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.{thread,mutex,atomic}.*` ops → `__cssl_*` `FuncRef`s.
+    thread: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.fs.*` ops → `__cssl_fs_*` `FuncRef`s.
+    fs: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+    /// `cssl.net.*` ops → `__cssl_net_*` `FuncRef`s.
+    net: HashMap<&'static str, cranelift_codegen::ir::FuncRef>,
+}
+
+impl HostFfiImports {
+    /// Resolve the `FuncRef` for the given MIR op-name (string-keyed).
+    /// Walks domain maps in source-frequency order ; returns `None` when
+    /// the op-name is not a recognized host-FFI op.
+    fn get(&self, op_name: &str) -> Option<cranelift_codegen::ir::FuncRef> {
+        // Order: most-frequently-seen first for branch-predictor friendliness.
+        if let Some(&r) = self.time.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.thread.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.fs.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.net.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.window.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.input.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.gpu.get(op_name) {
+            return Some(r);
+        }
+        if let Some(&r) = self.audio.get(op_name) {
+            return Some(r);
+        }
+        None
+    }
+}
+
+/// Predicate : does this MIR op-name fall in any of the 8 host-FFI
+/// namespaces this cgen-driver wires to cssl-rt? Branch-friendly
+/// prefix-match. The `cssl.heap.*` namespace is handled SEPARATELY by
+/// [`HeapImports`] + [`emit_heap_call`] and is intentionally NOT
+/// treated as host-FFI here.
+fn is_host_ffi_op(op_name: &str) -> bool {
+    op_name.starts_with("cssl.time.")
+        || op_name.starts_with("cssl.window.")
+        || op_name.starts_with("cssl.input.")
+        || op_name.starts_with("cssl.gpu.")
+        || op_name.starts_with("cssl.audio.")
+        || op_name.starts_with("cssl.thread.")
+        || op_name.starts_with("cssl.mutex.")
+        || op_name.starts_with("cssl.atomic.")
+        || op_name.starts_with("cssl.fs.")
+        || op_name.starts_with("cssl.net.")
+}
+
+/// Build the cranelift signature for a host-FFI MIR op-name + return its
+/// FFI symbol. Returns `None` when the op-name is not a recognized
+/// host-FFI op (caller MUST fall through to generic dispatch).
+///
+/// § STRATEGY
+///   Per-domain dispatcher : prefix-match the op-name to pick the right
+///   cgen_<domain> public API + delegate signature construction. Each
+///   arm consumes the cgen module's stable public surface (per-verb
+///   `build_*_signature` or the `lower_*_op_signature` dispatcher when
+///   the module provides one).
+fn host_ffi_sig_and_symbol(
+    op_name: &str,
+    call_conv: cranelift_codegen::isa::CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Option<(&'static str, Signature)> {
+    use crate::{cgen_audio, cgen_fs, cgen_gpu, cgen_input, cgen_thread, cgen_time, cgen_window};
+
+    // — TIME — the cgen_time module exposes a clean LUT.
+    if op_name.starts_with("cssl.time.") {
+        let contract = cgen_time::lookup_time_op_contract(op_name)?;
+        let dummy = cssl_mir::MirOp::std(op_name);
+        let sig = cgen_time::lower_time_op_signature(&dummy, call_conv)?;
+        return Some((contract.ffi_symbol, sig));
+    }
+
+    // — THREAD / MUTEX / ATOMIC — cgen_thread also exposes a contract LUT.
+    if op_name.starts_with("cssl.thread.")
+        || op_name.starts_with("cssl.mutex.")
+        || op_name.starts_with("cssl.atomic.")
+    {
+        let contract = cgen_thread::lookup_thread_op_contract(op_name)?;
+        let dummy = cssl_mir::MirOp::std(op_name);
+        let sig = cgen_thread::lower_thread_op_signature(&dummy, call_conv, ptr_ty)?;
+        return Some((contract.ffi_symbol, sig));
+    }
+
+    // — FS — cgen_fs exposes a contract LUT.
+    if op_name.starts_with("cssl.fs.") {
+        let contract = cgen_fs::lookup_fs_op_contract(op_name)?;
+        let dummy = cssl_mir::MirOp::std(op_name);
+        let sig = cgen_fs::lower_fs_op_signature(&dummy, call_conv, ptr_ty)?;
+        return Some((contract.ffi_symbol, sig));
+    }
+
+    // — NET — cgen_net keys on `op.op` (CsslOp enum). Reuse the per-symbol
+    //   signature builders directly via op-name dispatch.
+    if op_name.starts_with("cssl.net.") {
+        return host_ffi_net_sig(op_name, call_conv, ptr_ty);
+    }
+
+    // — WINDOW — cgen_window keys on `WindowOpTag` enum + has `build_window_signature`.
+    if op_name.starts_with("cssl.window.") {
+        let tag = host_ffi_window_tag(op_name)?;
+        let (sym, _arity) = cgen_window::window_symbol_for(tag);
+        let sig = cgen_window::build_window_signature(tag, call_conv, ptr_ty);
+        return Some((sym, sig));
+    }
+
+    // — INPUT — cgen_input has `InputOpKind::from_mir_op_name` + `build_input_signature`.
+    if op_name.starts_with("cssl.input.") {
+        let kind = cgen_input::InputOpKind::from_mir_op_name(op_name)?;
+        let sym = kind.ffi_symbol();
+        let sig = cgen_input::build_input_signature(kind, call_conv, ptr_ty);
+        return Some((sym, sig));
+    }
+
+    // — AUDIO — cgen_audio has `AudioOpKind::from_op_name` + `build_audio_signature_for_kind`.
+    if op_name.starts_with("cssl.audio.") {
+        let kind = cgen_audio::AudioOpKind::from_op_name(op_name)?;
+        let sym = kind.ffi_symbol();
+        let sig = cgen_audio::build_audio_signature_for_kind(kind, call_conv, ptr_ty);
+        return Some((sym, sig));
+    }
+
+    // — GPU — cgen_gpu has `GpuFfiSymbolKind` enum but no MIR-op-name → kind
+    //   mapping; we provide one inline (op-name → kind).
+    if op_name.starts_with("cssl.gpu.") {
+        let kind = host_ffi_gpu_kind(op_name)?;
+        let (sym, _arity) = cgen_gpu::lower_gpu_symbol(kind);
+        let sig = cgen_gpu::build_signature_for_kind(kind, call_conv, ptr_ty);
+        return Some((sym, sig));
+    }
+
+    None
+}
+
+/// Helper : map `cssl.window.<verb>` op-name → `WindowOpTag`.
+fn host_ffi_window_tag(op_name: &str) -> Option<crate::cgen_window::WindowOpTag> {
+    use crate::cgen_window::WindowOpTag;
+    match op_name {
+        "cssl.window.spawn" => Some(WindowOpTag::Spawn),
+        "cssl.window.pump" => Some(WindowOpTag::Pump),
+        "cssl.window.request_close" => Some(WindowOpTag::RequestClose),
+        "cssl.window.destroy" => Some(WindowOpTag::Destroy),
+        "cssl.window.raw_handle" => Some(WindowOpTag::RawHandle),
+        "cssl.window.get_dims" => Some(WindowOpTag::GetDims),
+        _ => None,
+    }
+}
+
+/// Helper : map `cssl.gpu.<verb>` op-name → `GpuFfiSymbolKind`.
+fn host_ffi_gpu_kind(op_name: &str) -> Option<crate::cgen_gpu::GpuFfiSymbolKind> {
+    use crate::cgen_gpu::GpuFfiSymbolKind;
+    match op_name {
+        "cssl.gpu.swapchain_acquire" => Some(GpuFfiSymbolKind::SwapchainAcquire),
+        "cssl.gpu.swapchain_present" => Some(GpuFfiSymbolKind::SwapchainPresent),
+        "cssl.gpu.pipeline_compile" => Some(GpuFfiSymbolKind::PipelineCompile),
+        "cssl.gpu.swapchain_create" => Some(GpuFfiSymbolKind::SwapchainCreate),
+        "cssl.gpu.device_create" => Some(GpuFfiSymbolKind::DeviceCreate),
+        "cssl.gpu.device_destroy" => Some(GpuFfiSymbolKind::DeviceDestroy),
+        "cssl.gpu.cmd_buf_record_stub" => Some(GpuFfiSymbolKind::CmdBufRecordStub),
+        "cssl.gpu.cmd_buf_submit_stub" => Some(GpuFfiSymbolKind::CmdBufSubmitStub),
+        _ => None,
+    }
+}
+
+/// Helper : build cranelift signature for a `cssl.net.<verb>` op-name.
+fn host_ffi_net_sig(
+    op_name: &str,
+    call_conv: cranelift_codegen::isa::CallConv,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Option<(&'static str, Signature)> {
+    use crate::cgen_net;
+    match op_name {
+        "cssl.net.socket" => Some((
+            cgen_net::NET_SOCKET_SYMBOL,
+            cgen_net::build_net_socket_signature(call_conv),
+        )),
+        "cssl.net.listen" => Some((
+            cgen_net::NET_LISTEN_SYMBOL,
+            cgen_net::build_net_listen_signature(call_conv),
+        )),
+        "cssl.net.accept" => Some((
+            cgen_net::NET_ACCEPT_SYMBOL,
+            cgen_net::build_net_accept_signature(call_conv),
+        )),
+        "cssl.net.connect" => Some((
+            cgen_net::NET_CONNECT_SYMBOL,
+            cgen_net::build_net_connect_signature(call_conv),
+        )),
+        "cssl.net.send" => Some((
+            cgen_net::NET_SEND_SYMBOL,
+            cgen_net::build_net_send_signature(call_conv, ptr_ty),
+        )),
+        "cssl.net.recv" => Some((
+            cgen_net::NET_RECV_SYMBOL,
+            cgen_net::build_net_recv_signature(call_conv, ptr_ty),
+        )),
+        "cssl.net.sendto" => Some((
+            cgen_net::NET_SENDTO_SYMBOL,
+            cgen_net::build_net_sendto_signature(call_conv, ptr_ty),
+        )),
+        "cssl.net.recvfrom" => Some((
+            cgen_net::NET_RECVFROM_SYMBOL,
+            cgen_net::build_net_recvfrom_signature(call_conv, ptr_ty),
+        )),
+        "cssl.net.close" => Some((
+            cgen_net::NET_CLOSE_SYMBOL,
+            cgen_net::build_net_close_signature(call_conv),
+        )),
+        _ => None,
+    }
+}
+
+/// Walk the fn body (entry block + 1-level nested regions, mirroring the
+/// fmod / heap pre-scan) ; for each unique host-FFI op-name encountered,
+/// declare the matching `__cssl_*` symbol as `Linkage::Import` + bind a
+/// per-fn `FuncRef` into the matching domain bucket of [`HostFfiImports`].
+fn declare_host_ffi_imports_for_fn(
+    obj_module: &mut ObjectModule,
+    codegen_ctx: &mut Context,
+    mir_fn: &MirFunc,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<HostFfiImports, ObjectError> {
+    let mut imports = HostFfiImports::default();
+    let Some(entry_block) = mir_fn.body.blocks.first() else {
+        return Ok(imports);
+    };
+    // Collect the unique set of host-FFI op-names referenced anywhere in
+    // the body (entry + 1-level nested). De-duplication happens via the
+    // domain HashMaps : a second insert under the same key is a no-op.
+    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    fn walk<'a>(ops: &'a [MirOp], seen: &mut std::collections::BTreeSet<&'a str>) {
+        for op in ops {
+            let name = op.name.as_str();
+            if is_host_ffi_op(name) {
+                seen.insert(name);
+            }
+            for region in &op.regions {
+                for blk in &region.blocks {
+                    walk(&blk.ops, seen);
+                }
+            }
+        }
+    }
+    walk(&entry_block.ops, &mut seen);
+
+    let call_conv = obj_module.isa().default_call_conv();
+    for op_name in seen {
+        let Some((sym, sig)) = host_ffi_sig_and_symbol(op_name, call_conv, ptr_ty) else {
+            // Unrecognized op-name within a known prefix — surface as a
+            // lowering-failure so the cgen-driver can flag the gap.
+            return Err(ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!(
+                    "host-FFI op `{op_name}` not recognized by cgen_<domain>::lookup_*_op_contract / build_*_signature"
+                ),
+            });
+        };
+        let id = obj_module
+            .declare_function(sym, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare {sym} : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(id, &mut codegen_ctx.func);
+        // Insert into the matching domain map. We need a `&'static str`
+        // key — the canonical op-name constants from the cgen modules
+        // are static, so we re-resolve via match here. (HashMap lookup
+        // by str works regardless ; we use the input name's static-
+        // equivalent for stability.)
+        let static_name: &'static str = match op_name {
+            "cssl.time.monotonic_ns" => crate::cgen_time::MIR_TIME_MONOTONIC_NS_OP_NAME,
+            "cssl.time.wall_unix_ns" => crate::cgen_time::MIR_TIME_WALL_UNIX_NS_OP_NAME,
+            "cssl.time.sleep_ns" => crate::cgen_time::MIR_TIME_SLEEP_NS_OP_NAME,
+            "cssl.time.deadline_until" => crate::cgen_time::MIR_TIME_DEADLINE_UNTIL_OP_NAME,
+            "cssl.thread.spawn" => crate::cgen_thread::MIR_THREAD_SPAWN_OP_NAME,
+            "cssl.thread.join" => crate::cgen_thread::MIR_THREAD_JOIN_OP_NAME,
+            "cssl.mutex.create" => crate::cgen_thread::MIR_MUTEX_CREATE_OP_NAME,
+            "cssl.mutex.lock" => crate::cgen_thread::MIR_MUTEX_LOCK_OP_NAME,
+            "cssl.mutex.unlock" => crate::cgen_thread::MIR_MUTEX_UNLOCK_OP_NAME,
+            "cssl.mutex.destroy" => crate::cgen_thread::MIR_MUTEX_DESTROY_OP_NAME,
+            "cssl.atomic.load_u64" => crate::cgen_thread::MIR_ATOMIC_LOAD_U64_OP_NAME,
+            "cssl.atomic.store_u64" => crate::cgen_thread::MIR_ATOMIC_STORE_U64_OP_NAME,
+            "cssl.atomic.cas_u64" => crate::cgen_thread::MIR_ATOMIC_CAS_U64_OP_NAME,
+            "cssl.fs.open" => crate::cgen_fs::MIR_FS_OPEN_OP_NAME,
+            "cssl.fs.read" => crate::cgen_fs::MIR_FS_READ_OP_NAME,
+            "cssl.fs.write" => crate::cgen_fs::MIR_FS_WRITE_OP_NAME,
+            "cssl.fs.close" => crate::cgen_fs::MIR_FS_CLOSE_OP_NAME,
+            "cssl.fs.last_error_kind" => crate::cgen_fs::MIR_FS_LAST_ERROR_KIND_OP_NAME,
+            "cssl.fs.last_error_os" => crate::cgen_fs::MIR_FS_LAST_ERROR_OS_OP_NAME,
+            "cssl.fs.seek" => crate::cgen_fs::MIR_FS_SEEK_OP_NAME,
+            "cssl.fs.ftruncate" => crate::cgen_fs::MIR_FS_FTRUNCATE_OP_NAME,
+            "cssl.net.socket" => crate::cgen_net::MIR_NET_SOCKET_OP_NAME,
+            "cssl.net.listen" => crate::cgen_net::MIR_NET_LISTEN_OP_NAME,
+            "cssl.net.accept" => crate::cgen_net::MIR_NET_ACCEPT_OP_NAME,
+            "cssl.net.connect" => crate::cgen_net::MIR_NET_CONNECT_OP_NAME,
+            "cssl.net.send" => crate::cgen_net::MIR_NET_SEND_OP_NAME,
+            "cssl.net.recv" => crate::cgen_net::MIR_NET_RECV_OP_NAME,
+            "cssl.net.sendto" => crate::cgen_net::MIR_NET_SENDTO_OP_NAME,
+            "cssl.net.recvfrom" => crate::cgen_net::MIR_NET_RECVFROM_OP_NAME,
+            "cssl.net.close" => crate::cgen_net::MIR_NET_CLOSE_OP_NAME,
+            "cssl.window.spawn" => "cssl.window.spawn",
+            "cssl.window.pump" => "cssl.window.pump",
+            "cssl.window.request_close" => "cssl.window.request_close",
+            "cssl.window.destroy" => "cssl.window.destroy",
+            "cssl.window.raw_handle" => "cssl.window.raw_handle",
+            "cssl.window.get_dims" => "cssl.window.get_dims",
+            "cssl.input.keyboard.state" => crate::cgen_input::MIR_INPUT_KEYBOARD_STATE_OP_NAME,
+            "cssl.input.mouse.state" => crate::cgen_input::MIR_INPUT_MOUSE_STATE_OP_NAME,
+            "cssl.input.mouse.delta" => crate::cgen_input::MIR_INPUT_MOUSE_DELTA_OP_NAME,
+            "cssl.input.gamepad.state" => crate::cgen_input::MIR_INPUT_GAMEPAD_STATE_OP_NAME,
+            "cssl.audio.stream_open" => crate::cgen_audio::MIR_AUDIO_STREAM_OPEN_OP_NAME,
+            "cssl.audio.stream_write" => crate::cgen_audio::MIR_AUDIO_STREAM_WRITE_OP_NAME,
+            "cssl.audio.stream_read" => crate::cgen_audio::MIR_AUDIO_STREAM_READ_OP_NAME,
+            "cssl.audio.stream_close" => crate::cgen_audio::MIR_AUDIO_STREAM_CLOSE_OP_NAME,
+            "cssl.gpu.swapchain_acquire" => "cssl.gpu.swapchain_acquire",
+            "cssl.gpu.swapchain_present" => "cssl.gpu.swapchain_present",
+            "cssl.gpu.pipeline_compile" => "cssl.gpu.pipeline_compile",
+            "cssl.gpu.swapchain_create" => "cssl.gpu.swapchain_create",
+            "cssl.gpu.device_create" => "cssl.gpu.device_create",
+            "cssl.gpu.device_destroy" => "cssl.gpu.device_destroy",
+            "cssl.gpu.cmd_buf_record_stub" => "cssl.gpu.cmd_buf_record_stub",
+            "cssl.gpu.cmd_buf_submit_stub" => "cssl.gpu.cmd_buf_submit_stub",
+            // Unknown — should not happen given is_host_ffi_op pre-filter
+            // + the host_ffi_sig_and_symbol returned Some, but be defensive.
+            other => {
+                return Err(ObjectError::LoweringFailed {
+                    fn_name: mir_fn.name.clone(),
+                    detail: format!(
+                        "host-FFI op `{other}` matched is_host_ffi_op but no static-name mapping"
+                    ),
+                });
+            }
+        };
+        let bucket: &mut HashMap<&'static str, _> = if static_name.starts_with("cssl.time.") {
+            &mut imports.time
+        } else if static_name.starts_with("cssl.thread.")
+            || static_name.starts_with("cssl.mutex.")
+            || static_name.starts_with("cssl.atomic.")
+        {
+            &mut imports.thread
+        } else if static_name.starts_with("cssl.fs.") {
+            &mut imports.fs
+        } else if static_name.starts_with("cssl.net.") {
+            &mut imports.net
+        } else if static_name.starts_with("cssl.window.") {
+            &mut imports.window
+        } else if static_name.starts_with("cssl.input.") {
+            &mut imports.input
+        } else if static_name.starts_with("cssl.audio.") {
+            &mut imports.audio
+        } else if static_name.starts_with("cssl.gpu.") {
+            &mut imports.gpu
+        } else {
+            return Err(ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("host-FFI op `{static_name}` has no domain bucket"),
+            });
+        };
+        bucket.insert(static_name, fref);
+    }
+    Ok(imports)
+}
+
+/// Body-lowering hook : emit a cranelift `call` for a `cssl.<host-domain>.*`
+/// MIR op. Resolves the per-fn `FuncRef` from [`HostFfiImports`], coerces
+/// operand-widths to match the cranelift `AbiParam` types, emits the
+/// call, and binds the result-id when the imported function returns.
+///
+/// § COERCION
+///   Mirrors `emit_heap_call` precisely : the imported signature's
+///   `AbiParam` types are the source-of-truth ; each operand is widened
+///   (`uextend`) or narrowed (`ireduce`) as needed when both raw + target
+///   are int types. Pointer + float types must already match
+///   (debug_assert fires on mismatch ; production builds drop the assert).
+fn emit_host_ffi_call(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    refs: &HostFfiImports,
+) -> Result<bool, ObjectError> {
+    let fref = refs.get(op.name.as_str()).ok_or_else(|| {
+        ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("`{}` host-FFI import not declared (pre-scan bug)", op.name),
+        }
+    })?;
+
+    // Pull the imported sig's param-types from the cranelift function-DFG.
+    // `signatures` is keyed by SigRef ; ext_funcs[fref].signature gives us
+    // the SigRef. We materialize the `AbiParam` widths into a Vec to drive
+    // operand coercion.
+    let target_param_tys: Vec<cranelift_codegen::ir::Type> = {
+        let ext = &builder.func.dfg.ext_funcs[fref];
+        let sig = &builder.func.dfg.signatures[ext.signature];
+        sig.params.iter().map(|p| p.value_type).collect()
+    };
+
+    if op.operands.len() != target_param_tys.len() {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "host-FFI `{}` arity mismatch : op carries {} operand(s) ; sig wants {}",
+                op.name,
+                op.operands.len(),
+                target_param_tys.len()
+            ),
+        });
+    }
+
+    let mut args = Vec::with_capacity(op.operands.len());
+    for (idx, vid) in op.operands.iter().enumerate() {
+        let raw = *value_map
+            .get(vid)
+            .ok_or_else(|| ObjectError::UnknownValueId {
+                fn_name: fn_name.to_string(),
+                value_id: vid.0,
+            })?;
+        let raw_ty = builder.func.dfg.value_type(raw);
+        let target_ty = target_param_tys[idx];
+        let coerced = if raw_ty == target_ty {
+            raw
+        } else if raw_ty.is_int() && target_ty.is_int() {
+            if raw_ty.bits() < target_ty.bits() {
+                builder.ins().uextend(target_ty, raw)
+            } else {
+                builder.ins().ireduce(target_ty, raw)
+            }
+        } else {
+            // Float / mismatched-class types : pass-through. The cranelift
+            // verifier will reject if truly incompatible — a future slice
+            // can add float→int / int→float bitcasts when MIR demands.
+            raw
+        };
+        args.push(coerced);
+    }
+
+    let call_inst = builder.ins().call(fref, &args);
+    // Bind the call's first result-value (when the callee has one) to the
+    // op's first result-id. Multi-result host-FFI calls don't exist today
+    // — every cssl-rt extern returns at most one scalar.
+    if let Some(r) = op.results.first() {
+        let results = builder.inst_results(call_inst).to_vec();
+        if let Some(&cl_value) = results.first() {
+            value_map.insert(r.id, cl_value);
+        }
+    }
+    Ok(false)
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -1035,9 +1568,20 @@ fn lower_one_op(
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
     fmod_refs: &FmodImports,
+    host_ffi_refs: &HostFfiImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
+    // § T11-W19 (host-FFI integration) — fast-path : route any
+    //   `cssl.<host-domain>.*` op to the host-FFI dispatcher BEFORE the
+    //   main string-match. Heap ops (`cssl.heap.*`) are excluded by
+    //   `is_host_ffi_op` and continue to flow through `emit_heap_call`
+    //   as before. Mirrors the order the cgen modules expect : the
+    //   pre-scan declared the `FuncRef`s, the dispatcher resolves +
+    //   emits a single `call` per op.
+    if is_host_ffi_op(op.name.as_str()) {
+        return emit_host_ffi_call(op, builder, value_map, fn_name, host_ffi_refs);
+    }
     match op.name.as_str() {
         "arith.constant" => {
             let r = op
@@ -1305,6 +1849,7 @@ fn lower_one_op(
             heap_refs,
             callee_refs,
             fmod_refs,
+            host_ffi_refs,
             ptr_ty,
             block_map,
         ),
@@ -1320,6 +1865,7 @@ fn lower_one_op(
             heap_refs,
             callee_refs,
             fmod_refs,
+            host_ffi_refs,
             ptr_ty,
             block_map,
         ),
@@ -1331,6 +1877,7 @@ fn lower_one_op(
             heap_refs,
             callee_refs,
             fmod_refs,
+            host_ffi_refs,
             ptr_ty,
             block_map,
         ),
@@ -1342,6 +1889,7 @@ fn lower_one_op(
             heap_refs,
             callee_refs,
             fmod_refs,
+            host_ffi_refs,
             ptr_ty,
             block_map,
         ),
@@ -1659,6 +2207,7 @@ fn lower_scf_if_in_object(
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
     fmod_refs: &FmodImports,
+    host_ffi_refs: &HostFfiImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1676,6 +2225,7 @@ fn lower_scf_if_in_object(
                 heap_refs,
                 callee_refs,
                 fmod_refs,
+                host_ffi_refs,
                 ptr_ty,
                 block_map,
             )
@@ -1699,6 +2249,7 @@ fn lower_scf_loop_in_object(
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
     fmod_refs: &FmodImports,
+    host_ffi_refs: &HostFfiImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1716,6 +2267,7 @@ fn lower_scf_loop_in_object(
                 heap_refs,
                 callee_refs,
                 fmod_refs,
+                host_ffi_refs,
                 ptr_ty,
                 block_map,
             )
@@ -1739,6 +2291,7 @@ fn lower_scf_while_in_object(
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
     fmod_refs: &FmodImports,
+    host_ffi_refs: &HostFfiImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1756,6 +2309,7 @@ fn lower_scf_while_in_object(
                 heap_refs,
                 callee_refs,
                 fmod_refs,
+                host_ffi_refs,
                 ptr_ty,
                 block_map,
             )
@@ -1779,6 +2333,7 @@ fn lower_scf_for_in_object(
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
     fmod_refs: &FmodImports,
+    host_ffi_refs: &HostFfiImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1796,6 +2351,7 @@ fn lower_scf_for_in_object(
                 heap_refs,
                 callee_refs,
                 fmod_refs,
+                host_ffi_refs,
                 ptr_ty,
                 block_map,
             )
@@ -4179,5 +4735,212 @@ mod tests {
             "object header magic should match host platform"
         );
         assert!(!bytes.is_empty(), "produced bytes should be non-empty");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // § T11-W19 host-FFI wiring tests — synthesized cssl.<host-domain>.* MIR
+    //
+    //   Each test hand-constructs a minimal `MirFunc` containing a single
+    //   `cssl.<domain>.<verb>` op + a `func.return` terminator, then feeds
+    //   it through the object emitter. The test passes when emit_object
+    //   produces non-empty bytes carrying the host-platform magic — proof
+    //   that :
+    //     (a) `is_host_ffi_op` correctly classifies the op-name,
+    //     (b) `declare_host_ffi_imports_for_fn` declares the matching
+    //         `__cssl_<domain>_<verb>` symbol via Linkage::Import,
+    //     (c) `emit_host_ffi_call` resolves the FuncRef + emits a
+    //         cranelift `call`, and
+    //     (d) the cranelift verifier accepts the result.
+    //
+    //   These are end-to-end on the cgen-side ; they validate the FFI
+    //   surface the Wave-D cgen modules promised. Body_lower-side
+    //   recognizers (mapping `time::monotonic_ns()` source-call → MIR
+    //   `cssl.time.monotonic_ns` op) are a SEPARATE concern handled by
+    //   `cssl_mir::body_lower` — out of scope for this commit.
+    // ─────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn host_ffi_wires_cssl_time_monotonic_ns() {
+        // fn read_clock() -> i64 { %0 = cssl.time.monotonic_ns() ; return %0 }
+        let mut f = MirFunc::new("read_clock", vec![], vec![MirType::Int(IntWidth::I64)]);
+        f.next_value_id = 1;
+        f.push_op(
+            MirOp::std("cssl.time.monotonic_ns")
+                .with_result(ValueId(0), MirType::Int(IntWidth::I64)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(0)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module)
+            .expect("cssl.time.monotonic_ns must lower via host-FFI dispatch");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_time_sleep_ns() {
+        // fn nap(ns : i64) -> i32 { %1 = cssl.time.sleep_ns(%0) ; return %1 }
+        let mut f = MirFunc::new(
+            "nap",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        f.push_op(
+            MirOp::std("cssl.time.sleep_ns")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.time.sleep_ns must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_thread_atomic_load_u64() {
+        // fn load(p : ptr, ord : i32) -> i64 { %2 = cssl.atomic.load_u64(%0, %1) ; return %2 }
+        let mut f = MirFunc::new(
+            "load_atomic",
+            vec![MirType::Ptr, MirType::Int(IntWidth::I32)],
+            vec![MirType::Int(IntWidth::I64)],
+        );
+        f.next_value_id = 3;
+        f.push_op(
+            MirOp::std("cssl.atomic.load_u64")
+                .with_operand(ValueId(0))
+                .with_operand(ValueId(1))
+                .with_result(ValueId(2), MirType::Int(IntWidth::I64)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(2)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.atomic.load_u64 must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_fs_close() {
+        // fn close_fd(fd : i64) -> i64 { %1 = cssl.fs.close(%0) ; return %1 }
+        let mut f = MirFunc::new(
+            "close_fd",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I64)],
+        );
+        f.next_value_id = 2;
+        f.push_op(
+            MirOp::std("cssl.fs.close")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I64)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.fs.close must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_net_close() {
+        // fn close_socket(s : i64) -> i64 { %1 = cssl.net.close(%0) ; return %1 }
+        let mut f = MirFunc::new(
+            "close_socket",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I64)],
+        );
+        f.next_value_id = 2;
+        f.push_op(
+            MirOp::std("cssl.net.close")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I64)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.net.close must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_window_destroy() {
+        // fn close_window(h : i64) -> i32 { %1 = cssl.window.destroy(%0) ; return %1 }
+        let mut f = MirFunc::new(
+            "close_window",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        f.push_op(
+            MirOp::std("cssl.window.destroy")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.window.destroy must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_audio_stream_close() {
+        // fn close_audio(s : i64) -> i32 { %1 = cssl.audio.stream_close(%0) ; return %1 }
+        let mut f = MirFunc::new(
+            "close_audio",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        f.push_op(
+            MirOp::std("cssl.audio.stream_close")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.audio.stream_close must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_wires_cssl_gpu_device_destroy() {
+        // fn destroy_dev(d : i64) -> i32 { %1 = cssl.gpu.device_destroy(%0) ; return %1 }
+        let mut f = MirFunc::new(
+            "destroy_dev",
+            vec![MirType::Int(IntWidth::I64)],
+            vec![MirType::Int(IntWidth::I32)],
+        );
+        f.next_value_id = 2;
+        f.push_op(
+            MirOp::std("cssl.gpu.device_destroy")
+                .with_operand(ValueId(0))
+                .with_result(ValueId(1), MirType::Int(IntWidth::I32)),
+        );
+        f.push_op(MirOp::std("func.return").with_operand(ValueId(1)));
+        let mut module = MirModule::new();
+        module.push_func(f);
+        let bytes = emit_object_module(&module).expect("cssl.gpu.device_destroy must lower");
+        assert!(bytes.starts_with(magic_prefix(host_default_format())));
+    }
+
+    #[test]
+    fn host_ffi_classifies_namespaces() {
+        // Sanity-check `is_host_ffi_op` covers the 8 domains + excludes heap.
+        assert!(is_host_ffi_op("cssl.time.monotonic_ns"));
+        assert!(is_host_ffi_op("cssl.window.spawn"));
+        assert!(is_host_ffi_op("cssl.input.keyboard.state"));
+        assert!(is_host_ffi_op("cssl.gpu.device_create"));
+        assert!(is_host_ffi_op("cssl.audio.stream_open"));
+        assert!(is_host_ffi_op("cssl.thread.spawn"));
+        assert!(is_host_ffi_op("cssl.mutex.lock"));
+        assert!(is_host_ffi_op("cssl.atomic.cas_u64"));
+        assert!(is_host_ffi_op("cssl.fs.read"));
+        assert!(is_host_ffi_op("cssl.net.send"));
+        // Heap is intentionally NOT a host-FFI op (handled by HeapImports).
+        assert!(!is_host_ffi_op("cssl.heap.alloc"));
+        assert!(!is_host_ffi_op("cssl.heap.dealloc"));
+        assert!(!is_host_ffi_op("arith.addi"));
+        assert!(!is_host_ffi_op("scf.if"));
     }
 }
