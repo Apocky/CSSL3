@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  grok-mcp-harness:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: apocky-grok-harness
+    ports:
+      - "8080:8080"
+    volumes:
+      - /home/apocky/projects:/projects:ro   # Read-only mount of your CSL/CSSL/Infinity projects
+      - ./logs:/app/logs
+    environment:
+      - ALLOWED_ROOT=/projects
+      - LOG_LEVEL=INFO
+      - BEARER_TOKEN=${BEARER_TOKEN:-change-me-please}
+    restart: unless-stopped
+    networks:
+      - apocky-net
+
+  # Optional: Cloudflare Tunnel (uncomment if you want it inside compose)
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TOKEN}
+  #   restart: unless-stopped
+  #   networks:
+  #     - apocky-net
+
+networks:
+  apocky-net:
+    driver: bridge
+
+volumes:
+  logs:
