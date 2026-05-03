@@ -1,0 +1,76 @@
+[package]
+name                   = "cssl-host-asset-loader"
+description            = "CSSLv3 — Pre-authored / pre-generated asset loader scaffold for the LoA substrate-render. Manifest-driven (CC-licensed online sources + local .csl files + compile-time embedded mini-asset). Sovereignty-floored : LOA_ASSET_LOAD=0 disables all fetch ; default-OFF ; explicit env-opt-in. Delegates HTTP fetch to cssl-host-procgen-pipeline::asset_fetch (allowlist + size-cap + offline-mode). Parses GLTF/JSON/CSSL/WAV/OGG bytes into CrystalSeed records — minimal lift-able to host-side Crystal struct."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § T11-W18-ASSET-LOADER (cssl/session-11/T11-W18-ASSET-LOADER)
+# ═══════════════════════════════════════════════════════════════════════════
+# § Apocky-directive (verbatim · this slice)
+#   "Can we feed in pre-generated or pre-authored assets and data?
+#    Generation algorithms, 3D data from free legal sources, etc.?"
+#
+# § ROLE
+#   Sibling of cssl-host-procgen-pipeline. Where procgen-pipeline emits
+#   Crystal records from runtime intent, this crate INGESTS pre-existing
+#   data — pre-authored .csl scenes from disk, CC-licensed 3D meshes from
+#   the Khronos GLTF Sample-Models repo, CC0 HDRIs from Polyhaven, plus
+#   a compile-time embedded unit-cube — and lifts them into the same
+#   CrystalSeed lingua-franca that the substrate-render consumes.
+#
+# § SOVEREIGNTY-FLOOR
+#   - LOA_ASSET_LOAD env-var : default-OFF ; "1" / "true" / "yes" / "on"
+#     to opt in. When OFF, every fetch_with_validation call returns
+#     LoaderErr::FetchDisabled. Default-OFF is the strongest stance.
+#   - Network surface delegates to cssl-host-procgen-pipeline::asset_fetch
+#     which itself enforces : LOA_PROCGEN_FETCH_HOSTS allowlist
+#     (default-empty = deny-all) + LOA_PROCGEN_FETCH_MAX_BYTES size-cap
+#     (default 10 MB) + LOA_PROCGEN_FETCH_OFFLINE kill-switch + 30s timeout.
+#   - License-tag enforcement : ProprietaryApocky entries are NEVER fetched
+#     unless LOA_ASSET_LOAD=1 AND LOA_ASSET_PROPRIETARY=1 (twin-key opt-in).
+#   - SHA-256 verification : when an entry carries sha256_expected,
+#     fetch_with_validation rejects mismatched bytes via LoaderErr::ChecksumMismatch.
+#   - Compile-time embedded asset : the unit-cube CrystalSeed batch is
+#     reachable WITHOUT any network traffic ; tests prove this.
+#
+# § CC-LICENSE VERIFICATION (real source-URL citations · see lib.rs rustdoc)
+#   - Khronos glTF-Sample-Models : CC-BY 4.0 / CC0 1.0 (LICENSE.md per-asset)
+#       https://github.com/KhronosGroup/glTF-Sample-Models/blob/master/LICENSE.md
+#   - Polyhaven HDRIs            : CC0 1.0 (Public Domain Dedication)
+#       https://polyhaven.com/license
+#   - OpenGameArt CC0 textures   : CC0 1.0 (filtered by tag at source)
+#       https://opengameart.org/  (per-asset license tag honored)
+#
+# § DEPENDENCIES (strict-foundation · NO new transitive crates)
+#   cssl-host-procgen-pipeline — uses asset_fetch as the hard-gated network
+#                                surface (host-allowlist + size-cap + offline)
+#   serde / serde_json         — AssetManifest JSON round-trip
+#                                (workspace-pinned ; no new deps)
+#   thiserror                  — typed LoaderErr / ParseErr
+#   blake3                     — sha256_expected matching uses BLAKE3 fingerprint
+#                                of (uri, license, parser) too for manifest-integrity
+#                                + we use the raw sha256 byte-array compared against
+#                                a hand-rolled SHA-256 (NO new dep) ; using blake3
+#                                only for non-checksum hashing of the manifest itself
+#
+# § SHA-256 IMPLEMENTATION
+#   We DO NOT pull a sha2 crate.  Apocky's "no-Cargo-bloat" stance plus the
+#   tight 1500-LOC budget mean we ship a small, self-contained SHA-256
+#   implementation derived from FIPS-180-4 in our own module. The test-suite
+#   verifies it against published RFC test-vectors. Forty lines of code,
+#   audit-trivial, no maintenance cost.
+[dependencies]
+cssl-host-procgen-pipeline = { path = "../cssl-host-procgen-pipeline" }
+serde     = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+blake3    = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
