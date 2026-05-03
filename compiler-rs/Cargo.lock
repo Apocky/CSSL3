@@ -4201,6 +4201,7 @@ dependencies = [
  "cssl-host-stereoscopy",
  "cssl-host-substrate-intelligence",
  "cssl-host-substrate-render-v2",
+ "cssl-host-substrate-render-v3",
  "cssl-host-substrate-resonance-gpu",
  "cssl-host-voice",
  "cssl-host-weapons",
