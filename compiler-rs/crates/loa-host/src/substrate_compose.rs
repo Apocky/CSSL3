@@ -42,13 +42,21 @@ pub const COMPOSE_TEX_W: u32 = 256;
 pub const COMPOSE_TEX_H: u32 = 256;
 
 /// § T11-W18-PARADIGM-FOREST (Apocky-pivot 2026-05-02) · the SUBSTRATE-RESONANCE
-/// pixel-field is the PRIMARY visual representation · NOT a 50% overlay over
-/// conventional rendering. Set to 1.0 so ω-field cells dominate the screen ·
-/// the conventional scene-pass + cfer-raymarcher + tonemap are infrastructure
-/// that the substrate-pixels OBSCURE · NOT a peer that gets-half-the-pixels.
-/// Operator can dim via `set_overlay_strength` if they want to see the
-/// conventional layer for debugging.
-pub const DEFAULT_OVERLAY_STRENGTH: f32 = 1.0;
+/// § T11-W18-OVERLAY-DIM · Apocky 2026-05-03 directive : "It needs to render
+/// the same test-room scene as the old engine, or else we go back to our
+/// proprietary CSSL take on traditional rendering bleeding-edge approaches."
+///
+/// REVERTED 1.0 → 0.0. Traditional-pipeline (scene.wgsl + cfer-raymarch +
+/// tonemap) is the PRIMARY path · substrate is now an OPT-IN overlay via
+/// LOA_OVERLAY_STRENGTH env-var (0.0..=1.0). This restores the navigatable
+/// test-room. Substrate paradigm work persists in cssl-host-substrate-*
+/// crates and substrate_v2.wgsl ; user can flip env-var to surface it.
+///
+/// PRIOR-RATIONALE (preserved for context) : 1.0 was set during the
+/// "make substrate-PRIMARY" pivot when Apocky asked "why does it still look
+/// the same as before?" — but the substrate-output (concentric crystal-rings)
+/// turned out to be visually impoverished compared to the test-room scene.
+pub const DEFAULT_OVERLAY_STRENGTH: f32 = 0.0;
 
 /// § T11-W18-PARADIGM-FOREST · sub-threshold alpha → pure (0,0,0,0) so AMOLED
 /// preserves true-black void · BUT we want substrate-pixels to dominate ·
@@ -233,9 +241,17 @@ impl SubstrateComposePipeline {
         let initial_sat = 1.15_f32;
         let initial_nits = 800.0_f32;
         let initial_hdr_flag = 0.0_f32; // Amoled is SDR
+        // § T11-W18-LOA_OVERLAY_STRENGTH · env-var override 0.0..=1.0
+        //   default = DEFAULT_OVERLAY_STRENGTH (currently 0.0 = traditional-PRIMARY)
+        //   set LOA_OVERLAY_STRENGTH=1.0 to opt-in to substrate-PRIMARY overlay
+        let initial_overlay = std::env::var("LOA_OVERLAY_STRENGTH")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .map(|v| v.clamp(0.0, 1.0))
+            .unwrap_or(DEFAULT_OVERLAY_STRENGTH);
         let uniforms = ComposeUniforms {
             compose_ctl: [
-                DEFAULT_OVERLAY_STRENGTH,
+                initial_overlay,
                 DEFAULT_AMOLED_BLACK_THRESHOLD,
                 DEFAULT_AMOLED_CONTRAST,
                 initial_profile as u32 as f32,
@@ -358,7 +374,7 @@ impl SubstrateComposePipeline {
             "loa-host/substrate-compose",
             &format!(
                 "init · {COMPOSE_TEX_W}×{COMPOSE_TEX_H} RGBA8 texture · target={target_format:?} \
-                 · overlay={DEFAULT_OVERLAY_STRENGTH}"
+                 · overlay={initial_overlay} (default {DEFAULT_OVERLAY_STRENGTH} · env LOA_OVERLAY_STRENGTH override)"
             ),
         );
 
@@ -370,7 +386,7 @@ impl SubstrateComposePipeline {
             bgl,
             bind_group,
             pipeline,
-            overlay_strength: DEFAULT_OVERLAY_STRENGTH,
+            overlay_strength: initial_overlay,
             black_threshold: DEFAULT_AMOLED_BLACK_THRESHOLD,
             contrast: DEFAULT_AMOLED_CONTRAST,
             display_profile: initial_profile,

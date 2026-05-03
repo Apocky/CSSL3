@@ -9,8 +9,8 @@ const PLATFORM = 'windows-x64';
 const FILENAME = `LoA-${VERSION}-${PLATFORM}.zip`;
 const FILE_URL = `/downloads/${FILENAME}`;
 const SHA256_URL = `${FILE_URL}.sha256`;
-const SIZE_MB = '3.41';
-const SHA256_SHORT = '74299b2d…21666';
+const SIZE_MB = '3.36';
+const SHA256_SHORT = '47803c6e…98761a';
 const RELEASE_DATE = '2026-05-03';
 
 const Download: NextPage = () => {
@@ -18,7 +18,7 @@ const Download: NextPage = () => {
     <>
       <Head>
         <title>Download · Labyrinth of Apocalypse · alpha</title>
-        <meta name="description" content="Download Labyrinth of Apocalypse v0.1.0-alpha for Windows x64 · 3.41 MB · self-hosted · no DRM · sovereignty-respecting" />
+        <meta name="description" content="Download Labyrinth of Apocalypse v0.1.0-alpha for Windows x64 · 3.36 MB · self-hosted · no DRM · sovereignty-respecting" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#0a0a0f" />
         <meta property="og:title" content="Download · Labyrinth of Apocalypse · alpha" />
@@ -185,7 +185,7 @@ const Download: NextPage = () => {
             § What's in the ZIP
           </h2>
           <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#cdd6e4', fontSize: '0.92rem' }}>
-            <li><code style={{ color: '#7dd3fc' }}>LoA.exe</code> · 9.27 MB · self-contained Windows-x64 · no third-party DLLs</li>
+            <li><code style={{ color: '#7dd3fc' }}>LoA.exe</code> · 8.73 MB · self-contained Windows-x64 · no third-party DLLs</li>
             <li><code style={{ color: '#7dd3fc' }}>README.md</code> · alpha framing · what works · what doesn't</li>
             <li><code style={{ color: '#7dd3fc' }}>LICENSE.md</code> · alpha-tester EULA · refund policy · sovereignty</li>
             <li><code style={{ color: '#7dd3fc' }}>CONTROLS.md</code> · keybinding reference · MCP tools · sovereign-cap escape-hatch</li>

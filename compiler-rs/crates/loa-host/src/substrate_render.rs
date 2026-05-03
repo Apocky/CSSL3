@@ -271,9 +271,23 @@ pub struct SubstrateRenderState {
     /// internally, so this field's presence has zero effect when the
     /// env-knob is unset (default-OFF) — the shell-seed crystal-128 array
     /// is preserved exactly. When env=1, every `CONTENT_PIPELINE_REFRESH_EVERY`
-    /// frames the crystal-array is REPLACED with procgen-derived crystals.
+    /// frames the crystal-array is APPENDED with procgen-derived crystals
+    /// (post T11-W18-CONTENT-APPEND fix · Apocky 2026-05-03 feedback).
     pub content_pipeline: crate::content_pipeline::LoaContentPipeline,
+
+    /// § T11-W18-CONTENT-APPEND · captured-at-init shell-seed crystals.
+    /// When `LOA_CONTENT_PIPELINE=1`, the refresh APPENDS procgen-crystals
+    /// to this baseline (cap 256 total). Apocky-feedback : "concentric
+    /// circles barely rendering" — REPLACE-mode meant 128 shell-seed
+    /// → 1-2 procgen made the field MORE empty. APPEND fixes that.
+    pub baseline_crystals: Vec<Crystal>,
 }
+
+/// § T11-W18-CONTENT-APPEND · cap on total crystals (baseline + procgen).
+/// 256 = 2× shell-seed allowing rich procgen overlay without GPU pressure.
+/// substrate_v2.wgsl already has MAX_CRYSTALS=128 hard-cap so we slice on
+/// the consumer side, but the host-side Vec stays larger for diagnostics.
+pub const CRYSTAL_TOTAL_CAP: usize = 256;
 
 /// § T11-W18-LOA-CONTENT-WIRE · cadence at which `tick` polls the content-
 /// pipeline for a refreshed crystal-array. 120 frames ≈ 1 second at 120 Hz.
@@ -346,6 +360,9 @@ impl SubstrateRenderState {
                 kan_path.display(),
             ),
         );
+        // § T11-W18-CONTENT-APPEND · capture shell-seed as baseline so
+        //   content_pipeline can APPEND on top instead of REPLACE.
+        let baseline_crystals = crystals.clone();
         Self {
             renderer: DigitalIntelligenceRenderer::new(DEFAULT_SUBSTRATE_W, DEFAULT_SUBSTRATE_H),
             crystals,
@@ -358,6 +375,7 @@ impl SubstrateRenderState {
             last_tick_instant: None,
             profile_id: profile_id_from_env(),
             content_pipeline: crate::content_pipeline::LoaContentPipeline::new(),
+            baseline_crystals,
         }
     }
 
@@ -458,14 +476,27 @@ impl SubstrateRenderState {
         if crystals.is_empty() {
             return;
         }
-        // § REPLACE · cap-respected (already capped inside tick_once).
-        self.crystals = crystals;
+        // § T11-W18-CONTENT-APPEND · APPEND procgen on top of baseline shell-seed
+        //   instead of REPLACE. Per Apocky 2026-05-03 feedback : "concentric
+        //   circles barely rendering" — replacing 128 baseline with 1-2 procgen
+        //   produced an even-emptier field. Append-mode keeps the foundation
+        //   alive AND adds dynamic procgen variation. Cap at CRYSTAL_TOTAL_CAP
+        //   so the WGSL kernel's MAX_CRYSTALS=128 hard-cap clips us safely
+        //   when consuming.
+        let procgen_count = crystals.len();
+        self.crystals = self.baseline_crystals.clone();
+        self.crystals.extend(crystals);
+        if self.crystals.len() > CRYSTAL_TOTAL_CAP {
+            self.crystals.truncate(CRYSTAL_TOTAL_CAP);
+        }
         log_event(
             "INFO",
             "loa-host/content-pipeline",
             &format!(
-                "frame={} · replaced shell-seed with {} procgen-crystals · prompt_hash=0x{:016x}",
+                "frame={} · appended {} procgen-crystals to {} baseline (total {}) · prompt_hash=0x{:016x}",
                 self.frame_count,
+                procgen_count,
+                self.baseline_crystals.len(),
                 self.crystals.len(),
                 self.content_pipeline.last_prompt_hash,
             ),
