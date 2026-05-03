@@ -34,6 +34,48 @@
 //! § ATTESTATION
 //!   No data leaves the device. The Specialist trait + 4 impls are pure
 //!   CPU paths over the substrate's deterministic primitives.
+//!
+//! § PERSISTENCE — sovereignty-attested
+//!   `specialist_persist` / `specialist_load` write a versioned binary file
+//!   to a caller-supplied `&Path` (default-helper points at `~/.loa/`).
+//!   The file format is a stable v0x01 layout :
+//!
+//!   ```text
+//!   [0]               : SPECIALIST_PERSIST_FORMAT_V1 (= 0x01)
+//!   [1]               : SpecialistRole::to_u32() as u8 (0..=3)
+//!   [2]               : kan_band_id (0..=3 today · 0..=4 future)
+//!   [3..=4]           : recent_observations.len() LE u16 (0..=OBS_RING_CAP)
+//!   [5..5+16N]        : N × 16-byte BLAKE3-truncated digests (FIFO order)
+//!   [5+16N..5+16N+32] : 32-byte BLAKE3 digest of all preceding bytes
+//!   ```
+//!
+//!   `specialist_council_persist` packs all 4 specialists with framing.
+//!   Format v0x10 :
+//!
+//!   ```text
+//!   [0]               : COUNCIL_PERSIST_FORMAT_V1 (= 0x10)
+//!   [1]               : count (4 today · 0..=255 future)
+//!   [2..2+2*count]    : count × u16-LE record-sizes
+//!   [..]              : concatenated individual specialist records
+//!   [end-32..end]     : 32-byte BLAKE3 digest of all preceding bytes
+//!   ```
+//!
+//!   § PRIME-DIRECTIVE compliance
+//!   - LOCAL-ONLY · paths must be local filesystem paths. Callers passing
+//!     a network/cloud path bypass this attestation.
+//!   - NO TELEMETRY · persistence does not phone home, does not emit
+//!     metrics, does not log payloads.
+//!   - BLAKE3-INTEGRITY · every persisted file ends with a 32-byte BLAKE3
+//!     digest of all preceding bytes. Tampering is detected on load and
+//!     rejected with `ErrorKind::InvalidData`.
+//!   - SOVEREIGN-OPT-OUT · setting environment variable
+//!     `LOA_SPECIALIST_NO_PERSIST=1` makes `specialist_persist` and
+//!     `specialist_council_persist` no-op (returns `Ok(())` without
+//!     writing). The user owns every byte that hits disk on their
+//!     substrate.
+//!   - FORWARD-COMPAT-READERS · the v0x01 / v0x10 byte tags are reserved.
+//!     A future v0x02 reader will accept v0x01 files (BLAKE3-verified)
+//!     so existing learning persists across upgrades.
 
 #![forbid(unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
@@ -463,6 +505,461 @@ pub fn role_council(decisions: &[Decision]) -> Decision {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// § Persistence — sovereignty-attested binary roundtrip with BLAKE3 integrity
+//   Mirrors the kan_bias_persist / kan_bias_load pattern in
+//   cssl-host-substrate-intelligence (format v0x02) ; this layer is the
+//   *specialist-context* persistence (one file per specialist · one file
+//   per council · same versioning discipline · same BLAKE3 integrity).
+// ══════════════════════════════════════════════════════════════════════════
+
+/// File-format header byte for `specialist_persist` v1 records.
+///
+/// A future v2 reader MUST still accept v1 files (mirrors the
+/// `kan_bias_load` v1/v2 forward-compat pattern in
+/// `cssl-host-substrate-intelligence`).
+pub const SPECIALIST_PERSIST_FORMAT_V1: u8 = 0x01;
+
+/// File-format header byte for `specialist_council_persist` v1 records.
+///
+/// Distinct from `SPECIALIST_PERSIST_FORMAT_V1` so a corrupt-or-mistyped
+/// load attempt against the wrong file shape is rejected on header byte
+/// before BLAKE3 verification — fail-fast on shape mismatch.
+pub const COUNCIL_PERSIST_FORMAT_V1: u8 = 0x10;
+
+/// Environment-variable that, when set to `"1"`, makes `specialist_persist`
+/// and `specialist_council_persist` no-op (return `Ok(())` without
+/// writing). The user remains in control of every byte that hits disk.
+pub const ENV_NO_PERSIST: &str = "LOA_SPECIALIST_NO_PERSIST";
+
+/// Single specialist-record overhead (header + role + band + ring-len + digest)
+/// = 1 + 1 + 1 + 2 + 32 = 37 bytes minimum (zero observations).
+pub const SPECIALIST_RECORD_MIN: usize = 1 + 1 + 1 + 2 + 32;
+/// Maximum specialist-record size = 37 + 16 × `OBS_RING_CAP` = 1061 bytes.
+/// Exposed as `pub` so callers can pre-size buffers and verify byte-stable
+/// invariants in their own integration tests.
+pub const SPECIALIST_RECORD_MAX: usize = SPECIALIST_RECORD_MIN + 16 * OBS_RING_CAP;
+
+/// Check the sovereign opt-out env-var. Returns true when persistence
+/// should be skipped (env-var set to "1").
+fn no_persist_opt_out() -> bool {
+    std::env::var(ENV_NO_PERSIST).ok().as_deref() == Some("1")
+}
+
+/// Encode a `SpecialistContext` into a v1 byte-record (header + body +
+/// BLAKE3-digest). Pure function ; no I/O.
+fn encode_specialist_v1(ctx: &SpecialistContext) -> Vec<u8> {
+    let n = ctx.recent_observations.len();
+    debug_assert!(n <= OBS_RING_CAP, "ring overflow ; OBS_RING_CAP enforced by observe_common");
+    let body_len = 1 + 1 + 1 + 2 + 16 * n; // header + role + band + ring-len + payload
+    let mut buf = Vec::with_capacity(body_len + 32);
+    buf.push(SPECIALIST_PERSIST_FORMAT_V1);
+    buf.push(ctx.role.to_u32() as u8);
+    buf.push(ctx.kan_band_id);
+    buf.extend_from_slice(&(n as u16).to_le_bytes());
+    for obs in &ctx.recent_observations {
+        buf.extend_from_slice(obs);
+    }
+    // BLAKE3 of header+body, appended.
+    let digest: [u8; 32] = blake3::hash(&buf).into();
+    buf.extend_from_slice(&digest);
+    buf
+}
+
+/// Decode a v1 byte-record back into a `SpecialistContext` after verifying
+/// header byte + role-id + ring-len bounds + BLAKE3 digest.
+fn decode_specialist_v1(bytes: &[u8]) -> std::io::Result<SpecialistContext> {
+    use std::io::{Error, ErrorKind};
+
+    if bytes.len() < SPECIALIST_RECORD_MIN {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "specialist record too short : {} < {} bytes",
+                bytes.len(),
+                SPECIALIST_RECORD_MIN
+            ),
+        ));
+    }
+    if bytes[0] != SPECIALIST_PERSIST_FORMAT_V1 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "unknown specialist persist version : 0x{:02X} (expected 0x{:02X})",
+                bytes[0], SPECIALIST_PERSIST_FORMAT_V1
+            ),
+        ));
+    }
+
+    let role_byte = bytes[1];
+    let Some(role) = SpecialistRole::from_u32(u32::from(role_byte)) else {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("invalid role-id byte : {role_byte}"),
+        ));
+    };
+    let kan_band_id = bytes[2];
+    let ring_len = u16::from_le_bytes([bytes[3], bytes[4]]) as usize;
+    if ring_len > OBS_RING_CAP {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("ring-len {ring_len} exceeds OBS_RING_CAP {OBS_RING_CAP}"),
+        ));
+    }
+
+    let expected_total = SPECIALIST_RECORD_MIN + 16 * ring_len;
+    if bytes.len() != expected_total {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "specialist record length mismatch : got {} · expected {} (ring-len {ring_len})",
+                bytes.len(),
+                expected_total
+            ),
+        ));
+    }
+
+    // Verify BLAKE3 digest on header+body (everything except the trailing
+    // 32-byte digest).
+    let body_end = expected_total - 32;
+    let computed: [u8; 32] = blake3::hash(&bytes[..body_end]).into();
+    let stored = &bytes[body_end..];
+    if computed.as_slice() != stored {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "BLAKE3 integrity check failed on specialist record",
+        ));
+    }
+
+    // Reconstruct the observation ring.
+    let mut obs = Vec::with_capacity(ring_len);
+    for i in 0..ring_len {
+        let off = 5 + 16 * i;
+        let mut d = [0u8; 16];
+        d.copy_from_slice(&bytes[off..off + 16]);
+        obs.push(d);
+    }
+    Ok(SpecialistContext {
+        role,
+        recent_observations: obs,
+        kan_band_id,
+    })
+}
+
+/// Persist a `SpecialistContext` to `path` using format v0x01 (1 + 1 + 1 +
+/// 2 + 16N + 32 bytes). Creates parent directories on demand.
+///
+/// Returns `Ok(())` on success or when `LOA_SPECIALIST_NO_PERSIST=1` is
+/// set in the environment (sovereign opt-out — no bytes hit disk).
+///
+/// Errors are I/O errors from filesystem-write or directory-creation.
+///
+/// # Examples
+///
+/// ```no_run
+/// use cssl_host_dmgm_specialists::{DmSpecialist, Specialist, specialist_persist};
+/// let mut dm = DmSpecialist::new();
+/// dm.observe(b"a learning event");
+/// let path = std::env::temp_dir().join("dm_persist.bin");
+/// specialist_persist(dm.context(), &path).expect("persist roundtrip");
+/// ```
+pub fn specialist_persist(
+    context: &SpecialistContext,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    if no_persist_opt_out() {
+        return Ok(());
+    }
+    let buf = encode_specialist_v1(context);
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, &buf)
+}
+
+/// Load a `SpecialistContext` from `path` ; verifies header byte +
+/// ring-length bounds + BLAKE3 digest before returning.
+///
+/// Returns `Err(ErrorKind::InvalidData)` on : unknown header byte ·
+/// ring-len exceeding `OBS_RING_CAP` · length mismatch · BLAKE3 digest
+/// mismatch.
+///
+/// Returns `Err(ErrorKind::NotFound)` when the file does not exist.
+///
+/// # Examples
+///
+/// ```no_run
+/// use cssl_host_dmgm_specialists::specialist_load;
+/// let path = std::env::temp_dir().join("dm_persist.bin");
+/// let ctx = specialist_load(&path).expect("file readable + integrity ok");
+/// assert_eq!(ctx.role.to_u32(), 0); // DungeonMaster
+/// ```
+pub fn specialist_load(path: &std::path::Path) -> std::io::Result<SpecialistContext> {
+    let bytes = std::fs::read(path)?;
+    decode_specialist_v1(&bytes)
+}
+
+/// Persist all specialists in a council into a single file using format
+/// v0x10. Sizes-table + concatenated records + trailing BLAKE3 digest.
+///
+/// Returns `Ok(())` on `LOA_SPECIALIST_NO_PERSIST=1`.
+///
+/// # Errors
+/// Filesystem-write failures · directory-create failures · empty input
+/// (`InvalidInput`) · count > 255 (`InvalidInput` ; format limit).
+pub fn specialist_council_persist(
+    specialists: &[&dyn Specialist],
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    if no_persist_opt_out() {
+        return Ok(());
+    }
+    if specialists.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "council persist requires at least 1 specialist",
+        ));
+    }
+    if specialists.len() > 255 {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "council persist supports at most 255 specialists",
+        ));
+    }
+
+    // Encode each specialist via the v1 record path. We need a way to
+    // pull the SpecialistContext from a `&dyn Specialist` ; the trait
+    // surface intentionally hides ctx for impl-flexibility, so we
+    // reconstruct an equivalent context by reading back the stable
+    // public fields (role + kan-band) and replaying observations.
+    //
+    // Today all 4 concrete impls expose `context()` but the trait does
+    // not. We add a private helper that requires concrete dispatch.
+    // For cross-impl uniformity we use the council-helper that invokes
+    // each specialist's `role()` → recovers a fresh-default context
+    // EXCEPT for the recent_observations, which are accumulator state.
+    //
+    // To preserve learning, callers should use the typed-array overload
+    // `specialist_council_persist_typed` defined below ; this dyn-trait
+    // entry-point persists a fresh-default context per role (which is
+    // still useful for council-shape-only persistence, e.g. role
+    // assignments without learned observations). The richer overload
+    // is what loa-host should call.
+    let mut records: Vec<Vec<u8>> = Vec::with_capacity(specialists.len());
+    for s in specialists {
+        let ctx = SpecialistContext::new(s.role());
+        records.push(encode_specialist_v1(&ctx));
+    }
+
+    write_council_v1(&records, path)
+}
+
+/// Typed-array overload of `specialist_council_persist` — preserves each
+/// specialist's `recent_observations` because it accepts concrete
+/// `SpecialistContext` references (which expose the ring directly).
+/// loa-host uses this entry-point so council-state survives restart with
+/// learning intact.
+///
+/// # Errors
+/// Same as `specialist_council_persist`.
+pub fn specialist_council_persist_typed(
+    contexts: &[&SpecialistContext],
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    if no_persist_opt_out() {
+        return Ok(());
+    }
+    if contexts.is_empty() {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "council persist requires at least 1 context",
+        ));
+    }
+    if contexts.len() > 255 {
+        return Err(Error::new(
+            ErrorKind::InvalidInput,
+            "council persist supports at most 255 contexts",
+        ));
+    }
+
+    let records: Vec<Vec<u8>> = contexts.iter().map(|c| encode_specialist_v1(c)).collect();
+    write_council_v1(&records, path)
+}
+
+/// Common persistence path for council records — assembles the framing,
+/// computes BLAKE3, writes to disk.
+fn write_council_v1(records: &[Vec<u8>], path: &std::path::Path) -> std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
+
+    let count = records.len();
+    let table_len = 2 * count;
+    let payload_len: usize = records.iter().map(Vec::len).sum();
+    // Each individual record ≤ SPECIALIST_RECORD_MAX = 1061 ; u16 sizes-
+    // table is fine. Validate before encoding into u16.
+    for (i, r) in records.iter().enumerate() {
+        if r.len() > u16::MAX as usize {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!("specialist record {i} exceeds u16 size limit"),
+            ));
+        }
+    }
+
+    let body_len = 2 + table_len + payload_len; // header + count + sizes + payloads
+    let mut buf = Vec::with_capacity(body_len + 32);
+    buf.push(COUNCIL_PERSIST_FORMAT_V1);
+    buf.push(count as u8);
+    for r in records {
+        buf.extend_from_slice(&(r.len() as u16).to_le_bytes());
+    }
+    for r in records {
+        buf.extend_from_slice(r);
+    }
+    let digest: [u8; 32] = blake3::hash(&buf).into();
+    buf.extend_from_slice(&digest);
+
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, &buf)
+}
+
+/// Load a council file and return a `Vec<SpecialistContext>` reconstructed
+/// from each individual specialist record.
+///
+/// # Errors
+/// `InvalidData` on : bad header byte · count = 0 · ring-len exceeding
+/// `OBS_RING_CAP` · individual record corrupt · trailing BLAKE3 mismatch.
+pub fn specialist_council_load(
+    path: &std::path::Path,
+) -> std::io::Result<Vec<SpecialistContext>> {
+    use std::io::{Error, ErrorKind};
+
+    let bytes = std::fs::read(path)?;
+    if bytes.len() < 2 + 32 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("council file too short : {} bytes", bytes.len()),
+        ));
+    }
+    if bytes[0] != COUNCIL_PERSIST_FORMAT_V1 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "unknown council persist version : 0x{:02X} (expected 0x{:02X})",
+                bytes[0], COUNCIL_PERSIST_FORMAT_V1
+            ),
+        ));
+    }
+    let count = bytes[1] as usize;
+    if count == 0 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "council file declares zero specialists",
+        ));
+    }
+    let table_off = 2usize;
+    let table_len = 2 * count;
+    if bytes.len() < table_off + table_len + 32 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "council file shorter than declared sizes table",
+        ));
+    }
+
+    // Read sizes table.
+    let mut sizes = Vec::with_capacity(count);
+    let mut total_payload = 0usize;
+    for i in 0..count {
+        let off = table_off + 2 * i;
+        let s = u16::from_le_bytes([bytes[off], bytes[off + 1]]) as usize;
+        sizes.push(s);
+        total_payload = total_payload.checked_add(s).ok_or_else(|| {
+            Error::new(ErrorKind::InvalidData, "council payload overflow")
+        })?;
+    }
+
+    let payload_off = table_off + table_len;
+    let body_end = payload_off + total_payload;
+    if bytes.len() != body_end + 32 {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "council file length mismatch : got {} · expected {}",
+                bytes.len(),
+                body_end + 32
+            ),
+        ));
+    }
+
+    // Verify trailing BLAKE3 digest.
+    let computed: [u8; 32] = blake3::hash(&bytes[..body_end]).into();
+    if computed.as_slice() != &bytes[body_end..] {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "BLAKE3 integrity check failed on council file",
+        ));
+    }
+
+    // Decode each specialist record.
+    let mut out = Vec::with_capacity(count);
+    let mut cursor = payload_off;
+    for size in sizes {
+        let end = cursor + size;
+        let ctx = decode_specialist_v1(&bytes[cursor..end])?;
+        out.push(ctx);
+        cursor = end;
+    }
+    Ok(out)
+}
+
+/// Default per-role persist path under `~/.loa/specialist_<role>.bin`.
+///
+/// Returns `~/.loa/specialist_dm.bin` for DM, `..._gm.bin` for GM,
+/// `..._coll.bin` for Collaborator, `..._coder.bin` for Coder.
+///
+/// Falls back to `./specialist_<role>.bin` if the user's home directory
+/// cannot be resolved (rare on Win32+macOS+Linux ; prevents panic).
+#[must_use]
+pub fn specialist_default_persist_path(role: SpecialistRole) -> std::path::PathBuf {
+    let suffix = match role {
+        SpecialistRole::DungeonMaster => "specialist_dm.bin",
+        SpecialistRole::GameMaster => "specialist_gm.bin",
+        SpecialistRole::Collaborator => "specialist_coll.bin",
+        SpecialistRole::Coder => "specialist_coder.bin",
+    };
+    // Resolve ~/.loa/ — Windows uses USERPROFILE, Unix uses HOME. We
+    // intentionally avoid the `dirs` crate dependency to keep this
+    // crate's tree narrow and fully on-substrate.
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from);
+    home.map_or_else(
+        || std::path::PathBuf::from(suffix),
+        |h| h.join(".loa").join(suffix),
+    )
+}
+
+/// Default council persist path : `~/.loa/specialist_council.bin`.
+#[must_use]
+pub fn specialist_council_default_persist_path() -> std::path::PathBuf {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from);
+    home.map_or_else(
+        || std::path::PathBuf::from("specialist_council.bin"),
+        |h| h.join(".loa").join("specialist_council.bin"),
+    )
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // § Tests — 12+ unit tests covering :
 //   • role-id round-trip (1)
 //   • role isolation (kan-band correctness for all 4) (1)
@@ -704,5 +1201,396 @@ mod tests {
             council.tag() >= 1,
             "council tag must be >= 1 when DM/GM are present (they never Pass)"
         );
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // § Persistence tests — sovereignty-attested binary roundtrip
+    //   8+ tests : roundtrip-bytes · invalid-version-rejected ·
+    //   invalid-checksum-rejected · ring-len-bounds · empty-ring ·
+    //   empty-file · file-not-exists · BLAKE3-digest-correct ·
+    //   council-roundtrip · env-var-no-persist · per-role-default-path ·
+    //   ring-cap-enforced-on-load.
+    // ══════════════════════════════════════════════════════════════════
+
+    /// Build a tempfile path inside std::env::temp_dir that is unique
+    /// per test invocation (PID + a per-test discriminator).
+    fn tmpfile(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join("cssl_specialist_persist_test");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join(format!("{name}_{}.bin", std::process::id()))
+    }
+
+    /// Process-wide test-mutex so env-var manipulation in one test does
+    /// not race with other parallel persistence tests reading
+    /// `LOA_SPECIALIST_NO_PERSIST`. Mirrors the `KAN_TEST_LOCK` pattern
+    /// in `cssl-host-substrate-intelligence`.
+    static PERSIST_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn persist_roundtrip_empty_ring() {
+        // Sovereignty : the env-var must be unset for this test.
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let dm = DmSpecialist::new();
+        // No observations.
+        assert_eq!(dm.context().recent_observations.len(), 0);
+
+        let path = tmpfile("dm_empty");
+        specialist_persist(dm.context(), &path).expect("persist ok");
+        let loaded = specialist_load(&path).expect("load ok");
+        assert_eq!(loaded.role, SpecialistRole::DungeonMaster);
+        assert_eq!(loaded.kan_band_id, 0);
+        assert_eq!(loaded.recent_observations.len(), 0);
+        let _ = std::fs::remove_file(&path);
+
+        // Ensure the saved bytes are exactly the minimum record size.
+        // (Re-persist + read len.)
+        specialist_persist(dm.context(), &path).expect("persist ok");
+        let bytes = std::fs::read(&path).expect("readable");
+        assert_eq!(bytes.len(), SPECIALIST_RECORD_MIN, "min record = 37 bytes");
+        // Use dm so we don't trip an unused warning.
+        let _ = dm.role();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_roundtrip_with_observations() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let mut gm = GmSpecialist::new();
+        for i in 0..7u8 {
+            gm.observe(format!("ev-{i}-payload").as_bytes());
+        }
+        let path = tmpfile("gm_obs7");
+        specialist_persist(gm.context(), &path).expect("persist ok");
+        let loaded = specialist_load(&path).expect("load ok");
+        assert_eq!(loaded.role, SpecialistRole::GameMaster);
+        assert_eq!(loaded.kan_band_id, 1);
+        assert_eq!(loaded.recent_observations.len(), 7);
+        // Each observation digest must match the source ring.
+        for (a, b) in gm.context().recent_observations.iter().zip(&loaded.recent_observations) {
+            assert_eq!(a, b, "observation digest must roundtrip byte-stable");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_full_ring_cap() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let mut coder = CoderSpecialist::new();
+        for i in 0..(OBS_RING_CAP + 5) {
+            coder.observe(format!("event-{i}").as_bytes());
+        }
+        // Ring should be capped at OBS_RING_CAP.
+        assert_eq!(coder.context().recent_observations.len(), OBS_RING_CAP);
+
+        let path = tmpfile("coder_full");
+        specialist_persist(coder.context(), &path).expect("persist ok");
+        let bytes = std::fs::read(&path).expect("readable");
+        // Max record size = 37 + 16 * 64 = 1061 bytes.
+        assert_eq!(bytes.len(), SPECIALIST_RECORD_MAX, "max record = 1061 bytes");
+
+        let loaded = specialist_load(&path).expect("load ok");
+        assert_eq!(loaded.recent_observations.len(), OBS_RING_CAP);
+        assert_eq!(loaded.role, SpecialistRole::Coder);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_rejects_invalid_version() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let path = tmpfile("bad_version");
+        // Header byte 0xFF instead of SPECIALIST_PERSIST_FORMAT_V1.
+        let mut buf = vec![0u8; SPECIALIST_RECORD_MIN];
+        buf[0] = 0xFF;
+        // Even include a valid BLAKE3 over the first (min-32) bytes so we
+        // confirm rejection happens on header byte BEFORE digest check.
+        let body_end = SPECIALIST_RECORD_MIN - 32;
+        let digest: [u8; 32] = blake3::hash(&buf[..body_end]).into();
+        buf[body_end..].copy_from_slice(&digest);
+        std::fs::write(&path, &buf).expect("fixture writes");
+
+        let err = specialist_load(&path).expect_err("must reject bad version");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("unknown specialist persist version"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_rejects_invalid_checksum() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let mut dm = DmSpecialist::new();
+        dm.observe(b"some event");
+        let path = tmpfile("bad_checksum");
+        specialist_persist(dm.context(), &path).expect("persist ok");
+
+        // Corrupt the trailing digest byte (flip the last byte).
+        let mut bytes = std::fs::read(&path).expect("readable");
+        let last = bytes.len() - 1;
+        bytes[last] = bytes[last].wrapping_add(0x01);
+        std::fs::write(&path, &bytes).expect("rewrite");
+
+        let err = specialist_load(&path).expect_err("must reject corrupted digest");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("BLAKE3 integrity check failed"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_rejects_ring_len_too_large() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let path = tmpfile("ring_overflow");
+        // Hand-craft a record claiming ring_len = OBS_RING_CAP + 1 = 65.
+        let bad_n = (OBS_RING_CAP + 1) as u16;
+        let body_len = 5 + 16 * bad_n as usize;
+        let mut buf = vec![0u8; body_len];
+        buf[0] = SPECIALIST_PERSIST_FORMAT_V1;
+        buf[1] = 0; // role DM
+        buf[2] = 0; // band 0
+        buf[3..5].copy_from_slice(&bad_n.to_le_bytes());
+        // Compute valid digest so rejection is triggered by ring-len check.
+        let digest: [u8; 32] = blake3::hash(&buf).into();
+        buf.extend_from_slice(&digest);
+        std::fs::write(&path, &buf).expect("fixture writes");
+
+        let err = specialist_load(&path).expect_err("must reject overflow ring-len");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("ring-len 65 exceeds OBS_RING_CAP"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_rejects_empty_file() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let path = tmpfile("empty");
+        std::fs::write(&path, &[] as &[u8]).expect("fixture writes");
+        let err = specialist_load(&path).expect_err("must reject empty file");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("specialist record too short"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_rejects_missing_file() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let path = std::env::temp_dir().join("definitely_does_not_exist_xyzzy_12345.bin");
+        let _ = std::fs::remove_file(&path); // ensure absent
+        let err = specialist_load(&path).expect_err("must reject missing file");
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn persist_blake3_digest_byte_correct() {
+        // Verify the trailing 32 bytes equal BLAKE3(header + body).
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let mut coll = CollaboratorSpecialist::new();
+        coll.observe(b"co-author beat-1");
+        coll.observe(b"co-author beat-2");
+        let path = tmpfile("digest_check");
+        specialist_persist(coll.context(), &path).expect("persist ok");
+        let bytes = std::fs::read(&path).expect("readable");
+        assert!(bytes.len() >= 32);
+        let body_end = bytes.len() - 32;
+        let computed: [u8; 32] = blake3::hash(&bytes[..body_end]).into();
+        assert_eq!(
+            &bytes[body_end..],
+            computed.as_slice(),
+            "trailing 32 bytes must equal BLAKE3 of preceding bytes"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_council_roundtrip_typed() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let mut dm = DmSpecialist::new();
+        let mut gm = GmSpecialist::new();
+        let mut coll = CollaboratorSpecialist::new();
+        let mut coder = CoderSpecialist::new();
+        // Each specialist gets a distinct number of observations.
+        for i in 0..3 { dm.observe(format!("dm-{i}").as_bytes()); }
+        for i in 0..7 { gm.observe(format!("gm-{i}").as_bytes()); }
+        for i in 0..2 { coll.observe(format!("coll-{i}").as_bytes()); }
+        for i in 0..5 { coder.observe(format!("coder-{i}").as_bytes()); }
+
+        let path = tmpfile("council_typed");
+        let ctxs: Vec<&SpecialistContext> = vec![
+            dm.context(),
+            gm.context(),
+            coll.context(),
+            coder.context(),
+        ];
+        specialist_council_persist_typed(&ctxs, &path).expect("council persist ok");
+
+        let loaded = specialist_council_load(&path).expect("council load ok");
+        assert_eq!(loaded.len(), 4);
+        assert_eq!(loaded[0].role, SpecialistRole::DungeonMaster);
+        assert_eq!(loaded[0].recent_observations.len(), 3);
+        assert_eq!(loaded[1].role, SpecialistRole::GameMaster);
+        assert_eq!(loaded[1].recent_observations.len(), 7);
+        assert_eq!(loaded[2].role, SpecialistRole::Collaborator);
+        assert_eq!(loaded[2].recent_observations.len(), 2);
+        assert_eq!(loaded[3].role, SpecialistRole::Coder);
+        assert_eq!(loaded[3].recent_observations.len(), 5);
+        // Verify ring contents byte-for-byte.
+        for (a, b) in dm.context().recent_observations.iter().zip(&loaded[0].recent_observations) {
+            assert_eq!(a, b);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_council_dyn_trait_path_compiles_and_writes() {
+        // The dyn-trait overload doesn't preserve observations (per its
+        // doc-comment) — verify it at least produces a loadable file.
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let dm = DmSpecialist::new();
+        let gm = GmSpecialist::new();
+        let coll = CollaboratorSpecialist::new();
+        let coder = CoderSpecialist::new();
+        let path = tmpfile("council_dyn");
+        let specs: [&dyn Specialist; 4] = [&dm, &gm, &coll, &coder];
+        specialist_council_persist(&specs, &path).expect("dyn-trait council persist ok");
+        let loaded = specialist_council_load(&path).expect("dyn-trait council load ok");
+        assert_eq!(loaded.len(), 4);
+        // dyn-trait path drops observations (intentional) — all rings empty.
+        for ctx in &loaded {
+            assert_eq!(ctx.recent_observations.len(), 0);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_council_rejects_bad_header() {
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let path = tmpfile("council_bad_hdr");
+        // Hand-craft a council file with bad header byte.
+        let mut buf = vec![0u8; 100];
+        buf[0] = 0x55; // not COUNCIL_PERSIST_FORMAT_V1 = 0x10
+        std::fs::write(&path, &buf).expect("fixture writes");
+        let err = specialist_council_load(&path).expect_err("must reject bad council header");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("unknown council persist version"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_no_persist_env_var_skips_write() {
+        // The sovereign opt-out : LOA_SPECIALIST_NO_PERSIST=1 → no bytes
+        // hit disk, persist returns Ok(()).
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        let path = tmpfile("no_persist_optout");
+        // Ensure the file doesn't exist beforehand.
+        let _ = std::fs::remove_file(&path);
+
+        // Set env-var BEFORE any observations so we never write.
+        std::env::set_var(ENV_NO_PERSIST, "1");
+        let mut dm = DmSpecialist::new();
+        dm.observe(b"learning event");
+        specialist_persist(dm.context(), &path).expect("opt-out is Ok");
+        // File MUST NOT exist after opt-out persist.
+        assert!(!path.exists(), "no-persist env-var must skip file write");
+
+        // Council variant also honors the opt-out.
+        let council_path = tmpfile("no_persist_council_optout");
+        let _ = std::fs::remove_file(&council_path);
+        let ctxs: Vec<&SpecialistContext> = vec![dm.context()];
+        specialist_council_persist_typed(&ctxs, &council_path).expect("opt-out council ok");
+        assert!(!council_path.exists(), "council no-persist env-var must skip file write");
+
+        std::env::remove_var(ENV_NO_PERSIST);
+    }
+
+    #[test]
+    fn persist_default_path_per_role_unique() {
+        let dm_path = specialist_default_persist_path(SpecialistRole::DungeonMaster);
+        let gm_path = specialist_default_persist_path(SpecialistRole::GameMaster);
+        let coll_path = specialist_default_persist_path(SpecialistRole::Collaborator);
+        let coder_path = specialist_default_persist_path(SpecialistRole::Coder);
+        // All 4 paths must be distinct.
+        let mut s = std::collections::HashSet::new();
+        s.insert(dm_path.clone());
+        s.insert(gm_path.clone());
+        s.insert(coll_path.clone());
+        s.insert(coder_path.clone());
+        assert_eq!(s.len(), 4, "all 4 default paths must be unique");
+        // Each path should end with the role suffix.
+        assert!(dm_path.to_string_lossy().ends_with("specialist_dm.bin"));
+        assert!(gm_path.to_string_lossy().ends_with("specialist_gm.bin"));
+        assert!(coll_path.to_string_lossy().ends_with("specialist_coll.bin"));
+        assert!(coder_path.to_string_lossy().ends_with("specialist_coder.bin"));
+
+        let council_default = specialist_council_default_persist_path();
+        assert!(council_default
+            .to_string_lossy()
+            .ends_with("specialist_council.bin"));
+    }
+
+    #[test]
+    fn persist_rejects_length_mismatch() {
+        // A file with valid header byte + valid role + ring_len=2 but
+        // truncated payload must be rejected.
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let path = tmpfile("len_mismatch");
+        let mut buf = vec![0u8; SPECIALIST_RECORD_MIN]; // claims n=0
+        buf[0] = SPECIALIST_PERSIST_FORMAT_V1;
+        buf[1] = 1; // GM
+        buf[2] = 1;
+        buf[3..5].copy_from_slice(&2u16.to_le_bytes()); // declares 2 obs
+        // BUT we don't add 32 bytes of obs payload — file is short.
+        let body_end = SPECIALIST_RECORD_MIN - 32;
+        let digest: [u8; 32] = blake3::hash(&buf[..body_end]).into();
+        buf[body_end..].copy_from_slice(&digest);
+        std::fs::write(&path, &buf).expect("fixture writes");
+
+        let err = specialist_load(&path).expect_err("must reject truncated record");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("specialist record length mismatch"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn persist_each_role_kan_band_preserved() {
+        // After persist+load, the loaded SpecialistContext.kan_band_id
+        // must match role.kan_band_id().
+        let _g = PERSIST_TEST_LOCK.lock().unwrap();
+        std::env::remove_var(ENV_NO_PERSIST);
+        let cases = [
+            (
+                SpecialistContext::new(SpecialistRole::DungeonMaster),
+                "kan_band_dm",
+            ),
+            (
+                SpecialistContext::new(SpecialistRole::GameMaster),
+                "kan_band_gm",
+            ),
+            (
+                SpecialistContext::new(SpecialistRole::Collaborator),
+                "kan_band_coll",
+            ),
+            (
+                SpecialistContext::new(SpecialistRole::Coder),
+                "kan_band_coder",
+            ),
+        ];
+        for (ctx, name) in &cases {
+            let path = tmpfile(name);
+            specialist_persist(ctx, &path).expect("persist ok");
+            let loaded = specialist_load(&path).expect("load ok");
+            assert_eq!(loaded.role, ctx.role);
+            assert_eq!(loaded.kan_band_id, ctx.role.kan_band_id());
+            let _ = std::fs::remove_file(&path);
+        }
     }
 }
