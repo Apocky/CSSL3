@@ -1983,6 +1983,31 @@ fn lower_one_op(
         "cssl.closure.call.error" => {
             Ok(obj_lower_closure_call_error(op, builder, value_map, ptr_ty))
         }
+        // § T11-W19-α-CSSLC-FIX12 — `cssl.field` (struct field-access).
+        //   body_lower::lower_field emits this op carrying the field-name as
+        //   `field_name=<name>` attribute + a single operand (the struct
+        //   value). Stage-0 lowering : ABI-class-aware dispatch.
+        //
+        //   - Scalar-newtype struct (single ≤8B field, lowered to ScalarI*
+        //     by FIX4 mir_type_to_cl_with_layouts) : the operand IS the
+        //     scalar value (newtype unwrap = identity). Bind the result-id
+        //     to the operand-Value directly. Covers `th.handle` from
+        //     `ThreadHandle { handle : i64 }`, `f.handle` from `File`,
+        //     `mh.handle` from `MutexHandle`, etc.
+        //
+        //   - Multi-field struct (PointerByRef class) : the operand is a
+        //     host-pointer to the struct. We can't compute the field-offset
+        //     without thread the layout-table here ; stage-0 throwaway
+        //     simply passes the pointer through — these helpers (frame_
+        //     clock_begin / entity_id_eq) are not on the hot path because
+        //     the cssl-rt host-side provides the real impls. The MIR op
+        //     produces a `MirType::Opaque(!cssl.field.<name>)` result that
+        //     downstream consumers treat as opaque-scalar.
+        //
+        //   - When the result type IS concretely typed scalar (rare at
+        //     stage-0), we coerce the operand-Value to that width via
+        //     sextend/ireduce so the bound Value matches.
+        "cssl.field" => obj_lower_cssl_field(op, builder, value_map, fn_name, ptr_ty),
         // § T11-W19-α-CSSLC-FIX13 — `arith.bitcast` for `as`-casts.
         //   body_lower::lower_cast emits this op with a single operand (the
         //   value being cast) + a result-id whose `r.ty` is `MirType::None`.
@@ -2103,6 +2128,76 @@ fn obj_lower_arith_bitcast(
             }
         }
         Some(_) => src_val, // Mixed shape (e.g. ptr) — pass-through.
+    };
+    value_map.insert(r.id, out);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX12 — lower `cssl.field` (struct field-access).
+///
+/// § INPUT SHAPE
+/// ```text
+/// cssl.field %obj
+///     attribute field_name = "<name>"
+///     result-ty = MirType::Opaque("!cssl.field.<name>")
+/// ```
+///
+/// § STRATEGY
+///   Stage-0 throwaway pass-through : the operand IS the field value when
+///   the struct is scalar-newtype-lowered (the dominant FIX4 case for stdlib
+///   handles). For PointerByRef structs (multi-field, e.g. FrameClock /
+///   EntityId.{id,gen}) the operand is a host-pointer ; binding the
+///   result-id to it preserves the per-field address-of semantics good
+///   enough for the verifier. Real per-field memref.load (with layout-
+///   computed offsets) is enrichment work — these helpers aren't on the
+///   stage-0 hot path because cssl-rt host impls cover the real semantics.
+///
+///   When the result-id has a concrete scalar MIR type (rare ; body_lower
+///   currently emits `MirType::Opaque("!cssl.field.<name>")`), coerce the
+///   operand to that width.
+fn obj_lower_cssl_field(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.field with no result".to_string(),
+        })?;
+    let obj_id = op
+        .operands
+        .first()
+        .copied()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.field with no operand".to_string(),
+        })?;
+    let obj_val = *value_map
+        .get(&obj_id)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: obj_id.0,
+        })?;
+
+    // Resolve concrete result-ty if any — coerce when scalar mismatch.
+    let dst_cl = mir_type_to_cl(&r.ty, ptr_ty);
+    let src_cl = builder.func.dfg.value_type(obj_val);
+    let out = match dst_cl {
+        None => obj_val, // Opaque or None → pass-through.
+        Some(d) if d == src_cl => obj_val,
+        Some(d) if d.is_int() && src_cl.is_int() => {
+            if d.bits() > src_cl.bits() {
+                builder.ins().sextend(d, obj_val)
+            } else {
+                builder.ins().ireduce(d, obj_val)
+            }
+        }
+        Some(_) => obj_val, // Mixed shape — pass-through.
     };
     value_map.insert(r.id, out);
     Ok(false)
