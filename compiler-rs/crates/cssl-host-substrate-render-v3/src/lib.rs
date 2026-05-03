@@ -859,7 +859,19 @@ mod ash_present {
                     .get_physical_device_surface_present_modes(physical_device, surface)
                     .map_err(PresentError::SurfaceCreate)?
             };
-            let present_mode = if present_modes.contains(&vk::PresentModeKHR::MAILBOX) {
+            // § T11-W18-V3-IMMEDIATE · prefer IMMEDIATE (no-vsync · 1440p144
+            //   path · pair w/ fullscreen-exclusive for tear-free) · MAILBOX
+            //   (triple-buffer · low-latency) · FIFO (vsync · ensures present)
+            //   · LOA_VK_PRESENT_MODE env-override allowed.
+            let env = std::env::var("LOA_VK_PRESENT_MODE").ok();
+            let prefer_immediate = matches!(env.as_deref(), Some("immediate") | None);
+            let present_mode = if prefer_immediate
+                && present_modes.contains(&vk::PresentModeKHR::IMMEDIATE)
+            {
+                vk::PresentModeKHR::IMMEDIATE
+            } else if env.as_deref() == Some("fifo") {
+                vk::PresentModeKHR::FIFO
+            } else if present_modes.contains(&vk::PresentModeKHR::MAILBOX) {
                 vk::PresentModeKHR::MAILBOX
             } else {
                 vk::PresentModeKHR::FIFO
