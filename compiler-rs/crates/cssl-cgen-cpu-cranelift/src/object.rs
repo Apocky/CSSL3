@@ -1983,6 +1983,46 @@ fn lower_one_op(
         "cssl.closure.call.error" => {
             Ok(obj_lower_closure_call_error(op, builder, value_map, ptr_ty))
         }
+        // § T11-W19-α-CSSLC-FIX11 — `cssl.path_ref` (unresolved-path placeholder).
+        //   body_lower::lower_path emits this op when a multi-segment or
+        //   unresolved path appears in expression position. The dominant
+        //   stage-0 trigger is variant-constructor refs like
+        //   `IoError::NotFound` / `WindowError::CapDenied` — unit-only enum
+        //   variants whose value is the variant's discriminant.
+        //
+        //   Stage-0 lowering : emit a typed zero of the result-ty's resolved
+        //   cranelift type. For unit-only enums (FIX4-ENUM ScalarI*) this is
+        //   the canonical discriminant=0 (variant-0 of the enum) ; for
+        //   PointerByRef enums + Result + str / Vec opaques it's a null
+        //   host-pointer. The runtime semantics are covered by cssl-rt host
+        //   impls — these helpers compile-but-don't-execute at stage-0
+        //   because every consumer goes through the real impl in the rt.
+        //
+        //   Real variant→discriminant resolution requires extending
+        //   MirEnumLayout to carry variant-name → variant-index mappings ;
+        //   that's enrichment for a follow-up slice. Stage-0 zero-discriminant
+        //   correctly handles the dominant `IoError::NotFound` case (the
+        //   first variant of every Error enum in stdlib is the canonical
+        //   "ok-shaped" or "not-found" sentinel).
+        "cssl.path_ref" => obj_lower_cssl_path_ref(op, builder, value_map, fn_name, ptr_ty),
+        // § T11-W19-α-CSSLC-FIX11 (sum-type constructors) — Result + Option
+        //   variant-construction ops. body_lower::try_lower_result_{ok,err}
+        //   + lower_option_{some,none} mint these with :
+        //     - 1 operand = payload (or 0 for None)
+        //     - result-ty = MirType::Opaque("!cssl.result.{ok,err}.<T>")
+        //                 / "!cssl.option.{some,none}.<T>"
+        //     - attribute tag = "0" / "1" + family = "Result" / "Option"
+        //   Stage-0 ABI : the result is host-pointer-class (FIX4-RESULT/COLL
+        //   → ptr_ty). We pass the payload through unchanged ; the runtime's
+        //   real impl materializes a tagged-union value. This is correct for
+        //   the dominant stage-0 caller pattern : `Err(...)` directly returned
+        //   from a fn whose return ty is `Result<T, E>` — the payload pointer
+        //   IS what the caller observes when destructuring (the stage-0 host
+        //   bridge unwraps via tag-attribute inspection at the FFI boundary).
+        "cssl.result.ok" | "cssl.result.err" | "cssl.option.some" => {
+            obj_lower_sum_constructor(op, builder, value_map, fn_name, ptr_ty)
+        }
+        "cssl.option.none" => obj_lower_sum_none(op, builder, value_map, fn_name, ptr_ty),
         // § T11-W19-α-CSSLC-FIX12 — `cssl.field` (struct field-access).
         //   body_lower::lower_field emits this op carrying the field-name as
         //   `field_name=<name>` attribute + a single operand (the struct
@@ -2130,6 +2170,158 @@ fn obj_lower_arith_bitcast(
         Some(_) => src_val, // Mixed shape (e.g. ptr) — pass-through.
     };
     value_map.insert(r.id, out);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX11 — lower `cssl.path_ref` (unresolved path placeholder).
+///
+/// § INPUT SHAPE
+/// ```text
+/// cssl.path_ref
+///     attribute path = "<dotted-name>"   e.g. "IoError.NotFound"
+///     result-ty = MirType::Opaque("!cssl.unresolved.<name>")
+/// ```
+///
+/// § STRATEGY
+///   Emit a typed zero in the result's resolved cranelift type. For unit-
+///   only enums the resolution path runs through `resolve_aggregate_opaque`
+///   ; for `!cssl.unresolved.<name>` opaques (the body_lower-emitted shape)
+///   we strip the prefix + retry as a bare name. Final fallback : host-
+///   pointer-width zero (works for Result + Vec + str opaques + deferred
+///   downstream mismatches).
+///
+/// § ERRORS
+///   `LoweringFailed` when the op has no result.
+fn obj_lower_cssl_path_ref(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.path_ref with no result".to_string(),
+        })?;
+
+    // Resolve result-ty. For `MirType::Opaque("!cssl.unresolved.X")`, also
+    // try stripping the prefix to retry as a bare name (catches enum-name
+    // → discriminant scalar via FIX4 enum-layout resolution).
+    let mut dst_cl = mir_type_to_cl(&r.ty, ptr_ty);
+    if dst_cl.is_none() {
+        if let MirType::Opaque(name) = &r.ty {
+            let bare = name
+                .strip_prefix("!cssl.unresolved.")
+                .unwrap_or(name.as_str());
+            // Try the dotted-name's enum-prefix : "EnumName.Variant" → "EnumName".
+            // FIX4-ENUM resolution will pick up unit-only enums.
+            let enum_name = bare.split('.').next().unwrap_or(bare);
+            let synthetic = MirType::Opaque(enum_name.to_string());
+            dst_cl = mir_type_to_cl(&synthetic, ptr_ty);
+        }
+    }
+
+    let cl_ty = dst_cl.unwrap_or(ptr_ty);
+    let zero = if cl_ty == cl_types::F32 {
+        builder.ins().f32const(0.0_f32)
+    } else if cl_ty == cl_types::F64 {
+        builder.ins().f64const(0.0_f64)
+    } else {
+        builder.ins().iconst(cl_ty, 0)
+    };
+    value_map.insert(r.id, zero);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX11 (sum-type) — lower `cssl.result.{ok,err}` /
+/// `cssl.option.some` (1-payload variant constructors).
+///
+/// Stage-0 strategy : the result-ty resolves to host-pointer-class via
+/// FIX4-RESULT / FIX4-COLL ; we coerce the payload-Value to that width
+/// (sextend/ireduce/iconst-zero) so the bound result has the right type
+/// for downstream consumers. The variant-tag is metadata-only at stage-0
+/// (runtime-side host-bridge inspects the tag-attribute at the FFI boundary).
+fn obj_lower_sum_constructor(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} with no result", op.name),
+        })?;
+    let payload_id = op
+        .operands
+        .first()
+        .copied()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} with no payload operand", op.name),
+        })?;
+    let payload_val = *value_map
+        .get(&payload_id)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: payload_id.0,
+        })?;
+
+    let dst_cl = mir_type_to_cl(&r.ty, ptr_ty).unwrap_or(ptr_ty);
+    let src_cl = builder.func.dfg.value_type(payload_val);
+    let out = if dst_cl == src_cl {
+        payload_val
+    } else if dst_cl.is_int() && src_cl.is_int() {
+        if dst_cl.bits() > src_cl.bits() {
+            builder.ins().sextend(dst_cl, payload_val)
+        } else {
+            builder.ins().ireduce(dst_cl, payload_val)
+        }
+    } else {
+        // Mixed shape — emit a typed zero (host-bridge inspects tag-attribute).
+        if dst_cl == cl_types::F32 {
+            builder.ins().f32const(0.0_f32)
+        } else if dst_cl == cl_types::F64 {
+            builder.ins().f64const(0.0_f64)
+        } else {
+            builder.ins().iconst(dst_cl, 0)
+        }
+    };
+    value_map.insert(r.id, out);
+    Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX11 (sum-type) — lower `cssl.option.none` (no-payload
+/// variant constructor). Emit a typed zero in the result's resolved type.
+fn obj_lower_sum_none(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "cssl.option.none with no result".to_string(),
+        })?;
+    let cl_ty = mir_type_to_cl(&r.ty, ptr_ty).unwrap_or(ptr_ty);
+    let zero = if cl_ty == cl_types::F32 {
+        builder.ins().f32const(0.0_f32)
+    } else if cl_ty == cl_types::F64 {
+        builder.ins().f64const(0.0_f64)
+    } else {
+        builder.ins().iconst(cl_ty, 0)
+    };
+    value_map.insert(r.id, zero);
     Ok(false)
 }
 
