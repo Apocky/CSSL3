@@ -1,0 +1,130 @@
+// § T11-W18-DMGM-SPECIALISTS · 4-role council demo
+// ════════════════════════════════════════════════════════════════════════════
+//
+// § Demo · 3 fns showing 4 specialists observe-decide-council on a single prompt.
+//
+// § APOCKY-CANONICAL · NON-NEGOTIABLE
+//   Engine intelligence scope = DM (orchestrator) + GM (narrator) +
+//   Collaborator (co-author) + Coder (runtime-mutate) ONLY. NOT generic AGI.
+//   Each specialist gets its own KAN-bias band (0..3) so observations
+//   accumulate independently.
+//
+// § ROLE-↔-BAND mapping (mirrors `cssl-host-dmgm-specialists::SpecialistRole`)
+//   DungeonMaster = 0  ↔ KAN band 0
+//   GameMaster    = 1  ↔ KAN band 1
+//   Collaborator  = 2  ↔ KAN band 2
+//   Coder         = 3  ↔ KAN band 3
+//
+// § DECISION-TAGS (mirrors `Decision`)
+//   Pass          = 0
+//   Question      = 1
+//   ProposeAction = 2
+//
+// § PRIME-DIRECTIVE §11 attestation
+//   t∞: ¬(hurt ∨ harm) .making-of-this @ (anyone ∨ anything ∨ anybody)
+
+module loa.systems.dmgm_council_demo
+
+// ── Specialist-role enum_id (stable u32 0..=3) ────────────────────────────
+//
+// Mirrors `cssl_host_dmgm_specialists::SpecialistRole::to_u32` — the
+// authoritative discriminant ordering for the DMGM-specialists layer.
+
+pub fn role_dm()           -> i32 { 0 }
+pub fn role_gm()           -> i32 { 1 }
+pub fn role_collaborator() -> i32 { 2 }
+pub fn role_coder()        -> i32 { 3 }
+
+// ── Specialist KAN-bias band routing ──────────────────────────────────────
+//
+// Each role's `kan_band_id()`. Identity-mapping (band == role) means
+// `observe_with_profile(payload, kan_band_for_role(r))` routes the
+// observation into the role's INDEPENDENT KAN-bias slot.
+
+pub fn kan_band_for_role(role: i32) -> i32 {
+    role
+}
+
+// ── Decision-tag mirrors cssl_host_dmgm_specialists::Decision::tag ─────────
+
+pub fn decision_tag_pass()         -> i32 { 0 }
+pub fn decision_tag_question()     -> i32 { 1 }
+pub fn decision_tag_propose()      -> i32 { 2 }
+
+// ── action_id namespaces (per role) ──────────────────────────────────────
+//
+// Mirrors decide_inner's id-encoding. Each role owns a 0xN000..0xNFFF range
+// so council can disambiguate at a glance.
+
+pub fn action_base_dm()       -> i32 { 4096 }   // 0x1000
+pub fn action_base_gm()       -> i32 { 8192 }   // 0x2000
+pub fn action_base_coll()     -> i32 { 12288 }  // 0x3000
+pub fn action_base_coder()    -> i32 { 16384 }  // 0x4000
+
+// ── DEMO-FN-1 · per-specialist observe + decide ──────────────────────────
+//
+// Compact mirror of the host-side `Specialist::decide` flow ; returns a
+// composite encoding (tag << 16 | (action_id & 0xFFFF)) so the demo can be
+// inspected as a single i32 per specialist.
+//
+// Mix-fn : prompt-hash * role-id * 31 + obs-count · stage-0 stand-in for
+// BLAKE3 mix used in the real `decide_inner`.
+
+pub fn specialist_decide(role: i32, prompt_low: i32, obs_count: i32) -> i32 {
+    let mix: i32 = (prompt_low * 31 + role * 7919 + obs_count * 17) & 65535 ;
+    let tag: i32 = 2 ;
+    // role-bracketed action-base ; integer-encoded so stage-0 cranelift
+    // sees pure scalar arithmetic. Equivalent to (1 + role) << 12 :
+    //   role=0 → 0x1000  role=1 → 0x2000  role=2 → 0x3000  role=3 → 0x4000
+    let action_base: i32 = (role + 1) << 12 ;
+    let action_id: i32 = action_base | (mix & 4095) ;
+    (tag << 16) | (action_id & 65535)
+}
+
+// ── DEMO-FN-2 · 4-specialist parallel observe ─────────────────────────────
+//
+// All 4 specialists observe the same prompt simultaneously (each into its
+// own KAN-band) ; returns the bitwise XOR of the 4 decision-encodings as a
+// quick aggregate-fingerprint.
+
+pub fn council_4_decisions_fingerprint(prompt_low: i32, obs_count: i32) -> i32 {
+    let dm: i32 = specialist_decide(role_dm(), prompt_low, obs_count) ;
+    let gm: i32 = specialist_decide(role_gm(), prompt_low, obs_count) ;
+    let coll: i32 = specialist_decide(role_collaborator(), prompt_low, obs_count) ;
+    let coder: i32 = specialist_decide(role_coder(), prompt_low, obs_count) ;
+    (dm ^ gm) ^ (coll ^ coder)
+}
+
+// ── DEMO-FN-3 · role_council mediator (host mirror) ──────────────────────
+//
+// Picks the highest-tag decision ; on tie picks the LARGER encoded
+// (numerically-greater) decision. Mirrors `role_council`.
+// Inputs are pre-encoded `(tag << 16) | action_id`.
+//
+// Returns the winning encoded decision.
+
+pub fn role_council_pick(d0: i32, d1: i32, d2: i32, d3: i32) -> i32 {
+    let best01: i32 = if d0 > d1 { d0 } else { d1 } ;
+    let best23: i32 = if d2 > d3 { d2 } else { d3 } ;
+    if best01 > best23 { best01 } else { best23 }
+}
+
+// ── verification-helpers (compile-time-checkable invariants) ─────────────
+//
+// `kan_band_for_role` is identity ; `(role - kan_band_for_role(role)) == 0`
+// for any in-range role · the compiler can fold this to a constant.
+
+pub fn invariant_band_identity(role: i32) -> i32 {
+    role - kan_band_for_role(role)
+}
+
+// `decision_tag_propose() > decision_tag_question() > decision_tag_pass()`
+// guarantees the council's tag-ordering. Returns 1 if the invariant
+// holds, 0 otherwise.
+
+pub fn invariant_tag_ordering() -> i32 {
+    let p: i32 = decision_tag_propose() ;
+    let q: i32 = decision_tag_question() ;
+    let s: i32 = decision_tag_pass() ;
+    if p > q { if q > s { 1 } else { 0 } } else { 0 }
+}

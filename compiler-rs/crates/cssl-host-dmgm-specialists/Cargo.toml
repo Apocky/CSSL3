@@ -1,0 +1,44 @@
+[package]
+name                   = "cssl-host-dmgm-specialists"
+description            = "§ T11-W18-DMGM-SPECIALISTS · DM/GM/Collaborator/Coder cognitive-specialist roles · NOT generic AGI · self-sufficient for these 4 roles ONLY · routes observations through cssl-host-substrate-intelligence::observe_with_profile so each specialist accumulates INDEPENDENT KAN-bias learning per its assigned band · role_council mediates conflicting Decisions deterministically via BLAKE3-of-prompt tie-break"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § APOCKY-CANONICAL · NON-NEGOTIABLE
+#
+#   Engine intelligence scope = DM (orchestrator) + GM (narrator) +
+#   Collaborator (co-author) + Coder (runtime-mutate) ONLY. NOT generic AGI.
+#   Reuse Cognitive-Field-Engine substrate AS PLUMBING — never as a generic
+#   reasoner. Each specialist gets its OWN KAN-bias band so observations
+#   accumulate independently ; what the DM learns does not contaminate the
+#   GM's voice, what the Coder learns does not warp the Collaborator's
+#   co-authoring instincts.
+#
+# § PLUMBING-LAYER (this crate)
+#   - Defines the 4 SpecialistRole discriminants (stable u32 enum_id 0..=3)
+#   - Each Specialist trait-impl observes via observe_with_profile(payload, band)
+#   - Decision-type captured per-specialist · role_council deterministically
+#     mediates conflicts via prompt-hash-tie-break
+#
+# § STAGE-0 SHIM
+#   Canonical implementation will live in
+#   `Labyrinth of Apocalypse/systems/dmgm_council.csl` once csslc compiles
+#   the .csl directly into LoA.exe object code. Today we link this Rust crate.
+
+[lib]
+name = "cssl_host_dmgm_specialists"
+
+[dependencies]
+# Reuse the substrate-intelligence layer's KAN-bias multi-band observe
+# entry-point — each specialist gets a different band, so they accumulate
+# INDEPENDENT learning trajectories.
+cssl-host-substrate-intelligence = { path = "../cssl-host-substrate-intelligence" }
+# BLAKE3 powers the deterministic tie-break in role_council and the
+# prompt-hash payload for Question/ProposeAction.
+blake3                            = { workspace = true }
+
+[lints]
+workspace = true

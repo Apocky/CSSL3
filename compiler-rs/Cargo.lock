@@ -1337,6 +1337,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-dmgm-specialists"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-substrate-intelligence",
+]
+
+[[package]]
 name = "cssl-host-fab-procgen"
 version = "0.1.0"
 dependencies = [
