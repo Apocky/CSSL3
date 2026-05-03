@@ -247,6 +247,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     var weight_total : u32 = 0u;
 
+    // § T11-W18-NOVEL · ℂ-amplitude bundle (in addition to spec) + holographic
+    //   per-pixel phase-aggregate. Phase derives from crystal-index + extent +
+    //   per-sample-shift · gives DETERMINISTIC interference fringes between
+    //   crystals (constructive bright · destructive cancel · ALIEN visual).
+    var amp_re : f32 = 0.0;
+    var amp_im : f32 = 0.0;
+    var amp_total : f32 = 0.0;
+
     for (var s: u32 = 0u; s < RAY_SAMPLES; s = s + 1u) {
         let world = ray_sample_world(dir, s);
         let yaw   : u32 = u32(observer.yaw_milli) ^ (s * 17u);
@@ -291,6 +299,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 spec_acc[b] = spec_acc[b] + (r * weight) / 32u;
             }
             weight_total = weight_total + weight;
+
+            // § T11-W18-NOVEL · ℂ-amplitude bundle. Phase = per-crystal-index
+            //   × τ + per-sample-shift + magnitude-from-extent. Crystals at
+            //   same observer-distance with SAME phase = constructive bright.
+            //   Crystals 180°-out = destructive cancel (alien fringe pattern).
+            let amp_lin : f32 = f32(weight) * 0.001;
+            let phase_seed : u32 = ci * 0x9E3779B9u + s * 0x85EBCA6Bu
+                                 + u32(c.extent_mm) * 0xC2B2AE35u;
+            let phase : f32 = f32(phase_seed % 6283u) / 1000.0; // 0..2π
+            amp_re = amp_re + amp_lin * cos(phase);
+            amp_im = amp_im + amp_lin * sin(phase);
+            amp_total = amp_total + amp_lin;
         }
     }
 
@@ -303,5 +323,36 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let r_f = f32(rgb.x) / 255.0;
     let g_f = f32(rgb.y) / 255.0;
     let b_f = f32(rgb.z) / 255.0;
-    textureStore(output, vec2<i32>(i32(px), i32(py)), vec4<f32>(r_f, g_f, b_f, 1.0));
+
+    // § T11-W18-NOVEL · phase-arg-hue HSV blend over spectral RGB.
+    //   magnitude² = |∑ amp·e^iφ|² = constructive-interference-intensity
+    //   arg(amp) = phase-direction · maps to hue (HSV)
+    //   coherence = |∑amp|/∑|amp| · maps to saturation
+    //   Result · pure-spectral when phase-decoherent · vivid-hue-fringes when coherent
+    let mag_sq  : f32 = amp_re * amp_re + amp_im * amp_im;
+    let mag     : f32 = sqrt(mag_sq);
+    let coher   : f32 = clamp(mag / max(amp_total, 0.0001), 0.0, 1.0);
+    let phase_a : f32 = atan2(amp_im, amp_re); // -π..π
+    let hue     : f32 = (phase_a + 3.14159265) / 6.28318530;
+    // HSV → RGB · saturated by coherence · valued by intensity (cap to 1).
+    let s_v     : f32 = coher;
+    let v_v     : f32 = clamp(mag * 0.5, 0.0, 1.0);
+    let h6      : f32 = hue * 6.0;
+    let cv      : f32 = v_v * s_v;
+    let xv      : f32 = cv * (1.0 - abs((h6 % 2.0) - 1.0));
+    let mv      : f32 = v_v - cv;
+    var hr      : f32 = 0.0; var hg : f32 = 0.0; var hb : f32 = 0.0;
+    if      (h6 < 1.0) { hr = cv; hg = xv;          }
+    else if (h6 < 2.0) { hr = xv; hg = cv;          }
+    else if (h6 < 3.0) {          hg = cv; hb = xv; }
+    else if (h6 < 4.0) {          hg = xv; hb = cv; }
+    else if (h6 < 5.0) { hr = xv;          hb = cv; }
+    else               { hr = cv;          hb = xv; }
+    let hue_rgb = vec3<f32>(hr + mv, hg + mv, hb + mv);
+    // Mix spectral RGB with hue-RGB · 50/50 · spectral keeps base color identity ·
+    // hue-RGB adds interference-fringe-character when crystals phase-coherent.
+    let final_rgb = mix(vec3<f32>(r_f, g_f, b_f), hue_rgb, 0.5);
+    let alpha     = clamp(v_v + coher * 0.5, 0.0, 1.0);
+    textureStore(output, vec2<i32>(i32(px), i32(py)),
+                 vec4<f32>(clamp(final_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), alpha));
 }
