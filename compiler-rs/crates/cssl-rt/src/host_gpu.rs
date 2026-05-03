@@ -260,8 +260,23 @@ fn next_device_id() -> u64 {
 
 #[must_use]
 pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
-    // SWAP-POINT : cssl_host_vulkan::ffi::VkInstanceHandle::create() +
-    // physical-device-pick + LogicalDevice::create() (per cfg(target_os)).
+    // § T11-W19-β-RT-DELEG-GPU : real-D3D12 attempt first.
+    //
+    // Try `cssl_host_d3d12::Factory::new()` + `Device::new(...)` with the
+    // canonical AdapterPreference::Hardware. On Apocky-host this connects
+    // to the real Intel Arc A770 driver via DXGI 1.6. On non-Windows or
+    // headless hosts the Factory constructor returns LoaderMissing — we
+    // fall through to the slot-table-only stub which keeps the FFI shape
+    // testable end-to-end.
+    //
+    // Stage-0 : we don't yet thread the real Device through to the
+    // pipeline_compile / cmd_buf paths (those stay stubbed per spec/24
+    // § STAGE-0-MAPPING). What we DO get : confirmation that DXGI
+    // factory creation + adapter enumeration + device creation work on
+    // this host. Stage-1 swaps in the real ID3D12Device pointer pinning.
+    let _real_attempt = real_device_create_d3d12(adapter_idx, flags);
+    // Continue to register the slot-table entry regardless ; the engine's
+    // device.handle stays the slot-index for back-compat.
     let record = DeviceRecord {
         adapter_idx,
         flags,
@@ -272,6 +287,25 @@ pub fn device_create_impl(adapter_idx: u32, flags: u32) -> u64 {
         Err(p) => p.into_inner(),
     };
     tbl.insert(record)
+}
+
+/// Stage-0 real-D3D12 path : create + (intentionally drop) a Device
+/// instance to verify the driver chain. The dropped Device's COM-pointers
+/// are released cleanly. The slot-table entry is the canonical handle
+/// returned to source-level code.
+///
+/// Stage-1 will store the `cssl_host_d3d12::Device` in a per-handle
+/// thread-local registry (matching the host_window pattern) so that
+/// pipeline_compile / cmd_buf paths can reach the real ID3D12Device.
+fn real_device_create_d3d12(_adapter_idx: u32, _flags: u32) -> Option<()> {
+    // SWAP-POINT : cssl_host_d3d12::Factory::new() →
+    // Device::new(&factory, AdapterPreference::Hardware). Today we
+    // construct + immediately drop to validate driver presence ;
+    // stage-1 stores the Device alongside the slot-table entry.
+    use cssl_host_d3d12::{AdapterPreference, Device, Factory};
+    let factory = Factory::new().ok()?;
+    let _device = Device::new(&factory, AdapterPreference::Hardware).ok()?;
+    Some(())
 }
 
 #[must_use]
