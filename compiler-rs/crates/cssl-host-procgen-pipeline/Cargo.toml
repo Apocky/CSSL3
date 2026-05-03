@@ -1,11 +1,18 @@
 [package]
 name                   = "cssl-host-procgen-pipeline"
-description            = "CSSLv3 — Runtime procedural-generation pipeline foundation : (text/voice/touch IntentInput) → (parse_intent semantic-decode) → (deterministic procgen seeded from BLAKE3 fingerprint) → (Crystal-emission + asset-URI plan). FOUNDATION-only — LLM-upgrade-path documented ; HTTP-fetch + GLTF-parser + ω-field-write are FOLLOW-ON slices."
+description            = "CSSLv3 — Runtime procedural-generation pipeline foundation : (text/voice/touch IntentInput) → (parse_intent semantic-decode) → (deterministic procgen seeded from BLAKE3 fingerprint) → (Crystal-emission + asset-URI plan + sandboxed HTTP asset-fetch). F2-slice landed : `asset_fetch` is the live ureq-backed entry-point with allowlist + size-cap + timeout + offline-mode env-toggles. GLTF-parse + ω-field-write are FOLLOW-ON slices."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
 license.workspace      = true
 authors.workspace      = true
+
+[features]
+# § F2 default = no TLS · only http:// is fetchable.  Flip on `tls` to enable
+# https:// support via ureq/rustls.  The allowlist + offline-mode env-vars are
+# orthogonal to this feature ; they enforce sovereignty regardless of TLS.
+default = []
+tls     = ["ureq/tls"]
 
 [lints]
 workspace = true
@@ -58,6 +65,17 @@ tokio     = { version = "1", default-features = false, features = ["rt"] }
 blake3    = { workspace = true }
 # § thiserror · workspace-pinned 1.x ; typed errors only (no anyhow)
 thiserror = { workspace = true }
+# § F2-slice (T11-W18-PROCGEN-FETCH) · ureq blocking HTTP client backs the
+# `asset_fetch` fn.  Workspace-pinned to 2.10 with default-features OFF ;
+# the consuming crate (THIS) gates TLS via the `tls` cargo-feature above.
+# This matches the canonical pattern in cssl-rt::http (sibling consumer).
+# § sovereignty-floor : the network surface is HARD-GATED by
+#   - LOA_PROCGEN_FETCH_HOSTS env-var allowlist (default-empty = deny-all)
+#   - LOA_PROCGEN_FETCH_MAX_BYTES env-var size-cap (default 10 MB)
+#   - LOA_PROCGEN_FETCH_OFFLINE=1 kill-switch
+#   - 30-second per-call timeout (hard-coded)
+# No background fetches · no telemetry · purely on-demand.
+ureq      = { workspace = true }
 
 [dev-dependencies]
 # § dev-only — JSON round-trip for the serde-stability tests.
