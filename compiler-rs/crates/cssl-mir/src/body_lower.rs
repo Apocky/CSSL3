@@ -2848,6 +2848,9 @@ fn lower_call(
     if let Some(result) = try_lower_time_call(ctx, callee, args, span) {
         return Some(result);
     }
+    if let Some(result) = try_lower_window_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -5101,6 +5104,139 @@ fn emit_time_op(
         .with_result(result_id, result_ty.clone())
         .with_attribute("time_effect", "true")
         .with_attribute("family", "time")
+        .with_attribute("op", verb)
+        .with_attribute("source_loc", format!("{span:?}"));
+    for &id in operands {
+        op = op.with_operand(id);
+    }
+    ctx.ops.push(op);
+    (result_id, result_ty)
+}
+
+/// Dispatch a `window::*` callee to the matching emit-window helper.
+///
+/// Returns `Some(_)` if `callee` is a 2-segment path of the form
+/// `window::<verb>` with the canonical arity for that verb (per
+/// `cgen_window::WINDOW_*_OPERAND_COUNT`) ; otherwise returns `None`.
+/// Verb / arity / return-type mirror
+/// `cssl-cgen-cpu-cranelift::cgen_window::build_*_signature`.
+fn try_lower_window_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 || ctx.interner.resolve(segments[0]) != "window" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    // Window result-types per cgen_window signatures :
+    //   spawn         → u64 handle           (I64)
+    //   pump          → i64 events-out count (I64)
+    //   request_close → i32 retcode          (I32)
+    //   destroy       → i32 retcode          (I32)
+    //   raw_handle    → i32 retcode          (I32)
+    //   get_dims      → i32 retcode          (I32)
+    let i64ty = MirType::Int(IntWidth::I64);
+    let i32ty = MirType::Int(IntWidth::I32);
+    match (op.as_str(), args.len()) {
+        ("spawn", 5) => {
+            let mut ids = Vec::with_capacity(5);
+            for a in args {
+                let (id, _) = lower_call_arg(ctx, a)?;
+                ids.push(id);
+            }
+            Some(emit_window_op(
+                ctx,
+                "cssl.window.spawn",
+                "spawn",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        ("pump", 3) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            let (p, _) = lower_call_arg(ctx, &args[1])?;
+            let (m, _) = lower_call_arg(ctx, &args[2])?;
+            Some(emit_window_op(
+                ctx,
+                "cssl.window.pump",
+                "pump",
+                &[h, p, m],
+                i64ty,
+                span,
+            ))
+        }
+        ("request_close", 1) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            Some(emit_window_op(
+                ctx,
+                "cssl.window.request_close",
+                "request_close",
+                &[h],
+                i32ty,
+                span,
+            ))
+        }
+        ("destroy", 1) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            Some(emit_window_op(
+                ctx,
+                "cssl.window.destroy",
+                "destroy",
+                &[h],
+                i32ty,
+                span,
+            ))
+        }
+        ("raw_handle", 3) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            let (o, _) = lower_call_arg(ctx, &args[1])?;
+            let (m, _) = lower_call_arg(ctx, &args[2])?;
+            Some(emit_window_op(
+                ctx,
+                "cssl.window.raw_handle",
+                "raw_handle",
+                &[h, o, m],
+                i32ty,
+                span,
+            ))
+        }
+        ("get_dims", 3) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            let (w, _) = lower_call_arg(ctx, &args[1])?;
+            let (he, _) = lower_call_arg(ctx, &args[2])?;
+            Some(emit_window_op(
+                ctx,
+                "cssl.window.get_dims",
+                "get_dims",
+                &[h, w, he],
+                i32ty,
+                span,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Internal helper : emit a `cssl.window.<verb>` op with canonical attribute set.
+fn emit_window_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op_name: &str,
+    verb: &str,
+    operands: &[ValueId],
+    result_ty: MirType,
+    span: Span,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    let mut op = MirOp::std(op_name)
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("window_effect", "true")
+        .with_attribute("family", "window")
         .with_attribute("op", verb)
         .with_attribute("source_loc", format!("{span:?}"));
     for &id in operands {
@@ -7581,6 +7717,93 @@ mod tests {
         // `foo::monotonic_ns()` is NOT `time::monotonic_ns()`.
         let (f, _) = lower_one("fn f() -> i64 { foo::monotonic_ns() }");
         assert!(find_op(&f, "cssl.time.monotonic_ns").is_none());
+    }
+
+    #[test]
+    fn lower_window_spawn_emits_cssl_window_spawn() {
+        let (f, _) = lower_one(
+            "fn f(t : i64, w : i64, h : i64, fl : i64, x : i64) -> i64 { \
+                window::spawn(t, w, h, fl, x) \
+            }",
+        );
+        let op = find_op(&f, "cssl.window.spawn")
+            .expect("window::spawn should lower to cssl.window.spawn");
+        assert_eq!(op.operands.len(), 5);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "window_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("window"));
+        assert_eq!(attr(op, "op"), Some("spawn"));
+    }
+
+    #[test]
+    fn lower_window_pump_emits_cssl_window_pump() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, p : i64, m : i64) -> i64 { window::pump(h, p, m) }",
+        );
+        let op = find_op(&f, "cssl.window.pump").expect("window::pump should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "op"), Some("pump"));
+    }
+
+    #[test]
+    fn lower_window_request_close_emits_cssl_window_request_close() {
+        let (f, _) = lower_one("fn f(h : i64) -> i32 { window::request_close(h) }");
+        let op = find_op(&f, "cssl.window.request_close")
+            .expect("window::request_close should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("request_close"));
+    }
+
+    #[test]
+    fn lower_window_destroy_emits_cssl_window_destroy() {
+        let (f, _) = lower_one("fn f(h : i64) -> i32 { window::destroy(h) }");
+        let op = find_op(&f, "cssl.window.destroy").expect("window::destroy should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("destroy"));
+    }
+
+    #[test]
+    fn lower_window_raw_handle_emits_cssl_window_raw_handle() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, o : i64, m : i64) -> i32 { window::raw_handle(h, o, m) }",
+        );
+        let op = find_op(&f, "cssl.window.raw_handle")
+            .expect("window::raw_handle should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("raw_handle"));
+    }
+
+    #[test]
+    fn lower_window_get_dims_emits_cssl_window_get_dims() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, w : i64, he : i64) -> i32 { window::get_dims(h, w, he) }",
+        );
+        let op = find_op(&f, "cssl.window.get_dims").expect("window::get_dims should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("get_dims"));
+    }
+
+    #[test]
+    fn lower_window_wrong_arity_falls_through_to_func_call() {
+        // window::spawn() with 0 args doesn't match (expects 5 args).
+        let (f, _) = lower_one("fn f() -> i64 { window::spawn() }");
+        assert!(find_op(&f, "cssl.window.spawn").is_none());
+    }
+
+    #[test]
+    fn lower_non_window_path_is_not_claimed() {
+        // `foo::spawn(...)` is NOT `window::spawn(...)`.
+        let (f, _) = lower_one(
+            "fn f(t : i64, w : i64, h : i64, fl : i64, x : i64) -> i64 { \
+                foo::spawn(t, w, h, fl, x) \
+            }",
+        );
+        assert!(find_op(&f, "cssl.window.spawn").is_none());
     }
 
     // ───────────────────────────────────────────────────────────────────
