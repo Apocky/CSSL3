@@ -31,6 +31,12 @@ perf.data*
 *.dxil
 *.msl.tmp
 
+# § T11-W18-CSSLC-ADVANCE2 : csslc test-fixture object artifacts. The e2e
+# tests emit `.obj` next to each `.csl` fixture (so parallel test runs
+# don't collide on a shared output path) ; the .obj is regenerated every
+# test run and must NOT be tracked in git.
+compiler-rs/crates/csslc/tests/fixtures/**/*.obj
+
 # Caches
 .cache/
 /compiler-rs/target-doc/
