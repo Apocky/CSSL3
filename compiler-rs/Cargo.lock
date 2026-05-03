@@ -1213,6 +1213,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-asset-loader"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "cssl-host-procgen-pipeline",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cssl-host-attestation"
 version = "0.1.0"
 dependencies = [
