@@ -2426,6 +2426,12 @@ fn resolve_block_target(
 
 /// Lower `cssl.branch` : unconditional `jump` to the target MIR-block,
 /// forwarding all operands as block-args.
+///
+/// § T11-W19-α-CSSLC-FIX5 — block-arg coercion :
+///   When a MIR int-literal-typed-i32 lands in a jump slot whose block-
+///   param-type was derived from a sig-typed-i64 (or vice versa), insert
+///   a sextend/ireduce so cranelift's verifier accepts the join. Mirrors
+///   the func.return coercion landed at FIX1.
 fn obj_lower_cssl_branch(
     op: &MirOp,
     builder: &mut FunctionBuilder<'_>,
@@ -2434,14 +2440,24 @@ fn obj_lower_cssl_branch(
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
     let target_blk = resolve_block_target(op, "target", fn_name, block_map)?;
+    let block_param_tys: Vec<cranelift_codegen::ir::Type> = builder
+        .func
+        .dfg
+        .block_params(target_blk)
+        .iter()
+        .map(|p| builder.func.dfg.value_type(*p))
+        .collect();
     let mut args = Vec::with_capacity(op.operands.len());
-    for vid in &op.operands {
-        let v = *value_map
+    for (idx, vid) in op.operands.iter().enumerate() {
+        let mut v = *value_map
             .get(vid)
             .ok_or_else(|| ObjectError::UnknownValueId {
                 fn_name: fn_name.to_string(),
                 value_id: vid.0,
             })?;
+        if let Some(&expected) = block_param_tys.get(idx) {
+            v = coerce_int_to_block_arg_ty(builder, v, expected);
+        }
         args.push(v);
     }
     builder.ins().jump(target_blk, &args);
@@ -2491,24 +2507,45 @@ fn obj_lower_cssl_brif(
             fn_name: fn_name.to_string(),
             value_id: op.operands[0].0,
         })?;
+    // § T11-W19-α-CSSLC-FIX5 — block-arg coercion for both target arms.
+    let then_param_tys: Vec<cranelift_codegen::ir::Type> = builder
+        .func
+        .dfg
+        .block_params(then_blk)
+        .iter()
+        .map(|p| builder.func.dfg.value_type(*p))
+        .collect();
+    let else_param_tys: Vec<cranelift_codegen::ir::Type> = builder
+        .func
+        .dfg
+        .block_params(else_blk)
+        .iter()
+        .map(|p| builder.func.dfg.value_type(*p))
+        .collect();
     let mut then_args = Vec::with_capacity(then_arg_count);
-    for vid in &op.operands[1..1 + then_arg_count] {
-        let v = *value_map
+    for (idx, vid) in op.operands[1..1 + then_arg_count].iter().enumerate() {
+        let mut v = *value_map
             .get(vid)
             .ok_or_else(|| ObjectError::UnknownValueId {
                 fn_name: fn_name.to_string(),
                 value_id: vid.0,
             })?;
+        if let Some(&expected) = then_param_tys.get(idx) {
+            v = coerce_int_to_block_arg_ty(builder, v, expected);
+        }
         then_args.push(v);
     }
     let mut else_args = Vec::with_capacity(else_arg_count);
-    for vid in &op.operands[1 + then_arg_count..] {
-        let v = *value_map
+    for (idx, vid) in op.operands[1 + then_arg_count..].iter().enumerate() {
+        let mut v = *value_map
             .get(vid)
             .ok_or_else(|| ObjectError::UnknownValueId {
                 fn_name: fn_name.to_string(),
                 value_id: vid.0,
             })?;
+        if let Some(&expected) = else_param_tys.get(idx) {
+            v = coerce_int_to_block_arg_ty(builder, v, expected);
+        }
         else_args.push(v);
     }
     builder
@@ -2778,9 +2815,63 @@ where
             fn_name: fn_name.to_string(),
             value_id: op.operands[1].0,
         })?;
+    // § T11-W19-α-CSSLC-FIX5 — int-arg-coercion extension.
+    //   MIR int-literals default to I32 ; binary ops (icmp / arith.add /
+    //   arith.sub / etc.) may pair an I32-literal with a wider sig-typed
+    //   operand (e.g. `cap == 0` where `cap : i64`). Cranelift's verifier
+    //   rejects width-mismatches with `arg N has type iX, expected iY`.
+    //   Insert sextend / ireduce to bridge the gap symmetrically (widen
+    //   smaller to larger for compares ; reduce larger to smaller is
+    //   intentionally NOT done here since the small-side carries less
+    //   information — the FIX1 return-side already handles narrow→wide
+    //   sextend ; mirror that direction here for consistency).
+    let (a, b) = coerce_int_pair(builder, a, b);
     let v = emit(builder, a, b);
     value_map.insert(r.id, v);
     Ok(false)
+}
+
+/// § T11-W19-α-CSSLC-FIX5 helper — symmetrically widen a pair of
+/// int-typed cranelift values to the wider of the two via `sextend`.
+/// No-op when both already match. Mismatched int+float pairs are left
+/// alone so the verifier can still surface a semantic-shape bug.
+fn coerce_int_pair(
+    builder: &mut FunctionBuilder<'_>,
+    a: cranelift_codegen::ir::Value,
+    b: cranelift_codegen::ir::Value,
+) -> (cranelift_codegen::ir::Value, cranelift_codegen::ir::Value) {
+    let a_ty = builder.func.dfg.value_type(a);
+    let b_ty = builder.func.dfg.value_type(b);
+    if a_ty == b_ty || !a_ty.is_int() || !b_ty.is_int() {
+        return (a, b);
+    }
+    if a_ty.bits() < b_ty.bits() {
+        let widened = builder.ins().sextend(b_ty, a);
+        (widened, b)
+    } else {
+        let widened = builder.ins().sextend(a_ty, b);
+        (a, widened)
+    }
+}
+
+/// § T11-W19-α-CSSLC-FIX5 helper — coerce a single int-typed cranelift
+/// Value to the destination block-arg's expected type. Used by branch /
+/// brif lowering when a MIR int-literal-typed-i32 lands in a slot whose
+/// block-param-type was derived from a sig-typed-i64 (or vice versa).
+fn coerce_int_to_block_arg_ty(
+    builder: &mut FunctionBuilder<'_>,
+    v: cranelift_codegen::ir::Value,
+    expected_ty: cranelift_codegen::ir::Type,
+) -> cranelift_codegen::ir::Value {
+    let actual_ty = builder.func.dfg.value_type(v);
+    if actual_ty == expected_ty || !actual_ty.is_int() || !expected_ty.is_int() {
+        return v;
+    }
+    if expected_ty.bits() > actual_ty.bits() {
+        builder.ins().sextend(expected_ty, v)
+    } else {
+        builder.ins().ireduce(expected_ty, v)
+    }
 }
 
 // § T11-D316 (W-A2-δ) — comparison + select helpers. Predicate is recovered

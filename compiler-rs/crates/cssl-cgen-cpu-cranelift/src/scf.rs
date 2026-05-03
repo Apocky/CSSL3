@@ -525,7 +525,25 @@ fn emit_terminating_jump(
                 builder.ins().iconst(param_ty, 0)
             }
         });
-        builder.ins().jump(merge_block, &[arg]);
+        // § T11-W19-α-CSSLC-FIX5 — int-arg coercion at scf.if merge join.
+        //   The merge-block-param ty is derived from the scf.if op's
+        //   result-ty (typically I32 default for MIR int-literal yields),
+        //   but each branch may yield a wider FFI-call return (e.g. I64
+        //   from `time::monotonic_ns()`). Symmetrically widen / narrow
+        //   the yield to match the merge-block-param-ty so cranelift's
+        //   verifier accepts the join. Mirrors the func.return / branch /
+        //   brif coercion landed at FIX1 / FIX5-other-sites.
+        let coerced = {
+            let actual_ty = builder.func.dfg.value_type(arg);
+            if actual_ty == param_ty || !actual_ty.is_int() || !param_ty.is_int() {
+                arg
+            } else if param_ty.bits() > actual_ty.bits() {
+                builder.ins().sextend(param_ty, arg)
+            } else {
+                builder.ins().ireduce(param_ty, arg)
+            }
+        };
+        builder.ins().jump(merge_block, &[coerced]);
     } else {
         builder.ins().jump(merge_block, &[]);
     }
