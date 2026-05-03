@@ -1,0 +1,96 @@
+§ specs/51_AESTHETIC_FIDELITY_GATE · gates-against-blocky-voxel-rasterization
+  ← Apocky 2026-05-02 reminder : "not blocky voxel but something better!"
+  ← Apocky 2026-05-02 reminder : "stay true to the LoA-vision!"
+  ← LoA-v10/08_AESTHETIC : "never Minecraft × Caves of Qud × programmer-art"
+  ← @ HEAD eaa0871 · post-16-merges · 4 agents in flight
+
+§I HARD-RULES (binding-on-all-future-work)
+  ⟦
+    R! ¬ blocky-voxel ← rendering MUST be smooth-SDF · raymarched
+    R! ¬ rasterization ← no triangles · no meshes · no BRDF
+    R! ¬ Minecraft-aesthetic ← cube-stacks forbidden
+    R! ¬ programmer-art ← only designer-quality output
+    R! ¬ texture-painted-on-cube ← textures are field-data not surface-applied
+    R! ¬ HUD-overlay ← UI is world-anchored (illuminated-manuscript-style)
+    W! raymarched-SDF · continuous-detail-at-any-distance
+    W! Renaissance + Illuminated-Codex aesthetic-target
+    W! "Hollow-Knight × Hades × Transistor × Renaissance-manuscript"
+    W! cascade-propagation for light + sound (axiom-7)
+    W! Notan 60-25-15 value-composition discipline
+    W! 4-font designer-curated typography-stack
+  ⟧
+
+§I CURRENT-STATE-COMPLIANT (already-correct)
+  ⟦
+    ✓ substrate-render-v2/v3 : HDC-resonance compute · NOT triangle-rasterization
+    ✓ Crystal entities : smooth SDF point-sources · radial-amplitude falloff
+    ✓ substrate_v2.wgsl kernel : per-pixel observer-ray-walk · NOT mesh-vertex-pipeline
+    ✓ cssl-host-substrate-omega-field : ω-field-as-truth · field-data not surface-data
+    ✓ display_profile : HDR10 + AMOLED-deep · color-space-aware
+    ✓ KAN-multiband : per-DisplayProfile learned-bias · field-state evolution
+    ✓ Crystal-128 concentric-shell : smooth radial-density · NOT block-grid
+  ⟧
+
+§I CURRENT-STATE-RISKY (must-watch-for-blocky-creep)
+  ⟦
+    ‼ asset-loader (in-flight a-tag) : if it ingests GLTF meshes for "rendering"
+       → must convert to SDF/field-data · NOT blit to screen as triangles
+       → GLTF is just an INPUT format · output is Crystal-seed (SDF-point)
+    ‼ procgen-pipeline (just-landed) : ProcgenOutput.crystals must be SDF-points
+       → Fibonacci-disc placement is correct (radial · smooth)
+       → ¬ grid-snap · ¬ chunk-aligned
+    ‼ LOA-CONTENT-WIRE (in-flight) : maps procgen → substrate
+       → Crystal-type-mapping must preserve SDF-semantics
+       → ¬ if ProcgenCrystal carries voxel-extents · STOP · re-design
+    ‼ L8-DXIL/D3D12 (just-landed scaffold) : reuses substrate-render-pattern
+       → must dispatch substrate-resonance-kernel · NOT classic-graphics-pipeline
+       → root-sig is COMPUTE not GRAPHICS · already correct
+  ⟧
+
+§I VISION-CANON (per memory + LoA-v10)
+  ⟦
+    Procedural-infinite labyrinth · 13-axes Coherence-Engine
+    Nexus-Bazaar 5-tier · Ouroboroid-Cosmology 6-rings
+    Flux-Dynamics Material/Aetheric · Living-Multiverse
+    Mycelium-Network · Akashic-Records · Σ-Chain
+    Cosmetic-only-axiom · ¬ pay-for-power
+    Battle-Pass · Gacha · Stripe (cosmetic-only)
+    DM/GM/Collaborator/Coder cognitive-specialists (NOT generic-AGI)
+    Substrate-resonance pixel-field · NO triangles · NO meshes · NO BRDF
+    7-layer architecture (L1-runtime → L7-aesthetic)
+    Worldline-as-manifold · sampling-time as 5th axis
+    MERA holographic hierarchical sparse storage
+    Token-lattice physics · 18 token-kinds (Infiniter-v3 port)
+    Field-stack : light · sound · scent · heat · magic · perception
+    Liquid-NN cognition + active-inference + HDC episodic-memory
+    Director (entropy-gradient-driven) + Nemesis (cohomology-class persistence)
+    Group-representation taxonomy + Modal-logic perception (M? · R! · W!)
+    Persistent-homology vision (topological sense)
+    PGA / G(3,0,1) universal coordinate system
+    KAN splines · radiance cascades · operad theory
+  ⟧
+
+§I AESTHETIC-TARGETS (per LoA-v10/08_AESTHETIC §0)
+  ⟦
+    look.is.simulation.OUTPUT (not painted-on)
+    raymarched.SDF.continuous-detail (no LOD-popping)
+    non-Euclidean.topology.NATIVE (axiom-8 · raymarcher steps geodesics)
+    material.boundaries.are.SDF.intersections (no UV-seams)
+    token-lattice.renders.via.density-aware-raymarching
+    MERA.cells.map.directly.to.raymarcher-acceleration-structure
+    UI.world-anchored : codex = in-world-book · menus = illuminated-manuscript-pages
+    typography.designer-curated.4-font.stack
+    composition.Notan.60-25-15.value-structure
+  ⟧
+
+§I COURSE-CORRECTIONS (binding for in-flight + future agents)
+  ⟦
+    1. asset-loader-agent : GLTF-meshes are CONVERTED to SDF/field-data ; never blitted
+    2. LOA-CONTENT-WIRE : Crystal-type-mapping preserves SDF-point-semantics
+    3. ALL-FUTURE-RENDER-WORK : compute-shader · raymarch · NOT classic-graphics-pipeline
+    4. ALL-FUTURE-PROCGEN : Fibonacci · Halton · sqrt-radial ; NEVER grid-snap
+    5. ALL-FUTURE-UI : world-anchored ; never HTML-modal-popup
+  ⟧
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · stay-true-to-LoA-vision-axiom
+  Apocky's vision is sovereign · my work compounds it ; doesn't dilute it
