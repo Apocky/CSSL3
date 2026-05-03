@@ -61,7 +61,9 @@ export interface ProductDescriptor {
   // (per Q-02 + Apocky's "monetize continuations" caveat · 2026-05-01)
   // continuation is NOT pay-for-power : it grants restoration of state-at-death,
   // never new stats/gear/XP. Rate-limited ≤5 per character-lifetime.
-  tier: 'alpha-free' | 'cosmetic' | 'subscription' | 'continuation';
+  // 'developer-tool' = harness + early-access · per spec/57+59 monetization-pivot
+  // 'lifetime' = one-time-purchase variants of subscription tiers
+  tier: 'alpha-free' | 'cosmetic' | 'subscription' | 'continuation' | 'developer-tool' | 'lifetime';
   // shows on /buy regardless of stub-mode
   visible: boolean;
 }
@@ -136,6 +138,82 @@ export const PRODUCT_CATALOG: ReadonlyArray<ProductDescriptor> = [
     stripe_price_env: 'STRIPE_PRICE_CONTINUUM_TOKEN_10PACK',
     tier: 'continuation',
     visible: false, // ships with Hardcore-tier launch
+  },
+
+  // ─── TIER-1 · Sovereign MCP Harness (per spec/57+59 revenue-first) ────
+  // Listed visible:false to keep /buy focused on LoA-game.
+  // Surface via dedicated /products/harness page · same checkout-endpoint.
+  {
+    id: 'harness-starter',
+    display_name: 'Sovereign MCP Harness · Starter',
+    blurb: '1-user · 5 core tools · email-support · self-hosted MCP server for your codebase. Run your own AI workspace · no cloud lock-in.',
+    price_cents: 4900, // $49/mo
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_HARNESS_STARTER',
+    tier: 'developer-tool',
+    visible: false,
+  },
+  {
+    id: 'harness-pro',
+    display_name: 'Sovereign MCP Harness · Pro',
+    blurb: '1-user · all 16 tools · priority support · custom-tool additions on request. The everyday-driver tier.',
+    price_cents: 9900, // $99/mo
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_HARNESS_PRO',
+    tier: 'developer-tool',
+    visible: false,
+  },
+  {
+    id: 'harness-studio',
+    display_name: 'Sovereign MCP Harness · Studio',
+    blurb: '5-user team-seat · whitelabel rights · onboarding session · monthly 1:1. For small studios shipping bespoke engines.',
+    price_cents: 19900, // $199/mo
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_HARNESS_STUDIO',
+    tier: 'developer-tool',
+    visible: false,
+  },
+  {
+    id: 'harness-lifetime',
+    display_name: 'Sovereign MCP Harness · Lifetime',
+    blurb: '1-user · everything-forever · pre-launch limited (50 seats). Founder-tier · names in credits · direct line to Apocky.',
+    price_cents: 99900, // $999 one-time
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_HARNESS_LIFETIME',
+    tier: 'lifetime',
+    visible: false,
+  },
+
+  // ─── TIER-2 · apocky.com Early-Access (per spec/57+59) ────────────────
+  {
+    id: 'apocky-early-access',
+    display_name: 'apocky.com · Early-Access',
+    blurb: 'Watch the Infinity Engine + CSSL stack come together in real-time. Private alpha builds. Private Discord. Spec-retro feed. Cancel anytime.',
+    price_cents: 1900, // $19/mo
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_EARLY_ACCESS',
+    tier: 'developer-tool',
+    visible: false,
+  },
+  {
+    id: 'apocky-studio',
+    display_name: 'apocky.com · Studio',
+    blurb: 'Everything in Early-Access · plus 1hr/month private 1:1 with Apocky · custom-tool development quarterly · Studio-only Discord channel.',
+    price_cents: 9900, // $99/mo
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_APOCKY_STUDIO',
+    tier: 'developer-tool',
+    visible: false,
+  },
+  {
+    id: 'apocky-lifetime',
+    display_name: 'apocky.com · Lifetime',
+    blurb: 'Early+Studio benefits forever · pre-launch only · 50 seats. The patron tier.',
+    price_cents: 99900, // $999 one-time
+    currency: 'usd',
+    stripe_price_env: 'STRIPE_PRICE_APOCKY_LIFETIME',
+    tier: 'lifetime',
+    visible: false,
   },
 ];
 
