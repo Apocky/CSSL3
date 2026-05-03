@@ -27,7 +27,8 @@
 //! Rust state-machine.
 
 use super::{
-    Crystal, DxilArtifact, ObserverCoord, PresentError, TearingPolicy, FRAMES_IN_FLIGHT,
+    BackBufferState, Crystal, DxilArtifact, ObserverCoord, PresentError, RootSignatureLayout,
+    TearingPolicy, FRAMES_IN_FLIGHT,
 };
 
 /// § Mock D3D12 substrate-renderer — non-Windows / non-runtime.
@@ -55,6 +56,16 @@ pub struct D3D12SubstrateRenderer {
     current_frame: usize,
     /// Total frames presented — exposed for tests + telemetry.
     frame_counter: u64,
+    /// Root-signature layout — mirrors the runtime field so callers can
+    /// introspect `root_layout()` on every host.
+    root_layout: RootSignatureLayout,
+    /// Per-frame back-buffer state-tracker — same semantics as runtime.
+    back_buffer_state: [BackBufferState; FRAMES_IN_FLIGHT],
+    /// Whether `build_root_signature` has been called — stub-mode tracks
+    /// the *intent* without owning a real handle.
+    root_signature_built: bool,
+    /// Whether `build_pipeline` has been called.
+    pipeline_built: bool,
 }
 
 impl D3D12SubstrateRenderer {
@@ -78,6 +89,10 @@ impl D3D12SubstrateRenderer {
             extent,
             current_frame: 0,
             frame_counter: 0,
+            root_layout: RootSignatureLayout::substrate_kernel(),
+            back_buffer_state: [BackBufferState::Present; FRAMES_IN_FLIGHT],
+            root_signature_built: false,
+            pipeline_built: false,
         })
     }
 
@@ -85,14 +100,21 @@ impl D3D12SubstrateRenderer {
     /// (the L8 host is Windows-only by design ; cross-platform present
     /// lives in L7 / `cssl-host-substrate-render-v3` on `ash`).
     ///
-    /// Returns [`PresentError::UnsupportedWindowHandle`] unconditionally.
-    /// Callers that hit this on non-Windows should fall back to L7.
+    /// PRESENT-slice : the stub still validates the DXIL bytes (so
+    /// callers on non-Windows get a stable error-shape) but rejects
+    /// the windowed path with [`PresentError::UnsupportedWindowHandle`].
+    /// If the DXIL bytes fail validation, that error wins (the caller
+    /// likely wants to know about that first).
     #[cfg(feature = "present")]
     pub fn try_new_with_swapchain<W: raw_window_handle::HasWindowHandle>(
         _window: &W,
-        _dxil_bytes: &[u8],
+        dxil_bytes: &[u8],
         _extent: (u32, u32),
     ) -> Result<Self, PresentError> {
+        // Strict-validate even on the stub path so the caller's error
+        // path is the same on every host.
+        crate::validate_dxil_container(dxil_bytes)
+            .map_err(PresentError::from)?;
         Err(PresentError::UnsupportedWindowHandle)
     }
 
@@ -132,14 +154,69 @@ impl D3D12SubstrateRenderer {
         &self.artifact
     }
 
+    /// Whether the substrate-kernel PSO has been built.
+    #[must_use]
+    pub const fn pipeline_built(&self) -> bool {
+        self.pipeline_built
+    }
+
+    /// Whether the root-signature has been built.
+    #[must_use]
+    pub const fn root_signature_built(&self) -> bool {
+        self.root_signature_built
+    }
+
+    /// Borrow the root-signature layout (always the canonical substrate-
+    /// kernel layout on the stub).
+    #[must_use]
+    pub const fn root_layout(&self) -> RootSignatureLayout {
+        self.root_layout
+    }
+
+    /// Read the back-buffer state-tracker for ring-slot `frame`.
+    /// Returns [`BackBufferState::Present`] when `frame` is out of range.
+    #[must_use]
+    pub fn back_buffer_state(&self, frame: usize) -> BackBufferState {
+        if frame < FRAMES_IN_FLIGHT {
+            self.back_buffer_state[frame]
+        } else {
+            BackBufferState::Present
+        }
+    }
+
+    /// § Build the substrate-kernel root-signature — stub-mode no-op
+    /// that records the build-intent. Field-shape parity with the
+    /// runtime impl ; tests can call this on every host.
+    pub fn build_root_signature(&mut self) -> Result<(), PresentError> {
+        self.root_signature_built = true;
+        Ok(())
+    }
+
+    /// § Build the compute PSO from the DXIL artifact — stub-mode no-op.
+    /// Skips silently when the artifact is a stub (matches runtime
+    /// behavior). Records build-intent so `pipeline_built()` returns
+    /// `true` for non-stub artifacts.
+    pub fn build_pipeline(&mut self) -> Result<(), PresentError> {
+        if !self.artifact.is_stub() {
+            self.pipeline_built = true;
+        }
+        Ok(())
+    }
+
     /// § Per-frame dispatch — mock-mode. Advances the per-frame ring
-    /// index + the frame-counter. Does **not** touch any GPU surface
-    /// (none exists on the stub). Returns `Ok(())` always.
+    /// index + the frame-counter + flips the back-buffer state-tracker
+    /// twice (Present → CopyDest → Present cycle). Does **not** touch
+    /// any GPU surface (none exists on the stub). Returns `Ok(())` always.
     pub fn dispatch_with_present(
         &mut self,
         _observer: ObserverCoord,
         _crystals: &[Crystal],
     ) -> Result<(), PresentError> {
+        // Flip the per-slot back-buffer state through the full cycle
+        // (Present → CopyDest → Present) so tests observe the state
+        // transition even on non-Windows hosts.
+        let s = self.back_buffer_state[self.current_frame];
+        self.back_buffer_state[self.current_frame] = s.flip().flip();
         self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT;
         self.frame_counter = self.frame_counter.saturating_add(1);
         Ok(())
