@@ -756,6 +756,97 @@ pub unsafe extern "C" fn __cssl_input_gamepad_state(
 }
 
 // ───────────────────────────────────────────────────────────────────────
+// § FFI : __cssl_input_caps_*  (T11-W19-β-RT-DELEG-INPUT new symbols)
+//
+//   Stage-0 stdlib::input::caps_grant was a no-op stub returning the
+//   bits unchanged ; cssl-rt's INPUT_CAPS bitset stayed at NONE so every
+//   __cssl_input_keyboard_state / mouse_state / mouse_delta / gamepad
+//   call returned ERR_CAP_DENIED. Adding these three FFI-locked symbols
+//   gives stdlib + source-level CSSLv3 a real path to grant input caps.
+//
+//   Symbol-name discipline matches the rest of the cssl-rt FFI surface :
+//   ABI-stable from this commit forward. Renaming any of the three is
+//   a major-version-bump event per spec/24 § DESIGN-PRINCIPLES P1.
+//
+//   Stage-1 will accept a host-signed token instead of trusting the
+//   caller ; stage-0 mirrors `cssl-rt::net::caps_grant_impl` shape.
+// ───────────────────────────────────────────────────────────────────────
+
+/// FFI : OR-grant `bits` into the input-cap bitset. Returns the new bitset.
+///
+/// # Safety
+/// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_input_caps_grant(bits: i32) -> i32 {
+    caps_grant(bits)
+}
+
+/// FFI : AND-NOT-revoke `bits` from the input-cap bitset. Returns new bitset.
+///
+/// # Safety
+/// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_input_caps_revoke(bits: i32) -> i32 {
+    caps_revoke(bits)
+}
+
+/// FFI : return the current input-cap bitset.
+///
+/// # Safety
+/// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_input_caps_current() -> i32 {
+    caps_current()
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § cssl-host-input integration hook
+//
+//   This is the seam where cssl-host-window's WNDPROC will eventually
+//   feed real WM_INPUT data into the cssl-rt cache. The function reads
+//   the active backend's `current_state()` snapshot and writes its
+//   keyboard / mouse / gamepad fields through the `set_*_state` setters
+//   already present in this module.
+//
+//   Today : cssl-host-window's WNDPROC does NOT yet route raw-input
+//   messages to a cssl_host_input::Win32Backend instance — that's the
+//   F2-input-integration deferred slice noted in the cssl-host-input
+//   docstring. So `flush_host_input_state` is a NO-OP at runtime
+//   (zero events generated) but the symbol exists + the integration
+//   path is laid down. When the WNDPROC integration lands, the body
+//   here gets implemented + the engine starts seeing real keyboard /
+//   mouse events without further FFI-shape changes.
+//
+//   Per task constraint : do NOT modify cssl-host-window's WNDPROC in
+//   this slice (that's separate work). The hook below documents the
+//   delegation seam.
+// ───────────────────────────────────────────────────────────────────────
+
+/// Stage-0 placeholder for the cssl-host-input → cssl-rt cache flush.
+///
+/// Returns 0 (no events flushed). When the F2-input-integration slice
+/// lands, this fn will :
+///   1. Acquire the active `cssl_host_input::Win32Backend` (from a
+///      thread-local cell populated at window-spawn).
+///   2. Call `backend.tick()` to pump WM_INPUT / XInput.
+///   3. Call `backend.current_state()` + serialize keyboard / mouse /
+///      gamepad fields through `set_keyboard_state` / `set_mouse_state`
+///      / `set_gamepad_state` setters.
+///   4. Return the number of events flushed.
+///
+/// # Safety
+/// Always safe ; the `unsafe` qualifier is only for `extern "C"` ABI rules.
+#[no_mangle]
+pub unsafe extern "C" fn __cssl_input_flush_host_state() -> i32 {
+    // SWAP-POINT : cssl-host-input::Win32Backend::tick() + current_state()
+    // serialization. Today no real backend is wired (F2-input-integration
+    // pending) ; the FFI symbol exists so source-level CSSL code can
+    // call it without later re-link discipline.
+    let _ = cssl_host_input::api::BackendKind::current();
+    0
+}
+
+// ───────────────────────────────────────────────────────────────────────
 // § Tests
 //
 // Coverage matrix (per Wave-D4 dispatch directive, ≥ 8 tests) :
