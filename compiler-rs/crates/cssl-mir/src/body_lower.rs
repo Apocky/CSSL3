@@ -2860,6 +2860,9 @@ fn lower_call(
     if let Some(result) = try_lower_audio_call(ctx, callee, args, span) {
         return Some(result);
     }
+    if let Some(result) = try_lower_thread_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -5641,6 +5644,192 @@ fn emit_audio_op(
     if let Some(label) = ifc_label {
         op = op.with_attribute("ifc_label", label);
     }
+    for &id in operands {
+        op = op.with_operand(id);
+    }
+    ctx.ops.push(op);
+    (result_id, result_ty)
+}
+
+/// Dispatch a threading-domain callee (`thread::*` / `mutex::*` / `atomic::*`)
+/// to the matching emit-thread helper.
+///
+/// The threading domain spans 3 first-segments — all share the
+/// `Cap<Thread>` witness + cgen_thread::THREAD_OP_CONTRACT_TABLE
+/// (spec/24 § ABI-STABLE-SYMBOLS § thread). Returns `Some(_)` if
+/// `callee` is a 2-segment path matching one of the canonical verbs ;
+/// otherwise `None`.
+///
+/// Verb / arity / return-type per `cgen_thread::THREAD_OP_CONTRACT_TABLE`
+/// + `MIR_THREAD_*_OP_NAME` / `MIR_MUTEX_*_OP_NAME` / `MIR_ATOMIC_*_OP_NAME`
+/// constants.
+fn try_lower_thread_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 {
+        return None;
+    }
+    let first = ctx.interner.resolve(segments[0]);
+    if first != "thread" && first != "mutex" && first != "atomic" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    // Thread / mutex / atomic result-types per cgen_thread :
+    //   thread.spawn       → i64 thread-handle (I64)
+    //   thread.join        → i32 retcode       (I32)
+    //   mutex.create       → i64 mutex-handle  (I64)
+    //   mutex.lock         → i32 retcode       (I32)
+    //   mutex.unlock       → i32 retcode       (I32)
+    //   mutex.destroy      → i32 retcode       (I32)
+    //   atomic.load_u64    → i64 loaded value  (I64)
+    //   atomic.store_u64   → i32 retcode       (I32)
+    //   atomic.cas_u64     → i64 prev-value    (I64)
+    let i64ty = MirType::Int(IntWidth::I64);
+    let i32ty = MirType::Int(IntWidth::I32);
+    let collect_ids = |args: &[HirCallArg], ctx: &mut BodyLowerCtx<'_>| -> Option<Vec<ValueId>> {
+        let mut ids = Vec::with_capacity(args.len());
+        for a in args {
+            let (id, _) = lower_call_arg(ctx, a)?;
+            ids.push(id);
+        }
+        Some(ids)
+    };
+    match (first.as_str(), op.as_str(), args.len()) {
+        ("thread", "spawn", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.thread.spawn",
+                "spawn",
+                "thread",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        ("thread", "join", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.thread.join",
+                "join",
+                "thread",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("mutex", "create", 0) => Some(emit_thread_op(
+            ctx,
+            "cssl.mutex.create",
+            "create",
+            "mutex",
+            &[],
+            i64ty,
+            span,
+        )),
+        ("mutex", "lock", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.mutex.lock",
+                "lock",
+                "mutex",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("mutex", "unlock", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.mutex.unlock",
+                "unlock",
+                "mutex",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("mutex", "destroy", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.mutex.destroy",
+                "destroy",
+                "mutex",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("atomic", "load_u64", 2) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.atomic.load_u64",
+                "load_u64",
+                "atomic",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        ("atomic", "store_u64", 3) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.atomic.store_u64",
+                "store_u64",
+                "atomic",
+                &ids,
+                i32ty,
+                span,
+            ))
+        }
+        ("atomic", "cas_u64", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_thread_op(
+                ctx,
+                "cssl.atomic.cas_u64",
+                "cas_u64",
+                "atomic",
+                &ids,
+                i64ty,
+                span,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Internal helper : emit a `cssl.<thread|mutex|atomic>.<verb>` op with
+/// canonical attribute set. All three sub-namespaces share the
+/// `thread_effect = "true"` marker since they share the Cap<Thread>
+/// witness per spec/24 § ABI-STABLE-SYMBOLS § thread.
+fn emit_thread_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op_name: &str,
+    verb: &str,
+    family: &str,
+    operands: &[ValueId],
+    result_ty: MirType,
+    span: Span,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    let mut op = MirOp::std(op_name)
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("thread_effect", "true")
+        .with_attribute("family", family)
+        .with_attribute("op", verb)
+        .with_attribute("source_loc", format!("{span:?}"));
     for &id in operands {
         op = op.with_operand(id);
     }
@@ -8448,6 +8637,113 @@ mod tests {
             "fn f(s : i64, p : i64, n : i64) -> i64 { foo::stream_read(s, p, n) }",
         );
         assert!(find_op(&f, "cssl.audio.stream_read").is_none());
+    }
+
+    #[test]
+    fn lower_thread_spawn_emits_cssl_thread_spawn() {
+        let (f, _) = lower_one(
+            "fn f(e : i64, a : i64) -> i64 { thread::spawn(e, a) }",
+        );
+        let op = find_op(&f, "cssl.thread.spawn")
+            .expect("thread::spawn should lower to cssl.thread.spawn");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "thread_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("thread"));
+        assert_eq!(attr(op, "op"), Some("spawn"));
+    }
+
+    #[test]
+    fn lower_thread_join_emits_cssl_thread_join() {
+        let (f, _) = lower_one("fn f(t : i64, r : i64) -> i32 { thread::join(t, r) }");
+        let op = find_op(&f, "cssl.thread.join").expect("thread::join should lower");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("join"));
+    }
+
+    #[test]
+    fn lower_mutex_create_emits_cssl_mutex_create() {
+        let (f, _) = lower_one("fn f() -> i64 { mutex::create() }");
+        let op = find_op(&f, "cssl.mutex.create").expect("mutex::create should lower");
+        assert_eq!(op.operands.len(), 0);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "thread_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("mutex"));
+        assert_eq!(attr(op, "op"), Some("create"));
+    }
+
+    #[test]
+    fn lower_mutex_lock_emits_cssl_mutex_lock() {
+        let (f, _) = lower_one("fn f(m : i64) -> i32 { mutex::lock(m) }");
+        let op = find_op(&f, "cssl.mutex.lock").expect("mutex::lock should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("lock"));
+    }
+
+    #[test]
+    fn lower_mutex_unlock_emits_cssl_mutex_unlock() {
+        let (f, _) = lower_one("fn f(m : i64) -> i32 { mutex::unlock(m) }");
+        let op = find_op(&f, "cssl.mutex.unlock").expect("mutex::unlock should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(attr(op, "op"), Some("unlock"));
+    }
+
+    #[test]
+    fn lower_mutex_destroy_emits_cssl_mutex_destroy() {
+        let (f, _) = lower_one("fn f(m : i64) -> i32 { mutex::destroy(m) }");
+        let op = find_op(&f, "cssl.mutex.destroy").expect("mutex::destroy should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(attr(op, "op"), Some("destroy"));
+    }
+
+    #[test]
+    fn lower_atomic_load_u64_emits_cssl_atomic_load_u64() {
+        let (f, _) = lower_one("fn f(a : i64, o : i64) -> i64 { atomic::load_u64(a, o) }");
+        let op = find_op(&f, "cssl.atomic.load_u64").expect("atomic::load_u64 should lower");
+        assert_eq!(op.operands.len(), 2);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "family"), Some("atomic"));
+        assert_eq!(attr(op, "op"), Some("load_u64"));
+    }
+
+    #[test]
+    fn lower_atomic_store_u64_emits_cssl_atomic_store_u64() {
+        let (f, _) = lower_one(
+            "fn f(a : i64, v : i64, o : i64) -> i32 { atomic::store_u64(a, v, o) }",
+        );
+        let op = find_op(&f, "cssl.atomic.store_u64").expect("atomic::store_u64 should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("store_u64"));
+    }
+
+    #[test]
+    fn lower_atomic_cas_u64_emits_cssl_atomic_cas_u64() {
+        let (f, _) = lower_one(
+            "fn f(a : i64, e : i64, d : i64, o : i64) -> i64 { \
+                atomic::cas_u64(a, e, d, o) \
+            }",
+        );
+        let op = find_op(&f, "cssl.atomic.cas_u64").expect("atomic::cas_u64 should lower");
+        assert_eq!(op.operands.len(), 4);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "op"), Some("cas_u64"));
+    }
+
+    #[test]
+    fn lower_thread_wrong_arity_falls_through() {
+        // thread::spawn() with 0 args doesn't match (expects 2).
+        let (f, _) = lower_one("fn f() -> i64 { thread::spawn() }");
+        assert!(find_op(&f, "cssl.thread.spawn").is_none());
+    }
+
+    #[test]
+    fn lower_non_thread_path_is_not_claimed() {
+        // foo::spawn(...) is NOT thread::spawn(...).
+        let (f, _) = lower_one("fn f(e : i64, a : i64) -> i64 { foo::spawn(e, a) }");
+        assert!(find_op(&f, "cssl.thread.spawn").is_none());
     }
 
     // ───────────────────────────────────────────────────────────────────
