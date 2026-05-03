@@ -85,6 +85,34 @@ pub use cssl_host_substrate_resonance_gpu::{
     pack_crystal, pack_crystals, pack_observer, GpuCrystal, GpuObserver,
 };
 
+// ════════════════════════════════════════════════════════════════════════════
+// § T11-W18-SOA-PACK · 64-byte cache-friendly Crystal pack.
+// ════════════════════════════════════════════════════════════════════════════
+//
+// `GpuCrystalPacked` shrinks the per-crystal storage-buffer footprint from
+// 352 B (W18-G `GpuCrystal`) to 64 B by :
+//   - keeping world-position + extent + Σ-mask at full precision,
+//   - host-side pre-blending the 4-illuminant spectral table to a single
+//     16-band byte-spectrum (16 B),
+//   - quantizing the silhouette spline from 4-axis i32 to 2-axis i8 (32 B).
+//
+// At 128 crystals this drops the storage-buffer from 44 KiB to 8 KiB —
+// a 5.5× cache-pressure reduction that fits inside every mainstream
+// GPU's per-SM L1.
+//
+// The packed path is opt-in via `LOA_SUBSTRATE_PACKED=1`. Until the
+// matching WGSL kernel ships the path is **scaffold-only** : the host-
+// side struct + pack functions + tests are ready, callers can build
+// against the API, but the v2 renderer continues to use the 352-byte
+// path for now. See `packed.rs` module docs for the full layout +
+// rationale + the future shader-rewrite plan.
+
+pub mod packed;
+pub use packed::{
+    pack_crystal_packed, pack_crystals_packed, packed_path_enabled,
+    GpuCrystalPacked,
+};
+
 #[cfg(feature = "runtime")]
 use std::borrow::Cow;
 #[cfg(feature = "runtime")]
