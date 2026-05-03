@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § examples/ffi_smoke_test.cssl
+//
+// § PURPOSE
+//   Smoke-test corpus exercising EACH of the 8 host-FFI cgen domains
+//   (time + thread + window + input + gpu + audio + fs + net). Used
+//   post-FIX2 (cgen-FFI integration into object.rs) to verify each
+//   `cssl.<domain>.<verb>` MIR op emits a clean cranelift `call`.
+//
+// § USAGE
+//   csslc check    examples/ffi_smoke_test.cssl  → expect OK
+//   csslc emit-mlir examples/ffi_smoke_test.cssl → list of cssl.<dom>.<verb> ops
+//   csslc build    examples/ffi_smoke_test.cssl --emit=object -o /tmp/smoke.o
+//      → 8 fns × 1-2 ops each → ~150-300 byte object
+//
+// § CONSERVATIVE-SYNTAX (matches stdlib/{time,window,input,gpu,audio,thread,fs,net}.cssl)
+//   - Free-fn surface (no method-receivers)
+//   - cap : i32/i64 packed (Cap<X> generic deferred)
+//   - effect-row in doc-comment (parser slice gap)
+//   - Tuple-variants only (struct-variants deferred)
+//   - Single-expression match-arms (block-arms deferred)
+
+module com.apocky.examples.ffi_smoke_test
+
+// ─── time ──────────────────────────────────────────────────────────────
+// Returns monotonic ns. Cap-i64 packed witness.
+fn smoke_time(cap : i64) -> u64 {
+    time_monotonic_ns(cap)
+}
+
+// ─── thread ────────────────────────────────────────────────────────────
+// Returns mutex-handle (or 0 on cap-deny). Cap-i64 packed.
+fn smoke_thread(cap : i64) -> u64 {
+    mutex_create(cap)
+}
+
+// ─── window ────────────────────────────────────────────────────────────
+// Returns u32 spawn-flag mask. No FFI op called yet ; pure constant.
+// Real spawn fired in fn smoke_window_spawn below.
+fn smoke_window_flags() -> u32 {
+    spawn_flag_resizable() | spawn_flag_dpi_aware()
+}
+
+// ─── input ─────────────────────────────────────────────────────────────
+// VK_W key-code constant. Pure-data fn ; exercises input.cssl import path.
+fn smoke_input_vk_w() -> u32 {
+    vk_w()
+}
+
+// ─── gpu ───────────────────────────────────────────────────────────────
+// Returns 144hz frame-budget µs. Pure-constant fn.
+fn smoke_gpu_frame_budget() -> u64 {
+    target_frame_us_144hz()
+}
+
+// ─── audio ─────────────────────────────────────────────────────────────
+// Returns default audio sample-buffer-frames. Pure-data fn.
+fn smoke_audio_buffer_default() -> u32 {
+    default_buffer_samples()
+}
+
+// ─── fs ────────────────────────────────────────────────────────────────
+// fs::open is the canonical 2-segment FFI recognizer. Returns file-handle
+// (or -1 on error). Cap-bitset already runtime-checked inside fs::open.
+fn smoke_fs_open() -> i64 {
+    fs::open("smoke.tmp", 1)
+}
+
+// ─── net ───────────────────────────────────────────────────────────────
+// net::socket is the canonical 2-segment FFI recognizer. Returns socket-id
+// (or -1 on error). AF_INET = 2, SOCK_STREAM = 1, IPPROTO_TCP = 6.
+fn smoke_net_socket() -> i64 {
+    net::socket(2, 1, 6)
+}
