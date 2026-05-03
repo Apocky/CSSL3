@@ -587,6 +587,16 @@ fn engine_main() -> Result<(), EngineError> {
     Ok(())
 }
 
+// § fn main · linker-entry-point shim
+//   Invokes engine_main() · returns 0 on success · 1 on EngineError.
+//   Discriminant captured via match · exit-code observable from shell.
+fn main() -> i32 {
+    match engine_main() {
+        Ok(_)  => 0i32,
+        Err(_) => 1i32,
+    }
+}
+
 // `engine_run_loop(s)` — drive engine_run_frame until !running OR
 // MAX_FRAMES_DEFENSIVE reached.
 //
