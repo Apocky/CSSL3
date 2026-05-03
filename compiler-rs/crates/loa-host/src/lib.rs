@@ -187,6 +187,11 @@ pub mod intent_router;
 // alien_materialization, digital_intelligence_render}.csl`.
 pub mod substrate_render;
 
+// § T11-W18-DYNRES-SCALER · adaptive resolution-scaler for substrate-render.
+//   Q0.16 fixed-point · 1440p144 budget · EMA frame-time · floor 0.5× · cap 1.0×
+//   · honours LOA_DYN_RES=0 to disable. Wired into substrate_render::tick_gpu.
+pub mod dynamic_resolution;
+
 // ──────────────────────────────────────────────────────────────────────────
 // § T11-W5c-LOA-HOST-WIRE — thin wrapper modules over the wave-3γ + W4 + W5a
 // + W5b cssl-host-* crates. Each wired_* module re-exports the canonical
