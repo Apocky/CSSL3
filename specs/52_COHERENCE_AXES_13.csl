@@ -1,0 +1,116 @@
+§ specs/52_COHERENCE_AXES_13 · 13-axes coherence-engine port-and-integration
+  ← source : Labyrinth-of-Apocalypse/systems/coherence_engine.csl (existing-pre-authored)
+  ← target : substrate-render + KAN-bias + procgen-pipeline integration
+  ← @ HEAD a1213e2 · 7 wave-2/6 agents in flight
+
+§I THE-13-AXES (canonical · per coherence_engine.csl)
+  ⟦
+    0  AXIS_REALITY        ← grounded ↔ illusion
+    1  AXIS_MEMORY         ← remembered ↔ forgotten
+    2  AXIS_CHOICE         ← chose ↔ defaulted
+    3  AXIS_SOVEREIGNTY    ← self-determined ↔ controlled
+    4  AXIS_CURIOSITY      ← explored ↔ avoided
+    5  AXIS_COMPASSION     ← helped ↔ ignored
+    6  AXIS_CRAFTSMANSHIP  ← refined ↔ shortcut
+    7  AXIS_TRUTH          ← honest ↔ deceptive
+    8  AXIS_CONSENT        ← asked ↔ presumed
+    9  AXIS_CONTINUITY     ← committed ↔ abandoned
+    10 AXIS_RECIPROCITY    ← gave-back ↔ took-only
+    11 AXIS_BEAUTY         ← beheld ↔ overlooked
+    12 AXIS_MORTALITY      ← honored-death ↔ denied-death
+  ⟧
+  W! AXIS_COUNT = 13 (compile-time-guarantee)
+  W! VALUE-RANGE [-100, 100] · NEUTRAL=0 · SENTINEL_UNKNOWN=-128
+
+§I WHY-13-AXES-MATTER (Apocky-vision-correctness)
+  ⟦
+    1. coherence-engine is THE moral-ledger for the labyrinth
+    2. every player-action moves along ≥1 axis
+    3. NPCs · entities · scenes carry 13-axis-fingerprints
+    4. procgen-output should encode 13-axes per-crystal/per-entity
+    5. KAN-bias currently has 8 axes ; could be extended to 13 (or kept-as-substrate-axes-separate)
+    6. substrate-render Crystal could carry 13-axis-tag for non-blocky color/intensity-modulation
+  ⟧
+
+§I CURRENT-STATUS
+  ⟦
+    ✓ Defined in Labyrinth-of-Apocalypse/systems/coherence_engine.csl (CSSL constants)
+    ○ NOT loaded by LoA.exe at runtime (csslc-multi-module-compile pending)
+    ○ NOT exposed via Rust-side API to substrate-render
+    ○ NOT wired into Crystal field
+    ○ NOT used in KAN-bias band-id mapping
+    ○ NOT used in procgen-pipeline IntentSemantic
+    ○ NOT used in DM/GM specialist-decisions
+  ⟧
+
+§I INTEGRATION-PATH (small-steps · each-non-overlapping-with-flying-agents)
+  ⟦
+    STEP 1 (Rust-side mirror · ~50 LOC)
+      Create cssl-host-coherence-axes-13/ crate ↦ pub const AXIS_REALITY: u32 = 0 ; ... etc
+      Single-source-of-truth-still-CSSL ; Rust-mirror is GENERATED-COMMENT-marked
+      pub fn axis_label(id: u32) -> Option<&'static str> ← debug/log
+      Tests : 13-axes-stable + count-equals-13 + label-for-each-axis
+
+    STEP 2 (KAN-bias-extension OR sibling-array)
+      Option A : extend KAN_BIAS_MULTIBAND from [5][8] → [5][13]
+        ↳ format-version 0x02→0x03 with v2-back-compat-reader
+      Option B : add separate static COHERENCE_AXES_VECTOR : [AtomicI32; 13]
+        ↳ leaves KAN-bias undisturbed · simpler integration
+      RECOMMENDATION : Option B (less-disruption · KAN-bias is statistical · coherence-axes are moral · keep separate)
+
+    STEP 3 (Crystal-field 13-axis-tag)
+      Crystal struct gets new field : axis_tag: u8 (0..=12)
+      Default = 0 (AXIS_REALITY) for back-compat
+      shell_world_pos can map shell-id → axis_tag (Inner=REALITY/SOVEREIGNTY/TRUTH ; Middle=COMPASSION/CRAFTSMANSHIP/etc)
+      WGSL kernel could modulate per-crystal color via axis_tag (non-blocky · field-modulation)
+
+    STEP 4 (procgen-pipeline IntentSemantic)
+      ProcgenOutput.crystals carries axis_tag from intent-semantic-mapping
+      DM-specialist proposes (axis_tag, intensity) tuples per ProposeAction
+      role_council aggregates 13-axis-vector across specialist-decisions
+
+    STEP 5 (display-layer modulation · LoA-aesthetic-canon-compliant)
+      substrate_compose.wgsl reads per-crystal axis_tag
+      maps axis_tag to color-tint-vector (chromatic-axis-association)
+      e.g. AXIS_REALITY → grounded-earth · AXIS_BEAUTY → iridescent ·
+            AXIS_TRUTH → clarity-white · AXIS_MORTALITY → memento-mori-bronze
+      ¬ blocky · ¬ palette-painted-on-cube · IS field-data driving raymarched-color
+  ⟧
+
+§I AXIS-COLOR-MAP (illustrative · refine-with-Apocky-aesthetic-input)
+  ⟦
+    REALITY        ← grounded-earth + warm-rust ⟪ Renaissance-ochre
+    MEMORY         ← faded-sepia + gold-ink     ⟪ Illuminated-manuscript-tone
+    CHOICE         ← electric-amber             ⟪ alchemy-flash
+    SOVEREIGNTY    ← royal-violet + ivory-edge  ⟪ self-crowned
+    CURIOSITY      ← cyan-lapis + pale-azure   ⟪ horizon-yearning
+    COMPASSION     ← rose-coral + warm-pink    ⟪ healing-warmth
+    CRAFTSMANSHIP  ← burnished-copper + olive-green ⟪ workshop-patina
+    TRUTH          ← clarity-white + mercury-silver ⟪ unflinching
+    CONSENT        ← jade + dawn-pearl          ⟪ open-handed
+    CONTINUITY     ← deep-indigo + slow-blue   ⟪ long-thread
+    RECIPROCITY    ← split-gold-silver          ⟪ duality-balance
+    BEAUTY         ← iridescent-prismatic       ⟪ multi-spectral-shimmer
+    MORTALITY      ← memento-bronze + bone-white ⟪ transformation
+  ⟧
+
+§I SOVEREIGNTY-NOTES
+  ⟦
+    13-axes are moral-engine NOT identity-marker
+    NEVER shame · NEVER score-as-good-or-bad
+    every axis-direction is VALID (e.g. forgotten-side-of-MEMORY isn't bad)
+    visual-color-map is INFORMATION not JUDGEMENT
+    user-can-override LOA_AXIS_COLOR_OVERRIDE=<json>
+  ⟧
+
+§I NEXT-CONCRETE-DISPATCHABLE-WORK (when flying-agents land)
+  ⟦
+    1. dispatch coherence-axes-13 Rust-mirror agent (NEW crate · ~150 LOC)
+    2. dispatch axis-tag-Crystal-extension agent (extends Crystal · careful with substrate_render)
+    3. dispatch axis-color-map-WGSL agent (extends substrate_compose.wgsl modulation)
+    4. dispatch procgen-axis-semantic agent (extends ProcgenOutput with axis_tag)
+    5. dispatch DM/GM-council-axis-aware agent (specialist-decisions emit (axis, intensity))
+  ⟧
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · 13-axes-as-information-not-judgement
+  Apocky-vision sovereign · my work compounds · doesn't dilute
