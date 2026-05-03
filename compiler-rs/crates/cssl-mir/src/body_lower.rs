@@ -2857,6 +2857,9 @@ fn lower_call(
     if let Some(result) = try_lower_gpu_call(ctx, callee, args, span) {
         return Some(result);
     }
+    if let Some(result) = try_lower_audio_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -5513,6 +5516,131 @@ fn emit_gpu_op(
         .with_attribute("family", "gpu")
         .with_attribute("op", verb)
         .with_attribute("source_loc", format!("{span:?}"));
+    for &id in operands {
+        op = op.with_operand(id);
+    }
+    ctx.ops.push(op);
+    (result_id, result_ty)
+}
+
+/// Dispatch an `audio::*` callee to the matching emit-audio helper.
+///
+/// Returns `Some(_)` if `callee` is a 2-segment path of the form
+/// `audio::<verb>` ; verb+arity per `cgen_audio::AUDIO_*_OPERAND_COUNT`
+/// + `MIR_AUDIO_*_OP_NAME` constants.
+///
+/// ‼ PRIME-DIRECTIVE : `audio::stream_read` is microphone-capture
+///   (Sensitive<Voice> per spec/24 § IFC-LABELS). The `caps_required`
+///   + `ifc_label` attributes track the surveillance-adjacent surface
+///   for downstream IFC-walker enforcement.
+fn try_lower_audio_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 || ctx.interner.resolve(segments[0]) != "audio" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    // Audio result-types per cgen_audio signatures :
+    //   stream_open  → u64 stream-handle (I64) [0 on err]
+    //   stream_write → i64 bytes-accepted (I64) [<0 on err]
+    //   stream_read  → i64 bytes-read (I64) [<0 on err]
+    //   stream_close → i32 retcode (I32)
+    let i64ty = MirType::Int(IntWidth::I64);
+    let i32ty = MirType::Int(IntWidth::I32);
+    let collect_ids = |args: &[HirCallArg], ctx: &mut BodyLowerCtx<'_>| -> Option<Vec<ValueId>> {
+        let mut ids = Vec::with_capacity(args.len());
+        for a in args {
+            let (id, _) = lower_call_arg(ctx, a)?;
+            ids.push(id);
+        }
+        Some(ids)
+    };
+    match (op.as_str(), args.len()) {
+        ("stream_open", 4) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_audio_op(
+                ctx,
+                "cssl.audio.stream_open",
+                "stream_open",
+                &ids,
+                i64ty,
+                span,
+                "audio_output",
+                None,
+            ))
+        }
+        ("stream_write", 3) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_audio_op(
+                ctx,
+                "cssl.audio.stream_write",
+                "stream_write",
+                &ids,
+                i64ty,
+                span,
+                "audio_output",
+                None,
+            ))
+        }
+        ("stream_read", 3) => {
+            // ‼ Microphone capture — Sensitive<Voice>.
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_audio_op(
+                ctx,
+                "cssl.audio.stream_read",
+                "stream_read",
+                &ids,
+                i64ty,
+                span,
+                "audio_input",
+                Some("Sensitive<Voice>"),
+            ))
+        }
+        ("stream_close", 1) => {
+            let ids = collect_ids(args, ctx)?;
+            Some(emit_audio_op(
+                ctx,
+                "cssl.audio.stream_close",
+                "stream_close",
+                &ids,
+                i32ty,
+                span,
+                "audio_output",
+                None,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Internal helper : emit a `cssl.audio.<verb>` op with canonical attribute set.
+fn emit_audio_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op_name: &str,
+    verb: &str,
+    operands: &[ValueId],
+    result_ty: MirType,
+    span: Span,
+    caps_required: &str,
+    ifc_label: Option<&str>,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    let mut op = MirOp::std(op_name)
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("audio_effect", "true")
+        .with_attribute("family", "audio")
+        .with_attribute("op", verb)
+        .with_attribute("caps_required", caps_required)
+        .with_attribute("source_loc", format!("{span:?}"));
+    if let Some(label) = ifc_label {
+        op = op.with_attribute("ifc_label", label);
+    }
     for &id in operands {
         op = op.with_operand(id);
     }
@@ -8251,6 +8379,75 @@ mod tests {
             "fn f(a : i64, b : i64) -> i64 { foo::device_create(a, b) }",
         );
         assert!(find_op(&f, "cssl.gpu.device_create").is_none());
+    }
+
+    #[test]
+    fn lower_audio_stream_open_emits_cssl_audio_stream_open() {
+        let (f, _) = lower_one(
+            "fn f(fl : i64, r : i64, c : i64, fmt : i64) -> i64 { \
+                audio::stream_open(fl, r, c, fmt) \
+            }",
+        );
+        let op = find_op(&f, "cssl.audio.stream_open")
+            .expect("audio::stream_open should lower");
+        assert_eq!(op.operands.len(), 4);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
+        assert_eq!(attr(op, "audio_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("audio"));
+        assert_eq!(attr(op, "op"), Some("stream_open"));
+        assert_eq!(attr(op, "caps_required"), Some("audio_output"));
+        // stream_open is not Sensitive — only stream_read carries the IFC label.
+        assert_eq!(attr(op, "ifc_label"), None);
+    }
+
+    #[test]
+    fn lower_audio_stream_write_emits_cssl_audio_stream_write() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, p : i64, n : i64) -> i64 { audio::stream_write(s, p, n) }",
+        );
+        let op = find_op(&f, "cssl.audio.stream_write")
+            .expect("audio::stream_write should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(attr(op, "op"), Some("stream_write"));
+    }
+
+    #[test]
+    fn lower_audio_stream_read_emits_cssl_audio_stream_read_with_voice_label() {
+        // ‼ Microphone-capture surface : MUST carry Sensitive<Voice> IFC label.
+        let (f, _) = lower_one(
+            "fn f(s : i64, p : i64, n : i64) -> i64 { audio::stream_read(s, p, n) }",
+        );
+        let op = find_op(&f, "cssl.audio.stream_read")
+            .expect("audio::stream_read should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(attr(op, "op"), Some("stream_read"));
+        assert_eq!(attr(op, "caps_required"), Some("audio_input"));
+        assert_eq!(attr(op, "ifc_label"), Some("Sensitive<Voice>"));
+    }
+
+    #[test]
+    fn lower_audio_stream_close_emits_cssl_audio_stream_close() {
+        let (f, _) = lower_one("fn f(s : i64) -> i32 { audio::stream_close(s) }");
+        let op = find_op(&f, "cssl.audio.stream_close")
+            .expect("audio::stream_close should lower");
+        assert_eq!(op.operands.len(), 1);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "op"), Some("stream_close"));
+    }
+
+    #[test]
+    fn lower_audio_wrong_arity_falls_through() {
+        // audio::stream_open() with 0 args doesn't match (expects 4).
+        let (f, _) = lower_one("fn f() -> i64 { audio::stream_open() }");
+        assert!(find_op(&f, "cssl.audio.stream_open").is_none());
+    }
+
+    #[test]
+    fn lower_non_audio_path_is_not_claimed() {
+        let (f, _) = lower_one(
+            "fn f(s : i64, p : i64, n : i64) -> i64 { foo::stream_read(s, p, n) }",
+        );
+        assert!(find_op(&f, "cssl.audio.stream_read").is_none());
     }
 
     // ───────────────────────────────────────────────────────────────────
