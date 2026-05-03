@@ -7855,8 +7855,11 @@ mod tests {
         // produce a `cssl.fs.open` op carrying the io_effect marker.
         let (f, _) = lower_one(r#"fn f() -> i64 { fs::open("foo.txt", 1) }"#);
         let op = find_op(&f, "cssl.fs.open").expect("fs::open should lower to cssl.fs.open");
-        // Two operands : (path, flags).
-        assert_eq!(op.operands.len(), 2);
+        // § T11-W19-α-CSSLC-FIX10 — three operands : (path_ptr, path_len, flags).
+        //   The host-FFI sig is `__cssl_fs_open(p_ptr, p_len, flags) -> i64` ;
+        //   the recognizer expands str args into the canonical ptr+len pair so
+        //   object-emit's arity-check accepts the call.
+        assert_eq!(op.operands.len(), 3);
         // Single result of i64 (handle).
         assert_eq!(op.results.len(), 1);
         assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I64));
