@@ -1,0 +1,38 @@
+[package]
+name                   = "cssl-host-substrate-render-v3"
+description            = "§ T11-W18-L7-SPIRV-DIRECT · ash-direct vulkan-1.3 substrate-render · csslc emits SPIR-V binary directly · ZERO wgpu · ZERO naga · ZERO WGSL · vkCreateShaderModule consumes substrate_v2_kernel.csl SPIR-V words · one vkCmdDispatch per frame · proprietary-everything stack from .csl source to vk-pipeline"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lib]
+name = "cssl_host_substrate_render_v3"
+
+# § T11-W18-L7 — feature gates
+#   `default = []` — pure SPIR-V emit + binary-shape verification builds
+#   without pulling the Vulkan loader. Tests #1, #2 always run.
+#   `runtime` — pulls `ash` for the ash-direct vulkan-1.3 path. Tests
+#   #3, #4, #5 only run with `--features runtime` AND a vulkan-loader
+#   present on the host. Mirrors the v2 pattern : zero GPU pull at default.
+[features]
+default = []
+runtime = ["dep:ash"]
+
+[dependencies]
+# § T11-W18-L7 : the SPIR-V emit path lives entirely in `cssl-cgen-gpu-spirv`
+# (the orchestrator that drives the from-scratch `cssl-cgen-spirv` backend).
+# `cssl-host-substrate-render-v3` consumes the emitted Vec<u32> words and
+# feeds them directly into vkCreateShaderModule via ash. No naga · no WGSL ·
+# no wgpu in this dependency tree.
+cssl-cgen-gpu-spirv = { path = "../cssl-cgen-gpu-spirv" }
+thiserror           = { workspace = true }
+
+# § ash 0.38 = vulkan-1.3 bindings. Optional behind `runtime` feature so the
+# default build (and the SPIR-V-shape tests) can land on CI runners with no
+# Vulkan loader present. Mirrors the v2 wgpu/pollster gating pattern.
+ash = { workspace = true, optional = true }
+
+[lints]
+workspace = true
