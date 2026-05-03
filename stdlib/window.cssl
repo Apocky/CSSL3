@@ -90,17 +90,22 @@ struct RawHandle {
 //   - Close / Resize / Focus / Blur / DpiChange : Public
 //   - KeyDown / KeyUp / MouseMove / MouseButton / Scroll :
 //       Sensitive<Behavioral> (NEVER egresses cross-process)
+// § STAGE-0 NOTE : tuple-variants (positional fields) — csslc parser slice
+//   accepts `Tag(T1, T2, ...)` form (per stdlib/option.cssl + stdlib/result.cssl
+//   precedent) but does NOT yet accept struct-variants `Tag { name : T }`.
+//   Field-naming preserved in adjacent comments. Migration to struct-variants
+//   is mechanical once parser slice lands.
 enum WindowEvent {
     Close,
-    Resize { w : u32, h : u32 },
+    Resize(u32, u32),                          // (w, h)
     Focus,
     Blur,
-    KeyDown { key : u32, mods : u32 },
-    KeyUp { key : u32, mods : u32 },
-    MouseMove { x : i32, y : i32 },
-    MouseButton { btn : u8, down : bool, x : i32, y : i32, mods : u32 },
-    Scroll { dx : i32, dy : i32 },
-    DpiChange { scale_bits : u32 },
+    KeyDown(u32, u32),                          // (key, mods)
+    KeyUp(u32, u32),                            // (key, mods)
+    MouseMove(i32, i32),                        // (x, y)
+    MouseButton(u8, bool, i32, i32, u32),       // (btn, down, x, y, mods)
+    Scroll(i32, i32),                           // (dx, dy)
+    DpiChange(u32),                             // (scale_bits)
 }
 
 // `WindowError` discriminants matching cssl-rt failure paths.
@@ -424,14 +429,17 @@ fn window_spawn_fullscreen_1440p(title : &str, cap : i32) -> Result<Window, Wind
 //   document the canonical call-shapes.
 // ───────────────────────────────────────────────────────────────────────
 
-// Worked example : open a 1440p window + immediately request close.
+// Worked example : open a 1440p window + immediately destroy it.
+//
+// § STAGE-0 NOTE : single-expression match-arms only — block-body arms
+//   `Tag(...) => { ... }` deferred (csslc parser slice gap). Free-fn
+//   surface form `window_destroy(w, cap)` collapses both close-request
+//   + destroy into a single call (per stdlib/window.cssl § destroy
+//   contract — destroy is permitted post-spawn without prior close).
 fn _example_window_spawn_close(cap : i32) -> Result<(), WindowError> {
     let w_res = window_spawn_1440p("Apocky-LoA", cap) ;
     match w_res {
-        Ok(w) => {
-            let _ = window_request_close(w, cap) ;
-            window_destroy(w, cap)
-        }
+        Ok(w) => window_destroy(w, cap),
         Err(e) => Err(e),
     }
 }
