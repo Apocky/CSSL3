@@ -1,0 +1,281 @@
+# 44 : MNEME — pipelines · ingestion + retrieval · per-stage spec
+# ══════════════════════════════════════════════════════════════════════════
+# § I> sibling-of §§ 43_MNEME (canonical) + §§ 45_MNEME_SCHEMA (DDL)
+# § I> implements Cloudflare two-phase pipeline · adapted to CSL-canonical storage
+# § I> code-locus : cssl-edge/lib/mneme/pipeline-ingest.ts + pipeline-retrieve.ts
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ INGEST  (called @ harness-compaction · or @ remember-direct)
+
+  § STAGE-1 : DETERMINISTIC-MSG-ID
+    in  : Message-input't { session_id, role, content }
+    fn  : id = sha256(session_id || role || content)[:32]      # truncated 128-bit hex
+    out : Message't { id, ... }
+    W!  : INSERT-OR-IGNORE @ messages table · idempotent re-ingest ✓
+
+  § STAGE-2 : EXTRACTION (parallel-2-pass)
+
+    § PASS-A : full-pass
+      input  : entire conversation · chunked @ 10000 chars · 2-message overlap
+      max_concurrent_chunks : 4
+      model  : claude-haiku-4-5 · temp=0 · max_tokens=4096
+      prompt : prompts/extract-full.md
+      schema : tool-use { extracted : [{ csl, paraphrase, span : [line_start, line_end] }] }
+      W!     : ¬ paraphrase-only · MUST emit canonical-CSL form
+
+    § PASS-B : detail-pass  (skip if conversation < 9 messages)
+      input  : same conversation · windowed 5-msg-w-overlap-2
+      goal   : harvest concrete-values that broad-pass smooths over
+               (version-numbers · prices · proper-nouns · API-routes · file-paths)
+      model  : claude-haiku-4-5 · temp=0 · max_tokens=2048
+      prompt : prompts/extract-detail.md
+
+    § MERGE
+      candidates = pass_a.extracted ⊕ pass_b.extracted
+      dedupe-by  : levenshtein(csl_a, csl_b) < 0.15 · keep-longer
+      out        : [{ csl, paraphrase, span }; _]
+
+  § STAGE-3 : VERIFICATION
+    input  : (candidate, source-transcript)-pair · per candidate
+    model  : claude-haiku-4-5 · temp=0 · max_tokens=2048
+    checks : 8 [
+      ✓ entity-identity        : "user" ≠ "the user's friend"
+      ✓ object-identity        : "the project" ≠ "another project"
+      ✓ location-context       : claim-bound to right place
+      ✓ temporal-accuracy      : dates relative resolved → absolute
+      ✓ organizational-context : right team / company / repo
+      ✓ completeness           : ¬ truncated mid-thought
+      ✓ relational-context     : if A→B claimed · A and B distinct ✓
+      ✓ inferred-supported     : claim ⊢ literal-text ∨ direct-implication
+    ]
+    out    : verdict ∈ { pass, correct(csl_fixed), drop(reason) }
+    W!     : drop ⇒ log audit-row · trace-id propagated
+
+  § STAGE-4 : CLASSIFICATION
+    input  : verified-candidate
+    model  : claude-haiku-4-5 · temp=0 · max_tokens=1024
+    schema : tool-use {
+      type : enum[fact, event, instruction, task],
+      topic_key : str?      # required if type ∈ {fact, instruction}
+      search_queries : [str; 3..5]   # interrogative bridges for HyDE
+    }
+    prompt-rules :
+      W! topic_key = morpheme-path · DOT-separated · lowercase-kebab
+         e.g. "user.pref.pkg-mgr"  ¬  "User Preferences > Package Manager"
+      W! search_queries phrased as questions · varied-vocabulary
+         e.g. fact "user.pref.pkg-mgr ⊗ pnpm" →
+              ["which package manager?", "pnpm or npm?", "what's the JS package tool?"]
+      W! events get topic_key = ∅ · they're addressed by time + content
+      W! tasks get topic_key = ∅ · ephemeral · excluded from vec-index downstream
+
+  § STAGE-5 : SUPERSESSION
+    input  : classified-candidate
+    fn     :
+      IF type ∈ {fact, instruction} ∧ topic_key ≠ ∅:
+        existing = SELECT * FROM memories
+                    WHERE profile_id = $p
+                      AND type       = $t
+                      AND topic_key  = $k
+                      AND superseded_by IS NULL
+        IF existing ∃:
+          UPDATE existing SET superseded_by = NEW.id  -- forward-pointer · ¬ delete
+          NEW.embedding-of-existing : queue-for-vec-delete (parallel-with-new-upsert)
+      INSERT NEW
+
+  § STAGE-6 : CSL-VALIDATION-GATE  ‼ keystone
+    input  : candidate.csl
+    fn     : packages/csl validate · returns {ok : bool, errors : [Diag]}
+    on-fail :
+      retry-once @ classification-step w/ stricter-prompt
+      ¬ retry-twice ⇒ drop · audit-row { reason: "csl_invalid", csl_attempted, errors }
+    rationale : §§ 14_CSSLv3_BRIDGE.§S3-PARSER-REUSE
+                @v1 use minimal-TS-validator (cssl-edge/lib/mneme/csl.ts)
+                @v1.1 shell-out to parser.exe (cssllint --json) when local-deploy supports it
+
+  § STAGE-7 : INSERT-OR-IGNORE
+    INSERT INTO memories (id, profile_id, type, csl, paraphrase, topic_key,
+                          search_queries, source_msg_ids, sigma_mask, created_at)
+    VALUES (...) ON CONFLICT (id) DO NOTHING
+    return-shape : { stored: u32, deduped: u32 }
+    W! response returned to caller AFTER STAGE-7 · before STAGE-8 (async)
+
+  § STAGE-8 : EMBED  (background · post-response)
+    embedding_text = csl + "\n" + paraphrase + "\n" + search_queries.join("\n")
+                     # tri-view fusion · top retrieval-quality lever
+    POST voyage.ai/v1/embeddings
+      model = "voyage-3-large"
+      input = [embedding_text]
+      input_type = "document"
+    out    : vec<f32; 1024>
+    UPDATE memories SET embedding = $1 WHERE id = $2
+    on-timeout (>10s) : leave embedding=NULL · cron-vacuum re-embeds @ 03:00 UTC
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ RETRIEVE  (called @ /api/mneme/[profile]/recall)
+
+  § STAGE-1 : QUERY-ANALYSIS  +  EMBED-RAW   (parallel)
+
+    § A : query-analyzer
+      input  : query (≤ 512 chars)
+      model  : claude-haiku-4-5 · temp=0 · max_tokens=1024
+      schema : tool-use {
+        topic_keys     : [str; _]          # ranked guesses @ morpheme-path
+        fts_terms      : [str; _]          # keywords + synonyms
+        hyde_csl       : str               # hypothetical-answer in CSL form
+        hyde_paraphrase: str               # hypothetical-answer in English
+        is_temporal    : bool              # triggers regex-pre-compute
+      }
+      prompt : prompts/query-analyze.md
+
+    § B : embed-raw
+      POST voyage.ai/v1/embeddings · input_type="query" · input=[query]
+      → vec_q : vec<f32;1024>
+
+  § STAGE-2 : EMBED-HYDE
+    embedding_text = hyde_csl + "\n" + hyde_paraphrase
+    POST voyage.ai/v1/embeddings · input_type="query" · input=[embedding_text]
+    → vec_h : vec<f32;1024>
+
+  § STAGE-3 : 6-CHANNEL-PARALLEL  (Promise.all)
+
+    § C1 : fts_csl
+      SQL : SELECT id, ts_rank_cd(csl_tsv, query_tsv) AS s
+            FROM memories
+            WHERE profile_id = $p
+              AND superseded_by IS NULL
+              AND csl_tsv @@ to_tsquery('simple', $fts_terms_or)
+            ORDER BY s DESC LIMIT 20
+
+    § C2 : fts_paraphrase
+      SQL : SELECT id, ts_rank_cd(paraphrase_tsv, query_tsv) AS s
+            FROM memories
+            WHERE profile_id = $p
+              AND superseded_by IS NULL
+              AND paraphrase_tsv @@ plainto_tsquery('english', $query)
+            ORDER BY s DESC LIMIT 20
+
+    § C3 : fts_messages   (raw-net · safety against extraction smoothing)
+      SQL : SELECT id FROM messages
+            WHERE profile_id = $p
+              AND content_tsv @@ plainto_tsquery('english', $query)
+            ORDER BY ts DESC LIMIT 10
+      → for each hit-msg-id: find memories where source_msg_ids @> ARRAY[hit_msg_id]
+      → score = 1.0 / (1 + rank_within_hits)
+
+    § C4 : topic_exact
+      SQL : SELECT id, 1.0 AS s
+            FROM memories
+            WHERE profile_id = $p
+              AND superseded_by IS NULL
+              AND topic_key = ANY($topic_keys::text[])
+            ORDER BY array_position($topic_keys::text[], topic_key) ASC LIMIT 5
+
+    § C5 : vec_direct
+      SQL : SELECT id, 1 - (embedding <=> $vec_q) AS s
+            FROM memories
+            WHERE profile_id = $p
+              AND superseded_by IS NULL
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> $vec_q LIMIT 20
+
+    § C6 : vec_hyde
+      SQL : SELECT id, 1 - (embedding <=> $vec_h) AS s
+            FROM memories
+            WHERE profile_id = $p
+              AND superseded_by IS NULL
+              AND embedding IS NOT NULL
+            ORDER BY embedding <=> $vec_h LIMIT 20
+
+  § STAGE-4 : RECIPROCAL-RANK-FUSION
+    weights ‼ frozen @ v1 ·
+      topic_exact    : 1.0    # exact morpheme-path match · strongest signal
+      fts_csl        : 0.7    # structural match
+      vec_hyde       : 0.7    # answer-shape semantic match
+      vec_direct     : 0.6    # surface semantic match
+      fts_paraphrase : 0.5    # surface English match
+      fts_messages   : 0.3    # raw-net · catches what extraction smoothed
+
+    rrf_k = 60                # standard RRF constant
+    score(memory_id) = Σ_channels weight_c × (1 / (rrf_k + rank_in_channel))
+    tiebreak : recency DESC (created_at)
+
+    top_k = req.k (default 5)
+
+  § STAGE-5 : TEMPORAL-PRE-COMPUTE  (if is_temporal)
+    regex-extract : (yesterday|tomorrow|N days ago|on YYYY-MM-DD|last week|...)
+    arithmetic    : resolve relative-to now()
+    inject-as-fact-into-synth-prompt : "[PRE-COMPUTED] today = 2026-05-02 ; query.target = 2026-04-30"
+    rationale : LLM-date-math = unreliable · CF-blog top finding
+
+  § STAGE-6 : SYNTHESIS
+    input  : top_k memories (full rows) + temporal-pre-computes + query
+    model  : claude-sonnet-4-6 · temp=0.3 · max_tokens=2048
+    prompt : prompts/synthesize.md
+    schema : tool-use {
+      result_nl  : str                    # English natural answer
+      result_csl : str                    # CSL canonical answer
+      citations  : [uuid; _]              # subset of input top_k
+      confidence : f32                    # 0..1 · self-rated
+    }
+    W! prompt-cached system-prompt includes CSLv3_ONBOARDING.md (90% cache-hit-rate)
+    W! result_csl MUST validate against packages/csl validator · else retry once
+
+  § STAGE-7 : POST-PROCESS + RESPONSE
+    if confidence < 0.3 ∧ citations.len = 0:
+      result_nl = "I don't have a memory about that yet."
+      result_csl = "memory ⊗ ∅ @ query='" + query + "'"
+    audit-log : { profile_id, query, citations, confidence, latency_ms }
+    return RecallResponse't
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ PROMPTS  (cssl-edge/lib/mneme/prompts/*.md · version-stamped · A/B-able)
+
+  § prompts/extract-full.md       : input = chunk · output = candidates with CSL
+  § prompts/extract-detail.md     : input = window · goal = catch concrete-values
+  § prompts/verify.md             : 8-check verifier · inputs = (candidate, source-span)
+  § prompts/classify.md           : type + topic_key + 3-5 search_queries
+  § prompts/query-analyze.md      : query → topic_keys + fts_terms + hyde
+  § prompts/synthesize.md         : top-k memories → {result_nl, result_csl, citations, confidence}
+  § all-prompts                   : prepend CSLv3_ONBOARDING.md as cached-system · §§ Anthropic prompt-caching
+
+  W! every prompt declares its expected tool-schema literally · claude-tool-use binding
+  W! every prompt includes 2-3 worked-examples with CSL output
+  W! version-stamp at top : "# vN · YYYY-MM-DD · changelog"
+
+§ ANTI-PATTERNS
+  ✗ skip detail-pass for short conversations  ∵ retrieval-quality drops on concrete-value queries
+  ✓ always run if msg-count ≥ 9
+
+  ✗ embed-async-block-response                ∵ adds Voyage-latency to user-facing path
+  ✓ respond AFTER stage-7 · embed in waitUntil(promise) · Vercel Edge runtime supports
+
+  ✗ single retrieval channel                  ∵ no method dominates across query-types (CF blog finding)
+  ✓ 6 channels + RRF · channels-disagree → RRF dampens noise
+
+  ✗ let LLM design SQL queries                ∵ context-burn · CF blog top finding
+  ✓ tools = constrained verbs only · no raw-query escape-hatch
+
+  ✗ store paraphrase as primary               ∵ loses morpheme-tree query capability
+  ✓ csl = canonical · paraphrase = derived
+
+§ PERFORMANCE-BUDGETS  ‼ p95 targets
+  ingest (50-msg conv) : ≤ 25s   (bulk · async-vec-embed)
+  recall               : ≤ 1.8s  (6-channel ‖ + Sonnet synth ~ 1.2s alone)
+  remember (single)    : ≤ 800ms (skip extraction + verify) — stage 4-7 only
+  list                 : ≤ 200ms (pure SQL)
+  forget               : ≤ 400ms (write + audit + vec-delete)
+  export               : ≤ 5s    (bulk · gzipped)
+
+§ TESTS
+  case₁ : ingest convo w/ "use pnpm not npm"        → fact extracted · topic_key="user.pref.pkg-mgr"  ✓
+  case₂ : ingest update "actually use yarn now"     → old superseded · new active · same topic_key   ✓
+  case₃ : recall "package manager?"                  → top-1 = active fact · cite-correct           ✓
+  case₄ : recall "what did we use 2 weeks ago?"      → temporal-pre-compute fires · retrieves old   ✓
+  case₅ : recall w/ unrelated query                   → confidence < 0.3 · citations = []           ✓
+  case₆ : detail-pass extracts "v3.18.2"             → fact w/ exact-version preserved              ✓
+  edge  : malformed-CSL from extraction              → retry-once · drop-on-2nd-fail · audit-row    ✓
+  edge  : Voyage timeout @ ingest                    → respond-success · embedding=NULL · cron-fix  ✓
+∎

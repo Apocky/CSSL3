@@ -1,0 +1,262 @@
+# 43 : MNEME — agent memory service · Cloudflare-mirror · sovereign-gated
+# ══════════════════════════════════════════════════════════════════════════
+# § I> module = com.apocky.cssl.mneme
+# § I> mirrors Cloudflare Agent Memory (2026-04-17) · CSLv3-native storage form
+# § I> parent : §§ PRIME_DIRECTIVE + §§ 27_SIGMA_MASK_RUNTIME + §§ 35_MYCELIUM_FEDERATION
+# § I> consumes : Anthropic API (Haiku 4.5 + Sonnet 4.6) + Voyage AI (voyage-3-large 1024d)
+# § I> backend  : Supabase Postgres + pgvector · cssl-edge Pages-Router · Vercel
+# § I> consent-as-OS : every memory carries SigmaMask · sovereign-revocable + cascade
+# § I> sibling-specs : 44_MNEME_PIPELINES + 45_MNEME_SCHEMA
+# § I> code-locus : cssl-edge/lib/mneme/* + cssl-edge/pages/api/mneme/* + cssl-supabase/migrations/0040..0041
+
+§ AXIOMS  ‼ inherit-from PRIME_DIRECTIVE
+  t∞: memory.sovereign
+       ≡ memory ⊗ SigmaMask                       # every row mask-bound
+       ≡ revoke(profile,mask,ts) ~> cascade-purge ⊑ children
+       ≡ export.full ∃ @ /api/mneme/[profile]/export   # leaving = trivial
+  t∞: memory.honest
+       ≡ N! fabricate ∨ overwrite-without-consent
+       ≡ supersede ¬ destroy   ;   forward-pointer-only
+       ≡ retrieval ⊢ citations[memory_id...]      # synth always traceable
+  t∞: memory.dense
+       ≡ canonical-form = CSLv3                   # paraphrase = denormalised view
+       ≡ topic_key = head-morpheme-path           # supersede-collision-key
+       ≡ embedding = csl ⊕ paraphrase ⊕ search_queries  # tri-view fusion
+  t∞: memory.local-first
+       ≡ profile-isolation = RLS-per-profile_id   # not DB-per-profile (Cloudflare's DO model)
+       ≡ ¬ cross-profile-leak ✓ structurally-enforced
+
+§ GOAL
+  what: persistent agent memory ⊗ CSLv3-canonical · sovereign-gated · Vercel-deployed
+  why : context-rot W! solve · institutional-knowledge R! durable · vendor-lock-in N!
+
+§ NON-GOALS
+  ✗ replace AI Search · file-search-over-corpora ¬ context-recall  (cf. cssl-edge/lib/akashic-telemetry)
+  ✗ multi-tenant SaaS · single-sovereign (Apocky) · @v1
+  ✗ realtime-sync-across-clients · async-eventually-consistent ✓ (Vercel-edge-cache TTL=5s @recall)
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ DATA
+  def MemoryType't = enum[ fact, event, instruction, task ]
+    fact         : "true-now" · stable · keyed       (e.g. "user.pref.pkg-mgr ⊗ pnpm")
+    event        : "happened-at-time" · timestamped  (e.g. "deploy.chaos-tarot @prod 't'2026-04-30")
+    instruction  : "how-to" · keyed                  (e.g. "flow.compact-context - {tail-sum → ingest → drop}")
+    task         : "in-flight" · ephemeral · ¬keyed  (e.g. "spec.MNEME-v1 ⊗ status.draft I> review.user")
+
+  def Profile't ⟨
+    profile_id   : str  ⌈[a-z0-9-]{1,64}⌉    # one-per-context (e.g. "loa-v10", "infinite-labyrinth")
+    sovereign_pk : [u8;32]                    # Ed25519 owner-pubkey · cap-attestation-root
+    created_at   : timestamptz
+    sigma_mask   : SigmaMask                  # §§ 27 default-mask for new memories
+  ⟩
+
+  def Memory't ⟨
+    id            : uuid                      # gen_random_uuid()
+    profile_id    : &Profile.profile_id       # FK · cascading
+    type          : MemoryType't
+    csl           : str    ⌈len ≤ 4096⌉      # canonical CSLv3 form (validated · lints clean)
+    paraphrase    : str    ⌈len ≤ 1024⌉      # English denormalised view (synth-friendly)
+    topic_key     : str?   ⌈len ≤ 256⌉       # head-morpheme-path · null for events+tasks
+    search_queries: [str;_] ⌈3 ≤ count ≤ 5⌉  # interrogative bridges (HyDE-prep)
+    source_msg_ids: [str;_]                   # provenance · content-addressed (sha256[:32])
+    superseded_by : uuid?                     # forward-pointer (¬ tombstone)
+    sigma_mask    : SigmaMask                 # §§ 27 · per-row consent gate
+    created_at    : timestamptz
+    embedding     : vec<f32;1024>             # voyage-3-large · ⊕ csl + paraphrase + queries
+    csl_tsv       : tsvector                  # FTS · simple-tokeniser (preserves . + - ⊗ @)
+    paraphrase_tsv: tsvector                  # FTS · english-stem (Porter)
+  ⟩
+
+  def Message't ⟨                             # raw ingestion source (audit + raw-net)
+    id          : str  ⌈sha256-128bit⌉       # deterministic : hash(session_id ⊕ role ⊕ content)
+    profile_id  : &Profile.profile_id
+    session_id  : str
+    role        : enum[ user, assistant, system, tool ]
+    content     : str
+    ts          : timestamptz
+    sigma_mask  : SigmaMask                   # inherits-from profile @ ingest-time
+  ⟩
+
+  def IngestRequest't ⟨
+    profile_id : str
+    session_id : str
+    messages   : [Message-input't; _]         # role + content · server fills id+ts
+    sigma_mask : SigmaMask?                   # override-default · sovereign-only
+  ⟩
+
+  def RecallRequest't ⟨
+    profile_id : str
+    query      : str    ⌈len ≤ 512⌉
+    types      : [MemoryType't; _]?           # filter · default = [fact, event, instruction]
+    k          : u8     ⌈1..20⌉              # default 5
+    audience   : AudienceClass                # §§ 27 · who-is-asking
+  ⟩
+
+  def RecallResponse't ⟨
+    result_nl   : str                         # English synthesised answer
+    result_csl  : str                         # CSL synthesised answer (¬ requires NL re-parse downstream)
+    citations   : [uuid; _]                   # memory ids that grounded the answer
+    confidence  : f32 ⌈0..1⌉                 # max(channel_score)
+    debug       : RetrievalDebug't?           # ?debug=1 only
+  ⟩
+
+  def RetrievalDebug't ⟨
+    channel_scores : { ChannelName : [(uuid, f32);_] }
+    rrf_top_k      : [(uuid, f32); _]
+    synth_prompt_tokens : u32
+    latency_ms     : { stage : u32 }
+  ⟩
+
+  def ChannelName = enum[
+    fts_csl,         # full-text-search on csl column · simple-tokeniser
+    fts_paraphrase,  # full-text-search on paraphrase column · english-stem
+    fts_messages,    # full-text-search on raw messages · safety-net
+    topic_exact,     # topic_key = morpheme-prefix-of(query)
+    vec_direct,      # cosine(embed(query), embedding)
+    vec_hyde,        # cosine(embed(hyde_doc(query)), embedding)
+  ]
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ OPS  (REST surface · /api/mneme/[profile]/*)
+
+  fn getProfile (profile_id : str) → Profile't
+    pre  : ⌊profile_id ∈ [a-z0-9-]{1,64}⌋
+    post : ⌈result.profile_id = profile_id⌉
+    body : INSERT-IF-NOT-EXISTS ; sovereign_pk = caller.pubkey ∨ env.MNEME_SOVEREIGN_PK
+
+  fn ingest (req : IngestRequest't) → { stored: u32, deduped: u32 }
+    pre  : ⌊caller.cap ⊇ {WRITE, BROADCAST}⌋ ∧ ⌊req.messages.len ≤ 200⌋
+    post : ⌈∀ m ∈ result.stored: m.embedding.norm > 0⌉
+    body : pipeline-ingest ‖ §§ 44_MNEME_PIPELINES.§INGEST
+
+  fn remember (profile_id : str, csl : str, paraphrase : str?, type : MemoryType't?) → Memory't
+    pre  : ⌊caller.cap ⊇ {WRITE}⌋ ∧ ⌊csl-validates ✓⌋
+    post : ⌈result.id ∃⌉ ∧ ⌈result.embedding.norm > 0⌉
+    body : single-shot ; bypasses extraction · runs verify+classify+embed only
+
+  fn recall (req : RecallRequest't) → RecallResponse't
+    pre  : ⌊caller.cap ⊇ {READ}⌋ ∧ ⌊req.audience ⊑ profile.audience⌋
+    post : ⌈result.citations.len ≤ req.k⌉ ∧ ⌈result.confidence ∈ 0..1⌉
+    body : pipeline-retrieve ‖ §§ 44_MNEME_PIPELINES.§RETRIEVE
+
+  fn list (profile_id : str, type? : MemoryType't, limit : u8 = 50, cursor? : uuid)
+         → { memories : [Memory't], next_cursor : uuid? }
+    pre  : ⌊caller.cap ⊇ {READ}⌋
+    body : SELECT * FROM memories WHERE profile_id = ? AND superseded_by IS NULL
+           [AND type = ?] ORDER BY created_at DESC LIMIT ? OFFSET-AT cursor
+
+  fn forget (profile_id : str, memory_id : uuid, reason : str) → { revoked : bool, cascade : u32 }
+    pre  : ⌊caller.cap ⊇ {PURGE}⌋
+    post : ⌈¬ retrieval-includes(memory_id)⌉ ∧ ⌈audit-row-emitted⌉
+    body : sovereign-revoke @ §§ 27 · sigma_mask.revoked_at = now()
+           ; cascade ⊑ memories.superseded_by-chain
+           ; embedding row dropped from vec-index synchronously
+
+  fn export (profile_id : str) → { memories : [Memory't], messages : [Message't] }
+    pre  : ⌊caller.cap ⊇ {READ, DERIVE}⌋
+    post : ⌈result.memories.len = profile.memory_count⌉
+    body : full-dump ; gzip ; "your data is yours" @ PRIME_DIRECTIVE
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ INVARIANTS
+  t∞: ∀ m ∈ Memory: m.sigma_mask.audience ⊆ profile.sigma_mask.audience
+                                                # child-mask ⊑ parent-mask · §§ 27
+  t∞: ∀ m ∈ Memory: m.embedding.dim = 1024     # voyage-3-large pinned
+  t∞: ∀ m ∈ Memory: ¬ (m.superseded_by ∧ retrieval-returns(m))
+                                                # superseded ⇒ invisible @ retrieval
+  t∞: ∀ m ∈ Memory.{fact, instruction}: m.topic_key ≠ ∅
+       ∀ m ∈ Memory.{event, task}     : m.topic_key = ∅  # type-discipline
+  t∞: deterministic-msg-id : id = sha256(session_id || role || content)[:32]
+                                                # idempotent re-ingest ✓
+  t∞: revocation = monotone : sigma_mask.revoked_at @set ⇒ ¬unset ∃
+  t∞: ∀ recall.result : citations.len ≥ 1   ∨   confidence < 0.3
+                                                # ungrounded ⇒ low-confidence flag
+
+§ TESTS
+  case₁ : ingest 4-msg conversation w/ pnpm-pref → 1 fact stored, topic_key="user.pref.pkg-mgr"   ✓
+  case₂ : ingest same convo twice                → second call.deduped = 4, .stored = 0           ✓
+  case₃ : ingest update "user prefers npm now"   → old fact superseded_by = new.id, both rows ∃  ✓
+  case₄ : recall "what package manager?"         → citations[new.id] · result_csl = "user.pref.pkg-mgr ⊗ npm" ✓
+  case₅ : recall "what date deployed?"           → temporal-pre-compute ✓ · LLM ¬ does date-math  ✓
+  case₆ : forget(memory_id, "user-revoked")      → cascade marks +children · audit-row written    ✓
+  case₇ : export → gzip-bundle round-trips through ingest cleanly                                  ✓
+  edge  : profile_id w/ uppercase                → 422 INVALID                                     ✓
+  edge  : caller.cap = {READ} on /forget         → 403 FORBIDDEN                                   ✓
+  edge  : embedding voyage timeout (>10s)        → fallback : ts-only insert · re-embed @cron     ✓
+
+§ ANTI-PATTERNS
+  ✗ store English-only paraphrase  ∵ loses morpheme-tree query capability
+  ✓ canonical-form = CSL · paraphrase = view-only
+
+  ✗ delete superseded rows         ∵ breaks audit + breaks "forget = revoke ¬ destroy"
+  ✓ supersede via forward-pointer · revoke via SigmaMask.revoked_at
+
+  ✗ embed paraphrase-only          ∵ misses interrogative-form bridging (CF blog top finding)
+  ✓ embed (csl + paraphrase + 3-5 search_queries) · concat-w-newline
+
+  ✗ let LLM do date-math @ synth   ∵ unreliable · §§ 44 §RETRIEVE.5
+  ✓ regex-extract dates · arithmetic-deterministic · inject as pre-computed-facts
+
+  ✗ DB-per-profile (Cloudflare DO) ∵ Postgres has RLS · DO-isolation = duplicate
+  ✓ shared schema + RLS-per-profile_id · cross-profile-analytics ∃ at zero-cost
+
+  ✗ raw-DB-access tool to model    ∵ burns context on query-strategy (CF blog top finding)
+  ✓ constrained tool surface : remember + recall + list + forget · model never writes SQL
+
+  ✗ skip CSL-validator-gate        ∵ malformed memories pollute morpheme-tree retrieval
+  ✓ packages/csl validate ⌈clean⌉ · retry-on-fail @ extraction-step
+
+§ RELATIONS
+  ingest    → §§ 44_MNEME_PIPELINES.§INGEST       # extract · verify · classify · supersede · embed
+  recall    → §§ 44_MNEME_PIPELINES.§RETRIEVE     # 6-channel · RRF · synth
+  Memory    → §§ 45_MNEME_SCHEMA                  # Postgres DDL · indexes · constraints
+  SigmaMask ← §§ 27_SIGMA_MASK_RUNTIME            # consent gate · cap attestation
+  RLS       ← §§ 35_MYCELIUM_FEDERATION           # pattern reused : staged + public + purged
+  audit     → §§ 11_SOVEREIGN_AUDIT (migration 0011) # forget = audit-row required
+∎
+
+§ MODEL-CHOICES  ‼ frozen @ v1 · review @ v1.1
+  extraction      : claude-haiku-4-5    @ temp=0   · max_tokens=4096
+  verification    : claude-haiku-4-5    @ temp=0   · max_tokens=2048
+  classification  : claude-haiku-4-5    @ temp=0   · max_tokens=1024
+  query-analysis  : claude-haiku-4-5    @ temp=0   · max_tokens=1024
+  synthesis       : claude-sonnet-4-6   @ temp=0.3 · max_tokens=2048
+  embedding       : voyage-3-large      · 1024d · cosine
+
+  rationale : recursive-aesthetic ; memory-for-Claude = made-of-Claude
+              Haiku handles structured-classification efficiently
+              Sonnet's reasoning quality matters @ synthesis only
+              Voyage = Anthropic-aligned · highest-quality 1024d available
+
+§ ENV-VARS  (cssl-edge/.env.example · also CSSL Vercel project)
+  ANTHROPIC_API_KEY                W!  # claude-haiku-4-5 · claude-sonnet-4-6
+  VOYAGE_API_KEY                   W!  # voyage-3-large
+  NEXT_PUBLIC_SUPABASE_URL         W!  # already-set · reused
+  SUPABASE_SERVICE_ROLE_KEY        W!  # MNEME requires service-role for vec-index writes
+  MNEME_SOVEREIGN_PUBKEY_HEX       W!  # owner Ed25519 PK · 64 hex chars
+  MNEME_DEFAULT_AUDIENCE_BITS      M?  # default = SELF (bit 0) ; override per-deploy
+  MNEME_RECALL_CACHE_TTL_SECONDS   M?  # default 5 · 0=no-cache
+
+§ DEPLOY
+  Vercel Project    : cssl-edge (existing)
+  Region pinning    : R! same as Supabase region (us-west-1) · minimise vec-index latency
+  Concurrency cap   : @ Pages-Router fn-defaults · 1024 concurrent OK @ Hobby plan
+  Cold-start budget : ≤ 800ms · libs lazy-loaded inside handler · embedding-client deferred
+  Cron              : R! @ 03:00 UTC · /api/cron/mneme-vacuum · drops orphan vectors
+                       · re-embeds rows w/ embedding=NULL (Voyage timeout fallback)
+                       · pattern matches §§ 0036_cloud_orchestrator_pgcron
+
+§ MCP-EXPOSURE  (out-of-scope @v1 · planned @v1.1)
+  D> ship cssl-edge/lib/mneme/mcp-handler.ts as @anthropic-ai/sdk MCP server
+  D> stdio transport · profile-id from --profile arg · Claude Desktop integration
+  D> tools : recall · remember · list_memories · forget   (deliberately ¬ raw-query)
+  D> tracking : §§ 12_CAPABILITIES (read MCP-tool-cap-binding spec)
+
+§ STATUS
+  current : ◐ spec-complete · schema-drafted · libs-stubbed · routes-stubbed
+  next    : implement § 44 + § 45 simultaneously · then libs · then routes · then tests
+  blockers : ⊘ none · all decisions locked
+∎

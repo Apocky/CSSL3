@@ -1,0 +1,39 @@
+// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION · float-comparison fixture
+//
+// Pre-W18 : `f32 < f32` lowered to `arith.cmpi_slt` (integer-cmp tag with
+// f32 operands), failing Cranelift's verifier with a type-mismatch panic.
+// W18 routes float compares through `arith.cmpf_o*` (ordered predicates),
+// which the body-emit subset dispatches to `b.ins().fcmp(FloatCC::*)`.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.scalar_arith.float_cmp
+
+pub fn lt32(a: f32, b: f32) -> i32 {
+    if a < b { 1 } else { 0 }
+}
+
+pub fn le32(a: f32, b: f32) -> i32 {
+    if a <= b { 1 } else { 0 }
+}
+
+pub fn gt32(a: f32, b: f32) -> i32 {
+    if a > b { 1 } else { 0 }
+}
+
+pub fn ge32(a: f32, b: f32) -> i32 {
+    if a >= b { 1 } else { 0 }
+}
+
+pub fn eq32(a: f32, b: f32) -> i32 {
+    if a == b { 1 } else { 0 }
+}
+
+pub fn ne32(a: f32, b: f32) -> i32 {
+    if a != b { 1 } else { 0 }
+}
+
+pub fn lt64(a: f64, b: f64) -> i32 {
+    if a < b { 1 } else { 0 }
+}

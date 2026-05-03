@@ -1,0 +1,287 @@
+# 45 : MNEME — Postgres schema · pgvector · RLS · CSL-as-DDL
+# ══════════════════════════════════════════════════════════════════════════
+# § I> sibling-of §§ 43_MNEME (canonical) + §§ 44_MNEME_PIPELINES
+# § I> code-locus : cssl-supabase/migrations/0040_mneme.sql + 0041_mneme_rls.sql
+# § I> reuses : §§ 27 SigmaMask packed-19B · §§ 35 mycelium staged/public/purged pattern
+
+§ EXTENSIONS-REQUIRED
+  ‼ pgcrypto   # gen_random_uuid · already-installed @ migration 0001
+  ‼ pg_trgm    # already-installed @ migration 0001
+  W! vector    # pgvector ≥0.7.0 · INSTALLED @ migration 0040 · ¬ before
+  W! enable-on-supabase-dashboard : Database → Extensions → vector → ON
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ TABLE : public.mneme_profiles
+  ```sql
+  CREATE TABLE IF NOT EXISTS public.mneme_profiles (
+      profile_id     text        PRIMARY KEY,
+      sovereign_pk   bytea       NOT NULL,           -- Ed25519 PK · 32 bytes
+      sigma_mask     bytea       NOT NULL,           -- §§ 27 packed 19B (pad-to-32)
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      memory_count   integer     NOT NULL DEFAULT 0, -- denormalised counter (trigger-maintained)
+      message_count  integer     NOT NULL DEFAULT 0, -- denormalised counter (trigger-maintained)
+      meta           jsonb       NOT NULL DEFAULT '{}'::jsonb,
+      CONSTRAINT mneme_profile_id_shape
+          CHECK (profile_id ~ '^[a-z0-9-]{1,64}$'),
+      CONSTRAINT mneme_sovereign_pk_len
+          CHECK (octet_length(sovereign_pk) = 32),
+      CONSTRAINT mneme_sigma_mask_len
+          CHECK (octet_length(sigma_mask) BETWEEN 19 AND 32)
+  );
+  COMMENT ON TABLE public.mneme_profiles IS
+      'MNEME memory profile · one per agent context · sovereign-owned · §§43.';
+  ```
+
+§ TABLE : public.mneme_messages
+  ```sql
+  CREATE TABLE IF NOT EXISTS public.mneme_messages (
+      id             text        PRIMARY KEY,         -- sha256[:32] hex · deterministic
+      profile_id     text        NOT NULL
+                                 REFERENCES public.mneme_profiles(profile_id) ON DELETE CASCADE,
+      session_id     text        NOT NULL,
+      role           text        NOT NULL
+                                 CHECK (role IN ('user','assistant','system','tool')),
+      content        text        NOT NULL,
+      ts             timestamptz NOT NULL DEFAULT now(),
+      sigma_mask     bytea       NOT NULL,
+      content_tsv    tsvector    GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+      CONSTRAINT mneme_msg_id_shape
+          CHECK (id ~ '^[0-9a-f]{32}$'),
+      CONSTRAINT mneme_msg_content_len
+          CHECK (char_length(content) BETWEEN 1 AND 65536)
+  );
+  CREATE INDEX IF NOT EXISTS mneme_msg_profile_session_idx
+      ON public.mneme_messages (profile_id, session_id, ts);
+  CREATE INDEX IF NOT EXISTS mneme_msg_content_tsv_idx
+      ON public.mneme_messages USING gin (content_tsv);
+  COMMENT ON TABLE public.mneme_messages IS
+      'Raw conversation messages · content-addressed IDs · idempotent re-ingest.';
+  ```
+
+§ TABLE : public.mneme_memories
+  ```sql
+  CREATE TABLE IF NOT EXISTS public.mneme_memories (
+      id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+      profile_id      text        NOT NULL
+                                  REFERENCES public.mneme_profiles(profile_id) ON DELETE CASCADE,
+      type            text        NOT NULL
+                                  CHECK (type IN ('fact','event','instruction','task')),
+      csl             text        NOT NULL,
+      paraphrase      text        NOT NULL,
+      topic_key       text,
+      search_queries  jsonb       NOT NULL DEFAULT '[]'::jsonb,  -- [str; 3..5]
+      source_msg_ids  text[]      NOT NULL DEFAULT ARRAY[]::text[],
+      superseded_by   uuid        REFERENCES public.mneme_memories(id) ON DELETE SET NULL,
+      sigma_mask      bytea       NOT NULL,
+      created_at      timestamptz NOT NULL DEFAULT now(),
+      embedding       vector(1024),                              -- voyage-3-large
+      csl_tsv         tsvector    GENERATED ALWAYS AS (
+                                    to_tsvector('simple', regexp_replace(csl, '[.+\-⊗@]', ' ', 'g'))
+                                  ) STORED,
+      paraphrase_tsv  tsvector    GENERATED ALWAYS AS (to_tsvector('english', paraphrase)) STORED,
+
+      CONSTRAINT mneme_csl_len           CHECK (char_length(csl)        BETWEEN 1 AND 4096),
+      CONSTRAINT mneme_paraphrase_len    CHECK (char_length(paraphrase) BETWEEN 1 AND 1024),
+      CONSTRAINT mneme_topic_key_len     CHECK (topic_key IS NULL OR char_length(topic_key) BETWEEN 1 AND 256),
+      CONSTRAINT mneme_topic_discipline  CHECK (
+          (type IN ('fact','instruction')   AND topic_key IS NOT NULL) OR
+          (type IN ('event','task')         AND topic_key IS NULL)
+      ),
+      CONSTRAINT mneme_queries_len       CHECK (jsonb_array_length(search_queries) BETWEEN 0 AND 5),
+      CONSTRAINT mneme_supersede_self    CHECK (id <> superseded_by)
+  );
+
+  -- Indexes
+  CREATE INDEX IF NOT EXISTS mneme_mem_profile_active_idx
+      ON public.mneme_memories (profile_id, type, topic_key)
+      WHERE superseded_by IS NULL;
+  CREATE INDEX IF NOT EXISTS mneme_mem_csl_tsv_idx
+      ON public.mneme_memories USING gin (csl_tsv);
+  CREATE INDEX IF NOT EXISTS mneme_mem_paraphrase_tsv_idx
+      ON public.mneme_memories USING gin (paraphrase_tsv);
+  CREATE INDEX IF NOT EXISTS mneme_mem_created_idx
+      ON public.mneme_memories (profile_id, created_at DESC);
+
+  -- Vector index : ivfflat · cosine · lists tuned to ~ √(N_rows) ; 100 = good for ≤10K
+  CREATE INDEX IF NOT EXISTS mneme_mem_embedding_idx
+      ON public.mneme_memories USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100);
+  -- ALTER as N grows : DROP + CREATE w/ lists = ⌈√N⌉  · documented @ 0040
+
+  COMMENT ON TABLE public.mneme_memories IS
+      'Classified memories · CSL-canonical · per-row sovereign-mask gate · §§43.';
+  ```
+
+§ TABLE : public.mneme_audit
+  ```sql
+  CREATE TABLE IF NOT EXISTS public.mneme_audit (
+      id          bigserial   PRIMARY KEY,
+      profile_id  text        NOT NULL
+                              REFERENCES public.mneme_profiles(profile_id) ON DELETE CASCADE,
+      ts          timestamptz NOT NULL DEFAULT now(),
+      kind        text        NOT NULL
+                              CHECK (kind IN ('ingest','remember','recall','forget','supersede','export','vacuum','csl_invalid','verify_drop')),
+      memory_id   uuid        REFERENCES public.mneme_memories(id) ON DELETE SET NULL,
+      caller_pk   bytea,                 -- Ed25519 PK if SovereignCap presented
+      details     jsonb       NOT NULL DEFAULT '{}'::jsonb
+  );
+  CREATE INDEX IF NOT EXISTS mneme_audit_profile_ts_idx
+      ON public.mneme_audit (profile_id, ts DESC);
+  CREATE INDEX IF NOT EXISTS mneme_audit_kind_ts_idx
+      ON public.mneme_audit (kind, ts DESC);
+  COMMENT ON TABLE public.mneme_audit IS
+      'Append-only audit · every memory state-change emits a row · §§43.';
+  ```
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ TRIGGERS
+
+  § supersede-bookkeeping
+    ```sql
+    -- on INSERT of new memory with non-null topic_key, find existing active row
+    -- with same (profile_id, type, topic_key) and mark it superseded.
+    CREATE OR REPLACE FUNCTION public.mneme_supersede_on_insert()
+    RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        IF NEW.topic_key IS NOT NULL AND NEW.superseded_by IS NULL THEN
+            UPDATE public.mneme_memories
+               SET superseded_by = NEW.id
+             WHERE profile_id    = NEW.profile_id
+               AND type          = NEW.type
+               AND topic_key     = NEW.topic_key
+               AND id            <> NEW.id
+               AND superseded_by IS NULL;
+        END IF;
+        RETURN NEW;
+    END;
+    $$;
+    CREATE TRIGGER mneme_supersede_trigger
+    AFTER INSERT ON public.mneme_memories
+    FOR EACH ROW EXECUTE FUNCTION public.mneme_supersede_on_insert();
+    ```
+
+  § counter-maintenance
+    ```sql
+    CREATE OR REPLACE FUNCTION public.mneme_bump_memory_count()
+    RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF TG_OP = 'INSERT' THEN
+            UPDATE public.mneme_profiles
+               SET memory_count = memory_count + 1
+             WHERE profile_id = NEW.profile_id;
+        ELSIF TG_OP = 'DELETE' THEN
+            UPDATE public.mneme_profiles
+               SET memory_count = GREATEST(0, memory_count - 1)
+             WHERE profile_id = OLD.profile_id;
+        END IF;
+        RETURN COALESCE(NEW, OLD);
+    END $$;
+    CREATE TRIGGER mneme_memory_count_trigger
+    AFTER INSERT OR DELETE ON public.mneme_memories
+    FOR EACH ROW EXECUTE FUNCTION public.mneme_bump_memory_count();
+
+    -- analogous trigger on mneme_messages → message_count
+    ```
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ RLS  (migration 0041_mneme_rls.sql)
+
+  ‼ default-deny ; service-role bypasses ; authenticated-role sees own-profile only
+
+  § policies
+    profiles  : SELECT/INSERT/UPDATE — sovereign_pk matches caller's bound-PK header
+    messages  : SELECT/INSERT — profile_id-membership AND sigma_mask.audience ⊇ caller-class
+                 ¬ UPDATE @v1 (immutable raw record)
+                 ¬ DELETE @v1 (use forget→cascade only)
+    memories  : SELECT — ¬ revoked AND audience-bit-match
+                INSERT — caller.cap ⊇ {WRITE}
+                UPDATE — caller.cap ⊇ {WRITE} · only superseded_by + sigma_mask cols mutable
+                ¬ DELETE @v1
+    audit     : SELECT — sovereign-only
+                INSERT — service-role-only
+                ¬ UPDATE/DELETE  (append-only)
+
+  W! pattern matches §§ 0035_mycelium_federation.staged-vs-public split
+  W! caller-PK extracted from x-loa-sovereign-cap header ⊕ JWT-claim-fallback
+
+  ```sql
+  ALTER TABLE public.mneme_profiles  ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.mneme_messages  ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.mneme_memories  ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.mneme_audit     ENABLE ROW LEVEL SECURITY;
+
+  -- Public read of profiles is denied — only service-role-or-owner.
+  CREATE POLICY mneme_profile_owner_read ON public.mneme_profiles
+      FOR SELECT
+      TO authenticated
+      USING (sovereign_pk = decode(current_setting('request.jwt.claim.sovereign_pk_hex', true), 'hex'));
+
+  CREATE POLICY mneme_profile_service_all ON public.mneme_profiles
+      FOR ALL
+      TO service_role
+      USING (true) WITH CHECK (true);
+
+  -- Memories: SELECT requires owner-PK match AND ¬ revoked-mask.
+  -- NOTE: revoked_at extraction from sigma_mask uses bytes 11..14 (LE u32).
+  CREATE OR REPLACE FUNCTION public.mneme_mask_revoked_at(mask bytea)
+  RETURNS integer
+  LANGUAGE sql IMMUTABLE
+  AS $$
+      SELECT (get_byte(mask, 11)::int)
+           | (get_byte(mask, 12)::int << 8)
+           | (get_byte(mask, 13)::int << 16)
+           | (get_byte(mask, 14)::int << 24)
+  $$;
+
+  CREATE POLICY mneme_memory_owner_read ON public.mneme_memories
+      FOR SELECT TO authenticated
+      USING (
+          public.mneme_mask_revoked_at(sigma_mask) = 0
+          AND EXISTS (
+              SELECT 1 FROM public.mneme_profiles p
+              WHERE p.profile_id = mneme_memories.profile_id
+                AND p.sovereign_pk = decode(current_setting('request.jwt.claim.sovereign_pk_hex', true), 'hex')
+          )
+      );
+
+  CREATE POLICY mneme_memory_service_all ON public.mneme_memories
+      FOR ALL TO service_role
+      USING (true) WITH CHECK (true);
+
+  -- Same pattern on messages and audit.
+  ```
+
+# ──────────────────────────────────────────────────────────────────────────
+
+§ INDEXES-PERFORMANCE-NOTES
+  ivfflat-lists tuning :
+    @ 0..10K rows   : lists = 100  (default · this migration)
+    @ 10K..100K     : lists = ⌈√N⌉  · DROP+CREATE INDEX recompacted
+    @ 100K..1M      : consider hnsw (pgvector ≥ 0.5) — review @ v1.1
+    probes @ query  : SET ivfflat.probes = 10 (default 1) for higher recall
+
+  GIN-FTS index size : roughly 0.3× table-size · acceptable
+
+  embedding-NULL-rows : excluded from vec-index by partial index later if needed
+    @ 0040 : full index; orphan-rows scanned but not returned (pg-vector handles NULL)
+
+§ MIGRATION-ORDER
+  0040_mneme.sql        : extensions + tables + triggers + indexes
+  0041_mneme_rls.sql    : RLS policies + helper-fn (mask_revoked_at)
+  0042_mneme_seed.sql   : (optional) seed default profile "scratch" for dev
+  W! apply via : supabase db push  (or paste in Supabase SQL editor in order)
+
+§ TESTS  (cssl-supabase verify scripts pattern)
+  see cssl-supabase/verify-mneme.sql @v1
+  cases :
+    ✓ insert-then-supersede : 2nd insert flips first.superseded_by
+    ✓ topic_discipline      : INSERT event with topic_key fails CHECK
+    ✓ embed-dim-mismatch    : INSERT vector(512) fails (pgvector enforces dim)
+    ✓ RLS-denies-cross-profile : caller-A SELECT profile-B.memories returns 0 rows
+    ✓ RLS-denies-revoked    : after forget, mask_revoked_at > 0 ⇒ row invisible
+∎

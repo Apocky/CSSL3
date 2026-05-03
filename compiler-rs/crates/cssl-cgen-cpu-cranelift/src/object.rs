@@ -911,6 +911,46 @@ fn lower_one_op(
         "arith.divf" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().fdiv(a, c)
         }),
+        // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION — unary negation +
+        // bitwise + shift dispatch. body_lower emits these MIR ops for the
+        // CSSL surface ops `-x` (int + float), `~x`, `x & y`, `x | y`,
+        // `x ^ y`, `x << y`, `x >> y`. Prior to this slice every such body
+        // was rejected with "not in stage-0 object-emit subset" — closing
+        // the gap unlocks scalar arith for substrate-intelligence (KAN
+        // bias-update sign-flips, hash-mix XOR, byte-shift packers).
+        //
+        // § Mapping
+        //   arith.negi      → `b.ins().ineg(a)`         (stage-0 alias)
+        //   arith.negf      → `b.ins().fneg(a)`
+        //   arith.subi_neg  → `b.ins().ineg(a)`         (HIR-emit name for `-x` on int)
+        //   arith.xori_not  → `b.ins().bnot(a)`         (HIR-emit name for `~x`)
+        //   arith.andi      → `b.ins().band(a, b)`
+        //   arith.ori       → `b.ins().bor(a, b)`
+        //   arith.xori      → `b.ins().bxor(a, b)`
+        //   arith.shli      → `b.ins().ishl(a, b)`
+        //   arith.shrsi     → `b.ins().sshr(a, b)`
+        //   arith.shrui     → `b.ins().ushr(a, b)`
+        "arith.negi" | "arith.subi_neg" => unary_int(op, builder, value_map, fn_name, |b, a| {
+            b.ins().ineg(a)
+        }),
+        "arith.negf" => unary_int(op, builder, value_map, fn_name, |b, a| b.ins().fneg(a)),
+        "arith.xori_not" => unary_int(op, builder, value_map, fn_name, |b, a| b.ins().bnot(a)),
+        "arith.andi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().band(a, c)
+        }),
+        "arith.ori" => binary_int(op, builder, value_map, fn_name, |b, a, c| b.ins().bor(a, c)),
+        "arith.xori" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().bxor(a, c)
+        }),
+        "arith.shli" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().ishl(a, c)
+        }),
+        "arith.shrsi" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().sshr(a, c)
+        }),
+        "arith.shrui" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
+            b.ins().ushr(a, c)
+        }),
         // § T11-D316 (W-A2-δ stage-0-emit-expand) — signed integer divide /
         // remainder. Symmetric with the existing add/sub/mul triple ; needed
         // for `let q = x / y` style straight-line code that body_lower emits
@@ -1844,6 +1884,50 @@ fn obj_cl_to_mir_for_align(t: cranelift_codegen::ir::Type) -> Option<MirType> {
     } else {
         None
     }
+}
+
+/// § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION — single-operand op-emit
+/// helper, symmetric to [`binary_int`]. Used for `arith.{negi,negf,
+/// subi_neg,xori_not}` so the dispatch arms read uniformly. The emit
+/// closure receives the resolved Cranelift `Value` for the single
+/// operand and returns the produced `Value`. Errors mirror
+/// [`binary_int`] : missing result / wrong-arity / unknown-value-id all
+/// surface as `ObjectError::LoweringFailed` or `UnknownValueId`.
+fn unary_int<F>(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    emit: F,
+) -> Result<bool, ObjectError>
+where
+    F: FnOnce(
+        &mut FunctionBuilder<'_>,
+        cranelift_codegen::ir::Value,
+    ) -> cranelift_codegen::ir::Value,
+{
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} with no result", op.name),
+        })?;
+    if op.operands.is_empty() {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!("{} expected 1 operand, got 0", op.name),
+        });
+    }
+    let a = *value_map
+        .get(&op.operands[0])
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: op.operands[0].0,
+        })?;
+    let v = emit(builder, a);
+    value_map.insert(r.id, v);
+    Ok(false)
 }
 
 fn binary_int<F>(
