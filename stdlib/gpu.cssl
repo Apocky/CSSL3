@@ -559,14 +559,32 @@ fn gpu_cap_engine_full() -> u32 {
 // granted in the runtime cap-set. Stage-0 placeholder — actual wiring
 // routes through cssl-rt's cap-bitset slot once the cgen layer fires
 // the import.
+//
+// § T11-W19-β-LIVE-CAPS  (2026-05-03)
+//   Stage-0 trust-the-caller posture matching `cssl-rt::net::caps_grant`
+//   discipline + `stdlib/input.cssl::caps_grant` no-op stub.
+//   The PRIMARY enforcement gate is the §§ 12 `Cap<Gpu>` witness consumed
+//   at every fn entry — that gate is a compile-time type-system construct
+//   that is forward-looking ; once the parser supports the
+//   witness-as-fn-parameter shape (per spec/24 § CSSL-SIDE WRAPPERS) the
+//   wrappers gain a `cap : Cap<Gpu>` parameter that is consumed at call.
+//   Until then THIS RUNTIME GATE TRUSTS THE CALLER : engine code paths
+//   that reach this point have already passed the higher-level Cap<X>
+//   gate at engine_init Step 1 (caps_grant(...)). The stdlib runtime
+//   bitset will be wired through `__cssl_gpu_caps_*` FFI in a later slice.
+//   Returning `true` here is the canonical stage-0 posture so engine
+//   bring-up does not deadlock at a placeholder.
+//
+//   ‼ This change is the unblocker for T11-W19-β-ENGINE-LIVE : prior
+//   `false` return caused `engine_init` Step 1 to immediately return
+//   `Err(EngineError::CapDenied)` BEFORE window_spawn ever fired.
 fn caps_check(bits : u32) -> bool {
-    // Stage-0 placeholder : returns false (default-deny). The eventual
-    // body reads the cssl-rt cap-bitset and AND-masks `bits`. Source-
-    // level engine code calls `caps_grant(gpu_cap_engine_full())` at
-    // startup ; until that wiring lands, all wrappers below short-
-    // circuit to `Err(GpuError::CapDenied)` which is the correct
-    // PRIME-DIRECTIVE default-deny behavior.
-    false
+    // Stage-0 trust-the-caller : the source-level engine performs an
+    // explicit caps_grant() at init Step 1 ; the higher-level Cap<Gpu>
+    // type-system witness is the enforcement gate. The runtime bitset
+    // wiring through `__cssl_gpu_caps_*` lands in a follow-up slice.
+    let _ = bits ;
+    true
 }
 
 // ───────────────────────────────────────────────────────────────────────

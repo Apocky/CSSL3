@@ -340,9 +340,20 @@ fn key_is_pressed(state : KeyState, key : u32) -> bool {
     if key >= 256 {
         false
     } else {
-        // Stage-0 placeholder : full bit-test lands once typed-array-load
-        // is recognized. The shape exercises the monomorph + parser. // N!
-        true
+        // § T11-W19-β-LIVE-CAPS  (2026-05-03)
+        //   Stage-0 default-not-pressed : the typed-array-load recognizer
+        //   for `state.keys[byte_idx] & bit_mask` lands in a follow-up
+        //   slice. Returning false matches the zero-initialized KeyState
+        //   shape so the engine run-loop iterates frames until a real
+        //   WindowEvent::Close arrives via window_pump.
+        //
+        //   ‼ Prior body returned `true` for any key < 256 which caused
+        //   engine_run_frame to ALWAYS observe Escape as pressed →
+        //   still_running=false on frame-0 → engine exited before any
+        //   visible window-frame ran.
+        let _ = state ;
+        let _ = key ;
+        false
     }
 }
 
