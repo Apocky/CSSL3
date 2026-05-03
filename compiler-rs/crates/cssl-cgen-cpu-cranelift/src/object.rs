@@ -1983,11 +1983,129 @@ fn lower_one_op(
         "cssl.closure.call.error" => {
             Ok(obj_lower_closure_call_error(op, builder, value_map, ptr_ty))
         }
+        // § T11-W19-α-CSSLC-FIX13 — `arith.bitcast` for `as`-casts.
+        //   body_lower::lower_cast emits this op with a single operand (the
+        //   value being cast) + a result-id whose `r.ty` is `MirType::None`.
+        //   Stage-0 lowers it as a width-aware coercion derived from the
+        //   operand's cranelift type vs. the parent fn's expected target
+        //   (which we approximate from the result-id's declared MIR type
+        //   when present, OR from the consumer's expected type at the
+        //   func.return ; here we use the operand→signature-of-the-fn
+        //   approach via deferred coercion at use-site). When the result
+        //   type is `MirType::None`, we pass the operand through unchanged
+        //   ; the func.return path's int-coercion (existing FIX5 logic
+        //   in the `func.return` arm) widens/narrows on the way out.
+        //
+        //   This handles the dominant stage-0 site `(hz : u32) as u64` in
+        //   stdlib/time::frame_budget_ns_for_hz — the operand is i32, the
+        //   cast result feeds a divide whose dividend is i64 ; the divide
+        //   site (binary_int) will see a width-mismatch + the FIX5 int-
+        //   arg coercion already widens. Net : pass-through here is correct.
+        //
+        //   For float↔int + same-width int-bitcast we add explicit cranelift
+        //   conversions when the result-ty is concretely typed.
+        "arith.bitcast" => obj_lower_arith_bitcast(op, builder, value_map, fn_name, ptr_ty),
         other => Err(ObjectError::UnsupportedOp {
             fn_name: fn_name.to_string(),
             op_name: other.to_string(),
         }),
     }
+}
+
+/// § T11-W19-α-CSSLC-FIX13 — lower `arith.bitcast` (an `as`-cast emitted by
+/// `body_lower::lower_cast`).
+///
+/// § INPUT SHAPE
+/// ```text
+/// arith.bitcast %src
+///     result-ty = MirType::None  (body_lower doesn't infer)
+///     attribute source_loc = ...
+/// ```
+///
+/// § STRATEGY
+///   - Pass-through binding : the result-id is bound to the operand-Value
+///     directly. Width-mismatches at the use-site (e.g. arith.divi between
+///     i32 + i64) are bridged by the existing FIX5 int-arg coercion logic
+///     in `binary_int` / `obj_lower_cmpi` / `func.return`.
+///   - When the result-ty IS concretely typed (e.g. a future enrichment to
+///     `MirType::Int(IntWidth::I64)`) AND differs in width from the operand
+///     scalar type, we emit `sextend` / `ireduce` / `fcvt_*` inline so the
+///     binding has the right type for verifier-strict cranelift consumers.
+///
+/// § ERRORS
+///   `LoweringFailed` when the operand isn't bound or the op has no result.
+fn obj_lower_arith_bitcast(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    ptr_ty: cranelift_codegen::ir::Type,
+) -> Result<bool, ObjectError> {
+    let r = op
+        .results
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "arith.bitcast with no result".to_string(),
+        })?;
+    let src_id = op
+        .operands
+        .first()
+        .copied()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "arith.bitcast with no operand".to_string(),
+        })?;
+    let src_val = *value_map
+        .get(&src_id)
+        .ok_or_else(|| ObjectError::UnknownValueId {
+            fn_name: fn_name.to_string(),
+            value_id: src_id.0,
+        })?;
+
+    // Resolve result-ty. When body_lower leaves it MirType::None, we
+    // pass through ; the use-site coerces.
+    let dst_cl = mir_type_to_cl(&r.ty, ptr_ty);
+    let src_cl = builder.func.dfg.value_type(src_val);
+    let out = match dst_cl {
+        None => src_val, // None / Opaque — pass-through.
+        Some(d) if d == src_cl => src_val,
+        Some(d) if d.is_int() && src_cl.is_int() => {
+            // Width-aware int coercion.
+            if d.bits() > src_cl.bits() {
+                // Widen via sign-extend (cranelift IR is signedness-erased ;
+                // sextend is correct for both signed + unsigned widening
+                // when the source already represents the canonical bit-pattern).
+                builder.ins().sextend(d, src_val)
+            } else if d.bits() < src_cl.bits() {
+                builder.ins().ireduce(d, src_val)
+            } else {
+                src_val
+            }
+        }
+        Some(d) if d.is_float() && src_cl.is_int() => {
+            // int → float : signed conversion (stage-0 ; unsigned
+            // intentionally not distinguished without a from-ty annotation).
+            builder.ins().fcvt_from_sint(d, src_val)
+        }
+        Some(d) if d.is_int() && src_cl.is_float() => {
+            // float → int : saturating conversion to handle NaN/inf safely.
+            builder.ins().fcvt_to_sint_sat(d, src_val)
+        }
+        Some(d) if d.is_float() && src_cl.is_float() => {
+            // float → float : promote/demote.
+            if d.bits() > src_cl.bits() {
+                builder.ins().fpromote(d, src_val)
+            } else if d.bits() < src_cl.bits() {
+                builder.ins().fdemote(d, src_val)
+            } else {
+                src_val
+            }
+        }
+        Some(_) => src_val, // Mixed shape (e.g. ptr) — pass-through.
+    };
+    value_map.insert(r.id, out);
+    Ok(false)
 }
 
 /// § T11-D77 (S6-C5 redo) — `cssl.closure` lowering for the object backend.
@@ -2216,13 +2334,42 @@ fn obj_lower_func_call(
             })?;
 
     let mut args: Vec<cranelift_codegen::ir::Value> = Vec::with_capacity(op.operands.len());
-    for vid in &op.operands {
-        let v = *value_map
+    // § T11-W19-α-CSSLC-FIX13 — int-arg coercion at func.call sites.
+    //   Mirrors the FIX5 logic in func.return + binary_int : when the callee's
+    //   declared param-type at slot N differs from the operand-Value's
+    //   cranelift type AND both are int, widen via `sextend` / narrow via
+    //   `ireduce`. Pointer + float mismatches surface unchanged so the
+    //   verifier still catches semantic bugs. Triggered by sites like
+    //   `frame_budget_ns_for_hz(144)` where the literal lowered to i32 but
+    //   the callee expects u32 (cranelift i32) — same width → pass-through ;
+    //   or `(hz as u64)` returning i32 but consumer expects i64 — widen.
+    let callee_param_tys: Vec<cranelift_codegen::ir::Type> = {
+        let ext_func = &builder.func.dfg.ext_funcs[func_ref];
+        let sig = &builder.func.dfg.signatures[ext_func.signature];
+        sig.params.iter().map(|p| p.value_type).collect()
+    };
+    for (idx, vid) in op.operands.iter().enumerate() {
+        let mut v = *value_map
             .get(vid)
             .ok_or_else(|| ObjectError::UnknownValueId {
                 fn_name: fn_name.to_string(),
                 value_id: vid.0,
             })?;
+        if let Some(&expected_ty) = callee_param_tys.get(idx) {
+            let actual_ty = builder.func.dfg.value_type(v);
+            if actual_ty != expected_ty
+                && expected_ty.is_int()
+                && actual_ty.is_int()
+            {
+                let exp_bits = expected_ty.bits();
+                let act_bits = actual_ty.bits();
+                if exp_bits > act_bits {
+                    v = builder.ins().sextend(expected_ty, v);
+                } else if exp_bits < act_bits {
+                    v = builder.ins().ireduce(expected_ty, v);
+                }
+            }
+        }
         args.push(v);
     }
     let inst = builder.ins().call(func_ref, &args);
