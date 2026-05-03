@@ -475,7 +475,14 @@ impl GpuContext {
             present_mode,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            // § T11-W18-FRAME-LATENCY : 2→1 · fps-cap-hunt diagnosis
+            //   2-frame buffer adds ~50ms latency per flip (wgpu bug-trap)
+            //   1-frame matches our render_v3 pipelining + IMMEDIATE present
+            //   honor LOA_FRAME_LATENCY env-override for diagnostic A/B
+            desired_maximum_frame_latency: std::env::var("LOA_FRAME_LATENCY")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(1),
         };
         surface.configure(&device, &config);
 

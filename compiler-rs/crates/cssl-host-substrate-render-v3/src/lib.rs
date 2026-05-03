@@ -629,10 +629,13 @@ mod ash_present {
         NoMemoryType,
     }
 
-    /// § Number of frames-in-flight kept in the present-ring. Double-buffered
-    /// = 2 ; tuned to match a typical desktop swapchain image-count and avoid
-    /// stalls without growing memory unbounded.
-    pub const FRAMES_IN_FLIGHT: usize = 2;
+    /// § Number of frames-in-flight kept in the present-ring. Triple-buffered
+    /// = 3 ; matches typical desktop swapchain image-count (2-3) and gives
+    /// CPU one frame of head-room over GPU so `wait_for_fences` at frame-start
+    /// is effectively a no-op when GPU is keeping up.
+    /// § T11-W18-FPS-CAP-FIX : 2→3 per fps-cap-hunt diagnosis (frame-start
+    ///   fence-wait was stalling pipelining at double-buffer depth)
+    pub const FRAMES_IN_FLIGHT: usize = 3;
 
     /// § One ash-direct vulkan-1.3 substrate-renderer with Win32 swapchain
     /// present.
@@ -1745,17 +1748,18 @@ mod tests {
     // ════════════════════════════════════════════════════════════════════════
 
     /// § Test #6 : present-path constants are stable.
-    /// Verifies the `FRAMES_IN_FLIGHT` constant has the expected double-
-    /// buffering value (2). This is load-bearing because the per-frame
+    /// Verifies the `FRAMES_IN_FLIGHT` constant has the expected triple-
+    /// buffering value (3). This is load-bearing because the per-frame
     /// arrays in `AshSwapchainPresenter` are sized at compile-time off this
     /// constant ; if it changed silently the array indexing would compile
     /// but the synchronization invariant could regress.
+    /// § T11-W18-FPS-CAP-FIX : updated 2→3 per fps-cap-hunt diagnosis
     #[cfg(feature = "present")]
     #[test]
     fn present_frames_in_flight_constant() {
         assert_eq!(
-            FRAMES_IN_FLIGHT, 2,
-            "double-buffered ring assumed throughout the present-path",
+            FRAMES_IN_FLIGHT, 3,
+            "triple-buffered ring · CPU-GPU pipelining requires depth ≥ 3",
         );
     }
 
