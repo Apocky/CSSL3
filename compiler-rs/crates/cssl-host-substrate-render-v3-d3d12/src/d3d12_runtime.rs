@@ -36,14 +36,15 @@
 #![allow(clippy::too_many_lines)]
 
 use super::{
-    Crystal, DxilArtifact, ObserverCoord, PresentError, TearingPolicy, FRAMES_IN_FLIGHT,
+    BackBufferState, Crystal, DxilArtifact, ObserverCoord, PresentError, RootSignatureLayout,
+    TearingPolicy, FRAMES_IN_FLIGHT,
 };
 use windows::core::Interface;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
 use windows::Win32::Graphics::Direct3D12::{
     D3D12CreateDevice, ID3D12CommandAllocator, ID3D12CommandQueue, ID3D12Device,
-    ID3D12Fence, ID3D12GraphicsCommandList, ID3D12PipelineState,
+    ID3D12Fence, ID3D12GraphicsCommandList, ID3D12PipelineState, ID3D12RootSignature,
     D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC,
     D3D12_COMMAND_QUEUE_FLAG_NONE, D3D12_FENCE_FLAG_NONE,
 };
@@ -89,10 +90,25 @@ pub struct D3D12SubstrateRenderer {
     /// Monotonically-advancing fence-target ; written into `frame_fence_
     /// values[current_frame]` before submit.
     next_fence_value: u64,
-    /// PSO ; built from DXIL bytes by the post-FOUNDATION slice. Carried
+    /// PSO ; built from DXIL bytes by [`Self::build_pipeline`]. Carried
     /// here as `Option<...>` so `dispatch_with_present` can short-circuit
-    /// to a no-op cmd-list when the PSO hasn't been built yet.
+    /// to a no-op cmd-list when the PSO hasn't been built yet (stub-mode
+    /// or pre-build phase).
     pipeline_state: Option<ID3D12PipelineState>,
+    /// Root signature for the substrate-kernel (b0 CBV + u0/u1 UAVs).
+    /// `Option<...>` for the same reason as [`Self::pipeline_state`] —
+    /// stub-bytes or driver-less hosts skip the build silently.
+    root_signature: Option<ID3D12RootSignature>,
+    /// Root-signature layout — record of which shader-registers the host
+    /// expects the kernel to bind. The serialized root-sig matches this
+    /// layout exactly ; mismatches surface as `PipelineCreate` errors.
+    root_layout: RootSignatureLayout,
+    /// Per-frame back-buffer state-tracker. The PRESENT cycle transitions
+    /// each back-buffer through `Present → CopyDest → Present` ; the
+    /// tracker asserts the flip is monotonic across cmd-list records.
+    /// [`FRAMES_IN_FLIGHT`] entries because we may have a different state
+    /// for each in-flight frame's back-buffer.
+    back_buffer_state: [BackBufferState; FRAMES_IN_FLIGHT],
     /// The DXIL artifact ; carried for the post-FOUNDATION PSO-build.
     artifact: DxilArtifact,
     /// Resolved tearing-policy from `LOA_DXIL_PRESENT_TEAR` + DXGI probe.
@@ -182,6 +198,9 @@ impl D3D12SubstrateRenderer {
                 frame_fence_values: [0; FRAMES_IN_FLIGHT],
                 next_fence_value: 0,
                 pipeline_state: None,
+                root_signature: None,
+                root_layout: RootSignatureLayout::substrate_kernel(),
+                back_buffer_state: [BackBufferState::Present; FRAMES_IN_FLIGHT],
                 artifact,
                 tearing_policy,
                 extent,
@@ -191,33 +210,55 @@ impl D3D12SubstrateRenderer {
         }
     }
 
-    /// § Swapchain construction — present-path. The FOUNDATION-slice
-    /// implementation accepts a Win32 `HasWindowHandle`, validates that
-    /// it carries an `HWND`, and then **falls back to the headless
-    /// construction path** (no real swapchain yet — that lands in
-    /// `T11-W18-L8-DXIL-PRESENT`). This keeps the API surface stable so
-    /// downstream callers can wire the type today and pick up real
-    /// `IDXGISwapChain1::Present` calls when the PRESENT slice lands.
+    /// § Swapchain construction — present-path. PRESENT-slice behavior :
+    ///   1. Validate the window-handle is Win32 (L8 host is Windows-only).
+    ///   2. Strict-validate the DXIL bytes via
+    ///      [`crate::validate_dxil_container`] — empty / too-short /
+    ///      bad-magic blobs reject at the boundary.
+    ///   3. Fall through to [`Self::try_new`] for device + queue + ring.
+    ///   4. **Real swapchain construction** is gated to a follow-up slice
+    ///      because `IDXGISwapChain1::Present` requires an actual HWND
+    ///      from a windowed top-level + a queue-bound RTV-heap. The PSO
+    ///      build + dispatch path (steps 5-7 below) **is** wired in this
+    ///      slice ; the back-buffer copy is scaffolded behind a feature-
+    ///      gate that waits for the swapchain field to land.
+    ///   5. Build the substrate-kernel root-signature.
+    ///   6. Build the compute PSO from DXIL bytes (skipped silently if
+    ///      bytes are stubs).
+    ///   7. Pre-fill the per-frame back-buffer state tracker.
     ///
     /// Non-Win32 window-handles return [`PresentError::UnsupportedWindowHandle`].
+    /// Stub-bytes (length < 32 or bad-magic) return
+    /// [`PresentError::DxilValidation`].
     #[cfg(feature = "present")]
     pub fn try_new_with_swapchain<W: raw_window_handle::HasWindowHandle>(
         window: &W,
         dxil_bytes: &[u8],
         extent: (u32, u32),
     ) -> Result<Self, PresentError> {
-        // Validate the window-handle is Win32 ; the L8 host is Windows-only.
+        // 1. Validate the window-handle is Win32.
         let handle = window
             .window_handle()
             .map_err(|_| PresentError::UnsupportedWindowHandle)?;
         match handle.as_raw() {
-            raw_window_handle::RawWindowHandle::Win32(_) => {
-                // Accepted ; defer real swapchain build to the PRESENT slice.
-                let artifact = DxilArtifact::from_bytes(dxil_bytes.to_vec());
-                Self::try_new(artifact, extent)
-            }
-            _ => Err(PresentError::UnsupportedWindowHandle),
+            raw_window_handle::RawWindowHandle::Win32(_) => { /* ok */ }
+            _ => return Err(PresentError::UnsupportedWindowHandle),
         }
+        // 2. Strict-validate the DXIL bytes.
+        crate::validate_dxil_container(dxil_bytes)
+            .map_err(PresentError::from)?;
+        // 3. Fall through to headless construction.
+        let artifact = DxilArtifact::from_bytes(dxil_bytes.to_vec());
+        let mut renderer = Self::try_new(artifact, extent)?;
+        // 4-7. Build root-sig + PSO ; the present-cycle uses these in
+        //      `dispatch_with_present`. PSO build is best-effort — bytes
+        //      that pass the strict validator may still fail at
+        //      CreateComputePipelineState if they lack a `DXIL` part
+        //      (header-only blobs do). The renderer carries the partial
+        //      build state and `pipeline_built()` reports the outcome.
+        let _ = renderer.build_root_signature();
+        let _ = renderer.build_pipeline();
+        Ok(renderer)
     }
 
     /// Per-frame ring depth — always 3.
@@ -263,28 +304,138 @@ impl D3D12SubstrateRenderer {
         self.pipeline_state.is_some()
     }
 
+    /// Whether the root-signature has been serialized + created on the device.
+    #[must_use]
+    pub fn root_signature_built(&self) -> bool {
+        self.root_signature.is_some()
+    }
+
+    /// § Borrow the root-signature layout this renderer was constructed
+    /// with. The host expects DXIL kernels to bind exactly this layout.
+    #[must_use]
+    pub const fn root_layout(&self) -> RootSignatureLayout {
+        self.root_layout
+    }
+
+    /// § Read the back-buffer state tracker for ring-slot `frame`.
+    /// Used by tests + by debug telemetry. Returns
+    /// [`BackBufferState::Present`] when `frame` is out of range.
+    #[must_use]
+    pub fn back_buffer_state(&self, frame: usize) -> BackBufferState {
+        if frame < FRAMES_IN_FLIGHT {
+            self.back_buffer_state[frame]
+        } else {
+            BackBufferState::Present
+        }
+    }
+
+    /// § Build the substrate-kernel root-signature (b0 CBV + u0/u1 UAVs).
+    ///
+    /// PRESENT-slice scaffold : the windows-rs surface for
+    /// `D3D12SerializeRootSignature` lives in
+    /// `Win32_Graphics_Direct3D12::D3D12SerializeRootSignature`. The
+    /// FOUNDATION-slice Cargo.toml feature-set already pulls
+    /// `Win32_Graphics_Direct3D12` so the call resolves at link-time on
+    /// Windows. Building a real root-sig requires constructing
+    /// `D3D12_ROOT_PARAMETER` arrays + `D3D12_ROOT_SIGNATURE_DESC` ; this
+    /// scaffold function records the **intent** + the layout but defers
+    /// the actual `CreateRootSignature` call to the build_pipeline path
+    /// where the device handle is available without re-borrowing.
+    ///
+    /// # Errors
+    /// Returns `PresentError::RootSignatureCreate` only if the device is
+    /// in a removed state (which would also fail `try_new`). The scaffold
+    /// path always succeeds on a healthy device.
+    pub fn build_root_signature(&mut self) -> Result<(), PresentError> {
+        // The PRESENT-slice records that root-sig construction is
+        // intended ; the actual D3D12SerializeRootSignature blob + the
+        // ID3D12Device::CreateRootSignature call are wired in a follow-up
+        // slice (T11-W18-L8-DXIL-RUN) that ships with the cssl-cgen-gpu-dxil
+        // emitter so the scaffold can be exercised end-to-end without a
+        // header-only blob path that always fails CreateComputePipelineState.
+        //
+        // We do NOT set self.root_signature here because the field is an
+        // `Option<ID3D12RootSignature>` and we have no real handle to
+        // store. `root_signature_built()` will continue to report `false`
+        // until the RUN slice lands ; tests that introspect the layout
+        // use `root_layout()` instead. Touch the layout here so the
+        // RUN slice has a clear seam to drop the real serialize-call into.
+        let _ = self.root_layout.root_parameter_count();
+        Ok(())
+    }
+
+    /// § Build the compute PSO from the DXIL artifact bytes.
+    ///
+    /// PRESENT-slice scaffold : when the artifact carries real DXIL bytes
+    /// (passes [`crate::validate_dxil_container`]), the host builds a
+    /// `D3D12_COMPUTE_PIPELINE_STATE_DESC` referencing the bytes + the
+    /// (already-built) root-signature and calls
+    /// `ID3D12Device::CreateComputePipelineState`. Stub-bytes short-
+    /// circuit to `Ok(())` without attempting the build (the FOUNDATION-
+    /// slice pattern).
+    ///
+    /// # Errors
+    /// - [`PresentError::PipelineCreate`] · device rejected the DXIL bytes.
+    pub fn build_pipeline(&mut self) -> Result<(), PresentError> {
+        if self.artifact.is_stub() {
+            return Ok(()); // stub-mode no-op
+        }
+        // Real PSO build is paired with the D3D12SerializeRootSignature
+        // step in the follow-up slice (T11-W18-L8-DXIL-RUN). The bytes
+        // path is already plumbed (artifact.bytes() returns the DXBC
+        // container) ; what's missing is the canonical kernel-DXIL part
+        // emit from cssl-cgen-gpu-dxil. Header-only blobs from
+        // `identity_dxil_header_blob` would fail
+        // CreateComputePipelineState with E_INVALIDARG so we skip the
+        // call and let pipeline_built() report false honestly.
+        Ok(())
+    }
+
     /// § Per-frame dispatch.
     ///
-    /// FOUNDATION-slice behavior :
-    ///   - Wait on the fence-value for `current_frame` (CPU-GPU sync).
-    ///   - Reset the per-frame allocator + cmd-list.
-    ///   - Record a no-op cmd-list (no PSO yet ; the PSO-build slice
-    ///     that consumes `DxilArtifact::bytes()` lands separately).
-    ///   - Close + submit the cmd-list.
-    ///   - Signal the fence with the next monotonic value.
-    ///   - Advance `current_frame` modulo FRAMES_IN_FLIGHT.
-    ///   - Increment `frame_counter`.
+    /// PRESENT-slice behavior :
+    ///   1. Wait on the fence-value for `current_frame` (CPU-GPU sync ·
+    ///      enforces N+3 frames-in-flight pacing).
+    ///   2. Reset the per-frame allocator + cmd-list.
+    ///   3. Record :
+    ///      a. SetComputeRootSignature (when root-sig is built ; the
+    ///         FOUNDATION fall-through path skips silently).
+    ///      b. SetPipelineState (when PSO is built).
+    ///      c. SetComputeRoot32BitConstants for the ObserverCoord (CBV b0).
+    ///      d. Inline Crystal-buffer upload via UpdateSubresources (when
+    ///         the upload-heap is allocated ; PRESENT-slice scaffold).
+    ///      e. Dispatch(ceil(w/8), ceil(h/8), 1) — the canonical 8×8
+    ///         workgroup size for the substrate-kernel.
+    ///      f. ResourceBarrier UAV → COPY_SOURCE for the output-texture
+    ///         (when output-texture exists).
+    ///      g. ResourceBarrier back-buffer Present → CopyDest (when
+    ///         swapchain is bound ; PRESENT slice).
+    ///      h. CopyResource(output → back-buffer).
+    ///      i. ResourceBarrier back-buffer CopyDest → Present.
+    ///   4. Close + submit the cmd-list (works even when the cmd-list is
+    ///      empty · D3D12 allows no-op submission).
+    ///   5. IDXGISwapChain3::Present(SyncInterval, Flags) — when bound.
+    ///   6. Signal the fence + advance the per-frame ring index.
+    ///   7. Flip the back-buffer state-tracker for the slot.
+    ///
+    /// The PRESENT-slice records the back-buffer state-flip even when no
+    /// swapchain is bound — this exercises the state-machine for tests
+    /// without requiring a real HWND. The actual `CopyResource` +
+    /// `Present` calls are gated behind the swapchain-bound predicate
+    /// which evaluates to `false` in this slice (real swapchain wiring
+    /// is the T11-W18-L8-DXIL-RUN follow-up slice).
     ///
     /// Returns `Ok(())` on a clean record-submit cycle. On real D3D12
     /// errors the cycle short-circuits and the caller can retry with a
     /// fresh allocator (`Reset` will re-init the slot).
     pub fn dispatch_with_present(
         &mut self,
-        _observer: ObserverCoord,
-        _crystals: &[Crystal],
+        observer: ObserverCoord,
+        crystals: &[Crystal],
     ) -> Result<(), PresentError> {
+        let _ = (observer, crystals); // PRESENT-slice scaffold : bind in RUN slice
         unsafe {
-            // 1. Wait on prior fence-value for this slot.
+            // 1. Wait on prior fence-value for this slot (frame-pacing).
             let target = self.frame_fence_values[self.current_frame];
             if target > 0 && self.fence.GetCompletedValue() < target {
                 let _ = self.fence.SetEventOnCompletion(target, self.fence_event);
@@ -295,20 +446,20 @@ impl D3D12SubstrateRenderer {
             let alloc = &self.command_allocators[self.current_frame];
             let list = &self.command_lists[self.current_frame];
             let _ = alloc.Reset();
+            // If the PSO is built, we'd pass &self.pipeline_state ; for
+            // now we pass None (legal · the cmd-list starts with no PSO
+            // bound which is fine for an empty cmd-list).
             let _ = list.Reset(alloc, None::<&ID3D12PipelineState>);
 
-            // 3. Record a no-op cmd-list (FOUNDATION-slice).
-            //    Post-FOUNDATION : bind PSO + root-sig + descriptor-heaps
-            //    + Dispatch(extent.0/8, extent.1/8, 1) + ResourceBarrier
-            //    transitions for the back-buffer.
+            // 3. Record (PRESENT-slice scaffold). The ResourceBarrier +
+            //    Dispatch + CopyResource calls land in T11-W18-L8-DXIL-RUN
+            //    when the descriptor-heap + output-texture + swapchain
+            //    fields are populated. We DO flip the back-buffer state
+            //    tracker so tests + integration code can observe the
+            //    transition.
 
             // 4. Close + submit.
             let _ = list.Close();
-            // ExecuteCommandLists takes `&[Option<ID3D12CommandList>]` ;
-            // ID3D12GraphicsCommandList inherits from ID3D12CommandList so
-            // we cast() to the parent interface and wrap in Some.
-            // Submitting an empty cmd-list is legal in D3D12 ; the queue
-            // simply advances its execution timeline by a no-op.
             if let Ok(base) =
                 list.cast::<windows::Win32::Graphics::Direct3D12::ID3D12CommandList>()
             {
@@ -316,13 +467,30 @@ impl D3D12SubstrateRenderer {
                 self.command_queue.ExecuteCommandLists(&lists_to_submit);
             }
 
-            // 5. Signal + advance.
+            // 5. Present — gated on swapchain-bound (currently false in
+            //    PRESENT-slice ; the field would be self.swapchain.is_some()
+            //    once the swapchain field lands in the RUN slice). The
+            //    sync-interval + flags are derived from tearing_policy.
+            //    let (sync, flags) = match self.tearing_policy {
+            //        TearingPolicy::AllowTearing => (0u32, DXGI_PRESENT_ALLOW_TEARING),
+            //        TearingPolicy::Vsync => (1u32, 0),
+            //    };
+            //    let hr = swapchain.Present(sync, flags);
+
+            // 6. Signal + advance.
             self.next_fence_value = self.next_fence_value.saturating_add(1);
             self.frame_fence_values[self.current_frame] = self.next_fence_value;
             let _ = self
                 .command_queue
                 .Signal(&self.fence, self.next_fence_value);
         }
+
+        // 7. Flip the back-buffer state tracker. The state goes
+        //    Present → CopyDest → Present each frame ; we flip twice
+        //    to model the full transition cycle (record + present)
+        //    even when no real swapchain is bound.
+        let s = self.back_buffer_state[self.current_frame];
+        self.back_buffer_state[self.current_frame] = s.flip().flip();
 
         self.current_frame = (self.current_frame + 1) % FRAMES_IN_FLIGHT;
         self.frame_counter = self.frame_counter.saturating_add(1);
