@@ -1,0 +1,15 @@
+// § T11-W18-CSSLC-ADVANCE2 · arith.remf inside scf.if branch
+//
+// Pre-A2 the FmodImports pre-scan would have missed any `arith.remf`
+// nested in a structured-CFG region (scf.if/loop/while/for). The walk
+// in declare_fmod_imports_for_fn descends 1 level into nested blocks
+// to keep the import surface complete — this fixture pins that contract.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.remf_in_branch
+
+pub fn rem_or_pass(c: bool, a: f32, b: f32) -> f32 {
+    if c { a % b } else { a }
+}

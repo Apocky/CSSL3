@@ -1,0 +1,16 @@
+// § T11-W18-CSSLC-ADVANCE2 · cascade with mixed bare-ident yields
+//
+// One arm yields a param ; another arm yields a local ; a third arm
+// yields a pure literal. Confirms the binding-table inheritance doesn't
+// regress the existing literal-yield path nor break param-vs-local
+// disambiguation.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.cascade_mixed_yield
+
+pub fn classify(c1: bool, c2: bool, p: i32) -> i32 {
+    let q: i32 = 99 ;
+    if c1 { p } else if c2 { q } else { 0 }
+}

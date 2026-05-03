@@ -423,6 +423,12 @@ fn compile_one_fn(
         struct_layouts,
     )?;
 
+    // § T11-W18-CSSLC-ADVANCE2 — pre-scan body for `arith.remf` ; declare
+    //   libm `fmodf` / `fmod` once per fn for the widths actually present.
+    //   See [`declare_fmod_imports_for_fn`] for rationale (cranelift has no
+    //   `frem` instruction so float-remainder MUST go through libm).
+    let fmod_refs = declare_fmod_imports_for_fn(obj_module, codegen_ctx, mir_fn)?;
+
     // § 2. Build body — multi-block aware (§ T11-CC-1).
     {
         let mut builder = FunctionBuilder::new(&mut codegen_ctx.func, builder_ctx);
@@ -502,6 +508,7 @@ fn compile_one_fn(
                         &mir_fn.name,
                         &heap_refs,
                         &callee_refs,
+                        &fmod_refs,
                         ptr_ty,
                         &block_map,
                     )?;
@@ -655,6 +662,182 @@ fn declare_heap_imports_for_fn(
         imports.refs.insert("cssl.heap.realloc", fref);
     }
     Ok(imports)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § T11-W18-CSSLC-ADVANCE2 — `arith.remf` libm import (fmodf / fmod).
+//
+//   Cranelift has no `frem` instruction ; the only IEEE-754-compliant float
+//   remainder available on host CPUs is the libm `fmodf(f32, f32) -> f32`
+//   and `fmod(f64, f64) -> f64`. We pre-scan each fn body for `arith.remf`
+//   ops, and for each width seen in result-types we declare the matching
+//   libm symbol as `Linkage::Import`, then bind a per-fn `FuncRef`.
+//   Body lowering routes `arith.remf` through [`emit_fmod_call`] which
+//   resolves the right `FuncRef` based on the op's result-width.
+//
+//   Symbol contract :
+//     - `fmodf`  : standard libm symbol on glibc / musl / Apple libSystem /
+//                  Microsoft UCRT (linked by S6-A4 linker for MSVC builds).
+//     - `fmod`   : same, double-precision.
+//   Both are `extern "C"` and ABI-passed in xmm-registers on x86_64 SSE2 ;
+//   no shim layer is required.
+//
+//   § DEFERRED
+//     IEEE-754-2008's `remainder` (rem-near, vs `fmod`'s rem-trunc) is NOT
+//     wired ; CSSLv3 surface `%` on float follows C / Rust semantics which
+//     is `fmod` (rem-trunc, sign-of-LHS). If a future `cssl.math.remainder`
+//     op surfaces the strict-IEEE form it can declare `remainderf`/`remainder`
+//     via the same shape.
+// ───────────────────────────────────────────────────────────────────────
+
+const FMOD_F32_SYMBOL: &str = "fmodf";
+const FMOD_F64_SYMBOL: &str = "fmod";
+
+/// Per-fn map of `(width-tag → cranelift FuncRef)` for the libm `fmod*`
+/// import declared on demand. Mirrors [`HeapImports`].
+#[derive(Default)]
+struct FmodImports {
+    /// f32 entry — declared when the body contains an `arith.remf` whose
+    /// result is `MirType::Float(F32)`.
+    f32_ref: Option<cranelift_codegen::ir::FuncRef>,
+    /// f64 entry — same but F64.
+    f64_ref: Option<cranelift_codegen::ir::FuncRef>,
+}
+
+impl FmodImports {
+    fn for_width(&self, w: FloatWidth) -> Option<cranelift_codegen::ir::FuncRef> {
+        match w {
+            FloatWidth::F32 | FloatWidth::F16 | FloatWidth::Bf16 => self.f32_ref,
+            FloatWidth::F64 => self.f64_ref,
+        }
+    }
+}
+
+/// Walk this fn's body (entry block + 1-level nested regions, mirroring the
+/// callee-import pre-scan) ; for each `arith.remf` op, record which libm
+/// width-symbol is needed, then declare each on the cranelift module.
+fn declare_fmod_imports_for_fn(
+    obj_module: &mut ObjectModule,
+    codegen_ctx: &mut Context,
+    mir_fn: &MirFunc,
+) -> Result<FmodImports, ObjectError> {
+    let mut imports = FmodImports::default();
+    let Some(entry_block) = mir_fn.body.blocks.first() else {
+        return Ok(imports);
+    };
+    let mut needs_f32 = false;
+    let mut needs_f64 = false;
+    fn walk(ops: &[MirOp], needs_f32: &mut bool, needs_f64: &mut bool) {
+        for op in ops {
+            if op.name == "arith.remf" {
+                if let Some(r) = op.results.first() {
+                    if let MirType::Float(w) = r.ty {
+                        match w {
+                            FloatWidth::F64 => *needs_f64 = true,
+                            FloatWidth::F32 | FloatWidth::F16 | FloatWidth::Bf16 => *needs_f32 = true,
+                        }
+                    }
+                }
+            }
+            for region in &op.regions {
+                for blk in &region.blocks {
+                    walk(&blk.ops, needs_f32, needs_f64);
+                }
+            }
+        }
+    }
+    walk(&entry_block.ops, &mut needs_f32, &mut needs_f64);
+
+    let call_conv = obj_module.isa().default_call_conv();
+
+    if needs_f32 {
+        let mut sig = Signature::new(call_conv);
+        sig.params.push(AbiParam::new(cl_types::F32));
+        sig.params.push(AbiParam::new(cl_types::F32));
+        sig.returns.push(AbiParam::new(cl_types::F32));
+        let id = obj_module
+            .declare_function(FMOD_F32_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare {FMOD_F32_SYMBOL} : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.f32_ref = Some(fref);
+    }
+    if needs_f64 {
+        let mut sig = Signature::new(call_conv);
+        sig.params.push(AbiParam::new(cl_types::F64));
+        sig.params.push(AbiParam::new(cl_types::F64));
+        sig.returns.push(AbiParam::new(cl_types::F64));
+        let id = obj_module
+            .declare_function(FMOD_F64_SYMBOL, Linkage::Import, &sig)
+            .map_err(|e| ObjectError::LoweringFailed {
+                fn_name: mir_fn.name.clone(),
+                detail: format!("declare {FMOD_F64_SYMBOL} : {e}"),
+            })?;
+        let fref = obj_module.declare_func_in_func(id, &mut codegen_ctx.func);
+        imports.f64_ref = Some(fref);
+    }
+    Ok(imports)
+}
+
+/// Object-side `arith.remf` lowering — issue a `call` against the pre-
+/// declared libm `fmodf` / `fmod` import, picking the symbol by the op's
+/// result-type width.
+fn emit_fmod_call(
+    op: &MirOp,
+    builder: &mut FunctionBuilder<'_>,
+    value_map: &mut HashMap<ValueId, cranelift_codegen::ir::Value>,
+    fn_name: &str,
+    fmod_refs: &FmodImports,
+) -> Result<bool, ObjectError> {
+    let r = op.results.first().ok_or_else(|| ObjectError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: "arith.remf with no result".to_string(),
+    })?;
+    let MirType::Float(w) = r.ty else {
+        return Err(ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: format!(
+                "arith.remf result must be float ; got `{}`",
+                r.ty
+            ),
+        });
+    };
+    let fref = fmod_refs.for_width(w).ok_or_else(|| ObjectError::LoweringFailed {
+        fn_name: fn_name.to_string(),
+        detail: format!(
+            "arith.remf {w:?} : libm fmod import not declared (pre-scan bug)"
+        ),
+    })?;
+    let (a_id, b_id) = (
+        op.operands.first().ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "arith.remf missing LHS operand".to_string(),
+        })?,
+        op.operands.get(1).ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "arith.remf missing RHS operand".to_string(),
+        })?,
+    );
+    let a = *value_map.get(a_id).ok_or_else(|| ObjectError::UnknownValueId {
+        fn_name: fn_name.to_string(),
+        value_id: a_id.0,
+    })?;
+    let b = *value_map.get(b_id).ok_or_else(|| ObjectError::UnknownValueId {
+        fn_name: fn_name.to_string(),
+        value_id: b_id.0,
+    })?;
+    let call = builder.ins().call(fref, &[a, b]);
+    let cl_value = *builder
+        .inst_results(call)
+        .first()
+        .ok_or_else(|| ObjectError::LoweringFailed {
+            fn_name: fn_name.to_string(),
+            detail: "fmod call produced no result".to_string(),
+        })?;
+    value_map.insert(r.id, cl_value);
+    Ok(false)
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -851,6 +1034,7 @@ fn lower_one_op(
     fn_name: &str,
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
+    fmod_refs: &FmodImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -911,6 +1095,14 @@ fn lower_one_op(
         "arith.divf" => binary_int(op, builder, value_map, fn_name, |b, a, c| {
             b.ins().fdiv(a, c)
         }),
+        // § T11-W18-CSSLC-ADVANCE2 — float remainder via libm callout.
+        //   Cranelift has no `frem` ; we route through `fmodf` (f32) /
+        //   `fmod` (f64) declared up-front by `declare_fmod_imports_for_fn`.
+        //   Result-width determines which symbol is used. See `emit_fmod_call`
+        //   for the resolution + call-emission. No verifier mismatch is
+        //   possible since both libm signatures match the cranelift xmm-register
+        //   ABI exactly on x86_64 SSE2 (and likewise on aarch64 NEON / RISC-V).
+        "arith.remf" => emit_fmod_call(op, builder, value_map, fn_name, fmod_refs),
         // § T11-W18-CSSLC-SCALAR-ARITH-COMPLETION — unary negation +
         // bitwise + shift dispatch. body_lower emits these MIR ops for the
         // CSSL surface ops `-x` (int + float), `~x`, `x & y`, `x | y`,
@@ -1079,6 +1271,7 @@ fn lower_one_op(
             fn_name,
             heap_refs,
             callee_refs,
+            fmod_refs,
             ptr_ty,
             block_map,
         ),
@@ -1093,6 +1286,7 @@ fn lower_one_op(
             fn_name,
             heap_refs,
             callee_refs,
+            fmod_refs,
             ptr_ty,
             block_map,
         ),
@@ -1103,6 +1297,7 @@ fn lower_one_op(
             fn_name,
             heap_refs,
             callee_refs,
+            fmod_refs,
             ptr_ty,
             block_map,
         ),
@@ -1113,6 +1308,7 @@ fn lower_one_op(
             fn_name,
             heap_refs,
             callee_refs,
+            fmod_refs,
             ptr_ty,
             block_map,
         ),
@@ -1429,6 +1625,7 @@ fn lower_scf_if_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
+    fmod_refs: &FmodImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1445,6 +1642,7 @@ fn lower_scf_if_in_object(
                 name,
                 heap_refs,
                 callee_refs,
+                fmod_refs,
                 ptr_ty,
                 block_map,
             )
@@ -1467,6 +1665,7 @@ fn lower_scf_loop_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
+    fmod_refs: &FmodImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1483,6 +1682,7 @@ fn lower_scf_loop_in_object(
                 name,
                 heap_refs,
                 callee_refs,
+                fmod_refs,
                 ptr_ty,
                 block_map,
             )
@@ -1505,6 +1705,7 @@ fn lower_scf_while_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
+    fmod_refs: &FmodImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1521,6 +1722,7 @@ fn lower_scf_while_in_object(
                 name,
                 heap_refs,
                 callee_refs,
+                fmod_refs,
                 ptr_ty,
                 block_map,
             )
@@ -1543,6 +1745,7 @@ fn lower_scf_for_in_object(
     fn_name: &str,
     heap_refs: &HeapImports,
     callee_refs: &CalleeImports,
+    fmod_refs: &FmodImports,
     ptr_ty: cranelift_codegen::ir::Type,
     block_map: &[ClBlock],
 ) -> Result<bool, ObjectError> {
@@ -1559,6 +1762,7 @@ fn lower_scf_for_in_object(
                 name,
                 heap_refs,
                 callee_refs,
+                fmod_refs,
                 ptr_ty,
                 block_map,
             )

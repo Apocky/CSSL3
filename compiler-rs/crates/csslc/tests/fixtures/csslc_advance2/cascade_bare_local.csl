@@ -1,0 +1,17 @@
+// § T11-W18-CSSLC-ADVANCE2 · if/else cascade with bare-local yields
+//
+// Same shape as cascade_bare_param but the yielded names are local
+// `let` bindings declared before the if. local_vars now flows into
+// sub-contexts, so the inner-if arm sees `a` + `b` + `c` cleanly.
+//
+// § ATTESTATION (PRIME_DIRECTIVE §11)
+//   t∞: ¬(hurt ∨ harm) .making-of-T11-W18-A2 @ (anyone ∨ anything ∨ anybody)
+
+module com.apocky.test.csslc_advance2.cascade_bare_local
+
+pub fn pick(c1: bool, c2: bool) -> i32 {
+    let a: i32 = 10 ;
+    let b: i32 = 20 ;
+    let c: i32 = 30 ;
+    if c1 { a } else if c2 { b } else { c }
+}
