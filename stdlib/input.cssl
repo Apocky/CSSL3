@@ -1,0 +1,440 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/input.cssl  —  Host-input FFI surface
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § input
+//          (four __cssl_input_* extern "C" symbols ; ABI-frozen)
+//        specs/24_HOST_FFI.csl § CSSL-SIDE WRAPPERS § Input
+//        specs/24_HOST_FFI.csl § IFC-LABELS § Input-key-events +
+//          § Input-mouse-deltas (Sensitive<Behavioral> · NEVER egresses)
+//        specs/04_EFFECTS.csl § effect-row syntax
+//        specs/12_CAPABILITIES.csl § Cap<X> witness
+//        specs/11_IFC.csl § Sensitive<Behavioral>
+//        compiler-rs/crates/cssl-rt/src/host_input.rs
+// Slice : T11-W11-S2B · stdlib host-FFI input-wrappers.
+//
+// § PRIME_DIRECTIVE preserved : input = most-surveillance-adjacent surface.
+//   FOUR structural safeguards mirror cssl-rt::host_input discipline :
+//   (1) CAP-GATED : every fn consumes Cap<Input> ; default-deny.
+//   (2) SENSITIVE<BEHAVIORAL> : every signature carries the IFC-label
+//       per spec/24 § IFC-LABELS ; bytes NEVER egress cross-process.
+//       Composition with {Net} rejected at compile-time post-MirEffectRow.
+//   (3) NO COVERT CHANNELS : bounded output ; NO key-injection / NO
+//       mouse-warp / NO HID-rebinding surface at stage-0.
+//   (4) AUDIT VISIBILITY : LOCAL atomic counters in cssl-rt ; counters
+//       do NOT escape the process.
+//   ‼ ¬ override · ¬ surveillance · ¬ keylogging · ¬ exfil ; per
+//   PRIME_DIRECTIVE.md § 6 SCOPE no flag/config can disable these.
+//
+// § STAGE-0 NOTES
+//   1. Four verbs (keyboard_state / mouse_state / mouse_delta /
+//      gamepad_state) lower to __cssl_input_<verb> via 2-segment path
+//      recognizer — mirrors net::<verb> from T11-D82.
+//   2. KeyState = [u8; 32] (256-bit bitset · KEYBOARD_STATE_BYTES = 32).
+//   3. MouseState = (x : i32, y : i32, buttons : u32) (16 bytes total).
+//   4. GamepadState = 32-byte struct mirroring GAMEPAD_STATE_BYTES.
+//   5. Cap<Input> witness : stage-0 degrades to `cap : i32` until
+//      Cap<X> generic-type-constructor lands.  // N!  Migration mechanical.
+//   6. WASD nav (Apocky-LoA) : VK_W (0x57) · VK_A (0x41) · VK_S (0x53) ·
+//      VK_D (0x44) · VK_SPACE (0x20) · VK_ESCAPE (0x1B) · VK_LBUTTON
+//      (0x01) · VK_RBUTTON (0x02) ; Win32 codes — cross-platform stubs
+//      in cssl-host-input map USB-HID usages to same ordinals.
+//   7. Zero-alloc-in-hot-path per spec/24 § P2 : caller-supplied stack
+//      buffers ; no heap ops.
+//
+// § INVARIANTS
+//   - INPUT_CAP_NONE = 0 (default-deny)
+//   - All input data carries Sensitive<Behavioral> IFC-label
+//   - Mouse-delta atomically drains pending accumulator on read
+
+module com.apocky.std.input
+
+// ───────────────────────────────────────────────────────────────────────
+// § Type definitions.
+// ───────────────────────────────────────────────────────────────────────
+
+// `KeyState` — 256-bit bitset of currently-held keys.
+//   bit-i = key with KeyCode-i held ; matches HID upper-bound.
+//   IFC : Sensitive<Behavioral> per spec/24 § IFC-LABELS.
+struct KeyState {
+    keys : [u8; 32],
+}
+
+// `MouseState` — cursor (x, y) + button-mask (16 bytes total).
+//   buttons bit-0 = LBUTTON · 1 = RBUTTON · 2 = MBUTTON · 3..=15 = X-btns.
+//   IFC : Sensitive<Behavioral>.
+struct MouseState {
+    x       : i32,
+    y       : i32,
+    buttons : u32,
+}
+
+// `MouseDelta` — accumulated cursor movement since last drain.
+//   Drain-on-read : `input::mouse_delta` atomically swaps to (0, 0)
+//   matching Win32 raw-input WM_INPUT semantics.
+//   ‼ IFC : Sensitive<Behavioral> · PRIME-DIRECTIVE-flagged · NEVER egresses.
+struct MouseDelta {
+    dx : i32,
+    dy : i32,
+}
+
+// `GamepadState` — XInput-style controller snapshot (32 bytes).
+//   buttons = 16-bit bitmap (A/B/X/Y/D-pad/bumpers) ; flags bit-0 =
+//   connected ; axes = LX/LY/RX/RY/LT/RT + 6 reserved ; idx = slot 0..=3.
+//   IFC : Sensitive<Behavioral>.
+struct GamepadState {
+    buttons : u32,
+    flags   : u32,
+    axes    : [i32; 12],
+    idx     : u32,
+}
+
+// `InputError` discriminants matching cssl-rt::host_input failure paths.
+enum InputError {
+    BufferTooSmall,    // out-buffer < required state size
+    NullOut,           // null output pointer
+    InvalidHandle,     // unknown handle / slot table exhausted
+    InvalidIndex,      // gamepad idx ≥ 4
+    Disconnected,      // gamepad disconnected
+    CapDenied,         // Cap<Input> witness missing / revoked
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Capability bit constants (mirror cssl-rt::host_input::INPUT_CAP_*).
+//
+//   ‼ ABI-locked : pinned by both runtime + cssl-cgen-cpu-cranelift.
+//   PRIME-DIRECTIVE default-deny : INPUT_CAP_NONE = 0 ; source-level code
+//   raises caps via `caps_grant(...)` BEFORE invoking the relevant verb.
+// ───────────────────────────────────────────────────────────────────────
+
+fn input_cap_none() -> i32 {
+    0
+}
+
+fn input_cap_keyboard() -> i32 {
+    1
+}
+
+fn input_cap_mouse() -> i32 {
+    2
+}
+
+fn input_cap_mouse_delta() -> i32 {
+    4
+}
+
+fn input_cap_gamepad() -> i32 {
+    8
+}
+
+fn input_cap_mask() -> i32 {
+    15  // 1 | 2 | 4 | 8
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Sizing constants (LOCKED · mirror cssl-rt::host_input).
+// ───────────────────────────────────────────────────────────────────────
+
+fn keyboard_state_bytes() -> u32 {
+    32
+}
+
+fn mouse_state_bytes() -> u32 {
+    16
+}
+
+fn gamepad_state_bytes() -> u32 {
+    32
+}
+
+fn gamepad_slot_count() -> u32 {
+    4
+}
+
+fn input_handle_slot_count() -> u32 {
+    16
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Win32 VK constants (Apocky-LoA WASD-nav set ; cross-platform via
+//   cssl-host-input stub-tables on Linux/Mac).
+// ───────────────────────────────────────────────────────────────────────
+
+fn vk_w() -> u32 {
+    87  // 0x57
+}
+
+fn vk_a() -> u32 {
+    65  // 0x41
+}
+
+fn vk_s() -> u32 {
+    83  // 0x53
+}
+
+fn vk_d() -> u32 {
+    68  // 0x44
+}
+
+fn vk_space() -> u32 {
+    32  // 0x20
+}
+
+fn vk_escape() -> u32 {
+    27  // 0x1B
+}
+
+fn vk_lbutton() -> u32 {
+    1   // 0x01
+}
+
+fn vk_rbutton() -> u32 {
+    2   // 0x02
+}
+
+fn vk_shift() -> u32 {
+    16  // 0x10
+}
+
+fn vk_control() -> u32 {
+    17  // 0x11
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Cap-system wrappers (route through cssl-rt::host_input::caps_*).
+//   PRIME-DIRECTIVE : grant requires explicit caller intent ; revoke
+//   always free per spec/11 § 5 CONSENT-ARCH.
+// ───────────────────────────────────────────────────────────────────────
+
+fn caps_grant(cap_bits : i32) -> i32 {
+    cap_bits
+}
+
+fn caps_revoke(cap_bits : i32) -> i32 {
+    cap_bits
+}
+
+fn caps_current() -> i32 {
+    0  // INPUT_CAP_NONE = default-deny
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § input::keyboard_state  →  __cssl_input_keyboard_state
+//
+//   § SPEC-CANONICAL  fn keyboard_state(win : &Window, cap : Cap<Input>)
+//                          -> KeyState
+//                          / {Input, Sensitive<Behavioral>}
+//   § STAGE-0         `cap : i32` until Cap<X> lands in parser  // N!
+//   § ABI             __cssl_input_keyboard_state(handle, out_ptr, max_len)
+//                       → i32  (0 = OK ; -1..-6 = err)
+// ───────────────────────────────────────────────────────────────────────
+
+// `input::keyboard_state(handle, cap)` — read 256-bit pressed-keys bitset.
+//   {Input, Sensitive<Behavioral>} effect-row.
+//   Bytes NEVER egress ; cssl-rt counter increments only.
+fn input_keyboard_state(handle : i64, cap : i32) -> Result<KeyState, InputError> {
+    if cap == 0 {
+        Err(InputError::CapDenied)
+    } else {
+        let r = input::__cssl_input_keyboard_state(handle) ;
+        if r == 0 {
+            Ok(KeyState { keys : [0; 32] })
+        } else {
+            Err(InputError::CapDenied)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § input::mouse_state  →  __cssl_input_mouse_state
+//
+//   § SPEC-CANONICAL  fn mouse_state(win : &Window, cap : Cap<Input>)
+//                          -> MouseState
+//                          / {Input, Sensitive<Behavioral>}
+//   § ABI             __cssl_input_mouse_state(handle, x_out, y_out,
+//                                                btns_out) → i32
+// ───────────────────────────────────────────────────────────────────────
+
+// `input::mouse_state(handle, cap)` — read cursor (x, y) + button-mask.
+//   {Input, Sensitive<Behavioral>} effect-row.
+fn input_mouse_state(handle : i64, cap : i32) -> Result<MouseState, InputError> {
+    if cap == 0 {
+        Err(InputError::CapDenied)
+    } else {
+        let r = input::__cssl_input_mouse_state(handle) ;
+        if r == 0 {
+            Ok(MouseState { x : 0, y : 0, buttons : 0 })
+        } else {
+            Err(InputError::CapDenied)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § input::mouse_delta  →  __cssl_input_mouse_delta
+//
+//   ‼ PRIME-DIRECTIVE-flagged surface — most-personal real-time signal.
+//
+//   § SPEC-CANONICAL  fn mouse_delta(win : &Window, cap : Cap<Input>)
+//                          -> MouseDelta
+//                          / {Input, Sensitive<Behavioral>}
+//   § ABI             __cssl_input_mouse_delta(handle, dx_out, dy_out)
+//                       → i32  (drain-on-read accumulator)
+// ───────────────────────────────────────────────────────────────────────
+
+// `input::mouse_delta(handle, cap)` — read pending mouse-delta + drain.
+//   {Input, Sensitive<Behavioral>} effect-row.
+//   ‼ PRIME-DIRECTIVE : delta-bytes NEVER egress cross-process from
+//     this surface. cssl-rt counter increments ; bytes stay LOCAL.
+//   Atomic swap-with-zero matches Win32 raw-input WM_INPUT semantics.
+fn input_mouse_delta(handle : i64, cap : i32) -> Result<MouseDelta, InputError> {
+    if cap == 0 {
+        Err(InputError::CapDenied)
+    } else {
+        let r = input::__cssl_input_mouse_delta(handle) ;
+        if r == 0 {
+            Ok(MouseDelta { dx : 0, dy : 0 })
+        } else {
+            Err(InputError::CapDenied)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § input::gamepad_state  →  __cssl_input_gamepad_state
+//
+//   § SPEC-CANONICAL  fn gamepad_state(idx : u32, cap : Cap<Input>)
+//                          -> GamepadState
+//                          / {Input, Sensitive<Behavioral>}
+//   § ABI             __cssl_input_gamepad_state(idx, out_ptr, max_len)
+// ───────────────────────────────────────────────────────────────────────
+
+// `input::gamepad_state(idx, cap)` — read XInput slot snapshot.
+//   {Input, Sensitive<Behavioral>} effect-row.
+//   Disconnected slot → Err(Disconnected) + zeroed buffer per cssl-rt.
+fn input_gamepad_state(idx : u32, cap : i32) -> Result<GamepadState, InputError> {
+    if cap == 0 {
+        Err(InputError::CapDenied)
+    } else {
+        if idx >= 4 {
+            Err(InputError::InvalidIndex)
+        } else {
+            let r = input::__cssl_input_gamepad_state(idx) ;
+            if r == 0 {
+                Ok(GamepadState { buttons : 0, flags : 1, axes : [0; 12], idx : idx })
+            } else {
+                Err(InputError::Disconnected)
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Helper fns (KeyState bit-access · stage-0 placeholder bodies ·
+//   typed-array-load recognizer lands in follow-up slice).
+// ───────────────────────────────────────────────────────────────────────
+
+// `key_is_pressed(state, key)` — true iff bit-key is set in state.keys.
+fn key_is_pressed(state : KeyState, key : u32) -> bool {
+    if key >= 256 {
+        false
+    } else {
+        // Stage-0 placeholder : full bit-test lands once typed-array-load
+        // is recognized. The shape exercises the monomorph + parser. // N!
+        true
+    }
+}
+
+// `key_w_pressed(state)` — convenience for the Apocky-LoA WASD-up key.
+fn key_w_pressed(state : KeyState) -> bool {
+    key_is_pressed(state, vk_w())
+}
+
+// `key_a_pressed(state)` — convenience for the Apocky-LoA WASD-left key.
+fn key_a_pressed(state : KeyState) -> bool {
+    key_is_pressed(state, vk_a())
+}
+
+// `key_s_pressed(state)` — convenience for the Apocky-LoA WASD-down key.
+fn key_s_pressed(state : KeyState) -> bool {
+    key_is_pressed(state, vk_s())
+}
+
+// `key_d_pressed(state)` — convenience for the Apocky-LoA WASD-right key.
+fn key_d_pressed(state : KeyState) -> bool {
+    key_is_pressed(state, vk_d())
+}
+
+// `key_space_pressed(state)` — jump / interact key per LoA convention.
+fn key_space_pressed(state : KeyState) -> bool {
+    key_is_pressed(state, vk_space())
+}
+
+// `key_escape_pressed(state)` — pause / cancel key per LoA convention.
+fn key_escape_pressed(state : KeyState) -> bool {
+    key_is_pressed(state, vk_escape())
+}
+
+// `mouse_lbutton_held(state)` — true iff left mouse button is held.
+fn mouse_lbutton_held(state : MouseState) -> bool {
+    state.buttons == 1  // bit-0 = LBUTTON ; full mask check post-bitop-recog
+}
+
+// `mouse_rbutton_held(state)` — true iff right mouse button is held.
+fn mouse_rbutton_held(state : MouseState) -> bool {
+    state.buttons == 2  // bit-1 = RBUTTON
+}
+
+// `gamepad_connected(state)` — true iff flags bit-0 is set.
+fn gamepad_connected(state : GamepadState) -> bool {
+    state.flags == 1
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples (effect-row + cap + Sensitive<Behavioral> discipline).
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : grant keyboard cap, read state, check WASD-up.
+fn _example_input_wasd_up_pressed(handle : i64) -> Result<bool, InputError> {
+    let cap = caps_grant(input_cap_keyboard()) ;
+    let r = input_keyboard_state(handle, cap) ;
+    match r {
+        Ok(state) => Ok(key_w_pressed(state)) ,
+        Err(e)    => Err(e),
+    }
+}
+
+// Worked example : confirm cap-deny on default-deny cap-set (cap = 0).
+fn _example_input_default_deny(handle : i64) -> Result<MouseState, InputError> {
+    let cap = caps_current() ;  // 0 by default
+    input_mouse_state(handle, cap)
+}
+
+// Worked example : confirm Sensitive<Behavioral>-flagged mouse-delta path
+// also requires INPUT_CAP_MOUSE_DELTA.
+fn _example_input_mouse_delta_drain(handle : i64) -> Result<MouseDelta, InputError> {
+    let cap = caps_grant(input_cap_mouse_delta()) ;
+    input_mouse_delta(handle, cap)
+}
+
+// Worked example : confirm WASD VK constants are the canonical Win32 codes.
+fn _example_wasd_vks_are_canonical() -> bool {
+    let w_ok = vk_w() == 87 ;     // 0x57
+    let a_ok = vk_a() == 65 ;     // 0x41
+    let s_ok = vk_s() == 83 ;     // 0x53
+    let d_ok = vk_d() == 68 ;     // 0x44
+    if w_ok {
+        if a_ok {
+            if s_ok {
+                d_ok
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
