@@ -2851,6 +2851,9 @@ fn lower_call(
     if let Some(result) = try_lower_window_call(ctx, callee, args, span) {
         return Some(result);
     }
+    if let Some(result) = try_lower_input_call(ctx, callee, args, span) {
+        return Some(result);
+    }
     // Lower each arg ; collect operand value-ids + types (arg-type needed
     // for intrinsic-result-type inference below).
     let mut operand_ids = Vec::with_capacity(args.len());
@@ -5238,6 +5241,124 @@ fn emit_window_op(
         .with_attribute("window_effect", "true")
         .with_attribute("family", "window")
         .with_attribute("op", verb)
+        .with_attribute("source_loc", format!("{span:?}"));
+    for &id in operands {
+        op = op.with_operand(id);
+    }
+    ctx.ops.push(op);
+    (result_id, result_ty)
+}
+
+/// Dispatch an `input::*` callee to the matching emit-input helper.
+///
+/// Returns `Some(_)` if `callee` is a 2-segment path of the form
+/// `input::<verb>` ; verb+arity per `cgen_input::INPUT_*_OPERAND_COUNT` +
+/// `MIR_INPUT_*_OP_NAME` constants. Op-names use DOTTED segments
+/// (`cssl.input.keyboard.state` ; matches FIX2 dispatch).
+///
+/// ‼ PRIME-DIRECTIVE : `input::keyboard_state` + `input::mouse_delta` are
+///   most-personal real-time signals (Sensitive<Behavioral> per spec/24
+///   § IFC-LABELS). The `caps_required = "input_*"` attribute is the
+///   stage-0 marker downstream cap-walkers consume.
+fn try_lower_input_call(
+    ctx: &mut BodyLowerCtx<'_>,
+    callee: &HirExpr,
+    args: &[HirCallArg],
+    span: Span,
+) -> Option<(ValueId, MirType)> {
+    let HirExprKind::Path { segments, .. } = &callee.kind else {
+        return None;
+    };
+    if segments.len() != 2 || ctx.interner.resolve(segments[0]) != "input" {
+        return None;
+    }
+    let op = ctx.interner.resolve(segments[1]);
+    // Input result-types per cgen_input signatures :
+    //   keyboard_state → i32 retcode
+    //   mouse_state    → i32 retcode
+    //   mouse_delta    → i32 retcode
+    //   gamepad_state  → i32 retcode
+    let i32ty = MirType::Int(IntWidth::I32);
+    match (op.as_str(), args.len()) {
+        ("keyboard_state", 3) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            let (o, _) = lower_call_arg(ctx, &args[1])?;
+            let (m, _) = lower_call_arg(ctx, &args[2])?;
+            Some(emit_input_op(
+                ctx,
+                "cssl.input.keyboard.state",
+                "keyboard_state",
+                &[h, o, m],
+                i32ty,
+                span,
+                "input_keyboard",
+            ))
+        }
+        ("mouse_state", 4) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            let (x, _) = lower_call_arg(ctx, &args[1])?;
+            let (y, _) = lower_call_arg(ctx, &args[2])?;
+            let (b, _) = lower_call_arg(ctx, &args[3])?;
+            Some(emit_input_op(
+                ctx,
+                "cssl.input.mouse.state",
+                "mouse_state",
+                &[h, x, y, b],
+                i32ty,
+                span,
+                "input_mouse",
+            ))
+        }
+        ("mouse_delta", 3) => {
+            let (h, _) = lower_call_arg(ctx, &args[0])?;
+            let (dx, _) = lower_call_arg(ctx, &args[1])?;
+            let (dy, _) = lower_call_arg(ctx, &args[2])?;
+            Some(emit_input_op(
+                ctx,
+                "cssl.input.mouse.delta",
+                "mouse_delta",
+                &[h, dx, dy],
+                i32ty,
+                span,
+                "input_mouse",
+            ))
+        }
+        ("gamepad_state", 3) => {
+            let (i, _) = lower_call_arg(ctx, &args[0])?;
+            let (o, _) = lower_call_arg(ctx, &args[1])?;
+            let (m, _) = lower_call_arg(ctx, &args[2])?;
+            Some(emit_input_op(
+                ctx,
+                "cssl.input.gamepad.state",
+                "gamepad_state",
+                &[i, o, m],
+                i32ty,
+                span,
+                "input_gamepad",
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Internal helper : emit a `cssl.input.<verb>` op with canonical attribute set.
+fn emit_input_op(
+    ctx: &mut BodyLowerCtx<'_>,
+    op_name: &str,
+    verb: &str,
+    operands: &[ValueId],
+    result_ty: MirType,
+    span: Span,
+    caps_required: &str,
+) -> (ValueId, MirType) {
+    let result_id = ctx.fresh_value_id();
+    let mut op = MirOp::std(op_name)
+        .with_result(result_id, result_ty.clone())
+        .with_attribute("input_effect", "true")
+        .with_attribute("family", "input")
+        .with_attribute("op", verb)
+        .with_attribute("caps_required", caps_required)
+        .with_attribute("ifc_label", "Sensitive<Behavioral>")
         .with_attribute("source_loc", format!("{span:?}"));
     for &id in operands {
         op = op.with_operand(id);
@@ -7804,6 +7925,71 @@ mod tests {
             }",
         );
         assert!(find_op(&f, "cssl.window.spawn").is_none());
+    }
+
+    #[test]
+    fn lower_input_keyboard_state_emits_cssl_input_keyboard_state() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, o : i64, m : i64) -> i32 { input::keyboard_state(h, o, m) }",
+        );
+        let op = find_op(&f, "cssl.input.keyboard.state")
+            .expect("input::keyboard_state should lower to cssl.input.keyboard.state");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(op.results[0].ty, MirType::Int(IntWidth::I32));
+        assert_eq!(attr(op, "input_effect"), Some("true"));
+        assert_eq!(attr(op, "family"), Some("input"));
+        assert_eq!(attr(op, "op"), Some("keyboard_state"));
+        assert_eq!(attr(op, "caps_required"), Some("input_keyboard"));
+        assert_eq!(attr(op, "ifc_label"), Some("Sensitive<Behavioral>"));
+    }
+
+    #[test]
+    fn lower_input_mouse_state_emits_cssl_input_mouse_state() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, x : i64, y : i64, b : i64) -> i32 { input::mouse_state(h, x, y, b) }",
+        );
+        let op = find_op(&f, "cssl.input.mouse.state").expect("input::mouse_state should lower");
+        assert_eq!(op.operands.len(), 4);
+        assert_eq!(attr(op, "op"), Some("mouse_state"));
+        assert_eq!(attr(op, "caps_required"), Some("input_mouse"));
+    }
+
+    #[test]
+    fn lower_input_mouse_delta_emits_cssl_input_mouse_delta() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, dx : i64, dy : i64) -> i32 { input::mouse_delta(h, dx, dy) }",
+        );
+        let op = find_op(&f, "cssl.input.mouse.delta").expect("input::mouse_delta should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(attr(op, "op"), Some("mouse_delta"));
+        assert_eq!(attr(op, "ifc_label"), Some("Sensitive<Behavioral>"));
+    }
+
+    #[test]
+    fn lower_input_gamepad_state_emits_cssl_input_gamepad_state() {
+        let (f, _) = lower_one(
+            "fn f(i : i64, o : i64, m : i64) -> i32 { input::gamepad_state(i, o, m) }",
+        );
+        let op = find_op(&f, "cssl.input.gamepad.state")
+            .expect("input::gamepad_state should lower");
+        assert_eq!(op.operands.len(), 3);
+        assert_eq!(attr(op, "op"), Some("gamepad_state"));
+        assert_eq!(attr(op, "caps_required"), Some("input_gamepad"));
+    }
+
+    #[test]
+    fn lower_input_wrong_arity_falls_through() {
+        // input::keyboard_state() with 0 args doesn't match (expects 3).
+        let (f, _) = lower_one("fn f() -> i32 { input::keyboard_state() }");
+        assert!(find_op(&f, "cssl.input.keyboard.state").is_none());
+    }
+
+    #[test]
+    fn lower_non_input_path_is_not_claimed() {
+        let (f, _) = lower_one(
+            "fn f(h : i64, o : i64, m : i64) -> i32 { foo::keyboard_state(h, o, m) }",
+        );
+        assert!(find_op(&f, "cssl.input.keyboard.state").is_none());
     }
 
     // ───────────────────────────────────────────────────────────────────
