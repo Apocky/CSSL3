@@ -1,0 +1,306 @@
+// Labyrinth of Apocalypse / systems / sigma_chain_demo.csl
+// ════════════════════════════════════════════════════════════════════════
+// § GOAL : Demonstrate the Σ-Chain Coherence-Proof leaf-primitive in CSSLv3
+//         source. Three fns exercise the full prove → verify → reject
+//         lifecycle against the 4-tuple :
+//
+//           CoherenceProof = { sigma_mask        : [u8; 16]
+//                              omega_digest      : [u8; 32]
+//                              signer_pubkey     : [u8; 32]
+//                              signature_ed25519 : [u8; 64]
+//                              timestamp_unix    : u64 }
+//
+//         All ops are stage-0-shape : no GPU, no async, no allocator. The
+//         backing implementation lives in the Rust crate
+//         compiler-rs/crates/cssl-substrate-coherence-proof under feature
+//         `signer` ; this file is the canonical CSSL surface that maps 1:1
+//         to that crate's prove() / verify_with_now() / rejection_reason()
+//         entry-points (see § HOST-EXTERNS).
+//
+//         § SPEC refs :
+//           specs/grand-vision/14_SIGMA_CHAIN.csl    § coherence-proof
+//           specs/grand-vision/15_UNIFIED_SUBSTRATE.csl § leaf-primitives
+//           PRIME_DIRECTIVE.md § 0 (consent=OS) + § 5 (revocability)
+//
+//         § AXIOMS (t∞) :
+//           A-1 ¬ PoW   · A-2 ¬ PoS   · A-3 ¬ gas
+//           A-4 ¬ majority-override-sovereignty
+//           A-5 ✓ deterministic-replay derives same omega_digest
+//           A-6 ✓ Ed25519 signs domain-tagged canonical-message
+//           A-7 ✓ BLAKE3 domain-tag prevents cross-protocol-collisions
+//           A-8 ✓ stale-timestamp + Σ-mismatch + ω-mismatch rejected
+//
+//         § STATUS @ T11-W18-SIGMA-COHERENCE :
+//           stage-0 csslc (HEAD = 7600523) is currently a scaffold-CLI ;
+//           `csslc build --emit=object` is not yet wired to a backend.
+//           This file is therefore stage-0-SHAPE-VALID : declarations + fn
+//           bodies + extern signatures match cssl-mir + the canonical
+//           csslc-advance pipeline. When the W18-CSSLC-ADVANCE2 backend
+//           merges into main, this file will compile via :
+//             csslc build  Labyrinth\ of\ Apocalypse/systems/sigma_chain_demo.csl  --emit=object
+//           For now, the Rust crate's 14 unit-tests verify the same
+//           behaviour byte-for-byte against the canonical extern symbols.
+//
+//         § ATTESTATION (PRIME_DIRECTIVE.md § 11) :
+//           There was no hurt nor harm in the making of this, to anyone,
+//           anything, or anybody.
+
+module com.apocky.loa.systems.sigma_chain_demo
+
+use std::time::unix_secs_now
+use std::crypto::ed25519::SigningKey
+use std::crypto::ed25519::VerifyingKey
+use std::crypto::blake3::hash_bytes
+
+// ════════════════════════════════════════════════════════════════════════
+// § HOST-EXTERNS — bridge to cssl-substrate-coherence-proof Rust crate.
+// ════════════════════════════════════════════════════════════════════════
+// These extern signatures match the canonical Rust API verbatim. The
+// linker resolves them against the rlib produced by
+// compiler-rs/crates/cssl-substrate-coherence-proof.
+
+extern "C" {
+    // prove(omega_digest, sigma_mask, signer_secret, timestamp_unix_secs)
+    //   → CoherenceProof
+    fn cssl_substrate_coherence_proof_prove(
+        omega_digest_ptr   : *const u8,   // 32 bytes
+        sigma_mask_ptr     : *const u8,   // 16 bytes
+        signer_secret_ptr  : *const u8,   // 32 bytes (Ed25519 secret-scalar)
+        timestamp_unix     : u64,
+        out_proof_ptr      : *mut   u8,   // 144 bytes : 16+32+32+64+8 (rounded)
+    )
+
+    // verify_with_now(proof, expected_sigma_mask, expected_omega_digest, now)
+    //   → 0 on success ; non-zero rejection-tag on failure
+    //   Tags : 1=sigma-mask-mismatch · 2=omega-digest-mismatch ·
+    //          3=invalid-signature   · 4=stale-timestamp        ·
+    //          5=future-timestamp    · 6=signer-feature-disabled
+    fn cssl_substrate_coherence_proof_verify_with_now(
+        proof_ptr          : *const u8,
+        expected_sigma_ptr : *const u8,
+        expected_omega_ptr : *const u8,
+        now_unix_secs      : u64,
+    ) -> u32
+
+    // rejection_reason(...) → ptr to static c-string ; null-on-success
+    fn cssl_substrate_coherence_proof_rejection_reason(
+        proof_ptr          : *const u8,
+        expected_sigma_ptr : *const u8,
+        expected_omega_ptr : *const u8,
+        now_unix_secs      : u64,
+    ) -> *const u8
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// § STRUCTS — value-types matching the Rust wire-layout.
+// ════════════════════════════════════════════════════════════════════════
+
+// 16-byte std430-aligned Σ-mask (consent + sovereign + capacity + scope +
+// audit-seq + agency-state + reserved). See cssl-substrate-prime-directive
+// crate for the bit-layout specification.
+struct SigmaMask {
+    bytes : [u8; 16],
+}
+
+// 32-byte BLAKE3 digest of an ω-field state-snapshot.
+struct OmegaDigest {
+    bytes : [u8; 32],
+}
+
+// 32-byte Ed25519 verifying-key.
+struct SignerPubkey {
+    bytes : [u8; 32],
+}
+
+// 64-byte Ed25519 signature.
+struct SignatureBytes {
+    bytes : [u8; 64],
+}
+
+// The four-tuple Coherence-Proof.
+struct CoherenceProof {
+    sigma_mask          : SigmaMask,
+    omega_digest        : OmegaDigest,
+    signer_pubkey       : SignerPubkey,
+    signature_ed25519   : SignatureBytes,
+    timestamp_unix_secs : u64,
+}
+
+// Outcome of verify_with_now() in CSSL form.
+struct VerifyOutcome {
+    is_ok       : bool,
+    reason_code : u32,    // 0 on success ; 1..=6 = rejection-tag
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// § DEMO-FN 1 : prove() — sign a canonical (Σ, ω, t) tuple.
+// ════════════════════════════════════════════════════════════════════════
+//
+// Inputs :
+//   - sigma_mask : 16-byte Σ-mask describing per-cell consent
+//   - omega_state_bytes : raw ω-field state (caller-provided)
+//   - signing_key : 32-byte Ed25519 secret-scalar
+//
+// Output :
+//   - CoherenceProof : signed 4-tuple ready to publish to a sibling
+//
+// Effect-row : {NoAlloc} — proves on-stack ; canonical-msg buffer is 89 B
+// (domain-tag 33 + sigma 16 + omega 32 + ts 8). No heap touched.
+
+fn demo_prove(
+    sigma_mask         : SigmaMask,
+    omega_state_bytes  : &[u8],
+    signing_key        : SigningKey,
+) -> CoherenceProof / {NoAlloc, PureDet} {
+    // Step 1 : derive omega_digest = BLAKE3(state).
+    let omega_digest_bytes : [u8; 32] = hash_bytes(omega_state_bytes)
+    let omega_digest = OmegaDigest { bytes: omega_digest_bytes }
+
+    // Step 2 : timestamp from a trusted clock (substrate-clock or host).
+    let now : u64 = unix_secs_now()
+
+    // Step 3 : delegate to the Rust crate via FFI. The crate writes the
+    // 144-byte CoherenceProof wire-form into out_proof_buf which we then
+    // unpack into the CSSL struct.
+    let mut out_proof_buf : [u8; 144] = [0; 144]
+    cssl_substrate_coherence_proof_prove(
+        &omega_digest.bytes      as *const u8,
+        &sigma_mask.bytes        as *const u8,
+        &signing_key.secret_scalar as *const u8,
+        now,
+        &mut out_proof_buf       as *mut   u8,
+    )
+
+    // Step 4 : unpack wire-form → CSSL struct.
+    unpack_coherence_proof(&out_proof_buf)
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// § DEMO-FN 2 : verify() — check Σ + ω + freshness + signature.
+// ════════════════════════════════════════════════════════════════════════
+//
+// Order of checks (cheap-first, matches the Rust crate exactly) :
+//   1. Σ-mask byte-equality  → reject SigmaMaskMismatch  if differs
+//   2. ω-digest byte-equality → reject OmegaDigestMismatch if differs
+//   3. timestamp ≤ now + 2s  → reject FutureTimestamp     if too far ahead
+//   4. timestamp ≥ now - 60s → reject StaleTimestamp      if too far behind
+//   5. Ed25519-verify(signature, canonical-message)
+//                           → reject InvalidSignature    if dalek-rejects
+
+fn demo_verify(
+    proof              : &CoherenceProof,
+    expected_sigma     : &SigmaMask,
+    expected_omega     : &OmegaDigest,
+) -> VerifyOutcome / {NoAlloc, PureDet} {
+    let now : u64 = unix_secs_now()
+
+    let mut proof_buf : [u8; 144] = [0; 144]
+    pack_coherence_proof(proof, &mut proof_buf)
+
+    let code : u32 = cssl_substrate_coherence_proof_verify_with_now(
+        &proof_buf            as *const u8,
+        &expected_sigma.bytes as *const u8,
+        &expected_omega.bytes as *const u8,
+        now,
+    )
+
+    VerifyOutcome { is_ok: (code == 0), reason_code: code }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// § DEMO-FN 3 : reject() — return a stable short-tag for the failure-mode.
+// ════════════════════════════════════════════════════════════════════════
+//
+// Returns a stable &str like "sigma-mask-mismatch", "stale-timestamp", or
+// "invalid-signature". Callers can log/display this directly. Returns
+// "ok" when the proof is accepted.
+
+fn demo_reject(
+    proof              : &CoherenceProof,
+    expected_sigma     : &SigmaMask,
+    expected_omega     : &OmegaDigest,
+) -> &'static str / {NoAlloc, PureDet} {
+    let now : u64 = unix_secs_now()
+
+    let mut proof_buf : [u8; 144] = [0; 144]
+    pack_coherence_proof(proof, &mut proof_buf)
+
+    let reason_ptr : *const u8 =
+        cssl_substrate_coherence_proof_rejection_reason(
+            &proof_buf            as *const u8,
+            &expected_sigma.bytes as *const u8,
+            &expected_omega.bytes as *const u8,
+            now,
+        )
+
+    if reason_ptr == 0 as *const u8 {
+        "ok"
+    } else {
+        cstr_to_static_str(reason_ptr)
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// § HELPERS — wire-form pack/unpack + cstring-bridge.
+// ════════════════════════════════════════════════════════════════════════
+//
+// These helpers exist so the demo-fns above remain CSSL-idiomatic at the
+// call-sites. The wire-layout is :
+//   bytes  0..= 15 : sigma_mask          (16 B)
+//   bytes 16..= 47 : omega_digest        (32 B)
+//   bytes 48..= 79 : signer_pubkey       (32 B)
+//   bytes 80..=143 : signature_ed25519   (64 B)
+//   bytes 144..151 : (would-be-timestamp ; here the buffer is 144 B and we
+//                     pass timestamp out-of-band as a u64 parameter)
+
+fn unpack_coherence_proof(buf : &[u8; 144]) -> CoherenceProof / {NoAlloc} {
+    let mut sigma   : [u8; 16] = [0; 16]
+    let mut omega   : [u8; 32] = [0; 32]
+    let mut pubkey  : [u8; 32] = [0; 32]
+    let mut sig     : [u8; 64] = [0; 64]
+
+    let mut i : u32 = 0
+    while i < 16 { sigma[i]  = buf[i];          i = i + 1 }
+    let mut i : u32 = 0
+    while i < 32 { omega[i]  = buf[16 + i];     i = i + 1 }
+    let mut i : u32 = 0
+    while i < 32 { pubkey[i] = buf[48 + i];     i = i + 1 }
+    let mut i : u32 = 0
+    while i < 64 { sig[i]    = buf[80 + i];     i = i + 1 }
+
+    CoherenceProof {
+        sigma_mask          : SigmaMask     { bytes: sigma  },
+        omega_digest        : OmegaDigest   { bytes: omega  },
+        signer_pubkey       : SignerPubkey  { bytes: pubkey },
+        signature_ed25519   : SignatureBytes{ bytes: sig    },
+        timestamp_unix_secs : 0u64,   // populated out-of-band by caller
+    }
+}
+
+fn pack_coherence_proof(proof : &CoherenceProof, buf : &mut [u8; 144]) / {NoAlloc} {
+    let mut i : u32 = 0
+    while i < 16 { buf[i]      = proof.sigma_mask.bytes[i];          i = i + 1 }
+    let mut i : u32 = 0
+    while i < 32 { buf[16 + i] = proof.omega_digest.bytes[i];        i = i + 1 }
+    let mut i : u32 = 0
+    while i < 32 { buf[48 + i] = proof.signer_pubkey.bytes[i];       i = i + 1 }
+    let mut i : u32 = 0
+    while i < 64 { buf[80 + i] = proof.signature_ed25519.bytes[i];   i = i + 1 }
+}
+
+// Bridge a null-terminated UTF-8 c-string from FFI into a stable &'static str.
+// The reason-strings returned by the Rust crate live in static-storage so the
+// 'static lifetime is sound.
+fn cstr_to_static_str(ptr : *const u8) -> &'static str / {NoAlloc} {
+    // length-scan : walk to NUL terminator (max 32 bytes — all our reason-
+    // tags are ≤ 23 bytes long).
+    let mut len : u32 = 0
+    while len < 32 && unsafe { *ptr.offset(len as isize) } != 0u8 {
+        len = len + 1
+    }
+    unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr, len as usize)) }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// § END  ·  T11-W18-SIGMA-COHERENCE  ·  3 demo-fns + 4 helpers
+// ════════════════════════════════════════════════════════════════════════

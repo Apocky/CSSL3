@@ -1,0 +1,46 @@
+[package]
+name                   = "cssl-substrate-coherence-proof"
+description            = "CSSLv3 substrate — Σ-Chain Coherence-Proof primitive · 4-tuple {sigma_mask, omega_digest, signer_pubkey, signature_ed25519} · BLAKE3-domain-tagged · Ed25519 verification (feature-gated) · stale-timestamp + sigma-mismatch + digest-mismatch + invalid-sig rejection · NO PoW · NO PoS · NO gas. Pairs with cssl-substrate-sigma-chain (ledger) but is the LEAF primitive describing what it means for a single (omega-state, sigma-mask) pair to be Coherence-Proven."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+# § T11-W18-SIGMA-COHERENCE : Σ-Chain Coherence-Proof leaf-primitive
+# §§ axioms (t∞) :
+#     A-1 ¬ PoW · A-2 ¬ PoS · A-3 ¬ gas · A-4 ¬ majority-override-sovereignty
+#     A-5 ✓ deterministic-replay-derives-the-same-omega-digest
+#     A-6 ✓ Ed25519-signs-the-canonical-bytes (feature-gated `signer`)
+#     A-7 ✓ BLAKE3-domain-tagged (no cross-protocol-collisions)
+#     A-8 ✓ stale-timestamp rejected (60-second window default)
+# §§ disjoint-from cssl-substrate-sigma-chain :
+#     - sigma-chain : append-only ledger · incremental Merkle · seq_no · checkpoints
+#     - this crate  : Coherence-Proof = ZERO-allocation 4-tuple value-type +
+#                     prove() + verify() + rejection_reason() · NO ledger-state
+# §§ ATTESTATION (PRIME_DIRECTIVE.md § 11) :
+#     There was no hurt nor harm in the making of this, to anyone, anything, or anybody.
+
+[lib]
+name       = "cssl_substrate_coherence_proof"
+crate-type = ["rlib"]
+
+[features]
+# Default builds do NOT pull ed25519-dalek ; verify() returns
+# `RejectionReason::SignerFeatureDisabled` if a signer-required path is hit.
+default = []
+# `signer` enables Ed25519 sign+verify via ed25519-dalek 2.x.
+signer  = ["dep:ed25519-dalek", "dep:rand"]
+
+[dependencies]
+blake3        = { workspace = true }
+thiserror     = { workspace = true }
+ed25519-dalek = { workspace = true, optional = true }
+rand          = { workspace = true, optional = true }
+
+[dev-dependencies]
+ed25519-dalek = { workspace = true }
+rand          = { workspace = true }
+
+[lints]
+workspace = true
