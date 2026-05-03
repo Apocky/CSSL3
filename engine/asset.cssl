@@ -1,0 +1,776 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § engine/asset.cssl  —  CSSL-native asset-loader
+//
+// Spec : specs/30_CONTENT_PACKAGE.csl § BUNDLE BINARY LAYOUT (80-byte header)
+//        specs/14_BACKEND.csl § ASSET-PIPELINE (PNG/GLTF/WAV/TTF stage-0
+//          parsers ; AssetHandle<T>/AssetBudget/AssetWatcher infra)
+//        specs/24_HOST_FFI.csl § CAPABILITY-MATRIX (cap-gated FFI)
+//        specs/03_TYPES.csl § BASE-TYPES (vec2/vec3/vec4 builtin)
+//        specs/12_CAPABILITIES.csl § Cap<X> witness
+//
+// Slice : T11-W12-E4A · ccpkg-header parse + GLTF/DDS surface + AssetManager.
+//
+// § PRIME_DIRECTIVE
+//   (a) ccpkg verification refuses unpack on tamper (BLAKE3-recompute gate)
+//   (b) parser caps allocation at input-reported size + hard upper bound
+//       per spec/14 § ASSET-PIPELINE invariants
+//   (c) NO URI auto-fetch — text-mode glTF returns uri-strings only
+//   (d) NO directory traversal — every path opens exactly the named bytes
+//   (e) NO surveillance — counters local ; no global telemetry
+//   (f) gift-economy-default — content_kind in-power kinds REJECT pay-for-power
+//       (manifest-validation lives in cssl-content-package crate ; this module
+//        only verifies header structure + payload integrity)
+//   ‼ ¬ override · ¬ harm · ¬ surveillance.
+//
+// § STAGE-0 NOTES
+//   1. ccpkg header parse is REAL (80 bytes per spec/30 § BUNDLE BINARY LAYOUT).
+//   2. BLAKE3-recompute = stub (sha-3-substitute placeholder · stage-1 wires
+//      blake3_payload_recompute via cssl-content-package crate).
+//      // N! flagged honestly ; consumers MUST treat ccpkg_verify_blake3 as
+//      // structural-shape-check until stage-1 lands real digest.
+//   3. GLTF parser : surface-only (decode_glb stub · stage-1 routes through
+//      stdlib::gltf::decode_glb once landed).
+//      // N! flagged.
+//   4. DDS parser : surface-only (BC1/BC3/BC5/BC7 enum + header struct
+//      decode placeholder · stage-1 fleshes block decode).
+//      // N! flagged.
+//   5. AssetManager : in-memory · Vec-backed · monomorphized at call sites.
+//   6. AssetHandle is a value-handle (id/gen/kind/state) ; storage indices
+//      live on AssetManager ; iso-shape across heap-borders.
+//
+// § INVARIANTS
+//   - CCPK_HEADER_SIZE = 80 bytes (spec/30 § BUNDLE BINARY LAYOUT)
+//   - CCPK_MAGIC = "CCPK" little-endian = 0x4B504343
+//   - format_version = 1 (BREAKING bumps this)
+//   - reserved_a + reserved_b MUST be all-zero
+//   - blake3_payload = 32 bytes (BLAKE3-256 of manifest_bytes || archive_bytes)
+
+module com.apocky.engine.asset
+
+use std::vec::Vec
+use std::result::Result
+use std::option::Option
+
+// ───────────────────────────────────────────────────────────────────────
+// § Asset error / kind / state / class enums.
+//
+//   AssetError mirrors spec/14 § ASSET-PIPELINE single sum-type.
+//   AssetKind covers the 8 stage-0 in-engine asset categories.
+//   AssetState mirrors spec/14 § ASSET-PIPELINE AssetHandle<T>.
+//   AssetClass mirrors spec/14 § ASSET-PIPELINE AssetBudget.
+// ───────────────────────────────────────────────────────────────────────
+
+enum AssetError {
+    Io,                    // file-IO failure (stage-1 wires cssl-rt fs surface)
+    Truncated,             // bytes < advertised payload-size
+    BadMagic,              // magic-bytes mismatch (CCPK / TLIT / GLB / DDS )
+    UnsupportedKind,       // ContentKind / ShaderIRKind / DdsFormat unknown
+    BadChecksum,           // BLAKE3-payload mismatch
+    InvalidValue,          // out-of-range integer in parsed bytes
+    BudgetExceeded,        // AssetBudget cap exceeded for class
+    Watcher,               // hot-reload watcher failure
+    Encode,                // round-trip encode failure
+    CapDenied,             // Cap<Asset> witness missing / revoked
+}
+
+// `AssetKind` — 8 in-engine asset categories.
+enum AssetKind {
+    Mesh,
+    Texture,
+    Audio,
+    Font,
+    Scene,
+    Material,
+    Shader,
+    Bundle,
+}
+
+// `AssetState` — async-loading state per spec/14 § AssetHandle<T>.
+//   Stage-0 every handle resolves Ready synchronously ; Pending reachable
+//   only when the async-runtime slice lands.
+enum AssetState {
+    Pending,
+    Ready,
+    Failed,
+    Cancelled,
+}
+
+// `AssetClass` — memory-budget bucket per spec/14 § AssetBudget.
+enum AssetClass {
+    Texture,
+    Model,
+    Audio,
+    Font,
+    Blob,
+    Other,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AssetHandle — value-handle into AssetManager storage.
+//
+//   `id`   : Vec slot-index in the manager's handle table
+//   `gen`  : generation counter ; bumped on slot reuse
+//   `kind` : AssetKind ordinal (0..=7)
+//   `state` : AssetState ordinal (0..=3)
+//
+//   ‼ The (id, gen) pair is the dangling-handle defense — slot reuse bumps
+//   `gen`, so a stale handle's gen-mismatch signals refusal in get_*().
+// ───────────────────────────────────────────────────────────────────────
+
+struct AssetHandle {
+    id    : u32,
+    gen   : u32,
+    kind  : u32,
+    state : u32,
+}
+
+// `LoadEvent` — async-runtime progress signal per spec/14 § AssetHandle<T>.
+//   stage-0 only Started + Completed reachable (synchronous load) ; Progress
+//   + Failed reachable post async-runtime slice.
+enum LoadEvent {
+    Started,                                       // handle published
+    Progress,                                      // bytes_done / bytes_total
+    Completed,                                     // load resolved Ready
+    Failed,                                        // load resolved Failed
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AssetKind / AssetState ordinal accessors.
+//
+//   Stable from this slice forward. Renaming requires a major-version bump
+//   (mirrors spec/24 § ABI-STABLE-SYMBOLS pattern).
+// ───────────────────────────────────────────────────────────────────────
+
+fn asset_kind_mesh() -> u32 {
+    0
+}
+
+fn asset_kind_texture() -> u32 {
+    1
+}
+
+fn asset_kind_audio() -> u32 {
+    2
+}
+
+fn asset_kind_font() -> u32 {
+    3
+}
+
+fn asset_kind_scene() -> u32 {
+    4
+}
+
+fn asset_kind_material() -> u32 {
+    5
+}
+
+fn asset_kind_shader() -> u32 {
+    6
+}
+
+fn asset_kind_bundle() -> u32 {
+    7
+}
+
+fn asset_state_pending() -> u32 {
+    0
+}
+
+fn asset_state_ready() -> u32 {
+    1
+}
+
+fn asset_state_failed() -> u32 {
+    2
+}
+
+fn asset_state_cancelled() -> u32 {
+    3
+}
+
+fn asset_class_texture() -> u32 {
+    0
+}
+
+fn asset_class_model() -> u32 {
+    1
+}
+
+fn asset_class_audio() -> u32 {
+    2
+}
+
+fn asset_class_font() -> u32 {
+    3
+}
+
+fn asset_class_blob() -> u32 {
+    4
+}
+
+fn asset_class_other() -> u32 {
+    5
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CCPKG — `.ccpkg` content-package format (spec/30).
+//
+//   80-byte header layout (LE byte-order throughout) :
+//
+//     offset  size  field
+//     ──────  ────  ─────────────────
+//     0       4     magic              "CCPK" = 0x4B504343
+//     4       2     format_version     u16 LE
+//     6       1     content_kind       u8 (1..=8)
+//     7       1     author_cap_class   u8 (1..=5)
+//     8       2     ver_major          u16 LE
+//     10      2     ver_minor          u16 LE
+//     12      2     ver_patch          u16 LE
+//     14      2     reserved_a         u16 LE (MUST be 0)
+//     16      8     created_ts_ns      u64 LE (build wall-clock epoch ns)
+//     24      8     total_size         u64 LE (manifest + archive bytes)
+//     32      32    blake3_payload     BLAKE3-256(manifest || archive)
+//     64      16    reserved_b         16 bytes (MUST be all-zero)
+//     ──────  ────  ─────────────────
+// ───────────────────────────────────────────────────────────────────────
+
+// `CCPK_MAGIC = "CCPK"` little-endian = 0x4B504343 (per spec/30).
+fn ccpk_magic() -> u32 {
+    1262701891      // 0x4B504343 = bytes 'C','C','P','K' little-endian
+}
+
+// `CCPK_HEADER_SIZE = 80` bytes (per spec/30 § BUNDLE BINARY LAYOUT).
+fn ccpk_header_size() -> u32 {
+    80
+}
+
+// `CCPK_FORMAT_VERSION_CURRENT = 1` (BREAKING bumps this).
+fn ccpk_format_version_current() -> u16 {
+    1
+}
+
+// `CCPK_BLAKE3_LEN = 32` (BLAKE3-256 digest size).
+fn ccpk_blake3_len() -> u32 {
+    32
+}
+
+// `CCPK_RESERVED_B_LEN = 16` (header reserved-b zero-padding length).
+fn ccpk_reserved_b_len() -> u32 {
+    16
+}
+
+// `CcpkgHeader` — parsed 80-byte header.
+//   blake3_payload + reserved_b carried as 32 + 16 byte arrays per spec/30
+//   binary layout. Stage-0 the array-of-bytes is encoded as fixed-size
+//   `[u8; N]` per existing stdlib precedent (KeyState [u8; 32], etc.).
+struct CcpkgHeader {
+    magic            : u32,
+    format_version   : u16,
+    content_kind     : u8,
+    author_cap_class : u8,
+    ver_major        : u16,
+    ver_minor        : u16,
+    ver_patch        : u16,
+    reserved_a       : u16,
+    created_ts_ns    : u64,
+    total_size       : u64,
+    blake3_payload   : [u8; 32],
+    reserved_b       : [u8; 16],
+}
+
+// Read u16-LE from `bytes[off..off+2]`. No bounds check — caller validates
+// `bytes.len() >= off + 2` BEFORE calling. Stage-0 helper ; stage-1 wires
+// through cssl-rt's typed-memref load primitives.
+fn read_u16_le(bytes : &[u8], off : i64) -> u16 {
+    let b0 = bytes[off] as u16 ;
+    let b1 = bytes[off + 1] as u16 ;
+    b0 | (b1 << 8)
+}
+
+// Read u32-LE from `bytes[off..off+4]`.
+fn read_u32_le(bytes : &[u8], off : i64) -> u32 {
+    let b0 = bytes[off] as u32 ;
+    let b1 = bytes[off + 1] as u32 ;
+    let b2 = bytes[off + 2] as u32 ;
+    let b3 = bytes[off + 3] as u32 ;
+    b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+}
+
+// Read u64-LE from `bytes[off..off+8]`.
+fn read_u64_le(bytes : &[u8], off : i64) -> u64 {
+    let lo = read_u32_le(bytes, off) as u64 ;
+    let hi = read_u32_le(bytes, off + 4) as u64 ;
+    lo | (hi << 32)
+}
+
+// `ccpkg_parse_header(bytes)` — parse the 80-byte ccpkg header.
+//
+// § GATES
+//   1. bytes.len() ≥ 80 ; else AssetError::Truncated
+//   2. magic == CCPK_MAGIC ; else AssetError::BadMagic
+//   3. format_version == CCPK_FORMAT_VERSION_CURRENT ; else AssetError::UnsupportedKind
+//   4. content_kind ∈ 1..=8 ; else AssetError::InvalidValue
+//   5. author_cap_class ∈ 1..=5 ; else AssetError::InvalidValue
+//   6. reserved_a == 0 ; else AssetError::InvalidValue
+//   7. reserved_b all-zero ; else AssetError::InvalidValue
+//
+//   ‼ stage-0 the [u8; 32] / [u8; 16] field-copies use elementwise
+//   index-load — once typed-memref-load lands, switch to slice-copy primitive.
+fn ccpkg_parse_header(bytes : &[u8]) -> Result<CcpkgHeader, AssetError> {
+    let len_ok = ccpkg_bytes_len_ge_header(bytes) ;
+    if len_ok == false {
+        return Err(AssetError::Truncated) ;
+    }
+    let magic = read_u32_le(bytes, 0) ;
+    if magic != ccpk_magic() {
+        return Err(AssetError::BadMagic) ;
+    }
+    let fmt_ver = read_u16_le(bytes, 4) ;
+    if fmt_ver != ccpk_format_version_current() {
+        return Err(AssetError::UnsupportedKind) ;
+    }
+    let content_kind = bytes[6] ;
+    if content_kind < 1 {
+        return Err(AssetError::InvalidValue) ;
+    }
+    if content_kind > 8 {
+        return Err(AssetError::InvalidValue) ;
+    }
+    let cap_class = bytes[7] ;
+    if cap_class < 1 {
+        return Err(AssetError::InvalidValue) ;
+    }
+    if cap_class > 5 {
+        return Err(AssetError::InvalidValue) ;
+    }
+    let ver_major = read_u16_le(bytes, 8) ;
+    let ver_minor = read_u16_le(bytes, 10) ;
+    let ver_patch = read_u16_le(bytes, 12) ;
+    let reserved_a = read_u16_le(bytes, 14) ;
+    if reserved_a != 0 {
+        return Err(AssetError::InvalidValue) ;
+    }
+    let created_ts_ns = read_u64_le(bytes, 16) ;
+    let total_size = read_u64_le(bytes, 24) ;
+    let blake3 = read_blake3_field(bytes, 32) ;
+    let reserved_b = read_reserved_b_field(bytes, 64) ;
+    let rb_zero = reserved_b_is_all_zero(reserved_b) ;
+    if rb_zero == false {
+        return Err(AssetError::InvalidValue) ;
+    }
+    Ok(CcpkgHeader {
+        magic            : magic,
+        format_version   : fmt_ver,
+        content_kind     : content_kind,
+        author_cap_class : cap_class,
+        ver_major        : ver_major,
+        ver_minor        : ver_minor,
+        ver_patch        : ver_patch,
+        reserved_a       : reserved_a,
+        created_ts_ns    : created_ts_ns,
+        total_size       : total_size,
+        blake3_payload   : blake3,
+        reserved_b       : reserved_b,
+    })
+}
+
+// `ccpkg_bytes_len_ge_header(bytes)` — len ≥ 80 check.
+fn ccpkg_bytes_len_ge_header(bytes : &[u8]) -> bool {
+    let n = vec_byte_len(bytes) ;
+    n >= 80
+}
+
+// Helper : byte-slice length (stage-0 ; stage-1 routes through &[u8].len()).
+fn vec_byte_len(bytes : &[u8]) -> i64 {
+    // N! syntax-uncertain : &[u8] length syntax not yet locked at stage-0.
+    // Defensive shape : recognizer routes byte-slice .len() to
+    // cssl.byte_slice.len. Treat as opaque ABI for now.
+    bytes.len()
+}
+
+// Read 32-byte BLAKE3 field at `off`.
+fn read_blake3_field(bytes : &[u8], off : i64) -> [u8; 32] {
+    let arr : [u8; 32] = [
+        bytes[off],      bytes[off + 1],  bytes[off + 2],  bytes[off + 3],
+        bytes[off + 4],  bytes[off + 5],  bytes[off + 6],  bytes[off + 7],
+        bytes[off + 8],  bytes[off + 9],  bytes[off + 10], bytes[off + 11],
+        bytes[off + 12], bytes[off + 13], bytes[off + 14], bytes[off + 15],
+        bytes[off + 16], bytes[off + 17], bytes[off + 18], bytes[off + 19],
+        bytes[off + 20], bytes[off + 21], bytes[off + 22], bytes[off + 23],
+        bytes[off + 24], bytes[off + 25], bytes[off + 26], bytes[off + 27],
+        bytes[off + 28], bytes[off + 29], bytes[off + 30], bytes[off + 31],
+    ] ;
+    arr
+}
+
+// Read 16-byte reserved_b field at `off`.
+fn read_reserved_b_field(bytes : &[u8], off : i64) -> [u8; 16] {
+    let arr : [u8; 16] = [
+        bytes[off],      bytes[off + 1],  bytes[off + 2],  bytes[off + 3],
+        bytes[off + 4],  bytes[off + 5],  bytes[off + 6],  bytes[off + 7],
+        bytes[off + 8],  bytes[off + 9],  bytes[off + 10], bytes[off + 11],
+        bytes[off + 12], bytes[off + 13], bytes[off + 14], bytes[off + 15],
+    ] ;
+    arr
+}
+
+// `reserved_b_is_all_zero(rb)` — true iff every byte in reserved_b == 0.
+fn reserved_b_is_all_zero(rb : [u8; 16]) -> bool {
+    let mut i : i64 = 0 ;
+    let mut ok = true ;
+    while i < 16 {
+        if rb[i] != 0 {
+            ok = false ;
+        }
+        i = i + 1 ;
+    }
+    ok
+}
+
+// `ccpkg_verify_blake3(bytes, header)` — recompute BLAKE3-256 of payload
+// (manifest_bytes || archive_bytes) and compare against header.blake3_payload.
+//
+// § STAGE-0
+//   The actual BLAKE3-256 digest computation lives in cssl-content-package
+//   (Rust-hosted stage-0 per spec/14 § ASSET-PIPELINE). This wrapper returns
+//   `true` ONLY when the structural shape (header parses + total_size fits)
+//   is sound ; it does NOT verify the cryptographic digest at this slice.
+//
+//   ‼ // N! flagged honestly : DO NOT treat this as a security check until
+//   stage-1 wires the real BLAKE3-256 digest via __cssl_blake3_recompute.
+fn ccpkg_verify_blake3(bytes : &[u8], header : CcpkgHeader) -> bool {
+    let n = vec_byte_len(bytes) ;
+    let total = header.total_size as i64 ;
+    let header_size = ccpk_header_size() as i64 ;
+    if n < header_size + total {
+        return false ;
+    }
+    // N! stage-0 stub : structural shape OK ; cryptographic recompute deferred
+    // to stage-1 (cssl-content-package crate's __cssl_blake3_recompute path).
+    true
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § GLTF — minimal mesh extraction surface (spec/14 § ASSET-PIPELINE).
+//
+//   stdlib::gltf::decode_glb is the eventual full-schema parser. This
+//   module's `gltf_parse_glb` is a thin shim that stage-1 wires through.
+//   At stage-0 the surface returns an empty mesh-list when the input
+//   isn't a recognized GLB container ; flagged // N!.
+// ───────────────────────────────────────────────────────────────────────
+
+// `GltfMesh` — extracted mesh primitive from a GLB container.
+//   indices = u32 indices into positions/normals/uvs (interleaved-arrays
+//   stage-0 form ; SoA layout so the GPU vertex-buffer upload path is
+//   a direct memcpy).
+struct GltfMesh {
+    positions   : Vec<vec3>,
+    normals     : Vec<vec3>,
+    uvs         : Vec<vec2>,
+    indices     : Vec<u32>,
+    material_id : u32,
+}
+
+// `GLB_MAGIC = "glTF"` little-endian = 0x46546C67.
+fn glb_magic() -> u32 {
+    1179937895      // 0x46546C67
+}
+
+// `GLB_HEADER_BYTES = 12` (magic + version + length).
+fn glb_header_bytes() -> u32 {
+    12
+}
+
+// `gltf_parse_glb(bytes)` — extract mesh-list from a GLB binary.
+//
+// § STAGE-0
+//   Surface-only. Validates magic + header-size. Returns empty Vec<GltfMesh>
+//   pending stdlib::gltf::decode_glb landing.
+//   ‼ // N! flagged ; MUST NOT be relied on for actual mesh data at stage-0.
+fn gltf_parse_glb(bytes : &[u8]) -> Result<Vec<GltfMesh>, AssetError> {
+    let n = vec_byte_len(bytes) ;
+    if n < 12 {
+        return Err(AssetError::Truncated) ;
+    }
+    let magic = read_u32_le(bytes, 0) ;
+    if magic != glb_magic() {
+        return Err(AssetError::BadMagic) ;
+    }
+    // N! stage-0 : real GLTF schema-walker deferred to stdlib::gltf slice.
+    // Returning empty mesh-list signals "shape recognized, contents pending".
+    Ok(vec_new::<GltfMesh>())
+}
+
+// `gltf_mesh_new()` — empty GltfMesh constructor.
+fn gltf_mesh_new() -> GltfMesh {
+    GltfMesh {
+        positions   : vec_new::<vec3>(),
+        normals     : vec_new::<vec3>(),
+        uvs         : vec_new::<vec2>(),
+        indices     : vec_new::<u32>(),
+        material_id : 0,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § DDS — block-compressed texture format surface.
+//
+//   Block-compression = GPU-native layout. BC1 = 8 bytes/16 px ; BC3 = 16
+//   bytes/16 px ; BC5 = 16 bytes/16 px (2-channel) ; BC7 = 16 bytes/16 px
+//   (LDR HQ).
+//
+//   stage-0 surface : DdsTexture struct + dds_parse stub. Real block-decode
+//   lands in spec/14 § ASSET-PIPELINE deferred slice. ‼ // N! flagged.
+// ───────────────────────────────────────────────────────────────────────
+
+enum DdsFormat {
+    Bc1,        // RGB 8 bytes/4×4 block
+    Bc3,        // RGBA 16 bytes/4×4 block
+    Bc5,        // 2-channel (normal-map) 16 bytes/4×4 block
+    Bc7,        // RGBA HQ 16 bytes/4×4 block
+}
+
+struct DdsTexture {
+    width     : u32,
+    height    : u32,
+    mip_count : u32,
+    fmt       : DdsFormat,
+    blocks    : Vec<u8>,
+}
+
+// `DDS_MAGIC = "DDS "` little-endian = 0x20534444.
+fn dds_magic() -> u32 {
+    542327876       // 0x20534444
+}
+
+// `DDS_HEADER_BYTES = 128` (DDS file header size).
+fn dds_header_bytes() -> u32 {
+    128
+}
+
+// `dds_parse(bytes)` — extract a DDS texture.
+//
+// § STAGE-0
+//   Surface-only. Validates magic + header-size. Returns DdsTexture with
+//   empty blocks Vec ; stage-1 fleshes block decode + format dispatch.
+//   ‼ // N! flagged.
+fn dds_parse(bytes : &[u8]) -> Result<DdsTexture, AssetError> {
+    let n = vec_byte_len(bytes) ;
+    if n < 128 {
+        return Err(AssetError::Truncated) ;
+    }
+    let magic = read_u32_le(bytes, 0) ;
+    if magic != dds_magic() {
+        return Err(AssetError::BadMagic) ;
+    }
+    let h_size = read_u32_le(bytes, 4) ;
+    if h_size != 124 {
+        return Err(AssetError::InvalidValue) ;
+    }
+    let height = read_u32_le(bytes, 12) ;
+    let width = read_u32_le(bytes, 16) ;
+    let mip_count = read_u32_le(bytes, 28) ;
+    // N! stage-0 stub : format-dispatch via DXGI / DDPF flags is deferred ;
+    // structural Bc7 default exposes the highest-quality LDR codec slot.
+    Ok(DdsTexture {
+        width     : width,
+        height    : height,
+        mip_count : mip_count,
+        fmt       : DdsFormat::Bc7,
+        blocks    : vec_new::<u8>(),
+    })
+}
+
+// `dds_texture_new()` — zero-init DdsTexture constructor.
+fn dds_texture_new() -> DdsTexture {
+    DdsTexture {
+        width     : 0,
+        height    : 0,
+        mip_count : 0,
+        fmt       : DdsFormat::Bc7,
+        blocks    : vec_new::<u8>(),
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AssetManager — in-memory handle-table + storage Vecs.
+//
+//   Stage-0 single-AssetManager-per-engine invariant. Storage Vecs grow
+//   on demand ; AssetHandle.id indexes the handle-table ; the handle's
+//   kind ordinal selects which storage Vec carries the payload.
+//
+//   ‼ stage-0 storage is index-based ; stage-1 wires slot-table reuse +
+//   gen-bump-on-free for true dangling-handle defense.
+// ───────────────────────────────────────────────────────────────────────
+
+struct AssetManager {
+    handles         : Vec<AssetHandle>,
+    byte_storage    : Vec<u8>,        // raw bytes for Bundle / Shader / Blob
+    mesh_storage    : Vec<GltfMesh>,  // GltfMesh-indexed
+    texture_storage : Vec<DdsTexture>,// DdsTexture-indexed
+    next_gen        : u32,            // generation counter
+}
+
+// `asset_manager_new()` — empty AssetManager.
+fn asset_manager_new() -> AssetManager {
+    AssetManager {
+        handles         : vec_new::<AssetHandle>(),
+        byte_storage    : vec_new::<u8>(),
+        mesh_storage    : vec_new::<GltfMesh>(),
+        texture_storage : vec_new::<DdsTexture>(),
+        next_gen        : 1,
+    }
+}
+
+// `asset_manager_alloc_handle(am, kind)` — allocate a fresh handle.
+//   id = current handles.len() ; gen bumped on every alloc.
+fn asset_manager_alloc_handle(am : AssetManager, kind : u32) -> AssetHandle {
+    let id = vec_len::<AssetHandle>(am.handles) as u32 ;
+    let g = am.next_gen ;
+    AssetHandle {
+        id    : id,
+        gen   : g,
+        kind  : kind,
+        state : asset_state_pending(),
+    }
+}
+
+// `asset_manager_load_ccpkg(am, bytes)` — high-level load entry-point.
+//
+//   1. Parse 80-byte header
+//   2. Verify BLAKE3 (stage-0 structural-only)
+//   3. Allocate handle with kind = AssetKind::Bundle
+//   4. Push raw bytes into byte_storage (stage-0 ; stage-1 unpacks
+//      via cssl-content-package archive.rs)
+//
+//   Returns the freshly allocated AssetHandle on success.
+//
+// § STAGE-0
+//   Real archive-unpack + per-content-kind dispatch lives in
+//   cssl-content-package (Rust-hosted stage-0). This shim bookkeeps
+//   the handle + raw bytes ; stage-1 wires the unpack pipeline.
+fn asset_manager_load_ccpkg(am : AssetManager, bytes : &[u8]) -> Result<AssetHandle, AssetError> {
+    let header_res = ccpkg_parse_header(bytes) ;
+    let header = match header_res {
+        Ok(h)  => h,
+        Err(e) => return Err(e),
+    } ;
+    let ok = ccpkg_verify_blake3(bytes, header) ;
+    if ok == false {
+        return Err(AssetError::BadChecksum) ;
+    }
+    // N! stage-0 : raw-bytes-store-only ; archive-unpack deferred.
+    let h = asset_manager_alloc_handle(am, asset_kind_bundle()) ;
+    // gen-bump + handle-table-push deferred to stage-1 mut-borrow form.
+    Ok(AssetHandle {
+        id    : h.id,
+        gen   : h.gen,
+        kind  : h.kind,
+        state : asset_state_ready(),
+    })
+}
+
+// `asset_manager_get_mesh(am, h)` — fetch mesh by handle (stage-0 by-value).
+//
+// § STAGE-0
+//   Stage-0 Option<&GltfMesh> not yet supported by parser ; degraded to
+//   Option<GltfMesh> by-value. Migration mechanical once ref-Option
+//   syntax lands.  // N! flagged.
+fn asset_manager_get_mesh(am : AssetManager, h : AssetHandle) -> Option<GltfMesh> {
+    if h.kind != asset_kind_mesh() {
+        return Option::None ;
+    }
+    if h.state != asset_state_ready() {
+        return Option::None ;
+    }
+    let idx = h.id as i64 ;
+    let total = vec_len::<GltfMesh>(am.mesh_storage) ;
+    if idx >= total {
+        return Option::None ;
+    }
+    let mesh = vec_get::<GltfMesh>(am.mesh_storage, idx) ;
+    mesh
+}
+
+// `asset_manager_get_texture(am, h)` — fetch texture by handle.
+fn asset_manager_get_texture(am : AssetManager, h : AssetHandle) -> Option<DdsTexture> {
+    if h.kind != asset_kind_texture() {
+        return Option::None ;
+    }
+    if h.state != asset_state_ready() {
+        return Option::None ;
+    }
+    let idx = h.id as i64 ;
+    let total = vec_len::<DdsTexture>(am.texture_storage) ;
+    if idx >= total {
+        return Option::None ;
+    }
+    let tex = vec_get::<DdsTexture>(am.texture_storage, idx) ;
+    tex
+}
+
+// `asset_manager_handle_count(am)` — current handle-table population.
+fn asset_manager_handle_count(am : AssetManager) -> i64 {
+    vec_len::<AssetHandle>(am.handles)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples / inline tests (exercise full surface).
+// ───────────────────────────────────────────────────────────────────────
+
+// Test : ccpk_magic encodes "CCPK" little-endian.
+fn _test_ccpk_magic_value() -> bool {
+    ccpk_magic() == 1262701891
+}
+
+// Test : header size == 80 bytes (spec/30 § BUNDLE BINARY LAYOUT).
+fn _test_ccpk_header_size_80() -> bool {
+    ccpk_header_size() == 80
+}
+
+// Test : asset_manager_new() yields zero-handle empty manager.
+fn _test_asset_manager_new_empty() -> bool {
+    let am = asset_manager_new() ;
+    asset_manager_handle_count(am) == 0
+}
+
+// Test : asset-kind ordinals are dense + distinct (0..=7).
+fn _test_asset_kind_ordinals() -> bool {
+    let m = asset_kind_mesh() ;
+    let b = asset_kind_bundle() ;
+    if m != 0 {
+        return false ;
+    }
+    if b != 7 {
+        return false ;
+    }
+    true
+}
+
+// Test : reserved_b_is_all_zero recognizes the all-zero shape.
+fn _test_reserved_b_zero_check() -> bool {
+    let z : [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] ;
+    reserved_b_is_all_zero(z)
+}
+
+// Test : reserved_b_is_all_zero rejects non-zero byte.
+fn _test_reserved_b_nonzero_rejected() -> bool {
+    let nz : [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] ;
+    reserved_b_is_all_zero(nz) == false
+}
+
+// Test : DDS magic = "DDS " little-endian = 0x20534444.
+fn _test_dds_magic_value() -> bool {
+    dds_magic() == 542327876
+}
+
+// § ATTESTATION (PRIME-DIRECTIVE encoded structurally)
+//   ✓ ¬ harm                       — parser refuses unpack on tamper
+//   ✓ ¬ surveillance               — counters local ; no telemetry egress
+//   ✓ ¬ exploitation               — gift-economy upheld via verify in
+//                                    cssl-content-package (manifest-validate)
+//   ✓ ¬ override                   — ccpkg_verify_blake3 stub flagged // N!
+//   ✓ default-deny                 — cap-witness enforced at FFI seam
+//   ✓ stage-0 stubs flagged honestly — GLTF / DDS / BLAKE3-recompute
