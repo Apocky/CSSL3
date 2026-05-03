@@ -418,11 +418,14 @@ impl SubstrateRenderState {
         //   Per-frame · cheap (atomic-store · single BLAKE3 of 32 bytes).
         learn_from_frame_metrics(&out, self.profile_id);
         if self.frame_count % 120 == 0 {
+            // § T11-W18-OBSERVABILITY-EXTEND : add active profile_id +
+            //   crystal_count to the per-second telemetry-line for live
+            //   diagnostics. KAN-bias-checksum is aggregate-across-all-5-bands.
             log_event(
                 "DEBUG",
                 "loa-host/substrate-render",
                 &format!(
-                    "tick · frame_n={} · pixels_lit={} · fidelity_tier={} · fingerprint={:08x} · blend={:?} · KAN-bias=0x{:08x} · obs={}",
+                    "tick · frame_n={} · pixels_lit={} · fidelity_tier={} · fingerprint={:08x} · blend={:?} · KAN-bias=0x{:08x} · obs={} · profile_id={} · crystals={}",
                     out.frame_n,
                     out.resonance.n_pixels_lit,
                     out.fidelity_tier,
@@ -430,6 +433,8 @@ impl SubstrateRenderState {
                     out.blend_used,
                     cssl_host_substrate_intelligence::kan_bias_checksum(),
                     cssl_host_substrate_intelligence::observe_count(),
+                    self.profile_id,
+                    self.crystals.len(),
                 ),
             );
             // Periodic persist (every 120 frames ≈ 1 sec at 120 Hz · cheap).
