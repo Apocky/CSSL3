@@ -1337,6 +1337,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cssl-host-dm-procgen-bridge"
+version = "0.1.0"
+dependencies = [
+ "cssl-host-dmgm-specialists",
+ "cssl-host-procgen-pipeline",
+]
+
+[[package]]
 name = "cssl-host-dmgm-specialists"
 version = "0.1.0"
 dependencies = [

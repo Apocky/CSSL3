@@ -1,0 +1,58 @@
+[package]
+name                   = "cssl-host-dm-procgen-bridge"
+description            = "§ T11-W18-DM-PROCGEN-BRIDGE · Wires the DMGM-specialist council into the runtime procgen pipeline · pure-fn translator from `Decision::ProposeAction` (DM/GM/Collaborator/Coder action-id+params blob) into `IntentSemantic` + `ProcgenRequest` · runs `role_council` over a slice of decisions and threads consensus through `generate` end-to-end · NO global state · deterministic given inputs"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[lints]
+workspace = true
+
+# § T11-W18-DM-PROCGEN-BRIDGE
+# ═══════════════════════════════════════════════════════════════════════════
+# § ROLE
+#   THIN ADAPTER between two foundation crates :
+#     1. `cssl-host-dmgm-specialists`  ← DM/GM/Collaborator/Coder roles +
+#                                        `Decision` enum + `role_council`
+#     2. `cssl-host-procgen-pipeline`  ← `IntentSemantic` parser + `generate`
+#                                        deterministic procgen + `ProcgenOutput`
+#
+#   This crate wires the FIRST into the SECOND so a council-of-specialists
+#   produces ProcgenOutput at runtime — the "engine = runtime procgen NOT
+#   static scenes" thesis closed end-to-end for the DM-specialist path.
+#
+# § APOCKY-DIRECTIVE
+#   "engine intelligence scope = DM (orchestrator) + GM (narrator) +
+#    Collaborator (co-author) + Coder (runtime-mutate) ONLY · self-sufficient
+#    for those roles · NOT generic AGI · reuse Cognitive-Field-Engine
+#    substrate AS PLUMBING for DM-specialist scenes"
+#   (verbatim from feedback_dm_gm_not_general_ai.md)
+#
+# § PURE-FN SURFACE (3 entrypoints)
+#   - `decision_to_procgen_request(decision, observer_pos, budget_ms)
+#       -> Option<ProcgenRequest>`
+#       Maps a single Decision (ProposeAction's id+params) into a wrapped
+#       IntentSemantic + ObserverCoord + budget. Pass/Question → None.
+#   - `council_to_procgen(decisions, observer_pos)
+#       -> Option<ProcgenRequest>`
+#       Runs `role_council` over the slice ; maps consensus through
+#       `decision_to_procgen_request` with a stable default budget.
+#   - `run_council_and_generate(specialists, prompt_hash, observer_pos)
+#       -> Option<ProcgenOutput>`
+#       End-to-end : queries each Specialist, runs role_council, maps to
+#       ProcgenRequest, calls procgen-pipeline `generate`. Returns the
+#       deterministic ProcgenOutput (or None when consensus is Pass/Question).
+#
+# § DETERMINISM
+#   All three fns are pure ; no global state, no clock, no rng. Same
+#   inputs → bit-identical outputs (the underlying procgen-pipeline
+#   `generate` is itself deterministic via BLAKE3 fingerprint).
+#
+# § NO-DEP additions
+#   This crate intentionally pulls NO new transitive deps. It links only
+#   the two foundation crates (and their existing deps via re-export).
+[dependencies]
+cssl-host-procgen-pipeline = { path = "../cssl-host-procgen-pipeline" }
+cssl-host-dmgm-specialists = { path = "../cssl-host-dmgm-specialists" }
