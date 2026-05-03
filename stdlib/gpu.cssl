@@ -1,0 +1,859 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/gpu.cssl  —  GPU host-FFI surface (D3D12-priority on Windows ;
+//                       Vulkan-everywhere portable ; Metal on Apple ;
+//                       WebGPU in browser ; LevelZero compute on Intel)
+//
+// CSSLv3 stage-0 standard library.
+// Spec : specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § gpu (8 symbols)
+//        specs/24_HOST_FFI.csl § CSSL-SIDE WRAPPERS (effect-typed wrappers)
+//        specs/24_HOST_FFI.csl § CAPABILITY-MATRIX (Cap<Gpu>)
+//        specs/24_HOST_FFI.csl § IFC-LABELS (Gpu-buffers Public ; output-image
+//          may carry Sensitive<Frame> when VR-headset = body-pose)
+//        specs/14_BACKEND.csl § HOST-SUBMIT BACKENDS (Vulkan-1.4 / D3D12 /
+//          Metal / WebGPU / Level-Zero / GNM / NVN backend-matrix)
+//        specs/14_BACKEND.csl § BACKEND-MATRIX (graphics/compute/RT/XMX rows)
+//        specs/04_EFFECTS.csl § real-time-effect-tags (Deadline<>, GpuSubmit,
+//          GpuInit, Realtime<Crit>)
+//        specs/12_CAPABILITIES.csl § THE SIX CAPABILITIES (iso/trn/ref/val/
+//          box/tag — handles default to tag at the FFI boundary)
+//        specs/03_TYPES.csl § BASE-TYPES (vec2/vec3/vec4 are language-builtin
+//          per shader-stage shape-typing)
+// Slice : S3 (CSSL-stdlib host-FFI wrapper landing).
+//
+// § PRIME_DIRECTIVE preserved : the GPU surface is the most performance-
+//   critical surveillance-adjacent surface in the runtime — render targets
+//   can carry frame contents that include user-personal viewports. This
+//   module : (a) does no surveillance — every gpu op fires only at the
+//   explicit invocation of source-level code, (b) IR blobs (SPIRV/DXIL/
+//   Metal) are NEVER inspected for content by the wrappers — the bytes
+//   pass through to the platform compiler, (c) errors surface through the
+//   typed `GpuError` sum-type rather than silent swallow, (d) the
+//   {GpuInit} / {GpuSubmit} effect-rows make GPU-touching operations
+//   visible in fn-signatures so consumers cannot accidentally invoke GPU
+//   from a context that forbids it, (e) the cap-system gates every
+//   wrapper-fn entry behind the `Cap<Gpu>` witness via the upstream §§ 12
+//   capability machinery + a runtime cap-grant that defaults to OFF for
+//   non-engine code paths.
+//
+//   ‼ The gpu surface NEVER overrides PRIME_DIRECTIVE. Source-level code
+//   that creates a device remains subject to §1 PROHIBITIONS (no
+//   surveillance, no exploitation, no weaponization) and to §10 ToS.
+//   The wrappers below do not bypass any of those constraints — they
+//   expose exactly the syscall surface, no less + no more.
+//
+//   ‼ DEFERRED (NOT addressable from source-level code at stage-0) :
+//     - cmd-buf record / submit body (the 8th + 9th symbols are stage-1
+//       stubs per `host_gpu.rs`). Real D3D12 ID3D12GraphicsCommandList /
+//       Vulkan vkBeginCommandBuffer fleshing lands in stage-1 ;
+//       see DECISIONS T11-D52 § DEFERRED + spec/24 § ABI-STABLE-SYMBOLS § gpu.
+//     - Cross-process resource-share — explicitly forbidden per
+//       `specs/24_HOST_FFI.csl § CAPABILITY-MATRIX` Cap<Gpu> rules.
+//     - Compute-secret-extract — explicitly forbidden per the same.
+//     - VR-XR pose / stereo swapchain — separate `Cap<XR>` slice ;
+//       see specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § vr-xr (deferred).
+//
+// § STAGE-0 NOTES (carried-forward to S3 host-FFI landing)
+//   1. The eight gpu verbs (`device_create` / `device_destroy` /
+//      `swapchain_create` / `swapchain_acquire` / `swapchain_present` /
+//      `pipeline_compile` / `cmd_buf_record_stub` / `cmd_buf_submit_stub`)
+//      are recognized syntactically by `cssl_mir::body_lower::lower_call`.
+//      The recognizer fires on a 2-segment path `gpu::<verb>` with the
+//      appropriate arity. Each call lowers to a `cssl.gpu.<verb>` op
+//      carrying the `(gpu_init, "true")` OR `(gpu_submit, "true")`
+//      attribute as the stage-0 marker for {GpuInit} / {GpuSubmit}
+//      effect-row threading. Real `MirEffectRow` structural threading is
+//      deferred (mirrors the {IO} / {Net} threading deferral from
+//      T11-D76 / T11-D82). The 144hz frame-budget marker
+//      `(deadline_us, "6944")` is added on `swapchain_present` per
+//      § EFFECT-ROW below.
+//   2. The Device / Swapchain / Pipeline handles are encoded as host-
+//      width integers (`u64`) at source-level rather than typed
+//      `iso<!cssl.gpu.handle>` — the same source-level grammar gap noted
+//      at B5 / F4 (typed-pointer field syntax). The bit-pattern is the
+//      slot-table index returned by `host_gpu.rs`'s slab. Per §§ 12
+//      the FFI-side capability is `tag` (opaque-handle) — the safe-
+//      wrapper API never permits raw deref. The `0` sentinel is
+//      recognized by every safe wrapper and translated into
+//      `Err(GpuError::*)`.
+//   3. `GpuError` is a sum-type with discriminants matching cssl-rt's
+//      gpu-side error vocabulary. Constructors are recognized by the
+//      B2 sum-type recognizer.
+//   4. The `GpuBackend` / `ShaderIRKind` / `SurfaceFormat` / `ShaderStage`
+//      enums are STABLE from S3 ; renaming requires a major-version bump.
+//      The integer values match cssl-rt's host-side LUTs verbatim where
+//      applicable :
+//         - `ShaderIRKind` mirrors `host_gpu::GpuPipelineKind` :
+//             0 = SPIRV · 1 = DXIL · 2 = METAL.
+//           ‼ Cross-checked against `compiler-rs/crates/cssl-rt/src/
+//           host_gpu.rs § PIPELINE_KIND_LUT` — the LUT in cssl-rt only
+//           encodes the IR-blob format, NOT the device backend. The
+//           `GpuBackend` enum below is a SEPARATE source-level construct
+//           that nominates the host-submit backend per §§ 14
+//           BACKEND-MATRIX. A device created on D3D12 may compile DXIL
+//           pipelines (kind=Dxil) ; a device created on Vulkan compiles
+//           SPIRV (kind=Spirv) ; etc. The mapping is set by
+//           `gpu::pipeline_compile`'s `kind` argument, not by the device
+//           backend.
+//         - `SurfaceFormat` ABI integers match the platform-canonical
+//           DXGI_FORMAT / VkFormat numeric values where overlapping ;
+//           the spec/24 `fmt : u32` argument to
+//           `__cssl_gpu_swapchain_create` carries this LUT directly.
+//   5. `GpuInit` vs `GpuSubmit` effect-row distinction (per §§ 04 +
+//      §§ 24 § EFFECT-INTEGRATION) :
+//         - {GpuInit}   : device + swapchain + pipeline creation.
+//                         May allocate. May block. Compile-once shape.
+//         - {GpuSubmit} : per-frame swapchain acquire + present + cmd-buf
+//                         submit. Hot-path. Carries Deadline<6944us> at
+//                         144hz target. NoAlloc-compatible.
+//   6. Frame-budget : 144hz = 6944.444... us per frame ; we round DOWN
+//      to 6944 us as the canonical Deadline marker. This pairs with
+//      `compiler-rs/crates/loa-host/src/dynamic_resolution.rs` constant
+//      `TARGET_FRAME_US_144HZ = 6_944` for cross-layer consistency.
+//      The mapping :
+//         60hz  = 16667 us · standard
+//         120hz = 8333  us · high-refresh OLED / esports
+//         144hz = 6944  us · 1440p AMOLED-deep / esports default
+//         240hz = 4167  us · pro-esports
+//      Set the deadline-tag to the nearest target.
+//   7. Frames-in-flight : default 3 (triple-buffer ; matches cssl-rt's
+//      `host_gpu::SwapchainRecord.image_count = 3`). Waitable-swap-chain
+//      latency is configured at 1 (LOA_FRAME_LATENCY) for the LoA
+//      forward-renderer, which tracks D3D12 IDXGISwapChain2::
+//      SetMaximumFrameLatency(1) on the latency-event path — keeps mouse-
+//      to-photon ≤ 1 frame on the 144hz target. The constants below are
+//      the source-level declarations.
+//   8. 1440p HDR pathways : `Rgba16FloatHdr10` carries the HDR10 PQ-1000-
+//      nit transfer-curve marker for the AMOLED-deep panel surface ;
+//      `Rgba16Float` is the linear scRGB equivalent ; `Rgb10A2Unorm` is
+//      the 10-bit-per-channel non-HDR fallback ; the SDR baselines
+//      remain `Bgra8UnormSrgb` (D3D12-canonical) + `Rgba8UnormSrgb`
+//      (Vulkan-canonical). The platform layer in cssl-host-d3d12 / cssl-
+//      host-vulkan resolves the format via the `fmt : u32` LUT carried
+//      by `__cssl_gpu_swapchain_create`.
+//   9. CmdBuf record / submit : stage-1 stub bodies per `host_gpu.rs`.
+//      `gpu_cmd_buf_record_stub` returns `CmdBuf { handle : 0 }` ;
+//      `gpu_cmd_buf_submit_stub` returns `Ok(())` (stage-1 will real-wire
+//      the ID3D12GraphicsCommandList / vkCmdBuffer API). Source-level
+//      code can already structurally call these — the body becomes
+//      driver-active in stage-1 fleshing with NO source-level rename.
+//  10. `Drop` integration : a future trait-resolve slice will make
+//      `Device` / `Swapchain` / `Pipeline` automatically destroy on
+//      scope-exit. At stage-0 callers MUST invoke `gpu::device_destroy`
+//      explicitly. The post-trait-dispatch form is the standard
+//      `impl Drop for Device`.
+//
+// § INVARIANTS  (stage-0)
+//   - `Device.handle` ≠ 0 for ALL valid Device values (the `Err` path
+//     never produces a Device ; safe wrappers translate `0` → Err).
+//   - `Swapchain.frames_in_flight` ∈ {2, 3} (double or triple buffer ;
+//     stage-0 default = 3).
+//   - 0 ≤ `image_idx` < `frames_in_flight` for `gpu::swapchain_present`.
+//   - `gpu::swapchain_acquire` returns `0xFFFF_FFFF` on timeout (the
+//     spec/24 + host_gpu.rs sentinel) ; safe wrapper translates this
+//     into `Err(GpuError::Timeout)` so source-level code never sees the
+//     raw sentinel.
+//   - `pipeline_compile`'s `kind` argument is one of {Spirv, Dxil, Metal}
+//     per the host_gpu.rs LUT ; passing any other value yields
+//     `Err(GpuError::InvalidInput)`.
+//   - Every successful `gpu::device_create` MUST be paired with
+//     `gpu::device_destroy` to release the OS resource. Stage-0 callers
+//     track this manually ; trait-Drop integration deferred per § 10.
+
+module com.apocky.stdlib.gpu
+
+use std::option::Option
+use std::result::Result
+
+// ───────────────────────────────────────────────────────────────────────
+// § GpuBackend enum.
+//
+//   Identifies the host-submit backend the Device was created against.
+//   Mirrors `specs/14_BACKEND.csl § HOST-SUBMIT BACKENDS` ; integer
+//   values STABLE from S3.
+//
+//   ‼ Distinct from `ShaderIRKind`. Backend = "what driver runs the
+//   commands" ; IRKind = "what bytecode format the pipeline blob is in".
+//   A D3D12 backend consumes DXIL ; a Vulkan backend consumes SPIRV ;
+//   a Metal backend consumes Metal-IR ; etc. The mapping is set per-
+//   pipeline by the `kind` argument to `gpu::pipeline_compile`.
+// ───────────────────────────────────────────────────────────────────────
+
+enum GpuBackend {
+    D3D12,        // 0 — Windows-priority (specs/14 BACKEND-MATRIX)
+    Vulkan,       // 1 — portable everywhere (1.4 baseline)
+    Metal,        // 2 — Apple-canonical
+    WebGPU,       // 3 — browser / native cross-target
+    LevelZero,    // 4 — Intel compute (spec/14 R18 telemetry primary)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ShaderIRKind enum.
+//
+//   The IR-blob format passed to `gpu::pipeline_compile`. Values match
+//   `cssl-rt::host_gpu::GpuPipelineKind` LUT verbatim :
+//     0 = SPIRV · 1 = DXIL · 2 = METAL.
+//
+//   ‼ Verified against `compiler-rs/crates/cssl-rt/src/host_gpu.rs`
+//   § PIPELINE_KIND_LUT (lines ~97-101). ABI-locked ; rename = major-
+//   version bump.
+// ───────────────────────────────────────────────────────────────────────
+
+enum ShaderIRKind {
+    Spirv,    // 0 — Vulkan / Level-Zero / WebGPU(via translation)
+    Dxil,     // 1 — D3D12 SM6.6+
+    Metal,    // 2 — Metal-3 baseline
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § SurfaceFormat enum.
+//
+//   Pixel-format of the swapchain backbuffer. The `fmt : u32` argument
+//   to `__cssl_gpu_swapchain_create` carries the discriminant. Stage-0
+//   covers SDR + HDR pathways for 1440p displays per spec/14 +
+//   PRIME-DIRECTIVE AMOLED-deep panel discipline.
+//
+//   1440p HDR-pathways :
+//     - Rgba16FloatHdr10 : HDR10 PQ-1000-nit (canonical 1440p AMOLED-deep)
+//     - Rgba16Float      : linear scRGB (HDR-intermediate / OLED ramp)
+//     - Rgb10A2Unorm     : 10-bit-per-channel non-HDR fallback
+//   1440p SDR :
+//     - Bgra8UnormSrgb   : D3D12-canonical (sRGB transfer)
+//     - Rgba8UnormSrgb   : Vulkan-canonical (sRGB transfer)
+// ───────────────────────────────────────────────────────────────────────
+
+enum SurfaceFormat {
+    Bgra8UnormSrgb,    // 0 — D3D12-canonical SDR sRGB
+    Rgba8UnormSrgb,    // 1 — Vulkan-canonical SDR sRGB
+    Rgba16Float,       // 2 — linear scRGB HDR-intermediate
+    Rgb10A2Unorm,      // 3 — 10-bit-per-channel non-HDR
+    Rgba16FloatHdr10,  // 4 — HDR10 PQ-1000-nit AMOLED-deep
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ShaderStage enum.
+//
+//   Matches `examples/hello_triangle.cssl` usage. The `@vertex` /
+//   `@fragment` attribute on a fn lowers to the corresponding
+//   ShaderStage tag at pipeline-build time.
+// ───────────────────────────────────────────────────────────────────────
+
+enum ShaderStage {
+    Vertex,         // 0 — vertex shader
+    Fragment,       // 1 — fragment / pixel shader
+    Compute,        // 2 — compute shader
+    Mesh,           // 3 — mesh shader (D3D12 SM6.5+ / Vulkan VK_EXT_mesh)
+    Amplification,  // 4 — amplification (D3D12) / task (Vulkan)
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § GpuError sum-type.
+//
+//   Canonical fallible-op error channel for the gpu surface. Variants
+//   cover the host_gpu.rs error vocabulary plus PRIME-DIRECTIVE
+//   refusals (CapDenied for missing Cap<Gpu> witness).
+// ───────────────────────────────────────────────────────────────────────
+
+enum GpuError {
+    InvalidInput,        // 1 — malformed flags / kind / format / handle
+    DeviceCreateFailed,  // 2 — adapter not found / driver init fail
+    SwapchainFailed,     // 3 — surface mismatch / format unsupported
+    PipelineCompileFailed, // 4 — SPIRV/DXIL/Metal validation rejected IR
+    Timeout,             // 5 — swapchain_acquire hit timeout sentinel
+    OutOfMemory,         // 6 — device-local / host-visible OOM
+    DeviceLost,          // 7 — driver hung / GPU TDR
+    SurfaceLost,         // 8 — window destroyed / display unplugged
+    CapDenied,           // 9 — PRIME-DIRECTIVE Cap<Gpu> not granted
+    NotSupported,        // 10 — backend doesn't support requested feature
+    Other(i32),          // 99 — raw OS / driver code carried in payload
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Device / Swapchain / Pipeline / CmdBuf / GpuFrame structs.
+//
+//   Stage-0 handles encoded as `u64` (slot-table index from host_gpu.rs
+//   slab). Once typed-pointer field syntax lands the field-types migrate
+//   to `tag<!cssl.gpu.<kind>>` per §§ 12 + §§ 24 § STAGE-0-MAPPING.
+// ───────────────────────────────────────────────────────────────────────
+
+// `Device` wraps an OS-level GPU device handle. The `backend` field
+// tags which host-submit backend created it (per §§ 14 BACKEND-MATRIX).
+struct Device {
+    handle  : u64,
+    backend : GpuBackend,
+}
+
+// `Swapchain` wraps the per-window backbuffer chain. `frames_in_flight`
+// is the triple-buffer count (default 3, matches host_gpu.rs).
+// `width` / `height` cache the dimensions for the LoA dynamic-resolution
+// scaler (specs/14 + loa-host/dynamic_resolution.rs).
+struct Swapchain {
+    handle            : u64,
+    device            : u64,
+    width             : u32,
+    height            : u32,
+    frames_in_flight  : u32,
+    format            : SurfaceFormat,
+}
+
+// `Pipeline` wraps a compiled shader pipeline (graphics / compute /
+// mesh). The `kind` field tags which IR format the blob was compiled
+// from per `cssl-rt::host_gpu::GpuPipelineKind`.
+struct Pipeline {
+    handle : u64,
+    kind   : ShaderIRKind,
+}
+
+// `CmdBuf` wraps a command-buffer handle. Stage-0 stub : the body
+// of record / submit is deferred to stage-1 per host_gpu.rs.
+struct CmdBuf {
+    handle : u64,
+}
+
+// `GpuFrame` carries per-acquired-image telemetry. `present_time_ns`
+// is the host-monotonic-ns timestamp at which the frame became
+// scanout-eligible ; useful for VRR / G-Sync / FreeSync timing.
+struct GpuFrame {
+    backbuffer_idx  : u32,
+    present_time_ns : u64,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § ABI sentinel + constant declarations.
+//
+//   Stable from S3. Renaming requires a major-version bump.
+// ───────────────────────────────────────────────────────────────────────
+
+// `gpu_swapchain_acquire_timeout_sentinel()` — `0xFFFF_FFFF` per
+// `specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § gpu` +
+// `host_gpu.rs § GPU_SWAPCHAIN_ACQUIRE_TIMEOUT_SENTINEL`. Returned by
+// `__cssl_gpu_swapchain_acquire` when the timeout_ns budget elapses
+// before an image is available. Safe wrapper translates into
+// `Err(GpuError::Timeout)`.
+fn gpu_swapchain_acquire_timeout_sentinel() -> u32 {
+    4294967295   // 0xFFFF_FFFF
+}
+
+// `gpu_handle_error_sentinel()` — `0` per spec/24 + host_gpu.rs.
+// All u64-returning gpu FFI symbols use 0 as the error-handle sentinel.
+fn gpu_handle_error_sentinel() -> u64 {
+    0
+}
+
+// `target_frame_us_60hz()` — frame-budget at 60hz refresh.
+fn target_frame_us_60hz() -> u64 {
+    16667
+}
+
+// `target_frame_us_120hz()` — frame-budget at 120hz refresh.
+fn target_frame_us_120hz() -> u64 {
+    8333
+}
+
+// `target_frame_us_144hz()` — frame-budget at 144hz refresh.
+//
+// ‼ Pair-locked with `compiler-rs/crates/loa-host/src/
+// dynamic_resolution.rs § TARGET_FRAME_US_144HZ = 6_944` for cross-
+// layer consistency. The 1440p AMOLED-deep target is the LoA default
+// per W18-progress + spec/14 panel-discipline.
+fn target_frame_us_144hz() -> u64 {
+    6944
+}
+
+// `target_frame_us_240hz()` — frame-budget at 240hz refresh.
+fn target_frame_us_240hz() -> u64 {
+    4167
+}
+
+// `frames_in_flight_default()` — triple-buffer (default ; matches
+// `cssl-rt::host_gpu::SwapchainRecord.image_count = 3`).
+fn frames_in_flight_default() -> u32 {
+    3
+}
+
+// `loa_frame_latency()` — IDXGISwapChain2::SetMaximumFrameLatency(1)
+// for the LoA forward-renderer waitable-swap-chain path. Keeps mouse-
+// to-photon ≤ 1 frame on the 144hz target ; spec/14 + W18-progress.
+fn loa_frame_latency() -> u32 {
+    1
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § GpuError discriminant constants.
+//
+//   Used by `gpu_error_from_kind` to translate the cssl-rt last-error
+//   integer into the typed `GpuError` sum-type.
+// ───────────────────────────────────────────────────────────────────────
+
+fn gpu_err_invalid_input() -> i32 { 1 }
+fn gpu_err_device_create_failed() -> i32 { 2 }
+fn gpu_err_swapchain_failed() -> i32 { 3 }
+fn gpu_err_pipeline_compile_failed() -> i32 { 4 }
+fn gpu_err_timeout() -> i32 { 5 }
+fn gpu_err_out_of_memory() -> i32 { 6 }
+fn gpu_err_device_lost() -> i32 { 7 }
+fn gpu_err_surface_lost() -> i32 { 8 }
+fn gpu_err_cap_denied() -> i32 { 9 }
+fn gpu_err_not_supported() -> i32 { 10 }
+fn gpu_err_other() -> i32 { 99 }
+
+// ───────────────────────────────────────────────────────────────────────
+// § ShaderIRKind LUT helpers (mirrors cssl-rt::host_gpu LUT).
+// ───────────────────────────────────────────────────────────────────────
+
+// `shader_ir_kind_spirv()` — discriminant = 0.
+fn shader_ir_kind_spirv() -> u32 { 0 }
+// `shader_ir_kind_dxil()` — discriminant = 1.
+fn shader_ir_kind_dxil() -> u32 { 1 }
+// `shader_ir_kind_metal()` — discriminant = 2.
+fn shader_ir_kind_metal() -> u32 { 2 }
+
+// `shader_ir_kind_to_u32(k)` — convert source-enum → ABI integer.
+fn shader_ir_kind_to_u32(k : ShaderIRKind) -> u32 {
+    match k {
+        ShaderIRKind::Spirv => 0,
+        ShaderIRKind::Dxil  => 1,
+        ShaderIRKind::Metal => 2,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § SurfaceFormat LUT helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+// `surface_format_to_u32(f)` — convert source-enum → ABI integer.
+//
+// ‼ Discriminant assignment STABLE from S3. The platform layer in
+// cssl-host-d3d12 / cssl-host-vulkan / cssl-host-metal resolves the
+// integer to the platform-canonical pixel-format code (DXGI_FORMAT /
+// VkFormat / MTLPixelFormat).
+fn surface_format_to_u32(f : SurfaceFormat) -> u32 {
+    match f {
+        SurfaceFormat::Bgra8UnormSrgb   => 0,
+        SurfaceFormat::Rgba8UnormSrgb   => 1,
+        SurfaceFormat::Rgba16Float      => 2,
+        SurfaceFormat::Rgb10A2Unorm     => 3,
+        SurfaceFormat::Rgba16FloatHdr10 => 4,
+    }
+}
+
+// `surface_format_is_hdr(f)` — true iff the format carries HDR PQ
+// or scRGB-linear pathways (used by tone-mapping setup).
+fn surface_format_is_hdr(f : SurfaceFormat) -> bool {
+    match f {
+        SurfaceFormat::Bgra8UnormSrgb   => false,
+        SurfaceFormat::Rgba8UnormSrgb   => false,
+        SurfaceFormat::Rgba16Float      => true,
+        SurfaceFormat::Rgb10A2Unorm     => false,
+        SurfaceFormat::Rgba16FloatHdr10 => true,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Last-error reporting.
+//
+//   Mirrors fs.cssl / net.cssl pattern. Stage-0 placeholders ; real
+//   wiring routes through cssl-rt's last-error slot once the cgen layer
+//   fires the import.
+// ───────────────────────────────────────────────────────────────────────
+
+// `last_error_kind() -> i32` returns the canonical GpuError discriminant
+// for the most recent gpu op (or 0 = SUCCESS if no error).
+fn last_error_kind() -> i32 {
+    // Stage-0 placeholder — actual wiring routes through
+    // `__cssl_gpu_last_error_kind` once the cgen layer fires the import.
+    0
+}
+
+// `last_error_os() -> i32` returns the raw driver / OS error code.
+// Useful when `last_error_kind()` returns `OTHER`.
+fn last_error_os() -> i32 {
+    0
+}
+
+// `gpu_error_from_kind(kind, os)` maps the i32 discriminant returned by
+// cssl-rt back into the typed `GpuError` sum-type.
+fn gpu_error_from_kind(kind : i32, os : i32) -> GpuError {
+    if kind == gpu_err_invalid_input() {
+        GpuError::InvalidInput
+    } else {
+        if kind == gpu_err_device_create_failed() {
+            GpuError::DeviceCreateFailed
+        } else {
+            if kind == gpu_err_swapchain_failed() {
+                GpuError::SwapchainFailed
+            } else {
+                if kind == gpu_err_pipeline_compile_failed() {
+                    GpuError::PipelineCompileFailed
+                } else {
+                    if kind == gpu_err_timeout() {
+                        GpuError::Timeout
+                    } else {
+                        if kind == gpu_err_out_of_memory() {
+                            GpuError::OutOfMemory
+                        } else {
+                            if kind == gpu_err_device_lost() {
+                                GpuError::DeviceLost
+                            } else {
+                                if kind == gpu_err_surface_lost() {
+                                    GpuError::SurfaceLost
+                                } else {
+                                    if kind == gpu_err_cap_denied() {
+                                        GpuError::CapDenied
+                                    } else {
+                                        if kind == gpu_err_not_supported() {
+                                            GpuError::NotSupported
+                                        } else {
+                                            GpuError::Other(os)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Cap<Gpu> runtime gate.
+//
+//   Mirrors net.cssl's NET_CAP_* + audio.cssl's AUDIO_CAP_* runtime
+//   bitset. Source-level callers that want to invoke any wrapper-fn
+//   below MUST first ensure `caps_check(GPU_CAP_DEVICE)` returns true.
+//   The default cap-set is OFF for non-engine code paths ; the engine
+//   opts in at startup via `caps_grant(...)`.
+//
+//   ‼ This runtime gate is the structural safety-net. The PRIMARY gate
+//   is the upstream §§ 12 `Cap<Gpu>` witness consumed at every fn entry
+//   — that gate is a compile-time type-system construct (Cap<Gpu>) that
+//   is forward-looking ; once the parser supports the witness-as-fn-
+//   parameter shape (per spec/24 § CSSL-SIDE WRAPPERS) the wrappers
+//   below will gain a `cap : Cap<Gpu>` parameter that is consumed at
+//   call. Until then the runtime bitset below provides the identical
+//   default-deny posture — there is no PRIME-DIRECTIVE override.
+// ───────────────────────────────────────────────────────────────────────
+
+// `gpu_cap_device()` — required for device_create / device_destroy.
+fn gpu_cap_device() -> u32 { 1 }
+// `gpu_cap_swapchain()` — required for swapchain_create / swapchain ops.
+fn gpu_cap_swapchain() -> u32 { 2 }
+// `gpu_cap_pipeline()` — required for pipeline_compile.
+fn gpu_cap_pipeline() -> u32 { 4 }
+// `gpu_cap_submit()` — required for swapchain_present / cmd_buf_submit.
+fn gpu_cap_submit() -> u32 { 8 }
+
+// `gpu_cap_default()` — default-deny posture (zero caps). The engine
+// must explicitly grant the engine-loop its full set at startup.
+fn gpu_cap_default() -> u32 { 0 }
+
+// `gpu_cap_engine_full()` — convenience for the engine's startup
+// caps_grant ; covers all four gpu cap-bits.
+fn gpu_cap_engine_full() -> u32 {
+    15  // GPU_CAP_DEVICE | GPU_CAP_SWAPCHAIN | GPU_CAP_PIPELINE | GPU_CAP_SUBMIT
+}
+
+// `caps_check(bits) -> bool` — returns true iff all `bits` are currently
+// granted in the runtime cap-set. Stage-0 placeholder — actual wiring
+// routes through cssl-rt's cap-bitset slot once the cgen layer fires
+// the import.
+fn caps_check(bits : u32) -> bool {
+    // Stage-0 placeholder : returns false (default-deny). The eventual
+    // body reads the cssl-rt cap-bitset and AND-masks `bits`. Source-
+    // level engine code calls `caps_grant(gpu_cap_engine_full())` at
+    // startup ; until that wiring lands, all wrappers below short-
+    // circuit to `Err(GpuError::CapDenied)` which is the correct
+    // PRIME-DIRECTIVE default-deny behavior.
+    false
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Device create / destroy.
+// ───────────────────────────────────────────────────────────────────────
+
+// `gpu::device_create(adapter_idx, flags, backend)` — create a GPU
+// device on the given adapter.
+//
+// § EFFECT-ROW
+//   This fn is {GpuInit}-effecting (per spec/24 § EFFECT-INTEGRATION).
+//   The `cssl.gpu.device_create` op carries the `gpu_init = "true"`
+//   attribute. Once `MirEffectRow` lands, the fn signature reads :
+//     `fn device_create(adapter_idx, flags, backend) ->
+//        Result<Device, GpuError> / {GpuInit, Cap<Gpu>}`.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_device()` granted. Default-deny per
+//   PRIME-DIRECTIVE.
+fn device_create(adapter_idx : u32, flags : u32, backend : GpuBackend) -> Result<Device, GpuError> {
+    if caps_check(gpu_cap_device()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let h = gpu::device_create(adapter_idx, flags) ;
+        if h == 0 {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(Device { handle : h, backend : backend })
+        }
+    }
+}
+
+// `gpu::device_destroy(dev)` — release the device. Returns
+// `Result<(), GpuError>` ; on success the inner `()` (encoded as 0)
+// is the canonical successful-completion marker.
+//
+// § EFFECT-ROW
+//   {GpuInit}-effecting (teardown is the inverse of creation). The
+//   `cssl.gpu.device_destroy` op carries the `gpu_init = "true"` flag.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_device()` granted.
+fn device_destroy(dev : Device) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_device()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::device_destroy(dev.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Swapchain create / acquire / present.
+// ───────────────────────────────────────────────────────────────────────
+
+// `gpu::swapchain_create(dev, win_handle, fmt, w, h)` — create a
+// swapchain bound to the given window.
+//
+// § EFFECT-ROW
+//   {GpuInit}-effecting. Triple-buffer (frames_in_flight = 3) is the
+//   stage-0 default per host_gpu.rs.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_swapchain()` granted.
+fn swapchain_create(dev : Device, win_handle : u64, fmt : SurfaceFormat, w : u32, h : u32) -> Result<Swapchain, GpuError> {
+    if caps_check(gpu_cap_swapchain()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let fmt_u32 = surface_format_to_u32(fmt) ;
+        let sc = gpu::swapchain_create(dev.handle, win_handle, fmt_u32) ;
+        if sc == 0 {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(Swapchain {
+                handle           : sc,
+                device           : dev.handle,
+                width            : w,
+                height           : h,
+                frames_in_flight : frames_in_flight_default(),
+                format           : fmt,
+            })
+        }
+    }
+}
+
+// `gpu::swapchain_acquire(sc, timeout_ns)` — block until the next
+// backbuffer is available (or until `timeout_ns` elapses).
+//
+// Returns `Ok(image_idx)` on success ; `Err(GpuError::Timeout)` if
+// `timeout_ns` elapsed first ; `Err(GpuError::*)` on driver failure.
+//
+// § EFFECT-ROW
+//   {GpuSubmit}-effecting (hot-path ; per-frame). The
+//   `cssl.gpu.swapchain_acquire` op carries the `gpu_submit = "true"`
+//   attribute.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_swapchain()` granted.
+fn swapchain_acquire(sc : Swapchain, timeout_ns : u64) -> Result<u32, GpuError> {
+    if caps_check(gpu_cap_swapchain()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let img = gpu::swapchain_acquire(sc.handle, timeout_ns) ;
+        if img == gpu_swapchain_acquire_timeout_sentinel() {
+            Err(GpuError::Timeout)
+        } else {
+            Ok(img)
+        }
+    }
+}
+
+// `gpu::swapchain_present(sc, image_idx)` — submit the rendered
+// backbuffer for scanout.
+//
+// § EFFECT-ROW
+//   {GpuSubmit, Deadline<6944us>}-effecting at 144hz. The
+//   `cssl.gpu.swapchain_present` op carries `gpu_submit = "true"` +
+//   `deadline_us = "6944"` (matching `target_frame_us_144hz()` for
+//   the 1440p AMOLED-deep default). The compiler proves the deadline
+//   via §§ 04 Lipschitz + SMT @ T9-phase-2 once that machinery lands.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_submit()` granted.
+fn swapchain_present(sc : Swapchain, image_idx : u32) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::swapchain_present(sc.handle, image_idx) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Pipeline compile.
+// ───────────────────────────────────────────────────────────────────────
+
+// `gpu::pipeline_compile(dev, ir_ptr, ir_len, kind)` — compile a shader
+// pipeline from IR bytecode. The `kind` argument selects which IR
+// format the bytes carry per the `cssl-rt::host_gpu::GpuPipelineKind`
+// LUT (0=SPIRV / 1=DXIL / 2=METAL).
+//
+// § EFFECT-ROW
+//   {GpuInit}-effecting (compile-once, run-many). May allocate. May
+//   block on platform-shader-compiler. NOT a hot-path fn.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_pipeline()` granted.
+//
+// § PRIME-DIRECTIVE
+//   The `ir_ptr / ir_len` bytes are the user's shader bytecode — they
+//   pass straight through to the platform shader compiler unmodified.
+//   The wrapper does NOT inspect, redact, or transform the bytes.
+fn pipeline_compile(dev : Device, ir_ptr : i64, ir_len : i64, kind : ShaderIRKind) -> Result<Pipeline, GpuError> {
+    if caps_check(gpu_cap_pipeline()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let kind_u32 = shader_ir_kind_to_u32(kind) ;
+        let p = gpu::pipeline_compile(dev.handle, ir_ptr, ir_len, kind_u32) ;
+        if p == 0 {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(Pipeline { handle : p, kind : kind })
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § CmdBuf record / submit (stage-1 stubs).
+//
+//   Per `host_gpu.rs § cmd_buf_record_stub_impl` + spec/24
+//   § ABI-STABLE-SYMBOLS § gpu, the cmd-buf API has stage-0 stubs and
+//   stage-1 fleshing. Source-level code can already call these — the
+//   bodies become driver-active in stage-1 with no source-level
+//   rename. Stage-0 stub returns CmdBuf { handle : 0 } for record ;
+//   Ok(0) for submit.
+// ───────────────────────────────────────────────────────────────────────
+
+// `gpu::cmd_buf_record_stub()` — stage-1 stub. Returns a CmdBuf with
+// handle = 0. Real recording surface lands in stage-1 fleshing per
+// host_gpu.rs § cmd_buf_record_stub_impl.
+//
+// § EFFECT-ROW
+//   {GpuSubmit}-effecting (records into a queueable cmd-list). At
+//   stage-0 the body is a constant-return ; the effect-row applies
+//   to the eventual fleshed body.
+fn cmd_buf_record_stub() -> CmdBuf {
+    let h = gpu::cmd_buf_record_stub() ;
+    CmdBuf { handle : h }
+}
+
+// `gpu::cmd_buf_submit_stub(cb)` — stage-1 stub. Returns Ok(0).
+// Real submit surface lands in stage-1 fleshing per host_gpu.rs §
+// cmd_buf_submit_stub_impl.
+//
+// § EFFECT-ROW
+//   {GpuSubmit}-effecting. Fleshed body will queue the cmd-list onto
+//   the device's submission queue + return the fence value.
+//
+// § CAP-WITNESS
+//   Requires `gpu_cap_submit()` granted.
+fn cmd_buf_submit_stub(cb : CmdBuf) -> Result<i32, GpuError> {
+    if caps_check(gpu_cap_submit()) == false {
+        Err(GpuError::CapDenied)
+    } else {
+        let r = gpu::cmd_buf_submit_stub(cb.handle) ;
+        if r == 0 {
+            Ok(0)
+        } else {
+            Err(gpu_error_from_kind(last_error_kind(), last_error_os()))
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+//
+//   These are not compiler tests (those live in cssl-mir + cssl-examples) ;
+//   they document the intended call-shapes for stage-0 readers + serve as
+//   inline verification that the surface compiles + parses + monomorphizes.
+// ───────────────────────────────────────────────────────────────────────
+
+// Worked example : create a Vulkan device on adapter 0 + destroy it.
+// Mirrors examples/hello_triangle.cssl style. Demonstrates the create /
+// destroy cycle through the typed `Result<Device, GpuError>` surface.
+fn _example_device_create_destroy() -> Result<i32, GpuError> {
+    let dev_r = device_create(0, 0, GpuBackend::Vulkan) ;
+    let dev = dev_r? ;
+    device_destroy(dev)
+}
+
+// Worked example : the full "hello triangle" startup path. Exercises
+// device_create + swapchain_create + pipeline_compile in sequence with
+// 1440p HDR10 surface. The frame-loop (acquire / submit / present) is
+// the hot-path that runs at the 144hz Deadline budget.
+fn _example_hello_triangle_startup(win_handle : u64) -> Result<i32, GpuError> {
+    let dev = device_create(0, 0, GpuBackend::D3D12)? ;
+    let _sc = swapchain_create(dev, win_handle, SurfaceFormat::Rgba16FloatHdr10, 2560, 1440)? ;
+    Ok(0)
+}
+
+// Worked example : per-frame render loop body. Demonstrates the 144hz
+// Deadline-bounded acquire + present pair. The Deadline<6944us> is the
+// canonical 1440p AMOLED-deep target ; cmd-buf record / submit lands in
+// stage-1 between the acquire + present.
+fn _example_frame_loop_body(sc : Swapchain) -> Result<i32, GpuError> {
+    let img = swapchain_acquire(sc, target_frame_us_144hz() * 1000)? ;  // ns
+    // (stage-1 : cmd-buf record + submit goes here)
+    swapchain_present(sc, img)
+}
+
+// Worked example : the 1440p HDR10 presentation chain. Demonstrates
+// the SurfaceFormat enum + the surface_format_is_hdr predicate.
+fn _example_hdr_chain_select() -> bool {
+    surface_format_is_hdr(SurfaceFormat::Rgba16FloatHdr10)
+}
+
+// ──────────────────────────────────────────────────────────────────
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//
+//   "There was no hurt nor harm in the making of this, to anyone,
+//    anything, or anybody."
+//
+//   The gpu surface is capability-gated at THREE LAYERS :
+//     1. Compile-time : §§ 12 `Cap<Gpu>` witness (forward-looking ;
+//        wrappers gain `cap : Cap<Gpu>` parameter once the parser
+//        supports witness-as-fn-parameter).
+//     2. Runtime : `caps_check` bitset (default-deny ; engine grants
+//        at startup). This is the structural safety-net.
+//     3. Driver : the platform compiler (D3D12 / Vulkan / Metal)
+//        validates the IR bytecode against its own capability matrix.
+//
+//   No telemetry. No surveillance. No covert resource-share. IR blobs
+//   are NEVER inspected for content by the wrappers — they pass
+//   through to the platform compiler unmodified per Apocky-CSSL's
+//   substrate-honest principle. The 1440p HDR10 + 144hz pathway is
+//   designed-in for low-latency mouse-to-photon ≤ 1 frame on the
+//   AMOLED-deep panel target — the engine's mandate is responsiveness,
+//   not surveillance.
+//
+//   Cap<Gpu> withdrawal immediately revokes the active surface. There
+//   is no PRIME-DIRECTIVE override.
+// ──────────────────────────────────────────────────────────────────
