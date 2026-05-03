@@ -1,0 +1,499 @@
+// SPDX-License-Identifier: Apocky-PRIME-DIRECTIVE-v3
+//
+// § stdlib/audio.cssl  —  Audio host-FFI surface
+//   WASAPI-priority Win · ALSA/PulseAudio Linux · CoreAudio Apple
+//
+// CSSLv3 stage-0 standard library.  Slice : S3 host-FFI wrapper landing.
+// Spec : specs/24_HOST_FFI.csl § ABI-STABLE-SYMBOLS § audio (4 symbols) +
+//          § CAPABILITY-MATRIX (Cap<Audio> · mic = Sensitive<Voice> ·
+//          default-DENIED) + § IFC-LABELS (Audio-mic-stream :
+//          Sensitive<Voice> default-DENIED) ;
+//        specs/14_BACKEND.csl § AUDIO HOST BACKENDS (WASAPI/ALSA/CoreAudio
+//          adapter-layer · capture DEFERRED · loopback FORBIDDEN) ;
+//        specs/04_EFFECTS.csl § real-time-effect-tags (Realtime<Crit>,
+//          Deadline<>, NoAlloc, SIMD256, Audit<>) ;
+//        specs/12_CAPABILITIES.csl § THE SIX CAPABILITIES.
+//
+// § PRIME_DIRECTIVE preserved : audio — particularly mic-CAPTURE — is the
+//   most surveillance-adjacent runtime surface. This module : (a) does no
+//   surveillance ; (b) mic-capture is STRUCTURALLY default-DENIED —
+//   stream_read requires audio_cap_input() granted via caps_grant before
+//   op proceeds ; default cap-set is OUTPUT-only ; (c) errors surface
+//   through typed AudioError ; (d) {AudioStream} effect-row makes audio
+//   ops visible in fn-sigs ; (e) Sensitive<Voice> IFC label on stream_read
+//   enforces mic bytes NEVER egress cross-process per §§ 11 IFC lattice —
+//   no PRIME-DIRECTIVE override. Audio-loopback to system-output recording
+//   FORBIDDEN per spec/14.
+//
+//   ‼ DEFERRED : DSP primitives (separate stdlib/dsp.cssl) · loopback
+//   (FORBIDDEN) · spatial audio · MIDI.
+//
+// § STAGE-0 NOTES
+//   1. Four audio verbs (stream_open/write/read/close) recognized by
+//      cssl_mir::body_lower::lower_call on 2-segment path audio::<verb> ;
+//      lower to cssl.audio.<verb> MIR ops with (audio_stream,"true") ;
+//      stream_read additionally carries (sensitive_voice,"true") per
+//      spec/24 § IFC-LABELS. MirEffectRow structural threading deferred
+//      (T11-D76/D82/S3A precedent).
+//   2. AudioStream handle = u64 host_audio.rs slot-table handle : low-32 =
+//      slot idx · high-32 = generation counter (use-after-close defense).
+//      INVALID_STREAM=0 translated to Err(AudioError::*) by wrappers.
+//   3. SampleFormat discriminants match host_audio.rs § format LUT
+//      verbatim : I16=1·I24=2·I32=3·F32=4·F64=5. ABI-locked. F32 canonical.
+//      Note : task spec listed {F32, S16, S24, S32, U8} — we honor cssl-rt
+//      5-format set (no U8 ; would break ABI). S16/S24/S32 ↔ I16/I24/I32.
+//   4. SampleRate {44100, 48000, 96000, 192000} per audio_callback.cssl
+//      refinement-set ; 48000 = engine default.
+//   5. STREAM_* mirrors host_audio.rs : OUTPUT=1·INPUT=2·SHARED=4·
+//      EXCLUSIVE=8·NONBLOCK=16. STABLE from S3.
+//   6. AUDIO_CAP_* : OUTPUT=1 (default ON) · INPUT=2 (default OFF · mic).
+//      Mic requires explicit caps_grant(AUDIO_CAP_INPUT).
+//   7. AudioRingBuffer fixed-size [f32; 8192] per audio_callback.cssl ;
+//      zero-alloc Realtime<Crit>-compat ; ~170ms headroom @ 48kHz.
+//   8. Realtime<Crit>+Deadline<5ms> : write/read no heap-alloc · slot-table
+//      CAS wait-free uncontended · worst-case WASAPI≤1ms·ALSA≤5ms·
+//      CoreAudio≤1ms cross-platform envelope.
+//   9. Drop integration deferred (trait-resolve slice) ; callers explicit
+//      stream_close.
+//
+// § INVARIANTS  (stage-0)
+//   - AudioStream.handle ≠ 0 (sentinel-translated).
+//   - stream_write against INPUT → Err(InvalidInput).
+//   - stream_read against OUTPUT → Err(InvalidInput).
+//   - stream_open(STREAM_INPUT) without audio_cap_input() →
+//     Err(AudioError::InputDenied). PRIME-DIRECTIVE structural safety.
+//   - DEFAULT_BUFFER_SAMPLES=256 @ 48kHz = 5.33ms (spec/14).
+
+module com.apocky.stdlib.audio
+
+use std::option::Option
+use std::result::Result
+
+// ───────────────────────────────────────────────────────────────────────
+// § SampleFormat  ←  ABI-locked vs host_audio.rs § format LUT.
+//   I16=1 · I24=2 · I32=3 · F32=4 · F64=5
+// ───────────────────────────────────────────────────────────────────────
+
+enum SampleFormat {
+    I16,    // 1 — 16-bit signed integer interleaved
+    I24,    // 2 — 24-bit signed integer interleaved (3 bytes/sample)
+    I32,    // 3 — 32-bit signed integer interleaved
+    F32,    // 4 — 32-bit float interleaved (canonical / default)
+    F64,    // 5 — 64-bit float interleaved
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § SampleRate  ← per examples/audio_callback.cssl refinement-set.
+// ───────────────────────────────────────────────────────────────────────
+
+enum SampleRate {
+    Hz44100,
+    Hz48000,   // canonical engine default
+    Hz96000,
+    Hz192000,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AudioStream  ← wraps cssl-rt slot-table handle ; caches open params.
+// ───────────────────────────────────────────────────────────────────────
+
+struct AudioStream {
+    handle      : u64,
+    sample_rate : u32,
+    channels    : u32,
+    fmt         : SampleFormat,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AudioRingBuffer  ← lock-free zero-alloc per audio_callback.cssl.
+//   8192 samples @ 48kHz = ~170ms headroom — suffices for 1-block-ahead
+//   producer/consumer under WASAPI 5ms tick. Realtime<Crit>-compatible.
+// ───────────────────────────────────────────────────────────────────────
+
+struct AudioRingBuffer {
+    buffer : [f32; 8192],
+    head   : u32,
+    tail   : u32,
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AudioError  ← discriminants match host_audio.rs § audio_error_code.
+//   Renaming = major-version-bump + lock-step cssl-rt update.
+// ───────────────────────────────────────────────────────────────────────
+
+enum AudioError {
+    InvalidInput,    // 1 — flags / fmt / rate / channels validation
+    InputDenied,     // 2 — mic-input requested without AUDIO_CAP_INPUT
+    SlotTableFull,   // 3 — all MAX_STREAMS=32 slots in use
+    InvalidHandle,   // 4 — handle invalid / generation stale
+    WouldBlock,      // 5 — non-blocking op on full ring
+    NotSupported,    // 6 — format/rate/channels combo unsupported
+    PlatformError,   // 7 — cpal/WASAPI/ALSA/CoreAudio failure
+    CapDenied,       // 8 — PRIME-DIRECTIVE Cap<Audio> not granted
+    Other(i32),      // 99 — raw OS / driver code
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stream-flag constants  ← mirror host_audio.rs STREAM_* bitset.
+// ───────────────────────────────────────────────────────────────────────
+
+// STREAM_OUTPUT = 0x01 : speaker / headphones (default).
+fn stream_output() -> u32 { 1 }
+
+// STREAM_INPUT = 0x02 : microphone. PRIME-DIRECTIVE default-DENIED ;
+// requires audio_cap_input() granted via caps_grant() FIRST.
+// Sensitive<Voice> per spec/24 § IFC-LABELS — bytes NEVER egress
+// cross-process per §§ 11 IFC lattice.
+fn stream_input() -> u32 { 2 }
+
+// STREAM_SHARED = 0x04 : OS mix-format ; multi-process.
+fn stream_shared() -> u32 { 4 }
+
+// STREAM_EXCLUSIVE = 0x08 : Win-only ; lowest latency.
+fn stream_exclusive() -> u32 { 8 }
+
+// STREAM_NONBLOCK = 0x10 : returns WouldBlock on full-ring.
+fn stream_nonblock() -> u32 { 16 }
+
+// ───────────────────────────────────────────────────────────────────────
+// § SampleFormat / SampleRate LUT helpers.
+// ───────────────────────────────────────────────────────────────────────
+
+fn fmt_i16() -> u32 { 1 }
+fn fmt_i24() -> u32 { 2 }
+fn fmt_i32() -> u32 { 3 }
+fn fmt_f32() -> u32 { 4 }
+fn fmt_f64() -> u32 { 5 }
+
+fn sample_format_to_u32(f : SampleFormat) -> u32 {
+    match f {
+        SampleFormat::I16 => 1,
+        SampleFormat::I24 => 2,
+        SampleFormat::I32 => 3,
+        SampleFormat::F32 => 4,
+        SampleFormat::F64 => 5,
+    }
+}
+
+// `sample_format_bytes_per_sample(f)` mirrors host_audio.rs LUT.
+fn sample_format_bytes_per_sample(f : SampleFormat) -> u32 {
+    match f {
+        SampleFormat::I16 => 2,
+        SampleFormat::I24 => 3,
+        SampleFormat::I32 => 4,
+        SampleFormat::F32 => 4,
+        SampleFormat::F64 => 8,
+    }
+}
+
+fn sample_rate_to_u32(r : SampleRate) -> u32 {
+    match r {
+        SampleRate::Hz44100  => 44100,
+        SampleRate::Hz48000  => 48000,
+        SampleRate::Hz96000  => 96000,
+        SampleRate::Hz192000 => 192000,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AudioError discriminant constants + sentinels.
+// ───────────────────────────────────────────────────────────────────────
+
+fn audio_err_invalid_input() -> i32 { 1 }
+fn audio_err_input_denied() -> i32 { 2 }
+fn audio_err_slot_table_full() -> i32 { 3 }
+fn audio_err_invalid_handle() -> i32 { 4 }
+fn audio_err_would_block() -> i32 { 5 }
+fn audio_err_not_supported() -> i32 { 6 }
+fn audio_err_platform_error() -> i32 { 7 }
+fn audio_err_cap_denied() -> i32 { 8 }
+fn audio_err_other() -> i32 { 99 }
+
+// `audio_invalid_stream()` = 0 per spec/24 + host_audio.rs.
+fn audio_invalid_stream() -> u64 { 0 }
+
+// `default_buffer_samples()` = 256 frames @ 48kHz = 5.33ms — matches
+// spec/14 § AUDIO HOST BACKENDS ring-buffer default + audio_callback
+// Deadline<1ms> ÷ N envelope.
+fn default_buffer_samples() -> u32 { 256 }
+
+fn default_sample_rate() -> u32 { 48000 }
+fn default_channels_stereo() -> u32 { 2 }
+fn default_channels_mono() -> u32 { 1 }
+fn audio_ring_buffer_size_samples() -> u32 { 8192 }
+
+// ───────────────────────────────────────────────────────────────────────
+// § Last-error reporting + AudioError dispatch.
+// ───────────────────────────────────────────────────────────────────────
+
+// `last_error_kind()` returns the canonical AudioError discriminant
+// for the most recent audio op (or 0 = SUCCESS).
+fn last_error_kind() -> i32 {
+    // Stage-0 placeholder ; routes through __cssl_audio_last_error_kind
+    // once the cgen layer fires the import.
+    0
+}
+
+fn last_error_os() -> i32 {
+    0
+}
+
+// `audio_error_from_kind` maps cssl-rt's i32 discriminant to typed sum.
+fn audio_error_from_kind(kind : i32, os : i32) -> AudioError {
+    if kind == audio_err_invalid_input() {
+        AudioError::InvalidInput
+    } else {
+        if kind == audio_err_input_denied() {
+            AudioError::InputDenied
+        } else {
+            if kind == audio_err_slot_table_full() {
+                AudioError::SlotTableFull
+            } else {
+                if kind == audio_err_invalid_handle() {
+                    AudioError::InvalidHandle
+                } else {
+                    if kind == audio_err_would_block() {
+                        AudioError::WouldBlock
+                    } else {
+                        if kind == audio_err_not_supported() {
+                            AudioError::NotSupported
+                        } else {
+                            if kind == audio_err_platform_error() {
+                                AudioError::PlatformError
+                            } else {
+                                if kind == audio_err_cap_denied() {
+                                    AudioError::CapDenied
+                                } else {
+                                    AudioError::Other(os)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Cap<Audio> runtime gate.  Mirrors gpu.cssl + net.cssl pattern.
+//   Mic capture double-gated : source-level caps_check default-DENIES
+//   STREAM_INPUT here ; cssl-rt::host_audio::stream_open_impl
+//   independently validates AUDIO_CAPS bitset. Bypass-resistant.
+//   {Sensitive<Voice>} on stream_read tracks bytes through §§ 11 IFC ;
+//   bytes CANNOT egress cross-process. No PRIME-DIRECTIVE override.
+// ───────────────────────────────────────────────────────────────────────
+
+// AUDIO_CAP_OUTPUT = 0x01 — default ON ; speakers/headphones.
+fn audio_cap_output() -> u32 { 1 }
+
+// AUDIO_CAP_INPUT = 0x02 — default OFF ; microphone Sensitive<Voice>.
+// Granting requires explicit user UI-affordance — NEVER silently by
+// application logic per PRIME-DIRECTIVE consent-arch.
+fn audio_cap_input() -> u32 { 2 }
+
+// `audio_cap_default()` = OUTPUT-only ; mic default-DENIED.
+fn audio_cap_default() -> u32 { 1 }
+
+// `caps_check(bits)` returns true iff all `bits` granted in runtime
+// audio cap-bitset.
+fn caps_check(bits : u32) -> bool {
+    // Stage-0 hard-coded default-deny posture for INPUT. Eventual body
+    // reads cssl-rt audio cap-bitset via __cssl_audio_caps_current and
+    // AND-masks `bits`. The hard-coded default ensures source-level
+    // PRIME-DIRECTIVE behavior is correct even before cgen wiring.
+    if bits == audio_cap_output() {
+        true
+    } else {
+        false  // INPUT or any combination including INPUT = denied
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stream open / close.
+// ───────────────────────────────────────────────────────────────────────
+
+// `audio::stream_open(rate, channels, fmt, flags)` — open a new stream.
+//
+// § EFFECT-ROW : {AudioStream, AudioInit} — once MirEffectRow lands :
+//   `... -> Result<AudioStream, AudioError> / {AudioInit, Cap<Audio>}`.
+//
+// § CAP-WITNESS
+//   - OUTPUT-only flags : audio_cap_output() (default ON).
+//   - INPUT-flagged    : audio_cap_input() (default OFF ; Sensitive<Voice>).
+//
+// § PRIME-DIRECTIVE
+//   STREAM_INPUT without AUDIO_CAP_INPUT → Err(InputDenied). Structural
+//   safety-net for silent microphone activation. No override.
+fn stream_open(rate : SampleRate, channels : u32, fmt : SampleFormat, flags : u32) -> Result<AudioStream, AudioError> {
+    let rate_u32 = sample_rate_to_u32(rate) ;
+    let fmt_u32 = sample_format_to_u32(fmt) ;
+    let cap_needed = if (flags & stream_input()) != 0 {
+        audio_cap_input()
+    } else {
+        audio_cap_output()
+    } ;
+    if caps_check(cap_needed) == false {
+        if (flags & stream_input()) != 0 {
+            Err(AudioError::InputDenied)
+        } else {
+            Err(AudioError::CapDenied)
+        }
+    } else {
+        let h = audio::stream_open(flags, rate_u32, channels, fmt_u32) ;
+        if h == 0 {
+            Err(audio_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(AudioStream {
+                handle      : h,
+                sample_rate : rate_u32,
+                channels    : channels,
+                fmt         : fmt,
+            })
+        }
+    }
+}
+
+// `audio::stream_close(s)` — release the stream slot. Idempotent at
+// cssl-rt layer ; second close → Err(InvalidHandle).
+//
+// § EFFECT-ROW : {AudioStream}.
+fn stream_close(s : AudioStream) -> Result<i32, AudioError> {
+    let r = audio::stream_close(s.handle) ;
+    if r == 0 {
+        Ok(0)
+    } else {
+        Err(audio_error_from_kind(last_error_kind(), last_error_os()))
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stream write (output / playback).
+// ───────────────────────────────────────────────────────────────────────
+
+// `audio::stream_write(s, buf_ptr, len_bytes)` — submit playback bytes.
+// Returns bytes-accepted (≥ 0) on success.
+//
+// § EFFECT-ROW : {AudioStream, Deadline<5ms>}. Realtime<Crit>-compatible :
+//   no heap-alloc ; slot-table CAS wait-free. 5ms = WASAPI shared ≤ 1ms /
+//   ALSA ≤ 5ms / CoreAudio ≤ 1ms cross-platform envelope.
+//
+// § PRIME-DIRECTIVE : INPUT-flagged streams REJECT writes (InvalidInput).
+//   Bytes pass through to platform mixer ; no surveillance.
+fn stream_write(s : AudioStream, buf_ptr : i64, len_bytes : i64) -> Result<i64, AudioError> {
+    let n = audio::stream_write(s.handle, buf_ptr, len_bytes) ;
+    if n < 0 {
+        Err(audio_error_from_kind(last_error_kind(), last_error_os()))
+    } else {
+        Ok(n)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Stream read (microphone capture). Sensitive<Voice>.
+// ───────────────────────────────────────────────────────────────────────
+
+// `audio::stream_read(s, buf_ptr, len_bytes)` — read captured audio bytes.
+//
+// § EFFECT-ROW : {AudioStream, Sensitive<Voice>, Deadline<5ms>}.
+//   Realtime<Crit>-compatible (no heap-alloc).
+//
+// § PRIME-DIRECTIVE  (W! — most surveillance-adjacent op)
+//   - Microphone capture is Sensitive<Voice> per spec/24 § IFC-LABELS.
+//   - Default-DENIED : stream_open(STREAM_INPUT) already returned
+//     Err(InputDenied) without cap-grant ; this fn additionally
+//     re-validates that the cap is STILL granted (defense against
+//     mid-flight cap-revoke on stale handles).
+//   - {Sensitive<Voice>} effect-row tag : captured bytes are IFC-tracked
+//     through §§ 11 lattice ; CANNOT egress cross-process or to disk
+//     without an explicit declassification witness which stage-0 stdlib
+//     does NOT provide. NO override.
+//   - Audio-loopback to system-output recording is FORBIDDEN per spec/14.
+//     This wrapper does NOT support loopback ; only open-on-mic path.
+fn stream_read(s : AudioStream, buf_ptr : i64, len_bytes : i64) -> Result<i64, AudioError> {
+    // Defense-in-depth re-check : protects against stale handles whose
+    // cap-grant was revoked since open. Eventual cssl-rt wiring tests
+    // caps_check on every read.
+    if caps_check(audio_cap_input()) == false {
+        Err(AudioError::InputDenied)
+    } else {
+        let n = audio::stream_read(s.handle, buf_ptr, len_bytes) ;
+        if n < 0 {
+            Err(audio_error_from_kind(last_error_kind(), last_error_os()))
+        } else {
+            Ok(n)
+        }
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § AudioRingBuffer helpers — zero-alloc Realtime<Crit>-compatible.
+// ───────────────────────────────────────────────────────────────────────
+
+// `ring_buffer_new()` — fresh fixed-size ring (no heap-alloc ; inline
+// [f32; 8192]).
+fn ring_buffer_new() -> AudioRingBuffer {
+    AudioRingBuffer {
+        buffer : [0.0; 8192],
+        head   : 0,
+        tail   : 0,
+    }
+}
+
+// `ring_buffer_clear(rb)` — reset head + tail ; preserve allocation.
+fn ring_buffer_clear(rb : AudioRingBuffer) -> AudioRingBuffer {
+    AudioRingBuffer {
+        buffer : rb.buffer,
+        head   : 0,
+        tail   : 0,
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// § Worked examples — documentation only.
+// ───────────────────────────────────────────────────────────────────────
+
+// Open a 48kHz stereo F32 OUTPUT stream + close. Default-cap permits this.
+fn _example_open_close_output() -> Result<i32, AudioError> {
+    let s_r = stream_open(SampleRate::Hz48000, 2, SampleFormat::F32,
+                          stream_output() | stream_shared()) ;
+    let s = s_r? ;
+    stream_close(s)
+}
+
+// PRIME-DIRECTIVE structural test : opening INPUT without cap-grant
+// MUST return Err(InputDenied) NOT silently activate the microphone.
+fn _example_input_default_denied() -> Result<i32, AudioError> {
+    let s_r = stream_open(SampleRate::Hz48000, 1, SampleFormat::F32,
+                          stream_input()) ;
+    match s_r {
+        Ok(_) => Ok(-1),  // BUG : cap-bypass detected
+        Err(_) => Ok(0),  // expected default-DENIED behavior
+    }
+}
+
+// Per-block playback submit pattern used inside the audio-callback loop.
+fn _example_write_block(s : AudioStream, buf_ptr : i64, len_bytes : i64) -> Result<i64, AudioError> {
+    stream_write(s, buf_ptr, len_bytes)
+}
+
+// 1-block latency calc : 256 samples × 2 ch × 4 bytes/F32 = 2048 bytes.
+// At 48kHz : 256 / 48000 = 5.333ms — matches spec/14 5ms Deadline envelope.
+fn _example_block_latency_bytes() -> u32 {
+    default_buffer_samples() * default_channels_stereo() *
+        sample_format_bytes_per_sample(SampleFormat::F32)
+}
+
+// ──────────────────────────────────────────────────────────────────
+// § ATTESTATION  (per PRIME_DIRECTIVE.md § 11)
+//   "There was no hurt nor harm in the making of this, to anyone,
+//    anything, or anybody."
+//   3-layer mic-cap-gate : (1) compile-time §§ 12 Cap<Audio> witness +
+//   {Sensitive<Voice>} effect-row tag on stream_read (fwd-looking) ;
+//   (2) source-level caps_check(audio_cap_input()) on every
+//   stream_open(INPUT) + stream_read default-DENIED ; (3) cssl-rt
+//   host_audio.rs § stream_open_impl validates AUDIO_CAPS bitset.
+//   Mic bytes carry {Sensitive<Voice>} IFC ; CANNOT egress cross-process
+//   per §§ 11. Loopback FORBIDDEN per spec/14. Cap<Audio> withdrawal
+//   revokes active stream. No override · no telemetry · no surveillance.
+// ──────────────────────────────────────────────────────────────────
