@@ -1,0 +1,130 @@
+§ specs/53_EXISTING_FEATURES_CATALOG · already-built loa-host modules · undocumented-surface
+  ← survey of pre-existing infrastructure Apocky may not realize is shipped
+  ← @ HEAD d311de1 · post-18-merges · 3 agents flying
+
+§I PURPOSE
+  Apocky asked "feed pre-authored data" thinking we need to build new pipelines ;
+  HALF the pipelines already exist · they just need to be invoked or surfaced.
+  This spec catalogs what's already built so we don't reinvent.
+
+§I MODULES-IN-loa-host (always built · catalog-mode)
+  ⟦
+    camera             ← genre-fluid 4-mode camera (Fps · ThirdPerson · Iso · TopDown)
+    geometry           ← ?
+    material           ← ?
+    pattern            ← ?
+    room               ← test-room scene
+    stokes             ← Navier-Stokes fluid? for wind/water
+    spectral_bridge    ← CPU-bake CRH spectral-LUT bridge
+    input              ← raw input handling
+    input_genre_fluid  ← multi-source router (KB/Mouse · Gamepad · Touch · DualSense)
+    movement           ← character movement
+    physics            ← physics step
+    mcp_server         ← TCP JSON-RPC server (Claude live interface)
+    mcp_tools          ← MCP tool implementations
+    telemetry          ← JSONL-event emission
+    dm_director        ← Director state machine (entropy-gradient driven · per LoA-v10 §06)
+    gm_narrator        ← Narrator state machine
+    dm_runtime         ← runtime mutation hooks
+    gm_persona         ← persona-state for narrative-arc
+    dm_arc             ← 5-phase arc state-machine (Discovery · Tension · Crisis · Catharsis · Quiet)
+    ui_overlay         ← textured-quad UI pipeline · catalog-buildable
+    fps_hud            ← crosshair · ammo · radar · health · objective · damage-floaters
+    polish_audit       ← perf-budget tracker · WCAG color-contrast · loading-spinner
+    perf_runtime_check ← AdaptiveDegrader integration
+    fps_pipeline       ← triple-buffered frame-slot ring · pre-allocated cmd-buffer pool
+    wired_fps_pipeline ← MCP-style accessor over fps_pipeline
+    snapshot           ← PNG encode + tour-pose registry + golden-image diff
+    fidelity           ← global GPU fidelity-report
+    cfer_render        ← Ω-field volumetric-raymarched (PRIMARY substrate path)
+    sense              ← 20+ sense.* MCP tools (visual · audio · spatial · interoception ·
+                          diagnostic · temporal · causal · network · environmental)
+    gltf_loader        ← pure-Rust GLTF/GLB → Vertex (no native deps)
+    spontaneous        ← TEXT-SEEDED CONDENSATION (intent-text → seed-cells → ω-stamps →
+                          ManifestationDetector → STRESS-OBJECT condenses-at-cell)
+    intent_router      ← (suggested by name)
+    substrate_render   ← Crystal-128 + KAN-multiband + dyn-res + AMOLED-deep
+    dynamic_resolution ← Q0.16 adaptive resolution-scaler
+    display_profile    ← 5-profile auto-detect + per-LUT contrast-stage
+    fps_pipeline       ← (above)
+    content_pipeline   ← LOA_CONTENT_PIPELINE=1 wires DMGM-council → procgen → crystals
+  ⟧
+
+§I CRITICAL-UNDERAPPRECIATED-FEATURES
+  ⟦
+    spontaneous (text-seeded condensation) :
+      FFI : extern "C" __cssl_world_spontaneous_seed(text_ptr, text_len, x, y, z)
+      MCP : world.spontaneous_seed { text, origin }
+      WIRED : window.rs line 482 drains queue every event-loop tick
+      EVOLVES : sow_spontaneous_intent → SeedCells → field-stamps → cfer-render →
+                ManifestationDetector::scan_rising_edges → STRESS-OBJECT
+      USAGE : send "blue crystal forest" via MCP and watch it materialize
+
+    gltf_loader : full pure-Rust GLTF/GLB parser
+      pub fn load_gltf(bytes: &[u8]) -> Result<Vec<Vertex>, GltfErr>
+      ALREADY-AVAILABLE for any external 3D model
+      USAGE : feed Khronos GLTF Sample Models · output to substrate-input
+
+    sense (MCP-tools 20+) :
+      Lets external Claude PERCEIVE the live engine across 9 axes
+      Already documented · already wired
+      USAGE : connect Claude Desktop via MCP → query sense.visual, sense.spatial · etc
+
+    cfer_render : volumetric raymarched (NOT triangle-based)
+      Aligns with Apocky's "raymarched-SDF-PRIMARY" axiom
+      Catalog-buildable + runtime-feature-GPU upload
+
+    fps_hud + ui_overlay :
+      Full HUD suite is ALREADY built · world-anchored capable
+      Could be activated for game-feel
+  ⟧
+
+§I HOW-TO-USE-EXISTING-FEATURES (no new code required · just env-vars + MCP-calls)
+  ⟦
+    SPONTANEOUS-SEED via MCP :
+      1. Connect Claude Desktop to LoA's MCP TCP server (default 127.0.0.1:3001)
+      2. Call world.spontaneous_seed { text: "ancient stone arch covered in glowing moss",
+                                          origin: [10.0, 0.0, 5.0] }
+      3. Watch substrate evolve · STRESS-OBJECT condenses at cell
+      4. Sequential calls accumulate world-state · purely-local · sovereignty-respecting
+
+    GLTF-LOAD via FFI/MCP :
+      1. external 3D model (CC-licensed · e.g. Khronos sample) → bytes
+      2. Either : call gltf_loader::load_gltf in catalog-test
+                 OR : MCP-call world.spawn_gltf { bytes_path, world_pos }
+      3. parsed Vertex array goes into dynamic-mesh path
+
+    PROCGEN-CONTENT-WIRE :
+      $env:LOA_CONTENT_PIPELINE = "1" ; LoA.exe
+      DMGM-council generates procgen-output every-second
+      replaces shell-seed substrate with content-driven crystal-vector
+
+    SPECIALIST-PERSIST :
+      ~/.loa/specialist_<role>.bin auto-saved · auto-loaded
+      DM/GM/Collaborator/Coder accumulate observations across LoA-restart
+
+    MYCELIUM-FEDERATE (foundations only · explicit-opt-in) :
+      $env:LOA_MYCELIUM_LOAD = "1" ; LoA.exe
+      reads ~/.loa/peer_cache.json · merges KanBiasShard records · sigma-mask-verified
+  ⟧
+
+§I MISSING-SURFACE-AREAS (next-wave-targets)
+  ⟦
+    1. KEYBOARD text-input → spontaneous_seed (currently MCP-only)
+    2. VOICE input → intent_router → spontaneous_seed (whisper-rs not-wired)
+    3. KEYBOARD-shortcut to invoke gltf_loader on a path (currently MCP-only)
+    4. UI-overlay panel showing the 13 coherence-axes-state
+    5. fps_hud activation (HUD is built · not enabled by default)
+    6. menu-system (illuminated-manuscript-style · per LoA-v10 §08)
+  ⟧
+
+§I IMPLICATIONS
+  Apocky's ask "feed pre-authored data" is partially-answered-by-existing-code :
+    ◐ MCP-callable spontaneous-seed exists (text → world)
+    ◐ gltf_loader exists (3D-data-from-external-source)
+    ◐ procgen-pipeline + dm-procgen-bridge exists (algorithmic-generation)
+    ◐ asset-loader manifest exists (CC-licensed sources catalog)
+    ○ keyboard/voice user-text-input still missing (UI-not-wired)
+
+§ ATTESTATION : ¬ harm · ¬ surveillance · transparency-of-existing-features
+  empower-Apocky to USE what's already-built before requesting new builds
